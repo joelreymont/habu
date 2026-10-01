@@ -615,11 +615,14 @@ TRUSTED: RUN-WORD ( -- )
    q PAST
    s q s - ;
 
-: KEEP ( -- ptr u8 n )
-   TEXT {: a:ptr u:n :}
+\ The bytes copied to the data space at here, which moves past them.
+: COPY-HERE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u ROOM {: d:ptr :}
    a d u BYTE-COPY
    d u ;
+
+: KEEP ( -- ptr u8 n )
+   TEXT COPY-HERE ;
 
 \ c": a count byte, then the text. INP has passed the quote when the length
 \ is checked (habu2.f C-ICQ), so the refusal names the quote's line.

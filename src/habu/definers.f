@@ -303,17 +303,10 @@ TRUSTED: DEF-RUN ( n -- )
 \ (C-PARSE-CREATED-SIG). A second `does>` refuses naming `does>` (C-DIE-DOES),
 \ and a missing or open signature names the token as spelled (C-SIG-BAD).
 
-\ The bytes copied to the data space at here, which moves past them.
-: DEF-KEEP ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   here BYTE-VIEW {: d:ptr :}
-   u allot
-   a d u BYTE-COPY
-   d u ;
-
 : DEF-CREATED ( -- )
    DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
-   s 1 + end s - 2 - DEF-KEEP DEF-CREATED-SIG ;
+   s 1 + end s - 2 - COPY-HERE DEF-CREATED-SIG ;
 
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then

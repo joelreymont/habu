@@ -198,10 +198,9 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    CAUGHT-SOURCE$ {: csrc:ptr csrcu:n :}
    s" a nested no-context definition under catch is caught as 70" T-LABEL
    HB$ csrc csrcu RUN-SOURCE 0 T=
-   OUT$ s" caught=70" CONTAINS? TTRUE
    ERR$ s" no authenticated package context" CONTAINS? TTRUE
-   s" source after the caught refusal runs" T-LABEL
-   OUT$ s" AFTER" CONTAINS? TTRUE
+   s" the catch prints 70 and the source after it runs" T-LABEL
+   OUT$ S\" caught=70\nAFTER" T$=
    UNCAUGHT-SOURCE$ {: usrc:ptr usrcu:n :}
    s" a nested no-context definition with no catch exits 70" T-LABEL
    HB$ usrc usrcu RUN-SOURCE 70 T=

@@ -389,7 +389,10 @@ variable WANT-RC
 
 \ ' of a name no word has is undefined, as the name run is, and nothing after it
 \ runs. An edge colon leaves the name bare, so no seal guard answers it.
-\ Under evaluate the refusal is the catchable reject.
+\ Under evaluate the refusal is the catchable reject, which the engine's loop
+\ reads; in a file the case includes under catch it is the reading loop's own:
+\ the file stops at the tick, and the includer gets 70 above its 3 and the
+\ path's two cells and reads on.
 : TICK-UNDEFINED ( -- )
    GE-SRC-RESET
    s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
@@ -405,7 +408,17 @@ variable WANT-RC
    s" oi-tick-undefined-caught.f" BOTH
    s" tick undefined caught" GE-EXPECT-OK
    S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined caught" GE-EXPECT-ERR ;
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined caught" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
+   s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 3 s~ oi-nested-tick.f~ ' included catch . depth . 4 ." QLINE
+   s" oi-tick-undefined-included.f" BOTH
+   s" tick undefined included" GE-EXPECT-OK
+   S\" 1\n70\n3\n4\n" s" tick undefined included" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined included" GE-EXPECT-ERR ;
 
 \ Top-level `char` operands whose bytes together pass the definition-body
 \ capture (layout.f BODYBUF-CAP): no definition is open, so none is captured.
@@ -1307,14 +1320,17 @@ variable WANT-RC
 
 \ The immediate is looked up as the engine's LFIND looks it up: in the open
 \ package and the global wordlist, and NAME:tail, but not in a used package,
-\ so a bare tail only a used package holds stays in the capture.
+\ so a bare tail only used packages hold stays in the capture. Two used
+\ packages hold OI-UN, so a lookup that asked them would refuse it as
+\ ambiguous.
 : BODY-IMMEDIATE-SCOPE ( -- )
    GE-SRC-RESET
    s" 1 set-tier ' OI-BODY. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
    s" s~ package OI-UP public : OI-UN ( -- ) 9 . ; immediate : OI-UQ ( -- ) 3 . ; immediate ;package~ evaluate" QLINE
    s" s~ OI-UP:OI-UN~ 0 parse-imm  s~ OI-UP:OI-UQ~ 0 parse-imm" QLINE
+   s" s~ package OI-UP2 public : OI-UN ( -- ) 8 . ; immediate ;package~ evaluate" QLINE
    s" s~ package OI-PP : OI-PN ( -- ) 4 . ; immediate ;package~ evaluate" QLINE
-   s" using OI-UP package OI-PP s~ OI-PN~ 0 parse-imm" QLINE
+   s" using OI-UP using OI-UP2 package OI-PP s~ OI-PN~ 0 parse-imm" QLINE
    s" : OI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN" GE-SRC-LINE
    s" oi-body-immediate-scope.f" BOTH
    CASE$ GE-EXPECT-OK
