@@ -1497,17 +1497,23 @@ passing suite.
   stale<XML:reader>`) and dropping it is the linear refusal — a linear cell may
   not be dropped, with or without a catch. `TYPED-VARIABLE V XML:reader` and `1
   TYPED-BUFFER V XML:reader` both throw **7121** at the declaration, so the
-  one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The two
+  one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The three
   shapes that work: open the handle INSIDE the caught body (`lib/xml-test.f
-  BAD`), or, where the handle must SURVIVE the caught failure, name the body and
+  BAD`); where the handle must SURVIVE the caught failure, name the body and
   call `['] WORD catch` (`lib/byte-edit-test.f`, `lib/xml-test.f`
   `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`), which survives
   exactly while WORD's own throw paths leave the handle where they found it, the
-  evidence the tick carries. A MULTICELL bundle is stale as one value, not as
-  the W hidden cells that carry it: an `option<pt>` window comes back as ONE
-  `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an untyped
-  local holds it and gives it back stale, and every typed use (a word input, a
-  typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
+  evidence the tick carries; or, where the failure is to propagate, catch
+  nothing and dispose of the handle in the word that ends in `throw`
+  (`test/process-pty-tty-smoke.f DEADLINE`): the throw kills that path, so the
+  arm needs no balance. `['] X catch` then a teardown, X passing the handle
+  through a word before its throw, is `E-STALE-READ`; a word that consumes the
+  handle and returns inside an `if` arm is a mismatch at `then`; consuming it
+  and throwing in the arm certifies. A MULTICELL bundle is stale as one value,
+  not as the W hidden cells that carry it: an `option<pt>` window comes back as
+  ONE `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an
+  untyped local holds it and gives it back stale, and every typed use (a word
+  input, a typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
   (`test/catch-stale-suite.f CS-SECTION-BUNDLES`, `test/compiler/native-catch.f
   CATCH-STALE-DROP`).
 

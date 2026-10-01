@@ -317,7 +317,9 @@ at its deadline.
   `T-OUTCOME-TIMEOUT` or MATCHes it. A pty wait whose clock ends with the
   child still at the terminal throws it too (`lib/pty-harness.f`
   `WAIT-AFTER-WITHIN`), where a hang-up answers false; `test/proc-pty.f`, a
-  child of the `engine-runtime-regressions` row, exits `PROC-TIMEOUT-RC` for it.
+  child of the `engine-runtime-regressions` row, exits `PROC-TIMEOUT-RC` for it;
+  `test/process-pty-tty-smoke.f` `DEADLINE` tears the supervised target down
+  before it throws, because the linear handle cannot cross a catch.
 - A build row's own capture deadline reaches the pool the same way. The image
   builders (`test/whitebox-engine.f`, `test/keyed-image.f`,
   `test/cold-engine.f`) and `test/aot-wid-build.f` read their captures through
