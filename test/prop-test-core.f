@@ -192,15 +192,21 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ without compiling; accepted candidates are compiled with the hook off after
 \ CHECK! has already certified their effect. Two levels (program + shrink variant)
 \ let shrinking roll back inside a program's own checkpoint.
+\ The signature store rewinds through USIGS-RESTORE-END, the checker's own
+\ truncation seam, which pops only the index entries above the mark. A bare
+\ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
+\ the whole store at the next check: 86% of a sweep's samples, and one
+\ 2000-program seed took 16.9 s against 1.0 s with identical verdicts and depths.
+\ test/effect-intern-suite.f owns the raw-rewind rebuild.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
 : MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND !  UTERM! ;
+TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND !  UTERM! ;
+TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
-TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM! ;
+TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
    0 PBUF-U ! s" depth BASE ! " P+
