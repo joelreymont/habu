@@ -323,6 +323,16 @@ at its deadline.
   `test/aot-wid-build.f` dies with 124, and the rows that run it
   (`test/aot-wid-suite.f`, `test/aot-wide-format-lib.f`) throw
   `E-PROC-TIMEOUT` again on that status.
+- A row linked on the keyed linker image (`test/preloaded-engine.f`
+  `LINKER-LOAD`) reads its `-cases.f` child by exit status alone. A child
+  whose checks start processes runs its entry through `GE-CHILD-RUN`
+  (`test/gate-common-lib.f`): an `E-PROC-TIMEOUT` that escapes the checks ends
+  the child with 124 and any other throw leaves with its own code;
+  `LINKER-LOAD` names the row and throws `E-PROC-TIMEOUT` again on 124.
+  `test/gate-aot-negative-cases.f` and `test/stripped-address-cases.f` do so;
+  `test/compiler/native-code-span-cases.f` and
+  `test/compiler/aot-nested-body-cases.f` start no process and have no
+  deadline to report.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
   and `postgres` from `PATH`, a gate requirement on every host

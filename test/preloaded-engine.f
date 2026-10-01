@@ -112,7 +112,10 @@ public
    LINKER-PATH$ ;
 
 \ Run a file on LINKER$ as `--load <file>`, with this process's stdout and
-\ stderr and an empty stdin, and die with the child's status when it fails.
+\ stderr and an empty stdin, and die with the child's status when it fails. A
+\ child whose deadline expired exits PROC-TIMEOUT-RC (test/gate-common-lib.f
+\ GE-CHILD-RUN), which is named and thrown again, so the gate pool labels the
+\ row TIMEOUT-UNDER-LOAD.
 : LINKER-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    LINKER$ {: eng:ptr engu:n :}
    PROC-ARGV-ENV-RESET
@@ -126,6 +129,10 @@ public
       ok OF ENDOF
       err OF ENDOF
    ;MATCH {: rc:n :}
+   rc PROC-TIMEOUT-RC = if
+      s" preloaded-engine: linked row ran out of time" type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" preloaded-engine: linked row failed" rc die then ;
 
 ;package
