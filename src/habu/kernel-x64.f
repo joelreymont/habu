@@ -1577,6 +1577,7 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" evaluate" REFUSE
+   s" evaluate-closed" REFUSE
    s" create" REFUSE
    s" parse-name" REFUSE
    s" num-parse" REFUSE

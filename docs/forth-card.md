@@ -90,7 +90,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 
 | you write | diagnostic |
 |---|---|
-| `evaluate` in a checked body (top level is fine) | `E-UNSAFE` |
+| `evaluate` in a checked body (top level is fine) | `E-UNSAFE` — use `evaluate-closed` |
 | `variable V  : F ( n -- n ) V ! V @ @ ;` | `E-RAW-CELL-PTR` — § 5 |
 | `variable V  : F ( -- ) V @ execute ;` | `E-EXEC-OPAQUE-XT` |
 | `@` on a `ptr u8` | `E-MISMATCH` — use `c@` |
@@ -132,7 +132,11 @@ Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 plus `[: IMPL ;] is W`, `parse-name`, `MATCH … ;MATCH`, `undefine`, and
 `true false 0<> fdup` with no require. An `endcase` default arm producing a
 value must leave the selector on top (`30 swap endcase`); `0 0 do … loop` runs
-once, `0 0 ?do … loop` zero times.
+once, `0 0 ?do … loop` zero times. `evaluate-closed ( ptr u8 n -- )` evaluates
+source in a body: the text's `depth` starts at 0, a token reaching below it
+throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the caller's
+cells intact either way. An xt the text `execute`s can still reach them
+(forth.md **Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -245,7 +249,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `PRIM:` |
+| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` leaves open |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
 | Importing … with `using` | ambiguity, scope end, the 16 limit |

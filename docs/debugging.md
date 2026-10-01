@@ -552,11 +552,22 @@ this die", and they are not interchangeable:
   or a read below the base takes SIGSEGV/SIGBUS, and `src/habu/crash.f` reads
   the faulting address out of the signal context and classifies which of the
   three named stacks it landed in — the parenthetical names the stack, not
-  the operation. This is what a per-transfer bounds check used to report
-  generically; the message and exit code are unchanged from before guard
-  pages, only the `(name)` suffix is new, so match it as a prefix
-  (`hb: stack bounds exceeded`) rather than the whole line if the specific
-  stack does not matter to the assertion.
+  the operation. A descriptor counts as a stack when its base is a cell
+  boundary and its top a page boundary; the named ranges are the page at the
+  top and the page under the base rounded down to a page. `evaluate-closed`
+  raises the data base to the caller's depth and keeps the top, so an overflow
+  inside a closed text is named (`test/compiler/native-eval.f` OVERFLOW), and
+  so is a read past the mapping's base while the caller holds less than a page
+  of cells: `7 s" 1 ' W3 execute" evaluate-closed` with `W3 ( n n n -- n )`
+  exits 102. A jump into the caller's cells under the floor faults on the
+  fetch, not a bound, and gets the register dump, exit 134, as at top level
+  (CALLER-JUMP); while the caller holds a page or more of cells, such a jump
+  into the page under the rounded floor is still named `(data)`.
+  This is what a per-transfer bounds check used to report generically; the
+  message and exit code are unchanged from before guard pages, only the
+  `(name)` suffix is new, so match it as a prefix (`hb: stack bounds exceeded`)
+  rather than the whole line if the specific stack does not matter to the
+  assertion.
 - `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
   the same number for the engine emitters, and `test/stack-guard.f` proves
   the two agree) is run-in-stack's own admission check

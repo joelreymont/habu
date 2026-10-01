@@ -28,7 +28,23 @@ lives here; build, test and environment rules live in
   sealed `DNAME-INT` with no checked caller. `test/prim-owner-scope.f` pins the
   matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
-  quotations for known callbacks.
+  quotations for known callbacks. A checked word evaluates source with
+  `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
+  the caller's depth and must leave nothing (measured under **Rules learned by
+  refusal**). Four cases stay open:
+  - An xt the text runs through `execute` is guarded only by `execute`'s own
+    one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
+    warns `hb: top-row: execute: xt target underflows the interpret stack` and
+    leaves 6 where the 5 was.
+  - A text that runs `0 set-check` leaves every later definition unchecked,
+    inside the text and after it.
+  - A text may end inside a definition: the interpreter stays compiling, so
+    `s" : D ( -- n ) 42" evaluate-closed`, even from a checked word, lets the
+    caller's next `;` complete `D`.
+  - A text's top-level code is unchecked, so what it computes is untyped: with
+    `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
+    stores an address in V that a checked `( -- n )` word then reads as `n`.
+    Only the text's definitions are certified, each against its own signature.
 - Existing TRUST forms are legacy awaiting removal, tracked in [minimal PRIM
   migration](../.dots/habu-trusted-dies-prim-4fd12d60/habu-finish-minimal-prim-c00c6a93.md);
   mentions below describe legacy syntax only.
@@ -892,9 +908,9 @@ by name with the count it saw and the ceiling, and none truncates.
   the line it came from (` at <path>:<line>`, added when a source file is open).
   Repair: hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map
   their own pages, not in the dictionary. While a task is live every one of
-  these sinks, and `evaluate`, exits `$4F` before it writes
-  ([threads.md](threads.md)): the definers name their token on stderr, the rest
-  print nothing.
+  these sinks exits `$4F` before it writes, as do `evaluate` and
+  `evaluate-closed` ([threads.md](threads.md)): the definers name their token
+  on stderr, the rest print nothing.
 
 ## Constants
 
@@ -1381,6 +1397,21 @@ passing suite.
   typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
   (`test/catch-stale-suite.f CS-SECTION-BUNDLES`, `test/compiler/native-catch.f
   CATCH-STALE-DROP`).
+- **A checked word evaluates source with `evaluate-closed`, never
+  `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
+  text's. `evaluate-closed` raises the data-stack base to the caller's depth for
+  the text and refuses whatever the text leaves, so its row is
+  `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
+  Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
+  `7 [: s" drop" evaluate-closed ;] catch` answers 70
+  (`hb: interpret stack underdepth: drop`) with the 7 still below it;
+  `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
+  `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
+  the outer text's caller as -3804; a definition the checker refuses throws 70;
+  a data-stack overflow in a text exits `hb: stack bounds exceeded (data)`,
+  rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
+  exits `$4F` before reading the text and prints nothing, as `evaluate` does.
+  The open cases are under **Checked code and primitive boundaries**.
 
 ## Spans: a pointer that carries its reach
 

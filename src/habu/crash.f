@@ -160,10 +160,23 @@ $110 constant MACOS-MCTX-PC-OFF
 \ where the fault becomes the diagnostic the checks used to print.
 \
 \ A case is skipped rather than trusted when its descriptor is not a plausible
-\ one -- zero, or not PAGE-BYTES aligned. The DATA base comes out of the signal
-\ mcontext, so a fault in foreign code that had already overwritten x20 reads
-\ cells that are not descriptors at all; an implausible one falls through to the
-\ ordinary register dump instead of naming a stack that did not fault.
+\ one -- a zero base, a base off a cell boundary, or a top (base + capacity) off
+\ a PAGE-BYTES boundary. Every extent the engine installs ends where its high
+\ guard page begins, and starts on a page boundary except under
+\ evaluate-closed, which raises the data base to the caller's depth and keeps
+\ the top (src/habu/habu1.f B-EVAL-CLOSED). Under that floor the page at the
+\ top is still the high guard, and the low window is the page under the
+\ page-rounded floor: the mapping's low guard while the caller holds less than
+\ a page of cells. Between the mapping's base and the floor lie caller cells,
+\ mapped read/write, where only an instruction fetch faults, and that is no
+\ bounds fault. The window still misnames such an exec fault when the caller
+\ holds a page or more of cells and the target lies in the page under the
+\ rounded floor. Excluding fetch faults (fault address = pc) would cure that,
+\ but it would also stop naming a jump into a real guard page, so the window
+\ keeps it. The DATA base comes out of the signal mcontext, so a fault in
+\ foreign code that had already overwritten x20 reads cells that are not
+\ descriptors at all; an implausible one falls through to the ordinary register
+\ dump instead of naming a stack that did not fault.
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
 variable CRS-HIT    variable CRS-NEXT  variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
@@ -182,12 +195,13 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 : C-CRASH-GUARD-CASE ( -- )
    9 24 CRS-BASE @ LDR,
    9 CRS-NEXT LABEL@ CBZ,
-   10 9 12 AND,  10 CRS-NEXT LABEL@ CBNZ,
-   13 9 11 SUB,                                  \ low guard starts one page below the base
+   10 9 7 ANDI,  10 CRS-NEXT LABEL@ CBNZ,
+   CRS-CAPCELL @ 0= IF 13 CRS-CAP @ LIT64, ELSE 13 24 CRS-CAPCELL @ LDR, THEN
+   13 9 13 ADD,                                  \ high guard starts at base + capacity,
+   10 13 12 AND,  10 CRS-NEXT LABEL@ CBNZ,       \ a page boundary
    10 25 13 SUB,
    10 11 CMP,  C-CC CRS-HIT LABEL@ BCOND,
-   CRS-CAPCELL @ 0= IF 13 CRS-CAP @ LIT64, ELSE 13 24 CRS-CAPCELL @ LDR, THEN
-   13 9 13 ADD,                                  \ high guard starts at base + capacity
+   13 9 12 AND,  13 9 13 SUB,  13 13 11 SUB,     \ low guard: the page under the rounded base
    10 25 13 SUB,
    10 11 CMP,  C-CC CRS-HIT LABEL@ BCOND,
    CRS-NEXT LABEL@ LBL, ;

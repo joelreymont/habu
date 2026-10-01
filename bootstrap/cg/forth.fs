@@ -173,6 +173,10 @@ STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 \ mirror carries stack-abi.f's spelling exactly, never a second name for it.
 -3802 constant STACK-ABI:E-STACK-UNGUARDED
 
+\ evaluate-closed's refusal of a text that left cells above its floor, carried
+\ the same way: lib/errors.f E-EVAL-RESIDUE owns it.
+-3804 constant STACK-ABI:E-EVAL-RESIDUE
+
 \ The dividing primitives' refusal code, carried here for the same reason and in
 \ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
 -6400 constant ARITH-ABI:E-DIV-ZERO
@@ -947,15 +951,19 @@ variable BAND-IX
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
 \ linked native-stack frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: B-EVAL ( -- )
-   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+\
+\ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
+\ x10: the frame records the data-stack extent in force, and the clean exit
+\ returns to x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
+\ src/habu/habu1.f EVAL-ENTER.
+: EVAL-ENTER ( -- )
    SP SP EVAL-FRAME-SIZE SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
    14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
-   30 14 16 STR,                                     \ leaf prim: x30 = caller return
+   30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
@@ -972,6 +980,10 @@ variable BAND-IX
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
+
+: B-EVAL ( -- )
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   EVAL-ENTER ;
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
@@ -1586,6 +1598,31 @@ HB-TARGET-LINUX? [IF]
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text with the caller's depth as
+\ its floor, BASE raised to the cursor and CAP lowered by the same distance, and
+\ refuse a text that left cells with STACK-ABI:E-EVAL-RESIDUE. The caller's
+\ extent waits in this word's frame; the evaluate frame records the floor and
+\ returns to `back`. Mirrors src/habu/habu1.f B-EVAL-CLOSED.
+: B-EVAL-CLOSED ( -- )
+   LBL LBL {: back done :}
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   30 back ADR,
+   EVAL-ENTER
+   back LBL,
+   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   SP SP 16 ADDI,
+   XDS 11 CMP,  C-EQ done BCOND,
+   XDS 11 0 ADDI,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 \ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
 \ result row survives a clean run; the cleanup runs outside the body's handler,
@@ -1868,7 +1905,8 @@ HB-TARGET-LINUX? [IF]
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L ;
+   s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
 
 : EMIT-ENGINE-PRIMS ( -- )
    s" run-in-stack" ['] BRUNSTACK FPRIM-L

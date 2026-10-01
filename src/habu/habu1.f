@@ -1414,9 +1414,12 @@ variable SZA-I
 \ LUNDERFLOW, and every throw) never return here: they unwind through the eval
 \ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
-: B-EVAL ( -- )
-   B-TASK-LIVE-GUARD
-   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+\
+\ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
+\ x10. The frame records the data-stack extent in force, and the clean exit
+\ returns to x30: B-EVAL's caller, or the continuation of B-EVAL-CLOSED, which
+\ inlines it under a floor of its own.
+: EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
@@ -1424,7 +1427,7 @@ variable SZA-I
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
-   30 14 16 STR,                                     \ leaf prim: x30 = caller return
+   30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
@@ -1446,6 +1449,11 @@ variable SZA-I
    9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
+
+: B-EVAL ( -- )
+   B-TASK-LIVE-GUARD
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   EVAL-ENTER ;
 
 : BCREATE ( -- )
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -2865,6 +2873,40 @@ public
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program. Once
+\ the string is popped, the caller's depth becomes the text's floor: BASE moves
+\ up to the cursor and CAP shrinks by the same distance, so the extent keeps its
+\ top, `depth` starts at 0, and every floor the interpreter enforces refuses a
+\ token that would reach a caller's cell, as rc 70 through LEVALREC. The
+\ caller's extent waits in this word's frame; the evaluate frame EVAL-ENTER
+\ pushes records the floor and returns to `back`. A nested evaluate,
+\ run-in-stack or catch inside the text therefore restores to the floor, and a
+\ throw out of the text unwinds to the caller's handler, which restores its
+\ own extent and abandons this frame. On the clean return the text must have
+\ left nothing: residue is dropped and refused by name with
+\ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
+\ BRUNSTACK above.
+: B-EVAL-CLOSED ( -- )
+   LBL LBL {: back:label done:label :}
+   B-TASK-LIVE-GUARD
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   30 back ADR,
+   EVAL-ENTER
+   back LBL,
+   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   SP SP 16 ADDI,
+   XDS 11 CMP,  C-EQ done BCOND,
+   XDS 11 0 ADDI,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
 : BFINALLY ( -- )
@@ -3432,7 +3474,8 @@ public
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L ;
+   s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
