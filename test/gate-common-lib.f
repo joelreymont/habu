@@ -13,7 +13,6 @@ require lib/content-key.f
 require lib/test/runner.f
 
 $40000 constant GE-SRC-CAP
-64 constant GE-SRC-MAX
 \ Generous deadlock deadline for one engine-gate child.
 120000 constant GE-TIMEOUT-MS
 10 constant GE-LF
@@ -27,13 +26,10 @@ $40000 constant GE-SRC-CAP
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
-GE-SRC-MAX TYPED-BUFFER GE-SRC-A ptr u8
-create GE-SRC-LEN GE-SRC-MAX cells allot
 create GE-ARGV-BUF GE-SRC-CAP allot
 create GE-HB-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
-variable GE-SRC-N
 variable GE-RD
 variable GE-INFD
 variable GE-ARGV-U
@@ -270,20 +266,7 @@ variable GE-EVAL-SRC-U
    GE-SB-LF ;
 
 : GE-SRC-RESET ( -- )
-   0 GE-SRC-U !
-   0 GE-SRC-N ! ;
-
-: GE-SRC$ ( n -- ptr u8 n ) {: idx:n :}
-   idx 0 < if E-STR-BOUNDS throw then
-   idx GE-SRC-N @ >= if E-STR-BOUNDS throw then
-   idx GE-SRC-A @
-   idx cells GE-SRC-LEN + @ ;
-
-: GE-SRC-PATH+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   GE-SRC-N @ GE-SRC-MAX >= if E-STR-CAPACITY throw then
-   path GE-SRC-N @ GE-SRC-A !
-   pathu GE-SRC-LEN GE-SRC-N @ cells + !
-   GE-SRC-N @ 1+ GE-SRC-N ! ;
+   0 GE-SRC-U ! ;
 
 : GE-SRC-C ( n -- ) {: c:n :}
    c 0 < if E-STR-BOUNDS throw then
@@ -329,7 +312,6 @@ variable GE-EVAL-SRC-U
    s"  CHECK! ." GE-SRC-LINE ;
 
 : GE-SRC-FILE+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu GE-SRC-PATH+
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
    READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
@@ -390,34 +372,6 @@ variable GE-EVAL-SRC-U
       2drop s" bin/hb" exit
    then
    2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
-
-: GE-CHECK-EXE ( -- ptr u8 n )
-   GE-HB$ ;
-
-: GE-CHECK-SUPPORT-ARGV ( -- )
-   s" lib/errors.f" GE-ARG+
-   s" lib/date.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/vector.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" tools/lint/text.f" GE-ARG+
-   s" tools/lint/token.f" GE-ARG+
-   s" tools/lint/lib.f" GE-ARG+
-   s" tools/lint/json-writer.f" GE-ARG+
-   s" tools/lint/source-lex.f" GE-ARG+
-   s" tools/diag-origin-core.f" GE-ARG+
-   s" tools/json.f" GE-ARG+
-   s" tools/json-only-core.f" GE-ARG+
-   s" tools/checked-boundary-lint-core.f" GE-ARG+
-   s" tools/reserved-name-lint-core.f" GE-ARG+
-   s" tools/check-all-errors-core.f" GE-ARG+
-   s" lib/argv.f" GE-ARG+
-   s" tools/check-core.f" GE-ARG+ ;
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
@@ -566,34 +520,3 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
 
 : GE-CLEAN-BIN ( -- )
    s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
-
-: GE-CHECK-ARGV ( -- )
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   GE-CHECK-SUPPORT-ARGV
-   s" tools/check-main.f" GE-ARG+
-   s" --" GE-ARG+ ;
-
-: GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-OK
-   label labelu GE-EXPECT-SILENT ;
-
-: GE-CHECK-RUN-BAD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS ;
-
-: GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --source-list" GE-ARG+
-   0 begin dup GE-SRC-N @ < while
-      dup GE-SRC$ GE-ARG+
-      1+
-   repeat drop
-   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GE-EXPECT-SILENT ;
