@@ -280,25 +280,27 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    BODY-BUF BODY-U @ BODY-ROW BODY-ROWS @ DIAG-MAP!
    BODY-BUF BODY-U @ ;
 
-: MAYBE-SIGNATURE ( -- )
-   SKIP-WS
-   SCAN-I @ SOURCE-U @ < IF
-      SOURCE@ SCAN-I @ + c@ 40 = IF
-         SCAN-I @ TOKEN-START !
-         41 SKIP-PAST
-         FOUND @ 0= IF s" verify-source: unterminated signature" 74 die THEN
-         SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ -  BODY-APPEND
-      THEN
-   THEN ;
+\ The signature ahead of the scan, read as the engine reads a definition head's
+\ (checker.f CHECKER-SIG-SPAN): from its `(` through its `)`, and whether one
+\ opens there. The scan passes it.
+: SCAN-SIG ( -- ptr u8 n bool )
+   SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
+   {: at:ptr left:n :}
+   at left CHECKER-SIG-SPAN
+   {: open:n close:n :}
+   open left = IF at 0 0 0= 0= EXIT THEN
+   close 0= IF s" verify-source: unterminated signature" 74 die THEN
+   SCAN-I @ close + SCAN-I !
+   at open +  close open -  0 0= ;
 
+: MAYBE-SIGNATURE ( -- )
+   SCAN-SIG IF BODY-APPEND ELSE 2drop THEN ;
+
+\ The effect inside the parentheses.
 : REQUIRE-SIGNATURE ( -- ptr u8 n )
-   SKIP-WS
-   SCAN-I @ SOURCE-U @ >= IF s" verify-source: missing signature" 74 die THEN
-   SOURCE@ SCAN-I @ + c@ 40 <> IF s" verify-source: missing signature" 74 die THEN
-   SCAN-I @ 1+ TOKEN-START !
-   41 SKIP-PAST
-   FOUND @ 0= IF s" verify-source: unterminated signature" 74 die THEN
-   SOURCE@ TOKEN-START @ + SCAN-I @ TOKEN-START @ - 1 - ;
+   SCAN-SIG 0= IF s" verify-source: missing signature" 74 die THEN
+   {: sig:ptr sigu:n :}
+   sig 1 +  sigu 2 - ;
 
 : STRING-REST ( ptr u8 n -- ptr u8 n ) {: opener:ptr openeru:n :}
    SCAN-I @ {: start:n :}
@@ -710,10 +712,14 @@ TRUSTED: RENDERS-MARK? ( n -- bool )
 \ E-UNDEFINED for PROC-ENV-DIAG, created at lib/process-env.f:93 by
 \ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
 \ lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:60.
-\ A third class names no table row at all: a definer whose product text the
-\ scan never reads because it is rendered and evaluated at load (FUNCTION:,
-\ COMMAND, +USER); the checker learns that it renders from its body
-\ (CTL-RENDERS) and RECORD-DEFINER?'s last arm leaves its products to the run.
+\ A third class is a definer whose product text the scan never reads because
+\ it is rendered and evaluated at load (FUNCTION:, COMMAND, +USER). The checker
+\ learns that it renders from its body (CTL-RENDERS), and RECORD-DEFINER? marks
+\ the statement's wordlist, leaving what the text defines to the run. What the
+\ source states is still read: a `generates:` row declares the word its definer
+\ makes from the next token (RECORD-GENERATES), and FUNCTION:'s declaration
+\ group is its word's effect (RECORD-FFI-FUNCTION), so those names are checked
+\ here and only the rest is left to the run.
 \
 \ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
 \ spelling that names the definer resolves through the scope chain the checker
@@ -723,53 +729,77 @@ TRUSTED: RENDERS-MARK? ( n -- bool )
 \ (src/core/checker.f VERIFY-DEFINER-N): every scope releases the rows recorded
 \ inside it, SOURCE-BUF's own candidate scope and the scope a caller opens
 \ around SOURCE-COMPOSE-LABELED-IN-SCOPE or another IN-SCOPE word alike, and no
-\ row outlives the ids it names.
+\ row outlives the ids it names. A frame that finalizes keeps its ids and the
+\ rows that name them.
+\ `undefine` retires a definer's row as the checker retires its created-word
+\ effect (CHECKER-UNDEFINE): it appends a row with no effect, DEFINER-FIND reads
+\ the newest row for a name, and a rewound scope releases a retirement with the
+\ rest of its rows.
 \ The signature table stays `create … allot`: its elements are bytes, which a
 \ TYPED-BUFFER cannot hold, and BUFFER: lives in lib/string.f, outside this
-\ file's require closure.
+\ file's require closure. A slot holds the longest effect a `generates:` row
+\ states (checker.f GENR-SIG-CAP), so every row the engine takes fits.
 \ The bound is a scope's, not a file's: a preverified require closure holds
 \ several sources in one checker scope, and the largest single file in the tree
 \ carries 28 `does>` today.
 128 constant DEFINER-CAP                   \ definer rows
-64 constant DEFINER-SIG-SLOT               \ one clause signature: [len][bytes]
+GENR-SIG-CAP constant DEFINER-SIG-SLOT     \ one effect's bytes
 DEFINER-CAP TYPED-BUFFER DEFINER-SYM n
+DEFINER-CAP TYPED-BUFFER DEFINER-LEN n     \ its effect's length, 0 for a retired row
 create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 
 : DEFINER-SLOT ( n -- ptr u8 ) {: row:n :}
    DEFINER-SIG BYTE-VIEW row DEFINER-SIG-SLOT * + ;
 
 : DEFINER-SIG@ ( n -- ptr u8 n ) {: row:n :}
-   row DEFINER-SLOT 1 +  row DEFINER-SLOT c@ ;
+   row DEFINER-SLOT  row DEFINER-LEN @ ;
 
 \ The checker's own "offset+1, 0 = none" answer shape, for the same reason: a
-\ row index of 0 is a real row.
+\ row index of 0 is a real row. The newest row for sym answers, a retired one
+\ as none.
 : DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
    sym 0= IF 0 EXIT THEN
-   0 BEGIN dup VERIFY-DEFINER-N @ < WHILE
-      dup DEFINER-SYM @ sym = IF 1 + EXIT THEN
-      1 +
-   REPEAT drop 0 ;
+   VERIFY-DEFINER-N @ BEGIN dup 0 > WHILE
+      1 -
+      dup DEFINER-SYM @ sym = IF
+         dup DEFINER-LEN @ 0= IF drop 0 EXIT THEN
+         1 + EXIT
+      THEN
+   REPEAT ;
 
-: DEFINER-ROW ( n -- n ) {: sym:n :}          \ sym's row, appended when it is new
-   sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
+: DEFINER-APPEND ( n -- n )                   \ a new row for sym
+   {: sym:n :}
    VERIFY-DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
-   VERIFY-DEFINER-N @ {: row:n :}
+   VERIFY-DEFINER-N @
+   {: row:n :}
    sym row DEFINER-SYM !
    row 1 + VERIFY-DEFINER-N !
    row ;
 
-\ Record `sig` as the effect the definer named by `sym` creates. A name already
-\ in the table keeps one row and takes the newer effect, which is what the run
+: DEFINER-ROW ( n -- n ) {: sym:n :}          \ sym's row, appended when it is new
+   sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
+   sym DEFINER-APPEND ;
+
+\ Record `sig` as the effect the definer named by `sym` creates. A name with a
+\ live row keeps that row and takes the newer effect, which is what the run
 \ time does: a replacement clause replaces the old created-word effect.
 : DEFINER-ADD ( ptr u8 n n -- ) {: sig:ptr sigu:n sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
-   sigu DEFINER-SIG-SLOT 1 - > IF s" verify-source: does> signature too long" 74 die THEN
-   sym DEFINER-ROW DEFINER-SLOT {: slot:ptr :}
-   sigu slot c!
+   sigu DEFINER-SIG-SLOT > IF s" verify-source: does> signature too long" 74 die THEN
+   sym DEFINER-ROW
+   {: row:n :}
+   sigu row DEFINER-LEN !
+   row DEFINER-SLOT
+   {: slot:ptr :}
    0 BEGIN dup sigu < WHILE
-      dup sig + c@  over slot 1 + + c!
+      dup sig + c@  over slot + c!
       1 +
    REPEAT drop ;
+
+: DEFINER-RETIRE ( n -- )
+   {: sym:n :}
+   sym DEFINER-FIND 0= IF EXIT THEN
+   0  sym DEFINER-APPEND DEFINER-LEN ! ;
 
 \ The effect a token's definer gives the word it creates, answered as a string
 \ whose ZERO LENGTH means "not a learned definer" - the same shape NEXT-RAW ends
@@ -910,6 +940,13 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    CHECKER-DEFCAST ;
 
+\ The `generates:` row's checks, on the same boundary for the same reason:
+\ UNSAFE-TOK? rejects `checker-generates` inside a checked body. The refusals
+\ are the engine's own (checker.f CHECKER-GENERATES), so a row this pre-pass
+\ accepts is a row the engine accepts.
+TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
+   CHECKER-GENERATES ;
+
 : CAST-TRUST ( -- )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
@@ -1008,7 +1045,8 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing undefine name" 74 die THEN
-   name nameu CHECKER-UNDEFINE ;
+   name nameu CHECKER-UNDEFINE
+   name nameu RECORD-SYM? DEFINER-RETIRE ;
 
 : RECORD-PACKAGE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -1494,6 +1532,69 @@ variable FILE-USE
       THEN THEN THEN
    AGAIN ;
 
+\ `generates: D ( effect )` - the row for a definer that writes its word as text
+\ (checker.f CHECKER-GENERATES). The row is read as the engine word reads it:
+\ the name by parse-name (NAME-TOKEN), the effect as a definition head's
+\ signature (REQUIRE-SIGNATURE), within the engine's bound. The registrar
+\ resolves D itself and raises the refusals FIND-SYM defers; FIND-SYM keys this
+\ scan's table, and a row it already holds for D - its clause or an earlier
+\ row - is part of what the checker means by D already stating what it makes.
+: RECORD-GENERATES ( -- )
+   NAME-TOKEN
+   {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing generates: definer name" 74 die THEN
+   REQUIRE-SIGNATURE
+   {: sig:ptr sigu:n :}
+   sigu GENR-SIG-CAP > IF s" verify-source: generates: effect too long" 74 die THEN
+   name nameu FIND-SYM
+   {: sym:n :}
+   name nameu sig sigu sym DEFINER-FIND 0<> GENERATES-SIGNATURE nip 0= IF EXIT THEN
+   sig sigu sym DEFINER-ADD ;
+
+\ `FUNCTION: NAME symbol ( effect ) ... ;FUNCTION` (lib/ffi-abi.f) makes NAME
+\ from its declaration group, so the group is NAME's effect with the one rewrite
+\ the declarer applies (ffi-abi.f OUT-TOKEN): an `i32` result is a cell. Inputs
+\ stay verbatim. The group is read raw, because NEXT-SCAN skips it as a comment.
+\ The live declaration pins this reading: test/certify-does-definer.f section 10.
+\ The effect is rebuilt in a buffer of its own: BODY-BUF holds only runs read
+\ out of the source (BODY-APPEND), and the rewritten `n` is not one. Its bound is
+\ the engine's for a `generates:` effect.
+variable FFI-OUT
+GENR-SIG-CAP constant FFI-SIG-CAP
+create FFI-SIG FFI-SIG-CAP allot
+variable FFI-SIG-U
+
+: FFI-APPEND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FFI-SIG-U @ u + 1 + FFI-SIG-CAP > IF s" verify-source: FUNCTION: group too long" 74 die THEN
+   a  FFI-SIG FFI-SIG-U @ +  u BYTE-COPY
+   32  FFI-SIG FFI-SIG-U @ u + +  c!
+   FFI-SIG-U @ u + 1 + FFI-SIG-U ! ;
+
+: FFI-TOKEN ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u s" --" CORE-STR= IF -1 FFI-OUT ! THEN
+   FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
+   a u FFI-APPEND ;
+
+: FFI-SIGNATURE ( -- ptr u8 n )
+   NEXT-RAW s" (" CORE-STR= 0= IF s" verify-source: FUNCTION: needs a declaration group" 74 die THEN
+   0 FFI-SIG-U !
+   0 FFI-OUT !
+   BEGIN
+      NEXT-RAW
+      dup 0= IF s" verify-source: unterminated FUNCTION: group" 74 die THEN
+      2dup s" )" CORE-STR= IF 2drop FFI-SIG FFI-SIG-U @ EXIT THEN
+      FFI-TOKEN
+   AGAIN ;
+
+: RECORD-FFI-FUNCTION ( -- )
+   NEXT-SCAN
+   {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing FUNCTION: name" 74 die THEN
+   NEXT-SCAN nip 0= IF s" verify-source: missing FUNCTION: symbol" 74 die THEN
+   name nameu FFI-SIGNATURE DECL-SIGNATURE ;
+
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
@@ -1544,24 +1645,32 @@ variable FILE-USE
    a u s" cast:" STR=CI IF CAST-DECLARATION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
+   a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
+   a u s" FUNCTION:" STR=CI IF RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u s" immediate" STR=CI IF 0 0= EXIT THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ … and last, a definer this pre-pass learned from a `does>` definition
-   \ earlier in the closure. The created word is the NEXT token, as it is for
-   \ `constant` above - the definer's own arguments precede it - and the effect
-   \ is the clause's, registered with the same raw seal the storage definers use.
+   \ … then a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
+   \ TASK:+USER): what it defines is text this scan never reads, so the checker
+   \ marks the statement's wordlist and leaves a later definition naming a word
+   \ nothing resolves to the run (src/core/checker.f CTL-RENDERS, UNSEEN-MARK$).
+   \ It marks whether or not an arm below then records the product a
+   \ `generates:` row declares (RECORD-GENERATES): that name resolves and is
+   \ checked against the row, and the mark covers what no row declares, such as
+   \ COMMAND's NAME#VEC and NAME#BUF.
+   a u FIND-SYM RENDERS-MARK?
+   {: renders:bool :}
+   \ … and last, a definer this pre-pass learned from a `does>` definition or a
+   \ `generates:` row earlier in the closure. The created word is the NEXT
+   \ token, as it is for `constant` above - the definer's own arguments precede
+   \ it - and the effect is the clause's or the row's, registered with the same
+   \ raw seal the storage definers use.
    a u DEFINER-EFFECT dup 0<> IF RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
    \ … and last of all, a definer this pre-pass never read: one compiled in the
    \ checking process itself, whose clause the checker certified and kept. The
    \ token resolves through the same FIND-SYM every other name does, so the
    \ qualified and the bare-under-`using` spelling reach the one row.
    a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
-   \ … and a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
-   \ TASK:+USER): what it defines is text this scan never reads, so the checker
-   \ marks the statement's wordlist and leaves definitions naming such words to
-   \ the run (src/core/checker.f CTL-RENDERS, UNSEEN-MARK$).
-   a u FIND-SYM RENDERS-MARK? IF 0 0= EXIT THEN
-   0 0= 0= ;
+   renders ;
 
 : VERIFY-DEFINITION ( -- )
    BODY-RESET

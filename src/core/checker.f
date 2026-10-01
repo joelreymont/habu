@@ -9807,6 +9807,7 @@ PRIM: CHECKER-STORAGE-NAME-REFUSE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-TYPE-SPAN-STEP
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-SIG-SPAN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-VERIFY-SOURCE!
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different
@@ -9864,6 +9865,23 @@ PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ UNSAFE-TOK? rejects `checker-defcast` inside checked bodies exactly like
 \ `trust-decl`, so the axiom adds no checked-code capability.
 PRIM: CHECKER-DEFCAST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ CHECKER-GENERATES ( name$ effect$ already -- sym rec ) is the checker half of
+\ a `generates:` row (defined beside CHECKER-NATIVE-DOES-COMMIT below). The
+\ source pre-verifier, loaded after the seal, reaches it through its TRUSTED
+\ GENERATES-SIGNATURE boundary, so it needs the same axiom to stay findable;
+\ UNSAFE-TOK? rejects `checker-generates` inside checked bodies, so the axiom
+\ adds no checked-code capability.
+PRIM: CHECKER-GENERATES PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: GENR-SIG-CAP PE-N PE-OUT PRIM;
+\ `generates:` itself, the top-level word a row is written with, is TRUSTED:
+\ beside the registrar. An engine that boots its prefix from source compiles
+\ this file before src/core/check-hook.f installs a checker, so that header
+\ publishes no effect there, and without this axiom the seal marks the word
+\ DNAME-INT: every row, lib/task.f's among them, dies `hb: internal engine
+\ word: generates:`, rc 70, on tools/build-fixpoint.f's hb-host and hb-stdin.
+\ UNSAFE-TOK? rejects `generates:` inside checked bodies, so the axiom adds no
+\ checked-code capability.
+PRIM: generates: PRIM;
 PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECK-DOES-DIN-CELLS PE-N PE-OUT PRIM;
@@ -10484,6 +10502,9 @@ package CHECKER-REG
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
 7152 constant E-BAD-QUALIFIED
 PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
+\ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
+\ its three refusals, which the diagnostic tells apart by kind.
+7153 constant E-GENERATES-ROW
 \ ONE hook for the three refused-record diagnostics, selected by its argument,
 \ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
@@ -13323,6 +13344,8 @@ variable CURSYM
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-defcast" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" generates:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-generates" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -20660,23 +20683,45 @@ package CHECKER-REG
 ;package
 
 
-\ DOES-EFF-LATCH! ( sig-a sig-u -- ) : the tail of CHECK-DOES! below, and the
-\ only writer of the DOESEFF latch. The clause has been certified against the
-\ clause body by then, so what is left to record is the effect the created WORD
-\ carries — the clause signature itself.
+\ CREATED-RECORD-BUILD ( sig-a sig-u -- off+1 | 0 ) : the record a created word
+\ carries, built from the effect its definer states - a certified `does>`
+\ clause's (DOES-EFF-LATCH! below) or a `generates:` row's (CHECKER-GENERATES).
+\ 0 when the effect does not parse, with SGBAD saying why.
 \
-\ IT PARSES THE SIGNATURE A SECOND TIME, for two reasons. The rows the check
-\ leaves in SGIN/SGOUT have been unified with the body it just verified, so a
-\ clause declaring a variable would be latched at whatever the body happened to
+\ IT PARSES THE SIGNATURE ITSELF, for two reasons. After a clause check the rows
+\ in SGIN/SGOUT have been unified with the body it just verified, so a clause
+\ declaring a variable would be latched at whatever the body happened to
 \ produce instead of at what it declared; and this parse runs under the
 \ raw-definer seal, which is what `trust-raw` (TRUST-RAW above) puts on every
 \ created word at run time, so the record holds the same TVK-RAW variables the
 \ engine's own registration of this definer's words would hold.
 \
 \ THE RECORD IS ANONYMOUS. It is not an effect OF the definer — the definer's
-\ own effect is recorded moments later by its body's publication — so it is
-\ built with CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE!
-\ builds the recurse cache: sym 0 keeps it out of every per-symbol lookup.
+\ own effect is recorded by its body's publication — so it is built with
+\ CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE! builds the
+\ recurse cache: sym 0 keeps it out of every per-symbol lookup.
+: CREATED-RECORD-BUILD ( ptr u8 n -- n )
+   {: sa:ptr su:n :}
+   CHECKER-REC-SYM @
+   {: was:n :}
+   0 CHECKER-REC-SYM !
+   NEW
+   SGBAD-CLEAR
+   RES-TRUE SIG-RAW-DEFINER!
+   sa su PARSE-SIG-RAW
+   RES-FALSE SIG-RAW-DEFINER!
+   SGBAD @ 0 <> IF
+      2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
+   THEN
+   SGHASR @ E-BUILD-EFFECT
+   {: off:n :}
+   was CHECKER-REC-SYM !
+   off 1 + ;
+
+\ DOES-EFF-LATCH! ( sig-a sig-u -- ) : the tail of CHECK-DOES! below, and the
+\ only writer of the DOESEFF latch. The clause has been certified against the
+\ clause body by then, so what is left to record is the effect the created WORD
+\ carries — the clause signature itself, as CREATED-RECORD-BUILD builds it.
 \
 \ A CANDIDATE SCOPE LATCHES NOTHING. Its records are truncated when the scope
 \ ends (CHECK-CANDIDATE-DONE), so an offset stored from inside one would name a
@@ -20687,19 +20732,10 @@ package CHECKER-REG
    DOES-EFF-CLEAR                            \ a refused clause latches nothing
    DVERD @ -1 <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
-   CHECKER-REC-SYM @ {: was:n :}
-   0 CHECKER-REC-SYM !
-   NEW
-   SGBAD-CLEAR
-   RES-TRUE SIG-RAW-DEFINER!
-   sa su PARSE-SIG-RAW
-   RES-FALSE SIG-RAW-DEFINER!
-   SGBAD @ 0 <> IF
-      2drop 2drop  was CHECKER-REC-SYM !  EXIT     \ unresolvable family: no row, no latch
-   THEN
-   SGHASR @ E-BUILD-EFFECT {: off:n :}
-   was CHECKER-REC-SYM !
-   off 1 + DOES-EFF-ARM ;
+   sa su CREATED-RECORD-BUILD
+   {: rec:n :}
+   rec 0= IF EXIT THEN                       \ unresolvable family: no row, no latch
+   rec DOES-EFF-ARM ;
 
 \ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
 \ against a created-word runtime effect.  If the created word is declared
@@ -20816,6 +20852,127 @@ package CHECKER-REG
 
 : CHECKER-NATIVE-DOES-COMMIT ( -- )
    RBF-FINALIZE ;
+
+\ ---- generates: rows ----------------------------------------------------------
+\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. lib/process-command.f
+\ COMMAND and lib/task.f +USER build a colon definition and evaluate it, so what
+\ they make exists only once that text runs, which the source pre-verifier never
+\ does. `generates: D ( effect )` states it instead: the row's record lands on
+\ D's CREATES cell exactly as a certified clause's does, so every reader of a
+\ clause (the wrapper walk, the pre-pass's resident lookup) reads the row
+\ unchanged. The row cannot be compared with the text, which only exists per
+\ call, so it is checked for its own three claims under one code: that D names
+\ a word here, that nothing already states what D makes (its clause, an
+\ earlier row, or the definer it wraps), and that the effect parses. It is the
+\ third writer of the cell, beside STORE's latch take and
+\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-APPEND like them,
+\ carrying D's flags and masks forward.
+0 constant GENR-UNRESOLVED                \ D names no word here
+1 constant GENR-CREATES                   \ something already states what D makes
+2 constant GENR-BADSIG                    \ the effect does not parse; SGBAD says why
+PTR-VARIABLE GENR-TOK-A   variable GENR-TOK-U   \ the row's name (raw, valid while rendering)
+defer GENERATES-DIAG-XT ( n -- )          \ render.f installs the diagnostic, selected by kind
+: GENERATES-DIAG-DEFAULT ( -- ) [: drop ;] is GENERATES-DIAG-XT ;
+GENERATES-DIAG-DEFAULT
+
+\ A refused row is rendered and then behaves as a stale `trust` row does
+\ (TRUST-STALE): a hard stop on the ordinary load path, counted under a
+\ MULTI-ERROR load so the pass reaches every other error in the file.
+: GENERATES-REFUSE ( ptr u8 n n -- )
+   {: a:ptr u:n kind:n :}
+   a GENR-TOK-A !
+   u GENR-TOK-U !
+   kind GENERATES-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   E-GENERATES-ROW throw ;
+
+\ CHECKER-GENERATES ( name$ effect$ already -- sym rec ) : the checks every row
+\ passes, for the engine's `generates:` below and for the source pre-verifier,
+\ which reads rows it never runs (verify-source GENERATES-SIGNATURE). It
+\ resolves D itself, through CHECKER-BIND as a use does, so a name the used
+\ scopes refuse (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) is that refusal on
+\ both paths, not an unknown name: the pre-pass's resolver defers those two to
+\ the check that follows a use (CHECKER-FIND-QUIET-SYM), and a row has none.
+\ `already` is what the caller knows of D beyond the checker (the pre-pass's
+\ table of the definers it read). Answers D's symbol and the created word's
+\ record offset+1, the record 0 for a refused row.
+: CHECKER-GENERATES ( ptr u8 n ptr u8 n bool -- n n )
+   {: na:ptr nu:n sa:ptr su:n already:bool :}
+   na nu CHECKER-FIND-ACTIVE-SYM
+   {: sym:n :}
+   sym 0= IF na nu GENR-UNRESOLVED GENERATES-REFUSE sym 0 EXIT THEN
+   already sym NORET-CREATES@ 0 <> or IF na nu GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
+   sa su CREATED-RECORD-BUILD
+   {: rec:n :}
+   rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN
+   sym rec ;
+
+\ A SIGNATURE IS READ AS A DEFINITION HEAD READS ONE (habu2.f C-SIG-START,
+\ C-SIG-END): past the blanks, bytes up to 32 with line feeds among them, a `(`
+\ opens it whether a token is glued to it or not, and the first `)` byte closes
+\ it, on that line or a later one, whatever follows it. The effect is the bytes
+\ between as they stand: PARSE-SIG-RAW splits them at spaces only, so a line
+\ feed inside the effect fuses the tokens around it. Given the text after a
+\ head, answer the offset of the `(` and the offset just past the `)`: the
+\ text's length for the first when no `(` opens a signature, 0 for the second
+\ when no `)` closes it. `generates:` below and the source pre-verifier
+\ (verify-source.f SCAN-SIG) read a signature here.
+: CHECKER-SIG-SPAN ( ptr u8 n -- n n )
+   {: a:ptr u:n :}
+   0 BEGIN dup u < IF a over + c@ 33 < ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   {: open:n :}
+   open u = IF u 0 EXIT THEN
+   a open + c@ 40 <> IF u 0 EXIT THEN
+   open BEGIN dup u < IF a over + c@ 41 <> ELSE RES-FALSE THEN WHILE 1 + REPEAT
+   {: close:n :}
+   close u = IF open 0 EXIT THEN
+   open close 1 + ;
+
+\ The engine's input cursor and the input's end (src/habu/layout.f INP-CELL and
+\ INE-CELL, which loads after this file; test/aot-sig-pool-suite.f holds them
+\ equal).
+$36A0 constant CK-INP-OFF                  \ = layout.f INP-CELL
+$36A8 constant CK-INE-OFF                  \ = layout.f INE-CELL
+
+\ The longest effect a row states. The source pre-verifier keeps that much room
+\ for each definer's effect (verify-source.f DEFINER-SIG-SLOT), so it holds
+\ every row this engine takes.
+$100 constant GENR-SIG-CAP
+
+\ The engine word reads the row's effect from the input at `at`, the cursor past
+\ D, and moves the cursor past the `)`. The effect is the text inside the
+\ parentheses, in the input itself.
+: GENR-SIG-READ ( ptr u8 -- ptr u8 n )
+   {: at:ptr :}
+   data-base CK-INE-OFF + @  at NULL-PTR - -
+   {: left:n :}
+   at left CHECKER-SIG-SPAN
+   {: open:n close:n :}
+   open left = IF s" checker: generates: effect must open with (" 76 die THEN
+   close 0= IF s" checker: generates: unterminated effect" 76 die THEN
+   close open - 2 -
+   {: su:n :}
+   su GENR-SIG-CAP > IF s" checker: generates: effect too long" 76 die THEN
+   at close + NULL-PTR - data-base CK-INP-OFF + !
+   at open + 1 +  su ;
+
+\ generates: D ( effect ) - at top level, after D's definition. A declared
+\ boundary, not a checked body: UNSAFE-TOK? bars `checker-generates` from every
+\ checked body, and this is the engine's one caller of the registrar, as
+\ verify-source.f GENERATES-SIGNATURE is the pre-pass's. UNSAFE-TOK? bars
+\ `generates:` from checked bodies too, so the boundary is reached from top level
+\ only, and its header is the word's whole published effect, which the axiom
+\ row beside CHECKER-GENERATES's states where no checker reads this header.
+TRUSTED: generates: ( -- )
+   parse-name
+   {: na:ptr nu:n :}
+   nu 0= IF s" checker: generates: needs a definer name" 76 die THEN
+   na nu + GENR-SIG-READ
+   {: sa:ptr su:n :}
+   na nu sa su RES-FALSE CHECKER-GENERATES
+   {: sym:n rec:n :}
+   rec 0= IF EXIT THEN
+   sym sym CTL-FLAGS-SYM sym CTL-MASKS-SYM rec NORET-APPEND ;
 
 \ The retained compiler checked the replacement prefix before its new hooks
 \ existed. Transfer those actual graphs into the new owner before enabling

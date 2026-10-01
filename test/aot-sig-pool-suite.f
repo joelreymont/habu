@@ -127,12 +127,13 @@ variable VALUE                     \ the number the first one carried
 \ risk, and a check that covered only the new pairs would leave the older ones
 \ exactly as unverified as they were. CK-BODYBUF-CAP is a capacity rather than an
 \ offset, the body-text capacity that bounds every name the checker takes, and
-\ drifts the same way. src/core/layout-buffer.f loads before layout.f too and
-\ mirrors the input cursor STORAGE-UNREAD writes. The list is the live mirror
-\ set of both files, so a name that is no longer mirrored has to leave this list
-\ with the mirror it describes: naming one that no definition answers reads as
-\ drift on the layout side (0 definitions, 0 for the number) and says nothing
-\ about either file.
+\ drifts the same way. The input cursor and the input's end are the ones
+\ `generates:` reads its row from. src/core/layout-buffer.f loads before
+\ layout.f too and mirrors the input cursor STORAGE-UNREAD writes. The list is
+\ the live mirror set of both files, so a name that is no longer mirrored has to
+\ leave this list with the mirror it describes: naming one that no definition
+\ answers reads as drift on the layout side (0 definitions, 0 for the number)
+\ and says nothing about either file.
 
 : MIRROR-CASE ( -- )
    LOAD-CHECKER
@@ -144,6 +145,8 @@ variable VALUE                     \ the number the first one carried
    s" CK-USE-DEPTH-OFF"    USE-DEPTH-CELL    ?MIRROR
    s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR
    s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR
+   s" CK-INP-OFF"          INP-CELL          ?MIRROR
+   s" CK-INE-OFF"          INE-CELL          ?MIRROR
    s" src/core/layout-buffer.f" LOAD-SOURCE
    s" STGT-INP-CELL"       INP-CELL          ?MIRROR ;
 

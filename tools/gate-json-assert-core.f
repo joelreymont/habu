@@ -365,6 +365,10 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_generates_row" s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" delete_generates_row" s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet."
@@ -455,12 +459,30 @@ variable GJA-DIRECT
 : GJA-THROW? ( n -- bool )
    s" E-STATEMENT-THROW" GJA-CODE= ;
 
-\ A span record's code names its repair class (docs/repair-diagnostics.md);
-\ the flag is false for a code that is not a span's.
+\ A refused `generates:` row's class says which of its claims failed: its name,
+\ that the definer states nothing yet, or its effect, which carries the
+\ signature refusal's own class (src/core/render.f GENR-CLASS$). The record's
+\ own class answers when it is one of those, no class when it is not.
+: GJA-GENR-CLASS ( n -- ptr u8 n )
+   s" repair_class" GJA-REQ
+   {: class:n :}
+   class s" fix_generates_row" GJA-STR=
+   class s" delete_generates_row" GJA-STR= or
+   class s" fix_signature_syntax" GJA-STR= or
+   class s" fix_signature_type" GJA-STR= or
+   class s" fix_signature_arity" GJA-STR= or
+   class s" fix_bare_ptr_element" GJA-STR= or
+   IF class JSON-STRING$ exit THEN
+   s" " ;
+
+\ A span record's code names its repair class (docs/repair-diagnostics.md), one
+\ of a set for E-GENERATES-ROW; the flag is false for a code that is not a
+\ span's.
 : GJA-SPAN-CLASS ( n -- ptr u8 n bool ) {: root:n :}
    root GJA-THROW? IF s" unknown_rejection" GJA-TRUE exit THEN
    root s" E-UNTERMINATED-STRING" GJA-CODE= IF s" close_string" GJA-TRUE exit THEN
    root s" E-MALFORMED-REGISTRY-ROW" GJA-CODE= IF s" close_primitive_row" GJA-TRUE exit THEN
+   root s" E-GENERATES-ROW" GJA-CODE= IF root GJA-GENR-CLASS GJA-TRUE exit THEN
    s" " GJA-FALSE ;
 
 : GJA-SPAN? ( n -- bool )

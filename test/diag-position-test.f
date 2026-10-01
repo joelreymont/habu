@@ -10,13 +10,14 @@
 \ runs of spaces, CR LF, comments, strings, multibyte UTF-8, a signature on its
 \ own line, a definition after others, every packet of an --all-errors run, a
 \ bare name a global and a used public share, called and as the target of `[']`
-\ and of `is`, and declaration packets: SUMTYPE, NEWTYPE with no arity (at its
-\ family name), ENUM (a body token, and a close-stage fault at the family name)
-\ and STRUCTURE. The check composes the subject with the files it requires, so
-\ a packet in a required file names that file and locates there, after a file
-\ it requires in turn has returned, and a packet in the subject after a
-\ required file returns locates in the subject: plain, under --all-errors and
-\ under --verify-only, the check a language server makes.
+\ and of `is`, a refused `generates:` row, at its name, and one whose name a
+\ global and a used public share, and declaration packets: SUMTYPE, NEWTYPE
+\ with no arity (at its family name), ENUM (a body token, and a close-stage
+\ fault at the family name) and STRUCTURE. The check composes the subject with
+\ the files it requires, so a packet in a required file names that file and
+\ locates there, after a file it requires in turn has returned, and a packet in
+\ the subject after a required file returns locates in the subject: plain,
+\ under --all-errors and under --verify-only, the check a language server makes.
 \ The child engine is HABU_UNDER_TEST when the gate sets it, else bin/hb.
 \
 \ Run: bin/hb --load test/diag-position-test.f
@@ -39,6 +40,7 @@ $1000 constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant SHADOW-RC
+67 constant ROW-RC
 
 create OUT CAP allot
 create ERR CAP allot
@@ -349,6 +351,44 @@ variable RC
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 13 100 105 AT ;
 
+\ A refused `generates:` row is the verifier's own packet, at the row's name
+\ past a comment line and a run of spaces: the check exits as the engine's
+\ uncaught throw does and adds no statement-throw record, and --all-errors and
+\ --verify-only count the refusal and go on.
+: TEST-GENERATES ( -- )
+   s" a generates: row naming no word" T-LABEL
+   SB-RESET
+   s" : OK1 ( n -- n )" SB-APPEND LF+
+   s"    1 + ;" SB-APPEND LF+
+   92 SB-APPEND-C s"  a row for a word nothing defines" SB-APPEND LF+
+   s" generates:  NOWHERE ( -- n )" SB-APPEND LF+
+   s" generates.f" FIXTURE!
+   s" " ROW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" NOWHERE" 4 13 73 80 AT
+   s" --all-errors" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" NOWHERE" 4 13 73 80 AT
+   s" --verify-only" CHECK
+   0 s" NOWHERE" 4 13 73 80 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ The row's registrar resolves its name as a use does.
+: TEST-GENERATES-SHADOW ( -- )
+   s" a generates: row naming that shared name" T-LABEL
+   SB-RESET
+   s" : SHADE ( -- ) ;" SB-APPEND LF+
+   s" package P" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : SHADE ( -- ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" using P" SB-APPEND LF+
+   s" generates: SHADE ( -- n )" SB-APPEND LF+
+   s" ;using" SB-APPEND LF+
+   s" generates-shadow.f" FIXTURE!
+   s" " SHADOW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" SHADE" 7 12 79 84 AT ;
+
 : TEST-ALL-ERRORS ( -- )
    s" every packet of an --all-errors run" T-LABEL
    SB-RESET
@@ -493,6 +533,8 @@ variable RC
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
+   TEST-GENERATES
+   TEST-GENERATES-SHADOW
    TEST-ALL-ERRORS
    TEST-COMPOSE-DEP
    TEST-COMPOSE-AFTER

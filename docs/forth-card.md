@@ -179,7 +179,9 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
-`tools/check.f` leaves to its run, which type-checks their uses there.
+`tools/check.f` leaves to its run, which type-checks their uses there, unless
+the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
+word (§ 4) are checked before the run, `--verify-only` included.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
@@ -214,6 +216,11 @@ Every form loaded and its accessor effect certified.
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
+
+A definer that writes its word as text (`+USER`, `COMMAND`) states what it makes
+with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
+that word's uses before the run; what no row states, such as `COMMAND`'s
+`NAME#VEC`, is left to the run (§ 3). `FUNCTION:` needs no row.
 
 `PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
 snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come

@@ -1560,24 +1560,28 @@ the rule.
   `E-MISMATCH` the effect deserves, not `E-UNDEFINED`, and `TASK:MIN-STACK
   TASK:TASK T1  : F ( -- ptr n ) T1 ;` certifies.
 - **A word whose body reaches `INCLUDE-EVALUATE` defines words the source
-  pre-pass cannot see; the run checks their uses.** `FUNCTION:`/`;FUNCTION`,
-  `CMD:COMMAND` and `TASK:+USER` render a definition and hand it to the
-  loader's evaluate boundary, so no source text spells the product. The checker
-  carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and on every checked
-  body that calls a flagged word (`checker.f` `NORET-AXIOMS`, `RENDSET`). When
-  the pre-pass meets a top-level statement naming such a word it marks the
-  wordlist the statement runs in, which is where the loader compiles the
-  product; a later definition naming a word nothing resolves, looked up through
-  a marked wordlist, gets `CHECK` verdict 2: no diagnostic, its declared
-  signature recorded for its callers, its body left to the `bin/hb --load` run
-  that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
+  pre-pass cannot see; the run checks the uses the source does not declare.**
+  `FUNCTION:`/`;FUNCTION`, `CMD:COMMAND` and `TASK:+USER` render a definition
+  and hand it to the loader's evaluate boundary, so no source text spells the
+  product. The checker carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and
+  on every checked body that calls a flagged word (`checker.f` `NORET-AXIOMS`,
+  `RENDSET`). When the pre-pass meets a top-level statement naming such a word
+  it marks the wordlist the statement runs in, which is where the loader
+  compiles the product; a later definition naming a word nothing resolves,
+  looked up through a marked wordlist, gets `CHECK` verdict 2: no diagnostic,
+  its declared signature recorded for its callers, its body left to the
+  `bin/hb --load` run that check.f performs next (`checker.f` `UNSEEN-MARK$`,
+  `UNSEEN-COVERS?`). A product the source declares resolves, so the pre-pass
+  checks its uses itself: `FUNCTION:`'s word against its declaration group and
+  the word a `generates:` row declares against the row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
   `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:51, used at :78), `CTX0`
-  (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
-  product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
-  run's `E-UNDEFINED`. The mark covers only what follows the statement and only
+  product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
+  same scope the run's `E-UNDEFINED`; `--verify-only`, which does not run,
+  passes both. The mark covers only what follows the statement and only
   its own section: a use before it, from another package, or of a private
   product from outside its package is still refused by the pre-pass. It also
   covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
@@ -1599,6 +1603,46 @@ the rule.
   `: DEFR ( n -- ) create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN +
   DEFR ;  5 MK Y  : V ( -- n ) Y ;` loads 0 and checks 70 (`E-UNDEFINED` `Y`
   in `V`).
+- **A definer that writes its word as text states what it makes with
+  `generates:`.** `+USER` (lib/task.f) and `COMMAND` (lib/process-command.f)
+  build a colon definition and run it through `INCLUDE-EVALUATE`, so no `does>`
+  clause declares their words, and without a row the mark above leaves every
+  use of them to the run. `generates: D ( effect )` at top level, after D's
+  definition, is that declaration: the engine stores the effect on D's CREATES
+  cell (`checker.f` `CHECKER-GENERATES`) and the source pre-verifier records it
+  from the text (`verify-source.f` `RECORD-GENERATES`), so every word D makes
+  has that effect, as a `does>` definer's words have their clause's, and the
+  pre-pass checks its uses. `FUNCTION:` (lib/ffi-abi.f) needs no row: the
+  pre-verifier reads its declaration group as the word's effect, an `i32`
+  result as `n`. A statement naming D still marks its wordlist, so what the row
+  does not declare stays the run's: `COMMAND`'s row declares `NAME`, not
+  `NAME#VEC` or `NAME#BUF`. Measured after `require lib/process-command.f
+  CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
+  `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
+  `--all-errors`; `: U ( -- n ) C ;` checks 70 under all three, where without
+  the row `--verify-only` passed it, and `: U ( -- n ) C#VEC ;` is still the
+  run's (70 plain, 0 under `--verify-only`). A `+USER` slot and a `FUNCTION:`
+  word measure as `C` does. The row is a claim, not a proof: it never touches
+  the made word's own effect, so a caller that contradicts the row is the
+  pre-verifier's `E-MISMATCH`, a caller that agrees with a lying row is refused
+  when the file loads, against the word the text really defines, and a name D
+  never makes is still `E-UNDEFINED` there. `generates:` refuses with
+  `E-GENERATES-ROW` (7153; `tools/check.f` exits 67, `--verify-only` 70) when
+  D names no word there, when D already states what it makes (its `does>`
+  clause, an earlier row, or the definer it wraps), or when the effect does
+  not parse (`( -- i32 )`); a D the used scopes refuse is that refusal
+  (`E-USING-SHADOW-GLOBAL`, 7141; `E-USING-AMBIGUOUS`, 7144). The load and
+  every `tools/check.f` mode read a row alike, as a definition head is read
+  (`checker.f` `CHECKER-SIG-SPAN`, the rule of `habu2.f` `C-SIG-START` and
+  `C-SIG-END`): D is the next blank-delimited token, a comment opener too; the
+  effect opens at a `(` past the blanks, glued to a token or not, and closes at
+  the first `)` byte, whatever it is glued to or followed by, and a line feed
+  inside it stays in the token it ends, so `( -- n` LF `)` is refused as a `:`
+  head spelled so is. An effect holds at most 256 bytes (`GENR-SIG-CAP`): a
+  longer one dies 76 in the load and 74 in the pre-pass. `undefine D` retires
+  D's row with D's other facts, so a D defined again states what it makes
+  afresh. `tools/check.f` certifies `lib/process-command.f` and
+  `lib/process-task-test.f`.
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):
@@ -1685,7 +1729,11 @@ the rule.
   engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP` and
   `E-PATH-RANGE`. A constant without a row can be read at top level into a
   file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
-  checks the refusal and the accepted forms.
+  checks the refusal and the accepted forms. A pre-hook colon or `TRUSTED:`
+  word run at top level needs a row too: without one the seal marks it
+  `DNAME-INT` there, and a use dies `hb: internal engine word: NAME`, rc 70,
+  as `generates:` did in `lib/task.f` on `tools/build-fixpoint.f`'s `hb-host`
+  and `hb-stdin` before its row (`src/core/checker.f`).
 - **`MATCH` and the other compile keywords name words, not constants**, even
   inside a package; a `case` default runs with the selector still on the
   stack. Two flags are not compared with `=` (`bool bool` is refused): a test

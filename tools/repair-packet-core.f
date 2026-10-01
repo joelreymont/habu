@@ -135,10 +135,11 @@ variable RP-NODE
    root s" E-BAD-DECLARATION" RP-CODE= ;
 
 \ A source span outside any definition: a statement the checker threw out of,
-\ or a lexer defect.
+\ a lexer defect, or a `generates:` row the checker refused.
 : RP-SPAN? ( n -- bool ) {: root:n :}
    root s" E-STATEMENT-THROW" RP-CODE= if 0 0= exit then
    root s" E-UNTERMINATED-STRING" RP-CODE= if 0 0= exit then
+   root s" E-GENERATES-ROW" RP-CODE= if 0 0= exit then
    root s" E-MALFORMED-REGISTRY-ROW" RP-CODE= ;
 
 \ An input the checker refused whole, naming no source to edit.
@@ -273,7 +274,7 @@ variable RP-NODE
    count s" Repair the type-family declaration. Output only corrected Habu code."
    RP-PACKET-END ;
 
-\ throw_code is the code a statement threw, and null for a lexer defect.
+\ throw_code is the code a statement threw, and null for any other span.
 : RP-SPAN-PACKET ( n n -- ptr u8 n )
    {: root:n count:n :}
    RP-PACKET-START

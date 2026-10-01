@@ -492,7 +492,8 @@ variable CA-COMPOSE-LABEL-U
    {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
    rc E-TRUST-UNRESOLVED = or
-   rc E-SHADOWED-ARITY = or ;
+   rc E-SHADOWED-ARITY = or
+   rc E-GENERATES-ROW = or ;
 
 public
 

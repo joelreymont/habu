@@ -17,6 +17,16 @@
 \ 8 asks both of a `TRUSTED:` definer, whose body is asserted but whose clause is
 \ still the declaration both paths record.
 \
+\ Sections 9-12 are the definers no clause describes: one that writes its word
+\ as text and loads it through INCLUDE-EVALUATE (lib/process-command.f COMMAND,
+\ lib/task.f +USER), and lib/ffi-abi.f FUNCTION:, whose word comes from its
+\ declaration group. A `generates: D ( effect )` row states what D makes.
+\ Section 9 reads a row from source and from a resident package and pins it
+\ against the word the engine really generates; section 10 reads FUNCTION:'s
+\ group; section 11 holds a row to the checker scope that recorded it; section
+\ 12 is the engine refusing a row. A refused row prints its E-GENERATES-ROW line
+\ on stderr before it throws, as section 5's refused clause prints its own.
+\
 \ WHAT IS DELIBERATELY NOT LEARNED. A definer call the body reaches only
 \ conditionally, twice, or inside a quotation says nothing about what the
 \ enclosing word creates, so nothing is recorded and the created word stays
@@ -26,6 +36,8 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/codegen.f
+require lib/ffi-abi.f
 require src/habu/verify-source.f
 
 \ The resident package definer of section 5, compiled by the ENGINE: its two
@@ -42,6 +54,36 @@ public
 package CDD-RESX
 public
 EXPORT CDD-RESP:CDD-RP-D
+;package
+
+\ The text-writing definer of sections 9-12, the shape of lib/process-command.f
+\ COMMAND: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
+\ and evaluates it, so its word has no `does>` clause for a checker to read.
+package CDD-GEN
+$60 constant TEXT-CAP
+TEXT-CAP CODEGEN:BUFFER TEXT
+public
+: MAKE ( n -- )
+   {: off:n :}
+   parse-name
+   {: name:ptr nameu:n :}
+   TEXT CODEGEN:RESET
+   s" : " TEXT CODEGEN:APPEND-STRING
+   name nameu TEXT CODEGEN:APPEND-STRING
+   s"  ( -- ptr n ) data-base " TEXT CODEGEN:APPEND-STRING
+   off TEXT CODEGEN:APPEND-DECIMAL
+   s"  + ;" TEXT CODEGEN:APPEND-STRING
+   TEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+;package
+
+\ The same definer compiled by the ENGINE with its row, private definer and
+\ public wrapper as section 9's sources write them: section 9 reads a source
+\ that only calls it, and runs it for real.
+package CDD-GQ4
+: CDD-GD4 ( n -- ) CDD-GEN:MAKE ;
+generates: CDD-GD4 ( -- ptr n )
+public
+: CDD-GD4 ( n -- ) CDD-GD4 ;
 ;package
 
 package CERTIFY-DOES-DEFINER
@@ -294,6 +336,142 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" and refuses the bare cell" T-LABEL
    s" C44 ( -- n ) CDD-TRES-LIVE" CDD-VERDICT REFUSED T= ;
 
+\ ---- 9. a definer that writes its word as text ------------------------------
+\ CDD-GEN:MAKE leaves nothing a scanner can read: its word exists only once the
+\ text it builds is evaluated, which the pre-pass never does. The row states the
+\ effect on the private definer, and the public wrapper inherits it as section
+\ 2's wrapper does. The row may sit before or after `public`: either way the
+\ private definer is the only CDD-GD* defined when the row is read.
+: CDD-SECTION-GENERATES ( -- )
+   s\" package CDD-GQ1\n: CDD-GD1 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GD1 ( -- ptr n )\npublic\n: CDD-GD1 ( n -- ) CDD-GD1 ;\n;package\n5 CDD-GQ1:CDD-GD1 CDD-GD1-ONE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a generated word certifies as its row's effect" T-LABEL
+   s" C45 ( -- ptr n ) CDD-GD1-ONE" CDD-VERDICT ACCEPTED T=
+   s" and is refused against a bare cell" T-LABEL
+   s" C46 ( -- n ) CDD-GD1-ONE" CDD-VERDICT REFUSED T=
+   s\" package CDD-GQ2\n: CDD-GD2 ( n -- ) CDD-GEN:MAKE ;\npublic\ngenerates: CDD-GD2 ( -- ptr n )\n: CDD-GD2 ( n -- ) CDD-GD2 ;\n;package\n5 CDD-GQ2:CDD-GD2 CDD-GD2-ONE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a row after `public` names the private definer too" T-LABEL
+   s" C47 ( -- ptr n ) CDD-GD2-ONE" CDD-VERDICT ACCEPTED T=
+   s" C48 ( -- n ) CDD-GD2-ONE" CDD-VERDICT REFUSED T=
+   s\" 5 CDD-GQ4:CDD-GD4 CDD-GD4-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a resident row reaches a source that only calls its wrapper" T-LABEL
+   s" C49 ( -- ptr n ) CDD-GD4-MADE" CDD-VERDICT ACCEPTED T=
+   s" C50 ( -- n ) CDD-GD4-MADE" CDD-VERDICT REFUSED T= ;
+
+\ The resident definer run for real: CDD-GD4-LIVE is the word the evaluated text
+\ defines, checked against the effect that text declares, so the row is pinned
+\ against the generated word rather than against itself.
+8 CDD-GQ4:CDD-GD4 CDD-GD4-LIVE
+
+: CDD-SECTION-GENERATES-LIVE ( -- )
+   s" the generated word certifies as the effect its row states" T-LABEL
+   s" C51 ( -- ptr n ) CDD-GD4-LIVE" CDD-VERDICT ACCEPTED T=
+   s" and refuses the bare cell the row refuses" T-LABEL
+   s" C52 ( -- n ) CDD-GD4-LIVE" CDD-VERDICT REFUSED T= ;
+
+\ ---- 10. FUNCTION: ------------------------------------------------------------
+\ lib/ffi-abi.f FUNCTION: makes its word from the declaration group, so the
+\ pre-pass reads the group as the word's effect, with the one rewrite the
+\ declarer applies: an `i32` result is a cell. The live declaration is the pin.
+PROCESS-SYMBOLS
+FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
+
+: CDD-SECTION-FUNCTION ( -- )
+   s" a declared function certifies as its group, the result a cell" T-LABEL
+   s" C53 ( -- n ) CDD-FN" CDD-VERDICT ACCEPTED T=
+   s" C54 ( -- ptr n ) CDD-FN" CDD-VERDICT REFUSED T=
+   s\" FUNCTION: CDD-FN-READ getpid ( -- i32 ) ;FUNCTION\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" and the pre-pass reads the same effect from the declaration" T-LABEL
+   s" C55 ( -- n ) CDD-FN-READ" CDD-VERDICT ACCEPTED T=
+   s" C56 ( -- ptr n ) CDD-FN-READ" CDD-VERDICT REFUSED T= ;
+
+\ ---- 11. a row lives as long as the scope that recorded it -------------------
+\ A row names its definer by the checker's symbol id, and a scope that pops
+\ hands its ids out again: a row that outlived its scope would make the next
+\ word given that id a definer (the stale pair), and a source read in two
+\ scopes would meet its own row in the second (the replay pair). Both pairs
+\ read in neutral scopes, as tools/check.f reads a source. A scope that
+\ FINALIZES keeps its ids and its rows with them, and a sibling scope popping
+\ afterwards must not take them back. Those three reads stay in this package:
+\ FINALIZE drops the frame without the package restore a pop runs, so a
+\ finalized neutral scope would leave this file at top level, and the last
+\ read must see the word the kept scope defined here. Each read runs in a
+\ scope of its own and answers its throw code; the stale pair's E-UNDEFINED
+\ line on stderr is the refusal being measured. MAIN runs this section before
+\ section 9: its reads, in this file's own scope, are rendering statements, and
+\ the mark each leaves on the global wordlist would cover the stale pair's
+\ unresolved name for the rest of the process, leaving it to a run instead of
+\ refusing it (src/core/checker.f UNSEEN-COVERS?).
+TYPED-VARIABLE CDD-SRC-A ptr u8
+variable CDD-SRC-U
+
+\ A quotation cannot read the enclosing word's locals, so the span travels to
+\ the caught read through these two cells.
+: CDD-READ ( -- )
+   CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+
+: CDD-SPAN! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a CDD-SRC-A !
+   u CDD-SRC-U ! ;
+
+\ A neutral scope that pops, as tools/check.f reads a source.
+: CDD-SCOPED ( ptr u8 n -- n )
+   CDD-SPAN!
+   CHECKER-SCOPE-START-NEUTRAL
+   [: CDD-READ ;] catch
+   CHECKER-SCOPE-DONE ;
+
+\ A scope in this package that pops.
+: CDD-OWN ( ptr u8 n -- n )
+   CDD-SPAN!
+   CHECKER-SCOPE-START
+   [: CDD-READ ;] catch
+   CHECKER-SCOPE-DONE ;
+
+\ A scope in this package that keeps what it read.
+: CDD-KEPT ( ptr u8 n -- n )
+   CDD-SPAN!
+   CHECKER-SCOPE-START
+   [: CDD-READ ;] catch
+   {: rc:n :}
+   rc 0= IF CHECKER-SCOPE-FINALIZE ELSE CHECKER-SCOPE-DONE THEN
+   rc ;
+
+: CDD-REPLAY$ ( -- ptr u8 n )
+   s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ptr n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ptr n ) CDD-SGM ;\n" ;
+
+: CDD-SECTION-SCOPES ( -- )
+   s" a source read in two scopes takes its row once in each" T-LABEL
+   CDD-REPLAY$ CDD-SCOPED 0 T=
+   CDD-REPLAY$ CDD-SCOPED 0 T=
+   s" the stale pair's definer reads in a scope that pops" T-LABEL
+   s\" : CDD-SD ( n -- ) create , does> ( -- ptr n ) ;\n" CDD-SCOPED 0 T=
+   s" and its row does not outlive the ids that scope gave out" T-LABEL
+   s\" : CDD-SE ( -- n ) 5 ;\nCDD-SE CDD-SF\n: CDD-SU ( -- ptr n ) CDD-SF ;\n" CDD-SCOPED 70 T=
+   s" a finalized scope keeps its definer's row" T-LABEL
+   s\" : CDD-SK ( n -- ) create , does> ( -- ptr n ) ;\n" CDD-KEPT 0 T=
+   s\" : CDD-SX ( -- n ) 1 ;\n" CDD-OWN 0 T=
+   s" through a sibling scope's pop" T-LABEL
+   s\" 5 CDD-SK CDD-SKMADE\n: CDD-SKU ( -- ptr n ) CDD-SKMADE ;\n" CDD-OWN 0 T= ;
+
+\ ---- 12. the engine refuses a row it cannot keep ----------------------------
+\ The checker's own error constant, read at load time under a local name, the
+\ way test/checker-replay-pkg-state.f reads E-USING-UNBALANCED.
+E-GENERATES-ROW constant E-GEN-ROW
+
+: CDD-SECTION-GENERATES-REFUSED ( -- )
+   s" a row read before its definer is defined is refused" T-LABEL
+   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
+   s" a row on a definer whose clause states its word is refused" T-LABEL
+   [: s\" generates: CDD-RES-D ( -- ptr n )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
+   s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ptr n )\n" CDD-EVAL
+   s" a second row on one definer is refused" T-LABEL
+   [: s\" generates: CDD-G2 ( -- ptr n )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
+   s" an effect the checker cannot parse is refused" T-LABEL
+   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ ;
+
 : MAIN ( -- )
    T-RESET
    CDD-SECTION-DEFINER
@@ -305,6 +483,11 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    CDD-SECTION-WRAP-LATCH
    CDD-SECTION-TRUSTED
    CDD-SECTION-TRUSTED-LIVE
+   CDD-SECTION-SCOPES
+   CDD-SECTION-GENERATES
+   CDD-SECTION-GENERATES-LIVE
+   CDD-SECTION-FUNCTION
+   CDD-SECTION-GENERATES-REFUSED
    T-REPORT ;
 
 MAIN

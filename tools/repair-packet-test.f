@@ -325,11 +325,13 @@ create PACKET-BUF FS-PATH-CAP allot
    s" rstack" s" fix_return_stack" s" : DIAG-RSTACK ( i64 -- ) >r ;" PACKET-CASE ;
 
 \ A record with a source span and no definition: a statement the checker
-\ throws out of, and the lexer's two defects.
+\ throws out of, the lexer's two defects, and a `generates:` row the checker
+\ refuses.
 : TEST-SPAN-KINDS ( -- )
    s" statement" s" unknown_rejection" s" ;using" PACKET-CASE
    s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
-   s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE ;
+   s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE
+   s" generates" s" fix_generates_row" s" generates: DIAG-GEN ( -- n )" PACKET-CASE ;
 
 \ A storage declaration its definer refuses names the declared word and the
 \ refused token, with no definition around them.

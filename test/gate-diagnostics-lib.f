@@ -1017,6 +1017,28 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-row-verdict.err" s" span verdict is not rejected" s" uncheckable open row refused" REFUSED ;
 
+\ A refused `generates:` row is a span outside any definition, and its class
+\ says which of the row's claims failed: a name that names no word, a definer
+\ that already states what it makes, or an effect that does not parse, under
+\ the signature refusal's own class. Each meets the contract with its class's
+\ text; a row under a class its code does not admit is refused.
+: GENERATES-ROWS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" generates: GDX-GLATE ( -- n )" GE-SRC-LINE
+   s" : GDX-GDD ( n -- ) create , does> ( -- ptr n ) ;" GE-SRC-LINE
+   s" generates: GDX-GDD ( -- ptr n )" GE-SRC-LINE
+   s" : GDX-GNOP ( n -- ) drop parse-name 2drop ;" GE-SRC-LINE
+   s" generates: GDX-GNOP ( -- i32 )" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted refused generates: rows" CHECK-JSON-ALL
+   s" habu-generates.err" WRITE-ERR
+   s" code" s" E-GENERATES-ROW" s" generates: row code" ERR-JSTR
+   s" habu-generates.err" s" generates: row contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_generates_row\"" s\" \"repair_class\":\"close_string\"" REC-SWAP
+   s" fix_generates_row" GJA-SUGGEST-FOR s" close_string" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-generates-class.err" s" span repair class is not the one its code names" s" generates: row under the open string's class refused" REFUSED ;
+
 : DUPLICATE-RECORD ( -- )
    GE-HB-RESET
    GE-SRC-RESET
