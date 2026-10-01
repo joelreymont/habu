@@ -28,3 +28,5 @@ Leaves: habu-find-dictionary-names-e8f56969 (I2), habu-parse-numbers-in-86b27302
 Campaign lane only; do not dispatch. It lists its leaves under blocks: so it stays off dot ready until they close.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-10-01, I8 landed): the interpret loop (DISPATCH, STEP, RUN, INTERPRET) now lives in `src/habu/interpret.f` (package OUTER; requires `outer.f`, then `packages.f`), and the package keywords in `src/habu/packages.f`. `outer.f` keeps the scanner, the find and number steps, SEAL-GUARD, TASK-GUARD, FAIL-CLOSED and PROTECTED?. A child dot that cites `outer.f` for the loop means `interpret.f`. INTERPRET saves and restores USE-DEPTH on both exits; package-scope rollback on a throw is still `habu-roll-back-failed-64bf2ba5`'s.

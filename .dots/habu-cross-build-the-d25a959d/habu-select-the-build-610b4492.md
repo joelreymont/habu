@@ -16,3 +16,5 @@ Depends: habu-bind-x86-host-4485acdd (K12).
 Route: Alder (shared: src/habu/native-runtime.f, tools/native-build-core.f, tools/build-fixpoint.f, tools/native-build.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-10-01, K12 landed): `NABI:BINDING` answers the host's arch through a private `TARGET-ARCH` (`src/compiler/native/abi.f`), and `compiler.f` loads the backend passes through a private `LOAD-PASSES` (arm64 on linux and macos, x86-64 on linux-x86-64); "the manifest's backend rows" means LOAD-PASSES. Loading the x86 closure still fails: `src/arch/arm64/machine.f:71-81` runs PLATFORM-RESERVED-MASK at load and throws `E-CTGT-ABI` on a non-aarch64 target, reached from `compiler.f:30` (`abi.f:19` -> `a64ir.f:36`) and from x86 `passes.f:50` (`frame.f:6` -> `a64ir.f`). This dot fixes that first. `test/compiler/native-chain.f:162-175` BINDING-CASE also throws `E-CTGT-ABI` on an x86 host.
