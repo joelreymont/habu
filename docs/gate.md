@@ -143,13 +143,15 @@ SIGTERM is among them, sends it and waits until the child has exited or
 `GT-POOL-GRACE-MS` (10 s) has passed. Every child asked at the end of a run
 gets that grace at once, while the others are killed. In that time the child
 owes the pool its whole tree, since what it spawned goes to init when it
-exits; the `pg` row's harness stops its server and ends its case engine's tree.
+exits; the `pg` row's harness has `initdb` end the step it is in, or stops its
+server and ends its case engine's tree, and kills an `initdb` or a server still
+running six seconds on, which leaves its segment ([db.md](db.md#tests)).
 A child that does not catch SIGTERM is not sent it: the default action would
 end it at once and leave what it spawned beyond the walk. Its row is killed
 without waiting, as before. A row's deadline that sends a SIGTERM holds the
 pool's other rows for as long as the child takes to end, at most the grace;
 the `pg` harness ends about 70 ms after its SIGTERM, measured with a backend
-busy.
+busy, or once `initdb`'s current step has ended.
 
 The kill itself then reaches every process descended from the slot's child,
 not only the child's process group. Every spawned child leads a group of its own

@@ -463,7 +463,8 @@ variable GT-POOL-SOCK-ROOT-U
 \ has exited or GT-POOL-GRACE-MS has passed. In that time the root owes the
 \ pool its whole tree: a process it spawned leads a group of its own and goes
 \ to init when the root exits, out of the walk's reach. test/db/pg-cluster.f
-\ stops its server and ends its case engine's tree, then dies of the signal.
+\ has initdb end its step, or stops its server and ends its case engine's
+\ tree, then dies of the signal.
 \
 \ A root that does not catch SIGTERM is not sent it: the default action would
 \ end it at once and leave what it spawned to init before the walk could list

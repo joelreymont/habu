@@ -77,6 +77,11 @@
 \ 11. A ROOT THAT NEVER ANSWERS. One that catches SIGTERM and has not ended
 \     inside test/gate-pool.f GT-POOL-GRACE-MS is walked and killed as it
 \     stands. Not asserted.
+\ 12. A KILL DURING initdb. initdb's backend holds the same segment while
+\     each step runs, so a kill that SIGKILLs it leaves one. The harness
+\     sends initdb SIGTERM, and initdb exits once its step has ended. Not
+\     asserted: initdb takes about 1.2 s here, and a case would need one
+\     slowed past the grace.
 \
 \ A FAILED CASE CLEANS UP AFTER ITSELF. Each case ends through CASE-END
 \ whatever it asserted or threw: the row is killed, a server the kill missed is

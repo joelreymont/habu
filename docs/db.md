@@ -326,16 +326,27 @@ the data directory's inode and removes it on its way out; a server that is
 SIGKILLed leaves it for good, since APFS does not hand the inode out again and
 nothing else removes it, and `kern.sysv.shmmni` caps the segments host-wide (32
 on the macOS hosts here). A host out of segments starts no PostgreSQL at all.
-So the harness catches SIGTERM, SIGINT and SIGHUP. On one it sends the server
-its SIGQUIT, ends the running case engine with every process under it, gives
-the server six seconds (an immediate shutdown SIGKILLs the children still alive
-after five), removes its directories and dies of the signal. A pool sends a
-row's root SIGTERM before it kills the row's tree when the root catches it
-([gate.md](gate.md)), so a pg row killed at its deadline, or because the gate
-root was signalled, leaves nothing: no process, no segment, no directory. The
-same row then runs `test/db/pg-kill-test.f`, which has a pool kill the harness
-both of those ways while a case holds a backend busy, and checks that no
-process of the row, no segment and no socket directory is left.
+`initdb`'s own backend makes the same segment for each step `initdb` runs and
+removes it the same way.
+
+So the harness catches SIGTERM, SIGINT and SIGHUP. On one while `initdb` runs,
+it sends `initdb` SIGTERM, which `initdb` catches: it exits once the step it is
+in has ended, and that step's backend has removed the segment. On one once the
+server runs, it sends the server its SIGQUIT and ends the running case engine
+with every process under it; an immediate shutdown SIGKILLs the server's
+children still alive after five seconds and then exits. Either is given six
+seconds. An `initdb` step or a server still running after them is killed with
+every process under it and leaves its segment, to be removed as below. Then
+the harness removes its directories and dies of the signal. A pool sends a
+row's root SIGTERM before it kills the row's tree when the root catches it,
+and gives it ten seconds ([gate.md](gate.md)), so a pg row killed at its
+deadline, or because the gate root was signalled, leaves no process and no
+directory, and no segment unless an `initdb` step or a server outlived its six
+seconds. The same row then runs `test/db/pg-kill-test.f`, which has a
+pool kill the harness both of those ways while a case holds a backend busy,
+and checks that no process of the row, no segment and no socket directory is
+left. A signal during `initdb` is not part of that test, which would need an
+`initdb` slowed past the grace; `initdb` here takes about 1.2 seconds in all.
 
 SIGKILL cannot be answered. After one to the harness, or to a gate root
 (whose rows' reapers then SIGKILL each row's group, the harness included), the
@@ -346,6 +357,18 @@ and `-k`). A server that was SIGKILLed as well has left its segment: `ipcs -m
 -p` lists it with `NATTCH` 0 and a creator pid that no longer runs, and
 `ipcrm -m <id>` removes it. Line 7 of a `postmaster.pid` that still exists
 names its segment as `<key> <id>`.
+
+A SIGKILL to the harness while `initdb` runs leaves `initdb` running with init
+for a parent. `initdb` leads a process group of its own, so a reaper's SIGKILL
+of the row's group misses it as well. It writes to `<root>/initdb.log`, not to
+the harness. It runs to its end and logs `Success.`, and each step's backend
+removes its segment as it exits, so no segment is left and no server starts.
+Both directories stay: `<root>`, holding `initdb.log` and a complete `data`
+that no server has used, and the empty socket directory (a `habu-pg-*` under
+`TMPDIR` for a harness run alone, the row's `HB_SOCK_TMP` under a pool). Wait
+for `initdb` to end, or send it SIGTERM, after which it ends with its current
+step and removes `data` itself; its command line names `<root>/data` (`-D`).
+Then remove the two directories.
 
 With no TCP listener, rows running beside each other cannot collide on a port.
 The data directory is under the row's `HB_TMP`. The socket directory is the

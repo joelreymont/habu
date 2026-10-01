@@ -33,13 +33,15 @@
 \ it only on its own way out. A server that is SIGKILLed leaves the segment for
 \ good - APFS hands that inode out no more, and kern.sysv.shmmni caps the
 \ segments host-wide (32 here) - so a killed pg row took one each time, and a
-\ host out of them starts no PostgreSQL at all. So this process catches
-\ SIGTERM, SIGINT and SIGHUP and answers one wherever it waits: the server is
-\ sent its SIGQUIT and given QUIT-MS, the running case engine's tree is ended,
-\ the directories go, and the process dies of the signal. A gate pool sends a
-\ row's root SIGTERM, when it catches it, before it kills the row's tree
-\ (test/gate-pool.f GT-POOL-ASK-END). initdb's step is not watched: a signal
-\ that lands in it is answered when it ends, before the server starts.
+\ host out of them starts no PostgreSQL at all. initdb's own backend makes the
+\ same segment for each step it runs and removes it the same way. So this
+\ process catches SIGTERM, SIGINT and SIGHUP and answers one wherever it
+\ waits: initdb is sent SIGTERM and given QUIT-MS to end the step it is in, the
+\ server is sent its SIGQUIT and given QUIT-MS, the running case engine's tree
+\ is ended, the directories go, and the process dies of the signal. An initdb
+\ step or a server that outlives QUIT-MS is killed with its tree and leaves its
+\ segment. A gate pool sends a row's root SIGTERM, when it catches it, before
+\ it kills the row's tree (test/gate-pool.f GT-POOL-ASK-END).
 \
 \ SIGKILL cannot be answered. After one the server runs on with init for a
 \ parent and both directories stay. Recover with `kill -QUIT` to the pid on the
@@ -83,7 +85,9 @@ $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
 \ 5 s into it (PostgreSQL's SIGKILL_CHILDREN_AFTER_SECS) and then exits, so
 \ 6 s is the server's whole stop. With the case engine's walk (2 s at most,
 \ lib/process-tree.f SETTLE-MS) it stays inside the pool's grace
-\ (test/gate-pool.f GT-POOL-GRACE-MS, 10 s).
+\ (test/gate-pool.f GT-POOL-GRACE-MS, 10 s). initdb, which runs alone, is
+\ given the same for its step, and with the walk of its tree that stays inside
+\ the grace too.
 6000 constant QUIT-MS
 100 constant READY-POLL-MS      \ pg_ctl -w's own interval
 8 constant STATUS-LINE          \ postmaster.pid's server status (LOCK_FILE_LINE_PM_STATUS)
@@ -98,18 +102,22 @@ FS-PATH-CAP BUFFER: ROOT        variable ROOT-U
 FS-PATH-CAP BUFFER: SOCKETS     variable SOCKETS-U
 FS-PATH-CAP BUFFER: DATA        variable DATA-U
 FS-PATH-CAP BUFFER: LOG         variable LOG-U
+FS-PATH-CAP BUFFER: INITDB-LOG  variable INITDB-LOG-U
 FS-PATH-CAP BUFFER: PIDFILE     variable PIDFILE-U
 FS-PATH-CAP $40 + constant TEXT-CAP
 TEXT-CAP BUFFER: CONNINFO       variable CONNINFO-U
 CAPTURE-CAP BUFFER: OUT
-CAPTURE-CAP BUFFER: ERR
 
+variable INITDB-PID             \ initdb's pid until it is reaped
+variable INITDB-WATCH           \ readable once initdb has exited
 variable SERVER                 \ the postmaster's pid until it is reaped
 variable WATCH                  \ readable once the postmaster has exited
 variable RUNNING                \ the running case engine's pid until it is reaped
 variable CASE-WATCH             \ readable once that engine has exited
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
+NO-PID INITDB-PID !
+NO-FD INITDB-WATCH !
 NO-PID SERVER !
 NO-FD WATCH !
 NO-PID RUNNING !
@@ -123,6 +131,7 @@ false STOPPED !
 : SOCKETS$ ( -- ptr u8 n )   SOCKETS SOCKETS-U @ ;
 : DATA$ ( -- ptr u8 n )      DATA DATA-U @ ;
 : LOG$ ( -- ptr u8 n )       LOG LOG-U @ ;
+: INITDB-LOG$ ( -- ptr u8 n ) INITDB-LOG INITDB-LOG-U @ ;
 : PIDFILE$ ( -- ptr u8 n )   PIDFILE PIDFILE-U @ ;
 : CONNINFO$ ( -- ptr u8 n )  CONNINFO CONNINFO-U @ ;
 : CONNINFO+ ( ptr u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
@@ -159,6 +168,7 @@ false STOPPED !
    then
    ROOT$ s" data" DATA JOIN-PATH DATA-U !
    ROOT$ s" postgres.log" LOG JOIN-PATH LOG-U !
+   ROOT$ s" initdb.log" INITDB-LOG JOIN-PATH INITDB-LOG-U !
    DATA$ s" postmaster.pid" PIDFILE JOIN-PATH PIDFILE-U ! ;
 
 \ libpq splits a conninfo at spaces, so it quotes the directory.
@@ -178,15 +188,6 @@ false STOPPED !
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
-: STEP ( ptr u8 n n -- len len outcome ) {: path:ptr pathu:n deadline:n :}
-   ENV!
-   path pathu >LEN OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN deadline >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME ;
-
-: SHOW ( len len -- ) {: outu:len erru:len :}
-   OUT outu LEN>N type
-   2 ERR erru LEN>N write drop ;
-
 \ True for a step that exited 0; otherwise one line says how it ended.
 : EXITED-0? ( outcome ptr u8 n -- bool ) {: what:ptr whatu:n :}
    s" pg-cluster: " type what whatu type
@@ -200,21 +201,10 @@ false STOPPED !
    ;MATCH
    cr false ;
 
-: SHOW-LOG ( -- )
-   LOG$ EXISTS? 0= if exit then
-   LOG$ OUT CAPTURE-CAP READ-ALL {: n:n :}
+: SHOW-LOG ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu EXISTS? 0= if exit then
+   path pathu OUT CAPTURE-CAP READ-ALL {: n:n :}
    OUT n type ;
-
-: INITDB-RUN ( -- )
-   PROC-ARGV-ENV-RESET
-   s" -D" ARG+ DATA$ ARG+
-   s" -A" ARG+ s" trust" ARG+
-   s" -U" ARG+ s" habu" ARG+
-   s" -E" ARG+ s" UTF8" ARG+
-   s" --no-sync" ARG+
-   INITDB$ TOOL-MS STEP s" initdb" EXITED-0? if 2drop exit then
-   SHOW
-   s" pg-cluster: initdb failed" 1 die ;
 
 
 \ ---- waiting on a process -----------------------------------------------------
@@ -237,8 +227,8 @@ false STOPPED !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: OPEN-LOG ( -- n )
-   LOG$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
+: OPEN-LOG ( ptr u8 n -- n )
+   FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
@@ -260,7 +250,7 @@ false STOPPED !
    s" -k" ARG+ SOCKETS$ ARG+
    s" -c" ARG+ s" listen_addresses=" ARG+
    ENV!
-   OPEN-NULL OPEN-LOG {: in:n log:n :}
+   OPEN-NULL LOG$ OPEN-LOG {: in:n log:n :}
    in >FD FD-CLOEXEC!
    log >FD FD-CLOEXEC!
    POSTGRES$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO PID>N SERVER !
@@ -340,6 +330,47 @@ false STOPPED !
    CASE-WATCH CLOSE-WATCH ;
 
 
+\ ---- initdb -------------------------------------------------------------------
+\ initdb is watched beside the signal pipe, as the server and the case engine
+\ are: its backend holds the cluster's segment while a step runs. Its output
+\ goes to a log beside the server's, shown when it fails.
+: INITDB-SPAWN ( -- )
+   PROC-ARGV-ENV-RESET
+   s" -D" ARG+ DATA$ ARG+
+   s" -A" ARG+ s" trust" ARG+
+   s" -U" ARG+ s" habu" ARG+
+   s" -E" ARG+ s" UTF8" ARG+
+   s" --no-sync" ARG+
+   ENV!
+   OPEN-NULL INITDB-LOG$ OPEN-LOG {: in:n log:n :}
+   in >FD FD-CLOEXEC!
+   log >FD FD-CLOEXEC!
+   INITDB$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO PID>N INITDB-PID !
+   in close
+   log close
+   INITDB-PID @ proc-watch-open INITDB-WATCH ! ;
+
+: INITDB-REAP ( -- outcome )
+   INITDB-PID @ >PID PROC-WAIT-OUTCOME
+   NO-PID INITDB-PID !
+   INITDB-WATCH CLOSE-WATCH ;
+
+\ initdb catches SIGTERM and exits once the step it is in has ended, its
+\ backend gone and the segment with it, so it is sent that and given QUIT-MS.
+\ One that outlives that is killed with every process under it, the backend
+\ too, which leaves the segment.
+: INITDB-STOP ( -- )
+   INITDB-PID @ NO-PID = if exit then
+   INITDB-PID @ >PID SIGNAL:SIGTERM PROC-KILL-RAW drop
+   INITDB-WATCH @ QUIT-MS GONE-WITHIN? 0= if
+      INITDB-PID @ >PID PROC-TREE:KILL-TREE
+      OUTCOME:TIMEOUT s" initdb stop" EXITED-0? drop
+   then
+   INITDB-PID @ >PID PROC-WAIT-STATUS drop
+   NO-PID INITDB-PID !
+   INITDB-WATCH CLOSE-WATCH ;
+
+
 \ ---- a caught signal ----------------------------------------------------------
 \ SIGTERM, SIGINT and SIGHUP, as the gate root catches them (test/gate-pool.f
 \ GT-POOL-CATCH-SIGNALS). One this process was started with ignored stays
@@ -359,13 +390,15 @@ false STOPPED !
    code 0= if exit then
    s" pg-cluster: " type what whatu type s"  threw " type code FMT:.INT cr ;
 
-\ THE ANSWER. The server is sent its SIGQUIT first and shuts down while the case
+\ THE ANSWER. initdb, when it is running, is stopped; nothing else has started.
+\ The server is sent its SIGQUIT first and shuts down while the case
 \ engine's tree is ended; then it is given QUIT-MS. The directories go, and
 \ the process dies of the signal, so its caller reads the status an uncaught
 \ one would have left. A step that throws is named and the answer goes on.
 \ It never returns: it may run from inside SERVE, and the die ends that too.
 : ANSWER ( n -- ) {: sig:n :}
-   s" pg-cluster: signal " type sig FMT:.INT s" , stopping postgres" type cr
+   s" pg-cluster: signal " type sig FMT:.INT s" , stopping the cluster" type cr
+   s" initdb stop" [: INITDB-STOP ;] catch SAY-THROW
    SERVER @ NO-PID <> if SERVER @ >PID SIGQUIT PROC-KILL-RAW drop then
    s" case engine kill" [: CASE-KILL ;] catch SAY-THROW
    s" postgres stop" [: QUIT-MS STOP ;] catch SAY-THROW
@@ -397,6 +430,18 @@ false STOPPED !
 
 
 \ ---- the run ------------------------------------------------------------------
+\ initdb inside TOOL-MS; one that passes it is stopped as a signal stops it.
+: INITDB-RUN ( -- )
+   INITDB-SPAWN
+   INITDB-WATCH @ TOOL-MS ENDED-WITHIN? if
+      INITDB-REAP
+   else
+      INITDB-STOP OUTCOME:TIMEOUT
+   then
+   s" initdb" EXITED-0? if exit then
+   INITDB-LOG$ SHOW-LOG
+   s" pg-cluster: initdb failed" 1 die ;
+
 \ Ready inside TOOL-MS; a server that ends first has failed to start.
 : READY? ( -- bool )
    SERVER @ NO-PID = if false exit then
@@ -460,7 +505,7 @@ false STOPPED !
    START
    [: SERVE ;] [: END ;] finally {: what:ptr whatu:n passed:bool :}
    SIGNAL-CHECK
-   UP @ 0= if SHOW-LOG then
+   UP @ 0= if LOG$ SHOW-LOG then
    passed STOPPED @ and if exit then
    passed 0= if s" pg-cluster: " type what whatu type s"  failed" type cr then
    s" " 1 die ;
