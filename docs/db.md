@@ -311,6 +311,18 @@ bin/hb --load test/db/pg-cluster.f
 
 Case files named after `--` run in place of those two.
 
+Each step has a deadline: `initdb`, the server's start and its stop 60 seconds
+each, and each case file 60, 300 seconds in all with the two default files,
+inside the row's 360 ([gate.md](gate.md)). A step past its deadline is ended
+as a failed one is, and the server, if it runs, is stopped; then the harness
+ends with an uncaught `E-PROC-TIMEOUT`, which the engine reports on stderr as
+`hb: uncaught throw code -2502` before it exits 67. A gate pool reads that as
+a deadline missed on a loaded host, `kind=TIMEOUT-UNDER-LOAD`, and not as a
+defect. Any other failure exits 1; a missing `initdb` or `postgres` exits 67
+naming it. The first step to fail decides: a server whose stop fails after a
+case passed its deadline leaves the row a timeout, and a stop past its
+deadline after a case failed leaves it a failure.
+
 A server a row starts is the row's child for as long as it runs, and so is
 every process it forks, so the pool's kill reaches all of them. The harness
 therefore runs `postgres` itself: `pg_ctl` forks the server, calls `setsid`,

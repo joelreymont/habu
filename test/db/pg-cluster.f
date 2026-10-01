@@ -13,7 +13,8 @@
 \ names it. This process stops the server however the children end - exit,
 \ failed assertion, die, crash or a deadline - and the cleanup registry
 \ (lib/fs-mutate.f CLEANUP-TREE+) removes the directories it made when this
-\ process exits, including by die.
+\ process exits, including by die. A run that a step's deadline ended exits
+\ as a timeout, which a gate pool tells apart from a failure (FAIL-ROW).
 \
 \ THE SERVER IS THIS PROCESS'S CHILD FOR ITS WHOLE LIFE. pg_ctl starts a
 \ postmaster that forks, calls setsid and execs a shell, and then pg_ctl exits:
@@ -116,6 +117,8 @@ variable RUNNING                \ the running case engine's pid until it is reap
 variable CASE-WATCH             \ readable once that engine has exited
 TYPED-VARIABLE UP bool          \ the server said it was ready
 TYPED-VARIABLE STOPPED bool     \ the server's stop ended it with exit 0
+TYPED-VARIABLE FAILED bool      \ a step has failed
+TYPED-VARIABLE LATE bool        \ the first step to fail passed its deadline
 NO-PID INITDB-PID !
 NO-FD INITDB-WATCH !
 NO-PID SERVER !
@@ -124,6 +127,8 @@ NO-PID RUNNING !
 NO-FD CASE-WATCH !
 false UP !
 false STOPPED !
+false FAILED !
+false LATE !
 
 : INITDB$ ( -- ptr u8 n )    INITDB INITDB-U @ ;
 : POSTGRES$ ( -- ptr u8 n )  POSTGRES POSTGRES-U @ ;
@@ -188,6 +193,14 @@ false STOPPED !
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
+\ The first step to fail decides how the row ends (FAIL-ROW); what fails
+\ after it, as the server's stop after a case past its deadline, changes
+\ nothing.
+: STEP-FAILED ( bool -- ) {: late:bool :}
+   FAILED @ if exit then
+   true FAILED !
+   late LATE ! ;
+
 \ True for a step that exited 0; otherwise one line says how it ended.
 : EXITED-0? ( outcome ptr u8 n -- bool ) {: what:ptr whatu:n :}
    s" pg-cluster: " type what whatu type
@@ -195,9 +208,10 @@ false STOPPED !
       exited OF
          dup 0= if drop s"  ok" type cr true exit then
          s"  exited " type FMT:.INT
+         false STEP-FAILED
       ENDOF
-      signaled OF s"  died of signal " type FMT:.INT ENDOF
-      timeout OF s"  passed its deadline" type ENDOF
+      signaled OF s"  died of signal " type FMT:.INT false STEP-FAILED ENDOF
+      timeout OF s"  passed its deadline" type true STEP-FAILED ENDOF
    ;MATCH
    cr false ;
 
@@ -413,6 +427,18 @@ false STOPPED !
       timeout OF ENDOF
    ;MATCH ;
 
+\ THE ROW'S END, after the server's stop; a signal caught on the way is
+\ answered first. A run whose first failed step passed its deadline ends with
+\ an uncaught E-PROC-TIMEOUT: the engine writes its report for that code to
+\ stderr last and exits UNCAUGHT-RC, which a gate pool reports as
+\ TIMEOUT-UNDER-LOAD (test/gate-pool.f GT-POOL-INNER-TIMEOUT?) - a deadline
+\ missed on a loaded host, not a defect. Any other failure exits 1. The exit
+\ runs the cleanup registry either way.
+: FAIL-ROW ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   SIGNAL-CHECK
+   LATE @ if E-PROC-TIMEOUT throw then
+   msg msgu 1 die ;
+
 \ TRUE once the watch reports its process has ended, FALSE when ms pass
 \ first. A caught signal is answered here.
 : ENDED-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
@@ -440,7 +466,7 @@ false STOPPED !
    then
    s" initdb" EXITED-0? if exit then
    INITDB-LOG$ SHOW-LOG
-   s" pg-cluster: initdb failed" 1 die ;
+   s" pg-cluster: initdb failed" FAIL-ROW ;
 
 \ Ready inside TOOL-MS; a server that ends first has failed to start.
 : READY? ( -- bool )
@@ -449,9 +475,13 @@ false STOPPED !
    begin
       STATUS-READY? if s" pg-cluster: postgres ready" type cr true exit then
       deadline PROC-LEFT-MS MS>N {: left:n :}
-      left 0= if s" pg-cluster: postgres not ready inside its deadline" type cr false exit then
+      left 0= if
+         s" pg-cluster: postgres not ready inside its deadline" type cr
+         true STEP-FAILED false exit
+      then
       WATCH @ left READY-POLL-MS min ENDED-WITHIN? if
-         s" pg-cluster: postgres ended before it was ready" type cr false exit
+         s" pg-cluster: postgres ended before it was ready" type cr
+         false STEP-FAILED false exit
       then
    again ;
 
@@ -508,7 +538,7 @@ false STOPPED !
    UP @ 0= if LOG$ SHOW-LOG then
    passed STOPPED @ and if exit then
    passed 0= if s" pg-cluster: " type what whatu type s"  failed" type cr then
-   s" " 1 die ;
+   s" " FAIL-ROW ;
 
 MAIN
 

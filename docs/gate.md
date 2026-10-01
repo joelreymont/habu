@@ -76,6 +76,10 @@ The gate runs executable checks without an external theorem prover. Passing it
 establishes only the behavior exercised; see [proofs.md](proofs.md).
 
 Failures print the suite label, exit outcome, and captured stdout and stderr.
+A row the pool killed at its deadline, or one whose own deadline ended it with
+an uncaught `E-PROC-TIMEOUT` (`GT-POOL-INNER-TIMEOUT?`, test/gate-pool.f),
+reads `kind=TIMEOUT-UNDER-LOAD` with the pool's saturation at that moment: still
+red, but a deadline missed on a loaded host rather than a defect.
 The run removes its temporary root whether it is green or red — a red run used
 to keep the whole tree, and `/tmp` filled with one root per red run — so the
 printed tail and the truncation line's byte count are what a finished red run
@@ -327,6 +331,8 @@ at its deadline.
   kill ends it with the row. It serves the cluster on a Unix-domain socket
   only, so concurrent rows share no port, and runs the cases in a child engine
   so a case that dies or hangs still leaves the harness to stop the server.
+  A step past its own deadline ends the row as `kind=TIMEOUT-UNDER-LOAD` once
+  the server has stopped ([db.md](db.md#tests)).
   The socket directory is the slot's `HB_SOCK_TMP` rather than a directory
   under its `HB_TMP`, whose length leaves no room in `sun_path`.
 - A red that appears only when the box is loaded is the box: reproduce it on
