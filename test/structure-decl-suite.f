@@ -115,6 +115,11 @@ s" STRUCTURE foo 24 ;STRUCTURE" TRY 7108 T=                      \ arity above t
 s" STRUCTURE foo 0 FIELD a nope ;STRUCTURE" TRY 7109 T=          \ unresolved field type
 s" STRUCTURE foo 0 FIELD a Q ;STRUCTURE" TRY 7109 T=             \ upper-case single-letter type
 s" STRUCTURE foo 0 FIELD a a ;STRUCTURE" TRY 7109 T=             \ parameter outside declared arity
+NEWTYPE qreq 0
+NEWTYPE qres 0
+s" STRUCTURE qrollback 0 FIELD handler [ qreq qres ] ;STRUCTURE" TRY 7107 T=
+s" STRUCTURE qrollback 0 FIELD handler [ qreq qres -- ] ;STRUCTURE" TRY 0 T=
+s" QROLLBACK-RT ( [ qreq qres -- ] -- qrollback ) QROLLBACK:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" STRUCTURE foo 0 VARIANT q ;VARIANT ;STRUCTURE" TRY 7107 T=    \ mixed legacy token
 s" STRUCTURE foo 0 FIELD x n" TRY 7107 T=                        \ missing ;STRUCTURE
 s" STRUCTURE foo 0 POLICY nope FIELD x n ;STRUCTURE" TRY 7116 T= \ unknown layout policy

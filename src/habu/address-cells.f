@@ -1,6 +1,6 @@
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
-require src/habu/layout.f
+s" src/habu/layout.f" required
 
 package ADDRESS-CELLS
 public
@@ -173,6 +173,31 @@ public
    CURRENT? if
       [: KEEP-LOCKED ;] WITH-LOCK
    else KEEP-ROWS then ;
+
+\ A fixed typed allocation can change which sum payload cells contain code.
+\ Replace only its XT declarations; DATA declarations and outside rows stay.
+private
+: REMOVE-XT-LOCKED ( n n -- ) {: first:n limit:n :}
+   INDEX-RELEASE
+   LIVE-SPAN {: rows:ptr count:n :}
+   0
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+      row SNAP-RELOC:XTCELL-DATA-TAG and 0= off first >= and
+      off limit CELL - <= and 0= if
+         dup cells rows + row swap ! 1+
+      then
+   loop
+   HEADER ! ;
+
+public
+
+: REMOVE-XT-SPAN ( n n -- ) {: first:n bytes:n :}
+   first 0 < bytes 0 < or if REFUSE then
+   first here data-base - > if REFUSE then
+   bytes here data-base - first - > if REFUSE then
+   first first bytes + [: REMOVE-XT-LOCKED ;] WITH-LOCK ;
 
 \ Called outside the registrar, before snapshot DATA length is frozen. DATA
 \ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.

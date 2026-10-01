@@ -249,7 +249,8 @@ TYPED-VARIABLE SOURCE-CLOSE [ -- ]
    s" src/os/env-base.f" included
    s" src/core/include.f" included
    SOURCE-BIND @ execute
-   s" src/habu/native-runtime.f" included ;
+   s" src/habu/native-runtime.f" included
+   s" src/core/layout-buffer-address.f" included ;
 
 : OPEN-AND-COMPILE ( -- )
    \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
@@ -301,6 +302,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
+   s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT
@@ -621,6 +623,7 @@ public
    {: out:ptr outu:n query bootstrap:bool :}
    DEFAULT-SOURCE-POLICY
    out outu OUTPUT!
+   WRITER-MACHINE-CK
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
 
 \ The build says which of the two images it wrote, on the way out, so a build
