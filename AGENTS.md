@@ -81,6 +81,13 @@ belong in the language core.
 
 ## Verification and documentation
 
+- Each significant feature implementation needs independent adversarial
+  reviews by both Astra and Fable before landing, including lead-written code.
+  Give each reviewer the requirements and completed code, not the implementation
+  discussion. Reviews must look for behavioral defects, overengineering and
+  opportunities to simplify. Fix confirmed findings or show they do not affect
+  outcomes; get focused follow-up review of fixes. Missing or interrupted
+  reviews are not approval.
 - Never write unit tests after you write code.
 - Highly prefer E2E tests as the sole testing mechanism. Use them to verify
   complex features work. At the end of E2E tests, produce a verifiable and
