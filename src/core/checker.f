@@ -14465,7 +14465,7 @@ s" <input>" DIAG-FILE!
 \ one, or one that runs the span past the top of the address range. A false
 \ length inside the range cannot be told from a true one here: the code ceiling
 \ that bounds every name is src/habu/layout.f's REGION, which loads after this
-\ file.
+\ file, and a signature has no bound of its own.
 \ A NAME that is no span spells no word, so TRUST, TRUST-RAW and TRUST-DECL each
 \ refuse its row as E-TRUST-UNRESOLVED with no spelling rendered, and each does
 \ so first: TRUST before its dictionary walk, whose colon scan ran until the
@@ -14489,8 +14489,13 @@ s" <input>" DIAG-FILE!
 \ definition with no primitive axiom, so user code cannot resolve it at all —
 \ the effect-declaration capability stays exactly where it was, behind `trust`
 \ and `trust-raw` at top level.
+\ A signature whose length describes no memory gets the refusal of one that does
+\ not parse, with no text: the parser would read past it, and the refusal would
+\ print it. Given the maximum cell, the parser read on until the process was
+\ killed.
 : TRUST-USIG! ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu TOKFOLD drop
+   sa su TRUST-SPAN? 0= IF sa 0 TKF TKFU @ USIG-ADD-BAD EXIT THEN
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 \ TRUST-DECL: record the effect a DEFINER just declared for the word it is
