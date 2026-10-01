@@ -1,9 +1,11 @@
 ---
 title: Capture bodies and string keywords in Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.913784+03:00"
+closed-at: "2026-10-01T09:53:35.576145+03:00"
+close-reason: "done: src/habu/definers.f captures the six string keywords' text in a body as the engine's CAPTURE-STRING; bin/hb --load test/outer-interpret.f agrees with the engine on 119 cases (9 new: each keyword plain and escaped, a quotation body, refusals, capacity 8001/8002), ThinkPad and spark; top-level `[:` is E-UNDEFINED on both loops."
 ---
 
 Problem: body capture into `BODYBUF` and the string keywords are assembly (`LBCAP`/`LBCS`, `habu2.f:7509-7527`).

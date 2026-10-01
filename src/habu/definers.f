@@ -224,13 +224,39 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
    then
    DEF-DISPATCH ;
 
+\ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
+\ After a string keyword the body takes the literal's text as written, from one
+\ byte past the keyword through its closing quote, in one capture. The scan
+\ comes first, so a literal with no closing quote or with a bad escape refuses
+\ as the top-level keyword does, before any of it is captured. A counted
+\ string's length waits for `;`, which compiles the body.
+: DEF-TEXT ( -- )
+   TEXT {: a:ptr u:n :}
+   a u 1+ DEF-CAPTURE ;
+
+: DEF-ESC-TEXT ( -- )
+   ESC-SCAN drop {: s:ptr q:ptr :}
+   q PAST
+   s q s - 1+ DEF-CAPTURE ;
+
+\ The engine's six string keywords, matched as LITERAL? matches them.
+: DEF-STRING-TEXT ( -- )
+   S\" s\q" TOKEN-IS? if DEF-TEXT exit then
+   S\" c\q" TOKEN-IS? if DEF-TEXT exit then
+   S\" .\q" TOKEN-IS? if DEF-TEXT exit then
+   S\" s\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
+   S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
+   S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
+
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 captures it for `;` (NCOMP-EMIT:EM-COMPILE).
+\ tier 1 captures it for `;`, a string keyword with its text
+\ (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TOKEN$ DEF-CAPTURE
+   DEF-STRING-TEXT
    true ;
 
 \ ---- the definition keywords --------------------------------------------------

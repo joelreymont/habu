@@ -934,6 +934,74 @@ variable WANT-RC
    71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8006 at "
    S\" oi-body-full.f:1000\n" DIED-AT ;
 
+\ ---- the string keywords in a body ------------------------------------------------
+\ A string keyword's text joins the body whole, from one byte past the keyword
+\ to its closing quote, as written: a blank run, a `(`, a `\`, a `;` and a
+\ newline stay in it, and so do its escapes. The keyword is matched with its
+\ A-Z folded.
+: BODY-STRINGS ( -- )
+   s" get-current"
+   S\" : OI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup"
+   s" oi-body-strings.f" PENDING
+   S\" OI-STR\n6\n1\n1\n-1\nOI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup \n4\n0\n1\n"
+   CASE$ GE-EXPECT-OUT ;
+
+\ A quotation's body is the definition's: a string in it holding `;]` and `(`
+\ does not end it.
+: BODY-QUOTATION ( -- )
+   s" get-current" S\" : OI-Q ( -- ) [: s\q ;] ( x\q type ;] execute" s" oi-body-quotation.f" PENDING
+   S\" OI-Q\n4\n1\n1\n-1\nOI-Q ( -- ) [: s\q ;] ( x\q type ;] execute \n4\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ `[:` outside a definition is no keyword of either loop: no word has the name.
+: TOP-LEVEL-QUOTATION ( -- )
+   s" 1 . [: 2 . ;] execute" s" oi-top-quotation.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: [:\n" CASE$ GE-EXPECT-ERR ;
+
+\ A string in a body with no closing quote, or with a bad escape, refuses as
+\ the top-level keyword does, at the keyword's line. A counted string's length
+\ is not checked until `;` compiles it.
+: BODY-STRING-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-T ( -- ) 1 s~ never" QLINE
+   s" closed" GE-SRC-LINE
+   s" oi-body-unterminated.f" BOTH
+   74 s" hb: bad string literal at " S\" oi-body-unterminated.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-T ( -- )" GE-SRC-LINE
+   s" .\~ a" QLINE
+   s" \m~" QLINE
+   s" oi-body-bad-escape.f" BOTH
+   74 s" hb: bad string literal at " S\" oi-body-bad-escape.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-T ( -- ) c~ " Q+ 256 [char] z GE-SRC-REPEAT-C s" ~" QLINE
+   s" oi-body-counted-long.f" BOTH
+   CASE$ GE-EXPECT-OK  CASE$ GE-EXPECT-SILENT ;
+
+\ A string the body cannot hold refuses as a token does, naming the definition
+\ and what the capture needed, at the closing quote's line. Its text counts as
+\ written, blanks, newline and escapes whole. One that fills the body to
+\ BODYBUF-CAP is taken, and the token after it refuses.
+: BODY-STRING-FULL ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-BIG ( -- ) s~    " Q+ 7978 [char] x GE-SRC-REPEAT-C s" ~" QLINE
+   s" y" GE-SRC-LINE
+   s" oi-body-string-fills.f" BOTH
+   71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8002 at "
+   S\" oi-body-string-fills.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-BIG ( -- ) s~    " QLINE 7978 [char] x GE-SRC-REPEAT-C s" ~" QLINE
+   s" oi-body-string-full.f" BOTH
+   71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8001 at "
+   S\" oi-body-string-full.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-BIG ( -- ) s\~    " Q+ 1994 0 ?do s" \x41" GE-SRC+ loop
+   s" xx~" QLINE
+   s" oi-body-escaped-full.f" BOTH
+   71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8001 at "
+   S\" oi-body-escaped-full.f:1\n" DIED-AT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1032,6 +1100,11 @@ private
    PENDING-NEW-NAMESPACE
    PENDING-EDGE-COLONS
    BODY-FULL
+   BODY-STRINGS
+   BODY-QUOTATION
+   TOP-LEVEL-QUOTATION
+   BODY-STRING-REFUSALS
+   BODY-STRING-FULL
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;
