@@ -333,6 +333,35 @@ create PACKET-BUF FS-PATH-CAP allot
    s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
    s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE ;
 
+\ A storage declaration its definer refuses names the declared word and the
+\ refused token, with no definition around them.
+: TEST-STORAGE ( -- )
+   s" storage" s" fix_storage_type" s" 4 TYPED-BUFFER DIAG-STG no-such-type" PACKET-CASE ;
+
+: ARGV-CHECK-SOURCE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --all-errors" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   SRC >LEN PROC-ARGV+ ;
+
+\ The checker's pre-pass never reads a declaration that `evaluate` runs, so
+\ only the check.f run refuses it, and its record has no place.
+: TEST-STORAGE-UNPLACED ( -- )
+   s" storage-unplaced" CASE-PATHS
+   s" storage-unplaced" LABEL!
+   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" WRITE-SOURCE
+   ARGV-CHECK-SOURCE
+   HB-CAPTURE 70 EXPECT-EXIT {: outu:n erru:n :}
+   s" storage-unplaced stdout" T-LABEL
+   outu 0 T=
+   erru WRITE-DIAG
+   MAKE-PACKET
+   s" fix_storage_type" ASSERT-PACKET
+   s" storage-unplaced" EXPECT-GOLDEN ;
+
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
    SRC TWO-SOURCE$ WRITE-ALL
@@ -430,6 +459,8 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-FAMILY
    TEST-DECL
    TEST-SPAN-KINDS
+   TEST-STORAGE
+   TEST-STORAGE-UNPLACED
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE

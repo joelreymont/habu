@@ -949,6 +949,15 @@ variable NOM-TAIL-U
    NEXT-SCAN {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
+\ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
+\ one line, so a later definition calling one is E-UNDEFINED without this row,
+\ and a type it cannot size goes unreported until the run. No count token: the
+\ count arrives at the bind.
+: RECORD-DEFER-LAYOUT-BUFFER ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   NEXT-SCAN {: type:ptr typeu:n :}
+   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
+
 \ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
 \ A stored type may be `ptr* base` or a spaced `[ in -- out ]` xt<effect> quotation
 \ (dot habu-typed-xt-storage-ddad4af8), so the type is a contiguous multi-token
@@ -1128,6 +1137,7 @@ PTR-VARIABLE STG-START
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN
    a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
+   a u s" DEFER-LAYOUT-BUFFER" STR=CI IF RECORD-DEFER-LAYOUT-BUFFER 0 0= EXIT THEN
    a u s" TYPED-BUFFER" STR=CI IF RECORD-TYPED-BUFFER 0 0= EXIT THEN
    a u s" TYPED-VARIABLE" STR=CI IF RECORD-TYPED-VARIABLE 0 0= EXIT THEN
    a u s" DYNAMIC-BUFFER" STR=CI IF RECORD-DYNAMIC-BUFFER 0 0= EXIT THEN
@@ -1202,6 +1212,7 @@ PTR-VARIABLE STG-START
 \ hands the count reader `char`, not `0`, so the count is left to the run.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
+   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
    BEGIN
       NEXT-SCAN dup 0 > WHILE

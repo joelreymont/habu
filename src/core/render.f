@@ -1248,4 +1248,70 @@ SHADOW-DIAG-INSTALL
 : TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-INSTALL
 
+\ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
+\ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
+\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason.
+\ It is not a definition, so it carries no definition fields. A refusal the
+\ verifier located carries the token's place in its file; a run-time refusal,
+\ whose place nothing recorded, carries none.
+: STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
+: STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
+: STGR-NAME-WHY? ( -- f )
+   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or ;
+: STGR-COUNT-WHY? ( -- f )
+   STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or ;
+: STGR-REASON$ ( -- ptr u8 n )
+   STGR-WHY @ STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
+   STGR-WHY @ STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
+   STGR-WHY @ STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
+   STGR-WHY @ STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
+   STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   s" no count for" ;
+: STGR-CLASS$ ( -- ptr u8 n )
+   STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
+   STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
+   s" fix_storage_type" ;
+: STGR-SUGGEST$ ( -- ptr u8 n )
+   STGR-NAME-WHY? IF s" Name the storage with at most one inner ':', outside a sealed system package." EXIT THEN
+   STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
+   s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
+: STGR-LOCATE ( -- )   \ the token's place, counted from the start of the verifier's buffer
+   STGR-SRC-A @ STGR-TOK-A @ STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
+   DIAG-ORIGIN-SPAN! ;
+: STGR-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-STORAGE" JSTR 44 EMIT1
+   s" repair_class" JKEY STGR-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" word" JKEY STGR-NAME$ JSTR 44 EMIT1
+   s" token" JKEY STGR-TOK$ JSTR 44 EMIT1
+   s" reason" JKEY STGR-REASON$ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   STGR-AT @ IF
+      s" line" JKEY DIAGL0 @ JNUM 44 EMIT1
+      s" column" JKEY DIAGC0 @ JNUM 44 EMIT1
+      s" byte_start" JKEY DIAGB0 @ JNUM 44 EMIT1
+      s" byte_end" JKEY DIAGB0 @ STGR-TOK-U @ + JNUM 44 EMIT1
+   THEN
+   s" suggestion" JKEY STGR-SUGGEST$ JSTR
+   125 EMIT1 ;
+: STGR-PROSE ( -- )
+   STGR-AT @ IF
+      DIAGFB DIAGFU @ DTXT  58 EMIT1  DIAGL0 @ JNUM  58 EMIT1  DIAGC0 @ JNUM
+      s" : " DTXT
+   THEN
+   s" habu: in " DTXT  STGR-NAME$ DTXT  s" : " DTXT  STGR-REASON$ DTXT
+   s"  '" DTXT  STGR-TOK$ DTXT  s" '" DTXT ;
+: STGR-DIAG ( -- )
+   STGR-AT @ IF STGR-LOCATE THEN
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF STGR-JSON ELSE STGR-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+: STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
+STGR-DIAG-INSTALL
+
 ;using

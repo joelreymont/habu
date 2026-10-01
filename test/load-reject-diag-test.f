@@ -349,6 +349,23 @@ LOWER-CERT-HOOK:INSTALL
    s" family arguments keep distinct declared variables" T-LABEL
    s" NEWTYPE lrd-pair 2 : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
+\ A storage declaration whose definer cannot size its type is the checker's
+\ refusal, named for the declared word and the type, where it used to die on an
+\ uncaught E-LAYOUT-BUFFER with nothing on stderr (dot 2eb1290e).
+: STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   BODY$ src srcu WRITE-ALL
+   BODY$ RUN
+   name nameu ASSERT-NAMED
+   ERR$ s" : unknown type 'lrd-stg-none'" CONTAINS? TTRUE ;
+
+: TEST-STORAGE ( -- )
+   s" undefined storage types are named refusals" T-LABEL
+   s" 4 TYPED-BUFFER LRD-STG-TB lrd-stg-none" s" in LRD-STG-TB" STORAGE-REJECT
+   s" TYPED-VARIABLE LRD-STG-TV lrd-stg-none" s" in LRD-STG-TV" STORAGE-REJECT
+   s" 4 LAYOUT-BUFFER LRD-STG-LB lrd-stg-none" s" in LRD-STG-LB" STORAGE-REJECT
+   s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
+   s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -405,6 +422,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-PARAMETRIC
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH
+   TEST-STORAGE
    TEST-REQUIRE-CHAIN
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE

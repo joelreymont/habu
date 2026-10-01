@@ -1095,11 +1095,11 @@ CHECKER-PKG-LIVE-DEFAULT
 \ has no caller that could act on it, and reporting it instead of the refusal
 \ would replace a named refusal with an unrelated code. The refusal itself is
 \ never dropped.
-70 constant PKGCTX-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
+70 constant CHECKER-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
    2 S\" hb: no authenticated package context for this definition\n" write drop
-   PKGCTX-REJECT-RC throw ;
+   CHECKER-REJECT-RC throw ;
 
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
    CHECKER-PKG-MIRROR-AUTHORITY? IF
@@ -8591,7 +8591,13 @@ PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDYNAMIC-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-STORAGE-TYPE-REFUSE
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-VERIFY-SOURCE!
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different
 \ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
 \ the name is already defined in the scope a NEW DEFINITION would land in - the
@@ -9252,7 +9258,7 @@ PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name
 \ using-shadow reference site below, 1 the arity-shadow definition site
 \ (SHADOW-ARITY-CK). One defer and not two because every `defer` written here,
 \ before `: TRUST`, takes a slot of the engine's pre-trust pending table
-\ (src/habu/layout.f PD-CAP, 64). This prefix holds 48; the remaining slots
+\ (src/habu/layout.f PD-CAP, 64). This prefix holds 49; the remaining slots
 \ allow additional early declarations. test/pre-trust-defer.f exercises both
 \ an added defer and an overflow beyond the running engine's capacity.
 defer SHADOW-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
@@ -9501,15 +9507,92 @@ variable CHECKER-QBAD-TOK
    a u s" lower-cert-hook" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" engine-error" CORE-STR=CI ;
 
-: CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+\ --- storage declaration refusals ---------------------------------------------
+\ A storage definer refuses a declaration whose type it cannot size, whose name
+\ it cannot publish, or whose literal count is outside its extent. The gate
+\ pre-pass (CHECKER-DEF* below) and the run-time definers
+\ (src/core/layout-buffer.f) both refuse through CHECKER-STORAGE-REFUSE, so the
+\ declaration is reported, naming the declared word and the refused token,
+\ wherever it is refused; it used to throw E-CHECKER-LAYOUT-BUFFER with nothing
+\ reported. Like TRUST-STALE it is a hard stop on the ordinary load path, and
+\ rendered and COUNTED under a MULTI-ERROR load. Either way nothing is
+\ registered or defined: the refusing caller returns.
+\
+\ The diagnostic carries a file position only while the verifier window replays
+\ recorded source (CHECKER-VERIFY-PKG-DEPTH), for a token inside the buffer that
+\ pass registered. A run-time definer reads its tokens from the input, whose
+\ place in its file the checker has no record of.
+1 constant STG-UNKNOWN-TYPE     \ the type names nothing the checker knows
+2 constant STG-MALFORMED-TYPE   \ the type does not parse
+3 constant STG-UNSTORABLE-TYPE  \ the type parses, and this definer cannot store it
+4 constant STG-MALFORMED-NAME   \ the name has more than one inner ':'
+5 constant STG-SEALED-NAME      \ the name is qualified into a sealed package
+6 constant STG-BAD-COUNT        \ the literal count is outside the definer's extent
+7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
+PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
+PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
+variable STGR-WHY                               \ one of the STG- reasons above
+variable STGR-AT                                \ the token lies in the verifier's source
+PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
+variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
+\ The renderer is its own hook because none of the four installed before it can
+\ carry a declaration: DIAGXT renders a definition with definition fields,
+\ BADSIG-XT a stored signature row, TSTALE-DIAG-XT a trust row, and
+\ SHADOW-DIAG-XT selects between the two using-shadow sites.
+defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
+: STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
+STORAGE-DIAG-DEFAULT
+
+\ src/habu/verify-source.f names each buffer it scans, and where the buffer
+\ starts in its file.
+: CHECKER-VERIFY-SOURCE! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
+   a STGR-SRC-A !  u STGR-SRC-U !
+   line STGR-SRC-LINE !  col STGR-SRC-COL !  byte STGR-SRC-BYTE ! ;
+
+: STGR-IN-SOURCE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   a STGR-SRC-A @ - {: off:n :}
+   off 0 < IF RES-FALSE EXIT THEN
+   off u + STGR-SRC-U @ <= ;
+
+: CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n ta:ptr tu:n why:n :}
+   na STGR-NAME-A !  nu STGR-NAME-U !
+   ta STGR-TOK-A !  tu STGR-TOK-U !
+   why STGR-WHY !
+   ta tu STGR-IN-SOURCE? STGR-AT !
+   STORAGE-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   CHECKER-REJECT-RC throw ;
+
+\ The type query that refused the type (CHECKER-LAYOUT-INFO, -STORAGE-INFO,
+\ -DYNAMIC-INFO) leaves its parse state live: an unknown type names its own
+\ token, and any other refusal names the whole stored type.
+: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   SGBAD-UNKNOWN? IF
+      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
+   THEN
+   na nu ta tu
+   SGBAD @ IF STG-MALFORMED-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+   CHECKER-STORAGE-REFUSE ;
+
+\ A name a storage definer publishes has at most one inner ':' and, once the
+\ seal is captured, is not qualified into a sealed package. A refused name
+\ answers false.
+: CHECKER-LBUF-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? drop
-   CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   CHECKER-QBAD-TOK @ 0 <> IF
+      a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+   THEN
    seal-captured? IF
       a u CHECKER-QUALIFIED? IF
-         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
+         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF
+            a u a u STG-SEALED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+         THEN
       THEN
    THEN
-   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN ;
+   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   RES-TRUE ;
 
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
@@ -10674,6 +10757,14 @@ variable LBUF-INFO-W
    flt 0= ok and 0= IF RES-TRUE EXIT THEN
    v width CHECKER-LBUF-EXTENT? ;
 
+\ The count CHECKER-LBUF-COUNT? holds to the extent, refused at its token, or
+\ at the name when no token precedes the definer.
+: CHECKER-LBUF-COUNT-OK? ( ptr u8 n ptr u8 n n -- bool )
+   {: na:ptr nu:n a:ptr u:n width:n :}
+   a u width CHECKER-LBUF-COUNT? IF RES-TRUE EXIT THEN
+   u 0= IF na nu na nu STG-NO-COUNT ELSE na nu a u STG-BAD-COUNT THEN
+   CHECKER-STORAGE-REFUSE RES-FALSE ;
+
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
    s" n -- ptr " LBUF-SIG-APP
@@ -10683,10 +10774,12 @@ variable LBUF-INFO-W
 : CHECKER-DEFLAYOUT-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
-   name nameu CHECKER-LBUF-NAME-GUARD
-   type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-LAYOUT-INFO 0= IF
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    nip LBUF-INFO-W !
-   count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 \ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
@@ -10703,17 +10796,21 @@ variable LBUF-INFO-W
 : CHECKER-DEFTYPED-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
-   name nameu CHECKER-LBUF-NAME-GUARD
-   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-STORAGE-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    LBUF-INFO-W !
-   count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF-COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFTYPED-VARIABLE
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
-   name nameu CHECKER-LBUF-NAME-GUARD
-   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-STORAGE-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
@@ -10747,21 +10844,41 @@ variable LBUF-NM-I
    sfx sfxu LBUF-NM-APP
    LBUF-NM-BUF LBUF-NM-U @ ;
 
-: CHECKER-DEFDYNAMIC-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
+: CHECKER-DEFSUFFIX-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n sig:ptr sigu:n :}
    name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:ptr genu:n :}
-   gen genu CHECKER-LBUF-NAME-GUARD
+   gen genu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    sig sigu gen genu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFDYNAMIC-BUFFER
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
-   name nameu CHECKER-LBUF-NAME-GUARD
-   type typeu CHECKER-DYNAMIC-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    drop                                    \ two control cells: the extent is dynamic
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
-   name nameu s" -RESERVE" s" n --" CHECKER-DEFDYNAMIC-NAME
-   name nameu s" -RELEASE" s" --" CHECKER-DEFDYNAMIC-NAME ;
+   name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
+   name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
+
+\ Checker-side registration for the DEFER-LAYOUT-BUFFER gate path (verify-source
+\ RECORD-DEFER-LAYOUT-BUFFER). That definer publishes its accessor
+\ `NAME ( n -- ptr <type> )` and the binders `NAME-BIND ( n -- )` and
+\ `NAME-GROW ( n -- )` from one line (src/core/layout-buffer.f LDEFER-SOURCE),
+\ behind LAYOUT-BUFFER's own CHECKER-LAYOUT-INFO gate. Its count arrives at the
+\ bind, so the line carries none.
+: CHECKER-DEFDEFER-LAYOUT-BUFFER
+   ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-LAYOUT-INFO 0= IF
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
+   2drop
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
+   name nameu s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
+   name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!

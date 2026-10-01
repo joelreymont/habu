@@ -20,7 +20,7 @@ require test/checker-assert.f
 
 package XT-CELL-TEST
 
-7121 constant E-STORAGE
+7121 constant E-STORAGE           \ src/core/layout-buffer.f E-LAYOUT-BUFFER
 
 \ words under test: SP / SP2 fit ( n -- n ); DBL ( n -- n n ) misfits the cell
 : SP ( n -- n ) 1 + ;
@@ -104,13 +104,15 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    s" T7 ( -- ) 42 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- define-time admissibility: malformed quotation types still reject -------
+\ A type the checker reads and refuses is its refusal; a quotation the definer
+\ cannot finish reading is the definer's own syntax fault.
 : XC-SECTION-ADMISSIBILITY ( -- )
    \ missing -- : not a well-formed effect
-   s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL CHECKER-REJECT-RC T=
    \ unterminated quotation (no closer)
    s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL E-STORAGE T=
    \ bogus pointee type inside the quotation body
-   s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL CHECKER-REJECT-RC T=
    \ none of the rejected names ever reached the dictionary
    s" BADQ1" 0 search-wl 0= TTRUE
    s" BADQ2" 0 search-wl 0= TTRUE

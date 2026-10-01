@@ -38,8 +38,6 @@ require test/checker-assert.f
 
 package TYPED-STORAGE-STRUCTURAL-TEST
 
-7121 constant E-STORAGE
-
 NEWTYPE tssk 0
 
 \ a LINEAR con (CHECKER-DEFLINEAR registers class CT-LINEAR): noncopyable, so it
@@ -121,15 +119,15 @@ variable TSS-EVAL-U
    s" TYPED-VARIABLE TSS-OK-PU ptr u8" TSS-EVAL 0 T=
    s" TYPED-VARIABLE TSS-OK-PPU ptr ptr u8" TSS-EVAL 0 T=
    \ an OPEN var has nothing to pin, in either position: still refused
-   s" TYPED-VARIABLE TSS-BAD-A a" TSS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE TSS-BAD-PA ptr a" TSS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE TSS-BAD-A a" TSS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE TSS-BAD-PA ptr a" TSS-EVAL CHECKER-REJECT-RC T=
    \ a bare atom carries no effect to pin either
-   s" TYPED-VARIABLE TSS-BAD-XT xt" TSS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE TSS-BAD-XT xt" TSS-EVAL CHECKER-REJECT-RC T=
    \ a LINEAR con is closed and one cell, and is still refused in BOTH positions
    \ — noncopyable means a storage cell may not hold it, and a `ptr` to one may
    \ not be stored either
-   s" TYPED-VARIABLE TSS-BAD-LIN tsslin" TSS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE TSS-BAD-PLIN ptr tsslin" TSS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE TSS-BAD-LIN tsslin" TSS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE TSS-BAD-PLIN ptr tsslin" TSS-EVAL CHECKER-REJECT-RC T=
    \ the refused names never reached the dictionary
    s" TSS-BAD-A" 0 search-wl 0= TTRUE
    s" TSS-BAD-PA" 0 search-wl 0= TTRUE
@@ -146,8 +144,8 @@ PTR-VARIABLE TSS-PV
 
 : SECTION-SUBCELL-REASON ( -- )
    \ a stored u8/u16/char is refused ...
-   s" TYPED-VARIABLE TSS-BAD-U8 u8" TSS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE TSS-BAD-U16 u16" TSS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE TSS-BAD-U8 u8" TSS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE TSS-BAD-U16 u16" TSS-EVAL CHECKER-REJECT-RC T=
    s" TSS-BAD-U8" 0 search-wl 0= TTRUE
    \ ... because cell @ over a concrete `ptr u8` is a checker error, so the cell
    \ would be unreadable by the operator its own ( -- ptr u8 ) implies ...

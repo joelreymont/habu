@@ -42,8 +42,6 @@ package CHECK-TEST
 using CHECK
 private
 
-7121 constant LBUF-RC
-
 $4000 constant BUF-CAP
 $100001 constant OVERCAP-SOURCE-LEN
 128 constant LIST-ENTRY-CAP
@@ -1193,7 +1191,7 @@ variable LONG-J
 
 : TEST-LAYOUT-BUFFER ( -- )
    [: LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
-   [: LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch LBUF-RC T= ;
+   [: LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch 70 T= ;
 
 \ A buffer count is whatever the line leaves on the interpret stack, so a
 \ constant's name or an expression sizes a buffer as a literal does, and the
@@ -1237,7 +1235,7 @@ variable LONG-J
    {: outu2:n erru2:n :}
    outu2 0 T=
    CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE
-   CAP-ERR erru2 s" : throw 7121 at '" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"reason\":\"count outside the buffer's extent\"" CONTAINS? TTRUE
    COUNT-NAMED-ZERO$ DIRECT-STDIN 67 T=
    {: outu3:n erru3:n :}
    outu3 0 T=
@@ -1276,7 +1274,7 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
-   CAP-ERR erru s" : throw 7121 at '" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"reason\":\"count outside the buffer's extent\"" CONTAINS? TTRUE
    OPERAND-UNDEFINED$ DIRECT-JSON-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
@@ -2800,6 +2798,10 @@ create BIG $2000 allot   variable BIG-U
 \     no `using` open, escaping all-errors uncaught or, in prose, unreported
 \     (REQ-THROW): it is a diagnostic at the statement and the run ends with
 \     the checker's status;
+\   - a storage declaration naming an unknown type in a segment after a
+\     refused one, reported as a throw out of the statement or at the wrong
+\     file, line or column (REQ-SIZE): it is the storage refusal at the type
+\     and the run ends with the checker's status;
 \   - the subject reached again through a require: it is still being expanded,
 \     so the pre-pass expands it once; the run loading its text a second time is
 \     CHK-BUILD-RUN's (dot c79b86b7);
@@ -3048,13 +3050,53 @@ variable REQ-U
    REQ-THROW-FILES
    s" req-throw.f" REQ-ALL-RUN REQ-THROW-AT$ EXPECT-THROW-AT ;
 
-: TEST-REQUIRE-THROW-PROSE ( -- )
-   REQ-THROW-FILES
-   s" req-throw.f" REQ$ {: p:ptr pu:n :}
+: ALL-PROSE-RUN ( ptr u8 n -- n n n )
+   REQ$ {: p:ptr pu:n :}
    RESET
    s" all-errors" OPT
    p pu FILE
-   [: RUN-ACT ;] IN-PROC s" req-throw.f:2:1:" EXPECT-THROW-AT ;
+   [: RUN-ACT ;] IN-PROC ;
+
+: TEST-REQUIRE-THROW-PROSE ( -- )
+   REQ-THROW-FILES
+   s" req-throw.f" ALL-PROSE-RUN s" req-throw.f:2:1:" EXPECT-THROW-AT ;
+
+\ After the loaded file's refusal, the subject sizes a buffer of a type nothing
+\ declares, and the definer refuses the type there.
+: REQ-SIZE-FILES ( -- )
+   SB-RESET s" : CKT-RQ-BROKEN ( n -- n n ) ;" REQ-LINE+
+   s" req-size-dep.f" REQ-WRITE
+   SB-RESET s" req-size-dep.f" REQ-LOAD+
+   s" 4 TYPED-BUFFER CKT-RQ-CELLS ckt-rq-cell" REQ-LINE+
+   s" req-size.f" REQ-WRITE ;
+
+: REQ-SIZE-AT$ ( -- ptr u8 n )
+   s\" req-size.f\",\"line\":2,\"column\":29," ;
+
+\ The first refusal is reported, then the storage refusal at the type it could
+\ not size, which the given text names.
+: EXPECT-SIZE-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s" ckt-rq-broken" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: EXPECT-SIZE-JSON ( n n n -- ) {: outu:n erru:n rc:n :}
+   outu erru rc REQ-SIZE-AT$ EXPECT-SIZE-AT
+   CAP-ERR erru s\" \"code\":\"E-BAD-STORAGE\"" CONTAINS? TTRUE ;
+
+: TEST-REQUIRE-SIZE-ALL ( -- )
+   REQ-SIZE-FILES
+   s" req-size.f" REQ-PLAIN-RUN EXPECT-SIZE-JSON ;
+
+: TEST-REQUIRE-SIZE-ALL-LIST ( -- )
+   REQ-SIZE-FILES
+   s" req-size.f" REQ-ALL-RUN EXPECT-SIZE-JSON ;
+
+: TEST-REQUIRE-SIZE-PROSE ( -- )
+   REQ-SIZE-FILES
+   s" req-size.f" ALL-PROSE-RUN
+   s" req-size.f:2:29: habu: in CKT-RQ-CELLS: unknown type 'ckt-rq-cell'" EXPECT-SIZE-AT ;
 
 \ The default mode reports a statement the checker throws out of as the record
 \ --all-errors writes, at the statement, and fails with the checker's refusal
@@ -3095,6 +3137,28 @@ variable REQ-U
    outu 0 T=
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
+
+\ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
+\ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
+\ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
+\ checker read last. The 250-byte name has a line of its own, under the engine's
+\ 255-byte line.
+: CAP-THROW-FILES ( -- )
+   SB-RESET s" DYNAMIC-BUFFER" REQ-LINE+
+   s" CKT-CT-" SB-APPEND
+   243 0 ?do $4e SB-APPEND-C loop
+   $0a SB-APPEND-C
+   s" n" REQ-LINE+
+   s" cap-throw.f" REQ-WRITE ;
+
+: TEST-CAPACITY-THROW ( -- )
+   CAP-THROW-FILES
+   s" cap-throw.f" REQ-PLAIN-RUN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"n\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" cap-throw.f\",\"line\":3,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
 \ A top-level loader inside a package, or under a file-level `using`, runs its
 \ file in that scope: the file defines into the package and sees the package's
@@ -3228,6 +3292,72 @@ variable REQ-U
    REQ-DUP-FILES
    s" req-dup.f" REQ-PLAIN-RUN EXPECT-ONE-DUPLICATE
    s" req-dup.f" REQ-ALL-RUN EXPECT-ONE-DUPLICATE ;
+
+\ A storage declaration whose definer cannot size its type is the checker's
+\ refusal at the type, in every mode, for every definer that sizes one (dot
+\ 2eb1290e), not a throw out of the pre-pass, which reads a DEFER-LAYOUT-BUFFER
+\ line too. Each declaration below puts its type at column 41.
+: STG-TB$ ( -- ptr u8 n )
+   s" 4 TYPED-BUFFER CKT-STG-TB               ckt-stg-none" ;
+
+: STG-TV$ ( -- ptr u8 n )
+   s" TYPED-VARIABLE CKT-STG-TV               ckt-stg-none" ;
+
+: STG-LB$ ( -- ptr u8 n )
+   s" 4 LAYOUT-BUFFER CKT-STG-LB              ckt-stg-none" ;
+
+: STG-DB$ ( -- ptr u8 n )
+   s" DYNAMIC-BUFFER CKT-STG-DB               ckt-stg-none" ;
+
+: STG-DL$ ( -- ptr u8 n )
+   s" DEFER-LAYOUT-BUFFER CKT-STG-DL          ckt-stg-none" ;
+
+: STG-AT$ ( -- ptr u8 n )
+   s\" stg.f\",\"line\":1,\"column\":41," ;
+
+: EXPECT-STG-JSON ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-BAD-STORAGE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"ckt-stg-none\"" CONTAINS? TTRUE
+   CAP-ERR erru STG-AT$ CONTAINS? TTRUE ;
+
+: EXPECT-STG-PROSE ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" stg.f:1:41: habu: in CKT-STG-" CONTAINS? TTRUE
+   CAP-ERR erru s" : unknown type 'ckt-stg-none'" CONTAINS? TTRUE ;
+
+: STG-CASE ( ptr u8 n -- )
+   SB-RESET REQ-LINE+ s" stg.f" REQ-WRITE
+   s" stg.f" REQ-RUN EXPECT-STG-JSON
+   s" stg.f" REQ-PLAIN-RUN EXPECT-STG-JSON
+   s" stg.f" REQ-ALL-RUN EXPECT-STG-JSON
+   s" stg.f" REQ$ LIST-RUN EXPECT-STG-JSON
+   s" stg.f" ALL-PROSE-RUN EXPECT-STG-PROSE ;
+
+: TEST-STORAGE-TYPE ( -- )
+   STG-TB$ STG-CASE
+   STG-TV$ STG-CASE
+   STG-LB$ STG-CASE
+   STG-DB$ STG-CASE
+   STG-DL$ STG-CASE ;
+
+\ The pre-pass registers what DEFER-LAYOUT-BUFFER publishes, so a definition
+\ calling the accessor or either binder certifies, where each was E-UNDEFINED.
+: STG-DEFER-GOOD$ ( -- ptr u8 n )
+   s" NEWTYPE ckt-dk 0 DEFER-LAYOUT-BUFFER CKT-DK ckt-dk : CKT-DK-AT ( n -- ptr ckt-dk ) CKT-DK ; : CKT-DK-SIZE ( n -- ) CKT-DK-BIND ; : CKT-DK-MORE ( n -- ) CKT-DK-GROW ;" ;
+
+: TEST-STORAGE-DEFER ( -- )
+   STG-DEFER-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED ;
+
+\ The definer's name is refused through the same diagnostic, at the name.
+: TEST-STORAGE-NAME ( -- )
+   SB-RESET s" 4 TYPED-BUFFER CKT:STG:TB n" REQ-LINE+ s" stg.f" REQ-WRITE
+   s" stg.f" REQ-RUN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"token\":\"CKT:STG:TB\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" stg.f\",\"line\":1,\"column\":16," CONTAINS? TTRUE ;
 
 \ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
 \ segments, in order, in one session: both bad defs in b report against b's
@@ -3428,7 +3558,10 @@ POISON-RECORD
    s" check/require-package" [: TEST-REQUIRE-PACKAGE ;] CASE-RUN
    s" check/require-using" [: TEST-REQUIRE-USING ;] CASE-RUN
    s" check/require-cascade" [: TEST-REQUIRE-CASCADE ;] CASE-RUN
-   s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN ;
+   s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN
+   s" check/require-size-all" [: TEST-REQUIRE-SIZE-ALL ;] CASE-RUN
+   s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
+   s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
 
 : TEST-MAIN ( -- )
    T-RESET
@@ -3542,6 +3675,10 @@ POISON-RECORD
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
+   s" check/capacity-throw" [: TEST-CAPACITY-THROW ;] CASE-RUN
+   s" check/storage-type" [: TEST-STORAGE-TYPE ;] CASE-RUN
+   s" check/storage-name" [: TEST-STORAGE-NAME ;] CASE-RUN
+   s" check/storage-defer" [: TEST-STORAGE-DEFER ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

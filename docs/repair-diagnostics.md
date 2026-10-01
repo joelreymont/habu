@@ -13,8 +13,8 @@ Checker diagnostics are newline-delimited JSON objects with
 lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
-each record in the shape its `code` names: a declaration, a span, an input, or
-otherwise a definition.
+each record in the shape its `code` names: a declaration, a storage refusal, a
+span, an input, or otherwise a definition.
 
 Fields:
 
@@ -46,11 +46,13 @@ Fields:
 | `payload_pos` | integer | construct payload mismatch only | 0-based declaration-order index of the variant payload slot whose type failed to unify. Present only with `variant`, and only when the checker pinned the failure to a specific payload cell (absent for whole-row or post-expansion failures). |
 | `arity_expected` | integer | wrong-arity signature only | The family's declared arity, on `E-WRONG-ARITY` / `fix_signature_arity` packets. |
 | `arity_actual` | integer | wrong-arity signature only | The argument count actually written in the signature's family application. Present exactly when `arity_expected` is. |
+| `reason` | string | storage refusal, or a definition refusal with a stated cause | Short cause: on every `E-BAD-STORAGE` record, and on a definition record whose refusal names one, such as `E-INPUT-UNDERFLOW` or a `match` or `construct` form. |
 | `suggestion` | string | required | Human-readable repair hint derived from `repair_class`. |
 
-The current checker JSON intentionally uses `definition_source` rather than
-`source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
-copy or normalize these fields instead of requiring the checker to emit aliases.
+The checker JSON uses `definition_source` where a packet has `source_excerpt`.
+It always carries `suggestion`; `reason` appears only on the records the
+`reason` row names and on a declaration record. Packet builders must copy or
+normalize these fields instead of requiring the checker to emit aliases.
 
 Top-level type-family declaration failures (`NEWTYPE`/`SUMTYPE`) emit a
 declaration-shaped object instead of the definition shape above: code
@@ -61,16 +63,31 @@ Declaration packets never fabricate definition-only fields such as `word`,
 `declared_effect`, `definition_source`, or `return_stack`; source-span fields
 land with the declaration origin plumbing (PLAN item 13).
 
+A storage declaration its definer refuses (`LAYOUT-BUFFER`,
+`DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
+`word` (the declared name as written), `token` (the refused token), `reason`,
+`file` and `suggestion`. The repair class follows the reason:
+`fix_storage_type` for an unknown, malformed or unstorable type,
+`fix_storage_name` for a name with more than one `:` or in a sealed package,
+and `fix_storage_count` for a literal count outside the extent or no count. An
+unknown type names its own token, any other type refusal the whole stored type.
+`tools/check.f` reads the declaration before the run, so there the object also
+carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
+definer under `bin/hb --load` has no record of its token's place and carries
+none. It has no definition fields, and the checker continues past it under
+`--all-errors`, counting it as a refusal.
+
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
 `byte_end`, and `suggestion`, and no definition fields. There are three:
 
 - `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
   threw while the checker checked it, with or without `--all-errors`, such as a
-  storage declaration sizing a type an earlier refusal left undefined. The
-  `token` is the one the checker read last, and the record adds the signed
-  integer `throw_code` it raised. The checker does not continue past that
-  statement in its source, and the run exits 70 as for a refusal. Without
+  `;using` with no `using` open (`E-USING-UNBALANCED`, 7142). The `token` is the
+  one the checker read last, and the record adds the signed integer
+  `throw_code` it raised. The checker does not continue past that statement in
+  its source, and the run exits 70 as for a refusal. Without
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
   throw <throw_code> at '<token>'`.
 - `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
@@ -103,7 +120,7 @@ Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
 from the first diagnostic, in the shape that diagnostic's record has: Schema 1
-has definition, declaration, span and input packet shapes.
+has definition, declaration, storage, span and input packet shapes.
 
 Definition packet fields:
 
@@ -153,6 +170,29 @@ Declaration packets carry only declaration evidence:
 
 Declaration packets do not fabricate `word`, source spans, effects, stack rows,
 or `source_excerpt`.
+
+Storage packets carry a storage record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `word` | string | required | The declared name as written. |
+| `token` | string | required | The refused token. |
+| `reason` | string | required | Short refusal cause. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | with a place | One-based source line. |
+| `column` | integer | with a place | One-based source column. |
+| `byte_start` | integer | with a place | Token start byte. |
+| `byte_end` | integer | with a place | Token end byte. |
+| `code` | string | required | `E-BAD-STORAGE`. |
+| `repair_class` | string | required | `fix_storage_type`, `fix_storage_name` or `fix_storage_count`. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the storage declaration so its definer accepts it. Output only corrected Habu code.` |
+
+The packet copies the record's four place fields when it has them and none when
+it has none, such as a declaration `evaluate` runs; it has no definition fields.
 
 Span packets carry a span record's evidence:
 
@@ -247,6 +287,14 @@ Current checker classes:
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
+- `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+  names an unknown or malformed type, or one its definer cannot store; declare
+  the type before the storage or store a type the definer admits.
+- `fix_storage_name`: a storage declaration's name has more than one `:` or lies
+  in a sealed package.
+- `fix_storage_count`: a storage declaration's literal count is outside the
+  buffer's extent, or the declaration has no count.
 - `rename_duplicate`: a name was defined a second time in one wordlist; rename
   it or `undefine` the first definition.
 - `close_string`: a string literal does not close.
@@ -285,6 +333,9 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |
 | `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
+| `fix_storage_type` | `Declare the type before the storage, or store a closed, copyable type this definer admits.` |
+| `fix_storage_name` | `Name the storage with at most one inner ':', outside a sealed system package.` |
+| `fix_storage_count` | `Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression.` |
 | `rename_duplicate` | `Rename the word or undefine the old definition before redefining it.` |
 | `close_string` | `Close the string literal before the definition ends.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |

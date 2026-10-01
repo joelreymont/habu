@@ -671,6 +671,48 @@ variable LABEL-U
    s" habu-tfam-decl.err" s" declaration diagnostic contract" DIAG-CONTRACT
    s" json-one-schema" s" habu-tfam-decl.err" s" declaration diagnostic schema" GJA1 ;
 
+\ A refusal only the run reads carries no place. tools/check.f runs in its own
+\ process here: an in-process CHECK-JSON whose verdict comes from the run it
+\ spawns captured the right byte count over the previous capture's bytes.
+: RUN-STORAGE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 4 TYPED-BUFFER JSTG-E jstg-none" GE-SRC-S"
+   s"  evaluate" GE-SRC-LINE
+   s" habu-run-storage.f" WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --json-errors" ARG+
+   s" habu-run-storage.f" PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   70 s" tools/check.f accepted refused run-time storage" GE-EXPECT-RC
+   s" habu-run-storage.err" WRITE-ERR
+   s" word" s" JSTG-E" s" run-time storage word" ERR-JSTR
+   s" line" s" run-time storage refusal carries no place" ERR-NO-JKEY
+   s" habu-run-storage.err" s" run-time storage diagnostic contract" DIAG-CONTRACT
+   s" json-one-schema" s" habu-run-storage.err" s" run-time storage schema" GJA1 ;
+
+\ A storage declaration its definer refuses is neither a definition nor a family
+\ declaration: it names the declared word, the refused token and the reason.
+\ One refusal of each repair class, which the pre-pass reads and locates at its
+\ token, then one only the run reads.
+: BAD-STORAGE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 4 TYPED-BUFFER JSTG-T jstg-none" GE-SRC-LINE
+   s" 4 TYPED-BUFFER JSTG:A:B n" GE-SRC-LINE
+   s" 0 TYPED-BUFFER JSTG-C n" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
+   s" habu-bad-storage.err" WRITE-ERR
+   s" code" s" E-BAD-STORAGE" s" storage diagnostic code" ERR-JSTR
+   s" token" s" jstg-none" s" storage type token" ERR-JSTR
+   s" column" s" 23" s" storage type column" ERR-JRAW
+   s" token" s" JSTG:A:B" s" storage name token" ERR-JSTR
+   s" repair_class" s" fix_storage_count" s" storage count repair class" ERR-JSTR
+   s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
+   RUN-STORAGE ;
+
 : ERROR-SOURCE ( -- )
    GE-SRC-RESET
    s" : GDX-AE-OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE

@@ -371,6 +371,12 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_storage_type" s" Declare the type before the storage, or store a closed, copyable type this definer admits."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_storage_name" s" Name the storage with at most one inner ':', outside a sealed system package."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_storage_count" s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression."
+   GJA-SUGGEST-ROW IF exit THEN
    2drop s" unknown repair class in suggestion assertion" GJA-FAIL ;
 
 : GJA-DIAG-CLASS-SUGGEST ( n ptr u8 n -- ) {: root class:ptr classu :}
@@ -395,8 +401,8 @@ variable GJA-DIRECT
 : GJA-NO-FIELD ( n ptr u8 n -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
-: GJA-NO-DEF ( n -- )                    \ none of a definition's own fields
-   dup s" word" GJA-NO-FIELD
+\ The fields only a definition carries.
+: GJA-NO-DEF-FIELDS ( n -- )
    dup s" token_index" GJA-NO-FIELD
    dup s" definition_source" GJA-NO-FIELD
    dup s" declared_effect" GJA-NO-FIELD
@@ -407,15 +413,24 @@ variable GJA-DIRECT
    dup s" return_stack" GJA-NO-FIELD
    s" source_excerpt" GJA-NO-FIELD ;
 
-: GJA-DECL-NO-DEF ( n -- )
-   dup GJA-NO-DEF
+\ None of a definition's own fields.
+: GJA-NO-DEF ( n -- )
+   dup s" word" GJA-NO-FIELD
+   GJA-NO-DEF-FIELDS ;
+
+: GJA-NO-PLACE ( n -- )
    dup s" line" GJA-NO-FIELD
    dup s" column" GJA-NO-FIELD
    dup s" byte_start" GJA-NO-FIELD
    s" byte_end" GJA-NO-FIELD ;
 
+: GJA-DECL-NO-DEF ( n -- )
+   dup GJA-NO-DEF
+   GJA-NO-PLACE ;
+
 \ The code names the shape of every record that is not a definition's: a
-\ declaration, a source span outside any definition, or a refused input.
+\ declaration, a source span outside any definition, a refused input, or a
+\ refused storage declaration.
 : GJA-CODE= ( n ptr u8 n -- bool ) {: root:n code:ptr codeu:n :}
    root s" code" GJA-REQ code codeu GJA-STR= ;
 
@@ -433,6 +448,9 @@ variable GJA-DIRECT
 
 : GJA-INPUT? ( n -- bool )
    s" E-ENGINE-PROVIDED" GJA-CODE= ;
+
+: GJA-STORAGE? ( n -- bool )
+   s" E-BAD-STORAGE" GJA-CODE= ;
 
 : GJA-SPAN-FIELDS ( n -- ) {: root:n :}
    root GJA-NO-DEF
@@ -502,8 +520,29 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Rebuild bin/hb to check this source; no code change answers this diagnostic." GJA-ASSERT-STR ;
 
+\ A storage declaration its definer refuses (src/core/render.f STGR-JSON) names
+\ the declared word, the refused token and the reason. Only a refusal the
+\ pre-pass read carries the token's place, so it has all four place fields or
+\ none.
+: GJA-STORAGE-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF-FIELDS
+   root s" word" GJA-REQ GJA-NONEMPTY-STR
+   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root s" reason" GJA-REQ GJA-NONEMPTY-STR
+   root s" line" GJA-HAS? 0= IF root GJA-NO-PLACE exit THEN
+   root s" line" GJA-REQ-INTF
+   root s" column" GJA-REQ-INTF
+   root s" byte_start" GJA-REQ-INTF
+   root s" byte_end" GJA-REQ-INTF ;
+
+: GJA-REPAIR-STORAGE ( n -- ) {: root:n :}
+   root GJA-STORAGE-FIELDS
+   root s" instruction" GJA-REQ
+   s" Fix the storage declaration so its definer accepts it. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 : GJA-REPAIR-SHAPE ( n -- ) {: root:n :}
    root GJA-DECL? IF root GJA-REPAIR-DECL exit THEN
+   root GJA-STORAGE? IF root GJA-REPAIR-STORAGE exit THEN
    root GJA-SPAN? IF root GJA-REPAIR-SPAN exit THEN
    root GJA-INPUT? IF root GJA-REPAIR-INPUT exit THEN
    root GJA-REPAIR-DEF ;
@@ -554,6 +593,10 @@ variable GJA-DIRECT
    dup s" rejected" GJA-STR= IF drop exit THEN
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
+: GJA-DIAG-STORAGE ( n -- )
+   dup GJA-DIAG-HEAD
+   GJA-STORAGE-FIELDS ;
+
 : GJA-DIAG-THROW-CODE ( n -- ) {: root:n :}  \ only a statement throw has one
    root GJA-THROW? IF root s" throw_code" GJA-REQ GJA-SIGNED-INT exit THEN
    root s" throw_code" GJA-NO-FIELD ;
@@ -570,6 +613,7 @@ variable GJA-DIRECT
 
 : GJA-DIAG-SHAPE ( n -- ) {: root:n :}
    root GJA-DECL? IF root GJA-DIAG-DECL exit THEN
+   root GJA-STORAGE? IF root GJA-DIAG-STORAGE exit THEN
    root GJA-SPAN? IF root GJA-DIAG-SPAN exit THEN
    root GJA-INPUT? IF root GJA-DIAG-INPUT exit THEN
    root GJA-DIAG-COMMON ;

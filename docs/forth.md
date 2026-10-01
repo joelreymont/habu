@@ -1089,7 +1089,7 @@ passing suite.
   growable byte row. It is the one definer that takes `u8`, the only sub-cell
   type with accessors of its own: `DYNAMIC-BUFFER BYTES u8` loads and `0 BYTES
   c@` reads byte 0 (test/dynamic-buffer.f), while `DYNAMIC-BUFFER X u16`
-  throws 7121. `count NAME-RESERVE` allocates at least that many elements and
+  is refused. `count NAME-RESERVE` allocates at least that many elements and
   keeps contents; `index NAME` answers `ptr Type`, rejecting negative and
   beyond-capacity indices; a smaller reserve keeps the allocation; growth may
   move it, so retain indices and reacquire pointers. A growing reserve copies
@@ -1232,18 +1232,30 @@ passing suite.
 
 ## Rules learned by refusal
 
-- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.** `2
-  TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from `STORAGE-VALIDATE`. A
-  byte row is `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`, or a
-  `DYNAMIC-BUFFER` of `u8` (Habu Native Tooling Gotchas).
+- **A storage declaration its definer refuses is the checker's refusal, named
+  and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+  refuse an unknown, malformed or unstorable type, a name with more than one
+  `:` or in a sealed package, and a literal count outside the extent:
+  `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
+  `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
+  reports it as `E-BAD-STORAGE` at the type's file, line and column in every
+  mode (test/load-reject-diag-test.f, tools/check-test-lib.f
+  `check/storage-type`). Nothing is defined. A count only the run can compute
+  is the run's to refuse, with the definer's catchable `E-LAYOUT-BUFFER` (7121).
+- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
+  `2 TYPED-BUFFER TB u8` is refused at the declaration,
+  `habu: in TB: type this definer cannot store 'u8'`. A byte row is
+  `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`, or a `DYNAMIC-BUFFER` of `u8`
+  (Habu Native Tooling Gotchas).
 - **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is any interpret-stack value: a
   literal, a constant's name or an expression.** The source pre-verifier does
   not model the interpret stack, so it reads the token before the definer
   (`verify-source.f` `RECORD-TYPED-BUFFER`, the checker's
   `CHECKER-LBUF-COUNT?`). An integer literal there is the count and is held to
-  the definer's extent bound before the run: `0 TYPED-BUFFER B n` makes
-  `tools/check.f` refuse it from preverify, exit 70 with an `E-STATEMENT-THROW`
-  record of throw code 7121. Any other token leaves the count
+  the definer's extent bound before the run: `0 TYPED-BUFFER B n` is refused
+  by `tools/check.f`'s preverify at the `0`, `E-BAD-STORAGE`, exit 70. Any
+  other token leaves the count
   to the definer: `4 constant N  N TYPED-BUFFER B n` and `N 2 * TYPED-BUFFER B
   n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
   67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
@@ -1508,7 +1520,7 @@ passing suite.
   it afterwards is `E-STALE-READ` (`expected: XML:reader actual:
   stale<XML:reader>`) and dropping it is the linear refusal — a linear cell may
   not be dropped, with or without a catch. `TYPED-VARIABLE V XML:reader` and `1
-  TYPED-BUFFER V XML:reader` both throw **7121** at the declaration, so the
+  TYPED-BUFFER V XML:reader` are both refused at the declaration, so the
   one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The three
   shapes that work: open the handle INSIDE the caught body (`lib/xml-test.f
   BAD`); where the handle must SURVIVE the caught failure, name the body and

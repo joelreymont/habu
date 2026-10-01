@@ -414,12 +414,12 @@ variable CA-JSON
 
 \ ---- a statement that throws while it is checked ----------------------------
 \ The checker reports a definition it refuses and returns, but a statement can
-\ also throw out of it with nothing reported: a storage declaration sizing a
-\ type an earlier refusal left undefined throws E-CHECKER-LAYOUT-BUFFER. That
-\ throw is reported as E-STATEMENT-THROW at the token the checker read last,
-\ after whatever it reported before it, and fails the source like a refusal, so
-\ the run ends with the checker's status. The rest of the source is not checked.
-\ Both renderings are built in the JSON writer's buffer.
+\ also throw out of it with nothing reported: a `;using` with no `using` open
+\ throws E-USING-UNBALANCED. That throw is reported as E-STATEMENT-THROW at the
+\ token the checker read last, after whatever it reported before it, and fails
+\ the source like a refusal, so the run ends with the checker's status. The
+\ rest of the source is not checked. Both renderings are built in the JSON
+\ writer's buffer.
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 

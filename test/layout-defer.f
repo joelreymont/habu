@@ -130,9 +130,9 @@ variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ INCLUDE-EVALUATE ;
 : DFL-EVAL ( ptr u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
-s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL E-LAYOUT-BUFFER T=
+s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=
 s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL $4E T=      \ redefinition of the accessor
-s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL E-LAYOUT-BUFFER T=
+s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
 
 \ armed-window state stays sealed (no user handle to the one-shot boundary)
 s" LBUF-PEND!" 0 search-wl 0= -1 T=
