@@ -8166,23 +8166,22 @@ ardone LBL,
    EMIT-SOURCE ;
 
 \ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
-\ compile-error recovery rolls the ENGINE package scope back to the boundary
-\ (PKGSNAP / RPKG); the checker keeps its OWN package scope (CHECKER-PACKAGE-MODE/
-\ NAME/U). Rolling back one without the other would introduce an engine/checker
-\ desync (today both dangle together). The recovery legs arm PKGRESYNC-CELL; this
-\ runs once at the LMAIN loop top and, when the restored engine scope is GLOBAL
-\ (PKG-PUB==0), resets the checker to NONE via the existing global checker-end-package
-\ so the pair stays consistent. (Exotic residual, dotted: a package legitimately open
-\ ACROSS the boundary whose failing input also changed package scope leaves the
-\ checker at the inner scope; the engine still restores the boundary correctly.)
-\ Hot path is one LDR + CBZ per token when the flag is clear.
+\ throw's recovery rolls the ENGINE package scope back to the boundary (PKGSNAP /
+\ RPKG); the checker keeps its OWN package mirror (CHECKER-PACKAGE-MODE/NAME/U),
+\ which the failed input's `package` and `;package` moved. The recovery legs arm
+\ PKGRESYNC-CELL; this drain clears it and has the target checker re-read the
+\ restored scope (checker.f CHECKER-PACKAGE-RESYNC), whatever that scope is: when
+\ it reset the checker only for a GLOBAL scope, a package open across the
+\ boundary whose failing input closed it left the checker at top level, and the
+\ next inherited replay refused E-PKG-CONTEXT. LEVALREC drains before it
+\ delivers the throw; the LMAIN loop top drains the REPL leg's. Hot path is one
+\ LDR + CBZ per token when the flag is clear.
 : EM-PKG-RESYNC ( -- )
    LBL {: nosync:label :}
    9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
       9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
-      9 DATA PKG-PUB-CELL LDR,  9 nosync CBNZ,        \ engine scope non-global -> leave the checker as is
-         NCOMP-DISPATCH:DECL-END-PACKAGE-OFF nosync DECL-OWNER:TARGET          \ x11 = checker-end-package XT (nosync if absent: cold load / no checker)
-         C-CALL-X11-SAVED
+      NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF nosync DECL-OWNER:TARGET   \ x11 = the checker's resync (nosync if absent: cold load / no checker)
+      C-CALL-X11-SAVED
    nosync LBL, ;
 
 \ A unit hook is reached by the real interpret, package and immediate paths.
@@ -10437,13 +10436,20 @@ public
       9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
-      9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained at next LMAIN)
+      9 10 PKGSNAP-FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
+      9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
       LEVLL LABEL@ B,
    LEVLD LABEL@ LBL,
+   \ The handler is compiled code and may ask the checker at once, before any
+   \ LMAIN top: the checker re-reads the restored package scope here. Its call
+   \ owns every caller-saved register, so x11 and x15 ride on the stack.
+   SP SP 16 SUBI,  11 SP 0 STR,  15 SP 8 STR,
+   EM-PKG-RESYNC
+   11 SP 0 LDR,  15 SP 8 LDR,  SP SP 16 ADDI,
    9 15 0 ADDI,                                       \ x9 = code
    11 LEVLN LABEL@ CBZ,
    \ handler-frame integrity (same contract as habu1.f BTHROW): validate before any restore store
@@ -10542,6 +10548,8 @@ public
    9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ roll the using-scope depth back to this REPL line's snapshot
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
+   9 DATA RPKG-FLOOR LDR,                                         \ and the line-start using floor
+   10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
@@ -10892,6 +10900,8 @@ public
    9 DATA PKG-REC-CELL LDR,   9 DATA RPKG-REC STR,
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
+   10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ and the open package's using floor
+   9 DATA RPKG-FLOOR STR,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX: a definition may span lines, and the reader is compiled code
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,

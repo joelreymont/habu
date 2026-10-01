@@ -494,10 +494,11 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
-\ and INE ([frame+8]) so a nested evaluate restores it. It is the last free slot
-\ of the frame: PKGSNAP ends at EVAL-PKG + PKGSNAP-USE + 8 = $78 and
-\ STACK-ABI:EVAL-BASE opens at $80, so the frame does not grow.
-$78 constant EVAL-INB
+\ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
+\ EVAL-PKG..$80 (its last cell, PKGSNAP-FLOOR, is $78) and STACK-ABI:EVAL-BASE
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90 and STACK-ABI:EVAL-BYTES
+\ rounds the frame to $A0, keeping the native stack 16-byte aligned.
+$90 constant EVAL-INB
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
 \ Every engine load refusal that reaches the LCOMPILEDIE tail names the source it
@@ -546,6 +547,12 @@ $2790 constant RPKG-PRI
 $2798 constant RPKG-PARENT
 $27A0 constant RPKG-REC
 $27C0 constant PKGRESYNC-CELL
+\ RPKG-FLOOR: the line-start using floor (USE-PKG-SAVE-CELL), restored with the
+\ five cells above; PKGSNAP-FLOOR below says why. The $27xx band is full, so it
+\ takes $4810, the first cell above STACK-ABI:LOOP-BASE-CELL in the run below
+\ TXN-STATE-OFF ($5000), swept for a claimant across src lib tools test maki
+\ bootstrap and claimed in src/habu/data-claims.f.
+$4810 constant RPKG-FLOOR
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -1075,6 +1082,7 @@ CHECKER-OWNER-ABI:WIDE-OFF constant DECL-WIDE-OFF
 CHECKER-OWNER-ABI:RESET-OFF constant DECL-RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
+CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
 \ Everything below is the OPTIMIZING front end's half of the same record, and it
 \ is why the record exists at all for tier 1. That front end IS the checker's
 \ scan: the scan feeds the source tape the elaborator reads, answers the does>
@@ -1521,12 +1529,16 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 \ Evaluator entry snapshots package/search state in its native stack frame.
 \ Clean exit restores using depth; throw recovery also restores package scope.
 \ Package/search snapshots are fields of each native-stack evaluator frame.
+\ PKGSNAP-FLOOR is the open package's using floor (USE-PKG-SAVE-CELL): a
+\ buffer that closes the package, opens another and throws set that cell to
+\ the other package's floor, which the restored package then kept.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
 40 constant PKGSNAP-USE
+48 constant PKGSNAP-FLOOR
 
 
 \ --- `using`-scope import band (dot habu-using-import-pkg-a07dd7ba) ---

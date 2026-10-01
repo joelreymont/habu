@@ -141,6 +141,51 @@ s" ;package : UT-QF ( -- n ) AW ;" VS-CATCH E-REJECT T=
 s" using UB BW drop ;using" UCE-CATCH 0 T=
 s" using UB ;using" VS-CATCH 0 T=
 s" ;package AW drop" UCE-CATCH E-REJECT T=
+\ A throw puts back the package scope its buffer entered with, and the checker's
+\ package mirror follows: UQF is open again, the verifier's inherited replay
+\ agrees, and a clean buffer in between changes nothing. The mirror used to stay
+\ at the top level the `;package` left it, so every replay refused E-PKG-CONTEXT.
+s" 1 drop" VS-CATCH 0 T=
+s" 2 drop" UCE-CATCH 0 T=
+s" 1 drop" VS-CATCH 0 T=
+;package
+
+\ The mirror follows before the throw reaches its handler, so a handler may ask
+\ the verifier at once: one compiled word catches the buffer and replays. The
+\ first reopens the package the buffer closed, the second closes the one it
+\ opened.
+: UT-REOPEN ( -- n n )  s" ;package AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+: UT-RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+s" package UQS" UCE-CATCH 0 T=
+UT-REOPEN 0 T= E-REJECT T=
+;package
+UT-RECLOSE 0 T= E-REJECT T=
+s" package UQU ;package" UCE-CATCH 0 T=
+
+\ The package's using floor comes back with it. The buffer closes UQP, opens a
+\ using and UQR, and throws: UQP used to keep UQR's floor, one above its depth,
+\ so its own `;using` was refused as outer, the replay seeded that floor, and
+\ `;package` restored the depth to it, reopening the using a failed buffer
+\ left in that slot (here the refused one's UA).
+package UQP
+s" ;package using UB package UQR AW drop" UCE-CATCH E-REJECT T=
+s" using UA ;using" UCE-CATCH 0 T=
+s" using UA ;using" VS-CATCH 0 T=
+;package
+s" AW drop" UCE-CATCH E-REJECT T=
+
+\ A package scope the engine cannot authenticate, because the current wordlist
+\ is neither of the package's own, names nothing to copy into the mirror: the
+\ mirror keeps UQV through the throw, and once current is back the replay
+\ agrees instead of refusing E-PKG-CONTEXT. The buffer goes through the engine's
+\ `evaluate`, which refuses that scope with a catchable reject and leaves its two
+\ input cells behind; INCLUDE-EVALUATE ends the process there instead.
+package UQV
+variable UQV-CUR  get-current UQV-CUR !
+0 set-current
+s" 1 drop" ' evaluate catch E-REJECT T= 2drop
+UQV-CUR @ set-current
+s" 1 drop" VS-CATCH 0 T=
 ;package
 
 \ === global-vs-used-public shadow (dot habu-err-on-global-e62f806c) ===

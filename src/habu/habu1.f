@@ -1446,6 +1446,8 @@ variable SZA-I
    \ included file that opens usings has them rolled back to this boundary on clean
    \ exit (EM-EVAL-CLEAN-EXIT) and on throw (LEVALREC) — usings are file-local.
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
+   \ and the open package's using floor, which a throw restores with the package
+   11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-FLOOR STR,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)

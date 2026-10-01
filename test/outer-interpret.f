@@ -703,6 +703,76 @@ variable WANT-RC
    S\" 2\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
 
+\ ---- the package scope after a caught throw ----------------------------------------
+\ A throw puts back the package scope its buffer entered with on both loops:
+\ the open package, the using depth and the package's using floor, and the
+\ checker's package mirror follows before the handler runs. OI-VS replays a
+\ source through the verifier, which refuses E-PKG-CONTEXT (7136) when the
+\ mirror and the engine name different packages; OI-VS2 replays a using the
+\ package opened and closes it, which the replay judges against the engine's
+\ floor. Both are defined through `evaluate` because the Habu loop cannot end a
+\ definition, and the verifier loads in the second prelude slot, before the
+\ loop switches, for the same reason.
+: PKG-VERIFY-PRELUDE ( -- )
+   GE-SRC-RESET
+   s" require src/habu/verify-source.f" GE-SRC-LINE
+   s" oi-verify-prelude.f" SPIN-BUF GT-PATH SPIN-U !
+   SPIN$ SRC>FILE ;
+
+: PKG-VS-LINE ( -- )
+   s" S\~ : OI-VS ( -- n ) [: s\~ 1 drop\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
+   s" S\~ : OI-VS2 ( -- n ) [: s\~ using OI-FXA ;using\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE ;
+
+\ The source text as the nested file named.
+: PKG-NESTED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   name nameu NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE ;
+
+\ Each case prints the include's 70 and the verifier's 0, then shows the
+\ restored scope: a file that closed OI-Q left it open, one that opened OI-T
+\ left none, and an engine evaluate inside the Habu loop recovers the same
+\ way. The floor case closes OI-P, opens a using and OI-R, and throws: OI-P's
+\ own using closes, and `;package` reopens nothing, so OI-TWIN is undefined.
+: PACKAGE-RECOVERY ( -- )
+   s" package OI-Q" s" oi-nested-pkg-open.f" PKG-NESTED
+   s" ;package OI-NOPE" s" oi-nested-pkg-close-throw.f" PKG-NESTED
+   s" package OI-T OI-NOPE" s" oi-nested-pkg-throw.f" PKG-NESTED
+   s" ;package using OI-FXB package OI-R OI-NOPE" s" oi-nested-floor-throw.f" PKG-NESTED
+   PKG-VERIFY-PRELUDE
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" include oi-nested-pkg-open.f" GE-SRC-LINE
+   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . OI-VS . ;package 5 ." QLINE
+   s" oi-pkg-reopen.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" s~ oi-nested-pkg-throw.f~ ' included catch . OI-VS . package OI-V ;package 5 ." QLINE
+   s" oi-pkg-reclose.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . OI-VS . ;package 5 ." QLINE
+   s" oi-pkg-evaluate.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" package OI-P" GE-SRC-LINE
+   s" s~ oi-nested-floor-throw.f~ ' included catch . OI-VS2 . using OI-FXA ;using ;package OI-TWIN" QLINE
+   s" oi-pkg-floor.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 70\n0\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   0 SPIN-U ! ;
+
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
 : EXPORT-TOP-LEVEL ( -- )
@@ -1286,6 +1356,7 @@ private
    TICK-USED
    USING-SHADOW
    USING-ACROSS-PACKAGE
+   PACKAGE-RECOVERY
    EXPORT-TOP-LEVEL
    EXPORT-ALIASES
    EXPORT-REFUSALS

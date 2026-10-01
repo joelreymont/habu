@@ -189,7 +189,7 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$90 constant STACK-ABI:EVAL-BYTES
+$A0 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself

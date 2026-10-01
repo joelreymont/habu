@@ -118,6 +118,7 @@ create OWNER-STORAGE
    0 , 0 , 0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -135,7 +136,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:FIELD-SPAN-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:PKG-RESYNC-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10335,6 +10336,35 @@ package CHECKER-REG
    0 CHECKER-PACKAGE-U ! ;
 package CHECKER-REG
 ' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
+;package
+
+\ A throw's recovery puts the engine's package scope back to its boundary's
+\ (src/habu/habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
+\ INTERPRET), but the notifications above told the mirror what the failed
+\ input did: a buffer that closed the package an earlier buffer opened and then
+\ threw left the mirror at top level while the engine had the package open
+\ again, and every inherited replay after it refused E-PKG-CONTEXT. The mirror
+\ is therefore set from the restored scope, which the live provider names,
+\ with the floor the engine restored beside it. A scope the provider cannot
+\ authenticate names no package or mode to copy. With a package open (the
+\ current wordlist is neither of the package's own, say) the mirror keeps what
+\ the notifications set, so it agrees again once current is back; with none
+\ open it is top level. A replay owns its mirror, so a recovery inside one
+\ leaves it alone.
+: CHECKER-PACKAGE-RESYNC ( -- )
+   CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
+   PKG-LIVE-XT {: a:ptr u:n mode:n ok:bool :}
+   ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
+   ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
+      CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
+      0 CHECKER-PACKAGE-U !
+      EXIT
+   THEN
+   a u CHECKER-PACKAGE-COPY
+   mode CHECKER-PACKAGE-MODE !
+   CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N ! ;
+package CHECKER-REG
+' CHECKER-PACKAGE-RESYNC DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
 ;package
 
 

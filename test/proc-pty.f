@@ -679,6 +679,31 @@ variable PTY-LONG-U
    PTY-PKGSCOPE-FRESH
    PTY-PKGSCOPE-GLOBAL ;
 
+\ The package's using floor comes back with the scope (dot
+\ habu-restore-pkg-state-d09394b9). The failing line closes PRF2, opens a using
+\ and PRF3, and aborts: recovery reopens PRF2 with its own floor, so a using
+\ PRF2 opens closes again. Before the fix PRF2 kept PRF3's floor, one above its
+\ depth, and that `;using` was refused as closing an outer using.
+: PTY-PKGFLOOR-OPEN ( -- )
+   s" package PRF1 ;package package PRF2" STEP-LN
+   s"  ok" PROMPT-AFTER ;
+
+: PTY-PKGFLOOR-FAIL ( -- )
+   s" ;package using PRF1 package PRF3 NOPEWORD" STEP-LN
+   s" E-UNDEFINED: NOPEWORD" PROMPT-AFTER
+   PROBE-BARRIER
+   s"  ok" REJECT ;
+
+: PTY-PKGFLOOR-CLOSE ( -- )                       \ the hex literal's decimal is in nothing the line editor echoed
+   s" using PRF1 ;using ;package $C0DE ." STEP-LN
+   s" 49374" EXPECT
+   s"  ok" PROMPT-AFTER ;
+
+: PTY-PKGFLOOR-RECOVERY ( -- )
+   PTY-PKGFLOOR-OPEN
+   PTY-PKGFLOOR-FAIL
+   PTY-PKGFLOOR-CLOSE ;
+
 \ The barrier itself, against the live child. An absence claim over a buffer the
 \ child has not answered into is granted by the harness's own silence: a drain
 \ that returned on its first quiet poll leaves exactly that buffer. One leg has
@@ -832,6 +857,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-THROW-RECOVERY
    PTY-COMPILE-RECOVERY
    PTY-PKGSCOPE-RECOVERY
+   PTY-PKGFLOOR-RECOVERY
    PTY-REJECT-BARRIER ;
 
 : PTY-HB ( -- )
