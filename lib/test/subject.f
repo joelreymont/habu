@@ -59,9 +59,7 @@ TRUSTED: EVAL ( -- )
 
 \ `run-in-stack` owns the active allocation, including its floor and capacity.
 \ The fork child must enter evaluation with no catch or TTY recovery handler.
-\ This raw runtime-cell boundary is tracked by the same active capability dot.
-\ Retirement owner: habu-batch-candidate-valid-517bfb6f.
-TRUSTED: STACK-ARM ( -- )
+: STACK-ARM ( -- )
    0 data-base HND-CELL + !
    0 data-base REPLH-CELL + ! ;
 

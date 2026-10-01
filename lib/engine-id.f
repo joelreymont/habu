@@ -71,7 +71,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    getpid EID-PATH EID-PATH-CAP SELF-PATH
    dup 0 <= over EID-PATH-CAP >= or if drop 0 then ;
 
-TRUSTED: ENGINE-SELF-LINUX ( -- n )
+: ENGINE-SELF-LINUX ( -- n )
    EID-PROC-EXE EID-PATH EID-PATH-CAP readlink
    dup 0 < if drop 0 then ;
 

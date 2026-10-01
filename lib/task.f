@@ -1219,12 +1219,10 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \ its does> body already read `@ data-base +`, and the offsets it hands out are
 \ bounded by TASK-USER-END, inside every region.
 
-\ CREATE/DOES> publishes a typed TCB address, outside checker inference.
-\ Retirement owner: habu-typed-defining-words-aa224eb5.
-\
-\ The body is still TASK-TCB-BYTES; the cell after it is this TCB's chain link,
+\ CREATE/DOES> publishes a typed TCB address. The body is still
+\ TASK-TCB-BYTES; the cell after it is this TCB's chain link,
 \ taking the head the definition found and leaving its own address there.
-TRUSTED: TASK ( n -- )
+: TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
    create
@@ -1277,8 +1275,7 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 
 \ CREATE/DOES> publishes owner-tracked pthread mutex storage, shared by every
 \ task (see the address-kind note above).
-\ Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: FACILITY ( -- )
+: FACILITY ( -- )
    TASK-ALIGN8
    create TASK-FACILITY-BYTES allot
    does> ( -- ptr n ) ;

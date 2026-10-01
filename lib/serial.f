@@ -191,7 +191,7 @@ TRUSTED: GET-CALL ( -- n )
    GET-CALL C-INT ;
 
 
-TRUSTED: SET-CALL ( -- n )
+: SET-CALL ( -- n )
    GET-CALL ;
 
 
