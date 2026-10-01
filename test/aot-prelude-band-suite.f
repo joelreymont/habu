@@ -42,6 +42,10 @@
 \               the same way and still named, but placed BELOW the band instead of
 \               inside it. The pair is what shows the band classifies the address
 \               rather than decorating every refusal with the same sentence.
+\   site/empty  SEVEN branches to the does>-clause of a package definer named MK:,
+\               whose qualified name AOT-BAND-SITE:MK:;does holds two colons and
+\               resolves nowhere: refused by the name audit, which runs after this
+\               band's and needs a capture in a booted engine just as much.
 \
 \ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
 \ it used to be declared by a call of its own, so "the tool declared the band and
@@ -49,7 +53,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: six child bin/hb runs, no metabuild. Registered as
+\ Cost: eight child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -106,6 +110,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 
 : CALL-CASE ( ptr u8 n -- ) s" test/aot-band-call.f" 2swap RUN-CASE ;
 : DATA-CASE ( ptr u8 n -- ) s" test/aot-band-data.f" 2swap RUN-CASE ;
+: SITE-CASE ( ptr u8 n -- ) s" test/aot-band-site.f" 2swap RUN-CASE ;
 
 \ The diagnostic goes to stdout ahead of the die, so both streams are searched:
 \ which one carries it is the engine's business, not this suite's.
@@ -174,6 +179,13 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" in the prelude band" SAID? 0= TTRUE
    s" below this process's own start" SAID? TTRUE ;
 
+: PROBE-SITE-UNNAMED ( -- )
+   s" empty" SITE-CASE
+   s" a call site whose name resolves nowhere is refused" T-LABEL
+   s" aot-capture: a call site's name does not resolve the way the seed asks" REFUSED
+   s" ... naming the qualified spelling it would have baked" T-LABEL
+   s" bakes the name AOT-BAND-SITE:MK:;does" SAID? TTRUE ;
+
 : BODY ( -- )
    SETUP
    PROBE-CALL-REFUSED
@@ -182,7 +194,8 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-MARK-ABOVE
    PROBE-DATA-MARK-ABOVE
    PROBE-DATA-REFUSED
-   PROBE-DATA-BELOW ;
+   PROBE-DATA-BELOW
+   PROBE-SITE-UNNAMED ;
 
 public
 

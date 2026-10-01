@@ -299,14 +299,14 @@ variable XREF-QI
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
-   XREF-START {: qwid:n :}
+   XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
 : XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
-   XREF-START {: qwid:n :}
+   XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
 
 : XREF-FIND ( ptr u8 n -- ptr n )

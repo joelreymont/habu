@@ -39,6 +39,10 @@ TRUSTED: AOT-DBASE-N ( -- n ) dbase@ ;
 TRUSTED: AOT-DATA-N ( -- n ) data-base ;
 TRUSTED: AOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
+\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
+\ WLFIND). The primitive is trusted-only by its own row (prims.f), as for
+\ outer.f FIND-PROBE.
+TRUSTED: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
@@ -629,8 +633,19 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    loop
    -1 ;
 
-: ACAP-PKG-PUB ( n -- n ) {: w:n :}               \ the package row publishing wid w, or -1
-   w 0 0= ACAP-PKG-ROW ;
+\ The package row publishing wid w, or -1, from the target index rather than the
+\ walk above, because the call scan asks it once per site into a package: 417 of
+\ the compiler chain's 7020 capture samples were that walk. The index holds every
+\ record under its [0], a package row's [0] is its public wid, and an ordinary
+\ record's [0] is a code entry, which no wordlist number reaches. So the lowest
+\ record the index answers for w is the row the walk finds, unless it is a
+\ retired one - and a wid is allocated once (habu1.f BWORDLIST counts up), so no
+\ live row carries the wid of a retired one.
+: ACAP-PKG-PUB ( n -- n ) {: w:n :}
+   w ACAP-TGT>REC {: p:n :}
+   p 0 < if -1 exit then
+   p AOT-REC AOT-RWID DICT-WL:NAMESPACE = if p exit then
+   -1 ;
 
 : ACAP-QUAL$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n wa:ptr wu:n :}
    pu wu + 1+ ACAP-QUAL-CAP > if
@@ -1619,10 +1634,38 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-XREF-XT ( ptr n -- n )
    dup XREF-FOUND? if XREF-START exit then drop 0 ;
 
-: ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
-   w WID-QUAL = if a u XREF-FIND ACAP-XREF-XT exit then
-   a u w XREF-FIND-WL ACAP-XREF-XT ;
+\ ONE PROBE PER SITE, NOT ONE PASS. The lookup is the engine's one-wordlist search
+\ (habu1.f WLFIND), the routine EM-AOT-PATCH-NAMED-SITES calls for a scoped site,
+\ and it answers from the dictionary's hash index. xref.f XREF-FIND-WL answers the
+\ same question by walking every record down from the newest, and asked once per
+\ call site that walk was the capture: 99% of CAPTURE's profile samples on a
+\ 1024-filler window and 92% on the compiler chain, growing as sites times records.
+: ACAP-WL-XT ( ptr u8 n n -- n ) AOT-WL-RECORD ACAP-XREF-XT ;
 
+\ A qualified name splits where xref.f XREF-FIND splits it - at its one colon, with
+\ a second colon resolving nothing and an edge colon leaving the name bare - and
+\ each half is one probe: the qualifier in the namespace wordlist, the tail in the
+\ public wordlist that package row carries.
+: ACAP-QUAL-XT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = if 0 exit then
+   q 0 < if a u 0 ACAP-WL-XT exit then
+   a q DICT-WL:NAMESPACE AOT-WL-RECORD {: ns:ptr :}
+   ns XREF-FOUND? 0= if 0 exit then
+   a q 1+ +  u q - 1-  ns XREF-PKG-PUBLIC  ACAP-WL-XT ;
+
+: ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
+   w WID-QUAL = if a u ACAP-QUAL-XT exit then
+   a u w ACAP-WL-XT ;
+
+\ The probe misses a live callee asked under its own name and scope only where
+\ that name does not identify it, and both such names belong to a does>-clause
+\ record, which J-DOES names after its definer (habu2.f DOES-REC) without the
+\ duplicate wall. A public definer whose tail ends in a colon has a clause whose
+\ qualified spelling holds two colons, which the qualifier path refuses
+\ (test/aot-band-site.f). And a clause's name can already be live in its
+\ wordlist - a word defined as X;does, or the clause of a definer `undefine`
+\ replaced, which stays live - and the probe answers that older row.
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .
    s" bakes the name " type a u type
