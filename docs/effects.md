@@ -246,9 +246,13 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   `extent-`, `mask-`, `block-`, `geom-`, `parity-`, `align-`, `fresh-region-`,
   `fresh-extent-`, `fresh-gen-`, `fresh-mask-`); a family tail any package
   declares, private or public, and `PKG:tail` for PKG's own family; and a
-  token holding `<`, `>`, `,` or `)`. A token holding `(` or `"` is refused
-  too: in source it opens a comment or a string (`(`, `.(`, `s"`), which
-  `tools/check.f` would read in place of the name. The family test spans every
+  token holding `<`, `>`, `,` or `)`. A token holding `(`, `"` or `\` is
+  refused too, wherever the byte sits: source names the type again, and there
+  such a token can open a comment, a string or a line comment (`(`, `.(`, the
+  `s"` family, a `\`-initial token) for `tools/check.f`, which would read a
+  value-record field typed `\` as the rest of its line commented out. Refusing
+  the byte spares the loader a copy of that tool's opener list, so `a(b` is
+  refused although both read it as one word. The family test spans every
   package because the owning package reads its family first, so a private
   tail or one two packages publish would shadow the declared type there.
   `VALUE-RECORD` and `tools/check.f` refuse the same names; `CELL` is a legal

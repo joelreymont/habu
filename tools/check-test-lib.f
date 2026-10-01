@@ -933,10 +933,10 @@ variable LONG-J
 \ An effect spells a DEFLINEAR or VALUE-RECORD type exactly as it was declared,
 \ so `CELL` and `PTR` are types of their own beside `cell` and `ptr`. A single
 \ upper-case letter at the head of a stack is a row variable, and `--`, `[` and
-\ `)` are effect syntax, so no effect could name such a type. A `(` or `"` opens
-\ a comment or string in the source the check tool lexes, so that tool would
-\ read the declaration as one. The loader and the check tool must refuse exactly
-\ those names; each source below declares one and uses it.
+\ `)` are effect syntax, so no effect could name such a type. A `(`, `"` or `\`
+\ can open a comment, a string or a line comment where source names the type
+\ again (checker.f TYPE-BAD-BYTE?). The loader and the check tool must refuse
+\ exactly those names; each source below declares one and uses it.
 : NOM-LIN$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" DEFLINEAR " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
@@ -2354,8 +2354,10 @@ create BIG $2000 allot   variable BIG-U
    s" [" LIN-REFUSED
    s" a)b" LIN-REFUSED
    s" (" LIN-REFUSED
+   s" \" LIN-REFUSED
    s" R" REC-REFUSED
    s" (" REC-REFUSED
+   s" \" REC-REFUSED
    NOM-LIN-QUOTE$ HB-LOAD-SRC NOM-LOAD-REFUSED
    NOM-LIN-QUOTE$ NOM-CHECK-REFUSED ;
 
@@ -2380,11 +2382,12 @@ create BIG $2000 allot   variable BIG-U
 
 \ A definer takes its name with parse-name: the next whitespace-delimited token,
 \ whatever it spells, so `package (` names the package `(` and `: \` the word
-\ `\`, while `DEFLINEAR (` reads the name `(` and refuses it as a type. Each
-\ source declares such a name on its first line. The second line opens with a
-\ comment or with a reserved word, so a stage that lexed the name as a comment
-\ opener would take that token for the name, or none. Every stage of the check
-\ must reach the loader's verdict, and a refusal names the same token.
+\ `\`, while `DEFLINEAR (` and `DEFLINEAR \` read the names `(` and `\` and
+\ refuse them as types. Each source declares such a name on its first line. The
+\ second line opens with a comment or with a reserved word, so a stage that
+\ lexed the name as a comment opener would take that token for the name, or
+\ none. Every stage of the check must reach the loader's verdict, and a refusal
+\ names the same token.
 : OPERAND-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n b:ptr v:n :}
    SB-RESET
    a u SB-APPEND $0a SB-APPEND-C
@@ -2411,10 +2414,11 @@ create BIG $2000 allot   variable BIG-U
    outu2 0 T=
    CAP-ERR erru2 w wu CONTAINS? TTRUE ;
 
-\ A DEFLINEAR or VALUE-RECORD name holding `(` opens a comment in source, so the
-\ loader refuses it (checker.f TYPE-BAD-BYTE?). The check refuses it at the name
-\ the loader read, not at the comment opening the next line: `at` is the
-\ packet's token, its index and its place.
+\ A DEFLINEAR or VALUE-RECORD name holding `(` or `\` can open a comment or a
+\ line comment where source names the type again, so the loader refuses it
+\ (checker.f TYPE-BAD-BYTE?). The check refuses it at the name the loader read,
+\ not at the comment opening the next line: `at` is the packet's token, its
+\ index and its place.
 : NOM-OPERAND-REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n at:ptr atu:n :}
    a u AFTER-COMMENT$ OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-REFUSED
    a u AFTER-COMMENT$ OPERAND-SRC$ DIRECT-JSON-STDIN 70 T=
@@ -2424,10 +2428,6 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru at atu CONTAINS? TTRUE ;
 
 : TEST-OPERAND-NAME-ADMITTED ( -- )
-   s" \" LIN-ADMITTED
-   s" \" REC-ADMITTED
-   s" DEFLINEAR \" AFTER-COMMENT$ OPERAND-ADMITTED
-   s" VALUE-RECORD \ x n END-VALUE-RECORD" AFTER-COMMENT$ OPERAND-ADMITTED
    s" package ( ;package" AFTER-COMMENT$ OPERAND-ADMITTED
    s" package \ ;package" AFTER-COMMENT$ OPERAND-ADMITTED
    s" : \ ( -- n ) 1 ;" AFTER-RESERVED$ OPERAND-ADMITTED
@@ -2441,6 +2441,12 @@ create BIG $2000 allot   variable BIG-U
    NOM-OPERAND-REFUSED
    s" VALUE-RECORD ( x n END-VALUE-RECORD"
    s\" \"token\":\"(\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":14,"
+   NOM-OPERAND-REFUSED
+   s" DEFLINEAR \"
+   s\" \"token\":\"\\\\\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":11,"
+   NOM-OPERAND-REFUSED
+   s" VALUE-RECORD \ x n END-VALUE-RECORD"
+   s\" \"token\":\"\\\\\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":14,"
    NOM-OPERAND-REFUSED
    s" require lib/type/deftype.f DEFTYPE (" s" '('" OPERAND-REFUSED
    s" require lib/type/deftype.f DEFTYPE \" s" '\'" OPERAND-REFUSED

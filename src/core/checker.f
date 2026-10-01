@@ -4579,14 +4579,21 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 \ `)` (41) cuts short. The family test spans the registry because the name is
 \ global: a private tail, or a public one two packages share, is not resolved
 \ from the declaring scope, yet its owning package reads it as the family.
-\ A `(` (40) or `"` (34) is refused because in source it opens a comment or a
-\ string (`(`, `.(`, `s"`), which tools/check.f's lexer reads where the loader
-\ reads the name.
+\ A name holding `(` (40), `"` (34) or `\` (92) is refused wherever that byte
+\ sits. Source names the type again after declaring it, and there a token
+\ holding one of these bytes can open a comment, a string or a line comment
+\ (`(`, `.(`, the `s"` family, a `\`-initial token) for tools/check.f's lexer,
+\ which reads it only where a declaring word takes its name raw: after
+\ `DEFLINEAR \`, a value-record field typed `\` loads, while check.f reads the
+\ rest of that line as a comment and reports a missing END-VALUE-RECORD.
+\ Refusing the byte spares the loader a copy of that lexer's opener list, so
+\ `a(b`, which both read as one word, is refused too.
 : TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
    c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
    c 41 = IF RES-TRUE EXIT THEN
    c 40 = IF RES-TRUE EXIT THEN
-   c 34 = ;
+   c 34 = IF RES-TRUE EXIT THEN
+   c 92 = ;
 : TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup u < while
       a over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN

@@ -1296,19 +1296,20 @@ passing suite.
   the tree defines words that take no operand under both spellings, so the
   token after one is an ordinary token.
 - **A definer's name is read as the loader reads it, by every stage of
-  `tools/check.f`.** The loader takes it with `parse-name`, so `DEFLINEAR \`
-  declares the type `\`, `VALUE-RECORD \ x n END-VALUE-RECORD` the record `\`,
-  `package ( ;package` the package `(` and `: \ ( -- n ) 1 ;` the word `\`. The
+  `tools/check.f`.** The loader takes it with `parse-name`, so
+  `package ( ;package` names the package `(`, `: \ ( -- n ) 1 ;` the word `\`
+  and `DEFLINEAR \` the type `\`, which it then refuses. The
   source pre-verifier reads every definer's name with `NAME-TOKEN`
   (`verify-source.f`). The nominal pass and the reserved-name lint work on
   `tools/lint/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
   after a definer again, because only they know the definer is at top level:
   inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
   `create \`, `variable \` and `1 constant \` name `\` the same way. A name the
-  loader reads and refuses is refused at that token. A type name holding `(` is
-  refused ([effects.md](effects.md) "`DEFLINEAR name`"), so `DEFLINEAR (` and
-  `VALUE-RECORD ( x n END-VALUE-RECORD` are `E-BAD-NOMINAL-TYPE` on the `(`,
-  and `NEWTYPE`, `SUMTYPE`, `ENUM`, `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
+  loader reads and refuses is refused at that token. A type name holding `(` or
+  `\` is refused ([effects.md](effects.md) "`DEFLINEAR name`"), so
+  `DEFLINEAR (`, `DEFLINEAR \` and `VALUE-RECORD ( x n END-VALUE-RECORD` are
+  `E-BAD-NOMINAL-TYPE` on that token, and `NEWTYPE`, `SUMTYPE`, `ENUM`,
+  `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
   the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
   `check/operand-name-admitted`, `-refused`). A definer with nothing after it
   has no name: the loader refuses it, and `tools/check.f` refuses it at the
