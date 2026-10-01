@@ -2258,8 +2258,9 @@ variable LAYOUT-INTRO
 \ schema-aware window that lets a generated FAMILY:FIELD accessor body mint
 \ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
 \ the one shape (byte offset added to a layout pointer, retyped to the field's
-\ instantiated schema) that is otherwise fail-closed (`+`/`cell+` preserve the
-\ pointee, CAST refuses T-PTR). Armed ONLY by the generative crossing (the path
+\ instantiated schema) that no checked operation otherwise performs (`+`/`cell+`
+\ preserve the pointee; a pointer CAST: is an unchecked private class mint).
+\ Armed ONLY by the generative crossing (the path
 \ structure-make.f/generate-field use) around the one audited accessor eval, and
 \ keyed on the accessor word name; it fires once at the `field-project` op token
 \ inside that word's body and disarms. Its explicit trusted-only effect and
@@ -8303,12 +8304,13 @@ variable PE-QDOUT
 \ ---- package FFI's two retypes ----------------------------------------------
 \ A foreign call takes and returns raw machine cells: an argument buffer slot
 \ holds a pointer as a cell, and __errno_location hands back an address that has
-\ to be read as bytes. Neither direction is expressible today. CAST-CELL?
-\ refuses a pointer term on either side (E-CAST-CLASS; test/cast-negative-suite.f
-\ pins both `( n -- ptr a )` and `( ptr a -- n )`), a bare type variable is
-\ refused as possibly linear, and no primitive converts between the two. That is
-\ why package FFI carried a TRUSTED: PTR>CELL body and why lib/net/udp4.f had to
-\ wrap its errno pointer in another one.
+\ to be read as bytes. `( ptr a -- n )` is no CAST:, because a type-variable
+\ pointee is refused as possibly linear (E-CAST-LINEAR;
+\ test/cast-negative-suite.f pins it), and no primitive converts a pointer to a
+\ cell. `( n -- ptr u8 )` is the class mint a CAST: declares only in a
+\ package's private section; the axiom below gives package FFI that same
+\ private row. That is why package FFI carried a TRUSTED: PTR>CELL body and why
+\ lib/net/udp4.f had to wrap its errno pointer in another one.
 \
 \ These two are identity words: the retype IS the declaration, and their effects
 \ are the axiom rows near the end of this table, where only package FFI's private
@@ -11671,12 +11673,15 @@ variable UNSAFE-SYM-N
 \ retype between two single-cell machine types; the gate below refuses anything
 \ wider than that class (7121-7128 = layout-buffer/type-family blocks).
 7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
-7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
+7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-7135 constant E-CAST-OWNER    \ scalar-cell family output is outside its declaring package
+7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
 \ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
 \ block rather than sharing 7135, so a test can tell the two rejects apart.
-7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
+7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
+\ 7138-7146 are taken (dynamic storage, E-RIGID-EXHAUST, the using/trust/shadow
+\ rejects); the scope rule took the next free code.
+7147 constant E-CAST-SCOPE    \ a pointer or quotation output outside private
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
@@ -14800,10 +14805,11 @@ variable CONFAM    \ resolved family id while CONM = 2
 \ produces `ptr <instantiated field type>`, deriving the field's family, offset,
 \ byte extent, role, and schema from the committed field id via TYPE-FIELD
 \ reflection (FIELD-PROJ-XT, bound in type-family.f). It is the single shape the
-\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee; CAST refuses
-\ T-PTR), so nothing else can retype a layout pointer. Runtime is a plain
-\ pointer+offset add (the generator/consumer supplies the `( ptr n -- ptr )`
-\ word); the checker judges only the type effect here.
+\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee), so it is the
+\ only checked retype of a layout pointer; a pointer CAST: is an unchecked
+\ private class mint. Runtime is a plain pointer+offset add (the
+\ generator/consumer supplies the `( ptr n -- ptr )` word); the checker judges
+\ only the type effect here.
 TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
 REG-PROTECT
@@ -16585,36 +16591,111 @@ variable CTOR-PEND-I
    P>REST R-RES TAG S-ROW = ;
 \ CAST-ROW-TERM : the single top term of a one-deep row.
 : CAST-ROW-TERM ( n -- n ) R-RES P>TYPE ;
-\ CAST-CELL? : term resolves to a single retype-eligible machine cell — a plain
-\ cell (con or type var), an arity-0 family scalar, or a parametric family cell
-\ (all width 1). A pointer, quotation, atom, or a W>1 layout term is refused as a
-\ class/width reinterpret.
-: CAST-CELL? ( n -- bool ) {: t0:n :}
+\ CAST-TERM? : the term is one machine cell a cast may retype - a con or type
+\ var (CAST-MAY-LINEAR? refuses the var), a width-1 family, a pointer, or a
+\ quotation. A pointer chain must end at storage: an atom is a phantom index,
+\ so it is refused there as it is bare, on either side. The pointee carries no
+\ width rule, since a layout of any width is one pointer cell away. A W>1 layout
+\ term is refused as a width reinterpret. The destination's other introduction
+\ positions refuse an atom through CAST-INTRO? (INTRO-ATOM).
+: CAST-TERM? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-CON = IF RES-TRUE EXIT THEN
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
+   t TAG T-QUOT = IF RES-TRUE EXIT THEN
+   t TAG T-PTR = IF
+      t BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+      TAG T-ATOM <> EXIT
+   THEN
    RES-FALSE ;
-\ CAST-OWNER? : projection out of a cell family is unrestricted. Introduction
-\ into one is authorized only when the destination's declaring package is the
-\ engine's real open namespace record and the actual definition wordlist is one
-\ of that record's public/private pair. xref.f installs that read-only identity
-\ check and retires the mutable defer name. The pre-xref default admits only the
-\ real global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
-: CAST-OWNER? ( n -- bool ) {: t0:n :}
-   t0 T-RES dup NP-CELLFAM? 0= IF drop RES-TRUE EXIT THEN
-   PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
-\ CAST-MAY-LINEAR? : fail closed over the complete signature term. CAST is an
-\ authority boundary, so its question is stricter than LIN-TYPE-COUNT's runtime
-\ ownership accounting: a direct unresolved var may later bind linear, and every
-\ value-bearing family argument subtree can carry that possibility. Cell-family
-\ parameters are structurally phantom, so their terms contain no owned payload.
-\ Known pointers, quotations, and atoms are non-owning type structure; concrete
-\ family schemas are covered by TFAM-CON-LIN-XT.
+\ CAST-OWNER? ( term -- bool ) : projection out of a cell family is
+\ unrestricted. Introduction into one is authorized only when the family's
+\ declaring package is the engine's real open namespace record and the actual
+\ definition wordlist is one of that record's public/private pair. xref.f
+\ installs that read-only identity check and retires the mutable defer name. The
+\ pre-xref default admits only the real global scope. CHECKER-PACKAGE-* is a
+\ parser mirror, never authority. CAST-INTRO? asks it of every introduction
+\ position of the destination.
+: CAST-OWNER? ( n -- bool ) {: t:n :}
+   t NP-CELLFAM? 0= IF RES-TRUE EXIT THEN
+   t PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
+\ The three questions CAST-INTRO? asks of an introduction position, one per
+\ reject. An atom is a phantom index, which no cast hands out. A pointer or a
+\ quotation asserts that a cell is an address or code, which no check can see:
+\ a class mint, declared only where its package's own words are its callers.
+0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
+1 constant INTRO-FOREIGN   \ a family CAST-OWNER? refuses: E-CAST-OWNER
+2 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-SCOPE unless private
+: CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
+   q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
+   q INTRO-FOREIGN = IF t CAST-OWNER? 0= EXIT THEN
+   t TAG T-PTR =  t TAG T-QUOT =  or ;
+\ CAST-INTRO? ( term-or-row positive? question -- bool ) : whether the question
+\ holds at an introduction position of the destination. Those are the positive
+\ positions: the destination itself, a pointer's pointee (a read through the
+\ pointer yields it), a layout family's arguments (projecting a field yields a
+\ value of the argument type) and a quotation's produced rows. A quotation's
+\ consumed rows flip the sign, so a consumer handed to a minted quotation is fed
+\ by it. A cell family's arguments are phantom, and each row ends in the
+\ quotation's own base: neither yields a value. A pointer or a quotation found
+\ positive is a class mint whatever it points at or produces, and an atom or a
+\ foreign family found there is one the cast hands out.
+: CAST-INTRO? ( n bool n -- bool ) {: t0:n pos:bool q:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 T-RES {: t:n :}
+   pos IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
+   t TAG T-PTR = IF t PTR>INNER pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
+      t over PARAM>ARG pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+\ CAST-INTRODUCES? ( term question -- bool ) : the question over a whole
+\ destination term, which starts positive.
+: CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
+   TWALK-RESET t RES-TRUE q CAST-INTRO? ;
+\ CAST-MAY-LINEAR? ( term-or-row -- bool ) : fail closed over the complete
+\ signature term. CAST is an authority boundary, so its question is stricter
+\ than LIN-TYPE-COUNT's runtime ownership accounting: a direct unresolved var
+\ may later bind linear, and every value-bearing family argument subtree can
+\ carry that possibility. Cell-family parameters are structurally phantom, so
+\ their terms contain no owned payload. Concrete family schemas are covered by
+\ TFAM-CON-LIN-XT. Pointers, quotations and atoms own nothing themselves, but a
+\ pointer's pointee is what a read through it yields and a quotation's four
+\ rows are what a call consumes and produces, so both are walked. A quotation
+\ in a signature shares one base between its in and out rows, so the tail it
+\ passes through owns nothing.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
    t TAG T-PARAM = IF
       t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
       TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
@@ -16627,15 +16708,16 @@ variable CTOR-PEND-I
    RES-FALSE ;
 \ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
 \ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
-\ cast that survives all five is legal and its declared row is registered by the
+\ cast that survives all six is legal and its declared row is registered by the
 \ caller. Nothing here observes a body.
 : CAST-CERTIFY ( -- )
    SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
-   SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF E-CAST-CLASS throw THEN
    \ Linearity is checked before ownership on purpose: a linear family minted
    \ from a foreign package violates both rules, and the ownership reject would
    \ otherwise mask the stronger one. Ownership is a packaging question; carrying
@@ -16644,7 +16726,11 @@ variable CTOR-PEND-I
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    TWALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN ;
+   SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
+   \ Scope comes last for the same reason: a mint that also carries ownership
+   \ or forges a foreign family is named by that stronger reject.
+   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-SCOPE throw THEN ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their

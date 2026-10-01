@@ -516,11 +516,32 @@ argument and a bare tail of a family of arity > 0 are all refused. See
 - `CAST: NAME ( source -- destination )` declares a checked retype: a reader
   keyword with no body and no `;`, publishing `NAME` as an identity whose call
   sites emit nothing. A conversion that can refuse is a checked word that
-  throws, then the cast. A resolved scalar-cell family destination, including a
-  parametric `NEWTYPE` instance, may be introduced only while the engine's live
-  namespace record and actual definition wordlist identify the declaring
-  package; mutable `CHECKER-PACKAGE-*` mirror state is not authority.
-  Projection casts from such a family are unrestricted.
+  throws, then the cast. The checker's rule, in refusal order
+  (`src/core/checker.f` `CAST-CERTIFY`):
+  - Every family named is declared and visible (`E-CAST-FAM`, 7131).
+  - Each side is one term (`E-CAST-ARITY`, 7129); a layout value wider than a
+    cell is one term per cell.
+  - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
+    quotation. An atom, or a pointer to one, on either side, and an atom in an
+    introduction position of the destination, are `E-CAST-CLASS` (7130).
+  - A type variable or a linear type anywhere in either term, behind a pointer
+    or in any quotation row, is `E-CAST-LINEAR` (7137).
+  - A scalar-cell family, including a parametric `NEWTYPE` instance, in an
+    introduction position belongs to its declaring package (`E-CAST-OWNER`,
+    7135).
+  - A pointer or a quotation in an introduction position is a class mint and
+    is declared only in a package's private section (`E-CAST-SCOPE`, 7147).
+
+  The introduction positions are where the destination hands out a value: the
+  term itself, a pointer's pointee (a read), a layout family's arguments (a
+  field projection) and a quotation's produced rows (a call), recursively. A
+  quotation's consumed rows flip the direction, so `( n -- [ extent-a -- ] )`
+  introduces no atom and `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A
+  cell family's arguments are phantom and introduce nothing. Owner and scope
+  are read from the engine's live namespace record and actual definition
+  wordlist; mutable `CHECKER-PACKAGE-*` mirror state is not authority.
+  Projections out (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`)
+  need neither the owner nor a private section.
 - Type, field and variant names are lowercase; generated and project words are
   uppercase.
 - **Raw storage never holds an address.** A `variable`, `create` or `constant`
@@ -707,9 +728,13 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   `E-NONPARAMETRIC-EFFECT`; declare `( -- ptr n )`).
 - **Compare an enum with its family's derived `EQ`**, never raw `=`.
 - **A `CAST:` mints a foreign nominal only in its owner**:
-  `CAST: >SLOT ( n -- slot )` outside `package DOC` is `E-CAST-OWNER` (7135);
-  projecting out (`slot -- n`) works anywhere. Store the projected identity and
-  resolve it back through the owner's public words.
+  `CAST: >SLOT ( n -- slot )` outside `package DOC` is `E-CAST-OWNER` (7135),
+  and so are `( n -- ptr slot )`, `( n -- [ -- slot ] )` and, for
+  `STRUCTURE box 1 FIELD value a ;STRUCTURE`, `( n -- box<slot> )`: a read,
+  a call and a field projection yield a `slot`. Projecting out (`slot -- n`)
+  works anywhere, and a quotation that only consumes a `slot` mints none.
+  Store the projected identity and resolve it back through the owner's public
+  words.
 - **Reserved names cover constants and variants.** `MATCH` cannot name a package
   constant even under `public`; a `VARIANT` named by a reserved or taken word
   fails "name is reserved or already taken" (`VARIANT x`). Pick names that
@@ -754,9 +779,9 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   the task) that the quotation reads for the running task.
 - **A handle over caller-owned storage is a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller**, a checked `ptr PKG:type`.
-  No `TRUSTED:` mint, state and consume leaves: `CAST:` refuses a pointer
-  operand (7130 `E-CAST-CLASS`) and a linear one (7137 `E-CAST-LINEAR`), so a
-  linear token over caller storage is not expressible; trade the type-level
+  No `TRUSTED:` mint, state and consume leaves: `CAST:` refuses a linear
+  operand, behind a pointer or in a quotation row too (7137 `E-CAST-LINEAR`),
+  so a linear token over caller storage is not expressible; trade the type-level
   lifetime for a runtime refusal off the definer's zero image
   (`lib/json-write.f`). Until a checker-owned linear mint exists, dot
   `habu-mint-and-erase-72e83e7a`; the bullet goes when it lands.
@@ -1355,6 +1380,23 @@ the rule.
   the package name as its whole message (exit 84). Two files that belong
   together are two packages with a one-way dependency, or one package that
   only the last file seals.
+- **An integer becomes an address or an execution token only through a private
+  `CAST:`.** `CAST: >BYTES ( n -- ptr u8 )`, `CAST: >OP ( n -- [ n -- n ] )`
+  and, for `STRUCTURE box 1 FIELD value a ;STRUCTURE`, `( n -- box<ptr u8> )`
+  certify in a package's private section and are `E-CAST-SCOPE` (7147) at top
+  level or under `public`, in the source pre-pass as well: the cast asserts
+  what no check can see, so only code inside its package reaches it. Take the
+  integer from a typed source, an address from the distance
+  `B NULL-PTR BYTE-VIEW -` and an execution token from `search-wl`. A
+  type-variable pointee is `E-CAST-LINEAR` (7137): `( n -- ptr a )` would
+  forge a pointer to any nominal. The open hole is a layout's own `FIELD`
+  types, which the rule does not read: after
+  `STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
+  certifies at top level and `PFBOX:UNMAKE` hands out a `ptr u8`; a field of
+  another package's family hands out that family outside its owner the same
+  way.
+  test/cast-suite.f runs the round trips; test/cast-negative-suite.f pins the
+  refusals.
 - **A `DEFTYPE` a defining word hands out sits in the public section.** A
   `does>` body is checked code and may publish a nominal handle directly, but
   the child's stored signature names the type, and a private one does not

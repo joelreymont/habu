@@ -386,8 +386,7 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
 : TASK-SELF-N ( -- n )
    data-base TASK-TCB-CELL + @ ;
 
-\ A nominal cannot be retyped straight to a pointer (E-CAST-CLASS), so the
-\ handle crosses back through n and the module's existing raw-cell refinement.
+\ The handle crosses back through n and the module's raw-cell refinement.
 : SEM-REC ( sem -- ptr n )
    SEM>N TASK-N>PTR ;
 

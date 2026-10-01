@@ -5,7 +5,7 @@
 \ Registered directly in the native suite.
 \
 \ CAST: is the converter form that ends per-declaration TRUSTED growth: the
-\ checker proves the declared retype legal by its five structural refusals and
+\ checker proves the declared retype legal by its six structural refusals and
 \ publishes ( in -- out ), so the retype is CHECKED, not trusted. This suite pins:
 \   - a cast retypes n <-> an arity-0 family scalar, both directions
 \   - the value passes through UNCHANGED at runtime (identity data flow)
@@ -15,9 +15,17 @@
 \     ( family<e> -- n ) certifies both generically and at a concrete instance
 \   - a checked caller certifies against the published ( in -- out ) row, and the
 \     published output is genuinely nominal (demanding a plain n there rejects)
+\   - a cast into a layout instance whose argument is a con, or a family its
+\     package owns, certifies, and the field reads back the value
+\   - a private pointer or quotation mint, bare or as a layout instance's
+\     argument, turns an integer address or execution token into a typed one
+\     that its package's words read, store and execute
+\   - a private pointer view of a layout row is raw: a forged tag stored through
+\     it is refused at the next fetch
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
+require lib/test/subject.f
 
 variable #FAIL
 variable #CASE
@@ -91,6 +99,24 @@ s" CC-WRONG ( n -- n ) >CSROLE"              CHECK-QUIET-CANDIDATE!  0 T=
 \ the projection certifies generically and at a concrete instance.
 s" CC-PROJ ( csix<e> -- n ) CSIX>N"          CHECK-QUIET-CANDIDATE! -1 T=
 s" CC-PROJ-N ( csix<n> -- n ) CSIX>N"        CHECK-QUIET-CANDIDATE! -1 T=
+
+\ --- a layout instance introduces its arguments. ------------------------------
+\ Projecting a field yields a value of the argument family, so a cast into a
+\ layout instance needs the argument family's owner, as a cast into the family
+\ does. A package's own family certifies inside a global layout, a con argument
+\ certifies anywhere, and the field reads the integer back.
+STRUCTURE csbox 1 FIELD value a ;STRUCTURE
+CAST: >N-BOX ( n -- csbox<n> )
+: N-ROUND ( n -- n ) >N-BOX CSBOX:UNMAKE ;
+package CS-BOX
+public
+NEWTYPE own 0
+CAST: >OWN-BOX ( n -- csbox<own> )
+CAST: OWN>N ( own -- n )
+: OWN-ROUND ( n -- n ) >OWN-BOX CSBOX:UNMAKE OWN>N ;
+;package
+6 N-ROUND 6 T=
+5 CS-BOX:OWN-ROUND 5 T=
 
 \ --- the declaration publishes a REAL word, not just a checker row. -----------
 \ A cast the checker knows but the dictionary does not would certify every caller
@@ -186,6 +212,104 @@ using CS-PRIOR-BASE
 ;package
 40 CS-PRIOR:PRIOR-CAST 41 T=
 40 CS-PRIOR:CALL 41 T=
+
+\ --- pointer and quotation casts are private class mints. ---------------------
+\ A pointer or quotation destination asserts that an integer is an address or an
+\ execution token, which nothing checks, so it is declared only in a package's
+\ private section. The integer comes from a typed source: an address is the
+\ distance `NULL-PTR BYTE-VIEW -`, an execution token is `search-wl`'s answer.
+: CS-TWICE ( n -- n ) 2 * ;            \ global, so wordlist 0 finds it
+
+\ A projection out of a quotation mints nothing, so it is declared at top level.
+CAST: NN>N ( [ n -- n ] -- n )
+
+package CS-MINT
+16 BUFFER: BYTE-ROW
+8 BUFFER: XT-CELL
+variable HIT
+CAST: >BYTES ( n -- ptr u8 )
+CAST: >NN ( n -- [ n -- n ] )
+CAST: >XT-SLOT ( ptr n -- ptr [ -- ] )
+CAST: >BYTE-BOX ( n -- csbox<ptr u8> )
+CAST: >NN-BOX ( n -- csbox<[ n -- n ]> )
+\ Checked callers certify against the published rows while the package is open,
+\ and the output is genuinely `ptr u8`: demanding a cell pointer there rejects.
+s" CC-BYTE ( n -- u8 ) >BYTES c@"         CHECK-QUIET-CANDIDATE! -1 T=
+s" CC-CELL ( n -- ptr n ) >BYTES"         CHECK-QUIET-CANDIDATE!  0 T=
+s" CC-NN ( n n -- n ) >NN execute"        CHECK-QUIET-CANDIDATE! -1 T=
+: ADDR ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+public
+\ A byte stored through the buffer reads back through its integer address, and
+\ one stored through the cast pointer lands in the buffer.
+: BYTE-ROUND ( u8 -- u8 ) BYTE-ROW 5 + c!  BYTE-ROW ADDR 5 + >BYTES c@ ;
+: BYTE-STORE ( u8 -- u8 ) BYTE-ROW ADDR 7 + >BYTES c!  BYTE-ROW 7 + c@ ;
+\ A looked-up execution token, cast to its effect, runs as that word; the
+\ projection and the mint are both identities.
+: RUN-FOUND ( n -- n ) s" CS-TWICE" 0 search-wl >NN execute ;
+: XT-SAME? ( -- bool ) ['] CS-TWICE NN>N s" CS-TWICE" 0 search-wl = ;
+: XT-ROUND ( n -- n ) [: 3 + ;] NN>N >NN execute ;
+\ A raw cell viewed as a quotation slot takes an xt, and the xt read back runs.
+: SLOT-RUN ( -- n )
+   0 HIT !
+   [: 7 HIT ! ;] XT-CELL CELL-VIEW >XT-SLOT xt!
+   XT-CELL CELL-VIEW >XT-SLOT @ execute
+   HIT @ ;
+\ A layout instance whose argument is a pointer or a quotation is the same mint:
+\ its field projection hands back the address or the execution token.
+: BOX-BYTE ( u8 -- u8 )
+   BYTE-ROW 3 + c!  BYTE-ROW ADDR 3 + >BYTE-BOX CSBOX:UNMAKE c@ ;
+: BOX-RUN ( n -- n ) s" CS-TWICE" 0 search-wl >NN-BOX CSBOX:UNMAKE execute ;
+;package
+200 CS-MINT:BYTE-ROUND 200 T=
+201 CS-MINT:BYTE-STORE 201 T=
+21 CS-MINT:RUN-FOUND 42 T=
+CS-MINT:XT-SAME? -1 T=
+5 CS-MINT:XT-ROUND 8 T=
+CS-MINT:SLOT-RUN 7 T=
+202 CS-MINT:BOX-BYTE 202 T=
+11 CS-MINT:BOX-RUN 22 T=
+
+\ --- a pointer view of a layout row is raw; the layout guards its tags. -------
+\ A private `( ptr family -- ptr n )` stores a cell the family never held, and
+\ the next fetch of that row refuses it. The family is two cells wide: a pointer
+\ to it is still one. The refusal ends the process, so the rows run in a forked
+\ child of this image, where the words below are defined.
+package CS-LAYOUT
+ENUM cs-color red green ;ENUM
+PRODUCT cs-pixel 0
+   FIELD color cs-color
+   FIELD count n
+;PRODUCT
+1 LAYOUT-BUFFER ROW cs-pixel
+CAST: RAW ( ptr cs-pixel -- ptr n )
+public
+: FORGE ( -- ) 2 0 ROW RAW ! ;
+: READ ( -- ) 0 ROW @ drop ;
+;package
+
+package CS-CHILD
+public
+$400 constant CAP
+10000 constant CHILD-MS
+create OUT CAP allot
+create ERR CAP allot
+variable ERR-U
+: RUN ( ptr u8 n -- n )   \ source -> child exit status (-1 = signal or timeout)
+   OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   MATCH outcome
+     exited OF ENDOF
+     signaled OF drop -1 ENDOF
+     timeout OF -1 ENDOF
+   ;MATCH
+   {: rc:n :}
+   LEN>N ERR-U !
+   LEN>N drop
+   rc ;
+: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+;package
+s" CS-LAYOUT:READ" CS-CHILD:RUN 0 T=
+s" CS-LAYOUT:FORGE CS-LAYOUT:READ" CS-CHILD:RUN ENGINE-ERROR:BAD-TAG T=
+CS-CHILD:ERR$ s" hb: bad layout tag" CONTAINS? -1 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

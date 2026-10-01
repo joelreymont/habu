@@ -5,12 +5,20 @@
 \ in-process and prints ok, so the process exits 0 with clean stderr.
 \
 \ Each illegal cast is rejected by its NAMED reject:
-\   - E-CAST-ARITY : more than one input term, or more than one output term
-\   - E-CAST-CLASS : in/out is not a single retype-eligible machine cell (a
-\                    pointer is a class/width reinterpret, not a cell retype)
+\   - E-CAST-ARITY : more than one input term, or more than one output term (a
+\                    layout value wider than a cell is one term per cell)
+\   - E-CAST-CLASS : in/out is not one machine cell a cast may retype: an atom,
+\                    or a pointer to one; or the destination introduces an atom
 \   - E-CAST-FAM   : in/out names an undeclared family
-\   - E-CAST-LINEAR: in/out transitively contains linear ownership
-\   - E-CAST-OWNER : scalar-cell family output is outside its declaring package
+\   - E-CAST-LINEAR: a linear type or a type variable anywhere in in/out,
+\                    pointees and quotation rows included
+\   - E-CAST-OWNER : the destination introduces a scalar-cell family outside its
+\                    declaring package
+\   - E-CAST-SCOPE : the destination introduces a pointer or a quotation, a
+\                    class mint, outside a package's private section
+\ The destination introduces what sits in an introduction position: the term, a
+\ pointee, a layout family's arguments and a quotation's produced rows,
+\ recursively, with a quotation's consumed rows flipping the direction.
 \   - verdict 0    : the cast: declarer used inside a checked body (unsafe token)
 \   - underdepth   : a bare call at an empty interpret stack, refused by name
 \ Every case runs the PRODUCTION declarer: the engine's own `cast:` reader
@@ -53,6 +61,7 @@ package CAST-NEG
 public
 DEFLINEAR CAST-NEG:lease
 STRUCTURE nested 0 FIELD owner CAST-NEG:lease ;STRUCTURE
+STRUCTURE wide 0 FIELD lo n FIELD hi n ;STRUCTURE
 ;package
 
 \ Run one declaration through the PRODUCTION path: the text is evaluated, so the
@@ -74,9 +83,22 @@ variable SRC-U
 \ arity: more than one input, or more than one output term.
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL E-CAST-ARITY T=
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL E-CAST-ARITY T=
-\ class: a pointer is a reinterpret, not a single-cell retype — either side.
-s" cast: CNC1 ( n -- ptr a )"        CN-RUN:DECL E-CAST-CLASS T=
-s" cast: CNC2 ( ptr a -- n )"        CN-RUN:DECL E-CAST-CLASS T=
+\ class: an atom is a phantom index, not a cell, and a pointer to one names no
+\ storage. A layout value wider than a cell stands for one term per cell, so it
+\ is refused as arity before its class is asked.
+s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC2 ( n -- ptr extent-a )" CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL E-CAST-ARITY T=
+\ Nor does the destination introduce an atom where a call, a read or a field
+\ projection yields a value: a produced row, a pointee and a layout argument
+\ refuse one as the bare term does, even in a private section, where the mint
+\ itself certifies. A quotation that only consumes an atom introduces none.
+package CN-ATOM
+s" cast: CNC4 ( n -- [ -- extent-a ] )"     CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC5 ( n -- ptr [ -- extent-a ] )" CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC6 ( n -- cnpbox<extent-a> )"    CN-RUN:DECL E-CAST-CLASS T=
+s" cast: CNC7 ( n -- [ extent-a -- ] )"     CN-RUN:DECL 0 T=
+;package
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL E-CAST-FAM T=
 \ Neither direction, linear-to-linear, nor transitive containment may cross
@@ -86,6 +108,19 @@ s" cast: CNL2 ( CAST-NEG:lease -- n )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL4 ( n -- CAST-NEG:nested )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL5 ( CAST-NEG:nested -- n )" CN-RUN:DECL E-CAST-LINEAR T=
+\ A type variable may bind linear, so one anywhere in either term is refused the
+\ same way: `( n -- ptr a )` would forge a pointer to any nominal,
+\ `( ptr a -- n )` reads one, and a quotation producing `a` forges the value
+\ itself.
+s" cast: CNL6 ( n -- ptr a )"        CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL7 ( ptr a -- n )"        CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL8 ( n -- [ -- a ] )"     CN-RUN:DECL E-CAST-LINEAR T=
+\ A linear type behind a pointer, or in any of a quotation's four rows, is
+\ carried ownership too, on either side of the cast.
+s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL11 ( n -- [ -- | -- CAST-NEG:lease ] )" CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
 \ The production declarer path rejects the same foreign-package forgeries and
 \ rolls every failed word back out of the dictionary.
 package CAST-FOREIGN
@@ -131,12 +166,33 @@ s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
 package CN
 s" cast: CNO0 ( n -- CN:cnfam )"                 CN-RUN:DECL 0 T=
 s" cast: CNG0 ( n -- CN:cncell<n> )"             CN-RUN:DECL 0 T=
+s" cast: CNOP ( n -- ptr CN:cnfam )"             CN-RUN:DECL 0 T=
+s" cast: CNOQ ( n -- [ -- CN:cncell<n> ] )"      CN-RUN:DECL 0 T=
 ;package
 package CN-HIR
 s" cast: CNO1 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNG1 ( n -- CN:cncell<n> )"             CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNP1 ( CN:cnfam -- n )"                 CN-RUN:DECL 0 T=
 s" cast: CNP2 ( CN:cncell<n> -- n )"             CN-RUN:DECL 0 T=
+\ Reading through a minted pointer, or calling a minted quotation, yields what
+\ its pointee or produced rows name, so those are introduction positions too,
+\ even in this package's private section. A quotation handed in flips the
+\ direction: a consumer passed to the minted quotation is fed by it.
+s" cast: CNG2 ( n -- ptr CN:cnfam )"             CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNG3 ( n -- ptr ptr CN:cncell<n> )"     CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNG4 ( n -- [ -- CN:cnfam ] )"          CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNG5 ( n -- [ -- | -- CN:cnfam ] )"     CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNG6 ( n -- [ [ CN:cnfam -- ] -- ] )"   CN-RUN:DECL E-CAST-OWNER T=
+\ A layout family's arguments are introduction positions as well: projecting
+\ the field of a minted `cnpbox` yields a value of its argument family.
+s" cast: CNG10 ( n -- cnpbox<CN:cnfam> )"        CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNG11 ( n -- ptr cnpbox<CN:cncell<n>> )" CN-RUN:DECL E-CAST-OWNER T=
+\ A quotation that only consumes the family projects it, a producer handed in
+\ is its caller's own, and a source term never introduces.
+s" cast: CNG7 ( n -- [ CN:cnfam -- n ] )"        CN-RUN:DECL 0 T=
+s" cast: CNG8 ( n -- [ [ -- CN:cnfam ] -- ] )"   CN-RUN:DECL 0 T=
+s" cast: CNG9 ( ptr CN:cnfam -- n )"             CN-RUN:DECL 0 T=
+s" cast: CNG12 ( n -- [ cnpbox<CN:cnfam> -- ] )" CN-RUN:DECL 0 T=
 ;package
 
 \ The families the ENGINE registers (src/core/type-family.f) are declared in the
@@ -172,6 +228,42 @@ CHECKER-END-PACKAGE
 2 CHECKER-PACKAGE-U !
 CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !
 s" cast: CNSP2 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
+CHECKER-END-PACKAGE
+
+\ scope: a pointer or quotation destination is a class mint - it asserts that an
+\ integer is an address or code, which nothing checks - so it is declared only
+\ in a package's private section, where the package's own words are its only
+\ callers. Top level and a public section refuse it and leave no name behind.
+s" cast: CNM1 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-SCOPE T=
+s" CNM1" 0 search-wl 0= -1 T=
+s" cast: CNM2 ( n -- [ n -- n ] )"                CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM3 ( ptr u8 -- ptr n )"                CN-RUN:DECL E-CAST-SCOPE T=
+\ A layout argument is what a field projection yields, so an instance whose
+\ argument is a pointer or a quotation, at any depth, is the same mint.
+s" cast: CNM11 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM12 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM13 ( n -- cnpbox<cnpbox<ptr u8>> )"   CN-RUN:DECL E-CAST-SCOPE T=
+package CN-MINT
+public
+s" cast: CNM4 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM5 ( n -- [ -- ] )"                    CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM14 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-SCOPE T=
+s" cast: CNM15 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-SCOPE T=
+private
+s" cast: CNM6 ( n -- ptr u8 )"                    CN-RUN:DECL 0 T=
+s" cast: CNM7 ( n -- [ -- ] )"                    CN-RUN:DECL 0 T=
+\ A pointee carries no width rule: a layout of any width is one pointer away.
+s" cast: CNM10 ( n -- ptr CAST-NEG:wide )"        CN-RUN:DECL 0 T=
+;package
+\ Projections out of a pointer, a quotation or a layout holding one mint
+\ nothing: any scope.
+s" cast: CNM8 ( ptr u8 -- n )"                    CN-RUN:DECL 0 T=
+s" cast: CNM9 ( [ n -- n ] -- n )"                CN-RUN:DECL 0 T=
+s" cast: CNM16 ( cnpbox<ptr u8> -- n )"           CN-RUN:DECL 0 T=
+\ The scope is the engine's live one: a parser mirror claiming a package's
+\ private section while the engine compiles at top level still refuses.
+s" CN" CHECKER-PACKAGE
+s" cast: CNSP3 ( n -- ptr u8 )"                   CN-RUN:DECL E-CAST-SCOPE T=
 CHECKER-END-PACKAGE
 
 \ A forged parser package cannot own a declaration. The family, visibility,
@@ -242,10 +334,22 @@ public
 : CN-VRF-FAIL ( -- )
    s" package CN-VRF-ERR public NEWTYPE efam 0 NEWTYPE efam 0 ;package"
    VERIFY:SOURCE-BUF ;
+
+\ The pre-pass reads public and private as it replays, so a mint certifies in a
+\ private section, with a checked caller beside it, and refuses in a public one.
+: CN-VRF-MINT ( -- )
+   s" package CN-VRF-M CAST: CVM0 ( n -- ptr u8 ) : CVM1 ( n -- u8 ) CVM0 c@ ; ;package"
+   VERIFY:SOURCE-BUF ;
+
+: CN-VRF-PUBMINT ( -- )
+   s" package CN-VRF-P public CAST: CVP0 ( n -- ptr u8 ) ;package"
+   VERIFY:SOURCE-BUF ;
 ;package
 
 ' CN-CAST-TEST:CN-VRF-VERIFY catch 0 T=
 s" cast: CNVR0 ( n -- CN-VRF:vfam )" CN-RUN:DECL E-CAST-FAM T=
+' CN-CAST-TEST:CN-VRF-MINT catch 0 T=
+' CN-CAST-TEST:CN-VRF-PUBMINT catch E-CAST-SCOPE T=
 
 ' CN-CAST-TEST:CN-VRF-FAIL catch 7102 T=
 package CN-VRF-LIVE
