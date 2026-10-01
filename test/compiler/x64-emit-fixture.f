@@ -442,6 +442,21 @@ create TXT
    HIR-OPCODE:ADD n t BINOP RET1
    CLOSE-FUN ;
 
+\ `: LEAF ( a b n -- x ) -rot + swap lshift ;`, or its `rshift` twin - nothing
+\ but its copy reads the count, so the copy is coalesced back into it and the
+\ class pinned to rcx opens where the count is defined. Under the data-stack
+\ convention that is its load, which b crosses on its way to the add: b is kept
+\ out of rcx and the count is loaded straight into it.
+: BUILD-SUM-SHIFT ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD a b BINOP {: s:IR-ID:ir-value-id :}
+   o s n BINOP RET1
+   CLOSE-FUN ;
+
 \ `: LEAF ( a -- n ) invert ;` - the one unary form of this slice.
 : BUILD-NOT ( -- )
    1 1 OPEN-FUN
@@ -1500,6 +1515,10 @@ private
 : DDIFF-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DIFF 2 1 DSTACK-EMITTED ;
 : DADDR-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DADDRESSED 1 1 DSTACK-EMITTED ;
 : DLOOP-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-LOOP 2 1 DSTACK-EMITTED ;
+: DSUM-SHL-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:LSHIFT BUILD-SUM-SHIFT 3 1 DSTACK-EMITTED ;
+: DSUM-SHR-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:RSHIFT BUILD-SUM-SHIFT 3 1 DSTACK-EMITTED ;
 
 : TAIL-BYTES ( IR-CTX:ctx -- )
    HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER TAIL-ALLOCATED 0 PLACED ;
@@ -1881,6 +1900,38 @@ $100000000 constant FAR-ENTRY
    \ mc: retq
    s" 4981ec18000000498b0424498b4c2408498b5424104885c0480f44ca49890c244981c408000000c3" X= ;
 
+\ A count coalesced into its load, under the data-stack convention: the class
+\ pinned to rcx opens at the load, and b, loaded before it and dead at the add,
+\ is kept out of rcx there (regalloc.f MB-FORBID-PINS).
+: SUM-SHIFT-CASES ( -- )
+   s" a computed left shift whose count is loaded straight into rcx: b, loaded before it and dead at the add, is kept out of rcx" T-LABEL
+   WBND [: DSUM-SHL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rdx
+   \ mc: movq 16(%r12), %rcx
+   \ mc: addq %rdx, %rax
+   \ mc: movq %rcx, %rcx
+   \ mc: shlq %cl, %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b542408498b4c24104801d04889c948d3e0498904244981c408000000c3" X=
+
+   s" the same shape shifted right" T-LABEL
+   WBND [: DSUM-SHR-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rdx
+   \ mc: movq 16(%r12), %rcx
+   \ mc: addq %rdx, %rax
+   \ mc: movq %rcx, %rcx
+   \ mc: shrq %cl, %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b542408498b4c24104801d04889c948d3e8498904244981c408000000c3" X= ;
+
 public
 
 : RUN ( -- )
@@ -2045,6 +2096,8 @@ public
    2 X64EMIT:BLOCK-START@ 48 T=
    3 X64EMIT:BLOCK-START@ 37 T=
    X64EMIT:RETIRE
+
+   SUM-SHIFT-CASES
 
    s" the compare-and-branch diamond, placed: both arms written and the block they join at taking the answer as its argument" T-LABEL
    WBND [: DIAMOND-BYTES ;] IR-CTX:WITH-CONTEXT

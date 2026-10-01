@@ -169,6 +169,10 @@ private
 : SHR-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-SHR 2 1 NBACK:L-NONE ROWS, ;
 : SHL-ADD-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-SHL-ADD 3 1 NBACK:L-NONE ROWS, ;
 : SHL-CROSS-BODY ( IR-CTX:ctx -- ) HIR-MOD BUILD-SHL-CROSS 2 1 NBACK:L-NONE ROWS, ;
+: SUM-SHL-BODY ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:LSHIFT BUILD-SUM-SHIFT 3 1 NBACK:L-NONE ROWS, ;
+: SUM-SHR-BODY ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:RSHIFT BUILD-SUM-SHIFT 3 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
 : RELATION-BODY ( IR-CTX:ctx -- )
    HIR-MOD REL-OP @ BUILD-RELATION 2 1 NBACK:L-NONE ROWS, ;
@@ -244,6 +248,8 @@ public
 : SHR-ROUTINE ( -- )      WBND [: SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHL-ADD-ROUTINE ( -- )  WBND [: SHL-ADD-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHL-CROSS-ROUTINE ( -- ) WBND [: SHL-CROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SUM-SHL-ROUTINE ( -- )  WBND [: SUM-SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SUM-SHR-ROUTINE ( -- )  WBND [: SUM-SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NOT-ROUTINE ( -- )      WBND [: NOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : RELATION-ROUTINE ( HIR:opcode -- )
    REL-OP !  WBND [: RELATION-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -591,6 +597,30 @@ create MANIFEST BUF:HDR-BYTES allot
    3 64 64 CASE2,
    CLOSE, ENTRY, X64EMIT-TEST:SHL-CROSS-ROUTINE
    s" shl-cross" false WRITE-IMAGE ;
+
+\ `-rot + swap lshift`: a + b shifted by n, with the count loaded straight into
+\ rcx and b, dead at the add, kept out of it. A sum shifted by a or by b answers
+\ 256 or 64 for the second case.
+: SUM-SHL-IMAGE ( -- )
+   false OPEN,
+   5 3 0 8 CASE3,
+   5 3 1 16 CASE3,
+   -1 2 63 MIN-CELL CASE3,
+   5 3 64 8 CASE3,
+   CLOSE, ENTRY, X64EMIT-TEST:SUM-SHL-ROUTINE
+   s" sum-shl" false WRITE-IMAGE ;
+
+\ `-rot + swap rshift`: the same shape shifted right, which is logical, so -4
+\ shifted by one is MAX-CELL less one and -2 by 63 is one.
+: SUM-SHR-IMAGE ( -- )
+   false OPEN,
+   5 3 0 8 CASE3,
+   5 3 1 4 CASE3,
+   -4 0 1 MAX-CELL 1 - CASE3,
+   -1 -1 63 1 CASE3,
+   5 3 64 8 CASE3,
+   CLOSE, ENTRY, X64EMIT-TEST:SUM-SHR-ROUTINE
+   s" sum-shr" false WRITE-IMAGE ;
 
 : NOT-IMAGE ( -- )
    false OPEN,
@@ -1195,6 +1225,8 @@ public
    SHR-IMAGE
    SHL-ADD-IMAGE
    SHL-CROSS-IMAGE
+   SUM-SHL-IMAGE
+   SUM-SHR-IMAGE
    NOT-IMAGE
    RELATION-IMAGES
    MOVI-IMAGE
