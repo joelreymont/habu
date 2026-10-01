@@ -20,15 +20,23 @@
 \ compiler, not the host's that filed the map. With no shadow open the tables stay
 \ as CAPTURE left them, empty.
 \
-\ ONE WALK AND NO LOOKUP. The map's rows are filed in publication order, so their
-\ records ascend: the walk keeps the rows whose record is in the window and copies
-\ each emission once, when its first record arrives - a `does>` companion follows
-\ its definer and shares its emission. Records that do not ascend are a map from
-\ another dictionary history, filed before a logical reset, and are refused rather
-\ than read. Every host address a routine names is resolved here, through the
-\ xt -> record index the ARM64 call sites use (ACAP-TGT>REC), into a window record
-\ or into the name of a word of the engine's own prefix; a host address nothing
-\ resolves is refused by name, as an ARM64 site is.
+\ ONE WALK, KEYED BY THE SHIPPED ROW. The map's rows are filed in publication
+\ order, so their records ascend: the walk keeps the rows whose record is in the
+\ window and copies each emission once, when the first row filed over it arrives -
+\ a `does>` companion follows its definer and shares its emission. Records that
+\ do not ascend are a map from another dictionary history, filed before a logical
+\ reset, and are refused rather than read. The artifact's record table holds only
+\ the records the capture ships, and a stripped private word moves every later
+\ one down a row, so a routine, a site target and a code cell each name their
+\ record by its row in that table (SH-NUMBER), never by its window index. A
+\ stripped record files no row: a dead one's code left the payload too, a
+\ shipped record over the same emission carries a live one (a private definer's
+\ companion, kept for the children it made), and a live one nothing carries is
+\ refused by name, as is a site naming a stripped record. Every host address a
+\ routine names is resolved here, through the xt -> record index the ARM64 call
+\ sites use (ACAP-TGT>REC), into a shipped record or into the name of a word of
+\ the engine's own prefix; a host address nothing resolves is refused by name, as
+\ an ARM64 site is.
 
 require src/compiler/native/hir.f
 require src/compiler/native/emission.f
@@ -45,6 +53,8 @@ variable SH-E                        \ the map's emission last copied
 variable SH-AT                       \ where its bytes start in the shadow code
 variable SH-LEN                      \ and how many there are
 variable SH-PREV                     \ the record filed before this one
+variable SH-SHIP-N                   \ the shipped records numbered so far
+DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
 
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
@@ -77,8 +87,43 @@ variable SH-PREV                     \ the record filed before this one
 : SH-XT-REFUSE ( n n -- ) {: celloff:n v:n :}
    s" aot-capture: declared code cell at DATA+" type celloff .
    s" holds " type v .
-   s" which is window code no record enters" type cr
-   s" aot-capture: a shadowed code cell targets code no record enters" 74 die ;
+   s" which is window code no shipped record enters" type cr
+   s" aot-capture: a shadowed code cell targets code no shipped record enters" 74 die ;
+
+: SH-UNSHIPPED ( n n -- ) {: off:n idx:n :}
+   off SH-WHERE s" names window record " type idx ACAP-NAME.
+   s" , which the capture does not ship" type cr
+   s" aot-capture: a shadow site names a record the capture strips" 74 die ;
+
+: SH-STRIPPED ( -- )
+   s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
+   s"  is live, and the capture ships neither its record nor one sharing its emission" type cr
+   s" aot-capture: a live shadow routine no shipped record carries" 74 die ;
+
+\ ---- the shipped rows -----------------------------------------------------------
+\ ACAP-COMPACT-ONE gives a record a row of the compact table exactly when it sets
+\ the record's named bit, in capture order, so a record's row is the count of
+\ shipped records below it, and the count over the window is the table's.
+: SH-NUMBER ( -- )
+   ACAP-REC-ALL @ {: n:n :}
+   n 1 max SH-ROWS-RESERVE
+   0 SH-SHIP-N !
+   n 0 ?do
+      i ACAP-NAMED-BIT @ 0<> if
+         SH-SHIP-N @ i SH-ROWS !  1 SH-SHIP-N +!
+      else
+         -1 i SH-ROWS !
+      then
+   loop
+   SH-SHIP-N @ AOT-REC-N @ <> if
+      s" aot-capture: the shipped records do not number the record table" 74 die
+   then ;
+
+\ The shipped row of dictionary record idx, or -1 when it lies outside the window
+\ or the capture strips it.
+: SH-SHIPPED ( n -- n ) {: idx:n :}
+   idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and 0= if -1 exit then
+   idx ACAP-W-R0 @ - SH-ROWS @ ;
 
 \ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
@@ -87,23 +132,25 @@ variable SH-PREV                     \ the record filed before this one
    AOT-SHADOW:SITE-BUF@ k AOT-SHADOW:SITE-ROW * + {: r:ptr :}
    at r AOT-P32!  kind r 4 + AOT-P32!  target r 8 + AOT-P32! ;
 
-: SH-REC+ ( n n -- ) {: idx:n entry:n :}
+: SH-REC+ ( n n -- ) {: row:n entry:n :}
    AOT-SHADOW:REC-N @ {: k:n :}
    k 1+ AOT-SHADOW:REC-N !
    AOT-SHADOW:REC-BUF@ k AOT-SHADOW:REC-ROW * + {: r:ptr :}
-   idx ACAP-W-R0 @ - r AOT-P32!
+   row r AOT-P32!
    SH-AT @ r 4 + AOT-P32!
    SH-LEN @ r 8 + AOT-P32!
    entry r 12 + AOT-P32! ;
 
 \ ---- what a host address names -------------------------------------------------
-\ A window record's entry, by its window index, or a word of the engine's own
-\ prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
+\ A shipped window record's entry, by its shipped row, or a word of the engine's
+\ own prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
 \ name resolves to exactly this entry below the prelude mark).
 : SH-TARGET ( n n -- n ) {: off:n v:n :}
    v ACAP-TGT>REC {: j:n :}
    j ACAP-W-R0 @ >= j ACAP-W-R1 @ < and if
-      j ACAP-W-R0 @ - SITE-REC-TAG or exit
+      j SH-SHIPPED {: row:n :}
+      row 0 < if off j SH-UNSHIPPED then
+      row SITE-REC-TAG or exit
    then
    v ACAP-TARGET-NAME? if ACAP-POOL-ADD SITE-NAME-TAG or exit then 2drop
    off v SH-UNNAMED ;
@@ -177,15 +224,36 @@ variable SH-PREV                     \ the record filed before this one
       idx SH-PREV !
    loop ;
 
+\ Whether map row r is over emission e and files a record the capture ships: a
+\ `does>` definer and its companion are filed together, two adjacent rows over one
+\ emission.
+: SH-OWNER? ( n n -- bool ) {: r:n e:n :}
+   r 0 <  r NSHADOW:RECORDS >= or if false exit then
+   r NSHADOW:EMISSION@ e <> if false exit then
+   r NSHADOW:RECORD@ SH-SHIPPED 0 >= ;
+
+\ Map row r files a record the capture strips. A shipped row over its emission
+\ carries its routine; otherwise a dead one goes with its code, and a live one
+\ is refused.
+: SH-STRIP ( n -- ) {: r:n :}
+   r NSHADOW:EMISSION@ {: e:n :}
+   r 1- e SH-OWNER?  r 1+ e SH-OWNER? or if exit then
+   r NSHADOW:RECORD@ ACAP-W-R0 @ - ACAP-GRAPH-LIVE? if SH-STRIPPED then ;
+
 : SH-WALK ( -- )
    -1 SH-E !
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:RECORD@ {: idx:n :}
       idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and if
          idx SH-REC !
-         i NSHADOW:EMISSION@ {: e:n :}
-         e SH-E @ <> if e SH-COPY then
-         idx  i NSHADOW:ENTRY@  SH-REC+
+         idx SH-SHIPPED {: row:n :}
+         row 0 >= if
+            i NSHADOW:EMISSION@ {: e:n :}
+            e SH-E @ <> if e SH-COPY then
+            row  i NSHADOW:ENTRY@  SH-REC+
+         else
+            i SH-STRIP
+         then
       then
    loop ;
 
@@ -193,7 +261,8 @@ variable SH-PREV                     \ the record filed before this one
 \ An address-cell row whose target is window code carries a blob offset, which
 \ names an ARM64 entry; the target's image needs the record it enters. The live
 \ cell still holds the host entry the row was classified from, at the location
-\ the row states (ACAP-XTCELL-LOC), so the record comes from the same index.
+\ the row states (ACAP-XTCELL-LOC), so the record comes from the same index, and
+\ the cell names its shipped row.
 : SH-XTCELL ( n -- ) {: row:n :}
    row ACAP-XTMETA@ {: meta:n :}
    meta AOT-WINDOW:XTOFF-KIND-MASK and 0<> if exit then
@@ -204,12 +273,12 @@ variable SH-PREV                     \ the record filed before this one
       off ACAP-W-D0 @ AOT-DATA-N - +
    else off then {: celloff:n :}
    AOT-LIVE-DATA celloff + AOT-CELL@ {: v:n :}
-   v ACAP-TGT>REC {: j:n :}
-   j ACAP-W-R0 @ >=  j ACAP-W-R1 @ <  and 0= if celloff v SH-XT-REFUSE then
-   AOT-SHADOW:XT-N @ {: k:n :}
-   k 1+ AOT-SHADOW:XT-N !
-   AOT-SHADOW:XT-BUF@ k AOT-SHADOW:XT-ROW * + {: r:ptr :}
-   row r AOT-P32!  j ACAP-W-R0 @ - r 4 + AOT-P32! ;
+   v ACAP-TGT>REC SH-SHIPPED {: k:n :}
+   k 0 < if celloff v SH-XT-REFUSE then
+   AOT-SHADOW:XT-N @ {: x:n :}
+   x 1+ AOT-SHADOW:XT-N !
+   AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + {: r:ptr :}
+   row r AOT-P32!  k r 4 + AOT-P32! ;
 
 public
 
@@ -222,6 +291,7 @@ public
    AOT-SHADOW:RESET
    NSHADOW:OPEN? 0= if exit then
    SH-ORDER
+   SH-NUMBER
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
 

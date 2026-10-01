@@ -24,8 +24,10 @@
 \
 \ WHAT IS REFUSED. A capture the layout cannot place, by name, each in a child
 \ because a refusal ends the process: a window record with no x86-64 routine (a
-\ variable), a window that strips a shadowed private word, so its routine names
-\ no shipped record, and a protected-wid row forged outside the window.
+\ variable) and a protected-wid row forged outside the window. Two the capture
+\ refuses before any layout, because the shadow keys every routine and target by
+\ the record row the capture ships: a live private word whose routine no shipped
+\ record carries, and a shadow call to a private word the capture strips.
 \
 \ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
 \ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
@@ -33,7 +35,7 @@
 \
 \ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
 \ root: bin/hb --load test/x86-64-link-records.f
-\ A child: bin/hb --load test/x86-64-link-records.f -- shift|stray|strip|wid
+\ A child: bin/hb --load test/x86-64-link-records.f -- shift|stray|strip|callee|wid
 
 package X64LT
 public
@@ -55,7 +57,8 @@ public
 \ What a refusal child adds to the window.
 : EXTRA$ ( -- ptr u8 n )
    s" stray" MODE? if s" variable STRAY" exit then
-   s" strip" MODE? if s" private : HIDDEN ( -- ) ; public" exit then
+   s" strip" MODE? if s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
+   s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
    s" " ;
 ;package
 X64LT:SHIFT$ evaluate
@@ -317,9 +320,14 @@ variable RC
    s" x64link: a code record the capture's shadow carries no routine for" REFUSED ;
 
 : STRIP-CASE ( -- )
-   s" a capture that strips a shadowed private word leaves a routine no shipped record takes" T-LABEL
-   s" strip" s" names none of the"
-   s" x64link: the shadow's routines do not match the shipped records" REFUSED ;
+   s" a capture that strips a live private word no shipped record carries refuses its routine by name" T-LABEL
+   s" strip" s" routine of HELPER is live"
+   s" aot-capture: a live shadow routine no shipped record carries" REFUSED ;
+
+: CALLEE-CASE ( -- )
+   s" a shadow call to a window word the capture strips is refused by the callee's name" T-LABEL
+   s" callee" s" names window record LOW"
+   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
 : WID-FORGED-CASE ( -- )
    s" a protected-wid row outside the capture window is refused by its row" T-LABEL
@@ -334,7 +342,7 @@ public
 : RUN ( -- )
    CAPTURE
    NSHADOW:CLOSE
-   s" stray" MODE?  s" strip" MODE? or if
+   s" stray" MODE?  s" strip" MODE? or  s" callee" MODE? or if
       X64LINK:LAYOUT s" x86-64-link-records: laid out" type cr exit
    then
    s" wid" MODE? if FORGE-WID X64LINK:LAYOUT s" x86-64-link-records: laid out" type cr exit then
@@ -353,6 +361,7 @@ public
    SHIFT-CASE
    STRAY-CASE
    STRIP-CASE
+   CALLEE-CASE
    WID-FORGED-CASE
    s" x86-64-link-records: prims=" type X64LINK:PRIMS .
    s" records=" type X64LINK:RECORDS .
