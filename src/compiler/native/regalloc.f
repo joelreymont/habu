@@ -1481,13 +1481,20 @@ variable N-FIXP
 : LINE-N ( -- n )                    N-FUNS @ cells F-BASE + @ ;
 
 \ ---- reading the linear order backwards --------------------------------------
+\ MB-LAY1 lays the blocks end to end in order, so their starts ascend and the
+\ block holding a position is the last one that starts at or before it.
 : POS-BLOCK ( n -- n )
    {: p:n :}
-   -1
-   N-BLKS @ 0 ?do
-      p i cells B-ST + @ >=  p i cells B-EN + @ <=  and if drop i leave then
-   loop
-   dup 0 < if E-A64RA-SHAPE throw then ;
+   0 N-BLKS @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid cells B-ST + @ p > if lo mid else mid 1+ hi then
+   repeat
+   drop 1- {: b:n :}
+   b 0 < if E-A64RA-SHAPE throw then
+   b cells B-EN + @ p < if E-A64RA-SHAPE throw then
+   b ;
 
 : POS-OP? ( n -- bool )
    {: p:n :}
