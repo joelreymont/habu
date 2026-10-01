@@ -129,9 +129,14 @@ variable T-LABEL-U
    T-FAIL# @ . s" test: failures" type cr
    s" test: failures" T-EX-FAIL die ;
 
+\ A deadline is no verdict on the code under test (lib/test/outcome.f): a
+\ check that wants another code lets E-PROC-TIMEOUT go uncaught, so the gate
+\ pool reports the row as a timeout instead of a wrong throw code.
 : TTHROWSQ ( [ -- ] n -- )
    T-EXPECTED# !
-   catch T-EXPECTED# @ = T-ASSERT ;
+   catch {: code:n :}
+   code E-PROC-TIMEOUT = T-EXPECTED# @ E-PROC-TIMEOUT <> and if code throw then
+   code T-EXPECTED# @ = T-ASSERT ;
 
 \ Named execution tokens and literal quotations share the same checked effect.
 : TTHROWS ( [ -- ] n -- )

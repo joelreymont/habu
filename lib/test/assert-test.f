@@ -11,6 +11,18 @@ require lib/test/runner.f
 : TT-THROW-5 ( -- )
    5 throw ;
 
+\ A deadline is no verdict: a throw check that wants another code lets
+\ E-PROC-TIMEOUT go uncaught and counts nothing, so the gate pool reports the
+\ row as a timeout; a check that wants the deadline still catches it.
+: TT-THROW-DEADLINE ( -- )
+   E-PROC-TIMEOUT throw ;
+
+: TT-DEADLINE-WANT-OTHER ( -- )
+   [: TT-THROW-DEADLINE ;] E-PROC-TRUNCATED TTHROWSQ ;
+
+: TT-DEADLINE-PASSES ( -- )
+   [: TT-DEADLINE-WANT-OTHER ;] catch E-PROC-TIMEOUT T= ;
+
 \ A child engine's deliberately failing T= pins the one-line
 \ "assert: expected 3 got 9" shape lib/test/assert.f prints.
 create TAT-SCRIPT-PATH FS-PATH-CAP allot
@@ -85,6 +97,13 @@ T-RESET
 1 TAT-EXPECT-FAILURES
 T-CASES 1 T=
 1 TAT-EXPECT-FAILURES
+
+T-RESET
+TT-DEADLINE-PASSES
+0 TAT-EXPECT-FAILURES
+T-CASES 1 T=
+' TT-THROW-DEADLINE E-PROC-TIMEOUT TTHROWS
+0 TAT-EXPECT-FAILURES
 
 TAT-SB-SURVIVES-FAILURE
 

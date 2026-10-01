@@ -2422,7 +2422,10 @@ the next assertion, and successful or failed assertions clear the label after
 printing details. Numeric mismatches print on one line, for example
 `assert: expected 3 got 9`; string mismatches preserve embedded newlines.
 `TTHROWSQ` takes a stack-preserving quotation plus an expected
-throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
+throw code and uses the checker's modeled `catch` effect. A deadline is no
+verdict: when the quotation throws `E-PROC-TIMEOUT` and another code is
+expected, `TTHROWSQ` lets it go uncaught, so the gate pool reports the row as
+a timeout instead of a wrong throw code. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
 
