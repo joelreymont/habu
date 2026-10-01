@@ -401,8 +401,10 @@ create BFT-KEY1 64 allot
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
 \ so IBUFSZ+1 is not the runtime input boundary. Bracket the boundary with a
-\ bounded exponential search, refine it by binary search, then rerun the adjacent
-\ successful/failing sizes against the freshly built candidate's --build path.
+\ bounded exponential search and refine it by binary search, every probe on the
+\ freshly built candidate's --build path. PROBE asserts each outcome - a clean
+\ exit, or 74 with the buffer-full diagnostic - so OK-N was accepted and BAD-N
+\ refused when each was recorded, and a sharp boundary leaves them adjacent.
 
 $10000 constant PROBE-START
 
@@ -504,8 +506,6 @@ variable BAD-N
    EXP
    BINARY
    BAD-N @ OK-N @ 1 + T=
-   OK-N @ PROBE TTRUE
-   BAD-N @ PROBE TFALSE
    BF-TMP-RESET ;
 
 : RUN-BUILD ( ptr u8 n -- )
