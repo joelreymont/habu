@@ -1,10 +1,14 @@
-\ The native build's command line: one output path, then an optional `whitebox`.
-\ tools/native-build.f checks it before the build closure loads, so a refused
-\ command line costs an engine boot and not a native compiler; the driver's own
-\ entries (NATIVE-BUILD:RUN, :RUN-IMAGE) check it again for their other callers.
+\ The native build's command line: one output path, then an optional
+\ `whitebox`, then an optional `--target <target>`. tools/native-build.f checks
+\ it before the build closure loads, so a refused command line costs an engine
+\ boot and not a native compiler; the driver's own entries (NATIVE-BUILD:RUN,
+\ :RUN-IMAGE) check it again for their other callers.
 
 require lib/string.f
+require lib/errors.f
 require src/os/script-argv.f
+require src/compiler/target.f
+require tools/build-target.f
 
 package NATIVE-BUILD
 
@@ -35,23 +39,60 @@ variable CLASS-WANTED
 
 : WHITEBOX-ARG$ ( -- ptr u8 n ) s" whitebox" ;
 
+\ `whitebox` after the output path asks for the unsealed host
+\ test/whitebox-engine.f builds. Answers the index of the next argument, so
+\ whatever stands there instead is the target argument's to accept or refuse,
+\ and a typo cannot quietly produce a product.
+: CLASS-ARG! ( -- n )
+   CLASS-SEALED CLASS-WANTED !
+   SCRIPT-ARGC 2 < if 1 exit then
+   1 SCRIPT-ARGV$ WHITEBOX-ARG$ STR= 0= if 1 exit then
+   CLASS-WHITEBOX CLASS-WANTED ! 2 ;
+
+\ ---- the target this build is for ----------------------------------------------
+\ `--target <target>` sets tools/build-target.f's cell, which chooses the OS
+\ sources the build window loads; without it the build is for the engine doing
+\ the building. The window's code runs on this engine while it loads, so an
+\ image for another machine is a second emission this engine makes as it
+\ compiles (docs/x86-64.md "Build and bootstrap"), and a target is only
+\ buildable when this engine has a backend for its machine: the target
+\ architecture's row must be registered here (src/compiler/target.f
+\ REGISTERED?, the one answer to whether a backend is loaded). This entry does
+\ not load one. An ARM64 product carries only its own,
+\ so `--target linux-x86-64` is refused until the caller has loaded the x86-64
+\ backend module ahead of tools/native-build.f.
+: TARGET-FLAG$ ( -- ptr u8 n ) s" --target" ;
+
+: ARGS-REFUSE ( -- )
+   s" native-build: after the output path come only `whitebox`, then `--target <target>`" BUILD-RC die ;
+
+: TARGET-ARCH ( -- CTARGET:arch )
+   BUILD-TARGET:LINUX? if CTARGET-ARCH:AARCH64 exit then
+   BUILD-TARGET:MACOS? if CTARGET-ARCH:AARCH64 exit then
+   BUILD-TARGET:LINUX-X86-64? if CTARGET-ARCH:X86-64 exit then
+   E-CTGT-ABI throw ;
+
+: BACKEND-CK ( -- )
+   TARGET-ARCH CTARGET:REGISTERED? if exit then
+   s" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f" BUILD-RC die ;
+
+\ The argument after `--target` names the target; anything after that is refused.
+: TARGET-ARG! ( n -- ) {: at:n :}
+   BUILD-TARGET:HOST!
+   SCRIPT-ARGC at = if exit then
+   SCRIPT-ARGC at 2 + <> if ARGS-REFUSE then
+   at SCRIPT-ARGV$ TARGET-FLAG$ STR= 0= if ARGS-REFUSE then
+   at 1+ SCRIPT-ARGV$ BUILD-TARGET:SELECT? 0= if
+      s" native-build: --target is linux-aarch64, macos-aarch64 or linux-x86-64" BUILD-RC die
+   then
+   BACKEND-CK ;
+
 public
 
-\ `whitebox` after the output path asks for the unsealed host
-\ test/whitebox-engine.f builds; nothing else is a legal second argument, so a
-\ typo cannot quietly produce a product.
-: CLASS-ARG! ( -- )
-   CLASS-SEALED CLASS-WANTED !
-   SCRIPT-ARGC 2 < if exit then
-   1 SCRIPT-ARGV$ WHITEBOX-ARG$ STR= 0= if
-      s" native-build: the only second argument is `whitebox`" BUILD-RC die
-   then
-   CLASS-WHITEBOX CLASS-WANTED ! ;
-
 : BUILD-ARGS! ( -- )
-   SCRIPT-ARGC 1 < SCRIPT-ARGC 2 > or if
-      s" native-build: one explicit output path is required, then an optional `whitebox`" BUILD-RC die
+   SCRIPT-ARGC 1 < if
+      s" native-build: one explicit output path is required, then an optional `whitebox`, then an optional `--target <target>`" BUILD-RC die
    then
-   CLASS-ARG! ;
+   CLASS-ARG! TARGET-ARG! ;
 
 ;package

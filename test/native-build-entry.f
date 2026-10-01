@@ -1,10 +1,11 @@
 \ The production entry refuses a bad command line before it loads the build
-\ closure (tools/native-build-args.f), so neither refusal starts a build. No
+\ closure (tools/native-build-args.f), so no refusal here starts a build. No
 \ output argument is refused by name; so is a bad second argument: the class
 \ the build is being asked for is settled before the target load, so a typo
-\ cannot quietly produce a product. The entry's accepted path, the closure
-\ compiling under the native build guard, is every gate's whitebox engine
-\ build (test/whitebox-engine.f runs this entry with `whitebox`).
+\ cannot quietly produce a product. So are a `--target` naming no target and
+\ one whose machine this engine has no backend for. The entry's accepted path,
+\ the closure compiling under the native build guard, is every gate's whitebox
+\ engine build (test/whitebox-engine.f runs this entry with `whitebox`).
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
@@ -57,23 +58,58 @@ variable RC
    s" the entry refuses a missing output path before the build closure loads" T-LABEL
    ENTRY-ARGS
    DRIVE
-   S\" native-build: one explicit output path is required, then an optional `whitebox`\n" REFUSED ;
+   S\" native-build: one explicit output path is required, then an optional `whitebox`, then an optional `--target <target>`\n" REFUSED ;
 
 \ The build class is an argument and not an inherited variable, so the argument
 \ has exactly one other spelling and everything else is refused by name.
 : BAD-CLASS-CASE ( -- )
-   s" and refuses a second argument that is not `whitebox`" T-LABEL
+   s" and refuses a second argument that is neither `whitebox` nor `--target`" T-LABEL
    ENTRY-ARGS
    s" --" ARG
    s" /dev/null/native-build-entry-test" ARG
    s" wightbox" ARG
    DRIVE
-   S\" native-build: the only second argument is `whitebox`\n" REFUSED ;
+   S\" native-build: after the output path come only `whitebox`, then `--target <target>`\n" REFUSED ;
+
+: TARGET-ARGS ( -- )
+   ENTRY-ARGS
+   s" --" ARG
+   s" /dev/null/native-build-entry-test" ARG
+   s" --target" ARG ;
+
+: TARGET-MISSING-CASE ( -- )
+   s" and refuses `--target` with no target after it" T-LABEL
+   TARGET-ARGS
+   DRIVE
+   S\" native-build: after the output path come only `whitebox`, then `--target <target>`\n" REFUSED ;
+
+: TARGET-UNKNOWN-CASE ( -- )
+   s" and refuses a target name that is not one of the three" T-LABEL
+   TARGET-ARGS
+   s" linux-x86" ARG
+   DRIVE
+   S\" native-build: --target is linux-aarch64, macos-aarch64 or linux-x86-64\n" REFUSED ;
+
+\ A product carries its own machine's backend and no other, so the target on the
+\ other machine is the one this engine cannot emit for.
+: FOREIGN$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" linux-aarch64" exit then
+   s" linux-x86-64" ;
+
+: TARGET-UNLOADED-CASE ( -- )
+   s" and refuses a target whose machine has no backend loaded here" T-LABEL
+   TARGET-ARGS
+   FOREIGN$ ARG
+   DRIVE
+   S\" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f\n" REFUSED ;
 
 : RUN ( -- )
    T-RESET
    NO-OUTPUT-CASE
    BAD-CLASS-CASE
+   TARGET-MISSING-CASE
+   TARGET-UNKNOWN-CASE
+   TARGET-UNLOADED-CASE
    T-REPORT ;
 
 RUN

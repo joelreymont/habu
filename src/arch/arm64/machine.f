@@ -6,7 +6,9 @@
 \ test/compiler/native-effect.f pins each one against that source instead of
 \ restating it:
 \   - a register operand is a five-bit field, so a file holds 32 registers;
-\   - x18 is platform-reserved on Darwin and ordinary on Linux;
+\   - x18 is AAPCS64's platform register: ordinary on Linux, reserved on
+\     Darwin, and reserved on a target that is not an AArch64 platform at all,
+\     because no platform there released it (PLATFORM-RESERVED-MASK below);
 \   - x19 holds the running engine's data-stack pointer. src/arch/arm64/mnem.f
 \     names it (`19 constant XDS`), src/habu/rt.f's push and pop are stores and
 \     loads through it, and src/habu/habu2.f measures the interpreter's stack
@@ -14,8 +16,12 @@
 \     through this one register and leaves its results through it. It is not a
 \     register a routine may be given: a routine that wrote to it would move the
 \     caller's stack under the caller. The engine's whole claim arrives here as
-\     ENGINE-GPR:MASK, which src/habu/layout.f derives from its own register
-\     assignments and is the one authority for it. This file used to name x19 as
+\     ENGINE-GPR:A64-MASK, which src/habu/layout.f derives from its own register
+\     assignments and is the one authority for it. It is read by name, never as
+\     the target-selected ENGINE-GPR:MASK: this description is ARM64's whichever
+\     target the loading engine builds for, and the x86-64 compiler loads it too
+\     (src/compiler/native/abi.f and frame.f require a64ir.f), where MASK is the
+\     x86-64 claim. This file used to name x19 as
 \     a fifth constant of its own, which is exactly the second copy that let x20,
 \     x26, x27 and x28 through: the engine claimed four more registers and
 \     nothing propagated (CG-13);
@@ -64,13 +70,19 @@ private
 
 5 constant REG-BITS       \ a register operand is a five-bit field
 1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
-18 constant DARWIN-RESERVED-N
+18 constant PLATFORM-N    \ x18, AAPCS64's platform register
 30 constant LINK-N        \ x30, the link register, which has its own contract field
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
 
+\ AAPCS64 leaves x18 to the platform. Linux gives it to code and Darwin keeps it.
+\ An x86-64 target has no AArch64 platform to release it, and it still loads this
+\ description: the shared compiler requires a64ir.f on every target, and a build
+\ window for x86-64 loads it on an ARM64 host. So that target answers the
+\ reserving default, at load, instead of refusing the whole x86-64 closure.
 : PLATFORM-RESERVED-MASK ( -- n )
    HB-TARGET-LINUX? if 0 exit then
-   HB-TARGET-MACOS? if 1 DARWIN-RESERVED-N lshift exit then
+   HB-TARGET-MACOS? if 1 PLATFORM-N lshift exit then
+   HB-TARGET-LINUX-X86-64? if 1 PLATFORM-N lshift exit then
    E-CTGT-ABI throw ;
 
 \ The registers this TARGET gives another owner: its optional platform register
@@ -81,7 +93,7 @@ PLATFORM-RESERVED-MASK
 constant TARGET-RESERVED-MASK
 
 \ Every register a routine may not hold state in, from both owners, in one place.
-TARGET-RESERVED-MASK ENGINE-GPR:MASK or constant RESERVED-MASK
+TARGET-RESERVED-MASK ENGINE-GPR:A64-MASK or constant RESERVED-MASK
 
 \ The general registers a routine CAN hold state in: the whole file less that.
 1 FILE-N lshift 1 -  RESERVED-MASK invert and  constant GPR-MASK
@@ -139,15 +151,16 @@ public
 \ ---- the register files -------------------------------------------------------
 : FILE-SIZE ( -- n )      FILE-N ;
 : RESERVED-GPRS ( -- n )  RESERVED-MASK ;
-: ENGINE-GPRS ( -- n )    ENGINE-GPR:MASK ;
+: ENGINE-GPRS ( -- n )    ENGINE-GPR:A64-MASK ;
 : SLOT-WIDTH ( -- n )     SLOT-WIDTH-N ;
 
 \ The register the running engine keeps its data-stack pointer in. A pass that
 \ emits an access to the caller's stack asks for it here rather than writing 19.
 \ The number comes from the engine's own declaration (src/arch/arm64/mnem.f XDS,
-\ which src/habu/layout.f folds into ENGINE-GPR:MASK): this file reports the
-\ engine's register, it does not decide it.
-: DSTACK-GPR ( -- n )     ENGINE-GPR:DSTACK ;
+\ which src/habu/layout.f folds into ENGINE-GPR:A64-MASK): this file reports the
+\ engine's register, it does not decide it. It is ENGINE-GPR:A64-DSTACK by name
+\ for the reason RESERVED-MASK reads A64-MASK.
+: DSTACK-GPR ( -- n )     ENGINE-GPR:A64-DSTACK ;
 
 \ ---- the registers that are not general state ---------------------------------
 : LINK-GPR ( -- n )       LINK-N ;

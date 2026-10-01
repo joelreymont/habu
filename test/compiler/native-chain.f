@@ -171,6 +171,11 @@ create NCH-CELL 1 cells allot
          CTARGET-ABI:AAPCS64-DARWIN CTARGET-ABI:EQ TTRUE
       exit
    then
+   HB-TARGET-LINUX-X86-64? if
+      NABI:BINDING CBIND:TARGET@ CTARGET:ABI@
+         CTARGET-ABI:SYSV-AMD64 CTARGET-ABI:EQ TTRUE
+      exit
+   then
    E-CTGT-ABI throw ;
 
 : NR0 ( -- NEFF:routine )   0 4 NABI:POOL 1 0 0 NABI:NORET-FRAMED ;

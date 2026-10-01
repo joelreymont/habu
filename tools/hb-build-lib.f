@@ -473,6 +473,7 @@ HBB-INSTALL-CHILD-LINT
    s" lib/object-resolve.f" HBB-KEY-FILE+
    s" lib/object-link.f" HBB-KEY-FILE+
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
+   s" tools/build-target.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/object-image.f" HBB-KEY-FILE+
    s" tools/dynamic-tail-manifest.f" HBB-KEY-FILE+

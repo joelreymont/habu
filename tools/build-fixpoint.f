@@ -12,6 +12,7 @@
 require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
+require tools/build-target.f              \ the target the emitted sources are for
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -834,76 +835,79 @@ package BUILD-FIXPOINT
 : BF-TARGET-UNKNOWN ( -- )
    s" build-fixpoint: unknown target" BF-BUILD-RC die ;
 
+\ The stage source's target seam reads the build's target (tools/build-target.f),
+\ not this engine's predicates. Nothing here points it elsewhere, so it is this
+\ engine's own target: the stage compiler is this machine's engine.
 : BF-APPEND-TARGET-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/layout.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/layout.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/layout.f" BF-APPEND-SOURCE
       exit
    then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-SYS ( ptr u8 n -- ) {: out:ptr outu :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/sys.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/sys.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/sys.f" BF-APPEND-SOURCE
       exit
    then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-PROC-WATCH ( ptr u8 n -- ) {: out:ptr outu:n :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/proc-watch.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/proc-watch.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/proc-watch.f" BF-APPEND-SOURCE
       exit
    then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-PROC-CONTROL ( ptr u8 n -- ) {: out:ptr outu:n :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/proc-control.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/proc-control.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/proc-control.f" BF-APPEND-SOURCE
       exit
    then
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-TARGET-FLAG ( ptr u8 n -- ) {: out:ptr outu :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/target.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/target.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/target.f" BF-APPEND-SOURCE
       exit
    then
@@ -913,17 +917,17 @@ package BUILD-FIXPOINT
    out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       out outu s" src/os/linux/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux/sign.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       out outu s" src/os/macos/macho.f" BF-APPEND-SOURCE
       out outu s" src/os/macos/sign2.f" BF-APPEND-SOURCE
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       out outu s" src/os/linux-x86-64/target-layout.f" BF-APPEND-MODULE
       out outu s" src/os/linux-x86-64/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux-x86-64/sign.f" BF-APPEND-SOURCE
@@ -1357,9 +1361,9 @@ public
 package BUILD-FIXPOINT
 
 : BF-CENSUS-TARGET$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? if s" linux-arm64" exit then
-   HB-TARGET-MACOS? if s" macos-arm64" exit then
-   HB-TARGET-LINUX-X86-64? if s" linux-x86-64" exit then
+   BUILD-TARGET:LINUX? if s" linux-arm64" exit then
+   BUILD-TARGET:MACOS? if s" macos-arm64" exit then
+   BUILD-TARGET:LINUX-X86-64? if s" linux-x86-64" exit then
    BF-TARGET-UNKNOWN ;
 
 : BF-CENSUS-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}

@@ -1,9 +1,11 @@
 ---
 title: Select the build target in the capture window
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.723952+03:00"
+closed-at: "2026-10-01T08:33:23+03:00"
+close-reason: "native-build --target cell; spark x86 window opens linux-x86-64 target/layout/repl-term/passes, refuses without backend (entry test); host rebuild b4e05778 without machine.f, 2ef07f9f gen1=gen2 with it"
 blocks:
   - habu-bind-x86-host-4485acdd
 ---

@@ -13,6 +13,7 @@ require lib/process-env.f
 require lib/process-cwd.f
 require src/os/script-argv.f
 require tools/native-build-args.f
+require tools/build-target.f
 require lib/codesign.f
 require lib/executable-build.f
 require src/arch/arm64/asm.f
@@ -134,21 +135,23 @@ TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
    source owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
-\ The window's target seam: the predicates of the engine doing the building
-\ choose which OS sources the window is given, and an unknown target is refused
-\ rather than defaulted.
+\ The window's target seam: the build's target (tools/build-target.f, the host
+\ unless `--target` named another) chooses which OS sources the window is given,
+\ and an unknown target is refused rather than defaulted. From here on the
+\ window's own target.f answers HB-TARGET-* for everything the window compiles,
+\ while this engine's predicates stay its own.
 : NB-TARGET-CORE-FILES ( -- )
-   HB-TARGET-LINUX? if
+   BUILD-TARGET:LINUX? if
       s" src/os/linux/target.f" included
       s" src/os/linux/layout.f" included
       exit
    then
-   HB-TARGET-MACOS? if
+   BUILD-TARGET:MACOS? if
       s" src/os/macos/target.f" included
       s" src/os/macos/layout.f" included
       exit
    then
-   HB-TARGET-LINUX-X86-64? if
+   BUILD-TARGET:LINUX-X86-64? if
       s" src/os/linux-x86-64/target.f" included
       s" src/os/linux-x86-64/layout.f" included
       exit
