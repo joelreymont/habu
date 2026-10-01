@@ -1065,6 +1065,41 @@ variable GE-CF-BODY-U
    s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
    s" PASS: do nesting cap fail-closed rc70 (no overflow)" type cr ;
 
+\ Build "<tier> set-tier", then a definition holding n values on the virtual
+\ stack in a counted loop that leaves on its second turn and reads its local
+\ after the loop, and print its answer for 100: each turn adds 1 + ... + n, so
+\ the answer is 100 + n(n+1).
+: GE-LEAVE-VS-CASE ( n n ptr u8 n -- ) {: n:n tier:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier GE-SRC-U+ s"  set-tier" GE-SRC-LINE
+   s" : GE-LV ( n -- n ) {: a:n :} 0 3 0 do" GE-SRC-LINE
+   n 0 ?do i 1+ GE-SRC-U+ GE-SRC-SP loop GE-SRC-LF
+   n 0 ?do s" + " GE-SRC+ loop GE-SRC-LF
+   s" i 1 = if leave then loop a + ;" GE-SRC-LINE
+   s" 100 GE-LV ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   label labelu GE-EXPECT-OK
+   SB-RESET  n 1+ n * 100 + FMT:SB-U  GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LEAVE-DEEP-VS ( -- )
+   \ Tier 0 holds a body's values on the virtual stack, VVAL-OFF's VSMAX cells,
+   \ and `leave` releases the locals bound since its loop was entered, counted
+   \ from the frame bytes the LVF-OFF level array kept at `do`. That array lay
+   \ inside the virtual stack ($2C0 is its slot 14), so a loop body holding 15
+   \ or more values overwrote level 0 and its `leave` released a wrong byte
+   \ count: 15 values crashed (rc 134), 16 to VSMAX stopped the compile with
+   \ "transfer immediate out of range" (rc 75), and VSMAX + 1, which write every
+   \ virtual-stack cell and then spill it, crashed.
+   15 0 s" hb leave under 15 values tier 0" GE-LEAVE-VS-CASE
+   16 0 s" hb leave under 16 values tier 0" GE-LEAVE-VS-CASE
+   VSMAX 1+ 0 s" hb leave past a full virtual stack tier 0" GE-LEAVE-VS-CASE
+   15 1 s" hb leave under 15 values tier 1" GE-LEAVE-VS-CASE
+   16 1 s" hb leave under 16 values tier 1" GE-LEAVE-VS-CASE
+   VSMAX 1+ 1 s" hb leave past a full virtual stack tier 1" GE-LEAVE-VS-CASE
+   s" PASS: leave under a deep virtual stack keeps its frame at both tiers" type cr ;
+
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
    \ dot habu-raw-exit-compile: one recoverable compile-error misuse evaluated
@@ -1468,6 +1503,7 @@ public
    LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
    GE-DO-DEPTH-CAP
+   GE-LEAVE-DEEP-VS
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL
    GE-QUOT-NEST

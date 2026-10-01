@@ -375,9 +375,9 @@ $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
-$2C0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
+$6D0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
 $750 constant LVQ-OFF     \ `?do` entry branch per nesting level; 0 for `do`
-16 constant LV-LEVELS     \ nesting levels LVH and LVQ hold (mirror of src/habu/layout.f)
+16 constant LV-LEVELS     \ nesting levels LVH, LVF and LVQ hold (mirror of src/habu/layout.f)
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)

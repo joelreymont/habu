@@ -20,11 +20,11 @@ require src/habu/layout.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows. TWO LOW CLAIMS ARE OUT, both
-\ below $800, where no library band reaches: LVF-OFF ($2C0), the DO level array
-\ of loop-entry frame bytes, whose LV-LEVELS cells lie inside VVAL-STACK, a pair
-\ CLAIMS-ASSERT would refuse; and the $1A0 seal fixture poke cell, which no
-\ constant names.
+\ library band lives, and all DATA-BANDS rows. THREE LOW CLAIMS ARE OUT, all
+\ below $800, where no library band reaches: the $1A0 seal fixture poke cell,
+\ which no constant names, and two cells declared in their own modules rather
+\ than in the layout.f this file loads, ADDRESS-CELLS:LOCK-CELL ($1A8) and
+\ regalloc.f's VRFREE-CELL ($208).
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -114,6 +114,7 @@ variable NAMES-U
    s" GENIO-ABI" NAME,
    s" AOT-SPAN" NAME,
    s" SIGNAL-ABI" NAME,
+   s" LVF-LEVELS" NAME,
    s" LVQ-LEVELS" NAME,
    s" FRAME-CELL" NAME,
    s" QFRAME-CELL" NAME,
@@ -236,6 +237,7 @@ create TAB
    GENIO-ABI:OUT-CELL             ,  GENIO-ABI:END GENIO-ABI:OUT-CELL - ,
    AOT-CELLS:SPAN-TABLE-CELL      ,  3 cells ,
    SIGNAL-ABI:STUB-CELL           ,  3 cells ,
+   LVF-OFF                        ,  LV-LEVELS cells ,
    LVQ-OFF                        ,  LV-LEVELS cells ,
    FRAME-CELL                     ,  1 cells ,
    QFRAME-CELL                    ,  1 cells ,
