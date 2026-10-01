@@ -9,7 +9,6 @@ require lib/fmt.f                          \ FMT:.INT - one-line number text, sh
 
 variable T-CASE#
 variable T-FAIL#
-variable T-EXPECTED#
 
 256 constant T-LABEL-CAP
 create T-LABEL-BUF T-LABEL-CAP allot
@@ -131,12 +130,12 @@ variable T-LABEL-U
 
 \ A deadline is no verdict on the code under test (lib/test/outcome.f): a
 \ check that wants another code lets E-PROC-TIMEOUT go uncaught, so the gate
-\ pool reports the row as a timeout instead of a wrong throw code.
-: TTHROWSQ ( [ -- ] n -- )
-   T-EXPECTED# !
+\ pool reports the row as a timeout instead of a wrong throw code. The expected
+\ code is a local, so a throw check inside the xt keeps its own.
+: TTHROWSQ ( [ -- ] n -- ) {: want:n :}
    catch {: code:n :}
-   code E-PROC-TIMEOUT = T-EXPECTED# @ E-PROC-TIMEOUT <> and if code throw then
-   code T-EXPECTED# @ = T-ASSERT ;
+   code E-PROC-TIMEOUT = want E-PROC-TIMEOUT <> and if code throw then
+   code want = T-ASSERT ;
 
 \ Named execution tokens and literal quotations share the same checked effect.
 : TTHROWS ( [ -- ] n -- )
