@@ -4,11 +4,12 @@
 \   bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 HB_TMP
 \
 \ The host is explicit and every child inherits only the caller's environment
-\ plus the private HB_TMP and engine override.  A second generation is built
-\ from the first.  A third is built only when the first two differ.  The result
-\ is a real exit status: a failed build or a non-fixpoint throws or dies and
-\ cannot be mistaken for a completed queue item; tools/chain-run-build.f states
-\ the statuses.
+\ plus the private HB_TMP and the engine override, which names the engine that
+\ runs that build.  The host builds the first generation, the first builds the
+\ second, and the second builds a third only when the first two differ.  The
+\ result is a real exit status: a failed build or a non-fixpoint throws or dies
+\ and cannot be mistaken for a completed queue item; tools/chain-run-build.f
+\ states the statuses.
 
 require lib/errors.f
 require lib/string.f
@@ -93,8 +94,6 @@ public
 
 private
 
-: SAME? ( ptr u8 n ptr u8 n -- bool ) SAME-FILES? ;
-
 : REPORT ( n -- )
    s" chain-run: fixpoint at generation " type . cr ;
 
@@ -103,10 +102,10 @@ public
 : MAIN ( -- )
    NEED-ARGS
    0 ARG 1 ARG 4 ARG BUILD
-   0 ARG 2 ARG 4 ARG BUILD
-   1 ARG 2 ARG SAME? if 2 REPORT exit then
-   0 ARG 3 ARG 4 ARG BUILD
-   2 ARG 3 ARG SAME? if 3 REPORT exit then
+   1 ARG 2 ARG 4 ARG BUILD
+   1 ARG 2 ARG SAME-FILES? if 2 REPORT exit then
+   2 ARG 3 ARG 4 ARG BUILD
+   2 ARG 3 ARG SAME-FILES? if 3 REPORT exit then
    s" chain-run: generation 3 is not a byte fixpoint" FAIL-RC die ;
 
 ;package

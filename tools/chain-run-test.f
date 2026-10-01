@@ -1,4 +1,5 @@
-\ chain-run-test.f - hash comparison and refusal boundary for chain-run.
+\ chain-run-test.f - byte comparison, refusal boundary and generation lineage
+\ for chain-run.
 
 require lib/test.f
 require lib/fs.f
@@ -78,12 +79,29 @@ create BIG-B 32769 allot
    CHAIN-RUN:FAIL-RC T=
    CHAIN-NAMED ;
 
+: GEN-SIZE ( ptr u8 n -- n ) {: a:ptr u:n :} ROOT$ a u JOIN FILE-SIZE ;
+
+\ Each generation is built by the one before. The stand-in engines copy their
+\ own bytes to the output, the fourth argument after
+\ `--load tools/native-build.f --`: the copier reproduces itself, and the
+\ grower appends a newline, so each engine it builds is one byte longer than
+\ its builder. Gen 3 is three bytes longer than the host only when gen 1 built
+\ gen 2 and gen 2 built gen 3.
+: CHAIN-LINEAGE ( -- )
+   s" an engine that reproduces itself is a fixpoint at generation 2" T-LABEL
+   S\" #!/bin/sh\ncp \q$0\q \q$4\q\n" CHAIN-RC 0 T=
+   PROC-CMD:OUT$ s" chain-run: fixpoint at generation 2" CONTAINS? TTRUE
+   s" an engine that differs from its own build is no fixpoint" T-LABEL
+   S\" #!/bin/sh\ncp \q$0\q \q$4\q\necho >> \q$4\q\n" CHAIN-RC
+   CHAIN-RUN:FAIL-RC T=
+   s" gen3" GEN-SIZE HOST$ FILE-SIZE 3 + T= ;
+
 : MAIN ( -- )
    T-RESET PREP
-   s" equal files share a digest" T-LABEL
+   s" equal files compare equal" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? TTRUE
    B$ s" changed" WRITE-ALL
-   s" changed files do not share a digest" T-LABEL
+   s" changed files compare unequal" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
    BIG-PREP
    A$ BIG-A 32769 WRITE-ALL
@@ -94,6 +112,7 @@ create BIG-B 32769 allot
    B$ BIG-B 32769 WRITE-ALL
    A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
    CHAIN-EXITS
+   CHAIN-LINEAGE
    ROOT$ REMOVE-TREE
    T-REPORT ;
 
