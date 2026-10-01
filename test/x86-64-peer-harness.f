@@ -139,9 +139,11 @@ s" src/os/linux-x86-64/sys.f" required
    RAX at MOVABS,
    RAX RCX ASM-SINK ENC-CMP-RR 51 ASSERT-EQ ;
 
+\ exit_group ends every thread: a booted image's task thread that outlives a
+\ thread-local exit(2) would end the process with its own status instead.
 : EXIT, ( -- )
    EXIT-LBL LBL,
-   0 >R32 NR-EXIT >IMM32 ASM-SINK ENC-MOV32-RI32
+   0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL ;
 
 public
