@@ -447,38 +447,20 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
    SNAPSHOT-FORMAT:HEAP-GRID SHF !  grid SHL !
    WRITE-GRID ;
 
-;package
+\ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
+\ the close it checks, and it does nothing. It is private, so no qualified name
+\ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
+\ close the fd early, which proves WRITE-BYTES fails closed (rc 74) instead of
+\ accepting a half-written image.
+defer BEFORE-CLOSE ( n -- )
 
-\ ---- test-only final-close fault seam ----
-\ The seam lets the snapshot-writer suite force the final close to fail and
-\ prove the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
-\ half-written image. BEFORE defaults to a no-op; test/snapshot-writer-close-fail.f
-\ arms it through INSTALL-TEST in the one child that loads that file before
-\ APP-IMAGE:SAVE. APP-IMAGE:SAVE retires nothing, so this package, its public
-\ INSTALL-TEST included, persists in every image it writes.
-package SNAP-CLOSE-SEAM
-
-defer BEFORE ( n -- )
-
-: NOOP ( n -- )
+: CLOSE-NOOP ( n -- )
    drop ;
 
-: RESET ( -- )
-   [: NOOP ;] is BEFORE ;
+: CLOSE-DEFAULT ( -- )
+   [: CLOSE-NOOP ;] is BEFORE-CLOSE ;
 
-RESET
-
-public
-
-: INSTALL-TEST ( [ n -- ] -- )
-   is BEFORE ;
-
-: RUN ( n -- )
-   BEFORE ;
-
-;package
-
-package SNAP
+CLOSE-DEFAULT
 
 : WRITE-PAD ( -- )
    16 0 ?do 0 PAD-ZEROS i + c! loop
@@ -521,7 +503,7 @@ package SNAP
    WRITE-PAD
    SFD @ TRL SNAP-TRL-BYTES FDIO:WALL
    SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
-   SFD @ SNAP-CLOSE-SEAM:RUN
+   SFD @ BEFORE-CLOSE
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 
 : WRITE-IMAGE ( snap -- )
