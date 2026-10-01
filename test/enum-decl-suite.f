@@ -366,6 +366,9 @@ s" ENUM-DECL:ED-RUN eempty ;ENUM" TRY 7107 T=                            \ an en
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TRY 7110 T=                          \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TRY 7101 T=                           \ upper-case family name (case)
 s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=                             \ single-letter family name
+\ An effect reads a bare `ptr` as the pointer constructor, never as a family, so
+\ the tail is reserved ahead of the global `ptr` family's duplicate check (7102).
+s" ENUM-DECL:ED-RUN ptr red ;ENUM" TRY 7110 T=
 s" ENUM-DECL:ED-RUN erf 0 VARIANT alpha FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
 s" ENUM-DECL:ED-RUN ecf 0 VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
 s" ENUM-DECL:ED-RUN ebs 0 VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
@@ -500,6 +503,9 @@ s" allowed-compact" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" EV
 s" allowed-full" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
+\ A package may shadow a global family, but not `ptr`: an effect in this
+\ package would still read `ptr` as the pointer constructor.
+s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-SAME
 
 ;package
 

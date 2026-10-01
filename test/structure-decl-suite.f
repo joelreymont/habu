@@ -109,6 +109,7 @@ DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 \ ---------------------------------------------------------------------------
 s" STRUCTURE field 0 ;STRUCTURE" TRY 7110 T=                     \ reserved keyword name
 s" STRUCTURE n 0 ;STRUCTURE" TRY 7110 T=                         \ single-letter type name
+s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=             \ the pointer constructor's tail
 s" STRUCTURE Bad 0 ;STRUCTURE" TRY 7101 T=                       \ upper-case name (case)
 s" STRUCTURE foo q ;STRUCTURE" TRY 7108 T=                       \ non-numeric arity
 s" STRUCTURE foo 24 ;STRUCTURE" TRY 7108 T=                      \ arity above the shared 23 cap
@@ -119,6 +120,13 @@ s" STRUCTURE foo 0 VARIANT q ;VARIANT ;STRUCTURE" TRY 7107 T=    \ mixed legacy 
 s" STRUCTURE foo 0 FIELD x n" TRY 7107 T=                        \ missing ;STRUCTURE
 s" STRUCTURE foo 0 POLICY nope FIELD x n ;STRUCTURE" TRY 7116 T= \ unknown layout policy
 s" STRUCTURE foo 0 DERIVE nope FIELD x n ;STRUCTURE" TRY 7119 T= \ unknown derive feature
+
+\ An effect reads a bare `ptr` as the pointer constructor in every scope, so the
+\ tail is reserved ahead of the global `ptr` family's duplicate check (7102),
+\ and a package may not shadow it as it may shadow any other global family.
+package SDPTR
+s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=
+;package
 
 \ ---------------------------------------------------------------------------
 \ 8. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).

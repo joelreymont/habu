@@ -54,8 +54,10 @@ words, and grammar keywords — is caught by the name gate (`TDECL-RESERVED?`,
 `src/core/sumtype.f`) *before* any family row is created, and rejects
 `E-TDECL-NAME` (7110, "reserved name"). `ptr` is a seeded family (arity 2), but
 an effect reads a bare `ptr` as the pointer constructor in every scope, so no
-scope can name a family by that tail. Any other **live registered parametric
-family tail** — `span`, `matrix`, and the other cell families seeded in
+scope can name a family by that tail; the `ENUM` and `STRUCTURE` name gates
+refuse it through the same parser predicate, `SIG-PTR-TOK?`. Any other **live
+registered parametric family tail** — `span`, `matrix`, and the other cell
+families seeded in
 `src/core/type-family.f` — passes the name gate and collides at registration
 (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family"). So
 `NEWTYPE n 0` and `NEWTYPE ptr 0` report reserved-name while `NEWTYPE span 3`

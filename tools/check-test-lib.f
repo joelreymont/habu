@@ -922,6 +922,16 @@ variable LONG-J
    s" ;package" SB-APPEND
    SB$ ;
 
+\ ENUM and STRUCTURE refuse the same `ptr` tail through their own name gates:
+\ inside a package, where shadowing a global family is otherwise legal, and at
+\ top level, where the reserved name answers ahead of the duplicate family.
+: PTR-PKG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" package CKPT" SB-APPEND $0a SB-APPEND-C
+   a u SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
 \ An effect spells a DEFLINEAR or VALUE-RECORD type exactly as it was declared,
 \ so `CELL` and `PTR` are types of their own beside `cell` and `ptr`. A single
 \ upper-case letter at the head of a stack is a row variable, and `--`, `[` and
@@ -2231,6 +2241,35 @@ create BIG $2000 allot   variable BIG-U
    NOM-SIDE$ HB-LOAD-SRC NOM-LOAD-ADMITTED
    NOM-SIDE$ NOM-CHECK-ADMITTED ;
 
+: PTR-LOAD-REFUSED ( n n n -- )
+   67 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" declaration 'ptr': reserved name" CONTAINS? TTRUE ;
+
+: PTR-JSON-REFUSED ( ptr u8 n -- )
+   DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" reserved name" CONTAINS? TTRUE ;
+
+: PTR-PROSE-REFUSED ( ptr u8 n -- )
+   DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" declaration 'ptr': reserved name" CONTAINS? TTRUE ;
+
+: PTR-DECL-REFUSED ( [ -- ptr u8 n ] -- )
+   dup execute HB-LOAD-SRC PTR-LOAD-REFUSED
+   dup execute PTR-JSON-REFUSED
+   execute PTR-PROSE-REFUSED ;
+
+: TEST-DECL-CTOR-TAIL ( -- )
+   [: s" ENUM ptr red green ;ENUM" PTR-PKG$ ;] PTR-DECL-REFUSED
+   [: s" ENUM ptr red green ;ENUM" ;] PTR-DECL-REFUSED
+   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" PTR-PKG$ ;] PTR-DECL-REFUSED
+   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" ;] PTR-DECL-REFUSED ;
+
 : LIN-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-REFUSED
    a u NOM-LIN$ NOM-CHECK-REFUSED ;
@@ -2908,6 +2947,7 @@ POISON-RECORD
    s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
    s" check/nominal-ctor-tail" [: TEST-NOMINAL-CTOR-TAIL ;] CASE-RUN
    s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
+   s" check/decl-ctor-tail" [: TEST-DECL-CTOR-TAIL ;] CASE-RUN
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
