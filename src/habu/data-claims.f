@@ -1,6 +1,8 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
 require src/habu/layout.f
 require src/habu/regalloc-abi.f
+require src/habu/address-cells.f
+require src/habu/prof-abi.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
 \ WHY IT EXISTS. lib/task.f handed out TASK:+USER rows from $41C8 bounded by
@@ -21,15 +23,15 @@ require src/habu/regalloc-abi.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows, and the register allocator's
-\ cells and tables, which src/habu/regalloc-abi.f declares for this file to
-\ read. FOUR CLAIMS ARE OUT. Three lie below the $3A00 library arena: the
-\ $1A0 seal fixture poke cell, which no constant names, and
-\ ADDRESS-CELLS:LOCK-CELL ($1A8) and ADDRESS-CELLS:INDEX-CELL ($36C8), both
-\ declared in their own module rather than in the layout.f this file loads.
-\ The fourth is the profiler band, the top PROF-CNT-BYTES of DATA
-\ (src/habu/prof-abi.f PROF-BAND-AT), whose start follows the target's
-\ DATA-SIZE.
+\ library band lives, and all DATA-BANDS rows; the register allocator's cells
+\ and tables, which src/habu/regalloc-abi.f declares for this file to read;
+\ the address-cell registry's mutex and index cells (src/habu/address-cells.f
+\ LOCK-CELL and INDEX-CELL); and the profiler band, the top PROF-CNT-BYTES of
+\ DATA, placed as src/habu/prof-abi.f PROF-BAND-AT places it for the global
+\ DATA-SIZE. That is the target's in a native build, and the host's when
+\ src/habu/kernel-x64.f loads this file for an x86-64 build on another host,
+\ since it reads the target's only as X64LAYOUT:DATA-SIZE. ONE CLAIM IS OUT:
+\ the $1A0 seal fixture poke cell, which no constant names.
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -90,6 +92,7 @@ variable NAMES-U
    s" CMPADS-CELL" NAME,
    s" CMFRD-CELL" NAME,
    s" CMFR-STACK" NAME,
+   s" ADDRESS-CELLS-LOCK" NAME,
    s" CMFAM-CELL" NAME,
    s" BODYLEN-CELL" NAME,
    s" RBASE-CELL" NAME,
@@ -159,6 +162,7 @@ variable NAMES-U
    s" FRFREE-CELL" NAME,
    s" FRCLM-CELL" NAME,
    s" BPA-CELL" NAME,
+   s" ADDRESS-CELLS-INDEX" NAME,
    s" BPTAB" NAME,
    s" EVALD-CELL" NAME,
    s" EVALERR-CELL" NAME,
@@ -206,6 +210,7 @@ variable NAMES-U
    s" JIT-SNAP-FRAMES" NAME,
    s" TIER-PROV" NAME,
    s" UNIT-COMPILE" NAME,
+   s" PROF-BAND" NAME,
 
 create TAB
    DP-CELL                        ,  1 cells ,
@@ -218,6 +223,7 @@ create TAB
    CMPADS-CELL                    ,  1 cells ,
    CMFRD-CELL                     ,  1 cells ,
    CMFR-OFF                       ,  CMFR-MAX cells ,
+   ADDRESS-CELLS:LOCK-CELL        ,  1 cells ,
    CMFAM-CELL                     ,  1 cells ,
    BODYLEN-CELL                   ,  1 cells ,
    RBASE-CELL                     ,  1 cells ,
@@ -287,6 +293,7 @@ create TAB
    REGALLOC-ABI:FRFREE-CELL       ,  1 cells ,
    FRCLM-CELL                     ,  1 cells ,
    BPA-CELL                       ,  1 cells ,
+   ADDRESS-CELLS:INDEX-CELL       ,  1 cells ,
    BPTAB-OFF                      ,  EVALD-CELL BPTAB-OFF - ,
    EVALD-CELL                     ,  1 cells ,
    EVALERR-CELL                   ,  1 cells ,
@@ -334,6 +341,7 @@ create TAB
    JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL              ,  1 cells ,
+   0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )

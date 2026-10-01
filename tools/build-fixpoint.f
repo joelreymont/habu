@@ -1053,10 +1053,12 @@ package BUILD-FIXPOINT
 
 \ The verifier reads the emitted buffer and does not follow require. Include
 \ the required build modules at their dependency boundaries, in habu1.f's own
-\ require order: regalloc-abi.f, which data-claims.f requires for the register
-\ allocator's rows, then data-claims.f before data-bands.f's claim check reads
-\ its rows (a module habu1.f requires but this list omits certifies as
-\ `undefined word`, which is how the DATA-CLAIMS split first failed here);
+\ require order: regalloc-abi.f, address-cells.f and prof-abi.f, which
+\ data-claims.f requires for the register allocator's, the address-cell
+\ registry's and the profiler's rows, then data-claims.f before data-bands.f's
+\ claim check reads its rows (a module habu1.f requires but this list omits
+\ certifies as `undefined word`, which is how the DATA-CLAIMS split first
+\ failed here);
 \ code-origin.f registers its helpers through ENGINE-PRIMS, so its source
 \ follows primitive-registry.f, at habu1.f's own require line.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
@@ -1064,6 +1066,8 @@ package BUILD-FIXPOINT
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
    out outu s" src/habu/regalloc-abi.f" BF-APPEND-MODULE
+   out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
+   out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/data-bands.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
@@ -1108,7 +1112,6 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu BF-APPEND-HABU1
    out outu BUILD-EXT:APPEND
-   out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE   \ prof.f requires it
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
@@ -1117,7 +1120,6 @@ package BUILD-FIXPOINT
    \ The span type family, in the engine prefix's position right after errors.f
    \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
    out outu s" lib/span.f" BF-APPEND-MODULE
-   out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
