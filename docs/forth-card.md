@@ -222,9 +222,13 @@ forth.md: **Errors**, **Integer arithmetic**.
 
 - `require lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
-  path resolves against the `--load` entry's directory, then the working
-  directory, so `require lib/…` names the tree root. Every file requires its
-  **own** dependencies.
+  path resolves against the root that resolved the requiring file (the
+  `--load` entry's directory for the entry), then the working directory, so
+  `require lib/…` names the tree root. A file found through the working
+  directory keeps that root for its own requires: an overlay copy of one tree
+  file, required by a tree file, loads beside the tree's copy and dies on the
+  duplicate (exit 78; test/aot-capture-bound.f copies the requirer too). Every
+  file requires its **own** dependencies.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
   `src/` file:
