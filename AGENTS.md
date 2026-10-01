@@ -12,9 +12,7 @@ belong in the language core.
   Keep small or tightly coupled work direct, with no fixed agent chain.
   Define each worker's ownership and acceptance checks before starting it.
   Editing workers use isolated `.jj-ws/<task>` workspaces; the integrator owns
-  review, integration, verification and cleanup. Independent review of a
-  delegated change runs on Astra for Codex agents and on Fable for Claude
-  agents.
+  review, integration, verification and cleanup.
 - Agents work independently in separate worktrees; there are no shared slots.
   Never pause other worktrees for local `jj` errors; back up and recover only
   your own.
@@ -81,10 +79,10 @@ belong in the language core.
 
 ## Verification and documentation
 
-- Each significant feature implementation needs independent adversarial
-  reviews by both Astra and Fable before landing, including lead-written code.
-  Give each reviewer the requirements and completed code, not the implementation
-  discussion. Reviews must look for behavioral defects, overengineering and
+- Each significant feature implementation needs an independent adversarial
+  review before landing, including lead-written code: on Astra when Codex
+  wrote it, on Fable when Claude Code did. Give the reviewer the requirements
+  and completed code, not the implementation discussion. Reviews must look for behavioral defects, overengineering and
   opportunities to simplify. Fix confirmed findings or show they do not affect
   outcomes; get focused follow-up review of fixes. Missing or interrupted
   reviews are not approval.
