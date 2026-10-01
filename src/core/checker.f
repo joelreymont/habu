@@ -9592,9 +9592,13 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
 \ wordlist: the statement's own section of its own package, read after the
 \ statement. The mark is a symbol whose name holds a space, which no token can
 \ spell; it carries no effect, and a scope's exit retires it with the scope's
-\ other symbols. A covered name still joins the lazy intake's queue: a seeded
-\ row for it outranks the deferral, since the retry then judges the body against
-\ the word's real effect.
+\ other symbols.
+\ THE LIMIT: a word the checker already holds resolves before any of this is
+\ asked, so a product shadowing it is judged against it, a refusal the load
+\ does not make. That is every engine word on an engine with no seeded pool,
+\ bin/hb among them, and every row a seeded engine has taken. Without the
+\ product's name the pre-pass cannot tell the two apart, and deferring every
+\ name behind a mark would defer every global a marked section calls.
 : UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
@@ -16267,7 +16271,11 @@ ASIG-GRAPH-CHECK-INSTALL
 \ `take` distinguishes the two callers: the retry decision asks whether a row
 \ would be taken and must leave the tables alone, and the intake takes them. One
 \ walk answers both, so the two can never disagree about what is available.
+\ A name a rendering statement's mark covers (UNSEEN-COVERS?) takes no row: the
+\ load may bind a product of that name ahead of the seeded word, so the
+\ definition stays deferred to the run.
 : CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
+   a u UNSEEN-COVERS? IF RES-FALSE EXIT THEN
    0 CK-AOT-GOT !
    0 CK-AOT-I !
    BEGIN CK-AOT-I @ CK-AOT-ROWS < WHILE

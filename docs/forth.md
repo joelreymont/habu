@@ -1290,7 +1290,7 @@ passing suite.
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
   `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :71), `CTX0`
-  (lib/process-command.f:439), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  (lib/process-command.f:438), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
   run's `E-UNDEFINED`. The mark covers only what follows the statement and only
@@ -1298,9 +1298,23 @@ passing suite.
   product from outside its package is still refused by the pre-pass. It also
   covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
   after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
-  now the run's to judge. A `TRUSTED:` body is asserted, not walked, and an
-  evaluate reached through a `defer` or executed xt is not seen, so neither
-  makes its caller a renderer.
+  now the run's to judge. A definer's created words keep its `does>` clause's
+  declared effect when the clause or the definer's own body is deferred; the
+  run judges the deferred text (verify-source.f `VERIFY-DOES`). Four limits
+  remain. A `TRUSTED:` body is asserted, not walked, and an evaluate reached
+  through a `defer` or executed xt is not seen, so neither makes its caller a
+  renderer. A word the checker already holds resolves before any mark is
+  asked, so a product shadowing it is judged against that word, a refusal the
+  load does not make: every engine word on bin/hb, which carries no seeded
+  pool, and every row a seeded engine has taken. A product `BYTE-COPY` or
+  `BYTE-CHECK-N` used in `package P private` loads 0 and checks 70
+  (`E-INPUT-UNDERFLOW`). A straight-line wrapper around a definer is learned
+  only from a certified body (verify-source.f `VERIFY-WRAPPER`), so one whose
+  body is deferred creates words the pre-pass does not know outside the mark's
+  cover: with `CKR-SEVEN` a product of package `P`'s public section,
+  `: DEFR ( n -- ) create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN +
+  DEFR ;  5 MK Y  : V ( -- n ) Y ;` loads 0 and checks 70 (`E-UNDEFINED` `Y`
+  in `V`).
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):

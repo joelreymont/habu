@@ -463,20 +463,23 @@ variable DEFINER-N
 
 : MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
 
-\ In MULTI-ERR mode a verdict-0 reject RETURNS instead of throwing: CHECK has
-\ already emitted the diagnostic, counted MULTI-ERR-N, and recorded the
-\ declared signature (no-cascade), so the scan continues at the next
-\ definition. Verdict-1 (uncheckable) still throws in BOTH modes: MULTI-ERR-N
-\ counts verdict-0 only, so continuing past uncheckables would let an
-\ all-uncheckable file exit 0 - fail-open.
+\ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
+\ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a verdict-0 reject RETURNS
+\ instead of throwing: CHECK has already emitted the diagnostic, counted
+\ MULTI-ERR-N, and recorded the declared signature (no-cascade), so the scan
+\ continues at the next definition. Verdict-1 (uncheckable) still throws in
+\ BOTH modes: MULTI-ERR-N counts verdict-0 only, so continuing past
+\ uncheckables would let an all-uncheckable file exit 0 - fail-open.
 \ The verdict is answered rather than swallowed because a created effect is a
-\ fact about a definition the checker ACCEPTED: a refused body records nothing.
-: VERIFY-BODY ( -- bool )                     \ true = this body certified
-   BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
-   v -1 = IF 0 0= EXIT THEN
-   v 2 = IF 0 0= 0= EXIT THEN                \ deferred to the run: see RENDERS-MARK?
-   v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
+\ fact about a definition the checker did not refuse: a refused body records
+\ nothing.
+: BODY-VERDICT ( n -- n ) {: v:n :}
+   v -1 = v 2 = or IF v EXIT THEN
+   v 0 = MULTI-ERR-MODE? and IF v EXIT THEN
    70 throw ;
+
+: VERIFY-BODY ( -- n )
+   BODY-BUF BODY-U @ CHECK-BODY BODY-VERDICT ;
 
 \ The pre-pass's own does>-clause entry point. It is not the engine's
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
@@ -487,12 +490,8 @@ variable DEFINER-N
 TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
    CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
-: VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
-   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
-   v -1 = IF 0 0= EXIT THEN
-   v 2 = IF 0 0= 0= EXIT THEN
-   v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
-   70 throw ;
+: VERIFY-DOES-BODY ( ptr u8 n -- n ) {: sig:ptr sigu:n :}
+   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
@@ -583,13 +582,20 @@ variable WRAP-SIG-U
    THEN
    2drop ;
 
+\ Only a certified body is learned. One deferred to the run names a word only the
+\ run can see, which may itself be a definer, so its definer calls are not
+\ counted.
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
    WRAP-SIG-A @ WRAP-SIG-U @ DEFINER-RECORD ;
 
+\ The created effect is the clause's declaration, recorded unless the definer's
+\ body or its clause was refused. One deferred to the run keeps it, as a
+\ deferred colon definition keeps its declared signature (src/core/checker.f
+\ CHECK, verdict 2), and the run judges the deferred text.
 : VERIFY-DOES ( -- )
-   VERIFY-BODY {: ok:bool :}
+   VERIFY-BODY {: def:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    0 BODY-U !
    BEGIN
@@ -597,7 +603,7 @@ variable WRAP-SIG-U
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
       BODY-U @ 0= if TOKEN-ORIGIN! then
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
-         sig sigu VERIFY-DOES-BODY ok and IF sig sigu DEFINER-RECORD THEN EXIT
+         sig sigu VERIFY-DOES-BODY 0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
       THEN
       APPEND-BODY-TOKEN
    AGAIN ;
@@ -1163,7 +1169,7 @@ PTR-VARIABLE STG-START
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY IF VERIFY-WRAPPER THEN EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY -1 = IF VERIFY-WRAPPER THEN EXIT THEN
       TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF VERIFY-DOES EXIT THEN
       TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       APPEND-BODY-TOKEN

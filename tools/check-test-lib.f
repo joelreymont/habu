@@ -1204,6 +1204,12 @@ variable LONG-J
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
    CAP-ERR erru tok toku CONTAINS? TTRUE ;
 
+\ Refused by the pre-pass in the named definition: a diagnostic's "word" is the
+\ definition's name, folded to lower case.
+: EXPECT-PREVERIFY-IN ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n word:ptr wordu:n :}
+   outu erru rc EXPECT-PREVERIFY-REFUSED
+   CAP-ERR erru word wordu CONTAINS? TTRUE ;
+
 \ Refused by the run rather than the pre-pass: the run's diagnostic names it.
 : EXPECT-RUN-REFUSED ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n want:ptr wantu:n :}
    rc 70 T=
@@ -1229,7 +1235,34 @@ variable LONG-J
    RENDER-EARLY$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
    RENDER-OTHER-PKG$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
    RENDER-PRIVATE$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
-   RENDER-CALLER$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED ;
+   RENDER-CALLER$ DIRECT-STDIN s" ckr-caller" EXPECT-PREVERIFY-IN
+   RENDER-CALLER$ DIRECT-JSON-STDIN 70 T= {: outc:n errc:n :}
+   outc 0 T=
+   CAP-ERR errc s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR errc s" ckr-caller" CONTAINS? TTRUE ;
+
+\ A definer's created effect is its clause's declaration, so CKR-X is learned
+\ when the clause or the definer's own body names a product only the run can
+\ see, and a clause that misuses one is still refused, by the run.
+: CKR-DOES$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pre:ptr preu:n clause:ptr clauseu:n :}
+   SB-RESET s" package CKR-A public " SB-APPEND CKR-FIXTURE+
+   s" ;package : CKR-DEFR ( n -- ) " SB-APPEND pre preu SB-APPEND
+   s"  create , does> ( -- n ) @ " SB-APPEND clause clauseu SB-APPEND
+   s"  ; 5 CKR-DEFR CKR-X : CKR-U ( -- n ) CKR-X ;" SB-APPEND SB$ ;
+
+: RENDER-DOES-CLAUSE$ ( -- ptr u8 n )
+   s" " s" CKR-A:CKR-SEVEN +" CKR-DOES$ ;
+
+: RENDER-DOES-DEFINER$ ( -- ptr u8 n )
+   s" CKR-A:CKR-SEVEN +" s" " CKR-DOES$ ;
+
+: RENDER-DOES-BAD$ ( -- ptr u8 n )
+   s" " s" CKR-A:CKR-SEVEN + +" CKR-DOES$ ;
+
+: TEST-RENDERED-DOES ( -- )
+   RENDER-DOES-CLAUSE$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-DOES-DEFINER$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-DOES-BAD$ DIRECT-STDIN s" does>" EXPECT-RUN-REFUSED ;
 
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
@@ -2259,6 +2292,7 @@ POISON-RECORD
    s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
    s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
    s" check/rendered-product" [: TEST-RENDERED-PRODUCT ;] CASE-RUN
+   s" check/rendered-does" [: TEST-RENDERED-DOES ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
