@@ -232,7 +232,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    row XREF-PKG-PUBLIC ;
 
 \ The using depth the buffer the Habu loop reads may close down to, as the
-\ engine's evaluate frame keeps it (layout.f EVAL-USE-FLOOR): INTERPRET starts
+\ engine's evaluate frame keeps it (layout.f EVAL-FRAME:USE-FLOOR): INTERPRET starts
 \ it at the depth the buffer enters at, and a buffer below it, because a
 \ `;package` closed a package opened before the buffer, lowers it to meet the
 \ first using it opens there.

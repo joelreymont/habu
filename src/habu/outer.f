@@ -495,8 +495,8 @@ variable VALUE
 \ ---- words --------------------------------------------------------------------------
 TYPED-VARIABLE REC ptr n
 
-\ A global hit is asked of the used publics as well, as habu2.f LFINDSHADOW
-\ asks them: one that also exports the token refuses it.
+\ A global hit is asked of the used publics as well, as habu2.f
+\ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses it.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
    REC @ XREF-FOUND? 0= if exit then

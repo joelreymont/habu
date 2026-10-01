@@ -3529,14 +3529,6 @@ public
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
-\ The end of a definition the native compiler compiled, the engine's tier-1 `;`
-\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the provenance window
-\ closes native and the per-definition state clears, PEND-CELL last.
-: C-NATIVE-CLOSE ( -- )
-   1 CODE-ORIGIN:CLOSE,
-   C-CLEAR-TRUSTED-STATE
-   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
-
 \ ---- the definition writers --------------------------------------------------
 \ The bodies of the nine rows src/habu/prims.f specifies under "the definition
 \ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
@@ -3777,12 +3769,20 @@ public
 : CREATED-SIG ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
+\ The end of a definition the native compiler compiled, the engine's tier-1 `;`
+\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the provenance window
+\ closes native and the per-definition state clears, PEND-CELL last.
+: NATIVE-CLOSE ( -- )
+   1 CODE-ORIGIN:CLOSE,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
 \ def-close ( -- )
 : DEF-CLOSE ( -- )
    LBL LBL {: bad done :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 1 CMPI,  C-NE bad BCOND,
-   C-NATIVE-CLOSE
+   NATIVE-CLOSE
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
@@ -4987,7 +4987,7 @@ variable LTOPHOOK
    C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
-   LFINDSHADOW LABEL@ BL,                                \ a global a used public also exports refuses (105)
+   INTERP-EMIT:LFINDSHADOW LABEL@ BL,                    \ a global a used public also exports refuses (105)
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
@@ -8200,7 +8200,7 @@ ardone LBL,
 \ RPKG); the checker keeps its OWN package mirror (CHECKER-PACKAGE-MODE/NAME/U),
 \ which the failed input's `package` and `;package` moved. The recovery legs arm
 \ PKGRESYNC-CELL; this drain clears it and has the target checker re-read the
-\ restored scope (checker.f CHECKER-PACKAGE-RESYNC), whatever that scope is: when
+\ restored scope (checker.f CHECKER-RESYNC), whatever that scope is: when
 \ it reset the checker only for a GLOBAL scope, a package open across the
 \ boundary whose failing input closed it left the checker at top level, and the
 \ next inherited replay refused E-PKG-CONTEXT. LEVALREC drains before it
@@ -8335,7 +8335,7 @@ public
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
       C-CALL-X11-SAVED
-      C-NATIVE-CLOSE
+      DEFWRITE:NATIVE-CLOSE
       LMAIN LABEL@ B,
    notsemi LBL,
    LBCAP LABEL@ BL,
@@ -8758,10 +8758,10 @@ public
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
       \ A buffer below its floor had a `;package` close a package opened before
       \ it: its own usings start at this depth, so its floor comes down to meet
-      \ them (layout.f EVAL-USE-FLOOR). The REPL has no frame and no floor.
+      \ them (layout.f EVAL-FRAME:USE-FLOOR). The REPL has no frame and no floor.
       9 DATA EVALD-CELL LDR,  9 nofloor CBZ,
-         9 DATA EVAL-TOP-CELL LDR,  10 9 EVAL-USE-FLOOR LDR,
-         10 8 CMP,  10 10 8 C-LS CSEL,  10 9 EVAL-USE-FLOOR STR,   \ floor = the lower of floor and depth
+         9 DATA EVAL-TOP-CELL LDR,  10 9 EVAL-FRAME:USE-FLOOR LDR,
+         10 8 CMP,  10 10 8 C-LS CSEL,  10 9 EVAL-FRAME:USE-FLOOR STR,   \ floor = the lower of floor and depth
       nofloor LBL,
       14 USE-WIDS-OFF LIT64,  14 DATA 14 ADD,  15 8 3 LSLI,  14 14 15 ADD,  2 14 0 STR,   \ USE-WIDS[depth] = wid
       C-CALL-CHECKER-USING                                 \ mirror name into CHK-USE-NAMES[depth] (reads pre-increment depth)
@@ -8796,10 +8796,10 @@ public
    omsg LBL,  s" hb: ;using would close a using opened outside the package" BYTES,
    own LBL,
    \ Nor may a buffer close a using its includer opened: one at or below the
-   \ buffer's floor (layout.f EVAL-USE-FLOOR) would come back open when the
+   \ buffer's floor (layout.f EVAL-FRAME:USE-FLOOR) would come back open when the
    \ buffer ends, and a using the buffer opened next would take its slot.
    9 DATA EVALD-CELL LDR,  9 mine CBZ,                      \ the REPL closes any open using
-   9 DATA EVAL-TOP-CELL LDR,  9 9 EVAL-USE-FLOOR LDR,        \ x9 = the buffer's floor
+   9 DATA EVAL-TOP-CELL LDR,  9 9 EVAL-FRAME:USE-FLOOR LDR,        \ x9 = the buffer's floor
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
    8 9 CMP,  C-HI mine BCOND,                                \ x8 (depth) above it -> opened in the buffer
       0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
@@ -8943,7 +8943,9 @@ public
       94 C-DIE-TOKEN                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 
-\ EMIT-FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of the
+package INTERP-EMIT
+public
+\ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of the
 \ E-USING-SHADOW-GLOBAL rule (docs/forth.md "Importing ... with `using`"), which
 \ the checker enforces in checked bodies. Called on LFIND's hit path with LFIND's
 \ outputs live, for the token in TKA/TKL. When the hit is a global (record wid 0)
@@ -8952,7 +8954,7 @@ public
 \ level. Otherwise it returns with x5 and x11-x13 as LFIND left them; it clobbers
 \ what LFINDUSED does. Without it the global bound silently: `using PS` then a
 \ top-level `SHW` ran the global.
-: EMIT-FIND-SHADOW ( -- )
+: FIND-SHADOW ( -- )
    LBL LBL LBL  s" hb: bare word a global and a used package both export: "
    {: ret:label shadow:label msg:label ma mu :}
    LFINDSHADOW LABEL@ LBL,
@@ -8969,6 +8971,7 @@ public
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       105 C-DIE-TOKEN                              \ 105 = ENGINE-ERROR:USING-SHADOW-GLOBAL
    msg LBL,  ma mu BYTES, ;
+;package
 
 : C-CALL-CHECKER-EXPORT ( -- )
    LCHKEXPORT 14 C-FIND-GLOBAL
@@ -10512,8 +10515,8 @@ public
       9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
-      9 10 PKGSNAP-FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
-      13 EVAL-USE-WIDS 12 9 USE-WIDS-RESTORE,                \ and the includer's used publics, which the resync names
+      9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
+      13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
@@ -10625,9 +10628,9 @@ public
    9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ roll the using-scope depth back to this REPL line's snapshot
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
-   9 DATA RPKG-FLOOR LDR,                                         \ and the line-start using floor
+   9 DATA RPKG:FLOOR LDR,                                         \ and the line-start using floor
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
-   DATA RPKG-WIDS 10 9 USE-WIDS-RESTORE,                          \ and the line-start used publics, which the resync names
+   DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-RESTORE,              \ and the line-start used publics, which the resync names
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
@@ -10948,9 +10951,9 @@ public
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
    \ Usings are file-local: the depth goes back to the buffer's floor, which is
    \ the depth it entered at unless a `;package` closed a package opened before
-   \ it and restored a lower one (layout.f EVAL-USE-FLOOR). Package scope
+   \ it and restored a lower one (layout.f EVAL-FRAME:USE-FLOOR). Package scope
    \ persists across a clean include.
-   9 14 EVAL-USE-FLOOR LDR,
+   9 14 EVAL-FRAME:USE-FLOOR LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  10 15 0 LDR,
    9 10 CMP,  9 9 10 C-LS CSEL,                    \ x9 = the lower of floor and depth
    9 15 0 STR,
@@ -10983,8 +10986,8 @@ public
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ and the open package's using floor
-   9 DATA RPKG-FLOOR STR,
-   DATA RPKG-WIDS 10 9 USE-WIDS-SAVE,                             \ and the used publics, which a `;package` and a `using` can overwrite
+   9 DATA RPKG:FLOOR STR,
+   DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-SAVE,                 \ and the used publics, which a `;package` and a `using` can overwrite
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX: a definition may span lines, and the reader is compiled code
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
@@ -11508,7 +11511,7 @@ package LABELS
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
-   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDSHADOW !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !  LBL INTERP-EMIT:LFINDSHADOW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -12055,7 +12058,7 @@ package ENGINE-EMIT
    EMIT-FIND
    WLFIND:EMIT
    EMIT-FIND-USED
-   EMIT-FIND-SHADOW
+   INTERP-EMIT:FIND-SHADOW
    EMIT-HIDX
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME

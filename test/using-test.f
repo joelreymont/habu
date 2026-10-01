@@ -46,7 +46,6 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 93 constant E-UNBALANCED
 94 constant E-AMBIGUOUS
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
-105 constant E-SHADOW-TOP       \ USING-SHADOW-GLOBAL: the interpreter's refusal of E-SHADOW's collision
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
 
@@ -155,12 +154,15 @@ s" 1 drop" VS-CATCH 0 T=
 \ the verifier at once: one compiled word catches the buffer and replays. The
 \ first reopens the package the buffer closed, the second closes the one it
 \ opened.
-: UT-REOPEN ( -- n n )  s" ;package AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
-: UT-RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
-s" package UQS" UCE-CATCH 0 T=
-UT-REOPEN 0 T= E-REJECT T=
+package USING-TEST
+public
+: REOPEN ( -- n n )  s" ;package AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+: RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
 ;package
-UT-RECLOSE 0 T= E-REJECT T=
+s" package UQS" UCE-CATCH 0 T=
+USING-TEST:REOPEN 0 T= E-REJECT T=
+;package
+USING-TEST:RECLOSE 0 T= E-REJECT T=
 s" package UQU ;package" UCE-CATCH 0 T=
 
 \ The package's using floor comes back with it. The buffer closes UQP, opens a
@@ -213,13 +215,13 @@ s" MW drop" UCE-CATCH 0 T=
 \ global silently. A qualified name, a tail no used package exports, a word the
 \ open package defines itself and a read after `;using` are unchanged. A buffer
 \ evaluated under its includer's using resolves through it, so it refuses too.
-s" using USG MW drop ;using" UCE-CATCH E-SHADOW-TOP T=
-s" using USG ' MW drop ;using" UCE-CATCH E-SHADOW-TOP T=
+s" using USG MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+s" using USG ' MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
 s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
 s" using USG NC drop ;using" UCE-CATCH 0 T=
 s" package USM : MW ( -- n ) 5 ; using USG MW drop ' MW drop ;using ;package" UCE-CATCH 0 T=
 using USG
-s" MW drop" UCE-CATCH E-SHADOW-TOP T=
+s" MW drop" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
 ;using
 s" using USG ;using MW drop ' MW drop" UCE-CATCH 0 T=
 
@@ -333,15 +335,15 @@ s" ;using" UCE-CATCH E-UNBALANCED T=
 \ from its wid: UA:AW is ( -- n ), so a caller declaring ( n -- n ) is refused
 \ and one declaring ( -- n ) runs UA's.
 package UD public : AW ( n -- n ) 100 + ; ;package
-variable UQX-V
+package USING-TEST public variable UQX-V ;package
 package UQX using UA
 s" ;package using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH 0 T=
 s" BW drop" UCE-CATCH E-REJECT T=
 s" ;package using UD NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
 s" : UQX-R1 ( n -- n ) AW ;" UCE-CATCH E-REJECT T=
-s" : UQX-R2 ( -- n ) AW ; UQX-R2 UQX-V !" UCE-CATCH 0 T=
-UQX-V @ 11 T=
+s" : UQX-R2 ( -- n ) AW ; UQX-R2 USING-TEST:UQX-V !" UCE-CATCH 0 T=
+USING-TEST:UQX-V @ 11 T=
 ;using ;package
 
 \ ---------------------------------------------------------------------------

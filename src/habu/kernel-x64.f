@@ -3355,7 +3355,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
 \ def-close ( -- ): the pending definition of the native tier ends, as the
-\ engine's tier-1 `;` ends one (habu2.f C-NATIVE-CLOSE): the provenance window
+\ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
 \ closes native, then DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL
 \ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )

@@ -43,8 +43,8 @@ create PATH-BUF FS-PATH-CAP allot
    S\" #x\n" s" hash.f" FIXTURE
    S\" nosuchword\n" s" bad.f" FIXTURE
    \ The files after the first of --build load through the registry.
-   S\" : MA-HI ( -- ) s\" HI\" type cr ;\n" s" def.f" FIXTURE
-   S\" MA-HI\n" s" use-def.f" FIXTURE
+   S\" package MA-D public : HI ( -- ) s\" HI\" type cr ; ;package\n" s" def.f" FIXTURE
+   S\" MA-D:HI\n" s" use-def.f" FIXTURE
    S\" package MA-P public : HELLO ( -- ) s\" H\" type cr ; ;package using MA-P\n" s" pkg.f" FIXTURE
    S\" HELLO ;using\n" s" use-pkg.f" FIXTURE
    \ A program that requires itself runs once: its path was recorded first.

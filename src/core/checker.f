@@ -1022,12 +1022,15 @@ variable CHECKER-USE-OWNED-N
 variable CHECKER-PACKAGE-USE-N
 0 CHECKER-PACKAGE-USE-N !
 \ The owned depth the replayed source may close down to, as the engine's
-\ evaluate frame keeps it for a buffer (src/habu/layout.f EVAL-USE-FLOOR): the
-\ verifier window seeds it with the depth the source starts at, and the
+\ evaluate frame keeps it for a buffer (src/habu/layout.f EVAL-FRAME:USE-FLOOR):
+\ the verifier window seeds it with the depth the source starts at, and the
 \ source's first `using` below it, after a `;package` closed the inherited
 \ package, lowers it to meet that using (CHECKER-USING-PUSH).
-variable CHECKER-USE-SOURCE-FLOOR
-0 CHECKER-USE-SOURCE-FLOOR !
+package CHECKER-USE
+public
+variable SOURCE-FLOOR
+0 SOURCE-FLOOR !
+;package
 
 \ Import row storage is shared by the live compiler and verifier mirror.
 \ Savepoints must preserve the names and lengths as well as their depth.
@@ -1318,7 +1321,7 @@ variable VERIFY-FLOOR0
       CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
       CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N !
    THEN
-   CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR ! ;
+   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR ! ;
 REG-PROTECT
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
@@ -10070,11 +10073,14 @@ variable CK-USED-WHY                       \ E-USING-AMBIGUOUS when a second use
 \ CK-USE-DEPTH-OFF aliases that engine's DP-heap base and the raw read is
 \ unrelated heap data, not a depth. Capping the scan at CK-USE-MAX makes the loop
 \ terminate and never index past the mirror no matter what that read returns.
-\ Correctness then rests on the mirror's CONTENTS, not on the raw depth value:
-\ CHECKER-USING is the sole writer of the mirror and is only ever driven by the
-\ engine's C-USING for a real `using` or by a replay's own `using` row, so an
-\ engine with no live using-scope
-\ leaves every scanned slot at its zero-initialised length and SYM-FIND matches
+\ Correctness then rests on the mirror's CONTENTS, not on the raw depth value.
+\ Three writers fill it: CHECKER-USING, driven only by the engine's C-USING for
+\ a real `using` or by a replay's own `using` row; the throw-recovery resync
+\ (CHECKER-RESYNC below), which names each live slot from the engine's wid, the
+\ slots' authority; and CK-USE-RESTORE, which puts back rows a savepoint copied
+\ from the mirror. An engine that predates the using band runs neither a
+\ `using` nor the resync, a hook engine recovery gained after the band, so
+\ every scanned slot keeps its zero-initialised length and SYM-FIND matches
 \ nothing. On a using-capable engine the depth is always in [0,CK-USE-MAX] (C-USING
 \ dies on push overflow), so the cap never binds and the scan is exactly the live
 \ usings, unchanged. The owned depth is bounded by the same CK-USE-MAX at its own
@@ -10091,20 +10097,23 @@ variable CK-USED-WHY                       \ E-USING-AMBIGUOUS when a second use
    THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
+package CHECKER-USE
+public
 \ Slot d names package a u, folded; the name fits the slot.
-: CK-USE-NAME! ( ptr u8 n n -- ) {: a:ptr u:n d:n :}
+: NAME! ( ptr u8 n n -- ) {: a:ptr u:n d:n :}
    d CK-USE-SLOT {: dst:ptr :}
    0 BEGIN dup u < WHILE
       dup a + c@ CHECKER-FOLD-C  over dst + c!      \ dst[i] = fold(name[i])
       1 +
    REPEAT drop
    u d cells CK-USE-LENS + ! ;
+;package
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
-   a u d CK-USE-NAME! ;
+   a u d CHECKER-USE:NAME! ;
 package CHECKER-REG
 ' CHECKER-USING DECLARATIONS USING-OFF + xt!
 ;package
@@ -10126,13 +10135,13 @@ package CHECKER-REG
 \ opened before `package` is at or below the depth CHECKER-END-PACKAGE restores,
 \ so closing it would come undone there (the engine's ENGINE-ERROR:USING-OUTER).
 \ Nor does the replayed source close an import it inherited, at or below
-\ CHECKER-USE-SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
+\ CHECKER-USE:SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
 7146 constant E-USING-OUTER                \ `;using` closing an import its package or source did not open
 
 : CHECKER-USING-PUSH ( ptr u8 n -- )
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
-   CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR @ < IF
-      CHECKER-USE-OWNED-N @ CHECKER-USE-SOURCE-FLOOR !
+   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR @ < IF
+      CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR !
    THEN
    CHECKER-USING
    CHECKER-USE-OWNED-N @ 1 + CHECKER-USE-OWNED-N ! ;
@@ -10142,7 +10151,7 @@ package CHECKER-REG
    CHECKER-USE-OWNED-N @ {: d:n :}
    d 0 <= IF E-USING-UNBALANCED throw THEN
    CHECKER-PACKAGE-ACTIVE? d CHECKER-PACKAGE-USE-N @ <= and IF E-USING-OUTER throw THEN
-   d CHECKER-USE-SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
+   d CHECKER-USE:SOURCE-FLOOR @ <= IF E-USING-OUTER throw THEN
    d 1 - CHECKER-USE-OWNED-N ! ;
 
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
@@ -10384,6 +10393,10 @@ defer USE-SLOT-XT ( n -- ptr u8 n bool )
 : USE-SLOT-BOOT ( -- ) [: drop s" " 0 0= 0= ;] is USE-SLOT-XT ;
 USE-SLOT-BOOT
 
+\ CHECKER-RESYNC sets the mirror from the engine's scope after a throw's
+\ recovery. Its entry, SCOPE, is reached only through the declaration owner.
+package CHECKER-RESYNC
+
 \ The engine's wids are the slots' authority. A throw's recovery puts back the
 \ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
 \ RUN-CAUGHT), which a buffer that closed the includer's package and opened a
@@ -10391,13 +10404,13 @@ USE-SLOT-BOOT
 \ each live slot's name is read back from its wid. A wid no live row publishes, or a
 \ name the slot cannot hold, names nothing: a bare tail through that slot is
 \ refused rather than certified against a stale name.
-: CK-USE-RENAME ( n -- ) {: d:n :}
+: SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}
-   ok u CHECKER-PACKAGE-CAP < and IF a u d CK-USE-NAME! EXIT THEN
+   ok u CHECKER-PACKAGE-CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
    0 d cells CK-USE-LENS + ! ;
 
-: CK-USE-RESYNC ( -- )
-   CK-USE-SCAN-N 0 ?DO i CK-USE-RENAME LOOP ;
+: SLOTS ( -- )
+   CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
 
 \ A throw's recovery puts the engine's package scope back to its boundary's
 \ (src/habu/habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
@@ -10412,9 +10425,9 @@ USE-SLOT-BOOT
 \ the notifications set, so it agrees again once current is back; with none
 \ open it is top level. A replay owns its mirror, so a recovery inside one
 \ leaves it alone.
-: CHECKER-PACKAGE-RESYNC ( -- )
+: SCOPE ( -- )
    CHECKER-PKG-MIRROR-AUTHORITY? IF EXIT THEN
-   CK-USE-RESYNC
+   SLOTS
    PKG-LIVE-XT {: a:ptr u:n mode:n ok:bool :}
    ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
@@ -10425,8 +10438,7 @@ USE-SLOT-BOOT
    a u CHECKER-PACKAGE-COPY
    mode CHECKER-PACKAGE-MODE !
    CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N ! ;
-package CHECKER-REG
-' CHECKER-PACKAGE-RESYNC DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
+' SCOPE CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:PKG-RESYNC-OFF + xt!
 ;package
 
 

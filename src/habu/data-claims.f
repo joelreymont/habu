@@ -194,8 +194,8 @@ variable NAMES-U
    s" JIT-SNAP-FRAMES" NAME,
    s" TIER-PROV" NAME,
    s" UNIT-COMPILE" NAME,
-   s" RPKG-FLOOR" NAME,
-   s" RPKG-WIDS" NAME,
+   s" RPKG:FLOOR" NAME,
+   s" RPKG:WIDS" NAME,
 
 create TAB
    DP-CELL                        ,  1 cells ,
@@ -316,8 +316,8 @@ create TAB
    JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL              ,  1 cells ,
-   RPKG-FLOOR                     ,  1 cells ,
-   RPKG-WIDS                      ,  USE-MAX cells ,
+   RPKG:FLOOR                     ,  1 cells ,
+   RPKG:WIDS                      ,  USE-MAX cells ,
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )

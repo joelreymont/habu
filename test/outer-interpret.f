@@ -772,13 +772,13 @@ variable WANT-RC
 \ ---- the package scope after a caught throw ----------------------------------------
 \ A throw puts back the package scope its buffer entered with on both loops:
 \ the open package, the using depth and the package's using floor, and the
-\ checker's package mirror follows before the handler runs. OI-VS replays a
-\ source through the verifier, which refuses E-PKG-CONTEXT (7136) when the
-\ mirror and the engine name different packages; OI-VS2 replays a using the
-\ package opened and closes it, which the replay judges against the engine's
-\ floor. Both are defined through `evaluate` because the Habu loop cannot end a
-\ definition, and the verifier loads in the second prelude slot, before the
-\ loop switches, for the same reason.
+\ checker's package mirror follows before the handler runs. OI-VERIFY:SCOPE
+\ replays a source through the verifier, which refuses E-PKG-CONTEXT (7136)
+\ when the mirror and the engine name different packages; OI-VERIFY:FLOOR
+\ replays a using the package opened and closes it, which the replay judges
+\ against the engine's floor. Both are defined through `evaluate` because the
+\ Habu loop cannot end a definition, and the verifier loads in the second
+\ prelude slot, before the loop switches, for the same reason.
 : PKG-VERIFY-PRELUDE ( -- )
    GE-SRC-RESET
    s" require src/habu/verify-source.f" GE-SRC-LINE
@@ -786,8 +786,10 @@ variable WANT-RC
    SPIN$ SRC>FILE ;
 
 : PKG-VS-LINE ( -- )
-   s" S\~ : OI-VS ( -- n ) [: s\~ 1 drop\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
-   s" S\~ : OI-VS2 ( -- n ) [: s\~ using OI-FXA ;using\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE ;
+   s" package OI-VERIFY public" GE-SRC-LINE
+   s" S\~ : SCOPE ( -- n ) [: s\~ 1 drop\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
+   s" S\~ : FLOOR ( -- n ) [: s\~ using OI-FXA ;using\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
+   s" ;package" GE-SRC-LINE ;
 
 \ The source text as the nested file named.
 : PKG-NESTED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -810,21 +812,21 @@ variable WANT-RC
    GE-SRC-RESET
    PKG-VS-LINE
    s" include oi-nested-pkg-open.f" GE-SRC-LINE
-   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . OI-VS . ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-reopen.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ oi-nested-pkg-throw.f~ ' included catch . OI-VS . package OI-V ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-throw.f~ ' included catch . OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
    s" oi-pkg-reclose.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . OI-VS . ;package 5 ." QLINE
+   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-evaluate.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
@@ -832,7 +834,7 @@ variable WANT-RC
    GE-SRC-RESET
    PKG-VS-LINE
    s" package OI-P" GE-SRC-LINE
-   s" s~ oi-nested-floor-throw.f~ ' included catch . OI-VS2 . using OI-FXA ;using ;package OI-TWIN" QLINE
+   s" s~ oi-nested-floor-throw.f~ ' included catch . OI-VERIFY:FLOOR . using OI-FXA ;using ;package OI-TWIN" QLINE
    s" oi-pkg-floor.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 70\n0\n" CASE$ GE-EXPECT-OUT
