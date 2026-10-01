@@ -74,9 +74,12 @@ align variable BWM-ATOMIC
 : BWM-MK2B ( -- bwm2<n> ) 8 BWM2:OTHER ;
 : BWM-MK4 ( -- bwm4<n,n,n> ) 91 92 93 BWM4:QUAD ;
 
-TRUSTED: BWM-UN2 ( bwm2<n> -- n n ) ;
-TRUSTED: BWM-UN4 ( bwm4<n,n,n> -- n n n n ) ;
-TRUSTED: BWM-XT ( ptr u8 n -- n ) 0 search-wl ;
+\ The unpackers leave the payload cells deep and the variant tag on top.
+: BWM-UN2 ( bwm2<n> -- n n )
+   MATCH bwm2 pair OF 0 ENDOF other OF 1 ENDOF ;MATCH ;
+: BWM-UN4 ( bwm4<n,n,n> -- n n n n )
+   MATCH bwm4 quad OF 0 ENDOF ;MATCH ;
+: BWM-XT ( ptr u8 n -- n ) 0 search-wl ;
 \ The unset target is a sealed engine word that no tick may reach (habu2.f
 \ C-BTICK carries the internal-word gate), so a fresh dispatch cell is measured
 \ against the other fresh cell: both hold the same non-zero target before any is.
@@ -138,17 +141,23 @@ public
 : BWM-BROUTER ( n -- n n n n ) BWM-MK4 {: m :}
    0 > if BWM-MK2 {: r :} r BWM-UN2 drop drop then m BWM-UN4 ;
 
-TRUSTED: BWM-W32 ( n n -- n )
-   + dup c@ over 1 + c@ 8 lshift or
-   over 2 + c@ 16 lshift or swap 3 + c@ 24 lshift or ;
+package BWM-CODE
+\ An xt is a code address integer; its instruction words need a byte view.
+CAST: >CODE ( n -- ptr u8 )
+public
+\ The little-endian instruction word at byte offset off from an xt.
+: W32 ( n n -- n )
+   + >CODE {: p:ptr :}
+   p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+;package
 
 variable BWM-GXT
 
 : BWM-GOLD ( n n -- ) {: idx:n want:n :}
-   BWM-GXT @ idx 4 * BWM-W32 want BWM= ;
+   BWM-GXT @ idx 4 * BWM-CODE:W32 want BWM= ;
 
 : BWM-MASK-GOLD ( n n n -- ) {: idx:n mask:n want:n :}
-   BWM-GXT @ idx 4 * BWM-W32 mask and want BWM= ;
+   BWM-GXT @ idx 4 * BWM-CODE:W32 mask and want BWM= ;
 
 \ ---- what the compiled wide store and fetch must encode ----------------------
 \ The goldens below pin the invariants a reader of the code can substantiate,
@@ -171,7 +180,7 @@ variable BWM-GXT
 \ region, so the goldens detect the form at the call site and continue at the
 \ instruction after it (index + 1 for BL, index + 4 for the chain).
 : BWM-CALL-GOLD ( n -- n ) {: idx:n :}
-   BWM-GXT @ idx 4 * BWM-W32 $FC000000 and $94000000 = if
+   BWM-GXT @ idx 4 * BWM-CODE:W32 $FC000000 and $94000000 = if
       idx $FC000000 $94000000 BWM-MASK-GOLD  idx 1 + exit
    then
    idx     $FFE0001F $D2800010 BWM-MASK-GOLD
@@ -306,12 +315,12 @@ TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
 TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
 TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
-: BWM-RD64 ( n -- n )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
+: BWM-RD64 ( n -- n )  dup 0 BWM-CODE:W32  swap 4 BWM-CODE:W32  32 lshift  or ;
 
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
-   xt 32 BWM-W32  $46455201 BWM=              \ eight instructions, including the three-word DATA carrier
-   xt 36 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 32 BWM-CODE:W32  $46455201 BWM=              \ eight instructions, including the three-word DATA carrier
+   xt 36 BWM-CODE:W32  $48424445 BWM=              \ DEFER-MAGIC high word
    xt 40 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
    BWM-FRESH @ BWM-NONZERO                    \ fail closed before any is: never a null cell
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
@@ -337,8 +346,8 @@ defer BWM-CDEF ( -- n )
 
 : BWM-TEST-CDEFER ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
-   xt 32 BWM-W32  $46455201 BWM=              \ the same eight-instruction shared-DATA dispatch
-   xt 36 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 32 BWM-CODE:W32  $46455201 BWM=              \ the same eight-instruction shared-DATA dispatch
+   xt 36 BWM-CODE:W32  $48424445 BWM=              \ DEFER-MAGIC high word
    xt 40 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
    BWM-FRESH @ BWM=                           \ = the same unset target the trusted defer held
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42

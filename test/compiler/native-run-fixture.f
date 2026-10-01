@@ -84,12 +84,12 @@ private
 \ These are the raw machine-code entry refinements. The wrappers that invoke
 \ them are checked; only the claimed effect of externally emitted bytes is
 \ outside the source checker, as it is for a foreign function.
-TRUSTED: XT0 ( n -- [ -- ] ) ;
-TRUSTED: XT1 ( n -- [ n -- n ] ) ;
-TRUSTED: XT2 ( n -- [ n n -- n ] ) ;
-TRUSTED: XT3 ( n -- [ n n n -- n ] ) ;
-TRUSTED: XT-SPAN ( n -- [ ptr u8 n -- n ] ) ;
-TRUSTED: XT-SPAN1 ( n -- [ ptr u8 n n -- n ] ) ;
+CAST: XT0 ( n -- [ -- ] )
+CAST: XT1 ( n -- [ n -- n ] )
+CAST: XT2 ( n -- [ n n -- n ] )
+CAST: XT3 ( n -- [ n n n -- n ] )
+CAST: XT-SPAN ( n -- [ ptr u8 n -- n ] )
+CAST: XT-SPAN1 ( n -- [ ptr u8 n n -- n ] )
 
 public
 

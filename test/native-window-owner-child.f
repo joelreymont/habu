@@ -93,7 +93,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
+\ The dictionary row holds the fresh source reset as a code address integer.
+CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 
 : ACTIVATE-SOURCE ( -- )
    s" SOURCE-INPUT:RESET" XREF-FIND dup XREF-FOUND? 0= if

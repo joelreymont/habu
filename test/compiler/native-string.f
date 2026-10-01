@@ -132,8 +132,9 @@ public
 variable SAVED-LITERAL
 private
 create ROLLBACK-BYTES 101 c, 112 c, 104 c, 101 c, 109 c, 101 c, 114 c, 97 c, 108 c,
-TRUSTED: PTR>N ( ptr a -- n ) ;
-TRUSTED: N>BYTES ( n -- ptr u8 ) ;
+: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+\ A saved literal address is an integer cell; reading its bytes needs a byte view.
+CAST: N>BYTES ( n -- ptr u8 )
 
 : FAILED-INTERN ( -- )
    S\" s\q ephemeral\q NSTR:INTERN NSTRING-TEST:SAVED-LITERAL ! 77 throw" DEF ;
@@ -264,7 +265,8 @@ PTR-VARIABLE IMPORTED-POOL
 
 \ This negative fixture reaches the real private importer by its dictionary
 \ identity. It never grants ownership: every supplied row is malformed.
-TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
+\ The dictionary row holds the importer's code address as an integer.
+CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 : IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
    s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL

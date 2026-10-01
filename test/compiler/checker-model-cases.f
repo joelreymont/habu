@@ -78,10 +78,11 @@ defer TO-R-WORD ( a | -- | a )
 \ The four words the rigid host-identity vectors need. A `fresh-*` name in a
 \ signature is a TEMPLATE slot the checker mints an identity for at every call
 \ site, so a word that PRODUCES one cannot be written in checked Habu at all:
-\ minting a host identity is exactly what a trusted host constructor does and
-\ what checked code is not allowed to do. These are that boundary, in the same
-\ shape `lib/ptx/tile.f` declares `MK-SPAN` and `MK-MATRIX` in, and the vectors
-\ below are their test - each of the six turns on what these four declare.
+\ minting a host identity is exactly what a host constructor does and what
+\ checked code is not allowed to do. The three producers are therefore `defer`
+\ declarations - an effect with no implementation, never set and never run -
+\ and the vectors below are their test: each of the six turns on what these
+\ four declare.
 \
 \ `MK-REGION-PAIR` names ONE slot twice, so its two outputs carry one identity;
 \ `MK-REGION` and `MK-GEN` each name one slot in a different domain, so two
@@ -89,9 +90,9 @@ defer TO-R-WORD ( a | -- | a )
 \ number. `SAME-ID` is the consumer that asks whether two atoms are one
 \ identity. They are the model's `wMkRegionPair`, `wMkRegion`, `wMkGen` and
 \ `wSameId`.
-TRUSTED: MK-REGION ( -- fresh-region-a ) 0 ;
-TRUSTED: MK-GEN ( -- fresh-gen-a ) 0 ;
-TRUSTED: MK-REGION-PAIR ( -- fresh-region-a fresh-region-a ) 0 0 ;
+defer MK-REGION ( -- fresh-region-a )
+defer MK-GEN ( -- fresh-gen-a )
+defer MK-REGION-PAIR ( -- fresh-region-a fresh-region-a )
 : SAME-ID ( x x -- ) 2drop ;
 
 private

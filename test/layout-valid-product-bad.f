@@ -9,7 +9,8 @@ PRODUCT lvp-pixel 0
 ;PRODUCT
 1 LAYOUT-BUFFER BUF lvp-pixel
 
-TRUSTED: RAW ( ptr lvp-pixel -- ptr n ) ;
+\ The forged tag needs a raw cell view of the checked buffer.
+CAST: RAW ( ptr lvp-pixel -- ptr n )
 
 : GET ( -- lvp-pixel )
    0 BUF @ ;

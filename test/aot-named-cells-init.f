@@ -1,8 +1,9 @@
 \ Load after WINDOW-CLOSE: only the resulting stored cells are captured.
 package NAMED-CELLS-INIT
 \ This fixture needs a null serialized XT, which has no checked quotation
-\ constructor. NAMED-CELLS-INIT owns this boundary; CHECK reads but never calls it.
-TRUSTED: ZERO-XT ( -- [ n -- n ] ) 0 ;
+\ constructor, so the integer 0 is cast to one; CHECK reads it but never calls it.
+CAST: >XT ( n -- [ n -- n ] )
+: ZERO-XT ( -- [ n -- n ] ) 0 >XT ;
 : RUN ( -- )
    ['] 0<> NAMED-CELLS-WINDOW:GLOBAL-SLOT xt!
    ['] CODE-RECLAIM:FLOOR-FROM NAMED-CELLS-WINDOW:PUBLIC-SLOT xt!

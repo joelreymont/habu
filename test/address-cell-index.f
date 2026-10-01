@@ -24,7 +24,7 @@ create BYTE-SLOTS 16 allot
 : SAVED ( -- ptr n ) 0 SAVED-STORAGE ;
 : SLOT ( n -- ptr n ) cells FIRST-OFF @ + data-base + ;
 \ Only odd test slots store quotations; the shared buffer exposes raw cells.
-TRUSTED: QUOT-SLOT ( ptr n -- ptr [ -- ] ) ;
+CAST: QUOT-SLOT ( ptr n -- ptr [ -- ] )
 : EMPTY ( -- ) ;
 
 : MARK ( n -- ) {: row:n :}

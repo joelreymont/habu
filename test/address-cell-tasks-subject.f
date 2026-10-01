@@ -28,7 +28,7 @@ TASK:MIN-STACK TASK:TASK B
 TASK:MIN-STACK TASK:TASK C
 TASK:MIN-STACK TASK:TASK D
 \ Only odd slots hold quotations; the ordinary array exposes raw cells.
-TRUSTED: QUOT-SLOT ( ptr n -- ptr [ -- ] ) ;
+CAST: QUOT-SLOT ( ptr n -- ptr [ -- ] )
 : EMPTY ( -- ) ;
 : MARK ( n -- ) {: k:n :}
    k 1 and 0<> if

@@ -28,10 +28,9 @@ package XT-CELL-BAND
 $1002 constant MAP-ANON
 $10000 constant PAGE-BYTES
 
-\ A raw mmap result is a bare integer here; nothing else in the file needs it to
-\ be anything richer, and the point of the case is precisely that it is NOT a
-\ DATA cell.
-TRUSTED: N>CELL ( n -- ptr a ) ;
+\ A raw mmap result is a bare integer here; the cast makes it the quotation cell
+\ xt! takes, and the point of the case is precisely that it is NOT a DATA cell.
+CAST: N>CELL ( n -- ptr [ -- n ] )
 
 : PAGE ( -- n )
    0 PAGE-BYTES PROT-RW MAP-ANON -1 0 mmap ;

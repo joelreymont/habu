@@ -9,7 +9,8 @@ private
 \ Inspection is limited to emitted code and the engine's relocation bitmap.
 : DATA-A ( -- ptr u8 ) data-base ;
 : REGION-BASE ( -- n ) dbase@ ;
-TRUSTED: CODE-A ( n -- ptr u8 ) ;
+\ A code address from cp@ is an integer; its instruction bytes need a byte view.
+CAST: CODE-A ( n -- ptr u8 )
 
 : ADDR-BIT@ ( n -- n ) {: at:n :}
    at REGION-BASE - {: off:n :}

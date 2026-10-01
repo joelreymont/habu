@@ -47,19 +47,19 @@ SUMTYPE tlp-mix 2
 \ `tlp-mix` derives TLP--MIX — tail hyphens escape as `--`), so the physical
 \ cells (payload, zero pads, tag) come from checked constructor bodies, not
 \ trusted raw pushes. TLP-MK2 = 7 TLP--RES:ERR -> (7, tag 1); TLP-MK4 =
-\ 91 92 93 TLP--MIX:BIG -> (91, 92, 93, tag 1). Only the UNPACKERS remain a
-\ tested TRUSTED boundary: surfacing bundle cells for value asserts needs a
-\ destructor, which is item 9's MATCH (dot habu-retire-tlp-mk2-ac7760d2).
-\ Both raw unpackers retire with habu-retire-tlp-mk2-ac7760d2 when checked
-\ MATCH/destructuring can expose their payload cells.
+\ 91 92 93 TLP--MIX:BIG -> (91, 92, 93, tag 1). The unpackers are checked
+\ MATCH destructors: each arm binds the payload cells and pushes its variant's
+\ tag, so a transport that moved or lost a cell fails the value asserts.
 \ ---------------------------------------------------------------------------
 : TLP-MK2 ( -- tlp-res<n,n> ) 7 TLP--RES:ERR ;
 : TLP-MK2B ( -- tlp-res<n,n> ) 8 TLP--RES:OK ;
-\ Tested boundary (TRUSTED): the matching 2-cell unpack (payload, tag).
-TRUSTED: TLP-UN2 ( tlp-res<n,n> -- n n ) ;
+\ The 2-cell unpack (payload, tag).
+: TLP-UN2 ( tlp-res<n,n> -- n n )
+   MATCH tlp-res ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
 : TLP-MK4 ( -- tlp-mix<n,n> ) 91 92 93 TLP--MIX:BIG ;
-\ Tested boundary (TRUSTED): the matching 4-cell unpack.
-TRUSTED: TLP-UN4 ( tlp-mix<n,n> -- n n n n ) ;
+\ The 4-cell unpack (three payload cells, zero for a narrower variant, tag).
+: TLP-UN4 ( tlp-mix<n,n> -- n n n n )
+   MATCH tlp-mix small OF 0 0 0 ENDOF big OF 1 ENDOF ;MATCH ;
 
 \ Executed memory lowering: constructor-produced bundles cross typed addresses
 \ and return with payload, padding, and tag order intact.

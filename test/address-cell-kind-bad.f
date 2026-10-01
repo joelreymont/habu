@@ -10,7 +10,9 @@ PERSISTED-PTR-VARIABLE SLOT
 
 \ PERSISTED-PTR-VARIABLE declared SLOT as DATA; xt! must refuse the contradictory XT kind
 \ before storing anything into the cell.
-TRUSTED: SLOT-AS-XT ( -- ptr [ -- n ] ) SLOT ;
+\ The contradictory kind is forged onto SLOT's raw cell view.
+CAST: >XT-CELL ( ptr n -- ptr [ -- n ] )
+: SLOT-AS-XT ( -- ptr [ -- n ] ) SLOT BYTE-VIEW CELL-VIEW >XT-CELL ;
 
 : GO ( -- )
    s" ADDRESS-CELL-KIND-ARMED" type cr

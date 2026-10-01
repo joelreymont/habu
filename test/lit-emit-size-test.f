@@ -60,9 +60,9 @@ $1122334455667788 constant Z4              \ four chunks (a genuine 64-bit value
 : SMARK ( -- ) ;                           \ marker: bounds SONE
 
 : BODY ( n n -- n ) - ;                    \ body length = gap to the next contiguous word
-\ Execution tokens as cell values: a constant's ( -- a ) and a string word's ( -- ).
-TRUSTED: XT>N ( [ -- a ] -- n ) ;
-TRUSTED: XT0>N ( [ -- ] -- n ) ;
+\ Execution tokens as cell values: a constant's ( -- n ) and a string word's ( -- ).
+CAST: XT>N ( [ -- n ] -- n )
+CAST: XT0>N ( [ -- ] -- n )
 
 : SIZES ( -- )
    T-RESET

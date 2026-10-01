@@ -28,11 +28,12 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 \ The dispatch cell's contents, and the engine's relocation table. Both are
-\ reads of memory the dictionary named, which is the one thing checked Habu has
-\ no type for; the deciding above them is ordinary checked Habu.
+\ reads of memory the dictionary named; the deciding above them is ordinary
+\ checked Habu.
 TRUSTED: CELL@ ( n -- n ) @ ;
 : PCELL@ ( ptr n -- n ) @ ;
-TRUSTED: DBASE-N ( -- n ) data-base ;
+\ The DATA base as an integer: its distance from the null address.
+: DBASE-N ( -- n ) data-base NULL-PTR BYTE-VIEW - ;
 
 0 constant GLOBAL-WID
 
