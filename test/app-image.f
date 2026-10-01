@@ -87,18 +87,6 @@ variable REFUSE-U
    rc 0 T= erru 0 T=
    outu ;
 
-\ Start cold: every instruction published by the image support load must carry
-\ native origin, including its dependencies. The selected tier alone cannot
-\ prove that code emitted before the selection was native.
-: CHECK-BUILD-TIER ( -- )
-   PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ >LEN
-   S\" variable IMAGE-LOAD-START cp@ IMAGE-LOAD-START !\nrequire src/habu/app-image.f\nIMAGE-LOAD-START @ cp@ code-origin . cr tier@ . cr\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
-   OUT swap S\" 1\n\n1\n\n" T$= ;
-
 create PROBE-SOURCE 4096 allot
 variable PROBE-SOURCE-U
 
@@ -129,6 +117,13 @@ variable PROBE-SOURCE-U
    S\"    REQUIRE-N @ 1- REQUIRE-LEN@ u <> if 70 throw then\n   REQUIRE-N @ 1- REQUIRE-SLOT u a u CORE-STR= 0= if 70 throw then\n   s\q require-pool-replace\q CHECK-FACT ;\n;package\n" PROBE+
    PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ ATOMIC-WRITE-FILE ;
 
+\ Start cold: every instruction published by the image support load must carry
+\ native origin, including its dependencies. The selected tier alone cannot
+\ prove that code emitted before the selection was native. The build child
+\ loads that support cold, so it reports both before its subject loads.
+: BUILD-SOURCE$ ( -- ptr u8 n )
+   S\" variable IMAGE-LOAD-START cp@ IMAGE-LOAD-START !\nrequire src/habu/app-image.f\nIMAGE-LOAD-START @ cp@ code-origin . cr tier@ . cr\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+
 : BUILD ( -- )
    WRITE-REQUIRE-PROBE
    PROC-ARGV-ENV-RESET
@@ -137,9 +132,10 @@ variable PROBE-SOURCE-U
    PROBE$ >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   BUILD-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
+   OUT swap S\" 1\n\n1\n\n" T$=
    IMAGE$ EXECUTABLE? TTRUE ;
 
 : CHECK-BUILD-SCOPE ( -- )
@@ -348,7 +344,6 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    0 0 = RUN-ADDRESS-OWNER ;
 
 : CASES ( -- )
-   CHECK-BUILD-TIER
    CHECK-BUILD-SCOPE
    BUILD
    IMAGE$ CHECK-APPLICATION
