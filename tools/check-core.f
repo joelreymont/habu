@@ -71,8 +71,7 @@ CHK-DEP-MAX 2 * constant CHK-SEG-MAX
 
 0 constant CHK-DEP-UNSEEN
 1 constant CHK-DEP-OPEN
-2 constant CHK-DEP-WAITING
-3 constant CHK-DEP-DONE
+2 constant CHK-DEP-DONE
 
 10 constant CHK-LF
 13 constant CHK-CR
@@ -96,15 +95,12 @@ create CHK-DEP-US CHK-DEP-MAX cells allot
 create CHK-DEP-ROOTS CHK-DEP-MAX FS-PATH-CAP * allot
 create CHK-DEP-ROOT-US CHK-DEP-MAX cells allot
 create CHK-DEP-STATES CHK-DEP-MAX cells allot
-create CHK-DEP-ENTERS CHK-DEP-MAX cells allot
-create CHK-DEP-LOWS CHK-DEP-MAX cells allot
 create CHK-DIR-IDS CHK-DEP-MAX cells allot
 create CHK-DIR-ATS CHK-DEP-MAX cells allot
-create CHK-DEP-ORDER CHK-DEP-MAX cells allot
-create CHK-WAIT-IDS CHK-DEP-MAX cells allot
 create CHK-SEG-IDS CHK-SEG-MAX cells allot
 create CHK-SEG-STARTS CHK-SEG-MAX cells allot
 create CHK-SEG-ENDS CHK-SEG-MAX cells allot
+create CHK-SEG-RCS CHK-SEG-MAX cells allot   \ each segment's all-errors code
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -149,12 +145,9 @@ variable CHK-EXP-U
 variable CHK-EXP-OUT-U
 variable CHK-DEP-N
 variable CHK-DIR-N
-variable CHK-DEP-ORDER-N
-variable CHK-ENTER-N
-variable CHK-WAIT-N
 variable CHK-SEG-N
 variable CHK-DISC-ID
-variable CHK-ALL-ID
+variable CHK-ALL-SEG
 variable CHK-ALL-RC
 variable CHK-NOM-BAD                     \ the nominal pass reported a finding
 variable CHK-TFAM-NAME-I
@@ -372,12 +365,9 @@ private
    0 CHK-EXP-OUT-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N !
-   0 CHK-ENTER-N !
-   0 CHK-WAIT-N !
    0 CHK-SEG-N !
    0 CHK-DISC-ID !
-   0 CHK-ALL-ID !
+   0 CHK-ALL-SEG !
    0 CHK-ALL-RC ! ;
 
 : CHK-RESET-CFG ( -- )
@@ -483,14 +473,6 @@ private
    id CHK-DEP-CHECK
    CHK-DEP-STATES id cells + ;
 
-: CHK-DEP-ENTER ( n -- ptr n ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-ENTERS id cells + ;
-
-: CHK-DEP-LOW ( n -- ptr n ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-LOWS id cells + ;
-
 : CHK-DEP$ ( n -- ptr u8 n ) {: id:n :}
    id CHK-DEP-PATH
    id CHK-DEP-U @ ;
@@ -541,18 +523,6 @@ private
 
 : CHK-DIR-AT! ( n n -- )
    cells CHK-DIR-ATS + ! ;
-
-: CHK-DEP-ORDER-PUSH ( n -- ) {: id:n :}
-   CHK-DEP-ORDER-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
-   id CHK-DEP-ORDER CHK-DEP-ORDER-N @ cells + !
-   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N !
-   CHK-DEP-DONE id CHK-DEP-STATE ! ;
-
-: CHK-WAIT-PUSH ( n -- ) {: id:n :}
-   CHK-WAIT-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
-   id CHK-WAIT-IDS CHK-WAIT-N @ cells + !
-   CHK-WAIT-N @ 1+ CHK-WAIT-N !
-   CHK-DEP-WAITING id CHK-DEP-STATE ! ;
 
 : CHK-SEG-ID@ ( n -- n )
    cells CHK-SEG-IDS + @ ;
@@ -748,31 +718,6 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
       1+
    repeat drop ;
 
-\ The closure is ordered as its files finish loading, a file after everything
-\ it requires. A file requiring one that is still loading closes a require
-\ cycle: at run time it loads inside that file, after the definitions ahead of
-\ the loader, as lib/aio-macos.f loads at the end of lib/aio.f. Each cycle (a
-\ strongly connected component, found by Tarjan's lowest-entry links) is
-\ ordered with the file entered first ahead of the members that waited on it,
-\ in the order they finished. A file's low is the earliest entry its subtree
-\ reaches among files not yet ordered; a file whose low is its own entry is a
-\ cycle's first file, or a file in no cycle. That is the load order only when
-\ the first file loads the rest of its cycle last and every member requires at
-\ its top. Another shape (a loader mid-file, two files requiring each other at
-\ their tops) can be refused here though it loads; none is wrongly accepted,
-\ since the run after this pass loads the real order.
-: CHK-LOW-JOIN ( n n -- ) {: id:n dep:n :}
-   dep CHK-DEP-STATE @ CHK-DEP-DONE = if exit then
-   id CHK-DEP-LOW @ dep CHK-DEP-LOW @ min id CHK-DEP-LOW ! ;
-
-: CHK-CYCLE-ORDER ( n n -- ) {: id:n base:n :}
-   id CHK-DEP-ORDER-PUSH
-   base begin dup CHK-WAIT-N @ < while
-      dup cells CHK-WAIT-IDS + @ CHK-DEP-ORDER-PUSH
-      1+
-   repeat drop
-   base CHK-WAIT-N ! ;
-
 \ A source and the files it loads expand in the order the loader runs them: a
 \ file's text up to the byte where it loads another is a segment, that file's
 \ segments follow, then the rest of the text. A word the source defines before
@@ -785,9 +730,6 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
    id CHK-DEP-CHECK
    id CHK-DEP-STATE @ CHK-DEP-UNSEEN <> if exit then
    CHK-DEP-OPEN id CHK-DEP-STATE !
-   CHK-ENTER-N @ dup id CHK-DEP-ENTER ! id CHK-DEP-LOW !
-   CHK-ENTER-N @ 1+ CHK-ENTER-N !
-   CHK-WAIT-N @ {: wait:n :}
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    CHK-DIR-N @ {: base:n :}
    id CHK-EXPAND-SCAN
@@ -806,14 +748,17 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
       else
          pos
       then
-      id dep CHK-LOW-JOIN
       ix 1+
    repeat
    drop {: tail:n :}
    verified if id tail len CHK-SEG-PUSH then
    base CHK-DIR-N !
-   id CHK-DEP-LOW @ id CHK-DEP-ENTER @ < if id CHK-WAIT-PUSH exit then
-   id wait CHK-CYCLE-ORDER ;
+   CHK-DEP-DONE id CHK-DEP-STATE ! ;
+
+\ A source read from a path has its closure expanded into segments; standard
+\ input is checked whole.
+: CHK-EXPANDED? ( -- bool )
+   CHK-DEP-N @ 0 > ;
 
 : CHK-EXPAND-PATH ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
@@ -822,9 +767,6 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
    0 CHK-EXP-OUT-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N !
-   0 CHK-ENTER-N !
-   0 CHK-WAIT-N !
    0 CHK-SEG-N ! ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
@@ -1451,7 +1393,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    old oldu CHK-LABEL! ;
 
 : CHK-RUN-NOMINAL-FILES ( -- )
-   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
+   CHK-EXPANDED? if CHK-RUN-NOMINAL-ORDER exit then
    CHK-SOURCE 0 CHK-SRC-CAP CHK-RUN-NOMINAL-SPAN ;
 
 : CHK-RUN-NOMINAL ( -- )
@@ -1565,35 +1507,55 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ Source-list all-errors redrive: run all-errors per ORIGINAL file in
-\ dependency order, registering each verified file as cross-file support so
-\ later files check against real prefix state. Per-file check failures
-\ (70/duplicate) are collected so every file reports; any other throw aborts.
+\ Source-list all-errors redrive: run all-errors on each segment in the order
+\ the pre-pass verifies them (a loaded file where its loader sits), with the
+\ segments before it that checked clean replayed as support, so each checks
+\ against the state the load path gives it. A refused segment is not support:
+\ a later call of a word it rejected reports that word undefined, as a later
+\ file's does. Per-segment check failures (70/duplicate) are collected so every
+\ segment reports; any other throw aborts.
 
-: CHK-ALL-ID-ACT ( -- )
-   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:FILE ;
+: CHK-ALL-SEG-ACT ( -- )
+   CHK-ALL-SEG @ {: seg:n :}
+   seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
+   CHECK-ALL-ERRORS:SPAN ;
 
 : CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
    CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
 
-: CHK-ALL-SUPPORT+ ( n -- ) {: id:n :}
-   id CHK-DEP$ CHECK-ALL-ERRORS:SUPPORT+ ;
+: CHK-ALL-REPLAY-SEG ( n -- ) {: seg:n :}
+   seg cells CHK-SEG-RCS + @ 0 <> if exit then
+   seg CHK-SEG-ID@ CHK-DEP$ seg CHK-SEG-START@ seg CHK-SEG-END@
+   CHECK-ALL-ERRORS:REPLAY ;
 
-: CHK-RUN-ALL-ID ( n -- ) {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-ALL-ID !
-   [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
-   rc 0= if id CHK-ALL-SUPPORT+ exit then
+: CHK-ALL-REPLAY ( -- )                 \ the support of the current segment
+   0 begin dup CHK-ALL-SEG @ < while
+      dup CHK-ALL-REPLAY-SEG
+      1+
+   repeat drop ;
+
+: CHK-RUN-ALL-SEG ( n -- ) {: seg:n :}
+   seg CHK-ALL-SEG !
+   [: CHK-ALL-SEG-ACT ;] catch {: rc:n :}
+   rc seg cells CHK-SEG-RCS + !
+   rc 0= if exit then
    rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
    rc throw ;
 
-: CHK-RUN-ALL-LIST-CURRENT ( -- )
-   CHECK-ALL-ERRORS:SUPPORT-RESET
-   0 CHK-ALL-RC !
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
+: CHK-RUN-ALL-SEGS ( -- )
+   0 begin dup CHK-SEG-N @ < while
+      dup CHK-RUN-ALL-SEG
       1+
-   repeat drop
+   repeat drop ;
+
+\ The replay reads this run's segment table, so it is removed however the run
+\ ends.
+: CHK-RUN-ALL-LIST-CURRENT ( -- )
+   0 CHK-ALL-RC !
+   [: CHK-ALL-REPLAY ;] CHECK-ALL-ERRORS:SUPPORT!
+   [: CHK-RUN-ALL-SEGS ;] catch {: rc:n :}
+   CHECK-ALL-ERRORS:SUPPORT-RESET
+   rc 0 <> if rc throw then
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
 : CHK-RUN-ALL-CURRENT ( -- )
@@ -1619,18 +1581,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
-\ The 1-based line and column of byte at in the source buffer.
-: CHK-BYTE-ORIGIN ( n -- n n ) {: at:n :}
-   1 0 at 0 ?do
-      CHK-SRC-BUF i + c@ CHK-LF = if drop 1+ i 1+ then
-   loop
-   at swap - 1+ ;
-
 \ A segment is verified from its own first byte, so its diagnostics name the
 \ line, column and byte the file has there.
 : CHK-PREVERIFY-ACT ( -- )
    CHK-SRC-BUF CHK-PRE-AT @ + CHK-PRE-U @
-   CHK-PRE-AT @ CHK-BYTE-ORIGIN CHK-PRE-AT @
+   CHK-SRC-BUF CHK-PRE-AT @ CHECK-ALL-ERRORS:BYTE-ORIGIN CHK-PRE-AT @
    VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
 
 : CHK-PREVERIFY-CAPTURE ( -- n )
@@ -1660,7 +1615,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    repeat drop ;
 
 : CHK-RUN-PREVERIFY-ACT ( -- )
-   CHK-DEP-ORDER-N @ 0 > if CHK-PREVERIFY-ORDER exit then
+   CHK-EXPANDED? if CHK-PREVERIFY-ORDER exit then
    CHK-LABEL CHK-SOURCE 0 CHK-SRC-CAP CHK-PREVERIFY-SPAN ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )

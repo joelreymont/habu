@@ -2714,6 +2714,10 @@ create BIG $2000 allot   variable BIG-U
 \     (REQ-ORIGIN);
 \   - the check run loading in another order: it loads through the real loader,
 \     and every accepted case here runs it;
+\   - `--all-errors --source-list` checking whole files in dependency order, or
+\     replaying whole files as support: it checks the same segments against the
+\     segments before them, with the default check's verdict at the same file,
+\     line and column (the -ALL cases);
 \   - the subject reached again through a require: it is still being expanded,
 \     so the pre-pass expands it once; the run loading its text a second time is
 \     CHK-BUILD-RUN's (dot c79b86b7);
@@ -2751,13 +2755,31 @@ variable REQ-U
 : REQ-RUN ( ptr u8 n -- n n n )
    REQ$ PATH-RUN ;
 
-: TEST-REQUIRE-ORDER ( -- )
+\ `--all-errors --source-list` checks the same segments, each against the ones
+\ before it, and must give the default check's verdict at the same place.
+: REQ-ALL-RUN ( ptr u8 n -- n n n )
+   REQ$ {: p:ptr pu:n :}
+   RESET
+   s" all-errors" OPT
+   s" json-errors" OPT
+   LIST-OPT
+   p pu FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: REQ-ORDER-FILES ( -- )
    SB-RESET s" : CKT-RQ-USE ( -- n ) CKT-RQ-SECRET ;" REQ-LINE+
    s" req-order-dep.f" REQ-WRITE
    SB-RESET s" : CKT-RQ-SECRET ( -- n ) 5 ;" REQ-LINE+
    s" req-order-dep.f" REQ-LOAD+
-   s" req-order.f" REQ-WRITE
+   s" req-order.f" REQ-WRITE ;
+
+: TEST-REQUIRE-ORDER ( -- )
+   REQ-ORDER-FILES
    s" req-order.f" REQ-RUN EXPECT-ACCEPTED ;
+
+: TEST-REQUIRE-ORDER-ALL ( -- )
+   REQ-ORDER-FILES
+   s" req-order.f" REQ-ALL-RUN EXPECT-ACCEPTED ;
 
 : TEST-REQUIRE-EARLY ( -- )
    SB-RESET s" : CKT-RQ-LATER ( -- n ) 6 ;" REQ-LINE+
@@ -2767,13 +2789,28 @@ variable REQ-U
    s" req-early.f" REQ-WRITE
    s" req-early.f" REQ-RUN s" CKT-RQ-LATER" EXPECT-PREVERIFY-UNDEFINED ;
 
-: TEST-REQUIRE-LATE ( -- )
+: REQ-LATE-FILES ( -- )
    SB-RESET s" : CKT-RQ-NEEDS ( -- n ) CKT-RQ-LATE ;" REQ-LINE+
    s" req-late-dep.f" REQ-WRITE
    SB-RESET s" req-late-dep.f" REQ-LOAD+
    s" : CKT-RQ-LATE ( -- n ) 7 ;" REQ-LINE+
-   s" req-late.f" REQ-WRITE
-   s" req-late.f" REQ-RUN s" CKT-RQ-LATE" EXPECT-PREVERIFY-UNDEFINED ;
+   s" req-late.f" REQ-WRITE ;
+
+: REQ-LATE-AT$ ( -- ptr u8 n )
+   s\" req-late-dep.f\",\"line\":1,\"column\":25," ;
+
+: TEST-REQUIRE-LATE ( -- )
+   REQ-LATE-FILES
+   s" req-late.f" REQ-RUN {: outu:n erru:n rc:n :}
+   outu erru rc s" CKT-RQ-LATE" EXPECT-PREVERIFY-UNDEFINED
+   CAP-ERR erru REQ-LATE-AT$ CONTAINS? TTRUE ;
+
+: TEST-REQUIRE-LATE-ALL ( -- )
+   REQ-LATE-FILES
+   s" req-late.f" REQ-ALL-RUN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru REQ-LATE-AT$ CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-ONCE ( -- )
    SB-RESET s" : CKT-RQ-ONE ( -- n ) 1 ;" REQ-LINE+
@@ -2826,22 +2863,34 @@ variable REQ-U
 
 \ The split falls after `required` on line 4, mid-line, so the refused `dup`
 \ there is placed by the segment's line and column base.
-: TEST-REQUIRE-ORIGIN ( -- )
+: REQ-ORIGIN-FILES ( -- )
    SB-RESET s" : CKT-RQ-ORIGIN-DEP ( -- n ) 1 ;" REQ-LINE+
    s" req-origin-dep.f" REQ-WRITE
    SB-RESET $5c SB-APPEND-C s"  the loader below splits this file" REQ-LINE+
    s" : CKT-RQ-ORIGIN-OK ( -- n ) 1 ;" REQ-LINE+
    s" req-origin-dep.f" REQ-LIT+ $0a SB-APPEND-C
    s" required : CKT-RQ-ORIGIN-BAD ( n -- n ) dup ;" REQ-LINE+
-   s" req-origin.f" REQ-WRITE
+   s" req-origin.f" REQ-WRITE ;
+
+: REQ-ORIGIN-AT$ ( -- ptr u8 n )
+   s\" req-origin.f\",\"line\":4,\"column\":41," ;
+
+: TEST-REQUIRE-ORIGIN ( -- )
+   REQ-ORIGIN-FILES
    s" req-origin.f" REQ-RUN {: outu:n erru:n rc:n :}
    outu erru rc EXPECT-PREVERIFY-REFUSED
-   CAP-ERR erru s\" req-origin.f\",\"line\":4,\"column\":41," CONTAINS? TTRUE ;
+   CAP-ERR erru REQ-ORIGIN-AT$ CONTAINS? TTRUE ;
 
-\ `--all-errors --source-list a b` runs all-errors per ORIGINAL file with
-\ prior entries replayed as support: both bad defs in b report against b's
-\ path (the pre-redrive materialized temp had zero defs, so all-errors was a
-\ no-op and only preverify's first error surfaced).
+: TEST-REQUIRE-ORIGIN-ALL ( -- )
+   REQ-ORIGIN-FILES
+   s" req-origin.f" REQ-ALL-RUN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru REQ-ORIGIN-AT$ CONTAINS? TTRUE ;
+
+\ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
+\ segments with the clean ones before each replayed as support: both bad defs
+\ in b report against b's path (the pre-redrive materialized temp had zero
+\ defs, so all-errors was a no-op and only preverify's first error surfaced).
 : LIST-ALL-TEST ( -- )
    SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
    USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
@@ -3128,6 +3177,9 @@ POISON-RECORD
    s" check/require-cycle-split" [: TEST-REQUIRE-CYCLE-SPLIT ;] CASE-RUN
    s" check/require-body" [: TEST-REQUIRE-BODY ;] CASE-RUN
    s" check/require-origin" [: TEST-REQUIRE-ORIGIN ;] CASE-RUN
+   s" check/require-order-all-list" [: TEST-REQUIRE-ORDER-ALL ;] CASE-RUN
+   s" check/require-late-all-list" [: TEST-REQUIRE-LATE-ALL ;] CASE-RUN
+   s" check/require-origin-all-list" [: TEST-REQUIRE-ORIGIN-ALL ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

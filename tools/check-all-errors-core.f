@@ -34,6 +34,17 @@ private
 10 constant CA-LF
 123 constant CA-LBRACE
 
+public
+
+\ The 1-based line and column of byte at in the buffer that starts at a.
+: BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
+   1 0 at 0 ?do
+      a i + c@ CA-LF = if drop 1+ i 1+ then
+   loop
+   at swap - 1+ ;
+
+private
+
 create CA-LF-BUF 1 allot
 
 
@@ -44,6 +55,8 @@ variable CA-JSON-FOUND
 TYPED-VARIABLE CA-SRC-A ptr u8
 variable CA-SRC-U
 variable CA-SRC-CAP
+variable CA-AT                          \ the first byte of the source checked
+variable CA-END                         \ and the byte past its last
 variable CA-ERR-LEN
 TYPED-VARIABLE CA-ERR-A ptr u8
 variable CA-ERR-CAP
@@ -128,21 +141,23 @@ variable CA-JSON
    CA-LF-BUF 1 ;
 
 \ ---- Cross-file support (source-list redrive) ----------------------------
-\ A caller checking an ordered file list registers each already-verified file
-\ here; every checker scope opened for the current file first replays the
-\ registered files with VERIFY:SOURCE-BUF-IN-SCOPE, so cross-file prefix state
-\ (types, packages, definitions) is in scope exactly as at runtime. A support
-\ replay failure is annotated and rethrown - never swallowed.
+\ A caller checking an ordered list of sources installs a support replay, and
+\ every checker scope opened for the current source runs it first, so the
+\ prefix state (types, packages, definitions) of what was checked before it is
+\ in scope exactly as at runtime. The replay brings each part in with REPLAY,
+\ which annotates and rethrows a failure - never swallowed.
 
-$80 constant CA-XSUP-MAX
+: CA-NO-SUPPORT ( -- ) ;
 
-create CA-XSUP-PATHS CA-XSUP-MAX FS-PATH-CAP * allot
-create CA-XSUP-US CA-XSUP-MAX cells allot
-variable CA-XSUP-N
-variable CA-XSUP-I
+TYPED-VARIABLE CA-SUPPORT [ -- ]
+' CA-NO-SUPPORT CA-SUPPORT !
 variable CA-XSUP-RC
 TYPED-VARIABLE CA-XSUP-BUF-A ptr u8
 variable CA-XSUP-BUF-CAP
+TYPED-VARIABLE CA-REP-A ptr u8           \ the file REPLAY reads
+variable CA-REP-U
+variable CA-REP-AT                       \ the first byte it replays
+variable CA-REP-END                      \ and the byte past the last
 
 : CA-XSUP-BUF-A@ ( -- ptr u8 )
    CA-XSUP-BUF-A @ ;
@@ -150,39 +165,49 @@ variable CA-XSUP-BUF-CAP
 : CA-XSUP-BUF-A! ( ptr u8 -- )
    CA-XSUP-BUF-A ! ;
 
-: CA-XSUP$ ( n -- ptr u8 n ) {: i:n :}
-   CA-XSUP-PATHS i FS-PATH-CAP * +
-   CA-XSUP-US i cells + @ ;
-
 : CA-XSUP-BUF ( n -- ptr u8 n ) {: need:n :}
    need CA-XSUP-BUF-CAP @ > IF
       need MEM-ALLOC-64K-SPAN CA-XSUP-BUF-CAP ! CA-XSUP-BUF-A!
    THEN
    CA-XSUP-BUF-A@ CA-XSUP-BUF-CAP @ ;
 
-: CA-XSUP-REPLAY-ONE ( n -- ) {: i:n :}
-   i CA-XSUP$ {: pa:ptr pu:n :}
-   pa pu FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
-   pa pu buf cap READ-ALL {: u:n :}
-   buf u VERIFY:SOURCE-BUF-IN-SCOPE ;
+: CA-REPLAY-ACT ( -- )
+   CA-REP-A @ CA-REP-U @ FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
+   CA-REP-A @ CA-REP-U @ buf cap READ-ALL CA-REP-END @ min {: end:n :}
+   CA-REP-AT @ {: at:n :}
+   buf at + end at -
+   buf at BYTE-ORIGIN at
+   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
 
-: CA-XSUP-NOTE ( n n -- ) {: i:n rc:n :}
+: CA-XSUP-REPLAY ( -- )
+   CA-SUPPORT @ execute ;
+
+public
+
+\ The replay every later checker scope runs before its own source.
+: SUPPORT! ( [ -- ] -- )
+   CA-SUPPORT ! ;
+
+\ No support: each source is checked on its own.
+: SUPPORT-RESET ( -- )
+   [: CA-NO-SUPPORT ;] SUPPORT! ;
+
+\ Verify bytes start to end of the file at path into the open checker scope at
+\ the file's own line and column. Called from the support replay.
+: REPLAY ( ptr u8 n n n -- ) {: path:ptr pathu:n start:n end:n :}
+   path CA-REP-A !
+   pathu CA-REP-U !
+   start CA-REP-AT !
+   end CA-REP-END !
+   [: CA-REPLAY-ACT ;] catch {: rc:n :}
    rc 0= IF exit THEN
    rc CA-XSUP-RC !
    s" all-errors: support replay failed: " CA-ERR
-   i CA-XSUP$ CA-ERR
+   path pathu CA-ERR
    CA-LF$ CA-ERR
    rc throw ;
 
-: CA-XSUP-REPLAY-CUR ( -- )
-   CA-XSUP-I @ CA-XSUP-REPLAY-ONE ;
-
-: CA-XSUP-REPLAY ( -- )
-   0 CA-XSUP-I !
-   begin CA-XSUP-I @ CA-XSUP-N @ < while
-      [: CA-XSUP-REPLAY-CUR ;] catch CA-XSUP-I @ swap CA-XSUP-NOTE
-      CA-XSUP-I @ 1+ CA-XSUP-I !
-   repeat ;
+private
 
 
 
@@ -372,8 +397,11 @@ variable CA-XSUP-BUF-CAP
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
 \ The lexer reports more than one defect now, so name the one it hit.
+\ The whole buffer is lexed, so only a defect inside the checked bytes is theirs.
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
+   LINT-LEX:ERROR-BYTE@ CA-AT @ < IF exit THEN
+   LINT-LEX:ERROR-BYTE@ CA-END @ >= IF exit THEN
    CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
    70 throw ;
 
@@ -417,7 +445,9 @@ variable CA-XSUP-BUF-CAP
    CA-ERR-A@ CA-ERR-CAP @ DIAG-BUFFER! ;
 
 : CA-CHECK-FULL-ACT ( -- )
-   CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   CA-SRC-A@ CA-AT @ + CA-END @ CA-AT @ -
+   CA-SRC-A@ CA-AT @ BYTE-ORIGIN CA-AT @
+   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
 
 : CA-CHECK-FULL ( -- n )
    CA-RESET-CAPTURE
@@ -491,6 +521,15 @@ variable CA-XSUP-BUF-CAP
    u CA-SRC-U !
    a CA-SRC-A! ;
 
+: CA-WHOLE ( -- )                       \ check every byte of the source
+   0 CA-AT !
+   CA-SRC-U @ CA-END ! ;
+
+: CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
+   0 CA-XSUP-RC !
+   labelu CA-FILE-U !
+   labela CA-FILE-A! ;
+
 : CA-RUN-SOURCE ( -- )
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
    CA-HANDLE-LEX-DEFECT
@@ -520,32 +559,28 @@ public
 : JSON! ( bool -- )
    CA-JSON ! ;
 
-\ Empty the ordered list of already-verified files replayed before each run.
-: SUPPORT-RESET ( -- )
-   0 CA-XSUP-N ! ;
-
-\ Append one already-verified file path to that replay list.
-: SUPPORT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CA-XSUP-N @ CA-XSUP-MAX >= IF E-TBL-BOUNDS throw THEN
-   u FS-PATH-CAP > IF E-FS-CAPACITY throw THEN
-   a CA-XSUP-PATHS CA-XSUP-N @ FS-PATH-CAP * + u BYTE-COPY
-   u CA-XSUP-US CA-XSUP-N @ cells + !
-   CA-XSUP-N @ 1+ CA-XSUP-N ! ;
-
 \ Check the source file at the given path, reporting it under the given label.
 : FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   0 CA-XSUP-RC !
-   labelu CA-FILE-U !
-   labela CA-FILE-A!
+   labela labelu CA-START
    patha pathu CA-READ-SOURCE
+   CA-WHOLE
+   CA-RUN-SOURCE ;
+
+\ Check bytes start to end of the source file at the given path, reporting them
+\ under the given label at the file's own line and column.
+: SPAN ( ptr u8 n ptr u8 n n n -- )
+   {: labela:ptr labelu:n patha:ptr pathu:n start:n end:n :}
+   labela labelu CA-START
+   patha pathu CA-READ-SOURCE
+   start CA-AT !
+   end CA-SRC-U @ min CA-END !
    CA-RUN-SOURCE ;
 
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
-   0 CA-XSUP-RC !
-   labelu CA-FILE-U !
-   labela CA-FILE-A!
+   labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
+   CA-WHOLE
    CA-RUN-SOURCE ;
 
 ;package
