@@ -247,6 +247,9 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
+The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
+tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
+deep until the seed mirrors those frames, or the stage0 build exits 75.
 
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed

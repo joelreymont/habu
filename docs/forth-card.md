@@ -96,7 +96,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `@` on a `ptr u8` | `E-MISMATCH` — use `c@` |
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
 | a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE`, rc 75 |
-| a second `[:` while one is open | **rc 75, bare `[:` on stderr, no code** |
+| a 33rd `[:` while 32 are open | `E-UNCHECKABLE`; `--load` exits 75, `hb: quotation nesting full at 32 levels` |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
@@ -268,7 +268,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin` |
+| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:` |
 | Constants | hex versus decimal, `src/config.fs` |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |

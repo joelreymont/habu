@@ -1262,6 +1262,31 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
+\ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
+\ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
+\ parks those four cells in the next frame, in that order, before it reuses
+\ them, and its `;]` pops the frame back after closing its own body: the AOT
+\ scanner's open row and the enclosing row each opener records
+\ (src/compiler/native/elaborate.f QOPEN-ROW and QCLOSE-ROW). LEVELS is the most
+\ quotations open at once, the checker's control-frame capacity (src/core/checker.f
+\ CF-PUSH holds 32 frames and each `[:` takes one), so the loader refuses no
+\ nesting the checker certifies; one more is refused by name (habu2.f
+\ EM-QUOT-NEST-DIE). SP-CELL counts the parked frames. It is definition-scoped
+\ like QPATCH-CELL and is zeroed beside it in every reset run, so a definition
+\ that fails with quotations open leaves nothing parked. The innermost
+\ quotation never needs a frame, so there are LEVELS-1. Both sit after
+\ EXIT-HOOK-CELL in the $2800..$3000 free header band - swept for a claimant
+\ across src lib tools test bootstrap - below $7FF8 for the 12-bit scaled
+\ `DATA <off> LDR/STR` form, and below DATA-START.
+package JIT-QUOT
+public
+32 constant LEVELS                                  \ quotations open at once
+32 constant FRAME-BYTES                             \ QPATCH, QENT, QXH, QFRAME
+$2820 constant SP-CELL                              \ frames parked
+$2828 constant STK-OFF                              \ base of the frame area
+STK-OFF LEVELS 1- FRAME-BYTES * + constant END
+;package
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

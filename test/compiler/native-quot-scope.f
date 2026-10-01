@@ -161,6 +161,28 @@ variable QSC-ANS
 : QSC-THROW ( n -- n n )
    [: dup 3 > if 9 throw else 5 throw then ;] catch ;
 
+\ ---- quotations opened inside quotations --------------------------------------
+\ Each open body keeps its own inputs, return-stack values, calls and EXIT, and
+\ the enclosing body resumes intact after the inner `;]`. Every enclosing body
+\ parks a value on the return stack across the innermost one's call.
+: QSC-NEST ( n n n -- n )
+   [: >r [: >r QSC-OK1 r> + ;] execute r> + ;] execute ;
+
+: QSC-NEST-DEEP ( n -- n )
+   [: [: [: QSC-OK1 ;] execute ;] execute ;] execute ;
+
+\ The inner body opens inside a counted loop of the enclosing one.
+: QSC-NEST-LOOP ( n n -- n )
+   [: 0 ?do [: QSC-OK1 ;] execute loop ;] execute ;
+
+\ An inner EXIT returns to the enclosing quotation, never out of it.
+: QSC-NEST-EXIT ( n -- n )
+   [: [: dup 3 > if 1+ exit then 2 + ;] execute 5 + ;] execute 7 + ;
+
+\ Siblings, nested and not, each run their own body.
+: QSC-NEST-SIBLINGS ( n -- n )
+   [: [: 1+ ;] execute [: 2 * ;] execute ;] execute [: 3 + ;] execute ;
+
 
 ;package
 
@@ -296,6 +318,18 @@ public
    3 4 QSC-FIXTURE:QSC-EB 33 T=
    3 3 QSC-FIXTURE:QSC-EB 36 T= ;
 
+: NESTED-CASE ( -- )
+   s" nested quotations use their own inputs and return-stack values" T-LABEL
+   91 3 7 11 QSC-FIXTURE:QSC-NEST 22 T= 91 T=
+   91 4 QSC-FIXTURE:QSC-NEST-DEEP 5 T= 91 T=
+   91 3 0 QSC-FIXTURE:QSC-NEST-LOOP 3 T= 91 T=
+   91 3 4 QSC-FIXTURE:QSC-NEST-LOOP 7 T= 91 T=
+   s" a nested EXIT returns to the enclosing quotation" T-LABEL
+   91 2 QSC-FIXTURE:QSC-NEST-EXIT 16 T= 91 T=
+   91 7 QSC-FIXTURE:QSC-NEST-EXIT 20 T= 91 T=
+   s" sibling bodies, nested or not, each run their own code" T-LABEL
+   91 4 QSC-FIXTURE:QSC-NEST-SIBLINGS 13 T= 91 T= ;
+
 : RUN ( -- )
    ENCLOSING-SHAPE-CASE
    THROW-BODY-CASE
@@ -309,7 +343,8 @@ public
    THROW-LOCALS-CASE
    TWO-LOCALS-CASE
    EXEC-CASE
-   LOOP-GROUP-CASE ;
+   LOOP-GROUP-CASE
+   NESTED-CASE ;
 
 ;package
 

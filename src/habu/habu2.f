@@ -161,7 +161,7 @@ variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overf
 variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMIT-SNAP-NEST-CHECK at JIT-SNAP:FRAMES); label LSNAPNEST declared in jit.f
 variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block (dots habu-dictionary-allot-past-4e5c3c2b, habu-name-the-ceiling-98ca1f47)
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
-variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT at QPATCH-CELL); LDIAGDEF names the definition (dot habu-name-the-nested-6a8e1b28)
+variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
 
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
@@ -171,7 +171,8 @@ variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT
 : SNAPNEST-MSG$ ( -- ptr u8 n )  s" hb: BEGIN nesting full at " ;
 : SNAP-UNIT$ ( -- ptr u8 n )     s"  frames: " ;
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
-: QNEST-MSG$ ( -- ptr u8 n )     s" hb: a quotation may not open inside a quotation: " ;
+: QNEST-MSG$ ( -- ptr u8 n )     s" hb: quotation nesting full at " ;
+: QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
 
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
@@ -182,6 +183,7 @@ variable LQNEST   variable LQNESTMSG   \ a second `[:` while one is open (J-QUOT
 : SNAP-UNIT-LEN ( -- n )     SNAP-UNIT$ nip ;
 : DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
 : QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
+: QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
@@ -628,7 +630,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSNAPNESTMSG LABEL@ LBL, SNAPNEST-MSG$ BYTES,                         \ EM-SNAP-NEST-DIE composes the same line from JIT-SNAP:FRAMES
    LSNAPUNIT LABEL@ LBL, SNAP-UNIT$ BYTES,
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
-   LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE appends the definition and a newline
+   LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE composes the same line from JIT-QUOT:LEVELS
+   LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    RELOC-EMIT:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
@@ -3056,10 +3059,34 @@ public
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
 
+\ The Q cells hold the innermost open quotation; each enclosing one waits in a
+\ JIT-QUOT frame (src/habu/layout.f). `[:` parks the open one before it reuses
+\ the cells and `;]` pops it back once its own body is closed.
+: QUOT-FRAME, ( -- )                      \ x11 := DATA + STK-OFF + FRAME-BYTES*x10; x12 scratch
+   12 JIT-QUOT:FRAME-BYTES MOVZ,  11 10 12 MUL,
+   12 JIT-QUOT:STK-OFF MOVZ,  11 11 12 ADD,  11 DATA 11 ADD, ;
+
+: QUOT-PARK, ( -- )                       \ frame x11 := QPATCH, QENT, QXH, QFRAME
+   9 DATA QPATCH-CELL LDR,  9 11 0 STR,
+   9 DATA QENT-CELL LDR,  9 11 8 STR,
+   9 DATA QXH-CELL LDR,  9 11 16 STR,
+   9 DATA QFRAME-CELL LDR,  9 11 24 STR, ;
+
+: QUOT-UNPARK, ( -- )                     \ QPATCH, QENT, QXH, QFRAME := frame x11
+   9 11 0 LDR,  9 DATA QPATCH-CELL STR,
+   9 11 8 LDR,  9 DATA QENT-CELL STR,
+   9 11 16 LDR,  9 DATA QXH-CELL STR,
+   9 11 24 LDR,  9 DATA QFRAME-CELL STR, ;
+
 : J-QUOT ( -- )
-   LBL {: qok :}
-   9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ a quotation is already open: habu2.f EM-QUOT-NEST-DIE names the rule and the definition, then rc 75 -- recoverable inside evaluate, fail-closed exit 75 at top level. Fires before J-QUOT touches QPATCH/emit; rollback drops compile-state
-      LQNEST LABEL@ B,
+   LBL LBL {: qok:label qroom:label :}
+   9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ a quotation is open: park it
+      10 DATA JIT-QUOT:SP-CELL LDR,
+      10 JIT-QUOT:LEVELS 1- CMPI,  C-LT qroom BCOND,
+         LQNEST LABEL@ B,                                 \ JIT-QUOT:LEVELS are open: x10 = the frames parked; EM-QUOT-NEST-DIE names the ceiling, the definition and the depth, then rc 75 -- recoverable inside evaluate, fail-closed exit 75 at top level. Fires before J-QUOT writes or emits anything; rollback drops compile-state
+      qroom LBL,
+      QUOT-FRAME,  QUOT-PARK,
+      10 10 1 ADDI,  10 DATA JIT-QUOT:SP-CELL STR,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder
@@ -3071,7 +3098,7 @@ public
    9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL, ;         \ str x30,[sp,#-16]!
 
 : J-SEMIQUOT ( -- )
-   LBL {: sqok :}
+   LBL LBL LBL {: sqok:label sqbody:label sqdone:label :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,                  \ ;] with no open quotation: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-SEMIQUOT emits; rollback drops compile-state
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
@@ -3082,7 +3109,13 @@ public
    9 DATA QFRAME-CELL LDR,  9 DATA FRAME-CELL STR,      \ the enclosing body is open again
    9 DATA QPATCH-CELL LDR,  LPAT LABEL@ BL,             \ b-over lands here
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
-   12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
+   10 DATA JIT-QUOT:SP-CELL LDR,  10 sqbody CBZ,
+      10 10 1 SUBI,  10 DATA JIT-QUOT:SP-CELL STR,
+      QUOT-FRAME,  QUOT-UNPARK,                     \ the enclosing quotation is innermost again
+      sqdone B,
+   sqbody LBL,
+      12 0 MOVZ,  12 DATA QPATCH-CELL STR,          \ the definition's own body is open again
+   sqdone LBL, ;
 
 \ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
 \ word's RET into a branch and publishes the declared runtime effect.
@@ -4153,6 +4186,7 @@ package INTERP-EMIT
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,
    12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
+   12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
    NCOMP-EMIT:TIER-COLON-DISPATCH ;
@@ -8354,6 +8388,7 @@ public
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
          12 DATA QPATCH-CELL STR,
          12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
+         12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
          NCOMP-EMIT:TIER-COLON-DISPATCH
@@ -9873,7 +9908,7 @@ public
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-   12 DATA QPATCH-CELL STR,
+   12 DATA QPATCH-CELL STR,  12 DATA JIT-QUOT:SP-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
    9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ pass 2 re-opens the entry slot
@@ -10223,6 +10258,7 @@ public
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
+   9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
@@ -10672,24 +10708,30 @@ public
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ Nested-quotation diagnostic (dot habu-name-the-nested-6a8e1b28). One definition
-\ compiles one quotation at a time: QPATCH-CELL holds the single `b-over`
-\ placeholder J-SEMIQUOT patches, so J-QUOT refuses a second `[:` while that cell
-\ is live. It refused by echoing the CURRENT TOKEN — the two bytes `[:`, no
-\ label, no newline, no definition, no reason — and a consumer had only "status
-\ 75" to act on. The checker is not the refusing layer: CF-QUOT/CF-SEMIQ keep a
-\ QDEPTH counter and a frame per open quotation, so the one-at-a-time limit is
-\ this cell, and the compile aborts here before any check runs — tools/check.f,
-\ which runs the program through the engine, printed the same two bytes and the
-\ same 75 as the load path. This target states the rule and the
-\ definition it aborted, then routes through the SAME LCOMPILEDIE tail with
-\ x0=75: a catchable throw inside evaluate (the check fires before QPATCH-CELL
-\ and the emit, so the rollback is clean), a fail-closed exit 75 at top level.
-\ No new exit code, no count to state — the ceiling is one and the rule names it.
+\ Quotation-nesting capacity diagnostic (dots habu-name-the-nested-6a8e1b28,
+\ habu-open-a-quotation-f6c2a55f). J-QUOT parks every enclosing quotation in a
+\ JIT-QUOT frame, so one definition holds JIT-QUOT:LEVELS open at once - the
+\ checker's control-frame capacity, so no certified definition reaches this.
+\ The load path aborts here, before the check that runs at the definition's
+\ `;`. tools/check.f never runs the source this far: its preverify refuses the
+\ 33rd control frame first (E-UNCHECKABLE, src/core/checker.f CF-PUSH).
+\ The line has EM-SNAP-NEST-DIE's shape: the ceiling, the definition, the depth
+\ it asked for. It routes through the SAME LCOMPILEDIE tail with x0=75: a
+\ catchable throw inside evaluate (J-QUOT branches here before it writes a cell
+\ or emits a word, so the rollback is clean), a fail-closed exit 75 at top
+\ level. Entered with x10 = the frames parked, so the innermost open quotation
+\ makes x10 + 1 and this `[:` asks for x10 + 2; that count moves to x15, which
+\ the writes and the LDIAGU/LDIAGDEF calls below preserve, before the first of
+\ them.
 : EM-QUOT-NEST-DIE ( -- )
    LQNEST LABEL@ LBL,
+   15 10 2 ADDI,                                   \ x15 = the depth this `[:` needs
    0 2 MOVZ,  1 LQNESTMSG LABEL@ ADR,  2 QNEST-MSG-LEN MOVZ,  NR-WRITE SYS,
+   9 JIT-QUOT:LEVELS MOVZ,  LDIAGU LABEL@ BL,
+   0 2 MOVZ,  1 LQNESTUNIT LABEL@ ADR,  2 QNEST-UNIT-LEN MOVZ,  NR-WRITE SYS,
    LDIAGDEF LABEL@ BL,
+   0 2 MOVZ,  1 LDIAGNEEDS LABEL@ ADR,  2 DIAG-NEEDS-LEN MOVZ,  NR-WRITE SYS,
+   9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 \ The buffer ran out: return to evaluate's caller, which is compiled code, so a
@@ -11285,7 +11327,7 @@ package LABELS
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
-   LBL LQNEST !  LBL LQNESTMSG !
+   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !

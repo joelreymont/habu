@@ -731,16 +731,17 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `=` (`bool bool` is refused).
 - **Quotations are xts, not closures.** `[: … ;]` cannot read surrounding
   locals: declaring or referencing a local inside a quotation is
-  `E-BAD-LOCAL-SHAPE`, checker and compiler reject local references while a
-  quotation is open, and on the JIT tier a `{:` group inside `[: ;]` is refused.
-  A body that needs locals inside a quotation becomes a named private word. A
-  value a `catch`, `finally` or locked body needs travels through storage it can
-  address; where it differs per task, that storage is the task's own slot (a
-  `TASK:+USER` cell or a typed-buffer row indexed by the task) that the
-  quotation reads for the running task. Only one `[:` is open at a time: a
-  second refuses `hb: a quotation may not open inside a quotation: <name>`, rc
-  75, catchable inside `evaluate`; sequential quotations in one definition are
-  fine.
+  `E-BAD-LOCAL-SHAPE`, checker and compiler reject local references while any
+  quotation is open, including in an enclosing quotation after an inner `;]`,
+  and on the JIT tier a `{:` group inside `[: ;]` is refused. A body that needs
+  locals inside a quotation becomes a named private word. A value a `catch`,
+  `finally` or locked body needs travels through storage it can address; where
+  it differs per task, that storage is the task's own slot (a `TASK:+USER` cell
+  or a typed-buffer row indexed by the task) that the quotation reads for the
+  running task. Quotations nest: each `[:` inside another opens its own body,
+  with its own inputs, calls and `exit`, and the enclosing body resumes after
+  its `;]`; at most 32 are open at once (**Engine limits ordinary source
+  reaches**).
 - **A handle over caller-owned storage is a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller**, a checked `ptr PKG:type`.
   No `TRUSTED:` mint, state and consume leaves: `CAST:` refuses a pointer
@@ -890,7 +891,7 @@ boundary cases are contracts every backend answers alike.
 
 ## Engine limits ordinary source reaches
 
-Four ceilings are reachable from plain Habu rather than a runaway; each refuses
+These ceilings are reachable from plain Habu rather than a runaway; each refuses
 by name with the count it saw and the ceiling, and none truncates.
 
 - **A definition's captured source text: `BODYBUF-CAP`, 8000 bytes**
@@ -908,6 +909,12 @@ by name with the count it saw and the ceiling, and none truncates.
   (`src/habu/layout.f`), the JIT's value-stack snapshot frames per definition.
   Past it: `hb: BEGIN nesting full at 28 frames: <name> needs <depth>`, rc 75.
   Factor the inner loops into their own words.
+- **Quotation nesting in one definition: `JIT-QUOT:LEVELS`, 32**
+  (`src/habu/layout.f`), the most `[:` bodies open at once, which is the
+  checker's control-frame capacity. Past it:
+  `hb: quotation nesting full at 32 levels: <name> needs 33`, rc 75, catchable
+  inside `evaluate`; `tools/check.f` refuses the same source first,
+  `E-UNCHECKABLE`. Factor the inner quotations into named words.
 - **`do` and `?do` nesting in one definition: `LV-LEVELS`, 16**
   (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
   records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.
@@ -1146,14 +1153,15 @@ passing suite.
   emitted code validated by focused tests; pre-checker emitters keep their
   source-shape checks until converted, which justify no new unchecked bodies.
 - **Fixed DATA header cells need a layout audit** against the reserved ranges:
-  `VTAG-OFF`, `VVAL-OFF`, `JIT-SNAP:STK-OFF`, `BODYBUF-OFF`, `LOCNAMES`,
-  `BPTAB-OFF` and the `SNAP-RELOC` call and address maps in
-  `src/habu/layout.f`, and the register tables `REGALLOC-ABI:VRTAB-OFF`/
-  `VRITAB-OFF` in `src/habu/regalloc-abi.f`. A cell inside a scratch range is
-  overwritten by compiled source. The return and loop stacks are guarded
-  mappings (`STACK-ABI`), not header ranges. Give the cell a row in
-  `src/habu/data-claims.f`, whose `CLAIMS-ASSERT` refuses an overlapping pair
-  at build and names both, and add a regression for the exact overlap class.
+  `VTAG-OFF`, `VVAL-OFF`, `JIT-SNAP:STK-OFF`, `JIT-QUOT:STK-OFF`,
+  `BODYBUF-OFF`, `LOCNAMES`, `BPTAB-OFF` and the `SNAP-RELOC` call and address
+  maps in `src/habu/layout.f`, and the register tables
+  `REGALLOC-ABI:VRTAB-OFF`/`VRITAB-OFF` in `src/habu/regalloc-abi.f`. A cell
+  inside a scratch range is overwritten by compiled source. The return and
+  loop stacks are guarded mappings (`STACK-ABI`), not header ranges. Give the
+  cell a row in `src/habu/data-claims.f`, whose `CLAIMS-ASSERT` refuses an
+  overlapping pair at build and names both, and add a regression for the exact
+  overlap class.
 - **Snapshot builders retire the baked tail** (`undefine NAME` for one word,
   `HIDE-DEFS-FROM` only for refresh tail truncation) and append the snapshot
   entry file; they never replay baked core, target or image files to mask
