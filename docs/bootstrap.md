@@ -327,6 +327,11 @@ for equal lengths, or a length mismatch, and the first differing offset in
 either case. The focused `two-generation-fixtures` gate row covers the byte
 boundaries and sidecar parser without launching a build chain on every gate.
 
+In every mode a verdict prints its lines on stdout and exits 1. A step that
+throws instead, such as a directory that cannot be made or a file that cannot
+be opened, is rethrown uncaught: the engine prints `hb: uncaught throw code C`
+on stderr and exits 67.
+
 Three facts decide how a change reaches the fixpoint:
 
 - **A codegen change takes two generations, and nothing else does.** gen1 is

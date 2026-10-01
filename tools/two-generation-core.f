@@ -433,8 +433,13 @@ variable TG-COL-NAME
 
 public
 
+\ A verdict printed its own lines and exits TG-FAIL-RC. Any other throw is a
+\ step that failed; it is rethrown, so the engine names its code on stderr and
+\ exits with its status for an uncaught throw.
 : MAIN ( -- )
    [: TG-RUN ;] catch {: code:n :}
-   code 0 <> if s" " code die then ;
+   code 0= if exit then
+   code TG-FAIL-RC = if s" " code die then
+   code throw ;
 
 ;package
