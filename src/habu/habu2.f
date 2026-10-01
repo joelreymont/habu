@@ -8782,12 +8782,14 @@ public
 \ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
 \ and throws on unsigned/prim sources). Native walls that hold without the
 \ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,
-\ ENGINE-ERROR:SEAL-PACKAGE), undefined word (token + rc 70), duplicate tail
-\ (C-REJECT-DUP-DEF $4E, checked BEFORE the checker call so the labeled
-\ native diagnosis wins), protected-WID target (C-STORE-DEF-NAME publish
-\ guard). The checker call runs OUTSIDE the RW code window (checked code must
-\ execute RX); the record publish sits inside the 3/5 LPROT window because
-\ C-STORE-NAME spills long names at CP.
+\ ENGINE-ERROR:SEAL-PACKAGE), undefined word (token + rc 70), internal engine
+\ word (DNAME-INT, the interpret gate's LINTERNAL diagnosis + rc 70: the alias
+\ record would not carry the mark), duplicate tail (C-REJECT-DUP-DEF $4E,
+\ checked BEFORE the checker call so the labeled native diagnosis wins),
+\ protected-WID target (C-STORE-DEF-NAME publish guard). The checker call runs
+\ OUTSIDE the RW code window (checked code must execute RX); the record
+\ publish sits inside the 3/5 LPROT window because C-STORE-NAME spills long
+\ names at CP.
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
@@ -8802,10 +8804,11 @@ public
    named LBL,
    C-QUALIFY-SEAL-GUARD
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish). Caveat (universal, not new): if the failing string ALSO opened the package (package X public export NOPE), the recovery restores the dictionary + compile state but not package scope, so X stays open — identical to the landed LUNDEF/dup-def in-package recoveries; the session is usable for fresh top-level defines. Package-scope rollback is a separate follow-up.
+   13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish), and the recovery rolls the package scope back with the dictionary (PKGSNAP), so a string that also opened the package leaves it closed.
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    found LBL,
+   14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT source: TKA/TKL still hold the operand; nothing pushed or published
    SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,

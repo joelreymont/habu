@@ -5,20 +5,24 @@
 \ documented roles in fresh child engines:
 \ - inside an open package it publishes an existing word under its own tail
 \   (dual-name execution, checked callers, generated-ctor sources allowed,
-\   DNAME-WIDE parity between source and alias at the interpret gate);
+\   data records allowed, DNAME-WIDE parity between source and alias at the
+\   interpret gate);
 \ - at top level it is the hb-build --repl export directive surface and
 \   consumes the name as a no-op, keeping directive-carrying programs (for
 \   example lib/prelude.f) directly loadable.
 \ Rejects pinned by child exit status: undefined source (rc 70, token named),
 \ sealed-system source prefix (rc 84, ENGINE-ERROR:SEAL-PACKAGE), missing name (rc 74),
 \ duplicate tail / self-export (rc 78, labeled "duplicate definition:"),
-\ primitive source (uncaught E-EXPORT-PRIM 7115 -> rc 67, code named), and a
+\ primitive source (uncaught E-EXPORT-PRIM 7115 -> rc 67, code named), a
 \ private word behind a closed package (qualified lookup is public-only,
-\ rc 70).
+\ rc 70), and an engine-internal (DNAME-INT) source, refused with the interpret
+\ gate's diagnosis because the alias would not carry the mark (rc 70 at top
+\ level, a catchable 70 inside evaluate).
 \
 \ Each program runs in a fresh child engine (HABU_UNDER_TEST when the gate
-\ sets it, else bin/hb) over piped stdin; the representative undefined case
-\ also runs --load for entry-path parity, exactly like test/seal-package.f.
+\ sets it, else bin/hb) over piped stdin; the representative undefined and
+\ internal cases also run --load for entry-path parity, exactly like
+\ test/seal-package.f.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -37,6 +41,7 @@ require lib/process-env.f
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
+70 constant XPK-INTERNAL-RC           \ internal engine word: the interpret gate's status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
 ENGINE-ERROR:SEAL-PACKAGE constant XPK-SEAL-RC
@@ -170,6 +175,30 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+\ An engine-internal word (DNAME-INT) has no checker-known effect; were the
+\ export published, the alias would run it from interpret level (the last
+\ line). Inside evaluate the refusal is a catchable 70 and the session goes on.
+: XPK-INTERNAL-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package XB" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT DEFER-UNSET" XPK-LINE
+   s" ;package" XPK-LINE
+   s" XB:DEFER-UNSET" XPK-LINE
+   SB$ ;
+
+: XPK-INTERNAL-CATCH-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: XPK-EVC ( ptr u8 n -- n ) [: evaluate ;] catch ;" XPK-LINE
+   S\" s\" package XB public EXPORT DEFER-UNSET\" XPK-EVC ." XPK-LINE
+   S\" s\" after-catch\" type cr" XPK-LINE
+   SB$ ;
+
+: XPK-DATA-FORGE$ ( -- ptr u8 n )             \ a data record is never internal
+   SB-RESET
+   s" 42 constant K package P public export K ;package P:K ." XPK-LINE
+   SB$ ;
+
 \ Generated constructor sources are closed-but-callable: re-exporting one under
 \ a second public name is ALLOWED, a checked caller through the alias compiles,
 \ and the alias inherits DNAME-WIDE (the interpret gate rejects an alias call
@@ -269,7 +298,9 @@ create XPK-EMPTY 1 allot
    s" top-level EXPORT is the directive no-op" T-LABEL
    XPK-DIRECTIVE-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 36" XPK-OUT?
    s" generated ctor re-export allowed; checked alias caller compiles" T-LABEL
-   XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT? ;
+   XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?
+   s" data record exports (--load)" T-LABEL
+   XPK-DATA-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT? ;
 
 : XPK-NEGATIVES ( -- )
    s" undefined source rejects (stdin)" T-LABEL
@@ -290,7 +321,17 @@ create XPK-EMPTY 1 allot
    XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
    s" 7115" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC ;
+   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   s" internal engine word source rejects (stdin)" T-LABEL
+   XPK-INTERNAL-FORGE$ XPK-RUN-STDIN XPK-INTERNAL-RC XPK-ASSERT-RC
+   s" hb: internal engine word: DEFER-UNSET" XPK-ERR?
+   s" internal engine word source rejects (--load)" T-LABEL
+   XPK-INTERNAL-FORGE$ XPK-RUN-LOAD XPK-INTERNAL-RC XPK-ASSERT-RC
+   s" hb: internal engine word: DEFER-UNSET" XPK-ERR?
+   s" internal engine word refusal is a catchable 70 in evaluate" T-LABEL
+   XPK-INTERNAL-CATCH-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC
+   S\" 70\nafter-catch\n" XPK-OUT?
+   s" hb: internal engine word: DEFER-UNSET" XPK-ERR? ;
 
 \ The wide-bit parity pair: the SOURCE ctor and its ALIAS must fail the
 \ interpret-level wide gate identically (same kind + rc), proving the alias

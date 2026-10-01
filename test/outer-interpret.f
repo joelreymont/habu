@@ -17,11 +17,10 @@
 \ `export`), words, and a definition head (`:`, `kernel:` or `trusted:`) that
 \ refuses or stays pending.
 \
-\ Some cases are the Habu loop's alone: `export` of an internal word, which the
-\ engine's own `export` publishes without its DNAME-INT mark, and tier 0, whose
-\ definitions the engine's loop compiles and the Habu loop refuses. And one
-\ check runs in a forked copy of this process instead, the seam: a fork binds
-\ it to a counting spy, and a loaded file must arrive there.
+\ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
+\ loop compiles and the Habu loop refuses. And one check runs in a forked copy
+\ of this process instead, the seam: a fork binds it to a counting spy, and a
+\ loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -682,13 +681,13 @@ variable WANT-RC
    s" oi-export-no-name.f" BOTH
    74 s" export at " S\" oi-export-no-name.f:2\n" DIED-AT ;
 
-\ An internal word has no checker-known effect, and the engine's `export`
-\ publishes an alias of one without the DNAME-INT mark that keeps it behind a
-\ TRUSTED: boundary. The Habu loop refuses it as its interpret gate does.
+\ An internal word has no checker-known effect, and an alias of one would not
+\ carry the DNAME-INT mark that keeps it behind a TRUSTED: boundary, so both
+\ loops refuse it as their interpret gates do.
 : EXPORT-INTERNAL ( -- )
    GE-SRC-RESET
    s" package OI-EX public export DEFER-UNSET" GE-SRC-LINE
-   s" oi-export-internal.f" HABU
+   s" oi-export-internal.f" BOTH
    70 s" export internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" export internal" GE-EXPECT-ERR ;
 
