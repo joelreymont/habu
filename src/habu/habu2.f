@@ -4733,6 +4733,11 @@ variable LTOPHOOK
 \ closure and the linker refuses the branch - `aot: PC-relative target removed or
 \ outside closure site=die`, exit 74, for every application whose closure reaches
 \ `die`. The record is system-private, so no word search sees the name.
+\ The hook may lie in the unit a pending head holds open, so it runs with the
+\ code window closed. The window is not closed here, since a stripped image
+\ carries this body and no band: LRBYE and LUNCAUGHT close it before the call,
+\ and BDIE runs as compiled code, which the window is never open under
+\ (EM-INTERPRET-COLON).
 : EMIT-EXITHOOK ( -- )
    LBL LBL {: nohk:label end:label :}
    LEXITHOOK LABEL@ {: start:label :}
@@ -8095,7 +8100,8 @@ ardone LBL,
    9 SP 16 LDR,  9 BLR,
    callimm LBL,
    11 SP 8 LDR,  11 BLR,
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   \ No reopen: the immediate may have ended the head. A head that goes on
+   \ reopens the window at its next tier 0 token (EM-COMPILE-LEGACY).
    30 SP 0 LDR,  SP SP 32 ADDI,
    LMAIN LABEL@ B, ;
 
@@ -8149,7 +8155,6 @@ public
    11 SP 0 LDR,  SP SP 16 ADDI,
    C-CALL-COMPILE-IMMEDIATE
    notneutral LBL,
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    SP SP 16 ADDI,
    maybe-does LBL,
    done CAPTURE-DOES
@@ -8242,6 +8247,16 @@ public
 
 \ EM-INTERPRET-COLON and the checker-callback helpers bridge token dispatch to
 \ dynamically found checker package words.
+\
+\ The head opens the code window over CP's unit (PROT-PAGE-MAX) and leaves it
+\ open while this loop reads the body, since tier 0 emits each token at CP.
+\ Code compiled in that unit cannot run then, so every way out of the loop to
+\ compiled code closes the window first: a call from the body (an immediate
+\ word, a checker), evaluate's return to its caller (EM-EVAL-CLEAN-EXIT), the
+\ REPL's line reader (EM-REPL-READ), a throw past an evaluate (LEVALREC) and
+\ the exits that run the exit hook (LRBYE, LUNCAUGHT). `die` is compiled code,
+\ so it never runs under the window. When the head goes on, tier 0's next body
+\ token opens it again (EM-COMPILE-LEGACY); tier 1 only captures until `;`.
 : EM-INTERPRET-COLON ( label -- ) {: lnotcolon:label :}
    LBL LBL LBL LBL LBL {: cpok:label ndok:label named:label kcolon:label ktry:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
@@ -10152,11 +10167,15 @@ public
 \ or the nearest handler (x11, read once because EM-RESET-COMPILE-STATE zeroes the
 \ HND-CELL copy) is inside the current eval frame; then the throw is delivered to
 \ that handler / REPL / process exit exactly as the non-evaluate path does.
+\ Each of those runs compiled code, so the code window closes first: a throw the
+\ JIT raises under a pending head's window lands here with it open. x15 survives
+\ the close (it writes x0-x2).
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL {: bounds:label :}
    LEVALREC LABEL@ LBL,
+   PROT:LCLOSE LABEL@ BL,                             \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
    LBL LEVCORRUPT !  LBL LEVCORRUPTMSG !
    11 DATA 8 LDR,                                     \ x11 = nearest handler (read once)
@@ -10238,6 +10257,7 @@ public
    9 15 0 ADDI,                                        \ restore code after the route's ioctl
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
+   PROT:LCLOSE LABEL@ BL,                              \ region -> RX: the hook is compiled code (EMIT-EXITHOOK)
    0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
    \ One call serves both legs below: the hook runs before the representable-code
    \ exit and before the reported UNCAUGHT-RC one. x0 is the trampoline's to
@@ -10595,8 +10615,11 @@ public
    LDIAGDEF LABEL@ BL,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ The buffer ran out: return to evaluate's caller, which is compiled code, so a
+\ head the buffer left pending has its code window closed first.
 : EM-EVAL-CLEAN-EXIT ( -- )
    LBL LBL {: bounds:label floor:label :}
+   PROT:LCLOSE LABEL@ BL,                             \ region -> RX before the caller runs
    13 DATA EVAL-TOP-CELL LDR,
    14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
    12 XDS 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
@@ -10640,6 +10663,7 @@ public
    9 DATA PKG-REC-CELL LDR,   9 DATA RPKG-REC STR,
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
+   PROT:LCLOSE LABEL@ BL,                             \ region -> RX: a definition may span lines, and the reader is compiled code
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
    XDS XDS 8 SUBI,  11 XDS 0 LDR,
@@ -10706,6 +10730,7 @@ public
    1 LOKS LABEL@ ADR,  2 4 MOVZ,  G-OUT
    EM-REPL-READ
    LRBYE LABEL@ LBL,
+   PROT:LCLOSE LABEL@ BL,          \ region -> RX: the source may end inside a definition (EMIT-EXITHOOK)
    0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
@@ -11031,10 +11056,19 @@ public
 \ unconditional `B LMAIN`, and EM-COMPILE-CALL's last instruction is `found B,`
 \ with its undefined-word exit taken through `LUNDEF CBZ` -- so this block is
 \ entered only by a branch to LCOMPILE, never by falling into it.
+\
+\ A body token reopens the code window when a way out of the loop closed it
+\ under the pending head (EM-INTERPRET-COLON): every emission goes through
+\ LCEMIT, whose PROT:LGROW needs only some code band open, and a write below CP
+\ declares its own span. The guard comes first, so its throw leaves the window
+\ as the way out left it.
 : EM-COMPILE-LEGACY ( -- )
-   LBL {: lnotsemi :}
+   LBL LBL {: lnotsemi:label open:label :}
    LCOMPILE LABEL@ LBL,
    EXECUTABLE-JIT-GUARD
+   9 DATA PROT:WINDOW LDR,  9 open CBNZ,
+      1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,               \ region -> RW: the head goes on
+   open LBL,
    EM-COMPILE-ADT-MODE
    lnotsemi EM-COMPILE-SEMI
    EM-COMPILE-LOCAL

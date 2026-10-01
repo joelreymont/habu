@@ -839,10 +839,7 @@ variable WANT-RC
    74 s" hb: reader keyword needs a name: trusted: at " S\" oi-trusted-no-name.f:2\n" DIED-AT ;
 
 \ At tier 0 a head and a body token refuse. A body reaches the Habu loop at
-\ tier 0 only when the engine's loop opened its head, as `evaluate` does; the
-\ engine's head leaves the PROT window over CP's unit (PROT-PAGE-MAX) open until
-\ `;`, and code compiled in that unit cannot run then, so the case first moves
-\ CP two units past the Habu loop's code.
+\ tier 0 only when the engine's loop opened its head, as `evaluate` does.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
@@ -851,7 +848,7 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    76 s" hb: tier 0 is not in the Habu loop: : at " S\" oi-tier-0-head.f:2\n" DIED-AT
    GE-SRC-RESET
-   s" cp@ PROT-PAGE-MAX 2 * + cp! s~ : OI-T0 ( -- )~ evaluate 1 2" QLINE
+   s" s~ : OI-T0 ( -- )~ evaluate 1 2" QLINE
    s" oi-tier-0-body.f" HABU
    76 s" hb: tier 0 is not in the Habu loop: 1 at " S\" oi-tier-0-body.f:1\n" DIED-AT ;
 
@@ -923,13 +920,12 @@ variable WANT-RC
    ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
    S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
 
-\ A pending definition, dumped at exit by OI-DUMP, which the case arms after
-\ moving CP past the prelude's unit (HEAD-TIER-0 says why) and with OI-WANT
-\ set to the wordlist the head must pick.
+\ A pending definition, dumped at exit by OI-DUMP, which the case arms with
+\ OI-WANT set to the wordlist the head must pick.
 : PENDING ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: want:ptr wantu:n src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
-   s" cp@ PROT-PAGE-MAX 2 * + cp! 1 set-tier ' OI-DUMP data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" 1 set-tier ' OI-DUMP data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
    want wantu GE-SRC+ s"  OI-WANT !" GE-SRC-LINE
    src srcu GE-SRC+
    name nameu BOTH
@@ -965,6 +961,59 @@ variable WANT-RC
    S\" :OI-EDGE\n8\n1\n1\n-1\n:OI-EDGE \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
    s" get-current" s" kernel: OI-EDGE: dup" s" oi-pending-trailing.f" PENDING
    S\" OI-EDGE:\n8\n1\n1\n-1\nOI-EDGE: dup \n0\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ CP to the start of a code unit (PROT-PAGE-MAX), so what the case compiles
+\ next lies in the unit its head then opens.
+: UNIT-START ( -- )
+   s" cp@ PROT-PAGE-MAX 1 - + PROT-PAGE-MAX negate and cp!" GE-SRC-LINE ;
+
+\ An exit hook compiled in the unit a pending head holds open runs at exit. The
+\ head is each loop's own at tier 1, then the engine's at tier 0 through
+\ evaluate.
+: PENDING-HOOK ( -- )
+   GE-SRC-RESET
+   UNIT-START
+   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
+   s" 1 set-tier : OI-X ( -- ) 1" GE-SRC-LINE
+   s" oi-pending-hook.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 7\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   UNIT-START
+   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
+   s" s~ : OI-X ( -- ) 1~ evaluate" QLINE
+   s" oi-pending-hook-jit.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 7\n" CASE$ GE-EXPECT-OUT ;
+
+\ A word in the unit a head opens runs on after the evaluate that opened it,
+\ and a second evaluate ends the tier 0 body.
+: EVALUATE-HEAD ( -- )
+   GE-SRC-RESET
+   UNIT-START
+   s" s\~ TRUSTED: OI-SPLIT ( -- ) s\~ : OI-Y ( n -- n )\~ evaluate 5 . s\~ 1 + ;\~ evaluate ;~ evaluate" QLINE
+   s" OI-SPLIT 41 OI-Y ." GE-SRC-LINE
+   s" oi-evaluate-head.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 5\n42\n" CASE$ GE-EXPECT-OUT ;
+
+\ An immediate that ends the definition it runs in leaves the code window
+\ closed, at tier 0 and tier 1: the word read next runs from the unit the head
+\ held open.
+: IMMEDIATE-SEMI ( ptr u8 n ptr u8 n -- ) {: tier:ptr tieru:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   tier tieru GE-SRC-LINE
+   s" s\~ TRUSTED: OI-M ( -- ) s\~ 1 + ;\~ evaluate ; immediate~ evaluate  s~ OI-M~ 0 parse-imm" QLINE
+   UNIT-START
+   s" s~ : OI-G ( n -- n ) 2 + ;~ evaluate" QLINE
+   s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate" QLINE
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 43\n" CASE$ GE-EXPECT-OUT ;
+
+: IMMEDIATE-ENDS-HEAD ( -- )
+   s" 0 set-tier" s" oi-immediate-semi.f" IMMEDIATE-SEMI
+   s" 1 set-tier" s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI ;
 
 \ A body past BODYBUF-CAP refuses, naming the definition and the size the
 \ capture needed.
@@ -1142,6 +1191,9 @@ private
    PENDING-QUALIFIED
    PENDING-NEW-NAMESPACE
    PENDING-EDGE-COLONS
+   PENDING-HOOK
+   EVALUATE-HEAD
+   IMMEDIATE-ENDS-HEAD
    BODY-FULL
    BODY-STRINGS
    BODY-QUOTATION

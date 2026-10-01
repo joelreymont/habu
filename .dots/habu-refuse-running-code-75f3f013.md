@@ -1,9 +1,11 @@
 ---
 title: Refuse running code in the open code unit
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-10-01T09:04:08.260168+03:00"
+closed-at: "2026-10-01T10:07:49.629324+03:00"
+close-reason: "Code window closes on evaluate return, REPL read, LEVALREC, LRBYE and LUNCAUGHT; tier-0 token reopens, immediates no longer reopen; outer-interpret 115 cases pass on rebuilt 4c9d9554 (gen2 equal); same-unit cases SIGSEGV 134 on e11c, immediate-semi case 134 on 6fde360a"
 ---
 
 Problem: the engine head (`:`, `kernel:`, `trusted:`) leaves the PROT window over CP's 64K unit (PROT-PAGE-MAX) open until `;`. Code compiled earlier in that unit cannot execute meanwhile. Measured by the I5a lane on engine b4e05778: a program-code exit hook (`' W data-base EXIT-HOOK-CELL + !`) compiled in the same unit as a pending head crashes the engine at exit with SIGSEGV (rc 134) instead of running or refusing. `test/outer-interpret.f` HEAD-TIER-0 and PENDING work around it by moving CP two units on (`cp@ PROT-PAGE-MAX 2 * + cp!`).
