@@ -851,6 +851,33 @@ variable LONG-J
    s" : CKT-WIDGET-UN ( ckt-widget -- n ) CKT-WIDGET>N ;" SB-APPEND
    SB$ ;
 
+\ DEFTYPE in a package may reuse a tail a global or another package's family
+\ already has, exactly as NEWTYPE may: the loader admits both declarations
+\ below. Only a second declaration of a tail the same package owns is refused.
+: NOM-SHADOW$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-GLOBAL" SB-APPEND $0a SB-APPEND-C
+   s" package CKDA" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-SHARED" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKDB" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-SHARED" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-GLOBAL" SB-APPEND $0a SB-APPEND-C
+   s" : CKDB-MK ( n n -- ckd-shared ckd-global ) >CKD-GLOBAL swap >CKD-SHARED swap ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+: NOM-DUP$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" package CKDC" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
 \ Nominal-declarer sources for the check CLI's package-scoping contract. These
 \ feed the real child-engine path and are checked end to end, so they use
 \ DEFLINEAR: its interpret word is baked into the engine, so it runs in the
@@ -2019,6 +2046,19 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    erru 0 T= ;
 
+: TEST-NOMINAL-SHADOW ( -- )
+   NOM-SHADOW$ DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: TEST-NOMINAL-DUP ( -- )
+   NOM-DUP$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-BAD-NOMINAL-TYPE" CONTAINS? TTRUE
+   CAP-ERR erru s" CKD-TWICE" CONTAINS? TTRUE ;
+
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2369,6 +2409,8 @@ POISON-RECORD
    s" check/enum-noend-cli" [: ENUM-CLI-TEST ;] CASE-RUN
    s" check/nominal-scan-top-level" [: NOM-SCAN-TEST ;] CASE-RUN
    s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
+   s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
+   s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN

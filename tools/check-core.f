@@ -757,9 +757,10 @@ private
    s" deflinear" CHK-TYPE-FAIL ;
 
 \ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
-\ (SERIAL -> serial), so the reserved-name check and the CHECKER-DEFFAMILY mint
-\ both run on the tail, matching lib/type/deftype.f. The bad-name
-\ diagnostic still reports the surface token the user wrote.
+\ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
+\ lib/type/deftype.f does; DEFLINEAR and VALUE-RECORD names meet TYPE-RESERVED?
+\ on the same fold. The bad-name diagnostic still reports the surface token the
+\ user wrote.
 128 constant CHK-NOM-TAIL-CAP
 create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
@@ -772,10 +773,6 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
    name CHK-NOM-TAIL$ TYPE-RESERVED? ;
-
-: CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
-   name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
-   name CHK-NOM-TAIL$ s" 0" CHECKER-DEFFAMILY ;
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
@@ -873,6 +870,25 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-DECL-FLUSH
    CHK-DECL-FAIL
    k 3 + ;
+
+: CHK-NOM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ CHK-NOM-TAIL$ s" 0" CHECKER-DEFFAMILY ;
+
+\ A DEFTYPE name is refused exactly when CHECKER-DEFFAMILY refuses its tail,
+\ which is the loader's rule. TYPE-RESERVED? is not that rule: it refuses any
+\ tail the scope resolves, including a global family or another package's
+\ public one that a package family may share (TDECL-REQUIRE-FAMILY-NAME), and
+\ it passes control words and sum variants. With the arity fixed at 0 a refusal
+\ can only be about the name, so the bad-nominal diagnostic replaces the
+\ declaration packet.
+: CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
+   name CHK-WORD-TOK? 0= IF def name CHK-NOM-FAIL THEN
+   name CHK-TFAM-NAME-I !
+   CHK-DECL-CAPTURE
+   [: CHK-NOM-DO-DEF ;] catch {: rc:n :}
+   DIAG-BUFFER-OFF
+   rc 0= IF EXIT THEN
+   def name CHK-NOM-FAIL ;
 
 \ shared block-declaration collector: name at k+1, body tokens buffered from
 \ k+2 to the end token. Returns the next scan index and true, or k and false
