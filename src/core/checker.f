@@ -7943,15 +7943,24 @@ CHECKER-STORAGE-WALK-INSTALL
    PTR>INNER T-RES ;
 
 variable CHECKER-STORAGE-CUR
+-1 constant STORAGE-DEFERRED
 : CHECKER-STORAGE-PREPARE ( -- )
    0 CHECKER-STORAGE-CUR !
    begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
       CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
-      rec ER.STORAGE-N @ dup 0 > IF
-         {: count:n :}
+      rec ER.STORAGE-N @ {: count:n :}
+      count 0 > IF
          rec CHECKER-STORAGE-POINTEE {: term:n :}
          rec ER.STORAGE-OFF @ count term CHECKER-STORAGE-WALK-XT
-      ELSE drop THEN
+      ELSE count STORAGE-DEFERRED = IF
+         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
+         cb CELL + @ {: cap:n :}
+         cap 0 > IF
+            rec CHECKER-STORAGE-POINTEE {: term:n :}
+            cb cb @ + BYTE-VIEW data-base BYTE-VIEW -
+            cap term CHECKER-STORAGE-WALK-XT
+         THEN
+      THEN THEN
       rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
    repeat ;
 
@@ -10688,6 +10697,17 @@ TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
    off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N ! ;
+
+\ A deferred accessor owns a persistent three-cell control, not an allocation
+\ at declaration. Resolve its current region through that control at capture.
+TRUSTED: CHECKER-STORAGE-DEFER ( n ptr n -- )
+   {: handle:n cb:ptr :}
+   handle 0= IF EXIT THEN
+   cb BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 1- E-PTR {: rec:ptr :}
+   off rec ER.STORAGE-OFF !
+   STORAGE-DEFERRED rec ER.STORAGE-N ! ;
 
 \ Checker-side registration for the DYNAMIC-BUFFER gate path (verify-source
 \ RECORD-DYNAMIC-BUFFER). That definer publishes THREE checked words from one

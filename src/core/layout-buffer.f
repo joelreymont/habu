@@ -402,14 +402,36 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 \ UNSAFE-TOK?. Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
+\ A relocated quotation column leaves both its old bytes and their code-cell
+\ declarations behind. Retire the entire former capacity after the binder has
+\ published the new region; a failed bind leaves the old allocation untouched.
+: LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
+   oldcap 0= oldoff cb @ = or if exit then
+   cb oldoff + {: oldbase:ptr :}
+   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells STORAGE-CLEAR-XT
+   oldbase oldcap wc * cells LBUF-ZERO ;
+
+: LDEFER-BIND-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
+   count cb wc LDEFER-BIND
+   oldoff oldcap wc cb LDEFER-RETIRE ;
+
+: LDEFER-GROW-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
+   count cb wc LDEFER-GROW
+   oldoff oldcap wc cb LDEFER-RETIRE ;
+
+PRIM: LDEFER-BIND-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+
 \ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
 \ The `create` comes first so the accessor and both binders can name the control
 \ cells; it runs no CHECK, so the accessor is still the first DEFINITION and
 \ LBUF-EVAL's one-shot armed window authorizes it by name. NAME-BIND and
 \ NAME-GROW are ordinary checked words (each pushes the control-cell address and
 \ the width, then calls LDEFER-BIND / LDEFER-GROW).
-: LDEFER-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: name:ptr nameu:n type:ptr typeu:n :}
+: LDEFER-SOURCE ( ptr u8 n ptr u8 n bool -- ptr u8 n ptr u8 n )
+   {: name:ptr nameu:n type:ptr typeu:n hasquot:bool :}
    LBUF-CLEAR
    s" create " LBUF-APP  name nameu LBUF-BASE,
    s"  : " LBUF-APP
@@ -429,10 +451,10 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    s"  * + ; : " LBUF-APP
    name nameu LBUF-APP  s" -BIND ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   s"  LDEFER-BIND ; : " LBUF-APP
+   hasquot if s"  LDEFER-BIND-QUOT ; : " else s"  LDEFER-BIND ; : " then LBUF-APP
    name nameu LBUF-APP  s" -GROW ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   s"  LDEFER-GROW ;" LBUF-APP
+   hasquot if s"  LDEFER-GROW-QUOT ;" else s"  LDEFER-GROW ;" then LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 3 constant LDEFER-CTRL-CELLS   \ off-cell, cap-cell, cnt-cell
@@ -450,12 +472,14 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD
    type typeu CHECKER-LAYOUT-INFO 0= if 2drop E-LAYOUT-BUFFER throw then
    LBUF-W !  drop                                          \ width (cells) from the layout family
+   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
    LBUF-ALIGN
    here {: cbase:ptr :}
-   name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL! drop
-   cbase LBUF-ALLOT ;                                      \ all 0 = unbound
+   name nameu type typeu hasquot LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   src srcu pna pnu LBUF-EVAL! {: handle:n :}
+   cbase LBUF-ALLOT                                        \ all 0 = unbound
+   hasquot if handle cbase CHECKER-STORAGE-DEFER then ;
 
 \ Like LAYOUT-BUFFER: the axiom keeps DEFER-LAYOUT-BUFFER checker-known so the
 \ seal-time internal-word pass leaves it top-level executable; it parses its own

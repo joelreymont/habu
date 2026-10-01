@@ -2293,6 +2293,10 @@ SUITE structure-quotation-field
    test/structure-quotation-image.f
 ;SUITE
 
+SUITE deferred-quotation-image
+   test/deferred-quotation-image.f
+;SUITE
+
 SUITE structure-quotation-rollback
    test/structure-quotation-rollback.f
 ;SUITE
