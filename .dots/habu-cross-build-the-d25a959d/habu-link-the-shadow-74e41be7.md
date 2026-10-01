@@ -1,9 +1,11 @@
 ---
 title: Link the shadow blob into the x86 image
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:29.000279+03:00"
+closed-at: "2026-10-01T14:03:00+03:00"
+close-reason: "test/x86-64-link-records.f passes on spark and the ThinkPad: every call, code, DATA and function site and both code cells read back from the laid bytes; nine refusal children exit 74 by name before the layout returns"
 ---
 
 Problem: the shadow blob's sites are unresolved until the writer places them.

@@ -1481,10 +1481,11 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
-\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows:
-\ the records, the routines, the rebased wids, the protected-wid bitmap and the
-\ name index. Its children measure the layout host-independent and refuse, by
-\ name, what it cannot place.
+\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
+\ and links it: the records, the routines with every site resolved, the rebased
+\ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
+\ children measure the layout host-independent and refuse, by name, what it
+\ cannot place or link.
 SUITE x86-64-link-records
    test/x86-64-link-records.f
 ;SUITE
