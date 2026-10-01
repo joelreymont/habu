@@ -1237,6 +1237,14 @@ SUITE fd-io
    lib/fd-io-test.f
 ;SUITE
 
+SUITE content-length
+   lib/content-length-test.f
+;SUITE
+
+SUITE json-rpc
+   lib/json-rpc-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE

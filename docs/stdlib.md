@@ -17,6 +17,7 @@ Planned module files:
 - `lib/utf16.f`
 - `lib/uri.f`
 - `lib/json-write.f`
+- `lib/json-rpc.f`
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/span.f`
@@ -43,6 +44,7 @@ Planned module files:
 - `lib/object-resolve.f`
 - `lib/object-link.f`
 - `lib/fd-io.f`
+- `lib/content-length.f`
 - `lib/process.f`
 - `lib/process-fork.f`
 - `lib/process-argv.f`
@@ -88,6 +90,8 @@ theirs.
 | `lib/utf16.f` | caller-owned |
 | `lib/uri.f` | caller-owned |
 | `lib/fd-io.f` | caller-owned (the descriptor and the span) |
+| `lib/content-length.f` | caller-owned (the reader record and its buffer) / task-local (`SEND`'s header row) |
+| `lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
 | `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
@@ -939,6 +943,7 @@ JR:NEXT       ( JR:reader -- JR:reader n )
 JR:INT        ( JR:reader -- JR:reader n )
 JR:FLOAT      ( JR:reader -- JR:reader r )
 JR:STR        ( JR:reader ptr u8 n -- JR:reader n )
+JR:STR-EQ?    ( JR:reader ptr u8 n -- JR:reader bool )
 JR:SKIP-VALUE ( JR:reader -- JR:reader )
 JR:FIND-KEY   ( JR:reader ptr u8 n -- JR:reader bool )
 ```
@@ -957,6 +962,71 @@ captures that object's depth, skips each unmatched value completely, and stops
 at the matching object close; array, top-level scalar, and after-key phases
 throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
 unescape path as `STR`, so valid key length is not bounded by reader storage.
+`STR-EQ?` compares the current string or key the same way: true when it
+decodes to exactly the given bytes, so `"init"` equals `init`. No buffer
+bounds the string and the reader stays on the token, which may be compared
+again. Any other token, a negative length, or a null pointer with a positive
+length is `E-JR-STATE`.
+
+## JSON-RPC
+
+`lib/json-rpc.f` owns package `JSON-RPC`: the JSON-RPC 2.0 envelope.
+`>MESSAGE` sorts one message body into a `JSON-RPC:message`, and the writers
+build replies and notifications on a caller's `JSON-WRITE` writer. Framing a
+body on a stream is `lib/content-length.f`'s (Content-Length framing, below).
+
+```forth
+JSON-RPC:PARSE-ERROR      ( -- n )                  \ -32700
+JSON-RPC:INVALID-REQUEST  ( -- n )                  \ -32600
+JSON-RPC:METHOD-NOT-FOUND ( -- n )                  \ -32601
+JSON-RPC:INVALID-PARAMS   ( -- n )                  \ -32602
+JSON-RPC:INTERNAL-ERROR   ( -- n )                  \ -32603
+JSON-RPC:id                                         \ an id's JSON text
+JSON-RPC:message          \ request id method params | notification method params
+                          \ | success id value | failure id value | invalid code why id
+JSON-RPC:ID$      ( JSON-RPC:id -- ptr u8 n )
+JSON-RPC:NULL-ID  ( -- JSON-RPC:id )
+JSON-RPC:>MESSAGE ( ptr a n ptr u8 n -- JSON-RPC:message )
+JSON-RPC:METHOD?  ( ptr a n ptr u8 n ptr u8 n -- bool )
+JSON-RPC:RESULT   ( ptr JSON-WRITE:writer JSON-RPC:id -- ptr JSON-WRITE:writer )
+JSON-RPC:ERROR    ( ptr JSON-WRITE:writer JSON-RPC:id n ptr u8 n -- ptr JSON-WRITE:writer )
+JSON-RPC:NOTIFY   ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+JSON-RPC:END      ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+```
+
+`>MESSAGE` parses in the caller's JR storage (`ptr a n`, at least
+`JR:STORAGE-BYTES`; less is `JR:E-CAPACITY`) and borrows the body: every part
+of a message is the body's own JSON text. An id is a number's digits, a string
+with its quotes and escapes, or `null`; a method keeps its quotes; params, a
+result and an error are the whole value, and params absent or null are empty.
+Member names are compared decoded, the last of a repeated name counts, and
+members outside the envelope are passed over.
+`METHOD?` takes JR storage, a method's text and a name, and compares them
+decoded, so `"initialize"` names `initialize`.
+
+A body that is not one JSON value, as JR reads RFC 8259 (nesting past its 64
+levels included), is `invalid` with `PARSE-ERROR`: JR's syntax codes
+`E-JR-MALFORMED` through `E-JR-COMMA` map there, and its other codes, such as
+`JR:E-CAPACITY`, are thrown. Everything
+else wrong is `INVALID-REQUEST`: an array (a batch, which this reader does not
+take), a root that is not an object, `jsonrpc` other than the string `"2.0"`, an
+id that is not a number, string or null, a method that is not a string, params
+that are not an object, an array or null, a message with neither a method nor
+an id, a response without exactly one of `result` and `error`, and an error
+that is not an error object: one whose `code` is an integer and whose `message`
+is a string, its `data` and other members passed over. `why` is a short phrase
+for the fault. An invalid message carries its own id when the id is valid and
+the message has a method, else the null id, so a reply never answers a
+response. The body is read once: the walk that validates it records each
+envelope member as it meets it.
+
+`RESULT` writes `{"jsonrpc":"2.0","id":ID,"result":`, the caller writes the
+value and `END` closes the object. `ERROR` writes a whole error reply,
+`{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`. `NOTIFY` writes
+`{"jsonrpc":"2.0","method":M,"params":`, closed by `END` after the caller's
+params. The id is written as its JSON text, as `>MESSAGE` gave it or `NULL-ID`
+makes it; an empty id is `E-JSON-RPC-ID` before any byte is written. The
+writer's own refusals are `JSON-WRITE`'s.
 
 ## Unicode comparison
 
@@ -1866,6 +1936,60 @@ was asked throw `E-FS-IO`; a negative length is `E-SPAN-LENGTH`. A write to a
 pipe with no reader raises `SIGPIPE`, which ends the process unless the caller
 armed `FD-NOSIGPIPE!` (below); then it throws `E-FS-IO`. The engine reports
 `EAGAIN` as a failed call, so a nonblocking descriptor is not for these words.
+
+## Content-Length framing
+
+`lib/content-length.f` owns package `CONTENT-LENGTH`: the framing LSP and DAP
+put around every message, over a blocking descriptor. A header block of
+`name: value` lines, each ended by CR LF and the block by an empty line, comes
+before exactly as many body bytes as its Content-Length header names. The module
+knows nothing of what a body holds; `lib/json-rpc.f` reads a JSON-RPC body.
+
+```forth
+CONTENT-LENGTH:reader                               \ the caller's reader record
+CONTENT-LENGTH:LINE-CAP    ( -- n )                 \ 1024, the longest header line
+CONTENT-LENGTH:BIND        ( ptr reader fd SPAN:span<u8> n -- )
+CONTENT-LENGTH:NEXT-LENGTH ( ptr reader -- option<n> )
+CONTENT-LENGTH:BODY        ( ptr reader SPAN:span<u8> -- )
+CONTENT-LENGTH:SEND        ( fd ptr u8 n -- )
+```
+
+`BIND` binds the caller's record (`TYPED-VARIABLE R CONTENT-LENGTH:reader`) to
+a descriptor, a buffer span of at least `LINE-CAP` + 2 bytes and the longest
+body it takes. A message is read in two steps. `NEXT-LENGTH` reads one header
+block and answers the body's length, or `none` when the stream ended on a
+message boundary, the one end of input that is not an error. `BODY` then reads
+exactly that many bytes into the head of the caller's span, so the caller sizes
+its storage once it knows the length; a shorter span is `E-SPAN-CAPACITY`. The
+module allocates nothing: header lines are scanned in the reader's buffer, the
+body bytes it already holds are copied out, and the rest are read straight into
+the span by `FD-IO:READ-EXACT`. Header names are matched without case; blanks
+and tabs around Content-Length's value, and leading zeros in it, are allowed.
+Content-Type is read for its `charset` parameter, and other headers are read
+past.
+
+End of file inside a header block or a body is `E-CONTENT-LENGTH-TRUNCATED`. A
+header block is `E-CONTENT-LENGTH-MALFORMED` when a line is not ended by CR LF
+(an LF alone, or a CR anywhere else in it), has no colon, has a name before it
+that is not an HTTP token (one or more RFC 7230 `tchar` bytes), or is longer
+than `LINE-CAP` bytes; when no line names Content-Length, or two do; when its
+value is not a decimal count, is over the reader's maximum or, leading zeros
+aside, does not fit a cell; or when a Content-Type names a `charset` other than
+`utf-8` or the older `utf8`, in any case, bare or quoted, since UTF-8 is the one
+encoding LSP and DAP content has. After either refusal the stream has no
+boundary left to resume at: the reader is spent, and every later `NEXT-LENGTH`
+or `BODY` is `E-CONTENT-LENGTH-STATE`. So are a reader never bound,
+`NEXT-LENGTH` while a body is pending, `BODY` with none, and `BIND` with a
+smaller buffer or a negative maximum. A read the kernel refuses is `E-FS-IO`
+and spends the reader too: inside a body it may have taken bytes the caller
+never saw.
+
+`SEND` writes `Content-Length: N`, CR LF twice, then the body, each through
+`FD-IO:WRITE-FULL`, so a pipe with no reader is `SIGPIPE` or `E-FS-IO` as
+there; a negative length is `E-SPAN-LENGTH`. It builds the header in a
+`TASK:+USER` row of its own, so a body the caller built anywhere, the string
+builder `SB` included, goes out as it was, and tasks sending at once share
+nothing.
 
 ## Processes
 

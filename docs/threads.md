@@ -276,6 +276,7 @@ read the source to find out. There are three:
 | `lib/net/curl.f` | task-local (`PERFORM` and the option setters) / process-wide (the multiplexed loop) | `$18` row: per-call staging. `CURL:LOOP-START`'s table of 32 transfer records, its fd and ticket tables, its wake pipe and the multi handle are one set for the image, driven by one package-owned task; a record is claimed atomically and every other record access runs under one `TASK:FACILITY`, so any number of tasks may `START` and `AWAIT` at once |
 | `lib/serial.f` | task-local | `$58` row: termios and saved termios |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
+| `lib/content-length.f` | task-local (`SEND`) / caller-owned (the reader) | 39-byte row: `SEND`'s header, so a body the caller built in its own SB goes out as it was; the reader record and its buffer are the caller's |
 
 ### Which mechanism a task-local library uses
 
@@ -320,9 +321,9 @@ the declared bands directly above it are `FS-MUT-ABI` (3080 bytes), `FS-ABI`
 (1328 bytes), `FMT-ABI` (56 bytes) and `STRING-ABI` (1032 bytes), none of which
 is part of it.
 
-The libraries above, with `lib/net/http-arena.f`'s 8-byte slot row, claim 1704
+The libraries above, with `lib/net/http-arena.f`'s 8-byte slot row, claim 1751
 of those 6024 bytes when one image loads them all — `lib/process.f`'s $4A0 row
-is the large one — so **4320 bytes are free**. A row
+is the large one — so **4273 bytes are free**. A row
 that would cross
 `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into whatever
 lies above. Budget accordingly.
