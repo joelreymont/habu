@@ -47,21 +47,19 @@ Family and sum-variant tails share one collision policy within the global or
 active package scope: whichever is declared second rejects with
 `E-TDECL-NAME`. Package-local variant tails do not reserve unrelated packages.
 
-These reserved-name rejects split into two diagnostic codes by mechanism, and
-the split is deliberate — do not "fix" it by folding `ptr` into the reserved-name
-class. A **reserved concrete-cell or grammar token** — a single-letter signature
-var `a`..`z` (so the builtins `n`/`f`/`r`), `field`, atom prefixes, control
+These reserved-name rejects split into two diagnostic codes by mechanism. A
+**reserved concrete-cell or grammar token** — a single-letter signature var
+`a`..`z` (so the builtins `n`/`f`/`r`), `field`, `ptr`, atom prefixes, control
 words, and grammar keywords — is caught by the name gate (`TDECL-RESERVED?`,
 `src/core/sumtype.f`) *before* any family row is created, and rejects
-`E-TDECL-NAME` (7110, "reserved name"). A token that is itself a **live
-registered parametric family tail** — `ptr` (seeded arity 2), `span`, `matrix`,
-and the other cell families seeded in `src/core/type-family.f` — is not a
-reserved-name token at all: it passes the name gate and instead collides at
-registration (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family").
-So `NEWTYPE n 0` reports reserved-name while `NEWTYPE ptr 0` reports
-duplicate-family, and both are correct: `ptr` genuinely *is* a registered family,
-so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
-(`test/type-decl-suite.f` pins both codes.) A package family may share a tail
+`E-TDECL-NAME` (7110, "reserved name"). `ptr` is a seeded family (arity 2), but
+an effect reads a bare `ptr` as the pointer constructor in every scope, so no
+scope can name a family by that tail. Any other **live registered parametric
+family tail** — `span`, `matrix`, and the other cell families seeded in
+`src/core/type-family.f` — passes the name gate and collides at registration
+(`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family"). So
+`NEWTYPE n 0` and `NEWTYPE ptr 0` report reserved-name while `NEWTYPE span 3`
+reports duplicate-family. (`test/type-decl-suite.f` pins both codes.) A package family may share a tail
 with a global or foreign package family. A bare tail resolves the active package's
 exact family first, the global exact family second, then public families in
 explicit `using` imports, then one foreign public legacy fallback. Multiple

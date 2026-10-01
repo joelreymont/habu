@@ -878,6 +878,35 @@ variable LONG-J
    s" ;package" SB-APPEND
    SB$ ;
 
+\ A DEFTYPE tail an effect reads as something other than the family is refused
+\ at the declaration in every scope: a bare `ptr` is the pointer constructor, so
+\ a package's own `ptr` would leave its converter `( n -- ptr )` without a
+\ pointee. Shadowing another package's family stays legal: `side` is
+\ IR-SCHEMA's public enum, baked into the engine, and `( n -- side )` below can
+\ only certify if it names the package's own type.
+: NOM-PKG-DEF$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" package CKDP" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+: NOM-TOP-DEF$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE " SB-APPEND a u SB-APPEND
+   SB$ ;
+
+: NOM-SIDE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" package CKDS" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE SIDE" SB-APPEND $0a SB-APPEND-C
+   s" : CKDS-MK ( n -- side ) >SIDE ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
 \ An effect spells a DEFLINEAR or VALUE-RECORD type exactly as it was declared,
 \ so `CELL` and `PTR` are types of their own beside `cell` and `ptr`. A single
 \ upper-case letter at the head of a stack is a row variable, and `--`, `[` and
@@ -2102,6 +2131,36 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    erru 0 T= ;
 
+: DEF-LOAD-REFUSED ( n n n -- )
+   67 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" bad newtype declaration" CONTAINS? TTRUE
+   CAP-ERR erru s" reserved name" CONTAINS? TTRUE ;
+
+: DEF-PROSE-REFUSED ( ptr u8 n -- )
+   DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad nominal type" CONTAINS? TTRUE ;
+
+: PKG-DEF-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-PKG-DEF$ HB-LOAD-SRC DEF-LOAD-REFUSED
+   a u NOM-PKG-DEF$ NOM-CHECK-REFUSED
+   a u NOM-PKG-DEF$ DEF-PROSE-REFUSED ;
+
+: TOP-DEF-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-TOP-DEF$ HB-LOAD-SRC DEF-LOAD-REFUSED
+   a u NOM-TOP-DEF$ NOM-CHECK-REFUSED
+   a u NOM-TOP-DEF$ DEF-PROSE-REFUSED ;
+
+: TEST-NOMINAL-CTOR-TAIL ( -- )
+   s" PTR" PKG-DEF-REFUSED
+   s" PTR" TOP-DEF-REFUSED ;
+
+: TEST-NOMINAL-SHADOW-SIDE ( -- )
+   NOM-SIDE$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   NOM-SIDE$ NOM-CHECK-ADMITTED ;
+
 : LIN-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-REFUSED
    a u NOM-LIN$ NOM-CHECK-REFUSED ;
@@ -2485,6 +2544,8 @@ POISON-RECORD
    s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
    s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
    s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
+   s" check/nominal-ctor-tail" [: TEST-NOMINAL-CTOR-TAIL ;] CASE-RUN
+   s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN

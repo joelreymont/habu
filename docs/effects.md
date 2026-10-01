@@ -216,12 +216,16 @@ collapse to `n`. They obey ordinary package visibility, so declaring inside a
 package without `public` keeps them private and `PKG:>NAME` is `E-UNDEFINED`
 from outside.
 
-The name is fail-closed: it cannot reuse a built-in type, a live family, a role,
-an atom prefix, or a one-letter type variable. `DEFTYPE IDX` and `DEFTYPE A`
-both reject with `bad newtype declaration '…': reserved name` (throw 7110, exit
-67). This gives application code (camera serials, frame indexes, exposure-µs,
-GMSL channels) compile-checked distinct integers at zero runtime cost, without
-an engine edit or fixpoint rebuild.
+The name is fail-closed: it cannot reuse a built-in type, a role, an atom prefix,
+a one-letter type variable, or `ptr`, which a signature reads as the pointer
+constructor. `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject in every scope
+with `bad newtype declaration '…': reserved name` (throw 7110, exit 67). A
+family the declaring scope already has is `duplicate family` (throw 7102); a
+package may shadow a global or another package's family, so `DEFTYPE SIDE` in a
+package names its own `side` beside `IR-SCHEMA:side`. `tools/check.f` reports
+each refusal as `E-BAD-NOMINAL-TYPE`. This gives application code (camera
+serials, frame indexes, exposure-µs, GMSL channels) compile-checked distinct
+integers at zero runtime cost, without an engine edit or fixpoint rebuild.
 
 ### `DEFLINEAR name` — a global linear cell type
 

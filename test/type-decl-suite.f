@@ -1121,6 +1121,9 @@ s" NEWTYPE field 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE str 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE space-x 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE fresh-mask-x 1" E-TDECL-NAME TDT-NEG
+\ an effect reads a bare `ptr` as the pointer constructor, never as a family,
+\ so the tail is reserved ahead of the global `ptr` family's duplicate check.
+s" NEWTYPE ptr 0" E-TDECL-NAME TDT-NEG
 \ item 9 reserved token protocol: construct/match/;match may not name a
 \ family or a variant (;match already fails the canonical-tail gate).
 s" NEWTYPE construct 1" E-TDECL-NAME TDT-NEG
@@ -1131,7 +1134,6 @@ s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
-s" NEWTYPE ptr 0" E-TFAM-DUP TDT-NEG
 s" NEWTYPE span 3" E-TFAM-DUP TDT-NEG
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains E-TFAM-DUP.

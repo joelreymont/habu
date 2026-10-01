@@ -4561,6 +4561,12 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
+\ SIG-PTR-TOK? ( ptr u8 n -- bool ) : the pointer constructor. SIG-TYPE reads a
+\ bare `ptr` as `ptr <pointee>` even where a family of that tail resolves, so
+\ TDECL-RESERVED? refuses the tail by this same word.
+: SIG-PTR-TOK? ( ptr u8 n -- bool )
+   s" ptr" CORE-STR= ;
+
 \ TYPE-RESERVED? ( ptr u8 n -- bool ) : the names DEFLINEAR and VALUE-RECORD
 \ refuse, through their loaders and tools/check.f alike. An effect spells such a
 \ type exactly as declared, so `CELL` and `PTR` are types of their own beside
@@ -4650,12 +4656,12 @@ defer SIG-QUOT-XT ( -- n )
          AGAIN
       ELSE
          PK!                                          \ push back the non-'<' token
-         a u s" ptr" CORE-STR= 0= IF                  \ non-ptr family, no '<' -> 0-arg (arity reject)
+         a u SIG-PTR-TOK? 0= IF                       \ non-ptr family, no '<' -> 0-arg (arity reject)
             PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
          THEN                                         \ `ptr` (no '<') -> MK-PTR fall-through below
       THEN
    ELSE drop THEN                                     \ not a family: drop the 0 family-id
-   a u s" ptr" CORE-STR= IF
+   a u SIG-PTR-TOK? IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
 
@@ -4715,7 +4721,7 @@ PTR-VARIABLE LTS-PKA variable LTS-PKU variable LTS-PKH
    rt dup T-WIDTH 1 - MK-HIDDEN ;
 
 : LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN   \ `:ptr` = inferred pointee
+   a u SIG-PTR-TOK? IF FRESH MK-VAR MK-PTR EXIT THEN        \ `:ptr` = inferred pointee
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
    LOC-ANN-SAVE               \ that already failed keeps its own diagnostic
    a SB!  u SL !  0 SI !  PKRESET

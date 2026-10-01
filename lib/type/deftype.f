@@ -34,9 +34,10 @@
 \ FRAME-INDEX -> frame-index); internal hyphens survive (TF-CANON? allows them).
 \ The upper-case surface spelling is what the generated converter WORD names use
 \ (`>SERIAL`, `SERIAL>N`); the lowercase tail is what a signature type names
-\ (`( serial -- n )`). CHECKER-DEFFAMILY fails closed on a tail that collides with
-\ a built-in family, a CT-role, or an already-declared nominal in the same package
-\ (E-TFAM-DUP / reserved-name throw), so no silent shadowing or rename.
+\ (`( serial -- n )`). CHECKER-DEFFAMILY fails closed on a reserved tail (a CT-role,
+\ or `ptr`, which a signature reads as the pointer constructor) and on a family
+\ the declaring scope already has (reserved-name throw / E-TFAM-DUP), so no silent
+\ rename; a package may still shadow a global or another package's family.
 \
 \ Generated converters use CAST:, which checks representation, ownership and
 \ linearity. NG-EVAL is the source-evaluation boundary; it does not exempt a
