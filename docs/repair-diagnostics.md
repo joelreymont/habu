@@ -66,6 +66,15 @@ statement-shaped object: code `E-REJECTED`, repair class `unknown_rejection`,
 `suggestion`. It carries no definition fields, and the checker does not
 continue past that statement in its source.
 
+`tools/check.f` refuses, before checking anything, a single file or a
+`--source-list` whose every input is a source the engine provides, since a run
+loads nothing from such a source. Each input gets a file-shaped object: code
+`E-ENGINE-PROVIDED`, repair class `rebuild_engine`, `verdict` `uncheckable`,
+the input's `file` as given with `line` 1 and `column` 1, and `suggestion`;
+without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
+<suggestion>`. The run exits 64. A list that also names a source the engine does
+not provide is checked.
+
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
@@ -180,6 +189,8 @@ Current checker classes:
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
+- `rebuild_engine`: the input is a source the engine provides, so loading it
+  checks nothing; rebuild `bin/hb` to check a change to it.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -211,6 +222,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |
 | `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
+| `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

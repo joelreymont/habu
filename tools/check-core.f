@@ -799,10 +799,52 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
 : CHK-SOURCE-TOO-BIG ( -- )
    s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
+\ The engine carries its own sources, so a run loads nothing from one and checks
+\ nothing there; rebuilding the engine checks it. An input set that is all such
+\ sources - a single file is a set of one - is refused at each input. Any other
+\ input is checked by the run, in an engine of its own, even when this process
+\ has loaded it.
+: CHK-ENGINE-SUG$ ( -- ptr u8 n )
+   s" The engine provides this source; rebuild bin/hb to check a change to it." ;
+
+: CHK-ENGINE-JSON ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-ENGINE-PROVIDED" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" rebuild_engine" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" uncheckable" LJW-STRING LJW-COMMA
+   s" file" LJW-KEY path pathu LJW-STRING LJW-COMMA
+   s" line" LJW-KEY 1 LJW-U LJW-COMMA
+   s" column" LJW-KEY 1 LJW-U LJW-COMMA
+   s" suggestion" LJW-KEY CHK-ENGINE-SUG$ LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CHK-ERR-LN ;
+
+: CHK-ENGINE-PROSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" E-ENGINE-PROVIDED " CHK-ERR
+   path pathu CHK-ERR
+   s" :1:1: " CHK-ERR
+   CHK-ENGINE-SUG$ CHK-ERR-LN ;
+
+: CHK-ENGINE-INPUTS? ( -- bool )
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ ENGINE-PROVIDES? 0= if unloop false exit then
+   loop
+   true ;
+
+: CHK-CHECK-INPUTS ( -- )
+   CHK-ENGINE-INPUTS? 0= if exit then
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ CHK-JSON @ if CHK-ENGINE-JSON else CHK-ENGINE-PROSE then
+   loop
+   CHK-E-USAGE CHK-THROW ;
+
 \ The bound is checked on the file itself: discovery sizes its own scratch to
 \ the source, so a source over CHK-SRC-CAP no longer refuses there, and the
 \ later read into the source buffer sits outside CHK-MATERIALIZE's catch.
 : CHK-MATERIALIZE-FILE ( -- )
+   CHK-CHECK-INPUTS
    0 CHK-POS$ CHK-LABEL!
    CHK-LABEL FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    CHK-LABEL FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
@@ -817,18 +859,9 @@ variable CHK-WALK-IX                     \ the first direct dep still waiting fo
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SOURCE! ;
 
-\ Resident verification skips already-provided inputs. Refuse a list for
-\ which it would check nothing; engine-provided inputs also skip in the child.
-: CHK-CHECK-LIST-INPUTS ( -- )
-   CHK-POS-N @ 0 ?do
-      i CHK-POS$ ENTRY-RESOLVE nip nip 0= if unloop exit then
-   loop
-   s" check.f: all source-list inputs are already provided; resident verification would skip them"
-   CHK-E-USAGE CHK-FAIL ;
-
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
-   CHK-CHECK-LIST-INPUTS
+   CHK-CHECK-INPUTS
    s" <source-list>" CHK-LABEL!
    CHK-EXPAND-RESET
    0 begin dup CHK-POS-N @ < while

@@ -1655,18 +1655,79 @@ variable LONG-J
    s" tools/imgdump.f" CHECK-TOOL-SOURCE
    s" test/gate-images.f" CHECK-TOOL-SOURCE ;
 
-: EXPECT-PROVIDED-LIST ( n n n -- )
+\ ---- a subject the engine provides -------------------------------------------
+\ A run loads nothing from a source the engine carries, so it checks nothing
+\ there; rebuilding the engine checks it. A single file and a source list whose
+\ every input is such a source are refused by one check, at each input, with
+\ the same record under --json-errors and the same line otherwise. A source this
+\ process loaded but the engine does not carry is still checked by the run.
+: ENGINE-SRC$ ( -- ptr u8 n )
+   s" src/core/type-schema.f" ;
+
+: ENGINE-PROSE$ ( -- ptr u8 n )
+   s\" E-ENGINE-PROVIDED src/core/type-schema.f:1:1: The engine provides this source; rebuild bin/hb to check a change to it.\n" ;
+
+: ENGINE-JSON$ ( -- ptr u8 n )
+   SB-RESET
+   s\" {\"schema_version\":1,\"code\":\"E-ENGINE-PROVIDED\"," SB-APPEND
+   s\" \"repair_class\":\"rebuild_engine\",\"verdict\":\"uncheckable\"," SB-APPEND
+   s\" \"file\":\"src/core/type-schema.f\",\"line\":1,\"column\":1," SB-APPEND
+   s\" \"suggestion\":\"The engine provides this source; rebuild bin/hb to check a change to it.\"}\n" SB-APPEND
+   SB$ ;
+
+: ENGINE-OPTS ( bool -- ) {: json:bool :}
+   RESET
+   s" all-errors" OPT
+   json if s" json-errors" OPT then ;
+
+: ENGINE-FILE-RUN ( bool -- n n n )
+   ENGINE-OPTS
+   ENGINE-SRC$ FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: ENGINE-LIST-RUN ( bool -- n n n )
+   ENGINE-OPTS
+   LIST-OPT
+   ENGINE-SRC$ FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: EXPECT-ENGINE-REFUSAL ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n want:ptr wantu:n :}
+   rc 64 T=
+   outu 0 T=
+   CAP-ERR erru want wantu LINT-STR= TTRUE ;
+
+: TEST-ENGINE-PROVIDED-JSON ( -- )
+   true ENGINE-FILE-RUN ENGINE-JSON$ EXPECT-ENGINE-REFUSAL
+   true ENGINE-LIST-RUN ENGINE-JSON$ EXPECT-ENGINE-REFUSAL ;
+
+: TEST-ENGINE-PROVIDED-PROSE ( -- )
+   false ENGINE-FILE-RUN ENGINE-PROSE$ EXPECT-ENGINE-REFUSAL
+   false ENGINE-LIST-RUN ENGINE-PROSE$ EXPECT-ENGINE-REFUSAL ;
+
+: EXPECT-CHECKED ( n n n -- )
+   0 T= {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+\ This harness loaded lib/test.f; the engine does not carry it.
+: TEST-HARNESS-LIB ( -- )
+   s" lib/test.f" PATH-RUN EXPECT-CHECKED
+   s" lib/test.f" LIST-RUN EXPECT-CHECKED ;
+
+\ Each input is refused at its own spelling.
+: EXPECT-PROVIDED-PAIR ( n n n -- )
    64 T= {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" all source-list inputs are already provided" CONTAINS? TTRUE ;
+   CAP-ERR erru s\" \"file\":\"src/core/type-schema.f\"," CONTAINS? TTRUE
+   CAP-ERR erru s\" \"file\":\"./src/core/type-schema.f\"," CONTAINS? TTRUE ;
 
 : PROVIDED-LIST-TEST ( -- )
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
-   s" src/core/type-schema.f" CHECK-ARG+
-   CHECK-CAPTURE EXPECT-PROVIDED-LIST
-   s" src/core/type-schema.f" s" ./src/core/type-schema.f"
-   CLI-ALL-LIST EXPECT-PROVIDED-LIST
+   ENGINE-SRC$ CHECK-ARG+
+   CHECK-CAPTURE ENGINE-PROSE$ EXPECT-ENGINE-REFUSAL
+   ENGINE-SRC$ s" ./src/core/type-schema.f"
+   CLI-ALL-LIST EXPECT-PROVIDED-PAIR
    LIST$ GOOD$ WRITE-ALL
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 0 T=
    {: outu:n erru:n :}
@@ -3183,6 +3244,9 @@ POISON-RECORD
    s" check/source-list-reserved" [: RESERVED-LIST-TEST ;] CASE-RUN
    s" check/source-list-audited-lib" [: AUDITED-LIB-TEST ;] CASE-RUN
    s" check/source-list-provided" [: PROVIDED-LIST-TEST ;] CASE-RUN
+   s" check/engine-provided-json" [: TEST-ENGINE-PROVIDED-JSON ;] CASE-RUN
+   s" check/engine-provided-prose" [: TEST-ENGINE-PROVIDED-PROSE ;] CASE-RUN
+   s" check/source-list-harness-lib" [: TEST-HARNESS-LIB ;] CASE-RUN
    s" check/source-list-preverify-diag" [: PREVERIFY-DIAG-TEST ;] CASE-RUN
    s" check/value-record-good" [: VREC-GOOD-TEST ;] CASE-RUN
    s" check/linear-bad" [: TEST-LINEAR-BAD ;] CASE-RUN
