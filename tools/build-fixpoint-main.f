@@ -6,7 +6,9 @@
 \ tools/build-fixpoint.f` here, build-fixpoint.f's own BF-NEED-PREAMBLE reports
 \ the same load list when the preamble is absent (rc 64), and with the preamble
 \ the CLI runs. BUILD-FIXPOINT:BF-CLI is the fail-closed boundary: any escaped
-\ throw is reported on stderr and exits BF-BUILD-RC.
+\ throw is reported on stderr and exits PROC-TIMEOUT-RC (124, lib/process.f)
+\ when it is a deadline that expired, BF-BUILD-RC (74) otherwise. A refused
+\ command line exits 64.
 
 \ Load-discipline guard, mirroring tools/build-fixpoint.f. Loading this CLI entry
 \ without its full chain (lib preamble + tools/build-fixpoint.f) otherwise dies

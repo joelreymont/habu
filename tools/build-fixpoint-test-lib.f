@@ -214,6 +214,14 @@ create BFT-ERR BFT-CAPTURE-CAP allot
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
+\ build-fixpoint exits PROC-TIMEOUT-RC when a deadline expired under it (BF-CLI,
+\ lib/process.f). Replay the child's stderr, which names the throw, and throw
+\ E-PROC-TIMEOUT again, so BFT-STEP hands the row to the gate pool's timeout
+\ label instead of failing it as one more unexpected exit code.
+: BFT-FIXPOINT-RC ( n n n ptr u8 -- n n n ) {: outn:n errn:n code:n err:ptr :}
+   code PROC-TIMEOUT-RC = if err errn type E-PROC-TIMEOUT throw then
+   outn errn code ;
+
 : BFT-READ ( ptr u8 n -- n ) {: pa:ptr pu:n :}
    pa pu FILE-SIZE BFT-ALLOC-READ
    pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
@@ -304,7 +312,7 @@ variable IX
    BFT-BIG-ERR BFT-BIG-CAP >LEN
    BFT-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   BFT-CAPTURE>N ;
+   BFT-CAPTURE>N BFT-BIG-ERR BFT-FIXPOINT-RC ;
 
 \ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from lib/process) leaves
 \ the row uncaught once its step is named: the engine's report is then the row's

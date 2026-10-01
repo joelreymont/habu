@@ -136,6 +136,9 @@ variable RESOLVED?
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
+   \ A deadline that expired in the build (tools/native-build-args.f) is thrown
+   \ again, so the gate pool labels this build row TIMEOUT-UNDER-LOAD.
+   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
 
 : PUBLISH ( -- )

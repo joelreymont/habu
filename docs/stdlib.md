@@ -1780,6 +1780,8 @@ PROC-WAIT-STATUS         ( pid -- n )
 PROC-STATUS>OUTCOME ( n -- outcome )
 PROC-OUTCOME>RC     ( outcome -- rc )
 PROC-STATUS>RC      ( n -- rc )
+PROC-TIMEOUT-RC          ( -- n )
+PROC-EXIT-RC             ( n n -- n )
 PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
 PROC-SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
@@ -1841,6 +1843,15 @@ and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture API returns the sum:
 the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
 state: it keeps only the raw wait status plus a timed-out flag, and
 `PROC-CAPTURE-OUTCOME ( -- outcome )` derives the sum on demand.
+
+A throw code does not cross a process boundary: `die` and the uncaught-throw
+exit turn every negative code into exit 67. `PROC-TIMEOUT-RC` (124, the status
+coreutils `timeout` exits with) carries a deadline across instead. A tool exits
+with it for `E-PROC-TIMEOUT`, and the process that runs the tool throws
+`E-PROC-TIMEOUT` again when it sees that status. `PROC-EXIT-RC ( code fail --
+status )` is the exit side: 0 for no throw, `PROC-TIMEOUT-RC` for
+`E-PROC-TIMEOUT`, and the tool's own failure status `fail` for any other code.
+`tools/native-build-core.f` and `tools/build-fixpoint.f` exit through it.
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed

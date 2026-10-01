@@ -50,10 +50,9 @@ $100001 constant OVERCAP-SOURCE-LEN
 
 \ What the child cases here prove is the standalone command line: the exit status
 \ of `bin/hb tools/check.f ...`, the diagnostics it writes, and the temporary
-\ files it removes. None of that gets slower when the host is busy, so the
-\ millisecond budget handed to every capture is a deadlock guard and nothing
-\ else. It exists so a child that never exits cannot hang the gate forever, and
-\ it must never be reachable by a child that is merely slow.
+\ files it removes. None of that depends on how long a child takes, so the
+\ millisecond budget handed to every capture is a deadlock guard: it exists so a
+\ child that never exits cannot hang the gate forever.
 \
 \ Measured 2026-07-30 on a 12-core machine. The heaviest child is the cleanup
 \ child, 4.7 to 5.0 s at an ambient load average of 13 and 11.2 to 13.4 s while
@@ -62,9 +61,16 @@ $100001 constant OVERCAP-SOURCE-LEN
 \ the busiest measurement. HANG-MARGIN is 4 rather than the order of magnitude
 \ the cheaper fixtures can afford, because the product is bounded from above by
 \ the registry's outer timeout as well.
-\ Between those two bounds the
-\ guard is unreachable by load, since a host slow enough to stretch one child to
-\ 54 s would have blown the earlier cases already.
+\
+\ Load can still reach the 54 s guard: nothing bounds how far a busy host
+\ stretches a child. At a load average near 73 an engine build took 2.9 times
+\ its time under ordinary gate load (259 s against about 90 s), and the busiest
+\ child above stretched that far takes 39 s. The current cases are faster: the
+\ slowest took 2.8 s alone at a load average of 7 to 10, and the whole row took
+\ 11.2 s in a full gate at 6 to 40, so a child now reaches the guard only about
+\ 19 times slower than that. An expiry is therefore a timeout, not proof of a
+\ deadlock: CASE-HUNG names the case and rethrows E-PROC-TIMEOUT, and the gate
+\ pool labels the row TIMEOUT-UNDER-LOAD.
 13500 constant WORST-CHILD-MS
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS

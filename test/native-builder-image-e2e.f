@@ -244,7 +244,8 @@ variable RC
    TIME:MONO-NS {: start:n :}
    REJECTED$ false false SAVED-BUILD
    start s" saved-bad-source" ELAPSED
-   RC @ 70 T=
+   \ The checker's reject (70) is caught and named; the builder exits BUILD-RC.
+   RC @ 74 T=
    OUT OUT-U @ s" native-build: uncaught throw code 70" CONTAINS? TTRUE
    ERR ERR-U @ s" habu: in bad" CONTAINS? TTRUE
    ERR ERR-U @ s" expected:" CONTAINS? TTRUE

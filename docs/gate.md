@@ -215,7 +215,18 @@ live one.
   forked child's `package X` is otherwise a nested-package reject, exit 75 —
   and never gate a CLI file that parses argv.
 - An uncaught throw in a child names its code on stderr and exits 67, unless
-  the code is 1 to 255; [debugging.md](debugging.md) has the exit rule.
+  the code is 1 to 255; [debugging.md](debugging.md) has the exit rule. The
+  pool labels a row `TIMEOUT-UNDER-LOAD` when it exits 67 with its own report
+  of `E-PROC-TIMEOUT` (-2502) as the last stderr line (`test/gate-pool.f`
+  `GT-POOL-INNER-TIMEOUT?`).
+- A deadline in a build child reaches the pool as a timeout through exit
+  statuses, because a throw code cannot cross a process boundary.
+  `tools/native-build.f` and `tools/build-fixpoint.f` exit 124
+  (`PROC-TIMEOUT-RC`, `lib/process.f`) when a deadline expired and 74 for any
+  other failure they catch, after naming its throw code. build-fixpoint's
+  `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
+  `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
+  on 124, and the rows rethrow it once the step is named.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
   and `pg_ctl` from `PATH`, a gate requirement on every host

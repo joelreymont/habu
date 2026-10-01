@@ -354,8 +354,13 @@ variable BF-CERT-PATH-U
 : BF-EXPECT ( ptr u8 n -- )
    BF-ART$ BF-EXPECT-PATH ;
 
-: BF-RC0 ( n -- )
-   0 <> if E-BUILD-STATUS throw then ;
+\ A child's completion code. PROC-TIMEOUT-RC is a deadline that expired in the
+\ child (native-build's smoke check, lib/process.f), so it throws E-PROC-TIMEOUT
+\ again here instead of becoming one more failed child.
+: BF-RC0 ( n -- ) {: rc:n :}
+   rc 0= if exit then
+   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   E-BUILD-STATUS throw ;
 
 : BF-REMOVE-TMP ( ptr u8 n -- ) {: a:ptr u :}
    a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -2135,13 +2140,12 @@ variable CHAIN-I
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
 
-\ Fail-closed CLI boundary. BTHROW's no-handler path exits with the raw throw
-\ code masked to 8 bits and NO diagnostic (a code that is a multiple of 256
-\ exits 0), so a crashed refresh child whose BF-RC0 E-BUILD-STATUS throw
-\ escaped BF-MAIN used to fail silently with an arbitrary exit code. BF-CLI
-\ catches every escaped throw, names it on stderr, and dies with the
-\ deterministic build rc so any failure anywhere in the refresh chain is loud
-\ and nonzero under every seed.
+\ Fail-closed CLI boundary. BF-CLI catches every throw that escapes BF-MAIN,
+\ names it on stderr, and dies with a fixed status, so a failure anywhere in the
+\ refresh chain is loud and nonzero under every seed. The status is the tool's
+\ exit contract: PROC-TIMEOUT-RC (lib/process.f) when a deadline expired, in
+\ this process or in a child that exited with it (BF-RC0), and BF-BUILD-RC for
+\ every other throw. A refused command line exits BF-USAGE-RC.
 $80 constant BF-FAIL-CAP
 $18 constant BF-FAIL-DG-CAP
 create BF-FAIL-BUF BF-FAIL-CAP allot
@@ -2181,14 +2185,15 @@ variable BF-FAIL-N
 : BF-FAIL-NAME+ ( n -- ) {: rc:n :}
    rc E-BUILD-STATUS = if s"  (E-BUILD-STATUS: refresh child failed)" BF-FAIL+ exit then
    rc E-BUILD-PATH = if s"  (E-BUILD-PATH: build artifact missing)" BF-FAIL+ exit then
-   rc E-BUILD-CERTIFY = if s"  (E-BUILD-CERTIFY: generated stage source rejected)" BF-FAIL+ exit then ;
+   rc E-BUILD-CERTIFY = if s"  (E-BUILD-CERTIFY: generated stage source rejected)" BF-FAIL+ exit then
+   rc E-PROC-TIMEOUT = if s"  (E-PROC-TIMEOUT: a deadline expired)" BF-FAIL+ exit then ;
 
 : BF-FAIL-DIE ( n -- ) {: rc:n :}
    0 BF-FAIL-U !
    s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
    rc BF-FAIL-CODE+
    rc BF-FAIL-NAME+
-   BF-FAIL-BUF BF-FAIL-U @ BF-BUILD-RC die ;
+   BF-FAIL-BUF BF-FAIL-U @ rc BF-BUILD-RC PROC-EXIT-RC die ;
 
 variable BF-CLI-RAN
 

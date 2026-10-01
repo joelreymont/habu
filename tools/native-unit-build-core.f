@@ -164,6 +164,6 @@ public
    out-arg SCRIPT-ARGV$ OUTPUT!
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC {: rc:n :}
    rc 0= if REPORT-CLASS then
-   s" " rc die ;
+   s" " rc EXIT-RC die ;
 
 ;package

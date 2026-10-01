@@ -194,6 +194,24 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 : PROC-STATUS>RC ( n -- rc )
    PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
 
+\ A throw code does not cross a process boundary: `die` and the uncaught-throw
+\ exit turn every negative code into UNCAUGHT-RC (67), so a parent cannot tell
+\ a child that ran out of time from one that failed. A tool whose work can
+\ end on a deadline exits PROC-TIMEOUT-RC for E-PROC-TIMEOUT, and the process
+\ that runs it throws E-PROC-TIMEOUT again on that status, so the verdict
+\ reaches the top of a chain of tools. 124 is the status coreutils `timeout`
+\ exits with. No other exit uses it: no engine exit-status constant, `die`
+\ literal or positive throw code in src/, lib/ or tools/ is 124, and a signal
+\ death reads as 128 + signal.
+124 constant PROC-TIMEOUT-RC
+
+\ The exit status for a tool's caught throw code: 0 for none, PROC-TIMEOUT-RC
+\ for E-PROC-TIMEOUT, and the tool's own failure status for every other code.
+: PROC-EXIT-RC ( n n -- n ) {: code:n fail:n :}
+   code 0= if 0 exit then
+   code E-PROC-TIMEOUT = if PROC-TIMEOUT-RC exit then
+   fail ;
+
 : PROC-WAIT-OUTCOME ( pid -- outcome )
    PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 
