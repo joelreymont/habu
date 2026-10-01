@@ -98,6 +98,10 @@ SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
 ;SUITE
 
+SUITE hb-build-stripped-quotation-field
+   tools/hb-build-stripped-quotation-field-test.f
+;SUITE
+
 SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
 ;SUITE
