@@ -4992,6 +4992,13 @@ variable LBI-BAD
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
 
+\ Return the same admitted, instantiated term for the storage allocator's
+\ image marks. The term is live until the next checker parse; its family name
+\ alone loses the arguments of an applied product such as entry<n>.
+: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
+   CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
+   drop LBI-T @ RES-TRUE ;
+
 \ Admissibility for the DYNAMIC definer (src/core/layout-buffer.f DBUF-VALIDATE),
 \ answered in BYTES because that definer's accessor scales the index by the
 \ element width rather than allotting a cell per element. It is

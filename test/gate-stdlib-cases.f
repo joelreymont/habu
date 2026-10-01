@@ -2281,6 +2281,14 @@ SUITE structure-certify
    test/structure-certify-suite.f
 ;SUITE
 
+SUITE structure-quotation-field
+   test/structure-quotation-image.f
+;SUITE
+
+SUITE structure-quotation-rollback
+   test/structure-quotation-rollback.f
+;SUITE
+
 WHITEBOX-SUITE structure-decl
    test/structure-decl-suite.f
 ;SUITE
