@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-17T17:32:42.544466+03:00"
 blocks:
-  - habu-link-the-shadow-74e41be7
   - habu-resolve-x86-entry-cb671d4d
   - habu-run-a-captured-15728fcc
   - habu-run-bin-hb-6378f297

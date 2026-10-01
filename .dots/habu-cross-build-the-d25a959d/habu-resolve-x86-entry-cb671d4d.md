@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:29.008645+03:00"
 blocks:
-  - habu-link-the-shadow-74e41be7
+  - habu-compile-definer-bodies-1292d049
 ---
 
 Problem: nothing resolves the entry cells in an x86 image, and `NATIVE-EMIT:WRITE` has no x86 arm.
@@ -29,3 +29,5 @@ Lead note (2026-10-01, NX `habu-name-the-exit-ab1864c1` landed): a writer loaded
 Lead note (2026-10-01, X4b `habu-link-records-and-647852d3` landed): `src/habu/link-x64.f` (`X64LINK:LAYOUT`) builds the records, wids, protected-wid bitmap and name index at write time (the index is deterministic across hosts, so the writer builds it and the boot does not run `seed-ndict!`); this leaf writes `DICT$`/`CODE$` into the region and `BITS$`, `INDEX$`, `WIDN`, `T0-CELL`, `HIDXP-CELL`, `CLAIMS` and the heap floor into DATA, and stops the boot replacing them. Load order: `aot-decl.f` needs `AOT-SECTION-CAP`, which only `src/arch/arm64/icode.f` defines, and that file's globals `CODE`, `LBL`, `ASM-LEN` make a later `using X64CODE` refuse (`E-USING-SHADOW-GLOBAL`); the x86 writer's closure cannot load arm64/icode.f, so this leaf moves `AOT-SECTION-CAP` to a target-neutral file or otherwise settles the order.
 
 Lead note (2026-10-01, KS `habu-key-shadow-rows-d4d1da9d` landed): shadow rows, site targets and XT rows are keyed by shipped record row (`SH-NUMBER` in `src/habu/aot-shadow.f`). A stripped live routine is carried only when an adjacent shipped row shares its emission; otherwise the capture refuses it by name (`SH-STRIPPED`, rc 74), and a site naming a stripped record is refused (`SH-UNSHIPPED`). So a live private helper called by a public word, the usual package shape, is refused under a shadow today. A stripped x86 product needs a carrier for unshipped live bodies (a format key for them, perhaps the payload's span rows, and a site tag naming one) before X4d can strip. `ACAP-TGT>REC` picks the lowest record at an entry, so a call to a private word a shipped alias re-exports is refused, not keyed to the alias.
+
+Lead note (2026-10-01, batch 10 sweep): depends on habu-compile-definer-bodies-1292d049 (I7): `link-x64.f` refuses a record without an x86 routine, and a variable, created word, defer or `does>` child has none until I7.

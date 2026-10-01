@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-09-30T16:40:27.194285+03:00"
 closed-at: "2026-10-01T15:07:03.476729+03:00"
 close-reason: "Eleven x86 sources guard with using X64LAYOUT after their last load; on product c3905243 the 17 x86 suites print test: ok and their 252 images are byte-identical to the parent tree's with the same exit statuses (peer-routines manifest 73 of 73); a bare DATA-VA in DATA-REGION, refuses rc 67 naming data-va (rc 0 before) and a bare top-level CODE-OFF in elf.f rc 105; snapshot-format.f and aot-arm.f load after the x86 sources."
-blocks:
-  - habu-refuse-shadowed-bare-aa1c9b74
 ---
 
 Problem: the x86 target's layout lives in package `X64LAYOUT` (`src/os/linux-x86-64/target-layout.f`), and the rule that x86 target sources read it qualified is a convention with nothing behind it. A bare read still resolves, to the host's layout global: on the macOS engine bare `DATA-VA` is `$44000000000` and `X64LAYOUT:DATA-VA` is `$340000000`. A Linux host gives both the same value, so a bare read changes no image there and every Linux check passes; only a macOS host builds a different image, and the Mac gate runs no image. Fourteen bare `CODE-OFF` reads remain (`src/os/linux-x86-64/elf.f` 78, 107, 111, 133, 229, 257, 265, 281, 287; `test/x86-64-seam.f:241`; `test/x86-64-kernel-engine.f:303`; `test/x86-64-peer-harness.f:224,282,316`), right only because `CODE-OFF` is `$1000` in every layout.

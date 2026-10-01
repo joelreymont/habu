@@ -17,3 +17,5 @@ Depends: habu-move-evaluate-and-9119f746 (I9a), habu-compile-definer-bodies-1292
 Route: Alder (shared: src/habu/outer.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-10-01, I5e habu-close-definitions-with-8ace78d8 landed): a failed `;` in the Habu loop keeps PEND and the open provenance window, as the engine's `;` does, and the engine's LEVALREC rolls both back today; this leaf's rollback clears them. Visible only through a catch around an included file or an exit hook; untested.

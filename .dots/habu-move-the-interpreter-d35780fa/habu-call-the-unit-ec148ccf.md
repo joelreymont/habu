@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-30T14:52:44.697860+03:00"
 blocks:
   - habu-move-pkgs-using-22f18b81
-  - habu-close-definitions-with-8ace78d8
   - habu-compile-definer-bodies-1292d049
 ---
 
