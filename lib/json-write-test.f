@@ -212,6 +212,19 @@ create JWT-NAME
    $ s\" abcdef\"abc\":\"def\"" T$=
    JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
+: JWT-TEST-GROW-KEY-ALIAS ( -- )
+   JWT-GROW-OPEN s" abcdef" RAW drop
+   JWT-GROW-W $ {: a:ptr u:n :}
+   JWT-GROW-W a u KEY $ s\" abcdef\"abcdef\":" T$=
+   JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
+: JWT-TEST-GROW-FIELD-RAW-ALIAS ( -- )
+   JWT-GROW-OPEN s" abcdef" RAW drop
+   JWT-GROW-W $ {: a:ptr u:n :}
+   JWT-GROW-W a 3 a 3 + 3 FIELD-RAW
+   $ s\" abcdef\"abc\":def" T$=
+   JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
 : JWT-TEST-GROW-LARGE ( -- )
    1024 0 ?do 65 JWT-LARGE-CHUNK i + c! loop
    JWT-GROW-OPEN JW-DQ JW-C
@@ -243,6 +256,15 @@ create JWT-NAME
 : JWT-TEST-GROW-STATE ( -- )
    [: JWT-GROW-DISPOSED ;] E-BUF-STATE TTHROWSQ
    [: JWT-GROW-NULL ;] E-JW-OUTPUT TTHROWSQ ;
+
+: JWT-TEST-GROW-DISPOSED-CLOSE ( -- )
+   JWT-GROW-OPEN s" x" RAW drop
+   JWT-GROW-BUF BUF:DISPOSE
+   JWT-GROW-W CLOSE
+   JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
+   [: JWT-GROW-W s" y" RAW drop ;] E-JW-STATE TTHROWSQ
+   [: JWT-GROW-W CLOSE ;] E-JW-STATE TTHROWSQ
+   JWT-GROW-BUF BUF:DISPOSE ;
 
 : JWT-FILL-A ( -- )
    JWT-OPEN-A
@@ -300,6 +322,28 @@ create JWT-NAME
    [: JWT-ZERO-CAP ;] E-JW-CAPACITY TTHROWSQ
    JWT-A $ nip 0 T= ;
 
+: JWT-FIELD-S-BAD-VALUE ( -- )
+   JWT-OPEN-SMALL s" ab" RAW s" k" s" v" drop -1 FIELD-S drop ;
+
+: JWT-FIELD-RAW-BAD-VALUE ( -- )
+   JWT-OPEN-SMALL s" ab" RAW s" k" s" v" drop -1 FIELD-RAW drop ;
+
+: JWT-FIELD-S-FULL-KEY ( -- )
+   JWT-OPEN-SMALL s" ab" RAW s" longkey" s" v" drop -1 FIELD-S drop ;
+
+: JWT-FIELD-RAW-FULL-KEY ( -- )
+   JWT-OPEN-SMALL s" ab" RAW s" longkey" s" v" drop -1 FIELD-RAW drop ;
+
+: JWT-TEST-FIELD-REFUSAL ( -- )
+   [: JWT-FIELD-S-BAD-VALUE ;] E-JW-SOURCE TTHROWSQ
+   JWT-A $ s\" ab\"k\":" T$=
+   [: JWT-FIELD-RAW-BAD-VALUE ;] E-JW-SOURCE TTHROWSQ
+   JWT-A $ s\" ab\"k\":" T$=
+   [: JWT-FIELD-S-FULL-KEY ;] E-JW-CAPACITY TTHROWSQ
+   JWT-A $ s" ab" T$=
+   [: JWT-FIELD-RAW-FULL-KEY ;] E-JW-CAPACITY TTHROWSQ
+   JWT-A $ s" ab" T$= ;
+
 \ A writer that was never opened and one that was closed are both refused by
 \ name; neither reads or writes the caller's bytes.
 : JWT-FRESH-RAW ( -- )
@@ -307,6 +351,12 @@ create JWT-NAME
 
 : JWT-FRESH-$ ( -- )
    JWT-FRESH $ 2drop ;
+
+: JWT-FRESH-FIELD-S ( -- )
+   JWT-FRESH s" k" s" v" drop -1 FIELD-S drop ;
+
+: JWT-FRESH-FIELD-RAW ( -- )
+   JWT-FRESH s" k" s" v" drop -1 FIELD-RAW drop ;
 
 : JWT-CLOSED-RAW ( -- )
    JWT-OPEN-B CLOSE
@@ -331,6 +381,8 @@ create JWT-NAME
 : JWT-TEST-STATE ( -- )
    [: JWT-FRESH-RAW ;] E-JW-STATE TTHROWSQ
    [: JWT-FRESH-$ ;] E-JW-STATE TTHROWSQ
+   [: JWT-FRESH-FIELD-S ;] E-JW-STATE TTHROWSQ
+   [: JWT-FRESH-FIELD-RAW ;] E-JW-STATE TTHROWSQ
    [: JWT-CLOSED-RAW ;] E-JW-STATE TTHROWSQ
    [: JWT-CLOSED-TWICE ;] E-JW-STATE TTHROWSQ
    [: JWT-OPEN-NULL ;] E-JW-OUTPUT TTHROWSQ
@@ -424,12 +476,16 @@ create JWT-NAME
    JWT-TEST-GROW-RAW-ALIAS
    JWT-TEST-GROW-STRING-ALIAS
    JWT-TEST-GROW-FIELD-ALIAS
+   JWT-TEST-GROW-KEY-ALIAS
+   JWT-TEST-GROW-FIELD-RAW-ALIAS
    JWT-TEST-GROW-LARGE
    JWT-TEST-GROW-ROOM
    JWT-TEST-GROW-STATE
+   JWT-TEST-GROW-DISPOSED-CLOSE
    JWT-TEST-SELF-RAW
    JWT-TEST-SELF-STRING
    JWT-TEST-FULL
+   JWT-TEST-FIELD-REFUSAL
    JWT-TEST-STATE
    JWT-TEST-ERRORS
    JWT-TEST-ROUNDTRIP

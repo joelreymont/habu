@@ -38,13 +38,12 @@ package JSON-WRITE
 public
 
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
-\ through buf; its pointer is stored as a byte view and converted back to the
-\ aligned header at the BUF boundary. A closed writer keeps CLOSED-CAP.
+\ through buf. A closed writer keeps CLOSED-CAP.
 STRUCTURE writer 0
   FIELD out ptr u8
   FIELD cap n
   FIELD len n
-  FIELD buf ptr u8
+  FIELD buf ptr n
 ;STRUCTURE
 
 private
@@ -74,7 +73,7 @@ private
 6 constant JW-U00-N              \ escaped width of \u00XX
 2 constant JW-QUOTE-N            \ the two string delimiters
 
-: JW-BUF@ ( ptr writer -- ptr u8 )
+: JW-BUF@ ( ptr writer -- ptr n )
    @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
    cap 0 < if E-JW-STATE throw then
    buf ;
@@ -86,8 +85,8 @@ private
       vp 0= if E-JW-STATE throw then
       vp cap used exit
    then
-   buf CELL-VIEW BUF:SPAN$ BUF:BLEN>N {: data:ptr length:n :}
-   data buf CELL-VIEW BUF:CAP@ BUF:BLEN>N length ;
+   buf BUF:SPAN$ BUF:BLEN>N {: data:ptr length:n :}
+   data buf BUF:CAP@ BUF:BLEN>N length ;
 
 : JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
    vp cap used NULL-PTR JSON--WRITE-WRITER:MAKE w ! ;
@@ -101,17 +100,11 @@ private
    dup 0 < if E-JW-SOURCE throw then
    >LEN ;
 
-\ The address is used only to remember an offset into a BUF before growth moves
-\ its storage. The pointer is never stored as an untyped cell or dereferenced
-\ after a reserve; JW-REBASE obtains the new base from BUF.
-TRUSTED: JW-ADDR ( ptr u8 -- n ) ;
-
 : JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
    w JW-BUF@ 0= if -1 exit then
    w JW-LIVE {: base:ptr cap:n used:n :}
-   a JW-ADDR base JW-ADDR {: start:n first:n :}
-   start first < if -1 exit then
-   start first - {: off:n :}
+   a base < if -1 exit then
+   a base - {: off:n :}
    off cap >= if -1 exit then
    off used > if E-JW-SOURCE throw then
    u used off - > if E-JW-SOURCE throw then
@@ -134,7 +127,7 @@ TRUSTED: JW-ADDR ( ptr u8 -- n ) ;
       need cap used - > if E-JW-CAPACITY throw then
       w exit
    then
-   buf CELL-VIEW used need + BUF:N>BLEN BUF:ENSURE
+   buf used need + BUF:N>BLEN BUF:ENSURE
    w ;
 
 : JW-C ( ptr writer n -- ptr writer ) {: w c:n :}
@@ -147,7 +140,7 @@ TRUSTED: JW-ADDR ( ptr u8 -- n ) ;
       w vp cap used 1+ JW-USED!
       w exit
    then
-   c buf CELL-VIEW BUF:APPEND-BYTE w ;
+   c buf BUF:APPEND-BYTE w ;
 
 \ The source may be a span of this writer's own output. Remember its offset
 \ before reserving, then reacquire the base after a BUF relocation.
@@ -162,7 +155,7 @@ TRUSTED: JW-ADDR ( ptr u8 -- n ) ;
       w vp cap used u LEN>N + JW-USED!
       w exit
    then
-   src u LEN>N BUF:N>BLEN buf CELL-VIEW BUF:APPEND-SPAN
+   src u LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
    w ;
 
 public
@@ -176,7 +169,7 @@ public
 : OPEN-BUF ( ptr writer ptr n -- ptr writer ) {: w buf:ptr :}
    buf 0= if E-JW-OUTPUT throw then
    buf BUF:CLEAR
-   NULL-PTR 0 0 buf BYTE-VIEW JSON--WRITE-WRITER:MAKE w !
+   NULL-PTR 0 0 buf JSON--WRITE-WRITER:MAKE w !
    w ;
 
 : RESET ( ptr writer -- ptr writer ) {: w :}
@@ -186,12 +179,12 @@ public
       w vp cap 0 JW-USED!
       w exit
    then
-   buf CELL-VIEW BUF:CLEAR
+   buf BUF:CLEAR
    w ;
 
 : CLOSE ( ptr writer -- ) {: w :}
-   w JW-LIVE {: vp:ptr cap:n used:n :}
-   w vp JW-CLOSED-CAP 0 JW-USED! ;
+   w JW-BUF@ 0= if w JW-LIVE 2drop drop then
+   w NULL-PTR JW-CLOSED-CAP 0 JW-USED! ;
 
 : $ ( ptr writer -- ptr u8 n )
    JW-LIVE {: vp:ptr cap:n used:n :}
@@ -295,14 +288,12 @@ public
 
 : FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
-   vp valu JW-SPAN
    dup vp valu JW-ALIAS {: off:n :}
    kp keyu KEY
    dup vp off JW-REBASE valu RAW ;
 
 : FIELD-S ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
    {: kp:ptr keyu:n vp:ptr valu:n :}
-   vp valu JW-SPAN
    dup vp valu JW-ALIAS {: off:n :}
    kp keyu KEY
    dup vp off JW-REBASE valu STRING ;
