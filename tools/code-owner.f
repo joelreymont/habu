@@ -24,7 +24,7 @@
 \ be resolved in another.
 \
 \ Run inside the engine being studied:
-\   <engine> --load tools/code-owner.f -- <hex-or-decimal region offset>
+\   <engine> --load tools/code-owner-main.f -- <hex-or-decimal region offset>
 \ or require it and call CODE-OWNER:AT. / CODE-OWNER:REGION-OWNER. directly.
 
 package CODE-OWNER

@@ -177,7 +177,7 @@ JIT region, where no external symbol table reaches: `nm` and lldb see the loaded
 carries its routine's start and length.
 
 ```sh
-<engine> --load tools/code-owner.f tools/code-owner-main.f -- '$181954'
+<engine> --load tools/code-owner-main.f -- '$181954'
 ```
 
 The argument is a **region offset**, not an address — ASLR moves the region every
