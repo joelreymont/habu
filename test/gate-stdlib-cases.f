@@ -98,6 +98,10 @@ SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
 ;SUITE
 
+SUITE hb-build-stripped-quotation-field
+   tools/hb-build-stripped-quotation-field-test.f
+;SUITE
+
 SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
 ;SUITE
@@ -1519,6 +1523,10 @@ SUITE typed-storage-structural
    test/typed-storage-structural-test.f
 ;SUITE
 
+SUITE storage-binding
+   test/storage-binding-e2e.f
+;SUITE
+
 SUITE record-launder-probe
    test/record-launder-probe.f
 ;SUITE
@@ -2287,6 +2295,18 @@ SUITE rigid-region
 
 SUITE structure-certify
    test/structure-certify-suite.f
+;SUITE
+
+SUITE structure-quotation-field
+   test/structure-quotation-image.f
+;SUITE
+
+SUITE deferred-quotation-image
+   test/deferred-quotation-image.f
+;SUITE
+
+SUITE structure-quotation-rollback
+   test/structure-quotation-rollback.f
 ;SUITE
 
 WHITEBOX-SUITE structure-decl

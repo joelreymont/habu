@@ -2281,6 +2281,8 @@ TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 REG-PROTECT
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
+variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
+PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -4992,6 +4994,13 @@ variable LBI-BAD
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
 
+\ Return the same admitted, instantiated term for the storage allocator's
+\ image marks. The term is live until the next checker parse; its family name
+\ alone loses the arguments of an applied product such as entry<n>.
+: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
+   CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
+   drop LBI-T @ RES-TRUE ;
+
 \ Admissibility for the DYNAMIC definer (src/core/layout-buffer.f DBUF-VALIDATE),
 \ answered in BYTES because that definer's accessor scales the index by the
 \ element width rather than allotting a cell per element. It is
@@ -5942,13 +5951,17 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 2 constant ER-SYM-CELL
 3 constant ER-SYMPREV-CELL
 4 constant ER-CONTENT-CELL
+5 constant ER-STORAGE-OFF-CELL
+6 constant ER-STORAGE-N-CELL
 $0 constant ER-NEXT-OFF
 $8 constant ER-ACTIVE-OFF
 $10 constant ER-SYM-OFF
 \ Previous binding for this symbol, offset+1; zero ends the history chain.
 $18 constant ER-SYMPREV-OFF
 $20 constant ER-CONTENT-OFF
-$28 constant EFF-REC
+$28 constant ER-STORAGE-OFF-OFF
+$30 constant ER-STORAGE-N-OFF
+$38 constant EFF-REC
 $8 constant EFF-REC-ALIGN
 0 constant EFF-REC-PTR-MASK
 
@@ -5957,6 +5970,8 @@ $8 constant EFF-REC-ALIGN
 : ER.SYM ( ptr u8 -- ptr n ) ER-SYM-OFF + CELL-VIEW ;
 : ER.SYMPREV ( ptr u8 -- ptr n ) ER-SYMPREV-OFF + CELL-VIEW ;
 : ER.CONTENT ( ptr u8 -- ptr n ) ER-CONTENT-OFF + CELL-VIEW ;
+: ER.STORAGE-OFF ( ptr u8 -- ptr n ) ER-STORAGE-OFF-OFF + CELL-VIEW ;
+: ER.STORAGE-N ( ptr u8 -- ptr n ) ER-STORAGE-N-OFF + CELL-VIEW ;
 
 8 constant EFF-CONTENT-CELLS
 $40 constant EFF-CONTENT
@@ -6060,7 +6075,9 @@ $8 constant EFF-NODE-ALIGN
    ER-SYM-CELL cells ER-SYM-OFF CHECKER-RECORD-LAYOUT=
    ER-SYMPREV-CELL cells ER-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
    ER-CONTENT-CELL cells ER-CONTENT-OFF CHECKER-RECORD-LAYOUT=
-   ER-CONTENT-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-OFF-CELL cells ER-STORAGE-OFF-OFF CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-N-CELL cells ER-STORAGE-N-OFF CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-N-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
    CELL EFF-REC-ALIGN CHECKER-RECORD-LAYOUT=
    EFF-REC-PTR-MASK 0 CHECKER-RECORD-LAYOUT=
    EFF-CONTENT-CELLS cells EFF-CONTENT CHECKER-RECORD-LAYOUT=
@@ -6068,7 +6085,9 @@ $8 constant EFF-NODE-ALIGN
    here dup ER.ACTIVE swap ER-ACTIVE-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYM swap ER-SYM-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYMPREV swap ER-SYMPREV-OFF CHECKER-RECORD-FIELD=
-   here dup ER.CONTENT swap ER-CONTENT-OFF CHECKER-RECORD-FIELD= ;
+   here dup ER.CONTENT swap ER-CONTENT-OFF CHECKER-RECORD-FIELD=
+   here dup ER.STORAGE-OFF swap ER-STORAGE-OFF-OFF CHECKER-RECORD-FIELD=
+   here dup ER.STORAGE-N swap ER-STORAGE-N-OFF CHECKER-RECORD-FIELD= ;
 
 : EW-LAYOUT-OFFSETS-A ( -- )
    EW-NEXT-CELL cells EW-NEXT-OFF CHECKER-RECORD-LAYOUT=
@@ -7185,6 +7204,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.CONTENT !
    0 p ER.SYMPREV !
+   0 p ER.STORAGE-OFF !  0 p ER.STORAGE-N !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr u8 )
@@ -7373,6 +7393,11 @@ variable RECMI   0 RECMI !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
+   LBUF-PEND-U @ 0 > NMU @ 0 > and IF
+      LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI IF
+         off 1 + LBUF-EVAL-OFF !
+      THEN
+   THEN
    external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
@@ -7405,7 +7430,6 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
-PTR-VARIABLE NMA  variable NMU              \ current definition name (set by DO-TOK1)
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -7898,6 +7922,58 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
    endcase ;
 
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
+
+\ Fixed storage belongs to the binding that introduced its accessor. The
+\ effect graph already preserves the exact instantiated pointee type, while
+\ these two binding fields preserve its DATA location and element count.
+defer CHECKER-STORAGE-WALK-XT ( n n n -- )
+: CHECKER-STORAGE-WALK-DEFAULT ( n n n -- )
+   2drop drop s" checker: storage capture walker unbound" 76 die ;
+: CHECKER-STORAGE-WALK-INSTALL ( -- )
+   [: CHECKER-STORAGE-WALK-DEFAULT ;] is CHECKER-STORAGE-WALK-XT ;
+CHECKER-STORAGE-WALK-INSTALL
+
+: CHECKER-STORAGE-POINTEE ( ptr u8 -- n ) {: rec:ptr :}
+   NEW
+   rec E-INST-RESET
+   rec E-DOUT@ E-INST R-RES
+   dup TAG S-PUSH <> IF s" checker: storage accessor output" 76 die THEN
+   P>TYPE T-RES
+   dup TAG T-PTR <> IF s" checker: storage accessor pointer" 76 die THEN
+   PTR>INNER T-RES ;
+
+variable CHECKER-STORAGE-CUR
+-1 constant STORAGE-DEFERRED
+: CHECKER-STORAGE-PREPARE ( -- )
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      rec ER.STORAGE-N @ {: count:n :}
+      count 0 > IF
+         rec CHECKER-STORAGE-POINTEE {: term:n :}
+         rec ER.STORAGE-OFF @ count term CHECKER-STORAGE-WALK-XT
+      ELSE count STORAGE-DEFERRED = IF
+         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
+         cb CELL + @ {: cap:n :}
+         cap 0 > IF
+            rec CHECKER-STORAGE-POINTEE {: term:n :}
+            cb cb @ + BYTE-VIEW data-base BYTE-VIEW -
+            cap term CHECKER-STORAGE-WALK-XT
+         THEN
+      THEN THEN
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat ;
+
+\ A bare native engine rebuild starts with freshly loaded source. Its builder
+\ allocations do not survive into the new engine's DATA, so only that builder
+\ drops their ownership after preparing address declarations for its capture.
+: CHECKER-STORAGE-UNBIND-ALL ( -- )
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      0 rec ER.STORAGE-OFF !  0 rec ER.STORAGE-N !
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat ;
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ EN-MULT tallies occurrences of canonical var LMV in the stored effect subgraph
@@ -10608,6 +10684,30 @@ variable LBUF-INFO-W
    type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
+\ The allocator binds the actual generated accessor only after its DATA cells
+\ exist. A verifier's projected signature, an alias, or an imported effect has
+\ no allocation to own and keeps the zero count E-REC-INIT gave it.
+TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
+   {: handle:n base:ptr count:n :}
+   count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 0= count 0= or IF EXIT THEN
+   handle 1- E-PTR {: rec:ptr :}
+   base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   off rec ER.STORAGE-OFF !
+   count rec ER.STORAGE-N ! ;
+
+\ A deferred accessor owns a persistent three-cell control, not an allocation
+\ at declaration. Resolve its current region through that control at capture.
+TRUSTED: CHECKER-STORAGE-DEFER ( n ptr n -- )
+   {: handle:n cb:ptr :}
+   handle 0= IF EXIT THEN
+   cb BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 1- E-PTR {: rec:ptr :}
+   off rec ER.STORAGE-OFF !
+   STORAGE-DEFERRED rec ER.STORAGE-N ! ;
 
 \ Checker-side registration for the DYNAMIC-BUFFER gate path (verify-source
 \ RECORD-DYNAMIC-BUFFER). That definer publishes THREE checked words from one
@@ -16651,6 +16751,7 @@ variable CTOR-PEND-I
 \ baked direct references. User source therefore cannot arm or mutate the
 \ one-shot boundary.
 : LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
@@ -18522,6 +18623,7 @@ public
 \ offsets and need no pointer marking), then clear
 \ the later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   CHECKER-STORAGE-PREPARE
    CHECKER-TAPE:DETACH
    EFFECT-XFER-CLEAR
    CK-GRAPH-RELEASE

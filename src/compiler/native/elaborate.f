@@ -1767,7 +1767,14 @@ create QSPELL-BUF QSPELL-CAP allot
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
    0 QSPELL j NDICT:SPELL-QUOT-DOUT {: qi:n qo:n :}
-   qi NDICT:QUOT-NONE = if k QAT@ QUOT-REFUSE then
+   \ A checked word may return a quotation cell inside a layout value. The
+   \ declared output then names the containing family, so there is no direct
+   \ quotation term to query at this cell; consumers recover its effect when
+   \ projection or fetch exposes the field as a quotation again.
+   qi NDICT:QUOT-NONE = if
+      k QIN@ QNONE <> if exit then
+      k QAT@ QUOT-REFUSE
+   then
    k qi qo QFILL ;
 
 : QRET-FILL ( n -- )
@@ -3967,6 +3974,10 @@ public
    0 LMAX !
    0 LVMAX !
    0 BLOCK-LIMIT !
+   \ The literal memo can hold a build-process code address even after its
+   \ count is reset. No entry is live in a captured engine.
+   0 LIT-N !
+   LITMAX 0 ?do 0 i cells LIT-VAL + ! loop
    NULL-PTR TOK-TABLES ! 0 TMAX !
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !

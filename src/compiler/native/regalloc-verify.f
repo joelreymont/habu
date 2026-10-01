@@ -2522,6 +2522,10 @@ public
 
 public
 : RESET-SCRATCH ( -- )
+   \ Image preparation releases the checked assignment's mapped tables.
+   ST-NONE ST !
+   0 A-GEN !
+   0 N-VALS !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
