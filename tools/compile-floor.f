@@ -4,36 +4,31 @@
 \     bin/hb --load tools/compile-floor.f                \ report only
 \     bin/hb --load tools/compile-floor.f -- 0.5         \ report, then ratchet
 \
-\ One machine-readable line, every figure in microseconds per definition: the
-\ mean of each set, the dispatch count, then the fastest definition of each set:
+\ One machine-readable line, every number in microseconds per definition (one
+\ line in the output, wrapped here):
 \
 \     floor: trivial-t1 <us> three-op-t1 <us> trivial-t0 <us> compiled <n>
 \            least-trivial-t1 <us> least-three-op-t1 <us> least-trivial-t0 <us>
 \
-\ (one line, wrapped here). The mean is the number to quote and the one the
-\ ratchet reads. The least is what a shared machine cannot inflate: another
-\ process preempting the window, or moving it to a slower core, adds time to
-\ every definition it touches and never takes any away, so one untouched
-\ definition in a hundred gives the cost every definition pays.
-\ test/compile-floor-gate.f judges it. A cost only some definitions pay, such
-\ as an occasional arena growth or a scan that lengthens as the set is
-\ defined, shows in the mean alone, and only the ratchet judges a mean:
-\ trivial-t1's, when a floor is given.
-\
-\ MEASURED ON b4363e71 (the integration root, 2026-09-11 evening), aarch64
-\ Linux, three consecutive runs at load average 5.8: trivial-t1 4111-4113 us,
-\ three-op-t1 3145-3147 us, trivial-t0 41 us, compiled 200 every run. On the
-\ campaign's starting point 41df9051 the same runs gave 9095-9123 / 6506-6524
-\ / 41-42 us. The target is 500 us (0.5 ms) of trivial-t1, which is where the
-\ ratchet argument goes; results are only comparable on a quiet machine.
+\ The first three are each set's mean over every round, and the least- fields
+\ each set's cheapest single definition in any round; compiled counts the
+\ definitions the tier-1 compiler took. The ratchet below judges the
+\ trivial-t1 mean, and the target is 500 us (0.5 ms) of it: a program pays for
+\ every definition it compiles, so the mean is the cost a quote is about, and
+\ it carries a cost only some definitions pay, which no least sees. It also
+\ carries the cores the definitions landed on, so ratchet on a quiet machine;
+\ test/compile-floor-gate.f, which runs at any load, judges each least against
+\ a budget and each mean only against a loose ceiling.
 \
 \ WHAT IS TIMED. 100 definitions `: Tn ( n -- n ) 1 + ;` and 100 definitions
 \ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's own `evaluate`
-\ one at a time inside a `mono-ns` window, and each definition is timed on its
-\ own inside it. Every source string is built BEFORE the window opens, so what
-\ the window holds is compile time and not string building. The tier-0 line
-\ compiles the trivial body a third time under its own names (`Vn`), so the
-\ contrast never redefines the set it contrasts with.
+\ inside its own window of this thread's CPU time (TIME:THREAD-CPU-NS,
+\ lib/time-cpu.f). Every source string is built BEFORE the first window opens,
+\ so what a window holds is compile time and not string building. The tier-0
+\ line compiles the trivial body a third time under its own names (`Vn`), so
+\ the contrast never redefines the set it contrasts with. A round compiles the
+\ three sets in that order, each torn down before the next is built, and a run
+\ is five rounds.
 \
 \ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair and `1 +`
 \ carries one, so the two lines together price the fold. They used to price a
@@ -62,15 +57,21 @@
 \ carry on unchanged; the in-process controls in
 \ test/compiler/compile-floor.f are what hold that open.
 \
-\ MEASURE ON A QUIET MACHINE: results are only comparable between runs taken
-\ on an idle box. The figures above were taken at a 1-minute load average
-\ under 4 on 12 cores with no other `hb` over 50% CPU, and that is the bar to
-\ reproduce them. The same tool on the same commit reported trivial-t1
-\ anywhere from 9193 to 29407 us while sibling lanes were compiling (load
-\ average 16), because this measures wall-clock compile time and nothing
-\ isolates it from the neighbours. Quote a number only with the load it was
-\ taken at, and give a ratchet argument on a shared box real headroom or the
-\ build fails for their reasons rather than this lane's.
+\ WHY CPU TIME, WHY THE LEAST, AND WHY ROUNDS. A wall-clock window also holds
+\ every slice the scheduler gave the neighbours: the same tool on one commit
+\ reported trivial-t1 anywhere from 9193 to 29407 us while sibling lanes
+\ compiled. The thread's CPU time leaves those slices out, but not the core
+\ the thread ran on: an efficiency core compiles the same set about 2.5-3x
+\ slower than a performance core, and under load part of a set lands on one.
+\ That only ever adds time, and a regression slows every definition, so a
+\ set's cheapest definition is its cost on the fastest core the run found;
+\ that is the number test/compile-floor-gate.f judges. One pass of the tier-0
+\ set is about 4 ms of CPU and fits inside one slow stretch: at load average
+\ 90 on this 12-core machine, one run in 96 read least-trivial-t0 75 us
+\ against a usual 34. Five rounds spread every set across the whole run, about
+\ half a second of CPU. The least prices only a cost every definition pays:
+\ one that only some definitions pay shows in the mean alone. Quote a number
+\ with the host and the load it was taken at.
 \
 \ THE RATCHET. Given a floor in milliseconds the tool refuses with
 \ E-FLOOR-EXCEEDED - and a nonzero exit - when the trivial tier-1 mean is
@@ -83,7 +84,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/float.f
 require lib/argv.f
-require lib/memory.f
+require lib/time-cpu.f
 
 -7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED
@@ -93,6 +94,7 @@ package COMPILE-FLOOR
 private
 
 100 constant SET-N                 \ definitions per measured set
+5 constant ROUNDS                  \ every set is compiled once per round
 $2000 constant SRC-CAP             \ source bytes for one set
 1000 constant NS-PER-US
 1000 constant US-PER-MS
@@ -119,12 +121,14 @@ create LIVE-PREFIX PREFIX-CAP allot
 variable PREFIX-U                  \ length of the prefix in LIVE-PREFIX
 variable SET-LIVE?                 \ that set is defined and not yet removed
 
-variable TRIV-T1
-variable THREE-T1
-variable TRIV-T0
-variable TRIV-T1-LEAST
-variable THREE-T1-LEAST
-variable TRIV-T0-LEAST
+\ The three sets, as rows of the two tables below.
+0 constant TRIV-T1
+1 constant THREE-T1
+2 constant TRIV-T0
+3 constant SETS
+$7FFFFFFFFFFFFFFF constant NO-LEAST \ above any least: the first sample replaces it
+create SET-NS SETS cells allot     \ each set's CPU ns, summed over every round
+create SET-LEAST SETS cells allot  \ each set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
 \ ---- the dispatch counter ---------------------------------------------------
@@ -188,20 +192,32 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- the measured window ----------------------------------------------------
 
-: COMPILE-ONE ( n -- n ) {: ix :}  \ nanoseconds for one definition
-   ix DEF$ {: a:ptr u :}
-   mono-ns {: start :}
-   a u EVAL$
-   mono-ns start - ;
+: COMPILE-ONE ( n -- n )           \ CPU nanoseconds for one definition
+   TIME:THREAD-CPU-NS swap
+   DEF$ EVAL$
+   TIME:THREAD-CPU-NS swap - ;
 
-\ Nanoseconds for the whole built set, then for its fastest definition.
-: COMPILE-SET ( -- n n )
-   MEM-MAX-N
-   mono-ns {: start :}
-   SET-N 0 ?do i COMPILE-ONE min loop
-   mono-ns start - swap ;
+: NS-CELL ( n -- ptr n ) cells SET-NS + ;
 
-: MEAN-US ( n -- n )  NS-PER-US / SET-N / ;
+: LEAST-CELL ( n -- ptr n ) cells SET-LEAST + ;
+
+\ Every definition's CPU time added to the set's sum, the cheapest kept.
+: COMPILE-SET ( n -- ) {: set :}
+   SET-N 0 ?do
+      i COMPILE-ONE
+      dup set NS-CELL +!
+      set LEAST-CELL @ min set LEAST-CELL !
+   loop ;
+
+: MEAN-US ( n -- n )  NS-CELL @ NS-PER-US / SET-N ROUNDS * / ;
+
+: LEAST-US ( n -- n )  LEAST-CELL @ NS-PER-US / ;
+
+: RESET-SETS ( -- )
+   SETS 0 ?do
+      0 i NS-CELL !
+      NO-LEAST i LEAST-CELL !
+   loop ;
 
 : DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
 
@@ -227,13 +243,14 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 \ returned the whole set exists and TEARDOWN's count is exact. A throw inside
 \ it leaves SET-LIVE? clear and the partial set in the dictionary - reachable
 \ only if compiling `1 +` fails, which kills the run loudly anyway.
-: MEASURE ( ptr u8 n ptr u8 n -- n n )   \ prefix, body tail -> mean, least us
+\
+\ MEASURE is one round of one set: its name prefix, its body tail and its row.
+: MEASURE ( ptr u8 n ptr u8 n n -- ) {: px:ptr pu tx:ptr tu set :}
    TEARDOWN
-   BUILD-SET
+   px pu tx tu BUILD-SET
    NC-COUNT @ NC-MARK !
-   COMPILE-SET {: total least :}
-   1 SET-LIVE? !
-   total MEAN-US  least NS-PER-US / ;
+   set COMPILE-SET
+   1 SET-LIVE? ! ;
 
 : EXPECT ( n n ptr u8 n -- ) {: want got lbl:ptr lu :}
    want got = if exit then
@@ -246,25 +263,25 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : RUN-TIER1 ( -- )
    1 SELECT-TIER
-   s" T" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T1-LEAST ! TRIV-T1 !
+   s" T" s"  ( n -- n ) 1 + ; " TRIV-T1 MEASURE
    SET-N DISPATCHES s" the trivial tier-1 set" EXPECT
-   s" U" s"  ( n n -- n ) swap drop ; " MEASURE THREE-T1-LEAST ! THREE-T1 !
+   s" U" s"  ( n n -- n ) swap drop ; " THREE-T1 MEASURE
    SET-N DISPATCHES s" the three-op tier-1 set" EXPECT ;
 
 : RUN-TIER0 ( -- )
    0 SELECT-TIER
-   s" V" s"  ( n -- n ) 1 + ; " MEASURE TRIV-T0-LEAST ! TRIV-T0 !
+   s" V" s"  ( n -- n ) 1 + ; " TRIV-T0 MEASURE
    0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
 
 : REPORT ( -- )
    SB-RESET
-   s" floor: trivial-t1 " SB-APPEND  TRIV-T1 @ FMT:SB-U
-   s"  three-op-t1 " SB-APPEND       THREE-T1 @ FMT:SB-U
-   s"  trivial-t0 " SB-APPEND        TRIV-T0 @ FMT:SB-U
+   s" floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
+   s"  three-op-t1 " SB-APPEND       THREE-T1 MEAN-US FMT:SB-U
+   s"  trivial-t0 " SB-APPEND        TRIV-T0 MEAN-US FMT:SB-U
    s"  compiled " SB-APPEND          NC-COUNT @ FMT:SB-U
-   s"  least-trivial-t1 " SB-APPEND  TRIV-T1-LEAST @ FMT:SB-U
-   s"  least-three-op-t1 " SB-APPEND THREE-T1-LEAST @ FMT:SB-U
-   s"  least-trivial-t0 " SB-APPEND  TRIV-T0-LEAST @ FMT:SB-U
+   s"  least-trivial-t1 " SB-APPEND  TRIV-T1 LEAST-US FMT:SB-U
+   s"  least-three-op-t1 " SB-APPEND THREE-T1 LEAST-US FMT:SB-U
+   s"  least-trivial-t0 " SB-APPEND  TRIV-T0 LEAST-US FMT:SB-U
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
@@ -277,9 +294,9 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : RATCHET ( -- )
    ARGV:POS# 0= if exit then
-   TRIV-T1 @ BOUND-US @ <= if exit then
+   TRIV-T1 MEAN-US BOUND-US @ <= if exit then
    SB-RESET
-   s" compile-floor: trivial-t1 " SB-APPEND  TRIV-T1 @ FMT:SB-U
+   s" compile-floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
    s"  us is above the floor of " SB-APPEND  BOUND-US @ FMT:SB-U
    s"  us" SB-APPEND  LF SB-APPEND-C
    SB$ E-FLOOR-EXCEEDED REFUSE ;
@@ -309,8 +326,8 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    PRIOR-TIER @ SELECT-TIER ;
 
 : MEASURE-ALL ( -- )
-   RUN-TIER1
-   RUN-TIER0
+   RESET-SETS
+   ROUNDS 0 ?do RUN-TIER1 RUN-TIER0 loop
    REPORT
    RATCHET ;
 

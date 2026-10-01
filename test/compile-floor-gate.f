@@ -1,40 +1,38 @@
 \ compile-floor-gate.f - checked performance budgets for the two compiler tiers.
 \
 \ The child tools do the measurement; this gate only parses their machine-readable
-\ lines and compares each number with a named budget. The budgets were set from
-\ ten runs on a quiet, pinned core (2026-09-21, load under 3); each constant
-\ carries its ten-run range. TOLERANCE: every budget is at least 1.5x its
-\ ten-run maximum - the ten-run spread itself is under 5%, the rest is for a
-\ core the gate pool saturates - and the smallest numbers (search, move) get
-\ about 2x because a few microseconds of timer granularity is a large share of
-\ them. A doubled corpus cost, or a doubled compile cost that every definition
-\ pays, is red. The child output is printed on every run: the pool keeps it
-\ for a red suite, and a standalone run (`bin/hb --load
-\ test/compile-floor-gate.f`) shows the numbers on a green engine. Lower a
-\ budget when a floor dot lands and the new ten-run maximum is known.
+\ lines and compares each number with a named budget. Both tools time in this
+\ thread's CPU time (TIME:THREAD-CPU-NS), so a slice the scheduler hands a
+\ neighbour is not in any number. What load still moves is the core: this
+\ machine has 8 performance and 4 efficiency cores, and the same compile costs
+\ 2.5-3x as much on an efficiency core. That only ever adds time, so the
+\ gate judges the cheapest sample - the floor line's least- fields (each set's
+\ cheapest definition in five rounds) and the least of a B line's fifteen
+\ rounds - which is the cost on the fastest core the run found. Each tool says
+\ why its rounds outlast a slow stretch.
 \
-\ The gate judges the least of each measurement. Other processes only add time
-\ and a regression slows every run, so the least is the estimate a neighbour
-\ cannot push over a budget and a doubled cost still exceeds. A B line carries
-\ three timed runs and their median; the median fails as soon as two runs of
-\ three are slowed, so the gate reads the least run. A floor set's mean is one
-\ window of 100 compiles, and a saturated host preempts that window or moves it
-\ to a slower core every time: on a 12-core M2 Max (4 of them efficiency cores)
-\ at load 80-95 with 24 extra busy processes, the least of three whole windows
-\ still put three-op-t1 over its budget in three trials of three. So the gate
-\ reads each set's fastest single definition, the least-* fields of the floor
-\ line. The median and the mean stay in the tools' output for quoting.
+\ A least moves only when every sample pays a cost, so the floor means have a
+\ ceiling as well: a cost only some definitions pay shows in the mean alone.
+\ Each ceiling is above every mean measured and below three times the lowest,
+\ so a cost that triples a mean is red at any load: a scratch copy of
+\ tools/compile-floor.f in which every other definition costs five times its
+\ compile tripled the means and left the leasts alone, and only the ceilings
+\ turned it red. A run confined to the efficiency cores (taskpolicy -b) read
+\ trivial-t1 means of 1296-1587 us, across its 1300 ceiling, so the ceilings
+\ hold for a run at any core QoS but background.
 \
-\ The fastest definition prices only a cost every definition pays, so a cost
-\ only some definitions of a set pay, such as an occasional arena growth or a
-\ scan that lengthens as the set is defined, shows in the mean alone. No suite
-\ row holds a mean to a budget: tools/compile-floor.f's ratchet judges
-\ trivial-t1's mean only when a floor is given on its command line, and the
-\ suite gives it only 0 and 1000 ms, to prove the ratchet refuses and passes.
-\
-\ The pinned core is the slow bound of this machine: the same suite unpinned in
-\ a workspace at load average 5 measured trivial-t1 378 us and tier-0 arith
-\ 8068 us, 2.5-4x under the pinned numbers.
+\ MEASURED on 2026-10-01 on this machine: twenty standalone runs at load
+\ average 16-111 beside 36 busy loops, with the tools' earlier single floor
+\ round and three bench rounds, and the current tools beside seven copies of
+\ themselves and a native build at load average 143-172 (96 floor runs, 32
+\ bench runs per tier). Each constant carries the range of its judged number
+\ over all of them. TOLERANCE: every budget is about 1.5x its maximum and
+\ below twice its minimum, so a doubled compile or corpus cost is red (proved
+\ with scratch copies of both tools doing twice the work per window). The
+\ child output is printed on every run: the pool keeps it for a red suite, and
+\ a standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the
+\ numbers on a green engine. Lower a budget when a floor dot lands and the new
+\ maximum is known.
 
 require lib/errors.f
 require lib/string.f
@@ -47,33 +45,33 @@ package COMPILE-FLOOR-GATE
 
 private
 
-\ Budgets in microseconds; the comment is the ten-run range on the pinned core,
-\ of each floor set's mean and of each B line's median. The least is never above
-\ either, so it keeps at least the stated margin. On the M2 Max a floor set's
-\ fastest definition ran 0.94 (trivial-t0) to 0.99 (three-op-t1) of its mean, so
-\ a doubled cost clears each floor budget by 17% or more; for tier 0 that takes
-\ TRIVIAL-T0-BUDGET 90, 1.5x its mean's maximum, where 100 left 5%.
-1800 constant TRIVIAL-T1-BUDGET     \ 1109..1123
-1600 constant THREE-OP-T1-BUDGET    \ 974..984
-90 constant TRIVIAL-T0-BUDGET       \ 56..59
-35000 constant T0-ARITH-BUDGET      \ 21864..21944
-55000 constant T0-BRANCH-BUDGET     \ 34404..36017
-400 constant T0-SEARCH-BUDGET       \ 187..206
-12000 constant T0-FOLD-BUDGET       \ 7183..7264
-600 constant T0-MOVE-BUDGET         \ 328..331
-9000 constant T0-LINES-BUDGET       \ 5629..5647
-3000 constant T1-ARITH-BUDGET       \ 1644..1704
-12000 constant T1-BRANCH-BUDGET     \ 6957..7009
-100 constant T1-SEARCH-BUDGET       \ 42..43
-3000 constant T1-FOLD-BUDGET        \ 1605..1622
-600 constant T1-MOVE-BUDGET         \ 313..318
-3500 constant T1-LINES-BUDGET       \ 1911..1946
+\ Budgets on the leasts in microseconds; the comment is the measured range.
+710 constant TRIVIAL-T1-BUDGET      \ 460..468
+660 constant THREE-OP-T1-BUDGET     \ 429..436
+56 constant TRIVIAL-T0-BUDGET       \ 33..37
+13200 constant T0-ARITH-BUDGET      \ 7996..8744
+21000 constant T0-BRANCH-BUDGET     \ 12113..13676
+200 constant T0-SEARCH-BUDGET       \ 126..128
+6600 constant T0-FOLD-BUDGET        \ 4261..4350
+320 constant T0-MOVE-BUDGET         \ 211..213
+5400 constant T0-LINES-BUDGET       \ 3225..3596
+1300 constant T1-ARITH-BUDGET       \ 849..866
+2300 constant T1-BRANCH-BUDGET      \ 1412..1475
+38 constant T1-SEARCH-BUDGET        \ 24..25
+1600 constant T1-FOLD-BUDGET        \ 1007..1017
+320 constant T1-MOVE-BUDGET         \ 211..211
+1850 constant T1-LINES-BUDGET       \ 1189..1221
+
+\ Floor mean ceilings in microseconds; the comment is the measured range.
+1300 constant TRIVIAL-T1-MEAN-CEILING   \ 481..661
+1250 constant THREE-OP-T1-MEAN-CEILING  \ 468..632
+100 constant TRIVIAL-T0-MEAN-CEILING    \ 35..69
 
 $10000 constant OUT-CAP
 $4000 constant ERR-CAP
 180000 constant TIMEOUT-MS
-3 constant BENCH-RUNS               \ timed runs per B line, before the median
 32 constant SP
+10 constant LF
 48 constant ZERO-C
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
@@ -148,12 +146,31 @@ variable PARSE-POS
      some OF ENDOF
    ;MATCH ;
 
-: FIELD-LABEL ( ptr u8 n ptr u8 n n -- n ) {: a:ptr u:n label:ptr labelu:n field:n :}
+: LABEL-END ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n label:ptr labelu:n :}
    a u label labelu FIND-SUB MATCH option
      none OF s" compile-floor-gate: missing measurement label" 74 die ENDOF
      some OF IDX>N ENDOF
-   ;MATCH labelu + {: from:n :}
+   ;MATCH labelu + ;
+
+: FIELD-LABEL ( ptr u8 n ptr u8 n n -- n ) {: a:ptr u:n label:ptr labelu:n field:n :}
+   a u label labelu LABEL-END {: from:n :}
    a u from field FIELD-AT ;
+
+: LINE-END ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
+   from begin dup u < while
+      dup a + c@ LF = if exit then
+      1+
+   repeat ;
+
+\ How many numbers lie between from and u.
+: TOKEN-COUNT ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
+   from PARSE-POS !
+   0 begin
+      a u PARSE-POS @ SKIP-WS dup u <
+   while
+      a u rot TOKEN-END PARSE-POS !
+      1+
+   repeat drop ;
 
 : REPORT-OUT ( -- ) OUT$ type cr ;
 
@@ -164,11 +181,19 @@ variable PARSE-POS
 : CHECK-FLOOR ( -- )
    OUT$ s" least-trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-BUDGET CHECK-LIMIT
    OUT$ s" least-three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-BUDGET CHECK-LIMIT
-   OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT ;
+   OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT
+   OUT$ s" floor: trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-MEAN-CEILING CHECK-LIMIT
+   OUT$ s"  three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-MEAN-CEILING CHECK-LIMIT
+   OUT$ s"  trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-MEAN-CEILING CHECK-LIMIT ;
 
+\ The least of a B line's rounds: every number on it but the last, the median.
 : LEAST-RUN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n label:ptr labelu:n :}
-   a u label labelu 0 FIELD-LABEL
-   BENCH-RUNS 1 ?do a u label labelu i FIELD-LABEL min loop ;
+   a u label labelu LABEL-END {: from:n :}
+   a u from LINE-END {: eol:n :}
+   a eol from TOKEN-COUNT 1 - {: rounds:n :}
+   rounds 1 < if s" compile-floor-gate: a B line without a round" 74 die then
+   a eol from 0 FIELD-AT
+   rounds 1 ?do a eol from i FIELD-AT min loop ;
 
 : CHECK-BENCH ( ptr u8 n ptr u8 n n -- )
    {: a:ptr u:n label:ptr labelu:n budget:n :}
@@ -179,7 +204,7 @@ variable PARSE-POS
    REPORT-OUT
    CHILD-OK? TTRUE
    OUT$ s" floor: trivial-t1 " CONTAINS? TTRUE
-   OUT$ s" compiled 200" CONTAINS? TTRUE
+   OUT$ s" compiled 1000 " CONTAINS? TTRUE
    CHECK-FLOOR ;
 
 : RUN-BENCH-CASE ( n -- )

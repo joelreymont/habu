@@ -1362,6 +1362,18 @@ SUITE compiler-compile-floor
    test/compiler/compile-floor.f
 ;SUITE
 
+\ The budgets are thread CPU time on each measurement's cheapest sample, over
+\ rounds that outlast a slow stretch, and the floor means meet only a loose
+\ ceiling. Measured in this pool on this 12-core machine: a scratch registry of
+\ sixteen copies of this row, eight slots, beside a native build, at load
+\ average 105-164: 400 of 400 rows green in 25 passes. The tools with one floor
+\ round and three bench rounds were red in 2 of 128 rows in the same pool at
+\ load 122-129: a whole tier-0 floor set on a slow core, and one tier-1
+\ benchmark slow in all three rounds.
+SUITE compiler-compile-floor-gate
+   test/compile-floor-gate.f
+;SUITE
+
 SUITE icode-fixup
    test/icode-fixup-test.f
 ;SUITE
@@ -2381,12 +2393,6 @@ SUITE type-match
 \ lib/test/suite.f), so anywhere earlier every slot idles until the rows before
 \ it finish, and the rows after it start only when it ends.
 GROUP SEQ native-serial-gates
-
-\ Compiler budgets measure microseconds. The parallel pool can exceed them
-\ through scheduling contention even when the unchanged engine passes alone.
-SUITE compiler-compile-floor-gate
-   test/compile-floor-gate.f
-;SUITE
 
 \ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
 \ idle serial group so the fixed 20 s child-reap budget is not consumed by a

@@ -4,10 +4,11 @@
 \ tools/compile-floor.f exists to be QUOTED by other lanes, so the things that
 \ can silently spoil a quote are what this file pins:
 \
-\   1. The line is there and carries its proof. `compiled 200` is the tool's
-\      own count of dispatches into NCOMP:COMPILE. A run that reported a floor
-\      without it would be a tier-0 number wearing a tier-1 label, and the
-\      whole yardstick would be off by two orders of magnitude.
+\   1. The line is there and carries its proof. `compiled 1000` is the tool's
+\      own count of dispatches into NCOMP:COMPILE, five rounds of two sets. A
+\      run that reported a floor without it would be a tier-0 number wearing a
+\      tier-1 label, and the whole yardstick would be off by two orders of
+\      magnitude.
 \   2. The ratchet has both directions. A ratchet that only ever exits 0 is
 \      not a ratchet, and one that only ever exits nonzero blocks the lanes it
 \      is meant to measure. A floor of 0 must refuse and say why; a floor no
@@ -44,7 +45,7 @@ package COMPILE-FLOOR-TEST
 private
 
 $1000 constant CAP
-120000 constant TIMEOUT-MS         \ three measured sets per run, each about 100 definitions
+120000 constant TIMEOUT-MS         \ five rounds of three 100-definition sets per run
 
 create OUT CAP allot
 create ERR CAP allot
@@ -90,7 +91,7 @@ variable RC     variable EXITED
    OUT$ s" floor: trivial-t1 " CONTAINS? TTRUE
    OUT$ s" three-op-t1 " CONTAINS? TTRUE
    OUT$ s" trivial-t0 " CONTAINS? TTRUE
-   OUT$ s" compiled 200" CONTAINS? TTRUE ;
+   OUT$ s" compiled 1000 " CONTAINS? TTRUE ;
 
 : TEST-REPORTS ( -- )
    s" without a floor the tool reports and exits 0" T-LABEL
