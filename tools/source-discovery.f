@@ -374,19 +374,27 @@ variable SD-SCOPES
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
-private
+public
 
-\ A file that cannot be read is named on fd 2 before the read's refusal is
-\ rethrown: the code alone (E-FS-STAT for a missing file) does not say which
-\ member of a closure walk it was. The write result is dropped because the next
-\ step raises the refusal itself, as src/core/checker.f's compile rejects do.
-: READ-SELECTED ( -- )
-   [: SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;] catch {: rc:n :}
+\ `throw` for a closure member's read. A zero code is no refusal; any other
+\ names the file on fd 2 and is rethrown unchanged, because the code alone
+\ (E-FS-STAT or E-FS-OPEN for a missing file) does not say which member it was.
+\ RUN-IN's reader and the source view's (tools/native-source-view.f
+\ READ-COLLECT) both refuse through it, so the line names no tool. The write
+\ result is dropped because the next step raises the refusal itself, as
+\ src/core/checker.f's compile rejects do.
+: READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}
    rc 0= if exit then
-   2 s" discover: cannot read " write drop
-   2 SD-ENTRY SD-ENTRY-U @ write drop
+   2 s" cannot read " write drop
+   2 pa pu write drop
    2 S\" \n" write drop
    rc throw ;
+
+private
+
+: READ-SELECTED ( -- )
+   [: SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;] catch {: rc:n :}
+   SD-ENTRY SD-ENTRY-U @ rc READ-THROW ;
 
 : RUN-SELECTED ( -- )
    SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
