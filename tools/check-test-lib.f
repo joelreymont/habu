@@ -1233,10 +1233,11 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-INPUT-UNDERFLOW" CONTAINS? TTRUE
-   COUNT-ZERO$ DIRECT-STDIN LBUF-RC T=
+   COUNT-ZERO$ DIRECT-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
    CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE
+   CAP-ERR erru2 s" : throw 7121 at '" CONTAINS? TTRUE
    COUNT-NAMED-ZERO$ DIRECT-STDIN 67 T=
    {: outu3:n erru3:n :}
    outu3 0 T=
@@ -1271,10 +1272,11 @@ variable LONG-J
    OPERAND-TICK$ DIRECT-STDIN EXPECT-ACCEPTED
    OPERAND-COUNT$ DIRECT-STDIN EXPECT-ACCEPTED
    OPERAND-BODY$ DIRECT-STDIN EXPECT-ACCEPTED
-   OPERAND-BAD-COUNT$ DIRECT-STDIN LBUF-RC T=
+   OPERAND-BAD-COUNT$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
+   CAP-ERR erru s" : throw 7121 at '" CONTAINS? TTRUE
    OPERAND-UNDEFINED$ DIRECT-JSON-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
@@ -2153,21 +2155,22 @@ create BIG $2000 allot   variable BIG-U
 \ RAISES rather than shortening — a buffer that cannot represent its input must
 \ say so — so a longer declaration (271 variants, 8401 bytes) still fails
 \ loudly, with the declaration layer's own "declaration too long" code 7118. It
-\ now surfaces from THIS process's preverify pass rather than from the child
-\ run, so the code arrives raw instead of as the child's exit 67; the CLI still
-\ reports it as an uncaught throw. Its exact edge is pinned in
-\ test/decl-replay-verify-source.f. What this case pins is the property that
-\ matters at the command line: a long declaration either goes through whole or
-\ is refused loudly, and is never quietly shortened into one that parses.
+\ surfaces from THIS process's preverify pass, not the child run, and the
+\ preverify reports it as a statement throw naming that code, exiting 70 as for
+\ a refusal. Its exact edge is pinned in test/decl-replay-verify-source.f. What
+\ this case pins is the property that matters at the command line: a long
+\ declaration either goes through whole or is refused loudly, and is never
+\ quietly shortened into one that parses.
 : TEST-DECL-OVER-CAP ( -- )
    252 LONG-ENUM$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T=
-   271 LONG-ENUM$ DIRECT-STDIN 7118 T=
+   271 LONG-ENUM$ DIRECT-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
-   CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE ;
+   CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE
+   CAP-ERR erru2 s" : throw 7118 at '" CONTAINS? TTRUE ;
 
 : TEST-STRUCT-NOEND ( -- )
    STRUCT-NOEND$ DIRECT-JSON-STDIN 70 T=
@@ -3053,6 +3056,46 @@ variable REQ-U
    p pu FILE
    [: RUN-ACT ;] IN-PROC s" req-throw.f:2:1:" EXPECT-THROW-AT ;
 
+\ The default mode reports a statement the checker throws out of as the record
+\ --all-errors writes, at the statement, and fails with the checker's refusal
+\ status. A source that requires the throwing file reports it in that file.
+: ST-THROW-FILES ( -- )
+   SB-RESET s" : CKT-ST-OK ( -- n ) 1 ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" st-throw.f" REQ-WRITE
+   SB-RESET s" st-throw.f" REQ-LOAD+
+   s" st-throw-req.f" REQ-WRITE ;
+
+: ST-THROW-AT$ ( -- ptr u8 n )
+   s\" st-throw.f\",\"line\":2,\"column\":1," ;
+
+: EXPECT-ST-THROW ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"throw_code\":7142" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: ST-JSON-RUN ( ptr u8 n -- n n n )
+   REQ$ {: p:ptr pu:n :}
+   RESET
+   s" json-errors" OPT
+   p pu FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: TEST-STATEMENT-THROW-JSON ( -- )
+   ST-THROW-FILES
+   s" st-throw.f" ST-JSON-RUN ST-THROW-AT$ EXPECT-ST-THROW
+   s" st-throw-req.f" ST-JSON-RUN ST-THROW-AT$ EXPECT-ST-THROW ;
+
+: TEST-STATEMENT-THROW-PROSE ( -- )
+   ST-THROW-FILES
+   s" st-throw.f" REQ-RUN {: outu:n erru:n rc:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
+   CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
+
 \ A top-level loader inside a package, or under a file-level `using`, runs its
 \ file in that scope: the file defines into the package and sees the package's
 \ words and the used publics, and the rest of the source sees the file's words.
@@ -3497,6 +3540,8 @@ POISON-RECORD
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
    REQUIRE-CASES
+   s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
+   s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

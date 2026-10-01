@@ -1862,14 +1862,26 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    DIAG-BUFFER-OFF
    rc ;
 
+\ A statement that threw while it was checked is reported where it stood, by
+\ the record --all-errors writes in the run's mode, and fails the run like a
+\ refusal.
+: CHK-PREVERIFY-THREW ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   rc label labelu CHK-SRC-BUF CHK-PRE-AT @ CHK-PRE-U @ +
+   CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
+   CHK-E-CHECK CHK-THROW ;
+
+\ The checker's own diagnostics are JSON lines in either mode.
 : CHK-PREVERIFY-SPAN ( ptr u8 n ptr u8 n n n -- )
    {: label:ptr labelu:n path:ptr pathu:n start:n end:n :}
    label labelu DIAG-FILE!
-   CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
+   0 0= DIAG-JSON!
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL end min start - CHK-PRE-U !
    start CHK-PRE-AT !
-   CHK-PREVERIFY-CAPTURE dup 0 <> if throw then drop ;
+   CHK-PREVERIFY-CAPTURE {: rc:n :}
+   rc CHECK-ALL-ERRORS:THREW? if rc label labelu CHK-PREVERIFY-THREW then
+   rc 0 <> if rc throw then ;
 
 : CHK-PREVERIFY-SEG ( n -- ) {: seg:n :}
    seg CHK-SEG-SCOPE$ CHK-PRE-SCOPE!
@@ -1916,13 +1928,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ The preverified files are standalone sources, not a continuation of whatever
 \ package this tool was called from, so the scope starts at neutral top level.
 : CHK-RUN-PREVERIFY ( -- )
-   CHK-JSON @ {: old-json:bool :}
    CHK-PREVERIFY-DIAG-START
-   LINT-TRUE CHK-JSON !
    CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
-   old-json CHK-JSON !
    rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
 

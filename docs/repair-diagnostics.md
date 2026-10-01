@@ -66,10 +66,11 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
 `byte_end`, and `suggestion`, and no definition fields. There are three:
 
 - `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
-  threw while `--all-errors` checked it, such as a storage declaration sizing a
-  type an earlier refusal left undefined. The `token` is the one the checker
-  read last, and the record adds the signed integer `throw_code` it raised.
-  The checker does not continue past that statement in its source. Without
+  threw while the checker checked it, with or without `--all-errors`, such as a
+  storage declaration sizing a type an earlier refusal left undefined. The
+  `token` is the one the checker read last, and the record adds the signed
+  integer `throw_code` it raised. The checker does not continue past that
+  statement in its source, and the run exits 70 as for a refusal. Without
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
   throw <throw_code> at '<token>'`.
 - `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened

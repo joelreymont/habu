@@ -419,6 +419,7 @@ variable CA-JSON
 \ throw is reported as E-STATEMENT-THROW at the token the checker read last,
 \ after whatever it reported before it, and fails the source like a refusal, so
 \ the run ends with the checker's status. The rest of the source is not checked.
+\ Both renderings are built in the JSON writer's buffer.
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 
@@ -444,11 +445,9 @@ variable CA-JSON
    s" byte_end" LJW-KEY CA-THROW-END LJW-U LJW-COMMA
    s" throw_code" LJW-KEY CA-THROW-RC @ LJW-INT LJW-COMMA
    s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW-OBJECT-END ;
 
-: CA-PROSE-THROW ( -- )                 \ the line is built in the writer's buffer
+: CA-PROSE-THROW ( -- )
    CA-THROW-ORIGIN {: line:n col:n :}
    LJW-RESET
    s" E-STATEMENT-THROW " LJW-RAW
@@ -457,18 +456,30 @@ variable CA-JSON
    s" :" LJW-RAW col LJW-U
    s" : throw " LJW-RAW CA-THROW-RC @ LJW-INT
    s"  at '" LJW-RAW CA-THROW-TOKEN$ LJW-RAW
-   s" '" LJW-RAW
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   s" '" LJW-RAW ;
 
-: CA-THREW? ( n -- bool ) {: rc:n :}    \ a throw the checker did not report
+: CA-THROW-RECORD$ ( -- ptr u8 n )
+   CA-JSON? IF CA-JSON-THROW ELSE CA-PROSE-THROW THEN
+   LJW$ ;
+
+: CA-THROW! ( n -- )                     \ what threw, at the token read last
+   CA-THROW-RC !
+   VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
+
+public
+
+\ True for the status of a check that a statement threw out of: neither clean
+\ nor a refusal or duplicate the checker reported.
+: THREW? ( n -- bool ) {: rc:n :}
    rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and ;
 
-: CA-HANDLE-THROW ( n -- ) {: rc:n :}
-   rc CA-THROW-RC !
-   VERIFY:TOKEN-BYTE@ CA-THROW-AT !
+private
+
+: CA-HANDLE-THROW ( n -- )
+   CA-THROW!
    0 CA-EMIT-CAPTURED
-   CA-JSON? IF CA-JSON-THROW ELSE CA-PROSE-THROW THEN ;
+   CA-THROW-RECORD$ CA-ERR
+   CA-LF$ CA-ERR ;
 
 \ Whole-buffer multi-error drive (Option-A no-cascade ruling on
 \ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
@@ -488,7 +499,7 @@ variable CA-JSON
    CA-CHECK-FULL {: rc:n :}
    MULTI-ERR-N @ before - {: rejects:n :}
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
-   rc CA-THREW? IF rc CA-HANDLE-THROW exit THEN
+   rc THREW? IF rc CA-HANDLE-THROW exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
 : CA-ALLOC-SOURCE ( n -- )
@@ -586,5 +597,16 @@ public
    srca srcu CA-SOURCE-BUF!
    CA-WHOLE
    [: CA-RUN-SOURCE ;] SESSION ;
+
+\ The record line --all-errors writes for a statement that threw the given code,
+\ for a caller that ran the checker itself over the given source under the
+\ given label: at the token the checker read last, in the mode JSON! selected,
+\ with no line feed.
+: THROW-RECORD$ ( n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n labela:ptr labelu:n srca:ptr srcu:n :}
+   labela labelu CA-START
+   srca srcu CA-SOURCE-BUF!
+   rc CA-THROW!
+   CA-THROW-RECORD$ ;
 
 ;package

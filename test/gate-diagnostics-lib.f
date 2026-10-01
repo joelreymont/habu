@@ -720,7 +720,14 @@ variable LABEL-U
    s" habu-statement-throw.err" WRITE-ERR
    s" code" s" E-STATEMENT-THROW" s" statement throw code" ERR-JSTR
    s" throw_code" s" 7142" s" statement throw raised code" ERR-JRAW
-   s" habu-statement-throw.err" s" statement throw contract" DIAG-CONTRACT ;
+   s" habu-statement-throw.err" s" statement throw contract" DIAG-CONTRACT
+   CHECK-START
+   s" json-errors" CHECK-OPT
+   CHECK-STDIN
+   70 s" tools/check.f default mode did not refuse a statement that throws" GE-EXPECT-RC
+   s" habu-statement-throw-default.err" WRITE-ERR
+   s" code" s" E-STATEMENT-THROW" s" default statement throw code" ERR-JSTR
+   s" habu-statement-throw-default.err" s" default statement throw contract" DIAG-CONTRACT ;
 
 : LEX-RECORDS ( -- )
    GE-HB-RESET

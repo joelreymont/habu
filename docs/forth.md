@@ -1242,7 +1242,8 @@ passing suite.
   (`verify-source.f` `RECORD-TYPED-BUFFER`, the checker's
   `CHECKER-LBUF-COUNT?`). An integer literal there is the count and is held to
   the definer's extent bound before the run: `0 TYPED-BUFFER B n` makes
-  `tools/check.f` throw 7121 from preverify. Any other token leaves the count
+  `tools/check.f` refuse it from preverify, exit 70 with an `E-STATEMENT-THROW`
+  record of throw code 7121. Any other token leaves the count
   to the definer: `4 constant N  N TYPED-BUFFER B n` and `N 2 * TYPED-BUFFER B
   n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
   67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
