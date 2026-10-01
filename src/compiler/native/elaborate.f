@@ -2217,6 +2217,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   \ A local keeps its meaning even when a callable has the same spelling.
+   ix LOCAL-OF 0 >= if false exit then
    ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
