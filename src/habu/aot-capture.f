@@ -19,6 +19,8 @@
 \ the checked build stays fail-closed through the image writer).
 
 require src/habu/address-cells.f
+require src/habu/aot-arm.f
+require src/habu/aot-decl.f
 require src/habu/code-span.f
 require src/habu/sites.f
 require src/habu/terminal-call.f

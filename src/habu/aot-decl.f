@@ -17,9 +17,12 @@
 \
 \ WHO LOADS IT. It is a common engine-prefix source, immediately before habu2.f
 \ in both builders (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), and it loads into a booted bin/hb behind
-\ src/arch/arm64/asm.f, icode.f and
-\ src/habu/layout.f, which is what AGREE and the caps need there.
+\ BF-APPEND-COMMON), where its requires of src/arch/arm64/icode.f and
+\ src/habu/layout.f are no-ops: icode.f precedes it as a provided file in both,
+\ and layout.f is a provided file in bootstrap.sh and an engine boot row
+\ (src/habu/native-runtime.f) in the fixpoint build. In a booted bin/hb
+\ the icode.f require loads the section budget AOT-SECTION-CAP, which the engine
+\ does not keep.
 \
 \ THE PUBLIC TAILS KEEP THEIR `AOT-` PREFIX, and that is recorded debt rather
 \ than a pattern: docs/forth.md § Packages calls a prefix-style public surface
@@ -30,6 +33,8 @@
 \ test/aot-wid-build.f (20 of those inside GENERATED program text, which no
 \ source-level rename sees), plus a per-tail collision check against the global
 \ wordlist — layout.f already publishes a global MAX.
+require src/arch/arm64/icode.f
+require src/habu/layout.f
 require src/habu/address-carrier.f
 require src/habu/code-span.f
 require src/habu/cell-grid.f

@@ -1099,7 +1099,7 @@ package BUILD-FIXPOINT
    \ such as habu1.f's code-origin emitter use its checked flag words.
    out outu s" lib/prelude.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
-   out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
+   out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-SYS
    out outu BF-APPEND-SCRIPT-ARGV
@@ -1123,7 +1123,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
-   out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-decl.f" BF-APPEND-MODULE   \ aot-capture.f requires it
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FMT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
@@ -1168,7 +1168,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-COMMON
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
-   out outu s" src/habu/aot-arm.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-arm.f" BF-APPEND-MODULE   \ aot-capture.f requires it
    out outu s" src/habu/terminal-call.f" BF-APPEND-MODULE
    out outu s" lib/le.f" BF-APPEND-MODULE
    out outu s" src/habu/sites.f" BF-APPEND-MODULE

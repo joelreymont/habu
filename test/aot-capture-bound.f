@@ -9,14 +9,20 @@
 \ three lines off a real refusal. They are three lines and not one because the
 \ engine's `.` ends its line and the capture layer has no mid-line formatter.
 \
-\ HOW THE BOUND IS LOWERED. A `require` path resolves against the --load entry's
-\ directory before the working directory (docs/forth-card.md 7), so a directory
-\ holding only src/habu/aot-decl.f and the entry file is an overlay: the child
-\ takes THAT declaration and every other require falls through to this tree.
+\ HOW THE BOUND IS LOWERED. A `require` path resolves against the root its
+\ requiring file was loaded from before the working directory (src/core/include.f
+\ SOURCE-ROOT:RESOLVE; the --load entry's root is its own directory), so a
+\ directory holding src/habu/aot-decl.f, src/habu/aot-capture.f and the entry
+\ file is an overlay: the child takes THAT declaration and every other require
+\ falls through to this tree. aot-capture.f is in the overlay because it requires
+\ aot-decl.f itself: loaded from the tree, that require names the tree's
+\ declaration and loads it a second time (measured: `duplicate definition:
+\ AOT-BLOB-CAP`, exit 78).
 \ Neither aot-decl.f nor aot-capture.f is baked into bin/hb - AOT-BUF:AOT-REC-MAX
 \ is E-UNDEFINED in a bare engine - so the lowered bound costs no engine build.
-\ The copy is this tree's own file with one line rewritten; the fixture dies by
-\ name when that line is gone, so the overlay cannot drift from the source.
+\ The declaration is this tree's own file with one line rewritten and
+\ aot-capture.f is copied unchanged; the fixture dies by name when that line is
+\ gone, so the overlay cannot drift from the source.
 \
 \ WHY THE WINDOW IS PACKAGES. AOT-SIG-MAX is AOT-REC-MAX (aot-decl.f), so a
 \ lowered bound lowers the signature buffer with it and a window of checked words
@@ -64,6 +70,7 @@ TEXT-CAP BUFFER: TEXT           variable TEXT-U
 FS-PATH-CAP BUFFER: ROOT-BUF    variable ROOT-U
 FS-PATH-CAP BUFFER: SRCDIR-BUF  variable SRCDIR-U
 FS-PATH-CAP BUFFER: DECLDST-BUF variable DECLDST-U
+FS-PATH-CAP BUFFER: CAPDST-BUF  variable CAPDST-U
 FS-PATH-CAP BUFFER: ENTRY-BUF   variable ENTRY-U
 variable RC
 variable EXITED
@@ -71,6 +78,7 @@ variable EXITED
 : ROOT$ ( -- ptr u8 n )     ROOT-BUF ROOT-U @ ;
 : SRCDIR$ ( -- ptr u8 n )   SRCDIR-BUF SRCDIR-U @ ;
 : DECLDST$ ( -- ptr u8 n )  DECLDST-BUF DECLDST-U @ ;
+: CAPDST$ ( -- ptr u8 n )   CAPDST-BUF CAPDST-U @ ;
 : ENTRY$ ( -- ptr u8 n )    ENTRY-BUF ENTRY-U @ ;
 : OUT$ ( -- ptr u8 n )      OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )      ERR ERR-U @ ;
@@ -82,6 +90,7 @@ variable EXITED
 : HB$ ( -- ptr u8 n )       ENGINE-CANDIDATE:PATH$ ;
 
 : DECL-SRC$ ( -- ptr u8 n ) s" src/habu/aot-decl.f" ;
+: CAP-SRC$ ( -- ptr u8 n )  s" src/habu/aot-capture.f" ;
 : NEEDLE$ ( -- ptr u8 n )   s" constant AOT-REC-MAX" ;
 : DIE-MSG$ ( -- ptr u8 n )  s" aot-capture: too many records" ;
 : REFUSED$ ( -- ptr u8 n )  s" RB-TWO" ;      \ the window's fourth record
@@ -101,6 +110,7 @@ variable EXITED
    ROOT$ s" src/habu" SRCDIR-BUF JOIN-PATH SRCDIR-U !
    SRCDIR$ MAKE-DIRS
    SRCDIR$ s" aot-decl.f" DECLDST-BUF JOIN-PATH DECLDST-U !
+   SRCDIR$ s" aot-capture.f" CAPDST-BUF JOIN-PATH CAPDST-U !
    ROOT$ s" entry.f" ENTRY-BUF JOIN-PATH ENTRY-U ! ;
 
 : DRIFT ( -- )
@@ -133,6 +143,9 @@ variable EXITED
    DECLDST$ DECL at LINE-START WRITE-ALL
    DECLDST$ LOWERED$ APPEND-FILE
    DECLDST$ DECL to + DECL-U @ to - APPEND-FILE ;
+
+: OVERLAY-CAPTURE ( -- )
+   CAP-SRC$ CAPDST$ COPY-FILE-STREAM ;
 
 \ --- the child program, in test/dynamic-buffer-capture.f's shape -------------
 : ENTRY-PRELUDE+ ( -- )
@@ -207,6 +220,7 @@ variable EXITED
 : BODY ( -- )
    SETUP
    OVERLAY-DECL
+   OVERLAY-CAPTURE
    ENTRY-WRITE
    RUN-ENTRY
    s" the capture ends the child rather than baking a window over the bound"
