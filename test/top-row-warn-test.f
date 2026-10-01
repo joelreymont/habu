@@ -25,6 +25,10 @@
 \ requires). With no package context (a package open after `0 set-current`) a word
 \ the tracker cannot query grays its outputs: the lines run to rc 0 with no
 \ package-context refusal, and tier 2 still rejects p3 by its own diagnostic.
+\ The same holds for a used-scope refusal the checker's resolver raises where the
+\ engine's does not (a used public retired by `undefine`, shadowing a global or
+\ sharing a tail with a live public): rc 0 and no refusal named at tier 1, p3
+\ rejected by its own diagnostic at tier 2.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -270,6 +274,56 @@ variable TW-CNT
    s" tier-2 no package context: p3 rejects by its own diagnostic" T-LABEL
    TW-NOCTX-P3$ TW-ASSERT-REJECTS  TW-NO-PKGCTX ;
 
+\ A scope refusal the checker's resolver owns and the engine's does not. The
+\ engine refuses a bare tail a global and a used public both export, and one two
+\ used publics export, before the word runs (rc 105 and the ambiguity rc), so the
+\ tracker never sees those lines. What it does see is a used public the engine
+\ has retired with `undefine` and the checker's symbol table still holds: the
+\ engine binds the global (or the one live public) and runs the line, while the
+\ checker's resolver refuses the same bare tail as E-USING-SHADOW-GLOBAL (7141)
+\ or E-USING-AMBIGUOUS (7144). The tracker defines nothing, so that refusal is
+\ not its to raise: the word's effect is unknown here and its outputs gray, the
+\ line runs, and nothing on stderr names the refusal at either tier.
+: TW-SHADOW ( -- )                       \ a used public, retired, shadowing global drop
+   SB-RESET
+   s" package TW-SHADOW public : drop ( n -- ) . ; undefine drop ;package" TW-LINE
+   s" using TW-SHADOW" TW-LINE
+   s" 1 drop" TW-LINE ;
+
+: TW-AMBIG ( -- )                        \ two used publics of one tail, one retired
+   SB-RESET
+   s" package TW-AMB-A public : TW-AMB ( n -- ) drop ; ;package" TW-LINE
+   s" package TW-AMB-B public : TW-AMB ( n -- ) drop ; undefine TW-AMB ;package" TW-LINE
+   s" using TW-AMB-A using TW-AMB-B" TW-LINE
+   s" 1 TW-AMB" TW-LINE ;
+
+: TW-AFTER$ ( -- ptr u8 n )
+   S\" s\" AFTER\" type cr" TW-LINE
+   SB$ ;
+
+: TW-P3-AFTER$ ( -- ptr u8 n )           \ p3 after the unqueried word, in the same scope
+   S\" s\" abc\" + . cr" TW-LINE
+   SB$ ;
+
+: TW-NO-REFUSAL ( ptr u8 n -- ) {: code:ptr codeu:n :}   \ stderr names no scope refusal
+   TW-ERR$ code codeu CONTAINS? TFALSE
+   TW-ERR$ s" uncaught throw" CONTAINS? TFALSE ;
+
+: TW-RUNS-TIER1 ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n code:ptr codeu:n :}
+   a u 0 TW-ASSERT-WARNS
+   TW-EXITED @ TTRUE  TW-RC @ 0 T=  code codeu TW-NO-REFUSAL
+   TW-OUT TW-OUT-U @ s" AFTER" CONTAINS? TTRUE ;
+
+: TW-SCOPE-REFUSALS ( -- )
+   s" tier-1 retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
+   TW-SHADOW TW-AFTER$ s" E-USING-SHADOW-GLOBAL" TW-RUNS-TIER1
+   s" tier-2 retired used public shadowing a global: p3 rejects by its own diagnostic" T-LABEL
+   TW-SHADOW TW-P3-AFTER$ TW-ASSERT-REJECTS  s" E-USING-SHADOW-GLOBAL" TW-NO-REFUSAL
+   s" tier-1 two used publics of one tail, one retired: 1 TW-AMB runs, rc 0" T-LABEL
+   TW-AMBIG TW-AFTER$ s" ambiguous" TW-RUNS-TIER1
+   s" tier-2 two used publics of one tail, one retired: p3 rejects by its own diagnostic" T-LABEL
+   TW-AMBIG TW-P3-AFTER$ TW-ASSERT-REJECTS  s" ambiguous" TW-NO-REFUSAL ;
+
 : TW-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-tw" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -290,6 +344,7 @@ variable TW-CNT
    TW-NEGATIVES2
    TW-PERSIST
    TW-NO-CONTEXT
+   TW-SCOPE-REFUSALS
    TW-CLEANUP
    T-REPORT
    s" top-row-warn: ok" type cr ;
