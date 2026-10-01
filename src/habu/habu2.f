@@ -17,6 +17,10 @@ using A64ASM
 \ seed emitters at the end read the buffers, the relocation emitters near the top
 \ read the window - and closes beside the A64ASM one.
 using AOT-BUF
+\ The register allocator's DATA cells, whose free masks this file resets at
+\ REPEAT and at each new definition, are package REGALLOC-ABI's
+\ (src/habu/regalloc-abi.f).
+using REGALLOC-ABI
 
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
@@ -11819,6 +11823,7 @@ public
    ;
 ;package
 
+;using
 ;using
 ;using
 ;using

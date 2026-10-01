@@ -1,5 +1,6 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
 require src/habu/layout.f
+require src/habu/regalloc-abi.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
 \ WHY IT EXISTS. lib/task.f handed out TASK:+USER rows from $41C8 bounded by
@@ -20,11 +21,15 @@ require src/habu/layout.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows. THREE LOW CLAIMS ARE OUT, all
-\ below $800, where no library band reaches: the $1A0 seal fixture poke cell,
-\ which no constant names, and two cells declared in their own modules rather
-\ than in the layout.f this file loads, ADDRESS-CELLS:LOCK-CELL ($1A8) and
-\ regalloc.f's VRFREE-CELL ($208).
+\ library band lives, and all DATA-BANDS rows, and the register allocator's
+\ cells and tables, which src/habu/regalloc-abi.f declares for this file to
+\ read. FOUR CLAIMS ARE OUT. Three lie below the $3A00 library arena: the
+\ $1A0 seal fixture poke cell, which no constant names, and
+\ ADDRESS-CELLS:LOCK-CELL ($1A8) and ADDRESS-CELLS:INDEX-CELL ($36C8), both
+\ declared in their own module rather than in the layout.f this file loads.
+\ The fourth is the profiler band, the top PROF-CNT-BYTES of DATA
+\ (src/habu/prof-abi.f PROF-BAND-AT), whose start follows the target's
+\ DATA-SIZE.
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -94,6 +99,7 @@ variable NAMES-U
    s" GTOD-SCRATCH" NAME,
    s" DOESP-CELL" NAME,
    s" VSP-CELL" NAME,
+   s" VRFREE-CELL" NAME,
    s" VTAG-STACK" NAME,
    s" CREATEP-CELL" NAME,
    s" QPATCH-CELL" NAME,
@@ -132,7 +138,10 @@ variable NAMES-U
    s" PROT-WLO" NAME,
    s" PROT-RLO" NAME,
    s" ENGINE-HOOK" NAME,
+   s" EXIT-HOOK-CELL" NAME,
    s" LOCNAMES" NAME,
+   s" VRTAB" NAME,
+   s" VRITAB" NAME,
    s" REPLH-CELL" NAME,
    s" RSAVCP-CELL" NAME,
    s" RSAVND-CELL" NAME,
@@ -147,6 +156,7 @@ variable NAMES-U
    s" TKL-CELL" NAME,
    s" INP-CELL" NAME,
    s" INE-CELL" NAME,
+   s" FRFREE-CELL" NAME,
    s" FRCLM-CELL" NAME,
    s" BPA-CELL" NAME,
    s" BPTAB" NAME,
@@ -217,6 +227,7 @@ create TAB
    GTOD-SCRATCH                   ,  2 cells ,
    DOESP-CELL                     ,  1 cells ,
    VSP-CELL                       ,  1 cells ,
+   REGALLOC-ABI:VRFREE-CELL       ,  1 cells ,
    VTAG-OFF                       ,  VSMAX ,
    CREATEP-CELL                   ,  1 cells ,
    QPATCH-CELL                    ,  1 cells ,
@@ -255,7 +266,10 @@ create TAB
    PROT:WLO                       ,  1 cells ,
    PROT:RLO                       ,  1 cells ,
    ENGINE-HOOK-OFF                ,  ENGINE-HOOK-LEN ,
+   EXIT-HOOK-CELL                 ,  1 cells ,
    LOCNAMES                       ,  LOC-RECS LOC-REC * ,
+   REGALLOC-ABI:VRTAB-OFF         ,  REGALLOC-ABI:VRTAB-BYTES ,
+   REGALLOC-ABI:VRITAB-OFF        ,  REGALLOC-ABI:VRTAB-BYTES ,
    REPLH-CELL                     ,  1 cells ,
    RSAVCP-CELL                    ,  1 cells ,
    RSAVND-CELL                    ,  1 cells ,
@@ -270,6 +284,7 @@ create TAB
    TKL-CELL                       ,  1 cells ,
    INP-CELL                       ,  1 cells ,
    INE-CELL                       ,  1 cells ,
+   REGALLOC-ABI:FRFREE-CELL       ,  1 cells ,
    FRCLM-CELL                     ,  1 cells ,
    BPA-CELL                       ,  1 cells ,
    BPTAB-OFF                      ,  EVALD-CELL BPTAB-OFF - ,

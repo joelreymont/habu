@@ -1128,10 +1128,10 @@ passing suite.
 - **Fixed DATA header cells need a layout audit** against the reserved ranges:
   `VTAG-OFF`, `VVAL-OFF`, `JIT-SNAP:STK-OFF`, `BODYBUF-OFF`, `LOCNAMES`,
   `BPTAB-OFF` and the `SNAP-RELOC` call and address maps in
-  `src/habu/layout.f`, and the register tables `VRTAB-OFF`/`VRITAB-OFF` in
-  `src/habu/regalloc.f`. A cell inside a scratch range is overwritten by
-  compiled source. The return and loop stacks are guarded mappings
-  (`STACK-ABI`), not header ranges. Give the cell a row in
+  `src/habu/layout.f`, and the register tables `REGALLOC-ABI:VRTAB-OFF`/
+  `VRITAB-OFF` in `src/habu/regalloc-abi.f`. A cell inside a scratch range is
+  overwritten by compiled source. The return and loop stacks are guarded
+  mappings (`STACK-ABI`), not header ranges. Give the cell a row in
   `src/habu/data-claims.f`, whose `CLAIMS-ASSERT` refuses an overlapping pair
   at build and names both, and add a regression for the exact overlap class.
 - **Snapshot builders retire the baked tail** (`undefine NAME` for one word,
