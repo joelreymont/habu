@@ -372,10 +372,8 @@ variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
 variable LPSPAN         variable LPMEMORY       variable LPQUOTSTORE
 variable LPIMAGELIFE
-variable LCHKSNAPTOKEN
 variable SRC-SFAIL
 
-61 constant CHKSNAPTOKEN-LEN
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -979,25 +977,6 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    C-GE fail BCOND,
    4 9 0 STRB,
    9 9 1 ADDI, ;
-
-: PFX-APPEND-ENGINE-SNAP-HOOK ( -- )
-   LBL LBL {: loop:label done:label :}
-   12 LCHKSNAPTOKEN LABEL@ ADR,
-   13 CHKSNAPTOKEN-LEN MOVZ,
-   loop LBL,
-   13 done CBZ,
-   4 12 0 LDRB,
-   SRC-SFAIL LABEL@ C-SOURCE-APPEND-X4-TO
-   12 12 1 ADDI,  13 13 1 SUBI,
-   loop B,
-   done LBL, ;
-
-: PFX-APPEND-ENGINE-SNAP-HOOK-BUILD ( -- )
-   LBL {: done:label :}
-   12 SP 8 LDR,
-   12 done CBZ,
-   PFX-APPEND-ENGINE-SNAP-HOOK
-   done LBL, ;
 
 \ One ordered row table, projected by boot phase and emitter. Target kinds
 \ filter loads/provides; the path emitter reserves every target's spelling.
@@ -2251,9 +2230,6 @@ variable LKEYNONAME
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
-   LCHKSNAPTOKEN LABEL@ LBL,
-   s" ' CHECKER-CAPTURE-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
-   NL-KW 1 BYTES,
    PFX-PATH-FILES
    PFX-CHAIN:TABLE ;
 
@@ -8034,7 +8010,6 @@ ardone LBL,
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    10 TIER-PROV:OPEN-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,  9 DATA HND-CELL STR,
    9 DATA INP-CELL STR,  9 DATA INE-CELL STR,
-   9 DATA ENGINE-SNAP-XT-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
    9 DATA BOOT-SRC:USER-END STR,
    9 DATA BPWN-CELL STR,
@@ -11342,8 +11317,7 @@ package LABELS
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
    LBL LPSPAN !  LBL LPMEMORY !  LBL LPQUOTSTORE !  LBL LPIMAGELIFE !
-   LBL PFX-CHAIN:LTAB !
-   LBL LCHKSNAPTOKEN ! ;
+   LBL PFX-CHAIN:LTAB ! ;
 
 : JIT ( -- )
    LBL PROF:LPROFH !  LBL PROF:LPROFDUMP !  LBL PROF:LPROFFIND !  LBL PROF:LPROFEDGE !

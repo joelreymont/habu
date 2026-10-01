@@ -21,10 +21,10 @@
 \ SRC ROWS. Code under src/ and lib/ that this engine runs - its boot prefix
 \ and the stage2 build - reaches some DATA cells at native's fixed offsets on
 \ whatever engine loads it. Where this stage names the same cell (the PKG
-\ cells, WIDN, SEAL-NDICT, TKA/TKL, DP, EVALERR, the USE depth, the
-\ ENGINE-HOOK snapshot xt at $27F8), that row covers it; lib/string.f's
-\ STRING-ABI is named in forth.fs for its row. The cells it does not name get
-\ a row each, labeled src:, so no cell of this stage can be laid over one.
+\ cells, WIDN, SEAL-NDICT, TKA/TKL, DP, EVALERR, the USE depth), that row
+\ covers it; lib/string.f's STRING-ABI is named in forth.fs for its row. The
+\ cells it does not name get a row each, labeled src:, so no cell of this stage
+\ can be laid over one.
 
 variable CLAIM-LINK  0 CLAIM-LINK !
 

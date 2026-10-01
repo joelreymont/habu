@@ -81,9 +81,7 @@ variable TRH-OK-A
    s" event-row saturation throws the reserved test capacity code" T-LABEL
    [: TRH-ROW-FULL ;] E-TEST-CAPACITY TTHROWSQ ;
 
-: TRH-SNAP-HOOK-CLEAR ( -- )
-   s" ordinary load leaves engine snapshot hook clear" T-LABEL
-   data-base ENGINE-SNAP-XT-CELL + @ 0 T=
+: TRH-PREFLIGHT-ARMED ( -- )
    s" ordinary load leaves compile-immediate preflight armed" T-LABEL
    data-base COMPILE-PREFLIGHT-CELL + @ 0 <> TTRUE ;
 
@@ -155,7 +153,7 @@ variable TRH-OK-A
 \ itself is the last logged event).
 T-RESET
 TRH-CAPACITY-TESTS
-TRH-SNAP-HOOK-CLEAR
+TRH-PREFLIGHT-ARMED
 TRH-RESET
 ' TRH-LOG set-top-check
 top-check@ ' TRH-LOG = TRH-OK-A !
@@ -307,11 +305,6 @@ create TRH-EMPTY 1 allot
    s" data-base TOP-HOOK-CELL + 99 swap !" TRH-LINE
    SB$ ;
 
-: TRH-SNAP-SEAL-FORGE$ ( -- ptr u8 n )
-   SB-RESET
-   s" data-base ENGINE-SNAP-XT-CELL + 99 swap !" TRH-LINE
-   SB$ ;
-
 : TRH-PREFLIGHT-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" data-base COMPILE-PREFLIGHT-CELL + 99 swap !" TRH-LINE
@@ -378,7 +371,7 @@ create TRH-EMPTY 1 allot
 
 : TRH-ABOVE-FORGE$ ( -- ptr u8 n )  \ one cell past the band stays writable
    SB-RESET
-   s" data-base ENGINE-SNAP-XT-CELL 8 + + 99 swap !" TRH-LINE
+   s" data-base TOP-HOOK-CELL 8 + + 99 swap !" TRH-LINE
    SB$ ;
 
 : TRH-NEG-SEAL ( -- )
@@ -393,10 +386,6 @@ create TRH-EMPTY 1 allot
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SEAL-FORGE$ TRH-RUN-SUBJECT
-   TRH-EXITED @ TTRUE
-   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
-   s" raw ! into ENGINE-SNAP-XT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-SNAP-SEAL-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL

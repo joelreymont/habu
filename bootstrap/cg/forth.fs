@@ -273,7 +273,7 @@ $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
-3 cells constant ENGINE-HOOK-LEN
+2 cells constant ENGINE-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 \ The process-exit vector, at the offset src/habu/layout.f gives it: an xt the
 \ seed calls once, with the cell cleared first, before the exit_group of each

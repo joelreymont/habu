@@ -14,11 +14,10 @@ require src/habu/snapshot-format.f
 package BUILD-FIXPOINT
 
 \ The snapshot trailer's size and field offsets are owned by src/habu/layout.f
-\ (SNAP-TRL-BYTES, SNAP-TRL-NDICT, SNAP-TRL-REGLEN, SNAP-TRL-DATALEN,
-\ SNAP-TRL-VERSION) and src/habu/snapshot-format.f (HEAP-FIELD); the writer, the loader and this fixture all read them from
-\ there, so a format change cannot leave one side addressing the wrong cells.
-
-$A5 constant FORGE
+\ (SNAP-TRL-BYTES, SNAP-TRL-NDICT, SNAP-TRL-REGLEN, SNAP-TRL-VERSION) and
+\ src/habu/snapshot-format.f (HEAP-FIELD); the writer, the loader and this
+\ fixture all read them from there, so a format change cannot leave one side
+\ addressing the wrong cells.
 
 TYPED-VARIABLE BFT-BYTES-A ptr u8
 variable BFT-BYTES-N
@@ -58,12 +57,6 @@ variable BFT-BYTES-N
 
 : TRAILER-OFF ( -- n )
    IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
-
-: DATA-OFF ( -- n )
-   TRAILER-OFF dup SNAP-TRL-DATALEN + U64@ - ;
-
-: HOOK-OFF ( -- n )
-   DATA-OFF 8 + ENGINE-SNAP-XT-CELL + ;
 
 : BFT-DOCTOR-WRITE ( -- )
    s" hb-doctored" BF-REMOVE-TMP
@@ -109,57 +102,6 @@ variable BFT-DOC-CODE
    BFT-DOC-CODE @ code T=
    BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
 
-: PROBE! ( -- )
-   s" snap-hook-probe.f" BF-A$
-   s\" package SNAP-HOOK-PROBE public\n: ASSERT-HOOKS ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then\n   data-base COMPILE-PREFLIGHT-CELL + @ 0= if 2 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-HOOKS\n: BFT-SNAP-PI ( -- ) ; immediate\ns\" BFT-SNAP-PI\" 0 parse-imm\n: BFT-SNAP-OK ( -- n ) BFT-SNAP-PI 73 ;\n: BFT-SNAP-ASSERT ( -- ) BFT-SNAP-OK 73 <> if 3 throw then ;\nBFT-SNAP-ASSERT\n"
-   WRITE-ALL ;
-
-: PROBE-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" --load" BFT-ARG+
-   s" snap-hook-probe.f" BF-A$ BFT-ARG+
-   s" --" BFT-ARG+
-   BFT-ROOT BFT-ARG+ ;
-
-: PROBE-CAPTURE ( -- )
-   PROBE-ARGV
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
-   s" hb-doctored" BF-A$ >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
-   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   MATCH outcome
-     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
-     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
-   ;MATCH {: ou:len eu:len :}
-   ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U ! ;
-
-: RAW ( -- )
-   HOOK-OFF {: off:n :}
-   off 0 >= TTRUE
-   off 8 + TRAILER-OFF <= TTRUE
-   off U64@ 0 T= ;
-
-: STARTUP ( -- )
-   HOOK-OFF {: off:n :}
-   off BFT-BYTE@ {: orig:n :}
-   FORGE off BFT-BYTE!
-   off U64@ 0= TFALSE
-   BFT-DOCTOR-WRITE
-   s" hb-doctored" BF-CODESIGN-VERIFY-TMP
-   PROBE!
-   PROBE-CAPTURE
-   orig off BFT-BYTE!
-   BFT-DOC-EXITED @ TTRUE
-   BFT-DOC-ERR$ BFT-EMPTY$ T$=
-   BFT-DOC-CODE @ 0 T= ;
-
-: VERIFY-IMAGE ( -- )
-   RAW
-   STARTUP ;
-
 : TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!
    BFT-SNAP0-BUILD
@@ -167,7 +109,6 @@ variable BFT-DOC-CODE
    s" hb-snap0" BFT-SNAP-RUN 0 T=
    s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
-   VERIFY-IMAGE
    TRAILER-OFF {: tr:n :}
    tr SNAP-TRL-VERSION + BFT-BYTE@ SNAPSHOT-FORMAT:VERSION T=
    tr SNAP-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE

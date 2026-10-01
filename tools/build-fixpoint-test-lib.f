@@ -24,9 +24,9 @@ require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the c
 \ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
 \ than importing a public surface. Exporting those internals would widen the
 \ tool's own interface for the benefit of its own test. The local fixture
-\ scopes this file used to carry (BFT-SNAP-HOOK, BFT-CAP, BFT-CHAIN,
-\ STALE-SEED) were there only because the file had no package of its own; they
-\ are ordinary private words of the tool's package now.
+\ scopes this file used to carry (BFT-CAP, BFT-CHAIN, STALE-SEED) were there
+\ only because the file had no package of its own; they are ordinary private
+\ words of the tool's package now.
 package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP

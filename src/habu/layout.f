@@ -1225,7 +1225,7 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
 \ PROT-GUARD band (habu1.f GUARD-SPAN/PROT-GUARD) so a post-seal raw store
 \ traps ENGINE-ERROR:SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
-\ the reclaimed band between TRUSTED-CELL ($27B8) and RSTK-OFF ($2800) and is
+\ the reclaimed band between TRUSTED-CELL ($27B8) and SRCLOC:PATH-CELL ($2800) and is
 \ snapshot-persistent (< DATA-START) like HOOK-CELL. When installed, the
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER
 \ / the pushing string keywords / C-TICK / C-CHAR) emit one pre-continue
@@ -1233,14 +1233,10 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
 \ (word/tick classes; 0 for literal classes).
 $27F0 constant TOP-HOOK-CELL
-\ ENGINE-SNAP-XT-CELL retains the first cold-prefix checker's snapshot-prepare
-\ hook while a --build payload loads a second checker copy. Snapshot capture
-\ invokes that first-copy hook before serializing DATA; capture and startup
-\ clear it so no build-process code pointer reaches a restored image. $27F8 is
-\ the final reclaimed cell before RSTK-OFF and is protected with TOP-HOOK-CELL.
-$27F8 constant ENGINE-SNAP-XT-CELL
+\ The ENGINE-HOOK band is the two hook cells above. $27F8, after it, is free:
+\ it held the retired engine snapshot hook.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
-3 cells constant ENGINE-HOOK-LEN
+2 cells constant ENGINE-HOOK-LEN
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: the normal top-level exit
@@ -1257,7 +1253,7 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ tools/native-layout.f row every declared engine cell below the heap floor
 \ needs. A stripped image claims it FRESH (src/habu/aot-owned-cells.f): a new
 \ process has no hook, and the library that wants one arms it at runtime.
-\ It is NOT in the ENGINE-HOOK-OFF band above. Those three are the checker's
+\ It is NOT in the ENGINE-HOOK-OFF band above. Those two are the checker's
 \ crown jewels, sealed against a post-seal raw store; this vector is armed by
 \ ordinary library code (lib/fs-mutate.f) long after the seal. $2818 is the next
 \ free cell of the $2800..$3000 free header band, after SRCLOC's three above -
