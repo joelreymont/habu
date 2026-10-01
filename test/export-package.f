@@ -244,7 +244,7 @@ create XPK-EMPTY 1 allot
    MATCH outcome
      exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
      signaled OF XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
-     timeout OF 0 XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N XPK-ERR-U !  LEN>N XPK-OUT-U ! ;
 

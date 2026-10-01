@@ -170,7 +170,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
    MATCH outcome
      exited   OF ENDOF
      signaled OF 128 + ENDOF
-     timeout  OF -1 ENDOF
+     timeout  OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ ---- where each image class's bytes went --------------------------------------

@@ -76,7 +76,7 @@ variable WALKED
    MATCH outcome
      exited OF   RC-N ! true  EXITED? ! ENDOF
      signaled OF RC-N ! false EXITED? ! ENDOF
-     timeout OF  0 RC-N ! false EXITED? ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : RUN-INTO ( ptr u8 n ptr u8 n ptr u8 n -- n )

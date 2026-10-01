@@ -88,7 +88,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    MATCH outcome
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
      signaled OF UDG-RC ! 0 0= 0= UDG-EXITED ! ENDOF
-     timeout OF 0 UDG-RC ! 0 0= 0= UDG-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N UDG-ERR-U !  LEN>N UDG-OUT-U ! ;
 

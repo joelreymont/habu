@@ -15,7 +15,7 @@ create ERR CAP allot
    MATCH outcome
       exited OF want T= ENDOF
       signaled OF drop false TTRUE ENDOF
-      timeout OF false TTRUE ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N {: erru:n :} LEN>N {: outu:n :}
    want 0= if

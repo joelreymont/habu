@@ -226,8 +226,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : TEST-PROC-OUTCOME>RC ( -- )
    7 OUTCOME:EXITED PROC-OUTCOME>RC RC>N 7 T=
-   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME>RC RC>N 137 T=
-   OUTCOME:TIMEOUT PROC-OUTCOME>RC RC>N 137 T= ;
+   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME>RC RC>N 137 T=      \ a deliberate kill
+   [: OUTCOME:TIMEOUT PROC-OUTCOME>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
 
 \ Negative checked regressions: the outcome is not a loose (kind code) pair,
 \ does not compare with `=`, and a raw pair cannot pose as one.

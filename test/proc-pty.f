@@ -63,12 +63,16 @@ variable PID
 
 \ Completion, in this file's own counters: the bounded reaps answer an outcome,
 \ and only a clean exit with this code passes. A reap that ran out of clock
-\ answers timeout, which reds here instead of hanging the run.
+\ answers timeout: that is a deadline, not a wrong answer, so this run exits
+\ PROC-TIMEOUT-RC (lib/process.f) and the gate entry that runs it reports a
+\ timeout instead of counting a failure.
 : T-EXIT= ( outcome n -- ) {: want:n :}
    MATCH outcome
      exited OF want T= ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF 1 0 T= ENDOF
+     timeout OF
+        s" proc-pty: reap deadline in case " type #CASE @ 1 + . cr
+        s" proc-pty: a reap ran out of time" PROC-TIMEOUT-RC die ENDOF
    ;MATCH ;
 
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a

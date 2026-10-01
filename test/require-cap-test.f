@@ -63,7 +63,7 @@ variable EXITED?
    MATCH outcome
      exited OF   RC-N ! -1 EXITED? ! ENDOF
      signaled OF RC-N !  0 EXITED? ! ENDOF
-     timeout OF  0 RC-N !  0 EXITED? ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : RUN-CHILD ( n -- )

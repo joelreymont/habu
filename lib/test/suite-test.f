@@ -237,7 +237,7 @@ variable T-SUBJ-RC
    MATCH outcome
      exited OF T-SUBJ-RC ! 0 0= T-SUBJ-EXITED ! ENDOF
      signaled OF T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
-     timeout OF 0 T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N T-SUBJ-ERR-U !  LEN>N T-SUBJ-OUT-U ! ;
 

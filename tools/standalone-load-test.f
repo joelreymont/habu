@@ -32,7 +32,7 @@ variable SL-EXITED
    MATCH outcome
      exited OF SL-RC ! 0 0= SL-EXITED ! ENDOF
      signaled OF SL-RC ! 0 0= 0= SL-EXITED ! ENDOF
-     timeout OF 0 SL-RC ! 0 0= 0= SL-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N drop LEN>N drop ;
 

@@ -93,7 +93,7 @@ variable EXITED
    MATCH outcome
      exited   OF RC ! TRUE EXITED ! ENDOF
      signaled OF RC ! FALSE EXITED ! ENDOF
-     timeout  OF 0 RC ! FALSE EXITED ! ENDOF
+     timeout  OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N drop LEN>N drop ;
 

@@ -164,7 +164,7 @@ create PACKET-BUF FS-PATH-CAP allot
    MATCH outcome
      exited OF 0 0= ENDOF
      signaled OF 0 0= 0= ENDOF
-     timeout OF 0 0 0= 0= ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : DUMP-CAPTURE ( n n n n -- )

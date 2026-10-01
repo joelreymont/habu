@@ -20,7 +20,7 @@ using PTY-HARNESS
    REAP MATCH outcome
       exited OF 0 T= ENDOF
       signaled OF drop false TTRUE ENDOF
-      timeout OF false TTRUE ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    CLOSE-MASTER ;
 

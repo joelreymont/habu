@@ -27,7 +27,7 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
    MATCH outcome
       exited OF 1 CHILD-KIND ! CHILD-CODE ! ENDOF
       signaled OF 2 CHILD-KIND ! CHILD-CODE ! ENDOF
-      timeout OF 3 CHILD-KIND ! 0 CHILD-CODE ! ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : RUN-CHILD ( ptr u8 n ptr u8 n n -- )
@@ -40,7 +40,7 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
       s" named-cells: child " type path pathu type cr
       CHILD-ARGC @ 0 ?do i 1+ >IDX PROC-ARGV-SLOT @ dup ZLEN type cr loop
       s" stdin:" type cr source size type cr
-      s" outcome kind (exit=1 signal=2 timeout=3): " type CHILD-KIND @ .
+      s" outcome kind (exit=1 signal=2): " type CHILD-KIND @ .
       s" wanted exit: " type code . s" actual code: " type CHILD-CODE @ .
       s" stdout bytes/capacity: " type OUT-U @ . $4000 . OUT OUT-U @ type cr
       s" stderr bytes/capacity: " type ERR-U @ . $4000 . ERR ERR-U @ type cr

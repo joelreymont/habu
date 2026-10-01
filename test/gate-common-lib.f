@@ -191,24 +191,10 @@ variable GE-EVAL-SRC-U
       s" unmapped" type
    endcase ;
 
-\ Fail-closed gate entry. Re-throwing the escaped code sent the exit through the
-\ engine's BTHROW no-handler path, where a pre-hardening or candidate engine
-\ masks it to 8 bits - a multiple of 256 exits 0 SILENTLY (the fail-open that
-\ cost a multi-step diagnosis). Route the exit through die instead: BDIE's own
-\ range guard maps any out-of-range code to UNCAUGHT-RC and never masks to 0, so
-\ the gate is loud and nonzero under every engine - it no longer depends on the
-\ no-handler hardening (mirrors tools/build-fixpoint.f BF-FAIL-DIE). The throw
-\ code and name are still named on stdout above.
-: GE-THROW-REPORT ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
-   rc 0= if exit then
-   s" FAIL: " type label labelu type cr
-   s" throw: " type rc .
-   s" name: " type rc GE-RC-NAME. cr
-   s" gate entry: uncaught throw" rc die ;
-
 : GE-PRINT-OUTCOME ( -- )
    s" outcome: " type GT-OUTCOME@ GE-OUTCOME.
    s"  code: " type GT-OUTCOME@ GE-OUTCOME-CODE.
+   GT-TIMED-OUT @ if cr exit then          \ a deadline has no rc: GT-RC@ throws
    s" rc: " type GT-RC@ . s" (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
@@ -227,6 +213,12 @@ variable GE-EVAL-SRC-U
    GT-OUT$ type
    s" stderr:" type cr
    GT-ERR$ type
+   \ A child whose deadline expired failed no check of its own: report the
+   \ deadline, so the pool reads a timeout instead of this check's failure. That
+   \ is this capture's deadline, or one inside the child, which then exits
+   \ PROC-TIMEOUT-RC (lib/process.f).
+   GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
+   GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
 
 : GE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}

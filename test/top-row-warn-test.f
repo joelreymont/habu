@@ -79,7 +79,7 @@ create TW-EMPTY 1 allot
    MATCH outcome
      exited OF TW-RC ! 0 0= TW-EXITED ! ENDOF
      signaled OF TW-RC ! 0 0= 0= TW-EXITED ! ENDOF
-     timeout OF 0 TW-RC ! 0 0= 0= TW-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N TW-ERR-U !  LEN>N TW-OUT-U ! ;
 

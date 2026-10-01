@@ -46,11 +46,12 @@ WORST-CHILD-MS HANG-MARGIN * constant HANG-MS
 create SUBJECT-OUT SUBJECT-CAP allot
 create SUBJECT-ERR SUBJECT-CAP allot
 
-\ One assert per call, exactly like the shared T-OUTCOME-EXITED= it replaces,
-\ but every way of not exiting gets its own name. A guard that expired and a
-\ child that exited with the wrong status are different findings and must never
-\ print the same line: the shared assertion reports both as `expected 0 got 1`,
-\ which is how a busy host and a broken allocator became indistinguishable here.
+\ One assert per call, like the shared T-OUTCOME-EXITED= it replaces, but every
+\ way of not exiting gets its own name: the shared assertion reports a signal
+\ death as `expected 0 got 1`, and its deadline throw does not say which guard
+\ expired. An expired guard is named here with its budget and then throws
+\ E-PROC-TIMEOUT as the shared assertion does, so a busy host still reaches the
+\ pool as a timeout and never reads as a broken allocator.
 \ Naming the guard needs the budget, and only this caller knows it; giving
 \ lib/test/outcome.f its own per-variant diagnostics needs that file packaged
 \ first, which is tracked by dot habu-name-the-outcome-a80c2197.
@@ -70,7 +71,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    MATCH outcome
      exited OF want T= ENDOF
      signaled OF CHILD-SIGNALED ENDOF
-     timeout OF CHILD-HUNG ENDOF
+     timeout OF CHILD-HUNG E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : SCALAR-CASES ( -- )

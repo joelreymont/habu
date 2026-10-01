@@ -203,7 +203,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    MATCH outcome
      exited OF SPK-RC ! 0 0= SPK-EXITED ! ENDOF
      signaled OF SPK-RC ! 0 0= 0= SPK-EXITED ! ENDOF
-     timeout OF 0 SPK-RC ! 0 0= 0= SPK-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N SPK-ERR-U !  LEN>N SPK-OUT-U ! ;
 

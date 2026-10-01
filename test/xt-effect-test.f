@@ -80,7 +80,7 @@ create XE-EMPTY 1 allot
    MATCH outcome
      exited OF XE-RC ! 0 0= XE-EXITED ! ENDOF
      signaled OF XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
-     timeout OF 0 XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N XE-ERR-U !  LEN>N XE-OUT-U ! ;
 

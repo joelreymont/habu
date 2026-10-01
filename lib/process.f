@@ -15,7 +15,12 @@ s" lib/task.f" required                  \ TASK:+USER carries the per-call row
 \ outcome - how a child process completed (switchover wave C): a clean exit
 \ carrying the exit code, a signal death carrying the signal, or a capture
 \ timeout (always SIGKILL-reaped, so no payload). The checker forces every
-\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener.
+\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener. A
+\ timeout is a deadline, not a status of the child's: a reader that turns an
+\ outcome into a status or a test verdict throws E-PROC-TIMEOUT for it
+\ (PROC-OUTCOME>RC here, the asserts in lib/test/outcome.f), so a deadline that
+\ expires under a gate row reaches the pool as a timeout. Only a caller that
+\ acts on the deadline itself MATCHes it as data.
 SUMTYPE outcome 0
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
@@ -184,11 +189,16 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    then
    term OUTCOME:SIGNALED ;
 
-: PROC-OUTCOME>RC ( outcome -- rc )   \ 128+sig for non-exits (regression habu-wait-rc-masks-9ae37cd0)
+\ The child's rc: its exit code, or 128 + the signal that ended it (regression
+\ habu-wait-rc-masks-9ae37cd0), so a deliberate kill still reads 137. A capture's
+\ own expired deadline has no rc of its own: read as the 137 of the SIGKILL that
+\ reaped the child, an assertion on it would fail like any wrong answer, so it
+\ throws E-PROC-TIMEOUT instead.
+: PROC-OUTCOME>RC ( outcome -- rc )
    MATCH outcome
      exited OF >RC ENDOF
      signaled OF 128 + >RC ENDOF
-     timeout OF 128 SIGKILL + >RC ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 : PROC-STATUS>RC ( n -- rc )
@@ -214,10 +224,10 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 
 \ A capture child's rc, with the capture's own expired deadline read as
 \ PROC-TIMEOUT-RC, the status coreutils `timeout` reports for the command it
-\ killed; PROC-OUTCOME>RC reads it as 137, like any other SIGKILL death. A
-\ caller that throws E-PROC-TIMEOUT again on PROC-TIMEOUT-RC then reports this
-\ deadline and one that expired inside the child alike, and a tool that dies
-\ with the rc hands the deadline on to its own parent.
+\ killed, where PROC-OUTCOME>RC throws E-PROC-TIMEOUT. A caller that names its
+\ step before it throws E-PROC-TIMEOUT again on PROC-TIMEOUT-RC then reports
+\ this deadline and one that expired inside the child alike, and a tool that
+\ dies with the rc hands the deadline on to its own parent.
 : PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
    MATCH outcome
      exited OF >RC ENDOF
@@ -401,14 +411,14 @@ PROC-REAP-ARM-DEFAULT
 : PROC-REAP-CAPTURE-TIMEOUT ( -- )
    PROC-PID @ dup 0 >= if
       >PID dup SIGKILL PROC-KILL-RAW drop
-      PROC-WAIT-STATUS PROC-STATUS !
+      PROC-WAIT-STATUS dup PROC-STATUS !
+      PROC-STATUS>RC RC>N PROC-RC !
       PROC-NO-PID PROC-PID !
    else
       drop
    then
    PROC-REAP-DISARM
-   1 PROC-TIMED-OUT !
-   OUTCOME:TIMEOUT PROC-OUTCOME>RC RC>N PROC-RC ! ;
+   1 PROC-TIMED-OUT ! ;
 
 : PROC-KILL-CAPTURE ( -- )
    PROC-PID @ dup 0 >= if

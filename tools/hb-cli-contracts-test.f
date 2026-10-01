@@ -121,7 +121,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    MATCH outcome
      exited OF HCT-RC ! 0 0= HCT-EXITED ! ENDOF
      signaled OF HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
-     timeout OF 0 HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N HCT-ERR-U !  LEN>N HCT-OUT-U ! ;
 

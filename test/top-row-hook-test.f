@@ -232,7 +232,7 @@ create TRH-EMPTY 1 allot
    MATCH outcome
      exited OF TRH-RC ! 0 0= TRH-EXITED ! ENDOF
      signaled OF TRH-RC ! 0 0= 0= TRH-EXITED ! ENDOF
-     timeout OF 0 TRH-RC ! 0 0= 0= TRH-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N TRH-ERR-U !  LEN>N TRH-OUT-U ! ;
 

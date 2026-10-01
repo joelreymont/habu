@@ -227,11 +227,19 @@ live one.
   `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
   on 124, and the rows rethrow it once the step is named.
-- A build row's own capture deadline reaches the pool the same way. A capture
-  whose deadline expired reads 137, a SIGKILL death, through
-  `PROC-OUTCOME>RC`, so the image builders (`test/whitebox-engine.f`,
-  `test/keyed-image.f`, `test/cold-engine.f`) and `test/aot-wid-build.f` read
-  their captures through `PROC-OUTCOME>DEADLINE-RC`, which gives 124 instead.
+- A test's own capture deadline is no assertion result. `PROC-OUTCOME>RC`
+  (`lib/process.f`), `GT-RC@` (`lib/test/runner.f`), `GE-FAIL`
+  (`test/gate-common-lib.f`) and the `lib/test/outcome.f` asserts that want an
+  exit or a signal throw `E-PROC-TIMEOUT` for an expired deadline, and a test
+  that MATCHes the outcome itself throws it from its `timeout` arm, so the row
+  reaches the pool as `TIMEOUT-UNDER-LOAD` instead of failing an assertion on
+  137 or on a false exited flag. A deliberate kill is a `signaled` outcome and
+  still reads 128 + signal; a test that expects the deadline asserts it with
+  `T-OUTCOME-TIMEOUT` or MATCHes it.
+- A build row's own capture deadline reaches the pool the same way. The image
+  builders (`test/whitebox-engine.f`, `test/keyed-image.f`,
+  `test/cold-engine.f`) and `test/aot-wid-build.f` read their captures through
+  `PROC-OUTCOME>DEADLINE-RC`, which gives 124 where `PROC-OUTCOME>RC` throws.
   The image builders name the step and throw `E-PROC-TIMEOUT`;
   `test/aot-wid-build.f` dies with 124, and the rows that run it
   (`test/aot-wid-suite.f`, `test/aot-wide-format-lib.f`) throw

@@ -26,7 +26,7 @@ variable EXITED
    MATCH outcome
       exited OF RC ! true EXITED ! ENDOF
       signaled OF RC ! false EXITED ! ENDOF
-      timeout OF 0 RC ! false EXITED ! ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N ERR-U ! LEN>N OUT-U ! ;
 

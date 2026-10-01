@@ -1837,8 +1837,15 @@ the signal number, or `timeout` (capture deadline; always SIGKILL-reaped, no
 payload), with generated constructors `OUTCOME:EXITED`, `OUTCOME:SIGNALED`, and
 `OUTCOME:TIMEOUT`. Consumers dispatch through exhaustive `MATCH outcome`.
 `PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
-normal exits, `128 + signal` for signal deaths and timeouts; `PROC-STATUS>RC`
-and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture API returns the sum:
+normal exits and `128 + signal` for signal deaths, so a deliberate kill still
+reads 137. A capture's own expired deadline has no rc: it throws
+`E-PROC-TIMEOUT`, as the `lib/test/outcome.f` asserts that want an exit or a
+signal do, so a test that reads it reports a timeout instead of failing an
+assertion on the 137 of the SIGKILL that reaped the child. A caller that
+MATCHes the outcome into a verdict of its own throws `E-PROC-TIMEOUT` from its
+`timeout` arm the same way; only a caller that acts on the deadline keeps it as
+data. `PROC-STATUS>RC` and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture
+API returns the sum:
 `PROC-CAPTURE-OUTCOME@` and the `RUN-*-OUTCOME` runners yield
 `( -- len len outcome )` and every consumer dispatches by `MATCH outcome` (or
 the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
@@ -1856,7 +1863,7 @@ status )` is the exit side: 0 for no throw, `PROC-TIMEOUT-RC` for
 `PROC-OUTCOME>DEADLINE-RC` is the capture side: it flattens an outcome as
 `PROC-OUTCOME>RC` does, except that a capture whose own deadline expired reads
 `PROC-TIMEOUT-RC`, the status `timeout` reports for the command it killed,
-instead of 137. A caller that throws `E-PROC-TIMEOUT` again on that status
+instead of throwing. A caller that throws `E-PROC-TIMEOUT` again on that status
 treats its own deadline and the child's alike, and a tool that dies with the
 rc hands the deadline on to its parent.
 
@@ -2086,9 +2093,10 @@ own environment holds it — so only the caller's rows occupy the context's byte
 A row past `CMD:ENV-ROWS` names the ceiling and the row on stderr and throws
 `E-PROC-ENV`. `RUN-OUTCOME` validates the path and timeout, prepares the two
 vectors, captures bounded stdout/stderr into the context's buffers, stores the
-decomposed outcome and returns it. `RUN-RC` wraps the `PROC-OUTCOME>RC`
-completion in a `result<n,n>` (ok on a clean exit, err carrying the nonzero
-code) for callers that branch on success/failure. `OUT$`, `ERR$`, `OUTCOME@` and
+decomposed outcome and returns it. `RUN-RC` wraps the capture's completion rc
+in a `result<n,n>` (ok on a clean exit, err carrying the nonzero code, 137 for
+a run its deadline killed) for callers that branch on success/failure;
+`OUTCOME@` tells that deadline from a kill. `OUT$`, `ERR$`, `OUTCOME@` and
 `RC@` expose the stored result after the run. `WIPE` explicitly zero-fills the
 full stdin, stdout and stderr buffers and clears their lengths, including after
 a refused run. `RESET` only resets lengths and state; no run wipes implicitly.

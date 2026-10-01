@@ -276,12 +276,12 @@ $4A constant NO-NAME-RC
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
-: RUN ( ptr u8 n -- n )   \ source -> child exit status (-1 = signal or timeout)
+: RUN ( ptr u8 n -- n )   \ source -> child exit status (-1 = signal)
    OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
    MATCH outcome
      exited OF ENDOF
      signaled OF drop -1 ENDOF
-     timeout OF -1 ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    {: rc:n :}
    LEN>N ERR-U !

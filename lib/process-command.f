@@ -342,7 +342,11 @@ public
    h OUT-BUF OUT-CAP >LEN
    h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME h STORE-RUN
-   h OUTCOME@ dup PROC-OUTCOME>RC RC>N h RC-CELL ! ;
+   \ The capture's own completion rc, not PROC-OUTCOME>RC, which throws on a
+   \ deadline: here a deadline keeps the 137 of the SIGKILL that reaped the
+   \ child, and OUTCOME@ tells it apart from a kill.
+   PROC-RC @ h RC-CELL !
+   h OUTCOME@ ;
 
 \ Wrap the stored completion rc into a result<n,n>: ok = clean exit (0), err =
 \ the nonzero completion code (a nonzero exit code, or 128+signal). The captured

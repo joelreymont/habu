@@ -229,7 +229,7 @@ LOWER-CERT-HOOK:INSTALL
    MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N ERR-U !  LEN>N OUT-U ! ;
 
@@ -291,12 +291,8 @@ LOWER-CERT-HOOK:INSTALL
    ERR-U @ TEST-ERR-U T= ;
 
 : TEST-STORE-TIMEOUT ( -- )
-   s" timeout outcome remains distinguishable from exit" T-LABEL
-   TEST-OUT-U >LEN TEST-ERR-U >LEN OUTCOME:TIMEOUT STORE!
-   EXITED @ TFALSE
-   RC @ 0 T=
-   OUT-U @ TEST-OUT-U T=
-   ERR-U @ TEST-ERR-U T= ;
+   s" a deadline throws instead of reading as a failed exit" T-LABEL
+   [: TEST-OUT-U >LEN TEST-ERR-U >LEN OUTCOME:TIMEOUT STORE! ;] E-PROC-TIMEOUT TTHROWSQ ;
 
 : TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word" T-LABEL

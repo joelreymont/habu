@@ -386,7 +386,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    MATCH outcome
      exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
      signaled OF SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
-     timeout OF 0 SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N SLV-ERR-U !  LEN>N SLV-OUT-U ! ;
 

@@ -166,7 +166,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    MATCH outcome
      exited OF 0 T<> ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF 1 0 T= ENDOF
+     timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH
    LEN>N swap LEN>N swap ;
 
