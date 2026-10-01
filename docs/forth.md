@@ -431,20 +431,31 @@ DEMO:FIRST-X .                      \ prints 2
 ```
 
 `2 3 DEMO:AT DEMO:FIRST` at the prompt is refused at `DEMO:AT`. Inside a
-checked body a record binds to a local — untyped
-(`: F ( pt -- n ) {: p :} p PT:UNMAKE drop ;`) or annotated with the family it
-holds (`: ID ( pt -- pt ) {: p:pt :} p ;`). The local holds the WHOLE value,
-whatever its cell count, and every reference reloads every cell, so a named
-record survives a return, an `if` arm and a loop body intact. Keep a domain value
-in one named local while passing it between words. Project or unmake it when
+checked body a record binds to a local, untyped or annotated with the family it
+holds:
+
+```forth
+: F ( pt -- n )
+   {: p :}
+   p PT:UNMAKE drop ;
+
+: ID ( pt -- pt )
+   {: p:pt :}
+   p ;
+```
+
+The local holds the WHOLE value, whatever its cell count, and every reference
+reloads every cell, so a named record survives a return, an `if` arm and a loop
+body intact. Keep a domain value in one named local while passing it between
+words. Project or unmake it when
 the fields supply the computation; unchanged-value transport uses the whole
 local, as `CBIND:BIND` does for its target and numeric policy.
 
 An annotation is read by the SIGNATURE type grammar: family arguments
 (`{: r:res<n,n> :}`),
 nested families (`{: o:opt<opt<n>> :}`), the definition's own declared type
-variables (`( opt<a> -- opt<a> ) {: o:opt<a> :} o` certifies and keeps the
-quantifier) and the same arity check. The one spelling only a local has is
+variables (under `( opt<a> -- opt<a> )`, `{: o:opt<a> :} o` certifies and keeps
+the quantifier) and the same arity check. The one spelling only a local has is
 `{: p:ptr :}`: an annotation is a single token, so the bare `ptr` means an
 INFERRED pointee, and `{: p:ptr n :}` is two locals, not a pointee. The
 annotation is asserted, not decoration: a wrong family, a scalar spelling
@@ -640,17 +651,29 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   when the concrete type is known; a bare name only where the entry effect keeps
   richer role detail the annotation cannot express, or the typed capability is
   documented missing.
+- **An entry locals group goes on its own line.** A `{: … :}` group that binds
+  at entry goes on the line after the one holding the name and stack effect,
+  indented as the body: three spaces, the indentation every body line in `lib/`
+  and `tools/` uses (`lib/fs.f:640-642`). The body starts on the next line. The
+  rule governs new and changed definitions; existing files are not reformatted
+  for it.
+
+  ```forth
+  : CLAMP ( n n n -- n )
+     {: v:n lo:n hi:n :}
+     v lo max hi min ;
+  ```
 - **A local name is at most 16 bytes and a definition binds at most 64.** Past
   either the compiler refuses before storing anything, exit 70, naming the token
   (`hb: local name over 16 bytes: <token>`,
   `hb: more than 64 locals in one definition: <token>`); when the checker sees
   it first (tier 1, the check tool) it reports `E-LOCAL-NAME-TOO-LONG` or
   `E-TOO-MANY-LOCALS` with width and limit. Shorten or factor.
-- **A `ptr` annotation does not fit a byte span.**
-  `( ptr u8 n -- n ) {: p:ptr :}` is refused at `:}`
-  (expected: ptr n actual: ptr u8 n). Keep the detailed type in the effect and
-  bind a bare local for a body that uses `c@`/`c!`, or factor a helper whose
-  entry carries `( ptr u8 … -- … )`.
+- **A `ptr` annotation does not fit a byte span.** Under `( ptr u8 n -- n )`
+  the group `{: p:ptr :}` is refused at `:}` (expected: ptr n actual: ptr u8
+  n). Keep the detailed type in the effect and bind a bare local for a body
+  that uses `c@`/`c!`, or factor a helper whose entry carries
+  `( ptr u8 … -- … )`.
 - **Name same-type numeric slots before reordering them.** In
   `( cap used add -- )` a stray `swap` type-checks; bind names at entry or
   factor role-specific helpers before capacity, offset or decoder arithmetic.
@@ -803,9 +826,15 @@ argument and a bare tail of a family of arity > 0 are all refused. See
   recovery boundary; no arbitrary-xt catch. The quotation is stack-preserving,
   because `catch` unifies the live stack with its inputs AND outputs:
   `( n -- n )` is accepted, `( n -- )` rejected. A value the caught code needs
-  travels on the data stack through the quotation and back on every branch:
-  `: W ( n -- n ) [: dup USE … ;] catch {: rc:n :} CLEANUP rc 0 <> IF rc throw THEN ;`.
-  No staging variable.
+  travels on the data stack through the quotation and back on every branch.
+  No staging variable:
+
+  ```forth
+  : W ( n -- n )
+     [: dup USE … ;] catch
+     {: rc:n :}
+     CLEANUP rc 0 <> if rc throw then ;
+  ```
 - **`finally`** is `( R [ R -- S ] [ -- ] -- S )`: body, then cleanup on return
   or catchable throw; cleanup takes and leaves nothing; a body error rethrows
   after cleanup, a cleanup error supersedes it; `die` skips cleanup. Implicit
@@ -1398,15 +1427,27 @@ the rule.
   a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
   (Measured in Tender.)
 - **A quotation-typed LOCAL cannot be caught; the same quotation on the stack
-  can.** `: F ( ptr u8 n [ ptr u8 n -- ] -- ) {: a u q :} a u q catch … ;` is
-  refused — `hook: non-certified definition: f at 'catch'`, rc 70 — because
-  the thing being caught has to be a literal quotation. What is admitted is a
-  preserving word that takes the callback as an ORDINARY STACK ARGUMENT, with
-  the literal quotation around it:
-  `: INV ( ptr u8 n [ ptr u8 n -- ] -- ptr u8 n [ ptr u8 n -- ] ) {: a u q :}
-  a u q execute a u q ;` under `[: INV ;] catch`, which answers the callback's
-  thrown code (measured: -777). So a combinator that must catch its callback
-  needs no cell to park it in (lib/fs.f's walk), and `drop` on the
+  can.** This is refused — `hook: non-certified definition: f at 'catch'`,
+  rc 70 — because the thing being caught has to be a literal quotation:
+
+  ```forth
+  : F ( ptr u8 n [ ptr u8 n -- ] -- )
+     {: a u q :}
+     a u q catch … ;
+  ```
+
+  What is admitted is a preserving word that takes the callback as an ORDINARY
+  STACK ARGUMENT, with the literal quotation around it: `INV` under
+  `[: INV ;] catch` answers the callback's thrown code (measured: -777).
+
+  ```forth
+  : INV ( ptr u8 n [ ptr u8 n -- ] -- ptr u8 n [ ptr u8 n -- ] )
+     {: a u q :}
+     a u q execute a u q ;
+  ```
+
+  So a combinator that must catch its callback needs no cell to park it in
+  (lib/fs.f's walk), and `drop` on the
   quotation-typed value afterwards is admitted.
 - **`catch` restores the DEPTH of both stacks and never their contents**, so a
   cell in the caught quotation's window — its declared fixed input prefix, on
@@ -1503,10 +1544,21 @@ idiom. The reach is counted in bytes whatever the element type;
 
 ## ptr locals and cell access
 
-A `{: p:ptr :}` local admits cell `@`/`!`: `: F ( ptr n -- n ) {: p:ptr :} p @ ;`
-certifies and answers the stored cell. What does not certify is reading a
-parametric pointee as a cell: `: G ( ptr a -- n ) {: p :} p @ ;` is
+A `{: p:ptr :}` local admits cell `@`/`!`: `F` certifies and answers the stored
+cell. What does not certify is reading a parametric pointee as a cell: `G` is
 `E-NONPARAMETRIC-EFFECT`, because a declared effect must stay parametric over
-its quantifier. A word over "some cell buffer base" therefore declares the
-concrete pointee (`ptr n`), not `ptr a`; concrete per-buffer words sharing
-scalar cursor helpers remain a fine shape, not a forced one.
+its quantifier.
+
+```forth
+: F ( ptr n -- n )
+   {: p:ptr :}
+   p @ ;
+
+: G ( ptr a -- n )
+   {: p :}
+   p @ ;
+```
+
+A word over "some cell buffer base" therefore declares the concrete pointee
+(`ptr n`), not `ptr a`; concrete per-buffer words sharing scalar cursor helpers
+remain a fine shape, not a forced one.

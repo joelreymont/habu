@@ -50,16 +50,29 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 
 - A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
   `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits
-  `@` and `!`, but `: F ( ptr a -- n ) {: p:ptr :} p @ ;` is
-  `E-NONPARAMETRIC-EFFECT` because `a` is specialised; read the cell as a
-  number and declare `( ptr n -- n )`. `ptr u8` is a byte span — `c@`/`c!`;
-  cell `@` on it is `E-MISMATCH`.
+  `@` and `!`, but reading the cell specialises `a`; read it as a number and
+  declare `( ptr n -- n )`. `ptr u8` is a byte span — `c@`/`c!`; cell `@` on
+  it is `E-MISMATCH`.
+
+  ```forth
+  : PEEK-A ( ptr a -- n )    \ E-NONPARAMETRIC-EFFECT: a is specialised
+     {: p:ptr :}
+     p @ ;
+
+  : PEEK-N ( ptr n -- n )    \ certifies
+     {: p:ptr :}
+     p @ ;
+  ```
 - Integers widen when lossless (`u8 → u16 → u32 → n`); roles (`idx`, `len`,
   `fd`) never widen. Booleans are real `bool`s: `0 0=`, never a raw `0`/`-1`.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
   definition, block-scoped, bindable after a closed early-exit guard.
+- A `{: … :}` group that binds at entry goes on its own line after the line
+  holding the name and stack effect, indented as the body: three spaces, as in
+  `lib/` and `tools/`. New and changed definitions follow this; existing files
+  are not reformatted for it.
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
