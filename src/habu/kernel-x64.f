@@ -3530,12 +3530,27 @@ public
 \ restorer, the index helpers, the sync, the printers and the reports once,
 \ then each body (docs/x86-64.md "Profiler rows").
 
+private
+
+\ prof-rate's guard, the twin of prof.f BPROF-RATE's: an interval below 0
+\ throws PROF-ABI:E-PROF-RATE before X64PROF:RATE-BODY maps the arena or
+\ stores the rate, so a caller that catches it keeps the rate it had.
+: RATE-GUARD, ( -- )
+   LBL {: ok:label :}
+   RAX DSP CELL negate MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NS ok JCC,
+   RAX PROF-ABI:E-PROF-RATE >IMM32 ASM-SINK ENC-MOV-RI32
+   THROW,
+   ok LBL, ;
+
+public
+
 : PROFILER, ( -- )
    X64PROF:HELPERS,
    s" prof-on" [: X64PROF:ON-BODY ;] PRIM
    s" prof-off" [: X64PROF:OFF-BODY ;] PRIM
    s" prof-reset" [: X64PROF:RESET-BODY ;] PRIM
-   s" prof-rate" [: X64PROF:RATE-BODY ;] PRIM
+   s" prof-rate" [: RATE-GUARD,  X64PROF:RATE-BODY ;] PRIM
    s" prof-pc>rec" [: X64PROF:PCREC-BODY ;] PRIM
    s" prof-report" [: X64PROF:REPORT-BODY ;] PRIM
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM

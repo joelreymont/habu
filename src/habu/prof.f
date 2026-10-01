@@ -809,16 +809,30 @@ private
 
 \ x0 = arena: the interval prof-rate left there, or the 1000 us default, which
 \ prof-on writes back so the report states the rate it actually sampled at.
+\ setitimer takes whole seconds and the microseconds below USEC-PER-SEC, so the
+\ interval splits into the two; the signed divide keeps an interval below 0
+\ negative, which C-PROF-TIMER's arm refuses rather than reading it as years.
+\ Clobbers x9-x11.
 : C-PROF-TIMER-FRAME ( -- )
    LBL {: dflt :}
    10 0 ARN-USEC LDR,  10 dflt CBNZ,  10 1000 MOVZ,
    dflt LBL,  10 0 ARN-USEC STR,
+   11 USEC-PER-SEC LIT64,  9 10 11 SDIV,               \ x9 = seconds
+   11 9 11 MUL,  10 10 11 SUB,                        \ x10 = microseconds
    SP SP 32 SUBI,
-   9 0 MOVZ,   9 SP 0 STR,  10 SP 8 STR,
+   9 SP 0 STR,  10 SP 8 STR,
    9 SP 16 STR,  10 SP 24 STR, ;
 
+\ The arm. A refused setitimer is named and fatal, as a refused mapping is: the
+\ phase would sample nothing and report zeros.
 : C-PROF-TIMER ( -- )
-   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS, ;
+   LBL LBL {: ok msg :}
+   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
+   C-CC ok BCOND,
+      1 msg ADR,  2 PROFARMMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
+      0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  PROFARMMSG$ BYTES,
+   ok LBL, ;
 
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;
@@ -1102,7 +1116,7 @@ private
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    SP SP 32 ADDI, ;
 
-\ Re-arm it at the recorded interval. Clobbers x0-x2, x7, x9 and x10.
+\ Re-arm it at the recorded interval. Clobbers x0-x2, x7 and x9-x11.
 : C-PROF-TIMER-START ( -- )
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
    C-PROF-TIMER-FRAME
@@ -1137,9 +1151,14 @@ private
    7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR, ;
 
 \ prof-reset clears the counts and keeps the index, so a second phase can be
-\ measured without paying for the sort again.
+\ measured without paying for the sort again. The clock stops for the clears,
+\ as it does for a report: PROF-TOT is cleared first and each bucket after it,
+\ so a tick in between would survive in PROF-TOT and not in its bucket, and the
+\ identity would be off by one. It starts again only when prof-off has not
+\ stopped it.
 : BPROF-RESET ( -- )
-   LBL LBL LBL {: zl zd noarena :}
+   LBL LBL LBL LBL {: zl zd noarena stopped :}
+   C-PROF-TIMER-STOP
    7 PROF-BAND-VA LIT64,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
    14 PROF-CNT-VA LIT64,  8 NDICT 0 ADDI,
@@ -1148,7 +1167,11 @@ private
    0 7 PROF-ARENA LDR,  0 noarena CBZ,
    C-PROF-COUNTERS-CLEAR
    C-PROF-CALL-CLEAR
-   noarena LBL, ;
+   noarena LBL,
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
+   9 stopped CBZ,
+   C-PROF-TIMER-START
+   stopped LBL, ;
 
 : BPROF-REPORT ( -- )  LPROFDUMP LABEL@ C-PROF-REPORT-CALL ;
 
@@ -1172,11 +1195,20 @@ private
 
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:
 \ a rate written while no handler is installed would hand the process a SIGALRM
-\ it has no handler for.
+\ it has no handler for. Any interval above 0 arms and 0 asks for the default.
+\ One below 0 is the caller's error: it throws PROF-ABI:E-PROF-RATE before the
+\ arena is mapped or the rate stored, so a caller that catches it keeps the
+\ rate it had. x10 holds n across C-PROF-ARENA-MAP, which writes only x0-x5,
+\ x7-x9 and x16.
 : BPROF-RATE ( -- )
+   LBL {: ok :}
+   10 G-POP
+   10 0 CMPI,  C-GE ok BCOND,
+      9 PROF-ABI:E-PROF-RATE LIT64,  9 G-PUSH  BTHROW
+   ok LBL,
    C-PROF-ARENA-MAP
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
-   A G-POP  A 0 ARN-USEC STR, ;
+   10 0 ARN-USEC STR, ;
 
 \ prof-pc>rec ( pc -- n ): the record index the armed index gives that pc, or -1.
 \ It runs the handler's own search, so a test that compares it with an exhaustive

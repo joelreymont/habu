@@ -22,6 +22,8 @@ DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT \ counters: one cell per dict slot 
 8 constant PROF-LINUX-SIGSET-SIZE
 $10000004 constant LINUX-SA-PROF-FLAGS
 $0042 constant MACOS-SA-PROF-FLAGS
+78 constant PROF-MAP-RC           \ prof-on's named refusals exit here (src/habu/prof-abi.f)
+: PROFARMMSG$ ( -- a u ) s\" hb: prof-on: cannot arm the interval timer\n" ;
 
 \ LPROFDUMP ( -- ) : write "name count\n" (fd 1) for every dict word with samples.
 \ Clobbers x0-x2,x9-x17; loop regs x5/x6 survive G-PRINT9 (x9..x14) + syscalls.
@@ -116,8 +118,15 @@ $0042 constant MACOS-SA-PROF-FLAGS
    9 0 MOVZ,   9 SP 0 STR,  10 1000 MOVZ,  10 SP 8 STR,
    9 SP 16 STR,  10 SP 24 STR, ;
 
+\ A refused arm is named and fatal (parity with src/habu/prof.f C-PROF-TIMER).
 : C-PROF-TIMER ( -- )
-   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS, ;
+   LBL {: ok :}  LBL {: msg :}
+   0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
+   C-CC ok BCOND,
+      1 msg ADR,  2 PROFARMMSG$ nip MOVZ,  0 2 MOVZ,  NR-WRITE SYS,
+      0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  PROFARMMSG$ BYTES,
+   ok LBL, ;
 
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;

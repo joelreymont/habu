@@ -2,6 +2,7 @@
 
 require tools/jitdump-core.f
 require test/gate-common.f
+require src/habu/prof-abi.f
 
 using JITDUMP      \ JD / JIT-FIND / JIT-EVALUATE, called bare in GDB-JITDUMP
 
@@ -239,6 +240,106 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: prof-rate sets the interval the next prof-on arms" type cr ;
 
+\ --- dot habu-stop-the-clock-83ae936a: prof-on arms an interval of a second or
+\ more, prof-reset stops the clock for its clears, prof-rate throws a
+\ negative interval back to its caller, and a refused arm is named and fatal.
+\ GDB-DELAY ( n -- ): spin until n more nanoseconds have passed by mono-ns.
+: GDB-DELAY-SRC ( -- )
+   s" : GDB-DELAY ( n -- ) mono-ns + begin dup mono-ns <= until drop ;" GE-SRC-LINE ;
+
+\ A phase at 1.5 s over four seconds of wall clock ticks at 1.5 s and 3 s.
+: GDB-PROFILER-SLOW ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GDB-DELAY-SRC
+   s" 1500000 prof-rate 0 prof-on 4000000000 GDB-DELAY prof-off prof-report" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler 1.5 s interval" GE-EXPECT-OK
+   GT-OUT$ s" usec" GDB-FIELD 1500000 <> if
+      s" the report names another interval than 1500000 us" GE-FAIL
+   then
+   GT-OUT$ -1 GDB-ACCOUNT
+   GT-OUT$ GDB-SAMPLES {: n:n :}
+   n 2 < if s" a 1.5 s interval took fewer than two samples in four seconds" GE-FAIL then
+   n 3 > if s" a 1.5 s interval sampled more often than every 1.5 s" GE-FAIL then
+   s" PASS: prof-on arms an interval of a second or more" type cr ;
+
+\ The running engine's band and arena, read as the report reads them.
+: GDB-PROF-BAND-SRC ( -- )
+   s" require src/habu/prof-abi.f" GE-SRC-LINE
+   s" 0 SNAP-RELOC:XTCELL-OFF-MAX CELL + PROF-ABI:PROF-BAND-AT constant GDB-BAND" GE-SRC-LINE
+   s" : GDB-BAND@ ( n -- n ) {: off:n :} data-base GDB-BAND + off + @ ;" GE-SRC-LINE
+   s" TRUSTED: GDB>ARENA ( n -- ptr n ) ;" GE-SRC-LINE
+   s" : GDB-ARENA ( n -- ptr n ) {: off:n :} PROF-ABI:PROF-ARENA GDB-BAND@ GDB>ARENA off + ;" GE-SRC-LINE ;
+
+\ prof-reset 1000 times at 50 us, each time followed by prof-off and the
+\ header's identity, words + other + new + defer + spill + foreign == samples,
+\ read with the clock stopped. Each turn arms afresh, so a reset run straight
+\ after the arm would always start a whole interval before the first tick;
+\ a delay of 64 steps of 800 ns between the two moves the reset's start across
+\ the interval. The child prints how many resets left the identity false.
+: GDB-PROFILER-RESETS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GDB-PROF-BAND-SRC
+   GDB-DELAY-SRC
+   s" : GDB-WORDS ( -- n ) 0 ndict@ 0 ?do PROF-STATE-BYTES i cells + GDB-BAND@ + loop ;" GE-SRC-LINE
+   s" : GDB-SKEW ( -- n ) GDB-WORDS PROF-ABI:ARN-NEW GDB-ARENA @ + PROF-ABI:ARN-DEFER GDB-ARENA @ +" GE-SRC-LINE
+   s"    PROF-ABI:ARN-SPILL GDB-ARENA @ + PROF-ABI:PROF-OTHER GDB-BAND@ + PROF-ABI:PROF-FOREIGN GDB-BAND@ +" GE-SRC-LINE
+   s"    PROF-ABI:PROF-TOT GDB-BAND@ - ;" GE-SRC-LINE
+   s" variable GDB-BAD" GE-SRC-LINE
+   s" : GDB-RESETS ( -- ) 1000 0 do 0 prof-on i 63 and 800 * GDB-DELAY prof-reset prof-off" GE-SRC-LINE
+   s"    GDB-SKEW 0<> if 1 GDB-BAD +! then loop ;" GE-SRC-LINE
+   S\" 50 prof-rate GDB-RESETS s\" skewed \" type GDB-BAD @ . cr" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler resets in a hot loop" GE-EXPECT-OK
+   GT-OUT$ s" skewed" GDB-FIELD 0 <> if
+      s" prof-reset left the identity false: a tick landed between its clears" GE-FAIL
+   then
+   s" PASS: prof-reset stops the clock, so the identity survives 1000 resets at 50 us" type cr ;
+
+\ The engine's whole stderr for an uncaught throw of the code.
+: GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET  s" hb: uncaught throw code " SB-APPEND  code FMT:SB-INT  GE-SB-LF  SB$ ;
+
+\ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
+\ before it stores anything. Uncaught, the engine reports the code and exits
+\ UNCAUGHT-RC before the next line runs. Caught, the code is lib/errors.f's
+\ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
+\ prof-on arms the 250 us set before it, which the report states.
+: GDB-PROFILER-RATE-REFUSED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" -1 prof-rate" GE-SRC-LINE
+   S\" s\" prof-rate took -1\" type cr" GE-SRC-LINE
+   GDB-PROF-RUN
+   UNCAUGHT-RC s" an uncaught prof-rate -1 exits UNCAUGHT-RC" GE-EXPECT-RC
+   E-PROF-RATE GDB-UNCAUGHT$ s" an uncaught prof-rate -1 reports E-PROF-RATE" GE-EXPECT-ERR
+   GT-OUT$ nip 0<> if s" the line after an uncaught prof-rate -1 ran" GE-FAIL then
+   S\" : GDB-REFUSE ( -- n ) [: -1 prof-rate ;] catch ; 250 prof-rate GDB-REFUSE negate s\" refused \" type . cr 0 prof-on GDB-BUSY prof-off prof-report"
+   GDB-PROF-RATE-RUN
+   s" a caught prof-rate -1" GE-EXPECT-OK
+   GT-OUT$ s" refused" GDB-FIELD E-PROF-RATE negate <> if
+      s" prof-rate -1 threw another code than E-PROF-RATE" GE-FAIL
+   then
+   GT-OUT$ s" usec" GDB-FIELD 250 <> if
+      s" a caught prof-rate -1 changed the rate the next prof-on arms" GE-FAIL
+   then
+   s" PASS: prof-rate throws E-PROF-RATE for a negative interval and keeps the rate" type cr ;
+
+\ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
+\ setitimer refuses it, and the refusal is named and exits PROF-MAP-RC.
+: GDB-PROFILER-ARM-REFUSED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GDB-PROF-BAND-SRC
+   s" 250 prof-rate -1 PROF-ABI:ARN-USEC GDB-ARENA ! 0 prof-on" GE-SRC-LINE
+   S\" s\" prof-on armed -1\" type cr" GE-SRC-LINE
+   GDB-PROF-RUN
+   PROF-ABI:PROF-MAP-RC s" a refused arm exits PROF-MAP-RC" GE-EXPECT-RC
+   PROF-ABI:PROFARMMSG$ s" a refused arm is named on fd 2" GE-EXPECT-ERR
+   s" PASS: a setitimer that refuses the arm is named and fatal" type cr ;
+
 \ A phase word - the caller that encloses the work - takes no exclusive samples
 \ at all, so no exclusive ranking will ever show it. The inclusive section, the
 \ complete JSON, and prof-row are the three ways to read one.
@@ -423,6 +524,10 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-JSON
    GDB-PROFILER-DEFER
    GDB-PROFILER-RATE
+   GDB-PROFILER-SLOW
+   GDB-PROFILER-RESETS
+   GDB-PROFILER-RATE-REFUSED
+   GDB-PROFILER-ARM-REFUSED
    GDB-PROFILER-INCLUSIVE
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL

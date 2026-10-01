@@ -107,18 +107,32 @@ ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record w
 ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
 ARN-DEF ARN-DEF-BYTES + constant ARN-BYTES
 $10000 constant PROF-STACK-BYTES
+1000000 constant USEC-PER-SEC   \ setitimer refuses a tv_usec at or above it: prof-on splits the interval
 14  constant SIGALRM
 $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 40 constant DICT-WL-OFF                   \ the record's wordlist cell (habu1.f BSWL reads the same 40)
 
-\ ---- prof-on's refusals and the limit's exit ------------------------------------
+\ ---- the refusals and the limit's exit -------------------------------------------
 \ A resource prof-on cannot get is fatal: prof-on writes its message to fd 2 and
-\ exits PROF-MAP-RC. The handler's sample that reaches a non-zero PROF-LIM prints
-\ the report and exits PROF-LIMIT-RC.
+\ exits PROF-MAP-RC. The clock is such a resource: a refused setitimer would
+\ leave a phase that samples nothing and reports zeros, so the arm is refused by
+\ name too. The handler's sample that reaches a non-zero PROF-LIM prints the
+\ report and exits PROF-LIMIT-RC.
 78 constant PROF-MAP-RC
 99 constant PROF-LIMIT-RC
 : PROFMMAPMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the handler stack\n" ;
 : PROFSTKMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot install the handler stack\n" ;
 : PROFARNMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
+: PROFARMMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
+
+\ A negative interval is the caller's error, not a resource the process lacks:
+\ prof-rate throws E-PROF-RATE before it maps or stores anything, so a caller
+\ that catches it keeps the rate it had. lib/errors.f owns the code; prof.f
+\ compiles in the engine-build window, before any lib/ file exists, so the same
+\ (code, name) pair is re-registered here -- the one form
+\ tools/error-code-lint.f admits -- and test/gate-debug-lib.f
+\ GDB-PROFILER-RATE-REFUSED keeps the two spellings equal. Qualify it: a bare
+\ E-PROF-RATE under `using PROF-ABI` meets lib/errors.f's global.
+-3803 constant E-PROF-RATE
 
 ;package

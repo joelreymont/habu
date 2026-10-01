@@ -659,8 +659,8 @@ machine stack for that word's callers. The surface:
 | `prof-off` | `( -- )` | stop the clock. The handler stays installed and every counter keeps its value, so the phase just measured can be reported afterwards. |
 | `prof-report` | `( -- )` | print the text report. |
 | `prof-json` | `( -- )` | print the same walk as one JSON object. |
-| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. |
-| `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000). Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
+| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. The clock stops for the clears and starts again unless `prof-off` stopped it. |
+| `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000, also asked for by `0`); any positive interval arms, a second or more included. A negative `n` throws `E-PROF-RATE` (-3803) before anything is stored, so a caller that catches it keeps the rate it had. Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
 | `n prof-row` | `( n -- )` | print the row for one dictionary record, whatever its rank, with its callers. A phase word takes no exclusive samples at all, so no ranking will ever show it; this is how you read one. The record index comes from the caller, where `XREF` already answers a name. |
 | `pc prof-pc>rec` | `( n -- n )` | the record index the armed index gives that pc, or -1. This is the handler's own search, which is what `test/prof-index.f` compares against an exhaustive dictionary scan. |
 

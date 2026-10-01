@@ -1,9 +1,11 @@
 ---
 title: Stop the clock in prof-reset and bound prof-rate
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T17:54:38.903401+03:00"
+closed-at: "2026-10-01T09:30:00+03:00"
+close-reason: "prof-reset stops the clock, prof-on splits the interval, prof-rate throws E-PROF-RATE, a refused arm is named and fatal; native-gate-debug and profiler-index pass on rebuilt 2e37fd15 (slow case fails on base, rate case on 5b638e60), x86 prof images as designed (resets 5/5 red before, 5/5 green after)"
 ---
 
 Problem: two profiler defects, the same on both targets (`src/habu/prof.f` BPROF-RESET, BPROF-RATE, C-PROF-TIMER-FRAME; `src/habu/prof-x64.f` RESET-BODY, RATE-BODY, TIMER,; mirror `bootstrap/cg/prof.fs`).

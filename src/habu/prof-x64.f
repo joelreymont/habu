@@ -1050,26 +1050,35 @@ private
    PROFSTKMSG$ REFUSED,
    ok LBL, ;
 
-\ setitimer(ITIMER_REAL) with the interval and the first expiry both the
-\ register's microseconds, which disarms the clock when it is 0. The register
-\ must not be one the call's arguments take.
-: TIMER, ( r64 -- ) {: usec:r64 :}
+\ setitimer(ITIMER_REAL) with the interval and the first expiry both rax
+\ seconds and rdx microseconds; CF is set when the kernel refused it. Clobbers
+\ rax rcx rdx rsi rdi r11.
+: TIMER, ( -- )
    RSP ITIMER-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
-   RCX ZERO-REG,
-   RCX RSP IT-INTERVAL-SEC MEM-OFF STORE,  usec RSP IT-INTERVAL-USEC MEM-OFF STORE,
-   RCX RSP IT-VALUE-SEC MEM-OFF STORE,  usec RSP IT-VALUE-USEC MEM-OFF STORE,
+   RAX RSP IT-INTERVAL-SEC MEM-OFF STORE,  RDX RSP IT-INTERVAL-USEC MEM-OFF STORE,
+   RAX RSP IT-VALUE-SEC MEM-OFF STORE,  RDX RSP IT-VALUE-USEC MEM-OFF STORE,
    RDI ITIMER-REAL IMM32,  RSI RSP COPY,  RDX ZERO-REG,  NR-SETITIMER SYS,
-   RSP ITIMER-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
+   RSP RSP ITIMER-BYTES MEM-OFF LEA, ;                            \ the frame back, CF kept
+
+\ Stop the clock: a zero interval and expiry, which setitimer always takes.
+: DISARM, ( -- )  RAX ZERO-REG,  RDX ZERO-REG,  TIMER, ;
 
 \ rsi = arena: arm the clock at the interval prof-rate left there, or
 \ DEFAULT-USEC, which is written back so a report states the rate it sampled
-\ at: the twin of prof.f C-PROF-TIMER-FRAME and C-PROF-TIMER.
+\ at, split into seconds and the microseconds below USEC-PER-SEC; the signed
+\ divide keeps an interval below 0 negative, which setitimer refuses. A refused
+\ arm is named and fatal. The twin of prof.f C-PROF-TIMER-FRAME and
+\ C-PROF-TIMER.
 : TIMER-START, ( -- )
-   LBL {: set:label :}
+   LBL LBL {: set:label ok:label :}
    RAX RSI ARN-USEC MEM-OFF LOAD,  RAX TEST,  C-NE set JCC,
    RAX DEFAULT-USEC IMM32,
    set LBL,  RAX RSI ARN-USEC MEM-OFF STORE,
-   RAX TIMER, ;
+   ASM-SINK ENC-CQO  RCX USEC-PER-SEC IMM32,  RCX ASM-SINK ENC-IDIV   \ rax = seconds, rdx = microseconds
+   TIMER,
+   C-AE ok JCC,
+   PROFARMMSG$ REFUSED,
+   ok LBL, ;
 
 \ Zero [rcx, rdx) a cell at a time with rax = 0.
 : ZERO-SPAN, ( -- )
@@ -1114,7 +1123,7 @@ private
 \ and the clock starts again at the recorded interval after it, unless
 \ prof-off had stopped it.
 : QUIET, ( -- )
-   RAX ZERO-REG,  RAX TIMER,
+   DISARM,
    SYNC-LBL CALL, ;
 
 : RESUME, ( -- )
@@ -1147,20 +1156,27 @@ public
 \ reported afterwards. A tick already raised is delivered as the setitimer
 \ returns, before the next instruction, so the counts are final once this does.
 : OFF-BODY ( -- )
-   RAX ZERO-REG,  RAX TIMER,
+   DISARM,
    RCX BAND-VA IMM,  RAX ZERO-REG,  RAX RCX PROF-ARMED MEM-OFF STORE, ;
 
-\ prof-reset ( -- ): clear the counts and keep the index.
+\ prof-reset ( -- ): clear the counts and keep the index, the twin of prof.f
+\ BPROF-RESET. The clock stops for the clears, since a tick between the store
+\ to PROF-TOT and the one to its own bucket would leave the identity off by
+\ one, and starts again only when prof-off has not stopped it.
 : RESET-BODY ( -- )
    LBL {: none:label :}
+   DISARM,
    BAND-CLEAR,
    ARENA>RSI,  RSI TEST,  C-E none JCC,
    COUNTS-CLEAR,
-   none LBL, ;
+   none LBL,
+   RESUME, ;
 
 \ prof-rate ( n -- ): the interval in microseconds the NEXT prof-on arms, not
 \ a re-arm: a rate written while no handler is installed would hand the
-\ process a SIGALRM it has no handler for.
+\ process a SIGALRM it has no handler for. Any interval above 0 arms and 0
+\ asks for the default. kernel-x64.f's prof-rate row throws E-PROF-RATE for
+\ one below 0 before this body runs, since the throw is that package's.
 : RATE-BODY ( -- )
    ARENA-MAP,
    ARENA>RSI,  RAX R64>N G-POP  RAX RSI ARN-USEC MEM-OFF STORE, ;

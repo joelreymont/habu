@@ -50,6 +50,24 @@
 \                                    3 prof-on and spins, and the parent sees
 \                                    it exit 99 with its fd 1 starting
 \                                    `profiler samples 3 words `
+\    hb-x64-kernel-prof-slow      0  prof-rate 1500000 and prof-on arm the
+\                                    timer at 1 s and 500000 us; four seconds
+\                                    by mono-ns take at least two samples
+\    hb-x64-kernel-prof-resets    0  prof-rate 50, then 1000 turns of
+\                                    prof-on, a delay of 0 to 50.4 us,
+\                                    prof-reset, prof-off and the identity:
+\                                    none finds it false
+\    hb-x64-kernel-prof-rate-refused
+\                                67  prof-rate -1 throws E-PROF-RATE, which
+\                                    no handler catches
+\    hb-x64-kernel-prof-rate-caught
+\                                 0  prof-rate 250, then prof-rate -1 under
+\                                    catch: the code is E-PROF-RATE, and
+\                                    prof-on arms the timer at 250 us
+\    hb-x64-kernel-prof-arm-refused
+\                                78  -1 written into ARN-USEC past prof-rate,
+\                                    then prof-on: `hb: prof-on: cannot arm
+\                                    the interval timer` on fd 2
 \
 \ State S: B's pc deferred three times with A's return address kept beside it,
 \ twice with C's and once with 0, and pc 1, which no record owns, once; A's
@@ -119,6 +137,15 @@ $1000 constant TEXT-CAP                 \ a capture's room, and what the image r
 $40 constant GOT                        \ and what it read
 1000 constant DEFAULT-RATE              \ prof-on's interval when prof-rate set none, microseconds
 3 constant LIMIT-SAMPLES                \ the limit case's prof-on
+1500000 constant SLOW-RATE              \ the slow case's interval: a second and a half, microseconds
+4000000000 constant SLOW-PHASE-NS       \ its phase on the wall clock, which ticks at 1.5 s and 3 s
+2 constant SLOW-TICKS                   \ the samples that phase takes at least
+50 constant FAST-RATE                   \ the resets case's interval, microseconds
+1000 constant RESET-TURNS               \ the resets that case runs
+32 constant TURNS                       \ scratch: the turns left
+40 constant SKEWED                      \ and those that found the identity false
+64 constant PHASES                      \ the delays between a turn's arm and its reset
+800 constant PHASE-STEP-NS              \ and their step: together they cross the interval
 3 constant IMAGE-INDEXED                \ the report image indexes A, B and C: one digit
 4 constant A64-INSN                     \ how far back the host's replay searches a kept cell
 
@@ -274,9 +301,10 @@ C-IX XREF-REC XREF-START constant C-START
    0 X64HARNESS:PUSH-SCRATCH,  RCX R64>N G-POP  RSP RCX MEM-AT LOAD, ;
 
 \ ---- the checks after the clock stops ---------------------------------------
-\ sum(counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER + PROF-FOREIGN
-\ - PROF-TOT, over the records r14 counts.
-: IDENTITY, ( -- )
+\ rax = sum(counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
+\ PROF-FOREIGN - PROF-TOT, over the records r14 counts: 0 while the identity
+\ holds. It clobbers rcx, rdx and r8.
+: SKEW, ( -- )
    LBL LBL {: sum:label done:label :}
    RAX ZERO-REG,
    RDX COUNTERS IMM,  RCX ENGINE-GPR:X64-NDICT >R64 COPY,
@@ -292,8 +320,9 @@ C-IX XREF-REC XREF-START constant C-START
    R8 BAND IMM,
    RAX R8 PROF-OTHER MEM-OFF ASM-SINK ENC-ADD-RM
    RAX R8 PROF-FOREIGN MEM-OFF ASM-SINK ENC-ADD-RM
-   RAX R8 PROF-TOT MEM-OFF ASM-SINK ENC-SUB-RM
-   0 G-PUSH  0 WANT ;
+   RAX R8 PROF-TOT MEM-OFF ASM-SINK ENC-SUB-RM ;
+
+: IDENTITY, ( -- )  SKEW,  0 G-PUSH  0 WANT ;
 
 \ Poison rax unless the edge table holds the pair (B, A), keyed as EDGE keys
 \ it, with a count, and B's own inclusive count, in the second index entry, is
@@ -354,10 +383,9 @@ C-IX XREF-REC XREF-START constant C-START
    RSI RSP COPY,
    NR-GETITIMER SYS, ;
 
-\ prof-rate RATE, then prof-on: the timer's interval is RATE us and no
+\ prof-on after prof-rate RATE: the timer's interval is RATE us and no
 \ seconds; prof-off: every field of the timer reads 0.
-: RATE-CHECK, ( -- )
-   RATE N,  s" prof-rate" ROW
+: ARMED-CHECK, ( -- )
    0 N,  s" prof-on" ROW
    RSP ITIMER-BYTES SUBI,
    TIMER?,
@@ -371,6 +399,8 @@ C-IX XREF-REC XREF-START constant C-START
    RAX R64>N G-POP  RDX 0 KEEP-IF-EQ,
    RSP ITIMER-BYTES ADDI,
    0 G-PUSH  RATE WANT ;
+
+: RATE-CHECK, ( -- )  RATE N,  s" prof-rate" ROW  ARMED-CHECK, ;
 
 \ ---- the cases ---------------------------------------------------------------
 \ The routines first, so the spin below A precedes A in the text and the code
@@ -689,6 +719,90 @@ variable ENTRY-AT
    s" profiler samples 3 words " STARTS,
    RFD RECALL,  s" close" ROW ;
 
+\ ---- the clock's bounds -----------------------------------------------------------
+\ ( n -- ): spin until n more nanoseconds have passed by mono-ns.
+: DELAY, ( -- )
+   LBL {: turn:label :}
+   s" mono-ns" ROW
+   RCX R64>N G-POP  RAX R64>N G-POP  RAX RCX ASM-SINK ENC-ADD-RR  0 G-PUSH
+   turn LBL,
+      s" mono-ns" ROW
+      RCX R64>N G-POP  RAX R64>N G-POP  0 G-PUSH
+      RCX RAX ASM-SINK ENC-CMP-RR  C-L turn JCC,
+   0 G-POP ;
+
+\ prof-rate SLOW-RATE, then prof-on: the timer's interval is one whole second
+\ and the rest in microseconds; then a phase of SLOW-PHASE-NS, timed by
+\ mono-ns, takes at least SLOW-TICKS samples.
+: SLOW-CASE ( -- )
+   SLOW-RATE N,  s" prof-rate" ROW
+   0 N,  s" prof-on" ROW
+   RSP ITIMER-BYTES SUBI,
+   TIMER?,
+   RAX RSP IT-USEC MEM-OFF LOAD,
+   RCX RSP MEM-AT LOAD,  RCX SLOW-RATE USEC-PER-SEC / KEEP-IF-EQ,
+   RSP ITIMER-BYTES ADDI,
+   0 G-PUSH  SLOW-RATE USEC-PER-SEC mod WANT
+   SLOW-PHASE-NS N,  DELAY,
+   s" prof-off" ROW
+   R8 BAND IMM,  RCX R8 PROF-TOT MEM-OFF LOAD,
+   RAX 1 IMM,  RCX SLOW-TICKS >IMM32 ASM-SINK ENC-CMP-RI32  C-L POISON-IF,
+   0 G-PUSH  1 WANT ;
+
+\ prof-rate FAST-RATE, then RESET-TURNS turns of prof-on, a delay, prof-reset,
+\ prof-off and the identity: SKEWED counts the turns that found it false. A
+\ reset straight after the arm would start a whole interval before the first
+\ tick; the delay, PHASES steps of PHASE-STEP-NS, moves its start across the
+\ interval.
+\ prof-reset's own ticks would land in its record, which the kernel registers
+\ near the end of a short dictionary, a few hundred stores into the band's
+\ clear: about one turn in a thousand. An alias of its body at TOP-IX, which
+\ the index prefers to the original as the last record sharing its start, is
+\ the counter the band clears last, so any tick in the band's clear lands
+\ between the two stores the race needs.
+: RESETS-CASE ( -- )
+   LBL LBL {: turn:label same:label :}
+   NDICT-REG TOP-IX IMM,
+   s" prof-reset-alias" s" prof-reset" X64KERNEL:ENTRY-LABEL s" prof-rate" X64KERNEL:ENTRY-LABEL
+   X64HARNESS:CODE-RECORD,
+   NDICT-REG TOP-IX 1+ IMM,
+   FAST-RATE N,  s" prof-rate" ROW
+   RESET-TURNS N,  TURNS KEEP,  0 N,  SKEWED KEEP,
+   turn LBL,
+      0 N,  s" prof-on" ROW
+      TURNS AT,  RAX R64>N G-POP  RAX RAX MEM-AT LOAD,
+      RAX PHASES 1- >IMM8 ASM-SINK ENC-AND-RI8
+      RCX PHASE-STEP-NS IMM,  RAX RCX ASM-SINK ENC-IMUL-RR  0 G-PUSH
+      DELAY,
+      s" prof-reset" ROW  s" prof-off" ROW
+      SKEW,
+      RAX TEST,  C-E same JCC,
+      SKEWED AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-INC  RDX RCX MEM-AT STORE,
+      same LBL,
+      TURNS AT,  RCX R64>N G-POP  RDX RCX MEM-AT LOAD,  RDX ASM-SINK ENC-DEC  RDX RCX MEM-AT STORE,
+      C-NE turn JCC,
+   SKEWED RECALL,  0 WANT ;
+
+\ prof-rate -1 with no handler: the throw exits UNCAUGHT-RC.
+: RATE-REFUSED-CASE ( -- )
+   -1 N,  s" prof-rate" ROW ;
+
+\ prof-rate RATE, then -1 under catch: the code is E-PROF-RATE, and the rate
+\ the next prof-on arms is still RATE.
+: RATE-CAUGHT-CASE ( -- )
+   [: -1 N,  s" prof-rate" ROW ;] X64HARNESS:ROUTINE, {: refused:label :}
+   RATE N,  s" prof-rate" ROW
+   RAX refused MOVABS,  0 G-PUSH  s" catch" ROW
+   PROF-ABI:E-PROF-RATE WANT
+   ARMED-CHECK, ;
+
+\ -1 in ARN-USEC, which only a write past prof-rate can leave: prof-on's arm
+\ is refused, named on fd 2, exit PROF-MAP-RC.
+: ARM-REFUSED-CASE ( -- )
+   RATE N,  s" prof-rate" ROW
+   R8 ARENA,  RAX -1 IMM,  RAX R8 ARN-USEC MEM-OFF STORE,
+   0 N,  s" prof-on" ROW ;
+
 \ An image: the case, then the stack checks every case ends with.
 : BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
@@ -708,6 +822,11 @@ public
    [: REFUSED-CASE ;] false s" hb-x64-kernel-prof-refused" TMP-PATH BUILD
    [: REPORT-CASE ;] false s" hb-x64-kernel-prof-report" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
+   [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD
+   [: RESETS-CASE ;] false s" hb-x64-kernel-prof-resets" TMP-PATH BUILD
+   [: RATE-REFUSED-CASE ;] false s" hb-x64-kernel-prof-rate-refused" TMP-PATH BUILD
+   [: RATE-CAUGHT-CASE ;] false s" hb-x64-kernel-prof-rate-caught" TMP-PATH BUILD
+   [: ARM-REFUSED-CASE ;] false s" hb-x64-kernel-prof-arm-refused" TMP-PATH BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 
