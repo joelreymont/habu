@@ -425,10 +425,13 @@ Three facts decide how a change reaches the fixpoint:
   <word>`, rc 70, before any target work (measured: `E-FS-WALK-ACTIVE` in
   `WALK-FILES`). Build a stage engine from the host's own tree plus the new
   declarations alone, then build the tree with that engine. A library the
-  engine bakes and no build file loads — `lib/string.f`, `lib/fmt.f`,
-  `lib/errors.f` itself — is compiled by the target build after the tree's
-  declarations and needs no stage; when nothing else the image bakes changed,
-  the stage and the tree's engine are byte-identical.
+  engine bakes is compiled by the target build after the tree's declarations,
+  so a word it adds needs no stage until a file the host loads calls it: the
+  tree's `lib/float.f` calling a new `lib/string.f` word dies the same way,
+  `E-UNDEFINED habu: in str>float: undefined word 'STR-CHECK-LEN'`, rc 70,
+  and the stage then carries that word's declarations too. When nothing else
+  the image bakes changed, the stage and the tree's engine are
+  byte-identical.
 - **The recovery prologue and `prefix-rewind.f` rewind to different points.**
   `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, so it
   rewinds the dictionary to the prefix's *first* record and the signature
