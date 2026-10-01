@@ -15,7 +15,8 @@
 \ keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`), the package
 \ keywords (`package`, `public`, `private`, `;package`, `using`, `;using` and
 \ `export`), words, and a definition head (`:`, `kernel:` or `trusted:`) that
-\ refuses or stays pending.
+\ refuses, stays pending, or is ended by an immediate its body runs. A case
+\ defines through evaluate, which the engine's loop reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
 \ loop compiles and the Habu loop refuses. And one check runs in a forked copy
@@ -1020,21 +1021,27 @@ variable WANT-RC
 
 \ An immediate that ends the definition it runs in leaves the code window
 \ closed, at tier 0 and tier 1: the word read next runs from the unit the head
-\ held open.
-: IMMEDIATE-SEMI ( ptr u8 n ptr u8 n -- ) {: tier:ptr tieru:n name:ptr nameu:n :}
+\ held open. The engine's loop reads the head through evaluate, and at tier 1
+\ the loop under test reads it too, whose body runs the immediate.
+: IMMEDIATE-SEMI ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: tier:ptr tieru:n head:ptr headu:n name:ptr nameu:n :}
    GE-SRC-RESET
    tier tieru GE-SRC-LINE
    s" s\~ TRUSTED: OI-M ( -- ) s\~ 1 + ;\~ evaluate ; immediate~ evaluate  s~ OI-M~ 0 parse-imm" QLINE
    UNIT-START
    s" s~ : OI-G ( n -- n ) 2 + ;~ evaluate" QLINE
-   s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate" QLINE
+   head headu QLINE
    name nameu BOTH
    CASE$ GE-EXPECT-OK
    S\" 43\n" CASE$ GE-EXPECT-OUT ;
 
 : IMMEDIATE-ENDS-HEAD ( -- )
-   s" 0 set-tier" s" oi-immediate-semi.f" IMMEDIATE-SEMI
-   s" 1 set-tier" s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI ;
+   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+   s" oi-immediate-semi.f" IMMEDIATE-SEMI
+   s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+   s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
+   s" 1 set-tier" s" : OI-F ( n -- n ) OI-M 40 OI-G OI-F ."
+   s" oi-immediate-semi-loop.f" IMMEDIATE-SEMI ;
 
 \ A body past BODYBUF-CAP refuses, naming the definition and the size the
 \ capture needed.
@@ -1113,6 +1120,92 @@ variable WANT-RC
    s" oi-body-escaped-full.f" BOTH
    71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8001 at "
    S\" oi-body-escaped-full.f:1\n" DIED-AT ;
+
+\ ---- the immediates in a body -------------------------------------------------------
+\ OI-N is a stack-neutral parsing immediate (parse-imm) that prints 9.
+: NEUTRAL-LINE ( -- )
+   s" s~ : OI-N ( -- ) 9 . ; immediate~ evaluate  s~ OI-N~ 0 parse-imm" QLINE ;
+
+\ A neutral immediate runs as the body reads it, after its capture, and reads
+\ the input after it; one the checker does not call neutral waits in the
+\ capture for `;`. OI-N lies in the unit the head holds open, so it runs with
+\ the code window closed.
+: BODY-IMMEDIATES ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-BODY. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   UNIT-START
+   NEUTRAL-LINE
+   s" s~ : OI-SKIP ( -- ) parse-name 2drop ; immediate~ evaluate  s~ OI-SKIP~ 1 parse-imm" QLINE
+   s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
+   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1" GE-SRC-LINE
+   s" oi-body-immediates.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 \n" CASE$ GE-EXPECT-OUT ;
+
+\ The immediate is looked up as the engine's LFIND looks it up: in the open
+\ package and the global wordlist, and NAME:tail, but not in a used package,
+\ so a bare tail only a used package holds stays in the capture.
+: BODY-IMMEDIATE-SCOPE ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-BODY. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" s~ package OI-UP public : OI-UN ( -- ) 9 . ; immediate : OI-UQ ( -- ) 3 . ; immediate ;package~ evaluate" QLINE
+   s" s~ OI-UP:OI-UN~ 0 parse-imm  s~ OI-UP:OI-UQ~ 0 parse-imm" QLINE
+   s" s~ package OI-PP : OI-PN ( -- ) 4 . ; immediate ;package~ evaluate" QLINE
+   s" using OI-UP package OI-PP s~ OI-PN~ 0 parse-imm" QLINE
+   s" : OI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN" GE-SRC-LINE
+   s" oi-body-immediate-scope.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 3\n4\nOI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN \n" CASE$ GE-EXPECT-OUT ;
+
+\ An armed checker's preflight gets the body so far, the immediate's token and
+\ the trusted cell before the immediate runs; this one refuses a trusted body.
+: PREFLIGHT-CASE ( ptr u8 n ptr u8 n -- ) {: head:ptr headu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" s~ : OI-PF ( ptr u8 n ptr u8 n bool -- ) {: b:ptr bu:n t:ptr tu:n f:bool :}" Q+
+   s"  b bu type cr t tu type cr f OI-B. f if 75 throw then ;~ evaluate" QLINE
+   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-PF set-preflight ' OI-HK set-check" GE-SRC-LINE
+   head headu GE-SRC-LINE
+   name nameu BOTH ;
+
+: BODY-IMMEDIATE-PREFLIGHT ( -- )
+   s" 1 set-tier : OI-X ( -- ) 5 OI-N" s" oi-body-preflight.f" PREFLIGHT-CASE
+   CASE$ GE-EXPECT-OK
+   S\" OI-X ( -- ) 5 OI-N \nOI-N\n0\n9\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier trusted: OI-X ( -- ) 5 OI-N" s" oi-body-preflight-trusted.f" PREFLIGHT-CASE
+   75 CASE$ GE-EXPECT-RC
+   S\" OI-X ( -- ) 5 OI-N \nOI-N\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A checker armed with no preflight refuses the immediate, and so does the
+\ floor when the immediate takes a cell it was not given.
+: BODY-IMMEDIATE-REFUSALS ( -- )
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
+   s" 1 . 1 set-tier : OI-T ( -- ) OI-N 2 ." GE-SRC-LINE
+   s" oi-body-preflight-missing.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" hb: compile preflight hook missing\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
+   s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
+   s" oi-body-immediate-underflow.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR ;
+
+\ At tier 0 the body refuses before an immediate in it runs.
+: BODY-IMMEDIATE-TIER-0 ( -- )
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" 1 ." GE-SRC-LINE
+   s" s~ : OI-T0 ( -- )~ evaluate OI-N 2" QLINE
+   s" oi-body-immediate-tier-0.f" HABU
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   76 s" hb: tier 0 is not in the Habu loop: OI-N at " S\" oi-body-immediate-tier-0.f:3\n" DIED-AT ;
 
 \ ---- in a forked copy of this process -----------------------------------------------
 
@@ -1223,6 +1316,11 @@ private
    TOP-LEVEL-QUOTATION
    BODY-STRING-REFUSALS
    BODY-STRING-FULL
+   BODY-IMMEDIATES
+   BODY-IMMEDIATE-SCOPE
+   BODY-IMMEDIATE-PREFLIGHT
+   BODY-IMMEDIATE-REFUSALS
+   BODY-IMMEDIATE-TIER-0
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

@@ -157,7 +157,8 @@ public
 
 \ ---- dictionary search ------------------------------------------------------
 \ OUTER:FIND answers the record the engine's LFIND and LFINDUSED resolve for one
-\ token (habu1.f EMIT-FIND, habu2.f EMIT-FIND-USED), or XREF-NULL. The caller
+\ token (habu1.f EMIT-FIND, habu2.f EMIT-FIND-USED), or XREF-NULL; FIND-SCOPE
+\ answers LFIND's alone, which a body's immediate is looked up with. The caller
 \ reads the immediate, wide, internal and min-in facts from the record's
 \ XREF-FLAGS, as LFIND's flag output folds them.
 \
@@ -251,12 +252,6 @@ TRUSTED: FIND-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
       then
    loop ;
 
-: FIND-BARE-REC ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u NDICT:OPEN-PRI FIND-OPEN {: rec:ptr :}
-   rec XREF-FOUND? if rec exit then
-   a u FIND-USED ;
-
 \ The namespace row carries its package's public wid where a word keeps its start.
 : FIND-QUALIFIED ( ptr u8 n n -- ptr n )
    {: a:ptr u:n q:n :}
@@ -264,14 +259,24 @@ TRUSTED: FIND-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    ns XREF-FOUND? 0= if XREF-NULL exit then
    a q 1+ ZPTR+ u q - 1- ns XREF-PKG-PUBLIC FIND-OPEN ;
 
-public
-
-: FIND ( ptr u8 n -- ptr n )
+\ LFIND's answer: the open chain for a bare token, NAME's public wordlist for
+\ NAME:tail, and no used public.
+: FIND-SCOPE ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
    a u FIND-SPLIT {: q:n :}
    q FIND-BAD = if XREF-NULL exit then
-   q FIND-BARE = if a u FIND-BARE-REC exit then
+   q FIND-BARE = if a u NDICT:OPEN-PRI FIND-OPEN exit then
    a u q FIND-QUALIFIED ;
+
+public
+
+\ FIND-USED asks nothing for a token with a colon, so only a bare miss reaches
+\ the used publics.
+: FIND ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? if rec exit then
+   a u FIND-USED ;
 
 ;package
 
@@ -282,7 +287,8 @@ public
 \ their escaped forms, `char` and `'`), numbers and dictionary words, and with
 \ src/habu/packages.f for the package keywords (`package`, `public`, `private`,
 \ `;package`, `using`, `;using` and `export`), and with src/habu/definers.f for
-\ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens.
+\ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens,
+\ with the immediates the body runs.
 \ The engine's other keywords (`;`, `create`, ...) are not read yet: a body
 \ captures them as it captures any token, and elsewhere they are not dictionary
 \ words, so they refuse as undefined.

@@ -6,7 +6,8 @@
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
-\ tier 1 captures it, for `;` to compile whole. Only tier 1 is read here. The
+\ tier 1 captures it, for `;` to compile whole, and a stack-neutral parsing
+\ immediate among them runs as it is read. Only tier 1 is read here. The
 \ engine's tier 0 compiles each token as it reads it (its JIT), so at tier 0 a
 \ head or a body token is refused.
 \
@@ -16,6 +17,7 @@
 \ this one leaves no PROT window open: def-open closes its own.
 
 require lib/prelude.f
+require src/core/checker.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
@@ -248,14 +250,51 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
+\ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
+\ A captured token LFIND resolves to an immediate word runs now when the
+\ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
+\ the input after it or end the definition, and the compiler passes over it at
+\ `;`. Any other immediate waits in the capture for the compiler. The engine
+\ closes the code window over the head's unit before it asks the checker; here
+\ that window is closed already: def-open closes its own, and evaluate's
+\ return closes the one an engine head opened. The engine finds
+\ NEUTRAL-PARSE-IMM? by name as it asks, and exits 70 naming it when no checker
+\ is loaded; this file binds it as it loads, after the engine's checker.
+: DEF-IMMEDIATE ( -- n bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
+   rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
+
+\ An armed checker's preflight gets the body so far, the token and the trusted
+\ cell first; one armed without a preflight is refused (habu2.f
+\ C-CALL-COMPILE-IMMEDIATE, LPREFMISS).
+TRUSTED: DEF-PREFLIGHT ( -- )
+   HOOK-CELL CELL@ 0= if exit then
+   COMPILE-PREFLIGHT-CELL CELL@ 0= if
+      S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
+   then
+   data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
+   COMPILE-PREFLIGHT-CELL CELL@ execute ;
+
+\ The xt waits on the return stack while the preflight runs, and the stack's
+\ floor holds after the word, as after a word the loop runs.
+TRUSTED: DEF-RUN ( n -- )
+   >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+
+: DEF-IMMEDIATE? ( -- bool )
+   DEF-IMMEDIATE if DEF-RUN true exit then
+   drop false ;
+
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 captures it for `;`, a string keyword with its text
-\ (NCOMP-EMIT:EM-COMPILE).
+\ tier 1 captures it for `;`, runs it if it is a neutral immediate, or takes a
+\ string keyword's text (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TOKEN$ DEF-CAPTURE
+   DEF-IMMEDIATE? if true exit then
    DEF-STRING-TEXT
    true ;
 
