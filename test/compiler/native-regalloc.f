@@ -387,13 +387,16 @@ create TXT
    IR-BUILD:PLAN-DEFAULT
    CC A64IR:NEW-BUILDER ;
 
-\ Bind the source dialect to the module being read and the machine dialect to the
-\ module about to be written, then select. Both bindings are taken while their
-\ module is still live, which is the only moment either dialect can be asked what
-\ its own symbols are.
+\ Make the source dialect's whole vocabulary present, freeze the module, then
+\ bind the source dialect to the frozen module and the machine dialect to the
+\ module about to be written, and select. The source binding reads the frozen
+\ module's own symbol index, so it is taken after the freeze; the machine
+\ binding is taken while its builder is still live, the only moment that dialect
+\ can be asked what its own symbols are.
 : SELECTED ( -- IR-BUILD:module )
-   CC BB A64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64IR:MACHINE  CC ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC ab  CC ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -2645,8 +2648,9 @@ using A64RA
 : ACCEPT-WRONG-MODULE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
-   CC BB A64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: hm:IR-BUILD:module :}
+   hm A64SEL:BIND-SOURCE
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64IR:MACHINE  CC ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC hm ab NEFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
@@ -3580,8 +3584,9 @@ using A64RA
 
 : SELECTED-HABU ( n n n -- IR-BUILD:module )
    {: n:n in:n out:n :}
-   CC BB A64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64IR:MACHINE  CC ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC ab  CC ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -3746,8 +3751,9 @@ using A64RA
 \ unchanged by it - the description is the allocator's - so the module the two
 \ allocate is the same module.
 : SELECTED-SMALL ( -- IR-BUILD:module )
-   CC BB A64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab SMALL-MACHINE  CC ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC ab  CC ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT

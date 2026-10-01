@@ -10,15 +10,16 @@
 \
 \ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
 \ facts are this backend's own readings - how many functions share the contract
-\ (IR-BUILD:FUNS, read at selection) and how many spill slots the allocator
-\ settled on (A64RA:FRAME, read at each lowering turn) - and the other two are
-\ declared by the driver. ROUTINE is the only reader of all four, which is why
-\ they sit together here rather than in a driver that names no machine.
+\ (the frozen source module's function rows, read at selection) and how many
+\ spill slots the allocator settled on (A64RA:FRAME, read at each lowering
+\ turn) - and the other two are declared by the driver. ROUTINE is the only
+\ reader of all four, which is why they sit together here rather than in a
+\ driver that names no machine.
 \
-\ HIR LOOP FOLDING TRAVELS WITH SELECTION, not because it is ARM64's, but because
-\ the fold rewrites the module the selector is bound to as its source: the
-\ binding has to be taken and re-made around it. A second backend reuses
-\ src/compiler/native/loop.f the same way.
+\ THE SOURCE MODULE IS NOT THIS ROW'S. NBACK:FREEZE freezes the definition's HIR
+\ module and folds its loops before any selector binds it, so every target a
+\ definition compiles to selects from the same module; SELECT binds and reads
+\ it, and the driver retires it.
 
 require lib/prelude.f
 require lib/errors.f
@@ -27,12 +28,11 @@ require src/compiler/ir/id.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/context.f
 require src/compiler/ir/build.f
+require src/compiler/ir/fun.f
 require src/compiler/native/backend.f
 require src/compiler/native/abi.f
 require src/compiler/native/frame.f
 require src/compiler/native/a64ir.f
-require src/compiler/native/hir.f
-require src/compiler/native/loop.f
 require src/compiler/native/select.f
 require src/compiler/native/prune.f
 require src/compiler/native/spill.f
@@ -46,6 +46,10 @@ require src/arch/arm64/backend.f
 
 package A64PASS
 private
+
+\ The machine every emission this row seals is for.
+: ARCH ( -- CTARGET:arch )
+   CTARGET-ARCH:AARCH64 ;
 
 \ ---- the routine contract this definition compiles to ------------------------
 variable D-IN                        \ cells the definition takes
@@ -95,48 +99,22 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    IR-BUILD:PLAN-DEFAULT
    c A64IR:NEW-BUILDER ;
 
-: HIR-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-DEFAULT
-   c HIR:NEW-BUILDER ;
-
 \ ---- selection ---------------------------------------------------------------
-\ A module with no such loop is handed back UNTOUCHED: rebuilding renumbers
-\ values, so a routine that gained nothing could still come out with other bytes.
-: CLOSED ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
+\ The lowering pass is bound here because a module's symbols are its own. The
+\ source module is NBACK:FREEZE's, already folded and shared with any other
+\ target this definition compiles to, so this row binds it and selects from it
+\ and the driver retires it after its last selector.
+: SELECT ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
-   m NLOOP:FOLDS {: n:n :}
-   n 0= if NLOOP:RELEASE m exit then
-   A64SEL:RELEASE
-   c HIR-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64SEL:BIND-SOURCE
-   c m nb NLOOP:REWRITE {: m1:IR-BUILD:module :}
-   NLOOP:FOLDED n <> if E-NLOOP-PLAN throw then
-   m IR-BUILD:RETIRE
-   m1 ;
-
-\ The lowering pass is bound here because a module's symbols are its own.
-\
-\ THE HIR MODULE IS FROZEN INTERIM. It is never the module this compilation
-\ emits - selection reads it and writes the A64 module - and that one is
-\ verified whole. So the HIR freeze derives the edge table selection reads and
-\ leaves the checking to the freeze of the module that becomes the routine.
-: SELECT ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b NLOOP:BIND-DIALECT
-   c b A64SEL:BIND-SOURCE
-   b IR-BUILD:FUNS D-FUNS !
-   c b IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
-   c m0 CLOSED {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
+   m IR-BUILD:FFUN-ROWS IR-ARENA:OPEN IR-FUN:RFUNS D-FUNS !
    c A64-BUILDER {: ab:IR-BUILD:builder :}
    c ab A64IR:MACHINE  c ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab  c ab A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
    c ab A64PRUNE:BIND-DIALECT
-   c m ab ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
-   m IR-BUILD:RETIRE
-   selected ;
+   c m ab ROUTINE A64SEL:SELECT ;
 
 \ ---- pruning -----------------------------------------------------------------
 \ A module with no such load is handed back UNTOUCHED: rebuilding renumbers
@@ -276,7 +254,7 @@ NBR:INSN-BYTES constant INSN-BYTES
 : ROWS ( n -- ) {: at:n :}
    SIZE-CK {: size:n :}
    size MAP-CK
-   A64EMIT:BYTES size RET-BYTES NEMIT:OPEN
+   A64EMIT:BYTES size RET-BYTES ARCH NEMIT:OPEN
    at NEMIT:PLACE
    size FUNCTION-ROWS
    at size CALL-ROWS
@@ -304,7 +282,6 @@ NBR:INSN-BYTES constant INSN-BYTES
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
 \ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
 : RELEASE ( -- )
-   NLOOP:BOUND? if NLOOP:RELEASE then
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
@@ -320,11 +297,7 @@ NBR:INSN-BYTES constant INSN-BYTES
    A64RAV:RESET-SCRATCH
    A64RA:RESET-SCRATCH
    A64PRUNE:RESET-SCRATCH
-   A64SEL:RESET-SCRATCH
-   NLOOP:RESET-SCRATCH ;
-
-: ARCH ( -- CTARGET:arch )
-   CTARGET-ARCH:AARCH64 ;
+   A64SEL:RESET-SCRATCH ;
 
 public
 

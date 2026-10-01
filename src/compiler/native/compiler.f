@@ -22,6 +22,15 @@
 \ rows are installed by the target's passes module, which LOAD-PASSES below
 \ requires when this file loads: src/arch/arm64/passes.f on AArch64 Linux and
 \ Darwin, src/arch/x86-64/passes.f on x86-64 Linux.
+\
+\ A SECOND TARGET RIDES ALONG WHILE A SHADOW IS OPEN (src/compiler/native/
+\ shadow.f). After the HIR module is frozen, the same stages run once more for
+\ the shadow's binding, in a context nested inside the definition's and bound to
+\ it, so every stage resolves that machine's row; its sealed emission is copied
+\ into the shadow, and its rows are retired, before that context leaves and
+\ before the engine's own selector reads the same frozen module. A refusal on
+\ the shadow's side refuses the definition: a cross-build has no use for a word
+\ the target cannot have.
 
 require lib/prelude.f
 require lib/errors.f
@@ -34,6 +43,7 @@ require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/backend.f
 require src/compiler/native/publish.f
+require src/compiler/native/shadow.f
 require src/compiler/native/prof.f
 
 package NCOMP
@@ -83,6 +93,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
 1 TYPED-BUFFER M-BLD IR-BUILD:builder
 1 TYPED-BUFFER M-TAPE IR-ARENA:view
+1 TYPED-BUFFER M-HM IR-BUILD:module   \ the frozen module every selector reads
+1 TYPED-BUFFER M-SH IR-CTX:ctx        \ the shadow's context, nested in CC
 
 \ Everything the run needs, parked: a quotation cannot read the enclosing word's
 \ locals and the whole run is one quotation.
@@ -119,6 +131,7 @@ variable TRUST-SRC-U
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
+: SH ( -- IR-CTX:ctx )           0 M-SH @ ;
 : MKEY ( -- IR-ID:ir-module-key ) BB IR-BUILD:MODULE-KEY ;
 
 : SRC$ ( -- ptr u8 n )
@@ -455,15 +468,53 @@ create SPELL-BUF SPELL-CAP allot
    then
    NELAB:CALLS-BACK? if NBACK:L-BACK NBACK:WITH then ;
 
+\ ---- the shadow target's chain -----------------------------------------------
+\ A `does>` clause is the companion record's entry in the shadow's routine as it
+\ is in the engine's own, so the copy is taken the way publication will take
+\ the engine's.
+: SHADOW-TAKE ( -- )
+   M-DOES @ 0<> if M-DOES-FUN @ NSHADOW:TAKE-DOES exit then
+   NSHADOW:TAKE ;
+
+\ The engine's own stages in the engine's own order, each the row the shadow's
+\ binding resolves to, ending in the emission measured from no slot.
+: SHADOW-WORK ( -- )
+   SH M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
+   SH 0 M-HM @ NBACK:SELECT {: m0:IR-BUILD:module :}
+   SH m0 NBACK:PRUNE {: m:IR-BUILD:module :}
+   SH m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   SH ready NBACK:EMIT-UNPLACED
+   SHADOW-TAKE ;
+
+\ Each row gives back what it holds inside its own context, so the context
+\ leaves the ordinary way, takes its builders and arenas with it, and leaves
+\ NEMIT empty for the engine's own emission.
+: SHADOW-BODY ( IR-CTX:ctx -- )
+   0 M-SH !
+   [: SHADOW-WORK ;] catch {: rc:n :}
+   rc 0<> if SH NBACK:RELEASE then
+   SH NBACK:RETIRE
+   rc 0<> if rc throw then ;
+
+: SHADOWED ( IR-BUILD:module -- )
+   {: hm:IR-BUILD:module :}
+   NSHADOW:OPEN? 0= if exit then
+   hm 0 M-HM !
+   NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- the one stage, or the two -----------------------------------------------
 \ Selection publishes the module that is emitted, and a routine whose values do
 \ not all fit its registers is lowered - once per class the allocator seals - and
 \ the last lowering publishes it instead. Every stage is the row the definition's
 \ own target contract resolves to, so this file names no backend and an
-\ architecture with no backend loaded is refused at the declaration.
+\ architecture with no backend loaded is refused at the declaration. An open
+\ shadow's chain runs first, from the same frozen module.
 : EMITTED ( -- )
    CC M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
-   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   hm SHADOWED
+   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    CC m0 NBACK:PRUNE {: m:IR-BUILD:module :}
    CC m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    CC ready NPUB:NEXT-SLOT NBACK:EMIT ;
@@ -500,9 +551,10 @@ create SPELL-BUF SPELL-CAP allot
    0 M-DOES-FRAME ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
-\ gives its arenas back.
+\ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
+   NSHADOW:ABANDON
    M-RC @ 0<> if CC NBACK:RELEASE then
    CC NBACK:RETIRE ;
 
@@ -684,6 +736,8 @@ public
    NULL-PTR TRUST-SRC-A !  0 TRUST-SRC-U !
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
    0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
+   \ A shadow's map lives in mappings no image carries, so the capture ends it.
+   NSHADOW:CLOSE
    \ The registry releases buffers immediately before DATA copy, so each loaded
    \ backend gives up its pass reservations here and sizes them again on use.
    NBACK:PREPARE

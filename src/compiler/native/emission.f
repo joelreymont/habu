@@ -12,6 +12,11 @@
 \ EVERY OFFSET IS IN BYTES from the first byte of the emission and lies inside
 \ it; every target is an absolute address, measured from the placement.
 \
+\ THE BYTES ARE ONE MACHINE'S. OPEN names the architecture the backend emitted
+\ for, so a reader that commits the bytes for a machine of its own - publication
+\ for the engine it runs in, a shadow for the target it records - can refuse an
+\ emission for any other before it copies a byte.
+\
 \ LIFETIME. A backend OPENs the rows, adds them and SEALs them. They answer from
 \ SEAL until CLEAR, which the backend's RETIRE row runs on the accepting and the
 \ refusing path alike. A refusal between OPEN and SEAL leaves rows that no reader
@@ -20,6 +25,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/compiler/target.f
 
 package NEMIT
 private
@@ -35,6 +41,7 @@ variable CODE-N                      \ and how many bytes it is
 variable RET-N                       \ how many of them are the trailing return
 variable HAS-PLACE                   \ whether the emission was measured from a placement
 variable PLACE-N                     \ and which
+TYPED-VARIABLE ARCH-AT CTARGET:arch  \ the machine the bytes are for
 
 variable N-FUNS
 DYNAMIC-BUFFER FUN-OFF-BUF n         \ where each function starts
@@ -75,6 +82,12 @@ public
 \ Zero when the emission ends in no return, so its whole span is its record.
 : RET-BYTES ( -- n )
    SEAL-CK RET-N @ ;
+
+: ARCH ( -- CTARGET:arch )
+   SEAL-CK ARCH-AT @ ;
+
+: FUNCTIONS ( -- n )
+   SEAL-CK N-FUNS @ ;
 
 : FUNCTION-OFFSET@ ( n -- n )
    SEAL-CK N-FUNS @ ROW-CK FUN-OFF-BUF @ ;
@@ -118,11 +131,12 @@ public
    0 N-FUNS !  0 N-CALLS !  0 N-ADDRS ! ;
 
 \ The bytes stay the backend's: they are read in place until CLEAR.
-: OPEN ( ptr u8 n n -- ) {: p:ptr size:n ret:n :}
+: OPEN ( ptr u8 n n CTARGET:arch -- ) {: p:ptr size:n ret:n a:CTARGET:arch :}
    ST @ ST-EMPTY <> if E-NEMIT-STATE throw then
    size 1 < if E-NEMIT-ROW throw then
    ret 0 <  ret size > or if E-NEMIT-ROW throw then
    p CODE-AT !  size CODE-N !  ret RET-N !
+   a ARCH-AT !
    ST-OPEN ST ! ;
 
 : PLACE ( n -- ) {: at:n :}

@@ -475,6 +475,13 @@ SUITE compiler-x64-chain
    test/compiler/x64-chain.f
 ;SUITE
 
+\ A second target beside the engine's own: the driver compiles each definition
+\ through the x86-64 rows in a nested context while an NSHADOW is open, and the
+\ map src/compiler/native/shadow.f keeps is read back from this host.
+SUITE compiler-shadow
+   test/compiler/shadow.f
+;SUITE
+
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
    test/compiler/tic6x-facts.f

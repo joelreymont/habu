@@ -1131,6 +1131,102 @@ public
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
    op ;
 
+\ ---- the vocabulary of a frozen module ---------------------------------------
+\ A selector binds this dialect's identities in the module it lowers, and reads
+\ that module FROZEN: it is the same module for every target a definition is
+\ compiled for, and a second target's selection runs in a context of its own,
+\ which may read a frozen module and may not write a live one. So the readers
+\ below ask the frozen module, and nothing can be interned into it by then: the
+\ whole vocabulary is made present while it is still live, by ENSURE-VOCABULARY,
+\ which NBACK:FREEZE runs on every module it hands the selectors. It interns
+\ exactly what a selector's binding interned when it bound the live builder,
+\ in the same order, so a module's tables do not depend on who reads it. An
+\ entry a frozen module lacks means it froze without that, and is refused by
+\ name rather than bound to an identity that matches nothing.
+: ENSURE-VOCABULARY ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b DIALECT-CK
+   OPCODES 0 ?do c b i BIND drop loop
+   c b KEY-VALUE drop
+   c b KEY-ADDR drop
+   c b KEY-FUN drop
+   c b KEY-ENTRY drop
+   c b KEY-IN drop
+   c b KEY-OUT drop
+   c b MEM-TYPE drop
+   c b REAL-TYPE drop ;
+
+\ The frozen twin of DIALECT-CK, as a question: a selector names its own refusal.
+: FROM? ( IR-BUILD:module -- bool )
+   {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-ROWS {: q:IR-ARENA:view :}
+   q m IR-BUILD:FKEY IR-SCHEMA:FDIALECT@ {: d:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS d NAME IR-SYM:FEQ?
+   0= if false exit then
+   q IR-SCHEMA:FMAJOR@ MAJOR <> if false exit then
+   q IR-SCHEMA:FMINOR@ MINOR = ;
+
+private
+
+: FSYMBOL ( IR-BUILD:module ptr u8 n -- IR-ID:ir-symbol-id )
+   {: m:IR-BUILD:module p u:n :}
+   m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS m IR-BUILD:FKEY p u IR-SYM:FFIND
+   0= if E-HIR-VOCAB throw then ;
+
+: MEM? ( IR-ARENA:view IR-ID:ir-type-id -- bool )
+   {: v:IR-ARENA:view t:IR-ID:ir-type-id :}
+   v t IR-TYPE:FKIND@ IR--TYPE-KIND:MEMORY-TOKEN IR--TYPE-KIND:EQ
+   0= if false exit then
+   v t IR-TYPE:FTOKEN@ IR--TYPE-DOMAIN:DATA-MEM IR--TYPE-DOMAIN:EQ ;
+
+: REAL? ( IR-ARENA:view IR-ID:ir-type-id -- bool )
+   {: v:IR-ARENA:view t:IR-ID:ir-type-id :}
+   v t IR-TYPE:FKIND@ IR--TYPE-KIND:FLOAT IR--TYPE-KIND:EQ
+   0= if false exit then
+   v t IR-TYPE:FFLT@ IR--TYPE-FMT:DOUBLE IR--TYPE-FMT:EQ ;
+
+\ Types are interned, so a module holds at most one type of each shape asked.
+: FTYPE ( IR-BUILD:module [ IR-ARENA:view IR-ID:ir-type-id -- bool ] -- IR-ID:ir-type-id )
+   {: m:IR-BUILD:module q :}
+   m IR-BUILD:FTYPE-ROWS {: v:IR-ARENA:view :}
+   m IR-BUILD:FKEY {: k:IR-ID:ir-module-key :}
+   -1
+   v IR-TYPE:FTYPES 0 ?do
+      v  k i IR-ID:PACK-TYPE  q execute if drop i leave then
+   loop
+   {: at:n :}
+   at 0 < if E-HIR-VOCAB throw then
+   k at IR-ID:PACK-TYPE ;
+
+public
+
+: FBIND ( IR-BUILD:module n -- IR-ID:ir-symbol-id )
+   NTH OP-NAME FSYMBOL ;
+
+: FKEY-VALUE ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-VALUE KEY-NAME FSYMBOL ;
+
+: FKEY-ADDR ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-ADDR KEY-NAME FSYMBOL ;
+
+: FKEY-ENTRY ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-ENTRY KEY-NAME FSYMBOL ;
+
+: FKEY-IN ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-IN KEY-NAME FSYMBOL ;
+
+: FKEY-OUT ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-OUT KEY-NAME FSYMBOL ;
+
+: FKEY-FUN ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-FUN KEY-NAME FSYMBOL ;
+
+: FMEM-TYPE ( IR-BUILD:module -- IR-ID:ir-type-id )
+   [: MEM? ;] FTYPE ;
+
+: FREAL-TYPE ( IR-BUILD:module -- IR-ID:ir-type-id )
+   [: REAL? ;] FTYPE ;
+
 private
 get-current prot-wid-add
 

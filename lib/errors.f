@@ -538,8 +538,9 @@ public
 \   -8870..-8879  C66x instruction facts (package C6XFACTS)
 \   -8880..-8889  C66x subset interpreter (package C6XSIM)
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
-\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8800..-8829,
-\   -8880..-8999
+\   -8680..-8689  native shadow emission (package NSHADOW)
+\   -8420..-8439, -8488..-8499, -8520..-8599, -8673..-8679, -8690..-8699,
+\   -8800..-8829, -8880..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
@@ -703,6 +704,7 @@ public
 -8290 constant E-HIR-OPCODE     \ a word bound to an opcode this dialect's schema table does not define
 -8291 constant E-HIR-DIALECT    \ a module whose schema table was created for another dialect or another schema version
 -8292 constant E-HIR-ADDR       \ a relocation kind for a literal that this dialect's hir.addr does not name
+-8293 constant E-HIR-VOCAB      \ a frozen module asked for a vocabulary entry it does not hold: it froze before HIR:ENSURE-VOCABULARY made the whole vocabulary present
 
 \ Native stage N1 straight-line elaborator (package NELAB): -8300..-8319
 \
@@ -1062,6 +1064,7 @@ public
 -8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
 -8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
+-8623 constant E-NPUB-TARGET  \ a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked
 
 \ Pruning a machine operation nothing reads, and the string store: -8630..-8639
 \
@@ -1120,6 +1123,17 @@ public
 \ record is built whole or not at all, so the one moment it can be wrong is a
 \ reader asking for a key the dialect declared it does not have.
 -8672 constant E-NDIALECT       \ a dialect's vocabulary asked for a key it declared absent - x86-64 has no write-back addressing and interns no symbol for one - so there is no symbol to answer with and naming another key would be worse than saying nothing
+
+\ The shadow target's routines: -8680..-8689
+\
+\ src/compiler/native/shadow.f keeps, beside the routine a definition publishes
+\ for the engine compiling it, the routine the same definition compiles to for a
+\ second machine, and the map from each published record to that routine. A
+\ refusal another authority owns - the shadow chain's own stages, publication's
+\ - keeps that authority's name.
+-8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one, or its binding, an emission or a row asked of none
+-8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
+-8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
 \ The trap terminator's family table: -8640..-8649
 \

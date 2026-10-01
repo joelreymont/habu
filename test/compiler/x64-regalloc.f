@@ -414,8 +414,9 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ validator are bound with THIS dialect's vocabulary and THIS machine, which is
 \ the whole point: neither pass names x86-64 anywhere in its own text.
 : SELECTED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -442,8 +443,9 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 
 : DSTACK-SELECTED ( n -- IR-BUILD:module )
    {: in:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -463,8 +465,9 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    X64ABI:SCRATCH 1 1 X64ABI:TAIL ;
 
 : TAIL-SELECTED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -876,8 +879,9 @@ $1000 constant THROW-STAND
 \ slot by name (E-A64SPILL-OPCODE). The lowered module allocates with an empty
 \ plan under the framed contract and the validator accepts it.
 : FCALL-SELECTED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT

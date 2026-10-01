@@ -363,7 +363,9 @@ create TXT
 : CHAIN-LINKED ( n n NBACK:linkage -- IR-BUILD:module )
    {: in:n out:n l:NBACK:linkage :}
    CC in out l NBACK:DECLARE
-   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT ;
 
@@ -476,7 +478,9 @@ variable FRAME-BYTES                 \ the size the reserve carries
    HIR-MOD
    BUILD-DIFF
    CC 2 1 NBACK:L-NONE NBACK:DECLARE
-   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:FMODULE  m1 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}
    m1 SCAN drop
@@ -487,7 +491,9 @@ variable FRAME-BYTES                 \ the size the reserve carries
    HIR-MOD
    BUILD-DIFF
    CC 2 1 NBACK:L-NONE NBACK:DECLARE
-   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT {: m2:IR-BUILD:module :}
    m0 IR-BUILD:FMODULE  m2 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}

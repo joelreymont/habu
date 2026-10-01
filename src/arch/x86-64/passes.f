@@ -28,16 +28,17 @@
 \ because an x86-64 span is exact, the placement, where each function starts,
 \ and each site at its instruction's first byte. RETIRE gives the image, the
 \ placement and the rows back, and is nonthrowing because the driver calls it on
-\ the refusing path too.
+\ the refusing path too. EMIT-UNPLACED is the same emission measured from no
+\ slot: the same rows with no placement, which is what a shadow target's chain
+\ ends in (src/compiler/native/shadow.f).
 \
 \ So declare, select, prune, the lowering fixpoint, emit and retire all run in
 \ the order src/compiler/native/compiler.f runs them;
 \ test/compiler/x64-chain.f drives that chain through this table.
 \
-\ HIR LOOP FOLDING TRAVELS WITH SELECTION for the reason the ARM64 file gives:
-\ the fold rewrites the module the selector is bound to as its source, so the
-\ binding has to be taken and re-made around it. src/compiler/native/loop.f is
-\ target-free and this is the second backend reusing it.
+\ THE SOURCE MODULE IS NOT THIS ROW'S, for the reason the ARM64 file gives:
+\ NBACK:FREEZE folds and freezes it once for every target a definition
+\ compiles to.
 
 require lib/prelude.f
 require lib/errors.f
@@ -46,11 +47,10 @@ require src/compiler/ir/id.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/context.f
 require src/compiler/ir/build.f
+require src/compiler/ir/fun.f
 require src/compiler/native/backend.f
 require src/compiler/native/frame.f
 require src/compiler/native/x64ir.f
-require src/compiler/native/hir.f
-require src/compiler/native/loop.f
 require src/compiler/native/select-x64.f
 require src/compiler/native/spill.f
 require src/compiler/native/regalloc.f
@@ -64,6 +64,10 @@ require src/arch/x86-64/machine.f
 
 package X64PASS
 private
+
+\ The machine every emission this row seals is for.
+: ARCH ( -- CTARGET:arch )
+   CTARGET-ARCH:X86-64 ;
 
 \ ---- the routine contract this definition compiles to ------------------------
 variable D-IN                        \ cells the definition takes
@@ -113,11 +117,6 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    IR-BUILD:PLAN-DEFAULT
    c X64IR:NEW-BUILDER ;
 
-: HIR-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-DEFAULT
-   c HIR:NEW-BUILDER ;
-
 \ The allocator, its validator, the emitter and the shared spill pass, bound to
 \ the module a stage is about to write. Selection and each lowering turn both
 \ mint a machine module, and every pass that reads or writes one names that
@@ -135,39 +134,17 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c b  c b X64IR:LOWERING  [: X64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT ;
 
 \ ---- selection ---------------------------------------------------------------
-\ A module with no such loop is handed back UNTOUCHED: rebuilding renumbers
-\ values, so a routine that gained nothing could still come out with other bytes.
-: CLOSED ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
+\ The lowering pass is bound here because a module's symbols are its own. The
+\ source module is NBACK:FREEZE's, for the reason the ARM64 file gives, and the
+\ driver retires it after its last selector.
+: SELECT ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
-   m NLOOP:FOLDS {: n:n :}
-   n 0= if NLOOP:RELEASE m exit then
-   X64SEL:RELEASE
-   c HIR-BUILDER {: nb:IR-BUILD:builder :}
-   c nb X64SEL:BIND-SOURCE
-   c m nb NLOOP:REWRITE {: m1:IR-BUILD:module :}
-   NLOOP:FOLDED n <> if E-NLOOP-PLAN throw then
-   m IR-BUILD:RETIRE
-   m1 ;
-
-\ The lowering pass is bound here because a module's symbols are its own.
-\
-\ THE HIR MODULE IS FROZEN INTERIM, for the reason the ARM64 file gives: it is
-\ never the module this compilation emits, so its freeze derives the edge table
-\ selection reads and leaves the checking to the freeze of the module that
-\ becomes the routine.
-: SELECT ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b NLOOP:BIND-DIALECT
-   c b X64SEL:BIND-SOURCE
-   b IR-BUILD:FUNS D-FUNS !
-   c b IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
-   c m0 CLOSED {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
+   m IR-BUILD:FFUN-ROWS IR-ARENA:OPEN IR-FUN:RFUNS D-FUNS !
    c X64-BUILDER {: xb:IR-BUILD:builder :}
    c xb BIND-MACHINE
    c xb BIND-SPILL
-   c m xb ROUTINE X64SEL:SELECT {: selected:IR-BUILD:module :}
-   m IR-BUILD:RETIRE
-   selected ;
+   c m xb ROUTINE X64SEL:SELECT ;
 
 \ ---- pruning -----------------------------------------------------------------
 \ This machine has no prune pass: src/compiler/native/prune.f rewrites nothing
@@ -248,13 +225,19 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@  NEMIT:ADDR-SITE+
    loop ;
 
-: ROWS ( n -- ) {: at:n :}
-   X64EMIT:BYTES X64EMIT:SIZE 0 NEMIT:OPEN
-   at NEMIT:PLACE
+: OPEN-ROWS ( -- )
+   X64EMIT:BYTES X64EMIT:SIZE 0 ARCH NEMIT:OPEN ;
+
+: SEAL-ROWS ( -- )
    FUNCTION-ROWS
    CALL-ROWS
    ADDR-ROWS
    NEMIT:SEAL ;
+
+: ROWS ( n -- ) {: at:n :}
+   OPEN-ROWS
+   at NEMIT:PLACE
+   SEAL-ROWS ;
 
 \ ---- emission ----------------------------------------------------------------
 \ The spill binding is given back first: the fixpoint above leaves it standing
@@ -282,7 +265,6 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
 \ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
 : RELEASE ( -- )
-   NLOOP:BOUND? if NLOOP:RELEASE then
    X64SEL:BOUND? if X64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
@@ -296,23 +278,23 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    A64SPILL:RESET-SCRATCH
    A64RAV:RESET-SCRATCH
    A64RA:RESET-SCRATCH
-   X64SEL:RESET-SCRATCH
-   NLOOP:RESET-SCRATCH ;
-
-: ARCH ( -- CTARGET:arch )
-   CTARGET-ARCH:X86-64 ;
+   X64SEL:RESET-SCRATCH ;
 
 public
 
 \ The emit row with no slot: a SHADOW emission (emit-x64.f), whose call fields
-\ are zero and whose X64EMIT rows alone say where they go, for a writer that
-\ lays the routine into its own stream and links it there, as the x86-64
-\ kernel does its compiled rows (src/habu/kernel-hir-x64.f). No NEMIT row is
-\ stated: publication reads a placed emission. RETIRE gives this one back too.
+\ are zero and whose rows alone say where they go, for a writer that lays the
+\ routine into its own stream and links it there - the x86-64 kernel its
+\ compiled rows (src/habu/kernel-hir-x64.f), a shadow target every definition
+\ (src/compiler/native/shadow.f). The rows are stated with no placement, so
+\ publication, which commits only a placed emission at the slot it names, never
+\ takes them for its own. RETIRE gives this one back too.
 : EMIT-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    m ACCEPTED
-   c m X64EMIT:EMIT ;
+   c m X64EMIT:EMIT
+   OPEN-ROWS
+   SEAL-ROWS ;
 
 \ The row this backend fills as it loads, stage by stage. src/arch/x86-64/
 \ backend.f has already claimed the registry row these are stored beside.
@@ -322,6 +304,7 @@ public
    ARCH [: PRUNE ;] NBACK:PRUNE!
    ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
    ARCH [: EMIT ;] NBACK:EMIT!
+   ARCH [: EMIT-UNPLACED ;] NBACK:EMIT-UNPLACED!
    ARCH [: RELEASE ;] NBACK:RELEASE!
    ARCH [: RETIRE ;] NBACK:RETIRE!
    ARCH [: X64IR:PROTOTYPE ;] NBACK:PROTOTYPE!

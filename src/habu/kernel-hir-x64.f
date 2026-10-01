@@ -154,7 +154,9 @@ variable TOK?                           \ nonzero once the function has a token
    N-RES @ out <> if s" leaves another result count" REFUSE then
    RETURN
    c in out NBACK:L-NONE NBACK:DECLARE
-   c BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   c BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   c hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    c m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    c m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
    c m X64PASS:EMIT-UNPLACED

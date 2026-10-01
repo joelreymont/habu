@@ -1,9 +1,11 @@
 ---
 title: Emit a second target through NSHADOW
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.706966+03:00"
+closed-at: "2026-10-01T08:30:00+03:00"
+close-reason: test/compiler/shadow.f passes on the rebuilt engine and it rebuilds master to b4e05778 (host swap)
 blocks:
   - habu-fill-nemit-from-d8c030e4
   - habu-bind-x86-host-4485acdd

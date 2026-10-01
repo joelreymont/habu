@@ -2,11 +2,21 @@
 \ Every refusal precedes the code window; the commit phase only copies accepted
 \ bytes, records relocation sites, and publishes the record. The emission is
 \ read through NEMIT alone, in bytes, so nothing here decodes an instruction.
+\
+\ THE CODE REGION IS THE RUNNING ENGINE'S, so it takes only the instructions of
+\ the machine NABI:BINDING names: an emission any other backend sealed is
+\ refused first. A shadow target's routine for the same definition is filed
+\ with the record (src/compiler/native/shadow.f), past the window, because the
+\ shadow refused whatever it could before publication began.
 
 require lib/prelude.f
 require lib/errors.f
+require src/compiler/target.f
+require src/compiler/binding.f
+require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/native/emission.f
+require src/compiler/native/shadow.f
 require src/habu/code-span.f
 
 package NPUB
@@ -108,7 +118,12 @@ TRUSTED: APPEND-PENDING ( n -- )
    f DNAME-INT and 0<> if E-NPUB-PENDING throw then
    f DNAME-IMM and 0<> if E-NPUB-PENDING throw then ;
 
+: TARGET-CK ( -- )
+   NEMIT:ARCH  NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:EQ
+   0= if E-NPUB-TARGET throw then ;
+
 : PENDING-PROVE ( -- n n n )
+   TARGET-CK
    NEMIT:SIZE {: size:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
@@ -148,6 +163,7 @@ public
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx fn size UNIT-NOTIFY
    idx fn size COMMIT
+   idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx PENDING-FACTS ;
 
@@ -155,6 +171,7 @@ public
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    idx fn size UNIT-NOTIFY
    idx fn size COMMIT
+   idx NSHADOW:PUBLISH
    fn off +  size off - RECORDED-LEN  DOES-RECORD
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH

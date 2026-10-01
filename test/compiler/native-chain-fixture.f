@@ -69,8 +69,9 @@ private
 : SELECTED ( IR-CTX:ctx IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
    NEFF:VALIDATE
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:NEFF:routine :}
-   c b A64SEL:BIND-SOURCE
+   c b HIR:ENSURE-VOCABULARY
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
    c A64-BUILDER {: ab:IR-BUILD:builder :}
    c ab A64IR:MACHINE  c ab A64IR:VOCABULARY  A64RA:BIND-DIALECT
    c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT

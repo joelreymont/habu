@@ -702,6 +702,20 @@ public
    loop
    u ;
 
+\ The identity a frozen module gave these bytes, if it interned them: the lookup
+\ INTERN makes before it appends, through the same bucket index, which lives in
+\ the arena's descriptor and so outlives the freeze. A reader in another context
+\ asks a frozen module this, because it cannot intern into it.
+: FFIND ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id bool )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key p u:n :}
+   u 0 < if E-IR-SYM-LEN throw then
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr key KEY-CK
+   pr rr p u  p u HASH  LOOKUP {: hit:n :}
+   hit 0 < if key 0 IR-ID:PACK-SYMBOL false exit then
+   key hit IR-ID:PACK-SYMBOL true ;
+
 private
 get-current prot-wid-add
 

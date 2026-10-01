@@ -70,7 +70,9 @@ private
 
 : ROWS-EMIT ( n n NBACK:linkage -- ) {: in:n out:n l:NBACK:linkage :}
    CC in out l NBACK:DECLARE
-   CC BB NBACK:SELECT {: m0:IR-BUILD:module :}
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   hm IR-BUILD:RETIRE
    CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    CC m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
    CC m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;

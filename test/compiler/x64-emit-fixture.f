@@ -1260,8 +1260,9 @@ private
 \ allocator and the validator are: a module's opcode and key identities are its
 \ own ordinals, so all three passes take them from it once.
 : SELECTED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -1300,8 +1301,9 @@ private
 
 : DSTACK-SELECTED ( n n -- IR-BUILD:module )
    {: in:n out:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
@@ -1331,8 +1333,9 @@ private
 \ Selected, allocated and accepted under the one contract given.
 : UNDER ( NEFF:routine -- IR-BUILD:module )
    {: r :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    X64-BUILDER {: xb:IR-BUILD:builder :}
    CC xb X64M:MACHINE  CC xb X64IR:VOCABULARY  A64RA:BIND-DIALECT
    CC xb  CC xb X64IR:VOCABULARY  A64RAV:BIND-DIALECT

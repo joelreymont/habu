@@ -663,43 +663,50 @@ $3FF8000000000000 constant HALF3-BITS      \ 1.5e0 as a binary64
    NEFF:TRAITS-NONE 0 0 A64M:MACHINE NEFF:ROUTINE ;
 
 : SELECTED ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER NO-PLACES X64SEL:SELECT ;
 
 : SELECTED-LEAF ( n n -- IR-BUILD:module )
    {: in:n out:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER  X64ABI:SCRATCH in out X64ABI:LEAF  X64SEL:SELECT ;
 
 : SELECTED-FRAMED ( n n n -- IR-BUILD:module )
    {: in:n out:n spills:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER  X64ABI:SCRATCH in out spills X64ABI:LEAF-FRAMED
    X64SEL:SELECT ;
 
 : SELECTED-CALL ( n n -- IR-BUILD:module )
    {: in:n out:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER  X64ABI:SCRATCH in out X64ABI:CALL  X64SEL:SELECT ;
 
 : SELECTED-TAIL ( n n -- IR-BUILD:module )
    {: in:n out:n :}
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER  X64ABI:SCRATCH in out X64ABI:TAIL  X64SEL:SELECT ;
 
 : SELECTED-NORET ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER X64ABI:SCRATCH 1 0 0 X64ABI:NORET-FRAMED X64SEL:SELECT ;
 
 : SELECTED-A64 ( -- IR-BUILD:module )
-   CC BB X64SEL:BIND-SOURCE
+   CC BB HIR:ENSURE-VOCABULARY
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
    CC m X64-BUILDER A64-CONV X64SEL:SELECT ;
 
 \ ---- reading the selected module ---------------------------------------------
@@ -844,20 +851,45 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ the case the copy exists for: the machine add reads the copy and the original.
 \ The COUNT is asserted because a selection that dropped the copy would carry
 \ these same opcodes with one instruction fewer.
-: SQUARE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
-   HIR-MOD
-   BUILD-SQUARE
-   SELECTED READ!
+: SQUARE-READ ( -- n bool bool bool bool bool )
    OPS
    0 s" x64.mov" OPCODE-IS?
    0 0 OPERAND@ 0 ARG@ SAME-VALUE?
    1 s" x64.add" OPCODE-IS?
    1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
    1 1 OPERAND@ 0 ARG@ SAME-VALUE? ;
+: SQUARE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED READ!
+   SQUARE-READ ;
 
 : SQUARE-CASE ( -- )
    s" an addition over one value twice copies it: the tie destroys operand 0" T-LABEL
    WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 3 T= ;
+
+\ The module a selector binds is FROZEN, and a frozen module answers its own
+\ identities to a reader in any context: here it is bound and selected in a
+\ context nested inside the one that built it, as a second target's selection
+\ is, and comes out the same selection.
+: NESTED-SQUARE ( IR-BUILD:module IR-CTX:ctx -- n bool bool bool bool bool )
+   {: m:IR-BUILD:module c:IR-CTX:ctx :}
+   c 0 W-CTX !
+   m X64SEL:BIND-SOURCE
+   CC m X64-BUILDER NO-PLACES X64SEL:SELECT READ!
+   SQUARE-READ ;
+
+: NESTED-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+   HIR-MOD
+   BUILD-SQUARE
+   CC BB HIR:ENSURE-VOCABULARY
+   CC BB IR-BUILD:FREEZE
+   WBND [: NESTED-SQUARE ;] IR-CTX:WITH-CONTEXT ;
+
+: NESTED-CASE ( -- )
+   s" a module frozen in one context selects the same in a nested one" T-LABEL
+   WBND [: NESTED-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE 3 T= ;
 
 \ Two different operands, and the rule still turns on the one being destroyed:
@@ -1555,15 +1587,17 @@ variable WANT-U
 
 : TWICE-BIND-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   CC BB X64SEL:BIND-SOURCE
-   CC BB X64SEL:BIND-SOURCE ;
+   CC BB HIR:ENSURE-VOCABULARY
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m X64SEL:BIND-SOURCE
+   m X64SEL:BIND-SOURCE ;
 
 : WRONG-DIALECT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c X64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b X64SEL:BIND-SOURCE ;
+   c b IR-BUILD:FREEZE X64SEL:BIND-SOURCE ;
 
 \ The pass is told ONE module and every ordinal it reads - opcodes, attribute
 \ keys, the memory type - is that module's own. A frozen module it was never
@@ -1571,8 +1605,8 @@ variable WANT-U
 : OTHER-MODULE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
-   CC BB X64SEL:BIND-SOURCE
-   CC BB IR-BUILD:FREEZE drop
+   CC BB HIR:ENSURE-VOCABULARY
+   CC BB IR-BUILD:FREEZE X64SEL:BIND-SOURCE
    X64-BUILDER {: b:IR-BUILD:builder :}
    CC b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    CC m X64-BUILDER NO-PLACES X64SEL:SELECT drop ;
@@ -1609,6 +1643,19 @@ variable WANT-U
 : OTHER-MODULE ( -- )
    WBND [: OTHER-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ Nothing can be interned into a frozen module, so one that froze without the
+\ dialect's whole vocabulary is refused by name rather than bound to identities
+\ that would match nothing.
+: UNPREPARED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c HIR:NAME HIR:MAJOR HIR:MINOR IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b IR-BUILD:FREEZE X64SEL:BIND-SOURCE ;
+
+: UNPREPARED ( -- )
+   WBND [: UNPREPARED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : EXTRA-OPCODE ( -- )
    WBND [: EXTRA-OPCODE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -1637,7 +1684,9 @@ variable WANT-U
    s" binding a module of another dialect is refused" T-LABEL
    [: WRONG-DIALECT ;] E-X64SEL-SOURCE TTHROWSQ
    s" selecting a module the pass was not told about is refused" T-LABEL
-   [: OTHER-MODULE ;] E-X64SEL-SOURCE TTHROWSQ ;
+   [: OTHER-MODULE ;] E-X64SEL-SOURCE TTHROWSQ
+   s" binding a frozen module that lacks the dialect's vocabulary is refused" T-LABEL
+   [: UNPREPARED ;] E-HIR-VOCAB TTHROWSQ ;
 
 : OPCODE-REFUSE-CASES ( -- )
    s" an operation of an opcode with no selection rule is refused" T-LABEL
@@ -1682,6 +1731,7 @@ public
    WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT
    LIT-CASE
    SQUARE-CASE
+   NESTED-CASE
    REUSE-CASE
    IMM-REUSE-CASE
    MASK-CASE

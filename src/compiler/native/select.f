@@ -3476,34 +3476,29 @@ create D-MEET DSLOT-MAX cells allot
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64SEL-SOURCE throw then ;
 
-: HIR-CK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b IR-BUILD:DIALECT@  HIR:NAME IR-BUILD:SYMBOL-IS?
-   0= if E-A64SEL-SOURCE throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ HIR:MAJOR <> if E-A64SEL-SOURCE throw then
-   c b IR-BUILD:SCHEMA-MINOR@ HIR:MINOR <> if E-A64SEL-SOURCE throw then ;
-
 public
 
 \ ---- binding the source dialect ----------------------------------------------
-\ The only moment a module can be asked its opcode identities, because its
-\ symbols are its own ordinals.
-: BIND-SOURCE ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+\ Asked of the FROZEN module, because its symbols are its own ordinals and a
+\ frozen module answers them to a reader in any context: the selection of a
+\ second target binds the module the first one bound. NBACK:FREEZE made the
+\ whole vocabulary present before the module froze.
+: BIND-SOURCE ( IR-BUILD:module -- )
+   {: m:IR-BUILD:module :}
    BND-MODE @ BOUND-YES = if E-A64SEL-BIND throw then
-   c b HIR-CK
-   b IR-BUILD:MODULE@ 0 BND-MOD !
+   m HIR:FROM? 0= if E-A64SEL-SOURCE throw then
+   m IR-BUILD:FMODULE 0 BND-MOD !
    HIR:OPCODES 0 ?do
-      c b i HIR:BIND i BND-OP !
+      m i HIR:FBIND i BND-OP !
    loop
-   c b HIR:KEY-VALUE 0 BND-VAL !
-   c b HIR:KEY-ADDR  0 BND-ADDR !
-   c b HIR:KEY-FUN   0 BND-FUN !
-   c b HIR:KEY-ENTRY 0 BND-ENTRY !
-   c b HIR:KEY-IN    0 BND-IN !
-   c b HIR:KEY-OUT   0 BND-OUT !
-   c b HIR:MEM-TYPE 0 BND-MEM !
-   c b HIR:REAL-TYPE 0 BND-REAL !
+   m HIR:FKEY-VALUE 0 BND-VAL !
+   m HIR:FKEY-ADDR  0 BND-ADDR !
+   m HIR:FKEY-FUN   0 BND-FUN !
+   m HIR:FKEY-ENTRY 0 BND-ENTRY !
+   m HIR:FKEY-IN    0 BND-IN !
+   m HIR:FKEY-OUT   0 BND-OUT !
+   m HIR:FMEM-TYPE  0 BND-MEM !
+   m HIR:FREAL-TYPE 0 BND-REAL !
    BOUND-YES BND-MODE ! ;
 
 \ Each pass answers for itself, because a caller cleaning up after a refusal
