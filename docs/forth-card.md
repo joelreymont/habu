@@ -30,6 +30,8 @@ public
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
   global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) — rename the public.
+  Close a using opened before `package` after `;package`: a `;using` inside
+  the package that would close it is `ENGINE-ERROR:USING-OUTER` (rc 104).
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is

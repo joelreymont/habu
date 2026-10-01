@@ -45,6 +45,7 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 92 constant E-OVERFLOW
 93 constant E-UNBALANCED
 94 constant E-AMBIGUOUS
+104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
 
@@ -118,6 +119,29 @@ s" using UA using UA using UA using UA using UA using UA using UA using UA using
 s" using UA AW drop ;using AW drop" UCE-CATCH E-REJECT T=
 \ ;package clears a using opened inside the package
 s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH E-REJECT T=
+
+\ === a package's ;using closes only the package's own usings ===
+\ `;package` restores the using depth the package opened at, so a `;using` inside
+\ the package that closes a using opened before it is refused by name: it used to
+\ come undone at `;package`, and AW resolved past it.
+s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-OUTER T=
+\ the production source verifier refuses the same nesting
+s" using UA package UQ ;using ;package" VS-CATCH E-USING-OUTER T=
+\ a using opened and closed inside the package, and one opened before `package`
+\ and closed after `;package`, are unchanged on both routes
+s" package UQ using UA AW drop ;using ;package" UCE-CATCH 0 T=
+s" using UA package UQ AW drop ;package AW drop ;using" UCE-CATCH 0 T=
+s" package UQ using UA public : UT-Q2 ( -- n ) AW ; ;using ;package" VS-CATCH 0 T=
+s" using UA package UQ public : UT-Q3 ( -- n ) AW ; ;package : UT-Q4 ( -- n ) AW ; ;using" VS-CATCH 0 T=
+\ A package an included buffer leaves open keeps none of the buffer's usings,
+\ and the verifier's inherited replay reads the engine's using floor: a using
+\ opened in the package closes, and past `;package` AW is unresolved.
+s" using UA package UQF" UCE-CATCH 0 T=
+s" ;package : UT-QF ( -- n ) AW ;" VS-CATCH E-REJECT T=
+s" using UB BW drop ;using" UCE-CATCH 0 T=
+s" using UB ;using" VS-CATCH 0 T=
+s" ;package AW drop" UCE-CATCH E-REJECT T=
+;package
 
 \ === global-vs-used-public shadow (dot habu-err-on-global-e62f806c) ===
 \ A bare tail inside a using scope that resolves to a global AND a used public of

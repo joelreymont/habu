@@ -639,6 +639,48 @@ variable WANT-RC
    67 s" using shadow" GE-EXPECT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
+\ `;package` restores the using depth its package opened at, so inside a
+\ package `;using` closes only a using the package opened. One opened before
+\ `package` is refused by name: closed, it came back at `;package` and the
+\ definition after it read OI-PKG:OI-SEVEN against the global OI-SEVEN
+\ (E-USING-SHADOW-GLOBAL). A package's own using, and one opened before
+\ `package` and closed after `;package`, are unchanged. In an included file the
+\ refusal is a throw the includer catches, and the file's using ends with it.
+\ A package an included file leaves open keeps none of the file's usings: the
+\ includer's own `;using` in it closes, and `;package` reopens nothing.
+: USING-ACROSS-PACKAGE ( -- )
+   GE-SRC-RESET
+   s" using OI-PKG package OI-T ;using ;package s~ : OI-SH ( -- n ) OI-SEVEN ;~ evaluate" QLINE
+   s" oi-using-outer.f" BOTH
+   ENGINE-ERROR:USING-OUTER s" hb: ;using would close a using opened outside the package at " S\" oi-using-outer.f:1\n" DIED-AT
+   s" package OI-T using OI-FXA OI-TWIN . ;using OI-TWIN" s" oi-using-own.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   s" using OI-FXA package OI-T OI-TWIN . ;package OI-TWIN . ;using OI-TWIN" s" oi-using-around.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" using OI-FXA package OI-T ;using" GE-SRC-LINE
+   s" oi-nested-using-outer.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" s~ oi-nested-using-outer.f~ ' included catch . OI-TWIN" QLINE
+   s" oi-include-using-outer.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 104\n" CASE$ GE-EXPECT-OUT
+   s" hb: ;using would close a using opened outside the package at " CASE$ GE-EXPECT-ERR-HAS
+   S\" oi-nested-using-outer.f:1\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR-HAS
+   GE-SRC-RESET
+   s" using OI-FXA package OI-T" GE-SRC-LINE
+   s" oi-nested-package-open.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   s" include oi-nested-package-open.f using OI-FXB OI-TWIN . ;using ;package OI-TWIN ." s" oi-include-package-open.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 2\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
 : EXPORT-TOP-LEVEL ( -- )
@@ -1078,6 +1120,7 @@ private
    AMBIGUITY
    TICK-USED
    USING-SHADOW
+   USING-ACROSS-PACKAGE
    EXPORT-TOP-LEVEL
    EXPORT-ALIASES
    EXPORT-REFUSALS

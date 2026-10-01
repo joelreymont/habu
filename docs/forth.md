@@ -312,6 +312,13 @@ for a one-off call or to escape a collision.
   one with no open `using` is an error. At most `USE-MAX` (16) concurrent
   usings; a further one is rejected. Consumer files close explicitly with
   `;using`.
+- Inside a package `;using` closes only a `using` the package opened. Close one
+  opened before `package` after `;package`. A `;using` inside the package that
+  would close it is refused by name (`ENGINE-ERROR:USING-OUTER`, rc 104; the
+  source verifier's `E-USING-OUTER`, 7146), because `;package` restores the
+  depth the package opened at: `using QA package RB ;using ;package` left QA
+  open, and in the one stream `tools/build-fixpoint.f` concatenates it reached
+  every later file.
 - A package whose public tails are ordinary verbs cannot be imported:
   `using TCP4` refuses at the first bare `READ`, `WRITE` or `CLOSE`
   (`E-USING-SHADOW-GLOBAL`) because the global exists. Qualify such a package;
@@ -355,7 +362,10 @@ for a one-off call or to escape a collision.
   runs; the next reference to that tail is refused.
 - `using` state is file-local: snapshotted per eval frame and REPL line and
   rolled back with the package scope, so a `using` left open in an included
-  file, or aborted by a throw, never leaks to the caller.
+  file, or aborted by a throw, never leaks to the caller. A package an included
+  file leaves open keeps none of that file's usings: its using floor drops to
+  the restored depth, so the includer's `;package` reopens none of them and
+  the includer's own `;using` inside the package closes.
 - **A package word shadows the same-named global or primitive, and nothing
   reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against

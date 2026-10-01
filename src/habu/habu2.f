@@ -8466,8 +8466,9 @@ public
    C-PACKAGE-ENSURE
    PROT:LCLOSE LABEL@ BL,
    \ remember the using-scope depth at package open; `;package` restores it so usings
-   \ opened inside this package block end at ;package (x9=addr, x10=value scratch;
-   \ x11/x12/x5 hold the package wids/record and stay live for the stores below).
+   \ opened inside this package block end at ;package, and `;using` refuses to pop
+   \ below it (C-END-USING) (x9=addr, x10=value scratch; x11/x12/x5 hold the package
+   \ wids/record and stay live for the stores below).
    9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR,
    9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
@@ -8513,7 +8514,8 @@ public
 
 \ ---- `using NAME` / `;using`: consumer-side package import (dot habu-using-import-pkg-a07dd7ba) ----
 \ `using NAME` makes package NAME's PUBLIC wordlist visible to bare lookup until the
-\ matching `;using`, the enclosing `;package`, or the end of the load file. Only NAME's
+\ matching `;using`, the enclosing `;package`, or the end of the load file; inside a
+\ package `;using` closes only a using the package opened. Only NAME's
 \ public WID joins the search (privates stay invisible), definitions still target the
 \ current scope's wordlist (nothing lands in NAME), and qualified NAME:WORD is unchanged.
 \ The used-publics search (EMIT-FIND-USED) runs only after the open-scope + global chain
@@ -8601,13 +8603,24 @@ public
 
 : C-END-USING ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL {: ok:label umsg:label :}
+   LBL LBL LBL LBL {: ok:label umsg:label own:label omsg:label :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
    8 ok CBNZ,
       0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
       0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = ENGINE-ERROR:USING-UNBALANCED
    umsg LBL,  s" hb: ;using without an open using" BYTES,
    ok LBL,
+   \ In an open package the most recent using must be the package's own. One opened
+   \ before `package` sits at or below the depth the package opened at, which
+   \ `;package` restores, so closing it here would silently come undone there.
+   9 DATA PKG-PUB-CELL LDR,  9 own CBZ,                     \ no package open -> any open using closes
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  9 9 0 LDR,    \ x9 = depth at package open
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
+   8 9 CMP,  C-HI own BCOND,                                \ x8 (depth) above it -> opened in the package
+      0 2 MOVZ,  1 omsg ADR,  2 57 MOVZ,  NR-WRITE SYS,
+      0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
+   omsg LBL,  s" hb: ;using would close a using opened outside the package" BYTES,
+   own LBL,
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg), depth--
 
 \ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global chain
@@ -10583,7 +10596,7 @@ public
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : EM-EVAL-CLEAN-EXIT ( -- )
-   LBL {: bounds:label :}
+   LBL LBL {: bounds:label floor:label :}
    13 DATA EVAL-TOP-CELL LDR,
    14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
    12 XDS 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
@@ -10599,6 +10612,13 @@ public
    15 14 EVAL-PKG ADDI,
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR,
+   \ A package the buffer left open keeps none of the buffer's usings: its using
+   \ floor drops to the restored depth, so `;package` cannot reopen one and a
+   \ `;using` may close one the includer opens in the package (C-END-USING).
+   15 USE-PKG-SAVE-CELL LIT64,  15 DATA 15 ADD,  10 15 0 LDR,
+   10 9 CMP,  C-LS floor BCOND,                    \ floor <= restored depth -> keep it
+   9 15 0 STR,
+   floor LBL,
    9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR,

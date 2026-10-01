@@ -226,12 +226,19 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    PKG-NOTIFY-USING
    d 1+ USE-DEPTH-CELL CELL! ;
 
+\ In an open package the most recent using must be the package's own: one
+\ opened before `package` sits at or below the depth `;package` restores, so
+\ closing it here would come undone there.
 : PKG-END-USING ( -- )
    TASK-GUARD
    FIND-USE-DEPTH {: d:n :}
    d 0= if
       s" hb: ;using without an open using" SAY
       ENGINE-ERROR:USING-UNBALANCED THROW-AT
+   then
+   PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
+      s" hb: ;using would close a using opened outside the package" SAY
+      ENGINE-ERROR:USING-OUTER THROW-AT
    then
    d 1- USE-DEPTH-CELL CELL! ;
 

@@ -942,6 +942,11 @@ $90 constant CK-PKG-REC-OFF
 \ with the other engine offsets rather than with the mirror.
 $9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
+\ The depth the engine's open package opened at: its using floor, which
+\ `;package` restores and `;using` may not pop below, and which the engine
+\ lowers when an included buffer ends. An inherited replay seeds its floor here.
+$9C10 constant CK-USE-FLOOR-OFF            \ = layout.f USE-PKG-SAVE-CELL (DATA-relative); engine owns it
+: CK-USE-ENGINE-FLOOR ( -- n )  data-base CK-USE-FLOOR-OFF + @ ;
 7136 constant E-PKG-CONTEXT
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
@@ -1184,12 +1189,14 @@ variable VERIFY-FLOOR0
    \ Seed the owned using depth the same way the package half is proved: a
    \ neutral replay declares top level and therefore no imports, while an
    \ inherited replay continues the caller's scope and keeps the caller's usings,
-   \ which is what this window did before it owned a depth at all. VPKG-SAVE
-   \ above has already recorded the entry value for VPKG-RESTORE.
+   \ which is what this window did before it owned a depth at all, and the open
+   \ package's using floor as the engine holds it now. VPKG-SAVE above has
+   \ already recorded both entry values for VPKG-RESTORE.
    CHECKER-PACKAGE-NEUTRAL? IF
       0 CHECKER-USE-OWNED-N !
    ELSE
       CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
+      CK-USE-ENGINE-FLOOR CHECKER-PACKAGE-USE-N !
    THEN ;
 REG-PROTECT
 
@@ -9064,6 +9071,10 @@ package CHECKER-REG
 \ real depth untouched, so they refuse rather than silently disagree with the
 \ engine.
 7142 constant E-USING-UNBALANCED           \ `;using` with no `using` open in a replay
+\ Inside a package a `;using` closes only an import the package opened: one
+\ opened before `package` is at or below the depth CHECKER-END-PACKAGE restores,
+\ so closing it would come undone there (the engine's ENGINE-ERROR:USING-OUTER).
+7146 constant E-USING-OUTER                \ `;using` in a package closing an import opened before it
 
 : CHECKER-USING-PUSH ( ptr u8 n -- )
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
@@ -9074,6 +9085,7 @@ package CHECKER-REG
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-USE-OWNED-N @ {: d:n :}
    d 0 <= IF E-USING-UNBALANCED throw THEN
+   CHECKER-PACKAGE-ACTIVE? d CHECKER-PACKAGE-USE-N @ <= and IF E-USING-OUTER throw THEN
    d 1 - CHECKER-USE-OWNED-N ! ;
 
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
