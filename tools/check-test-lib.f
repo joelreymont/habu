@@ -2396,7 +2396,8 @@ create BIG $2000 allot   variable BIG-U
 \ A definer with nothing after it has no name to read. Each source puts one
 \ alone on its second line, two columns in: the loader refuses the source, and
 \ the check refuses it in prose and in JSON at that place, naming the definer,
-\ without reading past the last token.
+\ without reading past the last token. Checked as a file, whose statements are
+\ also walked to place the files it loads, it is refused once.
 : NONAME-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n d:ptr du:n :}
    SB-RESET
    a u SB-APPEND $0a SB-APPEND-C
@@ -2423,7 +2424,11 @@ create BIG $2000 allot   variable BIG-U
    SB-RESET
    s\" \"word\":\"" SB-APPEND
    d du SB-APPEND $22 SB-APPEND-C
-   CAP-ERR erru3 SB$ CONTAINS? TTRUE ;
+   CAP-ERR erru3 SB$ CONTAINS? TTRUE
+   BAD$ PATH-RUN 70 T=
+   {: outu4:n erru4:n :}
+   outu4 0 T=
+   CAP-ERR erru4 10 COUNT-CHAR 1 T= ;
 
 : TEST-OPERAND-MISSING ( -- )
    s" require lib/type/deftype.f" s" DEFTYPE" NONAME-REFUSED
@@ -2685,6 +2690,153 @@ create BIG $2000 allot   variable BIG-U
    CTOR-BAD$ DIRECT-STDIN {: outu:n erru:n rc:n :}
    outu erru rc s" ckt-out-bad" EXPECT-PREVERIFY-IN
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
+
+\ ---- a loaded file is expanded where its loader sits ------------------------
+\ The pre-pass verifies a source and the files it loads in the order the loader
+\ runs them: the text before a top-level `required` first, then the file it
+\ loads (once), then the rest. How that can fail, and what holds each way:
+\   - the loaded file checked ahead of the whole source, so a word the source
+\     defines before its require is undefined in it (REQ-ORDER, the reduced
+\     case behind every library that requires lib/aio.f);
+\   - the loaded file's words visible to the source before the require
+\     (REQ-EARLY), or the source's later words visible to the loaded file
+\     (REQ-LATE): the load path refuses both E-UNDEFINED, and so must this;
+\   - a file expanded twice when two requires or two files name it (REQ-ONCE):
+\     a second verification is E-DUPLICATE-DEFINITION;
+\   - a require cycle looping or reordering (REQ-CYCLE-SPLIT): a file still
+\     being expanded is a no-op, as `required` of a registered path is;
+\   - a split inside a definition, package or `using` block: a verify window
+\     opens at top level and closes every scope it opened, so a cut there loses
+\     the definition or the scope. A loader in a colon body runs when the word
+\     does, so its file expands after that definition and any package around it
+\     (REQ-BODY, the shape of lib/aio.f's AIO-LOAD:HOST);
+\   - a diagnostic after a split naming the wrong file, line or column
+\     (REQ-ORIGIN);
+\   - the check run loading in another order: it loads through the real loader,
+\     and every accepted case here runs it;
+\   - the subject reached again through a require: it is still being expanded,
+\     so the pre-pass expands it once; the run loading its text a second time is
+\     CHK-BUILD-RUN's (dot c79b86b7);
+\   - a path resolved against the wrong directory: expansion keeps discovery's
+\     resolution against the entry root;
+\   - the closure capacity: one split per expanded file and one tail per file
+\     keep the segments under twice CHK-DEP-MAX;
+\   - check time: each verified file is lexed once more to place its splits.
+\ The fixtures name each other by absolute path because the run loads the
+\ subject's text from a temporary file, where a path relative to the subject's
+\ directory does not resolve.
+
+create REQ-PATH FS-PATH-CAP allot
+variable REQ-U
+
+: REQ$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ a fixture in the test root
+   ROOT$ a u REQ-PATH JOIN-PATH REQ-U !
+   REQ-PATH REQ-U @ ;
+
+: REQ-LINE+ ( ptr u8 n -- )
+   SB-APPEND $0a SB-APPEND-C ;
+
+: REQ-LIT+ ( ptr u8 n -- )   \ `s" <fixture path>"`
+   REQ$ {: p:ptr pu:n :}
+   $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
+   p pu SB-APPEND
+   $22 SB-APPEND-C ;
+
+: REQ-LOAD+ ( ptr u8 n -- )
+   REQ-LIT+ s"  required" REQ-LINE+ ;
+
+: REQ-WRITE ( ptr u8 n -- )   \ the built text becomes the named fixture
+   REQ$ SB$ WRITE-ALL ;
+
+: REQ-RUN ( ptr u8 n -- n n n )
+   REQ$ PATH-RUN ;
+
+: TEST-REQUIRE-ORDER ( -- )
+   SB-RESET s" : CKT-RQ-USE ( -- n ) CKT-RQ-SECRET ;" REQ-LINE+
+   s" req-order-dep.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-SECRET ( -- n ) 5 ;" REQ-LINE+
+   s" req-order-dep.f" REQ-LOAD+
+   s" req-order.f" REQ-WRITE
+   s" req-order.f" REQ-RUN EXPECT-ACCEPTED ;
+
+: TEST-REQUIRE-EARLY ( -- )
+   SB-RESET s" : CKT-RQ-LATER ( -- n ) 6 ;" REQ-LINE+
+   s" req-early-dep.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-EARLY ( -- n ) CKT-RQ-LATER ;" REQ-LINE+
+   s" req-early-dep.f" REQ-LOAD+
+   s" req-early.f" REQ-WRITE
+   s" req-early.f" REQ-RUN s" CKT-RQ-LATER" EXPECT-PREVERIFY-UNDEFINED ;
+
+: TEST-REQUIRE-LATE ( -- )
+   SB-RESET s" : CKT-RQ-NEEDS ( -- n ) CKT-RQ-LATE ;" REQ-LINE+
+   s" req-late-dep.f" REQ-WRITE
+   SB-RESET s" req-late-dep.f" REQ-LOAD+
+   s" : CKT-RQ-LATE ( -- n ) 7 ;" REQ-LINE+
+   s" req-late.f" REQ-WRITE
+   s" req-late.f" REQ-RUN s" CKT-RQ-LATE" EXPECT-PREVERIFY-UNDEFINED ;
+
+: TEST-REQUIRE-ONCE ( -- )
+   SB-RESET s" : CKT-RQ-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" req-once-dep.f" REQ-WRITE
+   SB-RESET s" req-once-dep.f" REQ-LOAD+
+   s" : CKT-RQ-MID ( -- n ) CKT-RQ-ONE 1 + ;" REQ-LINE+
+   s" req-once-mid.f" REQ-WRITE
+   SB-RESET s" req-once-dep.f" REQ-LOAD+
+   s" req-once-mid.f" REQ-LOAD+
+   s" req-once-dep.f" REQ-LOAD+
+   s" : CKT-RQ-TWO ( -- n ) CKT-RQ-ONE CKT-RQ-MID + ;" REQ-LINE+
+   s" req-once.f" REQ-WRITE
+   s" req-once.f" REQ-RUN EXPECT-ACCEPTED ;
+
+\ The subject stays out of the cycle: the run would load it a second time.
+\ req-cycle-a.f is split at its loader; its tail uses req-cycle-b.f's word.
+: TEST-REQUIRE-CYCLE-SPLIT ( -- )
+   SB-RESET s" req-cycle-a.f" REQ-LOAD+
+   s" : CKT-RQ-CY-B ( -- n ) CKT-RQ-CY-A 1 + ;" REQ-LINE+
+   s" req-cycle-b.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-CY-A ( -- n ) 1 ;" REQ-LINE+
+   s" req-cycle-b.f" REQ-LOAD+
+   s" : CKT-RQ-CY-C ( -- n ) CKT-RQ-CY-B 1 + ;" REQ-LINE+
+   s" req-cycle-a.f" REQ-WRITE
+   SB-RESET s" req-cycle-a.f" REQ-LOAD+
+   s" : CKT-RQ-CY-USE ( -- n ) CKT-RQ-CY-C ;" REQ-LINE+
+   s" req-cycle.f" REQ-WRITE
+   s" req-cycle.f" REQ-RUN EXPECT-ACCEPTED ;
+
+\ Expanded right after LOAD-HOST, the loaded file's `package` would nest in
+\ CKT-RQ-LOAD; expanded at the end of the file, CKT-RQ-AFTER would miss its word.
+: TEST-REQUIRE-BODY ( -- )
+   SB-RESET s" package CKT-RQ-HOST" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-HOST-USE ( -- n ) CKT-RQ-HOOK 1 + ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" req-body-dep.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-HOST" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-HOOK ( -- n ) 7 ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" package CKT-RQ-LOAD" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : LOAD-HOST ( -- ) " SB-APPEND s" req-body-dep.f" REQ-LIT+ s"  required ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" CKT-RQ-LOAD:LOAD-HOST" REQ-LINE+
+   s" : CKT-RQ-AFTER ( -- n ) CKT-RQ-HOST:CKT-RQ-HOST-USE ;" REQ-LINE+
+   s" req-body.f" REQ-WRITE
+   s" req-body.f" REQ-RUN EXPECT-ACCEPTED ;
+
+\ The split falls after `required` on line 4, mid-line, so the refused `dup`
+\ there is placed by the segment's line and column base.
+: TEST-REQUIRE-ORIGIN ( -- )
+   SB-RESET s" : CKT-RQ-ORIGIN-DEP ( -- n ) 1 ;" REQ-LINE+
+   s" req-origin-dep.f" REQ-WRITE
+   SB-RESET $5c SB-APPEND-C s"  the loader below splits this file" REQ-LINE+
+   s" : CKT-RQ-ORIGIN-OK ( -- n ) 1 ;" REQ-LINE+
+   s" req-origin-dep.f" REQ-LIT+ $0a SB-APPEND-C
+   s" required : CKT-RQ-ORIGIN-BAD ( n -- n ) dup ;" REQ-LINE+
+   s" req-origin.f" REQ-WRITE
+   s" req-origin.f" REQ-RUN {: outu:n erru:n rc:n :}
+   outu erru rc EXPECT-PREVERIFY-REFUSED
+   CAP-ERR erru s\" req-origin.f\",\"line\":4,\"column\":41," CONTAINS? TTRUE ;
 
 \ `--all-errors --source-list a b` runs all-errors per ORIGINAL file with
 \ prior entries replayed as support: both bad defs in b report against b's
@@ -2969,6 +3121,13 @@ POISON-RECORD
    s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
    s" check/require-cycle" [: TEST-REQUIRE-CYCLE ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
+   s" check/require-order" [: TEST-REQUIRE-ORDER ;] CASE-RUN
+   s" check/require-early" [: TEST-REQUIRE-EARLY ;] CASE-RUN
+   s" check/require-late" [: TEST-REQUIRE-LATE ;] CASE-RUN
+   s" check/require-once" [: TEST-REQUIRE-ONCE ;] CASE-RUN
+   s" check/require-cycle-split" [: TEST-REQUIRE-CYCLE-SPLIT ;] CASE-RUN
+   s" check/require-body" [: TEST-REQUIRE-BODY ;] CASE-RUN
+   s" check/require-origin" [: TEST-REQUIRE-ORIGIN ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    CLEANUP-RUN

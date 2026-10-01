@@ -60,6 +60,8 @@ $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
 128 constant CHK-DEP-MAX
+\ One split per expanded file and one tail per file bound the segments.
+CHK-DEP-MAX 2 * constant CHK-SEG-MAX
 120000 constant CHK-TIMEOUT-MS
 
 0 constant CHK-SEL-NONE
@@ -97,8 +99,12 @@ create CHK-DEP-STATES CHK-DEP-MAX cells allot
 create CHK-DEP-ENTERS CHK-DEP-MAX cells allot
 create CHK-DEP-LOWS CHK-DEP-MAX cells allot
 create CHK-DIR-IDS CHK-DEP-MAX cells allot
+create CHK-DIR-ATS CHK-DEP-MAX cells allot
 create CHK-DEP-ORDER CHK-DEP-MAX cells allot
 create CHK-WAIT-IDS CHK-DEP-MAX cells allot
+create CHK-SEG-IDS CHK-SEG-MAX cells allot
+create CHK-SEG-STARTS CHK-SEG-MAX cells allot
+create CHK-SEG-ENDS CHK-SEG-MAX cells allot
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -120,6 +126,7 @@ variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
 variable CHK-SEL-LABEL-U
 variable CHK-SRC-U
+variable CHK-PRE-AT
 variable CHK-PRE-U
 variable CHK-RUN-U
 variable CHK-ORIGIN-U
@@ -145,6 +152,7 @@ variable CHK-DIR-N
 variable CHK-DEP-ORDER-N
 variable CHK-ENTER-N
 variable CHK-WAIT-N
+variable CHK-SEG-N
 variable CHK-DISC-ID
 variable CHK-ALL-ID
 variable CHK-ALL-RC
@@ -342,6 +350,7 @@ private
 
 : CHK-RUN-TEMP-CLEAR ( -- )
    0 CHK-SRC-U !
+   0 CHK-PRE-AT !
    0 CHK-PRE-U !
    0 CHK-RUN-U !
    0 CHK-ORIGIN-U !
@@ -366,6 +375,7 @@ private
    0 CHK-DEP-ORDER-N !
    0 CHK-ENTER-N !
    0 CHK-WAIT-N !
+   0 CHK-SEG-N !
    0 CHK-DISC-ID !
    0 CHK-ALL-ID !
    0 CHK-ALL-RC ! ;
@@ -515,10 +525,22 @@ private
    a u CHK-DEP-FIND dup 0 >= if exit then
    drop a u root rootu CHK-DEP-NEW ;
 
-: CHK-DIR-PUSH ( n -- ) {: id:n :}
+\ A direct dep and the byte offset of the loader that names it, which
+\ CHK-EXPAND-POINTS turns into the byte where the dep expands.
+: CHK-DIR-PUSH ( n n -- ) {: id:n at:n :}
    CHK-DIR-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
    id CHK-DIR-IDS CHK-DIR-N @ cells + !
+   at CHK-DIR-ATS CHK-DIR-N @ cells + !
    CHK-DIR-N @ 1+ CHK-DIR-N ! ;
+
+: CHK-DIR-ID@ ( n -- n )
+   cells CHK-DIR-IDS + @ ;
+
+: CHK-DIR-AT@ ( n -- n )
+   cells CHK-DIR-ATS + @ ;
+
+: CHK-DIR-AT! ( n n -- )
+   cells CHK-DIR-ATS + ! ;
 
 : CHK-DEP-ORDER-PUSH ( n -- ) {: id:n :}
    CHK-DEP-ORDER-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
@@ -532,15 +554,165 @@ private
    CHK-WAIT-N @ 1+ CHK-WAIT-N !
    CHK-DEP-WAITING id CHK-DEP-STATE ! ;
 
-: CHK-DEP-DIRECT+ ( ptr u8 n ptr u8 n -- )
-   CHK-DEP-ID CHK-DIR-PUSH ;
+: CHK-SEG-ID@ ( n -- n )
+   cells CHK-SEG-IDS + @ ;
+
+: CHK-SEG-START@ ( n -- n )
+   cells CHK-SEG-STARTS + @ ;
+
+: CHK-SEG-END@ ( n -- n )
+   cells CHK-SEG-ENDS + @ ;
+
+\ An empty span verifies nothing, so it is never recorded.
+: CHK-SEG-PUSH ( n n n -- ) {: id:n start:n end:n :}
+   end start <= if exit then
+   CHK-SEG-N @ CHK-SEG-MAX >= if E-TBL-BOUNDS throw then
+   id CHK-SEG-IDS CHK-SEG-N @ cells + !
+   start CHK-SEG-STARTS CHK-SEG-N @ cells + !
+   end CHK-SEG-ENDS CHK-SEG-N @ cells + !
+   CHK-SEG-N @ 1+ CHK-SEG-N ! ;
+
+: CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
+   path pathu s" src/os/linux/layout.f" LINT-STR= if HB-TARGET-LINUX? exit then
+   path pathu s" src/os/macos/layout.f" LINT-STR= if HB-TARGET-MACOS? exit then
+   path pathu s" src/os/linux-x86-64/layout.f" LINT-STR= if
+      HB-TARGET-LINUX-X86-64? exit
+   then
+   true ;
+
+: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
+   \ Discovery deliberately over-approximates guarded loaders.  The three
+   \ executable layouts cannot share a checker scope: each publishes the same
+   \ global names, while only the current target branch is loadable.
+   id CHK-DEP$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+   CHK-TARGET-LAYOUT-ACTIVE? 0= if false exit then
+   id CHK-DEP$ RESOLVE nip nip 0= ;
+
+: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
+
+: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
+
+\ A raw operand is data: `[char] ;` ends no definition.
+: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
+   k LINT-LEX:OPERAND? if LINT-FALSE exit then
+   k s" ;" CHK-TOK=CI ;
+
+\ A definer reads its name with parse-name, the next whitespace-delimited token
+\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
+\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
+\ the lexer reads the token after the definer again by that rule, so no scan
+\ takes a comment, or the token after one, for the name.
+: CHK-DEFINER-TOK? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
+   k LINT-LEX:OPERAND
+   LINT-TRUE ;
+
+: CHK-TOK-BEFORE? ( n n -- bool ) {: k:n end:n :}   \ token k starts before byte end
+   k LINT-LEX:COUNT >= if LINT-FALSE exit then
+   k LINT-LEX:BYTE@ end < ;
+
+: CHK-TOK-AT ( n -- n ) {: at:n :}   \ the first token starting at or past byte at
+   0 begin dup at CHK-TOK-BEFORE? while 1+ repeat ;
+
+\ Where the loader runs each file a source loads. A top-level loader statement
+\ runs where it sits; one inside a definition runs when the word does, after
+\ that definition at the earliest. A verify window opens at top level and
+\ closes every scope it opened, so a file is cut only between top-level
+\ statements where no package or file-level `using` is open: each loaded file
+\ expands at the first such boundary after its loader, and one loaded inside a
+\ package (lib/aio.f's AIO-LOAD:HOST) once that package closes. A statement
+\ follows verify-source's reading: `:` and `TRUSTED:` run to `;`, `char` and
+\ `'` take the next token at top level and `char` and `[char]` in a body, and
+\ `require` and `include` take their path.
+variable CHK-WALK-PKG                    \ a package is open
+variable CHK-WALK-USE                    \ file-level `using` depth outside a package
+variable CHK-WALK-IX                     \ the first direct dep still waiting for its byte
+
+: CHK-TOP-PARSER? ( n -- bool ) {: k:n :}
+   k s" char" CHK-TOK=CI if LINT-TRUE exit then
+   k s" '" CHK-TOK=CI if LINT-TRUE exit then
+   k s" require" CHK-TOK=CI if LINT-TRUE exit then
+   k s" include" CHK-TOK=CI ;
+
+: CHK-BODY-PARSER? ( n -- bool ) {: k:n :}
+   k s" char" CHK-TOK=CI if LINT-TRUE exit then
+   k s" [char]" CHK-TOK=CI ;
+
+\ A definition opens at `:` or `TRUSTED:`, read as the nominal pass reads it; a
+\ nameless one is that pass's to refuse (CHK-DEFINER?), so the walk only reads.
+: CHK-WALK-OPENER? ( n -- bool ) {: k:n :}
+   k s" :" CHK-DEFINER-TOK? if LINT-TRUE exit then
+   k s" TRUSTED:" CHK-DEFINER-TOK? ;
+
+: CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
+   begin dup LINT-LEX:COUNT < while
+      dup CHK-TOK-SEMI? if 1+ exit then
+      dup CHK-BODY-PARSER? if 1+ then
+      1+
+   repeat ;
+
+: CHK-WALK-SCOPE ( n -- n bool ) {: k:n :}   \ package and using: next index, handled
+   k s" package" CHK-TOK=CI if LINT-TRUE CHK-WALK-PKG ! k 2 + LINT-TRUE exit then
+   k s" ;package" CHK-TOK=CI if LINT-FALSE CHK-WALK-PKG ! k 1+ LINT-TRUE exit then
+   k s" using" CHK-TOK=CI if
+      CHK-WALK-PKG @ 0= if 1 CHK-WALK-USE +! then
+      k 2 + LINT-TRUE exit
+   then
+   k s" ;using" CHK-TOK=CI if
+      CHK-WALK-PKG @ 0= CHK-WALK-USE @ 0 > and if -1 CHK-WALK-USE +! then
+      k 1+ LINT-TRUE exit
+   then
+   k LINT-FALSE ;
+
+: CHK-WALK-STEP ( n -- n ) {: k:n :}    \ the token index past one statement
+   k CHK-WALK-OPENER? if k 1+ CHK-WALK-DEF exit then
+   k CHK-WALK-SCOPE if exit then drop
+   k CHK-TOP-PARSER? if k 2 + exit then
+   k 1+ ;
+
+: CHK-WALK-NEUTRAL? ( -- bool )
+   CHK-WALK-PKG @ 0= CHK-WALK-USE @ 0= and ;
+
+: CHK-WALK-WAITING? ( n -- bool ) {: at:n :}   \ the next waiting loader sits before at
+   CHK-WALK-IX @ CHK-DIR-N @ >= if LINT-FALSE exit then
+   CHK-WALK-IX @ CHK-DIR-AT@ at < ;
+
+: CHK-WALK-POINT ( n -- ) {: at:n :}    \ every waiting loader before at expands at at
+   begin at CHK-WALK-WAITING? while
+      at CHK-WALK-IX @ CHK-DIR-AT!
+      1 CHK-WALK-IX +!
+   repeat ;
+
+: CHK-WALK-BYTE ( n n -- n ) {: k:n len:n :}   \ where token k starts, or the end
+   k LINT-LEX:COUNT >= if len exit then
+   k LINT-LEX:BYTE@ ;
+
+\ The loader offsets of the direct deps from base on become the bytes where
+\ each dep expands; the answer is the file's length.
+: CHK-EXPAND-POINTS ( n n -- n ) {: id:n base:n :}
+   id CHK-DEP$ FILE-SIZE CHK-SRC-CAP > if E-FS-CAPACITY throw then
+   id CHK-DEP$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
+   CHK-SRC-BUF len LINT-LEX:SOURCE
+   base CHK-WALK-IX !
+   LINT-FALSE CHK-WALK-PKG !
+   0 CHK-WALK-USE !
+   0 begin dup LINT-LEX:COUNT < while
+      CHK-WALK-STEP
+      CHK-WALK-NEUTRAL? if dup len CHK-WALK-BYTE CHK-WALK-POINT then
+   repeat drop
+   len CHK-WALK-POINT
+   len ;
 
 \ Dependency closure: the shared whole-file ordered-event producer
 \ (tools/source-discovery.f) scans every token of a file - colon bodies
 \ included - and records one event per literal loader form
-\ (include/included/require/required/provided). Every event path is a direct
-\ dep, so the closure is a superset of the runtime load set; dynamic or
-\ retired loader forms reject fail-closed unless manifested.
+\ (include/included/require/required/provided) with the loader's byte offset.
+\ Every event path is a direct dep, so the closure is a superset of the runtime
+\ load set; dynamic or retired loader forms reject fail-closed unless manifested.
 
 : CHK-DISC-RC? ( n -- bool ) {: rc:n :}
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
@@ -567,7 +739,8 @@ private
    rc throw ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-DIRECT+ ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID
+   ix EVENT-TOK@ drop CHK-DIR-PUSH ;
 
 : CHK-EVENTS>DEPS ( -- )
    0 begin dup EVENT-COUNT < while
@@ -600,26 +773,47 @@ private
    repeat drop
    base CHK-WAIT-N ! ;
 
+\ A source and the files it loads expand in the order the loader runs them: a
+\ file's text up to the byte where it loads another is a segment, that file's
+\ segments follow, then the rest of the text. A word the source defines before
+\ its require is visible to the file it loads, and none it defines after. A
+\ file expands once, at its first load, as `require` loads a path once, and a
+\ file still expanding - a cycle back into it - loads nothing, as a registered
+\ path does. Only a file the pre-pass verifies is cut into segments; one the
+\ checking engine already holds still expands the files it loads, in order.
 : CHK-EXPAND-ID ( n -- ) {: id:n :}
    id CHK-DEP-CHECK
    id CHK-DEP-STATE @ CHK-DEP-UNSEEN <> if exit then
    CHK-DEP-OPEN id CHK-DEP-STATE !
    CHK-ENTER-N @ dup id CHK-DEP-ENTER ! id CHK-DEP-LOW !
    CHK-ENTER-N @ 1+ CHK-ENTER-N !
-   CHK-WAIT-N @ {: base:n :}
-   CHK-DIR-N @
+   CHK-WAIT-N @ {: wait:n :}
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   CHK-DIR-N @ {: base:n :}
    id CHK-EXPAND-SCAN
    CHK-EVENTS>DEPS
-   dup CHK-DIR-N @
-   begin 2dup < while
-      over cells CHK-DIR-IDS + @ dup RECURSE
-      id swap CHK-LOW-JOIN
-      swap 1+ swap
+   id CHK-DEP-PRELOAD? {: verified:bool :}
+   verified if id base CHK-EXPAND-POINTS else 0 then {: len:n :}
+   0 base
+   begin dup CHK-DIR-N @ < while
+      {: pos:n ix:n :}
+      ix CHK-DIR-ID@ {: dep:n :}
+      dep CHK-DEP-STATE @ CHK-DEP-UNSEEN = if
+         ix CHK-DIR-AT@ {: at:n :}
+         verified if id pos at CHK-SEG-PUSH then
+         dep RECURSE
+         at
+      else
+         pos
+      then
+      id dep CHK-LOW-JOIN
+      ix 1+
    repeat
-   2drop CHK-DIR-N !
+   drop {: tail:n :}
+   verified if id tail len CHK-SEG-PUSH then
+   base CHK-DIR-N !
    id CHK-DEP-LOW @ id CHK-DEP-ENTER @ < if id CHK-WAIT-PUSH exit then
-   id base CHK-CYCLE-ORDER ;
+   id wait CHK-CYCLE-ORDER ;
 
 : CHK-EXPAND-PATH ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
@@ -630,7 +824,8 @@ private
    0 CHK-DIR-N !
    0 CHK-DEP-ORDER-N !
    0 CHK-ENTER-N !
-   0 CHK-WAIT-N ! ;
+   0 CHK-WAIT-N !
+   0 CHK-SEG-N ! ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
@@ -740,14 +935,6 @@ private
    rc 0= if exit then
    rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
    rc throw ;
-
-: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
-   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -870,16 +1057,11 @@ private
    THEN
    CHK-NOM-FOUND ;
 
-\ A definer reads its name with parse-name, the next whitespace-delimited token
-\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
-\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
-\ the lexer reads the token after the definer again by that rule, so the scan
-\ below never takes a comment, or the token after one, for the name. A definer
-\ with no token after it is refused here and answers false, so a caller
-\ answered true finds the name at the next token.
+\ The definer's name is read as CHK-DEFINER-TOK? reads it. A definer with no
+\ token after it is refused here and answers false, so a caller answered true
+\ finds the name at the next token.
 : CHK-DEFINER? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:OPERAND
+   k a u CHK-DEFINER-TOK? 0= IF LINT-FALSE exit THEN
    k 1+ LINT-LEX:COUNT < IF LINT-TRUE exit THEN
    k CHK-NONAME-FAIL
    LINT-FALSE ;
@@ -1201,11 +1383,6 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
    k LINT-FALSE ;
 
-\ A raw operand is data: `[char] ;` ends no definition.
-: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
-   k LINT-LEX:OPERAND? if LINT-FALSE exit then
-   k s" ;" CHK-TOK=CI ;
-
 : CHK-DEF-OPENER? ( n -- bool ) {: k:n :}
    k s" :" CHK-DEFINER? IF LINT-TRUE exit THEN
    k s" TRUSTED:" CHK-DEFINER? ;
@@ -1249,50 +1426,33 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    then
    k 1 + ;
 
-: CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+\ The whole file is lexed so a segment's tokens keep the file's own positions;
+\ only the tokens that start inside it are registered.
+: CHK-RUN-NOMINAL-SPAN ( ptr u8 n n n -- ) {: path:ptr pathu:n start:n end:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
    CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
-   0 CHK-NOM-I !
-   begin CHK-NOM-I @ LINT-LEX:COUNT < while
+   start CHK-TOK-AT CHK-NOM-I !
+   begin CHK-NOM-I @ end CHK-TOK-BEFORE? while
       CHK-NOM-I @ CHK-NOM-STEP CHK-NOM-I !
    repeat ;
 
-: CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
-   label labelu CHK-LABEL!
-   path pathu CHK-RUN-NOMINAL-FILE ;
-
-: CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
-   path pathu s" src/os/linux/layout.f" LINT-STR= if HB-TARGET-LINUX? exit then
-   path pathu s" src/os/macos/layout.f" LINT-STR= if HB-TARGET-MACOS? exit then
-   path pathu s" src/os/linux-x86-64/layout.f" LINT-STR= if
-      HB-TARGET-LINUX-X86-64? exit
-   then
-   true ;
-
-: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
-   \ Discovery deliberately over-approximates guarded loaders.  The three
-   \ executable layouts cannot share a checker scope: each publishes the same
-   \ global names, while only the current target branch is loadable.
-   id CHK-DEP$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   CHK-TARGET-LAYOUT-ACTIVE? 0= if false exit then
-   id CHK-DEP$ RESOLVE nip nip 0= ;
-
-: CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-DEP$ 2dup CHK-RUN-NOMINAL-AS ;
+: CHK-RUN-NOMINAL-SEG ( n -- ) {: seg:n :}
+   seg CHK-SEG-ID@ CHK-DEP$ {: path:ptr pathu:n :}
+   path pathu CHK-LABEL!
+   path pathu seg CHK-SEG-START@ seg CHK-SEG-END@ CHK-RUN-NOMINAL-SPAN ;
 
 : CHK-RUN-NOMINAL-ORDER ( -- )
    CHK-LABEL {: old:ptr oldu:n :}
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-RUN-NOMINAL-ID
+   0 begin dup CHK-SEG-N @ < while
+      dup CHK-RUN-NOMINAL-SEG
       1+
    repeat drop
    old oldu CHK-LABEL! ;
 
 : CHK-RUN-NOMINAL-FILES ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
-   CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
+   CHK-SOURCE 0 CHK-SRC-CAP CHK-RUN-NOMINAL-SPAN ;
 
 : CHK-RUN-NOMINAL ( -- )
    LINT-FALSE CHK-NOM-BAD !
@@ -1459,8 +1619,19 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
+\ The 1-based line and column of byte at in the source buffer.
+: CHK-BYTE-ORIGIN ( n -- n n ) {: at:n :}
+   1 0 at 0 ?do
+      CHK-SRC-BUF i + c@ CHK-LF = if drop 1+ i 1+ then
+   loop
+   at swap - 1+ ;
+
+\ A segment is verified from its own first byte, so its diagnostics name the
+\ line, column and byte the file has there.
 : CHK-PREVERIFY-ACT ( -- )
-   CHK-SRC-BUF CHK-PRE-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   CHK-SRC-BUF CHK-PRE-AT @ + CHK-PRE-U @
+   CHK-PRE-AT @ CHK-BYTE-ORIGIN CHK-PRE-AT @
+   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
 
 : CHK-PREVERIFY-CAPTURE ( -- n )
    CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
@@ -1469,26 +1640,28 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    DIAG-BUFFER-OFF
    rc ;
 
-: CHK-PREVERIFY-FILE-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
+: CHK-PREVERIFY-SPAN ( ptr u8 n ptr u8 n n n -- )
+   {: label:ptr labelu:n path:ptr pathu:n start:n end:n :}
    label labelu DIAG-FILE!
    CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
+   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL end min start - CHK-PRE-U !
+   start CHK-PRE-AT !
    CHK-PREVERIFY-CAPTURE dup 0 <> if throw then drop ;
 
-: CHK-PREVERIFY-ID ( n -- ) {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-DEP$ 2dup CHK-PREVERIFY-FILE-AS ;
+: CHK-PREVERIFY-SEG ( n -- ) {: seg:n :}
+   seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
+   CHK-PREVERIFY-SPAN ;
 
 : CHK-PREVERIFY-ORDER ( -- )
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-PREVERIFY-ID
+   0 begin dup CHK-SEG-N @ < while
+      dup CHK-PREVERIFY-SEG
       1+
    repeat drop ;
 
 : CHK-RUN-PREVERIFY-ACT ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-PREVERIFY-ORDER exit then
-   CHK-LABEL CHK-SOURCE CHK-PREVERIFY-FILE-AS ;
+   CHK-LABEL CHK-SOURCE 0 CHK-SRC-CAP CHK-PREVERIFY-SPAN ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
