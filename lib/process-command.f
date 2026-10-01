@@ -400,12 +400,11 @@ public
 \    : NAME ( -- ptr ptr u8 ) NAME#VEC ;
 \    NAME#BUF NAME#VEC CMD:BIND
 \
-\ A name this definer generates is invisible to tools/check.f: its preverify
-\ (VERIFY:SOURCE-BUF-IN-SCOPE) reads the source without running the load-time
-\ INCLUDE-EVALUATE, so a later mention of NAME refuses E-UNDEFINED unless the
-\ engine image already carries NAME. Measured on a source the engine does not
-\ carry, lib/task.f's `+USER` row refuses the same way; a command context is
-\ verified through the real load path, lib/process-command-test.f.
+\ The source pre-pass never sees the names this renders: it reads the text
+\ without running INCLUDE-EVALUATE. It learns that COMMAND renders, so a later
+\ definition naming NAME, NAME#VEC or NAME#BUF in the same wordlist is left to
+\ tools/check.f's run, which certifies it (docs/forth.md, the INCLUDE-EVALUATE
+\ rule); `tools/check.f -- lib/process-command-test.f` passes.
 : COMMAND ( -- )
    COMMAND-NAME {: name:ptr nameu:n :}
    GEN CODEGEN:RESET

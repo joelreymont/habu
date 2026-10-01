@@ -1121,6 +1121,116 @@ variable LONG-J
    outu2 0 T=
    CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
 
+\ A word whose body reaches the loader's INCLUDE-EVALUATE defines words when it
+\ runs, and the source pre-pass never sees their text: CKR-MAKE renders
+\ CKR-SEVEN. A definition naming such a product is left to the run, which
+\ certifies it, but only after the rendering statement and only in the wordlist
+\ that statement ran in; anything else unknown is still refused by the
+\ pre-pass. `FUNCTION:` is resident here (lib/fs-mutate.f requires
+\ lib/ffi-abi.f), and TASK:+USER is the renderer lib/crypto/evp.f uses.
+: CKR-DEF+ ( -- )
+   s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
+   s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
+   s"  INCLUDE-EVALUATE ; " SB-APPEND ;
+
+: CKR-FIXTURE+ ( -- )
+   CKR-DEF+ s" CKR-MAKE " SB-APPEND ;
+
+: CKR-AFTER$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET CKR-FIXTURE+ a u SB-APPEND SB$ ;
+
+: RENDER-USE$ ( -- ptr u8 n )
+   s" : CKR-USE ( -- n ) CKR-SEVEN ;" CKR-AFTER$ ;
+
+: RENDER-FFI$ ( -- ptr u8 n )
+   s" require lib/ffi-abi.f PROCESS-SYMBOLS FUNCTION: CKR-PID getpid ( -- i32 ) ;FUNCTION : CKR-PID-N ( -- n ) CKR-PID ;" ;
+
+: RENDER-TASK$ ( -- ptr u8 n )
+   s" require lib/task.f TASK:#USER 8 TASK:+USER CKR-SLOT drop : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ;" ;
+
+\ A slot made inside a package lands in the section the statement ran in, like
+\ lib/crypto/evp.f EVP-STORAGE (private) and lib/net/http-arena.f MY-SLOT.
+: CKR-TASK-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: sec:ptr secu:n use:ptr useu:n :}
+   SB-RESET
+   s" require lib/task.f package CKR-T " SB-APPEND sec secu SB-APPEND
+   s"  TASK:#USER 8 TASK:+USER CKR-SLOT drop " SB-APPEND
+   use useu SB-APPEND SB$ ;
+
+: RENDER-TASK-PRIVATE$ ( -- ptr u8 n )
+   s" private" s" : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ; ;package" CKR-TASK-PKG$ ;
+
+: RENDER-TASK-PUBLIC$ ( -- ptr u8 n )
+   s" public" s" ;package : CKR-SLOT-P ( -- ptr n ) CKR-T:CKR-SLOT ;" CKR-TASK-PKG$ ;
+
+: RENDER-TASK-OUTSIDE$ ( -- ptr u8 n )
+   s" private" s" ;package : CKR-SLOT-P ( -- ptr n ) CKR-T:CKR-SLOT ;" CKR-TASK-PKG$ ;
+
+: RENDER-TASK-BARE$ ( -- ptr u8 n )
+   s" private" s" ;package : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ;" CKR-TASK-PKG$ ;
+
+: RENDER-MISUSE$ ( -- ptr u8 n )
+   s" : CKR-BAD ( -- ) CKR-SEVEN ;" CKR-AFTER$ ;
+
+: RENDER-TYPO$ ( -- ptr u8 n )
+   s" : CKR-TYPO ( -- n ) CKR-SEVN ;" CKR-AFTER$ ;
+
+: RENDER-EARLY$ ( -- ptr u8 n )
+   SB-RESET CKR-DEF+
+   s" : CKR-EARLY ( -- n ) CKR-SEVEN ; CKR-MAKE" SB-APPEND SB$ ;
+
+: RENDER-OTHER-PKG$ ( -- ptr u8 n )
+   SB-RESET s" package CKR-A " SB-APPEND CKR-FIXTURE+
+   s" ;package package CKR-B : CKR-TYPO ( -- n ) CKR-SEVEN ; ;package" SB-APPEND SB$ ;
+
+: RENDER-PRIVATE$ ( -- ptr u8 n )
+   SB-RESET s" package CKR-A " SB-APPEND CKR-FIXTURE+
+   s" ;package : CKR-Q ( -- n ) CKR-A:CKR-SEVEN ;" SB-APPEND SB$ ;
+
+: RENDER-PUBLIC$ ( -- ptr u8 n )
+   SB-RESET s" package CKR-A public " SB-APPEND CKR-FIXTURE+
+   s" ;package : CKR-Q ( -- n ) CKR-A:CKR-SEVEN ;" SB-APPEND SB$ ;
+
+: RENDER-CALLER$ ( -- ptr u8 n )
+   s" : CKR-USE ( -- n ) CKR-SEVEN ; : CKR-CALLER ( -- ) CKR-USE ;" CKR-AFTER$ ;
+
+: EXPECT-PREVERIFY-REFUSED ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" preverify failed" CONTAINS? TTRUE ;
+
+\ Refused by the pre-pass as undefined, naming the token.
+: EXPECT-PREVERIFY-UNDEFINED ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n tok:ptr toku:n :}
+   outu erru rc EXPECT-PREVERIFY-REFUSED
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru tok toku CONTAINS? TTRUE ;
+
+\ Refused by the run rather than the pre-pass: the run's diagnostic names it.
+: EXPECT-RUN-REFUSED ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n want:ptr wantu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru want wantu CONTAINS? TTRUE
+   CAP-ERR erru s" preverify failed" CONTAINS? TFALSE ;
+
+: TEST-RENDERED-PRODUCT ( -- )
+   RENDER-USE$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-FFI$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-TASK$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-TASK-PRIVATE$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-TASK-PUBLIC$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-TASK-OUTSIDE$ DIRECT-STDIN s" CKR-T:CKR-SLOT" EXPECT-PREVERIFY-UNDEFINED
+   RENDER-TASK-BARE$ DIRECT-STDIN s" CKR-SLOT" EXPECT-PREVERIFY-UNDEFINED
+   RENDER-PUBLIC$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-USE$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
+   RENDER-MISUSE$ DIRECT-STDIN s" hook: non-certified definition" EXPECT-RUN-REFUSED
+   RENDER-MISUSE$ DIRECT-JSON-STDIN s" E-MISMATCH" EXPECT-RUN-REFUSED
+   RENDER-TYPO$ DIRECT-STDIN {: outt:n errt:n rct:n :}
+   outt errt rct s" CKR-SEVN" EXPECT-RUN-REFUSED
+   CAP-ERR errt s" E-UNDEFINED" CONTAINS? TTRUE
+   RENDER-EARLY$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
+   RENDER-OTHER-PKG$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
+   RENDER-PRIVATE$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED
+   RENDER-CALLER$ DIRECT-STDIN EXPECT-PREVERIFY-REFUSED ;
+
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
    {: outu:n erru:n :}
@@ -2148,6 +2258,7 @@ POISON-RECORD
    s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
    s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
    s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
+   s" check/rendered-product" [: TEST-RENDERED-PRODUCT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN

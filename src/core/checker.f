@@ -114,6 +114,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -131,7 +132,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:UNIT-IMPORT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -2794,6 +2795,9 @@ variable RCUR   variable RBROW
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
 variable THDMASK  variable THRMASK  variable THSET
+\ RENDSET: the body called a word that renders source (CTL-RENDERS). Sticky per
+\ body like UNSAFE: a call on any path is enough for the may-claim.
+variable RENDSET
 variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
@@ -4339,6 +4343,7 @@ variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead
 variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
+variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
@@ -9577,6 +9582,40 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
    code FQSYM-DEFERRED? 0= IF code throw THEN
    0 ;
 
+\ ---- words a rendering statement may have defined ----------------------------
+\ A top-level statement that calls a CTL-RENDERS word defines words from text the
+\ source pre-pass never reads, and the loader compiles that text into the
+\ wordlist current at that moment (lib/ffi-abi.f CHECK-SCOPE asserts it for
+\ FUNCTION:). So the pre-pass has the checker mark that wordlist
+\ (CHECKER-VERIFY-RENDERS), and a body token that resolves nowhere defers its
+\ definition to the run (verdict 2) only when the lookup walked a marked
+\ wordlist: the statement's own section of its own package, read after the
+\ statement. The mark is a symbol whose name holds a space, which no token can
+\ spell; it carries no effect, and a scope's exit retires it with the scope's
+\ other symbols. A covered name still joins the lazy intake's queue: a seeded
+\ row for it outranks the deferral, since the retry then judges the body against
+\ the word's real effect.
+: UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
+
+: CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
+
+\ The chain CHECKER-FIND-ACTIVE-SYM walks: a qualified token its package's public
+\ wordlist; a bare one the open package's private and public wordlists, the
+\ global wordlist and the used publics.
+: UNSEEN-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
+   CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      pkg pkgu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   THEN
+   UNSEEN-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   CK-USE-SCAN-N 0 ?DO
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC UNSEEN-MARK$ SYM-FIND nip IF unloop RES-TRUE EXIT THEN
+   LOOP
+   RES-FALSE ;
+
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
 \ arena scan and memoizes both the answer and its watermark dependency.
@@ -10673,7 +10712,13 @@ $8 constant EFFECT-EXTERNAL
 $10 constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
-$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or
+\ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
+\ define words at run time that no source text spells. The loader's audited
+\ evaluate boundary carries it by axiom (NORET-AXIOMS) and every checked body
+\ that calls a flagged word inherits it; the source pre-pass asks for it
+\ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
+$80 constant CTL-RENDERS
+$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-RENDERS or
    constant CTL-GRAPH-FLAGS
 \ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
 \ back-link and the created-word effect below — so the byte cap is scaled with
@@ -11240,9 +11285,14 @@ REG-EXT-AOT-DEFAULTS
 \ `7 0 P:T2` returned NOTHING where the signature promised a cell - the next
 \ word underflowed. One authority for "does this call end the path", and it is
 \ the record of the word the token really names.
+\
+\ The loader's one evaluate boundary is recorded the same way, so the engine
+\ names its own boundary and no library definer: src/core/include.f
+\ INCLUDE-EVALUATE is the word that turns rendered text into definitions.
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
+   s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
    s" dup" CTL-CORE-OP NORET-AXIOM
@@ -11347,6 +11397,12 @@ variable NORET-FMEND
 
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
+
+\ The source pre-pass's question about a top-level token (src/habu/verify-source.f
+\ RENDERS-MARK?): does the word it names render source? When it does, the
+\ statement's wordlist is marked here, by the checker that owns the scope.
+: CHECKER-VERIFY-RENDERS ( n -- bool )
+   CTL-FLAGS-SYM CTL-RENDERS and 0 <> dup IF CHECKER-UNSEEN-MARK THEN ;
 
 \ Reference-scoped existence for source callers and load guards. A private or
 \ ABI-only row is not a callable source effect; EFFECT-QUERY still exposes ABI
@@ -11742,7 +11798,7 @@ variable UNSAFE-SYM-N
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
-variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
+variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
@@ -11757,7 +11813,7 @@ variable SV-TRAIL
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
-   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
+   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
@@ -11788,7 +11844,7 @@ variable SV-TRAIL
    SV-FV @ FV !
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
-   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
+   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
@@ -12134,6 +12190,7 @@ variable TOK-SYM   variable TOK-LEG
       a u RAW-FIELD-TOK? IF EXIT THEN
    THEN
    TOK-SYM @ CURSYM !
+   CURSYM @ CTL-FLAGS-SYM CTL-RENDERS and 0 <> IF -1 RENDSET ! THEN
    \ a call to a definer, counted for the straight-line-wrapper rule above. One
    \ per-symbol head load, on the resolved symbol: a tick is not a call here
    \ (BTICK-TOK never reaches this word) and the create-family tokens leave
@@ -12160,6 +12217,7 @@ variable TOK-SYM   variable TOK-LEG
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
+   a u UNSEEN-COVERS? IF -1 UNSEEN ! THEN          \ the run's to judge: see UNSEEN-MARK$
    -1 UNDEFERR ! -1 UNCK ! THEN ;
 
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
@@ -16305,8 +16363,8 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
-   0 THDMASK !  0 THRMASK !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 THDMASK !  0 THRMASK !  0 THSET !  0 RENDSET !
+   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
@@ -16453,8 +16511,14 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
 
+\ Verdict 2 defers the body to the run: it names a word only a rendering
+\ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
+\ is still refused, since the declaration is what gets recorded; past a token of
+\ unknown effect nothing downstream is a judgment, so the rest is the run's.
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ 0 <> IF 0 EXIT THEN
+   UNSEEN @ 0 <> IF 2 EXIT THEN
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification (item 15, docs/type-families.md §9.4).
@@ -16655,7 +16719,7 @@ variable CTOR-PEND-I
    LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
    LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
-: CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
+: CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    a u CHECK-RESET
    CHECK-SCAN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
@@ -16702,6 +16766,7 @@ variable CTOR-PEND-I
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
+      RENDSET @ IF CTLNEW @ CTL-RENDERS or CTLNEW ! THEN
       ZSUMMARY-EFFECT? IF
          ZSHAPE @ 1 = IF CTLNEW @ CTL-ZERO-TRUE or CTLNEW ! THEN
          ZSHAPE @ 3 = IF CTLNEW @ CTL-ZERO-FALSE or CTLNEW ! THEN
@@ -16725,6 +16790,14 @@ variable CTOR-PEND-I
       ELSE
          NMA @ NMU @ RECXT
       THEN
+   THEN
+   \ Deferred: the declaration is recorded with authority, so a later caller
+   \ still binds to it and a duplicate is still refused, but no control claim
+   \ is made for a body the run measures; only CTL-RENDERS, a may-claim the walk
+   \ saw directly. The last pass of a retried check records it.
+   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
+      NMA @ NMU @ RENDSET @ IF CTL-RENDERS ELSE 0 THEN NORET-ADD
+      SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
@@ -18622,6 +18695,7 @@ package CHECKER-REG
 ' CHECKER-CREATES-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF + xt!
 ' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
 ' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
+' CHECKER-VERIFY-RENDERS DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF + xt!
 ' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 ' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
 ' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!

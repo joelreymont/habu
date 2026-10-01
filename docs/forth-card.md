@@ -127,6 +127,10 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `s>number?` | `STR>NUMBER?`, `lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
+A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
+`CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
+`tools/check.f` leaves to its run, which type-checks their uses there.
+
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
 plus `[: IMPL ;] is W`, `parse-name`, `MATCH … ;MATCH`, `undefine`, and

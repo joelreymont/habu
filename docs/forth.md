@@ -1275,6 +1275,32 @@ passing suite.
   ptr n ) ;` in a required module, `5 MOD:TD W  : G ( -- n ) W ;` is the
   `E-MISMATCH` the effect deserves, not `E-UNDEFINED`, and `TASK:MIN-STACK
   TASK:TASK T1  : F ( -- ptr n ) T1 ;` certifies.
+- **A word whose body reaches `INCLUDE-EVALUATE` defines words the source
+  pre-pass cannot see; the run checks their uses.** `FUNCTION:`/`;FUNCTION`,
+  `CMD:COMMAND` and `TASK:+USER` render a definition and hand it to the
+  loader's evaluate boundary, so no source text spells the product. The checker
+  carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and on every checked
+  body that calls a flagged word (`checker.f` `NORET-AXIOMS`, `RENDSET`). When
+  the pre-pass meets a top-level statement naming such a word it marks the
+  wordlist the statement runs in, which is where the loader compiles the
+  product; a later definition naming a word nothing resolves, looked up through
+  a marked wordlist, gets `CHECK` verdict 2: no diagnostic, its declared
+  signature recorded for its callers, its body left to the `bin/hb --load` run
+  that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
+  Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
+  i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :71), `CTX0`
+  (lib/process-command.f:439), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
+  product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
+  run's `E-UNDEFINED`. The mark covers only what follows the statement and only
+  its own section: a use before it, from another package, or of a private
+  product from outside its package is still refused by the pre-pass. It also
+  covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
+  after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
+  now the run's to judge. A `TRUSTED:` body is asserted, not walked, and an
+  evaluate reached through a `defer` or executed xt is not seen, so neither
+  makes its caller a renderer.
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):

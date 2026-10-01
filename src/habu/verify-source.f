@@ -359,6 +359,14 @@ TRUSTED: CREATES-SYM? ( n -- n )
 TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
    CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
+\ Does the symbol name a word that renders source when it runs (src/core/checker.f
+\ CTL-RENDERS)? When it does, the checker marks the wordlist the statement runs
+\ in, and a definition read after it that names a word nothing in scope defines
+\ is left to the run (CHECK's verdict 2) instead of refused E-UNDEFINED.
+TRUSTED: RENDERS-ACTION ( n -- [ n -- bool ] ) ;
+TRUSTED: RENDERS-MARK? ( n -- bool )
+   CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
+
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
 \ creates is the clause's declared one - a `TRUSTED:` definer included, whose
@@ -378,6 +386,10 @@ TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
 \ E-UNDEFINED for PROC-ENV-DIAG, created at lib/process-env.f:93 by
 \ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
 \ lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:60.
+\ A third class names no table row at all: a definer whose product text the
+\ scan never reads because it is rendered and evaluated at load (FUNCTION:,
+\ COMMAND, +USER); the checker learns that it renders from its body
+\ (CTL-RENDERS) and RECORD-DEFINER?'s last arm leaves its products to the run.
 \
 \ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
 \ spelling that names the definer resolves through the scope chain the checker
@@ -462,6 +474,7 @@ variable DEFINER-N
 : VERIFY-BODY ( -- bool )                     \ true = this body certified
    BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
    v -1 = IF 0 0= EXIT THEN
+   v 2 = IF 0 0= 0= EXIT THEN                \ deferred to the run: see RENDERS-MARK?
    v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
 
@@ -477,6 +490,7 @@ TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
 : VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
    BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
    v -1 = IF 0 0= EXIT THEN
+   v 2 = IF 0 0= 0= EXIT THEN
    v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
 
@@ -1130,6 +1144,11 @@ PTR-VARIABLE STG-START
    \ token resolves through the same FIND-SYM every other name does, so the
    \ qualified and the bare-under-`using` spelling reach the one row.
    a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
+   \ … and a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
+   \ TASK:+USER): what it defines is text this scan never reads, so the checker
+   \ marks the statement's wordlist and leaves definitions naming such words to
+   \ the run (src/core/checker.f CTL-RENDERS, UNSEEN-MARK$).
+   a u FIND-SYM RENDERS-MARK? IF 0 0= EXIT THEN
    0 0= 0= ;
 
 : VERIFY-DEFINITION ( -- )
