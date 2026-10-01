@@ -545,8 +545,8 @@ variable START-NS
    CAP-OUT outu ENV-MARK$ CONTAINS? TTRUE
    CAP-OUT outu ENV-PATH-LINE$ CONTAINS? TTRUE ;
 
-: HB-LOAD-FWDREF ( -- n n n )
-   BAD$ FWDREF$ WRITE-ALL
+: HB-LOAD-SRC ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   BAD$ src srcu WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
@@ -876,6 +876,27 @@ variable LONG-J
    s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKD-TWICE" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND
+   SB$ ;
+
+\ An effect spells a DEFLINEAR or VALUE-RECORD type exactly as it was declared,
+\ so `CELL` and `PTR` are types of their own beside `cell` and `ptr`. A single
+\ upper-case letter at the head of a stack is a row variable, and `--`, `[` and
+\ `)` are effect syntax, so no effect could name such a type. The loader and the
+\ check tool must refuse exactly those names; each source below declares one and
+\ uses it.
+: NOM-LIN$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" DEFLINEAR " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
+   s" : CKN-USE ( n " SB-APPEND a u SB-APPEND
+   s"  -- " SB-APPEND a u SB-APPEND s"  n ) swap ;" SB-APPEND
+   SB$ ;
+
+: NOM-REC$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" VALUE-RECORD " SB-APPEND a u SB-APPEND
+   s"  x n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" : CKN-USE ( " SB-APPEND a u SB-APPEND
+   s"  -- " SB-APPEND a u SB-APPEND s"  ) ;" SB-APPEND
    SB$ ;
 
 \ Nominal-declarer sources for the check CLI's package-scoping contract. These
@@ -1474,7 +1495,7 @@ variable LONG-J
    0 0= 0= DIAG-JSON! ;
 
 : RAW-FWDREF-TEST ( -- )
-   HB-LOAD-FWDREF 70 T=
+   FWDREF$ HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
@@ -2059,6 +2080,59 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-BAD-NOMINAL-TYPE" CONTAINS? TTRUE
    CAP-ERR erru s" CKD-TWICE" CONTAINS? TTRUE ;
 
+: NOM-LOAD-REFUSED ( n n n -- )
+   70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" bad or duplicate" CONTAINS? TTRUE ;
+
+: NOM-CHECK-REFUSED ( ptr u8 n -- )
+   DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-BAD-NOMINAL-TYPE" CONTAINS? TTRUE ;
+
+: NOM-LOAD-ADMITTED ( n n n -- )
+   0 T=
+   {: outu:n erru:n :}
+   erru 0 T= ;
+
+: NOM-CHECK-ADMITTED ( ptr u8 n -- )
+   DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: LIN-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   a u NOM-LIN$ NOM-CHECK-REFUSED ;
+
+: LIN-ADMITTED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u NOM-LIN$ NOM-CHECK-ADMITTED ;
+
+: REC-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-REC$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   a u NOM-REC$ NOM-CHECK-REFUSED ;
+
+: REC-ADMITTED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NOM-REC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u NOM-REC$ NOM-CHECK-ADMITTED ;
+
+: TEST-NOMINAL-NAME-REFUSED ( -- )
+   s" N" LIN-REFUSED
+   s" --" LIN-REFUSED
+   s" [" LIN-REFUSED
+   s" a)b" LIN-REFUSED
+   s" R" REC-REFUSED ;
+
+: TEST-NOMINAL-NAME-ADMITTED ( -- )
+   s" CELL" LIN-ADMITTED
+   s" ckn-lin" LIN-ADMITTED
+   s" CKN:lin" LIN-ADMITTED
+   s" PTR" REC-ADMITTED
+   s" ckn-rec" REC-ADMITTED
+   s" CKN:rec" REC-ADMITTED ;
+
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2411,6 +2485,8 @@ POISON-RECORD
    s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
    s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
    s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
+   s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
+   s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN

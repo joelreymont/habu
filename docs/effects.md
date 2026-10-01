@@ -235,8 +235,11 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   everywhere else, declare these lower case — as the tree does
   (`nom-builder`, `process-pty-handle`).
 - **It is global, not package-scoped.** A second declaration of the same name
-  anywhere, or of a name already in the type table, is
-  `checker: bad or duplicate signature type` (exit 70).
+  anywhere, of a name already in the type table, or of one a signature reads as
+  something else (a one-letter type or row variable, `--`, `|`, `[`, `]`, or a
+  token holding `<`, `>`, `,` or `)`), is
+  `checker: bad or duplicate signature type` (exit 70). `VALUE-RECORD` and
+  `tools/check.f` refuse the same names; `CELL` is a legal name beside `cell`.
 - **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
   `expected: own actual: n` — no `<>`, because this is a table entry, not a
   family application.

@@ -31,7 +31,7 @@ require src/core/checker-owner-guard.f
 
 \ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
-\ TYPE-RESERVED? validates generated dependency type tokens.
+\ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
 \ CHECKER-DEFRECORD publishes parsed records with their source descriptor.
 \ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
@@ -758,9 +758,8 @@ private
 
 \ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
 \ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
-\ lib/type/deftype.f does; DEFLINEAR and VALUE-RECORD names meet TYPE-RESERVED?
-\ on the same fold. The bad-name diagnostic still reports the surface token the
-\ user wrote.
+\ lib/type/deftype.f does. The bad-name diagnostic still reports the surface
+\ token the user wrote.
 128 constant CHK-NOM-TAIL-CAP
 create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
@@ -770,9 +769,13 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    a u CHK-NOM-TAIL-BUF FOLD-TO
    CHK-NOM-TAIL-BUF u ;
 
+\ A DEFLINEAR or VALUE-RECORD name is spelled in effects as written, unfolded,
+\ and its loader refuses it by TYPE-RESERVED? on those bytes; asking the same
+\ word first is what lets a refusal become a diagnostic instead of the
+\ registration's die.
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
-   name CHK-NOM-TAIL$ TYPE-RESERVED? ;
+   name LINT-LEX:TOKEN TYPE-RESERVED? ;
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN

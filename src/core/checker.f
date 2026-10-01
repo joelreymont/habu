@@ -4490,26 +4490,6 @@ variable SIGSCOPE-U
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
-: TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup u < while
-      a over + c@ dup 60 = swap dup 62 = swap 44 = or or IF drop RES-TRUE EXIT THEN
-      1+
-   repeat drop RES-FALSE ;
-: TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF RES-TRUE EXIT THEN
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
-   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-BAD-CHAR? ;
-
-: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
-   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 : TOK-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}  a c@ {: c:n :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -4580,6 +4560,36 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    a u s" --" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
+
+\ TYPE-RESERVED? ( ptr u8 n -- bool ) : the names DEFLINEAR and VALUE-RECORD
+\ refuse, through their loaders and tools/check.f alike. An effect spells such a
+\ type exactly as declared, so `CELL` and `PTR` are types of their own beside
+\ `cell` and `ptr`. A name is refused when an effect would read it as something
+\ else: stack syntax, a row variable (one upper-case letter heading a stack), a
+\ type the scope already resolves, a type variable, or a token the signature
+\ lexer splits or the effect's closing `)` (41) cuts short.
+: TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ dup SIG-DELIM-CHAR? swap 41 = or IF drop RES-TRUE EXIT THEN
+      1+
+   repeat drop RES-FALSE ;
+: TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u DELIM? IF RES-TRUE EXIT THEN
+   a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
+   a u ROW-LEAD? IF RES-TRUE EXIT THEN
+   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
+   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
+   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
+   a u ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
+   a u TYPE-BAD-CHAR? ;
+
+: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
+   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
+   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
 \ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is a `defer`
@@ -8462,9 +8472,9 @@ PRIM: CHECKER-VIS-PUBLIC PE-N PE-OUT PRIM;
 \ (dot habu-hb-crash-bare-c5be6634).
 PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-\ TYPE-RESERVED? answers "is this token already a type the checker knows", which
-\ is the question a generator has to ask before it mints a dependency type token.
-\ tools/check-core.f is that caller, and its own `TRUST` row cannot supply the
+\ TYPE-RESERVED? answers "may a DEFLINEAR or VALUE-RECORD declaration take this
+\ name", which tools/check-core.f must ask before the registration that would
+\ die on it. Its own `TRUST` row cannot supply the
 \ answer: the row runs long after the marking pass, and a row can only record an
 \ effect for a name that still resolves, so without the axiom the CLI dies
 \ E-TRUST-UNRESOLVED before it has looked at a single file.
