@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.389107+03:00"
 blocks:
-  - habu-compile-immediates-from-cc47ecf4
   - habu-capture-does-in-46068833
   - habu-close-definitions-with-8ace78d8
   - habu-hook-tier-0-96e33c29

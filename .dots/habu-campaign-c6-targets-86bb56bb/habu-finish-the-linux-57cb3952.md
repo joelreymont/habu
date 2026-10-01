@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.343961+03:00"
 blocks:
   - habu-complete-x86-64-0def994c
-  - habu-make-sealed-emission-17971865
   - habu-build-the-x86-15b47b0b
   - habu-move-the-interpreter-d35780fa
   - habu-cross-build-the-d25a959d

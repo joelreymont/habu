@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.930638+03:00"
-blocks:
-  - habu-compile-immediates-from-cc47ecf4
 ---
 
 Problem: `does>` capture is the assembly `CAPTURE-DOES` (`habu2.f:7495-7507`).
