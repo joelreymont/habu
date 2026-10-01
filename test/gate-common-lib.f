@@ -231,14 +231,21 @@ variable GE-EVAL-SRC-U
    code E-PROC-TIMEOUT = if s" native test ran out of time" PROC-TIMEOUT-RC die then
    code throw ;
 
+\ The entry's exit status for an rc check. A timed-out entry has none, and
+\ GT-RC@ would throw before any report, so it fails here: GE-FAIL prints its
+\ capture and then throws E-PROC-TIMEOUT.
+: GE-RC@ ( ptr u8 n -- n ) {: label:ptr labelu:n :}
+   GT-TIMED-OUT @ if label labelu GE-FAIL then
+   GT-RC@ ;
+
 : GE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ 0 <> if label labelu GE-FAIL then ;
+   label labelu GE-RC@ 0 <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-RC ( n ptr u8 n -- ) {: want:n label:ptr labelu:n :}
-   GT-RC@ want <> if label labelu GE-FAIL then ;
+   label labelu GE-RC@ want <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-NONZERO ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ 0= if label labelu GE-FAIL then ;
+   label labelu GE-RC@ 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-SILENT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-OUT$ nip 0 <> if label labelu GE-FAIL then

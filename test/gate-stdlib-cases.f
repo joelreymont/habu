@@ -1926,6 +1926,10 @@ SUITE gate-pool
    test/gate-pool-test.f
 ;SUITE
 
+SUITE gate-common
+   test/gate-common-test.f
+;SUITE
+
 SUITE num-types
    lib/num-types-test.f
 ;SUITE
