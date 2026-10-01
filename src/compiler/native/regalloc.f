@@ -800,8 +800,6 @@ DYNAMIC-BUFFER CL-SIZE-BUF n
 : CL-SIZE ( -- ptr n ) 0 CL-SIZE-BUF ;
 DYNAMIC-BUFFER CL-KEEP-BUF n
 : CL-KEEP ( -- ptr n ) 0 CL-KEEP-BUF ;
-DYNAMIC-BUFFER CL-FRAME-BUF n
-: CL-FRAME ( -- ptr n ) 0 CL-FRAME-BUF ;
 DYNAMIC-BUFFER CL-FIX-BUF n
 : CL-FIX ( -- ptr n ) 0 CL-FIX-BUF ;
 DYNAMIC-BUFFER CL-WANT-BUF n
@@ -869,7 +867,6 @@ variable N-FIXP
    VMAX CL-ANCH-BUF-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
    VMAX CL-KEEP-BUF-RESERVE
-   VMAX CL-FRAME-BUF-RESERVE
    VMAX CL-FIX-BUF-RESERVE
    VMAX CL-WANT-BUF-RESERVE
    OMAX ANCH-HEAD-BUF-RESERVE
@@ -1364,12 +1361,6 @@ variable N-FIXP
 : KEEP? ( n -- bool )
    cells CL-KEEP + @ 0<> ;
 
-: FRAME-KEEP! ( n -- )
-   UF-FIND cells CL-FRAME + 1 swap ! ;
-
-: FRAME-KEPT? ( n -- bool )
-   UF-FIND cells CL-FRAME + @ 0<> ;
-
 \ ---- what "this class lost its register" means -------------------------------
 \ A class the fit evicted and a class in a slot are two answers, not one.
 : CL-EVICTED? ( n -- bool )
@@ -1386,7 +1377,6 @@ variable N-FIXP
       NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
-      0 i cells CL-FRAME + !
       NOBODY i cells CL-FIX + !
       NOBODY i cells CL-WANT + !
    loop ;
@@ -1397,23 +1387,12 @@ variable N-FIXP
       r cells CL-SIZE + @ 1+  r cells CL-SIZE + !
    loop ;
 
-: MB-KEEP-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT SLOT dup KEEP! FRAME-KEEP!
-   loop
-   id RESULTS-OF 0 ?do
-      id i RESULT-AT SLOT dup KEEP! FRAME-KEEP!
-   loop ;
-
-: MB-KEEP-BLOCK ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id b:n :}
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   b 0= if bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop then
-   bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id FRAME-TOUCH? if id MB-KEEP-OP then
-   loop ;
+\ An entry argument has no defining operation at which a spill store could be
+\ inserted. Frame operations themselves may read and write spilled data:
+\ A64SPILL threads the inserted accesses through their memory token.
+: MB-KEEP-ENTRY ( IR-ID:ir-fun-id -- )
+   0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop ;
 
 \ Every function's positions lie end to end, so the line ends where the last
 \ function's window does.
@@ -1447,7 +1426,6 @@ variable N-FIXP
 : MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
    nip {: r:n :}
    r CL-EVICTED? if false exit then
-   r FRAME-KEPT? if false exit then
    r CLS-AT C-TOKEN = if false exit then
    true ;
 
@@ -1987,10 +1965,6 @@ variable N-FIXP
       then
    loop ;
 
-: MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id b:n at:n :}
-   bk b at at MB-PLAN-LOADS1 ;
-
 : MB-PLAN-TAIL-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -2056,7 +2030,7 @@ variable N-FIXP
          bk bk IR-ID:BLOCK-LOCAL i d MB-PLAN-STORES
          d cells ANCH-NEXT + @
       repeat drop
-      bk bk IR-ID:BLOCK-LOCAL i MB-PLAN-LOADS
+      bk bk IR-ID:BLOCK-LOCAL i i MB-PLAN-LOADS1
    loop
    bk MB-PLAN-TAIL-CK
    b RET-B @ = if bk MB-PLAN-MOVES then ;
@@ -2230,11 +2204,7 @@ variable N-FIXP
    N-FUNS @ cells F-BASE + ! ;
 
 : KEEP-ALL ( -- )
-   N-FUNS @ 0 ?do
-      i MB-RELAY
-      i FUN-AT {: f:IR-ID:ir-fun-id :}
-      N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
-   loop ;
+   N-FUNS @ 0 ?do i FUN-AT MB-KEEP-ENTRY loop ;
 
 : PLAN-ALL ( -- )
    N-FUNS @ 0 ?do

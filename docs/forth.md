@@ -1241,7 +1241,9 @@ passing suite.
   roundtrip passes through the native compiler in
   `test/compiler/native-generated-constructor.f`. A call also carries a memory
   token in the IR operation's 64-operand stage, so this signature bound does
-  not establish a 64-data-cell call.
+  not establish a 64-data-cell call. A 63-data-cell identity call compiles and
+  runs in native AOT; the same 64-data-cell program currently refuses at the
+  native validator with `E-A64RAV-DKEEP` (-8611).
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
