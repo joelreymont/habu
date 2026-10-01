@@ -4704,9 +4704,23 @@ public
 : TFAM-STORAGE-PRODUCT? ( n -- n bool )
    T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
    PARAM>FAM dup TFAM-PRODUCT? IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+: TFAM-STORAGE-SUM? ( n -- n bool )
+   T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   PARAM>FAM dup TFAM-SUM? over TFAM-ENUM? or
+   IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
 : TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
    term TFC-ARGS!
    field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM
+   dup T-WIDTH ;
+: TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
+   fam TFAM-VAR-COUNT@ 0 ?do
+      fam TFAM-VAR-START@ i + {: vid:n :}
+      vid SUMV-TAG@ tag = IF vid RES-TRUE unloop EXIT THEN
+   loop
+   0 RES-FALSE ;
+: TFAM-STORAGE-PAY ( n n n -- n n ) {: term:n vid:n index:n :}
+   term TFC-ARGS!
+   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM
    dup T-WIDTH ;
 
 private

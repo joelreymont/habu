@@ -201,17 +201,30 @@ TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
    LBUF-BYTES @ allot
    base LBUF-BYTES @ LBUF-ZERO ;
 
-\ A whole-record store moves ordinary cells, so each quotation slot must be
-\ known to image capture before that store. Walk the admitted instantiated term:
-\ a family name alone loses applied arguments, and their widths can move fields.
+\ Whole-record stores move ordinary cells. Walk the admitted instantiated term
+\ at capture, using the active sum tag so shared payload slots are classified
+\ as code only while their active alternative holds a quotation.
 TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
-   term TFAM:TFAM-STORAGE-QUOT? if 0 base xt! exit then
+   term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term TFAM:TFAM-STORAGE-PRODUCT? if
       {: fam:n :}
       0
       fam TFAM:TFAM-FLD-COUNT@ 0 ?do
          fam TFAM:TFAM-FLD-START@ i + {: field:n :}
          term field TFAM:TFAM-STORAGE-FIELD {: child:n width:n :}
+         base over cells + child recurse
+         width +
+      loop drop
+      exit
+   then drop
+   term TFAM:TFAM-STORAGE-SUM? if
+      {: fam:n :}
+      base term T-WIDTH 1- cells + @
+      fam swap TFAM:TFAM-STORAGE-VARIANT
+      0= if drop E-LAYOUT-BUFFER throw then {: vid:n :}
+      0
+      vid TFAM:SUMV-PAY-N 0 ?do
+         term vid i TFAM:TFAM-STORAGE-PAY {: child:n width:n :}
          base over cells + child recurse
          width +
       loop drop
@@ -223,6 +236,26 @@ TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
    LBUF-N @ 0 ?do
       base i LBUF-W @ * cells + term STORAGE-MARK-TERM
    loop ;
+
+defer STORAGE-CLEAR-XT ( n n -- )
+: STORAGE-CLEAR-MISSING ( n n -- ) 2drop E-LAYOUT-BUFFER throw ;
+: STORAGE-CLEAR-DEFAULT ( -- )
+   ['] STORAGE-CLEAR-MISSING is STORAGE-CLEAR-XT ;
+STORAGE-CLEAR-DEFAULT
+
+TRUSTED: STORAGE-CAPTURE-WALK ( n n n -- ) {: off:n count:n term:n :}
+   term T-WIDTH {: width:n :}
+   count width LBUF-EXTENT?
+   0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}
+   off bytes STORAGE-CLEAR-XT
+   data-base BYTE-VIEW off + CELL-VIEW {: base:ptr :}
+   count 0 ?do
+      base i width * cells + term STORAGE-MARK-TERM
+   loop ;
+
+: STORAGE-CAPTURE-INSTALL ( -- )
+   [: STORAGE-CAPTURE-WALK ;] is CHECKER-STORAGE-WALK-XT ;
+STORAGE-CAPTURE-INSTALL
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
@@ -237,7 +270,8 @@ TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
    base LBUF-ALLOT
-   base type typeu STORAGE-MARK-FIXED ;
+   base type typeu STORAGE-MARK-FIXED
+   name nameu base LBUF-N @ CHECKER-STORAGE-BIND ;
 
 \ LAYOUT-BUFFER is the public top-level introduction form: it consumes the
 \ count operand and parses its own name + type tokens. The axiom keeps it
@@ -475,9 +509,11 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ Quotation cells belong to the image even while null, before either compiler
 \ stores into them. These allocations are DATA; the term walk declares each
 \ code cell for capture. Pointer-to-quotation elements stay pointer cells.
-: STORAGE-ALLOT ( ptr n ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
+: STORAGE-ALLOT ( ptr n ptr u8 n ptr u8 n -- )
+   {: base:ptr type:ptr typeu:n name:ptr nameu:n :}
    base LBUF-ALLOT
-   base type typeu STORAGE-MARK-FIXED ;
+   base type typeu STORAGE-MARK-FIXED
+   name nameu base LBUF-N @ CHECKER-STORAGE-BIND ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
@@ -491,7 +527,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
-   base type typeu STORAGE-ALLOT ;
+   base type typeu name nameu STORAGE-ALLOT ;
 
 : TYPED-VARIABLE ( -- )
    parse-name {: name:ptr nameu:n :}
@@ -505,7 +541,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
-   base type typeu STORAGE-ALLOT ;
+   base type typeu name nameu STORAGE-ALLOT ;
 
 \ Axioms keep the two definers checker-known so the seal-time internal-word pass
 \ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
