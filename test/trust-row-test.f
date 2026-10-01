@@ -82,6 +82,20 @@ s\" s\q TRW-NO-SUCH-WORD\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STA
 \ src/os/env-base.f - every row there sits directly under its definition.
 s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 
+\ --- a name that is no span -------------------------------------------------
+\ A negative length, or one that would run the name past the top of the address
+\ range, spells nothing, so the row names no word even where its bytes begin a
+\ live one. It is refused before the name is read: the maximum cell ran the
+\ colon scan off the end of the string until the process was killed.
+\ `trust-raw` and `trust-decl` refuse it the same way: before, -1 recorded a row
+\ under that length, and the maximum cell died folding the name.
+s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust-raw" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust-decl" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-raw" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-decl" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+
 \ --- fixtures built to fool a text match ------------------------------------
 \ The name in a COMMENT. Nothing defines it, so the row is refused; a check that
 \ scanned source text for the spelling would accept it.

@@ -14461,6 +14461,24 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
 
+\ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
+\ one, or one that runs the span past the top of the address range. A false
+\ length inside the range cannot be told from a true one here: the code ceiling
+\ that bounds every name is src/habu/layout.f's REGION, which loads after this
+\ file.
+\ A NAME that is no span spells no word, so TRUST, TRUST-RAW and TRUST-DECL each
+\ refuse its row as E-TRUST-UNRESOLVED with no spelling rendered, and each does
+\ so first: TRUST before its dictionary walk, whose colon scan ran until the
+\ process was killed given the maximum cell; TRUST-RAW before it turns on
+\ raw-definer mode, which a caught refusal would leave on; TRUST-DECL before it
+\ steps the definer latch for a row that is never stored. Without the guard
+\ those two recorded the row under a length of -1, and died folding a name of
+\ the maximum cell.
+: TRUST-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 < IF RES-FALSE EXIT THEN
+   a u + a < IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
 \ The registration the two declaration words share. It is factored out rather than
 \ copied because TRUST and TRUST-RAW must record the same row from the same
 \ code; the only thing that differs between them is whether the signature
@@ -14511,6 +14529,7 @@ s" <input>" DIAG-FILE!
 \ This step is unconditional: a latch in any other state dies here rather than
 \ waiting for a record that is not its definer's.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+   na nu TRUST-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    DOES-EFF-STEP
    na nu sa su TRUST-USIG! ;
 package CHECKER-REG
@@ -14564,6 +14583,7 @@ package CHECKER-REG
    a u data-base CK-PKG-PUB-OFF + @ CK-WL-CLAIMS? ;
 
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
+   na nu TRUST-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu sa su TRUST-USIG! ;
 
@@ -14590,6 +14610,7 @@ package CHECKER-REG
 \ signature parse, and leaving the mode latched on would silently seal ordinary
 \ signatures registered afterwards.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
+   na nu TRUST-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;

@@ -1,12 +1,14 @@
 \ room-left-test.f - append guards that measure a length against the room left.
 \
 \ DTC+ and VRDEF-APP (src/core/roles.f) are engine words any source file can
-\ call, and AOT-CAPTURE:BOOTRUN+ (src/habu/aot-capture.f) is the capture's
-\ public entry, so each takes its length from the caller. A guard that adds that
-\ length to what the buffer already holds lets a length near the maximum cell
-\ wrap the sum back under the capacity, and lets a negative one through. Each is
-\ driven at the exact fill, one past it, -1 and the maximum cell. A refusal ends
-\ the process, so the refused cases run in a forked child.
+\ call, and AOT-CAPTURE:BOOTRUN+ (src/habu/aot-capture.f) and AOT-IDENT:PATH+
+\ (src/habu/aot-ident.f) are public entries of the capture and its closure
+\ table, so each takes its length from the caller. A guard that adds that length
+\ to what the buffer already holds lets a length near the maximum cell wrap the
+\ sum back under the capacity, and one that only bounds it from above lets a
+\ negative one through. Each is driven at the exact fill, one past it, -1 and
+\ the maximum cell. A refusal ends the process, so the refused cases run in a
+\ forked child.
 \
 \ Run: bin/hb --load test/room-left-test.f
 
@@ -21,6 +23,7 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
+require src/habu/aot-ident.f
 
 using AOT-BUF
 package ROOM-LEFT-TEST
@@ -91,11 +94,26 @@ create ERR CAPTURE-CAP allot
    s" a boot-run row of the maximum cell is too long" T-LABEL
    s" BOOTRUN-MAX" 74 S\" aot-capture: boot-run name too long\n" DIES ;
 
+\ A closure path is copied whole into a slot of PATH-CAP bytes.
+: PATH-FILL ( -- ) AOT-IDENT:RESET SRC PATH-CAP AOT-IDENT:PATH+ ;
+: PATH-OVER ( -- ) AOT-IDENT:RESET SRC PATH-CAP 1+ AOT-IDENT:PATH+ ;
+: PATH-NEG ( -- ) AOT-IDENT:RESET SRC -1 AOT-IDENT:PATH+ ;
+: PATH-MAX ( -- ) AOT-IDENT:RESET SRC MAX-CELL AOT-IDENT:PATH+ ;
+
+: TEST-PATH ( -- )
+   s" a closure path fills its slot exactly" T-LABEL
+   PATH-FILL 0 AOT-IDENT:PATH$ nip PATH-CAP T=
+   s" a closure path one past, -1 and the maximum cell are refused" T-LABEL
+   s" PATH-OVER" 74 S\" aot-ident: closure path longer than the path cap\n" DIES
+   s" PATH-NEG" 74 S\" aot-ident: closure path longer than the path cap\n" DIES
+   s" PATH-MAX" 74 S\" aot-ident: closure path longer than the path cap\n" DIES ;
+
 : MAIN ( -- )
    T-RESET
    TEST-DTC
    TEST-VRDEF
    TEST-BOOTRUN
+   TEST-PATH
    T-REPORT
    s" room-left-test: ok" type cr ;
 

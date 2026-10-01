@@ -990,7 +990,10 @@ variable SH-PREV
          s" aot-file: the closure list ends inside an entry" DIE
       then
       CBUF CUR @ + U64@ {: pu:n :}
-      CUR @ 8 + pu + CLEN @ > if
+      \ pu is the artifact's: a negative one is refused, and the rest is compared
+      \ with the bytes left after its length cell. Added to the cursor, a length
+      \ near the maximum cell wraps back inside the section.
+      pu 0 <  pu CLEN @ CUR @ 8 + - >  or if
          FD @ close
          s" aot-file: the closure list ends inside a path" DIE
       then

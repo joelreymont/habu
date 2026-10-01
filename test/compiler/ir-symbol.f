@@ -8,7 +8,8 @@
 \ the byte-compare verify step; byte packing round-trips across cell
 \ boundaries through EQ? and COPY; capacity for rows and for pool bytes
 \ rejects named at the committed ceilings while the stores stay readable and
-\ duplicate interns still answer; foreign keys, foreign symbol-ids, foreign
+\ duplicate interns still answer, and a byte length no pool holds rejects before
+\ a byte is read; foreign keys, foreign symbol-ids, foreign
 \ contexts, cross-module store pairings, and cross-context identities
 \ reject; non-interner, misaligned, and span-forged arenas reject
 \ fail-closed; a frozen module serves every reader through the arena views
@@ -161,6 +162,27 @@ create CBUF 32 allot
 : LN-CASE ( -- )
    s" a negative byte length is rejected at intern" T-LABEL
    [: LN-RUN ;] E-IR-SYM-LEN TTHROWSQ ;
+
+\ ---- a byte length no pool holds ---------------------------------------------
+\ INTERN hashes the presented bytes before it looks them up. No symbol is longer
+\ than the pool's committed bytes, so a longer length is refused before a byte is
+\ read: the maximum cell ran the hash off the three-byte span, and in whole cells
+\ it wraps the room check's sum back under the ceiling.
+-1 1 rshift constant MAX-CELL
+
+: LX-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 64 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   s" abc" {: p u:n :}
+   c a r key p MAX-CELL IR-SYM:INTERN drop ;
+
+: LX-RUN ( -- )
+   BND [: LX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LX-CASE ( -- )
+   s" a byte length past the pool is rejected before a byte is read" T-LABEL
+   [: LX-RUN ;] E-IR-SYM-BYTES TTHROWSQ ;
 
 \ ---- foreign owners ----------------------------------------------------------
 : XO-ID-BODY ( IR-CTX:ctx -- )
@@ -569,6 +591,7 @@ create CBUF 32 allot
    CL-CASE
    CP-CASE
    LN-CASE
+   LX-CASE
    XO-CASES
    BD-CASE
    CAP-CASES
