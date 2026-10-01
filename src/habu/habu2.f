@@ -4985,6 +4985,7 @@ variable LTOPHOOK
    C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
+   LFINDSHADOW LABEL@ BL,                                \ a global a used public also exports refuses (105)
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
@@ -8940,6 +8941,33 @@ public
       94 C-DIE-TOKEN                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 
+\ EMIT-FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of the
+\ E-USING-SHADOW-GLOBAL rule (docs/forth.md "Importing ... with `using`"), which
+\ the checker enforces in checked bodies. Called on LFIND's hit path with LFIND's
+\ outputs live, for the token in TKA/TKL. When the hit is a global (record wid 0)
+\ and a used public also exports the token, the token is refused by name with
+\ 105, through the compile-die tail: a throw inside evaluate, an exit at top
+\ level. Otherwise it returns with x5 and x11-x13 as LFIND left them; it clobbers
+\ what LFINDUSED does. Without it the global bound silently: `using PS` then a
+\ top-level `SHW` ran the global.
+: EMIT-FIND-SHADOW ( -- )
+   LBL LBL LBL  s" hb: bare word a global and a used package both export: "
+   {: ret:label shadow:label msg:label ma mu :}
+   LFINDSHADOW LABEL@ LBL,
+   14 5 40 LDR,  14 ret CBNZ,                                  \ a package's word: the inner scope won
+   14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  14 14 0 LDR,
+   14 ret CBZ,                                                 \ no using open
+   SP SP 48 SUBI,  30 SP 0 STR,  5 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,  13 SP 32 STR,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ two used publics die ambiguous there
+   14 13 0 ADDI,                                               \ x14 = the used publics' verdict
+   30 SP 0 LDR,  5 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,  13 SP 32 LDR,  SP SP 48 ADDI,
+   14 shadow CBNZ,
+   ret LBL,  RET,
+   shadow LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      105 C-DIE-TOKEN                              \ 105 = ENGINE-ERROR:USING-SHADOW-GLOBAL
+   msg LBL,  ma mu BYTES, ;
+
 : C-CALL-CHECKER-EXPORT ( -- )
    LCHKEXPORT 14 C-FIND-GLOBAL
    9 DATA TKA-CELL LDR,  9 G-PUSH
@@ -9074,6 +9102,7 @@ package INTERP-EMIT
    LBL LBL LBL {: depthok:label usedtry:label found:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                     \ open-scope + global miss -> try used publics
+   LFINDSHADOW LABEL@ BL,                              \ a global a used public also exports refuses (105)
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
@@ -11477,7 +11506,7 @@ package LABELS
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
-   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDSHADOW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -12024,6 +12053,7 @@ package ENGINE-EMIT
    EMIT-FIND
    WLFIND:EMIT
    EMIT-FIND-USED
+   EMIT-FIND-SHADOW
    EMIT-HIDX
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME

@@ -694,6 +694,26 @@ variable WANT-RC
    67 s" using shadow" GE-EXPECT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
+\ The interpreter refuses the same tail by name, as a word and as a tick's
+\ operand: it used to run the global (8) where OI-PKG's public is 7. Under
+\ `evaluate` the refusal is a throw the caller catches, and the qualified
+\ name and the read after `;using` are unchanged.
+: TOP-SHADOW ( -- )
+   s" using OI-PKG OI-SEVEN ." s" oi-top-shadow.f" LINE-CASE
+   ENGINE-ERROR:USING-SHADOW-GLOBAL
+   s" hb: bare word a global and a used package both export: OI-SEVEN at "
+   S\" oi-top-shadow.f:1\n" DIED-AT
+   s" using OI-PKG ' OI-SEVEN" s" oi-tick-shadow.f" LINE-CASE
+   ENGINE-ERROR:USING-SHADOW-GLOBAL
+   s" hb: bare word a global and a used package both export: OI-SEVEN at "
+   S\" oi-tick-shadow.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" using OI-PKG s~ OI-SEVEN~ ' evaluate catch . OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
+   s" oi-shadow-caught.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 105\n7\n8\n" CASE$ GE-EXPECT-OUT
+   s" hb: bare word a global and a used package both export: OI-SEVEN at " CASE$ GE-EXPECT-ERR-HAS ;
+
 \ `;package` restores the using depth its package opened at, so inside a
 \ package `;using` closes only a using the package opened. One opened before
 \ `package` is refused by name: closed, it came back at `;package` and the
@@ -1558,6 +1578,7 @@ private
    AMBIGUITY
    TICK-USED
    USING-SHADOW
+   TOP-SHADOW
    USING-ACROSS-PACKAGE
    PACKAGE-RECOVERY
    USING-INCLUDER

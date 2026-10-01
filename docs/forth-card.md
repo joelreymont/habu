@@ -29,7 +29,9 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) — rename the public.
+  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) in a definition and
+  `ENGINE-ERROR:USING-SHADOW-GLOBAL` (rc 105) at top level or after `'` —
+  rename the public. A file loaded under a `using` resolves through it.
   Close a using opened before `package` after `;package`: a `;using` inside
   the package that would close it is `ENGINE-ERROR:USING-OUTER` (rc 104).
   A load file is a using scope too: a `;using` in an included file or
@@ -106,6 +108,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
+| the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
 

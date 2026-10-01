@@ -46,6 +46,7 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 93 constant E-UNBALANCED
 94 constant E-AMBIGUOUS
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
+105 constant E-SHADOW-TOP       \ USING-SHADOW-GLOBAL: the interpreter's refusal of E-SHADOW's collision
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
 
@@ -206,6 +207,21 @@ s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
 s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
 \ no using in scope: a bare global is never a shadow error (resolves to the global)
 s" MW drop" UCE-CATCH 0 T=
+
+\ The interpreter refuses the same collision at top level and as the operand of
+\ `'`, by name, a throw its evaluate's caller catches; both used to bind the
+\ global silently. A qualified name, a tail no used package exports, a word the
+\ open package defines itself and a read after `;using` are unchanged. A buffer
+\ evaluated under its includer's using resolves through it, so it refuses too.
+s" using USG MW drop ;using" UCE-CATCH E-SHADOW-TOP T=
+s" using USG ' MW drop ;using" UCE-CATCH E-SHADOW-TOP T=
+s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
+s" using USG NC drop ;using" UCE-CATCH 0 T=
+s" package USM : MW ( -- n ) 5 ; using USG MW drop ' MW drop ;using ;package" UCE-CATCH 0 T=
+using USG
+s" MW drop" UCE-CATCH E-SHADOW-TOP T=
+;using
+s" using USG ;using MW drop ' MW drop" UCE-CATCH 0 T=
 
 \ An already compiled import keeps its binding when a global is defined later.
 package USH public

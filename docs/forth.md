@@ -295,7 +295,9 @@ and always available, for a one-off call or to escape a collision.
   `:` and an unknown package; it is valid at top level and inside an open
   package. Only the public wordlist joins the search; definitions still target
   the current scope's wordlist. A required file may open `NAME`; when the
-  require returns, the consumer is back in its original scope.
+  require returns, the consumer is back in its original scope. A file loaded or
+  a buffer evaluated while a `using` is open resolves through it, at top level
+  and in definitions.
 - The scope ends at the matching `;using`, at the enclosing `;package` for a
   `using` opened inside a package, or at the end of the load file, whichever
   comes first; consumer files close explicitly with `;using`. `;using` closes
@@ -324,9 +326,12 @@ and always available, for a one-off call or to escape a collision.
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public
   tails are ordinary verbs cannot be imported: `using TCP4` refuses at the first
   bare `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies)
-  or rename the collision. The checker enforces this in every checked body; the
-  engine's raw interpret and `0 set-check` keep global-first as the explicit
-  unchecked boundary.
+  or rename the collision. The checker enforces this in every checked body (rc
+  67). The interpreter enforces it at top level and for `'`, by name
+  (`ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105, a throw inside `evaluate`);
+  without it `using PS` then a top-level `SHW` ran the global. Only the bodies
+  nothing certifies, `TRUSTED:` and `0 set-check` definitions, keep
+  global-first, as the explicit unchecked boundary.
 - The colliding global need not be one the checker knows: every engine-prefix
   colon word without signature or axiom, and every `0 set-check` definition,
   counts. The reference site asks the ENGINE's wordlists (`search-wl`, the

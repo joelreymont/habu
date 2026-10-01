@@ -218,7 +218,7 @@ variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDSHADOW
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 

@@ -428,6 +428,10 @@ variable DIGIT-AT
    s" hb: ambiguous bare word resolves in multiple used packages: " SAY
    TOKEN$ SAY ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
 
+: SHADOWED ( -- )
+   s" hb: bare word a global and a used package both export: " SAY
+   TOKEN$ SAY ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
+
 \ ---- fail-closed exits ----------------------------------------------------------
 \ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
 \ text goes to descriptor 2 and no program code runs: the exit hook
@@ -491,8 +495,13 @@ variable VALUE
 \ ---- words --------------------------------------------------------------------------
 TYPED-VARIABLE REC ptr n
 
+\ A global hit is asked of the used publics as well, as habu2.f LFINDSHADOW
+\ asks them: one that also exports the token refuses it.
 : LOOKUP-GO ( -- )
-   TOKEN$ FIND REC ! ;
+   TOKEN$ FIND REC !
+   REC @ XREF-FOUND? 0= if exit then
+   REC @ XREF-WORDLIST 0<> if exit then
+   TOKEN$ FIND-USED XREF-FOUND? if SHADOWED then ;
 
 \ The token's record lands in REC, XREF-NULL on a miss. FIND's ambiguity is
 \ the engine's refusal.
