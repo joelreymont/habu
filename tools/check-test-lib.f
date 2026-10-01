@@ -2363,6 +2363,45 @@ create BIG $2000 allot   variable BIG-U
    s" \ lead" s" :" NONAME-REFUSED
    s" \ lead" s" TRUSTED:" NONAME-REFUSED ;
 
+\ Value-records whose fields the registration refuses. The loader dies at the
+\ first with the registration's message and rc 70. The check names every
+\ refused field at its line and column and exits 70: a field of unknown type, a
+\ duplicate field, a field named by effect syntax, a record with no field (named
+\ at its END-VALUE-RECORD), then later findings of other kinds. The refused
+\ record leaves nothing behind, so declaring its name again is no finding.
+: VREC-FIELDS$ ( -- ptr u8 n )
+   SB-RESET
+   s" VALUE-RECORD ckn-r x n y bogus END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" VALUE-RECORD ckn-s z n z n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" VALUE-RECORD ckn-t -- n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" VALUE-RECORD ckn-u END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" VALUE-RECORD ckn-r x n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR N" SB-APPEND $0a SB-APPEND-C
+   s" PRODUCT" SB-APPEND
+   SB$ ;
+
+: TEST-VREC-FIELD-REFUSED ( -- )
+   VREC-FIELDS$ HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" checker: bad value-record field type" CONTAINS? TTRUE
+   VREC-FIELDS$ DIRECT-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s" <stdin>:1:24: checker: bad value-record field type 'y'" CONTAINS? TTRUE
+   CAP-ERR erru2 s" <stdin>:2:24: checker: duplicate value-record field 'z'" CONTAINS? TTRUE
+   CAP-ERR erru2 s" <stdin>:3:20: checker: bad value-record field '--'" CONTAINS? TTRUE
+   CAP-ERR erru2 s" <stdin>:4:20: checker: empty value-record 'END-VALUE-RECORD'" CONTAINS? TTRUE
+   CAP-ERR erru2 s" 'ckn-r'" CONTAINS? TFALSE
+   CAP-ERR erru2 s" check.f: bad nominal type 'N'" CONTAINS? TTRUE
+   CAP-ERR erru2 s" <stdin>:7:1: missing name after 'PRODUCT'" CONTAINS? TTRUE
+   VREC-FIELDS$ DIRECT-JSON-STDIN 70 T=
+   {: outu3:n erru3:n :}
+   outu3 0 T=
+   CAP-ERR erru3 s\" \"code\":\"E-BAD-RECORD-FIELD\"" CONTAINS? TTRUE
+   CAP-ERR erru3 s\" \"line\":2,\"column\":24," CONTAINS? TTRUE
+   CAP-ERR erru3 s\" \"reason\":\"checker: duplicate value-record field\"" CONTAINS? TTRUE
+   CAP-ERR erru3 s\" \"code\":\"E-MISSING-NAME\"" CONTAINS? TTRUE ;
+
 : LINEAR-GOOD-TEST ( -- )
    LINEAR-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2717,6 +2756,7 @@ POISON-RECORD
    s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
+   s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
    s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN

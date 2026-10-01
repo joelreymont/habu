@@ -33,12 +33,12 @@ require src/core/checker-owner-guard.f
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
 \ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
-\ CHECKER-DEFRECORD publishes parsed records with their source descriptor.
+\ CHECKER-TRY-RECORD publishes a parsed record, or answers the field it refuses.
 \ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
 s" CHECK!" s" ptr u8 n -- n" TRUST
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
-s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
+s" CHECKER-TRY-RECORD" s" ptr u8 n ptr u8 n -- n ptr u8 n" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
@@ -138,8 +138,7 @@ variable CHK-DEP-ORDER-N
 variable CHK-DISC-ID
 variable CHK-ALL-ID
 variable CHK-ALL-RC
-variable CHK-VREC-DEF-I
-variable CHK-VREC-NAME-I
+variable CHK-NOM-BAD                     \ the nominal pass reported a finding
 variable CHK-TFAM-NAME-I
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
@@ -348,8 +347,7 @@ private
    NULL$ drop CHK-HB-A !
    0 CHK-NOM-I !
    0 CHK-NOM-U !
-   0 CHK-VREC-DEF-I !
-   0 CHK-VREC-NAME-I !
+   LINT-FALSE CHK-NOM-BAD !
    0 CHK-TFAM-NAME-I !
    0 CHK-EXP-U !
    0 CHK-EXP-OUT-U !
@@ -771,9 +769,15 @@ private
    39 CHK-ERR-C
    CHK-LF CHK-ERR-C ;
 
+\ A nominal finding is reported and the scan goes on to the next declaration;
+\ CHK-RUN-NOMINAL fails the run once every file is read, so one run reports
+\ every finding the pass can make.
+: CHK-NOM-FOUND ( -- )
+   LINT-TRUE CHK-NOM-BAD ! ;
+
 : CHK-TYPE-FAIL ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
    CHK-JSON @ IF def name word wordu CHK-TYPE-JSON ELSE name CHK-NOM-PROSE THEN
-   CHK-E-CHECK CHK-THROW ;
+   CHK-NOM-FOUND ;
 
 : CHK-NOM-FAIL ( n n -- )
    s" deftype" CHK-TYPE-FAIL ;
@@ -807,19 +811,21 @@ private
       39 CHK-ERR-C
       CHK-LF CHK-ERR-C
    THEN
-   CHK-E-CHECK CHK-THROW ;
+   CHK-NOM-FOUND ;
 
 \ A definer reads its name with parse-name, the next whitespace-delimited token
 \ whatever it spells: `DEFLINEAR (` declares the type `(` and `: \` defines the
 \ word `\`, as the loader reads them. On a match the lexer reads the token after
 \ the definer again by that rule, so the scan below never takes a comment, or the
 \ token after one, for the name. A definer with no token after it is refused
-\ here, so a caller answered true finds the name at the next token.
+\ here and answers false, so a caller answered true finds the name at the next
+\ token.
 : CHK-DEFINER? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
    k LINT-LEX:OPERAND
-   k 1+ LINT-LEX:COUNT >= IF k CHK-NONAME-FAIL THEN
-   LINT-TRUE ;
+   k 1+ LINT-LEX:COUNT < IF LINT-TRUE exit THEN
+   k CHK-NONAME-FAIL
+   LINT-FALSE ;
 
 \ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
 \ (SERIAL -> serial) and mints the tail with CHECKER-DEFFAMILY, as
@@ -842,11 +848,32 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    LINT-LEX:TOKEN TYPE-RESERVED? ;
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
-   name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
+   name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL EXIT THEN
    name LINT-LEX:TOKEN CHECKER-DEFLINEAR ;
 
 : CHK-VREC-FAIL ( n n -- )
    s" value-record" CHK-TYPE-FAIL ;
+
+: CHK-FIELD-SUG$ ( -- ptr u8 n )
+   s" Declare at least one field, each with a unique name and a known type." ;
+
+\ A value-record field the registration refuses, at field token tok of the
+\ declaration from def: the packet carries the refusal as its reason, and the
+\ prose gives it with the field.
+: CHK-FIELD-FAIL ( n n ptr u8 n -- ) {: def:n tok:n msg:ptr msgu:n :}
+   CHK-JSON @ IF
+      def tok s" E-BAD-RECORD-FIELD" s" fix_record_field" s" value-record" CHK-PACKET-START
+      s" reason" msg msgu CHK-NOM-JSTR
+      CHK-FIELD-SUG$ CHK-PACKET-END
+   ELSE
+      tok CHK-AT-PROSE
+      msg msgu CHK-ERR
+      s"  '" CHK-ERR
+      tok LINT-LEX:TOKEN CHK-ERR
+      39 CHK-ERR-C
+      CHK-LF CHK-ERR-C
+   THEN
+   CHK-NOM-FOUND ;
 
 : CHK-VREC-RESET ( -- )
    0 CHK-EXP-U ! ;
@@ -871,20 +898,26 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-VREC-END? ( n -- bool )
    s" END-VALUE-RECORD" CHK-TOK=CI ;
 
-: CHK-VREC-DO-DEF ( -- )
-   CHK-VREC-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
-   CHECKER-DEFRECORD ;
+\ The token holding byte at of the field text CHK-VREC-TOKEN+ joined, one space
+\ apart, from the tokens after the record name. The end of an empty text is the
+\ END-VALUE-RECORD token.
+: CHK-VREC-FIELD-TOKEN ( n n -- n ) {: name:n at:n :}
+   name 1+ 0
+   begin over LINT-LEX:TOKEN nip over + at < while
+      over LINT-LEX:TOKEN nip + 1+
+      swap 1+ swap
+   repeat drop ;
 
+\ The registration answers the field it refuses instead of dying, and leaves
+\ no part of the record behind, so the scan reports it and goes on.
 : CHK-VREC-DEFRECORD ( n n -- ) {: def:n name:n :}
-   def CHK-VREC-DEF-I !
-   name CHK-VREC-NAME-I !
-   [: CHK-VREC-DO-DEF ;] catch dup 0= IF drop EXIT THEN
-   dup CHK-E-CHECK <> IF throw THEN drop
-   CHK-VREC-DEF-I @ CHK-VREC-NAME-I @ CHK-VREC-FAIL ;
+   name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL EXIT THEN
+   name LINT-LEX:TOKEN CHK-EXP-BUF CHK-EXP-U @ CHECKER-TRY-RECORD
+   {: at:n msg:ptr msgu:n :}
+   msgu 0= IF EXIT THEN
+   def name at CHK-VREC-FIELD-TOKEN msg msgu CHK-FIELD-FAIL ;
 
 : CHK-VREC-REGISTER ( n n -- n ) {: def:n name:n :}
-   name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL THEN
    CHK-VREC-RESET
    name 1+
    begin dup LINT-LEX:COUNT < while
@@ -1196,9 +1229,14 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    repeat drop
    old oldu CHK-LABEL! ;
 
-: CHK-RUN-NOMINAL ( -- )
+: CHK-RUN-NOMINAL-FILES ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
    CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
+
+: CHK-RUN-NOMINAL ( -- )
+   LINT-FALSE CHK-NOM-BAD !
+   CHK-RUN-NOMINAL-FILES
+   CHK-NOM-BAD @ if CHK-E-CHECK CHK-THROW then ;
 
 : CHK-VERIFIER-XT ( n -- n ) {: off:n :}
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @

@@ -5061,9 +5061,7 @@ variable LBI-BAD
    id ;
 
 : VREC-FINISH ( n -- ) {: id:n :}
-   VREC-FIELD-N @ id VREC-START@ - {: n:n :}
-   n 0 <= IF s" checker: empty value-record" 70 die THEN
-   n id cells VREC-COUNT + !
+   VREC-FIELD-N @ id VREC-START@ - id cells VREC-COUNT + !
    VRC-TVN @ id cells VREC-TVN + !
    VRC-RVN @ id cells VREC-RVN + ! ;
 
@@ -5099,27 +5097,67 @@ variable LBI-BAD
    u 0= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
-: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
+\ A refused field is answered, not died on, so the loader and tools/check.f
+\ share this one rule: CHECKER-DEFRECORD dies with the refusal, and the check
+\ tool names the field it refuses. VREC-AT is the byte offset in the field text
+\ of the field being parsed.
+variable VREC-AT
+
+: VREC-REFUSE ( ptr u8 n -- n ptr u8 n ) {: msg:ptr msgu:n :}
+   VREC-AT @ msg msgu ;
+
+\ Parse and store the fields of record id. Answer the end of the field text and
+\ an empty refusal, or the offset of the field refused and the refusal.
+: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
+   fieldsu VREC-AT !
    BEGIN
-      NEXT-SIG-TOK dup 0= IF 2drop SGBAD @ IF s" checker: bad value-record field type" 70 die THEN EXIT THEN
-      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" 70 die THEN
-      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" 70 die THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" 70 die THEN
+      NEXT-SIG-TOK dup 0= IF
+         2drop SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
+         fieldsu fields 0 EXIT
+      THEN
+      over fields - VREC-AT !
+      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" VREC-REFUSE EXIT THEN
+      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" VREC-REFUSE EXIT THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
       SIG-TYPE
       >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF s" checker: bad value-record field type" 70 die THEN
+      SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
    AGAIN ;
+
+: VREC-DEFINE ( n ptr u8 n ptr u8 n -- n ptr u8 n )
+   {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
+   id rec recu fields fieldsu VREC-PARSE-FIELDS {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF at msg msgu EXIT THEN
+   VREC-FIELD-N @ id VREC-START@ = IF fieldsu s" checker: empty value-record" EXIT THEN
+   id VREC-FINISH
+   at msg msgu ;
+
+\ CHECKER-TRY-RECORD ( name fields -- at refusal ) registers the record, or
+\ leaves every record table as it found it and answers the byte offset in the
+\ field text of the field it refuses (the end of the text for a record with no
+\ field) and the refusal; an empty refusal means registered. On a refusal it
+\ rewinds the five marks a rollback frame rewinds (RBF.VRECN .. RBF.VRECU). The
+\ caller asks TYPE-RESERVED? about the name first, as CHECKER-DEFRECORD does.
+: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
+   {: name:ptr nameu:n fields:ptr fieldsu:n :}
+   VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @
+   {: rn:n fn:n dn:n an:n su:n :}
+   name nameu VREC-BEGIN {: id:n :}
+   id name nameu fields fieldsu VREC-DEFINE {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF
+      rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
+   THEN
+   at msg msgu ;
 
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu TYPE-RESERVED? IF s" checker: bad or duplicate value-record type" 70 die THEN
-   name nameu VREC-BEGIN {: id:n :}
-   id name nameu fields fieldsu VREC-PARSE-FIELDS
-   id VREC-FINISH ;
+   name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF msg msgu 70 die THEN ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -8530,6 +8568,7 @@ PRIM: CHECKER-AUTH-PACKAGE-MODE@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-AUTH-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-TRY-RECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;

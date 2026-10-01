@@ -331,6 +331,24 @@ variable LABEL-U
    s" habu-missing-name.err" WRITE-ERR
    s" habu-missing-name.err" s" missing name diagnostic contract" DIAG-CONTRACT ;
 
+\ A value-record field the registration refuses: the refusal is located at the
+\ field, carries the registration's message and keeps the diagnostic contract.
+: BAD-RECORD-FIELD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" VALUE-RECORD ckn-r x bogus END-VALUE-RECORD" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted a refused record field" CHECK-JSON
+   s" code" s" E-BAD-RECORD-FIELD" s" record field code" ERR-JSTR
+   s" token" s" x" s" record field token" ERR-JSTR
+   s" repair_class" s" fix_record_field" s" record field repair class" ERR-JSTR
+   s" reason" s" checker: bad value-record field type" s" record field reason" ERR-JSTR
+   s" line" s" 1" s" record field line" ERR-JRAW
+   s" column" s" 20" s" record field column" ERR-JRAW
+   s" byte_start" s" 19" s" record field byte_start" ERR-JRAW
+   s" byte_end" s" 20" s" record field byte_end" ERR-JRAW
+   s" habu-record-field.err" WRITE-ERR
+   s" habu-record-field.err" s" record field diagnostic contract" DIAG-CONTRACT ;
+
 \ The check CLI accepts a source that declares a nominal locally and uses it in
 \ a signature. The declarer is DEFLINEAR, whose interpret word survives and runs
 \ in the child engine; a DEFLINEAR value moves exactly once, so JWIDGET passes it
