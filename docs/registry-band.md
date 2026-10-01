@@ -86,6 +86,9 @@ Implementation:
   run before the cell is marked.
 - `internal-mark.f` `IMK-SEAL-REGISTRY` int-marks every recorded index; it runs
   in `IMK-PASS` before `IMK-SEAL-PRIM` (so `int-mark` is still callable).
+  `IMK-PASS` then empties the table: an index is the loading process's record
+  number, a build host's in a product build, and a captured one moved the
+  product with its host ([bootstrap.md](bootstrap.md#generation-chain-check)).
 - Uses only existing prims (`ndict@`, `int-mark`) — no new primitive, no layout
   change, so no fixpoint bootstrap concern.
 

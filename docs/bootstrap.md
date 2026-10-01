@@ -360,6 +360,18 @@ Three facts decide how a change reaches the fixpoint:
     each engine: a `package` costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and
     a `require` of already baked source 0 — it just no longer reaches a
     product.
+  - *A record number is the host's, so no window cell may keep one.* The
+    window's records follow the HOST's primitives, and the image puts them
+    after its own, while the capture copies DATA as bytes: a cell that holds a
+    record index carries the host's primitive count into the product. A
+    prefix word that needs the boundary asks `CORE-PREFIX:FIRST-RECORD` when
+    it runs, and the prefix seal (`src/core/internal-mark.f`) keeps its
+    cursors off DATA and empties the `REG-PROTECT` table it consumes. Measured
+    while it kept them: a tree with one primitive more built a gen1 and a gen2
+    76 bytes apart — the 73 table cells and three cursors, each one higher —
+    and the unmodified tree built under that gen1 missed the shipped engine by
+    the same 76. With the seal clean, the unmodified tree built under the
+    shipped engine and under that larger host is the same file.
   - *A name a pre-window build file calls comes from the HOST.*
     `tools/native-build.f` loads its own prefix from the tree
     (`src/habu/aot-decl.f`, `aot-capture.f`, `aot-file.f` and the rest), but

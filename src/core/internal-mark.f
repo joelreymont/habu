@@ -5,9 +5,16 @@ require src/core/prefix-boundary.f
 
 package ENGINE-INTERNAL
 
-
-variable IMK-I
-variable IMK-FIRST
+\ THE PASS LEAVES NO RECORD NUMBER IN DATA. A record number belongs to the
+\ process that loads this prefix, and in a build that is the HOST: its window's
+\ records follow the host's own primitives, while the image it writes puts them
+\ after the image's. The capture carries DATA as bytes, so a cell holding a
+\ record number carries the host's primitive count into the image. Measured: a
+\ tree with one primitive more built a different image under its own engine
+\ than under the engine before it, in 76 bytes - the 73 registrations
+\ REG-PROTECT queued (src/core/util.f) and three cursors of this pass. So the
+\ cursors are loop indices, the prefix's first record is a local, and IMK-PASS
+\ retires the registrations once it has decided what to do with them.
 
 : IMK-REC ( n -- ptr n )
    XREF-REC ;
@@ -33,12 +40,14 @@ variable IMK-FIRST
 : IMK-GLOBAL-EXECUTABLE? ( n -- bool )
    dup IMK-WID 0 = IF IMK-EXECUTABLE? ELSE drop 0 0= 0= THEN ;
 
-: FIRST-CORE ( -- n ) IMK-FIRST @ ;
 TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 TRUSTED: PROTECTED-COUNT ( -- n ) REG-PROT-N @ ;
 TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
+TRUSTED: PROTECTED-RETIRE ( -- )
+   PROTECTED-COUNT 0 ?do 0 i cells REG-PROT-IDX + ! loop
+   0 REG-PROT-N ! ;
 
 : IMK-MIN-IN ( n -- n )
    dup IMK-NAME-A swap IMK-NAME-U KNOWN-MIN-IN ;
@@ -51,12 +60,8 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
    i IMK-GLOBAL-EXECUTABLE? 0= IF EXIT THEN
    i i IMK-MIN-IN IMK-MARK ;
 
-: IMK-WALK ( -- )            \ classify every source-prefix record
-   FIRST-CORE IMK-I !
-   BEGIN IMK-I @ ndict@ < WHILE
-      IMK-I @ IMK-CLASSIFY
-      IMK-I @ 1 + IMK-I !
-   REPEAT ;
+: IMK-WALK ( n -- )          \ classify every source-prefix record, from the first
+   ndict@ swap ?do i IMK-CLASSIFY loop ;
 
 \ ---- package publics, under their qualified name ---------------------------
 \ A package word carries its wordlist, not 0, so IMK-WALK above never reaches
@@ -97,7 +102,6 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
 create IMK-QBUF IMK-QCAP allot
 variable IMK-QU
 variable IMK-QI
-variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 
 : IMK-Q+ ( ptr u8 n -- ) {: a:ptr u:n :}
    IMK-QU @ u + IMK-QCAP > IF
@@ -120,20 +124,17 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    i IMK-EXECUTABLE? 0= IF EXIT THEN
    i p i IMK-QUAL KNOWN-MIN-IN IMK-MARK ;
 
-: IMK-PKG-PUBLICS ( n -- ) {: p:n :}   \ every public colon record of package row p
+\ Package row p's public colon records, from p or the prefix's first record.
+: IMK-PKG-PUBLICS ( n n -- ) {: p:n first:n :}
    p IMK-REC XREF-START {: pub:n :}
-   p 1 + FIRST-CORE max IMK-I !
-   BEGIN IMK-I @ ndict@ < WHILE
-      IMK-I @ IMK-WID pub = IF p IMK-I @ IMK-CLASSIFY-PUB THEN
-      IMK-I @ 1 + IMK-I !
-   REPEAT ;
+   ndict@ p 1 + first max ?do
+      i IMK-WID pub = IF p i IMK-CLASSIFY-PUB THEN
+   loop ;
 
-: IMK-WALK-PACKAGES ( -- )   \ classify every package's public wordlist
-   0 IMK-P !
-   BEGIN IMK-P @ ndict@ < WHILE
-      IMK-P @ IMK-WID DICT-WL:NAMESPACE = IF IMK-P @ IMK-PKG-PUBLICS THEN
-      IMK-P @ 1 + IMK-P !
-   REPEAT ;
+: IMK-WALK-PACKAGES ( n -- ) {: first:n :}   \ classify every package's public wordlist
+   ndict@ 0 ?do
+      i IMK-WID DICT-WL:NAMESPACE = IF i first IMK-PKG-PUBLICS THEN
+   loop ;
 
 : IMK-NAMED? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
    i IMK-NAME-U u = IF i IMK-NAME-A i IMK-NAME-U a u CORE-STR= ELSE 0 0= 0= THEN ;
@@ -142,26 +143,18 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    dup s" int-mark" IMK-NAMED? IF drop 0 0= EXIT THEN
    s" min-in-mark" IMK-NAMED? ;
 
-: IMK-SEAL-PRIM ( -- )       \ close the loop: the marking prims are themselves internal
-   0 IMK-I !
-   BEGIN IMK-I @ FIRST-CORE < WHILE
-      IMK-I @ IMK-PRIM? IF IMK-I @ MARK-INTERNAL THEN
-      IMK-I @ 1 + IMK-I !
-   REPEAT ;
+: IMK-SEAL-PRIM ( n -- )      \ close the loop: the marking prims are themselves internal
+   0 ?do i IMK-PRIM? IF i MARK-INTERNAL THEN loop ;
 
 \ Registry write-protection (dot habu-protect-type-field-04d91409). A din=0
 \ registry control cell (variable/create) is a data record, so IMK-WALK exempts
 \ it and its bare name stays executable — a bare `<cell> !` mutates the registry
-\ past the public API. type-family.f's REG-PROTECT recorded each such cell's
+\ past the public API. util.f's REG-PROTECT recorded each such cell's
 \ dictionary index in REG-PROT-IDX[0, REG-PROT-N); int-mark them so interpret /
 \ tick fail closed on the bare name exactly like a sig-less colon word, while the
 \ core compiled callers (resolved before this pass) keep working.
 : IMK-SEAL-REGISTRY ( -- )
-   0 IMK-I !
-   BEGIN IMK-I @ PROTECTED-COUNT < WHILE
-      IMK-I @ PROTECTED-RECORD MARK-INTERNAL
-      IMK-I @ 1 + IMK-I !
-   REPEAT ;
+   PROTECTED-COUNT 0 ?do i PROTECTED-RECORD MARK-INTERNAL loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
 \ THE ONE BUILD THAT ASKS FOR NO SEAL. A whitebox suite reaches inside the
@@ -199,14 +192,19 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
 variable IMK-CLASS
 
-: IMK-PASS ( -- )
-   IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! EXIT THEN
+: IMK-SEAL ( -- )
    IMAGE-SEALED IMK-CLASS !
-   CORE-PREFIX:FIRST-RECORD IMK-FIRST !
-   IMK-WALK
-   IMK-WALK-PACKAGES
+   CORE-PREFIX:FIRST-RECORD {: first:n :}
+   first IMK-WALK
+   first IMK-WALK-PACKAGES
    IMK-SEAL-REGISTRY
-   IMK-SEAL-PRIM ;
+   first IMK-SEAL-PRIM ;
+
+\ Either class ends the registrations: the seal has read them, and a whitebox
+\ image has no seal to read them.
+: IMK-PASS ( -- )
+   IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
+   PROTECTED-RETIRE ;
 
 public
 
