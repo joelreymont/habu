@@ -80,9 +80,6 @@ s" HB@" s" -- ptr u8" TRUST
 \ definition`. That is also why the debugger stays out: it is a file a session
 \ REQUIRES, and a required file whose names the engine already carries cannot
 \ load at all. Check a new name against the tree before capturing it.
-\ Dynamic host evaluation is source-dependent and cannot carry a static effect.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
 package STDIN-DRIVER
 public
 
@@ -141,7 +138,7 @@ PTR-VARIABLE DP0
    READ-REPL                                     \ REPL sources -> HB scratch buffer
    AOT-ARM:WINDOW-OPEN                            \ the engine declines to inline pre-window chains from here on
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK  \ no prelude: this host compiles only what the target's prefix carries
-   HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
+   HB@ HL @ evaluate-closed                       \ compile the REPL in the host dictionary
    AOT-ARM:WINDOW-CLOSE
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    s" INSTALL" AOT-CAPTURE:BOOTRUN+ ;              \ repl.f -> REPL read hook + termios save

@@ -177,7 +177,9 @@ variable RC
    \ definition before the token these cases pin.
    BPS$ s" TYPED-VARIABLE LRD-P ptr u8 : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
    BPF$ s" TYPED-VARIABLE LRD-Q ptr u8 : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
-   FRAG$ s" 1 +" WRITE-ALL
+   \ A loaded file is a closed program, so the fragment shows it ran by
+   \ printing: it can take no cell from its loader and leave none.
+   FRAG$ s" 74 ." WRITE-ALL
    SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" WRITE-ALL
    SB-RESET
    s" include " SB-APPEND
@@ -204,13 +206,13 @@ LOWER-CERT-HOOK:INSTALL
 
 : RUNTIME-FIXTURE! ( -- )
    RUNTIME$ s" " WRITE-ALL
-   S\" : RUN-I ( -- ) 73 s\" " S\" \" included . ; " RUNTIME-DEF+
-   S\" : RUN-R ( -- ) 73 s\" " S\" \" required . ; " RUNTIME-DEF+
+   S\" : RUN-I ( -- ) s\" " S\" \" included ; " RUNTIME-DEF+
+   S\" : RUN-R ( -- ) s\" " S\" \" required ; " RUNTIME-DEF+
    S\" : RUN-P ( -- ) s\" " S\" \" provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
 
 : POSITIVE-FIXTURES! ( -- )
-   s" 73 include " FRAG$ s"  ." TOP-INC$ FRAG-FIXTURE!
-   s" 73 require " FRAG$ s"  ." TOP-REQ$ FRAG-FIXTURE!
+   s" include " FRAG$ s" " TOP-INC$ FRAG-FIXTURE!
+   s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
    RUNTIME-FIXTURE!
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
    TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" WRITE-ALL ;

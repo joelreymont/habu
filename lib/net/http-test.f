@@ -1407,6 +1407,6 @@ T-RESET
 LIFECYCLE
 CLEANUP-RUN
 T-REPORT
-s" http-test: ok" type cr
+s" http-test: ok" type LF emit   \ CR here is the package constant 13, not `cr`
 
 ;package

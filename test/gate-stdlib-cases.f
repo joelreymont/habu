@@ -2090,6 +2090,10 @@ SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
+SUITE closed-source
+   test/closed-source-suite.f
+;SUITE
+
 WHITEBOX-SUITE engine
    test/engine-suite.f
 ;SUITE

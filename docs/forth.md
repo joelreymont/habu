@@ -31,7 +31,9 @@ lives here; build, test and environment rules live in
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
   the caller's depth and must leave nothing (measured under **Rules learned by
-  refusal**). Four cases stay open:
+  refusal**). The loader and every source-generating definer evaluate through
+  it, so a loaded file (**Packages**) and a generated declaration are closed
+  programs too. Four cases stay open:
   - An xt the text runs through `execute` is guarded only by `execute`'s own
     one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
     warns `hb: top-row: execute: xt target underflows the interpret stack` and
@@ -221,6 +223,15 @@ public
   order. Never include a file so two files share private helpers; reopening the
   package does that. Gate source lists are for cross-file integration subjects
   and generated build-stage source, not unit-test dependency plumbing.
+- A loaded file is a closed program: `include`, `require` and `--load`
+  evaluate it through the loader's `INCLUDE-EVALUATE`, which is
+  `evaluate-closed`. Its top level starts at `depth` 0, a token reaching its
+  includer's cells throws 70, and a file that ends with cells on the stack is
+  refused `E-EVAL-RESIDUE` (`--load` of a file ending `1 2` exits
+  `hb: uncaught throw code -3804`, rc 67), so a value crosses a load only as a
+  word the file defines. Fix a file that leaves cells; never loosen the loader.
+  `hb prog.f` and a program on stdin are not loaded files and keep their
+  top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
   Relative dependencies search that root, then the invocation working directory;
   a dependency keeps the root that resolved it for its own loads; absolute paths

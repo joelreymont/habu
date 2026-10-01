@@ -256,10 +256,11 @@ CHECKER-END-PACKAGE
 ;package
 \ A cast carries no body, and this is how that is enforced rather than merely
 \ intended. The declaration ENDS at its closing paren: whatever follows is read
-\ by the interpreter as its own token, not swallowed as a body.
+\ by the interpreter as its own token, not swallowed as a body. The trailing 42
+\ runs and is left as the text's residue, which INCLUDE-EVALUATE, a closed
+\ evaluation, refuses by name.
 package CN
-s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL 0 T=
-42 T=                                         \ the trailing token ran, and left its value
+s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL E-EVAL-RESIDUE T=
 s" CNS1" get-current search-wl 0= 0 T=        \ ... and the cast published anyway
 ;package
 

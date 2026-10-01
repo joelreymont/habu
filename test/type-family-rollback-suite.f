@@ -91,8 +91,8 @@ TWX-SCHEMA-RESET
 \    same-name re-add succeeds cleanly (string pool + counters rewound).
 \ ---------------------------------------------------------------------------
 \ seed one pre-existing family so restore is to a nonzero baseline (not just 0).
-s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop
-s" rbpre" s" base" 0 0 0 0 TWX-SUMV-ADD drop
+s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL
+s" base" 0 0 0 0 TWX-SUMV-ADD drop
 0 TWX-SCHEMA-PARAM drop
 
 TFAM-N@       P-TFAM !
@@ -105,8 +105,8 @@ TF-STR-U@    P-STRU !
 TF-PK-N@     P-PKN !
 
 TWX-CAND-START
-   s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TWX-TFAM-DECL drop
-   s" rbc" s" cand" 0 0 0 0 TWX-SUMV-ADD drop
+   s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TWX-TFAM-DECL
+   s" cand" 0 0 0 0 TWX-SUMV-ADD drop
    \ a product field + layout keyed on the just-added candidate family.
    s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! PFOWN !
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
@@ -147,8 +147,8 @@ s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop
 \ ---------------------------------------------------------------------------
 TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !
 CHECKER-SCOPE-START
-   s" rbs" CHECKER-PACKAGE-PUBLIC s" scoped" 0 TK-ENUM TWX-TFAM-DECL drop
-   s" rbs" s" scoped" 0 0 0 0 TWX-SUMV-ADD drop
+   s" rbs" CHECKER-PACKAGE-PUBLIC s" scoped" 0 TK-ENUM TWX-TFAM-DECL
+   s" scoped" 0 0 0 0 TWX-SUMV-ADD drop
    s" rbs" s" scoped" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 CHECKER-SCOPE-DONE
 TFAM-N@ P-TFAM @ T=

@@ -27,7 +27,7 @@ converter words**, the same substrate `maki/extent.f` uses for a flat extent:
   `TF-CANON?` allows them) and mints an arity-0 cell family with
   `CHECKER-DEFFAMILY` in the caller's active package.
 - it derives the explicit converter pair `>NAME ( n -- tail )` and
-  `NAME>N ( tail -- n )` as no-op identity casts through one audited `evaluate`
+  `NAME>N ( tail -- n )` as no-op identity casts through one `evaluate-closed`
   boundary (`NG-EVAL`, the `roles.f` `DTC-EVAL` / `extent.f` `XG-EVAL` pattern).
 
 ## Why the loser lost — extend the CT-role table (DEFTYPE / A1b)

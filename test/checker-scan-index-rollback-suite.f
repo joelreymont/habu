@@ -83,8 +83,8 @@ s" scxrb" s" cand" SCX-TFAM-FIND-IN TFALSE drop
 SCX-CAND-START
    s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT SCX-TFAM-DECL drop
    s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand2" 2 TK-PRODUCT SCX-TFAM-DECL drop
-   s" scxrb" s" cand" SCX-TFAM-FIND-IN TTRUE drop
-   s" scxrb" s" cand" 0 0 0 0 SCX-SUMV-ADD IX @ SCX-SUMV-CTOR-SYM!
+   s" scxrb" s" cand" SCX-TFAM-FIND-IN TTRUE           \ the candidate family's id
+   s" cand" 0 0 0 0 SCX-SUMV-ADD IX @ SCX-SUMV-CTOR-SYM!
    IX @ SCX-SUMV-FROM-CTOR TTRUE drop
 0 SCX-CAND-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild

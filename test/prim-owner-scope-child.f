@@ -26,11 +26,13 @@ PPRIM: PRIM-OWNER-SCOPE PRIM-OWNER-AXIOM PE-N PE-IN CLOSE-PRIVATE
 PPRIM: PRIM-OWNER-SCOPE addrmap-set PE-N PE-IN CLOSE-PRIVATE
 
 \ Compiling a candidate is the subject, so the compile boundary is unchecked on
-\ purpose: EVC reports the reject code instead of letting it exit the window, EV
-\ moves the live package the next case is measured in, and SELECT picks the
-\ compiler it is measured under.
-TRUSTED: EVC ( ptr u8 n -- n ) [: evaluate ;] catch ;
+\ purpose: EV moves the live package the next case is measured in, and SELECT
+\ picks the compiler it is measured under. EVC reports the reject code instead
+\ of letting it exit the window. A refusal's throw puts the text's two cells
+\ back, so EVC evaluates a copy and drops them on either path: this file is a
+\ closed program and may leave nothing.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
+: EVC ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;
 TRUSTED: SELECT ( n -- ) set-tier ;
 
 package PRIM-OWNER-CHILD

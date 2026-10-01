@@ -583,13 +583,12 @@ get-current prot-wid-add
 \ names them on stderr before the throw, so a full table is one line rather
 \ than a bisection over the libraries a process happens to load.
 \
-\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK. That is the
-\ only reading under which the loader's audited INCLUDE-EVALUATE ( ptr u8 n -- )
-\ is honest, and it is this declarer's whole obligation to that boundary: one
-\ complete colon definition per declaration and no interpreted residue.
-\ lib/ffi-test.f asserts DEPTH across a declaration. When
-\ habu-retire-the-audited-85c43acf lands, this crossing moves to that mechanism
-\ and nothing else here changes.
+\ THE GENERATED TEXT DEFINES WORDS AND LEAVES NOTHING ON THE STACK. It crosses
+\ the loader's INCLUDE-EVALUATE, which is evaluate-closed: the text runs with its
+\ floor at the declarer's depth, and a text that left cells would be refused
+\ E-EVAL-RESIDUE. The declarer's obligation to that boundary is one complete
+\ colon definition per declaration and no interpreted residue; lib/ffi-test.f
+\ asserts DEPTH across a declaration.
 
 package FFI-DECL
 
@@ -999,7 +998,7 @@ public
 
 \ FUNCTION: parses the name, the symbol and the effect and leaves the
 \ declaration open; the interpreter then runs any clauses; ;FUNCTION plans it,
-\ renders it and hands the complete definition to the loader's audited
+\ renders it and hands the complete definition to the loader's closed
 \ evaluate. Nothing is published before the closer, and the row is registered as
 \ the text is rendered, so a refused declaration leaves no half-built word.
 : OPEN-FUNCTION ( -- )

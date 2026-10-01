@@ -56,11 +56,13 @@ variable #CASE
 \ runs on an engine whose seal never ran and the registry cells it reads have
 \ their ordinary checker effects: TFAMN@, SCHN@, SUMVN@ and the two save/restore
 \ blocks are plain checked definitions. What still needs a trusted body is what
-\ needed one on any engine - `evaluate` and `catch`, and the TFAM / SUMV / SCHEMA
-\ accessors whose rows are trust-boundary primitives, which refuse a checked
-\ caller by name (E-CAP-TRUSTED) rather than by visibility.
+\ needed one on any engine - `evaluate`, and the TFAM / SUMV / SCHEMA accessors
+\ whose rows are trust-boundary primitives, which refuse a checked caller by
+\ name (E-CAP-TRUSTED) rather than by visibility. The `catch` adapters are
+\ checked: each runs its word on copies of the inputs, because a throw restores
+\ the depth catch began with, and drops both so a refusal leaves only its code.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;            \ evaluate under catch -> throw code
+: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 TRUSTED: F-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: F-SUM? ( n -- bool ) TFAM-SUM? ;
@@ -529,7 +531,7 @@ TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 TRUSTED: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
 : DICT-RECS ( -- n ) ndict@ ;
 : DICT-CODE ( -- n ) cp@ ;
-TRUSTED: ARM-RC ( n -- n ) ['] GENERATED-DECL-CTOR:ARM catch ;
+: ARM-RC ( n -- n ) [: dup GENERATED-DECL-CTOR:ARM ;] catch {: rc:n :} drop rc ;
 
 \ Arm the participant with CT-FAM from inside a real coordinator transaction, so
 \ the depth precondition is satisfied and whatever ARM rejects is rejected on its
@@ -1102,10 +1104,10 @@ package enum-replay-test
 public
 
 \ The replay entry under `catch`, so a reject answers its code the way TRY does
-\ for the live entry. TRUSTED: for the same reason TRY is — `catch` over a word
-\ the checker cannot type through a quotation boundary here.
+\ for the live entry: it runs on copies of both strings, both dropped after.
 : RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
-TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
+: RP-TRY ( ptr u8 n ptr u8 n -- n )
+   [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
 \ Force the replay stream open so the re-entry guard can be reached at all; the
 \ production callers never nest, which is exactly why the guard needs a test.

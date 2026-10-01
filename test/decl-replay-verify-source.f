@@ -247,7 +247,7 @@ variable SB-I   variable SB-J
 
 \ VSTRY ( source -- code ) : register under catch, so a refusal is a value.
 : VS-RUN ( ptr u8 n -- ) VS-LOAD ;
-TRUSTED: VSTRY ( ptr u8 n -- n ) ['] VS-RUN catch ;
+: VSTRY ( ptr u8 n -- n ) [: 2dup VS-RUN ;] catch {: rc:n :} 2drop rc ;
 
 \ The over-cap declaration must leave NO family behind, not a short one.
 TRUSTED: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;

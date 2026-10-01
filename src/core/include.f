@@ -742,8 +742,13 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
-TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
-   evaluate ;
+\ The loader's evaluation boundary. Every loaded file (require, include,
+\ `--load`) and every generated core declaration crosses it through the two
+\ bindings at the end of this file, so each runs as a closed program: its floor
+\ is the loader's depth and whatever it leaves is refused E-EVAL-RESIDUE. A file
+\ that leaves cells is fixed at the file, never here.
+: INCLUDE-EVALUATE ( ptr u8 n -- )
+   evaluate-closed ;
 
 \ ---- Ordered source-composition event log (TFAM 5, item 5) --------------
 \ The loader words append one event per source-composition act so a restricted
@@ -946,9 +951,10 @@ public
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop INCLUDE-READ-ALL ;
 
-\ The loop a loaded file's bytes go through. INCLUDE-EVAL-BIND below binds the
-\ engine's `evaluate`; test/outer-loop-on.f binds the loop written in Habu,
-\ src/habu/interpret.f OUTER:INTERPRET, for the files loaded after it.
+\ The loop a loaded file's bytes go through, inside the closed boundary:
+\ INCLUDE-EVAL-BIND below binds INCLUDE-EVALUATE, and test/outer-loop-on.f binds
+\ the loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, under
+\ evaluate-closed for the files loaded after it.
 defer INCLUDE-INTERPRET ( ptr u8 n -- )
 
 private
@@ -1163,7 +1169,7 @@ public
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
 \ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
-\ evaluate only through this audited INCLUDE-EVALUATE boundary; engines without
+\ evaluate only through the closed INCLUDE-EVALUATE boundary; engines without
 \ include.f (stage builders) leave TYPE-DECL's armed flag 0 and generation stays
 \ fail-closed. Bind the defer (wrapped so the quotation compiles), then arm.
 \ The loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET gets the same boundary.

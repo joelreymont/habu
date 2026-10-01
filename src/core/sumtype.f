@@ -1014,9 +1014,9 @@ public
 \ plan-determined registry storage, and seals the checker's ordered constructor
 \ queue. It checks the complete dependency-ordered source in one candidate scope,
 \ discards every provisional checker row, and rewinds the queue. Only that fully
-\ accepted plan crosses the audited INCLUDE-EVALUATE boundary once. The generated
+\ accepted plan crosses the closed INCLUDE-EVALUATE boundary once. The generated
 \ text never contains TRUST, TRUSTED:, or set-check.
-\ The one complete-plan evaluate crossing rides the audited boundary
+\ The one complete-plan evaluate crossing rides the closed boundary
 \ (include.f), reached through this friend xt installed by type-family-sha.f
 \ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
 \ adds no unchecked code.

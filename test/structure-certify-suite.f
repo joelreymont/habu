@@ -63,9 +63,11 @@ variable #CASE
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
 \ --- boundary shims (the test/structure-decl-suite.f idiom): the STRUCTURE
-\ opener and evaluate are reached at top level through named trusted forwarders.
+\ opener and evaluate are reached at top level through the trusted forwarder EV.
+\ TRY runs EV on a copy of the string because a throw restores the depth catch
+\ began with, and it drops both copies so a refusal leaves only its code.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;
+: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;
 
 \ --- diagnostic capture (the test/type-match-suite.f idiom): a JSON-mode render
 \ into a fixed buffer, asserted by substring.

@@ -311,17 +311,43 @@ variable WANT-RC
    S\" E-UNDERFLOW: 5\n" s" hook underflow" GE-EXPECT-ERR ;
 
 \ A file the case includes is read by the same loop, and the case's own input
-\ resumes after it.
+\ resumes after it with the cell below the include intact. The included file
+\ prints its value, which it may not leave (NESTED-CLOSED).
 : NESTED ( -- )
    GE-SRC-RESET
-   s" 3" GE-SRC-LINE
+   s" 3 ." GE-SRC-LINE
    s" oi-nested.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 1 include oi-nested.f 2 . . . depth ." GE-SRC-LINE
+   s" 1 include oi-nested.f 2 . . depth ." GE-SRC-LINE
    s" oi-include.f" BOTH
    s" nested include" GE-EXPECT-OK
-   S\" 2\n3\n1\n0\n" s" nested include" GE-EXPECT-OUT ;
+   S\" 3\n2\n1\n0\n" s" nested include" GE-EXPECT-OUT ;
+
+\ An included file is a closed program under either loop: its floor is the
+\ includer's depth, so its `drop` is refused before it takes the cell below
+\ the include, and a value it leaves is refused E-EVAL-RESIDUE (-3804). Each
+\ refusal is caught, and the includer's 7 is intact.
+: NESTED-CLOSED ( -- )
+   GE-SRC-RESET
+   s" drop" GE-SRC-LINE
+   s" oi-nested-drop.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 7 s~ oi-nested-drop.f~ ' included catch . 2drop . depth ." QLINE
+   s" oi-include-drop.f" BOTH
+   s" include floor" GE-EXPECT-OK
+   S\" 70\n7\n0\n" s" include floor" GE-EXPECT-OUT
+   S\" hb: interpret stack underdepth: drop\n" s" include floor" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" 3" GE-SRC-LINE
+   s" oi-nested-left.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 7 s~ oi-nested-left.f~ ' included catch . 2drop . depth ." QLINE
+   s" oi-include-left.f" BOTH
+   s" include residue" GE-EXPECT-OK
+   S\" -3804\n7\n0\n" s" include residue" GE-EXPECT-OUT ;
 
 \ ---- the literal keywords --------------------------------------------------------------
 \ Each string form, some spelled in upper case; every escape; the data space
@@ -1143,6 +1169,7 @@ private
    HOOK-WINDOW
    HOOK-UNDERFLOW
    NESTED
+   NESTED-CLOSED
    LITERALS
    TICK-AND-CHAR
    CHAR-PAST-BODY-CAP

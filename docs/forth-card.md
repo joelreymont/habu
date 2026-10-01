@@ -221,6 +221,10 @@ forth.md: **Errors**, **Integer arithmetic**.
   path resolves against the `--load` entry's directory, then the working
   directory, so `require lib/…` names the tree root. Every file requires its
   **own** dependencies.
+- A loaded file is a closed program: its top level starts at `depth` 0, a
+  token reaching its loader's cells throws 70, and a file that ends with cells
+  on the stack is `E-EVAL-RESIDUE`. A value crosses a load only as a word the
+  file defines.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
   `src/` file:

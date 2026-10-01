@@ -393,7 +393,7 @@ public
 
 \ `CMD:COMMAND NAME` declares one command context and publishes NAME as its
 \ handle. The source is built in a CODEGEN buffer and handed to the loader's
-\ audited evaluate, lib/task.f `+USER`'s shape, because a definer cannot both
+\ closed evaluate, lib/task.f `+USER`'s shape, because a definer cannot both
 \ parse a name and run two storage definers on it:
 \
 \    CMD:VEC-CELLS PTR-U8-TABLE NAME#VEC
