@@ -192,13 +192,23 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
    FMT-ROOT$ ;
 
 \ Not HB-TMP-MKDIR: REMOVE-SPECIAL-TREE binds a real Unix socket under this
-\ root, and sun_path holds 107 bytes. A pool slot HB_TMP is 97 bytes on its
-\ own (measured: the listener never binds, WAIT-LISTENER throws E-FS-IO), so
-\ the root takes the short base TMPDIR, then /tmp, and FMT-REMOVE! reaps it.
-: FMT-ROOT! ( -- )
-   s" habu-fs-mutate" TMPDIR-MKDIR {: a:ptr u :}
+\ root, at <root>/remove-tree/root.txt, and sun_path holds 107 bytes on Linux
+\ and 103 on macOS. A pool slot HB_TMP is 97 bytes on its own (measured: the
+\ listener never binds, WAIT-LISTENER throws E-FS-IO). Under a gate pool the
+\ root is the slot's HB_SOCK_TMP, the short directory the pool makes for a
+\ child's sockets under TMPDIR and removes when the slot retires or is killed
+\ (test/gate-pool.f GT-POOL-CHILD-SOCK!), so a row the pool kills leaves no
+\ root behind; the socket path there is about 100 bytes under macOS's default
+\ TMPDIR. Run on its own, the root takes the short base TMPDIR, then /tmp.
+\ Either way FMT-PREPARE registers it, and the run removes what it made in it.
+: FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
    a FMT-ROOT-BUF u BYTE-COPY
    u FMT-ROOT-U ! ;
+
+: FMT-ROOT! ( -- )
+   s" HB_SOCK_TMP" GETENV dup 0 > if FMT-ROOT-COPY! exit then
+   2drop
+   s" habu-fs-mutate" TMPDIR-MKDIR FMT-ROOT-COPY! ;
 
 : FMT-REMOVE! ( -- )
    FMT-ROOT$ s" remove.txt" FMT-REMOVE-BUF JOIN-PATH FMT-REMOVE-U ! ;
