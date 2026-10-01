@@ -1,9 +1,11 @@
 ---
 title: Parse the colon head in Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.655350+03:00"
+closed-at: "2026-10-01T08:44:23.737673+03:00"
+close-reason: "done: src/habu/definers.f reads the `:`/`kernel:`/`trusted:` head and the tier-1 body capture; bin/hb --load test/outer-interpret.f agrees with the engine on 109 cases (28 new head cases) plus the tier-0 Habu-only refusals, ThinkPad and spark."
 blocks:
   - habu-add-the-engine-ebe5d757
   - habu-move-pkgs-using-22f18b81

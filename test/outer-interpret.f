@@ -9,16 +9,19 @@
 \ rc, stdout and stderr, and each case states the rc and output that show what
 \ it exercised, so two runs failing alike do not pass.
 \
-\ The prelude defines with keywords (`:`, `TRUSTED:`, `SUMTYPE`), which the Habu
-\ loop does not read yet, so it loads before the switch and a case holds only
-\ numbers, comments, the literal keywords (`s"`, `c"`, `."`, their escaped
-\ forms, `char` and `'`), the package keywords (`package`, `public`,
-\ `private`, `;package`, `using`, `;using` and `export`) and words.
+\ The prelude defines with keywords (`:`, `TRUSTED:`, `SUMTYPE`), and the Habu
+\ loop cannot end a definition yet: it reads a head but not `;`. So the prelude
+\ loads before the switch, and a case holds only numbers, comments, the literal
+\ keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`), the package
+\ keywords (`package`, `public`, `private`, `;package`, `using`, `;using` and
+\ `export`), words, and a definition head (`:`, `kernel:` or `trusted:`) that
+\ refuses or stays pending.
 \
-\ One case is the Habu loop's alone: `export` of an internal word, which the
-\ engine's own `export` publishes without its DNAME-INT mark. And one check
-\ runs in a forked copy of this process instead, the seam: a fork binds it to
-\ a counting spy, and a loaded file must arrive there.
+\ Some cases are the Habu loop's alone: `export` of an internal word, which the
+\ engine's own `export` publishes without its DNAME-INT mark, and tier 0, whose
+\ definitions the engine's loop compiles and the Habu loop refuses. And one
+\ check runs in a forked copy of this process instead, the seam: a fork binds
+\ it to a counting spy, and a loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -81,7 +84,11 @@ variable SPIN-U
 \ that a global twin shadows, two packages whose publics share a tail, a
 \ namespace a qualified definition made (it has no private wordlist), an
 \ integer constant, and a word that fills the dictionary (the name index goes
-\ first, as test/engine-writers.f EW-DICT-FULL drops it).
+\ first, as test/engine-writers.f EW-DICT-FULL drops it). OI-DUMP is an exit
+\ hook that prints the pending definition: its record's name, flags, whether
+\ its wordlist is OI-WANT's and its entry the provenance window's, its body
+\ capture, its signature's length, the trusted and tier cells and the code
+\ origin of its name's bytes.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -105,6 +112,17 @@ variable SPIN-U
    s" : OI-QUAL:OI-Q ( -- n ) 3 ;" GE-SRC-LINE
    s" 5 constant OI-FIVE" GE-SRC-LINE
    s" TRUSTED: OI-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + ! DICT-CAP ndict! ;" GE-SRC-LINE
+   s" variable OI-WANT" GE-SRC-LINE
+   s" : OI-B. ( bool -- ) if 1 else 0 then . ;" GE-SRC-LINE
+   s" : OI-CELL@ ( n -- n ) data-base + @ ;" GE-SRC-LINE
+   s" : OI-PEND ( -- ptr n ) PEND-CELL OI-CELL@ XREF-N>REC ;" GE-SRC-LINE
+   s" TRUSTED: OI-ORIGIN ( ptr u8 -- n ) dup 1 + code-origin ;" GE-SRC-LINE
+   s" : OI-REC. ( ptr n -- ) {: r:ptr :} r XREF-NAME$ type cr r XREF-FLAGS ." GE-SRC+
+   s"  r XREF-WORDLIST OI-WANT @ = OI-B. r XREF-START TIER-PROV:OPEN-CELL OI-CELL@ = OI-B." GE-SRC+
+   s"  r XREF-NAME-A OI-ORIGIN . ;" GE-SRC-LINE
+   s" : OI-BODY. ( -- ) data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL OI-CELL@ type cr ;" GE-SRC-LINE
+   s" : OI-STATE. ( -- ) TSIG-U-CELL OI-CELL@ . TRUSTED-CELL OI-CELL@ . NCOMP-DISPATCH:DEF-TIER-CELL OI-CELL@ . ;" GE-SRC-LINE
+   s" : OI-DUMP ( -- ) OI-PEND OI-REC. OI-BODY. OI-STATE. ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -753,6 +771,170 @@ variable WANT-RC
    s" package OI-T public OI-SPIN export OI-TWO" s" export" s" oi-live-export.f" LIVE
    0 SPIN-U ! ;
 
+\ ---- the definition heads -------------------------------------------------------
+\ A head refuses through the engine's tails, in the engine's order, or leaves
+\ its definition pending: nothing compiles until `;`. A case selects tier 1
+\ first; the Habu loop refuses tier 0, whose bodies the engine's loop compiles
+\ as it reads them.
+: HEAD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   GE-SRC-RESET s" 1 set-tier " GE-SRC+
+   src srcu GE-SRC-LINE
+   name nameu BOTH ;
+
+\ `:` at the end of the input, the definition's name missing; `kernel:` is its
+\ synonym and `trusted:` a reader keyword.
+: HEAD-NO-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier 1 ." GE-SRC-LINE
+   s" :" GE-SRC+
+   s" oi-colon-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: : missing definition name after  at " S\" oi-colon-no-name.f:2\n" DIED-AT
+   s" KERNEL:" s" oi-kernel-no-name.f" HEAD
+   74 s" hb: : missing definition name after  at " S\" oi-kernel-no-name.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier TRUSTED:" GE-SRC-LINE
+   s" oi-trusted-no-name.f" BOTH
+   74 s" hb: reader keyword needs a name: trusted: at " S\" oi-trusted-no-name.f:2\n" DIED-AT ;
+
+\ At tier 0 a head and a body token refuse. A body reaches the Habu loop at
+\ tier 0 only when the engine's loop opened its head, as `evaluate` does; the
+\ engine's head leaves the PROT window over CP's unit (PROT-PAGE-MAX) open until
+\ `;`, and code compiled in that unit cannot run then, so the case first moves
+\ CP two units past the Habu loop's code.
+: HEAD-TIER-0 ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" : OI-T0" GE-SRC-LINE
+   s" oi-tier-0-head.f" HABU
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   76 s" hb: tier 0 is not in the Habu loop: : at " S\" oi-tier-0-head.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" cp@ PROT-PAGE-MAX 2 * + cp! s~ : OI-T0 ( -- )~ evaluate 1 2" QLINE
+   s" oi-tier-0-body.f" HABU
+   76 s" hb: tier 0 is not in the Habu loop: 1 at " S\" oi-tier-0-body.f:1\n" DIED-AT ;
+
+\ A head exits 79 while a task is live, the keyword its whole diagnostic.
+: HEAD-TASK-LIVE ( -- )
+   SPIN-PRELUDE
+   s" 1 set-tier OI-SPIN : OI-T" s" :" s" oi-live-colon.f" LIVE
+   s" 1 set-tier OI-SPIN Kernel: OI-T" s" Kernel:" s" oi-live-kernel.f" LIVE
+   s" 1 set-tier OI-SPIN TRUSTED: OI-T ( -- )" s" TRUSTED:" s" oi-live-trusted.f" LIVE
+   0 SPIN-U ! ;
+
+\ CP at the code ceiling and a full dictionary refuse first, naming the
+\ keyword. A qualifier's new namespace row can take the last record slot, and
+\ the refusal then names the token; a long name or namespace that would reach
+\ the ceiling names itself.
+: HEAD-CAPACITY ( -- )
+   s" dbase@ REGION + $4000 - cp! : OI-T" s" oi-head-code-full.f" HEAD
+   76 s" hb: code space full at: : at " S\" oi-head-code-full.f:1\n" DIED-AT
+   s" OI-DICT-FULL kernel: OI-T" s" oi-head-dictionary-full.f" HEAD
+   77 s" hb: dictionary full at: kernel: at " S\" oi-head-dictionary-full.f:1\n" DIED-AT
+   s" 0 data-base HIDXP-CELL + ! DICT-CAP 1 - ndict! : OI-NEWNS:OI-T" s" oi-head-namespace-last.f" HEAD
+   77 s" hb: dictionary full at: OI-NEWNS:OI-T at " S\" oi-head-namespace-last.f:1\n" DIED-AT
+   s" dbase@ REGION + $4000 - 8 - cp! : OI-PKG:A-LONG-DEFINITION-NAME" s" oi-head-name-full.f" HEAD
+   76 s" hb: code space full at: A-LONG-DEFINITION-NAME at " S\" oi-head-name-full.f:1\n" DIED-AT
+   s" dbase@ REGION + $4000 - 8 - cp! : A-LONG-NAMESPACE-ROW:X" s" oi-head-namespace-full.f" HEAD
+   76 s" hb: code space full at: A-LONG-NAMESPACE-ROW at " S\" oi-head-namespace-full.f:1\n" DIED-AT ;
+
+\ A second colon in a qualified name refuses, and so does a tail the target
+\ wordlist holds in any case, naming the token as spelled.
+: HEAD-NAME-REFUSALS ( -- )
+   s" : OI-A:B:C" s" oi-head-two-colons.f" HEAD
+   75 s" OI-A:B:C at " S\" oi-head-two-colons.f:1\n" DIED-AT
+   s" : oi-two" s" oi-head-duplicate.f" HEAD
+   78 s" duplicate definition: oi-two at " S\" oi-head-duplicate.f:1\n" DIED-AT
+   s" : oi-pkg:OI-SEVEN" s" oi-head-qualified-duplicate.f" HEAD
+   78 s" duplicate definition: oi-pkg:OI-SEVEN at " S\" oi-head-qualified-duplicate.f:1\n" DIED-AT ;
+
+\ A tail the compiler reads as a keyword in a body refuses, the tail named.
+: HEAD-KEYWORD-WALL ( -- )
+   s" : If" s" oi-head-if.f" HEAD
+   70 s" hb: compile keyword cannot be a definition name: If at " S\" oi-head-if.f:1\n" DIED-AT
+   s" trusted: OI-PKG:then ( -- )" s" oi-head-qualified-then.f" HEAD
+   70 s" hb: compile keyword cannot be a definition name: then at " S\" oi-head-qualified-then.f:1\n" DIED-AT ;
+
+\ `trusted:` needs a signature, opened and closed; the refusal names the
+\ definition at the name's line.
+: HEAD-TRUSTED-SIGNATURE ( -- )
+   s" TRUSTED: OI-T 1 2" s" oi-head-no-signature.f" HEAD
+   76 s" OI-T at " S\" oi-head-no-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier trusted: OI-T" GE-SRC-LINE
+   s" ( n -- n" GE-SRC+
+   s" oi-head-open-signature.f" BOTH
+   76 s" OI-T at " S\" oi-head-open-signature.f:1\n" DIED-AT ;
+
+\ A head into a sealed package's name, or into a protected wordlist, and one
+\ with no native compiler installed end the process without the exit hook.
+: HEAD-FAIL-CLOSED ( -- )
+   s" 1 set-tier : tfam:x" s" oi-head-sealed.f" ARMED
+   s" tfam:x" CASE$ GE-EXPECT-ERR
+   s" 1 set-tier package OI-EX public get-current prot-wid-add ;package : OI-EX:OI-T" s" oi-head-protected.f" ARMED
+   S\" hb: cannot publish into protected word: OI-EX:OI-T\n" CASE$ GE-EXPECT-ERR
+   s" 1 set-tier package OI-EX public get-current prot-wid-add : OI-T" s" oi-head-protected-current.f" ARMED
+   S\" hb: cannot publish into protected word: OI-T\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" 1 set-tier 0 data-base NCOMP-DISPATCH:XT-CELL + ! : OI-T ( -- )" GE-SRC-LINE
+   s" oi-head-dispatch-unset.f" BOTH
+   ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
+   S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
+
+\ A pending definition, dumped at exit by OI-DUMP, which the case arms after
+\ moving CP past the prelude's unit (HEAD-TIER-0 says why) and with OI-WANT
+\ set to the wordlist the head must pick.
+: PENDING ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: want:ptr wantu:n src:ptr srcu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   s" cp@ PROT-PAGE-MAX 2 * + cp! 1 set-tier ' OI-DUMP data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   want wantu GE-SRC+ s"  OI-WANT !" GE-SRC-LINE
+   src srcu GE-SRC+
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK ;
+
+\ The current wordlist takes a bare name. A comment is not captured, blanks
+\ between tokens collapse to one space, and the signature is the inside of the
+\ parentheses; an inline name has no code origin.
+: PENDING-BARE ( -- )
+   s" get-current" S\" : OI-FOO ( n -- n ) ( a comment ) dup  1\n+" s" oi-pending-bare.f" PENDING
+   S\" OI-FOO\n6\n1\n1\n-1\nOI-FOO ( n -- n ) dup 1 + \n8\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A prelude package's public wordlist takes its qualified tail. The long name
+\ is copied to CP and marked native; `trusted:` sets the trusted cell, and its
+\ signature need not be a whole token.
+: PENDING-QUALIFIED ( -- )
+   s" package OI-PKG public get-current ;package"
+   s" TRUSTED: OI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop"
+   s" oi-pending-qualified.f" PENDING
+   S\" A-LONG-DEFINITION-NAME\n2305843009213693974\n1\n1\n1\nOI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop \n13\n1\n1\n"
+   CASE$ GE-EXPECT-OUT ;
+
+\ An unknown qualifier makes a namespace row, whose public wordlist is the next
+\ one; a signature the input ends inside runs to the end, its inner length two
+\ less than the whole, as the engine's is.
+: PENDING-NEW-NAMESPACE ( -- )
+   s" WIDN-CELL OI-CELL@" s" : OI-NEWNS:OI-BAR ( n -- n" s" oi-pending-namespace.f" PENDING
+   S\" OI-BAR\n6\n1\n1\n-1\nOI-NEWNS:OI-BAR ( n -- n \n6\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A colon at either edge leaves the name bare.
+: PENDING-EDGE-COLONS ( -- )
+   s" get-current" s" : :OI-EDGE" s" oi-pending-leading.f" PENDING
+   S\" :OI-EDGE\n8\n1\n1\n-1\n:OI-EDGE \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
+   s" get-current" s" kernel: OI-EDGE: dup" s" oi-pending-trailing.f" PENDING
+   S\" OI-EDGE:\n8\n1\n1\n-1\nOI-EDGE: dup \n0\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A body past BODYBUF-CAP refuses, naming the definition and the size the
+\ capture needed.
+: BODY-FULL ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-BIG ( -- )" GE-SRC-LINE
+   1000 0 ?do s" 1234567" GE-SRC-LINE loop
+   s" oi-body-full.f" BOTH
+   71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8006 at "
+   S\" oi-body-full.f:1000\n" DIED-AT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -838,6 +1020,19 @@ private
    TASK-LIVE
    TASK-LIVE-KEYWORDS
    SEAM
+   HEAD-NO-NAME
+   HEAD-TIER-0
+   HEAD-TASK-LIVE
+   HEAD-CAPACITY
+   HEAD-NAME-REFUSALS
+   HEAD-KEYWORD-WALL
+   HEAD-TRUSTED-SIGNATURE
+   HEAD-FAIL-CLOSED
+   PENDING-BARE
+   PENDING-QUALIFIED
+   PENDING-NEW-NAMESPACE
+   PENDING-EDGE-COLONS
+   BODY-FULL
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

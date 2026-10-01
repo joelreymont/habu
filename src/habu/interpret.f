@@ -1,9 +1,11 @@
 \ interpret.f - the interpret loop written in Habu, OUTER:INTERPRET: it reads a
-\ buffer token by token with the readers src/habu/outer.f defines and the
-\ package keywords src/habu/packages.f defines.
+\ buffer token by token with the readers src/habu/outer.f defines, the
+\ package keywords src/habu/packages.f defines and the definition heads and
+\ body capture src/habu/definers.f defines.
 
 require src/habu/outer.f
 require src/habu/packages.f
+require src/habu/definers.f
 
 package OUTER
 
@@ -19,8 +21,10 @@ TRUSTED: DISPATCH ( -- )
 
 : STEP ( -- )
    COMMENT? if exit then
+   COMPILING? if exit then
    LITERAL? if exit then
    PACKAGE? if exit then
+   DEFINE? if exit then
    DISPATCH ;
 
 : RUN ( -- )

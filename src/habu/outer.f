@@ -281,9 +281,11 @@ public
 \ EM-INTERPRET-WORDS) for comments, the literal keywords (`s"`, `c"`, `."`,
 \ their escaped forms, `char` and `'`), numbers and dictionary words, and with
 \ src/habu/packages.f for the package keywords (`package`, `public`, `private`,
-\ `;package`, `using`, `;using` and `export`). The engine's other keywords
-\ (`:`, `create`, ...) are not read yet: they are not dictionary words, so they
-\ refuse as undefined.
+\ `;package`, `using`, `;using` and `export`), and with src/habu/definers.f for
+\ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens.
+\ The engine's other keywords (`;`, `create`, ...) are not read yet: a body
+\ captures them as it captures any token, and elsewhere they are not dictionary
+\ words, so they refuse as undefined.
 \
 \ The input is the engine's own. The cursor, its end and the buffer start sit
 \ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
