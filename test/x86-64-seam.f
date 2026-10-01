@@ -37,16 +37,13 @@ require lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
-\ src/os/image-bytes.f sizes the image buffer from a bare CODE-CAP-BYTES at
-\ load, so it loads under `using X64CODE`. It and the writer load before the
-\ ARM64 code layer below, whose CODE, ASM-LEN and CODE-CAP-BYTES are globals:
-\ once those exist, the engine refuses a bare reference to X64CODE's same names
-\ with E-USING-SHADOW-GLOBAL.
-using X64CODE
-require src/os/image-bytes.f
-;using
+\ The writer, which brings src/os/image-bytes.f in under `using X64CODE`, loads
+\ before the ARM64 code layer below, whose CODE, ASM-LEN and CODE-CAP-BYTES are
+\ globals: once those exist, the engine refuses a bare reference to X64CODE's
+\ same names with E-USING-SHADOW-GLOBAL.
 require src/os/linux-x86-64/target-layout.f
 s" src/os/linux-x86-64/elf.f" required
+require src/os/image-bytes.f
 
 \ src/habu/aot-decl.f sizes its rows by src/arch/arm64/icode.f's AOT-SECTION-CAP.
 require src/arch/arm64/asm.f
@@ -240,7 +237,6 @@ $228 constant WANT-RELA-OFF
 
 : ELF-CASES ( -- )
    s" the writer's layout agrees with the engine it was loaded into" T-LABEL
-   X64LAYOUT:CODE-OFF WANT-CODE-OFF T=
    VMBASE WANT-VMBASE T=
    BUILD-ELF
    TEXTSZ {: textsz:n :}

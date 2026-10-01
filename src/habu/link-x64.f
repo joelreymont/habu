@@ -36,8 +36,10 @@
 \ - THE BITMAP. Each protected-wid row, a zero-based window offset, sets the bit
 \   of T0 + row in BITS$, the PROT-BITS band, as AOT-WINDOW:SEAL-WIDS, does.
 \ - THE NAME INDEX. The writer builds it, into INDEX$: HIDX-SLOTS u32 slots
-\   keyed and probed exactly as kernel-x64.f REBUILD-HELPER, fills them from the
-\   live records [0, RECORDS), with CLAIMS one claim per record. It is a
+\   keyed and filled as kernel-x64.f REBUILD-HELPER fills them, from the live
+\   records [0, RECORDS), with CLAIMS one claim per record. The kernel's own
+\   probe reads it: test/x86-64-link-records.f stages it in a booted image,
+\   where xref-search-wl finds every record from it. It is a
 \   function of the records alone, and they of the capture and the kernel: no
 \   host address, wid or record number reaches it. Measured: the window of
 \   test/x86-64-link-records.f captured by a host with one record, one
@@ -52,15 +54,17 @@
 \ outside the capture window, a protected wid at or past PROT-WID-MAX, more
 \ records than DICT-CAP, routines that pass the code ceiling, a site naming a
 \ record with no routine, a site or code cell naming a word no kernel body
-\ carries, a call or branch whose displacement does not fit its rel32, and a
-\ code cell no xt row keys (a quotation's entry, which the capture refuses).
+\ carries, a call or branch whose displacement does not fit its rel32, a code
+\ cell no xt row keys (a quotation's entry, which the capture refuses), and a
+\ code cell whose xt row names a record with no routine. A refusal dies, and
+\ LAYOUT writes only this file's buffers, so no byte leaves the process first.
 \
 \ LOAD ORDER. The x86-64 files bind `using X64CODE`, whose public tails
 \ src/arch/arm64/icode.f also defines as globals (CODE, LBL, ASM-LEN), and
-\ src/habu/aot-decl.f loads behind that file, for AOT-SECTION-CAP. So a loader
-\ brings the x86-64 side in first, elf.f behind src/os/image-bytes.f under
-\ `using X64CODE` as elf.f's own header asks, then the ARM64 code layer and the
-\ capture's declarations, and this file last; it reads X64CODE qualified.
+\ src/habu/aot-decl.f reads that file's AOT-SECTION-CAP. So this file requires
+\ the x86-64 side first, then the ARM64 code layer and the capture's
+\ declarations; it reads X64CODE qualified. A loader that loads
+\ src/arch/arm64/icode.f ahead of this file loads the x86-64 side before that.
 require lib/le.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/elf.f
@@ -69,6 +73,7 @@ require src/habu/layout.f
 require src/habu/code-span.f
 require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f
+require src/arch/arm64/icode.f
 require src/habu/aot-decl.f
 
 package X64LINK
@@ -149,14 +154,17 @@ variable HI
    s" is window wordlist " type row PWIN@ . s" of " type AOT-WID-SPAN @ . cr
    s" x64link: a protected wid outside the window or at PROT-WID-MAX" REFUSE ;
 
-\ The shadow row whose emission holds shadow code byte n: the last row whose
-\ emission starts at or below it, since the rows' starts ascend.
+\ The shadow row whose emission holds shadow code byte n: the first row of the
+\ last emission that starts at or below it, since the rows' starts ascend. A
+\ `does>` companion follows its definer at the definer's start, so the row is
+\ the definer's.
 : ROW-AT ( n -- n ) {: n:n :}
    0 LO !  AOT-SHADOW:REC-N @ HI !
    begin HI @ LO @ - 1 > while
       LO @ HI @ + 2 / {: mid:n :}
       mid SH-AT n <= if mid LO ! else mid HI ! then
    repeat
+   begin LO @ 0 > if LO @ 1- SH-AT LO @ SH-AT = else false then while -1 LO +! repeat
    LO @ ;
 
 \ ---- the wids -------------------------------------------------------------------
@@ -521,6 +529,11 @@ private
    s" , which no x86-64 kernel body carries" type cr
    s" x64link: a code cell names a word the x86-64 kernel does not carry" REFUSE ;
 
+: CELL-ROUTINELESS ( n n -- ) {: c:n k:n :}
+   s" x64link: address-cell row " type c . s" holds shipped row " type k . k CREC-NAME$ type
+   s" , which has no x86-64 routine" type cr
+   s" x64link: a code cell names a record with no x86-64 routine" REFUSE ;
+
 \ The xt rows ascend by address-cell row, one per code cell (src/habu/aot-file.f
 \ ?SH-XTS), so one walk beside the cells pairs each with its row.
 : ?CELLS ( -- )
@@ -529,6 +542,7 @@ private
       i CODE-CELL? if
          CUR @ AOT-SHADOW:XT-N @ < if CUR @ 0 XT@ i = else false then
          0= if i NO-XT then
+         CUR @ 4 XT@ ROUTINE-OF 0 < if i CUR @ 4 XT@ CELL-ROUTINELESS then
          1 CUR +!
       then
       i NAMED-CELL? if i CELL-NAME$ KERNEL-BODY 0 < if i CELL-UNCARRIED then then
@@ -568,21 +582,6 @@ public
       i 0 XT@ c = if PRIMS i 4 XT@ + 0 REC@ unloop exit then
    loop
    -1 ;
-
-\ The image record of a name in one wordlist, or -1, folded as every name
-\ compare is: the probe kernel-x64.f FIND-HELPER makes, against INDEX$.
-: FIND ( ptr u8 n n -- n ) {: a:ptr len:n w:n :}
-   a len w SLOT
-   HIDX-SLOTS 0 ?do
-      dup SLOT-AT LE:U32@ {: v:n :}
-      v 0= if drop -1 unloop exit then
-      v 1- {: k:n :}
-      k X64KERNEL:REC-WID REC@ w = if
-         k REC-NAME$ a len CORE-STR=CI if drop k unloop exit then
-      then
-      1+ HIDX-SLOTS 1- and
-   loop
-   drop -1 ;
 
 ;using   \ X64LAYOUT
 ;using

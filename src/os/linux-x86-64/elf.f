@@ -12,18 +12,21 @@
 \ program headers end at $190, so the metadata behind them starts there and not
 \ at the aarch64 writer's $120.
 \ Everything else here is ELF64 format, and reads the same under both machines.
-\ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f),
-\ loaded before this file and before src/os/image-bytes.f, which sizes MSIZE
-\ from a bare CODE-CAP-BYTES at load and so loads under `using X64CODE`.
+\ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
+\ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so this
+\ file requires it under `using X64CODE`, and loads before src/arch/arm64/icode.f,
+\ whose global CODE-CAP-BYTES the engine would refuse a bare X64CODE one beside.
 \ The fixed DATA segment and CODE-OFF are the target's, read qualified from
 \ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
 \ is the guard that refuses a bare one and closes before this file ends. The
 \ require below opens a package, and packages do not nest, so this file loads
 \ at top level.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/target-layout.f
 
 using X64CODE
+require src/os/image-bytes.f
 using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 $7F constant ELF-MAG0

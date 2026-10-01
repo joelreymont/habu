@@ -253,6 +253,11 @@ public
    RAX DBASE-REG at MEM-OFF ASM-SINK ENC-LEA
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
+\ Store n into the cell at an offset in the code region.
+: REGION!, ( n n -- ) {: v:n off:n :}
+   RAX v IMM
+   RAX DBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
+
 \ Store a string's bytes into DATA from an offset, eight to a cell, the last
 \ cell zero past its end.
 : TEXT!, ( ptr u8 n n -- ) {: a:ptr u:n off:n :}

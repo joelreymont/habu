@@ -1485,7 +1485,8 @@ SUITE x86-64-kernel-task
 \ and links it: the records, the routines with every site resolved, the rebased
 \ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
 \ children measure the layout host-independent and refuse, by name, what it
-\ cannot place or link.
+\ cannot place or link. hb-x64-link-index, for the peer to run, stages the
+\ writer's index where the kernel's own find reads it; it exits 0.
 SUITE x86-64-link-records
    test/x86-64-link-records.f
 ;SUITE
