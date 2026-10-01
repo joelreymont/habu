@@ -1236,44 +1236,60 @@ passing suite.
   n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
   67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
 - **A parsing keyword's operand is data to every stage of `tools/check.f`.**
-  `'` and `char` at top level and `[char]` in a body take the next
-  whitespace-delimited token whatever it spells, matched case-folded and ahead
-  of any lookup, as the engine's keyword compare and the checker's body reader
-  both fold, so no source can shadow one. The source pre-verifier
-  (`verify-source.f` `TOP-PARSER?`, `BODY-PARSER?`, `OPERAND`), the
-  reserved-name lint and the origin-marker rewriter (`tools/lint/text.f`
-  `LINT-PARSER?`) skip it. The keyword stays the token before what follows, so
-  `char 0 TYPED-BUFFER B n` leaves its count, 48, to the run. Measured:
-  `char : constant COLON`, `' TYPED-BUFFER constant TB` and `char 0
-  TYPED-BUFFER B n` load and were refused (a definition named `constant`, a
-  definer, a zero count), and `: F ( -- n ) [char] ( ;` and `[char] :` in a
-  body load and were refused (a comment, a definition start); all check now
-  (tools/check-test-lib.f `check/parsed-operand`). A dictionary word that
-  parses, such as `require` or `SEE`, is not one of these: the word a spelling
-  names depends on scope, and the tree defines words that take no operand
-  under both spellings, so the token after one is an ordinary token.
+  `'` and `char` at top level and `[']` and `[char]` in a body take the next
+  whitespace-delimited token whatever it spells, across line ends, matched
+  case-folded as the engine's keyword compare folds; the engine refuses each
+  outside its own state. The source pre-verifier (`verify-source.f`
+  `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char` and `[char]`,
+  `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
+  (`lib/source.f`): `tools/lint/source-lex.f` reads the operand raw where it
+  makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
+  marks a definer's name, and the reserved-name lint and the nominal pass skip
+  a marked token; source discovery reads it with `SD-RAW` (`SD-STEP`); the
+  origin-marker rewriter skips it (`DO-SKIP-OPERAND`). The keyword stays the
+  token before what follows, so `char 0 TYPED-BUFFER B n` leaves its count,
+  48, to the run. Measured: `char : constant COLON`, `' TYPED-BUFFER constant
+  TB` and `char 0 TYPED-BUFFER B n` load and were refused (a definition named
+  `constant`, a definer, a zero count), and `: F ( -- n ) [char] ( ;` and
+  `[char] :` in a body load and were refused (a comment, a definition start)
+  (tools/check-test-lib.f `check/parsed-operand`). `char \`, `[char] \` and
+  `char (` before a line `: 42 ( -- ) ;` loaded and were admitted (the lint
+  skipped that line's first word), `char s"` and `[char] s"` loaded and were
+  refused (discovery: unterminated string), `' :` was refused (a definition
+  with no name), and `[char] ;` before a local `newtype` was refused (the
+  nominal pass read the local as a declaration); now the first group is
+  refused for its `42` and the rest check as they load, and `create char`,
+  which names a word that takes nothing, leaves the next line's `: 42` refused
+  (`check/raw-operand`). A local of a keyword's name is that local in a body
+  (`{: [char] :} [char]` loads), and only discovery tracks locals: the others
+  read the keyword, so a body using a local `char` or `[char]` is refused by
+  the pre-verifier (rc 74) though it loads, and after `{: ['] :} ['] ;` the
+  lint and the nominal pass read past the `;`, so a reserved or number-shaped
+  name defined later in the file is not refused. The pre-verifier's
+  body set lacks `[']`, so `['] \` in a body is refused the same way after a
+  word `\` is defined. A dictionary word that parses, such as `require` or
+  `SEE`, is not one of these: the word a spelling names depends on scope, and
+  the tree defines words that take no operand under both spellings, so the
+  token after one is an ordinary token.
 - **A definer's name is read as the loader reads it, by every stage of
-  `tools/check.f`.** The loader takes it with `parse-name`, so `DEFLINEAR (`
-  declares the type `(`, `VALUE-RECORD \ x n END-VALUE-RECORD` the record `\`,
+  `tools/check.f`.** The loader takes it with `parse-name`, so `DEFLINEAR \`
+  declares the type `\`, `VALUE-RECORD \ x n END-VALUE-RECORD` the record `\`,
   `package ( ;package` the package `(` and `: \ ( -- n ) 1 ;` the word `\`. The
   source pre-verifier reads every definer's name with `NAME-TOKEN`
   (`verify-source.f`). The nominal pass and the reserved-name lint work on
   `tools/lint/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
   after a definer again, because only they know the definer is at top level:
   inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
-  Measured: those four loaded and were refused, and so were `create \`,
-  `variable \` and `1 constant \` followed by a line opening with a reserved
-  word (a comment, or the next line's first token, taken for the name). All
-  check now, and `NEWTYPE`, `SUMTYPE`, `ENUM`, `STRUCTURE`, `PRODUCT` and
-  `DEFTYPE` refuse the names `(` and `\` naming them as the loader does
-  (tools/check-test-lib.f `check/operand-name-admitted`, `-refused`). A definer
-  with nothing after it has no name: the loader refuses it, and `tools/check.f`
-  refuses it at the definer, in prose and as `E-MISSING-NAME`, for each of the
-  eleven definers it reads (`check/operand-missing`). Measured before: the
-  three that name a type died reading past the last token (rc 67, no JSON),
-  `NEWTYPE`, `SUMTYPE`, `ENUM` and `STRUCTURE` exited 70 with no message,
-  `PRODUCT` reported a missing `;PRODUCT`, `package` an unlocated missing name,
-  and source discovery called `:` and `TRUSTED:` an unterminated string.
+  `create \`, `variable \` and `1 constant \` name `\` the same way. A name the
+  loader reads and refuses is refused at that token. A type name holding `(` is
+  refused ([effects.md](effects.md) "`DEFLINEAR name`"), so `DEFLINEAR (` and
+  `VALUE-RECORD ( x n END-VALUE-RECORD` are `E-BAD-NOMINAL-TYPE` on the `(`,
+  and `NEWTYPE`, `SUMTYPE`, `ENUM`, `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
+  the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
+  `check/operand-name-admitted`, `-refused`). A definer with nothing after it
+  has no name: the loader refuses it, and `tools/check.f` refuses it at the
+  definer, in prose and as `E-MISSING-NAME`, for each of the eleven definers it
+  reads (`check/operand-missing`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

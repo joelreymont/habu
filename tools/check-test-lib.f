@@ -2257,11 +2257,12 @@ create BIG $2000 allot   variable BIG-U
    [: FAM-SHARED-HEAD s" ckf-tail" FAM-REC s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED ;
 
 \ A definer takes its name with parse-name: the next whitespace-delimited token,
-\ whatever it spells, so `DEFLINEAR (` declares the type `(` and `: \` the word
-\ `\`. Each source declares such a name on its first line. The second line opens
-\ with a comment or with a reserved word, so a stage that lexed the name as a
-\ comment opener would take that token for the name, or none. Every stage of the
-\ check must reach the loader's verdict, and a refusal names the same token.
+\ whatever it spells, so `package (` names the package `(` and `: \` the word
+\ `\`, while `DEFLINEAR (` reads the name `(` and refuses it as a type. Each
+\ source declares such a name on its first line. The second line opens with a
+\ comment or with a reserved word, so a stage that lexed the name as a comment
+\ opener would take that token for the name, or none. Every stage of the check
+\ must reach the loader's verdict, and a refusal names the same token.
 : OPERAND-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n b:ptr v:n :}
    SB-RESET
    a u SB-APPEND $0a SB-APPEND-C
@@ -2288,14 +2289,22 @@ create BIG $2000 allot   variable BIG-U
    outu2 0 T=
    CAP-ERR erru2 w wu CONTAINS? TTRUE ;
 
+\ A DEFLINEAR or VALUE-RECORD name holding `(` opens a comment in source, so the
+\ loader refuses it (checker.f TYPE-BAD-BYTE?). The check refuses it at the name
+\ the loader read, not at the comment opening the next line: `at` is the
+\ packet's token, its index and its place.
+: NOM-OPERAND-REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n at:ptr atu:n :}
+   a u AFTER-COMMENT$ OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   a u AFTER-COMMENT$ OPERAND-SRC$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-BAD-NOMINAL-TYPE\"" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
 : TEST-OPERAND-NAME-ADMITTED ( -- )
-   s" (" LIN-ADMITTED
    s" \" LIN-ADMITTED
-   s" (" REC-ADMITTED
    s" \" REC-ADMITTED
-   s" DEFLINEAR (" AFTER-COMMENT$ OPERAND-ADMITTED
    s" DEFLINEAR \" AFTER-COMMENT$ OPERAND-ADMITTED
-   s" VALUE-RECORD ( x n END-VALUE-RECORD" AFTER-COMMENT$ OPERAND-ADMITTED
    s" VALUE-RECORD \ x n END-VALUE-RECORD" AFTER-COMMENT$ OPERAND-ADMITTED
    s" package ( ;package" AFTER-COMMENT$ OPERAND-ADMITTED
    s" package \ ;package" AFTER-COMMENT$ OPERAND-ADMITTED
@@ -2305,6 +2314,12 @@ create BIG $2000 allot   variable BIG-U
    s" 1 constant \" AFTER-RESERVED$ OPERAND-ADMITTED ;
 
 : TEST-OPERAND-NAME-REFUSED ( -- )
+   s" DEFLINEAR ("
+   s\" \"token\":\"(\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":11,"
+   NOM-OPERAND-REFUSED
+   s" VALUE-RECORD ( x n END-VALUE-RECORD"
+   s\" \"token\":\"(\",\"token_index\":1,\"file\":\"<stdin>\",\"line\":1,\"column\":14,"
+   NOM-OPERAND-REFUSED
    s" require lib/type/deftype.f DEFTYPE (" s" '('" OPERAND-REFUSED
    s" require lib/type/deftype.f DEFTYPE \" s" '\'" OPERAND-REFUSED
    s" NEWTYPE ( 0" s" '('" OPERAND-REFUSED
@@ -2362,6 +2377,56 @@ create BIG $2000 allot   variable BIG-U
    s" \ lead" s" package" NONAME-REFUSED
    s" \ lead" s" :" NONAME-REFUSED
    s" \ lead" s" TRUSTED:" NONAME-REFUSED ;
+
+\ A parsing keyword takes the next whitespace-delimited token raw, whatever it
+\ spells, in every scanner of the check as in the loader, and a definer takes
+\ its name the same way; either operand is data. After `char \`, `[char] \`
+\ and `char (` the second line is ordinary source, so the number-shaped
+\ definition there is refused as it is anywhere, and so it is after `create
+\ char`, which names a word `char` that takes nothing. `char s"` and `[char] s"`
+\ open no string, so each source loads and checks alike and prints 115. A check
+\ of standard input skips source discovery, so these sources are checked as the
+\ file the load read. `' :` starts no definition, so the nominal pass reads the
+\ line after it as top-level source, and `[char] ;` ends none, so the pass does
+\ not read the local `newtype` after it as a declaration.
+: RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u b v OPERAND-SRC$ DIRECT-JSON-STDIN 1 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"42\"" CONTAINS? TTRUE ;
+
+: RAW-PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HB-LOAD-SRC 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   CAP-OUT outu s" 115" CONTAINS? TTRUE
+   BAD$ PATH-RUN 0 T=
+   {: outu2:n erru2:n :}
+   erru2 0 T=
+   CAP-OUT outu2 s" 115" CONTAINS? TTRUE ;
+
+: RAW-ADMITTED ( ptr u8 n -- )
+   HB-LOAD-SRC NOM-LOAD-ADMITTED
+   BAD$ PATH-RUN EXPECT-ACCEPTED ;
+
+: RAW-LOCAL$ ( -- ptr u8 n )
+   s" : CKT-L ( n -- n ) {: newtype :} [char] ; drop newtype ;" ;
+
+\ The last source reaches the pre-verifier's registration of `DEFLINEAR N` when
+\ the nominal pass misses it, and that registration dies, ending this process.
+: TEST-RAW-OPERAND ( -- )
+   s" char \" s" : 42 ( -- ) ;" RAW-NUMERIC
+   s" : CKT-P ( -- n ) [char] \" s" ; : 42 ( -- ) ;" RAW-NUMERIC
+   s" char (" s" : 42 ( -- ) ;" RAW-NUMERIC
+   s" create char" s" : 42 ( -- ) ;" RAW-NUMERIC
+   s\" char s\" constant CKT-SQ CKT-SQ ." RAW-PRINTS
+   s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." RAW-PRINTS
+   s" ' :" RAW-ADMITTED
+   RAW-LOCAL$ RAW-ADMITTED
+   s" ' :" s" DEFLINEAR N" OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   s" ' :" s" DEFLINEAR N" OPERAND-SRC$ NOM-CHECK-REFUSED ;
 
 \ Value-records whose fields the registration refuses. The loader dies at the
 \ first with the registration's message and rc 70. The check names every
@@ -2756,6 +2821,7 @@ POISON-RECORD
    s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
+   s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN

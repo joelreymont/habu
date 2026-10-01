@@ -814,12 +814,12 @@ private
    CHK-NOM-FOUND ;
 
 \ A definer reads its name with parse-name, the next whitespace-delimited token
-\ whatever it spells: `DEFLINEAR (` declares the type `(` and `: \` defines the
-\ word `\`, as the loader reads them. On a match the lexer reads the token after
-\ the definer again by that rule, so the scan below never takes a comment, or the
-\ token after one, for the name. A definer with no token after it is refused
-\ here and answers false, so a caller answered true finds the name at the next
-\ token.
+\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
+\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
+\ the lexer reads the token after the definer again by that rule, so the scan
+\ below never takes a comment, or the token after one, for the name. A definer
+\ with no token after it is refused here and answers false, so a caller
+\ answered true finds the name at the next token.
 : CHK-DEFINER? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
    k LINT-LEX:OPERAND
@@ -1144,8 +1144,10 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
    k LINT-FALSE ;
 
-: CHK-TOK-SEMI? ( n -- bool )
-   s" ;" CHK-TOK=CI ;
+\ A raw operand is data: `[char] ;` ends no definition.
+: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
+   k LINT-LEX:OPERAND? if LINT-FALSE exit then
+   k s" ;" CHK-TOK=CI ;
 
 : CHK-DEF-OPENER? ( n -- bool ) {: k:n :}
    k s" :" CHK-DEFINER? IF LINT-TRUE exit THEN
@@ -1157,7 +1159,9 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
       1+
    repeat ;
 
+\ A raw operand is data, never a definer: `' :` starts no definition.
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
+   k LINT-LEX:OPERAND? if k 1+ exit then
    k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
    k CHK-PKG-STEP if exit then drop
    k s" deftype" CHK-DEFINER? if

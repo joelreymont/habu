@@ -10,6 +10,7 @@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   OPERAND ( n -- )                   token n parses the next token: rescan
 \                                      from it by parse-name's rule
+\   OPERAND? ( n -- bool )             token n is a raw operand, read as data
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
 \   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
 \                                      string-literal payload span
@@ -31,6 +32,7 @@
 
 require lib/memory.f
 require lib/vector.f
+require lib/source.f
 require tools/lint/text.f
 
 package LINT-LEX
@@ -67,6 +69,7 @@ create LINE-V VEC-HEADER-CELLS cells allot
 create COL-V VEC-HEADER-CELLS cells allot
 VEC-HEADER-CELLS TYPED-BUFFER CADDR-V ptr u8
 create CLEN-V VEC-HEADER-CELLS cells allot
+create OPND-V VEC-HEADER-CELLS cells allot   \ the token is a raw operand
 
 \ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
 \ The lexer's parallel record columns store raw cells (token / content addresses,
@@ -116,6 +119,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    COL-V INIT-ONE
    0 CADDR-V INIT-ONE
    CLEN-V INIT-ONE
+   OPND-V INIT-ONE
    MIN-CAP CAP ! ;
 
 : CLEAR-VECTORS ( -- )
@@ -126,7 +130,8 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    LINE-V CLEAR-ONE
    COL-V CLEAR-ONE
    0 CADDR-V CLEAR-ONE
-   CLEN-V CLEAR-ONE ;
+   CLEN-V CLEAR-ONE
+   OPND-V CLEAR-ONE ;
 
 : RESET-TABLES ( -- )
    CAP @ 0= if INIT-VECTORS else CLEAR-VECTORS then
@@ -149,7 +154,11 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    col COL-V VEC:PUSH drop
    ca 0 CADDR-V VEC:PUSH drop
    cu CLEN-V VEC:PUSH drop
+   LINT-FALSE OPND-V VEC:PUSH drop
    SYNC-COUNT ;
+
+: MARK-OPERAND ( n -- ) {: k:n :}
+   LINT-TRUE OPND-V k N>INDEX VEC:! ;
 
 public
 
@@ -182,6 +191,11 @@ public
 
 : COL@ ( n -- n ) {: k:n :}
    COL-V k N>INDEX VEC:@ ;
+
+\ Token k is a raw operand: data the source never runs, so it starts nothing,
+\ ends nothing and makes no name of the token after it.
+: OPERAND? ( n -- bool ) {: k:n :}
+   OPND-V k N>INDEX VEC:@ ;
 
 : ERROR? ( -- bool )
    ERR-KIND @ NO-ERROR = if LINT-FALSE else LINT-TRUE then ;
@@ -468,26 +482,51 @@ private
    COUNT 0= if LINT-FALSE exit then
    COUNT 1- KIND@ WORD = ;
 
-\ After one of these tokens the engine consumes the next word as a parsed name and never executes
-\ it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in src/core/checker.f declares the
-\ opener rather than opening a row.
+\ After `:` or `undefine` the engine consumes the next word as a parsed name and
+\ never executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in
+\ src/core/checker.f declares the opener rather than opening a row.
+: NAMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" :" LINT-STR= if LINT-TRUE exit then
+   a u s" undefine" LINT-STR=CI ;
+
+\ A `:` that is itself an operand (`' :`) is data and names nothing.
 : NAME-POS? ( -- bool )
    PREV-WORD? 0= if LINT-FALSE exit then
-   PREV$ s" :" LINT-STR= if LINT-TRUE exit then
-   PREV$ s" '" LINT-STR= if LINT-TRUE exit then
-   PREV$ s" [']" LINT-STR= if LINT-TRUE exit then
-   PREV$ s" undefine" LINT-STR=CI ;
+   COUNT 1- OPERAND? if LINT-FALSE exit then
+   PREV$ NAMER? ;
 
 : ROW-START? ( -- bool )
    CUR$ ROW-OPEN? 0= if LINT-FALSE exit then
    NAME-POS? LINT-NOT ;
 
-\ The same name-position rule a row opener obeys: after `:` or `'` the engine
-\ parses the next word as a name and never executes it, so `: .( ( -- ) ;`
-\ DEFINES a word spelled `.(` instead of opening a printing comment.
+\ The same name-position rule a row opener obeys: after `:` or `undefine` the
+\ engine parses the next word as a name and never executes it, so
+\ `: .( ( -- ) ;` DEFINES a word spelled `.(` instead of opening a printing
+\ comment.
 : PRINT-START? ( -- bool )
    CUR$ PRINT-OPEN? 0= if LINT-FALSE exit then
    NAME-POS? LINT-NOT ;
+
+\ A parsing keyword the engine runs reads the next token raw, whatever it
+\ spells, so `char \` hides nothing after it and `['] (` opens no comment.
+\ Named after `:` or `undefine`, the keyword is a name and takes nothing.
+: PARSER-START? ( -- bool )
+   CUR$ SOURCE:PARSING-KEYWORD? 0= if LINT-FALSE exit then
+   NAME-POS? LINT-NOT ;
+
+\ The span from START to POS is one WORD token.
+: ADD-WORD ( -- )
+   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
+
+\ Read the next whitespace-delimited token, across line ends, as one marked
+\ WORD token; at end of input there is none.
+: RAW-OPERAND ( -- )
+   SKIP-RAW-WS
+   END? if exit then
+   POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
+   ADD-WORD
+   COUNT 1- MARK-OPERAND ;
 
 \ Swallow the literal and answer the bytes it held, together with whether it
 \ closed. The payload starts one byte past the opener, because the opener is
@@ -520,6 +559,7 @@ private
    then
    \ `.(` is already consumed by the word scan, so the print body starts at POS.
    PRINT-START? if PAREN-BODY exit then
+   PARSER-START? if ADD-WORD RAW-OPERAND exit then
    CUR$ {: a:ptr u:n :}
    START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}
    a u STRING-OPENER? 0= if
@@ -542,12 +582,14 @@ private
    repeat ;
 
 \ ---- an operand taken by parse-name -------------------------------------------
-\ A definer reads its name with `parse-name`: the next whitespace-delimited token,
-\ whatever it spells, so `DEFLINEAR (` declares the type `(` and `: \` defines the
-\ word `\`. Which token is such a definer is a grammar question this lexer cannot
-\ answer: `DEFLINEAR` parses its name at top level but is an ordinary call inside
-\ a body, where a `(` after it opens a comment. So the consumer that knows the
-\ grammar names the token, and OPERAND reads what follows it again.
+\ The scan reads a parsing keyword's operand raw as it meets the keyword
+\ (PARSER-START?). A definer reads its name with `parse-name` as well: the next
+\ whitespace-delimited token, whatever it spells, so `package (` names the
+\ package `(` and `: \` defines the word `\`. Which token is such a definer is a
+\ grammar question this lexer cannot answer: `DEFLINEAR` parses its name at top
+\ level but is an ordinary call inside a body, where a `(` after it opens a
+\ comment. So the consumer that knows the grammar names the token, and OPERAND
+\ reads what follows it again. OPERAND? answers true for either operand.
 
 \ The first byte at or after a byte index that is not an engine delimiter, or
 \ the end of the source.
@@ -584,13 +626,13 @@ private
    l COL-V VEC-LEN!
    l 0 CADDR-V VEC-LEN!
    l CLEN-V VEC-LEN!
+   l OPND-V VEC-LEN!
    SYNC-COUNT ;
 
-\ POS sits on the first byte of the operand.
-: RAW-WORD ( -- )
-   POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
-   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
-   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
+\ A token whose spelling steers how the scan reads the token after it.
+: STEERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u SOURCE:PARSING-KEYWORD? if LINT-TRUE exit then
+   a u NAMER? ;
 
 public
 
@@ -601,24 +643,27 @@ public
    SCAN ;
 
 \ Token k is a word that takes the next whitespace-delimited token as its
-\ operand; the caller matched its spelling, so it is a plain word. When the scan
-\ read that operand as anything else (a comment, a string literal, a row, a
-\ print body, or a token past a dropped `\` line), token k+1 becomes the raw
-\ operand and the rest of the source is scanned again from its end. Otherwise
-\ nothing changes, so asking costs one span compare.
+\ operand; the caller matched its spelling, so it is a plain word. Token k+1
+\ becomes that raw operand. When the scan read it as anything else (a comment,
+\ a string literal, a row, a print body, or a token past a dropped `\` line),
+\ or its spelling steered the scan of the token after it (`create char` names a
+\ word that takes nothing), the rest of the source is scanned again from the
+\ end of token k. Otherwise only the mark changes, so asking costs a span
+\ compare and a spelling test.
 : OPERAND ( n -- ) {: k:n :}
    k BYTE@ k TOKEN nip + {: end:n :}
    end INK-FROM {: a:n :}
    a GAP-FROM a - {: u:n :}
    u 0= if exit then
-   k 1+ a u PLAIN-AT? if exit then
+   k 1+ a u PLAIN-AT? if
+      k 1+ TOKEN STEERS? 0= if k 1+ MARK-OPERAND exit then
+   then
    k 1+ KEEP
    end POS !
    k LINE@ LINE-N !
    k COL@ end k BYTE@ - + COL-N !
    CLEAR-ERROR
-   SKIP-RAW-WS
-   RAW-WORD
+   RAW-OPERAND
    SCAN ;
 
 ;package

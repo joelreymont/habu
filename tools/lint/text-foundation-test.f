@@ -328,6 +328,32 @@ variable REG-I
    5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
    6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
 
+\ An operand is data and names nothing: after `' :` the `:` defines nothing, so
+\ the `.(` after it opens a printing comment.
+: TEST-LEXER-OPERAND-NAMES-NOTHING ( -- )
+   s" ' : .( z ) x" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 4 ASSERT=
+   1 LINT-LEX:TOKEN s" :" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  z " ASSERT$
+   3 LINT-LEX:TOKEN s" x" ASSERT$ ;
+
+\ A parsing keyword the engine runs takes the next whitespace-delimited token raw,
+\ whatever it spells: `char \` is one word and hides nothing after it, and
+\ `['] (` opens no comment. Named after a definer, `char` is a name and takes
+\ nothing, so the `( -- n )` after it is that definition's stack comment.
+: TEST-LEXER-PARSER-OPERAND ( -- )
+   s" : char ( -- n ) 7 ; char \ x ['] ( y" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 11 ASSERT=
+   1 LINT-LEX:TOKEN s" char" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   5 LINT-LEX:TOKEN s" char" ASSERT$
+   6 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    6 LINT-LEX:TOKEN s" \" ASSERT$
+   7 LINT-LEX:TOKEN s" x" ASSERT$
+   9 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    9 LINT-LEX:TOKEN s" (" ASSERT$
+   10 LINT-LEX:TOKEN s" y" ASSERT$ ;
+
 : TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
    ROW-RESET
    s" LEFT" ROW+  c ROW-C+
@@ -859,6 +885,8 @@ variable REG-I
    TEST-LEXER-PAREN-CALL
    TEST-LEXER-PRINT-PAREN
    TEST-LEXER-PRINT-NAME-POS
+   TEST-LEXER-OPERAND-NAMES-NOTHING
+   TEST-LEXER-PARSER-OPERAND
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE

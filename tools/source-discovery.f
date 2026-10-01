@@ -317,6 +317,8 @@ variable SD-SCOPES
    off len SD-TOK$ SD-SCOPE-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
+\ A local is looked up before the parsing keywords: in a body a local named
+\ `char` is that local and takes no operand.
 : SD-STEP ( n n -- ) {: off:n len:n :}
    SD-PEND @ {: pend:n :}
    0 SD-PEND !
@@ -327,6 +329,7 @@ variable SD-SCOPES
    then
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
+   off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
    off len SD-TOK$ s" {:" STR= if SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if len 3 = SD-SCAN-STRING opener SD-PEND ! exit then

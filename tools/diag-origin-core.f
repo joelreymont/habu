@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -254,7 +255,7 @@ variable DO-OUT-BUF?
 
 : DO-PARSER? ( -- bool )
    DO-ORIGIN-WORD? 0= if DO-FALSE exit then
-   DO-TOK-A@ DO-TOK-U @ LINT-PARSER? ;
+   DO-TOK-A@ DO-TOK-U @ SOURCE:PARSING-KEYWORD? ;
 
 : DO-GAP? ( -- bool )
    DO-END? if DO-FALSE exit then

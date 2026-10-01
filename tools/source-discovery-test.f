@@ -5,11 +5,12 @@
 \ Proves the ordered event artifact for include/require/provided mixes (include
 \ replay-every-occurrence vs require dedup), canonical registry (equivalent spelling
 \ collapse), tool-preloaded require paths not hiding a later user require,
-\ colon-body loader capture with byte-exact token spans, the shared checked
-\ path emitter, fail-closed rejection when the artifact cannot be produced
-\ (loader word shadowed/undefined/retired, dynamic loader path, unsupported
-\ opener, serialization overflow), and the dynamic-tail manifest boundary
-\ (manifested repo files tolerated, the same shapes elsewhere rejected).
+\ colon-body loader capture with byte-exact token spans, a parsing keyword's
+\ operand read as data, the shared checked path emitter, fail-closed rejection
+\ when the artifact cannot be produced (loader word shadowed/undefined/retired,
+\ dynamic loader path, unsupported opener, serialization overflow), and the
+\ dynamic-tail manifest boundary (manifested repo files tolerated, the same
+\ shapes elsewhere rejected).
 
 require lib/errors.f
 require lib/string.f
@@ -186,6 +187,30 @@ variable SDT-SRC-U
    s" unterm.f" S\" : L ( -- ) s\" sd-l.f\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-UNTERM TTHROWSQ ;
 
+\ --- a parsing keyword's operand is data -------------------------------------
+
+\ `'`, `[']`, `char` and `[char]` take the next whitespace-delimited token raw,
+\ whatever it spells, as the loader does: `char s"` is 115 and opens no string,
+\ `char \` is 92 and hides nothing after it, `' :` starts no definition and
+\ `' require` names the loader word without loading anything. In a body a local
+\ of the keyword's name is the local, so the `;` after the local `char` ends the
+\ definition and its local `require`. Each source loads, and the walk's one
+\ event is the require the loader runs.
+: SDT-RAW-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" raw.f" a u SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-raw.f" SDT-PATH T$= ;
+
+: SDT-TEST-PARSED-OPERAND ( -- )
+   S\" char s\" constant SDT-SQ\nrequire sd-raw.f\n" SDT-RAW-ONE
+   S\" : SDT-Q ( -- n ) [char] s\" ;\nrequire sd-raw.f\n" SDT-RAW-ONE
+   S\" char \\ drop require sd-raw.f\n" SDT-RAW-ONE
+   S\" ' :\nrequire sd-raw.f\n" SDT-RAW-ONE
+   S\" ' require constant SDT-RQ\nrequire sd-raw.f\n" SDT-RAW-ONE
+   S\" : SDT-RT ( -- ) ['] require drop ;\nrequire sd-raw.f\n" SDT-RAW-ONE
+   S\" : SDT-L ( n n -- n ) {: char require :} char ;\nrequire sd-raw.f\n" SDT-RAW-ONE ;
+
 \ --- fail-closed: dynamic/opener/retire forms inside colon bodies ------------
 
 : SDT-TEST-BODY-DYNAMIC ( -- )
@@ -353,6 +378,7 @@ variable SDT-SRC-U
    SDT-TEST-COLON-SPAN
    SDT-TEST-USER-DEFINER
    SDT-TEST-UNTERM-STRING
+   SDT-TEST-PARSED-OPERAND
    SDT-TEST-BODY-DYNAMIC
    SDT-TEST-BODY-OPENER
    SDT-TEST-BODY-SHADOW

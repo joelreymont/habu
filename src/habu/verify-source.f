@@ -297,8 +297,9 @@ create BODY-BUF BODYBUF-CAP allot
 
 \ A definer takes its name by the same rule: the engine reads it with LTOK or
 \ parse-name, so `: \`, `DEFLINEAR (` and `create s"` name a word `\`, a type
-\ `(` and a word `s"`. A comment or string rule there would hand the definer a
-\ later token instead. Each caller reports a missing name its own way.
+\ `(` (which the registration then refuses) and a word `s"`. A comment or string
+\ rule there would hand the definer a later token instead. Each caller reports a
+\ missing name its own way.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
