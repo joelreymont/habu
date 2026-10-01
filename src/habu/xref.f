@@ -2,6 +2,15 @@
 \
 \ Load after src/habu/layout.f. These words inspect the running image dictionary
 \ through dbase@/ndict@ and are intended for the REPL/debug path.
+\
+\ Checked by the engine build (tools/native-build.f), not by tools/check.f
+\ alone. This file is a cold-prefix row (src/habu/habu2.f PFX-FILES, LPXREF)
+\ that loads after src/core/check-hook.f installs the checker hook and has no
+\ `0 set-check` span, so every definition here is checked as the prefix
+\ compiles. tools/check.f refuses the file on its own, and rightly: it defines
+\ `undefine`, which the checker's source pass dispatches itself
+\ (E-RESERVED-DEFINITION, as for src/core/include.f's loader words), and every
+\ engine already holds its words (E-DUPLICATE-DEFINITION).
 
 \ CODE-SPAN is loaded immediately before XREF by the cold prefix.
 
