@@ -21,12 +21,14 @@
 \ reads 0, sigaction installs SIG_DFL and the image dies of SIGUSR1 (138 in a
 \ shell). The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
+require src/os/linux-x86-64/target-layout.f
 
 package X64K-SIGNAL
 using X64ASM
 using X64CODE
 using X64RT
 using X64BOOT
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 10 constant SIGUSR1
 0 constant NO-FLAGS                     \ a plain `void (int)` handler
@@ -139,6 +141,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;using

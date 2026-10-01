@@ -50,6 +50,7 @@ package X64KERNEL
 using X64ASM
 using X64CODE
 using X64RT
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 public
 
@@ -3737,6 +3738,7 @@ public
    PROFILER,
    ENGINE-PRIMS:COMPLETE ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;using

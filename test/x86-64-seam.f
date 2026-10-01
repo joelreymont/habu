@@ -11,10 +11,10 @@
 \ blob, because a blob says "these bytes changed" where a field says which one
 \ and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
-\ and the engine refuses a duplicate definition - so the writer reads the DATA
-\ segment, which a macOS host places elsewhere, from the package that replays it
-\ (X64LAYOUT, src/os/linux-x86-64/target-layout.f), and reads the host's
-\ identical CODE-OFF, PROT-PAGE-MAX, REGION and REGION-OFF.
+\ and the engine refuses a duplicate definition - so the writer reads CODE-OFF
+\ and the DATA segment, which a macOS host places elsewhere, qualified from the
+\ package that replays them (X64LAYOUT, src/os/linux-x86-64/target-layout.f),
+\ and reads the host's identical PROT-PAGE-MAX, REGION and REGION-OFF.
 \ Every address and size is pinned here as a literal, so this test fails rather
 \ than drifts if either target moves one, and fails on a macOS host if the
 \ writer reads that host's DATA.
@@ -45,6 +45,7 @@ require src/arch/x86-64/icode.f
 using X64CODE
 require src/os/image-bytes.f
 ;using
+require src/os/linux-x86-64/target-layout.f
 s" src/os/linux-x86-64/elf.f" required
 
 \ src/habu/aot-decl.f sizes its rows by src/arch/arm64/icode.f's AOT-SECTION-CAP.
@@ -54,6 +55,7 @@ require src/habu/aot-decl.f
 require src/compiler/target.f
 
 package X64-SEAM-TEST
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ ---- reading the written image ----------------------------------------------
 : U8@ ( n -- n )
@@ -238,7 +240,7 @@ $228 constant WANT-RELA-OFF
 
 : ELF-CASES ( -- )
    s" the writer's layout agrees with the engine it was loaded into" T-LABEL
-   CODE-OFF WANT-CODE-OFF T=
+   X64LAYOUT:CODE-OFF WANT-CODE-OFF T=
    VMBASE WANT-VMBASE T=
    BUILD-ELF
    TEXTSZ {: textsz:n :}
@@ -373,4 +375,5 @@ create NEAR 16 allot
    T-REPORT ;
 
 RUN
+;using   \ X64LAYOUT
 ;package

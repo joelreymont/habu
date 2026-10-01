@@ -73,6 +73,7 @@ require src/habu/aot-decl.f
 
 package X64LINK
 using AOT-BUF
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ The rc of a capture this layout cannot place: the capture's own refusals'.
 74 constant REFUSE-RC
@@ -234,7 +235,7 @@ public
 : WIDN ( -- n ) T0 AOT-WID-SPAN @ + ;
 : PRIMS ( -- n ) PRIM-N @ ;
 : RECORDS ( -- n ) REC-TOTAL @ ;
-: TEXT-VA ( -- n ) VMBASE CODE-OFF + ;           \ where elf.f ASM-CODE links the stream
+: TEXT-VA ( -- n ) VMBASE X64LAYOUT:CODE-OFF + ;  \ where elf.f ASM-CODE links the stream
 : REGION-VA ( -- n ) ELF-REGION-VA ;
 : REC-VA ( n -- n ) DREC * REGION-VA + ;
 : CODE-VA ( -- n ) REGION-VA DICT-SIZE + ;
@@ -583,5 +584,6 @@ public
    loop
    drop -1 ;
 
+;using   \ X64LAYOUT
 ;using
 ;package

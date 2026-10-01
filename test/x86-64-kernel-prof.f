@@ -108,6 +108,7 @@ using X64ASM
 using X64CODE
 using X64RT
 using PROF-ABI
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ The band at the top of the target's DATA, and the counters after its cells.
 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND
@@ -830,6 +831,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;using

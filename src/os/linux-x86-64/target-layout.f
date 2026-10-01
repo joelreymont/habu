@@ -5,9 +5,14 @@
 \ target's layout.f is replayed here, privately, once for every x86-64 file that
 \ builds against it: the image writer (elf.f), the boot (src/habu/boot-x64.f)
 \ and the kernel (src/habu/kernel-x64.f).
-\ Read each value qualified, X64LAYOUT:DATA-VA, never bare and never under
-\ `using X64LAYOUT`: a bare read binds the host's global, which a Linux host
-\ gives the same value and a macOS host does not.
+\ Read each value qualified, X64LAYOUT:DATA-VA, never bare: a bare read binds
+\ the host's global, which a Linux host gives the same value and a macOS host
+\ does not. So each x86 source opens `using X64LAYOUT` after its last load and
+\ closes it before its end: under that guard a bare DATA-VA, DATA-SIZE, CODE-OFF
+\ or IMAGE-TEXT-SIZE-OFF refuses by name on every host, rc 67 in a definition
+\ and rc 105 at top level. A macOS host has no LINUX-DLSYM-SLOT-OFF global, so
+\ there a bare one reads this package's value. Bodies nothing certifies
+\ (TRUSTED:, 0 set-check) keep global-first, outside the guard.
 \ The public constants copy the replayed values rather than EXPORT them:
 \ tools/check.f preverifies without replaying another target's layout, so there
 \ DATA-VA is the engine's own, and an EXPORT of it is a word checked code may

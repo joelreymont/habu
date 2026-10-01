@@ -1,6 +1,6 @@
 \ elf.f -- dynamic Linux/x86-64 ELF executable writer.
 \ Provides the same image-builder surface as the aarch64 ELF and the Mach-O
-\ writers: MBUF, MLEN@/!, CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
+\ writers: MBUF, MLEN@/!, MPAGE, ASM-CODE, BUILD-IMAGE.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
@@ -15,14 +15,16 @@
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f),
 \ loaded before this file and before src/os/image-bytes.f, which sizes MSIZE
 \ from a bare CODE-CAP-BYTES at load and so loads under `using X64CODE`.
-\ The fixed DATA segment is the target's, read qualified from package X64LAYOUT
-\ (src/os/linux-x86-64/target-layout.f). The bare CODE-OFF reads are the
-\ image-builder surface's, $1000 on every host. The require below opens a
-\ package, and packages do not nest, so this file loads at top level.
+\ The fixed DATA segment and CODE-OFF are the target's, read qualified from
+\ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
+\ is the guard that refuses a bare one and closes before this file ends. The
+\ require below opens a package, and packages do not nest, so this file loads
+\ at top level.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 require src/os/linux-x86-64/target-layout.f
 
 using X64CODE
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -75,7 +77,7 @@ $228 constant ELF-RELA-OFF
 \ header page it sits at. It is DERIVED from X64CODE's window rather than
 \ written out again, because the two are one fact and a second spelling of one
 \ fact is a drift waiting for an editor.
-CODE-CAP-BYTES CODE-OFF + constant MPAGE
+CODE-CAP-BYTES X64LAYOUT:CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 VMBASE REGION-OFF + constant ELF-REGION-VA
@@ -104,11 +106,11 @@ ELF-FIXED-CHECK
 \ Assembly ends by linking the stream's labels at the address the text loads
 \ at, so no image is written with a label site still zero.
 : ASM-CODE ( -- asm )
-   VMBASE CODE-OFF + ASM-LINK
+   VMBASE X64LAYOUT:CODE-OFF + ASM-LINK
    ASM-CODELEN!
    ASM-PHASE ;
 
-: TEXTSZ ( -- n )  CODE-OFF CODELEN @ + ELF-PAGE-UP ;
+: TEXTSZ ( -- n )  X64LAYOUT:CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
 : ELF-VA ( n -- n )
    VMBASE + ;
@@ -130,7 +132,7 @@ ELF-FIXED-CHECK
 : ELF-HDR, ( -- )
    ELF-IDENT
    ET-EXEC IMG-M16  EM-X86-64 IMG-M16  EV-CURRENT IMG-M32
-   VMBASE CODE-OFF + IMG-M64
+   VMBASE X64LAYOUT:CODE-OFF + IMG-M64
    ELF-HDR-SZ IMG-M64
    0 IMG-M64
    0 IMG-M32
@@ -226,7 +228,7 @@ ELF-FIXED-CHECK
    ELF-DYNSYM,
    ELF-DYNSTR,
    ELF-RELA,
-   CODE-OFF M-OFF M-PAD-OFF ;
+   X64LAYOUT:CODE-OFF M-OFF M-PAD-OFF ;
 
 : ELF-DYN, ( n n -- ) {: tag val :}
    tag IMG-M64
@@ -254,7 +256,7 @@ ELF-FIXED-CHECK
    ELF-GOT, ;
 
 : SNAP-EXTRA-PTR ( -- ptr u8 )
-   MBUF CODE-OFF + ;
+   MBUF X64LAYOUT:CODE-OFF + ;
 s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
 
 $C0 constant SNAP-EXTRA-SIZE
@@ -262,7 +264,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
 : BUILD-ELF ( -- )
    ASM-CODELEN!  M-RESET
-   CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
+   CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
@@ -278,13 +280,13 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
-   CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
+   X64LAYOUT:CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
    sfts ELF-TEXT-SIZE !
    M-RESET
    ELF-HDR,
    ELF-PHDRS,
    ELF-RX-META,
-   CODE-OFF ELF-RW-AT,
+   X64LAYOUT:CODE-OFF ELF-RW-AT,
    SNAP-PHASE sfts ;
 
 \ ---------------------------------------------------------------------------
@@ -307,4 +309,5 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    i 0 = if ELF-RW-SZ exit then
    s" elf: size tail index out of range" ELF-TAIL-RC die ;
 
+;using   \ X64LAYOUT
 ;using
