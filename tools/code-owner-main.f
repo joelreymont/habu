@@ -17,7 +17,7 @@ package CODE-OWNER-CLI
    RC die ;
 
 : HEX-BODY ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   u 1 > a c@ 36 = and if a 1 + u 1 - 0 0= exit then
+   u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    a u 0 0= 0= ;
 
 : DIGIT ( n -- n ) {: c:n :}
@@ -29,7 +29,6 @@ package CODE-OWNER-CLI
 variable ACC
 : HEX>N ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 ACC !
-   u 0= if s" code-owner: empty offset" RC die then
    u 0 ?do
       a i + c@ DIGIT {: d:n :}
       d 0 < if s" code-owner: offset is not a number" RC die then
