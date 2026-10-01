@@ -40,7 +40,7 @@ B9a-d (worker each, after B8): per site `TRUSTED:` -> `:`; a product SUITE file 
 
 ## Internal-word authority design (2026-10-01, Fable plan; B8 here, B7 in habu-sweep-trusted-out-41e973ce)
 
-Implementation steps 1-4 wait for stage 2 of habu-share-reopen-name-92885254 and the seal habu-seal-every-captured-c550102f; the seal reuses SEAL's moment.
+Implementation steps 1-4 wait for stage 2 of habu-share-reopen-name-92885254 and the seal habu-seal-every-captured-c550102f; SEAL stays in IMK-PASS's sealed arm; the seal (c550102f) marks packages at the driver's PREPARE-TARGET and reads the same IMK-CLASS verdict, so the two share the verdict, not one call.
 
 Probes: /private/tmp/claude-501/-Users-joel-Work-habu/84130b4f-736a-404a-bf0f-b2271b2ea704/scratchpad (p1-p5.f, w1.f, *-census.out).
 
@@ -73,6 +73,6 @@ B9a-c after step 1; B9d after step 2; B7 after step 3. Per site: delete the shim
 
 ### Interactions
 - Stage 2 (wwyswovn): checker.f hunks at 12083+/12107+ near DO-TOK-BODY; re-run step-1 fixtures on the rebased tree. habu2.f and forth.fs hunks do not touch the publish tail.
-- Seal c550102f: its mark should take IMK-PASS's whitebox arm too, and reuse SEAL's moment (one seal call closes the gate and marks packages).
+- Seal c550102f: its mark runs at the driver's PREPARE-TARGET and stands down on the whitebox verdict IMK-PASS writes; SEAL stays in IMK-PASS's sealed arm (the seal's plan shows IMK-PASS runs before the compiler and REPL packages exist, and cold hosts never capture).
 Risks: tier-0 scans change `0 set-check` behaviour (run those suites); from-source engines answer E-CAP-TRUSTED instead of E-UNDEFINED for sealed pre-hook names with rows (bootstrap check-only; grep check suites for E-UNDEFINED pins); declared rows bind only in unsealed images; boot-time cost (measure).
 Not run: a full native build (window inferred from the tier-1 child probe).
