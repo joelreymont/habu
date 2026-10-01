@@ -35,6 +35,19 @@ own); and the check suites named checker internals a from-source prefix
 publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 `CHECKER-VIS-PUBLIC` with axioms instead).
 
+The source arena is sized from what it holds, so baked source cannot overflow
+it: an engine maps `IBUFSZ` for what boot reads (the cold prefix and an argv
+or stdin program) plus exactly the `SRCN` bytes it bakes, `src/habu/habu2.f`
+`SOURCE-ARENA-LEN` and its mirror in `bootstrap/cg/forth.fs`, which every
+mapping and bound check reads. Never let baked source share a fixed arena with
+the prefix: stripping the prefix only moved that ceiling, and the tree crossed
+it again when `hb-stdin-mk`'s 3,108,486-byte baked source plus its cold prefix
+passed `IBUFSZ` (`hb: source prefix buffer full`, exit 74, before its driver
+ran). A stage or maker engine's baked source has its own ceiling, the readers'
+refusal at `SOURCE-ARENA-CAP` (`stage2: source exceeds buffer`, `maker: source
+exceeds buffer`), at build time; `test/cold-runtime-test.f` boots a cold engine baking
+one byte under it.
+
 What is still narrower on the recovery lineage than on a `tools/native-build.f`
 engine is recorded in the tracker: the AOT capture carries the captured REPL's
 signatures but not its defer rows, so `require src/habu/debug.f` refuses on a
