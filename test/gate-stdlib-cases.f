@@ -1642,6 +1642,10 @@ SUITE outer-interpret
    test/outer-interpret.f
 ;SUITE
 
+SUITE main-argv
+   test/main-argv.f
+;SUITE
+
 SUITE engine-writers
    test/engine-writers.f
 ;SUITE
