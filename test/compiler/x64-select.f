@@ -1309,25 +1309,29 @@ variable WANT-U
    TTRUE TTRUE HIR:ADDR-NONE T= HALF3-BITS T= TTRUE 4 T= ;
 
 \ The two-address form destroys the first double, which dies at it: no copy.
-: FBIN-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+\ Nine instructions around it hold a NaN it makes to ARM64's sign (select-x64.f
+\ EMIT-FARITH): the answer leaves through the last of them, an xorpd.
+: FBIN-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
    HIR-MOD
    BUILD-FBIN
    SELECTED READ!
    OPS
-   2 WANT-IS?
-   2 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
-   2 1 OPERAND@ 1 0 RESULT@ SAME-VALUE?
-   3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE? ;
+   4 WANT-IS?
+   4 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   4 1 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   11 s" x64.xorpd" OPCODE-IS?
+   11 0 OPERAND@ 4 0 RESULT@ SAME-VALUE?
+   12 0 OPERAND@ 11 0 RESULT@ SAME-VALUE? ;
 
 : FBIN ( HIR:opcode ptr u8 n -- )
    {: o:HIR:opcode a:ptr u:n :}
    o HIR:ORD F-OP !
    a u WANT!
    WBND [: FBIN-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE 5 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 14 T= ;
 
 : FBIN-CASE ( -- )
-   s" each double arithmetic is its two-address scalar form over the two doubles" T-LABEL
+   s" each double arithmetic is its two-address scalar form over the two doubles, its answer through the NaN's xorpd" T-LABEL
    HIR-OPCODE:FADD s" x64.addsd" FBIN
    HIR-OPCODE:FSUB s" x64.subsd" FBIN
    HIR-OPCODE:FMUL s" x64.mulsd" FBIN
@@ -1340,20 +1344,21 @@ variable WANT-U
    BUILD-FSQUARE
    SELECTED READ!
    OPS
-   1 s" x64.movsd" OPCODE-IS?
-   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
-   2 s" x64.mulsd" OPCODE-IS?
-   2 0 OPERAND@ 1 0 RESULT@ SAME-VALUE?
-   2 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+   3 s" x64.movsd" OPCODE-IS?
+   3 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   4 s" x64.mulsd" OPCODE-IS?
+   4 0 OPERAND@ 3 0 RESULT@ SAME-VALUE?
+   4 1 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
 
 : FSQUARE-CASE ( -- )
    s" a multiply over one double twice copies it with movsd: the tie destroys operand 0" T-LABEL
    WBND [: FSQUARE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE 5 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 14 T= ;
 
 \ The sign is a bit, so negating clears nothing and flips it, and the magnitude
 \ is every bit but that one: a mask literal moved into the XMM file, then xorpd
-\ or andpd over the double. The square root is one form.
+\ or andpd over the double. The square root is one form, and its answer leaves
+\ through the NaN's xorpd, as an arithmetic's does.
 : MASK-FORM-BODY ( IR-CTX:ctx -- n bool n bool bool bool bool )
    HIR-MOD
    BUILD-FUN1
@@ -1373,22 +1378,24 @@ variable WANT-U
    WBND [: MASK-FORM-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE mask T= TTRUE 6 T= ;
 
-: SQRT-BODY ( IR-CTX:ctx -- n bool bool )
+: SQRT-BODY ( IR-CTX:ctx -- n bool bool bool bool )
    HIR-MOD
    BUILD-FUN1
    SELECTED READ!
    OPS
-   1 s" x64.sqrtsd" OPCODE-IS?
-   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE? ;
+   3 s" x64.sqrtsd" OPCODE-IS?
+   3 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   10 0 OPERAND@ 3 0 RESULT@ SAME-VALUE?
+   11 0 OPERAND@ 10 0 RESULT@ SAME-VALUE? ;
 
 : FUN1-CASE ( -- )
    s" negation flips the sign bit with xorpd and the magnitude keeps the rest with andpd" T-LABEL
    HIR-OPCODE:FNEG s" x64.xorpd" SIGN-BITS MASK-FORM
    HIR-OPCODE:FABS s" x64.andpd" SIGN-BITS invert MASK-FORM
-   s" the square root is one sqrtsd" T-LABEL
+   s" the square root is one sqrtsd, its answer through the NaN's xorpd" T-LABEL
    HIR-OPCODE:FSQRT HIR:ORD F-OP !
    WBND [: SQRT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 4 T= ;
+   TTRUE TTRUE TTRUE TTRUE 13 T= ;
 
 \ ucomisd sets ZF, PF and CF on an unordered pair and every comparison answers
 \ false on a NaN, so greater-than is the one ordered condition `seta` reads and

@@ -42,8 +42,10 @@
 \
 \ FLOATS REUSE THE INTEGER SHAPES. Source has no float literals, so a float case
 \ is integers and the arm converts with `s>f`/`f>s`. That pins the primitive's
-\ presence and its integral behaviour; fractional and NaN semantics belong to
-\ lib/float-test.f and to f64 text, not here.
+\ presence and its integral behaviour; fractional semantics belong to
+\ lib/float-test.f and to f64 text, not here. The two bit shapes, RR-R and R-R,
+\ cast a double's bits instead, which is how a case reaches an infinity and the
+\ NaN an operation makes.
 \
 \ COVERAGE IS BY ROW. The zero-based overload ordinal selects one row of that
 \ name in table order. Closing a nonempty case set marks that row; a
@@ -71,6 +73,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/habu/prim-ref.f
+require lib/ieee754.f                  \ the bit shapes' casts
 
 package PARITY
 private
@@ -331,6 +334,20 @@ $3A constant COLON-B
    na nu s" /mod" STR= IF a b PRIM-REF:DIVREM EXIT THEN
    s" divmod reference" na nu NO-ARM ;
 
+\ ---- a double's bits in and out ----------------------------------------------
+\ No row of these has a reference, so the shapes run the primitive alone.
+: RR-R-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
+   a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
+   na nu s" f+" STR= IF x y f+ IEEE754:F64>BITS EXIT THEN
+   na nu s" f-" STR= IF x y f- IEEE754:F64>BITS EXIT THEN
+   na nu s" f*" STR= IF x y f* IEEE754:F64>BITS EXIT THEN
+   na nu s" f/" STR= IF x y f/ IEEE754:F64>BITS EXIT THEN
+   s" binary bits" na nu NO-ARM ;
+
+: R-R-PRIM ( n ptr u8 n -- n ) {: a:n na:ptr nu:n :}
+   na nu s" fsqrt" STR= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
+   s" unary bits" na nu NO-ARM ;
+
 \ ---- two numbers in, a refusal out -------------------------------------------
 \ The arm answers the code the primitive threw. Each drops whatever the body
 \ left, so a primitive that wrongly ANSWERS is caught by the code comparison
@@ -394,6 +411,10 @@ $3A constant COLON-B
 : PTR-CASE+ ( -- )
    CASE+
    REF? IF s" pointer reference" SUBJ$ NO-ARM THEN ;
+
+: BITS-CASE+ ( -- )
+   CASE+
+   REF? IF s" bits reference" SUBJ$ NO-ARM THEN ;
 
 \ ---- coverage ----------------------------------------------------------------
 : PRIM-ROW? ( n -- bool ) {: row:n :}
@@ -461,6 +482,14 @@ public
    CASE+
    LBL-PRIM a SUBJ$ N-F-PRIM want T=
    REF? IF LBL-REF a SUBJ$ N-F-REF want T= THEN ;
+
+: RR-R ( n n n -- ) {: a:n b:n want:n :}
+   BITS-CASE+
+   LBL-PRIM a b SUBJ$ RR-R-PRIM want T= ;
+
+: R-R ( n n -- ) {: a:n want:n :}
+   BITS-CASE+
+   LBL-PRIM a SUBJ$ R-R-PRIM want T= ;
 
 : FF-F ( n n n -- ) {: a:n b:n want:n :}
    CASE+

@@ -22,9 +22,10 @@
 \ row, pops each answer against the case's column and checks the data stack is
 \ back where the case found it. A float case's input goes through the kernel's
 \ `s>f` row and its real answer through `f>s`, as prim-parity.f's arms convert,
-\ except where that row is the subject. The checks outnumber the statuses the
-\ harness numbers from FIRST-CASE, so each one dies through the kernel's `die`
-\ row naming its subject and case (X64HARNESS:CHECK-RCX,).
+\ except where that row is the subject and in the bit shapes RR-R and R-R,
+\ whose columns are a double's bits as they stand. The checks outnumber the
+\ statuses the harness numbers from FIRST-CASE, so each one dies through the
+\ kernel's `die` row naming its subject and case (X64HARNESS:CHECK-RCX,).
 \
 \ Every image seals the friend latch first, so each store row's guard walks
 \ its whole span test. A pointer column is a byte offset into the fixture, the
@@ -170,6 +171,13 @@ public
 
 : NN-F ( n n n -- ) {: a:n b:n want:n :}
    CASE+  a IN, b IN,  ROW  want FLAG WANT  SETTLED ;
+
+\ A double travels as its bits, so a bit case pushes and pops them as they stand.
+: RR-R ( n n n -- ) {: a:n b:n want:n :}
+   CASE+  a N, b N,  ROW  want WANT  SETTLED ;
+
+: R-R ( n n -- ) {: a:n want:n :}
+   CASE+  a N,  ROW  want WANT  SETTLED ;
 
 : FF-F ( n n n -- ) {: a:n b:n want:n :}
    CASE+  a FLAG N, b FLAG N,  ROW  want FLAG WANT  SETTLED ;

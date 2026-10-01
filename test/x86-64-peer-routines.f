@@ -834,10 +834,11 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
 \ A case hands the routine bit patterns and checks the bits it answers. Where
 \ IEEE 754 fixes the answer, the bits a case expects are the ones this engine's
 \ own word leaves over the same bits, so the image holds the x86-64 render to
-\ the engine that stages it; none of those cases makes a NaN, whose bits the two
-\ machines choose differently. Where Habu states the answer - `f>s` at the ends
-\ and on a NaN, a comparison with a NaN on either side - the case names it and
-\ this engine's own word is held to the same answer first.
+\ the engine that stages it; none of those cases makes a NaN, whose bits Habu
+\ states and test/prim-float-cases.f pins on both machines. Where Habu states
+\ the answer - `f>s` at the ends and on a NaN, a comparison with a NaN on
+\ either side - the case names it and this engine's own word is held to the
+\ same answer first.
 $3FF0000000000000 constant F-ONE
 $4000000000000000 constant F-TWO
 $4008000000000000 constant F-THREE

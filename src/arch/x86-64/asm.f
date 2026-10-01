@@ -555,6 +555,8 @@ public
 \ ---- scalar double precision -------------------------------------------------
 \ Register operands are destination then source, as for the integer forms.
 \ ANDPD and XORPD operate on both 64-bit lanes; UCOMISD compares the low lane.
+\ CMPUNORDSD writes the low lane all ones when the two doubles are unordered
+\ and zero when not: CMPSD's predicate 3 is its trailing byte.
 : ENC-MOVSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
    $F2 W32 $0F10 d XMM>N sr XMM>N s SSE-RR ;
 : ENC-MOVSD-RM ( xmm mem ptr a -- ) {: d:xmm m:mem s:ptr :}
@@ -577,6 +579,8 @@ public
    $66 W32 $0F57 d XMM>N sr XMM>N s SSE-RR ;
 : ENC-UCOMISD-RR ( xmm xmm ptr a -- ) {: l:xmm r:xmm s:ptr :}
    $66 W32 $0F2E l XMM>N r XMM>N s SSE-RR ;
+: ENC-CMPUNORDSD-RR ( xmm xmm ptr a -- ) {: d:xmm sr:xmm s:ptr :}
+   $F2 W32 $0FC2 d XMM>N sr XMM>N s SSE-RR  3 s EMIT-B ;
 
 \ Hardware conversions only: range/NaN handling for Habu's realint belongs to
 \ lowering (src/compiler/native/select-x64.f EMIT-REALINT), not this byte

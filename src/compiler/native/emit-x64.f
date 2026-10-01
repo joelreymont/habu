@@ -852,6 +852,10 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 RES-XMM  id 1 OPD-XMM  s ENC-XORPD-RR ;
 
+: PUT-CMPUNORDSD ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 RES-XMM  id 1 OPD-XMM  s ENC-CMPUNORDSD-RR ;
+
 : PUT-SQRTSD ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id 0 RES-XMM  id 0 OPD-XMM  s ENC-SQRTSD-RR ;
@@ -1009,6 +1013,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       fstore    OF id s PUT-FSTORE ENDOF
       fload     OF id s PUT-FLOAD ENDOF
       fcmpset   OF id s PUT-FCMPSET ENDOF
+      cmpunordsd OF id s PUT-CMPUNORDSD ENDOF
    ;MATCH ;
 
 \ ---- how long one operation is -----------------------------------------------

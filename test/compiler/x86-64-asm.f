@@ -548,6 +548,8 @@ create SINK BUF:HDR-BYTES allot
    XMM8 XMM15 SINK ENC-ANDPD-RR   s" 66450f54c7" X=
    \ llvm-mc: xorpd %xmm15, %xmm8
    XMM8 XMM15 SINK ENC-XORPD-RR   s" 66450f57c7" X=
+   \ llvm-mc: cmpunordsd %xmm15, %xmm8
+   XMM8 XMM15 SINK ENC-CMPUNORDSD-RR   s" f2450fc2c703" X=
    \ llvm-mc: ucomisd %xmm15, %xmm8
    XMM8 XMM15 SINK ENC-UCOMISD-RR   s" 66450f2ec7" X=
    \ llvm-mc: cvtsi2sdq %r15, %xmm8

@@ -1146,7 +1146,7 @@ create NAMEBUF NAME-CAP allot
    id 0 OPERAND-AT  id LIVE-AFTER? if  id  id 0 OPERAND  EMIT-COPY exit then
    id 0 OPERAND ;
 
-: EMIT-BINARY ( IR-ID:ir-op-id X64IR:opcode -- )
+: TIED-BINARY ( IR-ID:ir-op-id X64IR:opcode -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
    id TIED-OPERAND {: dst:IR-ID:ir-value-id :}
    id o OPEN
@@ -1154,7 +1154,11 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    dst RESULT-LIKE+
    CLOSE-VALUE
-   id 0 RESULT-AT  ACC  VBIND ;
+   ACC ;
+
+: EMIT-BINARY ( IR-ID:ir-op-id X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id 0 RESULT-AT  id o TIED-BINARY  VBIND ;
 
 : EMIT-BINARY-IMM ( IR-ID:ir-op-id X64IR:opcode n -- )
    {: id:IR-ID:ir-op-id o:X64IR:opcode imm:n :}
@@ -1312,21 +1316,26 @@ private
 
 \ ---- selecting the doubles ---------------------------------------------------
 \ Every source operation over a double is the SSE2 scalar form that computes it
-\ (x64ir.f DEF-BINARY, DEF-CROSS, DEF-FCMPSET). The arithmetic is EMIT-BINARY
-\ itself, whose tie copy is `x64.movsd` because the value is a double.
+\ (x64ir.f DEF-BINARY, DEF-CROSS, DEF-FCMPSET). The arithmetic is TIED-BINARY,
+\ whose tie copy is `x64.movsd` because the value is a double, and then the
+\ NaN rule (EMIT-FARITH).
 63 constant F-SIGN-BIT                     \ binary64 keeps its sign in bit 63
 1 F-SIGN-BIT lshift constant F-SIGN-MASK
 F-SIGN-MASK invert constant F-MAGNITUDE-MASK
 
 \ One operand, one result and no tie. The result is in the file the source
 \ result's type names: a conversion leaves one file for the other.
-: EMIT-CROSS ( IR-ID:ir-op-id X64IR:opcode -- )
+: CROSS ( IR-ID:ir-op-id X64IR:opcode -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id o:X64IR:opcode :}
    id o OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    id 0 RESULT-AT REAL? if FRESULT+ else RESULT+ then
    CLOSE-VALUE
-   id 0 RESULT-AT  ACC  VBIND ;
+   ACC ;
+
+: EMIT-CROSS ( IR-ID:ir-op-id X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id 0 RESULT-AT  id o CROSS  VBIND ;
 
 \ Negation flips the sign bit and the magnitude clears it: a mask double, then
 \ the two-address xorpd or andpd over the operand.
@@ -1395,13 +1404,13 @@ F-SIGN-MASK invert constant F-MAGNITUDE-MASK
 $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or more
 
 \ A tied form over two values this rule made and reads once: the one it
-\ destroys dies here, so it needs no copy.
+\ destroys dies here, so it needs no copy. The result is in its file.
 : EMIT-FRESH-TIED ( IR-ID:ir-op-id X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id o:X64IR:opcode d:IR-ID:ir-value-id v:IR-ID:ir-value-id :}
    at o OPEN
    d OPERAND+
    v OPERAND+
-   RESULT+
+   d RESULT-LIKE+
    CLOSE-VALUE
    ACC ;
 
@@ -1419,6 +1428,45 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    id x x X64IR-COND:EQUAL FCMPSET {: num:IR-ID:ir-value-id :}
    id X64IR-OPCODE:AND sat num EMIT-FRESH-TIED {: v:IR-ID:ir-value-id :}
    id 0 RESULT-AT  v  VBIND ;
+
+\ ---- the NaN an operation makes ----------------------------------------------
+\ From numbers - infinity minus infinity, zero times infinity, zero over zero,
+\ the root of a negative - SSE makes its default NaN, $FFF8000000000000, with the
+\ sign set, where ARM64 makes $7FF8000000000000, the rule on both targets
+\ (src/compiler/native/hir-word.f DEF-FLOAT). A NaN operand passes through on
+\ both machines alike, the left one of two, and may carry either sign. So the
+\ answer's sign flips only where the answer is unordered and the operands are
+\ not: the operands' unordered mask, taken before the operation, differs from
+\ the answer's in exactly that case, and the difference's sign bit is xored in.
+\ No branch: nine instructions beside the operation, two of them `movsd` copies
+\ and two the sign mask's literal.
+
+\ All ones where `l` and `r` are unordered: cmpunordsd destroys a copy of `l`.
+: UNORD ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id l:IR-ID:ir-value-id r:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:CMPUNORDSD  at l EMIT-COPY  r  EMIT-FRESH-TIED ;
+
+\ The answer `r` with ARM64's sign on a NaN made from numbers, given the
+\ operands' unordered mask `in`. The last xorpd destroys `r`, whose last read it is.
+: CANON-NAN ( IR-ID:ir-op-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id r:IR-ID:ir-value-id in:IR-ID:ir-value-id :}
+   at r r UNORD {: out:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:XORPD out in EMIT-FRESH-TIED {: made:IR-ID:ir-value-id :}
+   at F-SIGN-MASK EMIT-DOUBLE {: sign:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:ANDPD made sign EMIT-FRESH-TIED {: flip:IR-ID:ir-value-id :}
+   at X64IR-OPCODE:XORPD r flip EMIT-FRESH-TIED ;
+
+: EMIT-FARITH ( IR-ID:ir-op-id X64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:X64IR:opcode :}
+   id  id 0 OPERAND  id 1 OPERAND  UNORD {: in:IR-ID:ir-value-id :}
+   id o TIED-BINARY {: r:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  id r in CANON-NAN  VBIND ;
+
+: EMIT-FSQRT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND  dup  UNORD {: in:IR-ID:ir-value-id :}
+   id X64IR-OPCODE:SQRTSD CROSS {: r:IR-ID:ir-value-id :}
+   id 0 RESULT-AT  id r in CANON-NAN  VBIND ;
 
 \ ---- selecting the memory operations -----------------------------------------
 \ The source order and the machine order are ONE order.
@@ -1990,13 +2038,13 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
       trap   OF id EMIT-TRAP ENDOF
       fconst   OF id EMIT-FCONST ENDOF
-      fadd     OF id X64IR-OPCODE:ADDSD EMIT-BINARY ENDOF
-      fsub     OF id X64IR-OPCODE:SUBSD EMIT-BINARY ENDOF
-      fmul     OF id X64IR-OPCODE:MULSD EMIT-BINARY ENDOF
-      fdiv     OF id X64IR-OPCODE:DIVSD EMIT-BINARY ENDOF
+      fadd     OF id X64IR-OPCODE:ADDSD EMIT-FARITH ENDOF
+      fsub     OF id X64IR-OPCODE:SUBSD EMIT-FARITH ENDOF
+      fmul     OF id X64IR-OPCODE:MULSD EMIT-FARITH ENDOF
+      fdiv     OF id X64IR-OPCODE:DIVSD EMIT-FARITH ENDOF
       fneg     OF id F-SIGN-MASK X64IR-OPCODE:XORPD EMIT-MASKED ENDOF
       fabs     OF id F-MAGNITUDE-MASK X64IR-OPCODE:ANDPD EMIT-MASKED ENDOF
-      fsqrt    OF id X64IR-OPCODE:SQRTSD EMIT-CROSS ENDOF
+      fsqrt    OF id EMIT-FSQRT ENDOF
       flt      OF id EMIT-FLT ENDOF
       fgt      OF id EMIT-FGT ENDOF
       feq      OF id EMIT-FEQ ENDOF

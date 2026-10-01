@@ -1259,6 +1259,10 @@ private
 
 \ `s>f` rounds to nearest with ties to even; `f>s` truncates toward zero,
 \ saturates at the ends and answers zero for a NaN - two roundings, two rows.
+\ A NaN made from numbers - infinity minus infinity, zero times infinity, zero
+\ over zero, infinity over infinity, the root of a negative - is
+\ $7FF8000000000000 on every target, and a quiet NaN operand passes through
+\ unchanged, the left one of two (docs/x86-64.md "The NaN an operation makes").
 \ The nine float words of the engine's vocabulary that compute rather than
 : DEF-FLOAT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}

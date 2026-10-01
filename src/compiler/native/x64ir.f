@@ -126,6 +126,7 @@ ENUM opcode DERIVE eq
    fstore
    fload
    fcmpset
+   cmpunordsd
 ;ENUM
 
 \ One condition per SOURCE relation, so a lowering is never an operand order in
@@ -444,6 +445,7 @@ private
       fstore    OF s" x64.fstore" ENDOF
       fload     OF s" x64.fload" ENDOF
       fcmpset   OF s" x64.fcmpset" ENDOF
+      cmpunordsd OF s" x64.cmpunordsd" ENDOF
    ;MATCH ;
 
 public
@@ -451,7 +453,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ The ordinal is what the passes store in their own tables, so it is stated
 \ once here and never derived from the enum's declaration order.
-61 constant OPCODES
+62 constant OPCODES
 
 : ORD ( X64IR:opcode -- n )
    MATCH opcode
@@ -516,6 +518,7 @@ public
       fstore    OF 58 ENDOF
       fload     OF 59 ENDOF
       fcmpset   OF 60 ENDOF
+      cmpunordsd OF 61 ENDOF
    ;MATCH ;
 
 : NTH ( n -- X64IR:opcode )
@@ -581,6 +584,7 @@ public
       58 of X64IR-OPCODE:FSTORE endof
       59 of X64IR-OPCODE:FLOAD endof
       60 of X64IR-OPCODE:FCMPSET endof
+      61 of X64IR-OPCODE:CMPUNORDSD endof
       E-X64IR-OPCODE throw
    endcase ;
 
@@ -955,6 +959,7 @@ private
       fstore    OF s" x64.rule.fstore" ENDOF
       fload     OF s" x64.rule.fload" ENDOF
       fcmpset   OF s" x64.rule.fcmpset" ENDOF
+      cmpunordsd OF s" x64.rule.cmpunordsd" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1021,6 +1026,7 @@ private
       fstore    OF s" x64.render.fstore" ENDOF
       fload     OF s" x64.render.fload" ENDOF
       fcmpset   OF s" x64.render.fcmpset" ENDOF
+      cmpunordsd OF s" x64.render.cmpunordsd" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1069,8 +1075,10 @@ private
 \ or and xor, and only where it exchanges the tie with them. The scalar double
 \ forms are the same shape over the XMM file: addsd, subsd, mulsd and divsd, and
 \ andpd and xorpd, which work on both lanes and so on the low one the double is
-\ in. None of them may trap: SSE exceptions are masked, so a division by zero
-\ answers an infinity and an invalid operation the default NaN.
+\ in. cmpunordsd is the compare whose all-ones mask says the two doubles are
+\ unordered. None of them may trap: SSE exceptions are masked, so a division by
+\ zero answers an infinity and an invalid operation the default NaN, whose sign
+\ the selection clears (select-x64.f EMIT-FARITH).
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id X64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:X64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1744,6 +1752,7 @@ public
    c b f X64IR-OPCODE:DIVSD DEF-BINARY
    c b f X64IR-OPCODE:ANDPD DEF-BINARY
    c b f X64IR-OPCODE:XORPD DEF-BINARY
+   c b f X64IR-OPCODE:CMPUNORDSD DEF-BINARY
    c b f f X64IR-OPCODE:SQRTSD DEF-CROSS
    c b t f X64IR-OPCODE:CVTSI2SD DEF-CROSS
    c b f t X64IR-OPCODE:CVTTSD2SI DEF-CROSS
@@ -1819,6 +1828,7 @@ private
       fstore    OF c b c b FPR-TYPE c b MEM-TYPE X64IR-OPCODE:FSTORE DEF-STORE ENDOF
       fload     OF c b c b FPR-TYPE c b MEM-TYPE X64IR-OPCODE:FLOAD DEF-LOAD ENDOF
       fcmpset   OF c b c b FPR-TYPE c b GPR-TYPE DEF-FCMPSET ENDOF
+      cmpunordsd OF c b c b FPR-TYPE X64IR-OPCODE:CMPUNORDSD DEF-BINARY ENDOF
    ;MATCH ;
 
 \ The form this dialect spells with a name. The table is the authority on the
