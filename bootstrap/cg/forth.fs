@@ -445,7 +445,18 @@ USE-BAND-OFF          constant USE-DEPTH-CELL    \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF      \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
-USE-BAND-END constant PD-TABLE-OFF
+\ --- BEGIN-snapshot frames (bootstrap/cg/jit.fs LVSNAP/LVRECON): one (k, p0,
+\ p1) frame per open `begin`, at most SNAP-FRAMES of them. Native keeps the same
+\ frames (src/habu/layout.f JIT-SNAP) in a band appended above its last
+\ published table, and so does this stage, above USE-BAND, with the private
+\ pending table above them. The low header has no room for the band: frames
+\ there run over LASTC/RSP/EXITH/LVD/LVH ($560..$600), and src/core/checker.f
+\ keeps its declaration-owner cells at $360/$368 on this engine too.
+28 constant SNAP-FRAMES                   \ EMIT-SNAP-NEST-CHECK's bound (native JIT-SNAP:FRAMES)
+24 constant SNAP-FRAME-BYTES
+USE-BAND-END constant SNAPSTK-OFF
+SNAPSTK-OFF SNAP-FRAMES SNAP-FRAME-BYTES * + constant SNAPSTK-END
+SNAPSTK-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 PD-TABLE-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)

@@ -633,7 +633,13 @@ variable FESK5
 
 variable LVSNAP  variable LVRECON
 $358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
-$360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $600)
+
+\ The frames sit in forth.fs's reserved tail (SNAPSTK-OFF), above every 12-bit
+\ ADDI form, so SNAP-FRAME, loads the base as a 64-bit literal. The depth stays
+\ a low header cell, which C-COLON-RESET-COMPILE-STATE zeroes with VSP and EXITH.
+: SNAP-FRAME, ( -- )            \ x7 := DATA + SNAPSTK-OFF + SNAP-FRAME-BYTES*x6; x8 scratch
+   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,                       \ 16*sp + 8*sp = 24*sp
+   8 SNAPSTK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD, ;
 
 \ LVSNAP ( -- ) : BEGIN. VSP<=13: force every VS entry into a register (movz
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
@@ -641,7 +647,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-SNAP-NEST-CHECK ( n -- ) {: snok :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   6 DATA SNAPSP-CELL LDR,  6 28 CMPI,  C-LT snok BCOND,
+   6 DATA SNAPSP-CELL LDR,  6 SNAP-FRAMES CMPI,  C-LT snok BCOND,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
    snok LBL, ;
 
@@ -678,7 +684,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 
 : EMIT-SNAP-PUSH-FRAME ( -- )
    6 DATA SNAPSP-CELL LDR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   SNAP-FRAME,
    13 7 0 STR,  12 7 8 STR,  10 7 16 STR,
    6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
@@ -706,7 +712,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 : EMIT-RECON-LOAD-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 6 1 SUBI,  6 DATA SNAPSP-CELL STR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   SNAP-FRAME,
    13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;          \ x13=k x12=p0 x14=p1
 
 : EMIT-RECON-CHECK-LOOP ( n n n n n -- ) {: cl cd rel chi cnx :}

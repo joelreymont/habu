@@ -365,6 +365,17 @@ bootstrap_ptr_cell_mark_gate() {
 
 bootstrap_ptr_cell_mark_gate
 
+# Every `begin` the seed compiles pushes a snapshot frame, up to 28 of them
+# (bootstrap/cg/jit.fs LVSNAP). A frame band that overlaps the seed's compile
+# cells loses the EXIT or LEAVE chain a deep nest spans: in the low header, a
+# nest of 23 crashed the word or refused its `loop`. This gate compiles and runs
+# a 28-deep nest across both chains.
+bootstrap_begin_nest_gate() {
+  "$GF" test/bootstrap-begin-nest.fs
+}
+
+bootstrap_begin_nest_gate
+
 # An undefined word inside `evaluate` has to be a catchable rc-70 throw, not a
 # rollback that returns and lets a handlerless caller keep interpreting.
 # src/core/layout-buffer.f evaluates generated accessors and never reads
