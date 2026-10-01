@@ -16,3 +16,7 @@ src, 352 non-evaluate sites, classified by token and shape (not yet probed throu
 B5 (worker-max, after B11): the 35 (d) sites; fixture extends test/prim-owner-scope.f's matrix per owner. Verify: tools/native-build.f byte fixpoint, test/run.f.
 B6 (worker-max, after B10a in habu-turn-deliberate-cast-ad2e237d): the 58 casts and the owner-ABI dispatchers they unblock.
 B7 (worker, after its design): the (c) shims. The registry files (type-schema.f, type-family.f, sumtype.f, layout-buffer.f, layout-valid.f) load before check-hook.f (tools/native-build-core.f:221-235), so their words carry no external authority under the product hook (fab55650 measured E-UNDEFINED for SCHEMA-CON from enum-decl.f). The mechanism is designed together with B8 in habu-visibility-discharge-548-fab55650; owner-private PPRIM rows for ordinary Forth words are excluded (docs/forth.md:15-17). Verify: native build fixpoint.
+
+## B7 design (2026-10-01)
+
+The mechanism is the internal-word authority design in habu-visibility-discharge-548-fab55650 (section of the same date). B7 runs after its step 3. Per site: delete the shim, load on its engine, read the refusal: E-UNDEFINED -> fix at the owner; E-MISMATCH -> a declared cast (habu-turn-deliberate-cast-ad2e237d); E-CAP-TRUSTED -> B3/B5. Shims are deleted, not converted to `:`, when the caller can name the target; raw-cell shims get an owner-declared accessor. A product SUITE file that turns E-UNDEFINED moves to WHITEBOX-SUITE.
