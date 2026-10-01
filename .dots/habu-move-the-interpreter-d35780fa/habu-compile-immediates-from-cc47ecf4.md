@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.922296+03:00"
-blocks:
-  - habu-capture-bodies-and-5cbd31ea
 ---
 
 Problem: immediates in compile mode run through the assembly `CAPTURE-IMMEDIATE` (`habu2.f:7529-7545`).
