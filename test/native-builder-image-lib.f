@@ -1,0 +1,145 @@
+\ native-builder-image-lib.f - the fixture the saved native builder rows share.
+\ tools/native-builder-image.f is a qualified donor with the native build
+\ closure loaded, saved as an application image: run in a tree, it builds that
+\ tree as tools/native-build.f does without compiling the closure again. Each
+\ row saves its own builder through fresh processes and owns one claim:
+\   test/native-builder-image-e2e.f       an edited tree's product runs the
+\                                         edit and loads C2 programs
+\   test/native-builder-image-whitebox.f  `-- out whitebox` writes the source
+\                                         path's unsealed engine, byte for byte
+\   test/native-builder-image-refusals.f  bad arguments and bad source publish
+\                                         nothing
+\ Byte parity with the source path is asserted for the unsealed class only; the
+\ sealed product is checked by running it (e2e), so a seal that the saved
+\ builder's restored checker rows write differently from the source path's is
+\ not caught by bytes.
+\ test/gate-stdlib-cases.f registers each file as a row of its own: at most one
+\ engine build each keeps a row inside the pool's row deadline. Each row prints
+\ its private directory, which keeps the builder, the products and their name
+\ maps.
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process-cwd.f
+require lib/engine-candidate.f
+require lib/time.f
+
+package NATIVE-BUILDER-IMAGE-TEST
+
+$4000 constant CAP
+1800000 constant BUILD-TIMEOUT-MS
+
+create ROOT FS-PATH-CAP allot          variable ROOT-U
+create TREE FS-PATH-CAP allot          variable TREE-U
+create TMP FS-PATH-CAP allot           variable TMP-U
+create IMAGE FS-PATH-CAP allot         variable IMAGE-U
+create REPL FS-PATH-CAP allot          variable REPL-U
+create DEST FS-PATH-CAP allot          variable DEST-U
+create OUT CAP allot                   variable OUT-U
+create ERR CAP allot                   variable ERR-U
+variable RC
+
+: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
+: TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
+: TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
+: IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
+: REPL$ ( -- ptr u8 n ) REPL REPL-U @ ;
+: DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
+
+: ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+   ROOT$ a u dst JOIN-PATH up ! ;
+
+: TREE-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+   TREE$ a u dst JOIN-PATH up ! ;
+
+: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u begin dup 0 > while
+      1 -
+      a over + c@ 47 = if exit then
+   repeat ;
+
+\ The row's private root under HB_TMP, its scratch and the builder's path. The
+\ builder builds the checkout until the row makes a private tree.
+: SETUP ( ptr u8 n -- ) {: tag:ptr tagu:n :}
+   tag tagu HB-TMP-MKDIR {: a:ptr u:n :}
+   a ROOT u BYTE-COPY u ROOT-U !
+   SOURCE-ROOT:CWD$ {: cwd:ptr cwdu:n :}
+   cwd TREE cwdu BYTE-COPY cwdu TREE-U !
+   s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS
+   s" saved-builder" IMAGE IMAGE-U ROOT-PATH!
+   tag tagu type s"  artifacts: " type ROOT$ type cr ;
+
+: COPY-MEMBER ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? 0= if exit then
+   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
+   rel relu DEST DEST-U TREE-PATH!
+   DEST$ {: dest:ptr destu:n :}
+   dest destu PARENT-U {: parentu:n :}
+   dest parentu MAKE-DIRS
+   a u DEST$ COPY-FILE-STREAM ;
+
+\ A private copy of the build's sources makes an edit observable without
+\ touching the checkout. REPL$ is the prefix file the e2e row edits: the build
+\ compiles it under the checker, after everything an edit there may use.
+: PRIVATE-TREE ( -- )
+   s" tree" TREE TREE-U ROOT-PATH! TREE$ MAKE-DIRS
+   s" src" [: COPY-MEMBER ;] WALK-FILES
+   s" lib" [: COPY-MEMBER ;] WALK-FILES
+   s" tools" [: COPY-MEMBER ;] WALK-FILES
+   s" src/habu/repl.f" REPL REPL-U TREE-PATH! ;
+
+: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
+         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
+      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
+         outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc RC>N RC ! ENDOF
+   ;MATCH ;
+
+: SUCCESS ( -- )
+   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
+   RC @ 0 T= ;
+
+: ARGV+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: ELAPSED ( n ptr u8 n -- ) {: start:n label:ptr size:n :}
+   s" native-builder-image ms " type label size type s" : " type
+   TIME:MONO-NS start - 1000000 / . ;
+
+: ENV! ( bool -- ) {: white:bool :}
+   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" HABU_WHITEBOX_IMAGE" >LEN
+   white if s" 1" else NULL$ then >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
+
+: BUILD-IMAGE ( -- )
+   s" a qualified donor saves a reusable native builder" T-LABEL
+   TIME:MONO-NS {: start:n :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   s" --" ARGV+ IMAGE$ ARGV+
+   false ENV!
+   ENGINE-CANDIDATE:PATH$ >LEN TREE$ >LEN
+   S\" require tools/native-builder-image.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT
+   start s" save-builder" ELAPSED
+   SUCCESS
+   IMAGE$ EXECUTABLE? TTRUE ;
+
+\ The saved builder run in TREE$; `--` before the output path is optional for
+\ an application image, and each row passes it one way.
+: SAVED-BUILD ( ptr u8 n bool bool -- )
+   {: path:ptr pathu:n white:bool separator:bool :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   separator if s" --" ARGV+ then
+   path pathu ARGV+
+   white if s" whitebox" ARGV+ then
+   white ENV!
+   IMAGE$ >LEN TREE$ >LEN
+   OUT CAP >LEN ERR CAP >LEN BUILD-TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
+
+;package

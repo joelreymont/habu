@@ -20,9 +20,9 @@
 \ builder's closure, or another engine, names another file, and no stale host
 \ is reused.
 \
-\ PROVIDE is the whole interface: it names the private path a caller wants its
-\ own copy at. The keyed artifact itself is never handed out, so no suite can
-\ run from - or clobber - the shared bytes. Under a gate the engine must be
+\ PROVIDE names the private path a caller wants its own copy at, so no suite
+\ runs from - or clobbers - the shared bytes; PATH$ names the keyed artifact
+\ itself for a caller that only reads it. Under a gate the engine must be
 \ granted (test/image-grant.f): the gate's whitebox-engine build row settles it
 \ and copies it for the WHITEBOX-SUITE rows (test/gate-images.f), and a row
 \ that fetches its own copy starts only after that row passed.

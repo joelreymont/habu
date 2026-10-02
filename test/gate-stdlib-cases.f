@@ -69,6 +69,18 @@ SUITE c2-field-loan
    test/c2-field-loan-e2e.f
 ;SUITE
 
+\ Each saved native builder row saves its own builder
+\ (test/native-builder-image-lib.f lists the three rows); the e2e and whitebox
+\ rows run one engine build each; the refusals row's build stops at the first
+\ post-hook prefix file. These two need no keyed image.
+SUITE native-builder-image
+   test/native-builder-image-e2e.f
+;SUITE
+
+SUITE native-builder-image-refusals
+   test/native-builder-image-refusals.f
+;SUITE
+
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -161,6 +173,11 @@ SUITE hb-build-aot-cache
 \ rows and sets the drain tail; the checker-scan-index rows take under a second.
 SUITE app-image
    test/app-image.f
+;SUITE
+
+\ Compares a saved builder's unsealed engine with whitebox-engine-build's.
+SUITE native-builder-image-whitebox
+   test/native-builder-image-whitebox.f
 ;SUITE
 
 SUITE native-window-owner
