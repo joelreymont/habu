@@ -1318,6 +1318,19 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+   \ `;` with a control structure open. Published, the forward branch that
+   \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
+   \ word spins when called; `do` leaves its loop frame behind. An `if` left
+   \ open inside a closed quotation is still on the control stack at `;`. A
+   \ checked body is refused the same way, before the checker hook.
+   s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE

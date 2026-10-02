@@ -177,6 +177,7 @@ variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound r
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
 variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-f0a4c0e6)
+variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-3cf9a606)
 
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
@@ -189,6 +190,7 @@ variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definiti
 : QNEST-MSG$ ( -- ptr u8 n )     s" hb: quotation nesting full at " ;
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
 : SEMIQ-MSG$ ( -- ptr u8 n )     s" hb: ; with a quotation open: " ;
+: SEMICF-MSG$ ( -- ptr u8 n )    s" hb: ; with a control structure open: " ;
 
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
@@ -201,6 +203,7 @@ variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definiti
 : QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
 : SEMIQ-MSG-LEN ( -- n )     SEMIQ-MSG$ nip ;
+: SEMICF-MSG-LEN ( -- n )    SEMICF-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
@@ -653,6 +656,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE composes the same line from JIT-QUOT:LEVELS
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
    LSEMIQMSG LABEL@ LBL, SEMIQ-MSG$ BYTES,                               \ EM-COMPILE-SEMI appends the definition
+   LSEMICFMSG LABEL@ LBL, SEMICF-MSG$ BYTES,
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    RELOC-EMIT:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
@@ -10175,7 +10179,7 @@ public
    LMAIN LABEL@ B, ;
 
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}
-   LBL {: closed:label :}
+   LBL LBL {: noquot:label closed:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       \ A quotation is still open: the mirror of J-SEMIQUOT's `;]` with none.
@@ -10186,10 +10190,24 @@ public
       \ hook, checked and TRUSTED: alike: catchable rc 75 inside evaluate, whose
       \ rollback zeroes the Q cells and JIT-QUOT:SP-CELL, fail-closed exit 75 at
       \ top level.
-      9 DATA QPATCH-CELL LDR,  9 closed CBZ,
+      9 DATA QPATCH-CELL LDR,  9 noquot CBZ,
          0 2 MOVZ,  1 LSEMIQMSG LABEL@ ADR,  2 SEMIQ-MSG-LEN MOVZ,  NR-WRITE SYS,
          LDIAGDEF LABEL@ BL,
          0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
+      noquot LBL,
+      \ A control structure is still open: the mirror of LCFPOP's closer with
+      \ no opener. `if`, `while`, `of` and `endof` leave a forward branch only
+      \ the closer patches, a branch to itself until then, and `do` a loop
+      \ frame only `loop` pops. Every opener pushes the control-flow stack and
+      \ every closer pops it; a definition head zeroes its depth and a
+      \ quotation leaves it alone, so an `if` left open inside a closed
+      \ quotation counts too. Refused at the same point and through the same
+      \ tail as an open quotation, with the control-flow family's code 70, the
+      \ code the checker hook gives a checked body like this.
+      5 CFSTK-OFF LIT64,  9 DBASE 5 ADD,  9 9 0 LDR,  9 closed CBZ,
+         0 2 MOVZ,  1 LSEMICFMSG LABEL@ ADR,  2 SEMICF-MSG-LEN MOVZ,  NR-WRITE SYS,
+         LDIAGDEF LABEL@ BL,
+         0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
       closed LBL,
       LVSPILL LABEL@ BL,
       EM-COMPILE-DROP-LOCALS
@@ -11565,7 +11583,7 @@ package LABELS
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
-   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !
+   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
