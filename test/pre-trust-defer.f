@@ -12,8 +12,8 @@
 \               `is`-installs [: 42 ;] and round-trips it: boots exit 0 and the
 \               piped call prints 42. Proves capture -> drain -> trust row ->
 \               checker-defer row -> checked `is` fit -> runtime dispatch.
-\   overflow  - PD-CAP+headroom pre-trust defers (appended to exec-vector.f, the
-\               earliest file where a defer is legal) overflow the table ->
+\   overflow  - twice the host's PD-CAP pre-trust defers appended to
+\               exec-vector.f, the earliest legal file, overflow the table ->
 \               C-PD-DIE-FULL, exit 72, table-full message.
 \   name/sig  - a 49-byte qualified name and a 65-byte effect exceed their slot
 \               caps -> exact table-full diagnostic, original token, exit 72.
@@ -122,7 +122,7 @@ variable LAST-ERR-U
    count 0 do
       SB-RESET
       s\" \ndefer PTDX-" SB-APPEND
-      65 i 8 / + SB-APPEND-C   65 i 8 mod + SB-APPEND-C
+      65 i 16 / + SB-APPEND-C   65 i 16 mod + SB-APPEND-C
       s"  ( -- )" SB-APPEND
       p pu SB$ APPEND-FILE
    loop ;
@@ -286,7 +286,7 @@ variable LAST-ERR-U
    RESTORE-FILES ;
 
 : OVERFLOW-CASE ( -- )
-   64 APPEND-DEFERS                                    \ added defers exceed the prefix table's spare slots
+   PD-CAP 2 * APPEND-DEFERS                            \ also overflows a doubled target built by an old donor
    s" pre-trust defer table overflow exits 72" SPAWN-RC 72 CHILD-RC
    s" overflow names the table-full diagnostic" T-LABEL
    ERR$ s" pre-trust defer table full" CONTAINS? TTRUE

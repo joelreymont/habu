@@ -1,6 +1,6 @@
 # Bootstrap
 
-## Current recovery status (2026-09-17)
+## Current recovery status
 
 Run it with
 
@@ -35,20 +35,12 @@ own); and the check suites named checker internals a from-source prefix
 publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 `CHECKER-VIS-PUBLIC` with axioms instead).
 
-The source arena is sized from what it holds, so baked source cannot overflow
-it: an engine maps `IBUFSZ` for what boot reads (the cold prefix and an argv
-or stdin program) plus exactly the `SRCN` bytes it bakes. `SOURCE-ARENA-LEN`
-in `src/habu/habu2.f` and its mirror in `bootstrap/cg/forth.fs` size the mapping
-and bound baked-source copies; ordinary reads stay within `IBUFSZ`.
-Never let baked source share a fixed arena with
-the prefix: stripping the prefix only moved that ceiling, and the tree crossed
-it again when `hb-stdin-mk`'s 3,108,486-byte baked source plus its cold prefix
-passed `IBUFSZ` (`hb: source prefix buffer full`, exit 74, before its driver
-ran). A stage or maker engine's baked source has its own ceiling, the readers'
-refusal at `SOURCE-ARENA-CAP` (`stage2: source exceeds buffer`, `maker: source
-exceeds buffer`), at build time; `test/cold-runtime-test.f` boots a cold engine baking
-one byte under it.
-
+The generated engine maps `IBUFSZ + SRCN` bytes: `IBUFSZ` for the cold prefix
+and argv or stdin input, plus exactly the bytes baked into the image. The stage2
+and maker readers each refuse source at `SOURCE-ARENA-CAP` (4 MiB). Baked source
+cannot consume the read allowance; `SOURCE-ARENA-LEN` in `src/habu/habu2.f`
+and its seed mirror in `bootstrap/cg/forth.fs` govern the mapping and baked
+copy. Reader overflow exits 74 with `hb: source prefix buffer full`.
 What is still narrower on the recovery lineage than on a `tools/native-build.f`
 engine is recorded in the tracker: the AOT capture carries the captured REPL's
 signatures but not its defer rows, so `require src/habu/debug.f` refuses on a
@@ -521,6 +513,12 @@ path out of a bounded process pool. Run it by hand after any change to the
 checker's persisted stores, the snapshot writer, or the image layout.
 
 ## Landing a Reserved-Layout Change
+
+A cold source build binds the writer to the fresh target layout before it
+captures pre-trust declarations. A 64-entry donor can therefore build a target
+with 128 pending slots and pass `test/pre-trust-defer.f`. A saved builder or
+direct donor writer retains the donor's layout and cannot stage that transition;
+use the cold source writer for a reserved-layout change.
 
 A **reserved-layout change** is anything that moves a band below `DATA-START`:
 raising `SNAP-RELOC:XTCELL-CAP`, appending a band, widening the protected-WID

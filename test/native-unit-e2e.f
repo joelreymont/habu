@@ -181,6 +181,25 @@ variable RC
    CHECK-OK
    OUT OUT-U @ s" unit-client: 4104" CONTAINS? TTRUE ;
 
+: RUN-C2 ( ptr u8 n ptr u8 n -- ) {: image:ptr imageu:n source:ptr sourceu:n :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   s" --load" >LEN PROC-ARGV+
+   source sourceu >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   image imageu AT-A >LEN ROOT$ >LEN
+   OUT OUT-CAP >LEN ERR OUT-CAP >LEN BUILD-TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
+   CHECK-OK ;
+
+: C2-PRODUCTS ( -- )
+   s" native unit and cold products both load typed C2" T-LABEL
+   s" hb-cold" s" test/c2-init-program.f" RUN-C2
+   OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
+   s" hb-import" s" test/c2-init-program.f" RUN-C2
+   OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
+   s" hb-cold" s" lib/xml/c2.f" RUN-C2
+   s" hb-import" s" lib/xml/c2.f" RUN-C2 ;
+
 : INVALID-CLIENT ( -- )
    CLIENT-INVALID
    s" hb-bad" IMPORT-UNIT
@@ -221,6 +240,7 @@ public
    s" hb-cold" s" hb-import" COMPARE
    s" hb-cold.names" s" hb-import.names" COMPARE
    RUN-CLIENT INVALID-CLIENT CHANGED-UNIT UNDECLARED-EFFECT
+   C2-PRODUCTS
    T-REPORT
    s" native unit tree: " type ROOT$ type cr ;
 

@@ -12,7 +12,7 @@ require lib/test/subject.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
-\ The standalone encoder window includes the boot source arena.
+\ The standalone encoder window includes one baked source stream.
 require src/habu/layout.f
 
 package ICODE-FIXUP-TEST

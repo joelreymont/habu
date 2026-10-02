@@ -159,13 +159,26 @@ variable TASK-USER-NEXT
 \ header with no engine cell inside it, and the layout asserts that at build
 \ time, so this module states the two ends and computes neither.
 USER-BAND:START constant TASK-USER-BASE
-TASK-USER-BASE TASK-USER-NEXT !
+\ PAUSE is defined before +USER's generated definer. Reserve its one task-local
+\ depth cell at the front of the same user band, so PAUSE can consult it.
+TASK-USER-BASE constant TASK-DEFER-OFF
+TASK-USER-BASE CELL + TASK-USER-NEXT !
 
 \ The arena stops where USER-BAND does. Nothing engine-owned lies inside it -
 \ src/habu/layout.f asserts that over every declared claim at build time - so
 \ a refused row here means the band is full, not that a library was about to
 \ overwrite the AOT window the way the old $41C8..$5000 bound allowed.
 USER-BAND:END constant TASK-USER-END
+
+: TASK-DEFER-DEPTH ( -- ptr n )
+   data-base TASK-DEFER-OFF + ;
+
+: TASK-DEFER-ENTER ( -- )
+   1 TASK-DEFER-DEPTH +! ;
+
+: TASK-DEFER-LEAVE ( -- )
+   TASK-DEFER-DEPTH @ dup 0= if drop E-TASK-STATE throw then
+   1- TASK-DEFER-DEPTH ! ;
 
 : TASK-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
@@ -1055,6 +1068,15 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
 
+\ A scope that finished cleanup while HALT is pending must publish the error
+\ selected by finally before PAUSE ends this worker outside TASK-RUNNER's catch.
+\ Keep an earlier task failure, as the exit callback chain does.
+: TASK-EXIT-FAILURE ( n -- ) {: rc:n :}
+   rc 0= if exit then
+   TASK-SELF-N dup 0= if drop E-TASK-STATE throw then
+   TASK-N>PTR {: self:ptr :}
+   self TASK-THROW@ 0= if rc self TASK-THROW! then ;
+
 \ An uncaught worker throw ends this task only: record the code and return, so
 \ the entry marks the task DONE and the other tasks keep running. A worker
 \ `die` is not catchable and still exits the process with its own status.
@@ -1106,10 +1128,12 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 : PAUSE ( -- )
    TASK-SELF-N dup 0= if drop SCHED-YIELD-CALL TASK-RC0 exit then
    TASK-N>PTR dup TASK-STOP@ 0 <> if
-         0 over TASK-STOP!
-         TASK-END
-         TASK-DONE over TCB.STATUS atomic!
-         0 PTHREAD-EXIT-CALL
+         TASK-DEFER-DEPTH @ 0= if
+            0 over TASK-STOP!
+            TASK-END
+            TASK-DONE over TCB.STATUS atomic!
+            0 PTHREAD-EXIT-CALL
+         then
    then
    drop
    SCHED-YIELD-CALL TASK-RC0 ;
@@ -1409,6 +1433,14 @@ TASK-MIN-STACK constant MIN-STACK
 : PAUSE ( -- )
    PAUSE ;
 
+\ Critical task-local resource transfers and disposal may call PAUSE while a
+\ HALT is pending. The request remains pending until a later PAUSE outside it.
+: DEFER-ENTER ( -- )
+   TASK-DEFER-ENTER ;
+
+: DEFER-LEAVE ( -- )
+   TASK-DEFER-LEAVE ;
+
 \ True while a TASK:HALT this task has not yet observed is pending. A STOP loop
 \ reads it after every STOP, so a wait of its own can give its resources back
 \ before the TASK:PAUSE that ends the task. The main thread has no TCB, is never
@@ -1416,6 +1448,11 @@ TASK-MIN-STACK constant MIN-STACK
 : HALTED? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STOP@ 0 <> ;
+
+\ Publish the code already selected by a finished scoped body and its cleanup
+\ before that body services a pending HALT at PAUSE. Zero changes nothing.
+: EXIT-FAILURE ( n -- )
+   TASK-EXIT-FAILURE ;
 
 \ Parks the calling task for at least ms milliseconds and returns as soon after
 \ that as the scheduler allows, from the main task or from a worker. It burns no
@@ -1565,6 +1602,48 @@ TASK-MIN-STACK constant MIN-STACK
 \ Whether that task holds an unread message. Never blocks, never throws.
 : MSG? ( ptr n -- bool )
    MBOX-MSG? ;
+
+\ An engine that bakes TASK keeps these cells below a stripped application's
+\ DATA window. Symbol names and the user-slot cursor are declarations; the
+\ chain head points to the application's fixed-address TCBs. Foreign addresses
+\ and the symbols handshake are process-local and start unresolved after the
+\ capture lifecycle has run. A TASK loaded inside the application's window
+\ owns its own cells, so the baked-state guards apply only below that window.
+: OWNED-CELLS ( n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: window:n carry fresh :}
+   TASK-SYM-PTHREAD-CREATE FFI:>CELL window < if
+      TASK-SEM-POOL-N 0 ?do
+         i SEM-POOL-USED @ 0<> if
+            s" task: stripped image cannot carry a live semaphore" 74 die
+         then
+      loop
+   then
+   TASK-SYM-PTHREAD-CREATE
+   TASK-USER-NEXT FFI:>CELL TASK-SYM-PTHREAD-CREATE FFI:>CELL -
+   carry execute
+   TASK-USER-NEXT BYTE-VIEW CELL carry execute
+   TASK-CHAIN BYTE-VIEW CELL carry execute
+   MUNMAP-XT BYTE-VIEW 8 cells fresh execute
+   SYMBOLS-REGISTERED BYTE-VIEW CELL fresh execute
+   SYMBOLS-READY BYTE-VIEW CELL fresh execute
+   SWEEP-ARMED BYTE-VIEW CELL fresh execute
+   TASK-SEM-USED TASK-SEM-POOL-N cells fresh execute
+   TASK-SEM-POOL TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * fresh execute
+   MAIN-PARK-REC TASK-SEMAPHORE-BYTES fresh execute
+   MAIN-PARK-READY BYTE-VIEW CELL fresh execute
+   0 TASK-EXIT-QT BYTE-VIEW TASK-EXIT-MAX cells carry execute
+   TASK-EXIT-LINK TASK-EXIT-MAX cells carry execute
+   TASK-EXIT-N BYTE-VIEW CELL carry execute
+   TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
+   TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute ;
+
+\ The linker relocates only the active declaration rows. Each destination is
+\ inside its carried run, while the typed source keeps the quotation's proof.
+: OWNED-EXIT-N ( -- n ) TASK-EXIT-N @ ;
+
+: OWNED-EXIT-AT ( n -- ptr u8 [ -- ] ) {: idx:n :}
+   0 TASK-EXIT-QT BYTE-VIEW idx cells +
+   idx TASK-EXIT-QT @ ;
 
 private
 

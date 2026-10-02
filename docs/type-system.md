@@ -368,16 +368,19 @@ generic parameter, `ENUM` and `SUMTYPE` do not. This is implementation debt, not
 design — a tag value is one cell like any nominal; the instantiation code was
 never taught about variant families.
 
-**Pointers carry no lifetime — on purpose.** A pointer type says what it
-points at, and nothing else: not which allocation it came from, how long it is
-valid, or how far it extends. This is a decision, not a gap (Joel,
-2026-07-30). The safety that matters is carried by linear owners — a mapping,
-a store, a session is used exactly once and disposed explicitly, and the
-checker enforces that. A borrowed span inside a scoped word is advisory:
-stashing it past its owner's death reads freed memory and crashes loudly,
-exactly as in C, and that failure is review's to catch. We are Forth; a
-region-and-borrow system was considered and rejected as machinery for a
-threat model we do not have.
+**Raw pointers carry no lifetime.** A `ptr T` says what it points at, not
+which allocation it came from, how long it is valid, or how far it extends.
+Linear owners enforce single consumption; they do not establish the validity
+of aliased raw pointers. A raw borrowed span inside a scoped word is advisory:
+the current checker does not refuse stashing it past its owner's release.
+
+The [C2 ownership model](ownership-model.md) adds a separate checked view
+surface with lexical scope dependencies, read/exclusive authority and typed
+borrowed aggregates. It preserves lifetime-free raw pointers for existing code
+and explicit low-level boundaries. The C2 native engine implements lexical
+allocation and loans, initialized records and record tables, and task-local
+owner cleanup. Its acceptance and release requirements govern promotion of an
+exact source/engine pair; Tender's supported engine changes separately.
 
 **`?dup` is not part of the checked vocabulary.** Its result depends on its
 input's value rather than its type, so it has no signature. It is not merely

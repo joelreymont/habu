@@ -418,6 +418,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 : TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
+   id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
@@ -722,6 +723,10 @@ private
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
    a u s" hash" CORE-STR=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
+   a u s" init" CORE-STR=CI IF
+      fam TFAM-PRODUCT? 0= IF
+         a u s" derive init requires a product" E-TDECL-DERIVE TDECL-THROW THEN
+      fam TFAM-DERIVE-INIT! EXIT THEN
    a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
@@ -730,6 +735,7 @@ private
    u 0= IF RES-FALSE EXIT THEN
    a u s" eq" CORE-STR=CI
    a u s" hash" CORE-STR=CI or
+   a u s" init" CORE-STR=CI or
    a u s" order" CORE-STR=CI or
    0= IF a u PK! RES-FALSE EXIT THEN
    a u fam TDECL-DERIVE-SET
@@ -783,7 +789,7 @@ private
 public
 
 : TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
+   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
    0 TDD-I !
    BEGIN TDD-I @ count < WHILE
       0 TDD-J !
@@ -1086,7 +1092,7 @@ private
    [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
 TDECL-PREFLIGHT-DEFAULTS
 
-$1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
+$4000 constant TDGEN-CAP   \ wide initialized accessors render up to 32 cell operations
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
@@ -2164,6 +2170,230 @@ public
    TDPLAN-FP-CLEAR
    rc 0 <> IF rc throw THEN ;
 
+\ Initialized fields use a separate trusted publication path. A checked
+\ TDPLAN row is necessarily ": NAME ..." and CHECK! judges its body; neither
+\ operation describes the fixed representation crossing here. The rows below
+\ are rendered as complete TRUSTED: definitions and replay their declared
+\ effects through the same registrar as source TRUSTED: declarations.
+private
+
+variable TDINIT-FAM
+variable TDINIT-I
+variable TDINIT-SIG-OFF
+variable TDINIT-SIG-U
+
+TRUSTED: TDINIT-MARK-LAST ( -- ) ndict@ 1 - int-mark ;
+TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
+
+: TDINIT-TERM ( n -- n ) {: fam:n :}
+   PARAM-SCR-N @ {: base:n :}
+   fam TFAM-ARITY@ 0 ?do FRESH MK-VAR PARAM-SCR+ loop
+   base fam TFAM-NAME$ fam MK-PARAM ;
+
+: TDINIT-REFUSE ( n -- )
+   TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
+   E-TDECL-DERIVE TDECL-THROW ;
+
+\ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
+\ every id and field extent against that same instantiation. These queries read
+\ committed rows, so this runs only after the field transaction's commit.
+: TDINIT-REQUIRE ( n -- ) {: fam:n :}
+   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF fam TDINIT-REFUSE THEN
+   fam TFAM-PKG$ nip 0= IF fam TDINIT-REFUSE THEN
+   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF fam TDINIT-REFUSE THEN
+   fam TDINIT-TERM {: term:n :}
+   term INIT-RECORD? 0= IF 2drop drop fam TDINIT-REFUSE THEN
+   2drop drop
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fam TFAM-FLD-START@ i + term INIT-FIELD? 0= IF
+         2drop 2drop unloop fam TDINIT-REFUSE THEN
+      2drop 2drop
+   loop ;
+
+: TDINIT-H ( n -- ) {: fam:n :}
+   s" mut-view<" TDGEN-APP
+   fam TFAM-ARITY@ dup TDGEN-LETTER 44 TDGEN-C,
+   1 + dup TDGEN-LETTER 44 TDGEN-C,
+   1 + dup TDGEN-LETTER s" ,init<" TDGEN-APP
+   1 + TDGEN-LETTER 44 TDGEN-C,
+   fam TDGEN-OUT-TYPE s" >>" TDGEN-APP ;
+
+: TDINIT-F ( n -- ) PF-SCH@ SCHEMA-ROOT@ TDGEN-SCH ;
+
+: TDINIT-NAME-START ( -- )
+   TDGEN-CLEAR
+   s" TRUSTED: " TDGEN-APP
+   TDGEN-BUF TDGEN-U @ + TDGEN-NA ! ;
+
+: TDINIT-NAME-END ( -- )
+   TDGEN-U @ TDGEN-NA @ TDGEN-BUF - - TDGEN-NU !
+   32 TDGEN-C, ;
+
+: TDINIT-HELP-NAME ( n n -- ) {: fam:n fid:n :}
+   TDINIT-NAME-START
+   fam fid TFAM-INIT-HELPER$ TDGEN-APP
+   TDINIT-NAME-END ;
+
+: TDINIT-RECEIVER-NAME ( n -- ) {: fam:n :}
+   TDINIT-NAME-START
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   TDINIT-NAME-END ;
+
+: TDINIT-PUB-NAME ( n n bool -- ) {: fam:n fid:n store:bool :}
+   TDINIT-NAME-START
+   fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
+   TDINIT-NAME-END ;
+
+: TDINIT-SIG-BEGIN ( -- )
+   TDGEN-U @ TDINIT-SIG-OFF !
+   s" ( " TDGEN-APP ;
+
+: TDINIT-SIG-END ( -- )
+   s"  ) " TDGEN-APP
+   TDGEN-U @ TDINIT-SIG-OFF @ - TDINIT-SIG-U ! ;
+
+: TDINIT-RAW-ROW ( n -- ) {: cellsn:n :}
+   cellsn 0 ?do s" n " TDGEN-APP loop ;
+
+\ The receiver is one logical, two-cell mutable view. Split it through its
+\ exact original type before a trusted body binds the address and bound.
+: TDINIT-RECEIVER ( n -- ) {: fam:n :}
+   fam TDINIT-RECEIVER-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H s"  -- ptr u8 n" TDGEN-APP
+   TDINIT-SIG-END
+   s" ;" TDGEN-APP ;
+
+\ A helper has the precise original F as input and exactly its committed
+\ number of raw cells as output. Its empty body changes only stack grouping.
+\ It lives in the author's private wordlist and is marked DNAME-INT before any
+\ public accessor can refer to it.
+: TDINIT-HELP ( n n -- ) {: fam:n fid:n :}
+   fam fid TDINIT-HELP-NAME
+   TDINIT-SIG-BEGIN
+   fid TDINIT-F
+   s"  -- " TDGEN-APP
+   fid PF-CELLS@ TDINIT-RAW-ROW
+   TDINIT-SIG-END
+   s" ;" TDGEN-APP ;
+
+: TDINIT-GET ( n n -- ) {: fam:n fid:n :}
+   fam fid RES-FALSE TDINIT-PUB-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H s"  -- " TDGEN-APP
+   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
+   TDINIT-SIG-END
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   s"  {: p:ptr b:n :} p b " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      s" p " TDGEN-APP
+      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
+      s"  + cell-view @ " TDGEN-APP
+   loop
+   s" ;" TDGEN-APP ;
+
+: TDINIT-SET ( n n -- ) {: fam:n fid:n :}
+   fam fid RES-TRUE TDINIT-PUB-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
+   s"  -- " TDGEN-APP fam TDINIT-H
+   TDINIT-SIG-END
+   fam fid TFAM-INIT-HELPER$ TDGEN-APP
+   s"  {: " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      99 TDGEN-C, i TDGEN-DEC s" :n " TDGEN-APP
+   loop
+   s" :} " TDGEN-APP
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   s"  {: p:ptr b:n :} " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      99 TDGEN-C, i TDGEN-DEC s"  p " TDGEN-APP
+      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
+      s"  + cell-view ! " TDGEN-APP
+   loop
+   s" p b ;" TDGEN-APP ;
+
+: TDINIT-NAME-PREFLIGHT ( -- )
+   TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
+
+: TDINIT-PRIVATE ( -- ) s" private" TDECL-EVAL-XT ;
+: TDINIT-RESTORE ( n -- )
+   TFAM-PUBLIC? IF s" public" ELSE s" private" THEN TDECL-EVAL-XT ;
+
+: TDINIT-HELP-NAME-CHECK ( n -- ) {: fam:n :}
+   TDINIT-PRIVATE
+   [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
+   fam TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-HELP-EVAL ( n -- ) {: fam:n :}
+   TDINIT-PRIVATE
+   [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT TDINIT-MARK-LAST ;] catch {: rc:n :}
+   fam TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
+   TDINIT-PRIVATE
+   [: TDGEN-NA @ TDGEN-NU @
+      TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
+      catch {: rc:n :}
+   fam TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-REPLAY-ROW ( -- )
+   TDGEN-NA @ TDGEN-NU @
+   TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;
+
+: TDINIT-PREFLIGHT ( n -- ) {: fam:n :}
+   fam TDINIT-REQUIRE
+   fam TFAM-FLD-START@ {: fs:n :}
+   fam TDINIT-RECEIVER fam TDINIT-HELP-NAME-CHECK
+   TDGEN-NA @ TDGEN-NU @ fam TFAM-FLD-COUNT@ 3 * 1 +
+       TDECL-CAPACITY-PREFLIGHT-XT
+   0 TDINIT-I !
+   BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TDINIT-I @ + {: fid:n :}
+      fam fid TDINIT-HELP fam TDINIT-HELP-NAME-CHECK
+      fam fid TDINIT-GET TDINIT-NAME-PREFLIGHT
+      fam fid TDINIT-SET TDINIT-NAME-PREFLIGHT
+      TDINIT-I @ 1 + TDINIT-I !
+   REPEAT ;
+
+: TDINIT-GENERATE ( n bool -- ) {: fam:n replay:bool :}
+   fam TDINIT-PREFLIGHT
+   fam TFAM-FLD-START@ {: fs:n :}
+   fam TDINIT-RECEIVER
+   replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
+   0 TDINIT-I !
+   BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TDINIT-I @ + {: fid:n :}
+      fam fid TDINIT-HELP
+      replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
+      fam fid TDINIT-GET
+      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
+      fam fid TDINIT-SET
+      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
+      TDINIT-I @ 1 + TDINIT-I !
+   REPEAT ;
+
+public
+
+: TDECL-INIT-WORDS ( n -- ) RES-FALSE TDINIT-GENERATE ;
+: TDECL-INIT-REPLAY ( n -- ) RES-TRUE TDINIT-GENERATE ;
+
+\ PRODUCT's outer declaration runner arms the same commit participant as
+\ STRUCTURE after its constructors exist. The participant itself is installed
+\ later by structure-make.f, after this pre-hook file has loaded.
+defer TDECL-INIT-ARM-XT ( n -- )
+
+private
+
+: TDECL-INIT-ARM-MISSING ( n -- )
+   drop s" sumtype: initialized field participant not installed" 76 die ;
+: TDECL-INIT-ARM-DEFAULT ( -- )
+   [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
+TDECL-INIT-ARM-DEFAULT
+
 \ Generation for ONE family the caller names, reading that family's payload only
 \ through the provider the caller supplies. TDECL-GEN-BODY is the named helper
 \ that does the work with typed locals; TDECL-CTOR-WORDS-BODY is only the failure
@@ -2258,6 +2488,11 @@ private
    fam 0 < IF EXIT THEN
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
+: TDECL-PRODUCT-INIT-ARM ( -- )
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
+
 \ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
 
@@ -2347,7 +2582,8 @@ public
    THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT TDECL-CTOR-WORDS ;]
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT
+      TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;]
       TDECL-TXN-XT ;
 
 ;package

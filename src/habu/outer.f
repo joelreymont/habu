@@ -511,9 +511,18 @@ TYPED-VARIABLE REC ptr n
    f DNAME-WIDE and 0<> if s" hb: interpret-mode layout value: " REFUSE then
    f DNAME-INT and 0<> if s" hb: internal engine word: " REFUSE then ;
 
+\ Name dispatch and tick reject an exact native code entry, including an alias,
+\ when it carries a baked scope kind. Arbitrary untyped xref xt execution is
+\ outside these paths.
+: SCOPE-ENTRY-GUARD ( -- )
+   REC @ XREF-START scope-kind? 0<> if
+      s" hb: internal engine word: " REFUSE
+   then ;
+
 \ A word to run passes them, then has its certified inputs on the stack.
 : GATE ( -- )
    XT-GATE
+   SCOPE-ENTRY-GUARD
    depth REC @ XREF-FLAGS MIN-IN < if s" hb: interpret stack underdepth: " REFUSE then ;
 
 \ LFIND's flag word as the hook reads it (layout.f TOP-EV-*): bit 0 found,
@@ -741,13 +750,38 @@ TRUSTED: PUSH-CHAR ( -- )
    a q CHECKER-SEALED-PKG? 0= if exit then
    a u ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
+\ The active checker owner supplies the trusted-only query, not a source name.
+\ Mirror C-TRUSTED-TICK?'s cold-prefix and replacement-checker windows.
+TRUSTED: TICK-OWNER@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
+
+: TICK-QUERY-READY? ( -- bool )
+   SEAL-NDICT@ 0= if false exit then
+   NCOMP-DISPATCH:BUILD-DEPTH-CELL CELL@ 0<> if false exit then
+   NCOMP-DISPATCH:TARGET-DECL-CELL TICK-OWNER@ dup 0= if drop true exit then
+   NCOMP-DISPATCH:DECL-CELL TICK-OWNER@ = ;
+
+: TICK-QUERY ( -- n )
+   NCOMP-DISPATCH:DECL-CELL TICK-OWNER@ dup 0= if drop 0 exit then
+   NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF + CELL-VIEW @ ;
+
+TRUSTED: TICK-ACTION ( n -- [ ptr u8 n -- bool ] ) ;
+
+: TRUSTED-TICK? ( -- bool )
+   TICK-QUERY-READY? 0= if false exit then
+   TICK-QUERY dup 0= if drop false exit then
+   TICK-ACTION TOKEN$ rot execute ;
+
 \ Whether ' names a word, which then passes the xt gates. A tick runs nothing,
 \ so it has no depth gate, and a name no word has is a quiet miss.
 : TICKED ( -- bool )
    s" '" OPERAND
    SEAL-GUARD
    SEARCH
-   REC @ XREF-FOUND? dup if XT-GATE then ;
+   REC @ XREF-FOUND? dup if
+      XT-GATE
+      SCOPE-ENTRY-GUARD
+      TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then
+   then ;
 
 \ The hook sees the operand as the token and the record's flags.
 TRUSTED: PUSH-XT ( -- )

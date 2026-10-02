@@ -48,8 +48,8 @@ $0003FFFFFFFFFFFF constant DNAME-LEN-MASK
 $000C000000000000 constant DKIND:CAST
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
-\ habu-habu-certified-words-84e84eaf). Stage0 never sets the band (no checker),
-\ and CAST: stamps kind 3 in bits 50-51. Name reads therefore clear fourteen
+\ habu-habu-certified-words-84e84eaf). The seed's min-in-mark writes the same
+\ band. CAST: stamps kind 3 in bits 50-51. Name reads therefore clear fourteen
 \ bits, matching the production dictionary and its capture format.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
@@ -58,6 +58,8 @@ $2000000000000000 constant DNAME-EXT
 \ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
+$8000000000000000 constant DNAME-INT
+-1 constant PRIM-INT-WID  \ build-side marker: emitted as global with DNAME-INT
 65536   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..65535 end exactly at CFSTK. Past imm16, so the comparison sites below load it with LIT64.
 $300000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
@@ -74,7 +76,7 @@ $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the R
 \ EMIT-PROF indexes (NDICT <= DICT-CAP). prof.fs derives PROF-CNT = DATA-SIZE - this.
 DICT-CAP cells constant PROF-CNT-BYTES
 $400000 constant SOURCE-ARENA-CAP
-SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
+SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f: read allowance
 
 require exec.fs
 
@@ -407,7 +409,7 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 \ existing offset moves. Slot: [0]=name-len [8]=sig-len [PD-NAME-OFF..)=name
 \ [PD-SIG-OFF..)=sig. Capacity and slot shape match native; the private table
 \ follows this engine's own reserved bands, so its address need not match.
-64 constant PD-CAP                          \ pending slots; current checker prefix has 48
+128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP                       \ max qualified defer-name bytes/slot
 64 constant PD-SIG-CAP                        \ max effect-signature bytes/slot
 0  constant PD-NLEN-OFF
@@ -1604,6 +1606,25 @@ HB-TARGET-LINUX? [IF]
    9 G-PUSH  BTHROW                      \ the body's throw goes on
    ldone LBL, ;
 
+\ MIRROR of src/habu/habu1.f BC2-INVOKE.
+: BC2-INVOKE ( -- )
+   LBL LBL {: lclean ldone :}
+   A G-POP  10 A 0 ADDI,
+   A G-POP
+   SP SP 32 SUBI,  A SP 0 STR,  10 SP 8 STR,
+   BCATCH
+   A G-POP  A SP 16 STR,
+   9 SP 0 LDR,  9 G-PUSH  BCATCH
+   A G-POP  9 lclean CBZ,
+   A SP 16 STR,
+   lclean LBL,
+   9 SP 16 LDR,  9 G-PUSH
+   9 SP 8 LDR,  9 BLR,
+   9 SP 16 LDR,  SP SP 32 ADDI,
+   9 ldone CBZ,
+   9 G-PUSH  BTHROW
+   ldone LBL, ;
+
 \ The dividing primitives' refusal ( no arguments; never returns ). MIRROR of
 \ src/habu/habu1.f EMIT-DIV-ZERO: `/`, `mod` and `/mod` branch here when their
 \ divisor is zero, so the throw exists once and their bodies grow by nothing.
@@ -1692,6 +1713,24 @@ HB-TARGET-LINUX? [IF]
    2 3 MOVZ,  LPROTREC @ BL,
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
+
+\ The source compiler uses the same record flags as the native engine. Both
+\ writes bracket the dictionary's runtime read-only protection, and neither
+\ admits an unmarked public route to clear or rewrite a mark.
+: BINTMARK ( -- )
+   A G-POP
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   2 3 MOVZ,  LPROTREC @ BL,
+   C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
+   2 5 MOVZ,  LPROTREC @ BL, ;
+
+: BMININMARK ( -- )
+   B G-POP  A G-POP
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   2 3 MOVZ,  LPROTREC @ BL,
+   B B $FF ANDI,  B B 52 LSLI,
+   C A 16 LDR,  C C B ORR,  C A 16 STR,
+   2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
 \ xw = WID -> xa = &bitmap word holding its bit, xm = that bit's mask; xscratch dies.
 \ Callers must have proved w < PROT-WID-MAX, which is what keeps xa inside the band.
@@ -1758,7 +1797,16 @@ HB-TARGET-LINUX? [IF]
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL, ;
 
-: BSWL ( -- ) C-SWL-RESULTS 11 G-PUSH ;
+\ Raw lookup cannot hand an internal code address to `execute`. Keep the
+\ shared record lookup unchanged for xref-search-wl's trusted compiler users.
+: BSWL ( -- )
+   LBL LBL {: hidden done :}
+   C-SWL-RESULTS
+   12 done CBZ,
+   9 12 40 LDR,  9 OWNER-API-PRI-WID CMPI,  C-EQ hidden BCOND,
+   9 12 16 LDR,  9 9 DNAME-INT ANDI,  9 done CBZ,
+   hidden LBL,  11 0 MOVZ,
+   done LBL,  11 G-PUSH ;
 : BCOMPILERSWL ( -- ) C-SWL-RESULTS 12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
@@ -1792,6 +1840,12 @@ HB-TARGET-LINUX? [IF]
    10 G-POP  9 G-POP
    LFIND @ BL,
    9 13 2 ANDI,
+   A G-PUSH ;
+
+\ Recovery builds have no admitted scope entry, regardless of source loaded.
+: BSCOPE-KIND ( -- )
+   A G-POP
+   A 0 MOVZ,
    A G-PUSH ;
 
 \ Recovery images have no CALLMAP/ADDRMAP bands. Consume CODE-RECLAIM's exact
@@ -1886,6 +1940,8 @@ HB-TARGET-LINUX? [IF]
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
+   s" int-mark" ['] BINTMARK PRIM-INT-WID FPRIM-WID
+   s" min-in-mark" ['] BMININMARK PRIM-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" die"  ['] BDIE   FPRIM-L ;
@@ -1903,12 +1959,14 @@ HB-TARGET-LINUX? [IF]
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" finally" ['] BFINALLY FPRIM
+   s" c2-invoke" ['] BC2-INVOKE FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" xref-search-wl" ['] BCOMPILERSWL FPRIM-L
+   s" xref-search-wl" ['] BCOMPILERSWL PRIM-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
-   s" tok-imm?" ['] BTOKIMM FPRIM ;
+   s" tok-imm?" ['] BTOKIMM FPRIM
+   s" scope-kind?" ['] BSCOPE-KIND FPRIM ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
@@ -2123,7 +2181,7 @@ HB-TARGET-LINUX? [IF]
    fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
    fid LBL,  DSB-ISH,  ISB,  RET, ;
 
-\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 48-byte records ----
+\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1|wide<<3|int<<4|min-in<<8 ) ----
 \ Qualified tokens search the named package's public WID. Bare tokens inside an
 \ open package search private, public, then FORTH; outside they search FORTH.
 : EMIT-FIND ( -- )
@@ -2204,6 +2262,8 @@ HB-TARGET-LINUX? [IF]
       5 11 0 ADDI,  12 5 8 LDR,
       15 5 16 LDR,
       8 15 DNAME-WIDE ANDI,  8 8 59 LSRI,
+      14 15 DNAME-INT ANDI,  14 14 59 LSRI,  8 8 14 ORR,
+      14 15 DNAME-MIN-IN-MASK ANDI,  14 14 44 LSRI,  8 8 14 ORR,
       15 15 DNAME-IMM ANDI,  15 15 59 LSRI,
       15 15 8 ORR,
       13 1 MOVZ,  13 13 15 ORR,
@@ -2218,7 +2278,7 @@ HB-TARGET-LINUX? [IF]
    0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ ---- FIND-USED ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1|wide<<3 ) ----
+\ ---- FIND-USED returns the same x13 flags as FIND. ----
 \ Mirror of src/habu/habu2.f EMIT-FIND-USED. Searched ONLY after the open-scope +
 \ global FIND above has missed, so a `using` import is purely additive and can
 \ never shadow a name that already resolves. One dictionary pass collects records
@@ -2226,7 +2286,7 @@ HB-TARGET-LINUX? [IF]
 \ token; a second distinct match is the ambiguity hard error. Qualified tokens
 \ (containing ':') never resolve here — they already searched their own package.
 \ x9/x10 and XDS/DATA are preserved; the flag word is assembled exactly like
-\ EMIT-FIND's `have` leg (stage0 records carry no DNAME-INT / min-in band).
+\ EMIT-FIND's `have` leg, including marked internal and minimum-input bits.
 : EMIT-FIND-USED ( -- )
    LFINDUSED @ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -2277,6 +2337,8 @@ HB-TARGET-LINUX? [IF]
    11 5 0 LDR,  12 5 8 LDR,
    14 5 16 LDR,
    15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+   8 14 DNAME-INT ANDI,  8 8 59 LSRI,  15 15 8 ORR,
+   8 14 DNAME-MIN-IN-MASK ANDI,  8 8 44 LSRI,  15 15 8 ORR,
    14 14 DNAME-IMM ANDI,   14 14 59 LSRI,
    14 14 15 ORR,
    13 1 MOVZ,  13 13 14 ORR,
@@ -2377,7 +2439,7 @@ HB-TARGET-LINUX? [IF]
    lint LBL,  C-NUM-INT-FINISH
    ldone LBL,  RET, ;
 
-\ ---- seed dictionary: NPRIMS records of [startoff(8) endoff(8) namelen(8) name(16)] ----
+\ ---- seed dictionary: NPRIMS 48-byte records; internal marker becomes a flag ----
 : EMIT-DICT ( -- )
    LNCOUNT @ LBL,  #PL @ DCQ,                              \ live count, read at startup
    LDICT @ LBL,
@@ -2385,10 +2447,14 @@ HB-TARGET-LINUX? [IF]
       i PRIM-ROW {: row :}
       row @ DLBL,                                         \ +0  start byte-offset
       row cell+ @ DLBL,                                   \ +8  end   byte-offset
-      row 2 cells + @ DCQ,                                \ +16 name length
+      row 4 cells + @ PRIM-INT-WID = if
+         row 2 cells + @ DNAME-INT or DCQ,              \ +16 internal primitive
+      else
+         row 2 cells + @ DCQ,                           \ +16 name length
+      then
       row PRIM-NAME$ BYTES,                               \ +24 name (padded to 4)
       DNAME-INL row 2 cells + @ 3 + -4 and - ?dup if PRIM-NAME-PAD swap BYTES, then
-      row 4 cells + @ DCQ,                                \ +40 wid
+      row 4 cells + @ dup PRIM-INT-WID = if drop 0 then DCQ, \ +40 searchable wid; dispatch checks the flag
    loop ;
 
 \ ---- literal emitters: scalars vs relocatable addresses (mirrors src/habu/habu2.f) --
@@ -2675,7 +2741,7 @@ create ZBYTE 0 c,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sbufull CBZ,                              \ no room left: arena overflow, not a read fault
+      2 sbufull CBZ,                              \ reserve the EOF probe within the read allowance
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -2688,7 +2754,7 @@ create ZBYTE 0 c,
    RET,
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: label fd 2 before exit 74
    s" hb: cannot read source" 74 C-EXIT-DIAG
-   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew the arena mid-read: name the buffer
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew its file allowance or the read arena
    s" hb: source prefix buffer full" 74 C-EXIT-DIAG
    sopenerr LBL,                                  \ open error: label fd 2 before exit 74 (no per-path name in the tripwire)
    s" hb: cannot open source" 74 C-EXIT-DIAG ;
@@ -3263,6 +3329,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-PROVIDE-FILES
+   2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-SFAIL @ BCOND,
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -3315,12 +3382,20 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
 
+: C-SOURCE-CHECK-ARGV ( -- )
+   2 DATA INE-CELL LDR,  5 SOURCE-ARENA-CAP LIT64,  2 2 5 ADD,
+   9 2 CMP,  C-GE SRC-SFAIL @ BCOND, ;
+
 : C-SOURCE-FILE-LOOP ( -- )
+   2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-SFAIL @ BCOND,
+   9 DATA INE-CELL STR,                           \ prefix end; the final path resets INE
    SRC-FLOOP @ LBL,
       14 15 CMP,  C-GE SRC-PIPEOK @ BCOND,
       C-SOURCE-APPEND-ARG
+      C-SOURCE-CHECK-ARGV
       14 15 CMP,  C-GE SRC-PIPEOK @ BCOND,
       C-SOURCE-APPEND-LF
+      C-SOURCE-CHECK-ARGV
       SRC-FLOOP @ B, ;
 
 : C-SOURCE-APPEND-LSRC ( -- )
@@ -3342,6 +3417,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-PROVIDE-FILES
+   2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-SFAIL @ BCOND,
+   17 9 0 ADDI,
    C-SOURCE-APPEND-LSRC
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    SRC-DONE @ B,
@@ -3374,6 +3451,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-PROVIDE-FILES                      \ the prefix just read, as include.f facts; seals before baked user source
+   2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-BFAIL @ BCOND,
    17 9 0 ADDI,
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
@@ -3386,7 +3464,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LSHBANG @ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
    SRC-BFAIL @ LBL,  SRC-SFAIL @ LBL,       \ the provide rows' appender names SRC-SFAIL; one exit serves both
-   s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ source-arena overflow
+   s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ prefix or baked-source overflow
    SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )
@@ -4579,16 +4657,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
    LTOK @ BL,
-   LBL LBL LBL LBL LBL {: tk twide usedtry found named :}
+   LBL LBL LBL LBL LBL {: tk refused usedtry found named :}
    0 named CBNZ,
       LKWTICK 1 C-DIE-KEYWORD-NAME
    named LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics (` ' SUITE` under a `using`)
    found LBL,
-   14 13 8 ANDI,  14 twide CBNZ,        \ DNAME-WIDE gate (mirror of native C-TICK; inert in stage0)
+   14 13 24 ANDI,  14 refused CBNZ,     \ wide or internal: neither yields a bare execution token
    11 G-PUSH  tk B,
-   twide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   refused LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED @ BL,
       13 tk CBZ,                        \ undefined `' X` stays the pre-existing no-op
@@ -4602,13 +4680,17 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the name and every `s" x" ['] W FPRIM-L` row in src/habu/habu1.f is refused.
 : C-BTICK ( -- )
    LTOK @ BL,
-   LBL LBL {: bk named :}
+   LBL LBL LBL {: bk refused named :}
    0 named CBNZ,
       LKWBTICK 3 C-DIE-KEYWORD-NAME
    named LBL,
    LBCAP @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
+   13 bk CBZ,
+   14 13 16 ANDI,  14 refused CBNZ,
+   C-CODE-ADDR  bk B,
+   refused LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
    LBL {: qlok :}
@@ -7010,12 +7092,17 @@ variable P2SK
    12 lnotnum CBZ,  11 G-PUSH  lmain B,
    lnotnum LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL LBL LBL {: lwide usedtry found :}
+   LBL LBL LBL LBL {: refused depthok usedtry found :}
    13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics
    found LBL,
-   14 13 8 ANDI,  14 lwide CBNZ,        \ DNAME-WIDE gate (mirror of EM-INTERPRET-FIND; inert in stage0)
+   14 13 24 ANDI,  14 refused CBNZ,     \ wide or internal word
+   14 13 $FF00 ANDI,  14 depthok CBZ,
+      14 14 8 LSRI,
+      9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI,
+      10 14 CMP,  C-LT refused BCOND,
+   depthok LBL,
    11 BLR,  lmain B,
-   lwide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   refused LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED @ BL,
       13 lundef CBZ,                    \ still nothing -> undefined
@@ -7259,7 +7346,7 @@ variable P2SK
    lmain EMIT-COMPILE-FLOAT-OPS ;
 
 : EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
-   LBL LBL LBL LBL LBL {: notimm callimm noxc ploop pdone :}
+   LBL LBL LBL LBL LBL LBL {: allowed notimm callimm noxc ploop pdone :}
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT @ BL,                               \ x10 = extra pads, x11 = found
@@ -7279,6 +7366,9 @@ variable P2SK
    LBL LBL {: usedtry found :}
    13 usedtry CBZ,                                \ open-scope + global miss -> try the used publics
    found LBL,
+   14 13 16 ANDI,  14 allowed CBZ,
+      14 DATA TRUSTED-CELL LDR,  14 lundef CBZ,
+   allowed LBL,
    14 13 2 ANDI,  14 notimm CBZ,
       SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT @ BL,

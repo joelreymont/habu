@@ -2308,9 +2308,10 @@ s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUI
 \ arg tree (TFAM-INST-WIDTH@ / TFC-VAR-PAYCELLS / famterm T-WIDTH). TDNEST1-4
 \ positive; TDNA1-3 adversarial (wrong inner width, cross-family inner, scalar
 \ inner) stay RED with exact E-MISMATCH diagnostics — TDNA1's expected renders the
-\ arg-aware inner slot (clfres<clw2,n> carries an extra @tdnres.slot2). An OPEN
-\ inner var certifies as a candidate (rows sound with a=1) but its REAL compile
-\ stays fail-closed (unstable width) — pinned in test/type-ctor-suite.f CN-OPEN.
+\ arg-aware inner slot (clfres<clw2,n> carries an extra @tdnres.slot2). An open
+\ inner var cannot determine the enclosing layout's width. Its row
+\ stays logical, so the constructor cannot bind it to a generic payload var;
+\ the candidate rejects, and test/type-ctor-suite.f CN-OPEN pins the real load.
 \ ---------------------------------------------------------------------------
 PRODUCT tdnw2 0 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE tdnopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
@@ -2319,7 +2320,10 @@ s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE
 s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=

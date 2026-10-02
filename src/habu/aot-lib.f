@@ -147,6 +147,24 @@ variable CARRY-USED
       i AOT-OWNED:CARRIED? IF i CARRY-CELL THEN
    loop ;
 
+\ TASK's typed exit table may have declaration-time callbacks. Its carried
+\ bytes hold builder code addresses, so mark each active destination as an xt
+\ cell while the builder's address-cell registry is still live. The normal
+\ collection, closure root and entry relocation then handle those quotations.
+\ The destination is the exact carried copy of TASK-EXIT-QT's typed slot.
+TRUSTED: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] ) ;
+
+: CARRY-TASK-EXIT ( -- )
+   TASK:OWNED-EXIT-N 0 ?do
+      i TASK:OWNED-EXIT-AT {: source:ptr q :}
+      source BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + {: at:n :}
+      at BLOB-SRC @ < IF
+         at CARRIED-TARGET {: dest:n :}
+         dest -1 = IF s" aot: task exit quotation has no carried cell" 74 die THEN
+         q dest DATA-PTR CELL-VIEW TASK-EXIT-SLOT xt!
+      THEN
+   loop ;
+
 \ Every cell the capture window covers that NOTHING DECLARED, classified by the
 \ ONE predicate aot-closure.f publishes (CELL-TEXTPTR?, by live engine extents).
 \ A declared xt cell is relocated instead (COLLECT-XT-CELLS above it, EMIT-XT-ROWS
@@ -1003,6 +1021,7 @@ public
 \ whole linker inside the span.
 : LINK ( -- )
    CARRY-CELLS                                      \ the engine constants this image carries
+   CARRY-TASK-EXIT                                  \ active carried task exit quotations
    COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !

@@ -702,6 +702,11 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 
 ## Checker & type model
 
+- **C2 views carry checked lifetimes and access authority.** The
+  [ownership model](ownership-model.md) defines shared `read-view<p,q,T>` and
+  exclusive `mut-view<p,q,a,T>` values, lexical loans, initialized fields and
+  task-local cleanup. A view occupies two cells and travels as one value through
+  stack permutations. Ordinary `ptr T` and `SPAN` remain lifetime-free.
 - **`CHECK!` is the user contract.** `CHECK` proves internal consistency; user
   builds verify the body against the declared effect and make rejection fatal.
   Tests for bad programs assert build rejection, not runtime failure.
@@ -1186,10 +1191,56 @@ passing suite.
 
 ## Rules learned by refusal
 
-- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.** `2
-  TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from `STORAGE-VALIDATE`. A
-  byte row is `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`, or a
-  `DYNAMIC-BUFFER` of `u8` (Habu Native Tooling Gotchas).
+Each of these was measured on the engine; the fact that proved it is beside
+the rule.
+
+- **Initialized scoped storage has two bounds.** A callback for
+  `C2-MEM:WITH-INIT` may declare `forall<i inside [l,T],[ ... ]>`; its fresh
+  scope `i` is inside the byte view's lifetime `l` and every scope dependency
+  of the initial record `T`. The operation accepts a live unique byte view and
+  a complete, non-unique, non-stale fixed-cell product. It clears the initialized
+  extent before returning the original byte view and its full bound.
+  `test/c2-init-program.f` measures the two-cell and nested record paths,
+  clear-before-return, restored bound, short capacity, callback throw and task
+  halt. `test/c2-init-refusals.f` rejects raw/shared authority, open, unique or
+  stale records, a schema whose field widths disagree despite the same total,
+  an incompatible callback and escape of `i`.
+- **Initialized record tables use one owning scope.**
+  `C2-MEM:WITH-RECORDS` accepts a unique byte view, a nonnegative count, and a
+  committed non-owning `DERIVE init` record seed. Its callback receives an
+  opaque linear `records<p,i,a,T>` under `forall<i inside [l,T],...>`.
+  The count times the committed record size must fit the original byte bound;
+  count zero is valid. `C2-MEM:WITH-RECORD` checks a zero-based index and loans
+  an element as `mut-view<p,j,a,init<i,T>>` under `forall<j inside i,...>`.
+  Its callback cannot return `j`, and the table returns without reconstructing
+  or clearing that element. Closing the table clears the complete initialized
+  extent once and restores the original byte bound. `test/c2-records-e2e.f`
+  exercises source, native tier one, saved-image, cleanup and refusal paths.
+- **An initialized field loan keeps its owner's init lifetime.**
+  `C2-MEM:WITH-FIELD name` takes a live unique
+  `mut-view<p,i,a,init<i,T>>` and a callback. `name` is resolved only against
+  the receiver's committed instantiated schema. The callback's fresh child
+  scope `j` is inside `i`; its view has field type `F`, unchanged init scope
+  `i`, and structural region `field(a,name)`. On normal return the operation
+  restores the exact original parent without copying the field into a new
+  record; the runtime closes the child loan on throw or task halt.
+  `test/c2-field-loan-e2e.f` exercises the nested nonzero-offset Pair, source
+  and native lowering, a saved explicit callback scheme, refusals and cleanup.
+- **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
+  `2 TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from
+  `STORAGE-VALIDATE`; a byte row is `n BUFFER: B` (lib/string.f),
+  `( -- ptr u8 )`. A fixed element is a whole allotted cell, and a stored `u8`
+  would mint a `ptr u8` that cell `@` cannot read. **`DYNAMIC-BUFFER` is the
+  one definer that does take `u8`**, because it allots no element storage and
+  scales the index by the element's own width: `DYNAMIC-BUFFER BYTES u8` loads
+  and `0 BYTES c@` reads byte 0 (test/dynamic-buffer.f), while
+  `DYNAMIC-BUFFER X u16` still throws 7121 — `u8` is the only sub-cell type
+  with accessors of its own.
+  `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
+  zeroed space on a cell-rounded address (measured: after `create A 1 allot
+  create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
+  a foreign call reads as an aligned C object needs no alignment word of its
+  own (lib/net/curl.f's fd_sets and out-parameter cells).
 - **A `TYPED-BUFFER` count is a decimal literal, not a constant's name.** The
   source pre-verifier reads the count as TEXT (`verify-source.f`
   `RECORD-TYPED-BUFFER` hands the previous token to the checker's
@@ -1244,6 +1295,9 @@ passing suite.
   list, with one staged value per cell. A checked 34-cell nested record
   roundtrip and the consumed-entry boundary are exercised by
   `test/compiler/native-generated-constructor.f`.
+- **`s"` reads no escapes; `S\"` does.** `S\"` needs its delimiter space
+  (`s\"\n"` is one undefined token) and reads `\u` as its own escape, so a
+  fixture holding JSON writes `\\uXXXX`.
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
@@ -1278,9 +1332,8 @@ passing suite.
   form the engine's own primitives use (`PRIM: name PE-… PRIM;`), and the rest
   of the program still compiles checked.
 - **A `defer` in `src/core/checker.f` before `: TRUST` takes a pre-trust pending
-  slot, and the table holds 48** (`src/habu/layout.f PD-CAP`); the file holds 47
-  today. The 49th dies at boot with exit 72 (`C-PD-DIE-FULL`), and
-  `test/pre-trust-defer.f` appends one to prove it. Add a selector to an
+  slot.** `src/habu/layout.f PD-CAP` bounds the table; overflow dies at boot
+  with exit 72 (`C-PD-DIE-FULL`). `test/pre-trust-defer.f` checks it. Add a selector to an
   existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
   place the defer after `: TRUST`.
 - **A pre-hook word needs an axiom row in a checked body on a from-source
@@ -1288,6 +1341,16 @@ passing suite.
   `E-PATH-RANGE`. A constant without a row can be read at top level into a
   file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
   checks the refusal and the accepted forms.
+- **`MATCH` and the other compile keywords name words, not constants**, even
+  inside a package; a `case` default runs with the selector still on the
+  stack. Two flags are not compared with `=` (`bool bool` is refused): a test
+  asserts a flag with `TTRUE`/`TFALSE`, not `T=`. (Measured in Tender.)
+- **A quotation sees no locals and must be stack-preserving under `catch`.**
+  A value a `catch`, `finally` or locked body needs travels through storage it
+  can address; after `catch` the restored cells are not the handles that were
+  pushed, and a nominal handle cannot cross `catch` as a quotation's result —
+  a one-slot `TYPED-BUFFER` holds it. `TTHROWSQ` runs a `( -- )` quotation.
+  (Measured in Tender.)
 - **A quotation-typed LOCAL cannot be caught; the same quotation on the stack
   can.** This is refused — `hook: non-certified definition: f at 'catch'`, rc 70
   — because the thing being caught has to be a literal quotation:

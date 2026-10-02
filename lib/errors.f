@@ -1412,3 +1412,8 @@
 -9350 constant E-BASE64-CHAR      \ a byte outside the standard alphabet and its '=' padding
 -9351 constant E-BASE64-PAD       \ '=' before the last one or two places, or pad bits left set
 -9352 constant E-BASE64-LENGTH    \ an encoded length that is not a multiple of four
+
+\ Private C2 owner-frame runtime. These are the only two codes it mints.
+-9360 constant E-C2-CAPACITY       \ this task has no owner frame left
+-9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
+-9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main

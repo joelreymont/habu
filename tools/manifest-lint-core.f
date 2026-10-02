@@ -1,8 +1,8 @@
-\ manifest-lint-core.f - the engine manifest against the compiler/JIT/REPL closure.
+\ manifest-lint-core.f - the engine manifest against its product entry points.
 \
-\ Joel's rule (2026-09-16): the only packages in the Habu binary are the compiler,
-\ the JIT and the REPL; no package and no type signature reaches the image unless
-\ one of those three requires it. src/habu/native-runtime.f is the manifest that
+\ The Habu product carries the compiler, the JIT, the REPL and checked C2 storage;
+\ no other package or type signature reaches the image unless an entry point requires it.
+\ src/habu/native-runtime.f is the manifest that
 \ decides, and it is a list of `s" path" required` rows anyone can append to. This
 \ lint is what stops that. It reads the rows, walks the require graph out of the
 \ entry points declared below, and refuses a row that nothing in the closure
@@ -10,7 +10,7 @@
 \
 \ An ENTRY POINT is a file the engine loads for its own sake rather than because
 \ something requires it: the checker completions, the seal passes, the compiler,
-\ the REPL and its terminal. Each entry carries the reason it is in the image, so
+\ the REPL and its terminal, and C2 storage. Each entry carries the reason it is in the image, so
 \ adding one is a deliberate edit reviewed as policy rather than a line appended
 \ to the manifest. Everything else must earn its place through a require edge.
 \
@@ -188,7 +188,9 @@ variable ML-NI
    s" src/os/macos/repl-term.f" ML-ENTRY+                      \ the REPL terminal, macos
    s" src/os/linux-x86-64/repl-term.f" ML-ENTRY+               \ the REPL terminal, linux-x86-64
    s" src/habu/repl.f" ML-ENTRY+                               \ the REPL
-   s" src/core/top-row.f" ML-ENTRY+ ;                          \ the top-level row tracker the REPL warns from
+   s" src/core/top-row.f" ML-ENTRY+                          \ the top-level row tracker the REPL warns from
+   s" lib/c2-owner.f" ML-ENTRY+                              \ checked owner and allocation surface in every product
+   s" lib/engine-id.f" ML-ENTRY+ ;                            \ running executable path for boot source identity
 
 \ ---- the closure walk ----------------------------------------------------------
 
@@ -223,8 +225,7 @@ variable ML-NI
 : ML-REPORT-STRAY ( n -- ) {: i:n :}
    s" manifest-lint: " type
    i ML-PATH$ type
-   s"  is in the manifest but nothing in the compiler, JIT or REPL closure" type NL
-   s" manifest-lint:   requires it and it is not a declared entry point" type NL
+   s"  is in the manifest but no product entry point requires it" type NL
    ML-BAD @ 1+ ML-BAD ! ;
 
 : ML-CHECK ( -- )

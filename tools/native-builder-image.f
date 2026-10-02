@@ -10,7 +10,7 @@ private
 : ORIGIN ( n n -- n ) code-origin ;
 
 : ENTER ( -- )
-   ['] ORIGIN false ['] NATIVE-EMIT:WRITE NATIVE-BUILD:RUN-IMAGE ;
+   ['] ORIGIN false ['] NATIVE-EMIT:WRITE-C2 NATIVE-BUILD:RUN-IMAGE ;
 
 ' ENTER
 ;package

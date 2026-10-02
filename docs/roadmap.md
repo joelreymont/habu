@@ -8,7 +8,8 @@ the campaign dots are the ledger.
 
 ## Design documents
 
-- C2: [ownership-model.md](ownership-model.md), a proposal that needs Joel's yes.
+- C2: [ownership-model.md](ownership-model.md), the reviewed scoped ownership
+  contract and implemented native view, storage and cleanup surface.
 - C5: the decisions appended to [database-models.md](database-models.md) and
   [tasking-models.md](tasking-models.md).
 - C6: [x86-64.md](x86-64.md) and [cortex-m.md](cortex-m.md).
@@ -53,24 +54,36 @@ released engine with no pinned pair.
 
 ## C2 Memory safety the checker can see
 
-What is missing: the checker proves stack effects and nominal types, not
-lifetimes. Tender's OPC module frees intrusive buffer lists by hand; Tender's
-LESSONS record locals overwritten by later pushes; `lib/task.f` and the AOT
-capture path reuse buffers whose authority nothing tracks.
+What exists in the source tree: shared and exclusive views carry lexical owner
+and loan scopes; initialized records and tables retain borrowed field
+dependencies. The public `C2-MEM` owner path appends zeroed allocations to a
+named owner and accepts checked disposers. Task-local frames close on return,
+throw and cooperative halt. `XML-C2` scopes a reader over shared source bytes.
+Source, native and saved-image E2Es cover these paths; the exact source/engine
+pair still needs release qualification. Legacy raw MEM pointers remain
+lifetime-free.
 
-Grounding: the borrow and capture dots already on the tracker: immutable
-lexical MEM borrows, lexical mutable scratch borrows, linear capture phases,
-scoped memory and context cleanup (Cedar, active), pointer lifetime region
-types, fixed DATA layout from a typed schema.
+Grounding: Tender's OPC cache publishes immutable bytes until package close,
+two XML readers advance independently over them, and DOCX tree fields retain
+source slices after the cursor closes. The final DOC owns copies and outlives
+the package. These require distinct source and cursor lifetimes, typed borrowed
+fields and helper returns, and independent mutable copies for writers.
 
-Campaign content: those dots, ordered scoped memory first, then read and
-mutable borrows, then region-typed pointers, then linear phases. First new
-child: write the ownership model into `docs/forth.md` and `docs/type-system.md`
-before more code, so every lane implements one rule set. Acceptance: a
-program that stores a scoped span past its owner's release, frees while a
-reader lives, or reuses a phase buffer out of order is rejected at check
-time, with fixtures for each; Tender's OPC lists are rewritten on the typed
-surface as the proof.
+The implemented core follows [the ownership contract](ownership-model.md):
+checker views and dependency propagation, typed scoped storage and loans,
+task-local cleanup, and MEM/XML adapters. The remaining consumer work is an
+isolated OPC/DOCX/XLSX proof and deliberate downstream migration after a
+qualified release. General linear locals, lifetime parameters on every raw
+pointer, and the whole record/span migration are not prerequisites.
+
+Acceptance: checked programs reject escaping views, overlapping mutable loans,
+owner release with a usable loan, and authority recovered through stale cells,
+raw storage, deferred state or task transport. The consumer proof preserves
+shared sources, independent cursors, tree slices after cursor close and owned
+documents after package close. Cleanup runs exactly once on return, throw and
+cooperative task termination. Effects survive native image roundtrips, while
+capture of live C2 scopes is refused. A candidate proof does not by itself
+publish a public engine or require Tender to switch its engine.
 
 ## C3 The ergonomics traps
 

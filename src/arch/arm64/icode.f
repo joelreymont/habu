@@ -23,14 +23,11 @@ using A64ASM
 \ exclusive bound, so it is exactly this part's allowance.
 \
 \ THE BAKED-SOURCE PART IS BOUNDED BY THE SOURCE READERS. The stage and maker
-\ drivers bake the source they read, and both readers refuse at IBUFSZ
-\ (src/habu/layout.f SOURCE-ARENA-CAP; src/habu/stage2.f READ-SRC,
-\ src/habu/maker.f MK-READ-SRC), so IBUFSZ is that part's allowance on those
-\ routes. src/habu/build.f bakes the maker source src/habu/maker-source.f READ
-\ maps whole, with no reader ceiling; an over-size part there is refused at
-\ emission by the code-window guard (CODE-CAP-WORDS).
-\ The boot arena does not bound the part: src/habu/habu2.f SOURCE-ARENA-LEN
-\ maps the baked source's own length on top of IBUFSZ.
+\ drivers bake the source they read, and both readers refuse at
+\ SOURCE-ARENA-CAP (src/habu/stage2.f READ-SRC, src/habu/maker.f MK-READ-SRC).
+\ src/habu/build.f bakes maker source from src/habu/maker-source.f READ, which
+\ maps whole; an oversized part there is refused by CODE-CAP-WORDS at emission.
+\ The boot arena maps IBUFSZ plus the baked source's own length.
 \
 \ THE AOT PAYLOAD HAS ONE AGGREGATE BUDGET. It is emitted last
 \ (EMIT-AOT-SEED) and carries the compiled blob, the dictionary records, the
@@ -42,7 +39,7 @@ using A64ASM
 \ actual aggregate bytes, including framing/alignment, are checked separately.
 \
 \ This file loads before layout.f and habu2.f, so all three terms are spelled out
-\ here. test/icode-fixup-test.f holds the window against ADR-HI and IBUFSZ, and
+\ here. test/icode-fixup-test.f checks the window's reach and admission, and
 \ habu2.f checks the third against AOT-SECTION:BYTES before emission.
 \
 \ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
@@ -99,7 +96,7 @@ using A64ASM
 \ artifact of 30,565,099 bytes - a full-band blob and its 20,001 DATA and 20,001
 \ CODE relocation rows. $1E00000 clears the minimum 30,536,128 and that artifact.
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP
+$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
@@ -302,9 +299,9 @@ variable FX-NEW
 \ Gforth seed generator's within-based rejection in bootstrap/cg/asm.fs exactly
 \ (?REL26/?REL19 on word deltas, ENC-ADR on the byte delta), so the native
 \ single-pass assembler fails closed at the identical boundary the trusted seed
-\ already rejects. The code window (CODE-CAP-BYTES, ADR-HI + IBUFSZ +
-\ AOT-SECTION-CAP) overshoots REL19/ADR reach — it always did, and it overshoots
-\ ADR by IBUFSZ + AOT-SECTION-CAP — so a forward or backward BCOND/CBZ/CBNZ/ADR,
+\ already rejects. The code window (CODE-CAP-BYTES, ADR-HI +
+\ SOURCE-ARENA-CAP + AOT-SECTION-CAP) overshoots REL19/ADR reach, so a
+\ forward or backward BCOND/CBZ/CBNZ/ADR,
 \ and a large enough B/BL, must be range-checked before its delta is masked, or
 \ the mask silently wraps to the wrong target. Every emit and patch site
 \ validates before code mutation.

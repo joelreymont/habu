@@ -15,6 +15,11 @@ package PAYLOAD-NATIVE-CONSUMER
 
 : ASSERTED-CALL ( n -- n ) PAYLOAD-NATIVE:ASSERTED ;
 
+: VIEW-COPY-CALL ( read-view<p,q,a> -- read-view<p,q,a> )
+   PAYLOAD-NATIVE:VIEW-COPY drop ;
+: VIEW-SUM-CALL ( read-view<p,q,a> -- read-view<p,q,a> )
+   PAYLOAD-NATIVE:VIEW-WRAP PAYLOAD-NATIVE:VIEW-UNWRAP ;
+
 
 : RUN ( -- )
    41 PAYLOAD-NATIVE:BUMP 42 EQ
@@ -31,6 +36,12 @@ package PAYLOAD-NATIVE-CONSUMER
    EFFECT-DOUT-CELLS 1 EQ
    s" WRONG ( ptr u8 -- ptr u8 ) PAYLOAD-NATIVE:BUMP" CHECK! 0= TRUE!
    s" WRONG-PAIR ( n -- n ) PAYLOAD-NATIVE:PAIR-SUM" CHECK! 0= TRUE!
+   s" an imported generic quotation setter accepts a concrete callback" type cr
+   s" QUOTE-OK ( [ n -- n ] -- ) PAYLOAD-NATIVE:QUOTE-STORE" CHECK! -1 EQ
+   s" an imported generic quotation setter retains scope restrictions" type cr
+   s" QUOTE-BAD ( [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- ) PAYLOAD-NATIVE:QUOTE-STORE" CHECK! 0= TRUE!
+   s" imported views preserve their element type" type cr
+   s" VIEW-BAD ( read-view<p,q,u8> -- read-view<p,q,n> ) PAYLOAD-NATIVE:VIEW-COPY drop" CHECK! 0= TRUE!
    s" native graph fresh consumer: ok" type cr ;
 
 RUN
