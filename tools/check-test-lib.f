@@ -4089,6 +4089,61 @@ POISON-RECORD
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
    s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
 
+\ Declaration forms (ENUM, PRODUCT, STRUCTURE, VALUE-RECORD, nominal names,
+\ package families); a case list of its own keeps TEST-MAIN under the
+\ 8000-byte body limit.
+: DECL-CASES ( -- )
+   s" check/enum-good" [: TEST-ENUM-GOOD ;] CASE-RUN
+   s" check/enum-bad" [: TEST-ENUM-BAD ;] CASE-RUN
+   s" check/product-good" [: TEST-PRODUCT-GOOD ;] CASE-RUN
+   s" check/product-bad" [: TEST-PRODUCT-BAD ;] CASE-RUN
+   s" check/product-all-errors" [: PROD-ALL-TEST ;] CASE-RUN
+   s" check/struct-good" [: TEST-STRUCT-GOOD ;] CASE-RUN
+   s" check/struct-payload" [: TEST-STRUCT-PAYLOAD ;] CASE-RUN
+   s" check/struct-bad-json" [: TEST-STRUCT-BAD-JSON ;] CASE-RUN
+   s" check/struct-bad-prose" [: TEST-STRUCT-BAD-PROSE ;] CASE-RUN
+   s" check/enum-bad-prose" [: TEST-ENUM-BAD-PROSE ;] CASE-RUN
+   s" check/enum-line-comment" [: TEST-ENUM-LINE-COMMENT ;] CASE-RUN
+   s" check/enum-paren-comment" [: TEST-ENUM-PAREN-COMMENT ;] CASE-RUN
+   s" check/struct-line-comment" [: TEST-STRUCT-LINE-COMMENT ;] CASE-RUN
+   s" check/struct-paren-comment" [: TEST-STRUCT-PAREN-COMMENT ;] CASE-RUN
+   s" check/decl-over-cap" [: TEST-DECL-OVER-CAP ;] CASE-RUN
+   s" check/struct-noend" [: TEST-STRUCT-NOEND ;] CASE-RUN
+   s" check/enum-noend" [: TEST-ENUM-NOEND ;] CASE-RUN
+   s" check/product-noend" [: TEST-PROD-NOEND ;] CASE-RUN
+   s" check/value-record-noend" [: TEST-VREC-NOEND ;] CASE-RUN
+   s" check/enum-noend-cli" [: ENUM-CLI-TEST ;] CASE-RUN
+   s" check/nominal-scan-top-level" [: NOM-SCAN-TEST ;] CASE-RUN
+   s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
+   s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
+   s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
+   s" check/nominal-ctor-tail" [: TEST-NOMINAL-CTOR-TAIL ;] CASE-RUN
+   s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
+   s" check/decl-ctor-tail" [: TEST-DECL-CTOR-TAIL ;] CASE-RUN
+   s" check/decl-vrec-tail" [: TEST-DECL-VREC-TAIL ;] CASE-RUN
+   s" check/decl-atom-tail" [: TEST-DECL-ATOM-TAIL ;] CASE-RUN
+   s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
+   s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
+   s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
+   s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
+   s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
+   s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
+   s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
+   s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
+   s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
+   s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
+   s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN
+   s" check/package-linear-distinct" [: LINEAR-DISTINCT-TEST ;] CASE-RUN
+   s" check/package-family-good" [: FAM-GOOD-TEST ;] CASE-RUN
+   s" check/package-family-two" [: FAM-TWO-TEST ;] CASE-RUN
+   s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
+   s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
+   s" check/package-family-json-escape" [: FAM-ESC-TEST ;] CASE-RUN
+   s" check/label-json-escape" [: LABEL-ESC-TEST ;] CASE-RUN
+   s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
+   s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
+   s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN ;
+
 : TEST-MAIN ( -- )
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
@@ -4160,56 +4215,7 @@ POISON-RECORD
    s" check/repeat-file" [: TEST-REPEAT-FILE ;] CASE-RUN
    s" check/repeat-list" [: TEST-REPEAT-LIST ;] CASE-RUN
    s" check/oversize" [: TEST-OVERSIZE ;] CASE-RUN
-   s" check/enum-good" [: TEST-ENUM-GOOD ;] CASE-RUN
-   s" check/enum-bad" [: TEST-ENUM-BAD ;] CASE-RUN
-   s" check/product-good" [: TEST-PRODUCT-GOOD ;] CASE-RUN
-   s" check/product-bad" [: TEST-PRODUCT-BAD ;] CASE-RUN
-   s" check/product-all-errors" [: PROD-ALL-TEST ;] CASE-RUN
-   s" check/struct-good" [: TEST-STRUCT-GOOD ;] CASE-RUN
-   s" check/struct-payload" [: TEST-STRUCT-PAYLOAD ;] CASE-RUN
-   s" check/struct-bad-json" [: TEST-STRUCT-BAD-JSON ;] CASE-RUN
-   s" check/struct-bad-prose" [: TEST-STRUCT-BAD-PROSE ;] CASE-RUN
-   s" check/enum-bad-prose" [: TEST-ENUM-BAD-PROSE ;] CASE-RUN
-   s" check/enum-line-comment" [: TEST-ENUM-LINE-COMMENT ;] CASE-RUN
-   s" check/enum-paren-comment" [: TEST-ENUM-PAREN-COMMENT ;] CASE-RUN
-   s" check/struct-line-comment" [: TEST-STRUCT-LINE-COMMENT ;] CASE-RUN
-   s" check/struct-paren-comment" [: TEST-STRUCT-PAREN-COMMENT ;] CASE-RUN
-   s" check/decl-over-cap" [: TEST-DECL-OVER-CAP ;] CASE-RUN
-   s" check/struct-noend" [: TEST-STRUCT-NOEND ;] CASE-RUN
-   s" check/enum-noend" [: TEST-ENUM-NOEND ;] CASE-RUN
-   s" check/product-noend" [: TEST-PROD-NOEND ;] CASE-RUN
-   s" check/value-record-noend" [: TEST-VREC-NOEND ;] CASE-RUN
-   s" check/enum-noend-cli" [: ENUM-CLI-TEST ;] CASE-RUN
-   s" check/nominal-scan-top-level" [: NOM-SCAN-TEST ;] CASE-RUN
-   s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
-   s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
-   s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
-   s" check/nominal-ctor-tail" [: TEST-NOMINAL-CTOR-TAIL ;] CASE-RUN
-   s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
-   s" check/decl-ctor-tail" [: TEST-DECL-CTOR-TAIL ;] CASE-RUN
-   s" check/decl-vrec-tail" [: TEST-DECL-VREC-TAIL ;] CASE-RUN
-   s" check/decl-atom-tail" [: TEST-DECL-ATOM-TAIL ;] CASE-RUN
-   s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
-   s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
-   s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
-   s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
-   s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
-   s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
-   s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
-   s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
-   s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
-   s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
-   s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN
-   s" check/package-linear-distinct" [: LINEAR-DISTINCT-TEST ;] CASE-RUN
-   s" check/package-family-good" [: FAM-GOOD-TEST ;] CASE-RUN
-   s" check/package-family-two" [: FAM-TWO-TEST ;] CASE-RUN
-   s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
-   s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
-   s" check/package-family-json-escape" [: FAM-ESC-TEST ;] CASE-RUN
-   s" check/label-json-escape" [: LABEL-ESC-TEST ;] CASE-RUN
-   s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
-   s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
-   s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN
+   DECL-CASES
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
