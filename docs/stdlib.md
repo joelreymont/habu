@@ -2368,6 +2368,7 @@ GT-CLEANUP      ( -- )
 GT-PATH         ( ptr u8 n ptr u8 -- n )
 GT-RUN          ( ptr u8 n n -- )
 GT-RUN-DEFAULT  ( ptr u8 n -- )
+GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
 GT-PROGRESS-RUN ( ptr u8 n -- )
 GT-U-TYPE       ( n -- )
 GT-PROGRESS-PASS ( ptr u8 n -- )
@@ -2464,6 +2465,14 @@ and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
 named failures so test scripts can report all local expectation failures before
 exiting. Test runner paths are counted byte strings; stdout/stderr assertions
 never truncate silently because process capture still enforces bounded output.
+`GT-CAPTURE-ACTION` captures an action run in this process instead: its stdout
+and stderr go to two files under the given directory, read back into the two
+spans when it returns or throws, with its throw code (0 when it returned).
+Files rather than pipes keep output past a pipe's buffer from blocking the
+action and keep the capture out of the process row the action's own child
+captures reset. Output past a span throws `E-PROC-TRUNCATED`, and the streams
+and files are restored and removed on every exit path; one such capture runs
+at a time.
 Test scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
 `GT-PROGRESS-PASS` after successful completion. Long poll loops should cap their
 poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet

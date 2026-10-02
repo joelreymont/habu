@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/span.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -19,8 +20,6 @@ $40000 constant GE-SRC-CAP
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
-0 constant GE-F-DUPFD
-10 constant GE-FD-SAVE-MIN
 1 constant GE-STDOUT-FD
 2 constant GE-STDERR-FD
 
@@ -39,8 +38,6 @@ variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
-variable GE-EVAL-OUT-SAVE
-variable GE-EVAL-ERR-SAVE
 TYPED-VARIABLE GE-EVAL-STACK-A ptr u8
 TYPED-VARIABLE GE-EVAL-SRC-A ptr u8
 variable GE-EVAL-SRC-U
@@ -421,27 +418,14 @@ variable GE-EVAL-SRC-U
    GE-EVAL-CURRENT @ set-current
    GE-EVAL-JSON-DIAGS @ JSON-DIAGS ! ;
 
-: GE-EVAL-DUP-FD ( n -- n ) {: fd:n :}
-   fd GE-F-DUPFD GE-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;
-
 : GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
 
 : GE-EVAL-REDIRECT! ( -- )
-   GE-STDOUT-FD GE-EVAL-DUP-FD GE-EVAL-OUT-SAVE !
-   GE-STDERR-FD GE-EVAL-DUP-FD GE-EVAL-ERR-SAVE !
    PROC-OUT-W @ GE-STDOUT-FD GE-EVAL-DUP2!
    PROC-ERR-W @ GE-STDERR-FD GE-EVAL-DUP2!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
-
-: GE-EVAL-RESTORE! ( -- )
-   GE-EVAL-OUT-SAVE @ GE-STDOUT-FD GE-EVAL-DUP2!
-   GE-EVAL-ERR-SAVE @ GE-STDERR-FD GE-EVAL-DUP2!
-   GE-EVAL-OUT-SAVE @ close
-   GE-EVAL-ERR-SAVE @ close
-   -1 GE-EVAL-OUT-SAVE !
-   -1 GE-EVAL-ERR-SAVE ! ;
 
 TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
    GE-EVAL-SRC$ evaluate ;
@@ -453,29 +437,17 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
 : GE-EVAL-SOURCE ( -- )
    GE-EVAL-SOURCE-RUNSTACK ;
 
-\ Store a synthesized in-process outcome (exited rc) straight into the GT
-\ runner state; the capture machine no longer stores a (kind code) pair to
-\ forge, so the runner copy is the single synthesized-state home.
-: GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
-   rc PROC-RC !
-   PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN rc OUTCOME:EXITED GE-STORE-OUTCOME ;
-
-: GE-EVAL-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
-
-: GE-CAPTURE-ACTION ( [ -- ] -- n ) {: q :}
-   GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
-   GE-EVAL-REDIRECT!
-   q catch {: rc:n :}
-   GE-EVAL-RESTORE!
-   GE-EVAL-DRAIN
-   PROC-CLOSE-ALL-CAPTURE-FDS
-   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME
-   rc ;
+\ An in-process action's capture (lib/test/runner.f GT-CAPTURE-ACTION), stored
+\ as an exit whose code is the action's throw code.
+: GE-CAPTURE-ACTION ( [ -- ] -- )
+   {: q :}
+   q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
+   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   outu erru rc OUTCOME:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-CAPTURE-SRC ( ptr u8 n -- )
    GE-EVAL-SRC!
-   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC ;
+   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION ;
 
 : GE-EVAL-CAPTURE ( -- )
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-CAPTURE-SRC ;

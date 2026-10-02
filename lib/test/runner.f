@@ -2,6 +2,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/span.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -168,6 +169,93 @@ variable GT-TAIL-U
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
+
+\ ---- an in-process action's output -------------------------------------------
+\ GT-CAPTURE-ACTION runs an action in this process with its stdout and stderr
+\ pointed at two files under the caller's directory, then reads them back into
+\ the caller's spans; code is the action's throw code, 0 when it returned.
+\ Files, not pipes: nothing drains a pipe while the action runs, so output past
+\ the pipe's buffer would block the action for good, and the action may run
+\ captures of its own through the task's one-capture row (lib/process.f).
+\ Output past a span's capacity throws E-PROC-TRUNCATED, as a child's capture
+\ does. Both streams come back and both files go on every exit path. The saved
+\ streams and the paths are process-wide, so one capture runs at a time.
+0 constant GT-F-DUPFD
+10 constant GT-FD-SAVE-MIN               \ a saved stream sits above the low descriptors
+1 constant GT-STDOUT-FD
+2 constant GT-STDERR-FD
+
+create GT-CAP-OUT-PATH FS-PATH-CAP allot
+create GT-CAP-ERR-PATH FS-PATH-CAP allot
+variable GT-CAP-OUT-PATH-U
+variable GT-CAP-ERR-PATH-U
+variable GT-CAP-OUT-SAVE                 \ the stream fd 1 held while captured, else -1
+variable GT-CAP-ERR-SAVE                 \ the stream fd 2 held while captured, else -1
+-1 GT-CAP-OUT-SAVE !
+-1 GT-CAP-ERR-SAVE !
+
+: GT-CAP-OUT-PATH$ ( -- ptr u8 n )
+   GT-CAP-OUT-PATH GT-CAP-OUT-PATH-U @ ;
+
+: GT-CAP-ERR-PATH$ ( -- ptr u8 n )
+   GT-CAP-ERR-PATH GT-CAP-ERR-PATH-U @ ;
+
+\ fd writes to a new empty file at path; save keeps the stream fd held.
+: GT-CAP-REDIRECT ( ptr u8 n n ptr n -- )
+   {: path:ptr pathu:n fd:n save:ptr :}
+   path pathu s" " WRITE-ALL
+   fd GT-F-DUPFD GT-FD-SAVE-MIN fcntl {: kept:n :}
+   kept 0 < if E-PROC-OUTPUT throw then
+   kept save !
+   path pathu OPEN-APPEND-FD {: file:n :}
+   file fd dup2 {: moved:n :}
+   file close-rc {: closed:n :}
+   moved 0 < if E-PROC-OUTPUT throw then
+   closed 0 < if E-PROC-OUTPUT throw then ;
+
+\ fd takes back the stream save keeps, if it keeps one.
+: GT-CAP-RESTORE ( n ptr n -- )
+   {: fd:n save:ptr :}
+   save @ {: kept:n :}
+   kept 0 < if exit then
+   -1 save !
+   kept fd dup2 {: moved:n :}
+   kept close-rc {: closed:n :}
+   moved 0 < if E-PROC-OUTPUT throw then
+   closed 0 < if E-PROC-OUTPUT throw then ;
+
+: GT-CAP-REMOVE ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path pathu EXISTS? if path pathu REMOVE-FILE then ;
+
+: GT-CAP-RELEASE ( -- )
+   GT-STDOUT-FD GT-CAP-OUT-SAVE GT-CAP-RESTORE
+   GT-STDERR-FD GT-CAP-ERR-SAVE GT-CAP-RESTORE
+   GT-CAP-OUT-PATH$ GT-CAP-REMOVE
+   GT-CAP-ERR-PATH$ GT-CAP-REMOVE ;
+
+: GT-CAP-READ ( ptr u8 n SPAN:span<u8> -- len )
+   {: path:ptr pathu:n dst :}
+   path pathu FILE-SIZE dst SPAN:LEN > if E-PROC-TRUNCATED throw then
+   path pathu dst SPAN:$ READ-ALL >LEN ;
+
+\ The files are read with the action's streams still on them; GT-CAP-RELEASE
+\ gives the streams back after the read, on its path and on every throw.
+: GT-CAP-RUN ( [ -- ] SPAN:span<u8> SPAN:span<u8> -- len len n )
+   {: q out err :}
+   GT-CAP-OUT-PATH$ GT-STDOUT-FD GT-CAP-OUT-SAVE GT-CAP-REDIRECT
+   GT-CAP-ERR-PATH$ GT-STDERR-FD GT-CAP-ERR-SAVE GT-CAP-REDIRECT
+   q catch {: code:n :}
+   GT-CAP-OUT-PATH$ out GT-CAP-READ
+   GT-CAP-ERR-PATH$ err GT-CAP-READ
+   code ;
+
+: GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
+   {: q dir:ptr diru:n out err :}
+   diru 0 <= if E-FS-PATH throw then
+   dir diru s" capture-out.txt" GT-CAP-OUT-PATH JOIN-PATH GT-CAP-OUT-PATH-U !
+   dir diru s" capture-err.txt" GT-CAP-ERR-PATH JOIN-PATH GT-CAP-ERR-PATH-U !
+   q out err [: GT-CAP-RUN ;] [: GT-CAP-RELEASE ;] finally ;
 
 : GT-LINE-FLUSH-U ( ptr u8 n -- n ) {: a:ptr u :}
    u 0 < if E-STR-BOUNDS throw then

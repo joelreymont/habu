@@ -108,21 +108,18 @@ variable REC-U
 : CHECK-RUN ( -- )
    CHECK:RUN throw ;
 
-: CHECK-CAPTURE ( [ -- ] -- ) {: q :}
-   q GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME! ;
-
 : STDIN-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHECK:SOURCE
    CHECK-RUN ;
 
 : CHECK-STDIN ( -- )
-   [: STDIN-ACT ;] CHECK-CAPTURE ;
+   [: STDIN-ACT ;] GE-CAPTURE-ACTION ;
 
 : PATH-ACT ( -- )
    CHECK-RUN ;
 
 : CHECK-PATH ( -- )
-   [: PATH-ACT ;] CHECK-CAPTURE ;
+   [: PATH-ACT ;] GE-CAPTURE-ACTION ;
 
 : LABEL-COPY-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ LABEL$ CHECK:SOURCE
@@ -135,7 +132,7 @@ variable REC-U
    s" : LABEL-BAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
    CHECK-START
    s" owned-label.f" LABEL!
-   [: LABEL-COPY-ACT ;] CHECK-CAPTURE
+   [: LABEL-COPY-ACT ;] GE-CAPTURE-ACTION
    s" public CHECK:SOURCE accepted bad label-copy fixture" GE-EXPECT-NONZERO
    s" owned-label.f" s" copied source label appears in diagnostic" GE-EXPECT-ERR-HAS
    s" Xwned-label.f" s" mutated source label absent from diagnostic" GE-EXPECT-ERR-LACKS
@@ -726,9 +723,7 @@ variable REC-U
    s" fix_family_declaration" GJA-SUGGEST-FOR s" fix_nominal_type" GJA-SUGGEST-FOR REC-SWAP
    s" habu-tfam-class.err" s" declaration repair class is not fix_family_declaration" s" declaration under another class refused" REFUSED ;
 
-\ A refusal only the run reads carries no place. tools/check.f runs in its own
-\ process here: an in-process CHECK-JSON whose verdict comes from the run it
-\ spawns captured the right byte count over the previous capture's bytes.
+\ A refusal only the run reads carries no place.
 \ The contract refuses the record under an uncheckable verdict or a class
 \ outside the three storage classes.
 : RUN-STORAGE ( -- )
@@ -736,14 +731,8 @@ variable REC-U
    GE-SRC-RESET
    s" 4 TYPED-BUFFER JSTG-E jstg-none" GE-SRC-S"
    s"  evaluate" GE-SRC-LINE
-   s" habu-run-storage.f" WRITE-SRC
-   s" --load" ARG+
-   s" tools/check.f" ARG+
-   s" --" ARG+
-   s" --json-errors" ARG+
-   s" habu-run-storage.f" PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   70 s" tools/check.f accepted refused run-time storage" GE-EXPECT-RC
+   s" tools/check.f accepted refused run-time storage" CHECK-JSON
+   70 s" tools/check.f refused run-time storage with another status" GE-EXPECT-RC
    s" habu-run-storage.err" WRITE-ERR
    s" word" s" JSTG-E" s" run-time storage word" ERR-JSTR
    s" line" s" run-time storage refusal carries no place" ERR-NO-JKEY

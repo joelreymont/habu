@@ -14,7 +14,9 @@ require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/runner.f
 require lib/memory.f
+require lib/span.f
 require lib/vector.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -93,8 +95,6 @@ create CLI-ROOT FS-PATH-CAP allot
 create CLI-TARGET FS-PATH-CAP allot
 create CLI-LINK-PATH FS-PATH-CAP allot
 create CLI-HB FS-PATH-CAP allot
-create CAP-OUT-PATH FS-PATH-CAP allot
-create CAP-ERR-PATH FS-PATH-CAP allot
 create ENV-PROBE-PATH FS-PATH-CAP allot
 
 TYPED-VARIABLE OUT-A ptr u8
@@ -118,11 +118,7 @@ variable CLI-ROOT-U
 variable CLI-TARGET-U
 variable CLI-LINK-U
 variable CLI-HB-U
-variable CAP-OUT-PATH-U
-variable CAP-ERR-PATH-U
 variable ENV-PROBE-U
-variable SAVE-OUT-FD
-variable SAVE-ERR-FD
 variable START-NS
 
 : PATH-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
@@ -212,59 +208,17 @@ variable START-NS
    ERR-A @ 0= if CAP-ALLOC ERR-A! then
    ERR-A@ ;
 
-: CAP-OUT-PATH$ ( -- ptr u8 n )
-   CAP-OUT-PATH CAP-OUT-PATH-U @ ;
-
-: CAP-ERR-PATH$ ( -- ptr u8 n )
-   CAP-ERR-PATH CAP-ERR-PATH-U @ ;
-
 \ Stream capture for the in-process CHECK drivers below. The check tool writes
 \ its diagnostics with plain `write` calls on the process stdout and stderr, so
 \ the only faithful way to read them back without a test-only hook inside the
-\ tool is to move those two descriptors for the duration of one run. The
-\ production code stays untouched and the assertions see exactly the bytes a
-\ command-line user would see.
-1 constant CAP-STDOUT
-2 constant CAP-STDERR
-
-: FD-MOVE ( n n -- ) {: from:n to:n :}
-   from to dup2 0 < if E-PROC-OUTPUT throw then ;
-
-: FD-CLOSE ( n -- ) {: fd:n :}
-   fd close-rc 0 < if E-PROC-OUTPUT throw then ;
-
-\ Opening a file hands back a fresh kernel-chosen descriptor number; moving the
-\ live stream onto that number closes the just-opened file and leaves the number
-\ holding a second reference to the original stream. That is the saved copy.
-: FD-SAVE ( n ptr u8 n -- n ) {: fd:n a:ptr u:n :}
-   a u OPEN-APPEND-FD {: slot:n :}
-   fd slot FD-MOVE
-   slot ;
-
-: FD-TO-FILE ( ptr u8 n n -- ) {: a:ptr u:n dst:n :}
-   a u OPEN-APPEND-FD {: fd:n :}
-   fd dst FD-MOVE
-   fd FD-CLOSE ;
-
-: CAP-BEGIN ( -- )
-   CAP-OUT-PATH$ s" " WRITE-ALL
-   CAP-ERR-PATH$ s" " WRITE-ALL
-   CAP-STDOUT CAP-OUT-PATH$ FD-SAVE SAVE-OUT-FD !
-   CAP-STDERR CAP-ERR-PATH$ FD-SAVE SAVE-ERR-FD !
-   CAP-OUT-PATH$ CAP-STDOUT FD-TO-FILE
-   CAP-ERR-PATH$ CAP-STDERR FD-TO-FILE ;
-
-: CAP-END ( -- n n )   \ restore both streams, then slurp them into the assertion buffers
-   SAVE-OUT-FD @ CAP-STDOUT FD-MOVE  SAVE-OUT-FD @ FD-CLOSE
-   SAVE-ERR-FD @ CAP-STDERR FD-MOVE  SAVE-ERR-FD @ FD-CLOSE
-   CAP-OUT-PATH$ CAP-OUT BUF-CAP READ-ALL
-   CAP-ERR-PATH$ CAP-ERR BUF-CAP READ-ALL ;
-
+\ tool is to move those two descriptors for the duration of one run
+\ (lib/test/runner.f GT-CAPTURE-ACTION). The production code stays untouched
+\ and the assertions see exactly the bytes a command-line user would see.
 : IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
    {: q :}
-   CAP-BEGIN
-   q catch {: rc:n :}
-   CAP-END rc ;
+   q ROOT$ CAP-OUT BUF-CAP SPAN:MAKE CAP-ERR BUF-CAP SPAN:MAKE GT-CAPTURE-ACTION
+   {: outu:len erru:len rc:n :}
+   outu LEN>N erru LEN>N rc ;
 
 \ CHECK:MAIN turns a non-zero run code into a throw, which the engine reports as
 \ the process exit status. The in-process drivers reproduce that mapping so a
@@ -1189,8 +1143,6 @@ variable LONG-J
    ROOT$ s" cyc-root.f" CYC-ROOT-PATH JOIN-PATH CYC-ROOT-U !
    ROOT$ s" cyc-host.f" CYC-HOST-PATH JOIN-PATH CYC-HOST-U !
    ROOT$ s" cyc-entry.f" CYC-ENTRY-PATH JOIN-PATH CYC-ENTRY-U !
-   ROOT$ s" capture-out.txt" CAP-OUT-PATH JOIN-PATH CAP-OUT-PATH-U !
-   ROOT$ s" capture-err.txt" CAP-ERR-PATH JOIN-PATH CAP-ERR-PATH-U !
    ROOT$ s" env-probe.f" ENV-PROBE-PATH JOIN-PATH ENV-PROBE-U !
    BAD$ BAD$SRC WRITE-ALL ;
 
