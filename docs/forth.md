@@ -1346,9 +1346,10 @@ the rule.
 - **A storage declaration its definer refuses is the checker's refusal, named
   and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  refuse an unknown, malformed or unstorable type, a name with more than one
-  `:` or in a sealed package, and a literal count outside the extent (the
-  pre-verifier also refuses a count token that resolves to no `( -- n )` word):
+  refuse an unknown, malformed, unstorable or missing type, a name with more
+  than one `:` or in a sealed package, and a literal count outside the extent
+  (the pre-verifier also refuses a count token that resolves to no `( -- n )`
+  word):
   `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
   `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
   reports it as `E-BAD-STORAGE` at the type's file, line and column in every

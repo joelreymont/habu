@@ -1200,33 +1200,18 @@ variable NOM-TAIL-U
       BODY-APPEND
    AGAIN ;
 
-: RECORD-LAYOUT-BUFFER ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
-   NEXT-SCAN {: type:ptr typeu:n :}
-   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
-
-\ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
-\ one line, so a later definition calling one is E-UNDEFINED without this row,
-\ and a type it cannot size goes unreported until the run. No count token: the
-\ count arrives at the bind.
-: RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
-   NEXT-SCAN {: type:ptr typeu:n :}
-   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
-
-\ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
-\ A stored type may be `ptr* base`, a family application or a spaced quotation
-\ or scheme, so the type is a contiguous multi-token span from the scanner
-\ buffer, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP) or with its
-\ line.
+\ Every storage definer's gate registration reads its stored type here, as its
+\ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
+\ be `ptr* base`, a family application or a spaced quotation or scheme, so the
+\ type is a contiguous multi-token span from the scanner buffer, ended where the
+\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The first token is
+\ read raw, as parse-name reads it, so a `(` or `\` there is the type the
+\ definer refuses, not a comment (NAME-TOKEN reads a name the same way). When
+\ the source has no first token the span is empty, and the checker refuses that
+\ by name.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
-
-: SCAN-STORAGE-TOK ( -- )   \ the stored type's first token, which the source must have
-   NEXT-SCAN STG-U !  STG-A !
-   STG-U @ 0= IF s" verify-source: missing storage type" 74 die THEN ;
 
 \ Whether the spelling goes on past its last token: not when that token ended
 \ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). The next token is read
@@ -1242,10 +1227,25 @@ PTR-VARIABLE STG-START
    0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
-   SCAN-STORAGE-TOK
+   NEXT-RAW STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
+
+: RECORD-LAYOUT-BUFFER ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
+
+\ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
+\ one line, so a later definition calling one is E-UNDEFINED without this row,
+\ and a type it cannot size goes unreported until the run. No count token: the
+\ count arrives at the bind.
+: RECORD-DEFER-LAYOUT-BUFFER ( -- )
+   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}

@@ -800,7 +800,11 @@ variable REC-U
 \ One refusal of each repair class, which the pre-pass reads and locates at its
 \ token, a scheme the pre-pass reads whole to its outer closer, two unclosed
 \ types it ends at the end of their line, reading the next line as the next
-\ statement, then one only the run reads.
+\ statement, then one only the run reads. The layout definers read their type
+\ by the same rule: a scheme and a pointer type are refused whole, a family
+\ closed over a quotation is registered, a comment opener where the name or the
+\ first type token stands is that name or type, as parse-name reads it, and a
+\ type missing at the end of the source is refused at the name.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -814,6 +818,17 @@ variable REC-U
    s" TYPED-VARIABLE JSTG-Q [ n -- n" GE-SRC-LINE
    s" : JSTG-Q-NEXT ( -- n ) JSTG-L-NEXT ;" GE-SRC-LINE
    s" : JSTG-USE ( -- n ) JSTG-Q-NEXT ;" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER JSTG-LS forall<p,[ n -- n ]>" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER JSTG-DS forall<p,[ n -- n ]>" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER JSTG-LP ptr n" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER JSTG-DP ptr n" GE-SRC-LINE
+   s" STRUCTURE jstg-hook 1 DERIVE addr FIELD fn a ;STRUCTURE" GE-SRC-LINE
+   s" 2 LAYOUT-BUFFER JSTG-LQ jstg-hook<[ n -- n ]>" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER JSTG-DQ jstg-hook<[ n -- n ]>" GE-SRC-LINE
+   s" : JSTG-HOOK-USE ( -- ) 2 JSTG-DQ-BIND 0 JSTG-LQ drop 0 JSTG-DQ drop ;" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-CM ( c ) n" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER \ c" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER JSTG-LM" GE-SRC-LINE
    s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
    s" habu-bad-storage.err" WRITE-ERR
    s" code" s" E-BAD-STORAGE" s" storage diagnostic code" ERR-JSTR
@@ -828,6 +843,22 @@ variable REC-U
    s" token" s\" \"[ n -- n\",\"reason\":\"malformed type\",\"file\":\"<stdin>\",\"line\":8,\"column\":23"
    s" storage quotation ended at its line" ERR-JRAW
    s\" \"code\":\"E-UNDEFINED\"" s" a statement after a line-ended storage type went unread" GE-EXPECT-ERR-LACKS
+   s" word" s\" \"JSTG-LS\",\"token\":\"forall<p,[ n -- n ]>\",\"reason\":\"scheme in a stored type\",\"file\":\"<stdin>\",\"line\":11,\"column\":25"
+   s" layout scheme read whole" ERR-JRAW
+   s" word" s\" \"JSTG-DS\",\"token\":\"forall<p,[ n -- n ]>\",\"reason\":\"scheme in a stored type\",\"file\":\"<stdin>\",\"line\":12,\"column\":29"
+   s" deferred layout scheme read whole" ERR-JRAW
+   s" word" s\" \"JSTG-LP\",\"token\":\"ptr n\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":13,\"column\":25"
+   s" layout pointer type read whole" ERR-JRAW
+   s" word" s\" \"JSTG-DP\",\"token\":\"ptr n\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":14,\"column\":29"
+   s" deferred layout pointer type read whole" ERR-JRAW
+   s\" \"word\":\"JSTG-LQ\"" s" layout family closed over a quotation refused" GE-EXPECT-ERR-LACKS
+   s\" \"word\":\"JSTG-DQ\"" s" deferred family closed over a quotation refused" GE-EXPECT-ERR-LACKS
+   s" word" s\" \"JSTG-CM\",\"token\":\"(\",\"reason\":\"unknown type\",\"file\":\"<stdin>\",\"line\":19,\"column\":24"
+   s" storage type's first token read raw" ERR-JRAW
+   s" word" s\" \"\\\\\",\"token\":\"c\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":20,\"column\":23"
+   s" deferred layout name read raw" ERR-JRAW
+   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":21,\"column\":17"
+   s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    RUN-STORAGE ;
 

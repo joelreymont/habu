@@ -288,9 +288,41 @@ STORAGE-CAPTURE-INSTALL
       handle base count CHECKER-STORAGE-BIND
    then ;
 
+\ ---- the stored type --------------------------------------------------------
+\ Every storage definer reads its type here, so a pointer chain, a family
+\ application and a spaced quotation or scheme reach the checker whole. The
+\ first token is read as parse-name reads one. When there is none, the span is
+\ empty, and the checker refuses that by name (CHECKER-STORAGE-TYPE-REFUSE).
+
+\ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
+\ that file loads after this one. Pointing it back at a token parse-name read
+\ leaves that token to the next statement.
+$36A0 constant STGT-INP-CELL
+: STORAGE-UNREAD ( ptr u8 -- )
+   NULL-PTR - data-base STGT-INP-CELL + ! ;
+
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). A token on a later line
+\ goes back to the input.
+: STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended if LBUF-FALSE exit then
+   STGT-A @ STGT-U @ + {: end:ptr :}
+   parse-name {: a:ptr u:n :}
+   u 0= if LBUF-FALSE exit then
+   end a end - CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD LBUF-FALSE exit then
+   a STGT-A !  u STGT-U !  LBUF-TRUE ;
+
+\ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
+\ or with its line.
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
+   parse-name STGT-U !  STGT-A !
+   STGT-A @ STGT-START !
+   0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
+   STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
+
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
-   parse-name {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
@@ -479,7 +511,7 @@ PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
 : DEFER-LAYOUT-BUFFER ( -- )
    parse-name {: name:ptr nameu:n :}
-   parse-name {: type:ptr typeu:n :}
+   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then              \ the name and its control-cell word
@@ -511,36 +543,6 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ single-cell `( -- ptr type )` accessor. Both read a multi-token stored type, so
 \ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are
 \ expressible.
-
-: STORAGE-NEXT-TOK ( -- )   \ the stored type's first token, which the source must have
-   parse-name STGT-U !  STGT-A !
-   STGT-U @ 0= if E-LAYOUT-BUFFER throw then ;
-
-\ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
-\ that file loads after this one. Pointing it back at a token parse-name read
-\ leaves that token to the next statement.
-$36A0 constant STGT-INP-CELL
-: STORAGE-UNREAD ( ptr u8 -- )
-   NULL-PTR - data-base STGT-INP-CELL + ! ;
-
-\ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). A token on a later line
-\ goes back to the input.
-: STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
-   ended if LBUF-FALSE exit then
-   STGT-A @ STGT-U @ + {: end:ptr :}
-   parse-name {: a:ptr u:n :}
-   u 0= if LBUF-FALSE exit then
-   end a end - CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD LBUF-FALSE exit then
-   a STGT-A !  u STGT-U !  LBUF-TRUE ;
-
-\ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
-\ or with its line.
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
-   STORAGE-NEXT-TOK
-   STGT-A @ STGT-START !
-   0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
-   STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
 : STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
    {: count:n name:ptr nameu:n type:ptr typeu:n :}

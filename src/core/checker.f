@@ -10844,6 +10844,7 @@ variable CHECKER-QBAD-TOK
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
 8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
 9 constant STG-COUNT-WORD       \ the count token names no word that leaves the count
+10 constant STG-NO-TYPE         \ no token follows the name to be its type
 PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
 PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
 variable STGR-WHY                               \ one of the STG- reasons above
@@ -10882,8 +10883,10 @@ STORAGE-DIAG-DEFAULT
 
 \ The type query that refused the type (CHECKER-LAYOUT-INFO, -STORAGE-INFO,
 \ -DYNAMIC-INFO) leaves its parse state live: an unknown type names its own
-\ token, and any other refusal names the whole stored type.
+\ token, and any other refusal names the whole stored type. No type at all is
+\ reported at the name, as a missing count is.
 : CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
    THEN

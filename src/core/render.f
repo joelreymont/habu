@@ -1409,6 +1409,7 @@ RECORD-DIAG-INSTALL
    STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
    STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
+   STGR-WHY @ STG-NO-TYPE = IF s" no type for" EXIT THEN
    s" no count for" ;
 : STGR-CLASS$ ( -- ptr u8 n )
    STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
