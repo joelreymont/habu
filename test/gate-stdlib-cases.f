@@ -1534,6 +1534,10 @@ SUITE checker-surface
    test/checker-surface.f
 ;SUITE
 
+SUITE package-seal
+   test/package-seal.f
+;SUITE
+
 SUITE immediate-model
    test/immediate-model-test.f
 ;SUITE
@@ -2408,6 +2412,12 @@ WHITEBOX-SUITE c2-init-schema
 
 WHITEBOX-SUITE c2-init-record-schema
    test/c2-init-record-schema.f
+;SUITE
+
+\ The checker's rules for code written inside C2-MEM, on the engine that keeps
+\ engine packages open; a product seals C2-MEM, which c2-memory pins.
+WHITEBOX-SUITE c2-reopen-refusals
+   test/c2-reopen-refusals.f
 ;SUITE
 
 SUITE c2-init-accessors

@@ -21,15 +21,18 @@
 \     axioms, including the return-stack words only the control prefix names,
 \     still certify;
 \   - a private symbol stays only while a record the image ships resolves to it
-\     and its package can be reopened: CHECKER-DECL-FRAME's FRAME (a sealed
-\     package) and CHECKER-SWEEP's DECIDE (an unsealed one, whose private name
-\     the image strips) are both gone;
+\     and its package can be reopened, and the build seals every package it
+\     bakes (src/core/internal-mark.f SEAL-PACKAGES): CHECKER-DECL-FRAME's FRAME
+\     (a package that seals itself), CHECKER-SWEEP's DECIDE (whose private name
+\     the image strips) and CHECKER-REG's CHECKED-ROW (whose name it keeps) are
+\     all gone;
 \   - `defer`/`is`, a `does>` definer, TYPED-VARIABLE, STRUCTURE and EXPORT all
 \     work in a program loaded after boot;
 \   - an application image keeps its own package's private and public symbols
 \     (design rule 3): a snapshot ships every record with its name and an
 \     application package is not sealed, so the saved image reopens the package,
-\     certifies a definition calling the private word and runs it.
+\     certifies a definition calling the private word and runs it, while an
+\     engine package stays sealed in it.
 \ On the whitebox engine the sweep keeps everything, so the first group would
 \ not hold there; the image class is asserted first so that reads as what it is.
 
@@ -129,12 +132,12 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    pa pu false na nu CHECKER-ASIG-KNOWN? ;
 
 : SECTION-PRIVATE ( -- )
-   s" a private of a sealed package keeps no symbol" T-LABEL
+   s" a private of a package that seals itself keeps no symbol" T-LABEL
    s" CHECKER-DECL-FRAME" s" FRAME" PRIVATE-KNOWN? TFALSE
    s" nor a private whose name the image strips" T-LABEL
    s" CHECKER-SWEEP" s" DECIDE" PRIVATE-KNOWN? TFALSE
-   s" but a private of an unsealed package keeps its symbol" T-LABEL
-   s" CHECKER-REG" s" CHECKED-ROW" PRIVATE-KNOWN? TTRUE ;
+   s" a private of every baked package keeps no symbol, named or not" T-LABEL
+   s" CHECKER-REG" s" CHECKED-ROW" PRIVATE-KNOWN? TFALSE ;
 
 : SECTION-RETAINED ( -- )
    s" an internal word the image keeps by name keeps its effect" T-LABEL
@@ -214,6 +217,15 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    OUT CAP >LEN ERR CAP >LEN IMAGE-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT SHOW ;
 
+\ The engine's own packages keep the seal their build gave them.
+: REOPEN-ENGINE ( -- )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   IMAGE$ >LEN
+   S\" package TOP-ROW ;package\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN IMAGE-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT ;
+
 : SECTION-APP-IMAGE ( -- )
    CLEANUP-RESET
    s" an application image saves its own package" T-LABEL
@@ -228,6 +240,9 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    OUT$ s" priv known" CONTAINS? TTRUE
    OUT$ s\" 7\n" CONTAINS? TTRUE
    OUT$ s\" 16\n" CONTAINS? TTRUE
+   s" while an engine package stays sealed in it" T-LABEL
+   REOPEN-ENGINE
+   RC @ ENGINE-ERROR:SEAL-PACKAGE T=
    CLEANUP-RUN ;
 
 : MAIN ( -- )

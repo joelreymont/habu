@@ -298,6 +298,8 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    XREF-START TARGET-CODE ;
 
 TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
+\ TARGET-XT hands the target's package seal over as a code address integer.
+CAST: SEAL-XT ( n -- [ n -- ] )
 TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : TRANSFER-LITERALS ( -- )
@@ -305,7 +307,10 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
    LITERAL-SOURCE-ROWS
    TARGET-IMPORTER LITERAL-IMPORT-XT execute ;
 
+\ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
+\ protected bits it sets (src/core/checker-surface.f KEEP?).
 : PREPARE-TARGET ( -- )
+   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
    s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;

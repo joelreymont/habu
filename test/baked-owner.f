@@ -1,17 +1,16 @@
 \ baked-owner.f - no source a product engine loads reopens a package it bakes.
 \
 \ A sealed package refuses `package NAME` (src/habu/habu2.f
-\ C-PACKAGE-PROT-GUARD, exit 84 with the package name on stderr), and dot
-\ habu-seal-every-captured-c550102f is to seal every package a captured engine
-\ bakes. So every source a product engine loads has to put its words in a
-\ package it owns: an error block in the file that owns the package it mints
-\ into, MEM:ALLOC-SPAN in lib/memory.f, the capture format and the
-\ meta-compiler's labels in packages of their own rather than in the
-\ DATA-layout packages src/habu/layout.f declares.
+\ C-PACKAGE-PROT-GUARD, exit 84 with the package name on stderr), and the
+\ native build seals every package a captured engine bakes
+\ (src/core/internal-mark.f SEAL-PACKAGES). So every source a product engine
+\ loads has to put its words in a package it owns: an error block in the file
+\ that owns the package it mints into, MEM:ALLOC-SPAN in lib/memory.f, the
+\ capture format and the meta-compiler's labels in packages of their own rather
+\ than in the DATA-layout packages src/habu/layout.f declares.
 \
-\ Each case runs a child engine that first seals every package it bakes
-\ (test/baked-owner-seal.f) and then loads one source through the real load
-\ path, and asserts that the whole source loaded. Two load paths:
+\ Each case runs a child of the product engine, which loads one source through
+\ the real load path, and asserts that the whole source loaded. Two load paths:
 \   - `required`, through test/baked-owner-child.f, for the library and tool
 \     entries that used to reopen one: lib/json-read.f (JR), lib/fmath.f
 \     (FMATH), lib/pg.f (PG) and lib/db/rows.f (DB-ROWS) minted into packages
@@ -25,8 +24,7 @@
 \   - `--build`, for the stage source the product-hosted refresh compiles
 \     (tools/build-fixpoint.f): its run prelude rewinds to the core prefix and
 \     its common body recompiles the meta-compiler on top of what is left. The
-\     source here is the refresh's own, emitted by its appenders, with the seal
-\     ahead of the prelude.
+\     source here is the refresh's own, emitted by its appenders.
 \ A baked library is never reloaded on a product engine, so lib/span.f has no
 \ case. Each path has a control, a source that does reopen a baked package,
 \ refused by the package's name, so a green case is not green because nothing
@@ -116,8 +114,6 @@ variable ROOT-U
 \ ---- the refresh's stage source ------------------------------------------------
 : STAGE-HEAD ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu BUILD-FIXPOINT:BF-RESET-OUT
-   out outu s" require test/baked-owner-seal.f" BUILD-FIXPOINT:BF-APPEND-LINE
-   out outu s" BAKED-OWNER-SEAL:SEAL-BAKED" BUILD-FIXPOINT:BF-APPEND-LINE
    out outu BUILD-FIXPOINT:BF-APPEND-RUN-PRELUDE ;
 
 \ The control: after the rewind, a reopen of layout.f's PROT is still refused.

@@ -272,8 +272,8 @@ forth.md: **Errors**, **Integer arithmetic**.
   their words resolve with no require and a `require` is a no-op. Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
-  loads nothing. Run tools as `bin/hb --load lib/a.f tool.f -- args`;
-  `SCRIPT-ARGV$` starts after `--`.
+  loads nothing. An engine package is sealed: reopening one exits 84. Run tools
+  as `bin/hb --load lib/a.f tool.f -- args`; `SCRIPT-ARGV$` starts after `--`.
 
 forth.md: **Files**, **Packages**.
 

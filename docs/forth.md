@@ -172,6 +172,14 @@ private
   creates no scope and loads no file. Later blocks call earlier private helpers
   and public words unqualified and add exports. Load order is still dependency
   order.
+- A package the engine bakes is sealed when the native build captures it
+  (`src/core/internal-mark.f` `SEAL-PACKAGES`): on the product engine `package
+  NAME` exits 84 with the package name on stderr, and a definition into either
+  of its wordlists exits 84 naming the word (`hb: cannot publish into protected
+  word: NAME:X`). Use its public words qualified or through `using`. Only the
+  whitebox image keeps engine packages open; an application image (a `--repl`
+  snapshot, `APP-IMAGE:SAVE`) keeps its own packages reopenable
+  (`test/package-seal.f`, `test/checker-surface.f`).
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -1340,11 +1348,13 @@ the rule.
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
   `TS-N.`) build inline text.
-- **`private` is a convention until the package seals itself.** Any file may
-  reopen `package NAME private` and call its internals. The protection idiom at
-  the foot of a substrate file — `get-current prot-wid-add` — seals the
-  wordlists; after it a second file that reopens the package dies at load with
-  the package name as its whole message (exit 84). Two files that belong
+- **`private` is a convention until the package seals itself, or until the
+  capture does.** Any file may reopen `package NAME private` and call its
+  internals. The protection idiom at the foot of a substrate file —
+  `get-current prot-wid-add` — seals the wordlists; after it a second file that
+  reopens the package dies at load with the package name as its whole message
+  (exit 84). The native build seals every package the engine bakes the same
+  way when it captures the image (**Packages**). Two files that belong
   together are two packages with a one-way dependency, or one package that only
   the last file seals.
 - **An integer becomes an address or an execution token only through a private

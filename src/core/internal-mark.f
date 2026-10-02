@@ -189,7 +189,8 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 \ capture bakes the cell with the rest of DATA, and every later reader - the
 \ build's own smoke run before it promotes the binary
 \ (tools/native-build-core.f), test/whitebox-engine-suite.f on both engines -
-\ asks the engine instead of the environment.
+\ asks the engine instead of the environment. The package seal the native build
+\ applies at capture (SEAL-PACKAGES below) reads this same verdict.
 \
 \ A COLD ENGINE ANSWERS FOR ITS BOOT, not for its build, and that is the honest
 \ answer for one: it reads this file from source every time it starts, so the
@@ -218,6 +219,29 @@ EXPORT IMAGE-WHITEBOX
 \ IMAGE-SEALED or IMAGE-WHITEBOX, as the pass that shaped this image left it.
 : IMAGE-CLASS ( -- n )
    IMK-CLASS @ ;
+
+\ Seal every package the capture ships: both wordlists of every namespace row at
+\ or above `first` take the protected bit, so `package NAME` and a definition
+\ into either wordlist exit ENGINE-ERROR:SEAL-PACKAGE, and the capture keeps
+\ none of their private symbols (src/core/checker-surface.f KEEP?). IMK-PASS
+\ cannot do this: it runs when this file loads, before the compiler, the REPL
+\ and the manifest's own packages exist. So the native build calls this at its
+\ capture with the window's first record (tools/native-build-core.f
+\ PREPARE-TARGET), before NATIVE-RUNTIME:CAPTURE-PREPARE sweeps; an application
+\ image (APP-IMAGE:SAVE) never calls it and keeps its packages reopenable. The
+\ whitebox image stands down here as IMK-PASS did, on the verdict it wrote. A
+\ package with no private wordlist holds 0 there, the global wordlist, which is
+\ never protected: the capture refuses an image that marks it.
+: SEAL-PACKAGES ( n -- )
+   {: first:n :}
+   IMK-CLASS @ IMAGE-WHITEBOX = IF EXIT THEN
+   ndict@ first ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-WORDLIST DICT-WL:NAMESPACE = IF
+         rec XREF-PKG-PUBLIC prot-wid-add
+         rec XREF-PKG-PRIVATE dup 0= IF drop ELSE prot-wid-add THEN
+      THEN
+   loop ;
 
 private
 

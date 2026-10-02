@@ -41,13 +41,13 @@ variable RC
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ MAKE-DIRS
-   s" lib" PATH! PATH PATH-U @ MAKE-DIRS
+   s" lib/c2-memory" PATH! PATH PATH-U @ MAKE-DIRS
    TREE$ s" bin/hb" ENGINE JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ COPY-FILE-STREAM
    ENGINE$ CHMOD-X
    s" lib/errors.f" COPY-SOURCE
    s" lib/c2-memory.f" COPY-SOURCE
-   s" lib/c2-owner-runtime.f" COPY-SOURCE
+   s" lib/c2-memory/owner-runtime.f" COPY-SOURCE
    s" entry.f" PATH!
    PATH PATH-U @
       S\" require lib/c2-memory.f\npackage BOOT-RELOCATION-CHILD\npublic\n: RUN ( -- )\n   SOURCE-ROOT:CURRENT$ s\q lib/c2-memory.f\q SOURCE-ROOT:JOIN ENGINE-PROVIDES? 0= if 76 throw then\n   s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n"
