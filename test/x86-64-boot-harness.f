@@ -421,6 +421,17 @@ EXPORT NAME-CELL
 
 : PUSH-CP, ( -- ) RAX CP-REG ASM-SINK ENC-MOV-RR  0 G-PUSH ;
 
+\ Pop a cell into the scratch cell at an offset.
+: POP-SCRATCH, ( n -- ) {: off:n :}
+   0 G-POP
+   RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+\ Add n to the scratch cell at an offset: a routine a row calls counts its
+\ calls there.
+: ADD-SCRATCH, ( n n -- ) {: v:n off:n :}
+   RAX v IMM
+   RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-ADD-MR ;
+
 ;using
 ;using
 ;using

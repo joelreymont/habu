@@ -89,6 +89,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    l NBACK:L-CALLED NBACK:HAS? D-CALLED !
    l NBACK:L-TAIL NBACK:HAS? D-TAIL !
    l NBACK:L-BACK NBACK:HAS? D-BACK !
+   l NBACK:L-PATCH NBACK:HAS? X64EMIT:PATCH-SLOT!
    0 D-FUNS !
    0 D-SPILLS ! ;
 

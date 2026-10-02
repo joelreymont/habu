@@ -70,6 +70,7 @@ $1 constant BIT-DEAD       \ control never comes back
 $2 constant BIT-CALLED     \ a call site reaches it
 $4 constant BIT-TAIL       \ tail-called from inside the emitted region
 $8 constant BIT-BACK       \ it calls back out
+$10 constant BIT-PATCH     \ its return is the slot `does>` patches
 
 : MK ( n -- NBACK:linkage )    NBACK-LINKAGE:MAKE ;
 : BITS ( NBACK:linkage -- n )  NBACK-LINKAGE:UNMAKE ;
@@ -81,6 +82,12 @@ public
 : L-CALLED ( -- NBACK:linkage )  BIT-CALLED MK ;
 : L-TAIL ( -- NBACK:linkage )    BIT-TAIL MK ;
 : L-BACK ( -- NBACK:linkage )    BIT-BACK MK ;
+
+\ A created word's body (NCOMP:COMPILE-FIXED): `does-patch` turns its return
+\ into a branch to the clause. A backend whose return is a patchable slot as
+\ it stands ignores it; one whose return is too short for a branch writes the
+\ slot in front of it.
+: L-PATCH ( -- NBACK:linkage )   BIT-PATCH MK ;
 
 : WITH ( NBACK:linkage NBACK:linkage -- NBACK:linkage )
    BITS swap BITS or MK ;

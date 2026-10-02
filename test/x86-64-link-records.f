@@ -10,10 +10,12 @@
 \ `does>` definer, a word whose name is past sixteen bytes, calls to kernel
 \ bodies, a code literal naming a window word, a quotation, a string literal in
 \ the window's DATA, a tail call, two declared code cells (a window word's xt
-\ and a kernel body's), and the package's public wordlist protected. Then the
-\ real capture and the shadow reader, the x86-64 kernel's rows emitted into a
-\ stream by test/x86-64-boot-harness.f, and X64LINK:LAYOUT over both, as the
-\ image writer runs it before the stream links.
+\ and a kernel body's), two clauses, a `variable`, a `constant` and a created
+\ word that the Habu loop reads (src/habu/interpret.f), whose bodies NCOMP
+\ compiles with the shadow open, and the package's public wordlist protected.
+\ Then the real capture and the shadow reader, the x86-64 kernel's rows emitted
+\ into a stream by test/x86-64-boot-harness.f, and X64LINK:LAYOUT over both, as
+\ the image writer runs it before the stream links.
 \
 \ WHAT IS ASKED. Which record lies at each image index; that each code record
 \ enters its own routine's bytes on a code slot and a does> companion enters at
@@ -24,7 +26,22 @@
 \ routine is decoded, and where it lands is held against the record laid for
 \ the word it names, the kernel's own entry label for a kernel body, the
 \ capture's bytes of the routine it lands on, the offset of the string the host
-\ holds, and the function offset the capture carries.
+\ holds or of the cell a definer made, and the function offset the capture
+\ carries. A variable's and a created word's routine ends in the slot
+\ does-patch aims, `jmp rel32` with displacement 0 and `ret`; a constant's
+\ does not.
+\
+\ THE DOES-PATCH ROW RUNS THE LINKED WORDS. Each of these images lays the
+\ window out over its own kernel stream, stages it as hb-x64-link-index does,
+\ puts the region at rest and names MADE, the created word, in LASTC-CELL.
+\ hb-x64-link-does runs MADE and SEVEN, the constant, aims MADE at one clause
+\ and then another, which clears its DKIND, restores the bare body twice and
+\ finds every band closed; it exits 0, and hb-x64-link-does-negative, the same
+\ expecting a wrong first answer, exits 21. hb-x64-link-does-checker arms
+\ stand-in checkers and the check hook, so each clause's signature registers
+\ as MADE's raw effect and the checker's tail sets its min-in; it exits 0.
+\ hb-x64-link-does-slot-armed aims SEVEN, whose routine has no slot, and exits
+\ 83 before the row writes. The peer runs them.
 \
 \ THE INDEX IS READ BY THE KERNEL. The stream the kernel's rows open becomes the
 \ image hb-x64-link-index: the writer's records at the region, its code band,
@@ -109,6 +126,7 @@ require src/habu/link-x64.f
 require src/core/sha256.f
 require lib/process.f
 require lib/process-argv.f
+require src/habu/interpret.f
 
 \ A binding is a multi-cell value, which only a compiled body may hold.
 package X64LT
@@ -133,7 +151,10 @@ get-current X64LT:PUB-WID !
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : GREET ( -- ptr u8 n ) s" linked" ;
+: BUMP ( n -- n ) 1 + ;
+: BUMP2 ( n -- n ) 2 + ;
 X64LT:EXTRA$ evaluate
+s" variable CELLV 7 constant SEVEN create MADE 2 cells allot" OUTER:INTERPRET
 0 set-tier
 
 ' LEAF align here 0 , xt!
@@ -153,6 +174,11 @@ using AOT-BUF
 : W-CALLER ( -- n ) s" X64LT-WIN:CALLER" WIDX ;
 : W-CONST ( -- n ) s" X64LT-WIN:CONST" WIDX ;
 : W-LONG ( -- n ) s" X64LT-WIN:SPELLED-PAST-SIXTEEN" WIDX ;
+: W-CELLV ( -- n ) s" X64LT-WIN:CELLV" WIDX ;
+: W-SEVEN ( -- n ) s" X64LT-WIN:SEVEN" WIDX ;
+: W-MADE ( -- n ) s" X64LT-WIN:MADE" WIDX ;
+: W-BUMP ( -- n ) s" X64LT-WIN:BUMP" WIDX ;
+: W-BUMP2 ( -- n ) s" X64LT-WIN:BUMP2" WIDX ;
 
 \ ---- the layout --------------------------------------------------------------
 : IMG ( n -- n ) X64LINK:PRIMS + ;
@@ -386,8 +412,12 @@ using AOT-BUF
    va IMM@ W-CONST 1+ IMG ENTRY T=
    va IMM@  W-CONST ROW-OF START-VA s CAPTURED-IMM +  T= ;
 
-\ The window's DATA lands at DATA-AT, as far into it as the string lies into the
+\ The window's DATA lands at DATA-AT, as far into it as the bytes lie into the
 \ host's window, and a cell keeps the alignment it was captured with.
+: IMAGE-DATA ( ptr u8 -- n )
+   data-base BYTE-VIEW - DATA-VA VA>N + AOT-ARM:D0 @ -  X64LINK:DATA-AT + ;
+: IMAGE-VA ( ptr u8 -- n ) IMAGE-DATA X64LAYOUT:DATA-VA VA>N + ;
+
 : DATA-CASE ( -- )
    s" a DATA literal holds the image address of the bytes it named in the host's window" T-LABEL
    W-GREET AOT-SHADOW:DATA SITE-IN {: s:n :}
@@ -396,9 +426,7 @@ using AOT-BUF
    va MOVABS? TTRUE
    X64LT-WIN:GREET {: a:ptr u:n :}
    a u s" linked" T$=
-   a data-base BYTE-VIEW - DATA-VA VA>N + AOT-ARM:D0 @ - {: off:n :}
-   X64LAYOUT:DATA-VA VA>N X64LINK:DATA-AT + {: base:n :}
-   va IMM@ base off + T=
+   va IMM@ a IMAGE-VA T=
    X64LINK:DATA-AT X64LINK:HEAP-FLOOR >= TTRUE
    X64LINK:DATA-AT AOT-ARM:D0 @ - 7 and 0 T= ;
 
@@ -418,6 +446,41 @@ using AOT-BUF
    loop {: n:n :}
    n 0 >= TTRUE
    n X64LINK:CELL-XT s" negate" KENTRY T= ;
+
+\ ---- the definers, linked --------------------------------------------------------
+\ Window word w's routine ends in the slot does-patch aims: `jmp rel32` with
+\ displacement 0, then `ret`.
+: SLOT? ( n -- bool ) {: w:n :}
+   w ROW-OF {: r:n :}
+   r START-VA r 8 SH@ + 6 - {: at:n :}
+   at BYTE@ $E9 =  at 1+ BAND LE:S32@ 0= and  at 5 + BYTE@ $C3 = and ;
+
+\ MADE is the last record, the one the checker's tail sets the min-in of
+\ (kernel-x64.f WIDE-PUBLISH,).
+: DEFINER-CASE ( -- )
+   s" a definer's word enters its own routine, a variable's and a created word's ending in the slot" T-LABEL
+   W-CELLV ROW-OF 0 >= TTRUE
+   W-MADE ROW-OF 0 >= TTRUE
+   W-SEVEN ROW-OF {: r:n :}
+   r 0 >= TTRUE
+   W-SEVEN IMG ENTRY BAND r 8 SH@  AOT-SHADOW:CODE-BUF@ r 4 SH@ + r 8 SH@  T$=
+   W-CELLV SLOT? TTRUE
+   W-MADE SLOT? TTRUE
+   W-SEVEN SLOT? 0= TTRUE
+   W-MADE IMG 1+ X64LINK:RECORDS T= ;
+
+\ Window word w's DATA literal holds the image address of the cell at a.
+: CELL-SITE ( n ptr u8 -- ) {: w:n a:ptr :}
+   w AOT-SHADOW:DATA SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s SITE-VA {: va:n :}
+   va MOVABS? TTRUE
+   va IMM@ a IMAGE-VA T= ;
+
+: DEFINER-DATA-CASE ( -- )
+   s" a variable's and a created word's DATA literal holds the image address of the cell it made" T-LABEL
+   W-CELLV X64LT-WIN:CELLV BYTE-VIEW CELL-SITE
+   W-MADE X64LT-WIN:MADE BYTE-VIEW CELL-SITE ;
 
 \ ---- the index, read by the kernel ---------------------------------------------
 \ The stream KERNEL opened becomes an image: the writer's records at the region
@@ -446,10 +509,13 @@ using AOT-BUF
    k DREC * X64HARNESS:PUSH-REGION,
    s" -" X64HARNESS:CALL-ROW,  s" or" X64HARNESS:CALL-ROW, ;
 
-: INDEX-IMAGE ( -- )
+: STAGE-RECORDS ( -- )
    X64LINK:DICT$ 0 STAGE
    X64LINK:CODE$ DICT-SIZE STAGE
-   X64LINK:RECORDS X64HARNESS:PUSH,  s" ndict!" X64HARNESS:CALL-ROW,
+   X64LINK:RECORDS X64HARNESS:PUSH,  s" ndict!" X64HARNESS:CALL-ROW, ;
+
+: INDEX-IMAGE ( -- )
+   STAGE-RECORDS
    STAGE-INDEX
    0 X64HARNESS:PUSH,
    X64LINK:RECORDS 0 ?do i LOOKUP, loop
@@ -463,6 +529,123 @@ using AOT-BUF
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-link-index" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ ---- the definers in images ------------------------------------------------------
+\ Each image lays the window out over its own kernel stream, whose labels die
+\ when it links, and stages it as INDEX-IMAGE does. With the region at rest a
+\ row writes through its own windows and the routines run read-execute.
+\ LASTC-CELL names MADE, the created word does-patch rewrites.
+: DOES-OPEN, ( bool -- )
+   X64HARNESS:BOOT-OPEN,
+   X64LINK:LAYOUT
+   STAGE-RECORDS
+   X64HARNESS:REST,
+   W-MADE IMG DREC * LASTC-CELL X64HARNESS:REGION-ADDR!, ;
+
+\ Run window word w's routine through the kernel's execute.
+: CALL-WORD, ( n -- ) IMG ENTRY X64HARNESS:PUSH,  s" execute" X64HARNESS:CALL-ROW, ;
+
+\ does-patch to a clause's entry, 0 for the bare body, with no signature.
+: CLAUSE, ( n -- )
+   X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,
+   s" does-patch" X64HARNESS:CALL-ROW, ;
+
+\ The same with the clause's signature `-- n`.
+: CLAUSE-SIG, ( n -- )
+   X64HARNESS:PUSH,  s" -- n" X64HARNESS:PUSH-TEXT,
+   s" does-patch" X64HARNESS:CALL-ROW, ;
+
+: MADE-AT ( -- n ) X64LT-WIN:MADE BYTE-VIEW IMAGE-DATA ;
+
+\ Check MADE's flags are as laid with the bits of mask clear and those of set
+\ set.
+: MADE-FLAGS, ( n n -- ) {: mask:n set:n :}
+   W-MADE IMG X64KERNEL:REC-FLAGS RF@  mask invert and  set or
+   W-MADE IMG X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD, ;
+
+\ MADE runs bare, then each clause does-patch aims it at, then bare again; the
+\ first clause clears its DKIND. A second bare patch finds the displacement 0
+\ and writes nothing.
+: DOES-IMAGE ( bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
+   negative DOES-OPEN,
+   W-MADE CALL-WORD,  MADE-AT X64HARNESS:EXPECT-POP-DATA,
+   W-SEVEN CALL-WORD,  7 X64HARNESS:EXPECT-POP,
+   W-BUMP IMG ENTRY CLAUSE,
+   W-MADE CALL-WORD,  MADE-AT 1+ X64HARNESS:EXPECT-POP-DATA,
+   DKIND:MASK 0 MADE-FLAGS,
+   W-BUMP2 IMG ENTRY CLAUSE,
+   W-MADE CALL-WORD,  MADE-AT 2 + X64HARNESS:EXPECT-POP-DATA,
+   0 CLAUSE,
+   W-MADE CALL-WORD,  MADE-AT X64HARNESS:EXPECT-POP-DATA,
+   0 CLAUSE,
+   W-MADE CALL-WORD,  MADE-AT X64HARNESS:EXPECT-POP-DATA,
+   X64HARNESS:PUSH-BANDS,  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ The stand-in checkers' records, at the heap floor, and the scratch cells
+\ their operations write. The active one's trust-raw keeps the lengths of the
+\ name and the signature it is given; each operation adds its count.
+DATA-START constant STAND-IN
+STAND-IN $400 + constant OTHER-STAND-IN
+0 constant SIG-U-AT
+CELL constant NAME-U-AT
+2 CELL * constant COUNT-AT
+3 CELL * constant SINK-AT
+1 constant RAW-COUNT                   \ the active checker's trust-raw
+16 constant OTHER-COUNT                \ the target's, when it is another
+256 constant TAIL-COUNT                \ the active one's rec-wide-publish
+3 constant MIN-IN-ANSWER               \ ...and what its rec-min-in@ answers
+
+: STAND-INS, ( -- )
+   [: SIG-U-AT X64HARNESS:POP-SCRATCH,  SINK-AT X64HARNESS:POP-SCRATCH,
+      NAME-U-AT X64HARNESS:POP-SCRATCH,  SINK-AT X64HARNESS:POP-SCRATCH,
+      RAW-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-RAW-OFF + X64HARNESS:LABEL-CELL!,
+   [: 4 0 ?do SINK-AT X64HARNESS:POP-SCRATCH, loop
+      OTHER-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   OTHER-STAND-IN NCOMP-DISPATCH:DECL-RAW-OFF + X64HARNESS:LABEL-CELL!,
+   [: TAIL-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF + X64HARNESS:LABEL-CELL!,
+   [: MIN-IN-ANSWER X64HARNESS:PUSH, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF + X64HARNESS:LABEL-CELL!,
+   STAND-IN NCOMP-DISPATCH:DECL-CELL X64HARNESS:DATA-ADDR!,
+   STAND-IN NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!,
+   1 HOOK-CELL X64HARNESS:CELL!, ;
+
+\ With a checker active and the check hook armed, a clause's signature
+\ registers as MADE's raw effect under the name its body capture starts with,
+\ through the active checker and, when the target is another, the target's
+\ too. The checker's tail then runs and its min-in lands in MADE's flags,
+\ whose DKIND and DNAME-WIDE are clear; CRSIG clears.
+: CHECKER-IMAGE ( -- )
+   false DOES-OPEN,
+   STAND-INS,
+   s" MADE create " {: a:ptr u:n :}
+   a u BODYBUF-OFF X64HARNESS:TEXT!,  u BODYLEN-CELL X64HARNESS:CELL!,
+   W-BUMP IMG ENTRY CLAUSE-SIG,
+   W-MADE CALL-WORD,  MADE-AT 1+ X64HARNESS:EXPECT-POP-DATA,
+   4 NAME-U-AT X64HARNESS:EXPECT-SCRATCH,
+   4 SIG-U-AT X64HARNESS:EXPECT-SCRATCH,
+   RAW-COUNT TAIL-COUNT + COUNT-AT X64HARNESS:EXPECT-SCRATCH,
+   DKIND:MASK DNAME-WIDE or DNAME-MIN-IN-MASK or  MIN-IN-ANSWER 52 lshift  MADE-FLAGS,
+   0 CRSIG-U-CELL X64HARNESS:EXPECT-CELL,
+   OTHER-STAND-IN NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!,
+   W-BUMP2 IMG ENTRY CLAUSE-SIG,
+   RAW-COUNT TAIL-COUNT + 2 *  OTHER-COUNT +  COUNT-AT X64HARNESS:EXPECT-SCRATCH,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-link-does-checker" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ SEVEN's routine has no slot: does-patch exits 83 before it writes.
+: SLOT-IMAGE ( -- )
+   false DOES-OPEN,
+   W-SEVEN IMG DREC * LASTC-CELL X64HARNESS:REGION-ADDR!,
+   W-BUMP IMG ENTRY CLAUSE,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-link-does-slot-armed" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the children --------------------------------------------------------------
 create SHA-CTX SHA256-CTX-BYTES allot
@@ -648,6 +831,8 @@ public
    CLAUSE-CASE
    DATA-CASE
    CELL-CASE
+   DEFINER-CASE
+   DEFINER-DATA-CASE
    INDEX-IMAGE
    SHIFT-CASE
    STRAY-CASE
@@ -662,6 +847,10 @@ public
    DOESSITE-CASE
    XTLESS-CASE
    PKGCELL-CASE
+   false s" hb-x64-link-does" DOES-IMAGE
+   true s" hb-x64-link-does-negative" DOES-IMAGE
+   CHECKER-IMAGE
+   SLOT-IMAGE
    s" x86-64-link-records: prims=" type X64LINK:PRIMS .
    s" records=" type X64LINK:RECORDS .
    s" code=" type X64LINK:CODE$ nip . cr

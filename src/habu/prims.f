@@ -676,8 +676,9 @@ EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
-\ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,
-\ TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
+\ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record, and
+\ LASTC-CELL too for DKIND:VAL or DKIND:ADDR, the record `does-patch` reads;
+\ TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
 \ TIER-PROV open cell takes CP. It refuses another kind, wid -1 or -2 and CP
 \ at or past the code ceiling. At tier 0 it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.

@@ -10,21 +10,23 @@
 \ it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
-\ (`SUMTYPE`, `constant`, `variable`), so it loads before the switch, and a
-\ case holds only numbers, comments, the literal keywords (`s"`, `c"`, `."`,
-\ their escaped forms, `char` and `'`), the package keywords (`package`,
-\ `public`, `private`, `;package`, `using`, `;using` and `export`), words,
-\ definitions (`:`, `kernel:` or `trusted:`) that refuse, stay pending, or end
-\ at `;` or by an immediate their body runs, `cast:` declarations and
-\ `immediate`. A case defines with the other keywords through evaluate, which
-\ the engine's loop reads.
+\ (`SUMTYPE`), so it loads before the switch, and a case holds only numbers,
+\ comments, the literal keywords (`s"`, `c"`, `."`, their escaped forms, `char`
+\ and `'`), the package keywords (`package`, `public`, `private`, `;package`,
+\ `using`, `;using` and `export`), words, the definers (`create`, `variable` and
+\ `constant`), definitions (`:`, `kernel:` or `trusted:`) that refuse, stay
+\ pending, or end at `;` or by an immediate their body runs, `cast:`
+\ declarations and `immediate`. A case defines with the other keywords through
+\ evaluate, which the engine's loop reads.
 \
 \ Some cases are the Habu loop's alone: the records an exit hook finds after an
 \ uncaught throw, where the engine's loop rolls the dictionary back to the
-\ file's start and the Habu loop does not, and the cell only the Habu loop's
-\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL). And one check runs in a forked
-\ copy of this process instead, the seam: a fork binds it to a counting spy,
-\ and a loaded file must arrive there.
+\ file's start and the Habu loop does not; the cell only the Habu loop's
+\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); a definer at tier 0, which the
+\ engine's loop reads and the Habu loop refuses; and `constant` on an empty
+\ stack, which the engine's loop reads below its stack. And one check runs in a
+\ forked copy of this process instead, the seam: a fork binds it to a counting
+\ spy, and a loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -1718,6 +1720,114 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    0 SPIN-U ! ;
 
+\ ---- the definers ----------------------------------------------------------------
+\ `variable`, `constant` and `create` define a whole word as they are read:
+\ each answers its cell or its value, `variable` allots a cell, `create`
+\ aligns here, and a checked definition reads them. Their records carry the
+\ engine's flags and code length.
+: DEFINERS ( -- )
+   s" variable OI-V 5 OI-V ! OI-V @ . 7 constant OI-K OI-K . create OI-BUF 16 allot 9 OI-BUF ! OI-BUF @ . here OI-BUF - ." s" oi-definers.f" HEAD
+   CASE$ GE-EXPECT-OK
+   S\" 5\n7\n9\n16\n" CASE$ GE-EXPECT-OUT
+   s" variable OI-V here OI-V - . 1 allot create OI-AL OI-AL data-base - 7 and ." s" oi-definers-here.f" HEAD
+   CASE$ GE-EXPECT-OK
+   S\" 8\n0\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" 1 set-tier create OI-BUF 16 allot 9 OI-BUF ! 7 constant OI-K" GE-SRC-LINE
+   s" : OI-G ( -- n ) OI-BUF @ ;" GE-SRC-LINE
+   s" : OI-H ( -- n ) OI-K 1 + ;" GE-SRC-LINE
+   s" OI-G . OI-H ." GE-SRC-LINE
+   s" oi-definers-checked.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9\n8\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-LAST. ( -- ) LATEST XREF-NAME$ type space LATEST XREF-FLAGS . LATEST XREF-RAW-LEN . ;" GE-SRC-LINE
+   s" create OI-BUF OI-LAST. variable OI-V OI-LAST. 7 constant OI-K OI-LAST." GE-SRC-LINE
+   s" oi-definers-records.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-BUF 2251799813685254\n" CASE$ GE-EXPECT-OUT-HAS
+   S\" OI-V 2251799813685252\n" CASE$ GE-EXPECT-OUT-HAS
+   S\" OI-K 1125899906842628\n" CASE$ GE-EXPECT-OUT-HAS ;
+
+\ An armed check hook reads each definer's name and keyword, `variable` as the
+\ engine's `create`.
+: DEFINER-HOOK ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-SHOW ( ptr u8 n -- n ) type cr 0 ;" GE-SRC-LINE
+   s" ' OI-SHOW set-check variable OI-V 7 constant OI-K create OI-BUF 0 set-check 1 ." GE-SRC-LINE
+   s" oi-definers-hook.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-V create \nOI-K constant \nOI-BUF create \n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ does-patch finds a created word's return slot: its clause runs, a second
+\ clause replaces the first, and an empty one restores the bare body, twice.
+: DEFINER-DOES-PATCH ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier TRUSTED: OI-CL ( n -- n ) @ ;" GE-SRC-LINE
+   s" TRUSTED: OI-CL2 ( n -- n ) @ 1 + ;" GE-SRC-LINE
+   s" TRUSTED: OI-PATCH ( -- ) ['] OI-CL 0 0 does-patch ;" GE-SRC-LINE
+   s" TRUSTED: OI-PATCH2 ( -- ) ['] OI-CL2 0 0 does-patch ;" GE-SRC-LINE
+   s" TRUSTED: OI-UNPATCH ( -- ) 0 0 0 does-patch ;" GE-SRC-LINE
+   s" variable OI-SAVE" GE-SRC-LINE
+   s" create OI-BUF 5 , OI-BUF OI-SAVE ! OI-PATCH OI-BUF . OI-PATCH2 OI-BUF ." GE-SRC-LINE
+   s" OI-UNPATCH OI-BUF OI-SAVE @ = OI-B. OI-UNPATCH OI-BUF @ ." GE-SRC-LINE
+   s" oi-definers-does-patch.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 5\n6\n1\n5\n" CASE$ GE-EXPECT-OUT ;
+
+\ A definer's word is raw storage to the checker: a checked definition can
+\ neither give its cell a type variable nor execute what the cell holds.
+: DEFINER-RAW ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier variable OI-V" GE-SRC-LINE
+   s" : OI-G ( -- ptr a ) OI-V ;" GE-SRC-LINE
+   s" oi-variable-nonparametric.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   s" E-NONPARAMETRIC-EFFECT habu: in oi-g: declared type variable 'a' is restricted by raw storage" CASE$ GE-EXPECT-ERR-HAS
+   GE-SRC-RESET
+   s" 1 set-tier variable OI-V" GE-SRC-LINE
+   s" : OI-F ( -- ) OI-V @ execute ;" GE-SRC-LINE
+   s" oi-variable-opaque-xt.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   s" habu: in oi-f: at 'execute' execute: opaque xt of unknown provenance (fetched from untyped memory)" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A definer refuses as the engine's does: with no name, naming the keyword
+\ the engine bakes (`variable` is its `create`), a name with two colons or one
+\ the wordlist holds, and a protected wordlist, past the exit hook. While a
+\ task is live it exits 79, the keyword its whole diagnostic.
+: DEFINER-REFUSALS ( -- )
+   s" variable" s" oi-variable-no-name.f" HEAD
+   74 s" hb: reader keyword needs a name: create at " S\" oi-variable-no-name.f:2\n" DIED-AT
+   s" create" s" oi-create-no-name.f" HEAD
+   74 s" hb: reader keyword needs a name: create at " S\" oi-create-no-name.f:2\n" DIED-AT
+   s" constant" s" oi-constant-no-name.f" HEAD
+   74 s" hb: reader keyword needs a name: constant at " S\" oi-constant-no-name.f:2\n" DIED-AT
+   s" create OI-A:B:C" s" oi-create-two-colons.f" HEAD
+   75 s" OI-A:B:C at " S\" oi-create-two-colons.f:1\n" DIED-AT
+   s" variable oi-two" s" oi-variable-duplicate.f" HEAD
+   78 s" duplicate definition: oi-two at " S\" oi-variable-duplicate.f:1\n" DIED-AT
+   s" 1 set-tier package OI-EX public get-current prot-wid-add create OI-T" s" oi-create-protected.f" ARMED
+   S\" hb: cannot publish into protected word: OI-T\n" CASE$ GE-EXPECT-ERR
+   SPIN-PRELUDE
+   s" 1 set-tier OI-SPIN variable OI-T" s" variable" s" oi-live-variable.f" LIVE
+   s" 1 set-tier OI-SPIN create OI-T" s" create" s" oi-live-create.f" LIVE
+   s" 1 set-tier OI-SPIN 7 constant OI-T" s" constant" s" oi-live-constant.f" LIVE
+   0 SPIN-U ! ;
+
+\ The Habu loop refuses a definer at tier 0, as it does a head, and `constant`
+\ on an empty stack names the underflow; the engine's loop defines the first
+\ and reads below its stack for the second (rc 102).
+: DEFINER-HABU-ONLY ( -- )
+   GE-SRC-RESET
+   s" variable OI-V" GE-SRC-LINE
+   s" oi-variable-tier-0.f" HABU
+   76 s" hb: tier 0 is not in the Habu loop: variable at " S\" oi-variable-tier-0.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier constant OI-K" GE-SRC-LINE
+   s" oi-constant-underflow.f" HABU
+   70 CASE$ GE-EXPECT-RC
+   S\" E-UNDERFLOW: OI-K\n" CASE$ GE-EXPECT-ERR ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1861,6 +1971,12 @@ private
    TIER-0-PASS-2
    TIER-0-REFUSALS
    TIER-0-NESTED
+   DEFINERS
+   DEFINER-HOOK
+   DEFINER-DOES-PATCH
+   DEFINER-RAW
+   DEFINER-REFUSALS
+   DEFINER-HABU-ONLY
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

@@ -2263,7 +2263,7 @@ public
 : WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
 
 \ The window and site helpers, made in this stream, and then the rows.
-\ native-unit-publish and does-patch refuse until their bodies land.
+\ native-unit-publish refuses until its body lands.
 : PUBLICATION, ( -- )
    LBL LSPAN-CELL !  LBL LOPEN-CELL !  LBL LCLOSE-CELL !
    LBL ADD-SITE-CELL !  LBL DROP-SITES-CELL !
@@ -2279,7 +2279,6 @@ public
    s" xref-retarget" [: RETARGET, ;] PRIM
    s" int-mark" [: INT-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" does-patch" REFUSE
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 
 \ ---- engine-state rows -------------------------------------------------------
@@ -3288,11 +3287,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
-\ takes TIER-CELL and the provenance window opens at that CP. At tier 0 it
-\ opens the record only.
+\ PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR;
+\ TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
+\ provenance window opens at that CP. At tier 0 it opens the record only.
 : DEF-OPEN-BODY ( -- )
-   LBL LBL {: prot:label done:label :}
+   LBL LBL LBL {: prot:label done:label nolast:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -3314,6 +3313,12 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RSP DW-ARG MOV-LOAD,  RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    R8 PEND-CELL CELL!,
+   RAX RSP DW-ARG MOV-LOAD,                           \ a body that pushes a cell is the slot `does>` patches
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E nolast JCC,
+   RCX DKIND:CAST IMM64,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E nolast JCC,
+   R8 LASTC-CELL CELL!,
+   nolast LBL,
    RAX ZERO-REG,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
@@ -3428,6 +3433,184 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
+\ ---- does-patch -----------------------------------------------------------------
+\ A created word's routine ends `jmp rel32; ret`, its last six bytes
+\ (src/compiler/native/emit-x64.f PUT-RET): the jump falls through to the
+\ return while its displacement is 0, and does-patch aims it at a clause,
+\ where ARM64 rewrites the routine's final RET word (habu2.f LDOESPATCH). The
+\ slot is found by its position in the record's exact span. The clause lies in
+\ the code region or the kernel's text, as every routine a linked call reaches
+\ does, so its displacement fits rel32.
+
+$E9 constant JMP-REL32                 \ the slot's jump
+CALL-REL32-OFF 4 + constant JMP-BYTES  \ the jump, to its displacement's end
+JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
+
+\ does-patch's frame.
+0 constant DP-ENTRY                    \ the clause's entry, 0 for the bare body
+8 constant DP-SLOT                     \ the created routine's `jmp rel32`
+16 constant DP-XT                      \ the registrar being called
+32 constant DP-FRAME
+
+\ Push the name the body capture starts with: its bytes up to the first space
+\ or NUL, or all BODYLEN of them. The twin of habu2.f C-PUSH-DREC-NAME.
+\ Clobbers rax rcx rdx rsi.
+: PUSH-DREC-NAME, ( -- )
+   LBL LBL {: scan:label done:label :}
+   RSI DATA-REG BODYBUF-OFF MEM-OFF ASM-SINK ENC-LEA
+   RCX ZERO-REG,
+   RDX BODYLEN-CELL CELL@,
+   scan LBL,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-GE done JCC,
+   RAX RSI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX STR-SPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RCX ASM-SINK ENC-INC
+   scan JMP,
+   done LBL,
+   RSI PUSH,  RCX PUSH, ;
+
+\ Call the registrar in rax with the captured name and CRSIG, the effect the
+\ clause declared. A registrar keeps no scratch register.
+: RAW-CALL, ( -- )
+   RAX RSP DP-XT MOV-STORE,
+   PUSH-DREC-NAME,
+   RAX CRSIG-A-CELL CELL@,  RAX PUSH,
+   RAX CRSIG-U-CELL CELL@,  RAX PUSH,
+   RAX RSP DP-XT MOV-LOAD,
+   RAX ASM-SINK ENC-CALL-REG ;
+
+\ The twin of habu2.f LASTC-TRUST:PUBLISH: the active checker's trust-raw;
+\ without one, with the check hook armed, the target checker's, or the process
+\ ends naming it; then the target checker's too unless the active one holds
+\ the same operation. With neither a checker nor the hook nothing registers.
+: RAW-PUBLISH, ( -- )
+   LBL LBL LBL LBL LBL
+   {: inactive:label ready:label other:label absent:label done:label :}
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E inactive JCC,
+   RAX RAX NCOMP-DISPATCH:DECL-RAW-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE ready JCC,
+   inactive LBL,
+   RCX HOOK-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-TARGET,
+   ready LBL,
+   RAW-CALL,
+   RCX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-RAW-OFF done DECL-TARGET,
+   RCX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E other JCC,
+   RCX RCX NCOMP-DISPATCH:DECL-RAW-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E done JCC,
+   other LBL,
+   RAW-CALL,
+   done JMP,
+   absent LBL,
+   s" trust-raw" REGISTRAR-RC STDERR-EXIT,
+   done LBL, ;
+
+\ rax = the active checker's operation at offset n of its record; with no
+\ record or no operation the process ends naming it.
+: OWNER-OP, ( n ptr u8 n -- ) {: off:n a:ptr u:n :}
+   LBL LBL {: absent:label found:label :}
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   RAX RAX off MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
+   absent LBL,
+   a u REGISTRAR-RC STDERR-EXIT,
+   found LBL, ;
+
+\ With the check hook armed, the checker's tail for the record a definition
+\ published (habu2.f EM-REC-WIDE-PUBLISH): its rec-wide-publish, then its
+\ rec-min-in@, whose nonzero answer lands in the DNAME-MIN-IN bits of record
+\ NDICT-1 between two flips, as min-in-mark stores it. ARM64 finds the two by
+\ name; this kernel reads them from the active checker's record, and a missing
+\ one ends the process naming it, as a missing word does there.
+: WIDE-PUBLISH, ( -- )
+   LBL {: done:label :}
+   RAX HOOK-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF s" rec-wide-publish" OWNER-OP,
+   RAX ASM-SINK ENC-CALL-REG
+   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF s" rec-min-in@" OWNER-OP,
+   RAX ASM-SINK ENC-CALL-REG
+   R9 POP,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
+   R8 PROT-RW PROT-REC,
+   R9 MIN-IN-SHIFT >IMM8 ASM-SINK ENC-SHL-RI8
+   RAX DNAME-MIN-IN-MASK IMM64,
+   R9 RAX ASM-SINK ENC-AND-RR
+   R9 R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC,
+   done LBL, ;
+
+\ does-patch ( n ptr u8 n -- ) clause entry, created signature: the twin of
+\ habu2.f DOESPATCH:PRIM and LDOESPATCH over the record LASTC-CELL names. Its
+\ routine must end in the slot, E9 at slot and C3 at slot+5, else the row
+\ exits 83 before it writes. Between the record's and the displacement's
+\ windows the displacement becomes the entry less the slot's end, and the
+\ record's DKIND clears: the body is a clause now, not a push. Entry 0 writes
+\ displacement 0, the bare body, and leaves the kind as it is; with the
+\ displacement already 0 it writes nothing. A signature then registers as
+\ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
+\ clear for the checker's tail to set again, and CRSIG clears.
+: DOES-PATCH-BODY ( -- )
+   LBL LBL LBL LBL {: patch:label write:label declared:label nocr:label :}
+   RCX POP,  RCX CRSIG-U-CELL CELL!,
+   RCX POP,  RCX CRSIG-A-CELL CELL!,
+   RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   DP-ENTRY POP-TO,
+   R8 LASTC-CELL CELL@,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RDX R8 REC-CODE CELL + MOV-LOAD,
+   RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+   RDX R8 REC-CODE MEM-OFF ASM-SINK ENC-ADD-RM
+   RDX RDX PATCH-SLOT negate MEM-OFF ASM-SINK ENC-LEA
+   RAX RDX MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RAX JMP-REL32 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE SEAL-TRAP-LBL JCC,
+   RAX RDX JMP-BYTES MEM-OFF ASM-SINK ENC-MOVZX-8-RM
+   RAX RET-OP >IMM32 ASM-SINK ENC-CMP-RI32  C-NE SEAL-TRAP-LBL JCC,
+   RDX RSP DP-SLOT MOV-STORE,
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE patch JCC,
+   0 >R32 RDX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E declared JCC,
+   patch LBL,
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+   RDI RSP DP-SLOT MOV-LOAD,  RDI CALL-REL32-OFF >IMM8 ASM-SINK ENC-ADD-RI8
+   RSI 4 IMM32,  WINDOW-SPAN,
+   RCX RSP DP-SLOT MOV-LOAD,
+   RDX ZERO-REG,
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E write JCC,
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX RCX ASM-SINK ENC-SUB-RR
+   RDX JMP-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   R8 LASTC-CELL CELL@,
+   RSI DKIND:MASK invert IMM64,
+   RSI R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   write LBL,
+   2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
+   WINDOW-CLOSE,
+   declared LBL,
+   RAX CRSIG-U-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E nocr JCC,
+   RAW-PUBLISH,
+   R8 LASTC-CELL CELL@,
+   R8 PROT-RW PROT-REC,
+   RAX DNAME-WIDE DNAME-MIN-IN-MASK or invert IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   R8 PROT-RX PROT-REC,
+   WIDE-PUBLISH,
+   RAX ZERO-REG,  RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
+   nocr LBL,
+   RSP DP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 public
 
 : DEFINITION, ( -- )
@@ -3442,6 +3625,7 @@ public
    s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" does-patch" [: DOES-PATCH-BODY ;] PRIM
    \ No tier 0 here: the two rows that run its JIT are refused.
    s" jit-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" jit-token" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID ;

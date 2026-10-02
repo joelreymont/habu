@@ -3706,7 +3706,7 @@ public
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
-   LBL LBL LBL {: bad prot done :}
+   LBL LBL LBL LBL {: bad prot done nolast :}
    B-TASK-LIVE-GUARD
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
@@ -3727,6 +3727,10 @@ public
    14 9 16 LDR,  14 14 4 ORR,  14 9 16 STR,           \ the kind beside the length
    3 9 40 STR,
    9 DATA PEND-CELL STR,
+   4 nolast CBZ,                                      \ a body that pushes a cell is the slot `does>` patches
+   14 DKIND:CAST LIT64,  4 14 CMP,  C-EQ nolast BCOND,
+   9 DATA LASTC-CELL STR,
+   nolast LBL,
    14 0 MOVZ,
    14 DATA TSIG-A-CELL STR,   14 DATA TSIG-U-CELL STR,
    14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,

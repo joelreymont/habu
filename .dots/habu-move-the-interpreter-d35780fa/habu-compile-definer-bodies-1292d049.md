@@ -1,9 +1,11 @@
 ---
 title: Compile create, variable and constant through NCOMP
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.672233+03:00"
+closed-at: "2026-10-02T13:51:52.672640+03:00"
+close-reason: Landed with gen1 = gen2 = gen3 sha256 0b959b66; on g2 outer-interpret 185 cases agree, x86-64-link-records and its does images (0, 21, 0, 83), x86-64-kernel-definition, clobber-lint, the stripped family, compiler-native-create-does, does-clause-record and does-empty-clause pass.
 ---
 
 Problem: `create`/`variable`/`constant`/`defer` bodies are assembly chains (`habu2.f:3155-3232`); `aot-closure.f:683-690` and `address-carrier.f:9-30` decode their MOVZ/MOVK chains.
@@ -31,3 +33,5 @@ Decisions:
 Acceptance: `variable V`, `7 constant K`, `create B 16 allot` run in the Habu loop (today rc 70 for the first two) with the engine's dictionary, DKIND and checker state; `create` registers `-- ptr a`; ARM64 bodies keep the engine's shape (RET slot, raw length); an x86 kernel image covers create, does-patch and the clause, with a negative twin; the x86 linker links variables and constants. Refusals: no name rc `$4A` with the engine's text; duplicate, qualified and protected-wid names (DEF-RECORD); definers at tier 0 (DEF-TIER-0); a definer while a definition is pending (83); `( -- ptr a )` on a checked accessor `E-NONPARAMETRIC-EFFECT`; `V @ execute` `E-EXEC-OPAQUE-XT`; a second `does>` on one child; an empty clause restoring the bare body; an x86 slot without E9/C3 (83).
 Files: `src/compiler/native/{compiler,elaborate,backend,emit-x64,shadow}.f` (+`select-x64.f` if the epilogue lives there), `src/habu/{definers,kernel-x64}.f`, `test/outer-interpret.f`, `docs/x86-64.md`, x86 kernel and link tests.
 Verify: spark rebuild, chain gen2==gen3, the stripped family, `compiler-native-create-does` (+aot), `test/does-clause-record.f`; ThinkPad x86 kernel image with its negative twin; the lead runs the gate.
+
+Lead correction (2026-10-02, after the first I7b worker; overrides decision 3's shadow half): the shadow half (`NSHADOW:PATCH-TAIL`, a Habu `DOES-PATCH` that `STAGE-DOES-PATCH` calls) moves to habu-provide-the-runtime-8e33b7f9 (I7d). In this leaf no build-time `does>` child has an x86 routine to patch: a parent's body makes its child through the runtime `create` row (assembly `LCREATE`), which moves only in I7d, and the x86 linker refuses such children until then. The elaborator keeps calling the `does-patch` row as on master. Resolving a Habu word by name from every `does>` parent would also break the build: the manifest loads `does>` definers (`layout.f`, `lib/errors.f`, `lib/string.f`, `src/core/structures.f`, …) before `shadow.f`.

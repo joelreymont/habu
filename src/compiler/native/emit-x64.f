@@ -120,6 +120,7 @@ variable PLACE-AT-N
 
 variable MEAS                           \ nonzero while an operation is being measured
 variable MCUR                           \ the measuring pass's byte cursor
+variable PATCH-RET                      \ the routine's return is a `does>` slot (NBACK:L-PATCH)
 variable N-BLK                          \ blocks in the function being laid out
 variable N-LAID                         \ ...and how many of them the order holds
 variable B-BASE                         \ where this function's blocks start in the module
@@ -972,6 +973,15 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    MEAS @ 0= if CUR X64IR:ADDR-CODE SITE+ then
    id 0 RES-R64  id FUN-ADDR >IMM64  s ENC-MOV-RI64 ;
 
+\ A created word's `ret` is one byte, too short for the branch `does>` writes in
+\ its place, so a routine declared with the patch slot ends `jmp rel32 0; ret`:
+\ the jump falls through to the return until `does-patch` aims it at the
+\ clause (src/habu/kernel-x64.f). The slot is the emission's last six bytes,
+\ found by its position and stated by no row.
+: PUT-RET ( ptr a -- ) {: s:ptr :}
+   PATCH-RET @ 0<> if 0 >REL s ENC-JMP-REL32 then
+   s ENC-RET ;
+
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arm is the
@@ -1008,7 +1018,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       brz      OF id home s PUT-BRZ ENDOF
       cmpbr    OF id home s PUT-CMPBR ENDOF
       cmpbri   OF id home s PUT-CMPBRI ENDOF
-      ret      OF s ENC-RET ENDOF
+      ret      OF s PUT-RET ENDOF
       reserve  OF id s PUT-RESERVE ENDOF
       release  OF id s PUT-RELEASE ENDOF
       store    OF id s PUT-STORE ENDOF
@@ -1410,6 +1420,12 @@ public
    at X64IR:SP-ALIGN mod 0<> if E-X64EMIT-PLACE throw then
    at PLACE-AT-N !
    PLACE-YES PLACE-MODE ! ;
+
+\ ---- declaring the patch slot ------------------------------------------------
+\ Stated by the backend's declaration for every routine, so a slot never
+\ carries over into the next definition.
+: PATCH-SLOT! ( bool -- )
+   if 1 else 0 then PATCH-RET ! ;
 
 \ ---- the pass ----------------------------------------------------------------
 \ The shape is a question about the module alone and is asked first; the

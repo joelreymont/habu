@@ -124,6 +124,8 @@ variable M-DOES-OUT
 variable M-DOES-GIN                  \ where the clause's argument row's values end
 variable M-DOES-GOUT                 \ where the clause's result row's values end
 variable M-DOES-FUN                  \ hidden clause function ordinal
+variable M-FIXED                     \ a definer's body: NDICT:FIXED-VAL or FIXED-ADDR, else FIXED-NONE
+variable M-FIXED-VAL                 \ ...and the cell it pushes
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -437,10 +439,17 @@ create SPELL-BUF SPELL-CAP allot
 : NO-RETURN? ( -- bool )
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
+\ A definer's body is a leaf that returns, whatever an earlier word of its name
+\ does, and a created word's return is the slot `does>` patches.
+: FIXED-LINKAGE ( -- NBACK:linkage )
+   NBACK:L-NONE
+   M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
+
 \ How control reaches and leaves this definition's routine. The backend composes
 \ its own machine contract from this and from what the definition takes and
 \ leaves; which registers or frame that means is the backend's answer.
 : LINKAGE ( -- NBACK:linkage )
+   M-FIXED @ NDICT:FIXED-NONE <> if FIXED-LINKAGE exit then
    NBACK:L-NONE
    NO-RETURN? if NBACK:L-DEAD NBACK:WITH then
    NELAB:CALLED? if NBACK:L-CALLED NBACK:WITH then
@@ -531,6 +540,35 @@ create SPELL-BUF SPELL-CAP allot
    PUBLISH-IT
    0 M-DOES-FRAME ! ;
 
+\ ---- a definer's body -----------------------------------------------------------
+\ `create`, `variable` and `constant` have no text to scan: the body pushes the
+\ one cell a mention of the word folds to (src/compiler/native/elaborate.f
+\ EMIT-FIXED-SYM) and returns. IR-BUILD spans every function, block and
+\ operation in a registered source, so the source is the pending record's name,
+\ copied into TXT as a scanned body is, and the tape is the one row naming it.
+: FIXED-TAPE ( -- )
+   PENDING-NAME$ {: a:ptr u:n :}
+   u TEXT-CAP > if E-NCOMP-TEXT throw then
+   a TXT u BYTE-COPY
+   CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
+   CC BB TXT u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CC BB tp
+   BB sid 0 u IR-BUILD:ADD-SPAN  sym  NTAPE-MODE:INTERPRETING  NTAPE:NAME-TOKEN
+   NTAPE:PUSH-INTO drop
+   tp NTAPE:SEAL 0 M-TAPE ! ;
+
+\ No checker scan and no checked effect: the definer registers its raw effect
+\ after publication (src/habu/definers.f DEF-RAW).
+: FIXED-WORK ( -- )
+   CC HIR-MOD 0 M-BLD !
+   FIXED-TAPE
+   MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   0 M-IN !  1 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop
+   EMITTED
+   NPUB:PUBLISH-PENDING ;
+
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
@@ -542,7 +580,7 @@ create SPELL-BUF SPELL-CAP allot
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
-   [: WORK ;] catch M-RC !
+   [: M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
@@ -690,6 +728,7 @@ INSTALL-FORGET
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
+   NDICT:FIXED-NONE M-FIXED !
    0 NAME-U ! ;
 
 public
@@ -698,6 +737,16 @@ public
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
+
+\ The pending record's body as `create` or `variable` (NDICT:FIXED-ADDR, val a
+\ DATA address) or `constant` (NDICT:FIXED-VAL, val a number) compile it,
+\ published with the stamp def-open gave the record. Another kind is refused
+\ before anything is compiled.
+: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+   kind NDICT:FIXED-VAL <>  kind NDICT:FIXED-ADDR <>  and if E-NCOMP-STATE throw then
+   TXT 0 STAGE
+   kind M-FIXED !  val M-FIXED-VAL !
+   RUN ;
 
 \ The fixed engine header lies outside a partial compiler capture. Reinstall
 \ its dispatch after the captured words have been relocated at fresh boot.

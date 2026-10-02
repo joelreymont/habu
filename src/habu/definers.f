@@ -2,8 +2,9 @@
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
 \ follows one; `cast:`, which declares and publishes at once, as C-CAST does;
-\ and `immediate`. STEP (src/habu/interpret.f) asks COMPILING? after a comment
-\ and DEFINE? after the package keywords.
+\ `immediate`; and the definers `create`, `variable` and `constant`, whose
+\ bodies NCOMP compiles as they are read. STEP (src/habu/interpret.f) asks
+\ COMPILING? after a comment and DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
@@ -24,6 +25,7 @@ require src/core/checker.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require src/compiler/native/compiler.f
 require src/habu/outer.f
 require src/habu/packages.f
 
@@ -32,6 +34,7 @@ package OUTER
 private
 
 76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
+76 constant DEF-RC-TIER-0        \ a definer at tier 0, whose compiler is not NCOMP
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
@@ -52,6 +55,12 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 \ leaves there is the program's, as after a word the loop runs.
 : DEF-TIER-0? ( -- bool )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= ;
+
+\ A definer at tier 0 refuses, naming the keyword: NCOMP, which compiles its
+\ body, is the tier-1 compiler.
+: DEF-TIER-0 ( -- )
+   s" hb: tier 0 is not in the Habu loop: " SAY
+   DEF-RC-TIER-0 PKG-FAIL ;
 
 \ A `:` while the JIT's pass 2 reads a body again refuses first, naming the
 \ token, as the engine's head does; `trusted:` is never refused for it.
@@ -439,17 +448,113 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
    DEF-CAST
    CAST-FACTS ;
 
+\ ---- the definers (habu2.f EMIT-CREATE, INTERP-EMIT C-CREATE, C-VARIABLE, C-CONSTANT)
+\ A definer's word is whole when it is read. Its record opens with the stamp a
+\ mention of the word folds to, DKIND:ADDR for a DATA address or DKIND:VAL for
+\ a decided number, which also makes it the record `does-patch` reads (LASTC);
+\ NCOMP compiles and publishes the body that pushes that cell, and def-close
+\ ends the definition. The engine's check hook then reads the name and the
+\ keyword, and the word's effect is registered as raw storage: `-- ptr a` for
+\ `create` and `variable`, `-- a` for `constant`, never a checked effect,
+\ which could not state it (habu2.f LASTC-TRUST).
+
+\ The head refuses at tier 0, whose compiler is not NCOMP, and while a task is
+\ live, then needs a name, naming kw as the engine bakes it: `variable` is the
+\ engine's `create` with a cell allotted after it. The capture is seeded with
+\ the name for the hook.
+: DEF-FIXED-HEAD ( ptr u8 n -- ) {: kw:ptr u:n :}
+   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   TASK-GUARD
+   kw u OPERAND
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE ;
+
+\ The owner record holds raw execution tokens; these views state the two
+\ signatures called here.
+TRUSTED: DEF-AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
+TRUSTED: DEF-AS-RAW ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
+
+\ The keyword joins the capture, and an armed check hook reads it, its verdict
+\ dropped (habu2.f C-DEFHOOK).
+: DEF-HOOK ( ptr u8 n -- )
+   DEF-CAPTURE
+   HOOK-CELL CELL@ {: xt:n :}
+   xt 0= if exit then
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ xt DEF-AS-HOOK execute drop ;
+
+\ The active checker's trust-raw; without one, with the check hook armed, the
+\ target checker's, and with neither the process ends naming it, as a word
+\ published unsealed would be (habu2.f LASTC-TRUST:FIND-ACTIVE, FIND-RAW). 0:
+\ no checker is armed and nothing is registered.
+: DEF-RAW-FIRST ( n -- n ) {: own:n :}
+   own 0<> if own exit then
+   HOOK-CELL CELL@ 0= if 0 exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
+   target ;
+
+\ The name the capture holds and the raw signature sig, to the first
+\ registrar, then to the target checker's unless the active owner's field
+\ holds the same operation (LASTC-TRUST:FIND-TARGET, DECL-OWNER:SKIP-SAME).
+: DEF-RAW ( ptr u8 n -- ) {: sig:ptr su:n :}
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
+   own DEF-RAW-FIRST {: first:n :}
+   first 0= if exit then
+   DEF-CAPTURED-NAME sig su first DEF-AS-RAW execute
+   NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   target own = if exit then
+   DEF-CAPTURED-NAME sig su target DEF-AS-RAW execute ;
+
+\ The DATA address a created word's body pushes, as the number NCOMP takes.
+TRUSTED: DEF-HERE ( -- n ) here ;
+
+\ `create` rounds the data field up to a cell, as the engine's create does,
+\ before the body takes its address.
+: DEF-CREATE ( -- )
+   s" create" DEF-FIXED-HEAD
+   DEF-QUALIFY DKIND:ADDR DEF-RECORD
+   align
+   DEF-HERE NDICT:FIXED-ADDR NCOMP:COMPILE-FIXED
+   DEF-CLOSE
+   s" create" DEF-HOOK
+   s" -- ptr a" DEF-RAW ;
+
+: DEF-VARIABLE ( -- )
+   DEF-CREATE
+   1 cells allot ;
+
+\ `constant` takes the program's top cell after its record opens, where the
+\ engine's pops it. With none the engine reads below its stack and faults
+\ (rc 102); this loop names the underflow, as after a word.
+variable DEF-VALUE
+TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
+
+: DEF-CONSTANT ( -- )
+   s" constant" DEF-FIXED-HEAD
+   DEF-QUALIFY DKIND:VAL DEF-RECORD
+   depth 0= if s" E-UNDERFLOW: " REFUSE then
+   DEF-TAKE
+   DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
+   DEF-CLOSE
+   s" constant" DEF-HOOK
+   s" -- a" DEF-RAW ;
+
 \ ---- the definition keywords --------------------------------------------------
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`
-\ and `immediate` are matched as LITERAL? matches its keywords. `immediate`
-\ marks the newest record, whatever it is, and refuses nothing, as the
-\ engine's does (habu2.f C-IMMEDIATE).
+\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`,
+\ `immediate` and the definers are matched as LITERAL? matches its keywords.
+\ `immediate` marks the newest record, whatever it is, and refuses nothing, as
+\ the engine's does (habu2.f C-IMMEDIATE).
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
    s" cast:" TOKEN-IS? if CAST-HEAD true exit then
    s" immediate" TOKEN-IS? if DEF-IMM-MARK true exit then
+   s" create" TOKEN-IS? if DEF-CREATE true exit then
+   s" variable" TOKEN-IS? if DEF-VARIABLE true exit then
+   s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
    false ;
 
 ;package

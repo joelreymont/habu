@@ -18,3 +18,5 @@ Depends: habu-compile-definer-bodies-1292d049 (I7b), habu-move-evaluate-and-9119
 Route: Alder (shared: src/habu/definers.f, src/habu/prims.f).
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead note (2026-10-02, from I7b): this leaf also owns the shadow half of `does>` (I7 decision 3): a build-time child's x86 routine needs a TAIL site at `emission size - 6` naming the clause. Prefer deriving it at shadow capture from the ARM64 body's patched slot (the slot's branch target is the clause; an unpatched RET slot means no site; a second `does>` is the last write), which needs no hook in `does>` parents. Do not have the elaborator resolve a Habu word by name from every `does>` parent: the manifest loads `does>` definers before `src/compiler/native/shadow.f`.

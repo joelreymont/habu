@@ -1498,7 +1498,9 @@ SUITE x86-64-kernel-task
 \ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
 \ children measure the layout host-independent and refuse, by name, what it
 \ cannot place or link. hb-x64-link-index, for the peer to run, stages the
-\ writer's index where the kernel's own find reads it; it exits 0.
+\ writer's index where the kernel's own find reads it; it exits 0. The
+\ hb-x64-link-does images run the window's linked definers and does-patch over
+\ its created word; the header names the status each exits with.
 SUITE x86-64-link-records
    test/x86-64-link-records.f
 ;SUITE

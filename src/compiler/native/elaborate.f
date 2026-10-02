@@ -3781,6 +3781,7 @@ variable FUN-KIND
 0 constant FUN-COLON
 1 constant FUN-DOES-PARENT
 2 constant FUN-DOES-CLAUSE
+3 constant FUN-FIXED                 \ a definer's body: one literal, then the return
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -4035,6 +4036,8 @@ variable DOES-PATCH
 \ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
 \ the tape because this compiler never reaches that path.
 variable DOES-EMPTY
+variable FIXED-VAL                   \ the cell a definer's body pushes
+variable FIXED-KIND                  \ ...and its NDICT definer kind
 
 public
 
@@ -4058,7 +4061,8 @@ public
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !
    0 DOES-EMPTY !
-   0 DOES-PATCH ! ;
+   0 DOES-PATCH !
+   0 FIXED-VAL ! ;
 
 private
 
@@ -4099,8 +4103,14 @@ private
    DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
    1 CALL-NEED ! ;
 
+\ What a mention of a created word, a variable or a constant folds to
+\ (EMIT-FIXED-SYM): the cell, its kind as the dictionary's stamp translates.
+: STAGE-FIXED ( -- )
+   0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
+
 : BEFORE-RETURN ( -- )
-   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
+   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
+   FUN-KIND @ FUN-FIXED = if STAGE-FIXED then ;
 
 : SCAN-FUN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
@@ -4203,6 +4213,22 @@ public
    c b v p r at 1+ n din dout BUILD-FUN drop
    1 CALL-NEED !  0 TAIL-NEED !
    f ;
+
+\ A definer's body (NCOMP:COMPILE-FIXED) over a tape of the one row naming it:
+\ a function of no inputs whose empty body leaves val, a DATA address for
+\ NDICT:FIXED-ADDR and a number for FIXED-VAL, staged where a `does>` parent
+\ stages its patch, before the return. It calls nothing and returns.
+: FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena val:n kind:n :}
+   RF-RESET
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   val FIXED-VAL !  kind FIXED-KIND !
+   FUN-FIXED FUN-KIND !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 0 1 BUILD-FUN ;
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;

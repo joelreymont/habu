@@ -559,6 +559,8 @@ private
 
 create FIX-NAME FIX-NAME-CAP allot
 
+public
+
 \ The whole translation between the dictionary's vocabulary for definers and
 \ this chain's for literals; a kind neither definer stamped never reaches it.
 \ What the number a definer decided IS, as the literal staging says it: an
@@ -566,6 +568,8 @@ create FIX-NAME FIX-NAME-CAP allot
    {: k:n :}
    k NDICT:FIXED-ADDR = if HIR:ADDR-DATA exit then
    HIR:ADDR-NONE ;
+
+private
 
 \ Entry and arity are the caller's statement (habu-resolve-a-callee-0340dfde).
 \ The GLUE says which result cells are one value, because the arity says only
