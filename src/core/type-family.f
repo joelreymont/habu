@@ -4821,6 +4821,33 @@ TFAM-INST-LIN-INSTALL
 
 private
 
+\ A layout value's members for the CAST: walks (checker.f CAST-INTRO? and
+\ CAST-MAY-LINEAR?): every product field and every variant payload, in either
+\ payload form, instantiated over the value's own arguments and pushed on one
+\ row. A field projection or a MATCH arm yields exactly these types. Schemas
+\ index parameters by position, so the term must carry the family's argument
+\ count; the cast gate refuses any other count before it walks.
+: MEMBER+ ( n n n -- n ) {: term:n root:n row:n :}
+   term root SCHEMA-ROOT@ SCHEMA-TERM-FOR row MK-PUSH ;
+: FIELD-MEMBERS ( n n n -- n ) {: term:n fam:n row:n :}
+   row
+   fam TFAM-FLD-COUNT@ 0 ?do term fam TFAM-FLD-START@ i + PF-SCH@ rot MEMBER+ loop ;
+: VARIANT-MEMBERS ( n n n -- n ) {: term:n vid:n row:n :}
+   row
+   vid SUMV-PAY-N 0 ?do term vid i SUMV-PAY-ROOT rot MEMBER+ loop ;
+: TFAM-MEMBERS ( n -- n ) {: term0:n :}
+   term0 T-UNSTALE {: term:n :}
+   term PARAM>FAM {: fam:n :}
+   term PARAM>ARGC fam TFAM-ARITY@ <> IF
+      s" tfam: layout members need the family's arity" 76 die THEN
+   fam TFAM-PRODUCT? IF term fam FRESH MK-ROW FIELD-MEMBERS EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF
+      s" tfam: members of a family with no layout" 76 die THEN
+   FRESH MK-ROW
+   fam TFAM-VAR-COUNT@ 0 ?do term fam TFAM-VAR-START@ i + rot VARIANT-MEMBERS loop ;
+: TFAM-MEMBERS-INSTALL ( -- ) [: TFAM-MEMBERS ;] is TFAM-MEMBERS-XT ;
+TFAM-MEMBERS-INSTALL
+
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
 \ while scalar, pointer, and open terms retain their ordinary one-cell form.

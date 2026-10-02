@@ -861,8 +861,9 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ executed xt (dot habu-checker-exec-of-5923c543). Defaults bind below RES-FALSE
 \ (which several need). Hooks reached only after the registry is armed carry no
 \ default and stay unset (executing one before install fails closed via
-\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN query
-\ hooks, whose call sites never run before type-family.f installs them.
+\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN /
+\ TFAM-MEMBERS query hooks, whose call sites never run before type-family.f
+\ installs them.
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
@@ -876,6 +877,7 @@ defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
 defer TFAM-TYPE-SLOT-XT ( n n -- bool )                 \ family id + arg slot -> a phantom element type
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
+defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of its field and variant payload types, instantiated over its args
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
 defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
 defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell product: cells, bytes, align
@@ -1196,11 +1198,11 @@ CHECKER-PKG-LIVE-DEFAULT
 \ has no caller that could act on it, and reporting it instead of the refusal
 \ would replace a named refusal with an unrelated code. The refusal itself is
 \ never dropped.
-70 constant PKGCTX-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
+70 constant COMPILE-REJECT-RC  \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
    2 S\" hb: no authenticated package context for this definition\n" write drop
-   PKGCTX-REJECT-RC throw ;
+   COMPILE-REJECT-RC throw ;
 
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
    CHECKER-PKG-MIRROR-AUTHORITY? IF
@@ -18731,11 +18733,54 @@ variable CTOR-PEND-I
    q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
    q INTRO-FOREIGN = IF t CAST-OWNER? 0= EXIT THEN
    t TAG T-PTR =  t TAG T-QUOT =  or ;
+\ The layouts a CAST: walk is expanding, outermost first, each with the
+\ direction it was reached in. A layout's members can name the layout again (an
+\ ENUM variant may hold a pointer to its own family), so a walk expands an
+\ instance once per path: the same family over the same argument terms, reached
+\ in the same direction, has the same members and gives the same answer. A
+\ member is instantiated from its family's schema over the owner's own argument
+\ terms, so a recursive member names the same terms, not copies; no declarer
+\ admits a recursion that grows its arguments, and past CAST-PATH-CAP nested
+\ layouts the walk dies rather than guess. An expansion pops what it pushed;
+\ CAST-WALK-RESET empties the path after a throw.
+64 constant CAST-PATH-CAP
+create CAST-PATH-TERM CAST-PATH-CAP cells allot
+create CAST-PATH-POS CAST-PATH-CAP cells allot
+variable CAST-PATH-N
+: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
+\ CAST-SAME-INSTANCE? ( term term -- bool ) : one family over identical terms.
+: CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
+   a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
+   a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
+   0 BEGIN dup a PARAM>ARGC < WHILE
+      a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+\ CAST-DIR ( positive? -- n ) : the direction as the path stores it.
+: CAST-DIR ( bool -- n ) IF 1 ELSE 0 THEN ;
+\ CAST-ON-PATH? ( layout positive? -- bool ) : this walk is already expanding
+\ the instance in this direction.
+: CAST-ON-PATH? ( n bool -- bool ) {: t:n pos:bool :}
+   pos CAST-DIR {: dir:n :}
+   0 BEGIN dup CAST-PATH-N @ < WHILE
+      dup cells CAST-PATH-POS + @ dir = IF
+         dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: CAST-PATH-PUSH ( n bool -- ) {: t:n pos:bool :}
+   CAST-PATH-N @ CAST-PATH-CAP >= IF
+      s" checker: cast walk nests layouts too deep" 76 die THEN
+   t CAST-PATH-N @ cells CAST-PATH-TERM + !
+   pos CAST-DIR CAST-PATH-N @ cells CAST-PATH-POS + !
+   CAST-PATH-N @ 1 + CAST-PATH-N ! ;
+: CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ CAST-INTRO? ( term-or-row positive? question -- bool ) : whether the question
 \ holds at an introduction position of the destination. Those are the positive
 \ positions: the destination itself, a pointer's pointee (a read through the
-\ pointer yields it), a layout family's arguments (projecting a field yields a
-\ value of the argument type) and a quotation's produced rows. A quotation's
+\ pointer yields it), a layout family's arguments and its members, every field
+\ and variant payload instantiated over those arguments (a projection or a
+\ MATCH arm yields them), and a quotation's produced rows. A quotation's
 \ consumed rows flip the sign, so a consumer handed to a minted quotation is fed
 \ by it. A cell family's arguments are phantom, and each row ends in the
 \ quotation's own base: neither yields a value. A pointer or a quotation found
@@ -18762,22 +18807,30 @@ variable CTOR-PEND-I
    0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
       t over PARAM>ARG pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop
+   t pos CAST-ON-PATH? IF RES-FALSE EXIT THEN
+   t pos CAST-PATH-PUSH
+   t TFAM-MEMBERS-XT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   CAST-PATH-POP ;
 \ CAST-INTRODUCES? ( term question -- bool ) : the question over a whole
 \ destination term, which starts positive.
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
-   TWALK-RESET t RES-TRUE q CAST-INTRO? ;
+   CAST-WALK-RESET t RES-TRUE q CAST-INTRO? ;
 \ CAST-MAY-LINEAR? ( term-or-row -- bool ) : fail closed over the complete
 \ signature term. CAST is an authority boundary, so its question is stricter
 \ than LIN-TYPE-COUNT's runtime ownership accounting: a direct unresolved var
 \ may later bind linear, and every value-bearing family argument subtree can
 \ carry that possibility. Cell-family parameters are structurally phantom, so
-\ their terms contain no owned payload. Concrete family schemas are covered by
-\ TFAM-CON-LIN-XT. Pointers, quotations and atoms own nothing themselves, but a
-\ pointer's pointee is what a read through it yields and a quotation's four
-\ rows are what a call consumes and produces, so both are walked. A quotation
-\ in a signature shares one base between its in and out rows, so the tail it
-\ passes through owns nothing.
+\ their terms contain no owned payload. TFAM-CON-LIN-XT answers for a family
+\ linear as a whole, the reserved views that own by declaration rather than
+\ through a field included. Pointers, quotations and atoms own nothing
+\ themselves, but a pointer's pointee is what a read through it yields and a
+\ quotation's four rows are what a call consumes and produces, so both are
+\ walked, and so are a layout's members, every field and variant payload
+\ instantiated over its arguments: a linear value behind a field's pointer or in
+\ a field's quotation row is one a projection hands out. A quotation in a
+\ signature shares one base between its in and out rows, so the tail it passes
+\ through owns nothing.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -18804,14 +18857,26 @@ variable CTOR-PEND-I
          t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
+      t RES-TRUE CAST-ON-PATH? IF RES-FALSE EXIT THEN
+      t RES-TRUE CAST-PATH-PUSH
+      t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
-\ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
-\ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
-\ cast that survives all six is legal and its declared row is registered by the
-\ caller. Nothing here observes a body.
-: CAST-CERTIFY ( -- )
-   SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
+\ CAST-CERTIFY ( sig$ name$ -- ) : the legality gate, in refusal order. Every
+\ clause reads the parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the
+\ named reject; a cast that survives every clause is legal and its declared row
+\ is registered by the caller. Nothing here observes a body.
+\
+\ A signature that did not parse is refused before anything reads its row: the
+\ walks below instantiate a layout's members over its arguments, and a bad row
+\ could not be registered. Its first fault names the class. A family unknown or
+\ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
+\ syntax or a bare `ptr`, is refused as a definition with that signature is, by
+\ its bad-signature diagnostic and COMPILE-REJECT-RC.
+: CAST-CERTIFY ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
+   SGBAD @ IF sa su na nu BADSIG-XT  COMPILE-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
@@ -18824,9 +18889,9 @@ variable CTOR-PEND-I
    \ from a foreign package violates both rules, and the ownership reject would
    \ otherwise mask the stronger one. Ownership is a packaging question; carrying
    \ an owned value through a retype is an unsoundness, so it names the reject.
-   TWALK-RESET
+   CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
-   TWALK-RESET
+   CAST-WALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
    \ Scope comes last for the same reason: a mint that also carries ownership
@@ -19708,7 +19773,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
-   CAST-CERTIFY
+   sa su na nu CAST-CERTIFY
    sa su na nu CHECKER-USIG-CERT-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!

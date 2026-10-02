@@ -369,7 +369,7 @@ create GWID-BUF 32 allot   variable GWID-U
 \ evidence: the two outcomes carry different codes AND different diagnostics, so
 \ an 84 can only have come from the protected-WID bitmap.
 82 constant SEED-RC                  \ src/core/engine-error.f ENGINE-ERROR:AOT-SEED
-70 constant CTX-RC                   \ src/core/checker.f PKGCTX-REJECT-RC (private there)
+70 constant CTX-RC                   \ src/core/checker.f COMPILE-REJECT-RC
 : ASSERT-NOT-PROTECTED ( -- )
    EXITED @ TTRUE
    RC @ CTX-RC T=

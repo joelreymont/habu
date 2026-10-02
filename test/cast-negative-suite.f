@@ -9,16 +9,20 @@
 \                    layout value wider than a cell is one term per cell)
 \   - E-CAST-CLASS : in/out is not one machine cell a cast may retype: an atom,
 \                    or a pointer to one; or the destination introduces an atom
-\   - E-CAST-FAM   : in/out names an undeclared family
+\   - E-CAST-FAM   : in/out names an undeclared family, or applies one to the
+\                    wrong number of arguments
+\   - COMPILE-REJECT-RC (70): any other signature fault, bad syntax or a bare
+\                    `ptr`, with the bad-signature diagnostic
 \   - E-CAST-LINEAR: a linear type or a type variable anywhere in in/out,
-\                    pointees and quotation rows included
+\                    pointees, quotation rows and layout fields included
 \   - E-CAST-OWNER : the destination introduces a scalar-cell family outside its
 \                    declaring package
 \   - E-CAST-MINT  : the destination introduces a pointer or a quotation, a
 \                    class mint, outside a package's private section
 \ The destination introduces what sits in an introduction position: the term, a
-\ pointee, a layout family's arguments and a quotation's produced rows,
-\ recursively, with a quotation's consumed rows flipping the direction.
+\ pointee, a layout family's arguments, its fields and its variants' payloads,
+\ and a quotation's produced rows, recursively, with a quotation's consumed
+\ rows flipping the direction.
 \   - verdict 0    : the cast: declarer used inside a checked body (unsafe token)
 \   - underdepth   : a bare call at an empty interpret stack, refused by name
 \ Every case runs the PRODUCTION declarer: the engine's own `cast:` reader
@@ -101,6 +105,16 @@ s" cast: CNC7 ( n -- [ extent-a -- ] )"     CN-RUN:DECL 0 T=
 ;package
 \ undeclared family in the signature.
 s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL E-CAST-FAM T=
+\ A family applied to the wrong number of arguments is malformed the same way:
+\ the declaration is refused by name, not by a later death.
+s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNF3 ( n -- ptr cnpbox )"   CN-RUN:DECL E-CAST-FAM T=
+s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL E-CAST-FAM T=
+\ Any other signature fault, here a bare `ptr`, is refused before a walk reads
+\ the row, as a definition with that signature is: COMPILE-REJECT-RC. The first
+\ fault names the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
+s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL COMPILE-REJECT-RC T=
+s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL COMPILE-REJECT-RC T=
 \ Neither direction, linear-to-linear, nor transitive containment may cross
 \ CAST:, even when both sides occupy one machine cell.
 s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
@@ -121,6 +135,19 @@ s" cast: CNL9 ( n -- ptr ptr CAST-NEG:lease )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL10 ( n -- [ CAST-NEG:lease -- ] )"      CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL11 ( n -- [ -- | -- CAST-NEG:lease ] )" CN-RUN:DECL E-CAST-LINEAR T=
 s" cast: CNL12 ( [ -- CAST-NEG:nested ] -- n )"     CN-RUN:DECL E-CAST-LINEAR T=
+\ A layout's fields are what its projection yields, so a field holding a linear
+\ value behind a pointer or in a quotation row carries it through the cast as
+\ well, on either side, and a private section does not change that. STRUCTURE
+\ refuses the pointer field itself; PRODUCT admits it.
+PRODUCT lpfbox 0 FIELD p ptr CAST-NEG:lease ;PRODUCT
+STRUCTURE lqfbox 0 FIELD q [ -- CAST-NEG:lease ] ;STRUCTURE
+package CN-LIN
+s" cast: CNL13 ( n -- lpfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL14 ( n -- lqfbox )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL15 ( n -- ptr lqfbox )"  CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL16 ( lpfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
+s" cast: CNL17 ( lqfbox -- n )"      CN-RUN:DECL E-CAST-LINEAR T=
+;package
 \ The production declarer path rejects the same foreign-package forgeries and
 \ rolls every failed word back out of the dictionary.
 package CAST-FOREIGN
@@ -194,6 +221,52 @@ s" cast: CNG8 ( n -- [ [ -- CN:cnfam ] -- ] )"   CN-RUN:DECL 0 T=
 s" cast: CNG9 ( ptr CN:cnfam -- n )"             CN-RUN:DECL 0 T=
 s" cast: CNG12 ( n -- [ cnpbox<CN:cnfam> -- ] )" CN-RUN:DECL 0 T=
 ;package
+\ A layout's fields and its variants' payloads are introduction positions too:
+\ projecting a field or matching a variant yields the value. A layout whose
+\ field carries another package's family hands that family out, directly,
+\ through a nested layout, a generic instance, a pointer field, a pointer to a
+\ variant of either payload form, a field quotation that produces it, or a
+\ produced quotation, even in the layout owner's own private section. A field
+\ quotation that only consumes the family hands out none. The family's owner
+\ casts into the same layouts.
+package CN-FO
+public
+NEWTYPE fofam 0
+;package
+package CN-FQ
+public
+STRUCTURE fqbox 0 FIELD v CN-FO:fofam ;STRUCTURE
+STRUCTURE fqnest 0 FIELD inner fqbox ;STRUCTURE
+STRUCTURE fqapp 0 FIELD b cnpbox<CN-FO:fofam> ;STRUCTURE
+STRUCTURE fqptr 0 FIELD p ptr fqbox ;STRUCTURE
+ENUM fqsum 0 VARIANT has FIELD v CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;ENUM
+SUMTYPE fqleg 0 VARIANT has CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
+ENUM fqlist 0 VARIANT more FIELD v CN-FO:fofam FIELD next ptr fqlist ;VARIANT VARIANT last ;VARIANT ;ENUM
+STRUCTURE fqprod 0 FIELD q [ -- CN-FO:fofam ] ;STRUCTURE
+STRUCTURE fqcons 0 FIELD q [ CN-FO:fofam -- ] ;STRUCTURE
+s" cast: CNW1 ( n -- fqbox )"            CN-RUN:DECL E-CAST-OWNER T=
+private
+s" cast: CNW2 ( n -- fqnest )"           CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW3 ( n -- fqapp )"            CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW4 ( n -- fqptr )"            CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW5 ( n -- ptr fqsum )"        CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW6 ( n -- ptr fqleg )"        CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW7 ( n -- [ -- fqbox ] )"     CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW8 ( n -- [ fqbox -- ] )"     CN-RUN:DECL 0 T=
+s" cast: CNW9 ( fqbox -- n )"            CN-RUN:DECL 0 T=
+s" cast: CNW10 ( n -- fqprod )"          CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW11 ( n -- fqcons )"          CN-RUN:DECL 0 T=
+\ An ENUM variant may point at its own family. The walk reads each instance once
+\ per path, so a list of foreign values is refused and its projection is not.
+s" cast: CNW12 ( n -- ptr fqlist )"      CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNW13 ( ptr fqlist -- n )"      CN-RUN:DECL 0 T=
+;package
+package CN-FO
+s" cast: CNW14 ( n -- CN-FQ:fqbox )"     CN-RUN:DECL 0 T=
+s" cast: CNW15 ( n -- CN-FQ:fqptr )"     CN-RUN:DECL 0 T=
+s" cast: CNW16 ( n -- ptr CN-FQ:fqsum )" CN-RUN:DECL 0 T=
+s" cast: CNW17 ( n -- ptr CN-FQ:fqlist )" CN-RUN:DECL 0 T=
+;package
 
 \ The families the ENGINE registers (src/core/type-family.f) are declared in the
 \ global, empty package, so the global scope is their owner and no package may
@@ -243,23 +316,36 @@ s" cast: CNM3 ( ptr u8 -- ptr n )"                CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM11 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM12 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM13 ( n -- cnpbox<cnpbox<ptr u8>> )"   CN-RUN:DECL E-CAST-MINT T=
+\ A layout's own field is projected the same way, so a field of pointer or
+\ quotation type, at any depth of nesting, is the same mint.
+STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE
+STRUCTURE qfbox 0 FIELD q [ n -- n ] ;STRUCTURE
+STRUCTURE pfnest 0 FIELD inner pfbox ;STRUCTURE
+s" cast: CNM17 ( n -- pfbox )"                   CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM18 ( n -- qfbox )"                   CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM19 ( n -- pfnest )"                  CN-RUN:DECL E-CAST-MINT T=
 package CN-MINT
 public
 s" cast: CNM4 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM5 ( n -- [ -- ] )"                    CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM14 ( n -- cnpbox<ptr u8> )"           CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM15 ( n -- cnpbox<[ n -- n ]> )"       CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNM20 ( n -- pfbox )"                   CN-RUN:DECL E-CAST-MINT T=
 private
 s" cast: CNM6 ( n -- ptr u8 )"                    CN-RUN:DECL 0 T=
 s" cast: CNM7 ( n -- [ -- ] )"                    CN-RUN:DECL 0 T=
 \ A pointee carries no width rule: a layout of any width is one pointer away.
 s" cast: CNM10 ( n -- ptr CAST-NEG:wide )"        CN-RUN:DECL 0 T=
+s" cast: CNM21 ( n -- pfbox )"                   CN-RUN:DECL 0 T=
+s" cast: CNM22 ( n -- qfbox )"                   CN-RUN:DECL 0 T=
+s" cast: CNM23 ( n -- pfnest )"                  CN-RUN:DECL 0 T=
 ;package
 \ Projections out of a pointer, a quotation or a layout holding one mint
 \ nothing: any scope.
 s" cast: CNM8 ( ptr u8 -- n )"                    CN-RUN:DECL 0 T=
 s" cast: CNM9 ( [ n -- n ] -- n )"                CN-RUN:DECL 0 T=
 s" cast: CNM16 ( cnpbox<ptr u8> -- n )"           CN-RUN:DECL 0 T=
+s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
 \ The scope is the engine's live one: a parser mirror claiming a package's
 \ private section while the engine compiles at top level still refuses.
 s" CN" CHECKER-PACKAGE

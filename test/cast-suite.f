@@ -17,9 +17,12 @@
 \     published output is genuinely nominal (demanding a plain n there rejects)
 \   - a cast into a layout instance whose argument is a con, or a family its
 \     package owns, certifies, and the field reads back the value
-\   - a private pointer or quotation mint, bare or as a layout instance's
-\     argument, turns an integer address or execution token into a typed one
-\     that its package's words read, store and execute
+\   - a cast into a layout whose fields, nested layouts included, carry only
+\     the package's own family or a con certifies, and UNMAKE reads it back
+\   - a private pointer or quotation mint, bare, as a layout instance's
+\     argument or as a layout's own field, turns an integer address or
+\     execution token into a typed one that its package's words read, store
+\     and execute
 \   - a private pointer view of a layout row is raw: a forged tag stored through
 \     it is refused at the next fetch
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
@@ -117,6 +120,29 @@ CAST: OWN>N ( own -- n )
 ;package
 6 N-ROUND 6 T=
 5 CS-BOX:OWN-ROUND 5 T=
+
+\ --- a layout introduces its fields. -----------------------------------------
+\ Projecting a field yields its value, so a cast into a layout needs the owner
+\ of every family its fields carry, through nested layouts. Fields of the
+\ package's own family or of a con certify, and the value reads back through
+\ UNMAKE.
+package CSFIELD
+public
+NEWTYPE ffam 0
+STRUCTURE fbox 0 FIELD v ffam ;STRUCTURE
+STRUCTURE fnest 0 FIELD inner fbox ;STRUCTURE
+STRUCTURE nbox 0 FIELD v n ;STRUCTURE
+CAST: >FBOX ( n -- fbox )
+CAST: >FNEST ( n -- fnest )
+CAST: >NBOX ( n -- nbox )
+CAST: FFAM>N ( ffam -- n )
+: FBOX-ROUND ( n -- n ) >FBOX CSFIELD-FBOX:UNMAKE FFAM>N ;
+: FNEST-ROUND ( n -- n ) >FNEST CSFIELD-FNEST:UNMAKE CSFIELD-FBOX:UNMAKE FFAM>N ;
+: NBOX-ROUND ( n -- n ) >NBOX CSFIELD-NBOX:UNMAKE ;
+;package
+5 CSFIELD:FBOX-ROUND 5 T=
+6 CSFIELD:FNEST-ROUND 6 T=
+7 CSFIELD:NBOX-ROUND 7 T=
 
 \ --- the declaration publishes a REAL word, not just a checker row. -----------
 \ A cast the checker knows but the dictionary does not would certify every caller
@@ -219,6 +245,8 @@ using CS-PRIOR-BASE
 \ private section. The integer comes from a typed source: an address is the
 \ distance `NULL-PTR BYTE-VIEW -`, an execution token is `search-wl`'s answer.
 : CS-TWICE ( n -- n ) 2 * ;            \ global, so wordlist 0 finds it
+STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE
+STRUCTURE qfbox 0 FIELD q [ n -- n ] ;STRUCTURE
 
 \ A projection out of a quotation mints nothing, so it is declared at top level.
 CAST: NN>N ( [ n -- n ] -- n )
@@ -232,6 +260,8 @@ CAST: >NN ( n -- [ n -- n ] )
 CAST: >XT-SLOT ( ptr n -- ptr [ -- ] )
 CAST: >BYTE-BOX ( n -- csbox<ptr u8> )
 CAST: >NN-BOX ( n -- csbox<[ n -- n ]> )
+CAST: >PF-BOX ( n -- pfbox )
+CAST: >QF-BOX ( n -- qfbox )
 \ Checked callers certify against the published rows while the package is open,
 \ and the output is genuinely `ptr u8`: demanding a cell pointer there rejects.
 s" CC-BYTE ( n -- u8 ) >BYTES c@"         CHECK-QUIET-CANDIDATE! -1 T=
@@ -259,6 +289,10 @@ public
 : BOX-BYTE ( u8 -- u8 )
    BYTE-ROW 3 + c!  BYTE-ROW ADDR 3 + >BYTE-BOX CSBOX:UNMAKE c@ ;
 : BOX-RUN ( n -- n ) s" CS-TWICE" 0 search-wl >NN-BOX CSBOX:UNMAKE execute ;
+\ So is a layout whose own field is a pointer or a quotation.
+: PFBOX-BYTE ( u8 -- u8 )
+   BYTE-ROW 9 + c!  BYTE-ROW ADDR 9 + >PF-BOX PFBOX:UNMAKE c@ ;
+: QFBOX-RUN ( n -- n ) s" CS-TWICE" 0 search-wl >QF-BOX QFBOX:UNMAKE execute ;
 ;package
 200 CS-MINT:BYTE-ROUND 200 T=
 201 CS-MINT:BYTE-STORE 201 T=
@@ -268,6 +302,8 @@ CS-MINT:XT-SAME? -1 T=
 CS-MINT:SLOT-RUN 7 T=
 202 CS-MINT:BOX-BYTE 202 T=
 11 CS-MINT:BOX-RUN 22 T=
+203 CS-MINT:PFBOX-BYTE 203 T=
+12 CS-MINT:QFBOX-RUN 24 T=
 
 \ --- a pointer view of a layout row is raw; the layout guards its tags. -------
 \ A private `( ptr family -- ptr n )` stores a cell the family never held, and
