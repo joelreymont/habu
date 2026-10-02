@@ -10,10 +10,12 @@
 \ the maximum cell. A refusal ends the process, so the refused cases run in a
 \ forked child.
 \
-\ CHECKER-DEFRECORD, CHECKER-DEFLINEAR, CHECKER-DEFER and CHECKER-UNDEFINE
-\ (src/core/checker.f) are checker words any source can call with a name. The
-\ checker's string pools grow, so a name of exactly the room left and one past
-\ it are both stored; a name of -1 or the maximum cell is refused.
+\ CHECKER-DEFRECORD and CHECKER-DEFER (src/core/checker.f) are checker words any
+\ source can call with a name. The checker's string pools grow, so a name of
+\ exactly the room left and one past it are both stored. A name is at most the
+\ ceiling `:` defines, BODYBUF-CAP - 1 bytes, so each pool is first filled with
+\ shorter names until its room is under that; test/name-length-test.f drives the
+\ lengths no name has.
 \
 \ Run: bin/hb --load test/room-left-test.f
 
@@ -37,6 +39,7 @@ package ROOM-LEFT-TEST
 $400 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
+BODYBUF-CAP 1 - constant CEIL      \ the longest name `:` defines
 VRDEF-CAP constant SRC-CAP         \ the largest buffer filled from SRC
 create SRC SRC-CAP allot
 create OUT CAPTURE-CAP allot
@@ -112,25 +115,32 @@ create ERR CAPTURE-CAP allot
    s" PATH-NEG" 74 S\" aot-ident: closure path longer than the path cap\n" DIES
    s" PATH-MAX" 74 S\" aot-ident: closure path longer than the path cap\n" DIES ;
 
-: REC-NEG ( -- ) SRC -1 s" f n" CHECKER-DEFRECORD ;
-: REC-MAX ( -- ) SRC MAX-CELL s" f n" CHECKER-DEFRECORD ;
-: LIN-NEG ( -- ) SRC -1 CHECKER-DEFLINEAR ;
-: LIN-MAX ( -- ) SRC MAX-CELL CHECKER-DEFLINEAR ;
-: DEFER-NEG ( -- ) SRC -1 CHECKER-DEFER ;
-: UNDEFINE-NEG ( -- ) SRC -1 CHECKER-UNDEFINE ;
-
-\ A name of `u` bytes of q in a fresh mapping: one letter repeated names no type
-\ or word the checker knows, and two of them differ by length alone.
-: Q-NAME ( n -- ptr u8 n ) {: u:n :}
+\ A name of `u` bytes of byte c in a fresh mapping: one letter repeated names no
+\ type or word the checker knows, and two of them differ by length alone.
+: LETTERS ( n n -- ptr u8 n )
+   {: u:n c:n :}
    u MEM-ALLOC-BYTES drop {: p:ptr :}
-   u 0 ?do 113 p i + c! loop
+   u 0 ?do c p i + c! loop
    p u ;
+
+\ The names that fill a pool: r, each one byte shorter than the last, so no two
+\ are the same name.
+variable FILL-U
+CEIL FILL-U !
+: FILLER ( -- ptr u8 n )
+   FILL-U @ 114 LETTERS
+   FILL-U @ 1 - FILL-U ! ;
 
 : VREC-ROOM ( -- n ) VREC-STR-CAP-V @ VREC-STR-U @ - ;
 
-\ Define a record whose name is `u` q bytes: the checker knows it afterwards.
-: REC-Q ( n -- ) {: u:n :}
-   u Q-NAME {: a:ptr au:n :}
+\ Declare records until the value-record pool has at most `n` bytes of room.
+: VREC-FILL ( n -- )
+   {: want:n :}
+   begin VREC-ROOM want > while FILLER s" f n" CHECKER-DEFRECORD repeat ;
+
+\ Define a record whose name is `u` bytes of c: the checker knows it afterwards.
+: REC-NAMED ( n n -- )
+   LETTERS {: a:ptr au:n :}
    a au s" f n" CHECKER-DEFRECORD
    a au TYPE-RESERVED? TTRUE ;
 
@@ -138,25 +148,31 @@ create ERR CAPTURE-CAP allot
 \ the room left fills it before the field's copy of the name grows it.
 : TEST-TYPE-NAME ( -- )
    s" a record name one past the value-record pool's room is stored" T-LABEL
-   VREC-ROOM 1+ REC-Q
+   CEIL 1 - VREC-FILL
+   VREC-ROOM 1+ 113 REC-NAMED
    s" a record name of exactly the pool's room is stored" T-LABEL
-   VREC-ROOM REC-Q
-   s" a record or linear type name of -1 or the maximum cell is refused" T-LABEL
-   s" REC-NEG" 70 S\" checker: bad or duplicate value-record type\n" DIES
-   s" REC-MAX" 70 S\" checker: bad or duplicate value-record type\n" DIES
-   s" LIN-NEG" 70 S\" checker: bad or duplicate signature type\n" DIES
-   s" LIN-MAX" 70 S\" checker: bad or duplicate signature type\n" DIES ;
+   CEIL VREC-FILL
+   VREC-ROOM 112 REC-NAMED ;
 
 : SYM-ROOM ( -- n ) SYM-STR-CAP-V @ SYM-STR-U @ - ;
 
+\ Defer names until the symbol pool has at most `n` bytes of room.
+: SYM-FILL ( n -- )
+   {: want:n :}
+   begin SYM-ROOM want > while FILLER CHECKER-DEFER repeat ;
+
 \ A deferred name lands in the symbol pool alone, so the pool's own fill shows.
-: SYM-PAST ( -- ) SYM-STR-CAP-V @ {: cap:n :}
-   SYM-ROOM 1+ Q-NAME CHECKER-DEFER
+: SYM-PAST ( -- )
+   CEIL 1 - SYM-FILL
+   SYM-STR-CAP-V @ {: cap:n :}
+   SYM-ROOM 1+ 113 LETTERS CHECKER-DEFER
    SYM-STR-U @ cap 1+ T=
    SYM-STR-CAP-V @ cap > TTRUE ;
 
-: SYM-EXACT ( -- ) SYM-STR-CAP-V @ {: cap:n :}
-   SYM-ROOM Q-NAME CHECKER-DEFER
+: SYM-EXACT ( -- )
+   CEIL SYM-FILL
+   SYM-STR-CAP-V @ {: cap:n :}
+   SYM-ROOM 112 LETTERS CHECKER-DEFER
    SYM-STR-U @ cap T=
    SYM-STR-CAP-V @ cap T= ;
 
@@ -164,10 +180,7 @@ create ERR CAPTURE-CAP allot
    s" a deferred name one past the symbol pool's room grows the pool" T-LABEL
    SYM-PAST
    s" a deferred name of exactly the pool's room fills it" T-LABEL
-   SYM-EXACT
-   s" a deferred or undefined name of -1 is refused" T-LABEL
-   s" DEFER-NEG" 76 S\" checker: symbol string capacity overflow\n" DIES
-   s" UNDEFINE-NEG" 76 S\" checker: symbol string capacity overflow\n" DIES ;
+   SYM-EXACT ;
 
 : MAIN ( -- )
    T-RESET

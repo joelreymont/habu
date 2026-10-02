@@ -2180,6 +2180,10 @@ SUITE room-left
    test/room-left-test.f
 ;SUITE
 
+SUITE name-length
+   test/name-length-test.f
+;SUITE
+
 SUITE boot-row
    test/boot-row-test.f
 ;SUITE

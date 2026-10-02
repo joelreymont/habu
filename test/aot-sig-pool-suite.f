@@ -123,10 +123,12 @@ variable VALUE                     \ the number the first one carried
 \ Two pairs are the signature pool's; four were already in the tree carrying only
 \ a comment, and they are here for the same reason - the drift risk is the same
 \ risk, and a check that covered only the new pairs would leave the older ones
-\ exactly as unverified as they were. The list is the checker's live mirror set,
-\ so a name that is no longer mirrored has to leave this list with the mirror it
-\ describes: naming one that no definition answers reads as drift on the layout
-\ side (0 definitions, 0 for the number) and says nothing about either file.
+\ exactly as unverified as they were. CK-BODYBUF-CAP is a capacity rather than an
+\ offset, the body-text capacity that bounds every name the checker takes, and
+\ drifts the same way. The list is the checker's live mirror set, so a name that
+\ is no longer mirrored has to leave this list with the mirror it describes:
+\ naming one that no definition answers reads as drift on the layout side (0
+\ definitions, 0 for the number) and says nothing about either file.
 
 : MIRROR-CASE ( -- )
    LOAD-CHECKER
@@ -136,7 +138,8 @@ variable VALUE                     \ the number the first one carried
    s" CK-PKG-PRI-OFF"      PKG-PRI-CELL      ?MIRROR
    s" CK-PKG-REC-OFF"      PKG-REC-CELL      ?MIRROR
    s" CK-USE-DEPTH-OFF"    USE-DEPTH-CELL    ?MIRROR
-   s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR ;
+   s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR
+   s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR ;
 
 \ ---- case two: the reader cannot be fooled -----------------------------------
 \ Synthetic sources through the SAME entry points the live read uses, each built

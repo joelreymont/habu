@@ -233,6 +233,7 @@ public
 
 : TF-CANON? ( ptr u8 n -- bool ) {: a:ptr u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN      \ a length no name has is no tail
    0 TF-I !
    BEGIN TF-I @ u < WHILE
       a TF-I @ + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
@@ -1564,8 +1565,10 @@ defer TFAM-ADDR-WORD-XT ( ptr u8 n -- bool )
 ;package
 
 \ A generated word wears either the qualified public spelling or the bare private
-\ one, and the colon decides which scan answers for it.
+\ one, and the colon decides which scan answers for it. A length no name has
+\ (CK-NAME-SPAN?) spells no generated word; CHECKER-UNDEFINE asks this first.
 : TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact generated word?
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-SPLIT? IF
       a u TF-CTOR-QUAL-WORD? IF RES-TRUE EXIT THEN
    ELSE

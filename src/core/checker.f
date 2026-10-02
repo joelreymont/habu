@@ -5027,6 +5027,32 @@ variable SIGSCOPE-U
 : SIGSCOPE-OFF ( -- ) 0 SIGSCOPE-ON ! ;
 : SIG-SCOPE$ ( -- ptr u8 n )
    SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
+
+\ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
+\ one, or one that runs the span past the top of the address range. A false
+\ length inside the range cannot be told from a true one here, and a signature
+\ or a field text has no bound of its own; a name has, CK-NAME-MAX below.
+: BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 < IF RES-FALSE EXIT THEN
+   a u + a < IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ THE LONGEST NAME. A definer captures a word's name and one separator into the
+\ definition's body text before it writes the record, so `:` defines a name of
+\ BODYBUF-CAP - 1 bytes and refuses one byte more, rc 71. BODYBUF-CAP is
+\ src/habu/layout.f's, which loads after this file, so it is restated here and
+\ test/aot-sig-pool-suite.f holds the two equal.
+8000 constant CK-BODYBUF-CAP               \ = layout.f BODYBUF-CAP
+CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
+
+\ A name source hands a checker word is a byte span no longer than the longest
+\ name the engine defines. The first reader of such a name asks this before it
+\ reads a byte, and its word refuses a false length as it refuses any name it
+\ cannot take (test/name-length-test.f drives every such word).
+: CK-NAME-SPAN? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u BYTE-SPAN? u CK-NAME-MAX <= and ;
+
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
 \ (0 false) — always two items, so every caller drops the id on the false path.
@@ -5034,8 +5060,10 @@ variable SIGSCOPE-U
 \ (private+public) families first, then the unique public tail; top level uses
 \ the global scope, where every built-in cell family lives public. Qualified
 \ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
-\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
+\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE). A tail whose
+\ length no name has resolves nothing, and the resolver never reads it.
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
 \ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
 \ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
@@ -5165,23 +5193,13 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
       1+
    repeat drop RES-FALSE ;
 
-\ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
-\ one, or one that runs the span past the top of the address range. A false
-\ length inside the range cannot be told from a true one here: the code ceiling
-\ that bounds every name is src/habu/layout.f's REGION, which loads after this
-\ file, and a signature has no bound of its own.
-: BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0 < IF RES-FALSE EXIT THEN
-   a u + a < IF RES-FALSE EXIT THEN
-   RES-TRUE ;
-
-\ A name that is no span names no new type, like the empty one. CHECKER-DEFRECORD
+\ A length no name has names no new type, like the empty name. CHECKER-TRY-RECORD
 \ and CHECKER-DEFLINEAR ask this first, so it is where their name is bounded:
-\ without the span test a length of -1 was taken and moved the value-record or
+\ without it a length of -1 was taken and moved the value-record or
 \ signature-type string pool's used mark back, and the maximum cell died
 \ reading the name here.
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u BYTE-SPAN? 0= IF RES-TRUE EXIT THEN
+   a u CK-NAME-SPAN? 0= IF RES-TRUE EXIT THEN
    a u DELIM? IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u ROW-LEAD? IF RES-TRUE EXIT THEN
@@ -5739,6 +5757,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a u BYTE-SPAN? 0= IF 0 0 RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -5813,6 +5832,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -5923,9 +5943,12 @@ variable VREC-AT
    VREC-AT @ msg msgu ;
 
 \ Parse and store the fields of record id. Answer the end of the field text and
-\ an empty refusal, or the offset of the field refused and the refusal.
+\ an empty refusal, or the offset of the field refused and the refusal. A field
+\ text whose length describes no memory holds no field, so its record is refused
+\ as an empty one before a byte of it is read.
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
+   fields fieldsu BYTE-SPAN? 0= IF fieldsu fields 0 EXIT THEN
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
@@ -5955,11 +5978,12 @@ variable VREC-AT
 \ CHECKER-TRY-RECORD ( name fields -- at refusal ) registers the record, or
 \ leaves every record table as it found it and answers the byte offset in the
 \ field text of the field it refuses (the end of the text for a record with no
-\ field) and the refusal; an empty refusal means registered. On a refusal it
-\ rewinds the five marks a rollback frame rewinds (RBF.VRECN .. RBF.VRECU). The
-\ caller asks TYPE-RESERVED? about the name first, as CHECKER-DEFRECORD does.
+\ field, 0 for a name TYPE-RESERVED? refuses) and the refusal; an empty refusal
+\ means registered. On a refusal it rewinds the five marks a rollback frame
+\ rewinds (RBF.VRECN .. RBF.VRECU).
 : CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
+   name nameu TYPE-RESERVED? IF 0 s" checker: bad or duplicate value-record type" EXIT THEN
    VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @
    {: rn:n fn:n dn:n an:n su:n :}
    name nameu VREC-BEGIN {: id:n :}
@@ -5971,7 +5995,6 @@ variable VREC-AT
 
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
-   name nameu TYPE-RESERVED? IF s" checker: bad or duplicate value-record type" 70 die THEN
    name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
    msgu 0 <> IF msg msgu 70 die THEN ;
 
@@ -6500,10 +6523,11 @@ variable SYM-ID
 \ length is compared with the room left instead of added to the used mark: a
 \ length of -1 was taken and moved the mark back, and one whose end passes the
 \ largest cell would wrap the size the pool grows to.
+: SYM-STR-OVERFLOW ( -- )
+   s" checker: symbol string capacity overflow" 76 die ;
+
 : SYM-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
-   add 0 < SYM-STR-U @ add + 0 < or IF
-      s" checker: symbol string capacity overflow" 76 die
-   THEN
+   add 0 < SYM-STR-U @ add + 0 < or IF SYM-STR-OVERFLOW THEN
    add SYM-STR-CAP-V @ SYM-STR-U @ - <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
 
@@ -10129,8 +10153,12 @@ variable DFER-END
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
+\ A package name is a name (CK-NAME-SPAN?) that fits the mirror's row: one of
+\ -1 bytes used to copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: package name too long" 76 die THEN
+   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+      s" checker: package name too long" 76 die
+   THEN
    0 BEGIN dup u < WHILE
       a over CHECKER-PACKAGE-COPY-C
       1 +
@@ -10190,7 +10218,9 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
+   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+      s" checker: using name too long" 76 die
+   THEN
    CK-USE-DEPTH {: d:n :}
    d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
    d CK-USE-SLOT {: dst:ptr :}
@@ -10519,9 +10549,12 @@ variable CHECKER-QBAD-TOK
 
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
-\ colon anywhere is a malformed qualified name and must never resolve.
+\ colon anywhere is a malformed qualified name and must never resolve. So is a
+\ name whose length no name has (CK-NAME-SPAN?): this split is the first reader
+\ of every name the checker resolves, and it reads none of that one.
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
+   a u CK-NAME-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a u CHECKER-COLON-SCAN
    CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
    CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
@@ -10619,8 +10652,11 @@ STORAGE-DIAG-DEFAULT
 
 \ A name a storage definer publishes has at most one inner ':' and, once the
 \ seal is captured, is not qualified into a sealed package. A refused name
-\ answers false.
+\ answers false. A length no name has is refused before the refusal that would
+\ echo the name: a definer hands this a token it parsed, so only a direct call
+\ can.
 : CHECKER-LBUF-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
       a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
@@ -10653,7 +10689,10 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
+\ Interning stores the name, so a length no name has is refused with the symbol
+\ pool's own refusal before the split reads it.
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
+   a u CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
@@ -10858,9 +10897,15 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
    pub IF SYM-PUBLIC EXIT THEN
    SYM-PRIVATE ;
 
-: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
+\ The key all three questions ask with. A package name or a name whose length
+\ no name has keys no row, and is answered so before either is hashed.
+: ASIG-AUDIT-SYM ( ptr u8 n bool ptr u8 n -- n bool )
    {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   pkg pkgu CK-NAME-SPAN? na nu CK-NAME-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
+   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND ;
+
+: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
 
@@ -10868,8 +10913,7 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
 \ no signature for it - the one condition a capture must refuse, because that
 \ word is callable from checked code here and would not be in the seeded engine.
 : CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
-   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
@@ -10891,8 +10935,7 @@ PTR-VARIABLE FQSYM-A   variable FQSYM-U   variable FQSYM
 \ at publish) do not travel either: USIGS' newest-wins rule is answered HERE, so
 \ the artifact's reader never has to implement it a second time.
 : CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
-   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF 0 EXIT THEN
    sym ASIG-LAST@ ;
 
@@ -11757,8 +11800,11 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    1 SHADOW-DIAG-XT
    E-SHADOWED-ARITY throw ;
 
+\ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
+\ refused with the symbol pool's refusal before the constructor scan reads it.
 : CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n bool -- )
    {: sa:ptr su:n na:ptr nu:n external:bool :}
+   na nu CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
@@ -16343,12 +16389,13 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
 
-\ A NAME that is no span (BYTE-SPAN?) spells no word, so TRUST, TRUST-RAW and
-\ TRUST-DECL each refuse its row as E-TRUST-UNRESOLVED with no spelling
-\ rendered, and each does so first: TRUST before its dictionary walk, whose
-\ colon scan ran until the process was killed given the maximum cell; TRUST-RAW
-\ before it turns on raw-definer mode, which a caught refusal would leave on;
-\ TRUST-DECL before it steps the definer latch for a row that is never stored.
+\ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
+\ TRUST-RAW and TRUST-DECL each refuse its row as E-TRUST-UNRESOLVED with no
+\ spelling rendered, and each does so first: TRUST before its dictionary walk,
+\ whose colon scan ran until the process was killed given the maximum cell;
+\ TRUST-RAW before it turns on raw-definer mode, which a caught refusal would
+\ leave on; TRUST-DECL before it steps the definer latch for a row that is never
+\ stored.
 \ Without the guard those two recorded the row under a length of -1, and died
 \ folding a name of the maximum cell.
 
@@ -16407,7 +16454,7 @@ s" <input>" DIAG-FILE!
 \ This step is unconditional: a latch in any other state dies here rather than
 \ waiting for a record that is not its definer's.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    DOES-EFF-STEP
    na nu sa su TRUST-USIG!
    \ The parser filled both input rows. An unchecked body may throw after
@@ -16468,7 +16515,7 @@ package CHECKER-REG
    a u data-base CK-PKG-PUB-OFF + @ CK-WL-CLAIMS? ;
 
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu sa su TRUST-USIG! ;
 
@@ -16495,7 +16542,7 @@ package CHECKER-REG
 \ signature parse, and leaving the mode latched on would silently seal ordinary
 \ signatures registered afterwards.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
-   na nu BYTE-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;

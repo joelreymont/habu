@@ -154,8 +154,12 @@ private
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc throw ;
 
+\ The declared name is read first by the body's name gate and by the report. A
+\ length no name has (CK-NAME-SPAN?) is recorded as no name, so the declaration
+\ is refused as a missing name and the report reads none of it.
 : TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
    TDB-U ! TDB-A !
+   2dup CK-NAME-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDT-U !  NULL-PTR TDT-A !
