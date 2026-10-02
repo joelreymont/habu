@@ -69,18 +69,6 @@ SUITE c2-field-loan
    test/c2-field-loan-e2e.f
 ;SUITE
 
-\ Each saved native builder row saves its own builder
-\ (test/native-builder-image-lib.f lists the three rows); the e2e and whitebox
-\ rows run one engine build each; the refusals row's build stops at the first
-\ post-hook prefix file. These two need no keyed image.
-SUITE native-builder-image
-   test/native-builder-image-e2e.f
-;SUITE
-
-SUITE native-builder-image-refusals
-   test/native-builder-image-refusals.f
-;SUITE
-
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -175,9 +163,24 @@ SUITE app-image
    test/app-image.f
 ;SUITE
 
-\ Compares a saved builder's unsealed engine with whitebox-engine-build's.
+\ The saved native builder rows (test/native-builder-image-lib.f lists them)
+\ run the keyed builder test/saved-builder.f, so each holds the registry until
+\ saved-builder-build retires. They follow the whitebox hold: that build row
+\ starts beside whitebox-engine-build, and its save took 21 s CPU where the
+\ unsealed engine's build took 74 s, measured on one loaded host. The whitebox
+\ and e2e rows run one engine build each; the refusals row's build stops at the
+\ first post-hook prefix file. The whitebox row compares the saved builder's
+\ unsealed engine with whitebox-engine-build's.
 SUITE native-builder-image-whitebox
    test/native-builder-image-whitebox.f
+;SUITE
+
+SUITE native-builder-image
+   test/native-builder-image-e2e.f
+;SUITE
+
+SUITE native-builder-image-refusals
+   test/native-builder-image-refusals.f
 ;SUITE
 
 SUITE native-window-owner

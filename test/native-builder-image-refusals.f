@@ -73,7 +73,6 @@ public
    PRIVATE-TREE
    s" src/core/roles.f" ROLES ROLES-U TREE-PATH!
    s" rejected-hb" REJECTED REJECTED-U ROOT-PATH!
-   BUILD-IMAGE
    SAVED-ARGS
    REJECT-EDIT
    T-REPORT ;

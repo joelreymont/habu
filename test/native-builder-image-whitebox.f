@@ -34,7 +34,6 @@ public
    T-RESET
    s" native-builder-image-whitebox" SETUP
    s" saved-whitebox-hb" SAVED-WHITE SAVED-WHITE-U ROOT-PATH!
-   BUILD-IMAGE
    WHITEBOX-PARITY
    T-REPORT ;
 

@@ -222,13 +222,14 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles five keyed images, each once per run in a pool row of its
+- The gate settles six keyed images, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`): the fixture writer
   and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
-  `app-image-build`, `linker-build`) and the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`). A row needs an image
+  `app-image-build`, `linker-build`), the unsealed engine
+  (`test/whitebox-engine.f`; `whitebox-engine-build`) and the saved native
+  builder (`test/saved-builder.f`; `saved-builder-build`). A row needs an image
   when its load closure holds the image's module: the files it loads and what
   those import, or launch as a `.f` source through a path literal a known load
   helper consumes (`test/load-refs.f`, the reader the entry guard uses).

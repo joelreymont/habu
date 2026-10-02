@@ -3,9 +3,9 @@
 \
 \ A family module owns what makes its image what it is: the content key, the
 \ engine that runs the builder, the program the builder is handed on stdin, and
-\ the arguments after `--`. test/fixture-writer.f, test/app-image-engine.f and
-\ test/preloaded-engine.f are three. This module owns what is the same for
-\ every family:
+\ the arguments after `--`. test/fixture-writer.f, test/app-image-engine.f,
+\ test/preloaded-engine.f and test/saved-builder.f are four. This module owns
+\ what is the same for every family:
 \
 \ THE PATH IS THE KEY. An image lives at <cache root>/hb-<family>-<key hex>, and
 \ a key covers everything its build reads and every name the image records, so
@@ -151,6 +151,10 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
 
 : BUILD-RUN ( -- )
    PROC-ARGV-ENV-RESET
+   \ The capture reads HABU_WHITEBOX_IMAGE (src/habu/aot-capture.f
+   \ ACAP-WHITEBOX?) and no key folds it: it is cleared before the inherit, so
+   \ no parent environment decides the bytes of a keyed image.
+   s" HABU_WHITEBOX_IMAGE" >LEN s" " >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+
    TMP$ ARGS-XT @ execute
