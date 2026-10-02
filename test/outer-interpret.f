@@ -1838,12 +1838,12 @@ variable WANT-RC
    S\" E-UNDERFLOW: OI-K\n" CASE$ GE-EXPECT-ERR ;
 
 \ A definer's raw effect goes to the active owner's trust-raw, then to the
-\ target owner's unless it is the same operation. With no active owner it
-\ goes to the target's while the check hook is armed, the process ends naming
-\ trust-raw when there is none, and nothing registers while the hook is
-\ disarmed. OI-A and OI-T are copies of the live owner record whose trust-raw
-\ prints what it is given, OI-T's after `target`; OI-OWNERS sets the active
-\ owner and the target owner.
+\ target owner's unless it is the same xt, even in another owner record, armed
+\ check hook or not. With no active owner it goes to the target's while the
+\ hook is armed, the process ends naming trust-raw when there is none, and
+\ nothing registers while the hook is disarmed. OI-A and OI-T are copies of the
+\ live owner record whose trust-raw prints what it is given, OI-T's after
+\ `target`; OI-OWNERS sets the active owner and the target owner.
 : OWNER-SPY ( -- )
    GE-SRC-RESET
    s" 1 set-tier : OI-RAW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :} a u type space s su type cr ;" GE-SRC-LINE
@@ -1862,6 +1862,16 @@ variable WANT-RC
    s" oi-owner-active.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" OI-V -- ptr a\ntarget OI-V -- ptr a\nOI-K -- a\n1\n" CASE$ GE-EXPECT-OUT
+   OWNER-SPY
+   s" ' OI-RAW OI-T NCOMP-DISPATCH:DECL-RAW-OFF + !  OI-A OI-T OI-OWNERS variable OI-V  OI-LIVE OI-LIVE OI-OWNERS 1 ." GE-SRC-LINE
+   s" oi-owner-shared-xt.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-V -- ptr a\n1\n" CASE$ GE-EXPECT-OUT
+   OWNER-SPY
+   s" OI-A OI-T OI-OWNERS 0 set-check variable OI-V 19 OI-V !  OI-LIVE OI-LIVE OI-OWNERS OI-V @ ." GE-SRC-LINE
+   s" oi-owner-active-unhooked.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-V -- ptr a\ntarget OI-V -- ptr a\n19\n" CASE$ GE-EXPECT-OUT
    OWNER-SPY
    s" 0 OI-T OI-OWNERS variable OI-V 19 OI-V ! 7 constant OI-K  OI-LIVE OI-LIVE OI-OWNERS OI-V @ . OI-K ." GE-SRC-LINE
    s" oi-owner-target.f" BOTH
