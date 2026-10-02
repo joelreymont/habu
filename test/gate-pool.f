@@ -736,12 +736,20 @@ false GT-POOL-CATCHING !
 \ setpgid race.
 \
 \ Fork a reaper that joins the child's group and watches the pool-death read end,
-\ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Reaper fork failure is
-\ also fail-closed; otherwise a spawned subtree could survive a killed pool.
+\ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Stack-preserving under
+\ catch: the slot index is the quotation's window.
+: GT-POOL-SPAWN-REAPER! ( idx -- idx ) {: idx:idx :}
+   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-FORK:SPAWN-REAPER
+   idx GT-POOL-REAPER-PID-PTR !
+   idx ;
+
+\ Reaper fork failure (PROC-FORK:SPAWN-REAPER throws) is also fail-closed: the
+\ pool kills every slot, this child included; otherwise a spawned subtree could
+\ survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
-   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-FORK:SPAWN-REAPER {: rpid:pid :}
-   rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
-   rpid idx GT-POOL-REAPER-PID-PTR ! ;
+   idx [: GT-POOL-SPAWN-REAPER! ;] catch {: code:n :}
+   drop
+   code 0<> if code GT-POOL-THROW then ;
 
 : GT-POOL-SPAWN-FD ( idx ptr u8 n fd -- ) {: idx:idx path:ptr pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
@@ -803,7 +811,7 @@ false GT-POOL-CATCHING !
 \ made-flag is cleared so a nested pool this worker later drives builds its own
 \ death pipe. The reaper is a reparented grandchild (see PROC-FORK:FORK-REAPER),
 \ never a child of this worker, so the worker body's wait(-1) still sees no
-\ children.
+\ children. A refused reaper fork ends the worker through GT-POOL-FORK-THROW.
 : GT-POOL-ARM-REAPER ( -- )
    PROC-FORK:DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
    GT-POOL-DEATH-RD@ wa-rd PROC-FORK:FORK-REAPER
@@ -821,7 +829,8 @@ false GT-POOL-CATCHING !
    idx GT-POOL-CLOSE-CAPTURE
    GT-POOL-SETPGID-SELF
    GT-POOL-RED-RESET
-   GT-POOL-ARM-REAPER
+   [: GT-POOL-ARM-REAPER ;] catch {: arm:n :}
+   arm 0<> if arm GT-POOL-FORK-THROW then
    q catch {: rc:n :}
    rc 0= if 0 GT-POOL-FORK-EXIT then
    rc GT-POOL-FORK-THROW ;

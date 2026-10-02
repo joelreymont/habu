@@ -1901,26 +1901,29 @@ so a signal-killed child would read as rc 0 (a swallowed crash). Wait through
 engines do not have the `fork` primitive during the build prelude.
 
 ```forth
-PROC-FORK-RAW ( -- pid )
-PROC-FORK     ( -- pid )
+PROC-FORK:RAW     ( -- pid )
+PROC-FORK:CHECKED ( -- pid )
 ```
 
-`PROC-FORK` forks the current image without exec; the parent receives the child
-pid and the child receives pid 0. It is intended for isolated test workers and
-other copy-on-write process boundaries where the already-loaded dictionary must
-be reused. The child must exit or die after its worker body; returning into the
-parent's control path is a bug. Parent code reaps the child with `PROC-WAIT-RC`
-or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
-`PROC-FORK` converts that to `E-PROC-SPAWN`.
+`PROC-FORK:CHECKED` forks the current image without exec; the parent receives
+the child pid and the child receives pid 0. It is intended for isolated test
+workers and other copy-on-write process boundaries where the already-loaded
+dictionary must be reused. The child must exit or die after its worker body;
+returning into the parent's control path is a bug. Parent code reaps the child
+with `PROC-WAIT-RC` or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative
+target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
 `PROC-CAPTURE-PID!`): the default vector arms nothing; `lib/process-fork.f`
-installs the live vector, which arms a co-located `PROC-SPAWN-REAPER` in the
-child's process group watching the fd published in `PROC-REAP-WATCH-FD`
-(-1 = no context). A pool worker publishes its worker-alive read end there, so
-a quiet capture child — its own group leader, invisible to the worker's
-group-kill — dies with the worker instead of lingering. Every capture
+installs the live vector, which arms a co-located `PROC-FORK:SPAWN-REAPER` in
+the child's process group watching the fd published in
+`PROC-FORK:REAP-WATCH-FD` (-1 = no context). A pool worker publishes its
+worker-alive read end there, so a quiet capture child — its own group leader,
+invisible to the worker's group-kill — dies with the worker instead of
+lingering. A reaper whose fork fails throws `E-PROC-SPAWN`, and the capture is
+refused like a failed spawn: `PROC-CAPTURE-PID!` kills and reaps the child and
+closes the capture descriptors before the throw goes on. Every capture
 terminator calls `PROC-REAP-DISARM`, which kills and waits the reaper by its
 specific pid, so no reaper outlives its capture and `wait(-1)` callers never
 see a stray child.

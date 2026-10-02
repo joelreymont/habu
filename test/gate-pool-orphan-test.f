@@ -47,6 +47,27 @@ create GPO-SLEEP-PFD 8 allot
 : GPO-EXIT ( n -- )
    s" " rot die ;
 
+\ A child here runs until it is killed. One that cannot fork what its part
+\ needs - its reaper, or the child it watches - must not throw: that would
+\ unwind its copy of this test's stack and run the test on in the child. It
+\ exits GPO-REFUSED-RC instead, and its parent reports that status.
+3 constant GPO-REFUSED-RC
+
+: GPO-REFUSED ( n -- ) {: code:n :}
+   s" gate-pool-orphan-test: a child ended on throw " type code .
+   GPO-REFUSED-RC GPO-EXIT ;
+
+\ True when the wait status is a kill; a child that exited is reported.
+: GPO-KILLED? ( n -- bool )
+   PROC-STATUS>OUTCOME MATCH outcome
+     exited OF
+        s" gate-pool-orphan-test: a child exited before it was killed, code " type .
+        false
+     ENDOF
+     signaled OF drop true ENDOF
+     timeout OF false ENDOF
+   ;MATCH ;
+
 \ ---- test topology ----------------------------------------------------------
 \ P: hold only WR and idle until SIGKILLed; its death is the trigger.
 : GPO-PARENT ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
@@ -56,12 +77,19 @@ create GPO-SLEEP-PFD 8 allot
    GPO-IDLE
    0 GPO-EXIT ;
 
+\ Stack-preserving under catch: the two watched fds are the quotation's window.
+: GPO-ARM ( fd fd -- fd fd ) {: rd:fd wa:fd :}
+   rd wa PROC-FORK:FORK-REAPER
+   rd wa ;
+
 \ W: become its own group leader, create a worker-alive pipe, arm the production
 \ reaper on both death watches, keep only the write ends, and idle.
 : GPO-WORKER ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
    0 >PID 0 >PID PROC-FORK:SET-PGID drop
    PROC-FORK:DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
-   rd wa-rd PROC-FORK:FORK-REAPER
+   rd wa-rd [: GPO-ARM ;] catch {: arm:n :}
+   2drop
+   arm 0<> if arm GPO-REFUSED then
    rd FD>N close
    wr FD>N close
    wa-rd FD>N close
@@ -83,9 +111,9 @@ create GPO-SLEEP-PFD 8 allot
 : GPO-RUN ( -- bool )
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
    PIPE-PAIR {: ar:fd aw:fd :}
-   PROC-FORK:RAW {: ppid:pid :}
+   PROC-FORK:CHECKED {: ppid:pid :}
    ppid PID>N 0= if rd wr ar aw GPO-PARENT then
-   PROC-FORK:RAW {: wpid:pid :}
+   PROC-FORK:CHECKED {: wpid:pid :}
    wpid PID>N 0= if rd wr ar aw GPO-WORKER then
    rd FD>N close
    wr FD>N close
@@ -95,7 +123,7 @@ create GPO-SLEEP-PFD 8 allot
    ppid PROC-WAIT-STATUS drop
    ar GPO-OBSERVE-DEAD?
    wpid SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROC-WAIT-STATUS drop
+   wpid PROC-WAIT-STATUS GPO-KILLED? and
    ar FD>N close ;
 
 \ ---- spawned-child co-located reaper (PROC-FORK:SPAWN-REAPER, live mechanism) -----
@@ -122,16 +150,31 @@ create GPO-SLEEP-PFD 8 allot
    GPO-IDLE
    0 GPO-EXIT ;
 
+\ Stack-preserving under catch: the watched fd and the child are the window.
+: GSR-ARM ( fd pid -- fd pid ) {: rd:fd cpid:pid :}
+   rd cpid PROC-FORK:SPAWN-REAPER drop
+   rd cpid ;
+
+\ No reaper watches C once P's arm is refused, so P ends C before it exits.
+: GSR-REFUSED ( n pid -- ) {: code:n cpid:pid :}
+   cpid SIGKILL PROC-KILL-RAW drop
+   cpid PROC-WAIT-STATUS-RAW drop
+   code GPO-REFUSED ;
+
 \ P: fork the hanging child, make it its own group leader (deterministically,
 \ before arming so the reaper's setpgid join always succeeds), drop the alive
 \ pipe, arm the co-located reaper, keep only WR, and idle until T SIGKILLs it.
+\ A refused fork of C ends P first: a negative pid must never reach the kill.
 : GSR-PARENT ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
    PROC-FORK:RAW {: cpid:pid :}
+   cpid PID>N 0 < if E-PROC-SPAWN GPO-REFUSED then
    cpid PID>N 0= if rd wr ar aw GSR-CHILD then
    cpid cpid PROC-FORK:SET-PGID drop
    ar FD>N close
    aw FD>N close
-   rd cpid PROC-FORK:SPAWN-REAPER drop
+   rd cpid [: GSR-ARM ;] catch {: arm:n :}
+   2drop
+   arm 0<> if arm cpid GSR-REFUSED then
    rd FD>N close
    GPO-IDLE
    0 GPO-EXIT ;
@@ -139,15 +182,15 @@ create GPO-SLEEP-PFD 8 allot
 : GSR-RUN ( -- bool )
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
    PIPE-PAIR {: ar:fd aw:fd :}
-   PROC-FORK:RAW {: ppid:pid :}
+   PROC-FORK:CHECKED {: ppid:pid :}
    ppid PID>N 0= if rd wr ar aw GSR-PARENT then
    rd FD>N close
    wr FD>N close
    aw FD>N close
    GPO-SETTLE-MS GPO-SLEEP
    ppid SIGKILL PROC-KILL-RAW drop
-   ppid PROC-WAIT-STATUS drop
-   ar GPO-OBSERVE-DEAD?
+   ppid PROC-WAIT-STATUS GPO-KILLED?
+   ar GPO-OBSERVE-DEAD? and
    ar FD>N close ;
 
 \ ---- capture-spawn reaper (PROC-REAP-ARM seam, live mechanism) ---------------
@@ -188,6 +231,14 @@ variable GCR-LPID   variable GCR-RPID
    s" -c" >LEN PROC-ARGV+
    s" :" >LEN PROC-ARGV+ ;
 
+\ Spawn the quiet leaf through the real capture seam, which arms its reaper
+\ when the watch fd is set.
+: GCR-SPAWN-LEAF ( -- )
+   GCR-SLEEP-ARGV
+   s" /bin/sh" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   GCR-HANG-MS >MS PROC-CAPTURE-BEGIN
+   pathz argv PROC-SPAWN-ARGV-CAPTURE ;
+
 \ W: arm (or not), spawn the quiet leaf through the real capture seam, report
 \ the leaf + reaper pids, and idle mid-capture until T kills the group. The
 \ control arm EXPLICITLY clears the watch fd: under the gate this test runs
@@ -202,10 +253,8 @@ variable GCR-LPID   variable GCR-RPID
    else
       -1 PROC-FORK:REAP-WATCH-FD !
    then
-   GCR-SLEEP-ARGV
-   s" /bin/sh" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   GCR-HANG-MS >MS PROC-CAPTURE-BEGIN
-   pathz argv PROC-SPAWN-ARGV-CAPTURE
+   [: GCR-SPAWN-LEAF ;] catch {: arm:n :}
+   arm 0<> if arm GPO-REFUSED then
    PROC-PID @ GCR-PID-BUF !
    PROC-REAP-PID @ GCR-PID-BUF 8 + !
    pp-wr FD>N GCR-PID-BUF 16 write drop
@@ -213,10 +262,12 @@ variable GCR-LPID   variable GCR-RPID
    GPO-IDLE
    0 GPO-EXIT ;
 
-: GCR-READ-PIDS ( fd -- ) {: pp-rd:fd :}
-   pp-rd FD>N GCR-PID-BUF 16 read 16 <> if E-PROC-OUTPUT throw then
+\ False when W ended before it reported its pids.
+: GCR-READ-PIDS ( fd -- bool ) {: pp-rd:fd :}
+   pp-rd FD>N GCR-PID-BUF 16 read 16 <> if false exit then
    GCR-PID-BUF @ GCR-LPID !
-   GCR-PID-BUF 8 + @ GCR-RPID ! ;
+   GCR-PID-BUF 8 + @ GCR-RPID !
+   true ;
 
 : GCR-DEAD? ( n -- bool ) {: lpid:n :}
    lpid >PID 0 PROC-KILL-RAW RC>N 0 < ;
@@ -229,25 +280,26 @@ variable GCR-LPID   variable GCR-RPID
    repeat drop 1 0= ;
 
 \ Fork W (armed or control), harvest the reported pids, then SIGKILL W's group
-\ mid-capture and wait it -- the trigger both cases observe from.
-: GCR-LAUNCH ( n -- ) {: armed:n :}
+\ mid-capture and wait it -- the trigger both cases observe from. True when W
+\ reported its pids and ran until that kill.
+: GCR-LAUNCH ( n -- bool ) {: armed:n :}
    PIPE-PAIR {: pp-rd:fd pp-wr:fd :}
-   PROC-FORK:RAW {: wpid:pid :}
+   PROC-FORK:CHECKED {: wpid:pid :}
    wpid PID>N 0= if pp-rd pp-wr armed GCR-WORKER then
    pp-wr FD>N close
    pp-rd GCR-READ-PIDS
    pp-rd FD>N close
    GPO-SETTLE-MS GPO-SLEEP
    wpid SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROC-WAIT-STATUS drop ;
+   wpid PROC-WAIT-STATUS GPO-KILLED? and ;
 
 : GCR-ARMED? ( -- bool bool )   \ ( -- reaper-armed leaf-reaped )
-   1 GCR-LAUNCH
+   1 GCR-LAUNCH 0= if false false exit then
    GCR-RPID @ 0 >
    GCR-LPID @ GCR-OBSERVE-DEAD? ;
 
 : GCR-CONTROL? ( -- bool bool )   \ ( -- no-reaper leaf-survived ) + cleanup
-   0 GCR-LAUNCH
+   0 GCR-LAUNCH 0= if false false exit then
    GCR-RPID @ 0 <
    GPO-SETTLE-MS GPO-SLEEP
    GCR-LPID @ GCR-DEAD? 0=

@@ -344,7 +344,8 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
 \ worker's worker-alive read end; lib/process-fork.f installs the live vector)
 \ arm a co-located reaper for the just-spawned capture child so the child's
 \ whole group dies with the arming process instead of orphan-lingering. The
-\ default vector arms nothing and returns PROC-NO-PID.
+\ default vector arms nothing and returns PROC-NO-PID. A vector that cannot
+\ arm the reaper it owes throws, and PROC-CAPTURE-PID! refuses the capture.
 \ The reaper is a DIRECT child of this process; every capture-termination path
 \ disarms it (kill + wait by its specific pid), so no reaper outlives its
 \ capture and no wait(-1) caller ever sees a stray child.
@@ -357,10 +358,6 @@ defer PROC-REAP-ARM ( pid -- pid )
 : PROC-REAP-ARM-DEFAULT ( -- )
    [: PROC-REAP-ARM-OFF ;] is PROC-REAP-ARM ;
 PROC-REAP-ARM-DEFAULT
-
-: PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
-   pid PID>N PROC-PID !
-   pid PROC-REAP-ARM PID>N PROC-REAP-PID ! ;
 
 : PROC-REAP-DISARM ( -- )
    PROC-REAP-PID @ dup 0 > if
@@ -443,6 +440,16 @@ PROC-REAP-ARM-DEFAULT
    PROC-KILL-CAPTURE
    PROC-CLOSE-ALL-CAPTURE-FDS
    code throw ;
+
+\ Adopt pid as this task's capture child and arm its reaper. A refused arm
+\ refuses the capture: the child is killed and reaped and the capture
+\ descriptors closed before the code goes on, so no capture child runs
+\ unwatched.
+: PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
+   pid PID>N PROC-PID !
+   pid [: PROC-REAP-ARM ;] catch {: rpid code:n :}
+   code 0= if rpid PID>N PROC-REAP-PID ! exit then
+   code PROC-THROW-CAPTURE ;
 
 : PROC-OPEN-PIPE ( ptr n ptr n -- ) {: rp:ptr wp:ptr :}
    pipe {: r w rc :}
