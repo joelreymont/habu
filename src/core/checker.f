@@ -20044,9 +20044,40 @@ package CHECKER-REG
    ba bu sa su CHECK-DOES-RUN
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
 
-: CHECKER-SOURCE-DOES! {: ba bu sa su :}
+\ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
+\ body itself and the engine's callers of CHECK-DOES! report a refused clause
+\ their own way (src/habu/habu2.f C-DIE-DOES), but nothing after this entry
+\ does, so a clause it refused ended tools/check.f's pre-pass with no
+\ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
+\ is quiet, and a rejection counted in a multi-error load, under the name of the
+\ record the clause publishes - the definer's, folded as a definition's name
+\ is, with the companion suffix (src/habu/habu2.f SUF-LEN). An uncheckable
+\ clause is rendered here too: CHECK leaves that verdict to its callers outside
+\ JSON, and the pre-pass renders nothing of its own for a clause.
+: DOES-SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+
+: DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu TOKFOLD drop
+   TKF NMB nu CCOPY
+   DOES-SUFFIX$ {: sa:ptr su:n :}
+   sa NMB nu + su CCOPY
+   NMB NMA !  nu su + NMU ! ;
+
+: DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
+   v -1 = v 2 = or IF v EXIT THEN
+   na nu DOES-NAME!
+   DIAG-QUIET @ 0= IF DIAGXT THEN
+   v 0 = MULTI-ERR? and IF 1 MULTI-ERR-N +! THEN
+   v ;
+
+\ The name is written after the scan, so the token buffers are sized for it
+\ first: growing them afterwards would drop the refused token being reported.
+: CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
+   nu DOES-SUFFIX$ nip + TOKBUF-ENSURE
    ba bu sa su CHECK-DOES-RUN
-   DOES-EFF-CLEAR ;
+   DOES-EFF-CLEAR
+   na nu DOES-REPORT ;
 
 \ Native compilation scans the parent first to keep the observer tape in source
 \ order. Its accepted clause therefore arrives after the parent's effect record.

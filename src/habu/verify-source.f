@@ -351,7 +351,7 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 TRUSTED: SYM-ACTION ( n -- [ ptr u8 n -- n ] ) ;
 TRUSTED: CREATES-ACTION ( n -- [ n -- n ] ) ;
 TRUSTED: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] ) ;
-TRUSTED: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n -- n ] ) ;
+TRUSTED: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] ) ;
 
 TRUSTED: RECORD-SYM? ( ptr u8 n -- n )
    CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
@@ -502,12 +502,13 @@ variable DEFINER-N
 \ checked and recorded, so the checker must not latch the created effect here -
 \ the next record belongs to the next definition. What this scan learns about a
 \ definer it READ goes into the table above instead (src/core/checker.f
-\ CHECKER-SOURCE-DOES! carries the reason).
-TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
+\ CHECKER-SOURCE-DOES! carries the reason). It takes the definer's name, which
+\ names the clause in the diagnostic of a refused one.
+TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
    CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
-: VERIFY-DOES-BODY ( ptr u8 n -- n ) {: sig:ptr sigu:n :}
-   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY BODY-VERDICT ;
+: VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
+   BODY-BUF BODY-U @ sig sigu na nu CHECK-DOES-BODY BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
@@ -619,7 +620,8 @@ variable WRAP-SIG-U
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
       BODY-U @ 0= if TOKEN-ORIGIN! then
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
-         sig sigu VERIFY-DOES-BODY 0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
+         sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
+         0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
       THEN
       APPEND-BODY-TOKEN
    AGAIN ;

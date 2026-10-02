@@ -1393,11 +1393,14 @@ variable LONG-J
 \ A definer's created effect is its clause's declaration, so CKR-X is learned
 \ when the clause or the definer's own body names a product only the run can
 \ see, and a clause that misuses one is still refused, by the run.
-: CKR-DOES$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pre:ptr preu:n clause:ptr clauseu:n :}
-   SB-RESET s" package CKR-A public " SB-APPEND CKR-FIXTURE+
+: CKR-DEFR+ ( ptr u8 n ptr u8 n -- ) {: pre:ptr preu:n clause:ptr clauseu:n :}
+   s" package CKR-A public " SB-APPEND CKR-FIXTURE+
    s" ;package : CKR-DEFR ( n -- ) " SB-APPEND pre preu SB-APPEND
    s"  create , does> ( -- n ) @ " SB-APPEND clause clauseu SB-APPEND
-   s"  ; 5 CKR-DEFR CKR-X : CKR-U ( -- n ) CKR-X ;" SB-APPEND SB$ ;
+   s"  ; 5 CKR-DEFR CKR-X" SB-APPEND ;
+
+: CKR-DOES$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   SB-RESET CKR-DEFR+ s"  : CKR-U ( -- n ) CKR-X ;" SB-APPEND SB$ ;
 
 : RENDER-DOES-CLAUSE$ ( -- ptr u8 n )
    s" " s" CKR-A:CKR-SEVEN +" CKR-DOES$ ;
@@ -1412,6 +1415,58 @@ variable LONG-J
    RENDER-DOES-CLAUSE$ DIRECT-STDIN EXPECT-ACCEPTED
    RENDER-DOES-DEFINER$ DIRECT-STDIN EXPECT-ACCEPTED
    RENDER-DOES-BAD$ DIRECT-STDIN s" does>" EXPECT-RUN-REFUSED ;
+
+\ A clause the pre-pass refuses is reported as a refused body is: by the name of
+\ the record it would publish, the definer's with `;does`, the code, the token
+\ and the place, in every output mode, whether the definer's own body certified
+\ or was left to the run, and whether the created word is used or not. Each
+\ check is a child process, as the command line runs it: a second in-process
+\ check of the same refused source that renders a package's words reports
+\ them undefined instead of leaving them to the run.
+: CLAUSE-PLAIN$ ( -- ptr u8 n )
+   s" : CKR-DEFR ( n -- ) create , does> ( -- n ) @ dup ; 5 CKR-DEFR CKR-X : CKR-U ( -- n ) CKR-X ;" ;
+
+: CLAUSE-RENDERED-USED$ ( -- ptr u8 n )
+   s" CKR-A:CKR-SEVEN +" s" dup" CKR-DOES$ ;
+
+: CLAUSE-RENDERED-UNUSED$ ( -- ptr u8 n )
+   SB-RESET s" CKR-A:CKR-SEVEN +" s" dup" CKR-DEFR+ SB$ ;
+
+: CLAUSE-PLAIN-AT$ ( -- ptr u8 n )
+   s\" \"line\":1,\"column\":47,\"byte_start\":46,\"byte_end\":49" ;
+
+: CLAUSE-RENDERED-AT$ ( -- ptr u8 n )
+   s\" \"line\":1,\"column\":170,\"byte_start\":169,\"byte_end\":172" ;
+
+: CLI-FLAG-STDIN ( ptr u8 n ptr u8 n -- n n n ) {: src:ptr srcu:n flag:ptr flagu:n :}
+   CHECK-ARGV-START
+   flag flagu CHECK-ARG+
+   src srcu CHECK-STDIN-CAPTURE ;
+
+: EXPECT-CLAUSE-JSON ( n n ptr u8 n -- ) {: outu:n erru:n at:ptr atu:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"ckr-defr;does\",\"token\":\"dup\"" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: EXPECT-CLAUSE-PROSE ( n n n -- )
+   70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" habu: in ckr-defr;does: at 'dup'" CONTAINS? TTRUE
+   CAP-ERR erru s" preverify failed" CONTAINS? TFALSE ;
+
+: EXPECT-CLAUSE-REFUSED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n at:ptr atu:n :}
+   src srcu CLI-STDIN 70 T= {: outd:n errd:n :}
+   outd errd at atu EXPECT-CLAUSE-JSON
+   CAP-ERR errd s" preverify failed" CONTAINS? TTRUE
+   src srcu s" --json-errors" CLI-FLAG-STDIN 70 T= {: outj:n errj:n :}
+   outj errj at atu EXPECT-CLAUSE-JSON
+   src srcu s" --all-errors" CLI-FLAG-STDIN EXPECT-CLAUSE-PROSE ;
+
+: TEST-REFUSED-CLAUSE ( -- )
+   CLAUSE-PLAIN$ CLAUSE-PLAIN-AT$ EXPECT-CLAUSE-REFUSED
+   CLAUSE-RENDERED-USED$ CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED
+   CLAUSE-RENDERED-UNUSED$ CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED ;
 
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
@@ -4016,6 +4071,7 @@ POISON-RECORD
    s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
    s" check/rendered-product" [: TEST-RENDERED-PRODUCT ;] CASE-RUN
    s" check/rendered-does" [: TEST-RENDERED-DOES ;] CASE-RUN
+   s" check/refused-clause" [: TEST-REFUSED-CLAUSE ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
