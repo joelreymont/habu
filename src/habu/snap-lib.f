@@ -558,9 +558,20 @@ variable STAGED-U
 
 TRUSTED: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + @ ;
 
+: DATA-SET? ( n -- bool ) data-base + @ 0<> ;
+
+\ Compiler state is zero at rest. Each cell here is set only while a definition
+\ compiles, which includes an immediate running inside its body: the
+\ control-flow and BEGIN-snapshot depths, the record being built (PEND-CELL),
+\ the innermost open quotation (QPATCH-CELL) and the count of enclosing ones
+\ parked under it (JIT-QUOT). An image captured with any of them set holds a
+\ half-built definition.
 : VERIFY-QUIESCENT ( -- )
    CF-DEPTH 0<>
-   data-base JIT-SNAP:SP-CELL + @ 0<> or if
+   JIT-SNAP:SP-CELL DATA-SET? or
+   PEND-CELL DATA-SET? or
+   QPATCH-CELL DATA-SET? or
+   JIT-QUOT:SP-CELL DATA-SET? or if
       s" snap: active compiler state at capture" 74 die
    then ;
 

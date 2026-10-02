@@ -1,8 +1,8 @@
 \ Application-image writer behavior through APP-IMAGE:SAVE: transient return
 \ frames are cleared, protected namespaces survive restore, corrupt images
 \ fail closed, an output that cannot be opened is refused by name and creates
-\ nothing, and a failed final close is reported and leaves the output path as
-\ it was.
+\ nothing, a failed final close is reported and leaves the output path as it
+\ was, and a capture with a definition or quotation open is refused.
 require lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -209,9 +209,10 @@ variable IMGU
 
 \ The fixture is loaded on the keyed host with the saver already loaded
 \ (test/app-image-engine.f), which starts at tier 0 where app-image.f set tier 1.
-\ `load` names the word that loads it: `require`, or `include`.
-: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
+\ `load` names the word that loads it: `require`, or `include`. `rest` follows
+\ on stdin, where a capture must run: one inside a load is refused.
+: BUILD-RUNNING-TO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n rest:ptr restu:n :}
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
@@ -220,11 +221,16 @@ variable IMGU
    SB-RESET
    s\" 1 set-tier\n" SB-APPEND
    load loadu SB-APPEND  s"  " SB-APPEND
-   fixture size SB-APPEND
-   s\" \n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   fixture size SB-APPEND  s\" \n" SB-APPEND
+   rest restu SB-APPEND
    host hostu >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
+
+: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
+   target targetu load loadu fixture size
+   s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" BUILD-RUNNING-TO ;
 
 : BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n fixture:ptr size:n :}
@@ -842,6 +848,42 @@ variable STRAYS
    ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
    SHADOW-SNAP$ EXISTS? TFALSE ;
 
+\ ---- live compiler state refuses capture -----------------------------------
+: ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
+: QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
+
+\ `rest` reaches SNAP-WRITER-ACTIVE:SAVE, an immediate that saves.
+: ACTIVE-BUILD ( ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n rest:ptr restu:n :}
+   target targetu s" require" s" test/snapshot-writer-active.f" rest restu
+   BUILD-RUNNING-TO ;
+
+: ACTIVE-REFUSED ( ptr u8 n -- ) {: rest:ptr restu:n :}
+   ACTIVE-SNAP$ rest restu ACTIVE-BUILD
+   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
+   RC @ 74 T=
+   ERR$ s" snap: active compiler state at capture" CONTAINS? TTRUE
+   ACTIVE-SNAP$ EXISTS? TFALSE ;
+
+\ Tier 1 compiles a definition as one unit, so only its pending record is live
+\ when the immediate runs. Tier 0 also holds the innermost open quotation and
+\ parks each enclosing one; its code has no native provenance either, so the
+\ rc and the message show the quiescence check refuses before that one does.
+: ACTIVE-CASE ( -- )
+   QUIESCENT-SNAP$ s\" SNAP-WRITER-ACTIVE:SAVE\n" ACTIVE-BUILD
+   s" a capture from the immediate with nothing open saves" T-LABEL
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
+   RC @ 0 T=
+   QUIESCENT-SNAP$ EXISTS? TTRUE
+   s" a capture with a definition open is refused" T-LABEL
+   s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
+   s" a capture with a quotation open is refused" T-LABEL
+   s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
+   ACTIVE-REFUSED
+   s" a capture with an enclosing quotation parked is refused" T-LABEL
+   s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;] drop ;\n"
+   ACTIVE-REFUSED ;
+
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
@@ -852,6 +894,7 @@ variable STRAYS
    OPEN-FAIL-CASE
    REPLACE-FAIL-CASE
    SHADOW-CASE
+   ACTIVE-CASE
    IMG IMGU @ munmap drop ;
 
 public
