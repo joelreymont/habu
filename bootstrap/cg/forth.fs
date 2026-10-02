@@ -462,7 +462,6 @@ create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
 create QNL-KW 63 c, 10 c,       \ ?\n  (REPL reject)
-create CAPNL-KW 10 c,           \ \n  (capacity-exit diagnostic terminator)
 create OKS-KW 32 c, 111 c, 107 c, 10 c,   \ \x20ok\n (REPL accept)
 create BADTAG-SFX-KW 32 c, 116 c, 97 c, 103 c, 10 c,   \ " tag\n" for the MATCH bad-tag die
 create TICK-KW   39 c,          \ '  (0x27)
@@ -5989,7 +5988,7 @@ variable CFSK2
    LBL LBL LBL {: ndok msg full :}
    9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
    full B,
-   msg LBL,  s" hb: dictionary full at: " BYTES,  CAPNL-KW 1 BYTES,
+   msg LBL,  S\" hb: dictionary full at: \n" BYTES,
    full LBL,
       0 2 MOVZ,  1 msg ADR,  2 24 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,

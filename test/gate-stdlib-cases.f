@@ -712,6 +712,10 @@ SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
 
+SUITE native-quote-forward
+   test/native-quote-forward-e2e.f
+;SUITE
+
 SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE

@@ -320,21 +320,12 @@ variable VFY-PATH-U
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
-\ Every file of the closure but the subject is the child's to verify, in
-\ order, except another target's layout.
-: VFY-DEP-ARG+ ( n -- ) {: id:n :}
-   id CHK-BYTES-ID @ = if exit then
-   id CHK-DEP-LOADABLE? 0= if exit then
-   id CHK-DEP$ CHK-ARG+ ;
-
-
 : VFY-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+
    VFY-CHILD$ CHK-ARG+
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
-   CHK-DEP-ORDER-N @ 0 ?do i cells CHK-DEP-ORDER + @ VFY-DEP-ARG+ loop
    PROC-ENV-INHERIT-MISSING ;
 
 

@@ -37,6 +37,28 @@ PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 create BODY-BUF BODYBUF-CAP allot
 
+\ Composition is a fixed scanner operation. The subject stays pinned across
+\ nested loads so a require back to it observes these bytes, and an include of
+\ it scans these bytes again.
+variable COMPOSE-ON
+PTR-VARIABLE COMPOSE-SUBJ-A
+variable COMPOSE-SUBJ-U
+create COMPOSE-SUBJ-PATH PATH-CAP allot
+variable COMPOSE-SUBJ-PATH-U
+create COMPOSE-SUBJ-LABEL PATH-CAP allot
+variable COMPOSE-SUBJ-LABEL-U
+PTR-VARIABLE COMPOSE-CUR-PATH-A
+variable COMPOSE-CUR-PATH-U
+PTR-VARIABLE COMPOSE-PEND-A
+variable COMPOSE-PEND-U
+PTR-VARIABLE COMPOSE-PEND-PATH-A
+variable COMPOSE-PEND-PATH-U
+variable COMPOSE-REQ0
+create COMPOSE-STOP-PATH PATH-CAP allot
+variable COMPOSE-STOP-U
+
+defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
+
 : SOURCE@ ( -- ptr u8 )
    SOURCE-A @ ;
 
@@ -976,6 +998,71 @@ PTR-VARIABLE STG-START
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
+\ The core resolver answers the canonical path and require-known state. A
+\ require publishes that path before descending, so recursive requires stop at
+\ the same point as the native loader. An include always descends.
+: COMPOSE-PENDING ( -- )
+   COMPOSE-PEND-A @ COMPOSE-PEND-U @
+   COMPOSE-PEND-PATH-A @ COMPOSE-PEND-PATH-U @ COMPOSE-FILE ;
+
+TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
+
+: COMPOSE-LOADED ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n path:ptr pathu:n :}
+   a COMPOSE-PEND-A !  u COMPOSE-PEND-U !
+   path COMPOSE-PEND-PATH-A !  pathu COMPOSE-PEND-PATH-U !
+   [: COMPOSE-PENDING ;]
+   CHECKER-OWNER-ABI:VERIFY-FILE-OFF OWNER-XT FILE-ACTION execute ;
+
+: COMPOSE-OPEN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
+      path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+      [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
+   THEN
+   path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
+
+: COMPOSE-INCLUDED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
+
+: COMPOSE-REQUIRED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE {: path:ptr pathu:n known:bool :}
+   known IF EXIT THEN
+   path pathu REQUIRE-STORE
+   path pathu COMPOSE-OPEN ;
+
+: COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
+   SOURCE-ROOT:ENTRY-RESOLVE {: path:ptr pathu:n known:bool :}
+   known IF EXIT THEN
+   path pathu REQUIRE-STORE
+   path pathu COMPOSE-OPEN ;
+
+: COMPOSE-PROVIDED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE ;
+
+: COMPOSE-STRING-PATH ( -- ptr u8 n )
+   STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
+   STR-LAST-A @ STR-LAST-U @ ;
+
+: COMPOSE-RAW-PATH ( -- ptr u8 n )
+   NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
+
+: COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
+      COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT
+   THEN
+   path pathu ;
+
+: COMPOSE-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
+   a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
+   a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
+   0 0= 0= ;
+
 \ A package primitive row has two closers, and this verifier models them exactly
 \ as the source lexer does:
 \ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
@@ -1137,15 +1224,64 @@ PTR-VARIABLE STG-START
       NEXT-SCAN dup 0 > WHILE
       2dup TOP-CUR-U ! TOP-CUR-A !
       2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
-      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+      2dup COMPOSE-TOP? IF 2drop ELSE
+      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop ;
+
+\ Nested files share the checker window but not the scanner cursor. The saved
+\ source and token context belongs to the caller; declarations and learned
+\ definers belong to the entire composition.
+: COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n :}
+   path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
+   SOURCE-A @ SOURCE-U @ SCAN-I @ LINE-N @ LINE-START @
+   BASE-LINE @ BASE-COL @ BASE-BYTE @
+   TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
+   {: olda:ptr oldu:n oldi:n oldln:n oldls:n oldbl:n oldbc:n oldbb:n
+      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n oldpath:ptr oldpathu:n :}
+   src srcu SOURCE!
+   path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
+   diag diagu DIAG-FILE!
+   [: VERIFY-SOURCE ;] catch {: rc:n :}
+   rc 0<> COMPOSE-STOP-U @ 0= and IF
+      diag COMPOSE-STOP-PATH diagu BYTE-COPY
+      diagu COMPOSE-STOP-U !
+   THEN
+   olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
+   oldln LINE-N !  oldls LINE-START !
+   oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
+   oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
+   oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
+   oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
+   oldpathu 0 > IF oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE! THEN
+   rc 0<> IF rc throw THEN ;
+
+: COMPOSE-INIT ( -- )
+   [: COMPOSE-FILE-SCAN ;] is COMPOSE-FILE ;
+
+COMPOSE-INIT
 
 : THROW-RESULT ( n -- )
    dup 0= IF drop exit THEN
    throw ;
 
 TRUSTED: VERIFIER-ACTION ( n -- [ -- ] ) ;
+
+: COMPOSE-SUBJECT ( -- )
+   COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ COMPOSE-FILE ;
+
+TRUSTED: RUN-COMPOSE ( -- )
+   CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
+   [: COMPOSE-SUBJECT ;] catch
+   CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
+   THROW-RESULT ;
+
+: COMPOSE-WITH-ROOT ( -- )
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ SOURCE-ROOT:DIRNAME
+   [: RUN-COMPOSE ;] SOURCE-ROOT:WITH ;
 
 TRUSTED: RUN ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
@@ -1154,6 +1290,37 @@ TRUSTED: RUN ( -- )
    THROW-RESULT ;
 
 public
+
+\ Verify one supplied source through loader composition at each top-level
+\ loader token. The registry suffix and the caller's checker scope survive both
+\ success and throw; the supplied bytes remain authoritative for this path.
+: SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+   COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
+   pathu 0= pathu PATH-CAP > or labelu PATH-CAP > or IF E-PATH-RANGE throw THEN
+   path COMPOSE-SUBJ-PATH pathu BYTE-COPY
+   pathu COMPOSE-SUBJ-PATH-U !
+   label COMPOSE-SUBJ-LABEL labelu BYTE-COPY
+   labelu COMPOSE-SUBJ-LABEL-U !
+   src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
+   NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
+   0 COMPOSE-STOP-U !
+   REQUIRE-REG:COUNT COMPOSE-REQ0 !
+   COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
+      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE
+   THEN
+   -1 COMPOSE-ON !
+   [: COMPOSE-WITH-ROOT ;] catch {: rc:n :}
+   0 COMPOSE-ON !
+   COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
+   rc 0<> IF rc throw THEN ;
+
+: SOURCE-COMPOSE-IN-SCOPE ( ptr u8 n ptr u8 n -- )
+   2dup SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: SOURCE-COMPOSE-STOPPED$ ( -- ptr u8 n )
+   COMPOSE-STOP-U @ 0 > IF COMPOSE-STOP-PATH COMPOSE-STOP-U @ EXIT THEN
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ ;
 
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!

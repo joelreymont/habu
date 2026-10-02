@@ -644,23 +644,23 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSNAPUNIT LABEL@ LBL, SNAP-UNIT$ BYTES,
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
    LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE appends the definition and a newline
-   LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
-   LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
-   RELOC-EMIT:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
+   LSNAPBAD LABEL@ LBL, S\" hb: snapshot trailer corrupt\n" BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
+   LSNAPVER LABEL@ LBL, S\" hb: snapshot format version unsupported\n" BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
+   RELOC-EMIT:LCALLMSG LABEL@ LBL, S\" hb: snapshot call map mismatch\n" BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
    RELOC-EMIT:EMIT-FULL-MESSAGE
-   RELOC-EMIT:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ RELOC-EMIT:ADDRMSG-LEN bytes incl. newline
-   RELOC-EMIT:LXTBANDMSG LABEL@ LBL, s" hb: snapshot address cell out of range" BYTES,  NL-KW 1 BYTES,  \ RELOC-EMIT:XTBANDMSG-LEN bytes incl. newline
-   RELOC-EMIT:LXTKINDMSG LABEL@ LBL, s" hb: snapshot address cell kind mismatch" BYTES,  NL-KW 1 BYTES,  \ RELOC-EMIT:XTKINDMSG-LEN bytes incl. newline
-   LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
-   LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
+   RELOC-EMIT:LADDRMSG LABEL@ LBL, S\" hb: snapshot address map mismatch\n" BYTES,   \ RELOC-EMIT:ADDRMSG-LEN bytes incl. newline
+   RELOC-EMIT:LXTBANDMSG LABEL@ LBL, S\" hb: snapshot address cell out of range\n" BYTES,  \ RELOC-EMIT:XTBANDMSG-LEN bytes incl. newline
+   RELOC-EMIT:LXTKINDMSG LABEL@ LBL, S\" hb: snapshot address cell kind mismatch\n" BYTES,  \ RELOC-EMIT:XTKINDMSG-LEN bytes incl. newline
+   LSRCFULL LABEL@ LBL, S\" hb: source prefix buffer full\n" BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
+   LSRCREAD LABEL@ LBL, S\" hb: cannot read source\n" BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,                                       \ BADSTR-MSG-LEN bytes, no newline (LCOMPILEDIE tail appends the location + newline)
    LATMSG   LABEL@ LBL, s"  at " BYTES,                                                         \ ATMSG-LEN bytes
    LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
    LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject: " BYTES,                          \ PROTAOT-MSG-LEN bytes; EM-AOTWIDGATE appends the callee name + newline
-   LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
-   LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
-   LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES,             \ BLRANGE-MSG-LEN bytes incl. newline
-   LADDSUBBIG LABEL@ LBL, s" hb: transfer immediate out of range" BYTES,  NL-KW 1 BYTES, ;     \ ADDSUBBIG-MSG-LEN bytes incl. newline
+   LMMAPCODE LABEL@ LBL, S\" hb: cannot map fixed code region\n" BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
+   LMMAPDATA LABEL@ LBL, S\" hb: cannot map fixed data region\n" BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
+   LBLRANGE LABEL@ LBL, S\" hb: code region out of BL range\n" BYTES,             \ BLRANGE-MSG-LEN bytes incl. newline
+   LADDSUBBIG LABEL@ LBL, S\" hb: transfer immediate out of range\n" BYTES, ;     \ ADDSUBBIG-MSG-LEN bytes incl. newline
 
 \ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
 \ The single call-emit primitive for every statically known native call — dictionary words
@@ -5749,7 +5749,7 @@ public
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES, ;
+   msg LBL,  S\" hb: AOT wid outside the capture window\n" BYTES, ;
 
 : EM-AOT-REGISTER-RECS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -5878,7 +5878,7 @@ public
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES,
+   msg LBL,  S\" hb: AOT wid outside the capture window\n" BYTES,
    finish LBL, ;
 
 \ Validate the baked name pool and mark true entry offsets in a boot-owned
@@ -5941,7 +5941,7 @@ public
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-NAMED-SITES ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   s" hb: AOT call site unresolved"  s" hb: AOT call site target is outside this dictionary"
+   S\" hb: AOT call site unresolved\n"  S\" hb: AOT call site target is outside this dictionary\n"
    {: ploop:label pdone:label pnf:label pnomark:label
       pqual:label pscope:label pgate:label pbad:label
       pname:label prec:label pbound:label ppatch:label
@@ -6018,13 +6018,13 @@ public
       pnomark LBL,
       21 21 SITE-ROW ADDI,  22 22 1 ADDI,  ploop B,
    pnf LBL,
-      1 nfmsg ADR,  0 2 MOVZ,  2 nfu 1+ MOVZ,  NR-WRITE SYS,
+      1 nfmsg ADR,  0 2 MOVZ,  2 nfu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   nfmsg LBL,  nfa nfu BYTES,  NL-KW 1 BYTES,        \ unreachable: the leg above exit_groups
+   nfmsg LBL,  nfa nfu BYTES,                         \ unreachable: the leg above exit_groups
    pbad LBL,
-      1 badmsg ADR,  0 2 MOVZ,  2 badu 1+ MOVZ,  NR-WRITE SYS,
+      1 badmsg ADR,  0 2 MOVZ,  2 badu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   badmsg LBL,  bada badu BYTES,  NL-KW 1 BYTES,
+   badmsg LBL,  bada badu BYTES,
    pdone LBL, ;
 
 \ Complete-runtime blobs land immediately after the dictionary. Their BLs
@@ -6119,7 +6119,7 @@ public
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 30 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT call metadata corrupt" BYTES,  NL-KW 1 BYTES,
+   msg LBL,  S\" hb: AOT call metadata corrupt\n" BYTES,
    done LBL, ;
 
 \ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
@@ -6335,7 +6335,7 @@ public
    5 7 CMP,  C-LS ok BCOND,                         \ span <= headroom -> ok; else fall into the boot die
       1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
+   msg LBL,  S\" hb: AOT data span out of range\n" BYTES,
    ok LBL,
    AOT-WINDOW:ZERO-SPAN                             \ the span, decided rather than inherited
    AOT-WINDOW:APPLY-CELLS                           \ ... and the window's own present cells
@@ -6418,7 +6418,7 @@ public
    corrupt LBL,
       1 badmsg ADR, 0 2 MOVZ, 2 25 MOVZ, NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ, NR-EXIT-GROUP SYS,
-   badmsg LBL, s" hb: AOT metadata corrupt" BYTES, NL-KW 1 BYTES,
+   badmsg LBL, S\" hb: AOT metadata corrupt\n" BYTES,
    complete LBL,
    AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
 
@@ -6506,7 +6506,7 @@ public
    xnf LBL,
       1 msg ADR,  0 2 MOVZ,  2 MSG-LEN MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT named code site unresolved" BYTES,  NL-KW 1 BYTES,
+   msg LBL,  S\" hb: AOT named code site unresolved\n" BYTES,
    xdone LBL, ;
 ;package
 
@@ -6658,7 +6658,7 @@ public
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 25 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT metadata corrupt" BYTES,  NL-KW 1 BYTES,
+   msg LBL,  S\" hb: AOT metadata corrupt\n" BYTES,
    askip LBL, ;
 
 : EM-SEED-DICT ( -- )
@@ -7459,7 +7459,7 @@ ardone LBL,
 \ the bytes are emitted after the exit that names them, and the write length is
 \ READ OFF the same string rather than counted by hand, so the two cannot drift.
 : EM-AOTWIDGATE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL  s" hb: AOT gate: lookup record unusable"
+   LBL LBL LBL LBL LBL LBL LBL  S\" hb: AOT gate: lookup record unusable\n"
    {: wbad:label wdone:label wmsg:label winl:label
       wploop:label wpnext:label wrej:label ma mu :}
    LAOTWIDGATE LABEL@ LBL,
@@ -7512,9 +7512,9 @@ ardone LBL,
       1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wbad LBL,
-      1 wmsg ADR,  0 2 MOVZ,  2 mu 1+ MOVZ,  NR-WRITE SYS,   \ +1 = the newline emitted with the bytes
+      1 wmsg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   wmsg LBL,  ma mu BYTES,  NL-KW 1 BYTES,              \ unreachable: both legs above exit_group
+   wmsg LBL,  ma mu BYTES,                              \ unreachable: both legs above exit_group
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
