@@ -651,8 +651,9 @@ WHITEBOX-SUITE whitebox-engine
    test/whitebox-engine-suite.f
 ;SUITE
 
-\ PRIM: / PPRIM: / CLOSE-PRIVATE are sealed in the product image, which is why
-\ this suite drove its fixture through a from-source child window.
+\ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
+\ sealed in the product image, which is why this suite drives its fixture
+\ through a from-source child window that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE

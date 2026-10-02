@@ -562,6 +562,14 @@ EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
+\ addrmap-set's owner-private row: inside package NPUB it wins, so the
+\ publisher's own RELOC-ADDR (src/compiler/native/publish.f) is checked code.
+\ The global row above stays beside it. A checked caller elsewhere is refused
+\ by it (E-CAP-TRUSTED), and the TRUSTED: callers outside NPUB
+\ (tools/native-unit-object.f ADDR-MAP, the relocation-map tests) need it: the
+\ optimizing compiler builds their call window from a global row, and a seed
+\ primitive with none is E-HIR-UNMODELED there.
+EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ points a live dictionary record at new code
 \ The seal's own two record writers. A row here is what lets the OPTIMIZING
@@ -765,9 +773,10 @@ ETRUSTED-ONLY!
 
 \ ---- package FFI's owner-private capability rows ----------------------------
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
-\ boundary (E-CAP-TRUSTED) and the record's callability past the seal — and gains
-\ an owner-private row, so a CHECKED body compiled inside package FFI resolves it
-\ and every other scope misses the symbol. This is what retires the TRUSTED:
+\ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
+\ the TRUSTED: bodies outside FFI that still call it (lib/fs-identity.f,
+\ lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
+\ inside package FFI resolves it. This is what retires the TRUSTED:
 \ bodies in lib/ffi-abi.f and lib/net/udp4.f: FFI's own words become ordinary
 \ checked Habu, and no consumer can reach a raw foreign call at all.
 EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE

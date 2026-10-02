@@ -9272,16 +9272,12 @@ variable PE-EFF-ID
 \ classifies it, tools/check-all-errors-core.f names it in the unterminated-row
 \ repair hint - so only the definition's scope was wrong.
 \
-\ WHAT A PRIVATE ROW DOES NOT DO YET, and why the trusted-only bit still stands
-\ beside it on the capability prims: internal-mark.f classifies a global record
-\ by its BARE name at top level (IMK-CLASSIFY -> EFFECT-EXTERNAL-MIN-IN), so a
-\ primitive whose ONLY row is owner-private answers min-in -1 there and the seal
-\ marks the record DNAME-INT - and src/compiler/native/dict.f CALL-BINDING then
-\ refuses a checked caller of that record from every scope, the owner's included.
-\ A private-only row therefore has no checked caller anywhere. Until the seal and
-\ the engine honour owner-private rows, an owned capability prim carries BOTH: the
-\ global PRIM-TRUSTED-ONLY! row that keeps the outside boundary (E-CAP-TRUSTED)
-\ and the record callable, plus this private row that admits the owner.
+\ A PRIMITIVE MAY BE ITS PRIVATE ROW ALONE. The global record such a row reaches
+\ has no row at top level, and src/core/internal-mark.f classifies it by this row
+\ (EFFECT-OWNED-MIN-IN) instead of marking it DNAME-INT, which
+\ src/compiler/native/dict.f CALL-BINDING would refuse from every checked body,
+\ the owner's included. So the owner's checked callers compile at both tiers and
+\ a checked caller anywhere else is refused by name (test/prim-owner-scope.f).
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
@@ -9891,20 +9887,17 @@ PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
 \ ---- package FFI's two retypes ----------------------------------------------
-\ The axiom rows for the two identity words defined above PTABLE-START. Each
-\ keeps a global PRIM-TRUSTED-ONLY! row, which is the outside boundary
-\ (E-CAP-TRUSTED) and what keeps the record callable past the seal, and gains an
-\ owner-private row so a CHECKED body compiled inside package FFI resolves it
-\ while every other scope misses the symbol. The foreign-call primitives take
-\ exactly the same pair; theirs are in src/habu/prims.f, with their bodies.
-PRIM: FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
+\ The axiom rows for the two identity words defined above PTABLE-START. Each is
+\ the word's only primitive row and package FFI owns it, so a CHECKED body
+\ compiled inside FFI resolves it and no other checked scope can call it. The
+\ seal classifies each record by that row (EFFECT-OWNED-MIN-IN), which keeps it
+\ callable for the owner.
 PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 \ FFI-CELL>PTR's result carries no length: every consumer pairs it with the
 \ width it knows (errno is 4 bytes).
-PRIM: FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
-PRIM-TRUSTED-ONLY!
 PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
+\ The seal's own question, asked only by src/core/internal-mark.f's pass.
+PPRIM: ENGINE-INTERNAL EFFECT-OWNED-MIN-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 
 PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
@@ -13518,6 +13511,45 @@ TRUSTED: SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
    rec @ SCOPE-CODE-KIND ;
 : SCOPE-AUTH-SYM? ( n -- bool ) SCOPE-KIND-SYM 2 >= ;
 
+\ ---- the global record a package-private row reaches --------------------------
+\ A package-private primitive row (CLOSE-PRIVATE) types whatever its tail binds
+\ to inside the owner. The engine binds that spelling in the owner's private
+\ wordlist, then its public one, then the global one (habu1.f EMIT-FIND), so the
+\ row reaches the GLOBAL record of its tail exactly when neither owner wordlist
+\ holds the tail - always, while the owner is not a package yet. An owner that
+\ defines the tail itself is typing its own word, not a global one.
+: PE-GLOBAL-REACH? ( n -- bool ) {: sym:n :}
+   sym SYM-PKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, as SCOPE-SYM-WID
+   rec NULL-PTR = IF RES-TRUE EXIT THEN
+   sym SYM-NAME$ rec @ SCOPE-WL-PROBE NULL-PTR <> IF RES-FALSE EXIT THEN
+   rec CELL + @ {: pri:n :}
+   pri 0= IF RES-TRUE EXIT THEN                   \ a package with no private wordlist
+   sym SYM-NAME$ pri SCOPE-WL-PROBE NULL-PTR = ;
+
+: PE-OWNS-GLOBAL? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i PE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   i PE-SYM@ {: sym:n :}
+   sym SYM-ROW SYM.VIS @ SYM-PRIVATE <> IF RES-FALSE EXIT THEN
+   sym SYM-NAME$ a u SYM-STR=CI 0= IF RES-FALSE EXIT THEN
+   sym PE-GLOBAL-REACH? ;
+
+\ The package's private primitive row that reaches the global record `a u`
+\ names, -1 when none does.
+: PE-OWNER-ROW ( ptr u8 n -- n ) {: a:ptr u:n :}
+   #PE @ 0 ?do
+      a u i PE-OWNS-GLOBAL? IF i unloop EXIT THEN
+   loop
+   -1 ;
+
+\ The minimum input arity a package's private primitive row gives the global
+\ record `a u` names, -1 when no such row reaches it. src/core/internal-mark.f
+\ asks it of a global record no top-level row types: that record is still a
+\ package's primitive, callable from checked code inside its owner, so the seal
+\ classifies it by this row and keeps DNAME-INT for records no row types at all.
+: EFFECT-OWNED-MIN-IN ( ptr u8 n -- n )
+   PE-OWNER-ROW dup 0 < IF EXIT THEN
+   PE-EFF@ E-PTR E-MINI@ ;
+
 \ Eliminate one lexical binder. A bound reference at this binder's depth
 \ becomes the fresh scope; references to outer binders shift down one level.
 : SCOPE-INST* ( n n n -- n ) {: t:n depth:n scope:n :}
@@ -14146,6 +14178,34 @@ variable TOK-SYM   variable TOK-LEG
 : TOK-SCOPED? ( -- bool )
    TOK-LEG @ BIND-SCOPED = ;
 
+\ ---- what a checked call may do with the row its symbol's lookup found --------
+\ Asked once FEP holds that row (FEP-HIT). A trusted-only primitive behind the
+\ symbol refuses the call by name (E-CAP-TRUSTED). Otherwise the row applies
+\ while authority is unenforced or when it is an external declaration, and this
+\ run's recovery fact applies too. Any other row records only the word's ABI (a
+\ build window records one for every prefix word): the primitive rows behind it
+\ decide, and with none the call is refused by name as well. OWNED-TICK-REFUSED?
+\ asks the same of a tick.
+0 constant CALL-REFUSED
+1 constant CALL-APPLIES
+2 constant CALL-RECOVERS
+3 constant CALL-PRIMS
+
+: CALL-AUTHORITY ( n -- n ) {: sym:n :}
+   sym PRIM-TRUSTED-SYM? IF CALL-REFUSED EXIT THEN
+   CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
+   sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
+   FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
+   sym PRIM-FIRST-IDX 0= IF CALL-REFUSED EXIT THEN
+   CALL-PRIMS ;
+
+\ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
+\ name), and the name joins the lazy intake's queue (ASIG-MISS+).
+: CALL-UNDEFINED ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
+   a u ASIG-MISS+
+   -1 UNDEFERR !  -1 UNCK ! ;
+
 : DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u LITERAL-TOK? IF EXIT THEN
@@ -14172,24 +14232,13 @@ variable TOK-SYM   variable TOK-LEG
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
    FEP-HIT? IF
-      CURSYM @ PRIM-TRUSTED-SYM? IF
-         -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
-      THEN
-      CHECKER-EFFECT-AUTHORITY:ENFORCED? 0=
-      CURSYM @ EFFECT-EXTERNAL-SYM? or IF FEP @ EFF-APPLY EXIT THEN
-      FEP @ RECOVERY-ROW? IF
-         RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
-         FEP @ EFF-APPLY EXIT
-      THEN
-      CURSYM @ PRIM-FIRST-IDX 0= IF
-         -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
-      THEN
+      CURSYM @ CALL-AUTHORITY
+      dup CALL-REFUSED = IF drop  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+      dup CALL-RECOVERS = IF RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED! THEN
+      CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
-   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
-   a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
-   -1 UNDEFERR ! -1 UNCK ! THEN ;
+   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE a u CALL-UNDEFINED THEN ;
 
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
    OK @ 0= IF EXIT THEN
@@ -16868,6 +16917,39 @@ variable IS-PEND-U                   \ and its length
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
+\ A refused tick names the ticked word where it stands, as a refused call names
+\ the call; DO-TOK1 pinned the `[']` that consumed it.
+: TICK-PIN ( -- )
+   FAILSET @ 0 <> IF EXIT THEN
+   IS-TA@ IS-TU @ FAIL-PIN!
+   IS-TOFF @ FAILB !
+   FAILB @ FAILTU @ + FAILE ! ;
+
+\ A CHECKED TICK OF A PACKAGE'S PRIVATE PRIMITIVE IS ADMITTED EXACTLY WHERE A
+\ CHECKED CALL OF IT IS. The seal classifies the global record such a row
+\ reaches by that row (EFFECT-OWNED-MIN-IN) instead of marking it DNAME-INT, so
+\ the engine's tick gates admit the record in every scope and this is the one
+\ that decides. Inside the owner the private row binds the name and the tick
+\ goes on. Anywhere else the tick gets the call's refusal of what the name binds
+\ there: nothing (E-UNDEFINED), or a row CALL-AUTHORITY refuses (E-CAP-TRUSTED,
+\ as for the ABI-only row a product build records for a prefix word). An EXPORT
+\ alias is the same code under its source's tail with its source's row, so the
+\ owner row is asked of the tail: `['] P:FFI-PTR>CELL` for a package P that
+\ exported it is refused as its call is. Asked once FEP holds the symbol's row,
+\ if it has one.
+: OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
+   FEP-HIT? IF
+      sym CALL-AUTHORITY CALL-REFUSED <> IF RES-FALSE EXIT THEN
+   ELSE
+      sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
+   THEN
+   TKF TKFU @ EXPORT-TAIL$ PE-OWNER-ROW 0 < IF RES-FALSE EXIT THEN
+   TICK-PIN
+   FEP-HIT? IF -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
+   TKF TKFU @ CALL-UNDEFINED
+   PE-N BTICK-PUSH
+   RES-TRUE ;
+
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
@@ -16876,6 +16958,7 @@ variable IS-PEND-U                   \ and its length
    sym PRIM-TRUSTED-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
+   sym OWNED-TICK-REFUSED? IF EXIT THEN
    FEP-HIT? IF
       FEP @ ER.ACTIVE @ EFF-RECOVERY = IF
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN

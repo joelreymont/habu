@@ -1,29 +1,35 @@
-\ prim-owner-scope-child.f - what a package-OWNED primitive row admits, and where.
+\ prim-owner-scope-child.f - what a package-OWNED primitive row admits, and where,
+\ once the production seal has run.
 \
 \ Runs inside test/native-window-owner-child.f's reset window, which re-includes
-\ src/core/checker.f from source: primitive rows are declarable at that bootstrap
-\ boundary and nowhere else (in a sealed engine PRIM: / PPRIM: are DNAME-INT).
-\ No require: the window's replacement prefix has no include words.
+\ src/core/checker.f from source; test/prim-owner-scope-prepare.f declared this
+\ fixture's rows and then ran src/core/internal-mark.f over the window, so every
+\ record below is classified exactly as the product build classifies it.
 \
-\ Two rows are declared here, both through the GENERAL private closer, which is
-\ the subject: before it was hoisted beside PPRIM; only package CHECKER-DECL-FRAME
-\ could spell CLOSE-PRIVATE, so this file could not have been written.
+\ Four shapes of row are measured:
 \
-\ 1. PRIM-OWNER-AXIOM, a fresh name with no other row and no engine word. It
-\    isolates the closer's own effect - the axiom exists for the owner package
-\    and for nobody else - with no engine-side resolution mixed in. It is asked
-\    of the CHECKER only (CHECK-CANDIDATE!), because an engine compile of a name
-\    the dictionary does not carry says nothing about which package owns the row.
-\ 2. A second row for addrmap-set, beside the global PRIM-TRUSTED-ONLY! row
-\    checker.f already carries for it. That is the shape an owned capability prim
-\    takes today: the global row keeps the outside boundary (E-CAP-TRUSTED) and
-\    keeps the dictionary record callable, because the seal classifies a record by
-\    its BARE name; the private row admits a CHECKED caller inside the owner.
-\    addrmap-set is never EXECUTED here - every case compiles a definition and
-\    throws the body away.
-
-PPRIM: PRIM-OWNER-SCOPE PRIM-OWNER-AXIOM PE-N PE-IN CLOSE-PRIVATE
-PPRIM: PRIM-OWNER-SCOPE addrmap-set PE-N PE-IN CLOSE-PRIVATE
+\ 1. PRIM-OWNER-AXIOM, a fresh name with no engine word. It isolates the
+\    closer's own effect - the axiom exists for the owner package and for nobody
+\    else - so it is asked of the CHECKER only (CHECK-CANDIDATE!).
+\ 2. A primitive whose ONLY row is owner-private: FFI-PTR>CELL and FFI-CELL>PTR
+\    (package FFI, records of the re-included checker.f that the seal
+\    classifies). The owner compiles a CHECKED caller at both tiers, a reopened
+\    owner too, and every other scope misses the name (E-UNDEFINED). This is the
+\    seal's case: a pass that read only the top-level row would mark each record
+\    DNAME-INT, and the engine would then refuse the owner's call as well. A
+\    checked `[']` of the name is admitted exactly where the call is, and
+\    refused by name where it is not.
+\ 3. A row a package declares for its OWN word: util.f's global CORE-FOLD-C is
+\    still an internal engine word, because no row types that record.
+\ 4. A global PRIM-TRUSTED-ONLY! row beside the owner-private one, on two seed
+\    records: ffi-call-bounded (package FFI) and addrmap-set (package NPUB).
+\    The owner's row wins inside the owner, so its checked callers and ticks
+\    compile at both tiers. Elsewhere the global row answers: a checked caller
+\    gets the named E-CAP-TRUSTED reject, and a TRUSTED: caller keeps the call
+\    window tier 1 builds from that row.
+\
+\ Nothing here is EXECUTED: every compile case defines a word and throws the body
+\ away, and the shadowed global's token is refused before it runs.
 
 \ Compiling a candidate is the subject, so the compile boundary is unchecked on
 \ purpose: EV moves the live package the next case is measured in, and SELECT
@@ -71,6 +77,7 @@ $0A constant LF-C
 : OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" EV ;
 : OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" EV ;
 : FFI-OPEN ( -- ) s" package FFI" EV ;
+: NPUB-OPEN ( -- ) s" package NPUB" EV ;
 : PKG-CLOSE ( -- ) s" ;package" EV ;
 
 \ ---- the fresh axiom: the closer's effect, with no engine word involved ------
@@ -90,80 +97,157 @@ $0A constant LF-C
    s" POS-AX-RE ( n -- ) PRIM-OWNER-AXIOM" CAND
    PKG-CLOSE ;
 
-\ ---- the real capability prim, compiled at both tiers ------------------------
+\ ---- private-only rows: the owner and nobody else -----------------------------
 \ Every definition name is used once: a candidate records a signature under its
 \ name, and a second definition of that name is a duplicate, not a second
-\ measurement of the same question.
-: TIER0-CASES ( -- )
+\ measurement of the same question. The first `package` of FFI and NPUB in this
+\ window creates it; each later one reopens it.
+: PRIVATE-T0-CASES ( -- )
    0 SELECT
-   OWNER-OPEN
-   s" t0 checked inside owner"
-   s" : POS-T0-IN ( n -- ) addrmap-set ;" EVAL
+   FFI-OPEN
+   s" t0 ptr>cell inside owner"
+   s" : POS-P2C0-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   s" t0 cell>ptr inside owner"
+   s" : POS-C2P0-IN ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    PKG-CLOSE
-   s" t0 checked top level"
-   s" : POS-T0-TOP ( n -- ) addrmap-set ;" EVAL
+   s" t0 ptr>cell top level"
+   s" : POS-P2C0-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   s" t0 cell>ptr top level"
+   s" : POS-C2P0-TOP ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    OTHER-OPEN
-   s" t0 checked other package"
-   s" : POS-T0-OTH ( n -- ) addrmap-set ;" EVAL
+   s" t0 cell>ptr other package"
+   s" : POS-C2P0-OTH ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    PKG-CLOSE
-   OWNER-OPEN
-   s" t0 checked reopened owner"
-   s" : POS-T0-RE ( n -- ) addrmap-set ;" EVAL
-   PKG-CLOSE
-   s" t0 trusted top level"
-   s" TRUSTED: POS-T0-TR ( n -- ) addrmap-set ;" EVAL ;
+   FFI-OPEN
+   s" t0 ptr>cell reopened owner"
+   s" : POS-P2C0-RE ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   PKG-CLOSE ;
 
-\ Tier 1 is the tier the global row exists for: the optimizing compiler reads a
-\ callee's cell widths out of the prim table for every name a body writes, so the
-\ trusted caller outside the owner proves the outside path still has a row.
-: TIER1-CASES ( -- )
+\ Tier 1 reads a callee's cell widths through the checker's scope, so the owner's
+\ row is the only one that can answer, and the call binds the sealed record.
+: PRIVATE-T1-CASES ( -- )
    1 SELECT
-   OWNER-OPEN
-   s" t1 checked inside owner"
-   s" : POS-T1-IN ( n -- ) addrmap-set ;" EVAL
+   FFI-OPEN
+   s" t1 ptr>cell inside owner"
+   s" : POS-P2C1-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   s" t1 cell>ptr inside owner"
+   s" : POS-C2P1-IN ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    PKG-CLOSE
-   s" t1 checked top level"
-   s" : POS-T1-TOP ( n -- ) addrmap-set ;" EVAL
-   s" t1 trusted top level"
-   s" TRUSTED: POS-T1-TR ( n -- ) addrmap-set ;" EVAL
+   s" t1 ptr>cell top level"
+   s" : POS-P2C1-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
    0 SELECT ;
 
-\ ---- the three rows package FFI owns, the first real ones in the tree ---------
-\ ffi-call-bounded is the foreign call itself; FFI-PTR>CELL and FFI-CELL>PTR are
-\ the two identity retypes a marshaller cannot write any other way. All three
-\ carry the dual row, so the owner compiles a CHECKED body and every other scope
-\ gets the named capability reject. No foreign call is EXECUTED here: each case
-\ compiles a definition and throws the body away.
-: FFI-CASES ( -- )
+\ ---- ticks of private-only rows: where the call is admitted, and nowhere else --
+\ A checked `[']` of the name compiles where a checked call of it compiles, and
+\ elsewhere it gets the call's refusal of the name. Every owner block here
+\ reopens its package, which the cases above created.
+: TICK-T0-CASES ( -- )
+   0 SELECT
+   FFI-OPEN
+   s" t0 tick ptr>cell inside owner"
+   s" : POS-TP2C0-IN ( -- ) ['] FFI-PTR>CELL drop ;" EVAL
+   s" t0 tick cell>ptr inside owner"
+   s" : POS-TC2P0-IN ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
+   PKG-CLOSE
+   s" t0 tick ptr>cell top level"
+   s" : POS-TP2C0-TOP ( -- ) ['] FFI-PTR>CELL drop ;" EVAL
+   OTHER-OPEN
+   s" t0 tick cell>ptr other package"
+   s" : POS-TC2P0-OTH ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
+   PKG-CLOSE ;
+
+: TICK-T1-CASES ( -- )
+   1 SELECT
+   FFI-OPEN
+   s" t1 tick cell>ptr inside owner"
+   s" : POS-TC2P1-IN ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
+   PKG-CLOSE
+   s" t1 tick ptr>cell top level"
+   s" : POS-TP2C1-TOP ( -- ) ['] FFI-PTR>CELL drop ;" EVAL
+   OTHER-OPEN
+   s" t1 tick cell>ptr other package"
+   s" : POS-TC2P1-OTH ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
+   PKG-CLOSE
+   0 SELECT ;
+
+\ ---- a private row for the owner's own word -----------------------------------
+\ The global CORE-FOLD-C is still an internal engine word: its token refuses.
+: SHADOW-CASES ( -- )
+   s" shadowed global top level"
+   s" 65 CORE-FOLD-C drop" EVAL ;
+
+\ ---- the dual row: a global trusted-only row beside the owner's ---------------
+\ Inside the owner the private row binds the name, so a checked caller and a
+\ checked tick compile; everywhere else the global row binds it, refusing both
+\ and admitting a TRUSTED: caller. The TRUSTED: callers at tier 1 are what the
+\ global row is kept for: tier 1 builds their call window from it, and without
+\ it a TRUSTED: caller of addrmap-set outside NPUB is E-HIR-UNMODELED.
+: DUAL-T0-CASES ( -- )
    0 SELECT
    FFI-OPEN
    s" ffi call inside owner"
    s" : POS-FFI-IN ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
-   s" ptr>cell inside owner"
-   s" : POS-P2C-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
-   s" cell>ptr inside owner"
-   s" : POS-C2P-IN ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    PKG-CLOSE
    s" ffi call top level"
    s" : POS-FFI-TOP ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
-   s" ptr>cell top level"
-   s" : POS-P2C-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
-   s" cell>ptr top level"
-   s" : POS-C2P-TOP ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
    OTHER-OPEN
    s" ffi call other package"
    s" : POS-FFI-OTH ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
-   s" cell>ptr other package"
-   s" : POS-C2P-OTH ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
-   PKG-CLOSE ;
+   PKG-CLOSE
+   s" t0 ffi call trusted top level"
+   s" TRUSTED: POS-FFI0-TR ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
+   NPUB-OPEN
+   s" t0 addrmap-set inside owner"
+   s" : POS-AM0-IN ( n -- ) addrmap-set ;" EVAL
+   s" t0 tick addrmap-set inside owner"
+   s" : POS-TAM0-IN ( -- ) ['] addrmap-set drop ;" EVAL
+   PKG-CLOSE
+   s" t0 addrmap-set top level"
+   s" : POS-AM0-TOP ( n -- ) addrmap-set ;" EVAL
+   s" t0 tick addrmap-set top level"
+   s" : POS-TAM0-TOP ( -- ) ['] addrmap-set drop ;" EVAL
+   OTHER-OPEN
+   s" t0 addrmap-set other package"
+   s" : POS-AM0-OTH ( n -- ) addrmap-set ;" EVAL
+   PKG-CLOSE
+   NPUB-OPEN
+   s" t0 addrmap-set reopened owner"
+   s" : POS-AM0-RE ( n -- ) addrmap-set ;" EVAL
+   PKG-CLOSE
+   s" t0 addrmap-set trusted top level"
+   s" TRUSTED: POS-AM0-TR ( n -- ) addrmap-set ;" EVAL ;
+
+: DUAL-T1-CASES ( -- )
+   1 SELECT
+   s" t1 ffi call trusted top level"
+   s" TRUSTED: POS-FFI1-TR ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
+   NPUB-OPEN
+   s" t1 addrmap-set inside owner"
+   s" : POS-AM1-IN ( n -- ) addrmap-set ;" EVAL
+   s" t1 tick addrmap-set inside owner"
+   s" : POS-TAM1-IN ( -- ) ['] addrmap-set drop ;" EVAL
+   PKG-CLOSE
+   s" t1 addrmap-set top level"
+   s" : POS-AM1-TOP ( n -- ) addrmap-set ;" EVAL
+   OTHER-OPEN
+   s" t1 tick addrmap-set other package"
+   s" : POS-TAM1-OTH ( -- ) ['] addrmap-set drop ;" EVAL
+   PKG-CLOSE
+   s" t1 addrmap-set trusted top level"
+   s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
+   0 SELECT ;
 
 public
 
 : RUN ( -- )
    AXIOM-CASES
-   TIER0-CASES
-   TIER1-CASES
-   FFI-CASES
+   PRIVATE-T0-CASES
+   PRIVATE-T1-CASES
+   TICK-T0-CASES
+   TICK-T1-CASES
+   SHADOW-CASES
+   DUAL-T0-CASES
+   DUAL-T1-CASES
    s" prim-owner: ok" type LF-C emit ;
 
 ;package

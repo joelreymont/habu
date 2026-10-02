@@ -22,11 +22,20 @@ lives here; build, test and environment rules live in
   or asserting its effect, does not make it a primitive.
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` interns the
   axiom into the OWNER package's private wordlist: only a body compiled inside
-  that package resolves the name; callers are still checked. For now such a prim
-  also keeps its global `PRIM-TRUSTED-ONLY!` row: `src/core/internal-mark.f`
-  classifies a record by its BARE name, so an owner-private-only primitive is
-  sealed `DNAME-INT` with no checked caller. `test/prim-owner-scope.f` pins the
-  matrix.
+  that package resolves the name; callers are still checked. A primitive may be
+  that row alone: `src/core/internal-mark.f` classifies a global record no
+  top-level row types by the owner-private row that reaches it, so the owner's
+  checked callers compile at both tiers and an outside checked caller is
+  refused by name. A checked `[']` of it, by its own name or an `EXPORT`
+  alias's, is admitted and refused exactly where that call is. Top-level source
+  is not checked: there `'` yields the xt and a call runs the primitive. An
+  engine primitive (`src/habu/prims.f`) that a `TRUSTED:` body outside the
+  owner calls keeps its global trusted-only row beside the private one, as
+  `addrmap-set` and `ffi-call-bounded` do: tier 1 builds that caller's call
+  window from a global row and refuses the caller without one
+  (`E-HIR-UNMODELED`). A row for a word the owner defines itself types only
+  that word: it does not keep a global record of the same name out of
+  `DNAME-INT`. `test/prim-owner-scope.f` pins the matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
