@@ -3221,63 +3221,61 @@ create BIG $2000 allot   variable BIG-U
    outu erru rc s" ckt-get-bad" EXPECT-PREVERIFY-IN
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
 
-\ ---- a loaded file is expanded where its loader sits ------------------------
+\ ---- a loaded file is composed where its loader sits ------------------------
 \ The pre-pass verifies a source and the files it loads in the order the loader
-\ runs them: the text before a top-level `required` first, then the file it
-\ loads (once), then the rest. How that can fail, and what holds each way:
+\ runs them (VERIFY:SOURCE-COMPOSE): the text before a top-level `required`
+\ first, then the file it loads (once), then the rest. How that can fail, and
+\ what holds each way:
 \   - the loaded file checked ahead of the whole source, so a word the source
 \     defines before its require is undefined in it (REQ-ORDER, the reduced
 \     case behind every library that requires lib/aio.f);
 \   - the loaded file's words visible to the source before the require
 \     (REQ-EARLY), or the source's later words visible to the loaded file
 \     (REQ-LATE): the load path refuses both E-UNDEFINED, and so must this;
-\   - a file expanded twice when two requires or two files name it (REQ-ONCE):
+\   - a file loaded twice when two requires or two files name it (REQ-ONCE):
 \     a second verification is E-DUPLICATE-DEFINITION;
-\   - a require cycle looping or reordering (REQ-CYCLE-SPLIT): a file still
-\     being expanded is a no-op, as `required` of a registered path is;
-\   - a split inside a definition, which loses it. A loader in a colon body
-\     runs when the word does, so its file expands after that definition and
-\     any package around it (REQ-BODY, the shape of lib/aio.f's AIO-LOAD:HOST),
-\     and after a top-level loader in that package, which runs first;
-\   - a top-level loader inside a package or under a `using`, expanded once the
+\   - a require cycle looping or reordering (REQ-CYCLE-SPLIT): a file already
+\     being composed is a no-op, as `required` of a registered path is;
+\   - a loader in a colon body, which runs when the word does: its file waits
+\     until that definition and any package around it close, at the first
+\     neutral top-level point (PEND-RELEASE), and after a top-level loader in
+\     that package, which runs first (REQ-BODY, the shape of lib/aio.f's
+\     AIO-LOAD:HOST); a loader inside a control word is left to the run;
+\   - a top-level loader inside a package or under a `using`, composed once the
 \     scope closes (at the end of the file, for a `using` never closed): the
 \     loader runs the file in that scope, so its file and the rest of the
 \     source are checked in the scope the loader gives them, and the file's
 \     own usings end with it (REQ-PKG, REQ-USING);
-\   - a diagnostic after a split naming the wrong file, line or column
-\     (REQ-ORIGIN);
+\   - a diagnostic after a loaded file naming the wrong file, line or column
+\     (REQ-ORIGIN): the composition announces the including file again;
 \   - the check run loading in another order: it loads through the real loader,
 \     and every accepted case here runs it;
 \   - `--all-errors --source-list` checking whole files in dependency order, or
-\     replaying whole files as support: it checks the same segments in one
+\     replaying whole files as support: it composes the same way in one
 \     session, with the default check's verdict at the same file, line and
 \     column (the -ALL cases);
 \   - a refused definition taking the clean ones beside it down, so a later
-\     segment reports them undefined (REQ-CASC): the session keeps every clean
+\     file reports them undefined (REQ-CASC): the session keeps every clean
 \     definition and a refused one's declared signature, as checking the whole
 \     file at once does;
-\   - a duplicate definition in one segment leaving a record of the word that a
-\     later segment's clean call is checked against (REQ-DUP): the duplicate
-\     ends the check, as it ends the load and a whole-file check;
+\   - a duplicate definition leaving a record of the word that a later clean
+\     call is checked against (REQ-DUP): the duplicate stops the composition
+\     in the file it names (SOURCE-COMPOSE-STOPPED$), as it ends the load;
 \   - plain `--all-errors` checking the subject alone, so a word it takes from a
-\     file it loads is undefined (REQ-USE): it checks the same segments the
+\     file it loads is undefined (REQ-USE): it composes the same files the
 \     source list does, with the same verdict at the same place;
-\   - a throw out of a statement in a later segment, such as a `;using` with
-\     no `using` open, escaping all-errors uncaught or, in prose, unreported
-\     (REQ-THROW): it is a diagnostic at the statement and the run ends with
-\     the checker's status;
-\   - a storage declaration naming an unknown type in a segment after a
-\     refused one, reported as a throw out of the statement or at the wrong
-\     file, line or column (REQ-SIZE): it is the storage refusal at the type
+\   - a throw out of a statement in a later file, such as a `;using` with no
+\     `using` open, escaping all-errors uncaught or, in prose, unreported
+\     (REQ-THROW): it stops the composition with a diagnostic at the statement,
 \     and the run ends with the checker's status;
-\   - the subject reached again through a require: it is still being expanded,
-\     so the pre-pass expands it once; the run loading its text a second time is
-\     CHK-BUILD-RUN's (dot c79b86b7);
-\   - a path resolved against the wrong directory: expansion keeps discovery's
-\     resolution against the entry root;
-\   - the closure capacity: one split per expanded file and one tail per file
-\     keep the segments under twice CHK-DEP-MAX;
-\   - check time: each verified file is lexed once more to place its splits.
+\   - a storage declaration naming an unknown type after a refused one,
+\     reported as a throw out of the statement or at the wrong file, line or
+\     column (REQ-SIZE): it is the storage refusal at the type and the run ends
+\     with the checker's status;
+\   - the subject reached again through a require: the composition loads it
+\     once, as `required` of a registered path does;
+\   - a path resolved against the wrong directory: composition keeps
+\     discovery's resolution against the entry root.
 \ The fixtures name each other by absolute path because the run loads the
 \ subject's text from a temporary file, where a path relative to the subject's
 \ directory does not resolve.
@@ -3312,7 +3310,7 @@ variable REQ-U
    s" all-errors" OPT
    s" json-errors" OPT ;
 
-\ `--all-errors --source-list` checks the same segments, each against the ones
+\ `--all-errors --source-list` composes the same files, each against the ones
 \ before it, and must give the default check's verdict at the same place.
 : REQ-ALL-RUN ( ptr u8 n -- n n n )
    REQ$ {: p:ptr pu:n :}
@@ -3429,8 +3427,8 @@ variable REQ-U
    s" req-body.f" REQ-WRITE
    s" req-body.f" REQ-RUN EXPECT-ACCEPTED ;
 
-\ The split falls after `required` on line 4, mid-line, so the refused `dup`
-\ there is placed by the segment's line and column base.
+\ The loaded file is composed after `required` on line 4, mid-line, so the
+\ refused `dup` there is placed at the including file's own line and column.
 : REQ-ORIGIN-FILES ( -- )
    SB-RESET s" : CKT-RQ-ORIGIN-DEP ( -- n ) 1 ;" REQ-LINE+
    s" req-origin-dep.f" REQ-WRITE
@@ -3606,8 +3604,8 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
-\ A string the file never closes stops source discovery before any segment
-\ exists. Every --json-errors mode reports it by the one record --all-errors
+\ A string the file never closes stops source discovery before any file is
+\ composed. Every --json-errors mode reports it by the one record --all-errors
 \ writes for it on standard input, in the file that holds it and at the string,
 \ and fails as a refusal; a source that requires the file reports it there. The
 \ record's token is the opener as written, so an escaped opener spans 3 bytes.
@@ -3982,8 +3980,8 @@ variable REQ-U
    CAP-ERR erru s\" \"token\":\"CKT:STG:TB\"" CONTAINS? TTRUE
    CAP-ERR erru s\" stg.f\",\"line\":1,\"column\":16," CONTAINS? TTRUE ;
 
-\ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files'
-\ segments, in order, in one session: both bad defs in b report against b's
+\ `--all-errors --source-list a b` runs all-errors on the ORIGINAL files, in
+\ order, in one session: both bad defs in b report against b's
 \ path (the pre-redrive materialized temp had zero defs, so all-errors was a
 \ no-op and only preverify's first error surfaced).
 : LIST-ALL-TEST ( -- )
