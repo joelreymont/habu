@@ -9,10 +9,10 @@
 \ The default run shards the sweep across PROP-SHARD-N forked slots, each a
 \ distinct seed running DEFAULT-COUNT iterations, so one direct run covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel; one red shard fails the
-\ phase. The `bin/hb <seed> <count>` argv override runs one seed serially to
-\ reproduce a specific run. Fork wrappers load before the check hook so their
-\ own definitions certify under the default checker, not the throw-on-reject
-\ prop hook.
+\ phase. The `<engine> --load test/prop-test.f -- <seed> <count>` override
+\ runs one seed serially to reproduce a specific run. Fork wrappers load before
+\ the check hook so their own definitions certify under the default checker,
+\ not the throw-on-reject prop hook.
 
 require lib/errors.f
 require lib/string.f
@@ -21,10 +21,19 @@ require lib/process.f
 require lib/process-fork.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
+\ The harness's own words and every candidate compile at tier 0, whatever tier
+\ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the
+\ effect the checker recorded, and refuses what this harness compiles:
+\ CLEAR-MEAS's untyped row drain (E-NELAB-UNDER), a candidate CHK compiles
+\ after CHECK! recorded its signature (a duplicate definition, rc 78), and the
+\ rejected body CONFIRM-FR? runs, which has no recorded effect (KEEP-ARITY,
+\ rc 70).
+0 set-tier
+
 \ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
 \ remains owned by habu-primitive-effect-axiom-1119f176.
 : PROP-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> if 70 throw then ;
+   CHECK! dup -1 <> if CHECKER-REJECT-RC throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] PROP-CHECK-HOOK set-check ;
@@ -36,7 +45,7 @@ variable BASE  variable MC
 \ Retirement owner: habu-typed-depth-introspection-18f0efda.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
-variable VERD                     \ last verdict, set by the check hook
+variable VERD                     \ last verdict CHK read from CHECK!
 \ Reads the engine's evaluate-error cell by its NAMED layout constant
 \ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
 \ layout change can't silently point this peek at the wrong cell.
@@ -213,10 +222,6 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTOR
    0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
-\ Records CHECK!'s verdict while accepting the candidate. Dynamic checker
-\ invocation belongs to habu-primitive-effect-axiom-1119f176.
-: CHK-HOOK ( ptr u8 n -- n )
-   CHECK! dup VERD ! drop -1 ;
 \ Differential boundary: certification already happened via CHECK! in CHK;
 \ the compile stage runs unchecked so the fuzzer measures the candidate's
 \ true runtime arity without re-entering the hook. Dynamic evaluate remains
@@ -334,8 +339,8 @@ variable BSAVE
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 \ Differential boundary: deliberately compiles a checker-REJECTED body to
-\ confirm a false reject. Dynamic evaluate remains owned by
-\ habu-primitive-effect-axiom-1119f176.
+\ confirm a false reject, which only tier 0 does (`0 set-tier` above). Dynamic
+\ evaluate remains owned by habu-primitive-effect-axiom-1119f176.
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
@@ -482,6 +487,18 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
       s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
 
+\ No generated seed reaches the false-reject oracle (seeds 1..40 and 123, 2000
+\ programs each, yield no non-perturbed reject), so this drives it: a bool into
+\ `+` is rejected yet leaves the declared one cell. It is the run that proves
+\ CONFIRM-FR? compiles a rejected body, the tier-0 fact `0 set-tier` rests on.
+: SELFTEST-FR ( -- )
+   0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
+   PBUF PBUF-U @ CHK  VERD @ -1 = IF
+      s" prop-test: self-test FR canary CERTIFIED (no rejected body to confirm)" 1 die THEN
+   CONFIRM-FR? 0= IF
+      s" prop-test: self-test FALSE-REJECT ORACLE BROKEN (rejected body did not confirm)" 1 die THEN
+   s" prop-test: false-reject oracle OK (a rejected body runs to its declared arity)" type cr ;
+
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
@@ -498,7 +515,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
       48 -  ARG-N @ 10 * +  ARG-N !
       ARG-I @ 1+ ARG-I !
    repeat  ARG-N @ 0 0= ;
-: USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
+: USAGE ( -- )  s" prop-test: usage: <whitebox-engine> --load test/prop-test.f [-- seed count]" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
 : SCRIPT-ARG-U ( n -- n )
@@ -747,6 +764,7 @@ public
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
+   SELFTEST-FR
    RUN
    FINISH ;
 
@@ -866,6 +884,7 @@ private
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
+   SELFTEST-FR
    PRIM-PROP:RUN
    SELFTEST-SHARD-SEEDS
    SELFTEST-SWEEP-RED
