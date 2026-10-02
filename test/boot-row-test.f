@@ -38,6 +38,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
+require lib/test/outcome.f
 
 using SOURCE-ROOT
 
@@ -72,11 +73,12 @@ variable WALKED
 
 \ ---- one run of the engine under test: source on stdin, the caller's CWD -----
 
-: STORE ( outcome -- )
-   MATCH outcome
+: STORE ( ptr u8 n ptr u8 n outcome -- )
+   {: src:ptr srcu:n out:ptr outu:n oc :}
+   oc MATCH outcome
      exited OF   RC-N ! true  EXITED? ! ENDOF
      signaled OF RC-N ! false EXITED? ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
+     timeout OF src srcu out outu ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
 : RUN-INTO ( ptr u8 n ptr u8 n ptr u8 n -- n )
@@ -88,10 +90,10 @@ variable WALKED
    out outcap >LEN
    ERR-BUF IO-CAP >LEN
    TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
-   STORE
-   LEN>N ERR-U !
-   LEN>N ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   src srcu out outu LEN>N oc STORE
+   outu LEN>N ;
 
 : RUN ( ptr u8 n ptr u8 n -- )
    OUT-BUF IO-CAP RUN-INTO OUT-U ! ;

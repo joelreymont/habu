@@ -2,6 +2,7 @@
 require lib/test.f
 require lib/pty-harness.f
 require lib/engine-candidate.f
+require lib/test/outcome.f
 
 package REPL-ROW-TEST
 using PTY-HARNESS
@@ -15,13 +16,12 @@ using PTY-HARNESS
 : PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ptr u8 n -- )
    BUF-CLEAR SEND-LINE s"  ok" WAIT-FOR TTRUE s"  ok" PROMPT-AFTER ;
+\ The terminal carries both of the child's streams, so BUF$ is its stdout and
+\ there is no stderr apart from it.
 : STOP ( -- )
    4 SEND-BYTE
-   REAP MATCH outcome
-      exited OF 0 T= ENDOF
-      signaled OF drop false TTRUE ENDOF
-      timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
+   REAP {: oc :}
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 : REUSE-CASE ( ptr u8 n ptr u8 n n -- ) {: bad:ptr badu:n next:ptr nextu:n tier:n :}

@@ -67,6 +67,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
+require lib/test/outcome.f
 
 package AOT-SEED-BATCH
 
@@ -105,35 +106,38 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
    ROOT$ CLEANUP-TREE+
    ROOT$ s" prog.f" PROG-BUF JOIN-PATH PROG-U ! ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ --- the three batch entries, each through its own C-SOURCE path ---------------
 
 : RUN-LOAD ( ptr u8 n -- )             \ hb --load <file>
+   {: p:ptr pu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   >LEN PROC-ARGV+
+   p pu >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  p pu STORE! ;
 
 : RUN-PLAIN ( ptr u8 n -- )            \ hb <file>
+   {: p:ptr pu:n :}
    PROC-ARGV-RESET
-   >LEN PROC-ARGV+
+   p pu >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  p pu STORE! ;
 
 : RUN-STDIN ( ptr u8 n -- ) {: a:ptr u:n :}   \ hb < program
    u SRC-CAP > if E-FS-CAPACITY throw then
    a IN u BYTE-COPY  u IN-U !
    PROC-ARGV-RESET
    HB$ >LEN  IN IN-U @ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  a u STORE! ;
 
 \ Write a program to the private tree so the two file entries run the same text.
 : PROG! ( ptr u8 n -- )

@@ -40,6 +40,7 @@ require lib/test.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/outcome.f
 
 package COMPILE-FLOOR-GATE
 
@@ -85,13 +86,14 @@ variable PARSE-POS
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U ! LEN>N OUT-U ! ;
+     timeout OF src srcu OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
@@ -101,26 +103,28 @@ variable PARSE-POS
    then ;
 
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+: FLOOR$ ( -- ptr u8 n ) s" tools/compile-floor.f" ;
+: BENCH$ ( -- ptr u8 n ) s" tools/tier-bench.f" ;
 
 \ Report only: the budget is applied here, not by the tool's ratchet, so the
 \ number has one home.
 : RUN-FLOOR ( -- )
    PROC-ARGV-RESET
    s" --load" ARG+
-   s" tools/compile-floor.f" ARG+
+   FLOOR$ ARG+
    HB$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-CAPTURE-OUTCOME FLOOR$ STORE! ;
 
 : RUN-BENCH ( n -- ) {: tier:n :}
    PROC-ARGV-RESET
    s" --load" ARG+
-   s" tools/tier-bench.f" ARG+
+   BENCH$ ARG+
    s" --" ARG+
    tier ZERO-C + TIER-BUF c!
    TIER-BUF 1 ARG+
    s" lib/string.f" ARG+
    HB$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-CAPTURE-OUTCOME BENCH$ STORE! ;
 
 : SKIP-WS ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
    from begin dup u < while

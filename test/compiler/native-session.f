@@ -44,13 +44,14 @@ variable RC     variable EXITED
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited   OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout  OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout  OF src srcu OUT$ ERR ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ The source goes in on stdin of the engine under test, so a candidate build is
 \ measured and not whatever bin/hb happens to be.
@@ -58,7 +59,7 @@ variable RC     variable EXITED
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   STORE! ;
+   src u STORE! ;
 
 \ The child exited zero and printed what the definitions computed. Printing the
 \ answer is what proves the bodies RAN; an exit code alone passes for a load

@@ -22,6 +22,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test.f
+require lib/test/outcome.f
 
 package STDLIB-STANDALONE-LOAD
 
@@ -40,8 +41,6 @@ create PATH-OFF PATHS-MAX cells allot
 create PATH-LEN PATHS-MAX cells allot
 variable PATHS-N
 variable PATHS-USED
-variable RC
-variable EXITED
 
 : ENGINE$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
@@ -89,22 +88,16 @@ variable EXITED
    repeat drop FALSE ;
 
 \ ---- spawn one bare load ---------------------------------------------------
-: STORE! ( len len outcome -- )
-   MATCH outcome
-     exited   OF RC ! TRUE EXITED ! ENDOF
-     signaled OF RC ! FALSE EXITED ! ENDOF
-     timeout  OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N drop LEN>N drop ;
-
-: LOADS ( ptr u8 n -- ) {: p:ptr u:n :}
+: LOADS ( ptr u8 n -- )
+   {: p:ptr u:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
    ENGINE$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE!
-   p u T-LABEL  EXITED @ TTRUE
-   p u T-LABEL  RC @ 0 T= ;
+   ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   {: outu:len erru:len oc :}
+   p u T-LABEL
+   p u OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED= ;
 
 : LOAD-ALL ( -- )
    0 begin dup PATHS-N @ < while

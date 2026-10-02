@@ -10,6 +10,7 @@
 \ what the answers must be.
 
 require lib/pty-harness.f
+require lib/test/subject.f
 
 package PROC-PTY
 
@@ -63,13 +64,15 @@ variable PID
 
 \ Completion, in this file's own counters: the bounded reaps answer an outcome,
 \ and only a clean exit with this code passes. A reap that ran out of clock
-\ answers timeout: that is a deadline, not a wrong answer, so it throws
-\ E-PROC-TIMEOUT for RUN to report.
-: T-EXIT= ( outcome n -- ) {: want:n :}
-   MATCH outcome
+\ answers timeout: that is a deadline, not a wrong answer, so it prints the
+\ program and what the case drained from the child (SUBJECT:TIMED-OUT, which
+\ throws E-PROC-TIMEOUT for RUN to report).
+: T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
+   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
+   oc MATCH outcome
      exited OF want T= ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
+     timeout OF src srcu out outu err erru SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
 
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a
@@ -139,12 +142,17 @@ variable PID
    OUT-W @ close
    ERR-W @ close ;
 
+: CAPTURE-SOURCE$ ( -- ptr u8 n )
+   s" 2 3 + ." ;
+
 : CAPTURE-SEND-SOURCE ( -- )
-   IN-W @ >FD s" 2 3 + ." WRITE-LINE
+   IN-W @ >FD CAPTURE-SOURCE$ WRITE-LINE
    IN-W @ close ;
 
+\ The pipes are read after the reap, so a deadline here has drained nothing.
 : CAPTURE-EXPECT-RC ( -- )
-   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT= ;
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT {: oc :}
+   CAPTURE-SOURCE$ s" " s" " oc 0 T-EXIT= ;
 
 : CAPTURE-EXPECT-OUT ( -- )
    BUF-CLEAR
@@ -228,7 +236,8 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    SEED-TOKEN!
    OUT-R @ close
    ERR-R @ close
-   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT=
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT {: oc :}
+   SEED-LINE$ BUF$ s" " oc 0 T-EXIT=                 \ stderr is never read
    SEEDNUM-U @ 0 > TTRUE ;
 
 : PTY-SEED-SURFACE ( -- )
@@ -743,7 +752,8 @@ variable PTY-LONG-U
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
    4 SEND-BYTE
-   REAP 0 T-EXIT=
+   REAP {: oc :}
+   HB-EXE$ BUF$ s" " oc 0 T-EXIT=   \ the terminal carries both streams
    CLOSE-MASTER ;
 
 \ --- a terminal that hangs up mid-line ends the session -----------------------

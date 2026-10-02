@@ -26,6 +26,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 
 2048 constant SL-CAP
 20000 constant SL-TIMEOUT-MS
@@ -33,25 +34,16 @@ require lib/process-argv.f
 create SL-OUT SL-CAP allot
 create SL-ERR SL-CAP allot
 create SL-EMPTY 1 allot                 \ zero-length stdin
-variable SL-RC
-variable SL-EXITED
-
-: SL-STORE! ( len len outcome -- )
-   MATCH outcome
-     exited OF SL-RC ! 0 0= SL-EXITED ! ENDOF
-     signaled OF SL-RC ! 0 0= 0= SL-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N drop LEN>N drop ;
-
 \ Spawn `bin/hb --load <path>` with empty stdin; assert a clean exit 0.
-: SL-LOADS ( ptr u8 n -- ) {: p:ptr u:n :}
+: SL-LOADS ( ptr u8 n -- )
+   {: p:ptr u:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
    s" bin/hb" >LEN  SL-EMPTY 0 >LEN  SL-OUT SL-CAP >LEN
-   SL-ERR SL-CAP >LEN  SL-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME SL-STORE!
-   SL-EXITED @ TTRUE  SL-RC @ 0 T= ;
+   SL-ERR SL-CAP >LEN  SL-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   {: outu:len erru:len oc :}
+   p u SL-OUT outu LEN>N SL-ERR erru LEN>N oc 0 T-OUTCOME-EXITED= ;
 
 : SL-MAIN ( -- )
    T-RESET

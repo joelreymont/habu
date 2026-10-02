@@ -39,6 +39,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/argv.f
+require lib/test/outcome.f
 
 package COMPILE-FLOOR-TEST
 
@@ -55,13 +56,16 @@ variable RC     variable EXITED
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
+: TOOL$ ( -- ptr u8 n )  s" tools/compile-floor.f" ;
+
 : STORE! ( len len outcome -- )
-   MATCH outcome
+   {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited   OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout  OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout  OF TOOL$ OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ The binary under test, honouring the suite's override the same way test/tier.f
 \ does, so a build driver can point every child at the engine it just built.
@@ -78,7 +82,7 @@ variable RC     variable EXITED
 : RUN-FLOOR ( ptr u8 n -- ) {: arg:ptr au :}
    PROC-ARGV-RESET
    s" --load" ARG+
-   s" tools/compile-floor.f" ARG+
+   TOOL$ ARG+
    au 0 > if s" --" ARG+  arg au ARG+ then
    HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME STORE! ;

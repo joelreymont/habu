@@ -16,6 +16,7 @@ require lib/process-env.f
 require lib/engine-candidate.f
 require lib/codesign.f
 require test/app-image-engine.f
+require lib/test/outcome.f
 
 package SNAP-WRITER-TEST
 
@@ -275,13 +276,14 @@ variable IMGU
    BAD-SNAP$ IMG IMGU @ WRITE-ALL ;
 
 \ ---- warm snapshot probes ----
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT OUT-U @ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : WARM-LOAD ( ptr u8 n -- ) {: s:ptr su:n :}
    SNAP-SRC$ s su WRITE-ALL
@@ -289,12 +291,12 @@ variable IMGU
    s" --load" >LEN PROC-ARGV+
    SNAP-SRC$ >LEN PROC-ARGV+
    SNAP0$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : WARM-STDIN ( ptr u8 n -- ) {: s:ptr su:n :}
    PROC-ARGV-RESET
    SNAP0$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : PARSE-OUT ( -- n )
    OUT OUT-U @ TRIM STR>NUMBER? MATCH option
@@ -349,7 +351,7 @@ variable BAND-WID
 : RUN-BAND-COPY ( -- )
    PROC-ARGV-RESET
    BAD-BAND$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME BAD-BAND$ STORE! ;
 
 \ Doctor one byte of the persisted image, run the result, restore the byte so the
 \ later imgdump probes still see the image the writer produced.
@@ -552,7 +554,7 @@ variable BAND-WID
    WRITE-BAND-COPY
    PROC-ARGV-RESET
    BAD-BAND$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : HOLE-PROBE$ ( -- ptr u8 n ) s\" SNAP-WRITER-HOLE:RESTORED .\n" ;
 
@@ -611,14 +613,15 @@ variable BAND-WID
 
 \ A fresh process that saves the image again, with nothing new defined.
 : RECAP$ ( -- ptr u8 n ) s" recapture" PATH$ ;
+: RECAP-SRC$ ( -- ptr u8 n ) s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 : RECAPTURE ( -- )
    PROC-ARGV-RESET
    s" --" >LEN PROC-ARGV+
    RECAP$ >LEN PROC-ARGV+
-   SNAP0$ >LEN  s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   SNAP0$ >LEN  RECAP-SRC$ >LEN
    OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME RECAP-SRC$ STORE! ;
 
 \ The recapture's heap holds per-run input the first image's does not: the
 \ output path and the line the save was read from sit in a few cells, so the

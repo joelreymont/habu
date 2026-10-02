@@ -12,6 +12,7 @@ require tools/build-fixpoint-test-lib.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/test/mapped.f
+require lib/test/outcome.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
@@ -488,24 +489,27 @@ variable BAD-N
 : WRITE-SRC ( n -- ) {: bytes:n :}
    s" bft-srcfull.f" BF-A$ SRC-BUF bytes WRITE-ALL ;
 
-: RUN-CANDIDATE ( -- )
+\ Builds the source at the path. A run past its deadline is reported here, and
+\ BFT-STEP names the step before it rethrows E-PROC-TIMEOUT.
+: RUN-CANDIDATE ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    BFT-HB >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
    BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   MATCH outcome
+   RUN-ARGV-ENV-CAPTURE-OUTCOME {: ou:len eu:len oc :}
+   eu LEN>N ERR-U !
+   oc MATCH outcome
      exited OF EXIT-CODE ! 0 0= EXITED ! ENDOF
      signaled OF EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
-   ;MATCH {: ou:len eu:len :}
-   eu LEN>N ERR-U ! ;
+     timeout OF src srcu BFT-OUT ou LEN>N ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN-SOURCE ( -- )
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
-   s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
+   s" bft-srcfull.f" BF-A$ 2dup >LEN PROC-ARGV+
    RUN-CANDIDATE ;
 
 : PROBE ( n -- bool ) {: bytes:n :}
@@ -570,7 +574,7 @@ variable BAD-N
 : RUN-BUILD ( ptr u8 n -- )
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
-   >LEN PROC-ARGV+
+   2dup >LEN PROC-ARGV+
    RUN-CANDIDATE ;
 
 : EXPECT-OK ( -- )

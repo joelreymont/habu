@@ -49,6 +49,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
+require lib/test/outcome.f
 
 package AOT-CAPTURE-BOUND
 
@@ -189,12 +190,13 @@ variable EXITED
 
 \ --- the child run -----------------------------------------------------------
 : STORE! ( len len outcome -- )
-   MATCH outcome
+   {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF ENTRY$ OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN-ENTRY ( -- )                           \ hb --load <overlay>/entry.f
    PROC-ARGV-RESET

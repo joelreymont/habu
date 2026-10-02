@@ -7,6 +7,7 @@
 
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
+require lib/test/outcome.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -182,6 +183,9 @@ variable HBT-INST-FILES
 : HBT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
+: HBT-IMGDUMP$ ( -- ptr u8 n )
+   s" tools/imgdump.f" ;
+
 : HBT-IMGDUMP-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" HBT-ARG+
@@ -189,7 +193,7 @@ variable HBT-INST-FILES
    s" lib/string.f" HBT-ARG+
    s" lib/memory.f" HBT-ARG+
    s" lib/fs.f" HBT-ARG+
-   s" tools/imgdump.f" HBT-ARG+
+   HBT-IMGDUMP$ HBT-ARG+
    s" --" HBT-ARG+
    HBT-REPL-OUT HBT-ARG+ ;
 
@@ -200,18 +204,14 @@ variable HBT-INST-FILES
    HBT-IMGDUMP-NAME$ BF-A$ ;
 
 \ The dump, read back through its own size. A buffer sized before the child runs
-\ cannot bound it (see below), so the file's size is what sizes the read.
+\ cannot bound it (see below), so the file's size is what sizes the read. A
+\ child stopped at its deadline may have printed nothing yet.
 : HBT-IMGDUMP-READ$ ( -- ptr u8 n )
-   HBT-IMGDUMP-DUMP$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   HBT-IMGDUMP-DUMP$ FILE-SIZE {: size:n :}
+   size 0= if s" " exit then
+   size MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    HBT-IMGDUMP-DUMP$ buf cap READ-ALL {: u:n :}
    buf u ;
-
-: HBT-IMGDUMP-RC ( outcome -- n )
-   MATCH outcome
-     exited   OF ENDOF
-     signaled OF 128 + ENDOF
-     timeout  OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH ;
 
 \ ---- where each image class's bytes went --------------------------------------
 \ tools/image-size-lib.f attributes every byte of the image to a class and
@@ -385,11 +385,11 @@ variable HBT-INST-FILES
    HBT-IMGDUMP-ARGV
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" HBT-IMGDUMP-DUMP$ HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE      \ ( len outcome )
-   swap LEN>N {: errn:n :}
-   HBT-IMGDUMP-RC 0 T=
-   HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-IMGDUMP-READ$ s" + " CONTAINS? TTRUE
+   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE {: erru:len oc :}
+   HBT-IMGDUMP-READ$ {: dump:ptr dumpu:n :}
+   HBT-IMGDUMP$ dump dumpu HBT-RUN-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   HBT-RUN-ERR erru LEN>N HBT-EMPTY$ T$=
+   dump dumpu s" + " CONTAINS? TTRUE
    HBT-IMGDUMP-NAME$ BF-REMOVE-TMP
    BF-TMP-RESET ;
 

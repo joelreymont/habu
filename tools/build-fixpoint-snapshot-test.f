@@ -8,6 +8,7 @@
 
 require tools/build-fixpoint-test-lib.f
 require src/habu/snapshot-format.f
+require lib/test/outcome.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
@@ -73,20 +74,26 @@ variable BFT-DOC-CODE
 
 \ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
 \ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
-\ kind/code and stderr length, then restore the byte for the next case.
-: BFT-DOCTORED-CAPTURE ( n n -- ) {: off:n val:n :}
+\ kind/code and stderr length, then restore the byte for the next case. A run
+\ past its deadline is reported here, and BFT-STEP names the step before it
+\ rethrows E-PROC-TIMEOUT.
+: BFT-DOCTORED-CAPTURE ( n n -- )
+   {: off:n val:n :}
    off BFT-BYTE@ {: orig:n :}
    val off BFT-BYTE!
    BFT-DOCTOR-WRITE
    PROC-ARGV-RESET
    s" hb-doctored" BF-A$ >LEN  BFT-EMPTY$ >LEN
    BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   MATCH outcome
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   erru LEN>N BFT-DOC-ERR-U !
+   oc MATCH outcome
      exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
      signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF        \ a deadline, for BFT-STEP
-   ;MATCH nip LEN>N BFT-DOC-ERR-U !
+     timeout OF
+        s" hb-doctored" BF-A$ BFT-OUT outu LEN>N BFT-DOC-ERR$ T-TIMED-OUT
+     ENDOF
+   ;MATCH
    orig off BFT-BYTE! ;
 
 \ A labeled fatal exit: process EXITed with the contract code and its stderr

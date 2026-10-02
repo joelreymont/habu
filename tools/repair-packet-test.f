@@ -153,19 +153,13 @@ create PACKET-BUF FS-PATH-CAP allot
 : RUN-CHECK-ACT ( -- )
    LABEL$ SRC CHECK-ALL-ERRORS:FILE ;
 
-: RUN-CHECK ( ptr u8 n -- len len outcome )
+\ The check runs in this process, so its result is the code it threw.
+: RUN-CHECK ( ptr u8 n -- len len n )
    LABEL!
    ERR CAPTURE-CAP OUT CAPTURE-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= CHECK-ALL-ERRORS:JSON!
    [: RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 >LEN CHECK-ALL-ERRORS:OUT$ nip >LEN rc OUTCOME:EXITED ;
-
-: OUTCOME-CODE ( outcome -- n bool )   \ code plus exited?
-   MATCH outcome
-     exited OF 0 0= ENDOF
-     signaled OF 0 0= 0= ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH ;
+   0 >LEN CHECK-ALL-ERRORS:OUT$ nip >LEN rc ;
 
 : DUMP-CAPTURE ( n n n n -- )
    {: outu:n erru:n code:n expect:n :}
@@ -183,22 +177,24 @@ create PACKET-BUF FS-PATH-CAP allot
    s" stderr:" type cr
    ERR erru type ;
 
-: EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
-   exited 0= if outu LEN>N erru LEN>N code expect DUMP-CAPTURE then
-   code expect <> if outu LEN>N erru LEN>N code expect DUMP-CAPTURE then
+: REPAIR-TOOL$ ( -- ptr u8 n )
+   s" tools/repair-packet.f" ;
+
+\ The one child this file spawns runs the repair tool.
+: EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   oc MATCH outcome
+     exited OF dup expect <> if outu LEN>N erru LEN>N rot expect DUMP-CAPTURE else drop then ENDOF
+     signaled OF outu LEN>N erru LEN>N rot 128 + expect DUMP-CAPTURE ENDOF
+     timeout OF ENDOF
+   ;MATCH
    LABEL$ T-LABEL
-   exited TTRUE
-   LABEL$ T-LABEL
-   code expect T=
+   REPAIR-TOOL$ OUT outu LEN>N ERR erru LEN>N oc expect T-OUTCOME-EXITED=
    outu LEN>N erru LEN>N ;
 
-: EXPECT-EXIT-NZ ( len len outcome -- n n )
-   OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
-   exited 0= if outu LEN>N erru LEN>N code 0 DUMP-CAPTURE then
+: EXPECT-EXIT-NZ ( len len n -- n n )
+   {: outu:len erru:len code:n :}
    code 0 = if outu LEN>N erru LEN>N code -1 DUMP-CAPTURE then
-   LABEL$ T-LABEL
-   exited TTRUE
    LABEL$ T-LABEL
    code 0 T<>
    outu LEN>N erru LEN>N ;
@@ -391,7 +387,7 @@ create PACKET-BUF FS-PATH-CAP allot
 : ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   REPAIR-TOOL$ >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
 : RUN-REPAIR-NOARGS ( -- len len outcome )

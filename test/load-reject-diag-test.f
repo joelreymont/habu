@@ -26,6 +26,7 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 require lib/argv.f
 require tools/repair-packet-core.f
+require lib/test/outcome.f
 
 package LOAD-REJECT-TEST
 
@@ -225,13 +226,14 @@ LOWER-CERT-HOOK:INSTALL
    PATHS!
    FIXTURES! ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF E-PROC-TIMEOUT throw ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ Spawn `<hb> --load <fixture>` with empty stdin, capture the exit outcome.
 : RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -240,7 +242,7 @@ LOWER-CERT-HOOK:INSTALL
    path pathu >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   STORE! ;
+   path pathu STORE! ;
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
@@ -284,15 +286,11 @@ LOWER-CERT-HOOK:INSTALL
 
 : TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
-   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED STORE!
+   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED s" " STORE!
    EXITED @ TFALSE
    RC @ SIGKILL T=
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
-
-: TEST-STORE-TIMEOUT ( -- )
-   s" a deadline throws instead of reading as a failed exit" T-LABEL
-   [: TEST-OUT-U >LEN TEST-ERR-U >LEN OUTCOME:TIMEOUT STORE! ;] E-PROC-TIMEOUT TTHROWSQ ;
 
 : TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word" T-LABEL
@@ -416,7 +414,6 @@ LOWER-CERT-HOOK:INSTALL
    T-RESET
    SETUP
    TEST-STORE-SIGNALED
-   TEST-STORE-TIMEOUT
    TEST-UNDEF
    TEST-BODY
    TEST-PARAMETRIC
