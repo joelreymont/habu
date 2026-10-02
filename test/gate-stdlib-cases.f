@@ -1745,6 +1745,10 @@ SUITE checker-dup-record
    test/checker-dup-record.f
 ;SUITE
 
+SUITE diag-buffer-capacity
+   test/diag-buffer-capacity.f
+;SUITE
+
 WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE

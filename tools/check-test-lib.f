@@ -2217,8 +2217,9 @@ REFUSAL-N REFUSAL-LINE-LEN * constant REFUSAL-SOURCE-LEN
    loop drop
    $0a line tu + c! ;
 
-: REFUSAL-FILL ( ptr u8 -- ) {: a:ptr :}
-   REFUSAL-N 0 ?do a i REFUSAL-LINE-LEN * + i 1+ REFUSAL-LINE loop ;
+: REFUSAL-FILL ( ptr u8 n -- )
+   {: a:ptr count:n :}
+   count 0 ?do a i REFUSAL-LINE-LEN * + i 1+ REFUSAL-LINE loop ;
 
 \ One line per refused definition, in either rendering.
 : REFUSALS-MODE ( ptr u8 ptr u8 n -- ) {: src:ptr err:ptr mode:n :}
@@ -2230,13 +2231,51 @@ REFUSAL-N REFUSAL-LINE-LEN * constant REFUSAL-SOURCE-LEN
 
 : REFUSALS-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr extent:NUM:alloc-byte-len :}
    a REFUSAL-SOURCE-LEN + {: err:ptr :}
-   a REFUSAL-FILL
+   a REFUSAL-N REFUSAL-FILL
    a err MODE-ALL REFUSALS-MODE
    a err MODE-ALL MODE-JSON or REFUSALS-MODE ;
 
 : TEST-REFUSALS ( -- )
    REFUSAL-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
    [: REFUSALS-BODY ;] MEM:WITH-BYTES ;
+
+\ ---- a report past the scratch -----------------------------------------------
+\ --all-errors renders every refusal into a scratch of INCLUDE-BUF-CAP bytes and
+\ streams each record to standard error. Each JSON record here is over 400
+\ bytes, so three thousand refusals pass the scratch: the run reports the
+\ records that fit, each whole, then the next one's refusal as an
+\ E-STATEMENT-THROW record whose throw_code is E-DIAG-CAPACITY (-2901), and
+\ exits 70. A full scratch must neither end the process nor lose the records
+\ before it. The capture holds twice the scratch.
+
+3000 constant FULL-REFUSAL-N
+FULL-REFUSAL-N REFUSAL-LINE-LEN * constant FULL-SOURCE-LEN
+INCLUDE-BUF-CAP 2 * constant FULL-ERR-CAP
+
+\ Where the last line of a report ending in a line feed starts.
+: LAST-LINE-AT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   0
+   u 1 - 0 ?do a i + c@ $0a = if drop i 1+ then loop ;
+
+: FULL-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   {: a:ptr extent:NUM:alloc-byte-len :}
+   a FULL-SOURCE-LEN + {: err:ptr :}
+   a FULL-REFUSAL-N REFUSAL-FILL
+   a FULL-SOURCE-LEN MODE-ALL MODE-JSON or err FULL-ERR-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   err erru + 1 - c@ $0a T=
+   err erru s\" \"word\":\"ckt-r0001\"" CONTAINS? TTRUE
+   err erru LAST-LINE-AT {: cut:n :}
+   err cut + erru cut - {: last:ptr lastu:n :}
+   last lastu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   last lastu s\" \"throw_code\":-2901" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
+: TEST-SCRATCH-FULL ( -- )
+   FULL-SOURCE-LEN FULL-ERR-CAP + MEM:BYTES-ALLOC-LEN
+   [: FULL-BODY ;] MEM:WITH-BYTES ;
 
 : LIST-CAP-FILL ( -- )
    LIST-ENTRY-CAP 0 ?do BAD$ FILE loop ;
@@ -4729,6 +4768,7 @@ variable LC-CANON-U
    s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
    s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN
+   s" check/scratch-full" [: TEST-SCRATCH-FULL ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN

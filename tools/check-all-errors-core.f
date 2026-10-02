@@ -1,5 +1,6 @@
 \ check-all-errors-core.f - reusable all-errors checker core.
 
+require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/vector.f
@@ -109,8 +110,6 @@ variable CA-COMPOSE-LABEL-U
 : CA-JSON? ( -- bool )
    CA-JSON @ 0 <> ;
 
-: CA-FAIL ( ptr u8 n n -- )
-   die ;
 
 
 
@@ -127,9 +126,12 @@ variable CA-COMPOSE-LABEL-U
 
 
 
-
+\ The report buffer is the caller's and cannot grow, so a record that does not
+\ fit is refused whole by a throw, after every record before it. A streamed
+\ report has no buffer to outgrow.
 : CA-OUT-ROOM ( n -- )
-   CA-OUT-LEN @ + CA-OUT-CAP @ > IF s" check-all-errors: output buffer full" 76 CA-FAIL THEN ;
+   CA-OUT-FD @ 0 >= IF drop exit THEN
+   CA-OUT-LEN @ + CA-OUT-CAP @ > IF E-DIAG-CAPACITY throw THEN ;
 
 : CA-ERR ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF exit THEN
@@ -144,6 +146,13 @@ variable CA-COMPOSE-LABEL-U
 : CA-LF$ ( -- ptr u8 n )
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
+
+\ A record goes in with its line feed or not at all, so a report a full buffer
+\ cut short ends on a whole line.
+: CA-ERR-LN ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1+ CA-OUT-ROOM
+   a u CA-ERR
+   CA-LF$ CA-ERR ;
 
 
 
@@ -200,8 +209,7 @@ variable CA-COMPOSE-LABEL-U
    CA-ERR-A@ start + end start - ;
 
 : CA-EMIT-ERR-LINE ( n n -- ) {: start:n end:n :}
-   start end CA-ERR-LINE LINT-TRIM CA-ERR
-   CA-LF$ CA-ERR ;
+   start end CA-ERR-LINE LINT-TRIM CA-ERR-LN ;
 
 
 
@@ -261,8 +269,7 @@ variable CA-COMPOSE-LABEL-U
 
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
-   CA-DUP-RECORD$ CA-ERR
-   CA-LF$ CA-ERR
+   CA-DUP-RECORD$ CA-ERR-LN
    DUP-RC CA-RAW-FAILURE ! ;
 
 : CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
@@ -293,8 +300,7 @@ variable CA-COMPOSE-LABEL-U
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
    LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW$ CA-ERR-LN ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
@@ -319,16 +325,13 @@ variable CA-COMPOSE-LABEL-U
    s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
    LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW$ CA-ERR-LN ;
 
 : CA-PROSE-LEX-ROW ( -- )
-   s" E-MALFORMED-REGISTRY-ROW" CA-ERR
-   CA-LF$ CA-ERR ;
+   s" E-MALFORMED-REGISTRY-ROW" CA-ERR-LN ;
 
 : CA-PROSE-LEX-UNTERM ( -- )
-   s" E-UNTERMINATED-STRING" CA-ERR
-   CA-LF$ CA-ERR ;
+   s" E-UNTERMINATED-STRING" CA-ERR-LN ;
 
 : CA-EMIT-LEX-ROW ( -- )
    CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN ;
@@ -495,8 +498,7 @@ private
 : CA-HANDLE-THROW ( n -- )
    CA-THROW!
    0 CA-EMIT-CAPTURED
-   CA-THROW-RECORD$ CA-ERR
-   CA-LF$ CA-ERR ;
+   CA-THROW-RECORD$ CA-ERR-LN ;
 
 : CA-ALLOC-SOURCE ( n -- )
    MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
@@ -544,8 +546,7 @@ private
    CA-THROW!
    0 CA-EMIT-CAPTURED
    CA-COMPOSE-STOPPED
-   CA-THROW-RECORD$ CA-ERR
-   CA-LF$ CA-ERR ;
+   CA-THROW-RECORD$ CA-ERR-LN ;
 
 : CA-RUN-COMPOSE-DEFS ( -- )
    CA-RESET-RESULTS

@@ -86,12 +86,31 @@ variable RJSON   0 RJSON !
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
+\ A full diagnostic buffer refuses the next record. lib/errors.f owns the code;
+\ this file compiles before any lib/ file exists, so the same (code, name) pair
+\ is re-registered here -- the one form tools/error-code-lint.f admits -- and
+\ test/diag-buffer-capacity.f keeps the two spellings equal.
+package RDIAG
+public
+-2901 constant E-DIAG-CAPACITY
+;package
+
+\ The buffer is the caller's and cannot grow, so a record that does not fit is
+\ refused whole by a throw the caller's catch recovers from: the buffer keeps
+\ every record before it.
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
-   RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
+   RDIAG-U @ u + RDIAG-CAP @ > IF RDIAG:E-DIAG-CAPACITY throw THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
+
+\ Hand the record rendered in RSBUF on, with rendering back on stdout first,
+\ so a refused record leaves the renderer as a delivered one does.
+: RSBUF-FLUSH ( -- )
+   RSBUF RSN @
+   0 RDST !  0 RSN !
+   RDIAG-APPEND ;
 PERSISTED-PTR-VARIABLE SEEN-P   NULL-PTR SEEN-P !
 variable SEEN-CAP   0 SEEN-CAP !
 \ Only the assigned prefix needs clearing; allocation initializes every cell
@@ -1085,8 +1104,7 @@ variable JPOS  variable JLINE  variable JCOL
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 : DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
 DIAG-PRINT-INSTALL
 
@@ -1121,8 +1139,7 @@ DIAG-PRINT-INSTALL
    1 RDST !  0 RSN !
    sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
@@ -1158,8 +1175,7 @@ BADSIG-DIAG-INSTALL
    ka ku fa fu ta tu wa wu
    JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
 \ (conservatively, the word stays unrecorded) on unknown tags or absurd var
@@ -1189,8 +1205,7 @@ BADSIG-DIAG-INSTALL
    1 RDST !  0 RSN !
    na nu wa wu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 : REC-REFUSE-DIAG ( ptr u8 n -- )
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
@@ -1249,8 +1264,7 @@ REC-SIG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ --- a package public its own private tail shadows (checker.f SHADOW-ARITY-CK).
 \ The definition-site twin of the diagnostic above: there two scopes claimed one
@@ -1296,8 +1310,7 @@ REC-SIG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 \ Both shadow diagnostics ride ONE checker hook, selected by its argument
 \ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
 \ arity-shadow definition site), because every defer written before `: TRUST`
@@ -1333,8 +1346,7 @@ SHADOW-DIAG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF TSTALE-JSON ELSE TSTALE-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ --- a checker storage registrar called outside the verifier window (checker.f
 \ CHECKER-REPLAY-NAME-OK?), on the same template: it names the word the
@@ -1361,8 +1373,7 @@ SHADOW-DIAG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 \ Both refused-record diagnostics ride ONE checker hook (checker.f
 \ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record).
 : RECORD-DIAG ( n -- )
@@ -1434,8 +1445,7 @@ RECORD-DIAG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF STGR-JSON ELSE STGR-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
 
