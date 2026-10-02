@@ -166,11 +166,6 @@ variable QSC-ANS
 
 package QSC-TEST
 
-private
-
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 public
 
 \ THE CEILING ITSELF, MEASURED AS AN ACCEPTANCE. Every case below runs code the
@@ -206,25 +201,25 @@ public
 
 : ENCLOSING-SHAPE-CASE ( -- )
    s" a branching body compiles under distinct enclosing block shapes" T-LABEL
-   [: s" : QSC-B1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" EV ;] 0 TTHROWSQ
-   [: s" : QSC-B2 ( n -- n n ) dup 3 > if 1+ then [: dup 3 > if 1+ then ;] catch ;" EV ;]
+   [: s" : QSC-B1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : QSC-B2 ( n -- n n ) dup 3 > if 1+ then [: dup 3 > if 1+ then ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ
-   [: s" : QSC-B3 ( n -- n n ) dup 3 > if 1+ else 2 + then [: dup 3 > if 1+ then ;] catch ;" EV ;]
+   [: s" : QSC-B3 ( n -- n n ) dup 3 > if 1+ else 2 + then [: dup 3 > if 1+ then ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ
-   [: s" : QSC-B4 ( n -- n n ) dup 3 > if 1+ then [: 1+ ;] catch ;" EV ;]
+   [: s" : QSC-B4 ( n -- n n ) dup 3 > if 1+ then [: 1+ ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ
 
    s" and differing enclosing/body join widths compile too" T-LABEL
-   [: s" : QSC-B5 ( n -- n n ) dup 3 > if 1+ then [: dup dup 3 > if 1+ else 2 + then + 1- ;] catch ;" EV ;]
+   [: s" : QSC-B5 ( n -- n n ) dup 3 > if 1+ then [: dup dup 3 > if 1+ else 2 + then + 1- ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ
-   [: s" : QSC-B6 ( n n -- n n n ) 2dup > if 1+ then [: dup 3 > if 1+ then ;] catch ;" EV ;]
+   [: s" : QSC-B6 ( n n -- n n n ) 2dup > if 1+ then [: dup 3 > if 1+ then ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ ;
 
 : THROW-BODY-CASE ( -- )
    s" catch runs a quotation whose every path throws" T-LABEL
    7 QSC-FIXTURE:QSC-THROW 9 T= 7 T=
    2 QSC-FIXTURE:QSC-THROW 5 T= 2 T=
-   [: s" : QSC-R2 ( n -- n n ) [: dup 3 > if 9 throw else 1+ then ;] catch ;" EV ;]
+   [: s" : QSC-R2 ( n -- n n ) [: dup 3 > if 9 throw else 1+ then ;] catch ;" evaluate-closed ;]
    0 TTHROWSQ ;
 
 : EARLY-RETURN-CASE ( -- )

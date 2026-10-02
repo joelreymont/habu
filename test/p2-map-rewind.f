@@ -13,18 +13,17 @@ private
 
 \ ---- the boundaries ----------------------------------------------------------
 \ Reading the engine's own relocation bands and its own compiled code needs the
-\ same raw casts src/habu/aot-capture.f, test/addrmap-set.f and
-\ test/addrmap-call.f declare. Only the xt-to-pointer cast still needs an
-\ unchecked body; it chooses nothing, because every address handed to it is
-\ computed by the checked words below from `cp@`.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ same raw views src/habu/aot-capture.f, test/addrmap-set.f and
+\ test/addrmap-call.f take. The code-address cast chooses nothing, because every
+\ address handed to it is computed by the checked words below from `cp@`.
 : DATA-A ( -- ptr u8 )
    data-base ;
 
 : REGION-BASE ( -- n )
    dbase@ ;
 
-TRUSTED: CODE-A ( n -- ptr u8 ) ;
+\ A code address from cp@ is an integer; its instruction bytes need a byte view.
+CAST: CODE-A ( n -- ptr u8 )
 
 \ ---- reading a band ----------------------------------------------------------
 \ Read exactly the way habu2.f EMIT-ADDR-SITE and EMIT-CEMITBL write: the region

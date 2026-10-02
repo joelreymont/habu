@@ -14,79 +14,70 @@ package NSTRING-TEST
 
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. The bool form is separate because a flag is what most of
-\ these questions answer with.
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
-
-TRUSTED: EV-B ( ptr u8 n -- bool )
-   evaluate ;
-
 \ ---- the words the chain compiles --------------------------------------------
 \ Each is compiled through the production entry, which reads what the definition
 \ takes and leaves off the checker's certificate: `( -- ptr u8 n )` is TWO, an
 \ address and a length, and nothing here states it.
-TRUSTED: DEF ( ptr u8 n -- )
-   evaluate ;
+\ Callers of these words, which did not exist when the suite was compiled, run
+\ through `TEST-EVAL:N`, or `TEST-EVAL:FLAG` for the flag most of these
+\ questions answer with.
 
 : PLAIN ( -- )
-   S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" DEF ;
+   S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" evaluate-closed ;
 
 : EMPTY ( -- )
-   S\" : NST-EMPTY ( -- ptr u8 n ) s\" \" ;" DEF ;
+   S\" : NST-EMPTY ( -- ptr u8 n ) s\" \" ;" evaluate-closed ;
 
 \ A body built to fool a reader that re-lexed it: two spaces that must not
 \ collapse, a definition closer, a colon and a comment opener that must not
 \ become syntax, and a trailing word that must not become a token.
 : HOSTILE ( -- )
-   S\" : NST-HOSTILE ( -- ptr u8 n ) s\" a  b ; : ( x\" ;" DEF ;
+   S\" : NST-HOSTILE ( -- ptr u8 n ) s\" a  b ; : ( x\" ;" evaluate-closed ;
 
 \ A named escape, a hex escape and a quote escape in one body. The quote escape
 \ is the one a decoder that merely scanned for the closing quote would get wrong.
 : ESCAPED ( -- )
-   S\" : NST-ESCAPED ( -- ptr u8 n ) s\\\" a\\tb\\x41\\qc\" ;" DEF ;
+   S\" : NST-ESCAPED ( -- ptr u8 n ) s\\\" a\\tb\\x41\\qc\" ;" evaluate-closed ;
 
 \ Two sites in ONE definition, writing the same body, so the addresses they push
 \ can be compared against each other.
 : TWICE ( -- )
-   S\" : NST-TWICE ( -- ptr u8 n ptr u8 n ) s\" dup\" s\" dup\" ;" DEF ;
+   S\" : NST-TWICE ( -- ptr u8 n ptr u8 n ) s\" dup\" s\" dup\" ;" evaluate-closed ;
 
 \ And a second definition writing that same body, so the sharing can be shown to
 \ cross a definition boundary and not only a site boundary.
 : SHARED ( -- )
-   S\" : NST-SHARED ( -- ptr u8 n ) s\" dup\" ;" DEF ;
+   S\" : NST-SHARED ( -- ptr u8 n ) s\" dup\" ;" evaluate-closed ;
 
 \ A body nothing else in this suite writes, for the counting cases, and a second
 \ definition writing exactly it.
 : LONE ( -- )
-   S\" : NST-LONE ( -- ptr u8 n ) s\" lone-body\" ;" DEF ;
+   S\" : NST-LONE ( -- ptr u8 n ) s\" lone-body\" ;" evaluate-closed ;
 
 : LONE-AGAIN ( -- )
-   S\" : NST-LONE2 ( -- ptr u8 n ) s\" lone-body\" ;" DEF ;
+   S\" : NST-LONE2 ( -- ptr u8 n ) s\" lone-body\" ;" evaluate-closed ;
 
 \ ---- what the published words answer -----------------------------------------
 : ROUND-TRIP-CASE ( -- )
    PLAIN
    s" a string literal compiles through the chain and pushes its bytes" T-LABEL
-   S\" NST-PLAIN s\q hi\q STR=" EV-B TTRUE
-   s" NST-PLAIN nip" EV-N 2 T=
+   S\" NST-PLAIN s\q hi\q STR=" TEST-EVAL:FLAG TTRUE
+   s" NST-PLAIN nip" TEST-EVAL:N 2 T=
 
    EMPTY
    s" the empty string literal pushes a valid address and zero" T-LABEL
-   s" NST-EMPTY nip" EV-N 0 T=
-   s" NST-EMPTY drop 0 >" EV-B TTRUE
+   s" NST-EMPTY nip" TEST-EVAL:N 0 T=
+   s" NST-EMPTY drop 0 >" TEST-EVAL:FLAG TTRUE
 
    HOSTILE
    s" a body that would re-lex as syntax survives verbatim" T-LABEL
-   S\" NST-HOSTILE s\q a  b ; : ( x\q STR=" EV-B TTRUE
-   s" NST-HOSTILE nip" EV-N 12 T=
+   S\" NST-HOSTILE s\q a  b ; : ( x\q STR=" TEST-EVAL:FLAG TTRUE
+   s" NST-HOSTILE nip" TEST-EVAL:N 12 T=
 
    ESCAPED
    s" an escaped body arrives decoded, not as the text it was written as" T-LABEL
-   S\" NST-ESCAPED S\\\q a\\tbA\\qc\q STR=" EV-B TTRUE
-   s" NST-ESCAPED nip" EV-N 6 T= ;
+   S\" NST-ESCAPED S\\\q a\\tbA\\qc\q STR=" TEST-EVAL:FLAG TTRUE
+   s" NST-ESCAPED nip" TEST-EVAL:N 6 T= ;
 
 \ ---- one body, one address ----------------------------------------------------
 \ THE SHARING IS THE POINT AND NOT AN ECONOMY. A store that answered a fresh
@@ -96,14 +87,14 @@ TRUSTED: DEF ( ptr u8 n -- )
 : SHARING-CASE ( -- )
    TWICE
    s" two sites writing one body push one address" T-LABEL
-   s" NST-TWICE drop swap drop =" EV-B TTRUE
+   s" NST-TWICE drop swap drop =" TEST-EVAL:FLAG TTRUE
 
    SHARED
    s" a second definition writing that body pushes the same address" T-LABEL
-   s" NST-SHARED drop NST-TWICE drop nip drop =" EV-B TTRUE
+   s" NST-SHARED drop NST-TWICE drop nip drop =" TEST-EVAL:FLAG TTRUE
 
    s" and a different body pushes a different address" T-LABEL
-   s" NST-SHARED drop NST-PLAIN drop <>" EV-B TTRUE ;
+   s" NST-SHARED drop NST-PLAIN drop <>" TEST-EVAL:FLAG TTRUE ;
 
 \ ---- interning the same bytes twice costs nothing ------------------------------
 \ Re-evaluating a definition's source would be a duplicate definition. The
@@ -123,20 +114,21 @@ TRUSTED: DEF ( ptr u8 n -- )
    LONE-AGAIN
    NSTR:COUNT c0 T=
    NSTR:BYTES b0 T=
-   S\" NST-LONE2 s\q lone-body\q STR=" EV-B TTRUE
-   s" NST-LONE drop NST-LONE2 drop =" EV-B TTRUE ;
+   S\" NST-LONE2 s\q lone-body\q STR=" TEST-EVAL:FLAG TTRUE
+   s" NST-LONE drop NST-LONE2 drop =" TEST-EVAL:FLAG TTRUE ;
 
-\ A failed evaluate rewinds DATA but keeps the compiler's literal table.
+\ A failed evaluate-closed rewinds DATA but keeps the compiler's literal table.
 \ Reclaim that DATA and verify the cached bytes still belong to its pool.
 public
 variable SAVED-LITERAL
 private
 create ROLLBACK-BYTES 101 c, 112 c, 104 c, 101 c, 109 c, 101 c, 114 c, 97 c, 108 c,
-TRUSTED: PTR>N ( ptr a -- n ) ;
-TRUSTED: N>BYTES ( n -- ptr u8 ) ;
+: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+\ A saved literal address is an integer cell; reading its bytes needs a byte view.
+CAST: N>BYTES ( n -- ptr u8 )
 
 : FAILED-INTERN ( -- )
-   S\" s\q ephemeral\q NSTR:INTERN NSTRING-TEST:SAVED-LITERAL ! 77 throw" DEF ;
+   S\" s\q ephemeral\q NSTR:INTERN NSTRING-TEST:SAVED-LITERAL ! 77 throw" evaluate-closed ;
 
 : ROLLBACK-CASE ( -- )
    s" literals survive DATA rollback after failed evaluation" T-LABEL
@@ -146,9 +138,9 @@ TRUSTED: N>BYTES ( n -- ptr u8 ) ;
    here {: reclaimed:ptr :}
    128 allot
    128 0 ?do 88 reclaimed i + c! loop
-   S\" : NST-ROLLBACK ( -- ptr u8 n ) s\q ephemeral\q ;" DEF
+   S\" : NST-ROLLBACK ( -- ptr u8 n ) s\q ephemeral\q ;" evaluate-closed
    SAVED-LITERAL @ N>BYTES 9 ROLLBACK-BYTES 9 STR= TTRUE
-   s" NST-ROLLBACK drop" EV-N SAVED-LITERAL @ T= ;
+   s" NST-ROLLBACK drop" TEST-EVAL:N SAVED-LITERAL @ T= ;
 
 : WINDOW-CASE ( -- )
    s" lone-body" NSTR:INTERN {: old:n :}
@@ -264,7 +256,8 @@ PTR-VARIABLE IMPORTED-POOL
 
 \ This negative fixture reaches the real private importer by its dictionary
 \ identity. It never grants ownership: every supplied row is malformed.
-TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
+\ The dictionary row holds the importer's code address as an integer.
+CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 : IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
    s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
@@ -311,8 +304,8 @@ TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 \ length even though one string is much longer. Address materialization depends
 \ on the mapped DATA base, so the relation is the stable claim.
 : COST-PAIR ( -- )
-   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" DEF
-   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" DEF ;
+   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" evaluate-closed
+   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" evaluate-closed ;
 
 : CODE-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u XREF-FIND XREF-LEN ;

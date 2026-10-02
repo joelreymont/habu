@@ -296,6 +296,67 @@ pass when rerun alone. `native-build-entry` and `build-fixpoint-fixtures`
 exceed their 180- and 120-second child deadlines at a load average near 100,
 on this engine and on master's alike when run side by side.
 
+## Zero retired effect bindings in place
+
+The capture's sweep used to clear only the symbol and back-link of a retired
+symbol's effect bindings; their `ACTIVE` and `CONTENT` cells, and every content
+and node only they reached, stayed in DATA. It now zeroes them where they stand
+(`src/core/checker.f` `CHECKER-SWEEP` `RETIRE-BINDINGS`). It marks what stays
+from what stays: every record of a kept symbol and every record a root names (a
+kept control row's created effect, the `DOESEFF`, `WRAPC` and `RECEFF` latches,
+the primitives' effects in `PES`), with the content, nodes, name strings and
+argument runs their rows reach. Every other 8-byte cell of the store's user
+region is zeroed, so a retired binding keeps only `ER.NEXT`, its link to the
+next record. Nothing moves, so no store offset, saved position or latch is
+remapped, and `UIX-REC-ADD` reads the zero `CONTENT` as a record without rows.
+The mark map is mmap scratch, so the sweep allots nothing in the image it
+cleans.
+
+Measured on the ARM64 Mach-O product built to its fixpoint from 191660af and
+from the same tree with the change:
+
+| Section | Before | After |
+|---|---:|---:|
+| Captured Habu code | 1,409,016 | 1,412,184 |
+| Call sites, data sites and code spans | 87,836 | 88,016 |
+| DATA bitmap | 39,428 | 39,556 |
+| DATA values | 378,712 | 322,264 |
+| Mach-O text padding | 1,264 | 5,084 |
+| Code signature | 17,423 | 17,039 |
+| Complete signed file | 2,229,367 | 2,179,831 |
+
+The product is **49,536 bytes (2.2%) smaller**: DATA values fall 56,448 bytes,
+the sweep's own code and site tables add 3,348, and the rest is Mach-O padding
+and signature. The bitmap does not shrink: a 4,096-byte group of DATA leaves it
+only when every cell in it is zero, and the retired bindings' links lie among
+the kept records. By owner (`tools/engine-size.f`), the `DONE` row falls
+from 268,260 to 211,824 bytes of image and from 136,235 to 103,872 non-zero
+cells.
+
+On the whitebox engine, a probe that runs the sweep in process with the
+product's keep policy retires 6,299 symbols and leaves 8,052 of the store's
+21,251 records as links. On the parent tree's whitebox engine the same probe
+finds those records' `CONTENT` cells (20,049 bytes of LEB128 values), their
+`ACTIVE` cells (7,998 bytes) and 3,574 cells only their spans reach (6,626
+bytes) still present after the sweep; with the change none is, and 275 of the
+284 4,096-byte stretches of the store still hold a cell. Window 4 of
+`test/effect-store-census-test.f` holds the sweep's contract on a store it
+builds, dropping six words: the store keeps its records and window bytes, the
+dropped bindings are keyed on nothing, the dropped words' window is chain links
+alone, the census balances with the bytes it stops reaching all zero
+(`effect-store-census swept zeroed-bytes 288`), and the checker answers as
+before for kept words placed where a sweep that zeroed too much would reach
+them. The parent tree's whitebox engine fails it: its last window still holds a
+content and ten references to older nodes.
+
+The SHA-256 before is
+`659af9870c25fb31f9ac7e08d97b08dbe82630a719f9146368a392afd413f074`, after
+`856c2ed9dd062c616f3f67700b0d4bb586547eab3b0373876d6b657fa6e16d56`.
+Generations 2 to 5 are byte-identical; the whitebox census test, the dot lint
+and 518 of the 520 native suites pass. `native-build-entry` and
+`build-fixpoint-fixtures` ran out of time in the loaded pool (a killed child and
+`E-PROC-TIMEOUT`) and pass run alone.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

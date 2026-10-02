@@ -3,8 +3,8 @@ package PREFIX-LITERAL-CONSUMER
 public
 
 \ Identity is separate from execution: a different callable can share a result.
-TRUSTED: SCALAR-XT ( [ n -- n ] -- n ) ;
-TRUSTED: QUERY-XT ( [ -- n ] -- n ) ;
+CAST: SCALAR-XT ( [ n -- n ] -- n )
+CAST: QUERY-XT ( [ -- n ] -- n )
 
 
 : SAME-XT ( n n -- )

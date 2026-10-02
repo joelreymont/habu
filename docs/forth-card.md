@@ -220,6 +220,13 @@ PTR-VARIABLE V                \ the declared twin certifies
 The declared forms are the `PTR-*` and `TYPED-*` rows of § 4. Such a cell takes
 the address it was declared for and refuses the address *of* one.
 
+An integer becomes an address or an xt only through a private `CAST:`
+(`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
+`E-CAST-MINT`); `NULL-PTR BYTE-VIEW -` is the address-to-integer distance.
+Its open hole, a cast into a layout whose own `FIELD` holds a pointer or
+another package's family, is in forth.md "An integer becomes an address or an
+execution token only through a private `CAST:`".
+
 forth.md: **Structures And Enums**; the rule and its open hole are
 `docs/effects.md` "Raw storage never holds an address".
 

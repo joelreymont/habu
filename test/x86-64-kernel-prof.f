@@ -467,7 +467,7 @@ variable AT-BYTE
 : HOST-BAND! ( n n -- ) {: v:n off:n :}  v  data-base HOST-BAND + off +  ! ;
 
 \ The one cast: the arena's address, which the band holds as a number.
-TRUSTED: >ARENA ( n -- ptr n ) ;
+CAST: >ARENA ( n -- ptr n )
 
 : ARENA@ ( n -- n ) {: off:n :}  PROF-ARENA HOST-BAND@ >ARENA off + @ ;
 : ARENA! ( n n -- ) {: v:n off:n :}  v  PROF-ARENA HOST-BAND@ >ARENA off +  ! ;

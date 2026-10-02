@@ -58,7 +58,8 @@ OUTER VARIANTS 2 LVG-TFAM-VAR-RANGE!
 
 2 LAYOUT-BUFFER BUF lvg-outer
 
-TRUSTED: RAW ( ptr lvg-outer -- ptr n ) ;
+\ The forged rows need a raw cell view of the checked buffer.
+CAST: RAW ( ptr lvg-outer -- ptr n )
 
 : SET ( n n n -- )
    {: payload:n tag:n idx:n :}

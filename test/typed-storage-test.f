@@ -45,14 +45,17 @@ SUMTYPE tsowned 0
    VARIANT hold tslin ;VARIANT
 ;SUMTYPE
 
-\ trusted boundary bridges for live round-trips: every raw cell is a valid
-\ nominal id, exactly like test/layout-buffer.f's N>LBTK etc. Layout values are
-\ built with the real TSRES:OK constructor (valid tag) and read back with a
-\ trusted whole-bundle unmaker (payload deep, tag on top), like LB-UN there.
-TRUSTED: N>TSK ( n -- tsk ) ;
-TRUSTED: TSK>N ( tsk -- n ) ;
-TRUSTED: TSRES-UN ( tsres<n,n> -- n n ) ;
-TRUSTED: RES-K-UN ( tsres<tsk,n> -- tsk n ) ;
+\ Boundary bridges for live round-trips: every raw cell is a valid nominal id,
+\ exactly like test/layout-buffer.f's N>LBTK etc. Layout values are built with
+\ the real TSRES:OK constructor (valid tag) and read back by a MATCH that leaves
+\ the payload deep and the variant tag on top, like LB-UN there.
+\ A test id is any integer; the casts give it the nominal it is stored as.
+CAST: N>TSK ( n -- tsk )
+CAST: TSK>N ( tsk -- n )
+: TSRES-UN ( tsres<n,n> -- n n )
+   MATCH tsres ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
+: RES-K-UN ( tsres<tsk,n> -- tsk n )
+   MATCH tsres ok OF 0 ENDOF err OF N>TSK 1 ENDOF ;MATCH ;
 
 \ ---- eval helper (define-time reject verdicts) ------------------------------
 TYPED-VARIABLE TS-EVAL-A ptr u8

@@ -2694,7 +2694,7 @@ public
 \ concern - what the engine hands the checker when a definer declares a
 \ signature - and differ only in what the checker is asked to do with the row:
 \ `trust-decl` records it, `checker-defcast` must first prove the declared
-\ retype legal (checker.f CAST-CERTIFY's five refusals) and refuses by throwing,
+\ retype legal (checker.f CAST-CERTIFY's refusals) and refuses by throwing,
 \ which is why C-CAST calls this BEFORE it counts the record into NDICT.
 : REGISTER-CAST ( -- )
    LBL {: done:label :}

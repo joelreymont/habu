@@ -592,11 +592,9 @@ private
 \ different engine paths - the word model resolves a wordlist and enters the
 \ record, the assertion hands the name to the interpreter - so their agreement is
 \ a statement and not a restatement.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-
 : CELL-A! ( -- )
    s" CELL-A" 0 search-wl 0<> if exit then
-   s" create CELL-A 1 cells allot" EV ;
+   s" create CELL-A 1 cells allot" evaluate-closed ;
 
 \ ---- a data word asked for the wrong kind of meaning -------------------------
 

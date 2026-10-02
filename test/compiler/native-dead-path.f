@@ -12,17 +12,12 @@ require src/compiler/native/compiler.f
 package DEADPATH-CHAIN-TEST
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and
-\ every entry below is one call through it: the compilation entry takes SOURCE.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
-\ A published routine is called by NAME, and the name does not exist while this
-\ file is being compiled - the compilation mints it. So every call below is one
-\ line of source handed to the same `evaluate` the definition arrived through,
-\ which is also how test/compiler/native-chain.f calls what it published.
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
+\ Every definition below is one `evaluate-closed`: the compilation entry takes
+\ SOURCE. A published routine is called by NAME, and the name does not exist
+\ while this file is being compiled - the compilation mints it. So every call
+\ below is one line of source handed to `TEST-EVAL:N`, the same interpreter the
+\ definition arrived through, which is also how test/compiler/native-chain.f
+\ calls what it published.
 
 \ ---- 1. the definition the dot was written about ------------------------------
 \ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;` is the body the chain
@@ -30,19 +25,19 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the arm ends the path, and the chain would not because the arm left one value
 \ fewer than the fall-through.
 : MK-JT ( -- )
-   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" EV ;
+   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" evaluate-closed ;
 
 : JT-CASE ( -- )
    s" a one-armed if whose arm throws compiles, and its live path returns" T-LABEL
    MK-JT
    s" the dead-path subject was compiled at tier 1" T-LABEL
-   s" ' DPC-JT dup 4 + code-origin" EV-N 1 T=
-   s" 1 2 DPC-JT" EV-N 1 T=
-   s" 9 4 DPC-JT" EV-N 9 T= ;
+   s" ' DPC-JT dup 4 + code-origin" TEST-EVAL:N 1 T=
+   s" 1 2 DPC-JT" TEST-EVAL:N 1 T=
+   s" 9 4 DPC-JT" TEST-EVAL:N 9 T= ;
 
 : JT-DEAD-CASE ( -- )
    s" and its dead path throws the code the arm named, catchably" T-LABEL
-   s" 7 0 ' DPC-JT catch nip nip" EV-N E-A-EMPTY T= ;
+   s" 7 0 ' DPC-JT catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
 
 \ ---- 2. the same arm with an `else` beside it ---------------------------------
 \ With two arms no edge into the join comes from the `if` itself, so the arm that
@@ -50,28 +45,28 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ from the FIRST argument, so an arm that had been confused for the other would
 \ answer differently rather than not at all.
 : MK-DE ( -- )
-   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" EV ;
+   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" evaluate-closed ;
 
 : ELSE-CASE ( -- )
    s" a dead first arm leaves the second arm to state the join" T-LABEL
    MK-DE
-   s" 4 9 DPC-DE" EV-N 5 T=
-   s" -3 8 DPC-DE" EV-N -2 T= ;
+   s" 4 9 DPC-DE" TEST-EVAL:N 5 T=
+   s" -3 8 DPC-DE" TEST-EVAL:N -2 T= ;
 
 : ELSE-DEAD-CASE ( -- )
    s" and the dead arm still throws" T-LABEL
-   s" 3 0 ' DPC-DE catch nip nip" EV-N E-A-EMPTY T= ;
+   s" 3 0 ' DPC-DE catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
 
 \ A dead SECOND arm, which is the other side of the same rule: the first arm
 \ states the width and the second contributes no edge at all.
 : MK-DS ( -- )
-   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" EV ;
+   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" evaluate-closed ;
 
 : SECOND-CASE ( -- )
    s" a dead second arm joins the same way round" T-LABEL
    MK-DS
-   s" 8 0 DPC-DS" EV-N 5 T=
-   s" 8 1 ' DPC-DS catch nip nip" EV-N E-A-BOUNDS T= ;
+   s" 8 0 DPC-DS" TEST-EVAL:N 5 T=
+   s" 8 1 ' DPC-DS catch nip nip" TEST-EVAL:N E-A-BOUNDS T= ;
 
 \ ---- 3. deadness is the word's, not the spelling's ----------------------------
 \ A package that defines its own `throw` binds it for every bare mention inside
@@ -80,7 +75,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ would refuse that token as code after a path that ended (E-NELAB-CTRL). The
 \ case therefore compiles only if the chain resolved the word.
 : MK-SHADOW ( -- )
-   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" EV ;
+   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" evaluate-closed ;
 
 : SHADOW-CASE ( -- )
    s" a word whose name is throw but whose record is not dead still joins" T-LABEL
@@ -88,20 +83,20 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    s" throw" NDICT:SPELL-DEAD? TTRUE
    s" die" NDICT:SPELL-DEAD? TTRUE
    MK-SHADOW
-   s" 3 0 DPC-SHADOW" EV-N 7 T=
-   s" 3 9 DPC-SHADOW" EV-N 3 T= ;
+   s" 3 0 DPC-SHADOW" TEST-EVAL:N 7 T=
+   s" 3 9 DPC-SHADOW" TEST-EVAL:N 3 T= ;
 
 \ And the other direction: a word that is dead by its OWN certified body, whose
 \ name is nothing special. A chain reading a list of names would miss it.
 : MK-OWNDEAD ( -- )
-   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" EV ;
+   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" evaluate-closed ;
 
 : OWNDEAD-CASE ( -- )
    s" a word the checker certified dead from its own body ends the path too" T-LABEL
    s" DPCY:BOOM" NDICT:SPELL-DEAD? TTRUE
    MK-OWNDEAD
-   s" 6 5 DPC-VIA" EV-N 6 T=
-   s" 6 0 ' DPC-VIA catch nip nip" EV-N E-A-EMPTY T= ;
+   s" 6 5 DPC-VIA" TEST-EVAL:N 6 T=
+   s" 6 0 ' DPC-VIA catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
 
 \ ---- 4. what may follow a path that ended, and why nothing here tests it ------
 \ The elaborator refuses any token after a path has ended except the closer of
@@ -140,12 +135,12 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ is that the caller gets the code the source names, out of a call the engine
 \ made, with the data stack where the caller left it.
 : MK-ALLDEAD ( -- )
-   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" EV ;
+   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" evaluate-closed ;
 
 : ALL-DEAD-CASE ( -- )
    s" a body whose every path ends compiles, publishes and throws" T-LABEL
    MK-ALLDEAD
-   s" 5 ' DPC-ALLDEAD catch nip" EV-N E-A-EMPTY T= ;
+   s" 5 ' DPC-ALLDEAD catch nip" TEST-EVAL:N E-A-EMPTY T= ;
 
 \ Two arms, both dead. No edge reaches a join and no path states a width, so the
 \ routine has no return anywhere rather than one nothing branches to - and the
@@ -153,13 +148,13 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the two apart proves.
 : MK-BOTH-DEAD ( -- )
    s" : DPC-BOTHDEAD ( n -- ) 0 = if E-A-EMPTY throw else E-A-BOUNDS throw then ;"
-   EV ;
+   evaluate-closed ;
 
 : BOTH-DEAD-CASE ( -- )
    s" two dead arms leave no return anywhere, and each arm is its own" T-LABEL
    MK-BOTH-DEAD
-   s" 0 ' DPC-BOTHDEAD catch nip" EV-N E-A-EMPTY T=
-   s" 1 ' DPC-BOTHDEAD catch nip" EV-N E-A-BOUNDS T= ;
+   s" 0 ' DPC-BOTHDEAD catch nip" TEST-EVAL:N E-A-EMPTY T=
+   s" 1 ' DPC-BOTHDEAD catch nip" TEST-EVAL:N E-A-BOUNDS T= ;
 
 \ THE SHAPE THAT READS LIKE A TAIL CALL. Its one call is the last thing the body
 \ does and the callee takes and leaves exactly what this definition does, which
@@ -173,22 +168,22 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ computes: an answer equal to the argument would be a routine that returned it,
 \ and an answer equal to the code says the callee really ran.
 : MK-TAIL-SHAPED ( -- )
-   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" EV ;
+   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" evaluate-closed ;
 
 : TAIL-SHAPED-CASE ( -- )
    s" a dead last call of this definition's own arity still never returns" T-LABEL
    MK-TAIL-SHAPED
-   s" 4 ' DPC-TAILDEAD catch nip" EV-N 5 T= ;
+   s" 4 ' DPC-TAILDEAD catch nip" TEST-EVAL:N 5 T= ;
 
 : ALL-DEAD! ( -- )
-   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" EV ;
+   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" evaluate-closed ;
 
 \ The same with a declared result. Control never comes back, so the cell the
 \ signature names is never published - and the routine still declares it, because
 \ the convention a Habu word is entered under is what its CALLERS were compiled
 \ against and the module records the same arity.
 : OUT-DEAD! ( -- )
-   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" EV ;
+   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" evaluate-closed ;
 
 : ALL-DEAD-ACCEPT-CASE ( -- )
    s" production compilation accepts the all-dead shape" T-LABEL
@@ -201,21 +196,21 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ order: the routine compiles, then throws its declared error at run time.
 : SPILL-DEAD ( -- )
    s" : DPC-SPILLDEAD ( n -- ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + drop E-A-EMPTY throw ;"
-   EV ;
+   evaluate-closed ;
 
 : SPILL-LIVE ( -- )
    s" : DPC-SPILLLIVE ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;"
-   EV ;
+   evaluate-closed ;
 
 : SPILL-CASE ( -- )
    s" spilling live arithmetic compiles, publishes and runs" T-LABEL
    SPILL-LIVE
-   s" 0 DPC-SPILLLIVE" EV-N 406 T=
+   s" 0 DPC-SPILLLIVE" TEST-EVAL:N 406 T=
 
    s" an all-dead spilling body compiles" T-LABEL
    [: SPILL-DEAD ;] 0 TTHROWSQ
    s" and its terminal trap throws the declared error" T-LABEL
-   s" 0 ' DPC-SPILLDEAD catch nip" EV-N E-A-EMPTY T= ;
+   s" 0 ' DPC-SPILLDEAD catch nip" TEST-EVAL:N E-A-EMPTY T= ;
 public
 
 : RUN ( -- )

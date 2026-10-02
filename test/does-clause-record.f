@@ -30,15 +30,14 @@ package DOESREC-TEST
 private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model and the
-\ only way to compile a definition from inside a test. The byte view of a code
-\ address is the same raw cast the engine's own capture takes to decode an
-\ instruction (src/habu/aot-capture.f AOT-N>U8).
+\ only way to compile a definition from inside a test.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n )
    evaluate ;
-TRUSTED: N>U8 ( n -- ptr u8 ) ;
-TRUSTED: U8>N ( ptr u8 -- n ) ;
+\ A code address is an integer; decoding its instruction needs a byte view.
+CAST: N>U8 ( n -- ptr u8 )
+: U8>N ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 TRUSTED: MARK-CALL ( n -- ) callmap-set ;
 TRUSTED: MARK-ADDR ( n -- ) addrmap-set ;
 

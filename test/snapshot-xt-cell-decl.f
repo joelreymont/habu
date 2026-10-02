@@ -161,7 +161,9 @@ TAKE8
 \ table, because nothing about a `variable` and a store decides a cell's kind.
 
 : RAW-TARGET ( -- n ) 99 ;
-TRUSTED: RAW-TARGET-XT ( -- n ) ['] RAW-TARGET ;   \ the target's code address as a cell value
+\ A target's code address as a cell value.
+CAST: XT>N ( [ -- n ] -- n )
+: RAW-TARGET-XT ( -- n ) ['] RAW-TARGET XT>N ;
 
 \ The store is the point: an ORDINARY `!` of a live token into an undeclared
 \ cell. Checked source may not write that any more (E-RAW-CELL-PTR, "an
@@ -252,7 +254,7 @@ variable TALLY
    TAB-STATE off + data-base - ;
 
 : LOOKALIKE-TARGET ( -- n ) 4711 ;
-TRUSTED: LOOKALIKE-TARGET-XT ( -- n ) ['] LOOKALIKE-TARGET ;
+: LOOKALIKE-TARGET-XT ( -- n ) ['] LOOKALIKE-TARGET XT>N ;
 
 \ The forged value is the cell's address as a number, through the same boundary
 \ the assertions below read it back through: a checked `!` of a live token into

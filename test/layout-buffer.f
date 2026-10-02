@@ -31,7 +31,9 @@ SUMTYPE lb-owned 0
 
 3 LAYOUT-BUFFER LB-BUF lb-res<n,n>
 
-TRUSTED: LB-UN ( lb-res<n,n> -- n n ) ;
+\ The payload deep and the variant tag on top.
+: LB-UN ( lb-res<n,n> -- n n )
+   MATCH lb-res ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
 
 : LB-GET ( n -- n n )
    LB-BUF @ LB-UN ;
@@ -117,8 +119,9 @@ NEWTYPE lbtk2 0
 
 4 LAYOUT-BUFFER LBTK-AT lbtk
 
-TRUSTED: N>LBTK ( n -- lbtk ) ;
-TRUSTED: LBTK>N ( lbtk -- n ) ;
+\ A test id is any integer; the casts give it the nominal it is stored as.
+CAST: N>LBTK ( n -- lbtk )
+CAST: LBTK>N ( lbtk -- n )
 
 : LBTK-GET ( n -- n )  LBTK-AT @ LBTK>N ;
 : LBTK-PUT ( n n -- ) {: v:n i:n :}  v N>LBTK i LBTK-AT ! ;

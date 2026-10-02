@@ -85,11 +85,11 @@ variable REAL-SLOT
 : E-BYTE-RT ( u8 -- u8 ) BYTE-SLOT c! BYTE-SLOT c@ ;
 : E-REAL-RT ( r -- r ) REAL-SLOT ! REAL-SLOT @ ;
 
-\ A narrow test boundary that views one physical cell of W2 as a scalar. The
-\ checked wide accessors below remain the production path under test.
-\ Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: W2-SCALAR-AT ( n -- ptr n )
-   0 W2-AT swap cells + ;
+\ A narrow test view of one physical cell of W2 as a scalar. The checked wide
+\ accessors below remain the production path under test.
+CAST: W2>CELLS ( ptr w2 -- ptr n )
+: W2-SCALAR-AT ( n -- ptr n )
+   0 W2-AT W2>CELLS swap cells + ;
 
 : W2-SCALAR! ( n n -- )
    W2-SCALAR-AT ! ;

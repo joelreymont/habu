@@ -30,7 +30,8 @@ ADDRESS-ROWS ROWS-BEFORE-SHARED - constant SHARED-ROWS
 TASK:#USER CELL TASK:+USER LOCAL-CELL drop
 
 \ The task allocator returns a raw cell; this test declares its quotation type.
-TRUSTED: LOCAL-ACTION ( -- ptr [ -- ] ) LOCAL-CELL ;
+CAST: >ACTION-CELL ( ptr n -- ptr [ -- ] )
+: LOCAL-ACTION ( -- ptr [ -- ] ) LOCAL-CELL >ACTION-CELL ;
 
 : CLEAN ( -- ) 1 CLEANED +! ;
 

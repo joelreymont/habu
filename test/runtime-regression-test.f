@@ -617,14 +617,14 @@ variable GE-NEST-J
    s" PASS: execute-floor flags an underflowed xt and resets the stack" type cr ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
-   \ Build: TRUSTED: W ( -- ) s" <body>" evaluate ;  then run W.
-   \ W is TRUSTED: because `evaluate` is an uncheckable metaprogramming boundary
-   \ (its effect is dynamic); the definition compiled BY <body> is still fully
-   \ checked by the active hook, from inside W's execution.
+   \ Build: : W ( -- ) s" <body>" evaluate-closed ;  then run W.
+   \ W itself certifies, since `evaluate-closed` is ( ptr u8 n -- ); the
+   \ definition compiled BY <body> is checked by the active hook, from inside
+   \ W's execution.
    GE-SRC-RESET
-   s" TRUSTED: W ( -- )" GE-SRC+  GE-SRC-SP
+   s" : W ( -- )" GE-SRC+  GE-SRC-SP
    body bodyu GE-SRC-S"
-   s"  evaluate ;" GE-SRC-LINE
+   s"  evaluate-closed ;" GE-SRC-LINE
    s" W" GE-SRC-LINE ;
 
 : GE-NESTED-CHECKED-DEF ( -- )
@@ -641,9 +641,9 @@ variable GE-NEST-J
    s" PASS: nested checked def certifies + runs (reentrant hook)" type cr ;
 
 : GE-NESTED-BAD-DEF ( -- )
-   \ The nested definition is NOT trusted just because its definer word is: a
-   \ bad-effect nested def compiled from inside an executing word must still be
-   \ REJECTED (rc 70). Proven: BAD ( -- n ) drop is rejected at 'drop'.
+   \ The nested definition is checked on its own: a bad-effect nested def
+   \ compiled from inside an executing word must still be REJECTED (rc 70).
+   \ Proven: BAD ( -- n ) drop is rejected at 'drop'.
    GE-HB-RESET
    s" : BAD ( -- n ) drop ;" GE-NESTED-DEF-SRC
    RUNTIME-RUNNER:BUFFER
@@ -654,13 +654,12 @@ variable GE-NEST-J
 
 : GE-EVAL-UNDEF-SRC ( -- )
    \ The dot reproducer: an undefined word aborts a nested `:`-compile INSIDE
-   \ `evaluate` (called from GO via the TRUSTED evaluate wrapper). Mid-compile the
-   \ JIT dict region is RW; the aborted definition must unwind cleanly, not fault.
+   \ `evaluate-closed`, called from GO. Mid-compile the JIT dict region is RW;
+   \ the aborted definition must unwind cleanly, not fault.
    GE-SRC-RESET
-   s" TRUSTED: EV ( ptr u8 n -- ) evaluate ;" GE-SRC-LINE
    s" : GO ( -- )" GE-SRC+  GE-SRC-SP
    s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-S"
-   s"  EV ;" GE-SRC-LINE ;
+   s"  evaluate-closed ;" GE-SRC-LINE ;
 
 : GE-EVAL-UNDEF-CATCHABLE ( -- )
    \ Under an enclosing quotation catch, the aborted nested :-compile unwinds the

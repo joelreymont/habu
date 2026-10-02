@@ -2585,8 +2585,9 @@ variable LAYOUT-INTRO
 \ schema-aware window that lets a generated FAMILY:FIELD accessor body mint
 \ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
 \ the one shape (byte offset added to a layout pointer, retyped to the field's
-\ instantiated schema) that is otherwise fail-closed (`+`/`cell+` preserve the
-\ pointee, CAST refuses T-PTR). Armed ONLY by the generative crossing (the path
+\ instantiated schema) that no checked operation otherwise performs (`+`/`cell+`
+\ preserve the pointee; a pointer CAST: is an unchecked private class mint).
+\ Armed ONLY by the generative crossing (the path
 \ structure-make.f/generate-field use) around the one audited accessor eval, and
 \ keyed on the accessor word name; it fires once at the `field-project` op token
 \ inside that word's body and disarms. Its explicit trusted-only effect and
@@ -7490,6 +7491,14 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 \ no row effect names 0 in E-RIN@/E-ROUT@ and the walk skips it; reading them
 \ without the E-HASR@ gate can only make the index offer MORE nodes, never a
 \ wrong one, because every answer is decided by comparing the nodes themselves.
+\ A CONTENT CELL OF 0 IS A RECORD WITHOUT CONTENT, and has no rows to read:
+\ E-REC-INIT starts a record that way, and the capture's sweep (CHECKER-SWEEP
+\ RETIRE-BINDINGS) leaves a retired binding that way, zero but for its link.
+\ That sweep leaves a known gap here rather than a wrong entry: a node a kept
+\ record shares with a retired one stays in the retired record's span, which
+\ offers nothing now, and the kept record offers only its own span, so after a
+\ rebuild the index lacks that node and a later definition of its shape
+\ interns a twin.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
    next UEND @ min {: hi:n :}             \ the span is the record's own bytes AND live: a
@@ -7497,6 +7506,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
                                           \ readable, and its nodes are dead
    hi lo <= IF EXIT THEN                  \ the record appended nothing of its own, so it
                                           \ interned nothing: every row it names is older
+   rec E-PTR ER.CONTENT @ 0= IF EXIT THEN \ no content, so no rows
    lo UIX-SPAN-LO !
    hi UIX-SPAN-HI !
    rec E-PTR E-DIN@ UIX-NODE-ADD
@@ -9304,12 +9314,13 @@ variable PE-QDOUT
 \ ---- package FFI's two retypes ----------------------------------------------
 \ A foreign call takes and returns raw machine cells: an argument buffer slot
 \ holds a pointer as a cell, and __errno_location hands back an address that has
-\ to be read as bytes. Neither direction is expressible today. CAST-CELL?
-\ refuses a pointer term on either side (E-CAST-CLASS; test/cast-negative-suite.f
-\ pins both `( n -- ptr a )` and `( ptr a -- n )`), a bare type variable is
-\ refused as possibly linear, and no primitive converts between the two. That is
-\ why package FFI carried a TRUSTED: PTR>CELL body and why lib/net/udp4.f had to
-\ wrap its errno pointer in another one.
+\ to be read as bytes. `( ptr a -- n )` is no CAST:, because a type-variable
+\ pointee is refused as possibly linear (E-CAST-LINEAR;
+\ test/cast-negative-suite.f pins it), and no primitive converts a pointer to a
+\ cell. `( n -- ptr u8 )` is the class mint a CAST: declares only in a
+\ package's private section; the axiom below gives package FFI that same
+\ private row. That is why package FFI carried a TRUSTED: PTR>CELL body and why
+\ lib/net/udp4.f had to wrap its errno pointer in another one.
 \
 \ These two are identity words: the retype IS the declaration, and their effects
 \ are the axiom rows near the end of this table, where only package FFI's private
@@ -12738,13 +12749,16 @@ variable UNSAFE-SYM-N
 \ retype between two single-cell machine types; the gate below refuses anything
 \ wider than that class (7121-7128 = layout-buffer/type-family blocks).
 7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
-7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
+7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-7135 constant E-CAST-OWNER    \ scalar-cell family output is outside its declaring package
+7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
 \ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
 \ block rather than sharing 7135, so a test can tell the two rejects apart.
-7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
+7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7146 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
+\ 7138-7146 are taken (dynamic storage, E-RIGID-EXHAUST, the using/trust/shadow
+\ rejects, E-CAST-SCOPE); the mint rule took the next free code.
+7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
@@ -16650,10 +16664,11 @@ variable CONFAM    \ resolved family id while CONM = 2
 \ produces `ptr <instantiated field type>`, deriving the field's family, offset,
 \ byte extent, role, and schema from the committed field id via TYPE-FIELD
 \ reflection (FIELD-PROJ-XT, bound in type-family.f). It is the single shape the
-\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee; CAST refuses
-\ T-PTR), so nothing else can retype a layout pointer. Runtime is a plain
-\ pointer+offset add (the generator/consumer supplies the `( ptr n -- ptr )`
-\ word); the checker judges only the type effect here.
+\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee), so it is the
+\ only checked retype of a layout pointer; a pointer CAST: is an unchecked
+\ private class mint. Runtime is a plain pointer+offset add (the
+\ generator/consumer supplies the `( ptr n -- ptr )` word); the checker judges
+\ only the type effect here.
 TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
 REG-PROTECT
@@ -18676,36 +18691,111 @@ variable CTOR-PEND-I
    P>REST R-RES TAG S-ROW = ;
 \ CAST-ROW-TERM : the single top term of a one-deep row.
 : CAST-ROW-TERM ( n -- n ) R-RES P>TYPE ;
-\ CAST-CELL? : term resolves to a single retype-eligible machine cell — a plain
-\ cell (con or type var), an arity-0 family scalar, or a parametric family cell
-\ (all width 1). A pointer, quotation, atom, or a W>1 layout term is refused as a
-\ class/width reinterpret.
-: CAST-CELL? ( n -- bool ) {: t0:n :}
+\ CAST-TERM? : the term is one machine cell a cast may retype - a con or type
+\ var (CAST-MAY-LINEAR? refuses the var), a width-1 family, a pointer, or a
+\ quotation. A pointer chain must end at storage: an atom is a phantom index,
+\ so it is refused there as it is bare, on either side. The pointee carries no
+\ width rule, since a layout of any width is one pointer cell away. A W>1 layout
+\ term is refused as a width reinterpret. The destination's other introduction
+\ positions refuse an atom through CAST-INTRO? (INTRO-ATOM).
+: CAST-TERM? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-CON = IF RES-TRUE EXIT THEN
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
+   t TAG T-QUOT = IF RES-TRUE EXIT THEN
+   t TAG T-PTR = IF
+      t BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+      TAG T-ATOM <> EXIT
+   THEN
    RES-FALSE ;
-\ CAST-OWNER? : projection out of a cell family is unrestricted. Introduction
-\ into one is authorized only when the destination's declaring package is the
-\ engine's real open namespace record and the actual definition wordlist is one
-\ of that record's public/private pair. xref.f installs that read-only identity
-\ check and retires the mutable defer name. The pre-xref default admits only the
-\ real global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
-: CAST-OWNER? ( n -- bool ) {: t0:n :}
-   t0 T-RES dup NP-CELLFAM? 0= IF drop RES-TRUE EXIT THEN
-   PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
-\ CAST-MAY-LINEAR? : fail closed over the complete signature term. CAST is an
-\ authority boundary, so its question is stricter than LIN-TYPE-COUNT's runtime
-\ ownership accounting: a direct unresolved var may later bind linear, and every
-\ value-bearing family argument subtree can carry that possibility. Cell-family
-\ parameters are structurally phantom, so their terms contain no owned payload.
-\ Known pointers, quotations, and atoms are non-owning type structure; concrete
-\ family schemas are covered by TFAM-CON-LIN-XT.
+\ CAST-OWNER? ( term -- bool ) : projection out of a cell family is
+\ unrestricted. Introduction into one is authorized only when the family's
+\ declaring package is the engine's real open namespace record and the actual
+\ definition wordlist is one of that record's public/private pair. xref.f
+\ installs that read-only identity check and retires the mutable defer name. The
+\ pre-xref default admits only the real global scope. CHECKER-PACKAGE-* is a
+\ parser mirror, never authority. CAST-INTRO? asks it of every introduction
+\ position of the destination.
+: CAST-OWNER? ( n -- bool ) {: t:n :}
+   t NP-CELLFAM? 0= IF RES-TRUE EXIT THEN
+   t PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
+\ The three questions CAST-INTRO? asks of an introduction position, one per
+\ reject. An atom is a phantom index, which no cast hands out. A pointer or a
+\ quotation asserts that a cell is an address or code, which no check can see:
+\ a class mint, declared only where its package's own words are its callers.
+0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
+1 constant INTRO-FOREIGN   \ a family CAST-OWNER? refuses: E-CAST-OWNER
+2 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
+: CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
+   q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
+   q INTRO-FOREIGN = IF t CAST-OWNER? 0= EXIT THEN
+   t TAG T-PTR =  t TAG T-QUOT =  or ;
+\ CAST-INTRO? ( term-or-row positive? question -- bool ) : whether the question
+\ holds at an introduction position of the destination. Those are the positive
+\ positions: the destination itself, a pointer's pointee (a read through the
+\ pointer yields it), a layout family's arguments (projecting a field yields a
+\ value of the argument type) and a quotation's produced rows. A quotation's
+\ consumed rows flip the sign, so a consumer handed to a minted quotation is fed
+\ by it. A cell family's arguments are phantom, and each row ends in the
+\ quotation's own base: neither yields a value. A pointer or a quotation found
+\ positive is a class mint whatever it points at or produces, and an atom or a
+\ foreign family found there is one the cast hands out.
+: CAST-INTRO? ( n bool n -- bool ) {: t0:n pos:bool q:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
+   t0 T-RES {: t:n :}
+   pos IF t q CAST-INTRO-HIT? IF RES-TRUE EXIT THEN THEN
+   t TAG T-PTR = IF t PTR>INNER pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN pos 0= q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
+      t over PARAM>ARG pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+\ CAST-INTRODUCES? ( term question -- bool ) : the question over a whole
+\ destination term, which starts positive.
+: CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
+   TWALK-RESET t RES-TRUE q CAST-INTRO? ;
+\ CAST-MAY-LINEAR? ( term-or-row -- bool ) : fail closed over the complete
+\ signature term. CAST is an authority boundary, so its question is stricter
+\ than LIN-TYPE-COUNT's runtime ownership accounting: a direct unresolved var
+\ may later bind linear, and every value-bearing family argument subtree can
+\ carry that possibility. Cell-family parameters are structurally phantom, so
+\ their terms contain no owned payload. Concrete family schemas are covered by
+\ TFAM-CON-LIN-XT. Pointers, quotations and atoms own nothing themselves, but a
+\ pointer's pointee is what a read through it yields and a quotation's four
+\ rows are what a call consumes and produces, so both are walked. A quotation
+\ in a signature shares one base between its in and out rows, so the tail it
+\ passes through owns nothing.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
+   t0 R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+   THEN
+   ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-CON = IF t PAY CT-LINEAR? EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
    t TAG T-PARAM = IF
       t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
       TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
@@ -18718,7 +18808,7 @@ variable CTOR-PEND-I
    RES-FALSE ;
 \ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
 \ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
-\ cast that survives all five is legal and its declared row is registered by the
+\ cast that survives all six is legal and its declared row is registered by the
 \ caller. Nothing here observes a body.
 : CAST-CERTIFY ( -- )
    SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
@@ -18727,8 +18817,9 @@ variable CTOR-PEND-I
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
    SGOUT @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
-   SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF E-CAST-CLASS throw THEN
    \ Linearity is checked before ownership on purpose: a linear family minted
    \ from a foreign package violates both rules, and the ownership reject would
    \ otherwise mask the stronger one. Ownership is a packaging question; carrying
@@ -18737,7 +18828,11 @@ variable CTOR-PEND-I
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    TWALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN ;
+   SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
+   \ Scope comes last for the same reason: a mint that also carries ownership
+   \ or forges a foreign family is named by that stronger reject.
+   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their
@@ -20299,8 +20394,8 @@ private
 \ Each interval needs its own newest row per symbol; a zero row is a retraction
 \ and must survive just like a nonzero one. A retired symbol keeps no row at
 \ all: no spelling reaches it, so no row of its can ever be read again. Effect
-\ offsets in CREATES are never changed because the effect store is not
-\ compacted here.
+\ offsets in CREATES never change: the sweep zeroes retired bindings in place
+\ and moves nothing.
 RBF-REC CELL / constant NORET-BOUND-CELLS
 : NORET-COMPACT-REFUSE ( -- )
    s" checker: invalid control checkpoint" 76 die ;
@@ -20418,13 +20513,13 @@ RBF-REC CELL / constant NORET-BOUND-CELLS
 \ their strings below the boundary's pool mark, which moves with them.
 \
 \ ITS ROWS GO WITH IT, OR NAME NOTHING. Control rows go at NORET-COMPACT; defer,
-\ unsafe and parse-immediate rows are filtered here. An effect binding stays
-\ where it is - the store is not compacted here, and a record's own bytes must
-\ still lie between it and the next (UIX-REC-ADD) - but its symbol and back-link
-\ are cleared, so no index, scan or owner transfer can reach it through the
-\ retired id. CHECKER-REG CHECKED-ROW walks every id of a product host that
-\ builds an engine, and a binding still keyed on a retired row would hand the
-\ target a symbol with an empty name.
+\ unsafe and parse-immediate rows are filtered here. An effect binding is zeroed
+\ where it stands down to its link to the next record, with every content and
+\ node only retired bindings reached (RETIRE-BINDINGS below), and nothing moves.
+\ Its symbol and back-link are gone, so no index, scan or owner transfer can
+\ reach it through the retired id. CHECKER-REG CHECKED-ROW walks every id of a
+\ product host that builds an engine, and a binding still keyed on a retired row
+\ would hand the target a symbol with an empty name.
 package CHECKER-SWEEP
 private
 
@@ -20503,20 +20598,169 @@ variable CUR                             \ the binding walk's record cursor
    old oldu ASIG-RELEASE
    map BYTE-VIEW oldu cells ASIG-RELEASE ;
 
-\ The user region, bounded by UEND the way USX-BUILD walks it. The primitive
-\ region holds the PES rows' own effects, whose symbols the axiom rule keeps.
-: DETACH ( -- )
+\ ---- retired bindings, zeroed in place ------------------------------------------
+\ A retired symbol's bindings answer no lookup, so the bytes only they reach can
+\ go. The chain cannot: every walker of the store steps from record to record
+\ through ER.NEXT, and every saved store position is a record boundary. So a
+\ retired binding keeps its link and nothing moves - no offset, position,
+\ USIGS-USER-OFF or UEND changes, and nothing has to be remapped.
+\
+\ WHAT STAYS IS MARKED FROM WHAT STAYS. Every record of a kept symbol, and every
+\ record a root names - a definer's created effect in its control row, the
+\ DOESEFF and WRAPC latches, the recursion latch RECEFF, a primitive's effect in
+\ PES - keeps its header, its content and every node, name string and argument
+\ run its rows reach, by the shape walk UIX-NODE-ADD and the census
+\ (tools/effect-store-census.f) make. Every other granule of the user region is
+\ zeroed, which leaves a retired binding its ER.NEXT alone: ACTIVE 0, which is
+\ EFF-DELETED, SYM 0, SYMPREV 0 and CONTENT 0, the record without content that
+\ UIX-REC-ADD skips. A content or node a kept record shares with a retired one
+\ stays where it lies. A store offset any other cell holds must be a root here,
+\ or its reader finds zeros.
+\
+\ The map is one byte per eight-byte granule of [0, UEND), mmap scratch released
+\ before the sweep returns, so the sweep allots nothing in the image it cleans.
+PTR-VARIABLE MARK-P
+variable MARK-U                          \ the map's length in bytes
+1 constant KEEP-BIT                      \ the granule survives
+2 constant SEEN-BIT                      \ the node or content starting here was walked
+4 constant HEAD-BIT                      \ the record starting here is kept
+
+: MARK-AT ( n -- ptr u8 ) 3 rshift MARK-P @ + ;
+: MARKED? ( n n -- bool ) {: off:n bit:n :} off MARK-AT c@ bit and 0 <> ;
+: MARK! ( n n -- ) {: off:n bit:n :} off MARK-AT dup c@ bit or swap c! ;
+
+\ A kept record or root that names bytes outside the store, or not on a granule,
+\ is a corrupt store, and no zeroing decision is safe against one.
+: OFF-CHECK ( n n -- ) {: off:n bytes:n :}
+   off 0 <  off 7 and 0 <> or  off bytes + UEND @ > or IF
+      s" checker: effect store offset outside the store" 76 die
+   THEN ;
+
+: MARK-EXTENT ( n n -- ) {: off:n bytes:n :}
+   off bytes OFF-CHECK
+   off bytes + 7 + 3 rshift  off 3 rshift ?do
+      MARK-P @ i + dup c@ KEEP-BIT or swap c!
+   loop ;
+
+\ A node or content below the user region is the primitive region's, which the
+\ sweep never zeroes; 0 is no node at all, and the user region may start there.
+: MARK-NODE ( n -- ) {: off:n :}
+   off 0= IF EXIT THEN
+   off USIGS-USER-OFF @ < IF EXIT THEN
+   off EFF-NODE OFF-CHECK
+   off SEEN-BIT MARKED? IF EXIT THEN
+   off SEEN-BIT MARK!
+   off EFF-NODE MARK-EXTENT
+   off E-NODE-TAG {: tg:n :}
+   tg EN-CON =  tg EN-VAR = or  tg EN-ROW = or IF EXIT THEN
+   tg EN-PTR = IF off E-PTR EN.A @ RECURSE EXIT THEN
+   tg EN-PUSH = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE EXIT
+   THEN
+   tg EN-QUOT = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+      off E-PTR EN.C @ RECURSE
+      off E-PTR EN.D @ RECURSE EXIT
+   THEN
+   tg EN-ATOM = IF off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT EXIT THEN
+   tg EN-PARAM = IF
+      off E-PTR EN.A @  off E-PTR EN.B @ UALIGN MARK-EXTENT
+      off E-PTR EN.C @ {: argc:n :}
+      argc 0 > IF off E-PTR EN.D @  argc cells MARK-EXTENT THEN
+      0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
+         off E-PTR EN.D @ over cells + E-PTR CELL-VIEW @ RECURSE
+         1 +
+      REPEAT drop EXIT
+   THEN
+   s" checker: effect store node of unknown kind" 76 die ;
+
+\ Every row, with no E-HASR@ gate: a content with no return rows names 0 there.
+: MARK-CONTENT ( n -- ) {: off:n :}
+   off 0= IF EXIT THEN
+   off USIGS-USER-OFF @ < IF EXIT THEN
+   off EFF-CONTENT OFF-CHECK
+   off SEEN-BIT MARKED? IF EXIT THEN
+   off SEEN-BIT MARK!
+   off EFF-CONTENT MARK-EXTENT
+   off E-PTR {: c:ptr :}
+   c EC.DIN @ MARK-NODE  c EC.DOUT @ MARK-NODE
+   c EC.RIN @ MARK-NODE  c EC.ROUT @ MARK-NODE ;
+
+: MARK-REC ( n -- ) {: rec:n :}
+   rec USIGS-USER-OFF @ < IF EXIT THEN
+   rec EFF-REC OFF-CHECK
+   rec HEAD-BIT MARKED? IF EXIT THEN
+   rec HEAD-BIT MARK!
+   rec EFF-REC MARK-EXTENT
+   rec E-PTR ER.CONTENT @ MARK-CONTENT ;
+
+: MARK-OFF1 ( n -- ) {: off1:n :}       \ a record named as offset+1, 0 = none
+   off1 0 <> IF off1 1 - MARK-REC THEN ;
+
+\ A control row of a retired symbol is dropped by NORET-COMPACT, so the created
+\ effect it names stays only if something else still reaches it.
+: MARK-ROW ( n -- ) {: at:n :}
+   at NORET-CELL NORET.SYM @ {: sym:n :}
+   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
+   at NORET-CELL NORET.CREATES @ MARK-OFF1 ;
+
+: MARK-ROOTS ( -- )
+   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * MARK-ROW loop
+   DOESEFF @ MARK-OFF1
+   WRAPC @ MARK-OFF1
+   RECEFF-ON @ 0 <> IF RECEFF @ MARK-REC THEN
+   #PE @ 0 ?do i PE-EFF@ MARK-REC loop ;
+
+\ EACH-REC ( xt -- ) : every record of the user region, in chain order, bounded
+\ by UEND the way USX-BUILD walks it: a link of 0, one that does not advance, or
+\ one past UEND ends the walk.
+: EACH-REC ( [ n -- ] -- ) {: visit :}
    USIGS-USER-OFF @ CUR !
    begin CUR @ EFF-REC + UEND @ <= while
-      CUR @ E-PTR {: rec:ptr :}
-      rec ER.SYM @ {: sym:n :}
-      sym 0 > IF sym SYM-N @ < IF sym SYM-RETIRED? IF
-         0 rec ER.SYM !  0 rec ER.SYMPREV !
-      THEN THEN THEN
-      rec E-NEXT@ {: nx:n :}
-      nx CUR @ <= nx UEND @ > or IF EXIT THEN
+      CUR @ visit execute
+      CUR @ E-PTR E-NEXT@ {: nx:n :}
+      nx CUR @ <=  nx UEND @ > or IF EXIT THEN
       nx CUR !
    repeat ;
+
+\ A binding keyed on no symbol stays only as a root names it. One keyed on an id
+\ this table never issued is not this sweep's to judge, so it stays as it is.
+: LIVE-REC ( n -- ) {: rec:n :}
+   rec E-PTR ER.SYM @ {: sym:n :}
+   sym 0= IF EXIT THEN
+   sym 0 >  sym SYM-N @ < and IF sym SYM-RETIRED? IF EXIT THEN THEN
+   rec MARK-REC ;
+
+: LINK-REC ( n -- ) {: rec:n :}
+   rec HEAD-BIT MARKED? IF EXIT THEN
+   rec ER-NEXT-OFF + CELL MARK-EXTENT ;
+
+: ZERO-UNMARKED ( -- )
+   UEND @ 3 rshift  USIGS-USER-OFF @ 7 + 3 rshift ?do
+      MARK-P @ i + c@ KEEP-BIT and 0= IF 0 i cells USIGS-CELL-AT ! THEN
+   loop ;
+
+\ The zeroed bytes were the last query's rows, a cached head's record and an
+\ index entry's node, so every reader that holds a store offset forgets it: the
+\ query latch closes, the per-symbol heads rebuild at their next use (HIDX-BUILD
+\ keeps the generation), and the two interning indexes rebuild now if they are
+\ live - at a capture seam they are reset right after, and under STRIP not live.
+: RETIRE-BINDINGS ( -- )
+   UEND @ 3 rshift 1 + MARK-U !
+   MARK-U @ ARENA-ALLOC MARK-P !
+   MARK-ROOTS
+   [: LIVE-REC ;] EACH-REC
+   [: LINK-REC ;] EACH-REC
+   ZERO-UNMARKED
+   MARK-P @ BYTE-VIEW MARK-U @ ASIG-RELEASE
+   NULL-PTR MARK-P !  0 MARK-U !
+   0 EFFQ-OK !  0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT !
+   0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
+   0 USX-GEN !
+   UIX-READY? IF UIX-DROP UIX-BUILD THEN
+   CHX-READY? IF CHX-DROP CHX-BUILD THEN ;
 
 \ Newest-wins holds for the rows that stay because their order does. A rollback
 \ frame cannot be open here, so the boundary's end is the one saved end to move.
@@ -20573,7 +20817,7 @@ public
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN   \ NORET-COMPACT-CHECK's refusal, met first
    policy DECIDE
    STRINGS
-   DETACH
+   RETIRE-BINDINGS
    DEFER-FILTER
    UNSAFE-FILTER
    PIMM-FILTER
@@ -20598,9 +20842,10 @@ public
 
 \ A capture that strips names after the seam sweeps again with its own answer,
 \ over stores the seam already persisted into DATA: everything here works in
-\ place and allots nothing, and NORET-COMPACT drops the control rows of what this
-\ pass retired. The answer is the capture's own code, so the cell goes back to
-\ the window's before the capture copies DATA.
+\ place and allots nothing (the binding sweep's map is mmap scratch), and
+\ NORET-COMPACT drops the control rows of what this pass retired. The answer is
+\ the capture's own code, so the cell goes back to the window's before the
+\ capture copies DATA.
 : STRIP ( [ n -- bool ] -- )
    KEEP-SET @ 0= IF drop EXIT THEN
    is NAMED-XT

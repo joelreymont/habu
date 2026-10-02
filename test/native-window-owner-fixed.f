@@ -13,8 +13,8 @@ create BYTES 8 allot
 variable ENTERED
 
 \ Compare the raw dictionary result with the known address's representation.
-TRUSTED: SLOT-N ( -- n ) SLOT ;
-TRUSTED: BYTES-N ( -- n ) BYTES ;
+: SLOT-N ( -- n ) SLOT BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+: BYTES-N ( -- n ) BYTES NULL-PTR BYTE-VIEW - ;
 
 : EQ! ( n n -- ) <> if 79 throw then ;
 : ORDINARY ( -- n ) 1 ENTERED ! 55 ;

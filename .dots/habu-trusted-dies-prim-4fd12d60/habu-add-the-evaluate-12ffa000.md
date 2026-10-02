@@ -1,9 +1,11 @@
 ---
 title: Add the evaluate-closed primitive
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-01T12:53:25.113563+02:00"
+closed-at: "2026-10-02T10:40:00.000000+02:00"
+close-reason: "Landed 2026-10-02 in master 55e0b0aa (tvyuorox 32c923f0): evaluate-closed with E-EVAL-RESIDUE; test/compiler/native-eval.f is the contract test; Fable review accepted"
 ---
 
 Leaf 1 of the evaluate-closed design (~/.cache/tmp/heron-arm64/design-evaluate-closed.md, Fable Plan 2026-10-01). evaluate-closed ( ptr u8 n -- ) evaluates source with the stack floor at the caller's depth and refuses residue by name, so every TRUSTED: evaluate wrapper can become a checked word.

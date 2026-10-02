@@ -15,8 +15,9 @@
 \ (naming the type is the better answer there, and that message must not move),
 \ and a body that spends exactly what it declared still certifies.
 \
-\ These run against the live engine's own checker through `evaluate`, which is
-\ the path `bin/hb --load` puts every definition through.
+\ These run against the live engine's own checker through `evaluate-closed`,
+\ the interpreter `bin/hb --load` puts every definition through; a refusal is a
+\ throw out of the compile, not a value.
 
 require lib/test.f
 require lib/string.f
@@ -33,12 +34,6 @@ variable IUF-V
 package INPUT-UNDERFLOW-TEST
 
 private
-
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how a suite compiles a program that must be REFUSED: the refusal is a throw
-\ out of the compile, not a value.
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
@@ -93,7 +88,7 @@ create DIAG-BUF 8192 allot
 : CASE-BARE ( -- )
    s" a call with nothing on the stack is refused at the call" T-LABEL
    ARM
-   [: s" : IUF-BARE ( -- n ) UFC 0 ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-BARE ( -- n ) UFC 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
    s" 0" NOT-TOKEN?
    DISARM ;
@@ -101,7 +96,7 @@ create DIAG-BUF 8192 allot
 : CASE-TWO-DEEP ( -- )
    s" a two-cell call over one declared input names both depths" T-LABEL
    ARM
-   [: s" : IUF-TWO ( n -- n ) UFC2 0 ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TWO ( n -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" UFC2" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
@@ -110,7 +105,7 @@ create DIAG-BUF 8192 allot
 : CASE-AFTER-LOCALS ( -- )
    s" a call after a locals binding is still refused at the call" T-LABEL
    ARM
-   [: s" : IUF-LOC ( n -- n ) {: x:n :} UFC x ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-LOC ( n -- n ) {: x:n :} UFC x ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
@@ -119,7 +114,7 @@ create DIAG-BUF 8192 allot
 : CASE-LOCALS-BINDER ( -- )
    s" a locals group with nothing to bind is refused at its own closer" T-LABEL
    ARM
-   [: s" : IUF-BIND ( -- ) {: x:n :} ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-BIND ( -- ) {: x:n :} ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" :}" TOKEN?
    DISARM ;
 
@@ -130,7 +125,7 @@ create DIAG-BUF 8192 allot
 : CASE-OVER-ABANDONED-CANDIDATE ( -- )
    s" an abandoned candidate's refusal does not rename this one" T-LABEL
    ARM
-   [: s" : IUF-SPEC ( -- n ) IUF-V @ cell+ drop drop 0 ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-SPEC ( -- n ) IUF-V @ cell+ drop drop 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED  s" drop" TOKEN?
    S\" \"code\":\"E-RAW-CELL-PTR\"" LACKS?
    DISARM ;
@@ -142,7 +137,7 @@ create DIAG-BUF 8192 allot
 : CASE-MISTYPED-CALL ( -- )
    s" a short call that is also mistyped keeps its own mismatch" T-LABEL
    ARM
-   [: s" : IUF-TYPE ( r -- n ) UFC2 0 ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TYPE ( r -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    MISMATCH$ HAS?  CODE$ LACKS?  REPAIR$ LACKS?
    s" UFC2" TOKEN?
    DISARM ;
@@ -150,24 +145,24 @@ create DIAG-BUF 8192 allot
 \ A call that takes exactly what the signature declared is not an underflow.
 : CASE-EXACT ( -- )
    s" a call that spends exactly the declared inputs still certifies" T-LABEL
-   [: s" : IUF-OK ( n -- n ) UFC 0 ;" EV ;] 0 TTHROWSQ ;
+   [: s" : IUF-OK ( n -- n ) UFC 0 ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ Nor is a call under a value the body produced itself.
 : CASE-PRODUCED ( -- )
    s" and a call over a value the body produced certifies too" T-LABEL
-   [: s" : IUF-MADE ( -- n ) 0 UFC 0 ;" EV ;] 0 TTHROWSQ ;
+   [: s" : IUF-MADE ( -- n ) 0 UFC 0 ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ An UNSIGNED definition has no declared inputs to reach under: its base is
 \ what the checker is inferring, so binding it is how inference works.
 : CASE-UNSIGNED ( -- )
    s" an unsigned definition still infers its inputs from the body" T-LABEL
-   [: s" : IUF-INFER UFC ;" EV ;] 0 TTHROWSQ ;
+   [: s" : IUF-INFER UFC ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ A quotation owns a fresh base for the same reason, so consuming inside one is
 \ the quotation taking an input, not the definition spending its caller's frame.
 : CASE-QUOTATION ( -- )
    s" a quotation consuming inside the body takes its own input" T-LABEL
-   [: s" : IUF-QUOT ( n -- n ) [: UFC 0 ;] execute ;" EV ;] 0 TTHROWSQ ;
+   [: s" : IUF-QUOT ( n -- n ) [: UFC 0 ;] execute ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 public
 

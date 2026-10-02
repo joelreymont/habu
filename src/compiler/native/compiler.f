@@ -699,10 +699,16 @@ public
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
 
+\ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
+\ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
+\ with its wrapper and gives it back with INSTALL.
+: DISPATCH! ( [ ptr u8 n -- ] -- )
+   data-base NCOMP-DISPATCH:XT-CELL + xt! ;
+
 \ The fixed engine header lies outside a partial compiler capture. Reinstall
 \ its dispatch after the captured words have been relocated at fresh boot.
 : INSTALL ( -- )
-   ['] COMPILE data-base NCOMP-DISPATCH:XT-CELL + xt! ;
+   ['] COMPILE DISPATCH! ;
 
 \ The session is already gone by the time this runs, and it took what NCOMP held
 \ in it with it: IMAGE-LIFECYCLE:PREPARE closed the session, and SESSION-FORGET

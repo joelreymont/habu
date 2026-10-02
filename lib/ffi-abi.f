@@ -74,12 +74,13 @@ $41C8 constant FFI-SCRATCH-END
 
 \ Pointer <-> cell reinterpret. An argument buffer slot holds a pointer as a
 \ cell, and a foreign function that returns an address hands back a cell that
-\ has to be read as bytes. Neither direction is a CAST: (CAST-CELL? refuses a
-\ pointer term, E-CAST-CLASS) and no primitive converts between them, so the
-\ two identity axioms FFI-PTR>CELL / FFI-CELL>PTR are declared in
-\ src/core/checker.f with an owner-private row that admits this package and no
-\ other scope. CELL>PTR stays private: a foreign address carries no length, so
-\ only a word that knows the callee's width may publish one.
+\ has to be read as bytes. The two identity axioms FFI-PTR>CELL / FFI-CELL>PTR
+\ are declared in src/core/checker.f with an owner-private row that admits this
+\ package and no other scope. `( ptr a -- n )` is no CAST: (a type-variable
+\ pointee is refused as possibly linear, E-CAST-LINEAR), and `( n -- ptr u8 )`
+\ is the private class mint a CAST: also declares. CELL>PTR stays private: a
+\ foreign address carries no length, so only a word that knows the callee's
+\ width may publish one.
 : PTR>CELL ( ptr a -- n ) FFI-PTR>CELL ;
 : CELL>PTR ( n -- ptr u8 ) FFI-CELL>PTR ;
 

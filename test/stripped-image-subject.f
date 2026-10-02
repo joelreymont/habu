@@ -2,6 +2,7 @@
 \ once by test/stripped-image.f. Each required subject is a package whose RUN
 \ prints its line or dies naming itself; its header says what the line guards.
 \ The row writes MAIN, which calls RUN here and ends in UNMAP.
+require lib/num-types.f
 require lib/memory.f
 require lib/aio.f
 require test/stripped-quotation-subject.f
@@ -49,7 +50,18 @@ create KEY-CHECK 64 allot
 
 \ This deliberately invalid munmap range reaches MEM's baked error string.
 \ The syscall refuses the unaligned address before touching any memory.
-TRUSTED: BAD-SPAN ( -- ptr u8 NUM:byte-len ) 4097 4096 ;
+\ The address has no typed source; `NULL-PTR BYTE-VIEW +` would be a closed
+\ forgery, so the integer is cast.
+CAST: >BYTES ( n -- ptr u8 )
+
+: PAGE-LEN ( -- NUM:byte-len )
+   4096 NUM:BYTE-LEN MATCH NUM:numeric-result
+      ok OF ENDOF negative OF 79 throw ENDOF zero OF 79 throw ENDOF
+      overflow OF 79 throw ENDOF underflow OF 79 throw ENDOF
+      bad-alignment OF 79 throw ENDOF misaligned OF 79 throw ENDOF
+   ;MATCH ;
+
+: BAD-SPAN ( -- ptr u8 NUM:byte-len ) 4097 >BYTES PAGE-LEN ;
 
 public
 

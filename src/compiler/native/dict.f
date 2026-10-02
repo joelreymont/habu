@@ -159,10 +159,10 @@ public
    a u SPELL-REC REC-FIXED ;
 
 \ A record no definer stamped is refused BEFORE the word is entered. The count
-\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77).
-: FIXED-VALUE ( ptr u8 n -- n )
-   {: a u:n :}
-   a u SPELL-REC {: rec:ptr :}
+\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77). A
+\ caller already holding the record, as a dictionary walk does, asks REC-VALUE.
+: REC-VALUE ( ptr n -- n )
+   {: rec:ptr :}
    rec XREF-FOUND? 0= if E-NDICT-NAME throw then
    rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
@@ -170,6 +170,8 @@ public
    depth FX-BASE !
    start RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
+
+: FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
 
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of

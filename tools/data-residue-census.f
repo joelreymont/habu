@@ -27,28 +27,31 @@
 require lib/errors.f
 require lib/string.f
 require src/habu/layout.f
+require src/habu/xref.f
+require src/compiler/native/dict.f
 
 package DATA-RESIDUE
 
-\ The stamp is the permission: this is entered only for a record whose definer
-\ said its body pushes its own DATA address.
-TRUSTED: RUN-ADDR ( n -- n )
-   execute ;
-
 8 constant ALIGN
+
+\ The stamp is the permission: NDICT:REC-VALUE enters only a live record whose
+\ definer stamped it, and the census asks it only of a record stamped ADDR. A
+\ namespace row has no body and a retired row is no longer a word.
+: ADDR-WORD? ( ptr n -- bool ) {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL = if false exit then
+   rec XREF-RETIRED? if false exit then
+   rec XREF-FLAGS DKIND:MASK and DKIND:ADDR = ;
 
 public
 
 : CENSUS ( -- )
    ndict@ 0 ?do
       i XREF-REC
-      dup XREF-WORDLIST -1 = if drop else
-         dup XREF-FLAGS DKIND:MASK and DKIND:ADDR <> if drop else
-            dup XREF-NAME$ type cr
-            dup XREF-WORDLIST .
-            XREF-START RUN-ADDR ALIGN 1 - and .
-         then
-      then
+      dup ADDR-WORD? if
+         dup XREF-NAME$ type cr
+         dup XREF-WORDLIST .
+         NDICT:REC-VALUE ALIGN 1 - and .
+      else drop then
    loop
    s" data-residue: end" type cr ;
 

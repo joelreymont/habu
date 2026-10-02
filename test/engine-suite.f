@@ -456,14 +456,15 @@ TC-NEND=? -1 T=
 TC-SYMN=? -1 T=
 TC-SYMU=? -1 T=
 \ ---------------------------------------------------------------------------
-\ THE T-* BOUNDARY WORDS BELOW ARE `TRUSTED:` DEFINITIONS AT GLOBAL SCOPE.
+\ THE T-* BOUNDARY WORDS BELOW ARE DEFINITIONS AT GLOBAL SCOPE.
 \
 \ They used to be bare `s" NAME" s" SIG" trust` rows for words nothing defined.
 \ A row is now a CLAIM that the word exists and is refused otherwise
-\ (src/core/checker.f TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de), so
-\ each one says what it always meant: here is a word, here is its effect, its
-\ body is not checkable. No body is ever executed - every case hands the checker
-\ a CANDIDATE that merely names them.
+\ (src/core/checker.f TRUST-RESOLVES?), so each one is a real word with its
+\ effect: a checked stub where checked code can produce that effect, and a
+\ `defer` where it cannot - a fresh rigid identity, a type variable or a family
+\ value made from nothing. No body is ever executed - every case hands the
+\ checker a CANDIDATE that merely names them - and none of the defers is set.
 \
 \ THEY ARE GLOBAL, AND THIS FILE IS THE ONE PLACE THAT IS ALLOWED. What this
 \ suite tests is what the engine and the checker do at genuine global top level:
@@ -719,7 +720,7 @@ s" over-budget quot refuses recording and names the word" T-LABEL
 DIAG-BUFFER$ s" rsq7" T-HAS? -1 T=
 s" over-budget quot refusal names the unmodeled-tag reason" T-LABEL
 DIAG-BUFFER$ s" unmodeled type tag" T-HAS? -1 T=
-TRUSTED: T-V14 ( -- a b c d e g h i j k l m o p ) 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ;
+defer T-V14 ( -- a b c d e g h i j k l m o p )
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" rec-refuse var overflow still certifies" T-LABEL
 s" RSV28 T-V14 T-V14" CHECK-QUIET-CANDIDATE! -1 T=
@@ -884,7 +885,9 @@ USIGS-CAP-U @ USIGS-GRAIN 4 * T=
 TG-RESET
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !
-TRUSTED: T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) drop drop drop drop 0 0 ;
+\ A defer: with the cap shrunk by hand above, a colon body is refused at its
+\ first word, and the case needs only the effect.
+defer T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n )
 s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" T-CHECK-PASSES
 \ growth is geometric: one forced grow at least doubles the old cap
 s" usigs-grow-geometric" T-LABEL
@@ -935,14 +938,14 @@ s" tv-arena-reset-cap" T-LABEL
 TV-CAP @ 0 T=
 s" tv-arena-reset-base" T-LABEL
 TVT-P @ NULL-PTR = -1 T=
-TRUSTED: T-PHASE-ID ( img -- img ) drop 0 ;
+: T-PHASE-ID ( img -- img ) ;
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
-TRUSTED: T-ASM-CODE ( -- asm ) 0 ;
-TRUSTED: T-BUILD-IMAGE ( asm -- img ) drop 0 ;
-TRUSTED: T-CODESIG2 ( img -- img ) drop 0 ;
-TRUSTED: T-BUILD-SNAP-HDR ( n -- snap n ) drop 0 0 ;
-TRUSTED: T-SNAP-EXTRA-PTR ( -- ptr u8 ) 0 ;
+: T-ASM-CODE ( -- asm ) ASM-PHASE ;
+: T-BUILD-IMAGE ( asm -- img ) ASM-DROP IMG-PHASE ;
+: T-CODESIG2 ( img -- img ) ;
+: T-BUILD-SNAP-HDR ( n -- snap n ) drop SNAP-PHASE 0 ;
+: T-SNAP-EXTRA-PTR ( -- ptr u8 ) NULL-PTR BYTE-VIEW ;
 : T-SNAP-EXTRA-SIZE ( -- n ) 0 ;
 s" COK-BUILD-IMAGE ( -- img ) T-ASM-CODE T-BUILD-IMAGE" T-CHECK-PASSES
 s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
@@ -950,13 +953,13 @@ s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
 s" COK-SNAP-EXTRA ( -- ptr u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" T-CHECK-PASSES
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" T-CHECK-PASSES
-TRUSTED: T-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) drop drop 0 ;
-TRUSTED: T-PTX-ADD ( tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live> ) drop drop 0 ;
-TRUSTED: T-PTX-GRID ( span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live> ) drop 0 ;
-TRUSTED: T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,block-256,m> ) drop drop 0 ;
-TRUSTED: T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> ) drop drop 0 ;
-TRUSTED: T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> ) drop 0 ;
-TRUSTED: T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> ) drop 0 0 ;
+defer T-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> )
+defer T-PTX-ADD ( tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live> )
+defer T-PTX-GRID ( span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live> )
+defer T-PTX-MLOAD ( span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,block-256,m> )
+defer T-PTX-MADD ( tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m> )
+defer T-MK-SPAN ( n -- span<space-global,f32,fresh-extent-n> )
+defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n> )
 \ --- growable decoupled scratch arenas: crossing each init cap mid-check no
 \ longer dies and does not corrupt (each grow relocates its mmap store).
 \ Parametric checks reuse T-MK-SPAN above.
@@ -1635,8 +1638,8 @@ s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LAB
 \ Render acceptance (destruction review): a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
 \ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
-TRUSTED: T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> ) 0 ;
-TRUSTED: T-SCQ-MK ( -- scq-fam<[ n -- n | a -- a ],f32> ) 0 ;
+defer T-BIG6-MK ( -- tfam6r-big<n,f32,u8,u16,i64,bool> )
+defer T-SCQ-MK ( -- scq-fam<[ n -- n | a -- a ],f32> )
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" arity-6 mismatch diagnostic rejects" T-LABEL
 s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
@@ -1681,7 +1684,7 @@ s" CBAD-I64-NARROW-IN ( i64 -- ) T-NEED-U8" T-CHECK-REJECTS
 s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
 s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
 DEFTYPE node
-TRUSTED: T->NODE ( n -- node ) drop 0 ;
+: T->NODE ( n -- node ) >node ;
 : T-NODE>N ( node -- n ) drop 0 ;
 : T-NEED-NODE ( node -- ) drop ;
 s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
@@ -2772,7 +2775,8 @@ package ES-SWL
 \ published, which is how a case here can name a row without searching for it -
 \ searching for it being the thing under test.
 : REC-ADDR ( n -- n )   DREC * dbase@ + ;
-TRUSTED: N>REC ( n -- ptr a ) ;
+\ A dictionary row's address is an integer offset from dbase@.
+CAST: N>REC ( n -- ptr n )
 
 0 constant XT-SLOT          \ a word's code address; a package row's PUBLIC wid
 1 constant PRI-WID-SLOT     \ a package row's PRIVATE wid

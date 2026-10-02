@@ -42,8 +42,9 @@ create ERR IO-CAP allot
 \ DNAME-INT gate interpret does, so on a sealed engine this definition does not
 \ compile at all and the suite dies while loading - which is the failure this
 \ file exists to produce.
-TRUSTED: INTERNAL-XT ( -- n )
-   ['] USIGS ;
+CAST: XT>N ( [ -- ptr u8 ] -- n )
+: INTERNAL-XT ( -- n )
+   ['] USIGS XT>N ;
 
 \ The product has no NULL-PTR-CELL name. The unsealed image can still inspect
 \ the cell and the two independently declared offsets used by its runtime.

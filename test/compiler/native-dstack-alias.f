@@ -54,9 +54,6 @@ variable ANS                         \ where a body leaves its answer
 package NDSA-TEST
 private
 
-\ `evaluate` enters RESULT by name on a fresh data stack.
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
-
 : ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u XREF-FIND dup XREF-FOUND? 0= if
       drop s" native-dstack-alias: record not found" 76 die
@@ -112,7 +109,8 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ chance to apply one twice.
 : EXIT-CASE ( -- )
    s" and a computed result is published into the cell the caller reads" T-LABEL
-   s" DKA:RESULT" EV-N 42 T= ;
+   \ TEST-EVAL:N enters RESULT by name above a closed floor.
+   s" DKA:RESULT" TEST-EVAL:N 42 T= ;
 
 public
 

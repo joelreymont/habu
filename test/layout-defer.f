@@ -27,8 +27,9 @@ NEWTYPE dtk 0
 \ deferred accessor body, this line throws and the load fails.
 DEFER-LAYOUT-BUFFER DTK-AT dtk
 
-TRUSTED: N>DTK ( n -- dtk ) ;
-TRUSTED: DTK>N ( dtk -- n ) ;
+\ A test id is any integer; the casts give it the nominal it is stored as.
+CAST: N>DTK ( n -- dtk )
+CAST: DTK>N ( dtk -- n )
 
 : DTK-GET ( n -- n )  DTK-AT @ DTK>N ;
 : DTK-PUT ( n n -- ) {: v:n i:n :}  v N>DTK i DTK-AT ! ;
@@ -72,7 +73,7 @@ $200000 DTK-BIND-RC E-LAYOUT-CEIL T=
 
 \ ---- copy-on-grow (NAME-GROW): preserve live cells across a two-phase grow ----
 variable DTK-BASE
-TRUSTED: DTK-ADDR ( ptr dtk -- n ) ;   \ read the accessor's base pointer as a number
+CAST: DTK-ADDR ( ptr dtk -- n )   \ read the accessor's base pointer as a number
 : DTK-GROW ( -- )  DTK-I @ DTK-AT-GROW ;
 : DTK-GROW-RC ( n -- n )  DTK-I !  [: DTK-GROW ;] catch ;
 

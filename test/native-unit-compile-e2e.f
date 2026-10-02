@@ -199,7 +199,9 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    ROOT$ [: SHADOW-REQUIRE-CHECK ;] SOURCE-ROOT:WITH
    SIDE-EFFECT @ 17 T= ;
 
-TRUSTED: ORIGINAL-REQUIRE-XT ( -- n ) ['] require ;
+\ BIND-REQUIRE stores the original require's execution token as an integer.
+CAST: XT>N ( [ -- ] -- n )
+: ORIGINAL-REQUIRE-XT ( -- n ) ['] require XT>N ;
 
 : FRESH-REQUIRE-CASE ( n -- )
    UNIT-COMPILE:BIND-REQUIRE

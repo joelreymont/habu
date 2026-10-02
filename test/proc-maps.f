@@ -10,8 +10,9 @@ PROCESS-SYMBOLS
 FUNCTION: MACH-SELF task_self_trap ( -- u32 ) ;FUNCTION
 FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 
-\ mach_vm_address_t is the integer representation of this allocation's pointer.
-TRUSTED: ADDRESS ( ptr u8 -- n ) ;
+\ mach_vm_address_t is the integer representation of this allocation's pointer:
+\ its distance from the null address.
+: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 : MACOS-REGIONS ( -- )
    MEM-ALLOC-64K {: live:ptr liveu:n :}

@@ -81,17 +81,23 @@ TRUSTED: RESET ( -- )
    s" src/core/cell.f" included
    s" src/core/exec-vector.f" included ;
 
-TRUSTED: REPLAY ( -- n )
-   s" variable V 40 constant BASE create ROW 2 cells allot : PF-OLD-SIGNATURE ( -- n ) 2 ; : PF-STORE ( -- ) BASE V ! PF-OLD-SIGNATURE V +! V @ ROW ! ; : PF-READ ( -- n ) ROW @ ; : PF-IMM? ( ptr u8 n -- n ) tok-imm? ; PF-STORE PF-READ" evaluate ;
+\ No word of this file survives the reset, so a replay cannot hand a value back
+\ to it: each text closes by checking its own answer with PF-EXPECT, defined
+\ after the reset, which dies naming the replay that answered wrong.
+: DEF-EXPECT ( -- )
+   s" : PF-EXPECT ( n n ptr u8 n -- ) 2swap <> if 76 die then 2drop ;" evaluate-closed ;
 
-TRUSTED: REPLAY-SHADOW ( -- n )
-   s" package PF-SHADOW public : OFFSET ( n -- n ) cells ; ;package 3 PF-SHADOW:OFFSET" evaluate ;
+: REPLAY ( -- )
+   S\" variable V 40 constant BASE create ROW 2 cells allot : PF-OLD-SIGNATURE ( -- n ) 2 ; : PF-STORE ( -- ) BASE V ! PF-OLD-SIGNATURE V +! V @ ROW ! ; : PF-READ ( -- n ) ROW @ ; : PF-IMM? ( ptr u8 n -- n ) tok-imm? ; PF-STORE PF-READ 42 s\q native prefix declarations failed\q PF-EXPECT" evaluate-closed ;
 
-TRUSTED: REPLAY-DEFER ( -- n )
-   s" defer PF-DEFER ( -- n ) : PF-SET ( -- ) [: 42 ;] is PF-DEFER ; PF-SET PF-DEFER" evaluate ;
+: REPLAY-SHADOW ( -- )
+   S\" package PF-SHADOW public : OFFSET ( n -- n ) cells ; ;package 3 PF-SHADOW:OFFSET 24 s\q discarded package shadow hid primitive cells\q PF-EXPECT" evaluate-closed ;
 
-TRUSTED: REPLAY-USING ( -- n )
-   s" package PF-LIB public : ANSWER ( -- n ) 44 ; ;package using PF-LIB : PF-CALL-ANSWER ( -- n ) ANSWER ; PF-CALL-ANSWER ;using" evaluate ;
+: REPLAY-DEFER ( -- )
+   S\" defer PF-DEFER ( -- n ) : PF-SET ( -- ) [: 42 ;] is PF-DEFER ; PF-SET PF-DEFER 42 s\q pending defer metadata missed the compiler\q PF-EXPECT" evaluate-closed ;
+
+: REPLAY-USING ( -- )
+   S\" package PF-LIB public : ANSWER ( -- n ) 44 ; ;package using PF-LIB : PF-CALL-ANSWER ( -- n ) ANSWER ; PF-CALL-ANSWER ;using 44 s\q using context missed the active compiler\q PF-EXPECT" evaluate-closed ;
 
 variable EFFECTS
 variable DEFERS
@@ -112,8 +118,8 @@ create TARGET-OWNER 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 
    ['] RECORD-USING TARGET-OWNER NCOMP-DISPATCH:DECL-USING-OFF + xt!
    TARGET-OWNER data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ! ;
 
-TRUSTED: REPLAY-TARGET ( -- n )
-   s" variable PF-RAW-TARGET using PF-LIB ;using defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE" evaluate ;
+: REPLAY-TARGET ( -- )
+   S\" variable PF-RAW-TARGET using PF-LIB ;using defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE 43 s\q declaration metadata missed the target checker\q PF-EXPECT" evaluate-closed ;
 
 : RUN ( -- )
    s" CHECKER-RESET-SOURCE" 0 search-wl 0<> if
@@ -124,16 +130,17 @@ TRUSTED: REPLAY-TARGET ( -- n )
    then
    RESET
    LOAD-CORE
-   REPLAY-SHADOW 24 <> if s" discarded package shadow hid primitive cells" 76 die then
-   REPLAY 42 <> if s" native prefix declarations failed" 76 die then
-   REPLAY-DEFER 42 <> if s" pending defer metadata missed the compiler" 76 die then
+   DEF-EXPECT
+   REPLAY-SHADOW
+   REPLAY
+   REPLAY-DEFER
    s" PF-BAD-DEFER ( -- ) [: 0 0= ;] is PF-DEFER" CHECK-CANDIDATE! 0<> if
       s" pending defer accepted a mismatched quotation" 76 die
    then
-   REPLAY-USING 44 <> if s" using context missed the active compiler" 76 die then
+   REPLAY-USING
    INSTALL-TARGET
-   REPLAY-TARGET 43 <>
-   EFFECTS @ 1 <> or DEFERS @ 1 <> or RAWS @ 1 <> or USINGS @ 1 <> or if
+   REPLAY-TARGET
+   EFFECTS @ 1 <> DEFERS @ 1 <> or RAWS @ 1 <> or USINGS @ 1 <> or if
       s" declaration metadata missed the target checker" 76 die
    then ;
 

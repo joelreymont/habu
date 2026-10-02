@@ -63,9 +63,9 @@ variable DTC-SIG-U
 \ difference is where the refusal lands. `TRUSTED: L ( n -- idx idx ) ;` records
 \ whatever it is handed and only fails later, at a caller that happens to
 \ disagree — `TRUSTED: L ( n -- ptr u8 ) ;` let `8 L c@` compile and SIGSEGV.
-\ A cast is refused at the DECLARATION by the five structural rules (arity,
-\ class, family, owner, linearity), so a role conversion can no longer declare a
-\ shape the runtime cannot produce.
+\ A cast is refused at the DECLARATION by its structural rules (checker.f
+\ CAST-CERTIFY), so a role conversion can no longer declare a shape the runtime
+\ cannot produce.
 \
 \ This file could not declare a cast at all while `cast:` was a WORD: the
 \ declarer crossed source through the evaluate boundary src/core/include.f arms

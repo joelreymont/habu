@@ -1,7 +1,8 @@
 \ Loaded after the real source-window reset, including from a grown snapshot.
 package ADDRESS-CELL-OWNER
 : addr-cells-abi ( -- n ) 0 ;
-TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
+\ search-wl answers the engine's ABI word as a code address integer.
+CAST: VERSION-XT ( n -- [ -- n ] )
 : CHECK ( -- )
    addr-cells-abi 0 <> if s" local ABI shadow changed" 76 die then
    s" addr-cells-abi" 0 search-wl {: xt:n :}

@@ -127,11 +127,11 @@ TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
 
 \ These execution tokens belong to the retained/target private checker owners.
-TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
+: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
    owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT execute ;
 
-TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
+: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    CHECKER-OWNER {: owner:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
    source owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT execute ;

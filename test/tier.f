@@ -276,19 +276,19 @@ variable RC     variable EXITED
 
 \ ---- 4. the snapshot depth dies with the definition --------------------------
 \ THE REGRESSION. Thirty definitions that each open a BEGIN and then fail on an
-\ undefined word, caught one at a time inside `evaluate`, then one good BEGIN
+\ undefined word, caught one at a time by `TEST-EVAL:RC`, then one good BEGIN
 \ definition that has to compile and run. Before the fix the thirtieth failure
 \ never returned: the twenty-ninth `begin` exited 75 from inside the engine,
 \ which no catch can see.
 : LEAK-SRC$ ( -- ptr u8 n )
-   S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\n: X30 ( -- ) 30 0 do s\q : BAD-B ( -- ) begin MISSING ;\q EV drop loop ;\nX30\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
+   S\" : X30 ( -- ) 30 0 do s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC drop loop ;\nX30\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
 
 : TEST-SNAPSHOT-OWNERSHIP ( -- )
    s" thirty failed BEGIN definitions leave the depth clean" T-LABEL
    LEAK-SRC$ RUN  s" 5" ASSERT-OK
 
    s" one failed BEGIN definition is caught, not fatal" T-LABEL
-   S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\ns\q : BAD-B ( -- ) begin MISSING ;\q EV . cr\n"
+   S\" s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC . cr\n"
    RUN  s" 70" ASSERT-OK ;
 
 \ ---- 5. the reset stops at the definition boundary ---------------------------

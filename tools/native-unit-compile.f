@@ -5,6 +5,7 @@
 require lib/prelude.f
 require lib/string.f
 require src/core/include.f
+require src/habu/layout.f
 
 package UNIT-COMPILE
 
@@ -30,17 +31,16 @@ variable REQUIRE-XT
 5 constant CLOSED
 6 constant IMPORTED
 
+\ Code cells refuse a null until the quotation type kind (habu-campaign-c2-mem-c3d7662b).
 TRUSTED: CLEAR-BORROWED ( -- ) 0 BODY-XT ! ;
-TRUSTED: INPUT@ ( -- ptr u8 ) data-base INP-CELL + @ ;
-TRUSTED: INPUT! ( ptr u8 -- ) data-base INP-CELL + ! ;
 
 : TOKEN= ( ptr u8 n ptr u8 n -- bool ) STR= ;
 
 \ Compare the resolved code entry, not the token spelling: an open package
 \ may shadow any ordinary dictionary word used by the allowed top-level forms.
-TRUSTED: BOUND-REQUIRE? ( n -- bool ) REQUIRE-XT @ = ;
-TRUSTED: ORIGINAL-CURRENT? ( n -- bool ) ['] get-current = ;
-TRUSTED: ORIGINAL-PROTECT? ( n -- bool ) ['] prot-wid-add = ;
+: BOUND-REQUIRE? ( n -- bool ) REQUIRE-XT @ = ;
+: ORIGINAL-CURRENT? ( n -- bool ) ['] get-current = ;
+: ORIGINAL-PROTECT? ( n -- bool ) ['] prot-wid-add = ;
 
 : RESOLVED-TOKEN ( ptr u8 n n -- n )
    {: a:ptr u:n actual:n :}
@@ -56,9 +56,9 @@ TRUSTED: ORIGINAL-PROTECT? ( n -- bool ) ['] prot-wid-add = ;
    UNIT-RC throw ;
 
 : REQUIRE-AVAILABLE ( -- )
-   INPUT@ {: saved:ptr :}
+   SRCLOC:CURSOR @ {: saved:ptr :}
    parse-name {: path:ptr size:n :}
-   saved INPUT!
+   saved SRCLOC:CURSOR !
    size 0= if UNIT-RC throw then
    path size SOURCE-ROOT:RESOLVE {: known:bool :}
    2drop

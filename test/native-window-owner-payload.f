@@ -12,7 +12,8 @@ package OWNER-PAYLOAD-CHECK
 : EQ! ( n n -- ) 2dup <> if swap . . cr 79 throw then 2drop ;
 : OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
-TRUSTED: AS-PREPARE ( n -- [ -- ] ) ;
+\ The owner record holds its prepare entry as a code address integer.
+CAST: AS-PREPARE ( n -- [ -- ] )
 : PREPARE ( -- )
    OWNER CHECKER-OWNER-ABI:BYTES CHECKER-OWNER-GUARD:VALIDATE
    CHECKER-OWNER-ABI:CAPTURE-OFF + CELL-VIEW @ AS-PREPARE execute ;

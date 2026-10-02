@@ -101,8 +101,9 @@ create BOUNDARY COUNTED-MAX 1+ allot
    data-base S0-CELL + 0 ptr-field @ ;
 
 
-\ Source evaluation owns an isolated stack. Its results are discarded there;
-\ neither those results nor the stack allocation may leak into this caller.
+\ Source evaluation owns an isolated stack and is closed: a source that leaves
+\ results is refused there with E-EVAL-RESIDUE, and neither those results nor
+\ the stack allocation may leak into this caller.
 : CHECK-EVAL-CALLER ( ptr u8 n n -- ) {: source:ptr size:n want:n :}
    source size GE-EVAL-SRC!
    depth {: before:n :}
@@ -115,9 +116,9 @@ create BOUNDARY COUNTED-MAX 1+ allot
 
 : EVAL-CALLER-CASES ( -- )
    s" " 0 CHECK-EVAL-CALLER
-   s" 11 22" 0 CHECK-EVAL-CALLER
+   s" 11 22" E-EVAL-RESIDUE CHECK-EVAL-CALLER
    s" 7 throw" 7 CHECK-EVAL-CALLER
-   s" 33 44" 0 CHECK-EVAL-CALLER ;
+   s" 33 44" E-EVAL-RESIDUE CHECK-EVAL-CALLER ;
 
 
 : BODY ( -- )

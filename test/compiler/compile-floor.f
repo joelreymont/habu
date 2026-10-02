@@ -133,9 +133,8 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 \ This file never INSTALLS a dispatch; it only reads the cell to see whether the
 \ tool put the original back, and `=` has no row over quotation terms. So the
 \ test's accessor declares the cell as the machine word it compares, while the
-\ tool's own accessor (tools/compile-floor.f) declares the same offset as the xt
-\ cell it stores through with `xt!`. Each names what it reaches; a shared
-\ `( -- ptr a )` named neither and let either caller pick.
+\ tool (tools/compile-floor.f) only stores into it, through NCOMP:DISPATCH!,
+\ and ends the borrow with NCOMP:INSTALL.
 : DISPATCH-WORD ( -- ptr n )  data-base NCOMP-DISPATCH:XT-CELL + ;
 : DISPATCH-KEPT? ( -- bool )  DISPATCH-WORD @ ORIG-XT @ = ;
 : TIER-KEPT? ( -- bool )  tier@ PRIOR-TIER @ = ;
