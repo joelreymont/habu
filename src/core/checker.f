@@ -1213,10 +1213,12 @@ CHECKER-PKG-LIVE-DEFAULT
    2 S\" hb: no authenticated package context for this definition\n" write drop
    PKGCTX-REJECT-RC throw ;
 
-\ CHECKER-RESOLVE answers the scope questions without refusing: AUTHORITY here,
-\ REFUSES? beside the scope walk (CHECKER-BIND-TRY). The bool says whether an
-\ authority names a package context; CHECKER-PKG-CONTEXT is the refusing form.
-\ src/habu/xref.f retires AUTHORITY with the other package-context words.
+\ CHECKER-RESOLVE owns the scope questions. AUTHORITY, here, and WALK, the scope
+\ walk beside CHECKER-BIND, answer without refusing; RAISE raises a refusal WALK
+\ answered, and REFUSES? asks whether WALK would refuse. AUTHORITY's bool says
+\ whether an authority names a package context; CHECKER-PKG-CONTEXT is the
+\ refusing form. src/habu/xref.f retires AUTHORITY with the other
+\ package-context words.
 package CHECKER-RESOLVE
 public
 : AUTHORITY ( -- ptr u8 n n bool )
@@ -10052,7 +10054,10 @@ variable DFER-END
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
-variable CK-USED-WHY                       \ E-USING-AMBIGUOUS when a second used public matched, else 0
+package CHECKER-USE
+public
+variable WHY                               \ E-USING-AMBIGUOUS when a second used public matched, else 0
+;package
 
 \ The depth every read of the mirror is bounded by, from whichever authority owns
 \ the current scope: the replay's own count while the mirror is authority, and
@@ -10157,15 +10162,15 @@ package CHECKER-REG
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
 \ global chain missed). A single distinct interned public sym wins; a second distinct sym
 \ across the used packages is the ambiguity hard error, matching the engine's used-search.
-\ The scan reports that refusal in CK-USED-WHY rather than raising it, so the
-\ scope walk (CHECKER-BIND-TRY) can answer a caller that only asks; CHECKER-BIND
-\ raises it.
+\ The scan reports that refusal in CHECKER-USE:WHY rather than raising it, so
+\ the scope walk (CHECKER-RESOLVE:WALK) can answer a caller that only asks;
+\ CHECKER-BIND raises it.
 \ A used public whose records all lie beyond the binding horizon was exported
 \ after this definition: it is neither a candidate nor a cause of ambiguity.
 : CHECKER-USED-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 CK-USED-FOUND !
    -1 CK-USED-SLOT !
-   0 CK-USED-WHY !
+   0 CHECKER-USE:WHY !
    CK-USE-SCAN-N 0 ?DO
       i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-VISIBLE ELSE drop 0 THEN
       dup 0 <> IF                                            ( -- sym )
@@ -10173,7 +10178,7 @@ package CHECKER-REG
             i CK-USED-SLOT !
             CK-USED-FOUND !
          ELSE
-            dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS CK-USED-WHY ! THEN
+            dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS CHECKER-USE:WHY ! THEN
             drop
          THEN
       ELSE drop THEN
@@ -10239,7 +10244,7 @@ SHADOW-DIAG-DEFAULT
 \ renders the captured candidates and raises; a caller that only asks drops it.
 : CHECKER-USED-SHADOW ( ptr u8 n n -- n ) {: a:ptr u:n gsym:n :}
    a u CHECKER-USED-SYM {: usym:n :}
-   CK-USED-WHY @ 0 <> IF CK-USED-WHY @ EXIT THEN
+   CHECKER-USE:WHY @ 0 <> IF CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 EXIT THEN
    a USH-TOK-A !  u USH-TOK-U !
    gsym USH-GSYM !  usym USH-USYM !
@@ -10319,7 +10324,7 @@ SHADOW-DIAG-DEFAULT
 \ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
 : CHECKER-USED-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-USED-SYM {: usym:n :}
-   CK-USED-WHY @ 0 <> IF 0 CK-USED-WHY @ EXIT THEN
+   CHECKER-USE:WHY @ 0 <> IF 0 CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 0 EXIT THEN
    a u GLOBAL-BEYOND-HORIZON? 0= IF
       a u 0 CK-WL-CLAIMS? IF 0  a u 0 CHECKER-USED-SHADOW  EXIT THEN
@@ -10394,7 +10399,8 @@ defer USE-SLOT-XT ( n -- ptr u8 n bool )
 USE-SLOT-BOOT
 
 \ CHECKER-RESYNC sets the mirror from the engine's scope after a throw's
-\ recovery. Its entry, SCOPE, is reached only through the declaration owner.
+\ recovery. Its entry, SCOPE, is reached only through the declaration owner;
+\ src/habu/xref.f retires the name.
 package CHECKER-RESYNC
 
 \ The engine's wids are the slots' authority. A throw's recovery puts back the
@@ -10630,7 +10636,7 @@ variable CHECKER-QBAD-TOK
 1 constant BIND-GLOBAL    \ the global wordlist names it
 2 constant BIND-SCOPED    \ the open package, a used public or a qualifier names it
 
-\ THE WALK ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: CHECKER-BIND-TRY leaves
+\ THE WALK ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: WALK leaves
 \ ( sym leg why ), where why is 0 or the code of the refusal the walk reached -
 \ PKGCTX-REJECT-RC when no authority names a package context,
 \ E-USING-SHADOW-GLOBAL or E-USING-AMBIGUOUS at the used-publics legs. Under a
@@ -10638,10 +10644,12 @@ variable CHECKER-QBAD-TOK
 \ no caller reads it when why is nonzero. It renders nothing. CHECKER-BIND
 \ raises the refusal exactly as each one always surfaced; a caller that only
 \ asks reads why.
-: CHECKER-BIND-TRY ( ptr u8 n -- n n n ) {: a:ptr u:n :}
+package CHECKER-RESOLVE
+public
+: WALK ( ptr u8 n -- n n n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? BIND-SCOPED 0 EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 BIND-NONE 0 EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 BIND-NONE PKGCTX-REJECT-RC EXIT THEN
+   AUTHORITY 0= IF 2drop drop 0 BIND-NONE PKGCTX-REJECT-RC EXIT THEN
    {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
       pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF BIND-SCOPED 0 EXIT THEN drop
@@ -10659,14 +10667,23 @@ variable CHECKER-QBAD-TOK
 \ Raise a refusal the walk answered: the package-context refusal names itself on
 \ fd 2 and throws the reject rc, the using-shadow refusal renders the candidates
 \ CHECKER-USED-SHADOW captured, and the ambiguity throws bare.
-: CHECKER-BIND-REFUSE ( n -- ) {: why:n :}
+: RAISE ( n -- ) {: why:n :}
    why PKGCTX-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
    why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT THEN
    why throw ;
 
+\ The scope question for a caller that defines nothing: would resolving NAME here
+\ be refused? EFFECT-QUERY resolves through CHECKER-BIND, so it refuses where this
+\ answers true, which is right for a definition and for the native compiler; the
+\ top-row tracker (src/core/top-row.f TR-CERT-DOUT-EMPTY?) only observes, so it
+\ asks this first and grays the word instead. It raises and renders nothing.
+: REFUSES? ( ptr u8 n -- bool )
+   WALK >r 2drop r> 0 <> ;
+;package
+
 : CHECKER-BIND ( ptr u8 n -- n n )
-   CHECKER-BIND-TRY {: sym:n leg:n why:n :}
-   why 0 <> IF why CHECKER-BIND-REFUSE THEN
+   CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
+   why 0 <> IF why CHECKER-RESOLVE:RAISE THEN
    sym leg ;
 
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
@@ -10677,17 +10694,6 @@ variable CHECKER-QBAD-TOK
 
 package CHECKER-REG
 ' CHECKER-TRUSTED-TICK? DECLARATIONS CHECKER-OWNER-ABI:TRUSTED-TICK-OFF + xt!
-;package
-
-\ The scope question for a caller that defines nothing: would resolving NAME here
-\ be refused? EFFECT-QUERY resolves through CHECKER-BIND, so it refuses where this
-\ answers true, which is right for a definition and for the native compiler; the
-\ top-row tracker (src/core/top-row.f TR-CERT-DOUT-EMPTY?) only observes, so it
-\ asks this first and grays the word instead. It raises and renders nothing.
-package CHECKER-RESOLVE
-public
-: REFUSES? ( ptr u8 n -- bool )
-   CHECKER-BIND-TRY >r 2drop r> 0 <> ;
 ;package
 
 \ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) : the same resolution, for a caller
@@ -10711,9 +10717,9 @@ public
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
 : CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n )
-   CHECKER-BIND-TRY {: sym:n leg:n why:n :}
+   CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
    why 0= IF sym EXIT THEN
-   why FQSYM-DEFERRED? 0= IF why CHECKER-BIND-REFUSE THEN
+   why FQSYM-DEFERRED? 0= IF why CHECKER-RESOLVE:RAISE THEN
    0 ;
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.

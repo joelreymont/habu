@@ -293,6 +293,13 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" DISTINCT" SB-APPEND
    SB$ ;
 
+\ Does package PKG's private wordlist still hold NAME? A missing package record
+\ answers true, so the case fails instead of passing on nothing.
+: PRIVATE-FOUND? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n p:ptr pu:n :}
+   p pu XREF-NAMESPACE-WL XREF-FIND-WL {: r:ptr :}
+   r XREF-FOUND? 0= if 0 0= exit then
+   a u r XREF-PKG-PRIVATE XREF-FIND-WL XREF-FOUND? ;
+
 : AUTHORITY-CASES ( -- )
    s" package context hook is not addressable" T-LABEL
    s" PKG-LIVE-XT" XREF-FIND XREF-FOUND? TFALSE
@@ -306,6 +313,8 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" CHECKER-PKG-CONTEXT" XREF-FIND XREF-FOUND? TFALSE
    s" package authority reader is not addressable" T-LABEL
    s" CHECKER-RESOLVE:AUTHORITY" XREF-FIND XREF-FOUND? TFALSE
+   s" package resync entry is not addressable in its package" T-LABEL
+   s" SCOPE" s" CHECKER-RESYNC" PRIVATE-FOUND? TFALSE
    s" verifier package scope cell is not addressable" T-LABEL
    s" CHECKER-VERIFY-PKG-DEPTH" XREF-FIND XREF-FOUND? TFALSE
    s" verifier package snapshot name is not addressable" T-LABEL

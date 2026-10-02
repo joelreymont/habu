@@ -691,3 +691,11 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 ;package
+
+\ The declaration owner holds CHECKER-RESYNC's entry by its xt, which keeps the
+\ name through the seal where SLOT and SLOTS lose theirs: the product still
+\ resolves SCOPE in the package's private wordlist. Retire it so the owner is
+\ the only way in.
+package CHECKER-RESYNC
+undefine SCOPE
+;package
