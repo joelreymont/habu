@@ -282,6 +282,20 @@ public
 : COPY-UPPER ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}
    0 begin dup u < while  dup a + c@ ASCII-UP  over dst + c!  1+  repeat  drop ;
 : LINT-WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
+\ Whether byte i of the span a u exists and is not whitespace (LINT-INK-AT?)
+\ or is whitespace (LINT-GAP-AT?): the guards of a word scan and of the gap
+\ before it. Each reads the byte only when i is inside the span. `i u < a i +
+\ c@ LINT-WS? 0= and` reads it anyway, since `and` evaluates both operands, and
+\ the byte past a span that fills its mapping is unmapped: a source ending on a
+\ 64 KiB boundary faulted public-signatures.
+: LINT-INK-AT? ( ptr u8 n n -- bool )
+   {: a:ptr u:n i:n :}
+   i u >= IF LINT-FALSE exit THEN
+   a i + c@ LINT-WS? 0= ;
+: LINT-GAP-AT? ( ptr u8 n n -- bool )
+   {: a:ptr u:n i:n :}
+   i u >= IF LINT-FALSE exit THEN
+   a i + c@ LINT-WS? ;
 : LINT-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
       dup a + c@ LINT-WS? 0= IF dup a +  u rot -  exit THEN  1+
@@ -346,7 +360,8 @@ variable SN#
 private
 
 : ADD-LINE ( ptr u8 n -- ) {: a:ptr u:n :}              \ one line, trailing CR dropped
-   u 0 >  a u 1- + c@ LINT-CR = and IF a u 1- SPLIT+ ELSE a u SPLIT+ THEN ;
+   u 0 > IF a u 1- + c@ LINT-CR = IF a u 1- SPLIT+ exit THEN THEN
+   a u SPLIT+ ;
 
 public
 
@@ -363,10 +378,10 @@ public
 : SPLIT-WHITESPACE ( ptr u8 n -- ) {: a:ptr u:n :}
    SPLIT-CLEAR  0 CUR !
    begin CUR @ u < while
-      begin CUR @ u <  a CUR @ + c@ LINT-WS? and while CUR @ 1+ CUR ! repeat
+      begin a u CUR @ LINT-GAP-AT? while CUR @ 1+ CUR ! repeat
       CUR @ u < IF
          CUR @ MARK !
-         begin CUR @ u <  a CUR @ + c@ LINT-WS? 0= and while CUR @ 1+ CUR ! repeat
+         begin a u CUR @ LINT-INK-AT? while CUR @ 1+ CUR ! repeat
          a MARK @ +  CUR @ MARK @ -  SPLIT+
       THEN
    repeat ;

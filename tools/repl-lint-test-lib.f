@@ -136,11 +136,29 @@ create RLT-ERR RLT-CAP allot
    RLT-OUT outu RLT-BAD-ADVICE$ CONTAINS? TTRUE
    RLT-OUT outu RLT-BAD-SUMMARY$ CONTAINS? TTRUE ;
 
+\ The lexer takes the caller's span and must not read past it. A span whose
+\ last token ends on the last byte of a guarded page faults on any read past
+\ it. The CLI cannot show this: its 32 KiB read buffer sits in the dictionary,
+\ so the byte after a source that fills it is the next buffer's.
+: RLT-TEST-SPAN-END ( -- )
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: a:ptr u:n :}
+   s" die" {: t:ptr tu:n :}
+   u tu - 0 ?do 32 a i + c! loop
+   t a u tu - + tu BYTE-COPY
+   0 REPL-BAD !
+   RLT-OUT RLT-CAP LINT-OUT-BUFFER!
+   s" src/habu/repl.f" a u LINT-REPL-SOURCE
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF {: outu:n :}
+   a u MEM-RELEASE-GUARDED
+   REPL-BAD @ 1 T=
+   RLT-OUT outu RLT-BAD-FINDING$ CONTAINS? TTRUE ;
+
 : RLT-MAIN ( -- )
    T-RESET
    RLT-PREPARE
    RLT-TEST-GOOD
    RLT-TEST-BAD
+   RLT-TEST-SPAN-END
    CLEANUP-RUN
    RLT-ROOT EXISTS? TFALSE
    T-REPORT

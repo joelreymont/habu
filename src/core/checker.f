@@ -5098,14 +5098,23 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    c 44 = IF RES-TRUE EXIT THEN
    c 91 = IF RES-TRUE EXIT THEN
    c 93 = ;
+\ Whether the byte at SI exists and is a space (SIG-SPACE?) or a token byte
+\ (SIG-INK?). Each reads it only when SI is inside SL: `and` evaluates both
+\ operands, so a bound test beside the read reads the byte past a signature
+\ that ends where its mapping does.
+: SIG-SPACE? ( -- bool )
+   SI @ SL @ >= IF RES-FALSE EXIT THEN
+   SB@ SI @ + c@ 32 = ;
+: SIG-INK? ( -- bool )
+   SI @ SL @ >= IF RES-FALSE EXIT THEN
+   SB@ SI @ + c@ dup 32 <> swap SIG-DELIM-CHAR? 0= and ;
 : NEXT-SIG-TOK ( -- ptr u8 n )
    PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
-   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+   BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
    SI @ SL @ < 0= IF SB@ 0 EXIT THEN
    SB@ SI @ + SS!
    SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 EXIT THEN
-   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 <> and
-      SB@ SI @ + c@ SIG-DELIM-CHAR? 0= and WHILE SI @ 1 + SI ! REPEAT
+   BEGIN SIG-INK? WHILE SI @ 1 + SI ! REPEAT
    SS@ SB@ SI @ + SS@ - ;
 
 : UPPER? ( n -- bool ) {: c:n :} c 64 > c 91 < and ;
@@ -18776,15 +18785,27 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : TAPE-FEED? ( -- bool )
    CHECKER-TAPE:ARMED @ 0 <>  RESCAN @ 0=  and ;
 
+\ Whether byte i of the text exists and is c (TBYTE=?), and whether a token
+\ breaks at i, where the text ends or byte i is a space (TBREAK?). Each reads
+\ byte i only when i is inside TBLEN: `and` evaluates both operands, so a bound
+\ test beside the read reads the byte past a text that ends where its mapping
+\ does.
+: TBYTE=? ( n n -- bool ) {: i:n c:n :}
+   i TBLEN @ >= IF RES-FALSE EXIT THEN
+   i TBYTE@ c = ;
+: TBREAK? ( n -- bool ) {: i:n :}
+   i TBLEN @ >= IF RES-TRUE EXIT THEN
+   i TBYTE@ 32 = ;
+
 : CHECK-SCAN ( -- )
    0 SCAN-TOKS !
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
-     BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
+     BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TI @ TBYTE@ 40 =  TI @ 1 + TBYTE@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
+       TI @ TBYTE@ 40 =  TI @ 1 + TBREAK?  and IF   \ '( ' (not '(CMP)') -> sig or comment
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
-         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          \ only the '( ... )' right after the name is the sig; once it is seen
          \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
          \ parity) and must not touch any signature state.
@@ -18811,7 +18832,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
          TI @ TSTART !
-         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !

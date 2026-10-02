@@ -1682,6 +1682,10 @@ SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
 
+SUITE engine-span-end
+   test/engine-span-end.f
+;SUITE
+
 SUITE checker-owner-descriptor
    test/checker-owner-descriptor.f
 ;SUITE

@@ -254,7 +254,7 @@ variable REPL-ROOT-U
    REPL-SRC-A@ REPL-X @ + REPL-TOK-A!
    REPL-X @ REPL-TMP !
    REPL-LINE @ REPL-TOK-LINE !
-   begin R-END? 0= R-C@ LINT-WS? 0= and while
+   begin REPL-SRC-A@ REPL-SRC-U @ REPL-X @ LINT-INK-AT? while
       R-ADV drop
    repeat
    REPL-X @ REPL-TMP @ - REPL-TOK-U !

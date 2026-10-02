@@ -223,19 +223,8 @@ variable DO-OUT-BUF?
    repeat
    DO-COMMENT start DO-X @ line col DO-SAVE-TOKEN ;
 
-\ The byte at the scan point is tested only when there is one: `and` evaluates
-\ both operands, so a guard of `DO-END? 0=` beside `DO-C@` reads the byte past
-\ the end, outside a buffer sized to the source.
-: DO-GAP? ( -- bool )
-   DO-END? if DO-FALSE exit then
-   DO-C@ LINT-WS? ;
-
-: DO-INK? ( -- bool )
-   DO-END? if DO-FALSE exit then
-   DO-C@ LINT-WS? 0= ;
-
 : DO-WORD-TOKEN ( n n n -- ) {: start line col :}
-   begin DO-INK? while
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-INK-AT? while
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
@@ -292,8 +281,8 @@ variable DO-OUT-BUF?
 \ A parsing keyword's operand is the next whitespace-delimited token, read raw:
 \ `char :` and `[char] :` start no definition, so nothing is marked there.
 : DO-SKIP-OPERAND ( -- )
-   begin DO-GAP? while DO-ADV drop repeat
-   begin DO-INK? while DO-ADV drop repeat ;
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-GAP-AT? while DO-ADV drop repeat
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-INK-AT? while DO-ADV drop repeat ;
 
 : DO-EMIT-RANGE ( n n -- ) {: start end :}
    end start <= if exit then

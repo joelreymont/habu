@@ -554,7 +554,8 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    DI @ OPLO ! ;
 
 : ROUTINE-NEXT-OPEN? ( -- bool )
-   RNEXT @ ON# @ <  DI @ RNEXT @ OPEN@ = and ;
+   RNEXT @ ON# @ >= if LINT-FALSE exit then
+   DI @ RNEXT @ OPEN@ = ;
 
 : ROUTINE-ADVANCE-OPEN ( -- )
    LASTSTOP @ if

@@ -319,10 +319,13 @@ variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
 \ in the self-test). Drops one trailing token per step, restoring any drop that
 \ breaks the predicate. Token surgery just moves BLEN — the bytes stay put. ----
 variable BSAVE
-: TRIM-TRAIL ( -- )  begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 = and while  BLEN @ 1- BLEN !  repeat ;
+: LAST-SPACE? ( -- bool )   \ BBUF has a last byte and it is a space
+   BLEN @ 0= IF 0 0= 0= exit THEN
+   BBUF BLEN @ 1- + c@ 32 = ;
+: TRIM-TRAIL ( -- )  begin LAST-SPACE? while  BLEN @ 1- BLEN !  repeat ;
 : DROP-LAST  ( -- bool )   \ remove the last space-delimited token; f = did-remove
    TRIM-TRAIL  BLEN @ 0= IF 0 0= 0= exit THEN
-   begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 <> and while  BLEN @ 1- BLEN !  repeat  0 0= ;
+   begin BLEN @ 0 > LAST-SPACE? 0= and while  BLEN @ 1- BLEN !  repeat  0 0= ;
 : REBUILD-G ( -- )  0 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+ ;   \ PBUF := ": G ( NIN -- DOUT ) BBUF ;"
 : FCFAIL?  ( -- bool )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
    SMARK  REBUILD-G  PBUF PBUF-U @ CHK

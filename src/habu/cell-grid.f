@@ -104,7 +104,7 @@ public
 : CELL-V@ ( ptr u8 n -- n n ) {: p:ptr avail:n :}
    p avail CELL-VW@ {: w:n :}
    w 0= if 0 0 exit then
-   w VMAX = p VMAX 1- + c@ 1 > and if 0 0 exit then
+   w VMAX = if p VMAX 1- + c@ 1 > if 0 0 exit then then
    p w CELL-VV@ {: v:n :}
    v w ;
 
