@@ -92,6 +92,9 @@ variable EXT-ERR-A
 : EXT-PURE ( -- ptr u8 n )
    EXT-TEMP s" pure.f" EXT-JOIN$ ;
 
+: EXT-BUILD-SCRIPT ( -- ptr u8 n )
+   EXT-TEMP s" build-script.f" EXT-JOIN$ ;
+
 : EXT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -232,7 +235,7 @@ variable EXT-ERR-A
    b u ;
 
 : EXT-BUNDLE-BUILD-SCRIPT ( -- ptr u8 n )
-   EXT-TEMP s" build-script.f" EXT-JOIN$ {: b:ptr u :}
+   EXT-BUILD-SCRIPT {: b:ptr u :}
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/string.f" EXT-ADD-SOURCE-LF
@@ -257,24 +260,31 @@ variable EXT-ERR-A
    EXT-ARG+
    s" --" EXT-ARG+ ;
 
-: EXT-ASSERT-OK ( len len outcome -- )
-   0 T-OUTCOME-EXITED= LEN>N {: erru:n :} LEN>N {: outu:n :}
+\ The asserts name the bundle the child ran. A run word joins its path again
+\ after the run, because the build script's output path reuses the path buffer.
+: EXT-ASSERT-EXIT ( len len outcome ptr u8 n -- n n )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   src srcu EXT-OUT outu LEN>N EXT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
+
+: EXT-ASSERT-OK ( len len outcome ptr u8 n -- )
+   EXT-ASSERT-EXIT {: outu:n erru:n :}
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK$ T$= ;
 
-: EXT-ASSERT-OK3 ( len len outcome -- )
-   0 T-OUTCOME-EXITED= LEN>N {: erru:n :} LEN>N {: outu:n :}
+: EXT-ASSERT-OK3 ( len len outcome ptr u8 n -- )
+   EXT-ASSERT-EXIT {: outu:n erru:n :}
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK3$ T$= ;
 
 : EXT-RUN-PURE ( -- )
    EXT-BUNDLE-PURE EXT-ARGV-BUNDLE
-   EXT-RUN-HB EXT-ASSERT-OK3 ;
+   EXT-RUN-HB EXT-PURE EXT-ASSERT-OK3 ;
 
-: EXT-RUN-FILE-MAP ( ptr u8 n -- )
-   EXT-ARGV-BUNDLE
+: EXT-RUN-FILE-MAP ( ptr u8 n -- ) {: b:ptr u:n :}
+   b u EXT-ARGV-BUNDLE
    EXT-FILES EXT-ARG+
-   EXT-RUN-HB EXT-ASSERT-OK ;
+   EXT-RUN-HB b u EXT-ASSERT-OK ;
 
 : EXT-RUN-BUILD-SCRIPT ( ptr u8 n -- )
    EXT-ARGV-BUNDLE
@@ -282,7 +292,7 @@ variable EXT-ERR-A
    s" -o" EXT-ARG+
    EXT-TEMP s" app.hb" EXT-JOIN$ EXT-ARG+
    s" examples/array.f" EXT-ARG+
-   EXT-RUN-HB EXT-ASSERT-OK ;
+   EXT-RUN-HB EXT-BUILD-SCRIPT EXT-ASSERT-OK ;
 
 : EXT-TEST-FILE-MAP ( -- )
    EXT-BUNDLE-FILE-MAP EXT-RUN-FILE-MAP ;

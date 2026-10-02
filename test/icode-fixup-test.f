@@ -377,12 +377,10 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
 : TEST-DIAG ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   SUBJECT:RUN
-   ICODE-EXIT-RC T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru want wantu T$= ;
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc ICODE-EXIT-RC T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   ERR erru LEN>N want wantu T$= ;
 
 : TEST-OVERFLOW ( -- )
    s" EMIT-OVERFLOW" S\" icode: out of fixups\n" TEST-DIAG ;

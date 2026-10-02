@@ -238,7 +238,9 @@ variable PET-START-NS
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
-   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
+   {: outu:len erru:len oc :}
+   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 \ Direct both-arm coverage for RUN-ARGV-ENV-CAPTURE: true -> ok(captured),
 \ false -> err(failed) carrying lengths + the completion code.
@@ -265,7 +267,9 @@ variable PET-START-NS
 : PET-RUN-ENV-STDIN-OUTCOME ( -- )
    PET-RESET
    s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
-   0 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 9 T=
+   {: outu:len erru:len oc :}
+   s" /bin/cat" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 9 T=
    PET-OUT 9 s" env-stdin" T$= ;
 
 : PET-RUN-ENV-STDIN-FALSE-LARGE ( -- )
@@ -280,7 +284,9 @@ variable PET-START-NS
    PET-EARLY-IN!
    s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
-   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
+   {: outu:len erru:len oc :}
+   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ( -- )
    PET-RESET

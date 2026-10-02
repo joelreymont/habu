@@ -46,34 +46,6 @@ WORST-CHILD-MS HANG-MARGIN * constant HANG-MS
 create SUBJECT-OUT SUBJECT-CAP allot
 create SUBJECT-ERR SUBJECT-CAP allot
 
-\ One assert per call, like the shared T-OUTCOME-EXITED= it replaces, but every
-\ way of not exiting gets its own name: the shared assertion reports a signal
-\ death as `expected 0 got 1`, and its deadline throw does not say which guard
-\ expired. An expired guard is named here with its budget and then throws
-\ E-PROC-TIMEOUT as the shared assertion does, so a busy host still reaches the
-\ pool as a timeout and never reads as a broken allocator.
-\ Naming the guard needs the budget, and only this caller knows it; giving
-\ lib/test/outcome.f its own per-variant diagnostics needs that file packaged
-\ first, which is tracked by dot habu-name-the-outcome-a80c2197.
-: CHILD-HUNG ( -- )
-   T-NEXT
-   s" child never exited: deadlock guard expired" T-ASSERT-DETAIL
-   s" guard ms: " type HANG-MS .
-   T-LABEL-CLEAR ;
-
-: CHILD-SIGNALED ( n -- ) {: sig:n :}
-   T-NEXT
-   s" child died on a signal without an exit status" T-ASSERT-DETAIL
-   s" signal: " type sig .
-   T-LABEL-CLEAR ;
-
-: CHILD-EXITED= ( outcome n -- ) {: want:n :}
-   MATCH outcome
-     exited OF want T= ENDOF
-     signaled OF CHILD-SIGNALED ENDOF
-     timeout OF CHILD-HUNG E-PROC-TIMEOUT throw ENDOF
-   ;MATCH ;
-
 : SCALAR-CASES ( -- )
    0 IR-ID:COUNT IR-ID:COUNT-N 0 T=
    $7FFFFFFFFFFFFFFF IR-ID:COUNT IR-ID:COUNT-N
@@ -187,10 +159,14 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" IR-KEY-ERASE ( IR-ID:ir-module-key -- n )"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: SUBJECT-RUN ( ptr u8 n -- len len outcome )
-   SUBJECT-OUT SUBJECT-CAP >LEN
+\ Runs the source in a subject child under the deadlock guard and asserts its
+\ exit code, leaving the stdout and stderr lengths.
+: SUBJECT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
+   src srcu SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   HANG-MS >MS SUBJECT:RUN ;
+   HANG-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu SUBJECT-OUT outu LEN>N SUBJECT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : CONCURRENT-SOURCE$ ( n -- ptr u8 n ) {: mode:n :}
    SB-RESET
@@ -210,35 +186,33 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s"  IR-ID-CONCURRENCY:RUN" SB-APPEND
    SB$ ;
 
-: CONCURRENT-RUN ( n -- len len outcome ) {: mode:n :}
+\ Runs the concurrency child in this mode on a fresh engine under the deadlock
+\ guard and asserts its exit code, leaving the stdout and stderr lengths.
+: CONCURRENT-EXITS ( n n -- n n ) {: mode:n want:n :}
    mode CONCURRENT-SOURCE$ {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    0 ARGV$ >LEN src srcu >LEN
    SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   HANG-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   HANG-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   src srcu SUBJECT-OUT outu LEN>N SUBJECT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : CONCURRENT-GREEN ( -- )
    s" concurrent allocator barrier" T-LABEL
-   1 CONCURRENT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   1 0 CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : CONCURRENT-MUTATION ( -- )
    s" barrier-removal mutation fails overlap witness" T-LABEL
-   0 CONCURRENT-RUN OVERLAP-RC CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   0 OVERLAP-RC CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : CONCURRENT-ACTIVATE-CLEANUP ( -- )
    s" activation cleanup permits same-process task reuse" T-LABEL
-   2 CONCURRENT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   2 0 CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
@@ -249,21 +223,15 @@ create SUBJECT-ERR SUBJECT-CAP allot
 
 : SEAL-CASE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n needle:ptr needleu:n :}
-   src srcu SUBJECT-RUN ENGINE-ERROR:SEAL-PACKAGE CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   src srcu ENGINE-ERROR:SEAL-PACKAGE SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    SUBJECT-ERR erru needle needleu CONTAINS? TTRUE ;
 
 : CONTEXT-SEAL-CASE ( ptr u8 n -- )
-   SUBJECT-RUN ENGINE-ERROR:SEAL-VIOLATION CHILD-EXITED=
-   LEN>N drop
-   LEN>N drop ;
+   ENGINE-ERROR:SEAL-VIOLATION SUBJECT-EXITS 2drop ;
 
 : OWNER-CAST-REJECT ( ptr u8 n -- )
-   SUBJECT-RUN UNCAUGHT-RC CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   UNCAUGHT-RC SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    SUBJECT-ERR erru s" uncaught throw code 7135" CONTAINS? TTRUE ;
 
@@ -342,9 +310,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" current WID cannot diverge from its package" T-LABEL
    s" 1 data-base $28 + !" CONTEXT-SEAL-CASE
    s" module serial survives require replay" T-LABEL
-   RELOAD-STABLE$ SUBJECT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   RELOAD-STABLE$ 0 SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 

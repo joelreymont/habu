@@ -51,15 +51,20 @@ create ERR 256 allot
    NESTED UNALIGNED 1+ 19 cells BYTE-COPY
    1 0 0 VALUE! VALUE UNALIGNED 1+ 19 cells 3 NFETCH-CHECK:FREEZE NFETCH-CHECK:TAGS ;
 
+\ Runs the program in a subject child and asserts its exit code, leaving the
+\ stdout and stderr lengths.
+: EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
+   src srcu OUT 256 >LEN ERR 256 >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu erru ;
+
 : REFUSES ( ptr u8 n -- )
-   OUT 256 >LEN ERR 256 >LEN 1000 >MS SUBJECT:RUN
-   85 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   85 EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    ERR erru LEN>N S\" hb: bad layout tag\n" T$= ;
 
 : REFUSES-DESCRIPTOR ( ptr u8 n -- )
-   OUT 256 >LEN ERR 256 >LEN 1000 >MS SUBJECT:RUN
-   76 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   76 EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    ERR erru LEN>N S\" hb: bad layout descriptor\n" T$= ;
 
@@ -68,8 +73,7 @@ create ERR 256 allot
 \ a raw descriptor address.
 : REFUSES-FORGERY ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n want:ptr wantu:n :}
-   src srcu OUT 256 >LEN ERR 256 >LEN 1000 >MS SUBJECT:RUN
-   70 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src srcu 70 EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;
 

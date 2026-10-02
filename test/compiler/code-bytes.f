@@ -53,8 +53,9 @@ private
 \ The out-of-region refusal exits the process, so it is proven in a child.
 : REFUSES ( -- )
    s" : CB-OUT-OF-REGION ( -- ) 12 4 CODE-BYTES:AT drop drop ; CB-OUT-OF-REGION"
-   OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN
-   74 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: src:ptr srcu:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N S\" hb: span outside the code region\n" T$= ;
 

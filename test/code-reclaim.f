@@ -126,18 +126,23 @@ $1000 constant LC-CAP
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
 
-: LC-RUN ( ptr u8 n -- len len outcome )
-   LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN ;
+\ Runs the program in a subject child and asserts its exit code, leaving the
+\ stdout and stderr lengths.
+: LC-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
+   src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu erru ;
 
 \ The program runs to the end and prints this.
 : LC-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
-   LC-RUN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   0 LC-EXITS {: outu:len erru:len :}
    erru LEN>N 0 T=
    LC-OUT outu LEN>N want wantu T$= ;
 
 \ The program's does> is refused by name, and the process ends there.
 : LC-REFUSED ( ptr u8 n -- )
-   LC-RUN 70 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   70 LC-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    LC-ERR erru LEN>N s" hb: does> has no created word" CONTAINS? TTRUE ;
 

@@ -383,19 +383,23 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    s" TASK:#USER USER-BAND:END over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+\ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
+\ the stdout and stderr lengths.
+: TASK-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
-   TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu erru ;
 
 : TASK-TEST-LIVE-COMPILE-GUARD ( -- )
-   TASK-LIVE-COMPILE$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   TASK-LIVE-COMPILE$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N s" variable" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
-   src srcu TASK-RUN-STDIN want T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
 
@@ -460,7 +464,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    BUILD-BAD @ 0 T= ;
 
 : TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu TASK-RUN-STDIN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src srcu 0 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 

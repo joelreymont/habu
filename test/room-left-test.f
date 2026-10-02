@@ -45,12 +45,10 @@ create ERR CAPTURE-CAP allot
 \ die writes its message as one line, so every want below ends in one newline.
 : DIES ( ptr u8 n n ptr u8 n -- ) {: source:ptr sourceu:n rc:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   SUBJECT:RUN
-   rc T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru want wantu T$= ;
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc rc T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   ERR erru LEN>N want wantu T$= ;
 
 : DTC-FILL ( -- ) DTC-BEGIN SRC DTC-CAP DTC+ ;
 : DTC-OVER ( -- ) DTC-BEGIN SRC DTC-CAP 1- DTC+ SRC 2 DTC+ ;

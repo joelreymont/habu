@@ -78,8 +78,10 @@ variable BAD-LINES
 : MAP-CASE ( -- )
    s" the owner maps print one row per line" T-LABEL
    S\" require tools/snap-heap-owner.f\nSNAP-HEAP-OWNER:DUMP SNAP-HEAP-OWNER:CODE-MAP\n"
-   MAP-OUT MAP-CAP >LEN MAP-ERR MAP-ERR-CAP >LEN MAP-TIMEOUT-MS >MS SUBJECT:RUN
-   0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: src:ptr srcu:n :}
+   src srcu MAP-OUT MAP-CAP >LEN MAP-ERR MAP-ERR-CAP >LEN MAP-TIMEOUT-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu MAP-OUT outu LEN>N MAP-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
    MAP-ERR erru LEN>N s" " T$=
    MAP-OUT outu LEN>N S\" \n" ENDS-WITH? TTRUE
    MAP-OUT outu LEN>N MAP-LINES

@@ -158,9 +158,11 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" args" BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
-: BLTT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+: BLTT-EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   BLTT-BUNDLE BLTT-OUT outu LEN>N BLTT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : BLTT-EXPECT-EXIT-NZ ( len len outcome -- n n )
    MATCH outcome

@@ -157,7 +157,9 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 
 : ECT-REFUSES-MISSING ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
-   SUBJECT:RUN ECT-UNCAUGHT-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc ECT-UNCAUGHT-RC
+   T-OUTCOME-EXITED=
    ECT-ERR erru LEN>N E-FS-STAT ECT-CODE$ CONTAINS? TTRUE
    ECT-ERR erru LEN>N ECT-DC$ CONTAINS? TTRUE ;
 

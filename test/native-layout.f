@@ -39,9 +39,9 @@ create HOST-BUF ROWS 2 * cells allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-: REFUSES ( ptr u8 n -- )
-   OUT IO-CAP >LEN ERR IO-CAP >LEN 1000 >MS SUBJECT:RUN
-   74 T-OUTCOME-EXITED= {: outu:len erru:len :}
+: REFUSES ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N S\" native-build: incompatible fixed engine layout\n" T$= ;
 

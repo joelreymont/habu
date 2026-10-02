@@ -87,9 +87,11 @@ create DGT-ERR DGT-BUF-CAP allot
    ENGINE-CANDIDATE:PATH$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
    DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: DGT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+: DGT-EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   s" tools/diag-origin.f" DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : DGT-TEST-CLI ( -- )
    DGT-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}

@@ -372,7 +372,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT ( -- )
    PT-CAPTURE-FALSE PT-OUT 32 PT-ERR 32 PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
+   {: outu:len erru:len oc :}
+   PT-CAPTURE-FALSE PT-OUT outu LEN>N PT-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
@@ -398,12 +400,15 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ Signal-death capture: the reap path derives signaled(sig) from the raw wait
 \ status alone -- no stored pair. The API return and the derived getter agree.
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
+   s" /bin/sh -c kill -KILL $$" {: cmd:ptr cmdu:n :}
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s" kill -KILL $$" >LEN PROC-ARGV+
    s" /bin/sh" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-HB-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   SIGKILL T-OUTCOME-SIGNALED= LEN>N 0 T= LEN>N 0 T=
-   PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
+   {: outu:len erru:len oc :}
+   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc SIGKILL T-OUTCOME-SIGNALED=
+   erru LEN>N 0 T= outu LEN>N 0 T=
+   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
 
 \ A deliberately tiny deadline proves that capture reports a timeout. The child
 \ is the one that never ends: the ok fixture finishes in about 9 ms on this host,

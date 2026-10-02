@@ -149,9 +149,11 @@ variable JOT-ERR-A
    JSON-ONLY-BUFFERS-OFF
    0 OUTCOME:EXITED ;
 
-: JOT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+: JOT-EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   s" tools/json-only.f" JOT-OUT outu LEN>N JOT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : JOT-MIXED-CASE ( -- )
    JOT-MIXED-IN$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}

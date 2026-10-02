@@ -300,7 +300,10 @@ variable HIT                       \ did the loop reach the case it was feeding 
    ABSENT$ WAIT-BARRIER TFALSE
    ABSENT$ WINDOW-ABSENT? TFALSE
    s" the child exits cleanly" T-LABEL
-   REAP 0 T-OUTCOME-EXITED=
+   \ The terminal carries both of the child's streams, so BUF$ is its stdout
+   \ and there is no stderr apart from it.
+   REAP {: oc :}
+   HB$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
 

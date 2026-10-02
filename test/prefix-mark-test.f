@@ -108,16 +108,18 @@ $400 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: RUN ( ptr u8 n -- len len outcome )
-   OUT CAP >LEN ERR CAP >LEN 5000 >MS SUBJECT:RUN ;
+\ Runs the source in a subject child and asserts its exit code, leaving the
+\ stdout and stderr lengths.
+: EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN 5000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : ACCEPTS ( ptr u8 n -- )
-   RUN 0 T-OUTCOME-EXITED=
-   LEN>N 0 T= LEN>N 0 T= ;
+   0 EXITS 0 T= 0 T= ;
 
 : REFUSES-REOPEN ( ptr u8 n -- )
-   RUN ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N {: erru:n :} LEN>N 0 T=
+   ENGINE-ERROR:SEAL-PACKAGE EXITS {: erru:n :} 0 T=
    ERR erru s" PREFIX-MARK" CONTAINS? TTRUE ;
 
 \ Public words can be retired even in protected packages. The original public
@@ -131,8 +133,7 @@ create ERR CAP allot
    s\" undefine PREFIX-MARK:CURSORS\n: PREFIX-MARK:CURSORS ( -- n ) 123 ;\n" REFUSES-REOPEN ;
 
 : PRIVATE-BOUNDARY ( -- )
-   s" undefine PREFIX-MARK:BOUNDARY" RUN 70 T-OUTCOME-EXITED=
-   LEN>N {: erru:n :} LEN>N 0 T=
+   s" undefine PREFIX-MARK:BOUNDARY" 70 EXITS {: erru:n :} 0 T=
    ERR erru s" undefine: word not found" CONTAINS? TTRUE
    s" package PREFIX-MARK private undefine BOUNDARY" REFUSES-REOPEN ;
 

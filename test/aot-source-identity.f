@@ -83,9 +83,9 @@ TRUSTED: LOAD-SOURCE ( -- )
 
 private
 
-: CHILD ( ptr u8 n n -- n n ) {: wanted:n :}
-   OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN
-   wanted T-OUTCOME-EXITED= {: outu:len erru:len :}
+: CHILD ( ptr u8 n n -- n n ) {: src:ptr srcu:n wanted:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc wanted T-OUTCOME-EXITED=
    outu LEN>N erru LEN>N ;
 
 public

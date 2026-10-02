@@ -13,8 +13,8 @@ create ERR CAP allot
 
 : EXPECT ( ptr u8 n n ptr u8 n -- )
    {: src:ptr u:n rc:n msg:ptr msgu:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   rc T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src u OUT outu LEN>N ERR erru LEN>N oc rc T-OUTCOME-EXITED=
    OUT outu LEN>N type
    ERR erru LEN>N msg msgu T$= ;
 

@@ -176,8 +176,9 @@ variable Q-POOL-RC
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
-   Q-SRC CODEGEN:CONTENTS Q-RUN-STDIN Q-THROW-RC T-OUTCOME-EXITED=
-   {: outu:len erru:len :}
+   Q-SRC CODEGEN:CONTENTS {: src:ptr srcu:n :}
+   src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
+   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-OUTCOME-EXITED=
    outu LEN>N 0 T=
    Q-ERR erru LEN>N code Q-THROW-NEEDLE CONTAINS? TTRUE ;
 

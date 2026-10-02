@@ -174,7 +174,8 @@ private
    {: source:ptr sourceu:n code:n text:ptr size:n :}
    source sourceu T-LABEL
    source sourceu OUT 4096 >LEN ERR 4096 >LEN 5000 >MS SUBJECT:RUN
-   code T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: outu:len erru:len oc :}
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc code T-OUTCOME-EXITED=
    OUT outu LEN>N text size CONTAINS? ERR erru LEN>N text size CONTAINS? or
    dup 0= if
       s" named-cells: refused source:" type cr source sourceu type cr

@@ -222,7 +222,9 @@ variable PAT-I
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-CAT ( -- )
    PROC-ARGV-RESET
    s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE-OUTCOME
-   0 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 13 T=
+   {: outu:len erru:len oc :}
+   s" /bin/cat" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 13 T=
    PAT-CAP-OUT 13 s" stdin-outcome" T$= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-TIMEOUT ( -- )
@@ -236,8 +238,9 @@ variable PAT-I
    PAT-EARLY-IN!
    s" /usr/bin/false" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
-   PAT-STDIN-CAPTURE-OUTCOME
-   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
+   PAT-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   s" /usr/bin/false" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 \ Direct both-arm coverage for RUN-ARGV-CAPTURE: printf exits clean -> ok(captured)
 \ carrying the two lengths; false exits 1 -> err(failed) carrying lengths + code.

@@ -307,16 +307,18 @@ at its deadline.
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
   on 124, and the rows rethrow it once the step is named.
 - A test's own capture deadline is no assertion result. `PROC-OUTCOME>RC`
-  (`lib/process.f`), `GT-RC@` (`lib/test/runner.f`), `GE-FAIL`
-  (`test/gate-common-lib.f`) and the `lib/test/outcome.f` asserts that want an
-  exit or a signal throw `E-PROC-TIMEOUT` for an expired deadline, and a test
-  that MATCHes the outcome itself throws it from its `timeout` arm (a
-  `SUBJECT:RUN` caller through `SUBJECT:TIMED-OUT`, `lib/test/subject.f`,
-  which first prints the program and the capture drained before the deadline,
-  as `GE-FAIL` does for a gate entry; `T-TIMED-OUT`, `lib/test/outcome.f`,
-  prints the case label ahead of it), so the row
-  reaches the pool as `TIMEOUT-UNDER-LOAD` instead of failing an assertion on
-  137 or on a false exited flag. A deliberate kill is a `signaled` outcome and
+  (`lib/process.f`), `GT-RC@` (`lib/test/runner.f`) and `GE-FAIL`
+  (`test/gate-common-lib.f`) throw `E-PROC-TIMEOUT` for an expired deadline.
+  The `lib/test/outcome.f` asserts that want an exit or a signal take the
+  program and its captured stdout and stderr, and throw it through
+  `T-TIMED-OUT`, which prints the case label, the program and the capture
+  first. A test that MATCHes the outcome itself throws it from its `timeout`
+  arm (a `SUBJECT:RUN` caller through `SUBJECT:TIMED-OUT`,
+  `lib/test/subject.f`, which first prints the program and the capture drained
+  before the deadline, as `GE-FAIL` does for a gate entry; `T-TIMED-OUT` prints
+  the case label ahead of it). So the row reaches the pool as
+  `TIMEOUT-UNDER-LOAD` instead of failing an assertion on 137 or on a false
+  exited flag. A deliberate kill is a `signaled` outcome and
   still reads 128 + signal; a test that expects the deadline asserts it with
   `T-OUTCOME-TIMEOUT` or MATCHes it. A pty wait whose clock ends with the
   child still at the terminal throws it too (`lib/pty-harness.f`

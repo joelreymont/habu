@@ -245,9 +245,9 @@ public
 : BAD-STAGING ( -- ) AOT-SIG-STR-CAP AOT-SIG-STR-LEN ! AOT-SIG-PAYLOAD:BUILD ;
 
 private
-: REJECT ( ptr u8 n n ptr u8 n -- ) {: code:n message:ptr u:n :}
-   OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN
-   code T-OUTCOME-EXITED= {: outu:len erru:len :}
+: REJECT ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n code:n message:ptr u:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc code T-OUTCOME-EXITED=
    OUT outu LEN>N message u CONTAINS? ERR erru LEN>N message u CONTAINS? or TTRUE
    CHECK ;
 

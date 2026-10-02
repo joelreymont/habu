@@ -33,14 +33,12 @@ variable ERR-U
 : OUT$ ( -- ptr u8 n )   OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )   ERR ERR-U @ ;
 
-\ Run one source in a disposable fork, assert its exit code, and keep the
-\ captured stdout/stderr spans. T-OUTCOME-EXITED= consumes the top outcome, so
-\ the two capture lengths (out then err, per lib/process capture order) sit ready
-\ for CAP-LENS. A layout outcome cannot be bound to a local, hence this order.
+\ Run one source in a disposable fork, keep the captured stdout/stderr spans,
+\ and assert its exit code.
 : RUN! ( ptr u8 n n -- ) {: src:ptr srcu:n rc:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   rc T-OUTCOME-EXITED=
-   CAP-LENS ;
+   src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   outu erru CAP-LENS
+   src srcu OUT$ ERR$ oc rc T-OUTCOME-EXITED= ;
 
 \ --- assertion shapes -----------------------------------------------------
 \ Positive: exit 0, empty stderr, stdout equals the expected output.

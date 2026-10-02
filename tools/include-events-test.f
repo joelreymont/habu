@@ -66,12 +66,11 @@ create IE-ERR IE-CAPTURE-CAP allot
 
 : IE-DIES ( ptr u8 n -- ) {: source:ptr sourceu:n :}
    source sourceu IE-OUT IE-CAPTURE-CAP >LEN IE-ERR IE-CAPTURE-CAP >LEN
-   IE-TIMEOUT-MS >MS SUBJECT:RUN
-   INCLUDE-EVENT-RC T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   IE-ERR erru S\" events: pool overflow\n" T$= ;
+   IE-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu IE-OUT outu LEN>N IE-ERR erru LEN>N oc INCLUDE-EVENT-RC
+   T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   IE-ERR erru LEN>N S\" events: pool overflow\n" T$= ;
 
 : IE-TEST-POOL-ROOM ( -- )
    s" a path that fills the event pool exactly" T-LABEL
