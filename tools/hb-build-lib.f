@@ -154,6 +154,14 @@ variable HBB-MAKER-TIMEOUT-MS
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
 
+\ -o is replaced through a sibling with a longer name, which has room only
+\ beside a path of at most SIBLING-PATH-MAX bytes (lib/fs-mutate.f), so the CLI
+\ refuses a longer one by name, before it builds anything.
+: HBB-OUT-ARG! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u SIBLING-PATH-MAX > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   a u HBB-OUT! ;
+
 : HBB-SRC$ ( -- ptr u8 n )
    HBB-SRC-PATH HBB-SRC-U @ ;
 
@@ -320,7 +328,7 @@ variable HBB-MAKER-TIMEOUT-MS
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then
    HBB-I @ HBB-ARG$ HBB-SRC!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
-   HBB-I @ 2 + HBB-ARG$ HBB-OUT!
+   HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
    HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
@@ -609,27 +617,19 @@ HBB-INSTALL-CHILD-LINT
       timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
    ;MATCH ;
 
-: HBB-REMOVE-OUT ( -- )
-   HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
-\ The engine the child wrote under HB_TMP, which may be another filesystem, is
-\ copied into the sibling of -o that RESERVE-SIBLING creates exclusively, and
-\ renamed over -o only once it is whole and executable, so a failed install
-\ leaves -o as it was and removes the sibling. The copy streams by path, so the
-\ reservation's descriptor is closed first. Stack-preserving under `catch`: the
-\ caller still holds the sibling to remove when a step throws.
-: HBB-INSTALL-STAGED ( ptr u8 n n -- ptr u8 n n ) {: tmp:ptr tmpu:n fd:n :}
-   fd close-rc 0<> if E-FS-IO throw then
+\ Every file hb-build writes at -o is written to its sibling and renamed over
+\ -o only once it is whole and executable (lib/fs-mutate.f REPLACE-STAGED), so
+\ a failed install, restore or object write leaves -o as it was and no sibling.
+\ The engine the child wrote under HB_TMP may be on another filesystem; it is
+\ copied.
+: HBB-INSTALL-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
    HBB-GOT-NAME$ BF-A$ tmp tmpu COPY-FILE-STREAM
-   tmp tmpu CHMOD-X
-   tmp tmpu HBB-OUT$ RENAME-FILE
-   tmp tmpu fd ;
+   tmp tmpu CHMOD-X ;
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   HBB-OUT$ RESERVE-SIBLING {: tmp:ptr tmpu:n fd:n :}
-   tmp tmpu fd [: HBB-INSTALL-STAGED ;] catch {: code:n :} 2drop drop
-   code 0<> if tmp tmpu REMOVE-FILE code throw then
+   HBB-OUT$ [: HBB-INSTALL-FILL ;] REPLACE-STAGED
    HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
@@ -739,22 +739,28 @@ HBB-INSTALL-CHILD-LINT
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 
+: HBB-RESTORE-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   HBB-ARTIFACT$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X ;
+
+: HBB-RESTORE-OUT ( -- )
+   HBB-OUT$ [: HBB-RESTORE-FILL ;] REPLACE-STAGED ;
+
 \ An artifact found in the cache is dated as used (lib/build-cache.f), and one a
 \ prune took after the check is built again. So is one a prune takes after USED
-\ dated it: a copy that fails while the artifact is gone is a miss. The copy
-\ opens the artifact before it creates the output, and once open it reads the
-\ whole artifact whatever happens to its name.
+\ dated it: a copy that fails while the artifact is gone is a miss, and -o is
+\ as it was. The copy opens the artifact before it writes a byte, and once open
+\ it reads the whole artifact whatever happens to its name.
 : HBB-RESTORE-ARTIFACT? ( -- bool )
    HBB-ARTIFACT-CACHE @ 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ EXECUTABLE? 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
-   HBB-REMOVE-OUT
-   [: HBB-ARTIFACT$ HBB-OUT$ COPY-FILE-STREAM ;] catch {: code:n :}
+   [: HBB-RESTORE-OUT ;] catch {: code:n :}
    code 0<> if
       HBB-ARTIFACT$ FS-TRY-LSTAT if code throw then
       HBB-FALSE exit
    then
-   HBB-OUT$ CHMOD-X
    -1 HBB-ARTIFACT-HIT !
    HBB-TRUE ;
 
@@ -796,11 +802,15 @@ HBB-INSTALL-CHILD-LINT
    OBJRES:STORE 2drop
    -1 HBB-OBJECT-STORE ! ;
 
+: HBB-OBJECT-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   tmp tmpu OBJIMG:WRITE
+   tmp tmpu CHMOD-X ;
+
 : HBB-WRITE-OBJECT ( -- )
-   HBB-REMOVE-OUT
    OBJIMG:RESET
    OBJIMG:ADD
-   HBB-OUT$ OBJIMG:WRITE
+   HBB-OUT$ [: HBB-OBJECT-FILL ;] REPLACE-STAGED
    -1 HBB-OBJECT-HIT ! ;
 
 : HBB-OBJECT-HIT? ( -- bool )

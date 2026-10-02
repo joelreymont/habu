@@ -1332,6 +1332,9 @@ MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
 ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
+RESERVE-SIBLING         ( ptr u8 n -- ptr u8 n n )
+REPLACE-STAGED          ( ptr u8 n [ ptr u8 n -- ] -- )
+SIBLING-PATH-MAX        ( -- n )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
 HB-TMP-MKDIR            ( ptr u8 n -- ptr u8 n )
@@ -1403,6 +1406,12 @@ an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 `COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
 large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
 writes a sibling `.tmp` file and renames it over the destination.
+`RESERVE-SIBLING` creates and opens that unique sibling for a writer that
+streams its file, and `REPLACE-STAGED` runs one: it hands the sibling's path to
+a filler, renames the sibling over the destination once the filler returns, and
+removes it if the filler or the rename throws or the filler dies, so the
+destination names its old file or the whole new one. A destination longer than
+`SIBLING-PATH-MAX` has no room for a sibling and is `E-SPAN-CAPACITY`.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
 handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.

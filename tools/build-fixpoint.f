@@ -156,9 +156,7 @@ create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
 create BF-TMP-BUF FS-PATH-CAP allot
-FS-PATH-CAP SPAN-BUFFER: BF-INSTALL-TMP-BUF     \ FS-MUT-SUFFIX-PATH destinations
-FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF
-FS-PATH-CAP SPAN-BUFFER: BF-HOST-TMP-BUF
+FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF       \ a FS-MUT-SUFFIX-PATH destination
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -196,9 +194,7 @@ variable BF-REC-PREFIX?
 variable BF-REC-STAGE?
 variable BF-REC-STDIN?
 variable BF-ENGINE-U
-variable BF-INSTALL-TMP-U
 variable BF-HOST-DST-U
-variable BF-HOST-TMP-U
 variable BF-FORCE
 variable BF-PIN-N
 variable BF-PIN-ON
@@ -1763,13 +1759,6 @@ variable BF-DRV-R
    BF-SAVE-SNAPSHOT
    s" snapshot image OK: candidate validated" type cr ;
 
-: BF-INSTALL-TMP$ ( -- ptr u8 n )
-   BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !
-   BF-INSTALL-TMP-BUF BF-INSTALL-TMP-U @ SPAN:TAKE SPAN:$ ;
-
-: BF-INSTALL-CLEAN-TMP ( -- )
-   BF-INSTALL-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
 create BF-BOOT-ROOT FS-PATH-CAP allot
 variable BF-BOOT-ROOT-U
 create BF-BOOT-PATH FS-PATH-CAP allot
@@ -1808,11 +1797,12 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
          outu LEN>N erru LEN>N rc RC>N ENDOF
    ;MATCH ;
 
-: BF-BOOT-RUN ( -- )
+: BF-BOOT-RUN ( ptr u8 n -- )
+   {: cand:ptr candu:n :}
    BF-BOOT-TREE
    BF-PREPARE-ENV
    PROC-ARGV-RESET
-   BF-INSTALL-TMP$ SOURCE-ROOT:CANONICAL drop >LEN
+   cand candu SOURCE-ROOT:CANONICAL drop >LEN
    BF-BOOT-ROOT$ >LEN BF-BOOT-PROGRAM$ >LEN
    BF-BOOT-OUT BF-BOOT-OUT-CAP >LEN BF-BOOT-ERR BF-BOOT-ERR-CAP >LEN
    BF-BOOT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
@@ -1825,19 +1815,24 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 
 : BF-BOOT-CLEAN ( -- ) BF-BOOT-ROOT$ REMOVE-TREE ;
 
-: BF-CHECK-CANDIDATE ( -- )
+: BF-CHECK-CANDIDATE ( ptr u8 n -- )
+   {: cand:ptr candu:n :}
    BF-TMP$ s" boot-check" MAKE-TEMP-DIR SOURCE-ROOT:CANONICAL drop
    {: root:ptr size:n :}
    root BF-BOOT-ROOT size BYTE-COPY size BF-BOOT-ROOT-U !
-   [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
+   cand candu [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
+
+\ The candidate is copied into the engine's sibling, booted there and renamed
+\ over the engine only once it passed (lib/fs-mutate.f REPLACE-STAGED), so a
+\ failed install leaves the engine as it was and no sibling.
+: BF-INSTALL-HB-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   s" hb-stdin" BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X
+   tmp tmpu BF-CHECK-CANDIDATE ;
 
 : BF-INSTALL-HB ( -- )
-   BF-INSTALL-CLEAN-TMP
-   s" hb-stdin" BF-A$ BF-INSTALL-TMP$ COPY-FILE-STREAM
-   BF-INSTALL-TMP$ CHMOD-X
-   [: BF-CHECK-CANDIDATE ;] catch {: rc:n :}
-   rc 0<> if BF-INSTALL-CLEAN-TMP rc throw then
-   BF-INSTALL-TMP$ BF-ENGINE$ RENAME-FILE
+   BF-ENGINE$ [: BF-INSTALL-HB-FILL ;] REPLACE-STAGED
    s" hb-stdin" BF-REMOVE-TMP ;
 
 \ The CAPTURE HOST is kept beside the engine it captured for. A fixture whose
@@ -1845,22 +1840,19 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 \ family-count bracket) cannot run against the product - the product already
 \ provides the chain, so the load it wants to measure is a no-op - and
 \ rebuilding a host per fixture is the cost this file exists to pay once. The
-\ path derives from BF-ENGINE$ the way the install tmp does, so a fixture
-\ install under HABU_FIXPOINT_ENGINE keeps its host in its own sandbox and
-\ never writes this repo's bin.
+\ path derives from BF-ENGINE$, so a fixture install under HABU_FIXPOINT_ENGINE
+\ keeps its host in its own sandbox and never writes this repo's bin.
 : BF-HOST-DST$ ( -- ptr u8 n )
    BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS-MUT-SUFFIX-PATH BF-HOST-DST-U !
    BF-HOST-DST-BUF BF-HOST-DST-U @ SPAN:TAKE SPAN:$ ;
 
-: BF-HOST-TMP$ ( -- ptr u8 n )
-   BF-ENGINE$ s" -host.tmp" BF-HOST-TMP-BUF FS-MUT-SUFFIX-PATH BF-HOST-TMP-U !
-   BF-HOST-TMP-BUF BF-HOST-TMP-U @ SPAN:TAKE SPAN:$ ;
+: BF-INSTALL-HOST-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   s" hb-host" BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X ;
 
 : BF-INSTALL-HOST ( -- )
-   BF-HOST-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then
-   s" hb-host" BF-A$ BF-HOST-TMP$ COPY-FILE-STREAM
-   BF-HOST-TMP$ CHMOD-X
-   BF-HOST-TMP$ BF-HOST-DST$ RENAME-FILE ;
+   BF-HOST-DST$ [: BF-INSTALL-HOST-FILL ;] REPLACE-STAGED ;
 
 : BF-BIN-HB? ( ptr u8 n -- bool )
    2dup s" bin/hb" STR= if 2drop BF-TRUE exit then

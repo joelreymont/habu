@@ -1,5 +1,5 @@
 \ The cleanup registry runs at process exit: one child process per exit path.
-\ Every case registers a directory inside this fixture's own temp root and then
+\ Every case registers a path inside this fixture's own temp root and then
 \ leaves the process the way it means to - normally, by `die`, by an uncaught
 \ throw, or by dying inside a chained foreign hook - and the assertion is what
 \ the child left on disk. The two exits of a stripped image's MAIN run in
@@ -166,13 +166,52 @@ variable TREE-U
    erru s" hook: dying" ERR-HAS? TTRUE
    TREE$ EXISTS? TFALSE ;
 
+\ REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
+\ filler - the image writer's on a failed open or write - takes the sibling
+\ with it, and the file it was replacing stays as it was: one file, its old
+\ bytes.
+16 constant STAGED-CAP
+create STAGED-BUF STAGED-CAP allot
+create STAGED-OUT-BUF FS-PATH-CAP allot
+variable STAGED-OUT-U
+variable STAGED-FILES
+
+: STAGED-OUT$ ( -- ptr u8 n ) STAGED-OUT-BUF STAGED-OUT-U @ ;
+
+: STAGED-COUNT ( ptr u8 n -- )
+   2drop STAGED-FILES @ 1+ STAGED-FILES ! ;
+
+: STAGED-FILES# ( -- n )
+   0 STAGED-FILES !
+   TREE$ [: STAGED-COUNT ;] WALK-FILES
+   STAGED-FILES @ ;
+
+: CASE-STAGED ( -- )
+   s" staged.f" s" staged-tree" CASE-PATHS
+   S\" create CHILD-BUF FS-PATH-CAP allot\nvariable CHILD-U\n" TEXT+
+   S\" : CHILD-OUT ( -- ptr u8 n ) CHILD-BUF CHILD-U @ ;\n" TEXT+
+   S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF JOIN-PATH CHILD-U ! ;\n" TEXT+
+   S\" : CHILD-FILL ( ptr u8 n -- ) 2drop s\q child: dying\q 7 die ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- ) CHILD-TREE MAKE-DIR CHILD-OUT! CHILD-OUT s\q previous\q WRITE-ALL\n" TEXT+
+   S\"    CHILD-OUT [: CHILD-FILL ;] REPLACE-STAGED ;\n" TEXT+
+   S\" CHILD-MAIN\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a die while a file is replaced keeps it and removes the sibling" T-LABEL
+   outu erru rc 7 EXPECT-RC
+   erru s" child: dying" ERR-HAS? TTRUE
+   TREE$ s" out" STAGED-OUT-BUF JOIN-PATH STAGED-OUT-U !
+   STAGED-OUT$ STAGED-BUF STAGED-CAP READ-ALL {: u:n :}
+   STAGED-BUF u s" previous" T$=
+   STAGED-FILES# 1 T= ;
+
 : BODY ( -- )
    PREPARE
    CASE-NORMAL
    CASE-DIE
    CASE-THROW
    CASE-REPORT
-   CASE-CHAIN ;
+   CASE-CHAIN
+   CASE-STAGED ;
 
 : RUN ( -- )
    T-RESET

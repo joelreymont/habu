@@ -1,8 +1,8 @@
 \ hb-build-aot-cache-test.f - checked fixture for tools/hb-build-lib.f: the
 \ AOT groups about the object cache and its keys - the preseeded entry, the
 \ tier refusal, a stored object's hit, one body behind an EXPORT, the engine
-\ and producer keys and a wrong object. tools/hb-build-test-lib.f lists the
-\ other hb-build rows.
+\ and producer keys, a wrong object and a cache hit's failed publication.
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
 
 require tools/hb-build-test-lib.f
@@ -217,6 +217,84 @@ create HBT-EXP-HEX2 64 allot
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-AOT-OUT EXISTS? TFALSE ;
 
+\ A PUBLICATION THAT FAILS LEAVES -o AS IT WAS. A cache hit replaces -o through
+\ a sibling (lib/fs-mutate.f REPLACE-STAGED), whether it restores the artifact
+\ or writes the cached object's image, so -o names its previous file until the
+\ whole new one is in place, and a failure on the way takes the sibling with
+\ it. An artifact its owner cannot read fails the restore's copy; an object
+\ with no text fails the image writer. -o lives alone in its directory, so a
+\ sibling left behind is a second file there.
+73 constant HBT-EXEC-ONLY                  \ 0111: runnable, unreadable
+493 constant HBT-EXEC-READ                 \ 0755
+16 constant HBT-PUB-CAP
+HBT-PUB-CAP BUFFER: HBT-PUB-BUF
+FS-PATH-CAP BUFFER: HBT-PUB-DIR-BUF
+FS-PATH-CAP BUFFER: HBT-PUB-OUT-BUF
+variable HBT-PUB-DIR-U
+variable HBT-PUB-OUT-U
+variable HBT-PUB-FILES
+
+: HBT-PUB-DIR ( -- ptr u8 n )
+   HBT-PUB-DIR-BUF HBT-PUB-DIR-U @ ;
+
+: HBT-PUB-OUT ( -- ptr u8 n )
+   HBT-PUB-OUT-BUF HBT-PUB-OUT-U @ ;
+
+: HBT-PUB-COUNT ( ptr u8 n -- )
+   2drop HBT-PUB-FILES @ 1+ HBT-PUB-FILES ! ;
+
+: HBT-PUB-ALONE ( -- )
+   0 HBT-PUB-FILES !
+   HBT-PUB-DIR [: HBT-PUB-COUNT ;] WALK-FILES
+   HBT-PUB-FILES @ 1 T= ;
+
+: HBT-PUB-HOLDS ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-PUB-OUT FILE? {: there:bool :}
+   there TTRUE
+   there 0= if exit then
+   HBT-PUB-OUT HBT-PUB-BUF HBT-PUB-CAP READ-ALL {: u:n :}
+   HBT-PUB-BUF u want wantu T$= ;
+
+: HBT-NO-TEXT-OBJ ( -- )
+   HBT-AOT-HEX!
+   OBJ:RESET
+   HBT-AOT-HEX HBT-KEY-U OBJ:SOURCE!
+   HBB-TARGET-ABI$ OBJ:TARGET!
+   HBB-CHECKER-ABI$ OBJ:CHECKER!
+   HBB-COMPILER-ABI$ OBJ:COMPILER! ;
+
+: HBT-PUB-PREPARE ( -- )
+   HBT-ROOT s" publish" HBT-PUB-DIR-BUF HBT-PUB-DIR-U HBT-PATH!
+   HBT-PUB-DIR s" out" HBT-PUB-OUT-BUF HBT-PUB-OUT-U HBT-PATH!
+   HBT-PUB-DIR MAKE-DIR
+   HBT-PUB-OUT s" previous" WRITE-ALL
+   HBB-RESET-OPTIONS
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-PUB-OUT HBB-PATHS!
+   HBB-PREPARE-ARTIFACT-CACHE
+   HBB-ARTIFACT$ s" artifact" WRITE-ALL ;
+
+: HBT-PUBLISH-FAILS-CLEAN ( -- )
+   HBT-PUB-PREPARE
+   s" a restore that cannot read the artifact leaves -o" T-LABEL
+   HBB-ARTIFACT$ HBT-EXEC-ONLY CHMOD-MODE
+   [: HBB-RESTORE-ARTIFACT? drop ;] E-FS-OPEN TTHROWSQ
+   s" previous" HBT-PUB-HOLDS
+   HBT-PUB-ALONE
+   s" a restore replaces -o whole and runnable" T-LABEL
+   HBB-ARTIFACT$ HBT-EXEC-READ CHMOD-MODE
+   HBB-RESTORE-ARTIFACT? TTRUE
+   s" artifact" HBT-PUB-HOLDS
+   HBT-PUB-OUT EXECUTABLE? TTRUE
+   HBT-PUB-ALONE
+   s" an object image the writer refuses leaves -o" T-LABEL
+   HBT-NO-TEXT-OBJ
+   [: HBB-WRITE-OBJECT ;] E-OBJ-SCHEMA TTHROWSQ
+   s" artifact" HBT-PUB-HOLDS
+   HBT-PUB-ALONE
+   HBT-REMOVE-ARTIFACT ;
+
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -232,6 +310,7 @@ public
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
+   HBT-PUBLISH-FAILS-CLEAN
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

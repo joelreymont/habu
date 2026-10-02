@@ -4,12 +4,14 @@
 \ groups it owns:
 \   tools/hb-build-test.f                     CLI REPL build and report, cache
 \                                             keys, rejected inputs, image size
-\   tools/hb-build-cli-errors-test.f          cache path error, MAIN effects
+\   tools/hb-build-cli-errors-test.f          cache path error, -o too long,
+\                                             MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
 \   tools/hb-build-timeout-env-test.f         deadline override validation
 \   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-aot-cache-test.f           object cache and its keys
+\   tools/hb-build-aot-cache-test.f           object cache and its keys, failed
+\                                             publication
 \   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing

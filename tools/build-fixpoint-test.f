@@ -192,26 +192,64 @@ create BFT-KEY1 64 allot
    BFT-STAMP REMOVE-FILE
    BFT-STAMP-UNSCOPE ;
 
+\ The candidate is installed into a directory of its own, so a sibling an
+\ install left beside the engine is a file there the engine is not.
+FS-PATH-CAP BUFFER: BFT-BIN-BUF
+FS-PATH-CAP BUFFER: BFT-BIN-HB-BUF
+variable BFT-BIN-U
+variable BFT-BIN-HB-U
+variable BFT-BIN-FILES
+
+: BFT-BIN ( -- ptr u8 n )
+   BFT-BIN-BUF BFT-BIN-U @ ;
+
+: BFT-BIN-HB ( -- ptr u8 n )
+   BFT-BIN-HB-BUF BFT-BIN-HB-U @ ;
+
+: BFT-BIN-COUNT ( ptr u8 n -- )
+   2drop BFT-BIN-FILES @ 1+ BFT-BIN-FILES ! ;
+
+: BFT-BIN-FILES# ( -- n )
+   0 BFT-BIN-FILES !
+   BFT-BIN [: BFT-BIN-COUNT ;] WALK-FILES
+   BFT-BIN-FILES @ ;
+
 : BFT-BOOT-REFUSED ( ptr u8 n -- )
    s" hb-stdin" BF-A$ COPY-FILE-STREAM
    [: BF-INSTALL-HB ;] E-BUILD-STATUS TTHROWSQ
-   BFT-ENG-A s" /usr/bin/true" BF-FILE= TTRUE
-   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BFT-BIN-HB s" /usr/bin/true" BF-FILE= TTRUE
+   BFT-BIN-FILES# 1 T=
    BF-BOOT-ROOT$ EXISTS? TFALSE ;
+
+\ A candidate that passed its boot and cannot replace the engine, here a
+\ directory, fails the install with the directory as it was and no sibling.
+: BFT-RENAME-REFUSED ( -- )
+   BFT-BIN-HB REMOVE-FILE
+   BFT-BIN-HB MAKE-DIR
+   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   [: BF-INSTALL-HB ;] E-FS-IO TTHROWSQ
+   BFT-BIN-HB DIR? TTRUE
+   BFT-BIN-FILES# 0 T=
+   BF-BOOT-ROOT$ EXISTS? TFALSE
+   BFT-BIN-HB REMOVE-DIR ;
 
 : BFT-TEST-CANDIDATE-BOOT ( -- )
    BFT-ROOT s" candidate-boot" BFT-CP-BUF JOIN-PATH
    BFT-CP-BUF swap 2dup MAKE-DIRS BF-TMP!
-   BFT-ENG-A BF-ENGINE!
-   s" /usr/bin/true" BFT-ENG-A COPY-FILE-STREAM
+   BFT-ROOT s" candidate-bin" BFT-BIN-BUF JOIN-PATH BFT-BIN-U !
+   BFT-BIN s" hb" BFT-BIN-HB-BUF JOIN-PATH BFT-BIN-HB-U !
+   BFT-BIN MAKE-DIRS
+   BFT-BIN-HB BF-ENGINE!
+   s" /usr/bin/true" BFT-BIN-HB COPY-FILE-STREAM
    \ A failed boot and a successful exit without running the probe both refuse.
    s" /usr/bin/false" BFT-BOOT-REFUSED
    s" /usr/bin/true" BFT-BOOT-REFUSED
+   BFT-RENAME-REFUSED
    BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
    BF-INSTALL-HB
-   BFT-ENG-A BFT-HB BF-FILE= TTRUE
+   BFT-BIN-HB BFT-HB BF-FILE= TTRUE
    s" hb-stdin" BF-A$ EXISTS? TFALSE
-   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BFT-BIN-FILES# 1 T=
    BF-BOOT-ROOT$ EXISTS? TFALSE
    BF-ENGINE-RESET BF-TMP-RESET ;
 

@@ -2,8 +2,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE and
-\ RESERVE-SIBLING name, FS-MUT-ATOMIC-PATH, and
+\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE, RESERVE-SIBLING
+\ and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
 \ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
 \ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
 \ symlinking, writing atomically or making a temporary directory at once share
@@ -344,6 +344,13 @@ public
    n 10 < if 1 exit then
    n 10 / RECURSE 1+ ;
 
+\ The longest path RESERVE-SIBLING and ATOMIC-WRITE-FILE stage beside: its
+\ `.tmp-<seed>-<attempt>` sibling still fits FS-PATH-CAP with the largest seed,
+\ the largest nonnegative cell `-1 1 rshift`, and the last attempt, so whether
+\ a path has room for one never depends on the seed it drew.
+FS-PATH-CAP 6 - -1 1 rshift FS-MUT-U-DIGITS -
+FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS - constant SIBLING-PATH-MAX
+
 : FS-MUT-ATOMIC-U+ ( n SPAN:span<u8> n -- n ) {: value:n dst off:n :}
    value 0 < if E-FS-PATH throw then
    value 10 >= if value 10 / dst off RECURSE else off then {: next:n :}
@@ -356,9 +363,7 @@ public
 
 : FS-MUT-BUILD-ATOMIC-TMP ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed attempt :}
    pathu 0 < if E-FS-PATH throw then
-   pathu FS-PATH-CAP 6 - seed FS-MUT-U-DIGITS - attempt FS-MUT-U-DIGITS - > if
-      E-SPAN-CAPACITY throw
-   then
+   pathu SIBLING-PATH-MAX > if E-SPAN-CAPACITY throw then
    FS-MUT-ATOMIC-PATH {: dst :}
    path pathu dst SPAN:COPY
    s" .tmp-" dst pathu SPAN:SKIP SPAN:COPY
@@ -677,3 +682,35 @@ TRUSTED: FS-MUT-ARM-EXIT ( -- )
    idx 0 < if exit then
    0 idx FS-MUT-CLEANUP-U-PTR !
    idx 1 + idx FS-MUT-CLEANUP-N atomic-cas drop ;
+
+\ ---- replacing a file through its sibling --------------------------------------
+
+\ Stack-preserving under `catch`: the caller still holds the sibling to remove
+\ when a step throws.
+: FS-MUT-STAGED-RUN ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- ptr u8 n ptr u8 n [ ptr u8 n -- ] )
+   {: path:ptr pathu tmp:ptr tmpu fill :}
+   tmp tmpu CLEANUP+
+   tmp tmpu fill execute
+   tmp tmpu path pathu RENAME-FILE
+   path pathu tmp tmpu fill ;
+
+\ Replace the file at path with the one fill writes at the path it is handed:
+\ the sibling RESERVE-SIBLING creates, its descriptor closed, renamed over path
+\ once fill returns. Until then path holds what it held, so it names its old
+\ file or the whole new one. The sibling is registered for removal at exit
+\ while it is held, so a throw from fill or the rename, or a `die` in fill,
+\ takes it with it; only a killed process leaves one behind. A full registry
+\ refuses the claim, and the sibling goes then. fill must not reserve a
+\ sibling of its own (ATOMIC-WRITE-FILE does): RESERVE-SIBLING's path is this
+\ task's only until its next reservation.
+: REPLACE-STAGED ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: path:ptr pathu fill :}
+   path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
+   \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
+   \ why a failed close is not retried.
+   fd FS-ATOMIC:CLOSE-FD 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP E-FS-IO throw then
+   path pathu tmp tmpu fill [: FS-MUT-STAGED-RUN ;] catch {: code:n :}
+   drop 2drop 2drop
+   code 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP then
+   tmp tmpu CLEANUP-FORGET
+   code 0<> if code throw then ;
