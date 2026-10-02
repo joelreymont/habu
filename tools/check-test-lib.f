@@ -2070,6 +2070,36 @@ variable SIZED-U
    CAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
    [: CAP-SOURCE-BODY ;] MEM:WITH-BYTES ;
 
+\ ---- a run's output past its capture is refused by name ----------------------
+\ check.f captures what the run writes in order to replay it, 32768 bytes of
+\ standard output and 131072 of standard error. A run that writes past either
+\ is ended there and refused with check.f's refusal status by one line that
+\ names the subject and both bounds, and its scratch root is left empty.
+
+: OUT-OVER$ ( -- ptr u8 n )
+   s\" : CKT-OUT-OVER ( -- ) 40000 0 ?do s\q x\q type loop ; CKT-OUT-OVER" ;
+
+: ERR-OVER$ ( -- ptr u8 n )
+   s\" : CKT-ERR-OVER ( -- ) 140000 0 ?do 2 s\q x\q write drop loop ; CKT-ERR-OVER" ;
+
+: RUN-OVER-LINE$ ( ptr u8 n -- ptr u8 n ) {: label:ptr labelu:n :}
+   SB-RESET
+   s" check.f: " SB-APPEND
+   label labelu SB-APPEND
+   s" : the run wrote past its capture of 32768 bytes of standard output" SB-APPEND
+   s\"  or 131072 of standard error\n" SB-APPEND
+   SB$ ;
+
+: EXPECT-RUN-OVER ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru label labelu RUN-OVER-LINE$ LINT-STR= TTRUE
+   SCRATCH-EMPTY ;
+
+: TEST-RUN-OUTPUT-CAP ( -- )
+   OUT-OVER$ SCRATCH-FILE-RUN SIZED$ EXPECT-RUN-OVER
+   ERR-OVER$ SCRATCH-STDIN-RUN s" <stdin>" EXPECT-RUN-OVER ;
+
 \ verify-source ends the process with `die` on an unterminated signature.
 : DIE-SIGNATURE$ ( -- ptr u8 n )
    s" : CKT-OPEN-SIG ( n -- n" ;
@@ -4115,6 +4145,7 @@ POISON-RECORD
    s" check/selection-capacity" [: TEST-SELECTION-CAPACITY ;] CASE-RUN
    s" check/mid-source" [: TEST-MID-SOURCE ;] CASE-RUN
    s" check/cap-source" [: TEST-CAP-SOURCE ;] CASE-RUN
+   s" check/run-output-cap" [: TEST-RUN-OUTPUT-CAP ;] CASE-RUN
    s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
    s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN

@@ -1816,6 +1816,27 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
              outu LEN>N CHK-OUT-U ! ENDOF
    ;MATCH ;
 
+\ The run's output is captured to be replayed, CHK-OUT-CAP bytes of standard
+\ output and CHK-ERR-CAP of standard error. A run that writes past either is
+\ killed by the capture, which throws E-PROC-TRUNCATED without naming the
+\ stream, so the refusal names the subject and both bounds.
+: CHK-RUN-TOO-BIG ( -- )
+   SB-RESET
+   s" check.f: " SB-APPEND
+   CHK-LABEL SB-APPEND
+   s" : the run wrote past its capture of " SB-APPEND
+   CHK-OUT-CAP FMT:SB-INT
+   s"  bytes of standard output or " SB-APPEND
+   CHK-ERR-CAP FMT:SB-INT
+   s"  of standard error" SB-APPEND
+   SB$ CHK-E-CHECK CHK-FAIL ;
+
+: CHK-RUN-CAPPED ( -- )
+   [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TRUNCATED = if CHK-RUN-TOO-BIG then
+   rc throw ;
+
 : CHK-REPLAY ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
@@ -2018,7 +2039,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
    CHK-LOAD-RESET
    CHK-RUN-PATH CHK-ARG+
-   CHK-RUN-CAPTURE
+   CHK-RUN-CAPPED
    CHK-ERR-NAME-SUBJECT ;
 
 : CHK-RUN-JSON-ONLY ( -- )
