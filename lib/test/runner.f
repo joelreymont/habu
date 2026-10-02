@@ -409,16 +409,6 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    label labelu GT-PROGRESS-WAIT
    0 0= 0= ;
 
-: GT-PROGRESS-STDIN-TIMEOUT? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   PROC-REMAINING-MS MS>N 0 <= if
-      PROC-CLOSE-STDIN-FDS
-      PROC-REAP-CAPTURE-TIMEOUT
-      0 0=
-      exit
-   then
-   label labelu GT-PROGRESS-WAIT
-   0 0= 0= ;
-
 : GT-PROGRESS-CAPTURE-READY ( ptr u8 n -- ) {: label:ptr labelu :}
    GT-CAPTURE-DRAIN
    label labelu GT-PROGRESS-WAIT ;
@@ -459,7 +449,7 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    {: in:ptr inu label:ptr labelu :}
    GT-PROGRESS-SLICE-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
       drop
-      label labelu GT-PROGRESS-STDIN-TIMEOUT?
+      label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
       exit
    then
    drop

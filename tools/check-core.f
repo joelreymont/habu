@@ -10,7 +10,6 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f                \ the run stage spawns with an environment
-require lib/process-tree.f               \ a signal's answer ends the run stage's child tree
 require lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
 require lib/fmt.f                        \ the answer names a step that throws
 require lib/source.f
@@ -1829,27 +1828,19 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ capture waited. RUN catches nothing: a program that runs a check in process
 \ keeps its own answer.
 \
-\ The answer kills the child with every process under it (lib/process-tree.f)
-\ and reaps it, removes the temporary directory, and dies of the signal. A step
-\ that throws is named and the answer goes on. A run that ended before its child
-\ started - a refused program, a usage error, resident inputs - leaves the row's
-\ pid at 0 or PROC-NO-PID, and neither names a child: kill(0) is check.f's own
-\ process group.
+\ The answer kills the child with every process under it and reaps it
+\ (lib/process.f PROC-KILL-CAPTURE), removes the temporary directory, and dies
+\ of the signal. A step that throws is named and the answer goes on. A run that
+\ ended before its child started - a refused program, a usage error, resident
+\ inputs - leaves the row's pid at 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
+\ kills nothing for either: kill(0) is check.f's own process group.
 : CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then
    s" check: " CHK-ERR what whatu CHK-ERR s"  threw " CHK-ERR
    SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;
 
-: CHK-KILL-TREE ( -- )
-   PROC-PID @ >PID PROC-TREE:KILL-TREE ;
-
-: CHK-KILL-CHILD ( -- )
-   PROC-PID @ 0 <= if exit then
-   s" child tree kill" [: CHK-KILL-TREE ;] catch CHK-SAY-THROW
-   s" child reap" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW ;
-
 : CHK-SIGNAL-ANSWER ( n -- ) {: sig:n :}
-   CHK-KILL-CHILD
+   s" child kill" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW
    s" cleanup" [: CHK-TEMP-CLEAN ;] catch CHK-SAY-THROW
    s" check: signal" sig SIGNAL:DIE-OF ;
 

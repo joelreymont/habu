@@ -59,7 +59,13 @@
 \ walk could list it.
 \
 \ STORAGE CLASS. PROCESS-WIDE, one walk at a time: the member table and the scan
-\ buffers are this file's. Its callers are pool parents, each its own process.
+\ buffers are this file's. lib/process.f ends a capture's child from whichever
+\ task ran the capture, so KILL-TREE and CATCHES? hold WALKING while they use
+\ them, and a task that finds it held waits its turn.
+\
+\ BENEATH lib/process.f, which requires this file to end a capture's child. A
+\ walk signals through the kill primitive and times itself with mono-ns, so it
+\ needs nothing of lib/process.f.
 \
 \ HOSTS. macOS asks libproc for a member's children and group; Linux reads the
 \ whole of /proc and then each member's threads. The Linux arm is written from
@@ -71,7 +77,7 @@ require lib/adt/option.f
 require lib/le.f
 require lib/ffi-abi.f
 require lib/fs-list.f
-require lib/process.f
+require lib/task.f                  \ TASK:SLEEP, while another task walks
 
 package PROC-TREE
 
@@ -79,6 +85,7 @@ private
 
 1024 constant MEMBER-MAX
 2000 constant SETTLE-MS             \ the walk's whole window; a tree that will not settle is killed as it stands
+1000000 constant NS-PER-MS
 2 constant QUIET-PASSES
 
 create MEMBERS MEMBER-MAX cells allot
@@ -86,8 +93,10 @@ variable MEMBER-N
 variable SELF
 variable ADDED                      \ members the pass in progress found
 variable AWAKE                      \ what the pass in progress saw that is not yet settled
+variable WALKING                    \ 1 while a walk or a CATCHES? holds the storage above and below
 
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
+9 constant SIGKILL
 : SIGSTOP ( -- n )
    HB-TARGET-MACOS? if 17 exit then
    HB-TARGET-LINUX? if 19 exit then
@@ -110,7 +119,7 @@ variable AWAKE                      \ what the pass in progress saw that is not 
    pid MEMBER-N @ cells MEMBERS + !
    MEMBER-N @ 1+ MEMBER-N !
    ADDED @ 1+ ADDED !
-   pid >PID SIGSTOP PROC-KILL-RAW drop ;
+   pid SIGSTOP kill drop ;
 
 \ ---- macOS: libproc ----------------------------------------------------------
 \
@@ -212,7 +221,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 : MEMBER-SETTLE ( n -- ) {: pid:n :}
    pid SHORT? 0= if exit then
    SHORT SHORT-STATUS + LE:U32@ SSTOP <> if
-      pid >PID SIGSTOP PROC-KILL-RAW drop
+      pid SIGSTOP kill drop
       AWAKE @ 1+ AWAKE !
       exit
    then
@@ -422,18 +431,33 @@ variable CUR                        \ the read position in STAT
    ADDED @ 0= AWAKE @ 0= and ;
 
 : SETTLE ( -- )
-   SETTLE-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   mono-ns SETTLE-MS NS-PER-MS * + {: deadline:n :}
    0 begin dup QUIET-PASSES < while
       PASS if 1+ else drop 0 then
-      deadline PROC-LEFT-MS MS>N 0= if drop exit then
+      mono-ns deadline >= if drop exit then
    repeat drop ;
 
 \ The answer is not read: a member that ended since it joined has nothing left
 \ to kill.
 : END-MEMBERS ( -- )
    MEMBER-N @ 0 ?do
-      i MEMBER >PID SIGKILL PROC-KILL-RAW drop
+      i MEMBER SIGKILL kill drop
    loop ;
+
+\ One walk or query at a time. A task that finds WALKING held sleeps a
+\ millisecond a turn rather than spin through a walk of up to SETTLE-MS.
+: WALK-GET ( -- )
+   begin 0 1 WALKING atomic-cas 0<> while 1 >MS TASK:SLEEP repeat ;
+
+: WALK-RELEASE ( -- )
+   0 WALKING atomic! ;
+
+: WALK ( pid -- ) {: pid:pid :}
+   getpid SELF !
+   pid PID>N SELF @ = if E-PROC-OUTPUT throw then
+   0 MEMBER-N !
+   pid PID>N MEMBER+
+   [: SETTLE ;] [: END-MEMBERS ;] finally ;
 
 \ ---- a process that catches a signal ------------------------------------------
 \
@@ -527,6 +551,11 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    got STATUS-U !
    SIGCGT-AT HEX-AT sig CAUGHT-BIT? ;
 
+: CATCHES-HOST? ( n n -- bool ) {: pid:n sig:n :}
+   HB-TARGET-MACOS? if pid sig CATCHES-MACOS? exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if pid sig CATCHES-LINUX? exit then
+   E-PROC-HOST throw ;
+
 public
 
 \ SIGKILL pid and every process descended from it. A pid at or below 1 names
@@ -537,19 +566,15 @@ public
 \ is left stopped (docs/gate.md).
 : KILL-TREE ( pid -- ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
-   getpid SELF !
-   pid PID>N SELF @ = if E-PROC-OUTPUT throw then
-   0 MEMBER-N !
-   pid PID>N MEMBER+
-   [: SETTLE ;] [: END-MEMBERS ;] finally ;
+   WALK-GET
+   pid [: WALK ;] [: WALK-RELEASE ;] finally ;
 
 \ TRUE when pid runs a handler for signal sig; FALSE when the default action
 \ or SIG_IGN takes it, or when nobody has pid. A caller that would SIGKILL a
 \ tree asks this first to know whether its root can be asked to end itself
 \ (test/gate-pool.f GT-POOL-ASK-END).
 : CATCHES? ( pid n -- bool ) {: pid:pid sig:n :}
-   HB-TARGET-MACOS? if pid PID>N sig CATCHES-MACOS? exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if pid PID>N sig CATCHES-LINUX? exit then
-   E-PROC-HOST throw ;
+   WALK-GET
+   pid PID>N sig [: CATCHES-HOST? ;] [: WALK-RELEASE ;] finally ;
 
 ;package

@@ -2488,6 +2488,12 @@ SUITE check-signal
    test/check-signal-test.f
 ;SUITE
 
+\ A capture that ends its child early - its deadline, an overflow, a refused
+\ reaper arm - leaves nothing the child started.
+SUITE capture-tree
+   test/capture-tree-test.f
+;SUITE
+
 WHITEBOX-SUITE generated-declaration-transaction
    test/generated-declaration-transaction-suite.f
 ;SUITE

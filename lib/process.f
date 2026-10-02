@@ -6,12 +6,15 @@
 \ and wait status, and any number of tasks may run children at once. The byte
 \ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
 \ vector, and the PROC-STOP vector with its PROC-STOP-FD, are process-wide:
-\ each is one installed policy, not per-call state.
+\ each is one installed policy, not per-call state. A capture that ends its
+\ child early walks the process table through lib/process-tree.f, whose
+\ storage is process-wide and taken one walk at a time.
 \ See docs/threads.md.
 
 s" lib/errors.f" required
 s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" lib/task.f" required                  \ TASK:+USER carries the per-call row
+s" lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
 \ outcome - how a child process completed (switchover wave C): a clean exit
 \ carrying the exit code, a signal death carrying the signal, or a capture
@@ -416,35 +419,37 @@ PROC-REAP-ARM-DEFAULT
    then
    PROC-REAP-DISARM ;
 
-: PROC-REAP-CAPTURE-TIMEOUT ( -- )
-   PROC-PID @ dup 0 > if
-      >PID dup SIGKILL PROC-KILL-RAW drop
-      PROC-WAIT-STATUS dup PROC-STATUS !
-      PROC-STATUS>RC RC>N PROC-RC !
-      PROC-NO-PID PROC-PID !
-   else
-      drop
-   then
-   PROC-REAP-DISARM
-   1 PROC-TIMED-OUT ! ;
-
+\ Kill the capture child and every process it started, then reap the child.
+\ A spawned child leads a process group of its own, and so does each process
+\ it spawns, so neither a kill of its pid nor one of its group reaches them;
+\ lib/process-tree.f KILL-TREE freezes the tree before it lists it. The child
+\ is reaped whatever the walk throws, since KILL-TREE kills every member it
+\ found, the child first, and the walk's code goes on after the reap.
 : PROC-KILL-CAPTURE ( -- )
-   PROC-PID @ dup 0 > if
-      >PID SIGKILL PROC-KILL-RAW drop
-      PROC-REAP-CAPTURE
-   else
-      drop
+   PROC-PID @ 0 > if
+      [: PROC-PID @ >PID PROC-TREE:KILL-TREE ;] [: PROC-REAP-CAPTURE ;] finally
    then ;
 
+\ A capture that ends its child early - its deadline, an overflow, a refused
+\ reaper arm, a stop that throws - kills the child's tree before it closes the
+\ capture descriptors, and closes them whatever the kill throws. Closing them
+\ first could end the child before the walk froze it, and what the child
+\ spawned would be left to init.
+: PROC-END-CAPTURE ( -- )
+   [: PROC-KILL-CAPTURE ;] [: PROC-CLOSE-ALL-CAPTURE-FDS ;] finally ;
+
+: PROC-REAP-CAPTURE-TIMEOUT ( -- )
+   PROC-END-CAPTURE
+   1 PROC-TIMED-OUT ! ;
+
 : PROC-THROW-CAPTURE ( n -- ) {: code :}
-   PROC-KILL-CAPTURE
-   PROC-CLOSE-ALL-CAPTURE-FDS
+   PROC-END-CAPTURE
    code throw ;
 
 \ Adopt pid as this task's capture child and arm its reaper. A refused arm
-\ refuses the capture: the child is killed and reaped and the capture
-\ descriptors closed before the code goes on, so no capture child runs
-\ unwatched.
+\ refuses the capture: the child and what it started are killed, the child
+\ reaped and the capture descriptors closed before the code goes on, so no
+\ capture child runs unwatched.
 : PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
    pid PID>N PROC-PID !
    pid [: PROC-REAP-ARM ;] catch {: rpid code:n :}
@@ -733,7 +738,6 @@ PROC-STOP-DEFAULT
    begin PROC-STDIN-CAPTURE-DONE? 0= while
       PROC-REMAINING-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
          drop
-         PROC-CLOSE-STDIN-FDS
          PROC-REAP-CAPTURE-TIMEOUT
          exit
       then
