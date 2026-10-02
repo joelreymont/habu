@@ -8428,6 +8428,12 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
+\ The multi-error load mode is off by default so the ordinary load path
+\ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
+\ a rejected definition still trusts its DECLARED signature (so later
+\ definitions check against a known effect instead of cascading undefined-word
+\ errors) unless that signature failed to parse, and the reject is counted so
+\ the driver can exit nonzero at end of load.
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -17115,38 +17121,6 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TOKIX @ 1 + TOKIX ! ;
 
 \ CHECK-RESET ( a u -- )
-\ --- multi-error load mode ------------------------------------------------
-\ Off by default so the ordinary load path (fixpoint build, gate) keeps the
-\ fail-on-first-reject HOOK behavior. When on, a rejected definition still
-\ trusts its DECLARED signature (so later definitions check against a known
-\ effect instead of cascading undefined-word errors) — unless that signature
-\ itself failed to parse (SGBAD), in which case no row is stored and callers
-\ reject as undefined (USIG-ADD-BAD) — and the reject is counted so the
-\ driver can exit nonzero at end of load. The mode cells and MULTI-ERR? live
-\ above USIG-ADD, which shares them.
-\ File-relative diagnostic origin for a MULTI-ERR load. The driver evaluates a
-\ whole source buffer in one run; per rejected definition the checker re-points
-\ DIAG-ORIGIN! to that def's FILE position so JSON positions are file-relative
-\ (matching tools/check.f --all-errors). The compiler owns the def name-token
-\ position in DATA cell DEF-TKA-CELL; the driver passes that cell's ABSOLUTE
-\ address (data-base DEF-TKA-CELL +) so the checker stays free of engine-layout
-\ constants it cannot name at bake time.
-variable MEO-ON       \ file-relative origin active this load?
-PTR-VARIABLE MEO-BASE \ eval-buffer base ptr (file byte MEO-BB)
-PTR-VARIABLE MEO-NAMEC \ the compiler's def name-token CELL; its content is the token
-variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
-0 MEO-ON !
-
-: MULTI-ERR-ORIGIN! {: base:ptr namec:ptr bl:n bc:n bb:n :}
-   base MEO-BASE !  namec MEO-NAMEC !
-   bl MEO-BL !  bc MEO-BC !  bb MEO-BB !  -1 MEO-ON ! ;
-\ The declared cell holds the CELL the compiler writes the name token into, so
-\ the bytes are named first and the token is the pointer field on them.
-: MEO-NAMEC@ ( -- ptr u8 )
-   MEO-NAMEC @ ;
-
-: MEO-APPLY ( -- )    \ set DIAG-ORIGIN! to the current def's file position
-   MEO-BASE @  MEO-NAMEC@ 0 ptr-field @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
 
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
@@ -19134,7 +19108,6 @@ variable CTOR-PEND-I
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
    dup 0 =  over 1 = JSON-DIAGS @ and  or
-   dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN

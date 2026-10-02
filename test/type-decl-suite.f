@@ -38,7 +38,7 @@ variable #CASE
       1+
    repeat drop ;
 
-\ substring search (diag packet assertions), engine-suite MEO-CONTAINS? shape.
+\ substring search (diag packet assertions).
 variable TDC-I
 : TDT-AT? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
    hu nu < if 0 0= 0= exit then

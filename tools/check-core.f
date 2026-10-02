@@ -1754,9 +1754,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN+
    CHK-SP CHK-RUN-C ;
 
-: CHK-RUN-N ( n -- )
-   CHK-U$ CHK-RUN+ ;
-
 : CHK-ERR-NONNEG ( n -- )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
    CHK-U$ CHK-ERR ;
