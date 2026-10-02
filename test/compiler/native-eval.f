@@ -18,6 +18,16 @@ public
 : INNER-DEPTH$ ( -- ptr u8 n ) s" depth 0 T=" ;
 : INNER-RESIDUE$ ( -- ptr u8 n ) s" 1 2" ;
 
+\ W adds two cells, so a text that hands it one reaches one cell under its
+\ floor; SEEN holds W's last sum, so a W that never finished leaves it alone.
+\ GETW reaches W through a quotation xt, which has no record a tick could
+\ find, and CLEAN is an empty cleanup for finally.
+variable SEEN
+: W ( n n -- n ) + dup SEEN ! ;
+: GETW ( -- [ n n -- n ] ) [: W ;] ;
+: CLEAN ( -- [ -- ] ) [: ;] ;
+: INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
+
 \ The data-stack base each text of a nested pair sees.
 variable OUTER-BASE
 variable INNER-BASE
@@ -82,6 +92,43 @@ private
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
+\ Each consumer of an xt reaches under the floor the same way, and each answer
+\ is the same throw 70 with the caller's 5 intact and W unfinished.
+: XT-EXECUTE ( -- n )
+   5 [: s" 1 ' NATIVE-EVAL-TEST:W execute" evaluate-closed ;] catch 70 T= ;
+
+: XT-PRIMITIVE ( -- n )
+   5 [: s" 1 ' + execute" evaluate-closed ;] catch 70 T= ;
+
+: XT-FINALLY ( -- n )
+   5 [: s" 1 ' NATIVE-EVAL-TEST:W NATIVE-EVAL-TEST:CLEAN finally" evaluate-closed ;]
+   catch 70 T= ;
+
+: XT-QUOTATION ( -- n )
+   5 [: s" 1 NATIVE-EVAL-TEST:GETW execute" evaluate-closed ;] catch 70 T= ;
+
+: XT-NESTED ( -- n )
+   5 [: s" 3 NATIVE-EVAL-TEST:INNER-UNDER$ evaluate-closed" evaluate-closed ;]
+   catch 70 T= ;
+
+: XT-UNDER ( -- )
+   0 SEEN !
+   s" a compiled word executed below the floor throws 70" T-LABEL
+   XT-EXECUTE
+   s" and leaves the caller's cell, the word unfinished" T-LABEL
+   5 T=  SEEN @ 0 T=
+   s" a primitive executed below the floor throws 70" T-LABEL
+   XT-PRIMITIVE 5 T=
+   s" a catch inside the text receives that 70 itself" T-LABEL
+   5 s" 1 ' NATIVE-EVAL-TEST:W catch 70 T= 1 T=" evaluate-closed
+   5 T=  SEEN @ 0 T=
+   s" finally's body reaching below the floor throws 70" T-LABEL
+   XT-FINALLY 5 T=  SEEN @ 0 T=
+   s" a quotation xt reaching below the floor throws 70" T-LABEL
+   XT-QUOTATION 5 T=  SEEN @ 0 T=
+   s" an inner text's reach throws 70 through the outer text" T-LABEL
+   XT-NESTED 5 T=  SEEN @ 0 T= ;
+
 : AGREEMENT ( -- )
    s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
    E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
@@ -104,9 +151,9 @@ create ERR IO-CAP allot
    s" and names the data stack" T-LABEL
    ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
 
-\ The text jumps one cell under its floor. That cell lies in its own stack's
-\ low guard page, not among the caller's cells, so the fetch faults there and
-\ the crash handler names the data stack.
+\ The text jumps one cell under its floor, into its stack's low guard page.
+\ The fault is the instruction fetch, a wild jump and no read below the
+\ floor, so it keeps the named bounds exit instead of the underdepth throw.
 : FLOOR-JUMP$ ( -- ptr u8 n )
    S\" 7 s\" data-base STACK-ABI:BASE-CELL + @ cell - execute\" evaluate-closed" ;
 
@@ -117,6 +164,21 @@ create ERR IO-CAP allot
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
    ERR erru s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE ;
+
+\ The same reach outside any closed text: the child's text runs a compiled
+\ word through execute with one cell on the stack it was given.
+: TOP-LEVEL$ ( -- ptr u8 n )
+   s" : NATIVE-EVAL-W ( n n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
+
+: TOP-LEVEL ( -- )
+   s" a word reaching below the base outside a closed text throws 70" T-LABEL
+   TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N 70 T=
+   nip LEN>N {: erru:n :}
+   s" and names the token the interpreter was running" T-LABEL
+   ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   s" and is no stack bounds exit" T-LABEL
+   ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 
 $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
@@ -139,8 +201,8 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL AGREEMENT OVERFLOW
-   FLOOR-JUMP LIVE CHECKED
+   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL XT-UNDER AGREEMENT
+   OVERFLOW FLOOR-JUMP TOP-LEVEL LIVE CHECKED
    T-REPORT ;
 
 ' RUN

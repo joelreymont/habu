@@ -91,8 +91,9 @@ $340000000 constant DATA-VA
 19 constant XDS  31 constant SP
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ crash.fs's guard-page classification reads STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
-\ (below), so it is required after that block, not immediately here -- see the
-\ require crash.fs statement following STACK-ABI:EVAL-BYTES.
+\ and the header cells RBASE-CELL, FLOORREC-CELL and CODE-END-CELL (below), so it
+\ is required after them, not immediately here -- see the require crash.fs
+\ statement following CODE-END-CELL.
 
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE-PROF-CNT-BYTES)
@@ -199,10 +200,6 @@ $678 constant SIGNAL-ABI:STUB-CELL
 $680 constant SIGNAL-ABI:FD-PTR-CELL
 $688 constant SIGNAL-ABI:FD-CELL
 
-require crash.fs           \ in-binary crash handler + the signal stub;
-                            \ needs STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
-                            \ and the SIGNAL-ABI: block above
-
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -287,7 +284,13 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
+$2820 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2828 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
+$2830 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+
+require crash.fs           \ in-binary crash handler + the signal stub; needs
+                            \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
+                            \ SIGNAL-ABI: block, RBASE-CELL and the cells above
 $5000 constant TXN-STATE-OFF
 \ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
 \ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
@@ -589,6 +592,8 @@ variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
+variable LFLOORREC  variable LFLOORMSG
+: FLOORMSG$ ( -- a u ) s" hb: interpret stack underdepth: " ;   \ LFLOORREC's line: the token and a newline follow
 variable LEVALREC
 variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
@@ -3575,6 +3580,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
+   LFLOORMSG @ LBL, FLOORMSG$ BYTES,
    LDEFKWMSG @ LBL, s" hb: compile keyword cannot be a definition name: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
@@ -5868,6 +5874,8 @@ variable CFSK2
    EMIT-STARTUP-RUNTIME-STATE ;
 
 : EMIT-MAIN-RUNTIME-LABELS ( n -- ) {: lmain :}
+   9 LFLOORREC @ ADR,  9 DATA FLOORREC-CELL STR,     \ crash.fs C-CRASH-DATA-RECOVER's resume entry
+   9 LSRC @ ADR,  9 DATA CODE-END-CELL STR,          \ and its engine-code bound
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
@@ -7702,6 +7710,19 @@ variable P2SK
    LTHROWDISPATCH @ B,
    bad LBL, STACK-GUARD:EXIT-BOUNDS ;
 
+\ LFLOORREC: crash.fs C-CRASH-DATA-RECOVER resumes a thread here when engine or
+\ compiled code loaded or stored in the data stack's low guard page. Mirrors
+\ src/habu/habu2.f:
+\ empty the stack (XDS may point under the base, and the uncaught exit runs the
+\ exit hook on it), name the token, throw 70 through LEVALREC.
+: EMIT-FLOORREC ( -- )
+   LFLOORREC @ LBL,
+   XDS DATA STACK-ABI:BASE-CELL LDR,
+   0 2 MOVZ,  1 LFLOORMSG @ ADR,  2 FLOORMSG$ nip MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   15 70 MOVZ,  LEVALREC @ B, ;
+
 : EMIT-PREFMISS ( -- )
    LPREFMISS @ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG @ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -7786,6 +7807,7 @@ variable P2SK
 	   LCOMPILE LBL,
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
+	   EMIT-FLOORREC
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT
       LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
@@ -7805,6 +7827,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
+   LBL LFLOORREC !  LBL LFLOORMSG !
    LBL LEVALREC !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;

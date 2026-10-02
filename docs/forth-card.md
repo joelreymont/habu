@@ -135,9 +135,9 @@ value must leave the selector on top (`30 swap endcase`); `0 0 do … loop` runs
 once, `0 0 ?do … loop` zero times. `evaluate-closed ( ptr u8 n -- )` evaluates
 source in a body: the text's `depth` starts at 0, a token reaching below it
 throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the caller's
-cells intact either way. An xt the text `execute`s cannot reach them, but its
-reach under the floor exits 102 instead of throwing (forth.md **Checked code
-and primitive boundaries** lists the open cases).
+cells intact either way. An xt the text runs cannot reach them: its reach
+under the floor throws 70 too (forth.md **Checked code and primitive
+boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 

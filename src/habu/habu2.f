@@ -128,6 +128,7 @@ variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (D
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
+variable LFLOORREC   \ the same underdepth throw for a data access below the base (crash.f C-CRASH-DATA-RECOVER resumes here)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
 35 constant PREFMISSMSG-LEN   \ byte length of "hb: compile preflight hook missing\n"
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
@@ -7970,6 +7971,7 @@ ardone LBL,
 : EM-STARTUP-RUNTIME-STATE ( -- )
    CODE-ORIGIN:RESTORE-REGION,
    9 LANCHOR LABEL@ ADR,  10 LSRC LABEL@ ADR,
+   10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
    9 10 CODE-ORIGIN:NATIVE-RANGE,
    9 0 MOVZ,
    \ This process owns no registration lock inherited from captured bytes.
@@ -8018,6 +8020,7 @@ ardone LBL,
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
    9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
+   9 LFLOORREC LABEL@ ADR,  9 DATA FLOORREC-CELL STR,     \ underdepth throw entry (the crash handler resumes an access below the base here)
    9 LUNCAUGHT LABEL@ ADR,  9 DATA UNCGH-CELL STR,        \ uncaught top-level throw reporter (BTHROW THROW-NOREC branches here)
    LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,             \ VRTAB/VRITAB fill + dict hash table (data mapped, NDICT final)
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -10433,6 +10436,24 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
+   \ LFLOORREC: crash.f C-CRASH-DATA-RECOVER resumes a thread here, every other
+   \ register as it faulted, when engine or compiled code loaded or stored in
+   \ the data stack's low guard page: a word took more cells than the stack
+   \ held. The guard page stopped the access, so no cell under the base was read
+   \ or written. XDS may point under the base, so the stub empties the stack
+   \ before anything can run on it: LEVALREC restores XDS from the eval or catch
+   \ frame it delivers to, and the uncaught exit runs the exit hook, compiled
+   \ code, on the empty stack. TKA/TKL still name the token the interpreter was
+   \ running. The throw goes through LEVALREC, not LDIAGRET's reject of a token
+   \ that has not run: the fault is inside running code, maybe under a catch at
+   \ top level, which must receive it as it receives a throw. LEVALREC closes
+   \ the code window first, as it does for any throw.
+   LFLOORREC LABEL@ LBL,
+   XDS DATA STACK-ABI:BASE-CELL LDR,
+   0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   15 RC-REJECT MOVZ,  LEVALREC LABEL@ B,
    LPREFMISS LABEL@ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG LABEL@ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
@@ -11251,7 +11272,7 @@ package LABELS
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
-   LBL LMININ !  LBL LMINMSG !
+   LBL LMININ !  LBL LMINMSG !  LBL LFLOORREC !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !

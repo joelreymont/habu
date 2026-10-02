@@ -6,7 +6,9 @@
 \ one inaccessible page below it, the capacity itself, one inaccessible page
 \ above it. A push past the capacity or a read below the base therefore FAULTS,
 \ and src/habu/crash.f turns that fault into `hb: stack bounds exceeded (<which>)`
-\ with the ENGINE-ERROR:STACK-BOUNDS exit. That is what replaced the
+\ with the ENGINE-ERROR:STACK-BOUNDS exit -- except a data-stack access below
+\ the base by engine or compiled code, which it throws as the underdepth reject
+\ (crash.f ONE FAULT IS NOT AN EXIT). That is what replaced the
 \ per-transfer bounds check the engine used to run at every push and pop: the
 \ capacity is enforced by the MMU, so compiled code carries no guard at all.
 \

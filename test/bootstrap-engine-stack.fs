@@ -63,14 +63,15 @@ require nf.fs
 
 : BES-OK ( src-a src-u -- ) BES-RUN 0 BES= ;
 
-\ A guard-page fault (data/return/loop stack bounds exceeded) is a fail-closed
-\ process exit, named on fd 2 by src/habu/crash.f / crash.fs
+\ A guard-page fault (data overflow, return/loop stack bounds exceeded) is a
+\ fail-closed process exit, named on fd 2 by src/habu/crash.f / crash.fs
 \ C-CRASH-STACK-GUARDS: the classifier now runs before the register-header
 \ write (so it never prints), and each message is one CRS-DATA$/CRS-RET$/
 \ CRS-LOOP$ string with its own newline emitted by a single BYTES,, so the
 \ length C-CRASH-GUARD-REPORT writes is exactly that string's length -- no
 \ separate length constant to drift from it, no header, no trailing bytes.
-\ Callers check NFOUT for the exact one-line message with NF=.
+\ Callers check NFOUT for the exact one-line message with NF=. A data access
+\ below the base is the one guard fault that is no exit: BES-DATA.
 : BES-REFUSED ( src-a src-u -- ) BES-RUN ENGINE-ERROR:STACK-BOUNDS BES= ;
 
 : BES-NUMBER ( n -- )
@@ -100,14 +101,15 @@ require nf.fs
    NF-CMD NF-CMD-U @ NF= 0= abort" recovery stack ABI differs from its source leaf" ;
 
 : BES-DATA ( -- )
-   \ Data-stack underflow now faults into the guard page below the boot
-   \ mapping; the crash handler names it and exits STACK-BOUNDS (102). `drop`
+   \ Data-stack underflow faults into the guard page below the boot mapping,
+   \ and the crash handler throws it as the interpreter's underdepth reject
+   \ naming the running token: uncaught, that one line and rc 70. `drop`
    \ alone will not show it -- BDROP is a bare pointer decrement (habu1.f/
    \ forth.fs: "XDS XDS 8 SUBI,"), so it never dereferences memory and cannot
    \ fault; `dup` reads the slot it duplicates (G-POP), so it does.
-   s" dup" BES-REFUSED
-   s\" hb: stack bounds exceeded (data)\n" NF= 0=
-      abort" bootstrap data-stack underflow lost its guard-page name"
+   s" dup" BES-RUN 70 BES=
+   s\" hb: interpret stack underdepth: dup\n" NF= 0=
+      abort" bootstrap data-stack underflow lost its underdepth throw"
 
    \ run-in-stack on a guarded mapping works.
    s" : ONE ( -- ) 42 . ; : GO ( -- ) ['] ONE bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO" BES-OK

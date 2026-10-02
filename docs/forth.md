@@ -31,13 +31,7 @@ lives here; build, test and environment rules live in
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
   its own and must leave nothing (measured under **Rules learned by
-  refusal**). Four cases stay open:
-  - An xt the text runs through `execute` is guarded only by `execute`'s own
-    one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
-    warns `hb: top-row: execute: xt target underflows the interpret stack` and
-    then faults on the text's guard page, exit 102
-    (`hb: stack bounds exceeded (data)`), where a catch cannot answer it; the
-    caller's 5 is never read.
+  refusal**). Three cases stay open:
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
   - A text may end inside a definition: the interpreter stays compiling, so
@@ -1410,8 +1404,16 @@ passing suite.
   `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
   `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
   the outer text's caller as -3804; a definition the checker refuses throws 70;
-  a data-stack overflow in a text exits `hb: stack bounds exceeded (data)`,
-  rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
+  an xt the text runs cannot reach the caller's cells either: with
+  `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
+  answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact
+  and W unfinished, as do `' W CLEAN finally`, a quotation xt and a reach in
+  an inner text, and `1 ' W catch` inside the text receives the 70 itself,
+  because one cell under the text's floor is its stack's guard page and the
+  engine throws that fault; at plain top level `1 ' W execute` is the same
+  line and rc 70, not a crash; a data-stack overflow in a text exits
+  `hb: stack bounds exceeded (data)`, rc 102, as outside one, and so does a
+  jump under the floor ([debugging.md](debugging.md)); with a task live it
   exits `$4F` before reading the text and prints nothing, as `evaluate` does.
   The open cases are under **Checked code and primitive boundaries**.
 

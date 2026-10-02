@@ -1258,6 +1258,20 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
+\ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
+\ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
+\ stripped image bakes the same handler. The handler resumes a data access below
+\ the base at that address, from the engine's own code or the JIT region, and
+\ CODE-END-CELL bounds the first: [RBASE-CELL, CODE-END-CELL) is the engine code
+\ up to its baked source (LSRC). Zero means no entry, and the fault keeps the
+\ named bounds exit: a stripped image leaves both cells at its mapping's zero,
+\ and a task region reads zero because lib/task.f copies only the cells it
+\ names. Both hold this process's addresses, so boot stores them and snapshots
+\ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
+\ the reasons EXIT-HOOK-CELL gives, swept for a claimant across src lib tools
+\ test bootstrap.
+$2820 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
 \ the list is empty) and gives it back on the clean return, and habu2.f
@@ -1267,6 +1281,7 @@ $2818 constant EXIT-HOOK-CELL
 \ header band for the reasons EXIT-HOOK-CELL gives, swept for a claimant across
 \ src lib tools test bootstrap.
 $2828 constant CLOSED-FREE-CELL
+$2830 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

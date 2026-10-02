@@ -462,8 +462,9 @@ variable DIGIT-AT
 \ number after the push and for each word, past its gates, before it runs. The
 \ hook consumes those four cells, as the event protocol states. A hook that
 \ leaves the stack below its base on a word event is refused here, before the
-\ word runs; the engine runs the word first and faults in the guard page (rc
-\ 102), so this loop names the underflow where the engine would crash.
+\ word runs; the engine runs the word and stops it only where it touches the
+\ guard page (the underdepth throw, crash.f ONE FAULT IS NOT AN EXIT), so this
+\ loop names the underflow before any of the word has run.
 : HOOK@ ( -- n )
    TOP-HOOK-CELL CELL@ ;
 
