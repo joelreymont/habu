@@ -57,10 +57,9 @@ GENIO:INPUT!   ( device -- )      GENIO:INPUT@  ( -- device )
 GENIO:WITH-IO  ( input output [ -- ] -- )
 
 GENIO:EMIT     ( c -- )           GENIO:KEY    ( -- c )
-GENIO:TYPE     ( ptr u8 n -- )    GENIO:KEY?   ( -- bool )
-GENIO:WRITE    ( ptr u8 n -- )    GENIO:READ   ( ptr u8 n -- n )
-GENIO:FLUSH    ( -- )             GENIO:ACCEPT ( ptr u8 n -- n )
-GENIO:CLOSE    ( device -- )
+GENIO:WRITE    ( ptr u8 n -- )    GENIO:KEY?   ( -- bool )
+GENIO:FLUSH    ( -- )             GENIO:READ   ( ptr u8 n -- n )
+GENIO:CLOSE    ( device -- )      GENIO:ACCEPT ( ptr u8 n -- n )
 GENIO:READ-LINE ( -- ptr u8 n )
 GENIO:SELF     ( -- device )      GENIO:SELF-STATE ( -- n )
 ```
@@ -74,7 +73,7 @@ that task on the terminal rather than failing over the body's own result.
 not an error, and it cannot be one: the engine's output funnel reaches a device
 write from inside `emit`, where a throw would unwind through engine internals,
 so it falls back to the terminal when the row it names is empty. `GENIO:EMIT`
-and `GENIO:TYPE` agree with it, because a `type` and a `GENIO:TYPE` that
+and `GENIO:WRITE` agree with it, because a `type` and a `GENIO:WRITE` that
 disagreed about where a closed device's output went would be worse than either
 answer. `GENIO:OUTPUT@` and `GENIO:INPUT@` answer the terminal once the row
 they named has been closed.

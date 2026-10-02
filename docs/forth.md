@@ -114,6 +114,21 @@ lives here; build, test and environment rules live in
   mirrors the engine parser (`EMIT-NUM`, `src/habu/habu1.f`) token for token;
   GD-LITERAL-FLOAT-FIRST pins the matrix, including that the checker rejects a
   call to a number-shaped word.
+- **Engine-provided sources are exempt from the reserved-word rule.** They
+  implement the language, and several define the reserved words themselves:
+  `TRUST` and `CHECK-DOES!` (`src/core/checker.f`), the loaders
+  (`src/core/include.f`), `NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`,
+  `LAYOUT-BUFFER` and `undefine`. The lint guards what `tools/check.f` reads,
+  and check.f loads and checks nothing from such a source (given only those, it
+  refuses each, `E-ENGINE-PROVIDED`, rc 64); rebuilding `bin/hb` checks it. So
+  their other words of a reserved spelling, such as `DECL-EVENT:FIELD` and
+  `NFAM:VARIANT`, stand too. The number-shaped rule has no exemption: such a
+  word is unreachable in any source. Each target's engine provides only its own
+  `src/os/<target>/target.f`; on another host check.f does not take a foreign
+  target's copy (it refuses it, as it redefines the host's predicates), so a
+  target.f is checked by building its target's engine. A `src/` file no engine
+  provides, such as `src/habu/primitive-registry.f`, is checked and keeps both
+  rules.
 - **Namespaces are wordlists.** A qualified name has exactly one non-edge colon
   (`HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`): the qualifier names the wordlist, the
   record stores the tail. Qualifier case matches the vocabulary: project words

@@ -283,8 +283,9 @@ forth.md: **Errors**, **Integer arithmetic**.
   duplicate (exit 78; test/aot-capture-bound.f copies the requirer too). Every
   file requires its **own** dependencies.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
-  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
-  `src/` file:
+  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
+  `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`
+  refuses one with `E-ENGINE-PROVIDED`):
   their words resolve with no require and a `require` is a no-op. Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
