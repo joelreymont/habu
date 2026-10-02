@@ -16,7 +16,9 @@ $40000 constant DO-FILE-CAP
 
 10 constant DO-LF
 32 constant DO-SP
+33 constant DO-BANG-C
 34 constant DO-DQ
+35 constant DO-HASH-C
 40 constant DO-LPAREN
 41 constant DO-RPAREN
 58 constant DO-COLON-C
@@ -351,6 +353,16 @@ variable DO-OUT-BUF?
    DO-RUN+
    DO-COLON? if DO-MARK-COLON then ;
 
+\ The engine reads a first line that starts with `#!` as a comment
+\ (src/core/include.f SHEBANG-COMMENT), so the scan skips it as one: no marker
+\ goes before it, and the copy still starts with the `#!` that check.f's run
+\ comments.
+: DO-SKIP-SHEBANG ( -- )
+   DO-SRC-U @ 2 < if exit then
+   DO-SRC-A@ c@ DO-HASH-C <> if exit then
+   DO-SRC-A@ 1 + c@ DO-BANG-C <> if exit then
+   DO-SKIP-LINE ;
+
 : DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
    src DO-SRC-A!
    u DO-SRC-U !
@@ -359,6 +371,7 @@ variable DO-OUT-BUF?
    1 DO-LINE !
    1 DO-COL !
    DO-RUN-END
+   DO-SKIP-SHEBANG
    begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
