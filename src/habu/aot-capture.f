@@ -700,9 +700,12 @@ variable ACAP-P
 \ (test/aot-band-retired.f): its spelling now reaches another body. A call to a
 \ private word with no public alias does not arrive here - a caller outside its
 \ package cannot name it, and one inside is a window record of that package,
-\ which ACAP-?WID refuses first. A branch site does: a window word made through
-\ the public alias of an EXPORTed private definer branches into the definer's
-\ does> clause, and EXPORT publishes the definer, not its clause record.
+\ which ACAP-?WID refuses first. Nor does a branch into the does> clause of a
+\ private definer that a window word was made with through its public alias:
+\ EXPORT publishes the clause with the definer (habu2.f DOES-REC "the clause an
+\ export carries"), so ACAP-SITE-REC finds the public record of the clause
+\ (test/aot-band-export-does.f), and goes on finding it after `undefine`
+\ retired the private pair (test/aot-band-export-undef.f).
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.

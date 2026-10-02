@@ -36,7 +36,7 @@ public
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
   `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. A
-  `does>` definer `R` also claims `R;does` there.
+  `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. A number-shaped name (`: 42`) is refused by
   `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.

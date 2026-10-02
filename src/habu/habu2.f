@@ -3554,6 +3554,85 @@ public
    CP CP 15 ADD,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
+\ ---- the clause an export carries --------------------------------------------
+\ EXPORT gives a body a second record under a second name (C-EXPORT), and a
+\ definer's body holds its clause. The clause is exactly as public as the record
+\ that names its definer, so an export of a definer publishes the clause too: a
+\ second record of the clause's entry, under the clause's name, one slot above
+\ the export's own, which is the pair a definer defined in that wordlist has.
+\ Without it a word made through the public alias of a private definer branches
+\ into a clause only the private wordlist names, and the AOT seed, whose
+\ qualifier reaches a package's PUBLIC wordlist alone, cannot resolve the branch
+\ (test/aot-band-export-does.f). The pair is also what `undefine` retires
+\ together (xref.f XREF-RETIRE-INDEX), so retiring the private original leaves
+\ the alias naming the definer and its clause (test/aot-band-export-undef.f).
+
+\ x<a> = the name bytes of record x<rec>, x<u> = their length; x<t> is
+\ clobbered. The four registers differ.
+: NAME-OF, ( n n n n -- ) {: rec:n a:n u:n t:n :}
+   LBL {: inl:label :}
+   u rec 16 LDR,  u u 14 LSLI,  u u 14 LSRI,
+   a rec 24 ADDI,
+   t rec 16 LDR,  t t DNAME-EXT ANDI,  t inl CBZ,
+      a rec 24 LDR,                                    \ ... which is a pointer when it is long
+   inl LBL, ;
+
+\ Write the name of record x<rec> to fd 2; x0-x2 and x14 are clobbered.
+: NAME-SAY, ( n -- ) {: rec:n :}
+   rec 1 2 14 NAME-OF,  0 2 MOVZ,  NR-WRITE SYS, ;
+
+private
+
+\ Fold byte x<r> from A-Z to a-z, as the duplicate walls compare; x<t> is
+\ clobbered.
+: FOLD, ( n n -- ) {: r:n t:n :}
+   t r $41 SUBI,  t $1A CMPI,  t C-CC CSET,  t t 5 LSLI,  r r t ORR, ;
+
+\ x<dst> = the bytes code span x<raw> covers (code-span.f BYTES): an exact span
+\ its body, a historical one its body and the RET slot past it. x<t> is
+\ clobbered.
+: SPAN-BYTES, ( n n n -- ) {: dst:n raw:n t:n :}
+   LBL {: exact:label :}
+   dst raw CODE-SPAN:MASK ANDI,
+   t raw CODE-SPAN:FULL ANDI,  t exact CBNZ,
+      dst dst 4 ADDI,
+   exact LBL, ;
+
+public
+
+\ x5 = a record; x6 = the record of its clause, or 0. Record k+1 is k's clause
+\ when it is all four that xref.f XREF-DOES-COMPANION? asks: below NDICT, in k's
+\ wordlist, named k's name with `;does` added, and starting inside k's body and
+\ ending with it. The body test tells the clause from a word someone named
+\ X;does. x5 survives; x7-x10, x12 and x14-x16 are clobbered.
+: CLAUSE-OF ( -- )
+   LBL LBL LBL LBL {: cmp:label sfx:label no:label done:label :}
+   6 5 DREC ADDI,
+   7 DREC MOVZ,  7 NDICT 7 MUL,  7 DBASE 7 ADD,
+   6 7 CMP,  C-CS no BCOND,                            \ no record above
+   7 5 40 LDR,  8 6 40 LDR,  7 8 CMP,  C-NE no BCOND,  \ another wordlist
+   7 5 0 LDR,  8 6 0 LDR,  8 7 CMP,  C-LS no BCOND,    \ not past the parent's entry
+   9 5 8 LDR,  10 9 14 SPAN-BYTES,  7 7 10 ADD,
+   9 6 8 LDR,  10 9 14 SPAN-BYTES,  8 8 10 ADD,
+   8 7 CMP,  C-HI no BCOND,                            \ ends past the parent's body
+   5 10 12 14 NAME-OF,  6 14 15 9 NAME-OF,
+   9 12 SUF-LEN ADDI,  9 15 CMP,  C-NE no BCOND,
+   7 0 MOVZ,
+   cmp LBL,  7 12 CMP,  C-GE sfx BCOND,                \ the parent's name ...
+      8 10 7 ADD,  8 8 0 LDRB,  8 9 FOLD,
+      16 14 7 ADD,  16 16 0 LDRB,  16 9 FOLD,
+      8 16 CMP,  C-NE no BCOND,
+      7 7 1 ADDI,  cmp B,
+   sfx LBL,  16 14 12 ADD,                             \ ... then `;does`
+   8 16 0 LDRB,  8 9 FOLD,  8 $3B CMPI,  C-NE no BCOND,   \ ';'
+   8 16 1 LDRB,  8 9 FOLD,  8 $64 CMPI,  C-NE no BCOND,   \ 'd'
+   8 16 2 LDRB,  8 9 FOLD,  8 $6F CMPI,  C-NE no BCOND,   \ 'o'
+   8 16 3 LDRB,  8 9 FOLD,  8 $65 CMPI,  C-NE no BCOND,   \ 'e'
+   8 16 4 LDRB,  8 9 FOLD,  8 $73 CMPI,  C-NE no BCOND,   \ 's'
+   done B,
+   no LBL,  6 0 MOVZ,
+   done LBL, ;
+
 \ ---- a clause that compiled nothing is not a clause --------------------------
 \ `does>` runs its clause AFTER the created word has pushed its data address, so
 \ a clause whose body emitted no instruction leaves that word doing exactly what
@@ -9024,12 +9103,59 @@ public
       12 10 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
    done LBL, ;
 
+\ The clause an export of a does> definer carries (DOES-REC "the clause an
+\ export carries"), held at [sp+24] of C-EXPORT's frame and 0 for any other
+\ source. Its slot, the one above the export's own, and its name in the wordlist
+\ the export publishes into are refused here, before the checker hears of the
+\ export and before anything is written, with the codes the export's own slot
+\ and name are refused with.
+: C-EXPORT-CLAUSE-ROOM ( -- )
+   LBL LBL LBL {: none:label room:label fresh:label :}
+   6 SP 24 LDR,  6 none CBZ,
+   14 DICT-CAP 1 - LIT64,  NDICT 14 CMP,  C-LT room BCOND,
+      LDICTFULL C-CAP-LABEL
+      $4D C-QUALIFY-FAIL
+   room LBL,
+   6 0 1 14 DOES-REC:NAME-OF,
+   2 DATA DEF-WL-CELL LDR,
+   WLFIND:LENTRY LABEL@ BL,
+   12 fresh CBZ,
+      C-DUP-DEF-SAY
+      6 SP 24 LDR,  6 DOES-REC:NAME-SAY,
+      0 $4E MOVZ,  LCOMPILEDIE LABEL@ B,
+   fresh LBL,
+   none LBL, ;
+
+\ Write the clause's record in the slot above the export's own, which C-EXPORT
+\ has written and not yet counted: the clause's entry and length under the
+\ clause's name, in the export's wordlist. A long name is copied at CP as the
+\ export's own is, and a code ceiling that refuses it leaves both uncounted.
+: C-EXPORT-CLAUSE-RECORD ( -- )
+   LBL LBL {: full:label none:label :}
+   6 SP 24 LDR,  6 none CBZ,
+   9 NDICT 1 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
+   6 SP 24 LDR,  6 10 12 14 DOES-REC:NAME-OF,
+   full DEFWRITE:NAME-STORE
+   6 SP 24 LDR,
+   14 6 0 LDR,  14 9 0 STR,                            \ [0] = the clause's entry
+   14 6 8 LDR,  14 9 8 STR,                            \ [8] = its recorded length
+   14 DATA DEF-WL-CELL LDR,  14 9 40 STR,              \ [40] = the export's wordlist
+   none B,
+   full LBL,
+      LCODEFULL C-CAP-LABEL
+      6 SP 24 LDR,  6 DOES-REC:NAME-SAY,
+      0 $4C MOVZ,  LCOMPILEDIE LABEL@ B,
+   none LBL, ;
+
 \ EXPORT keyword (dot habu-compiler-pkg-re-688212c1). Two documented roles
 \ split by package context, mirrored 1:1 by verify-source RECORD-EXPORT:
 \ - INSIDE an open package: publish an EXISTING word under its own tail into
 \   the CURRENT section wordlist — same code pointer, same body span,
 \   immediate/wide name bits copied — no forwarding body, zero runtime cost.
 \   Internal source words are refused before publication.
+\   A does> definer's export publishes its clause in the slot above, under
+\   the clause's name (C-EXPORT-CLAUSE-ROOM, C-EXPORT-CLAUSE-RECORD).
 \ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
 \   (`EXPORT word…` keeps extra words callable; lib/prelude.f rides it).
 \   COMMENT-EXPORTS strips these lines before hb-build compiles, and a plain
@@ -9048,7 +9174,8 @@ public
 \ names at CP.
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
+   LBL LBL LBL LBL LBL LBL
+   {: active:label dnamed:label named:label found:label counted:label done:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       LTOK LABEL@ BL,  0 dnamed CBNZ,
          $4A C-PACKAGE-FAIL
@@ -9066,12 +9193,14 @@ public
    found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT source: TKA/TKL still hold the operand; nothing pushed or published
    SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   DOES-REC:CLAUSE-OF  6 SP 24 STR,                     \ x5 = LFIND's record; [24] = its clause or 0
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
    C-EXPORT-TAIL!
    C-QUALIFY-CAP
    C-REJECT-DUP-DEF                                      \ native dup wall first: labeled diagnosis + $4E
+   C-EXPORT-CLAUSE-ROOM
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,      \ checker sees the ORIGINAL spelling
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    C-CALL-CHECKER-EXPORT
@@ -9088,7 +9217,11 @@ public
    16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
    15 9 16 STR,
+   C-EXPORT-CLAUSE-RECORD
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   6 SP 24 LDR,  6 counted CBZ,
+      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
+   counted LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,
    SP SP 32 ADDI,
    done LBL, ;

@@ -21,7 +21,8 @@
 \ wordlist, so a word already holding `<PARENT>;does` there refuses the definer
 \ at `does>` with the duplicate-definition code, under both compilers, exactly
 \ as that word is refused when it comes second. The same word in another
-\ wordlist refuses nothing.
+\ wordlist refuses nothing. An exported definer carries its clause into the
+\ export's wordlist, under the same wall.
 \
 \ Run: bin/hb --load test/does-clause-record.f
 
@@ -292,12 +293,71 @@ variable FORGET-NAME-A
    s" 4 DR-FORGET-MK DR-FORGET-CELL" EV-N 5 T=
    s" DR-FORGET-CELL" EV-N 4 T= ;
 
+\ ---- an exported definer carries its clause ---------------------------------
+\ `export` gives a body a second record (habu2.f C-EXPORT), and a does>
+\ definer's export gives its clause one too, in the slot above: the clause's
+\ entry under the clause's name, in the wordlist the export publishes into, so
+\ the qualifier that reaches the alias reaches its clause. Each compiler lays a
+\ clause's name out its own way, so the pair is checked under both.
+
+\ The exported definer d$, the qualified clause name k$ and a word w$ made
+\ through the alias.
+: ?EXPORTED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: da:ptr du:n ka:ptr ku:n wa:ptr wu:n :}
+   s" an exported definer's clause takes the slot above the export" T-LABEL
+   ka ku IDX  da du CLAUSE  T=
+   s" ... under the clause's own name" T-LABEL
+   da du CLAUSE NAME$ s" MK;does" STR= TTRUE
+   da du ?WID
+   da du ?SPAN
+   da du wa wu ?BRANCH ;
+
+: EXPORTED-JIT ( -- )
+   s" package DRXJ : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
+   s" 7 DRXJ:MK DRXJ-SEVEN drop" EV
+   s" DRXJ:MK" s" DRXJ:MK;does" s" DRXJ-SEVEN" ?EXPORTED
+   s" a word made through the alias runs the clause" T-LABEL
+   s" DRXJ-SEVEN" EV-N 7 T= ;
+
+\ Undefining the private original retires its own pair and leaves the export's;
+\ undefining the export retires its clause with it (src/habu/xref.f
+\ XREF-RETIRE-INDEX), and neither moves code.
+: EXPORTED-NATIVE ( -- )
+   s" package DRXN : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
+   s" 7 DRXN:MK DRXN-SEVEN drop" EV
+   s" DRXN:MK" s" DRXN:MK;does" s" DRXN-SEVEN" ?EXPORTED
+   s" undefining the private original leaves the exported pair" T-LABEL
+   s" package DRXN private undefine MK ;package" EV
+   s" DRXN:MK;does" IDX  s" DRXN:MK" CLAUSE  T=
+   s" 8 DRXN:MK DRXN-EIGHT drop" EV
+   s" DRXN-EIGHT" EV-N 8 T=
+   s" undefining the export retires its clause with it" T-LABEL
+   s" package DRXN public undefine MK ;package" EV
+   s" DRXN:MK;does" IDX 0 < TTRUE
+   s" ... and the words it made keep their clause" T-LABEL
+   s" DRXN-SEVEN" EV-N 7 T= ;
+
+\ A clause name the export's wordlist already holds refuses the export, as it
+\ refuses a definer defined there.
+: EXPORT-HELD ( -- )
+   s" package DRXH public : mk;DOES ( -- n ) 111 ; private : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV
+   HELD-MARK
+   s" an export whose clause name its wordlist holds is refused" T-LABEL
+   [: s" package DRXH public export MK ;package" EV ;] DUP-DEF-RC TTHROWSQ
+   s" the refused export publishes neither record and moves no code" T-LABEL
+   ndict@ HELD-ND @ T=
+   cp@ HELD-CP @ T=
+   s" DRXH:MK" IDX 0 < TTRUE
+   s" the word that holds the name still answers" T-LABEL
+   s" DRXH:mk;DOES" EV-N 111 T= ;
+
 public
 
 \ Before the native chain is selected.
 : RUN-JIT ( -- )
    T-RESET
-   HELD-JIT ;
+   HELD-JIT
+   EXPORTED-JIT ;
 
 : RUN ( -- )
    SUBJECTS
@@ -329,6 +389,8 @@ public
    s" MK;does" EV-N 222 T=
 
    HELD-NATIVE
+   EXPORTED-NATIVE
+   EXPORT-HELD
 
    s" a refused definition counts neither slot" T-LABEL
    REJ1 @ REJ0 @ T=

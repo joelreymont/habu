@@ -256,7 +256,9 @@ public
   MAKI public` publishes `MAKI:RUN`; a bare `EXPORT HELPER` in the public
   section promotes the private `HELPER`. Refused: an undefined source, a private
   word behind a CLOSED package, a source qualified into a sealed system package,
-  a primitive and a duplicate tail in the target section. Re-exporting a
+  a primitive and a duplicate tail in the target section. An exported `does>`
+  definer `MK` brings its clause along as `MK;does`, so a live `MK;does` in the
+  target section refuses it, rc 78 (test/does-clause-record.f). Re-exporting a
   generated constructor under a second name is allowed; adding tails INTO a
   generated constructor package is not. AOT tree-shake keeps one body; alias
   rows roll back with checker scope frames. At TOP LEVEL `EXPORT name…` is the

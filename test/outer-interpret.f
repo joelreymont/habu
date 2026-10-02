@@ -83,11 +83,15 @@ variable SPIN-U
 \ that a global twin shadows, two packages whose publics share a tail, a
 \ namespace a qualified definition made (it has no private wordlist), an
 \ integer constant, and a word that fills the dictionary (the name index goes
-\ first, as test/engine-writers.f EW-DICT-FULL drops it). OI-DUMP is an exit
-\ hook that prints the pending definition: its record's name, flags, whether
-\ its wordlist is OI-WANT's and its entry the provenance window's, its body
-\ capture, its signature's length, the trusted and tier cells and the code
-\ origin of its name's bytes.
+\ first, as test/engine-writers.f EW-DICT-FULL drops it) and one that leaves a
+\ single slot. OI-DUMP is an exit hook that prints the pending definition: its
+\ record's name, flags, whether its wordlist is OI-WANT's and its entry the
+\ provenance window's, its body capture, its signature's length, the trusted
+\ and tier cells and the code origin of its name's bytes. OI-DX holds a private
+\ does> definer whose clause name is longer than DNAME-INL bytes, and OI-DX.
+\ prints whether the record above its public export is that export's clause,
+\ and the clause's name. OI-DH holds a private definer and, in its public
+\ wordlist, a word under that definer's clause name.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -123,6 +127,11 @@ variable SPIN-U
    s" : OI-BODY. ( -- ) data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL OI-CELL@ type cr ;" GE-SRC-LINE
    s" : OI-STATE. ( -- ) TSIG-U-CELL OI-CELL@ . TRUSTED-CELL OI-CELL@ . NCOMP-DISPATCH:DEF-TIER-CELL OI-CELL@ . ;" GE-SRC-LINE
    s" : OI-DUMP ( -- ) OI-PEND OI-REC. OI-BODY. OI-STATE. ;" GE-SRC-LINE
+   s" TRUSTED: OI-DICT-ALMOST ( -- ) 0 data-base HIDXP-CELL + ! DICT-CAP 1 - ndict! ;" GE-SRC-LINE
+   s" package OI-DX : OI-MAKER-WORD ( n -- ) create , does> ( -- n ) @ 1 + ; ;package" GE-SRC-LINE
+   s" : OI-CLAUSE. ( n -- ) {: k:n :} k XREF-DOES-COMPANION? dup OI-B. if k 1+ XREF-REC XREF-NAME$ type cr then ;" GE-SRC-LINE
+   s" : OI-DX. ( -- ) s~ OI-DX:OI-MAKER-WORD~ XREF-FIND-INDEX OI-CLAUSE. ;" QLINE
+   s" package OI-DH public : OI-HELD;does ( -- n ) 3 ; private : OI-HELD ( n -- ) create , does> ( -- n ) @ ; ;package" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -755,6 +764,23 @@ variable WANT-RC
    70 s" export internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" export internal" GE-EXPECT-ERR ;
 
+\ A does> definer's export carries the definer's clause into the slot above
+\ its own, under the clause's name, which a name past DNAME-INL bytes puts at
+\ CP. The clause's slot, its name in the current wordlist and that name's room
+\ are refused as the export's own are, the dictionary refusal naming the
+\ operand and the other two the clause.
+: EXPORT-DEFINER ( -- )
+   s" package OI-DX public export OI-MAKER-WORD ;package OI-DX." s" oi-export-definer.f" LINE-CASE
+   s" export definer" GE-EXPECT-OK
+   S\" 1\nOI-MAKER-WORD;does\n" s" export definer" GE-EXPECT-OUT
+   s" package OI-DH public export OI-HELD" s" oi-export-clause-held.f" LINE-CASE
+   78 s" duplicate definition: OI-HELD;does at " S\" oi-export-clause-held.f:1\n" DIED-AT
+   s" package OI-DX public OI-DICT-ALMOST export OI-MAKER-WORD" s" oi-export-clause-slot.f" LINE-CASE
+   77 s" hb: dictionary full at: OI-MAKER-WORD at " S\" oi-export-clause-slot.f:1\n" DIED-AT
+   s" package OI-DX public dbase@ REGION + $4000 - 8 - cp! export OI-MAKER-WORD"
+   s" oi-export-clause-code.f" LINE-CASE
+   76 s" hb: code space full at: OI-MAKER-WORD;does at " S\" oi-export-clause-code.f:1\n" DIED-AT ;
+
 \ With the dictionary full a new package refuses, naming what DEF-TKA and
 \ DEF-TKL hold, which `package` never writes: here the operand of the `export`
 \ before it. A long name that would reach the code ceiling refuses too;
@@ -1198,6 +1224,7 @@ private
    EXPORT-ALIASES
    EXPORT-REFUSALS
    EXPORT-INTERNAL
+   EXPORT-DEFINER
    CAPACITY
    PROTECTED-PACKAGES
    TASK-LIVE

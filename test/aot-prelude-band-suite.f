@@ -59,6 +59,15 @@
 \               the undefine retired the first clause with its definer. The case
 \               prints the loader's values for SEVEN and for OLD, made by the
 \               first definer, and both are asserted beside the capture.
+\   export-does/empty  SEVEN is made inside the window through the public name
+\               EXPORT gave a private does> definer: captured, one call site,
+\               because the export published the definer's clause beside it. The
+\               loader's value for SEVEN is asserted beside the capture.
+\   export-undef/empty  the same, after the private original was undefined while
+\               its public alias lived: captured, one call site. The undefine
+\               retired only the original's pair, so the alias still names the
+\               definer and its clause. The loader's values for EIGHT and for OLD,
+\               made by the original, are asserted beside the capture.
 \
 \ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
 \ it used to be declared by a call of its own, so "the tool declared the band and
@@ -66,7 +75,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: eleven child bin/hb runs, no metabuild. Registered as
+\ Cost: thirteen child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -127,6 +136,8 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 : EXPORT-CASE ( ptr u8 n -- ) s" test/aot-band-export.f" 2swap RUN-CASE ;
 : RETIRED-CASE ( ptr u8 n -- ) s" test/aot-band-retired.f" 2swap RUN-CASE ;
 : REDEF-CASE ( ptr u8 n -- ) s" test/aot-band-redef.f" 2swap RUN-CASE ;
+: EXPORT-DOES-CASE ( ptr u8 n -- ) s" test/aot-band-export-does.f" 2swap RUN-CASE ;
+: EXPORT-UNDEF-CASE ( ptr u8 n -- ) s" test/aot-band-export-undef.f" 2swap RUN-CASE ;
 
 \ The diagnostic goes to stdout ahead of the die, so both streams are searched:
 \ which one carries it is the engine's business, not this suite's.
@@ -229,6 +240,28 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" ... while a word the first definer made keeps the first clause" T-LABEL
    s" aot-band-redef: old 7" SAID? TTRUE ;
 
+: PROBE-EXPORT-DOES-NAMED ( -- )
+   s" empty" EXPORT-DOES-CASE
+   s" a word made through an exported private definer captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the exported clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-export-does: seven 7" SAID? TTRUE ;
+
+: PROBE-EXPORT-UNDEF-NAMED ( -- )
+   s" empty" EXPORT-UNDEF-CASE
+   s" a word made through the alias of an undefined original captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the alias's clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-export-undef: eight 8" SAID? TTRUE
+   s" ... as it does for a word the original made" T-LABEL
+   s" aot-band-export-undef: old 8" SAID? TTRUE ;
+
 : BODY ( -- )
    SETUP
    PROBE-CALL-REFUSED
@@ -241,7 +274,9 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-SITE-UNNAMED
    PROBE-EXPORT-CAPTURED
    PROBE-RETIRED-REFUSED
-   PROBE-REDEF-NAMED ;
+   PROBE-REDEF-NAMED
+   PROBE-EXPORT-DOES-NAMED
+   PROBE-EXPORT-UNDEF-NAMED ;
 
 public
 
