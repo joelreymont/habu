@@ -3,19 +3,17 @@
 \ tools/check-verify-core.f spawns it on bin/hb, in the caller's working
 \ directory, the tree root; nothing else runs it:
 \
-\    ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+\    ENGINE --load tools/check-verify-child.f -- SUBJECT < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
-\ checked as. Each DEP is a file of its require closure, canonical and absolute,
-\ in dependency order. The image is the engine's boot prefix, the verifier and
+\ checked as. The image is the engine's boot prefix, the verifier and
 \ this file, so no tool's word stands in for, or collides with, a word of the
 \ subject. Nothing of SUBJECT or its closure runs: the verifier scans source and
 \ records what it declares.
 \
-\ Every DEP this image does not hold already, then SUBJECT, is verified with all
-\ errors in one neutral checker scope, each under its own path and with
-\ positions in its own bytes, so a file sees what every earlier one declared. A
-\ DEP the image holds is skipped, as `require` skips it.
+\ The verifier follows top-level loader acts in one neutral checker scope, with
+\ each file's path and positions while it is open. `require` skips held paths;
+\ `include` verifies every occurrence.
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
@@ -45,15 +43,10 @@ $10000 constant CHUNK                   \ bytes asked of one read
 2 constant ERR-FD
 
 DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
-DYNAMIC-BUFFER DEP u8                   \ the dependency being verified, from its file
 variable SUBJECT-U
-variable DEP-U
-variable FD
 variable RD
 variable FAILED
 variable NUM-I
-TYPED-VARIABLE CUR-A ptr u8             \ the bytes VERIFY-CUR verifies
-variable CUR-U
 create NUM NUM-CAP allot
 create NL 1 allot
 
@@ -94,24 +87,6 @@ create NL 1 allot
    repeat ;
 
 
-: READ-DEP ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu PATH0 open-rd FD !
-   FD @ 0 < if
-      ERR-FD pa pu WRITE ERR-FD NEWLINE
-      s" check-verify: cannot open a dependency" 74 die
-   then
-   0 DEP-U !
-   begin
-      DEP-U @ CHUNK + DEP-RESERVE
-      FD @ DEP-U @ DEP CHUNK read RD !
-      RD @ 0 < if s" check-verify: cannot read a dependency" 74 die then
-      RD @ 0 >
-   while
-      DEP-U @ RD @ + DEP-U !
-   repeat
-   FD @ close ;
-
-
 \ The definitions after the throw went unverified, and a throw the checker
 \ rendered no packet for has nothing else to show it.
 : STOPPED ( ptr u8 n n n -- ) {: label:ptr labelu:n rc:n rejects:n :}
@@ -125,40 +100,24 @@ create NL 1 allot
 
 
 : VERIFY-CUR ( -- )
-   CUR-A @ CUR-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
+   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
 
-\ Verify the bytes as LABEL with all errors, positions counted from their first
-\ byte.
-: VERIFY-AS ( ptr u8 n ptr u8 n -- )
-   {: a:ptr u:n label:ptr labelu:n :}
-   a CUR-A !
-   u CUR-U !
-   label labelu DIAG-FILE!
+\ One multi-error window covers the complete load composition.
+: VERIFY-ALL ( -- )
+   0 SCRIPT-ARGV$ DIAG-FILE!
    1 1 0 DIAG-ORIGIN!
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
    rc 0<> rejects 0<> or if -1 FAILED ! then
    rc 0= if exit then
-   label labelu rc rejects STOPPED ;
+   VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
 
 
 \ The engine provides the path, or this child loaded it: what `require` skips.
 : HELD? ( ptr u8 n -- bool )
    SOURCE-ROOT:RESOLVE nip nip ;
-
-
-: VERIFY-DEP ( n -- ) {: i:n :}
-   i SCRIPT-ARGV$ {: pa:ptr pu:n :}
-   pa pu HELD? if exit then
-   pa pu READ-DEP
-   0 DEP DEP-U @ pa pu VERIFY-AS ;
-
-
-: VERIFY-ALL ( -- )
-   SCRIPT-ARGC 1 ?do i VERIFY-DEP loop
-   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY-AS ;
 
 
 : RESULT ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -185,7 +144,7 @@ create NL 1 allot
 public
 
 : MAIN ( -- )
-   SCRIPT-ARGC 1 < if s" usage: check-verify-child.f -- SUBJECT [DEP ...]" 64 die then
+   SCRIPT-ARGC 1 <> if s" usage: check-verify-child.f -- SUBJECT" 64 die then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

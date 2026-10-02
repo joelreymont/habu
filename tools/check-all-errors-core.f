@@ -57,6 +57,10 @@ variable CA-TOKU                        \ length of the source word at a lexer d
 TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
 variable CA-JSON
+TYPED-VARIABLE CA-COMPOSE-PATH-A ptr u8
+variable CA-COMPOSE-PATH-U
+TYPED-VARIABLE CA-COMPOSE-LABEL-A ptr u8
+variable CA-COMPOSE-LABEL-U
 
 : CA-TRUE ( -- bool )
    0 0= ;
@@ -425,6 +429,24 @@ variable CA-XSUP-BUF-CAP
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
+: CA-CHECK-COMPOSE-ACT ( -- )
+   CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
+   CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: CA-CHECK-COMPOSE ( -- n )
+   CA-RESET-CAPTURE
+   CA-DIAG-FULL-START
+   [: CA-CHECK-COMPOSE-ACT ;] catch
+   CA-DIAG-FINISH ;
+
+: CA-CHECK-COMPOSE-SCOPE ( -- n )
+   0 CA-FULL-R !
+   CHECKER-SCOPE-START-NEUTRAL
+   [: CA-CHECK-COMPOSE CA-FULL-R ! ;] catch
+   CHECKER-SCOPE-DONE
+   dup 0= IF drop CA-FULL-R @ EXIT THEN ;
+
 \ The replayed file is standalone source, so it is checked at neutral top level
 \ whatever package the caller had open - otherwise a top-level EXPORT directive
 \ in that source reads as an in-package re-export and the run fails. The
@@ -479,6 +501,18 @@ variable CA-XSUP-BUF-CAP
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
+: CA-RUN-COMPOSE-DEFS ( -- )
+   CA-RESET-RESULTS
+   MULTI-ERR-BEGIN
+   CA-CHECK-COMPOSE-SCOPE {: rc:n :}
+   MULTI-ERR-END {: rejects:n :}
+   rc DUP-RC = IF
+      0 CA-EMIT-CAPTURED
+      VERIFY:SOURCE-COMPOSE-STOPPED$ CA-FILE-U ! CA-FILE-A!
+      CA-HANDLE-DUP EXIT
+   THEN
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+
 : CA-ALLOC-SOURCE ( n -- )
    MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
 
@@ -495,6 +529,13 @@ variable CA-XSUP-BUF-CAP
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
    CA-HANDLE-LEX-DEFECT
    CA-RUN-DEFS
+   CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
+   CA-FAILED @ 0 <> IF 70 throw THEN ;
+
+: CA-RUN-COMPOSE ( -- )
+   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+   CA-HANDLE-LEX-DEFECT
+   CA-RUN-COMPOSE-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF 70 throw THEN ;
 
@@ -539,6 +580,22 @@ public
    labela CA-FILE-A!
    patha pathu CA-READ-SOURCE
    CA-RUN-SOURCE ;
+
+\ Lexical defects remain a per-file check even when definitions are checked
+\ through one native load composition.
+: LEX-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+   labelu CA-FILE-U !  labela CA-FILE-A!
+   patha pathu CA-READ-SOURCE
+   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
+   CA-HANDLE-LEX-DEFECT ;
+
+: COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+   path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
+   label CA-COMPOSE-LABEL-A !  labelu CA-COMPOSE-LABEL-U !
+   label CA-FILE-A!  labelu CA-FILE-U !
+   src srcu CA-SOURCE-BUF!
+   CA-RUN-COMPOSE ;
 
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}

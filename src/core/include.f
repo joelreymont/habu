@@ -374,11 +374,7 @@ private
    46 JOIN-BUF JOIN-U @ 1+ + c!
    JOIN-BUF JOIN-U @ 2 + TRY-CANON 0= if INCLUDE-IO-RC throw then ;
 
-public
-
-\ Each scope owns a mapping sized to its root string. There is no additional
-\ root-count/depth limit, and a throw restores the caller before releasing it.
-: WITH ( ptr u8 n [ -- ] -- ) {: q :}
+: ROOT-ENTER ( ptr u8 n -- ptr u8 n ptr u8 n )
    ROOT-CANON
    CANON-U @ {: u:n :}
    u 1+ map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: fresh:ptr :}
@@ -386,12 +382,24 @@ public
    CURRENT$ {: old:ptr oldu:n :}
    fresh u CURRENT!
    1 SCOPES +!
-   q catch {: rc:n :}
+   fresh u old oldu ;
+
+: ROOT-LEAVE ( ptr u8 n ptr u8 n n -- )
+   {: fresh:ptr u:n old:ptr oldu:n rc:n :}
    -1 SCOPES +!
    old oldu CURRENT!
    fresh u 1+ munmap {: release:n :}
    rc 0= 0= if rc throw then
    release 0 < if INCLUDE-IO-RC throw then ;
+
+public
+
+\ Each scope owns a mapping sized to its root string. There is no additional
+\ root-count/depth limit, and a throw restores the caller before releasing it.
+: WITH ( ptr u8 n [ -- ] -- ) {: q :}
+   ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   q catch {: rc:n :}
+   fresh u old oldu rc ROOT-LEAVE ;
 
 \ A builder's target source is discovered from the invocation root. Restore
 \ its caller's source root after compilation, including on a checker refusal.
@@ -1013,6 +1021,49 @@ private
    release 0 < if INCLUDE-IO-RC throw then
    INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
 
+\ A verifier can traverse the loader's resolved file frames without invoking
+\ the interpreter. The callback receives bytes owned by the frame and its
+\ canonical path; both remain valid throughout the callback, including nested
+\ loads. This keeps the ordinary loader's root and cleanup rules.
+: READ-FOR ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] ) {: q :}
+   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$
+   SOURCE-INPUT:READ {: a:ptr u:n :}
+   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
+   a SOURCE <> if a SOURCE u BYTE-COPY then
+   TOP@ {: frame:ptr :}
+   SOURCE u frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+   q ;
+
+: COPY-FOR ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
+   {: a:ptr u:n q :}
+   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
+   a SOURCE <> if a SOURCE u BYTE-COPY then
+   TOP@ {: frame:ptr :}
+   SOURCE u frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+   a u q ;
+
+: WITH-BYTES-CURRENT ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] ) {: q :}
+   PUSH
+   q
+   [: READ-FOR ;] catch {: rc:n :}
+   drop
+   INCLUDE-CLOSE
+   POP {: release:n :}
+   rc 0= 0= if rc throw then
+   release 0 < if INCLUDE-IO-RC throw then
+   q ;
+
+: WITH-SUPPLIED-CURRENT ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
+   {: a:ptr u:n q :}
+   PUSH a u q
+   [: COPY-FOR ;] catch {: rc:n :}
+   2drop drop
+   INCLUDE-CLOSE
+   POP {: release:n :}
+   rc 0= 0= if rc throw then
+   release 0 < if INCLUDE-IO-RC throw then
+   a u q ;
+
 public
 
 : NAMED? ( -- bool )
@@ -1022,6 +1073,26 @@ public
 : LOAD ( ptr u8 n -- )
    INCLUDE-PATH0 drop
    RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+
+\ PATH has already been resolved by the loader's resolver. Like LOAD, this
+\ opens a source frame and makes its root current until the callback returns.
+: WITH-BYTES ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
+   {: path:ptr pathu:n q :}
+   path pathu INCLUDE-PATH0 drop
+   RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   q [: WITH-BYTES-CURRENT ;] catch {: rc:n :}
+   drop
+   fresh u old oldu rc ROOT-LEAVE ;
+
+\ A caller that owns PATH's source bytes can open the same loader frame without
+\ reading a different disk copy. This is used for an included buffer subject.
+: WITH-SUPPLIED ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- )
+   {: path:ptr pathu:n src:ptr srcu:n q :}
+   path pathu INCLUDE-PATH0 drop
+   RESOLVED-ROOT$ ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
+   src srcu q [: WITH-SUPPLIED-CURRENT ;] catch {: rc:n :}
+   2drop drop
+   fresh u old oldu rc ROOT-LEAVE ;
 
 ;package
 

@@ -8,6 +8,6 @@ $230 constant CERTIFICATE-OFF
 \ appends its own rows after the certificate cell (checker-owner-abi.f, last
 \ offset $2E0), so this is the end of the last appended field whichever table
 \ declared it; checker.f checks the two agree before it commits the storage.
-$2E8 constant BYTES
+$2F0 constant BYTES
 
 ;package

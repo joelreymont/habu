@@ -18,6 +18,7 @@
 \   a child that ends without a result reads as a verdict                 no-result, deadline
 \   a child that dies drops the packets it made before, a dependency's
 \   or the subject's                                                      died-after-packet
+\   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
@@ -273,6 +274,13 @@ variable START-NS
    s" back.f" BACK$SRC FIXTURE
    s" back-readme.f" BACK-README$SRC FIXTURE
    s" mark-dep.f" MARK-DEP$SRC FIXTURE
+   s" order-dep.f" s\" package CVT-ORDER public\n: VALUE ( -- n ) 7 ;\n;package\n" FIXTURE
+   s" order-late.f" s\" package CVT-LATE public\n: EARLY ( -- n ) CVT-ORDER:VALUE ;\n;package\nrequire order-dep.f\n" FIXTURE
+   s" order-context-dep.f" s\" package CVT-CONTEXT public\n: USE ( -- n ) VALUE ;\n;package\n" FIXTURE
+   s" order-context.f" s\" require order-dep.f\nusing CVT-ORDER\nrequire order-context-dep.f\n;using\n" FIXTURE
+   s" order-package-dep.f" s\" : CVT-PKG-VALUE ( -- n ) 3 ;\n" FIXTURE
+   s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
+   s" order-double.f" s\" include order-dep.f\ninclude order-dep.f\n" FIXTURE
    s" big.f" BIG$SRC FIXTURE ;
 
 
@@ -489,6 +497,69 @@ variable START-NS
    s" cli-truncated: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE ;
 
 
+\ These cases compare the real loader with both CHECK entry points. An ordered
+\ preload lets EARLY see a later file, loses the using inherited by USE, and
+\ verifies an included file only once. None has a top-level runtime action.
+: NATIVE-RC ( ptr u8 n -- n )
+   PROC-ARGV-ENV-RESET
+   s" --load" ARG+
+   ARG+
+   PROC-ENV-INHERIT-MISSING
+   s" " CLI nip ;
+
+: CHECK-RC ( ptr u8 n bool bool -- n )
+   {: path:ptr pathu:n verify:bool all:bool :}
+   CLI-START
+   all if s" --all-errors" ARG+ then
+   verify if s" --verify-only" ARG+ then
+   path pathu ARG+
+   s" " CLI nip ;
+
+: LOAD-ORDER ( -- )
+   s" order-late.f" AT$ {: path:ptr pathu:n :}
+   s" load-order: native refuses early reference" T-LABEL path pathu NATIVE-RC 70 T=
+   s" load-order: verify-only refuses early reference" T-LABEL path pathu true false CHECK-RC 70 T=
+   s" load-order: ordinary refuses early reference" T-LABEL path pathu false false CHECK-RC 70 T=
+   s" load-order: all-errors refuses early reference" T-LABEL path pathu false true CHECK-RC 70 T= ;
+
+: LOAD-CONTEXT ( -- )
+   s" order-context.f" AT$ {: path:ptr pathu:n :}
+   s" load-context: native inherits using" T-LABEL path pathu NATIVE-RC 0 T=
+   s" load-context: verify-only inherits using" T-LABEL path pathu true false CHECK-RC 0 T=
+   s" load-context: ordinary inherits using" T-LABEL path pathu false false CHECK-RC 0 T=
+   s" load-context: all-errors inherits using" T-LABEL path pathu false true CHECK-RC 0 T= ;
+
+: LOAD-PACKAGE ( -- )
+   s" order-package.f" AT$ {: path:ptr pathu:n :}
+   s" load-package: native inherits package" T-LABEL path pathu NATIVE-RC 0 T=
+   s" load-package: verify-only inherits package" T-LABEL path pathu true false CHECK-RC 0 T=
+   s" load-package: ordinary inherits package" T-LABEL path pathu false false CHECK-RC 0 T=
+   s" load-package: all-errors inherits package" T-LABEL path pathu false true CHECK-RC 0 T= ;
+
+: LOAD-REPEAT ( -- )
+   s" order-double.f" AT$ {: path:ptr pathu:n :}
+   s" load-repeat: native sees second include" T-LABEL path pathu NATIVE-RC 78 T=
+   s" load-repeat: verify-only sees second include" T-LABEL path pathu true false CHECK-RC 70 T=
+   s" load-repeat: ordinary sees second include" T-LABEL path pathu false false CHECK-RC 78 T=
+   s" load-repeat: all-errors sees second include" T-LABEL path pathu false true CHECK-RC 78 T= ;
+
+: DUPLICATE-AFTER-PACKET ( -- )
+   s" order-errors.f"
+   s\" package CVT-ORDER-ERR public\n: CVT-ORDER-BAD ( -- n ) drop ;\n;package\nrequire order-dups.f\n" FIXTURE
+   s" order-dups.f"
+   s\" package CVT-ORDER-DUP public\n: SAME ( -- n ) 1 ;\n: SAME ( -- n ) 2 ;\n;package\n" FIXTURE
+   CLI-START s" --all-errors" ARG+ s" --json-errors" ARG+ s" order-errors.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" duplicate-after-packet: original exit" T-LABEL rc 78 T=
+   s" duplicate-after-packet: JSON packets only" T-LABEL 0 ERR erru ALL-JSON? TTRUE
+   0 ERR erru JSONL-START-STRICT
+   s" duplicate-after-packet: earlier rejection first" T-LABEL
+   JSONL-NEXT-OBJECT s" word" STRING$ s" cvt-order-bad" T$=
+   s" duplicate-after-packet: duplicate second" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" duplicate-after-packet: both packets retained" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
+
+
 \ 69 is check.f refusing a file its own image holds. The check itself goes on
 \ to whatever lib/engine-candidate.f's closure earns, which this case leaves be.
 : DEFAULT-IMAGE ( -- )
@@ -542,6 +613,11 @@ public
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE
    s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
+   s" load-order" [: LOAD-ORDER ;] RUN-CASE
+   s" load-context" [: LOAD-CONTEXT ;] RUN-CASE
+   s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
+   s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
+   s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" default-image" [: DEFAULT-IMAGE ;] RUN-CASE
    MEASURE
    ROOT$ REMOVE-TREE

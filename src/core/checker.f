@@ -119,6 +119,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -136,7 +137,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:PKG-RESYNC-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-FILE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -1348,9 +1349,57 @@ REG-PROTECT
    0 CHECKER-VERIFY-PKG-DEPTH ! ;
 REG-PROTECT
 
+\ A source loaded inside an active verifier window inherits its caller's
+\ package and imports. The file boundary discards imports it opened on clean
+\ return, as the native evaluator does. A throw restores the entire entry
+\ context; the outer verifier window retains the declarations and pass floor.
+0 constant VF-MODE
+CELL constant VF-U
+2 cells constant VF-OWN
+3 cells constant VF-FLOOR
+4 cells constant VF-NAME
+VF-NAME CHECKER-PACKAGE-CAP + constant VF-IMPORTS
+VF-IMPORTS CK-USE-SNAP-BYTES + constant VF-BYTES
+
+: VF-SAVE ( ptr u8 -- ) {: frame:ptr :}
+   CHECKER-PACKAGE-MODE @ frame VF-MODE + CELL-VIEW !
+   CHECKER-PACKAGE-U @ frame VF-U + CELL-VIEW !
+   CHECKER-USE-OWNED-N @ frame VF-OWN + CELL-VIEW !
+   CHECKER-USE:SOURCE-FLOOR @ frame VF-FLOOR + CELL-VIEW !
+   CHECKER-PACKAGE-NAME frame VF-NAME + CHECKER-PACKAGE-U @ VPKG-COPY
+   frame VF-IMPORTS + CK-USE-MAX CK-USE-SAVE ;
+
+: VF-RESTORE ( ptr u8 -- ) {: frame:ptr :}
+   frame VF-NAME + CHECKER-PACKAGE-NAME frame VF-U + CELL-VIEW @ VPKG-COPY
+   frame VF-U + CELL-VIEW @ CHECKER-PACKAGE-U !
+   frame VF-MODE + CELL-VIEW @ CHECKER-PACKAGE-MODE !
+   frame VF-OWN + CELL-VIEW @ CHECKER-USE-OWNED-N !
+   frame VF-IMPORTS + CK-USE-RESTORE
+   frame VF-FLOOR + CELL-VIEW @ CHECKER-USE:SOURCE-FLOOR ! ;
+
+: VF-CLEAN ( ptr u8 -- ) {: frame:ptr :}
+   CHECKER-USE-OWNED-N @ frame VF-OWN + CELL-VIEW @ min CHECKER-USE-OWNED-N !
+   CHECKER-PACKAGE-USE-N @ CHECKER-USE-OWNED-N @ min CHECKER-PACKAGE-USE-N !
+   frame VF-FLOOR + CELL-VIEW @ CHECKER-USE:SOURCE-FLOOR ! ;
+
+TRUSTED: CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   VF-BYTES map-anon 0= 0= IF
+      s" checker: file scope allocation failed" 76 die
+   THEN {: frame:ptr :}
+   frame VF-SAVE
+   CHECKER-USE-OWNED-N @ CHECKER-USE:SOURCE-FLOOR !
+   q catch {: rc:n :}
+   rc 0= IF frame VF-CLEAN ELSE frame VF-RESTORE THEN
+   frame VF-BYTES munmap {: release:n :}
+   rc 0= 0= IF rc throw THEN
+   release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
+REG-PROTECT
+
 package CHECKER-REG
 ' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
 ' CHECKER-VERIFY-PKG-DONE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DONE-OFF + xt!
+' CHECKER-VERIFY-FILE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FILE-OFF + xt!
 ;package
 
 0 constant UK-EXACT

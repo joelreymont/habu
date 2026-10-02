@@ -101,7 +101,6 @@ variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
 variable CHK-SEL-LABEL-U
 variable CHK-SRC-U
-variable CHK-PRE-U
 variable CHK-RUN-U
 variable CHK-ORIGIN-U
 variable CHK-OUT-U
@@ -346,7 +345,6 @@ private
 
 : CHK-RUN-TEMP-CLEAR ( -- )
    0 CHK-SRC-U !
-   0 CHK-PRE-U !
    0 CHK-RUN-U !
    0 CHK-ORIGIN-U !
    0 CHK-OUT-U !
@@ -442,6 +440,10 @@ private
 
 : CHK-SOURCE ( -- ptr u8 n )
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
+
+: CHK-SOURCE-BYTES ( -- ptr u8 n )
+   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-CAP READ-ALL
+   CHK-SRC-BUF swap ;
 
 : CHK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CHK-LABEL-U !
@@ -1189,32 +1191,24 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ All-errors redrive over a discovered closure, a named file's or a source
-\ list's: run all-errors per ORIGINAL file in dependency order, registering
-\ each verified file as cross-file support so later files check against real
-\ prefix state. A file this image already holds is skipped, as the loader skips
-\ it. Per-file check failures (70/duplicate) are collected so every file
-\ reports; any other throw aborts.
+\ The lexer's file-local diagnostics still visit discovered files. Definition
+\ verification then follows the loader composition in one checker window.
 
 : CHK-ALL-ID-ACT ( -- )
-   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:FILE ;
+   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
 
 : CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
    CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
-
-: CHK-ALL-SUPPORT+ ( n -- ) {: id:n :}
-   id CHK-DEP$ CHECK-ALL-ERRORS:SUPPORT+ ;
 
 : CHK-RUN-ALL-ID ( n -- ) {: id:n :}
    id CHK-DEP-PRELOAD? 0= if exit then
    id CHK-ALL-ID !
    [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
-   rc 0= if id CHK-ALL-SUPPORT+ exit then
+   rc 0= if exit then
    rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
    rc throw ;
 
 : CHK-RUN-ALL-ORDER ( -- )
-   CHECK-ALL-ERRORS:SUPPORT-RESET
    0 CHK-ALL-RC !
    0 begin dup CHK-DEP-ORDER-N @ < while
       dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
@@ -1225,9 +1219,8 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER exit then
-   CHECK-ALL-ERRORS:SUPPORT-RESET
-   CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
+   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
 : CHK-RUN-ALL-FLUSH ( -- )
    CHECK-ALL-ERRORS:OUT$ CHK-ERR ;
@@ -1245,36 +1238,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
-: CHK-PREVERIFY-ACT ( -- )
-   CHK-SRC-BUF CHK-PRE-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
-
-: CHK-PREVERIFY-CAPTURE ( -- n )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
-   [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF
-   rc ;
-
-: CHK-PREVERIFY-FILE-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
-   label labelu DIAG-FILE!
-   CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
-   path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
-   CHK-PREVERIFY-CAPTURE dup 0 <> if throw then drop ;
-
-: CHK-PREVERIFY-ID ( n -- ) {: id:n :}
-   id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-DEP$ 2dup CHK-PREVERIFY-FILE-AS ;
-
-: CHK-PREVERIFY-ORDER ( -- )
-   0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-PREVERIFY-ID
-      1+
-   repeat drop ;
-
 : CHK-RUN-PREVERIFY-ACT ( -- )
-   CHK-DEP-ORDER-N @ 0 > if CHK-PREVERIFY-ORDER exit then
-   CHK-LABEL CHK-SOURCE CHK-PREVERIFY-FILE-AS ;
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
@@ -1308,6 +1274,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-JSON @ {: old-json:bool :}
    CHK-PREVERIFY-DIAG-START
    LINT-TRUE CHK-JSON !
+   LINT-TRUE DIAG-JSON!
    CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
@@ -1365,7 +1332,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS
    CHK-RUN-DIAG
-   CHK-RUN-PREVERIFY
+   CHK-ALL @ 0= if CHK-RUN-PREVERIFY then
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;

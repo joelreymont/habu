@@ -107,6 +107,7 @@ $2D8 constant FIELD-SPAN-OFF
 \ LEVALREC, EM-REPL-RECOVER; src/habu/interpret.f INTERPRET): the checker
 \ re-reads its package mirror from the restored scope.
 $2E0 constant PKG-RESYNC-OFF
+$2E8 constant VERIFY-FILE-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay
