@@ -25,10 +25,10 @@
 \ requires). With no package context (a package open after `0 set-current`) a word
 \ the tracker cannot query grays its outputs: the lines run to rc 0 with no
 \ package-context refusal, and tier 2 still rejects p3 by its own diagnostic.
-\ The same holds for a used-scope refusal the checker's resolver raises where the
-\ engine's does not (a used public retired by `undefine`, shadowing a global or
-\ sharing a tail with a live public): rc 0 and no refusal named at tier 1, p3
-\ rejected by its own diagnostic at tier 2.
+\ A used public retired by `undefine`, shadowing a global or sharing a tail with
+\ a live public, is skipped by the checker's resolver as by the engine: the tail
+\ binds the global (or the live public), rc 0 and no scope refusal named at
+\ tier 1, p3 rejected by its own diagnostic at tier 2.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -274,16 +274,16 @@ variable TW-CNT
    s" tier-2 no package context: p3 rejects by its own diagnostic" T-LABEL
    TW-NOCTX-P3$ TW-ASSERT-REJECTS  TW-NO-PKGCTX ;
 
-\ A scope refusal the checker's resolver owns and the engine's does not. The
-\ engine refuses a bare tail a global and a used public both export, and one two
-\ used publics export, before the word runs (rc 105 and the ambiguity rc), so the
-\ tracker never sees those lines. What it does see is a used public the engine
-\ has retired with `undefine` and the checker's symbol table still holds: the
-\ engine binds the global (or the one live public) and runs the line, while the
-\ checker's resolver refuses the same bare tail as E-USING-SHADOW-GLOBAL (7141)
-\ or E-USING-AMBIGUOUS (7144). The tracker defines nothing, so that refusal is
-\ not its to raise: the word's effect is unknown here and its outputs gray, the
-\ line runs, and nothing on stderr names the refusal at either tier.
+\ A used public retired with `undefine`, which the engine and the checker's
+\ resolver both bind past. The engine refuses a bare tail a global and a used
+\ public both export, and one two used publics export, before the word runs
+\ (rc 105 and the ambiguity rc), so the tracker never sees those lines. Once the
+\ public is retired the engine binds the global (or the one live public) and runs
+\ the line; the resolver skips the retired symbol as the engine does (SYM-LIVE),
+\ so it binds the same word and refuses nothing, neither E-USING-SHADOW-GLOBAL
+\ (7141) nor E-USING-AMBIGUOUS (7144). These cases guard that agreement: at
+\ tier 1 the line runs with no warning and rc 0, at tier 2 p3's own diagnostic
+\ is the only one, and nothing on stderr names either refusal.
 : TW-SHADOW ( -- )                       \ a used public, retired, shadowing global drop
    SB-RESET
    s" package TW-SHADOW public : drop ( n -- ) . ; undefine drop ;package" TW-LINE

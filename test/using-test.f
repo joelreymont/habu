@@ -346,6 +346,30 @@ s" : UQX-R2 ( -- n ) AW ; UQX-R2 USING-TEST:UQX-V !" UCE-CATCH 0 T=
 USING-TEST:UQX-V @ 11 T=
 ;using ;package
 
+\ === a retired used public is no candidate (dot habu-skip-retired-used-58ba2793) ===
+\ `undefine` retires a used package's public. The engine's used-search skips it
+\ and binds the global or the one live public, else nothing; the checker's
+\ used-search skips it too (SYM-LIVE), so a checked body certifies against the
+\ word the engine binds and runs it, and a tail with nothing left to bind is
+\ undefined. The retired publics' effects differ from the words bound in their
+\ place, so a body certified against a retired one is refused. The checker used
+\ to find the retired symbol and refused the first two shapes as
+\ E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
+package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
+package URA public : URW ( n -- n ) 1 + ; ;package
+package URB public : URW ( n -- ) drop ; undefine URW ;package
+package URN public : URNW ( -- n ) 3 ; undefine URNW ;package
+package USING-TEST public variable URS-V ;package
+\ a retired public shadowing global drop: the body's drop is the global ( x -- )
+s" using URS : URS-R1 ( n n -- n ) drop ; ;using 5 7 URS-R1 USING-TEST:URS-V !" UCE-CATCH 0 T=
+USING-TEST:URS-V @ 5 T=
+\ two used publics of one tail, one retired: URW is URA's ( n -- n )
+s" using URA using URB : URA-R1 ( n -- n ) URW ; ;using ;using 41 URA-R1 USING-TEST:URS-V !" UCE-CATCH 0 T=
+USING-TEST:URS-V @ 42 T=
+\ a retired public with no global: undefined on both routes
+s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH E-REJECT T=
+s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

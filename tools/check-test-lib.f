@@ -2084,6 +2084,445 @@ POISON-RECORD
    NEU-CLEAN-PKG-RC @ 0 T=
    NEU-THROW-PKG-RC @ 0 T= ;
 
+\ --- one file is checked in its load context -------------------------------
+\
+\ `tools/check.f FILE` checks FILE the way `bin/hb --load FILE` loads it. The
+\ static stages replay FILE's require closure in dependency order and verify
+\ FILE last, so a word FILE's own require supplies resolves, and a rejection
+\ inside a dependency is reported in the dependency. The run stage loads FILE
+\ from its own path, so a require relative to FILE's directory resolves there
+\ too. A file the engine provides is not checked and says so with the usage
+\ status a source list gives; a file of check.f's own closure, which only the
+\ checking image holds, says the checker cannot check it. Every case runs the
+\ real command line.
+\
+\ A sibling require resolves against the directory of the file the command line
+\ named; a file loaded with `required` gets the working directory instead when
+\ it lies below it. LC-ROOT is such a working directory: the tree and the engine
+\ under test are linked in beside `sub/`, which holds the files checked there.
+
+create LC-PATH FS-PATH-CAP allot
+create LC-ROOT FS-PATH-CAP allot
+variable LC-PATH-U
+variable LC-ROOT-U
+
+: LC-PATH$ ( -- ptr u8 n )
+   LC-PATH LC-PATH-U @ ;
+
+: LC-ROOT$ ( -- ptr u8 n )
+   LC-ROOT LC-ROOT-U @ ;
+
+: LC-AT ( ptr u8 n -- ptr u8 n )
+   ROOT$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   LC-PATH$ ;
+
+: LC-IN-ROOT ( ptr u8 n -- ptr u8 n )
+   LC-ROOT$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   LC-PATH$ ;
+
+: LC-WRITE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n src:ptr srcu:n :}
+   name nameu LC-AT src srcu WRITE-ALL ;
+
+: LC-DEP$SRC ( -- ptr u8 n )
+   s\" : CKT-LC-SEVEN ( -- n ) 7 ;\n" ;
+
+: LC-USE$SRC ( -- ptr u8 n )
+   s\" require lc-dep.f\n: CKT-LC-USE ( -- n ) CKT-LC-SEVEN ;\n" ;
+
+: LC-USE-ABS$SRC ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND
+   s" lc-dep.f" LC-AT SB-APPEND
+   $0a SB-APPEND-C
+   s\" : CKT-LC-USE ( -- n ) CKT-LC-SEVEN ;\n" SB-APPEND
+   SB$ ;
+
+: LC-UNDEF$SRC ( -- ptr u8 n )
+   s\" require lc-dep.f\n: CKT-LC-OK ( -- n ) CKT-LC-SEVEN ;\n: CKT-LC-BAD ( -- n ) CKT-LC-NOPE ;\n" ;
+
+: LC-DUP$SRC ( -- ptr u8 n )
+   s\" require lc-dep.f\n: CKT-LC-SEVEN ( -- n ) 8 ;\n" ;
+
+: LC-BAD-DEP$SRC ( -- ptr u8 n )
+   s\" : CKT-LC-EIGHT ( -- n ) 8 ;\n: CKT-LC-BROKEN ( -- n n ) 8 ;\n" ;
+
+: LC-USE-BAD$SRC ( -- ptr u8 n )
+   s\" require lc-bad-dep.f\n: CKT-LC-USE8 ( -- n ) CKT-LC-EIGHT ;\n" ;
+
+\ A family declaration missing its arity, which the nominal pass refuses.
+: LC-DECL$SRC ( -- ptr u8 n )
+   s\" NEWTYPE cklcnoar\n" ;
+
+\ An unterminated string, which discovery refuses before any later stage reads
+\ the file.
+: LC-UNTERM$SRC ( -- ptr u8 n )
+   s\" : CKT-LC-UNTERM ( -- ptr u8 n ) s\" nope ;\n" ;
+
+: LC-QUOTE$ ( -- ptr u8 n )
+   s\" lc-q\"uote.f" ;
+
+: LC-BACK$ ( -- ptr u8 n )
+   s\" lc-b\\ack.f" ;
+
+\ A link to LC-QUOTE$, and one whose own name holds a backslash to
+\ lc-bad-dep.f, which the verifier refuses.
+: LC-QLINK$ ( -- ptr u8 n )
+   s" lc-qlink.f" ;
+
+: LC-BLINK$ ( -- ptr u8 n )
+   s\" lc-b\\link.f" ;
+
+: LC-FIXTURES ( -- )
+   s" lc-dep.f" LC-DEP$SRC LC-WRITE
+   s" lc-use.f" LC-USE$SRC LC-WRITE
+   s" lc-use-abs.f" LC-USE-ABS$SRC LC-WRITE
+   s" lc-undef.f" LC-UNDEF$SRC LC-WRITE
+   s" lc-dup.f" LC-DUP$SRC LC-WRITE
+   s" lc-bad-dep.f" LC-BAD-DEP$SRC LC-WRITE
+   s" lc-use-bad.f" LC-USE-BAD$SRC LC-WRITE
+   s" lc-decl.f" LC-DECL$SRC LC-WRITE
+   LC-QUOTE$ LC-UNTERM$SRC LC-WRITE
+   LC-BACK$ LC-UNTERM$SRC LC-WRITE
+   LC-QUOTE$ LC-QLINK$ LC-AT MAKE-SYMLINK
+   s" lc-bad-dep.f" LC-BLINK$ LC-AT MAKE-SYMLINK ;
+
+: LC-LINK+ ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu CLI-TARGET CLI-TARGET-U CLI-ABS!
+   CLI-TARGET CLI-TARGET-U @ name nameu LC-IN-ROOT MAKE-SYMLINK ;
+
+\ No file in this root requires an engine-provided file, and none may: through
+\ the links, a subject that requires one (`lib/string.f`) is refused with an
+\ E-BAD-DECLARATION "duplicate family" whose file is `<input>`, a fault of
+\ checking in a linked root that predates the load-context replay.
+: LC-ROOT-SETUP ( -- )
+   ROOT$ s" lc-root" LC-ROOT JOIN-PATH LC-ROOT-U !
+   LC-ROOT$ MAKE-DIR
+   s" lib" LC-LINK+
+   s" tools" LC-LINK+
+   s" src" LC-LINK+
+   s" bin" LC-IN-ROOT MAKE-DIR
+   CLI-HB$ s" bin/hb" LC-IN-ROOT MAKE-SYMLINK
+   s" sub" LC-IN-ROOT MAKE-DIR
+   s" sub/lc-dep.f" LC-IN-ROOT LC-DEP$SRC WRITE-ALL
+   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC WRITE-ALL ;
+
+\ The child runs with this process's environment in the given directory.
+: LC-CAPTURE ( ptr u8 n -- n n n ) {: cwd:ptr cwdu:n :}
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   CLI-HB$ >LEN cwd cwdu >LEN
+   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   CAPTURE>N ;
+
+: LC-ARGV-ALL ( -- )
+   CHECK-ARGV-START
+   s" --json-errors" CHECK-ARG+
+   s" --all-errors" CHECK-ARG+ ;
+
+: LC-ALL ( ptr u8 n -- n n n )
+   LC-ARGV-ALL
+   CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: LC-STDIN ( ptr u8 n -- n n n )
+   LC-ARGV-ALL
+   CHECK-STDIN-CAPTURE ;
+
+\ A case reads the packets it asserts on from the parsed stderr stream, so its
+\ expectation states the contract: which file a packet names, at which line.
+
+\ The value under KEY in packet NODE when it has KIND, else -1.
+: LC-VALUE ( n ptr u8 n n -- n ) {: node:n key:ptr keyu:n kind:n :}
+   node 0 < if -1 exit then
+   node key keyu JSON-GET {: v:n :}
+   v 0 < if -1 exit then
+   v JSON-KIND kind = if v exit then
+   -1 ;
+
+: LC-STRING$ ( n ptr u8 n -- ptr u8 n )
+   J-STR LC-VALUE dup 0 < if drop s" " exit then
+   JSON-STRING$ ;
+
+: LC-NUMBER$ ( n ptr u8 n -- ptr u8 n )
+   J-NUM LC-VALUE dup 0 < if drop s" " exit then
+   JSON-NUMBER$ ;
+
+\ The first packet on the captured stderr whose string KEY is VALUE, or -1.
+\ Its fields stay readable until the next parse.
+: LC-PACKET ( n ptr u8 n ptr u8 n -- n ) {: erru:n key:ptr keyu:n val:ptr valu:n :}
+   CAP-ERR erru JSONL-START
+   begin
+      JSONL-NEXT-OBJECT
+      dup 0 < if exit then
+      dup key keyu LC-STRING$ val valu LINT-STR= 0=
+   while
+      drop
+   repeat ;
+
+create LC-CANON FS-PATH-CAP allot
+variable LC-CANON-U
+
+\ A JSON packet names the file at PATH by its canonical absolute path.
+: LC-EXPECT-FILE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n path:ptr pathu:n label:ptr labelu:n :}
+   path pathu LC-CANON LC-CANON-U CLI-ABS!
+   label labelu T-LABEL f fu LC-CANON LC-CANON-U @ T$= ;
+
+\ One diagnostic line as stderr carries it.
+: LC-LINE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET SB-APPEND $0a SB-APPEND-C SB$ ;
+
+: LC-EXPECT-CLEAN ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 0 T=
+   label labelu T-LABEL outu 0 T=
+   label labelu T-LABEL erru 0 T= ;
+
+: LC-SIBLING-CASE ( -- )
+   s" lc-use.f" LC-AT LC-ALL s" load-context: relative require" LC-EXPECT-CLEAN
+   s" lc-use-abs.f" LC-AT LC-ALL s" load-context: absolute require" LC-EXPECT-CLEAN ;
+
+: LC-ENTRY-ROOT-CASE ( -- )
+   LC-ARGV-ALL
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN ;
+
+: LC-TREE-CASE ( -- )
+   s" test/addrmap-set.f" LC-ALL
+   s" load-context: test/addrmap-set.f" T-LABEL 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   CAP-OUT outu s" addrmap-set: ok" CONTAINS? TTRUE ;
+
+: LC-PROVIDED-CASE ( -- )
+   s" lib/string.f" LC-ALL
+   s" load-context: engine-provided lib/string.f" T-LABEL 64 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" check.f: source is already provided" CONTAINS? TTRUE
+   CAP-ERR erru s" schema_version" CONTAINS? TFALSE ;
+
+\ A file of check.f's own closure is held by the checking image though the
+\ engine does not provide it: `bin/hb --load` loads it, and only this checker
+\ cannot verify it, so the status is unavailable rather than usage.
+: LC-TOOL-CLOSURE-CASE ( -- )
+   s" lib/process.f" LC-ALL
+   s" load-context: a file of check.f's own closure" T-LABEL 69 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru
+   s" check.f: check.f's own image holds the source; resident verification cannot check it"
+   LC-LINE$ T$= ;
+
+\ A source list is a usage error only when the engine provides every input; a
+\ list the checking image holds whole, here one engine file and one of the
+\ tool's, is unavailable.
+: LC-TOOL-LIST-CASE ( -- )
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   s" lib/string.f" CHECK-ARG+
+   s" lib/process.f" CHECK-ARG+
+   CHECK-CAPTURE
+   s" load-context: a source list check.f's own image holds" T-LABEL 69 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru
+   s" check.f: check.f's own image holds every source-list input; resident verification cannot check them"
+   LC-LINE$ T$= ;
+
+: LC-UNDEFINED-CASE ( -- )
+   s" lc-undef.f" LC-AT LC-ALL
+   s" load-context: undefined word" T-LABEL 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"token\":\"CKT-LC-SEVEN\"" CONTAINS? TFALSE
+   erru s" code" s" E-UNDEFINED" LC-PACKET {: p:n :}
+   p s" token" LC-STRING$ s" CKT-LC-NOPE" T$=
+   p s" file" LC-STRING$ s" lc-undef.f" LC-AT s" load-context: undefined word, file" LC-EXPECT-FILE
+   p s" line" LC-NUMBER$ s" 3" T$= ;
+
+: LC-DUPLICATE-CASE ( -- )
+   s" lc-dup.f" LC-AT LC-ALL
+   s" load-context: duplicate of a dependency's word" T-LABEL CHECK-ALL-ERRORS:DUP-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru s" code" s" E-DUPLICATE-DEFINITION" LC-PACKET s" file" LC-STRING$
+   s" lc-dup.f" LC-AT s" load-context: duplicate, file" LC-EXPECT-FILE ;
+
+: LC-DEPENDENCY-CASE ( -- )
+   s" lc-use-bad.f" LC-AT LC-ALL
+   s" load-context: rejection inside a dependency" T-LABEL 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru s" word" s" ckt-lc-broken" LC-PACKET {: p:n :}
+   p s" file" LC-STRING$ s" lc-bad-dep.f" LC-AT s" load-context: dependency rejection, file" LC-EXPECT-FILE
+   p s" line" LC-NUMBER$ s" 2" T$= ;
+
+: LC-DECLARATION-CASE ( -- )
+   s" lc-decl.f" LC-AT LC-ALL
+   s" load-context: refused declaration" T-LABEL 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru s" code" s" E-BAD-DECLARATION" LC-PACKET s" file" LC-STRING$
+   s" lc-decl.f" LC-AT s" load-context: refused declaration, file" LC-EXPECT-FILE ;
+
+\ The check quotes a path or label into a line it writes and hands a path to
+\ the file system. A path or label holding a byte the quoting refuses (double
+\ quote, backslash, CR, LF, NUL) is one usage line in every mode, and a listed
+\ path holding a NUL is refused before the engine's resolver sees it. The
+\ quoted spelling is the canonical path for a named file, the path as given
+\ for a listed one, and the label in the run stage: a plain named file's path
+\ as given, or a CHECK:SOURCE label. It is judged before anything reads the
+\ source, so each case's source is one a later stage refuses, and the answer
+\ is the path's whatever the file holds.
+: LC-EXPECT-UNSAFE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 64 T=
+   label labelu T-LABEL outu 0 T=
+   label labelu T-LABEL CAP-ERR erru
+   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL"
+   LC-LINE$ T$= ;
+
+: LC-NUL$ ( -- ptr u8 n )
+   SB-RESET s" lc-n" SB-APPEND 0 SB-APPEND-C s" ul.f" SB-APPEND SB$ ;
+
+: LC-UNSAFE-TARGET-CASE ( -- )
+   LC-QLINK$ LC-AT LC-ALL
+   s" load-context: a link to a name with a double quote, refused by discovery"
+   LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-LIST-CASE ( -- )
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   LC-BACK$ LC-AT CHECK-ARG+
+   CHECK-CAPTURE
+   s" load-context: a listed path with a backslash, refused by discovery"
+   LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-LIST-NUL-CASE ( -- )
+   LC-NUL$ LIST-RUN
+   s" load-context: a listed path with a NUL" LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-PLAIN-CASE ( -- )
+   CHECK-ARGV-START
+   LC-BLINK$ LC-AT CHECK-ARG+
+   CHECK-CAPTURE
+   s" load-context: a plain named path with a backslash, refused by the verifier"
+   LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-SOURCE-CASE ( -- )
+   RESET
+   s" json-errors" OPT
+   LC-DECL$SRC LC-BACK$ SOURCE
+   [: RUN-ACT ;] IN-PROC
+   s" load-context: a JSON CHECK:SOURCE label with a backslash, refused declaration"
+   LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-SOURCE-NUL-CASE ( -- )
+   RESET
+   LC-DECL$SRC LC-NUL$ SOURCE
+   [: RUN-ACT ;] IN-PROC
+   s" load-context: a CHECK:SOURCE label with a NUL, refused declaration"
+   LC-EXPECT-UNSAFE ;
+
+: LC-UNSAFE-NUL-CASE ( -- )
+   LC-NUL$ PATH-RUN
+   s" load-context: a named path with a NUL" LC-EXPECT-UNSAFE ;
+
+\ Existence is checked before the path is quoted.
+: LC-MISSING-QUOTE-CASE ( -- )
+   s\" lc-missing-q\"uote.f" LC-AT LC-ALL
+   s" load-context: a missing path with a double quote" T-LABEL 66 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" check.f: no such source" LC-LINE$ T$= ;
+
+\ A relative path as long as a path may be names no file, and its absolute
+\ spelling is longer than the engine's resolver takes. Listed, it is missing,
+\ as it is named, and the resolver never sees it.
+: LC-LONG$ ( -- ptr u8 n )
+   SB-RESET
+   FS-PATH-CAP 2 - 0 ?do $61 SB-APPEND-C loop
+   s" .f" SB-APPEND SB$ ;
+
+: LC-LONG-LIST-CASE ( -- )
+   CHECK-ARGV-START
+   s" --source-list" CHECK-ARG+
+   LC-LONG$ CHECK-ARG+
+   CHECK-CAPTURE
+   s" load-context: a listed path longer than the engine resolves" T-LABEL 66 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" check.f: no such source" LC-LINE$ T$= ;
+
+\ One run names a file one way: every JSON packet about the file the command
+\ line gives names it by its canonical absolute path. A lint finding ends the
+\ static stage, so no run holds both a lint packet and a verifier packet: the
+\ path holds three sources in turn, whose packets come from the lint, the
+\ verifier and the run stage's child.
+: LC-NAMED$ ( -- ptr u8 n )
+   s" sub/lc-named.f" ;
+
+: LC-LINT$SRC ( -- ptr u8 n )
+   s\" : I ( -- ) ;\n" ;
+
+: LC-VERIFY$SRC ( -- ptr u8 n )
+   s\" : CKT-LC-B ( -- n ) 1 ;\n: CKT-LC-C ( -- n ) CKT-LC-B 1 ;\n" ;
+
+\ Only the run stage executes top-level code, so only its child sees CKT-LC-E.
+: LC-RUN$SRC ( -- ptr u8 n )
+   s\" s\" : CKT-LC-E ( -- n ) 1 2 ;\" evaluate\n" ;
+
+\ Once the named path holds SRC, its check exits RC and the first CODE packet
+\ names the file.
+: LC-NAMED-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n code:ptr codeu:n label:ptr labelu:n :}
+   LC-NAMED$ LC-IN-ROOT src srcu WRITE-ALL
+   LC-ARGV-ALL
+   LC-NAMED$ CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE
+   label labelu T-LABEL rc T=
+   {: outu:n erru:n :}
+   label labelu T-LABEL outu 0 T=
+   erru s" code" code codeu LC-PACKET s" file" LC-STRING$
+   LC-NAMED$ LC-IN-ROOT label labelu LC-EXPECT-FILE ;
+
+: LC-SPELLING-CASE ( -- )
+   LC-LINT$SRC 1 s" E-RESERVED-DEFINITION" s" load-context: lint packet" LC-NAMED-CASE
+   LC-VERIFY$SRC 70 s" E-MISMATCH" s" load-context: verifier packet" LC-NAMED-CASE
+   LC-RUN$SRC 70 s" E-MISMATCH" s" load-context: run-stage packet" LC-NAMED-CASE ;
+
+: LC-STDIN-CASE ( -- )
+   BAD$SRC LC-STDIN
+   s" load-context: stdin rejection" T-LABEL 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"file\":\"<stdin>\",\"line\":1," CONTAINS? TTRUE ;
+
+: TEST-LOAD-CONTEXT ( -- )
+   LC-FIXTURES
+   LC-ROOT-SETUP
+   LC-SIBLING-CASE
+   LC-ENTRY-ROOT-CASE
+   LC-TREE-CASE
+   LC-PROVIDED-CASE
+   LC-TOOL-CLOSURE-CASE
+   LC-TOOL-LIST-CASE
+   LC-UNDEFINED-CASE
+   LC-DUPLICATE-CASE
+   LC-DEPENDENCY-CASE
+   LC-DECLARATION-CASE
+   LC-UNSAFE-TARGET-CASE
+   LC-UNSAFE-LIST-CASE
+   LC-UNSAFE-LIST-NUL-CASE
+   LC-UNSAFE-PLAIN-CASE
+   LC-UNSAFE-SOURCE-CASE
+   LC-UNSAFE-SOURCE-NUL-CASE
+   LC-UNSAFE-NUL-CASE
+   LC-MISSING-QUOTE-CASE
+   LC-LONG-LIST-CASE
+   LC-SPELLING-CASE
+   LC-STDIN-CASE ;
+
 : TEST-MAIN ( -- )
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
@@ -2178,6 +2617,7 @@ POISON-RECORD
    s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
+   s" check/file-load-context" [: TEST-LOAD-CONTEXT ;] CASE-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

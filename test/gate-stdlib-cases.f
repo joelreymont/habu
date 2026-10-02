@@ -301,6 +301,10 @@ SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
 
+SUITE check-verify
+   tools/check-verify-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
@@ -2193,6 +2197,10 @@ WHITEBOX-SUITE declaration-replay-source
 
 SUITE program-diagnostics
    test/program-diagnostics-test.f
+;SUITE
+
+SUITE diag-json-escape
+   test/diag-json-escape.f
 ;SUITE
 
 SUITE native-suite-cli
