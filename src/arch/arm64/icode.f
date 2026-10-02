@@ -567,6 +567,8 @@ variable BYU
 : BYTES-PAD ( -- )
    BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 CODE-BYTE+ BYP !  REPEAT ;
 
+\ Each call is its own run: the bytes, then NUL pad to the next word. A span
+\ written as one, such as a message and its newline, is one call.
 : BYTES, ( ptr u8 n -- )
    BYTES-ARGS
    BYTES-CAP
