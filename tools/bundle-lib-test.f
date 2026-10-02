@@ -9,6 +9,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test/outcome.f
+require lib/test/subject.f
 require tools/cli-run.f
 require tools/bundle-lib-core.f
 
