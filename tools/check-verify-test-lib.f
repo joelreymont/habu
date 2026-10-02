@@ -12,6 +12,8 @@
 \   are counted in it                                                     buffer-not-disk
 \   a dependency that requires PATH back meets the copy on disk           requires-back
 \   a require of an absent PATH falls back to another file                absent-path
+\   an included child lowers the source using floor, then leaves an
+\   import visible after clean return                                     load-using-floor
 \   a dependency's packets are dropped, or name the subject               failing-dependency
 \   an engine-provided path is verified because of its bytes              engine-provided
 \   the verifier's own source is verified in the image that holds it      held
@@ -282,6 +284,9 @@ variable CLI-OUT-U
    s" order-context.f" s\" require order-dep.f\nusing CVT-ORDER\nrequire order-context-dep.f\n;using\n" FIXTURE
    s" order-package-dep.f" s\" : CVT-PKG-VALUE ( -- n ) 3 ;\n" FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
+   s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
+   s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
+   s" order-floor-require.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\nrequire order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-double.f" s\" include order-dep.f\ninclude order-dep.f\n" FIXTURE
    s" big.f" BIG$SRC FIXTURE ;
 
@@ -617,6 +622,18 @@ variable CLI-OUT-U
    s" load-package: ordinary inherits package" T-LABEL path pathu false false CHECK-RC 0 T=
    s" load-package: all-errors inherits package" T-LABEL path pathu false true CHECK-RC 0 T= ;
 
+: LOAD-USING-FLOOR ( -- )
+   s" order-floor-include.f" AT$ {: path:ptr pathu:n :}
+   s" load-using-floor: native include refuses stale import" T-LABEL path pathu NATIVE-RC 70 T=
+   s" load-using-floor: verify-only include refuses stale import" T-LABEL path pathu true false CHECK-RC 70 T=
+   s" load-using-floor: ordinary include refuses stale import" T-LABEL path pathu false false CHECK-RC 70 T=
+   s" load-using-floor: all-errors include refuses stale import" T-LABEL path pathu false true CHECK-RC 70 T=
+   s" order-floor-require.f" AT$ {: req:ptr requ:n :}
+   s" load-using-floor: native require refuses stale import" T-LABEL req requ NATIVE-RC 70 T=
+   s" load-using-floor: verify-only require refuses stale import" T-LABEL req requ true false CHECK-RC 70 T=
+   s" load-using-floor: ordinary require refuses stale import" T-LABEL req requ false false CHECK-RC 70 T=
+   s" load-using-floor: all-errors require refuses stale import" T-LABEL req requ false true CHECK-RC 70 T= ;
+
 : LOAD-REPEAT ( -- )
    s" order-double.f" AT$ {: path:ptr pathu:n :}
    s" load-repeat: native sees second include" T-LABEL path pathu NATIVE-RC 78 T=
@@ -699,6 +716,7 @@ public
    s" load-order" [: LOAD-ORDER ;] RUN-CASE
    s" load-context" [: LOAD-CONTEXT ;] RUN-CASE
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
+   s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" default-image" [: DEFAULT-IMAGE ;] RUN-CASE
