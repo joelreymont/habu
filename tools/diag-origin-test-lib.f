@@ -45,20 +45,19 @@ create DGT-ERR DGT-BUF-CAP allot
    SB$ ;
 
 : DGT-MARKER-OK ( -- )
-   s" 3 3 33 DIAG-ORIGIN!" SB-APPEND DGT-LF ;
+   s"  3 3 33 DIAG-ORIGIN! " SB-APPEND ;
 
 : DGT-MARKER-BAD ( -- )
-   s" 5 3 69 DIAG-ORIGIN!" SB-APPEND DGT-LF ;
+   s"  5 3 69 DIAG-ORIGIN! " SB-APPEND ;
 
+\ Each marker sits on its definition's line: no source line moves.
 : DGT-WANT$ ( -- ptr u8 n )
    SB-RESET
    92 SB-APPEND-C s"  : COMMENTED ;" SB-APPEND DGT-LF
    DGT-SQ-LINE
-   DGT-LF
    DGT-MARKER-OK
    s" : OK ( n -- n ) dup ;" SB-APPEND DGT-LF
    s" ( : PAREN ; )" SB-APPEND DGT-LF
-   DGT-LF
    DGT-MARKER-BAD
    s" : ;" SB-APPEND DGT-LF
    SB$ ;

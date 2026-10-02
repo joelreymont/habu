@@ -3268,6 +3268,38 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
+\ The run refuses what the checker leaves to it: a `using` of a package nothing
+\ defines dies in the engine, which names the file and line it is reading. The
+\ run reads a copy of the subject with an origin marker before each definition,
+\ and the report still names the subject at the line the statement sits on, in
+\ prose and under --json-errors, for a file and for a source given by label.
+: USING-AT-LINES ( -- )
+   s" : CKT-UA-ONE ( -- n ) 1 ;" REQ-LINE+
+   $0a SB-APPEND-C
+   s" : CKT-UA-TWO ( -- n ) 2 ;" REQ-LINE+
+   s" using CKT-UA-NOPE" REQ-LINE+ ;
+
+\ The engine's refusal of the `using` on line 4 of the named source.
+: USING-AT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" hb: using: unknown package: CKT-UA-NOPE at " SB-APPEND
+   a u SB-APPEND
+   s" :4" SB-APPEND
+   SB$ ;
+
+: EXPECT-USING-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc ENGINE-ERROR:USING-UNKNOWN T=
+   outu 0 T=
+   CAP-ERR erru at atu USING-AT$ CONTAINS? TTRUE ;
+
+: TEST-USING-AT-SOURCE ( -- )
+   SB-RESET USING-AT-LINES s" using-at.f" REQ-WRITE
+   s" using-at.f" REQ-RUN s" using-at.f" REQ$ EXPECT-USING-AT
+   s" using-at.f" ST-JSON-RUN s" using-at.f" REQ$ EXPECT-USING-AT
+   RESET
+   SB-RESET USING-AT-LINES SB$ s" ckt-using-at.f" SOURCE
+   [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
+
 \ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
 \ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
 \ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
@@ -3810,6 +3842,7 @@ POISON-RECORD
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
+   s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/capacity-throw" [: TEST-CAPACITY-THROW ;] CASE-RUN
    s" check/storage-type" [: TEST-STORAGE-TYPE ;] CASE-RUN
    s" check/storage-name" [: TEST-STORAGE-NAME ;] CASE-RUN

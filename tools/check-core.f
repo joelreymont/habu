@@ -110,6 +110,7 @@ TYPED-VARIABLE CHK-RUN-BUF-A ptr u8
 TYPED-VARIABLE CHK-ORIGIN-BUF-A ptr u8
 TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
 TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
+TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
 TYPED-VARIABLE CHK-EXP-BUF-A ptr u8
 TYPED-VARIABLE CHK-SEL-SRC-BUF-A ptr u8
 
@@ -129,6 +130,7 @@ variable CHK-RUN-U
 variable CHK-ORIGIN-U
 variable CHK-OUT-U
 variable CHK-ERR-U
+variable CHK-MAP-U
 variable CHK-RC
 variable CHK-CHILD-RC
 variable CHK-NUM-I
@@ -200,6 +202,10 @@ variable CHK-TFAM-NAME-I
 : CHK-ERR-BUF ( -- ptr u8 )
    CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
    CHK-ERR-BUF-A @ ;
+
+: CHK-MAP-BUF ( -- ptr u8 )
+   CHK-MAP-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-MAP-BUF-A ! then
+   CHK-MAP-BUF-A @ ;
 
 : CHK-EXP-BUF ( -- ptr u8 )
    CHK-EXP-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-EXP-BUF-A ! then
@@ -421,8 +427,12 @@ public
 
 private
 
+\ The root is spelled canonically: the engine names a file it loads by its
+\ canonical path, so the run file's name in the run's diagnostics is the one
+\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT).
 : CHK-MAKE-TEMP ( -- )
-   s" habu-check" HB-TMP-MKDIR CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
+   s" habu-check" HB-TMP-MKDIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
+   CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
    CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U ! ;
 
@@ -1713,9 +1723,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    c CHK-RUN-BUF CHK-RUN-U @ + c!
    CHK-RUN-U @ 1+ CHK-RUN-U ! ;
 
-: CHK-RUN-LN ( ptr u8 n -- )
+: CHK-RUN-SP ( ptr u8 n -- )
    CHK-RUN+
-   CHK-LF CHK-RUN-C ;
+   CHK-SP CHK-RUN-C ;
 
 : CHK-RUN-N ( n -- )
    CHK-U$ CHK-RUN+ ;
@@ -1724,15 +1734,17 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
    CHK-U$ CHK-ERR ;
 
+\ The prefix shares the subject's first line, and the origin markers sit on
+\ their definitions' lines, so line N of the run file is line N of the subject:
+\ the engine counts the lines of the file it reads when it refuses a statement.
 : CHK-BUILD-PREFIX ( -- )
-   s" 0 set-check" CHK-RUN-LN
+   s" 0 set-check" CHK-RUN-SP
    CHK-LABEL >LEN CHK-RUN-BUF CHK-RUN-CAP >LEN CHK-RUN-U SOURCE-APPEND-QPATH
-   s"  DIAG-FILE!" CHK-RUN-LN
-   CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
-   s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
-   s"    LOWER-CERT-HOOK:HOOK ;" CHK-RUN-LN
-   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-LN
-   s" ' CHECK-F-HOOK set-check" CHK-RUN-LN ;
+   s"  DIAG-FILE!" CHK-RUN-SP
+   CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
+   s" : CHECK-F-HOOK ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;" CHK-RUN-SP
+   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP
+   s" ' CHECK-F-HOOK set-check" CHK-RUN-SP ;
 
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
@@ -1935,11 +1947,43 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
 
+: CHK-MAP+ ( ptr u8 n -- )
+   >LEN CHK-MAP-BUF CHK-ERR-CAP >LEN CHK-MAP-U SOURCE-APPEND-BYTES ;
+
+\ Where the run file's name next starts in the given bytes, or -1.
+: CHK-RUN-NAMED-AT ( ptr u8 n -- n )
+   CHK-RUN-PATH FIND-SUB MATCH option
+     some OF IDX>N ENDOF
+     none OF -1 ENDOF
+   ;MATCH ;
+
+\ The bytes before the run file's name at at, then the label in its place;
+\ the bytes after the name remain.
+: CHK-MAP-NAME ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n at:n :}
+   a at CHK-MAP+
+   CHK-LABEL CHK-MAP+
+   at CHK-RUN-PATH-U @ + {: past:n :}
+   a past +  u past - ;
+
+\ The run file is the subject line for line (CHK-BUILD-PREFIX), so where the
+\ run's diagnostics name it, as the engine's refusal of a statement does, they
+\ name the subject at that line.
+: CHK-ERR-NAME-SUBJECT ( -- )
+   0 CHK-MAP-U !
+   CHK-ERR-BUF CHK-ERR-U @
+   begin 2dup CHK-RUN-NAMED-AT dup 0 >= while
+      CHK-MAP-NAME
+   repeat drop
+   CHK-MAP+
+   CHK-MAP-BUF CHK-ERR-BUF CHK-MAP-U @ LEN>N BYTE-COPY
+   CHK-MAP-U @ LEN>N CHK-ERR-U ! ;
+
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
    CHK-LOAD-RESET
    CHK-RUN-PATH CHK-ARG+
-   CHK-RUN-CAPTURE ;
+   CHK-RUN-CAPTURE
+   CHK-ERR-NAME-SUBJECT ;
 
 : CHK-RUN-JSON-ONLY ( -- )
    2 >FD 2 >FD JSON-ONLY-FDS!

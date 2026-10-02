@@ -282,14 +282,16 @@ variable DO-OUT-BUF?
 : DO-EMIT-NUM ( n -- )
    DO-U$ DO-OUT ;
 
+\ The marker goes on the definition's own line, so every line of the output is
+\ the source's line of the same number.
 : DO-EMIT-MARKER ( n n n n -- ) {: line col byte pos :}
    pos DO-EMIT-UNTIL
-   DO-LF DO-C
+   DO-SP DO-C
    line DO-EMIT-NUM DO-SP DO-C
    col DO-EMIT-NUM DO-SP DO-C
    byte DO-EMIT-NUM
    s"  DIAG-ORIGIN!" DO-OUT
-   DO-LF DO-C ;
+   DO-SP DO-C ;
 
 : DO-MARK-COLON ( -- )
    DO-TOK-LINE @ DO-ORIG-LINE !
