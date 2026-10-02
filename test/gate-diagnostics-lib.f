@@ -749,13 +749,22 @@ variable REC-U
 \ A storage declaration its definer refuses is neither a definition nor a family
 \ declaration: it names the declared word, the refused token and the reason.
 \ One refusal of each repair class, which the pre-pass reads and locates at its
-\ token, then one only the run reads.
+\ token, a scheme the pre-pass reads whole to its outer closer, two unclosed
+\ types it ends at the end of their line, reading the next line as the next
+\ statement, then one only the run reads.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" 4 TYPED-BUFFER JSTG-T jstg-none" GE-SRC-LINE
    s" 4 TYPED-BUFFER JSTG:A:B n" GE-SRC-LINE
    s" 0 TYPED-BUFFER JSTG-C n" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-S forall<p,[ n -- n ]>" GE-SRC-LINE
+   s" NEWTYPE jstg-pair 2" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-L jstg-pair<n,n" GE-SRC-LINE
+   s" : JSTG-L-NEXT ( -- n ) 7 >r r> ;" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-Q [ n -- n" GE-SRC-LINE
+   s" : JSTG-Q-NEXT ( -- n ) JSTG-L-NEXT ;" GE-SRC-LINE
+   s" : JSTG-USE ( -- n ) JSTG-Q-NEXT ;" GE-SRC-LINE
    s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
    s" habu-bad-storage.err" WRITE-ERR
    s" code" s" E-BAD-STORAGE" s" storage diagnostic code" ERR-JSTR
@@ -763,6 +772,13 @@ variable REC-U
    s" column" s" 23" s" storage type column" ERR-JRAW
    s" token" s" JSTG:A:B" s" storage name token" ERR-JSTR
    s" repair_class" s" fix_storage_count" s" storage count repair class" ERR-JSTR
+   s" token" s" forall<p,[ n -- n ]>" s" storage scheme token" ERR-JSTR
+   s" reason" s" scheme in a stored type" s" storage scheme reason" ERR-JSTR
+   s" token" s\" \"jstg-pair<n,n\",\"reason\":\"malformed type\",\"file\":\"<stdin>\",\"line\":6,\"column\":23"
+   s" storage type ended at its line" ERR-JRAW
+   s" token" s\" \"[ n -- n\",\"reason\":\"malformed type\",\"file\":\"<stdin>\",\"line\":8,\"column\":23"
+   s" storage quotation ended at its line" ERR-JRAW
+   s\" \"code\":\"E-UNDEFINED\"" s" a statement after a line-ended storage type went unread" GE-EXPECT-ERR-LACKS
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    RUN-STORAGE ;
 

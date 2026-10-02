@@ -483,7 +483,7 @@ $3680 constant ENVP-CELL
 $3688 constant PEND-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
-$36A0 constant INP-CELL
+$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
 $36A8 constant INE-CELL
 $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF

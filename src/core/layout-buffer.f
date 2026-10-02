@@ -508,35 +508,38 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ generated-accessor evaluation under the armed window, transactional rollback),
 \ gated by the broader CHECKER-STORAGE-INFO admissibility. TYPED-BUFFER reuses
 \ LBUF-SOURCE (the indexed `( n -- ptr type )` accessor); TYPED-VARIABLE emits a
-\ single-cell `( -- ptr type )` accessor. Both parse a `ptr* base` stored type so
-\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) are expressible.
+\ single-cell `( -- ptr type )` accessor. Both read a multi-token stored type, so
+\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are
+\ expressible.
 
-: STORAGE-PTR-TOK? ( ptr u8 n -- bool )   \ token is the pointer constructor `ptr`
-   s" ptr" CORE-STR= ;
-
-: STORAGE-QUOT-OPEN? ( ptr u8 n -- bool )   \ token is the quotation opener `[`
-   s" [" CORE-STR= ;
-
-: STORAGE-QUOT-CLOSE? ( ptr u8 n -- bool )   \ token is the quotation closer `]`
-   s" ]" CORE-STR= ;
-
-\ Consume a spaced `[ in -- out ]` xt<effect> quotation type token by token, up
-\ to and including the closer, so the returned span is the whole quotation.
-: STORAGE-PARSE-QUOT ( -- )
-   begin STGT-A @ STGT-U @ STORAGE-QUOT-CLOSE? 0= while
-      parse-name STGT-U !  STGT-A !
-      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
-   repeat ;
-
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture a `ptr* base` or `[ in -- out ]` stored-type source span
+: STORAGE-NEXT-TOK ( -- )   \ the stored type's first token, which the source must have
    parse-name STGT-U !  STGT-A !
-   STGT-U @ 0= if E-LAYOUT-BUFFER throw then
+   STGT-U @ 0= if E-LAYOUT-BUFFER throw then ;
+
+\ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
+\ that file loads after this one. Pointing it back at a token parse-name read
+\ leaves that token to the next statement.
+$36A0 constant STGT-INP-CELL
+: STORAGE-UNREAD ( ptr u8 -- )
+   NULL-PTR - data-base STGT-INP-CELL + ! ;
+
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). A token on a later line
+\ goes back to the input.
+: STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended if LBUF-FALSE exit then
+   STGT-A @ STGT-U @ + {: end:ptr :}
+   parse-name {: a:ptr u:n :}
+   u 0= if LBUF-FALSE exit then
+   end a end - CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD LBUF-FALSE exit then
+   a STGT-A !  u STGT-U !  LBUF-TRUE ;
+
+\ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
+\ or with its line.
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
+   STORAGE-NEXT-TOK
    STGT-A @ STGT-START !
-   begin STGT-A @ STGT-U @ STORAGE-PTR-TOK? while
-      parse-name STGT-U !  STGT-A !
-      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
-   repeat
-   STGT-A @ STGT-U @ STORAGE-QUOT-OPEN? if STORAGE-PARSE-QUOT then
+   0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
 : STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )

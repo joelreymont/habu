@@ -961,37 +961,35 @@ variable NOM-TAIL-U
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
 \ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
-\ A stored type may be `ptr* base` or a spaced `[ in -- out ]` xt<effect> quotation
-\ (dot habu-typed-xt-storage-ddad4af8), so the type is a contiguous multi-token
-\ span from the scanner buffer, not one token.
+\ A stored type may be `ptr* base`, a family application or a spaced quotation
+\ or scheme, so the type is a contiguous multi-token span from the scanner
+\ buffer, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP) or with its
+\ line.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
 
-: STG-PTR-TOK? ( ptr u8 n -- bool )
-   s" ptr" CORE-STR= ;
+: SCAN-STORAGE-TOK ( -- )   \ the stored type's first token, which the source must have
+   NEXT-SCAN STG-U !  STG-A !
+   STG-U @ 0= IF s" verify-source: missing storage type" 74 die THEN ;
 
-: STG-QUOT-OPEN? ( ptr u8 n -- bool )
-   s" [" CORE-STR= ;
-
-: STG-QUOT-CLOSE? ( ptr u8 n -- bool )
-   s" ]" CORE-STR= ;
-
-: SCAN-STORAGE-QUOT ( -- )   \ consume `[ in -- out ]` through the closer
-   BEGIN STG-A @ STG-U @ STG-QUOT-CLOSE? 0= WHILE
-      NEXT-SCAN STG-U !  STG-A !
-      STG-U @ 0= IF s" verify-source: missing storage ]" 74 die THEN
-   REPEAT ;
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). The next token is read
+\ as the definer's parse-name reads it, and only from the same line, so a token
+\ on a later line starts the next statement.
+: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended IF 0 0= 0= EXIT THEN
+   SCAN-I @ {: end:n :}
+   SKIP-WS
+   SCAN-I @ SOURCE-U @ >= IF 0 0= 0= EXIT THEN
+   SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF 0 0= 0= EXIT THEN
+   NEXT-RAW STG-U !  STG-A !
+   0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
-   NEXT-SCAN STG-U !  STG-A !
-   STG-U @ 0= IF s" verify-source: missing storage type" 74 die THEN
+   SCAN-STORAGE-TOK
    STG-A @ STG-START !
-   BEGIN STG-A @ STG-U @ STG-PTR-TOK? WHILE
-      NEXT-SCAN STG-U !  STG-A !
-      STG-U @ 0= IF s" verify-source: missing storage pointee" 74 die THEN
-   REPEAT
-   STG-A @ STG-U @ STG-QUOT-OPEN? IF SCAN-STORAGE-QUOT THEN
+   0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
 
 : RECORD-TYPED-BUFFER ( -- )

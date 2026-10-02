@@ -20,8 +20,6 @@ require test/checker-assert.f
 
 package XT-CELL-TEST
 
-7121 constant E-STORAGE           \ src/core/layout-buffer.f E-LAYOUT-BUFFER
-
 \ words under test: SP / SP2 fit ( n -- n ); DBL ( n -- n n ) misfits the cell
 : SP ( n -- n ) 1 + ;
 : SP2 ( n -- n ) 2 + ;
@@ -30,6 +28,8 @@ package XT-CELL-TEST
 \ the xt<( n -- n )> storage cell, plus an indexed xt<( n -- n )> buffer
 TYPED-VARIABLE HK [ n -- n ]
 2 TYPED-BUFFER HKB [ n -- n ]
+\ a cell whose effect takes a quotation: the spelling runs to its outer closer
+TYPED-VARIABLE HKN [ [ n -- n ] -- n ]
 
 \ define-time reject verdicts (INCLUDE-EVALUATE under catch)
 TYPED-VARIABLE XC-A ptr u8  variable XC-U
@@ -64,6 +64,13 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    HK-STORE2
    5 HK-RUN 7 T=
    9 HK-RUN 11 T= ;
+
+\ ---- a nested quotation effect round-trips the same way ---------------------
+: APPLY3 ( [ n -- n ] -- n ) 3 swap execute ;
+: HKN-RUN ( -- n ) [: APPLY3 ;] HKN !  [: SP ;] HKN @ execute ;
+
+: XC-SECTION-NESTED ( -- )
+   HKN-RUN 4 T= ;
 
 \ ---- TYPED-BUFFER of xt<E>: the buffer machinery generalizes trivially -------
 : HKB-STORE ( -- ) [: SP ;] 0 HKB !  [: SP2 ;] 1 HKB ! ;
@@ -104,13 +111,13 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    s" T7 ( -- ) 42 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- define-time admissibility: malformed quotation types still reject -------
-\ A type the checker reads and refuses is its refusal; a quotation the definer
-\ cannot finish reading is the definer's own syntax fault.
+\ The definer reads a quotation type to its closer or to the end of its line,
+\ and what it read is the checker's to refuse.
 : XC-SECTION-ADMISSIBILITY ( -- )
    \ missing -- : not a well-formed effect
    s" TYPED-VARIABLE BADQ1 [ n n ]" XC-EVAL CHECKER-REJECT-RC T=
-   \ unterminated quotation (no closer)
-   s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL E-STORAGE T=
+   \ unterminated quotation: the input ends before its closer
+   s" TYPED-VARIABLE BADQ2 [ n -- n" XC-EVAL CHECKER-REJECT-RC T=
    \ bogus pointee type inside the quotation body
    s" TYPED-VARIABLE BADQ3 [ n -- zzz ]" XC-EVAL CHECKER-REJECT-RC T=
    \ none of the rejected names ever reached the dictionary
@@ -171,6 +178,7 @@ create XC-DBUF 8192 allot
    T-RESET
    XC-SECTION-CHECKER
    XC-SECTION-LIVE
+   XC-SECTION-NESTED
    XC-SECTION-BUFFER
    XC-SECTION-TICK-STORE
    XC-SECTION-ADMISSIBILITY

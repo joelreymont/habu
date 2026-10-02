@@ -5162,6 +5162,29 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 : SIG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
 
+\ A storage declaration reads its stored type token by token: run time in
+\ src/core/layout-buffer.f STORAGE-PARSE-TYPE, the gate in
+\ src/habu/verify-source.f SCAN-STORAGE-TYPE. The spelling ends at the first
+\ token other than a `ptr` prefix that leaves no bracket open, counting the `<`
+\ `[` and `>` `]` NEXT-SIG-TOK splits out, so a pointer chain, a family
+\ application and a spaced quotation or scheme reach SIG-TYPE whole. Given the
+\ depth open before a token, answer the depth after it and whether the spelling
+\ ends there. A stray closer ends it, and SIG-TYPE refuses the span.
+: SIG-NEST ( n n -- n ) {: depth:n c:n :}   \ bracket depth after one character
+   c 60 = c 91 = or IF depth 1 + EXIT THEN
+   c 62 = c 93 = or IF depth 1 - EXIT THEN
+   depth ;
+: CHECKER-TYPE-SPAN-STEP ( n ptr u8 n -- n bool ) {: depth:n a:ptr u:n :}
+   depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
+   after 0 > IF after RES-FALSE EXIT THEN
+   after a u SIG-PTR-TOK? 0= ;
+\ The spelling also ends with its line. Given the bytes between its last token
+\ and the next one, answer whether they hold a line feed (10). Then, as when no
+\ token follows, the reader leaves that token to the next statement, and
+\ SIG-TYPE refuses a span left open.
+: CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
+
 \ TYPE-RESERVED? ( ptr u8 n -- bool ) : the names DEFLINEAR and VALUE-RECORD
 \ refuse, through their loaders and tools/check.f alike. An effect spells such a
 \ type exactly as declared, so `CELL` and `PTR` are types of their own beside
@@ -5744,26 +5767,36 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    0 SI !
    PSIG ;
 
+variable LBI-T
+variable LBI-BAD
+variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
+
+\ Every storage gate below parses its stored type here, into LBI-T. A scheme is
+\ a callback input only (FORALL-PLACE?), so no storage holds one at any depth
+\ of its stored type; LBI-SCHEME names that refusal for
+\ CHECKER-STORAGE-TYPE-REFUSE.
+: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored type, resolved into LBI-T
+   0 LBI-SCHEME !
+   NEW
+   SGBAD-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a SB!  u SL !  0 SI !
+   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
+   SIG-TYPE T-RES LBI-T !
+   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
+   LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? 0= ;
+
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
 \ the allocation-certificate gate: only a closed, non-linear, addressable
 \ layout — or an arity-0 nominal-scalar cell family (width 1, no variants,
 \ zero image = family id 0, a valid id) — is admitted, and the exact family
 \ id/width are returned to the fixed definer implementation. Ordinary
 \ unification never receives this authority.
-variable LBI-T
-variable LBI-BAD
-
-: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool ) {: a:ptr u:n :}
-   NEW
-   SGBAD-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a u BYTE-SPAN? 0= IF 0 0 RES-FALSE EXIT THEN
-   a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
-   SIG-TYPE T-RES LBI-T !
-   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 0 RES-FALSE EXIT THEN
-   LBI-T @ HIDDEN-PARAM? IF 0 0 RES-FALSE EXIT THEN
+: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool )
+   STORAGE-RESOLVE? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
@@ -5828,18 +5861,6 @@ variable LBI-BAD
 : STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
-: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored-type token, resolved into LBI-T
-   NEW
-   SGBAD-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
-   a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
-   SIG-TYPE T-RES LBI-T !
-   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
-   LBI-T @ HIDDEN-PARAM? 0= ;
-
 : STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
    LBI-T @ SCOPED-TYPE? IF 0 RES-FALSE EXIT THEN
    LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
@@ -9664,6 +9685,9 @@ PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
 PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-TYPE-REFUSE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-TYPE-SPAN-STEP
+   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-VERIFY-SOURCE!
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different
@@ -10603,6 +10627,7 @@ variable CHECKER-QBAD-TOK
 5 constant STG-SEALED-NAME      \ the name is qualified into a sealed package
 6 constant STG-BAD-COUNT        \ the literal count is outside the definer's extent
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
+8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
 PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
 PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
 variable STGR-WHY                               \ one of the STG- reasons above
@@ -10647,7 +10672,9 @@ STORAGE-DIAG-DEFAULT
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
    THEN
    na nu ta tu
-   SGBAD @ IF STG-MALFORMED-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+   SGBAD @ IF STG-MALFORMED-TYPE ELSE
+      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+   THEN
    CHECKER-STORAGE-REFUSE ;
 
 \ A name a storage definer publishes has at most one inner ':' and, once the

@@ -2064,8 +2064,11 @@ capabilities stay distinct:
 | closed non-linear layout family (`res<n,n>`) | admit | admit |
 | arity-0 nominal scalar (`CAD-KIND:node-id`) | admit | admit |
 | closed typed pointer (`ptr fam`, `ptr res<n,n>`, `ptr ptr fam`) | reject | **admit** |
-| open type var / bare `ptr a` / `ptr n` | reject | reject |
-| quotation / linear value / hidden field | reject | reject |
+| closed structural cell (`n`, `bool`, `i64`, role tokens; `ptr u8`, `ptr n`, `ptr ptr u8`) | reject | **admit** |
+| open type var / bare `ptr a` | reject | reject |
+| closed quotation (`[ n -- n ]`) | reject | **admit** |
+| linear value / hidden field | reject | reject |
+| scheme `forall<…>` at any depth (`ptr forall<…>`, `fam<forall<…>>`) | reject | reject |
 | non-positive `count`, unresolved args, duplicate name | reject | reject |
 
 A "closed typed pointer" is a `ptr` whose pointee chain bottoms out at a nominal
@@ -2078,11 +2081,23 @@ constants still require a checked producer: a raw `n` cannot initialize a typed
 (`TVK-RAW`) that reject a nominal family in value position — the definers are the
 sound alternative to that laundering, not a bypass. Same-family `!`/`@` through a
 definer accessor certifies and executes; cross-family, `E-LAYOUT-BOUNDS` (index),
-`E-LAYOUT-BUFFER` (admissibility/overflow), and `E-DUP-DEFINITION` (duplicate)
-reject, and a rejected declaration rolls the allocation back and defines nothing.
+`E-LAYOUT-BUFFER` (overflow), and `E-DUP-DEFINITION` (duplicate) reject, and a
+rejected declaration rolls the allocation back and defines nothing. A stored
+type that is present and inadmissible is the checker's named `E-BAD-STORAGE`
+refusal, exit 70 (`CHECKER-REJECT-RC`), with its reason: unknown, malformed, a
+scheme, or a type this definer cannot store. When no token follows the name at
+all, the load path throws `E-LAYOUT-BUFFER` and the gate dies `verify-source:
+missing storage type`, exit 74. A scheme is a callback input only, so no
+storage holds one. `TYPED-VARIABLE`, `TYPED-BUFFER` and `DYNAMIC-BUFFER` read
+the stored type whole, to the token that closes its last bracket, so the
+refusal names the complete spelling. Its first token is read as `parse-name`
+reads one; a spelling once begun never continues past the end of its line: one
+still open there is refused as malformed, and the next line is the next
+statement (`test/c2-memory-scope-refusals.f`).
 The gate path is the verify-source scanner (`RECORD-TYPED-BUFFER` /
 `RECORD-TYPED-VARIABLE` → `CHECKER-DEFTYPED-BUFFER` / `CHECKER-DEFTYPED-VARIABLE`),
-mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` pins the surface.
+mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` and
+`test/typed-storage-structural-test.f` pin the surface.
 
 ---
 
