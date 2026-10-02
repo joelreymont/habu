@@ -18808,7 +18808,7 @@ variable CTOR-PEND-I
    RES-FALSE ;
 \ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
 \ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
-\ cast that survives all six is legal and its declared row is registered by the
+\ cast that survives all seven is legal and its declared row is registered by the
 \ caller. Nothing here observes a body.
 : CAST-CERTIFY ( -- )
    SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
@@ -18829,8 +18829,8 @@ variable CTOR-PEND-I
    TWALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
-   \ Scope comes last for the same reason: a mint that also carries ownership
-   \ or forges a foreign family is named by that stronger reject.
+   \ The mint rule comes last for the same reason: a mint that also carries
+   \ ownership or forges a foreign family is named by that stronger reject.
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN ;
 
@@ -20652,11 +20652,18 @@ variable MARK-U                          \ the map's length in bytes
    off SEEN-BIT MARK!
    off EFF-NODE MARK-EXTENT
    off E-NODE-TAG {: tg:n :}
-   tg EN-CON =  tg EN-VAR = or  tg EN-ROW = or IF EXIT THEN
+   tg EN-CON =  tg EN-VAR = or  tg EN-ROW = or  tg EN-BVAR = or IF EXIT THEN
    tg EN-PTR = IF off E-PTR EN.A @ RECURSE EXIT THEN
    tg EN-PUSH = IF
       off E-PTR EN.A @ RECURSE
       off E-PTR EN.B @ RECURSE EXIT
+   THEN
+   \ A quantifier's body, parent and second bound are nodes; EN.D, its domain,
+   \ is a scalar (UIX-NODE-ADD walks the same three).
+   tg EN-FORALL = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+      off E-PTR EN.C @ RECURSE EXIT
    THEN
    tg EN-QUOT = IF
       off E-PTR EN.A @ RECURSE

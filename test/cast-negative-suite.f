@@ -230,7 +230,7 @@ CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !
 s" cast: CNSP2 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
 CHECKER-END-PACKAGE
 
-\ scope: a pointer or quotation destination is a class mint - it asserts that an
+\ mint: a pointer or quotation destination is a class mint - it asserts that an
 \ integer is an address or code, which nothing checks - so it is declared only
 \ in a package's private section, where the package's own words are its only
 \ callers. Top level and a public section refuse it and leave no name behind.
