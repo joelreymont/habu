@@ -822,8 +822,15 @@ TG-PERSIST
 USIGS-P @ TG-RBASE !
 s" usigs persisted pool is DATA under the heap top" T-LABEL
 TG-RBASE @ here < -1 T=
-s" usigs persisted pool capped at the grain" T-LABEL
-USIGS-CAP-U @ UEND @ CELL + TG-ROUND T=
+\ The cap is the grain above the content plus at most the spare grain
+\ USIGS-PERSIST-CAP adds; a store the engine restored already keeps its baked
+\ cap, so the exact grain depends on how much this suite has appended.
+s" usigs persisted pool capped at a grain boundary" T-LABEL
+USIGS-CAP-U @ USIGS-GRAIN mod 0 T=
+s" usigs persisted pool holds its content" T-LABEL
+USIGS-CAP-U @ UEND @ CELL + < 0 T=
+s" usigs persisted pool spares at most one grain" T-LABEL
+USIGS-CAP-U @ UEND @ CELL + USIGS-PERSIST-CAP > 0 T=
 UEND @ 64 + USIGS-CAP-U !
 s" COK-RESTORED-GROW ( n -- n ) dup drop 1 +" T-CHECK-PASSES
 s" usigs restored-pool grow relocated" T-LABEL

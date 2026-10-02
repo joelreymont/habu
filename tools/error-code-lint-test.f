@@ -186,6 +186,8 @@ variable FIX-U
    s" $1C19 constant E-HA  7193 constant E-HB" ERROR-CODE-LINT:COUNT 1 T=
    \ the sign is part of the code
    s" -7177 constant E-XA  7177 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
+   \ positive codes collide across files as negative ones do
+   s" 7146 constant E-USING-OUTER" s" 7146 constant E-CAST-SCOPE" ERROR-CODE-LINT:COUNT2 1 T=
    \ a positive block reserves its range the way a negative one does
    s" 7100 constant E-FOO-FIRST  7199 constant E-FOO-LAST"
    s" 7150 constant E-BAR" ERROR-CODE-LINT:COUNT2 1 T= ;
