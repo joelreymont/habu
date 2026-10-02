@@ -389,8 +389,8 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \ target.f names. A window for this engine's machine compiles the writer into
 \ code this engine runs. A window for another machine cannot: the linux-x86-64
 \ window's compiler lowered the writer's first new file, src/arch/arm64/icode.f,
-\ for x86-64 inside this AArch64 engine and refused ICODE-MAP>PTR with
-\ E-X64EMIT-PLACE. Such a window's writer has to be compiled before the window
+\ for x86-64 inside this AArch64 engine and refused the file's first definition
+\ with E-X64EMIT-PLACE. Such a window's writer has to be compiled before the window
 \ opens, and none is. The ordinary entry checks before opening the window,
 \ so it cannot load target sources that the foreign machine does not support.
 \ Other source-writer callers still check here before writing.

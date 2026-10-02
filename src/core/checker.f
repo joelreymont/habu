@@ -155,8 +155,8 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 9 constant T-FORALL  10 constant T-BVAR  11 constant T-SCOPE
 4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
-\ Trusted checker internals below are confined to raw mmap-result refinements,
-\ typed views/nulls over checker arenas, and one raw effect query.
+\ Trusted checker internals below are confined to typed views/nulls over
+\ checker arenas and one raw effect query.
 \ Engine primitive effects, including tok-imm?, live in the primitive table.
 \ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
 \ --- growable checker arenas --------------------------------------------
@@ -165,20 +165,12 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ scratch resets to its boot buffer or releases its owned mapping at capture.
 \ No process-local mmap address may enter an image. Growth is geometric so
 \ regrow copies each store O(log n) times over a load, not once per grain.
-3 constant ARENA-PROT-RW
-$1002 constant ARENA-MAP-ANON
--1 constant ARENA-ANON-FD
-0 constant ARENA-OFF-ZERO
+\ `map-anon` answers the mapping as a pointer whose element type the caller
+\ picks, so no refinement turns a syscall result into an address.
 variable ARENA-CP-I   variable ARENA-UB-I
 
-: ARENA-MMAP-RC ( n -- n )
-   0 swap ARENA-PROT-RW ARENA-MAP-ANON ARENA-ANON-FD ARENA-OFF-ZERO mmap
-   dup 0 < IF s" checker: arena mmap failed" 76 die THEN ;
-
-TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
-
 : ARENA-ALLOC ( n -- ptr a )
-   ARENA-MMAP-RC ARENA-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
    0 ARENA-CP-I !
@@ -3289,10 +3281,6 @@ PTR-VARIABLE SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
 $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
-3 constant TOKBUF-PROT-RW
-$1002 constant TOKBUF-MAP-ANON
--1 constant TOKBUF-ANON-FD
-0 constant TOKBUF-OFF-ZERO
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
@@ -3326,14 +3314,8 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
    need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
-: TOKBUF-MMAP-RC ( n -- n )
-   0 swap TOKBUF-PROT-RW TOKBUF-MAP-ANON TOKBUF-ANON-FD TOKBUF-OFF-ZERO mmap
-   dup 0 < IF s" checker: token buffer mmap failed" 76 die THEN ;
-
-TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
-
 : TOKBUF-ALLOC ( n -- ptr u8 )
-   TOKBUF-MMAP-RC TOKBUF-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: token buffer mmap failed" 76 die THEN ;
 
 : TOKBUF-GROW {: need :}
    need TOKBUF-ROUND-CAP {: cap :}
@@ -6009,10 +5991,6 @@ PTR-VARIABLE FP
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
-3 constant USIGS-PROT-RW
-$1002 constant USIGS-MAP-ANON
--1 constant USIGS-ANON-FD
-0 constant USIGS-OFF-ZERO
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   PTR-VARIABLE USIGS-GROW-NEXT
@@ -6121,14 +6099,8 @@ variable UCP-I
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
-: USIGS-MMAP-RC ( n -- n )
-   0 swap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
-   dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
-
-TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
-
 : USIGS-ALLOC ( n -- ptr u8 )
-   USIGS-MMAP-RC USIGS-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: user sigs mmap failed" 76 die THEN ;
 
 : USIGS-CLEAR ( -- )
    0 USX-GEN !                    \ every record the index points at is being dropped
@@ -6631,15 +6603,9 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
       USIGS HIDX-EFF-BASE!
    THEN ;
 
-: HIDX-MMAP-RC ( -- n )
-   0 SYM-CAP HIDX-TABLES * cells USIGS-PROT-RW USIGS-MAP-ANON
-   USIGS-ANON-FD USIGS-OFF-ZERO mmap
-   dup 0 < IF s" checker: symbol index mmap failed" 76 die THEN ;
-
-TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
-
 : HIDX-ALLOC-PTR ( -- ptr n )
-   HIDX-MMAP-RC HIDX-RC>PTR ;
+   SYM-CAP HIDX-TABLES * cells map-anon 0 <> IF
+      drop s" checker: symbol index mmap failed" 76 die THEN ;
 
 : HIDX-ALLOC ( -- )
    HIDX-ALLOC-PTR HIDX-MEM! ;

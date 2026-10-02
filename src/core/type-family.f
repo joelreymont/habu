@@ -3933,6 +3933,12 @@ variable REG-AOT-MEMO-U
    REG-AOT-MEMO @ REG-AOT-MEMO-U @ ASIG-RELEASE
    NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U ! ;
 
+\ One row per schema node id the payload can name, 0 up to row 6's base plus
+\ count, so the size is never zero, the request ARENA-ALLOC dies on: before
+\ this runs, REG-AOT-CHECK's table check refuses a row 6 whose base and base
+\ plus count both differ from the live SCH-N, and SCH-N is at least 1. Node 0
+\ is the nil sentinel: SCHEMA-RESET sets 1, and every later store grows the
+\ count or restores one it had.
 : REG-AOT-MEMO-START ( ptr u8 n -- ) {: src:ptr u:n :}
    src 6 REG-AOT-ROW@ drop + 2 cells * {: bytes:n :}
    bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U ! ;

@@ -1,6 +1,4 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
-\ MBUF-RC>PTR refines the successful anonymous mapping into the image byte buffer.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 \ Reserve the assembler window plus the larger supported image tail: a 64 KiB
 \ header/page boundary, Mach-O DATA_CONST and fixups, and one SHA-256 digest per
@@ -8,7 +6,6 @@
 CODE-CAP-BYTES $10000 + $4000 + 104 +
 dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
 $FFFF + $10000 / $10000 * constant MSIZE
-$1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 \ Four image cursors hold addresses inside the mapped image buffer, so they are
 \ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e).
@@ -20,11 +17,8 @@ PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
 
-: M-ALLOC-BUF ( -- n )
-   0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" image-bytes: mmap failed" 74 die then ;
-
-TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
+: M-ALLOC-BUF ( -- ptr u8 )
+   MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
 
 : MBUF-A@ ( -- ptr u8 )
    MBUF-A @ ;
@@ -33,7 +27,7 @@ TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
    MBUF-A ! ;
 
 : M-ENSURE-BUF ( -- )
-   MBUF-A@ 0= if M-ALLOC-BUF MBUF-RC>PTR MBUF-A! then ;
+   MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
