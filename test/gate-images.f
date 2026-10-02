@@ -3,7 +3,8 @@
 \
 \ ONE MODULE PER IMAGE. A keyed image is what one family module builds:
 \ test/fixture-writer.f, test/cold-engine.f, test/app-image-engine.f,
-\ test/preloaded-engine.f, test/whitebox-engine.f and test/saved-builder.f.
+\ test/preloaded-engine.f, test/whitebox-engine.f and test/saved-builder.f;
+\ test/native-unit-image.f settles a keyed NBR package unit the same way.
 \ Loading the module is how a file reaches the image, so a row NEEDS a family
 \ when its load closure holds the family's module: the files the row loads, and
 \ the files those import or launch (test/load-refs.f). A WHITEBOX-SUITE row
@@ -58,7 +59,8 @@ package GATE-IMAGES
 3 constant LINKER
 4 constant WHITEBOX
 5 constant BUILDER
-6 constant FAMILY-N
+6 constant NBR-UNIT
+7 constant FAMILY-N
 
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
@@ -68,6 +70,7 @@ package GATE-IMAGES
    f LINKER = if s" linker" exit then
    f WHITEBOX = if s" whitebox-engine" exit then
    f BUILDER = if s" saved-builder" exit then
+   f NBR-UNIT = if s" native-unit" exit then
    E-TBL-BOUNDS throw ;
 
 \ A family's prerequisites come before it here: DERIVE refuses a table that
@@ -79,6 +82,7 @@ package GATE-IMAGES
    f LINKER = if s" test/preloaded-engine.f" exit then
    f WHITEBOX = if s" test/whitebox-engine.f" exit then
    f BUILDER = if s" test/saved-builder.f" exit then
+   f NBR-UNIT = if s" test/native-unit-image.f" exit then
    E-TBL-BOUNDS throw ;
 
 \ What the build row runs once the module is loaded. The whitebox row also puts
@@ -90,6 +94,7 @@ package GATE-IMAGES
    f LINKER = if s" PRELOADED-ENGINE:ENSURE" exit then
    f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then
    f BUILDER = if s" SAVED-BUILDER:ENSURE" exit then
+   f NBR-UNIT = if s" NATIVE-UNIT-IMAGE:ENSURE" exit then
    E-TBL-BOUNDS throw ;
 
 : BIT ( n -- n )

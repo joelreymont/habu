@@ -222,17 +222,21 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles six keyed images, each once per run in a pool row of its
+- The gate settles seven keyed images, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`): the fixture writer
   and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
   `app-image-build`, `linker-build`), the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`) and the saved native
-  builder (`test/saved-builder.f`; `saved-builder-build`). A row needs an image
-  when its load closure holds the image's module: the files it loads and what
-  those import, or launch as a `.f` source through a path literal a known load
-  helper consumes (`test/load-refs.f`, the reader the entry guard uses).
+  (`test/whitebox-engine.f`; `whitebox-engine-build`), the saved native
+  builder (`test/saved-builder.f`; `saved-builder-build`) and the NBR package
+  unit exported from the tree (`test/native-unit-image.f`;
+  `native-unit-build`), a keyed file rather than an engine: a unit imports
+  only into a build of the tree and by the engine that exported it, so an
+  export and its import in one row would be two engine builds. A row needs an
+  image when its load closure holds the image's module: the files it loads and
+  what those import, or launch as a `.f` source through a path literal a known
+  load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
   Nothing is declared; a cold host needs the writer and the linker needs the
   saver image because their modules load those modules. A row whose images are
   not settled holds the registry until they are, while the rows before it keep

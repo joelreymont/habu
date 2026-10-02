@@ -183,6 +183,23 @@ SUITE native-builder-image-refusals
    test/native-builder-image-refusals.f
 ;SUITE
 
+\ The NBR package unit rows wait for native-unit-build, which exports the unit
+\ from this tree once (test/native-unit-image.f) beside whitebox-engine-build
+\ and takes about as long. Each row runs one engine build
+\ (test/native-unit-lib.f): the import, compared with whitebox-engine-build's
+\ engine, and an import refused at NBR. The unit's layers after the stale
+\ entry - key, artifact file, bounded package compile - take under a second.
+SUITE native-unit
+   test/native-unit-e2e.f
+;SUITE
+
+SUITE native-unit-refusals
+   test/native-unit-stale.f
+   test/native-unit-key-e2e.f
+   test/native-unit-file.f
+   test/native-unit-compile-e2e.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
