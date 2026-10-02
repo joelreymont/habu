@@ -99,6 +99,30 @@ require nf.fs
    STACK-ABI:EVAL-BYTES BES-NUMBER
    NF-CMD NF-CMD-U @ NF= 0= abort" recovery stack ABI differs from its source leaf" ;
 
+\ The recovery seed must answer the native dictionary marking primitives with
+\ real record flags. These programs run through its checked source prefix and
+\ interpreter, then leave their first marker before a forbidden bare call.
+: BES-MARKS ( -- )
+   s\" s\" int-mark\" 0 search-wl ." BES-OK
+   s\" 0\n" NF= 0= abort" raw lookup exposed seed int-mark"
+   s\" s\" xref-search-wl\" 0 search-wl ." BES-OK
+   s\" 0\n" NF= 0= abort" raw lookup exposed the compiler record search"
+   s\" : VICTIM ( -- n ) 7 ; TRUSTED: MARK-VICTIM ( -- ) ndict@ 2 - int-mark ; MARK-VICTIM s\" VICTIM\" 0 search-wl ." BES-OK
+   s\" 0\n" NF= 0= abort" raw lookup exposed a marked seed word"
+   s\" : VICTIM ( -- n ) 7 ; TRUSTED: MARK-VICTIM ( -- ) ndict@ 2 - int-mark ; MARK-VICTIM .\" armed\" cr VICTIM"
+   BES-RUN 70 BES=
+   NFOUT 2@ s\" armed\n" search 0= abort" marked seed word remained callable" 2drop
+   s\" .\" armed\" cr 0 int-mark" BES-RUN 70 BES=
+   NFOUT 2@ s\" armed\n" search 0= abort" seed int-mark remained callable" 2drop
+   s\" .\" armed\" cr 0 0 min-in-mark" BES-RUN 70 BES=
+   NFOUT 2@ s\" armed\n" search 0= abort" seed min-in-mark remained callable" 2drop
+   s" : NEED-TWO ( n n -- n ) + ; TRUSTED: MARK-TWO ( -- ) ndict@ 2 - 2 min-in-mark ; MARK-TWO 3 4 NEED-TWO ."
+   BES-OK
+   s\" 7\n" NF= 0= abort" seed minimum input mark blocked a valid call"
+   s\" : NEED-TWO ( n n -- n ) + ; TRUSTED: MARK-TWO ( -- ) ndict@ 2 - 2 min-in-mark ; MARK-TWO .\" armed\" cr NEED-TWO"
+   BES-RUN 70 BES=
+   NFOUT 2@ s\" armed\n" search 0= abort" seed minimum input mark missed underdepth" 2drop ;
+
 : BES-DATA ( -- )
    \ Data-stack underflow now faults into the guard page below the boot
    \ mapping; the crash handler names it and exits STACK-BOUNDS (102). `drop`
@@ -214,6 +238,6 @@ require nf.fs
    NFOUT 2@ 26 /string s\" 0000000000000011\n" compare 0<>
       abort" recovery breakpoint lost its actual top cell" ;
 
-BES-ABI BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-DEBUGGER
+BES-ABI BES-MARKS BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-DEBUGGER
 .( bootstrap-engine-stack: ok ) cr
 bye

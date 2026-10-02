@@ -10,6 +10,7 @@ require test/aot-image-class-subject.f
 require test/compiler/aot-xt-cells-subject.f
 require test/stripped-lifecycle-prepare-subject.f
 require test/stripped-lifecycle-tasks-subject.f
+require test/stripped-lifecycle-semaphore-subject.f
 
 \ Baked defining words and a fresh does> clause. The definer is retained, so a
 \ word it creates ends in a branch to its ;does clause, whose record the link
@@ -25,8 +26,26 @@ END-STRUCTURE
 package STRIPPED-IMAGE-SUBJECT
 private
 
+create KEY-CTX SHA256-FILE-CTX-BYTES allot
+create KEY-CHECK 64 allot
+
 : DOES-RUN ( -- )
    STRIP-REC-BYTES . STRIP-E0 . STRIP-E4 . STRIP-VALUE . ;
+
+\ Both public engine identity queries must build their process-local caches
+\ after the stripped entry restores its DATA.
+: ENGINE-ID-RUN ( -- )
+   ENGINE-ID:PATH$ {: path:ptr pathu:n :}
+   pathu 0= if s" stripped-engine-id: empty path" 74 die then
+   ENGINE-ID:KEY$ {: key:ptr keyu:n :}
+   keyu 64 <> if s" stripped-engine-id: bad key length" 74 die then
+   KEY-CTX path pathu KEY-CHECK SHA256-FILE-HEX-IN 0<> if
+      s" stripped-engine-id: cannot hash image" 74 die
+   then
+   key keyu KEY-CHECK 64 STR= 0= if
+      s" stripped-engine-id: wrong image key" 74 die
+   then
+   s" stripped-engine-id: ok" type cr ;
 
 \ This deliberately invalid munmap range reaches MEM's baked error string.
 \ The syscall refuses the unaligned address before touching any memory.
@@ -39,9 +58,11 @@ public
    DOES-RUN
    STRIPPED-SPARSE-DATA-SUBJECT:RUN
    AOT-IMAGE-CLASS-SUBJECT:RUN
+   ENGINE-ID-RUN
    AOT-XT-CELL-SUBJECT:RUN
    STRIPPED-LIFECYCLE-PREPARE-SUBJECT:RUN
-   STRIPPED-LIFECYCLE-TASKS-SUBJECT:RUN ;
+   STRIPPED-LIFECYCLE-TASKS-SUBJECT:RUN
+   STRIPPED-LIFECYCLE-SEMAPHORE-SUBJECT:RUN ;
 
 \ Exits 71 with `memory: unmap failed`, a literal the stripped link kept.
 : UNMAP ( -- )

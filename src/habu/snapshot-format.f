@@ -7,12 +7,13 @@ require src/habu/layout.f
 package SNAPSHOT-FORMAT
 public
 
-\ Version 12 stores the user heap in the src/habu/cell-grid.f form whenever
-\ that is smaller than the heap's bytes, and says which form in the trailer's
-\ HEAP-FIELD. A version 11 loader would copy the grid stream as heap bytes, and
-\ its text-base check reads the field as corruption, so the two versions refuse
-\ each other (rc 80) instead.
-12 constant VERSION
+\ Version 13 stores the baked unnamed-code span table and blob positions as
+\ offsets in DATA, then restores their live bases at boot. A version 12 loader
+\ treats those offsets as pointers, so the donor and loader must refuse the
+\ other version (rc 74 at capture, rc 80 at restore). Version 12 also stores
+\ the user heap in the src/habu/cell-grid.f form when it is smaller than the
+\ heap's bytes, with its form in the trailer's HEAP-FIELD.
+13 constant VERSION
 
 \ The trailer cell that says how the stored DATA carries the heap, the bytes
 \ from DATA-START to the exact extent. Through version 11 this cell held the

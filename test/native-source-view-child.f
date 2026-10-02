@@ -36,6 +36,7 @@ TRUSTED: VALUE ( -- n ) s" SVTEST:VALUE" evaluate ;
    SOURCE-VIEW:OPEN
    s" tools/native-build.f" SOURCE-VIEW:COLLECT
    s" nest/entry.f" SOURCE-VIEW:COLLECT
+   s" lib/c2-owner.f" SOURCE-VIEW:COLLECT
    SOURCE-VIEW:KEY {: key:ptr size:n :}
    size 64 T=
    key KEY-BUF size BYTE-COPY

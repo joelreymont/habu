@@ -93,8 +93,12 @@ variable OPENER-NDICT
 \ USE TRAVELS IN EVERY IMAGE: the copies are made for every link, reached or not,
 \ and their non-zero bytes are blob content like any other window byte (measured:
 \ a hello-world image carries 390 written data bytes, 64 without the copies).
-\ docs/native-applications.md states the budget the four claims spend.
-$400 constant CARRY-BYTES
+\ docs/native-applications.md states the run's capacity and ownership.
+\ The old $400 run plus at most 26,656 bytes of FFI declaration metadata and
+\ 160 bytes of TASK symbols/cells plus 2,056 bytes of task exit declarations
+\ fits in $8000 with PATH-CAP-sized library paths. The link refuses any claim that
+\ outgrows it; the image writes only nonzero bytes from this reserved run.
+$8000 constant CARRY-BYTES
 variable CARRY-BASE
 PTR-VARIABLE CARRY-P
 

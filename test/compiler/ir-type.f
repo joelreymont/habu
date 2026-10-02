@@ -368,13 +368,13 @@ create CBUF 64 allot
    [: IR-TYPE:FN-BEGIN ;] catch
    c a r key IR-TYPE:QUOT IR-ID:TYPE-LOCAL ;
 
-\ The thirty-third staged parameter rejects; the open stage still ends.
+\ The sixty-fifth staged parameter rejects; the open stage still ends.
 : STG-OVER-BODY ( IR-CTX:ctx -- n n )
    {: c:IR-CTX:ctx :}
-   c 8 64 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c 8 128 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key I64 {: ti:IR-ID:ir-type-id :}
    IR-TYPE:FN-BEGIN
-   32 0 ?do
+   64 0 ?do
       ti IR-TYPE:FN-PARAM
    loop
    \ `catch` restores the DEPTH of both stacks and never their contents, so the
@@ -384,6 +384,18 @@ create CBUF 64 allot
    drop
    rc
    c a r key IR-TYPE:QUOT IR-ID:TYPE-LOCAL ;
+
+: STG-WIDE-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 8 128 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key I64 {: ti:IR-ID:ir-type-id :}
+   IR-TYPE:FN-BEGIN
+   33 0 ?do ti IR-TYPE:FN-PARAM loop
+   34 0 ?do ti IR-TYPE:FN-RESULT loop
+   c a r key IR-TYPE:CODE-REF {: ft:IR-ID:ir-type-id :}
+   r ft IR-TYPE:ARITY@
+   a r key ft 32 IR-TYPE:PARAM@ IR-ID:TYPE-LOCAL
+   a r key ft 33 IR-TYPE:RESULT@ IR-ID:TYPE-LOCAL ;
 
 \ The caught end re-pushes its inputs before the throwing close, so the
 \ quotation stays stack-preserving and the quadruple survives the reject.
@@ -416,6 +428,9 @@ create CBUF 64 allot
    s" a staged list past the arity ceiling rejects; the stage still ends" T-LABEL
    BND [: STG-OVER-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= E-IR-TYPE-ARITY T=
+   s" a 33-input, 34-output signature keeps its arities and last elements" T-LABEL
+   BND [: STG-WIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 34 T= 33 T=
    s" a rejected end consumes the stage" T-LABEL
    BND [: STG-CONSUMED-BODY ;] IR-CTX:WITH-CONTEXT
    E-IR-TYPE-STAGE T= E-IR-TYPE-OWNER T= ;

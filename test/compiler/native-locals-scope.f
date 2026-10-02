@@ -267,6 +267,27 @@ public
 : NLS-LAST-BINDING ( n n -- n ) {: a:n a:n :}
    a ;
 
+\ A local read at the end of the body shares C's spelling. The calls between
+\ binding and return use the same value, so C cannot be the tail call.
+STRUCTURE pg-work 0 DERIVE addr
+   FIELD conn n
+   FIELD value n
+;STRUCTURE
+
+TYPED-VARIABLE NLS-PG-SLOT pg-work
+variable NLS-PG-SUM
+
+private
+: C ( ptr pg-work -- n ) NLS--FIXTURE-PG--WORK:CONN @ ;
+: NLS-PG-RESET ( n -- ) 3 * NLS-PG-SUM ! ;
+: NLS-PG-ADD ( n n -- ) + NLS-PG-SUM +! ;
+public
+: NLS-PG-PARAMS ( ptr pg-work -- n ) {: w:ptr :}
+   w C {: c:n :}
+   c NLS-PG-RESET
+   c w NLS--FIXTURE-PG--WORK:VALUE @ NLS-PG-ADD
+   c ;
+
 
 ;package
 
@@ -384,6 +405,13 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2 1 NLS-FIXTURE:NLS-AGAINLOC 16 T=
    2 1 NLS-FIXTURE:NLS-ENDOFLOC 44 T= ;
 
+: CALLABLE-NAME-CASE ( -- )
+   s" a returned local shadows a callable and remains live across calls" T-LABEL
+   42 NLS-FIXTURE:NLS-PG-SLOT NLS--FIXTURE-PG--WORK:CONN !
+   7 NLS-FIXTURE:NLS-PG-SLOT NLS--FIXTURE-PG--WORK:VALUE !
+   NLS-FIXTURE:NLS-PG-SLOT NLS-FIXTURE:NLS-PG-PARAMS 42 T=
+   NLS-FIXTURE:NLS-PG-SUM @ 175 T= ;
+
 public
 
 : RUN ( -- )
@@ -397,6 +425,7 @@ public
    CALL-CASE
    CATCH-CASE
    KEYWORD-CASE
+   CALLABLE-NAME-CASE
    DUPLICATE-CASE
    T-REPORT ;
 

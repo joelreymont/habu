@@ -107,6 +107,13 @@ private
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
+variable TDV-QUOT-N
+
+public
+
+: QUOT-ROLLBACK ( -- ) 0 TDV-QUOT-N ! ;
+
+private
 
 public
 
@@ -127,7 +134,8 @@ private
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
    TDM-TFAM @  TDM-STR @  TDM-PK @  TDM-SUMV @  TDM-LAY @  TFAM-REWIND
-   TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
+   TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N !
+   QUOT-ROLLBACK ;
 
 : TDECL-REPORT ( -- )
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDT-A @ TDT-U @  TDW-A @ TDW-U @
@@ -366,11 +374,11 @@ variable TDECL-FAM-ARITY
 \ (type-family.f TFC-*, checker.f LOGHID/xpad), which resolves each argument
 \ against the declaring family's parameters and gates instantiated width and
 \ linearity at the construct/`of` site. A quotation payload is one xt cell whose
-\ SC-QUOT schema records din/dout/rin/rout; the landed SC-QUOT representation
-\ carries one type per effect side, so a multi-type or empty side rejects and the
-\ full-effect-row extension is tracked separately. This grammar is scoped to sum
-\ variants: PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM),
-\ because arg-aware PF byte layout is a distinct capability.
+\ SC-QUOT schema records full ordered din/dout/rin/rout rows, including empty
+\ sides. The quotation parser below is
+\ shared with STRUCTURE fields; parametric applications remain variant-only.
+\ PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM), because
+\ arg-aware PF byte layout is a distinct capability.
 
 \ Reentrant scratch for ONE nesting level's argument nodes. Each TDECL-VPAY-ARGS
 \ invocation saves a base, pushes its fully-parsed argument node ids above it,
@@ -397,6 +405,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 : TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
+   id C2-READ-FAM @ = IF 0 RES-FALSE EXIT THEN
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
@@ -448,10 +457,9 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
 \ empty rin/rout rows (row-polymorphic neutral return); an explicit clause pins both.
 $100 constant TDV-QUOT-CAP
 create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
-variable TDV-QUOT-N
-: TDV-QUOT+ ( n -- ) {: node:n :}
+: TDV-QUOT+ ( n [ ptr u8 n n -- ] -- ) {: node:n fail :}
    TDV-QUOT-N @ TDV-QUOT-CAP >= IF
-      TDN-A @ TDN-U @ s" quotation effect side too long" E-TDECL-PAYLOAD TDECL-THROW THEN
+      s" quotation effect side too long" E-TDECL-PAYLOAD fail execute THEN
    node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
    TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
 : TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}   \ [base,top) scratch node ids -> contiguous SCH-ROW
@@ -464,33 +472,46 @@ variable TDV-QUOT-N
    base TDV-QUOT-N !
    estart cnt SCHEMA-ROW ;
 : TDV-QUOT-EMPTY-ROW ( -- n ) SCHEMA-ROOT-N@ 0 SCHEMA-ROW ;
-: TDV-QUOT-SIDE ( -- n )                        \ parse one side's elements -> SCH-ROW node
+: TDV-QUOT-SIDE ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n ptr u8 n )
+   {: next elem fail :}
    TDV-QUOT-N @ {: base:n :}
-   BEGIN TDECL-NEXT 2dup DELIM? 0= WHILE
-      TDV-ELEM-XT TDV-QUOT+
+   BEGIN next execute 2dup DELIM? 0= WHILE
+      elem execute fail TDV-QUOT+
    REPEAT
-   PK!                                          \ leave the delimiter for the caller
-   base TDV-QUOT-BUILD-ROW ;
-: TDV-QUOT-EXPECT ( ptr u8 n -- ) {: ea:ptr eu:n :}
-   TDECL-NEXT 2dup ea eu CORE-STR= IF 2drop EXIT THEN
-   s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW ;
-: TDECL-VPAY-QUOT ( -- n )
-   TDV-QUOT-SIDE {: din:n :}
-   s" --" TDV-QUOT-EXPECT
-   TDV-QUOT-SIDE {: dout:n :}
-   TDECL-NEXT 2dup s" |" CORE-STR= IF
-      2drop
-      TDV-QUOT-SIDE {: rin:n :}
-      s" --" TDV-QUOT-EXPECT
-      TDV-QUOT-SIDE {: rout:n :}
-      s" ]" TDV-QUOT-EXPECT
+   {: sep:ptr sepu:n :}
+   base TDV-QUOT-BUILD-ROW sep sepu ;
+: TDV-QUOT-EXPECT ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
+   {: a:ptr u:n ea:ptr eu:n fail :}
+   a u ea eu CORE-STR= IF EXIT THEN
+   s" malformed quotation payload" E-TDECL-SYNTAX fail execute ;
+
+public
+
+\ The quotation grammar is shared by variant payloads and STRUCTURE fields.
+\ The caller supplies its token stream, element resolver and declaration error
+\ reporter; the resulting schema and ordered effect rows are identical.
+: PARSE-QUOT ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
+   {: next elem fail :}
+   next elem fail TDV-QUOT-SIDE {: din:n sep:ptr sepu:n :}
+   sep sepu s" --" fail TDV-QUOT-EXPECT
+   next elem fail TDV-QUOT-SIDE {: dout:n end:ptr endu:n :}
+   end endu s" |" CORE-STR= IF
+      next elem fail TDV-QUOT-SIDE {: rin:n rsep:ptr rsepu:n :}
+      rsep rsepu s" --" fail TDV-QUOT-EXPECT
+      next elem fail TDV-QUOT-SIDE {: rout:n rend:ptr rendu:n :}
+      rend rendu s" ]" fail TDV-QUOT-EXPECT
       din dout rin rout -1 SCHEMA-QUOT
    ELSE
-      2dup s" ]" CORE-STR= 0= IF
-         s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW
-      THEN 2drop
+      end endu s" ]" fail TDV-QUOT-EXPECT
       din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT
    THEN ;
+
+private
+
+: TDECL-QUOT-FAIL ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+   TDN-A @ TDN-U @ a u code TDECL-THROW ;
+: TDECL-VPAY-QUOT ( -- n )
+   [: TDECL-NEXT ;] [: TDV-ELEM-XT ;] [: TDECL-QUOT-FAIL ;] PARSE-QUOT ;
 
 \ a resolved family head followed by `<` is a parametric application; any other
 \ next token is pushed back and reported as not-an-application so the head falls
@@ -689,6 +710,10 @@ private
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
    a u s" hash" CORE-STR=CI IF
       a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
+   a u s" init" CORE-STR=CI IF
+      fam TFAM-PRODUCT? 0= IF
+         a u s" derive init requires a product" E-TDECL-DERIVE TDECL-THROW THEN
+      fam TFAM-DERIVE-INIT! EXIT THEN
    a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
@@ -697,6 +722,7 @@ private
    u 0= IF RES-FALSE EXIT THEN
    a u s" eq" CORE-STR=CI
    a u s" hash" CORE-STR=CI or
+   a u s" init" CORE-STR=CI or
    a u s" order" CORE-STR=CI or
    0= IF a u PK! RES-FALSE EXIT THEN
    a u fam TDECL-DERIVE-SET
@@ -750,7 +776,7 @@ private
 public
 
 : TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
+   fam TFAM-DERIVE-EQ? fam TFAM-DERIVE-HASH? or 0= IF EXIT THEN
    0 TDD-I !
    BEGIN TDD-I @ count < WHILE
       0 TDD-J !
@@ -1053,7 +1079,7 @@ private
    [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
 TDECL-PREFLIGHT-DEFAULTS
 
-$1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
+$4000 constant TDGEN-CAP   \ wide initialized accessors render up to 32 cell operations
 create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
@@ -2140,6 +2166,242 @@ public
    TDPLAN-FP-CLEAR
    rc 0 <> IF rc throw THEN ;
 
+\ Initialized fields use a separate trusted publication path. A checked
+\ TDPLAN row is necessarily ": NAME ..." and CHECK! judges its body; neither
+\ operation describes the fixed representation crossing here. The rows below
+\ are rendered as complete TRUSTED: definitions and replay their declared
+\ effects through the same registrar as source TRUSTED: declarations.
+private
+
+variable TDINIT-FAM
+variable TDINIT-I
+variable TDINIT-SIG-OFF
+variable TDINIT-SIG-U
+
+TRUSTED: TDINIT-MARK-LAST ( -- ) ndict@ 1 - int-mark ;
+TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
+
+: TDINIT-TERM ( n -- n ) {: fam:n :}
+   PARAM-SCR-N @ {: base:n :}
+   fam TFAM-ARITY@ 0 ?do FRESH MK-VAR PARAM-SCR+ loop
+   base fam TFAM-NAME$ fam MK-PARAM ;
+
+: TDINIT-REFUSE ( n -- )
+   TFAM-NAME$ s" derive init requires a canonical fixed-cell record"
+   E-TDECL-DERIVE TDECL-THROW ;
+
+\ INIT-RECORD? proves the whole fixed canonical layout; INIT-FIELD? then proves
+\ every id and field extent against that same instantiation. These queries read
+\ committed rows, so this runs only after the field transaction's commit.
+: TDINIT-REQUIRE ( n -- ) {: fam:n :}
+   fam TFAM-DERIVE-INIT? 0= fam TFAM-PRODUCT? 0= or IF fam TDINIT-REFUSE THEN
+   fam TFAM-PKG$ nip 0= IF fam TDINIT-REFUSE THEN
+   fam TFAM-ARITY@ TFAM-DECL-PARAM-COUNT 4 - > IF fam TDINIT-REFUSE THEN
+   fam TDINIT-TERM {: term:n :}
+   term INIT-RECORD? 0= IF 2drop drop fam TDINIT-REFUSE THEN
+   2drop drop
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fam TFAM-FLD-START@ i + term INIT-FIELD? 0= IF
+         2drop 2drop unloop fam TDINIT-REFUSE THEN
+      2drop 2drop
+   loop ;
+
+: TDINIT-H ( n -- ) {: fam:n :}
+   s" mut-view<" TDGEN-APP
+   fam TFAM-ARITY@ dup TDGEN-LETTER 44 TDGEN-C,
+   1 + dup TDGEN-LETTER 44 TDGEN-C,
+   1 + dup TDGEN-LETTER s" ,init<" TDGEN-APP
+   1 + TDGEN-LETTER 44 TDGEN-C,
+   fam TDGEN-OUT-TYPE s" >>" TDGEN-APP ;
+
+: TDINIT-F ( n -- ) PF-SCH@ SCHEMA-ROOT@ TDGEN-SCH ;
+
+: TDINIT-NAME-START ( -- )
+   TDGEN-CLEAR
+   s" TRUSTED: " TDGEN-APP
+   TDGEN-BUF TDGEN-U @ + TDGEN-NA ! ;
+
+: TDINIT-NAME-END ( -- )
+   TDGEN-U @ TDGEN-NA @ TDGEN-BUF - - TDGEN-NU !
+   32 TDGEN-C, ;
+
+: TDINIT-HELP-NAME ( n n -- ) {: fam:n fid:n :}
+   TDINIT-NAME-START
+   fam fid TFAM-INIT-HELPER$ TDGEN-APP
+   TDINIT-NAME-END ;
+
+: TDINIT-RECEIVER-NAME ( n -- ) {: fam:n :}
+   TDINIT-NAME-START
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   TDINIT-NAME-END ;
+
+: TDINIT-PUB-NAME ( n n bool -- ) {: fam:n fid:n store:bool :}
+   TDINIT-NAME-START
+   fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
+   TDINIT-NAME-END ;
+
+\ The recorded span is the effect between the parentheses, the text TRUSTED:
+\ hands TRUST-DECL (habu2.f C-SIG-INNER$), so a replay row declares it as is.
+: TDINIT-SIG-BEGIN ( -- )
+   s" ( " TDGEN-APP
+   TDGEN-U @ TDINIT-SIG-OFF ! ;
+
+: TDINIT-SIG-END ( -- )
+   TDGEN-U @ TDINIT-SIG-OFF @ - TDINIT-SIG-U !
+   s"  ) " TDGEN-APP ;
+
+: TDINIT-RAW-ROW ( n -- ) {: cellsn:n :}
+   cellsn 0 ?do s" n " TDGEN-APP loop ;
+
+\ The receiver is one logical, two-cell mutable view. Split it through its
+\ exact original type before a trusted body binds the address and bound.
+: TDINIT-RECEIVER ( n -- ) {: fam:n :}
+   fam TDINIT-RECEIVER-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H s"  -- ptr u8 n" TDGEN-APP
+   TDINIT-SIG-END
+   s" ;" TDGEN-APP ;
+
+\ A helper has the precise original F as input and exactly its committed
+\ number of raw cells as output. Its empty body changes only stack grouping.
+\ It lives in the author's private wordlist and is marked DNAME-INT before any
+\ public accessor can refer to it.
+: TDINIT-HELP ( n n -- ) {: fam:n fid:n :}
+   fam fid TDINIT-HELP-NAME
+   TDINIT-SIG-BEGIN
+   fid TDINIT-F
+   s"  -- " TDGEN-APP
+   fid PF-CELLS@ TDINIT-RAW-ROW
+   TDINIT-SIG-END
+   s" ;" TDGEN-APP ;
+
+: TDINIT-GET ( n n -- ) {: fam:n fid:n :}
+   fam fid RES-FALSE TDINIT-PUB-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H s"  -- " TDGEN-APP
+   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
+   TDINIT-SIG-END
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   s"  {: p:ptr b:n :} p b " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      s" p " TDGEN-APP
+      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
+      s"  + cell-view @ " TDGEN-APP
+   loop
+   s" ;" TDGEN-APP ;
+
+: TDINIT-SET ( n n -- ) {: fam:n fid:n :}
+   fam fid RES-TRUE TDINIT-PUB-NAME
+   TDINIT-SIG-BEGIN
+   fam TDINIT-H 32 TDGEN-C, fid TDINIT-F
+   s"  -- " TDGEN-APP fam TDINIT-H
+   TDINIT-SIG-END
+   fam fid TFAM-INIT-HELPER$ TDGEN-APP
+   s"  {: " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      99 TDGEN-C, i TDGEN-DEC s" :n " TDGEN-APP
+   loop
+   s" :} " TDGEN-APP
+   fam TFAM-INIT-RECEIVER$ TDGEN-APP
+   s"  {: p:ptr b:n :} " TDGEN-APP
+   fid PF-CELLS@ 0 ?do
+      99 TDGEN-C, i TDGEN-DEC s"  p " TDGEN-APP
+      fid PF-BYTE-OFF@ i CELL * + TDGEN-DEC
+      s"  + cell-view ! " TDGEN-APP
+   loop
+   s" p b ;" TDGEN-APP ;
+
+: TDINIT-NAME-PREFLIGHT ( -- )
+   TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
+
+\ A live declaration switches the engine's wordlist with `private` / `public`,
+\ and the engine passes each switch on to the checker (DECLARATIONS
+\ PRIVATE-OFF). A replay defines no word, and the pre-pass that runs it
+\ (src/habu/verify-source.f, tools/check-core.f) opens the source's package in
+\ the checker alone, so the engine has no package to switch: `private` there
+\ dies `private at tools/check.f:1`. A replay switches the checker's mode only.
+: TDINIT-PRIVATE ( bool -- ) {: replay:bool :}
+   replay IF CHECKER-PRIVATE EXIT THEN
+   s" private" TDECL-EVAL-XT ;
+: TDINIT-RESTORE ( n bool -- ) {: fam:n replay:bool :}
+   fam TFAM-PUBLIC? 0= IF replay TDINIT-PRIVATE EXIT THEN
+   replay IF CHECKER-PUBLIC EXIT THEN
+   s" public" TDECL-EVAL-XT ;
+
+: TDINIT-HELP-NAME-CHECK ( n bool -- ) {: fam:n replay:bool :}
+   replay TDINIT-PRIVATE
+   [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
+   fam replay TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-HELP-EVAL ( n -- ) {: fam:n :}
+   RES-FALSE TDINIT-PRIVATE
+   [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT TDINIT-MARK-LAST ;] catch {: rc:n :}
+   fam RES-FALSE TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
+   RES-TRUE TDINIT-PRIVATE
+   [: TDGEN-NA @ TDGEN-NU @
+      TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
+      catch {: rc:n :}
+   fam RES-TRUE TDINIT-RESTORE
+   rc 0 <> IF rc throw THEN ;
+
+: TDINIT-REPLAY-ROW ( -- )
+   TDGEN-NA @ TDGEN-NU @
+   TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;
+
+: TDINIT-PREFLIGHT ( n bool -- ) {: fam:n replay:bool :}
+   fam TDINIT-REQUIRE
+   fam TFAM-FLD-START@ {: fs:n :}
+   fam TDINIT-RECEIVER fam replay TDINIT-HELP-NAME-CHECK
+   TDGEN-NA @ TDGEN-NU @ fam TFAM-FLD-COUNT@ 3 * 1 +
+       TDECL-CAPACITY-PREFLIGHT-XT
+   0 TDINIT-I !
+   BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TDINIT-I @ + {: fid:n :}
+      fam fid TDINIT-HELP fam replay TDINIT-HELP-NAME-CHECK
+      fam fid TDINIT-GET TDINIT-NAME-PREFLIGHT
+      fam fid TDINIT-SET TDINIT-NAME-PREFLIGHT
+      TDINIT-I @ 1 + TDINIT-I !
+   REPEAT ;
+
+: TDINIT-GENERATE ( n bool -- ) {: fam:n replay:bool :}
+   fam replay TDINIT-PREFLIGHT
+   fam TFAM-FLD-START@ {: fs:n :}
+   fam TDINIT-RECEIVER
+   replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
+   0 TDINIT-I !
+   BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TDINIT-I @ + {: fid:n :}
+      fam fid TDINIT-HELP
+      replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
+      fam fid TDINIT-GET
+      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
+      fam fid TDINIT-SET
+      replay IF TDINIT-REPLAY-ROW ELSE TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT THEN
+      TDINIT-I @ 1 + TDINIT-I !
+   REPEAT ;
+
+public
+
+: TDECL-INIT-WORDS ( n -- ) RES-FALSE TDINIT-GENERATE ;
+: TDECL-INIT-REPLAY ( n -- ) RES-TRUE TDINIT-GENERATE ;
+
+\ PRODUCT's outer declaration runner arms the same commit participant as
+\ STRUCTURE after its constructors exist. The participant itself is installed
+\ later by structure-make.f, after this pre-hook file has loaded.
+defer TDECL-INIT-ARM-XT ( n -- )
+
+private
+
+: TDECL-INIT-ARM-MISSING ( n -- )
+   drop s" sumtype: initialized field participant not installed" 76 die ;
+: TDECL-INIT-ARM-DEFAULT ( -- )
+   [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
+TDECL-INIT-ARM-DEFAULT
+
 \ Generation for ONE family the caller names, reading that family's payload only
 \ through the provider the caller supplies. TDECL-GEN-BODY is the named helper
 \ that does the work with typed locals; TDECL-CTOR-WORDS-BODY is only the failure
@@ -2234,16 +2496,24 @@ private
    fam 0 < IF EXIT THEN
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
+: TDECL-PRODUCT-INIT-ARM ( -- )
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
+
 public
 
 \ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens it
 \ had already lexed (src/habu/verify-source.f): the checked effects of the words
 \ the definer would generate, so later source in that pass can call them, and no
-\ word.
+\ word. Those include a PRODUCT's initialized-field accessors when it derives
+\ init (TDECL-PRODUCT-INIT-ARM above); its rows are committed once the
+\ registration returns, which is all TDINIT-REQUIRE reads.
 : TDECL-CTOR-WORDS-REPLAY ( -- )
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
-   fam TDECL-CTOR-REPLAY ;
+   fam TDECL-CTOR-REPLAY
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
 
 \ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
@@ -2332,7 +2602,8 @@ public
    THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT TDECL-CTOR-WORDS ;]
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT
+      TDECL-CTOR-WORDS TDECL-PRODUCT-INIT-ARM ;]
       TDECL-TXN-XT ;
 
 ;package

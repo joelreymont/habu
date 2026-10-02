@@ -726,7 +726,18 @@ s" RSV28 T-V14 T-V14" CHECK-QUIET-CANDIDATE! -1 T=
 s" rec-refuse diag names var-count word" T-LABEL
 DIAG-BUFFER$ s" rsv28" T-HAS? -1 T=
 s" rec-refuse diag names var-count reason" T-LABEL
-DIAG-BUFFER$ s" more than 26 type variables" T-HAS? -1 T=
+DIAG-BUFFER$ s" more than 23 type variables or binders" T-HAS? -1 T=
+: T-FQ ( forall<p,[ n -- n ]> -- ) drop ;
+TRUSTED: T-D23 ( a b c d e g h i j k l m o p q s t u v w x y z -- )
+   drop drop drop drop drop drop drop drop drop drop drop drop
+   drop drop drop drop drop drop drop drop drop drop drop ;
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" rec-refuse binder overflow still certifies" T-LABEL
+s" RSB24 T-FQ T-D23" CHECK-QUIET-CANDIDATE! -1 T=
+s" rec-refuse diag names binder-count word" T-LABEL
+DIAG-BUFFER$ s" rsb24" T-HAS? -1 T=
+s" rec-refuse diag names binder-count reason" T-LABEL
+DIAG-BUFFER$ s" more than 23 type variables or binders" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 \ recurse checks against the cached declared sig (fresh instance per site)
 s" recurse against declared sig certifies" T-LABEL
@@ -1230,7 +1241,7 @@ public
 : TR-EFF-REC-LAYOUT ( -- )
    TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-record-layout" T-LABEL
-   stride 5 cells T=  align $8 T=  mask 0 T=
+   stride 7 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 : TR-EFF-NODE-LAYOUT ( -- )

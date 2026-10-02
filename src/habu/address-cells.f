@@ -1,6 +1,7 @@
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
-require src/habu/layout.f
+s" src/habu/layout.f" required
+s" src/habu/xref.f" required
 
 package ADDRESS-CELLS
 public
@@ -32,9 +33,29 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
 TRUSTED: VERSION-XT ( n -- [ -- n ] ) ;
-TRUSTED: TEXT-BASE ( -- n ) data-base RBASE-CELL + @ ;
-TRUSTED: TEXT-SIZE ( -- n )
-   TEXT-BASE CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ IMAGE-TEXT-CONTENT-ADJ - ;
+
+\ All engine emitters publish these primitives consecutively in global
+\ wordlist zero. Retirement changes a marker's wordlist, but preserves its
+\ name and position; a later redefinition must not replace the original pair.
+\ Resolve it on each call because a captured image has different code addresses
+\ from its build host. A foreign target layout's image-header offsets also do
+\ not describe the running engine.
+: ENGINE-ABI-XT ( -- n )
+   ndict@ 1- 0 ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-NAME$ s" ptr-cell-mark" CORE-STR=CI if
+         rec XREF-WORDLIST {: wid:n :}
+         wid 0<> wid XREF-RETIRED-WL <> and if 0 unloop exit then
+         i 1+ XREF-REC {: next:ptr :}
+         next XREF-WORDLIST 0= if
+            next XREF-NAME$ s" addr-cells-abi" CORE-STR=CI if
+               next XREF-START unloop exit
+            then
+         then
+         0 unloop exit
+      then
+   loop
+   0 ;
 
 public
 \ Wordlist zero contains the immutable engine primitive. Reject a source word
@@ -43,7 +64,7 @@ public
 : CURRENT? ( -- bool )
    s" addr-cells-abi" 0 search-wl {: xt:n :}
    xt 0= if 0 0 <> exit then
-   xt TEXT-BASE < xt TEXT-BASE - TEXT-SIZE >= or if
+   xt ENGINE-ABI-XT <> if
       s" address-cells: version probe is not an engine primitive" 96 die
    then
    xt VERSION-XT execute {: version:n :}
@@ -173,6 +194,31 @@ public
    CURRENT? if
       [: KEEP-LOCKED ;] WITH-LOCK
    else KEEP-ROWS then ;
+
+\ A fixed typed allocation can change which sum payload cells contain code.
+\ Replace only its XT declarations; DATA declarations and outside rows stay.
+private
+: REMOVE-XT-LOCKED ( n n -- ) {: first:n limit:n :}
+   INDEX-RELEASE
+   LIVE-SPAN {: rows:ptr count:n :}
+   0
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+      row SNAP-RELOC:XTCELL-DATA-TAG and 0= off first >= and
+      off limit CELL - <= and 0= if
+         dup cells rows + row swap ! 1+
+      then
+   loop
+   HEADER ! ;
+
+public
+
+: REMOVE-XT-SPAN ( n n -- ) {: first:n bytes:n :}
+   first 0 < bytes 0 < or if REFUSE then
+   first here data-base - > if REFUSE then
+   bytes here data-base - first - > if REFUSE then
+   first first bytes + [: REMOVE-XT-LOCKED ;] WITH-LOCK ;
 
 \ Called outside the registrar, before snapshot DATA length is frozen. DATA
 \ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.

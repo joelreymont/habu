@@ -100,7 +100,10 @@ $2A8 constant NATIVE-DOES-COMMIT-OFF
 $2B0 constant UNIT-MARK-OFF
 $2B8 constant UNIT-EXPORT-OFF
 $2C0 constant UNIT-IMPORT-OFF
-$2C8 constant VERIFY-RENDERS-OFF
+$2C8 constant TRUSTED-TICK-OFF
+$2D0 constant INIT-LAYOUT-OFF
+$2D8 constant FIELD-SPAN-OFF
+$2E0 constant VERIFY-RENDERS-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

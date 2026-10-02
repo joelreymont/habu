@@ -122,9 +122,6 @@ variable M-DOES-OUT
 variable M-DOES-GIN                  \ where the clause's argument row's values end
 variable M-DOES-GOUT                 \ where the clause's result row's values end
 variable M-DOES-FUN                  \ hidden clause function ordinal
-variable TRUST-VERDICT
-PTR-VARIABLE TRUST-SRC-A
-variable TRUST-SRC-U
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -220,25 +217,11 @@ variable TRUST-SRC-U
    u NAME-CAP > if E-NCOMP-TEXT throw then
    a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
 
-\ The declared effect is this definition's assertion, so the scan is here only to
-\ fill the tape stage N0 reads and its verdict is never enforced (RECORD below
-\ enforces one only for a CHECKED definition). The owner suppresses its own
-\ render for the scan's duration and restores it on either exit.
-: CHECK-TRUSTED-BODY ( -- )
-   TRUST-SRC-A @ TRUST-SRC-U @ CHECKER-OWNER:CHECK-UNJUDGED TRUST-VERDICT ! ;
-
-\ TRUST-DECL is deliberately unavailable to checked code. Keep that authority
-\ at this one-line boundary; scanning and recovery stay checked like the ordinary
-\ compiler path.
+\ TRUST-DECL is deliberately unavailable to checked code. Register only after
+\ the scan has recorded the exact source spelling from the tape: the pending
+\ dictionary record holds only the bare tail of a qualified definition.
 TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER:DECLARED-EFFECT ;
-
-: CHECK-TRUSTED ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: na:ptr nu:n sa:ptr su:n ba:ptr bu:n :}
-   ba TRUST-SRC-A !  bu TRUST-SRC-U !
-   CHECK-TRUSTED-BODY
-   na nu sa su REGISTER-TRUST
-   TRUST-VERDICT @ ;
 
 \ CERTIFICATION IS THE ENGINE'S HOOK CELL, AND THE SCAN IS THE OWNER'S.
 \ Two questions were one call before this: `LOWER-CERT-HOOK:HOOK` by name both
@@ -269,7 +252,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    check@ 0 <> ;
 
 : CHECK-PARENT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   TRUSTED? if PENDING-NAME$ TRUST-SIG$ a u CHECK-TRUSTED exit then
+   TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
    hook 0= if
       a u CHECKER-OWNER:CHECK-UNJUDGED drop -1 exit then
@@ -313,7 +296,8 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
-   name-rc 0<> if name-rc throw then ;
+   name-rc 0<> if name-rc throw then
+   TRUSTED? if NAME-BUF NAME-U @ TRUST-SIG$ REGISTER-TRUST then ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -349,9 +333,6 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 : REC-INDEX ( -- n )
    ndict@ ;
 
-: LATEST-NAME$ ( -- ptr u8 n )
-   REC-INDEX XREF-REC XREF-NAME$ ;
-
 : QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
    {: rec:ptr a:ptr u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
@@ -384,10 +365,10 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ vector against; a term of a family more than one cell wide makes the two
 \ counts differ, and dict.f EFF-CELLS is where that choice is stated.
 \
-\ ASKED WITH THE BARE NAME, in the scope the source was compiled in, which is
-\ the one form that answers for a private definition as well as a public one.
-\ KEEP-TAPE-NAME has copied that name out of the tape, which is what makes it
-\ askable while the record's own name span is about to move.
+\ ASKED WITH THE SOURCE SPELLING copied by KEEP-TAPE-NAME: bare for an
+\ author's private definition, qualified when a public definition names a
+\ different wordlist. A TRUSTED: effect is registered under that same spelling
+\ after the scan, so a family-typed qualified effect has one owner here.
 \
 \ THE ABSENT ANSWER IS NAMED AND HAS NO REACHING CASE TODAY, which is written
 \ down rather than left for a reader to assume either way. SPELL-ARITY answers
@@ -397,7 +378,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ reaches it: E-NCOMP-VERDICT already refuses anything the engine's check did
 \ not certify, and this asks about a record published one step earlier in the
 \ scope that published it. A package opened and closed by the source is
-\ E-NCOMP-NAME, a `TRUSTED:` body is E-NFEED-STATE,
+\ E-NCOMP-NAME,
 \ an unsigned body answers its inferred effect. Dot
 \ habu-reach-the-absent-360162f5 owns finding one or retiring the code.
 : KEEP-ARITY ( -- )
@@ -653,7 +634,8 @@ INSTALL-FORGET
       exit
    then
    TRUSTED? if
-      LATEST-NAME$ CHECKER-OWNER:USIG-TRUNCATE
+      NAME-U @ 0= if exit then
+      NAME-BUF NAME-U @ CHECKER-OWNER:USIG-TRUNCATE
       exit
    then
    M-VERDICT @ -1 <> if exit then
@@ -730,7 +712,6 @@ public
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !
-   NULL-PTR TRUST-SRC-A !  0 TRUST-SRC-U !
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
    0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
    \ A shadow's map lives in mappings no image carries, so the capture ends it.

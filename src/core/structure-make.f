@@ -198,6 +198,9 @@ TRUSTED: SM-ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 TRUSTED: SM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
 TRUSTED: SM-ADDR-WORDS ( n -- ) TDECL-ADDR-WORDS ;
 TRUSTED: SM-ADDR-REPLAY ( n -- ) TDECL-ADDR-REPLAY ;
+TRUSTED: SM-INIT? ( n -- bool ) TFAM-DERIVE-INIT? ;
+TRUSTED: SM-INIT-WORDS ( n -- ) TDECL-INIT-WORDS ;
+TRUSTED: SM-INIT-REPLAY ( n -- ) TDECL-INIT-REPLAY ;
 
 : SM-ARM-BASE ( -- ptr n ) SM-ARM-P @ ;
 : SM-ARM-SLOT ( -- ptr n )
@@ -219,7 +222,7 @@ TRUSTED: SM-ADDR-REPLAY ( n -- ) TDECL-ADDR-REPLAY ;
 : SM-ADDR-OK? ( n -- bool ) {: fam:n :}
    fam SM-FAM-LIVE? 0= IF 0 0= 0= EXIT THEN
    fam SM-PRODUCT? 0= IF 0 0= 0= EXIT THEN
-   fam SM-ADDR? 0= IF 0 0= 0= EXIT THEN
+   fam SM-ADDR? fam SM-INIT? or 0= IF 0 0= 0= EXIT THEN
    fam SM-FLD-COUNT 0 > ;
 
 : SM-ADDR-REQUIRE ( n -- ) {: fam:n :}
@@ -245,8 +248,13 @@ TRUSTED: SM-ADDR-REPLAY ( n -- ) TDECL-ADDR-REPLAY ;
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY = IF depth EXIT THEN
    fam SM-ADDR-REQUIRE
-   DECL-REPLAY:RP-ACTIVE? IF fam SM-ADDR-REPLAY depth EXIT THEN
-   fam SM-ADDR-WORDS
+   DECL-REPLAY:RP-ACTIVE? IF
+      fam SM-ADDR? IF fam SM-ADDR-REPLAY THEN
+      fam SM-INIT? IF fam SM-INIT-REPLAY THEN
+      depth EXIT
+   THEN
+   fam SM-ADDR? IF fam SM-ADDR-WORDS THEN
+   fam SM-INIT? IF fam SM-INIT-WORDS THEN
    depth ;
 
 : SM-PART-ROLLBACK ( n -- n ) {: depth:n :}
@@ -278,6 +286,8 @@ public
 private
 
 SM-INSTALL
+: SM-INSTALL-INIT ( -- ) [: ARM ;] is TYPE-DECL:TDECL-INIT-ARM-XT ;
+SM-INSTALL-INIT
 
 ;package
 

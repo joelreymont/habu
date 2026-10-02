@@ -116,6 +116,11 @@ s" STRUCTURE foo 24 ;STRUCTURE" TRY 7108 T=                      \ arity above t
 s" STRUCTURE foo 0 FIELD a nope ;STRUCTURE" TRY 7109 T=          \ unresolved field type
 s" STRUCTURE foo 0 FIELD a Q ;STRUCTURE" TRY 7109 T=             \ upper-case single-letter type
 s" STRUCTURE foo 0 FIELD a a ;STRUCTURE" TRY 7109 T=             \ parameter outside declared arity
+NEWTYPE qreq 0
+NEWTYPE qres 0
+s" STRUCTURE qrollback 0 FIELD handler [ qreq qres ] ;STRUCTURE" TRY 7107 T=
+s" STRUCTURE qrollback 0 FIELD handler [ qreq qres -- ] ;STRUCTURE" TRY 0 T=
+s" QROLLBACK-RT ( [ qreq qres -- ] -- qrollback ) QROLLBACK:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" STRUCTURE foo 0 VARIANT q ;VARIANT ;STRUCTURE" TRY 7107 T=    \ mixed legacy token
 s" STRUCTURE foo 0 FIELD x n" TRY 7107 T=                        \ missing ;STRUCTURE
 s" STRUCTURE foo 0 POLICY nope FIELD x n ;STRUCTURE" TRY 7116 T= \ unknown layout policy
@@ -356,15 +361,11 @@ s" STRUCTURE-DECL:SD-RUN sdgnoend 0 FIELD a n" TRY 7107 T=
 s" habu: bad structure declaration 'sdgnoend': missing ;STRUCTURE at 'sdgnoend'"
 DECL-DIAG:HAS? -1 T=
 
-\ the self-referential FIELD. The field type resolves to the family being
-\ declared, whose width is not bound until close, so the field record refuses the
-\ layout (E-PF-LAYOUT). That reject used to be a bare 7127 with no message; it now
-\ names the declaration, the offending field, and the reason. The legacy PRODUCT
-\ definer refuses the same shape earlier, at its own recursion gate (7117), so the
-\ codes differ by construction — the front end has no recursion pre-check yet.
+\ A self-referential field is refused during type resolution, before a width
+\ query can enter the unfinished family.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgself 0 FIELD selffld sdgself ;STRUCTURE" TRY 7127 T=
-s" habu: bad structure declaration 'sdgself': invalid field layout metadata at 'selffld'"
+s" STRUCTURE-DECL:SD-RUN sdgself 0 FIELD selffld sdgself ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdgself': field type cannot recursively name its owner at 'sdgself'"
 DECL-DIAG:HAS? -1 T=
 
 \ no family leaks from one declaration into the next: a declaration that fails
@@ -421,8 +422,8 @@ DECL-DIAG:HAS? -1 T=
 \ table. The over-long span cap and its "..." marker belong to the shared packet
 \ and are pinned once, in test/enum-decl-suite.f section 22h.
 DECL-DIAG:PROSE
-s" STRUCTURE-DECL:SD-RUN sdgvrsv 0 FIELD z sdgvrsv ;STRUCTURE" TRY 7127 T=
-s" habu: bad structure declaration 'sdgvrsv': invalid field layout metadata at 'z'"
+s" STRUCTURE-DECL:SD-RUN sdgvrsv 0 FIELD z sdgvrsv ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdgvrsv': field type cannot recursively name its owner at 'sdgvrsv'"
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:OFF

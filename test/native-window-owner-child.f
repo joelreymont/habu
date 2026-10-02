@@ -16,6 +16,7 @@ require src/core/prefix-boundary.f
 require lib/string.f
 require lib/memory.f
 require src/habu/address-cells.f
+require src/compiler/native/string.f
 
 package NW-OWNER
 
@@ -134,7 +135,13 @@ TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
    s" src/core/cell-effects.f" included
    \ Optional dependency paths are loaded by this retained continuation: the
    \ replacement prefix has not installed its own include words yet.
-   SCRIPT-ARGC 1 ?do i SCRIPT-ARGV$ LOAD-OPTIONAL loop
+   SCRIPT-ARGC 1 ?do
+      i SCRIPT-ARGV$
+      \ The retained compiler owns literals after its namespace is retired.
+      2dup s" --literals" CORE-STR= if
+         2drop NSTR:WINDOW-OPEN
+      else LOAD-OPTIONAL then
+   loop
    PATH$ included
    \ Call the retained production detector after the replacement checker loads.
    ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI @ <> if

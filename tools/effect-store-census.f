@@ -77,6 +77,8 @@ TRUSTED: T-PUSH ( -- n ) EN-PUSH ;
 TRUSTED: T-QUOT ( -- n ) EN-QUOT ;
 TRUSTED: T-ATOM ( -- n ) EN-ATOM ;
 TRUSTED: T-PARAM ( -- n ) EN-PARAM ;
+TRUSTED: T-VAR ( -- n ) EN-VAR ;
+TRUSTED: T-ROW ( -- n ) EN-ROW ;
 
 \ ---- the counters the walk fills ----------------------------------------------
 variable WINDOW-V   variable RECS-V     variable SHADOW-V
@@ -244,7 +246,10 @@ variable DUPCUR
          1 +
       REPEAT drop
       r> dup SHT+ EXIT THEN
-   H0 tg H+ off N-A FIELD H+ off N-B FIELD H+ H@ dup SHT+ ;
+   H0 tg H+ off N-A FIELD H+ off N-B FIELD H+
+   \ The storage restriction is independent of the variable's ordinary kind.
+   tg T-VAR = tg T-ROW = or IF off N-C FIELD H+ THEN
+   H@ dup SHT+ ;
 
 \ ---- the two passes -----------------------------------------------------------
 \ Pass one marks every record another record shadows. A record's ER.SYMPREV is

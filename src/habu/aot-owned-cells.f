@@ -12,9 +12,10 @@
 \ that carry a value and leaves the rest at the mapping's zero, which is what the
 \ engine's own entry does (src/habu/habu2.f EM-DATA-INIT).
 \
-\ AND SOME ARE CONSTANT BYTES THAT MUST TRAVEL. A baked table the application
-\ reads - the digits of the i64 bounds, SHA-256's round constants - holds a value
-\ no entry can recompute and no fresh mapping can supply. Such a cell is CARRIED:
+\ AND SOME ARE DATA THAT MUST TRAVEL. A baked table the application reads - the
+\ digits of the i64 bounds, SHA-256's round constants, or FFI declaration
+\ metadata - holds a value no entry can recompute and no fresh mapping can
+\ supply. Such a cell is CARRIED:
 \ the claim names it WITH ITS BYTE LENGTH, src/habu/aot-lib.f CARRY-CELLS copies
 \ those bytes into the carried run inside the application's window
 \ (src/habu/aot-window-latch.f CARRY-RESERVE, so the image writes them as part of
@@ -46,13 +47,17 @@
 \ not otherwise know that AOT exists.
 require src/core/util.f
 require lib/image-lifecycle.f
+require lib/engine-id.f
 require src/os/env-base.f
 require src/core/dynamic-storage.f
 require src/core/sha256.f
 require src/core/type-family-sha.f
 require lib/memory.f
 require lib/string.f
+require lib/ffi-abi.f
+require lib/task.f
 require src/habu/layout.f
+require src/habu/aot-window-latch.f
 
 package AOT-OWNED
 private
@@ -65,6 +70,7 @@ create KINDS MAX-CELLS cells allot
 create LENS MAX-CELLS cells allot
 create DESTS MAX-CELLS cells allot
 variable COUNT
+variable ENGINE-WINDOW
 
 \ FRESH is 0, IMAGE-BASE is 1, ENTRY-XT is 2, TEXT-BASE is 3 and CARRIED is 4.
 \ The kind is stored because it is what the entry emitter switches on; deriving
@@ -129,6 +135,19 @@ public
 : CARRIED ( ptr a n -- ) {: c:ptr len:n :}
    len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
    c 4 len CLAIM ;
+
+\ FFI and TASK are baked into the C2 engine. An application's own require may
+\ instead load either one inside its window. Claim a field only when its source
+\ is entirely below the window; in-window DATA already travels with the image.
+: ENGINE-DATA? ( ptr u8 n -- bool ) {: c:ptr len:n :}
+   c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + len +
+   ENGINE-WINDOW @ <= ;
+
+: ENGINE-CARRY ( ptr u8 n -- )
+   2dup ENGINE-DATA? if CARRIED else 2drop then ;
+
+: ENGINE-FRESH ( ptr u8 n -- )
+   2dup ENGINE-DATA? if FRESH-BYTES else 2drop then ;
 
 : N ( -- n ) COUNT @ ;
 : AT ( n -- n ) cells OFFS + @ ;
@@ -254,6 +273,11 @@ private
 \ src/core/type-family-sha.f declares no package, so the list names its two cells
 \ directly and that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS
 \ detour below exists only because those three cells are private to their package.
+\ ENGINE-ID's pathname/key caches and identity-query buffers are process-local:
+\ PREPARE clears their validity before capture, and the stripped process computes
+\ them on first use. Its fixed Linux /proc pathname is immutable and is carried.
+\ ENGINE-ID:OWNED-CELLS names the private contiguous extents without exposing
+\ their fields to application code.
 \
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
@@ -262,7 +286,14 @@ private
 \ outside-the-restored-span refusal, and tools/hb-build-stripped-test.f
 \ HBT-STRIPPED-UNOWNED-CELL pins that. TPB is a `create` table like the carried
 \ ones and is not carried either: a table travels because it is named here.
-: LIST ( -- )
+public
+
+\ Collect after the application's one-shot lifecycle cleanup, when the window
+\ and every live declaration belong to this link. A saved linker loads this
+\ module before it opens its later application's window.
+: COLLECT ( n -- ) {: window:n :}
+   window ENGINE-WINDOW !
+   0 COUNT !
    ENV-DATA-PTR IMAGE-BASE
    ENV-Z  FRESH
    ENV-A  FRESH
@@ -280,7 +311,9 @@ private
    KK  64 cells CARRIED
    HH0  8 cells CARRIED
    TF-SHA-CTX FRESH  SHA-DIGEST FRESH
+   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] FFI:OWNED-CELLS
+   window [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] TASK:OWNED-CELLS
+   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] ENGINE-ID:OWNED-CELLS
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
-LIST
 ;package

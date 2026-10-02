@@ -179,18 +179,22 @@ PTR-VARIABLE STGT-START
 : LBUF-EVAL-RUN ( -- )
    LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT ;
 
-: LBUF-EVAL ( ptr u8 n ptr u8 n -- n )
+: LBUF-EVAL ( ptr u8 n ptr u8 n -- n n )
    {: src:ptr srcu:n name:ptr nameu:n :}
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-PEND!
    src LBUF-EVAL-A 0 ptr-field !  srcu LBUF-EVAL-U !
-   [: LBUF-EVAL-RUN ;] catch
+   [: LBUF-EVAL-RUN ;] catch {: rc:n :}
    NULL-PTR LBUF-EVAL-A !  0 LBUF-EVAL-U !
-   LBUF-PEND-CLEAR ;
+   LBUF-EVAL-OFF @ {: handle:n :}
+   0 LBUF-EVAL-OFF !
+   LBUF-PEND-CLEAR
+   handle rc ;
 
-: LBUF-EVAL! ( ptr u8 n ptr u8 n -- )
-   LBUF-EVAL {: rc:n :}
-   rc 0 <> if rc throw then ;
+: LBUF-EVAL! ( ptr u8 n ptr u8 n -- n )
+   LBUF-EVAL {: handle:n rc:n :}
+   rc 0 <> if rc throw then
+   handle ;
 
 \ Every region this file allots holds cells, so it starts on a cell: LBUF-ALIGN
 \ rounds the data pointer up before a definer measures it or a binder allots at
@@ -213,6 +217,77 @@ TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
    LBUF-BYTES @ allot
    base LBUF-BYTES @ LBUF-ZERO ;
 
+\ Whole-record stores move ordinary cells. Walk the admitted instantiated term
+\ at capture, using the active sum tag so shared payload slots are classified
+\ as code only while their active alternative holds a quotation.
+TRUSTED: STORAGE-MARK-TERM ( ptr a n -- ) {: base:ptr term:n :}
+   term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
+   term TFAM:TFAM-STORAGE-PRODUCT? if
+      {: fam:n :}
+      0
+      fam TFAM:TFAM-FLD-COUNT@ 0 ?do
+         fam TFAM:TFAM-FLD-START@ i + {: field:n :}
+         term field TFAM:TFAM-STORAGE-FIELD {: child:n width:n :}
+         base over cells + child recurse
+         width +
+      loop drop
+      exit
+   then drop
+   term TFAM:TFAM-STORAGE-SUM? if
+      {: fam:n :}
+      base term T-WIDTH 1- cells + @
+      fam swap TFAM:TFAM-STORAGE-VARIANT
+      0= if drop E-LAYOUT-BUFFER throw then {: vid:n :}
+      0
+      vid TFAM:SUMV-PAY-N 0 ?do
+         term vid i TFAM:TFAM-STORAGE-PAY {: child:n width:n :}
+         base over cells + child recurse
+         width +
+      loop drop
+   else drop then ;
+
+: STORAGE-MARK-FIXED ( ptr a ptr u8 n -- ) {: base:ptr type:ptr typeu:n :}
+   type typeu CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
+   {: term:n :}
+   LBUF-N @ 0 ?do
+      base i LBUF-W @ * cells + term STORAGE-MARK-TERM
+   loop ;
+
+: STORAGE-HAS-QUOT? ( ptr u8 n -- bool )
+   CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
+   TFAM:TFAM-STORAGE-HAS-QUOT? ;
+
+defer STORAGE-CLEAR-XT ( n n -- )
+: STORAGE-CLEAR-MISSING ( n n -- ) 2drop E-LAYOUT-BUFFER throw ;
+: STORAGE-CLEAR-DEFAULT ( -- )
+   ['] STORAGE-CLEAR-MISSING is STORAGE-CLEAR-XT ;
+STORAGE-CLEAR-DEFAULT
+
+TRUSTED: STORAGE-CAPTURE-WALK ( n n n -- ) {: off:n count:n term:n :}
+   term T-WIDTH {: width:n :}
+   count width LBUF-EXTENT?
+   0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}
+   off bytes STORAGE-CLEAR-XT
+   data-base BYTE-VIEW off + CELL-VIEW {: base:ptr :}
+   count 0 ?do
+      base i width * cells + term STORAGE-MARK-TERM
+   loop ;
+
+: STORAGE-CAPTURE-INSTALL ( -- )
+   [: STORAGE-CAPTURE-WALK ;] is CHECKER-STORAGE-WALK-XT ;
+STORAGE-CAPTURE-INSTALL
+
+\ Quotation cells belong to the image even while null, before either compiler
+\ stores into them. These allocations are DATA; the term walk declares each
+\ code cell for capture. Pointer-to-quotation elements stay pointer cells.
+: STORAGE-ALLOT ( n ptr n n ptr u8 n bool -- )
+   {: handle:n base:ptr count:n type:ptr typeu:n hasquot:bool :}
+   base LBUF-ALLOT
+   hasquot if
+      base type typeu STORAGE-MARK-FIXED
+      handle base count CHECKER-STORAGE-BIND
+   then ;
+
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
    parse-name {: type:ptr typeu:n :}
@@ -220,11 +295,12 @@ TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
+   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL!
-   base LBUF-ALLOT ;
+   src srcu pna pnu LBUF-EVAL! {: handle:n :}
+   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
 \ LAYOUT-BUFFER is the public top-level introduction form: it consumes the
 \ count operand and parses its own name + type tokens. The axiom keeps it
@@ -344,14 +420,36 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 \ UNSAFE-TOK?. Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
+\ A relocated quotation column leaves both its old bytes and their code-cell
+\ declarations behind. Retire the entire former capacity after the binder has
+\ published the new region; a failed bind leaves the old allocation untouched.
+: LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
+   oldcap 0= oldoff cb @ = or if exit then
+   cb oldoff + {: oldbase:ptr :}
+   oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells STORAGE-CLEAR-XT
+   oldbase oldcap wc * cells LBUF-ZERO ;
+
+: LDEFER-BIND-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
+   count cb wc LDEFER-BIND
+   oldoff oldcap wc cb LDEFER-RETIRE ;
+
+: LDEFER-GROW-QUOT ( n ptr n n -- ) {: count:n cb:ptr wc:n :}
+   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
+   count cb wc LDEFER-GROW
+   oldoff oldcap wc cb LDEFER-RETIRE ;
+
+PRIM: LDEFER-BIND-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+
 \ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
 \ The `create` comes first so the accessor and both binders can name the control
 \ cells; it runs no CHECK, so the accessor is still the first DEFINITION and
 \ LBUF-EVAL's one-shot armed window authorizes it by name. NAME-BIND and
 \ NAME-GROW are ordinary checked words (each pushes the control-cell address and
 \ the width, then calls LDEFER-BIND / LDEFER-GROW).
-: LDEFER-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
-   {: name:ptr nameu:n type:ptr typeu:n :}
+: LDEFER-SOURCE ( ptr u8 n ptr u8 n bool -- ptr u8 n ptr u8 n )
+   {: name:ptr nameu:n type:ptr typeu:n hasquot:bool :}
    LBUF-CLEAR
    s" create " LBUF-APP  name nameu LBUF-BASE,
    s"  : " LBUF-APP
@@ -371,10 +469,10 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    s"  * + ; : " LBUF-APP
    name nameu LBUF-APP  s" -BIND ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   s"  LDEFER-BIND ; : " LBUF-APP
+   hasquot if s"  LDEFER-BIND-QUOT ; : " else s"  LDEFER-BIND ; : " then LBUF-APP
    name nameu LBUF-APP  s" -GROW ( n -- ) " LBUF-APP
    name nameu LBUF-BASE,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   s"  LDEFER-GROW ;" LBUF-APP
+   hasquot if s"  LDEFER-GROW-QUOT ;" else s"  LDEFER-GROW ;" then LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 3 constant LDEFER-CTRL-CELLS   \ off-cell, cap-cell, cnt-cell
@@ -391,12 +489,14 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
       2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then
    LBUF-W !  drop                                          \ width (cells) from the layout family
+   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
    LBUF-ALIGN
    here {: cbase:ptr :}
-   name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL!
-   cbase LBUF-ALLOT ;                                      \ all 0 = unbound
+   name nameu type typeu hasquot LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   src srcu pna pnu LBUF-EVAL! {: handle:n :}
+   cbase LBUF-ALLOT                                        \ all 0 = unbound
+   hasquot if handle cbase CHECKER-STORAGE-DEFER then ;
 
 \ Like LAYOUT-BUFFER: the axiom keeps DEFER-LAYOUT-BUFFER checker-known so the
 \ seal-time internal-word pass leaves it top-level executable; it parses its own
@@ -461,16 +561,6 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    s"  ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
-\ Quotation cells belong to the image even while null, before either compiler
-\ stores into them. These allocations are DATA; xt! is the declaration used by
-\ QUOTATION-STORAGE:STORE for that same region. Pointer-to-quotation elements
-\ start with `ptr`, so they do not acquire the code-cell kind.
-: STORAGE-ALLOT ( ptr n ptr u8 -- ) {: base:ptr type:ptr :}
-   base LBUF-ALLOT
-   type 1 STORAGE-QUOT-OPEN? if
-      LBUF-N @ 0 ?do 0 base i cells + xt! loop
-   then ;
-
 : TYPED-BUFFER ( n -- ) {: count:n :}
    parse-name {: name:ptr nameu:n :}
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
@@ -478,11 +568,12 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
+   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL!
-   base type STORAGE-ALLOT ;
+   src srcu pna pnu LBUF-EVAL! {: handle:n :}
+   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
 : TYPED-VARIABLE ( -- )
    parse-name {: name:ptr nameu:n :}
@@ -491,11 +582,12 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
+   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL!
-   base type STORAGE-ALLOT ;
+   src srcu pna pnu LBUF-EVAL! {: handle:n :}
+   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
 \ Axioms keep the two definers checker-known so the seal-time internal-word pass
 \ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
@@ -588,7 +680,7 @@ variable DBUF-W
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL!
+   src srcu pna pnu LBUF-EVAL! drop
    base DBUF-ALLOT ;
 
 PRIM: DYNAMIC-BUFFER PRIM;

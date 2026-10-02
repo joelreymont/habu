@@ -108,6 +108,7 @@ variable SPIN-U
    s" : OI-SEVEN ( -- n ) 8 ;" GE-SRC-LINE
    s" package OI-FXA public : OI-TWIN ( -- n ) 1 ; : OI-LONG-NAMED-TWIN ( -- n ) 4 ; ;package" GE-SRC-LINE
    s" package OI-FXB public : OI-TWIN ( -- n ) 2 ; ;package" GE-SRC-LINE
+   s" package OI-C2 public : c2-invoke ( -- n ) 4 ; ;package" GE-SRC-LINE
    s" : OI-QUAL:OI-Q ( -- n ) 3 ;" GE-SRC-LINE
    s" 5 constant OI-FIVE" GE-SRC-LINE
    s" TRUSTED: OI-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + ! DICT-CAP ndict! ;" GE-SRC-LINE
@@ -491,6 +492,26 @@ variable WANT-RC
    s" oi-tick-internal.f" BOTH
    70 s" tick internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" tick internal" GE-EXPECT-ERR ;
+
+\ The engine's tick keeps trusted C2 call primitives behind the checker owner,
+\ even though an ordinary source interpreter can resolve their dictionary rows.
+\ A different word with the same tail remains an ordinary tick.
+: TICK-TRUSTED ( -- )
+   s" ' c2-invoke drop" s" oi-tick-trusted.f" LINE-CASE
+   70 s" tick trusted" GE-EXPECT-RC
+   S\" hb: trusted-only tick: c2-invoke\n" s" tick trusted" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" ' OI-C2:c2-invoke execute ." GE-SRC-LINE
+   s" oi-tick-other-c2.f" BOTH
+   s" tick other c2" GE-EXPECT-OK
+   S\" 4\n" s" tick other c2" GE-EXPECT-OUT ;
+
+\ The complete C2 image owns this exact scope entry. Its dictionary row is
+\ internal as well, so the earlier interpret gate supplies the diagnostic.
+: TICK-C2-SCOPE ( -- )
+   s" ' C2-MEM:WITH-MUT drop" s" oi-tick-c2-scope.f" LINE-CASE
+   70 s" tick c2 scope" GE-EXPECT-RC
+   S\" hb: internal engine word: C2-MEM:WITH-MUT\n" s" tick c2 scope" GE-EXPECT-ERR ;
 
 \ The literal events, test/top-row-hook-test.f's window: each logs its class,
 \ flags and token. A string's token is its keyword, a char's and a tick's the
@@ -1158,6 +1179,8 @@ private
    SEALED-PACKAGES
    TICK-WIDE
    TICK-INTERNAL
+   TICK-TRUSTED
+   TICK-C2-SCOPE
    LITERAL-HOOK
    PACKAGE-SCOPE
    PACKAGE-WORDLISTS

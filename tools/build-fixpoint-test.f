@@ -122,6 +122,65 @@ create BFT-KEY1 64 allot
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
+\ Reuse the build case's product and host, but promote them from a copied
+\ checkout. Its bin directory belongs to the source tree, not the private
+\ install target, so cleanup must leave an unrelated file there alone. Repeat
+\ with no bin directory: a private install also works from a source-only tree.
+: BFT-CLEAN-BIN$ ( -- ptr u8 n )
+   BFT-STALE s" bin" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
+
+: BFT-CLEAN-KEEP$ ( -- ptr u8 n )
+   BFT-STALE s" bin/keep" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
+
+: BFT-CLEAN-DRIVER$ ( -- ptr u8 n )
+   BFT-STALE s" cleanup-driver.f" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap ;
+
+: BFT-CLEAN-ARTIFACTS ( -- )
+   BFT-STALE-TMP BF-TMP!
+   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap
+   s" hb-host" BF-A$ COPY-FILE-STREAM
+   BF-TMP-RESET ;
+
+: BFT-CLEAN-ARGV ( -- )
+   PROC-ARGV-RESET PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN BFT-ENG-B >LEN PROC-ENV+
+   BFT-ARGV-LOAD-LIBS
+   s" cleanup-driver.f" BFT-ARG+ ;
+
+: BFT-CLEAN-SPAWN ( -- n n n )
+   BFT-CLEAN-ARGV
+   BFT-ENG-A >LEN BFT-STALE >LEN
+   BFT-BIG-OUT BFT-BIG-CAP >LEN BFT-BIG-ERR BFT-BIG-CAP >LEN
+   BFT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   BFT-CAPTURE>N ;
+
+: BFT-CLEAN-PROMOTED ( -- )
+   BFT-CLEAN-ARTIFACTS
+   BFT-CLEAN-SPAWN {: outu:n erru:n rc:n :}
+   rc 0 T=
+   BFT-BIG-ERR erru BFT-EMPTY$ T$=
+   BFT-ENG-B BFT-HB BF-FILE= TTRUE
+   BFT-ENG-B BF-ENGINE!
+   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-BUF swap
+   BF-HOST-DST$ BF-FILE= TTRUE
+   BF-ENGINE-RESET ;
+
+: BFT-TEST-PRIVATE-CLEANUP ( -- )
+   BFT-STALE-PREPARE
+   BFT-STALE-HB BFT-ENG-A COPY-FILE-STREAM
+   BFT-ENG-A CHMOD-X
+   BFT-STALE-HB REMOVE-FILE
+   BFT-CLEAN-DRIVER$ S\" package BUILD-FIXPOINT\nBF-INSTALL-HB\nBF-INSTALL-HOST\nBF-CLEAN-BIN\n;package\n" WRITE-ALL
+   BFT-CLEAN-KEEP$ s" unrelated" WRITE-ALL
+   BFT-CLEAN-PROMOTED
+   BFT-CLEAN-KEEP$ FILE? TTRUE
+   BFT-CLEAN-BIN$ REMOVE-TREE
+   BFT-CLEAN-BIN$ DIR? TFALSE
+   BFT-CLEAN-PROMOTED
+   BFT-CLEAN-BIN$ DIR? TFALSE ;
+
 : BFT-TEST-STAMP-SEED ( -- )
    BFT-STAMP-SCOPE
    BFT-RECORD!
@@ -778,6 +837,7 @@ public
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
+   s" private install cleanup" [: BFT-TEST-PRIVATE-CLEANUP ;] BFT-STEP
    s" candidate boot" [: BFT-TEST-CANDIDATE-BOOT ;] BFT-STEP
    s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP

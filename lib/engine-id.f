@@ -3,9 +3,9 @@
 \ running image: /proc/self/exe on Linux, and on macOS a descriptor whose vnode
 \ matches the main executable's mapped vnode. A pathname can be replaced after
 \ PATH$ resolves it, so its bytes alone cannot establish image identity.
-\ Cached path and key are cleared before image capture through a one-shot image
-\ lifecycle hook. The next process, or a later use in this process, registers a
-\ fresh hook when it first caches either value.
+\ Cached pathname bytes and cache validity are cleared before image capture
+\ through a one-shot lifecycle hook. The next process, or a later use in this
+\ process, registers a fresh hook when it first caches either value.
 
 require lib/errors.f
 require lib/string.f
@@ -20,6 +20,7 @@ create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DON
 create EID-KEY EID-KEY-LEN allot     variable EID-KEY-DONE
 variable EID-CLEANUP-LIVE
 create EID-FSHA-CTX SHA256-FILE-CTX-BYTES allot
+here EID-PATH - constant EID-CACHE-BYTES
 
 \ Linux follows the process's executable mapping, even after its old pathname
 \ has been renamed and another file has appeared there.
@@ -27,6 +28,7 @@ create EID-PROC-EXE
    char / c, char p c, char r c, char o c, char c c, char / c,
    char s c, char e c, char l c, char f c, char / c,
    char e c, char x c, char e c, 0 c,
+here EID-PROC-EXE - constant EID-PROC-EXE-BYTES
 
 \ sys/proc_info.h in the local macOS SDK: PROC_PIDREGIONPATHINFO returns a
 \ proc_regionwithpathinfo (1272 bytes), with prp_vip.vip_vi.vi_stat dev/ino at
@@ -43,6 +45,7 @@ create EID-PROC-EXE
 32 constant EID-FD-INO
 create EID-MAPPED EID-REGION-BYTES allot
 create EID-OPENED EID-FD-BYTES allot
+here EID-MAPPED - constant EID-INFO-BYTES
 
 PROCESS-SYMBOLS
 FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
@@ -57,6 +60,10 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
 ;FUNCTION
 
 : CLEAR-CACHE ( -- )
+   \ macOS proc_pidpath can leave a right-aligned copy beyond the reported length.
+   \ Clear the full allocated span before capture.
+   EID-PATH-CAP 0 ?do 0 EID-PATH i + c! loop
+   0 EID-PATH-U !
    0 EID-PATH-DONE !
    0 EID-KEY-DONE !
    0 EID-CLEANUP-LIVE ! ;
@@ -136,5 +143,15 @@ public
       -1 EID-KEY-DONE !
    then
    EID-KEY EID-KEY-LEN ;
+
+\ A stripped entry starts a new process. The path/key caches and identity-query
+\ buffers start empty there; the Linux /proc pathname is immutable input.
+\ Hand the declared spans to AOT, which claims them only when this module was
+\ baked below the application's restored DATA window.
+: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   EID-PATH BYTE-VIEW EID-CACHE-BYTES fresh execute
+   EID-PROC-EXE BYTE-VIEW EID-PROC-EXE-BYTES carry execute
+   EID-MAPPED BYTE-VIEW EID-INFO-BYTES fresh execute ;
 
 ;package

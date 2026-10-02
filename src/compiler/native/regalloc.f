@@ -147,7 +147,6 @@ variable BND-LANES                   \ address-carrier instructions, 1 or more
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
-1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
@@ -601,11 +600,6 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : FRAME-ATTR ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT-OF ;
 
-: FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id 0 BND-FRAME @ ATTR-INT-OF NOATTR <>
-   id 0 BND-SLOT @ ATTR-INT-OF NOATTR <> or ;
-
 : FRAME-SEEN+ ( n -- )
    {: frame:n :}
    frame NOATTR = if exit then
@@ -838,8 +832,6 @@ DYNAMIC-BUFFER CL-SIZE-BUF n
 : CL-SIZE ( -- ptr n ) 0 CL-SIZE-BUF ;
 DYNAMIC-BUFFER CL-KEEP-BUF n
 : CL-KEEP ( -- ptr n ) 0 CL-KEEP-BUF ;
-DYNAMIC-BUFFER CL-FRAME-BUF n
-: CL-FRAME ( -- ptr n ) 0 CL-FRAME-BUF ;
 DYNAMIC-BUFFER CL-FIX-BUF n
 : CL-FIX ( -- ptr n ) 0 CL-FIX-BUF ;
 DYNAMIC-BUFFER CL-WANT-BUF n
@@ -854,8 +846,6 @@ DYNAMIC-BUFFER CL-USE-NEXT-BUF n
 : CL-USE-NEXT ( -- ptr n ) 0 CL-USE-NEXT-BUF ;
 DYNAMIC-BUFFER USE-POS-BUF n
 : USE-POS ( -- ptr n ) 0 USE-POS-BUF ;
-DYNAMIC-BUFFER READ-END-BUF n
-: READ-END ( -- ptr n ) 0 READ-END-BUF ;
 \ Class roots bucketed by the position their hull opens at: one list per
 \ position, so the sweep asks a position which classes begin there instead of
 \ asking every value in the module whether it is one of them.
@@ -912,14 +902,12 @@ variable N-FIXP
    VMAX CL-DEF-BUF-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
    VMAX CL-KEEP-BUF-RESERVE
-   VMAX CL-FRAME-BUF-RESERVE
    VMAX CL-FIX-BUF-RESERVE
    VMAX CL-WANT-BUF-RESERVE
    OMAX ANCH-HEAD-BUF-RESERVE
    OMAX ANCH-NEXT-BUF-RESERVE
    VMAX 1+ CL-USE-START-BUF-RESERVE
    VMAX CL-USE-NEXT-BUF-RESERVE
-   OMAX BMAX + READ-END-BUF-RESERVE
    OMAX BMAX + DUE-HEAD-BUF-RESERVE
    VMAX DUE-NEXT-BUF-RESERVE
    OMAX CALL-POS-BUF-RESERVE
@@ -1423,12 +1411,6 @@ variable N-FIXP
 : KEEP? ( n -- bool )
    cells CL-KEEP + @ 0<> ;
 
-: FRAME-KEEP! ( n -- )
-   UF-FIND cells CL-FRAME + 1 swap ! ;
-
-: FRAME-KEPT? ( n -- bool )
-   UF-FIND cells CL-FRAME + @ 0<> ;
-
 \ ---- what "this class lost its register" means -------------------------------
 \ A class the fit evicted and a class in a slot are two answers, not one.
 : CL-EVICTED? ( n -- bool )
@@ -1447,7 +1429,6 @@ variable N-FIXP
       NOPOS i cells CL-DEF + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
-      0 i cells CL-FRAME + !
       NOBODY i cells CL-FIX + !
       NOBODY i cells CL-WANT + !
    loop ;
@@ -1458,23 +1439,12 @@ variable N-FIXP
       r cells CL-SIZE + @ 1+  r cells CL-SIZE + !
    loop ;
 
-: MB-KEEP-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT SLOT dup KEEP! FRAME-KEEP!
-   loop
-   id RESULTS-OF 0 ?do
-      id i RESULT-AT SLOT dup KEEP! FRAME-KEEP!
-   loop ;
-
-: MB-KEEP-BLOCK ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id b:n :}
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   b 0= if bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop then
-   bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id FRAME-TOUCH? if id MB-KEEP-OP then
-   loop ;
+\ An entry argument has no defining operation at which a spill store could be
+\ inserted. Frame operations themselves may read and write spilled data:
+\ A64SPILL threads the inserted accesses through their memory token.
+: MB-KEEP-ENTRY ( IR-ID:ir-fun-id -- )
+   0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop ;
 
 \ Every function's positions lie end to end, so the line ends where the last
 \ function's window does.
@@ -1515,7 +1485,6 @@ variable N-FIXP
 : MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
    nip {: r:n :}
    r CL-EVICTED? if false exit then
-   r FRAME-KEPT? if false exit then
    r CLS-AT C-TOKEN = if false exit then
    true ;
 
@@ -1542,6 +1511,14 @@ variable N-FIXP
    p POS-OP? 0= if false exit then
    r p MB-USE-FROM p = ;
 
+\ A one-successor branch forwards its block arguments without reading a
+\ register. If a class was spilled, the matching destination argument uses
+\ the same frame slot; the spill pass omits that edge operand.
+: MB-REG-READS? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   r p MB-READS? 0= if false exit then
+   f p POS-OP SUCCS-OF 1 <> ;
+
 : MB-DEFS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
    p POS-OP? 0= if false exit then
@@ -1553,7 +1530,7 @@ variable N-FIXP
 
 : MB-TOUCHES? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
-   r p MB-READS? if true exit then
+   f r p MB-REG-READS? if true exit then
    f r p MB-DEFS? ;
 
 \ A class nothing reads again answers the position past the last one.
@@ -1573,23 +1550,6 @@ variable N-FIXP
    n at 1+ ?do
       bk i OP-AT DLOAD? 0= if drop i leave then
    loop ;
-
-\ A call group begins with the stores that publish its arguments. Reloads may
-\ stand before that run, but not inside it; adjacent data-stack groups are not
-\ one indivisible run.
-: MB-DSTORE-END ( IR-ID:ir-block-id n -- n )
-   {: bk:IR-ID:ir-block-id at:n :}
-   bk OP-COUNT {: n:n :}
-   n
-   n at 1+ ?do
-      bk i OP-AT DSTORE? 0= if drop i leave then
-   loop ;
-
-: MB-DSTORE-HEAD? ( IR-ID:ir-block-id n -- bool )
-   {: bk:IR-ID:ir-block-id at:n :}
-   bk at OP-AT DSTORE? 0= if false exit then
-   at 0= if true exit then
-   bk at 1- OP-AT DSTORE? 0= ;
 
 : MB-ANCH-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id p:n :}
@@ -1623,34 +1583,12 @@ variable N-FIXP
 : FR-LOAD+ ( n n -- )                over REFIT-LOWER  FR-IX FR-LOAD-BUF 1 swap +! ;
 : FR-STORE+ ( n n -- )               over REFIT-LOWER  FR-IX FR-STORE-BUF 1 swap +! ;
 
-\ Reloads stand before one call's store run, so their temporary registers are
-\ live only until their last consuming store in that group: an operation needs
-\ one for the class when a use of it lies before the end of its run of reads.
-\ For the use at u those operations are u, when its reads reach past it, and
-\ the stores of its run before it - whether or not u's own reads do - so the
-\ walk goes down from u until a position below it whose run ends at or before u
-\ - a block's start reads nothing, so at that start at the latest - or until
-\ the floor the previous use counted down to. A position inside the store
-\ window is already counted. Answers the floor for the next use.
-: MB-RUN-COST+ ( n n n n n -- n )
-   {: floor:n u:n fl:n d:n across:n :}
-   u
-   begin
-      dup floor >= if dup u =  over cells READ-END + @ u >  or else false then
-   while
-      {: p:n :}
-      p cells READ-END + @ u >  p d >  p across <  and 0=  and if
-         p fl FR-LOAD+
-      then
-      p 1-
-   repeat
-   drop
-   u 1+ floor max ;
-
 \ Added once, when the class goes to the frame. Its store needs a register where
 \ an operation first writes it and on to the anchor the store waits for; a
-\ reload needs one inside that window, past the write, and wherever a run of
-\ reads reaches one of its uses. Each position counts the class once.
+\ reload needs one inside that window, past the write, and at each operation
+\ that reads the class in a register (MB-REG-READS?), just before which the
+\ reload stands. Each position counts the class once: the class's use slice is
+\ sorted, so an operation that reads it twice is two adjacent entries.
 : MB-FRAME-COST+ ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id r:n :}
    r FILE-AT {: fl:n :}
@@ -1658,9 +1596,13 @@ variable N-FIXP
    f d MB-ANCH-POS  d 1+ max {: across:n :}
    across d ?do i fl FR-STORE+ loop
    across d 1+ ?do i fl FR-LOAD+ loop
-   0
+   NOPOS
    r 1+ cells CL-USE-START + @  r cells CL-USE-START + @ ?do
-      i cells USE-POS + @  fl d across MB-RUN-COST+
+      i cells USE-POS + @ {: u:n :}
+      u over <>  u d >  u across <  and 0=  and if
+         f r u MB-REG-READS? if u fl FR-LOAD+ then
+      then
+      drop u
    loop
    drop ;
 
@@ -2072,12 +2014,6 @@ variable N-FIXP
       then
    loop ;
 
-: MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id b:n at:n :}
-   bk at OP-AT DSTORE? 0= if bk b at at MB-PLAN-LOADS1 exit then
-   bk at MB-DSTORE-HEAD? 0= if exit then
-   bk at MB-DSTORE-END at ?do bk b at i MB-PLAN-LOADS1 loop ;
-
 : MB-PLAN-TAIL-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -2143,7 +2079,7 @@ variable N-FIXP
          bk bk IR-ID:BLOCK-LOCAL i d MB-PLAN-STORES
          d cells ANCH-NEXT + @
       repeat drop
-      bk bk IR-ID:BLOCK-LOCAL i MB-PLAN-LOADS
+      bk bk IR-ID:BLOCK-LOCAL i i MB-PLAN-LOADS1
    loop
    bk MB-PLAN-TAIL-CK
    b RET-B @ = if bk MB-PLAN-MOVES then ;
@@ -2235,28 +2171,6 @@ variable N-FIXP
       r cells CL-USE-NEXT + dup @ 1+ swap !
    loop ;
 
-\ A normal operation reads only itself; a store reads through the end of its
-\ contiguous store group. One-successor branches do not require reloads here,
-\ and neither does the block's start, which is no operation.
-: MB-READ-ENDS ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id b:n :}
-   b bk OP-COUNT OP-POS
-   bk OP-COUNT 0 ?do
-      bk OP-COUNT i - 1- {: at:n :}
-      b at OP-POS {: p:n :}
-      bk at OP-AT {: id:IR-ID:ir-op-id :}
-      id DSTORE? if
-         id SUCCS-OF 1 = if p else dup then
-         p cells READ-END + !
-      else
-         p id SUCCS-OF 1 <> if 1+ then p cells READ-END + !
-         drop p
-      then
-   loop
-   drop
-   b cells B-ST + @ {: s:n :}
-   s s cells READ-END + ! ;
-
 : MB-USES ( -- )
    N-VALS @ 0 ?do 0 i cells CL-USE-NEXT + ! loop
    N-FUNS @ 0 ?do
@@ -2278,7 +2192,6 @@ variable N-FIXP
       i FUN-AT {: f:IR-ID:ir-fun-id :}
       N-BLKS @ 0 ?do
          f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-         bk i MB-READ-ENDS
          bk OP-COUNT 0 ?do bk i OP-AT j i OP-POS MB-USE-FILL-OP loop
       loop
    loop ;
@@ -2369,11 +2282,7 @@ variable N-FIXP
    N-FUNS @ cells F-BASE + ! ;
 
 : KEEP-ALL ( -- )
-   N-FUNS @ 0 ?do
-      i MB-RELAY
-      i FUN-AT {: f:IR-ID:ir-fun-id :}
-      N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
-   loop ;
+   N-FUNS @ 0 ?do i FUN-AT MB-KEEP-ENTRY loop ;
 
 : PLAN-ALL ( -- )
    N-FUNS @ 0 ?do
@@ -2492,10 +2401,9 @@ public
 \ the tables holding a machine no allocation can reach: the mode stays unbound
 \ and WALK refuses before it reads them.
 \
-\ One field is named here and used nowhere: the STAND is where the dialect's
-\ selector puts the data-stack pointer, which regalloc-verify.f checks a module
-\ against and this pass has no decision to make about. A value is unmade whole,
-\ so it is bound and left.
+\ STAND names the data-stack pointer checked by regalloc-verify.f; slot names
+\ the dialect's frame slot. This pass makes no decision from either field.
+\ A value is unmade whole, so both are bound and left.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2529,7 +2437,6 @@ public
    gpr 0 BND-TYP !
    fpr 0 BND-FPR !
    mem 0 BND-MEM !
-   slot 0 BND-SLOT !
    frame 0 BND-FRAME !
    dslot  DK-SLOT BND-DKEY !
    dbytes DK-BYTES BND-DKEY !
@@ -2736,6 +2643,13 @@ public
 
 public
 : RESET-SCRATCH ( -- )
+   \ Image preparation releases the assignment's mapped tables. Its seal and
+   \ generation cannot survive into the product image as an answer, nor can the
+   \ function the block tables were last laid out for.
+   ST-EMPTY ST !
+   0 GEN-N !
+   0 N-VALS !
+   -1 LAID !
    0 N-CALLS !
    0 N-FIXP !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;

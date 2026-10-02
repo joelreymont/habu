@@ -236,11 +236,14 @@ claim, so a stripped program calling `TMP-PATH` still gets *outside the restored
 span*, naming `TPU` (`HBT-STRIPPED-UNOWNED-CELL`). Adding a cell to the list is
 a deliberate act that has to state, cell by cell, why the entry may own it.
 
-**A baked constant an application reads is carried by name.** Printing an
-integer, parsing one or hashing reaches a table the engine baked below every
-window — `lib/string.f`'s `STR-MAX-I64$` and `STR-MIN-I64$`, SHA-256's `KK` and
-`HH0` — whose bytes no entry store can recompute and no fresh mapping can
-supply. Such a cell is claimed **carried**, with its byte length: at link
+**Baked data an application needs is carried by name.** Printing an integer,
+parsing one or hashing reaches a table the engine baked below every window —
+`lib/string.f`'s `STR-MAX-I64$` and `STR-MIN-I64$`, SHA-256's `KK` and `HH0` —
+whose bytes no entry store can recompute and no fresh mapping can supply. An
+engine that bakes TASK also bakes FFI; application declarations then extend the
+engine's FFI table. Its names, paths, row metadata and counters travel by the
+same rule, while cached foreign addresses and library handles start fresh.
+Such a cell is claimed **carried**, with its byte length: at link
 `src/habu/aot-lib.f CARRY-CELLS` copies `[cell, cell+length)` into the
 cell-aligned run `src/habu/aot-window-latch.f CARRY-RESERVE` reserves inside the
 span, so the bytes travel in the image's own data blob, and `aot-closure.f
@@ -250,15 +253,14 @@ same interior offset — the map a re-interned literal already goes through, so
 nothing below the window is written.
 
 **The carried run travels in every stripped image.** The copies are made for
-every link, whether the program reaches them or not, and the blob ships every
-non-zero byte of the window: a hello-world image carries 473 written data bytes
-and no zero ones (measured on this engine, from the build's own report — `data
-473 written + 0 zero` — and `HBT-SIZE-AOT` pins the same shape). The
-run itself is `CARRY-BYTES` = 1024 bytes and the four claims use 624 of it
-(`STR-MAX-I64$` and `STR-MIN-I64$` at `STR-I64-DIGITS` = 19 bytes each, rounded
-up to a cell, `KK` at 64 cells and `HH0` at 8 cells); what no claim uses stays
-zero and never travels. A fifth claim larger than the remaining 400 bytes fails
-the build with *aot: carried engine cells exceed the window's carried run*, and
+every link, whether the program reaches them or not, and the blob ships only
+nonzero bytes of the window. The run has a capacity of $8000 bytes: the old
+$400 budget, at most 26,656 bytes of FFI declaration metadata with full
+`PATH-CAP` library paths, 160 bytes of
+TASK symbol names and cells, and 2,056 bytes of task exit declarations. Unused
+rows remain zero in the data blob.
+A claim that exceeds the run fails the build with *aot: carried engine cells
+exceed the window's carried run*, and
 a claim reaching into the capture window fails with *aot: a carried claim
 reaches into the capture window* — the window is restored on its own and a copy
 of part of it would never be read. The scratch cells and buffers of
@@ -396,8 +398,8 @@ record is data, and `NAME+13950258700` says less than `<unknown>`.
 **A stripped image can call a foreign function.** A `FUNCTION:` declaration
 resolves its symbol at the *first call*, so no address the builder resolved ever
 travels; what the image has to carry is the declaration's data and the loader's
-own entry points — the FFI table, which is in the program's DATA window because
-`lib/ffi-abi.f` is a library the program requires; the two GOT slots
+own entry points — the FFI declaration table, either loaded in the program's
+DATA window or carried there from a baked FFI package; the two GOT slots
 `src/os/linux/elf.f` relocates (`dlopen`, `dlsym`) in every image it writes; and
 the text-base cell those slots are located from, since `src/os/linux/layout.f
 DLSYM-SLOT` reads `rbase - CODE-OFF + the image's text size + $B8`. With that
@@ -405,6 +407,26 @@ cell left at the mapping's zero the slot address came out as -$FA0 and the image
 took SIGSEGV where it should have called; the claim above is what carries it.
 `tools/hb-build-aot-test.f BUILD-AOT-FFI` builds a stripped image whose `MAIN`
 calls `getpid` through the declarer and holds it to its output.
+
+When TASK is baked, its symbol names, user-slot cursor and chain of declared
+TCBs and task exit declarations are carried from the application load. The
+TCB's exit slot remains in the application's own window; the carried row links
+and count preserve its chain. Active quotation cells in the carried table are
+declared to the ordinary AOT quotation relocation pass, which includes and
+rebases their callback code. Its foreign address cache, park and semaphore
+storage, and exit scratch start fresh after the capture lifecycle cleans up
+process-owned resources. A pooled semaphore still held after cleanup is
+refused. `test/stripped-image.f` runs an inactive load-time task with an exit
+callback after restore and a semaphore released by capture cleanup.
+
+The ownership list is collected after lifecycle cleanup with the current
+capture window. This also applies when a saved linker already loaded the list:
+`test/stripped-preloaded-runtime.f` links an application extending baked TASK
+and FFI declarations through that linker. A saved linker's snapshot restore
+keeps the code-span table and blob base its own boot published across the DATA
+copy, and the image stores neither (src/habu/habu2.f `EM-SNAPSHOT-RESTORE`,
+src/habu/snap-lib.f `SND-ZERO-LIVE`), so the later AOT closure inspects the
+spans of the current process.
 
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell

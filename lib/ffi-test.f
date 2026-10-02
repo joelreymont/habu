@@ -192,6 +192,7 @@ FFI-T-SRC-CAP CODEGEN:BUFFER FFI-T-SRC
 
 create FFI-T-OUT FFI-T-CAP allot
 create FFI-T-ERR FFI-T-CAP allot
+create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-SRC+ ( ptr u8 n -- )
    FFI-T-SRC CODEGEN:APPEND-STRING ;
@@ -258,6 +259,31 @@ create FFI-T-ERR FFI-T-CAP allot
    erru FFI-T-ERR$ s" /tmp/habu-ffi-library-overflow" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-LIB-OVER" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" habu-ffi-library-probe" CONTAINS? TTRUE ;
+
+: FFI-T-LONG-PATH! ( -- )
+   PATH-CAP 0 ?do [char] a FFI-T-LONG-PATH i + c! loop ;
+
+: FFI-T-LONG-SRC! ( -- )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require lib/ffi-abi.f\ncreate ZZ-P PATH-CAP allot\n" FFI-T-SRC+
+   s\" : ZZ-LONG ( -- ptr u8 n ) PATH-CAP 0 ?do [char] a ZZ-P i + c! loop ZZ-P PATH-CAP ;\n" FFI-T-SRC+ ;
+
+: FFI-T-LONG-LIB-FULL-SRC$ ( -- ptr u8 n )
+   FFI-T-LONG-SRC!
+   s\" PROCESS-SYMBOLS\n: ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 0 ?do\n" FFI-T-SRC+
+   s\"   s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" loop ZZ-LONG FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
+   s\" s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE ;\nZZ-LIB-FILL\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-LONG-LIBRARY-TABLE-FULL ( -- )
+   s" a PATH-CAP path keeps the library-table refusal and its full name" T-LABEL
+   FFI-T-LONG-LIB-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
+   FFI-T-LONG-PATH!
+   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -413,17 +439,35 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    erru FFI-T-ERR$ FFI-T-FOREIGN-NAME$ CONTAINS? TTRUE
    erru FFI-T-ERR$ FFI-T-TARGET$ CONTAINS? TTRUE ;
 
+: FFI-T-LONG-FOREIGN-SRC$ ( -- ptr u8 n )
+   FFI-T-LONG-SRC!
+   s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:ptr u:n :}\n" FFI-T-SRC+
+   s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:ptr eu:n :}\n" FFI-T-SRC+
+   s\" ext path u eu - + eu BYTE-COPY path u FFI-DECL:SELECT-LIBRARY ;\nZZ-FOREIGN\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-LONG-FOREIGN-LIBRARY ( -- )
+   s" a PATH-CAP foreign name keeps the target refusal and its full name" T-LABEL
+   FFI-T-LONG-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
+   FFI-T-LONG-PATH!
+   HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:ptr eu:n :}
+   ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
+   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
+
 \ The declaration's hook stays armed: calls after a capture must have their
 \ process-owned addresses forgotten by every later capture as well.
 : FFI-T-RECAPTURE ( -- )
    IMAGE-LIFECYCLE:PREPARE
+   IMAGE-LIFECYCLE:COUNT {: hooks:n :}
    2 0 do
       FFI-T-GETPID$ 0 T<>
-      IMAGE-LIFECYCLE:COUNT 1 T=
       FFI-T-GETPID$ 0 T<>
-      IMAGE-LIFECYCLE:COUNT 1 T=
+      IMAGE-LIFECYCLE:COUNT hooks T=
       IMAGE-LIFECYCLE:PREPARE
-      IMAGE-LIFECYCLE:COUNT 1 T=
+      IMAGE-LIFECYCLE:COUNT hooks T=
    loop ;
 
 : FFI-RUN ( -- )
@@ -544,7 +588,9 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-TABLE-FULL
    FFI-T-LIBRARY-TABLE-FULL
+   FFI-T-LONG-LIBRARY-TABLE-FULL
    FFI-T-FOREIGN-LIBRARY
+   FFI-T-LONG-FOREIGN-LIBRARY
    s" foreign symbol cleanup remains armed across captures" T-LABEL
    FFI-T-RECAPTURE ;
 

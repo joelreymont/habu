@@ -87,7 +87,10 @@ variable RC
 : COPY-SOURCES ( -- )
    s" src" [: COPY-MEMBER ;] WALK-FILES
    s" lib" [: COPY-MEMBER ;] WALK-FILES
-   s" tools" [: COPY-MEMBER ;] WALK-FILES ;
+   s" tools" [: COPY-MEMBER ;] WALK-FILES
+   s" test/c2-init-program.f" COPY-MEMBER
+   s" test/c2-owner-producer-program.f" COPY-MEMBER
+   s" test/c2-owner-producer-refusals.f" COPY-MEMBER ;
 
 : SEED-PROOF ( -- )
    REPL$ S\" \npackage BUILDER-IMAGE-PROOF\nprivate\n: CALLEE ( n -- n ) 1 + ;\npublic\n: RUN ( -- n ) 41 CALLEE ;\n;package\n" APPEND-FILE ;
@@ -186,6 +189,44 @@ variable RC
    SUCCESS ERR-U @ 0 T=
    OUT OUT-U @ S\" 43\n\n" T$= ;
 
+: RUN-C2 ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n source:ptr sourceu:n :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   s" --load" ARGV+
+   source sourceu ARGV+
+   path pathu >LEN TREE$ >LEN
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
+   SUCCESS ;
+
+: PRODUCT-C2 ( -- )
+   s" the normal product loads typed C2 initialization, owners and XML" T-LABEL
+   COLD$ s" test/c2-init-program.f" RUN-C2
+   OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
+   COLD$ s" lib/xml/c2.f" RUN-C2
+   COLD$ s" test/c2-owner-producer-program.f" RUN-C2
+   OUT OUT-U @ s" c2-owner-producer-program: ok" CONTAINS? TTRUE
+   COLD$ s" test/c2-owner-producer-refusals.f" RUN-C2
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   COLD$ >LEN TREE$ >LEN
+   S\" 1 set-tier\nrequire test/c2-init-program.f\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT
+   SUCCESS
+   OUT OUT-U @ s" c2-init-program: ok" CONTAINS? TTRUE
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   COLD$ >LEN TREE$ >LEN
+   S\" 1 set-tier\nrequire lib/xml/c2.f\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT
+   SUCCESS
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   COLD$ >LEN TREE$ >LEN
+   S\" 1 set-tier\nrequire test/c2-owner-producer-program.f\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT
+   SUCCESS
+   OUT OUT-U @ s" c2-owner-producer-program: ok" CONTAINS? TTRUE ;
+
 : PRODUCT-PARITY ( -- )
    s" a saved builder and the source path publish identical edited products" T-LABEL
    TIME:MONO-NS {: cold:n :}
@@ -262,6 +303,7 @@ variable RC
    SAVED-ARGS
    EDIT-CALLEE
    PRODUCT-PARITY
+   PRODUCT-C2
    WHITEBOX-PARITY
    REJECT-EDIT
    T-REPORT ;

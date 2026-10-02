@@ -33,7 +33,7 @@ TRUSTED: IMPORT ( ptr u8 n -- )
 
 TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
 TRUSTED: LOAD-UNIT ( -- )
-   s" package UNIT-NBR public : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; ;package" evaluate ;
+   s" package UNIT-NBR public : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate ;
 TRUSTED: SHADOW ( -- )
    s" package UNIT-NBR public : UNIT-SHADOW ( n -- n ) 1+ ; undefine UNIT-SHADOW : UNIT-SHADOW ( n n -- n ) + ; ;package" evaluate ;
 TRUSTED: CLIENT ( -- n )
@@ -46,7 +46,7 @@ TRUSTED: DEFER-CHANGE ( -- )
    u ART-CAP <= TTRUE
    a ART u BYTE-COPY
    u ART-U !
-   ART 4 cells + CELL-VIEW @ 6 T=
+   ART 4 cells + CELL-VIEW @ 8 T=
    s" checker-unit-codec-e2e" HB-TMP-MKDIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-U !
    ROOT$ s" unit-nbr.checker-unit" PATH JOIN-PATH
@@ -56,7 +56,9 @@ TRUSTED: DEFER-CHANGE ( -- )
    CLIENT 4104 T=
    s" UNIT-GOOD ( n n -- n ) UNIT-NBR:UNIT-SHADOW" CHECK-CANDIDATE! -1 T=
    s" UNIT-SHADOW-OLD ( n -- n ) UNIT-NBR:UNIT-SHADOW" CHECK-CANDIDATE! 0 T=
-   s" UNIT-BAD ( ptr u8 -- bool ) UNIT-NBR:BL?" CHECK-CANDIDATE! 0 T= ;
+   s" UNIT-BAD ( ptr u8 -- bool ) UNIT-NBR:BL?" CHECK-CANDIDATE! 0 T=
+   s" UNIT-SCHEME ( forall<q,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-SCHEME" CHECK-CANDIDATE! -1 T=
+   s" UNIT-INFER ( forall<s,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-INFER" CHECK-CANDIDATE! -1 T= ;
 
 \ The wire header has six cells. Each symbol has a visibility cell and two
 \ length-prefixed, cell-aligned strings; an effect begins with three cells.
@@ -85,6 +87,13 @@ TRUSTED: DEFER-CHANGE ( -- )
    dup @ $10000 or swap !
    [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
 
+: CHECK-ROOT-GRAPH ( -- )
+   ART BAD ART-U @ BYTE-COPY
+   \ A private root bit cannot be imported as graph control metadata.
+   BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
+   dup @ $20000 or swap !
+   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+
 : CHECK-DEFER-CONTROL ( -- )
    ART 5 cells + CELL-VIEW @ 0 > TTRUE
    ART BAD ART-U @ BYTE-COPY
@@ -103,6 +112,8 @@ public
    MARK
    s" imported unit refuses defer graph metadata" T-LABEL
    CHECK-DEFER-GRAPH
+   s" imported unit refuses root graph metadata" T-LABEL
+   CHECK-ROOT-GRAPH
    s" imported unit refuses defer control metadata" T-LABEL
    CHECK-DEFER-CONTROL
    ART ART-U @ IMPORT

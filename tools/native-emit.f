@@ -63,9 +63,61 @@ require src/habu/sign-id.f
 require src/habu/driver-io.f
 require tools/native-layout.f
 
+using AOT-BUF
 package NATIVE-EMIT
 
 private
+
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
+
+: REC ( n -- ptr u8 )
+   AOT-CREC-ROW * AOT-REC-MAX 48 * + AOT-REC-BUF@ + ;
+
+: NAME= ( ptr u8 ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
+   rec 8 + W32@ {: off:n :}
+   off AOT-NAMES-LEN @ >= if s" native-emit: invalid scope name" 74 die then
+   AOT-NAMES-BUF@ off + {: name:ptr :}
+   name c@ {: len:n :}
+   len AOT-NAMES-LEN @ off - 1- > if
+      s" native-emit: invalid scope name" 74 die
+   then
+   name 1+ len a u STR= ;
+
+: PACKAGE-PUBLIC-WID ( ptr u8 n -- n ) {: name:ptr size:n :}
+   AOT-REC-N @ 0 ?do
+      i REC {: rec:ptr :}
+      rec 16 + W32@ $FFFFFFFF = if
+         rec name size NAME= if rec W32@ unloop exit then
+      then
+   loop
+   s" native-emit: C2 namespace missing" 74 die ;
+
+: PACKAGE-CODE-OFF ( n ptr u8 n -- n ) {: wid:n name:ptr size:n :}
+   AOT-REC-N @ 0 ?do
+      i REC {: rec:ptr :}
+      rec 16 + W32@ wid = if
+         rec name size NAME= if
+            rec W32@ {: off:n :}
+            rec 4 + W32@ CODE-SPAN:BYTES {: len:n :}
+            len 0 <= off AOT-BLOB-LEN @ >= or
+            off len + AOT-BLOB-LEN @ > or if
+               s" native-emit: C2 scope code outside capture" 74 die
+            then
+            off unloop exit
+         then
+      then
+   loop
+   s" native-emit: C2 scope member missing" 74 die ;
+
+: C2-WID ( -- n ) s" C2-MEM" PACKAGE-PUBLIC-WID ;
+: REAL-READ-CODE-OFF ( -- n ) C2-WID s" WITH-READ" PACKAGE-CODE-OFF ;
+: REAL-MUT-CODE-OFF ( -- n ) C2-WID s" WITH-MUT" PACKAGE-CODE-OFF ;
+: REAL-MUT-LOAN-CODE-OFF ( -- n ) C2-WID s" WITH-MUT-LOAN" PACKAGE-CODE-OFF ;
+: REAL-INIT-CODE-OFF ( -- n ) C2-WID s" WITH-INIT" PACKAGE-CODE-OFF ;
+: REAL-RECORDS-CODE-OFF ( -- n ) C2-WID s" WITH-RECORDS" PACKAGE-CODE-OFF ;
+: REAL-RECORD-CODE-OFF ( -- n ) C2-WID s" WITH-RECORD" PACKAGE-CODE-OFF ;
+: REAL-FIELD-CODE-OFF ( -- n ) C2-WID s" WITH-FIELD" PACKAGE-CODE-OFF ;
 
 : TRANSLATE-FIXED ( ptr n n -- ) {: host:ptr count:n :}
    NATIVE-LAYOUT:CURRENT DATA-START NATIVE-LAYOUT:CHECK
@@ -91,4 +143,23 @@ public
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
    SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
 
+: WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
+   dup AOT-OWNED:ORIGIN@ {: origin:n :}
+   AOT-FILE:IMPORT
+   AOT-RUNTIME:COMPLETE? 0= if
+      s" native-emit: C2 entries require complete runtime" 74 die
+   then
+   REAL-READ-CODE-OFF {: read:n :}
+   REAL-MUT-CODE-OFF {: mut:n :}
+   REAL-MUT-LOAN-CODE-OFF {: loan:n :}
+   REAL-INIT-CODE-OFF {: init:n :}
+   REAL-RECORDS-CODE-OFF {: records:n :}
+   REAL-RECORD-CODE-OFF {: record:n :}
+   REAL-FIELD-CODE-OFF {: field:n :}
+   host count TRANSLATE-FIXED
+   0 0= STDIN? !
+   NULL$ origin read mut loan init records record field ENGINE-EMIT:FORTH-C2-ORIGIN
+   s" hb" path size DRV-EMIT-IMAGE ;
+
 ;package
+;using

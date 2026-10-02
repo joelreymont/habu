@@ -6,4 +6,37 @@ issue-type: task
 created-at: "2026-09-16T13:54:06.629638+03:00"
 ---
 
-Problem: the checker proves stack effects and nominal types but not lifetimes. Tender's OPC module frees intrusive buffer lists by hand, Tender's LESSONS record locals overwritten by later pushes, and lib/task.f and the AOT capture path reuse buffers whose authority nothing tracks. Generated code will leak and corrupt exactly there and nothing fails at check time. Acceptance: a program that stores a scoped span past its owner's release, frees while a reader lives, or reuses a phase buffer out of order is rejected at CHECK! with a fixture for each; Tender's OPC lists are rewritten on the typed surface as the proof; docs/forth.md and docs/type-system.md state the ownership model. Children (open): habu-write-the-checked-035516db habu-unify-all-quotation-56884608 habu-own-the-layout-3bd40ca9 habu-make-json-writer-e454cd08 habu-add-unique-bounded-527e05ca . Absorbed on 2026-09-16: 86 dots closed with the reason 'superseded by habu-campaign-c2-mem-c3d7662b'; find their text with dot find. Files: src/core/checker.f, lib/memory.f, lib/memory-region-borrow.f (new), docs/forth.md, docs/type-system.md, docs/roadmap.md section C2. Verify: checker quotation and linear fixtures, memory suites, test/run.f green. Depends: none. Ownership: checker lane. Claim: unassigned. Absorbed: see the archive entries closed with 'superseded by' this id.
+Problem: the checker does not establish lifetime or access authority for raw
+borrowed pointers. Tender's shared OPC bytes, independent XML cursors and retained
+DOCX tree slices require distinct lifetimes and typed borrowed aggregates.
+
+Contract and delivery: docs/ownership-model.md. Settle the Oracle-reviewed design,
+then view/binder/dependency effects, typed storage and loans, authoritative
+task-local owner cleanup, MEM/XML, and the isolated OPC/DOCX/XLSX proof. Raw
+pointers remain lifetime-free. Linear phases follow a concrete consumer; general
+linear locals, all record migrations and region parameters on every pointer are
+not gates. master and ~/.local/bin/hb remain the supported Tender release path.
+
+Acceptance: real checked programs reject scope escape, conflicting mutable loans,
+release with live loans and authority laundering through raw/stale/deferred/task
+state. Shared source bytes, independent readers, tree slices after cursor close,
+and owned documents after package close remain legal. Cleanup is exactly once
+through return, throw and cooperative halt. Abstract effects survive image
+roundtrips; images containing live C2 authority are refused. The design's focused
+and integration verification policy applies; no Maki or early Tender adoption gate.
+
+Design record: habu-write-the-checked-035516db. Existing 6218899c is a possible
+runtime integration point after reconciliation with the current stale-value model.
+The old first-throw-only diagnosis in 56884608 and stack-cell restoration recipe in
+9812a28c are not C2 prerequisites: THROW-EDGE now intersects every edge and RSCATCH
+marks uncertain cells stale. Reproduce any remaining failure before scheduling a
+fix. Pointer/record debts enter only if the actual view path reaches them.
+
+Files: src/core/checker.f, scoped memory and XML libraries, lib/task.f, capture
+paths, and the ownership/type/roadmap docs. Implementation remains open.
+Verify: design acceptance cases through the real load path; focused development
+checks, native suite for shared semantics, and affected image/convergence checks.
+Depends: reviewed design. Ownership: checker lane. Claim: unassigned.
+Absorbed: the 86 archive entries closed with 'superseded by
+habu-campaign-c2-mem-c3d7662b' retain their historical evidence; they are not a
+mandatory implementation queue.

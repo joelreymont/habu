@@ -1614,6 +1614,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
       exec         OF ENDOF
       catch        OF ENDOF
       finally      OF ENDOF
+      c2-invoke    OF ENDOF
       tick         OF ENDOF
       eval         OF ENDOF
    ;MATCH ;
@@ -1767,7 +1768,14 @@ create QSPELL-BUF QSPELL-CAP allot
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
    0 QSPELL j NDICT:SPELL-QUOT-DOUT {: qi:n qo:n :}
-   qi NDICT:QUOT-NONE = if k QAT@ QUOT-REFUSE then
+   \ A checked word may return a quotation cell inside a layout value. The
+   \ declared output then names the containing family, so there is no direct
+   \ quotation term to query at this cell; consumers recover its effect when
+   \ projection or fetch exposes the field as a quotation again.
+   qi NDICT:QUOT-NONE = if
+      k QIN@ QNONE <> if exit then
+      k QAT@ QUOT-REFUSE
+   then
    k qi qo QFILL ;
 
 : QRET-FILL ( n -- )
@@ -1864,6 +1872,7 @@ create QSPELL-BUF QSPELL-CAP allot
 2 constant MR-VARIANT                \ the variant operand of one
 3 constant MR-DEFER                  \ the deferred word `is` binds to
 4 constant MR-TICK                   \ the word named by compile-time tick
+5 constant MR-FIELD                  \ an authenticated field-loan selector
 
 0 constant MM-OFF                    \ no operand token is expected
 1 constant MM-CON-FAM                \ `construct` has been read; its family is next
@@ -2083,6 +2092,14 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : MSCAN-STEP ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
    ix IN-DECL? if exit then
+   ix 0 > if
+      ix 1- NDICT:FIELD-SPAN drop 0 >= if
+         VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if
+            E-NELAB-MATCH throw then
+         ix MR-FIELD MROLE!
+         exit
+      then
+   then
    MM @ MM-FAM = if ix MSCAN-MATCH-FAM exit then
    MM @ MM-VARIANT = if
       r ix HIR-CTRL:CLOSE-MATCH ROW-CTRL? if MSCAN-SEMI exit then
@@ -2153,6 +2170,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    k HIR-CTRL:EXEC HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:CATCH HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:FINALLY HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:EVAL HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    HIR-OPCODE:CALL false ;
 
@@ -2217,6 +2235,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   \ A local keeps its meaning even when a callable has the same spelling.
+   ix LOCAL-OF 0 >= if false exit then
    ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
@@ -2539,6 +2559,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       exec         OF ENDOF
       catch        OF ENDOF
       finally      OF ENDOF
+      c2-invoke    OF ENDOF
       tick         OF ENDOF
       eval         OF ENDOF
    ;MATCH ;
@@ -3342,6 +3363,24 @@ create DN-BUF DN-CAP allot
    ix entry in 2 + out 0 max glue STAGE-WCALL
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
+: DO-C2-INVOKE ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
+   VN @ 3 < if E-NELAB-UNDER throw then
+   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   in 0 < if ix QUOT-REFUSE then
+   VN @ 3 - VQ@ {: body:n :}
+   VN @ 2 - VQ@ {: cleanup:n :}
+   VN @ 1- VQ@ {: finish:n :}
+   body 0 >= if body in out 0 max QFILL then
+   cleanup 0 >= if cleanup 0 0 QFILL then
+   finish 0 >= if finish 1 0 QFILL then
+   s" c2-invoke" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if ix QUOT-REFUSE then
+   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
+   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   ix entry in 3 + out 0 max glue STAGE-WCALL
+   out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
+
 \ ---- a call that BUILDS a value of a wide instantiation ------------------------
 : CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
    x 0 ?do  ix 0 EMIT-LIT  loop ;
@@ -3356,6 +3395,39 @@ create DN-BUF DN-CAP allot
    ix NDICT:CALL-CELLS drop {: in:n :}
    in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
    ix swap QCALL-FILL
+   ix NDICT:INIT-LAYOUT {: width:n bytes:n align:n :}
+   width 0 >= if
+      ix width EMIT-LIT
+      ix bytes EMIT-LIT
+      ix align EMIT-LIT
+      ix WSYM {: sy:IR-ID:ir-symbol-id :}
+      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      public-in 0 < if E-NELAB-CTRL throw then
+      r sy HIR-WORD:TERMINAL? if
+         ix r sy HIR-WORD:ENTRY@ public-in 3 + STAGE-TERMINAL exit
+      then
+      ix NDICT:CALL-GLUE nip {: glue:n :}
+      glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+      ix r sy HIR-WORD:ENTRY@ public-in 3 + out glue STAGE-WCALL
+      ix out QRESULTS-FILL
+      exit
+   then
+   ix NDICT:FIELD-SPAN {: off:n bytes:n :}
+   off 0 >= if
+      ix off EMIT-LIT
+      ix bytes EMIT-LIT
+      ix WSYM {: sy:IR-ID:ir-symbol-id :}
+      ix NDICT:CALL-CELLS {: public-in:n out:n :}
+      public-in 0 < if E-NELAB-CTRL throw then
+      r sy HIR-WORD:TERMINAL? if
+         ix r sy HIR-WORD:ENTRY@ public-in 2 + STAGE-TERMINAL exit
+      then
+      ix NDICT:CALL-GLUE nip {: glue:n :}
+      glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+      ix r sy HIR-WORD:ENTRY@ public-in 2 + out glue STAGE-WCALL
+      ix out QRESULTS-FILL
+      exit
+   then
    ix NDICT:CON-PADS {: x:n :}
    ix x CON-PADS-PUSH
    r ix DO-WORD-CALL
@@ -3634,6 +3706,7 @@ create DN-BUF DN-CAP allot
       exec         OF r ix DO-EXEC ENDOF
       catch        OF ix DO-CATCH ENDOF
       finally      OF r ix DO-FINALLY ENDOF
+      c2-invoke    OF r ix DO-C2-INVOKE ENDOF
       tick         OF ix DO-TICK ENDOF
       eval         OF ix DO-EVAL ENDOF
    ;MATCH ;
@@ -3999,10 +4072,21 @@ variable DOES-EMPTY
 public
 
 : CAPTURE-PREPARE ( -- )
+   \ LIT-N makes the block memo unreachable, but its fixed rows still carry
+   \ literal addresses from the last host compilation into the saved image.
+   LIT-RESET
+   LITMAX 0 ?do
+      0 i cells LIT-VAL + !
+      0 i cells LIT-KIND + !
+   loop
    0 QN !
    0 LMAX !
    0 LVMAX !
    0 BLOCK-LIMIT !
+   \ The literal memo can hold a build-process code address even after its
+   \ count is reset. No entry is live in a captured engine.
+   0 LIT-N !
+   LITMAX 0 ?do 0 i cells LIT-VAL + ! loop
    NULL-PTR TOK-TABLES ! 0 TMAX !
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !

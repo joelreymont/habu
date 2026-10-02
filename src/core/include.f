@@ -136,7 +136,11 @@ create WORK-BUF WORK-BYTES allot
 create ZBUF WORK-BYTES allot
 create OWNER-BUF PATH-BYTES allot
 create REQUEST-BUF WORK-BYTES allot
+create ENGINE-ROOT-BUF PATH-BYTES allot
 variable REQUEST-U
+variable ENGINE-ROOT-U
+variable ENGINE-ROOT-READY
+variable ENGINE-PATH-BOUND
 variable CWD-U
 variable CANON-U
 variable NORMAL-U
@@ -146,6 +150,10 @@ variable OWNER-U
 PTR-VARIABLE CURRENT-A
 variable CURRENT-U
 variable SCOPES
+
+\ The native product binds this after loading its executable identity module.
+\ Source-only hosts retain the invocation-root behavior during boot.
+defer ENGINE-PATH-XT ( -- ptr u8 n )
 
 
 : CURRENT-PTR ( -- ptr u8 ) CURRENT-A @ ;
@@ -310,6 +318,28 @@ public
    over swap PARENT-U ;
 
 
+\ The product lives at <tree>/bin/hb. Resolve its running executable physically
+\ so a copied tree keeps its baked module identity when invoked from elsewhere.
+\ A loose build candidate has no tree of its own and keeps CWD as its source root.
+: ENGINE-ROOT-INIT ( -- )
+   REQUIRE-BOOT-OPEN? if exit then
+   ENGINE-PATH-BOUND @ 0= if exit then
+   ENGINE-ROOT-READY @ if exit then
+   INCLUDE-TRUE ENGINE-ROOT-READY !
+   ENGINE-PATH-XT {: a:ptr u:n :}
+   u 0= if exit then
+   a u CANONICAL 0= if 2drop exit then
+   {: path:ptr size:n :}
+   size 7 <= if exit then
+   path size 7 - + 7 s" /bin/hb" CORE-STR= 0= if exit then
+   path ENGINE-ROOT-BUF size 7 - BYTE-COPY
+   size 7 - ENGINE-ROOT-U ! ;
+
+
+: ENGINE-ROOT$ ( -- ptr u8 n )
+   ENGINE-ROOT-INIT ENGINE-ROOT-BUF ENGINE-ROOT-U @ ;
+
+
 : JOIN ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u CHECK
    a c@ 47 = if 2drop a u exit then
@@ -396,7 +426,9 @@ public
    WORK-BUF WORK-BYTES CLEAR-BYTES
    ZBUF WORK-BYTES CLEAR-BYTES
    REQUEST-BUF WORK-BYTES CLEAR-BYTES
+   ENGINE-ROOT-BUF PATH-BYTES CLEAR-BYTES
    0 REQUEST-U !
+   0 ENGINE-ROOT-U ! 0 ENGINE-ROOT-READY !
    0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
    0 JOIN-U ! 0 OWNER-U !
    NULL$ CURRENT! ;
@@ -599,8 +631,14 @@ private
 \ resolve to the same physical candidate: symlink/.. can name another file.
 : BOOT-CANDIDATE ( ptr u8 n n -- ptr u8 n bool ) {: first:n :}
    first REQUIRE-BOOT-LIMIT >= if INCLUDE-FALSE exit then
-   2dup CWD$ RELATIVE first BOOT-KNOWN? if INCLUDE-TRUE exit then
    dup CANDIDATE-U ! CANDIDATE-BUF swap BYTE-COPY
+   CANDIDATE$ CWD$ RELATIVE first BOOT-KNOWN? if CANDIDATE$ INCLUDE-TRUE exit then
+   ENGINE-ROOT$ {: root:ptr rootu:n :}
+   rootu 0 > if
+      CANDIDATE$ root rootu RELATIVE first BOOT-KNOWN? if
+         CANDIDATE$ INCLUDE-TRUE exit
+      then
+   then
    REQUEST$ ABSOLUTE!
    \ The invocation spelling may be longer than its canonical symlink target.
    JOIN-BUF JOIN-U @ WORK-BYTES 1- NORMALIZE-LIMIT
@@ -616,7 +654,7 @@ private
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
    2dup REQUIRE-KNOWN? {: known:bool :}
-   fallback known 0= and if
+   fallback REQUIRE-BOOT-OPEN? 0= or known 0= and if
       REQUIRE-BASE @ BOOT-CANDIDATE
    else known then
    dup exists or ;
@@ -666,9 +704,10 @@ public
 \ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
 \ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror of it) or
 \ literally (src/habu/native-runtime.f). So one question answers for every
-\ engine kind: BOOT-CANDIDATE, which asks the CWD-relative spelling the rows
-\ are stored in. A canonical scan alongside it would answer for no engine and
-\ hide a prefix that had stopped opening the registry.
+\ engine kind: BOOT-CANDIDATE, which checks the resolved candidate against
+\ both CWD-relative and engine-root-relative portable rows. A canonical scan
+\ alongside it would answer for no engine and hide a prefix that had stopped
+\ opening the registry.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    REQUEST!
    REQUEST$ CANONICAL drop

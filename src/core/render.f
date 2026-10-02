@@ -91,6 +91,7 @@ variable SEEN-CAP   0 SEEN-CAP !
 \ above SEEN-HW to UNBOUND, including a grown tail.
 variable SEEN-HW   0 SEEN-HW !
 variable NLET                                      \ SEEN is indexed by typevar (PAY)
+variable RBIND-N                                   \ lexical names while rendering forall
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
@@ -138,7 +139,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
       UNBOUND over cells SEEN + !
       1 +
    REPEAT drop
-   0 SEEN-HW ! ;
+   0 SEEN-HW ! 0 RBIND-N ! ;
 
 : SEEN-SNAPSHOT-RESET ( -- )
    SEEN-RELEASE ;
@@ -150,11 +151,19 @@ REG-SCRATCH-SNAP-INSTALL
 
 \ Diagnostic alpha-renaming has its own a..z namespace.  It renders generic
 \ checker variables and is deliberately independent of declaration positions.
+\ Signature variables and binders share one printable alphabet. The parser
+\ reserves f, n and r as built-in types, so no inferred name may use them.
+: RLETTER ( n -- n ) {: idx:n :}
+   idx 0 < idx 22 > or IF 63 EXIT THEN
+   idx 97 +
+   dup 102 >= IF 1+ THEN
+   dup 110 >= IF 1+ THEN
+   dup 114 >= IF 1+ THEN ;
 : LET-OF {: vp :}
    SEEN-ENSURE
    vp 1 + SEEN-HW @ < 0= IF vp 1 + SEEN-HW ! THEN
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
-   vp cells SEEN + @ 97 + ;
+   vp cells SEEN + @ RLETTER ;
 : RATOM-CHAR ( n -- n ) {: idx:n :}
    idx 26 < IF idx 97 + ELSE 1 RQM ! 63 THEN ;
 : RATOM-FIND ( n -- n bool ) {: key:n :}
@@ -312,6 +321,7 @@ variable HRC  variable HRI  variable HRF  variable HRS
 \ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
 6 constant QDEPTH-MAX                        \ quotation nesting render budget
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
+create RBIND QDEPTH-MAX cells allot
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
@@ -370,6 +380,31 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
            THEN
            93 EMIT1
         ELSE 63 EMIT1 THEN
+      endof
+      T-FORALL of
+        NLET @ 23 >= IF
+           NLET @ 1 + NLET ! 63 EMIT1
+        ELSE RBIND-N @ QDEPTH-MAX < IF
+           NLET @ RLETTER {: letter:n :}
+           letter RBIND-N @ cells RBIND + !
+           NLET @ 1 + NLET !
+           r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR letter EMIT1
+           r F>PARENT dup 0= IF drop ELSE
+              s"  inside " RSTR d 1+ 0 RECURSE THEN
+           RBIND-N @ 1 + RBIND-N !
+           44 EMIT1
+           r F>BODY d 1+ 0 RECURSE 62 EMIT1
+           RBIND-N @ 1 - RBIND-N !
+        ELSE 63 EMIT1 THEN THEN
+      endof
+      T-BVAR of
+        r B>DEPTH 0 >= r B>DEPTH RBIND-N @ < and IF
+           RBIND-N @ r B>DEPTH - 1 - cells RBIND + @ EMIT1
+        ELSE 63 EMIT1 THEN
+      endof
+      T-SCOPE of
+        1 RQM !
+        s" <live-scope-" RSTR r PAY RNUM 62 EMIT1
       endof
       T-ATOM of r ATOM-REND endof
       T-PARAM of
@@ -524,6 +559,11 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
       MD-RAW-EXEC     of s" E-RAW-CELL-PTR" endof
       MD-STALE-READ   of s" E-STALE-READ" endof
+      MD-SCOPE-STORE  of s" E-SCOPED-STORAGE" endof
+      MD-SCOPE-KIND   of s" E-SCOPE-TYPE" endof
+      MD-C2-COPY      of s" E-C2-COPY" endof
+      MD-C2-DROP      of s" E-C2-DROP" endof
+      MD-C2-ESCAPE    of s" E-C2-SCOPE-ESCAPE" endof
       MD-UNDERFLOW    of s" E-INPUT-UNDERFLOW" endof
       MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
@@ -557,6 +597,11 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" declare_pointer_cell" endof
       MD-RAW-EXEC     of s" declare_xt_cell" endof
       MD-STALE-READ   of s" keep_value_before_catch" endof
+      MD-SCOPE-STORE  of s" keep_scoped_value_on_stack" endof
+      MD-SCOPE-KIND   of s" fix_scope_parameter" endof
+      MD-C2-COPY      of s" move_exclusive_value" endof
+      MD-C2-DROP      of s" consume_exclusive_value" endof
+      MD-C2-ESCAPE    of s" keep_borrow_within_scope" endof
       MD-UNDERFLOW    of s" supply_missing_input" endof
       MD-RIGID-REGION of s" fix_host_region" endof
       MD-RIGID-EXTENT of s" fix_host_extent" endof
@@ -596,6 +641,11 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
       MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
       MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
+      MD-SCOPE-STORE  of s" Keep the scoped value on the stack or in a local; ordinary memory has no scope dependency declaration." endof
+      MD-SCOPE-KIND   of s" Use a scope parameter only in a declared scope slot; it is neither a value type nor an allocation identity." endof
+      MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
+      MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
+      MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -628,6 +678,11 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
       MD-RAW-EXEC     of s" raw storage cell: an undeclared cell cannot hold an execution token / a quotation" endof
       MD-STALE-READ   of s" stale cell: this reads a cell `catch` left stale (a throw path of the caught body may have overwritten it)" endof
+      MD-SCOPE-STORE  of s" scoped storage: ordinary memory cannot retain a scope dependency" endof
+      MD-SCOPE-KIND   of s" scope parameter: a scope identity cannot stand in for a value type" endof
+      MD-C2-COPY      of s" exclusive value copied" endof
+      MD-C2-DROP      of s" exclusive value discarded" endof
+      MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
@@ -906,7 +961,9 @@ variable JPOS  variable JLINE  variable JCOL
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
-     s" actual: " DTXT  DACT @ DROW THEN ;
+     s" actual: " DTXT  DACT @ DROW THEN
+   DF-ACT @ 0 <>  DEXP @ 0= and IF
+     s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN ;
 
 \ ADT family field (item 13): the exact failed type pair captured by U-FAIL.
 \ Expected takes precedence over actual; unrelated matched row cells cannot leak
@@ -1000,6 +1057,8 @@ variable JPOS  variable JLINE  variable JCOL
      44 EMIT1 s" expected" JKEY DEXP @ JROW
      44 EMIT1 s" actual"   JKEY DACT @ JROW
      DIAG-FAMILY THEN
+   DF-ACT @ 0 <>  DEXP @ 0= and IF
+      44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
    NPBAD @ IF                                             \ non-parametric declared effect
      44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE
      NPBAD-KIND @ 1 = IF
@@ -1100,8 +1159,12 @@ BADSIG-DIAG-INSTALL
 \ counts — and reports which word and why, since callers otherwise fail later
 \ as undefined with no hint that the producer was the problem.
 : REC-REFUSE-WHY ( -- ptr u8 n )
-   RQM @ IF s" unmodeled type tag in inferred effect"
-   ELSE s" more than 26 type variables in inferred effect" THEN ;
+   \ RLETTER emits '?' when names run out; the count distinguishes that
+   \ placeholder from an unmodeled type tag.
+   NLET @ 24 >= IF
+      s" more than 23 type variables or binders in inferred effect" EXIT
+   THEN
+   s" unmodeled type tag in inferred effect" ;
 
 : REC-REFUSE-PROSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    s" habu: in " DTXT  na nu DTXT
@@ -1133,7 +1196,7 @@ BADSIG-DIAG-INSTALL
 \ was written under; when nothing is armed it is a single flag test.
 : REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
    REND-SIG {: sa:ptr su:n :}
-   RQM @ 0 =  NLET @ 27 <  and IF
+   RQM @ 0 =  NLET @ 24 <  and IF
       na nu CHECKER-USIG-CERT-CURRENT
       sa su CHECKER-ASIG-CAPTURE
       EXIT
@@ -1229,8 +1292,7 @@ REC-SIG-INSTALL
 \ Both shadow diagnostics ride ONE checker hook, selected by its argument
 \ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
 \ arity-shadow definition site), because every defer written before `: TRUST`
-\ takes a slot of the engine's pre-trust pending table and checker.f holds
-\ exactly PD-CAP of them.
+\ takes a slot of the engine's pre-trust pending table.
 : SHADOW-DIAG ( n -- )
    1 = IF SBARITY-DIAG ELSE USHADOW-DIAG THEN ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;

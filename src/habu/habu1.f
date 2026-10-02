@@ -499,6 +499,8 @@ variable STAT-DONE
 variable CATCH-RES
 variable CATCH-PUSH
 variable FINALLY-DONE
+variable C2-INVOKE-DONE
+variable C2-INVOKE-CLEAN
 variable THROW-NOH
 variable THROW-NOREC
 variable THROW-NOREC-FB
@@ -2898,6 +2900,108 @@ public
    9 G-PUSH  BTHROW
    FINALLY-DONE LABEL@ LBL, ;
 
+\ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
+\ The finisher sees the selected code while the body's result row is still live;
+\ a nonzero code is rethrown before compiled code reloads that row.
+: BC2-INVOKE ( -- )
+   LBL C2-INVOKE-DONE !
+   LBL C2-INVOKE-CLEAN !
+   A G-POP  10 A 0 ADDI,
+   A G-POP
+   SP SP 32 SUBI,  A SP 0 STR,  10 SP 8 STR,
+   BCATCH
+   A G-POP  A SP 16 STR,
+   9 SP 0 LDR,  9 G-PUSH  BCATCH
+   A G-POP  9 C2-INVOKE-CLEAN LABEL@ CBZ,
+   A SP 16 STR,
+   C2-INVOKE-CLEAN LABEL@ LBL,
+   9 SP 16 LDR,  9 G-PUSH
+   9 SP 8 LDR,  9 BLR,
+   9 SP 16 LDR,  SP SP 32 ADDI,
+   9 C2-INVOKE-DONE LABEL@ CBZ,
+   9 G-PUSH  BTHROW
+   C2-INVOKE-DONE LABEL@ LBL, ;
+
+\ c2-init-stow sees (R base bound value[W] callback W bytes align frame).
+\ The checker records W/bytes/align for the authentic WITH-INIT call. OPEN has
+\ already registered PENDING and installed INIT-CLEAR as the frame disposer.
+\ Validate before mutation, arm LIVE before the first store, then consume the
+\ value bundle into consecutive cells and leave (R base bytes callback).
+: BC2-INIT-STOW ( -- )
+   LBL LBL LBL {: bad:label copy:label done:label :}
+   9 G-POP   10 G-POP   11 G-POP   12 G-POP   13 G-POP
+   12 0 CMPI, C-LE bad BCOND,
+   11 0 CMPI, C-LE bad BCOND,
+   10 8 CMPI, C-NE bad BCOND,
+   15 12 3 LSLI,  11 15 CMP, C-NE bad BCOND,
+   14 XDS 15 SUB,  14 14 16 SUBI,
+   16 14 0 LDR,  17 14 8 LDR,
+   16 0 CMPI, C-EQ bad BCOND,
+   15 16 7 ANDI,  15 bad CBNZ,
+   17 11 CMP, C-LT bad BCOND,
+   15 9 0 LDR,  15 1 CMPI, C-NE bad BCOND,
+   16 9 16 STR,  11 9 24 STR,  17 9 40 STR,
+   15 2 MOVZ,  15 9 0 STR,
+   copy LBL,
+      14 G-POP
+      15 12 1 SUBI,  15 15 3 LSLI,  15 16 15 ADD,
+      14 15 0 STR,
+      12 12 1 SUBI,  12 copy CBNZ,
+   14 G-POP  11 G-PUSH  13 G-PUSH  done B,
+   bad LBL,
+   9 -6101 LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
+\ (R base bound count seed[W] callback W stride align frame) ->
+\ (R base count callback). One frame owns and clears count * stride bytes.
+: BC2-RECORDS-STOW ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: bad:label seed:label first:label copy:label cell-copy:label done:label exit-code:label :}
+   9 G-POP  10 G-POP  11 G-POP  12 G-POP  13 G-POP
+   12 0 CMPI, C-LE bad BCOND,
+   11 0 CMPI, C-LE bad BCOND,
+   10 8 CMPI, C-NE bad BCOND,
+   16 12 3 LSLI,  11 16 CMP, C-NE bad BCOND,
+   14 XDS 11 SUB,  14 14 24 SUBI,
+   15 14 0 LDR,  16 14 8 LDR,  17 14 16 LDR,
+   15 0 CMPI, C-EQ bad BCOND,
+   14 15 7 ANDI,  14 bad CBNZ,
+   17 0 CMPI, C-LT bad BCOND,
+   16 0 CMPI, C-LT bad BCOND,
+   14 16 11 UDIV,  17 14 CMP, C-HI bad BCOND,
+   14 9 0 LDR,  14 1 CMPI, C-NE bad BCOND,
+   15 9 16 STR,
+   14 17 11 MUL,  14 9 24 STR,
+   16 9 40 STR,
+   14 2 MOVZ,  14 9 0 STR,
+   17 first CBNZ,
+   seed LBL,
+      14 G-POP
+      12 12 1 SUBI,  12 seed CBNZ,
+      done B,
+   first LBL,
+      14 G-POP
+      16 12 1 SUBI,  16 16 3 LSLI,  16 15 16 ADD,
+      14 16 0 STR,
+      12 12 1 SUBI,  12 first CBNZ,
+   17 17 1 SUBI,  17 done CBZ,
+   14 15 11 ADD,
+   copy LBL,
+      16 15 0 ADDI,
+      12 11 3 LSRI,
+   cell-copy LBL,
+      10 16 0 LDR,  10 14 0 STR,
+      16 16 8 ADDI,  14 14 8 ADDI,
+      12 12 1 SUBI,  12 cell-copy CBNZ,
+      17 17 1 SUBI,  17 copy CBNZ,
+   done LBL,
+   17 G-POP  16 G-POP
+   17 9 24 LDR,  17 17 11 UDIV,
+   17 G-PUSH  13 G-PUSH  exit-code B,
+   bad LBL,
+   9 -6101 LIT64,  9 G-PUSH  BTHROW
+   exit-code LBL, ;
+
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
@@ -3529,6 +3633,9 @@ package ENGINE-EMIT
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" finally" ['] BFINALLY FPRIM
+   s" c2-invoke" ['] BC2-INVOKE FPRIM
+   s" c2-init-stow" ['] BC2-INIT-STOW FPRIM
+   s" c2-records-stow" ['] BC2-RECORDS-STOW FPRIM
    s" unit-compile-run" ['] BUNITCOMPILE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM

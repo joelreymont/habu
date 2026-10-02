@@ -1871,6 +1871,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    then ;
 
 : BF-CLEAN-BIN ( -- )
+   BF-ENGINE$ s" bin/hb" STR= 0= if exit then
    s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : BF-INSTALL ( -- )

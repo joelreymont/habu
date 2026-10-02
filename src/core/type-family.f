@@ -83,11 +83,13 @@ public
 0 constant PK-CELL
 1 constant PK-LAYOUT
 2 constant PK-TYPE
+4 constant PK-SCOPE        \ non-value lexical scope identity
+5 constant PK-REGION       \ non-value host allocation identity
 
 private
 
 3 constant PK-EVIDENCE
-3 constant PK-MAX
+5 constant PK-MAX
 
 public
 
@@ -470,7 +472,8 @@ public
 1 constant DRV-EQ
 2 constant DRV-HASH
 4 constant DRV-ADDR              \ address surface: one accessor per field (docs/type-system.md §10.4)
-DRV-EQ DRV-HASH or DRV-ADDR or constant DRV-ALL
+8 constant DRV-INIT              \ initialized-record field accessors
+DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or constant DRV-ALL
 
 private
 
@@ -484,6 +487,8 @@ public
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
 : TFAM-DERIVE-ADDR! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-ADDR or swap ! ;
 : TFAM-DERIVE-ADDR? ( n -- bool ) TFAM-DERIVE@ DRV-ADDR and 0 <> ;
+: TFAM-DERIVE-INIT! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-INIT or swap ! ;
+: TFAM-DERIVE-INIT? ( n -- bool ) TFAM-DERIVE@ DRV-INIT and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
@@ -2581,8 +2586,15 @@ private
    fam TFAM-KIND@ TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
    fam TFAM-LAYOUT? IF PK-LAYOUT EXIT THEN
    PK-CELL ;
+: PF-NONVALUE? ( n -- bool )
+   dup PK-SCOPE = swap PK-REGION = or ;
+: PF-FAM-NONVALUE? ( n -- bool ) {: fam:n :}
+   fam TFAM-ARITY@ 0 ?do
+      fam i TFAM-PK@ PF-NONVALUE? IF UNLOOP RES-TRUE EXIT THEN
+   loop RES-FALSE ;
 : PF-KIND-OK? ( n n -- bool ) {: got:n want:n :}
-   want PK-TYPE = IF got PK-EVIDENCE <> EXIT THEN
+   want PK-TYPE = IF
+      got PK-EVIDENCE <> got PF-NONVALUE? 0= and EXIT THEN
    got want = ;
 
 \ Validate one quotation effect side: a live SCH-ROW node whose element type nodes
@@ -2596,8 +2608,7 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
       node SCHEMA-A@ {: idx:n :}
       idx 0 < idx owner TFAM-ARITY@ >= or IF 0 RES-FALSE EXIT THEN
-      owner idx TFAM-PK@ dup PK-CELL <> IF drop 0 RES-FALSE EXIT THEN
-      RES-TRUE EXIT
+      owner idx TFAM-PK@ RES-TRUE EXIT
    THEN
    node SCHEMA-CON? IF
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
@@ -2605,8 +2616,13 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
    THEN
    node SCHEMA-PTR? IF
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
-      node SCHEMA-A@ dup node >= IF drop 0 RES-FALSE EXIT THEN
-      owner swap RECURSE 0= IF drop 0 RES-FALSE EXIT THEN drop
+      node SCHEMA-A@ {: child:n :}
+      child node >= IF 0 RES-FALSE EXIT THEN
+      owner child RECURSE 0= IF drop 0 RES-FALSE EXIT THEN
+      PF-NONVALUE? IF 0 RES-FALSE EXIT THEN
+      child SCHEMA-APP? IF
+         child SCHEMA-A@ PF-FAM-NONVALUE? IF 0 RES-FALSE EXIT THEN
+      THEN
       PK-CELL RES-TRUE EXIT
    THEN
    node SCHEMA-QUOT? IF
@@ -2665,7 +2681,9 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
    0 BEGIN dup cnt < WHILE                          \ ( j )
       dup estart + SCHEMA-ROOT@                     \ ( j elem )
       dup rownode >= IF 2drop RES-FALSE EXIT THEN
-      owner swap PF-NODE-KIND? nip 0= IF drop RES-FALSE EXIT THEN
+      owner swap PF-NODE-KIND? IF
+         PF-NONVALUE? IF drop RES-FALSE EXIT THEN
+      ELSE 2drop RES-FALSE EXIT THEN
       1 +
    REPEAT drop RES-TRUE ;
 : PF-QUOT-ROW-INSTALL ( -- ) [: PF-QUOT-ROW-OK-IMPL ;] is PF-QUOT-ROW-OK? ;
@@ -2675,7 +2693,14 @@ public
 
 : PF-SCHEMA-OK? ( n n -- bool ) {: owner:n sch:n :}
    sch 0 < sch SCH-ROOT-N @ >= or IF RES-FALSE EXIT THEN
-   owner sch SCHEMA-ROOT@ PF-NODE-KIND? nip ;
+   sch SCHEMA-ROOT@ {: node:n :}
+   owner node PF-NODE-KIND? IF
+      {: kind:n :}
+      node SCHEMA-PARAM? IF
+         owner C2-INIT-FAM @ = node SCHEMA-A@ 1 = and IF kind PK-TYPE =
+         ELSE kind PK-CELL = THEN EXIT
+      THEN kind PF-NONVALUE? 0= EXIT
+   THEN drop RES-FALSE ;
 
 private
 
@@ -2980,21 +3005,107 @@ public
 
 private
 
+\ A FIELD name is canonical, while the two public initialized members add a
+\ final @ or !. Keep the suffix in its own buffer: TF-CTOR-PRIV$ builds into
+\ TF-CTOR-BUF and must not overwrite its member argument.
+create TF-INIT-TAIL TF-CTOR-CAP allot
+
+public
+
+: TFAM-INIT-MEMBER$ ( n bool -- ptr u8 n ) {: fid:n store:bool :}
+   fid PF-NAME$ {: a:ptr u:n :}
+   u 1 + TF-CTOR-CAP > IF s" tfam: initialized member too long" 76 die THEN
+   u 0 ?do a i + c@ TF-UPPER-C TF-INIT-TAIL i + c! loop
+   store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
+   TF-INIT-TAIL u 1 + ;
+
+\ The helper lives in the declaring package's private wordlist even when the
+\ record and its accessor are public. This spelling is shared with the
+\ generated-name protection predicate below.
+: TFAM-INIT-HELPER$ ( n n -- ptr u8 n ) {: fam:n fid:n :}
+   fam TFAM-NAME$ fid PF-NAME$ TF-CTOR-PRIV$ 2drop
+   s" -INIT-UNPACK" TF-CTOR-TAIL
+   TF-CTOR-BUF TF-CTOR-U @ ;
+
+: TFAM-INIT-RECEIVER$ ( n -- ptr u8 n ) {: fam:n :}
+   fam TFAM-NAME$ s" init-view-unpack" TF-CTOR-PRIV$ 2drop
+   TF-CTOR-BUF TF-CTOR-U @ ;
+
+private
+
+: TFAM-INIT-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
+   fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
+   fam TFAM-FLD-START@ {: fs:n :}
+   0 TF-CI !
+   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TF-CI @ + {: fid:n :}
+      fid PF-N@ < IF
+         a u fid RES-FALSE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         a u fid RES-TRUE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+      THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+
+: TFAM-INIT-QUAL-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-FAM@ {: fam:n :}
+   fam TFAM-PUBLIC? 0= IF RES-FALSE EXIT THEN
+   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u TF-CW-TAIL$ fam TFAM-INIT-TAIL? ;
+
+: TFAM-INIT-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-FAM@ {: fam:n :}
+   fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u fam TFAM-INIT-RECEIVER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+   fam TFAM-FLD-START@ {: fs:n :}
+   0 TF-CI !
+   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
+      fs TF-CI @ + {: fid:n :}
+      fid PF-N@ < IF
+         a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         fam TFAM-PUBLIC? 0= IF
+            a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
+               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+            a u fam TFAM-NAME$ fid RES-TRUE TFAM-INIT-MEMBER$
+               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         THEN
+      THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+
+: TFAM-INIT-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 TF-CJ !
+   BEGIN TF-CJ @ SUMV-N @ < WHILE
+      a u TF-CJ @ TFAM-INIT-QUAL-AT? IF RES-TRUE EXIT THEN
+      TF-CJ @ 1 + TF-CJ !
+   REPEAT RES-FALSE ;
+
+: TFAM-INIT-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 TF-CJ !
+   BEGIN TF-CJ @ SUMV-N @ < WHILE
+      a u TF-CJ @ TFAM-INIT-PRIV-AT? IF RES-TRUE EXIT THEN
+      TF-CJ @ 1 + TF-CJ !
+   REPEAT RES-FALSE ;
+
+public
+
+: TFAM-INIT-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-WORD? EXIT THEN
+   a u TFAM-INIT-PRIV-WORD? ;
+
 : TFAM-ADDR-WORD-INSTALL ( -- )
-   [: TFAM-ADDR-WORD? ;] is TFAM-ADDR-WORD-XT ;
+   [: 2dup TFAM-ADDR-WORD? IF 2drop RES-TRUE EXIT THEN
+      TFAM-INIT-WORD? ;] is TFAM-ADDR-WORD-XT ;
 TFAM-ADDR-WORD-INSTALL
 
 ;package
 
 package TFAM
 
-\ Concrete schema linearity. Family arguments are checker terms and are
-\ accounted by LAYOUT-MAYBE-LINEAR? / LAYOUT-LINEAR-COUNT; this metadata walk
-\ accounts the other ownership source: concrete linear nodes embedded in sum
-\ variants or product fields. Pointer and quotation nodes are non-owning
-\ boundaries. An application recursively checks both its concrete arguments
-\ and the referenced family's schemas, so nested field families cannot launder
-\ a linear value. The declaration graph is acyclic outside pointer boundaries.
+\ Conservative schema linearity for declaration and cast fences. Exact value
+\ counts below instantiate fields, including repeated parameter occurrences.
+\ Pointer and quotation nodes are non-owning boundaries.
 defer TFCL-NODE-XT ( n -- bool )
 
 : TFAM-CONCRETE-LINEAR-WALK? ( n -- bool ) {: fam:n :}
@@ -3020,12 +3131,18 @@ defer TFCL-NODE-XT ( n -- bool )
 public
 
 : TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
+   fam C2-MUT-FAM @ = IF RES-TRUE EXIT THEN
+   fam C2-RECORDS-FAM @ = IF RES-TRUE EXIT THEN
+   fam C2-READ-FAM @ = IF RES-FALSE EXIT THEN
    fam TFM-LINEAR TFM-FLAG@ IF EXIT THEN drop
    fam TFAM-CONCRETE-LINEAR-WALK? dup fam TFM-LINEAR TFM-FLAG! ;
 
 : TFCL-NODE? ( n -- bool ) {: node:n :}
    node SCHEMA-CON? IF node SCHEMA-A@ CT-LINEAR? EXIT THEN
    node SCHEMA-APP? IF
+      node SCHEMA-A@ C2-MUT-FAM @ = IF RES-TRUE EXIT THEN
+      node SCHEMA-A@ C2-RECORDS-FAM @ = IF RES-TRUE EXIT THEN
+      node SCHEMA-A@ C2-READ-FAM @ = IF RES-FALSE EXIT THEN
       0 BEGIN dup node SCHEMA-C@ < WHILE
          node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE IF drop RES-TRUE EXIT THEN
          1 +
@@ -3181,6 +3298,34 @@ public
    pay tw PACKED-ALIGN {: al:n :}
    pay tw + al PACKED-ALIGN-UP  al  tw ;
 
+\ The committed init field carries T's schema and stack width. Its field row is
+\ canonical cell storage, while the value being initialized may have a narrower
+\ packed memory descriptor. Keep the element-layout decision in one place for
+\ the wrapper and the initialized-record query below.
+private
+: INIT-ELEM-LAYOUT? ( n -- n n bool ) {: term:n :}   \ T -> bytes, alignment, known?
+   term T-RES {: elem:n :}
+   elem TAG T-CON = IF CELL CELL RES-TRUE EXIT THEN
+   elem TAG T-PARAM <> IF 0 0 RES-FALSE EXIT THEN
+   elem PARAM>FAM {: fam:n :}
+   fam C2-INIT-FAM @ = IF elem 1 PARAM>ARG RECURSE EXIT THEN
+   fam TFAM-LAYOUT? 0= IF CELL CELL RES-TRUE EXIT THEN
+   elem LAYOUT-WIDTH-OPEN? IF 0 0 RES-FALSE EXIT THEN
+   fam TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG = IF
+      elem T-WIDTH CELL * CELL RES-TRUE EXIT
+   THEN
+   fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG <> IF 0 0 RES-FALSE EXIT THEN
+   elem T-WIDTH fam TFAM-WIDTH@ <> IF 0 0 RES-FALSE EXIT THEN
+   fam LAY-FIND IF
+      dup LAY-SIZE@ swap LAY-ALIGN@ RES-TRUE
+   ELSE drop 0 0 RES-FALSE THEN ;
+
+public
+: INIT-LAYOUT? ( n -- n n bool ) {: term:n :}   \ init<I,T> -> T's bytes, alignment, known?
+   term T-RES dup TAG T-PARAM <> IF drop 0 0 RES-FALSE EXIT THEN
+   dup PARAM>FAM C2-INIT-FAM @ <> IF drop 0 0 RES-FALSE EXIT THEN
+   1 PARAM>ARG INIT-ELEM-LAYOUT? ;
+
 \ ---------------------------------------------------------------------------
 \ base-state reset. Refuses to run while a field transaction is live (depth > 0)
 \ so an in-flight frame is never discarded out from under its token holder, and
@@ -3198,7 +3343,7 @@ public
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !     \ field family is de-registered until re-declared, so its id can't dangle
+   -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3976,6 +4121,22 @@ private
 : REG-AOT-ITEM ( ptr u8 n n n -- ptr n )
    1 REG-AOT-VIEW CELL-VIEW ;
 
+\ The graph validator asks the already validated future registry whether an
+\ argument is a scope slot. A live family id is not authority during intake.
+: REG-AOT-SCOPE? ( ptr u8 ptr u8 n n -- bool )
+   {: node:ptr src:ptr u:n idx:n :}
+   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
+   idx 0 < idx rec TF.ARITY @ >= or IF
+      s" tfam: a seeded scope slot exceeds the family arity" REG-AOT-REFUSE THEN
+   src u 1 rec TF.PK-START @ idx + REG-AOT-ITEM @ PK-SCOPE = ;
+
+: REG-AOT-REGION? ( ptr u8 ptr u8 n n -- bool )
+   {: node:ptr src:ptr u:n idx:n :}
+   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
+   idx 0 < idx rec TF.ARITY @ >= or IF
+      s" tfam: a seeded region slot exceeds the family arity" REG-AOT-REFUSE THEN
+   src u 1 rec TF.PK-START @ idx + REG-AOT-ITEM @ PK-REGION = ;
+
 : REG-AOT-RANGE ( ptr u8 n n n n -- ) REG-AOT-VIEW drop ;
 
 : REG-AOT-NONNEG ( n -- )
@@ -4275,6 +4436,13 @@ variable REG-AOT-MEMO-U
 : REG-AOT-MEMO-RESULT ( n ptr n n -- n ) {: key:n memo:ptr kind:n :}
    key memo ! kind memo CELL + ! kind ;
 
+: REG-AOT-FAM-NONVALUE? ( ptr u8 n n -- bool ) {: src:ptr u:n fam:n :}
+   src u 0 fam REG-AOT-ITEM {: row:ptr :}
+   row TF.ARITY @ 0 ?do
+      src u 1 row TF.PK-START @ i + REG-AOT-ITEM @ PF-NONVALUE? IF
+         UNLOOP RES-TRUE EXIT THEN
+   loop RES-FALSE ;
+
 : REG-AOT-OWNED-NODE ( ptr u8 n n n bool -- n )
    {: src:ptr u:n owner:n node:n strict:bool :}
    owner 1+ 2 * strict IF 1+ THEN {: key:n :}
@@ -4288,8 +4456,6 @@ variable REG-AOT-MEMO-U
       a owning TF.ARITY @ >= IF
          s" tfam: a seeded schema parameter exceeds its owner arity" REG-AOT-REFUSE THEN
       src u 1 owning TF.PK-START @ a + REG-AOT-ITEM @ {: kind:n :}
-      strict kind PK-CELL <> and IF
-         s" tfam: a seeded field parameter is not cell-kinded" REG-AOT-REFUSE THEN
       key memo kind REG-AOT-MEMO-RESULT EXIT
    THEN
    tag SCH-CON = IF
@@ -4297,12 +4463,19 @@ variable REG-AOT-MEMO-U
          s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
    THEN
    tag SCH-PTR = IF
-      src u owner a strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      src u owner a strict TWALK-DEEPER RECURSE TWALK-SHALLOWER PF-NONVALUE? IF
+         s" tfam: a seeded pointer names a non-value parameter" REG-AOT-REFUSE THEN
+      src u 6 a REG-AOT-ITEM {: child:ptr :}
+      child @ SCH-APP = IF
+         src u child CELL + @ REG-AOT-FAM-NONVALUE? IF
+            s" tfam: a seeded pointer names a borrowed family" REG-AOT-REFUSE THEN
+      THEN
    THEN
    tag SCH-ROW = IF
       b 0 ?do
          src u 7 a i + REG-AOT-ITEM @ {: child:n :}
-         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER PF-NONVALUE? IF
+            s" tfam: a seeded effect uses a non-value parameter" REG-AOT-REFUSE THEN
       loop
    THEN
    tag SCH-QUOT = IF
@@ -4336,9 +4509,18 @@ variable REG-AOT-MEMO-U
 : REG-AOT-OWNED-ROOT ( ptr u8 n n n bool -- n )
    {: src:ptr u:n owner:n root:n strict:bool :}
    src u 7 root REG-AOT-ITEM @ {: node:n :}
-   src u 6 node REG-AOT-ITEM @ SCH-ROW = IF
+   src u 6 node REG-AOT-ITEM @ {: tag:n :}
+   tag SCH-ROW = IF
       s" tfam: a seeded payload root names an effect row" REG-AOT-REFUSE THEN
-   src u owner node strict REG-AOT-OWNED-NODE drop
+   src u owner node strict REG-AOT-OWNED-NODE {: kind:n :}
+   strict tag SCH-PARAM = and kind PK-CELL <> and kind PK-TYPE <> and IF
+      s" tfam: a seeded field parameter is not cell-kinded" REG-AOT-REFUSE THEN
+   strict kind PF-NONVALUE? and IF
+      s" tfam: a seeded field uses a non-value parameter as a value" REG-AOT-REFUSE THEN
+   strict tag SCH-PARAM = and kind PK-TYPE = and IF
+      src u 6 node REG-AOT-ITEM CELL + @ 1 = owner C2-INIT-FAM @ = and 0= IF
+         s" tfam: a seeded field directly owns a type parameter" REG-AOT-REFUSE THEN
+   THEN
    src u node REG-AOT-NODE-WIDTH ;
 
 : REG-AOT-FIELD-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
@@ -4508,6 +4690,8 @@ variable REG-AOT-MEMO-U
    [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-AOT-VALIDATE ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-AOT-PARAM? ;] is REG-EXT-AOT-PARAM-XT
+   [: REG-AOT-SCOPE? ;] is REG-EXT-AOT-SCOPE-XT
+   [: REG-AOT-REGION? ;] is REG-EXT-AOT-REGION-XT
    [: REG-AOT-GRAPH-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
    [: TFAM-NAME$ ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-INSTALL
@@ -4622,6 +4806,89 @@ s" redx"    PTX-FAM-ID EXT-REDX-FAM !
 \ spellable user package) so it never resolves from user signatures, while every
 \ field<...> term still carries this reserved family-id for identity comparison.
 s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM !
+\ Region provenance for an exclusive initialized-field loan. The second
+\ argument is the existing committed field descriptor, and the first is the
+\ parent's allocation region; neither the constructor nor its spelling is
+\ available to a user signature.
+s" @" CHECKER-PACKAGE-PRIVATE s" loan-field" 2 TK-CELL TFAM-DECL LOAN-FIELD-FAM !
+LOAN-FIELD-FAM @ 0 PK-REGION TFAM-PK!
+LOAN-FIELD-FAM @ 1 PK-TYPE TFAM-PK!
+
+\ C2's shared and exclusive views have the same address-and-bound stack layout.
+\ They are family records rather than PRODUCT declarations: no constructor,
+\ destructor, or address accessor is published. The fields describe their ABI
+\ for width-aware transport and image replay; checked code cannot project them.
+private
+variable READ-FAM
+variable MUT-FAM
+variable INIT-FAM
+variable RECORDS-FAM
+variable VIEW-TX
+variable VIEW-FIELD-BASE
+
+: REGISTER-VIEW-FIELDS ( n -- ) {: fam:n :}
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ fam TYPE-FIELD:NO-VARIANT s" base"
+      CC-U8 SCHEMA-CON SCHEMA-PTR SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ fam TYPE-FIELD:NO-VARIANT s" bound"
+      CC-LEN SCHEMA-CON SCHEMA-ROOT+
+      1 1 CELL CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   fam VIEW-FIELD-BASE @ 2 TFAM-FLD-RANGE!
+   fam 2 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+
+: REGISTER-READ-VIEW ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" read-view" 3 TK-PRODUCT TFAM-DECL READ-FAM !
+   READ-FAM @ C2-READ-FAM !
+   READ-FAM @ 0 PK-SCOPE TFAM-PK!
+   READ-FAM @ 1 PK-SCOPE TFAM-PK!
+   READ-FAM @ 2 PK-TYPE TFAM-PK!
+   READ-FAM @ REGISTER-VIEW-FIELDS ;
+
+: REGISTER-MUT-VIEW ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" mut-view" 4 TK-PRODUCT TFAM-DECL MUT-FAM !
+   MUT-FAM @ C2-MUT-FAM !
+   MUT-FAM @ 0 PK-SCOPE TFAM-PK!
+   MUT-FAM @ 1 PK-SCOPE TFAM-PK!
+   MUT-FAM @ 2 PK-REGION TFAM-PK!
+   MUT-FAM @ 3 PK-TYPE TFAM-PK!
+   MUT-FAM @ REGISTER-VIEW-FIELDS ;
+
+\ A reserved initialized element is a nominal product with one transparent
+\ payload schema. The field is metadata only: no make/unmake, derive, field
+\ accessor, or raw address operation is generated for this family.
+: REGISTER-INIT ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" init" 2 TK-PRODUCT TFAM-DECL INIT-FAM !
+   INIT-FAM @ C2-INIT-FAM !
+   INIT-FAM @ 0 PK-SCOPE TFAM-PK!
+   INIT-FAM @ 1 PK-TYPE TFAM-PK!
+   TYPE-FIELD:COUNT VIEW-FIELD-BASE !
+   TYPE-FIELD-OWNER:OPEN VIEW-TX !
+   VIEW-TX @ INIT-FAM @ TYPE-FIELD:NO-VARIANT s" value"
+      1 SCHEMA-PARAM SCHEMA-ROOT+
+      0 1 0 CELL CELL PF-FLAGS-NONE TYPE-FIELD-OWNER:ADD VIEW-TX !
+   VIEW-TX @ TYPE-FIELD-OWNER:COMMIT
+   INIT-FAM @ VIEW-FIELD-BASE @ 1 TFAM-FLD-RANGE!
+   INIT-FAM @ 1 TFAM-SLOTS!
+   VIEW-TX @ TYPE-FIELD-OWNER:FINALIZE ;
+
+: REGISTER-RECORDS ( -- )
+   s" " CHECKER-PACKAGE-PUBLIC s" records" 4 TK-PRODUCT TFAM-DECL RECORDS-FAM !
+   RECORDS-FAM @ C2-RECORDS-FAM !
+   RECORDS-FAM @ 0 PK-SCOPE TFAM-PK!
+   RECORDS-FAM @ 1 PK-SCOPE TFAM-PK!
+   RECORDS-FAM @ 2 PK-REGION TFAM-PK!
+   RECORDS-FAM @ 3 PK-TYPE TFAM-PK!
+   RECORDS-FAM @ REGISTER-VIEW-FIELDS ;
+
+REGISTER-READ-VIEW
+REGISTER-MUT-VIEW
+REGISTER-INIT
+REGISTER-RECORDS
+public
 
 \ ---------------------------------------------------------------------------
 \ signature-token resolution (the checker's TFAM-RESOLVE-XT target). On top of
@@ -4826,6 +5093,161 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
+\ The initialized-record surface is a bounded view of committed PRODUCT
+\ fields. The physical record is canonical cell storage, and each substituted
+\ field must still occupy the cells and byte range its committed id describes.
+\ Comparing only the total width would accept two fields whose changed widths
+\ cancel while the second field's committed offset is now wrong.
+: INIT-NO-RECORD ( -- n n n bool ) 0 0 0 RES-FALSE ;
+: INIT-NO-FIELD ( -- n n n n bool ) 0 0 0 0 RES-FALSE ;
+
+: INIT-FIELD-WIDTH? ( n n n -- n bool ) {: fid:n fam:n used:n :}
+   fid PF-FAM@ fam <> IF 0 RES-FALSE EXIT THEN
+   fid PF-VAR@ PF-NO-VARIANT <> IF 0 RES-FALSE EXIT THEN
+   fid PF-FLAGS@ PF-FLAGS-NONE <> IF 0 RES-FALSE EXIT THEN
+   fid PF-SLOT@ used <> IF 0 RES-FALSE EXIT THEN
+   fid PF-BYTE-OFF@ used CELL * <> IF 0 RES-FALSE EXIT THEN
+   fid PF-ALIGN@ CELL <> IF 0 RES-FALSE EXIT THEN
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-SCH-TERM T-RES {: field:n :}
+   field ISVAR IF 0 RES-FALSE EXIT THEN
+   field TAG T-PARAM = IF
+      field LAYOUT-WIDTH-OPEN? IF 0 RES-FALSE EXIT THEN
+   THEN
+   field T-WIDTH {: width:n :}
+   fid PF-CELLS@ width <> IF 0 RES-FALSE EXIT THEN
+   fid PF-BYTES@ width CELL * <> IF 0 RES-FALSE EXIT THEN
+   width RES-TRUE ;
+
+public
+
+: INIT-RECORD? ( n -- n n n bool ) {: term:n :}
+   term T-RES {: record:n :}
+   record TAG T-PARAM <> IF INIT-NO-RECORD EXIT THEN
+   record PARAM>FAM {: fam:n :}
+   fam TFAM-PRODUCT? 0= IF INIT-NO-RECORD EXIT THEN
+   fam C2-READ-FAM @ = fam C2-MUT-FAM @ = or
+   fam C2-INIT-FAM @ = or fam C2-RECORDS-FAM @ = or IF INIT-NO-RECORD EXIT THEN
+   fam TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG <> IF INIT-NO-RECORD EXIT THEN
+   record PARAM>ARGC fam TFAM-ARITY@ <> IF INIT-NO-RECORD EXIT THEN
+   fam TFAM-FLD-COUNT@ {: count:n :}
+   count 0 <= IF INIT-NO-RECORD EXIT THEN
+   fam TFAM-FLD-START@ {: base:n :}
+   base 0 < base PF-N@ > or IF INIT-NO-RECORD EXIT THEN
+   count PF-N@ base - > IF INIT-NO-RECORD EXIT THEN
+   record LAYOUT-WIDTH-OPEN? IF INIT-NO-RECORD EXIT THEN
+   record INIT-ELEM-LAYOUT? 0= IF 2drop INIT-NO-RECORD EXIT THEN
+   {: size:n align:n :}
+   align CELL <> IF INIT-NO-RECORD EXIT THEN
+   record TFC-ARGS!
+   0
+   count 0 ?do
+      dup base i + fam rot INIT-FIELD-WIDTH?
+      IF + ELSE 2drop unloop INIT-NO-RECORD EXIT THEN
+   loop
+   dup fam TFAM-SLOTS@ <> IF drop INIT-NO-RECORD EXIT THEN
+   dup record T-WIDTH <> IF drop INIT-NO-RECORD EXIT THEN
+   dup CELL * size <> IF drop INIT-NO-RECORD EXIT THEN
+   size align RES-TRUE ;
+
+: INIT-FIELD? ( n n -- n n n n bool ) {: fid:n term:n :}
+   term INIT-RECORD? 0= IF drop drop drop INIT-NO-FIELD EXIT THEN
+   drop drop drop
+   term T-RES {: record:n :}
+   record PARAM>FAM {: fam:n :}
+   fam TFAM-FLD-START@ {: base:n :}
+   fid base < fid base fam TFAM-FLD-COUNT@ + >= or IF INIT-NO-FIELD EXIT THEN
+   record TFC-ARGS!
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-SCH-TERM
+   fid PF-BYTE-OFF@ fid PF-CELLS@ fid PF-BYTES@ RES-TRUE ;
+
+: INIT-FIELD-NAME? ( n ptr u8 n -- n n n bool )
+   {: record:n name:ptr size:n :}
+   record INIT-RECORD? 0= IF drop drop drop 0 0 0 RES-FALSE EXIT THEN
+   drop drop drop
+   record T-RES PARAM>FAM PF-NO-VARIANT name size PF-FIND
+   0= IF drop 0 0 0 RES-FALSE EXIT THEN
+   {: fid:n :}
+   fid record INIT-FIELD? 0= IF 2drop 2drop 0 0 0 RES-FALSE EXIT THEN
+   {: field:n off:n cells:n bytes:n :}
+   PARAM-SCR-N @ {: base:n :}
+   record PARAM-SCR+
+   fid PF-NAME$ MK-ATOM PARAM-SCR+
+   field PARAM-SCR+
+   base s" field" FIELD-FAM @ MK-PARAM off bytes RES-TRUE ;
+
+\ A value owns only the fields in its instantiated schema. Reconstruct a field
+\ term with the same substitution used by MAKE/UNMAKE and MATCH; this avoids
+\ charging a phantom view element or counting a repeated owning parameter once.
+: TFAM-SCH-LIN-N ( n n bool -- n ) {: root:n term:n maybe:bool :}
+   term TFC-ARGS!
+   root SCHEMA-ROOT@ TFC-SCH-TERM maybe OWN-TYPE-N ;
+
+: PRODUCT-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
+   term PARAM>FAM {: fam:n :}
+   0
+   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+      fam TFAM-FLD-START@ over + PF-PENDING-SCH@ term maybe TFAM-SCH-LIN-N
+      rot + swap
+      1 +
+   REPEAT drop ;
+
+: SUMV-LIN-N ( n n bool -- n ) {: vid:n term:n maybe:bool :}
+   0
+   0 BEGIN dup vid SUMV-PAY-N < WHILE
+      vid over SUMV-PAY-ROOT term maybe TFAM-SCH-LIN-N
+      rot + swap
+      1 +
+   REPEAT drop ;
+
+: SUM-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
+   term PARAM>FAM {: fam:n :}
+   0
+   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+      fam TFAM-VAR-START@ over + term maybe SUMV-LIN-N
+      rot max swap
+      1 +
+   REPEAT drop ;
+
+: TFAM-INST-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
+   term PARAM>FAM {: fam:n :}
+   fam C2-READ-FAM @ = IF 0 EXIT THEN
+   fam C2-MUT-FAM @ = IF 1 EXIT THEN
+   fam C2-RECORDS-FAM @ = IF 1 EXIT THEN
+   fam TFAM-PRODUCT? IF term maybe PRODUCT-LIN-N EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF term maybe SUM-LIN-N EXIT THEN
+   0 ;
+
+: TFAM-INST-LIN ( n -- n ) RES-FALSE TFAM-INST-LIN-N ;
+: TFAM-INST-MAY ( n -- bool ) RES-TRUE TFAM-INST-LIN-N 0= 0= ;
+
+: TFAM-INST-LIN-INSTALL ( -- )
+   [: TFAM-INST-LIN ;] is TFAM-LIN-N-XT
+   [: TFAM-INST-MAY ;] is TFAM-MAY-LIN-XT ;
+TFAM-INST-LIN-INSTALL
+
+\ Instantiate one field schema against its owning family value. The lowering
+\ certificate can run while construct still uses TFC-VARS and TFC-I, so keep
+\ its substitution local to this call.
+: SCHEMA-TERM-FOR ( n n -- n ) {: owner:n node:n :}
+   TFC-I @ {: old-i:n :}
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup TFC-VAR-CAP < WHILE
+      dup cells TFC-VARS + @ PARAM-SCR+
+      1 +
+   REPEAT drop
+   owner T-RES TFC-ARGS!
+   node TFC-SCH-TERM {: term:n :}
+   0 BEGIN dup TFC-VAR-CAP < WHILE
+      dup base + cells PARAM-SCR + @
+      over cells TFC-VARS + !
+      1 +
+   REPEAT drop
+   base PARAM-SCR-N !
+   old-i TFC-I !
+   term ;
+
+private
+
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
 \ while scalar, pointer, and open terms retain their ordinary one-cell form.
@@ -4941,7 +5363,7 @@ TFC-QUOT-ROW-INSTALL
 \ proved.
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a genuine narrower-than-declared arm
    term T-RES {: rt:n :}
-   rt TYPE-CLOSED? 0= IF EXIT THEN               \ open nested term/row: leave declared width, stay fail-closed
+   rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
    rt T-WIDTH 1 -                                \ instantiated payload slots (MATCH families are always tagged: subtract the one tag cell)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    {: ipads:n :}
@@ -4974,19 +5396,20 @@ private
 \ fresh var and ordinary boundary coercion. Shared by the reserved `construct`
 \ token and the generated-constructor CALL (TFAM-CTOR-STEP?).
 : TFC-CONSTRUCT-STEP-VID ( n n -- ) {: fam:n vid:n :}
-   fam TFAM-ARITY@ TFC-MINT-VARS
+   \ The layout query walks ownership through TFC-VARS, so populate this
+   \ constructor's arguments only after that query has finished.
    fam CONSTRUCT-DECL-LAYOUT {: dt:n seeded:bool :}
-   seeded IF dt TFC-ARGS! THEN
+   seeded IF dt TFC-ARGS! ELSE fam TFAM-ARITY@ TFC-MINT-VARS THEN
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM {: famterm:n :}
    seeded IF                                           \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
-      dt TYPE-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
+      dt TYPE-REP-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
    seeded IF
-      dt TYPE-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open nested term/row: stay staged fail-closed
+      dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
@@ -5097,6 +5520,64 @@ variable FPRJ-FFAM
 \ the two must keep the same condition or the halves of one address surface would
 \ describe different instantiations.
 
+\ Fixed storage walks the same instantiated schema that field projection uses,
+\ but computes its own offsets: a wide argument moves every following field.
+\ The stored type has already passed CHECKER-STORAGE-INFO's closed-layout gate.
+public
+
+: TFAM-STORAGE-QUOT? ( n -- bool ) T-RES TAG T-QUOT = ;
+: TFAM-STORAGE-PRODUCT? ( n -- n bool )
+   T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   PARAM>FAM dup TFAM-PRODUCT? IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+: TFAM-STORAGE-SUM? ( n -- n bool )
+   T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
+   PARAM>FAM dup TFAM-SUM? over TFAM-ENUM? or
+   IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+: TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
+   term TFC-ARGS!
+   field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM
+   dup T-WIDTH ;
+: TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
+   fam TFAM-VAR-COUNT@ 0 ?do
+      fam TFAM-VAR-START@ i + {: vid:n :}
+      vid SUMV-TAG@ tag = IF vid RES-TRUE unloop EXIT THEN
+   loop
+   0 RES-FALSE ;
+: TFAM-STORAGE-PAY ( n n n -- n n ) {: term:n vid:n index:n :}
+   term TFC-ARGS!
+   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM
+   dup T-WIDTH ;
+
+\ Inspect the instantiated value graph once at allocation. A pointer is a
+\ scalar storage cell, even when its pointee could itself hold a quotation.
+\ Every sum alternative matters because the active tag can change after this
+\ declaration; capture later walks only the alternative present in DATA.
+: TFAM-STORAGE-HAS-QUOT? ( n -- bool ) {: term:n :}
+   term TFAM-STORAGE-QUOT? IF RES-TRUE EXIT THEN
+   term TFAM-STORAGE-PRODUCT? IF
+      {: fam:n :}
+      fam TFAM-FLD-COUNT@ 0 ?do
+         fam TFAM-FLD-START@ i + {: field:n :}
+         term field TFAM-STORAGE-FIELD drop recurse IF
+            RES-TRUE unloop EXIT
+         THEN
+      loop RES-FALSE EXIT
+   THEN drop
+   term TFAM-STORAGE-SUM? IF
+      {: fam:n :}
+      fam TFAM-VAR-COUNT@ 0 ?do
+         fam TFAM-VAR-START@ i + {: vid:n :}
+         vid SUMV-PAY-N 0 ?do
+            term vid i TFAM-STORAGE-PAY drop recurse IF
+               RES-TRUE unloop unloop EXIT
+            THEN
+         loop
+      loop RES-FALSE EXIT
+   THEN drop
+   RES-FALSE ;
+
+private
+
 \ ---------------------------------------------------------------------------
 \ item 10 slice 1: compiler-facing lowering surface (docs §16; dot
 \ habu-tfam-10-native design A). Pure resolution + metadata for the native
@@ -5185,7 +5666,12 @@ private
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
+   [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
+   [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
    [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-XT   \ which argument slots that width reads: an open slot it does not read is still placeable
+   [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
+   [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
+   [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)
    [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ item 9: construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step

@@ -455,21 +455,22 @@ embedded CodeDirectory when signature behavior is involved.
 
 ## Source arenas
 
-Three independent source arenas share one capacity but have different
-contents and failure boundaries:
+The engine input arena holds boot input and baked source. The stage2 and maker
+readers each hold one source stream. `SOURCE-ARENA-CAP` is the read allowance:
 
-- `IBUFSZ` holds the cold source prefix and the later program input in the
-  generated engine. Its effective maximum input is below `IBUFSZ` because the
-  prefix is already resident and the reader reserves an EOF probe. Discover the
-  boundary with bounded `--build` probes against the freshly built candidate so
-  the measurement uses `LCOLDPFXB`; never assume `IBUFSZ+1` is the first failing
-  file. Overflow exits 74 with `hb: source prefix buffer full`. The prefix rows
-  come in through `LSRCRDP`, which drops each file's comment and blank lines
+- `IBUFSZ` equals `SOURCE-ARENA-CAP`: the cold source prefix and later program
+  input share it. The argv files include generated path rows and separators;
+  each file also has a `SOURCE-ARENA-CAP` bound. The file reader reserves an
+  EOF probe.
+  Discover the effective program boundary with bounded `--build` probes against
+  the freshly built candidate so the measurement includes `LCOLDPFXB` and its
+  generated rows. Overflow exits 74 with `hb: source prefix buffer full`.
+  The prefix rows come in through `LSRCRDP`, which drops comment and blank lines
   (`EMIT-SOURCE-READ-PREFIX`), so the resident prefix is about 41 percent
   smaller than the files on disk; `LSRCRD` still reads argv files and the
-  `--build` payload byte for byte, so only the prefix term moved. A seeded
-  engine emits no cold prefix at all, so the installed `bin/hb` starts the
-  program at the base of the arena.
+  `--build` payload byte for byte. A seeded engine emits no cold prefix, so
+  installed `bin/hb` starts program input at the arena base. Baked source
+  has separate space: the mapping is `SOURCE-ARENA-LEN = IBUFSZ + SRCN`.
 - `S2-SOURCE-CAP` is the anonymous mapping used by `src/habu/stage2.f` to read
   the generated fixpoint compiler source. It is not the engine input arena. A
   candidate-backed regression proves cap-minus-one succeeds and exact-cap exits
@@ -479,9 +480,10 @@ contents and failure boundaries:
   candidate-backed reader regression proves the same adjacent boundary with the
   exact `maker: source exceeds buffer` diagnostic.
 
-`SOURCE-ARENA-CAP` is the shared capacity owner. Native layout and Gforth
-recovery carry matching owner tokens; stage2 and maker alias that owner rather
-than carrying independent numeric ceilings.
+`SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
+recovery carry matching owner tokens; stage2 and maker alias that owner. The
+assembler image window budgets one baked source stream; the generated engine
+maps the actual baked size separately from its `IBUFSZ` read allowance.
 
 The three ceilings a PROGRAM reaches — one definition's captured body text
 (`BODYBUF-CAP`, rc 71), one REPL line (`LLINE-MAX`, refused at the prompt) and

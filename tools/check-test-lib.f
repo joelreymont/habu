@@ -2850,6 +2850,39 @@ create BIG $2000 allot   variable BIG-U
    outu erru rc s" ckt-out-bad" EXPECT-PREVERIFY-IN
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
 
+\ A PRODUCT or STRUCTURE that derives init also defines its initialized-field
+\ accessors when it loads (src/core/structure-make.f), so the pre-pass replays
+\ their effects with the constructors': a definition in the same source that
+\ reads or writes a field through one preverifies in both modes, and one that
+\ misdeclares the accessor's effect is refused by that effect, not as an
+\ undefined word.
+: INIT-ACC-SRC$ ( ptr u8 n -- ptr u8 n ) {: use:ptr useu:n :}
+   SB-RESET
+   s\" package CKTIA\npublic\nPRODUCT ckcell 0 DERIVE init FIELD v n ;PRODUCT\nprivate\n" SB-APPEND
+   use useu SB-APPEND
+   s\" \n;package\n" SB-APPEND
+   SB$ ;
+
+: INIT-ACC-GOOD$ ( -- ptr u8 n )
+   s\" : CKT-GET ( mut-view<a,b,c,init<d,ckcell>> -- mut-view<a,b,c,init<d,ckcell>> n ) CKTIA-CKCELL:V@ ;\n: CKT-SET ( mut-view<a,b,c,init<d,ckcell>> n -- mut-view<a,b,c,init<d,ckcell>> ) CKTIA-CKCELL:V! ;"
+   INIT-ACC-SRC$ ;
+
+: INIT-ACC-BAD$ ( -- ptr u8 n )
+   s" : CKT-GET-BAD ( mut-view<a,b,c,init<d,ckcell>> -- n ) CKTIA-CKCELL:V@ ;"
+   INIT-ACC-SRC$ ;
+
+: INIT-ACC-STRUCT$ ( -- ptr u8 n )
+   s\" package CKTIS\npublic\nSTRUCTURE ckpair 0 DERIVE init FIELD first n FIELD second n ;STRUCTURE\nprivate\n: CKS-GET ( mut-view<a,b,c,init<d,ckpair>> -- mut-view<a,b,c,init<d,ckpair>> n ) CKTIS-CKPAIR:SECOND@ ;\n;package\n" ;
+
+: TEST-DERIVED-INIT-ACCESSORS ( -- )
+   INIT-ACC-GOOD$ DIRECT-STDIN EXPECT-ACCEPTED
+   INIT-ACC-GOOD$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
+   INIT-ACC-STRUCT$ DIRECT-STDIN EXPECT-ACCEPTED
+   INIT-ACC-STRUCT$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
+   INIT-ACC-BAD$ DIRECT-STDIN {: outu:n erru:n rc:n :}
+   outu erru rc s" ckt-get-bad" EXPECT-PREVERIFY-IN
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
+
 \ ---- a loaded file is expanded where its loader sits ------------------------
 \ The pre-pass verifies a source and the files it loads in the order the loader
 \ runs them: the text before a top-level `required` first, then the file it
@@ -3773,6 +3806,7 @@ POISON-RECORD
    s" check/label-json-escape" [: LABEL-ESC-TEST ;] CASE-RUN
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
+   s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
