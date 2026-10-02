@@ -40,9 +40,9 @@ AIO:STOP
 
 | word | effect | meaning |
 | --- | --- | --- |
-| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`) and the listener; a connection silent for the idle milliseconds is closed |
+| `START` | `( n n n n -- )` | bind address and port, start that many workers (1..`MAX-WORKERS`), wait for all worker start hooks, then start the listener; a connection silent for the idle milliseconds is closed |
 | `STOP` | `( -- )` | ask every task to end, wait for them to the stop bound, kill any still inside its body, give everything back |
-| `RUNNING?` | `( -- bool )` | between `START` and `STOP` |
+| `RUNNING?` | `( -- bool )` | during startup and until `STOP`, or false after a failed `START` |
 | `PORT`, `ADDRESS` | `( -- n )` | what the listener actually bound |
 | `ENDED-TASKS`, `TASK-TOTAL` | `( -- n )` | tasks that reached the end of their own body, of the listener plus the workers |
 | `KILLED-TASKS` | `( -- n )` | tasks the last `STOP` had to kill past its bound; 0 is a server whose every task ended itself |
@@ -50,6 +50,10 @@ AIO:STOP
 The AIO loop is the caller's to start: every wait the listener and the workers
 make is an AIO submission, so `START` with no loop running is `E-AIO-STATE`,
 thrown to the caller rather than inside a task nobody reads.
+If a worker start hook throws, `START` throws an actual hook error after every
+started worker has run its exit hooks and been joined. The listener is closed,
+the server's resources are released, and `RUNNING?` is false; the same address
+and port can be started again. No request is accepted during worker startup.
 
 `STOP` waits `IDLE-MS` + 200 ms of lingering + 200 ms of slack (at least the
 listener's 200 ms accept wait plus slack). A worker parked inside a handler past
@@ -155,14 +159,18 @@ database connection per worker, say). Start hooks run in each worker, in
 registration order, after it has claimed its slot and before its first
 connection; exit hooks run in reverse through `TASK:AT-EXIT`, so a worker that
 throws gives its resources back as surely as one that is stopped. A start hook
-that throws ends its own worker and nothing else. Hooks stay registered for
-every later server in the process.
+that throws fails `START` for the whole pool. Other workers finish their start
+hooks and run their exit hooks before `START` returns the error. Hooks stay
+registered for every later server in the process.
 
 ## Static files
 
 `STATIC-ROOT ( ptr u8 n -- )` reads a whole directory tree into memory before
-`START` (up to 64 files of up to 4 MiB); `STOP` gives it back, so each start
-reads it again. `STATIC-COUNT` is the number of files read. A GET or HEAD no
+`START` (up to 64 files of up to 4 MiB). `STOP` releases the tree. A refused
+`START` argument or context, or a listener-open failure, leaves it loaded.
+Failure opening worker resources or starting tasks releases it; load it again
+with `STATIC-ROOT` before retrying.
+`STATIC-COUNT` is the number of files read. A GET or HEAD no
 route answers is served from the tree, `/` as `/index.html`, with a content type
 from the extension, an `ETag` over the bytes, and `304 Not Modified` for a
 matching `If-None-Match` (a list, or `*`).
