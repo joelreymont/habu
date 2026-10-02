@@ -2832,6 +2832,11 @@ public
 \ native-build's .names sidecar. Valid after MEASURE on a baked engine.
 : CODE-BLOB-RANGE ( -- n n ) BLOB-OFF @ BLOB-LEN @ ;
 
+\ File coordinates of a stripped image's DATA blob: its header, cell map and
+\ values, the window's whole cell stream, empty when the window carries none.
+\ Valid after MEASURE on a stripped image.
+: DATA-BLOB-RANGE ( -- n n ) BLOB-AT @ BLOB-STOP @ BLOB-AT @ - ;
+
 \ The same rows again, printed this time, with the class's own notes under them.
 : REPORT ( -- )
    TABLE

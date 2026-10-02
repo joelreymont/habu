@@ -160,6 +160,11 @@ arena. Literal bytes belong to the application; the owner and row tables used
 by the compiler to intern and relocate them do not. `NSTR:SOURCE-ROWS` exposes
 those tables to the engine build driver, not to a stripped runtime. Persisting
 one of its table pointers refuses at link time and names the retaining cell.
+The pool is the application's only while the application loads: latching the
+span hands the maker back the pool it compiled into before, so nothing the
+maker compiles afterwards (`tools/aot-build.f`, the linker) adds a byte to the
+image, and the link selects the application's pool again to copy each literal
+the closure reaches into the window.
 
 The application therefore sees **only what it requires itself**. Nothing is
 preloaded on its behalf any more, so a program that used a `lib` word without

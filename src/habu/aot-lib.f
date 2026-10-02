@@ -1056,12 +1056,13 @@ variable RP  variable RE
 
 public
 
-\ The span is already latched: tools/aot-build-core.f calls AOT-DATA-SPAN the moment
+\ The span is already latched: tools/aot-build-open.f calls AOT-DATA-SPAN the moment
 \ the application has loaded, because this file - and every lib module the linker
 \ needs - is loaded AFTER that and allots above BLOB-END. LINK therefore reads the
 \ bounds it is given and never latches them itself; latching here would put the
 \ whole linker inside the span.
 : LINK ( -- )
+   AOT-APP-POOL                                     \ reached literals are copied into the window's pool
    CARRY-CELLS                                      \ the engine constants this image carries
    CARRY-TASK-EXIT                                  \ active carried task exit quotations
    COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped

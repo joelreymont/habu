@@ -1,8 +1,8 @@
 \ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
 \ groups that build and run one program each - the object producer, the native
 \ call sites, the division refusal, the span definer as a snapshot and
-\ stripped, a build driver, the empty does> clause and one foreign call - and
-\ the programs the keyed linker image refuses.
+\ stripped (by both makers, to the same DATA), a build driver, the empty does>
+\ clause and one foreign call - and the programs the keyed linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -20,6 +20,24 @@ package HB-BUILD-CLI
 
 : HBT-SPAN-OUT ( -- ptr u8 n )
    HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
+
+\ The same span program linked by the engine's maker, beside the linker
+\ image's HBT-SPAN-OUT.
+variable HBT-SPAN-ENG-U
+create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
+
+: HBT-SPAN-ENG ( -- ptr u8 n )
+   HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U @ ;
+
+\ The DATA blob of the stripped image at a path, read whole: the cell stream its
+\ window carries, framed as tools/image-size-lib.f DATA-BLOB-RANGE says.
+: HBT-DATA-BLOB ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   path pathu IMAGE-SIZE:MEASURE
+   IMAGE-SIZE:CLASS$ s" stripped" T$=
+   IMAGE-SIZE:DATA-BLOB-RANGE {: at:n len:n :}
+   path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   path pathu buf cap READ-ALL drop
+   buf at +  len ;
 
 \ A zero divisor in a STRIPPED image. The division is compiled by the native
 \ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
@@ -180,7 +198,32 @@ package HB-BUILD-CLI
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT FILE? TTRUE
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT ;
+\ HBT-SPAN-OUT stays on disk: BUILD-AOT-SPAN-ENGINE compares its DATA blob.
+
+\ ... AND THE ENGINE'S MAKER CARRIES THE SAME DATA. The production maker
+\ compiles tools/aot-build.f after the application has loaded
+\ (tools/hb-build-lib.f HBB-RUN-MAKER-CMD), where the linker image's require of
+\ it is a no-op, so a literal the maker compiles into the application's pool
+\ lands inside the capture window and travels in the engine's image alone:
+\ `tools/aot-build-core.f` did, in every image the engine linked. Neither maker
+\ may add a byte of its own, so both links of one source carry one cell stream.
+\ Their code differs: each window is restored at the DATA address its maker
+\ opened it at, and the linker image's sits above the linker. The maker key
+\ names the engine that runs it, so the second build is a link, not the first
+\ one's artifact.
+: BUILD-AOT-SPAN-ENGINE ( -- )
+   HBT-ROOT s" spaneng" HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U HBT-PATH!
+   HBT-SPAN-ENG HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-ENG HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-HBB-BUILD-OUT
+   HBB-MAKER-RUN @ 0 <> TTRUE
+   HBT-SPAN-OUT HBT-DATA-BLOB {: img:ptr imgu:n :}
+   HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
+   imgu 0 > TTRUE
+   img imgu eng engu HBT-DIFF-AT -1 T=
    HBT-REMOVE-ARTIFACT
+   HBT-SPAN-ENG HBT-REMOVE-FILE?
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
 \ A program requiring a module of the linker's lib closure that the engine does
@@ -303,6 +346,7 @@ public
    BUILD-AOT-DIV-REFUSAL
    BUILD-REPL-SPAN
    BUILD-AOT-SPAN
+   BUILD-AOT-SPAN-ENGINE
    BUILD-AOT-PRE-WINDOW
    BUILD-AOT-EXBUILD
    BUILD-AOT-DOES-EMPTY
