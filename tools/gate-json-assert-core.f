@@ -464,9 +464,14 @@ variable GJA-DIRECT
 
 \ A refused checker record's code names its repair class
 \ (docs/repair-diagnostics.md); the flag is false for a code that is not one.
+\ A call to a malformed qualified name is refused under E-BAD-QUALIFIED too, in
+\ its definition, so that code names a record only where no `word` places it.
 : GJA-RECORD-CLASS ( n -- ptr u8 n bool ) {: root:n :}
    root s" E-TRUST-UNRESOLVED" GJA-CODE= IF s" fix_stale_trust_row" GJA-TRUE exit THEN
    root s" E-PKG-CONTEXT" GJA-CODE= IF s" use_storage_definer" GJA-TRUE exit THEN
+   root s" E-BAD-QUALIFIED" GJA-CODE= root s" word" GJA-HAS? 0= and IF
+      s" fix_qualified_name" GJA-TRUE exit
+   THEN
    s" " GJA-FALSE ;
 
 : GJA-RECORD? ( n -- bool )

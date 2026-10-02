@@ -10499,12 +10499,15 @@ package CHECKER-REG
 \ to prevent: a stale row minted a bare global checker symbol out of nothing,
 \ and the collision surfaced at some later file's `using` instead of at the row.
 7143 constant E-TRUST-UNRESOLVED
+\ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
+7147 constant E-BAD-QUALIFIED
 PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
-\ ONE hook for both refused-record diagnostics, selected by its argument, for
-\ the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
+\ ONE hook for the three refused-record diagnostics, selected by its argument,
+\ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
-\ (CHECKER-REPLAY-NAME-OK?).
-defer RECORD-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
+\ (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
+\ (CHECKER-RECORD-NAME).
+defer RECORD-DIAG-XT ( n -- )               \ render.f installs the three diagnostics behind one selector
 : RECORD-DIAG-DEFAULT ( -- ) [: drop ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-DEFAULT
 
@@ -12023,8 +12026,21 @@ variable DFER-POS
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
+\ The symbol a declaration's rows are keyed by. CHECKER-RECORD-SYM answers 0 for
+\ a malformed qualified name, which keys no word, and no row may carry 0: a
+\ defer row keyed 0 is DFERS' terminator and hides every row after it from the
+\ scan, and an effect row keyed 0 is anonymous. So the name is refused, and
+\ named, before the caller writes anything. The refusal is a throw because source
+\ reaches it through the pre-pass (src/habu/verify-source.f), whose drivers
+\ report a throw at its statement after every diagnostic made before it.
 : CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u CHECKER-RECORD-SYM CHECKER-REC-SYM !
+   a u CHECKER-RECORD-SYM {: sym:n :}
+   sym 0= IF
+      a TSR-TOK-A !  u TSR-TOK-U !
+      2 RECORD-DIAG-XT
+      E-BAD-QUALIFIED throw
+   THEN
+   sym CHECKER-REC-SYM !
    a u ;
 
 : CHECKER-DEFER ( ptr u8 n -- )
@@ -16895,9 +16911,9 @@ package CHECKER-REG
 \ today (dot habu-a-qualified-name-3913fe54). It is also the narrower half of
 \ the hole: only a BARE top-level name mints the global checker symbol that
 \ surfaces two layers away as E-USING-SHADOW-GLOBAL, which is the failure this
-\ refusal exists to stop. A malformed token is passed through for the same
-\ reason CHECKER-RECORD-SYM passes it: refusing it here would report the wrong
-\ thing about it.
+\ refusal exists to stop. A malformed token is asked as a bare one: the engine
+\ defines no word spelled that way, so no wordlist claims it and the row names no
+\ word. Where nothing is asked, CHECKER-RECORD-NAME refuses it as malformed.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE = IF data-base CK-PKG-PRI-OFF + @ EXIT THEN
@@ -16907,7 +16923,6 @@ package CHECKER-REG
 : TRUST-RESOLVES? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF RES-TRUE EXIT THEN
-   CHECKER-QBAD-TOK @ IF RES-TRUE EXIT THEN
    CHECKER-PKG-MIRROR-AUTHORITY? IF RES-TRUE EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 

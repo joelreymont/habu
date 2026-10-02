@@ -149,10 +149,13 @@ variable RP-NODE
 : RP-STORAGE? ( n -- bool )
    s" E-BAD-STORAGE" RP-CODE= ;
 
-\ A checker record refused at the load: a trust row naming no word, or a storage
-\ registrar called from source. No definition encloses it to place its token.
+\ A checker record refused at the load: a trust row naming no word, a storage
+\ registrar called from source, or a record for a malformed qualified name. No
+\ definition encloses it to place its token; a call to a malformed name is
+\ refused under the same code in its definition, which carries a `word`.
 : RP-RECORD? ( n -- bool ) {: root:n :}
    root s" E-TRUST-UNRESOLVED" RP-CODE= if 0 0= exit then
+   root s" E-BAD-QUALIFIED" RP-CODE= if root s" word" JSON-GET -1 = exit then
    root s" E-PKG-CONTEXT" RP-CODE= ;
 
 : RP-REQ-STR ( n ptr u8 n -- )

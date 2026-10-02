@@ -1387,10 +1387,37 @@ SHADOW-DIAG-INSTALL
    JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Both refused-record diagnostics ride ONE checker hook (checker.f
-\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record).
-: RECORD-DIAG ( n -- )
-   1 = IF REPLAY-ONLY-DIAG ELSE TSTALE-DIAG THEN ;
+
+\ --- a record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), on
+\ the same template, with the code, repair class and suggestion a call to such a
+\ name gets (E-BAD-QUALIFIED above).
+: BADQUAL-PROSE ( -- )
+   s" E-BAD-QUALIFIED habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+   s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
+   s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
+   s"  PKG:WORD" DTXT ;
+: BADQUAL-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-QUALIFIED" JSTR 44 EMIT1
+   s" repair_class" JKEY s" fix_qualified_name" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY s" Use one ':' qualifier, e.g. PKG:WORD." JSTR
+   125 EMIT1 ;
+: BADQUAL-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF BADQUAL-JSON ELSE BADQUAL-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ The three refused-record diagnostics ride ONE checker hook (checker.f
+\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record, 2 = the
+\ malformed name).
+: RECORD-DIAG ( n -- ) {: which:n :}
+   which 1 = IF REPLAY-ONLY-DIAG EXIT THEN
+   which 2 = IF BADQUAL-DIAG EXIT THEN
+   TSTALE-DIAG ;
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
 

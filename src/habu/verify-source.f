@@ -930,8 +930,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    NAME-TOKEN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    -1 SIG-RAW-MODE!
-   sig sigu DECL-SIGNATURE
-   0 SIG-RAW-MODE! ;
+   sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally ;
 
 \ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
 \ this pre-pass never read. The row is the checker's own certified one, so there

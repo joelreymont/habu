@@ -15,6 +15,8 @@ The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
 span, an input, a refused checker record, or otherwise a definition.
+`E-BAD-QUALIFIED` names a refused checker record only without a `word`, and a
+definition with one.
 
 Fields:
 
@@ -133,16 +135,22 @@ The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
 under `--json-errors` as in its packets. The run exits 70. A program that runs
 longer is checked with a longer `--deadline-ms`.
 
-Two load-time refusals of a checker record emit a refused-record object: no
+Three load-time refusals of a checker record emit a refused-record object: no
 definition encloses them, so they carry `schema_version`, `code`,
 `repair_class`, `verdict` `rejected`, `token` (the name the record would have
 described), `file` and `suggestion`, and no span, `throw_code` or
 definition-only field. Each code names its repair class:
 `E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
 where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
-storage registrar called from source outside the engine's verifier window.
-`tools/check.f` meets either only in its run stage, after every definition has
-checked, and exits 67 as the load's uncaught throw does.
+storage registrar called from source outside the engine's verifier window;
+`E-BAD-QUALIFIED` / `fix_qualified_name` is a record for a malformed qualified
+name, which keys no word. A call to such a name is refused under the same code
+and class in its definition, with the definition's fields. `tools/check.f`
+meets the first two only in its run stage, after every definition has checked,
+and exits 67 as the load's uncaught throw does. A record for a malformed name
+also throws 7147, so nothing after it in its source is checked: a load exits 67
+after `hb: uncaught throw code 7147`, and `tools/check.f` reports the statement
+that asked for the record as one that threw.
 
 ## Checking Without Running
 
@@ -342,8 +350,8 @@ place:
 | `kind` | string | required | Must be `habu_repair_packet`. |
 | `token` | string | required | The name the record would have described. |
 | `file` | string | required | Source label or path. |
-| `code` | string | required | `E-TRUST-UNRESOLVED` or `E-PKG-CONTEXT`. |
-| `repair_class` | string | required | `fix_stale_trust_row` or `use_storage_definer`, the one the code names. |
+| `code` | string | required | `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED`. |
+| `repair_class` | string | required | `fix_stale_trust_row`, `use_storage_definer` or `fix_qualified_name`, the one the code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
@@ -385,8 +393,9 @@ Current checker classes:
   could drop it; keep the linear value on the stack and factor instead.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
-- `fix_qualified_name`: a call used a malformed qualified name with more than one
-  `:`; use a single `:` qualifier such as `PKG:WORD`.
+- `fix_qualified_name`: a call, or a record of a definition or declaration, used
+  a malformed qualified name with more than one `:`; use a single `:` qualifier
+  such as `PKG:WORD`.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.

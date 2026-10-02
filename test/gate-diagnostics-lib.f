@@ -488,6 +488,31 @@ variable REC-U
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-trust-verdict.err" s" record verdict is not rejected" s" uncheckable stale trust row refused" REFUSED ;
 
+\ A record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), with
+\ the statement its throw ends. A call to such a name is refused under the same
+\ code in its definition, so the code names the record's shape only where no
+\ `word` places it, and both pass.
+: QUALIFIED-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-MAL-CALL ( -- ) GDX:MAL:CALL ;" GE-SRC-LINE
+   s" habu-json-qcall.f" s" tools/check.f --json-errors accepted a call to a malformed qualified name" RECORD-CHECK
+   s" word" s" gdx-mal-call" s" malformed call word" ERR-JSTR
+   s" habu-json-qcall.err" WRITE-ERR
+   s" habu-json-qcall.err" s" malformed call contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer GDX:MAL:NAME ( -- )" GE-SRC-LINE
+   s" habu-json-qual.f" s" tools/check.f --json-errors accepted a record for a malformed qualified name" RECORD-CHECK
+   s" code" s" E-BAD-QUALIFIED" s" malformed record code" ERR-JSTR
+   s" token" s" gdx:mal:name" s" malformed record token" ERR-JSTR
+   s" habu-json-qual.err" WRITE-ERR
+   s" habu-json-qual.err" s" malformed record contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_qualified_name\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
+   s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-qual-class.err" s" record repair class is not the one its code names" s" malformed record under the trust row's class refused" REFUSED ;
+
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
    s" EV ( -- n ) evaluate" GE-SRC-CHECK-LINE

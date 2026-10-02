@@ -3908,6 +3908,46 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
+\ A name with a second ':' after a non-edge first one keys no record, and the
+\ checker refuses it where the record would be written (checker.f
+\ CHECKER-RECORD-NAME) by a throw, so the check reports it as a statement that
+\ threw, at the statement, in prose and JSON. Under --all-errors a definition
+\ refused before it is still reported: ending the process there reported
+\ nothing but the refusal's own line.
+: MALNAME$ ( -- ptr u8 n )
+   s" : CKT:MAL:NAME ( -- ) ;" ;
+
+: MALNAME-AFTER$ ( -- ptr u8 n )
+   s\" : CKT-MAL-BAD ( -- ) 1 ;\ndefer CKT:MAL:DEF ( -- )" ;
+
+: TEST-MALFORMED-NAME ( -- )
+   MALNAME$ DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7147 at ';'" CONTAINS? TTRUE
+   MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"throw_code\":7147" CONTAINS? TTRUE ;
+
+: TEST-MALFORMED-NAME-ALL ( -- )
+   MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7147 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
+
+\ The throw leaves a raw storage definer's signature (verify-source.f
+\ RAW-TRUST-NEXT) mid-parse; a later check in the same process must still read
+\ an ordinary signature's type variables as ordinary, not as raw cells.
+: TEST-MALFORMED-RAW ( -- )
+   s" variable CKT:MAL:VAR" DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   CAP-ERR erru s" throw 7147" CONTAINS? TTRUE
+   s\" : CKT-MAL-KEEP ( a -- a ) ;\n: CKT-MAL-USE ( ptr u8 -- ptr u8 ) CKT-MAL-KEEP ;"
+   DIRECT-STDIN 0 T= {: outu2:n erru2:n :}
+   erru2 0 T= ;
+
 \ A string the file never closes stops source discovery before any file is
 \ composed. Every --json-errors mode reports it by the one record --all-errors
 \ writes for it on standard input, in the file that holds it and at the string,
@@ -5209,6 +5249,9 @@ variable LC-CANON-U
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
+   s" check/malformed-name" [: TEST-MALFORMED-NAME ;] CASE-RUN
+   s" check/malformed-name-all-errors" [: TEST-MALFORMED-NAME-ALL ;] CASE-RUN
+   s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN

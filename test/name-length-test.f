@@ -32,6 +32,9 @@
 \ text is one the gate would otherwise take. CHECKER-DEFFAMILY's arity token is
 \ bounded by the two digits of the largest arity.
 \
+\ A name with a second inner ':' has a length a name has and still keys no
+\ record; every word that records a symbol refuses it too (TEST-MALFORMED).
+\
 \ Run: bin/hb --load test/name-length-test.f
 
 require lib/errors.f
@@ -307,14 +310,49 @@ variable LBL-U
 \ them, as the engine's own callers do. A trust row refuses a false name as it
 \ refuses one that names no word, without echoing it; a cast reaches its name
 \ once its signature certifies, and stores it.
-: STALE$ ( -- ptr u8 n )
-   S\" E-TRUST-UNRESOLVED habu: trust row for '' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" ;
+$400 constant WANT-CAP
+create WANT WANT-CAP allot
+variable WANT-U
+: WANT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a WANT WANT-U @ + u BYTE-COPY
+   WANT-U @ u + WANT-U ! ;
+
+\ The trust-row refusal, naming the row's name `a u`.
+: STALE$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   0 WANT-U !
+   s" E-TRUST-UNRESOLVED habu: trust row for '" WANT+
+   a u WANT+
+   S\" ' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
+   WANT WANT-U @ ;
+
 : TEST-TOP-LEVEL ( -- )
    s" BAD$ PTX-BARRIER!" 76 S\" PTX-BARRIER!: unknown word\n" DIES
-   s" BAD$ SIG$ TRUST" 67 STALE$ DIES
-   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 STALE$ DIES
-   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 STALE$ DIES
+   s" BAD$ SIG$ TRUST" 67 s" " STALE$ DIES
+   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 s" " STALE$ DIES
+   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 s" " STALE$ DIES
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
+
+\ ---- a name no record is keyed by --------------------------------------------
+\ The engine defines no word named with a second inner ':' (rc 75), and
+\ CHECKER-RECORD-SYM answers symbol 0 for one. No row may carry symbol 0: a
+\ defer row keyed 0 is the defer store's terminator and hides every row after
+\ it. A trust row refuses the name as naming no word, and echoes it; every other
+\ word that records a symbol for it names it as malformed and throws.
+: MAL$ ( -- ptr u8 n ) s" q:q:q" ;
+: MALFORMED$ ( -- ptr u8 n )
+   S\" E-BAD-QUALIFIED habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7147\n" ;
+: MAL-DIES ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
+   0 s" two inner colons" src srcu rc want wantu DIES-AT ;
+: TEST-MALFORMED ( -- )
+   s" MAL$ CHECKER-DEFER" 67 MALFORMED$ MAL-DIES
+   s" MAL$ CHECKER-UNDEFINE" 67 MALFORMED$ MAL-DIES
+   s" MAL$ CAST$ CHECKER-DEFCAST" 67 MALFORMED$ MAL-DIES
+   s" MAL$ SIG$ TRUST" 67 MAL$ STALE$ MAL-DIES
+   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 67 MALFORMED$ MAL-DIES
+   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 67 MALFORMED$ MAL-DIES ;
 
 \ A field text is no name, so only -1 and the maximum cell describe no text.
 : TEST-FIELD-TEXT ( -- )
@@ -435,6 +473,7 @@ variable LBL-U
    TEST-FAMILIES
    TEST-DECLARERS
    TEST-TOP-LEVEL
+   TEST-MALFORMED
    TEST-FIELD-TEXT
    TEST-TEXTS
    TEST-ENGINE
