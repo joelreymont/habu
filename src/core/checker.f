@@ -4110,9 +4110,9 @@ variable FINALLY-CLEANUP-OUT
    QTT @ Q>DOUT ROW-TERMS CWIN-DOUT-TERMS !
    QTT @ Q>ROUT ROW-TERMS CWIN-ROUT-TERMS !
    QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
-   \ Preserve execute's value boundaries before unification extends the rows.
-   \ Final call metadata resolves the copied terms to their concrete widths.
-   kind 1 = REC-ON @ and IF
+   \ Preserve the executed or caught quotation's argument boundaries before
+   \ unification extends the rows. Final metadata resolves their widths.
+   REC-ON @ IF
       QTT @ Q>DIN CALL-DIN !  QTT @ Q>DOUT CALL-DOUT !
       CALL-FREEZE-XT
    THEN

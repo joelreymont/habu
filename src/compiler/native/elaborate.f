@@ -1738,9 +1738,10 @@ create QSPELL-BUF QSPELL-CAP allot
    PARSE-IMM-TOKEN? ;
 
 \ ---- where a body's arity comes from -----------------------------------------
-: QARG-FILL ( n n -- )
-   {: ix:n j:n :}
-   VN @ 1- j -  VQ@ {: k:n :}
+\ execute and catch keep the applied quotation above their argument window.
+: QARG-FILL ( n n n -- )
+   {: ix:n j:n skip:n :}
+   VN @ 1- skip - j -  VQ@ {: k:n :}
    k 0 < if exit then
    ix j NDICT:CALL-QUOT-IN
    over NDICT:QUOT-NONE = if
@@ -1756,11 +1757,11 @@ create QSPELL-BUF QSPELL-CAP allot
    then
    k qi qo 0 max QFILL ;
 
-: QCALL-FILL ( n n -- )
-   {: ix:n a:n :}
-   a VN @ > if exit then
+: QCALL-FILL ( n n n -- )
+   {: ix:n a:n skip:n :}
+   a skip + VN @ > if exit then
    a 0 ?do
-      ix i QARG-FILL
+      ix i skip QARG-FILL
    loop ;
 
 : QRET1-FILL ( n -- )
@@ -3276,6 +3277,7 @@ create DN-BUF DN-CAP allot
       k QIN@ k QOUT@
    else cin cout then {: in:n out:n :}
    in 0 < if ix QUOT-REFUSE then
+   ix in 1 QCALL-FILL
    k 0 >= if
       k QIN@ QNONE = if k in out 0 max QFILL then
    then
@@ -3299,6 +3301,7 @@ create DN-BUF DN-CAP allot
    VN @ 1- win < if E-NELAB-UNDER throw then
    s" catch" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
+   ix win 1 QCALL-FILL
    k 0 >= if k win win QFILL then
    \ RSCATCH requires the returned row to match the input row. Keep that
    \ window's value boundaries; the appended result code is a separate cell.
@@ -3358,7 +3361,7 @@ create DN-BUF DN-CAP allot
    {: r:IR-ARENA:arena ix:n :}
    ix NDICT:CALL-CELLS drop {: in:n :}
    in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
-   ix swap QCALL-FILL
+   ix swap 0 QCALL-FILL
    ix NDICT:INIT-LAYOUT {: width:n bytes:n align:n :}
    width 0 >= if
       ix width EMIT-LIT
@@ -3538,7 +3541,7 @@ create DN-BUF DN-CAP allot
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix NDICT:CALL-CELLS drop {: a:n :}
-   a 0 >= if ix a QCALL-FILL then
+   a 0 >= if ix a 0 QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
    r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
    k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix VALIDATE-FETCH then
