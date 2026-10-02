@@ -10,6 +10,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f                \ the run stage spawns with an environment
+require lib/engine-candidate.f           \ and on the engine this names
 require lib/process-tree.f               \ a signal's answer ends the run stage's child tree
 require lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
 require lib/fmt.f                        \ the answer names a step that throws
@@ -121,8 +122,6 @@ variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
 variable CHK-SRC-A
-TYPED-VARIABLE CHK-HB-A ptr u8
-variable CHK-HB-U
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
 variable CHK-MARK-PATH-U
@@ -154,13 +153,6 @@ variable CHK-TFAM-NAME-I
 
 : CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
    CHK-PTR-U8-SLOT ! ;
-
-: CHK-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CHK-HB-A !
-   u CHK-HB-U ! ;
-
-: CHK-HB$ ( -- ptr u8 n )
-   CHK-HB-A @ CHK-HB-U @ ;
 
 : CHK-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
@@ -391,8 +383,6 @@ private
    0 CHK-LABEL-U !
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
    NULL$ drop CHK-SRC-A CHK-PTR-U8!
-   0 CHK-HB-U !
-   NULL$ drop CHK-HB-A !
    0 CHK-NOM-I !
    0 CHK-NOM-U !
    LINT-FALSE CHK-NOM-BAD !
@@ -744,7 +734,6 @@ private
 \ check, so a missing path is still NOINPUT, and before discovery or any later
 \ stage reads the source, so the answer does not depend on what it holds.
 : CHK-MATERIALIZE ( -- )
-   CHK-HB$ FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
@@ -1471,9 +1460,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ lookup, HOME and HB_TMP for a scratch tree. An env-less spawn hands it a
 \ one-NULL envp, and a program that resolves an executable through $PATH then
 \ fails in the run stage while `--load` of the same file passes.
+\
+\ It runs on the engine lib/engine-candidate.f names: a gate's HABU_UNDER_TEST,
+\ else the engine running check.f, never a bin/hb of the working directory.
+\ An engine the resolver refuses is its E-FS-OPEN, the check's status.
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   CHK-HB$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
@@ -1839,10 +1832,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    clean-rc 0 <> if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
    rc ;
 
-: CHK-RUN-AS ( ptr u8 n -- n ) {: hb:ptr hbu:n :}
+public
+
+: RUN ( -- n )
    CHK-RUN-TEMP-CLEAR
-   hb hbu CHK-HB!
    CHK-RUN-ACT CHK-RUN-FINISH ;
+
+private
 
 \ ---- a signal that stops check.f -----------------------------------------------
 \
@@ -1890,13 +1886,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    SIGNAL:CATCH-STOPS
    SIGNAL:FD FD>N PROC-STOP-FD !
    [: CHK-SIGNAL-CHECK ;] is PROC-STOP ;
-
-public
-
-: RUN ( -- n )
-   s" bin/hb" CHK-RUN-AS ;
-
-private
 
 : CHK-MAIN-RUN ( -- )
    RESET

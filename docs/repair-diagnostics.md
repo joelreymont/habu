@@ -162,8 +162,11 @@ process.
   visible. The subject's packets name PATH, canonical and absolute, with
   positions in the bytes; a dependency's name the dependency, with positions
   in its file.
-- The child runs on `bin/hb` in the caller's working directory, which must
-  be the tree root, as `check.f`'s run stage does.
+- The child runs, in the caller's working directory, on the engine
+  `lib/engine-candidate.f` names (`HABU_UNDER_TEST` if set, else the running
+  engine), as `check.f`'s run stage does, and loads
+  `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
+  `tools/check-verify-core.f` was loaded from.
 
 | `CHECK:verdict` | Meaning | check.f exit |
 | --- | --- | --- |
@@ -181,6 +184,10 @@ prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
 An argument that exceeds the source path capacity exits 67 and explains the
 limit on stdout. Ordinary checks explain it on stderr with the same status.
+An engine `HABU_UNDER_TEST` names that is not an executable exits 67 in every
+mode, default, `--verify-only` and `--json-errors`, with only
+`hb: uncaught throw code -2102` (`E-FS-OPEN`) on stderr, naming neither the
+engine nor `HABU_UNDER_TEST`.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
@@ -201,7 +208,7 @@ thirty files.
 The child, `tools/check-verify-child.f`, is run only by the operation:
 
 ```text
-ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
 ```
 
 SUBJECT is canonical and absolute, and each DEP is a file of the closure,

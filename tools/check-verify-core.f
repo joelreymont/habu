@@ -11,10 +11,12 @@
 \ - The verification runs in a short-lived child, tools/check-verify-child.f,
 \   whose image is the engine's boot prefix plus the verifier: neither this
 \   process's words nor an earlier check's can stand in for, or collide with, a
-\   word of the subject. The child runs on bin/hb in this process's working
-\   directory, the tree root, as check.f's run stage does. lib/engine-candidate.f
-\   would make check.f's own image hold it and lib/engine-id.f, so a default
-\   check of either would be unavailable.
+\   word of the subject. As check.f's run stage does, the child runs on the
+\   engine lib/engine-candidate.f names, a gate's HABU_UNDER_TEST or else the
+\   engine running this process, never a bin/hb of the working directory. The
+\   child is the tools/check-verify-child.f of the tree this file was loaded
+\   from, named absolutely, and runs in this process's working directory,
+\   whatever tree that holds.
 \ - The verdict is the child's own result line. A child that ends without one -
 \   an exit, a signal, the deadline - is `incomplete` and carries that status,
 \   with the packets it wrote before; its exit status alone is never a verdict.
@@ -36,6 +38,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 
@@ -262,10 +265,16 @@ variable VFY-ANSWER
 TYPED-VARIABLE VFY-DEADLINE ms          \ the child's, for VFY-CAPTURE
 create VFY-PATH FS-PATH-CAP allot
 variable VFY-PATH-U
+create VFY-CHILD FS-PATH-CAP allot
+variable VFY-CHILD-U
+
+\ While this file loads, SOURCE-ROOT:CURRENT$ is the root that resolved it.
+\ The child beside it is fixed here before the working directory can name another tree.
+SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHILD-U !
 
 
 : VFY-CHILD$ ( -- ptr u8 n )
-   s" tools/check-verify-child.f" ;
+   VFY-CHILD VFY-CHILD-U @ ;
 
 
 : VFY-LOG+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -338,7 +347,7 @@ variable VFY-PATH-U
    VFY-ARGV
    VFY-OUT-CAP VFY-OUT-RESERVE
    VFY-ERR-CAP VFY-LOG-RESERVE
-   s" bin/hb" >LEN CHK-BYTES-A @ CHK-BYTES-U @ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN CHK-BYTES-A @ CHK-BYTES-U @ >LEN
    0 VFY-OUT VFY-OUT-CAP >LEN 0 VFY-LOG VFY-ERR-CAP >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
@@ -417,10 +426,11 @@ public
    0 VFY-LOG VFY-LOG-U @ ;
 
 \ Check the bytes as the file at PATH, the child given DEADLINE. An empty PATH
-\ is E-FS-PATH; a closure over CHK-DEP-MAX files or a failed spawn throws as
-\ well. More child output than the capture holds, 4 MiB of stdout or 256 KiB
-\ of stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete
-\ packet received before it.
+\ is E-FS-PATH; a closure over CHK-DEP-MAX files, an engine
+\ lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn throws as well.
+\ More child output than the capture holds, 4 MiB of stdout or 256 KiB of
+\ stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
+\ received before it.
 : VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n deadline :}
    VFY-RESET

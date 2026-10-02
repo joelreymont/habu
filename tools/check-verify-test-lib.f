@@ -28,8 +28,8 @@
 \   than the operation, or writes prose on stderr                         cli-file, cli-stdin
 \   --stdin-path or --verify-only is taken where it means nothing         cli-usage
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
-\   check.f's image holds the launcher's dependencies, so its default
-\   check of one is unavailable                                           default-image
+\   the child runs on the working directory's bin/hb, or is that
+\   directory's tools/check-verify-child.f                                check-test: file-load-context
 \
 \ `measure` prints the time of one check of a one-definition subject and of
 \ tools/check-core.f, whose closure is over thirty files.
@@ -658,14 +658,6 @@ variable CLI-OUT-U
    s" duplicate-after-packet: both packets retained" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
 
 
-\ 69 is check.f refusing a file its own image holds. The check itself goes on
-\ to whatever lib/engine-candidate.f's closure earns, which this case leaves be.
-: DEFAULT-IMAGE ( -- )
-   CLI-START s" lib/engine-candidate.f" ARG+
-   s" " CLI {: erru:n rc:n :}
-   s" default-image: check.f's image does not hold lib/engine-candidate.f" T-LABEL rc 69 T<> ;
-
-
 \ ---- the measurement -------------------------------------------------------
 
 : MS. ( -- )
@@ -719,7 +711,6 @@ public
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
-   s" default-image" [: DEFAULT-IMAGE ;] RUN-CASE
    MEASURE
    ROOT$ REMOVE-TREE
    T-REPORT

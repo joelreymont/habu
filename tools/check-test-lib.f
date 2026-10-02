@@ -1,7 +1,7 @@
 \ check-test-lib.f - checked engine CLI/core smoke coverage library.
 \ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ lib/process-env.f lib/process-cwd.f lib/source.f
+\ lib/process-env.f lib/process-cwd.f lib/fmt.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
@@ -24,6 +24,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
+require lib/fmt.f
 require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
@@ -92,9 +93,7 @@ create MUT-LABEL FS-PATH-CAP allot
 create MUT-PATH FS-PATH-CAP allot
 create BOUNDARY-OUT BUF-CAP allot
 create CLEANUP-TMP FS-PATH-CAP allot
-create CLI-ROOT FS-PATH-CAP allot
 create CLI-TARGET FS-PATH-CAP allot
-create CLI-LINK-PATH FS-PATH-CAP allot
 create CLI-HB FS-PATH-CAP allot
 create ENV-PROBE-PATH FS-PATH-CAP allot
 
@@ -115,9 +114,7 @@ variable MUT-SRC-U
 variable MUT-LABEL-U
 variable MUT-PATH-U
 variable CLEANUP-TMP-U
-variable CLI-ROOT-U
 variable CLI-TARGET-U
-variable CLI-LINK-U
 variable CLI-HB-U
 variable ENV-PROBE-U
 variable START-NS
@@ -128,9 +125,6 @@ variable START-NS
 
 : ROOT$ ( -- ptr u8 n )
    TMP-ROOT TMP-ROOT-U @ ;
-
-: CLI-ROOT$ ( -- ptr u8 n )
-   CLI-ROOT CLI-ROOT-U @ ;
 
 : BAD$ ( -- ptr u8 n )
    BAD-PATH BAD-U @ ;
@@ -173,18 +167,12 @@ variable START-NS
 
 \ A relative path made absolute against the process's real working directory.
 \ The environment's PWD is not that: a gate runs its children under `env -i`,
-\ where PWD is unset, and a link target joined to an empty PWD dangles, so the
-\ missing-engine child died 74 on its own load path before it could say
-\ `bin/hb missing`.
+\ where PWD is unset, and a link target joined to an empty PWD dangles, so a
+\ child run among LC-ROOT's links dies 74 on its own load path.
 : CLI-ABS! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n buf:ptr lenp:ptr :}
    a u FS-PATHZ buf FS-PATH-CAP realpath {: n:n :}
    n 0 <= if E-FS-PATH throw then
    n lenp ! ;
-
-: CLI-LINK+ ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu CLI-TARGET CLI-TARGET-U CLI-ABS!
-   CLI-ROOT$ name nameu CLI-LINK-PATH JOIN-PATH CLI-LINK-U !
-   CLI-TARGET CLI-TARGET-U @ CLI-LINK-PATH CLI-LINK-U @ MAKE-SYMLINK ;
 
 : OUT-A@ ( -- ptr u8 )
    OUT-A @ ;
@@ -405,26 +393,6 @@ variable START-NS
    hb hbu ABS-PATH? if hb hbu exit then
    hb hbu CLI-HB CLI-HB-U CLI-ABS!
    CLI-HB CLI-HB-U @ ;
-
-: CLI-SETUP ( -- )
-   s" habu-check-missing-engine" HB-TMP-MKDIR
-   CLI-ROOT CLI-ROOT-U PATH-COPY!
-   CLI-ROOT$ CLEANUP-TREE+
-   s" lib" CLI-LINK+
-   s" tools" CLI-LINK+
-   s" src" CLI-LINK+ ;
-
-: CLI-MISSING-HB ( ptr u8 n -- n n n ) {: entry:ptr entryu:n :}
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   entry entryu >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   CLI-HB$ >LEN CLI-ROOT$ >LEN
-   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   CAPTURE>N ;
 
 : CLEANUP-TMP! ( ptr u8 n -- )
    ROOT$ 2swap CLEANUP-TMP JOIN-PATH CLEANUP-TMP-U !
@@ -2369,18 +2337,6 @@ INCLUDE-BUF-CAP 2 * constant FULL-ERR-CAP
    RUN 66 T=
    RESET ;
 
-: MISSING-ENGINE-PATH ( ptr u8 n -- )
-   CLI-MISSING-HB 69 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s\" check.f: bin/hb missing\n" LINT-STR= TTRUE ;
-
-: TEST-MISSING-ENGINE ( -- )
-   CLI-SETUP
-   s" tools/check.f" MISSING-ENGINE-PATH
-   s" ./tools/../tools/check.f" MISSING-ENGINE-PATH
-   CLI-ROOT$ s" tools/./check.f" SOURCE-ROOT:JOIN MISSING-ENGINE-PATH ;
-
 : TEST-REPEAT-SOURCE-OK ( -- )
    RESET
    GOOD$ s" repeat-source.f" SOURCE
@@ -4264,13 +4220,23 @@ POISON-RECORD
 \
 \ A sibling require resolves against the directory of the file the command line
 \ named; a file loaded with `required` gets the working directory instead when
-\ it lies below it. LC-ROOT is such a working directory: the tree and the engine
-\ under test are linked in beside `sub/`, which holds the files checked there.
+\ it lies below it. LC-ROOT is such a working directory: the tree is linked in
+\ beside `sub/`, which holds the files checked there, and its bin/hb is no
+\ engine but a script that exits 97.
+\
+\ LC-OTHER is another tree: the same lib and src, an engine, and a
+\ tools/check-verify-child.f of its own that dies with 98. A require resolves
+\ against the requiring file's root before the working directory, so
+\ LC-ROOT's lc-check.f loads check.f from LC-ROOT's tree with LC-OTHER current,
+\ as a server loads its checker from the engine's tree with the editor's
+\ directory current.
 
 create LC-PATH FS-PATH-CAP allot
 create LC-ROOT FS-PATH-CAP allot
+create LC-OTHER FS-PATH-CAP allot
 variable LC-PATH-U
 variable LC-ROOT-U
+variable LC-OTHER-U
 
 : LC-PATH$ ( -- ptr u8 n )
    LC-PATH LC-PATH-U @ ;
@@ -4284,6 +4250,13 @@ variable LC-ROOT-U
 
 : LC-IN-ROOT ( ptr u8 n -- ptr u8 n )
    LC-ROOT$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
+   LC-PATH$ ;
+
+: LC-OTHER$ ( -- ptr u8 n )
+   LC-OTHER LC-OTHER-U @ ;
+
+: LC-IN-OTHER ( ptr u8 n -- ptr u8 n )
+   LC-OTHER$ 2swap LC-PATH JOIN-PATH LC-PATH-U !
    LC-PATH$ ;
 
 : LC-WRITE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n src:ptr srcu:n :}
@@ -4352,9 +4325,12 @@ variable LC-ROOT-U
    LC-QUOTE$ LC-QLINK$ LC-AT MAKE-SYMLINK
    s" lc-bad-dep.f" LC-BLINK$ LC-AT MAKE-SYMLINK ;
 
-: LC-LINK+ ( ptr u8 n -- ) {: name:ptr nameu:n :}
+\ Links ROOT/NAME to this tree's NAME.
+: LC-LINK ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n root:ptr rootu:n :}
    name nameu CLI-TARGET CLI-TARGET-U CLI-ABS!
-   CLI-TARGET CLI-TARGET-U @ name nameu LC-IN-ROOT MAKE-SYMLINK ;
+   root rootu name nameu LC-PATH JOIN-PATH LC-PATH-U !
+   CLI-TARGET CLI-TARGET-U @ LC-PATH$ MAKE-SYMLINK ;
 
 \ No file in this root requires an engine-provided file, and none may: through
 \ the links, a subject that requires one (`lib/string.f`) is refused with an
@@ -4363,23 +4339,41 @@ variable LC-ROOT-U
 : LC-ROOT-SETUP ( -- )
    ROOT$ s" lc-root" LC-ROOT JOIN-PATH LC-ROOT-U !
    LC-ROOT$ MAKE-DIR
-   s" lib" LC-LINK+
-   s" tools" LC-LINK+
-   s" src" LC-LINK+
+   s" lib" LC-ROOT$ LC-LINK
+   s" tools" LC-ROOT$ LC-LINK
+   s" src" LC-ROOT$ LC-LINK
    s" bin" LC-IN-ROOT MAKE-DIR
-   CLI-HB$ s" bin/hb" LC-IN-ROOT MAKE-SYMLINK
+   s" bin/hb" LC-IN-ROOT s\" #!/bin/sh\nexit 97\n" WRITE-ALL
+   s" bin/hb" LC-IN-ROOT CHMOD-X
    s" sub" LC-IN-ROOT MAKE-DIR
    s" sub/lc-dep.f" LC-IN-ROOT LC-DEP$SRC WRITE-ALL
-   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC WRITE-ALL ;
+   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC WRITE-ALL
+   s" lc-check.f" LC-IN-ROOT s\" require tools/check.f\n" WRITE-ALL ;
 
-\ The child runs with this process's environment in the given directory.
-: LC-CAPTURE ( ptr u8 n -- n n n ) {: cwd:ptr cwdu:n :}
-   PROC-ENV-RESET
+: LC-OTHER-SETUP ( -- )
+   ROOT$ s" lc-other" LC-OTHER JOIN-PATH LC-OTHER-U !
+   LC-OTHER$ MAKE-DIR
+   s" lib" LC-OTHER$ LC-LINK
+   s" src" LC-OTHER$ LC-LINK
+   s" bin" LC-IN-OTHER MAKE-DIR
+   CLI-HB$ s" bin/hb" LC-IN-OTHER MAKE-SYMLINK
+   s" tools" LC-IN-OTHER MAKE-DIR
+   s" tools/check-verify-child.f" LC-IN-OTHER
+   s\" s\" check-verify-child: stub\" 98 die\n" WRITE-ALL ;
+
+\ The child runs in the given directory with the environment the caller set,
+\ completed from this process's.
+: LC-ENV-CAPTURE ( ptr u8 n -- n n n ) {: cwd:ptr cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    CLI-HB$ >LEN cwd cwdu >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    CAPTURE>N ;
+
+\ The child runs with this process's environment in the given directory.
+: LC-CAPTURE ( ptr u8 n -- n n n )
+   PROC-ENV-RESET
+   LC-ENV-CAPTURE ;
 
 : LC-ARGV-ALL ( -- )
    CHECK-ARGV-START
@@ -4452,6 +4446,55 @@ variable LC-CANON-U
    LC-ARGV-ALL
    s" sub/lc-use.f" CHECK-ARG+
    LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN ;
+
+\ The checker spawns the engine lib/engine-candidate.f names, here the one
+\ running this test, never the working directory's bin/hb: in LC-ROOT that
+\ would end the run stage, and --verify-only's verifier child, with 97.
+: LC-ENGINE-CASE ( -- )
+   CHECK-ARGV-START
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE s" load-context: the run stage spawns the running engine" LC-EXPECT-CLEAN
+   CHECK-ARGV-START
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   LC-ROOT$ LC-CAPTURE s" load-context: --verify-only spawns the running engine" LC-EXPECT-CLEAN ;
+
+\ What the engine writes on stderr for a throw nothing caught.
+: LC-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
+
+\ An engine the resolver refuses, a HABU_UNDER_TEST that names no executable,
+\ is the check's error: its E-FS-OPEN reaches the command line uncaught.
+: LC-REFUSED-ENGINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   PROC-ENV-RESET
+   s" HABU_UNDER_TEST" >LEN s" sub/lc-dep.f" LC-IN-ROOT >LEN PROC-ENV-SET
+   LC-ROOT$ LC-ENV-CAPTURE
+   label labelu T-LABEL 67 T=
+   {: outu:n erru:n :}
+   label labelu T-LABEL CAP-ERR erru E-FS-OPEN LC-UNCAUGHT$ CONTAINS? TTRUE ;
+
+: LC-REFUSED-ENGINE-CASE ( -- )
+   CHECK-ARGV-START
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: the run stage's engine refused" LC-REFUSED-ENGINE
+   CHECK-ARGV-START
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-use.f" CHECK-ARG+
+   s" load-context: --verify-only's engine refused" LC-REFUSED-ENGINE ;
+
+\ The verifier child is the one in the tree check.f was loaded from, never the
+\ working directory's: LC-OTHER's would end the check with 98.
+: LC-OTHER-TREE-CASE ( -- )
+   PROC-ARGV-RESET
+   s" --load" CHECK-ARG+
+   s" lc-check.f" LC-IN-ROOT CHECK-ARG+
+   s" --" CHECK-ARG+
+   s" --verify-only" CHECK-ARG+
+   s" sub/lc-use.f" LC-IN-ROOT CHECK-ARG+
+   LC-OTHER$ LC-CAPTURE s" load-context: the verifier child of check.f's own tree" LC-EXPECT-CLEAN ;
 
 : LC-TREE-CASE ( -- )
    s" test/addrmap-set.f" LC-ALL
@@ -4659,8 +4702,12 @@ variable LC-CANON-U
 : TEST-LOAD-CONTEXT ( -- )
    LC-FIXTURES
    LC-ROOT-SETUP
+   LC-OTHER-SETUP
    LC-SIBLING-CASE
    LC-ENTRY-ROOT-CASE
+   LC-ENGINE-CASE
+   LC-REFUSED-ENGINE-CASE
+   LC-OTHER-TREE-CASE
    LC-TREE-CASE
    LC-PROVIDED-CASE
    LC-TOOL-CLOSURE-CASE
@@ -4835,7 +4882,6 @@ variable LC-CANON-U
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN
-   s" check/missing-engine" [: TEST-MISSING-ENGINE ;] CASE-RUN
    s" check/cleanup-failure" [: TEST-CLEANUP-FAILURE ;] CASE-RUN
    s" check/run-environment" [: TEST-RUN-ENVIRONMENT ;] CASE-RUN
    s" check/repeat-source-ok" [: TEST-REPEAT-SOURCE-OK ;] CASE-RUN
