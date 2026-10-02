@@ -247,7 +247,7 @@ create TAB
    SRCLOC:PATH-CELL               ,  1 cells ,
    SRCLOC:PATHLEN-CELL            ,  1 cells ,
    SRCLOC:INB-CELL                ,  1 cells ,
-   JIT-RET-CELL                   ,  1 cells ,
+   NCOMP-DISPATCH:JIT-RET-CELL    ,  1 cells ,
    PKGRESYNC-CELL                 ,  1 cells ,
    HIDX:CLAIMS                    ,  1 cells ,
    PROT:WINDOW                    ,  1 cells ,

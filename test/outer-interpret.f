@@ -22,9 +22,9 @@
 \ Some cases are the Habu loop's alone: the records an exit hook finds after an
 \ uncaught throw, where the engine's loop rolls the dictionary back to the
 \ file's start and the Habu loop does not, and the cell only the Habu loop's
-\ jit-token sets (JIT-RET-CELL). And one check runs in a forked copy
-\ of this process instead, the seam: a fork binds it to a counting spy, and a
-\ loaded file must arrive there.
+\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL). And one check runs in a forked
+\ copy of this process instead, the seam: a fork binds it to a counting spy,
+\ and a loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -1600,12 +1600,12 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    s" hook: non-certified definition: oi-bad2" CASE$ GE-EXPECT-ERR-HAS ;
 
-\ JIT-RET-CELL holds the stack of the innermost live jit-token call: nonzero
-\ while an immediate runs in a body, back to its value when a nested jit-token
-\ call throws, and 0 at the top level.
+\ NCOMP-DISPATCH:JIT-RET-CELL holds the stack of the innermost live jit-token
+\ call: nonzero while an immediate runs in a body, back to its value when a
+\ nested jit-token call throws, and 0 at the top level.
 : TIER-0-NESTED ( -- )
    GE-SRC-RESET
-   s" s~ : OI-RET ( -- n ) JIT-RET-CELL OI-CELL@ ;~ evaluate" QLINE
+   s" s~ : OI-RET ( -- n ) NCOMP-DISPATCH:JIT-RET-CELL OI-CELL@ ;~ evaluate" QLINE
    s" s~ TRUSTED: OI-THROW ( -- ) 42 throw ; immediate~ evaluate  s~ OI-THROW~ 0 parse-imm" QLINE
    s" s\~ TRUSTED: OI-NEST ( -- ) OI-RET dup 0<> . [: s\~ OI-THROW\~ OUTER:INTERPRET ;] catch ." Q+
    s"  OI-RET = . ; immediate~ evaluate  s~ OI-NEST~ 0 parse-imm" QLINE

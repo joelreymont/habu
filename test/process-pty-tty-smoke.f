@@ -212,8 +212,9 @@ $1388 constant EXIT-MS
 
 \ ---- a refusal inside the Habu loop's tier-0 jit-token -------------------------
 \ The undefined word ends the line while a jit-token call is live, and the REPL
-\ takes its stack back past that call's frame, so JIT-RET-CELL must not still
-\ name it: the loop would return into the dead frame at the next token.
+\ takes its stack back past that call's frame, so NCOMP-DISPATCH:JIT-RET-CELL
+\ must not still name it: the loop would return into the dead frame at the
+\ next token.
 : TTY-JIT-RECOVERS ( -- )
    BUF-CLEAR
    HB$ PROCESS-PTY:SPAWN-TTY
@@ -224,7 +225,7 @@ $1388 constant EXIT-MS
    s\" 0 set-tier s\q : TTY-JIT ( -- ) TTY-NOPE ;\q OUTER:INTERPRET" TELL
    s" E-UNDEFINED: TTY-NOPE" EXPECT!
    BUF-CLEAR
-   s" data-base JIT-RET-CELL + @ 0= . cr" TELL
+   s" data-base NCOMP-DISPATCH:JIT-RET-CELL + @ 0= . cr" TELL
    S\" \r\n-1\r\n" PROMPT-AFTER!
    PROCESS-PTY:ALIVE? TTRUE
    PROCESS-PTY:TEARDOWN

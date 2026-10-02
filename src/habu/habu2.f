@@ -8415,8 +8415,9 @@ public
       \ push past the capacity faults on the stack's guard page.
       9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
       \ The token a `jit-token` call handed to LCOMPILE is done: return to the
-      \ row instead of reading the next one (DEFWRITE:JIT-TOKEN, JIT-RET-CELL).
-      9 DATA JIT-RET-CELL LDR,  10 SP 0 ADDI,  9 10 CMP,  C-EQ jitret BCOND,
+      \ row instead of reading the next one (DEFWRITE:JIT-TOKEN,
+      \ NCOMP-DISPATCH:JIT-RET-CELL).
+      9 DATA NCOMP-DISPATCH:JIT-RET-CELL LDR,  10 SP 0 ADDI,  9 10 CMP,  C-EQ jitret BCOND,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
@@ -10680,7 +10681,7 @@ public
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-RESTORE,              \ and the line-start used publics, which the resync names
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
-   9 0 MOVZ,  9 DATA JIT-RET-CELL STR,                \ SP goes back past every jit-token frame
+   9 0 MOVZ,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,                \ SP goes back past every jit-token frame
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
@@ -11503,19 +11504,20 @@ public
 
 \ jit-token ( -- ): the token in TKA/TKL through LCOMPILE, as EM-COMMENT hands
 \ tier 0 a body token. The run pushes its return and puts that SP in
-\ JIT-RET-CELL, and the LMAIN top LCOMPILE ends at returns through it
-\ (EM-COMMENT). The run is caught: a throw puts the outer call's JIT-RET-CELL
-\ back, closes the window and is thrown on. A definition jit-open has not
-\ begun, CP at the record's entry, is refused with the rest.
+\ NCOMP-DISPATCH:JIT-RET-CELL, and the LMAIN top LCOMPILE ends at returns
+\ through it (EM-COMMENT). The run is caught: a throw puts the outer call's
+\ NCOMP-DISPATCH:JIT-RET-CELL back, closes the window and is thrown on. A
+\ definition jit-open has not begun, CP at the record's entry, is refused with
+\ the rest.
 : JIT-TOKEN ( -- )
    LBL LBL LBL {: bad run done :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
    10 9 0 LDR,  CP 10 CMP,  C-EQ bad BCOND,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 bad CBNZ,
-   9 DATA JIT-RET-CELL LDR,  SP SP 16 SUBI,  9 SP 0 STR,
+   9 DATA NCOMP-DISPATCH:JIT-RET-CELL LDR,  SP SP 16 SUBI,  9 SP 0 STR,
    9 run ADR,  9 G-PUSH
    BCATCH
-   9 SP 0 LDR,  9 DATA JIT-RET-CELL STR,  SP SP 16 ADDI,
+   9 SP 0 LDR,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,  SP SP 16 ADDI,
    9 G-POP  9 done CBZ,
       9 G-PUSH
       PROT-EMIT:LCLOSE LABEL@ BL,
@@ -11523,7 +11525,7 @@ public
       done B,
    run LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
-      9 SP 0 ADDI,  9 DATA JIT-RET-CELL STR,
+      9 SP 0 ADDI,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,
       LCOMPILE LABEL@ B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;

@@ -1300,7 +1300,10 @@ $2818 constant EXIT-HOOK-CELL
 \ it, so the cell is 0 whenever no call is live: at every top-level token and
 \ at any capture. The next free cell of the $2800..$3000 band after
 \ EXIT-HOOK-CELL, swept across src lib tools test bootstrap.
+package NCOMP-DISPATCH
+public
 $2820 constant JIT-RET-CELL
+;package
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
