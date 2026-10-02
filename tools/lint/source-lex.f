@@ -227,6 +227,14 @@ private
    POS @ 1+ POS !
    dup 10 = if LINE-N @ 1+ LINE-N ! 1 COL-N ! else COL-N @ 1+ COL-N ! then ;
 
+\ A scan guard tests the byte at POS only when there is one: `and` evaluates
+\ both operands, so `END? 0=` beside `CUR` reads the byte past the end, and a
+\ buffer sized to the source ends there (a source whose last token ended on a
+\ 64 KiB boundary faulted in the reserved-name lint).
+: CUR-NOT? ( n -- bool ) {: c:n :}
+   END? if LINT-FALSE exit then
+   CUR c <> ;
+
 : SKIP-QUOTE ( -- bool )
    begin END? 0= while ADV DQUOTE = if LINT-TRUE exit then repeat
    LINT-FALSE ;
@@ -255,7 +263,7 @@ private
    k COL@ ERR-COL ! ;
 
 : LINE-COMMENT ( -- )
-   begin END? 0= CUR 10 <> and while ADV drop repeat ;
+   begin 10 CUR-NOT? while ADV drop repeat ;
 
 : BODY-A ( -- ptr u8 )
    SRC@ CSTART @ + ;
@@ -264,7 +272,7 @@ private
    CLEN @ ;
 
 : TO-PAREN ( -- )
-   begin END? 0= CUR 41 <> and while ADV drop repeat ;
+   begin 41 CUR-NOT? while ADV drop repeat ;
 
 \ The span from the token start the main loop recorded to the current position.
 : CUR$ ( -- ptr u8 n )
@@ -273,6 +281,14 @@ private
 \ `parse-name` and the engine token loop delimit on every byte at or below space.
 : ENGINE-DELIM? ( n -- bool )
    $20 <= ;
+
+: GAP? ( -- bool )
+   END? if LINT-FALSE exit then
+   CUR ENGINE-DELIM? ;
+
+: INK? ( -- bool )
+   END? if LINT-FALSE exit then
+   CUR ENGINE-DELIM? 0= ;
 
 \ Engine parity: `(` opens a comment only as a standalone token (followed by
 \ an engine delimiter or EOF). A `(`-initial token such as `(CMP)` is one word.
@@ -326,7 +342,7 @@ private
 \ `parse-name` is what the engine runs.
 
 : SKIP-RAW-WS ( -- )
-   begin END? 0= CUR ENGINE-DELIM? and while ADV drop repeat ;
+   begin GAP? while ADV drop repeat ;
 
 : F$ ( -- ptr u8 n )
    SRC@ FOFF @ + FLEN @ ;
@@ -335,7 +351,7 @@ private
 : NEXT-FIELD ( -- )
    SKIP-RAW-WS
    POS @ FOFF !
-   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
+   begin INK? while ADV drop repeat
    POS @ FOFF @ - FLEN ! ;
 
 : ROW-PAREN ( -- )
@@ -524,7 +540,7 @@ private
    SKIP-RAW-WS
    END? if exit then
    POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
-   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
+   begin INK? while ADV drop repeat
    ADD-WORD
    COUNT 1- MARK-OPERAND ;
 
@@ -552,7 +568,7 @@ private
 \ (`s" n" CC-N CT-INT 64 CS-GENERIC CT-SET`), and the type names in it are only
 \ reachable here.
 : SCAN-WORD ( -- )
-   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
+   begin INK? while ADV drop repeat
    ROW-START? if
       CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
       exit

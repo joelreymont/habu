@@ -53,8 +53,10 @@ LOWER-CERT-HOOK:INSTALL
 ' CHK-CHECK-HOOK set-check
 
 $100000 constant CHK-SRC-CAP
-$120000 constant CHK-RUN-CAP
-$100000 constant CHK-ORIGIN-CAP
+\ The run file is the subject behind a prefix, with an origin mark on each
+\ definition, and the run loads it with `--load`: it holds what the engine
+\ loads from one file.
+INCLUDE-BUF-CAP constant CHK-RUN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
@@ -107,7 +109,6 @@ create CHK-ONE 1 allot
 \ unknown type.
 TYPED-VARIABLE CHK-SRC-BUF-A ptr u8
 TYPED-VARIABLE CHK-RUN-BUF-A ptr u8
-TYPED-VARIABLE CHK-ORIGIN-BUF-A ptr u8
 TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
 TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
 TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
@@ -127,7 +128,6 @@ variable CHK-PRE-U
 TYPED-VARIABLE CHK-PRE-SCOPE-A ptr u8    \ the scope statements the verified bytes start in
 variable CHK-PRE-SCOPE-U
 variable CHK-RUN-U
-variable CHK-ORIGIN-U
 variable CHK-OUT-U
 variable CHK-ERR-U
 variable CHK-MAP-U
@@ -190,10 +190,6 @@ variable CHK-TFAM-NAME-I
 : CHK-RUN-BUF ( -- ptr u8 )
    CHK-RUN-BUF-A @ 0= if CHK-RUN-CAP CHK-ALLOC-BUF CHK-RUN-BUF-A ! then
    CHK-RUN-BUF-A @ ;
-
-: CHK-ORIGIN-BUF ( -- ptr u8 )
-   CHK-ORIGIN-BUF-A @ 0= if CHK-ORIGIN-CAP CHK-ALLOC-BUF CHK-ORIGIN-BUF-A ! then
-   CHK-ORIGIN-BUF-A @ ;
 
 : CHK-OUT-BUF ( -- ptr u8 )
    CHK-OUT-BUF-A @ 0= if CHK-OUT-CAP CHK-ALLOC-BUF CHK-OUT-BUF-A ! then
@@ -353,7 +349,6 @@ private
    0 CHK-PRE-AT !
    0 CHK-PRE-U !
    0 CHK-RUN-U !
-   0 CHK-ORIGIN-U !
    0 CHK-OUT-U !
    0 CHK-ERR-U !
    0 CHK-RC !
@@ -401,6 +396,7 @@ private
 : CHK-TEMP-CLEAN ( -- )
    CHK-ROOT-U @ 0= if exit then
    CHK-ROOT 2dup EXISTS? if REMOVE-TREE else 2drop then
+   CHK-ROOT CLEANUP-FORGET
    0 CHK-ROOT-U !
    0 CHK-SRC-PATH-U !
    0 CHK-RUN-PATH-U ! ;
@@ -429,10 +425,14 @@ private
 
 \ The root is spelled canonically: the engine names a file it loads by its
 \ canonical path, so the run file's name in the run's diagnostics is the one
-\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT).
+\ CHK-RUN-PATH holds (CHK-ERR-NAME-SUBJECT). It is registered for removal at
+\ process exit as soon as it is held: a `die` below - a lint library's, the
+\ verifier's, the engine's - ends the process without unwinding to
+\ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
 : CHK-MAKE-TEMP ( -- )
    s" habu-check" HB-TMP-MKDIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
+   CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
    CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U ! ;
 
@@ -1056,6 +1056,14 @@ variable CHK-WALK-PENDING                \ body loaders still waiting
 : CHK-SOURCE-TOO-BIG ( -- )
    s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
+\ A capacity fault while the tool takes in the subject or builds the file the
+\ run loads is the clean NOINPUT diagnostic, not an uncaught E-FS-CAPACITY.
+: CHK-CAPPED ( [ -- ] -- ) {: q :}
+   q catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
+   rc throw ;
+
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
 \ sources - a single file is a set of one - is refused at each input. Any other
@@ -1158,15 +1166,11 @@ private
    endcase ;
 
 \ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
-\ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
-\ layer (dot habu-tfam-13-c2-checkcore-cap).
+\ clean NOINPUT diagnostic (dot habu-tfam-13-c2-checkcore-cap).
 : CHK-MATERIALIZE ( -- )
    CHK-HB$ FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
-   [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
-   rc 0= if exit then
-   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
-   rc throw ;
+   [: CHK-MATERIALIZE-DISPATCH ;] CHK-CAPPED ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -1749,10 +1753,20 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP
    s" ' CHECK-F-HOOK set-check" CHK-RUN-SP ;
 
+\ The origin pass reads the subject through check.f's own buffer and cap, as
+\ the nominal pass does, and writes the marked copy straight after the prefix.
+: CHK-BUILD-ORIGIN ( -- )
+   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
+   CHK-SRC-BUF len
+   CHK-RUN-BUF CHK-RUN-U @ +  CHK-RUN-CAP CHK-RUN-U @ - >LEN
+   DIAG-ORIGIN-SOURCE>BUF LEN>N CHK-RUN-U @ + CHK-RUN-U ! ;
+
+\ A source the read admits can still outgrow the run file once the prefix and
+\ the origin marks join it; it is refused here, before the run.
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
    CHK-BUILD-PREFIX
-   CHK-ORIGIN-BUF CHK-ORIGIN-U @ CHK-RUN+ ;
+   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED ;
 
 : CHK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -1853,10 +1867,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-RUN-STATIC ( -- )
    CHK-RUN-ALL ;
-
-: CHK-RUN-DIAG ( -- )
-   CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
-   DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
 \ A segment is verified from its own first byte, in the scope it starts in, so
 \ its diagnostics name the line, column and byte the file has there.
@@ -2032,7 +2042,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS
    CHK-CHECK-LABEL
-   CHK-RUN-DIAG
    CHK-RUN-PREVERIFY
    CHK-BUILD-RUN
    CHK-RUN-HB

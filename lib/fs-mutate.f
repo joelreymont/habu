@@ -20,8 +20,9 @@
 \ band could carry; a second task that must copy needs its own buffer); and the
 \ cleanup registry, which is a PROCESS exit registry and not per-call scratch -
 \ REGISTERING is safe from any task, because a registration claims its slot with
-\ one atomic-add and writes only that slot, and the RUN belongs to the process.
-\ See docs/threads.md.
+\ one atomic-add and writes only that slot, FORGETTING is too, because it empties
+\ only the slot naming its path and gives the top back with one atomic-cas, and
+\ the RUN belongs to the process. See docs/threads.md.
 \
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so
@@ -649,3 +650,30 @@ TRUSTED: FS-MUT-ARM-EXIT ( -- )
 
 : CLEANUP-TREE+ ( ptr u8 n -- )
    FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;
+
+\ A PATH ITS OWNER HAS REMOVED IS FORGOTTEN, so the table holds only what is
+\ still owed: a process that makes and removes a tree per job registers each
+\ one and forgets it once it is gone, and its count never walks toward
+\ FS-MUT-CLEANUP-MAX. The newest slot naming the path is emptied - the state
+\ CLEANUP-RUN steps over - and, when it is the top of the table, given back
+\ with one atomic-cas on the count. A claim another task made meanwhile defeats
+\ the cas, keeps its own slot, and leaves the emptied one empty. A path no slot
+\ names is a no-op; an empty path is E-FS-PATH, since an empty slot is not one.
+: FS-MUT-CLEANUP-NAMES? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+   idx FS-MUT-CLEANUP-U-PTR @ u <> if 0 0= 0= exit then
+   idx FS-MUT-CLEANUP-SLOT u SPAN:TAKE SPAN:$ a u STR= ;
+
+\ The newest slot naming the path, or -1.
+: FS-MUT-CLEANUP-FIND ( ptr u8 n -- n ) {: a:ptr u :}
+   FS-MUT-CLEANUP-N @ begin dup 0 > while
+      1 -
+      dup >r a u r> FS-MUT-CLEANUP-NAMES? if exit then
+   repeat
+   drop -1 ;
+
+: CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 <= if E-FS-PATH throw then
+   a u FS-MUT-CLEANUP-FIND {: idx :}
+   idx 0 < if exit then
+   0 idx FS-MUT-CLEANUP-U-PTR !
+   idx 1 + idx FS-MUT-CLEANUP-N atomic-cas drop ;

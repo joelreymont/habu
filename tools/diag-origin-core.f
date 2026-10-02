@@ -101,7 +101,7 @@ variable DO-OUT-BUF?
 
 : DO-BUF-ROOM ( n -- ) {: u :}
    u 0 < if s" diag-origin: negative output" 74 DO-FAIL then
-   DO-OUT-U @ u + DO-OUT-CAP @ > if s" diag-origin: output too large" 74 DO-FAIL then ;
+   DO-OUT-U @ u + DO-OUT-CAP @ > if E-FS-CAPACITY throw then ;
 
 : DO-BUF-OUT ( ptr u8 n -- ) {: a:ptr u :}
    u DO-BUF-ROOM
@@ -214,8 +214,19 @@ variable DO-OUT-BUF?
    repeat
    DO-COMMENT start DO-X @ line col DO-SAVE-TOKEN ;
 
+\ The byte at the scan point is tested only when there is one: `and` evaluates
+\ both operands, so a guard of `DO-END? 0=` beside `DO-C@` reads the byte past
+\ the end, outside a buffer sized to the source.
+: DO-GAP? ( -- bool )
+   DO-END? if DO-FALSE exit then
+   DO-C@ LINT-WS? ;
+
+: DO-INK? ( -- bool )
+   DO-END? if DO-FALSE exit then
+   DO-C@ LINT-WS? 0= ;
+
 : DO-WORD-TOKEN ( n n n -- ) {: start line col :}
-   begin DO-END? 0= DO-C@ LINT-WS? 0= and while
+   begin DO-INK? while
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
@@ -256,14 +267,6 @@ variable DO-OUT-BUF?
 : DO-PARSER? ( -- bool )
    DO-ORIGIN-WORD? 0= if DO-FALSE exit then
    DO-TOK-A@ DO-TOK-U @ SOURCE:PARSING-KEYWORD? ;
-
-: DO-GAP? ( -- bool )
-   DO-END? if DO-FALSE exit then
-   DO-C@ LINT-WS? ;
-
-: DO-INK? ( -- bool )
-   DO-END? if DO-FALSE exit then
-   DO-C@ LINT-WS? 0= ;
 
 \ A parsing keyword's operand is the next whitespace-delimited token, read raw:
 \ `char :` and `[char] :` start no definition, so nothing is marked there.
@@ -319,9 +322,9 @@ variable DO-OUT-BUF?
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
-: DIAG-ORIGIN-RUN ( ptr u8 n -- )
-   DO-FILE-BUF DO-FILE-CAP READ-FILE
-   DO-SRC-U ! DO-SRC-A!
+: DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
+   src DO-SRC-A!
+   u DO-SRC-U !
    0 DO-X !
    0 DO-OUT-X !
    1 DO-LINE !
@@ -334,9 +337,12 @@ variable DO-OUT-BUF?
 
 : DIAG-ORIGIN ( ptr u8 n -- )
    DO-OUT-FD!
-   DIAG-ORIGIN-RUN ;
+   DO-FILE-BUF DO-FILE-CAP READ-FILE DO-MARK ;
 
-: DIAG-ORIGIN>BUF ( ptr u8 n ptr u8 len -- len ) {: path:ptr pathu out:ptr cap :}
+\ The marked copy of source bytes the caller already holds, into the caller's
+\ buffer. Every bound is the caller's: the source is whatever it read, and a
+\ copy that outgrows the buffer is E-FS-CAPACITY for the caller to report.
+: DIAG-ORIGIN-SOURCE>BUF ( ptr u8 n ptr u8 len -- len ) {: src:ptr u out:ptr cap :}
    out cap DO-OUT-BUF!
-   path pathu DIAG-ORIGIN-RUN
+   src u DO-MARK
    DO-OUT-U @ >LEN ;

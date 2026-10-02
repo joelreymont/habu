@@ -1957,6 +1957,108 @@ variable LONG-J
    [: OVERCAP-LABEL ;] E-FS-CAPACITY TTHROWSQ
    RESET ;
 
+\ ---- every source the read accepts reaches a verdict --------------------------
+\ Each pass after the read takes the source whole, so a source half the read's
+\ cap passes, through a file and through standard input. The largest source
+\ the read accepts cannot fit the run file the engine loads once the prefix and
+\ the origin marks join it, so it is refused before the run, by name. Each
+\ child gets a scratch root of its own as HB_TMP, and however it ends - a
+\ verdict, a refusal or a die - it must leave that root empty.
+
+OVERCAP-SOURCE-LEN 1 - constant CAP-SOURCE-LEN
+CAP-SOURCE-LEN 2 / constant MID-SOURCE-LEN
+
+create SCRATCH-PATH FS-PATH-CAP allot
+create SIZED-PATH FS-PATH-CAP allot
+variable SCRATCH-U
+variable SIZED-U
+
+: SCRATCH$ ( -- ptr u8 n )
+   SCRATCH-PATH SCRATCH-U @ ;
+
+: SIZED$ ( -- ptr u8 n )
+   SIZED-PATH SIZED-U @ ;
+
+: SCRATCH-MAKE ( -- )
+   ROOT$ s" scratch" MAKE-TEMP-DIR SCRATCH-PATH SCRATCH-U PATH-COPY! ;
+
+\ rmdir removes only an empty directory.
+: SCRATCH-EMPTY ( -- )
+   [: SCRATCH$ REMOVE-DIR ;] catch 0 T= ;
+
+: SCRATCH-ENV ( -- )
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN SCRATCH$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
+
+: SCRATCH-FILE-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   ROOT$ s" sized-source.f" SIZED-PATH JOIN-PATH SIZED-U !
+   SIZED$ src srcu WRITE-ALL
+   SCRATCH-MAKE
+   CHECK-ARGV-START
+   SIZED$ CHECK-ARG+
+   SCRATCH-ENV
+   HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
+   CAPTURE>N ;
+
+: SCRATCH-STDIN-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   SCRATCH-MAKE
+   CHECK-ARGV-START
+   SCRATCH-ENV
+   HB$ >LEN src srcu >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
+   CAPTURE>N ;
+
+\ Blank lines, then a definition and its call on the last line, so the origin
+\ pass marks a definition past the end of any buffer smaller than the read's.
+: SIZED-DEF$ ( -- ptr u8 n )
+   s" : CKT-SIZED ( -- ) ; CKT-SIZED" ;
+
+: SIZED-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
+   SIZED-DEF$ {: d:ptr du:n :}
+   u du - 0 ?do $0a a i + c! loop
+   d a u + du - du BYTE-COPY ;
+
+: EXPECT-PASS ( n n n -- ) {: outu:n erru:n rc:n :}
+   rc 0 T=
+   erru 0 T=
+   SCRATCH-EMPTY ;
+
+: EXPECT-OVERCAP ( n n n -- ) {: outu:n erru:n rc:n :}
+   rc 66 T=
+   CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
+: MID-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: u:n src:ptr extent:NUM:alloc-byte-len :}
+   src u SIZED-FILL
+   src u SCRATCH-FILE-RUN EXPECT-PASS
+   src u SCRATCH-STDIN-RUN EXPECT-PASS ;
+
+: CAP-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: u:n src:ptr extent:NUM:alloc-byte-len :}
+   src u SIZED-FILL
+   src u SCRATCH-FILE-RUN EXPECT-OVERCAP
+   src u SCRATCH-STDIN-RUN EXPECT-OVERCAP ;
+
+: TEST-MID-SOURCE ( -- )
+   MID-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
+   [: MID-SOURCE-BODY ;] MEM:WITH-BYTES ;
+
+: TEST-CAP-SOURCE ( -- )
+   CAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
+   [: CAP-SOURCE-BODY ;] MEM:WITH-BYTES ;
+
+\ verify-source ends the process with `die` on an unterminated signature.
+: DIE-SIGNATURE$ ( -- ptr u8 n )
+   s" : CKT-OPEN-SIG ( n -- n" ;
+
+: TEST-DIE-SCRATCH ( -- )
+   DIE-SIGNATURE$ SCRATCH-STDIN-RUN {: outu:n erru:n rc:n :}
+   rc 0 T<>
+   SCRATCH-EMPTY ;
+
 : LIST-CAP-FILL ( -- )
    LIST-ENTRY-CAP 0 ?do BAD$ FILE loop ;
 
@@ -3780,6 +3882,9 @@ POISON-RECORD
    s" check/tfam-noarity-all" [: TFAM-NOARITY-ALL ;] CASE-RUN
    s" check/overcap-source" [: TEST-OVERCAP-SOURCE ;] CASE-RUN
    s" check/selection-capacity" [: TEST-SELECTION-CAPACITY ;] CASE-RUN
+   s" check/mid-source" [: TEST-MID-SOURCE ;] CASE-RUN
+   s" check/cap-source" [: TEST-CAP-SOURCE ;] CASE-RUN
+   s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN

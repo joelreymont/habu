@@ -1339,6 +1339,7 @@ CLEANUP-RESET           ( -- )
 CLEANUP+                ( ptr u8 n -- )
 CLEANUP-DIR+            ( ptr u8 n -- )
 CLEANUP-TREE+           ( ptr u8 n -- )
+CLEANUP-FORGET          ( ptr u8 n -- )
 CLEANUP-RUN             ( -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-SELF-ENTRY?     ( ptr u8 n -- bool )
@@ -1419,7 +1420,9 @@ tree made under it goes away even with the process killed before its own
 paths into owned storage and `CLEANUP-RUN` removes them in reverse order, so
 nested directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
-Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
+`CLEANUP-FORGET` drops the newest registration of a path its owner has already
+removed, so a process that makes and removes a tree per job keeps the table
+from filling; a path nothing registered is a no-op. Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.
 
 The registry also runs at process exit, so a `die`, an uncaught top-level throw
