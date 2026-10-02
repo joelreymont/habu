@@ -367,6 +367,10 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" use_storage_definer" s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
    GJA-SUGGEST-ROW IF exit THEN
    s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
@@ -429,8 +433,8 @@ variable GJA-DIRECT
    GJA-NO-PLACE ;
 
 \ The code names the shape of every record that is not a definition's: a
-\ declaration, a source span outside any definition, a refused input, or a
-\ refused storage declaration.
+\ declaration, a source span outside any definition, a refused input, a
+\ refused storage declaration, or a checker record refused at the load.
 : GJA-CODE= ( n ptr u8 n -- bool ) {: root:n code:ptr codeu:n :}
    root s" code" GJA-REQ code codeu GJA-STR= ;
 
@@ -458,6 +462,16 @@ variable GJA-DIRECT
 : GJA-STORAGE? ( n -- bool )
    s" E-BAD-STORAGE" GJA-CODE= ;
 
+\ A refused checker record's code names its repair class
+\ (docs/repair-diagnostics.md); the flag is false for a code that is not one.
+: GJA-RECORD-CLASS ( n -- ptr u8 n bool ) {: root:n :}
+   root s" E-TRUST-UNRESOLVED" GJA-CODE= IF s" fix_stale_trust_row" GJA-TRUE exit THEN
+   root s" E-PKG-CONTEXT" GJA-CODE= IF s" use_storage_definer" GJA-TRUE exit THEN
+   s" " GJA-FALSE ;
+
+: GJA-RECORD? ( n -- bool )
+   GJA-RECORD-CLASS nip nip ;
+
 : GJA-SPAN-FIELDS ( n -- ) {: root:n :}
    root GJA-NO-DEF
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -473,6 +487,14 @@ variable GJA-DIRECT
    root s" byte_end" GJA-NO-FIELD
    root s" line" GJA-REQ-INTF
    root s" column" GJA-REQ-INTF ;
+
+\ A checker record refused at the load names the token it would have described,
+\ and no definition encloses it to place that token.
+: GJA-RECORD-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF
+   root GJA-NO-PLACE
+   root s" throw_code" GJA-NO-FIELD
+   root s" token" GJA-REQ GJA-NONEMPTY-STR ;
 
 : GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}
    root s" schema_version" 1 GJA-ASSERT-INT-FIELD
@@ -526,6 +548,11 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Rebuild bin/hb to check this source; no code change answers this diagnostic." GJA-ASSERT-STR ;
 
+: GJA-REPAIR-RECORD ( n -- ) {: root:n :}
+   root GJA-RECORD-FIELDS
+   root s" instruction" GJA-REQ
+   s" Fix the statement that records this token so it loads. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 \ A storage declaration its definer refuses (src/core/render.f STGR-JSON) names
 \ the declared word, the refused token and the reason. Only a refusal the
 \ pre-pass read carries the token's place, so it has all four place fields or
@@ -551,6 +578,7 @@ variable GJA-DIRECT
    root GJA-STORAGE? IF root GJA-REPAIR-STORAGE exit THEN
    root GJA-SPAN? IF root GJA-REPAIR-SPAN exit THEN
    root GJA-INPUT? IF root GJA-REPAIR-INPUT exit THEN
+   root GJA-RECORD? IF root GJA-REPAIR-RECORD exit THEN
    root GJA-REPAIR-DEF ;
 
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
@@ -645,11 +673,22 @@ variable GJA-DIRECT
       s" input repair class is not rebuild_engine" GJA-FAIL
    THEN ;
 
+: GJA-DIAG-RECORD ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-RECORD-FIELDS
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" record verdict is not rejected" GJA-FAIL
+   THEN
+   root s" repair_class" GJA-REQ root GJA-RECORD-CLASS drop GJA-STR= 0= IF
+      s" record repair class is not the one its code names" GJA-FAIL
+   THEN ;
+
 : GJA-DIAG-SHAPE ( n -- ) {: root:n :}
    root GJA-DECL? IF root GJA-DIAG-DECL exit THEN
    root GJA-STORAGE? IF root GJA-DIAG-STORAGE exit THEN
    root GJA-SPAN? IF root GJA-DIAG-SPAN exit THEN
    root GJA-INPUT? IF root GJA-DIAG-INPUT exit THEN
+   root GJA-RECORD? IF root GJA-DIAG-RECORD exit THEN
    root GJA-DIAG-COMMON ;
 
 : GJA-DIAG-CONTRACT-ROW ( n -- )

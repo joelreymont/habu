@@ -439,10 +439,23 @@ variable REC-U
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
 
-\ A storage registrar called from source, outside the verifier window, is
-\ refused with a named packet at the load (checker.f CHECKER-REPLAY-NAME-OK?).
-\ tools/check.f runs as a child: the packet comes from its own load child, whose
-\ capture would replace the one an in-process CHECK-CAPTURE holds open.
+\ A checker record refused at the load has no definition around it, so check.f
+\ writes it in a shape of its own, under the repair class its code names
+\ (docs/repair-diagnostics.md). tools/check.f runs as a child: the packet comes
+\ from its own load child, whose capture would replace the one an in-process
+\ CHECK-CAPTURE holds open.
+: RECORD-CHECK ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   src srcu WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --json-errors" ARG+
+   src srcu PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   label labelu GE-EXPECT-NONZERO ;
+
+\ A storage registrar called from source, outside the verifier window
+\ (checker.f CHECKER-REPLAY-NAME-OK?).
 : STORAGE-RECORD-REFUSAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -450,18 +463,30 @@ variable REC-U
    s" package JRP" GE-SRC-LINE
    s\" s\" n\" s\" JRG\" CHECKER-DEFTYPED-VARIABLE" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   s" habu-json-record.f" WRITE-SRC
-   s" --load" ARG+
-   s" tools/check.f" ARG+
-   s" --" ARG+
-   s" --json-errors" ARG+
-   s" habu-json-record.f" PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" tools/check.f --json-errors accepted a storage record outside the verifier window" GE-EXPECT-NONZERO
+   s" habu-json-record.f" s" tools/check.f --json-errors accepted a storage record outside the verifier window" RECORD-CHECK
    s" code" s" E-PKG-CONTEXT" s" storage record refusal code" ERR-JSTR
-   s" verdict" s" rejected" s" storage record refusal verdict" ERR-JSTR
    s" token" s" JRG" s" storage record refusal token" ERR-JSTR
-   s" repair_class" s" use_storage_definer" s" storage record refusal repair class" ERR-JSTR ;
+   s" habu-json-record.err" WRITE-ERR
+   s" habu-json-record.err" s" storage record contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"use_storage_definer\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
+   s" use_storage_definer" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-record-class.err" s" record repair class is not the one its code names" s" storage record under the trust row's class refused" REFUSED ;
+
+\ A trust row naming no word where its record lands (checker.f
+\ TRUST-RECORD-WL).
+: TRUST-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s\" s\" GDX-NO-SUCH-WORD\" s\" -- n\" trust" GE-SRC-LINE
+   s" habu-json-trust.f" s" tools/check.f --json-errors accepted a trust row naming no word" RECORD-CHECK
+   s" code" s" E-TRUST-UNRESOLVED" s" stale trust row code" ERR-JSTR
+   s" token" s" GDX-NO-SUCH-WORD" s" stale trust row token" ERR-JSTR
+   s" habu-json-trust.err" WRITE-ERR
+   s" habu-json-trust.err" s" stale trust row contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
+   s" habu-trust-verdict.err" s" record verdict is not rejected" s" uncheckable stale trust row refused" REFUSED ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET

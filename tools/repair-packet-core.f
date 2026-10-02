@@ -149,6 +149,12 @@ variable RP-NODE
 : RP-STORAGE? ( n -- bool )
    s" E-BAD-STORAGE" RP-CODE= ;
 
+\ A checker record refused at the load: a trust row naming no word, or a storage
+\ registrar called from source. No definition encloses it to place its token.
+: RP-RECORD? ( n -- bool ) {: root:n :}
+   root s" E-TRUST-UNRESOLVED" RP-CODE= if 0 0= exit then
+   root s" E-PKG-CONTEXT" RP-CODE= ;
+
 : RP-REQ-STR ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-STR <> if
       drop
@@ -316,11 +322,23 @@ variable RP-NODE
    count s" Fix the storage declaration so its definer accepts it. Output only corrected Habu code."
    RP-PACKET-END ;
 
+: RP-RECORD-PACKET ( n n -- ptr u8 n )
+   {: root:n count:n :}
+   RP-PACKET-START
+   JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" code" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
+   count s" Fix the statement that records this token so it loads. Output only corrected Habu code."
+   RP-PACKET-END ;
+
 : RP-PACKET ( n n -- ptr u8 n ) {: root:n count:n :}
    root RP-DECL? if root count RP-DECL-PACKET exit then
    root RP-STORAGE? if root count RP-STORAGE-PACKET exit then
    root RP-SPAN? if root count RP-SPAN-PACKET exit then
    root RP-INPUT? if root count RP-INPUT-PACKET exit then
+   root RP-RECORD? if root count RP-RECORD-PACKET exit then
    root count RP-DEF-PACKET ;
 
 : RP-MAIN ( -- )
