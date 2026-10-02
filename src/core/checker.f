@@ -11648,9 +11648,14 @@ package CHECKER-REG
 : CHECKER-REC-U@ ( -- n )
    CHECKER-REC-U @ ;
 
-: CHECKER-CERT-DUP? ( -- bool )
+\ Does the defining scope already hold a record of this tail? Asked, not
+\ interned: a scope that never recorded the tail holds none.
+: CHECKER-DUP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
-   CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
+   a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
+
+: CHECKER-CERT-DUP? ( -- bool )
+   CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-DUP? ;
 
 \ The DEFINING-scope question: CHECKER-FIND-USIG resolves through
 \ CHECKER-RECORD-SYM, which names the wordlist a new definition would be
@@ -11753,10 +11758,10 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
+\ CHECK, its one caller, asked the name's refusals before its first write
+\ (CHECK-REC-ADMIT).
 : CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-REC-NAME!
-   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    SG-ROWS-N @ 0 <> IF
       SG-ROWS-RESOLVE
       -1 SG-ROWS-PUBLISH !
@@ -11950,9 +11955,10 @@ variable LBUF-NM-I
    name nameu s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
    name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
+\ CHECK, its one caller through RECXT, asked the name's duplicate refusal
+\ before its first write (CHECK-REC-ADMIT).
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
-   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    BROW @ DCUR @ 0 0 RES-FALSE
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
@@ -19052,6 +19058,21 @@ variable CTOR-PEND-I
    SGOUT @ SUNI-COERCE
    0 FO-ON ! ;
 
+\ The record step asks the name's refusals, a closed constructor package and a
+\ duplicate tail, before its first write. Its control entry goes in ahead of
+\ the effect record and that store is later-wins, so a refusal asked after the
+\ append left the refused body's flags as the name's newest entry: a duplicate
+\ stripped the first definition of its source authority, and every later caller
+\ of it failed E-CAP-TRUSTED (test/checker-dup-record.f). The constructor
+\ refusal is asked only for a declared signature, as the writers that publish
+\ one ask it; the inferred effect's writer (RECXT) does not. CHECKER-DUP? asks
+\ without interning, so the step goes on with the symbols it found.
+: CHECK-REC-ADMIT ( -- )
+   CHECK-SIG? IF
+      NMA @ NMU @ CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   THEN
+   NMA @ NMU @ CHECKER-DUP? IF CHECKER-DUP-DEFINITION THEN ;
+
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    a u CHECK-RESET
    CHECK-SCAN
@@ -19096,6 +19117,7 @@ variable CTOR-PEND-I
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
    0 BIND-HORIZON !                                   \ the record step asks the store, not the walk
    dup -1 = NMU @ 0 > and IF
+      CHECK-REC-ADMIT
       CALL-FINALIZE
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
@@ -19130,12 +19152,14 @@ variable CTOR-PEND-I
    \ is made for a body the run measures; only CTL-RENDERS, a may-claim the walk
    \ saw directly. The last pass of a retried check records it.
    dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
+      CHECK-REC-ADMIT
       NMA @ NMU @ RENDSET @ IF CTL-RENDERS ELSE 0 THEN NORET-ADD
       SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
+         CHECK-REC-ADMIT
          NMA @ NMU @ 0 NORET-ADD                       \ no control claims from a failed body
          SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
          RECOVERY-RECORD

@@ -1690,6 +1690,10 @@ SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
 ;SUITE
 
+SUITE checker-dup-record
+   test/checker-dup-record.f
+;SUITE
+
 WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
