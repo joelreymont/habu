@@ -177,7 +177,13 @@ package HB-BUILD-CLI
    HBT-REMOVE-ARTIFACT
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
-\ A program naming a word of the linker's closure that it never required.
+\ A program requiring a module of the linker's lib closure that the engine does
+\ not bake, and calling a word of it.
+: HBT-REQUIRED-SRC$ ( -- ptr u8 n )
+   S\" require lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
+
+\ The same program without its require: it names a word of the linker's
+\ closure that it never required.
 : HBT-UNREQUIRED-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
 
@@ -188,15 +194,18 @@ package HB-BUILD-CLI
 : HBT-EXBUILD-SRC$ ( -- ptr u8 n )
    S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
 
-\ ... and THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
-\ (test/preloaded-engine.f rule 3). The image loaded lib/span.f, lib/fmt.f and
+\ THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
+\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f and
 \ lib/executable-build.f with the linker, before its maker latched the band, so
 \ the first and third programs' requires resolve to those copies and the second
 \ program's FMT:.INT names one without a require. Each closure reaches a word
 \ compiled outside the window, and the maker refuses the first such word rather
 \ than carry the image's copy. The engine compiles the first program's module
 \ inside the window, refuses the second program's name and links the third
-\ (BUILD-AOT-EXBUILD).
+\ (BUILD-AOT-EXBUILD). The first program's module is one the engine does not
+\ bake: a baked module's words lie below the engine's seal watermark, where the
+\ band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them
+\ and the image links a program that requires one.
 : KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
    HBT-SPAN-SRC src srcu WRITE-ALL
    HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
@@ -225,7 +234,7 @@ package HB-BUILD-CLI
    HBT-SPAN-OUT EXISTS? TFALSE ;
 
 : BUILD-AOT-PRE-WINDOW ( -- )
-   HBT-SPAN-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
    HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
    HBT-EXBUILD-SRC$ KEYED-PRE-WINDOW-REFUSED
    KEYED-PRE-WINDOW-JSON ;
