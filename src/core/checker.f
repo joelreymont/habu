@@ -5116,8 +5116,9 @@ variable SIGSCOPE-U
 
 \ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
 \ one, or one that runs the span past the top of the address range. A false
-\ length inside the range cannot be told from a true one here, and a signature
-\ or a field text has no bound of its own; a name has, CK-NAME-MAX below.
+\ length inside the range cannot be told from a true one here, and a signature,
+\ a field text or a definition's source text has no bound of its own; a name
+\ has, CK-NAME-MAX below, and so has a stored type's text, CK-TEXT-SPAN?.
 : BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 < IF RES-FALSE EXIT THEN
    a u + a < IF RES-FALSE EXIT THEN
@@ -5138,6 +5139,19 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 : CK-NAME-SPAN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CK-NAME-MAX <= and ;
+
+\ THE LONGEST STORED TYPE. The gates read a stored type's raw source span
+\ (src/core/layout-buffer.f STORAGE-PARSE-TYPE), which its definer then spells
+\ into a $1000-byte buffer: LBUF-GEN on the load path (E-LAYOUT-BUFFER past
+\ LBUF-GEN-CAP) and LBUF-SIG-BUF in the checker's own registration
+\ (LBUF-SIG-CAP), so no stored type the engine takes is longer than
+\ CK-BODYBUF-CAP; the definition capture, which drops runs of spaces, does not
+\ bound it.
+\ STORAGE-RESOLVE?, the first reader of such a text, asks this before it reads
+\ a byte (test/name-length-test.f drives every storage gate).
+: CK-TEXT-SPAN? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u BYTE-SPAN? u CK-BODYBUF-CAP <= and ;
 
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
@@ -5850,9 +5864,12 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
+\ CHECK-DOES! and CHECKER-DEFCAST hand it the signature their callers gave them,
+\ so a length that describes no memory parses as the empty text, which has no
+\ `--`: each refuses it as a signature that does not parse, and no byte is read.
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
    a SB!
-   u SL !
+   a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
    PSIG ;
 
@@ -5869,7 +5886,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u CK-TEXT-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -19089,7 +19106,10 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    SGHASR @ IF SGRIN @ R-RES SGROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
    RES-TRUE ;
 
+\ A length that describes no memory (BYTE-SPAN?) is refused before any state is
+\ reset, with the refusal the token buffers gave the maximum cell.
 : CHECK-RESET {: a u :}
+   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE
