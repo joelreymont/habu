@@ -38,7 +38,7 @@ private
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
 \ ---- the definition writers, each a TRUSTED: boundary ------------------------
-TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
+TRUSTED: DEF-OPEN ( ptr u8 n n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
@@ -218,9 +218,10 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open
 \ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME), then opens
-\ the record with its kind. The refusals name the token, but the wall and the
-\ code room name the tail.
-: DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
+\ the record with its kind and the tier whose close ends it: the live tier for
+\ a colon body, 1 for a body NCOMP compiles as it is read. The refusals name
+\ the token, but the wall and the code room name the tail.
+: DEF-RECORD ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid FIND-PROBE XREF-FOUND? if
@@ -228,7 +229,7 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid kind DEF-OPEN ;
+   a u wid kind tier DEF-OPEN ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
@@ -240,7 +241,7 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    trusted DEF-NAME
    0 BODYLEN-CELL CELL!
    TOKEN$ DEF-CAPTURE
-   DEF-QUALIFY 0 DEF-RECORD
+   DEF-QUALIFY 0 tier@ DEF-RECORD
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
@@ -434,7 +435,7 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
    DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
    s end s - DEF-CAPTURE
-   DEF-QUALIFY DKIND:CAST DEF-RECORD
+   DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
    s 1 + end s - 2 - {: sa:ptr su:n :}
    sa su DEF-TRUST-SIG
    sa su CAST-REGISTER
@@ -506,7 +507,7 @@ TRUSTED: DEF-HERE ( -- n ) here ;
 \ before the body takes its address.
 : DEF-CREATE ( -- )
    s" create" DEF-FIXED-HEAD
-   DEF-QUALIFY DKIND:ADDR DEF-RECORD
+   DEF-QUALIFY DKIND:ADDR 1 DEF-RECORD
    align
    DEF-HERE NDICT:FIXED-ADDR NCOMP:COMPILE-FIXED
    DEF-CLOSE
@@ -525,7 +526,7 @@ TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
 
 : DEF-CONSTANT ( -- )
    s" constant" DEF-FIXED-HEAD
-   DEF-QUALIFY DKIND:VAL DEF-RECORD
+   DEF-QUALIFY DKIND:VAL 1 DEF-RECORD
    depth 0= if s" E-UNDERFLOW: " REFUSE then
    DEF-TAKE
    DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED

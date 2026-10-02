@@ -24,7 +24,8 @@
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
 \   length cell 0, TSIG, TCSIG, DOESB and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL and the provenance window open at CP, which an inline name leaves.
+\   the tier with TIER-CELL 0 and the provenance window open at CP, which an
+\   inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP, the entry and
 \   the open window move 32 bytes, the pad over poisoned cells is 0 and
 \   code-origin answers 1 for the name's slots.
@@ -57,8 +58,10 @@
 \   code ceiling (-def-open-ceiling-armed), body-append one byte past
 \   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
-\   -def-close-armed), and def-close on a tier 0 definition
-\   (-def-close-tier-armed); def-cast with nothing pending (-def-cast-armed),
+\   -def-close-armed), def-close on a definition whose DEF-TIER-CELL is 0
+\   (-def-close-tier-armed) and def-open at tier 0, the JIT's, and at tier 2
+\   (-def-open-tier0-armed, -def-open-tier2-armed); def-cast with nothing
+\   pending (-def-cast-armed),
 \   on a definition of kind 0 (-def-cast-kind-armed), with a `does>` split
 \   (-def-cast-does-armed) and on a cast that is no longer record NDICT
 \   (-def-cast-moved-armed). def-cast with a task live exits 79
@@ -120,8 +123,9 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    a u X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
    s" alias-record" X64HARNESS:CALL-ROW, ;
 
-: DEF-OPEN, ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
+: DEF-OPEN, ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
+   tier X64HARNESS:PUSH,
    s" def-open" X64HARNESS:CALL-ROW, ;
 
 : SCOPE, ( n n -- ) {: row:n parent:n :}
@@ -186,9 +190,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 \ The tier-1 definition def-close ends: its six signature and clause cells
 \ set and CP 32 bytes past the open window.
 : TIER-1-OPEN, ( -- )
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 1 DEF-OPEN,
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
@@ -272,7 +275,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    HELLO$ OTHER-WID 0 X64HARNESS:RECORD,              \ record 0: the name in another wid
    AFTER-SEAL,
    X64HARNESS:REST,
-   HELLO$ WID DKIND:VAL DEF-OPEN,
+   HELLO$ WID DKIND:VAL 1 DEF-OPEN,
    PEND-CELL X64HARNESS:PUSH-DATA-CELL,  DREC X64HARNESS:EXPECT-POP-REGION,
    DREC X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    HELLO$ nip DKIND:VAL or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
@@ -286,9 +289,9 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,      \ the tier is def-open's input
    X64HARNESS:REST,
-   s" w" 0 DKIND:CAST DEF-OPEN,
+   s" w" 0 DKIND:CAST 1 DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
@@ -300,7 +303,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : DEF-OPEN-LONG-CASE, ( -- )
    SECOND-SLOT X64HARNESS:POKE,  SECOND-SLOT CELL + X64HARNESS:POKE,
    X64HARNESS:REST,
-   LONG$ 0 0 DEF-OPEN,
+   LONG$ 0 0 1 DEF-OPEN,
    X64HARNESS:PUSH-CP,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    X64KERNEL:REC-CODE X64HARNESS:PUSH-REGION-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    TIER-PROV:OPEN-CELL X64HARNESS:PUSH-DATA-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
@@ -330,7 +333,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 : TRUST-SIG-CASE, ( -- )
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 1 DEF-OPEN,
    s" trust-sig!" SIG,
    TSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
    SIG-LEN TSIG-U-CELL X64HARNESS:EXPECT-CELL,
@@ -338,7 +341,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 : CREATED-SIG-CASE, ( -- )
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 1 DEF-OPEN,
    s" created-sig!" SIG,
    TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
    SIG-LEN TCSIG-U-CELL X64HARNESS:EXPECT-CELL,
@@ -367,11 +370,10 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 $CCCCCCCCCCCCCCC3 constant CAST-RET
 $CCCCCCCCCCCCCCCC constant CAST-PAD
 
-\ A cast declaration def-open opened at the tier TIER-CELL holds.
-: CAST-OPEN, ( -- ) X64HARNESS:REST,  HELLO$ 0 DKIND:CAST DEF-OPEN, ;
+\ A cast declaration def-open opened at tier 1.
+: CAST-OPEN, ( -- ) X64HARNESS:REST,  HELLO$ 0 DKIND:CAST 1 DEF-OPEN, ;
 
 : DEF-CAST-CASE, ( -- )
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    CAST-OPEN,
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
@@ -400,12 +402,12 @@ $CCCCCCCCCCCCCCCC constant CAST-PAD
    LIVE,  X64HARNESS:REST,
    s" al" 0 WID ALIAS, ;
 
-: DEF-OPEN-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" w" 0 0 DEF-OPEN, ;
+: DEF-OPEN-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" w" 0 0 1 DEF-OPEN, ;
 
 : CASE-PAIR, ( -- )
    HELLO$ WID 0 X64HARNESS:RECORD,
    X64HARNESS:REST,
-   s" HELLO" WID 0 DEF-OPEN, ;
+   s" HELLO" WID 0 1 DEF-OPEN, ;
 
 : PRIVATE-SET, ( -- )
    X64HARNESS:REST,
@@ -421,7 +423,7 @@ $CCCCCCCCCCCCCCCC constant CAST-PAD
 : CEILING, ( -- )
    X64KERNEL:CODE-CEILING PAST-LONG DICT-SIZE - - CP-AT,
    X64HARNESS:REST,
-   LONG$ 0 0 DEF-OPEN, ;
+   LONG$ 0 0 1 DEF-OPEN, ;
 
 \ "hello!" and its space need one byte more than the room left.
 : FULL, ( -- )
@@ -435,22 +437,26 @@ $CCCCCCCCCCCCCCCC constant CAST-PAD
    X64HARNESS:REST,
    s" al" 0 ALIAS-WID ALIAS, ;
 
-\ A pending definition def-open opened at tier 0.
+\ A pending definition whose DEF-TIER-CELL is 0, which def-open, refusing
+\ tier 0 here, never leaves: the image stores the 0 itself.
 : TIER-0-CLOSE, ( -- )
-   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 1 DEF-OPEN,
+   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:CELL!,
    s" def-close" X64HARNESS:CALL-ROW, ;
 
 : DEF-OPEN-PROT, ( -- )
    AFTER-SEAL,
    X64HARNESS:REST,
-   s" w" OWNER-API-PUB-WID 0 DEF-OPEN, ;
+   s" w" OWNER-API-PUB-WID 0 1 DEF-OPEN, ;
+
+\ A kind-0 definition at the tier given: 0, the JIT's, or 2, neither tier.
+: TIER-OPEN, ( n -- ) {: tier:n :} X64HARNESS:REST,  HELLO$ 0 0 tier DEF-OPEN, ;
 
 : DEF-CAST, ( -- ) s" def-cast" X64HARNESS:CALL-ROW, ;
 
 \ A definition def-open opened with kind 0.
-: CAST-KIND, ( -- ) X64HARNESS:REST,  HELLO$ 0 0 DEF-OPEN,  DEF-CAST, ;
+: CAST-KIND, ( -- ) X64HARNESS:REST,  HELLO$ 0 0 1 DEF-OPEN,  DEF-CAST, ;
 
 : CAST-LIVE, ( -- ) CAST-OPEN,  LIVE,  DEF-CAST, ;
 
@@ -504,6 +510,8 @@ $CCCCCCCCCCCCCCCC constant CAST-PAD
    [: X64HARNESS:REST,  s" def-close" X64HARNESS:CALL-ROW, ;] false
    s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
    [: TIER-0-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
+   [: 0 TIER-OPEN, ;] false s" hb-x64-kernel-def-open-tier0-armed" TMP-PATH IMAGE
+   [: 2 TIER-OPEN, ;] false s" hb-x64-kernel-def-open-tier2-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
    [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE
    [: X64HARNESS:REST,  DEF-CAST, ;] false s" hb-x64-kernel-def-cast-armed" TMP-PATH IMAGE

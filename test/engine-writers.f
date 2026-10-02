@@ -68,7 +68,7 @@ TRUSTED: EW-NS ( ptr u8 n bool -- n ) namespace-record ;
 TRUSTED: EW-PRIVATE ( n -- ) namespace-private ;
 TRUSTED: EW-ALIAS ( ptr u8 n n n -- ) alias-record ;
 TRUSTED: EW-SCOPE ( n n -- ) package-scope! ;
-TRUSTED: EW-OPEN ( ptr u8 n n n -- ) def-open ;
+TRUSTED: EW-OPEN ( ptr u8 n n n n -- ) def-open ;
 TRUSTED: EW-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
@@ -100,52 +100,53 @@ TRUSTED: EW-INT ( -- n ) s" namespace-record" 0 xref-search-wl dbase@ - DREC / ;
 
 : EW-SIG$ ( -- ptr u8 n ) s" ( -- n )" ;
 
-\ Open `name ( -- n )` as the engine's `:` leaves a definition: the name and the
-\ signature captured, the signature's inner span in TSIG. The engine loop
-\ compiles the body tokens that follow and publishes at `;`.
+\ Open `name ( -- n )` as the engine's `:` leaves a definition: at the live
+\ tier, the name and the signature captured, the signature's inner span in
+\ TSIG. The engine loop compiles the body tokens that follow and publishes at
+\ `;`.
 TRUSTED: EW-COLON ( ptr u8 n -- ) {: a:ptr u:n :}
    0 data-base BODYLEN-CELL + !                        \ the caller starts the capture, as `:` does
-   a u get-current 0 def-open
+   a u get-current 0 tier@ def-open
    a u body-append
    EW-SIG$ body-append
    EW-SIG$ swap 1+ swap 2 - trust-sig! ;
 
 \ A second writer while a definition is pending: its record is slot NDICT.
 TRUSTED: EW-OPEN-TWICE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-SECOND" get-current 0 def-open ;
+   s" EW-FIRST" get-current 0 1 def-open  EW-AT  s" EW-SECOND" get-current 0 1 def-open ;
 TRUSTED: EW-OPEN-NS ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-NSP" 0 0= namespace-record drop ;
+   s" EW-FIRST" get-current 0 1 def-open  EW-AT  s" EW-NSP" 0 0= namespace-record drop ;
 TRUSTED: EW-OPEN-ALIAS ( -- )
-   ndict@ 1-  s" EW-FIRST" get-current 0 def-open
+   ndict@ 1-  s" EW-FIRST" get-current 0 1 def-open
    EW-AT  s" EW-ALP" rot get-current alias-record ;
 
-\ def-close on the definition just opened, at the tier the caller set.
-TRUSTED: EW-OPEN-CLOSE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
+\ def-close on the definition just opened at the tier given.
+TRUSTED: EW-OPEN-CLOSE ( n -- ) {: tier:n :}
+   s" EW-FIRST" get-current 0 tier def-open  EW-AT  def-close ;
 
 \ A declaration opens and publishes in one call: once def-open returns, the
 \ engine loop reads what follows as the body.
 TRUSTED: EW-DECLARE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u get-current DKIND:CAST def-open  def-cast ;
+   a u get-current DKIND:CAST 1 def-open  def-cast ;
 
 \ def-cast on a declaration just opened with the kind given; on a cast after 1
 \ is stored at the data cell given, a `does>` split (DOESB-CELL) or a live
 \ task (TASKS-LIVE-CELL); and on one that is no longer slot NDICT.
 TRUSTED: EW-OPEN-CAST ( n -- ) {: kind:n :}
-   s" EW-FIRST" get-current kind def-open  EW-AT  def-cast ;
+   s" EW-FIRST" get-current kind 1 def-open  EW-AT  def-cast ;
 TRUSTED: EW-CAST-AFTER ( n -- ) {: cell:n :}
-   s" EW-FIRST" get-current DKIND:CAST def-open  1 data-base cell + !  EW-AT  def-cast ;
+   s" EW-FIRST" get-current DKIND:CAST 1 def-open  1 data-base cell + !  EW-AT  def-cast ;
 TRUSTED: EW-CAST-MOVED ( -- )
-   s" EW-FIRST" get-current DKIND:CAST def-open  ndict@ 1+ ndict!  EW-AT  def-cast ;
+   s" EW-FIRST" get-current DKIND:CAST 1 def-open  ndict@ 1+ ndict!  EW-AT  def-cast ;
 
-\ jit-open on the definition just opened, at the tier the caller set; then
-\ jit-token with no jit-open before it, and a second jit-open.
-TRUSTED: EW-OPEN-JIT ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  jit-open ;
-TRUSTED: EW-OPEN-TOKEN ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  jit-token ;
-TRUSTED: EW-JIT-TWICE ( -- )
-   s" EW-FIRST" get-current 0 def-open  jit-open  EW-AT  jit-open ;
+\ jit-open on the definition just opened at the tier given; then jit-token
+\ with no jit-open before it, and a second jit-open.
+TRUSTED: EW-OPEN-JIT ( n -- ) {: tier:n :}
+   s" EW-FIRST" get-current 0 tier def-open  EW-AT  jit-open ;
+TRUSTED: EW-OPEN-TOKEN ( n -- ) {: tier:n :}
+   s" EW-FIRST" get-current 0 tier def-open  EW-AT  jit-token ;
+TRUSTED: EW-JIT-TWICE ( n -- ) {: tier:n :}
+   s" EW-FIRST" get-current 0 tier def-open  jit-open  EW-AT  jit-open ;
 
 private
 
@@ -154,7 +155,7 @@ private
    s" namespace-private" s" EWX ( n -- ) namespace-private" INTERNAL
    s" alias-record" s" EWX ( ptr u8 n n n -- ) alias-record" INTERNAL
    s" package-scope!" s" EWX ( n n -- ) package-scope!" INTERNAL
-   s" def-open" s" EWX ( ptr u8 n n n -- ) def-open" INTERNAL
+   s" def-open" s" EWX ( ptr u8 n n n n -- ) def-open" INTERNAL
    s" body-append" s" EWX ( ptr u8 n -- ) body-append" INTERNAL
    s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
@@ -211,7 +212,7 @@ private
    s" EW-LIVE parse-name NSL true EW-AT EW-NS" TASK-LIVE REFUSES
    s" parse-name NSL false EW-NS EW-LIVE EW-AT EW-PRIVATE" TASK-LIVE REFUSES
    s" : S ( -- ) ; EW-LIVE parse-name AL ndict@ 1- get-current EW-AT EW-ALIAS" TASK-LIVE REFUSES
-   s" EW-LIVE parse-name DW get-current 0 EW-AT EW-OPEN" TASK-LIVE REFUSES
+   s" EW-LIVE parse-name DW get-current 0 1 EW-AT EW-OPEN" TASK-LIVE REFUSES
    s" TASKS-LIVE-CELL EW-CAST-AFTER" TASK-LIVE REFUSES ;
 
 \ Refusals every record writer shares: an empty name, a length no region holds,
@@ -230,15 +231,17 @@ private
    s" : S ( -- ) ; parse-name s ndict@ 1- get-current EW-AT EW-ALIAS" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" : S ( -- ) ; ndict@ 1- EW-DICT-FULL parse-name ALF rot get-current EW-AT EW-ALIAS" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-OPEN-ALIAS" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW drop 0 get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW drop -1 get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" EW-CEILING 8 - cp! parse-name DEFINED-THROUGH-DEF-OPEN get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" : S ( -- ) ; parse-name s get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" EW-DICT-FULL parse-name DWF get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW drop 0 get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW drop -1 get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-CEILING 8 - cp! parse-name DEFINED-THROUGH-DEF-OPEN get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" : S ( -- ) ; parse-name s get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-DICT-FULL parse-name DWF get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-OPEN-TWICE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 \ The refusals particular to one row. An alias of an internal word would carry
-\ an engine body with no checker-known effect past its DNAME-INT gate.
+\ an engine body with no checker-known effect past its DNAME-INT gate. A
+\ def-open tier is 0 or 1, and tier 0, the JIT's, opens a kind-0 body only;
+\ def-close and jit-open judge the tier def-open took, whatever TIER-CELL holds.
 : ROW-REFUSALS ( -- )
    s" parse-name NS:X true EW-AT EW-NS" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" ndict@ EW-AT EW-PRIVATE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
@@ -257,11 +260,16 @@ private
    s" -1 5 EW-AT EW-SCOPE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" : S ( -- ) ; ndict@ 1- 0 EW-AT EW-SCOPE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name NSQ false EW-NS 0 EW-AT EW-SCOPE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW get-current 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW -1 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW -2 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name DW OWNER-API-PUB-WID 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-PACKAGE REFUSES
-   s" EW-CEILING cp! parse-name DW get-current 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current 1 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current 0 2 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current 0 -1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current DKIND:VAL 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current DKIND:ADDR 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current DKIND:CAST 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW -1 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW -2 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW OWNER-API-PUB-WID 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-PACKAGE REFUSES
+   s" EW-CEILING cp! parse-name DW get-current 0 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" BODYBUF-CAP 3 - EW-BODYLEN! parse-name abc EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name abc drop -1 EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" BODYBUF-CAP 1+ EW-BODYLEN! parse-name a EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
@@ -269,7 +277,7 @@ private
    s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 1 set-tier 0 EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" 0 EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" DKIND:VAL EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
@@ -277,9 +285,9 @@ private
    s" EW-CAST-MOVED" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-JIT-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-JIT-TOKEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 1 set-tier EW-OPEN-JIT" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 0 set-tier EW-OPEN-TOKEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 0 set-tier EW-JIT-TWICE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" 0 set-tier 1 EW-OPEN-JIT" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier 0 EW-OPEN-TOKEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier 0 EW-JIT-TWICE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 public
 

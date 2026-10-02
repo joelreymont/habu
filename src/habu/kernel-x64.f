@@ -3285,18 +3285,21 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
    done LBL, ;
 
-\ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
-\ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR;
-\ TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
-\ provenance window opens at that CP. At tier 0 it opens the record only.
+\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier: record NDICT
+\ unpublished, [0] CP past the name, [8] 0, the kind beside the length and the
+\ wid in [40]; PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or
+\ DKIND:ADDR; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes the
+\ tier and the provenance window opens at that CP. It refuses every tier but
+\ 1: tier 0 is the JIT's, which x86-64 does not have.
 : DEF-OPEN-BODY ( -- )
    LBL LBL LBL {: prot:label done:label nolast:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
+   RCX POP,                                           \ the tier
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RAX DKIND:MASK invert IMM64,
    RAX RSP DW-ARG MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
    RDX RSP DW-WID MOV-LOAD,
    REAL-WID,
    prot OPEN-WID,
@@ -3323,11 +3326,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
-   \ TIER-CELL is 1 here: boot stores 1, SET-TIER-BODY refuses any other tier,
-   \ and a task region, which starts at 0, stops at TASK-LIVE-GUARD, above. So
-   \ every record gets the tier DEFWRITE:DEF-OPEN gives a DKIND:VAL or
-   \ DKIND:ADDR record whatever the tier.
-   RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX 1 IMM32,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
    WINDOW-CLOSE,
    FRAME-CLOSE,
