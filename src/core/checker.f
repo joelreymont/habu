@@ -17120,8 +17120,6 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    TOKIX @ 1 + TOKIX ! ;
 
-\ CHECK-RESET ( a u -- )
-
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
 \ effect than the implementation supports. This includes variables nested in
