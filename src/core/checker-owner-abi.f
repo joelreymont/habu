@@ -104,6 +104,10 @@ $2C8 constant TRUSTED-TICK-OFF
 $2D0 constant INIT-LAYOUT-OFF
 $2D8 constant FIELD-SPAN-OFF
 $2E0 constant VERIFY-RENDERS-OFF
+\ Renders the diagnostic a quiet scan suppressed, for a caller that will not
+\ enforce the verdict but must not drop its reason (src/compiler/native/compiler.f
+\ CHECK-HOOKLESS).
+$2E8 constant CHECK-REPORT-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

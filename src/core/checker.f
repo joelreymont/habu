@@ -119,6 +119,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -136,7 +137,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:CHECK-REPORT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -9434,9 +9435,10 @@ variable PE-QDOUT
 \ because a replayed atom does not have one stack effect: PE-A mints a term and
 \ PE-IN consumes one, so a dispatcher that left them on the data stack has a
 \ different depth down each branch and no inferable effect - measured,
-\ `ncomp: cannot compile PE-SPEC-ATOM`, E-NCOMP-ARITY. Every atom below is
-\ ( n -- ), the pending operands live in PE-SPEC-TERMS, and a row that ends with
-\ one left over is malformed and says so.
+\ `ncomp: cannot compile PE-SPEC-ATOM` (src/compiler/native/compiler.f
+\ KEEP-ARITY). Every atom below is ( n -- ), the pending operands live in
+\ PE-SPEC-TERMS, and a row that ends with one left over is malformed and says
+\ so.
 $20 constant PE-SPEC-CAP
 create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS
@@ -19817,6 +19819,16 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
    rc 0 <> IF rc throw THEN
    UNJ-VERDICT @ ;
 
+\ What that scan did not print, for a caller that will not enforce the verdict
+\ but must not drop its reason: the native compiler with the check hook cell
+\ empty, which refuses a body the scan left without an effect
+\ (src/compiler/native/compiler.f CHECK-HOOKLESS). CHECK! renders a rejection
+\ only, an uncheckable verdict only as JSON; this renders whichever verdict the
+\ scan reached. It is an owner field like the scan, so the instance that
+\ scanned is the one that renders; ask before another scan replaces its state.
+: CHECKER-CHECK-REPORT ( -- )
+   DIAG-QUIET @ 0= IF DIAGXT THEN ;
+
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
@@ -21137,6 +21149,7 @@ package CHECKER-REG
 ' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 ' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
 ' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
+' CHECKER-CHECK-REPORT DECLARATIONS CHECKER-OWNER-ABI:CHECK-REPORT-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

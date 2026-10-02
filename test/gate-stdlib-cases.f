@@ -745,6 +745,10 @@ SUITE compiler-native-internal-call
    test/compiler/native-internal-call.f
 ;SUITE
 
+SUITE compiler-native-hookless-reject
+   test/compiler/native-hookless-reject.f
+;SUITE
+
 SUITE compiler-native-stored-quot
    test/compiler/native-stored-quot.f
 ;SUITE

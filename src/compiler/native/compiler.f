@@ -112,6 +112,7 @@ variable PRIOR-CALLABLE
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
+variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
@@ -236,7 +237,7 @@ TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
 \ exactly what tier 0 does under `0 set-check`, and what a window depends on,
 \ because LOGICAL-RESET clears the hook and the window's own check-hook.f
 \ installs one part-way through its prefix - but the tape still has to be filled,
-\ so the owner's scan runs and its verdict is dropped rather than enforced.
+\ so the owner's scan runs and its verdict is reported rather than enforced.
 TRUSTED: AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
 
 TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
@@ -251,11 +252,22 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
-: CHECK-PARENT ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ The scan with the hook cell empty. Its verdict refuses nothing, but a body it
+\ did not certify may have left no effect to compile against, and KEEP-ARITY
+\ refuses that over the verdict kept here. The reason is printed now, while the
+\ owner still holds the scan that found it: a does> head's scan is replaced by
+\ its clause's before KEEP-ARITY runs.
+: CHECK-HOOKLESS ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
+   v -1 <> if CHECKER-OWNER:REPORT then
+   v M-UNJUDGED ! ;
+
+: CHECK-PARENT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
-   hook 0= if
-      a u CHECKER-OWNER:CHECK-UNJUDGED drop -1 exit then
+   hook 0= if a u CHECK-HOOKLESS -1 exit then
    a u hook CALL-INSTALLED ;
 
 : CHECK-SOURCE ( -- n )
@@ -357,6 +369,8 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
+70 constant RC-REJECT     \ the check hook's reject status (check-hook.f CHECK-RC)
+
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
 \ from src/compiler/native/dict.f at the point it is used, and this is the same
 \ reader asked about the definition being compiled - so the routine's contract
@@ -370,20 +384,27 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ different wordlist. A TRUSTED: effect is registered under that same spelling
 \ after the scan, so a family-typed qualified effect has one owner here.
 \
-\ THE ABSENT ANSWER IS NAMED AND HAS NO REACHING CASE TODAY, which is written
-\ down rather than left for a reader to assume either way. SPELL-ARITY answers
-\ ARITY-NONE for a name the checker holds no effect for, so the code below is the
-\ reader's own contract handled rather than a -1 let through to NELAB:COLON,
-\ which would refuse it as E-NELAB-ARITY and name the wrong thing. No shape
-\ reaches it: E-NCOMP-VERDICT already refuses anything the engine's check did
-\ not certify, and this asks about a record published one step earlier in the
-\ scope that published it. A package opened and closed by the source is
-\ E-NCOMP-NAME,
-\ an unsigned body answers its inferred effect. Dot
-\ habu-reach-the-absent-360162f5 owns finding one or retiring the code.
+\ THE ABSENT ANSWER. SPELL-ARITY answers ARITY-NONE for a name the checker holds
+\ no effect for, and it is refused here rather than let through to NELAB:COLON
+\ as a -1, which would refuse it as E-NELAB-ARITY and name the wrong thing. With
+\ a check hook installed nothing reaches it: E-NCOMP-VERDICT has refused every
+\ body the check did not certify. With the cell empty nothing has
+\ (CHECK-HOOKLESS), and the checker records no effect for a body it rejects or
+\ cannot check: branches that leave different depths, another type error, a
+\ callee it cannot resolve (in a window's core prefix that includes a prelude
+\ word such as `0<>`, not loaded yet), a callee the host's checker holds as a
+\ trust-boundary primitive (E-CAP-TRUSTED, from a PRIM: row the window lacks),
+\ or an unsigned body naming a word left to the run. The scan has printed why,
+\ so the refusal takes the check hook's reject status. Multi-error mode records
+\ a rejected body's declaration, and compiling goes on against it. After a
+\ certified scan nothing reaches it either: a package opened and closed by the
+\ source is E-NCOMP-NAME and an unsigned body answers its inferred effect.
 : KEEP-ARITY ( -- )
    NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = if E-NCOMP-ARITY throw then
+   din NDICT:ARITY-NONE = if
+      M-UNJUDGED @ -1 <> if RC-REJECT throw then
+      E-NCOMP-ARITY throw
+   then
    din M-IN !  dout M-OUT ! ;
 
 \ ---- binding an earlier definition shadowed by the pending record -------------
@@ -679,6 +700,7 @@ INSTALL-FORGET
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
+   -1 M-UNJUDGED !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !

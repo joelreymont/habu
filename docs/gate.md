@@ -30,9 +30,10 @@ builds and then dies on every cold boot - measured with `PATH-CAP` inside
 `TMP-PATH-CHECK` before it had a row: `native-build OK`, then
 `E-UNDEFINED habu: in tmp-path-check: undefined word 'PATH-CAP'` from the cold
 host. The rows cannot be withheld to make the build refuse it: without them
-the window cannot compile `src/core/check-hook.f`'s first definition
-(`ncomp: cannot compile REPORT-UNCHECKABLE`, `E-NCOMP-ARITY`). After editing a
-prefix file, boot the candidate's prefix cold before the registry:
+the window cannot compile `src/core/check-hook.f`'s first definition (the
+checker's reason, then `ncomp: cannot compile REPORT-UNCHECKABLE`, throw 70).
+After editing a prefix file, boot the candidate's prefix cold before the
+registry:
 
 ```sh
 HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
