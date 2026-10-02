@@ -49,13 +49,18 @@ package HB-BUILD-CLI
 \ package FFI's staged call, which resolves `getpid` through the loader at the
 \ FIRST CALL - in the image's own process, never the builder's - so the program
 \ prints 1 only if the image carried everything that resolution needs: the FFI
-\ table, in the program's own DATA window; the loader's two GOT slots, which
-\ src/os/linux/elf.f relocates in every image it writes; and the engine's
-\ text-base cell, which src/os/linux/layout.f locates those slots from and
-\ src/habu/aot-owned-cells.f claims TEXT-BASE. Left at the fresh mapping's zero
-\ that cell made this program build without a word of complaint and take SIGSEGV
-\ inside DLSYM-SLOT's `@`. lib/ffi-abi.f is in the linker's lib closure, so
-\ BUILD-AOT-FFI compiles the linker above this program.
+\ table; the loader's two GOT slots, which src/os/linux/elf.f relocates in every
+\ image it writes; and the engine's text-base cell, which src/os/linux/layout.f
+\ locates those slots from and src/habu/aot-owned-cells.f claims TEXT-BASE.
+\ Left at the fresh mapping's zero that cell made this program build without a
+\ word of complaint and take SIGSEGV inside DLSYM-SLOT's `@`. lib/ffi-abi.f is
+\ baked into the engine (src/habu/layout.f puts its buffer block at a fixed
+\ engine offset; `require lib/ffi-abi.f` compiles nothing), so on the engine's
+\ maker and on the linker image alike the table lies below the window and
+\ src/habu/aot-owned-cells.f ENGINE-CARRY claims it; this program reaches no
+\ word of the linker's load, so it links on the image (test/preloaded-engine.f
+\ rule 3). test/stripped-preloaded-runtime.f drives the maker directly for the
+\ same claim; this row takes the hb-build path.
 : HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
    S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
@@ -244,7 +249,8 @@ package HB-BUILD-CLI
 \ before it requires lib/executable-build.f (tools/aot-build-open.f), so the
 \ band holds only the latch file's own private records and WITH is carried
 \ like any word above it. A band latched when the window opens holds WITH and
-\ refuses this program.
+\ refuses this program, as the linker image, which loaded that unbaked module
+\ below the window, does (KEYED-PRE-WINDOW-JSON).
 : BUILD-AOT-EXBUILD ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-EXBUILD-SRC$ WRITE-ALL
@@ -277,7 +283,7 @@ package HB-BUILD-CLI
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-FFI-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-BUILD
    S\" 1\n\n" HBT-RUN-AOT-PRINTS
    HBT-REMOVE-ARTIFACT

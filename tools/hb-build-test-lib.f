@@ -335,11 +335,13 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ run the production maker script on the linker image, and its REPL builds, app
 \ refusals and REPL CLI spawns (HBT-ARGV-BASE-REPL) run on the saver image
 \ (docs/gate.md). A row with no maker to run hands an empty linker and loads
-\ only the saver's module. The -SOURCE words keep one build on the engine,
-\ which compiles the linker above the application: for a subject that needs a
-\ module of the linker's lib closure the engine does not bake, which the linker
-\ image refuses by name (test/preloaded-engine.f rule 3), and for a case about
-\ that order. A row that records no image builds every program on the engine.
+\ only the saver's module. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the
+\ engine, which compiles the linker above the application: for a subject whose
+\ closure reaches a word, or an unclaimed cell, of a module of the linker's lib
+\ closure the engine does not bake, which the linker image refuses by name
+\ (test/preloaded-engine.f rule 3), and for a case about that order. A subject that only requires such a
+\ module links on the image. A row that records no image builds every program
+\ on the engine.
 : HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
    linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
    saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;
@@ -489,21 +491,14 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
       timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
    ;MATCH ;
 
-: HBT-MAKER-RUN ( ptr u8 n -- n n n )
+: HBT-RUN-MAKER ( ptr u8 n -- n n n )
+   HBT-LINKER HBT-ENGINE!
    HBB-RESET-OPTIONS
    HBB-SRC!
    HBT-TMP BF-TMP!
    HBB-BUILD-BEGIN
    HBB-RUN-MAKER-CMD HBT-MAKER-CAPTURE>N
    BF-TMP-RESET ;
-
-: HBT-RUN-MAKER ( ptr u8 n -- n n n )
-   HBT-LINKER HBT-ENGINE!
-   HBT-MAKER-RUN ;
-
-: HBT-RUN-MAKER-SOURCE ( ptr u8 n -- n n n )
-   BF-ENGINE-RESET
-   HBT-MAKER-RUN ;
 
 : HBT-RUN-APP ( ptr u8 n -- n n n )
    HBT-SAVER HBT-ENGINE!

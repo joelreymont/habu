@@ -115,8 +115,10 @@ package HB-BUILD-CLI
 
 \ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
 \ stripped, because every baked constant those three reach is carried by name,
-\ and the image's stdout is the proof that the bytes travelled. lib/fmt.f is in
-\ the linker's lib closure, so the linker is compiled above this program.
+\ and the image's stdout is the proof that the bytes travelled. lib/fmt.f is a
+\ module of the linker's lib closure the engine does not bake, and the linker
+\ image refuses this program at .INT (E-AOT-PRE-WINDOW), so it builds on the
+\ engine.
 : HBT-STRIPPED-PRINT-PARSE-HASH ( -- )
    HBT-PPH-SRC HBT-PPH-SRC$ WRITE-ALL
    HBT-PPH-OUT HBT-REMOVE-FILE?

@@ -69,20 +69,22 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
    rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
 
 \ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
-\ in the emitted code span of a build on this engine, and the link that follows
+\ in the emitted code span of a build on this image, and the link that follows
 \ is then a statement about the declaration and not about the value. The
-\ subject requires lib/codegen.f, which is in the linker's lib closure, so both
-\ builds compile the linker above the program.
+\ subject requires lib/codegen.f, which the engine bakes, so every maker carries
+\ its words below the band, and neither program reaches anything of the
+\ linker's load, so both builds link on the image (test/preloaded-engine.f
+\ rule 3).
 : HBT-STRIPPED-LITERAL-BODY ( -- )
    HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
-   HBT-LITC-SRC HBT-RUN-MAKER-SOURCE {: cout:n cerr:n crc:n :}
+   HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
    crc 70 T=
    HBB-ERR-BUF cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
    HBB-ERR-BUF cerr s" word=LIT-CELL" CONTAINS? TTRUE
 
    HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
    HBT-LITB-OUT HBT-REMOVE-FILE?
-   HBT-LITB-SRC HBT-LITB-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   HBT-LITB-SRC HBT-LITB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBT-LITB-OUT FILE? TTRUE
    HBT-LITB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}

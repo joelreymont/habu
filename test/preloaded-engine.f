@@ -37,8 +37,8 @@
 \    `--json-errors`, src/habu/aot-closure.f ADD-CLO) or such a cell (`aot:
 \    address refers to data outside the restored span`). A cell a named claim
 \    carries or refreshes is not such a cell: src/habu/aot-owned-cells.f
-\    COLLECT claims the FFI and TASK state the linker's load holds below the
-\    window, and test/stripped-preloaded-runtime.f links and runs a subject
+\    COLLECT claims the FFI and TASK state the engine bakes below the window,
+\    and test/stripped-preloaded-runtime.f links and runs a subject
 \    that shares both libraries with the image. A subject that defines a word
 \    the image holds, globally or in a package it reopens, dies at that line
 \    (`duplicate definition`, rc 78), where the engine's maker dies at the

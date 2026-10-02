@@ -107,7 +107,9 @@ package HB-BUILD-CLI
 \ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
 \ locals of the call now, and the copy BUFFER is the cell that stands there.
-\ That order is the claim, so this build compiles the linker above the program.
+\ That order is the claim, so this program builds on the engine: lib/fs.f and
+\ lib/fs-mutate.f are modules of the linker's lib closure the engine does not
+\ bake, and the linker image refuses it at COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
