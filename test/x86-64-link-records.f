@@ -83,7 +83,7 @@ public
    s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
    s" strip" MODE? if s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
    s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
-   s" retired" MODE? if s" : GONE ( -- n ) 7 ; : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
+   s" retired" MODE? if s" 0 set-tier : GONE ( -- n ) 7 ; 1 set-tier : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
    s" quot" MODE? if s" : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
@@ -551,6 +551,9 @@ variable RC
    s" callee" s" names window record LOW"
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
+\ GONE is a tier-0 word, with no routine of its own: a tier-1 GONE is live through
+\ KEEP, and the capture refuses its routine first, at its own row, as
+\ test/aot-shadow-capture.f's retired child shows.
 : RETIRED-CASE ( -- )
    s" a shadow call to a retired window word is refused by the callee's name" T-LABEL
    s" retired" s" names window record GONE"

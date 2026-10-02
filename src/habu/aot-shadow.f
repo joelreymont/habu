@@ -31,11 +31,13 @@
 \ record by its row in that table (SH-NUMBER), never by its window index. Nor is
 \ the window index the capture's own: the capture does not record a retired
 \ record at all, so the walk reads a capture table only through ACAP-DICT>CAP.
-\ A stripped or retired record files no row: a dead one's code left the payload
-\ too, a retired one has no name to ship, a shipped record over the same
-\ emission carries a live one (a private definer's companion, kept for the
-\ children it made), and a live one nothing carries is refused by name, as is a
-\ site naming a stripped or retired record. Every host address a routine names
+\ A stripped or retired record files no row - a retired one has no name to ship.
+\ A shipped record over the same emission carries a live one's routine (a
+\ private definer's companion, kept for the children it made), a live one
+\ nothing carries is refused by name, as is a site naming a stripped or retired
+\ record, and a dead one's routine goes: no live code reaches its body
+\ (ACAP-SHADOW-LIVE?), though the ARM64 payload may keep that body, as it keeps
+\ every retired one and what such a body calls. Every host address a routine names
 \ is resolved here, through the xt -> record index the ARM64 call sites use
 \ (ACAP-TGT>REC), into a shipped record or into the name of a word of the
 \ engine's own prefix; a host address nothing resolves is refused by name, as an
@@ -236,15 +238,14 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
 
 \ Map row r files a record the capture ships no row for. A shipped row over its
 \ emission carries its routine; otherwise a dead one goes with its code, and a
-\ live one is refused. A retired record has no capture index, so no liveness: it
-\ has no name to ship, and a site or code cell reaching its routine is refused
-\ by name (SH-TARGET, SH-XTCELL), so it goes with its code too.
+\ live one is refused. Stripped and retired alike, a record is live when the
+\ capture's shadow reach reaches its body from live code (ACAP-SHADOW-LIVE?), not
+\ when ARM64 retention keeps it: that retention scans every gap as a root, and a
+\ retired body is a gap, live or not.
 : SH-STRIP ( n -- ) {: r:n :}
    r NSHADOW:EMISSION@ {: e:n :}
    r 1- e SH-OWNER?  r 1+ e SH-OWNER? or if exit then
-   r NSHADOW:RECORD@ ACAP-DICT>CAP {: k:n :}
-   k 0 < if exit then
-   k ACAP-GRAPH-LIVE? if SH-STRIPPED then ;
+   r NSHADOW:RECORD@ ACAP-SHADOW-LIVE? if SH-STRIPPED then ;
 
 : SH-WALK ( -- )
    -1 SH-E !
