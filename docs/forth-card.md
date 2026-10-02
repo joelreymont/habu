@@ -42,7 +42,11 @@ public
   `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. A
   `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
-  `E-RESERVED-DEFINITION`. A number-shaped name (`: 42`) is refused by
+  `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
+  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer the lint
+  reads (`:`, `TRUSTED:`, `defer`, `constant`, …), since `tools/check.f` reads
+  their spelling to skip the target arms the engine never runs; it refuses
+  them, not `--load`. A number-shaped name (`: 42`) is refused by
   `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**.

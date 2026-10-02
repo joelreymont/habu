@@ -87,15 +87,21 @@ lives here; build, test and environment rules live in
   REPL, the name is taken.
 - **Never shadow a native primitive name**; `shadow-lint` gates this.
 - **Never define a parser or control reserved word** as a published name (by
-  `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`): `I`, `J`, `DO`,
-  `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
-  `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`,
-  `UNDEFINE` and the other compiler-dispatch and lifecycle tokens. Lexical
-  locals such as `{: i:n :}` stay legal. A generated converter that strips
-  prefixes runs `tools/reserved-name-lint.f` after naturalization (`CC-I`
-  becomes `IX`, `CC-J` becomes `JX`); `tools/check.f` runs that lint before
-  spawning the checker child and reports `E-RESERVED-DEFINITION` with file, line
-  and token instead of a silent rc 70.
+  `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
+  `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
+  `REPEAT`, `TRUST`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
+  `PUBLIC`, `PRIVATE`, `UNDEFINE` and the other compiler-dispatch and lifecycle
+  tokens. The loaders `include`, `included`, `require`, `required` and
+  `provided` are reserved because `tools/check.f`'s discovery reads their
+  spelling lexically. The target predicates `HB-TARGET-LINUX?`,
+  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?` are reserved too:
+  `tools/check.f` reads their spelling lexically to skip the arms of an `if` the
+  engine's target never runs, and a source's own word of that spelling could
+  answer otherwise. Lexical locals such as `{: i:n :}` stay legal. A generated
+  converter that strips prefixes runs `tools/reserved-name-lint.f` after
+  naturalization (`CC-I` becomes `IX`, `CC-J` becomes `JX`); `tools/check.f`
+  runs that lint before spawning the checker child and reports
+  `E-RESERVED-DEFINITION` with file, line and token instead of a silent rc 70.
 - **Never define a number-shaped word.** hb parses numeric literals BEFORE
   dictionary lookup (`test/gate-dictionary-lib.f` GD-LITERAL-FIRST), so a word
   named like a literal (`42`, `.0`, `1.5`, `-.5`, `$FF`) loads but is

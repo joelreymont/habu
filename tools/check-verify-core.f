@@ -212,20 +212,6 @@ variable CHK-EXPAND-TOP
    rc CHK-DISC-RC? rc CHK-E-NOINPUT = or rc 0= or 0= if rc throw then
    rc ;
 
-: CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
-   path pathu s" src/os/linux/layout.f" STR= if HB-TARGET-LINUX? exit then
-   path pathu s" src/os/macos/layout.f" STR= if HB-TARGET-MACOS? exit then
-   path pathu s" src/os/linux-x86-64/layout.f" STR= if
-      HB-TARGET-LINUX-X86-64? exit
-   then
-   true ;
-
-\ Discovery deliberately over-approximates guarded loaders. The three
-\ executable layouts cannot share a checker scope: each publishes the same
-\ global names, while only the current target branch is loadable.
-: CHK-DEP-LOADABLE? ( n -- bool ) {: id:n :}
-   id CHK-DEP$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-TARGET-LAYOUT-ACTIVE? ;
-
 public
 
 \ What one CHECK:VERIFY-BYTES found. verified and refused are the checker's

@@ -332,9 +332,16 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ file being read has closed every package and file-level `using` it opened, in
 \ the order of the loaders, and at the end of that file at the latest
 \ (VERIFY-SOURCE, PEND-RELEASE). A loader under a condition may not run - a
-\ target's layout loads only on that target (tools/imgdump.f) - so its file is
-\ the run's to load. The path is the literal right before the loader word; any
-\ other loader form in a body is discovery's to refuse (tools/source-discovery.f).
+\ target's layout loads only when the image lacks one (tools/imgdump.f) - so
+\ its file is the run's to load. A target predicate right before an `if` is no
+\ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
+\ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
+\ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
+\ tools/object-image.f loads its target's sys.f that way, and the three
+\ targets' files define the same words. A source cannot define a predicate's
+\ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
+\ engine's. The path is the literal right before the loader word; any other
+\ loader form in a body is discovery's to refuse (tools/source-discovery.f).
 \ Each entry's path lies in the bytes of the file being read, which live until
 \ that file ends.
 16 constant PEND-MAX
@@ -345,9 +352,19 @@ variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
 variable BODY-BENT                            \ the body read so far is no straight line
+0 constant GUARD-NONE                         \ the body token before is no target predicate
+1 constant GUARD-LIVE                         \ it is one the engine answers true
+2 constant GUARD-DEAD                         \ it is one the engine answers false
+variable BODY-GUARD                           \ which of the three
+variable BODY-ARMS                            \ the target `if`s whose running arm the line is in
+variable BODY-DEAD                            \ in an arm that never runs: 1 + the `if`s open in it
+
+\ Neither a literal nor a target predicate is right before the next body token.
+: BODY-PREV-CLEAR ( -- )
+   0 BODY-LIT-U !  GUARD-NONE BODY-GUARD ! ;
 
 : BODY-LOAD-RESET ( -- )
-   0 BODY-BENT !  0 BODY-LIT-U ! ;
+   0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
 
 : PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
    PEND-N @ PEND-MAX >= IF s" verify-source: too many loaders in definitions" 74 die THEN
@@ -357,20 +374,62 @@ variable BODY-BENT                            \ the body read so far is no strai
 \ The text of a `s"` literal from the rest STRING-REST read: past the one
 \ delimiting space, short of the closing quote. Any other opener leaves none.
 : BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
+   BODY-PREV-CLEAR
    o ou NORMAL-STRING-OPENER? su 2 >= and IF
-      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !  EXIT
+      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !
+   THEN ;
+
+: >GUARD ( bool -- n )
+   IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
+
+\ What a body token tells an `if` right after it.
+: TARGET-GUARD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" HB-TARGET-LINUX?" STR=CI IF HB-TARGET-LINUX? >GUARD EXIT THEN
+   a u s" HB-TARGET-MACOS?" STR=CI IF HB-TARGET-MACOS? >GUARD EXIT THEN
+   a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
+      HB-TARGET-LINUX-X86-64? >GUARD EXIT
    THEN
-   0 BODY-LIT-U ! ;
+   GUARD-NONE ;
+
+\ `if`, `else` and `then` on the straight line, true when the token is one. A
+\ target predicate right before an `if` opens a target `if`, whose running arm
+\ stays on the line and whose other arm is read only for its end (DEAD-TOKEN).
+\ Any other `if`, and an `else` or `then` no target `if` opened, ends the line.
+\ The three match case-folded, as the engine's keywords do.
+: ARM-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR=CI IF
+      BODY-GUARD @ GUARD-NONE = IF 1 BODY-BENT ! 0 0= EXIT THEN
+      BODY-ARMS @ 1 + BODY-ARMS !
+      BODY-GUARD @ GUARD-DEAD = IF 1 BODY-DEAD ! THEN
+      0 0= EXIT
+   THEN
+   a u s" else" STR=CI a u s" then" STR=CI or 0= IF 0 0= 0= EXIT THEN
+   BODY-ARMS @ 0= IF 1 BODY-BENT ! 0 0= EXIT THEN
+   a u s" else" STR=CI IF 1 BODY-DEAD ! 0 0= EXIT THEN
+   BODY-ARMS @ 1 - BODY-ARMS !
+   0 0= ;
+
+\ A token in an arm that never runs, read only for the arm's end: the `else`
+\ of its own target `if` starts the arm that runs, and its `then` closes it.
+: DEAD-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" if" STR=CI IF BODY-DEAD @ 1 + BODY-DEAD ! EXIT THEN
+   a u s" else" STR=CI BODY-DEAD @ 1 = and IF 0 BODY-DEAD ! EXIT THEN
+   a u s" then" STR=CI 0= IF EXIT THEN
+   BODY-DEAD @ 1 - BODY-DEAD !
+   BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
 \ A body token that is no string literal: a loader word right after one, on a
 \ straight line, waits while a composition reads the source.
 : BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
+   BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
    a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
    COMPOSE-ON @ 0<> BODY-LIT-U @ 0 > and BODY-BENT @ 0= and IF
       a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 PEND-PUSH THEN
       a u s" included" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 1 PEND-PUSH THEN
    THEN
-   0 BODY-LIT-U ! ;
+   0 BODY-LIT-U !
+   a u TARGET-GUARD BODY-GUARD ! ;
 
 : APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BODY-APPEND
@@ -421,7 +480,7 @@ variable BODY-BENT                            \ the body read so far is no strai
 
 : APPEND-BODY-TOKEN ( -- )
    TOKEN-A @ TOKEN-U @ BODY-PARSER? IF
-      0 BODY-LIT-U !
+      BODY-PREV-CLEAR
       TOKEN-A @ TOKEN-U @ BODY-APPEND
       OPERAND BODY-APPEND
       exit
@@ -434,7 +493,7 @@ variable BODY-BENT                            \ the body read so far is no strai
    THEN ;
 
 : SKIP-BODY-TOKEN ( -- )
-   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop 0 BODY-LIT-U ! exit THEN
+   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop BODY-PREV-CLEAR exit THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
    TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
 

@@ -40,7 +40,11 @@ require src/habu/sign-id.f
    HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    E-OBJ-SCHEMA throw ;
 
-: OBJIMG-LOAD-TARGET-IMAGE ( -- )
+\ The target writers read image-bytes.f's MSIZE as they load, so its loader
+\ precedes theirs in this one body: tools/check.f checks the files a body loads
+\ after that body, in the order the body names them.
+: OBJIMG-LOAD-IMAGE ( -- )
+   s" src/os/image-bytes.f" required
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
       s" src/os/linux/sign.f" required
@@ -57,10 +61,6 @@ require src/habu/sign-id.f
       exit
    then
    E-OBJ-SCHEMA throw ;
-
-: OBJIMG-LOAD-IMAGE ( -- )
-   s" src/os/image-bytes.f" required
-   OBJIMG-LOAD-TARGET-IMAGE ;
 
 : OBJIMG-LOAD-DRIVER ( -- )
    s" src/habu/driver-io.f" required ;

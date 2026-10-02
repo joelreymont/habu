@@ -6,7 +6,6 @@
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/checked-boundary-lint-core.f
-\ tools/reserved-name-lint-core.f
 \ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-core.f tools/check-test.f
 
@@ -34,7 +33,6 @@ require tools/diag-origin-core.f
 require tools/json.f
 require tools/json-only-core.f
 require tools/checked-boundary-lint-core.f
-require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
@@ -1101,16 +1099,6 @@ variable LONG-J
    s" : CKF-PRIV ( ckfp:ckfpfam -- ckfp:ckfpfam ) ;" SB-APPEND
    SB$ ;
 
-: RESERVED-LIST-RUN ( -- n n n )
-   LIST$ RESERVED$ WRITE-ALL
-   RESERVED-NAME-LINT:RESET
-   CAP-ERR BUF-CAP LINT-OUT-BUFFER!
-   LIST$ s" <source-list>" RESERVED-NAME-LINT:FILE-AS
-   [: RESERVED-NAME-LINT:FINISH ;] catch {: rc:n :}
-   LINT-OUT$ nip
-   LINT-OUT-BUFFER-OFF
-   0 swap rc ;
-
 : DIE$ ( -- ptr u8 n )
    SB-RESET
    s" : CKT-BYE ( -- ) s" SB-APPEND
@@ -1581,6 +1569,74 @@ variable LONG-J
    LINT-OUT-BUFFER-OFF
    RESET ;
 
+\ ---- a source list lints each listed file for the checked boundary ----------
+\ The list runs one `required` line per listed file, so the boundary lint reads
+\ the listed files: one that switches the checker off and then defines is
+\ refused in every mode at its own line and column, as the single file is. The
+\ switch carries across the list: a definition in a later file is refused at
+\ its own line and column. An engine source beside a clean subject is not
+\ linted, as the run loads nothing from it: the strict lint refuses
+\ src/habu/prims.f's `set-check`.
+: BOUNDARY-OFF$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-BX ( -- n ) 1 ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: BOUNDARY-PROSE$ ( ptr u8 n -- ptr u8 n ) {: at:ptr atu:n :}
+   SB-RESET
+   s" UNCHECKED-DEFINITION " SB-APPEND
+   LIST$ SB-APPEND
+   at atu SB-APPEND
+   s"  `CKT-BX`" SB-APPEND
+   SB$ ;
+
+: BOUNDARY-MUTATION$ ( -- ptr u8 n )
+   SB-RESET
+   s" CHECKER-MUTATION " SB-APPEND
+   SUP$ SB-APPEND
+   s" :1:3:" SB-APPEND
+   SB$ ;
+
+: BOUNDARY-JSON$ ( -- ptr u8 n )
+   SB-RESET
+   s\" \"file\":\"" SB-APPEND
+   LIST$ SB-APPEND
+   s\" \",\"line\":2,\"column\":3," SB-APPEND
+   SB$ ;
+
+: BOUNDARY-LIST-RUN ( [ -- ] -- n n n ) {: setup :}
+   RESET
+   setup execute
+   LIST-OPT
+   LIST$ FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: EXPECT-BOUNDARY ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n want:ptr wantu:n :}
+   rc 1 T=
+   outu 0 T=
+   CAP-ERR erru want wantu CONTAINS? TTRUE ;
+
+: TEST-BOUNDARY-LIST ( -- )
+   LIST$ BOUNDARY-OFF$ WRITE-ALL
+   [: ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   [: s" all-errors" OPT ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   [: s" json-errors" OPT ;] BOUNDARY-LIST-RUN
+   {: outu:n erru:n rc:n :}
+   outu erru rc BOUNDARY-JSON$ EXPECT-BOUNDARY
+   CAP-ERR erru s\" \"code\":\"E-UNCHECKED-DEFINITION\"" CONTAINS? TTRUE
+   SUP$ s\" 0 set-check\n" WRITE-ALL
+   LIST$ s\" : CKT-BX ( -- n ) 1 ;\n" WRITE-ALL
+   [: SUP$ FILE ;] BOUNDARY-LIST-RUN
+   {: outu:n erru:n rc:n :}
+   outu erru rc s" :1:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   CAP-ERR erru BOUNDARY-MUTATION$ CONTAINS? TTRUE
+   LIST$ GOOD$ WRITE-ALL
+   [: s" src/habu/prims.f" FILE ;] BOUNDARY-LIST-RUN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 : TEST-OPTIONS ( -- )
    RESET
    s" json-errors" OPT
@@ -1701,12 +1757,20 @@ variable LONG-J
    CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
    CAP-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
 
+\ A source list lints each file it names, so the finding names that file.
+: RESERVED-LIST-AT$ ( -- ptr u8 n )
+   SB-RESET
+   LIST$ SB-APPEND
+   s" :1:10: `I`" SB-APPEND
+   SB$ ;
+
 : RESERVED-LIST-TEST ( -- )
-   RESERVED-LIST-RUN 1 T=
+   LIST$ RESERVED$ WRITE-ALL
+   LIST$ LIST-RUN 1 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   CAP-ERR erru s" <source-list>" CONTAINS? TTRUE ;
+   CAP-ERR erru RESERVED-LIST-AT$ CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
    \ The resident harness has already provided lib/test.f. A fresh tool
@@ -1729,10 +1793,15 @@ variable LONG-J
 
 \ test/gate-images.f requires lib/aio.f, which ends by loading its macOS host
 \ module (a require cycle) and calls SUMTYPE constructors it declares itself.
+\ tools/object-image.f loads its target's image writers in target arms, and
+\ src/habu/driver-io.f, which it loads after them, calls their ASM-CODE.
+\ tools/native-emit.f's writers read src/os/image-bytes.f's MSIZE as they load.
 : TEST-IMAGE-TOOL-SOURCES ( -- )
    s" tools/engine-size.f" CHECK-TOOL-SOURCE
    s" tools/imgdump.f" CHECK-TOOL-SOURCE
-   s" test/gate-images.f" CHECK-TOOL-SOURCE ;
+   s" test/gate-images.f" CHECK-TOOL-SOURCE
+   s" tools/object-image.f" CHECK-TOOL-SOURCE
+   s" tools/native-emit.f" CHECK-TOOL-SOURCE ;
 
 \ ---- a subject the engine provides -------------------------------------------
 \ A run loads nothing from a source the engine carries, so it checks nothing
@@ -1811,6 +1880,8 @@ variable LONG-J
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 0 T=
    {: outu:n erru:n :}
    outu 0 T= erru 0 T=
+   \ Nor is it linted: src/core/include.f defines the loaders the lint reserves.
+   s" src/core/include.f" LIST$ CLI-ALL-LIST EXPECT-CHECKED
    LIST$ UNDEFINED$SRC WRITE-ALL
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 70 T=
    {: outu:n erru:n :}
@@ -3913,6 +3984,105 @@ variable REQ-U
    s" req-dup.f" REQ-RUN EXPECT-DUP-PROSE
    s" req-dup.f" ALL-PROSE-RUN EXPECT-DUP-PROSE ;
 
+\ The files of a set, one per target, define the same word, and a body loads
+\ the one its target predicate answers for, as tools/object-image.f loads
+\ sys.f. The engine answers every HB-TARGET-*? one way, so the arm it runs
+\ loads whenever the body does and the other arm never: its file left to the
+\ run leaves the word undefined, and the other arm's file checked too reads
+\ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
+\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
+\ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
+\ any other condition is the run's: the one in CKT-RQ-COND never runs, and
+\ its file defines the word again.
+: REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
+   s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
+   file fileu REQ-LIT+ tail tailu REQ-LINE+ ;
+
+: REQ-ALT-USE ( ptr u8 n -- )   \ the use, and the built text becomes the fixture
+   s" : CKT-RQ-ALT-USE ( -- n ) CKT-RQ-ALT ;" REQ-LINE+
+   REQ-WRITE ;
+
+: REQ-TARGET-FILES ( -- )
+   SB-RESET s" : CKT-RQ-ALT ( -- n ) 1 ;" REQ-LINE+
+   s" req-alt-linux.f" REQ-WRITE
+   s" req-alt-macos.f" REQ-WRITE
+   s" req-alt-x64.f" REQ-WRITE
+   s" req-alt-cond.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-PICK ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-PICK" REQ-LINE+
+   s" : CKT-RQ-COND ( -- )" REQ-LINE+
+   s" 0 0= 0=" s" req-alt-cond.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-COND" REQ-LINE+
+   s" req-alt.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK2 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-PICK2" REQ-LINE+
+   s" req-alt2.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK3 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required" REQ-PICK+
+   s"    else HB-TARGET-MACOS? if " SB-APPEND
+   s" req-alt-macos.f" REQ-LIT+ s"  required" REQ-LINE+
+   s"    else " SB-APPEND s" req-alt-linux.f" REQ-LIT+ s"  required then then ;" REQ-LINE+
+   s" CKT-RQ-PICK3" REQ-LINE+
+   s" req-alt3.f" REQ-ALT-USE ;
+
+: TEST-REQUIRE-TARGET ( -- )
+   REQ-TARGET-FILES
+   s" req-alt.f" REQ-ACCEPTED-EVERY
+   s" req-alt2.f" REQ-ACCEPTED-EVERY
+   s" req-alt3.f" REQ-ACCEPTED-EVERY ;
+
+\ The pre-pass reads a target predicate's spelling as the engine's answer, so a
+\ source that defines that spelling, by `:` or by `defer`, is refused at the
+\ name before an arm is skipped on the engine's word, in every mode: a source
+\ list lints each file it names. Each subject defines both host predicates, so
+\ the refusal does not depend on the host.
+: REQ-SHADOW-FILES ( -- )
+   SB-RESET s" : CKT-RQ-SH ( -- n ) 3 ;" REQ-LINE+
+   s" req-shadow-dep.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-SHADOW" REQ-LINE+
+   s" : HB-TARGET-LINUX? ( -- bool ) 0 0= ;" REQ-LINE+
+   s" : HB-TARGET-MACOS? ( -- bool ) 0 0= ;" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-SH-LOAD ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-shadow-dep.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-shadow-dep.f" s"  required then ;" REQ-PICK+
+   s" ;package" REQ-LINE+
+   s" CKT-RQ-SHADOW:CKT-RQ-SH-LOAD" REQ-LINE+
+   s" : CKT-RQ-SH-USE ( -- n ) CKT-RQ-SH ;" REQ-LINE+
+   s" req-shadow.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-SHADOW-D" REQ-LINE+
+   s" defer HB-TARGET-LINUX? ( -- bool )" REQ-LINE+
+   s" defer HB-TARGET-MACOS? ( -- bool )" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" req-shadow-defer.f" REQ-WRITE ;
+
+: EXPECT-RESERVED-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 1 T=
+   outu 0 T=
+   CAP-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+\ The default run reports the place in prose, the all-errors runs as JSON.
+: SHADOW-CASE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n at:ptr atu:n jat:ptr jatu:n :}
+   f fu REQ-RUN at atu EXPECT-RESERVED-AT
+   f fu REQ-PLAIN-RUN jat jatu EXPECT-RESERVED-AT
+   f fu REQ-ALL-RUN jat jatu EXPECT-RESERVED-AT ;
+
+: TEST-TARGET-SHADOW ( -- )
+   REQ-SHADOW-FILES
+   s" req-shadow.f" s" req-shadow.f:2:3"
+   s\" req-shadow.f\",\"line\":2,\"column\":3," SHADOW-CASE
+   s" req-shadow-defer.f" s" req-shadow-defer.f:2:7"
+   s\" req-shadow-defer.f\",\"line\":2,\"column\":7," SHADOW-CASE ;
+
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal at the type, in every mode, for every definer that sizes one (dot
 \ 2eb1290e), not a throw out of the pre-pass, which reads a DEFER-LAYOUT-BUFFER
@@ -4645,6 +4815,8 @@ variable LC-CANON-U
    s" check/require-cascade" [: TEST-REQUIRE-CASCADE ;] CASE-RUN
    s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN
    s" check/require-duplicate-prose" [: TEST-REQUIRE-DUPLICATE-PROSE ;] CASE-RUN
+   s" check/require-target" [: TEST-REQUIRE-TARGET ;] CASE-RUN
+   s" check/target-shadow" [: TEST-TARGET-SHADOW ;] CASE-RUN
    s" check/require-size-all" [: TEST-REQUIRE-SIZE-ALL ;] CASE-RUN
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
    s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
@@ -4726,6 +4898,7 @@ variable LC-CANON-U
    s" check/source-list-promotion" [: TEST-LIST-PROMOTION ;] CASE-RUN
    s" check/empty-source-mode" [: TEST-EMPTY-SOURCE-MODE ;] CASE-RUN
    s" check/boundary-phase" [: TEST-BOUNDARY-PHASE ;] CASE-RUN
+   s" check/source-list-boundary" [: TEST-BOUNDARY-LIST ;] CASE-RUN
    s" check/options" [: TEST-OPTIONS ;] CASE-RUN
    s" check/mode-collisions" [: TEST-MODE-COLLISIONS ;] CASE-RUN
    s" check/die" [: TEST-DIE ;] CASE-RUN
