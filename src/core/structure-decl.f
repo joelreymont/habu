@@ -103,10 +103,8 @@ TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
-TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
+TRUSTED: FAMILY-RESERVED? ( ptr u8 n -- bool ) TYPE-NAME:FAMILY-RESERVED? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: PTR-TOK? ( ptr u8 n -- bool ) SIG-PTR-TOK? ;
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
 TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
@@ -175,25 +173,16 @@ SD-RESET
 : UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
-\ name gate: a reserved family name is a grammar keyword, a control word, the
-\ STRUCTURE openers, a single-character token (would collide with a type letter /
-\ arity param), `ptr`, or a concrete checker type name. Case + duplicate are
-\ enforced by TFAM-DECL itself. The control-word arm reads TYPE-NAME:CONTROL?,
-\ the single owner of that list, so this front end refuses `if` exactly where the
-\ legacy PRODUCT / SUMTYPE definers refuse it through TDECL-RESERVED?.
-\ `ptr` is reserved because an effect reads a bare `ptr` as the pointer
-\ constructor in every scope: a package may shadow any other global family, but
-\ its own `ptr` could never be named. The arm asks SIG-PTR-TOK?, the parser's
-\ own predicate, through PTR-TOK? (TDECL-RESERVED? asks it too).
+\ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
+\ list every family definer asks, or a STRUCTURE opener. Case + duplicate are
+\ enforced by TFAM-DECL itself. A copy of the list kept here drifted from the
+\ legacy definers twice: it admitted the control words (`if`), then value
+\ record names (`STRUCTURE vr` after `VALUE-RECORD vr`).
 \ ---------------------------------------------------------------------------
 : NAME-RESERVED? ( ptr u8 n -- bool )
-   2dup GRAMMAR-KW? IF 2drop YES EXIT THEN
-   2dup CONTROL-KW? IF 2drop YES EXIT THEN
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
-   dup 1 = IF 2drop YES EXIT THEN
-   2dup PTR-TOK? IF 2drop YES EXIT THEN
-   CON-CODE 0 <> ;
+   FAMILY-RESERVED? ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN

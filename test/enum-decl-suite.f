@@ -1260,15 +1260,16 @@ enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 \
 \     A family, variant, or field named `if` would be compiled as the control
 \     word `if` wherever the generated code names it, so no declaration position
-\     may take one. The legacy definers have always refused them (sumtype.f
-\     TDECL-RESERVED?); this front end only consulted the grammar-keyword list,
-\     so `ENUM-DECL:ED-RUN if red green ;ENUM` was accepted here while
-\     `ENUM if red green ;ENUM` was refused 7110 — measured on the parent commit,
-\     and the reason the global ENUM token could not move to this front end
-\     without losing the reject. The list now lives once, in TYPE-NAME:CONTROL?
-\     (src/core/type-family.f); this front end reads it through CONTROL-KW?, the
-\     legacy definer reads it from TDECL-RESERVED?, and field rows read it from
-\     PF-RESERVED?. A second copy is what let the two drift apart.
+\     may take one. The legacy definers have always refused them (the family
+\     gate, TYPE-NAME:FAMILY-RESERVED?); this front end only consulted the
+\     grammar-keyword list, so `ENUM-DECL:ED-RUN if red green ;ENUM` was
+\     accepted here while `ENUM if red green ;ENUM` was refused 7110 — measured
+\     on the parent commit, and the reason the global ENUM token could not move
+\     to this front end without losing the reject. The list now lives once, in
+\     TYPE-NAME:CONTROL? (src/core/type-family.f); every family definer, this
+\     front end included, reads it through TYPE-NAME:FAMILY-RESERVED?, and field
+\     rows read it from PF-RESERVED?. A second copy is what let the two drift
+\     apart.
 \
 \     24a walks the whole list so a word silently dropped from the owner is a
 \     failure here; 24b proves the two spellings of the same declaration answer

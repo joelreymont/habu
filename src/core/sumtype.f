@@ -182,35 +182,14 @@ public
    [: TDECL-NOEND-BODY ;] TDECL-RUN ;
 
 \ --- name gate: reserved signature/type tokens, control words, and grammar
-\ keywords may not name a family or variant (docs §1, PLAN item 6).
+\ keywords may not name a family or variant (docs §1, PLAN item 6). The family
+\ list is TYPE-NAME:FAMILY-RESERVED? (type-family.f), which every family definer
+\ asks, so the definers cannot drift apart on it.
 
 private
 
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
-
-\ The control-word list itself lives once, in TYPE-NAME:CONTROL? (type-family.f).
-\ This file used to carry a second copy; the two drifted (the unified front ends
-\ inherited only the grammar-keyword half), so the list now has a single owner
-\ and every gate asks it. `construct`, `match` and `;match` — the item 9 reserved
-\ token protocol and MATCH control form — are part of that list.
-\ A family tail must also be one an effect reads as that family. The effect
-\ parser reads a value record name and a bare `ptr` (SIG-PTR-TOK?) ahead of any
-\ family; its other readings (`[`, stack syntax, row variables, split
-\ characters) are never canonical tails. The global `ptr` family claims its tail
-\ at top level only: a package may shadow a global family, so without this row
-\ a package's `ptr` registered and its CAST: converter `( n -- ptr )` died as a
-\ pointer with no pointee.
-: TDECL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
-   a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
-   a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + declared CT names
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
-   a u TDECL-KEYWORD? ;
 
 \ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the
 \ declaring scope can already resolve — the global scope always, plus the
@@ -242,7 +221,7 @@ variable TDECL-NI
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail" E-TFAM-CASE TDECL-THROW
    THEN
-   a u TDECL-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
+   a u TYPE-NAME:FAMILY-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
 
 \ A FAMILY name must remain valid grammar and must not collide with an in-scope
 \ sum variant. Exact same-package collisions fall through to TFAM-DECL's

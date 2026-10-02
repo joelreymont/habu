@@ -2461,9 +2461,8 @@ public
 
 \ CONTROL? is the ONE place the control-word list is written down. Every
 \ declaration name gate in the engine asks this word rather than keeping a list
-\ of its own: this package's own RESERVED? (variant names), sumtype.f's
-\ TDECL-RESERVED? (legacy family names), PF-RESERVED? below (field names), and
-\ the unified STRUCTURE / ENUM front ends through their CONTROL-KW? forwarders.
+\ of its own: this package's RESERVED? (variant names), which FAMILY-RESERVED?
+\ extends for every family definer, and PF-RESERVED? below (field names).
 \ A name that spells a control word would compile into a definition body as that
 \ control word, so no declaration position may take one; keeping a second copy of
 \ the list is how the front ends and the legacy definers drifted apart before.
@@ -2497,7 +2496,6 @@ private
 : RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CON-OF 0 <> IF RES-TRUE EXIT THEN
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
@@ -2510,6 +2508,21 @@ private
    CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
 public
+
+\ FAMILY-RESERVED? is the family-name gate, the one list every family definer
+\ asks: SUMTYPE, PRODUCT and NEWTYPE (sumtype.f) and the STRUCTURE and ENUM front
+\ ends. A family tail must be one an effect reads as that family. The effect
+\ parser reads a value record name (checker.f PSTACK) and a bare `ptr`
+\ (SIG-PTR-TOK?) ahead of any family, and an atom-shaped tail as an atom wherever
+\ the family does not resolve; its other readings (`[`, stack syntax, row
+\ variables, split characters) are never canonical tails. A package may shadow
+\ a global family, so without the `ptr` row a package's `ptr` registered and its
+\ CAST: converter `( n -- ptr )` died as a pointer with no pointee; a front end
+\ without the value record row loaded `ENUM vr` in a package after
+\ `VALUE-RECORD vr`, one name naming two kinds.
+: FAMILY-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
+   a u RESERVED? ;
 
 : VARIANT-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF E-SYNTAX throw THEN

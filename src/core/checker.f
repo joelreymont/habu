@@ -4565,7 +4565,7 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 
 \ SIG-PTR-TOK? ( ptr u8 n -- bool ) : the pointer constructor. SIG-TYPE reads a
 \ bare `ptr` as `ptr <pointee>` even where a family of that tail resolves, so
-\ TDECL-RESERVED? refuses the tail by this same word.
+\ TYPE-NAME:FAMILY-RESERVED? refuses the tail by this same word.
 : SIG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
 

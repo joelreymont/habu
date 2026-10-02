@@ -1425,7 +1425,8 @@ passing suite.
 - **A checker atom prefix reserves the whole lowercase `prefix-*` namespace.** A
   `layout-` prefix makes an ENUM variant spelled `layout-conflict` throw 7110;
   sweep with `rg '\bprefix-'` before choosing one. Declaration-grammar keywords
-  are reserved family names too (`ENUM policy` throws 7110).
+  are reserved family names too (`ENUM policy` throws 7110), and so is a value
+  record's name (`STRUCTURE vr` after `VALUE-RECORD vr` throws 7110).
 - **`0 set-check` also disarms the compile preflight.** A program that opens
   with it runs with neither gate. Declare the primitive instead, in the axiom
   form the engine's own primitives use (`PRIM: name PE-… PRIM;`), and the rest

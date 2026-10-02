@@ -49,13 +49,14 @@ active package scope: whichever is declared second rejects with
 
 These reserved-name rejects split into two diagnostic codes by mechanism. A
 **reserved concrete-cell or grammar token** — a single-letter signature var
-`a`..`z` (so the builtins `n`/`f`/`r`), `field`, `ptr`, atom prefixes, control
-words, and grammar keywords — is caught by the name gate (`TDECL-RESERVED?`,
-`src/core/sumtype.f`) *before* any family row is created, and rejects
+`a`..`z` (so the builtins `n`/`f`/`r`), `field`, `ptr`, value record names,
+atom prefixes, control words, and grammar keywords — is caught by the name gate
+every family definer asks (`TYPE-NAME:FAMILY-RESERVED?`,
+`src/core/type-family.f`) *before* any family row is created, and rejects
 `E-TDECL-NAME` (7110, "reserved name"). `ptr` is a seeded family (arity 2), but
 an effect reads a bare `ptr` as the pointer constructor in every scope, so no
-scope can name a family by that tail; the `ENUM` and `STRUCTURE` name gates
-refuse it through the same parser predicate, `SIG-PTR-TOK?`. Any other **live
+scope can name a family by that tail; the gate asks the parser's own
+predicate, `SIG-PTR-TOK?`. Any other **live
 registered parametric family tail** — `span`, `matrix`, and the other cell
 families seeded in
 `src/core/type-family.f` — passes the name gate and collides at registration

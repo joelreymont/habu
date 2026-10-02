@@ -1320,7 +1320,7 @@ s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpptr 1 FIELD x ptr ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ bad field names: uppercase, grammar keyword, control word. The control-word arm
 \ comes from TYPE-NAME:CONTROL?, the one place that list is written down, which
-\ this file's family-name gate (TDECL-RESERVED?) has always consulted; the field
+\ the family-name gate (TYPE-NAME:FAMILY-RESERVED?) has always consulted; the field
 \ gate did not, so `FIELD if n` used to register while `PRODUCT if` was refused.
 \ The unified STRUCTURE and ENUM front ends reach the identical answer through
 \ the same owner (test/structure-decl-suite.f, test/enum-decl-suite.f § 24).

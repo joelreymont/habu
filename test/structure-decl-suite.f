@@ -527,11 +527,11 @@ s" rpsdafter" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
 \
 \ A family or field named `if` would be compiled as the control word `if`
 \ wherever generated code names it. The legacy definers have always refused such
-\ names (sumtype.f TDECL-RESERVED?); this front end consulted only the
-\ grammar-keyword half of that list, so `STRUCTURE if 0 FIELD x n ;STRUCTURE`
+\ names (the family gate, TYPE-NAME:FAMILY-RESERVED?); this front end consulted
+\ only the grammar-keyword half of that list, so `STRUCTURE if 0 FIELD x n ;STRUCTURE`
 \ was accepted while the legacy spelling of the same name was refused 7110. The
 \ list now lives once, in TYPE-NAME:CONTROL? (src/core/type-family.f), read here
-\ through CONTROL-KW? and by field rows through PF-RESERVED?.
+\ through TYPE-NAME:FAMILY-RESERVED? and by field rows through PF-RESERVED?.
 \
 \ The family position answers 7110 (this front end's own name gate) and the
 \ field position answers 7125 (the field record's gate, the same code and wording

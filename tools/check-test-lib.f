@@ -923,9 +923,30 @@ variable LONG-J
 \ ENUM and STRUCTURE refuse the same `ptr` tail through their own name gates:
 \ inside a package, where shadowing a global family is otherwise legal, and at
 \ top level, where the reserved name answers ahead of the duplicate family.
-: PTR-PKG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: DECL-PKG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" package CKPT" SB-APPEND $0a SB-APPEND-C
+   a u SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+\ An effect reads a value record's name as that record ahead of any family
+\ (checker.f PSTACK), so a family of that tail could never be named: ENUM and
+\ STRUCTURE refuse it in both scopes, as SUMTYPE does. The record is global, so
+\ the package source declares it outside the package.
+: VREC-LINE ( -- )
+   s" VALUE-RECORD ckvr x n END-VALUE-RECORD" SB-APPEND $0a SB-APPEND-C ;
+
+: VREC-TOP$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   VREC-LINE
+   a u SB-APPEND
+   SB$ ;
+
+: VREC-PKG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   VREC-LINE
+   s" package CKVP" SB-APPEND $0a SB-APPEND-C
    a u SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND
    SB$ ;
@@ -2312,34 +2333,57 @@ create BIG $2000 allot   variable BIG-U
    NOM-SIDE$ HB-LOAD-SRC NOM-LOAD-ADMITTED
    NOM-SIDE$ NOM-CHECK-ADMITTED ;
 
-: PTR-LOAD-REFUSED ( n n n -- )
+\ Each refusal names the declared tail: `declaration 'ptr': reserved name`.
+: RESERVED-LOAD-REFUSED ( n n n ptr u8 n -- ) {: want:ptr wantu:n :}
    67 T=
    {: outu:n erru:n :}
-   CAP-ERR erru s" declaration 'ptr': reserved name" CONTAINS? TTRUE ;
+   CAP-ERR erru want wantu CONTAINS? TTRUE ;
 
-: PTR-JSON-REFUSED ( ptr u8 n -- )
+: RESERVED-JSON-REFUSED ( ptr u8 n -- )
    DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" reserved name" CONTAINS? TTRUE ;
 
-: PTR-PROSE-REFUSED ( ptr u8 n -- )
+: RESERVED-PROSE-REFUSED ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
    DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" declaration 'ptr': reserved name" CONTAINS? TTRUE ;
+   CAP-ERR erru want wantu CONTAINS? TTRUE ;
 
-: PTR-DECL-REFUSED ( [ -- ptr u8 n ] -- )
-   dup execute HB-LOAD-SRC PTR-LOAD-REFUSED
-   dup execute PTR-JSON-REFUSED
-   execute PTR-PROSE-REFUSED ;
+: RESERVED-DECL-REFUSED ( [ -- ptr u8 n ] ptr u8 n -- ) {: q want:ptr wantu:n :}
+   q execute HB-LOAD-SRC want wantu RESERVED-LOAD-REFUSED
+   q execute RESERVED-JSON-REFUSED
+   q execute want wantu RESERVED-PROSE-REFUSED ;
+
+: PTR-REFUSAL$ ( -- ptr u8 n )
+   s" declaration 'ptr': reserved name" ;
 
 : TEST-DECL-CTOR-TAIL ( -- )
-   [: s" ENUM ptr red green ;ENUM" PTR-PKG$ ;] PTR-DECL-REFUSED
-   [: s" ENUM ptr red green ;ENUM" ;] PTR-DECL-REFUSED
-   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" PTR-PKG$ ;] PTR-DECL-REFUSED
-   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" ;] PTR-DECL-REFUSED ;
+   [: s" ENUM ptr red green ;ENUM" DECL-PKG$ ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" ENUM ptr red green ;ENUM" ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" DECL-PKG$ ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" ;] PTR-REFUSAL$ RESERVED-DECL-REFUSED ;
+
+: VREC-REFUSAL$ ( -- ptr u8 n )
+   s" declaration 'ckvr': reserved name" ;
+
+: TEST-DECL-VREC-TAIL ( -- )
+   [: s" ENUM ckvr red green ;ENUM" VREC-PKG$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" ENUM ckvr red green ;ENUM" VREC-TOP$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ckvr 0 FIELD x n ;STRUCTURE" VREC-PKG$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE ckvr 0 FIELD x n ;STRUCTURE" VREC-TOP$ ;] VREC-REFUSAL$ RESERVED-DECL-REFUSED ;
+
+\ An atom-shaped tail (checker.f ATOM-TOK?) reads as an atom wherever the family
+\ does not resolve, outside the package that owns it for one, so ENUM and
+\ STRUCTURE refuse it as SUMTYPE does.
+: ATOM-REFUSAL$ ( -- ptr u8 n )
+   s" declaration 'space-ck': reserved name" ;
+
+: TEST-DECL-ATOM-TAIL ( -- )
+   [: s" ENUM space-ck red green ;ENUM" DECL-PKG$ ;] ATOM-REFUSAL$ RESERVED-DECL-REFUSED
+   [: s" STRUCTURE space-ck 0 FIELD x n ;STRUCTURE" DECL-PKG$ ;] ATOM-REFUSAL$ RESERVED-DECL-REFUSED ;
 
 : LIN-REFUSED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NOM-LIN$ HB-LOAD-SRC NOM-LOAD-REFUSED
@@ -3707,6 +3751,8 @@ POISON-RECORD
    s" check/nominal-ctor-tail" [: TEST-NOMINAL-CTOR-TAIL ;] CASE-RUN
    s" check/nominal-shadow-side" [: TEST-NOMINAL-SHADOW-SIDE ;] CASE-RUN
    s" check/decl-ctor-tail" [: TEST-DECL-CTOR-TAIL ;] CASE-RUN
+   s" check/decl-vrec-tail" [: TEST-DECL-VREC-TAIL ;] CASE-RUN
+   s" check/decl-atom-tail" [: TEST-DECL-ATOM-TAIL ;] CASE-RUN
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
