@@ -1,14 +1,17 @@
 \ engine-id.f - the running engine's path and binary content key.
-\ PATH$ is the kernel-reported pathname. KEY$ hashes a descriptor bound to the
-\ running image: /proc/self/exe on Linux, and on macOS a descriptor whose vnode
-\ matches the main executable's mapped vnode. A pathname can be replaced after
-\ PATH$ resolves it, so its bytes alone cannot establish image identity.
+\ PATH$ is the kernel-reported pathname. EXEC-PATH$ falls back to the launch
+\ pathname where the kernel refuses that report. KEY$ hashes a descriptor bound
+\ to the running image: /proc/self/exe on Linux, and on macOS a descriptor
+\ whose vnode matches the main executable's mapped vnode. A pathname can be
+\ replaced after PATH$ resolves it, so its bytes alone cannot establish image
+\ identity.
 \ Cached pathname bytes and cache validity are cleared before image capture
 \ through a one-shot lifecycle hook. The next process, or a later use in this
 \ process, registers a fresh hook when it first caches either value.
 
 require lib/errors.f
 require lib/string.f
+require lib/le.f
 require lib/ffi-abi.f
 
 package ENGINE-ID
@@ -17,6 +20,7 @@ PATH-CAP 1 + constant EID-PATH-CAP
 64 constant EID-KEY-LEN
 
 create EID-PATH EID-PATH-CAP allot   variable EID-PATH-U   variable EID-PATH-DONE
+create EID-LAUNCH EID-PATH-CAP allot create EID-LAUNCH-SIZE 4 allot
 create EID-KEY EID-KEY-LEN allot     variable EID-KEY-DONE
 variable EID-CLEANUP-LIVE
 create EID-FSHA-CTX SHA256-FILE-CTX-BYTES allot
@@ -51,6 +55,10 @@ PROCESS-SYMBOLS
 FUNCTION: SELF-PATH proc_pidpath ( n ptr u8 n -- n )
    1 2 WRITES-ARG
 ;FUNCTION
+FUNCTION: LAUNCH-PATH _NSGetExecutablePath ( ptr u8 ptr u8 -- i32 )
+   0 EID-PATH-CAP WRITES-BYTES
+   1 4 WRITES-BYTES                     \ uint32_t *bufsize
+;FUNCTION
 FUNCTION: MAIN-HEADER _dyld_get_image_header ( n -- n ) ;FUNCTION
 FUNCTION: MAPPED-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
    3 4 WRITES-ARG
@@ -63,6 +71,8 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    \ macOS proc_pidpath can leave a right-aligned copy beyond the reported length.
    \ Clear the full allocated span before capture.
    EID-PATH-CAP 0 ?do 0 EID-PATH i + c! loop
+   EID-PATH-CAP 0 ?do 0 EID-LAUNCH i + c! loop
+   0 EID-LAUNCH-SIZE LE:U32!
    0 EID-PATH-U !
    0 EID-PATH-DONE !
    0 EID-KEY-DONE !
@@ -101,6 +111,16 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
 : CACHED-PATH ( -- ptr u8 n )
    REPORTED-PATH dup 0= if 2drop E-ENGINE-PATH throw then ;
 
+\ dyld's record of the pathname the process was launched by. It answers where
+\ a sandbox that denies process-info-pidinfo makes proc_pidpath fail with
+\ EPERM. The pathname is absolute but may name a symlink or hold `..`
+\ segments. It is not cached: the engine root reads it once per process.
+: LAUNCH-PATH$ ( -- ptr u8 n )
+   REGISTER-CLEANUP
+   EID-PATH-CAP EID-LAUNCH-SIZE LE:U32!
+   EID-LAUNCH EID-LAUNCH-SIZE LAUNCH-PATH 0<> if EID-LAUNCH 0 exit then
+   EID-LAUNCH dup ZLEN ;
+
 : OPEN-RUNNING ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
       EID-PROC-EXE open-rd exit
@@ -137,8 +157,13 @@ public
 
 : PATH$ ( -- ptr u8 n ) CACHED-PATH ;
 
-\ PATH$, or an empty span where PATH$ throws E-ENGINE-PATH.
-: PATH-OR-EMPTY$ ( -- ptr u8 n ) REPORTED-PATH ;
+\ The executable's pathname for finding its source tree: PATH$, else on macOS
+\ the launch pathname, which the caller canonicalizes, else an empty span
+\ where no source answers (a Linux without /proc). Never an identity: KEY$
+\ keeps PATH$.
+: EXEC-PATH$ ( -- ptr u8 n )
+   REPORTED-PATH dup 0<> if exit then
+   HB-TARGET-MACOS? if 2drop LAUNCH-PATH$ then ;
 
 : KEY$ ( -- ptr u8 n )
    EID-KEY-DONE @ 0= if
