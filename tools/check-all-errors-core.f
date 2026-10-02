@@ -243,17 +243,24 @@ variable CA-JSON
    s" actual" CA-JSON-EMPTY-FIELD
    LJW-OBJECT-END LJW-COMMA
    s" suggestion" LJW-KEY s" Rename the word or undefine the old definition before redefining it." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW-OBJECT-END ;
 
+\ A session checks several files, so the line names the one that defined the
+\ word again, as the JSON record does.
 : CA-PROSE-DUP ( -- )
-   s" checker: duplicate definition" CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW-RESET
+   s" checker: duplicate definition in " LJW-RAW
+   CA-FILE-A@ CA-FILE-U @ LJW-RAW ;
+
+\ Both renderings are built in the JSON writer's buffer.
+: CA-DUP-RECORD$ ( -- ptr u8 n )
+   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   LJW$ ;
 
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
-   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   CA-DUP-RECORD$ CA-ERR
+   CA-LF$ CA-ERR
    DUP-RC CA-RAW-FAILURE ! ;
 
 : CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
@@ -623,5 +630,12 @@ public
    srca srcu CA-SOURCE-BUF!
    rc CA-THROW!
    CA-THROW-RECORD$ ;
+
+\ The record line --all-errors writes for a duplicate definition, for a caller
+\ that ran the checker itself over the source it reports under the given label:
+\ in the mode JSON! selected, with no line feed.
+: DUP-RECORD$ ( ptr u8 n -- ptr u8 n )
+   CA-START
+   CA-DUP-RECORD$ ;
 
 ;package

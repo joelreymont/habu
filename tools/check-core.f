@@ -1911,6 +1911,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
    CHK-E-CHECK CHK-THROW ;
 
+\ The checker reports nothing for a duplicate definition, so it is reported by
+\ the record --all-errors writes in the run's mode, and fails the run with the
+\ duplicate's status, as it fails the load.
+: CHK-PREVERIFY-DUP ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   label labelu CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
+
 \ The checker's own diagnostics are JSON lines in either mode.
 : CHK-PREVERIFY-SPAN ( ptr u8 n ptr u8 n n n -- )
    {: label:ptr labelu:n path:ptr pathu:n start:n end:n :}
@@ -1921,6 +1928,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    start CHK-PRE-AT !
    CHK-PREVERIFY-CAPTURE {: rc:n :}
    rc CHECK-ALL-ERRORS:THREW? if rc label labelu CHK-PREVERIFY-THREW then
+   rc CHECK-ALL-ERRORS:DUP-RC = if label labelu CHK-PREVERIFY-DUP then
    rc 0 <> if rc throw then ;
 
 : CHK-PREVERIFY-SEG ( n -- ) {: seg:n :}

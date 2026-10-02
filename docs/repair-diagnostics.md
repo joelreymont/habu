@@ -103,11 +103,14 @@ source discovery stops there. Without `--json-errors` a file gets
 `check.f: discovery rejected: unterminated string` and standard input the bare
 code on its own line.
 
-A second definition of a name in one wordlist under `--all-errors` emits a
-definition-shaped object with code `E-DUPLICATE-DEFINITION` and repair class
-`rename_duplicate`. Its `word`, `token` and `definition_source` are the
-placeholder `duplicate-definition` at line 1, column 1, not the duplicate's own
-name and place.
+A second definition of a name in one wordlist, with or without
+`--all-errors`, emits a definition-shaped object with code
+`E-DUPLICATE-DEFINITION` and repair class `rename_duplicate`, whose `file` is
+the source that defined the name again. Its `word`, `token` and
+`definition_source` are the placeholder `duplicate-definition` at line 1,
+column 1, not the duplicate's own name and place. Nothing after it is checked,
+and the run exits 78 as the load does. Without `--json-errors` it is the line
+`checker: duplicate definition in <file>`.
 
 `tools/check.f` refuses, before checking anything, a single file or a
 `--source-list` whose every input is a source the engine provides, since a run

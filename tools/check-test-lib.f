@@ -3598,8 +3598,28 @@ variable REQ-U
 
 : TEST-REQUIRE-DUPLICATE ( -- )
    REQ-DUP-FILES
+   s" req-dup.f" ST-JSON-RUN EXPECT-ONE-DUPLICATE
    s" req-dup.f" REQ-PLAIN-RUN EXPECT-ONE-DUPLICATE
    s" req-dup.f" REQ-ALL-RUN EXPECT-ONE-DUPLICATE ;
+
+\ In prose the duplicate's line names the file that defined the word again,
+\ as the JSON record does, in the default mode and under --all-errors.
+: REQ-DUP-PROSE$ ( -- ptr u8 n )
+   s" req-dup-dep.f" REQ$ {: p:ptr pu:n :}
+   SB-RESET
+   s" checker: duplicate definition in " SB-APPEND
+   p pu SB-APPEND
+   SB$ ;
+
+: EXPECT-DUP-PROSE ( n n n -- )
+   CHECK-ALL-ERRORS:DUP-RC T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru REQ-DUP-PROSE$ CONTAINS? TTRUE ;
+
+: TEST-REQUIRE-DUPLICATE-PROSE ( -- )
+   REQ-DUP-FILES
+   s" req-dup.f" REQ-RUN EXPECT-DUP-PROSE
+   s" req-dup.f" ALL-PROSE-RUN EXPECT-DUP-PROSE ;
 
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal at the type, in every mode, for every definer that sizes one (dot
@@ -3867,6 +3887,7 @@ POISON-RECORD
    s" check/require-using" [: TEST-REQUIRE-USING ;] CASE-RUN
    s" check/require-cascade" [: TEST-REQUIRE-CASCADE ;] CASE-RUN
    s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN
+   s" check/require-duplicate-prose" [: TEST-REQUIRE-DUPLICATE-PROSE ;] CASE-RUN
    s" check/require-size-all" [: TEST-REQUIRE-SIZE-ALL ;] CASE-RUN
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
    s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
