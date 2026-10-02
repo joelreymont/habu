@@ -1756,8 +1756,8 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
    CHK-U$ CHK-ERR ;
 
-\ The prefix shares the subject's first line, and the origin markers sit on
-\ their definitions' lines, so line N of the run file is line N of the subject:
+\ The prefix shares the subject's first line, and the origin markers add no
+\ line break, so line N of the run file is line N of the subject:
 \ the engine counts the lines of the file it reads when it refuses a statement.
 : CHK-BUILD-PREFIX ( -- )
    s" 0 set-check" CHK-RUN-SP

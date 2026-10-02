@@ -20,6 +20,7 @@ $40000 constant DO-FILE-CAP
 40 constant DO-LPAREN
 41 constant DO-RPAREN
 58 constant DO-COLON-C
+59 constant DO-SEMI-C
 92 constant DO-BSLASH
 
 create DO-NUM-BUF DO-NUM-CAP allot
@@ -48,6 +49,7 @@ variable DO-ORIG-LINE
 variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
+variable DO-RUN-X             \ first word of the current run, -1 for none (DO-STEP)
 TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
 variable DO-OUT-CAP
@@ -191,12 +193,19 @@ variable DO-OUT-BUF?
    line DO-TOK-LINE !
    col DO-TOK-COL ! ;
 
+: DO-RUN-END ( -- )
+   -1 DO-RUN-X ! ;
+
+: DO-RUN+ ( -- )
+   DO-RUN-X @ 0 < if DO-TOK-BYTE @ DO-RUN-X ! then ;
+
 : DO-SKIP-IGNORED ( -- )
    begin DO-END? 0= while
       DO-C@ LINT-WS? if
          DO-ADV drop
       else DO-C@ DO-BSLASH = if
          DO-SKIP-LINE
+         DO-RUN-END
       else
          exit
       then then
@@ -256,10 +265,22 @@ variable DO-OUT-BUF?
    DO-SAVE-LINE @ DO-LINE !
    DO-SAVE-COL @ DO-COL ! ;
 
-: DO-COLON? ( -- bool )
+: DO-CHAR-WORD? ( n -- bool )
+   {: c:n :}
    DO-TOK-K @ DO-WORD <> if DO-FALSE exit then
    DO-TOK-U @ 1 <> if DO-FALSE exit then
-   DO-TOK-A@ c@ DO-COLON-C = ;
+   DO-TOK-A@ c@ c = ;
+
+: DO-COLON? ( -- bool )
+   DO-COLON-C DO-CHAR-WORD? ;
+
+: DO-SEMI? ( -- bool )
+   DO-SEMI-C DO-CHAR-WORD? ;
+
+\ The word opens a string literal, whose text the scan has skipped.
+: DO-STRING? ( -- bool )
+   DO-TOK-A@ DO-TOK-U @ LINT-ESC-STRING-OPENER? if DO-TRUE exit then
+   DO-TOK-A@ DO-TOK-U @ LINT-NORMAL-STRING-OPENER? ;
 
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
@@ -285,8 +306,8 @@ variable DO-OUT-BUF?
 : DO-EMIT-NUM ( n -- )
    DO-U$ DO-OUT ;
 
-\ The marker goes on the definition's own line, so every line of the output is
-\ the source's line of the same number.
+\ A marker holds no line break, so every line of the output is the source's line
+\ of the same number.
 : DO-EMIT-MARKER ( n n n n -- ) {: line col byte pos :}
    pos DO-EMIT-UNTIL
    DO-SP DO-C
@@ -296,11 +317,15 @@ variable DO-OUT-BUF?
    s"  DIAG-ORIGIN!" DO-OUT
    DO-SP DO-C ;
 
+\ The marker goes where the `:`'s run of words began, never between a definer
+\ and its name. In `create :` followed by `: F` both colons are marked before
+\ `create`, and F's marker, the later, is in force when F is checked. The
+\ origin is the token after the `:`, the name it reads.
 : DO-MARK-COLON ( -- )
    DO-TOK-LINE @ DO-ORIG-LINE !
    DO-TOK-COL @ DO-ORIG-COL !
    DO-TOK-BYTE @ DO-ORIG-BYTE !
-   DO-TOK-BYTE @ DO-ORIG-POS !
+   DO-RUN-X @ DO-ORIG-POS !
    DO-SAVE-SCAN
    DO-NEXT-TOKEN if
       DO-ORIGIN-WORD? if
@@ -322,6 +347,21 @@ variable DO-OUT-BUF?
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
+\ A definer reads the token after it as its name, and the scan cannot tell
+\ which words are definers: `create`, `variable` and any word made from them,
+\ in this file or one it requires. So a marker never directly follows a word. A
+\ run of words starts after the last token that leaves no name to read: a `;`,
+\ a comment, a string literal or a parsing keyword's operand, or at the start
+\ of the file. A definer that names `;` and reads more after it
+\ (`TYPED-VARIABLE ; n`) is split; no tree definer does.
+: DO-STEP ( -- )
+   DO-ORIGIN-WORD? 0= if DO-RUN-END exit then
+   DO-PARSER? if DO-SKIP-OPERAND DO-RUN-END exit then
+   DO-SEMI? if DO-RUN-END exit then
+   DO-STRING? if DO-RUN-END exit then
+   DO-RUN+
+   DO-COLON? if DO-MARK-COLON then ;
+
 : DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
    src DO-SRC-A!
    u DO-SRC-U !
@@ -329,10 +369,8 @@ variable DO-OUT-BUF?
    0 DO-OUT-X !
    1 DO-LINE !
    1 DO-COL !
-   begin DO-NEXT-TOKEN while
-      DO-PARSER? if DO-SKIP-OPERAND else
-      DO-COLON? if DO-MARK-COLON then then
-   repeat
+   DO-RUN-END
+   begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
 : DIAG-ORIGIN ( ptr u8 n -- )

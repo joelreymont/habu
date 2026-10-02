@@ -66,42 +66,99 @@ create DGT-ERR DGT-BUF-CAP allot
    SB-RESET
    SB$ ;
 
+\ `create :` names a word `:`, so the next line holds the only definition.
+: DGT-DEF-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" create :" SB-APPEND DGT-LF
+   s" : F ( -- n ) 7 ;" SB-APPEND DGT-LF
+   s" F ." SB-APPEND DGT-LF
+   SB$ ;
+
+\ No marker stands between `create` and its name: both colons are marked
+\ before the words that end at them, and F's marker, the later, is in force.
+: DGT-DEF-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s"  2 1 9 DIAG-ORIGIN!  2 3 11 DIAG-ORIGIN! create :" SB-APPEND DGT-LF
+   s" : F ( -- n ) 7 ;" SB-APPEND DGT-LF
+   s" F ." SB-APPEND DGT-LF
+   SB$ ;
+
+\ A definer the file defines names `:` the same way.
+: DGT-USER-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : MK ( n -- ) create , does> ( -- ptr n ) ;" SB-APPEND DGT-LF
+   s" 5 MK :" SB-APPEND DGT-LF
+   s" : G ( -- n ) 8 ;" SB-APPEND DGT-LF
+   s" G ." SB-APPEND DGT-LF
+   SB$ ;
+
+: DGT-LINE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET
+   SB-APPEND DGT-LF
+   SB$ ;
+
 : DGT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-diag-origin" HB-TMP-MKDIR {: a:ptr u:n :}
    a u DGT-ROOT-BUF DGT-ROOT-U DGT-COPY!
-   DGT-ROOT CLEANUP-DIR+
-   DGT-ROOT s" input.f" DGT-IN-BUF JOIN-PATH DGT-IN-U !
-   DGT-IN CLEANUP+ ;
+   DGT-ROOT CLEANUP-DIR+ ;
+
+\ Write a case's source in the case directory; DGT-IN names it until the next.
+: DGT-INPUT! ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n src:ptr srcu:n :}
+   DGT-ROOT name nameu DGT-IN-BUF JOIN-PATH DGT-IN-U !
+   DGT-IN CLEANUP+
+   DGT-IN src srcu WRITE-ALL ;
 
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: DGT-RUN ( -- len len outcome )
+: DGT-RUN ( ptr u8 n -- len len outcome )
+   {: tool:ptr toolu:n :}
    PROC-ARGV-RESET
    s" --load" DGT-ARG+
-   s" tools/diag-origin.f" DGT-ARG+
+   tool toolu DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
    ENGINE-CANDIDATE:PATH$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
    DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: DGT-EXPECT-EXIT ( len len outcome n -- n n )
-   {: outu:len erru:len oc expect:n :}
-   s" tools/diag-origin.f" DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc expect
-   T-OUTCOME-EXITED=
-   outu LEN>N erru LEN>N ;
+\ Run a tool on DGT-IN, require exit 0 and an empty stderr, and answer the
+\ length of its stdout in DGT-OUT.
+: DGT-RUN-OK ( ptr u8 n -- n )
+   {: tool:ptr toolu:n :}
+   tool toolu DGT-RUN {: outu:len erru:len oc :}
+   tool toolu DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   DGT-ERR erru LEN>N DGT-EMPTY$ T$=
+   outu LEN>N ;
 
 : DGT-TEST-CLI ( -- )
-   DGT-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}
-   DGT-OUT outu DGT-WANT$ T$=
-   DGT-ERR erru DGT-EMPTY$ T$= ;
+   s" input.f" DGT-SOURCE$ DGT-INPUT!
+   s" tools/diag-origin.f" DGT-RUN-OK {: outu:n :}
+   DGT-OUT outu DGT-WANT$ T$= ;
+
+: DGT-TEST-DEFINER-MARKS ( -- )
+   s" definer.f" DGT-DEF-SOURCE$ DGT-INPUT!
+   s" tools/diag-origin.f" DGT-RUN-OK {: outu:n :}
+   DGT-OUT outu DGT-DEF-WANT$ T$= ;
+
+\ check.f runs what it checks, so a file that loads prints the same there.
+: DGT-TEST-DEFINER-CHECKS ( -- )
+   s" tools/check.f" DGT-RUN-OK {: outu:n :}
+   DGT-OUT outu s" 7" DGT-LINE$ T$= ;
+
+: DGT-TEST-USER-DEFINER ( -- )
+   s" user-definer.f" DGT-USER-SOURCE$ DGT-INPUT!
+   s" tools/check.f" DGT-RUN-OK {: outu:n :}
+   DGT-OUT outu s" 8" DGT-LINE$ T$= ;
 
 : DGT-MAIN ( -- )
    T-RESET
    DGT-PREPARE
-   DGT-IN DGT-SOURCE$ WRITE-ALL
    DGT-TEST-CLI
+   DGT-TEST-DEFINER-MARKS
+   DGT-TEST-DEFINER-CHECKS
+   DGT-TEST-USER-DEFINER
    CLEANUP-RUN
    DGT-ROOT EXISTS? TFALSE
    T-REPORT
