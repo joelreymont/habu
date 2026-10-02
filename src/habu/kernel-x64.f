@@ -1312,6 +1312,13 @@ private
 
 : CORRUPT$ ( -- ptr u8 n ) s" hb: catch frame corrupt" ;
 
+\ Refuse only the empty typed quotation value at a public invocation boundary.
+: CALLABLE, ( -- )
+   LBL {: live:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE live JCC,
+   S\" hb: unset quotation\n" ENGINE-ERROR:CALLABLE-ABI STDERR-EXIT,
+   live LBL, ;
+
 \ run-in-stack's frame: the caller's data stack pointer and descriptor.
 0 constant RUN-DSP
 8 constant RUN-BASE
@@ -1379,7 +1386,7 @@ private
 \ resumes after the unlink with the code in rax.
 : CAUGHT, ( -- )
    LBL {: resume:label :}
-   RAX POP,
+   RAX POP,  CALLABLE,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RCX DATA-REG HND-CELL MOV-LOAD,  RCX RSP CATCH-PREV MOV-STORE,
    DSP RSP CATCH-DSP MOV-STORE,
@@ -1469,7 +1476,7 @@ private
 \ frame, which a throw inside the body leaves in place.
 : FINALLY, ( -- )
    LBL {: done:label :}
-   RAX POP,
+   RAX POP,  CALLABLE,
    RSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RAX RSP 0 MOV-STORE,
    CAUGHT,
@@ -1638,6 +1645,7 @@ private
    RAX DSP -3 CELL * MOV-LOAD,
    RDX DSP -2 CELL * MOV-LOAD,
    RCX DSP CELL negate MOV-LOAD,
+   CALLABLE,
    RDX RCX unguarded GUARDED-EXTENT,
    DSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
@@ -1693,7 +1701,7 @@ public
 \ meanwhile.
 \ unit-compile-run arms the unit hook that interpreter calls, so it refuses too.
 : CONTROL, ( -- )
-   s" execute" [: RAX POP,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
+   s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
    s" 2>r" [: 2>R, ;] PRIM
    s" 2r>" [: 2R>, ;] PRIM

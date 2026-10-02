@@ -430,7 +430,7 @@ variable WANT-RC
    70 s" tick edge colon" GE-EXPECT-RC
    S\" E-UNDEFINED: engine-error:\n" s" tick edge colon" GE-EXPECT-ERR
    GE-SRC-RESET
-   s" s~ ' OI-NOPE~ ' evaluate catch . depth ." QLINE
+   s" s~ ' OI-NOPE~ ' evaluate catch . depth . 2drop" QLINE
    s" oi-tick-undefined-caught.f" BOTH
    s" tick undefined caught" GE-EXPECT-OK
    S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
@@ -440,7 +440,7 @@ variable WANT-RC
    s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 3 s~ oi-nested-tick.f~ ' included catch . depth . 4 ." QLINE
+   s" 3 s~ oi-nested-tick.f~ ' included catch . depth . 4 . 2drop drop" QLINE
    s" oi-tick-undefined-included.f" BOTH
    s" tick undefined included" GE-EXPECT-OK
    S\" 1\n70\n3\n4\n" s" tick undefined included" GE-EXPECT-OUT
@@ -747,7 +747,7 @@ variable WANT-RC
    s" hb: bare word a global and a used package both export: OI-SEVEN at "
    S\" oi-tick-shadow.f:1\n" DIED-AT
    GE-SRC-RESET
-   s" using OI-PKG s~ OI-SEVEN~ ' evaluate catch . OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
+   s" using OI-PKG s~ OI-SEVEN~ ' evaluate catch . 2drop OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
    s" oi-shadow-caught.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 105\n7\n8\n" CASE$ GE-EXPECT-OUT
@@ -838,21 +838,21 @@ variable WANT-RC
    GE-SRC-RESET
    PKG-VS-LINE
    s" include oi-nested-pkg-open.f" GE-SRC-LINE
-   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . 2drop OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-reopen.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ oi-nested-pkg-throw.f~ ' included catch . OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-throw.f~ ' included catch . 2drop OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
    s" oi-pkg-reclose.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . 2drop OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-evaluate.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
@@ -875,7 +875,7 @@ variable WANT-RC
    SPIN-PRELUDE
    GE-SRC-RESET
    s" package OI-T s~ : OI-TP ( -- n ) 6 ;~ evaluate" QLINE
-   s" s~ oi-nested-live-throw.f~ ' included catch . OI-TP ." QLINE
+   s" s~ oi-nested-live-throw.f~ ' included catch . 2drop OI-TP ." QLINE
    s" oi-pkg-live-throw.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 42\n6\n" CASE$ GE-EXPECT-OUT
@@ -892,7 +892,7 @@ variable WANT-RC
 : USING-INCLUDER ( -- )
    s" ;using using OI-FXB" s" oi-nested-using-includer.f" PKG-NESTED
    GE-SRC-RESET
-   s" using OI-FXA s~ oi-nested-using-includer.f~ ' included catch . OI-TWIN ." QLINE
+   s" using OI-FXA s~ oi-nested-using-includer.f~ ' included catch . 2drop OI-TWIN ." QLINE
    s" oi-using-includer.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 104\n1\n" CASE$ GE-EXPECT-OUT
@@ -914,7 +914,7 @@ variable WANT-RC
    s" ;package using OI-FXN OI-NOPE" s" oi-nested-slot-throw.f" PKG-NESTED
    GE-SRC-RESET
    s" s~ package OI-FXN public : OI-TWIN ( n -- n ) 100 + ; ;package~ evaluate" QLINE
-   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ ' included catch . OI-TWIN ." QLINE
+   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ ' included catch . 2drop OI-TWIN ." QLINE
    s" s~ : OI-SLOT ( -- n ) OI-TWIN ;~ evaluate OI-SLOT . ;package" QLINE
    s" oi-using-slot-throw.f" BOTH
    CASE$ GE-EXPECT-OK

@@ -527,7 +527,7 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
     cell is one term per cell.
   - A scope or region variable, a quantifier-bound variable, a scope, or a
     read view, mutable view or loan field anywhere in either term would erase
-    or introduce a scope dependency (`E-CAST-SCOPE`, 7146).
+    or introduce a scope dependency (`E-CAST-SCOPE`, 7151).
   - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
     quotation. An atom, or a pointer to one, on either side, and an atom in an
     introduction position of the destination, are `E-CAST-CLASS` (7130).
@@ -850,6 +850,9 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   after cleanup, a cleanup error supersedes it; `die` skips cleanup. Implicit
   tails such as `[ -- ]` enforce their windows through wrappers and typed
   storage; name rows explicitly for generic callbacks (`[ R -- S ]`).
+  A zero-initialized typed quotation may be fetched or dropped. Calling it
+  through `execute`, `catch`, `finally`, or `run-in-stack` exits 86 with
+  `hb: unset quotation` on stderr; `catch` cannot recover that fatal error.
 - **Higher-order signatures publish themselves** once `CHECK!` passes (`DIP`,
   `KEEP`, row callbacks); no TRUST row to pin a scheme.
 - **Function passing is checked.** A quotation parameter (`[ a a -- bool ]`, `[

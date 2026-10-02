@@ -237,7 +237,11 @@ forth.md: **Structures And Enums**; the rule and its open hole are
 
 ## 6 Errors
 
-- Codes are named constants in `lib/errors.f`. A library owns one inclusive
+- Library codes are named constants in `lib/errors.f`; checker throws also use
+  positive codes above 255 in their owning source. Codes 0..255 serve as
+  process exit statuses and may be shared. Positive checker codes may be reused
+  across files, but distinct `E-` names in one file must have distinct codes.
+  Negative library codes are unique across files. A library owns one inclusive
   block of about a hundred bounded by its own `E-X-FIRST` / `E-X-LAST` (arrays
   `-2000`, filesystem `-2100`, strings `-2200`, …) and reserves that whole
   range whether or not every code is minted;

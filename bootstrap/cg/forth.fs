@@ -1479,7 +1479,15 @@ HB-TARGET-LINUX? [IF]
 
 : BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
-: BEXEC ( -- )   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
+\ Mirror of habu1.f BCALLABLE: a zero typed quotation cell is readable, but
+\ execution is fatal and cannot be recovered by catch.
+: BCALLABLE ( -- )
+   LBL {: live :}
+   9 live CBNZ,
+   S\" hb: unset quotation\n" ENGINE-ERROR:CALLABLE-ABI C-EXIT-DIAG
+   live LBL, ;
+
+: BEXEC ( -- )   A G-POP  BCALLABLE  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A HNDF-SIZE frame on the machine stack saves the COMPLETE caller frame:
@@ -1489,7 +1497,7 @@ HB-TARGET-LINUX? [IF]
 \ caught throw restores return/loop state too (dot
 \ habu-restore-complete-exec-abb8baca). MIRROR of src/habu/habu1.f BCATCH.
 : BCATCH ( -- )
-   A G-POP                               \ xt -> x9
+   A G-POP  BCALLABLE                    \ xt -> x9
    SP SP HNDF-SIZE SUBI,
    30 SP 32 STR,                         \ save link
    11 DATA 8 LDR,  11 SP 0 STR,          \ prev HND
@@ -1584,6 +1592,7 @@ HB-TARGET-LINUX? [IF]
    LBL LBL LBL {: bad unguarded done :}
    12 XDS 24 SUBI,
    9 12 0 LDR, 14 12 8 LDR, 11 12 16 LDR,
+   BCALLABLE
    unguarded GUARDED-EXTENT?
    XDS XDS 24 SUBI,
    SP SP 32 SUBI, 30 SP 0 STR, XDS SP 8 STR,
@@ -1633,7 +1642,7 @@ HB-TARGET-LINUX? [IF]
 \ requires, locks through it, so the seed has to carry it.
 : BFINALLY ( -- )
    LBL {: ldone :}
-   A G-POP                               \ cleanup xt
+   A G-POP  BCALLABLE                    \ cleanup xt
    SP SP $10 SUBI,  9 SP 0 STR,
    BCATCH                                \ body xt: run under a handler, exc pushed
    A G-POP  9 SP 8 STR,

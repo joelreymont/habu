@@ -18,6 +18,9 @@
 \                                        returns, then throws; an extent inside
 \                                        DATA throws E-STACK-UNGUARDED; each is
 \                                        caught
+\    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
+\                                        run-in-stack refuse a zero quotation
+\                                        with `hb: unset quotation` on fd 2
 \    hb-x64-kernel-unguarded         67  that refusal with no handler
 \    hb-x64-kernel-throw             42  42 throw with no handler: the reporter
 \                                        returns with the scratch registers
@@ -257,6 +260,27 @@ STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
    NOTHING PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+: BUILD-UNSET-EXEC ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 PUSH,  s" execute" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-UNSET-CATCH ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 PUSH,  s" catch" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-UNSET-FINALLY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   55 THROWS PUSH-XT,  0 PUSH,  s" finally" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-UNSET-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 PUSH,  STACK-ABI:LOOP-BASE-CELL PUSH-CELL,  STACK-ABI:LOOP-BYTES PUSH,
+   s" run-in-stack" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 \ An uncaught THROWN-CODE throw with a reporter installed.
 : BUILD-THROW ( [ -- label ] ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
@@ -308,6 +332,10 @@ public
    s" hb-x64-kernel-finally" TMP-PATH BUILD-FINALLY
    s" hb-x64-kernel-run-in-stack" TMP-PATH BUILD-RUN-IN-STACK
    s" hb-x64-kernel-unguarded" TMP-PATH BUILD-UNGUARDED
+   s" hb-x64-kernel-unset-execute" TMP-PATH BUILD-UNSET-EXEC
+   s" hb-x64-kernel-unset-catch" TMP-PATH BUILD-UNSET-CATCH
+   s" hb-x64-kernel-unset-finally" TMP-PATH BUILD-UNSET-FINALLY
+   s" hb-x64-kernel-unset-run" TMP-PATH BUILD-UNSET-RUN
    [: REPORTS-BACK ;] s" hb-x64-kernel-throw" TMP-PATH BUILD-THROW
    [: REPORTS-EXIT ;] s" hb-x64-kernel-throw-report" TMP-PATH BUILD-THROW
    s" hb-x64-kernel-throw-corrupt" TMP-PATH BUILD-THROW-CORRUPT

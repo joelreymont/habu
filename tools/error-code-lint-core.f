@@ -1,12 +1,12 @@
-\ error-code-lint-core.f - global E- throw-code uniqueness lint.
+\ error-code-lint-core.f - E- throw-code collision lint.
 \
-\ Error codes are one global throw namespace: a thrown negative code is
+\ Negative error codes are one global throw namespace: a thrown code is
 \ ambiguous the moment two different E- names claim it. Three live collisions
 \ motivated this lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at
 \ -5003, E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan
 \ walks tracked .f/.fs sources under src/, lib/, tools/, and test/ for
-\ `-NNNN constant E-*` claims and flags any numeric code owned by two
-\ different E- names.
+\ numeric `constant E-*` claims. Positive checker codes above 255 are checked
+\ for collisions between different E- names in their owning file.
 \
 \ Which bytes are code is decided by the one shared source lexer, package
 \ LINT-LEX in tools/lint/source-lex.f. It consumes `\` line comments, `( ... )`
@@ -22,12 +22,14 @@
 \ later claim in that source while still printing `0 finding(s)`.
 \
 \ Scope and allowances (each deliberate):
-\ - Negative codes only: positive `NN constant E-*` values are sysexits-style
-\   process exit codes (64/70/74/76...), shared across tools by design.
-\ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (lib/errors.f blocks):
-\   they alias their block's boundary member codes, not new throw identities.
+\ - Positive codes 0..255 are sysexits-style process exit statuses
+\   (64/70/74/76...), shared across tools by design. Higher positive codes
+\   are checker diagnostics, and different owning files may reuse a number.
+\ - Negative `E-*-FIRST` / `E-*-LAST` names are range sentinels
+\   (lib/errors.f blocks). They alias their block's boundary member codes.
 \   Each FIRST/LAST pair (matched by shared stem, e.g. E-FS-FIRST/E-FS-LAST) also
-\   reserves the inclusive [FIRST,LAST] code range for the file that declares it.
+\   reserves the inclusive negative [FIRST,LAST] code range for its file.
+\   Positive FIRST/LAST names are ordinary claims.
 \   A negative E- code claimed INSIDE another file's reserved range is a foreign
 \   claim and is flagged, even before the owning block mints that exact member.
 \ - Identical (code, name) re-registrations are allowed (re-export shims; the
@@ -81,6 +83,7 @@ private
 48 constant ZERO-C
 36 constant DOLLAR-C
 45 constant MINUS-C
+255 constant MAX-EXIT-STATUS
 
 \ One file at a time, in a slab sized from the file. It was a fixed arena, and an
 \ arena doubled once already for src/core/checker.f is the shape tools/lint/text.f
@@ -197,6 +200,11 @@ variable JX
    a 1 + u 1- MAG? {: v:n ok:bool :}
    ok 0= if 0 LINT-FALSE exit then
    0 v - LINT-TRUE ;
+
+: CODE? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   a u NEG? {: code:n negative:bool :}
+   negative if code LINT-TRUE exit then
+   a u MAG? ;
 
 \ ---- claim table ------------------------------------------------------------
 : SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -329,7 +337,7 @@ variable JX
       1+
    repeat ;
 
-\ token k as a `<negative-number> constant E-NAME` claim
+\ token k as a numeric `constant E-NAME` claim
 : SCAN-CLAIM ( n -- ) {: k:n :}
    k 1+ NEXT-WORD {: ki:n :}
    ki LINT-LEX:COUNT >= if exit then
@@ -338,10 +346,18 @@ variable JX
    ni LINT-LEX:COUNT >= if exit then
    ni LINT-LEX:TOKEN {: na:ptr nu:n :}
    na nu s" E-" LINT-PREFIX? 0= if exit then
-   k LINT-LEX:TOKEN NEG? {: code:n ok:bool :}
-   ok 0= if exit then
-   na nu SENTINEL? if code na nu RES+ exit then
-   code na nu INTERN N>NAME PATH$ INTERN N>FILE CLAIM+ ;
+   k LINT-LEX:TOKEN CODE? {: code:n numeric:bool :}
+   numeric 0= if exit then
+   na nu SENTINEL? if
+      \ Only negative values reserve a range. A spelled -0 clears a bound.
+      code 0 < if code na nu RES+ exit then
+      code 0= if
+         k LINT-LEX:TOKEN NEG? if na nu RES+ exit then drop
+      then
+   then
+   code 0 < code MAX-EXIT-STATUS > or if
+      code na nu INTERN N>NAME PATH$ INTERN N>FILE CLAIM+
+   then ;
 
 : UNKNOWN-KIND ( n -- ) {: k:n :}
    s" error-code-lint: " type PATH$ type
@@ -395,7 +411,8 @@ variable JX
 
 : COLLIDE? ( n n -- bool ) {: i:n j:n :}
    i CODE@ j CODE@ =
-   i NAME@ j NAME@ NAME= 0= and ;
+   i NAME@ j NAME@ NAME= 0= and
+   i CODE@ 0 < i OWNER@ j OWNER@ FILE= or and ;
 
 \ one finding per colliding claim pair
 : FINDINGS ( -- )
@@ -552,7 +569,8 @@ public
 : LEDGER ( -- )
    SHOW-ON  WALK  SUMMARY ;
 
-\ gate entry (enforcing): any code claimed by two different E- names fails
+\ gate entry (enforcing): negative codes collide globally; positive checker
+\ codes above 255 collide within one file
 : STRICT ( -- )
    LEDGER
    BAD @ 0 > if 1 throw then ;

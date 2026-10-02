@@ -12924,10 +12924,10 @@ variable UNSAFE-SYM-N
 \ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
 \ block rather than sharing 7135, so a test can tell the two rejects apart.
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
-7146 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
 \ 7138-7146 are taken (dynamic storage, E-RIGID-EXHAUST, the using/trust/shadow
-\ rejects, E-CAST-SCOPE); the mint rule took the next free code.
+\ rejects); the mint rule took the next free code.
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
+7151 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
