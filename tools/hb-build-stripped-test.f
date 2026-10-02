@@ -189,6 +189,23 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$=
    HBT-CELLS-NOARG-RUN ;
 
+\ A DEFER THE HABU LOOP COMPILED, end to end: the image calls it, re-aims it with
+\ `is` and calls it again. While the loop kept the last record it looked up in
+\ src/habu/outer.f REC after OUTER:INTERPRET returned, the link refused this
+\ program, rc 70, `stripped AOT persistent data holds an undeclared code/dict
+\ pointer word=REC#base`.
+: HBT-STRIPPED-HABU-LOOP-DEFER ( -- )
+   HBT-REMOVE-AOT-OUT
+   s" test/stripped-habu-loop-defer-subject.f" HBT-AOT-OUT
+   HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn S\" 51\n\n18\n\n" T$= ;
+
 \ A stripped build's refusal as the CLI reports it. The link refuses an entry
 \ it cannot find with exit 74 and two lines on stderr, `aot: entry word not
 \ found: NAME` and its die message `aot: no entry` (src/habu/aot-closure.f
@@ -246,6 +263,7 @@ public
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS
+   HBT-STRIPPED-HABU-LOOP-DEFER
    HBT-STRIPPED-NO-ENTRY
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PTR-MARK

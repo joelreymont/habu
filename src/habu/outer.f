@@ -546,6 +546,10 @@ variable VALUE
    num ;
 
 \ ---- words --------------------------------------------------------------------------
+\ The record of the word the step looked up. INTERPRET (interpret.f) puts back
+\ what it held when the buffer began, so no record outlives the buffer that
+\ looked it up: a stripped image would hold it as an undeclared dictionary
+\ pointer.
 TYPED-VARIABLE REC ptr n
 
 \ A global hit is asked of the used publics as well, as habu2.f
@@ -601,8 +605,8 @@ TYPED-VARIABLE REC ptr n
    f MIN-IN 8 lshift or ;
 
 \ The unit hook, then the top-row hook, before the word runs. The flags and
-\ the xt wait on the return stack while the unit hook runs, which may run a
-\ loop that moves REC, and the xt while the top-row hook runs.
+\ the xt are read before either hook runs and wait on the return stack while
+\ they run.
 TRUSTED: RUN-WORD ( -- )
    LOOKUP GATE
    WORD-FLAGS >r  REC @ XREF-START >r
@@ -779,19 +783,19 @@ TRUSTED: RUN-WORD ( -- )
 \ as its token. `."` types its text straight from the input and allots
 \ nothing; `.\"` keeps its decoded bytes, as the engine's C-EIDOTQ does.
 : PUSH-STR ( -- )
-   [: KEEP ;] GIVE-STR TOP-EV-STR 0 HOOK ;
+   ['] KEEP GIVE-STR TOP-EV-STR 0 HOOK ;
 
 : PUSH-CSTR ( -- )
-   [: COUNTED ;] GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
+   ['] COUNTED GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-STR ( -- )
    TEXT type ;
 
 : PUSH-ESC-STR ( -- )
-   [: ESC-KEEP ;] GIVE-STR TOP-EV-STR 0 HOOK ;
+   ['] ESC-KEEP GIVE-STR TOP-EV-STR 0 HOOK ;
 
 : PUSH-ESC-CSTR ( -- )
-   [: ESC-COUNTED ;] GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
+   ['] ESC-COUNTED GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
@@ -805,7 +809,7 @@ TRUSTED: RUN-WORD ( -- )
 
 \ The hook sees the operand as the token.
 : PUSH-CHAR ( -- )
-   [: FIRST-BYTE ;] GIVE-N TOP-EV-CHAR 0 HOOK ;
+   ['] FIRST-BYTE GIVE-N TOP-EV-CHAR 0 HOOK ;
 
 \ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a

@@ -59,7 +59,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire src/habu/interpret.f\ns\q defer HABU-LOOP-DEFER ( n -- n ) : HABU-LOOP-INSTALL ( [ n -- n ] -- ) is HABU-LOOP-DEFER ;\q OUTER:INTERPRET\ns\q : HABU-LOOP-CALL ( n -- n ) HABU-LOOP-DEFER ; : HABU-LOOP-TRIPLE ( n -- n ) 3 * ;\q OUTER:INTERPRET\ns\q : HABU-LOOP-FIRST ( -- ) [: HABU-LOOP-TRIPLE ;] HABU-LOOP-INSTALL ; HABU-LOOP-FIRST\q OUTER:INTERPRET\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire src/habu/interpret.f\npackage DEFER-IMAGE-LOOP\ns\q defer ACTION ( n -- n ) : TRIPLE ( n -- n ) 3 * ;\q OUTER:INTERPRET\npublic\ns\q : INSTALL ( [ n -- n ] -- ) is ACTION ; : CALL ( n -- n ) ACTION ;\q OUTER:INTERPRET\nprivate\ns\q : FIRST ( -- ) [: TRIPLE ;] INSTALL ; FIRST\q OUTER:INTERPRET\n;package\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    S\" 18\n\ndefer-source: ok\n" {: prefix:ptr pu:n :}
@@ -77,7 +77,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-IMAGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    ENVIRONMENT
    path pathu
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n17 HABU-LOOP-CALL . cr\n: HABU-LOOP-FRESH ( n -- n ) 100 + ;\n: HABU-LOOP-REINSTALL ( -- ) ['] HABU-LOOP-FRESH HABU-LOOP-INSTALL ;\nHABU-LOOP-REINSTALL\n17 HABU-LOOP-CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n17 DEFER-IMAGE-LOOP:CALL . cr\npackage DEFER-IMAGE-CHECK\n: FRESH ( n -- n ) 100 + ;\n: REINSTALL ( -- ) ['] FRESH DEFER-IMAGE-LOOP:INSTALL ;\nREINSTALL\n;package\n17 DEFER-IMAGE-LOOP:CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
    {: outu:n :}
    OUT wantu want wantu T$=
    outu wantu - 65 T=

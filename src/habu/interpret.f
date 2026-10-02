@@ -70,8 +70,10 @@ private
 public
 
 \ Interpret the buffer as the engine's evaluate reads it, and put the input
-\ cells and the using depth back after, whether the buffer ends or a token
-\ throws: usings are file-local (habu1.f B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT).
+\ cells, the looked-up record (outer.f REC) and the using depth back after,
+\ whether the buffer ends or a token throws: usings are file-local (habu1.f
+\ B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT), and a buffer a word evaluates leaves
+\ the record of the step that ran the word.
 \ A throw also puts back the package scope the buffer entered with, its using
 \ floor included (habu2.f LEVALREC), so a package a throwing file opened is
 \ closed and one it closed is open again, and the used publics RUN-CAUGHT
@@ -88,12 +90,13 @@ public
    {: p:n e:n b:n d:n :}
    PKG-STATE {: rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
+   REC @ {: found:ptr :}
    d USE-FLOOR !
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    d RUN-CAUGHT {: code:n :}
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
-   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
+   p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  found REC !
    code 0<> if d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
    back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
