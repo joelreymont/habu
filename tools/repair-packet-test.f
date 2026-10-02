@@ -161,13 +161,11 @@ create PACKET-BUF FS-PATH-CAP allot
    [: RUN-CHECK-ACT ;] catch {: rc:n :}
    0 >LEN CHECK-ALL-ERRORS:OUT$ nip >LEN rc ;
 
-: DUMP-CAPTURE ( n n n n -- )
-   {: outu:n erru:n code:n expect:n :}
+: DUMP-CAPTURE ( n n n n ptr u8 n -- )
+   {: outu:n erru:n code:n expect:n ran:ptr ranu:n :}
    s" repair-packet-test failure" type cr
    s" case: " type LABEL$ type cr
-   s" source: " type SRC type cr
-   s" diag: " type DIAG-PATH type cr
-   s" packet: " type PACKET type cr
+   s" program: " type ran ranu type cr
    s" expected exit: " type expect . cr
    s" code: " type code . cr
    s" stdout bytes: " type outu . s" / " type CAPTURE-CAP . cr
@@ -180,21 +178,24 @@ create PACKET-BUF FS-PATH-CAP allot
 : REPAIR-TOOL$ ( -- ptr u8 n )
    s" tools/repair-packet.f" ;
 
-\ The one child this file spawns runs the repair tool.
-: EXPECT-EXIT ( len len outcome n -- n n )
-   {: outu:len erru:len oc expect:n :}
+: CHECK-TOOL$ ( -- ptr u8 n )
+   s" tools/check.f" ;
+
+\ Each child this file spawns loads a tool; the caller names it last.
+: EXPECT-EXIT ( len len outcome n ptr u8 n -- n n )
+   {: outu:len erru:len oc expect:n ran:ptr ranu:n :}
    oc MATCH outcome
-     exited OF dup expect <> if outu LEN>N erru LEN>N rot expect DUMP-CAPTURE else drop then ENDOF
-     signaled OF outu LEN>N erru LEN>N rot 128 + expect DUMP-CAPTURE ENDOF
+     exited OF dup expect <> if outu LEN>N erru LEN>N rot expect ran ranu DUMP-CAPTURE else drop then ENDOF
+     signaled OF outu LEN>N erru LEN>N rot 128 + expect ran ranu DUMP-CAPTURE ENDOF
      timeout OF ENDOF
    ;MATCH
    LABEL$ T-LABEL
-   REPAIR-TOOL$ OUT outu LEN>N ERR erru LEN>N oc expect T-OUTCOME-EXITED=
+   ran ranu OUT outu LEN>N ERR erru LEN>N oc expect T-OUTCOME-EXITED=
    outu LEN>N erru LEN>N ;
 
 : EXPECT-EXIT-NZ ( len len n -- n n )
    {: outu:len erru:len code:n :}
-   code 0 = if outu LEN>N erru LEN>N code -1 DUMP-CAPTURE then
+   code 0 = if outu LEN>N erru LEN>N code -1 SRC DUMP-CAPTURE then
    LABEL$ T-LABEL
    code 0 T<>
    outu LEN>N erru LEN>N ;
@@ -337,7 +338,7 @@ create PACKET-BUF FS-PATH-CAP allot
 : ARGV-CHECK-SOURCE ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
+   CHECK-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" --all-errors" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
@@ -350,7 +351,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" storage-unplaced" LABEL!
    s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" WRITE-SOURCE
    ARGV-CHECK-SOURCE
-   HB-CAPTURE 70 EXPECT-EXIT {: outu:n erru:n :}
+   HB-CAPTURE 70 CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    s" storage-unplaced stdout" T-LABEL
    outu 0 T=
    erru WRITE-DIAG
@@ -396,7 +397,7 @@ create PACKET-BUF FS-PATH-CAP allot
 
 : TEST-NOARGS ( -- )
    s" noargs" LABEL!
-   RUN-REPAIR-NOARGS 64 EXPECT-EXIT {: outu:n erru:n :}
+   RUN-REPAIR-NOARGS 64 REPAIR-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    s" noargs stdout" T-LABEL
    outu 0 T=
    s" noargs usage" T-LABEL
@@ -407,7 +408,7 @@ create PACKET-BUF FS-PATH-CAP allot
 : ARGV-CHECK-ENGINE ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
+   CHECK-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
    s" lib/string.f" >LEN PROC-ARGV+ ;
@@ -416,7 +417,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" engine" CASE-PATHS
    s" engine" LABEL!
    ARGV-CHECK-ENGINE
-   HB-CAPTURE 64 EXPECT-EXIT {: outu:n erru:n :}
+   HB-CAPTURE 64 CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    s" engine stdout" T-LABEL
    outu 0 T=
    erru WRITE-DIAG
