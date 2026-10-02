@@ -81,11 +81,16 @@ private
 \ its source.
 BODYBUF-CAP constant TEXT-CAP
 
-\ A name past it is refused rather than truncated into one that denotes another word.
+\ The longest definition name this compiler takes. Tier 0 and the dictionary hold
+\ any name the body capture holds, but each backend copies a function's name into
+\ a 128-byte buffer, and a quotation's function is named by the definition's
+\ name, `;does`, `[:` and its ordinal. A longer name is refused by its length
+\ rather than truncated into one that denotes another word.
 64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
-create NAME-BUF NAME-CAP allot
+\ The definition's name is its spelling in TXT, whole, which stays put until the
+\ next definition is recorded: no copy that a longer name could run past.
 PTR-VARIABLE NAME-A
 variable NAME-U
 
@@ -214,9 +219,10 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 \ when a rejected second `:` left a tentative spelling in the record slot.
 : KEEP-TAPE-NAME ( -- )
    TAPE-NAME$ {: a:ptr u:n :}
-   a NAME-A !  u NAME-U !
-   u NAME-CAP > if E-NCOMP-TEXT throw then
-   a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
+   a NAME-A !  u NAME-U ! ;
+
+: NAME$ ( -- ptr u8 n )
+   NAME-A @ NAME-U @ ;
 
 \ TRUST-DECL is deliberately unavailable to checked code. Register only after
 \ the scan has recorded the exact source spelling from the tape: the pending
@@ -309,7 +315,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then
-   TRUSTED? if NAME-BUF NAME-U @ TRUST-SIG$ REGISTER-TRUST then ;
+   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -364,9 +370,14 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ owns the record. Matching only the tail would let another package impersonate
 \ this definition.
 : RECORD-NAME-CK ( -- )
-   REC-INDEX XREF-REC  NAME-BUF NAME-U @  RECORD-NAME? 0= if
+   REC-INDEX XREF-REC  NAME$  RECORD-NAME? 0= if
       E-NCOMP-NAME throw
    then ;
+
+\ Refused after the scan, like every other post-scan refusal, so RETRACT finds
+\ the signature the scan or REGISTER-TRUST recorded under the whole name.
+: NAME-LEN-CK ( -- )
+   NAME-U @ NAME-CAP > if E-NCOMP-NAME-CAP throw then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
 70 constant RC-REJECT     \ the check hook's reject status (check-hook.f CHECK-RC)
@@ -379,7 +390,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ vector against; a term of a family more than one cell wide makes the two
 \ counts differ, and dict.f EFF-CELLS is where that choice is stated.
 \
-\ ASKED WITH THE SOURCE SPELLING copied by KEEP-TAPE-NAME: bare for an
+\ ASKED WITH THE SOURCE SPELLING kept by KEEP-TAPE-NAME: bare for an
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling
 \ after the scan, so a family-typed qualified effect has one owner here.
@@ -400,7 +411,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ certified scan nothing reaches it either: a package opened and closed by the
 \ source is E-NCOMP-NAME and an unsigned body answers its inferred effect.
 : KEEP-ARITY ( -- )
-   NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
+   NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if
       M-UNJUDGED @ -1 <> if RC-REJECT throw then
       E-NCOMP-ARITY throw
@@ -453,7 +464,7 @@ create SPELL-BUF SPELL-CAP allot
 \ compiled against that same certificate. A wrong answer cannot publish a wrong
 \ routine: either direction is refused by the validator or the memory-order rule.
 : NO-RETURN? ( -- bool )
-   NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
+   NAME$ NDICT:SPELL-DEAD? ;
 
 \ How control reaches and leaves this definition's routine. The backend composes
 \ its own machine contract from this and from what the definition takes and
@@ -541,9 +552,10 @@ create SPELL-BUF SPELL-CAP allot
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
+   NAME-LEN-CK
    KEEP-ARITY
    p r BIND-PRIOR
-   NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
+   NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
    EMITTED
    PUBLISH-IT
@@ -656,12 +668,12 @@ INSTALL-FORGET
    then
    TRUSTED? if
       NAME-U @ 0= if exit then
-      NAME-BUF NAME-U @ CHECKER-OWNER:USIG-TRUNCATE
+      NAME$ CHECKER-OWNER:USIG-TRUNCATE
       exit
    then
    M-VERDICT @ -1 <> if exit then
    NAME-U @ 0= if exit then
-   NAME-A @ NAME-U @ CHECKER-OWNER:USIG-TRUNCATE ;
+   NAME$ CHECKER-OWNER:USIG-TRUNCATE ;
 
 : LENGTH-CK ( -- )
    M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
@@ -672,11 +684,30 @@ INSTALL-FORGET
 : ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop ;
 
-: REPORT-FAILURE ( -- )
-   s" ncomp: cannot compile " ERROR-TEXT
-   NAME-BUF NAME-U @ ERROR-TEXT
+create DIGIT 1 allot
+
+\ A count for a person, in decimal.
+: COUNT-TEXT ( n -- )
+   {: v:n :}
+   v 10 >= if v 10 / RECURSE then
+   v 10 mod STR-ZERO + DIGIT c!
+   DIGIT 1 ERROR-TEXT ;
+
+: NAME-CAP-TEXT ( -- )
+   s" : a " ERROR-TEXT  NAME-U @ COUNT-TEXT
+   s" -byte name; the limit is " ERROR-TEXT  NAME-CAP COUNT-TEXT
+   s"  bytes" ERROR-TEXT ;
+
+\ The elaborator's refusal names the token it stopped at.
+: REFUSED-TEXT ( -- )
    NELAB:REFUSED$ {: a:ptr u:n :}
-   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
+   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then ;
+
+: REPORT-FAILURE ( n -- )
+   {: rc:n :}
+   s" ncomp: cannot compile " ERROR-TEXT
+   NAME$ ERROR-TEXT
+   rc E-NCOMP-NAME-CAP = if NAME-CAP-TEXT else REFUSED-TEXT then
    S\" \n" ERROR-TEXT ;
 
 : RUN ( -- )
@@ -690,7 +721,7 @@ INSTALL-FORGET
       entry-rc throw
    then
    M-RC @ {: rc:n :}
-   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
+   rc 0 <> if rc REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
@@ -709,7 +740,8 @@ INSTALL-FORGET
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
-   0 NAME-U ! ;
+   0 NAME-U !
+   NELAB:REFUSED-RESET ;
 
 public
 

@@ -66,6 +66,7 @@ $1000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
 75 constant NEST-RC                \ jit.f EMIT-SNAP-NEST-CHECK: BEGIN past the bound
+67 constant UNCAUGHT-RC            \ hb's exit status for an uncaught throw
 
 create OUT CAP allot
 create ERR CAP allot
@@ -123,6 +124,15 @@ variable RC     variable EXITED
 : ASSERT-RC ( n -- ) {: want:n :}
    EXITED @ TTRUE
    RC @ want T= ;
+
+\ The line the child prints for an uncaught code, rendered from the name so the
+\ needle follows lib/errors.f instead of repeating its number.
+: UNCAUGHT$ ( n -- ptr u8 n )
+   {: code:n :}
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
 
 \ ---- 1. both tiers compile, run and check ------------------------------------
 : TEST-BOTH-TIERS ( -- )
@@ -249,6 +259,46 @@ variable RC     variable EXITED
    s" the marking prims stay unreachable at top level" T-LABEL
    s" 0 int-mark" RUN  REJECT-RC ASSERT-RC
    ERR$ s" internal engine word" CONTAINS? TTRUE ;
+
+\ ---- 2c. tier 1 refuses a long name by its whole spelling --------------------
+\ Tier 0 and the dictionary hold any name the definition's 8000-byte capture
+\ holds; tier 1 refuses a name over 64 bytes (src/compiler/native/compiler.f
+\ NAME-CAP) and names it whole, with its length. A line read from a 64-byte copy
+\ of a longer name prints the previous definition's name, zeros and the bytes
+\ past the copy, and a TRUSTED: definition's signature retract dies finding no
+\ such name. Each line is compared whole up to its newline, so one byte past
+\ the name fails it.
+: TEST-NAME-CAP ( -- )
+   s" tier 0 compiles a name longer than tier 1's limit" T-LABEL
+   s" : TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ; TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 . cr"
+   RUN  s" 65" ASSERT-OK
+
+   s" tier 1 compiles a name at its limit" T-LABEL
+   s" 1 set-tier : TN-NAME-AT-THE-LIMIT-0123456789-0123456789-0123456789-0123456789 ( -- n ) 64 ; TN-NAME-AT-THE-LIMIT-0123456789-0123456789-0123456789-0123456789 . cr"
+   RUN  s" 64" ASSERT-OK
+
+   s" tier 1 refuses a longer name by its whole spelling and length" T-LABEL
+   s" 1 set-tier : TN-SHORT ( -- n ) 3 ; : TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ;"
+   RUN  UNCAUGHT-RC ASSERT-RC
+   ERR$ S\" ncomp: cannot compile TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678: a 65-byte name; the limit is 64 bytes\n"
+   CONTAINS? TTRUE
+   ERR$ E-NCOMP-NAME-CAP UNCAUGHT$ CONTAINS? TTRUE
+
+   s" tier 1 refuses a longer TRUSTED: name the same way" T-LABEL
+   s" 1 set-tier : TN-SHORT ( -- n ) 3 ; TRUSTED: TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ;"
+   RUN  UNCAUGHT-RC ASSERT-RC
+   ERR$ S\" ncomp: cannot compile TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678: a 65-byte name; the limit is 64 bytes\n"
+   CONTAINS? TTRUE
+   ERR$ E-NCOMP-NAME-CAP UNCAUGHT$ CONTAINS? TTRUE
+
+   \ The elaborator names the token it refused at. A later definition refused
+   \ before elaboration has no such token, and its line must not carry the
+   \ earlier one's.
+   s" a refusal line carries no earlier definition's token" T-LABEL
+   S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
+   RUN  REJECT-RC ASSERT-RC
+   ERR$ S\" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING\n" CONTAINS? TTRUE
+   ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 : TEST-TIER0-CONSTRUCTS ( -- )
@@ -488,6 +538,7 @@ public
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL
    TEST-MARK-ROWS
+   TEST-NAME-CAP
    TEST-TIER0-CONSTRUCTS
    TEST-SNAPSHOT-OWNERSHIP
    TEST-NESTED-QUOTATIONS
