@@ -89,6 +89,25 @@ public
 
 ;package
 
+\ A package whose own `DIE` and `THROW` DO end the path: each body calls the
+\ engine's word of the same spelling, which its bare token still binds while the
+\ definition is unpublished. The facts a definition earns belong to the symbol
+\ it is recorded under. They were once compared against what its NAME bound at
+\ that moment - the engine's word it is about to shadow, which carries the very
+\ same flags - so nothing was recorded and both words returned to the checker:
+\ `s" x" DIE 0` certified with the `0` unreachable (src/habu/aot-file.f carried
+\ three such tails).
+package DEADPATH-OWN
+public
+
+: DIE ( ptr u8 n -- )
+   3 die ;
+
+: THROW ( n -- )
+   throw ;
+
+;package
+
 \ ---- 1. the two axioms are in the store --------------------------------------
 T-RESET
 
@@ -142,6 +161,23 @@ s" DP-F ( n n -- n ) 0 = if drop 5 die then" CHECK-QUIET-CANDIDATE! 0 T=
 
 s" the qualified axiom still ends the path from inside that package" T-LABEL
 s" DP-G ( n n -- n ) 0 = if drop 5 DEADPATH-FIX:BOOM then" CHECK-QUIET-CANDIDATE! -1 T=
+
+;package
+
+\ ---- 3b. a package word under an engine spelling that does end the path -------
+\ The converse of section 3, checked with DEADPATH-OWN open: the bare tails bind
+\ that package's words, whose bodies end in the axioms.
+package DEADPATH-OWN
+
+s" the package word earns the flags under its own symbol" T-LABEL
+s" DIE" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
+s" THROW" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and CTL-DEAD CTL-THROW or T=
+
+s" an arm ending in it certifies against a wider fall-through" T-LABEL
+s\" DP-M ( n n -- n ) 0 = if drop s\q x\q DIE then" CHECK-QUIET-CANDIDATE! -1 T=
+
+s" nothing may follow it on that path" T-LABEL
+s\" DP-N ( n n -- n ) 0 = if drop s\q x\q DIE 5 then" CHECK-QUIET-CANDIDATE! 0 T=
 
 ;package
 

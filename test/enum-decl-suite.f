@@ -23,6 +23,8 @@
 \ new front end through its package-qualified entry rather than a global keyword.
 
 require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable
+require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
+require test/replay-scope.f         \ REPLAY-SCOPE: the check tool's replay scope
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
 using SCHEMA-REG
@@ -1142,11 +1144,13 @@ VS0 @ 2 + SV-TAG@ 2 T=
 VS0 @ enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 
-\ The dictionary stayed unchanged above, but checked constructor calls resolve.
+\ The dictionary stayed unchanged above, but checked constructor calls resolve
+\ on the certify path, where the replay recorded them: compiled code holds no
+\ record of RPCOMPACT:RED to bind.
 VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
-s" R1 ( -- rpcompact ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! -1 T=
-s" R1BAD ( -- n ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! 0 T=
+s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 \ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
 \      a compact list of bare variant names and nothing else, so an arity header
@@ -1165,12 +1169,18 @@ FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS 2 T=
 VS0 @ 1 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 
 \ 23c. Header clauses replay: POLICY and DERIVE reach the same family record.
+\      Derived EQ calls the TAG row the replay recorded just before it, a row the
+\      engine holds no word for, so this replay runs where the check tool's runs:
+\      in its replay scope (test/replay-scope.f, src/core/checker.f REPLAY-BIND),
+\      closed after the probes.
+REPLAY-SCOPE:OPEN
 s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rppol" FAMID FID !
 FID @ F-POLICY@ PACKED# T=
 FID @ F-EQ? -1 T=
 FID @ F-HASH? -1 T=
+REPLAY-SCOPE:CLOSE
 
 \ 23d. A malformed replayed declaration reports through the SAME renderer as a
 \      live one — the end-to-end half of the channel claim the diagnostics leaf

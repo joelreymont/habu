@@ -9,11 +9,15 @@ package OWNER-BINDING-CHECK
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 : EQ! ( n n -- ) <> if 79 throw then ;
 
+\ A row a check records by hand binds nowhere in compiled code (src/core/checker.f
+\ CK-CLOSE!), so the query asks about a word this window compiled.
+: BINDING-WORD ( n -- n ) 1 + ;
+
 : RUN ( -- )
    tier@ 0 EQ!
    CHECKER-OWNER:BY-NAME? TRUE!
    s" BINDING-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK-UNJUDGED -1 EQ!
-   s" BINDING-SCAN" CHECKER-OWNER:QUERY TRUE!
+   s" BINDING-WORD" CHECKER-OWNER:QUERY TRUE!
    CHECKER-OWNER:DIN-CELLS 1 EQ!
    CHECKER-OWNER:DOUT-CELLS 1 EQ! ;
 

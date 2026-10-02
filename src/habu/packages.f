@@ -90,8 +90,8 @@ TRUSTED: PKG-INDEX ( ptr n -- n ) dbase@ - DREC / ;
 
 \ The owner record stores raw execution tokens; these views state the two
 \ signatures called here.
-TRUSTED: PKG-AS-ACTION ( n -- [ -- ] ) ;
-TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
+CAST: PKG-AS-ACTION ( n -- [ -- ] )
+CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker
 \ alone (habu2.f C-CALL-CHECKER-PACKAGE and its siblings).
@@ -124,14 +124,14 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 \ checker-export in the global wordlist, and without one the process ends
 \ with that name.
 : PKG-CHECK-EXPORT ( -- )
-   s" checker-export" 0 FIND-PROBE {: rec:ptr :}
+   s" checker-export" 0 WL-PROBE {: rec:ptr :}
    rec XREF-FOUND? 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
    TOKEN$ rec XREF-START PKG-AS-NAME-ACTION execute ;
 
 \ ---- package, public, private, ;package (habu2.f C-PACKAGE to C-END-PACKAGE) -
 \ The namespace row the token names, or XREF-NULL.
 : PKG-ROW ( -- ptr n )
-   TOKEN$ XREF-NAMESPACE-WL FIND-PROBE ;
+   TOKEN$ XREF-NAMESPACE-WL WL-PROBE ;
 
 \ Once the engine is sealed, a sealed package's name ends the process, and so
 \ does a package whose public wordlist is protected: the token is the whole
@@ -156,7 +156,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 \ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE). A colon
 \ anywhere in the name is refused; a new row takes a public and a private wid.
 : PKG-ENSURE ( -- n )
-   TOKEN$ 0 FIND-COLON 0 >= if PKG-RC-CONTEXT PKG-FAIL then
+   TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
    PKG-DICT-ROOM
@@ -221,7 +221,7 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
       s" hb: using: missing package name" SAY
       ENGINE-ERROR:USING-NO-NAME THROW-AT
    then
-   TOKEN$ 0 FIND-COLON 0 >= if
+   TOKEN$ 0 COLON-AT 0 >= if
       s" hb: using: package name must not contain ':': "
       ENGINE-ERROR:USING-BAD-NAME PKG-USING-FAIL
    then
@@ -243,7 +243,7 @@ variable USE-FLOOR
 : PKG-USING ( -- )
    TASK-GUARD
    PKG-USED-WID {: wid:n :}
-   FIND-USE-DEPTH {: d:n :}
+   USE-DEPTH-CELL CELL@ {: d:n :}
    d USE-MAX >= if
       s" hb: using: too many concurrent usings: "
       ENGINE-ERROR:USING-OVERFLOW PKG-USING-FAIL
@@ -260,7 +260,7 @@ variable USE-FLOOR
 \ when the buffer ends.
 : PKG-END-USING ( -- )
    TASK-GUARD
-   FIND-USE-DEPTH {: d:n :}
+   USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
       s" hb: ;using without an open using" SAY
       ENGINE-ERROR:USING-UNBALANCED THROW-AT
@@ -276,20 +276,12 @@ variable USE-FLOOR
    d 1- USE-DEPTH-CELL CELL! ;
 
 \ ---- export (habu2.f C-EXPORT) -----------------------------------------------
-\ The record the operand names as the engine's LFIND resolves it: the open
-\ package, then the global wordlist, never a used public.
-: PKG-SOURCE ( -- ptr n )
-   TOKEN$ {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q FIND-BAD = if XREF-NULL exit then
-   q FIND-BARE = if a u NDICT:OPEN-PRI FIND-OPEN exit then
-   a u q FIND-QUALIFIED ;
-
-\ The name the alias takes: the operand's tail, after a qualifier.
+\ The name the alias takes: the operand's tail after its first colon, or the
+\ whole operand when it has none or one at either edge (habu2.f C-EXPORT-TAIL!).
 : PKG-TAIL ( -- ptr u8 n )
    TOKEN$ {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q 0< if a u exit then
+   a u 0 COLON-AT {: q:n :}
+   q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
 \ After the seal a protected wordlist takes no record: the engine names its
@@ -301,13 +293,14 @@ variable USE-FLOOR
    TOKEN$ SAY
    NL 1 ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
-\ The source must not be internal: an alias would carry its body past the
-\ interpret gate without the DNAME-INT mark, so the gate's refusal is made here
-\ (alias-record refuses the source too). DEF-TKA and DEF-TKL take the operand,
-\ which the refusals after them name.
+\ The source is the record the operand names as the engine's LFIND resolves it
+\ (FIND-SCOPE), never a used public's. It must not be internal: an alias would
+\ carry its body past the interpret gate without the DNAME-INT mark, so the
+\ gate's refusal is made here (alias-record refuses the source too). DEF-TKA
+\ and DEF-TKL take the operand, which the refusals after them name.
 : PKG-EXPORT-SOURCE ( -- ptr n )
    SEAL-GUARD
-   PKG-SOURCE {: src:ptr :}
+   TOKEN$ FIND-SCOPE {: src:ptr :}
    src XREF-FOUND? 0= if RC-REJECT PKG-FAIL then
    src XREF-FLAGS DNAME-INT and 0<> if
       s" hb: internal engine word: " REFUSE
@@ -327,7 +320,7 @@ variable USE-FLOOR
    PKG-EXPORT-SOURCE {: src:ptr :}
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
-   ta tu get-current FIND-PROBE XREF-FOUND? if
+   ta tu get-current WL-PROBE XREF-FOUND? if
       s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
    then
    PKG-CHECK-EXPORT

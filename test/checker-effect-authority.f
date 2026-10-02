@@ -1,6 +1,7 @@
 \ Source grants and native ABI facts share a row without sharing authority.
 \ Run directly on the product; native builds and graph fixtures cover handover.
 require lib/test.f
+require test/replay-scope.f
 
 package EFFECT-AUTHORITY-TEST
 
@@ -17,6 +18,14 @@ TRUSTED: ABI-ROW ( ptr u8 n ptr u8 n -- )
    CHECKER-RECORD-NAME RES-FALSE USIG-ADD-AS ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
+\ The scan, PRIM, rollback and recovery cases record rows only the checker holds
+\ (CHECK!, CHECK-UNJUDGED!, CHECKER-USIG-ADD): the engine compiles none of them,
+\ so compiled code binds nothing to their names (src/core/checker.f "ONE LOOKUP
+\ BINDS A NAME"). They run in the check tool's replay scope (test/replay-scope.f),
+\ where a name binds over the checker's own records; the live cases below
+\ publish real records through the evaluator.
+: REPLAY+ ( -- ) REPLAY-SCOPE:OPEN ;
+: REPLAY- ( -- ) REPLAY-SCOPE:CLOSE ;
 : MULTI+ ( -- ) MULTI-ERR-BEGIN ;
 : MULTI- ( -- n ) MULTI-ERR-END ;
 TRUSTED: ROW-STATE ( ptr u8 n -- n )
@@ -202,9 +211,9 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    CERT-SIZE LOWER-CERT:HEADER-CELLS cells T=
    s" package EAUTH-REC-ALIAS public EXPORT EAUTH-REC-LIVE ;package" EV
    s" EAUTH-REC-ALIAS:EAUTH-REC-LIVE" RECOVERY-FACT
-   s" EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE" JUDGE -1 T=
-   MIN-LATCH 0 T=
+   s" : EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE ;" EV
    s" EAUTH-REC-EXPORT-CALL" RECOVERY-FACT
+   s" EAUTH-REC-EXPORT-CALL" DICT-MIN 0 T=
    MULTI- 1 T=
    s" EAUTH-REC-LIVE-CALL ( ptr n -- n ) EAUTH-REC-LIVE" CHECK-CANDIDATE! 0 T=
    s" EAUTH-REC-ALIAS-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE" CHECK-CANDIDATE! 0 T=
@@ -251,9 +260,9 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" 23 EAUTH-LIVE" EV-N 23 T= ;
 
 : RUN ( -- )
-   T-RESET SCOPE+
+   T-RESET REPLAY+
    SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES
-   SCOPE-
+   REPLAY-
    LIVE-CASES
    RECOVERY-PUBLICATION
    T-REPORT

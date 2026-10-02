@@ -42,6 +42,10 @@ package EVAL-TEST
    s" N refuses a text that leaves two cells" T-LABEL
    [: s" 1 2" TEST-EVAL:N drop ;] E-EVAL-RESIDUE TTHROWSQ ;
 
+: UNFINISHED ( -- )
+   s" N refuses a text that ends inside a definition it opened" T-LABEL
+   [: s" : EVAL-TEST-OPEN ( -- n ) 1" TEST-EVAL:N drop ;] E-EVAL-UNFINISHED TTHROWSQ ;
+
 : UNDER ( -- n )
    7 [: s" drop 1" TEST-EVAL:N drop ;] catch 70 T= ;
 
@@ -75,7 +79,7 @@ public
 
 : TEST ( -- )
    T-RESET
-   SUM DEFINES NESTED CALLER FLAGS EMPTY RESIDUE FLOOR CODES REJECTED
+   SUM DEFINES NESTED CALLER FLAGS EMPTY RESIDUE UNFINISHED FLOOR CODES REJECTED
    T-REPORT
    s" eval-test: ok, " type T-CASES FMT:.INT s"  cases" type cr ;
 

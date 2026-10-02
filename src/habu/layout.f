@@ -496,9 +496,10 @@ $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
-\ and EVAL-FRAME:USE-WIDS fills the frame to STACK-ABI:EVAL-BYTES ($120),
-\ keeping the native stack 16-byte aligned.
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98
+\ and EVAL-FRAME:USE-WIDS the USE-MAX cells up to $120, where STACK-ABI:EVAL-SEG
+\ and EVAL-PEND fill the frame to STACK-ABI:EVAL-BYTES ($130), keeping the
+\ native stack 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -1137,6 +1138,10 @@ CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
 CHECKER-OWNER-ABI:DOES-IN-OFF constant DECL-DOES-IN-OFF
 CHECKER-OWNER-ABI:DOES-OUT-OFF constant DECL-DOES-OUT-OFF
 CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DECL-DOES-WIDE-OFF
+CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DECL-DOES-IN-N-OFF
+CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DECL-DOES-OUT-N-OFF
+CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DECL-DOES-IN-SLOT-OFF
+CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
 CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
@@ -1144,6 +1149,8 @@ CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant DECL-CALL-QUOT-OUT-OFF
+CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
+CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
 CHECKER-OWNER-ABI:TRUST-DECL-OFF constant DECL-TRUST-DECL-OFF
@@ -1189,6 +1196,15 @@ CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant DECL-VARIANT-TAG-OFF
 CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
+\ --- the verifier pre-pass: the symbol and definer questions it asks the live
+\ checker, and the frame around one run
+CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF constant DECL-VERIFY-RECORD-CREATED-OFF
+CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF constant DECL-VERIFY-SOURCE-DOES-OFF
+CHECKER-OWNER-ABI:VERIFY-START-OFF constant DECL-VERIFY-START-OFF
+CHECKER-OWNER-ABI:VERIFY-DONE-OFF constant DECL-VERIFY-DONE-OFF
 ;package
 
 
@@ -1295,6 +1311,30 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
+\ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
+\ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
+\ stripped image bakes the same handler. The handler resumes a data access below
+\ the base at that address, from the engine's own code or the JIT region, and
+\ CODE-END-CELL bounds the first: [RBASE-CELL, CODE-END-CELL) is the engine code
+\ up to its baked source (LSRC). Zero means no entry, and the fault keeps the
+\ named bounds exit: a stripped image leaves both cells at its mapping's zero,
+\ and a task region reads zero because lib/task.f copies only the cells it
+\ names. Both hold this process's addresses, so boot stores them and snapshots
+\ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
+\ the reasons EXIT-HOOK-CELL gives, swept for a claimant across src lib tools
+\ test bootstrap.
+$2820 constant FLOORREC-CELL
+\ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
+\ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
+\ the list is empty) and gives it back on the clean return, and habu2.f
+\ LEVALREC gives back the stack of every closed frame a throw pops. The stacks
+\ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE) and
+\ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits in the free
+\ header band for the reasons EXIT-HOOK-CELL gives, swept for a claimant across
+\ src lib tools test bootstrap.
+$2828 constant CLOSED-FREE-CELL
+$2830 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

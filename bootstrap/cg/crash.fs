@@ -6,8 +6,9 @@
 \
 \ bootstrap/cg/forth.fs is the only file that requires this one, and it requires
 \ it only once the names below are its own: DATA, DATA-VA, RBASE-VA, REGION, the
-\ STACK-ABI: block, the SIGNAL-ABI: block and ENGINE-ERROR:STACK-BOUNDS. Loading
-\ this file on its own leaves every one of them undefined.
+\ STACK-ABI: block, the SIGNAL-ABI: block, ENGINE-ERROR:STACK-BOUNDS and the
+\ header cells RBASE-CELL, FLOORREC-CELL and CODE-END-CELL. Loading this file on
+\ its own leaves every one of them undefined.
 \
 \ macOS arm64 signal delivery: sigaction(#46) records sa_handler + sa_tramp; on a
 \ signal the kernel enters sa_tramp with x0=catcher, x2=sig, x3=siginfo,
@@ -172,28 +173,31 @@ CRH-INIT
 \ and this is where the fault becomes the diagnostic the checks used to
 \ print. Mirrors src/habu/crash.f C-CRASH-GUARD-CASE/C-CRASH-STACK-GUARDS.
 \
+\ ONE FAULT IS NOT AN EXIT: a load or store in the data stack's low guard page,
+\ by an instruction of the engine's own code or of the code region, is a word
+\ reaching below the base. C-CRASH-DATA-RECOVER resumes that thread at the
+\ underdepth throw (forth.fs LFLOORREC, published in FLOORREC-CELL). An
+\ instruction fetch in a guard page, a pc in foreign code, a zero FLOORREC-CELL,
+\ the high guard and the return and loop stacks keep the named exit.
+\
 \ A case is skipped rather than trusted when its descriptor is not a
 \ plausible one -- a zero base, a base off a cell boundary, or a top (base +
 \ capacity) off a PAGE-BYTES boundary. Every extent the engine installs ends
 \ where its high guard page begins, and starts on a page boundary except
-\ under evaluate-closed, which raises the data base to the caller's depth and
-\ keeps the top (forth.fs B-EVAL-CLOSED). Under that floor the page at the
-\ top is still the high guard, and the low window is the page under the
-\ page-rounded floor: the mapping's low guard while the caller holds less
-\ than a page of cells. Between the mapping's base and the floor lie caller
-\ cells, mapped read/write, where only an instruction fetch faults, and that
-\ is no bounds fault. The window still misnames such an exec fault when the
-\ caller holds a page or more of cells and the target lies in the page under
-\ the rounded floor. Excluding fetch faults (fault address = pc) would cure
-\ that, but it would also stop naming a jump into a real guard page, so the
-\ window keeps it. The DATA base comes out of the signal mcontext, so a fault
-\ in foreign code that had already overwritten x20 reads cells that are not
-\ descriptors at all; an implausible one falls through to the ordinary
+\ under source-unit-run, which raises the data base to the caller's cursor
+\ and keeps the top (forth.fs B-SOURCE-UNIT-RUN). Under that floor the page
+\ at the top is still the high guard, and the low window is the page under
+\ the page-rounded floor: the mapping's low guard while the caller holds less
+\ than a page of cells. The DATA base comes out of the signal mcontext, so a
+\ fault in foreign code that had already overwritten x20 reads cells that are
+\ not descriptors at all; an implausible one falls through to the ordinary
 \ register dump instead of naming a stack that did not fault.
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
-variable CRS-HIT    variable CRS-NEXT  variable CRS-SKIP  variable CRS-FAULT
+variable CRS-HIT    variable CRS-HIT-LOW
+variable CRS-NEXT   variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
+variable CRS-DATA-LOW-H
 
 \ The three diagnostics, each a single line emitted by one BYTES, call: the
 \ newline lives inside the string literal, so the length that reaches
@@ -208,7 +212,7 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 
 \ x24 = DATA, x25 = fault address, x11 = PAGE-BYTES, x12 = PAGE-BYTES-1.
 \ CRS-CAPCELL is a header offset to read the capacity from, or 0 to use
-\ CRS-CAP.
+\ CRS-CAP. A low-guard hit branches to CRS-HIT-LOW, a high-guard hit to CRS-HIT.
 : C-CRASH-GUARD-CASE ( -- )
    9 24 CRS-BASE @ LDR,
    9 CRS-NEXT @ CBZ,
@@ -220,7 +224,7 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    10 11 CMP,  C-CC CRS-HIT @ BCOND,
    13 9 12 AND,  13 9 13 SUB,  13 13 11 SUB,     \ low guard: the page under the rounded base
    10 25 13 SUB,
-   10 11 CMP,  C-CC CRS-HIT @ BCOND,
+   10 11 CMP,  C-CC CRS-HIT-LOW @ BCOND,
    CRS-NEXT @ LBL, ;
 
 : C-CRASH-GUARD-REPORT ( n n -- )                \ ( msg-label msg-len -- ) never returns
@@ -228,10 +232,37 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ The data stack's low-guard hit, mirroring src/habu/crash.f: x19 = ucontext,
+\ x21 = mcontext, x24 = DATA, x25 = fault address, macOS x1/x5 = infostyle and
+\ token. Resume at FLOORREC-CELL's entry through sigreturn when an entry exists,
+\ the fault is not the fetch, and the pc lies in the engine's own code
+\ [RBASE-CELL, CODE-END-CELL) or the code region at RBASE-VA. Anything else,
+\ and a sigreturn that comes back, is the named data exit emitted right after.
+: C-CRASH-DATA-RECOVER ( -- )
+   LBL LBL {: region resume :}
+   CRS-DATA-LOW-H @ LBL,
+   14 24 FLOORREC-CELL LDR,  14 CRS-DATA-H @ CBZ,
+   C-CRASH-PC>R9
+   9 25 CMP,  C-EQ CRS-DATA-H @ BCOND,
+   10 24 RBASE-CELL LDR,  9 10 CMP,  C-CC region BCOND,
+   10 24 CODE-END-CELL LDR,  9 10 CMP,  C-CC resume BCOND,
+   region LBL,
+   10 RBASE-VA LIT64,  9 10 CMP,  C-CC CRS-DATA-H @ BCOND,
+   10 RBASE-VA REGION + LIT64,  9 10 CMP,  C-CS CRS-DATA-H @ BCOND,
+   resume LBL,
+   HB-TARGET-LINUX? IF
+      14 21 LINUX-MCTX-PC-OFF STR,
+      NR-SIGRETURN SYS,                          \ rt_sigreturn reads the frame at the entry sp
+   ELSE
+      14 21 MACOS-MCTX-PC-OFF STR,
+      0 19 0 ADDI,  2 5 0 ADDI,
+      NR-SIGRETURN SYS,                          \ sigreturn(uctx, infostyle, token)
+   THEN ;
+
 : C-CRASH-STACK-GUARDS ( -- )
    LBL CRS-SKIP !  LBL CRS-FAULT !
    LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !
-   LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !
+   LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !  LBL CRS-DATA-LOW-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
    20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT @ BCOND,
    20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP @ BCOND,
@@ -241,14 +272,18 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    11 STACK-ABI:PAGE-BYTES LIT64,
    12 STACK-ABI:PAGE-BYTES 1 - LIT64,
    STACK-ABI:BASE-CELL CRS-BASE !  STACK-ABI:CAP-CELL CRS-CAPCELL !
-   CRS-DATA-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   CRS-DATA-H @ CRS-HIT !  CRS-DATA-LOW-H @ CRS-HIT-LOW !
+   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    STACK-ABI:RETURN-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
    STACK-ABI:RETURN-BYTES CRS-CAP !
-   CRS-RET-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   CRS-RET-H @ CRS-HIT !  CRS-RET-H @ CRS-HIT-LOW !
+   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    STACK-ABI:LOOP-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
    STACK-ABI:LOOP-BYTES CRS-CAP !
-   CRS-LOOP-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   CRS-LOOP-H @ CRS-HIT !  CRS-LOOP-H @ CRS-HIT-LOW !
+   LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    CRS-SKIP @ B,
+   C-CRASH-DATA-RECOVER
    CRS-DATA-H @ LBL,  CRS-DATA-M @ CRS-DATA$ nip C-CRASH-GUARD-REPORT
    CRS-RET-H  @ LBL,  CRS-RET-M  @ CRS-RET$  nip C-CRASH-GUARD-REPORT
    CRS-LOOP-H @ LBL,  CRS-LOOP-M @ CRS-LOOP$ nip C-CRASH-GUARD-REPORT

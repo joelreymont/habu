@@ -25,6 +25,7 @@
 require lib/test.f
 require lib/errors.f
 require src/compiler/native/feed.f
+require test/replay-scope.f
 
 \ Tier 1 below: the observer the claims below read is armed by the optimizing
 \ compiler, so INSTALLED-BY is a tier-1 fact (1 row fails at the default tier).
@@ -128,8 +129,13 @@ variable NESTED-DONES
    s" TO-NESTED-INNER ( n -- n )" CHECK-CANDIDATE! -1 T=
    TO-RECOVERY? TTRUE ;
 
+\ Every row here is CHECK!'s alone, a name the engine compiles no word for, so the
+\ case runs in the check tool's replay scope (test/replay-scope.f), where such a
+\ name binds over the checker's own records (src/core/checker.f REPLAY-BIND), as
+\ the recovery cases of test/checker-effect-authority.f do.
 : TO-NESTED-RECOVERY ( -- )
    s" a nested candidate restores the enclosing recovery analysis" T-LABEL
+   REPLAY-SCOPE:OPEN
    TO-MULTI+
    s" TO-RECOVERY-BAD ( n -- n ) drop" CHECK! 0 T=
    0 NESTED-DONES !
@@ -142,7 +148,8 @@ variable NESTED-DONES
    TO-MULTI- 1 T=
    s" TO-NESTED-LATER ( n -- n )" CHECK! -1 T=
    TO-RECOVERY? TFALSE
-   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T= ;
+   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T=
+   REPLAY-SCOPE:CLOSE ;
 
 \ Put the engine's own observer back, and prove it is back by its identity. This
 \ runs last and is the reason the session survives the suite.

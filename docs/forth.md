@@ -29,20 +29,14 @@ lives here; build, test and environment rules live in
   matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
-  `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
-  the caller's depth and must leave nothing (measured under **Rules learned by
-  refusal**). The loader and every source-generating definer evaluate through
-  it, so a loaded file (**Packages**) and a generated declaration are closed
-  programs too. Four cases stay open:
-  - An xt the text runs through `execute` is guarded only by `execute`'s own
-    one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
-    warns `hb: top-row: execute: xt target underflows the interpret stack` and
-    leaves 6 where the 5 was.
+  `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
+  its own, must leave nothing and must close every definition it opens
+  (measured under **Rules learned by refusal**). The loader and every
+  source-generating definer evaluate through it, so a loaded file
+  (**Packages**) and a generated declaration are closed programs too. Two cases
+  stay open:
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
-  - A text may end inside a definition: the interpreter stays compiling, so
-    `s" : D ( -- n ) 42" evaluate-closed`, even from a checked word, lets the
-    caller's next `;` complete `D`.
   - A text's top-level code is unchecked, so what it computes is untyped: with
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
@@ -237,7 +231,12 @@ public
   includer's cells throws 70, and a file that ends with cells on the stack is
   refused `E-EVAL-RESIDUE` (`--load` of a file ending `1 2` exits
   `hb: uncaught throw code -3804`, rc 67), so a value crosses a load only as a
-  word the file defines. Fix a file that leaves cells; never loosen the loader.
+  word the file defines. A file that ends inside a definition it opened is
+  refused `E-EVAL-UNFINISHED` at its end (`--load` of a file ending
+  `: D ( -- n ) 42` exits `hb: closed text ended inside a definition: D at
+  <path>:<line>` and `hb: uncaught throw code -3805`, rc 67), so no definition
+  spans a load. Fix a file that leaves cells or a definition; never loosen the
+  loader.
   `hb prog.f` and a program on stdin are not loaded files and keep their
   top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
@@ -1389,6 +1388,38 @@ the rule.
   (-8503, test/compiler/native-elaborate.f `RGLUE`). A count that disagrees is
   `E-NELAB-ARITY` either way, and a forged tag is still refused where the value
   is consumed (`hb: bad layout tag`, rc 85).
+- **A name binds one word at every tier, and that word's own facts judge it.**
+  The checker, the JIT and tier 1 ask the engine's one lookup (`scope-find`:
+  the open package, the global wordlist, then the used publics), so a word
+  redefined after `undefine`, a package word spelled like an engine word and
+  an `EXPORT` alias are each checked and called as the word they are. The
+  rules that type an engine word by what it does (`@`, `!`, `?dup`,
+  `record-at`, `create`, `variable`, …) follow the identity the engine
+  registered on that word's symbol (its `INTRINSIC` id, or `CTL-CORE-OP` for
+  the stack shuffles and zero tests), which a redefinition does not carry, and
+  the control facts a definition earns are recorded on its own symbol. After
+  `undefine dup  : dup ( n -- n ) 100 + ;`, `: T ( -- n ) 5 dup ;` leaves
+  `105` at both tiers (test/undefine-binding.f), and `package P : DIE ( ptr u8
+  n -- ) 3 die ;  : T ( -- n ) s" x" DIE 0 ;` is `E-DEAD-CODE`
+  (test/checker-dead-path-suite.f).
+- **A name the engine holds no word for binds nowhere in compiled code.** The
+  checker binds a token to the word the lookup finds, to the definition it
+  recorded last and the engine has not yet published, or to a keyword it types
+  by axiom (`>r`, `r@`). A name only the checker knows - a row `CHECK!` alone
+  recorded, a qualified `TRUST` row with no word behind it, a word the source
+  pre-verifier registered, a `CHECKER-EXPORT` alias - is unresolvable, bare or
+  qualified, as the compiler finds it `E-UNDEFINED`. It binds on the certify
+  path, which replays over the checker's records: `VERIFY:CANDIDATE-IN-SCOPE`
+  (`src/habu/verify-source.f`) answers what that path says of a candidate. A
+  candidate scope checks rows that publish together, so each row binds for the
+  scope's later rows until it closes: a `STRUCTURE` deriving `hash` checks a
+  `HASH` that calls its `UNMAKE` before either is published. Measured on
+  `bin/hb`: after `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is
+  `E-UNDEFINED` and the candidate `C ( -- n ) SPANX` answers 1 live, as
+  `s" C ( -- n ) SPANX" CHECK!` does, and -1 through `VERIFY:CANDIDATE-IN-SCOPE`
+  (test/engine-suite.f, test/pointer-storage-test.f);
+  `STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
+  `DER:HASH` runs (test/structure-certify-suite.f).
 - **Native width depends on how the cells are used.** A 63-cell identity
   compiles and runs in native AOT; the same 64-cell definition currently
   refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 on Darwin ARM64, consuming
@@ -1571,8 +1602,8 @@ the rule.
   CATCH-STALE-DROP`).
 - **A checked word evaluates source with `evaluate-closed`, never
   `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
-  text's. `evaluate-closed` raises the data-stack base to the caller's depth for
-  the text and refuses whatever the text leaves, so its row is
+  text's. `evaluate-closed` runs the text on a guarded data stack of its own
+  and refuses whatever the text leaves, so its row is
   `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
   Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
   `7 [: s" drop" evaluate-closed ;] catch` answers 70
@@ -1580,8 +1611,21 @@ the rule.
   `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
   `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
   the outer text's caller as -3804; a definition the checker refuses throws 70;
-  a data-stack overflow in a text exits `hb: stack bounds exceeded (data)`,
-  rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
+  a text that ends inside a definition it opened, `s" : D ( -- n ) 42"
+  evaluate-closed`, throws `E-EVAL-UNFINISHED` (-3805) after
+  `hb: closed text ended inside a definition: D at <path>:<line>` (uncaught,
+  rc 67), D is rolled back and the caller's next token is interpreted, and an
+  inner text's unfinished definition reaches the outer text's caller as -3805;
+  an xt the text runs cannot reach the caller's cells either: with
+  `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
+  answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact
+  and W unfinished, as do `' W CLEAN finally`, a quotation xt and a reach in
+  an inner text, and `1 ' W catch` inside the text receives the 70 itself,
+  because one cell under the text's floor is its stack's guard page and the
+  engine throws that fault; at plain top level `1 ' W execute` is the same
+  line and rc 70, not a crash; a data-stack overflow in a text exits
+  `hb: stack bounds exceeded (data)`, rc 102, as outside one, and so does a
+  jump under the floor ([debugging.md](debugging.md)); with a task live it
   exits `$4F` before reading the text and prints nothing, as `evaluate` does.
   The open cases are under **Checked code and primitive boundaries**.
 - **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
@@ -1594,10 +1638,10 @@ the rule.
   (`lib/test/eval-test.f`): an empty text throws 70
   (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
   `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
-  inside the text of N, and `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
-  (`expected: bool actual: n`). N keeps `evaluate-closed`'s open cases; a text
-  that ends inside a definition compiles N's store into it, so N answers the
-  value the previous N stored.
+  inside the text of N, `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
+  (`expected: bool actual: n`), and a text that ends inside a definition it
+  opened throws `E-EVAL-UNFINISHED` at the end of N's own closed text. N keeps
+  `evaluate-closed`'s open cases.
 
 ## Spans: a pointer that carries its reach
 

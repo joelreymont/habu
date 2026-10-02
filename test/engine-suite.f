@@ -753,7 +753,12 @@ s" a:b:c" s" -- n" TRUST
 s" a:b:" s" -- n" TRUST
 : x: ( -- n ) 0 ;
 : ::x ( -- n ) 0 ;
-s" tq:tail" s" -- n" TRUST
+\ The qualified case names a real public word: a candidate binds the record the
+\ engine's lookup binds, and a bodiless TRUST row has none.
+package TQ
+public
+: TAIL ( -- n ) 0 ;
+;package
 s" double-colon token rejects" T-LABEL
 s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
 s" trailing-second-colon token rejects" T-LABEL
@@ -761,7 +766,7 @@ s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 1 T=
 s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
-s" COK-QUAL-ONE ( -- n ) tq:tail" CHECK-QUIET-CANDIDATE! -1 T=
+s" COK-QUAL-ONE ( -- n ) TQ:TAIL" CHECK-QUIET-CANDIDATE! -1 T=
 : ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;   \ whitebox diag-mode boundary
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
@@ -1554,13 +1559,15 @@ DIAG-BUFFER$ s\" frame-idx" MEO-CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 : T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
-s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
+\ A callee the later rows name is compiled: a call binds the record the engine's
+\ lookup binds, and a row CHECK! alone records has none (the TFAM rows below).
+: COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) ;
 s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" T-CHECK-PASSES
 s" COK-PTX-RIGID-SHARED ( n -- ) T-MK-SPAN= T-PTX-SAME-EXTENT" T-CHECK-PASSES
 s" CBAD-PTX-RIGID-LONE ( n n -- ) T-MK-SPAN swap T-MK-SPAN T-PTX-SAME-EXTENT" T-CHECK-REJECTS
-s" COK-PTX-RET-SHARED T-MK-SPAN=" T-CHECK-PASSES
+: COK-PTX-RET-SHARED T-MK-SPAN= ;
 s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" T-CHECK-PASSES
-s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" T-CHECK-PASSES
+: COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN ;
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
@@ -1570,8 +1577,8 @@ s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s 
 s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
 s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
 s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
-s" COK-TFAM-NEST ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> )" T-CHECK-PASSES
-s" COK-TFAM-NEST4 ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> )" T-CHECK-PASSES
+: COK-TFAM-NEST ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) ;
+: COK-TFAM-NEST4 ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) ;
 s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
@@ -1581,8 +1588,36 @@ s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
 \ VAR through FIELD-INNER without resolving it, reading an unrelated param-arena
 \ slot that pointed back at the var. Fixed by resolving before the field descent
 \ (src/core/checker.f LIN-TYPE-COUNT); dot habu-tfam-nested-param-09fa2004.
+\ The callees above are compiled words, so the stored sig is the one a real
+\ caller binds.
 s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
 s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
+\ A row CHECK! alone recorded is the checker's, not the engine's: compiled code
+\ cannot call COK-TFAM-SPAN, so a candidate naming it binds nowhere (1), as
+\ `: C ... COK-TFAM-SPAN ;` is E-UNDEFINED.
+s" a checked-only row binds nowhere in compiled code" T-LABEL
+s" CBAD-TFAM-SPAN-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-TFAM-SPAN" CHECK-QUIET-CANDIDATE! 1 T=
+\ The row CHECK! recorded last binds nowhere either: a check run by hand holds
+\ no unpublished definition, so it opens no pending window for the next check
+\ (src/core/checker.f CK-CLOSE!), live candidate or CHECK! alike.
+s" COK-LAST-ROW ( -- n ) 1" CHECK! -1 T=
+s" the row CHECK! recorded last binds nowhere in compiled code" T-LABEL
+s" CBAD-LAST-ROW-CALL ( -- n ) COK-LAST-ROW" CHECK-QUIET-CANDIDATE! 1 T=
+s" nor for the next CHECK!" T-LABEL
+s" CBAD-LAST-ROW-CHAIN ( -- n ) COK-LAST-ROW" CHECK! 1 T=
+\ A row checked inside a candidate scope is pending for the later rows of that
+\ scope until it closes (src/core/checker.f CK-PENDING-SYM): a generated plan
+\ checks every row before its one evaluate publishes them, and a derived HASH
+\ calls its UNMAKE. The call is qualified and follows a second row, so neither
+\ the live window (the row recorded last) nor a keyword axiom can bind it.
+CHECKER-CANDIDATE-SCOPE-START
+s" CSPQ:ROW-A ( -- n ) 1" CHECK! -1 T=
+s" CSPQ:ROW-B ( -- n ) 2" CHECK! -1 T=
+s" a candidate scope's row binds for its later rows" T-LABEL
+s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
+CHECKER-CANDIDATE-SCOPE-DONE
+s" and nowhere once the scope has closed" T-LABEL
+s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 1 T=
 \ Family-specific arity diagnostics (PLAN item 4 acceptance): assert the verdict
 \ AND the diagnostic KIND (SGBAD-ARITY?), not merely rejection, so a regression
 \ swapping the arity reason for a generic syntax error is caught. These read a
@@ -1611,7 +1646,7 @@ s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJ
 \ trip); a nested arity-6 arg; a value-record field of the arity-6 family (VNARG
 \ pool); and wrong-arity rejection (5 and 7 args) with the arity diagnostic.
 s" tfam6r-big" 6 TR-TFAM-REG
-s" COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> )" T-CHECK-PASSES
+: COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
 s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  TR-SGBAD-ARITY? -1 T=
@@ -1623,7 +1658,7 @@ s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-Q
 \ an explicit return-stack clause; a quotation nested inside the quot arg's stack;
 \ and malformed effect rows (missing '--' or ']') reject.
 s" scq-fam" 2 TR-TFAM-REG
-s" COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> )" T-CHECK-PASSES
+: COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
 s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES

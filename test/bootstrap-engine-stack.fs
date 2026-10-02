@@ -63,14 +63,15 @@ require nf.fs
 
 : BES-OK ( src-a src-u -- ) BES-RUN 0 BES= ;
 
-\ A guard-page fault (data/return/loop stack bounds exceeded) is a fail-closed
-\ process exit, named on fd 2 by src/habu/crash.f / crash.fs
+\ A guard-page fault (data overflow, return/loop stack bounds exceeded) is a
+\ fail-closed process exit, named on fd 2 by src/habu/crash.f / crash.fs
 \ C-CRASH-STACK-GUARDS: the classifier now runs before the register-header
 \ write (so it never prints), and each message is one CRS-DATA$/CRS-RET$/
 \ CRS-LOOP$ string with its own newline emitted by a single BYTES,, so the
 \ length C-CRASH-GUARD-REPORT writes is exactly that string's length -- no
 \ separate length constant to drift from it, no header, no trailing bytes.
-\ Callers check NFOUT for the exact one-line message with NF=.
+\ Callers check NFOUT for the exact one-line message with NF=. A data access
+\ below the base is the one guard fault that is no exit: BES-DATA.
 : BES-REFUSED ( src-a src-u -- ) BES-RUN ENGINE-ERROR:STACK-BOUNDS BES= ;
 
 : BES-NUMBER ( n -- )
@@ -84,7 +85,7 @@ require nf.fs
 \ under the same name in bootstrap/cg/forth.fs. The stage value is pinned where
 \ it is observable instead -- BES-DATA's run-in-stack refusals print -3802.
 : BES-ABI ( -- )
-   s" STACK-ABI:BASE-CELL . STACK-ABI:CAP-CELL . STACK-ABI:REPL-BASE-CELL . STACK-ABI:REPL-CAP-CELL . STACK-ABI:PAGE-BYTES . STACK-ABI:BOOT-BYTES . STACK-ABI:RETURN-BASE-CELL . STACK-ABI:LOOP-BASE-CELL . STACK-ABI:RETURN-BYTES . STACK-ABI:RETURN-CELLS . STACK-ABI:LOOP-BYTES . STACK-ABI:LOOP-FRAME-BYTES . STACK-ABI:LOOP-FRAMES . STACK-ABI:CATCH-BASE . STACK-ABI:CATCH-CAP . STACK-ABI:CATCH-BYTES . STACK-ABI:CATCH-MAGIC . STACK-ABI:EVAL-BASE . STACK-ABI:EVAL-CAP . STACK-ABI:EVAL-BYTES ." BES-OK
+   s" STACK-ABI:BASE-CELL . STACK-ABI:CAP-CELL . STACK-ABI:REPL-BASE-CELL . STACK-ABI:REPL-CAP-CELL . STACK-ABI:PAGE-BYTES . STACK-ABI:BOOT-BYTES . STACK-ABI:RETURN-BASE-CELL . STACK-ABI:LOOP-BASE-CELL . STACK-ABI:RETURN-BYTES . STACK-ABI:RETURN-CELLS . STACK-ABI:LOOP-BYTES . STACK-ABI:LOOP-FRAME-BYTES . STACK-ABI:LOOP-FRAMES . STACK-ABI:CATCH-BASE . STACK-ABI:CATCH-CAP . STACK-ABI:CATCH-BYTES . STACK-ABI:CATCH-MAGIC . STACK-ABI:EVAL-BASE . STACK-ABI:EVAL-CAP . STACK-ABI:EVAL-BYTES . STACK-ABI:EVAL-SEG . STACK-ABI:EVAL-PEND ." BES-OK
    0 NF-CMD-U !
    STACK-ABI:BASE-CELL BES-NUMBER STACK-ABI:CAP-CELL BES-NUMBER
    STACK-ABI:REPL-BASE-CELL BES-NUMBER STACK-ABI:REPL-CAP-CELL BES-NUMBER
@@ -96,7 +97,8 @@ require nf.fs
    STACK-ABI:CATCH-BASE BES-NUMBER STACK-ABI:CATCH-CAP BES-NUMBER
    STACK-ABI:CATCH-BYTES BES-NUMBER STACK-ABI:CATCH-MAGIC BES-NUMBER
    STACK-ABI:EVAL-BASE BES-NUMBER STACK-ABI:EVAL-CAP BES-NUMBER
-   STACK-ABI:EVAL-BYTES BES-NUMBER
+   STACK-ABI:EVAL-BYTES BES-NUMBER STACK-ABI:EVAL-SEG BES-NUMBER
+   STACK-ABI:EVAL-PEND BES-NUMBER
    NF-CMD NF-CMD-U @ NF= 0= abort" recovery stack ABI differs from its source leaf" ;
 
 \ The recovery seed must answer the native dictionary marking primitives with
@@ -124,14 +126,15 @@ require nf.fs
    NFOUT 2@ s\" armed\n" search 0= abort" seed minimum input mark missed underdepth" 2drop ;
 
 : BES-DATA ( -- )
-   \ Data-stack underflow now faults into the guard page below the boot
-   \ mapping; the crash handler names it and exits STACK-BOUNDS (102). `drop`
+   \ Data-stack underflow faults into the guard page below the boot mapping,
+   \ and the crash handler throws it as the interpreter's underdepth reject
+   \ naming the running token: uncaught, that one line and rc 70. `drop`
    \ alone will not show it -- BDROP is a bare pointer decrement (habu1.f/
    \ forth.fs: "XDS XDS 8 SUBI,"), so it never dereferences memory and cannot
    \ fault; `dup` reads the slot it duplicates (G-POP), so it does.
-   s" dup" BES-REFUSED
-   s\" hb: stack bounds exceeded (data)\n" NF= 0=
-      abort" bootstrap data-stack underflow lost its guard-page name"
+   s" dup" BES-RUN 70 BES=
+   s\" hb: interpret stack underdepth: dup\n" NF= 0=
+      abort" bootstrap data-stack underflow lost its underdepth throw"
 
    \ run-in-stack on a guarded mapping works.
    s" : ONE ( -- ) 42 . ; : GO ( -- ) ['] ONE bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; GO" BES-OK
@@ -209,6 +212,16 @@ require nf.fs
    s\" : RAISE ( -- ) 7 throw ; : INNER ( -- ) s\" RAISE\" INCLUDE-EVALUATE ; : CROSS ( -- ) ['] INNER bes-mkstack STACK-ABI:PAGE-BYTES run-in-stack ; ' CROSS catch . 1 2 3 4 . . . ." BES-OK
    s\" 7\n4\n3\n2\n1\n" NF= 0= abort" recovery nested evaluate unwind lost the caller allocation" ;
 
+: BES-CLOSED ( -- )
+   \ evaluate-closed on the seed. A text that ends inside a definition it
+   \ opened throws STACK-ABI:E-EVAL-UNFINISHED with the seed's fixed line, and
+   \ the token after the catch is interpreted, not compiled into that
+   \ definition. The refusal gives the text's stack back to the pool, so OK's
+   \ two clean texts take it from there and return through the wrapper.
+   s\" : GO ( -- ) s\" : D ( -- n ) 42\" evaluate-closed ; : OK ( -- ) s\" 2 .\" evaluate-closed ; ' GO catch . OK OK 1 ." BES-OK
+   s\" hb: closed text ended inside a definition\n-3805\n2\n2\n1\n" NF= 0=
+      abort" recovery closed text kept its unfinished definition" ;
+
 : BES-CAT ( a u b v -- c w ) {: a u b v :}
    u v + allocate throw {: c :}
    a c u move b c u + v move c u v + ;
@@ -238,6 +251,6 @@ require nf.fs
    NFOUT 2@ 26 /string s\" 0000000000000011\n" compare 0<>
       abort" recovery breakpoint lost its actual top cell" ;
 
-BES-ABI BES-MARKS BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-DEBUGGER
+BES-ABI BES-MARKS BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-CLOSED BES-DEBUGGER
 .( bootstrap-engine-stack: ok ) cr
 bye

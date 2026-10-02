@@ -2,6 +2,8 @@
 \ callback can use its own intermediate cells, but must return with none.
 require lib/errors.f
 require lib/test.f
+require lib/test/subject.f
+require src/core/engine-error.f
 require src/habu/stack-abi.f
 
 package SOURCE-ROOT
@@ -70,6 +72,25 @@ TRUSTED: CU-FILL ( -- )
    CU-RESTORED
    [: ;] CU-RUN ;
 
+\ CU-FILL leaves the unit's stack exactly full, so the 1 after it pushes past
+\ the top. The unit's floor sits inside its caller's stack, off a page
+\ boundary, and the crash handler still names the overflow (src/habu/crash.f
+\ C-CRASH-GUARD-CASE). It runs in a forked copy of this process, which the
+\ fault ends; the copy's text reopens this package to reach the word.
+: CU-FLOOD ( -- n ) CU-FILL 1 ;
+: CU-FLOOD-CLOSED ( -- ) [: CU-FLOOD drop ;] CU-RUN ;
+
+$1000 constant CU-IO-CAP
+create CU-OUT CU-IO-CAP allot
+create CU-ERR CU-IO-CAP allot
+
+: CU-OVERFLOW ( -- )
+   s" package SOURCE-ROOT CU-FLOOD-CLOSED ;package"
+   CU-OUT CU-IO-CAP >LEN CU-ERR CU-IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
+   nip LEN>N {: erru:n :}
+   CU-ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
+
 : CU-TEST ( -- )
    T-RESET
    s" a clean complete callback leaves the caller cell" T-LABEL CU-CLEAN
@@ -77,6 +98,8 @@ TRUSTED: CU-FILL ( -- )
    s" a nested throw restores the stack descriptor" T-LABEL CU-THROW
    s" ordinary residue restores the caller and descriptor" T-LABEL CU-RESIDUE
    s" an exactly full physical stack throws named residue" T-LABEL CU-FULL
+   s" an overflow in a unit exits STACK-BOUNDS naming the data stack" T-LABEL
+   CU-OVERFLOW
    T-REPORT ;
 
 ' CU-TEST

@@ -44,7 +44,12 @@ variable #CASE
 : SCX-SYM-N ( -- n ) SYM-N @ ;
 TRUSTED: SCX-SYM-CAP ( -- n ) SYM-CAP ;
 TRUSTED: SCX-ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
-TRUSTED: SCX-SIG-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
+\ The din cell count of the newest record the store keeps under the name's own
+\ symbol, -1 for none. The suites are about the symbol-keyed index, so this asks
+\ the store's key rather than a binding: a name only CHECKER-USIG-ADD recorded
+\ has no engine record, and compiled code binds nothing to it.
+TRUSTED: SCX-SIG-MIN-IN ( ptr u8 n -- n )
+   CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM IF FEP @ E-MINI@ ELSE -1 THEN ;
 TRUSTED: SCX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;
 
 TRUSTED: SCX-USIG-NEWEST ( n -- n ) USIG-NEWEST ;

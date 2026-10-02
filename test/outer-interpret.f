@@ -5,9 +5,9 @@
 \   --load <prelude> test/outer-loop-on.f <case>   the Habu loop reads the case
 \   --load <prelude> <case>                        the engine's evaluate reads it
 \ test/outer-loop-on.f binds the loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET
-\ (src/core/include.f) to OUTER:INTERPRET. The two runs must end with the same
-\ rc, stdout and stderr, and each case states the rc and output that show what
-\ it exercised, so two runs failing alike do not pass.
+\ (src/core/include.f) to OUTER:INTERPRET-CLOSED. The two runs must end with the
+\ same rc, stdout and stderr, and each case states the rc and output that show
+\ what it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
 \ (`immediate`, `SUMTYPE`, `constant`, `variable`), so it loads before the
@@ -15,9 +15,11 @@
 \ `c"`, `."`, their escaped forms, `char` and `'`), the package keywords
 \ (`package`, `public`, `private`, `;package`, `using`, `;using` and
 \ `export`), words, and definitions (`:`, `kernel:` or `trusted:`) that refuse,
-\ stay pending, or end at `;` or by an immediate their body runs. A case
-\ defines with the other keywords through evaluate, which the engine's loop
-\ reads.
+\ end at `;` or by an immediate their body runs, or stay pending until the
+\ prelude's OI-STOP ends the process in them: a loaded file is a closed text
+\ under either loop, so one that ends inside a definition it opened is refused
+\ (E-EVAL-UNFINISHED) and the definition rolled back. A case defines with the
+\ other keywords through evaluate, which the engine's loop reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
 \ loop compiles and the Habu loop refuses. And one check runs in a forked copy
@@ -94,7 +96,9 @@ variable SPIN-U
 \ the data space left below its ceiling, and OI-ALIAS gives the last record a
 \ second name. OI-ENDED. prints the cells a definition's end clears or'd
 \ together, 0 when all are: PEND, the provenance window, TSIG, TCSIG, DOESB,
-\ TRUSTED and the definition's tier.
+\ TRUSTED and the definition's tier. OI-STOP is a neutral immediate that ends
+\ the process with rc 0 where a body reads it, after it joins the capture: the
+\ exit hook then sees the definition still pending.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -138,6 +142,7 @@ variable SPIN-U
    s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
    s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
    s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
+   s" : OI-STOP ( -- ) s~ ~ 0 die ; immediate  s~ OI-STOP~ 0 parse-imm" QLINE
    s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
    s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
    s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
@@ -1161,13 +1166,14 @@ variable WANT-RC
    S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
 
 \ A pending definition, dumped at exit by OI-DUMP, which the case arms with
-\ OI-WANT set to the wordlist the head must pick.
+\ OI-WANT set to the wordlist the head must pick. OI-STOP ends the process in
+\ the definition, the last token of its capture.
 : PENDING ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: want:ptr wantu:n src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" 1 set-tier ' OI-DUMP data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
    want wantu GE-SRC+ s"  OI-WANT !" GE-SRC-LINE
-   src srcu GE-SRC+
+   src srcu GE-SRC+ s"  OI-STOP" GE-SRC+
    name nameu BOTH
    CASE$ GE-EXPECT-OK ;
 
@@ -1176,7 +1182,7 @@ variable WANT-RC
 \ parentheses; an inline name has no code origin.
 : PENDING-BARE ( -- )
    s" get-current" S\" : OI-FOO ( n -- n ) ( a comment ) dup  1\n+" s" oi-pending-bare.f" PENDING
-   S\" OI-FOO\n6\n1\n1\n-1\nOI-FOO ( n -- n ) dup 1 + \n8\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+   S\" OI-FOO\n6\n1\n1\n-1\nOI-FOO ( n -- n ) dup 1 + OI-STOP \n8\n0\n1\n" CASE$ GE-EXPECT-OUT ;
 
 \ A prelude package's public wordlist takes its qualified tail. The long name
 \ is copied to CP and marked native; `trusted:` sets the trusted cell, and its
@@ -1185,43 +1191,46 @@ variable WANT-RC
    s" package OI-PKG public get-current ;package"
    s" TRUSTED: OI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop"
    s" oi-pending-qualified.f" PENDING
-   S\" A-LONG-DEFINITION-NAME\n2305843009213693974\n1\n1\n1\nOI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop \n13\n1\n1\n"
+   S\" A-LONG-DEFINITION-NAME\n2305843009213693974\n1\n1\n1\nOI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop OI-STOP \n13\n1\n1\n"
    CASE$ GE-EXPECT-OUT ;
 
 \ An unknown qualifier makes a namespace row, whose public wordlist is the next
-\ one; a signature the input ends inside runs to the end, its inner length two
-\ less than the whole, as the engine's is.
+\ one. A signature the input ends inside runs to the end, so the text ends
+\ inside the definition: both loops refuse it there, naming it.
 : PENDING-NEW-NAMESPACE ( -- )
-   s" WIDN-CELL OI-CELL@" s" : OI-NEWNS:OI-BAR ( n -- n" s" oi-pending-namespace.f" PENDING
-   S\" OI-BAR\n6\n1\n1\n-1\nOI-NEWNS:OI-BAR ( n -- n \n6\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+   s" WIDN-CELL OI-CELL@" s" : OI-NEWNS:OI-BAR ( n -- n )" s" oi-pending-namespace.f" PENDING
+   S\" OI-BAR\n6\n1\n1\n-1\nOI-NEWNS:OI-BAR ( n -- n ) OI-STOP \n8\n0\n1\n" CASE$ GE-EXPECT-OUT
+   s" : OI-NEWNS:OI-BAR ( n -- n" s" oi-open-signature-end.f" HEAD
+   67 s" hb: closed text ended inside a definition: OI-NEWNS:OI-BAR at "
+   S\" oi-open-signature-end.f:2\n" DIED-AT ;
 
 \ A colon at either edge leaves the name bare.
 : PENDING-EDGE-COLONS ( -- )
    s" get-current" s" : :OI-EDGE" s" oi-pending-leading.f" PENDING
-   S\" :OI-EDGE\n8\n1\n1\n-1\n:OI-EDGE \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" :OI-EDGE\n8\n1\n1\n-1\n:OI-EDGE OI-STOP \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
    s" get-current" s" kernel: OI-EDGE: dup" s" oi-pending-trailing.f" PENDING
-   S\" OI-EDGE:\n8\n1\n1\n-1\nOI-EDGE: dup \n0\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+   S\" OI-EDGE:\n8\n1\n1\n-1\nOI-EDGE: dup OI-STOP \n0\n0\n1\n" CASE$ GE-EXPECT-OUT ;
 
 \ CP to the start of a code unit (PROT-PAGE-MAX), so what the case compiles
 \ next lies in the unit its head then opens.
 : UNIT-START ( -- )
    s" cp@ PROT-PAGE-MAX 1 - + PROT-PAGE-MAX negate and cp!" GE-SRC-LINE ;
 
-\ An exit hook compiled in the unit a pending head holds open runs at exit. The
-\ head is each loop's own at tier 1, then the engine's at tier 0 through
-\ evaluate.
+\ An exit hook compiled in the unit a pending head holds open runs at exit,
+\ which OI-STOP makes in the body. The head is each loop's own at tier 1, then
+\ the engine's at tier 0 through evaluate.
 : PENDING-HOOK ( -- )
    GE-SRC-RESET
    UNIT-START
    s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
-   s" 1 set-tier : OI-X ( -- ) 1" GE-SRC-LINE
+   s" 1 set-tier : OI-X ( -- ) 1 OI-STOP" GE-SRC-LINE
    s" oi-pending-hook.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 7\n" CASE$ GE-EXPECT-OUT
    GE-SRC-RESET
    UNIT-START
    s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
-   s" s~ : OI-X ( -- ) 1~ evaluate" QLINE
+   s" s~ : OI-X ( -- ) 1 OI-STOP~ evaluate" QLINE
    s" oi-pending-hook-jit.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 7\n" CASE$ GE-EXPECT-OUT ;
@@ -1280,14 +1289,14 @@ variable WANT-RC
    s" get-current"
    S\" : OI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup"
    s" oi-body-strings.f" PENDING
-   S\" OI-STR\n6\n1\n1\n-1\nOI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup \n4\n0\n1\n"
+   S\" OI-STR\n6\n1\n1\n-1\nOI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup OI-STOP \n4\n0\n1\n"
    CASE$ GE-EXPECT-OUT ;
 
 \ A quotation's body is the definition's: a string in it holding `;]` and `(`
 \ does not end it.
 : BODY-QUOTATION ( -- )
    s" get-current" S\" : OI-Q ( -- ) [: s\q ;] ( x\q type ;] execute" s" oi-body-quotation.f" PENDING
-   S\" OI-Q\n4\n1\n1\n-1\nOI-Q ( -- ) [: s\q ;] ( x\q type ;] execute \n4\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+   S\" OI-Q\n4\n1\n1\n-1\nOI-Q ( -- ) [: s\q ;] ( x\q type ;] execute OI-STOP \n4\n0\n1\n" CASE$ GE-EXPECT-OUT ;
 
 \ `[:` outside a definition is no keyword of either loop: no word has the name.
 : TOP-LEVEL-QUOTATION ( -- )
@@ -1298,7 +1307,8 @@ variable WANT-RC
 
 \ A string in a body with no closing quote, or with a bad escape, refuses as
 \ the top-level keyword does, at the keyword's line. A counted string's length
-\ is not checked until `;` compiles it.
+\ is not checked until `;` compiles it: the body holds one past 255 bytes when
+\ OI-STOP ends the process in it.
 : BODY-STRING-REFUSALS ( -- )
    GE-SRC-RESET
    s" 1 set-tier : OI-T ( -- ) 1 s~ never" QLINE
@@ -1312,7 +1322,7 @@ variable WANT-RC
    s" oi-body-bad-escape.f" BOTH
    74 s" hb: bad string literal at " S\" oi-body-bad-escape.f:2\n" DIED-AT
    GE-SRC-RESET
-   s" 1 set-tier : OI-T ( -- ) c~ " Q+ 256 [char] z GE-SRC-REPEAT-C s" ~" QLINE
+   s" 1 set-tier : OI-T ( -- ) c~ " Q+ 256 [char] z GE-SRC-REPEAT-C s" ~ OI-STOP" QLINE
    s" oi-body-counted-long.f" BOTH
    CASE$ GE-EXPECT-OK  CASE$ GE-EXPECT-SILENT ;
 
@@ -1355,10 +1365,10 @@ variable WANT-RC
    NEUTRAL-LINE
    s" s~ : OI-SKIP ( -- ) parse-name 2drop ; immediate~ evaluate  s~ OI-SKIP~ 1 parse-imm" QLINE
    s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
-   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1" GE-SRC-LINE
+   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1 OI-STOP" GE-SRC-LINE
    s" oi-body-immediates.f" BOTH
    CASE$ GE-EXPECT-OK
-   S\" 9\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 \n" CASE$ GE-EXPECT-OUT ;
+   S\" 9\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 OI-STOP \n" CASE$ GE-EXPECT-OUT ;
 
 \ The immediate is looked up as the engine's LFIND looks it up: in the open
 \ package and the global wordlist, and NAME:tail, but not in a used package,
@@ -1373,10 +1383,10 @@ variable WANT-RC
    s" s~ package OI-UP2 public : OI-UN ( -- ) 8 . ; immediate ;package~ evaluate" QLINE
    s" s~ package OI-PP : OI-PN ( -- ) 4 . ; immediate ;package~ evaluate" QLINE
    s" using OI-UP using OI-UP2 package OI-PP s~ OI-PN~ 0 parse-imm" QLINE
-   s" : OI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN" GE-SRC-LINE
+   s" : OI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN OI-STOP" GE-SRC-LINE
    s" oi-body-immediate-scope.f" BOTH
    CASE$ GE-EXPECT-OK
-   S\" 3\n4\nOI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN \n" CASE$ GE-EXPECT-OUT ;
+   S\" 3\n4\nOI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN OI-STOP \n" CASE$ GE-EXPECT-OUT ;
 
 \ An armed checker's preflight gets the body so far, the immediate's token and
 \ the trusted cell before the immediate runs; this one refuses a trusted body.
@@ -1391,9 +1401,9 @@ variable WANT-RC
    name nameu BOTH ;
 
 : BODY-IMMEDIATE-PREFLIGHT ( -- )
-   s" 1 set-tier : OI-X ( -- ) 5 OI-N" s" oi-body-preflight.f" PREFLIGHT-CASE
+   s" 1 set-tier : OI-X ( -- ) 5 OI-N OI-STOP" s" oi-body-preflight.f" PREFLIGHT-CASE
    CASE$ GE-EXPECT-OK
-   S\" OI-X ( -- ) 5 OI-N \nOI-N\n0\n9\n" CASE$ GE-EXPECT-OUT
+   S\" OI-X ( -- ) 5 OI-N \nOI-N\n0\n9\nOI-X ( -- ) 5 OI-N OI-STOP \nOI-STOP\n0\n" CASE$ GE-EXPECT-OUT
    s" 1 set-tier trusted: OI-X ( -- ) 5 OI-N" s" oi-body-preflight-trusted.f" PREFLIGHT-CASE
    75 CASE$ GE-EXPECT-RC
    S\" OI-X ( -- ) 5 OI-N \nOI-N\n1\n" CASE$ GE-EXPECT-OUT ;
@@ -1442,10 +1452,10 @@ variable WANT-RC
    GE-SRC-RESET
    s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + ! OI-MARK" GE-SRC-LINE
    s" : OI-K ( n -- ) create , DOES>   " GE-SRC-LINE
-   s" ( -- n ) ( a comment ) @" GE-SRC-LINE
+   s" ( -- n ) ( a comment ) @ OI-STOP" GE-SRC-LINE
    s" oi-does-split.f" BOTH
    CASE$ GE-EXPECT-OK
-   S\" OI-K ( n -- ) create , DOES> @ \n29\n -- n \n6\n" CASE$ GE-EXPECT-OUT ;
+   S\" OI-K ( n -- ) create , DOES> @ OI-STOP \n29\n -- n \n6\n" CASE$ GE-EXPECT-OUT ;
 
 \ A definer the loop under test reads compiles at `;`: the word it creates runs
 \ its clause, and a checked caller is held to the created signature.
@@ -1484,7 +1494,7 @@ variable WANT-RC
 \ The signature's copy may take the data space to its ceiling; one byte more
 \ refuses as allot does.
 : DOES-DATA-FULL ( -- )
-   s" OI-ROOM 6 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-fits.f" HEAD
+   s" OI-ROOM 6 - allot : OI-K ( n -- ) create , does> ( -- n ) @ OI-STOP" s" oi-does-data-fits.f" HEAD
    CASE$ GE-EXPECT-OK  CASE$ GE-EXPECT-SILENT
    s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
    76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
@@ -1498,15 +1508,15 @@ variable WANT-RC
    s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
    def defu QLINE
    s" s~ does>~ OI-ALIAS OI-MARK" QLINE
-   s" : OI-X ( -- ) does> ( a comment ) 1" GE-SRC-LINE
+   s" : OI-X ( -- ) does> ( a comment ) 1 OI-STOP" GE-SRC-LINE
    name nameu BOTH
    CASE$ GE-EXPECT-OK ;
 
 : DOES-CALLED ( -- )
    s" s~ : OI-DZ ( -- ) 7 . ;~ evaluate" s" oi-does-called.f" CALLED
-   S\" OI-X ( -- ) does> 1 \n0\n\n0\n" CASE$ GE-EXPECT-OUT
+   S\" OI-X ( -- ) does> 1 OI-STOP \n0\n\n0\n" CASE$ GE-EXPECT-OUT
    s" s~ : OI-DZ ( -- ) 7 . ; immediate~ evaluate" s" oi-does-immediate.f" CALLED
-   S\" OI-X ( -- ) does> 1 \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT ;
+   S\" OI-X ( -- ) does> 1 OI-STOP \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT ;
 
 \ ---- `;` ---------------------------------------------------------------------------
 \ `;` compiles the body the loop captured and ends the definition, a body over

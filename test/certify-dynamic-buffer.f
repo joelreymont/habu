@@ -33,8 +33,12 @@ package CERTIFY-DYNAMIC-BUFFER
 0 constant REFUSED
 1 constant UNRESOLVED
 
+\ The scanner's registrations are facts of the certify path: the scan compiles
+\ nothing, so the engine holds no record of CDBT or its kin, and a live
+\ candidate binds only what the compiler binds. Each probe asks the certify
+\ path, where the scan recorded them.
 : CDB-VERDICT ( ptr u8 n -- n )
-   CHECK-QUIET-CANDIDATE! ;
+   VERIFY:CANDIDATE-IN-SCOPE ;
 
 \ ---- 1. the three published words, and the stack each one declares ----------
 : CDB-SECTION-PUBLISHED ( -- )

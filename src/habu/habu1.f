@@ -218,7 +218,7 @@ variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
 \ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
 \ outer loop and `'` call on LFIND's hit path.
 package INTERP-EMIT
@@ -1439,9 +1439,10 @@ public
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
-\ x10. The frame records the data-stack extent in force, and the clean exit
-\ returns to x30: B-EVAL's caller, or the continuation of B-EVAL-CLOSED, which
-\ inlines it under a floor of its own.
+\ x10 and x13 the data stack the frame owns (0 for evaluate). The frame records
+\ the data-stack extent in force, that stack and the definition open at entry
+\ (EVAL-PEND), and the clean exit returns to x30: B-EVAL's caller, or the
+\ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own.
 : EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
@@ -1456,6 +1457,8 @@ public
    11 DATA DP-CELL LDR,  11 14 56 STR,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
+   13 14 STACK-ABI:EVAL-SEG STR,
+   11 DATA PEND-CELL LDR,  11 14 STACK-ABI:EVAL-PEND STR,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
@@ -1482,6 +1485,7 @@ public
 : B-EVAL ( -- )
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   13 0 MOVZ,                                        \ no stack of its own
    EVAL-ENTER ;
 
 : BCREATE ( -- )
@@ -2914,37 +2918,56 @@ public
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
-\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program. Once
-\ the string is popped, the caller's depth becomes the text's floor: BASE moves
-\ up to the cursor and CAP shrinks by the same distance, so the extent keeps its
-\ top, `depth` starts at 0, and every floor the interpreter enforces refuses a
-\ token that would reach a caller's cell, as rc 70 through LEVALREC. The
-\ caller's extent waits in this word's frame; the evaluate frame EVAL-ENTER
-\ pushes records the floor and returns to `back`. A nested evaluate,
-\ run-in-stack or catch inside the text therefore restores to the floor, and a
-\ throw out of the text unwinds to the caller's handler, which restores its
-\ own extent and abandons this frame. On the clean return the text must have
-\ left nothing: residue is dropped and refused by name with
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program on a
+\ data stack of its own. Once the string is popped, the caller's extent and
+\ cursor wait in this word's frame and the text takes a PAGE-BYTES guarded
+\ stack from the pool CLOSED-FREE-CELL heads; an empty pool maps one with
+\ STACK-GUARD:EMIT-MAP, inline because a primitive names no label. So `depth`
+\ starts at 0, every floor the interpreter enforces refuses a token that would
+\ reach under it, as rc 70 through LEVALREC, and the cell under the floor is
+\ that stack's low guard page, never a caller's cell. The evaluate frame
+\ EVAL-ENTER pushes records the stack (EVAL-SEG) and returns to `back`. A
+\ nested evaluate, run-in-stack or catch inside the text therefore restores to
+\ that stack, and a throw out of the text unwinds to the caller's handler,
+\ which restores its own extent and abandons this frame, while LEVALREC gives
+\ the stack back to the pool and puts back the caller's extent this frame
+\ holds: base, capacity and cursor at [0], [8] and [16], the text's stack at
+\ [24] (habu2.f EM-EVAL-THROW-RECOVER). A text that ends inside a definition
+\ it opened throws STACK-ABI:E-EVAL-UNFINISHED that way from its end (habu2.f
+\ C-CLOSED-SOURCE-END). The clean return gives the stack back here, and the
+\ text must have left nothing: residue is dropped and refused by name with
 \ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
 \ BRUNSTACK above.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL {: back:label done:label :}
+   LBL LBL LBL LBL {: have:label take:label back:label done:label :}
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 16 SUBI,
+   SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
-   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
-   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 16 STR,
+   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   11 9 0 ADDI,                                      \ a waits in x11: the map never writes x10 or x11
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
+   9 11 0 ADDI,
+   take B,
+   have LBL,
+   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
+   take LBL,
+   13 SP 24 STR,
+   13 DATA STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 13 0 ADDI,
    30 back ADR,
    EVAL-ENTER
    back LBL,
-   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   11 SP 24 LDR,                                     \ the text's stack, back to the pool
+   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   SP SP 16 ADDI,
-   XDS 11 CMP,  C-EQ done BCOND,
-   XDS 11 0 ADDI,
+   13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
+   SP SP 32 ADDI,
+   13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 

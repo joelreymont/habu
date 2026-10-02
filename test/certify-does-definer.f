@@ -76,7 +76,15 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 0 constant REFUSED
 1 constant UNRESOLVED
 
+\ Two authorities, asked apart. A row the scanner learned is a fact of the
+\ certify path: the scan compiles nothing, so the engine holds no record of the
+\ word it names, and the probe asks that path (CDD-VERDICT). A word the engine
+\ created - sections 4 and 8's live rows - is asked as compiled code asks, by
+\ the engine's own lookup (CDD-LIVE-VERDICT).
 : CDD-VERDICT ( ptr u8 n -- n )
+   VERIFY:CANDIDATE-IN-SCOPE ;
+
+: CDD-LIVE-VERDICT ( ptr u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
 
 \ ---- 1. the definer the scanner read, and the word it creates ---------------
@@ -140,9 +148,9 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 
 : CDD-SECTION-LIVE ( -- )
    s" the engine's own row certifies the clause effect" T-LABEL
-   s" C13 ( -- ptr n ) CDD-LIVE-ONE" CDD-VERDICT ACCEPTED T=
+   s" C13 ( -- ptr n ) CDD-LIVE-ONE" CDD-LIVE-VERDICT ACCEPTED T=
    s" and refuses the bare cell the scanner refuses" T-LABEL
-   s" C14 ( -- n ) CDD-LIVE-ONE" CDD-VERDICT REFUSED T=
+   s" C14 ( -- n ) CDD-LIVE-ONE" CDD-LIVE-VERDICT REFUSED T=
    s" the created word holds what the definer stored" T-LABEL
    CDD-LIVE-READ 8 T= ;
 
@@ -217,7 +225,7 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
 \ published right after one of those walks, and each must be untouched by it.
 : CDD-SECTION-WRAP-LATCH ( -- )
    s" a candidate body may be a wrapper shape and still teach nothing" T-LABEL
-   s" C28 ( n -- ) CDD-RES-D" CDD-VERDICT ACCEPTED T=
+   s" C28 ( n -- ) CDD-RES-D" CDD-LIVE-VERDICT ACCEPTED T=
    s\" 7 CDD-RES-D CDD-CAND-ONE\nCDD-CAND-ONE CDD-CAND-TWO\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" the next created word certifies as the clause effect" T-LABEL
@@ -286,9 +294,9 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" the trusted definer's created word holds what it stored" T-LABEL
    CDD-TRES-READ 8 T=
    s" and the engine's own row certifies the clause effect" T-LABEL
-   s" C43 ( -- ptr n ) CDD-TRES-LIVE" CDD-VERDICT ACCEPTED T=
+   s" C43 ( -- ptr n ) CDD-TRES-LIVE" CDD-LIVE-VERDICT ACCEPTED T=
    s" and refuses the bare cell" T-LABEL
-   s" C44 ( -- n ) CDD-TRES-LIVE" CDD-VERDICT REFUSED T= ;
+   s" C44 ( -- n ) CDD-TRES-LIVE" CDD-LIVE-VERDICT REFUSED T= ;
 
 : MAIN ( -- )
    T-RESET
