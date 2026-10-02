@@ -137,8 +137,11 @@ s" lib/c2-owner.f" required
 s" lib/engine-id.f" required
 package SOURCE-ROOT
 private
+\ The kernel may refuse the engine its own path: a sandbox that denies
+\ proc_pidpath, a Linux without /proc. PATH$ would throw E-ENGINE-PATH out of
+\ the load that asked; the empty path keeps CWD as the source root instead.
 : INSTALL-ENGINE-PATH ( -- )
-   [: ENGINE-ID:PATH$ ;] is ENGINE-PATH-XT
+   [: ENGINE-ID:PATH-OR-EMPTY$ ;] is ENGINE-PATH-XT
    1 ENGINE-PATH-BOUND !
    0 ENGINE-ROOT-U ! 0 ENGINE-ROOT-READY ! ;
 ' INSTALL-ENGINE-PATH

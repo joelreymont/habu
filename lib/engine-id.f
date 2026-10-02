@@ -88,13 +88,18 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    HB-TARGET-LINUX-X86-64? if ENGINE-SELF-LINUX exit then
    0 ;
 
-: CACHED-PATH ( -- ptr u8 n )
+\ Empty while the kernel will not report the pathname: a sandbox that refuses
+\ proc_pidpath, a Linux without /proc. Only a reported pathname is cached.
+: REPORTED-PATH ( -- ptr u8 n )
    EID-PATH-DONE @ 0= if
       REGISTER-CLEANUP
-      ENGINE-SELF-PATH dup 0 <= if drop E-ENGINE-PATH throw then
+      ENGINE-SELF-PATH dup 0 <= if drop EID-PATH 0 exit then
       EID-PATH-U !  -1 EID-PATH-DONE !
    then
    EID-PATH EID-PATH-U @ ;
+
+: CACHED-PATH ( -- ptr u8 n )
+   REPORTED-PATH dup 0= if 2drop E-ENGINE-PATH throw then ;
 
 : OPEN-RUNNING ( -- n )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
@@ -131,6 +136,9 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
 public
 
 : PATH$ ( -- ptr u8 n ) CACHED-PATH ;
+
+\ PATH$, or an empty span where PATH$ throws E-ENGINE-PATH.
+: PATH-OR-EMPTY$ ( -- ptr u8 n ) REPORTED-PATH ;
 
 : KEY$ ( -- ptr u8 n )
    EID-KEY-DONE @ 0= if
