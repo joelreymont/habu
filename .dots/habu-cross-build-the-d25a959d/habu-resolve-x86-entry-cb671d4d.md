@@ -6,6 +6,7 @@ issue-type: task
 created-at: "2026-09-29T13:12:29.008645+03:00"
 blocks:
   - habu-compile-definer-bodies-1292d049
+  - habu-compile-defer-through-d02393a1
 ---
 
 Problem: nothing resolves the entry cells in an x86 image, and `NATIVE-EMIT:WRITE` has no x86 arm.

@@ -7,6 +7,7 @@ created-at: "2026-09-30T14:52:44.697860+03:00"
 blocks:
   - habu-move-pkgs-using-22f18b81
   - habu-compile-definer-bodies-1292d049
+  - habu-compile-defer-through-d02393a1
 ---
 
 Problem: the engine loop calls the unit hook (UNIT-COMPILE-CELL, armed by `unit-compile-run` for `tools/native-unit-build-core.f`) at five sites and refuses two unit misuses; the Habu loop does none of it, so once I9a makes `evaluate` the Habu loop a unit would load unguarded.

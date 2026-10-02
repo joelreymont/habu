@@ -9,6 +9,7 @@ blocks:
   - habu-hook-tier-0-96e33c29
   - habu-compile-definer-bodies-1292d049
   - habu-mark-immediate-and-7ce84436
+  - habu-compile-defer-through-d02393a1
 ---
 
 Problem: the seeded product's `EM-STARTUP` (`src/habu/habu2.f:7428-7451`) never walks `LAOTBOOTRUN`, which is emitted only for cold engines (`habu2.f:10016-10023`), and `APP-ENTRY:XT-CELL` cannot carry the engine's `MAIN` because it also flips the argv and stdin conventions (`src/habu/aot-owned-cells.f:171-179`, `habu2.f:1305,1747,1869`); the product's REPL installs at window time (`src/habu/repl.f:237-240`, `src/habu/native-runtime.f:130`). This is the one leaf that changes the kernel boot on ARM64.
@@ -21,3 +22,5 @@ Ownership: krait (Intel lane).
 Claim: unassigned.
 
 Lead note (2026-10-01, from I5e habu-close-definitions-with-8ace78d8): this leaf's full gate is where every suite first runs through the Habu loop, so it carries I5e's suites line: the `compiler-native-*` and `checker-*` suites at `1 set-tier` under the feature cell. Today `bin/hb --load test/outer-loop-on.f <1 set-tier> <suite>` stops every suite at `E-UNDEFINED: constant` (`lib/test/assert.f`), and 81 of the 93 suite files use `constant`, `variable`, `create`, `defer`, `immediate` or `cast:`, hence the blockers habu-compile-definer-bodies-1292d049 and habu-mark-immediate-and-7ce84436.
+
+Lead note (2026-10-02, I6 handoff): `test/tier.f` through the Habu loop (`test/outer-loop-on.f test/tier.f`) is this leaf's acceptance, moved from habu-hook-tier-0-96e33c29: on the base engine it stops first at `E-UNDEFINED: constant` (I7b), so I6 proves tier 0 with focused cases. It also needs I7c's `defer`.
