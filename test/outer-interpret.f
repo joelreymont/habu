@@ -1463,9 +1463,9 @@ variable WANT-RC
 \ well.
 : DOES-ONLY ( -- )
    GE-SRC-RESET
-   s" 1 set-tier : OI-PAT ( -- ) does> ( -- n ) @ 1 + ; ' OI-PAT dup 1 + code-origin ." GE-SRC-LINE
+   s" 1 set-tier package OI-DOES-ONLY : OI-PAT ( -- ) does> ( -- n ) @ 1 + ; ' OI-PAT dup 1 + code-origin ." GE-SRC-LINE
    s" create OI-B 5 , OI-PAT create OI-C 9 , OI-PAT OI-B . OI-C ." GE-SRC-LINE
-   s" : OI-SQ ( n -- ) 2 0 do loop drop does> ( -- n ) @ 2 * ; create OI-D 4 , 3 OI-SQ OI-D ." GE-SRC-LINE
+   s" : OI-SQ ( n -- ) 2 0 do loop drop does> ( -- n ) @ 2 * ; create OI-D 4 , 3 OI-SQ OI-D . ;package" GE-SRC-LINE
    s" oi-does-only.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 1\n6\n10\n8\n" CASE$ GE-EXPECT-OUT ;
