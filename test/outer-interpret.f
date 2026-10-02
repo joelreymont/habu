@@ -13,8 +13,8 @@
 \ (`SUMTYPE`), so it loads before the switch, and a case holds only numbers,
 \ comments, the literal keywords (`s"`, `c"`, `."`, their escaped forms, `char`
 \ and `'`), the package keywords (`package`, `public`, `private`, `;package`,
-\ `using`, `;using` and `export`), words, the definers (`create`, `variable` and
-\ `constant`), definitions (`:`, `kernel:` or `trusted:`) that refuse, stay
+\ `using`, `;using` and `export`), words, the definers (`create`, `variable`,
+\ `constant` and `defer`), definitions (`:`, `kernel:` or `trusted:`) that refuse, stay
 \ pending, or end at `;` or by an immediate their body runs, `cast:`
 \ declarations and `immediate`. A case defines with the other keywords through
 \ evaluate, which the engine's loop reads.
@@ -22,10 +22,11 @@
 \ Some cases are the Habu loop's alone: the records an exit hook finds after an
 \ uncaught throw, where the engine's loop rolls the dictionary back to the
 \ file's start and the Habu loop does not; the cell only the Habu loop's
-\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); and `constant` on an empty
-\ stack, which the engine's loop reads below its stack. And one check runs in a
-\ forked copy of this process instead, the seam: a fork binds it to a counting
-\ spy, and a loaded file must arrive there.
+\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); `constant` on an empty
+\ stack, which the engine's loop reads below its stack; and a `defer` the target
+\ owner cannot register, which the engine's loop holds for TRUST to replay. And
+\ one check runs in a forked copy of this process instead, the seam: a fork
+\ binds it to a counting spy, and a loaded file must arrive there.
 
 require lib/errors.f
 require lib/string.f
@@ -1902,6 +1903,113 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 19\n7\n" CASE$ GE-EXPECT-OUT ;
 
+\ ---- `defer` ---------------------------------------------------------------------
+\ A defer calls the execution token in its dispatch cell, at tier 0 as at
+\ tier 1: the cells a definition's end clears are 0, its code is native, its
+\ flags carry the checker's minimum input, its span is exact, `is` in a body
+\ re-points it, a body calls it, the cell its trailer names is the one `is`
+\ stored into, and a qualified name goes to the package's public wordlist.
+: DEFER-AT ( ptr u8 n ptr u8 n -- ) {: tier:ptr tieru:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   s" TRUSTED: OI-AT@ ( n -- n ) @ ;" GE-SRC-LINE
+   tier tieru GE-SRC-LINE
+   s" defer OI-D ( n -- n ) OI-ENDED. ' OI-D dup 1 + code-origin ." GE-SRC-LINE
+   s" LATEST XREF-FLAGS . LATEST XREF-RAW-LEN CODE-SPAN:FULL? OI-B." GE-SRC-LINE
+   s" : OI-X ( n -- n ) 1 + ; : OI-SET ( -- ) ['] OI-X is OI-D ; OI-SET 5 OI-D ." GE-SRC-LINE
+   s" : OI-Y ( n -- n ) 2 * ; : OI-SET2 ( -- ) ['] OI-Y is OI-D ; OI-SET2 5 OI-D ." GE-SRC-LINE
+   s" : OI-USE ( -- n ) 4 OI-D ; OI-USE ." GE-SRC-LINE
+   s" s~ OI-D~ NDICT:SPELL-DEFER-CELL OI-AT@ ' OI-Y = OI-B." QLINE
+   s" defer OI-DQ:OI-E ( n -- n ) : OI-Z ( n -- n ) 3 + ;" GE-SRC-LINE
+   s" : OI-SETE ( -- ) ['] OI-Z is OI-DQ:OI-E ; OI-SETE 4 OI-DQ:OI-E ." GE-SRC-LINE
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 0\n1\n4503599627370500\n1\n6\n10\n8\n1\n7\n" CASE$ GE-EXPECT-OUT ;
+
+: DEFER-PUBLISH ( -- )
+   s" 0 set-tier" s" oi-defer-tier-0.f" DEFER-AT
+   s" 1 set-tier" s" oi-defer.f" DEFER-AT ;
+
+\ A defer `is` has not pointed calls `defer-unset`, which ends the process
+\ (src/core/exec-vector.f). `is` is a compile keyword, undefined at top level
+\ in both loops. The checker's minimum input refuses a bare call on an empty
+\ stack, and `undefine` frees the name for a defer of another effect.
+: DEFER-USE ( -- )
+   s" defer OI-D ( n -- n ) 5 OI-D ." s" oi-defer-unset.f" LINE-CASE
+   76 CASE$ GE-EXPECT-RC
+   S\" defer: unset execution vector\n" CASE$ GE-EXPECT-ERR
+   s" defer OI-D ( n -- n ) : OI-X ( n -- n ) 1 + ; ' OI-X is OI-D" s" oi-defer-top-is.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" E-UNDEFINED: is\n" CASE$ GE-EXPECT-ERR
+   s" defer OI-D ( n -- n ) OI-D" s" oi-defer-underdepth.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" hb: interpret stack underdepth: OI-D\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" defer OI-D ( -- n ) : OI-A ( -- n ) 7 ; : OI-SA ( -- ) ['] OI-A is OI-D ; OI-SA OI-D ." GE-SRC-LINE
+   s" undefine OI-D defer OI-D ( -- n n ) : OI-B ( -- n n ) 1 2 ;" GE-SRC-LINE
+   s" : OI-SB ( -- ) ['] OI-B is OI-D ; OI-SB OI-D . ." GE-SRC-LINE
+   s" oi-defer-undefine.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 7\n2\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ `defer` refuses in the engine's order and with its text: the name, then the
+\ signature, which must be there and is read before the duplicate test, then
+\ a duplicate or a compile keyword; the room and a live task first. `is` in
+\ a body refuses a word that is not a defer and a name it cannot find.
+: DEFER-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" defer" GE-SRC+
+   s" oi-defer-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: defer: missing name after defer at " S\" oi-defer-no-name.f:2\n" DIED-AT
+   s" defer OI-D 1 2" s" oi-defer-no-signature.f" LINE-CASE
+   76 s" OI-D at " S\" oi-defer-no-signature.f:1\n" DIED-AT
+   s" defer oi-two 1 2" s" oi-defer-signature-first.f" LINE-CASE
+   76 s" oi-two at " S\" oi-defer-signature-first.f:1\n" DIED-AT
+   s" defer oi-two ( n -- n )" s" oi-defer-duplicate.f" LINE-CASE
+   78 s" duplicate definition: oi-two at " S\" oi-defer-duplicate.f:1\n" DIED-AT
+   s" defer If ( -- )" s" oi-defer-if.f" LINE-CASE
+   70 s" hb: compile keyword cannot be a definition name: If at " S\" oi-defer-if.f:1\n" DIED-AT
+   s" dbase@ REGION + $4000 - cp! defer OI-D ( n -- n )" s" oi-defer-code-full.f" LINE-CASE
+   76 s" hb: code space full at: defer at " S\" oi-defer-code-full.f:1\n" DIED-AT
+   s" OI-DICT-FULL defer OI-D ( n -- n )" s" oi-defer-dictionary-full.f" LINE-CASE
+   77 s" hb: dictionary full at: defer at " S\" oi-defer-dictionary-full.f:1\n" DIED-AT
+   s" : OI-SET ( -- ) ['] OI-TWO is OI-FIVE ;" s" oi-is-not-defer.f" LINE-CASE
+   76 s" hb: is: not a deferred word: OI-FIVE at " S\" oi-is-not-defer.f:1\n" DIED-AT
+   s" : OI-SET ( -- ) ['] OI-TWO is OI-NOPE ;" s" oi-is-not-found.f" LINE-CASE
+   70 S\" hb: is: no deferred word named OI-NOPE\nhb: is: parsing words resolve outside using-imports; qualify the target at "
+   S\" oi-is-not-found.f:1\n" DIED-AT
+   SPIN-PRELUDE
+   s" OI-SPIN defer OI-T ( n -- n )" s" defer" s" oi-live-defer.f" LIVE
+   0 SPIN-U ! ;
+
+\ A defer's effect goes to the active owner's trust-decl, then the target
+\ owner's unless it is the same xt, and its name as written to each one's
+\ checker-defer alike. The Habu loop alone ends the process naming the
+\ operation a target owner lacks, where the engine's loop holds the defer for
+\ TRUST to replay (habu2.f C-PD-CAPTURE).
+: DEFER-OWNERS ( -- )
+   OWNER-SPY
+   s" : OI-DEF ( ptr u8 n -- ) type cr ;" GE-SRC-LINE
+   s" : OI-DEF2 ( ptr u8 n -- ) .~ target ~ type cr ;" QLINE
+   s" ' OI-DEF OI-A NCOMP-DISPATCH:DECL-DEFER-OFF + !  ' OI-DEF2 OI-T NCOMP-DISPATCH:DECL-DEFER-OFF + !" GE-SRC-LINE
+   s" OI-A OI-T OI-OWNERS defer OI-D ( n -- n ) defer OI-DQ:OI-E ( -- )  OI-LIVE OI-LIVE OI-OWNERS 1 ." GE-SRC-LINE
+   s" oi-defer-owners.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-D\ntarget OI-D\nOI-DQ:OI-E\ntarget OI-DQ:OI-E\n1\n" CASE$ GE-EXPECT-OUT
+   OWNER-SPY
+   s" 0 0 OI-OWNERS 1 . defer OI-D ( -- ) 2 ." GE-SRC-LINE
+   s" oi-defer-no-target.f" HABU
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   s" trust-decl" CASE$ GE-EXPECT-ERR
+   OWNER-SPY
+   s" 0 OI-T NCOMP-DISPATCH:DECL-DEFER-OFF + !  OI-A OI-T OI-OWNERS 1 . defer OI-D ( -- ) 2 ." GE-SRC-LINE
+   s" oi-defer-no-checker-defer.f" HABU
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   s" checker-defer" CASE$ GE-EXPECT-ERR ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -2054,6 +2162,10 @@ private
    DEFINERS-TIER-0
    DEFINER-HABU-ONLY
    DEFINER-OWNERS
+   DEFER-PUBLISH
+   DEFER-USE
+   DEFER-REFUSALS
+   DEFER-OWNERS
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

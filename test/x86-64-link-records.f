@@ -10,9 +10,10 @@
 \ `does>` definer, a word whose name is past sixteen bytes, calls to kernel
 \ bodies, a code literal naming a window word, a quotation, a string literal in
 \ the window's DATA, a tail call, two declared code cells (a window word's xt
-\ and a kernel body's), two clauses, a `variable`, a `constant` and a created
-\ word that the Habu loop reads (src/habu/interpret.f), whose bodies NCOMP
-\ compiles with the shadow open, and the package's public wordlist protected.
+\ and a kernel body's), two clauses, a `defer` and two words that aim it with
+\ `is`, a `variable`, a `constant` and a created word that the Habu loop reads
+\ (src/habu/interpret.f), whose bodies NCOMP compiles with the shadow open,
+\ and the package's public wordlist protected.
 \ Then the real capture and the shadow reader, the x86-64 kernel's rows emitted
 \ into a stream by test/x86-64-boot-harness.f, and X64LINK:LAYOUT over both, as
 \ the image writer runs it before the stream links.
@@ -29,7 +30,9 @@
 \ holds or of the cell a definer made, and the function offset the capture
 \ carries. A variable's and a created word's routine ends in the slot
 \ does-patch aims, `jmp rel32` with displacement 0 and `ret`; a constant's
-\ does not.
+\ does not. A defer's record spans its routine and ends at its trailer,
+\ DEFER-MAGIC and then the image address of the dispatch cell its routine
+\ loads.
 \
 \ THE DOES-PATCH ROW RUNS THE LINKED WORDS. Each of these images lays the
 \ window out over its own kernel stream, stages it as hb-x64-link-index does,
@@ -47,6 +50,8 @@
 \   then aims MADE at a second clause, whose effect is scalar and of no
 \   input, with the target another checker, which is given the same name and
 \   signature, and MADE is left neither wide nor with a min-in; it exits 0.
+\ - hb-x64-link-defer runs SETD, which aims DEFD at BUMP, then DEFD over 5,
+\   then SETD2, which aims it at BUMP2, and DEFD again: 6, then 7; it exits 0.
 \ - The slot refusals exit 83, nothing on fd 2, before the row writes:
 \   -slot-armed aims SEVEN, whose routine has no slot, -lastc-armed names no
 \   record and -ret-armed stages MADE with int3 for the `ret` after its slot.
@@ -167,6 +172,8 @@ get-current X64LT:PUB-WID !
 : GREET ( -- ptr u8 n ) s" linked" ;
 : BUMP ( n -- n ) 1 + ;
 : BUMP2 ( n -- n ) 2 + ;
+s" defer DEFD ( n -- n ) : SETD ( -- ) ['] BUMP is DEFD ;" OUTER:INTERPRET
+s" : SETD2 ( -- ) ['] BUMP2 is DEFD ; SETD" OUTER:INTERPRET
 X64LT:EXTRA$ evaluate
 s" variable CELLV 7 constant SEVEN create MADE 2 cells allot" OUTER:INTERPRET
 0 set-tier
@@ -193,6 +200,9 @@ using AOT-BUF
 : W-MADE ( -- n ) s" X64LT-WIN:MADE" WIDX ;
 : W-BUMP ( -- n ) s" X64LT-WIN:BUMP" WIDX ;
 : W-BUMP2 ( -- n ) s" X64LT-WIN:BUMP2" WIDX ;
+: W-DEFD ( -- n ) s" X64LT-WIN:DEFD" WIDX ;
+: W-SETD ( -- n ) s" X64LT-WIN:SETD" WIDX ;
+: W-SETD2 ( -- n ) s" X64LT-WIN:SETD2" WIDX ;
 
 \ ---- the layout --------------------------------------------------------------
 : IMG ( n -- n ) X64LINK:PRIMS + ;
@@ -499,6 +509,27 @@ using AOT-BUF
    W-CELLV X64LT-WIN:CELLV BYTE-VIEW CELL-SITE
    W-MADE X64LT-WIN:MADE BYTE-VIEW CELL-SITE ;
 
+\ ---- the defer, linked ------------------------------------------------------------
+\ The image address of DEFD's dispatch cell, which the host's trailer names, as
+\ IMAGE-VA places a host address.
+: DEFD-VA ( -- n )
+   s" X64LT-WIN:DEFD" NDICT:SPELL-DEFER-CELL  AOT-ARM:D0 @ -  X64LINK:DATA-AT +
+   X64LAYOUT:DATA-VA VA>N + ;
+
+: DEFER-CASE ( -- )
+   s" a defer's record spans its routine to its trailer: DEFER-MAGIC, then its dispatch cell's image address" T-LABEL
+   W-DEFD ROW-OF {: r:n :}
+   r 0 >= TTRUE
+   W-DEFD IMG 8 RF@ CODE-SPAN:BODY  r 8 SH@  T=
+   W-DEFD IMG ENTRY  r 8 SH@ + {: meta:n :}
+   meta BAND LE:U64@ DEFER-MAGIC T=
+   meta CELL + BAND LE:U64@ DEFD-VA T=
+   W-DEFD AOT-SHADOW:DATA SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s SITE-VA {: va:n :}
+   va MOVABS? TTRUE
+   va IMM@ DEFD-VA T= ;
+
 \ ---- the index, read by the kernel ---------------------------------------------
 \ The stream KERNEL opened becomes an image: the writer's records at the region
 \ and its code band DICT-SIZE past them, where the long names lie; the count,
@@ -710,6 +741,17 @@ CELL constant ACTIVE-AT                \ the active checker's trust-raw's cells
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-link-does-checker-replaced" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ DEFD runs through its dispatch cell, which SETD and SETD2 aim in the image.
+: DEFER-IMAGE ( -- )
+   false DOES-OPEN,
+   W-SETD CALL-WORD,
+   5 X64HARNESS:PUSH,  W-DEFD CALL-WORD,  6 X64HARNESS:EXPECT-POP,
+   W-SETD2 CALL-WORD,
+   5 X64HARNESS:PUSH,  W-DEFD CALL-WORD,  7 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-link-defer" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
 \ An image whose does-patch must end the process before it returns: aimed at
 \ the clause BUMP, after `arm` emits the state it refuses.
@@ -962,6 +1004,7 @@ public
    CELL-CASE
    DEFINER-CASE
    DEFINER-DATA-CASE
+   DEFER-CASE
    INDEX-IMAGE
    SHIFT-CASE
    STRAY-CASE
@@ -980,6 +1023,7 @@ public
    true s" hb-x64-link-does-negative" DOES-IMAGE
    CHECKER-IMAGE
    REPLACED-IMAGE
+   DEFER-IMAGE
    ARMED-IMAGES
    s" x86-64-link-records: prims=" type X64LINK:PRIMS .
    s" records=" type X64LINK:RECORDS .

@@ -2,8 +2,8 @@
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
 \ follows one; `cast:`, which declares and publishes at once, as C-CAST does;
-\ `immediate`; and the definers `create`, `variable` and `constant`, whose
-\ bodies NCOMP compiles as they are read. STEP (src/habu/interpret.f) asks
+\ `immediate`; and the definers `create`, `variable`, `constant` and `defer`,
+\ whose bodies NCOMP compiles as they are read. STEP (src/habu/interpret.f) asks
 \ COMPILING? after a comment and DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
@@ -463,9 +463,10 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
    TOKEN$ DEF-CAPTURE ;
 
 \ The owner record holds raw execution tokens; these views state the two
-\ signatures called here.
+\ signatures called here: the check hook's, and that of a registrar taking a
+\ name and a signature, trust-raw's and trust-decl's.
 TRUSTED: DEF-AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
-TRUSTED: DEF-AS-RAW ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
+TRUSTED: DEF-AS-NAME-SIG ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
 
 \ The keyword joins the capture, and an armed check hook reads it, its verdict
 \ dropped (habu2.f C-DEFHOOK).
@@ -493,12 +494,12 @@ TRUSTED: DEF-AS-RAW ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
    NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own DEF-RAW-FIRST {: first:n :}
    first 0= if exit then
-   DEF-CAPTURED-NAME sig su first DEF-AS-RAW execute
+   DEF-CAPTURED-NAME sig su first DEF-AS-NAME-SIG execute
    NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if exit then
    target own = if exit then
-   DEF-CAPTURED-NAME sig su target DEF-AS-RAW execute ;
+   DEF-CAPTURED-NAME sig su target DEF-AS-NAME-SIG execute ;
 
 \ The DATA address a created word's body pushes, as the number NCOMP takes.
 TRUSTED: DEF-HERE ( -- n ) here ;
@@ -534,6 +535,91 @@ TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW ;
 
+\ ---- `defer` (habu2.f C-DEFER) ------------------------------------------------
+\ `defer NAME ( in -- out )` declares a word that calls the execution token in
+\ its dispatch cell, an aligned DATA cell that starts with `defer-unset`'s and
+\ that `is` in a body re-points. It refuses in the engine's order and with its
+\ text: a live task, the room, the name, then the signature, which must be
+\ there, opened and closed, then `defer-unset`, whose cell is allotted before
+\ the qualifier, as the engine's is. The checker gets the effect before NCOMP
+\ compiles the body, which asks it for the arity; NPUB lays the trailer after
+\ the routine and def-close ends the definition. The engine registers after it
+\ publishes, which nothing observes: trust-decl never consults the dictionary
+\ (habu2.f DEF-TRUST).
+
+\ With the input at its end the token cells still hold the keyword, which the
+\ refusal names (DEFER-DIAG:DIE-NO-NAME, rc $4A).
+: DEFER-NAME ( -- )
+   TOKEN if exit then
+   s" hb: defer: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
+
+\ `defer-unset`'s execution token, found as LFIND finds it; with none the
+\ refusal is the bare name token (C-DEFER-FIND-UNSET, rc $46).
+: DEFER-UNSET-XT ( -- n )
+   s" defer-unset" FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if TOKEN$ SAY RC-REJECT THROW-AT then
+   rec XREF-START ;
+
+\ The cell holds an execution token, so xt! declares it one, as the engine's
+\ C-DEFER-CELL marks it: a snapshot moves it with the code region.
+TRUSTED: DEF-XT! ( n n -- ) xt! ;
+
+: DEFER-CELL ( -- n )
+   DEFER-UNSET-XT {: xt:n :}
+   align
+   DEF-HERE {: cell:n :}
+   1 cells allot
+   xt cell DEF-XT!
+   cell ;
+
+\ The engine holds a defer the target checker cannot register yet for TRUST
+\ to replay (C-PRETRUST-READY?, C-PD-CAPTURE). Only the target's own
+\ src/core/checker.f declares one, and no build reads it through this loop,
+\ so here the process ends naming the operation the target owner lacks.
+: DEFER-READY ( -- )
+   NCOMP-DISPATCH:DECL-EFFECT-OFF PKG-TARGET 0= if
+      s" trust-decl" RC-REJECT FAIL-CLOSED
+   then
+   NCOMP-DISPATCH:DECL-DEFER-OFF PKG-TARGET 0= if
+      s" checker-defer" RC-REJECT FAIL-CLOSED
+   then ;
+
+\ The active owner's operation at off, then the target owner's, 0 when the
+\ active owner's field holds the same one (DECL-OWNER:FIND, SKIP-SAME).
+: DEF-OWNERS ( n -- n n ) {: off:n :}
+   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION {: own:n :}
+   off PKG-TARGET {: target:n :}
+   own  target own = if 0 else target then ;
+
+\ The name the capture holds and signature sig to each trust-decl
+\ (DEF-TRUST:REGISTER), then the name to each checker-defer
+\ (C-CALL-CHECKER-DEFER).
+: DEFER-REGISTER ( ptr u8 n -- ) {: sig:ptr su:n :}
+   NCOMP-DISPATCH:DECL-EFFECT-OFF DEF-OWNERS {: own:n target:n :}
+   own 0<> if DEF-CAPTURED-NAME sig su own DEF-AS-NAME-SIG execute then
+   target 0<> if DEF-CAPTURED-NAME sig su target DEF-AS-NAME-SIG execute then
+   NCOMP-DISPATCH:DECL-DEFER-OFF DEF-OWNERS {: down:n dtarget:n :}
+   down 0<> if DEF-CAPTURED-NAME down PKG-AS-NAME-ACTION execute then
+   dtarget 0<> if DEF-CAPTURED-NAME dtarget PKG-AS-NAME-ACTION execute then ;
+
+: DEF-DEFER ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   DEFER-NAME
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s end s - DEF-CAPTURE
+   DEFER-CELL {: cell:n :}
+   DEF-QUALIFY 0 1 DEF-RECORD
+   s 1 + end s - 2 - {: sa:ptr su:n :}
+   sa su DEF-TRUST-SIG
+   DEFER-READY
+   sa su DEFER-REGISTER
+   cell NCOMP:FIXED-DEFER NCOMP:COMPILE-FIXED
+   DEF-CLOSE ;
+
 \ ---- the definition keywords --------------------------------------------------
 \ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`,
 \ `immediate` and the definers are matched as LITERAL? matches its keywords.
@@ -548,6 +634,7 @@ TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
    s" create" TOKEN-IS? if DEF-CREATE true exit then
    s" variable" TOKEN-IS? if DEF-VARIABLE true exit then
    s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
+   s" defer" TOKEN-IS? if DEF-DEFER true exit then
    false ;
 
 ;package

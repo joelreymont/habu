@@ -829,16 +829,21 @@ variable NAME-BOUNDARY-LEN
 \ No seed reads them, and the target's writer trusts them as the capture wrote
 \ them, so they are refused here if they do not fit what they index: a record's
 \ routine and its entry inside the shadow code, records ascending, a site's whole
-\ instruction inside the code with a kind this format names and a target the
-\ kind allows - a window record or a name-pool entry - and a code-cell row naming
-\ an address-cell row, in order, whose target is window code. Every record index
-\ names a window record, so it is below the artifact's own record count.
+\ instruction or cell inside the code with a kind this format names and a target
+\ the kind allows - a window record or a name-pool entry - and a code-cell row
+\ naming an address-cell row, in order, whose target is window code. Every record
+\ index names a window record, so it is below the artifact's own record count.
+\ An emission holds the shadow code up to the next one's start (a defer's
+\ trailer lies past its routine), so a row starts where the row before it does,
+\ over the same emission, or at or past that routine's end.
 variable SH-PREV
+variable SH-PREV-AT
+variable SH-PREV-END
 
 : ?SH-RECS ( -- )
    S-SHCODE ROW-LEN@ {: clen:n :}
    S-RECS SEC-ROWS {: recs:n :}
-   -1 SH-PREV !
+   -1 SH-PREV !  0 SH-PREV-AT !  0 SH-PREV-END !
    S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / 0 ?do
       S-SHRECS SEC-AT i AOT-SHADOW:REC-ROW * + {: r:ptr :}
       r U32@ {: k:n :}
@@ -849,7 +854,9 @@ variable SH-PREV
          s" aot-file: the shadow records are not one ascending row per window record" DIE then
       len 0=  at len + clen > or  entry len >= or if
          s" aot-file: a shadow record's routine lies outside the shadow code" DIE then
-      k SH-PREV !
+      at SH-PREV-AT @ <>  at SH-PREV-END @ < and if
+         s" aot-file: a shadow record's routine overlaps the one before it" DIE then
+      k SH-PREV !  at SH-PREV-AT !  at len + SH-PREV-END !
    loop ;
 
 \ A site's instruction width, or 0 for a kind this format does not name.
@@ -857,6 +864,7 @@ variable SH-PREV
    kind AOT-SHADOW:CALL = kind AOT-SHADOW:TAIL = or if 5 exit then
    kind AOT-SHADOW:DATA =  kind AOT-SHADOW:CODE = or  kind AOT-SHADOW:FUN = or if
       ADDRESS-CARRIER:MOVABS-BYTES exit then
+   kind AOT-SHADOW:DCELL = if CELL exit then
    0 ;
 
 : ?SH-TARGET ( n n -- ) {: t:n recs:n :}
@@ -877,8 +885,8 @@ variable SH-PREV
       kind SH-WIDTH {: w:n :}
       w 0= if s" aot-file: a shadow site has a kind this format does not carry" DIE then
       at w + clen > if s" aot-file: a shadow site reaches past the shadow code" DIE then
-      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or if
-         t 0<> if s" aot-file: a shadow DATA or function site names a target" DIE then
+      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or  kind AOT-SHADOW:DCELL = or if
+         t 0<> if s" aot-file: a shadow DATA, function or trailer cell site names a target" DIE then
       else t recs ?SH-TARGET then
    loop ;
 

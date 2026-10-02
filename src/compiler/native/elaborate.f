@@ -3782,6 +3782,7 @@ variable FUN-KIND
 1 constant FUN-DOES-PARENT
 2 constant FUN-DOES-CLAUSE
 3 constant FUN-FIXED                 \ a definer's body: one literal, then the return
+4 constant FUN-DEFER                 \ a defer's body: the call through its cell, then the return
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -4036,8 +4037,9 @@ variable DOES-PATCH
 \ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
 \ the tape because this compiler never reaches that path.
 variable DOES-EMPTY
-variable FIXED-VAL                   \ the cell a definer's body pushes
+variable FIXED-VAL                   \ the cell a definer's body pushes; a defer's dispatch cell
 variable FIXED-KIND                  \ ...and its NDICT definer kind
+variable DEFER-EXEC                  \ `execute`'s entry, which a defer's body calls
 
 public
 
@@ -4062,6 +4064,7 @@ public
    0 TAIL-ENTRY !
    0 DOES-EMPTY !
    0 DOES-PATCH !
+   0 DEFER-EXEC !
    0 FIXED-VAL ! ;
 
 private
@@ -4111,8 +4114,19 @@ private
 : STAGE-FIXED ( -- )
    0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
 
+\ What a defer's body does (habu2.f C-DEFER-EMIT-CODE): fetch the execution
+\ token its dispatch cell holds and call it through `execute`, over the
+\ inputs, as DO-EXEC stages an `execute`. The one row is the name, so the
+\ memory the fetch and the call are ordered by is minted here, at row 0.
+: STAGE-DEFER ( -- )
+   0 EMIT-MEM
+   0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
+   0 HIR-OPCODE:LOAD EMIT-OPCODE
+   0 DEFER-EXEC @ IN-N @ 1+ OUT-N @ OUT-GLUE @ STAGE-WCALL ;
+
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
+   FUN-KIND @ FUN-DEFER = if STAGE-DEFER exit then
    FUN-KIND @ FUN-FIXED = if STAGE-FIXED then ;
 
 : SCAN-FUN ( IR-ARENA:arena IR-ARENA:arena n n -- )
@@ -4127,7 +4141,9 @@ private
    r lo hi MEM-SCAN
    \ The patch a parent ends in takes the order, which only the entry can mint.
    FUN-KIND @ FUN-DOES-PARENT = if 1 TOK-NEED ! then
-   r lo hi CROSS-SCAN ;
+   r lo hi CROSS-SCAN
+   \ A defer's body has no rows to scan, and its one call is staged at return.
+   FUN-KIND @ FUN-DEFER = if 1 CALL-NEED ! then ;
 
 : OPEN-FUN-BODY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
@@ -4234,6 +4250,23 @@ public
    NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
    0 FR-GIN ! 0 FR-GOUT !
    c b v p r 1 1 0 1 BUILD-FUN ;
+
+\ A defer's body (NCOMP:COMPILE-FIXED) over the same one-row tape: a function
+\ of the declared arity that calls the execution token in dispatch cell cell
+\ and returns what it leaves, with the frame glue FRAME-GLUE! staged.
+: DEFER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena cell:n in:n out:n :}
+   RF-RESET
+   in out ARITY-CK
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   s" execute" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DEFER-EXEC !
+   cell FIXED-VAL !
+   FUN-DEFER FUN-KIND !
+   FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 in out BUILD-FUN ;
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;

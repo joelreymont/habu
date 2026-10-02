@@ -6,6 +6,9 @@ require lib/test.f
 require lib/string.f
 require test/gate-common.f
 require tools/aot-build.f
+\ The interpret loop written in Habu, for SAT-DEFER below. It loads before the
+\ tier switch: NCOMP refuses some of its words at tier 1 (src/habu/outer.f HOOK).
+require src/habu/interpret.f
 
 \ The image restores at tier 0 and its require of tools/aot-build.f is a no-op,
 \ so this sets the tier that file sets on a source load: the records and code
@@ -81,6 +84,21 @@ get-current constant SAT-WID
    low XREF-FOUND? TFALSE
    lat -1 T= ;
 
+\ A DEFER THE HABU LOOP DEFINES OWNS ITS DISPATCH CELL. src/habu/interpret.f
+\ compiles the routine through NCOMP with the DEFER-MAGIC trailer after it; the
+\ routine spells the cell, so the refusals that name a cell's word
+\ (DATA-CELL-JSON, XT-CELL-ROOT) name the defer, as for the engine's own.
+\ The trailer is read here, where the package's names are in the search order.
+s" defer SAT-DEFER ( n -- n )" OUTER:INTERPRET
+s" SAT-DEFER" NDICT:SPELL-DEFER-CELL constant SAT-DEFER-CELL
+: SAT-DEFER-OWNER ( -- )
+   s" SAT-DEFER" SAT-WID XREF-FIND-WL {: r:ptr :}
+   r XREF-FOUND? TTRUE
+   s" the trailer after the routine holds the dispatch cell" T-LABEL
+   SAT-DEFER-CELL 0<> TTRUE
+   s" the cell's owner is the defer" T-LABEL
+   SAT-DEFER-CELL DATA-CELL-OWNER r = TTRUE ;
+
 \ THE x86-64 ARM OF THE SITE READER. HB-TARGET-LINUX-X86-64? is false on this
 \ engine, so the readers above reach only the chain arm; this drives the MOVABS
 \ arm directly, on a site laid out as src/compiler/native/x64ir.f DEF-MOVI emits
@@ -106,6 +124,7 @@ create SAT-MOVABS 10 allot
 : SAT-VALID ( -- )
    SAT-OWNER
    SAT-NEIGHBOUR
+   SAT-DEFER-OWNER
    SAT-X86
    DATA-VA VA>N DATA-ADDRESS? TTRUE
    DATA-VA VA>N DATA-SIZE + DATA-ADDRESS? TTRUE

@@ -422,16 +422,18 @@ variable N
 \ its own emission. A record is named by its SHIPPED ROW, its row in the record
 \ table the artifact carries: that table holds only the records the capture
 \ ships, so past a stripped private word a window index names the wrong one. A
-\ RECORD row is (shipped row, emission start in CODE, emission bytes, entry offset
+\ RECORD row is (shipped row, emission start in CODE, routine bytes, entry offset
 \ in it): a `does>` definer and its companion are two rows over one emission, the
-\ companion entering where the clause function starts. A SITE row is (byte
-\ offset in CODE, kind, target); a target is a shipped record, SITE-REC-TAG beside
-\ its shipped row, or a word of the engine's own prefix, SITE-NAME-TAG beside its
-\ name's pool offset (a qualified name when its package is not global), the two
-\ forms AOT-BUF's image site rows use. An XT row is (address-cell row, shipped
-\ row): an address cell whose CODE target is a shipped record's entry, keyed by
-\ the record and not by the ARM64 blob offset the address-cell row itself
-\ carries.
+\ companion entering where the clause function starts. A defer's routine is
+\ followed in CODE by its trailer, DEFER-MAGIC and a cell, which its row's bytes
+\ stop short of, so its record spans to the trailer, as the host's record does.
+\ A SITE row is (byte offset in CODE, kind, target); a target is a shipped
+\ record, SITE-REC-TAG beside its shipped row, or a word of the engine's own
+\ prefix, SITE-NAME-TAG beside its name's pool offset (a qualified name when its
+\ package is not global), the two forms AOT-BUF's image site rows use. An XT row
+\ is (address-cell row, shipped row): an address cell whose CODE target is a
+\ shipped record's entry, keyed by the record and not by the ARM64 blob offset
+\ the address-cell row itself carries.
 package AOT-SHADOW
 private
 DYNAMIC-BUFFER REC-STORAGE n
@@ -452,8 +454,9 @@ public
 12 constant SITE-ROW
 8 constant XT-ROW
 \ An emission is code the window's own region held, so the blob's bound is its
-\ bound; one record row per shipped record; a site is a call or a ten-byte MOVABS,
-\ so a byte can start at most one in five; one XT row per address-cell row.
+\ bound; one record row per shipped record; a site is a call, a ten-byte MOVABS
+\ or a trailer's cell behind its magic, so a byte can start at most one in five;
+\ one XT row per address-cell row.
 AOT-BUF:AOT-BLOB-CAP constant CODE-CAP
 AOT-BUF:AOT-REC-MAX constant REC-MAX
 CODE-CAP 5 / constant SITE-MAX
@@ -461,12 +464,14 @@ AOT-WINDOW:XTOFF-MAX constant XT-MAX
 
 \ The site kinds. CALL and TAIL hold a rel32 to their target, CODE a MOVABS of
 \ the target's entry, DATA a MOVABS of a window DATA offset, FUN a MOVABS of a
-\ function's offset in the site's own emission.
+\ function's offset in the site's own emission, DCELL a defer's trailer cell,
+\ eight bytes that are its dispatch cell's window DATA offset.
 1 constant CALL
 2 constant TAIL
 3 constant DATA
 4 constant CODE
 5 constant FUN
+6 constant DCELL
 
 variable REC-N
 variable CODE-LEN

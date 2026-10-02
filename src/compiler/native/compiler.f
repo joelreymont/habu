@@ -124,8 +124,16 @@ variable M-DOES-OUT
 variable M-DOES-GIN                  \ where the clause's argument row's values end
 variable M-DOES-GOUT                 \ where the clause's result row's values end
 variable M-DOES-FUN                  \ hidden clause function ordinal
-variable M-FIXED                     \ a definer's body: NDICT:FIXED-VAL or FIXED-ADDR, else FIXED-NONE
-variable M-FIXED-VAL                 \ ...and the cell it pushes
+public
+
+\ A defer's body, for COMPILE-FIXED. Not an NDICT definer kind: a mention of
+\ a defer calls it and folds to nothing.
+3 constant FIXED-DEFER
+
+private
+
+variable M-FIXED                     \ a definer's body: NDICT:FIXED-VAL, FIXED-ADDR or FIXED-DEFER, else FIXED-NONE
+variable M-FIXED-VAL                 \ ...and the cell it pushes, or a defer's dispatch cell
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -440,7 +448,11 @@ create SPELL-BUF SPELL-CAP allot
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
 \ A definer's body is a leaf that returns, whatever an earlier word of its name
-\ does, and a created word's return is the slot `does>` patches.
+\ does, and a created word's return is the slot `does>` patches. A defer's
+\ body calls, and takes the linkage a body that calls takes.
+: LEAF? ( -- bool )
+   M-FIXED @ NDICT:FIXED-VAL =  M-FIXED @ NDICT:FIXED-ADDR =  or ;
+
 : FIXED-LINKAGE ( -- NBACK:linkage )
    NBACK:L-NONE
    M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
@@ -449,7 +461,7 @@ create SPELL-BUF SPELL-CAP allot
 \ its own machine contract from this and from what the definition takes and
 \ leaves; which registers or frame that means is the backend's answer.
 : LINKAGE ( -- NBACK:linkage )
-   M-FIXED @ NDICT:FIXED-NONE <> if FIXED-LINKAGE exit then
+   LEAF? if FIXED-LINKAGE exit then
    NBACK:L-NONE
    NO-RETURN? if NBACK:L-DEAD NBACK:WITH then
    NELAB:CALLED? if NBACK:L-CALLED NBACK:WITH then
@@ -546,8 +558,25 @@ create SPELL-BUF SPELL-CAP allot
 \ EMIT-FIXED-SYM) and returns. IR-BUILD spans every function, block and
 \ operation in a registered source, so the source is the pending record's name,
 \ copied into TXT as a scanned body is, and the tape is the one row naming it.
+\ A defer's row is its name as written, the body capture's first token, which
+\ the definer registered its effect under and KEEP-ARITY asks by: for a
+\ qualified name more than the record's tail (habu2.f C-PUSH-DREC-NAME).
+$20 constant NAME-END
+
+: CAPTURE-NAME$ ( -- ptr u8 n )
+   data-base BODYBUF-OFF + BYTE-VIEW  data-base BODYLEN-CELL + @ {: b:ptr len:n :}
+   0 begin
+      dup len < if b over + c@ dup NAME-END <> swap 0<> and else false then
+   while 1+ repeat
+   {: u:n :}
+   b u ;
+
+: FIXED-NAME$ ( -- ptr u8 n )
+   M-FIXED @ FIXED-DEFER = if CAPTURE-NAME$ exit then
+   PENDING-NAME$ ;
+
 : FIXED-TAPE ( -- )
-   PENDING-NAME$ {: a:ptr u:n :}
+   FIXED-NAME$ {: a:ptr u:n :}
    u TEXT-CAP > if E-NCOMP-TEXT throw then
    a TXT u BYTE-COPY
    CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
@@ -558,6 +587,18 @@ create SPELL-BUF SPELL-CAP allot
    NTAPE:PUSH-INTO drop
    tp NTAPE:SEAL 0 M-TAPE ! ;
 
+\ A defer's body has the effect the definer registered before compiling it
+\ (src/habu/definers.f DEF-DEFER): its arity and glue are asked of the checker
+\ by the name the tape holds, and its trailer follows the routine (NPUB).
+: DEFER-WORK ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   KEEP-TAPE-NAME
+   KEEP-ARITY
+   NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
+   CC BB TAPE p r M-FIXED-VAL @ M-IN @ M-OUT @ NELAB:DEFER drop
+   EMITTED
+   M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
+
 \ No checker scan and no checked effect, so publication asks nothing of the
 \ active owner, which may be absent: the definer registers its raw effect
 \ after publication (src/habu/definers.f DEF-RAW).
@@ -565,6 +606,7 @@ create SPELL-BUF SPELL-CAP allot
    CC HIR-MOD 0 M-BLD !
    FIXED-TAPE
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   M-FIXED @ FIXED-DEFER = if p r DEFER-WORK exit then
    0 M-IN !  1 M-OUT !
    CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop
    EMITTED
@@ -741,10 +783,12 @@ public
 
 \ The pending record's body as `create` or `variable` (NDICT:FIXED-ADDR, val a
 \ DATA address) or `constant` (NDICT:FIXED-VAL, val a number) compile it,
-\ published with the stamp def-open gave the record. Another kind is refused
+\ published with the stamp def-open gave the record, or as `defer` does
+\ (FIXED-DEFER, val its dispatch cell's DATA address). Another kind is refused
 \ before anything is compiled.
 : COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
-   kind NDICT:FIXED-VAL <>  kind NDICT:FIXED-ADDR <>  and if E-NCOMP-STATE throw then
+   kind NDICT:FIXED-VAL <>  kind NDICT:FIXED-ADDR <>  and  kind FIXED-DEFER <>  and
+   if E-NCOMP-STATE throw then
    TXT 0 STAGE
    kind M-FIXED !  val M-FIXED-VAL !
    RUN ;

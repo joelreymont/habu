@@ -100,10 +100,13 @@ TRUSTED: APPEND-PENDING ( n -- )
    TAIL-RELOC-CK
    fn ;
 
-: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+: PLACE ( n n -- ) {: fn:n size:n :}
    NEMIT:BYTES fn size CODE-WINDOW
    fn RELOC-CALLS
-   fn RELOC-ADDRS
+   fn RELOC-ADDRS ;
+
+: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+   fn size PLACE
    fn  size RECORDED-LEN  idx PUBLISH-REC ;
 
 : PENDING-IDX ( -- n )
@@ -167,6 +170,26 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    idx APPEND-PENDING
    idx ;
 
+\ ---- a defer's trailer (habu2.f C-DEFER-META-WRITE) ----------------------------
+\ DEFER-MAGIC, then the address of the defer's dispatch cell: the two cells
+\ every reader finds at a defer record's start plus its span (layout.f
+\ DEFER-MAGIC). Written through the code window, as the routine is.
+2 cells constant TRAILER-BYTES
+create TRAILER TRAILER-BYTES allot
+
+: TRAILER-FILL ( n -- ) {: cell:n :}
+   DEFER-MAGIC TRAILER !
+   cell TRAILER CELL + ! ;
+
+: TRAILER-PLACE ( n n -- ) {: cell:n slot:n :}
+   cell TRAILER-FILL
+   TRAILER slot TRAILER-BYTES CODE-WINDOW ;
+
+\ The engine's facts tail runs only while the check hook is armed (habu2.f
+\ EM-REC-WIDE-PUBLISH): a defer the prefix declares before it has no owner.
+: HOOKED? ( -- bool )
+   data-base HOOK-CELL + @ 0<> ;
+
 public
 
 \ A checked definition: the record, then the facts the checker latched for
@@ -181,6 +204,25 @@ public
 \ C-CONSTANT).
 : PUBLISH-RAW ( -- )
    PUBLISH-CODE drop ;
+
+\ A defer's body (habu2.f C-DEFER), its trailer in the code slot after the
+\ routine: the record's span is exact and runs to that slot, past any int3 the
+\ window laid after an x86-64 routine, so start plus span is the trailer.
+\ CODE-CEILING is a multiple of every code slot, so the slot leaves room for
+\ the trailer whenever the trailer fits at the routine's end. The definer
+\ registered the effect before compiling, and the facts the checker latched
+\ for it follow, as the engine's defer publishes them.
+: PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
+   fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
+   idx fn size UNIT-NOTIFY
+   fn size PLACE
+   cp@ {: slot:n :}
+   fn  slot fn - CODE-SPAN:EXACT  idx PUBLISH-REC
+   cell slot TRAILER-PLACE
+   idx NSHADOW:PUBLISH
+   idx APPEND-PENDING
+   HOOKED? if idx PENDING-FACTS then ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}

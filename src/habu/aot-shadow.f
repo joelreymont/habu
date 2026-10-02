@@ -210,7 +210,35 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
    then
    off ak SH-BAD-KIND ;
 
+\ ---- a defer's trailer ------------------------------------------------------------
+\ Dictionary record idx's dispatch cell when the record is a defer's, else 0: the
+\ host's record is followed by DEFER-MAGIC and the cell's address, found as every
+\ reader of it finds them (src/compiler/native/dict.f SPELL-DEFER-CELL), the
+\ magic at the record's start plus its span.
+: SH-DEFER-CELL ( n -- n ) {: idx:n :}
+   idx AOT-REC {: rec:ptr :}
+   rec AOT-RWID DICT-WL:NAMESPACE = if 0 exit then
+   rec AOT-RXT rec AOT-RBODY + {: meta:n :}
+   meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if 0 exit then
+   meta CELL + AOT-N>U8 CELL-VIEW AOT-CELL@ ;
+
+CELL 2 * constant SH-TRAILER-BYTES
+
+\ The trailer after the routine just copied, as the host's follows its record:
+\ the magic, then the dispatch cell's window coordinate, a DCELL site the linker
+\ writes as the cell's image address. SH-LEN stays the routine's, so the target's
+\ record spans to the magic.
+: SH-TRAILER ( n -- ) {: v:n :}
+   v SH-DATA? 0= if SH-LEN @ CELL + v SH-DATA-OUT then
+   AOT-SHADOW:CODE-LEN @ {: at:n :}
+   at SH-TRAILER-BYTES + AOT-SHADOW:CODE-LEN !
+   AOT-SHADOW:CODE-BUF@ at + {: p:ptr :}
+   DEFER-MAGIC p AOT-N-C!
+   v ACAP-W-D0 @ - AOT-DATA-D0 @ +  p CELL + AOT-N-C!
+   at CELL + AOT-SHADOW:DCELL 0 SH-SITE+ ;
+
 \ ---- one emission ---------------------------------------------------------------
+\ Copied when the first row filed over it arrives, SH-REC naming that row's record.
 : SH-COPY ( n -- ) {: e:n :}
    e NSHADOW:SIZE {: size:n :}
    AOT-SHADOW:CODE-LEN @ {: at:n :}
@@ -218,7 +246,9 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
    e NSHADOW:BYTES  AOT-SHADOW:CODE-BUF@ at +  size BYTE-COPY
    e SH-E !  at SH-AT !  size SH-LEN !
    e NSHADOW:CALL-SITES 0 ?do e i SH-CALL loop
-   e NSHADOW:ADDR-SITES 0 ?do e i SH-ADDR loop ;
+   e NSHADOW:ADDR-SITES 0 ?do e i SH-ADDR loop
+   SH-REC @ SH-DEFER-CELL {: cell:n :}
+   cell 0<> if cell SH-TRAILER then ;
 
 : SH-ORDER ( -- )
    -1 SH-PREV !

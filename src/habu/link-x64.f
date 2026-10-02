@@ -15,17 +15,21 @@
 \   shadow (src/habu/aot-decl.f AOT-SHADOW), copied as the capture left it to a
 \   CODE-SLOT of the region's code band and filled to the next slot with int3,
 \   as code-publish fills. A `does>` companion enters its definer's emission at
-\   the clause. The long names lie ahead of the routines, zero-filled to a slot.
-\   A code record the shadow has no routine for (a variable, a created word, a
-\   defer, a tier-0 word) is refused, not built: the kernel's create and
-\   does-patch refuse, so no x86-64 routine shape for a created word exists yet.
+\   the clause. A defer's routine is copied with the trailer the capture laid
+\   after it, and its record, which spans the routine, ends at the trailer's
+\   magic. The long names lie ahead of the routines, zero-filled to a slot.
+\   A code record the shadow has no routine for (a variable, a created word or
+\   a defer the engine's own loop made, a tier-0 word) is refused, not built:
+\   the kernel's create and does-patch refuse, so no x86-64 routine shape for a
+\   created word exists yet.
 \ - THE SITES. Each site of the shadow is linked in CODE$ after its routine is
 \   copied: a CALL or TAIL rel32 to its target's entry, a CODE MOVABS of that
 \   entry, a DATA MOVABS of the window's DATA where DATA-AT lands it, a FUN
 \   MOVABS of its function inside its own routine (a does> definer's clause is
-\   its companion's entry). A target is a shipped record's routine, or a kernel
-\   body found by the name the site carries among the kernel's global rows, the
-\   first row of that name, which is the one the image's index finds.
+\   its companion's entry), a DCELL trailer cell of the address where DATA-AT
+\   lands the defer's dispatch cell. A target is a shipped record's routine, or
+\   a kernel body found by the name the site carries among the kernel's global
+\   rows, the first row of that name, which is the one the image's index finds.
 \ - THE CODE CELLS. CELL-XT answers the image xt a declared code cell holds: the
 \   entry of the record its xt row names, or of the kernel body it names.
 \ - THE WIDS. A captured wid is a window coordinate (WID-REL-BASE): 0 stays the
@@ -308,6 +312,15 @@ private
 : FILL ( ptr u8 n n n -- ) {: band:ptr lo:n hi:n byte:n :}
    hi lo ?do byte band i + c! loop ;
 
+\ The shadow code row r's emission holds, to where the next one starts: its
+\ routine and, past a defer's, the trailer the capture laid after it.
+: EXTENT ( n -- n ) {: r:n :}
+   AOT-SHADOW:CODE-LEN @
+   AOT-SHADOW:REC-N @ r 1+ ?do
+      i SH-AT r SH-AT <> if drop i SH-AT leave then
+   loop
+   r SH-AT - ;
+
 \ Each row's code band offset, laying nothing: the names' span to a slot, then
 \ each emission once from a slot, a row over the emission before it at its offset.
 : PLACE-ALL ( -- )
@@ -320,7 +333,7 @@ private
       else
          i SH-AT PREV !
          dup i PLACE-STORAGE !
-         i SH-LEN + SLOT-UP
+         i EXTENT + SLOT-UP
       then
    loop
    CODE-END ! ;
@@ -329,8 +342,8 @@ private
 : COPY-ROUTINE ( n -- ) {: r:n :}
    0 CODE-STORAGE BYTE-VIEW {: band:ptr :}
    r PLACE-STORAGE @ {: at:n :}
-   AOT-SHADOW:CODE-BUF@ r SH-AT +  band at +  r SH-LEN BYTE-COPY
-   band  at r SH-LEN +  dup SLOT-UP  INT3 FILL ;
+   AOT-SHADOW:CODE-BUF@ r SH-AT +  band at +  r EXTENT BYTE-COPY
+   band  at r EXTENT +  dup SLOT-UP  INT3 FILL ;
 
 \ The names' span zero-filled to a slot, then each emission once.
 : ROUTINES ( -- )
@@ -470,18 +483,26 @@ private
    r 0 < if s ROUTINELESS then
    CODE-VA r PLACE-STORAGE @ + r SH-ENTRY + ;
 
-\ What the capture left in a MOVABS site's immediate.
-: CAPTURED ( n -- n ) SITE-AT AOT-SHADOW:CODE-BUF@ + X64ASM:MOV-RI64-IMM-OFF + LE:U64@ ;
+\ Where a site's field lies past the site: a call's or branch's rel32, a
+\ MOVABS's immediate, or a defer's trailer cell, which is all field.
+: FIELD-OFF ( n -- n ) {: kind:n :}
+   kind REL32? if X64ASM:CALL-REL32-OFF exit then
+   kind AOT-SHADOW:DCELL = if 0 exit then
+   X64ASM:MOV-RI64-IMM-OFF ;
 
-\ The field a site's instruction carries in the image: a call's or branch's
-\ displacement from its end, or a MOVABS's address. The reader admits five kinds
-\ (src/habu/aot-file.f ?SH-SITES), so the one left after four is FUN, whose
-\ immediate the capture left as its function's offset in its own emission.
+\ What the capture left in a MOVABS site's immediate or a trailer cell.
+: CAPTURED ( n -- n ) {: s:n :}
+   AOT-SHADOW:CODE-BUF@ s SITE-AT + s SITE-KIND FIELD-OFF + LE:U64@ ;
+
+\ The field a site carries in the image: a call's or branch's displacement from
+\ its end, or a MOVABS's or a trailer cell's address. The reader admits six
+\ kinds (src/habu/aot-file.f ?SH-SITES), so the one left after five is FUN,
+\ whose immediate the capture left as its function's offset in its own emission.
 : SITE-VALUE ( n -- n ) {: s:n :}
    s SITE-KIND {: kind:n :}
    kind REL32? if s TARGET-VA  CODE-VA s SITE-AT PLACED + REL32-END +  - exit then
    kind AOT-SHADOW:CODE = if s TARGET-VA exit then
-   kind AOT-SHADOW:DATA = if
+   kind AOT-SHADOW:DATA =  kind AOT-SHADOW:DCELL = or if
       X64LAYOUT:DATA-VA VA>N DATA-AT +  s CAPTURED AOT-DATA-D0 @ -  + exit
    then
    CODE-VA s SITE-AT ROW-AT PLACE-STORAGE @ +  s CAPTURED + ;
@@ -498,12 +519,8 @@ private
    0 CODE-STORAGE BYTE-VIEW {: band:ptr :}
    AOT-SHADOW:SITE-N @ 0 ?do
       i SITE-VALUE {: v:n :}
-      band i SITE-AT PLACED + {: at:ptr :}
-      i SITE-KIND REL32? if
-         v at X64ASM:CALL-REL32-OFF + LE:U32!
-      else
-         v at X64ASM:MOV-RI64-IMM-OFF + LE:U64!
-      then
+      band i SITE-AT PLACED +  i SITE-KIND FIELD-OFF + {: at:ptr :}
+      i SITE-KIND REL32? if v at LE:U32! else v at LE:U64! then
    loop ;
 
 \ ---- the code cells --------------------------------------------------------------

@@ -10,6 +10,7 @@ blocks:
   - habu-compile-definer-bodies-1292d049
   - habu-mark-immediate-and-7ce84436
   - habu-compile-defer-through-d02393a1
+  - habu-compile-the-habu-a2760b34
 ---
 
 Problem: the seeded product's `EM-STARTUP` (`src/habu/habu2.f:7428-7451`) never walks `LAOTBOOTRUN`, which is emitted only for cold engines (`habu2.f:10016-10023`), and `APP-ENTRY:XT-CELL` cannot carry the engine's `MAIN` because it also flips the argv and stdin conventions (`src/habu/aot-owned-cells.f:171-179`, `habu2.f:1305,1747,1869`); the product's REPL installs at window time (`src/habu/repl.f:237-240`, `src/habu/native-runtime.f:130`). This is the one leaf that changes the kernel boot on ARM64.
