@@ -78,6 +78,7 @@ public
 18 constant A-OFF            \ mark the pending pointee as an INTEGER-offset step: a null riding it becomes a DATA-base pointer
 19 constant A-QUOT-IN
 20 constant A-QUOT-OUT
+21 constant A-C2-INVOKE
 
 private
 
@@ -180,6 +181,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-QOUT        A-QUOT-OUT CODE, ;
 : ;PE-Q          A-QUOT-END CODE, ;
 : PE-FINALLY     A-FINALLY CODE, ;
+: PE-C2-INVOKE   A-C2-INVOKE CODE, ;
 
 \ ---- openers and closers -----------------------------------------------------
 : ROW-OPEN ( n -- ) {: kind:n :}
@@ -318,6 +320,21 @@ private
 \ ---- the table ---------------------------------------------------------------
 EPRIM: finally PE-FINALLY EPRIM;
 2 EMIN-IN!                           \ the body xt and the cleanup xt
+EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
+3 EMIN-IN!                           \ body, cleanup, and result-code finisher
+ETRUSTED-ONLY!                       \ the C2 runtime owns the exceptional row
+\ The trusted runtime passes the frame pointer. The authenticated call site's
+\ private width descriptors are consumed by this narrow machine transfer.
+EPRIM: c2-init-stow
+   PE-PTR-U8 PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
+   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: c2-records-stow
+   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
+   PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-N PE-IN
+   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT EPRIM;
+ETRUSTED-ONLY!
 EPRIM: unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
@@ -446,6 +463,7 @@ EPRIM: .s           EPRIM;
 EPRIM: depth        PE-N PE-OUT EPRIM;
 EPRIM: here         PE-PTR-A-RAW PE-OUT EPRIM;
 EPRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
+EPRIM: scope-kind?  PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: allot        PE-N PE-IN EPRIM;
 EPRIM: align        EPRIM;
 EPRIM: ,            PE-N PE-IN EPRIM;

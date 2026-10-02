@@ -83,7 +83,10 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
       then
       NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:NORET-LEAF-FRAMED exit
    then
-   D-TAIL @ 0<> D-FUNS @ 1 = and if
+   \ A tail branch reuses the caller's stack base. Its input run must fit the
+   \ machine's backward slot reach; a wider run needs a returning call.
+   D-TAIL @ 0<> D-FUNS @ 1 = and
+   D-IN @ A64IR:SLOT-WIDTH * A64IR:MACHINE NMACH:SLOT-BACK <= and if
       D-BACK @ 0<> if
          NABI:SCRATCH D-IN @ D-OUT @ D-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
       then

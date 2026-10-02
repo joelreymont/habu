@@ -333,6 +333,25 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    RUN-ARGV-CAPTURE RESULT CLEAN
    OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
 
+: CHECK-RETIRED-ABI ( -- )
+   PROC-ARGV-ENV-RESET
+   WHITEBOX-CHILD:ENV!
+   SECOND$
+   S\" : CHECK-RETIRED-ADDRESS-ABI ( -- )\n   ADDRESS-CELLS:CURRENT? 0= if s\q retired address ABI lost\q 76 die then\n   s\q retired address ABI: ok\q type cr ;\nundefine ptr-cell-mark\nCHECK-RETIRED-ADDRESS-ABI\n"
+   RUN-INPUT CLEAN
+   OUT swap S\" retired address ABI: ok\n" T$= ;
+
+: CHECK-FORGED-ABI ( -- )
+   s" saved image refuses a forged ABI getter" T-LABEL
+   PROC-ARGV-ENV-RESET
+   WHITEBOX-CHILD:ENV!
+   SECOND$
+   S\" undefine addr-cells-abi\n: addr-cells-abi ( -- n ) 1 ;\nADDRESS-CELLS:CURRENT? drop\n"
+   RUN-INPUT {: outu:n erru:n rc:n :}
+   rc 96 T= outu 0 T=
+   ERR erru s" address-cells: version probe is not an engine primitive"
+   CONTAINS? TTRUE ;
+
 \ Restore a grown DATA-backed registry, then perform the actual source-window
 \ rewind. Its complete backing span must survive outside the retiring heap.
 : CHECK-ADDRESS-OWNER ( -- )
@@ -345,7 +364,9 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
    SECOND$ EXECUTABLE? TTRUE
    0 0 <> RUN-ADDRESS-OWNER
-   0 0 = RUN-ADDRESS-OWNER ;
+   0 0 = RUN-ADDRESS-OWNER
+   CHECK-RETIRED-ABI
+   CHECK-FORGED-ABI ;
 
 : CASES ( -- )
    CHECK-BUILD-TIER

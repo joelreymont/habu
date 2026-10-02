@@ -289,11 +289,12 @@ By owner (`tools/data-table-census.f`), the `DONE` row falls from 394,674 to
 The SHA-256 before is
 `3f5fa2fbcfba1f5ebb16a8c17f12df8902fb83c8dd7aefeb06bbe335dc237beb`, after
 `dfb51d55741433db84df8c4ee5fdc28adca51188a14d0f79a9d55b0c2a21b63d`.
-Generations 2 to 5 are byte-identical; the whitebox engine, the dot lint and
-515 of the 516 native suites pass. `native-build-entry` ran out of time at a
-load average near 90: its foreign-window child needs more than the row's 180
-seconds there, and refuses as expected (exit 74) in 243 seconds on this engine
-and 244 on master's.
+Generations 2 to 5 are byte-identical, and the whitebox engine and the dot
+lint pass. The full native run passes 538 of 544 suites at load averages of
+95 to 140; `compiler-compile-floor-gate` and the three C2 suites that timed out
+pass when rerun alone. `native-build-entry` and `build-fixpoint-fixtures`
+exceed their 180- and 120-second child deadlines at a load average near 100,
+on this engine and on master's alike when run side by side.
 
 ## Historical Linux measurements
 

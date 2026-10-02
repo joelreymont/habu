@@ -122,6 +122,8 @@ variable IMAGE-U
    WHITEBOX-CHILD:ENGINE$ 70 s" E-UNDEFINED: PAYLOAD-NATIVE:BUMP" CHILD drop
    s" a native producer writes a portable two-cell family and verified effects" T-LABEL
    s" test/aot-payload-native-producer.f" ARGS
+   s" test/aot-payload-native-prepare.f" ARG
+   s" --literals" ARG
    WHITEBOX-CHILD:ENGINE$ 0 s" native graph artifact written" CHILD 0= if exit then
    s" a fresh reader bakes the exited producer's artifact" T-LABEL
    PROC-ARGV-RESET

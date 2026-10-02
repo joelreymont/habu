@@ -306,6 +306,17 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ROWS {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
+\ A baked native payload publishes its unnamed code-span table in text and
+\ the captured blob's base in the region. A snapshot copies both areas at new
+\ live addresses; keep their offsets here and restore the two bases at boot.
+\ An engine with no captured spans has no table or blob to rebase.
+: SND-CANON-AOT-SPAN ( -- )
+   AOT-CELLS:SPAN-N-CELL SND-XT-CELL@ 0= if exit then
+   AOT-CELLS:SPAN-TABLE-CELL SND-XT-CELL@ STB @ -
+      AOT-CELLS:SPAN-TABLE-CELL SND-XT-CELL!
+   AOT-CELLS:SPAN-BASE-CELL SND-XT-CELL@ SDB @ -
+      AOT-CELLS:SPAN-BASE-CELL SND-XT-CELL! ;
+
 \ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
 \ pointers before the subtraction. `MBUF-A` is a PTR-VARIABLE, so the bare
 \ `MBUF-A data-base -` asked `-`'s `ptr a ptr a -- n` row to make the DATA base
@@ -348,7 +359,8 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ZERO-LIVE
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
-   SND-CANON-XT-CELLS ;
+   SND-CANON-XT-CELLS
+   SND-CANON-AOT-SPAN ;
 
 : CANON-REGION ( -- )
    SNC-ALLOC

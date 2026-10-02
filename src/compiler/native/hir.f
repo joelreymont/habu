@@ -141,6 +141,7 @@ ENUM ctrl DERIVE eq
    eval
    finally
    close-loop-step
+   c2-invoke
 ;ENUM
 
 \ Three actions and not two, because a peek is not a pop: `fetch-r` copies the

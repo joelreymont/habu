@@ -41,6 +41,22 @@ variable EXITED
    SB$ ;
 
 
+\ Mark a word whose effect is still known, then try to publish its body under
+\ a public name. The subject closes this fixture's package in its own fork.
+: EXPORT-SOURCE$ ( n -- ptr u8 n )
+   {: tier:n :}
+   SB-RESET
+   s" ;package 0 set-tier " SB-APPEND
+   s" TRUSTED: NIC-MARK-LAST ( -- ) ndict@ 1- int-mark ; " SB-APPEND
+   s" : NIC-HIDDEN ( -- n ) 41 ; NIC-MARK-LAST " SB-APPEND
+   S\" s\" NIC-KNOWN ( -- n ) NIC-HIDDEN\" CHECK-QUIET-CANDIDATE! . cr " SB-APPEND
+   s" package NIC-ALIAS public EXPORT NIC-HIDDEN ;package " SB-APPEND
+   S\" s\" exported\" type cr " SB-APPEND
+   tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
+   s" : NIC-ESCAPE ( -- n ) NIC-ALIAS:NIC-HIDDEN ; NIC-ESCAPE . cr" SB-APPEND
+   SB$ ;
+
+
 : STORE! ( len len outcome -- )
    MATCH outcome
       exited OF RC ! true EXITED ! ENDOF
@@ -80,6 +96,18 @@ variable EXITED
    ERR-U @ 0 T= ;
 
 
+: REJECT-EXPORT ( n -- )
+   {: tier:n :}
+   tier EXPORT-SOURCE$ RUN-SOURCE
+   ?KNOWN
+   tier 0= if s" JIT EXPORT refuses an internal source"
+   else s" native EXPORT refuses an internal source" then T-LABEL
+   RC @ 70 T=
+   ERR$ s" internal engine word: NIC-HIDDEN" CONTAINS? TTRUE
+   OUT$ s" exported" CONTAINS? TFALSE
+   OUT$ s" 41" CONTAINS? TFALSE ;
+
+
 : RUN ( -- )
    T-RESET
    s" seed-ndict!" 0 search-wl 0 T=
@@ -87,6 +115,7 @@ variable EXITED
    s" BAD-INTERNAL ( n -- ) seed-ndict!" CHECK-QUIET-CANDIDATE! 0 T=
    0 REJECT-CALL 1 REJECT-CALL
    0 TRUST-CALL 1 TRUST-CALL
+   0 REJECT-EXPORT 1 REJECT-EXPORT
    T-REPORT ;
 
 RUN

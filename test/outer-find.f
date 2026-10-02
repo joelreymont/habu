@@ -74,6 +74,9 @@ undefine OFX-GONE                 \ retired, and nothing answers it
 undefine OFX-AGAIN
 : OFX-AGAIN ( -- n ) 14 ;         \ retired, and a newer record answers it
 
+variable OFX-GLOBAL-XT
+' OFX-SHADOW OFX-GLOBAL-XT !
+
 package OUTER-FIND-TEST
 
 : OFX-PRIVATE ( -- n ) 15 ;
@@ -418,8 +421,7 @@ s" OUTER-FIND-TEST:OFX-GLOBAL" OUTER-FIND-TEST:XT-OF 0 T=
 
 using OUTER-FIND-FXA
 \ The global wordlist answers before the used publics.
-s" OFX-SHADOW" OUTER-FIND-TEST:XT-OF  ' OFX-SHADOW  T=
-OFX-SHADOW 6 T=
+s" OFX-SHADOW" OUTER-FIND-TEST:XT-OF  OFX-GLOBAL-XT @  T=
 s" OFX-USED" OUTER-FIND-TEST:XT-OF  ' OFX-USED  T=
 \ A colon-bearing token never reaches the used publics.
 s" OFX-USED:" OUTER-FIND-TEST:XT-OF 0 T=

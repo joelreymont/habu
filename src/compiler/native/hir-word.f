@@ -159,6 +159,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       eval         OF 30 ENDOF
       finally      OF 31 ENDOF
       close-loop-step OF 32 ENDOF
+      c2-invoke OF 33 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -196,6 +197,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       30 of HIR-CTRL:EVAL endof
       31 of HIR-CTRL:FINALLY endof
       32 of HIR-CTRL:CLOSE-LOOP-STEP endof
+      33 of HIR-CTRL:C2-INVOKE endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -1186,9 +1188,9 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
-\ them rather than to a guess. Only the eleven renames contribute pick cells.
-94 constant WORDS
-20 constant PICK-CELLS
+\ them rather than to a guess. Only the fourteen renames contribute pick cells.
+98 constant WORDS
+33 constant PICK-CELLS
 
 private
 
@@ -1360,7 +1362,8 @@ private
    c b r c b s" execute" MODEL-SYM HIR-CTRL:EXEC BDECLARE-CONTROL
    c b r c b s" catch" MODEL-SYM HIR-CTRL:CATCH BDECLARE-CONTROL
    c b r c b s" evaluate" MODEL-SYM HIR-CTRL:EVAL BDECLARE-CONTROL
-   c b r c b s" finally" MODEL-SYM HIR-CTRL:FINALLY BDECLARE-CONTROL ;
+   c b r c b s" finally" MODEL-SYM HIR-CTRL:FINALLY BDECLARE-CONTROL
+   c b r c b s" c2-invoke" MODEL-SYM HIR-CTRL:C2-INVOKE BDECLARE-CONTROL ;
 
 \ Neither stages an operation and neither carries a payload: the work is the
 \ elaborator's over the tape rows between them.
@@ -1431,6 +1434,28 @@ private
    2 BEGIN-RENAME
    c b p r c b s" 2drop" MODEL-SYM BDECLARE-RENAME ;
 
+\ The two pairs are four logical values, each of which may occupy several
+\ cells. Keep their bundle boundaries when the native tier renames them.
+: DEF-2SWAP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   4 BEGIN-RENAME
+   1 ADD-PICK
+   0 ADD-PICK
+   3 ADD-PICK
+   2 ADD-PICK
+   c b p r c b s" 2swap" MODEL-SYM BDECLARE-RENAME ;
+
+: DEF-2OVER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   4 BEGIN-RENAME
+   3 ADD-PICK
+   2 ADD-PICK
+   1 ADD-PICK
+   0 ADD-PICK
+   3 ADD-PICK
+   2 ADD-PICK
+   c b p r c b s" 2over" MODEL-SYM BDECLARE-RENAME ;
+
 \ Bottom first that is b, then c, then a - depths 1, 0 and 2.
 \ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
 : DEF-ROT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -1440,6 +1465,15 @@ private
    0 ADD-PICK
    2 ADD-PICK
    c b p r c b s" rot" MODEL-SYM BDECLARE-RENAME ;
+
+\ -rot ( a b c -- c a b ): preserve each input value's complete cell bundle.
+: DEF-MROT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   3 BEGIN-RENAME
+   0 ADD-PICK
+   2 ADD-PICK
+   1 ADD-PICK
+   c b p r c b s" -rot" MODEL-SYM BDECLARE-RENAME ;
 
 \ tuck ( a b -- b a b ): consume two and put back three, the top one twice, so
 \ bottom first that is b, then a, then b - depths 0, 1 and 0.
@@ -1508,10 +1542,13 @@ private
    c b p r DEF-OVER
    c b p r DEF-NIP
    c b p r DEF-ROT
+   c b p r DEF-MROT
    c b p r DEF-TUCK
    c b p r DEF-CELL-VIEW
    c b p r DEF-BYTE-VIEW
    c b p r DEF-2DROP
+   c b p r DEF-2SWAP
+   c b p r DEF-2OVER
    c b r DEF-RSTACK ;
 
 public

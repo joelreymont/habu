@@ -3,6 +3,7 @@
 s" CELL" s" -- n" TRUST
 s" CELL-WIDTH-CHECK" s" --" TRUST
 s" CHECKER-CAPTURE-PREPARE" s" --" TRUST
+s" CHECKER-STORAGE-PREPARE" s" --" TRUST
 
 \ src/core/util.f's public constants. util.f loads before the checker, so a
 \ from-source prefix boot gives them no effect of their own and a checked body

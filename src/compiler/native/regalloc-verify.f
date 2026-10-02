@@ -1981,23 +1981,40 @@ DKEEP-HOOK-DEFAULT
       VD-EL @ 1+ VD-EL !
    repeat ;
 
+\ The exit's stores may have register or frame operations between them. The
+\ first other data-stack operation ends the sequence; VD-ES records its actual
+\ instruction span so the placement walk skips the same sequence it checked.
+: VDSTORE-SPAN ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id end:n :}
+   end VD-P !
+   begin
+      VD-P @ 0 > if
+         VD-P @ 1- {: at:n :}
+         bk at VDSTORE? if true else
+            bk at OP-AT {: id:IR-ID:ir-op-id :}
+            id DSTACK-TOUCH? 0= if
+               id SUCCS-OF 0<> if E-A64RAV-DSTACK throw then
+               true
+            else false then
+         then
+      else false then
+   while
+      VD-P @ 1- VD-P !
+   repeat
+   end VD-P @ - VD-ES ! ;
+
 : VDEXIT-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 2 < if E-A64RAV-DSTACK throw then
    xb n 2 -  r BND-SLOTW @ * VD-STAND @ -  DMOVE-AT?
-   n 2 - VD-P !
-   0 VD-ES !
-   begin
-      VD-P @ 0 > if xb VD-P @ 1- VDSTORE? else false then
-   while
-      VD-P @ 1- VD-P !
-      VD-ES @ 1+ VD-ES !
-   repeat
+   xb n 2 - VDSTORE-SPAN
    0 VD-J !
    VD-ES @ 0 ?do
-      outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+      xb VD-P @ i + VDSTORE? if
+         outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+      then
    loop ;
 
 \ The same window for a routine that leaves through a CALLEE, whose results the
@@ -2009,17 +2026,12 @@ DKEEP-HOOK-DEFAULT
    n 1 < if E-A64RAV-DSTACK throw then
    xb  xb OP-COUNT 1-  OP-AT TAILBR? 0= if E-A64RAV-DSTACK throw then
    VD-STAND @  r BND-SLOTW @ *  <> if E-A64RAV-DSTACK throw then
-   n 1 - VD-P !
-   0 VD-ES !
-   begin
-      VD-P @ 0 > if xb VD-P @ 1- VDSTORE? else false then
-   while
-      VD-P @ 1- VD-P !
-      VD-ES @ 1+ VD-ES !
-   repeat
+   xb n 1 - VDSTORE-SPAN
    0 VD-J !
    VD-ES @ 0 ?do
-      outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+      xb VD-P @ i + VDSTORE? if
+         outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+      then
    loop ;
 
 \ Which of the two exit runs this routine has - and the third answer, NEITHER,
@@ -2049,16 +2061,24 @@ DKEEP-HOOK-DEFAULT
    false ;
 
 \ ---- a call site, re-derived -------------------------------------------------
+\ Frame reloads and rematerialized constants may stand between stores: each
+\ store publishes one cell, and these operations do not touch the data stack.
 : DSTORE-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    -1 VD-PREV !
    0
    n at - 0 ?do
-      bk at i + VDSTORE? 0= if leave then
-      bk at i + VDSLOT-AT VD-S !
-      VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
-      VD-S @ VD-PREV !
+      bk at i + {: pos:n :}
+      pos VDSTORE? if
+         bk pos VDSLOT-AT VD-S !
+         VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
+         VD-S @ VD-PREV !
+      else
+         bk pos OP-AT {: id:IR-ID:ir-op-id :}
+         id DSTACK-TOUCH? if leave then
+         id SUCCS-OF 0<> if E-A64RAV-CALL throw then
+      then
       drop i 1+
    loop ;
 
@@ -2081,6 +2101,14 @@ DKEEP-HOOK-DEFAULT
       bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
    loop ;
 
+: VDSTORE-BOUND ( IR-ID:ir-block-id n n n -- )
+   {: bk:IR-ID:ir-block-id at:n span:n limit:n :}
+   span 0 ?do
+      bk at i + VDSTORE? if
+         bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
+      then
+   loop ;
+
 : VDNET-CK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id cp:n :}
    bk cp OP-AT VCALL-ENTRY NOSLOT <> if exit then
@@ -2101,7 +2129,7 @@ DKEEP-HOOK-DEFAULT
    id DBACK-OF NOSLOT <> if E-A64RAV-CALL throw then
    bk cp VDPUB-AT {: give:n :}
    give VD-STAND @ + VDREQ+
-   bk at  cp at -  give VDCELL  VDRUN-BOUND
+   bk at  cp at -  give VDCELL  VDSTORE-BOUND
    cp 1+ ;
 
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
@@ -2116,7 +2144,7 @@ DKEEP-HOOK-DEFAULT
    bk cp VDBACK-AT {: back:n :}
    give VD-STAND @ + VDREQ+
    back VD-STAND @ + VDREQ+
-   bk at g  give VDCELL  VDRUN-BOUND
+   bk at g  give VDCELL  VDSTORE-BOUND
    bk cp 1+ DLOAD-RUN {: b:n :}
    bk cp 1+ b  back VDCELL  VDRUN-BOUND
    cp 1+ b + ;
@@ -2522,6 +2550,10 @@ public
 
 public
 : RESET-SCRATCH ( -- )
+   \ Image preparation releases the checked assignment's mapped tables.
+   ST-NONE ST !
+   0 A-GEN !
+   0 N-VALS !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private

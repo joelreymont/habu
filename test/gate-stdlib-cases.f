@@ -41,6 +41,20 @@ SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
 
+\ Each C2 acceptance row builds its own rooted and ordinary native images,
+\ then loads fresh source and saved-image consumers from its owned source tree.
+SUITE c2-memory
+   test/c2-memory-e2e.f
+;SUITE
+
+SUITE c2-view-record
+   test/c2-view-record-e2e.f
+;SUITE
+
+SUITE c2-field-loan
+   test/c2-field-loan-e2e.f
+;SUITE
+
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -96,6 +110,10 @@ SUITE aot-chain-producer
 
 SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
+;SUITE
+
+SUITE hb-build-stripped-quotation-field
+   tools/hb-build-stripped-quotation-field-test.f
 ;SUITE
 
 SUITE hb-build-cli-errors
@@ -293,6 +311,10 @@ SUITE content-key
 
 SUITE engine-identity
    lib/engine-id-test.f
+;SUITE
+
+SUITE engine-id-capture
+   test/engine-id-capture-e2e.f
 ;SUITE
 
 WHITEBOX-SUITE compiler-ir-id
@@ -950,6 +972,10 @@ SUITE compiler-native-qualified-name
    test/compiler/native-qualified-name.f
 ;SUITE
 
+SUITE compiler-native-qualified-trusted
+   test/compiler/native-qualified-trusted.f
+;SUITE
+
 SUITE compiler-native-generated-constructor
    test/compiler/native-generated-constructor.f
 ;SUITE
@@ -1166,6 +1192,11 @@ SUITE bounded-queue
 
 SUITE task-entry
    test/task-entry.f
+;SUITE
+
+\ Exercise owner cleanup through the checked public allocation path.
+SUITE c2-owner-dispose
+   test/c2-owner-dispose.f
 ;SUITE
 
 SUITE string-helpers
@@ -1470,6 +1501,10 @@ SUITE xml-byte-edits
    lib/xml-source-test.f
 ;SUITE
 
+SUITE xml-c2-consumer
+   test/c2-xml-consumer-e2e.f
+;SUITE
+
 SUITE stdlib-source-default
    lib/source-test.f
 ;SUITE
@@ -1519,12 +1554,28 @@ SUITE typed-storage-structural
    test/typed-storage-structural-test.f
 ;SUITE
 
+SUITE storage-binding
+   test/storage-binding-e2e.f
+;SUITE
+
 SUITE record-launder-probe
    test/record-launder-probe.f
 ;SUITE
 
 SUITE certify-dynamic-buffer
    test/certify-dynamic-buffer.f
+;SUITE
+
+SUITE c2-read-effects
+   test/c2-read-effects.f
+;SUITE
+
+SUITE c2-mut-view
+   test/c2-mut-view.f
+;SUITE
+
+SUITE c2-mut-records
+   test/c2-mut-records.f
 ;SUITE
 
 SUITE certify-does-definer
@@ -1726,6 +1777,10 @@ SUITE aot-registry-identity
 
 SUITE aot-payload-graph
    test/aot-payload-graph.f
+;SUITE
+
+SUITE checker-graph-domains
+   test/checker-graph-domains.f
 ;SUITE
 
 SUITE aot-prefix-literal
@@ -2050,6 +2105,10 @@ SUITE boot-row
    test/boot-row-test.f
 ;SUITE
 
+SUITE boot-relocation
+   test/boot-relocation-e2e.f
+;SUITE
+
 SUITE json
    tools/json-test.f
 ;SUITE
@@ -2301,6 +2360,18 @@ SUITE structure-certify
    test/structure-certify-suite.f
 ;SUITE
 
+SUITE structure-quotation-field
+   test/structure-quotation-image.f
+;SUITE
+
+SUITE deferred-quotation-image
+   test/deferred-quotation-image.f
+;SUITE
+
+SUITE structure-quotation-rollback
+   test/structure-quotation-rollback.f
+;SUITE
+
 WHITEBOX-SUITE structure-decl
    test/structure-decl-suite.f
 ;SUITE
@@ -2327,6 +2398,36 @@ WHITEBOX-SUITE type-family-rollback
 
 WHITEBOX-SUITE type-family
    test/type-family-suite.f
+;SUITE
+
+\ The init test reads sealed type-family and checker metadata to verify its
+\ instantiated physical layout; the refusal cases still use real source loads.
+WHITEBOX-SUITE c2-init-schema
+   test/c2-init-schema.f
+;SUITE
+
+WHITEBOX-SUITE c2-init-record-schema
+   test/c2-init-record-schema.f
+;SUITE
+
+SUITE c2-init-accessors
+   test/c2-init-accessor-refusals.f
+;SUITE
+
+SUITE c2-init-accessor-private
+   test/c2-init-accessor-private.f
+;SUITE
+
+SUITE c2-init-accessor-image
+   test/c2-init-accessor-e2e.f
+;SUITE
+
+SUITE c2-records
+   test/c2-records-e2e.f
+;SUITE
+
+SUITE c2-diagnostics
+   test/c2-diagnostics.f
 ;SUITE
 
 SUITE type-field-owner

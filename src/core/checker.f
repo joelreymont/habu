@@ -74,6 +74,7 @@ CHECKER-OWNER-ABI:EFFECT-FINALLY-CELLS-OFF constant EFFECT-FINALLY-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF constant EFFECT-MATCH-CELLS-OFF
 CHECKER-OWNER-ABI:CTL-DEAD-OFF constant CTL-DEAD-OFF
 CHECKER-OWNER-ABI:WF-W-AT-OFF constant WF-W-AT-OFF
+CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
 \ --- what the record a definition publishes needs from the checker
 CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
@@ -113,7 +114,10 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
    0 , 0 , 0 ,
+   0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -131,7 +135,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:UNIT-IMPORT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:FIELD-SPAN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -148,6 +152,7 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ id is `payload << TAG-SHIFT | tag`, and TAG-SHIFT/TAG-MASK are the only two
 \ places that width is written down.
 8 constant T-STALE
+9 constant T-FORALL  10 constant T-BVAR  11 constant T-SCOPE
 4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
 \ Trusted checker internals below are confined to raw mmap-result refinements,
@@ -213,7 +218,7 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
 
-\ TV arena: eleven var-id planes share one owned mapping and one capacity.
+\ TV arena: fifteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ Measured high-water of
 \ FV over a whole self-build: 1112 vars in one definition (the pool resets per
@@ -221,7 +226,7 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 \ grows the arena exactly as it does today: test/type-decl-suite.f already peaks
 \ at 2573, above even the old 2048.
 1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
-11 constant TV-PLANES
+15 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
@@ -237,6 +242,9 @@ PERSISTED-PTR-VARIABLE TVT-P     PERSISTED-PTR-VARIABLE RVT-P
 PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR-VARIABLE VRI-TV-P  PERSISTED-PTR-VARIABLE VRI-RV-P
 PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
 PERSISTED-PTR-VARIABLE TVK-P
+PERSISTED-PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
+PERSISTED-PTR-VARIABLE QCON-IDS-P   PERSISTED-PTR-VARIABLE QCON-KINDS-P
+PERSISTED-PTR-VARIABLE QCON-RIDS-P
 
 : TV-BYTES ( n -- n ) TV-PLANES * cells ;
 : TV-PLANE ( ptr a n n -- ptr a ) {: base:ptr cap:n plane:n :}
@@ -265,6 +273,10 @@ PERSISTED-PTR-VARIABLE TVK-P
    base cap 6 TV-PLANE EC-TV-P !     base cap 7 TV-PLANE EC-RV-P !
    base cap 8 TV-PLANE EI-TV-P !     base cap 9 TV-PLANE EI-RV-P !
    base cap 10 TV-PLANE TVK-P !
+   base cap 11 TV-PLANE NSCOPE-P !
+   base cap 12 TV-PLANE QCON-IDS-P !
+   base cap 13 TV-PLANE QCON-KINDS-P !
+   base cap 14 TV-PLANE QCON-RIDS-P !
    cap TV-CAP ! ;
 
 : TV-CLEAR ( -- )
@@ -273,7 +285,9 @@ PERSISTED-PTR-VARIABLE TVK-P
    NULL-PTR VRI-TV-P !   NULL-PTR VRI-RV-P !
    NULL-PTR EC-TV-P !    NULL-PTR EC-RV-P !
    NULL-PTR EI-TV-P !    NULL-PTR EI-RV-P !
-   NULL-PTR TVK-P !
+   NULL-PTR TVK-P !      NULL-PTR NSCOPE-P !
+   NULL-PTR QCON-IDS-P !   NULL-PTR QCON-KINDS-P !
+   NULL-PTR QCON-RIDS-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -312,6 +326,12 @@ TV-CLEAR
 : TV-READY ( -- ) 1 TV-ENSURE ;
 : TVT ( -- ptr n ) TV-READY TVT-P @ ;       : RVT ( -- ptr n ) TV-READY RVT-P @ ;
 : TVK ( -- ptr n ) TV-READY TVK-P @ ;
+: NSCOPE ( -- ptr n ) TV-READY NSCOPE-P @ ;
+: QCON-IDS ( -- ptr n ) TV-READY QCON-IDS-P @ ;
+: QCON-KINDS ( -- ptr n ) TV-READY QCON-KINDS-P @ ;
+: QCON-RIDS ( -- ptr n ) TV-READY QCON-RIDS-P @ ;
+: NSCOPE@ ( n -- bool ) cells NSCOPE + @ 0 <> ;
+: NSCOPE! ( n -- ) -1 swap cells NSCOPE + ! ;
 : VRC-TV ( -- ptr n ) TV-READY VRC-TV-P @ ; : VRC-RV ( -- ptr n ) TV-READY VRC-RV-P @ ;
 : VRI-TV ( -- ptr n ) TV-READY VRI-TV-P @ ; : VRI-RV ( -- ptr n ) TV-READY VRI-RV-P @ ;
 : EC-TV ( -- ptr n ) TV-READY EC-TV-P @ ;   : EC-RV ( -- ptr n ) TV-READY EC-RV-P @ ;
@@ -351,6 +371,9 @@ TV-CLEAR
 \ Against every other kind TVK-OFF is transparent (the meet answers the other
 \ kind), so an ordinary pointer keeps stepping and the LITERAL null keeps its arm.
 6 constant TVK-OFF
+7 constant TVK-SCOPE   \ a non-value scope parameter, never an allocation identity
+8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
+9 constant TVK-CELL    \ a declared or fetched physical cell; cannot later become wide
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
@@ -361,21 +384,27 @@ TV-CLEAR
 : TVK-NULL! ( n -- ) TVK-NULL swap cells TVK + ! ;
 : TVK-DBASE! ( n -- ) TVK-DBASE swap cells TVK + ! ;
 : TVK-OFF! ( n -- ) TVK-OFF swap cells TVK + ! ;
+: TVK-SCOPE! ( n -- ) TVK-SCOPE swap cells TVK + ! ;
+: TVK-REGION! ( n -- ) TVK-REGION swap cells TVK + ! ;
+: TVK-CELL! ( n -- ) TVK-CELL swap cells TVK + ! ;
 
-\ The fence lattice: ANY < NULL < DBASE < RAW. A meet keeps the STRICTER of two
+\ The fence lattice: ANY < CELL < NULL < DBASE < RAW. A meet keeps the STRICTER of two
 \ kinds, so a null that meets a DATA-derived pointee comes out DBASE (the fence
 \ that follows every depth) and a base-derived value stored into a raw cell meets
 \ at RAW; no discipline is ever lowered to another. The row kinds are not on this
 \ lattice and rank 0 (a row var never meets a type var).
 : TVK-RANK ( n -- n )
-   dup TVK-RAW = IF drop 3 EXIT THEN
-   dup TVK-DBASE = IF drop 2 EXIT THEN
-   TVK-NULL = IF 1 EXIT THEN
+   dup TVK-RAW = IF drop 4 EXIT THEN
+   dup TVK-DBASE = IF drop 3 EXIT THEN
+   dup TVK-NULL = IF drop 2 EXIT THEN
+   TVK-CELL = IF 1 EXIT THEN
    0 ;
 \ TVK-OFF sits beside that lattice rather than on it: offset provenance meeting
 \ the null yields the DATA base's discipline (an arbitrary address, fenced at
 \ every depth), and meeting anything else answers the other kind unchanged.
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
+   k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
+   k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
    k1 TVK-OFF = IF k2 TVK-NULL = IF TVK-DBASE ELSE k2 THEN EXIT THEN
    k2 TVK-OFF = IF k1 TVK-NULL = IF TVK-DBASE ELSE k1 THEN EXIT THEN
    k1 TVK-RANK k2 TVK-RANK >= IF k1 ELSE k2 THEN ;
@@ -448,7 +477,7 @@ STLA-BOOT STLA-P !   MAXSTALE-INIT STL-CAP !
 
 \ --- unification trail: TV!/RV! record each speculative var binding here so a
 \ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
-\ of copying the whole TVT/RVT pool. Each entry packs (var-id << 1 | is-row).
+\ of copying the whole TVT/RVT pool. Each entry packs (var-id << 4 | tag).
 \ Reset per definition in NEW; grows into anon mmap on demand; repointed to boot
 \ at snapshot (per-definition scratch, no live content across a snapshot).
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
@@ -462,37 +491,44 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    need TRAIL-CAP @ 2 * max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
-\ A trail entry carries the var id and a 3-BIT tag. The tag says what to put
+\ A trail entry carries the var id and a 4-BIT tag. The tag says what to put
 \ back, so a kind raise restores the kind it displaced rather than assuming
 \ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
 \ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
 \ base-address fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL
    TRAIL-N @ 1 + TRAIL-ENSURE
-   id 8 * tag +  TRAIL-N @ cells TRAIL + !
+   id 16 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
 : TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
    dup 3 = IF drop RVK-INFERRED EXIT THEN
    dup 4 = IF drop TVK-NULL EXIT THEN
    dup 5 = IF drop TVK-DBASE EXIT THEN
-   6 = IF TVK-OFF ELSE TVK-ANY THEN ;
+   dup 6 = IF drop TVK-OFF EXIT THEN
+   dup 7 = IF drop TVK-SCOPE EXIT THEN
+   dup 9 = IF drop TVK-REGION EXIT THEN
+   10 = IF TVK-CELL ELSE TVK-ANY THEN ;
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
       TRAIL-N @ cells TRAIL + @ {: e:n :}
-      e 7 and {: tag:n :}   e 3 rshift {: id:n :}
+      e 15 and {: tag:n :}   e 4 rshift {: id:n :}
       tag 0= IF 0 id cells TVT + ! ELSE
       tag 1 = IF 0 id cells RVT + ! ELSE
+      tag 8 = IF 0 id cells NSCOPE + ! ELSE
       tag TRAIL-KIND-OF
-      id cells TVK + ! THEN THEN
+      id cells TVK + ! THEN THEN THEN
    REPEAT ;
 \ TVK-RAISE-TO ( id kind -- ) : meet var `id`'s kind with `kind` inside
 \ unification, trailed so a failed prim-overload trial (TRIAL-REST) or a
 \ definition reject puts the displaced kind back. Idempotent: a meet that
 \ changes nothing records nothing (so no spurious trail growth).
 : TVK-KIND-TAG ( n -- n )
+   dup TVK-SCOPE = IF drop 7 EXIT THEN
+   dup TVK-REGION = IF drop 9 EXIT THEN
    dup TVK-NULL = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 5 EXIT THEN
+   dup TVK-CELL = IF drop 10 EXIT THEN
    TVK-OFF = IF 6 ELSE 2 THEN ;
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
@@ -500,6 +536,10 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    id  id TVK@ TVK-KIND-TAG  TRAIL-PUSH
    id cells TVK + ! ;
 : TVK-RAISE ( n -- ) TVK-RAW TVK-RAISE-TO ;
+
+: NSCOPE-RAISE ( n -- )
+   dup NSCOPE@ IF drop EXIT THEN
+   dup 8 TRAIL-PUSH NSCOPE! ;
 
 
 : RVK-RAISE ( n -- )
@@ -556,11 +596,7 @@ variable TCMP                            \ path-compression walk cursor
 \ UNBOUND stay unchanged in unification and persisted effect records.
 : TV@ cells TVT + @ 1- ;
 
-: TV! ( n n -- ) dup 0 TRAIL-PUSH  swap 1+ swap cells TVT + ! ;
-
 : RV@ cells RVT + @ 1- ;
-
-: RV! ( n n -- ) dup 1 TRAIL-PUSH  swap 1+ swap cells RVT + ! ;
 256 constant MAXQE-INIT        \ quotation effects (din dout rin rout per record); grows on demand
 create QEA-BOOT MAXQE-INIT 32 * allot
 create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
@@ -592,6 +628,31 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
    QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
+\ A scheme owns one quotation term. Bound scope variables use lexical depth,
+\ so two independently parsed schemes have the same shape under alpha-renaming.
+0 constant BIND-SCOPE
+1 constant BIND-REGION
+2 constant BIND-CHILD
+: MK-FORALL-IN ( n n n n -- n ) {: parent:n second:n domain:n body:n :}
+   QEN @ 1 + QE-ENSURE
+   body QEN @ 32 * QEA + !
+   parent QEN @ 32 * QEA + 8 + !
+   second QEN @ 32 * QEA + 16 + !
+   domain QEN @ 32 * QEA + 24 + !
+   QEN @ TAG-SHIFT lshift T-FORALL or  QEN @ 1 + QEN ! ;
+: MK-FORALL ( n -- n ) >r 0 0 BIND-SCOPE r> MK-FORALL-IN ;
+: MK-CHILD-FORALL ( n n -- n ) >r 0 BIND-CHILD r> MK-FORALL-IN ;
+: F>BODY ( n -- n ) PAY 32 * QEA + @ ;
+: F>PARENT ( n -- n ) PAY 32 * QEA + 8 + @ ;
+: F>SECOND ( n -- n ) PAY 32 * QEA + 16 + @ ;
+: F>DOMAIN ( n -- n ) PAY 32 * QEA + 24 + @ ;
+$10000 constant BVAR-REGION-BIT
+: MK-BVAR ( n -- n ) TAG-SHIFT lshift T-BVAR or ;
+: MK-BVAR-DOMAIN ( n n -- n )
+   BIND-REGION = IF BVAR-REGION-BIT or THEN MK-BVAR ;
+: B>DEPTH ( n -- n ) PAY BVAR-REGION-BIT invert and ;
+: B>DOMAIN ( n -- n ) PAY BVAR-REGION-BIT and 0= IF BIND-SCOPE EXIT THEN BIND-REGION ;
+: MK-SCOPE ( n -- n ) TAG-SHIFT lshift T-SCOPE or ;
 : Q>DIN  PAY 32 * QEA + @ ;
 : Q>DOUT PAY 32 * QEA + 8 + @ ;
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
@@ -643,6 +704,25 @@ variable RIGID-N
 \ a still-live id. Counters reset per check (RIGID-RESET); the bound is settable.
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
+variable SCOPE-N   1 SCOPE-N !
+256 constant SCOPE-PARENT-INIT
+create SCOPE-PARENT-BOOT SCOPE-PARENT-INIT cells allot
+PERSISTED-PTR-VARIABLE SCOPE-PARENT-P
+create SCOPE-SECOND-BOOT SCOPE-PARENT-INIT cells allot
+PERSISTED-PTR-VARIABLE SCOPE-SECOND-P
+variable SCOPE-PARENT-CAP
+SCOPE-PARENT-BOOT SCOPE-PARENT-P !  SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
+SCOPE-SECOND-BOOT SCOPE-SECOND-P !
+: SCOPE-PARENTS ( -- ptr n ) SCOPE-PARENT-P @ ;
+: SCOPE-SECONDS ( -- ptr n ) SCOPE-SECOND-P @ ;
+: SCOPE-PARENT-ENSURE ( n -- ) {: need:n :}
+   need SCOPE-PARENT-CAP @ <= IF EXIT THEN
+   need SCOPE-PARENT-CAP @ 2 * max {: cap:n :}
+   SCOPE-PARENT-P @ SCOPE-PARENT-CAP @ cells cap cells ARENA-BYTES-GROW SCOPE-PARENT-P !
+   SCOPE-SECOND-P @ SCOPE-PARENT-CAP @ cells cap cells ARENA-BYTES-GROW SCOPE-SECOND-P !
+   cap SCOPE-PARENT-CAP ! ;
+: SCOPE-PARENT@ ( n -- n ) PAY cells SCOPE-PARENTS + @ ;
+: SCOPE-SECOND@ ( n -- n ) PAY cells SCOPE-SECONDS + @ ;
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
 PERSISTED-PTR-U8-TABLE-VARIABLE ATOMA-P
 PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
@@ -667,6 +747,17 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : RIGID-FRESH ( -- n )
    RIGID-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    RIGID-N @ dup 1+ RIGID-N ! ;
+\ Never rewind this counter for speculative unification or a failed definition.
+: SCOPE-FRESH ( -- n )
+   SCOPE-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   SCOPE-N @ 1+ SCOPE-PARENT-ENSURE
+   0 SCOPE-N @ cells SCOPE-PARENTS + !
+   0 SCOPE-N @ cells SCOPE-SECONDS + !
+   SCOPE-N @ dup 1+ SCOPE-N ! MK-SCOPE ;
+: SCOPE-CHILD-FRESH ( n -- n ) {: parent:n :}
+   SCOPE-FRESH dup PAY cells SCOPE-PARENTS + parent swap ! ;
+: SCOPE-DOUBLE-FRESH ( n n -- n ) {: parent:n second:n :}
+   parent SCOPE-CHILD-FRESH dup PAY cells SCOPE-SECONDS + second swap ! ;
 \ Per-domain mint. Each returns the current id then advances, but EXHAUSTS
 \ (throws) at RIGID-MAX rather than wrapping into a reused (or non-positive) id.
 : RGN-FRESH ( -- n )
@@ -781,7 +872,14 @@ defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine p
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
 defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
+defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> a scope parameter
+defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
+defer TFAM-TYPE-SLOT-XT ( n n -- bool )                 \ family id + arg slot -> a phantom element type
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
+defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
+defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
+defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell product: cells, bytes, align
+defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descriptor, offset, bytes
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
 defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
@@ -792,6 +890,11 @@ defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant c
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
+variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM ! REG-PROTECT
+variable C2-READ-FAM   -1 C2-READ-FAM ! REG-PROTECT \ reserved bounded shared-view family
+variable C2-MUT-FAM    -1 C2-MUT-FAM ! REG-PROTECT  \ reserved bounded exclusive-view family
+variable C2-INIT-FAM   -1 C2-INIT-FAM ! REG-PROTECT \ reserved initialized-storage element family
+variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! REG-PROTECT \ reserved initialized table control
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
 \ type-family.f at registration (loaded after checker.f). A word whose declared
@@ -1443,6 +1546,11 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop RES-TRUE ;] is TFAM-WIDTH-SLOT-XT
+   [: 2drop RES-FALSE ;] is TFAM-SCOPE-SLOT-XT
+   [: 2drop RES-FALSE ;] is TFAM-REGION-SLOT-XT
+   [: 2drop RES-FALSE ;] is TFAM-TYPE-SLOT-XT
+   [: drop 0 0 0 RES-FALSE ;] is TFAM-INIT-RECORD-XT
+   [: 2drop drop 0 0 0 RES-FALSE ;] is TFAM-INIT-FIELD-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
@@ -1577,8 +1685,8 @@ variable JOIN-FACTS
 : T-UNSTALE ( n -- n )
    T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
 
-\ MAXUWL sizes five parallel worklist arrays (UWL and the four per-pair flag
-\ tables below), 40 bytes of boot DP per cell. Unlike the arenas this one has no
+\ MAXUWL sizes six parallel worklist arrays (UWL and the five per-pair flag
+\ tables below), 48 bytes of boot DP per cell. Unlike the arenas this one has no
 \ grow path - U-PUSH refuses by name when it is full - so the cut keeps a wide
 \ margin: measured high-water of USP is 12 pairs over a whole self-build and 48
 \ over every checker suite (test/enum-decl-suite.f), and 1024 is 21x that.
@@ -1606,6 +1714,7 @@ variable UF-POSN
 \ a source slot while still descending the same input spine.
 create UWL-CALL MAXUWL cells allot   variable CUR-CALL
 create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
+create UWL-ARG MAXUWL cells allot    variable CUR-ARG
 variable CALL-ARMED
 variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
 variable REC-ON
@@ -1638,6 +1747,7 @@ CWIN-BOOT-DEFAULT
    CUR-UPOS @ USP @ cells UWL-POS + !
    CUR-CALL @ USP @ cells UWL-CALL + !
    CUR-QUOT @ USP @ cells UWL-QUOT + !
+   CUR-ARG @ USP @ cells UWL-ARG + !
    swap U-PUSH U-PUSH ;
 
 : PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
@@ -1645,20 +1755,22 @@ CWIN-BOOT-DEFAULT
    CUR-UPOS @ USP @ cells UWL-POS + !
    0 USP @ cells UWL-CALL + !
    CUR-QUOT @ USP @ cells UWL-QUOT + !
+   CUR-ARG @ USP @ cells UWL-ARG + !
    swap U-PUSH U-PUSH ;
 
 
 : PAIR-QUOT ( n n -- )
-   CUR-QUOT @ >r
-   -1 CUR-QUOT ! PAIR
-   r> CUR-QUOT ! ;
+   CUR-QUOT @ CUR-ARG @ >r >r
+   -1 CUR-QUOT ! 0 CUR-ARG ! PAIR
+   r> CUR-QUOT ! r> CUR-ARG ! ;
 
 : UNPAIR ( -- n n )    \ pop a pair; restore its strictness and position
    U-POP U-POP swap
    USP @ cells UWL-STR + @ CUR-STRICT !
    USP @ cells UWL-POS + @ CUR-UPOS !
    USP @ cells UWL-CALL + @ CUR-CALL !
-   USP @ cells UWL-QUOT + @ CUR-QUOT ! ;
+   USP @ cells UWL-QUOT + @ CUR-QUOT !
+   USP @ cells UWL-ARG + @ CUR-ARG ! ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
@@ -1719,6 +1831,10 @@ CWIN-BOOT-DEFAULT
 : FIELD-INNER ( n -- n )
    2 PARAM>ARG ;
 
+: LOAN-FIELD? ( n -- bool )
+   T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   PARAM>FAM LOAN-FIELD-FAM @ = ;
+
 : FIELD-ATOM-SAME? ( n n -- bool ) {: a:n b:n :}
    a T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
    b T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -1733,6 +1849,18 @@ CWIN-BOOT-DEFAULT
    got FIELD-PARAM? want FIELD-PARAM? and 0= IF RES-FALSE EXIT THEN
    got want FIELD-ID-SAME? 0= IF got want U-FAIL RES-TRUE EXIT THEN
    got FIELD-INNER want FIELD-INNER PAIR
+   RES-TRUE ;
+
+: LOAN-FIELD-PAIR? ( n n -- bool ) {: got:n want:n :}
+   got LOAN-FIELD? want LOAN-FIELD? and 0= IF RES-FALSE EXIT THEN
+   got 0 PARAM>ARG want 0 PARAM>ARG PAIR-STRICT
+   got 1 PARAM>ARG {: gf:n :}
+   want 1 PARAM>ARG {: wf:n :}
+   gf FIELD-PARAM? wf FIELD-PARAM? and 0= IF got want U-FAIL RES-TRUE EXIT THEN
+   gf FIELD-NAME wf FIELD-NAME FIELD-ATOM-SAME? 0= IF
+      got want U-FAIL RES-TRUE EXIT THEN
+   gf FIELD-REC wf FIELD-REC PAIR-STRICT
+   gf FIELD-INNER wf FIELD-INNER PAIR-STRICT
    RES-TRUE ;
 
 : FIELD-COERCE? ( n n -- bool ) {: got:n want:n :}
@@ -1751,6 +1879,7 @@ CWIN-BOOT-DEFAULT
    BEGIN R-RES dup TAG S-PUSH = WHILE
      dup P>TYPE T-RES
      BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+     BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
      dup TAG T-QUOT = IF
        r over Q>DIN RECURSE  swap        \ ( acc cur f1 qt )
        r over Q>DOUT RECURSE  swap       \ ( acc cur f1 f2 qt )
@@ -2014,6 +2143,60 @@ CT-INIT
    \ name in the single shared-counter case, so this rejects nothing that unified.
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
+: FRESH-REGION-TEMPLATE? ( n -- bool ) {: term:n :}
+   term T-RES {: t:n :}
+   t TAG T-ATOM <> IF RES-FALSE EXIT THEN
+   t ATOM>K 0 >= IF RES-FALSE EXIT THEN
+   t ATOM>U 7 < IF RES-FALSE EXIT THEN
+   t ATOM>A 7 s" region-" CORE-STR= ;
+
+64 constant FO-INIT-CAP
+create FO-BOOT FO-INIT-CAP cells allot
+PERSISTED-PTR-VARIABLE FO-P
+variable FO-CAP
+FO-BOOT FO-P !  FO-INIT-CAP FO-CAP !
+variable FO-ON
+defer FO-INPUT-XT ( n -- bool )
+
+: FO-ENSURE ( n -- ) {: need:n :}
+   need FO-CAP @ <= IF EXIT THEN
+   FO-CAP @ BEGIN dup need < WHILE 2 * REPEAT {: cap:n :}
+   FO-P @ FO-CAP @ cells cap cells ARENA-BYTES-GROW FO-P !
+   FO-P @ FO-CAP @ cap ARENA-CELLS-ZERO
+   cap FO-CAP ! ;
+
+: FO-RESET ( -- )
+   0 FO-ON !
+   FO-P @ 0 FO-CAP @ ARENA-CELLS-ZERO ;
+
+: FO-MATCH? ( n n -- bool )
+   {: id:n idx:n :}
+   idx cells FO-P @ + @ {: prior:n :}
+   prior 0= 0= IF prior id = EXIT THEN
+   0 0= 0=
+   FO-CAP @ 0 ?do
+      i cells FO-P @ + @ id = or
+   loop
+   IF 0 0= 0= EXIT THEN
+   id idx cells FO-P @ + !
+   0 0= ;
+
+\ A declared fresh region can forward a region created by this body. A single
+\ template keeps one identity; two templates cannot collapse onto one region.
+: FO-PAIR? ( n n -- bool ) {: actual:n declared:n :}
+   FO-ON @ 0= IF RES-FALSE EXIT THEN
+   UNIFY-KIND @ UK-COERCE <> IF RES-FALSE EXIT THEN
+   actual T-RES {: region:n :}
+   region TAG T-ATOM <> IF RES-FALSE EXIT THEN
+   region ATOM>K 0 <= IF RES-FALSE EXIT THEN
+   region ATOM>U 7 < IF RES-FALSE EXIT THEN
+   region ATOM>A 7 s" region-" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   declared FRESH-REGION-TEMPLATE? 0= IF RES-FALSE EXIT THEN
+   actual FO-INPUT-XT IF RES-FALSE EXIT THEN
+   declared ATOM>K negate 1- {: idx:n :}
+   idx 1+ FO-ENSURE
+   actual ATOM>K idx FO-MATCH? ;
+
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
 \ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
@@ -2032,14 +2215,15 @@ variable TWALK-D
    TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
-\ TYPE-VAR?* ( v term-or-row any? -- bool ) : one resolved term/row variable
-\ walk. With any? false, find the named type variable for the occurs check.
+\ One resolved term/row variable walk for occurs checks and closedness.
+\ With any? false, find the named type variable for the occurs check.
 \ With any? true, find any unresolved type OR row variable for closedness.
-\ Descend pointer pointees, all quotation effect rows, and family arguments.
-: TYPE-VAR?* ( n n bool -- bool ) {: v:n t:n any:bool :}
+\ Representation closedness excludes scope identities and the complete fixed
+\ read-view representation. Other unresolved type and row variables stay open.
+: TYPE-VAR-WALK ( n n bool bool -- bool ) {: v:n t:n any:bool rep:bool :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE v swap any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT
       dup ISROW IF drop any ELSE drop RES-FALSE THEN
@@ -2048,27 +2232,170 @@ variable TWALK-D
    dup ISROW IF drop any EXIT THEN
    drop
    t T-RES {: x:n :}
-   x TAG T-VAR = IF any IF RES-TRUE ELSE x PAY v = THEN EXIT THEN
-   x TAG T-STALE = IF v x STALE>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   x TAG T-PTR = IF v x PTR>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-VAR = IF any IF
+      rep x PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or and 0=
+      ELSE x PAY v = THEN EXIT THEN
+   x TAG T-SCOPE = IF
+      v x SCOPE-PARENT@ any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x SCOPE-SECOND@ any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF v x STALE>INNER any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-FORALL = IF
+      v x F>PARENT any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x F>SECOND any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x F>BODY any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      v x Q>DIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>DOUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>RIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>ROUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      v x Q>DIN any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>DOUT any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>RIN any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>ROUT any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
+      rep IF
+         x PARAM>FAM C2-READ-FAM @ =
+         x PARAM>FAM C2-MUT-FAM @ = or IF RES-FALSE EXIT THEN
+      THEN
       0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
          x over PARAM>ARG                    \ ( i arg )
-         v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         v swap any rep TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
    THEN
    RES-FALSE ;
+: TYPE-VAR?* ( n n bool -- bool ) RES-FALSE TYPE-VAR-WALK ;
 : TY-OCC? ( n n -- bool ) TWALK-RESET RES-FALSE TYPE-VAR?* ;
 : TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE TYPE-VAR?* 0= ;
+: TYPE-REP-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE RES-TRUE TYPE-VAR-WALK 0= ;
+
+: READ-VIEW? ( n -- bool )
+   T-UNSTALE dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   PARAM>FAM C2-READ-FAM @ = ;
+
+: MUT-VIEW? ( n -- bool )
+   T-UNSTALE dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   PARAM>FAM C2-MUT-FAM @ = ;
+
+: RECORDS? ( n -- bool )
+   T-UNSTALE dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   PARAM>FAM C2-RECORDS-FAM @ = ;
+
+\ Dependencies travel with the complete type, including phantom wrappers and
+\ every quotation row. Scope identity and linear ownership are separate facts:
+\ a copied shared view retains its scopes without copying an owned resource.
+: SCOPED-TYPE?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF x PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-BVAR = x TAG T-SCOPE = or IF RES-TRUE EXIT THEN
+   x TAG T-FORALL = IF
+      x F>PARENT dup 0 <> IF
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      ELSE drop THEN
+      x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      x READ-VIEW? x MUT-VIEW? or x LOAN-FIELD? or IF RES-TRUE EXIT THEN
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+: SCOPED-TYPE? ( n -- bool ) TWALK-RESET SCOPED-TYPE?* ;
+
+: SCHEME-TYPE?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-FORALL = IF RES-TRUE EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+: SCHEME-TYPE? ( n -- bool ) TWALK-RESET SCHEME-TYPE?* ;
+
+variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
+
+\ Storage constrains the complete pointee, including unresolved quotation rows.
+\ The restriction survives generic helpers: each later binding must preserve it.
+\ It is separate from raw/base kinds and fixed-window quotation tail kinds.
+: NO-SCOPE?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         P>REST R-RES
+      REPEAT
+      dup ISROW IF PAY NSCOPE-RAISE ELSE drop THEN
+      RES-TRUE EXIT
+   THEN
+   dup ISROW IF PAY NSCOPE-RAISE RES-TRUE EXIT THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF
+      x PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or IF RES-FALSE EXIT THEN
+      x PAY NSCOPE-RAISE RES-TRUE EXIT
+   THEN
+   x READ-VIEW? x MUT-VIEW? or IF RES-FALSE EXIT THEN
+   x TAG T-BVAR = x TAG T-SCOPE = or IF RES-FALSE EXIT THEN
+   x TAG T-FORALL = IF RES-FALSE EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-TRUE ;
+: NO-SCOPE? ( n -- bool ) TWALK-RESET NO-SCOPE?* ;
+: NO-SCOPE-PTR? ( n -- bool )
+   T-RES dup TAG T-PTR <> IF drop RES-TRUE EXIT THEN
+   PTR>INNER NO-SCOPE? ;
+
+: TV! ( n n -- ) {: term:n id:n :}
+   id NSCOPE@ IF term NO-SCOPE? 0= IF
+      1 SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
+   THEN THEN
+   id 0 TRAIL-PUSH term 1+ id cells TVT + ! ;
+: RV! ( n n -- ) {: row:n id:n :}
+   id NSCOPE@ IF row NO-SCOPE? 0= IF
+      1 SCOPE-HIT ! row id MK-ROW U-FAIL EXIT
+   THEN THEN
+   id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
 
 \ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
 \ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
@@ -2281,80 +2608,28 @@ TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
 REG-PROTECT
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
+variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
+PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
 
-\ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
-\ layout whose family args contain a linear con — or an arg still unresolved,
-\ which may LATER bind linear — must not transport. The linear discipline
-\ counts concrete linear cons on the rows; a layout T-PARAM hides its payload
-\ from that count, so dup/over/tuck/2dup would duplicate the payload resource,
-\ drop/nip/2drop would lose it, and locals capture launders the reference
-\ count. Fail closed on both proven and possible linears; TFAM 11 replaces
-\ this with whole-bundle linear counting.
-\ layout-cap slice 5 (dot habu-checker-capability-layout-9b8540bd): linearity is
-\ TRANSITIVE through nested layout args. A NESTED family application arg (e.g. the
-\ lq2<ltok,n> inside option<lq2<ltok,n>>) is a T-PARAM, not a con, so the direct
-\ con/var test misses the linear ltok buried in it; the outer bundle would then
-\ dup/drop-launder the resource. LAYOUT-ARG-LINEARISH? RECURSES into such a nested
-\ layout (self-recursive on the arg subtree — NOT a forward `defer`, which before
-\ `: TRUST` would be captured into the pre-trust pending table and break the
-\ old-engine-compat boot property, test/pre-trust-defer.f), treating the whole
-\ subtree as possibly-linear if any leaf con is linear or any family is
-\ concrete-linear.
-: LAYOUT-ARG-LINEARISH? ( n -- bool ) {: t:n :}   \ arg term: linear con, unresolved var, or nested linear layout
+\ Count only owning schema positions. Scope, region, read-view element, pointer,
+\ and quotation parameters describe access or representation, not payload.
+\ An unresolved value parameter is possibly linear for a guard, but contributes
+\ nothing to the concrete count until it binds. The registry instantiates each
+\ field schema, so repeated owning occurrences count separately.
+: OWN-TYPE-N ( n bool -- n ) {: t:n maybe:bool :}
    t T-RES {: r:n :}
-   r ISVAR IF RES-TRUE EXIT THEN
-   r TAG T-PARAM = IF                              \ nested layout arg: any arg linear, or the family concrete-linear
-      0 BEGIN dup r PARAM>ARGC < WHILE
-         r over PARAM>ARG RECURSE IF drop RES-TRUE EXIT THEN
-         1 +
-      REPEAT drop
-      r PARAM>FAM TFAM-CON-LIN-XT EXIT
+   r ISVAR IF
+      maybe r PAY TVK@ TVK-SCOPE <> and IF 1 ELSE 0 THEN EXIT
    THEN
-   r TAG T-CON <> IF RES-FALSE EXIT THEN
-   r PAY CT-LINEAR? ;
-: LAYOUT-MAYBE-LINEAR? ( n -- bool ) {: p:n :}    \ resolved layout T-PARAM term
-   0 BEGIN dup p PARAM>ARGC < WHILE
-      p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop
-   p PARAM>FAM TFAM-CON-LIN-XT ;
-
-\ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
-\ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
-\ sums the linear cons among a layout term's (flat, cell-kinded) args, sampled
-\ once per logical value — LIN-TYPE-COUNT counts a bundle only at its tag cell.
-\ LAYOUT-ARGS-OPEN? is the width question (any arg still an unresolved var):
-\ width-known layouts expand to hidden fields even when linear, so the checker
-\ row and the runtime cells agree; open-arg layouts stay one conservative cell.
-\ layout-cap slice 5: a nested layout arg contributes its OWN whole-bundle linear
-\ count (recursed), so option<lq2<ltok,n>> carries the one linear unit buried in
-\ the inner lq2 — sampled once at the outer bundle's tag by LIN-TYPE-COUNT, so no
-\ double count. Self-recursive like LAYOUT-ARG-LINEARISH? above (NOT a forward
-\ `defer`, which pre-`: TRUST` would be captured into the pending table). Both the
-\ nested branch and LAYOUT-LINEAR-COUNT keep the accumulator on the STACK, so the
-\ recursion is reentrant.
-: LAYOUT-ARG-LIN-N ( n -- n ) {: t:n :}   \ linear units the arg contributes (con=1, nested layout=recursed subtree)
-   t T-RES {: r:n :}
-   r TAG T-PARAM = IF                              \ nested layout arg: sum its args' units + its own concrete-linear
-      0                                            \ acc on the stack (reentrant)
-      0 BEGIN dup r PARAM>ARGC < WHILE             \ ( acc j )
-         r over PARAM>ARG RECURSE                   \ ( acc j nj )
-         rot + swap                                 \ ( acc' j )
-         1 +
-      REPEAT drop
-      r PARAM>FAM TFAM-CON-LIN-XT IF 1 + THEN
-      EXIT
+   r TAG T-STALE = IF r STALE>INNER maybe RECURSE EXIT THEN
+   r TAG T-CON = IF r PAY CT-LINEAR? IF 1 ELSE 0 THEN EXIT THEN
+   r TAG T-PARAM = IF
+      maybe IF r TFAM-MAY-LIN-XT IF 1 ELSE 0 THEN
+      ELSE r TFAM-LIN-N-XT THEN EXIT
    THEN
-   r TAG T-CON <> IF 0 EXIT THEN
-   r PAY CT-LINEAR? IF 1 ELSE 0 THEN ;
-: LAYOUT-LINEAR-COUNT ( n -- n ) {: p:n :}
-   0                                            \ acc on the stack (reentrant)
-   0 BEGIN dup p PARAM>ARGC < WHILE             \ ( acc j )
-      p over PARAM>ARG LAYOUT-ARG-LIN-N          \ ( acc j nj )
-      rot + swap                                 \ ( acc' j )
-      1 +
-   REPEAT drop
-   p PARAM>FAM TFAM-CON-LIN-XT IF 1 + THEN ;
+   0 ;
+: LAYOUT-MAYBE-LINEAR? ( n -- bool ) TFAM-MAY-LIN-XT ;
+: LAYOUT-LINEAR-COUNT ( n -- n ) TFAM-LIN-N-XT ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
@@ -2373,15 +2648,38 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ chain can read the per-cell slots it places a row from (dict.f ROW-GLUE).
 \ A family whose parameter IS a payload cell (`FIELD a t`) has a width no one
 \ can know before the argument binds; that one still answers open and stays one
-\ conservative cell. The registry owns the occurrence question, so the checker
-\ asks it per slot instead of guessing a width.
+\ conservative cell. A width-bearing argument may itself contain an open
+\ width-bearing argument, so recurse only through slots the width reads. The
+\ registry owns that occurrence question instead of a closedness guess.
 : LAYOUT-WIDTH-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
-      p over PARAM>ARG T-RES ISVAR IF
-         p PARAM>FAM over TFAM-WIDTH-SLOT-XT IF drop RES-TRUE EXIT THEN
+      p PARAM>FAM over TFAM-WIDTH-SLOT-XT IF
+         p over PARAM>ARG T-UNSTALE {: arg:n :}
+         arg ISVAR IF drop RES-TRUE EXIT THEN
+         arg LAYOUT-PARAM? IF
+            arg TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         THEN
       THEN
       1 +
    REPEAT drop RES-FALSE ;
+
+\ Typed memory keeps the earlier fail-closed rule for every family argument,
+\ including phantom arguments. A concrete payload count alone cannot establish
+\ that a generic instantiation is safe to store while an argument is open.
+: LAYOUT-MEM-ARG-BLOCK? ( n -- bool ) {: t:n :}
+   t T-RES {: r:n :}
+   r ISVAR IF r PAY TVK@ TVK-SCOPE <> EXIT THEN
+   r READ-VIEW? IF RES-FALSE EXIT THEN
+   r MUT-VIEW? IF RES-TRUE EXIT THEN
+   r TAG T-PARAM = IF
+      0 BEGIN dup r PARAM>ARGC < WHILE
+         r over PARAM>ARG RECURSE IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      r LAYOUT-MAYBE-LINEAR? EXIT
+   THEN
+   r TAG T-CON <> IF RES-FALSE EXIT THEN
+   r PAY CT-LINEAR? ;
 
 \ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): every
 \ closed non-linear layout with a physical cell may cross typed memory. W=1
@@ -2389,7 +2687,12 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ no addressable representation and reject. Possibly-linear, including open
 \ args that might later become linear, stays rejected until TFAM 11.
 : LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
+   t SCOPED-TYPE? IF RES-FALSE EXIT THEN
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG LAYOUT-MEM-ARG-BLOCK? IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop
    t T-WIDTH 0 > ;
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
@@ -2590,8 +2893,43 @@ variable XT-DECL
 \ Meeting the term with TVK-OFF closes it: the meet is identity for every kind
 \ but the null, so this raises nothing else.
 : OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
+: REGION-ATOM? ( n -- bool ) {: t:n :}
+   t TAG T-ATOM <> IF RES-FALSE EXIT THEN
+   t ATOM>K 0 <= IF RES-FALSE EXIT THEN
+   t ATOM>U 7 < IF RES-FALSE EXIT THEN
+   t ATOM>A 7 s" region-" CORE-STR= ;
+: SCOPE-BLOCK? ( n n -- bool ) {: vid:n term:n :}
+   term T-RES {: t:n :}
+   t TAG T-SCOPE = IF
+      vid TVK@ TVK-SCOPE <> vid t TY-OCC? or IF
+         2 SCOPE-HIT ! RES-TRUE ELSE RES-FALSE THEN EXIT THEN
+   vid TVK@ TVK-SCOPE = IF
+      t ISVAR 0= IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      t PAY TVK@ dup TVK-ANY <> swap TVK-SCOPE <> and IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      t PAY TVK-SCOPE TVK-RAISE-TO RES-FALSE EXIT
+   THEN
+   vid TVK@ TVK-REGION = IF
+      t REGION-ATOM? t LOAN-FIELD? or IF RES-FALSE EXIT THEN
+      t ISVAR 0= IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      t PAY TVK@ dup TVK-ANY <> swap TVK-REGION <> and IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      t PAY TVK-REGION TVK-RAISE-TO RES-FALSE EXIT
+   THEN
+   t ISVAR IF t PAY TVK@ TVK-SCOPE = IF
+      vid TVK@ TVK-ANY <> IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      vid TVK-SCOPE TVK-RAISE-TO
+   ELSE t PAY TVK@ TVK-REGION = IF
+      vid TVK@ TVK-ANY <> IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
+      vid TVK-REGION TVK-RAISE-TO
+   THEN
+   THEN THEN
+   RES-FALSE ;
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
    {: vid:n term:n :}
+   vid term SCOPE-BLOCK? IF RES-TRUE EXIT THEN
+   vid TVK@ TVK-CELL = IF
+      term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
+      T-WIDTH 1 <> EXIT
+   THEN
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN        \ the definer's own introduction form
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN         \ RAW var: `term` must be RAW-admissible
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
@@ -2601,11 +2939,13 @@ variable XT-DECL
 \ A generated constructor's result can ground one of its effect variables before
 \ that same variable meets the payload value. Permit that grounding only inside
 \ equal-family argument pairing and only when the direct logical layout term has
-\ a stable one-cell representation. TYPE-CLOSED? rejects unresolved descendants
-\ under pointers, quotation rows, and nested families; LAYOUT-MAYBE-LINEAR?
-\ rejects possible linear payloads. Pointer-strict pairing, hidden fields, wide
-\ terms, RAW vars, and occurs cycles retain ordinary PAIR and its fail-closed rules.
-: PARAM-BIND-OK? ( n n -- bool ) {: v:n p:n :}
+\ a stable one-cell representation, or when the declared slot is a phantom
+\ element type whose width cannot change the family value. TYPE-CLOSED? rejects
+\ unresolved descendants under pointers, quotation rows, and nested families;
+\ LAYOUT-MAYBE-LINEAR? rejects possible linear payloads. Pointer-strict pairing,
+\ hidden fields, wide value terms, RAW vars, and occurs cycles retain ordinary
+\ PAIR and its fail-closed rules.
+: PARAM-BIND-OK? ( n n n n -- bool ) {: v:n p:n fam:n slot:n :}
    v ISVAR 0= IF RES-FALSE EXIT THEN
    p LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    p HIDDEN-PARAM? IF RES-FALSE EXIT THEN
@@ -2613,7 +2953,10 @@ variable XT-DECL
    v PAY TVK-RAW? IF RES-FALSE EXIT THEN
    p TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
    p LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
-   p T-WIDTH 1 <> IF RES-FALSE EXIT THEN
+   p T-WIDTH 1 <> IF
+      v PAY TVK@ TVK-ANY <> IF RES-FALSE EXIT THEN
+      fam slot TFAM-TYPE-SLOT-XT 0= IF RES-FALSE EXIT THEN
+   THEN
    v PAY p TY-OCC? IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
@@ -2624,15 +2967,109 @@ variable XT-DECL
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
       t1 PARAM-I @ PARAM>ARG T-RES {: a:n :}
       t2 PARAM-I @ PARAM>ARG T-RES {: b:n :}
-      a b PARAM-BIND-OK? IF
+      a b t1 PARAM>FAM PARAM-I @ PARAM-BIND-OK? IF
          b a PAY TV!
-      ELSE b a PARAM-BIND-OK? IF
+      ELSE b a t1 PARAM>FAM PARAM-I @ PARAM-BIND-OK? IF
          a b PAY TV!
       ELSE
-         a b PAIR
+         CUR-ARG @ >r 0 CUR-ARG !
+         t1 READ-VIEW? t1 MUT-VIEW? or t1 RECORDS? or IF
+            a b PAIR-STRICT ELSE a b PAIR THEN
+         r> CUR-ARG !
       THEN THEN
       PARAM-I @ 1 + PARAM-I !
    REPEAT ;
+
+variable SCOPE-INTRO-ON
+defer SCOPE-INTRO-PAIR-XT ( n n -- )
+defer SCOPE-INTRO-FENCE-XT ( n n n n n n -- )
+defer FORALL-OPEN-XT ( n n -- )
+variable FORALL-OPEN-N
+variable FORALL-OPEN-ON
+: SCOPE-INTRO-READY? ( n n -- bool ) {: actual:n required:n :}
+   SCOPE-INTRO-ON @ 0= IF RES-FALSE EXIT THEN
+   FORALL-OPEN-ON @ IF RES-FALSE EXIT THEN
+   CUR-ARG @ 0= CUR-QUOT @ 0 <> or IF RES-FALSE EXIT THEN
+   actual TAG T-QUOT = required TAG T-FORALL = and ;
+
+: FORALL-PREFIX-LEN ( n -- n )
+   0 swap T-RES
+   BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES swap 1+ swap REPEAT drop ;
+: FORALL-OPEN-READY? ( n n -- bool ) {: actual:n required:n :}
+   SCOPE-INTRO-ON @ 0= IF RES-FALSE EXIT THEN
+   CUR-ARG @ 0= CUR-QUOT @ 0 <> or IF RES-FALSE EXIT THEN
+   actual TAG T-FORALL <> IF RES-FALSE EXIT THEN
+   required TAG T-QUOT <> required TAG T-FORALL <> and IF RES-FALSE EXIT THEN
+   actual FORALL-PREFIX-LEN required FORALL-PREFIX-LEN > ;
+
+create FORALL-OPEN-RECS MAXUWL 4 * cells allot
+variable FORALL-INPUT-ROOT
+: FORALL-OPEN-REC ( n -- ptr n ) 4 * cells FORALL-OPEN-RECS + ;
+: FORALL-OPEN-ADD ( n n n n -- ) {: var:n parent:n second:n domain:n :}
+   FORALL-OPEN-N @ MAXUWL >= IF s" checker: forall input worklist full" 76 die THEN
+   FORALL-OPEN-N @ FORALL-OPEN-REC {: rec:ptr :}
+   var rec !  parent rec cell+ !  second rec 2 cells + !
+   domain rec 3 cells + !
+   FORALL-OPEN-N @ 1 + FORALL-OPEN-N ! ;
+: FORALL-BOUND-OK? ( n n -- bool ) {: got:n want:n :}
+   got T-RES want T-RES {: a:n b:n :}
+   a b = IF RES-TRUE EXIT THEN
+   a TAG b TAG <> IF RES-FALSE EXIT THEN
+   a TAG T-ATOM = IF a b ATOM-OK? EXIT THEN
+   a TAG T-CON = IF a PAY b PAY = EXIT THEN
+   a TAG T-PTR = IF a PTR>INNER b PTR>INNER RECURSE EXIT THEN
+   a TAG T-STALE = IF a STALE>INNER b STALE>INNER RECURSE EXIT THEN
+   a TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   a PARAM>FAM b PARAM>FAM <>
+   a PARAM>ARGC b PARAM>ARGC <> or IF RES-FALSE EXIT THEN
+   a PARAM>ARGC 0 ?do
+      a i PARAM>ARG b i PARAM>ARG RECURSE 0= IF RES-FALSE unloop EXIT THEN
+   loop
+   RES-TRUE ;
+\ A generic scope or region must already occur in the caller's value inputs.
+\ Read the source terms without resolving their nodes: a callback's own binder
+\ and a variable created only while matching its quotation are not authority.
+: FORALL-INPUT-VAR* ( n n -- bool ) {: scope:n term:n :}
+   term TAG S-PUSH = IF
+      scope term P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope term P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   term TAG T-VAR = IF
+      term PAY TVK@ scope PAY TVK@ = term T-RES scope = and EXIT
+   THEN
+   term TAG T-PARAM = IF
+      term PARAM>ARGC 0 ?do
+         scope term i PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF
+            RES-TRUE unloop EXIT
+         THEN
+      loop
+   THEN
+   RES-FALSE ;
+: FORALL-INPUT-VAR? ( n -- bool ) {: scope:n :}
+   TWALK-RESET scope FORALL-INPUT-ROOT @ FORALL-INPUT-VAR* ;
+: FORALL-OPEN-VALID? ( n -- bool ) FORALL-OPEN-REC {: rec:ptr :}
+   rec @ T-RES {: scope:n :}
+   rec 3 cells + @ BIND-REGION = IF
+      scope ISVAR IF
+         scope PAY TVK@ TVK-REGION =
+         scope FORALL-INPUT-VAR? and EXIT
+      THEN
+      scope REGION-ATOM? scope LOAN-FIELD? or EXIT
+   THEN
+   scope ISVAR IF
+      scope PAY TVK@ TVK-SCOPE =
+      rec cell+ @ 0= and rec 2 cells + @ 0= and
+      scope FORALL-INPUT-VAR? and EXIT
+   THEN
+   scope TAG T-SCOPE <> IF RES-FALSE EXIT THEN
+   scope SCOPE-PARENT@ rec cell+ @ FORALL-BOUND-OK? 0= IF RES-FALSE EXIT THEN
+   scope SCOPE-SECOND@ rec 2 cells + @ FORALL-BOUND-OK? ;
+: FORALL-OPEN-CHECK ( -- bool )
+   FORALL-OPEN-N @ {: count:n :}
+   0 FORALL-OPEN-N !
+   UOK @ 0= IF RES-TRUE EXIT THEN
+   count 0 ?do i FORALL-OPEN-VALID? 0= IF RES-FALSE unloop EXIT THEN loop
+   RES-TRUE ;
 
 \ A stale cell may be MOVED and DROPPED (both meet a plain type variable, which
 \ binds to the wrapper) and it may meet an equally stale cell at a control-flow
@@ -2642,11 +3079,25 @@ variable XT-DECL
 : STALE-NOTE ( n n -- n n )
    2dup TAG T-STALE =  swap TAG T-STALE =  or IF -1 STALE-HIT ! THEN ;
 
+: FORALL-CEILING-PAIR ( n n -- ) {: got:n want:n :}
+   got want PAIR-STRICT ;
+
+: FORALL-PAIR ( n n -- ) {: got:n want:n :}
+   got F>DOMAIN want F>DOMAIN <> IF got want U-FAIL EXIT THEN
+   got F>PARENT want F>PARENT FORALL-CEILING-PAIR
+   got F>SECOND want F>SECOND FORALL-CEILING-PAIR
+   got F>BODY want F>BODY PAIR-STRICT ;
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
-   2dup = IF 2drop ELSE
+   over NO-SCOPE-PTR? over NO-SCOPE-PTR? and 0= IF 1 SCOPE-HIT ! U-FAIL EXIT THEN
+   2dup = IF 2drop EXIT THEN
+   2dup SCOPE-INTRO-READY? IF SCOPE-INTRO-PAIR-XT EXIT THEN
+   2dup FORALL-OPEN-READY? IF FORALL-OPEN-XT EXIT THEN
    over TAG T-STALE =  over TAG T-STALE =  and IF
      over STALE>INNER over STALE>INNER PAIR 2drop ELSE
+   over TAG T-FORALL = over TAG T-FORALL = and IF
+     2dup FORALL-PAIR 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
      \ Inputs flow INTO a quotation from whoever executes it, so the din and rin
      \ pairs are pushed flipped: the expected effect's inputs take the actual
@@ -2657,9 +3108,13 @@ variable XT-DECL
      2dup Q>RIN swap Q>RIN PAIR-QUOT
      Q>ROUT swap Q>ROUT swap PAIR-QUOT ELSE
    over TAG T-PTR =  over TAG T-PTR =  and IF
-     over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
+     CUR-ARG @ >r 0 CUR-ARG !
+     over PTR>INNER over PTR>INNER PAIR-STRICT
+     r> CUR-ARG ! 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
-     2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN ELSE
+     2dup FO-PAIR? IF 2drop ELSE
+        2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN THEN ELSE
+   2dup LOAN-FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
@@ -2677,7 +3132,7 @@ variable XT-DECL
        over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
-   ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
 \ effect keeps a parametric layout value as ONE logical cell whenever an arg is
@@ -2701,10 +3156,12 @@ variable XT-DECL
    tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    th CELL>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN   \ th may be a stale window cell
    th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top (arg-aware bundle width)
-: LOGHID-EXPAND ( n n -- ) {: rh:n rl:n :}   \ expand rl's logical top, re-pair rows
+: LOGHID-ROWS ( n n -- n n ) {: rh:n rl:n :}   \ expand rl's logical top
    rl P>TYPE T-RES {: tl:n :}
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
-   rh re PAIR ;
+   rh re ;
+: LOGHID-EXPAND ( n n -- ) LOGHID-ROWS PAIR ;
+: LOGHID-EXPAND-REV ( n n -- ) LOGHID-ROWS swap PAIR ;
 
 \ Root-spine position plumbing: a spine row pair carries encoded cursor
 \ -(c+2); its type pair gets slot c, its rest pair cursor c+1. Non-spine row
@@ -2727,9 +3184,9 @@ variable XT-DECL
       CALL-FREEZE-XT
    THEN ;
 
-\ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, so the
-\ spine cursor is no longer slot-aligned past it: drop to no-position (fail
-\ safe, positions before the expansion were already latched exactly).
+\ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. Keep
+\ actual and required in their original order for directional input matching.
+\ The spine cursor is no longer slot-aligned past it: drop to no-position.
 \ Implicit callback tails describe a fixed window. During quotation comparison
 \ they may share another tail, but may not absorb a visible input or output.
 \ Executing the quotation still instantiates its tail against the caller stack.
@@ -2744,11 +3201,14 @@ variable XT-DECL
    over ISROW IF 2dup QUOT-ROW-BLOCK? IF U-FAIL ELSE 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN THEN ELSE
    dup ISROW IF 2dup swap QUOT-ROW-BLOCK? IF U-FAIL ELSE 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN THEN ELSE
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND ELSE
-   2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND ELSE
+   2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND-REV ELSE
    U-ROW-DESCEND THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
+   over FORALL-INPUT-ROOT !
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
+   0 FORALL-OPEN-N !
+   SCOPE-INTRO-ON @ UNIFY-KIND @ UK-INPUT = and CUR-ARG !
    CALL-ARMED @ CUR-CALL !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
@@ -2764,7 +3224,7 @@ variable XT-DECL
 
 : UNIFY-IN ( n n -- bool )
    UK-INPUT UNIFY-KIND !
-   UNIFY
+   UNIFY FORALL-OPEN-CHECK and
    UK-EXACT UNIFY-KIND ! ;
 
 : UNIFY-COERCE ( n n -- bool )
@@ -2786,6 +3246,7 @@ variable FV
      dup cells TVT + 0 swap !
      dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
+     dup cells NSCOPE + 0 swap !
      1 +
    REPEAT drop ;
 variable OK   variable DCUR   variable UNCK   variable BROW
@@ -3033,6 +3494,11 @@ variable LTC-P
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
 32 constant MD-STALE-READ     \ a token read a cell `catch` left stale (U-TYPE met a T-STALE)
+33 constant MD-SCOPE-STORE    \ a scope dependency reached an ordinary pointer/location
+34 constant MD-SCOPE-KIND     \ a scope identity was used as a value type
+35 constant MD-C2-COPY       \ a C2 exclusive value was copied by a transport
+36 constant MD-C2-DROP       \ a C2 exclusive value was discarded by a transport
+37 constant MD-C2-ESCAPE     \ a C2 owner or loan survived its scope boundary
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -3045,6 +3511,21 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
    MDIAG @ 0 <> IF EXIT THEN
    FAILSET @ 0 <> IF EXIT THEN
    code MDIAG ! ;
+
+\ A C2 refusal names one logical value, even when its machine row contains
+\ hidden fields. Catch's stale wrapper remains visible around that value.
+: C2-LOGICAL ( n -- n )
+   T-RES dup TAG T-STALE = IF
+      STALE>INNER dup HIDDEN-PARAM? IF MK-LOGICAL THEN MK-STALE EXIT
+   THEN
+   dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
+
+: C2-REJECT ( n n -- ) {: actual:n reason:n :}
+   MDIAG @ 0 <> FAILSET @ 0 <> or IF 0 OK ! -1 FAILSET ! EXIT THEN
+   reason MDIAG !
+   actual C2-LOGICAL DF-ACT !
+   0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS !
+   0 OK !  -1 FAILSET ! ;
 
 : UF>DIAG ( -- )
    UF-SET @ IF
@@ -3059,6 +3540,8 @@ variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 \ open. The base-address refusal names itself exactly as the raw one does
 \ (BASE-BLOCK?).
 : CELL-DIAG! ( -- )
+   SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
+   SCOPE-HIT @ 2 = IF MD-SCOPE-KIND MDIAG! THEN
    STALE-HIT @ IF MD-STALE-READ MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
@@ -3187,7 +3670,7 @@ variable CDT-ROW
       t over PARAM>ARG T-WIDTH 1 > IF drop t RES-TRUE EXIT THEN
       1 +
    REPEAT drop
-   t TYPE-CLOSED? 0= IF 0 RES-FALSE EXIT THEN
+   t TYPE-REP-CLOSED? 0= IF 0 RES-FALSE EXIT THEN
    t LAYOUT-MAYBE-LINEAR? IF 0 RES-FALSE EXIT THEN
    0 BEGIN dup t PARAM>ARGC < WHILE
       t over PARAM>ARG LAYOUT-PARAM? IF drop t RES-TRUE EXIT THEN
@@ -3425,6 +3908,13 @@ variable QDEPTH
    REC-ON @ CALL-ARMED !
    CHECKER-STEP
    0 CALL-ARMED ! ;
+
+: SCOPE-RECORDED-STEP ( n n -- )
+   -1 FORALL-OPEN-ON !
+   -1 SCOPE-INTRO-ON !
+   RECORDED-STEP
+   0 SCOPE-INTRO-ON !
+   0 FORALL-OPEN-ON ! ;
 
 : TWO-ROW-LOSS ( n n n n -- n n ) {: pd:n pr:n od:n orow:n :}
    pd od ROW-COMMON {: cd:n :}
@@ -3779,12 +4269,42 @@ variable RSRET
    cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN   \ a cleanup borrows nothing: its own entry row
    cleanup Q>XDEAD IF -1 DEADP ! THEN ;
 
+: C2-FINISH-QUOT? ( n -- bool ) {: q:n :}
+   q TAG T-QUOT <> IF RES-FALSE EXIT THEN
+   q Q>DIN ROW-CELLS 1 <> IF RES-FALSE EXIT THEN
+   q Q>DIN R-RES P>TYPE CC-N MK-CON UNIFY-EXACT 0= IF RES-FALSE EXIT THEN
+   q Q>RIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>XDEAD IF RES-TRUE EXIT THEN
+   q Q>DOUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>ROUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>DIN R-RES P>REST R-RES q Q>DOUT R-RES =
+   q Q>RIN R-RES q Q>ROUT R-RES = and ;
+
+: RS-C2-INVOKE ( -- )
+   FRESH MK-VAR FRESH MK-ROW {: finish-term rest :}
+   DCUR @ finish-term rest MK-PUSH UNIFY OK @ and OK !
+   rest DCUR !
+   finish-term T-RES C2-FINISH-QUOT? 0= IF 0 OK ! EXIT THEN
+   FRESH MK-VAR FRESH MK-ROW {: clean-term body-row :}
+   DCUR @ clean-term body-row MK-PUSH UNIFY OK @ and OK !
+   body-row DCUR !
+   clean-term T-RES {: cleanup:n :}
+   cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
+   cleanup Q>XDEAD IF CELLS-NONE ELSE 0 THEN FINALLY-CLEANUP-OUT !
+   RSEXEC
+   -1 CWIN-KIND !
+   OK @ 0= IF EXIT THEN
+   QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
+   cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN
+   cleanup Q>XDEAD IF -1 DEADP ! THEN ;
+
 variable RSH
 
 : RS-TRANSFER-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" >r" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" r>" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" r@" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" c2-invoke" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2>r" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r>" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" 2r@" CORE-STR= ;
@@ -3797,6 +4317,8 @@ variable RSH
 5 constant VR-QUOT
 6 constant VR-ATOM
 7 constant VR-PARAM
+8 constant VR-FORALL
+9 constant VR-BVAR
 
 64 constant VREC-CAP-INIT       \ value-record table records (grows on demand)
 512 constant VREC-FIELD-INIT     \ field-node index pool (grows on demand)
@@ -4115,12 +4637,14 @@ variable VRC-RVN
       T-VAR of
          VR-VAR VREC-NODE-NEW {: node:n :}
          x VREC-RES PAY VREC-TV-ID node VN.A!
+         x VREC-RES PAY NSCOPE@ Q-FLAG>N node VN.B!
          node
       endof
       S-ROW of
          VR-ROW VREC-NODE-NEW {: node:n :}
          x VREC-RES PAY VREC-RV-ID node VN.A!
          x VREC-RES PAY TVK@ node VN.B!
+         x VREC-RES PAY NSCOPE@ Q-FLAG>N node VN.C!
          node
       endof
       T-PTR of
@@ -4146,6 +4670,20 @@ variable VRC-RVN
          x VREC-RES Q>XRFIELD node VN.H!
          node
       endof
+      T-FORALL of
+         VR-FORALL VREC-NODE-NEW {: node:n :}
+         x VREC-RES F>BODY RECURSE node VN.A!
+         x VREC-RES F>PARENT RECURSE node VN.B!
+         x VREC-RES F>SECOND RECURSE node VN.C!
+         x VREC-RES F>DOMAIN node VN.D!
+         node
+      endof
+      T-BVAR of
+         VR-BVAR VREC-NODE-NEW {: node:n :}
+         x VREC-RES PAY node VN.A!
+         node
+      endof
+      T-SCOPE of s" checker: live scope in record schema" 76 die endof
       T-ATOM of
          VR-ATOM VREC-NODE-NEW {: node:n :}
          x VREC-RES ATOM>A x VREC-RES ATOM>U node VREC-COPY-STR
@@ -4226,11 +4764,15 @@ variable VRC-RVN
    node 0= IF 0 EXIT THEN
    node VN.TAG@ case
       VR-CON of node VN.A@ MK-CON endof
-      VR-VAR of node VN.A@ VREC-I-TV endof
+      VR-VAR of
+         node VN.A@ VREC-I-TV
+         node VN.B@ 0 <> IF dup PAY NSCOPE! THEN
+      endof
       VR-ROW of
          node VN.A@ VREC-I-RV
          node VN.B@ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
          node VN.B@ RVK-INFERRED = IF dup PAY RVK-INFERRED! THEN
+         node VN.C@ 0 <> IF dup PAY NSCOPE! THEN
       endof
       VR-PTR of node VN.A@ RECURSE MK-PTR endof
       VR-PUSH of node VN.A@ RECURSE node VN.B@ RECURSE MK-PUSH endof
@@ -4242,6 +4784,12 @@ variable VRC-RVN
          MK-QUOT
          dup node VN.E@ 0 <> node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
       endof
+      VR-FORALL of
+         node VN.B@ RECURSE
+         node VN.C@ RECURSE
+         node VN.D@ node VN.A@ RECURSE MK-FORALL-IN
+      endof
+      VR-BVAR of node VN.A@ MK-BVAR endof
       VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
       VR-PARAM of
          node VN.C@ {: argc:n :}
@@ -4274,6 +4822,8 @@ variable VRC-RVN
 \ Signature quantifiers retain their source-letter identity for generic effect
 \ parsing and diagnostics.  This is not the declaration parameter alphabet.
 create NMAP 26 cells allot
+variable BIND-DEPTH
+create BIND-DOMAINS 32 cells allot
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 
@@ -4381,7 +4931,10 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : VAR-OF ( n -- n ) {: c:n :}
    c 97 - cells NMAP +
    dup @ UNBOUND = IF FRESH over ! THEN
-   @ SIG-RAW-MODE @ IF dup TVK-RAW! THEN MK-VAR ;
+   @ dup UNBOUND < IF
+      BIND-DEPTH @ + 1 + dup BIND-DEPTH @ swap - 1- cells BIND-DOMAINS + @
+      MK-BVAR-DOMAIN EXIT THEN
+   SIG-RAW-MODE @ IF dup TVK-RAW! THEN MK-VAR ;
 
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
 \ concrete width types get distinct con codes; n(1)/f(1) stay the GENERIC int
@@ -4554,7 +5107,9 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 : SIG-DELIM-CHAR? ( n -- bool ) {: c:n :}
    c 60 = IF RES-TRUE EXIT THEN
    c 62 = IF RES-TRUE EXIT THEN
-   c 44 = ;
+   c 44 = IF RES-TRUE EXIT THEN
+   c 91 = IF RES-TRUE EXIT THEN
+   c 93 = ;
 : NEXT-SIG-TOK ( -- ptr u8 n )
    PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
    BEGIN SI @ SL @ < SB@ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
@@ -4582,6 +5137,66 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
 \ TFAM-RESOLVE-XT). Left unset until then: it is never reached before install, so
 \ an unset call fails closed via DEFER-UNSET rather than the old execute-of-0.
 defer SIG-QUOT-XT ( -- n )
+defer SIG-BINDER-BODY-XT ( -- n )
+defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
+
+: SIG-PARENT-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n bound:n :}
+   u 1 <> IF RES-FALSE EXIT THEN
+   a c@ {: c:n :}
+   c LOWER? c bound <> and
+   c 110 <> and c 102 <> and c 114 <> and ;
+
+: SIG-PARENT-ROOT ( ptr u8 n n -- n ) {: a:ptr u:n bound:n :}
+   a u bound SIG-PARENT-NAME? 0= IF a u SGBAD-SYNTAX! 0 EXIT THEN
+   a c@ VAR-OF {: parent:n :}
+   parent TAG T-VAR = IF
+      parent PAY TVK@ dup TVK-ANY = swap TVK-SCOPE = or 0= IF a u SGBAD-SYNTAX! THEN
+      parent PAY TVK-SCOPE!
+   ELSE
+      parent TAG T-BVAR <> IF a u SGBAD-SYNTAX! THEN
+      parent B>DOMAIN BIND-SCOPE <> IF a u SGBAD-SYNTAX! THEN
+   THEN
+   parent ;
+
+: SIG-INSIDE-ROOTS ( n -- n n ) {: bound:n :}
+   NEXT-SIG-TOK 2dup s" [" CORE-STR= IF
+      2drop NEXT-SIG-TOK bound SIG-PARENT-ROOT {: parent:n :}
+      NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      NEXT-SIG-TOK SIG-BOUND-TYPE-XT {: second:n :}
+      NEXT-SIG-TOK 2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      parent second EXIT
+   THEN
+   bound SIG-PARENT-ROOT 0 ;
+
+\ The bound letter shadows only its type-name slot. Row names inside the
+\ quotation still share their surrounding R/S/U map.
+: SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
+   NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN 2drop
+   NEXT-SIG-TOK {: name:ptr width:n :}
+   width 1 <> IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   name c@ LOWER? 0= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   name c@ dup 110 = swap 102 = or IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   name c@ 114 = IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   BIND-DEPTH @ 32 >= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   NEXT-SIG-TOK 2dup s" inside" CORE-STR= IF
+      domain BIND-SCOPE <> IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+      2drop name c@ SIG-INSIDE-ROOTS
+   ELSE PK! 0 0 THEN {: parent:n second:n :}
+   name c@ 97 - cells NMAP + {: slot:ptr :}
+   slot @ {: saved:n :}
+   BIND-DEPTH @ negate 2 - slot !
+   domain BIND-DEPTH @ cells BIND-DOMAINS + !
+   BIND-DEPTH @ 1 + BIND-DEPTH !
+   NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+   SIG-BINDER-BODY-XT {: body:n :}
+   body TAG T-QUOT <> body TAG T-FORALL <> and IF name width SGBAD-SYNTAX! THEN
+   NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+   BIND-DEPTH @ 1 - BIND-DEPTH !
+   saved slot !
+   parent 0= IF 0 0 domain body MK-FORALL-IN ELSE
+      parent second BIND-CHILD body MK-FORALL-IN THEN ;
+: SIG-FORALL ( -- n ) BIND-SCOPE SIG-FORALL-DOMAIN ;
+: SIG-FORALL-REGION ( -- n ) BIND-REGION SIG-FORALL-DOMAIN ;
 
 \ EXT-REDX-BAD-ARG? ( argterm -- bool ) : BTC-7 contraction rule. `redx<E>` marks
 \ extent E as a contraction (+Σ) axis; it is ill-formed when E is a FREE (outer /
@@ -4603,6 +5218,31 @@ defer SIG-QUOT-XT ( -- n )
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
    got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
+   got fam TFAM-ARITY* = IF
+      got 0 ?do
+         fam i TFAM-SCOPE-SLOT-XT IF
+            base i + cells PARAM-SCR + @ T-RES {: scope:n :}
+            scope ISVAR IF
+               scope PAY TVK@ dup TVK-ANY = swap TVK-SCOPE = or IF
+                  scope PAY TVK-SCOPE!
+               ELSE a u SGBAD-SYNTAX! THEN
+            ELSE scope TAG T-BVAR <> IF a u SGBAD-SYNTAX! ELSE
+               scope B>DOMAIN BIND-SCOPE <> IF a u SGBAD-SYNTAX! THEN
+            THEN THEN
+         THEN
+         fam i TFAM-REGION-SLOT-XT IF
+            base i + cells PARAM-SCR + @ T-RES {: region:n :}
+            region ISVAR IF
+               region PAY TVK@ dup TVK-ANY = swap TVK-REGION = or IF
+                  region PAY TVK-REGION!
+               ELSE a u SGBAD-SYNTAX! THEN
+            ELSE region TAG T-BVAR = IF
+               region B>DOMAIN BIND-REGION <> IF a u SGBAD-SYNTAX! THEN
+            ELSE region FRESH-REGION-TEMPLATE? 0= IF a u SGBAD-SYNTAX! THEN
+            THEN THEN
+         THEN
+      loop
+   THEN
    fam EXT-REDX-FAM @ =  EXT-REDX-FAM @ 0 <> and  got 1 = and IF
       base cells PARAM-SCR + @ EXT-REDX-BAD-ARG? IF a u SGBAD-SYNTAX! THEN
    THEN
@@ -4620,6 +5260,8 @@ defer SIG-QUOT-XT ( -- n )
 \ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
+   a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
+   a u s" forall-region" CORE-STR= IF SIG-FORALL-REGION EXIT THEN
    a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-N @ {: base:n :}
@@ -4643,6 +5285,12 @@ defer SIG-QUOT-XT ( -- n )
    a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
+
+: SIG-BINDER-BODY ( -- n ) NEXT-SIG-TOK SIG-TYPE ;
+: SIG-BINDER-BODY-INSTALL ( -- )
+   [: SIG-BINDER-BODY ;] is SIG-BINDER-BODY-XT
+   [: SIG-TYPE ;] is SIG-BOUND-TYPE-XT ;
+SIG-BINDER-BODY-INSTALL
 
 \ ---- typed local annotations (dot habu-parse-local-annotations) --------------
 \ `{: name:type :}` reads its type with the SAME grammar a signature stack
@@ -4707,6 +5355,7 @@ PTR-VARIABLE LTS-PKA variable LTS-PKU variable LTS-PKH
    a u LOC-ANN-READ
    LOC-ANN-RESTORE
    SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN
+   dup SCHEME-TYPE? IF drop a u BAD-LOC-ANN EXIT THEN
    LOC-ANN-TERM ;
 
 create ROWMAP 26 cells allot
@@ -4769,6 +5418,7 @@ variable SG-ROWS-PUBLISH
 \ declared row of `( span<t> n -- span<t> )` has one term per cell.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
+   r ISVAR IF r PAY TVK-CELL TVK-RAISE-TO THEN
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
       r LAYOUT-WIDTH-OPEN? 0= IF
          r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear and width-free open args): rows tell the truth
@@ -4854,6 +5504,119 @@ variable SGHASR                          \ a return-stack clause ( ... | rin -- 
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
 variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
+\ Scope parameters occur only in declared scope slots. Checking the complete
+\ rows after parsing also catches a variable used as an element/value before a
+\ later read-view occurrence assigned its scope kind.
+: SCOPE-SORT?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-TRUE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF x PAY TVK@ dup TVK-SCOPE <> swap TVK-REGION <> and EXIT THEN
+   x TAG T-BVAR = x TAG T-SCOPE = or IF RES-FALSE EXIT THEN
+   x TAG T-FORALL = IF x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER SCOPED-TYPE?* TWALK-SHALLOWER 0= EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x PARAM>FAM over TFAM-SCOPE-SLOT-XT IF
+            x over PARAM>ARG T-RES dup ISVAR IF PAY TVK@ TVK-SCOPE = ELSE
+               TAG dup T-BVAR = swap T-SCOPE = or THEN
+         ELSE x PARAM>FAM over TFAM-REGION-SLOT-XT IF
+            x over PARAM>ARG T-RES dup ISVAR IF PAY TVK@ TVK-REGION = ELSE
+               dup TAG T-BVAR = IF B>DOMAIN BIND-REGION = ELSE
+                  dup FRESH-REGION-TEMPLATE? swap LOAN-FIELD? or THEN THEN
+         ELSE
+            x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         THEN THEN
+         0= IF drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-TRUE ;
+: SCOPE-SORT? ( n -- bool ) TWALK-RESET SCOPE-SORT?* ;
+
+: SCOPE-INPUT? ( n -- bool ) {: id:n :}
+   id PD-IN @ RES-FALSE TYPE-VAR?* IF RES-TRUE EXIT THEN
+   id PR-IN @ RES-FALSE TYPE-VAR?* ;
+: SCOPE-SUPPLIED?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-TRUE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF
+      x PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or
+      IF x PAY SCOPE-INPUT? ELSE RES-TRUE THEN EXIT THEN
+   x TAG T-BVAR = x TAG T-SCOPE = or IF RES-TRUE EXIT THEN
+   x TAG T-FORALL = IF x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-TRUE ;
+: SCOPE-SUPPLIED? ( n -- bool ) TWALK-RESET SCOPE-SUPPLIED?* ;
+
+: BINDER-QUOT? ( n -- bool )
+   BEGIN T-RES dup TAG T-FORALL = WHILE F>BODY REPEAT
+   TAG T-QUOT = ;
+
+\ A forall is a callback value in an effect's data input. Nested callbacks
+\ have the same position in their quotation effect. Everything else merely
+\ carries types and cannot move a scheme behind storage or onto an output.
+: FORALL-PLACE* ( n bool n -- bool ) {: t:n input:bool depth:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE input depth TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-TRUE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-BVAR = IF x B>DEPTH depth < EXIT THEN
+   x TAG T-SCOPE = IF RES-FALSE EXIT THEN
+   x TAG T-FORALL = IF
+      input 0= IF RES-FALSE EXIT THEN
+      x BINDER-QUOT? 0= IF RES-FALSE EXIT THEN
+      x F>BODY RES-TRUE depth 1 + TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-STALE = IF x STALE>INNER RES-FALSE 0 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER RES-FALSE 0 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN input depth TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>DOUT RES-FALSE depth TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>RIN RES-FALSE depth TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>ROUT RES-FALSE depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG RES-FALSE depth
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-TRUE ;
+: FORALL-PLACE? ( n bool -- bool ) TWALK-RESET 0 FORALL-PLACE* ;
+
 : RRTAIL ( -- n )                        \ shared return row (allocate once, on demand)
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
 
@@ -4869,12 +5632,22 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
 : PSIG ( -- n n n n )
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SGHASR !  0 RR-SHARED !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    dr PSIDE  PR-IN ! PD-IN !
    s" --" EXPECT-SIG                              \ require the top-level '--'
    dr PSIDE  PR-OUT ! PD-OUT !
    NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN   \ nothing may follow the output side
+   \ Malformed family applications have already supplied their diagnostic;
+   \ dependency walks consume only admitted parameter slots.
+   SGBAD @ 0= IF
+      PD-IN @ SCOPE-SORT? PD-OUT @ SCOPE-SORT? and
+      PR-IN @ SCOPE-SORT? PR-OUT @ SCOPE-SORT? and and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
+      PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-SYNTAX! THEN
+      PD-IN @ RES-TRUE FORALL-PLACE? PD-OUT @ RES-FALSE FORALL-PLACE? and
+      PR-IN @ RES-FALSE FORALL-PLACE? PR-OUT @ RES-FALSE FORALL-PLACE? and and 0= IF
+         SB@ SL @ SGBAD-SYNTAX! THEN
+   THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
@@ -4980,6 +5753,7 @@ variable LBI-BAD
    LBI-T @ HIDDEN-PARAM? 0= ;
 
 : STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
+   LBI-T @ SCOPED-TYPE? IF 0 RES-FALSE EXIT THEN
    LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
    LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell (dot habu-typed-storage-sweep-b2cd1a61)
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
@@ -4991,6 +5765,13 @@ variable LBI-BAD
 : CHECKER-STORAGE-INFO ( ptr u8 n -- n bool )
    STORAGE-RESOLVE? 0= IF 0 RES-FALSE EXIT THEN
    STORAGE-CELL-W ;
+
+\ Return the same admitted, instantiated term for the storage allocator's
+\ image marks. The term is live until the next checker parse; its family name
+\ alone loses the arguments of an applied product such as entry<n>.
+: CHECKER-STORAGE-TERM ( ptr u8 n -- n bool )
+   CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
+   drop LBI-T @ RES-TRUE ;
 
 \ Admissibility for the DYNAMIC definer (src/core/layout-buffer.f DBUF-VALIDATE),
 \ answered in BYTES because that definer's accessor scales the index by the
@@ -5043,6 +5824,7 @@ variable LBI-BAD
 
 : VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
+   typ SCOPED-TYPE? IF s" checker: value-record field contains a scoped dependency" 70 die THEN
    rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
 
 : VREC-ATOM-COPY= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
@@ -5121,14 +5903,98 @@ variable LBI-BAD
 : STEP-NN-IN ( -- )
    CC-N MK-CON CC-N MK-CON STEP-TYPE2-IN ;
 
+\ A stored callable must implement every instantiation its declared quotation
+\ admits. Save the contract's type and row variables before ordinary unification,
+\ then check that fitting the implementation did not specialize, narrow, or merge
+\ them. Both `is` and a typed quotation cell use this same contract rule.
+variable QCON-N
+variable QCON-RN
+
+: QCON-ADD ( n -- ) {: id:n :}
+   0 BEGIN dup QCON-N @ < WHILE
+      dup cells QCON-IDS + @ id = IF drop EXIT THEN
+      1 +
+   REPEAT drop
+   QCON-N @ 1 + TV-ENSURE
+   id QCON-N @ cells QCON-IDS + !
+   id TVK@ QCON-N @ cells QCON-KINDS + !
+   QCON-N @ 1 + QCON-N ! ;
+
+: QCON-RADD ( n -- ) {: id:n :}
+   \ Callback tails are instantiated at use; only declared generic rows belong
+   \ to the retained contract.
+   id TVK@ TVK-ANY <> IF EXIT THEN
+   0 BEGIN dup QCON-RN @ < WHILE
+      dup cells QCON-RIDS + @ id = IF drop EXIT THEN
+      1 +
+   REPEAT drop
+   QCON-RN @ 1 + TV-ENSURE
+   id QCON-RN @ cells QCON-RIDS + !
+   QCON-RN @ 1 + QCON-RN ! ;
+
+: QCON-WALK ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT
+   THEN
+   dup TAG S-ROW = IF PAY QCON-RADD EXIT THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF x PAY QCON-ADD EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-FORALL = IF x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
+: QCON-BEGIN ( n -- )
+   0 QCON-N !  0 QCON-RN !  TWALK-RESET QCON-WALK ;
+
+: QCON-ROW-OK? ( -- bool )
+   0 BEGIN dup QCON-RN @ < WHILE
+      dup cells QCON-RIDS + @ MK-ROW R-RES {: root:n :}
+      root ISROW 0= IF drop RES-FALSE EXIT THEN
+      0 BEGIN 2dup swap < WHILE
+         dup cells QCON-RIDS + @ MK-ROW R-RES root = IF 2drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+      1 +
+   REPEAT drop RES-TRUE ;
+
+: QCON-OK? ( -- bool )
+   0 BEGIN dup QCON-N @ < WHILE
+      dup cells QCON-IDS + @ MK-VAR T-RES {: root:n :}
+      root ISVAR 0= IF drop RES-FALSE EXIT THEN
+      dup cells QCON-KINDS + @ root PAY TVK@ TVK-MEET
+      over cells QCON-KINDS + @ <> IF drop RES-FALSE EXIT THEN
+      0 BEGIN 2dup swap < WHILE
+         dup cells QCON-IDS + @ MK-VAR T-RES root = IF 2drop RES-FALSE EXIT THEN
+         1 +
+      REPEAT drop
+      1 +
+   REPEAT drop QCON-ROW-OK? ;
+
 : STEP-FETCH ( -- )
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
+   t PAY TVK-CELL!
    t MK-PTR rest MK-PUSH
    t rest MK-PUSH
    RECORDED-STEP ;
 
 : STEP-STORE ( -- )
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
+   t PAY TVK-CELL!
    t rest MK-PUSH
    t MK-PTR swap MK-PUSH
    rest RECORDED-STEP ;
@@ -5943,6 +6809,8 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 5 constant EN-QUOT
 6 constant EN-ATOM
 7 constant EN-PARAM
+8 constant EN-FORALL
+9 constant EN-BVAR
 
 \ Bindings retain identity, authority and chronology; immutable contents share.
 \ NEXT is a positive record-relative cell span; zero is unfinished/terminator.
@@ -5951,13 +6819,17 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 2 constant ER-SYM-CELL
 3 constant ER-SYMPREV-CELL
 4 constant ER-CONTENT-CELL
+5 constant ER-STORAGE-OFF-CELL
+6 constant ER-STORAGE-N-CELL
 $0 constant ER-NEXT-OFF
 $8 constant ER-ACTIVE-OFF
 $10 constant ER-SYM-OFF
 \ Previous binding for this symbol, offset+1; zero ends the history chain.
 $18 constant ER-SYMPREV-OFF
 $20 constant ER-CONTENT-OFF
-$28 constant EFF-REC
+$28 constant ER-STORAGE-OFF-OFF
+$30 constant ER-STORAGE-N-OFF
+$38 constant EFF-REC
 $8 constant EFF-REC-ALIGN
 0 constant EFF-REC-PTR-MASK
 
@@ -5966,6 +6838,8 @@ $8 constant EFF-REC-ALIGN
 : ER.SYM ( ptr u8 -- ptr n ) ER-SYM-OFF + CELL-VIEW ;
 : ER.SYMPREV ( ptr u8 -- ptr n ) ER-SYMPREV-OFF + CELL-VIEW ;
 : ER.CONTENT ( ptr u8 -- ptr n ) ER-CONTENT-OFF + CELL-VIEW ;
+: ER.STORAGE-OFF ( ptr u8 -- ptr n ) ER-STORAGE-OFF-OFF + CELL-VIEW ;
+: ER.STORAGE-N ( ptr u8 -- ptr n ) ER-STORAGE-N-OFF + CELL-VIEW ;
 
 8 constant EFF-CONTENT-CELLS
 $40 constant EFF-CONTENT
@@ -6069,7 +6943,9 @@ $8 constant EFF-NODE-ALIGN
    ER-SYM-CELL cells ER-SYM-OFF CHECKER-RECORD-LAYOUT=
    ER-SYMPREV-CELL cells ER-SYMPREV-OFF CHECKER-RECORD-LAYOUT=
    ER-CONTENT-CELL cells ER-CONTENT-OFF CHECKER-RECORD-LAYOUT=
-   ER-CONTENT-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-OFF-CELL cells ER-STORAGE-OFF-OFF CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-N-CELL cells ER-STORAGE-N-OFF CHECKER-RECORD-LAYOUT=
+   ER-STORAGE-N-OFF CELL + EFF-REC CHECKER-RECORD-LAYOUT=
    CELL EFF-REC-ALIGN CHECKER-RECORD-LAYOUT=
    EFF-REC-PTR-MASK 0 CHECKER-RECORD-LAYOUT=
    EFF-CONTENT-CELLS cells EFF-CONTENT CHECKER-RECORD-LAYOUT=
@@ -6077,7 +6953,9 @@ $8 constant EFF-NODE-ALIGN
    here dup ER.ACTIVE swap ER-ACTIVE-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYM swap ER-SYM-OFF CHECKER-RECORD-FIELD=
    here dup ER.SYMPREV swap ER-SYMPREV-OFF CHECKER-RECORD-FIELD=
-   here dup ER.CONTENT swap ER-CONTENT-OFF CHECKER-RECORD-FIELD= ;
+   here dup ER.CONTENT swap ER-CONTENT-OFF CHECKER-RECORD-FIELD=
+   here dup ER.STORAGE-OFF swap ER-STORAGE-OFF-OFF CHECKER-RECORD-FIELD=
+   here dup ER.STORAGE-N swap ER-STORAGE-N-OFF CHECKER-RECORD-FIELD= ;
 
 : EW-LAYOUT-OFFSETS-A ( -- )
    EW-NEXT-CELL cells EW-NEXT-OFF CHECKER-RECORD-LAYOUT=
@@ -6375,11 +7253,13 @@ UIX-RESET
 : E-KEY-N ( n -- n ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
-   tg EN-VAR = IF 2 EXIT THEN
-   tg EN-ROW = IF 2 EXIT THEN
+   tg EN-VAR = IF 3 EXIT THEN
+   tg EN-ROW = IF 3 EXIT THEN
    tg EN-PTR = IF 1 EXIT THEN
    tg EN-PUSH = IF 3 EXIT THEN
    tg EN-QUOT = IF 8 EXIT THEN
+   tg EN-FORALL = IF 4 EXIT THEN
+   tg EN-BVAR = IF 1 EXIT THEN
    tg EN-ATOM = IF 2 EXIT THEN
    tg EN-PARAM = IF p E-PTR EN.C @ 4 + EXIT THEN
    0 ;
@@ -6589,6 +7469,11 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
       off E-PTR EN.C @ RECURSE
       off E-PTR EN.D @ RECURSE
    THEN
+   tg EN-FORALL = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+      off E-PTR EN.C @ RECURSE
+   THEN
    tg EN-PARAM = IF
       off E-PTR EN.C @ {: argc:n :}
       0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
@@ -6708,13 +7593,15 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
       T-VAR of
          EN-VAR E-NODE-NEW E-OFF >r
          x E-RES PAY E-TV-ID r@ E-PTR EN.A !
-         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind (TVK-ANY/TVK-RAW) for freshening + snapshot
+         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind for freshening + snapshot
+         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-PTR EN.C !
          r>
       endof
       S-ROW of
          EN-ROW E-NODE-NEW E-OFF >r
          x E-RES PAY E-RV-ID r@ E-PTR EN.A !
          x E-RES PAY E-ROW-KIND r@ E-PTR EN.B !
+         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-PTR EN.C !
          r>
       endof
       T-PTR of
@@ -6751,6 +7638,20 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
          x E-RES Q>XRFIELD r@ E-PTR EN.H !
          r>
       endof
+      T-FORALL of
+         EN-FORALL E-NODE-NEW E-OFF >r
+         x E-RES F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         x E-RES F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         x E-RES F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
+         x E-RES F>DOMAIN r@ E-PTR EN.D !
+         r>
+      endof
+      T-BVAR of
+         EN-BVAR E-NODE-NEW E-OFF >r
+         x E-RES PAY r@ E-PTR EN.A !
+         r>
+      endof
+      T-SCOPE of s" checker: live scope in stored effect" 76 die endof
       T-ATOM of
          EN-ATOM E-NODE-NEW E-OFF >r
          x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
@@ -7194,6 +8095,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.CONTENT !
    0 p ER.SYMPREV !
+   0 p ER.STORAGE-OFF !  0 p ER.STORAGE-N !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr u8 )
@@ -7240,7 +8142,8 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 \ Interpret-gate wide scan (habu-tfam-12-interpret checker half): a word whose
 \ recorded effect mentions ANY wider-than-cell layout value — producers and
 \ consumers, on any of the four rows, including inside quotation sub-effects
-\ (a quotation value can be `execute`d at top level) — must never run at the
+\ (a quotation value can be `execute`d at top level), including quotation
+\ effects under scope and region binders — must never run at the
 \ untyped interpret level: its dict record is marked DNAME-WIDE so
 \ EM-INTERPRET-FIND / interpret `'` fail closed before a bundle can land on
 \ (or be expected from) the interpret stack. A `ptr` to a layout is one cell
@@ -7253,6 +8156,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
        drop nip RES-TRUE swap            \ ( true cur )
      ELSE
        BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+       BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
        dup TAG T-QUOT = IF
          dup Q>DIN RECURSE  swap         \ ( acc cur f1 qt )
          dup Q>DOUT RECURSE  swap        \ ( acc cur f1 f2 qt )
@@ -7382,6 +8286,11 @@ variable RECMI   0 RECMI !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
+   LBUF-PEND-U @ 0 > NMU @ 0 > and IF
+      LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI IF
+         off 1 + LBUF-EVAL-OFF !
+      THEN
+   THEN
    external IF off E-PTR E-MINI@ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
@@ -7414,7 +8323,6 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
-PTR-VARIABLE NMA  variable NMU              \ current definition name (set by DO-TOK1)
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -7764,9 +8672,15 @@ variable ASIG-MISS-K
    {: sa:ptr su:n na:ptr nu:n external:bool :}
    NEW
    SGBAD-CLEAR
-   sa su PARSE-SIG-RAW
-   SGBAD @ if 2drop 2drop sa su na nu USIG-ADD-BAD exit then
-   SGHASR @ external E-ADD-EFFECT
+   sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   SGBAD @ if sa su na nu USIG-ADD-BAD exit then
+   \ This path records an asserted signature. Checked definitions publish their
+   \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
+   \ introduce a lexical callback binder.
+   din SCHEME-TYPE? dout SCHEME-TYPE? or
+   rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
+      s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
+   din dout rin rout SGHASR @ external E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- )
@@ -7867,12 +8781,17 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          r@ EN.B @ TVK-NULL  = IF dup PAY TVK-NULL!  THEN   \ and the base-address kinds: `NULL-PTR`
          r@ EN.B @ TVK-DBASE = IF dup PAY TVK-DBASE! THEN   \ and `data-base`
          r@ EN.B @ TVK-OFF   = IF dup PAY TVK-OFF!   THEN   \ and an offset row's pointee provenance
+         r@ EN.B @ TVK-SCOPE = IF dup PAY TVK-SCOPE! THEN
+         r@ EN.B @ TVK-REGION = IF dup PAY TVK-REGION! THEN
+         r@ EN.B @ TVK-CELL = IF dup PAY TVK-CELL! THEN
+         r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
          r> drop
       endof
       EN-ROW of
          r@ EN.A @ E-I-RV
          r@ EN.B @ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
          r@ EN.B @ RVK-INFERRED = IF dup PAY RVK-INFERRED! THEN
+         r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
          r> drop
       endof
       EN-PTR of r@ EN.A @ pool RECURSE MK-PTR r> drop endof
@@ -7886,6 +8805,12 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          dup r@ EN.E @ 0 <> r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r> drop
       endof
+      EN-FORALL of
+         r@ EN.B @ pool RECURSE
+         r@ EN.C @ pool RECURSE
+         r@ EN.D @ r@ EN.A @ pool RECURSE MK-FORALL-IN r> drop
+      endof
+      EN-BVAR of r@ EN.A @ MK-BVAR r> drop endof
       EN-ATOM of
          pool USIGS <> if s" checker: unsupported transferred atom" 76 die then
          r@ pool E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
@@ -7907,6 +8832,58 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
    endcase ;
 
 : E-INST ( n -- n ) USIGS E-INST-FROM ;
+
+\ Fixed storage belongs to the binding that introduced its accessor. The
+\ effect graph already preserves the exact instantiated pointee type, while
+\ these two binding fields preserve its DATA location and element count.
+defer CHECKER-STORAGE-WALK-XT ( n n n -- )
+: CHECKER-STORAGE-WALK-DEFAULT ( n n n -- )
+   2drop drop s" checker: storage capture walker unbound" 76 die ;
+: CHECKER-STORAGE-WALK-INSTALL ( -- )
+   [: CHECKER-STORAGE-WALK-DEFAULT ;] is CHECKER-STORAGE-WALK-XT ;
+CHECKER-STORAGE-WALK-INSTALL
+
+: CHECKER-STORAGE-POINTEE ( ptr u8 -- n ) {: rec:ptr :}
+   NEW
+   rec E-INST-RESET
+   rec E-DOUT@ E-INST R-RES
+   dup TAG S-PUSH <> IF s" checker: storage accessor output" 76 die THEN
+   P>TYPE T-RES
+   dup TAG T-PTR <> IF s" checker: storage accessor pointer" 76 die THEN
+   PTR>INNER T-RES ;
+
+variable CHECKER-STORAGE-CUR
+-1 constant STORAGE-DEFERRED
+: CHECKER-STORAGE-PREPARE ( -- )
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      rec ER.STORAGE-N @ {: count:n :}
+      count 0 > IF
+         rec CHECKER-STORAGE-POINTEE {: term:n :}
+         rec ER.STORAGE-OFF @ count term CHECKER-STORAGE-WALK-XT
+      ELSE count STORAGE-DEFERRED = IF
+         data-base rec ER.STORAGE-OFF @ + CELL-VIEW {: cb:ptr :}
+         cb CELL + @ {: cap:n :}
+         cap 0 > IF
+            rec CHECKER-STORAGE-POINTEE {: term:n :}
+            cb cb @ + BYTE-VIEW data-base BYTE-VIEW -
+            cap term CHECKER-STORAGE-WALK-XT
+         THEN
+      THEN THEN
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat ;
+
+\ A bare native engine rebuild starts with freshly loaded source. Its builder
+\ allocations do not survive into the new engine's DATA, so only that builder
+\ drops their ownership after preparing address declarations for its capture.
+: CHECKER-STORAGE-UNBIND-ALL ( -- )
+   0 CHECKER-STORAGE-CUR !
+   begin CHECKER-STORAGE-CUR @ EFF-REC + UEND @ <= while
+      CHECKER-STORAGE-CUR @ E-PTR {: rec:ptr :}
+      0 rec ER.STORAGE-OFF !  0 rec ER.STORAGE-N !
+      rec USIG-NEXT E-OFF CHECKER-STORAGE-CUR !
+   repeat ;
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ EN-MULT tallies occurrences of canonical var LMV in the stored effect subgraph
@@ -7942,6 +8919,7 @@ variable LMNEG  variable LMPOS  variable LMV
          r@ EN.D @ pol RECURSE             \ Rout: kept
          r> drop
       endof
+      EN-FORALL of r@ EN.A @ pol RECURSE r> drop endof
       EN-PARAM of
          r@ {: np:ptr :}                   \ node ptr (parked value)
          0 BEGIN dup np EN.C @ < WHILE      \ data-stack index (RECURSE-safe)
@@ -7991,16 +8969,23 @@ variable LMI
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
+   SCOPE-N @ {: scope-start:n :}
    h E-INST-RESET
-   h E-DIN@ E-INST
-   h E-DOUT@ E-INST
-   RECORDED-STEP
+   h E-DIN@ E-INST {: din:n :}
+   h E-DOUT@ E-INST {: dout:n :}
+   RGN-N @ {: bind-region:n :}
+   -1 SCOPE-INTRO-ON !
+   din dout RECORDED-STEP
+   0 SCOPE-INTRO-ON !
+   h E-RIN@ E-INST {: rin:n :}
+   h E-ROUT@ E-INST {: rout:n :}
    h E-HASR@ 0 <> if
-      h E-RIN@ E-INST RSUNI-IN          \ the called word's declared return inputs
-      h E-ROUT@ E-INST RCUR !
+      rin RSUNI-IN          \ the called word's declared return inputs
+      rout RCUR !
    then
    pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
    od DCUR !  orow RCUR !
+   scope-start bind-region din dout rin rout SCOPE-INTRO-FENCE-XT
    h LIN-EFF-PASS ;
 
 : EFF-QUOT ( ptr u8 -- n ) {: h:ptr :}
@@ -8295,6 +9280,13 @@ variable PE-QDOUT
    ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN ;
 
+: PE-C2-INVOKE ( -- )
+   PE-BASE @ PE-QDIN !
+   FRESH MK-ROW dup PE-DOUT ! PE-QDOUT !
+   ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN
+   PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
+
 : PTABLE-START ( -- )
    0 #PE !
    0 UEND !
@@ -8386,6 +9378,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-QUOT-OUT = IF PE-SPEC-POP PE-QOUT EXIT THEN
    code PRIM-SPEC:A-QUOT-END = IF ;PE-Q PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-FINALLY  = IF PE-FINALLY EXIT THEN
+   code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
 
 : PE-SPEC-ROW ( n -- ) {: row:n :}
@@ -8484,6 +9477,8 @@ PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-RESET-SOURCE PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: CHECKER-TRUSTED-TICK? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ only the generated accessor's trusted crossing may arm it
@@ -8941,9 +9936,7 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \
 \ IT TAKES NO ARGUMENT, and that is the row rather than a detail of it. The seam
 \ underneath, USIGS-RESTORE-END, takes the new end: declaring THAT would hand
-\ every program a store write at an offset of its choosing, because an axiom'd
-\ name is tickable and PRIM-TRUSTED-ONLY! guards only the direct call site -
-\ measured, `' USIGS-RESTORE-END` with $7FFFFFFF executed to a SIGSEGV. Zero is
+\ a trusted build word a store write at an offset of its choosing. Zero is
 \ the only end this caller wants, so zero is what the declared word means, and
 \ the seam keeps its seal. What it discards is checker knowledge, so a caller
 \ that runs it in a booted engine loses the effects the source recorded and the
@@ -9188,8 +10181,7 @@ PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name
 \ using-shadow reference site below, 1 the arity-shadow definition site
 \ (SHADOW-ARITY-CK). One defer and not two because every `defer` written here,
 \ before `: TRUST`, takes a slot of the engine's pre-trust pending table
-\ (src/habu/layout.f PD-CAP, 64). This prefix holds 48; the remaining slots
-\ allow additional early declarations. test/pre-trust-defer.f exercises both
+\ (src/habu/layout.f PD-CAP). test/pre-trust-defer.f exercises both
 \ an added defer and an overflow beyond the running engine's capacity.
 defer SHADOW-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
@@ -9553,6 +10545,13 @@ variable CHECKER-QBAD-TOK
 
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
    CHECKER-BIND drop ;
+
+: CHECKER-TRUSTED-TICK? ( ptr u8 n -- bool )
+   CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? ;
+
+package CHECKER-REG
+' CHECKER-TRUSTED-TICK? DECLARATIONS CHECKER-OWNER-ABI:TRUSTED-TICK-OFF + xt!
+;package
 
 \ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) : the same resolution, for a caller
 \ that is only ASKING — the source pre-verifier, of every token it scans, "does
@@ -9988,6 +10987,9 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ row to the caller's stack. The table grows with the recorded definition;
 \ missing sites remain absent, and a no-return output is CELLS-NONE.
 variable REC-IX                      \ the ordinal the next reported token takes
+variable FIELD-LOAN-ORD
+variable FIELD-LOAN-OFF
+variable FIELD-LOAN-PENDING
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
    REC-ON @ 0= IF EXIT THEN
@@ -10002,6 +11004,9 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 4 constant CW-ROW                    \ cells one recorded site occupies
 -4 constant CW-MATCH-CELLS           \ instantiated bundle width, pads, or construction growth
 -3 constant CW-MATCH-PAYLOAD         \ instantiated payload cells and value boundaries
+-5 constant CW-INIT-WIDTH            \ initialized record width and byte extent
+-6 constant CW-INIT-EXTENT           \ initialized byte extent and alignment
+-7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
 4 constant CW-GLUE
@@ -10077,6 +11082,13 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : CWIN-CELLS ( n -- n n ) CW-CALL CWIN-FIND ;
 : CWIN-GLUE ( n -- n n ) CW-GLUE CWIN-FIND ;
 : CWIN-MATCH-PAYLOAD ( n -- n n ) CW-MATCH-PAYLOAD CWIN-FIND ;
+: EFFECT-INIT-LAYOUT ( n -- n n n ) {: ord:n :}
+   ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
+   width 0 < IF -1 -1 -1 EXIT THEN
+   ord CW-INIT-EXTENT CWIN-FIND {: extent:n align:n :}
+   extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
+   width bytes align ;
+: EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
 : CWIN-QUOT-IN ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-IN + CWIN-FIND ;
 : CWIN-QUOT-OUT ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-OUT + CWIN-FIND ;
 
@@ -10158,10 +11170,12 @@ CALL-FREEZE-INSTALL
    0 row
    BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE T-RES {: t:n :}
-      t TAG T-QUOT = IF
+      t
+      BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT {: q:n :}
+      q TAG T-QUOT = IF
          over 2 * kind + {: k:n :}
-         ord t Q>DIN ROW-CELLS
-         t Q>XDEAD IF CELLS-NONE ELSE t Q>DOUT ROW-CELLS THEN
+         ord q Q>DIN ROW-CELLS
+         q Q>XDEAD IF CELLS-NONE ELSE q Q>DOUT ROW-CELLS THEN
          k CWIN-ADD
       THEN
       swap t ROW-TERM-CELLS + swap P>REST
@@ -10618,6 +11632,30 @@ variable LBUF-INFO-W
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
+\ The allocator binds the actual generated accessor only after its DATA cells
+\ exist. A verifier's projected signature, an alias, or an imported effect has
+\ no allocation to own and keeps the zero count E-REC-INIT gave it.
+TRUSTED: CHECKER-STORAGE-BIND ( n ptr a n -- )
+   {: handle:n base:ptr count:n :}
+   count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 0= count 0= or IF EXIT THEN
+   handle 1- E-PTR {: rec:ptr :}
+   base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   off rec ER.STORAGE-OFF !
+   count rec ER.STORAGE-N ! ;
+
+\ A deferred accessor owns a persistent three-cell control, not an allocation
+\ at declaration. Resolve its current region through that control at capture.
+TRUSTED: CHECKER-STORAGE-DEFER ( n ptr n -- )
+   {: handle:n cb:ptr :}
+   handle 0= IF EXIT THEN
+   cb BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   handle 1- E-PTR {: rec:ptr :}
+   off rec ER.STORAGE-OFF !
+   STORAGE-DEFERRED rec ER.STORAGE-N ! ;
+
 \ Checker-side registration for the DYNAMIC-BUFFER gate path (verify-source
 \ RECORD-DYNAMIC-BUFFER). That definer publishes THREE checked words from one
 \ line (src/core/layout-buffer.f DBUF-SOURCE): the accessor
@@ -10927,6 +11965,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    QXDA-P QXDA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXRA-P QXRA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
    QXHA-P QXHA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXNA-P QXNA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
    MAXQE-INIT QE-CAP !
+   SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
+   SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
+   SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
    ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
    PARAMA-P PARAMA-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMU-P PARAMU-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
@@ -11082,6 +12123,10 @@ defer REG-EXT-AOT-VALIDATE-XT ( ptr u8 n -- )
 \ The graph node and its strings have already passed extent checks. The
 \ registry validates its canonical family identity against the future view.
 defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 ptr u8 n -- )
+\ The persisted family's parameter kinds come from the same future registry
+\ view used to authenticate its name and arity, not from a caller's live id.
+defer REG-EXT-AOT-SCOPE-XT ( ptr u8 ptr u8 n n -- bool )
+defer REG-EXT-AOT-REGION-XT ( ptr u8 ptr u8 n n -- bool )
 \ Read a graph family's logical width from already validated argument widths
 \ and the same future registry view. Hidden row fields are charged separately.
 defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
@@ -11099,6 +12144,10 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    2drop 2drop
    s" checker: a seeded family arrived with no registry to validate it" 76 die ;
 
+: REG-EXT-AOT-NO-SCOPE ( ptr u8 ptr u8 n n -- bool )
+   2drop 2drop
+   s" checker: a seeded scope slot arrived with no registry" 76 die ;
+
 
 \ The callback has a result contract even though this default never returns.
 : REG-EXT-AOT-NO-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
@@ -11112,6 +12161,8 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
+   [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-SCOPE-XT
+   [: REG-EXT-AOT-NO-SCOPE ;] is REG-EXT-AOT-REGION-XT
    [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
    [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-DEFAULTS
@@ -11274,7 +12325,8 @@ REG-EXT-AOT-DEFAULTS
    s" r@" CTL-CORE-OP NORET-AXIOM
    s" 2>r" CTL-CORE-OP NORET-AXIOM
    s" 2r>" CTL-CORE-OP NORET-AXIOM
-   s" 2r@" CTL-CORE-OP NORET-AXIOM ;
+   s" 2r@" CTL-CORE-OP NORET-AXIOM
+   s" c2-invoke" CTL-CORE-OP NORET-AXIOM ;
 
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
@@ -11346,7 +12398,13 @@ variable NORET-FMEND
    a u s" execute" CORE-STR= IF RSEXEC ELSE
    a u s" catch" CORE-STR= IF RSCATCH ELSE
    a u s" finally" CORE-STR= IF RSFINALLY ELSE
-   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   a u s" c2-invoke" CORE-STR= IF
+      CHECKER-EFFECT-AUTHORITY:ENFORCED?
+      a u CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? and IF
+         -1 CAPREQ !  0 OK !  -1 FAILSET !
+      ELSE RS-C2-INVOKE THEN
+   ELSE
+   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
 \ The intact masks of the same word: which of the callee's declared inputs every
@@ -11686,6 +12744,7 @@ variable UNSAFE-SYM-N
 \ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
 \ block rather than sharing 7135, so a test can tell the two rejects apart.
 7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
+7146 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
@@ -11702,7 +12761,8 @@ variable UNSAFE-SYM-N
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
-   a u CHECKER-FIND-ACTIVE-SYM UNSAFE-SYM? IF E-EXPORT-UNSAFE throw THEN
+   a u CHECKER-FIND-ACTIVE-SYM dup UNSAFE-SYM? swap PRIM-TRUSTED-SYM? or
+   IF E-EXPORT-UNSAFE throw THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
@@ -11784,6 +12844,7 @@ variable SV-TRAIL
    SV-FV @ BEGIN dup FV @ < WHILE
       0 over cells TVT + !  0 over cells RVT + !
       0 over cells TVK + !
+      0 over cells NSCOPE + !
       1 +
    REPEAT drop ;
 
@@ -11949,6 +13010,8 @@ variable WF-I
 1 constant WF-FETCH-FLAG
 2 constant WF-STORE-FLAG
 4 constant WF-XPAD-FLAG   \ layout-cap slice 4: construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
+8 constant WF-INIT-FLAG   \ authenticated WITH-INIT call's fixed record width
+16 constant WF-FIELD-FLAG \ an authenticated initialized-field loan needs pass 2
 
 : WFS ( -- ptr n ) WFS-P @ ;
 
@@ -12086,10 +13149,18 @@ variable WF-I
    STEP-FETCH
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
+: STORE-QUOT-CONTRACT ( -- n bool )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE EXIT THEN
+   P>TYPE T-RES dup TAG T-PTR <> IF drop 0 RES-FALSE EXIT THEN
+   PTR>INNER T-RES dup TAG T-QUOT = IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
+
 : CELL-STORE-TOK ( -- )
    LAYOUT-MEM-INNER IF LAYOUT-STORE-STEP EXIT THEN drop
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
+   STORE-QUOT-CONTRACT {: contract:n retained:bool :}
+   retained IF contract QCON-BEGIN THEN
    STEP-STORE
+   retained OK @ and IF QCON-OK? 0= IF 0 OK ! -1 FAILSET ! THEN THEN
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -12123,6 +13194,644 @@ variable WF-I
    0 OK !
    RES-TRUE ;
 
+\ A checker symbol has already passed the active binding resolver. Recover that
+\ binding's dictionary record in its own wordlist, then ask the engine about
+\ its code entry. The code entry, not the name or a persisted control flag, is
+\ the authority for the public C2 scope operations.
+TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+TRUSTED: SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
+: SCOPE-SYM-WID ( n -- n ) {: sym:n :}
+   sym SYM-PKG$ {: pkg:ptr pkgu:n :}
+   pkgu 0= IF 0 EXIT THEN
+   pkg pkgu -1 SCOPE-WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, loaded after checker.f
+   rec NULL-PTR = IF -1 EXIT THEN
+   sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
+   sym SYM-ROW SYM.VIS @ SYM-PRIVATE = IF rec CELL + @ EXIT THEN
+   -1 ;
+
+: SCOPE-KIND-SYM ( n -- n ) {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   sym SCOPE-SYM-WID {: wid:n :}
+   wid 0 < IF 0 EXIT THEN
+   sym SYM-NAME$ wid SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF 0 EXIT THEN
+   rec @ SCOPE-CODE-KIND ;
+: SCOPE-AUTH-SYM? ( n -- bool ) SCOPE-KIND-SYM 2 >= ;
+
+\ Eliminate one lexical binder. A bound reference at this binder's depth
+\ becomes the fresh scope; references to outer binders shift down one level.
+: SCOPE-INST* ( n n n -- n ) {: t:n depth:n scope:n :}
+   t R-RES dup TAG S-PUSH = IF
+      dup P>TYPE depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      swap P>REST depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      MK-PUSH EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-BVAR = IF
+      x B>DEPTH depth = IF scope EXIT THEN
+      x B>DEPTH depth > IF x B>DEPTH 1- x B>DOMAIN MK-BVAR-DOMAIN EXIT THEN
+      x EXIT
+   THEN
+   x TAG T-FORALL = IF
+      x F>PARENT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x F>SECOND depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x F>DOMAIN
+      x F>BODY depth 1+ scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      MK-FORALL-IN EXIT
+   THEN
+   x TAG T-PTR = IF
+      x PTR>INNER depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER MK-PTR EXIT
+   THEN
+   x TAG T-STALE = IF
+      x STALE>INNER depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER MK-STALE EXIT
+   THEN
+   x TAG T-QUOT = IF
+      x Q>DIN depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      MK-QUOT EXIT
+   THEN
+   x TAG T-PARAM = IF
+      PARAM-SCR-N @ {: base:n :}
+      x PARAM>ARGC 0 ?do
+         x i PARAM>ARG depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER PARAM-SCR+
+      loop
+      base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM {: copy:n :}
+      x PARAM>HID copy PAY cells PARAMHID + !
+      copy EXIT
+   THEN
+   x ;
+
+: SCOPE-INST ( n n -- n ) {: body:n scope:n :}
+   TWALK-RESET body 0 scope SCOPE-INST* ;
+
+\ Open only the excess supplied binders; preserve the suffix and its rows.
+: FORALL-OPEN-ONE ( n -- n ) {: scheme:n :}
+   FRESH dup scheme F>DOMAIN BIND-REGION = IF TVK-REGION! ELSE TVK-SCOPE! THEN
+   MK-VAR {: var:n :}
+   var scheme F>PARENT scheme F>SECOND scheme F>DOMAIN FORALL-OPEN-ADD
+   scheme F>BODY var SCOPE-INST ;
+: FORALL-OPEN-QUOT ( n -- n )
+   T-RES BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT ;
+: FORALL-OPEN-INPUT? ( n n -- bool ) {: first:n body:n :}
+   body FORALL-OPEN-QUOT {: quot:n :}
+   quot TAG T-QUOT <> IF RES-FALSE EXIT THEN
+   FORALL-OPEN-N @ first ?do
+      i FORALL-OPEN-REC @ PAY {: var:n :}
+      var quot Q>DIN TY-OCC? var quot Q>RIN TY-OCC? or 0= IF
+         RES-FALSE unloop EXIT
+      THEN
+   loop
+   RES-TRUE ;
+: FORALL-OPEN-PAIR ( n n -- ) {: actual:n required:n :}
+   FORALL-OPEN-N @ {: first:n :}
+   actual FORALL-PREFIX-LEN required FORALL-PREFIX-LEN -
+   actual swap 0 ?do T-RES FORALL-OPEN-ONE loop {: opened:n :}
+   first opened FORALL-OPEN-INPUT? 0= IF actual required U-FAIL EXIT THEN
+   opened required PAIR-STRICT ;
+: FORALL-OPEN-INSTALL ( -- ) [: FORALL-OPEN-PAIR ;] is FORALL-OPEN-XT ;
+FORALL-OPEN-INSTALL
+
+\ Only a called word's data-input argument may introduce a scheme from an
+\ inferred quotation. Its binder opens with a fresh rigid scope; matching the
+\ whole quotation keeps the scheme's free rows shared with the called effect.
+: REGION-BINDER-FRESH ( -- n )
+   s" region-binder" RGN-FRESH MK-ATOM-K ;
+
+: BINDER-FRESH ( n -- n ) {: scheme:n :}
+   scheme F>DOMAIN BIND-REGION = IF REGION-BINDER-FRESH EXIT THEN
+   scheme F>PARENT dup 0= IF drop SCOPE-FRESH EXIT THEN
+   scheme F>SECOND dup 0= IF drop SCOPE-CHILD-FRESH EXIT THEN
+   SCOPE-DOUBLE-FRESH ;
+
+: BINDER-OPEN ( n -- n )
+   BEGIN T-RES dup TAG T-FORALL = WHILE
+      dup BINDER-FRESH >r F>BODY r> SCOPE-INST
+   REPEAT ;
+
+: SCOPE-INTRO-PAIR ( n n -- ) {: actual:n required:n :}
+   actual required BINDER-OPEN PAIR-STRICT ;
+: SCOPE-INTRO-PAIR-INSTALL ( -- )
+   [: SCOPE-INTRO-PAIR ;] is SCOPE-INTRO-PAIR-XT ;
+SCOPE-INTRO-PAIR-INSTALL
+
+\ Search only roots that may survive this call. A consumed callback's private
+\ rows are deliberately absent; copied callbacks and external quantifiers
+\ remain reachable through one of these roots.
+: SCOPE-OCC?* ( n n -- bool ) {: scope:n t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE scope swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-SCOPE = IF
+      x scope = IF RES-TRUE EXIT THEN
+      scope x SCOPE-PARENT@ TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x SCOPE-SECOND@ TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-ATOM = IF
+      scope TAG T-ATOM = IF x scope ATOM-OK? ELSE RES-FALSE THEN EXIT THEN
+   x TAG T-STALE = IF scope x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF scope x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-FORALL = IF
+      scope x F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      scope x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      scope x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   scope LOAN-FIELD? x LOAN-FIELD? and IF
+      scope x FORALL-BOUND-OK? IF RES-TRUE EXIT THEN THEN
+   x TAG T-PARAM = IF
+      x PARAM>ARGC 0 ?do
+         scope x i PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE unloop EXIT THEN
+      loop
+   THEN
+   RES-FALSE ;
+
+variable SCOPE-WITNESS
+
+\ Keep the first logical carrier while the existing occurrence walk decides
+\ escape. The caller can name that value without walking the rows again.
+: SCOPE-OCC? ( n n -- bool ) {: scope:n root:n :}
+   TWALK-RESET
+   root R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE {: carrier:n :}
+         scope carrier SCOPE-OCC?* IF
+            SCOPE-WITNESS @ 0= IF carrier C2-LOGICAL SCOPE-WITNESS ! THEN
+            drop RES-TRUE EXIT
+         THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   scope root SCOPE-OCC?* dup IF
+      SCOPE-WITNESS @ 0= IF root C2-LOGICAL SCOPE-WITNESS ! THEN
+   THEN ;
+
+: FO-INPUT-REGION? ( n -- bool ) {: region:n :}
+   region SGIN @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   region SGRIN @ SCOPE-OCC? ;
+: FO-INPUT-INSTALL ( -- ) [: FO-INPUT-REGION? ;] is FO-INPUT-XT ;
+FO-INPUT-INSTALL
+
+defer SCOPE-EXTERIOR-XT ( n -- bool )
+
+: SCOPE-CHILD-VIEW ( n n -- n ) {: parent:n scope:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   scope PARAM-SCR+
+   parent MUT-VIEW? IF parent 3 PARAM>ARG ELSE parent 2 PARAM>ARG THEN PARAM-SCR+
+   base s" read-view" C2-READ-FAM @ MK-PARAM ;
+
+: SCOPE-CHILD-MUT-VIEW ( n n -- n ) {: parent:n scope:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   scope PARAM-SCR+
+   parent 2 PARAM>ARG PARAM-SCR+
+   parent 3 PARAM>ARG PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+: SCOPE-ALLOC-LEN ( -- n )
+   s" NUM:alloc-byte-len" SIG-FAM? 0= IF
+      drop s" checker: mutable scope requires alloc-byte-len" 70 die THEN
+   >r PARAM-SCR-N @ s" NUM:alloc-byte-len" r> MK-PARAM ;
+
+: SCOPE-MUT-ROOT-SHAPE? ( n -- bool ) {: scheme:n :}
+   scheme F>DOMAIN BIND-SCOPE =
+   scheme F>PARENT 0= and scheme F>SECOND 0= and ;
+: SCOPE-MUT-REGION-SHAPE? ( n -- bool ) {: scheme:n :}
+   scheme TAG T-FORALL <> IF RES-FALSE EXIT THEN
+   scheme F>DOMAIN BIND-REGION =
+   scheme F>PARENT 0= and scheme F>SECOND 0= and ;
+: SCOPE-MUT-ROOT-OPEN ( n n n -- n ) {: supplied:n scope:n region:n :}
+   supplied TAG T-FORALL <> IF supplied EXIT THEN
+   supplied SCOPE-MUT-ROOT-SHAPE? 0= IF
+      0 OK ! -1 FAILSET ! supplied EXIT THEN
+   supplied F>BODY scope SCOPE-INST T-RES {: inner:n :}
+   inner SCOPE-MUT-REGION-SHAPE? 0= IF
+      0 OK ! -1 FAILSET ! supplied EXIT THEN
+   inner F>BODY region SCOPE-INST ;
+
+\ The fixed mutable root consumes a nominal allocation length and a callback.
+\ Neither the scope nor its allocation region may survive outside the call.
+: SCOPE-MUT-ROOT-STEP ( -- )
+   SCOPE-FRESH {: scope:n :}
+   REGION-BINDER-FRESH {: region:n :}
+   DCUR @ R-RES dup TAG S-PUSH = IF
+      dup P>TYPE T-RES scope region SCOPE-MUT-ROOT-OPEN {: supplied:n :}
+      OK @ 0= IF drop EXIT THEN
+      supplied swap P>REST MK-PUSH DCUR !
+   ELSE drop THEN
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   PARAM-SCR-N @ {: base:n :}
+   scope PARAM-SCR+ scope PARAM-SCR+ region PARAM-SCR+ PE-U8 PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM {: view:n :}
+   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   SCOPE-ALLOC-LEN r MK-PUSH callback swap MK-PUSH
+   s SCOPE-RECORDED-STEP
+   OK @ IF
+      scope SCOPE-EXTERIOR-XT IF
+         SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
+      region SCOPE-EXTERIOR-XT IF
+         SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT THEN
+   THEN ;
+
+\ The authenticated child entry consumes a parent view and its callback,
+\ executes on a new child scope, then restores the same parent view. Its source
+\ effect is never authority for that transition.
+: SCOPE-CHILD-STEP ( n -- ) {: kind:n :}
+   DCUR @ XE-PD !  RCUR @ XE-PR !
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   dup P>TYPE T-RES {: supplied:n :}
+   \ A direct quotation has its measured edge; a quantified callback parameter
+   \ has no body that could prove it cannot throw.
+   supplied TAG T-QUOT = IF supplied Q>XHAS ELSE RES-TRUE THEN
+   {: callback-throws:bool :}
+   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   dup P>TYPE T-RES {: parent-cell:n :}
+   P>REST {: rest:n :}
+   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL
+   ELSE parent-cell THEN {: parent:n :}
+   kind 4 = IF parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   ELSE parent READ-VIEW? parent MUT-VIEW? or 0= IF 0 OK ! -1 FAILSET ! EXIT THEN THEN
+   parent 1 PARAM>ARG T-RES {: ceiling:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>DOMAIN BIND-CHILD <>
+      supplied F>PARENT 0= or IF 0 OK ! -1 FAILSET ! EXIT THEN
+      supplied F>PARENT ceiling UNIFY-EXACT 0= IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+   THEN
+   ceiling SCOPE-CHILD-FRESH {: scope:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>BODY scope SCOPE-INST
+      parent-cell rest MK-PUSH MK-PUSH DCUR !
+   THEN
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   kind 4 = IF parent scope SCOPE-CHILD-MUT-VIEW
+   ELSE parent scope SCOPE-CHILD-VIEW THEN {: view:n :}
+   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   callback parent r PUSH-LOGICAL MK-PUSH
+   parent s PUSH-LOGICAL {: output:n :}
+   output SCOPE-RECORDED-STEP
+   OK @ 0= IF EXIT THEN
+   scope SCOPE-EXTERIOR-XT IF
+      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
+   \ The native entry's own control flags cannot see a caller's callback body.
+   THROW-CUR? callback-throws or IF CALL-THROW-EDGE THEN ;
+
+\ A record crossing the initialization boundary must have all concrete type
+\ and row arguments settled, including arguments under view phantoms. Outer
+\ scope and region variables remain valid dependencies of the value.
+: INIT-VALUE-SAFE?* ( n -- bool ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
+         P>REST R-RES
+      REPEAT
+      dup ISROW IF drop RES-FALSE ELSE drop RES-TRUE THEN EXIT
+   THEN
+   dup ISROW IF drop RES-FALSE EXIT THEN drop
+   t T-RES {: x:n :}
+   x TAG T-VAR = IF
+      x PAY TVK@ dup TVK-SCOPE = swap TVK-REGION = or EXIT THEN
+   x TAG T-STALE = IF RES-FALSE EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-SCOPE = IF
+      x SCOPE-PARENT@ TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x SCOPE-SECOND@ TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-FORALL = IF
+      x F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE EXIT THEN
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      x PARAM>ARGC 0 ?do
+         x i PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF RES-FALSE unloop EXIT THEN
+      loop
+   THEN
+   RES-TRUE ;
+
+: INIT-VALUE-SAFE? ( n -- bool ) TWALK-RESET INIT-VALUE-SAFE?* ;
+
+: INIT-VALUE-OK? ( n -- bool ) {: t:n :}
+   t INIT-VALUE-SAFE? 0= IF RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+: SCOPE-INIT-ELEM ( n n -- n ) {: scope:n value:n :}
+   PARAM-SCR-N @ {: base:n :}
+   scope PARAM-SCR+ value PARAM-SCR+
+   base s" init" C2-INIT-FAM @ MK-PARAM ;
+
+: SCOPE-INIT-VIEW ( n n n -- n ) {: parent:n scope:n value:n :}
+   scope value SCOPE-INIT-ELEM {: elem:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   scope PARAM-SCR+
+   parent 2 PARAM>ARG PARAM-SCR+
+   elem PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+: SCOPE-INIT-DROP ( n n -- n ) {: row:n width:n :}
+   row
+   width 0 ?do
+      R-RES dup TAG S-PUSH <> IF s" checker: init bundle underruns row" 76 die THEN
+      P>REST
+   loop ;
+
+\ WITH-INIT is the only public entry that changes a byte view's element.
+\ Its dictionary code entry authenticates this transition; its source row is
+\ never used as the authority. A second binder bound carries the value's
+\ scoped dependencies through quotations and saved declarations.
+: SCOPE-INIT-STEP ( -- )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: callback-node:n :}
+   callback-node P>TYPE T-RES {: supplied:n :}
+   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: value-node:n :}
+   value-node P>TYPE T-RES {: value-cell:n :}
+   value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
+   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: width:n bytes:n align:n :}
+   value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
+      drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: parent-node:n :}
+   parent-node P>TYPE T-RES {: parent-cell:n :}
+   parent-node P>REST {: rest:n :}
+   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
+   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent 1 PARAM>ARG T-RES {: ceiling:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>DOMAIN BIND-CHILD <>
+      supplied F>PARENT 0= or supplied F>SECOND 0= or IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+      supplied F>PARENT ceiling UNIFY-EXACT 0=
+      supplied F>SECOND value UNIFY-EXACT 0= or IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+   THEN
+   ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>BODY scope SCOPE-INST
+      DCUR @ P>REST MK-PUSH DCUR !
+   THEN
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   parent scope value SCOPE-INIT-VIEW {: view:n :}
+   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   callback value parent r PUSH-LOGICAL PUSH-LOGICAL MK-PUSH
+   parent s PUSH-LOGICAL {: output:n :}
+   output SCOPE-RECORDED-STEP
+   OK @ 0= IF EXIT THEN
+   scope SCOPE-EXTERIOR-XT IF
+      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
+   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   REC-ON @ IF
+      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
+      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+   THEN ;
+
+: SCOPE-RECORDS-TYPE ( n n n -- n ) {: parent:n scope:n value:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   scope PARAM-SCR+
+   parent 2 PARAM>ARG PARAM-SCR+
+   value PARAM-SCR+
+   base s" records" C2-RECORDS-FAM @ MK-PARAM ;
+
+: SCOPE-RECORDS-STEP ( -- )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: callback-node:n :}
+   callback-node P>TYPE T-RES {: supplied:n :}
+   callback-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: value-node:n :}
+   value-node P>TYPE T-RES {: value-cell:n :}
+   value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
+   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: width:n bytes:n align:n :}
+   value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
+      drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: count-node:n :}
+   count-node P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: parent-node:n :}
+   parent-node P>TYPE T-RES {: parent-cell:n :}
+   parent-node P>REST {: rest:n :}
+   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
+   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent 1 PARAM>ARG T-RES {: ceiling:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>DOMAIN BIND-CHILD <>
+      supplied F>PARENT 0= or supplied F>SECOND 0= or IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+      supplied F>PARENT ceiling UNIFY-EXACT 0=
+      supplied F>SECOND value UNIFY-EXACT 0= or IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+   THEN
+   ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>BODY scope SCOPE-INST
+      DCUR @ P>REST MK-PUSH DCUR !
+   THEN
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   parent scope value SCOPE-RECORDS-TYPE {: records:n :}
+   records r PUSH-LOGICAL records s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   parent r PUSH-LOGICAL PE-N swap MK-PUSH
+   value swap PUSH-LOGICAL callback swap MK-PUSH
+   parent s PUSH-LOGICAL RECORDED-STEP
+   OK @ 0= IF EXIT THEN
+   scope SCOPE-EXTERIOR-XT IF
+      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
+   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   REC-ON @ IF
+      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
+      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+   THEN ;
+
+: SCOPE-RECORD-VIEW ( n n -- n ) {: parent:n scope:n :}
+   parent 1 PARAM>ARG parent 3 PARAM>ARG SCOPE-INIT-ELEM {: elem:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   scope PARAM-SCR+
+   parent 2 PARAM>ARG PARAM-SCR+
+   elem PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+: SCOPE-RECORD-STEP ( -- )
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   dup P>TYPE T-RES {: supplied:n :}
+   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   P>REST R-RES dup TAG S-PUSH <> IF drop 0 OK ! -1 FAILSET ! EXIT THEN
+   dup P>TYPE T-RES {: parent-cell:n :}
+   P>REST {: rest:n :}
+   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
+   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent RECORDS? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   parent 3 PARAM>ARG {: value:n :}
+   value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   value TFAM-INIT-RECORD-XT 0= IF drop drop drop 0 OK ! -1 FAILSET ! EXIT THEN
+   {: width:n bytes:n align:n :}
+   parent 1 PARAM>ARG T-RES {: ceiling:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>DOMAIN BIND-CHILD <> supplied F>PARENT 0= or IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+      supplied F>PARENT ceiling UNIFY-EXACT 0= IF
+         0 OK ! -1 FAILSET ! EXIT THEN
+   THEN
+   ceiling SCOPE-CHILD-FRESH {: scope:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>BODY scope SCOPE-INST
+      DCUR @ P>REST MK-PUSH DCUR !
+   THEN
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   parent scope SCOPE-RECORD-VIEW {: view:n :}
+   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   parent r PUSH-LOGICAL PE-N swap MK-PUSH callback swap MK-PUSH
+   parent s PUSH-LOGICAL RECORDED-STEP
+   OK @ 0= IF EXIT THEN
+   scope SCOPE-EXTERIOR-XT IF
+      SCOPE-WITNESS @ MD-C2-ESCAPE C2-REJECT EXIT THEN
+   1 0 0 width WF-INIT-FLAG WF-ADD-FULL
+   REC-ON @ IF
+      REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
+      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+   THEN ;
+
+: SCOPE-FIELD-REGION ( n n -- n ) {: parent:n descriptor:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 2 PARAM>ARG PARAM-SCR+
+   descriptor PARAM-SCR+
+   base s" loan-field" LOAN-FIELD-FAM @ MK-PARAM ;
+
+: SCOPE-FIELD-VIEW ( n n n n n -- n )
+   {: parent:n child:n projected:n init-scope:n field:n :}
+   init-scope field SCOPE-INIT-ELEM {: elem:n :}
+   PARAM-SCR-N @ {: base:n :}
+   parent 0 PARAM>ARG PARAM-SCR+
+   child PARAM-SCR+
+   projected PARAM-SCR+
+   elem PARAM-SCR+
+   base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
+
+: SCOPE-FIELD-REJECT ( -- ) 0 OK ! -1 FAILSET ! ;
+
+: SCOPE-FIELD-BINDER? ( n -- bool ) {: scheme:n :}
+   scheme F>DOMAIN BIND-REGION =
+   scheme F>PARENT 0= and
+   scheme F>SECOND 0= and ;
+
+: SCOPE-FIELD-REGION-OPEN ( n n -- n ) {: term:n projected:n :}
+   term T-RES dup TAG T-FORALL = IF
+      dup SCOPE-FIELD-BINDER? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+      F>BODY projected SCOPE-INST
+   THEN ;
+
+: SCOPE-FIELD-OPEN ( n n n n -- )
+   {: supplied:n ceiling:n child:n projected:n :}
+   supplied TAG T-FORALL = IF
+      supplied F>BODY child SCOPE-INST
+      projected SCOPE-FIELD-REGION-OPEN
+      DCUR @ P>REST MK-PUSH DCUR !
+   THEN ;
+
+: SCOPE-FIELD-CALLBACK ( n n n n n -- )
+   {: parent:n child:n projected:n init-scope:n field:n :}
+   FRESH MK-ROW {: r:n :}
+   FRESH MK-ROW {: s:n :}
+   FRESH MK-ROW {: u:n :}
+   parent child projected init-scope field SCOPE-FIELD-VIEW {: view:n :}
+   view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
+   callback parent r PUSH-LOGICAL MK-PUSH
+   parent s PUSH-LOGICAL SCOPE-RECORDED-STEP ;
+
+: SCOPE-FIELD-FACTS ( n n -- ) {: off:n bytes:n :}
+   REC-ON @ IF
+      REC-IX @ {: selector-ord:n :}
+      FIELD-LOAN-ORD @ REC-IX !
+      CWIN-COMMIT
+      FIELD-LOAN-ORD @ off bytes CW-FIELD-SPAN CWIN-ADD
+      selector-ord REC-IX !
+   THEN
+   TSTART @ {: selector-off:n :}
+   FIELD-LOAN-OFF @ TSTART !
+   1 0 0 off 1+ WF-FIELD-FLAG WF-ADD-FULL
+   2 0 0 bytes WF-FIELD-FLAG WF-ADD-FULL
+   selector-off TSTART ! ;
+
+: SCOPE-FIELD-SCHEME? ( n n -- bool ) {: supplied:n ceiling:n :}
+   supplied TAG T-FORALL <> IF RES-TRUE EXIT THEN
+   supplied F>DOMAIN BIND-CHILD =
+   supplied F>PARENT ceiling UNIFY-EXACT and
+   supplied F>SECOND 0= and ;
+
+: SCOPE-FIELD-MAY-THROW? ( n -- bool )
+   dup TAG T-QUOT = IF Q>XHAS ELSE drop RES-TRUE THEN ;
+
+\ The selected member is resolved against the receiver's instantiated and
+\ committed schema. The selector is a token, never a runtime field id. The
+\ callback may change the field, but it cannot return the child view or the
+\ projected region; the exact original parent is restored by this step.
+: SCOPE-FIELD-STEP ( ptr u8 n -- ) {: name:ptr size:n :}
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
+   dup P>TYPE T-RES {: supplied:n :}
+   supplied SCOPE-FIELD-MAY-THROW? {: may-throw:bool :}
+   P>REST R-RES dup TAG S-PUSH <> IF drop SCOPE-FIELD-REJECT EXIT THEN
+   dup P>TYPE T-RES {: parent-cell:n :}
+   P>REST {: rest:n :}
+   parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
+   parent TAG T-STALE = IF SCOPE-FIELD-REJECT EXIT THEN
+   parent MUT-VIEW? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   parent 3 PARAM>ARG T-RES {: initialized:n :}
+   initialized TAG T-PARAM <> IF SCOPE-FIELD-REJECT EXIT THEN
+   initialized PARAM>FAM C2-INIT-FAM @ <> IF SCOPE-FIELD-REJECT EXIT THEN
+   initialized 0 PARAM>ARG T-RES {: init-scope:n :}
+   initialized 1 PARAM>ARG T-RES {: record:n :}
+   record INIT-VALUE-OK? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   record name size TFAM-INIT-FIELD-XT 0= IF 2drop drop SCOPE-FIELD-REJECT EXIT THEN
+   {: descriptor:n off:n bytes:n :}
+   descriptor FIELD-PARAM? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   descriptor FIELD-INNER {: field:n :}
+   parent 1 PARAM>ARG T-RES {: ceiling:n :}
+   supplied ceiling SCOPE-FIELD-SCHEME? 0= IF SCOPE-FIELD-REJECT EXIT THEN
+   ceiling SCOPE-CHILD-FRESH {: child:n :}
+   parent descriptor SCOPE-FIELD-REGION {: projected:n :}
+   supplied ceiling child projected SCOPE-FIELD-OPEN
+   OK @ 0= IF EXIT THEN
+   DCUR @ XE-PD !  RCUR @ XE-PR !
+   parent child projected init-scope field SCOPE-FIELD-CALLBACK
+   OK @ 0= IF EXIT THEN
+   child SCOPE-EXTERIOR-XT projected SCOPE-EXTERIOR-XT or IF
+      SCOPE-FIELD-REJECT EXIT THEN
+   THROW-CUR? may-throw or IF CALL-THROW-EDGE THEN
+   off bytes SCOPE-FIELD-FACTS ;
+
+: SCOPE-FIELD-TOK ( ptr u8 n -- )
+   0 FIELD-LOAN-PENDING !
+   SCOPE-FIELD-STEP ;
+
 \ The body token's one resolution, made by BIND-TOK before any rule keyed on a
 \ spelling is asked: the symbol and the scope that bound it (CHECKER-BIND).
 variable TOK-SYM   variable TOK-LEG
@@ -12146,6 +13855,14 @@ variable TOK-SYM   variable TOK-LEG
       a u RAW-FIELD-TOK? IF EXIT THEN
    THEN
    TOK-SYM @ CURSYM !
+   CURSYM @ SCOPE-KIND-SYM dup 2 = IF SCOPE-CHILD-STEP EXIT THEN
+   dup 3 = IF drop SCOPE-MUT-ROOT-STEP EXIT THEN
+   dup 4 = IF SCOPE-CHILD-STEP EXIT THEN
+   dup 5 = IF drop SCOPE-INIT-STEP EXIT THEN
+   dup 6 = IF drop SCOPE-RECORDS-STEP EXIT THEN
+   dup 7 = IF drop SCOPE-RECORD-STEP EXIT THEN
+   dup 8 = IF drop REC-IX @ FIELD-LOAN-ORD ! TSTART @ FIELD-LOAN-OFF !
+      -1 FIELD-LOAN-PENDING ! EXIT THEN drop
    \ a call to a definer, counted for the straight-line-wrapper rule above. One
    \ per-symbol head load, on the resolved symbol: a tick is not a call here
    \ (BTICK-TOK never reaches this word) and the create-family tokens leave
@@ -12272,10 +13989,22 @@ variable TOK-SYM   variable TOK-LEG
       dup WF-FLAGS@ WF-XPAD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
+: WF-INIT? ( -- bool )
+   0 BEGIN dup WF-N @ < WHILE
+      dup WF-FLAGS@ WF-INIT-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: WF-FIELD? ( -- bool )
+   0 BEGIN dup WF-N @ < WHILE
+      dup WF-FLAGS@ WF-FIELD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 : WF-FETCH? ( n -- bool ) WF-FLAGS@ WF-FETCH-FLAG and 0 <> ;
 : WF-NEEDS-P2? ( -- bool )
    WF-WIDE? IF RES-TRUE EXIT THEN
    WF-XPAD? IF RES-TRUE EXIT THEN
+   WF-INIT? IF RES-TRUE EXIT THEN
+   WF-FIELD? IF RES-TRUE EXIT THEN
    0 BEGIN dup WF-N @ < WHILE
       dup WF-FETCH? IF drop RES-TRUE EXIT THEN
       1 +
@@ -12461,6 +14190,32 @@ variable XG-N   variable XG-TN   variable XG-ROW
       RCUR @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
    THEN ;
 
+\ The transport already chose its operand groups and replay sequence. Name the
+\ first exclusive C2 group whose multiplicity caused LIN-CHECK to refuse.
+: C2-XPORT-TERM? ( n -- bool )
+   dup SCOPED-TYPE? swap LIN-TYPE-COUNT 0 > and ;
+
+: C2-XPORT-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u XP-RS? IF
+      a u XP-RS-KEEP? 0= IF EXIT THEN
+      0 BEGIN dup XG-N @ < WHILE
+         dup XG-TERM0@ {: term:n :}
+         term C2-XPORT-TERM? IF
+            term MD-C2-COPY C2-REJECT drop EXIT THEN
+         1 +
+      REPEAT drop EXIT
+   THEN
+   a u XP-DATA-SEQ$ {: seq:ptr count:n :}
+   0 BEGIN dup XG-N @ < WHILE
+      dup XG-TERM0@ {: term:n :}
+      term C2-XPORT-TERM? IF
+         dup seq count XG-SEQ-COUNT
+         dup 1 > IF drop term MD-C2-COPY C2-REJECT drop EXIT THEN
+         0= IF term MD-C2-DROP C2-REJECT drop EXIT THEN
+      THEN
+      1 +
+   REPEAT drop ;
+
 : XPORT-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
    LIN-SNAPSHOT
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
@@ -12471,7 +14226,10 @@ variable XG-N   variable XG-TN   variable XG-ROW
       XG-ROW @ a u XP-DATA-SEQ$ XG-REPLAY DCUR !
       a u XP-DATA-SEQ$ XG-TAINT-SEQ
    THEN
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF
+      LIN-CHECK
+      OK @ 0= IF a u C2-XPORT-REJECT THEN
+   THEN ;
 
 \ any hidden cell within the top-k CELLS implies a hidden-group operand within
 \ the top-k logical operands (a group's cells start at or above its position).
@@ -12693,6 +14451,7 @@ variable LCO
      ra  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY   \ the spelling a reference must match
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
+     0 #LOC @ cells LOCVAL + !
      1 #LOC @ cells LOCW + !
      LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
      1 LOCSEQ @ cells LOC-HW + !
@@ -12805,6 +14564,8 @@ variable LCO
    REPEAT 2drop ;
 
 : LOC-BIND
+   \ A prior refusal may leave a partially bound row; the names are already parsed.
+   OK @ 0= IF FRESH MK-ROW DCUR ! EXIT THEN
    FRESH dup LROW !  MK-ROW LCH !
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
@@ -12983,6 +14744,72 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-ROW ( n -- ptr n )
    CFS-REC * CFS + ;
+
+TRUSTED: SCOPE-LOC-TYPE ( n -- n )
+   cells LOCVAL + @ dup 0 <> IF CP-TYPE THEN ;
+TRUSTED: SCOPE-CF-ROWS ( n -- n n n n ) {: idx:n :}
+   idx CF-ROW {: rec:ptr :}
+   rec CF.SA @ rec CF.SB @ rec CF.RA @ rec CF.RB @ ;
+
+: SCOPE-EXTERIOR? ( n -- bool ) {: scope:n :}
+   0 SCOPE-WITNESS !
+   scope DCUR @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   scope RCUR @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   scope BROW @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   scope RBROW @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   SGSEEN @ IF
+      scope SGIN @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+      scope SGOUT @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+      SGHASR @ IF
+         scope SGRIN @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+         scope SGROUT @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+      THEN
+   THEN
+   XSET @ IF
+      scope XROW @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+      scope XRROW @ SCOPE-OCC? IF RES-TRUE EXIT THEN
+   THEN
+   #LOC @ 0 ?do
+      scope i cells LOCTV + @ SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+      scope i SCOPE-LOC-TYPE SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+   loop
+   #CFC @ 0 ?do
+      i SCOPE-CF-ROWS {: da:n db:n ra:n rb:n :}
+      scope da SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+      scope db SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+      scope ra SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+      scope rb SCOPE-OCC? IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+: SCOPE-EXTERIOR-INSTALL ( -- ) [: SCOPE-EXTERIOR? ;] is SCOPE-EXTERIOR-XT ;
+SCOPE-EXTERIOR-INSTALL
+
+: SCOPE-INTRO-FENCE ( n n n n n n -- )
+   {: start:n region-start:n din:n dout:n rin:n rout:n :}
+   start BEGIN dup SCOPE-N @ < WHILE
+      dup MK-SCOPE {: scope:n :}
+      OK @ IF
+         scope SCOPE-EXTERIOR-XT
+         scope din SCOPE-OCC? or scope dout SCOPE-OCC? or
+         scope rin SCOPE-OCC? or scope rout SCOPE-OCC? or IF
+            0 OK ! -1 FAILSET ! THEN
+      THEN
+      1 +
+   REPEAT drop
+   region-start BEGIN dup RGN-N @ < WHILE
+      dup s" region-binder" rot MK-ATOM-K {: region:n :}
+      OK @ IF
+         region SCOPE-EXTERIOR-XT
+         region din SCOPE-OCC? or region dout SCOPE-OCC? or
+         region rin SCOPE-OCC? or region rout SCOPE-OCC? or IF
+            0 OK ! -1 FAILSET ! THEN
+      THEN
+      1 +
+   REPEAT drop ;
+: SCOPE-INTRO-FENCE-INSTALL ( -- )
+   [: SCOPE-INTRO-FENCE ;] is SCOPE-INTRO-FENCE-XT ;
+SCOPE-INTRO-FENCE-INSTALL
 
 : CF-TOP ( -- ptr n )
    #CFC @ 1 - CF-ROW ;
@@ -14277,7 +16104,14 @@ s" <input>" DIAG-FILE!
 \ waiting for a record that is not its definer's.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
    DOES-EFF-STEP
-   na nu sa su TRUST-USIG! ;
+   na nu sa su TRUST-USIG!
+   \ The parser filled both input rows. An unchecked body may throw after
+   \ replacing a scoped input on either stack; its scan does not prove intact
+   \ cells for a later catch.
+   PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF
+      na nu CHECKER-RECORD-SYM? {: sym:n :}
+      sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
+   THEN ;
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ;package
@@ -14655,8 +16489,11 @@ variable IS-PEND-U                   \ and its length
 
 : IS-APPLY ( n -- )
    ISQ !
+   ISQ @ NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
+   ISQ @ QCON-BEGIN
    FRESH MK-ROW {: rest :}
    DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
+   OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
    rest DCUR ! ;
 
 : IS-TARGET-TOK? ( -- bool )
@@ -14715,7 +16552,11 @@ variable IS-PEND-U                   \ and its length
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
+   TKF TKFU @ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
+   sym PRIM-TRUSTED-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
+   FEP-CLEAR
+   sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF
       FEP @ ER.ACTIVE @ EFF-RECOVERY = IF
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
@@ -14913,7 +16754,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ CORE-BINDING?
@@ -14921,6 +16762,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
+   FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
    MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
    a u LOC-REF? IF ELSE
@@ -14955,7 +16797,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -14965,7 +16807,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
    \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
    \ must start clean.
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -15046,6 +16888,7 @@ variable NP-SEEN-N
    THEN drop
    t ISVAR IF t PAY NP-ORIG+ EXIT THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-FORALL = IF t F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
       t Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
       t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -15182,7 +17025,9 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
       EXIT
    THEN
    rt PAY TVK@ NP-KIND-SEEN kind <> IF
-      oid rt PAY TVK@ NP-KIND-EXCUSED? 0= IF oid rt NP-FAIL-KIND EXIT THEN
+      rt PAY TVK@ TVK-CELL = kind TVK-ANY = and 0= IF
+         oid rt PAY TVK@ NP-KIND-EXCUSED? 0= IF oid rt NP-FAIL-KIND EXIT THEN
+      THEN
    THEN
    rt PAY NP-SEEN-FIND dup 0 < IF
       drop rt PAY oid NP-SEEN-ADD                     \ first sighting of this root
@@ -15218,6 +17063,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    THEN drop
    t ISVAR IF t PAY NP-VARS+ EXIT THEN
    t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-FORALL = IF t F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
       t Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
       t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -15552,7 +17398,9 @@ $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 \ The E record/node shapes are reused; their references are blob-relative.
 \ EW.ACTIVE carries the version magic, EW.NEXT the byte length, and EW.SYM
 \ carries control/defer flags. No source symbol id or history link travels.
-$4842470000000001 constant ASIG-GRAPH-MAGIC
+\ Version 2 carries storage restrictions on variable nodes. Older generic
+\ setter graphs cannot safely enter the checker without rechecking their bodies.
+$4842470000000003 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
 variable ASIG-GRAPH-BASE
 variable ASIG-GRAPH-GEN
@@ -15654,6 +17502,10 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
       src E-PTR EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
       0 dst ASIG-GRAPH-PTR EN.G !
       0 dst ASIG-GRAPH-PTR EN.H !
+   ELSE tag EN-FORALL = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
+      src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
    ELSE tag EN-ATOM = IF
       src E-PTR EN.C @ 0 > IF
          s" checker: a captured rigid atom has process-local identity" 76 die THEN
@@ -15671,8 +17523,8 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
          src E-PTR EN.D @ i cells + E-PTR CELL-VIEW @ RECURSE
          args i cells + ASIG-GRAPH-PTR CELL-VIEW !
       loop
-   ELSE tag EN-VAR <> tag EN-ROW <> and IF ASIG-GRAPH-DIE THEN
-   THEN THEN THEN THEN THEN THEN
+   ELSE tag EN-VAR <> tag EN-ROW <> and tag EN-BVAR <> and IF ASIG-GRAPH-DIE THEN
+   THEN THEN THEN THEN THEN THEN THEN
    dst 1+ src ASIG-GRAPH-SLOT CELL + !
    dst ;
 
@@ -15828,31 +17680,52 @@ variable CK-GRAPH-MAP-U
 PTR-VARIABLE CK-GRAPH-REG-P
 variable CK-GRAPH-REG-U
 variable CK-GRAPH-WIDTH-BAD
+PTR-VARIABLE CK-LEX-MEMO-P
+variable CK-LEX-MEMO-CAP
+variable CK-LEX-MEMO-U
+
+3 cells constant CK-LEX-MEMO-REC
+$1000 constant CK-LEX-MEMO-INIT
+
+1 constant CK-LEX-INPUT
+2 constant CK-LEX-SCHEME
+4 constant CK-LEX-SLOT
+8 constant CK-LEX-SCOPE
+16 constant CK-LEX-REGION
+CK-LEX-SCOPE CK-LEX-REGION or constant CK-LEX-TYPES
+CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-SLOT or
+CK-LEX-SCOPE or CK-LEX-REGION or constant CK-LEX-MASK
+4 constant CK-GRAPH-META-SPANS
+CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
 
 : CK-GRAPH-PTR ( n -- ptr u8 ) CK-GRAPH-BASE @ + ;
 : CK-GRAPH-SLOT ( n -- ptr n ) CK-GRAPH-MAP @ + CELL-VIEW ;
 : CK-GRAPH-WIDTHS ( -- ptr u8 ) CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 2 * + ;
 : CK-GRAPH-WIDTH-SLOT ( n -- ptr n ) CK-GRAPH-WIDTHS + CELL-VIEW ;
+: CK-GRAPH-RELEVANCE-SLOT ( n -- ptr n )
+   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 3 * + + CELL-VIEW ;
+: CK-GRAPH-LEX-SLOT ( n n -- ptr n ) {: off:n ctx:n :}
+   CK-GRAPH-MAP @ ctx CK-GRAPH-META-SPANS + CK-GRAPH-MAP-U @ * + off + CELL-VIEW ;
 : CK-GRAPH-REG$ ( -- ptr u8 n ) CK-GRAPH-REG-P @ CK-GRAPH-REG-U @ ;
 
 : CK-GRAPH-RELEASE ( -- )
    CK-GRAPH-MAP @ CK-GRAPH-CAP @ ASIG-RELEASE
-   NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP ! ;
+   NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP !
+   CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ ASIG-RELEASE
+   NULL-PTR CK-LEX-MEMO-P ! 0 CK-LEX-MEMO-CAP ! 0 CK-LEX-MEMO-U ! ;
 
-\ One map cell per aligned source cell detects both cycles and overlapping
-\ objects. The second span records each variable's kind; the third memoizes
-\ logical type widths. Repeated DAG edges reuse both the finished node and its
-\ width, so layout arguments do not expand a shared graph during admission.
+\ The first four spans track objects, variable kinds, logical widths, and
+\ outer binder references. Lexical-context spans head domain memo lists.
 : CK-GRAPH-ROOM ( -- )
-   \ Three aligned spans must fit before rounding the graph length up.
-   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF 3 / -8 and > IF ASIG-GRAPH-DIE THEN
-   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! 3 * {: bytes:n :}
+   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF CK-GRAPH-SPANS / -8 and > IF ASIG-GRAPH-DIE THEN
+   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! CK-GRAPH-SPANS * {: bytes:n :}
    bytes CK-GRAPH-CAP @ > IF
       CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
       old oldcap bytes ARENA-BYTES-GROW CK-GRAPH-MAP !
       bytes CK-GRAPH-CAP ! old oldcap ASIG-RELEASE
    THEN
-   CK-GRAPH-MAP @ bytes ASIG-GRAPH-ZERO ;
+   CK-GRAPH-MAP @ bytes ASIG-GRAPH-ZERO
+   0 CK-LEX-MEMO-U ! ;
 
 : CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
    off EFF-WIRE < off 7 and 0 <> or IF ASIG-GRAPH-DIE THEN
@@ -15872,17 +17745,21 @@ variable CK-GRAPH-WIDTH-BAD
 
 : CK-GRAPH-BOOL? ( n -- ) dup 0 <> swap -1 <> and IF ASIG-GRAPH-DIE THEN ;
 
-: CK-GRAPH-VAR? ( n n bool -- ) {: id:n kind:n row:bool :}
+: CK-GRAPH-VAR? ( n n n bool -- ) {: id:n kind:n no-scope:n row:bool :}
+   no-scope CK-GRAPH-BOOL?
+   kind TVK-SCOPE = kind TVK-REGION = or no-scope 0 <> and IF ASIG-GRAPH-DIE THEN
    row IF 0 CK-GRAPH-PTR EW.RVN @ ELSE 0 CK-GRAPH-PTR EW.TVN @ THEN {: count:n :}
    id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
    row IF
       kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
-   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind BASE-KIND? 0= and
-        kind TVK-OFF <> and IF ASIG-GRAPH-DIE THEN THEN   \ offset provenance persists on a stored effect's pointee var
+   ELSE kind TVK-ANY <> kind TVK-RAW <> and kind TVK-CELL <> and kind BASE-KIND? 0= and
+        kind TVK-OFF <> and kind TVK-SCOPE <> and
+        kind TVK-REGION <> and IF ASIG-GRAPH-DIE THEN THEN
    row IF id 0 CK-GRAPH-PTR EW.TVN @ + ELSE id THEN cells
    CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
-   slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN
-   kind 1+ slot ! ;
+   kind 1+ no-scope 0 <> IF $100 or THEN {: meta:n :}
+   slot @ 0 <> slot @ meta <> and IF ASIG-GRAPH-DIE THEN
+   meta slot ! ;
 
 : CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
    node CK-GRAPH-NAME?
@@ -15919,6 +17796,11 @@ variable CK-GRAPH-WIDTH-BAD
       drop s" checker: captured row width disagrees with its type" 76 die
    THEN throw ;
 
+: CK-GRAPH-FORALL-SHAPE? ( ptr u8 -- bool ) {: node:ptr :}
+   node EN.D @ BIND-CHILD = node EN.B @ 0= 0= and
+   node EN.D @ dup BIND-SCOPE = swap BIND-REGION = or
+   node EN.B @ 0= node EN.C @ 0= and and or ;
+
 : CK-GRAPH-NODE? ( n bool -- ) {: off:n row:bool :}
    off 0= IF row 0= IF ASIG-GRAPH-DIE THEN EXIT THEN
    off EFF-NODE CK-GRAPH-SPAN?
@@ -15928,11 +17810,11 @@ variable CK-GRAPH-WIDTH-BAD
    off EFF-NODE CK-GRAPH-CLAIM
    off CK-GRAPH-PTR {: node:ptr :}
    node EN.TAG @ {: tag:n :}
-   tag 0 < tag EN-PARAM > or IF ASIG-GRAPH-DIE THEN
+   tag 0 < tag EN-BVAR > or IF ASIG-GRAPH-DIE THEN
    tag row CK-GRAPH-KIND?
    tag EN-CON = IF node CK-GRAPH-CON?
-   ELSE tag EN-VAR = IF node EN.A @ node EN.B @ RES-FALSE CK-GRAPH-VAR?
-   ELSE tag EN-ROW = IF node EN.A @ node EN.B @ RES-TRUE CK-GRAPH-VAR?
+   ELSE tag EN-VAR = IF node EN.A @ node EN.B @ node EN.C @ RES-FALSE CK-GRAPH-VAR?
+   ELSE tag EN-ROW = IF node EN.A @ node EN.B @ node EN.C @ RES-TRUE CK-GRAPH-VAR?
    ELSE tag EN-PTR = IF
       node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
    ELSE tag EN-PUSH = IF
@@ -15947,6 +17829,17 @@ variable CK-GRAPH-WIDTH-BAD
       node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.C @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.D @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   ELSE tag EN-FORALL = IF
+      node CK-GRAPH-FORALL-SHAPE? 0= IF ASIG-GRAPH-DIE THEN
+      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.B @ dup 0 <> IF
+         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      ELSE drop THEN
+      node EN.C @ dup 0 <> IF
+         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      ELSE drop THEN
+   ELSE tag EN-BVAR = IF
+      node EN.A @ 0 < IF ASIG-GRAPH-DIE THEN
    ELSE tag EN-ATOM = IF
       node CK-GRAPH-NAME?
       node EN.C @ 0 > node EN.C @ EI-AK-CAP negate < or IF ASIG-GRAPH-DIE THEN
@@ -15961,7 +17854,7 @@ variable CK-GRAPH-WIDTH-BAD
          RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       loop
       node CK-GRAPH-BASE @ CK-GRAPH-REG$ REG-EXT-AOT-PARAM-XT
-   THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN
    row 0= IF
       tag EN-PARAM = IF
          node CK-GRAPH-BASE @ CK-GRAPH-WIDTHS CK-GRAPH-REG$ REG-EXT-AOT-WIDTH-XT
@@ -15970,6 +17863,180 @@ variable CK-GRAPH-WIDTH-BAD
       off CK-GRAPH-WIDTH-SLOT !
    THEN
    tag 1+ off CK-GRAPH-SLOT ! ;
+
+create CK-LEX-DOMAINS 64 cells allot
+
+\ Domain is binary, and the existing binder-depth limit is below one cell's
+\ 64 bits. Bit zero is the innermost binder, so a shallower successful visit
+\ covers a deeper one exactly when its bits match the deeper visit's suffix.
+: CK-LEX-DOMAIN-MASK ( n -- n ) {: depth:n :}
+   0 depth 0 ?do
+      1 lshift
+      i cells CK-LEX-DOMAINS + @ BIND-REGION = IF 1 or THEN
+   loop ;
+
+: CK-LEX-MEMO-PTR ( n -- ptr n ) CK-LEX-MEMO-P @ + CELL-VIEW ;
+
+: CK-LEX-MEMO-ALLOC ( -- n )
+   CK-LEX-MEMO-U @ {: at:n :}
+   at $7FFFFFFFFFFFFFFF CK-LEX-MEMO-REC - > IF ASIG-GRAPH-DIE THEN
+   at CK-LEX-MEMO-REC + {: need:n :}
+   need CK-LEX-MEMO-CAP @ > IF
+      CK-LEX-MEMO-CAP @ $7FFFFFFFFFFFFFFF 2 / <= IF
+         CK-LEX-MEMO-CAP @ 2 * CK-LEX-MEMO-INIT max need max
+      ELSE need THEN {: cap:n :}
+      CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ {: old:ptr oldcap:n :}
+      old oldcap cap ARENA-BYTES-GROW CK-LEX-MEMO-P !
+      cap CK-LEX-MEMO-CAP !
+      old oldcap ASIG-RELEASE
+   THEN
+   need CK-LEX-MEMO-U !
+   at ;
+
+TRUSTED: CK-LEX-MEMO-MATCH? ( ptr n n n -- bool ) {: rec:ptr depth:n mask:n :}
+   rec CELL + CELL-VIEW @ {: prior:n :}
+   prior depth > IF RES-FALSE EXIT THEN
+   mask rec 2 cells + CELL-VIEW @ = ;
+
+TRUSTED: CK-LEX-MEMO-SEEN? ( ptr n n n -- bool ) {: head:ptr depth:n mask:n :}
+   head @ dup -1 = IF drop RES-TRUE EXIT THEN
+   BEGIN dup 0 > WHILE
+      1- CK-LEX-MEMO-PTR {: rec:ptr :}
+      rec depth mask CK-LEX-MEMO-MATCH? IF RES-TRUE EXIT THEN
+      rec @
+   REPEAT drop RES-FALSE ;
+
+TRUSTED: CK-LEX-MEMO-ADD ( ptr n n n -- ) {: head:ptr depth:n mask:n :}
+   depth 0= IF -1 head ! EXIT THEN
+   CK-LEX-MEMO-ALLOC CK-LEX-MEMO-PTR {: rec:ptr :}
+   head @ rec !
+   depth rec CELL + CELL-VIEW !
+   mask rec 2 cells + CELL-VIEW !
+   rec CK-LEX-MEMO-P @ - 1+ head ! ;
+
+TRUSTED: CK-LEX-FIELD ( n n -- n ) {: off:n field:n :}
+   off CK-GRAPH-PTR field cells + CELL-VIEW @ ;
+TRUSTED: CK-LEX-ARG ( n n -- n ) {: off:n idx:n :}
+   off CK-GRAPH-PTR EN.D @ idx cells + CK-GRAPH-PTR CELL-VIEW @ ;
+
+\ The structural pass has already proved an acyclic graph. This mask records
+\ which binders outside each node can be named by its descendants. A forall
+\ body consumes bit zero; its other references shift toward the new caller.
+TRUSTED: CK-GRAPH-RELEVANCE ( n -- n ) {: off:n :}
+   off 0= IF 0 EXIT THEN
+   off CK-GRAPH-RELEVANCE-SLOT {: slot:ptr :}
+   slot @ dup 0 <> IF 1- EXIT THEN drop
+   off EN-TAG-CELL CK-LEX-FIELD {: tag:n :}
+   tag EN-BVAR = IF
+      off EN-A-CELL CK-LEX-FIELD BVAR-REGION-BIT invert and {: index:n :}
+      index 63 >= IF ASIG-GRAPH-DIE THEN
+      1 index lshift
+   ELSE tag EN-PUSH = IF
+      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+   ELSE tag EN-PTR = IF
+      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   ELSE tag EN-QUOT = IF
+      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      off EN-C-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      off EN-D-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+   ELSE tag EN-FORALL = IF
+      off EN-A-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER 1 rshift
+      off EN-B-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      off EN-C-CELL CK-LEX-FIELD TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+   ELSE tag EN-PARAM = IF
+      0 off EN-C-CELL CK-LEX-FIELD 0 ?do
+         off i CK-LEX-ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      loop
+   ELSE 0 THEN THEN THEN THEN THEN THEN
+   dup 1+ slot ! ;
+
+TRUSTED: CK-LEX-SCOPE-SLOT? ( n n -- bool ) {: off:n idx:n :}
+   off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-SCOPE-XT ;
+TRUSTED: CK-LEX-REGION-SLOT? ( n n -- bool ) {: off:n idx:n :}
+   off CK-GRAPH-PTR CK-GRAPH-REG$ idx REG-EXT-AOT-REGION-XT ;
+TRUSTED: CK-GRAPH-LEX-PARAM-CTX ( n n n -- n ) {: off:n ctx:n idx:n :}
+   off idx CK-LEX-SCOPE-SLOT? IF
+      ctx CK-LEX-SCOPE and CK-LEX-SLOT or EXIT THEN
+   off idx CK-LEX-REGION-SLOT? IF
+      ctx CK-LEX-REGION and CK-LEX-SLOT or EXIT THEN
+   ctx CK-LEX-TYPES and ;
+
+\ The structural pass above proves a finite DAG. This pass checks how each
+\ reference is reached: input position, scheme placement, a family's scope
+\ slot, and whether storage has cut off scope access. A child shared at two
+\ depths is revisited at the shallower depth, where a free bound variable is
+\ visible. A memo hit needs matching domains for outer binders this node can
+\ name; paths differing only in unused domains share one result.
+TRUSTED: CK-GRAPH-LEX? ( n n n -- ) {: off:n ctx:n depth:n :}
+   off 0= IF EXIT THEN
+   depth TWALK-MAX-DEPTH > depth 64 >= or IF ASIG-GRAPH-DIE THEN
+   off EN-TAG-CELL CK-LEX-FIELD {: tag:n :}
+   tag EN-BVAR = IF
+      ctx CK-LEX-SLOT and 0= IF ASIG-GRAPH-DIE THEN
+      off EN-A-CELL CK-LEX-FIELD {: raw:n :}
+      raw BVAR-REGION-BIT invert and {: index:n :}
+      index depth >= IF ASIG-GRAPH-DIE THEN
+      depth index - 1- cells CK-LEX-DOMAINS + @
+      raw BVAR-REGION-BIT and 0= IF BIND-SCOPE ELSE BIND-REGION THEN
+      <> IF ASIG-GRAPH-DIE THEN
+      raw BVAR-REGION-BIT and 0= IF
+         ctx CK-LEX-SCOPE and 0= IF ASIG-GRAPH-DIE THEN
+      ELSE ctx CK-LEX-REGION and 0= IF ASIG-GRAPH-DIE THEN THEN
+      EXIT THEN
+   off ctx CK-GRAPH-LEX-SLOT {: mark:ptr :}
+   depth CK-LEX-DOMAIN-MASK
+   off CK-GRAPH-RELEVANCE-SLOT @ 1- and {: domains:n :}
+   mark depth domains CK-LEX-MEMO-SEEN? IF EXIT THEN
+   mark depth domains CK-LEX-MEMO-ADD
+   tag EN-ROW = IF
+      ctx CK-LEX-SLOT and IF ASIG-GRAPH-DIE THEN EXIT THEN
+   tag EN-VAR = IF
+      off EN-B-CELL CK-LEX-FIELD TVK-SCOPE =
+      ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-SCOPE and 0 <> and
+      <> IF ASIG-GRAPH-DIE THEN
+      off EN-B-CELL CK-LEX-FIELD TVK-REGION =
+      ctx CK-LEX-SLOT and 0 <> ctx CK-LEX-REGION and 0 <> and
+      <> IF ASIG-GRAPH-DIE THEN EXIT THEN
+   ctx CK-LEX-SLOT and IF ASIG-GRAPH-DIE THEN
+   tag EN-CON = tag EN-ATOM = or IF EXIT THEN
+   tag EN-PUSH = IF
+      off EN-A-CELL CK-LEX-FIELD ctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-B-CELL CK-LEX-FIELD ctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   tag EN-PTR = IF
+      off EN-A-CELL CK-LEX-FIELD 0 depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   tag EN-QUOT = IF
+      ctx CK-LEX-SCHEME CK-LEX-SCOPE CK-LEX-REGION or or and CK-LEX-INPUT or {: inctx:n :}
+      ctx CK-LEX-SCHEME CK-LEX-SCOPE CK-LEX-REGION or or and {: outctx:n :}
+      off EN-A-CELL CK-LEX-FIELD inctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-B-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-C-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-D-CELL CK-LEX-FIELD outctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   tag EN-FORALL = IF
+      ctx CK-LEX-INPUT and 0= ctx CK-LEX-SCHEME and 0= or IF ASIG-GRAPH-DIE THEN
+      off EN-D-CELL CK-LEX-FIELD dup BIND-CHILD = IF drop BIND-SCOPE THEN
+      depth cells CK-LEX-DOMAINS + !
+      off EN-B-CELL CK-LEX-FIELD
+      CK-LEX-SCOPE CK-LEX-SLOT or depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-C-CELL CK-LEX-FIELD
+      off EN-D-CELL CK-LEX-FIELD BIND-CHILD =
+      off EN-C-CELL CK-LEX-FIELD 0= 0= and IF
+         CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-TYPES or
+         CK-LEX-SCOPE or CK-LEX-REGION or
+      ELSE CK-LEX-SCOPE CK-LEX-SLOT or THEN
+      depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      off EN-A-CELL CK-LEX-FIELD dup EN-TAG-CELL CK-LEX-FIELD dup EN-QUOT <> swap EN-FORALL <> and IF ASIG-GRAPH-DIE THEN
+      ctx off EN-D-CELL CK-LEX-FIELD BIND-REGION = IF CK-LEX-REGION or THEN depth 1+
+      TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   tag EN-PARAM = IF
+      off EN-C-CELL CK-LEX-FIELD 0 ?do
+         off ctx i CK-GRAPH-LEX-PARAM-CTX {: childctx:n :}
+         off i CK-LEX-ARG
+         childctx depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      loop
+      EXIT THEN
+   ASIG-GRAPH-DIE ;
 
 : CK-GRAPH-MIN-IN ( -- n )
    0 0 CK-GRAPH-PTR EW.DIN @
@@ -16000,6 +18067,16 @@ variable CK-GRAPH-WIDTH-BAD
    rec EW.DOUT @ RES-TRUE CK-GRAPH-NODE?
    rec EW.RIN @ RES-TRUE CK-GRAPH-NODE?
    rec EW.ROUT @ RES-TRUE CK-GRAPH-NODE?
+   TWALK-RESET
+   rec EW.DIN @ CK-GRAPH-RELEVANCE drop
+   rec EW.DOUT @ CK-GRAPH-RELEVANCE drop
+   rec EW.RIN @ CK-GRAPH-RELEVANCE drop
+   rec EW.ROUT @ CK-GRAPH-RELEVANCE drop
+   TWALK-RESET
+   rec EW.DIN @ CK-LEX-INPUT CK-LEX-SCHEME or CK-LEX-TYPES or 0 CK-GRAPH-LEX?
+   rec EW.DOUT @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
+   rec EW.RIN @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
+   rec EW.ROUT @ CK-LEX-TYPES 0 CK-GRAPH-LEX?
    CK-GRAPH-MIN-IN rec EW.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
 
 : CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
@@ -16114,6 +18191,10 @@ ASIG-GRAPH-CHECK-INSTALL
    ELSE tag EN-QUOT = IF
       node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
       node EN.C base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
+   ELSE tag EN-FORALL = IF
+      node EN.A base CK-GRAPH-REBASE
+      node EN.B base CK-GRAPH-REBASE
+      node EN.C base CK-GRAPH-REBASE
    ELSE tag EN-ATOM = IF node EN.A base CK-GRAPH-REBASE
    ELSE tag EN-PARAM = IF
       node EN.A base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
@@ -16122,7 +18203,7 @@ ASIG-GRAPH-CHECK-INSTALL
       loop
       \ Canonical package bytes are validation-only, not live EN-PARAM fields.
       0 node EN.F ! 0 node EN.G !
-   THEN THEN THEN THEN THEN THEN ;
+   THEN THEN THEN THEN THEN THEN THEN ;
 
 : CK-GRAPH-OFFSET ( n n -- n ) {: off:n delta:n :}
    off 0= IF 0 ELSE off delta + THEN ;
@@ -16303,15 +18384,16 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 
 : CHECK-RESET {: a u :}
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   FO-RESET
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    WRAP-CLEAR
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
    0 ZSHAPE !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
@@ -16643,6 +18725,8 @@ variable CTOR-PEND-I
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGIN @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
+   SGOUT @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
    SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    \ Linearity is checked before ownership on purpose: a linear family minted
@@ -16660,12 +18744,19 @@ variable CTOR-PEND-I
 \ baked direct references. User source therefore cannot arm or mutate the
 \ one-shot boundary.
 : LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
 : LBUF-PEND-MATCH? ( -- bool )
    LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
    LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+
+: CHECK-FRESH-OUTPUT ( -- )
+   FO-RESET
+   -1 FO-ON !
+   SGOUT @ SUNI-COERCE
+   0 FO-ON ! ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
@@ -16674,6 +18765,7 @@ variable CTOR-PEND-I
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
    MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-SIG? IF CHECK-NO-BORROW THEN
    CHECK-SIG? CHECK-RETURNS? and IF
@@ -16684,10 +18776,10 @@ variable CTOR-PEND-I
       ELSE
          LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
-            SGOUT @ SUNI-COERCE
+            CHECK-FRESH-OUTPUT
             0 LAYOUT-INTRO !
          ELSE
-            SGOUT @ SUNI-COERCE
+            CHECK-FRESH-OUTPUT
          THEN
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
@@ -17709,6 +19801,9 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    {: pool:ptr rec:ptr name:ptr packed:n :}
    rec 0= if exit then
    name TRANSFER-SYMBOL {: sym:n :}
+   \ Cold loading resets retained user effects and reconstructs this prefix.
+   \ Target-checked rows win; the remaining retained rows are concrete boundary
+   \ installers. Generic storage helpers load after this owner handover.
    sym USIG-NEWEST 0= 0= if exit then
    packed XFER-FLAGS {: flags:n :}
    NEW rec EW.TVN @ rec EW.RVN @ E-INST-COUNTS
@@ -17849,6 +19944,8 @@ private
    tag EN-CON = tag EN-VAR = or tag EN-ROW = or IF EXIT THEN
    tag EN-PTR = IF node EN.A @ RECURSE EXIT THEN
    tag EN-PUSH = IF node EN.A @ RECURSE node EN.B @ RECURSE EXIT THEN
+   tag EN-FORALL = IF node EN.A @ RECURSE EXIT THEN
+   tag EN-BVAR = IF EXIT THEN
    tag EN-QUOT = IF
       node EN.E @ node EN.G @ or node EN.H @ or 0 <> IF UNIT-BAD THEN
       node EN.A @ RECURSE node EN.B @ RECURSE
@@ -18036,7 +20133,8 @@ UNIT-CON-INSTALL
 
 : UNIT-CHECK-GRAPH ( ptr u8 n -- )
    dup UNIT-GRAPH-LEN?
-   over EW.SYM @ ASIG-GRAPH-DEFER and 0 <> IF UNIT-FORMAT-BAD THEN
+   over EW.SYM @ CTL-GRAPH-FLAGS invert ASIG-GRAPH-DEFER or and 0 <>
+   IF UNIT-FORMAT-BAD THEN
    2dup NULL-PTR 0 CK-GRAPH-CHECK
    {: graph:ptr bytes:n :}
    EFF-WIRE UNIT-CUR !
@@ -18523,6 +20621,7 @@ public
 \ offsets and need no pointer marking), then clear
 \ the later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   CHECKER-STORAGE-PREPARE
    CHECKER-TAPE:DETACH
    EFFECT-XFER-CLEAR
    CK-GRAPH-RELEASE
@@ -18589,6 +20688,8 @@ package CHECKER-REG
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
 ' CWIN-QUOT-OUT                     DECLARATIONS CALL-QUOT-OUT-OFF + xt!
+' EFFECT-INIT-LAYOUT                DECLARATIONS CHECKER-OWNER-ABI:INIT-LAYOUT-OFF + xt!
+' EFFECT-FIELD-SPAN                 DECLARATIONS FIELD-SPAN-OFF + xt!
 ' TRUST-DECL                        DECLARATIONS TRUST-DECL-OFF + xt!
 ' NEUTRAL-PARSE-IMM?                DECLARATIONS PARSE-IMM-OFF + xt!
 ' EFFECT-QUERY                      DECLARATIONS EFFECT-QUERY-OFF + xt!

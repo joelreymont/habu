@@ -5,9 +5,9 @@
 \ gives the target loader, rather than the discarded build host, authoritative
 \ ownership of the complete runtime closure.
 \
-\ WHAT BELONGS HERE is the closure of the compiler, the JIT and the REPL and
-\ nothing else (Joel, 2026-09-16): no package and no type signature reaches the
-\ image unless one of those three requires it. tools/manifest-lint.f checks that
+\ WHAT BELONGS HERE is the closure of the compiler, the JIT, the REPL and the
+\ product's checked C2 storage. No other package or type signature reaches the
+\ image unless one of those entry points requires it. tools/manifest-lint.f checks that
 \ against this file - every row is either a declared entry point, with its reason
 \ on the row there, or a file some file in the closure requires - so a row added
 \ here for convenience fails the lint rather than growing the binary quietly.
@@ -103,6 +103,7 @@ s" lib/num-types.f" required
 s" lib/num-arithmetic.f" required
 s" lib/string.f" required
 s" lib/memory.f" required
+s" src/core/layout-buffer-address.f" required
 s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
 \ Later checked publications record their own visibility and minimum arity.
@@ -132,6 +133,17 @@ package NATIVE-RUNTIME
 execute
 s" src/habu/repl.f" required
 s" src/core/top-row.f" required
+s" lib/c2-owner.f" required
+s" lib/engine-id.f" required
+package SOURCE-ROOT
+private
+: INSTALL-ENGINE-PATH ( -- )
+   [: ENGINE-ID:PATH$ ;] is ENGINE-PATH-XT
+   1 ENGINE-PATH-BOUND !
+   0 ENGINE-ROOT-U ! 0 ENGINE-ROOT-READY ! ;
+' INSTALL-ENGINE-PATH
+;package
+execute
 
 package NATIVE-RUNTIME
 

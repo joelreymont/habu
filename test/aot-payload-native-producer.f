@@ -1,41 +1,5 @@
-\ Loaded after native-window-owner-child's checker handover. Match the cold
-\ engine's remaining prefix before opening a portable registry window.
-s" lib/prelude.f" provided
-include src/core/enums.f
-include src/core/type-family-sha.f
-include src/core/combinators.f
-require src/habu/code-span.f
-require src/habu/xref.f
-include src/core/generated-declaration-dictionary.f
-include src/core/generated-declaration-protection.f
-include src/core/layout-buffer-seal.f
-include src/core/lower-cert-seal.f
-require lib/errors.f
-require lib/span.f                        \ the prefix's place for it: right after errors.f
-require lib/adt/option.f
-require lib/num-types.f
-require lib/num-arithmetic.f
-require lib/string.f
-require lib/memory.f
-require lib/vector.f
-
-package PAYLOAD-NATIVE-PRODUCER
-ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
-;package
-
-s" src/habu/layout.f" provided
-s" src/core/checker-owner-abi.f" provided
-require src/habu/aot-arm.f
-require src/arch/arm64/asm.f
-require src/arch/arm64/icode.f
-require src/habu/aot-decl.f
-require src/habu/aot-capture.f
-require src/habu/aot-ident.f
-require src/habu/fdio.f
-require src/habu/aot-file.f
-
-1 set-tier
-AOT-ARM:WINDOW-OPEN
+\ The preparation opened the window; its retained driver then opened the
+\ compiler's literal pool before loading these real native definitions.
 
 package PAYLOAD-NATIVE
 public
@@ -56,6 +20,20 @@ TRUSTED: ASSERTED ( n -- n ) ;
 
 : PAIR-SUM ( pair -- n ) PAYLOAD--NATIVE-PAIR:UNMAKE + ;
 
+\ Abstract views are capturable code effects; this window creates no live view.
+: VIEW-COPY ( read-view<p,q,a> -- read-view<p,q,a> read-view<p,q,a> ) dup ;
+: VIEW-WRAP ( read-view<p,q,a> -- option<read-view<p,q,a>> ) OPTION:SOME ;
+: VIEW-UNWRAP ( option<read-view<p,q,a>> -- read-view<p,q,a> )
+   MATCH option
+      none OF 1 throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+private
+variable QUOTE-SLOT
+public
+: QUOTE-STORE ( [ R -- R ] -- ) QUOTE-SLOT xt! ;
+
 ;package
 
 AOT-ARM:WINDOW-CLOSE
@@ -72,6 +50,7 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    AOT-IDENT:RESET
+   s" test/aot-payload-native-prepare.f" AOT-IDENT:PATH+
    s" test/aot-payload-native-producer.f" AOT-IDENT:PATH+
    FSHA-CTX s" HABU_PAYLOAD_TEST_ENGINE" GETENV KEY SHA256-FILE-IN 0 EQ
    KEY s" HABU_PAYLOAD_TEST_ARTIFACT" GETENV AOT-FILE:WRITE

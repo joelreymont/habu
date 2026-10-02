@@ -14,13 +14,17 @@ $2A constant ANSWER
 
 TASK:MIN-STACK TASK:TASK WORKER
 variable RAN
+variable EXIT-RAN
+
+: EXIT-STEP ( -- ) 1 EXIT-RAN +! ;
 
 : STEP ( -- )
    1 RAN +!
    ANSWER TASK:RETURN ;
 
 : ARM ( -- )
-   WORKER TASK:PREPARE ;
+   WORKER TASK:PREPARE
+   ['] EXIT-STEP WORKER TASK:AT-EXIT ;
 
 ARM
 
@@ -36,6 +40,7 @@ public
 \ prepares it again, and the worker's answer proves the task ran in THIS process.
 : RUN ( -- )
    0 RAN !
+   0 EXIT-RAN !
    ['] STEP WORKER TASK:ACTIVATE
    WORKER TASK:JOIN ANSWERED? 0= if
       s" stripped-lifecycle-tasks: worker did not answer" FAILURE-RC die
@@ -43,6 +48,9 @@ public
    WORKER TASK:KILL
    RAN @ 1 <> if
       s" stripped-lifecycle-tasks: worker did not run" FAILURE-RC die
+   then
+   EXIT-RAN @ 1 <> if
+      s" stripped-lifecycle-tasks: exit callback lost" FAILURE-RC die
    then
    s" stripped-lifecycle-tasks: ok" type cr ;
 

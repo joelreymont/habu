@@ -18,6 +18,18 @@ using A64ASM
 \ read the window - and closes beside the A64ASM one.
 using AOT-BUF
 
+\ Emitter selection only. Chosen offsets are baked as instruction literals;
+\ no emitted data cell can change a selected code entry's scope kind.
+variable EM-SCOPE-CHILD-OFF
+variable EM-C2-MUT-OFF
+variable EM-C2-MUT-LOAN-OFF
+variable EM-C2-INIT-OFF
+variable EM-C2-RECORDS-OFF
+variable EM-C2-RECORD-OFF
+variable EM-C2-FIELD-OFF
+8 constant EM-WF-INIT
+16 constant EM-WF-FIELD
+
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
 \ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
@@ -126,6 +138,8 @@ variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-e
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
+variable LTRUSTTICK   variable LTRUSTTICKMSG
+23 constant TRUSTTICKMSG-LEN
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
@@ -350,6 +364,8 @@ variable LPPRIMS
 variable LPLOWERCERTBASE
 variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
+variable LPADDRCELLS
+variable LPLAYOUTADDRESS
 variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSTACKABI
@@ -608,6 +624,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
+   LTRUSTTICKMSG LABEL@ LBL, s" hb: trusted-only tick: " BYTES,
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LPREFMISSMSG LABEL@ LBL, S\" hb: compile preflight hook missing\n" BYTES, \ PREFMISSMSG-LEN contiguous bytes
    LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
@@ -756,8 +773,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ behind: with one fixed arena, the recovery chain's hb-stdin-mk (about 1.1 MB
 \ of prefix ahead of 3.1 MB of baked compiler source) died `hb: source prefix
 \ buffer full`, exit 74, the moment the tree grew past their sum. The mapping
-\ and every bound check read this one length; the seed mirror in
-\ bootstrap/cg/forth.fs states the same sum.
+\ and baked-source copy use this length; disk, stdin and generated path rows
+\ stay within IBUFSZ. The seed mirror in bootstrap/cg/forth.fs states the same sum.
 : SOURCE-ARENA-LEN ( -- n )
    IBUFSZ SRCN @ + ;
 
@@ -771,8 +788,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    17 9 0 ADDI,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sbufull CBZ,                                \ no room left: arena overflow, not a read fault
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 sbufull CBZ,                              \ reserve the EOF probe within the read allowance
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -786,7 +803,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: x12 is the fd, no path to name; label the cause on fd 2
    1 LSRCREAD LABEL@ ADR,  0 2 MOVZ,  2 SRCREAD-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew the arena mid-read: name the buffer, not a read fault
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew its file allowance or the read arena
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    sopenerr LBL,                                  \ x12 = NUL-terminated source path (untouched since open)
@@ -802,11 +819,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 \ LSRCRDP: read one ENGINE PREFIX source file and drop the lines the interpreter
 \ would skip anyway. The prefix rows are 41 percent comment bytes, and every cold
-\ boot copies all of them into the source arena ahead of the program, inside the
-\ fixed IBUFSZ allowance an argv or stdin program shares with them
-\ (SOURCE-ARENA-LEN). The engine reads its prefix through this entry; LSRCRD
-\ keeps serving argv files and the certified --build payload byte for byte,
-\ because those are the user's source and the engine must not rewrite them.
+\ boot copies them into the read arena ahead of the program. The cold prefix
+\ and argv or stdin input share IBUFSZ; baked source has its own SRCN space.
+\ The engine reads its prefix through this entry; LSRCRD keeps serving argv
+\ files and the certified --build payload byte for byte.
 \
 \ THE RULE IS THE INTERPRETER'S OWN, AT LINE GRANULARITY. EM-COMMENT skips a
 \ one-byte `\` token to the newline, and habu1.f EMIT-TOK delimits tokens at any
@@ -980,7 +996,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 : C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
    2 11 0 ADDI,
-   5 SOURCE-ARENA-LEN LIT64,
+   5 IBUFSZ LIT64,
    2 2 5 ADD,
    9 2 CMP,
    C-GE fail BCOND,
@@ -1097,6 +1113,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    parts PFX-BASELIB and 0 <> if
       PFX-COMMON LPPRELUDE s" lib/prelude.f" row execute
       PFX-COMMON LPERRORS s" lib/errors.f" row execute
+      PFX-COMMON LPADDRCELLS s" src/habu/address-cells.f" row execute
+      PFX-COMMON LPLAYOUTADDRESS s" src/core/layout-buffer-address.f" row execute
    then
    parts PFX-RESTLIB and 0 <> if
       PFX-COMMON LPSPAN s" lib/span.f" row execute
@@ -1776,7 +1794,7 @@ public
    17 9 0 ADDI,
    SRC-RL LABEL@ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
       2 SRC-SFAIL LABEL@ CBZ,
       NR-READ SYS,
       13 C-CS CSET,  13 SRC-SFAIL LABEL@ CBNZ,
@@ -1858,16 +1876,22 @@ public
    14 14 1 ADDI, ;
 
 : C-SOURCE-APPEND-LF ( -- )
-   2 11 0 ADDI,  5 SOURCE-ARENA-LEN LIT64,  2 2 5 ADD,
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
    9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
    5 10 MOVZ,  5 9 0 STRB,  9 9 1 ADDI, ;
+
+: C-SOURCE-CHECK-ARGV ( -- )
+   2 DATA INE-CELL LDR,  5 SOURCE-ARENA-CAP LIT64,  2 2 5 ADD,
+   9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND, ;
 
 : C-SOURCE-FILE-LOOP ( -- )
    SRC-FLOOP LABEL@ LBL,
       14 15 CMP,  C-GE SRC-PIPEOK LABEL@ BCOND,
       C-SOURCE-APPEND-ARG
+      C-SOURCE-CHECK-ARGV
       14 15 CMP,  C-GE SRC-PIPEOK LABEL@ BCOND,
       C-SOURCE-APPEND-LF
+      C-SOURCE-CHECK-ARGV
       SRC-FLOOP LABEL@ B, ;
 
 : C-SOURCE-APPEND-LSRC ( -- )
@@ -1889,6 +1913,7 @@ public
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
    LCOLDPFX LABEL@ BL,
+   17 9 0 ADDI,
    C-SOURCE-APPEND-LSRC
    11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,   \ INE is the prefix end; the baked source is the second stream
    SRC-DONE LABEL@ B,
@@ -1930,6 +1955,7 @@ public
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX                                \ unseeded: the runtime, read from source, ahead of the program
    SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ runtime complete; seal before baked user source
+   2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-BFAIL LABEL@ BCOND,
    17 9 0 ADDI,
    9 DATA INE-CELL STR,                            \ the prefix is this boot's first stream and it ends here
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
@@ -1942,7 +1968,7 @@ public
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
    11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,  SRC-DONE LABEL@ B,   \ baked source: the second stream
-   SRC-BFAIL LABEL@ LBL,                                          \ source-arena overflow: label fd 2 before exit 74
+   SRC-BFAIL LABEL@ LBL,                                          \ prefix or baked-source overflow: label fd 2 before exit 74
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;
@@ -1990,6 +2016,7 @@ public
       12 SP 8 LDR,  12 noseal CBNZ,
       SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal the restored runtime before user source
    noseal LBL,
+      2 9 11 SUB,  5 SOURCE-ARENA-CAP LIT64,  2 5 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
       9 DATA INE-CELL STR,                         \ the prefix is the boot's FIRST stream and it ends here
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    skip LBL, ;
@@ -4874,6 +4901,54 @@ variable LTOPHOOK
    LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
+: C-SCOPE-ENTRY-TICK-GUARD ( n -- ) {: off:n :}
+   off 0 < if exit then
+   5 DICT-SIZE off + LIT64,  5 DBASE 5 ADD,
+   11 5 CMP,  C-EQ LINTERNAL LABEL@ BCOND, ;
+
+: C-SCOPE-ENTRY-GUARD ( -- )
+   EM-SCOPE-CHILD-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-MUT-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-MUT-LOAN-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-INIT-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-RECORDS-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-RECORD-OFF @ C-SCOPE-ENTRY-TICK-GUARD
+   EM-C2-FIELD-OFF @ C-SCOPE-ENTRY-TICK-GUARD ;
+
+: C-TRUSTED-TICK? ( -- )
+   LBL LBL LBL {: noquery:label restore:label query:label :}
+   SP SP 32 SUBI,
+   5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
+   \ The engine's cold source prefix installs trusted checker bridges before
+   \ SEAL-CAPTURE records its last dictionary entry. No user source can run
+   \ until that prefix finishes; the sealed watermark then keeps this path
+   \ closed for user ticks, including after a snapshot restore.
+   9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
+   \ A protected executable build reloads the checker from the prefix and
+   \ legitimately ticks its trusted bridge words before the new query exists.
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 noquery CBNZ,
+   \ While a replacement checker is loading, its target owner differs from
+   \ the source owner's completed record. Its own bridge registrations tick
+   \ trusted primitives before the target takes over certification.
+   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 query CBZ,
+   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
+   11 12 CMP,  C-NE noquery BCOND,
+   query LBL,
+   \ The active checker owner's query is an installed code identity. A later
+   \ definition with the same spelling cannot replace the query it compiled.
+   NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF DECL-OWNER:FIND
+   11 noquery CBZ,
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   17 G-POP
+   restore B,
+   noquery LBL,  17 0 MOVZ,
+   restore LBL,
+   5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
+   SP SP 32 ADDI, ;
+
+
 : C-TICK ( -- )
    LBL LBL LBL LBL {: tk:label usedtry:label found:label named:label :}
    LTOK LABEL@ BL,
@@ -4886,6 +4961,9 @@ variable LTOPHOOK
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
+   C-SCOPE-ENTRY-GUARD
+   C-TRUSTED-TICK?
+   17 LTRUSTTICK LABEL@ CBNZ,
    11 G-PUSH
    TOP-EV-TICK C-TOPHOOK-FLAGS
    tk B,
@@ -4924,6 +5002,16 @@ variable LTOPHOOK
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (`['] W` under a `using`)
    found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT: C-TICK's gate, at the only other place a name becomes an address
+   C-SCOPE-ENTRY-GUARD
+   SP SP 48 SUBI,
+   5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   C-TRUSTED-TICK?
+   17 SP 32 STR,
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
+   17 SP 32 LDR,  SP SP 48 ADDI,
+   17 LTRUSTTICK LABEL@ CBNZ,
    C-CODE-ADDR
    bk B,
    usedtry LBL,
@@ -7867,6 +7955,15 @@ ardone LBL,
    snorigin LBL,
    5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
+   \ The snapshot writer stored offsets for the baked unnamed-code span table
+   \ and blob. Text moves with ASLR; the region is restored at this run's DBASE.
+   LBL {: no-span:label :}
+   13 DATA AOT-CELLS:SPAN-N-CELL LDR,  13 no-span CBZ,
+      13 DATA AOT-CELLS:SPAN-TABLE-CELL LDR,  13 25 13 ADD,
+      13 DATA AOT-CELLS:SPAN-TABLE-CELL STR,
+      13 DATA AOT-CELLS:SPAN-BASE-CELL LDR,  13 DBASE 13 ADD,
+      13 DATA AOT-CELLS:SPAN-BASE-CELL STR,
+   no-span LBL,
    XDS DATA STACK-ABI:BASE-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
    13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
@@ -8828,6 +8925,7 @@ public
 \ - INSIDE an open package: publish an EXISTING word under its own tail into
 \   the CURRENT section wordlist — same code pointer, same body span,
 \   immediate/wide name bits copied — no forwarding body, zero runtime cost.
+\   Internal source words are refused before publication.
 \ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
 \   (`EXPORT word…` keeps extra words callable; lib/prelude.f rides it).
 \   COMMENT-EXPORTS strips these lines before hb-build compiles, and a plain
@@ -8935,6 +9033,7 @@ package INTERP-EMIT
    found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
+   C-SCOPE-ENTRY-GUARD                                 \ a checked scope entry has no raw callback admission at the prompt
    14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): a certified word's min input arity, or a primitive's from its prims.f row (ENGINE-PRIMS:DNAME); 0 = unguarded boundary
       14 14 8 LSRI,                                    \ x14 = min-in cells
       9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
@@ -9586,7 +9685,7 @@ private
    done LBL, ;
 
 : VALIDATE-WF ( label -- ) {: bad:label :}
-   LBL LBL LBL LBL LBL LBL LBL {: loop:label ordered:label flags:label fetch:label advance:label done:label xdone:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL {: loop:label ordered:label flags:label fetch:label advance:label done:label xdone:label idone:label fdone:label :}
    5 11 LOWER-CERT:WF-COUNT-CELL cells LDR,
    13 11 LOWER-CERT:HEADER-CELLS cells ADDI,
    14 0 MOVZ,  9 0 MOVZ,  8 0 MOVZ,  6 0 MOVZ,  7 0 MOVZ,
@@ -9604,8 +9703,16 @@ private
       9 1 MOVZ,
    flags LBL,
       17 13 3 cells LDR,
-      15 17 7 ANDI,  15 17 CMP,  C-NE bad BCOND,      \ flags subset {fetch,store,xpad}
+      15 17 31 ANDI,  15 17 CMP,  C-NE bad BCOND,     \ flags subset {fetch,store,xpad,init,field}
       17 3 CMPI,  C-EQ bad BCOND,
+      15 17 EM-WF-INIT ANDI,  15 idone CBZ,
+         17 EM-WF-INIT CMPI,  C-NE bad BCOND,
+         9 1 MOVZ,
+      idone LBL,
+      15 17 EM-WF-FIELD ANDI,  15 fdone CBZ,
+         17 EM-WF-FIELD CMPI,  C-NE bad BCOND,
+         9 1 MOVZ,
+      fdone LBL,
       15 17 LOWER-CERT:XPAD-FLAG ANDI,  15 xdone CBZ, \ layout-cap slice 4: xpad row marks needs-p2
          9 1 MOVZ,
    xdone LBL,
@@ -10141,6 +10248,68 @@ public
    14 DATA TRUSTED-CELL LDR,  14 LUNDEF LABEL@ CBZ,
    allowed LBL, ;
 
+\ Tier 0's pass 2 reads the source-bound init width at operand position 1.
+\ Position 0 remains the existing constructor-pad query. The certified record
+\ schema fixes bytes = width * CELL and alignment = CELL; a missing site is a
+\ certificate drift, never a one-cell default.
+: EM-P2-INIT-DESC ( -- )
+   EM-C2-INIT-OFF @ 0 <
+   EM-C2-RECORDS-OFF @ 0 < and
+   EM-C2-RECORD-OFF @ 0 < and IF EXIT THEN
+   LBL LBL LBL {: done:label found:label missing:label :}
+   9 DATA P2-CELL LDR,  9 done CBZ,
+   9 SP 0 LDR,
+   EM-C2-INIT-OFF @ 0 >= IF
+      10 DICT-SIZE EM-C2-INIT-OFF @ + LIT64,  10 DBASE 10 ADD,
+      9 10 CMP,  C-EQ found BCOND,
+   THEN
+   EM-C2-RECORDS-OFF @ 0 >= IF
+      10 DICT-SIZE EM-C2-RECORDS-OFF @ + LIT64,  10 DBASE 10 ADD,
+      9 10 CMP,  C-EQ found BCOND,
+   THEN
+   EM-C2-RECORD-OFF @ 0 >= IF
+      10 DICT-SIZE EM-C2-RECORD-OFF @ + LIT64,  10 DBASE 10 ADD,
+      9 10 CMP,  C-EQ found BCOND,
+   THEN
+   done B,
+   found LBL,
+   9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,
+   10 1 MOVZ,  LP2CWAT LABEL@ BL,
+   11 missing CBZ,
+   SP SP 16 SUBI,  10 SP 0 STR,
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   11 10 0 ADDI,  LVPUSHC LABEL@ BL,
+   10 SP 0 LDR,  11 10 3 LSLI,  LVPUSHC LABEL@ BL,
+   11 8 MOVZ,  LVPUSHC LABEL@ BL,
+   SP SP 16 ADDI,  done B,
+   missing LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL
+   done LBL, ;
+
+\ The checker records offset+1 so a first field has a positive certificate
+\ width. The selector token itself emits no code in either pass.
+: EM-P2-FIELD-DESC ( -- )
+   EM-C2-FIELD-OFF @ 0 < IF EXIT THEN
+   LBL LBL LBL {: done:label found:label missing:label :}
+   9 DATA P2-CELL LDR,  9 done CBZ,
+   9 SP 0 LDR,
+   10 DICT-SIZE EM-C2-FIELD-OFF @ + LIT64,  10 DBASE 10 ADD,
+   9 10 CMP,  C-EQ found BCOND,
+   done B,
+   found LBL,
+   9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,
+   10 1 MOVZ,  LP2CWAT LABEL@ BL,
+   11 missing CBZ,
+   10 10 1 SUBI,
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   11 10 0 ADDI,  LVPUSHC LABEL@ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,
+   10 2 MOVZ,  LP2CWAT LABEL@ BL,
+   11 missing CBZ,
+   11 10 0 ADDI,  LVPUSHC LABEL@ BL,
+   done B,
+   missing LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL
+   done LBL, ;
+
 
 : EM-COMPILE-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label prepare:label :}
@@ -10170,6 +10339,8 @@ public
       pdone LBL,
       SP SP 16 ADDI,
    noxc LBL,
+   EM-P2-INIT-DESC
+   EM-P2-FIELD-DESC
    LVSPILL LABEL@ BL,
    11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
@@ -10180,6 +10351,13 @@ public
       depthok LBL,
       C-CALL-COMPILE-IMMEDIATE
    notimm LBL,
+   EM-C2-FIELD-OFF @ 0 >= IF
+      LBL {: ordinary:label :}
+      9 DICT-SIZE EM-C2-FIELD-OFF @ + LIT64,  9 DBASE 9 ADD,
+      11 9 CMP,  C-NE ordinary BCOND,
+      12 6 MOVZ,  12 DATA CMM-CELL STR,
+      ordinary LBL,
+   THEN
    C-CALL  LMAIN LABEL@ B,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies; region-flip handled inside)
@@ -10418,6 +10596,11 @@ public
    LDIAGRET LABEL@ B,
    LINTERNAL LABEL@ LBL,                               \ branch target: TKA/TKL still hold the token (DNAME-INT reject)
    0 2 MOVZ,  1 LINTMSG LABEL@ ADR,  2 INTMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LTRUSTTICK LABEL@ LBL,
+   0 2 MOVZ,  1 LTRUSTTICKMSG LABEL@ ADR,  2 TRUSTTICKMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
@@ -11062,13 +11245,14 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 \ dictionary lookup (the checker's capture discipline). 1/2 = construct, 3/4/5 =
 \ match; each leg branches to LMAIN so the legs never fall into one another.
 : EM-COMPILE-ADT-MODE ( -- )
-   LBL LBL LBL LBL LBL {: s2:label s3:label s4:label s5:label off:label :}
+   LBL LBL LBL LBL LBL LBL {: s2:label s3:label s4:label s5:label field:label off:label :}
    LBL LADTPUSHTOK !  LBL LMFRTOP !  LBL LADTDIE !   \ allocate shared-routine labels
    9 DATA CMM-CELL LDR,  9 off CBZ,
    9 2 CMPI,  C-EQ s2 BCOND,
    9 3 CMPI,  C-EQ s3 BCOND,
    9 4 CMPI,  C-EQ s4 BCOND,
    9 5 CMPI,  C-EQ s5 BCOND,
+   9 6 CMPI,  C-EQ field BCOND,
    EM-ADT-CON-FAM
    \ Shared routine bodies, emitted after CON-FAM's unconditional LMAIN B, and
    \ before the s2 dispatch label: reached only via BL/B, never by fall-through,
@@ -11084,6 +11268,10 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    s3 LBL,  EM-ADT-MATCH-FAM
    s4 LBL,  EM-ADT-MATCH-VAR
    s5 LBL,  EM-ADT-MATCH-OF
+   field LBL,
+      LBCAP LABEL@ BL,
+      12 0 MOVZ,  12 DATA CMM-CELL STR,
+      LMAIN LABEL@ B,
    off LBL, ;
 package COMPILE-EMIT
 public
@@ -11243,7 +11431,7 @@ package LABELS
    LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
-   LBL LINTERNAL !  LBL LINTMSG !
+   LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
    LBL LMININ !  LBL LMINMSG !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
@@ -11275,6 +11463,8 @@ package LABELS
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
+   LBL LPADDRCELLS !
+   LBL LPLAYOUTADDRESS !
    LBL LPHABULAYOUT !
    LBL LPSTACKABI !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
@@ -11678,6 +11868,58 @@ variable CUR
    9 13 2 ANDI,
    A G-PUSH ;
 
+\ Entry kinds are fixed by the image emitter, never by source declarations or
+\ writable DATA. A restored alias has the same code entry and thus the same kind.
+: BSCOPE-KIND ( -- )
+   A G-POP
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: records:label record:label field:label mut:label loan:label child:label miss:label done:label :}
+   EM-C2-RECORDS-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-RECORDS-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE records BCOND,
+      A 6 MOVZ,  done B,
+   then
+   records LBL,
+   EM-C2-RECORD-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-RECORD-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE record BCOND,
+      A 7 MOVZ,  done B,
+   then
+   record LBL,
+   EM-C2-FIELD-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-FIELD-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE field BCOND,
+      A 8 MOVZ,  done B,
+   then
+   field LBL,
+   EM-C2-INIT-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-INIT-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE mut BCOND,
+      A 5 MOVZ,  done B,
+   then
+   mut LBL,
+   EM-C2-MUT-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-MUT-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE loan BCOND,
+      A 3 MOVZ,  done B,
+   then
+   loan LBL,
+   EM-C2-MUT-LOAN-OFF @ 0 >= if
+      5 DICT-SIZE EM-C2-MUT-LOAN-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE child BCOND,
+      A 4 MOVZ,  done B,
+   then
+   child LBL,
+   EM-SCOPE-CHILD-OFF @ 0 >= if
+      5 DICT-SIZE EM-SCOPE-CHILD-OFF @ + LIT64,  5 DBASE 5 ADD,
+      A 5 CMP,  C-NE miss BCOND,
+      A 2 MOVZ,  done B,
+   then
+   miss LBL,
+   A 0 MOVZ,
+   done LBL,
+   A G-PUSH ;
+
 \ Build sequencing: the section emitters join the emitter package habu1.f opens
 \ for EMIT-PRIMS, EMIT-PROTWID and EMIT-DICT, which they call bare, and FORTH is
 \ this package's one public word -- what src/habu/build.f, src/habu/stdin.f and
@@ -11699,6 +11941,7 @@ package ENGINE-EMIT
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
+   s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
    s" addr-cells-abi" ['] RELOC-EMIT:BVERSION FPRIM
@@ -11786,7 +12029,7 @@ public
 \ file refusing first, and the reason dot habu-reach-the-seed-d1326596 exists.
 \ The payload is last and is addressed only through TADR,, so its size cannot
 \ enter any reach.
-: FORTH-ORIGIN ( ptr u8 n n -- )
+: EMIT-FORTH-ORIGIN ( ptr u8 n n -- )
    CODE-ORIGIN:CAPTURE-ORIGIN!
    EMIT-RESET-BUILDER
    LABELS:INIT
@@ -11794,6 +12037,49 @@ public
    EMIT-SOURCE-BYTES
    EMIT-AOT-SEED
    LIMGEND LABEL@ LBL, ;                 \ nothing follows: this label IS the content length
+
+\ Every ordinary invocation chooses no scoped entry. Only a complete runtime
+\ may bind entries.
+: FORTH-ORIGIN ( ptr u8 n n -- )
+   -1 EM-SCOPE-CHILD-OFF !
+   -1 EM-C2-MUT-OFF !
+   -1 EM-C2-MUT-LOAN-OFF !
+   -1 EM-C2-INIT-OFF !
+   -1 EM-C2-RECORDS-OFF !
+   -1 EM-C2-RECORD-OFF !
+   -1 EM-C2-FIELD-OFF !
+   EMIT-FORTH-ORIGIN ;
+
+: FORTH-C2-ORIGIN ( ptr u8 n n n n n n n n n -- )
+   {: read:n mut:n loan:n init:n records:n record:n field:n :}
+   SEEDED-RUNTIME? 0= if s" habu2: C2 entries require complete runtime" 74 die then
+   read 0 < read AOT-BLOB-LEN @ >= or
+   mut 0 < mut AOT-BLOB-LEN @ >= or or
+   loan 0 < loan AOT-BLOB-LEN @ >= or or
+   init 0 < init AOT-BLOB-LEN @ >= or or if
+      s" habu2: C2 entry outside captured code" 74 die
+   then
+   records 0 < records AOT-BLOB-LEN @ >= or
+   record 0 < record AOT-BLOB-LEN @ >= or
+   field 0 < field AOT-BLOB-LEN @ >= or or or if
+      s" habu2: C2 record entry outside captured code" 74 die
+   then
+   read mut = read loan = or mut loan = or
+   read init = or mut init = or loan init = or
+   read records = or mut records = or loan records = or init records = or
+   read record = or mut record = or loan record = or init record = or records record = or
+   read field = or mut field = or loan field = or init field = or
+   records field = or record field = or if
+      s" habu2: duplicate C2 entry" 74 die
+   then
+   read EM-SCOPE-CHILD-OFF !
+   mut EM-C2-MUT-OFF !
+   loan EM-C2-MUT-LOAN-OFF !
+   init EM-C2-INIT-OFF !
+   records EM-C2-RECORDS-OFF !
+   record EM-C2-RECORD-OFF !
+   field EM-C2-FIELD-OFF !
+   EMIT-FORTH-ORIGIN ;
 
 \ Disk artifacts and ordinary source emission carry no positive capture proof.
 : FORTH ( ptr u8 n -- ) -1 FORTH-ORIGIN ;

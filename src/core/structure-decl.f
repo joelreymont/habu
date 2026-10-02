@@ -100,7 +100,12 @@ TRUSTED: FAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
 TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
 TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
+TRUSTED: FAM-PK@ ( n n -- n ) TFAM-PK@ ;
+TRUSTED: FAM-PK! ( n n n -- ) TFAM-PK! ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
+TRUSTED: QUOT-SCH ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
+   TYPE-DECL:PARSE-QUOT ;
+TRUSTED: QUOT-ROLLBACK ( -- ) TYPE-DECL:QUOT-ROLLBACK ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
@@ -114,8 +119,11 @@ TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
 TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
 TRUSTED: DV-HASH ( -- n ) DRV-HASH ;             \ derive feature code: hash
 TRUSTED: DV-ADDR ( -- n ) DRV-ADDR ;             \ derive feature code: address surface
+TRUSTED: DV-INIT ( -- n ) DRV-INIT ;
 TRUSTED: FAM-ADDR! ( n -- ) TFAM-DERIVE-ADDR! ;
 TRUSTED: FAM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
+TRUSTED: FAM-INIT! ( n -- ) TFAM-DERIVE-INIT! ;
+TRUSTED: FAM-INIT? ( n -- bool ) TFAM-DERIVE-INIT? ;
 TRUSTED: ADDR-FIXED-TAIL? ( ptr u8 n -- bool ) TFAM-ADDR-FIXED-TAIL? ;
 TRUSTED: DERIVED-TAIL? ( ptr u8 n -- bool ) TFAM-DERIVED-TAIL? ;
 TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;   \ public visibility code
@@ -123,11 +131,18 @@ TRUSTED: SD-SCH-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: SD-SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
 TRUSTED: SD-SCH-PTR ( n -- n ) SCHEMA-PTR ;
 TRUSTED: SD-SCH-APP ( n n n -- n ) SCHEMA-APP ;
+TRUSTED: SD-ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
 TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: SCH-OWNS-LINEAR? ( n -- bool ) TFCL-NODE? ;   \ node reaches a linear value
+TRUSTED: SCH-VALID? ( n n -- bool ) PF-SCHEMA-OK? ;
+TRUSTED: FIELD-SCHEMA@ ( n n n -- n ) DECL-EVENT:FIELD-SCHEMA@ ;
+TRUSTED: PK-CELL-KIND ( -- n ) PK-CELL ;
+TRUSTED: PK-SCOPE-KIND ( -- n ) PK-SCOPE ;
+TRUSTED: PK-REGION-KIND ( -- n ) PK-REGION ;
+TRUSTED: PK-TYPE-KIND ( -- n ) PK-TYPE ;
 TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
 TRUSTED: TK-PROD ( -- n ) TK-PRODUCT ;         \ single-shape record family kind
 
@@ -152,6 +167,11 @@ variable SD-CELLS      \ running field cell width (next field's slot / byte offs
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
 variable SD-SI         \ private digit-scan index
+variable SD-TI         \ byte index within one field type token
+
+$100 constant SD-ARG-CAP
+create SD-ARGS SD-ARG-CAP cells allot
+variable SD-ARG-N
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
    NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
@@ -224,9 +244,9 @@ SD-RESET
       drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
 
 \ ---------------------------------------------------------------------------
-\ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
-\ multi-char con names), positional letter params within arity, ptr T, and closed
-\ arity-0 layout/cell families. Everything else is unresolved.
+\ field type resolution -> a schema node. A type application records its child
+\ roots contiguously after nested applications have finished building theirs.
+\ Quotation effects are resolved through QUOT-SCH below.
 \
 \ A family that owns a linear value — directly or through its own fields — IS an
 \ accepted field type (dot habu-checker-enum-payload-9e1ae6cc). The structure then
@@ -243,22 +263,30 @@ SD-RESET
 \ remaining kind test still falls through to the unknown message because the only
 \ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
 \ ---------------------------------------------------------------------------
-: FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
+: FIELD-FAM? ( ptr u8 n -- n bool )
    ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
-   id TFAM-ARITY@ 0 <> IF
-      s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   id FAM @ = IF
+      s" field type cannot recursively name its owner"
+      E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
+: LETTER-TYPE ( ptr u8 n n -- n )       \ single-char type: param / n / f / r
+   {: want:n :}
    drop c@
    dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
    TFAM-DECL-CHAR>PARAM 0= IF
       drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup SD-ARITY @ < IF SD-SCH-PARAM EXIT THEN
+   dup SD-ARITY @ < IF
+      dup {: idx:n :}
+      want PK-SCOPE-KIND = want PK-REGION-KIND = or
+      want PK-TYPE-KIND = or IF
+         FAM @ idx want FAM-PK! THEN
+      SD-SCH-PARAM EXIT
+   THEN
    drop
    s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
@@ -272,13 +300,91 @@ SD-RESET
       s" field type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
 
+: SD-ARG+ ( n -- )
+   SD-ARG-N @ SD-ARG-CAP >= IF
+      s" field type application is too deep" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   SD-ARG-N @ cells SD-ARGS + !
+   SD-ARG-N @ 1 + SD-ARG-N ! ;
+
+: SD-DELIM? ( n -- bool )
+   dup 60 = over 44 = or swap 62 = or ;
+
+: SD-ATOM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SD-TI @ {: start:n :}
+   BEGIN
+      SD-TI @ u < IF a SD-TI @ + c@ SD-DELIM? 0= ELSE NO THEN
+   WHILE
+      SD-TI @ 1 + SD-TI !
+   REPEAT
+   SD-TI @ start = IF
+      s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a start + SD-TI @ start - ;
+
+defer SD-PARSE-NODE ( ptr u8 n n -- n )
+
+: SD-APP ( ptr u8 n n -- n ) {: a:ptr u:n fam:n :}
+   SD-ARG-N @ {: base:n :}
+   0
+   BEGIN
+      dup fam TFAM-ARITY@ >= IF
+         s" field type has too many arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      dup fam swap FAM-PK@ a u rot SD-PARSE-NODE SD-ARG+
+      1 +
+      SD-TI @ u >= IF
+         s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      a SD-TI @ + c@ dup 44 = IF
+         drop SD-TI @ 1 + SD-TI !
+      ELSE 62 = IF
+         SD-TI @ 1 + SD-TI !
+         dup fam TFAM-ARITY@ <> IF
+            s" field type has wrong arity" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+         SD-ROOT-N {: start:n :}
+         base BEGIN dup SD-ARG-N @ < WHILE
+            dup cells SD-ARGS + @ SCH-ROOT+ drop 1 +
+         REPEAT drop
+         base SD-ARG-N !
+         fam start rot SD-SCH-APP EXIT
+      ELSE
+         s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw
+      THEN THEN
+   AGAIN ;
+
+: SD-PARSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n want:n :}
+   a u SD-ATOM {: na:ptr nu:n :}
+   SD-TI @ u < IF a SD-TI @ + c@ 60 = ELSE NO THEN IF
+      na nu FIELD-FAM? 0= IF
+         drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      {: fam:n :}
+      SD-TI @ 1 + SD-TI !
+      a u fam SD-APP EXIT
+   THEN
+   nu 1 = IF na nu want LETTER-TYPE EXIT THEN
+   na nu CON-CODE dup 0 <> IF SD-SCH-CON EXIT THEN drop
+   na nu FIELD-FAM? IF {: fam:n :}
+      fam TFAM-ARITY@ 0 <> IF
+         s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+      fam 0 0 SD-SCH-APP EXIT
+   THEN drop
+   s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
+
+: SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
+SD-PARSER-INSTALL
+
+defer SD-QUOT-ELEM ( ptr u8 n -- n )
+: SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
+
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup s" [" CORE-STR= IF
+      2drop [: SD-NEXT ;] [: SD-QUOT-ELEM ;] [: SD-QUOT-FAIL ;] QUOT-SCH EXIT THEN
    2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SD-SCH-PTR EXIT THEN
-   dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
-   2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
+   0 SD-TI ! 0 SD-ARG-N !
+   2dup PK-CELL-KIND SD-PARSE-NODE {: node:n :}
+   SD-TI @ over <> IF
+      2drop s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   2drop node ;
+: SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
+SD-QUOT-INSTALL
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
    dup SCH-APP? IF SCH-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
@@ -306,6 +412,7 @@ SD-RESET
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 \ VISIBILITY IS NOT A CONDITION, for the same reason it is not one for the
 \ MAKE/UNMAKE pair (see the generation note at the head of this file): it decides
@@ -329,6 +436,7 @@ SD-RESET
    2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ FAM-ADDR! FAM @ DV-ADDR EMIT-DERIVE EXIT THEN
+   2dup s" init" CORE-STR=CI IF 2drop FAM @ FAM-INIT! FAM @ DV-INIT EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -402,18 +510,24 @@ SD-RESET
 \ the fields are what give it the MAKE/UNMAKE pair whose constructor package an
 \ accessor's public spelling is built from.
 : SD-ADDR-ARM ( -- )
-   FAM @ FAM-ADDR? 0= IF EXIT THEN
+   FAM @ FAM-ADDR? FAM @ FAM-INIT? or 0= IF EXIT THEN
    SD-MAKEABLE? 0= IF
-      s" derive addr requires a family with fields" E-DERIVE DECL-REJECT:REJECT throw THEN
+      s" derived fields require a family with fields" E-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ FAM-INIT? IF
+      s" derive init requires a canonical fixed-cell record"
+      E-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
+   NFLD @ 0 ?do
+      TOK @ FAM @ FLDBASE @ i + FIELD-SCHEMA@ FAM @ swap SCH-VALID? 0= IF
+         s" field type parameter has incompatible kinds"
+         E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   loop
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ SD-CELLS @ FAM-SLOTS!
-   \ No reason is armed for the generator's own rejects, for the same reason
-   \ ED-CLOSE arms none: they are raised past the last token this front end
-   \ holds, so an arming here would cover all of generation rather than the one
-   \ fault it names. The packet answers them from its code table.
+   \ The constructor generator's rejects use the packet's code table. The
+   \ initialized accessor's fixed-layout gate arms its own reason in SD-ADDR-ARM.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
    SD-ADDR-ARM ;
 
@@ -469,6 +583,7 @@ SD-RESET
 : SD-DRIVE ( -- )                      \ body, then resynchronize before reporting
    [: SD-BODY ;] catch {: rc:n :}
    rc 0= IF SD-RESET EXIT THEN
+   QUOT-ROLLBACK
    SD-RESYNC
    SD-RESET
    rc throw ;

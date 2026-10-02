@@ -76,8 +76,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 - Bind multi-cell values whole: `{: p :}` or `{: r:res<n,n> :}` (arity checked).
   Destructure only to compute; pass the whole local between words.
 - Quotations `[: … ;]` are xts, not closures. The token `[ in -- out ]` works as
-  a parameter, a `TYPED-VARIABLE` or a `TYPED-BUFFER` element, never a
-  `FIELD` (`E-TDECL-SYNTAX`):
+  a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
+  `STRUCTURE FIELD` value. A derived field accessor returns `ptr [ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
   quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`, rc 75) —
   pass the value on the stack or through a cell.
@@ -106,6 +106,44 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
+
+Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
+exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
+`C2-MEM:WITH-MUT` allocates bytes for a callback; `WITH-READ` and
+`WITH-MUT-LOAN` lend a child view and restore the original parent on return or
+throw. A child cannot escape its callback. `C2-MEM:ALLOC` appends zeroed storage
+to an explicit owner. Build that owner with `OWNER-SIZE` / `WITH-MUT`,
+`SEED-OWNER` / `WITH-INIT`, then `BIND` and `UNBIND` inside the initialized
+callback; [ownership-model.md](ownership-model.md#public-owner-recipe) has a
+checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
+the new unique view at that owner's close, including when an inner owner is
+active. `PUBLISH` consumes a mutable view to make it shared.
+Ordinary raw pointers remain lifetime-free.
+The task-local frame capacity is 32; the 33rd live open throws `E-C2-CAPACITY`
+(`-9360`) before acquisition. Live owner or loan image capture throws
+`E-C2-CAPTURE` (`-9364`); capture after close succeeds.
+
+`C2-MEM:WITH-INIT` admits a live unique byte view and a complete, non-owning
+fixed-cell record. Its callback uses `forall<i inside [l,T],[ ... ]>`: the fresh
+initialization scope is inside both the parent scope `l` and the scope
+dependencies of `T`. The callback receives `mut-view<p,i,a,init<i,T>>`; its
+result cannot let `i` escape. The original byte view returns after the record
+is cleared. See forth.md **Rules learned by refusal** and
+[ownership-model.md](ownership-model.md) **Typed storage and checker authority**.
+
+`C2-MEM:WITH-RECORDS` takes a unique byte view, a nonnegative count, and a
+committed `DERIVE init` fixed-cell product seed. One scope owns `count` copies
+and clears the complete extent when its callback returns. The callback carries
+an opaque linear `records<p,i,a,T>`; `C2-MEM:WITH-RECORD` loans element `n`
+as `mut-view<p,j,a,init<i,T>>` with `j inside i`, then restores the table.
+Indices are zero based, and an empty table is valid.
+
+`C2-MEM:WITH-FIELD name` lends a committed initialized record field from a
+unique `mut-view<p,i,a,init<i,T>>`. The bare `name` is a compile-time selector
+resolved against `T`; it is not a runtime value. The callback receives the
+field as `mut-view<p,j,field(a,name),init<i,F>>` with fresh `j inside i`, and
+the exact parent view returns. The field keeps initialization lifetime `i`;
+neither the child lifetime nor its projected region can escape.
 
 A caught result becomes readable on the success arm of core `code 0=` (or the
 false arm of core `code 0<>`) only when `code` is that catch's own status.
@@ -156,7 +194,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record, at most 32 cells | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
+| `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
 
 `PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
 snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come

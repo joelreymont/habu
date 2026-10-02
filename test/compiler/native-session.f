@@ -169,7 +169,7 @@ variable RC     variable EXITED
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZW2 ( -- n ) 2 ;\n" SB-APPEND
    S\" 0 set-tier\n" SB-APPEND
-   S\" HIR-WORD:SESSION-ROWS . ZW2 . cr\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = . ZW2 . cr\n" SB-APPEND
    SB$ ;
 
 \ A SESSION OPENED INSIDE A CALLER'S OWN CONTEXT IS A NAMED REFUSAL. A session
@@ -220,12 +220,10 @@ variable RC     variable EXITED
    s" a bare PREPARE leaves no claim on the arenas it unmapped" T-LABEL
    STANDDOWN-SRC$ EXEC  S\" 0\n0\n" ASSERT-OK
 
-   \ The count is the whole of the dialect's vocabulary, HIR-WORD:WORDS rows,
-   \ which is what a fresh session holds; test/compiler/native-hir.f pins that
-   \ equality structurally, and this case reads the number back out of a child
-   \ that stood its session down first.
+   \ A fresh session holds the whole dialect vocabulary, HIR-WORD:WORDS rows;
+   \ compare them in the child that stood its previous session down.
    s" and the definition after it opens a fresh session" T-LABEL
-   OUT$ S\" 94\n2\n" CONTAINS? TTRUE
+   OUT$ S\" -1\n2\n" CONTAINS? TTRUE
 
    s" a definition compiled inside a context is refused, not served" T-LABEL
    NESTED-SRC$ EXEC  S\" refused\n0\n5\n" ASSERT-OK ;

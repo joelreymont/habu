@@ -29,6 +29,8 @@ defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
 defer SOURCE-QUOT-IN ( n n -- n n )
 defer SOURCE-QUOT-OUT ( n n -- n n )
+defer SOURCE-INIT-LAYOUT ( n -- n n n )
+defer SOURCE-FIELD-SPAN ( n -- n n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -53,7 +55,9 @@ TRUSTED: BIND-SOURCE-CALLS ( -- )
    CHECKER-OWNER-ABI:CALL-GLUE-OFF s" source call glue" SOURCE-FIELD is SOURCE-CALL-GLUE
    CHECKER-OWNER-ABI:CALL-MATCH-OFF s" source match payload" SOURCE-FIELD is SOURCE-MATCH-PAYLOAD
    CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD is SOURCE-QUOT-IN
-   CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD is SOURCE-QUOT-OUT ;
+   CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD is SOURCE-QUOT-OUT
+   CHECKER-OWNER-ABI:INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD is SOURCE-INIT-LAYOUT
+   CHECKER-OWNER-ABI:FIELD-SPAN-OFF s" source field span" SOURCE-FIELD is SOURCE-FIELD-SPAN ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -77,6 +81,7 @@ TRUSTED: AS-N ( n -- [ -- n ] ) ;
 TRUSTED: AS-BOOL ( n -- [ -- bool ] ) ;
 TRUSTED: AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
 TRUSTED: AS-CELLS ( n -- [ n -- n n ] ) ;
+TRUSTED: AS-INIT-LAYOUT ( n -- [ n -- n n n ] ) ;
 TRUSTED: AS-QUOT-CELLS ( n -- [ n n -- n n ] ) ;
 TRUSTED: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
 TRUSTED: AS-NAME-PREDICATE ( n -- [ ptr u8 n -- bool ] ) ;
@@ -215,6 +220,16 @@ TRUSTED: USIG-TRUNCATE ( ptr u8 n -- )
 TRUSTED: CALL-CELLS ( n -- n n )
    CHECKER-OWNER-ABI:CALL-CELLS-OFF s" call cells" FIELD
    dup 0= if drop SOURCE-CALL-CELLS exit then
+   AS-CELLS execute ;
+
+TRUSTED: INIT-LAYOUT ( n -- n n n )
+   CHECKER-OWNER-ABI:INIT-LAYOUT-OFF s" init layout" FIELD
+   dup 0= if drop SOURCE-INIT-LAYOUT exit then
+   AS-INIT-LAYOUT execute ;
+
+TRUSTED: FIELD-SPAN ( n -- n n )
+   CHECKER-OWNER-ABI:FIELD-SPAN-OFF s" field span" FIELD
+   dup 0= if drop SOURCE-FIELD-SPAN exit then
    AS-CELLS execute ;
 
 TRUSTED: CALL-GLUE ( n -- n n )

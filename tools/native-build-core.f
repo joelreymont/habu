@@ -187,16 +187,21 @@ variable TARGET-SOURCE-BOUND
 TYPED-VARIABLE SOURCE-BIND [ -- ]
 TYPED-VARIABLE SOURCE-CHECK [ -- ]
 TYPED-VARIABLE SOURCE-CLOSE [ -- ]
+TYPED-VARIABLE SOURCE-TAIL [ -- ]
+
+: SOURCE-NOOP ( -- ) ;
 
 : SOURCE-POLICY! ( [ -- ] [ -- ] [ -- ] -- ) {: bind check close :}
    bind SOURCE-BIND !
    check SOURCE-CHECK !
-   close SOURCE-CLOSE ! ;
+   close SOURCE-CLOSE !
+   [: SOURCE-NOOP ;] SOURCE-TAIL ! ;
+
+: SOURCE-TAIL! ( [ -- ] -- ) SOURCE-TAIL ! ;
 
 : DEFAULT-SOURCE-BIND ( -- )
-   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
-
-: SOURCE-NOOP ( -- ) ;
+   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   s" REQUIRE-BOOT-OPEN" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
 
 : DEFAULT-SOURCE-POLICY ( -- )
    ['] DEFAULT-SOURCE-BIND ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY! ;
@@ -249,7 +254,8 @@ TYPED-VARIABLE SOURCE-CLOSE [ -- ]
    s" src/os/env-base.f" included
    s" src/core/include.f" included
    SOURCE-BIND @ execute
-   s" src/habu/native-runtime.f" included ;
+   s" src/habu/native-runtime.f" included
+   SOURCE-TAIL @ execute ;
 
 : OPEN-AND-COMPILE ( -- )
    \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
@@ -301,6 +307,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
+   s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT
@@ -357,8 +364,8 @@ variable SMOKE-DIR-U
 \ is a multi-cell value, which cannot be passed through interpret-mode evaluate.
 TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
-: SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
-   s" NATIVE-EMIT:WRITE" XREF-FIND dup XREF-FOUND? 0= if
+: SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   XREF-FIND dup XREF-FOUND? 0= if
       drop s" native-build: source writer missing" BUILD-RC die
    then
    dup XREF-RETIRED? if
@@ -372,6 +379,9 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
    then
    xt WRITER-XT ;
 
+: SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
+
 \ SOURCE LOADED AFTER THE CAPTURE COMPILES FOR THE WINDOW'S MACHINE. The
 \ window's last act, src/habu/native-runtime.f CHECKER-REG:SEAL, runs
 \ NCOMP:INSTALL, which puts the window's compiler in the dispatch cell this
@@ -381,7 +391,9 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \ window's compiler lowered the writer's first new file, src/arch/arm64/icode.f,
 \ for x86-64 inside this AArch64 engine and refused ICODE-MAP>PTR with
 \ E-X64EMIT-PLACE. Such a window's writer has to be compiled before the window
-\ opens, and none is, so its build stops here, captured and with nothing written.
+\ opens, and none is. The ordinary entry checks before opening the window,
+\ so it cannot load target sources that the foreign machine does not support.
+\ Other source-writer callers still check here before writing.
 \ NABI:BINDING, compiled with this file, answers for the building engine.
 : WRITER-MACHINE-CK ( -- )
    TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ if exit then

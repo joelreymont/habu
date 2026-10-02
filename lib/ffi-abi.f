@@ -297,7 +297,7 @@ variable FN-REGISTERED
 
 \ Library 0 is RTLD_DEFAULT and has no handle to acquire.
 : PROCESS-HANDLE ( -- n )
-   HB-TARGET-LINUX? if 0 exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 exit then
    HB-TARGET-MACOS? if -2 exit then
    E-FFI-LIBRARY throw ;
 
@@ -410,7 +410,7 @@ public
 private
 
 : ERRNO-SYMBOL$ ( -- ptr u8 n )
-   HB-TARGET-LINUX? if s" __errno_location" exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" __errno_location" exit then
    HB-TARGET-MACOS? if s" __error" exit then
    E-FFI-LIBRARY throw ;
 
@@ -514,6 +514,25 @@ public
 
 ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 
+\ A stripped image whose host already includes FFI needs its declarations in
+\ the image's DATA window. The names, paths and row metadata are the declarations
+\ made while loading the application; foreign addresses belong to the new
+\ process and must start unresolved. Keep the table private and hand its exact
+\ storage to the linker through the two callbacks.
+: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   FN-NAMES FN-MAX FN-NAME-CAP * carry execute
+   FN-LIBS FN-MAX cells carry execute
+   FN-ARGCS FN-MAX cells carry execute
+   FN-SPILLS FN-MAX cells carry execute
+   LIB-PATHS LIB-MAX LIB-PATH-CAP * carry execute
+   FN-N BYTE-VIEW CELL carry execute
+   LIB-N BYTE-VIEW CELL carry execute
+   ERRNO-FN-CELL BYTE-VIEW CELL carry execute
+   FN-ADDRS FN-MAX cells fresh execute
+   LIB-HANDLES LIB-MAX cells fresh execute
+   FN-REGISTERED BYTE-VIEW CELL fresh execute ;
+
 get-current prot-wid-add
 
 ;package
@@ -606,7 +625,21 @@ $20 constant SP-C
 $24 constant HEX-C                        \ '$' - the hex literal prefix
 $0A constant LF-C                         \ the diagnostic's line terminator
 2 constant DIAG-FD                        \ stderr
-$100 constant DIAG-CAP                    \ the refusal line: two $40 tokens and its wording
+
+: DECIMAL-WIDTH ( n -- n )
+   1 swap begin dup 10 >= while 10 / swap 1+ swap repeat drop ;
+
+\ The library-full line is the longest: a PATH-CAP path, two TOK-CAP tokens,
+\ the library row count, its literal wording and the line terminator.
+PATH-CAP
+s" ffi: library table full at " nip +
+FFI:LIBRARY-MAX DECIMAL-WIDTH +
+s"  rows: no library row for " nip +
+s" ; no declaration row for " nip +
+2 TOK-CAP * +
+s"  (symbol " nip +
+s" )" nip +
+1 + constant DIAG-CAP
 
 0 constant K-VALUE
 1 constant K-POINTER
@@ -656,6 +689,7 @@ variable CUR-LIB
 variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
+variable SCOPE-HOOK
 
 \ ---- the declaration token stream -----------------------------------------
 \ parse-name's span is transient, so every token is copied before the next one
@@ -987,7 +1021,17 @@ variable SCOPE-SET                         \ ... and whether one was stated at a
 \ consumer would share that one identity. A wordlist is the module a definition
 \ lands in, it is saved and restored with the package scope, and it separates two
 \ consumers even when their requires end at the same file.
+\ A selected declaration scope belongs to the source load that made it. The
+\ source is closed before capture, and its host wordlist id is not an image id.
+: CLEAR-SCOPE ( -- )
+   0 SCOPE-WID !
+   0 SCOPE-SET ! ;
+
 : RECORD-SCOPE ( -- )
+   SCOPE-HOOK @ 0= if
+      [: CLEAR-SCOPE ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT
+      1 SCOPE-HOOK !
+   then
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
 

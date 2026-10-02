@@ -350,10 +350,9 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min
 64 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
-\ The source-arena allowance for what boot reads - the cold prefix and an argv
-\ or stdin program - and the size at which the stage and maker drivers refuse
-\ the source they bake (src/habu/stage2.f, src/habu/maker.f). An image maps this
-\ plus the source it bakes: src/habu/habu2.f SOURCE-ARENA-LEN.
+\ Cold prefix and argv or stdin input share the read allowance. Baked source
+\ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f.
+\ Stage2 and maker readers each use SOURCE-ARENA-CAP for their input.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA
@@ -1075,6 +1074,7 @@ CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
 CHECKER-OWNER-ABI:WIDE-OFF constant DECL-WIDE-OFF
 CHECKER-OWNER-ABI:RESET-OFF constant DECL-RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
+CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 \ Everything below is the OPTIMIZING front end's half of the same record, and it
 \ is why the record exists at all for tier 1. That front end IS the checker's
 \ scan: the scan feeds the source tape the elaborator reads, answers the does>
@@ -1507,7 +1507,7 @@ FS-MUT-ABI:START constant END
 \ `trust`/`checker-defer` words — the drain replays only name+sig slot copies —
 \ and the table is empty whenever user source runs. test/protection-span.f pins
 \ this class at the DATA-START edge.
-64 constant PD-CAP                          \ pending slots: checker prefix needs ~48; leave room for new pre-trust defers
+128 constant PD-CAP                         \ pending slots with room beyond the checker prefix
 48 constant PD-NAME-CAP                      \ max qualified defer-name bytes per slot
 64 constant PD-SIG-CAP                       \ max effect-signature bytes per slot
 0  constant PD-NLEN-OFF                       \ in-slot: name length (u64)

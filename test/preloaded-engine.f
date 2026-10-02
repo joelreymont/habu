@@ -21,10 +21,10 @@
 \    own in the same process-wide tables.
 \ 2. A link on LINKER$ keeps the production maker script verbatim; its require
 \    of tools/aot-build.f is then a no-op.
-\ 3. A subject linked on LINKER$ requires nothing in the linker's own lib
-\    closure. A library already loaded is the copy the subject's require
-\    resolves to, and its cells sit below the capture window
-\    (tools/aot-build-open.f).
+\ 3. A subject linked on LINKER$ shares any library the linker already loaded.
+\    Such state sits below the capture window and needs a named AOT ownership
+\    claim; test/stripped-preloaded-runtime.f exercises the baked FFI and TASK
+\    claims. Other below-window state still gets the restored-span refusal.
 \ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
 \    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
 \    children would run the image too.
