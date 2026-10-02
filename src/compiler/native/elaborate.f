@@ -4096,12 +4096,15 @@ private
    DOES-EMPTY @ 0<> if DOES-AT @ 0 HIR:ADDR-NONE STAGE-LIT exit then
    DOES-AT @ DOES-FUN @ STAGE-FUN-ADDR ;
 
+\ The patch is the parent's last call, after every row CROSS-SCAN read, so it
+\ marks the body as calling here: a parent with no call before `does>` has none
+\ marked yet.
 : STAGE-DOES-PATCH ( -- )
    STAGE-DOES-ENTRY
    DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
-   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
-   1 CALL-NEED ! ;
+   1 CALL-NEED !
+   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ What a mention of a created word, a variable or a constant folds to
 \ (EMIT-FIXED-SYM): the cell, its kind as the dictionary's stamp translates.
@@ -4122,6 +4125,8 @@ private
    r lo hi DEFER-SCAN
    p r lo hi RESOLVE-SCAN
    r lo hi MEM-SCAN
+   \ The patch a parent ends in takes the order, which only the entry can mint.
+   FUN-KIND @ FUN-DOES-PARENT = if 1 TOK-NEED ! then
    r lo hi CROSS-SCAN ;
 
 : OPEN-FUN-BODY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )

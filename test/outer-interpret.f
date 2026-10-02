@@ -1457,6 +1457,19 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    s" habu: in oi-use: at 'OI-FV' expected: n actual: ptr u8" CASE$ GE-EXPECT-ERR-HAS ;
 
+\ A parent that calls nothing before `does>` still ends in the patch, and its
+\ code is native: one with no body before `does>` patches each word created
+\ before it runs, and one whose body is a loop and stack work alone patches as
+\ well.
+: DOES-ONLY ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-PAT ( -- ) does> ( -- n ) @ 1 + ; ' OI-PAT dup 1 + code-origin ." GE-SRC-LINE
+   s" create OI-B 5 , OI-PAT create OI-C 9 , OI-PAT OI-B . OI-C ." GE-SRC-LINE
+   s" : OI-SQ ( n -- ) 2 0 do loop drop does> ( -- n ) @ 2 * ; create OI-D 4 , 3 OI-SQ OI-D ." GE-SRC-LINE
+   s" oi-does-only.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 1\n6\n10\n8\n" CASE$ GE-EXPECT-OUT ;
+
 \ A second `does>` refuses naming `does>`, and a signature that is missing or
 \ open names the token as spelled, each at the line the cursor is on.
 : DOES-REFUSALS ( -- )
@@ -2012,6 +2025,7 @@ private
    BODY-IMMEDIATE-TIER-0
    DOES-SPLIT
    DOES-DEFINER
+   DOES-ONLY
    DOES-REFUSALS
    DOES-DATA-FULL
    DOES-CALLED
