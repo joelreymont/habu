@@ -282,11 +282,12 @@ REG-SCRATCH-SNAP-INSTALL
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
    fam FAM-QNAME-REND ;
 
-\ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
+\ PARAM-HEAD renders a family application's name; QREND adds the argument list.
+\ A hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
 \ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
 \ sig containing a lone hidden cell. Full runs never reach here: row rendering
 \ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
-: PARAM-START {: t:n :}
+: PARAM-HEAD {: t:n :}
    t HIDDEN-PARAM? IF
       1 RQM !
       64 EMIT1
@@ -299,8 +300,7 @@ REG-SCRATCH-SNAP-INSTALL
       THEN
    ELSE
       t FAM-NAME-REND
-   THEN
-   60 EMIT1 ;
+   THEN ;
 
 \ HID-RUN-REST ( n -- n bool ) : from a resolved S-PUSH node whose type is a
 \ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
@@ -433,15 +433,21 @@ create RBIND QDEPTH-MAX cells allot
         s" <live-scope-" RSTR r PAY RNUM 62 EMIT1
       endof
       T-ATOM of r ATOM-REND endof
+      \ Brackets only around arguments: a family applied to none renders as its
+      \ bare name, the spelling a signature uses and SIG-TYPE reads back (a bare
+      \ family token builds the same zero-argument application as `name<>`).
       T-PARAM of
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
-           r PARAM-START
-           0 BEGIN dup r PARAM>ARGC < WHILE
-             dup 0 > IF 44 EMIT1 THEN
-             r over PARAM>ARG d 1+ 0 RECURSE
-             1 +
-           REPEAT drop 62 EMIT1
+           r PARAM-HEAD
+           r PARAM>ARGC 0 > IF
+              60 EMIT1
+              0 BEGIN dup r PARAM>ARGC < WHILE
+                dup 0 > IF 44 EMIT1 THEN
+                r over PARAM>ARG d 1+ 0 RECURSE
+                1 +
+              REPEAT drop 62 EMIT1
+           THEN
         ELSE 63 EMIT1 THEN
       endof
       63 EMIT1

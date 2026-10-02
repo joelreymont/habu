@@ -3067,8 +3067,8 @@ create BIG $2000 allot   variable BIG-U
    {: outu:n erru:n :}
    outu 0 T=
    erru ESC-ROOT {: root:n :}
-   root s" declared_effect" s" n -- \:ckfefam<> " ESC-STR=
-   root s" expected" s" \:ckfefam<> " ESC-STR=
+   root s" declared_effect" s" n -- \:ckfefam " ESC-STR=
+   root s" expected" s" \:ckfefam " ESC-STR=
    root s" family" s" \:ckfefam" ESC-STR= ;
 
 : ESC-LABEL$ ( -- ptr u8 n )

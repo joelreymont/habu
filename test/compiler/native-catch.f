@@ -329,7 +329,7 @@ PRODUCT point 0
 
 \ The contents measurement of a MULTICELL window is what a quotation LITERAL
 \ cannot express: the literal route brings the window back as one
-\ `stale<option<point<>>>` (test/catch-stale-suite.f). `['] W catch` takes W's
+\ `stale<option<point>>` (test/catch-stale-suite.f). `['] W catch` takes W's
 \ OWN throw-edge evidence (the tick route), so the window is typed exactly when
 \ every throw path of W left it where it was: BUNDLE-KEPT builds a bundle and
 \ drops it before throwing, leaving the caller's option in place, and the

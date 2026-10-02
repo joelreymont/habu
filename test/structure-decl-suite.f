@@ -833,7 +833,7 @@ s" SDAG2 ( ptr sdagen<a> -- ptr n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ...but a type argument that is itself a FAMILY is not an instantiation of the
 \ accessor at all, whatever its width: the parameter binds no family term
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), so the call
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), so the call
 \ is refused at the accessor's own token before any address arithmetic is judged.
 STRUCTURE sdaw1 0 FIELD z n ;STRUCTURE                 \ one cell
 STRUCTURE sdaw2 0 FIELD z n FIELD w n ;STRUCTURE       \ two cells

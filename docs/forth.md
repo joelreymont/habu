@@ -449,7 +449,7 @@ certifies and keeps the quantifier) and the same arity check. The one spelling
 only a local has is `{: p:ptr :}`: an annotation is a single token, so the bare
 `ptr` means an INFERRED pointee, and `{: p:ptr n :}` is two locals, not a
 pointee. The annotation is asserted, not decoration: a wrong family, a scalar
-spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag<>), a wrong
+spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag), a wrong
 family argument and a bare tail of a family of arity > 0 are all refused. See
 [the multi-cell type
 rules](type-system.md#5-families-records-alternatives-and-generics).

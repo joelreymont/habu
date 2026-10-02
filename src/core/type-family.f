@@ -5519,7 +5519,7 @@ variable FPRJ-FFAM
 \ caller either, only by a generator that armed a window with an id its text does
 \ not describe. No caller reaches it today for a second reason as well — a type
 \ argument that is a family does not bind an accessor's parameter at all
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), and every
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), and every
 \ other argument is one cell. Its judgeable twin is RECORD-AT-EXACT? in
 \ src/core/checker.f, which a written-out `record-at` call DOES reach with a
 \ concrete wide pointee; test/structure-decl-suite.f case 15 pins it there, and

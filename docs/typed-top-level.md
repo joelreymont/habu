@@ -342,7 +342,7 @@ rule.** No per-kind NOM-SCALAR? widening should be implemented now.
 Probe evidence (current engine, rc captured):
 
 - Arity-0 nominal scalar IS governed: `variable NS-X  : NS-P ( -- ptr
-  attn-stage-q ) NS-X ;` rejects rc 70 (`expected: ptr attn-stage-q<>
+  attn-stage-q ) NS-X ;` rejects rc 70 (`expected: ptr attn-stage-q
   actual: ptr a`) — `NOMPTR-BLOCK?` (`src/core/checker.f:1161`) working as
   landed.
 - Parametric family is NOT: the identical shape with

@@ -1497,12 +1497,26 @@ s" DNI-NOWIDEN ( frame-idx -- n )" T-CHECK-REJECTS
 s" DNI-NOCAST ( n -- frame-idx )" T-CHECK-REJECTS
 s" DNI-DISTINCT ( frame-idx -- exposure-us )" T-CHECK-REJECTS
 s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
-\ user nominal types render by NAME in diagnostics, not as '?'
+\ user nominal types render by NAME in diagnostics, not as '?', and bare, as the
+\ source spells them: a family with no arguments has no '<>'. The needles are
+\ the whole rendered fields: the packet also echoes the source text in
+\ definition_source and declared_effect_source, so a bare 'frame-idx' would be
+\ found there even if the type renderer printed '?'.
 LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  -1 DIAG-JSON!
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
-DIAG-BUFFER$ s" frame-idx" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"frame-idx \"" T-HAS? -1 T=
+s" nominal declared effect renders bare" T-LABEL
+DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" T-HAS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
+\ The inferred effect REC-SIG renders for a sig-less word is that same spelling. A
+\ render is re-read as source (test/prop-test-core.f ROUNDTRIP re-declares a body
+\ with its rendered effect), and DNI-MK above shows the parser reads it; the AOT
+\ capture carries the verified graph, not this text (CHECKER-ASIG-CAPTURE).
+s" sigless nominal certifies" T-LABEL
+s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
+s" sigless nominal effect renders bare" T-LABEL
+ES-REND-SIG$ s" n -- frame-idx" T$=
 : T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES

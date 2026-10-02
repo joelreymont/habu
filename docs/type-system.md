@@ -116,7 +116,7 @@ anywhere downstream of it.
 
 Strictness is the whole point, and the probe that settles it is always the
 same. Write a checked word that returns a raw `7` where the nominal is
-declared, and watch it fail: `expected: num:byte-len<> actual: n`, exit 70.
+declared, and watch it fail: `expected: num:byte-len actual: n`, exit 70.
 
 `NUM` also shows the discipline that makes nominals worth having. Its
 constructors validate, and there is **no public inverse** anywhere — no word
@@ -159,9 +159,8 @@ because one declaration can stand for many concrete types: `option` is
 declared once with one parameter, and every use picks a payload —
 `option<n>`, `option<NUM:index>` — each a different concrete type from
 the same declaration. A declaration with zero parameters is still a family;
-it just has exactly one member, and the checker prints it with an empty
-parameter list — when an error message says `maki:datatype<>`, that trailing
-`<>` is the checker naming a zero-parameter family instance, not a typo.
+it just has exactly one member, and the checker prints it by its bare name,
+`maki:datatype`, the spelling a signature reads back.
 
 So: records and tagged alternatives are families, the generic containers are
 families, and the nominal wrappers of § 4 are families too — one substrate,
@@ -360,7 +359,7 @@ exactly one shape and needs no tag. The gap: `option<NUM:index>` works and is us
 production (`lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
 with a `MATCH` that unmakes the record inside the `some` arm. But
 `option<MAKI:datatype>` — an `option` over a plain tag `ENUM` — is rejected at the
-constructor: `expected: a actual: maki:datatype<>`, exit 70. The same rejection
+constructor: `expected: a actual: maki:datatype`, exit 70. The same rejection
 happens with a payload-free `SUMTYPE`, and with a tag family declared in the
 same package as the consumer, so this is not about package boundaries. It is
 about tagged families specifically: `NEWTYPE` and `STRUCTURE` instantiate a
@@ -464,8 +463,8 @@ TYPED-VARIABLE ZRP ptr ZZ:rec    \ a cell holding a record pointer
 with a one-cell type variable, so neither row admits it:
 
 ```
-habu: in z2: at 'ptr-field' expected: ptr a n actual: ptr zz:rec<> n
-habu: in z3: at 'BYTE-VIEW' expected: ptr a actual: ptr zz:rec<>
+habu: in z2: at 'ptr-field' expected: ptr a n actual: ptr zz:rec n
+habu: in z3: at 'BYTE-VIEW' expected: ptr a actual: ptr zz:rec
 ```
 
 So the fence the two dots are trying to build already stands on the far side of

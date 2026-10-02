@@ -106,7 +106,7 @@ public
    s" package NATIVE-FETCH-CHECK-TEST 0 0 2 NESTED-TAGS ;package" REFUSES
    s" only NFETCH-CHECK mints a frozen descriptor" T-LABEL
    s" package NATIVE-FETCH-CHECK-TEST : FORGED ( -- ) VALUE NESTED NFETCH-CHECK:TAGS ; ;package"
-   S\" habu: in forged: at 'NFETCH-CHECK:TAGS' expected: ptr u8 nfetch-check:frozen<> actual: ptr a ptr b \nhook: non-certified definition: forged at 'NFETCH-CHECK:TAGS'\n"
+   S\" habu: in forged: at 'NFETCH-CHECK:TAGS' expected: ptr u8 nfetch-check:frozen actual: ptr a ptr b \nhook: non-certified definition: forged at 'NFETCH-CHECK:TAGS'\n"
    REFUSES-FORGERY
    T-REPORT ;
 

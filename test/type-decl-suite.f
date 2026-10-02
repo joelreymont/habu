@@ -2160,15 +2160,15 @@ s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
 \ enum-tier annotation term on the EXPECTED side of the :} bind check
 \ (pre-fix rendered 'expected: oplv<>').
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: tdlv<> actual: tdlp<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: tdlv actual: tdlp " TDT-CONTAINS? -1 T=
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2177,7 +2177,7 @@ NEWTYPE tdlrfam 0
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " TDT-CONTAINS? -1 T=
 
 \ Same row, but the package was declared in UPPER case. TDLR4 above cannot see
 \ the difference — `tdlrpk` is already lowercase — so the renderer used to echo
@@ -2194,18 +2194,18 @@ NEWTYPE tdlrfamu 0
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu<> \"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu<> \"" TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" TDT-CONTAINS? 0 T=
 0 DIAG-JSON!
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2213,8 +2213,8 @@ DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu<> \"" TDT-CONTAINS? 0 T=
 package tdlrpku
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " TDT-CONTAINS? 0 T=
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 
@@ -2287,7 +2287,7 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2<>>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" TDT-CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2330,7 +2330,7 @@ DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2<>,n>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=

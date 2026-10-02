@@ -291,14 +291,14 @@ create PACKET-BUF FS-PATH-CAP allot
    JNEXT s" byte_start" 2 JNUM
    JNEXT s" byte_end" 13 JNUM
    JNEXT s" definition_source" s" DIAG-FAMILY ( n -- rptzrc ) " JSTR
-   JNEXT s" declared_effect" s" n -- rptzrc<> " JSTR
+   JNEXT s" declared_effect" s" n -- rptzrc " JSTR
    JNEXT s" declared_effect_source" s" n -- rptzrc" JSTR
    JNEXT s" inferred_effect" s" n -- n " JSTR
    JNEXT s" return_stack" JSONW-KEY JSONW-OBJECT-START
    s" expected" s" " JSTR
    JNEXT s" actual" s" " JSTR
    JSONW-OBJECT-END
-   JNEXT s" expected" s" rptzrc<> " JSTR
+   JNEXT s" expected" s" rptzrc " JSTR
    JNEXT s" actual" s" n " JSTR
    JNEXT s" family" s" rptzrc" JSTR
    JNEXT s" suggestion" s" Change the body so produced types match the signature." JSTR

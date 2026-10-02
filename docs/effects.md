@@ -205,9 +205,9 @@ Three consequences follow directly from that substrate.
   `frame-idx` inside the declaring package and `PKG:frame-idx` outside it.
 - **It is package-scoped.** `DEFTYPE SERIAL` in package `CAMERA` and `DEFTYPE
   SERIAL` in package `FRAME` are two unrelated types with no collision.
-- **A mismatch renders the family application, with its empty argument list.**
-  `: F ( n -- frame-idx ) ;` rejects with
-  `expected: frame-idx<> actual: n` — the `<>` is part of the rendering.
+- **A mismatch names the type as the source spells it.**
+  `: F ( n -- frame-idx ) ;` rejects with `expected: frame-idx actual: n`; a
+  family renders its argument brackets only when it has arguments.
 
 `DEFTYPE` auto-derives the explicit converter pair `>NAME ( n -- name )` and
 `NAME>N ( name -- n )` as no-op identity casts, exactly like `>IDX`/`IDX>N`.
@@ -258,8 +258,7 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   `VALUE-RECORD` and `tools/check.f` refuse the same names; `CELL` is a legal
   name beside `cell`.
 - **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
-  `expected: own actual: n` — no `<>`, because this is a table entry, not a
-  family application.
+  `expected: own actual: n`.
 - **No converters are derived.** Producers and consumers are yours to declare;
   they are what makes the type usable at all.
 - It is top-level-interpret-only and is rejected inside a checked body.
@@ -755,7 +754,7 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   **The seal holds on every path, because it is applied where the cell is
   defined.** `here` is sealed by a baked primitive effect, so it has always held
   everywhere: `: N>ID2 ( n -- CAD-KIND:region ) here ! here @ ;` rejects with
-  `expected: CAD-KIND:region<> actual: a` under a plain `bin/hb --load`. The
+  `expected: cad-kind:region actual: a` under a plain `bin/hb --load`. The
   defining words are now sealed the same way. Whenever the engine publishes a
   word that owns a cell of raw dictionary storage it registers that word's
   effect through `trust-raw` (`TRUST-RAW`, `src/core/checker.f`) instead of
@@ -766,7 +765,7 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   and the `does>`-declared created-word effect (`C-CALL-TRUST-LASTC`), which is
   what seals `PTR-VARIABLE` and every user-written `create ... does>` definer.
   So `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` over a `variable V` rejects
-  under `bin/hb --load` with `expected: CAD-KIND:region<> actual: a`, and so
+  under `bin/hb --load` with `expected: cad-kind:region actual: a`, and so
   does the same forge through `create`, `constant`, or a definer whose `does>`
   clause declares a free type variable such as `( -- a )`.
 

@@ -146,7 +146,7 @@ public
 \ must declare that bundle; a tail caller must declare the same width in as out;
 \ and a bundle cannot be taken apart into cells without a dispatch, which is
 \ control flow no tail caller has yet. `( n n n -- n n n )` holding a construction
-\ is refused by the checker before the chain sees it (`expected: a actual: pt<>`,
+\ is refused by the checker before the chain sees it (`expected: a actual: pt`,
 \ measured), which is the honest reason this file has two rows here and not three.
 PRODUCT pt 0
    FIELD x n
