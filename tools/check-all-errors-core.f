@@ -256,6 +256,19 @@ variable CA-JSON
    CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
    DUP-RC CA-RAW-FAILURE ! ;
 
+: CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
+   begin dup CA-SRC-U @ < if CA-SRC-A@ over + c@ 32 > else CA-FALSE then while
+      1+
+   repeat ;
+
+\ Each lexer defect sits at an opener word, a string opener or a row opener, so
+\ the reported token is that word read out of the source, at its own width.
+: CA-LEX-TOKEN-U ( -- n )
+   LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
+
+: CA-LEX-TOKEN$ ( -- ptr u8 n )
+   CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
+
 : CA-JSON-LEX-UNTERM ( -- )
    LJW-RESET
    LJW-OBJECT-START
@@ -263,34 +276,22 @@ variable CA-JSON
    s" code" LJW-KEY s" E-UNTERMINATED-STRING" LJW-STRING LJW-COMMA
    s" repair_class" LJW-KEY s" close_string" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + 2 LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
    s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ 2 + LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
    LJW-OBJECT-END
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
-   begin dup CA-SRC-U @ < if CA-SRC-A@ over + c@ 32 > else CA-FALSE then while
-      1+
-   repeat ;
-
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
 \ exactly like an open string does, but it needs its own code and its own repair
 \ text: a caller told to close a string literal will look for a quote that is not
-\ there. The diagnostic site is the row OPENER, so the reported token is the opener
-\ word read out of the source.
-: CA-ROW-TOKEN-U ( -- n )
-   LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
-
-: CA-ROW-TOKEN$ ( -- ptr u8 n )
-   CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-ROW-TOKEN-U ;
-
+\ there.
 : CA-ROW-SUGGESTION$ ( -- ptr u8 n )
    s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE." ;
 
@@ -301,12 +302,12 @@ variable CA-JSON
    s" code" LJW-KEY s" E-MALFORMED-REGISTRY-ROW" LJW-STRING LJW-COMMA
    s" repair_class" LJW-KEY s" close_primitive_row" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-ROW-TOKEN$ LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
    s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-ROW-TOKEN-U + LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
    LJW-OBJECT-END
    LJW$ CA-ERR
@@ -523,9 +524,12 @@ private
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
-: CA-RUN-SOURCE ( -- )
+: CA-LEX ( -- )
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   CA-HANDLE-LEX-DEFECT
+   CA-HANDLE-LEX-DEFECT ;
+
+: CA-RUN-SOURCE ( -- )
+   CA-LEX
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
@@ -590,6 +594,17 @@ public
    patha pathu CA-READ-SOURCE
    CA-WHOLE
    [: CA-RUN-SOURCE ;] SESSION ;
+
+\ Report the lexer defect of the source file at the given path under the given
+\ label, by the record FILE writes for it, and throw the refusal status; return
+\ when the file lexes clean. Nothing is checked, so a caller that cannot check
+\ the file still reports the defect where it stands.
+: LEX-FILE ( ptr u8 n ptr u8 n -- )
+   {: labela:ptr labelu:n patha:ptr pathu:n :}
+   labela labelu CA-START
+   patha pathu CA-READ-SOURCE
+   CA-WHOLE
+   CA-LEX ;
 
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}

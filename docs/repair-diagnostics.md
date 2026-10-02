@@ -95,9 +95,13 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
 - `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
   `PPRIM:` primitive-axiom row opened at `token` does not close.
 
-The lexer cannot read past either defect, so `--all-errors` reports it in place
-of checking that source; without `--json-errors` it is the bare code on its own
-line.
+The lexer cannot read past either defect, so it is reported in place of
+checking that source. `--all-errors` reports both classes for a file or
+standard input; `tools/check.f` also reports an open string in a file in its
+default mode, in the file that holds it (a required file included), since
+source discovery stops there. Without `--json-errors` a file gets
+`check.f: discovery rejected: unterminated string` and standard input the bare
+code on its own line.
 
 A second definition of a name in one wordlist under `--all-errors` emits a
 definition-shaped object with code `E-DUPLICATE-DEFINITION` and repair class

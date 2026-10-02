@@ -1168,6 +1168,13 @@ variable LONG-J
    s"  nope ;" SB-APPEND
    SB$ ;
 
+: UNTERM-ESC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-UNTERM-ESC ( -- ptr u8 n ) s\" SB-APPEND
+   $22 SB-APPEND-C
+   s"  nope ;" SB-APPEND
+   SB$ ;
+
 : PREPARE ( -- )
    CLEANUP-RESET
    s" habu-check-test" HB-TMP-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
@@ -1635,15 +1642,6 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
-
-: EXPECT-UNTERM-STRING ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu CORE-JSON 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s" E-" CONTAINS? TTRUE ;
-
-: TEST-UNTERM-STRING ( -- )
-   UNTERM-SDQ$ EXPECT-UNTERM-STRING ;
 
 : TEST-DUP-ALL ( -- )
    DUP$SRC CORE-JSON $4E T=
@@ -3371,6 +3369,50 @@ variable REQ-U
    outu 0 T=
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
+
+\ A string the file never closes stops source discovery before any segment
+\ exists. Every --json-errors mode reports it by the one record --all-errors
+\ writes for it on standard input, in the file that holds it and at the string,
+\ and fails as a refusal; a source that requires the file reports it there. The
+\ record's token is the opener as written, so an escaped opener spans 3 bytes.
+: UT-FILES ( -- )
+   s" ckt-ut.f" REQ$ UNTERM-SDQ$ WRITE-ALL
+   s" ckt-ut-esc.f" REQ$ UNTERM-ESC$ WRITE-ALL
+   SB-RESET s" ckt-ut.f" REQ-LOAD+
+   s" ckt-ut-req.f" REQ-WRITE ;
+
+: EXPECT-UT ( n n n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n tok:ptr toku:n at:ptr atu:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru 10 COUNT-CHAR 1 T=
+   CAP-ERR erru s\" \"code\":\"E-UNTERMINATED-STRING\",\"repair_class\":\"close_string\"," CONTAINS? TTRUE
+   CAP-ERR erru tok toku CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: UT-MODES ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n tok:ptr toku:n at:ptr atu:n :}
+   a u ST-JSON-RUN tok toku at atu EXPECT-UT
+   a u REQ-PLAIN-RUN tok toku at atu EXPECT-UT
+   a u REQ-ALL-RUN tok toku at atu EXPECT-UT ;
+
+: UT-SDQ-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"s\\\"\",\"file\":" ;
+
+: UT-SDQ-AT$ ( -- ptr u8 n )
+   s\" /ckt-ut.f\",\"line\":1,\"column\":34,\"byte_start\":33,\"byte_end\":35," ;
+
+: UT-ESC-TOKEN$ ( -- ptr u8 n )
+   s\" \"token\":\"s\\\\\\\"\",\"file\":" ;
+
+: UT-ESC-AT$ ( -- ptr u8 n )
+   s\" /ckt-ut-esc.f\",\"line\":1,\"column\":34,\"byte_start\":33,\"byte_end\":36," ;
+
+: TEST-UNTERM-STRING ( -- )
+   UT-FILES
+   s" ckt-ut.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
+   s" ckt-ut-req.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
+   s" ckt-ut-esc.f" UT-ESC-TOKEN$ UT-ESC-AT$ UT-MODES ;
 
 \ The run refuses what the checker leaves to it: a `using` of a package nothing
 \ defines dies in the engine, which names the file and line it is reading. The

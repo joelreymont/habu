@@ -940,10 +940,25 @@ variable CHK-WALK-PENDING                \ body loaders still waiting
 : CHK-DISCOVER-ACT ( -- )
    CHK-DISC-ID @ CHK-DEP$ CHK-DISC-ID @ CHK-DEP-ROOT$ DISCOVER:RUN-IN ;
 
+\ Discovery stops at a string the file never closes without saying where. Under
+\ --json-errors the lexer reports the defect where it stands, by the record
+\ --all-errors writes for it, and the check fails as a refusal. An end the lexer
+\ does not see, such as a `{:` group left open, keeps discovery's line.
+: CHK-DISC-LEX-ACT ( -- )
+   CHK-DISC-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
+
+: CHK-DISC-LEX ( -- )
+   CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   [: CHK-DISC-LEX-ACT ;] catch {: rc:n :}
+   CHECK-ALL-ERRORS:OUT$ CHK-ERR
+   rc 0 <> if rc CHK-THROW then ;
+
 : CHK-EXPAND-SCAN ( n -- ) {: id:n :}
    id CHK-DISC-ID !
    [: CHK-DISCOVER-ACT ;] catch {: rc:n :}
    rc 0= if exit then
+   rc E-DISC-UNTERM = if CHK-JSON @ if CHK-DISC-LEX then then
    rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
    rc throw ;
 
