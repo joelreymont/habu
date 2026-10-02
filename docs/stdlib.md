@@ -2470,9 +2470,16 @@ and stderr go to two files under the given directory, read back into the two
 spans when it returns or throws, with its throw code (0 when it returned).
 Files rather than pipes keep output past a pipe's buffer from blocking the
 action and keep the capture out of the process row the action's own child
-captures reset. Output past a span throws `E-PROC-TRUNCATED`, and the streams
-and files are restored and removed on every exit path; one such capture runs
-at a time.
+captures reset. Each file is unlinked once it is open and read back through a
+descriptor of its own, so none is left behind, and a capture nested in the
+action reads its own bytes while the outer one keeps the rest. Eight captures
+may be open at once, and a ninth throws `E-TBL-BOUNDS`; the streams are the
+process's, so two tasks never capture at once.
+The streams a capture saves and the descriptors it reads through sit at fd 10
+or above and close on exec, so a child the action spawns inherits none of them.
+Output past a span throws `E-PROC-TRUNCATED`, even when a child the action left
+running wrote it after the action returned, and the streams are restored on
+every exit path.
 Test scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
 `GT-PROGRESS-PASS` after successful completion. Long poll loops should cap their
 poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet

@@ -177,85 +177,162 @@ variable GT-TAIL-U
 \ Files, not pipes: nothing drains a pipe while the action runs, so output past
 \ the pipe's buffer would block the action for good, and the action may run
 \ captures of its own through the task's one-capture row (lib/process.f).
-\ Output past a span's capacity throws E-PROC-TRUNCATED, as a child's capture
-\ does. Both streams come back and both files go on every exit path. The saved
-\ streams and the paths are process-wide, so one capture runs at a time.
-0 constant GT-F-DUPFD
-10 constant GT-FD-SAVE-MIN               \ a saved stream sits above the low descriptors
+\ A file is unlinked once it is open twice, appending as the stream and reading
+\ from its start for the capture, so no exit path leaves it behind and a
+\ capture nested in the action opens its own under the same name. A capture's
+\ state is a frame of its own: per stream, the stream it saved and the file's
+\ reader. A nested capture takes the next frame, so each reads its own bytes
+\ and the outer one gets its streams back; the streams are the process's, so
+\ two tasks never capture at once. Every descriptor a frame holds sits at
+\ GT-FD-HOLD-MIN or above and closes on exec, so a child the action spawns
+\ inherits none. The read is its own bound: output past a span throws
+\ E-PROC-TRUNCATED, as a child's capture does, even when a child the action
+\ left running wrote it after the action returned. Both streams come back on
+\ every exit path.
+10 constant GT-FD-HOLD-MIN               \ a held descriptor sits above the low ones
 1 constant GT-STDOUT-FD
 2 constant GT-STDERR-FD
+2 constant GT-CAP-ROWS                   \ a frame's rows: stdout, then stderr
+\ Captures open at once: tests nest two, and one past the bound is refused
+\ with E-TBL-BOUNDS before it takes a frame.
+8 constant GT-CAP-NEST-MAX
 
-create GT-CAP-OUT-PATH FS-PATH-CAP allot
-create GT-CAP-ERR-PATH FS-PATH-CAP allot
-variable GT-CAP-OUT-PATH-U
-variable GT-CAP-ERR-PATH-U
-variable GT-CAP-OUT-SAVE                 \ the stream fd 1 held while captured, else -1
-variable GT-CAP-ERR-SAVE                 \ the stream fd 2 held while captured, else -1
--1 GT-CAP-OUT-SAVE !
--1 GT-CAP-ERR-SAVE !
+\ Per frame and row, the stream the row saved and the row's file reader, -1
+\ until the row holds one.
+GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-SAVES n
+GT-CAP-NEST-MAX GT-CAP-ROWS * TYPED-BUFFER GT-CAP-READERS n
+variable GT-CAP-DEPTH                    \ frames in use
+create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
+1 BUFFER: GT-CAP-PROBE                   \ the byte a reader past a full span looks for
 
-: GT-CAP-OUT-PATH$ ( -- ptr u8 n )
-   GT-CAP-OUT-PATH GT-CAP-OUT-PATH-U @ ;
+\ fd's row in the innermost frame.
+: GT-CAP-ROW ( n -- n ) {: fd:n :}
+   GT-CAP-DEPTH @ 1- GT-CAP-ROWS * fd GT-STDOUT-FD - + ;
 
-: GT-CAP-ERR-PATH$ ( -- ptr u8 n )
-   GT-CAP-ERR-PATH GT-CAP-ERR-PATH-U @ ;
+: GT-CAP-SAVE ( n -- ptr n )
+   GT-CAP-ROW GT-CAP-SAVES ;
 
-\ fd writes to a new empty file at path; save keeps the stream fd held.
-: GT-CAP-REDIRECT ( ptr u8 n n ptr n -- )
-   {: path:ptr pathu:n fd:n save:ptr :}
-   path pathu s" " WRITE-ALL
-   fd GT-F-DUPFD GT-FD-SAVE-MIN fcntl {: kept:n :}
+: GT-CAP-READER ( n -- ptr n )
+   GT-CAP-ROW GT-CAP-READERS ;
+
+: GT-CAP-ENTER ( -- )
+   GT-CAP-DEPTH @ GT-CAP-NEST-MAX >= if E-TBL-BOUNDS throw then
+   GT-CAP-DEPTH @ 1+ GT-CAP-DEPTH !
+   -1 GT-STDOUT-FD GT-CAP-SAVE !
+   -1 GT-STDERR-FD GT-CAP-SAVE !
+   -1 GT-STDOUT-FD GT-CAP-READER !
+   -1 GT-STDERR-FD GT-CAP-READER ! ;
+
+\ A copy of fd at GT-FD-HOLD-MIN or above, close-on-exec from its first
+\ instant; -1 when the host refuses.
+: GT-CAP-DUP ( n -- n )
+   F-DUPFD-CLOEXEC GT-FD-HOLD-MIN fcntl ;
+
+\ A new empty file named name under dir, open for appending (the writer) and,
+\ held, for reading from its start (the reader). It is unlinked before either
+\ comes back; on a throw nothing is held.
+: GT-CAP-FILE ( ptr u8 n ptr u8 n -- n n )
+   {: dir:ptr diru:n name:ptr nameu:n :}
+   dir diru name nameu GT-CAP-PATH JOIN-PATH {: pathu:n :}
+   GT-CAP-PATH pathu FS-PATHZ
+   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-O-APPEND or FS-MODE-0644 open {: wr:n :}
+   wr 0 < if E-FS-OPEN throw then
+   GT-CAP-PATH pathu FS-PATHZ open-rd {: opened:n :}
+   GT-CAP-PATH pathu FS-PATHZ unlink {: gone:n :}
+   opened 0 < if wr close E-FS-OPEN throw then
+   opened GT-CAP-DUP {: rd:n :}
+   opened close
+   rd 0 < if wr close E-PROC-OUTPUT throw then
+   gone 0 < if wr close rd close E-FS-IO throw then
+   wr rd ;
+
+\ fd writes to a new file named name under dir; fd's row keeps the stream fd
+\ held before and the file's reader.
+: GT-CAP-REDIRECT ( ptr u8 n ptr u8 n n -- )
+   {: dir:ptr diru:n name:ptr nameu:n fd:n :}
+   fd GT-CAP-DUP {: kept:n :}
    kept 0 < if E-PROC-OUTPUT throw then
-   kept save !
-   path pathu OPEN-APPEND-FD {: file:n :}
-   file fd dup2 {: moved:n :}
-   file close-rc {: closed:n :}
+   kept fd GT-CAP-SAVE !
+   dir diru name nameu GT-CAP-FILE {: wr:n rd:n :}
+   rd fd GT-CAP-READER !
+   wr fd dup2 {: moved:n :}
+   wr close-rc {: closed:n :}
    moved 0 < if E-PROC-OUTPUT throw then
    closed 0 < if E-PROC-OUTPUT throw then ;
 
-\ fd takes back the stream save keeps, if it keeps one.
-: GT-CAP-RESTORE ( n ptr n -- )
-   {: fd:n save:ptr :}
-   save @ {: kept:n :}
-   kept 0 < if exit then
-   -1 save !
-   kept fd dup2 {: moved:n :}
-   kept close-rc {: closed:n :}
-   moved 0 < if E-PROC-OUTPUT throw then
-   closed 0 < if E-PROC-OUTPUT throw then ;
+\ One read from fd into dst past its first got bytes; 0 at the file's end.
+: GT-CAP-READ-AT ( n n SPAN:span<u8> -- n )
+   {: got:n fd:n dst :}
+   fd dst got SPAN:SKIP SPAN:$ read {: rd:n :}
+   rd 0 < if E-FS-IO throw then
+   rd ;
 
-: GT-CAP-REMOVE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
-   path pathu EXISTS? if path pathu REMOVE-FILE then ;
+\ The file behind the reader fd into dst, from its start. A byte past a full
+\ dst throws E-PROC-TRUNCATED, whenever it was written.
+: GT-CAP-READ ( n SPAN:span<u8> -- len )
+   {: fd:n dst :}
+   0 begin dup dst SPAN:LEN < while
+      dup fd dst GT-CAP-READ-AT
+      dup 0= if drop >LEN exit then
+      +
+   repeat
+   fd GT-CAP-PROBE 1 read
+   dup 0 < if E-FS-IO throw then
+   0 > if E-PROC-TRUNCATED throw then
+   >LEN ;
 
-: GT-CAP-RELEASE ( -- )
-   GT-STDOUT-FD GT-CAP-OUT-SAVE GT-CAP-RESTORE
-   GT-STDERR-FD GT-CAP-ERR-SAVE GT-CAP-RESTORE
-   GT-CAP-OUT-PATH$ GT-CAP-REMOVE
-   GT-CAP-ERR-PATH$ GT-CAP-REMOVE ;
+\ 0, or E-PROC-OUTPUT when fd, held unless it is -1, does not close.
+: GT-CAP-CLOSE ( n -- n )
+   {: fd:n :}
+   fd 0 < if 0 exit then
+   fd close-rc 0 < if E-PROC-OUTPUT exit then
+   0 ;
 
-: GT-CAP-READ ( ptr u8 n SPAN:span<u8> -- len )
-   {: path:ptr pathu:n dst :}
-   path pathu FILE-SIZE dst SPAN:LEN > if E-PROC-TRUNCATED throw then
-   path pathu dst SPAN:$ READ-ALL >LEN ;
+\ fd takes back the stream kept holds, unless it is -1: 0, or E-PROC-OUTPUT.
+: GT-CAP-RESTORE ( n n -- n )
+   {: fd:n kept:n :}
+   kept 0 < if 0 exit then
+   kept fd dup2 0 < if E-PROC-OUTPUT exit then
+   0 ;
 
-\ The files are read with the action's streams still on them; GT-CAP-RELEASE
+\ The first of two codes that is not 0.
+: GT-CAP-FIRST ( n n -- n )
+   {: a:n b:n :}
+   a 0<> if a exit then
+   b ;
+
+\ fd takes back the stream its row saved, and the row's descriptors close:
+\ 0, or E-PROC-OUTPUT when any of that is refused.
+: GT-CAP-RELEASE ( n -- n )
+   {: fd:n :}
+   fd fd GT-CAP-SAVE @ GT-CAP-RESTORE
+   fd GT-CAP-SAVE @ GT-CAP-CLOSE GT-CAP-FIRST
+   fd GT-CAP-READER @ GT-CAP-CLOSE GT-CAP-FIRST ;
+
+\ Both rows are released whatever either refuses, then the frame goes and the
+\ first refusal is thrown.
+: GT-CAP-LEAVE ( -- )
+   GT-STDOUT-FD GT-CAP-RELEASE
+   GT-STDERR-FD GT-CAP-RELEASE GT-CAP-FIRST {: rc:n :}
+   GT-CAP-DEPTH @ 1- GT-CAP-DEPTH !
+   rc 0<> if rc throw then ;
+
+\ The files are read with the action's streams still on them; GT-CAP-LEAVE
 \ gives the streams back after the read, on its path and on every throw.
-: GT-CAP-RUN ( [ -- ] SPAN:span<u8> SPAN:span<u8> -- len len n )
-   {: q out err :}
-   GT-CAP-OUT-PATH$ GT-STDOUT-FD GT-CAP-OUT-SAVE GT-CAP-REDIRECT
-   GT-CAP-ERR-PATH$ GT-STDERR-FD GT-CAP-ERR-SAVE GT-CAP-REDIRECT
+: GT-CAP-RUN ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
+   {: q dir:ptr diru:n out err :}
+   dir diru s" capture-out.txt" GT-STDOUT-FD GT-CAP-REDIRECT
+   dir diru s" capture-err.txt" GT-STDERR-FD GT-CAP-REDIRECT
    q catch {: code:n :}
-   GT-CAP-OUT-PATH$ out GT-CAP-READ
-   GT-CAP-ERR-PATH$ err GT-CAP-READ
+   GT-STDOUT-FD GT-CAP-READER @ out GT-CAP-READ
+   GT-STDERR-FD GT-CAP-READER @ err GT-CAP-READ
    code ;
 
 : GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
    {: q dir:ptr diru:n out err :}
    diru 0 <= if E-FS-PATH throw then
-   dir diru s" capture-out.txt" GT-CAP-OUT-PATH JOIN-PATH GT-CAP-OUT-PATH-U !
-   dir diru s" capture-err.txt" GT-CAP-ERR-PATH JOIN-PATH GT-CAP-ERR-PATH-U !
-   q out err [: GT-CAP-RUN ;] [: GT-CAP-RELEASE ;] finally ;
+   GT-CAP-ENTER
+   q dir diru out err [: GT-CAP-RUN ;] [: GT-CAP-LEAVE ;] finally ;
 
 : GT-LINE-FLUSH-U ( ptr u8 n -- n ) {: a:ptr u :}
    u 0 < if E-STR-BOUNDS throw then

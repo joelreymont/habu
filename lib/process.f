@@ -81,6 +81,13 @@ $FF constant PROC-WAIT-EXIT-MASK
    HB-TARGET-MACOS? if 4 exit then
    E-PROC-HOST throw ;
 
+\ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
+\ both Linux targets, 67 on macOS.
+: F-DUPFD-CLOEXEC ( -- n )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 1030 exit then
+   HB-TARGET-MACOS? if 67 exit then
+   E-PROC-HOST throw ;
+
 
 -1 constant PROC-NO-FD                   \ a closed / never-opened descriptor cell
 -1 constant PROC-NO-PID                  \ no child, and no armed reaper
