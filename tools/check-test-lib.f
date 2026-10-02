@@ -3398,6 +3398,65 @@ variable REQ-U
    SB-RESET USING-AT-LINES SB$ s" ckt-using-at.f" SOURCE
    [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
 
+\ A source whose first line starts with `#!` is a script: the engine reads that
+\ line as a comment in a file it runs or loads. check.f checks such a subject as
+\ the engine loads it - clean in prose, under --json-errors, from standard input
+\ and in a source list, where each file's own first line counts - and reports a
+\ refusal at the subject's own line. A `#!` on any later line is an ordinary
+\ token, which the engine refuses.
+: SHEBANG+ ( -- )
+   s" #!/usr/bin/env hb" REQ-LINE+ ;
+
+: SHEBANG-ONE-LINES ( -- )
+   SHEBANG+
+   s" : CKT-SB-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" CKT-SB-ONE drop" REQ-LINE+ ;
+
+\ The `using` stays on line 4, where EXPECT-USING-AT looks for it.
+: SHEBANG-USING-LINES ( -- )
+   SHEBANG+
+   s" : CKT-UA-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" : CKT-UA-TWO ( -- n ) 2 ;" REQ-LINE+
+   s" using CKT-UA-NOPE" REQ-LINE+ ;
+
+: SHEBANG-FILES ( -- )
+   SB-RESET SHEBANG-ONE-LINES s" sb-one.f" REQ-WRITE
+   SB-RESET SHEBANG+ s" : CKT-SB-TWO ( -- n ) 2 ;" REQ-LINE+ s" sb-two.f" REQ-WRITE
+   SB-RESET SHEBANG-USING-LINES s" sb-using.f" REQ-WRITE
+   SB-RESET s" : CKT-SB-LATE ( -- n ) 3 ;" REQ-LINE+ SHEBANG+ s" sb-later.f" REQ-WRITE ;
+
+: SHEBANG-LIST-RUN ( ptr u8 n ptr u8 n -- n n n ) {: a:ptr au:n b:ptr bu:n :}
+   RESET
+   LIST-OPT
+   a au REQ$ FILE
+   b bu REQ$ FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: EXPECT-SHEBANG-LATER ( n n n -- ) {: outu:n erru:n rc:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED: #!/usr/bin/env" CONTAINS? TTRUE ;
+
+: TEST-SHEBANG-CLEAN ( -- )
+   SHEBANG-FILES
+   s" sb-one.f" REQ-RUN EXPECT-ACCEPTED
+   s" sb-one.f" ST-JSON-RUN EXPECT-ACCEPTED
+   SB-RESET SHEBANG-ONE-LINES SB$ CLI-STDIN EXPECT-ACCEPTED
+   SB-RESET SHEBANG-ONE-LINES SB$ DIRECT-STDIN EXPECT-ACCEPTED
+   s" sb-one.f" s" sb-two.f" SHEBANG-LIST-RUN EXPECT-ACCEPTED ;
+
+: TEST-SHEBANG-AT-LINE ( -- )
+   SHEBANG-FILES
+   s" sb-using.f" REQ-RUN s" sb-using.f" REQ$ EXPECT-USING-AT
+   s" sb-using.f" ST-JSON-RUN s" sb-using.f" REQ$ EXPECT-USING-AT
+   SB-RESET SHEBANG-USING-LINES SB$ CLI-STDIN STDIN-LABEL$ EXPECT-USING-AT
+   s" sb-one.f" s" sb-using.f" SHEBANG-LIST-RUN s" sb-using.f" REQ$ EXPECT-USING-AT ;
+
+: TEST-SHEBANG-LATER ( -- )
+   SHEBANG-FILES
+   s" sb-later.f" REQ-RUN EXPECT-SHEBANG-LATER
+   s" sb-one.f" s" sb-later.f" SHEBANG-LIST-RUN EXPECT-SHEBANG-LATER ;
+
 \ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
 \ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
 \ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
@@ -3965,6 +4024,9 @@ POISON-RECORD
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
+   s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
+   s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
+   s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN
    s" check/capacity-throw" [: TEST-CAPACITY-THROW ;] CASE-RUN
    s" check/storage-type" [: TEST-STORAGE-TYPE ;] CASE-RUN
    s" check/storage-name" [: TEST-STORAGE-NAME ;] CASE-RUN

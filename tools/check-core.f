@@ -1778,10 +1778,14 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 \ A source the read admits can still outgrow the run file once the prefix and
 \ the origin marks join it; it is refused here, before the run.
+\ The engine comments a leading `#!` line only at the start of a file it reads,
+\ and the prefix starts the run file, so the run comments the subject's own.
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
    CHK-BUILD-PREFIX
-   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED ;
+   CHK-RUN-U @ {: at:n :}
+   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED
+   CHK-RUN-BUF at + CHK-RUN-U @ at - SOURCE-ROOT:SHEBANG-COMMENT ;
 
 : CHK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;

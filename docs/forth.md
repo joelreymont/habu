@@ -661,6 +661,9 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   file. Run multi-file tools as `hb --load lib/a.f lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
   is not a tty. Use `--load` only with more than one source file.
+- **A leading `#!` line is a comment** in a program `hb` runs from a file or
+  standard input, in every file `--load`, `include` and `require` load, and in
+  the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.
 - **Keep physical lines short.** Factor long `--load` builders and check-source
   appenders; a line near the interpreter input buffer truncates and surfaces
   later as unrelated top-level words.

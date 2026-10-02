@@ -997,6 +997,17 @@ public
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop INCLUDE-READ-ALL ;
 
+\ A source whose first two bytes are `#!` names its interpreter on that line,
+\ and the engine reads the line as a comment: the two bytes become `\ `, so
+\ every line and column stays the file's own. The program stream an engine
+\ runs gets the same rewrite (src/habu/habu2.f EMIT-SHEBANG-COMMENT).
+: SHEBANG-COMMENT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 2 < if exit then
+   a c@ $23 <> if exit then
+   a 1 + c@ $21 <> if exit then
+   $5c a c!
+   $20 a 1 + c! ;
+
 \ The loop a loaded file's bytes go through. INCLUDE-EVAL-BIND below binds the
 \ engine's `evaluate`; test/outer-loop-on.f binds the loop written in Habu,
 \ src/habu/interpret.f OUTER:INTERPRET, for the files loaded after it.
@@ -1009,6 +1020,7 @@ private
    SOURCE-INPUT:READ {: a:ptr u:n :}
    u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
    a SOURCE <> if a SOURCE u BYTE-COPY then
+   SOURCE u SHEBANG-COMMENT
    SOURCE u INCLUDE-INTERPRET ;
 
 : LOAD-UNIT ( -- )
