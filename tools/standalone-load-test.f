@@ -12,7 +12,11 @@
 \ src/habu/aot-capture.f died `using: unknown package: AOT-BUF` (aot-decl.f and
 \ aot-arm.f unrequired), and src/habu/aot-decl.f died E-UNDEFINED:
 \ AOT-SECTION-CAP (src/arch/arm64/icode.f unrequired); every other loader
-\ brought those files in first.
+\ brought those files in first. src/habu/aot-file.f, and src/habu/aot-owned.f
+\ through it, died the same way (aot-decl.f unrequired), src/arch/arm64/mnem.f
+\ died E-UNDEFINED: EMITW (icode.f unrequired), and src/habu/aot-lib.f died
+\ E-UNDEFINED: XDS (mnem.f unrequired; its loaders brought it in through
+\ src/habu/app-image.f).
 
 require lib/errors.f
 require lib/string.f
@@ -61,6 +65,14 @@ variable SL-EXITED
    s" src/habu/aot-decl.f" SL-LOADS
    s" src/habu/aot-capture.f loads standalone" T-LABEL
    s" src/habu/aot-capture.f" SL-LOADS
+   s" src/habu/aot-file.f loads standalone" T-LABEL
+   s" src/habu/aot-file.f" SL-LOADS
+   s" src/habu/aot-owned.f loads standalone" T-LABEL
+   s" src/habu/aot-owned.f" SL-LOADS
+   s" src/arch/arm64/mnem.f loads standalone" T-LABEL
+   s" src/arch/arm64/mnem.f" SL-LOADS
+   s" src/habu/aot-lib.f loads standalone" T-LABEL
+   s" src/habu/aot-lib.f" SL-LOADS
    T-REPORT
    s" standalone-load-test: ok" type cr ;
 

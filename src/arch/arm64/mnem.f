@@ -4,6 +4,8 @@
 \ The encoders are package A64ASM's public surface, imported here once and
 \ called bare: this layer is one line per mnemonic and a qualifier on every one
 \ of them would be all this file consists of.
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
 using A64ASM
 
 9 constant T0   10 constant T1   11 constant T2

@@ -999,7 +999,7 @@ package BUILD-FIXPOINT
 \ builder) and ahead of aot-decl.f, which is where the AOT artifact writer's
 \ closure begins.
 : BF-APPEND-FDIO ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" src/habu/fdio.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/fdio.f" BF-APPEND-MODULE ;   \ aot-file.f requires it
 
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/include.f" BF-APPEND-SOURCE
@@ -1098,7 +1098,7 @@ package BUILD-FIXPOINT
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
    out outu s" lib/prelude.f" BF-APPEND-MODULE
-   out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
+   out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
    out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-SYS
@@ -1124,7 +1124,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-decl.f" BF-APPEND-MODULE   \ aot-capture.f requires it
-   out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-ident.f" BF-APPEND-MODULE   \ aot-file.f requires it
    out outu BF-APPEND-FMT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
