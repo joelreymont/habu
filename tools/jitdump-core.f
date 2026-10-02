@@ -53,10 +53,10 @@ public
 : JIT-FIND ( ptr u8 n -- n )
    get-current search-wl dup 0= if s" jitdump: target word not found" 74 die then ;
 
-\ Evaluates caller source through the real compiler before lookup; retire with
-\ habu-builder-trust-rows-c5d41af6 when dynamic evaluation is checker-typed.
-TRUSTED: JIT-EVALUATE ( ptr u8 n -- )
-   evaluate ;
+\ Evaluates caller source through the real compiler before lookup. The program
+\ defines words and leaves nothing: a cell it leaves is E-EVAL-RESIDUE.
+: JIT-EVALUATE ( ptr u8 n -- )
+   evaluate-closed ;
 
 : JIT-MAIN ( -- )
    SCRIPT-ARGC 2 <> if JIT-USAGE then

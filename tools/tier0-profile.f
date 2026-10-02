@@ -66,13 +66,12 @@ variable DEC-K
 create SRC SRC-CAP allot
 variable SRC-N
 
-\ ---- the one trust boundary -------------------------------------------------
-\ `set-tier` and `evaluate` are both refused inside a plain checked body. Each
+\ ---- the two trust boundaries -----------------------------------------------
+\ `set-tier` and `set-check` are both refused inside a plain checked body. Each
 \ gets one row with nothing else in it, so the unchecked surface is the two
 \ primitives and not the measurement around them.
 
 TRUSTED: SELECT-TIER ( n -- ) set-tier ;
-TRUSTED: EVAL$ ( ptr u8 n -- ) evaluate ;
 TRUSTED: HOOK-OFF ( -- ) 0 set-check ;   \ the name may not fold to `set-check`: UNSAFE-TOK? is a case-folded spelling test
 
 \ ---- output -----------------------------------------------------------------
@@ -157,7 +156,7 @@ TRUSTED: HOOK-OFF ( -- ) 0 set-check ;   \ the name may not fold to `set-check`:
    script-argc 2 ?do i script-argv$ required loop ;
 
 : COMPILE-TRIVIAL ( n -- ) {: n :}
-   n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ EVAL$ loop ;
+   n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ evaluate-closed loop ;
 
 : REPORT-HEAD ( ptr u8 n n n -- ) {: name:ptr nu defs ns :}
    s" P " EMIT$  name nu EMIT$

@@ -153,8 +153,7 @@ TRUSTED: DISPATCH-CELL ( -- ptr [ ptr u8 n -- ] )
    msg mu EMIT-ERR
    thrown throw ;
 
-\ ---- the two trust boundaries this tool needs -------------------------------
-TRUSTED: EVAL$ ( ptr u8 n -- ) evaluate ;
+\ ---- selecting the tier -----------------------------------------------------
 TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- building one set, before the clock starts ------------------------------
@@ -220,7 +219,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
    s" undefine " SB-APPEND  LIVE-PREFIX PREFIX-U @ SB-APPEND  ix FMT:SB-U
-   SB$ EVAL$ ;
+   SB$ evaluate-closed ;
 
 : TEARDOWN ( -- )
    SET-LIVE? @ 0= if exit then
@@ -228,7 +227,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    0 SET-LIVE? ! ;
 
 : COMPILE-SET ( -- )
-   SET-N @ 0 ?do i DEF$ EVAL$ loop ;
+   SET-N @ 0 ?do i DEF$ evaluate-closed loop ;
 
 : DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
 

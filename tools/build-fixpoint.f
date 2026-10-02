@@ -83,11 +83,11 @@ BF-NEED-PREAMBLE
 \ this engine, not that it never ran - the mark is top-level in a prefix file, so
 \ every host that boots has reached it.
 \
-\ Through `evaluate`, and only after the resolvability check has passed, because
-\ the two clauses answer different hazards and the compile one comes first: a
-\ host without the word cannot COMPILE a body that names it, so this file's load
-\ would die E-UNDEFINED before any guard could speak. That is what a resolvability
-\ query is for, and it is why the value cannot simply be called.
+\ Through an evaluated text, and only after the resolvability check has passed,
+\ because the two clauses answer different hazards and the compile one comes
+\ first: a host without the word cannot COMPILE a body that names it, so this
+\ file's load would die E-UNDEFINED before any guard could speak. That is what a
+\ resolvability query is for, and it is why the value cannot simply be called.
 \
 \ WHAT THIS DELIBERATELY DOES NOT CHECK, and why the reason is a measurement and
 \ not an omission: that the recorded width still equals the seam's live one.
@@ -100,11 +100,21 @@ BF-NEED-PREAMBLE
 \ consumer can hold the two numbers at once. The property that the count comes
 \ OFF the seam is carried by construction instead: one assignment, in the file
 \ that owns the mark, from the seam itself.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
+variable BF-MARK-N
+
+public
+
+\ BF-MARK-CURSORS's text hands the value to this hook. The text runs in its
+\ caller's scope, which is outside this package when BF-PREFLIGHT runs, so it
+\ names the hook qualified. No other file calls it.
+: BF-MARK! ( n -- )
+   BF-MARK-N ! ;
+
+private
 
 : BF-MARK-CURSORS ( -- n )
-   s" PREFIX-MARK:CURSORS" BF-EVAL-N ;
+   s" PREFIX-MARK:CURSORS BUILD-FIXPOINT:BF-MARK!" evaluate-closed
+   BF-MARK-N @ ;
 
 : BF-REQUIRE-WATERMARK ( -- )
    BF-WATERMARK? 0= if

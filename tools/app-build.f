@@ -8,8 +8,8 @@ private
 
 \ MAIN exists only after the application has loaded. This fixed source defines
 \ its startup continuation then passes its typed execution token to START!.
-TRUSTED: STARTUP ( -- )
-   s" package APP-BUILD-STARTUP : ENTER ( -- ) MAIN ; ' ENTER ;package APP-IMAGE:START!" evaluate ;
+: STARTUP ( -- )
+   s" package APP-BUILD-STARTUP : ENTER ( -- ) MAIN ; ' ENTER ;package APP-IMAGE:START!" evaluate-closed ;
 
 : BUILD ( -- )
    SCRIPT-ARGC 2 <> if
