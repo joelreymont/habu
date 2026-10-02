@@ -1233,16 +1233,17 @@ passing suite.
   (-8503, test/compiler/native-elaborate.f `RGLUE`). A count that disagrees is
   `E-NELAB-ARITY` either way, and a forged tag is still refused where the value
   is consumed (`hb: bad layout tag`, rc 85).
-- **A signature list holds at most 64 cells.** The sixty-fifth staged input or
-  output rejects with `E-IR-TYPE-ARITY` (-6688); `test/compiler/ir-type.f`
-  checks that boundary and a 33-input, 34-output signature. A record is the
-  same list: `MAKE` stages one value per cell. A checked 34-cell nested record
-  roundtrip passes through the native compiler in
-  `test/compiler/native-generated-constructor.f`. A call also carries a memory
-  token in the IR operation's 64-operand stage, so this signature bound does
-  not establish a 64-data-cell call. A 63-data-cell identity call compiles and
-  runs in native AOT; the same 64-data-cell program currently refuses at the
-  native validator with `E-A64RAV-DKEEP` (-8611).
+- **Native width depends on how the cells are used.** A 63-cell identity
+  compiles and runs in native AOT; the same 64-cell definition currently
+  refuses with `E-A64RAV-DKEEP` (-8611). On Darwin ARM64, binding and consuming
+  all 25 entry cells in a sum currently refuses with `E-A64RA-POOL` (-8446);
+  the 24-cell sum passes. Forwarding cells does not require that same
+  simultaneous register set. The IR signature list itself holds at most
+  64 cells: its sixty-fifth staged input or output rejects with
+  `E-IR-TYPE-ARITY` (-6688, `test/compiler/ir-type.f`). A record uses the same
+  list, with one staged value per cell. A checked 34-cell nested record
+  roundtrip and the consumed-entry boundary are exercised by
+  `test/compiler/native-generated-constructor.f`.
 - **`.` ends the line.** The native `.` is newline-terminated, not
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,

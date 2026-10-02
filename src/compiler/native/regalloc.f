@@ -2299,10 +2299,9 @@ public
 \ the tables holding a machine no allocation can reach: the mode stays unbound
 \ and WALK refuses before it reads them.
 \
-\ One field is named here and used nowhere: the STAND is where the dialect's
-\ selector puts the data-stack pointer, which regalloc-verify.f checks a module
-\ against and this pass has no decision to make about. A value is unmade whole,
-\ so it is bound and left.
+\ STAND names the data-stack pointer checked by regalloc-verify.f; slot names
+\ the dialect's frame slot. This pass makes no decision from either field.
+\ A value is unmade whole, so both are bound and left.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE

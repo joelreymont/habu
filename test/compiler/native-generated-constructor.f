@@ -8,6 +8,8 @@
 require src/compiler/native/compiler.f
 require lib/json-write.f
 require lib/test.f
+require lib/errors.f
+require test/compiler/native-eval-fixture.f
 require tools/codegen-tail-probe.f
 
 s" ENUM nctorresult 0 VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
@@ -151,10 +153,22 @@ private
    4 T= 7 T= 10 T= 13 T= 16 T= 19 T= 22 T= 25 T= 28 T= 31 T= 34 T= 37 T=
    4 7 10 13 16 19 22 25 28 31 34 37 3 false NCTOR-SPILL12
    37 T= 34 T= 31 T= 28 T= 25 T= 22 T= 19 T= 16 T= 13 T= 10 T= 7 T= 4 T=
-   s" twelve carried values reload between stores of a wide call" T-LABEL
+   s" twelve register-resident values survive a wide call and back edge" T-LABEL
    4 7 10 13 16 19 22 25 28 31 34 37 3 NCTOR-LOOP12
    7 T= 7 T= 10 T= 13 T= 16 T= 19 T= 22 T= 25 T= 28 T= 31 T= 34 T= 37 T=
    T-REPORT ;
+
+: NCTOR-ENTRY-POOL ( -- )
+   tier@ 1 = HB-TARGET-MACOS? and if
+      T-RESET
+      s" twenty-four consumed entry cells compile and sum correctly" T-LABEL
+      s" : NCTOR-SUM24 ( n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + ; : NCTOR-CHECK24 ( -- ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 NCTOR-SUM24 300 T= ; NCTOR-CHECK24"
+      NATIVE-EVAL:DEFINE-RC 0 T=
+      s" twenty-five simultaneously consumed entry cells refuse at the register pool" T-LABEL
+      s" : NCTOR-SUM25 ( n n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 a25 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + a25 + ;"
+      NATIVE-EVAL:DEFINE-RC E-A64RA-POOL T=
+      T-REPORT
+   then ;
 
 : NCTOR-REPORT ( -- )
    NCTOR-WIDE-ROUNDTRIPS? 0= if
@@ -165,5 +179,6 @@ private
 NCTOR-REPORT
 NCTOR-RECORD-ROUNDTRIP
 NCTOR-SPILL-ROUNDTRIP
+NCTOR-ENTRY-POOL
 
 ;package
