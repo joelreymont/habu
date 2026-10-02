@@ -218,7 +218,7 @@ variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
 \ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
 \ outer loop and `'` call on LFIND's hit path.
 package INTERP-EMIT

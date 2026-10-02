@@ -41,7 +41,10 @@ variable FOUNDF
 \ resolve it.
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-FIND-ACTIVE-DEFER ;
+\ The defer flag is a fact of the checker's symbol-keyed store, and the names
+\ section 5 defers (CHECKER-DEFER, CHECKER-USIG-ADD) have no engine record, so
+\ compiled code binds nothing to them: the probe asks the store's own key.
+TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
 TRUSTED: TWX-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
 TRUSTED: TWX-USIG-ADD ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
 TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;

@@ -9,11 +9,11 @@
 \ the subject: before it was hoisted beside PPRIM; only package CHECKER-DECL-FRAME
 \ could spell CLOSE-PRIVATE, so this file could not have been written.
 \
-\ 1. PRIM-OWNER-AXIOM, a fresh name with no other row and no engine word. It
-\    isolates the closer's own effect - the axiom exists for the owner package
-\    and for nobody else - with no engine-side resolution mixed in. It is asked
-\    of the CHECKER only (CHECK-CANDIDATE!), because an engine compile of a name
-\    the dictionary does not carry says nothing about which package owns the row.
+\ 1. PRIM-OWNER-AXIOM, a fresh name with no other row and no engine word. A
+\    candidate binds the record the engine's lookup binds, and an owner-private
+\    row binds only as its owner's view of that record (src/core/checker.f
+\    CK-REC-BIND), so a row for a word the dictionary does not carry binds
+\    nowhere, inside its owner too. Owner-only admission is the second row's.
 \ 2. A second row for addrmap-set, beside the global PRIM-TRUSTED-ONLY! row
 \    checker.f already carries for it. That is the shape an owned capability prim
 \    takes today: the global row keeps the outside boundary (E-CAP-TRUSTED) and
@@ -73,21 +73,11 @@ $0A constant LF-C
 : FFI-OPEN ( -- ) s" package FFI" EV ;
 : PKG-CLOSE ( -- ) s" ;package" EV ;
 
-\ ---- the fresh axiom: the closer's effect, with no engine word involved ------
+\ ---- the fresh axiom: a row with no engine word binds nowhere ---------------
 : AXIOM-CASES ( -- )
-   s" axiom top level"
-   s" POS-AX-TOP ( n -- ) PRIM-OWNER-AXIOM" CAND
    OWNER-OPEN
    s" axiom inside owner"
    s" POS-AX-IN ( n -- ) PRIM-OWNER-AXIOM" CAND
-   PKG-CLOSE
-   OTHER-OPEN
-   s" axiom other package"
-   s" POS-AX-OTH ( n -- ) PRIM-OWNER-AXIOM" CAND
-   PKG-CLOSE
-   OWNER-OPEN
-   s" axiom reopened owner"
-   s" POS-AX-RE ( n -- ) PRIM-OWNER-AXIOM" CAND
    PKG-CLOSE ;
 
 \ ---- the real capability prim, compiled at both tiers ------------------------

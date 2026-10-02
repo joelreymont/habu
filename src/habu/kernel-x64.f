@@ -1721,6 +1721,7 @@ public
    s" parse-name" REFUSE
    s" num-parse" REFUSE
    s" tok-imm?" REFUSE
+   s" scope-find" REFUSE
    s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
 
 \ ---- atomics and publication rows --------------------------------------------

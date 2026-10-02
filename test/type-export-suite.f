@@ -27,17 +27,23 @@ variable #CASE
       T-FAIL s" assert: expected " type want . s" got " type got . cr
    then ;
 
+require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
+
 variable FOUNDF   variable TC
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
+\
+\ An alias CHECKER-EXPORT records is a fact of the checker's store: the
+\ operation publishes no engine record, so compiled code cannot call one. The
+\ probes therefore read the alias's own record (CHECKER-RECORD-SYM?), and a
+\ checked caller of an alias asks the certify path (VERIFY:CANDIDATE-IN-SCOPE),
+\ where the static scanner's aliases bind.
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-FIND-ACTIVE-DEFER ;
+TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
 TRUSTED: TWX-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
-TRUSTED: TWX-USIG-ADD ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
-TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;
-TRUSTED: TWX-NORET-ADD ( ptr u8 n n -- ) NORET-ADD ;
+TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CHECKER-RECORD-SYM? CTL-FLAGS-SYM ;
 
 
 
@@ -48,7 +54,7 @@ TRUSTED: TWX-NORET-ADD ( ptr u8 n n -- ) NORET-ADD ;
 \ ---------------------------------------------------------------------------
 package XPS
 public
-s" n -- n" s" XP-INC" TWX-USIG-ADD
+: XP-INC ( n -- n ) 1 + ;
 ;package
 
 package XPD
@@ -58,33 +64,34 @@ s" xps:XP-INC" CHECKER-EXPORT
 
 s" xpd:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" xps:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
-s" XPU1 ( n -- n ) xpd:XP-INC" CHECK! -1 T=
+s" XPU1 ( n -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" XPU2 ( n -- n ) xps:XP-INC" CHECK! -1 T=
-s" XPU3 ( -- n ) xpd:XP-INC" CHECK! 0 T=
-s" XPU4 ( n -- n n ) xpd:XP-INC" CHECK! 0 T=
+s" XPU3 ( -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+s" XPU4 ( n -- n n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE 0 T=
+\ the alias has no engine record, so a live caller binds nothing (unresolvable)
+s" XPU1L ( n -- n ) xpd:XP-INC" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ ---------------------------------------------------------------------------
 \ 2. private->public promotion: a bare-name source resolves through the open
 \    package's private scope and publishes under the public tail.
 \ ---------------------------------------------------------------------------
 package XPP
-s" n -- n" s" XP-HID" TWX-USIG-ADD
+: XP-HID ( n -- n ) 2 + ;
 public
 s" XP-HID" CHECKER-EXPORT
 ;package
 s" xpp:XP-HID" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
-s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
+s" XPU5 ( n -- n ) xpp:XP-HID" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 
 \ ---------------------------------------------------------------------------
-\ 3. defer + control flags ride the alias, independently of source authority.
+\ 3. defer + control flags ride the alias: the defer flag, and the source's
+\    whole control word - the throw edge, the dead path after it and the
+\    effect's provenance (EFFECT-EXTERNAL) - but no identity.
 \ ---------------------------------------------------------------------------
 package XPF
 public
-s" n -- n" s" XP-DEF" TWX-USIG-ADD
-s" XP-DEF" CHECKER-DEFER
-s" --" s" XP-THR" TWX-USIG-ADD
-s" XP-THR" CTL-THROW TWX-NORET-ADD
-\ The raw overwrite above carries only a control flag: no authority to invent.
+defer XP-DEF ( n -- n )
+: XP-THR ( -- ) 7 throw ;
 ;package
 
 package XPF2
@@ -93,8 +100,8 @@ s" xpf:XP-DEF" CHECKER-EXPORT
 s" xpf:XP-THR" CHECKER-EXPORT
 ;package
 s" xpf2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
-s" xpf2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
-s" xpf2:XP-THR" TWX-CTL-FLAGS EFFECT-EXTERNAL and 0 T=
+s" xpf2:XP-THR" TWX-CTL-FLAGS CTL-THROW and CTL-THROW T=
+s" xpf2:XP-THR" TWX-CTL-FLAGS  s" xpf:XP-THR" TWX-CTL-FLAGS T=
 s" xpf2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL invert and 0 T=
 s" xpf2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 s" xpf:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
@@ -106,14 +113,14 @@ s" xpf2:XP-THR" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 \ ---------------------------------------------------------------------------
 package XPQ
 public
-s" [ n -- n ] n -- n" s" XP-HOF" TWX-USIG-ADD
+: XP-HOF ( [ n -- n ] n -- n ) swap execute ;
 ;package
 package XPQ2
 public
 s" xpq:XP-HOF" CHECKER-EXPORT
 ;package
-s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" CHECK! -1 T=
-s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" CHECK! 0 T=
+s" XPU6 ( n -- n ) [: 1 + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 5. rejects. Every fail-closed path throws its named code; catch restores
@@ -145,7 +152,7 @@ s" xps:XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
 \ self-export in the same section is the duplicate case.
 package XPZ
 public
-s" n -- n" s" XP-SELF" TWX-USIG-ADD
+: XP-SELF ( n -- n ) ;
 s" XP-SELF" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
 ;package
 
@@ -153,7 +160,7 @@ s" XP-SELF" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
 \ record it AFTER the reject probes so the earlier lookup could not see it, then
 \ prove a private record still does not resolve via the public qualifier.
 package XPS
-s" n -- n" s" XP-PRIV" TWX-USIG-ADD
+: XP-PRIV ( n -- n ) ;
 ;package
 package XPR2
 public
@@ -188,7 +195,7 @@ TWX-CAND-START
    s" xpf:XP-THR" CHECKER-EXPORT
    s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
    s" xrb2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
-   s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
+   s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW and CTL-THROW T=
    ;package
 0 TWX-CAND-DONE drop
 RBF-DEPTH @ P-DEPTH @ T=

@@ -128,8 +128,13 @@ variable NESTED-DONES
    s" TO-NESTED-INNER ( n -- n )" CHECK-CANDIDATE! -1 T=
    TO-RECOVERY? TTRUE ;
 
+\ Every row here is CHECK!'s alone, a name the engine compiles no word for, so the
+\ case runs in the check tool's replay scope, where such a name binds over the
+\ checker's own records (src/core/checker.f REPLAY-BIND), as the recovery cases of
+\ test/checker-effect-authority.f do.
 : TO-NESTED-RECOVERY ( -- )
    s" a nested candidate restores the enclosing recovery analysis" T-LABEL
+   CHECKER-SCOPE-START-NEUTRAL
    TO-MULTI+
    s" TO-RECOVERY-BAD ( n -- n ) drop" CHECK! 0 T=
    0 NESTED-DONES !
@@ -142,7 +147,8 @@ variable NESTED-DONES
    TO-MULTI- 1 T=
    s" TO-NESTED-LATER ( n -- n )" CHECK! -1 T=
    TO-RECOVERY? TFALSE
-   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T= ;
+   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T=
+   CHECKER-SCOPE-DONE ;
 
 \ Put the engine's own observer back, and prove it is back by its identity. This
 \ runs last and is the reason the session survives the suite.

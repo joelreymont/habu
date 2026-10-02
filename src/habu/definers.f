@@ -101,7 +101,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ With no row a new one is made, as a qualified definition makes it: a public
 \ wid and no private one.
 : DEF-NAMESPACE ( ptr u8 n -- n ) {: a:ptr q:n :}
-   a q XREF-NAMESPACE-WL FIND-PROBE {: row:ptr :}
+   a q XREF-NAMESPACE-WL WL-PROBE {: row:ptr :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC exit then
    PKG-DICT-ROOM
    a q PKG-CODE-ROOM
@@ -111,16 +111,17 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ DEF-TKL take the name token, which the refusals after them name, as TKA and
 \ TKL still do: the engine moves those to the tail and back, and this head
 \ names the tail where the engine names it. A bare name goes into the current
-\ wordlist; the qualifier is the first colon at neither edge, as FIND-SPLIT
-\ reads it, and a second colon refuses.
+\ wordlist; the qualifier is the first colon at neither edge (one at either
+\ edge leaves the whole token a bare name: `:a:b` is bare), and a second colon
+\ after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
    SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ {: a:ptr u:n :}
-   a u FIND-SPLIT {: q:n :}
-   q FIND-BAD = if PKG-RC-CONTEXT PKG-FAIL then
-   q FIND-BARE = if a u get-current exit then
+   a u 0 COLON-AT {: q:n :}
+   q 1 <  q 1+ u >=  or if a u get-current exit then
+   a u q 1+ COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    a q 1+ ZPTR+  u q - 1-  a q DEF-NAMESPACE ;
 
 \ ---- the compile-keyword wall (habu2.f EMIT-DEF-KW-GUARD) ---------------------
@@ -209,7 +210,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 : DEF-RECORD ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
-   a u wid FIND-PROBE XREF-FOUND? if
+   a u wid WL-PROBE XREF-FOUND? if
       s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
    then
    wid PKG-OPEN-WID

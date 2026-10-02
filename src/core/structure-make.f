@@ -310,9 +310,12 @@ SM-INSTALL-INIT
 \ because `+` and `cell+` refuse a layout pointee outright, which is what makes
 \ a record pointer safe in the first place. The generated `F:AT` bakes the
 \ family's committed width as the multiplier; the row itself scales nothing.
+\ INTRINSIC tags each as the engine word those checker rules type
+\ (src/core/checker.f CTL-INTRINSIC); a redefinition after `undefine`
+\ carries none.
 \ ---------------------------------------------------------------------------
-: field-project ( ptr a n -- ptr a ) + ;
-: record-at ( ptr a n -- ptr a ) cells + ;
+: field-project ( ptr a n -- ptr a ) + ;  INTRINSIC-FIELD-PROJECT INTRINSIC
+: record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 
 ;using
 ;using

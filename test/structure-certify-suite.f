@@ -219,6 +219,21 @@ s" IPK ( n n -- scpkg:prow ) SCPKG-PROW:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" IPU ( scpkg:prow -- n n ) SCPKG-PROW:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
+\ 9. Derived equality and hash. A declaration checks its whole generated plan
+\    in one candidate scope before one evaluate publishes it, and the derived
+\    HASH calls the structure's UNMAKE, a row checked earlier in that scope: a
+\    row binds for the later rows of its scope (src/core/checker.f
+\    CK-PENDING-SYM). A scope whose rows did not bind refuses the declaration
+\    (`bad structure declaration`, 70). The derived words then run.
+\ ---------------------------------------------------------------------------
+s" STRUCTURE scder 0 DERIVE eq hash FIELD x n ;STRUCTURE" TRY 0 T=
+: SCDEQ ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE b SCDER:MAKE SCDER:EQ ;
+: SCDHS ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE SCDER:HASH b SCDER:MAKE SCDER:HASH = ;
+5 5 SCDEQ T-TRUE
+5 6 SCDEQ 0 T=
+5 5 SCDHS T-TRUE
+
+\ ---------------------------------------------------------------------------
 \ ACCESSOR NOTE (report + follow-up). The generate-field lane will emit sealed
 \ FAMILY:FIELD accessor words ( ptr family<args> -- ptr field-type ) that fire
 \ the checker's field-projection armed window (src/core/checker.f, pinned by

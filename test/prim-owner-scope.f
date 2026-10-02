@@ -3,11 +3,11 @@
 \ Run: bin/hb --load test/prim-owner-scope.f
 \
 \ The subject is the general private row closer CLOSE-PRIVATE (src/core/checker.f,
-\ beside PPRIM;). It interns a PPRIM: axiom into the OWNER package's private
-\ wordlist, so CHECKER-FIND-ACTIVE-SYM's private leg is the only scope that
-\ resolves it. Hoisting it out of package CHECKER-DECL-FRAME is what lets any
-\ package own a primitive; the child fixture spells it at top level, which is
-\ exactly what was impossible before.
+\ beside PPRIM;). It interns a PPRIM: row into the OWNER package's private
+\ wordlist, so the row types the engine's record only inside the owner
+\ (CK-REC-BIND's owner branch). Hoisting it out of package CHECKER-DECL-FRAME
+\ is what lets any package own a primitive; the child fixture spells it at top
+\ level, which is exactly what was impossible before.
 \
 \ WHY A CHILD AND NOT AN IN-PROCESS CHECK. Primitive rows are declarable only
 \ while a fresh checker prefix is loading: past src/core/internal-mark.f's seal
@@ -59,13 +59,11 @@ create ERR IO-CAP allot
    va vu SB-APPEND
    LF-C SB-APPEND-C ;
 
-\ The fresh axiom has no engine word and no second row, so these four are the
-\ closer's own effect: the owner package resolves the name and no other scope does.
+\ The fresh axiom has no engine word: a row for a word the dictionary does not
+\ carry binds nowhere, its owner included. The addrmap-set and FFI rows below
+\ prove owner-only admission on real records.
 : AXIOM-LINES ( -- )
-   s" axiom top level"      s" unresolvable" CASE+
-   s" axiom inside owner"   s" admitted"     CASE+
-   s" axiom other package"  s" unresolvable" CASE+
-   s" axiom reopened owner" s" admitted"     CASE+ ;
+   s" axiom inside owner"   s" unresolvable" CASE+ ;
 
 \ addrmap-set keeps its global PRIM-TRUSTED-ONLY! row AND gains an owner-private
 \ one, so the outside answer stays the named E-CAP-TRUSTED reject while the owner

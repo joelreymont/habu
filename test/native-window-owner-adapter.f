@@ -21,13 +21,17 @@ package OWNER-ADAPTER-CHECK
    CHECKER-OWNER:DIN-CELLS 0 EQ!
    CHECKER-OWNER:DOUT-CELLS 0 EQ! ;
 
+\ A row a check records by hand binds nowhere in compiled code (src/core/checker.f
+\ CK-CLOSE!), so each query asks about a word this window compiled.
+: ADAPTER-WORD ( n -- n ) 1 + ;
+
 \ At load, before any capture: the source adapter binds the checker by name.
 : FRESH ( -- )
    tier@ 1 EQ!
    CHECKER-OWNER:BY-NAME? TRUE!
    CHECKER-OWNER:RECORD? TRUE!
    s" ADAPTER-SOURCE ( n -- n ) 1 +" CHECKER-OWNER:CHECK-UNJUDGED -1 EQ!
-   s" ADAPTER-SOURCE" CHECKER-OWNER:QUERY TRUE!
+   s" ADAPTER-WORD" CHECKER-OWNER:QUERY TRUE!
    CHECKER-OWNER:DIN-CELLS 1 EQ!
    CHECKER-OWNER:DOUT-CELLS 1 EQ! ;
 
@@ -37,7 +41,7 @@ package OWNER-ADAPTER-CHECK
    CHECKER-OWNER:BY-NAME? 0= TRUE!
    PREFIX-DEFAULTS
    s" ADAPTER-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK -1 EQ!
-   s" ADAPTER-SCAN" CHECKER-OWNER:QUERY TRUE!
+   s" ADAPTER-WORD" CHECKER-OWNER:QUERY TRUE!
    CHECKER-OWNER:DIN-N 1 EQ!
    CHECKER-OWNER:DOUT-N 1 EQ!
    CHECKER-OWNER:DIN-CELLS 1 EQ!
