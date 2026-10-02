@@ -1775,22 +1775,23 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 \ The origin pass reads the subject through check.f's own buffer and cap, as
 \ the nominal pass does, and writes the marked copy straight after the prefix.
+\ The engine comments a leading `#!` line only at the start of a file it reads,
+\ and the prefix starts the run file, so the pass comments the subject's own
+\ first, with the engine's rewrite: the scan then reads that line as a comment,
+\ and the marked copy carries the rewrite the run needs.
 : CHK-BUILD-ORIGIN ( -- )
    CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
+   CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SRC-BUF len
    CHK-RUN-BUF CHK-RUN-U @ +  CHK-RUN-CAP CHK-RUN-U @ - >LEN
    DIAG-ORIGIN-SOURCE>BUF LEN>N CHK-RUN-U @ + CHK-RUN-U ! ;
 
 \ A source the read admits can still outgrow the run file once the prefix and
 \ the origin marks join it; it is refused here, before the run.
-\ The engine comments a leading `#!` line only at the start of a file it reads,
-\ and the prefix starts the run file, so the run comments the subject's own.
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
    CHK-BUILD-PREFIX
-   CHK-RUN-U @ {: at:n :}
-   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED
-   CHK-RUN-BUF at + CHK-RUN-U @ at - SOURCE-ROOT:SHEBANG-COMMENT ;
+   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED ;
 
 : CHK-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
