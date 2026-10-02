@@ -3789,6 +3789,14 @@ public
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
+\ A cast's code, the identity: its entry slot at CP, then an empty body, so
+\ the slot becomes a nop before the ret. `cast:` (INTERP-EMIT:C-CAST) and the
+\ def-cast row (DEF-CAST) emit it alike.
+: CAST-BODY ( -- )
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
+   EM-COMPILE-RET ;                                  \ empty body: the slot becomes a nop
+
 ;package
 
 : J-DOES ( -- )
@@ -4222,14 +4230,6 @@ package INTERP-EMIT
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
-\ A cast's code, the identity: its entry slot at CP, then an empty body, so
-\ the slot becomes a nop before the ret. `cast:` (C-CAST) and the def-cast row
-\ (DEFWRITE:DEF-CAST) emit it alike.
-: C-CAST-BODY ( -- )
-   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
-   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
-   EM-COMPILE-RET ;                                  \ empty body: the slot becomes a nop
-
 \ The cast declarer joins the other interpret-mode defining-word handlers in
 \ their package: the define-keyword dispatch rows below reopen it and resolve
 \ them bare.
@@ -4308,7 +4308,7 @@ package INTERP-EMIT
    C-STORE-DEF-NAME
    10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,
-   C-CAST-BODY
+   DEFWRITE:CAST-BODY
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
@@ -4342,7 +4342,7 @@ public
    15 DKIND:CAST LIT64,  14 15 CMP,  C-NE bad BCOND,    \ opened as a cast
    14 DATA DOESB-CELL LDR,  14 bad CBNZ,                \ the flush would write record NDICT + 1
    NAME-BANDS,
-   C-CAST-BODY
+   CAST-BODY
    1 CODE-ORIGIN:CLOSE,
    EM-COMPILE-FLUSH-PEND
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
