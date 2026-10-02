@@ -62,7 +62,11 @@ public
 
 \ Signal the process group led by pid (kill(-pid, sig)); pid must be a group
 \ leader (its child set `0 0 PROC-FORK:SET-PGID`), so this reaches its grandchildren.
+\ A pid at or below 1 leads no such group: kill(0) is the caller's own group and
+\ kill(-1) every process the caller may signal, so it is refused, as
+\ lib/process-tree.f KILL-TREE refuses one.
 : KILL-GROUP ( pid n -- rc ) {: pid:pid sig:n :}
+   pid PID>N 1 <= if E-PROC-OUTPUT throw then
    pid PID>N negate >PID sig PROC-KILL-RAW ;
 
 \ ---- parent-death reaper ----------------------------------------------------

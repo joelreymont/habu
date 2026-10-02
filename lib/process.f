@@ -5,7 +5,8 @@
 \ spawns, polls, drains and reaps through its own descriptors, lengths, deadline
 \ and wait status, and any number of tasks may run children at once. The byte
 \ spans the capture and POLL words take are caller-owned. The PROC-REAP-ARM
-\ vector is process-wide: it is one installed policy, not per-call state.
+\ vector, and the PROC-STOP vector with its PROC-STOP-FD, are process-wide:
+\ each is one installed policy, not per-call state.
 \ See docs/threads.md.
 
 s" lib/errors.f" required
@@ -95,9 +96,12 @@ $FF constant PROC-WAIT-EXIT-MASK
 \ A fresh task's region is zeroed, so the row reads 0 before its first capture,
 \ exactly as the dictionary cells it replaces read 0 before the image's first
 \ one: every entry point resets the row through PROC-CAPTURE-RESET before any
-\ word reads a descriptor, and PROC-REAP-DISARM's `0 >` guard treats the zero
-\ and the PROC-NO-PID sentinel alike.
-3 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin
+\ word reads a descriptor, and every pid guard below is `0 >`, so it treats
+\ the zero and the PROC-NO-PID sentinel alike. PROC-KILL-CAPTURE is also
+\ called outside a capture (tools/check-core.f answering a stop), where the row
+\ can still read 0, and kill(0) or waitpid(0) reaches the caller's whole
+\ process group.
+4 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin, the stop descriptor
 8 constant PROC-PFD-SLOT-BYTES           \ one struct pollfd: fd | events | revents
 0 constant PROC-PATHZ-OFF
 PROC-PATHZ-OFF PROC-PATHZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant PROC-PFD-OFF
@@ -399,7 +403,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-CLOSE-CAPTURE-FDS ;
 
 : PROC-REAP-CAPTURE ( -- )
-   PROC-PID @ dup 0 >= if
+   PROC-PID @ dup 0 > if
       >PID PROC-WAIT-STATUS dup PROC-STATUS !
       PROC-STATUS>RC RC>N PROC-RC !
       PROC-NO-PID PROC-PID !
@@ -409,7 +413,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-REAP-DISARM ;
 
 : PROC-REAP-CAPTURE-TIMEOUT ( -- )
-   PROC-PID @ dup 0 >= if
+   PROC-PID @ dup 0 > if
       >PID dup SIGKILL PROC-KILL-RAW drop
       PROC-WAIT-STATUS dup PROC-STATUS !
       PROC-STATUS>RC RC>N PROC-RC !
@@ -421,7 +425,7 @@ PROC-REAP-ARM-DEFAULT
    1 PROC-TIMED-OUT ! ;
 
 : PROC-KILL-CAPTURE ( -- )
-   PROC-PID @ dup 0 >= if
+   PROC-PID @ dup 0 > if
       >PID SIGKILL PROC-KILL-RAW drop
       PROC-REAP-CAPTURE
    else
@@ -481,47 +485,60 @@ PROC-REAP-ARM-DEFAULT
 : PROC-REMAINING-MS ( -- ms )
    PROC-DEADLINE @ PROC-LEFT-MS ;
 
-\ EOF says that the child closed its pipes, not that it exited. Keep the same
-\ absolute capture deadline while waiting for its status; only the existing
-\ timeout path may do a blocking wait, after sending SIGKILL. WNOHANG is 1 on
-\ both supported hosts. Clear the cell because waitpid writes only four bytes.
-: PROC-REAP-CAPTURE-BOUNDED ( -- )
-   begin PROC-PID @ 0 >= while
-      0 PROC-STATUS !
-      PROC-PID @ PROC-STATUS BYTE-VIEW 1 PROC-WAITPID-CALL {: got:n :}
-      got PROC-PID @ = if
-         PROC-STATUS @ PROC-STATUS>RC RC>N PROC-RC !
-         PROC-NO-PID PROC-PID !
-      else
-         got 0<> if
-            FFI:ERRNO EINTR# <> if E-PROC-WAIT PROC-THROW-CAPTURE then
-         then
-         PROC-REMAINING-MS MS>N {: left:n :}
-         left 0= if PROC-REAP-CAPTURE-TIMEOUT exit then
-         \ PAUSE can exit a halted task and abandon its child. SLEEP returns
-         \ here to reap it, and does not burn a core while the child runs.
-         left 1 min >MS TASK:SLEEP
-      then
-   repeat
-   PROC-REAP-DISARM ;
+\ ---- a capture that hears a stop ---------------------------------------------
+\
+\ A program that answers a stop signal (lib/signal.f CATCH-STOPS) has to hear
+\ it while it waits on a child, and a capture waits in a poll of its own. So
+\ every capture poll watches one more descriptor, PROC-STOP-FD, in the slot
+\ after stdin's, and runs PROC-STOP when it is readable; the reap after the
+\ pipes close asks the same between its turns. PROC-STOP is that program's
+\ answer. It ends the process when it takes a signal and returns when it finds
+\ none, and the capture goes on; one that throws ends the capture as any
+\ failure here does. The default is no descriptor, which poll passes over, and
+\ a PROC-STOP that does nothing. PROCESS-WIDE, like PROC-REAP-ARM: one policy
+\ the program installs (tools/check-core.f CHECK:MAIN).
+3 constant PROC-STOP-SLOT
 
+variable PROC-STOP-FD
+PROC-NO-FD PROC-STOP-FD !
+
+defer PROC-STOP ( -- )
+: PROC-STOP-NONE ( -- ) ;
+: PROC-STOP-DEFAULT ( -- )
+   [: PROC-STOP-NONE ;] is PROC-STOP ;
+PROC-STOP-DEFAULT
+
+: PROC-ARM-STOP-PFD ( -- )
+   PROC-STOP-FD @ >FD POLLIN PROC-STOP-SLOT >IDX PROC-PFD-AT! ;
+
+: PROC-STOP-HEARD ( -- )
+   PROC-STOP-SLOT >IDX PROC-PFD-REVENTS 0= if exit then
+   [: PROC-STOP ;] catch {: code:n :}
+   code 0<> if code PROC-THROW-CAPTURE then ;
+
+\ A capture without stdin leaves that slot empty: every capture poll covers
+\ every slot, the stop descriptor's included.
 : PROC-ARM-CAPTURE-PFD ( -- )
    PROC-OUT-R @ >FD POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ >FD POLLIN 1 >IDX PROC-PFD-AT! ;
+   PROC-ERR-R @ >FD POLLIN 1 >IDX PROC-PFD-AT!
+   PROC-NO-FD >FD 0 2 >IDX PROC-PFD-AT! ;
 
-: PROC-POLL-CAPTURE-RC ( n n -- n ) {: nfds ms :}
-   nfds ms PROC-DEADLINE @ PROC-POLL-RESTART ;
+: PROC-POLL-CAPTURE-RC ( n -- n ) {: ms:n :}
+   PROC-ARM-STOP-PFD
+   PROC-PFD-SLOTS ms PROC-DEADLINE @ PROC-POLL-RESTART {: rc:n :}
+   rc 0 > if PROC-STOP-HEARD then
+   rc ;
 
 : PROC-POLL-CAPTURE ( ms -- count ) {: ms :}
    PROC-ARM-CAPTURE-PFD
-   2 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
+   ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
 : PROC-POLL-CAPTURE-OUTCOME ( ms -- count ) {: ms :}
    PROC-ARM-CAPTURE-PFD
-   2 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
+   ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
@@ -611,14 +628,14 @@ PROC-REAP-ARM-DEFAULT
 
 : PROC-POLL-IO ( ms -- count ) {: ms :}
    PROC-ARM-IO-PFD
-   3 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
+   ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
 : PROC-POLL-IO-OUTCOME ( ms -- count ) {: ms :}
    PROC-ARM-IO-PFD
-   3 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
+   ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
@@ -631,6 +648,43 @@ PROC-REAP-ARM-DEFAULT
 
 : PROC-STDIN-CAPTURE-DONE? ( -- bool )
    PROC-CAPTURE-DONE? PROC-IN-W @ 0 < and ;
+
+\ The stop descriptor without waiting, beside whatever capture slot is still
+\ open. One poll and no restart: a restart waits out the capture's deadline,
+\ which the reap must not, and a signal that interrupts this one is asked
+\ after on the reap's next turn.
+: PROC-STOP-ASK ( -- )
+   PROC-ARM-IO-PFD
+   PROC-ARM-STOP-PFD
+   PROC-PFD-SLOTS 0 PROC-POLL-ONCE {: rc:n :}
+   rc EINTR# negate = if exit then
+   rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   rc 0 > if PROC-STOP-HEARD then ;
+
+\ EOF says that the child closed its pipes, not that it exited. Keep the same
+\ absolute capture deadline while waiting for its status; only the existing
+\ timeout path may do a blocking wait, after sending SIGKILL. WNOHANG is 1 on
+\ both supported hosts. Clear the cell because waitpid writes only four bytes.
+: PROC-REAP-CAPTURE-BOUNDED ( -- )
+   begin PROC-PID @ 0 > while
+      0 PROC-STATUS !
+      PROC-PID @ PROC-STATUS BYTE-VIEW 1 PROC-WAITPID-CALL {: got:n :}
+      got PROC-PID @ = if
+         PROC-STATUS @ PROC-STATUS>RC RC>N PROC-RC !
+         PROC-NO-PID PROC-PID !
+      else
+         got 0<> if
+            FFI:ERRNO EINTR# <> if E-PROC-WAIT PROC-THROW-CAPTURE then
+         then
+         PROC-REMAINING-MS MS>N {: left:n :}
+         left 0= if PROC-REAP-CAPTURE-TIMEOUT exit then
+         PROC-STOP-ASK
+         \ PAUSE can exit a halted task and abandon its child. SLEEP returns
+         \ here to reap it, and does not burn a core while the child runs.
+         left 1 min >MS TASK:SLEEP
+      then
+   repeat
+   PROC-REAP-DISARM ;
 
 : PROC-RUN-CAPTURE-LOOP ( ptr u8 len ptr u8 len -- ) {: out:ptr outcap err:ptr errcap :}
    begin PROC-CAPTURE-DONE? 0= while

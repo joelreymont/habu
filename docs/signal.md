@@ -24,6 +24,8 @@ result. Everything else happens in checked Habu on the reading end.
 | `WAIT` | `ms` window | `signal-result`: `signal n` or `timeout` | any |
 | `TAKE` | — | `signal-result`, `timeout` at once when none is waiting | any |
 | `RELEASE` | — | — | the task that ran `INIT` |
+| `CATCH-STOPS` | — | — | the main task |
+| `DIE-OF` | Message, signal number | does not return | the task that ran `INIT` |
 
 `SIGNAL:signal-result` is a sum type, so every caller matches both arms:
 
@@ -55,6 +57,17 @@ still ignored - `nohup`'s SIGHUP, the SIGINT of a background job - and a
 clears the fd word first — so a signal delivered during the teardown is
 absorbed rather than written to a descriptor that is about to close — then
 restores `SIG_DFL` for every signal `CATCH` installed and closes both ends.
+
+`CATCH-STOPS` is that pattern for the three signals that ask a process to stop:
+`INIT`, then a `CATCH` of each of SIGTERM, SIGINT and SIGHUP that is not
+ignored. A program that runs children or makes scratch answers one by ending
+what it started and removing what it made, then calls `DIE-OF`, which releases
+the facility and sends the signal to its own process, so its caller reads a
+death by that signal. The gate root (`test/gate-pool.f`), the pg cluster
+(`test/db/pg-cluster.f`) and `tools/check.f` answer so. A capture hears one
+while it waits on its child when the program installs the read end and its
+answer as `lib/process.f` `PROC-STOP-FD` and `PROC-STOP`;
+`test/check-signal-test.f` measures that path.
 
 Both ends are non-blocking for the same reason from two directions. The write
 end, so a pipe a stalled reader has filled refuses the stub's four bytes rather
@@ -163,12 +176,12 @@ theirs, and `INIT` refuses any third target with `E-PROC-HOST` before it opens
 anything. A file that spelled the Linux numbers everywhere would install the
 stub for `SIGBUS` with no flags on macOS and say nothing about it.
 
-**The macOS arm is selected for but untested.** No macOS host runs this suite,
-so its numbers, its flag and its record layout are read off the platform headers
-and never observed. `lib/signal-test.f` selects its expectations by target too,
-spelling the platform facts a second time so a wrong arm in the library still
-fails against an independent copy — and so the `process-signals` gate is not red
-by construction on the target it never runs on. `SIG-MAX` is 64, the range
+**Both arms run.** The `process-signals` suite passes on Linux and macOS, and
+on macOS the `check-signal`, `gate-signal` and `pg` suites catch and answer real
+stops through this file. `lib/signal-test.f` selects its expectations by target
+too, spelling the platform facts a second time so a wrong arm in the library
+still fails against an independent copy — and so the `process-signals` gate is
+not red by construction on either target. `SIG-MAX` is 64, the range
 Linux's `sigaction` installs: on macOS a number between 32 and 64 passes that
 check and is refused by `sigaction` itself as `E-SIGNAL-INSTALL`.
 

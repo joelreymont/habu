@@ -20,7 +20,9 @@
 \ way lib/process.f O-NONBLOCK, lib/fs.f and lib/process-pty-io.f select theirs.
 \ A third target reaches no arm and INIT refuses it with E-PROC-HOST rather than
 \ installing the stub for whatever signal the Linux numbers happen to name
-\ there. macOS is selected for but untested: no macOS host runs this suite.
+\ there. Both arms run: process-signals (lib/signal-test.f) passes on Linux and
+\ macOS, and on macOS the check-signal, gate-signal and pg suites catch and
+\ answer real stops through this file.
 
 s" lib/errors.f" required
 s" lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers
@@ -423,5 +425,46 @@ public
    FORGET-FDS
    false READY !
    r w CLOSE-PIPE ;
+
+\ ---- the stop signals ---------------------------------------------------------
+\
+\ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
+\ program that runs children or makes scratch ends where it stands, and what it
+\ started and made outlives it: a spawned child leads a process group of its
+\ own (docs/process-pty.md) and runs on under init, and nothing removes the
+\ scratch. Such a program calls CATCH-STOPS before it starts either, asks TAKE
+\ wherever it waits, and answers a signal by ending what it started and
+\ removing what it made, then DIE-OF. The gate root (test/gate-pool.f), the pg
+\ cluster (test/db/pg-cluster.f) and check.f (tools/check-core.f) answer so.
+\
+\ A signal the process was started with IGNORED stays ignored. nohup's SIGHUP
+\ and the SIGINT of a background job are the caller's choice, and a catch over
+\ one would undo it.
+
+private
+
+: CATCH-STOP ( n -- ) {: sig:n :}
+   sig IGNORED? if exit then
+   sig CATCH ;
+
+public
+
+\ INIT, then the catch of each of the three, from the main task.
+: CATCH-STOPS ( -- )
+   INIT
+   SIGTERM CATCH-STOP
+   SIGINT CATCH-STOP
+   SIGHUP CATCH-STOP ;
+
+\ The end of an answer: the process dies OF the signal, under the default
+\ action again, so its caller reads the status an uncaught one would have left.
+\ The stub stays installed until here, so a second signal during the answer is
+\ written to the pipe and read by nobody. The die ends a process whose signal
+\ another thread took, with the status a shell gives that death; it is not
+\ reached when this one took it.
+: DIE-OF ( ptr u8 n n -- ) {: msg:ptr msgu:n sig:n :}
+   RELEASE
+   getpid >PID sig PROC-KILL-RAW drop
+   msg msgu 128 sig + die ;
 
 ;package

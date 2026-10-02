@@ -10,6 +10,9 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f                \ the run stage spawns with an environment
+require lib/process-tree.f               \ a signal's answer ends the run stage's child tree
+require lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
+require lib/fmt.f                        \ the answer names a step that throws
 require lib/source.f
 require lib/argv.f
 require tools/lint/text.f
@@ -2113,15 +2116,72 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    hb hbu CHK-HB!
    CHK-RUN-ACT CHK-RUN-FINISH ;
 
+\ ---- a signal that stops check.f -----------------------------------------------
+\
+\ check.f ANSWERS SIGTERM, SIGINT AND SIGHUP AS THE GATE ROOT DOES (lib/signal.f
+\ CATCH-STOPS). Under the default action it ends where it stands, and its run
+\ stage's child, a process group of its own, runs on under init beside the
+\ temporary directory: a `timeout` that kills check.f's group does not reach
+\ it. MAIN catches the three before it makes that directory, the capture that
+\ waits on the child hears them (lib/process.f PROC-STOP), and MAIN asks once
+\ more when the run's own cleanup is done, for one that arrived while no
+\ capture waited. RUN catches nothing: a program that runs a check in process
+\ keeps its own answer.
+\
+\ The answer kills the child with every process under it (lib/process-tree.f)
+\ and reaps it, removes the temporary directory, and dies of the signal. A step
+\ that throws is named and the answer goes on. A run that ended before its child
+\ started - a refused program, a usage error, resident inputs - leaves the row's
+\ pid at 0 or PROC-NO-PID, and neither names a child: kill(0) is check.f's own
+\ process group.
+: CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
+   code 0= if exit then
+   s" check: " CHK-ERR what whatu CHK-ERR s"  threw " CHK-ERR
+   SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;
+
+: CHK-KILL-TREE ( -- )
+   PROC-PID @ >PID PROC-TREE:KILL-TREE ;
+
+: CHK-KILL-CHILD ( -- )
+   PROC-PID @ 0 <= if exit then
+   s" child tree kill" [: CHK-KILL-TREE ;] catch CHK-SAY-THROW
+   s" child reap" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW ;
+
+: CHK-SIGNAL-ANSWER ( n -- ) {: sig:n :}
+   CHK-KILL-CHILD
+   s" cleanup" [: CHK-TEMP-CLEAN ;] catch CHK-SAY-THROW
+   s" check: signal" sig SIGNAL:DIE-OF ;
+
+: CHK-SIGNAL-CHECK ( -- )
+   SIGNAL:TAKE MATCH SIGNAL:signal-result
+      signal OF CHK-SIGNAL-ANSWER ENDOF
+      timeout OF ENDOF
+   ;MATCH ;
+
+: CHK-CATCH-STOPS ( -- )
+   SIGNAL:CATCH-STOPS
+   SIGNAL:FD FD>N PROC-STOP-FD !
+   [: CHK-SIGNAL-CHECK ;] is PROC-STOP ;
+
 public
 
 : RUN ( -- n )
    s" bin/hb" CHK-RUN-AS ;
 
-: MAIN ( -- )
+private
+
+: CHK-MAIN-RUN ( -- )
    RESET
    CHK-PARSE
    RUN dup 0 <> if throw then drop ;
+
+public
+
+: MAIN ( -- )
+   CHK-CATCH-STOPS
+   [: CHK-MAIN-RUN ;] catch {: rc:n :}
+   CHK-SIGNAL-CHECK
+   rc 0 <> if rc throw then ;
 
 ;using
 ;using

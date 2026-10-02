@@ -555,22 +555,14 @@ GT-POOL-ABORT-KILL!
 \ the process and only a step answers it, so a program that ran a pool and
 \ went on to other work would never answer SIGTERM again.
 \
-\ A signal the process was started with IGNORED stays ignored. nohup's SIGHUP
-\ and the SIGINT of a background job are the caller's choice, and a catch over
-\ one would undo it.
+\ The catch is lib/signal.f CATCH-STOPS, which leaves a signal the process was
+\ started with ignored as it was.
 TYPED-VARIABLE GT-POOL-CATCHING bool
 false GT-POOL-CATCHING !
 
-: GT-POOL-CATCH-SIGNAL ( n -- ) {: sig:n :}
-   sig SIGNAL:IGNORED? if exit then
-   sig SIGNAL:CATCH ;
-
 : GT-POOL-CATCH-SIGNALS ( -- )
    GT-POOL-CATCHING @ if exit then
-   SIGNAL:INIT
-   SIGNAL:SIGTERM GT-POOL-CATCH-SIGNAL
-   SIGNAL:SIGINT GT-POOL-CATCH-SIGNAL
-   SIGNAL:SIGHUP GT-POOL-CATCH-SIGNAL
+   SIGNAL:CATCH-STOPS
    true GT-POOL-CATCHING ! ;
 
 \ A forked worker is a new process holding its parent's pipe: left as it is, a
@@ -1450,14 +1442,8 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 \ THE ANSWER TO A CAUGHT SIGNAL (see GT-POOL-CATCH-SIGNALS). Every live slot
 \ is killed with its whole tree, the cleanup registry removes what this
 \ process registered - the runner's root, and with it every slot's scratch -
-\ and the process then dies OF THE SIGNAL, under the default action again, so
-\ its caller reads the status an uncaught signal would have left. The stub
-\ stays installed until that last step: a second signal during the kills or
-\ the removal is written to the pipe and read by nobody.
-\
-\ A removal that throws is named and the process still ends as signalled. The
-\ die is the end for a signal that another thread took: it is not reached when
-\ this one did.
+\ and the process then dies OF THE SIGNAL (lib/signal.f DIE-OF). A removal
+\ that throws is named and the process still ends as signalled.
 : GT-POOL-SIGNAL@ ( -- n )
    GT-POOL-CATCHING @ 0= if 0 exit then
    SIGNAL:TAKE MATCH SIGNAL:signal-result
@@ -1471,9 +1457,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    GT-POOL-KILL-ALL
    [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
    code 0<> if s" test pool: cleanup threw " type code GT-POOL-N-TYPE cr then
-   SIGNAL:RELEASE
-   getpid >PID sig PROC-KILL-RAW drop
-   s" test pool: signal" 128 sig + die ;
+   s" test pool: signal" sig SIGNAL:DIE-OF ;
 
 \ A step asks after every poll. A program that caught signals asks once more
 \ when its own cleanup is done, for the one that arrived after its last step.

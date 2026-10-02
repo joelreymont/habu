@@ -386,19 +386,9 @@ false LATE !
 
 
 \ ---- a caught signal ----------------------------------------------------------
-\ SIGTERM, SIGINT and SIGHUP, as the gate root catches them (test/gate-pool.f
-\ GT-POOL-CATCH-SIGNALS). One this process was started with ignored stays
-\ ignored. No Forth word runs in a handler (lib/signal.f): the signal is a
-\ number on a pipe that every wait below polls beside its process.
-: CATCH-ONE ( n -- ) {: sig:n :}
-   sig SIGNAL:IGNORED? if exit then
-   sig SIGNAL:CATCH ;
-
-: CATCH-SIGNALS ( -- )
-   SIGNAL:INIT
-   SIGNAL:SIGTERM CATCH-ONE
-   SIGNAL:SIGINT CATCH-ONE
-   SIGNAL:SIGHUP CATCH-ONE ;
+\ SIGTERM, SIGINT and SIGHUP, caught as the gate root catches them (lib/signal.f
+\ CATCH-STOPS). No Forth word runs in a handler: the signal is a number on a
+\ pipe that every wait below polls beside its process.
 
 : SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then
@@ -407,8 +397,8 @@ false LATE !
 \ THE ANSWER. initdb, when it is running, is stopped; nothing else has started.
 \ The server is sent its SIGQUIT first and shuts down while the case
 \ engine's tree is ended; then it is given QUIT-MS. The directories go, and
-\ the process dies of the signal, so its caller reads the status an uncaught
-\ one would have left. A step that throws is named and the answer goes on.
+\ the process dies of the signal (lib/signal.f DIE-OF). A step that throws is
+\ named and the answer goes on.
 \ It never returns: it may run from inside SERVE, and the die ends that too.
 : ANSWER ( n -- ) {: sig:n :}
    s" pg-cluster: signal " type sig FMT:.INT s" , stopping the cluster" type cr
@@ -417,9 +407,7 @@ false LATE !
    s" case engine kill" [: CASE-KILL ;] catch SAY-THROW
    s" postgres stop" [: QUIT-MS STOP ;] catch SAY-THROW
    s" cleanup" [: CLEANUP-RUN ;] catch SAY-THROW
-   SIGNAL:RELEASE
-   getpid >PID sig PROC-KILL-RAW drop
-   s" pg-cluster: signal" 128 sig + die ;
+   s" pg-cluster: signal" sig SIGNAL:DIE-OF ;
 
 : SIGNAL-CHECK ( -- )
    SIGNAL:TAKE MATCH SIGNAL:signal-result
@@ -526,7 +514,7 @@ false LATE !
 \ SHOW-LOG's READ-ALL throws E-FS-CAPACITY on a log over CAPTURE-CAP, which a
 \ server that ran the cases may write.
 : MAIN ( -- )
-   CATCH-SIGNALS
+   SIGNAL:CATCH-STOPS
    s" initdb" INITDB TOOL INITDB-U !
    s" postgres" POSTGRES TOOL POSTGRES-U !
    MAKE-DIRS TEXTS!
