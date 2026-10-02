@@ -1402,8 +1402,8 @@ the rule.
   that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :71), `CTX0`
-  (lib/process-command.f:438), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:51, used at :78), `CTX0`
+  (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
   run's `E-UNDEFINED`. The mark covers only what follows the statement and only
