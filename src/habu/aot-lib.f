@@ -980,17 +980,30 @@ variable BDELTA  variable TNEW
    m MEMBER-NEWOFF  v m CLO-AT-N -  +
    p AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
 
-: COPY-COMPACT-BLOB {: i:n :} ( n -- )
-   i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
-   BEGIN CP2 @ CEND @ < WHILE
+\ A member is copied word by word, each word relocated as a direct branch,
+\ except at a recorded address site, whose literal is copied whole. A site the
+\ cursor has passed lies inside the literal just copied, which the per-word
+\ copy never visited either. CM-I names the member to the per-site word.
+variable CM-I
+: COPY-WORDS-TO ( ptr u8 -- ) {: p:ptr :}
+   BEGIN CP2 @ p < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
-      CP2 @ ADDRESS-SITE? if
-         i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
-         CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE
-      else
-         i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
-      then CP2 @ + CP2 !
+      CM-I @ CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW
+      CP2 @ 4 + CP2 !
    REPEAT ;
+: COPY-SITE ( n n -- ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if exit then
+   off SITE-PTR {: p:ptr :}
+   p CP2 @ < if exit then
+   p COPY-WORDS-TO
+   CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
+   CM-I @ CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
+   CP2 @ CEND @ SITE-LITERAL drop  CP2 @ + CP2 ! ;
+: COPY-COMPACT-BLOB {: i:n :} ( n -- )
+   i CM-I !
+   i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+   CP2 @ CEND @ [: COPY-SITE ;] EACH-SITE
+   CEND @ COPY-WORDS-TO ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ 0= IF MLBL LABEL@ LBL, THEN          \ MAIN is closure word 0 -> place its label

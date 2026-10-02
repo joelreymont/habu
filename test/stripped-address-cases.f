@@ -81,9 +81,32 @@ get-current constant SAT-WID
    low XREF-FOUND? TFALSE
    lat -1 T= ;
 
+\ THE x86-64 ARM OF THE SITE READER. HB-TARGET-LINUX-X86-64? is false on this
+\ engine, so the readers above reach only the chain arm; this drives the MOVABS
+\ arm directly, on a site laid out as src/compiler/native/x64ir.f DEF-MOVI emits
+\ it. What the arm can get wrong: the immediate's offset or byte order, the
+\ site's size, the bound (a site ending exactly at the span's end is read, one a
+\ byte longer is not), and the shape (REX.B naming r8-r15 is still a site,
+\ another REX.W opcode is none).
+create SAT-MOVABS 10 allot
+
+: SAT-MOVABS! ( n n -- ) {: rex:n op:n :}
+   rex SAT-MOVABS c!  op SAT-MOVABS 1+ c!
+   8 0 ?do i 1+ $11 * SAT-MOVABS 2 + i + c! loop ;
+
+: SAT-X86 ( -- )
+   $49 $BB SAT-MOVABS!
+   SAT-MOVABS SAT-MOVABS 10 + MOVABS-LITERAL $8877665544332211 T= 10 T=
+   s" a site one byte past the span's end is not read" T-LABEL
+   SAT-MOVABS SAT-MOVABS 9 + MOVABS-LITERAL 0 T= 0 T=
+   s" mov r/m64, imm32 is not an address site" T-LABEL
+   $48 $C7 SAT-MOVABS!
+   SAT-MOVABS SAT-MOVABS 10 + MOVABS-LITERAL 0 T= 0 T= ;
+
 : SAT-VALID ( -- )
    SAT-OWNER
    SAT-NEIGHBOUR
+   SAT-X86
    DATA-VA VA>N DATA-ADDRESS? TTRUE
    DATA-VA VA>N DATA-SIZE + DATA-ADDRESS? TTRUE
    DATA-VA VA>N DATA-SIZE + 1+ DATA-ADDRESS? TFALSE
@@ -93,9 +116,9 @@ get-current constant SAT-WID
    0 SAT-RESET SAT-DECODE 0 T=
    9 SAT-RESET SAT-DECODE 0 T=
    30 SAT-RESET SAT-DECODE 0 T=
-   SAT-CHAIN SAT-CHAIN 15 + ADDRESS-CHAIN? TFALSE
-   SAT-CHAIN SAT-CHAIN ADDRESS-CHAIN? TFALSE
-   SAT-CHAIN 1+ SAT-CHAIN ADDRESS-CHAIN? TFALSE
+   SAT-CHAIN SAT-CHAIN 15 + SITE-LITERAL drop 0 T=
+   SAT-CHAIN SAT-CHAIN SITE-LITERAL drop 0 T=
+   SAT-CHAIN 1+ SAT-CHAIN SITE-LITERAL drop 0 T=
    \ The validator proves a stable address, including an empty buffer's end. A
    \ refusal names the site, so every call carries the owning record and the
    \ recorded cell; an admitted address reads neither.
