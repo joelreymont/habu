@@ -30,15 +30,14 @@ package AOT-CAPTURE
 \ the package.
 using AOT-BUF
 
-\ --- raw dict/code boundary casts (host build-time only). AOT-DBASE names only
-\ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
-\ The casts expose record addresses, byte views, and record cells for reverse lookup.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: AOT-DBASE ( -- ptr n ) dbase@ ;
-TRUSTED: AOT-DBASE-N ( -- n ) dbase@ ;
-TRUSTED: AOT-DATA-N ( -- n ) data-base ;
-TRUSTED: AOT-A>U8 ( ptr n -- ptr u8 ) ;
-TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
+\ --- raw dict/code boundary (host build-time only). AOT-DBASE names only the
+\ dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
+\ Dictionary records and the code they name are addressed by integers: the
+\ region base, a record's name cell, a code start.
+CAST: AOT-N>U8 ( n -- ptr u8 )
+: AOT-DBASE ( -- ptr n ) dbase@ AOT-N>U8 CELL-VIEW ;
+: AOT-DBASE-N ( -- n ) dbase@ ;
+: AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
@@ -57,7 +56,7 @@ TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 : AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
 : AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
 : AOT-RNPTR ( ptr n -- ptr u8 )
-   dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
+   dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
 : AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
 
 \ --- 32-bit little-endian code word; direct `BL imm26` call recognise + decode.
@@ -395,7 +394,7 @@ DYNAMIC-BUFFER ACAP-GSITE n
 : ACAP-ADD-REC ( n n -- n ) {: k:n bstart:n :}
    k AOT-REC AOT-RWID DICT-WL:RETIRED = if -1 exit then
    AOT-REC-N @ AOT-REC-MAX >= if k ACAP-REC-REFUSE then
-   k AOT-REC AOT-A>U8 {: src:ptr :}
+   k AOT-REC BYTE-VIEW {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
    k AOT-REC AOT-RWID -1 <> if
@@ -2390,7 +2389,7 @@ private
    wid 0 < 0=  wid PROT-WID-MAX <  and ;
 : ACAP-LIVE-PWID? ( n -- bool ) {: wid:n :}
    wid ACAP-PWID-IN-RANGE? 0= if 0 0= 0= exit then
-   AOT-LIVE-DATA PROT-BITS-OFF + wid 3 rshift + AOT-A>U8 c@
+   AOT-LIVE-DATA PROT-BITS-OFF + wid 3 rshift + BYTE-VIEW c@
    wid 7 and rshift 1 and 0= 0= ;
 : ACAP-PWIN-ADD ( n -- ) {: rel:n :}
    rel AOT-PWIN-N @ 4 * AOT-PWIN-BUF@ + AOT-P32!
@@ -2502,7 +2501,7 @@ TRUSTED: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] ) ;
 
 \ Full-runtime payload mode is explicit. Its verified checker stores travel in
 \ DATA, so an empty sidecar is valid only for that captured owner and closure.
-TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
+: ACAP-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 : ACAP-MEMBER? ( ptr u8 n ptr u8 n -- bool )
    {: pkg:ptr pkgu:n name:ptr nameu:n :}

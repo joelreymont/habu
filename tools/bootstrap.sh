@@ -135,7 +135,6 @@ SRC_COMMON=(
 emit_boot_hide() {
   cat >> "$1" <<'EOF'
 TRUSTED: BOOT-N>REC ( n -- ptr n ) ;
-TRUSTED: BOOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BOOT-NDICT! ( n -- ) seed-ndict! ;
 $0 constant BOOT-XREF-START-SLOT
@@ -156,7 +155,7 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-XREF-EXT? ( ptr n -- bool )
    BOOT-XREF-FLAGS DNAME-EXT and 0= 0= ;
 : BOOT-XREF-INLINE-NAME ( ptr n -- ptr u8 )
-   $18 + BOOT-A>U8 ;
+   $18 + byte-view ;
 : BOOT-XREF-NAME-A ( ptr n -- ptr u8 ) {: rec:ptr :}
    rec BOOT-XREF-EXT? if rec BOOT-XREF-NAME-SLOT BOOT-XREF-PTR@ exit then
    rec BOOT-XREF-INLINE-NAME ;

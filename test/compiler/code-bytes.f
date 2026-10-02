@@ -96,7 +96,7 @@ private
    s" XREF-START" REC-START s" XREF-START" REC-BYTES CODE-BYTES:AT
       {: p:ptr got:n :}
    got s" XREF-START" REC-BYTES T=
-   p s" XREF-START" REC-START XREF-N>U8 = TTRUE
+   p NULL-PTR BYTE-VIEW - s" XREF-START" REC-START = TTRUE
 
    s" a span outside the code region refuses by name" T-LABEL
    REFUSES

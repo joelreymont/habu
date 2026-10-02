@@ -25,10 +25,10 @@
 -1 constant BFR-NOT-FOUND
 24 constant BFR-INLINE-OFF
 
-\ Refresh casts expose mixed dictionary records and inline/long names.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Dictionary records and long names are addressed by integers. This prelude
+\ defines globals and truncates them away, and a global pointer CAST: is
+\ E-CAST-MINT. Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BFR-N>REC ( n -- ptr n ) ;
-TRUSTED: BFR-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
 \ THE LOWERING SEAM, and `seed-ndict!` rather than public `ndict!` because the
 \ host this prelude runs on has its seal floor armed: the watermark is set
@@ -78,7 +78,7 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
    BFR-FLAGS DNAME-EXT and 0= 0= ;
 
 : BFR-INLINE-NAME ( ptr n -- ptr u8 )
-   BFR-INLINE-OFF + BFR-A>U8 ;
+   BFR-INLINE-OFF + BYTE-VIEW ;
 
 : BFR-NAME-A ( ptr n -- ptr u8 )
    dup BFR-EXT? if BFR-NAME-SLOT BFR-PTR@ exit then
@@ -103,44 +103,24 @@ variable BFR-SU
    + c@ ;
 s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
 
-\ The name scanner reads and writes three byte pointers through generic scratch
-\ cells. Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: BFR-A@ ( -- ptr u8 )
-   BFR-A @ ;
-
-TRUSTED: BFR-B@ ( -- ptr u8 )
-   BFR-B @ ;
-
-TRUSTED: BFR-SN@ ( -- ptr u8 )
-   BFR-SN @ ;
-
-TRUSTED: BFR-A! ( ptr u8 -- )
-   BFR-A ! ;
-
-TRUSTED: BFR-B! ( ptr u8 -- )
-   BFR-B ! ;
-
-TRUSTED: BFR-SN! ( ptr u8 -- )
-   BFR-SN ! ;
-
 : BFR-STR=CI ( ptr u8 n ptr u8 n -- bool )
-   BFR-V ! BFR-B! BFR-U ! BFR-A!
+   BFR-V ! BFR-B ! BFR-U ! BFR-A !
    BFR-U @ BFR-V @ <> if 0 0= 0= exit then
    0 begin dup BFR-U @ < while
-      dup BFR-A@ swap BFR-BYTE@ BFR-FOLD-C
-      over BFR-B@ swap BFR-BYTE@ BFR-FOLD-C <> if drop 0 0= 0= exit then
+      dup BFR-A @ swap BFR-BYTE@ BFR-FOLD-C
+      over BFR-B @ swap BFR-BYTE@ BFR-FOLD-C <> if drop 0 0= 0= exit then
       1+
    repeat drop
    0 0= ;
 
 : BFR-MATCH? ( ptr n ptr u8 n -- bool )
-   BFR-U ! BFR-A!
-   BFR-NAME$ BFR-A@ BFR-U @ BFR-STR=CI ;
+   BFR-U ! BFR-A !
+   BFR-NAME$ BFR-A @ BFR-U @ BFR-STR=CI ;
 
 : BFR-FIND-FIRST-INDEX ( ptr u8 n -- n )
-   BFR-SU ! BFR-SN!
+   BFR-SU ! BFR-SN !
    0 begin dup ndict@ < while
-      dup BFR-REC BFR-SN@ BFR-SU @ BFR-MATCH? if exit then
+      dup BFR-REC BFR-SN @ BFR-SU @ BFR-MATCH? if exit then
       1+
    repeat drop
    BFR-NOT-FOUND ;

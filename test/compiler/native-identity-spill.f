@@ -95,7 +95,7 @@ $A9000000 constant STP-FORM
    XREF-FIND dup XREF-FOUND? TTRUE ;
 
 : SPAN-BASE ( ptr n -- ptr u8 )
-   XREF-START XREF-N>U8 ;
+   XREF-START-SLOT XREF-PTR@ ;
 
 : SPAN-WORDS ( ptr n -- n )
    XREF-CODE-BYTES 4 / ;

@@ -1,6 +1,6 @@
 \ env-base.f - shared startup argv/envp access over captured DATA cells.
-\ Trusted rows expose the fixed startup cells, raw C-string/vector operations,
-\ typed empty result, and bounded temporary-path scratch.
+\ Trusted rows expose the fixed startup cells, raw C-string/vector operations
+\ and bounded temporary-path scratch.
 \ Retirement: habu-raw-self-path-4514ffd3.
 
 PTR-VARIABLE ENV-DATA-PTR
@@ -66,8 +66,8 @@ variable ENV-U
    ENV-U @ 0 ?do ENV-Z@ i ZBYTE@ ENV-A@ i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
    ENV-Z@ ENV-U @ ZBYTE@ $3D = ;
 
-TRUSTED: NULL$ ( -- ptr u8 n )
-   0 0 ;
+: NULL$ ( -- ptr u8 n )
+   NULL-PTR 0 ;
 
 PTR-VARIABLE ENV-QA
 variable ENV-QU
