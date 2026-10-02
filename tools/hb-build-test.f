@@ -1,7 +1,8 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
-\ and its report through the CLI, the report a failed build invalidates, the
-\ cache keys, the rejected inputs and the size of a snapshot and a stripped
-\ image. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ and its report through the CLI, an install that fails, the report a failed
+\ build invalidates, the cache keys, the rejected inputs and the size of a
+\ snapshot and a stripped image. tools/hb-build-test-lib.f lists the other
+\ hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
@@ -31,6 +32,14 @@ create HBT-LOST-OUT-BUF FS-PATH-CAP allot
 variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
 variable HBT-SEQ-N       \ how many the image holds
 variable HBT-SEQ-IP      \ that scan's cursor
+
+\ The failed install's -o and the directory it sits in, and the files that
+\ directory holds.
+variable HBT-INST-DIR-U
+variable HBT-INST-OUT-U
+create HBT-INST-DIR-BUF FS-PATH-CAP allot
+create HBT-INST-OUT-BUF FS-PATH-CAP allot
+variable HBT-INST-FILES
 
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
@@ -83,7 +92,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ cache that was asked and missed. CHECK-REPORT takes the expected cache
 \ fields from this process's options, so they are set to the CLI's build.
 \ The output already holds stale bytes, and no other case builds over one: the
-\ CLI renames its copy onto -o (HBB-INSTALL-OUT-ACT), and HBT-RUN-REPL's exact
+\ CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's exact
 \ stdout proves the new image replaced them.
 : CLI-REPORT ( -- )
    HBT-REPL-OUT s" stale" WRITE-ALL
@@ -94,6 +103,36 @@ variable HBT-SEQ-IP      \ that scan's cursor
    erru 0 T=
    HBB-RESET-OPTIONS HBB-REPL-ON
    HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+
+\ The install stages the engine in a sibling of -o and renames it over -o
+\ (HBB-INSTALL-OUT). A directory at -o lets the sibling be filled and made
+\ executable, then refuses the rename: the build throws E-FS-IO, -o is still
+\ the directory, and no file is left in the directory that holds it.
+: HBT-INST-DIR ( -- ptr u8 n )
+   HBT-INST-DIR-BUF HBT-INST-DIR-U @ ;
+
+: HBT-INST-OUT ( -- ptr u8 n )
+   HBT-INST-OUT-BUF HBT-INST-OUT-U @ ;
+
+: HBT-INST-FILE ( ptr u8 n -- )
+   2drop 1 HBT-INST-FILES +! ;
+
+: HBT-INST-FILES@ ( -- n )
+   0 HBT-INST-FILES !
+   HBT-INST-DIR [: HBT-INST-FILE ;] WALK-FILES
+   HBT-INST-FILES @ ;
+
+: HBT-INSTALL-FAIL ( -- )
+   HBT-ROOT s" install" HBT-INST-DIR-BUF HBT-INST-DIR-U HBT-PATH!
+   HBT-INST-DIR s" out" HBT-INST-OUT-BUF HBT-INST-OUT-U HBT-PATH!
+   HBT-INST-DIR MAKE-DIR
+   HBT-INST-OUT MAKE-DIR
+   HBT-REPL-SRC HBT-INST-OUT HBT-HBB-PREPARE-REPL
+   [: HBB-BUILD ;] E-FS-IO TTHROWSQ
+   HBB-GOT-NAME$ BF-REMOVE-TMP
+   BF-TMP-RESET
+   HBT-INST-OUT DIR? TTRUE
+   HBT-INST-FILES@ 0 T= ;
 
 \ A build that fails invalidates the report the last one left: this runs after
 \ HBT-SIZE-AOT-LOST-BLOB, whose in-process build left a valid one. It is the
@@ -429,6 +468,7 @@ public
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    CLI-REPORT
+   HBT-INSTALL-FAIL
    HBT-CACHE-KEY-CHANGES
    HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL

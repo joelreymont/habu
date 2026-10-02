@@ -58,8 +58,6 @@ create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-STAGE-DIR-BUF FS-PATH-CAP allot
 create HBB-STAGE-BUF FS-PATH-CAP allot
-create HBB-INSTALL-TMP-PATH FS-PATH-CAP allot
-variable HBB-INSTALL-TMP-U
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
@@ -551,33 +549,6 @@ HBB-INSTALL-CHILD-LINT
    HBB-KEY-DRIVER-SOURCES
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
-: HBB-INSTALL-TMP$ ( -- ptr u8 n )
-   HBB-INSTALL-TMP-PATH HBB-INSTALL-TMP-U @ ;
-
-\ Unique destination-sibling staging path for same-directory publication.
-: HBB-INSTALL-TMP! ( ptr u8 n -- ) {: dst:ptr dstu:n :}
-   SB-RESET
-   dst dstu SB-APPEND
-   s" ." SB-APPEND  getpid FS-MUT-SB-U
-   s" -" SB-APPEND  mono-ns FS-MUT-SB-U
-   s" .tmp" SB-APPEND
-   SB$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a HBB-INSTALL-TMP-PATH u BYTE-COPY
-   u HBB-INSTALL-TMP-U ! ;
-
-\ Copy across filesystems, then chmod and rename within the destination directory.
-: HBB-PUBLISH-CLEAN-TMP ( -- )
-   HBB-INSTALL-TMP$ EXISTS? if
-      [: HBB-INSTALL-TMP$ REMOVE-FILE ;] catch drop
-   then ;
-
-: HBB-PUBLISH-DONE ( n -- ) {: rc:n :}
-   rc 0 <> if
-      HBB-PUBLISH-CLEAN-TMP
-      rc throw
-   then ;
-
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
@@ -641,15 +612,24 @@ HBB-INSTALL-CHILD-LINT
 : HBB-REMOVE-OUT ( -- )
    HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-: HBB-INSTALL-OUT-ACT ( -- )
-   HBB-GOT-NAME$ BF-A$ HBB-INSTALL-TMP$ COPY-FILE-STREAM
-   HBB-INSTALL-TMP$ CHMOD-X
-   HBB-INSTALL-TMP$ HBB-OUT$ RENAME-FILE ;
+\ The engine the child wrote under HB_TMP, which may be another filesystem, is
+\ copied into the sibling of -o that RESERVE-SIBLING creates exclusively, and
+\ renamed over -o only once it is whole and executable, so a failed install
+\ leaves -o as it was and removes the sibling. The copy streams by path, so the
+\ reservation's descriptor is closed first. Stack-preserving under `catch`: the
+\ caller still holds the sibling to remove when a step throws.
+: HBB-INSTALL-STAGED ( ptr u8 n n -- ptr u8 n n ) {: tmp:ptr tmpu:n fd:n :}
+   fd close-rc 0<> if E-FS-IO throw then
+   HBB-GOT-NAME$ BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X
+   tmp tmpu HBB-OUT$ RENAME-FILE
+   tmp tmpu fd ;
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   HBB-OUT$ HBB-INSTALL-TMP!
-   [: HBB-INSTALL-OUT-ACT ;] catch HBB-PUBLISH-DONE
+   HBB-OUT$ RESERVE-SIBLING {: tmp:ptr tmpu:n fd:n :}
+   tmp tmpu fd [: HBB-INSTALL-STAGED ;] catch {: code:n :} 2drop drop
+   code 0<> if tmp tmpu REMOVE-FILE code throw then
    HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
