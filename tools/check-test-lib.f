@@ -2514,11 +2514,12 @@ create BIG $2000 allot   variable BIG-U
    s" PRODUCT ( 0 FIELD x n ;PRODUCT" s" '('" OPERAND-REFUSED
    s" PRODUCT \ 0 FIELD x n ;PRODUCT" s" '\'" OPERAND-REFUSED ;
 
-\ A definer with nothing after it has no name to read. Each source puts one
-\ alone on its second line, two columns in: the loader refuses the source, and
-\ the check refuses it in prose and in JSON at that place, naming the definer,
-\ without reading past the last token. Checked as a file, whose statements are
-\ also walked to place the files it loads, it is refused once.
+\ A definer, or `undefine`, with nothing after it has no name to read. Each
+\ source puts one alone on its second line, two columns in: the loader refuses
+\ the source, and the check refuses it in prose and in JSON at that place,
+\ naming that word, without reading past the last token. Checked as a file,
+\ whose statements are also walked to place the files it loads, it is refused
+\ once.
 : NONAME-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n d:ptr du:n :}
    SB-RESET
    a u SB-APPEND $0a SB-APPEND-C
@@ -2562,7 +2563,8 @@ create BIG $2000 allot   variable BIG-U
    s" \ lead" s" PRODUCT" NONAME-REFUSED
    s" \ lead" s" package" NONAME-REFUSED
    s" \ lead" s" :" NONAME-REFUSED
-   s" \ lead" s" TRUSTED:" NONAME-REFUSED ;
+   s" \ lead" s" TRUSTED:" NONAME-REFUSED
+   s" \ lead" s" undefine" NONAME-REFUSED ;
 
 \ A parsing keyword takes the next whitespace-delimited token raw, whatever it
 \ spells, in every scanner of the check as in the loader, and a definer takes

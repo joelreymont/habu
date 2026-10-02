@@ -1364,7 +1364,7 @@ the rule.
   `check/operand-name-admitted`, `-refused`). A definer with nothing after it
   has no name: the loader refuses it, and `tools/check.f` refuses it at the
   definer, in prose and as `E-MISSING-NAME`, for each of the eleven definers it
-  reads (`check/operand-missing`).
+  reads and for `undefine` (`check/operand-missing`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

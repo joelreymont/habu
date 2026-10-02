@@ -1621,10 +1621,13 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 \ A raw operand is data, never a definer: `' :` starts no definition. A
 \ definition ends where the expansion walker ends it, so `[char] ;` in a body
-\ does not end it here either.
+\ does not end it here either. `undefine` takes its name as a definer does, so
+\ a missing one is refused here, at `undefine`, before the pre-verifier, which
+\ dies on it with no location (src/habu/verify-source.f UNDEFINE-WORD).
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k LINT-LEX:OPERAND? if k 1+ exit then
    k CHK-DEF-OPENER? if k 1+ CHK-WALK-DEF exit then
+   k s" undefine" CHK-DEFINER? if k 2 + exit then
    k CHK-PKG-STEP if exit then drop
    k s" deftype" CHK-DEFINER? if
       k k 1+ CHK-NOM-REGISTER
