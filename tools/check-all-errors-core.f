@@ -65,6 +65,8 @@ variable CA-ERR-CAP
 variable CA-OUT-LEN
 TYPED-VARIABLE CA-OUT-A ptr u8
 variable CA-OUT-CAP
+variable CA-OUT-FD                      \ where the report goes, or -1 for the buffer
+-1 CA-OUT-FD !
 variable CA-LS
 variable CA-LE
 variable CA-THROW-RC                    \ what a statement threw while it was checked
@@ -135,6 +137,10 @@ variable CA-JSON
 
 : CA-ERR ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF exit THEN
+   CA-OUT-FD @ 0 >= IF
+      CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN
+      exit
+   THEN
    u CA-OUT-ROOM
    a CA-OUT-A@ CA-OUT-LEN @ + u BYTE-COPY
    CA-OUT-LEN @ u + CA-OUT-LEN ! ;
@@ -552,11 +558,19 @@ public
    outa CA-OUT-A!
    errcap CA-ERR-CAP !
    erra CA-ERR-A!
-   0 CA-OUT-LEN ! ;
+   0 CA-OUT-LEN !
+   -1 CA-OUT-FD ! ;
 
 \ The report the last run accumulated in the caller's first buffer.
 : OUT$ ( -- ptr u8 n )
    CA-OUT-A@ CA-OUT-LEN @ ;
+
+\ BUFFERS! for a report written to the given file descriptor as it is made, so
+\ it holds as many records, each as long, as the checked sources make; the
+\ buffer is the scratch. OUT$ is then empty.
+: STREAM! ( fd ptr u8 n -- ) {: fd:fd erra:ptr errcap:n :}
+   s" " erra errcap BUFFERS!
+   fd FD>N CA-OUT-FD ! ;
 
 \ True selects one JSON diagnostic record per rejected definition; false
 \ selects the prose rendering.

@@ -113,24 +113,33 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: DGT-RUN ( ptr u8 n -- len len outcome )
-   {: tool:ptr toolu:n :}
+\ A tool on the input, its standard output captured into the given buffer.
+: DGT-RUN ( ptr u8 n ptr u8 n -- len len outcome )
+   {: tool:ptr toolu:n out:ptr outcap:n :}
    PROC-ARGV-RESET
    s" --load" DGT-ARG+
    tool toolu DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
-   ENGINE-CANDIDATE:PATH$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN out outcap >LEN DGT-ERR DGT-BUF-CAP >LEN
    DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 \ Run a tool on DGT-IN, require exit 0 and an empty stderr, and answer the
 \ length of its stdout in DGT-OUT.
 : DGT-RUN-OK ( ptr u8 n -- n )
    {: tool:ptr toolu:n :}
-   tool toolu DGT-RUN {: outu:len erru:len oc :}
+   tool toolu DGT-OUT DGT-BUF-CAP DGT-RUN {: outu:len erru:len oc :}
    tool toolu DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
    DGT-ERR erru LEN>N DGT-EMPTY$ T$=
    outu LEN>N ;
+
+\ The diag-origin run, its output captured into out, exited with the expected
+\ status; its output and error lengths.
+: DGT-EXPECT-EXIT ( ptr u8 len len outcome n -- n n )
+   {: out:ptr outu:len erru:len oc expect:n :}
+   s" tools/diag-origin.f" out outu LEN>N DGT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : DGT-TEST-CLI ( -- )
    s" input.f" DGT-SOURCE$ DGT-INPUT!
@@ -152,6 +161,52 @@ create DGT-ERR DGT-BUF-CAP allot
    s" tools/check.f" DGT-RUN-OK {: outu:n :}
    DGT-OUT outu s" 8" DGT-LINE$ T$= ;
 
+\ The CLI reads a source as large as tools/check.f reads, $100000 bytes, and
+\ marks the definition at its end; a byte more is refused, naming the file.
+\ The allocation holds the source, then the capture of its output.
+$100000 constant DGT-CAP-LEN
+DGT-CAP-LEN 1+ constant DGT-OVERCAP-LEN
+DGT-CAP-LEN DGT-BUF-CAP + constant DGT-SIZED-OUT-CAP
+DGT-OVERCAP-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
+
+: DGT-SIZED-DEF$ ( -- ptr u8 n )
+   s" : DGT-SIZED ( -- ) ;" ;
+
+: DGT-MARKED-DEF$ ( -- ptr u8 n )
+   SB-RESET
+   s" DIAG-ORIGIN! " SB-APPEND
+   DGT-SIZED-DEF$ SB-APPEND
+   SB$ ;
+
+\ Blank lines, then the definition.
+: DGT-SIZED-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
+   DGT-SIZED-DEF$ {: d:ptr du:n :}
+   u du - 0 ?do $0a a i + c! loop
+   d a u + du - du BYTE-COPY ;
+
+: DGT-SIZED-RUN ( ptr u8 n ptr u8 -- ptr u8 len len outcome ) {: src:ptr u:n out:ptr :}
+   src u DGT-SIZED-FILL
+   DGT-IN src u WRITE-ALL
+   out s" tools/diag-origin.f" out DGT-SIZED-OUT-CAP DGT-RUN ;
+
+: DGT-CAP-CASE ( ptr u8 ptr u8 -- ) {: src:ptr out:ptr :}
+   src DGT-CAP-LEN out DGT-SIZED-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}
+   out outu src DGT-CAP-LEN DGT-SIZED-DEF$ nip - STARTS-WITH? TTRUE
+   out outu DGT-MARKED-DEF$ ENDS-WITH? TTRUE
+   DGT-ERR erru DGT-EMPTY$ T$= ;
+
+: DGT-OVERCAP-CASE ( ptr u8 ptr u8 -- ) {: src:ptr out:ptr :}
+   src DGT-OVERCAP-LEN out DGT-SIZED-RUN 1 DGT-EXPECT-EXIT {: outu:n erru:n :}
+   DGT-ERR erru s" file exceeds buffer" CONTAINS? TTRUE ;
+
+: DGT-SIZED-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr extent:NUM:alloc-byte-len :}
+   a DGT-OVERCAP-LEN + {: out:ptr :}
+   a out DGT-CAP-CASE
+   a out DGT-OVERCAP-CASE ;
+
+: DGT-TEST-SIZED ( -- )
+   DGT-SIZED-ALLOC MEM:BYTES-ALLOC-LEN [: DGT-SIZED-BODY ;] MEM:WITH-BYTES ;
+
 : DGT-MAIN ( -- )
    T-RESET
    DGT-PREPARE
@@ -159,6 +214,7 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-TEST-DEFINER-MARKS
    DGT-TEST-DEFINER-CHECKS
    DGT-TEST-USER-DEFINER
+   DGT-TEST-SIZED
    CLEANUP-RUN
    DGT-ROOT EXISTS? TFALSE
    T-REPORT

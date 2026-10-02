@@ -8,7 +8,9 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-$40000 constant DO-FILE-CAP
+\ The CLI reads a source as large as tools/check.f reads (CHK-SRC-CAP): what
+\ the engine loads from one file.
+INCLUDE-BUF-CAP constant DO-FILE-CAP
 32 constant DO-NUM-CAP
 
 1 constant DO-WORD

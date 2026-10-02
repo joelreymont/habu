@@ -55,7 +55,9 @@ using SOURCE-ROOT
 LOWER-CERT-HOOK:INSTALL
 ' CHK-CHECK-HOOK set-check
 
-$100000 constant CHK-SRC-CAP
+\ A source is at most what the engine loads from one file; tools/diag-origin.f
+\ reads to the same bound.
+INCLUDE-BUF-CAP constant CHK-SRC-CAP
 \ The run file is the subject behind a prefix, with an origin mark on each
 \ definition, and the run loads it with `--load`: it holds what the engine
 \ loads from one file.
@@ -1872,20 +1874,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    [: CHK-RUN-ALL-SEGS ;] CHECK-ALL-ERRORS:SESSION
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
-: CHK-RUN-ALL-CURRENT ( -- )
-   CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
+\ The report goes to standard error as the core makes it: every record of every
+\ segment, however many and however long, with no buffer to outgrow.
+: CHK-RUN-ALL ( -- )
+   2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
    CHK-EXPANDED? if CHK-RUN-ALL-EXPANDED exit then
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
-
-: CHK-RUN-ALL-FLUSH ( -- )
-   CHECK-ALL-ERRORS:OUT$ CHK-ERR ;
-
-: CHK-RUN-ALL ( -- )
-   [: CHK-RUN-ALL-CURRENT ;] catch
-   CHK-RUN-ALL-FLUSH
-   dup 0= if drop exit then
-   CHK-THROW ;
 
 : CHK-RUN-STATIC ( -- )
    CHK-RUN-ALL ;

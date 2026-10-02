@@ -1942,16 +1942,30 @@ variable SIZED-U
    s" HB_TMP" >LEN SCRATCH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-: SCRATCH-FILE-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+1 constant MODE-JSON                     \ check.f --json-errors
+2 constant MODE-ALL                      \ check.f --all-errors
+
+: MODE-ARGS ( n -- ) {: mode:n :}
+   mode MODE-JSON and 0<> if s" --json-errors" CHECK-ARG+ then
+   mode MODE-ALL and 0<> if s" --all-errors" CHECK-ARG+ then ;
+
+\ check.f on the source as a file, in the given modes, with its standard error
+\ captured into the given buffer.
+: SCRATCH-MODE-RUN ( ptr u8 n n ptr u8 n -- n n n )
+   {: src:ptr srcu:n mode:n err:ptr errcap:n :}
    ROOT$ s" sized-source.f" SIZED-PATH JOIN-PATH SIZED-U !
    SIZED$ src srcu WRITE-ALL
    SCRATCH-MAKE
    CHECK-ARGV-START
+   mode MODE-ARGS
    SIZED$ CHECK-ARG+
    SCRATCH-ENV
-   HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   HB$ >LEN CAP-OUT BUF-CAP >LEN err errcap >LEN
    CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
    CAPTURE>N ;
+
+: SCRATCH-FILE-RUN ( ptr u8 n -- n n n )
+   0 CAP-ERR BUF-CAP SCRATCH-MODE-RUN ;
 
 : SCRATCH-STDIN-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
    SCRATCH-MAKE
@@ -2009,6 +2023,92 @@ variable SIZED-U
    DIE-SIGNATURE$ SCRATCH-STDIN-RUN {: outu:n erru:n rc:n :}
    rc 0 T<>
    SCRATCH-EMPTY ;
+
+\ ---- the report carries whatever the source makes it carry -------------------
+\ A record carries its token whole, and the report carries every record: their
+\ length and number are the source's, not a buffer's. A 40 KB name, which the
+\ engine refuses at its definition, makes a record of over 40 KB in every mode;
+\ a thousand refused definitions make an --all-errors report of over 50 KB in
+\ either rendering. Each run ends in the refusal with the whole name or every
+\ record on standard error, and leaves its scratch root empty. Each test's
+\ allocation holds its source, then the capture of standard error.
+
+4 constant MODE-N                        \ every combination of MODE-JSON and MODE-ALL
+$100000 constant REPORT-ERR-CAP
+40000 constant LONG-NAME-LEN
+1000 constant REFUSAL-N
+
+: LONG-HEAD$ ( -- ptr u8 n )
+   s" : CKT-" ;
+
+: LONG-TAIL$ ( -- ptr u8 n )
+   s"  ( -- ) ;" ;
+
+LONG-HEAD$ nip LONG-NAME-LEN + LONG-TAIL$ nip + constant LONG-SOURCE-LEN
+
+: LONG-FILL ( ptr u8 -- ) {: a:ptr :}
+   LONG-HEAD$ {: h:ptr hu:n :}
+   LONG-TAIL$ {: t:ptr tu:n :}
+   h a hu BYTE-COPY
+   LONG-SOURCE-LEN tu - hu ?do $4c a i + c! loop
+   t a LONG-SOURCE-LEN + tu - tu BYTE-COPY ;
+
+\ The defined name: the source without the colon, its space and the tail.
+: LONG-NAME$ ( ptr u8 -- ptr u8 n ) {: a:ptr :}
+   a 2 +  LONG-SOURCE-LEN 2 - LONG-TAIL$ nip - ;
+
+: LONG-NAME-MODE ( ptr u8 ptr u8 n -- ) {: src:ptr err:ptr mode:n :}
+   src LONG-SOURCE-LEN mode err REPORT-ERR-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   err erru src LONG-NAME$ CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
+: LONG-NAME-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr extent:NUM:alloc-byte-len :}
+   a LONG-SOURCE-LEN + {: err:ptr :}
+   a LONG-FILL
+   MODE-N 0 ?do a err i LONG-NAME-MODE loop ;
+
+: TEST-LONG-NAME ( -- )
+   LONG-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
+   [: LONG-NAME-BODY ;] MEM:WITH-BYTES ;
+
+: REFUSAL$ ( -- ptr u8 n )
+   s" : CKT-R0000 ( n -- n ) dup ;" ;
+
+REFUSAL$ nip 1+ constant REFUSAL-LINE-LEN
+REFUSAL-N REFUSAL-LINE-LEN * constant REFUSAL-SOURCE-LEN
+
+\ Line k defines CKT-Rk, k in four digits, and refuses it.
+: REFUSAL-LINE ( ptr u8 n -- ) {: line:ptr k:n :}
+   REFUSAL$ {: t:ptr tu:n :}
+   t line tu BYTE-COPY
+   k 4 0 ?do
+      dup 10 mod $30 + line 10 i - + c!
+      10 /
+   loop drop
+   $0a line tu + c! ;
+
+: REFUSAL-FILL ( ptr u8 -- ) {: a:ptr :}
+   REFUSAL-N 0 ?do a i REFUSAL-LINE-LEN * + i 1+ REFUSAL-LINE loop ;
+
+\ One line per refused definition, in either rendering.
+: REFUSALS-MODE ( ptr u8 ptr u8 n -- ) {: src:ptr err:ptr mode:n :}
+   src REFUSAL-SOURCE-LEN mode err REPORT-ERR-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   err erru 10 COUNT-CHAR REFUSAL-N T=
+   SCRATCH-EMPTY ;
+
+: REFUSALS-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr extent:NUM:alloc-byte-len :}
+   a REFUSAL-SOURCE-LEN + {: err:ptr :}
+   a REFUSAL-FILL
+   a err MODE-ALL REFUSALS-MODE
+   a err MODE-ALL MODE-JSON or REFUSALS-MODE ;
+
+: TEST-REFUSALS ( -- )
+   REFUSAL-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
+   [: REFUSALS-BODY ;] MEM:WITH-BYTES ;
 
 : LIST-CAP-FILL ( -- )
    LIST-ENTRY-CAP 0 ?do BAD$ FILE loop ;
@@ -3960,6 +4060,8 @@ POISON-RECORD
    s" check/mid-source" [: TEST-MID-SOURCE ;] CASE-RUN
    s" check/cap-source" [: TEST-CAP-SOURCE ;] CASE-RUN
    s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
+   s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
+   s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN

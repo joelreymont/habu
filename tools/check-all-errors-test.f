@@ -585,6 +585,66 @@ create CAE-LF-BYTE 10 c,
    s" cli-smoke diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
 
+\ ---- the command's report holds whatever the source makes it hold -----------
+\ tools/check-all-errors.f itself, run as a child on refused definitions: a prose
+\ record here is about 60 bytes and a JSON record about 560, so either report
+\ passes 64 KiB, and the whole-file pass renders every diagnostic into the
+\ command's scratch before the per-definition pass. The command must exit 70
+\ with one line per refusal on standard error and nothing on standard output.
+1200 constant CAE-REFUSAL-N
+$100000 constant CAE-CHILD-ERR-CAP
+54000 constant CAE-CHILD-MS              \ the bound check-test gives a check.f child
+
+: CAE-WRITE-REFUSALS ( -- )
+   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-REFUSAL-N 0 ?do
+      CAE-LARGE s" : CAE-R" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) dup ;" APPEND-FILE
+      CAE-LARGE CAE-APPEND-LF
+   loop ;
+
+: CAE-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
+
+: CAE-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
+
+: CAE-CLI-ARGV ( bool -- ) {: json:bool :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check-all-errors.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   json if s" --json-errors" >LEN PROC-ARGV+ then
+   s" --label" >LEN PROC-ARGV+
+   CAE-LARGE >LEN PROC-ARGV+
+   CAE-LARGE >LEN PROC-ARGV+ ;
+
+: CAE-REFUSALS-MODE ( ptr u8 bool -- ) {: err:ptr json:bool :}
+   json CAE-CLI-ARGV
+   CAE-HB$ >LEN CAE-OUT CAE-BUF-CAP >LEN err CAE-CHILD-ERR-CAP >LEN
+   CAE-CHILD-MS >MS RUN-ARGV-CAPTURE CAE-CAPTURE>N {: outu:n erru:n rc:n :}
+   CAE-CASE$ T-LABEL
+   rc 70 T=
+   CAE-CASE$ T-LABEL
+   outu 0 T=
+   CAE-CASE$ T-LABEL
+   err erru 10 COUNT-CHAR CAE-REFUSAL-N T= ;
+
+: CAE-REFUSALS-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: err:ptr extent:NUM:alloc-byte-len :}
+   s" cli-refusals-prose" CAE-CASE!
+   err 0 1 = CAE-REFUSALS-MODE
+   s" cli-refusals-json" CAE-CASE!
+   err 0 0= CAE-REFUSALS-MODE ;
+
+: CAE-TEST-CLI-REFUSALS ( -- )
+   CAE-WRITE-REFUSALS
+   CAE-CHILD-ERR-CAP MEM:BYTES-ALLOC-LEN
+   [: CAE-REFUSALS-BODY ;] MEM:WITH-BYTES ;
+
 : CAE-CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns CAE-START-NS !
    q execute
@@ -956,6 +1016,7 @@ public
    s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
    s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
+   s" cli-refusals" [: CAE-TEST-CLI-REFUSALS ;] CAE-CASE-RUN
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
    CAE-ROOT EXISTS? TFALSE

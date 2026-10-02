@@ -5,7 +5,6 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-$4000 constant LJW-CAP
 32 constant LJW-NUM-CAP
 
 8 constant LJW-BS
@@ -22,7 +21,10 @@ $4000 constant LJW-CAP
 123 constant LJW-LBRACE
 125 constant LJW-RBRACE
 
-create LJW-BUF LJW-CAP allot
+\ A packet is as long as the strings it carries, escaped: a token, a definition
+\ or a path from a source of whatever size its caller reads. The buffer grows
+\ to the packet, so no packet is refused for its length.
+DYNAMIC-BUFFER LJW-BUF u8
 create LJW-NUM-BUF LJW-NUM-CAP allot
 
 variable LJW-LEN
@@ -31,14 +33,19 @@ variable LJW-NUM-I
 : LJW-RESET ( -- )
    0 LJW-LEN ! ;
 
+\ The packet's first byte, with room for n more after the packet. Growth may
+\ move the buffer, so every address is taken after the reserve. Byte 0 needs a
+\ capacity of one even for an empty packet.
+: LJW-ROOM ( n -- ptr u8 )
+   LJW-LEN @ + 1 max LJW-BUF-RESERVE
+   0 LJW-BUF ;
+
 : LJW-C ( n -- ) {: c:n :}
-   LJW-LEN @ 1+ LJW-CAP > IF s" lint-json: buffer overflow" 76 die THEN
-   c LJW-BUF LJW-LEN @ + c!
+   c 1 LJW-ROOM LJW-LEN @ + c!
    LJW-LEN @ 1+ LJW-LEN ! ;
 
 : LJW-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
-   LJW-LEN @ u + LJW-CAP > IF s" lint-json: buffer overflow" 76 die THEN
-   a LJW-BUF LJW-LEN @ + u LINT-BMOVE
+   a u LJW-ROOM LJW-LEN @ + u LINT-BMOVE
    LJW-LEN @ u + LJW-LEN ! ;
 
 : LJW-HEX ( n -- u8 )
@@ -109,4 +116,4 @@ variable LJW-NUM-I
    LJW-ZERO v 10 mod - LJW-C ;
 
 : LJW$ ( -- ptr u8 n )
-   LJW-BUF LJW-LEN @ ;
+   0 LJW-ROOM LJW-LEN @ ;
