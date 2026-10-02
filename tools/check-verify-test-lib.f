@@ -24,6 +24,7 @@
 \   --verify-only drops stdin's closure, names the subject otherwise
 \   than the operation, or writes prose on stderr                         cli-file, cli-stdin
 \   --stdin-path or --verify-only is taken where it means nothing         cli-usage
+\   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
 \   check.f's image holds the launcher's dependencies, so its default
 \   check of one is unavailable                                           default-image
 \
@@ -73,6 +74,7 @@ DYNAMIC-BUFFER FILE-BYTES u8
 DYNAMIC-BUFFER GEN u8                   \ generated source
 variable GEN-U
 variable START-NS
+variable CLI-OUT-U
 
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
@@ -423,8 +425,8 @@ variable START-NS
    ENGINE-CANDIDATE:PATH$ >LEN in inu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE
    MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N c RC>N ENDOF
+      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N CLI-OUT-U ! e LEN>N 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N CLI-OUT-U ! e LEN>N c RC>N ENDOF
    ;MATCH ;
 
 
@@ -473,12 +475,91 @@ variable START-NS
    CLI-START s" --stdin-path" ARG+ s" new.f" AT$ ARG+
    s" : CVT-X ( -- ) ;" CLI {: erru:n rc:n :}
    s" cli-usage: --stdin-path without --verify-only" T-LABEL rc 64 T=
+   s" cli-usage: default mode explains on stderr" T-LABEL
+   0 ERR erru s" usage: tools/check.f" CONTAINS? TTRUE
    CLI-START s" --verify-only" ARG+
    s" : CVT-X ( -- ) ;" CLI {: erru2:n rc2:n :}
    s" cli-usage: stdin without a path" T-LABEL rc2 64 T=
+   s" cli-usage: verify mode keeps stderr empty" T-LABEL erru2 0 T=
+   s" cli-usage: verify mode explains on stdout" T-LABEL
+   0 OUT CLI-OUT-U @ s" usage: tools/check.f" CONTAINS? TTRUE
    CLI-START s" --verify-only" ARG+ s" --source-list" ARG+ s" dep.f" AT$ ARG+
    s" " CLI {: erru3:n rc3:n :}
-   s" cli-usage: a source list" T-LABEL rc3 64 T= ;
+   s" cli-usage: a source list" T-LABEL rc3 64 T=
+   s" cli-usage: source list keeps stderr empty" T-LABEL erru3 0 T=
+   CLI-START s" --verify-only" ARG+ s" --stdin-path" ARG+
+   s" " CLI {: erru4:n rc4:n :}
+   s" cli-usage: missing option argument" T-LABEL rc4 64 T=
+   s" cli-usage: missing argument keeps stderr empty" T-LABEL erru4 0 T=
+   CLI-START s" --stdin-path" ARG+ s" new.f" AT$ ARG+ s" --verify-only" ARG+
+   s" : CVT-X ( -- ) ;" CLI {: erru5:n rc5:n :}
+   s" cli-usage: later verify option is honored" T-LABEL rc5 0 T=
+   s" cli-usage: later verify option keeps stderr empty" T-LABEL erru5 0 T=
+   CLI-START s" --stdin-path" ARG+ s" --verify-only" ARG+
+   s" : CVT-X ( -- ) ;" CLI {: erru6:n rc6:n :}
+   s" cli-usage: option-shaped path is a value" T-LABEL rc6 64 T=
+   s" cli-usage: option-shaped value leaves default stderr" T-LABEL
+   0 ERR erru6 s" usage: tools/check.f" CONTAINS? TTRUE
+   CLI-START s" --" ARG+ s" --verify-only" ARG+
+   s" " CLI {: erru7:n rc7:n :}
+   s" cli-usage: option after separator is a file" T-LABEL rc7 66 T=
+   s" cli-usage: separator leaves default stderr" T-LABEL
+   0 ERR erru7 s" check.f: no such source" CONTAINS? TTRUE
+   CLI-START s" --unknown" ARG+ s" --verify-only" ARG+
+   s" " CLI {: erru8:n rc8:n :}
+   s" cli-usage: earlier bad option is usage" T-LABEL rc8 64 T=
+   s" cli-usage: later verify option routes early failure" T-LABEL erru8 0 T=
+   s" cli-usage: earlier bad option explained" T-LABEL
+   0 OUT CLI-OUT-U @ s" usage: tools/check.f" CONTAINS? TTRUE ;
+
+
+: CLI-EARLY-FAILS ( -- )
+   CLI-START s" --verify-only" ARG+ s" cvt-missing.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-early-fails: missing file rc" T-LABEL rc 66 T=
+   s" cli-early-fails: missing file stderr empty" T-LABEL erru 0 T=
+   s" cli-early-fails: missing file explanation" T-LABEL
+   0 OUT CLI-OUT-U @ s" check.f: no such source" CONTAINS? TTRUE
+   $100001 GEN-RESERVE
+   $100001 0 do 32 i GEN c! loop
+   CLI-START s" --verify-only" ARG+ s" --stdin-path" ARG+ s" new.f" AT$ ARG+
+   0 GEN $100001 CLI {: erru2:n rc2:n :}
+   s" cli-early-fails: oversized stdin rc" T-LABEL rc2 66 T=
+   s" cli-early-fails: oversized stdin stderr empty" T-LABEL erru2 0 T=
+   s" cli-early-fails: oversized stdin explanation" T-LABEL
+   0 OUT CLI-OUT-U @ s" check.f: source exceeds capacity" CONTAINS? TTRUE ;
+
+
+: LONG-PATH$ ( -- ptr u8 n )
+   FS-PATH-CAP 1+ GEN-RESERVE
+   FS-PATH-CAP 1+ 0 do 97 i GEN c! loop
+   0 GEN FS-PATH-CAP 1+ ;
+
+
+: CLI-PATH-CAPACITY ( -- )
+   LONG-PATH$ {: path:ptr pathu:n :}
+   CLI-START s" --verify-only" ARG+ path pathu ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-path-capacity: verify FILE status" T-LABEL rc 67 T=
+   s" cli-path-capacity: verify FILE stderr" T-LABEL erru 0 T=
+   s" cli-path-capacity: verify FILE explanation" T-LABEL
+   0 OUT CLI-OUT-U @ s" check.f: source path exceeds capacity" CONTAINS? TTRUE
+   CLI-START path pathu ARG+
+   s" " CLI {: erru2:n rc2:n :}
+   s" cli-path-capacity: ordinary FILE status" T-LABEL rc2 67 T=
+   s" cli-path-capacity: ordinary FILE explanation" T-LABEL
+   0 ERR erru2 s" check.f: source path exceeds capacity" CONTAINS? TTRUE
+   CLI-START s" --verify-only" ARG+ s" --stdin-path" ARG+ path pathu ARG+
+   s" : CVT-X ( -- ) ;" CLI {: erru3:n rc3:n :}
+   s" cli-path-capacity: verify stdin path status" T-LABEL rc3 67 T=
+   s" cli-path-capacity: verify stdin path stderr" T-LABEL erru3 0 T=
+   s" cli-path-capacity: verify stdin path explanation" T-LABEL
+   0 OUT CLI-OUT-U @ s" check.f: source path exceeds capacity" CONTAINS? TTRUE
+   CLI-START s" --stdin-path" ARG+ path pathu ARG+
+   s" : CVT-X ( -- ) ;" CLI {: erru4:n rc4:n :}
+   s" cli-path-capacity: ordinary stdin path status" T-LABEL rc4 67 T=
+   s" cli-path-capacity: ordinary stdin path explanation" T-LABEL
+   0 ERR erru4 s" check.f: source path exceeds capacity" CONTAINS? TTRUE ;
 
 
 : CLI-TRUNCATED ( -- )
@@ -541,6 +622,8 @@ public
    s" cli-file" [: CLI-FILE ;] RUN-CASE
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE
+   s" cli-early-fails" [: CLI-EARLY-FAILS ;] RUN-CASE
+   s" cli-path-capacity" [: CLI-PATH-CAPACITY ;] RUN-CASE
    s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
    s" default-image" [: DEFAULT-IMAGE ;] RUN-CASE
    MEASURE
