@@ -164,13 +164,14 @@ package HB-BUILD-CLI
 \ following a direct branch OUT of the member puts that record in the closure;
 \ without it the relocation refused this very program with `aot: PC-relative
 \ target removed or outside closure`. Running the image is what proves the clause
-\ was copied and retargeted rather than merely counted. lib/span.f is in the
-\ linker's lib closure, so the linker is compiled above this program.
+\ was copied and retargeted rather than merely counted. The engine bakes both
+\ modules the program requires, so the linker image links it
+\ (KEYED-PRE-WINDOW-REFUSED below says why).
 : BUILD-AOT-SPAN ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
-   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT FILE? TTRUE
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT

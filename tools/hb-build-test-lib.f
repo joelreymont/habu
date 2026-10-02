@@ -336,9 +336,9 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ (docs/gate.md). A row with no maker to run hands an empty linker and loads
 \ only the saver's module. The -SOURCE words keep one build on the engine,
 \ which compiles the linker above the application: for a subject that needs a
-\ module in the linker's lib closure, which the linker image refuses by name
-\ (test/preloaded-engine.f rule 3), and for a case about that order. A row that
-\ records no image builds every program on the engine.
+\ module of the linker's lib closure the engine does not bake, which the linker
+\ image refuses by name (test/preloaded-engine.f rule 3), and for a case about
+\ that order. A row that records no image builds every program on the engine.
 : HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
    linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
    saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;

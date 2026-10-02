@@ -268,12 +268,12 @@ at its deadline.
   reaching one of its words by name, or one of its cells that no AOT ownership
   claim names, and a subject defining one of its words dies at that line, as it
   dies on the engine at the library's line (rule 3).
-  A row builds a subject that needs a module of the linker's lib closure on
-  the engine (`tools/hb-build-test-lib.f` `HBT-KEYED!`), except the row whose
-  claim is that sharing: `test/stripped-preloaded-runtime.f` links a subject
-  requiring the linker's FFI and TASK on `LINKER$`. A row whose claim is
-  the saver's or the linker's own load (`test/app-image.f`) keeps compiling
-  them from source.
+  A row builds on the engine a subject that needs a module of the linker's
+  lib closure the engine does not bake (`tools/hb-build-test-lib.f`
+  `HBT-KEYED!`), except the row whose claim is that sharing:
+  `test/stripped-preloaded-runtime.f` links a subject requiring the linker's
+  FFI and TASK on `LINKER$`. A row whose claim is the saver's or the linker's
+  own load (`test/app-image.f`) keeps compiling them from source.
   `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
   their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
   the mapped-band fixture's first question to the process-map reader reads the
