@@ -2970,23 +2970,26 @@ create BIG $2000 allot   variable BIG-U
 \ with no name; it starts no definition, so the nominal pass reads the line after
 \ it as top-level source. `[char] ;` ends none, so the pass does not read the
 \ local `newtype` after it as a declaration.
-: RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
-   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
-   a u b v OPERAND-SRC$ DIRECT-JSON-STDIN 1 T=
+: NUMERIC-REFUSED ( n n n -- )
+   1 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
    CAP-ERR erru s\" \"word\":\"42\"" CONTAINS? TTRUE ;
 
-: RAW-PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
+: RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u b v OPERAND-SRC$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
+
+: RAW-PRINTS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n want:ptr wantu:n :}
    a u HB-LOAD-SRC 0 T=
    {: outu:n erru:n :}
    erru 0 T=
-   CAP-OUT outu s" 115" CONTAINS? TTRUE
+   CAP-OUT outu want wantu CONTAINS? TTRUE
    BAD$ PATH-RUN 0 T=
    {: outu2:n erru2:n :}
    erru2 0 T=
-   CAP-OUT outu2 s" 115" CONTAINS? TTRUE ;
+   CAP-OUT outu2 want wantu CONTAINS? TTRUE ;
 
 : RAW-ADMITTED ( ptr u8 n -- )
    HB-LOAD-SRC NOM-LOAD-ADMITTED
@@ -3016,12 +3019,127 @@ create BIG $2000 allot   variable BIG-U
    s" : CKT-P ( -- n ) [char] \" s" ; : 42 ( -- ) ;" RAW-NUMERIC
    s" char (" s" : 42 ( -- ) ;" RAW-NUMERIC
    s" create char" s" : 42 ( -- ) ;" RAW-NUMERIC
-   s\" char s\" constant CKT-SQ CKT-SQ ." RAW-PRINTS
-   s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." RAW-PRINTS
+   s\" char s\" constant CKT-SQ CKT-SQ ." s" 115" RAW-PRINTS
+   s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." s" 115" RAW-PRINTS
    RAW-TICK-KEYWORD
    RAW-LOCAL$ RAW-ADMITTED
    s" ' :" s" DEFLINEAR N" OPERAND-SRC$ HB-LOAD-SRC RAW-TICK-LOAD-REFUSED
    s" ' :" s" DEFLINEAR N" OPERAND-SRC$ NOM-CHECK-REFUSED ;
+
+\ A body looks a token up among its live locals before the parsing keywords, as
+\ the loader and the checker do, byte for byte: after `{: KW :}` the `KW` pushes
+\ the local, takes no operand, and the `;` after it ends the definition. `.(`
+\ is the same: the loader looks it up after the locals, unlike the `\` and `(`
+\ comments. Each form loads and checks alike and prints 5, the `42` after one
+\ is refused and `DEFLINEAR N` after one is refused at its name, on line 2.
+\ Measured before every scanner of the check looked locals up: the
+\ pre-verifier refused the `char`, `[char]` and `.(` forms (rc 74,
+\ unterminated definition) though they load, and the reserved-name lint and
+\ the nominal pass read past the `;` of every form, so the `42` after the
+\ `[']` and `'` forms was admitted and `DEFLINEAR N` after any form was
+\ refused with no location.
+: LOCAL-KW$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: kw:ptr kwu:n tail:ptr tailu:n :}
+   SB-RESET
+   s" : CKT-LK ( n -- n ) {: " SB-APPEND  kw kwu SB-APPEND
+   s"  :} " SB-APPEND  kw kwu SB-APPEND  s"  ;" SB-APPEND
+   $0a SB-APPEND-C  tail tailu SB-APPEND
+   SB$ ;
+
+: LOCAL-NOMINAL ( ptr u8 n -- ) {: kw:ptr kwu:n :}
+   kw kwu s" DEFLINEAR N" LOCAL-KW$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   kw kwu s" DEFLINEAR N" LOCAL-KW$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-BAD-NOMINAL-TYPE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"N\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"line\":2,\"column\":11," CONTAINS? TTRUE ;
+
+: LOCAL-KW ( ptr u8 n -- ) {: kw:ptr kwu:n :}
+   kw kwu s" 5 CKT-LK ." LOCAL-KW$ s" 5" RAW-PRINTS
+   kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
+
+\ `['] \` in a body ticks a word named `\`, as the loader reads it, and the
+\ check runs the source and prints 7. Measured before `[']` joined the
+\ pre-verifier's body keywords: its operand opened a comment there and hid the
+\ `;` (rc 74, unterminated definition).
+: TICK-NAME$ ( -- ptr u8 n )
+   SB-RESET
+   s" : \ ( -- ) ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-TB ( -- [ -- ] ) ['] \ ;" SB-APPEND $0a SB-APPEND-C
+   s" CKT-TB drop 7 ." SB-APPEND
+   SB$ ;
+
+\ An enclosing local is still that local inside a quotation: the loader refuses
+\ it at that token (rc 75) and the check refuses it as a local in a quotation,
+\ after the `;` that ends the definition. Measured before: the pre-verifier read
+\ the `;` as the keyword's operand (rc 74, unterminated definition).
+: LOCAL-QUOTATION$ ( -- ptr u8 n )
+   s" : CKT-LQ ( n -- n ) {: char :} [: char ;" ;
+
+: LOCAL-QUOTATION ( -- )
+   LOCAL-QUOTATION$ HB-LOAD-SRC 75 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" char at" CONTAINS? TTRUE
+   LOCAL-QUOTATION$ DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE ;
+
+\ A parsing keyword outside its own state is refused by the loader and the check
+\ alike: `[char]` at top level, and `char` and `'` in a body.
+: OUT-OF-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   a u DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
+
+\ A body binding a 65th local is refused by the loader at that local (rc 70),
+\ and the check refuses it the same way, with the checker's located
+\ E-TOO-MANY-LOCALS. Measured before the pre-verifier stopped recording locals
+\ at the engine's cap: it died first, rc 74 with no location.
+: MANY-LOCALS$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-ML ( " SB-APPEND
+   65 0 ?do s" n " SB-APPEND loop
+   s" -- ) {:" SB-APPEND
+   65 0 ?do s"  l" SB-APPEND i 1 + FMT:SB-U loop
+   s"  :} ;" SB-APPEND
+   SB$ ;
+
+: MANY-LOCALS ( -- )
+   MANY-LOCALS$ HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" more than 64 locals in one definition: l65" CONTAINS? TTRUE
+   MANY-LOCALS$ DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"token\":\"l65\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"line\":1,\"column\":397," CONTAINS? TTRUE ;
+
+\ The 65-local body and the DEFLINEAR sources come last: a pre-verifier that
+\ dies on the first, or a nominal pass that misses one of the others and hands
+\ it to the pre-verifier's registration, ends this process.
+: TEST-LOCAL-OPERAND ( -- )
+   s" char" LOCAL-KW
+   s" [char]" LOCAL-KW
+   s" [']" LOCAL-KW
+   s" '" LOCAL-KW
+   s" .(" LOCAL-KW
+   TICK-NAME$ s" 7" RAW-PRINTS
+   LOCAL-QUOTATION
+   s" [char] A ." OUT-OF-STATE
+   s" : CKT-OC ( -- n ) char A ;" OUT-OF-STATE
+   s" : CKT-OT ( -- n ) ' dup drop 1 ;" OUT-OF-STATE
+   MANY-LOCALS
+   s" char" LOCAL-NOMINAL
+   s" [char]" LOCAL-NOMINAL
+   s" [']" LOCAL-NOMINAL
+   s" '" LOCAL-NOMINAL
+   s" .(" LOCAL-NOMINAL ;
 
 \ Value-records whose fields the registration refuses. The loader dies at the
 \ first with the registration's message and rc 70. The check names every
@@ -3993,7 +4111,9 @@ variable REQ-U
 \ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
 \ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
 \ any other condition is the run's: the one in CKT-RQ-COND never runs, and
-\ its file defines the word again.
+\ its file defines the word again. So are those of req-alt4.f, which defines
+\ the word itself: each of its `if`s tests a local pushed after a target
+\ predicate, not the predicate.
 : REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
    s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
@@ -4030,13 +4150,21 @@ variable REQ-U
    s" req-alt-macos.f" REQ-LIT+ s"  required" REQ-LINE+
    s"    else " SB-APPEND s" req-alt-linux.f" REQ-LIT+ s"  required then then ;" REQ-LINE+
    s" CKT-RQ-PICK3" REQ-LINE+
-   s" req-alt3.f" REQ-ALT-USE ;
+   s" req-alt3.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-ALT ( -- n ) 1 ;" REQ-LINE+
+   s" : CKT-RQ-LOCAL ( bool -- )" REQ-LINE+
+   s"    {: off:bool :}" REQ-LINE+
+   s" HB-TARGET-LINUX? off" s" req-alt-cond.f" s"  required then drop" REQ-PICK+
+   s" HB-TARGET-MACOS? off" s" req-alt-cond.f" s"  required then drop ;" REQ-PICK+
+   s" 0 0= 0= CKT-RQ-LOCAL" REQ-LINE+
+   s" req-alt4.f" REQ-ALT-USE ;
 
 : TEST-REQUIRE-TARGET ( -- )
    REQ-TARGET-FILES
    s" req-alt.f" REQ-ACCEPTED-EVERY
    s" req-alt2.f" REQ-ACCEPTED-EVERY
-   s" req-alt3.f" REQ-ACCEPTED-EVERY ;
+   s" req-alt3.f" REQ-ACCEPTED-EVERY
+   s" req-alt4.f" REQ-ACCEPTED-EVERY ;
 
 \ The pre-pass reads a target predicate's spelling as the engine's answer, so a
 \ source that defines that spelling, by `:` or by `defer`, is refused at the
@@ -4861,6 +4989,7 @@ variable LC-CANON-U
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
+   s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN

@@ -288,4 +288,32 @@ public
    a u s" '" STR= if STR-TRUE exit then
    a u s" [']" STR= ;
 
+\ The control words that open and close a block in a body, matched case-folded.
+\ The engine and the checker keep the live locals count on their control-flow
+\ stack (src/habu/habu2.f LCFPUSH and LCFPOP, src/core/checker.f CF-PUSH), so a
+\ local a block declares ends with the block; `else` ends the true arm's. A
+\ quotation is a block too. A scanner that knows the locals asks these after its
+\ local lookup, since a local of a control word's name is that local.
+: BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR=CI if STR-TRUE exit then
+   a u s" begin" STR=CI if STR-TRUE exit then
+   a u s" do" STR=CI if STR-TRUE exit then
+   a u s" ?do" STR=CI if STR-TRUE exit then
+   a u s" case" STR=CI if STR-TRUE exit then
+   a u s" of" STR=CI if STR-TRUE exit then
+   a u s" match" STR=CI if STR-TRUE exit then
+   a u s" [:" STR= ;
+
+: BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" then" STR=CI if STR-TRUE exit then
+   a u s" until" STR=CI if STR-TRUE exit then
+   a u s" repeat" STR=CI if STR-TRUE exit then
+   a u s" again" STR=CI if STR-TRUE exit then
+   a u s" loop" STR=CI if STR-TRUE exit then
+   a u s" +loop" STR=CI if STR-TRUE exit then
+   a u s" endof" STR=CI if STR-TRUE exit then
+   a u s" endcase" STR=CI if STR-TRUE exit then
+   a u s" ;match" STR=CI if STR-TRUE exit then
+   a u s" ;]" STR= ;
+
 ;package

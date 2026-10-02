@@ -775,15 +775,12 @@ private
    k LINT-LEX:OPERAND
    LINT-TRUE ;
 
-: CHK-BODY-PARSER? ( n -- bool ) {: k:n :}
-   k s" char" CHK-TOK=CI if LINT-TRUE exit then
-   k s" [char]" CHK-TOK=CI ;
-
-
+\ The lexer marks a parsing keyword's operand, and leaves a local of the
+\ keyword's name unmarked with nothing taken, so the `;` that ends a definition
+\ is the first unmarked one.
 : CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
    begin dup LINT-LEX:COUNT < while
       dup CHK-TOK-SEMI? if 1+ exit then
-      dup CHK-BODY-PARSER? if 1+ then
       1+
    repeat ;
 
