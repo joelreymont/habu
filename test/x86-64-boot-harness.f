@@ -426,6 +426,13 @@ EXPORT NAME-CELL
    0 G-POP
    RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-MOV-MR ;
 
+\ Pop an address and keep the cell it points at in the scratch cell at an
+\ offset: a routine a row calls keeps the first bytes of a text it is given.
+: POP-CELL-SCRATCH, ( n -- ) {: off:n :}
+   0 G-POP
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RAX DATA-REG BOOT-SCRATCH-OFF off + MEM-OFF ASM-SINK ENC-MOV-MR ;
+
 \ Add n to the scratch cell at an offset: a routine a row calls counts its
 \ calls there.
 : ADD-SCRATCH, ( n n -- ) {: v:n off:n :}

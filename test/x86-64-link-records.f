@@ -33,15 +33,29 @@
 \
 \ THE DOES-PATCH ROW RUNS THE LINKED WORDS. Each of these images lays the
 \ window out over its own kernel stream, stages it as hb-x64-link-index does,
-\ puts the region at rest and names MADE, the created word, in LASTC-CELL.
-\ hb-x64-link-does runs MADE and SEVEN, the constant, aims MADE at one clause
-\ and then another, which clears its DKIND, restores the bare body twice and
-\ finds every band closed; it exits 0, and hb-x64-link-does-negative, the same
-\ expecting a wrong first answer, exits 21. hb-x64-link-does-checker arms
-\ stand-in checkers and the check hook, so each clause's signature registers
-\ as MADE's raw effect and the checker's tail sets its min-in; it exits 0.
-\ hb-x64-link-does-slot-armed aims SEVEN, whose routine has no slot, and exits
-\ 83 before the row writes. The peer runs them.
+\ puts the region at rest and names MADE, the created word, in LASTC-CELL. The
+\ peer runs each and compares its status and its fd-2 bytes:
+\ - hb-x64-link-does runs MADE and SEVEN, the constant, aims MADE at one
+\   clause and then another, which clears its DKIND, restores the bare body
+\   twice and finds every band closed; it exits 0, and
+\   hb-x64-link-does-negative, the same expecting a wrong first answer, exits
+\   21.
+\ - hb-x64-link-does-checker arms stand-in checkers and the check hook: the
+\   clause's signature registers as MADE's raw effect, the registrar given
+\   MADE's name and the signature's bytes, and the checker's tail marks MADE
+\   wide and sets its min-in; it exits 0. hb-x64-link-does-checker-replaced
+\   then aims MADE at a second clause, whose effect is scalar and of no
+\   input, with the target another checker, which is given the same name and
+\   signature, and MADE is left neither wide nor with a min-in; it exits 0.
+\ - The slot refusals exit 83, nothing on fd 2, before the row writes:
+\   -slot-armed aims SEVEN, whose routine has no slot, -lastc-armed names no
+\   record and -ret-armed stages MADE with int3 for the `ret` after its slot.
+\ - The registrar refusals exit 70, the missing operation's name alone on
+\   fd 2: `trust-raw` with neither checker (-raw-owner-armed) or both fields
+\   empty (-raw-field-armed), `rec-wide-publish` with no active checker
+\   (-wide-owner-armed) or its field empty (-wide-field-armed), and
+\   `rec-min-in@` once the checker's rec-wide-publish drops the active
+\   checker (-min-in-owner-armed) or its field empty (-min-in-field-armed).
 \
 \ THE INDEX IS READ BY THE KERNEL. The stream the kernel's rows open becomes the
 \ image hb-x64-link-index: the writer's records at the region, its code band,
@@ -450,9 +464,12 @@ using AOT-BUF
 \ ---- the definers, linked --------------------------------------------------------
 \ Window word w's routine ends in the slot does-patch aims: `jmp rel32` with
 \ displacement 0, then `ret`.
-: SLOT? ( n -- bool ) {: w:n :}
+: SLOT-VA ( n -- n ) {: w:n :}
    w ROW-OF {: r:n :}
-   r START-VA r 8 SH@ + 6 - {: at:n :}
+   r START-VA r 8 SH@ + 6 - ;
+
+: SLOT? ( n -- bool )
+   SLOT-VA {: at:n :}
    at BYTE@ $E9 =  at 1+ BAND LE:S32@ 0= and  at 5 + BYTE@ $C3 = and ;
 
 \ MADE is the last record, the one the checker's tail sets the min-in of
@@ -535,12 +552,15 @@ using AOT-BUF
 \ when it links, and stages it as INDEX-IMAGE does. With the region at rest a
 \ row writes through its own windows and the routines run read-execute.
 \ LASTC-CELL names MADE, the created word does-patch rewrites.
-: DOES-OPEN, ( bool -- )
-   X64HARNESS:BOOT-OPEN,
-   X64LINK:LAYOUT
+: DOES-STAGE, ( -- )
    STAGE-RECORDS
    X64HARNESS:REST,
    W-MADE IMG DREC * LASTC-CELL X64HARNESS:REGION-ADDR!, ;
+
+: DOES-OPEN, ( bool -- )
+   X64HARNESS:BOOT-OPEN,
+   X64LINK:LAYOUT
+   DOES-STAGE, ;
 
 \ Run window word w's routine through the kernel's execute.
 : CALL-WORD, ( n -- ) IMG ENTRY X64HARNESS:PUSH,  s" execute" X64HARNESS:CALL-ROW, ;
@@ -550,9 +570,15 @@ using AOT-BUF
    X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,
    s" does-patch" X64HARNESS:CALL-ROW, ;
 
-\ The same with the clause's signature `-- n`.
+\ The body capture `create` seeds for MADE, and the signature a clause
+\ declares, staged in DATA at SIG-TEXT.
+: CAPTURE$ ( -- ptr u8 n ) s" MADE create " ;
+: SIG$ ( -- ptr u8 n ) s" -- n" ;
+DATA-START $800 + constant SIG-TEXT
+
+\ The same with the clause's signature.
 : CLAUSE-SIG, ( n -- )
-   X64HARNESS:PUSH,  s" -- n" X64HARNESS:PUSH-TEXT,
+   X64HARNESS:PUSH,  SIG-TEXT X64HARNESS:PUSH-DATA,  SIG$ nip X64HARNESS:PUSH,
    s" does-patch" X64HARNESS:CALL-ROW, ;
 
 : MADE-AT ( -- n ) X64LT-WIN:MADE BYTE-VIEW IMAGE-DATA ;
@@ -585,28 +611,47 @@ using AOT-BUF
    path pathu TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
 \ The stand-in checkers' records, at the heap floor, and the scratch cells
-\ their operations write. The active one's trust-raw keeps the lengths of the
-\ name and the signature it is given; each operation adds its count.
+\ their operations write. Each trust-raw keeps what it is given at its own
+\ four cells: the first cell of the name's bytes, the name's length, the
+\ first cell of the signature's bytes and its length. Each operation adds its
+\ count.
 DATA-START constant STAND-IN
 STAND-IN $400 + constant OTHER-STAND-IN
-0 constant SIG-U-AT
-CELL constant NAME-U-AT
-2 CELL * constant COUNT-AT
-3 CELL * constant SINK-AT
+0 constant COUNT-AT
+CELL constant ACTIVE-AT                \ the active checker's trust-raw's cells
+5 CELL * constant TARGET-AT            \ the target's, when it is another
 1 constant RAW-COUNT                   \ the active checker's trust-raw
 16 constant OTHER-COUNT                \ the target's, when it is another
 256 constant TAIL-COUNT                \ the active one's rec-wide-publish
-3 constant MIN-IN-ANSWER               \ ...and what its rec-min-in@ answers
+3 constant MIN-IN-ANSWER               \ ...and what its rec-min-in@ answers first
 
+: ARGS, ( n -- ) {: at:n :}
+   at 3 CELL * + X64HARNESS:POP-SCRATCH,
+   at 2 CELL * + X64HARNESS:POP-CELL-SCRATCH,
+   at CELL + X64HARNESS:POP-SCRATCH,
+   at X64HARNESS:POP-CELL-SCRATCH, ;
+
+\ The first cell of a text's bytes as DATA holds it, zero past its end.
+: TEXT-CELL ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0  u CELL min 0 ?do  a i + c@  i 8 * lshift  or  loop ;
+
+\ Check the cells a trust-raw kept from at: MADE, as the capture starts, and
+\ the clause's signature.
+: ARGS-HELD, ( n -- ) {: at:n :}
+   CAPTURE$ TEXT-CELL at X64HARNESS:EXPECT-SCRATCH,
+   s" MADE" nip at CELL + X64HARNESS:EXPECT-SCRATCH,
+   SIG$ TEXT-CELL at 2 CELL * + X64HARNESS:EXPECT-SCRATCH,
+   SIG$ nip at 3 CELL * + X64HARNESS:EXPECT-SCRATCH, ;
+
+\ The active checker's rec-wide-publish marks the newest record wide, as a
+\ checker whose last effect was wide does, and its rec-min-in@ answers 3.
 : STAND-INS, ( -- )
-   [: SIG-U-AT X64HARNESS:POP-SCRATCH,  SINK-AT X64HARNESS:POP-SCRATCH,
-      NAME-U-AT X64HARNESS:POP-SCRATCH,  SINK-AT X64HARNESS:POP-SCRATCH,
-      RAW-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   [: ACTIVE-AT ARGS,  RAW-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
    STAND-IN NCOMP-DISPATCH:DECL-RAW-OFF + X64HARNESS:LABEL-CELL!,
-   [: 4 0 ?do SINK-AT X64HARNESS:POP-SCRATCH, loop
-      OTHER-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   [: TARGET-AT ARGS,  OTHER-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
    OTHER-STAND-IN NCOMP-DISPATCH:DECL-RAW-OFF + X64HARNESS:LABEL-CELL!,
-   [: TAIL-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   [: TAIL-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH,  s" wide-mark" X64HARNESS:CALL-ROW, ;]
+   X64HARNESS:ROUTINE,
    STAND-IN NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF + X64HARNESS:LABEL-CELL!,
    [: MIN-IN-ANSWER X64HARNESS:PUSH, ;] X64HARNESS:ROUTINE,
    STAND-IN NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF + X64HARNESS:LABEL-CELL!,
@@ -614,38 +659,122 @@ CELL constant NAME-U-AT
    STAND-IN NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!,
    1 HOOK-CELL X64HARNESS:CELL!, ;
 
+\ The checker's tail once its last effect is scalar and takes no input: no
+\ wide mark, and min-in 0.
+: SCALAR-TAIL, ( -- )
+   [: TAIL-COUNT COUNT-AT X64HARNESS:ADD-SCRATCH, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF + X64HARNESS:LABEL-CELL!,
+   [: 0 X64HARNESS:PUSH, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF + X64HARNESS:LABEL-CELL!, ;
+
+: CAPTURE, ( -- )
+   CAPTURE$ {: a:ptr u:n :}
+   a u BODYBUF-OFF X64HARNESS:TEXT!,  u BODYLEN-CELL X64HARNESS:CELL!,
+   SIG$ SIG-TEXT X64HARNESS:TEXT!, ;
+
+: CLEARED ( -- n ) DKIND:MASK DNAME-WIDE or DNAME-MIN-IN-MASK or ;
+
 \ With a checker active and the check hook armed, a clause's signature
-\ registers as MADE's raw effect under the name its body capture starts with,
-\ through the active checker and, when the target is another, the target's
-\ too. The checker's tail then runs and its min-in lands in MADE's flags,
-\ whose DKIND and DNAME-WIDE are clear; CRSIG clears.
+\ registers as MADE's raw effect through the active checker, under the name
+\ its body capture starts with. The checker's tail marks MADE wide and lands
+\ its min-in in MADE's flags, whose DKIND clears, and CRSIG clears.
 : CHECKER-IMAGE ( -- )
    false DOES-OPEN,
    STAND-INS,
-   s" MADE create " {: a:ptr u:n :}
-   a u BODYBUF-OFF X64HARNESS:TEXT!,  u BODYLEN-CELL X64HARNESS:CELL!,
+   CAPTURE,
    W-BUMP IMG ENTRY CLAUSE-SIG,
    W-MADE CALL-WORD,  MADE-AT 1+ X64HARNESS:EXPECT-POP-DATA,
-   4 NAME-U-AT X64HARNESS:EXPECT-SCRATCH,
-   4 SIG-U-AT X64HARNESS:EXPECT-SCRATCH,
+   ACTIVE-AT ARGS-HELD,
    RAW-COUNT TAIL-COUNT + COUNT-AT X64HARNESS:EXPECT-SCRATCH,
-   DKIND:MASK DNAME-WIDE or DNAME-MIN-IN-MASK or  MIN-IN-ANSWER 52 lshift  MADE-FLAGS,
+   CLEARED  DNAME-WIDE MIN-IN-ANSWER 52 lshift or  MADE-FLAGS,
    0 CRSIG-U-CELL X64HARNESS:EXPECT-CELL,
-   OTHER-STAND-IN NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!,
-   W-BUMP2 IMG ENTRY CLAUSE-SIG,
-   RAW-COUNT TAIL-COUNT + 2 *  OTHER-COUNT +  COUNT-AT X64HARNESS:EXPECT-SCRATCH,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-link-does-checker" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
-\ SEVEN's routine has no slot: does-patch exits 83 before it writes.
-: SLOT-IMAGE ( -- )
+\ The same clause, then a second, whose effect is scalar and takes no input,
+\ with the target another checker: it registers through the active checker
+\ and then the target, and leaves MADE neither wide nor with a min-in.
+: REPLACED-IMAGE ( -- )
    false DOES-OPEN,
-   W-SEVEN IMG DREC * LASTC-CELL X64HARNESS:REGION-ADDR!,
-   W-BUMP IMG ENTRY CLAUSE,
+   STAND-INS,
+   CAPTURE,
+   W-BUMP IMG ENTRY CLAUSE-SIG,
+   SCALAR-TAIL,
+   OTHER-STAND-IN NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:DATA-ADDR!,
+   W-BUMP2 IMG ENTRY CLAUSE-SIG,
+   W-MADE CALL-WORD,  MADE-AT 2 + X64HARNESS:EXPECT-POP-DATA,
+   TARGET-AT ARGS-HELD,
+   RAW-COUNT TAIL-COUNT + 2 *  OTHER-COUNT +  COUNT-AT X64HARNESS:EXPECT-SCRATCH,
+   CLEARED 0 MADE-FLAGS,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   s" hb-x64-link-does-slot-armed" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+   s" hb-x64-link-does-checker-replaced" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ An image whose does-patch must end the process before it returns: aimed at
+\ the clause BUMP, after `arm` emits the state it refuses.
+: ARMED-IMAGE ( [ -- ] bool ptr u8 n -- ) {: arm sig:bool path:ptr pathu:n :}
+   arm execute
+   sig if W-BUMP IMG ENTRY CLAUSE-SIG, else W-BUMP IMG ENTRY CLAUSE, then
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
+\ The slot refusals, 83 before the row writes: SEVEN's routine has no slot,
+\ LASTC-CELL names no record, and MADE's routine is staged with int3 where
+\ the `ret` after its `jmp rel32` belongs. The next layout copies MADE's
+\ routine again.
+: RET-AT ( -- ptr u8 ) W-MADE SLOT-VA 5 + BAND ;
+
+: SEVEN-LASTC, ( -- )
+   false DOES-OPEN,
+   W-SEVEN IMG DREC * LASTC-CELL X64HARNESS:REGION-ADDR!, ;
+
+: NO-LASTC, ( -- )
+   false DOES-OPEN,
+   0 LASTC-CELL X64HARNESS:CELL!, ;
+
+: NO-RET, ( -- )
+   false X64HARNESS:BOOT-OPEN,
+   X64LINK:LAYOUT
+   $CC RET-AT c!
+   DOES-STAGE, ;
+
+\ The registrar refusals, 70 naming the operation the row finds missing:
+\ trust-raw with neither checker, or with the active one's and the target's
+\ field empty (one record here); rec-wide-publish with no active checker,
+\ whose trust-raw the target's stands in for, or with its field empty;
+\ rec-min-in@ once the checker's rec-wide-publish drops the active checker,
+\ or with its field empty.
+: REGISTRARS, ( -- )
+   false DOES-OPEN,
+   STAND-INS,
+   CAPTURE, ;
+
+: NO-ACTIVE, ( -- ) 0 NCOMP-DISPATCH:DECL-CELL X64HARNESS:CELL!, ;
+: OP-GONE, ( n -- ) {: off:n :} 0 STAND-IN off + X64HARNESS:CELL!, ;
+
+: NO-CHECKERS, ( -- )
+   REGISTRARS,  NO-ACTIVE,  0 NCOMP-DISPATCH:TARGET-DECL-CELL X64HARNESS:CELL!, ;
+
+: ACTIVE-GONE, ( -- )
+   REGISTRARS,
+   [: NO-ACTIVE, ;] X64HARNESS:ROUTINE,
+   STAND-IN NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF + X64HARNESS:LABEL-CELL!, ;
+
+: ARMED-IMAGES ( -- )
+   [: SEVEN-LASTC, ;] false s" hb-x64-link-does-slot-armed" ARMED-IMAGE
+   [: NO-LASTC, ;] false s" hb-x64-link-does-lastc-armed" ARMED-IMAGE
+   [: NO-RET, ;] false s" hb-x64-link-does-ret-armed" ARMED-IMAGE
+   [: NO-CHECKERS, ;] true s" hb-x64-link-does-raw-owner-armed" ARMED-IMAGE
+   [: REGISTRARS, NCOMP-DISPATCH:DECL-RAW-OFF OP-GONE, ;] true
+   s" hb-x64-link-does-raw-field-armed" ARMED-IMAGE
+   [: REGISTRARS, NO-ACTIVE, ;] true s" hb-x64-link-does-wide-owner-armed" ARMED-IMAGE
+   [: REGISTRARS, NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF OP-GONE, ;] true
+   s" hb-x64-link-does-wide-field-armed" ARMED-IMAGE
+   [: ACTIVE-GONE, ;] true s" hb-x64-link-does-min-in-owner-armed" ARMED-IMAGE
+   [: REGISTRARS, NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF OP-GONE, ;] true
+   s" hb-x64-link-does-min-in-field-armed" ARMED-IMAGE ;
 
 \ ---- the children --------------------------------------------------------------
 create SHA-CTX SHA256-CTX-BYTES allot
@@ -850,7 +979,8 @@ public
    false s" hb-x64-link-does" DOES-IMAGE
    true s" hb-x64-link-does-negative" DOES-IMAGE
    CHECKER-IMAGE
-   SLOT-IMAGE
+   REPLACED-IMAGE
+   ARMED-IMAGES
    s" x86-64-link-records: prims=" type X64LINK:PRIMS .
    s" records=" type X64LINK:RECORDS .
    s" code=" type X64LINK:CODE$ nip . cr

@@ -157,15 +157,30 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
 
-public
-
-: PUBLISH-PENDING ( -- )
+\ The record takes the emission: every refusal, then the code window, the
+\ shadow's routine and the dictionary. Nothing here asks the checker.
+: PUBLISH-CODE ( -- n )
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx fn size UNIT-NOTIFY
    idx fn size COMMIT
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   idx PENDING-FACTS ;
+   idx ;
+
+public
+
+\ A checked definition: the record, then the facts the checker latched for
+\ the effect it recorded.
+: PUBLISH-PENDING ( -- )
+   PUBLISH-CODE PENDING-FACTS ;
+
+\ A definer's body: the record alone. The checker recorded no effect for it,
+\ so no latch is its own and no active owner need exist; the definer registers
+\ the raw effect itself (src/habu/definers.f DEF-RAW), as the engine's create
+\ and constant publish without EM-REC-WIDE-PUBLISH (habu2.f EMIT-CREATE,
+\ C-CONSTANT).
+: PUBLISH-RAW ( -- )
+   PUBLISH-CODE drop ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}

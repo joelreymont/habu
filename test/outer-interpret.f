@@ -1837,6 +1837,48 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" E-UNDERFLOW: OI-K\n" CASE$ GE-EXPECT-ERR ;
 
+\ A definer's raw effect goes to the active owner's trust-raw, then to the
+\ target owner's unless it is the same operation. With no active owner it
+\ goes to the target's while the check hook is armed, the process ends naming
+\ trust-raw when there is none, and nothing registers while the hook is
+\ disarmed. OI-A and OI-T are copies of the live owner record whose trust-raw
+\ prints what it is given, OI-T's after `target`; OI-OWNERS sets the active
+\ owner and the target owner.
+: OWNER-SPY ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-RAW ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :} a u type space s su type cr ;" GE-SRC-LINE
+   s" : OI-RAW2 ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n s:ptr su:n :} .~ target ~ a u type space s su type cr ;" QLINE
+   s" TRUSTED: OI-SET ( n n -- ) data-base + ! ;" GE-SRC-LINE
+   s" TRUSTED: OI-OWNERS ( n n -- ) NCOMP-DISPATCH:TARGET-DECL-CELL OI-SET NCOMP-DISPATCH:DECL-CELL OI-SET ;" GE-SRC-LINE
+   s" NCOMP-DISPATCH:DECL-CELL OI-CELL@ constant OI-LIVE  CHECKER-OWNER-ABI:HEADER-BYTES constant OI-HEAD" GE-SRC-LINE
+   s" OI-LIVE CELL - @ OI-HEAD + constant OI-SPAN" GE-SRC-LINE
+   s" create OI-SPY OI-SPAN allot  OI-LIVE OI-HEAD - OI-SPY OI-SPAN BYTE-COPY  OI-SPY OI-HEAD + constant OI-A" GE-SRC-LINE
+   s" create OI-SPY2 OI-SPAN allot  OI-LIVE OI-HEAD - OI-SPY2 OI-SPAN BYTE-COPY  OI-SPY2 OI-HEAD + constant OI-T" GE-SRC-LINE
+   s" ' OI-RAW OI-A NCOMP-DISPATCH:DECL-RAW-OFF + !  ' OI-RAW2 OI-T NCOMP-DISPATCH:DECL-RAW-OFF + !" GE-SRC-LINE ;
+
+: DEFINER-OWNERS ( -- )
+   OWNER-SPY
+   s" OI-A OI-T OI-OWNERS variable OI-V  OI-A OI-A OI-OWNERS 7 constant OI-K  OI-LIVE OI-LIVE OI-OWNERS 1 ." GE-SRC-LINE
+   s" oi-owner-active.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-V -- ptr a\ntarget OI-V -- ptr a\nOI-K -- a\n1\n" CASE$ GE-EXPECT-OUT
+   OWNER-SPY
+   s" 0 OI-T OI-OWNERS variable OI-V 19 OI-V ! 7 constant OI-K  OI-LIVE OI-LIVE OI-OWNERS OI-V @ . OI-K ." GE-SRC-LINE
+   s" oi-owner-target.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" target OI-V -- ptr a\ntarget OI-K -- a\n19\n7\n" CASE$ GE-EXPECT-OUT
+   OWNER-SPY
+   s" 0 0 OI-OWNERS 1 . variable OI-V 2 ." GE-SRC-LINE
+   s" oi-owner-none.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   s" trust-raw" CASE$ GE-EXPECT-ERR
+   OWNER-SPY
+   s" 0 OI-T OI-OWNERS 0 set-check variable OI-V 19 OI-V ! 7 constant OI-K OI-V @ . OI-K ." GE-SRC-LINE
+   s" oi-owner-unhooked.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 19\n7\n" CASE$ GE-EXPECT-OUT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1987,6 +2029,7 @@ private
    DEFINER-REFUSALS
    DEFINERS-TIER-0
    DEFINER-HABU-ONLY
+   DEFINER-OWNERS
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

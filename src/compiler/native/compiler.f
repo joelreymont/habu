@@ -558,7 +558,8 @@ create SPELL-BUF SPELL-CAP allot
    NTAPE:PUSH-INTO drop
    tp NTAPE:SEAL 0 M-TAPE ! ;
 
-\ No checker scan and no checked effect: the definer registers its raw effect
+\ No checker scan and no checked effect, so publication asks nothing of the
+\ active owner, which may be absent: the definer registers its raw effect
 \ after publication (src/habu/definers.f DEF-RAW).
 : FIXED-WORK ( -- )
    CC HIR-MOD 0 M-BLD !
@@ -567,7 +568,7 @@ create SPELL-BUF SPELL-CAP allot
    0 M-IN !  1 M-OUT !
    CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop
    EMITTED
-   NPUB:PUBLISH-PENDING ;
+   NPUB:PUBLISH-RAW ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
