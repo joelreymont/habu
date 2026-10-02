@@ -6,6 +6,7 @@ issue-type: task
 created-at: "2026-09-17T17:32:42.547997+03:00"
 blocks:
   - habu-pass-the-full-07316f5a
+  - habu-run-build-fixpoint-02e96bda
 ---
 
 Problem: the cross-built engine is the recovery artefact; the release artefact is the engine that rebuilds itself on the ThinkPad to a byte fixpoint.
