@@ -59,6 +59,7 @@ $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
 120000 constant CHK-TIMEOUT-MS
+67 constant CHK-E-CAPACITY
 
 0 constant CHK-SEL-NONE
 1 constant CHK-SEL-SOURCE
@@ -213,22 +214,41 @@ variable CHK-TFAM-NAME-I
    CHK-OUT
    CHK-LF CHK-OUT-C ;
 
+: CHK-EXPLAIN-LN ( ptr u8 n -- )
+   CHK-VERIFY @ if CHK-OUT-LN else CHK-ERR-LN then ;
+
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--all-errors] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-ERR-LN
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
    throw ;
 
 : CHK-FAIL ( ptr u8 n n -- ) {: msg:ptr u:n code:n :}
-   msg u CHK-ERR-LN
+   msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
+
+: CHK-PATH-TOO-BIG ( -- )
+   s" check.f: source path exceeds capacity" CHK-E-CAPACITY CHK-FAIL ;
 
 : CHK-ARG$ ( n -- ptr u8 n )
    SCRIPT-ARGV$ ;
 
 : CHK-ARG= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
+
+\ Establish the output stream before parsing can reject an earlier argument.
+\ --stdin-path consumes its next token as a value; -- ends option parsing.
+: CHK-VERIFY-ARG? ( -- bool )
+   0 begin dup SCRIPT-ARGC < while
+      dup s" --" CHK-ARG= if drop false exit then
+      dup s" --stdin-path" CHK-ARG= if
+         2 +
+      else
+         dup s" --verify-only" CHK-ARG= if drop true exit then
+         1+
+      then
+   repeat drop false ;
 
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
@@ -329,6 +349,13 @@ private
       then
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
+
+\ CLI arguments have two path slots; keep their library capacity throw for
+\ direct CHECK:FILE callers, and explain it only at this command-line boundary.
+: CHK-PARSE-CLI ( -- )
+   [: CHK-PARSE ;] catch {: rc:n :}
+   rc E-FS-CAPACITY = if CHK-PATH-TOO-BIG then
+   rc 0<> if rc throw then ;
 
 : CHK-POS-LENS-CLEAR ( -- )
    0 begin dup CHK-MAX-POS < while
@@ -1462,7 +1489,8 @@ public
 
 : MAIN ( -- )
    RESET
-   CHK-PARSE
+   CHK-VERIFY-ARG? CHK-VERIFY !
+   CHK-PARSE-CLI
    RUN dup 0 <> if throw then drop ;
 
 ;using

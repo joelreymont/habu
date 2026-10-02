@@ -7,9 +7,8 @@
 \   bin/hb --load src/habu/main.f test/main-argv-child.f -- <args>  RUN reads a vector built from <args>
 \ The two must end with the same rc, stdout and stderr, and each case states the
 \ rc and output that show which route ran, so two runs failing alike do not
-\ pass. Two kinds of case differ on purpose: an empty file list, where RUN
-\ keeps the engine's status and names the cause, and a full source arena,
-\ where the engine's message ends in a NUL byte instead of a newline.
+\ pass. An empty file list keeps the engine's status and names the cause;
+\ a full source arena must produce the same exact diagnostic on both routes.
 
 require lib/errors.f
 require lib/string.f
@@ -253,11 +252,9 @@ TYPED-VARIABLE BLANKS-A ptr u8
    [: BUILD-BIG ;] s" arena, one byte to spare" BOTH
    s" " s" arena, one byte to spare" OUT
    SOURCE-ARENA-CAP ROW-LEN - BIG
-   [: BUILD-BIG ;] ENGINE
-   74 s" arena, full" GE-EXPECT-RC
-   [: BUILD-BIG ;] HABU
+   [: BUILD-BIG ;] s" arena, full" BOTH
    74 S\" hb: source prefix buffer full\n" s" arena, full" REFUSED
-   1 CASES +! ;
+   ;
 
 : MAIN ( -- )
    0 CASES !

@@ -101,8 +101,10 @@ Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
 for `engine-provided`, `held` and `incomplete`. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
-prose and a closing line. A usage error (64), a missing
-FILE and an oversized source (66) are reported on stderr as without the flag.
+prose and a closing line. Usage errors (64), a missing FILE and an oversized
+source (66) keep their exit codes and explain the failure on stdout.
+An argument that exceeds the source path capacity exits 67 and explains the
+limit on stdout. Ordinary checks explain it on stderr with the same status.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
