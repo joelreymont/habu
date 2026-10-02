@@ -12913,7 +12913,7 @@ variable UNSAFE-SYM-N
 \ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
 \ block rather than sharing 7135, so a test can tell the two rejects apart.
 7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
-7146 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
+7151 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
