@@ -6,14 +6,13 @@ require lib/test.f
 require lib/string.f
 require test/gate-common.f
 require tools/aot-build.f
-\ The interpret loop written in Habu, for SAT-DEFER below. It loads before the
-\ tier switch: NCOMP refuses some of its words at tier 1 (src/habu/outer.f HOOK).
-require src/habu/interpret.f
-
 \ The image restores at tier 0 and its require of tools/aot-build.f is a no-op,
 \ so this sets the tier that file sets on a source load: the records and code
 \ spans below are the ones the optimizing tier lays down.
 1 set-tier
+
+\ The interpret loop written in Habu, for SAT-DEFER below, compiled at that tier.
+require src/habu/interpret.f
 
 package AOT-LINK
 

@@ -468,6 +468,17 @@ variable DIGIT-AT
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
+\ The program's cells lie on the data stack below this loop's own, and a body
+\ the native compiler builds leaves exactly its row's count of cells
+\ (elaborate.f EMIT-RETURN), so a literal reaches the program, and a cell
+\ leaves it, only inside execute-floor: what the xt pushes or takes there is
+\ the program's, and these rows state none of it. Each states the xt's effect,
+\ which gives the compiler the call's convention.
+TRUSTED: GIVE-N ( [ -- n ] -- ) execute-floor FLOORED ;
+TRUSTED: GIVE-STR ( [ -- ptr u8 n ] -- ) execute-floor FLOORED ;
+TRUSTED: GIVE-CSTR ( [ -- ptr u8 ] -- ) execute-floor FLOORED ;
+TRUSTED: TAKE-N ( [ n -- ] -- ) execute-floor FLOORED ;
+
 \ ---- the top-row hook (habu2.f LTOPHOOK) ------------------------------------------
 \ With a hook installed (set-top-check) it gets ( token class flags ) for each
 \ number after the push and for each word, past its gates, before it runs. The
@@ -478,9 +489,19 @@ variable DIGIT-AT
 : HOOK@ ( -- n )
    TOP-HOOK-CELL CELL@ ;
 
-TRUSTED: HOOK ( n n -- )
+\ The cell holds the hook's xt raw; this view states its effect, the event's
+\ (layout.f TOP-HOOK-CELL). The event runs inside execute-floor, which catches
+\ a hook that takes more than the event, so its class and flags wait in cells:
+\ a quotation reaches no local.
+TRUSTED: HOOK-ACTION ( n -- [ ptr u8 n n n -- ] ) ;
+TRUSTED: RUN-EVENT ( [ -- ] -- ) execute-floor FLOORED ;
+variable EV-CLASS
+variable EV-FLAGS
+
+: HOOK ( n n -- )
    HOOK@ 0= if 2drop exit then
-   TOKEN$ 2swap HOOK@ execute-floor FLOORED ;
+   EV-FLAGS ! EV-CLASS !
+   [: TOKEN$ EV-CLASS @ EV-FLAGS @ HOOK@ HOOK-ACTION execute ;] RUN-EVENT ;
 
 \ ---- the unit hook (habu2.f C-UNIT-HOOK) -----------------------------------------
 \ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
@@ -757,20 +778,20 @@ TRUSTED: RUN-WORD ( -- )
 \ A literal a program keeps is pushed, then the hook sees it with the keyword
 \ as its token. `."` types its text straight from the input and allots
 \ nothing; `.\"` keeps its decoded bytes, as the engine's C-EIDOTQ does.
-TRUSTED: PUSH-STR ( -- )
-   KEEP TOP-EV-STR 0 HOOK ;
+: PUSH-STR ( -- )
+   [: KEEP ;] GIVE-STR TOP-EV-STR 0 HOOK ;
 
-TRUSTED: PUSH-CSTR ( -- )
-   COUNTED TOP-EV-CSTR 0 HOOK ;
+: PUSH-CSTR ( -- )
+   [: COUNTED ;] GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-STR ( -- )
    TEXT type ;
 
-TRUSTED: PUSH-ESC-STR ( -- )
-   ESC-KEEP TOP-EV-STR 0 HOOK ;
+: PUSH-ESC-STR ( -- )
+   [: ESC-KEEP ;] GIVE-STR TOP-EV-STR 0 HOOK ;
 
-TRUSTED: PUSH-ESC-CSTR ( -- )
-   ESC-COUNTED TOP-EV-CSTR 0 HOOK ;
+: PUSH-ESC-CSTR ( -- )
+   [: ESC-COUNTED ;] GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
@@ -783,8 +804,8 @@ TRUSTED: PUSH-ESC-CSTR ( -- )
    TOKEN$ drop c@ ;
 
 \ The hook sees the operand as the token.
-TRUSTED: PUSH-CHAR ( -- )
-   FIRST-BYTE TOP-EV-CHAR 0 HOOK ;
+: PUSH-CHAR ( -- )
+   [: FIRST-BYTE ;] GIVE-N TOP-EV-CHAR 0 HOOK ;
 
 \ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
@@ -835,8 +856,8 @@ TRUSTED: TICK-ACTION ( n -- [ ptr u8 n -- bool ] ) ;
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The hook sees the operand as the token and the record's flags.
-TRUSTED: PUSH-XT ( -- )
-   TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;
+: PUSH-XT ( -- )
+   TICKED [: REC @ XREF-START ;] GIVE-N TOP-EV-TICK WORD-FLAGS HOOK ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its

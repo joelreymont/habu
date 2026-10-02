@@ -299,16 +299,23 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
    rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
 
+\ The engine's cells hold the preflight's and the compiler entry's xts raw;
+\ these views state their effects: the checker's (src/core/check-hook.f
+\ PREFLIGHT) and NCOMP:COMPILE's.
+TRUSTED: DEF-AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] ) ;
+TRUSTED: DEF-AS-COMPILER ( n -- [ ptr u8 n -- ] ) ;
+
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
 \ C-CALL-COMPILE-IMMEDIATE, LPREFMISS).
-TRUSTED: DEF-PREFLIGHT ( -- )
+: DEF-PREFLIGHT ( -- )
    HOOK-CELL CELL@ 0= if exit then
-   COMPILE-PREFLIGHT-CELL CELL@ 0= if
+   COMPILE-PREFLIGHT-CELL CELL@ {: xt:n :}
+   xt 0= if
       S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
    then
-   data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
-   COMPILE-PREFLIGHT-CELL CELL@ execute ;
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
+   xt DEF-AS-PREFLIGHT execute ;
 
 \ The xt waits on the return stack while the unit hook and the preflight run,
 \ and the stack's floor holds after the word, as after a word the loop runs.
@@ -360,8 +367,8 @@ TRUSTED: DEF-RUN ( n -- )
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close closes the provenance window native and clears what
 \ def-open set.
-TRUSTED: DEF-COMPILE ( ptr u8 n -- )
-   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ execute ;
+: DEF-COMPILE ( ptr u8 n -- )
+   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ DEF-AS-COMPILER execute ;
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
@@ -532,13 +539,12 @@ TRUSTED: DEF-HERE ( -- n ) here ;
 \ engine's pops it. With none the engine reads below its stack and faults
 \ (rc 102); this loop names the underflow, as after a word.
 variable DEF-VALUE
-TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
 
 : DEF-CONSTANT ( -- )
    s" constant" DEF-FIXED-HEAD
    DEF-QUALIFY DKIND:VAL 1 DEF-RECORD
    depth 0= if s" E-UNDERFLOW: " REFUSE then
-   DEF-TAKE
+   [: DEF-VALUE ! ;] TAKE-N
    DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
    DEF-CLOSE
    s" constant" DEF-HOOK

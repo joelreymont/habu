@@ -1,13 +1,17 @@
 \ outer-interpret.f - the interpret loop written in Habu, src/habu/interpret.f
 \ OUTER:INTERPRET, against the engine's own, through the real load path.
 \
-\ Each case is a file a child engine loads twice:
-\   --load <prelude> test/outer-loop-on.f <case>   the Habu loop reads the case
-\   --load <prelude> <case>                        the engine's evaluate reads it
+\ Each case is a file a child loads three times:
+\   engine --load <prelude> <case>                        the engine's evaluate reads it
+\   engine --load <prelude> test/outer-loop-on.f <case>   the Habu loop, loaded at tier 0
+\   image  --load <prelude> test/outer-loop-on.f <case>   the Habu loop, loaded at tier 1
 \ test/outer-loop-on.f binds the loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET
-\ (src/core/include.f) to OUTER:INTERPRET. The two runs must end with the same
-\ rc, stdout and stderr, and each case states the rc and output that show what
-\ it exercised, so two runs failing alike do not pass.
+\ (src/core/include.f) to OUTER:INTERPRET. The image is saved once per run: the
+\ saver image (test/app-image-engine.f) requires src/habu/interpret.f at tier 1,
+\ so NCOMP compiles the loop, and on the image test/outer-loop-on.f's require
+\ of the loop finds it loaded. The three runs must end with the same rc, stdout
+\ and stderr, and each case states the rc and output that show what it
+\ exercised, so runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
 \ (`SUMTYPE`), so it loads before the switch, and a case holds only numbers,
@@ -24,7 +28,8 @@
 \ file's start and the Habu loop does not; the cell only the Habu loop's
 \ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); `constant` on an empty
 \ stack, which the engine's loop reads below its stack; and a `defer` the target
-\ owner cannot register, which the engine's loop holds for TRUST to replay. And
+\ owner cannot register, which the engine's loop holds for TRUST to replay; the
+\ two tiers of the Habu loop must agree on each. And
 \ one check runs in a forked copy of this process instead, the seam: a fork
 \ binds it to a counting spy, and a loaded file must arrive there.
 
@@ -34,6 +39,7 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require test/gate-common.f
+require test/app-image-engine.f
 require src/habu/interpret.f
 
 package OUTER-INTERPRET-TEST
@@ -161,12 +167,43 @@ variable SPIN-U
    s" oi-spin-prelude.f" SPIN-BUF GT-PATH SPIN-U !
    SPIN$ SRC>FILE ;
 
-\ ---- the two runs of a case --------------------------------------------------------
+\ ---- the runs of a case ------------------------------------------------------------
+\ The engine's loop reads a case, and so does the Habu loop twice: loaded at
+\ tier 0, the JIT's, and at tier 1, NCOMP's.
+0 constant BY-ENGINE
+1 constant BY-TIER-0
+2 constant BY-TIER-1
+
+\ The image the tier-1 runs use. A program on the saver image starts with
+\ `1 set-tier` (test/app-image-engine.f rule 2), and the restored image starts
+\ at tier 0, so a case reads at the tier the engine's runs have. The image
+\ holds the loop but not the switch: the prelude must load before the switch,
+\ and it cannot be saved in the image, since APP-IMAGE:SAVE refuses tier-0 code
+\ and NCOMP refuses OI-UF and OI-SINK (-8304).
+create IMAGE-BUF FS-PATH-CAP allot
+variable IMAGE-U
+
+: IMAGE$ ( -- ptr u8 n )
+   IMAGE-BUF IMAGE-U @ ;
+
+: TIER-1-IMAGE ( -- )
+   APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
+   s" oi-tier-1-image" IMAGE-BUF GT-PATH IMAGE-U !
+   GE-HB-RESET
+   s" --" GE-ARG+
+   IMAGE$ GE-ARG+
+   host hostu
+   S\" 1 set-tier\nrequire src/habu/interpret.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   GE-TIMEOUT-MS GE-RUN-STDIN
+   s" oi-tier-1-image" GE-EXPECT-OK ;
+
 create WANT-OUT GT-OUT-CAP allot
 variable WANT-OUT-U
 create WANT-ERR GT-ERR-CAP allot
 variable WANT-ERR-U
 variable WANT-RC
+variable RUN-BY
+variable KEPT-BY
 
 : WANT-OUT$ ( -- ptr u8 n )
    WANT-OUT WANT-OUT-U @ ;
@@ -174,49 +211,60 @@ variable WANT-RC
 : WANT-ERR$ ( -- ptr u8 n )
    WANT-ERR WANT-ERR-U @ ;
 
-\ The engine's run, kept while the Habu loop's runs.
+: BY. ( n -- ) {: by:n :}
+   by BY-ENGINE = if s" the engine's loop" type exit then
+   by BY-TIER-0 = if s" the Habu loop at tier 0" type exit then
+   s" the Habu loop at tier 1" type ;
+
+\ The first run, kept while the others run.
 : KEEP ( -- )
+   RUN-BY @ KEPT-BY !
    GT-RC@ WANT-RC !
    GT-OUT$ {: oa:ptr ou:n :}  oa WANT-OUT ou BYTE-COPY  ou WANT-OUT-U !
    GT-ERR$ {: ea:ptr eu:n :}  ea WANT-ERR eu BYTE-COPY  eu WANT-ERR-U ! ;
 
 : MISMATCH ( ptr u8 n ptr u8 n -- ) {: why:ptr whyu:n label:ptr labelu:n :}
-   why whyu type cr
-   s" engine rc: " type WANT-RC @ FMT:.INT cr
-   s" engine stdout:" type cr WANT-OUT$ type
-   s" engine stderr:" type cr WANT-ERR$ type
+   RUN-BY @ BY. s" : " type why whyu type cr
+   KEPT-BY @ BY. s" , rc: " type WANT-RC @ FMT:.INT cr
+   KEPT-BY @ BY. s" , stdout:" type cr WANT-OUT$ type
+   KEPT-BY @ BY. s" , stderr:" type cr WANT-ERR$ type
    label labelu GE-FAIL ;
 
-\ The Habu loop's run against the kept engine run.
+\ The latest run against the kept one.
 : SAME ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
-   GT-OUT$ WANT-OUT$ STR= 0= if s" stdout differs from the engine's" label labelu MISMATCH then
-   GT-ERR$ WANT-ERR$ STR= 0= if s" stderr differs from the engine's" label labelu MISMATCH then ;
+   GT-RC@ WANT-RC @ <> if s" rc differs from the kept run's" label labelu MISMATCH then
+   GT-OUT$ WANT-OUT$ STR= 0= if s" stdout differs from the kept run's" label labelu MISMATCH then
+   GT-ERR$ WANT-ERR$ STR= 0= if s" stderr differs from the kept run's" label labelu MISMATCH then ;
 
-: RUN ( bool -- ) {: habu:bool :}
+: RUN ( n -- ) {: by:n :}
+   by RUN-BY !
    GE-HB-RESET
    s" --load" GE-ARG+
    PRELUDE$ GE-ARG+
    SPIN-U @ 0<> if SPIN$ GE-ARG+ then
-   habu if s" test/outer-loop-on.f" GE-ARG+ then
+   by BY-ENGINE <> if s" test/outer-loop-on.f" GE-ARG+ then
    CASE$ GE-ARG+
-   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
+   by BY-TIER-1 = if IMAGE$ else GE-HB$ then GE-TIMEOUT-MS GE-RUN-ENV ;
 
 \ The source buffer as the case file named, run by the engine, then by the
-\ Habu loop, which must agree.
+\ Habu loop at each tier, which must agree. The tier-1 run is the one the
+\ case's expectations read.
 : BOTH ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CASE-BUF GT-PATH CASE-U !
    CASE$ SRC>FILE
-   false RUN KEEP
-   true RUN
-   name nameu SAME
+   BY-ENGINE RUN KEEP
+   BY-TIER-0 RUN name nameu SAME
+   BY-TIER-1 RUN name nameu SAME
    1 CASES +! ;
 
-\ The source buffer as the case file named, run by the Habu loop alone.
+\ The source buffer as the case file named, run by the Habu loop alone: at
+\ tier 0, then at tier 1, which must agree and is the run the case's
+\ expectations read.
 : HABU ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CASE-BUF GT-PATH CASE-U !
    CASE$ SRC>FILE
-   true RUN ;
+   BY-TIER-0 RUN KEEP
+   BY-TIER-1 RUN name nameu SAME ;
 
 \ One line as the case file named, run by both loops.
 : LINE-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -2262,6 +2310,7 @@ private
    0 CASES !
    s" habu-outer-interpret" GT-START
    PRELUDE
+   TIER-1-IMAGE
    NUMBERS
    COMMENTS
    LINE-COMMENT-AT-END
@@ -2393,7 +2442,7 @@ private
    UNIT-REFUSALS
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
-   s"  cases agree with the engine's loop" type cr ;
+   s"  cases agree with the engine's loop at loop tiers 0 and 1" type cr ;
 
 MAIN
 

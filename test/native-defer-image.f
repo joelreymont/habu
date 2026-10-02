@@ -3,6 +3,10 @@
 \ Public image capture then carries an application's installer across two boots.
 \ Each restored process also compiles fresh JIT and native words: live compiler
 \ literals can be allocated before the first source-prefix dictionary record.
+\ The image also holds the interpret loop written in Habu, loaded at tier 1, and
+\ a defer that loop compiled: each boot calls it through its relocated cell and
+\ reassigns it with `is`, which finds the cell through the trailer the capture
+\ relocates with the defer's record (src/habu/aot-capture.f ACAP-DEFER-SITE).
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
@@ -55,7 +59,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n: DEFER-IMAGE-NATIVE ( n -- n ) 1+ ;\n17 DEFER-IMAGE-NATIVE . cr\n0 set-tier\nrequire src/habu/app-image.f\nrequire test/native-defer-image-subject.f\nrequire src/habu/interpret.f\ns\q defer HABU-LOOP-DEFER ( n -- n ) : HABU-LOOP-INSTALL ( [ n -- n ] -- ) is HABU-LOOP-DEFER ;\q OUTER:INTERPRET\ns\q : HABU-LOOP-CALL ( n -- n ) HABU-LOOP-DEFER ; : HABU-LOOP-TRIPLE ( n -- n ) 3 * ;\q OUTER:INTERPRET\ns\q : HABU-LOOP-FIRST ( -- ) [: HABU-LOOP-TRIPLE ;] HABU-LOOP-INSTALL ; HABU-LOOP-FIRST\q OUTER:INTERPRET\nrequire test/compiler/native-opcode-image.f\nNATIVE-OPCODE-IMAGE:PRINT\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    S\" 18\n\ndefer-source: ok\n" {: prefix:ptr pu:n :}
@@ -73,7 +77,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-IMAGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    ENVIRONMENT
    path pathu
-   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
+   S\" require src/compiler/native/compiler.f\n1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n17 HABU-LOOP-CALL . cr\n: HABU-LOOP-FRESH ( n -- n ) 100 + ;\n: HABU-LOOP-REINSTALL ( -- ) ['] HABU-LOOP-FRESH HABU-LOOP-INSTALL ;\nHABU-LOOP-REINSTALL\n17 HABU-LOOP-CALL . cr\nNATIVE-OPCODE-IMAGE:PRINT\n" RUN-INPUT
    {: outu:n :}
    OUT wantu want wantu T$=
    outu wantu - 65 T=
@@ -92,9 +96,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : BODY ( -- )
    PREPARE
    BUILD
-   IMAGE$ S\" 18\n\n22\n\n24\n\n" CHECK-IMAGE
+   IMAGE$ S\" 18\n\n22\n\n24\n\n51\n\n117\n\n" CHECK-IMAGE
    RECAPTURE
-   SECOND$ S\" 34\n\n22\n\n24\n\n" CHECK-IMAGE
+   SECOND$ S\" 34\n\n22\n\n24\n\n51\n\n117\n\n" CHECK-IMAGE
    s" restored opcode vocabulary: " type VOCAB-HEX 64 type cr ;
 
 : RUN ( -- )

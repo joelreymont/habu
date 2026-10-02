@@ -13,10 +13,9 @@ private
 
 \ ---- the loop -------------------------------------------------------------------------
 \ A number is pushed and a word run: the token's effect on the stack is the
-\ program's, so this row, and every row in outer.f that runs program code,
-\ states none of it.
-TRUSTED: DISPATCH ( -- )
-   NUMERAL? if VALUE @ TOP-EV-NUM 0 HOOK exit then
+\ program's, which outer.f GIVE-N and RUN-WORD keep out of this row.
+: DISPATCH ( -- )
+   NUMERAL? if [: VALUE @ ;] GIVE-N TOP-EV-NUM 0 HOOK exit then
    RUN-WORD ;
 
 \ ---- the unit hook (habu2.f C-UNIT-DISPATCH, C-UNIT-SOURCE-END) -----------------
