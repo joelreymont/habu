@@ -4,6 +4,9 @@
 \ image. tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process-cwd.f
 require tools/hb-build-test-lib.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
@@ -27,6 +30,18 @@ variable HBT-LOST-CPY-U
 variable HBT-LOST-OUT-U
 create HBT-LOST-CPY-BUF FS-PATH-CAP allot
 create HBT-LOST-OUT-BUF FS-PATH-CAP allot
+
+\ The scratch Habu tree the driver-closure case builds in, and the program it
+\ builds there; HBT-TREE-CP-BUF holds the last path HBT-TREE-PATH named.
+variable HBT-TREE-U
+variable HBT-TREE-CP-U
+variable HBT-DRV-SRC-U
+variable HBT-DRV-OUT-U
+create HBT-TREE-BUF FS-PATH-CAP allot
+create HBT-TREE-CP-BUF FS-PATH-CAP allot
+create HBT-DRV-SRC-BUF FS-PATH-CAP allot
+create HBT-DRV-OUT-BUF FS-PATH-CAP allot
+
 variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
 variable HBT-SEQ-N       \ how many the image holds
 variable HBT-SEQ-IP      \ that scan's cursor
@@ -384,6 +399,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
    SB$ ;
 
 : HBT-ARTIFACT-KEY ( ptr u8 -- ) {: dst:ptr :}
+   HBB-MAKER-KEY!
    HBB-ARTIFACT-KEY!
    HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY ;
 
@@ -411,13 +427,95 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ key preimage records each tool source through CONTENT-KEY:FILE+, which appends
 \ the path fragment and then the file's content digest, so the presence of the
 \ manifest path in the preimage (CONTENT-KEY:BUF$) proves its content
-\ participates in the key. If the manifest is missing from
-\ HBB-KEY-LOAD-FILES a manifest edit silently reuses a stale hb-build artifact.
+\ participates in the key. HBB-KEY-LOAD-FILES folds the CLI's require closure,
+\ which reaches the manifest only through tools/source-discovery.f; a walk that
+\ stopped short of it would let a manifest edit reuse a stale hb-build artifact.
 : HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
    CONTENT-KEY:OPEN
    HBB-KEY-LOAD-FILES
    dup CONTENT-KEY:BUF$ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE
    CONTENT-KEY:DISCARD ;
+
+\ THE DRIVER'S CLOSURE KEYS ITS ARTIFACT. The maker loads the require closure of
+\ tools/aot-build-open.f and tools/aot-build.f, so an edit anywhere in it must
+\ miss the artifact a build of the unchanged tree restores. src/habu/sites.f is
+\ three loads below tools/aot-build.f (aot-build-core.f, aot-closure.f), deep
+\ enough that a key listing files by hand omitted it and served the stale
+\ artifact. The maker reads those two requires from stdin, so they and every
+\ require below them resolve against the Habu root. The scratch tree also holds
+\ a comment-only tools/tools/aot-build-core.f: a walk rooted at tools/, as an
+\ entry file's is, follows it in place of the real core and keys a closure
+\ without sites.f, and the maker, which never loads it, still succeeds. The
+\ case copies src/, lib/, tools/ and bin/hb into a scratch tree and spawns the
+\ CLI there, so the edit never touches the tree under test; the edit is a
+\ comment, so the maker the miss runs still succeeds and the report alone tells
+\ the layers apart.
+: HBT-TREE ( -- ptr u8 n )
+   HBT-TREE-BUF HBT-TREE-U @ ;
+
+: HBT-DRV-SRC ( -- ptr u8 n )
+   HBT-DRV-SRC-BUF HBT-DRV-SRC-U @ ;
+
+: HBT-DRV-OUT ( -- ptr u8 n )
+   HBT-DRV-OUT-BUF HBT-DRV-OUT-U @ ;
+
+: HBT-TREE-PATH ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   HBT-TREE a u HBT-TREE-CP-BUF HBT-TREE-CP-U HBT-PATH!
+   HBT-TREE-CP-BUF HBT-TREE-CP-U @ ;
+
+: HBT-TREE-COPY-FILE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u HBT-TREE-PATH {: d:ptr du:n :}
+   d du BASENAME nip {: bu:n :}
+   d du bu - 1 - MAKE-DIRS
+   a u d du COPY-FILE-STREAM ;
+
+: HBT-TREE-PREPARE ( -- )
+   HBT-ROOT s" tree" HBT-TREE-BUF HBT-TREE-U HBT-PATH!
+   s" src" [: HBT-TREE-COPY-FILE ;] WALK-FILES
+   s" lib" [: HBT-TREE-COPY-FILE ;] WALK-FILES
+   s" tools" [: HBT-TREE-COPY-FILE ;] WALK-FILES
+   s" bin/hb" HBT-TREE-COPY-FILE
+   s" bin/hb" HBT-TREE-PATH CHMOD-X
+   HBT-ROOT s" driver.f" HBT-DRV-SRC-BUF HBT-DRV-SRC-U HBT-PATH!
+   HBT-ROOT s" driver" HBT-DRV-OUT-BUF HBT-DRV-OUT-U HBT-PATH!
+   HBT-DRV-SRC HBT-AOT-SRC$ WRITE-ALL ;
+
+: HBT-RUN-TREE-BUILD ( -- n n n )
+   HBT-ARGV-BASE
+   s" --report-json" >LEN PROC-ARGV+
+   HBT-DRV-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-DRV-OUT >LEN PROC-ARGV+
+   s" bin/hb" HBT-TREE-PATH >LEN HBT-TREE >LEN
+   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   HBT-CAPTURE>N ;
+
+\ One CLI build in the scratch tree, which succeeds and reports the cache layer
+\ that answered: CHECK-REPORT's artifact, object, maker hit, maker built and
+\ maker ran tokens.
+: HBT-TREE-BUILD ( n n n n n -- )
+   {: art:n obj:n mkh:n mkb:n ran:n :}
+   HBT-RUN-TREE-BUILD {: outu:n erru:n rc:n :}
+   rc 0 T=
+   erru 0 T=
+   HBB-RESET-OPTIONS
+   HBT-OUT outu art obj mkh mkb ran CHECK-REPORT ;
+
+: HBT-DRIVER-CLOSURE-MISS ( -- )
+   HBT-TREE-PREPARE
+   s" tools/tools" HBT-TREE-PATH MAKE-DIRS
+   s" tools/tools/aot-build-core.f" HBT-TREE-PATH
+   s\" \\ a shadow core the maker never loads\n" WRITE-ALL
+   s" a cold build in the scratch tree runs the maker" T-LABEL
+   JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE HBT-TREE-BUILD
+   s" the unchanged tree restores its artifact" T-LABEL
+   JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE HBT-TREE-BUILD
+   s" src/habu/sites.f" HBT-TREE-PATH s\" \\ driver closure edit\n" APPEND-FILE
+   s" an edit deep in the driver closure misses the artifact" T-LABEL
+   JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE HBT-TREE-BUILD ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
@@ -429,6 +527,7 @@ public
    CLI-REPORT
    HBT-CACHE-KEY-CHANGES
    HBT-CLOSURE-KEY-CHANGES
+   HBT-DRIVER-CLOSURE-MISS
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL

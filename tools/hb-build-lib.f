@@ -448,39 +448,31 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
    a u CONTENT-KEY:FILE+ ;
 
+\ A program's behaviour depends on every file its require/include closure
+\ actually loads, so the cache keys fold the whole ordered closure content, not
+\ only the entry file: the user program's, the CLI's and the maker's. Discovery
+\ rejects fail-closed, so a closure that cannot be reproduced cannot be keyed.
+: HBB-EC-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   0 HBB-KEY-I !
+   begin HBB-KEY-I @ EC:COUNT < while
+      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
+      HBB-KEY-I @ 1+ HBB-KEY-I !
+   repeat ;
+
+\ The closure of a file loaded as a file, by path, whose requires resolve
+\ against its own directory first.
+: HBB-CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+   EC:BUILD HBB-EC-CK+ ;
+
+\ The closure of a file a require read from stdin loads. With no current file,
+\ SOURCE-ROOT:RESOLVE joins the request to the working directory, as
+\ ENTRY-RESOLVE does a command-line entry, but keeps the working directory, not
+\ the file's own, as the root the file's requires resolve against.
+: HBB-STDIN-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+   SOURCE-ROOT:ENTRY-RESOLVE drop SOURCE-ROOT:CWD$ EC:BUILD-IN HBB-EC-CK+ ;
+
 : HBB-KEY-LOAD-FILES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" tools/hb-build.f" HBB-KEY-FILE+
-   s" tools/hb-build-core.f" HBB-KEY-FILE+
-   s" lib/errors.f" HBB-KEY-FILE+
-   s" lib/string.f" HBB-KEY-FILE+
-   s" lib/memory.f" HBB-KEY-FILE+
-   s" lib/fs.f" HBB-KEY-FILE+
-   s" lib/fs-root.f" HBB-KEY-FILE+
-   s" lib/fs-mutate.f" HBB-KEY-FILE+
-   s" lib/process.f" HBB-KEY-FILE+
-   s" lib/process-argv.f" HBB-KEY-FILE+
-   s" lib/process-env.f" HBB-KEY-FILE+
-   s" lib/source.f" HBB-KEY-FILE+
-   s" lib/build.f" HBB-KEY-FILE+
-   s" lib/codesign.f" HBB-KEY-FILE+
-   s" lib/sort.f" HBB-KEY-FILE+
-   s" lib/content-key.f" HBB-KEY-FILE+
-   s" lib/build-cache.f" HBB-KEY-FILE+
-   s" lib/json-write.f" HBB-KEY-FILE+
-   s" lib/object.f" HBB-KEY-FILE+
-   s" lib/object-cache.f" HBB-KEY-FILE+
-   s" lib/object-index.f" HBB-KEY-FILE+
-   s" lib/object-resolve.f" HBB-KEY-FILE+
-   s" lib/object-link.f" HBB-KEY-FILE+
-   s" tools/build-fixpoint.f" HBB-KEY-FILE+
-   s" tools/build-target.f" HBB-KEY-FILE+
-   s" tools/cli-run.f" HBB-KEY-FILE+
-   s" tools/object-image.f" HBB-KEY-FILE+
-   s" tools/dynamic-tail-manifest.f" HBB-KEY-FILE+
-   s" tools/source-discovery.f" HBB-KEY-FILE+
-   s" tools/event-closure-lib.f" HBB-KEY-FILE+
-   s" tools/hb-build-report.f" HBB-KEY-FILE+
-   s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
+   s" tools/hb-build.f" HBB-CLOSURE-CK+ ;
 
 : HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
@@ -517,31 +509,19 @@ HBB-INSTALL-CHILD-LINT
    HB-TARGET-LINUX-X86-64? if HBB-KEY-LINUX-X86-64-SOURCES exit then
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
+\ The maker is the closure of the two files HBB-RUN-MAKER-CMD requires on its
+\ stdin, in its order. It runs in the CLI's working directory, the Habu root.
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    \ v2: the maker opens the capture window before any library loads, so the same
    \ application source yields a different image than a v1 artifact holds.
-   s" native-stripped:v2" CONTENT-KEY:TEXT+
-   s" lib/executable-build.f" HBB-KEY-FILE+
-   s" tools/aot-build-open.f" HBB-KEY-FILE+
-   s" tools/aot-build.f" HBB-KEY-FILE+
-   s" tools/aot-build-core.f" HBB-KEY-FILE+
-   s" src/habu/app-image.f" HBB-KEY-FILE+
-   s" src/habu/app-image-core.f" HBB-KEY-FILE+
-   s" src/habu/snap-lib.f" HBB-KEY-FILE+
-   s" src/habu/address-cells.f" HBB-KEY-FILE+
-   s" src/arch/arm64/asm.f" HBB-KEY-FILE+
-   s" src/arch/arm64/icode.f" HBB-KEY-FILE+
-   s" src/arch/arm64/mnem.f" HBB-KEY-FILE+
-   s" src/os/image-bytes.f" HBB-KEY-FILE+
-   s" src/os/script-argv.f" HBB-KEY-FILE+
-   s" src/habu/fdio.f" HBB-KEY-FILE+
-   s" src/habu/driver-io.f" HBB-KEY-FILE+
-   s" src/habu/aot-decl.f" HBB-KEY-FILE+
-   s" src/habu/cell-grid.f" HBB-KEY-FILE+
-   s" src/habu/aot-window-latch.f" HBB-KEY-FILE+
-   s" src/habu/aot-closure.f" HBB-KEY-FILE+
-   s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
+   \ v3: the maker's closure replaces a hand-kept file list that missed members.
+   s" native-stripped:v3" CONTENT-KEY:TEXT+
+   s" tools/aot-build-open.f" HBB-STDIN-CK+
+   s" tools/aot-build.f" HBB-STDIN-CK+ ;
 
+\ The producer key: the engine, the CLI, the target and the maker. It walks three
+\ load closures, so a build computes it once, in HBB-PREPARE-ARTIFACT-CACHE, and
+\ every key and ABI string of that build reads HBB-MAKER-KEY-HEX.
 : HBB-MAKER-KEY! ( -- )
    CONTENT-KEY:OPEN
    s" hb-build-native-producer-v1" CONTENT-KEY:TEXT+
@@ -672,18 +652,6 @@ HBB-INSTALL-CHILD-LINT
 : HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
 
-\ The user program's behaviour depends on every file its require/include closure
-\ actually loads, so the cache keys fold the whole ordered closure content, not
-\ only the top-level source. Discovery rejects fail-closed, so a closure that
-\ cannot be reproduced cannot be keyed.
-: HBB-CLOSURE-CK+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
-   a u EC:BUILD
-   0 HBB-KEY-I !
-   begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
-      HBB-KEY-I @ 1+ HBB-KEY-I !
-   repeat ;
-
 \ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
@@ -712,7 +680,6 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-ABI! ( ptr u8 n ptr u8 ptr n -- ) {: sem:ptr semu:n dst:ptr up:ptr :}
    semu HBB-HEX-U + 1 + HBB-ABI-CAP > if E-STR-CAPACITY throw then
-   HBB-MAKER-KEY!
    sem dst semu BYTE-COPY
    HBB-PLUS dst semu + c!
    HBB-MAKER-KEY-HEX dst semu 1 + + HBB-HEX-U BYTE-COPY
@@ -733,7 +700,6 @@ HBB-INSTALL-CHILD-LINT
    HBB-TARGET-UNKNOWN ;
 
 : HBB-ARTIFACT-KEY! ( -- )
-   HBB-MAKER-KEY!
    CONTENT-KEY:OPEN
    s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
@@ -756,6 +722,7 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-PREPARE-ARTIFACT-CACHE ( -- )
    HBB-PREPARE-CACHE
+   HBB-MAKER-KEY!
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 

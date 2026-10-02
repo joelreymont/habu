@@ -214,14 +214,20 @@ public
 : NAME$ ( n -- ptr u8 n ) {: i:n :}
    i EC-PATH$ i EC-ROOT$ RELATIVE ;
 
-: BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
+\ The closure of a resolved path whose requires resolve against root first.
+\ BUILD walks a command-line entry, whose root is its own directory; a file a
+\ require read from stdin loads has the working directory as its root.
+: BUILD-IN ( ptr u8 n ptr u8 n -- )
    RESET
-   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD
+   EC-ADD
    begin EC-HEAD @ EC-N @ < while
       EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ DISCOVER:RUN-IN
       EC-SCAN-EVENTS
       EC-HEAD @ 1+ EC-HEAD !
    repeat ;
+
+: BUILD ( ptr u8 n -- )
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ BUILD-IN ;
 
 \ A source owner reads every loading event from its own byte table. A missing
 \ dependency is a refusal at that read, never an omitted closure member.
