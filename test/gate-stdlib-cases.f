@@ -856,6 +856,10 @@ SUITE finally
    test/finally.f
 ;SUITE
 
+SUITE empty-quotation
+   test/empty-quotation.f
+;SUITE
+
 SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE

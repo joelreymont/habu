@@ -2714,8 +2714,19 @@ public
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
+\ A typed quotation cell starts at zero. Reading it is valid, but no public
+\ quotation call may branch to that address, even beneath a catch handler.
+: BCALLABLE ( -- )
+   LBL LBL {: live:label msg:label :}
+   9 live CBNZ,
+   0 2 MOVZ,  1 msg ADR,  2 20 MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:CALLABLE-ABI MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  S\" hb: unset quotation\n" BYTES,
+   live LBL, ;
+
 : BEXEC ( -- )
-   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+   A G-POP  BCALLABLE
+   SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ execute-floor ( xt -- flag ): run the xt, then flag whether it left XDS below
 \ the base in S0-CELL, the comparison the interpreter's post-token depth floor
@@ -2741,7 +2752,7 @@ public
 : BCATCH ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
-   A G-POP
+   A G-POP  BCALLABLE
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -2883,6 +2894,7 @@ public
    LBL LBL LBL {: bad:label unguarded:label done:label :}
    12 XDS 24 SUBI,
    9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
+   BCALLABLE
    unguarded GUARDED-EXTENT?
    XDS XDS 24 SUBI,
    SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
@@ -2940,7 +2952,7 @@ public
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
 : BFINALLY ( -- )
    LBL FINALLY-DONE !
-   A G-POP
+   A G-POP  BCALLABLE
    SP SP $10 SUBI,  9 SP 0 STR,
    BCATCH
    A G-POP  9 SP 8 STR,
