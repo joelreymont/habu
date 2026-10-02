@@ -355,28 +355,17 @@ TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
 \ Those ids are the checker's, and a rewound scope truncates them, so the
 \ candidate scope this file opens (SOURCE-BUF) releases the rows recorded inside
 \ it: no row outlives the ids it names.
-\ BOTH TABLES ARE `create … allot`, AND THE ROW TABLE IS NOT A TYPED-BUFFER. This
-\ file is itself preverified - tools/build-fixpoint-source-test.f certifies it
-\ through VERIFY:SOURCE-BUF - and the count of a `TYPED-BUFFER` line is read
-\ from the TEXT by RECORD-TYPED-BUFFER above, which hands it to the checker's
-\ CHECKER-LBUF-COUNT?: decimal digits only. Measured, `DEFINER-CAP TYPED-BUFFER
-\ DEFINER-SYM n` certifies as E-CHECKER-LAYOUT-BUFFER (7121) because the token is
-\ a constant's name. A decimal literal would certify and then state the capacity
-\ twice; one `constant` and two allots state it once.
+\ The signature table stays `create … allot`: its elements are bytes, which a
+\ TYPED-BUFFER cannot hold, and BUFFER: lives in lib/string.f, outside this
+\ file's require closure.
 \ The bound is a scope's, not a file's: a preverified require closure holds
 \ several sources in one candidate scope, and the largest single file in the tree
 \ carries 28 `does>` today.
 128 constant DEFINER-CAP                   \ definer rows
 64 constant DEFINER-SIG-SLOT               \ one clause signature: [len][bytes]
-create DEFINER-SYM DEFINER-CAP cells allot
+DEFINER-CAP TYPED-BUFFER DEFINER-SYM n
 create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 variable DEFINER-N
-
-: DEFINER-SYM@ ( n -- n ) DEFINER-SYM {: row:n a:ptr :}
-   row cells a + @ ;
-
-: DEFINER-SYM! ( n n -- ) DEFINER-SYM {: sym:n row:n a:ptr :}
-   sym row cells a + ! ;
 
 : DEFINER-MARK ( -- n ) DEFINER-N @ ;
 
@@ -393,7 +382,7 @@ variable DEFINER-N
 : DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
    sym 0= IF 0 EXIT THEN
    0 BEGIN dup DEFINER-N @ < WHILE
-      dup DEFINER-SYM@ sym = IF 1 + EXIT THEN
+      dup DEFINER-SYM @ sym = IF 1 + EXIT THEN
       1 +
    REPEAT drop 0 ;
 
@@ -401,7 +390,7 @@ variable DEFINER-N
    sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
    DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
    DEFINER-N @ {: row:n :}
-   sym row DEFINER-SYM!
+   sym row DEFINER-SYM !
    row 1 + DEFINER-N !
    row ;
 

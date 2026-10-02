@@ -1278,16 +1278,25 @@ the rule.
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
   own (lib/net/curl.f's fd_sets and out-parameter cells).
-- **A `TYPED-BUFFER` count is a decimal literal, not a constant's name.** The
-  source pre-verifier reads the count as TEXT (`verify-source.f`
-  `RECORD-TYPED-BUFFER` hands the previous token to the checker's
-  `CHECKER-LBUF-COUNT?`, which accepts decimal digits only), so a line the
-  engine loads is refused when the file is checked: `64 constant LB-CAP  LB-CAP
-  TYPED-BUFFER LB-ROWS n` makes `tools/check.f` throw 7121 (rc 67) while `64
-  TYPED-BUFFER LB-ROWS n` passes. `$hex` and expressions are refused too: `Q-MAX
-  Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem` (lib/queue.f:42) is what
-  `tools/check.f lib/queue.f` throws 7121 on today. A table sized from a
-  constant uses `create NAME CAP cells allot` and reads through a `ptr` local.
+- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is a decimal literal or a word
+  of effect `( -- n )`.** The source pre-verifier reads the count as TEXT and
+  never runs it (`verify-source.f` `RECORD-TYPED-BUFFER` hands the previous
+  token to the checker's `CHECKER-LBUF:CERTIFY`). A decimal literal certifies
+  by its value, positive and within `LBUF-COUNT-MAX` for the element width.
+  Any other token certifies by its effect: it must resolve as a body would
+  resolve it (bare, package-qualified or engine-held) to a word that takes no
+  input and leaves one cell `n` accepts. A `constant`, a computed constant
+  (`6 constant OPS  2 constant KEYS  OPS KEYS + constant VOCAB` then
+  `VOCAB TYPED-BUFFER ROWS n`), an engine constant such as `HIR:OPCODES` and a
+  colon `( -- n )` all pass `tools/check.f`. The load bounds the value
+  (`src/core/layout-buffer.f` `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n`
+  passes pre-verification, and its load throws `E-LAYOUT-BUFFER` (7121, rc
+  67). Measured refusals, 7121 from the pre-verifier (rc 67): an unknown name,
+  a `variable` (it leaves an address), a `( -- bool )` word, a word with an
+  input (`4 CAP TYPED-BUFFER` for `CAP ( n -- n )`), a name the scope refuses
+  (a `using` public that shadows a global, or one two used packages export),
+  `$40`, a literal `0`, and an inline expression: `Q-MAX Q-SEM-N * TYPED-BUFFER
+  Q-SEMS TASK:sem` (lib/queue.f:42) is refused on its `*`.
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

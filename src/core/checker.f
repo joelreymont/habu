@@ -11724,6 +11724,40 @@ variable LBUF-INFO-W
    count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
    count width * LBUF-COUNT-MAX CELL / <= ;
 
+\ A COUNT NAMED BY A WORD CERTIFIES BY THAT WORD'S EFFECT, NOT BY ITS VALUE. The
+\ preverifier reads the token and never runs it, so a name has no value here;
+\ what it has is the effect the load will run. The name resolves as a body or
+\ the top-row tracker resolves it (CHECKER-RESOLVE:REFUSES?, then EFFECT-QUERY),
+\ so a name the scope refuses there refuses here, and its effect has to be one a
+\ body could hand straight to a `( n -- )` consumer: no input, the return stack
+\ untouched, and an output row that unifies, as a call's input row does, with
+\ its own input row plus one `n`. A `constant` (`-- a`, a raw cell `n` absorbs),
+\ an engine-held constant and a colon `( -- n )` qualify; a `variable` (an
+\ address), a `bool` and a word with an input do not. The definer bounds the
+\ value at load (src/core/layout-buffer.f LBUF-EXTENT?, E-LAYOUT-BUFFER), so a
+\ constant of 0 certifies here and fails there. The unification binds only the
+\ variables it instantiates, in per-definition scratch that NEW clears.
+package CHECKER-LBUF
+: BY-EFFECT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:REFUSES? IF RES-FALSE EXIT THEN
+   a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
+   EFFECT-DIN-N 0 <> IF RES-FALSE EXIT THEN
+   EFFECT-RET-NEUTRAL? 0= IF RES-FALSE EXIT THEN
+   FEP @ E-INST-RESET
+   EFFQ-DIN @ E-INST {: din:n :}
+   EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
+
+public
+\ The one count path of both definers: a decimal literal certifies by its value
+\ and extent, any other token by its effect, and anything else refuses.
+: CERTIFY ( ptr u8 n n -- ) {: a:ptr u:n width:n :}
+   a u CHECKER-LBUF-COUNT? IF
+      LBUF-COUNT-N @ width CHECKER-LBUF-EXTENT? IF EXIT THEN
+      E-CHECKER-LAYOUT-BUFFER throw
+   THEN
+   a u BY-EFFECT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN ;
+;package
+
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
    s" n -- ptr " LBUF-SIG-APP
@@ -11736,8 +11770,7 @@ variable LBUF-INFO-W
    name nameu CHECKER-LBUF-NAME-GUARD
    type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
    nip LBUF-INFO-W !
-   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   count countu LBUF-INFO-W @ CHECKER-LBUF:CERTIFY
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 \ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
@@ -11757,8 +11790,7 @@ variable LBUF-INFO-W
    name nameu CHECKER-LBUF-NAME-GUARD
    type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    LBUF-INFO-W !
-   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   count countu LBUF-INFO-W @ CHECKER-LBUF:CERTIFY
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFTYPED-VARIABLE

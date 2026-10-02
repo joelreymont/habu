@@ -1036,6 +1036,39 @@ variable LONG-J
    [: LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
    [: LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch LBUF-RC T= ;
 
+\ A named buffer count certifies by the effect of the word the load would run:
+\ it takes nothing and leaves one `n`. Its value is the definer's to bound.
+: LBUF-ACCEPT ( ptr u8 n -- )
+   DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: LBUF-REFUSE ( ptr u8 n -- )
+   DIRECT-STDIN LBUF-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" preverify failed" CONTAINS? TTRUE ;
+
+: TEST-LAYOUT-BUFFER-COUNT ( -- )
+   s" package CKLB-B 8 constant CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
+   s" package CKLB-Q public 8 constant CAP ;package package CKLB-QU CKLB-Q:CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
+   s" package CKLB-C 6 constant OPS 2 constant KEYS OPS KEYS + constant VOCAB VOCAB TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
+   s" package CKLB-H HIR:OPCODES TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
+   s" package CKLB-W : CAP ( -- n ) 4 ; CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
+   s" package CKLB-L SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package" LBUF-ACCEPT
+   s" package CKLB-U CKLB-NOPE TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" package CKLB-V variable CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" package CKLB-T : CAP ( -- bool ) 0 0= ; CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" package CKLB-I : CAP ( n -- n ) 2 * ; 4 CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" package CKLB-E 2 3 * TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" 8 constant CKLB-CAP package CKLB-S public 4 constant CKLB-CAP ;package using CKLB-S CKLB-CAP TYPED-BUFFER CKLB-ROWS n ;using" LBUF-REFUSE
+   \ A zero count passes pre-verification; the run's load refuses it.
+   s" package CKLB-Z 0 constant CAP CAP TYPED-BUFFER ROWS n ;package" DIRECT-STDIN 67 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" preverify failed" CONTAINS? TFALSE
+   CAP-ERR erru s" uncaught throw code 7121" CONTAINS? TTRUE ;
+
 : TEST-FILE-LABEL ( -- )
    BAD$SRC CORE-JSON 70 T=
    {: outu:n erru:n :}
@@ -2059,6 +2092,7 @@ POISON-RECORD
    s" check/print-parity" [: TEST-PRINT-PARITY ;] CASE-RUN
    s" check/prelude-hook-public" [: TEST-PRELUDE-HOOK ;] CASE-RUN
    s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
+   s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
