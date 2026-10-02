@@ -282,8 +282,7 @@ create BODY-BUF BODYBUF-CAP allot
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
-\ mode state, dynamic signature publication, raw-definer mode, and the scope's
-\ own name resolution.
+\ mode state, dynamic signature publication and raw-definer mode.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
@@ -302,19 +301,26 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
    off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
 
-TRUSTED: SYM-ACTION ( n -- [ ptr u8 n -- n ] ) ;
-TRUSTED: CREATES-ACTION ( n -- [ n -- n ] ) ;
-TRUSTED: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] ) ;
-TRUSTED: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n -- n ] ) ;
+\ The owner record stores raw execution tokens; each view states the signature
+\ of the field it calls.
+CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
+CAST: CREATES-ACTION ( n -- [ n -- n ] )
+CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
+CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n -- n ] )
 
-TRUSTED: RECORD-SYM? ( ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
+\ The checked dispatchers name their offsets through layout.f's
+\ NCOMP-DISPATCH:DECL-VERIFY-* mirrors: CHECKER-OWNER-ABI loads before the
+\ checker, so a host compiling this file from source refuses
+\ CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF in a checked body with E-UNDEFINED
+\ (tools/build-fixpoint-test.f "watermark required", measured).
+: RECORD-SYM? ( ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
 \ classifying, and the two refusals the authoritative resolver owns (a used
 \ public shadowing a global, a tail two used packages both export) belong to the
 \ definition's own check, which resolves the same token straight after.
-TRUSTED: FIND-SYM ( ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
+: FIND-SYM ( ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
 \ The same two questions about a definer this pre-pass never read - one compiled
 \ in THIS process, whose clause the checker certified at its `;` and whose
@@ -324,10 +330,10 @@ TRUSTED: FIND-SYM ( ptr u8 n -- n )
 \ effect stays where the checker built it: it is handed over as a record, not as
 \ text, so the type variables the clause declared keep the raw-definer seal the
 \ engine's own `trust-raw` gives them.
-TRUSTED: CREATES-SYM? ( n -- n )
-   CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
-TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
-   CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
+: CREATES-SYM? ( n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
+: RECORD-CREATED ( ptr u8 n n -- bool )
+   NCOMP-DISPATCH:DECL-VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -449,8 +455,8 @@ variable DEFINER-N
 \ the next record belongs to the next definition. What this scan learns about a
 \ definer it READ goes into the table above instead (src/core/checker.f
 \ CHECKER-SOURCE-DOES! carries the reason).
-TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
+: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
 : VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
    BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
@@ -665,8 +671,8 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ ( -- ptr n ) ;`, a source requiring it and writing `5 MOD:TD W` left W
 \ E-UNDEFINED at its first typed use; it is the effect mismatch it deserves now.
 \ A `does>` inside a string is no clause: the string opener leaves through
-\ SKIP-BODY-TOKEN below, which consumes its rest (src/compiler/native/
-\ checker-owner.f says `s" does> split"` in eight trusted bodies).
+\ SKIP-BODY-TOKEN below, which consumes its rest (the four trusted DOES-*
+\ bodies in src/compiler/native/checker-owner.f name fields as `s" does> …"`).
 : SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
    BEGIN
       BODY!
@@ -1156,12 +1162,12 @@ PTR-VARIABLE STG-START
    dup 0= IF drop exit THEN
    throw ;
 
-TRUSTED: VERIFIER-ACTION ( n -- [ -- ] ) ;
+CAST: VERIFIER-ACTION ( n -- [ -- ] )
 
-TRUSTED: RUN ( -- )
-   CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
+: RUN ( -- )
+   NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    [: VERIFY-SOURCE ;] catch
-   CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
+   NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
 
 public

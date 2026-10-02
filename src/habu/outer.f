@@ -764,7 +764,8 @@ TRUSTED: TICK-OWNER@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
    NCOMP-DISPATCH:DECL-CELL TICK-OWNER@ dup 0= if drop 0 exit then
    NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF + CELL-VIEW @ ;
 
-TRUSTED: TICK-ACTION ( n -- [ ptr u8 n -- bool ] ) ;
+\ The owner record's trusted-tick field holds a raw execution token.
+CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
 
 : TRUSTED-TICK? ( -- bool )
    TICK-QUERY-READY? 0= if false exit then

@@ -90,8 +90,8 @@ TRUSTED: PKG-INDEX ( ptr n -- n ) dbase@ - DREC / ;
 
 \ The owner record stores raw execution tokens; these views state the two
 \ signatures called here.
-TRUSTED: PKG-AS-ACTION ( n -- [ -- ] ) ;
-TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
+CAST: PKG-AS-ACTION ( n -- [ -- ] )
+CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker
 \ alone (habu2.f C-CALL-CHECKER-PACKAGE and its siblings).

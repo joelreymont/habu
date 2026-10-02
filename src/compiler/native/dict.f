@@ -113,8 +113,8 @@ TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 \ FIXED-VALUE admits only a live constant/create/variable record before entering
 \ it. The definer stamp supplies the single-cell callable layout; the value's
 \ number/address interpretation remains the caller's recorded kind.
-TRUSTED: AS-FIXED ( n -- [ -- n ] ) ;
-TRUSTED: RUN-WORD ( n -- n )
+CAST: AS-FIXED ( n -- [ -- n ] )
+: RUN-WORD ( n -- n )
    AS-FIXED execute ;
 
 \ A cell and not a local: a local bound AFTER the entered word ran would itself

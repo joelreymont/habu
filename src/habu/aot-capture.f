@@ -2456,19 +2456,19 @@ public
    XREF-FIND ACAP-XREF-XT ;
 
 \ These operations have known effects but are resolved from the live instance.
-TRUSTED: ACAP-CLEANUP-XT ( n -- [ -- ] ) ;
-TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
-: ACAP-RUN-XT ( n -- ) ACAP-CLEANUP-XT execute ;
-: ACAP-RUN-RANGE ( n n n -- ) ACAP-RANGE-XT execute ;
+private
+CAST: ACAP-CLEANUP-XT ( n -- [ -- ] )
+CAST: ACAP-RANGE-XT ( n -- [ ptr u8 n -- ] )
+public
 
 : ACAP-RELEASE-DYNAMIC ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 < if s" aot-capture: reversed dynamic DATA span" 74 die then
    s" DYNAMIC-STORAGE:RELEASE-ALL" ACAP-DBUF-XT {: xt:n :}
-   xt b0 >= xt b1 < and if xt ACAP-RUN-XT exit then
+   xt b0 >= xt b1 < and if xt ACAP-CLEANUP-XT execute exit then
    s" DYNAMIC-STORAGE:RELEASE-RANGE" ACAP-DBUF-XT {: range:n :}
    range 0= if
       s" aot-capture: dynamic storage has no range release" 74 die then
-   d0 d1 d0 - range ACAP-RUN-RANGE ;
+   d0 AOT-N>U8 d1 d0 - range ACAP-RANGE-XT execute ;
 
 \ ---- the checker symbols the names leave ------------------------------------
 \ A persistent window carries the checker whose stores this capture copies, and
@@ -2491,7 +2491,10 @@ TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
    k 0 < if false exit then
    k ACAP-NAMED-BIT @ 0<> ;
 
-TRUSTED: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] ) ;
+private
+\ The window's checker strip, resolved by name, takes the keep predicate.
+CAST: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] )
+public
 
 : ACAP-CHECKER-STRIP ( n n -- ) {: b0:n b1:n :}
    AOT-ARM:PAYLOAD-MODE @ 2 <> if exit then

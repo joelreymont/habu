@@ -75,10 +75,12 @@ private
    PAYLOAD-OWNER @ over CELL + CHECKER-OWNER-GUARD:VALIDATE
    swap + CELL-VIEW @ dup 0= if drop PAYLOAD-BAD then ;
 
-TRUSTED: AS-ACTION ( n -- [ -- ] ) ;
-TRUSTED: AS-LOOKUP ( n -- [ ptr u8 n bool ptr u8 n -- n bool ] ) ;
-TRUSTED: AS-SPANS ( n -- [ -- ptr u8 n ptr u8 n ] ) ;
-TRUSTED: AS-SAVE ( n -- [ ptr u8 n -- n ] ) ;
+\ The payload owner record stores raw execution tokens; each view states the
+\ signature of the field it calls.
+CAST: AS-ACTION ( n -- [ -- ] )
+CAST: AS-LOOKUP ( n -- [ ptr u8 n bool ptr u8 n -- n bool ] )
+CAST: AS-SPANS ( n -- [ -- ptr u8 n ptr u8 n ] )
+CAST: AS-SAVE ( n -- [ ptr u8 n -- n ] )
 
 : RUN-ACTION ( n -- ) PAYLOAD-FIELD AS-ACTION execute ;
 
