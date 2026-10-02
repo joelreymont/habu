@@ -152,8 +152,10 @@ public
 \ pipe (wa) so it exits on its own when the worker finishes, leaving no orphan
 \ - the worker never has to track or kill it. The worker must already be its
 \ own group leader; it keeps the wa write end open (dropped only at its exit).
+\ A failed first fork throws E-PROC-SPAWN: its pid, -1 from macOS's libc fork,
+\ must not reach the wait, where wait4(-1) reaps any child of the worker.
 : FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
-   RAW {: ipid:pid :}
+   CHECKED {: ipid:pid :}
    ipid PID>N 0= if
       RAW {: r2:pid :}
       r2 PID>N 0= if
