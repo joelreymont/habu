@@ -1,8 +1,7 @@
-\ The closed evaluation boundary: `evaluate-closed` runs source with the data
-\ stack floor at the caller's depth and refuses residue by name, which is what
-\ lets a checked word evaluate source. Tier-neutral by design: the boundary
-\ asserted is the engine primitive and the checker's row for it, which no
-\ compiler tier moves.
+\ The closed evaluation boundary: `evaluate-closed` runs source on a data
+\ stack of its own and refuses residue by name, which is what lets a checked
+\ word evaluate source. Tier-neutral by design: the boundary asserted is the
+\ engine primitive and the checker's row for it, which no compiler tier moves.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require lib/errors.f
@@ -18,6 +17,12 @@ public
 \ public because the texts run after this package has closed.
 : INNER-DEPTH$ ( -- ptr u8 n ) s" depth 0 T=" ;
 : INNER-RESIDUE$ ( -- ptr u8 n ) s" 1 2" ;
+
+\ The data-stack base each text of a nested pair sees.
+variable OUTER-BASE
+variable INNER-BASE
+: INNER-BASE$ ( -- ptr u8 n )
+   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE !" ;
 
 private
 
@@ -58,6 +63,25 @@ private
    [: s" NATIVE-EVAL-TEST:INNER-RESIDUE$ evaluate-closed" evaluate-closed ;]
    E-EVAL-RESIDUE TTHROWSQ ;
 
+: OUTER-BASE$ ( -- ptr u8 n )
+   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-BASE$ evaluate-closed" ;
+
+: STACK-BASE ( -- n ) data-base STACK-ABI:BASE-CELL + @ ;
+
+\ A closed text runs on a guarded stack of its own, so the cell under its
+\ floor is a guard page, never a caller's cell. The stacks come from a pool:
+\ a second run at the same nesting reuses the first run's pair.
+: FLOOR-POOL ( -- )
+   s" a closed text runs on a stack that is not the caller's" T-LABEL
+   OUTER-BASE$ evaluate-closed
+   OUTER-BASE @ STACK-BASE <> TTRUE
+   s" a nested text runs on a stack that is not the outer text's" T-LABEL
+   INNER-BASE @ OUTER-BASE @ <> TTRUE
+   s" a second run reuses the same two stacks" T-LABEL
+   OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
+   OUTER-BASE$ evaluate-closed
+   OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
+
 : AGREEMENT ( -- )
    s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
    E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
@@ -68,10 +92,9 @@ create ERR IO-CAP allot
 
 \ RATCHET grows the stack one cell per level (recurse consumes the declared
 \ input and nothing pops it), so the text pushes until a push crosses the top
-\ of the stack's mapping. The 7 below the text puts its floor one cell above
-\ the page-aligned base, which is the floor the crash handler has to accept.
+\ of its stack's mapping.
 : OVERFLOW$ ( -- ptr u8 n )
-   S\" : RATCHET ( n -- ) begin dup recurse again ; 7 s\" 1 RATCHET\" evaluate-closed" ;
+   S\" : RATCHET ( n -- ) begin dup recurse again ; s\" 1 RATCHET\" evaluate-closed" ;
 
 : OVERFLOW ( -- )
    s" an overflow inside a closed text exits STACK-BOUNDS" T-LABEL
@@ -81,21 +104,19 @@ create ERR IO-CAP allot
    s" and names the data stack" T-LABEL
    ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
 
-\ The text jumps to the caller's 7, one cell under its floor: the cell is mapped
-\ read/write, so the fault is the instruction fetch, not a stack bound, and it
-\ must reach the register dump that the same jump at top level reaches.
-: CALLER-JUMP$ ( -- ptr u8 n )
+\ The text jumps one cell under its floor. That cell lies in its own stack's
+\ low guard page, not among the caller's cells, so the fetch faults there and
+\ the crash handler names the data stack.
+: FLOOR-JUMP$ ( -- ptr u8 n )
    S\" 7 s\" data-base STACK-ABI:BASE-CELL + @ cell - execute\" evaluate-closed" ;
 
-134 constant CRASH-RC                   \ src/habu/crash.f's register dump exit
-
-: CALLER-JUMP ( -- )
-   s" a jump into the caller's cells under a floor is no stack fault" T-LABEL
-   CALLER-JUMP$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N CRASH-RC T=
+: FLOOR-JUMP ( -- )
+   s" a jump under a closed text's floor exits STACK-BOUNDS" T-LABEL
+   FLOOR-JUMP$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
-   s" and names no stack" T-LABEL
-   ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
+   s" and names the data stack" T-LABEL
+   ERR erru s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE ;
 
 $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
@@ -118,8 +139,8 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED AGREEMENT OVERFLOW CALLER-JUMP LIVE
-   CHECKED
+   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL AGREEMENT OVERFLOW
+   FLOOR-JUMP LIVE CHECKED
    T-REPORT ;
 
 ' RUN

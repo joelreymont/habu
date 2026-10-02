@@ -495,9 +495,9 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
-\ and INE ([frame+8]) so a nested evaluate restores it. It is the last free slot
-\ of the frame: PKGSNAP ends at EVAL-PKG + PKGSNAP-USE + 8 = $78 and
-\ STACK-ABI:EVAL-BASE opens at $80, so the frame does not grow.
+\ and INE ([frame+8]) so a nested evaluate restores it. It fills the slot
+\ between the package snapshot and the extent: PKGSNAP ends at EVAL-PKG +
+\ PKGSNAP-USE + 8 = $78 and STACK-ABI:EVAL-BASE opens at $80.
 $78 constant EVAL-INB
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
@@ -1258,6 +1258,15 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
+\ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
+\ the list is empty) and gives it back on the clean return, and habu2.f
+\ LEVALREC gives back the stack of every closed frame a throw pops. The stacks
+\ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE) and
+\ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits in the free
+\ header band for the reasons EXIT-HOOK-CELL gives, swept for a claimant across
+\ src lib tools test bootstrap.
+$2828 constant CLOSED-FREE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

@@ -29,13 +29,15 @@ lives here; build, test and environment rules live in
   matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
-  `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
-  the caller's depth and must leave nothing (measured under **Rules learned by
+  `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
+  its own and must leave nothing (measured under **Rules learned by
   refusal**). Four cases stay open:
   - An xt the text runs through `execute` is guarded only by `execute`'s own
     one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
     warns `hb: top-row: execute: xt target underflows the interpret stack` and
-    leaves 6 where the 5 was.
+    then faults on the text's guard page, exit 102
+    (`hb: stack bounds exceeded (data)`), where a catch cannot answer it; the
+    caller's 5 is never read.
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
   - A text may end inside a definition: the interpreter stays compiling, so
@@ -1399,8 +1401,8 @@ passing suite.
   CATCH-STALE-DROP`).
 - **A checked word evaluates source with `evaluate-closed`, never
   `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
-  text's. `evaluate-closed` raises the data-stack base to the caller's depth for
-  the text and refuses whatever the text leaves, so its row is
+  text's. `evaluate-closed` runs the text on a guarded data stack of its own
+  and refuses whatever the text leaves, so its row is
   `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
   Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
   `7 [: s" drop" evaluate-closed ;] catch` answers 70

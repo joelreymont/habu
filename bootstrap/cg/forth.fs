@@ -187,7 +187,8 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$90 constant STACK-ABI:EVAL-BYTES
+$90 constant STACK-ABI:EVAL-SEG
+$A0 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself
@@ -286,6 +287,7 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
+$2828 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $5000 constant TXN-STATE-OFF
 \ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
 \ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
@@ -953,8 +955,9 @@ variable BAND-IX
 \ linked native-stack frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
-\ x10: the frame records the data-stack extent in force, and the clean exit
-\ returns to x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
+\ x10 and x13 the data stack the frame owns (0 for evaluate): the frame records
+\ the data-stack extent in force and that stack, and the clean exit returns to
+\ x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
 \ src/habu/habu1.f EVAL-ENTER.
 : EVAL-ENTER ( -- )
    SP SP EVAL-FRAME-SIZE SUBI,
@@ -968,6 +971,7 @@ variable BAND-IX
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR, 11 14 STACK-ABI:EVAL-CAP STR,
+   13 14 STACK-ABI:EVAL-SEG STR,                     \ before x13 turns scratch below
    11 DATA DP-CELL LDR,  11 14 56 STR,
    12 14 EVAL-PKG ADDI,
    13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
@@ -983,6 +987,7 @@ variable BAND-IX
 
 : B-EVAL ( -- )
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   13 0 MOVZ,                                        \ no stack of its own
    EVAL-ENTER ;
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -1598,28 +1603,41 @@ HB-TARGET-LINUX? [IF]
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
-\ evaluate-closed ( ptr u8 n -- ): evaluate the text with the caller's depth as
-\ its floor, BASE raised to the cursor and CAP lowered by the same distance, and
-\ refuse a text that left cells with STACK-ABI:E-EVAL-RESIDUE. The caller's
-\ extent waits in this word's frame; the evaluate frame records the floor and
-\ returns to `back`. Mirrors src/habu/habu1.f B-EVAL-CLOSED.
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text on a data stack of its
+\ own, a PAGE-BYTES guarded stack from the pool CLOSED-FREE-CELL heads (an
+\ empty pool maps one), and refuse a text that left cells with
+\ STACK-ABI:E-EVAL-RESIDUE. The caller's extent and cursor wait in this word's
+\ frame; the evaluate frame records the stack and returns to `back`, which
+\ gives the stack back to the pool (EMIT-EVAL-THROW-RECOVER does on a throw).
+\ Mirrors src/habu/habu1.f B-EVAL-CLOSED.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL {: back done :}
+   LBL LBL LBL LBL {: have take back done :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 16 SUBI,
+   SP SP 48 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
-   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
-   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP      \ clobbers x0-x6 and x9
+   take B,
+   have LBL,
+   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
+   take LBL,
+   13 SP 40 STR,
+   9 SP 24 LDR,  10 SP 32 LDR,
+   13 DATA STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 13 0 ADDI,
    30 back ADR,
    EVAL-ENTER
    back LBL,
-   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   11 SP 40 LDR,                                     \ the text's stack, back to the pool
+   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   SP SP 16 ADDI,
-   XDS 11 CMP,  C-EQ done BCOND,
-   XDS 11 0 ADDI,
+   13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
+   SP SP 48 ADDI,
+   13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
@@ -5831,6 +5849,7 @@ variable CFSK2
    9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
    9 DATA SIGNAL-ABI:FD-CELL STR,        \ no signal fd inherited from restored bytes
+   9 DATA CLOSED-FREE-CELL STR,          \ nor an idle closed-text stack
    G-INSTALL-CRASH
    G-INSTALL-TRAP
    9 LSIGH @ ADR,  9 DATA SIGNAL-ABI:STUB-CELL STR,
@@ -7638,7 +7657,7 @@ variable P2SK
 : EMIT-EVAL-THROW-RECOVER ( -- )
    LEVALREC @ LBL,
    LBL {: bad :}
-   LBL LBL LBL {: loop pop deliver :}
+   LBL LBL LBL LBL {: loop pop deliver unowned :}
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,
@@ -7654,6 +7673,9 @@ variable P2SK
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,          \ a closed frame's stack: back to the pool
+      9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
+      unowned LBL,
       \ Native recovery filters address declarations before this DP rewind.
       \ The seed owns no such rows: addr-cells-abi is zero, xt! only stores,
       \ and ptr-cell-mark only consumes its address (EMIT-MEMORY-PRIMS).

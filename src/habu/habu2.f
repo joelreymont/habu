@@ -7999,6 +7999,9 @@ ardone LBL,
    \ the stub armed carries that program's descriptor number, which names nothing
    \ this process ever opened.
    9 DATA SIGNAL-ABI:FD-CELL STR,
+   \ No idle closed-text stack either: the list names mappings of the process
+   \ that wrote the bytes.
+   9 DATA CLOSED-FREE-CELL STR,
    \ The engine's own handler is baked beside this startup, so ADR reaches it and
    \ every generation of every build chain measures that. A stripped image's
    \ handler is not: src/habu/aot-lib.f EMIT-ENTRY loads the same register with
@@ -10219,7 +10222,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL {: bounds:label :}
+   LBL LBL {: bounds:label unowned:label :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -10248,6 +10251,10 @@ public
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
       CODE-ORIGIN:ABANDON,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      \ A closed frame owns its text's data stack: back to the pool.
+      10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,
+      9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
+      unowned LBL,
       12 13 56 LDR,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,

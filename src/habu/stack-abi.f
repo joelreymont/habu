@@ -66,6 +66,10 @@ $50 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-$90 constant EVAL-BYTES
+\ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
+\ return and the throw recovery give back to the pool; 0 for evaluate. The
+\ frame ends at $98 and EVAL-BYTES keeps the machine stack 16-byte aligned.
+$90 constant EVAL-SEG
+$A0 constant EVAL-BYTES
 
 ;package
