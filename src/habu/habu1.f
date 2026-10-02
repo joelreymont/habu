@@ -219,6 +219,12 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable
 variable LKWTRUSTED variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+\ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
+\ outer loop and `'` call on LFIND's hit path.
+package INTERP-EMIT
+public
+variable LFINDSHADOW
+;package
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
@@ -1427,6 +1433,21 @@ variable SZA-I
    9 9 13 MUL,  9 9 10 UDIV,
    9 11 9 ADD,  9 G-PUSH ;
 
+package ENGINE-EMIT
+public
+\ The USE-MAX used-public wids between the using band (layout.f USE-WIDS-OFF)
+\ and a snapshot at off from base. They are the includer's slots: a buffer
+\ that closes the includer's package and then opens a using writes into one
+\ (habu2.f LEVALREC, EM-REPL-RECOVER). band and tmp are scratch registers.
+: USE-WIDS-SAVE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
+   band USE-WIDS-OFF LIT64,  band DATA band ADD,
+   USE-MAX 0 do  tmp band i cells LDR,  tmp base off i cells + STR,  loop ;
+
+: USE-WIDS-RESTORE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
+   band USE-WIDS-OFF LIT64,  band DATA band ADD,
+   USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
+;package
+
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
@@ -1435,9 +1456,12 @@ variable SZA-I
 \ LUNDERFLOW, and every throw) never return here: they unwind through the eval
 \ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
-: B-EVAL ( -- )
-   B-TASK-LIVE-GUARD
-   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+\
+\ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
+\ x10. The frame records the data-stack extent in force, and the clean exit
+\ returns to x30: B-EVAL's caller, or the continuation of B-EVAL-CLOSED, which
+\ inlines it under a floor of its own.
+: EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
@@ -1445,7 +1469,7 @@ variable SZA-I
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
-   30 14 16 STR,                                     \ leaf prim: x30 = caller return
+   30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
@@ -1462,11 +1486,22 @@ variable SZA-I
    \ included file that opens usings has them rolled back to this boundary on clean
    \ exit (EM-EVAL-CLEAN-EXIT) and on throw (LEVALREC) — usings are file-local.
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
+   \ and starts the buffer's using floor there: it closes only the usings it opens
+   11 14 EVAL-FRAME:USE-FLOOR STR,
+   \ and the open package's using floor, which a throw restores with the package
+   11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP:FLOOR STR,
+   \ and the includer's used publics, which a throw puts back with the depth
+   14 EVAL-FRAME:USE-WIDS 11 12 ENGINE-EMIT:USE-WIDS-SAVE,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    9 DATA SRCLOC:INB-CELL STR,                       \ INB = a (this buffer's first byte)
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
+
+: B-EVAL ( -- )
+   B-TASK-LIVE-GUARD
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   EVAL-ENTER ;
 
 : BCREATE ( -- )
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -2698,8 +2733,19 @@ public
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
+\ A typed quotation cell starts at zero. Reading it is valid, but no public
+\ quotation call may branch to that address, even beneath a catch handler.
+: BCALLABLE ( -- )
+   LBL LBL {: live:label msg:label :}
+   9 live CBNZ,
+   0 2 MOVZ,  1 msg ADR,  2 20 MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:CALLABLE-ABI MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  S\" hb: unset quotation\n" BYTES,
+   live LBL, ;
+
 : BEXEC ( -- )
-   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+   A G-POP  BCALLABLE
+   SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ execute-floor ( xt -- flag ): run the xt, then flag whether it left XDS below
 \ the base in S0-CELL, the comparison the interpreter's post-token depth floor
@@ -2725,7 +2771,7 @@ public
 : BCATCH ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
-   A G-POP
+   A G-POP  BCALLABLE
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -2867,6 +2913,7 @@ public
    LBL LBL LBL {: bad:label unguarded:label done:label :}
    12 XDS 24 SUBI,
    9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
+   BCALLABLE
    unguarded GUARDED-EXTENT?
    XDS XDS 24 SUBI,
    SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
@@ -2886,11 +2933,45 @@ public
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program. Once
+\ the string is popped, the caller's depth becomes the text's floor: BASE moves
+\ up to the cursor and CAP shrinks by the same distance, so the extent keeps its
+\ top, `depth` starts at 0, and every floor the interpreter enforces refuses a
+\ token that would reach a caller's cell, as rc 70 through LEVALREC. The
+\ caller's extent waits in this word's frame; the evaluate frame EVAL-ENTER
+\ pushes records the floor and returns to `back`. A nested evaluate,
+\ run-in-stack or catch inside the text therefore restores to the floor, and a
+\ throw out of the text unwinds to the caller's handler, which restores its
+\ own extent and abandons this frame. On the clean return the text must have
+\ left nothing: residue is dropped and refused by name with
+\ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
+\ BRUNSTACK above.
+: B-EVAL-CLOSED ( -- )
+   LBL LBL {: back:label done:label :}
+   B-TASK-LIVE-GUARD
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   30 back ADR,
+   EVAL-ENTER
+   back LBL,
+   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   SP SP 16 ADDI,
+   XDS 11 CMP,  C-EQ done BCOND,
+   XDS 11 0 ADDI,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
 : BFINALLY ( -- )
    LBL FINALLY-DONE !
-   A G-POP
+   A G-POP  BCALLABLE
    SP SP $10 SUBI,  9 SP 0 STR,
    BCATCH
    A G-POP  9 SP 8 STR,
@@ -3556,7 +3637,8 @@ public
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L ;
+   s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L

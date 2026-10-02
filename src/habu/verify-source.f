@@ -35,15 +35,33 @@ PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
-PTR-VARIABLE SCOPE-A                     \ the scope statements the source starts in
-variable SCOPE-U
 create BODY-BUF BODYBUF-CAP allot
+
+\ Composition is a fixed scanner operation. The subject stays pinned across
+\ nested loads so a require back to it observes these bytes, and an include of
+\ it scans these bytes again.
+variable COMPOSE-ON
+PTR-VARIABLE COMPOSE-SUBJ-A
+variable COMPOSE-SUBJ-U
+create COMPOSE-SUBJ-PATH PATH-CAP allot
+variable COMPOSE-SUBJ-PATH-U
+create COMPOSE-SUBJ-LABEL PATH-CAP allot
+variable COMPOSE-SUBJ-LABEL-U
+PTR-VARIABLE COMPOSE-CUR-PATH-A
+variable COMPOSE-CUR-PATH-U
+PTR-VARIABLE COMPOSE-PEND-A
+variable COMPOSE-PEND-U
+PTR-VARIABLE COMPOSE-PEND-PATH-A
+variable COMPOSE-PEND-PATH-U
+variable COMPOSE-REQ0
+create COMPOSE-STOP-PATH PATH-CAP allot
+variable COMPOSE-STOP-U
+variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
+
+defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 
 : SOURCE@ ( -- ptr u8 )
    SOURCE-A @ ;
-
-: SCOPE@ ( -- ptr u8 )
-   SCOPE-A @ ;
 
 : BASE-RESET ( -- )
    1 BASE-LINE !
@@ -54,7 +72,6 @@ create BODY-BUF BODYBUF-CAP allot
    BASE-RESET
    SOURCE-U !
    SOURCE-A !
-   0 SCOPE-U !
    0 TOKEN-BYTE ! ;
 
 : SOURCE-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
@@ -253,13 +270,6 @@ create BODY-BUF BODYBUF-CAP allot
    FOUND @ 0= IF s" verify-source: unterminated string" 74 die THEN
    SOURCE@ start + SCAN-I @ start - ;
 
-: APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BODY-APPEND
-   a u STRING-REST BODY-APPEND ;
-
-: SKIP-STRING-REST ( ptr u8 n -- )
-   STRING-REST 2drop ;
-
 : FOLD-C ( n -- n )
    dup $41 < IF EXIT THEN
    dup $5A > IF EXIT THEN
@@ -272,6 +282,105 @@ create BODY-BUF BODYBUF-CAP allot
       over b + c@ FOLD-C <> IF drop 0 0= 0= EXIT THEN
       1+
    REPEAT drop 0 0= ;
+
+\ The tokens a straight line has none of. The checker's own classifier
+\ (src/core/checker.f CF-TOK?) cannot be reused for the question: it is the
+\ control-flow DISPATCHER and pushes a frame for every token it recognises, so
+\ asking it would move the checker's state. These are its token list, plus the
+\ compile-time brackets a definer call (WRAP-TOKEN) or a loader (BODY-TOKEN-SEEN)
+\ must not hide behind.
+: WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" CORE-STR=
+   a u s" else" CORE-STR= or
+   a u s" then" CORE-STR= or
+   a u s" case" CORE-STR= or
+   a u s" of" CORE-STR= or
+   a u s" endof" CORE-STR= or
+   a u s" endcase" CORE-STR= or ;
+
+: WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" begin" CORE-STR=
+   a u s" while" CORE-STR= or
+   a u s" repeat" CORE-STR= or
+   a u s" until" CORE-STR= or
+   a u s" again" CORE-STR= or
+   a u s" do" CORE-STR= or
+   a u s" ?do" CORE-STR= or
+   a u s" loop" CORE-STR= or
+   a u s" +loop" CORE-STR= or
+   a u s" leave" CORE-STR= or
+   a u s" exit" CORE-STR= or ;
+
+: WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [:" CORE-STR=
+   a u s" ;]" CORE-STR= or
+   a u s" [" CORE-STR= or
+   a u s" ]" CORE-STR= or
+   a u s" postpone" CORE-STR= or
+   a u s" recurse" CORE-STR= or ;
+
+: WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u WRAP-COND-TOK?
+   a u WRAP-LOOP-TOK? or
+   a u WRAP-BRACKET-TOK? or ;
+
+\ ---- a loader in a definition -------------------------------------------------
+\ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when the
+\ word runs, after the definition at the earliest. A loader the body reaches on
+\ a straight line, with no control word, quotation or bracket before it
+\ (WRAP-CTL-TOK?), loads whenever the word runs, so the composition loads its
+\ file at the first top-level statement boundary after the definition where the
+\ file being read has closed every package and file-level `using` it opened, in
+\ the order of the loaders, and at the end of that file at the latest
+\ (VERIFY-SOURCE, PEND-RELEASE). A loader under a condition may not run - a
+\ target's layout loads only on that target (tools/imgdump.f) - so its file is
+\ the run's to load. The path is the literal right before the loader word; any
+\ other loader form in a body is discovery's to refuse (tools/source-discovery.f).
+\ Each entry's path lies in the bytes of the file being read, which live until
+\ that file ends.
+16 constant PEND-MAX
+PEND-MAX TYPED-BUFFER PEND-A ptr u8           \ a waiting load's path
+PEND-MAX TYPED-BUFFER PEND-U n                \ and its length
+PEND-MAX TYPED-BUFFER PEND-INC n              \ 1 for `included`, 0 for `required`
+variable PEND-N
+variable PEND-BASE                            \ the first entry of the file being read
+PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
+variable BODY-BENT                            \ the body read so far is no straight line
+
+: BODY-LOAD-RESET ( -- )
+   0 BODY-BENT !  0 BODY-LIT-U ! ;
+
+: PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
+   PEND-N @ PEND-MAX >= IF s" verify-source: too many loaders in definitions" 74 die THEN
+   a PEND-N @ PEND-A !  u PEND-N @ PEND-U !  inc PEND-N @ PEND-INC !
+   PEND-N @ 1 + PEND-N ! ;
+
+\ The text of a `s"` literal from the rest STRING-REST read: past the one
+\ delimiting space, short of the closing quote. Any other opener leaves none.
+: BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
+   o ou NORMAL-STRING-OPENER? su 2 >= and IF
+      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !  EXIT
+   THEN
+   0 BODY-LIT-U ! ;
+
+\ A body token that is no string literal: a loader word right after one, on a
+\ straight line, waits while a composition reads the source.
+: BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
+   COMPOSE-ON @ 0<> BODY-LIT-U @ 0 > and BODY-BENT @ 0= and IF
+      a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 PEND-PUSH THEN
+      a u s" included" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 1 PEND-PUSH THEN
+   THEN
+   0 BODY-LIT-U ! ;
+
+: APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BODY-APPEND
+   a u STRING-REST {: s:ptr su:n :}
+   s su BODY-APPEND
+   a u s su BODY-LIT! ;
+
+: SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u a u STRING-REST BODY-LIT! ;
 
 \ ---- the token a parsing keyword takes ----------------------------------------
 \ A parsing keyword takes the next whitespace-delimited token as its operand, by
@@ -313,6 +422,7 @@ create BODY-BUF BODYBUF-CAP allot
 
 : APPEND-BODY-TOKEN ( -- )
    TOKEN-A @ TOKEN-U @ BODY-PARSER? IF
+      0 BODY-LIT-U !
       TOKEN-A @ TOKEN-U @ BODY-APPEND
       OPERAND BODY-APPEND
       exit
@@ -320,12 +430,14 @@ create BODY-BUF BODYBUF-CAP allot
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF
       TOKEN-A @ TOKEN-U @ APPEND-STRING
    ELSE
+      TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN
       TOKEN-A @ TOKEN-U @ BODY-APPEND
    THEN ;
 
 : SKIP-BODY-TOKEN ( -- )
-   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop exit THEN
-   TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
+   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop 0 BODY-LIT-U ! exit THEN
+   TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
+   TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
 \ mode state, dynamic signature publication, raw-definer mode, and the scope's
@@ -413,20 +525,17 @@ TRUSTED: RENDERS-MARK? ( n -- bool )
 \ Those ids are the checker's, and a rewound scope truncates them, so the
 \ candidate scope this file opens (SOURCE-BUF) releases the rows recorded inside
 \ it: no row outlives the ids it names.
+\ The signature table stays `create … allot`: its elements are bytes, which a
+\ TYPED-BUFFER cannot hold, and BUFFER: lives in lib/string.f, outside this
+\ file's require closure.
 \ The bound is a scope's, not a file's: a preverified require closure holds
 \ several sources in one candidate scope, and the largest single file in the tree
 \ carries 28 `does>` today.
 128 constant DEFINER-CAP                   \ definer rows
 64 constant DEFINER-SIG-SLOT               \ one clause signature: [len][bytes]
-create DEFINER-SYM DEFINER-CAP cells allot
+DEFINER-CAP TYPED-BUFFER DEFINER-SYM n
 create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 variable DEFINER-N
-
-: DEFINER-SYM@ ( n -- n ) DEFINER-SYM {: row:n a:ptr :}
-   row cells a + @ ;
-
-: DEFINER-SYM! ( n n -- ) DEFINER-SYM {: sym:n row:n a:ptr :}
-   sym row cells a + ! ;
 
 : DEFINER-MARK ( -- n ) DEFINER-N @ ;
 
@@ -443,7 +552,7 @@ variable DEFINER-N
 : DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
    sym 0= IF 0 EXIT THEN
    0 BEGIN dup DEFINER-N @ < WHILE
-      dup DEFINER-SYM@ sym = IF 1 + EXIT THEN
+      dup DEFINER-SYM @ sym = IF 1 + EXIT THEN
       1 +
    REPEAT drop 0 ;
 
@@ -451,7 +560,7 @@ variable DEFINER-N
    sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
    DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
    DEFINER-N @ {: row:n :}
-   sym row DEFINER-SYM!
+   sym row DEFINER-SYM !
    row 1 + DEFINER-N !
    row ;
 
@@ -533,46 +642,6 @@ variable WRAP-SIG-U
 
 : DEFINER-RECORD ( ptr u8 n -- )
    DEF-NAME-A @ DEF-NAME-U @ DEFINER-RECORD-AS ;
-
-\ The tokens a straight line has none of. The checker's own classifier
-\ (src/core/checker.f CF-TOK?) cannot be reused for the question: it is the
-\ control-flow DISPATCHER and pushes a frame for every token it recognises, so
-\ asking it would move the checker's state. These are its token list, plus the
-\ compile-time brackets a definer call must not hide behind.
-: WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" CORE-STR=
-   a u s" else" CORE-STR= or
-   a u s" then" CORE-STR= or
-   a u s" case" CORE-STR= or
-   a u s" of" CORE-STR= or
-   a u s" endof" CORE-STR= or
-   a u s" endcase" CORE-STR= or ;
-
-: WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" begin" CORE-STR=
-   a u s" while" CORE-STR= or
-   a u s" repeat" CORE-STR= or
-   a u s" until" CORE-STR= or
-   a u s" again" CORE-STR= or
-   a u s" do" CORE-STR= or
-   a u s" ?do" CORE-STR= or
-   a u s" loop" CORE-STR= or
-   a u s" +loop" CORE-STR= or
-   a u s" leave" CORE-STR= or
-   a u s" exit" CORE-STR= or ;
-
-: WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [:" CORE-STR=
-   a u s" ;]" CORE-STR= or
-   a u s" [" CORE-STR= or
-   a u s" ]" CORE-STR= or
-   a u s" postpone" CORE-STR= or
-   a u s" recurse" CORE-STR= or ;
-
-: WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u WRAP-COND-TOK?
-   a u WRAP-LOOP-TOK? or
-   a u WRAP-BRACKET-TOK? or ;
 
 \ Observe one body token for the straight-line-wrapper rule. A body whose tokens
 \ hold EXACTLY ONE definer call and no control flow, quotation or bracket creates
@@ -715,6 +784,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ SKIP-BODY-TOKEN below, which consumes its rest (src/compiler/native/
 \ checker-owner.f says `s" does> split"` in eight trusted bodies).
 : SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
+   BODY-LOAD-RESET
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
@@ -1047,6 +1117,96 @@ PTR-VARIABLE STG-START
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
+\ The core resolver answers the canonical path and require-known state. A
+\ require publishes that path before descending, so recursive requires stop at
+\ the same point as the native loader. An include always descends.
+: COMPOSE-PENDING ( -- )
+   COMPOSE-PEND-A @ COMPOSE-PEND-U @
+   COMPOSE-PEND-PATH-A @ COMPOSE-PEND-PATH-U @ COMPOSE-FILE ;
+
+TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
+
+: COMPOSE-LOADED ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n path:ptr pathu:n :}
+   a COMPOSE-PEND-A !  u COMPOSE-PEND-U !
+   path COMPOSE-PEND-PATH-A !  pathu COMPOSE-PEND-PATH-U !
+   [: COMPOSE-PENDING ;]
+   CHECKER-OWNER-ABI:VERIFY-FILE-OFF OWNER-XT FILE-ACTION execute ;
+
+: COMPOSE-OPEN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
+      path pathu COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+      [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-SUPPLIED EXIT
+   THEN
+   path pathu [: COMPOSE-LOADED ;] SOURCE-ROOT:WITH-BYTES ;
+
+: COMPOSE-INCLUDED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
+
+: COMPOSE-REQUIRED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE {: path:ptr pathu:n known:bool :}
+   known IF EXIT THEN
+   path pathu REQUIRE-STORE
+   path pathu COMPOSE-OPEN ;
+
+: COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
+   SOURCE-ROOT:ENTRY-RESOLVE {: path:ptr pathu:n known:bool :}
+   known IF EXIT THEN
+   path pathu REQUIRE-STORE
+   path pathu COMPOSE-OPEN ;
+
+: COMPOSE-PROVIDED ( ptr u8 n -- )
+   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE ;
+
+: COMPOSE-STRING-PATH ( -- ptr u8 n )
+   STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
+   STR-LAST-A @ STR-LAST-U @ ;
+
+: COMPOSE-RAW-PATH ( -- ptr u8 n )
+   NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
+
+: COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
+      COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT
+   THEN
+   path pathu ;
+
+\ The loads that wait in this file, in the order of their loaders. A file one
+\ of them loads keeps its own entries above them, and they end with it.
+: PEND-RELEASE ( -- )
+   PEND-N @ PEND-BASE @ ?do
+      i PEND-A @ i PEND-U @
+      i PEND-INC @ 0<> IF COMPOSE-INCLUDED ELSE COMPOSE-REQUIRED THEN
+   loop
+   PEND-BASE @ PEND-N ! ;
+
+\ The scope the file being read opened itself: a `package`, and the `using`s it
+\ opened outside one. `;package` closes the package with the usings inside it;
+\ `;using` closes the last using outside it.
+variable FILE-PKG
+variable FILE-USE
+
+: FILE-SCOPE-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" package" STR=CI IF 1 FILE-PKG ! EXIT THEN
+   a u s" ;package" STR=CI IF 0 FILE-PKG ! EXIT THEN
+   FILE-PKG @ 0<> IF EXIT THEN
+   a u s" using" STR=CI IF FILE-USE @ 1 + FILE-USE ! EXIT THEN
+   a u s" ;using" STR=CI FILE-USE @ 0 > and IF FILE-USE @ 1 - FILE-USE ! THEN ;
+
+: FILE-NEUTRAL? ( -- bool )
+   FILE-PKG @ 0= FILE-USE @ 0= and ;
+
+: COMPOSE-TOP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
+   a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
+   a u s" required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
+   a u s" script-required" STR=CI IF COMPOSE-STRING-PATH COMPOSE-SCRIPT-REQUIRED 0 0= EXIT THEN
+   a u s" provided" STR=CI IF COMPOSE-STRING-PATH COMPOSE-PROVIDED 0 0= EXIT THEN
+   0 0= 0= ;
+
 \ A package primitive row has two closers, and this verifier models them exactly
 \ as the source lexer does:
 \ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
@@ -1196,6 +1356,7 @@ PTR-VARIABLE STG-START
    TOKEN-ORIGIN!
    DEF-NAME!
    WRAP-RESET
+   BODY-LOAD-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
    MAYBE-SIGNATURE
    BEGIN
@@ -1209,19 +1370,66 @@ PTR-VARIABLE STG-START
 
 \ A parsing keyword and its operand are one value on the interpret stack, and
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
-\ hands the count reader `char`, not `0`, so the count is left to the run.
+\ hands the count reader `char`, which names the count's word. A load a
+\ definition makes waits for the first statement after which the file has
+\ closed every scope it opened, and for the file's end at the latest.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
+   0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
    BEGIN
       NEXT-SCAN dup 0 > WHILE
       2dup TOP-CUR-U ! TOP-CUR-A !
+      2dup FILE-SCOPE-STEP
       2dup TOP-PARSER? IF 2drop OPERAND 2drop ELSE
       2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
-      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN THEN
+      2dup COMPOSE-TOP? IF 2drop ELSE
+      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN THEN THEN
+      FILE-NEUTRAL? IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
-   REPEAT 2drop ;
+   REPEAT 2drop
+   PEND-RELEASE ;
+
+\ Nested files share the checker window but not the scanner cursor. The saved
+\ source and token context belongs to the caller; declarations and learned
+\ definers belong to the entire composition.
+: COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n :}
+   path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
+   SOURCE-A @ SOURCE-U @ SCAN-I @ LINE-N @ LINE-START @
+   BASE-LINE @ BASE-COL @ BASE-BYTE @
+   TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
+   FILE-PKG @ FILE-USE @ PEND-BASE @
+   {: olda:ptr oldu:n oldi:n oldln:n oldls:n oldbl:n oldbc:n oldbb:n
+      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n oldpath:ptr oldpathu:n
+      oldpkg:n olduse:n oldbase:n :}
+   src srcu SOURCE!
+   path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
+   diag diagu DIAG-FILE!
+   [: VERIFY-SOURCE ;] catch {: rc:n :}
+   rc 0<> COMPOSE-STOP-U @ 0= and IF
+      diag COMPOSE-STOP-PATH diagu BYTE-COPY
+      diagu COMPOSE-STOP-U !
+      path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= COMPOSE-STOP-SUBJ !
+   THEN
+   olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
+   oldln LINE-N !  oldls LINE-START !
+   oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
+   oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
+   oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
+   oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
+   oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
+   oldpathu 0 > IF oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE! THEN
+   \ The loader's own file goes on, so a storage refusal in it is located there.
+   oldu 0 > IF olda oldu oldbl oldbc oldbb CHECKER-VERIFY-SOURCE! THEN
+   rc 0<> IF rc throw THEN ;
+
+: COMPOSE-INIT ( -- )
+   [: COMPOSE-FILE-SCAN ;] is COMPOSE-FILE ;
+
+COMPOSE-INIT
 
 : THROW-RESULT ( n -- )
    dup 0= IF drop exit THEN
@@ -1229,22 +1437,23 @@ PTR-VARIABLE STG-START
 
 TRUSTED: VERIFIER-ACTION ( n -- [ -- ] ) ;
 
-\ A source cut out of a file where a loader runs another starts inside the
-\ package and `using` scope the loader left open. Its scope statements are read
-\ first, in the same window, so the scope rows record that scope exactly as
-\ they record the file's own statements; then the source is read at its base.
-: VERIFY-SCOPED ( -- )
-   SCOPE-U @ 0= if VERIFY-SOURCE exit then
-   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @
-   {: a:ptr u:n line:n col:n byte:n :}
-   SCOPE@ SCOPE-U @ SOURCE!
-   VERIFY-SOURCE
-   a u line col byte SOURCE-AT!
-   VERIFY-SOURCE ;
+: COMPOSE-SUBJECT ( -- )
+   COMPOSE-SUBJ-A @ COMPOSE-SUBJ-U @
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ COMPOSE-FILE ;
+
+TRUSTED: RUN-COMPOSE ( -- )
+   CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
+   [: COMPOSE-SUBJECT ;] catch
+   CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
+   THROW-RESULT ;
+
+: COMPOSE-WITH-ROOT ( -- )
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ SOURCE-ROOT:DIRNAME
+   [: RUN-COMPOSE ;] SOURCE-ROOT:WITH ;
 
 TRUSTED: RUN ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
-   [: VERIFY-SCOPED ;] catch
+   [: VERIFY-SOURCE ;] catch
    CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
 
@@ -1256,18 +1465,51 @@ public
 : TOKEN-BYTE@ ( -- n )
    TOKEN-BYTE @ ;
 
+\ Verify one supplied source through loader composition at each top-level
+\ loader token. The registry suffix and the caller's checker scope survive both
+\ success and throw; the supplied bytes remain authoritative for this path.
+: SOURCE-COMPOSE-LABELED-IN-SCOPE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+   COMPOSE-ON @ 0<> IF E-PKG-CONTEXT throw THEN
+   pathu 0= pathu PATH-CAP > or labelu PATH-CAP > or IF E-PATH-RANGE throw THEN
+   path COMPOSE-SUBJ-PATH pathu BYTE-COPY
+   pathu COMPOSE-SUBJ-PATH-U !
+   label COMPOSE-SUBJ-LABEL labelu BYTE-COPY
+   labelu COMPOSE-SUBJ-LABEL-U !
+   src COMPOSE-SUBJ-A !  srcu COMPOSE-SUBJ-U !
+   NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
+   0 COMPOSE-STOP-U !
+   0 PEND-N !
+   REQUIRE-REG:COUNT COMPOSE-REQ0 !
+   COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
+      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE
+   THEN
+   -1 COMPOSE-ON !
+   [: COMPOSE-WITH-ROOT ;] catch {: rc:n :}
+   0 COMPOSE-ON !
+   COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
+   rc 0<> IF rc throw THEN ;
+
+: SOURCE-COMPOSE-IN-SCOPE ( ptr u8 n ptr u8 n -- )
+   2dup SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: SOURCE-COMPOSE-STOPPED$ ( -- ptr u8 n )
+   COMPOSE-STOP-U @ 0 > IF COMPOSE-STOP-PATH COMPOSE-STOP-U @ EXIT THEN
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ ;
+
+\ The file SOURCE-COMPOSE-STOPPED$ names is the supplied bytes themselves, not a
+\ file a loader statement read: a caller that reports where the composition
+\ stopped reads the token from its own bytes there, and from the named file
+\ otherwise.
+: SOURCE-COMPOSE-STOPPED-SUBJECT? ( -- bool )
+   COMPOSE-STOP-U @ 0= COMPOSE-STOP-SUBJ @ or ;
+
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!
    RUN ;
 
-\ Verify a source that starts at the given line, column and byte of its file,
-\ inside the scope the given statements open (`using A package P public`, or
-\ nothing at top level).
-: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n ptr u8 n n n n -- )
-   {: scope:ptr scopeu:n a:ptr u:n line:n col:n byte:n :}
-   a u line col byte SOURCE-AT!
-   scope SCOPE-A !
-   scopeu SCOPE-U !
+: SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
+   SOURCE-AT!
    RUN ;
 
 \ The definer rows recorded inside this scope go with it: CHECKER-CANDIDATE-

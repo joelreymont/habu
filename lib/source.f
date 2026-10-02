@@ -9,6 +9,7 @@ package SOURCE
 private
 
 1 constant SOURCE-PROBE-CAP
+0 constant SOURCE-NUL
 9 constant SOURCE-TAB
 10 constant SOURCE-LF
 13 constant SOURCE-CR
@@ -129,8 +130,11 @@ private
 
 \ One shared checked path-string emitter. Path bytes that would change source
 \ structure (`"`, `\`, LF, CR) are rejected fail-closed so materialized loader
-\ lines and diagnostic prefix labels cannot be broken or injected by a path.
+\ lines and diagnostic prefix labels cannot be broken or injected by a path. A
+\ NUL is rejected too: no path holding one names a file, and a label holding one
+\ would carry it into a diagnostic.
 : SOURCE-PATH-BYTE-SAFE? ( n -- bool ) {: c:n :}
+   c SOURCE-NUL = if STR-FALSE exit then
    c SOURCE-DQ = if STR-FALSE exit then
    c SOURCE-BACKSLASH = if STR-FALSE exit then
    c SOURCE-LF = if STR-FALSE exit then
@@ -143,10 +147,12 @@ private
       1+
    repeat drop STR-TRUE ;
 
+public
+
+\ E-FS-PATH-UNSAFE for a path SOURCE-APPEND-QPATH cannot quote. A caller that
+\ quotes a spelling only late judges it early with this.
 : SOURCE-QPATH-CHECK ( ptr u8 n -- )
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
-
-public
 
 : SOURCE-APPEND-QPATH ( ptr u8 len ptr u8 len ptr len -- )
    {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}

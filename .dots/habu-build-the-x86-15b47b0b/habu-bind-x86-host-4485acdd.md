@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-09-29T12:51:36.612606+03:00"
 closed-at: "2026-09-30T18:30:45+03:00"
 close-reason: NABI:BINDING reads TARGET-ARCH and compiler.f LOAD-PASSES by target; lint 101 files 0 findings, chain fixpoint e2467d40 from gen1, gate 511/511 green, x86 proof unchanged.
-blocks:
-  - habu-fill-nemit-from-d8c030e4
 ---
 
 Problem: `src/compiler/native/abi.f:44-52` hard-codes AArch64; `src/compiler/native/compiler.f:37` requires `src/arch/arm64/passes.f` unconditionally; the manifest carries no backend by target.

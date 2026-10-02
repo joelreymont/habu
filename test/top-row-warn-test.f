@@ -22,7 +22,13 @@
 \ proof): a literal -> certified-(ptr u8 n)-consumer line, the CHECK! probe idiom,
 \ a mid-stream TRUSTED: shim call, and a `0 set-check` window each emit ZERO and
 \ rc 0. The row persists across `require` (tier-2 still rejects p1 after two
-\ requires).
+\ requires). With no package context (a package open after `0 set-current`) a word
+\ the tracker cannot query grays its outputs: the lines run to rc 0 with no
+\ package-context refusal, and tier 2 still rejects p3 by its own diagnostic.
+\ A used public retired by `undefine`, shadowing a global or sharing a tail with
+\ a live public, is skipped by the checker's resolver as by the engine: the tail
+\ binds the global (or the live public), rc 0 and no scope refusal named at
+\ tier 1, p3 rejected by its own diagnostic at tier 2.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -236,6 +242,91 @@ variable TW-CNT
    s" tier-2 row persists across require (p1 still rejected after two requires)" T-LABEL
    TW-REQUIRE$ TW-ASSERT-REJECTS ;
 
+\ No package context: inside a package after `0 set-current` the current wordlist
+\ is neither of the package's own, so no authority names a package context and
+\ the checker refuses any definition there (rc 70, "no authenticated package
+\ context"). The tracker defines nothing: a word whose effect it cannot query in
+\ that scope grays its outputs at both tiers, and tier 2 still refuses a residual
+\ by its own top-row diagnostic.
+: TW-NOCTX ( -- )                        \ open a package, then leave its wordlists
+   SB-RESET
+   s" package TW-NOCTX" TW-LINE
+   s" 0 set-current" TW-LINE ;
+
+: TW-NOCTX-LINES$ ( -- ptr u8 n )        \ certified words on a definite top
+   TW-NOCTX
+   s" 1 2 drop drop" TW-LINE
+   s" 1 2 2drop" TW-LINE
+   S\" s\" lines ran\" type cr" TW-LINE
+   SB$ ;
+
+: TW-NOCTX-P3$ ( -- ptr u8 n )           \ p3 after a queried word, in the same scope
+   TW-NOCTX
+   s" 1 2 drop drop" TW-LINE
+   S\" s\" abc\" + . cr" TW-LINE
+   SB$ ;
+
+: TW-NO-PKGCTX ( -- )                    \ stderr carries no package-context refusal
+   TW-ERR$ s" no authenticated package context" CONTAINS? TFALSE ;
+
+: TW-NO-CONTEXT ( -- )
+   s" tier-1 no package context: 1 2 drop drop and 1 2 2drop run, rc 0" T-LABEL
+   TW-NOCTX-LINES$ 0 TW-ASSERT-WARNS
+   TW-EXITED @ TTRUE  TW-RC @ 0 T=  TW-NO-PKGCTX
+   TW-OUT TW-OUT-U @ s" lines ran" CONTAINS? TTRUE
+   s" tier-2 no package context: p3 rejects by its own diagnostic" T-LABEL
+   TW-NOCTX-P3$ TW-ASSERT-REJECTS  TW-NO-PKGCTX ;
+
+\ A used public retired with `undefine`, which the engine and the checker's
+\ resolver both bind past. The engine refuses a bare tail a global and a used
+\ public both export, and one two used publics export, before the word runs
+\ (rc 105 and the ambiguity rc), so the tracker never sees those lines. Once the
+\ public is retired the engine binds the global (or the one live public) and runs
+\ the line; the resolver skips the retired symbol as the engine does (SYM-LIVE),
+\ so it binds the same word and refuses nothing, neither E-USING-SHADOW-GLOBAL
+\ (7141) nor E-USING-AMBIGUOUS (7144). These cases guard that agreement: at
+\ tier 1 the line runs with no warning and rc 0, at tier 2 p3's own diagnostic
+\ is the only one, and nothing on stderr names either refusal.
+: TW-SHADOW ( -- )                       \ a used public, retired, shadowing global drop
+   SB-RESET
+   s" package TW-SHADOW public : drop ( n -- ) . ; undefine drop ;package" TW-LINE
+   s" using TW-SHADOW" TW-LINE
+   s" 1 drop" TW-LINE ;
+
+: TW-AMBIG ( -- )                        \ two used publics of one tail, one retired
+   SB-RESET
+   s" package TW-AMB-A public : TW-AMB ( n -- ) drop ; ;package" TW-LINE
+   s" package TW-AMB-B public : TW-AMB ( n -- ) drop ; undefine TW-AMB ;package" TW-LINE
+   s" using TW-AMB-A using TW-AMB-B" TW-LINE
+   s" 1 TW-AMB" TW-LINE ;
+
+: TW-AFTER$ ( -- ptr u8 n )
+   S\" s\" AFTER\" type cr" TW-LINE
+   SB$ ;
+
+: TW-P3-AFTER$ ( -- ptr u8 n )           \ p3 after the unqueried word, in the same scope
+   S\" s\" abc\" + . cr" TW-LINE
+   SB$ ;
+
+: TW-NO-REFUSAL ( ptr u8 n -- ) {: code:ptr codeu:n :}   \ stderr names no scope refusal
+   TW-ERR$ code codeu CONTAINS? TFALSE
+   TW-ERR$ s" uncaught throw" CONTAINS? TFALSE ;
+
+: TW-RUNS-TIER1 ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n code:ptr codeu:n :}
+   a u 0 TW-ASSERT-WARNS
+   TW-EXITED @ TTRUE  TW-RC @ 0 T=  code codeu TW-NO-REFUSAL
+   TW-OUT TW-OUT-U @ s" AFTER" CONTAINS? TTRUE ;
+
+: TW-SCOPE-REFUSALS ( -- )
+   s" tier-1 retired used public shadowing a global: 1 drop runs, rc 0" T-LABEL
+   TW-SHADOW TW-AFTER$ s" E-USING-SHADOW-GLOBAL" TW-RUNS-TIER1
+   s" tier-2 retired used public shadowing a global: p3 rejects by its own diagnostic" T-LABEL
+   TW-SHADOW TW-P3-AFTER$ TW-ASSERT-REJECTS  s" E-USING-SHADOW-GLOBAL" TW-NO-REFUSAL
+   s" tier-1 two used publics of one tail, one retired: 1 TW-AMB runs, rc 0" T-LABEL
+   TW-AMBIG TW-AFTER$ s" ambiguous" TW-RUNS-TIER1
+   s" tier-2 two used publics of one tail, one retired: p3 rejects by its own diagnostic" T-LABEL
+   TW-AMBIG TW-P3-AFTER$ TW-ASSERT-REJECTS  s" ambiguous" TW-NO-REFUSAL ;
+
 : TW-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-tw" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -255,6 +346,8 @@ variable TW-CNT
    TW-NEGATIVES
    TW-NEGATIVES2
    TW-PERSIST
+   TW-NO-CONTEXT
+   TW-SCOPE-REFUSALS
    TW-CLEANUP
    T-REPORT
    s" top-row-warn: ok" type cr ;

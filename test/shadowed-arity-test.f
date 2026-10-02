@@ -37,7 +37,13 @@ variable #CASE
 TYPED-VARIABLE SAE-A ptr u8   variable SAE-U
 : SAE-GO ( -- )  SAE-A @ SAE-U @ INCLUDE-EVALUATE ;
 
+variable SAVED-HOOK
+
 public
+
+\ A definition the checker never sees, bracketed at top level.
+TRUSTED: UNCHECKED+ ( -- ) check@ SAVED-HOOK ! 0 set-check ;
+TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
@@ -49,9 +55,10 @@ public
 \ Evaluate one source string, returning its throw code (0 = accepted).
 : SAE-CATCH ( ptr u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
-\ The code the refused cases expect. It lives in the package because a global
+\ The codes the refused cases expect. They live in the package because a global
 \ `E-*` constant is lib/errors.f's surface alone.
 7145 constant E-SHADOW-ARITY   \ E-SHADOWED-ARITY: src/core/checker.f SHADOW-ARITY-CK
+70 constant E-REJECT           \ E-UNDEFINED: the checker's compile reject (habu2.f RC-REJECT)
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
@@ -146,5 +153,64 @@ s" : SAT-W ( n n -- n ) + ;" SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
 \ keeps its own code (78), ahead of this one.
 s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 78 SHADOWED-ARITY:T=
+
+\ === nothing without a live record binds a name ===============================
+\ A REFUSED public leaves nothing behind. Its symbol used to be interned before
+\ this rule threw, and a later `using` of the package then refused the bare tail
+\ as E-USING-SHADOW-GLOBAL against a public the engine never defined. The engine
+\ binds the global there, so the checked word does too: SAT-N-USE answers 7.
+\ The refusal is caught INSIDE the package, by a nested `evaluate`, so that
+\ `;package` still closes SAT-N with its private word for the `using` to read.
+s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q ' evaluate catch SHADOWED-ARITY:E-SHADOW-ARITY SHADOWED-ARITY:T=\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" using SAT-N\n: SAT-N-USE ( -- n ) SAT-T ;\n;using"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" : SAT-N-CK ( -- ) SAT-N-USE 7 <> if s\q the refused public bound its tail\q 1 die then ;\nSAT-N-CK"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+
+\ An `undefine`d private word's tombstone binds nothing either: the engine binds
+\ the global again once the private word is gone, and so does the checker.
+s" : SAT-U ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-UP\n: SAT-U ( -- n ) 1 ;\nundefine SAT-U\npublic\n: SAT-UP-USE ( -- n ) SAT-U ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" : SAT-UP-CK ( -- ) SAT-UP:SAT-UP-USE 7 <> if s\q the tombstone bound its tail\q 1 die then ;\nSAT-UP-CK"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+
+\ Nor does a symbol that source makes through a checker primitive, which carries
+\ no record: CHECKER-DEFER at a package's top level and from a checked body, and
+\ CHECKER-UNDEFINE of a name the package never defined. The engine defines no
+\ SAT-D in these packages, so each bare SAT-D is the global.
+s" : SAT-D ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DA\ns\q SAT-D\q CHECKER-DEFER\npublic\n: SAT-DA-USE ( -- n ) SAT-D ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DB\n: SAT-DB-HIDE ( -- ) s\q SAT-D\q CHECKER-DEFER ;\nSAT-DB-HIDE\npublic\n: SAT-DB-USE ( -- n ) SAT-D ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DC\ns\q SAT-D\q CHECKER-UNDEFINE\npublic\n: SAT-DC-USE ( -- n ) SAT-D ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" : SAT-D-CK ( -- ) SAT-DA:SAT-DA-USE SAT-DB:SAT-DB-USE + SAT-DC:SAT-DC-USE + 21 <> if s\q a recordless symbol bound its tail\q 1 die then ;\nSAT-D-CK"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+
+\ Nor does a public twin bind past a private word the engine still holds. The
+\ engine binds the private word first, so one the checker has no live record
+\ for stops the walk before the public leg: a CHECKER-UNDEFINE deleted only the
+\ checker's record (SAT-DT), and a `0 set-check` word never had one (SAT-DU).
+\ Each use below was certified against the public ( ptr u8 -- n ) and ran the
+\ private ( n -- n ) on a pointer; it is refused. The engine's own `undefine`
+\ retires the private word too, and then the public twin binds (SAT-DV).
+s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- n ) drop 5 ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT SHADOWED-ARITY:T=
+s\" package SAT-DU\nSHADOWED-ARITY:UNCHECKED+\n: SAT-DU-X ( n -- n ) 1 + ;\nSHADOWED-ARITY:UNCHECKED-\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DU\n: SAT-DU-USE ( -- n ) s\q ab\q drop SAT-DU-X ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT SHADOWED-ARITY:T=
+s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ptr u8 -- n ) drop 5 ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" package SAT-DV\nundefine SAT-DV-X\npublic\n: SAT-DV-USE ( -- n ) s\q ab\q drop SAT-DV-X ;\n;package"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
+s\" : SAT-DV-CK ( -- ) SAT-DV:SAT-DV-USE 5 <> if s\q the retired private twin bound its tail\q 1 die then ;\nSAT-DV-CK"
+   SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
 
 SHADOWED-ARITY:REPORT

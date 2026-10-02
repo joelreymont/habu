@@ -53,6 +53,7 @@ Planned module files:
 - `lib/test/suite.f`
 - `lib/test/runner.f`
 - `lib/test/subject.f`
+- `lib/test/eval.f`
 - `lib/property.f`
 - `lib/build.f`
 - `lib/time.f`
@@ -2512,6 +2513,13 @@ dictionary and engine-state mutations from escaping the child. Its dynamic
 owned by `habu-type-isolated-dynamic-244c0e2c`; that capability dot replaces
 both with a digest-bound typed source artifact and explicit isolated execution
 context.
+
+`lib/test/eval.f`, loaded by `lib/test.f`, publishes package `TEST-EVAL`:
+`N`, `FLAG` and `RC` take one cell, a flag or the throw code out of a source
+text under `evaluate-closed`, with no `evaluate` wrapper in the test. Its
+contract is measured in [forth.md](forth.md) **Rules learned by refusal**.
+`SRC$` and `N!` are public only because N's closed text, running in the
+caller's scope, reaches them qualified.
 
 `lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
 true only for an existing directory to which the process has both write and

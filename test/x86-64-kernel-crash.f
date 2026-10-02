@@ -39,11 +39,13 @@ require lib/string.f
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require test/x86-64-boot-harness.f
+require src/os/linux-x86-64/target-layout.f
 
 package X64K-CRASH
 using X64ASM
 using X64CODE
 using X64RT
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ Scratch the harness hands out (PUSH-SCRATCH,): the pipe's two ends and the
 \ expected text's address, then the bytes the parent reads.
@@ -324,6 +326,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;using

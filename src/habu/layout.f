@@ -494,10 +494,29 @@ STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
-\ and INE ([frame+8]) so a nested evaluate restores it. It is the last free slot
-\ of the frame: PKGSNAP ends at EVAL-PKG + PKGSNAP-USE + 8 = $78 and
-\ STACK-ABI:EVAL-BASE opens at $80, so the frame does not grow.
-$78 constant EVAL-INB
+\ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
+\ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
+\ and EVAL-FRAME:USE-WIDS fills the frame to STACK-ABI:EVAL-BYTES ($120),
+\ keeping the native stack 16-byte aligned.
+$90 constant EVAL-INB
+package EVAL-FRAME
+public
+\ USE-FLOOR: the using depth the buffer may close down to. B-EVAL starts it at
+\ the depth the buffer enters at, so a `;using` at or below it, which would
+\ close a using the includer opened, is refused (habu2.f C-END-USING). A
+\ `;package` that closes a package opened before the buffer restores a lower
+\ depth; the buffer's next `using` lowers the floor to meet it (C-USING-PUSH),
+\ and the clean exit restores the depth to the lower of the two
+\ (EM-EVAL-CLEAN-EXIT), so no using the buffer opened stays open.
+$98 constant USE-FLOOR
+\ USE-WIDS: the includer's USE-MAX used-public wids (USE-WIDS-OFF), which a
+\ throw puts back with the depth and the floor (habu2.f LEVALREC). A buffer
+\ that closes its includer's package and then opens a using writes that using
+\ into a slot the includer keeps; the checker reads each slot's name back from
+\ the restored wid (checker.f CHECKER-RESYNC).
+$A0 constant USE-WIDS
+;package
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
 \ Every engine load refusal that reaches the LCOMPILEDIE tail names the source it
@@ -535,9 +554,9 @@ $2810 constant INB-CELL
 \ live package-scope cells at line-start; EM-REPL-RECOVER (LRREC) restores them so a
 \ compile error typed at the tty REPL rolls the open-package scope back to the
 \ line-start scope, alongside the existing RSAVCP/RSAVND/RSAVDP/RSAVSP rollback.
-\ PKGRESYNC-CELL is armed by both recovery legs and drained once at LMAIN
-\ (EM-PKG-RESYNC): when the restored engine scope is global it resets the checker's
-\ own package scope (checker-end-package) so engine and checker stay in step. These
+\ PKGRESYNC-CELL is armed by both recovery legs and drained by EM-PKG-RESYNC, which
+\ has the checker re-read whatever scope was restored: LEVALREC drains before it
+\ delivers the throw, the LMAIN top drains the REPL leg's (habu2.f). These
 \ six cells sit in the reclaimed $2780..$27C0 band (rg-verified unused repo-wide,
 \ documented free above); small DATA-relative offsets, direct LDR/STR.
 $2780 constant RPKG-CUR
@@ -546,6 +565,19 @@ $2790 constant RPKG-PRI
 $2798 constant RPKG-PARENT
 $27A0 constant RPKG-REC
 $27C0 constant PKGRESYNC-CELL
+package RPKG
+public
+\ FLOOR: the line-start using floor (USE-PKG-SAVE-CELL), restored with the five
+\ RPKG-* cells above; PKGSNAP:FLOOR below says why. The $27xx band is full, so
+\ it takes $4810, the first cell above STACK-ABI:LOOP-BASE-CELL in the run below
+\ TXN-STATE-OFF ($5000), swept for a claimant across src lib tools test maki
+\ bootstrap and claimed in src/habu/data-claims.f.
+$4810 constant FLOOR
+\ WIDS: the line-start used-public wids, USE-MAX cells, restored with the depth
+\ and the floor; EVAL-FRAME:USE-WIDS above says why. It takes the run after
+\ FLOOR, swept for a claimant the same way and claimed in data-claims.f.
+$4818 constant WIDS
+;package
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -1075,6 +1107,7 @@ CHECKER-OWNER-ABI:WIDE-OFF constant DECL-WIDE-OFF
 CHECKER-OWNER-ABI:RESET-OFF constant DECL-RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
+CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
 \ Everything below is the OPTIMIZING front end's half of the same record, and it
 \ is why the record exists at all for tier 1. That front end IS the checker's
 \ scan: the scan feeds the source tape the elaborator reads, answers the does>
@@ -1552,7 +1585,9 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
 \ Evaluator entry snapshots package/search state in its native stack frame.
-\ Clean exit restores using depth; throw recovery also restores package scope.
+\ Clean exit restores the using depth to the buffer's floor
+\ (EVAL-FRAME:USE-FLOOR); throw recovery restores the entry depth (PKGSNAP-USE),
+\ the used-public wids (EVAL-FRAME:USE-WIDS) and the package scope.
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
@@ -1560,6 +1595,13 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
 40 constant PKGSNAP-USE
+package PKGSNAP
+public
+\ FLOOR is the open package's using floor (USE-PKG-SAVE-CELL): a buffer that
+\ closes the package, opens another and throws set that cell to the other
+\ package's floor, which the restored package then kept.
+48 constant FLOOR
+;package
 
 
 \ --- `using`-scope import band (dot habu-using-import-pkg-a07dd7ba) ---

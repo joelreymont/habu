@@ -7,8 +7,9 @@
 \ call, and the damage surfaced two layers away at some later file's `using`, as
 \ E-USING-SHADOW-GLOBAL against a package public that legitimately owned the
 \ tail. src/core/checker.f TRUST-RESOLVES? now answers the claim from the
-\ ENGINE's own scope chain (open-package private, open-package public, global,
-\ read through `search-wl`) and refuses the row where it is written.
+\ ENGINE's wordlist the row's record lands in (the open section's, or the
+\ global one outside a package, read through `search-wl`) and refuses the row
+\ where it is written.
 \
 \ WHY EVERY CASE RUNS THROUGH INCLUDE-EVALUATE. The row has to be REJECTED AT
 \ THE ROW, which is a statement about WHEN the throw happens and not only that
@@ -130,13 +131,19 @@ s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH
 \ live one. It is refused before the name is read: the maximum cell ran the
 \ colon scan off the end of the string until the process was killed.
 \ `trust-raw` and `trust-decl` refuse it the same way: before, -1 recorded a row
-\ under that length, and the maximum cell died folding the name.
+\ under that length, and the maximum cell died folding the name. Source cannot
+\ run those internal engine words, so a TRUSTED: body calls them, as the
+\ engine's own callers do.
 s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
-s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust-raw" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
-s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust-decl" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
-s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-raw" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
-s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-decl" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" TRUSTED: TRW-NR1 ( -- ) s\q TRW-LIVE\q drop -1 s\q -- n\q trust-raw ; TRW-NR1"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" TRUSTED: TRW-ND1 ( -- ) s\q TRW-LIVE\q drop -1 s\q -- n\q trust-decl ; TRW-ND1"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" TRUSTED: TRW-NR2 ( -- ) s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-raw ; TRW-NR2"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" TRUSTED: TRW-ND2 ( -- ) s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-decl ; TRW-ND2"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 
 \ --- a signature that is no span --------------------------------------------
 \ The signature is text the parser reads, so a length that describes no memory
@@ -144,11 +151,12 @@ s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-decl" TRUST-ROW:TCE-CATCH T
 \ read or printed. On the load path that refusal ends the process, so these rows
 \ run in a forked child. Given the maximum cell, the parser read on past the text
 \ until the process was killed, its memory past 2 GB; given -1, the refusal
-\ handed that length to `write` with the text. `trust-raw` shares the
-\ registration, and with it the refusal.
+\ handed that length to `write` with the text. `trust-raw`, called from a
+\ TRUSTED: body, shares the registration, and with it the refusal.
 s\" s\q TRW-LIVE\q s\q -- n\q drop -1 trust" 76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
 s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" 76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
-s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust-raw" 76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
+s\" TRUSTED: TRW-NS1 ( -- ) s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust-raw ; TRW-NS1"
+   76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
 
 \ --- fixtures built to fool a text match ------------------------------------
 \ The name in a COMMENT. Nothing defines it, so the row is refused; a check that
@@ -176,9 +184,9 @@ s\" s\q TRW-GONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST
 s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 s\" s\q TRW-DUP-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 
-\ --- the scope chain the rule walks -----------------------------------------
-\ A package's own private and public words, while that package is OPEN. Both
-\ legs must resolve or a row inside a package body would be refused.
+\ --- the open section's own words --------------------------------------------
+\ A package's own private and public words, each named from its own section
+\ while that package is OPEN, or a row inside a package body would be refused.
 s\" package TRWA : TRWA-PRIV ( -- n ) 8 ; s\q TRWA-PRIV\q s\q -- n\q trust ;package"
    TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 s\" package TRWB public : TRWB-PUB ( -- n ) 9 ; s\q TRWB-PUB\q s\q -- n\q trust ;package"
@@ -212,6 +220,27 @@ s\" s\q TRW-ORDER-CHECK\q s\q -- n\q trust\n : TRW-AFTER ( -- n ) TRW-NEVER-DEFI
 \ definition really does produce the other code, so the case above distinguishes
 \ two outcomes that both exist rather than one that cannot happen.
 s" : TRW-AFTER2 ( -- n ) TRW-NEVER-DEFINED ;" TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT TRUST-ROW:T=
+
+\ --- the wordlist the record lands in ---------------------------------------
+\ A bare row records its effect in the open section's wordlist, or the global
+\ one outside a package, so that wordlist is the one that must hold the name.
+\ TRW-G7 is a global: inside TRWC the engine still resolves it, but a row there
+\ would record onto a TRWC-private symbol the engine never defined, and checked
+\ callers in TRWC would be certified against the row while the engine runs the
+\ global. Each source form of the row is refused: `trust` asks the wordlist and
+\ names the stale row, and the engine's registrars TRUST-RAW and TRUST-DECL,
+\ which ask nothing, are internal engine words source cannot run (rc 70).
+s" : TRW-G7 ( -- n ) 7 ;" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
+s\" package TRWC\ns\q TRW-G7\q s\q n n -- n\q trust\n;package"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+s\" package TRWC\ns\q TRW-G7\q s\q -- ptr n\q TRUST-RAW\n;package"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT TRUST-ROW:T=
+s\" package TRWC\ns\q TRW-G7\q s\q -- ptr n\q TRUST-DECL\n;package"
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT TRUST-ROW:T=
+\ None of them left a row behind: the bare name in TRWC is still the global.
+s\" package TRWC\npublic\n: TRWC-USE ( -- n ) TRW-G7 ;\n;package" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
+s\" : TRWC-CK ( -- ) TRWC:TRWC-USE 7 <> if s\q a refused row bound the name\q 1 die then ;\nTRWC-CK"
+   TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 
 \ ---------------------------------------------------------------------------
 TRUST-ROW:REPORT

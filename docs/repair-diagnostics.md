@@ -70,7 +70,8 @@ emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
 `file` and `suggestion`. The repair class follows the reason:
 `fix_storage_type` for an unknown, malformed or unstorable type,
 `fix_storage_name` for a name with more than one `:` or in a sealed package,
-and `fix_storage_count` for a literal count outside the extent or no count. An
+and `fix_storage_count` for a literal count outside the extent, a count token
+that resolves to no `( -- n )` word, or no count. An
 unknown type names its own token, any other type refusal the whole stored type.
 `tools/check.f` reads the declaration before the run, so there the object also
 carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
@@ -120,6 +121,86 @@ the input's `file` as given with `line` 1 and `column` 1, and `suggestion`;
 without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
 <suggestion>`. The run exits 64. A list that also names a source the engine does
 not provide is checked.
+
+Two load-time refusals of a checker record emit a row-shaped object: no
+definition encloses them, so they carry `schema_version`, `code`,
+`repair_class`, `verdict` `rejected`, `token` (the name the record would have
+described), `file` and `suggestion`, and no span or definition-only field.
+`E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
+where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
+storage registrar called from source outside the engine's verifier window.
+
+## Checking Without Running
+
+`tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
+refuse of FILE's definitions and runs none of FILE or its closure: no lint, no
+run stage. `--verify-only --stdin-path PATH` checks stdin's bytes as the file
+at PATH, which need not exist. Both call `CHECK:VERIFY-BYTES`
+(`tools/check-verify-core.f`), the operation a language server calls in its own
+process.
+
+- The require closure is discovered over the bytes, with PATH's directory as
+  root and PATH as the subject's identity, so a dependency that requires PATH
+  back meets the bytes, never the copy on disk. A closure that cannot be
+  followed, through a missing file or one discovery refuses, is `refused`
+  with that file named in the prose, and nothing is verified.
+- The closure in dependency order, then the subject, is verified with all
+  errors in one checker scope, in a child whose image is the engine's boot
+  prefix plus the verifier, so no word of the caller or of an earlier check is
+  visible. The subject's packets name PATH, canonical and absolute, with
+  positions in the bytes; a dependency's name the dependency, with positions
+  in its file.
+- The child runs on `bin/hb` in the caller's working directory, which must
+  be the tree root, as `check.f`'s run stage does.
+
+| `CHECK:verdict` | Meaning | check.f exit |
+| --- | --- | --- |
+| `verified` | Nothing in the closure or the subject is refused. | 0 |
+| `refused` | The subject, a file of its closure, or the closure itself is refused. | 70 |
+| `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
+| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
+| `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
+
+Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
+with or without `--json-errors`, and its prose on stdout, with a closing line
+for `engine-provided`, `held` and `incomplete`. Child output beyond the
+operation's capture exits 69 with the complete packets received before it, the
+prose and a closing line. Usage errors (64), a missing FILE and an oversized
+source (66) keep their exit codes and explain the failure on stdout.
+An argument that exceeds the source path capacity exits 67 and explains the
+limit on stdout. Ordinary checks explain it on stderr with the same status.
+With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
+without it are usage errors; so is `--stdin-path` given twice or without
+`--verify-only`.
+
+`CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- CHECK:verdict )` takes the bytes,
+PATH, a relative one read from the working directory, and the child's
+deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
+`CHECK:VERIFY-LOG$` the prose, until the next call. An empty PATH throws
+`E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
+Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
+the child and throws `E-PROC-TRUNCATED`, with every complete packet received
+before it in `CHECK:VERIFY-OUT$` and the stderr received in
+`CHECK:VERIFY-LOG$`.
+`tools/check-verify-test.f` prints what one check costs: about 50 ms for a
+one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
+thirty files.
+
+The child, `tools/check-verify-child.f`, is run only by the operation:
+
+```text
+ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+```
+
+SUBJECT is canonical and absolute, and each DEP is a file of the closure,
+canonical and absolute, in dependency order; a DEP the image holds is skipped,
+as `require` skips it. stdout carries the packets in verification order, each
+written as the checker makes it, so a child that dies has passed on every
+packet made before; then one result line, `check-verify: verified`, `refused`
+or `held`. stderr carries prose, including `PATH: verification stopped by
+throw RC after N rejected definitions` for each file a throw stopped. The
+verdict is read from the result line after a clean exit, never from the exit
+status.
 
 ## Repair Packet JSON
 
@@ -301,7 +382,8 @@ Current checker classes:
 - `fix_storage_name`: a storage declaration's name has more than one `:` or lies
   in a sealed package.
 - `fix_storage_count`: a storage declaration's literal count is outside the
-  buffer's extent, or the declaration has no count.
+  buffer's extent, its count token resolves to no `( -- n )` word, or the
+  declaration has no count.
 - `rename_duplicate`: a name was defined a second time in one wordlist; rename
   it or `undefine` the first definition.
 - `close_string`: a string literal does not close.

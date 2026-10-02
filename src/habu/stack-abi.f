@@ -53,6 +53,12 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 \ test/stack-guard.f keeps the two spellings equal.
 -3802 constant E-STACK-UNGUARDED
 
+\ evaluate-closed's refusal of a text that left cells above its floor
+\ (src/habu/habu1.f B-EVAL-CLOSED), re-registered for the same reason:
+\ lib/errors.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
+\ the two spellings equal.
+-3804 constant E-EVAL-RESIDUE
+
 \ Preserve the old frame fields; append the active allocation descriptor.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
@@ -60,6 +66,6 @@ $50 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-$90 constant EVAL-BYTES
+$120 constant EVAL-BYTES   \ layout.f EVAL-FRAME:USE-WIDS, USE-MAX cells from $A0, is the frame's last field
 
 ;package

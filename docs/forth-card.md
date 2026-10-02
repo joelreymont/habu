@@ -29,9 +29,13 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) — rename the public.
+  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) in a definition and
+  `ENGINE-ERROR:USING-SHADOW-GLOBAL` (rc 105) at top level or after `'` —
+  rename the public. A file loaded under a `using` resolves through it.
   Close a using opened before `package` after `;package`: a `;using` inside
   the package that would close it is `ENGINE-ERROR:USING-OUTER` (rc 104).
+  A load file is a using scope too: a `;using` in an included file or
+  `evaluate` buffer that would close its includer's using is rc 104 as well.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
@@ -91,7 +95,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 
 | you write | diagnostic |
 |---|---|
-| `evaluate` in a checked body (top level is fine) | `E-UNSAFE` |
+| `evaluate` in a checked body (top level is fine) | `E-UNSAFE` — use `evaluate-closed` |
 | `variable V  : F ( n -- n ) V ! V @ @ ;` | `E-RAW-CELL-PTR` — § 5 |
 | `variable V  : F ( -- ) V @ execute ;` | `E-EXEC-OPAQUE-XT` |
 | `@` on a `ptr u8` | `E-MISMATCH` — use `c@` |
@@ -107,6 +111,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
+| the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
 
@@ -180,7 +185,11 @@ value must leave the selector on top (`30 swap endcase`). `do` always takes its
 first turn: `0 0 do … loop` and `-1 0 do … loop` run once. `?do … loop` enters
 only while start < limit, signed, so `0 0`, `-1 0` and `MIN-N 0` run zero times
 and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
-`0 10 ?do … -1 +loop` counts down eleven turns.
+`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ptr u8 n -- )`
+evaluates source in a body: the text's `depth` starts at 0, a token reaching
+below it throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the
+caller's cells intact either way. An xt the text `execute`s can still reach
+them (forth.md **Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -231,7 +240,11 @@ forth.md: **Structures And Enums**; the rule and its open hole are
 
 ## 6 Errors
 
-- Codes are named constants in `lib/errors.f`. A library owns one inclusive
+- Library codes are named constants in `lib/errors.f`; checker throws also use
+  positive codes above 255 in their owning source. Codes 0..255 serve as
+  process exit statuses and may be shared. Positive checker codes may be reused
+  across files, but distinct `E-` names in one file must have distinct codes.
+  Negative library codes are unique across files. A library owns one inclusive
   block of about a hundred bounded by its own `E-X-FIRST` / `E-X-LAST` (arrays
   `-2000`, filesystem `-2100`, strings `-2200`, …) and reserves that whole
   range whether or not every code is minted;
@@ -288,8 +301,10 @@ See `test/aot-chain-capture-suite.f` for a producer, saved image, and consumer
 flow. Use `require lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
-`TTHROWS` throw codes. Register it as a `SUITE name … ;SUITE` entry in
-`test/gate-stdlib-cases.f`; `bin/hb --load test/run.f` runs every suite.
+`TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or
+the throw code out of a source text. Register it as a `SUITE name … ;SUITE`
+entry in `test/gate-stdlib-cases.f`; `bin/hb --load test/run.f` runs every
+suite.
 
 forth.md: **Testing**, **Verification before committing**.
 
@@ -297,7 +312,7 @@ forth.md: **Testing**, **Verification before committing**.
 
 | heading | open it when |
 |---|---|
-| Checked code and primitive boundaries | `TRUST`, a new `PRIM:` |
+| Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` leaves open |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
 | Importing … with `using` | ambiguity, scope end, the 16 limit |

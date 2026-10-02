@@ -245,17 +245,19 @@ variable LBL-U
    s" PRODUCT-IT" 67 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
-\ TRUST, TRUST-DECL, TRUST-RAW, PTX-BARRIER! and CHECKER-DEFCAST have no effect
-\ a checked body may call, so the child names them at its top level. A trust row
-\ refuses a false name as it refuses one that names no word, without echoing it;
-\ a cast reaches its name once its signature certifies, and stores it.
+\ TRUST, PTX-BARRIER! and CHECKER-DEFCAST have no effect a checked body may call,
+\ so the child names them at its top level. TRUST-DECL and TRUST-RAW are sealed
+\ (src/core/checker.f: the interpreter refuses them), so a TRUSTED: body calls
+\ them, as the engine's own callers do. A trust row refuses a false name as it
+\ refuses one that names no word, without echoing it; a cast reaches its name
+\ once its signature certifies, and stores it.
 : STALE$ ( -- ptr u8 n )
-   S\" E-TRUST-UNRESOLVED habu: trust row for '' names no word: nothing in the open package or the global wordlist is spelled that way, so the effect would be recorded against a symbol no call can ever reach. Delete the row, or correct the name to the word it was meant to describe\nhb: uncaught throw code 7143\n" ;
+   S\" E-TRUST-UNRESOLVED habu: trust row for '' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" ;
 : TEST-TOP-LEVEL ( -- )
    s" BAD$ PTX-BARRIER!" 76 S\" PTX-BARRIER!: unknown word\n" DIES
    s" BAD$ SIG$ TRUST" 67 STALE$ DIES
-   s" BAD$ SIG$ TRUST-DECL" 67 STALE$ DIES
-   s" BAD$ SIG$ TRUST-RAW" 67 STALE$ DIES
+   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 STALE$ DIES
+   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 STALE$ DIES
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
 
 \ A field text is no name, so only -1 and the maximum cell describe no text.

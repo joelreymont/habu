@@ -262,6 +262,38 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-ADDRESS-ROWS before T=
    41 TS-CALLBACK @ execute 42 T= ;
 
+\ =============================================================================
+\ 10. The checker's storage registrars answer only inside a verifier window
+\ =============================================================================
+\ CHECKER-DEFTYPED-VARIABLE and its siblings record a definer's accessor effect
+\ for the source pre-pass (src/habu/verify-source.f), which replays the definer
+\ in a verifier window while the definer itself compiles the word. Called from
+\ source, one recorded that effect for a name the engine never defined there,
+\ and checked callers were certified against it while the engine ran what the
+\ name already bound: below, a global that answers a number where the record
+\ promised a pointer. So outside a window the registrar is refused with the
+\ code the window's other replay-only steps refuse with, E-PKG-CONTEXT, and
+\ records nothing; a package-neutral scope, which source can open, is no
+\ window: closed with CHECKER-SCOPE-FINALIZE it would keep the row.
+70 constant E-TS-REJECT        \ the checker's compile reject (habu2.f RC-REJECT)
+
+: TS-SECTION-REPLAY-ONLY ( -- )
+   s" checker storage registrars refuse outside a verifier window" T-LABEL
+   s" : TSG ( -- n ) 7 ;" TS-EVAL 0 T=
+   s\" package TSGP\ns\q n\q s\q TSG\q CHECKER-DEFTYPED-VARIABLE\n;package"
+      TS-EVAL E-PKG-CONTEXT T=
+   s\" package TSGP\npublic\n: TSGP-USE ( -- n ) TSG ;\n;package" TS-EVAL 0 T=
+   s\" package TSGP\npublic\n: TSGP-PTR ( -- ptr n ) TSG ;\n;package"
+      TS-EVAL E-TS-REJECT T=
+   s\" : TSGP-CK ( -- ) TSGP:TSGP-USE 7 <> if s\q a refused registrar bound the name\q 1 die then ;\nTSGP-CK"
+      TS-EVAL 0 T=
+   s\" : TSN ( -- n ) 7 ;\n: TSN-REG ( -- ) s\q n\q s\q TSN\q CHECKER-DEFTYPED-VARIABLE ;" TS-EVAL 0 T=
+   s\" CHECKER-SCOPE-START-NEUTRAL\npackage TSNP ' TSN-REG catch ;package\nCHECKER-SCOPE-FINALIZE throw"
+      TS-EVAL E-PKG-CONTEXT T=
+   s\" package TSNP\npublic\n: TSNP-USE ( -- n ) TSN ;\n;package" TS-EVAL 0 T=
+   s\" : TSNP-CK ( -- ) TSNP:TSNP-USE 7 <> if s\q a neutral scope kept the row\q 1 die then ;\nTSNP-CK"
+      TS-EVAL 0 T= ;
+
 : RUN ( -- )
    T-RESET
    TS-SECTION-VAR-NOMINAL
@@ -273,6 +305,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-SECTION-PIN-LAYOUT-BUFFER
    TS-SECTION-PIN-RAW-REJECT
    TS-SECTION-QUOT-DECLARATION
+   TS-SECTION-REPLAY-ONLY
    T-REPORT ;
 
 RUN

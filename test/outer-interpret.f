@@ -9,13 +9,15 @@
 \ rc, stdout and stderr, and each case states the rc and output that show what
 \ it exercised, so two runs failing alike do not pass.
 \
-\ The prelude defines with keywords (`:`, `TRUSTED:`, `SUMTYPE`), and the Habu
-\ loop cannot end a definition yet: it reads a head but not `;`. So the prelude
-\ loads before the switch, and a case holds only numbers, comments, the literal
-\ keywords (`s"`, `c"`, `."`, their escaped forms, `char` and `'`), the package
-\ keywords (`package`, `public`, `private`, `;package`, `using`, `;using` and
-\ `export`), words, and a definition head (`:`, `kernel:` or `trusted:`) that
-\ refuses or stays pending.
+\ The prelude defines with keywords the Habu loop does not read yet
+\ (`immediate`, `SUMTYPE`, `constant`, `variable`), so it loads before the
+\ switch, and a case holds only numbers, comments, the literal keywords (`s"`,
+\ `c"`, `."`, their escaped forms, `char` and `'`), the package keywords
+\ (`package`, `public`, `private`, `;package`, `using`, `;using` and
+\ `export`), words, and definitions (`:`, `kernel:` or `trusted:`) that refuse,
+\ stay pending, or end at `;` or by an immediate their body runs. A case
+\ defines with the other keywords through evaluate, which the engine's loop
+\ reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
 \ loop compiles and the Habu loop refuses. And one check runs in a forked copy
@@ -87,11 +89,16 @@ variable SPIN-U
 \ single slot. OI-DUMP is an exit hook that prints the pending definition: its
 \ record's name, flags, whether its wordlist is OI-WANT's and its entry the
 \ provenance window's, its body capture, its signature's length, the trusted
-\ and tier cells and the code origin of its name's bytes. OI-DX holds a private
-\ does> definer whose clause name is longer than DNAME-INL bytes, and OI-DX.
-\ prints whether the record above its public export is that export's clause,
-\ and the clause's name. OI-DH holds a private definer and, in its public
-\ wordlist, a word under that definer's clause name.
+\ and tier cells and the code origin of its name's bytes. OI-DOES. is one that
+\ prints the body capture, DOESB, the created signature and how far here moved
+\ past OI-MARK. OI-ROOM is the data space left below its ceiling, and OI-ALIAS
+\ gives the last record a second name. OI-ENDED. prints the cells a
+\ definition's end clears or'd together, 0 when all are: PEND, the provenance
+\ window, TSIG, TCSIG, DOESB, TRUSTED and the definition's tier. OI-DX holds a
+\ private does> definer whose clause name is longer than DNAME-INL bytes, and
+\ OI-DX. prints whether the record above its public export is that export's
+\ clause, and the clause's name. OI-DH holds a private definer and, in its
+\ public wordlist, a word under that definer's clause name.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -132,6 +139,17 @@ variable SPIN-U
    s" : OI-CLAUSE. ( n -- ) {: k:n :} k XREF-DOES-COMPANION? dup OI-B. if k 1+ XREF-REC XREF-NAME$ type cr then ;" GE-SRC-LINE
    s" : OI-DX. ( -- ) s~ OI-DX:OI-MAKER-WORD~ XREF-FIND-INDEX OI-CLAUSE. ;" QLINE
    s" package OI-DH public : OI-HELD;does ( -- n ) 3 ; private : OI-HELD ( n -- ) create , does> ( -- n ) @ ; ;package" GE-SRC-LINE
+   s" : OI-HERE ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - ;" GE-SRC-LINE
+   s" variable OI-AT" GE-SRC-LINE
+   s" : OI-MARK ( -- ) OI-HERE OI-AT ! ;" GE-SRC-LINE
+   s" : OI-CSIG$ ( -- ptr u8 n ) data-base TCSIG-A-CELL CELL / ptr-field @ TCSIG-U-CELL OI-CELL@ ;" GE-SRC-LINE
+   s" : OI-DOES. ( -- ) OI-BODY. DOESB-CELL OI-CELL@ . OI-CSIG$ type cr OI-HERE OI-AT @ - . ;" GE-SRC-LINE
+   s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
+   s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
+   s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
+   s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
+   s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
+   s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -367,20 +385,50 @@ variable WANT-RC
    S\" hi\nHi\nhey\ndot\neB\nx\ny\n7\n8\n27\n12\n10\n10\n13\n9\n11\n0\n34\n34\n92\n65\n74\n79\n3\n4\n0\nq1\n0\nx\ntwo\nlines\n255\n255\n0\n"
    s" literals" GE-EXPECT-OUT ;
 
-\ char pushes its operand's first byte. ' pushes an xt with no depth gate, a
-\ name no word has is a quiet miss, an edge colon leaves a name bare, and an
-\ unsealed qualifier resolves.
+\ char pushes its operand's first byte. ' pushes an xt with no depth gate, and
+\ an unsealed qualifier resolves.
 : TICK-AND-CHAR ( -- )
    GE-SRC-RESET
    s" char Abc . CHAR z ." GE-SRC-LINE
    s" 1 2 ' OI-TWO execute depth ." GE-SRC-LINE
    s" ' OI-TWO drop depth ." GE-SRC-LINE
-   s" ' OI-NOPE depth ." GE-SRC-LINE
-   s" ' engine-error: depth ." GE-SRC-LINE
    s" ' OI-PKG:OI-SEVEN execute ." GE-SRC-LINE
    s" oi-tick-char.f" BOTH
    s" tick and char" GE-EXPECT-OK
-   S\" 65\n122\n0\n0\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
+   S\" 65\n122\n0\n0\n7\n" s" tick and char" GE-EXPECT-OUT ;
+
+\ ' of a name no word has is undefined, as the name run is, and nothing after it
+\ runs. An edge colon leaves the name bare, so no seal guard answers it.
+\ Under evaluate the refusal is the catchable reject, which the engine's loop
+\ reads; in a file the case includes under catch it is the reading loop's own:
+\ the file stops at the tick, and the includer gets 70 above its 3 and the
+\ path's two cells and reads on.
+: TICK-UNDEFINED ( -- )
+   GE-SRC-RESET
+   s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
+   s" oi-tick-undefined.f" BOTH
+   70 s" tick undefined" GE-EXPECT-RC
+   S\" 1\n" s" tick undefined" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined" GE-EXPECT-ERR
+   s" ' engine-error:" s" oi-tick-edge-colon.f" LINE-CASE
+   70 s" tick edge colon" GE-EXPECT-RC
+   S\" E-UNDEFINED: engine-error:\n" s" tick edge colon" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" s~ ' OI-NOPE~ ' evaluate catch . depth ." QLINE
+   s" oi-tick-undefined-caught.f" BOTH
+   s" tick undefined caught" GE-EXPECT-OK
+   S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined caught" GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
+   s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 3 s~ oi-nested-tick.f~ ' included catch . depth . 4 ." QLINE
+   s" oi-tick-undefined-included.f" BOTH
+   s" tick undefined included" GE-EXPECT-OK
+   S\" 1\n70\n3\n4\n" s" tick undefined included" GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined included" GE-EXPECT-ERR ;
 
 \ Top-level `char` operands whose bytes together pass the definition-body
 \ capture (layout.f BODYBUF-CAP): no definition is open, so none is captured.
@@ -524,12 +572,11 @@ variable WANT-RC
 
 \ The literal events, test/top-row-hook-test.f's window: each logs its class,
 \ flags and token. A string's token is its keyword, a char's and a tick's the
-\ operand, and a tick's flags are the word's. `."`, `.\"` and a missed tick
-\ log nothing.
+\ operand, and a tick's flags are the word's. `."` and `.\"` log nothing.
 : LITERAL-HOOK ( -- )
    GE-SRC-RESET
    s" OI-HOOK-ON s~ hi~ 2drop c~ hey~ drop char A drop ' OI-TWO drop" QLINE
-   s" S\~ e~ 2drop .~ x~ .\~ y~ ' OI-NOPE 0 set-top-check" QLINE
+   s" S\~ e~ 2drop .~ x~ .\~ y~ 0 set-top-check" QLINE
    s" oi-literal-hook.f" BOTH
    s" literal hook" GE-EXPECT-OK
    S\" 2\n0\ns\q\n6\n513\n2drop\n3\n0\nc\q\n6\n257\ndrop\n4\n0\nA\n6\n257\ndrop\n5\n513\nOI-TWO\n6\n257\ndrop\n2\n0\nS\\\q\n6\n513\n2drop\nxy1\n0\n0\n6\n257\nset-top-check\n"
@@ -670,6 +717,26 @@ variable WANT-RC
    67 s" using shadow" GE-EXPECT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
+\ The interpreter refuses the same tail by name, as a word and as a tick's
+\ operand: it used to run the global (8) where OI-PKG's public is 7. Under
+\ `evaluate` the refusal is a throw the caller catches, and the qualified
+\ name and the read after `;using` are unchanged.
+: TOP-SHADOW ( -- )
+   s" using OI-PKG OI-SEVEN ." s" oi-top-shadow.f" LINE-CASE
+   ENGINE-ERROR:USING-SHADOW-GLOBAL
+   s" hb: bare word a global and a used package both export: OI-SEVEN at "
+   S\" oi-top-shadow.f:1\n" DIED-AT
+   s" using OI-PKG ' OI-SEVEN" s" oi-tick-shadow.f" LINE-CASE
+   ENGINE-ERROR:USING-SHADOW-GLOBAL
+   s" hb: bare word a global and a used package both export: OI-SEVEN at "
+   S\" oi-tick-shadow.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" using OI-PKG s~ OI-SEVEN~ ' evaluate catch . OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
+   s" oi-shadow-caught.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 105\n7\n8\n" CASE$ GE-EXPECT-OUT
+   s" hb: bare word a global and a used package both export: OI-SEVEN at " CASE$ GE-EXPECT-ERR-HAS ;
+
 \ `;package` restores the using depth its package opened at, so inside a
 \ package `;using` closes only a using the package opened. One opened before
 \ `package` is refused by name: closed, it came back at `;package` and the
@@ -711,6 +778,132 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" 2\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+
+\ ---- the package scope after a caught throw ----------------------------------------
+\ A throw puts back the package scope its buffer entered with on both loops:
+\ the open package, the using depth and the package's using floor, and the
+\ checker's package mirror follows before the handler runs. OI-VERIFY:SCOPE
+\ replays a source through the verifier, which refuses E-PKG-CONTEXT (7136)
+\ when the mirror and the engine name different packages; OI-VERIFY:FLOOR
+\ replays a using the package opened and closes it, which the replay judges
+\ against the engine's floor. Both are defined through `evaluate` because the
+\ Habu loop cannot end a definition, and the verifier loads in the second
+\ prelude slot, before the loop switches, for the same reason.
+: PKG-VERIFY-PRELUDE ( -- )
+   GE-SRC-RESET
+   s" require src/habu/verify-source.f" GE-SRC-LINE
+   s" oi-verify-prelude.f" SPIN-BUF GT-PATH SPIN-U !
+   SPIN$ SRC>FILE ;
+
+: PKG-VS-LINE ( -- )
+   s" package OI-VERIFY public" GE-SRC-LINE
+   s" S\~ : SCOPE ( -- n ) [: s\~ 1 drop\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
+   s" S\~ : FLOOR ( -- n ) [: s\~ using OI-FXA ;using\~ VERIFY:SOURCE-BUF ;] catch ;~ evaluate" QLINE
+   s" ;package" GE-SRC-LINE ;
+
+\ The source text as the nested file named.
+: PKG-NESTED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   name nameu NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE ;
+
+\ Each case prints the include's 70 and the verifier's 0, then shows the
+\ restored scope: a file that closed OI-Q left it open, one that opened OI-T
+\ left none, and an engine evaluate inside the Habu loop recovers the same
+\ way. The floor case closes OI-P, opens a using and OI-R, and throws: OI-P's
+\ own using closes, and `;package` reopens nothing, so OI-TWIN is undefined.
+: PACKAGE-RECOVERY ( -- )
+   s" package OI-Q" s" oi-nested-pkg-open.f" PKG-NESTED
+   s" ;package OI-NOPE" s" oi-nested-pkg-close-throw.f" PKG-NESTED
+   s" package OI-T OI-NOPE" s" oi-nested-pkg-throw.f" PKG-NESTED
+   s" ;package using OI-FXB package OI-R OI-NOPE" s" oi-nested-floor-throw.f" PKG-NESTED
+   PKG-VERIFY-PRELUDE
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" include oi-nested-pkg-open.f" GE-SRC-LINE
+   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" oi-pkg-reopen.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" s~ oi-nested-pkg-throw.f~ ' included catch . OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
+   s" oi-pkg-reclose.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" oi-pkg-evaluate.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   PKG-VS-LINE
+   s" package OI-P" GE-SRC-LINE
+   s" s~ oi-nested-floor-throw.f~ ' included catch . OI-VERIFY:FLOOR . using OI-FXA ;using ;package OI-TWIN" QLINE
+   s" oi-pkg-floor.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 70\n0\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   0 SPIN-U ! ;
+
+\ A throw puts the package scope back with a task live, as the engine's
+\ recovery does: the file closes OI-T, starts a task and throws 42, and the
+\ includer catches 42 with OI-T's private word in scope again.
+: PACKAGE-RECOVERY-LIVE ( -- )
+   s" ;package OI-SPIN 42 throw" s" oi-nested-live-throw.f" PKG-NESTED
+   SPIN-PRELUDE
+   GE-SRC-RESET
+   s" package OI-T s~ : OI-TP ( -- n ) 6 ;~ evaluate" QLINE
+   s" s~ oi-nested-live-throw.f~ ' included catch . OI-TP ." QLINE
+   s" oi-pkg-live-throw.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n6\n" CASE$ GE-EXPECT-OUT
+   0 SPIN-U ! ;
+
+\ ---- a file closes only the usings it opens -------------------------------------------
+\ A load file is a using scope on both loops. A file's `;using` that would close
+\ a using its includer opened is refused by name, and the includer that catches
+\ it still has OI-FXA. A file that closes its includer's package ends the
+\ usings opened in it, and the includer gets back the depth `;package`
+\ restored: the file's OI-FXB ends with the file and OI-FXA, opened before the
+\ package, stays. The first file used to leave OI-FXB in OI-FXA's slot, the
+\ second both open, so OI-TWIN was ambiguous.
+: USING-INCLUDER ( -- )
+   s" ;using using OI-FXB" s" oi-nested-using-includer.f" PKG-NESTED
+   GE-SRC-RESET
+   s" using OI-FXA s~ oi-nested-using-includer.f~ ' included catch . OI-TWIN ." QLINE
+   s" oi-using-includer.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 104\n1\n" CASE$ GE-EXPECT-OUT
+   s" hb: ;using would close a using opened outside the file at " CASE$ GE-EXPECT-ERR-HAS
+   S\" oi-nested-using-includer.f:1\n" CASE$ GE-EXPECT-ERR-HAS
+   s" ;package using OI-FXB" s" oi-nested-close-includer.f" PKG-NESTED
+   s" using OI-FXA package OI-P using OI-PKG include oi-nested-close-includer.f OI-TWIN . ;using OI-TWIN"
+   s" oi-close-includer.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+
+\ A throw puts back the includer's used publics on both loops. The file closes
+\ OI-P, opens OI-FXN in the slot OI-FXA held and throws: the slot used to keep
+\ OI-FXN, whose OI-TWIN takes an input, so the top-level OI-TWIN added 100 to
+\ a cell below the stack and the checker refused OI-SLOT. Now both read
+\ OI-FXA's OI-TWIN.
+: USING-SLOT-THROW ( -- )
+   s" ;package using OI-FXN OI-NOPE" s" oi-nested-slot-throw.f" PKG-NESTED
+   GE-SRC-RESET
+   s" s~ package OI-FXN public : OI-TWIN ( n -- n ) 100 + ; ;package~ evaluate" QLINE
+   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ ' included catch . OI-TWIN ." QLINE
+   s" s~ : OI-SLOT ( -- n ) OI-TWIN ;~ evaluate OI-SLOT . ;package" QLINE
+   s" oi-using-slot-throw.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n1\n1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR ;
 
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
@@ -1047,21 +1240,27 @@ variable WANT-RC
 
 \ An immediate that ends the definition it runs in leaves the code window
 \ closed, at tier 0 and tier 1: the word read next runs from the unit the head
-\ held open.
-: IMMEDIATE-SEMI ( ptr u8 n ptr u8 n -- ) {: tier:ptr tieru:n name:ptr nameu:n :}
+\ held open. The engine's loop reads the head through evaluate, and at tier 1
+\ the loop under test reads it too, whose body runs the immediate.
+: IMMEDIATE-SEMI ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: tier:ptr tieru:n head:ptr headu:n name:ptr nameu:n :}
    GE-SRC-RESET
    tier tieru GE-SRC-LINE
    s" s\~ TRUSTED: OI-M ( -- ) s\~ 1 + ;\~ evaluate ; immediate~ evaluate  s~ OI-M~ 0 parse-imm" QLINE
    UNIT-START
    s" s~ : OI-G ( n -- n ) 2 + ;~ evaluate" QLINE
-   s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate" QLINE
+   head headu QLINE
    name nameu BOTH
    CASE$ GE-EXPECT-OK
    S\" 43\n" CASE$ GE-EXPECT-OUT ;
 
 : IMMEDIATE-ENDS-HEAD ( -- )
-   s" 0 set-tier" s" oi-immediate-semi.f" IMMEDIATE-SEMI
-   s" 1 set-tier" s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI ;
+   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+   s" oi-immediate-semi.f" IMMEDIATE-SEMI
+   s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+   s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
+   s" 1 set-tier" s" : OI-F ( n -- n ) OI-M 40 OI-G OI-F ."
+   s" oi-immediate-semi-loop.f" IMMEDIATE-SEMI ;
 
 \ A body past BODYBUF-CAP refuses, naming the definition and the size the
 \ capture needed.
@@ -1141,6 +1340,224 @@ variable WANT-RC
    71 s" hb: definition body text full at 8000 bytes: OI-BIG needs 8001 at "
    S\" oi-body-escaped-full.f:1\n" DIED-AT ;
 
+\ ---- the immediates in a body -------------------------------------------------------
+\ OI-N is a stack-neutral parsing immediate (parse-imm) that prints 9.
+: NEUTRAL-LINE ( -- )
+   s" s~ : OI-N ( -- ) 9 . ; immediate~ evaluate  s~ OI-N~ 0 parse-imm" QLINE ;
+
+\ A neutral immediate runs as the body reads it, after its capture, and reads
+\ the input after it; one the checker does not call neutral waits in the
+\ capture for `;`. OI-N lies in the unit the head holds open, so it runs with
+\ the code window closed.
+: BODY-IMMEDIATES ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-BODY. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   UNIT-START
+   NEUTRAL-LINE
+   s" s~ : OI-SKIP ( -- ) parse-name 2drop ; immediate~ evaluate  s~ OI-SKIP~ 1 parse-imm" QLINE
+   s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
+   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1" GE-SRC-LINE
+   s" oi-body-immediates.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 \n" CASE$ GE-EXPECT-OUT ;
+
+\ The immediate is looked up as the engine's LFIND looks it up: in the open
+\ package and the global wordlist, and NAME:tail, but not in a used package,
+\ so a bare tail only used packages hold stays in the capture. Two used
+\ packages hold OI-UN, so a lookup that asked them would refuse it as
+\ ambiguous.
+: BODY-IMMEDIATE-SCOPE ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-BODY. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" s~ package OI-UP public : OI-UN ( -- ) 9 . ; immediate : OI-UQ ( -- ) 3 . ; immediate ;package~ evaluate" QLINE
+   s" s~ OI-UP:OI-UN~ 0 parse-imm  s~ OI-UP:OI-UQ~ 0 parse-imm" QLINE
+   s" s~ package OI-UP2 public : OI-UN ( -- ) 8 . ; immediate ;package~ evaluate" QLINE
+   s" s~ package OI-PP : OI-PN ( -- ) 4 . ; immediate ;package~ evaluate" QLINE
+   s" using OI-UP using OI-UP2 package OI-PP s~ OI-PN~ 0 parse-imm" QLINE
+   s" : OI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN" GE-SRC-LINE
+   s" oi-body-immediate-scope.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 3\n4\nOI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN \n" CASE$ GE-EXPECT-OUT ;
+
+\ An armed checker's preflight gets the body so far, the immediate's token and
+\ the trusted cell before the immediate runs; this one refuses a trusted body.
+: PREFLIGHT-CASE ( ptr u8 n ptr u8 n -- ) {: head:ptr headu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" s~ : OI-PF ( ptr u8 n ptr u8 n bool -- ) {: b:ptr bu:n t:ptr tu:n f:bool :}" Q+
+   s"  b bu type cr t tu type cr f OI-B. f if 75 throw then ;~ evaluate" QLINE
+   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-PF set-preflight ' OI-HK set-check" GE-SRC-LINE
+   head headu GE-SRC-LINE
+   name nameu BOTH ;
+
+: BODY-IMMEDIATE-PREFLIGHT ( -- )
+   s" 1 set-tier : OI-X ( -- ) 5 OI-N" s" oi-body-preflight.f" PREFLIGHT-CASE
+   CASE$ GE-EXPECT-OK
+   S\" OI-X ( -- ) 5 OI-N \nOI-N\n0\n9\n" CASE$ GE-EXPECT-OUT
+   s" 1 set-tier trusted: OI-X ( -- ) 5 OI-N" s" oi-body-preflight-trusted.f" PREFLIGHT-CASE
+   75 CASE$ GE-EXPECT-RC
+   S\" OI-X ( -- ) 5 OI-N \nOI-N\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A checker armed with no preflight refuses the immediate, and so does the
+\ floor when the immediate takes a cell it was not given.
+: BODY-IMMEDIATE-REFUSALS ( -- )
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
+   s" 1 . 1 set-tier : OI-T ( -- ) OI-N 2 ." GE-SRC-LINE
+   s" oi-body-preflight-missing.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" hb: compile preflight hook missing\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
+   s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
+   s" oi-body-immediate-underflow.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR ;
+
+\ At tier 0 the body refuses before an immediate in it runs.
+: BODY-IMMEDIATE-TIER-0 ( -- )
+   GE-SRC-RESET
+   NEUTRAL-LINE
+   s" 1 ." GE-SRC-LINE
+   s" s~ : OI-T0 ( -- )~ evaluate OI-N 2" QLINE
+   s" oi-body-immediate-tier-0.f" HABU
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   76 s" hb: tier 0 is not in the Habu loop: OI-N at " S\" oi-body-immediate-tier-0.f:3\n" DIED-AT ;
+
+\ ---- `does>` in a body --------------------------------------------------------------
+\ OI-END is a neutral immediate that ends the definition it runs in through
+\ evaluate, whose `;` compiles what the loop under test captured.
+: END-LINE ( -- )
+   s" s\~ TRUSTED: OI-END ( -- ) s\~ ;\~ evaluate ; immediate~ evaluate  s~ OI-END~ 0 parse-imm" QLINE ;
+
+\ `does>` is matched with its A-Z folded and joins the capture, and DOESB takes
+\ the capture's length with it. The signature after it, past blanks and a
+\ newline, joins no capture: its inside, blanks and all, is copied to here for
+\ TCSIG. A comment after the signature is a comment.
+: DOES-SPLIT ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + ! OI-MARK" GE-SRC-LINE
+   s" : OI-K ( n -- ) create , DOES>   " GE-SRC-LINE
+   s" ( -- n ) ( a comment ) @" GE-SRC-LINE
+   s" oi-does-split.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" OI-K ( n -- ) create , DOES> @ \n29\n -- n \n6\n" CASE$ GE-EXPECT-OUT ;
+
+\ A definer the loop under test reads compiles at `;`: the word it creates runs
+\ its clause, and a checked caller is held to the created signature.
+: DOES-DEFINER ( -- )
+   GE-SRC-RESET
+   END-LINE
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @ 1 + OI-END" GE-SRC-LINE
+   s" 5 OI-K OI-FV OI-FV . s~ : OI-USE ( -- n ) OI-FV ;~ evaluate OI-USE ." QLINE
+   s" oi-does-definer.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 6\n6\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   END-LINE
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- ptr u8 ) @ OI-END" GE-SRC-LINE
+   s" 5 OI-K OI-FV s~ : OI-USE ( -- n ) OI-FV ;~ evaluate" QLINE
+   s" oi-does-effect.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   s" habu: in oi-use: at 'OI-FV' expected: n actual: ptr u8" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A second `does>` refuses naming `does>`, and a signature that is missing or
+\ open names the token as spelled, each at the line the cursor is on.
+: DOES-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @" GE-SRC-LINE
+   s" DOES> ( -- )" GE-SRC-LINE
+   s" oi-does-twice.f" BOTH
+   70 s" does> at " S\" oi-does-twice.f:2\n" DIED-AT
+   s" : OI-K ( n -- ) create , Does> @" s" oi-does-no-signature.f" HEAD
+   76 s" Does> at " S\" oi-does-no-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" 1 set-tier : OI-K ( n -- ) create , does>" GE-SRC-LINE
+   s" ( -- n" GE-SRC+
+   s" oi-does-open-signature.f" BOTH
+   76 s" does> at " S\" oi-does-open-signature.f:1\n" DIED-AT ;
+
+\ The signature's copy may take the data space to its ceiling; one byte more
+\ refuses as allot does.
+: DOES-DATA-FULL ( -- )
+   s" OI-ROOM 6 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-fits.f" HEAD
+   CASE$ GE-EXPECT-OK  CASE$ GE-EXPECT-SILENT
+   s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
+   76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
+
+\ LFIND finds a word before the engine reads its keywords: one spelled `does>`
+\ that is not immediate is called, the body not split and the comment after it
+\ a comment, while an immediate one the checker does not call neutral leaves
+\ `does>` the keyword.
+: CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   s" 1 set-tier ' OI-DOES. data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   def defu QLINE
+   s" s~ does>~ OI-ALIAS OI-MARK" QLINE
+   s" : OI-X ( -- ) does> ( a comment ) 1" GE-SRC-LINE
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK ;
+
+: DOES-CALLED ( -- )
+   s" s~ : OI-DZ ( -- ) 7 . ;~ evaluate" s" oi-does-called.f" CALLED
+   S\" OI-X ( -- ) does> 1 \n0\n\n0\n" CASE$ GE-EXPECT-OUT
+   s" s~ : OI-DZ ( -- ) 7 . ; immediate~ evaluate" s" oi-does-immediate.f" CALLED
+   S\" OI-X ( -- ) does> 1 \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT ;
+
+\ ---- `;` ---------------------------------------------------------------------------
+\ `;` compiles the body the loop captured and ends the definition, a body over
+\ two lines, a `trusted:` one, one in a package's public wordlist and a
+\ `does>` definer alike: each word runs, and after each `;` the cells the end
+\ clears are 0. The code is native: `;` closed the provenance window with 1.
+: SEMI ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-X ( n -- n )" GE-SRC-LINE
+   s"   1 + ;" GE-SRC-LINE
+   s" 41 OI-X . OI-ENDED. ' OI-X dup 1 + code-origin ." GE-SRC-LINE
+   s" trusted: OI-T ( -- n ) 5 ; OI-T . OI-ENDED." GE-SRC-LINE
+   s" package OI-P public : OI-Y ( -- n ) 3 ; ;package OI-P:OI-Y ." GE-SRC-LINE
+   s" : OI-DEF ( n -- ) create , does> ( -- n ) @ ; OI-ENDED. 7 OI-DEF OI-K OI-K ." GE-SRC-LINE
+   s" oi-semi.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n0\n1\n5\n0\n3\n0\n7\n" CASE$ GE-EXPECT-OUT ;
+
+\ With no definition open `;` is no keyword, and undefined. A body the checker
+\ refuses ends the load at its `;`, before the word after it runs.
+: SEMI-REFUSALS ( -- )
+   s" 1 . ;" s" oi-semi-none.f" HEAD
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: ;\n" CASE$ GE-EXPECT-ERR
+   s" : OI-BAD ( -- n ) ; 7 ." s" oi-semi-unchecked.f" HEAD
+   70 CASE$ GE-EXPECT-RC
+   s" " CASE$ GE-EXPECT-OUT
+   s" ncomp: cannot compile OI-BAD" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A body immediate that clears the compiler entry leaves `;` none to call: the
+\ process ends as at the head, without the exit hook.
+: SEMI-DISPATCH-UNSET ( -- )
+   GE-SRC-RESET
+   s" s~ TRUSTED: OI-UNSET ( -- ) 0 data-base NCOMP-DISPATCH:XT-CELL + ! ; immediate~ evaluate" QLINE
+   s" s~ OI-UNSET~ 0 parse-imm ' cr data-base EXIT-HOOK-CELL + !" QLINE
+   s" 1 set-tier : OI-T ( -- ) OI-UNSET ;" GE-SRC-LINE
+   s" oi-semi-dispatch-unset.f" BOTH
+   ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
+   s" " CASE$ GE-EXPECT-OUT
+   S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
+
+\ At tier 0 `;` refuses as every body token does: the engine's loop ends a
+\ tier 0 body.
+: SEMI-TIER-0 ( -- )
+   GE-SRC-RESET
+   s" s~ : OI-T0 ( -- )~ evaluate ;" QLINE
+   s" oi-semi-tier-0.f" HABU
+   76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0.f:1\n" DIED-AT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1193,6 +1610,7 @@ private
    NESTED
    LITERALS
    TICK-AND-CHAR
+   TICK-UNDEFINED
    CHAR-PAST-BODY-CAP
    UNTERMINATED
    BAD-ESCAPE
@@ -1219,7 +1637,12 @@ private
    AMBIGUITY
    TICK-USED
    USING-SHADOW
+   TOP-SHADOW
    USING-ACROSS-PACKAGE
+   PACKAGE-RECOVERY
+   PACKAGE-RECOVERY-LIVE
+   USING-INCLUDER
+   USING-SLOT-THROW
    EXPORT-TOP-LEVEL
    EXPORT-ALIASES
    EXPORT-REFUSALS
@@ -1251,6 +1674,20 @@ private
    TOP-LEVEL-QUOTATION
    BODY-STRING-REFUSALS
    BODY-STRING-FULL
+   BODY-IMMEDIATES
+   BODY-IMMEDIATE-SCOPE
+   BODY-IMMEDIATE-PREFLIGHT
+   BODY-IMMEDIATE-REFUSALS
+   BODY-IMMEDIATE-TIER-0
+   DOES-SPLIT
+   DOES-DEFINER
+   DOES-REFUSALS
+   DOES-DATA-FULL
+   DOES-CALLED
+   SEMI
+   SEMI-REFUSALS
+   SEMI-DISPATCH-UNSET
+   SEMI-TIER-0
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

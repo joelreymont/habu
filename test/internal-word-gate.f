@@ -4,8 +4,8 @@
 \ The seal marks unchecked engine words DNAME-INT. Capture removes their names
 \ unless a declared XT or another explicit root retains one. A removed name is
 \ E-UNDEFINED in interpret mode; a retained marked name rejects with
-\ `hb: internal engine word: <token>` and rc 70. A tick of an absent name is the
-\ engine's existing no-op; a tick of a retained marked name is refused.
+\ `hb: internal engine word: <token>` and rc 70. A tick of an absent name is
+\ E-UNDEFINED too; a tick of a retained marked name is refused.
 \ Previously a bare `U-TYPE` consumed below-base garbage as type-term handles
 \ and corrupted the process. Positives prove the public surface is
 \ untouched: undefined words still report E-UNDEFINED, a bare primitive short
@@ -202,9 +202,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" U-TYPE" ASSERT-UNDEF
    s" ' U-TYPE finds no stripped name" T-LABEL
    TICK-FORGE$ RUN-SUBJECT
-   ASSERT-OK
-   OUT-U @ 0 T=
-   ERR-U @ 0 T=
+   s" U-TYPE" ASSERT-UNDEF
    s" 0 int-mark: the marking prim is itself internal" T-LABEL
    PRIM-FORGE$ RUN-SUBJECT
    s" int-mark" ASSERT-INTERNAL
@@ -256,7 +254,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" NULL-PTR-CELL" ASSERT-UNDEF
    s" a tick of stripped NULL-PTR-CELL leaves no address to store" T-LABEL
    NULL-PTR-TICK$ RUN-SUBJECT
-   s" hb: interpret stack underdepth: !" ASSERT-DIAG
+   s" NULL-PTR-CELL" ASSERT-UNDEF
    s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
    NULL-PTR-SEARCH$ RUN-SUBJECT
    ASSERT-OK
@@ -694,8 +692,8 @@ create EMPTY 1 allot            \ zero-length stdin
 \ would miss a private that was published by mistake.
 \
 \ Bare `'` is deliberately not asserted on a stripped tail: tick of a missing
-\ name exits 0. The schema public tick checks this no-op; the reserved TFAM
-\ package still rejects ticks before lookup.
+\ name is the same E-UNDEFINED. The schema public tick checks it; the reserved
+\ TFAM package still rejects ticks before lookup.
 64 constant QNAME-CAP
 create QNAME QNAME-CAP allot
 
@@ -731,8 +729,8 @@ create QNAME QNAME-CAP allot
 \ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
 \ ENGINE-ERROR:SEAL-PACKAGE (rc 84) BEFORE any lookup — a strictly stronger
 \ answer than the marked record's rc 70, and one that covers privates too.
-\ SCHEMA-REG is not a reserved name. Its stripped records make `' NAME` take
-\ C-TICK's documented undefined-name no-op. The TFAM answer is not a
+\ SCHEMA-REG is not a reserved name. Its stripped records make `' NAME`
+\ E-UNDEFINED, as C-TICK answers any missing name. The TFAM answer is not a
 \ per-cell fact at all — it is one guard reading one name table — so it is
 \ asserted once on a public and once on a private in TFAM-SEAL-CASES below, not
 \ twenty times here. Twenty children for one rule is cost without evidence.
@@ -742,9 +740,7 @@ create QNAME QNAME-CAP allot
 : SCH-CELL-PUB ( ptr u8 n -- ) {: a:ptr u:n :}
    s" SCHEMA-REG:" a u CELL-PUB
    s" ' " s" SCHEMA-REG:" a u s" " QUAL-PROG$ RUN-SUBJECT
-   ASSERT-OK
-   OUT-U @ 0 T=
-   ERR-U @ 0 T= ;
+   s" SCHEMA-REG:" a u QUAL-NAME$ ASSERT-UNDEF ;
 
 : SCH-CELL-PRIV ( ptr u8 n -- )  s" SCHEMA-REG:" 2swap CELL-PRIV ;
 
@@ -1184,7 +1180,7 @@ create QNAME QNAME-CAP allot
 \ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
 \ rc 84 before any lookup; `type-decl` is not in that table, so this package
 \ answers the SCHEMA-REG way: an unrooted public is E-UNDEFINED in the product,
-\ a private has no qualified spelling, and tick of a missing name is a no-op.
+\ a private has no qualified spelling, and tick of a missing name is E-UNDEFINED.
 \ Reading rc 84 here would mean somebody added
 \ the name to RESTAB, which is a different design and has to be argued for.
 \
@@ -1287,9 +1283,7 @@ create QNAME QNAME-CAP allot
    s" TYPE-DECL:TDPLAN-N" ASSERT-UNDEF
    s" the tick answers the schema way, not the reserved-name way: public" T-LABEL
    s" ' " s" TYPE-DECL:" s" TDPLAN-N" s" " QUAL-PROG$ RUN-SUBJECT
-   ASSERT-OK
-   OUT-U @ 0 T=
-   ERR-U @ 0 T=
+   s" TYPE-DECL:TDPLAN-N" ASSERT-UNDEF
    s" `0 TDPLAN-P !` before a declaration no longer SIGSEGVs the engine" T-LABEL
    DSEAL-PLAN-FORGE$ RUN-LOAD
    s" E-UNDEFINED: TDPLAN-P" ASSERT-DIAG

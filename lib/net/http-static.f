@@ -320,7 +320,8 @@ DEFAULT-RULES
 public
 
 \ Reads the whole tree under a directory into memory, before the server
-\ starts. The table is emptied again by STOP, so each start reads it afresh.
+\ starts. STOP and failures opening worker resources or starting tasks empty
+\ the table. Rejected arguments/context and listener-open failures retain it.
 : STATIC-ROOT ( ptr u8 n -- ) {: root:ptr len:n :}
    len 0 <= if E-STATIC throw then
    len FS-PATH-CAP >= if E-STATIC throw then
@@ -340,8 +341,7 @@ public
    FILE-COUNT @ ;
 
 
-\ Every span the tree took, given back. The table is emptied so a second start
-\ reads the tree again.
+\ Gives back every span the tree owns and empties its table.
 : STATIC-CLOSE ( -- )
    FILE-COUNT @ 0 ?do
       i FILE-BODY @ FREE-SPAN

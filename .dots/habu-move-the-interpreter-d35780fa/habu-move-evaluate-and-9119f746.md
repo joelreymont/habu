@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.689073+03:00"
 blocks:
-  - habu-close-definitions-with-8ace78d8
   - habu-move-pkgs-using-22f18b81
   - habu-call-the-unit-ec148ccf
 ---

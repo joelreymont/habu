@@ -1,9 +1,11 @@
 ---
 title: "Exit the booted harness's failed checks group-wide"
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-09-30T14:48:39.770045+03:00"
+closed-at: "2026-10-01T11:34:09.288352+03:00"
+close-reason: "Harness checks exit_group; on the ThinkPad hb-x64-kernel-task-negative, now failing pthread_create's check before the join, exits 21 (strace exit_group(21); 0 on base, exit(21) then the thread's exit(0)); 15 harness suites pass, 177 images keep their statuses, manifest bad=0."
 ---
 
 Problem: the booted harness fails a check through `NR-EXIT` (`test/x86-64-peer-harness.f` failure path), which ends only the calling thread. K11c (habu-add-the-x86-efc81b26) measured on kernel 7.2.5 that a main-thread `exit(21)` followed by a task thread's `exit(0)` made the process exit 0 (strace), so a failed check in a threaded image can pass; K11c worked around it by checking only after the join.

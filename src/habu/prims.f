@@ -451,6 +451,11 @@ EPRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;
 EPRIM: fence      EPRIM;
 EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+\ `evaluate-closed` runs its text with the stack floor at the caller's depth and
+\ throws E-EVAL-RESIDUE when the text leaves cells, so whatever the text does
+\ its net effect is ( -- ) and the row states the string alone. `evaluate`,
+\ whose effect is the text's, stays elaborated below and unsafe in a body.
+EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
 
 EPRIM: .            PE-N PE-IN EPRIM;
@@ -624,15 +629,15 @@ ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export` and `:` change is sealed state after the seal: the
-\ friend arena (CUR, WIDN, DEF-WL, TSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the
-\ TIER-PROV band and the records behind the PROT window. These seven rows are
-\ how an interpreter written in Habu writes it. Each is registered with
-\ ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a TRUSTED: body reaches
-\ one. A refusal exits and never throws: 79 while a task is live (the five
-\ dictionary and scope rows), 84 for a protected wid after the seal
-\ (`alias-record`, `def-open`) and 83 for every other refusal. A caller checks
-\ first and prints the engine's own text.
+\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
+\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
+\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
+\ These nine rows are how an interpreter written in Habu writes it. Each is
+\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
+\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
+\ is live (the four dictionary rows), 84 for a protected wid after
+\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
+\ caller checks first and prints the engine's own text.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -665,6 +670,8 @@ ETRUSTED-ONLY!
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
 \ unsigned, a row that is not a namespace row and one without a private wid.
+\ It stores while a task is live: the package keywords refuse one, and a throw
+\ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
@@ -684,6 +691,19 @@ ETRUSTED-ONLY!
 \ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
+\ span, the effect of the words it creates, into TCSIG-A and TCSIG-U. It
+\ refuses when no definition is pending.
+EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+\ def-close ( -- ): end the pending definition the native compiler compiled,
+\ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
+\ closes native, origin 1 over [open, CP), and the state def-open set clears:
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses when
+\ no definition is pending and when the pending one is not the native tier's
+\ (DEF-TIER-CELL other than 1), as ndict-append does.
+EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;

@@ -142,6 +142,57 @@ s" ;package : UT-QF ( -- n ) AW ;" VS-CATCH E-REJECT T=
 s" using UB BW drop ;using" UCE-CATCH 0 T=
 s" using UB ;using" VS-CATCH 0 T=
 s" ;package AW drop" UCE-CATCH E-REJECT T=
+\ A throw puts back the package scope its buffer entered with, and the checker's
+\ package mirror follows: UQF is open again, the verifier's inherited replay
+\ agrees, and a clean buffer in between changes nothing. The mirror used to stay
+\ at the top level the `;package` left it, so every replay refused E-PKG-CONTEXT.
+s" 1 drop" VS-CATCH 0 T=
+s" 2 drop" UCE-CATCH 0 T=
+s" 1 drop" VS-CATCH 0 T=
+;package
+
+\ The mirror follows before the throw reaches its handler, so a handler may ask
+\ the verifier at once: one compiled word catches the buffer and replays. The
+\ first reopens the package the buffer closed, the second closes the one it
+\ opened.
+package USING-TEST
+public
+: REOPEN ( -- n n )  s" ;package AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+: RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
+;package
+s" package UQS" UCE-CATCH 0 T=
+USING-TEST:REOPEN 0 T= E-REJECT T=
+;package
+USING-TEST:RECLOSE 0 T= E-REJECT T=
+s" package UQU ;package" UCE-CATCH 0 T=
+
+\ The package's using floor comes back with it. The buffer closes UQP, opens a
+\ using and UQR, and throws: UQP used to keep UQR's floor, one above its depth,
+\ so its own `;using` was refused as outer, the replay seeded that floor, and
+\ `;package` restored the depth to it, reopening the using a failed buffer
+\ left in that slot (here the refused one's UA).
+package UQP
+s" ;package using UB package UQR AW drop" UCE-CATCH E-REJECT T=
+s" using UA ;using" UCE-CATCH 0 T=
+s" using UA ;using" VS-CATCH 0 T=
+;package
+s" AW drop" UCE-CATCH E-REJECT T=
+
+\ A package scope the engine cannot authenticate, because the current wordlist
+\ is neither of the package's own, names nothing to copy into the mirror: the
+\ mirror keeps UQV through the throw, and once current is back the replay
+\ agrees instead of refusing E-PKG-CONTEXT. The buffer throws E-UNDEFINED through
+\ the engine's `evaluate`, whose catch leaves its two input cells behind;
+\ INCLUDE-EVALUATE ends the process there instead. A buffer that only interprets
+\ (`1 drop`) runs in that scope: the tier-1 top-row tracker never refuses a line.
+\ The tick comes first: the trusted-only tick query resolves the name through
+\ the checker, which refuses any name in a scope it cannot authenticate.
+package UQV
+variable UQV-CUR  get-current UQV-CUR !
+' evaluate  0 set-current
+s" UQV-NO-SUCH-WORD" rot catch E-REJECT T= 2drop
+UQV-CUR @ set-current
+s" 1 drop" VS-CATCH 0 T=
 ;package
 
 \ === global-vs-used-public shadow (dot habu-err-on-global-e62f806c) ===
@@ -159,6 +210,21 @@ s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
 s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
 \ no using in scope: a bare global is never a shadow error (resolves to the global)
 s" MW drop" UCE-CATCH 0 T=
+
+\ The interpreter refuses the same collision at top level and as the operand of
+\ `'`, by name, a throw its evaluate's caller catches; both used to bind the
+\ global silently. A qualified name, a tail no used package exports, a word the
+\ open package defines itself and a read after `;using` are unchanged. A buffer
+\ evaluated under its includer's using resolves through it, so it refuses too.
+s" using USG MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+s" using USG ' MW drop ;using" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
+s" using USG NC drop ;using" UCE-CATCH 0 T=
+s" package USM : MW ( -- n ) 5 ; using USG MW drop ' MW drop ;using ;package" UCE-CATCH 0 T=
+using USG
+s" MW drop" UCE-CATCH ENGINE-ERROR:USING-SHADOW-GLOBAL T=
+;using
+s" using USG ;using MW drop ' MW drop" UCE-CATCH 0 T=
 
 \ An already compiled import keeps its binding when a global is defined later.
 package USH public
@@ -221,6 +287,89 @@ s" : UT-OWN ( UTB:import-id -- UTB:import-id ) UTB:OWN ;" UCE-CATCH 0 T=
 s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKD : OPK-K ( n -- n ) drop 41 ; ;package" UCE-CATCH 0 T=
 s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
+
+\ === a buffer closes only the usings it opens (dot habu-keep-the-includer-bd7dc952) ===
+\ A load file is a using scope: a buffer's `;using` that would close a using its
+\ includer opened is refused by name, as inside a package. It used to close UA
+\ for the buffer, whose `using UB` then took UA's slot, and the depth restored
+\ at the buffer's end left the includer resolving BW where AW had been, on the
+\ clean and the throwing path alike. A using the buffer opened closes, and the
+\ verifier's replay refuses the inherited one the same way.
+using UA
+s" ;using using UB" UCE-CATCH E-OUTER T=
+s" ;using using UB NO-SUCH-WORDX" UCE-CATCH E-OUTER T=
+s" using UB ;using ;using" UCE-CATCH E-OUTER T=
+s" AW drop" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
+s" ;using" VS-CATCH E-USING-OUTER T=
+s" using UB ;using" VS-CATCH 0 T=
+;using
+
+\ A buffer that closes its includer's package closes the usings opened in it,
+\ and the includer gets back the depth that `;package` restored: a using the
+\ buffer opened after it ends with the buffer, and a using the includer opened
+\ before the package stays. The includer used to get its entry depth back,
+\ which reopened UA, or showed the buffer's UB in the slot UA had held. The
+\ buffer may close its own using there but not UP; the verifier's replay agrees.
+using UP
+package UQK using UA
+s" ;package ;using" VS-CATCH E-USING-OUTER T=
+s" ;package using UB BW drop ;using" VS-CATCH 0 T=
+s" ;package ;using" UCE-CATCH E-OUTER T=
+s" ;package" UCE-CATCH 0 T=
+s" AW drop" UCE-CATCH E-REJECT T=
+package UQK using UA
+s" ;package using UB" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH E-REJECT T=
+s" PUBW drop" UCE-CATCH 0 T=
+;using
+s" ;using" UCE-CATCH E-UNBALANCED T=
+
+\ === a throw puts back the includer's used publics (dot habu-restore-the-includer-f7be16fa) ===
+\ A buffer that closes its includer's package and opens a using writes that
+\ using into a slot the includer keeps. The throw that ends the buffer used to
+\ put back the depth and the package but not the slot, so the includer resolved
+\ BW where AW had been, and with UD in the slot the checker certified a caller
+\ against UD:AW ( n -- n ). The slot comes back now and the checker names it
+\ from its wid: UA:AW is ( -- n ), so a caller declaring ( n -- n ) is refused
+\ and one declaring ( -- n ) runs UA's.
+package UD public : AW ( n -- n ) 100 + ; ;package
+package USING-TEST public variable UQX-V ;package
+package UQX using UA
+s" ;package using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH 0 T=
+s" BW drop" UCE-CATCH E-REJECT T=
+s" ;package using UD NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
+s" : UQX-R1 ( n -- n ) AW ;" UCE-CATCH E-REJECT T=
+s" : UQX-R2 ( -- n ) AW ; UQX-R2 USING-TEST:UQX-V !" UCE-CATCH 0 T=
+USING-TEST:UQX-V @ 11 T=
+;using ;package
+
+\ === a retired used public is no candidate (dot habu-skip-retired-used-58ba2793) ===
+\ `undefine` retires a used package's public. The engine's used-search skips it
+\ and binds the global or the one live public, else nothing; the checker's
+\ used-search skips it too (SYM-LIVE), so a checked body certifies against the
+\ word the engine binds and runs it, and a tail with nothing left to bind is
+\ undefined. The retired publics' effects differ from the words bound in their
+\ place, so a body certified against a retired one is refused. The checker used
+\ to find the retired symbol and refused the first two shapes as
+\ E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
+package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
+package URA public : URW ( n -- n ) 1 + ; ;package
+package URB public : URW ( n -- ) drop ; undefine URW ;package
+package URN public : URNW ( -- n ) 3 ; undefine URNW ;package
+package USING-TEST public variable URS-V ;package
+\ a retired public shadowing global drop: the body's drop is the global ( x -- )
+s" using URS : URS-R1 ( n n -- n ) drop ; ;using 5 7 URS-R1 USING-TEST:URS-V !" UCE-CATCH 0 T=
+USING-TEST:URS-V @ 5 T=
+\ two used publics of one tail, one retired: URW is URA's ( n -- n )
+s" using URA using URB : URA-R1 ( n -- n ) URW ; ;using ;using 41 URA-R1 USING-TEST:URS-V !" UCE-CATCH 0 T=
+USING-TEST:URS-V @ 42 T=
+\ a retired public with no global: undefined on both routes
+s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH E-REJECT T=
+s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

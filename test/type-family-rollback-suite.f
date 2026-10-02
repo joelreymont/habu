@@ -216,13 +216,18 @@ CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE T=
 \ 5. DEFER (DFER) restore + deferred-target cache. A candidate that defers a NEW
 \    name and a SURVIVING (pre-existing) name must roll both back, and the cached
 \    "deferred" answer for the surviving symbol must not remain stale-true.
+\    Each deferred name gets its signature record first, as `defer W ( sig )`
+\    registers one (TRUST-DECL) before CHECKER-DEFER: a name with no record
+\    binds no word (SYM-LIVE), so no defer is found under it.
 \ ---------------------------------------------------------------------------
+s" -- n" s" RBD-KEEP" TWX-USIG-ADD
 s" RBD-KEEP" CHECKER-DEFER                             \ top-level defer that survives
 s" RBD-KEEP" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
 \ pre-existing symbol, NOT deferred yet -> caches a "false" answer.
 s" -- n" s" RBD-SURV" TWX-USIG-ADD
 s" RBD-SURV" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 TWX-CAND-START
+   s" -- n" s" RBD-CAND" TWX-USIG-ADD
    s" RBD-CAND" CHECKER-DEFER                          \ defer a NEW name
    s" RBD-SURV" CHECKER-DEFER                          \ defer an EXISTING symbol
    s" RBD-CAND" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=

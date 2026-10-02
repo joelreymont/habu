@@ -213,6 +213,8 @@ variable NAMES-U
    s" JIT-SNAP-FRAMES" NAME,
    s" TIER-PROV" NAME,
    s" UNIT-COMPILE" NAME,
+   s" RPKG:FLOOR" NAME,
+   s" RPKG:WIDS" NAME,
    s" PROF-BAND" NAME,
 
 create TAB
@@ -346,6 +348,8 @@ create TAB
    JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
    TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
    UNIT-COMPILE-CELL              ,  1 cells ,
+   RPKG:FLOOR                     ,  1 cells ,
+   RPKG:WIDS                      ,  USE-MAX cells ,
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
    0 ,  0 ,

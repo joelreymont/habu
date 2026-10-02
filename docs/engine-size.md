@@ -256,6 +256,46 @@ before the sweep above. The content grows 1,500 bytes: captured code and its
 site tables 796, DATA values and bitmap 1,156, less 452 of dictionary records
 and names. The Mach-O text padding falls by exactly that, from 4,980 to 3,480.
 
+## Zero retired checker symbol rows
+
+A retired checker symbol row is now all zero (`src/core/checker.f`
+`SYM-RETIRE`, shared by the capture's sweep and source replay). It used to keep
+a visibility of -1 as its mark, an all-ones cell that is the widest unsigned
+LEB128 value: ten bytes of DATA values for each of the product's 11,082 retired
+rows. An empty name is the mark instead. It cannot be mistaken for a live row,
+because `SYM-INTERN` refuses an empty name (exit 76).
+
+Measured on the ARM64 Mach-O product built to its fixpoint from master
+956e7b19 and from master 0e7365b3 with the change (no engine source changed
+between the two):
+
+| Section | Before | After |
+|---|---:|---:|
+| Captured Habu code | 1,408,304 | 1,408,236 |
+| Dictionary records | 60,540 | 60,528 |
+| Name pool | 66,084 | 66,072 |
+| DATA bitmap | 41,720 | 39,416 |
+| DATA values | 488,464 | 377,628 |
+| Mach-O text padding | 4,980 | 3,524 |
+| Code signature | 18,319 | 17,423 |
+| Complete signed file | 2,344,951 | 2,229,367 |
+
+The product is **115,584 bytes (4.9%) smaller**: 113,140 bytes of DATA values
+and bitmap; the rest is Mach-O padding and signature, 68 bytes of code and the
+dictionary record and name of the shipped `SYM-RETIRED` constant.
+By owner (`tools/data-table-census.f`), the `DONE` row falls from 394,674 to
+281,476 bytes of image and from 154,169 to 143,081 non-zero cells.
+
+The SHA-256 before is
+`3f5fa2fbcfba1f5ebb16a8c17f12df8902fb83c8dd7aefeb06bbe335dc237beb`, after
+`dfb51d55741433db84df8c4ee5fdc28adca51188a14d0f79a9d55b0c2a21b63d`.
+Generations 2 to 5 are byte-identical, and the whitebox engine and the dot
+lint pass. The full native run passes 538 of 544 suites at load averages of
+95 to 140; `compiler-compile-floor-gate` and the three C2 suites that timed out
+pass when rerun alone. `native-build-entry` and `build-fixpoint-fixtures`
+exceed their 180- and 120-second child deadlines at a load average near 100,
+on this engine and on master's alike when run side by side.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

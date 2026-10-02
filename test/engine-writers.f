@@ -1,7 +1,7 @@
 \ engine-writers.f - the definition writers an interpreter written in Habu
 \ publishes through: namespace-record, namespace-private, alias-record,
-\ package-scope!, def-open, body-append and trust-sig! (src/habu/prims.f, "the
-\ definition writers").
+\ package-scope!, def-open, body-append, trust-sig!, created-sig! and
+\ def-close (src/habu/prims.f, "the definition writers").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -70,6 +70,8 @@ TRUSTED: EW-SCOPE ( n n -- ) package-scope! ;
 TRUSTED: EW-OPEN ( ptr u8 n n n -- ) def-open ;
 TRUSTED: EW-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
+TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
+TRUSTED: EW-CLOSE ( -- ) def-close ;
 
 \ The marker a refusal case prints just before the refused call.
 : EW-AT ( -- ) EW-MARK$ type ;
@@ -112,6 +114,10 @@ TRUSTED: EW-OPEN-ALIAS ( -- )
    ndict@ 1-  s" EW-FIRST" get-current 0 def-open
    EW-AT  s" EW-ALP" rot get-current alias-record ;
 
+\ def-close on the definition just opened, at the tier the caller set.
+TRUSTED: EW-OPEN-CLOSE ( -- )
+   s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
+
 private
 
 : BOUNDARY ( -- )
@@ -121,7 +127,9 @@ private
    s" package-scope!" s" EWX ( n n -- ) package-scope!" INTERNAL
    s" def-open" s" EWX ( ptr u8 n n n -- ) def-open" INTERNAL
    s" body-append" s" EWX ( ptr u8 n -- ) body-append" INTERNAL
-   s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL ;
+   s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
+   s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
+   s" def-close" s" EWX ( -- ) def-close" INTERNAL ;
 
 \ A flagged row answers `using`, a `package` reopen and a qualified name. The
 \ reopen must find this row: a second row would hold X, and `using NSA` and
@@ -164,7 +172,6 @@ private
    s" EW-LIVE parse-name NSL true EW-AT EW-NS" TASK-LIVE REFUSES
    s" parse-name NSL false EW-NS EW-LIVE EW-AT EW-PRIVATE" TASK-LIVE REFUSES
    s" : S ( -- ) ; EW-LIVE parse-name AL ndict@ 1- get-current EW-AT EW-ALIAS" TASK-LIVE REFUSES
-   s" EW-LIVE -1 0 EW-AT EW-SCOPE" TASK-LIVE REFUSES
    s" EW-LIVE parse-name DW get-current 0 EW-AT EW-OPEN" TASK-LIVE REFUSES ;
 
 \ Refusals every record writer shares: an empty name, a length no region holds,
@@ -219,7 +226,10 @@ private
    s" parse-name abc drop -1 EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" BODYBUF-CAP 1+ EW-BODYLEN! parse-name a EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" -5 EW-BODYLEN! parse-name abcdef EW-AT EW-APPEND" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 public
 
@@ -231,7 +241,7 @@ public
    s" an alias runs its source and stays immediate" T-LABEL ALIASES T-NEXT
    s" def-open body-append trust-sig! then 42 ; publish natively" T-LABEL DEFINITIONS T-NEXT
    s" body-append fills BODYBUF to its last byte" T-LABEL BODIES T-NEXT
-   s" the five dictionary and scope rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
+   s" the four dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
    s" record writers refuse what would corrupt the dictionary" T-LABEL RECORD-REFUSALS T-NEXT
    s" each row refuses its own corrupting inputs" T-LABEL ROW-REFUSALS T-NEXT
    T-REPORT ;

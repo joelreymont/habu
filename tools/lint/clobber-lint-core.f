@@ -172,6 +172,8 @@ variable RX  variable RACC
    a u s" PROT-EMIT:LGROW" LINT-STR=CI if
       0 0 CL-ADD 2 CL-ADD 8 CL-ADD 16 CL-ADD 30 CL-ADD exit then
    a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
+   \ INTERP-EMIT:LFINDSHADOW reloads LFIND's outputs from its frame before it returns.
+   a u s" INTERP-EMIT:Lfindshadow" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
    a u s" Lhidxadd" LINT-STR=CI if
       0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD

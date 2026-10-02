@@ -38,6 +38,7 @@ require src/os/linux-x86-64/target-layout.f
 package X64BOOT
 using X64ASM
 using X64CODE
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
@@ -471,6 +472,7 @@ public
    stub SIGNAL-STUB,
    booted LBL, ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;package

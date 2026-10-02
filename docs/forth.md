@@ -28,7 +28,23 @@ lives here; build, test and environment rules live in
   sealed `DNAME-INT` with no checked caller. `test/prim-owner-scope.f` pins the
   matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
-  quotations for known callbacks.
+  quotations for known callbacks. A checked word evaluates source with
+  `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
+  the caller's depth and must leave nothing (measured under **Rules learned by
+  refusal**). Four cases stay open:
+  - An xt the text runs through `execute` is guarded only by `execute`'s own
+    one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
+    warns `hb: top-row: execute: xt target underflows the interpret stack` and
+    leaves 6 where the 5 was.
+  - A text that runs `0 set-check` leaves every later definition unchecked,
+    inside the text and after it.
+  - A text may end inside a definition: the interpreter stays compiling, so
+    `s" : D ( -- n ) 42" evaluate-closed`, even from a checked word, lets the
+    caller's next `;` complete `D`.
+  - A text's top-level code is unchecked, so what it computes is untyped: with
+    `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
+    stores an address in V that a checked `( -- n )` word then reads as `n`.
+    Only the text's definitions are certified, each against its own signature.
 - Existing TRUST forms are legacy awaiting removal, tracked in [minimal PRIM
   migration](../.dots/habu-trusted-dies-prim-4fd12d60/habu-finish-minimal-prim-c00c6a93.md);
   mentions below describe legacy syntax only.
@@ -284,7 +300,9 @@ and always available, for a one-off call or to escape a collision.
   `:` and an unknown package; it is valid at top level and inside an open
   package. Only the public wordlist joins the search; definitions still target
   the current scope's wordlist. A required file may open `NAME`; when the
-  require returns, the consumer is back in its original scope.
+  require returns, the consumer is back in its original scope. A file loaded or
+  a buffer evaluated while a `using` is open resolves through it, at top level
+  and in definitions.
 - The scope ends at the matching `;using`, at the enclosing `;package` for a
   `using` opened inside a package, or at the end of the load file, whichever
   comes first; consumer files close explicitly with `;using`. `;using` closes
@@ -294,6 +312,14 @@ and always available, for a one-off call or to escape a collision.
   opened before `package` after `;package`. A `;using` inside the package that
   would close an outer one is refused by name (`ENGINE-ERROR:USING-OUTER`, rc
   104; the source verifier's `E-USING-OUTER`, 7146).
+- A load file is a using scope the same way: an included file or an
+  `evaluate`d buffer closes only the usings it opens. A `;using` in it that
+  would close one its includer opened is refused by name with the same codes
+  (`ENGINE-ERROR:USING-OUTER`, rc 104; `E-USING-OUTER`, 7146, for a using the
+  source verifier's replay inherited). Closed, it came back open when the
+  buffer ended, and a `using` the buffer opened next took its slot: after a
+  buffer `;using using UB` under `using UA`, the includer resolved `UB`'s
+  words where `UA`'s had been.
 - Lookup for a bare tail: open-package scope (private, then own public) FIRST,
   then the global wordlist, then each used public wordlist. The open-package
   scope silently wins over a used public. A tail in MORE THAN ONE used public
@@ -305,9 +331,12 @@ and always available, for a one-off call or to escape a collision.
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public
   tails are ordinary verbs cannot be imported: `using TCP4` refuses at the first
   bare `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies)
-  or rename the collision. The checker enforces this in every checked body; the
-  engine's raw interpret and `0 set-check` keep global-first as the explicit
-  unchecked boundary.
+  or rename the collision. The checker enforces this in every checked body (rc
+  67). The interpreter enforces it at top level and for `'`, by name
+  (`ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105, a throw inside `evaluate`);
+  without it `using PS` then a top-level `SHW` ran the global. Only the bodies
+  nothing certifies, `TRUSTED:` and `0 set-check` definitions, keep
+  global-first, as the explicit unchecked boundary.
 - The colliding global need not be one the checker knows: every engine-prefix
   colon word without signature or axiom, and every `0 set-check` definition,
   counts. The reference site asks the ENGINE's wordlists (`search-wl`, the
@@ -329,7 +358,10 @@ and always available, for a one-off call or to escape a collision.
   file, or aborted by a throw, never leaks to the caller. A package an included
   file leaves open keeps none of that file's usings: its using floor drops to
   the restored depth, so the includer's `;package` reopens none of them and its
-  own `;using` inside the package closes.
+  own `;using` inside the package closes. A file that closes its includer's
+  package ends the usings opened in that package, and the includer gets back
+  the depth that `;package` restored, not the one the file entered at: a using
+  the file opened after it ends with the file.
 - **A package word shadows the same-named global or primitive, and nothing
   reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against
@@ -820,6 +852,9 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   after cleanup, a cleanup error supersedes it; `die` skips cleanup. Implicit
   tails such as `[ -- ]` enforce their windows through wrappers and typed
   storage; name rows explicitly for generic callbacks (`[ R -- S ]`).
+  A zero-initialized typed quotation may be fetched or dropped. Calling it
+  through `execute`, `catch`, `finally`, or `run-in-stack` exits 86 with
+  `hb: unset quotation` on stderr; `catch` cannot recover that fatal error.
 - **Higher-order signatures publish themselves** once `CHECK!` passes (`DIP`,
   `KEEP`, row callbacks); no TRUST row to pin a scheme.
 - **Function passing is checked.** A quotation parameter (`[ a a -- bool ]`, `[
@@ -941,9 +976,9 @@ by name with the count it saw and the ceiling, and none truncates.
   the line it came from (` at <path>:<line>`, added when a source file is open).
   Repair: hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map
   their own pages, not in the dictionary. While a task is live every one of
-  these sinks, and `evaluate`, exits `$4F` before it writes
-  ([threads.md](threads.md)): the definers name their token on stderr, the rest
-  print nothing.
+  these sinks exits `$4F` before it writes, as do `evaluate` and
+  `evaluate-closed` ([threads.md](threads.md)): the definers name their token
+  on stderr, the rest print nothing.
 
 ## Constants
 
@@ -1204,6 +1239,11 @@ passing suite.
 - **Control words and ticks are compile-only**: `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
+  Both ticks resolve the name as a bare word does (the open scope, the globals,
+  then the used publics), and a miss is `E-UNDEFINED: NAME`: rc 70 at top
+  level, a catchable 70 under `evaluate`. A tick is no presence probe: require
+  the file that defines the word first (`' NO-SUCH` measured both ways,
+  test/outer-interpret.f TICK-UNDEFINED).
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
   stack under the flag at `while` equals the stack at `begin`; a condition that
   net-produces carry values (`a u NEXT-TOKEN` leaving a span under the flag) is
@@ -1280,13 +1320,14 @@ the rule.
   and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
   refuse an unknown, malformed or unstorable type, a name with more than one
-  `:` or in a sealed package, and a literal count outside the extent:
+  `:` or in a sealed package, and a literal count outside the extent (the
+  pre-verifier also refuses a count token that resolves to no `( -- n )` word):
   `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
   `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
   reports it as `E-BAD-STORAGE` at the type's file, line and column in every
   mode (test/load-reject-diag-test.f, tools/check-test-lib.f
-  `check/storage-type`). Nothing is defined. A count only the run can compute
-  is the run's to refuse, with the definer's catchable `E-LAYOUT-BUFFER` (7121).
+  `check/storage-type`). Nothing is defined. A count word's value is the run's
+  to refuse, with the definer's catchable `E-LAYOUT-BUFFER` (7121).
 - **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
   `2 TYPED-BUFFER TB u8` is refused at the declaration,
   `habu: in TB: type this definer cannot store 'u8'` (exit 70); a byte row is
@@ -1303,17 +1344,31 @@ the rule.
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
   own (lib/net/curl.f's fd_sets and out-parameter cells).
-- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is any interpret-stack value: a
-  literal, a constant's name or an expression.** The source pre-verifier does
-  not model the interpret stack, so it reads the token before the definer
-  (`verify-source.f` `RECORD-TYPED-BUFFER`, the checker's
-  `CHECKER-LBUF-COUNT?`). An integer literal there is the count and is held to
-  the definer's extent bound before the run: `0 TYPED-BUFFER B n` is refused
-  by `tools/check.f`'s preverify at the `0`, `E-BAD-STORAGE`, exit 70. Any
-  other token leaves the count
-  to the definer: `4 constant N  N TYPED-BUFFER B n` and `N 2 * TYPED-BUFFER B
-  n` check, and `0 constant Z  Z TYPED-BUFFER B n` is refused by the run, exit
-  67 with the definer's 7121 (tools/check-test-lib.f `check/buffer-count`).
+- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is an integer literal, a word of
+  effect `( -- n )`, or an expression.** The source pre-verifier reads the
+  token before the definer as TEXT and never runs it (`verify-source.f`
+  `RECORD-TYPED-BUFFER` hands it to the checker's `CHECKER-LBUF:COUNT-OK?`).
+  A token the engine's number reader reads as an integer is the count, held to
+  the definer's extent for the element width: `0 TYPED-BUFFER B n` is refused
+  by `tools/check.f`'s preverify at the `0`, `E-BAD-STORAGE` with reason
+  `count outside the buffer's extent`, exit 70, and `$40 TYPED-BUFFER B n`
+  checks. Any other token certifies by the effect of the word it names, which
+  must resolve as a body would resolve it (bare, package-qualified or
+  engine-held). A word that takes no input is the count itself and must leave
+  one cell `n` accepts: a `constant`, a computed constant (`6 constant OPS
+  2 constant KEYS  OPS KEYS + constant VOCAB` then `VOCAB TYPED-BUFFER ROWS
+  n`), an engine constant such as `HIR:OPCODES` and a colon `( -- n )` pass. A
+  word that takes input ends an expression whose value only the load computes,
+  so `N 2 * TYPED-BUFFER B n`, `Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem`
+  (lib/queue.f:42) and `4 CAP TYPED-BUFFER` for `CAP ( n -- n )` pass, as
+  they load. The load bounds every value (`src/core/layout-buffer.f`
+  `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n` passes pre-verification,
+  and its run is refused with the definer's 7121, exit 67. The pre-verifier
+  refuses, at the token, `E-BAD-STORAGE` with reason `count resolves to no
+  ( -- n ) word`, exit 70: an unknown name, a name the scope refuses (a `using`
+  public that shadows a global, or one two used packages export), a `variable`
+  (it leaves an address) and a `( -- bool )` word (tools/check-test-lib.f
+  `check/buffer-count`, `check/layout-buffer-count`).
 - **A parsing keyword's operand is data to every stage of `tools/check.f`.**
   `'` and `char` at top level and `[']` and `[char]` in a body take the next
   whitespace-delimited token whatever it spells, across line ends, matched
@@ -1337,7 +1392,8 @@ the rule.
   refused (discovery: unterminated string), `' :` was refused (a definition
   with no name), and `[char] ;` before a local `newtype` was refused (the
   nominal pass read the local as a declaration); now the first group is
-  refused for its `42` and the rest check as they load, and `create char`,
+  refused for its `42`, `' :` as the load refuses it (`E-UNDEFINED: :`, an
+  undefined tick, rc 70) and the rest check as they load, and `create char`,
   which names a word that takes nothing, leaves the next line's `: 42` refused
   (`check/raw-operand`). A local of a keyword's name is that local in a body
   (`{: [char] :} [char]` loads), and only discovery tracks locals: the others
@@ -1611,6 +1667,35 @@ the rule.
   input, a typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
   (`test/catch-stale-suite.f CS-SECTION-BUNDLES`, `test/compiler/native-catch.f
   CATCH-STALE-DROP`).
+- **A checked word evaluates source with `evaluate-closed`, never
+  `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
+  text's. `evaluate-closed` raises the data-stack base to the caller's depth for
+  the text and refuses whatever the text leaves, so its row is
+  `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
+  Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
+  `7 [: s" drop" evaluate-closed ;] catch` answers 70
+  (`hb: interpret stack underdepth: drop`) with the 7 still below it;
+  `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
+  `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
+  the outer text's caller as -3804; a definition the checker refuses throws 70;
+  a data-stack overflow in a text exits `hb: stack bounds exceeded (data)`,
+  rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
+  exits `$4F` before reading the text and prints nothing, as `evaluate` does.
+  The open cases are under **Checked code and primitive boundaries**.
+- **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
+  wrapper.** `lib/test.f` loads it: `TEST-EVAL:N ( ptr u8 n -- n )` evaluates a
+  text that must leave exactly one cell, `TEST-EVAL:FLAG ( ptr u8 n -- bool )`
+  reads that cell with `0<>`, and `TEST-EVAL:RC ( ptr u8 n -- n )` is the
+  text's `evaluate-closed` throw code, 0 when it loaded. N runs the text with
+  plain `evaluate` at the top level of a constant closed text, so the closed
+  floor sits under the text and N's store takes its one cell. Measured
+  (`lib/test/eval-test.f`): an empty text throws 70
+  (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
+  `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
+  inside the text of N, and `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
+  (`expected: bool actual: n`). N keeps `evaluate-closed`'s open cases; a text
+  that ends inside a definition compiles N's store into it, so N answers the
+  value the previous N stored.
 
 ## Spans: a pointer that carries its reach
 

@@ -43,6 +43,7 @@ ENUM served keep-open answered silent ;ENUM
 2 constant STDERR-FD
 
 JOB-SLOTS QUEUE:QUEUE JOBS
+TASK:SEMAPHORE START-READY
 
 WORKER-STACK TASK:TASK LISTENER-TASK
 WORKER-STACK TASK:TASK WORKER-0
@@ -81,6 +82,8 @@ variable CLAIMED                  \ slots the started workers have taken
 variable ENDED-COUNT              \ tasks that reached the end of their body
 variable LEFT-COUNT               \ tasks that left their body, however they left it
 variable KILLED-COUNT             \ tasks a stop had to kill past its bound
+variable START-ERROR              \ first failed start hook's actual throw code
+variable STARTED                  \ workers successfully activated this start
 
 
 : LISTENER@ ( -- TCP4:listener )
@@ -337,7 +340,10 @@ variable EXIT-HOOK-N
 
 
 : SERVE-JOBS ( -- )
-   RUN-START-HOOKS
+   [: RUN-START-HOOKS ;] catch {: code:n :}
+   code 0 <> if 0 code START-ERROR atomic-cas drop then
+   START-READY TASK:SIGNAL
+   code 0 <> if code throw then
    WORKER-LOOP
    1 ENDED-COUNT atomic-add drop ;
 
@@ -345,7 +351,7 @@ variable EXIT-HOOK-N
 \ A worker takes the next free slot itself: the fetch-and-add hands each one a
 \ different number, so no worker waits for the starter and no two share a slot.
 \ Its resources are opened after that, because a hook names them by the slot,
-\ and a hook that throws ends this worker rather than the pool.
+\ and a hook that throws reports startup failure before ending this worker.
 \
 \ However this worker leaves - the stop job, or a hook or a word that threw - it
 \ counts itself out before the throw goes on ending it, so a stop waits for the
@@ -363,6 +369,29 @@ variable EXIT-HOOK-N
 : START-WORKER ( n -- ) {: at:n :}
    [: RUN-EXIT-HOOKS ;] at WORKER-TCB @ TASK:AT-EXIT
    [: WORKER-BODY ;] at WORKER-TCB @ TASK:ACTIVATE ;
+
+
+: START-NEXT ( -- )
+   STARTED @ START-WORKER ;
+
+
+\ Count only activated TCBs. A failed activation leaves its attempted TCB to
+\ KILL, while the previously activated workers are rolled back by START.
+: START-WORKERS ( -- n )
+   WORKER-COUNT @ 0 ?do
+      [: START-NEXT ;] catch {: code:n :}
+      code 0 <> if
+         i WORKER-TCB @ TASK:KILL
+         code unloop exit
+      then
+      1 STARTED +!
+   loop
+   0 ;
+
+
+: WAIT-START ( -- n )
+   STARTED @ 0 ?do START-READY TASK:WAIT loop
+   START-ERROR atomic@ ;
 
 
 \ ---- the listener -----------------------------------------------------------
@@ -404,6 +433,10 @@ variable EXIT-HOOK-N
    [: ACCEPT-UNTIL-STOPPED ;] catch {: code:n :}
    LEAVING
    code 0 <> if code throw then ;
+
+
+: START-LISTENER ( -- )
+   [: LISTENER-BODY ;] LISTENER-TASK TASK:ACTIVATE ;
 
 
 \ ---- binding ----------------------------------------------------------------
@@ -499,19 +532,48 @@ variable EXIT-HOOK-N
 \ the cell because a quotation cannot read a local.
 : OPEN-RESOURCES ( -- )
    WORKER-COUNT @ ARENA-OPEN
-   JOBS QUEUE:INIT ;
+   JOBS QUEUE:INIT
+   0 START-READY TASK:SEMAPHORE-INIT ;
 
 
 : DROP-LISTENER ( -- )
    LISTENER@ TCP4:CLOSE-LISTENER DROP-STATUS ;
 
 
+: RELEASE-RESOURCES ( -- )
+   DROP-LISTENER
+   JOBS QUEUE:DESTROY
+   START-READY TASK:SEMAPHORE-DESTROY
+   ARENA-CLOSE
+   STATIC-CLOSE
+   0 RUNNING ! ;
+
+
+\ JOIN waits through each task's AT-EXIT hook. Its error result is either the
+\ original startup throw or E-TASK-NO-RESULT from a worker stopped normally;
+\ START retains the published hook error while consuming each outcome.
+: JOIN-STARTED ( -- )
+   STARTED @ 0 ?do
+      i WORKER-TCB @ TASK:JOIN
+      MATCH result
+         ok OF drop ENDOF
+         err OF drop ENDOF
+      ;MATCH
+   loop ;
+
+
+: ROLLBACK-START ( n -- ) {: code:n :}
+   STARTED @ 0 ?do STOP-JOB JOBS QUEUE:PUSH loop
+   JOIN-STARTED
+   RELEASE-RESOURCES
+   code throw ;
+
+
 public
 
 \ Opens what a request worker needs of its own, inside that worker, once per
-\ worker and before its first request. A hook that throws ends the worker it
-\ threw in, with the hooks after it unrun; the other workers and the pool carry
-\ on without it.
+\ worker and before its first request. START waits for every start hook; a
+\ throw fails startup and ends the whole pool after every worker exits.
 : ON-WORKER-START ( [ -- ] -- ) {: q :}
    HOOKS-OPEN
    START-HOOK-N @ HOOK-ROOM {: at:n :}
@@ -578,12 +640,21 @@ public
    0 CLAIMED !
    0 ENDED-COUNT !
    0 LEFT-COUNT !
+   0 START-ERROR atomic!
+   0 STARTED !
    address port BIND-LISTENER
    [: OPEN-RESOURCES ;] catch {: code:n :}
-   code 0 <> if ARENA-CLOSE DROP-LISTENER code throw then
+   code 0 <> if RELEASE-RESOURCES code throw then
    1 RUNNING !
-   workers 0 ?do i START-WORKER loop
-   [: LISTENER-BODY ;] LISTENER-TASK TASK:ACTIVATE ;
+   START-WORKERS {: launch-code:n :}
+   launch-code 0 <> if launch-code ROLLBACK-START then
+   WAIT-START {: hook-code:n :}
+   hook-code 0 <> if hook-code ROLLBACK-START then
+   [: START-LISTENER ;] catch {: listener-code:n :}
+   listener-code 0 <> if
+      LISTENER-TASK TASK:KILL
+      listener-code ROLLBACK-START
+   then ;
 
 
 : PORT ( -- n )
@@ -626,11 +697,7 @@ public
    WORKER-COUNT @ 0 ?do STOP-JOB JOBS QUEUE:PUSH loop
    AWAIT-TASKS
    KILL-TASKS
-   DROP-LISTENER
-   JOBS QUEUE:DESTROY
-   ARENA-CLOSE
-   STATIC-CLOSE
-   0 RUNNING ! ;
+   RELEASE-RESOURCES ;
 
 
 : RUNNING? ( -- bool )

@@ -328,6 +328,10 @@ SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
 
+SUITE check-verify
+   tools/check-verify-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
@@ -743,6 +747,10 @@ SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
 
+SUITE native-quote-forward
+   test/native-quote-forward-e2e.f
+;SUITE
+
 SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE
@@ -897,6 +905,10 @@ SUITE compiler-native-declaration-diagnostic
 
 SUITE finally
    test/finally.f
+;SUITE
+
+SUITE empty-quotation
+   test/empty-quotation.f
 ;SUITE
 
 SUITE compiler-native-locals-scope
@@ -1538,6 +1550,16 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
+\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
+\ and links it: the records, the routines with every site resolved, the rebased
+\ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
+\ children measure the layout host-independent and refuse, by name, what it
+\ cannot place or link. hb-x64-link-index, for the peer to run, stages the
+\ writer's index where the kernel's own find reads it; it exits 0.
+SUITE x86-64-link-records
+   test/x86-64-link-records.f
+;SUITE
+
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
 \ booted harness: each image's child faults with fd 2 on a pipe, and its parent
 \ checks the dump or the guard page's line and the exit status.
@@ -1689,6 +1711,10 @@ SUITE outer-find
 
 SUITE outer-interpret
    test/outer-interpret.f
+;SUITE
+
+SUITE main-argv
+   test/main-argv.f
 ;SUITE
 
 SUITE engine-writers
@@ -2120,6 +2146,10 @@ SUITE test-subject
    lib/test/subject-test.f
 ;SUITE
 
+SUITE test-eval
+   lib/test/eval-test.f
+;SUITE
+
 SUITE check-repair-hints
    tools/check-repair-hints-test.f
 ;SUITE
@@ -2254,6 +2284,10 @@ WHITEBOX-SUITE declaration-replay-source
 
 SUITE program-diagnostics
    test/program-diagnostics-test.f
+;SUITE
+
+SUITE diag-json-escape
+   test/diag-json-escape.f
 ;SUITE
 
 SUITE native-suite-cli

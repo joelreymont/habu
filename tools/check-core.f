@@ -26,10 +26,9 @@ require tools/diag-origin-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
-\ The dependency-closure producer (whole-file ordered loader events) and its
-\ dynamic-tail manifest.
-require tools/dynamic-tail-manifest.f
-require tools/source-discovery.f
+\ The require closure, and CHECK:VERIFY-BYTES: the check that stops before the
+\ run stage, which --verify-only makes.
+require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
 
 \ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
@@ -66,47 +65,29 @@ $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
-128 constant CHK-DEP-MAX
-\ One split per expanded file and one tail per file bound the segments.
-CHK-DEP-MAX 2 * constant CHK-SEG-MAX
 120000 constant CHK-TIMEOUT-MS
+67 constant CHK-E-CAPACITY
 
 0 constant CHK-SEL-NONE
 1 constant CHK-SEL-SOURCE
 2 constant CHK-SEL-FILE
 3 constant CHK-SEL-LIST
 
-0 constant CHK-DEP-UNSEEN
-1 constant CHK-DEP-OPEN
-2 constant CHK-DEP-DONE
-
 10 constant CHK-LF
 13 constant CHK-CR
 32 constant CHK-SP
-34 constant CHK-DQ
 45 constant CHK-DASH
-64 constant CHK-E-USAGE
-66 constant CHK-E-NOINPUT
-69 constant CHK-E-UNAVAILABLE
-70 constant CHK-E-CHECK
 
 create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
 create CHK-RUN-PATH-BUF FS-PATH-CAP allot
+create CHK-MARK-PATH-BUF FS-PATH-CAP allot
+create CHK-SUBJ-BUF FS-PATH-CAP allot
 create CHK-SEL-LABEL-BUF FS-PATH-CAP allot
+create CHK-STDIN-PATH-BUF FS-PATH-CAP allot
 create CHK-POS-BUF CHK-MAX-POS FS-PATH-CAP * allot
 create CHK-POS-U CHK-MAX-POS cells allot
-create CHK-DEP-PATHS CHK-DEP-MAX FS-PATH-CAP * allot
-create CHK-DEP-US CHK-DEP-MAX cells allot
-create CHK-DEP-ROOTS CHK-DEP-MAX FS-PATH-CAP * allot
-create CHK-DEP-ROOT-US CHK-DEP-MAX cells allot
-create CHK-DEP-STATES CHK-DEP-MAX cells allot
-create CHK-DIR-IDS CHK-DEP-MAX cells allot
-create CHK-DIR-ATS CHK-DEP-MAX cells allot
-create CHK-SEG-IDS CHK-SEG-MAX cells allot
-create CHK-SEG-STARTS CHK-SEG-MAX cells allot
-create CHK-SEG-ENDS CHK-SEG-MAX cells allot
 create CHK-ONE 1 allot
 
 \ The lazily allocated byte buffers hold addresses, so each is a declared
@@ -124,14 +105,12 @@ variable CHK-ARG-I
 variable CHK-POS-N
 variable CHK-JSON
 variable CHK-ALL
+variable CHK-VERIFY
+variable CHK-STDIN-PATH-U
 variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
 variable CHK-SEL-LABEL-U
 variable CHK-SRC-U
-variable CHK-PRE-AT
-variable CHK-PRE-U
-TYPED-VARIABLE CHK-PRE-SCOPE-A ptr u8    \ the scope statements the verified bytes start in
-variable CHK-PRE-SCOPE-U
 variable CHK-RUN-U
 variable CHK-OUT-U
 variable CHK-ERR-U
@@ -146,16 +125,14 @@ TYPED-VARIABLE CHK-HB-A ptr u8
 variable CHK-HB-U
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
+variable CHK-MARK-PATH-U
+variable CHK-SUBJ-U                      \ a named file's canonical path, 0 for any other input
 variable CHK-ROOT-U
 variable CHK-NOM-I
 variable CHK-NOM-U
 variable CHK-EXP-U
 variable CHK-EXP-OUT-U
-variable CHK-DEP-N
-variable CHK-DIR-N
-variable CHK-SEG-N
-variable CHK-DISC-ID
-variable CHK-ALL-SEG
+variable CHK-ALL-ID
 variable CHK-ALL-RC
 variable CHK-NOM-BAD                     \ the nominal pass reported a finding
 variable CHK-TFAM-NAME-I
@@ -239,22 +216,49 @@ variable CHK-TFAM-NAME-I
    CHK-ERR
    CHK-LF CHK-ERR-C ;
 
+: CHK-OUT-C ( n -- )
+   CHK-C!
+   1 CHK-ONE 1 CHK-WRITE ;
+
+: CHK-OUT-LN ( ptr u8 n -- )
+   CHK-OUT
+   CHK-LF CHK-OUT-C ;
+
+: CHK-EXPLAIN-LN ( ptr u8 n -- )
+   CHK-VERIFY @ if CHK-OUT-LN else CHK-ERR-LN then ;
+
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--all-errors] [--source-list file ... | prog.f]" CHK-ERR-LN
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
    throw ;
 
 : CHK-FAIL ( ptr u8 n n -- ) {: msg:ptr u:n code:n :}
-   msg u CHK-ERR-LN
+   msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
+
+: CHK-PATH-TOO-BIG ( -- )
+   s" check.f: source path exceeds capacity" CHK-E-CAPACITY CHK-FAIL ;
 
 : CHK-ARG$ ( n -- ptr u8 n )
    SCRIPT-ARGV$ ;
 
 : CHK-ARG= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
+
+\ Establish the output stream before parsing can reject an earlier argument.
+\ --stdin-path consumes its next token as a value; -- ends option parsing.
+: CHK-VERIFY-ARG? ( -- bool )
+   0 begin dup SCRIPT-ARGC < while
+      dup s" --" CHK-ARG= if drop false exit then
+      dup s" --stdin-path" CHK-ARG= if
+         2 +
+      else
+         dup s" --verify-only" CHK-ARG= if drop true exit then
+         1+
+      then
+   repeat drop false ;
 
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
@@ -291,6 +295,7 @@ variable CHK-TFAM-NAME-I
    a u s" json-errors" LINT-STR= if LINT-TRUE CHK-JSON ! exit then
    a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
    a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
+   a u s" verify-only" LINT-STR= if LINT-TRUE CHK-VERIFY ! exit then
    CHK-USAGE ;
 
 public
@@ -315,6 +320,7 @@ private
    a u s" --json-errors" LINT-STR= if s" json-errors" OPT exit then
    a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
    a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
+   a u s" --verify-only" LINT-STR= if s" verify-only" OPT exit then
    a u CHK-DASH? if CHK-USAGE then
    a u FILE ;
 
@@ -324,6 +330,20 @@ private
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
+: CHK-STDIN-PATH$ ( -- ptr u8 n )
+   CHK-STDIN-PATH-BUF CHK-STDIN-PATH-U @ ;
+
+\ The path stdin's text stands for under --verify-only, given once.
+: CHK-PARSE-STDIN-PATH ( -- )
+   CHK-ARG-I @ 1+ CHK-ARG-I !
+   CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
+   CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
+   CHK-ARG-I @ CHK-ARG$ {: a:ptr u:n :}
+   u 0= if CHK-USAGE then
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a CHK-STDIN-PATH-BUF u BYTE-COPY
+   u CHK-STDIN-PATH-U ! ;
+
 : CHK-PARSE ( -- )
    0 CHK-ARG-I !
    begin CHK-ARG-I @ SCRIPT-ARGC < while
@@ -332,9 +352,20 @@ private
          CHK-COLLECT-REST
          exit
       then
-      CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE
+      CHK-ARG-I @ s" --stdin-path" CHK-ARG= if
+         CHK-PARSE-STDIN-PATH
+      else
+         CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE
+      then
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
+
+\ CLI arguments have two path slots; keep their library capacity throw for
+\ direct CHECK:FILE callers, and explain it only at this command-line boundary.
+: CHK-PARSE-CLI ( -- )
+   [: CHK-PARSE ;] catch {: rc:n :}
+   rc E-FS-CAPACITY = if CHK-PATH-TOO-BIG then
+   rc 0<> if rc throw then ;
 
 : CHK-POS-LENS-CLEAR ( -- )
    0 begin dup CHK-MAX-POS < while
@@ -351,8 +382,6 @@ private
 
 : CHK-RUN-TEMP-CLEAR ( -- )
    0 CHK-SRC-U !
-   0 CHK-PRE-AT !
-   0 CHK-PRE-U !
    0 CHK-RUN-U !
    0 CHK-OUT-U !
    0 CHK-ERR-U !
@@ -370,17 +399,20 @@ private
    0 CHK-TFAM-NAME-I !
    0 CHK-EXP-U !
    0 CHK-EXP-OUT-U !
+   0 CHK-SUBJ-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-SEG-N !
+   0 CHK-DEP-ORDER-N !
    0 CHK-DISC-ID !
-   0 CHK-ALL-SEG !
+   0 CHK-ALL-ID !
    0 CHK-ALL-RC ! ;
 
 : CHK-RESET-CFG ( -- )
    0 CHK-ARG-I !
    0 CHK-JSON !
    0 CHK-ALL !
+   0 CHK-VERIFY !
+   0 CHK-STDIN-PATH-U !
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
 
@@ -398,13 +430,25 @@ private
 : CHK-RUN-PATH ( -- ptr u8 n )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
+: CHK-MARK-PATH ( -- ptr u8 n )
+   CHK-MARK-PATH-BUF CHK-MARK-PATH-U @ ;
+
+: CHK-SUBJ$ ( -- ptr u8 n )
+   CHK-SUBJ-BUF CHK-SUBJ-U @ ;
+
+: CHK-SUBJ! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a CHK-SUBJ-BUF u BYTE-COPY
+   u CHK-SUBJ-U ! ;
+
 : CHK-TEMP-CLEAN ( -- )
    CHK-ROOT-U @ 0= if exit then
    CHK-ROOT 2dup EXISTS? if REMOVE-TREE else 2drop then
    CHK-ROOT CLEANUP-FORGET
    0 CHK-ROOT-U !
    0 CHK-SRC-PATH-U !
-   0 CHK-RUN-PATH-U ! ;
+   0 CHK-RUN-PATH-U !
+   0 CHK-MARK-PATH-U ! ;
 
 : CHK-SESSION-CLEAR ( -- )
    CHK-RESET-CFG ;
@@ -439,7 +483,8 @@ private
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
-   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U ! ;
+   CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U !
+   CHK-ROOT s" subject.f" CHK-MARK-PATH-BUF JOIN-PATH CHK-MARK-PATH-U ! ;
 
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
@@ -454,6 +499,10 @@ private
 : CHK-SOURCE ( -- ptr u8 n )
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
+: CHK-SOURCE-BYTES ( -- ptr u8 n )
+   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-CAP READ-ALL
+   CHK-SRC-BUF swap ;
+
 : CHK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CHK-LABEL-U !
    a CHK-LABEL-A CHK-PTR-U8! ;
@@ -465,586 +514,43 @@ private
 : CHK-SINGLE-FILE? ( -- bool )
    CHK-SEL-MODE @ CHK-SEL-FILE = ;
 
+\ The lints read a named file where it lies, and any other input from the copy
+\ CHK-MATERIALIZE wrote.
 : CHK-LINT-SOURCE ( -- ptr u8 n )
    CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
    CHK-SOURCE ;
 
-: CHK-LINT-LABEL ( -- ptr u8 n )
-   CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
-   CHK-LABEL ;
-
-: CHK-DEP-CHECK ( n -- ) {: id:n :}
-   id 0 < if E-TBL-BOUNDS throw then
-   id CHK-DEP-MAX >= if E-TBL-BOUNDS throw then ;
-
-: CHK-DEP-PATH ( n -- ptr u8 ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-PATHS id FS-PATH-CAP * + ;
-
-: CHK-DEP-U ( n -- ptr n ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-US id cells + ;
-
-: CHK-DEP-STATE ( n -- ptr n ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-STATES id cells + ;
-
-: CHK-DEP$ ( n -- ptr u8 n ) {: id:n :}
-   id CHK-DEP-PATH
-   id CHK-DEP-U @ ;
-
-: CHK-DEP-ROOT$ ( n -- ptr u8 n ) {: id:n :}
-   id CHK-DEP-CHECK
-   CHK-DEP-ROOTS id FS-PATH-CAP * +
-   CHK-DEP-ROOT-US id cells + @ ;
-
-: CHK-DEP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
-   a u id CHK-DEP$ LINT-STR= ;
-
-: CHK-DEP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 begin dup CHK-DEP-N @ < while
-      dup a u rot CHK-DEP-MATCH? if exit then
-      1+
-   repeat drop -1 ;
-
-: CHK-DEP-NEW ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
-   u FS-PATH-CAP > rootu FS-PATH-CAP > or if E-FS-CAPACITY throw then
-   CHK-DEP-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
-   CHK-DEP-N @ {: id:n :}
-   a id CHK-DEP-PATH u BYTE-COPY
-   u id CHK-DEP-U !
-   root CHK-DEP-ROOTS id FS-PATH-CAP * + rootu BYTE-COPY
-   rootu CHK-DEP-ROOT-US id cells + !
-   CHK-DEP-UNSEEN id CHK-DEP-STATE !
-   id 1+ CHK-DEP-N !
-   id ;
-
-: CHK-DEP-ID ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
-   a u CHK-DEP-FIND dup 0 >= if exit then
-   drop a u root rootu CHK-DEP-NEW ;
-
-\ A direct dep and the byte offset of the loader that names it, which
-\ CHK-EXPAND-POINTS turns into the byte where the dep expands.
-: CHK-DIR-PUSH ( n n -- ) {: id:n at:n :}
-   CHK-DIR-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
-   id CHK-DIR-IDS CHK-DIR-N @ cells + !
-   at CHK-DIR-ATS CHK-DIR-N @ cells + !
-   CHK-DIR-N @ 1+ CHK-DIR-N ! ;
-
-: CHK-DIR-ID@ ( n -- n )
-   cells CHK-DIR-IDS + @ ;
-
-: CHK-DIR-AT@ ( n -- n )
-   cells CHK-DIR-ATS + @ ;
-
-: CHK-DIR-AT! ( n n -- )
-   cells CHK-DIR-ATS + ! ;
-
-: CHK-DIR-ID! ( n n -- )
-   cells CHK-DIR-IDS + ! ;
-
-: CHK-DIR-SWAP ( n -- ) {: ix:n :}       \ entries ix and ix+1 trade places
-   ix CHK-DIR-ID@ ix CHK-DIR-AT@ {: id:n at:n :}
-   ix 1+ CHK-DIR-ID@ ix CHK-DIR-ID!
-   ix 1+ CHK-DIR-AT@ ix CHK-DIR-AT!
-   id ix 1+ CHK-DIR-ID!
-   at ix 1+ CHK-DIR-AT! ;
-
-: CHK-DIR-LATER? ( n -- bool ) {: ix:n :}   \ entry ix expands after entry ix+1
-   ix CHK-DIR-AT@ ix 1+ CHK-DIR-AT@ > ;
-
-\ The direct deps from base on, in the order of the bytes where they expand; a
-\ stable sort, so deps that expand at one byte keep their loaders' order.
-: CHK-DIR-SORT ( n -- ) {: base:n :}
-   base 1+ begin dup CHK-DIR-N @ < while
-      dup begin dup base > if dup 1- CHK-DIR-LATER? else LINT-FALSE then while
-         1- dup CHK-DIR-SWAP
-      repeat drop
-      1+
-   repeat drop ;
-
-\ The scope the loader runs a file in: the open package, its visibility and the
-\ `using` depth it opened at, and the `using` rows. A loaded file starts in its
-\ loader's scope. When it ends, the package scope stays as the file left it and
-\ the `using` depth returns to where the file started: the engine's `evaluate`
-\ keeps usings file-local and package scope across a clean include
-\ (src/habu/habu2.f). The bounds are the engine's (USE-MAX) and the checker's
-\ (CHECKER-PACKAGE-CAP).
-create CHK-SCOPE-ROWS USE-MAX CHECKER-PACKAGE-CAP * allot
-create CHK-SCOPE-ROW-US USE-MAX cells allot
-create CHK-SCOPE-PKG CHECKER-PACKAGE-CAP allot
-variable CHK-SCOPE-PKG-U                 \ 0: no package is open
-variable CHK-SCOPE-PUBLIC
-variable CHK-SCOPE-SAVE                  \ the `using` depth the package opened at
-variable CHK-SCOPE-DEPTH
-
-: CHK-SCOPE-RESET ( -- )
-   0 CHK-SCOPE-PKG-U !
-   LINT-FALSE CHK-SCOPE-PUBLIC !
-   0 CHK-SCOPE-SAVE !
-   0 CHK-SCOPE-DEPTH ! ;
-
-: CHK-SCOPE-ROW ( n -- ptr u8 )
-   CHECKER-PACKAGE-CAP * CHK-SCOPE-ROWS + ;
-
-: CHK-SCOPE-ROW$ ( n -- ptr u8 n ) {: row:n :}
-   row CHK-SCOPE-ROW row cells CHK-SCOPE-ROW-US + @ ;
-
-: CHK-SCOPE-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CHK-SCOPE-PKG u BYTE-COPY
-   u CHK-SCOPE-PKG-U !
-   LINT-FALSE CHK-SCOPE-PUBLIC !
-   CHK-SCOPE-DEPTH @ CHK-SCOPE-SAVE ! ;
-
-: CHK-SCOPE-VISIBLE ( bool -- )          \ `public` is true, `private` false
-   CHK-SCOPE-PKG-U @ 0 <> if CHK-SCOPE-PUBLIC ! else drop then ;
-
-: CHK-SCOPE-END-PACKAGE ( -- )
-   CHK-SCOPE-PKG-U @ 0= if exit then
-   CHK-SCOPE-SAVE @ CHK-SCOPE-DEPTH !
-   0 CHK-SCOPE-PKG-U ! ;
-
-\ A `using` past the engine's bound is refused at its own token.
-: CHK-SCOPE-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHK-SCOPE-DEPTH @ {: d:n :}
-   d USE-MAX >= if exit then
-   a d CHK-SCOPE-ROW u BYTE-COPY
-   u CHK-SCOPE-ROW-US d cells + !
-   d 1+ CHK-SCOPE-DEPTH ! ;
-
-: CHK-SCOPE-END-USING ( -- )
-   CHK-SCOPE-DEPTH @ 0 > if -1 CHK-SCOPE-DEPTH +! then ;
-
-\ A verified file's top-level scope statements while it expands: the byte each
-\ starts at, its kind and the name it takes. A file's rows go when it has
-\ expanded, so the table holds the files on the current load path.
-0 constant CHK-EV-PACKAGE
-1 constant CHK-EV-PUBLIC
-2 constant CHK-EV-PRIVATE
-3 constant CHK-EV-END-PACKAGE
-4 constant CHK-EV-USING
-5 constant CHK-EV-END-USING
-1024 constant CHK-EV-MAX
-$4000 constant CHK-EV-NAMES-CAP
-create CHK-EV-ATS CHK-EV-MAX cells allot
-create CHK-EV-KINDS CHK-EV-MAX cells allot
-create CHK-EV-OFFS CHK-EV-MAX cells allot
-create CHK-EV-US CHK-EV-MAX cells allot
-create CHK-EV-NAMES CHK-EV-NAMES-CAP allot
-variable CHK-EV-N
-variable CHK-EV-NAMES-U
-
-: CHK-EV-AT@ ( n -- n )
-   cells CHK-EV-ATS + @ ;
-
-: CHK-EV-KIND@ ( n -- n )
-   cells CHK-EV-KINDS + @ ;
-
-: CHK-EV-OFF@ ( n -- n )
-   cells CHK-EV-OFFS + @ ;
-
-: CHK-EV-NAME$ ( n -- ptr u8 n ) {: e:n :}
-   CHK-EV-NAMES e CHK-EV-OFF@ + e cells CHK-EV-US + @ ;
-
-: CHK-EV-PUSH ( ptr u8 n n n -- ) {: a:ptr u:n at:n kind:n :}
-   CHK-EV-N @ CHK-EV-MAX >= if E-TBL-BOUNDS throw then
-   u CHECKER-PACKAGE-CAP >= if E-TBL-BOUNDS throw then
-   CHK-EV-NAMES-U @ u + CHK-EV-NAMES-CAP > if E-TBL-BOUNDS throw then
-   CHK-EV-N @ {: e:n :}
-   a CHK-EV-NAMES CHK-EV-NAMES-U @ + u BYTE-COPY
-   at CHK-EV-ATS e cells + !
-   kind CHK-EV-KINDS e cells + !
-   CHK-EV-NAMES-U @ CHK-EV-OFFS e cells + !
-   u CHK-EV-US e cells + !
-   CHK-EV-NAMES-U @ u + CHK-EV-NAMES-U !
-   e 1+ CHK-EV-N ! ;
-
-: CHK-EV-DROP ( n -- ) {: mark:n :}      \ the rows from mark on go
-   mark CHK-EV-N @ < if mark CHK-EV-OFF@ CHK-EV-NAMES-U ! then
-   mark CHK-EV-N ! ;
-
-: CHK-EV-APPLY ( n -- ) {: e:n :}
-   e CHK-EV-KIND@ {: kind:n :}
-   kind CHK-EV-PACKAGE = if e CHK-EV-NAME$ CHK-SCOPE-PACKAGE exit then
-   kind CHK-EV-PUBLIC = if LINT-TRUE CHK-SCOPE-VISIBLE exit then
-   kind CHK-EV-PRIVATE = if LINT-FALSE CHK-SCOPE-VISIBLE exit then
-   kind CHK-EV-END-PACKAGE = if CHK-SCOPE-END-PACKAGE exit then
-   kind CHK-EV-USING = if e CHK-EV-NAME$ CHK-SCOPE-USING exit then
-   CHK-SCOPE-END-USING ;
-
-\ The scope statements from row e on that start before byte at take effect;
-\ the answer is the first row left.
-: CHK-EV-APPLY-TO ( n n -- n ) {: e:n at:n :}
-   e begin dup CHK-EV-N @ < if dup CHK-EV-AT@ at < else LINT-FALSE then while
-      dup CHK-EV-APPLY
-      1+
-   repeat ;
-
-\ Each segment starts in the scope its text runs in, written as the scope
-\ statements that reopen it: the usings open when the package opened, the
-\ package and its visibility, then the usings opened inside it (or the `;using`
-\ that closed some of the earlier ones). verify-source reads them before the
-\ segment, in its window.
-$10000 constant CHK-SCOPE-TEXT-CAP
-create CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP allot
-variable CHK-SCOPE-TEXT-U
-create CHK-SEG-SCOPE-ATS CHK-SEG-MAX cells allot
-create CHK-SEG-SCOPE-US CHK-SEG-MAX cells allot
-
-: CHK-SCOPE-SAY ( ptr u8 n -- )          \ one word of the statements
-   >LEN CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP >LEN CHK-SCOPE-TEXT-U SOURCE-APPEND-BYTES
-   CHK-SP CHK-SCOPE-TEXT CHK-SCOPE-TEXT-CAP >LEN CHK-SCOPE-TEXT-U SOURCE-APPEND-C ;
-
-: CHK-SCOPE-SAY-USINGS ( n n -- ) {: from:n to:n :}
-   from begin dup to < while
-      s" using" CHK-SCOPE-SAY
-      dup CHK-SCOPE-ROW$ CHK-SCOPE-SAY
-      1+
-   repeat drop ;
-
-: CHK-SCOPE-SAY-CLOSED ( -- )            \ usings `;using` closed inside the package
-   CHK-SCOPE-DEPTH @ begin dup CHK-SCOPE-SAVE @ < while
-      s" ;using" CHK-SCOPE-SAY
-      1+
-   repeat drop ;
-
-: CHK-SCOPE-SAY-ALL ( -- )
-   CHK-SCOPE-PKG-U @ 0= if 0 CHK-SCOPE-DEPTH @ CHK-SCOPE-SAY-USINGS exit then
-   0 CHK-SCOPE-SAVE @ CHK-SCOPE-SAY-USINGS
-   s" package" CHK-SCOPE-SAY
-   CHK-SCOPE-PKG CHK-SCOPE-PKG-U @ CHK-SCOPE-SAY
-   CHK-SCOPE-PUBLIC @ if s" public" CHK-SCOPE-SAY then
-   CHK-SCOPE-SAVE @ CHK-SCOPE-DEPTH @ CHK-SCOPE-SAY-USINGS
-   CHK-SCOPE-SAY-CLOSED ;
-
-: CHK-SEG-ID@ ( n -- n )
-   cells CHK-SEG-IDS + @ ;
-
-: CHK-SEG-START@ ( n -- n )
-   cells CHK-SEG-STARTS + @ ;
-
-: CHK-SEG-END@ ( n -- n )
-   cells CHK-SEG-ENDS + @ ;
-
-: CHK-SEG-SCOPE$ ( n -- ptr u8 n ) {: seg:n :}
-   CHK-SCOPE-TEXT seg cells CHK-SEG-SCOPE-ATS + @ +
-   seg cells CHK-SEG-SCOPE-US + @ ;
-
-\ An empty span verifies nothing, so it is never recorded. A segment takes the
-\ scope current when it is recorded, the scope at its first byte.
-: CHK-SEG-PUSH ( n n n -- ) {: id:n start:n end:n :}
-   end start <= if exit then
-   CHK-SEG-N @ CHK-SEG-MAX >= if E-TBL-BOUNDS throw then
-   CHK-SEG-N @ {: seg:n :}
-   id CHK-SEG-IDS seg cells + !
-   start CHK-SEG-STARTS seg cells + !
-   end CHK-SEG-ENDS seg cells + !
-   CHK-SCOPE-TEXT-U @ LEN>N {: at:n :}
-   CHK-SCOPE-SAY-ALL
-   at CHK-SEG-SCOPE-ATS seg cells + !
-   CHK-SCOPE-TEXT-U @ LEN>N at - CHK-SEG-SCOPE-US seg cells + !
-   seg 1+ CHK-SEG-N ! ;
-
-: CHK-TARGET-LAYOUT-ACTIVE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
-   path pathu s" src/os/linux/layout.f" LINT-STR= if HB-TARGET-LINUX? exit then
-   path pathu s" src/os/macos/layout.f" LINT-STR= if HB-TARGET-MACOS? exit then
-   path pathu s" src/os/linux-x86-64/layout.f" LINT-STR= if
-      HB-TARGET-LINUX-X86-64? exit
-   then
-   true ;
-
-: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
-   \ Discovery deliberately over-approximates guarded loaders.  The three
-   \ executable layouts cannot share a checker scope: each publishes the same
-   \ global names, while only the current target branch is loadable.
-   id CHK-DEP$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   CHK-TARGET-LAYOUT-ACTIVE? 0= if false exit then
-   id CHK-DEP$ RESOLVE nip nip 0= ;
-
-: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
-   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
-   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
-
-: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:TOKEN a u LINT-STR=CI ;
-
-\ A raw operand is data: `[char] ;` ends no definition.
-: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
-   k LINT-LEX:OPERAND? if LINT-FALSE exit then
-   k s" ;" CHK-TOK=CI ;
-
-\ A definer reads its name with parse-name, the next whitespace-delimited token
-\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
-\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
-\ the lexer reads the token after the definer again by that rule, so no scan
-\ takes a comment, or the token after one, for the name.
-: CHK-DEFINER-TOK? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
-   k LINT-LEX:OPERAND
-   LINT-TRUE ;
-
-: CHK-TOK-BEFORE? ( n n -- bool ) {: k:n end:n :}   \ token k starts before byte end
-   k LINT-LEX:COUNT >= if LINT-FALSE exit then
-   k LINT-LEX:BYTE@ end < ;
-
-: CHK-TOK-AT ( n -- n ) {: at:n :}   \ the first token starting at or past byte at
-   0 begin dup at CHK-TOK-BEFORE? while 1+ repeat ;
-
-\ Where the loader runs each file a source loads. A top-level loader statement
-\ runs where it sits, so its file expands right after it, inside whatever
-\ package and `using` scope the source has open there; the file's segments and
-\ the rest of the source start in the scope the loader gives them (CHK-SEG-PUSH).
-\ One inside a definition runs when the word does, after that definition at the
-\ earliest; its file expands at the first boundary after the definition where
-\ the source has closed every package and `using` it opened, as lib/aio.f's
-\ AIO-LOAD:HOST runs once its package closes. A statement follows
-\ verify-source's reading: `:` and `TRUSTED:` run to `;`, `char` and `'` take
-\ the next token at top level and `char` and `[char]` in a body, `require` and
-\ `include` take their path, and `package` and `using` their name.
--1 constant CHK-AT-PENDING               \ a loader in a body, waiting for a boundary
-variable CHK-WALK-PKG                    \ a package is open
-variable CHK-WALK-USE                    \ file-level `using` depth outside a package
-variable CHK-WALK-IX                     \ the first direct dep still waiting for its byte
-variable CHK-WALK-PENDING                \ body loaders still waiting
-
-: CHK-TOP-PARSER? ( n -- bool ) {: k:n :}
-   k s" char" CHK-TOK=CI if LINT-TRUE exit then
-   k s" '" CHK-TOK=CI if LINT-TRUE exit then
-   k s" require" CHK-TOK=CI if LINT-TRUE exit then
-   k s" include" CHK-TOK=CI ;
-
-: CHK-BODY-PARSER? ( n -- bool ) {: k:n :}
-   k s" char" CHK-TOK=CI if LINT-TRUE exit then
-   k s" [char]" CHK-TOK=CI ;
-
-\ A definition opens at `:` or `TRUSTED:`, read as the nominal pass reads it; a
-\ nameless one is that pass's to refuse (CHK-DEFINER?), so the walk only reads.
-: CHK-WALK-OPENER? ( n -- bool ) {: k:n :}
-   k s" :" CHK-DEFINER-TOK? if LINT-TRUE exit then
-   k s" TRUSTED:" CHK-DEFINER-TOK? ;
-
-: CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
-   begin dup LINT-LEX:COUNT < while
-      dup CHK-TOK-SEMI? if 1+ exit then
-      dup CHK-BODY-PARSER? if 1+ then
-      1+
-   repeat ;
-
-: CHK-WALK-NAMED ( n n -- ) {: k:n kind:n :}   \ a scope statement and the name it takes
-   k 1+ CHK-WORD-TOK? if k 1+ LINT-LEX:TOKEN else s" " then
-   k LINT-LEX:BYTE@ kind CHK-EV-PUSH ;
-
-: CHK-WALK-MARK ( n n -- ) {: k:n kind:n :}    \ a scope statement that takes no name
-   s" " k LINT-LEX:BYTE@ kind CHK-EV-PUSH ;
-
-: CHK-WALK-PACKAGE ( n -- n bool ) {: k:n :}   \ package words: next index, handled
-   k s" package" CHK-TOK=CI if
-      LINT-TRUE CHK-WALK-PKG !
-      k CHK-EV-PACKAGE CHK-WALK-NAMED k 2 + LINT-TRUE exit
-   then
-   k s" ;package" CHK-TOK=CI if
-      LINT-FALSE CHK-WALK-PKG !
-      k CHK-EV-END-PACKAGE CHK-WALK-MARK k 1+ LINT-TRUE exit
-   then
-   k s" public" CHK-TOK=CI if k CHK-EV-PUBLIC CHK-WALK-MARK k 1+ LINT-TRUE exit then
-   k s" private" CHK-TOK=CI if k CHK-EV-PRIVATE CHK-WALK-MARK k 1+ LINT-TRUE exit then
-   k LINT-FALSE ;
-
-: CHK-WALK-USING ( n -- n bool ) {: k:n :}   \ using words: next index, handled
-   k s" using" CHK-TOK=CI if
-      CHK-WALK-PKG @ 0= if 1 CHK-WALK-USE +! then
-      k CHK-EV-USING CHK-WALK-NAMED k 2 + LINT-TRUE exit
-   then
-   k s" ;using" CHK-TOK=CI if
-      CHK-WALK-PKG @ 0= CHK-WALK-USE @ 0 > and if -1 CHK-WALK-USE +! then
-      k CHK-EV-END-USING CHK-WALK-MARK k 1+ LINT-TRUE exit
-   then
-   k LINT-FALSE ;
-
-: CHK-WALK-STEP ( n -- n ) {: k:n :}    \ the token index past one statement
-   k CHK-WALK-OPENER? if k 1+ CHK-WALK-DEF exit then
-   k CHK-WALK-PACKAGE if exit then drop
-   k CHK-WALK-USING if exit then drop
-   k CHK-TOP-PARSER? if k 2 + exit then
-   k 1+ ;
-
-: CHK-WALK-NEUTRAL? ( -- bool )
-   CHK-WALK-PKG @ 0= CHK-WALK-USE @ 0= and ;
-
-: CHK-WALK-WAITING? ( n -- bool ) {: at:n :}   \ the next waiting loader sits before at
-   CHK-WALK-IX @ CHK-DIR-N @ >= if LINT-FALSE exit then
-   CHK-WALK-IX @ CHK-DIR-AT@ at < ;
-
-\ Every waiting loader before byte at, which ends a statement: one in the top
-\ level expands at at, one in the definition just read waits.
-: CHK-WALK-POINT ( n bool -- ) {: at:n body:bool :}
-   begin at CHK-WALK-WAITING? while
-      body if CHK-AT-PENDING 1 CHK-WALK-PENDING +! else at then
-      CHK-WALK-IX @ CHK-DIR-AT!
-      1 CHK-WALK-IX +!
-   repeat ;
-
-: CHK-WALK-RELEASE ( n n -- ) {: base:n at:n :}   \ every body loader expands at at
-   CHK-WALK-PENDING @ 0= if exit then
-   base begin dup CHK-WALK-IX @ < while
-      dup CHK-DIR-AT@ CHK-AT-PENDING = if at over CHK-DIR-AT! then
-      1+
-   repeat drop
-   0 CHK-WALK-PENDING ! ;
-
-: CHK-WALK-BYTE ( n n -- n ) {: k:n len:n :}   \ where token k starts, or the end
-   k LINT-LEX:COUNT >= if len exit then
-   k LINT-LEX:BYTE@ ;
-
-\ The loader offsets of the direct deps from base on become the bytes where
-\ each dep expands, in that order, and the file's top-level scope statements
-\ are recorded; the answer is the file's length.
-: CHK-EXPAND-POINTS ( n n -- n ) {: id:n base:n :}
-   id CHK-DEP$ FILE-SIZE CHK-SRC-CAP > if E-FS-CAPACITY throw then
-   id CHK-DEP$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
-   CHK-SRC-BUF len LINT-LEX:SOURCE
-   base CHK-WALK-IX !
-   0 CHK-WALK-PENDING !
-   LINT-FALSE CHK-WALK-PKG !
-   0 CHK-WALK-USE !
-   0 begin dup LINT-LEX:COUNT < while
-      {: k:n :}
-      k CHK-WALK-STEP {: next:n :}
-      next len CHK-WALK-BYTE {: at:n :}
-      at k CHK-WALK-OPENER? CHK-WALK-POINT
-      CHK-WALK-NEUTRAL? if base at CHK-WALK-RELEASE then
-      next
-   repeat drop
-   len LINT-FALSE CHK-WALK-POINT
-   base len CHK-WALK-RELEASE
-   base CHK-DIR-SORT
-   len ;
-
-\ Dependency closure: the shared whole-file ordered-event producer
-\ (tools/source-discovery.f) scans every token of a file - colon bodies
-\ included - and records one event per literal loader form
-\ (include/included/require/required/provided) with the loader's byte offset.
-\ Every event path is a direct dep, so the closure is a superset of the runtime
-\ load set; dynamic or retired loader forms reject fail-closed unless manifested.
-
-: CHK-DISC-RC? ( n -- bool ) {: rc:n :}
-   rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
-
-: CHK-DISC-MSG$ ( n -- ptr u8 n ) {: rc:n :}
-   rc E-DISC-SHADOW = if s" check.f: discovery rejected: loader word shadowed or undefined" exit then
-   rc E-DISC-DYNAMIC = if s" check.f: discovery rejected: dynamic (non-literal) loader path" exit then
-   rc E-DISC-OPENER = if s" check.f: discovery rejected: unsupported string opener before a loader word" exit then
-   rc E-DISC-RETIRE = if s" check.f: discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" exit then
-   rc E-DISC-UNTERM = if s" check.f: discovery rejected: unterminated string" exit then
-   s" check.f: discovery rejected: capacity exceeded" ;
-
 : CHK-DISC-FAIL ( n -- )
+   s" check.f: " CHK-ERR
    CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
 
-: CHK-DISCOVER-ACT ( -- )
-   CHK-DISC-ID @ CHK-DEP$ CHK-DISC-ID @ CHK-DEP-ROOT$ DISCOVER:RUN-IN ;
-
 \ Discovery stops at a string the file never closes without saying where. Under
-\ --json-errors the lexer reports the defect where it stands, by the record
-\ --all-errors writes for it, and the check fails as a refusal. An end the lexer
-\ does not see, such as a `{:` group left open, keeps discovery's line.
+\ --json-errors the lexer reports the defect where it stands, in the file that
+\ ended the walk (CHK-DISC-ID), by the record --all-errors writes for it, and
+\ the check fails as a refusal. An end the lexer does not see, such as a `{:`
+\ group left open, keeps discovery's line.
 : CHK-DISC-LEX-ACT ( -- )
    CHK-DISC-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
 
 : CHK-DISC-LEX ( -- )
-   CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:BUFFERS!
+   2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
    [: CHK-DISC-LEX-ACT ;] catch {: rc:n :}
-   CHECK-ALL-ERRORS:OUT$ CHK-ERR
    rc 0 <> if rc CHK-THROW then ;
 
-: CHK-EXPAND-SCAN ( n -- ) {: id:n :}
-   id CHK-DISC-ID !
-   [: CHK-DISCOVER-ACT ;] catch {: rc:n :}
+\ The command line reports a closure it cannot follow as it always has.
+: CHK-EXPAND-REPORT ( n -- ) {: rc:n :}
    rc 0= if exit then
    rc E-DISC-UNTERM = if CHK-JSON @ if CHK-DISC-LEX then then
    rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
+   rc CHK-E-NOINPUT = if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    rc throw ;
 
-: CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-ID
-   ix EVENT-TOK@ drop CHK-DIR-PUSH ;
-
-: CHK-EVENTS>DEPS ( -- )
-   0 begin dup EVENT-COUNT < while
-      dup CHK-EVENT-DEP+
-      1+
-   repeat drop ;
-
-\ A file has ended: its `using` depth returns to the one it was loaded at, and
-\ its scope statements go.
-: CHK-EXPAND-CLOSE ( n n -- ) {: ev:n depth:n :}
-   depth CHK-SCOPE-DEPTH !
-   ev CHK-EV-DROP ;
-
-\ A source and the files it loads expand in the order the loader runs them: a
-\ file's text up to the byte where it loads another is a segment, that file's
-\ segments follow, then the rest of the text. A word the source defines before
-\ its require is visible to the file it loads, and none it defines after. A
-\ file expands once, at its first load, as `require` loads a path once, and a
-\ file still expanding - a cycle back into it - loads nothing, as a registered
-\ path does. Only a file the pre-pass verifies is cut into segments; one the
-\ checking engine already holds still expands the files it loads, in order.
-\ The scope follows the same order: a file's scope statements take effect up
-\ to each byte where it loads another, so that file starts in the scope its
-\ loader runs it in.
-: CHK-EXPAND-ID ( n -- ) {: id:n :}
-   id CHK-DEP-CHECK
-   id CHK-DEP-STATE @ CHK-DEP-UNSEEN <> if exit then
-   CHK-DEP-OPEN id CHK-DEP-STATE !
-   id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   CHK-DIR-N @ {: base:n :}
-   CHK-EV-N @ {: ev:n :}
-   CHK-SCOPE-DEPTH @ {: depth:n :}
-   id CHK-EXPAND-SCAN
-   CHK-EVENTS>DEPS
-   id CHK-DEP-PRELOAD? {: verified:bool :}
-   verified if id base CHK-EXPAND-POINTS else 0 then {: len:n :}
-   ev 0 base
-   begin dup CHK-DIR-N @ < while
-      {: e:n pos:n ix:n :}
-      ix CHK-DIR-ID@ {: dep:n :}
-      dep CHK-DEP-STATE @ CHK-DEP-UNSEEN = if
-         ix CHK-DIR-AT@ {: at:n :}
-         verified if id pos at CHK-SEG-PUSH then
-         e at CHK-EV-APPLY-TO {: later:n :}
-         dep RECURSE
-         later at
-      else
-         e pos
-      then
-      ix 1+
-   repeat
-   drop {: e:n tail:n :}
-   verified if id tail len CHK-SEG-PUSH then
-   e len CHK-EV-APPLY-TO drop
-   ev depth CHK-EXPAND-CLOSE
-   base CHK-DIR-N !
-   CHK-DEP-DONE id CHK-DEP-STATE ! ;
-
-\ A source read from a path has its closure expanded into segments; standard
-\ input is checked whole.
-: CHK-EXPANDED? ( -- bool )
-   CHK-DEP-N @ 0 > ;
+: CHK-ENTRY-ID ( ptr u8 n -- n )
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID ;
 
 : CHK-EXPAND-PATH ( ptr u8 n -- )
-   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
-
-: CHK-EXPAND-RESET ( -- )
-   0 CHK-EXP-OUT-U !
-   0 CHK-DEP-N !
-   0 CHK-DIR-N !
-   0 CHK-SEG-N !
-   0 CHK-EV-N !
-   0 CHK-EV-NAMES-U !
-   0 CHK-SCOPE-TEXT-U !
-   CHK-SCOPE-RESET ;
+   CHK-ENTRY-ID CHK-EXPAND CHK-EXPAND-REPORT ;
 
 : CHK-WRITE-EXPANDED-SOURCE ( -- )
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
@@ -1067,6 +573,19 @@ variable CHK-WALK-PENDING                \ body loaders still waiting
    s" required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
 
+\ A named file is loaded the way the command line loads it: the engine turns
+\ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
+\ entry, so the file's own relative requires resolve against its directory. The
+\ path is the canonical one the file's closure entry holds, so the child's
+\ working directory does not matter. DIAG-ORIGIN! markers exist only in inlined
+\ text: the child's own JSON diagnostics for a file it loads by path carry the
+\ engine's coordinates, which count from each definition's name.
+: CHK-APPEND-ENTRY ( ptr u8 n -- )
+   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
+   CHK-SP CHK-EXP-C
+   s" script-required" CHK-EXP-APP
+   CHK-LF CHK-EXP-C ;
+
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
    CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U !
@@ -1076,19 +595,35 @@ variable CHK-WALK-PENDING                \ body loaders still waiting
 : CHK-SOURCE-TOO-BIG ( -- )
    s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
-\ A capacity fault while the tool takes in the subject or builds the file the
-\ run loads is the clean NOINPUT diagnostic, not an uncaught E-FS-CAPACITY.
+\ A capacity fault while the tool builds the file the run loads is the clean
+\ NOINPUT diagnostic, not an uncaught E-FS-CAPACITY.
 : CHK-CAPPED ( [ -- ] -- ) {: q :}
    q catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
    rc throw ;
 
+\ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
+\ quote, backslash, CR, LF or NUL, and the file system refuses a NUL in a path.
+: CHK-PATH-UNSAFE ( -- )
+   s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL" CHK-E-USAGE CHK-FAIL ;
+
+\ Every input must be a file before the engine's resolver sees it. The
+\ resolver refuses a path holding a NUL with a raw range code, and FILE?
+\ refuses it with E-FS-PATH-UNSAFE instead.
+\
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
-\ sources - a single file is a set of one - is refused at each input. Any other
-\ input is checked by the run, in an engine of its own, even when this process
-\ has loaded it.
+\ sources - a single file is a set of one - is refused at each input, as the
+\ input is given. Any other input is checked by the run, in an engine of its
+\ own, even when this process has loaded it: resident verification skips a
+\ file this image holds, as `require` skips it.
+: CHK-INPUTS-ALL? ( [ ptr u8 n -- bool ] -- bool ) {: q :}
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ q execute 0= if unloop false exit then
+   loop
+   true ;
+
 : CHK-ENGINE-SUG$ ( -- ptr u8 n )
    s" The engine provides this source; rebuild bin/hb to check a change to it." ;
 
@@ -1112,50 +647,64 @@ variable CHK-WALK-PENDING                \ body loaders still waiting
    s" :1:1: " CHK-ERR
    CHK-ENGINE-SUG$ CHK-ERR-LN ;
 
-: CHK-ENGINE-INPUTS? ( -- bool )
-   CHK-POS-N @ 0 ?do
-      i CHK-POS$ ENGINE-PROVIDES? 0= if unloop false exit then
-   loop
-   true ;
-
 : CHK-CHECK-INPUTS ( -- )
-   CHK-ENGINE-INPUTS? 0= if exit then
+   [: FILE? ;] CHK-INPUTS-ALL? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do
       i CHK-POS$ CHK-JSON @ if CHK-ENGINE-JSON else CHK-ENGINE-PROSE then
    loop
    CHK-E-USAGE CHK-THROW ;
 
+\ The run stage quotes the label into DIAG-FILE! only after the stages that
+\ read the source, so a label the materializer takes from its caller is judged
+\ as soon as it is set. stdin and a source list carry fixed labels.
+: CHK-CHECK-LABEL ( -- )
+   CHK-LABEL SOURCE-QPATH-CHECK ;
+
 \ The bound is checked on the file itself: discovery sizes its own scratch to
 \ the source, so a source over CHK-SRC-CAP no longer refuses there, and the
 \ later read into the source buffer sits outside CHK-MATERIALIZE's catch.
+\
+\ A JSON packet names the file by the canonical absolute path its closure entry
+\ holds, the spelling every dependency's packets carry, so one run names each
+\ file one way and a client can map it to a URI. Prose keeps the path as given.
+\ Both spellings the run quotes, the entry in the loader line and the label,
+\ are judged before discovery reads the file.
 : CHK-MATERIALIZE-FILE ( -- )
-   CHK-CHECK-INPUTS
    0 CHK-POS$ CHK-LABEL!
-   CHK-LABEL FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   CHK-CHECK-INPUTS
    CHK-LABEL FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    CHK-EXPAND-RESET
-   CHK-LABEL CHK-EXPAND-PATH
-   CHK-LABEL CHK-SOURCE! ;
+   0 CHK-EXP-OUT-U !
+   CHK-LABEL CHK-ENTRY-ID {: id:n :}
+   id CHK-DEP$ CHK-APPEND-ENTRY
+   id CHK-DEP$ CHK-SUBJ!
+   CHK-JSON @ if id CHK-DEP$ CHK-LABEL! else CHK-CHECK-LABEL then
+   id CHK-EXPAND CHK-EXPAND-REPORT
+   CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE-SOURCE ( -- )
    CHK-SEL-SRC-BUF CHK-SRC-BUF CHK-SEL-SRC-U @ BYTE-COPY
    CHK-SEL-SRC-U @ CHK-SRC-U !
    CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
+   CHK-CHECK-LABEL
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SOURCE! ;
 
+\ Each listed path is quoted into its loader line before discovery reads any
+\ file.
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
    CHK-CHECK-INPUTS
    s" <source-list>" CHK-LABEL!
    CHK-EXPAND-RESET
-   0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-EXPAND-PATH
-      1+
-   repeat drop
    0 CHK-EXP-OUT-U !
    0 begin dup CHK-POS-N @ < while
       dup CHK-POS$ CHK-APPEND-REQUIRED
+      1+
+   repeat drop
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$ CHK-EXPAND-PATH
       1+
    repeat drop
    CHK-WRITE-EXPANDED-SOURCE ;
@@ -1186,11 +735,57 @@ private
    endcase ;
 
 \ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
-\ clean NOINPUT diagnostic (dot habu-tfam-13-c2-checkcore-cap).
+\ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
+\ layer (dot habu-tfam-13-c2-checkcore-cap). E-FS-PATH-UNSAFE is a path or
+\ label the run cannot quote (a named file's canonical spelling or a listed
+\ one as CHK-APPEND-REQUIRED spells it, in its loader line; the label, in the
+\ run stage's DIAG-FILE!) or a path holding a NUL, which the file system
+\ refuses to look up. The materializers judge each spelling after the existence
+\ check, so a missing path is still NOINPUT, and before discovery or any later
+\ stage reads the source, so the answer does not depend on what it holds.
 : CHK-MATERIALIZE ( -- )
    CHK-HB$ FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
-   [: CHK-MATERIALIZE-DISPATCH ;] CHK-CAPPED ;
+   [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
+   rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
+   rc throw ;
+
+: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
+
+: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
+
+\ A raw operand is data: `[char] ;` ends no definition.
+: CHK-TOK-SEMI? ( n -- bool ) {: k:n :}
+   k LINT-LEX:OPERAND? if LINT-FALSE exit then
+   k s" ;" CHK-TOK=CI ;
+
+\ A definer reads its name with parse-name, the next whitespace-delimited token
+\ whatever it spells: `DEFLINEAR (` names the type `(`, which TYPE-RESERVED?
+\ refuses, and `: \` defines the word `\`, as the loader reads them. On a match
+\ the lexer reads the token after the definer again by that rule, so no scan
+\ takes a comment, or the token after one, for the name.
+: CHK-DEFINER-TOK? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k a u CHK-TOK=CI 0= IF LINT-FALSE exit THEN
+   k LINT-LEX:OPERAND
+   LINT-TRUE ;
+
+: CHK-BODY-PARSER? ( n -- bool ) {: k:n :}
+   k s" char" CHK-TOK=CI if LINT-TRUE exit then
+   k s" [char]" CHK-TOK=CI ;
+
+
+: CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
+   begin dup LINT-LEX:COUNT < while
+      dup CHK-TOK-SEMI? if 1+ exit then
+      dup CHK-BODY-PARSER? if 1+ then
+      1+
+   repeat ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
@@ -1443,8 +1038,10 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ A failed NEWTYPE/SUMTYPE declaration already reported through the
 \ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
 \ capture that packet into the check error stream (the preverify pattern) and
-\ map the registration throw to the check rc without a second packet.
+\ map the registration throw to the check rc without a second packet. The
+\ packet names the file the nominal pass is reading, as every other report does.
 : CHK-DECL-CAPTURE ( -- )
+   CHK-LABEL DIAG-FILE!
    CHK-JSON @ DIAG-JSON!
    CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
 
@@ -1681,33 +1278,40 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    then
    k 1 + ;
 
-\ The whole file is lexed so a segment's tokens keep the file's own positions;
-\ only the tokens that start inside it are registered.
-: CHK-RUN-NOMINAL-SPAN ( ptr u8 n n n -- ) {: path:ptr pathu:n start:n end:n :}
+\ The file is lexed whole and every declaration in it registered, in its own
+\ name, so each report names the file it reads.
+: CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
    CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
-   start CHK-TOK-AT CHK-NOM-I !
-   begin CHK-NOM-I @ end CHK-TOK-BEFORE? while
+   0 CHK-NOM-I !
+   begin CHK-NOM-I @ LINT-LEX:COUNT < while
       CHK-NOM-I @ CHK-NOM-STEP CHK-NOM-I !
    repeat ;
 
-: CHK-RUN-NOMINAL-SEG ( n -- ) {: seg:n :}
-   seg CHK-SEG-ID@ CHK-DEP$ {: path:ptr pathu:n :}
-   path pathu CHK-LABEL!
-   path pathu seg CHK-SEG-START@ seg CHK-SEG-END@ CHK-RUN-NOMINAL-SPAN ;
+: CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
+   label labelu CHK-LABEL!
+   path pathu CHK-RUN-NOMINAL-FILE ;
+
+: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
+   id CHK-DEP-LOADABLE? 0= if false exit then
+   id CHK-DEP$ RESOLVE nip nip 0= ;
+
+: CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-DEP$ 2dup CHK-RUN-NOMINAL-AS ;
 
 : CHK-RUN-NOMINAL-ORDER ( -- )
    CHK-LABEL {: old:ptr oldu:n :}
-   0 begin dup CHK-SEG-N @ < while
-      dup CHK-RUN-NOMINAL-SEG
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-RUN-NOMINAL-ID
       1+
    repeat drop
    old oldu CHK-LABEL! ;
 
 : CHK-RUN-NOMINAL-FILES ( -- )
-   CHK-EXPANDED? if CHK-RUN-NOMINAL-ORDER exit then
-   CHK-SOURCE 0 CHK-SRC-CAP CHK-RUN-NOMINAL-SPAN ;
+   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
+   CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
 : CHK-RUN-NOMINAL ( -- )
    LINT-FALSE CHK-NOM-BAD !
@@ -1728,15 +1332,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    dup 0= if drop exit then
    throw ;
 
-: CHK-LABEL-DQ? ( -- bool )
-   CHK-LABEL CHK-DQ LINT-INDEX-OF MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF drop 0 0= ENDOF
-   ;MATCH ;
-
-: CHK-CHECK-LABEL ( -- )
-   CHK-LABEL-DQ? if s" check.f: source path contains a double quote, cannot set DIAG-FILE" CHK-E-USAGE CHK-FAIL then ;
-
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
 
@@ -1754,44 +1349,80 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN+
    CHK-SP CHK-RUN-C ;
 
+: CHK-RUN-LN ( ptr u8 n -- )
+   CHK-RUN+
+   CHK-LF CHK-RUN-C ;
+
+: CHK-RUN-QPATH+ ( ptr u8 n -- )
+   >LEN CHK-RUN-BUF CHK-RUN-CAP >LEN CHK-RUN-U SOURCE-APPEND-QPATH ;
+
 : CHK-ERR-NONNEG ( n -- )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
    CHK-U$ CHK-ERR ;
 
-\ The prefix shares the subject's first line, and the origin markers add no
-\ line break, so line N of the run file is line N of the subject:
-\ the engine counts the lines of the file it reads when it refuses a statement.
-: CHK-BUILD-PREFIX ( -- )
+\ The run file's prefix turns checking off, names the subject for the checker's
+\ diagnostics and builds the hook the run is checked with (CHK-HOOK-ON turns it
+\ on). It shares the subject's first line when the subject follows it, and the
+\ origin markers add no line break, so line N of the run file is line N of the
+\ subject: the engine counts the lines of the file it reads when it refuses a
+\ statement.
+: CHK-BUILD-HOOK ( -- )
    s" 0 set-check" CHK-RUN-SP
-   CHK-LABEL >LEN CHK-RUN-BUF CHK-RUN-CAP >LEN CHK-RUN-U SOURCE-APPEND-QPATH
+   CHK-LABEL CHK-RUN-QPATH+
    s"  DIAG-FILE!" CHK-RUN-SP
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
    s" : CHECK-F-HOOK ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;" CHK-RUN-SP
-   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP
+   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP ;
+
+: CHK-HOOK-ON ( -- )
    s" ' CHECK-F-HOOK set-check" CHK-RUN-SP ;
 
-\ The origin pass reads the subject through check.f's own buffer and cap, as
-\ the nominal pass does, and writes the marked copy straight after the prefix.
-\ The engine comments a leading `#!` line only at the start of a file it reads,
-\ and the prefix starts the run file, so the pass comments the subject's own
-\ first, with the engine's rewrite: the scan then reads that line as a comment,
-\ and the marked copy carries the rewrite the run needs.
-: CHK-BUILD-ORIGIN ( -- )
-   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
+\ The origin pass appends the marked copy of the source file at the given path
+\ to the run buffer, reading it through check.f's own buffer and cap, as the
+\ nominal pass does. The engine comments a leading `#!` line only at the start
+\ of a file it reads, so the pass comments the source's own first, with the
+\ engine's rewrite: the scan then reads that line as a comment, and the marked
+\ copy carries the rewrite the run needs.
+: CHK-RUN-ORIGIN+ ( ptr u8 n -- )
+   CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
    CHK-SRC-BUF len
    CHK-RUN-BUF CHK-RUN-U @ +  CHK-RUN-CAP CHK-RUN-U @ - >LEN
    DIAG-ORIGIN-SOURCE>BUF LEN>N CHK-RUN-U @ + CHK-RUN-U ! ;
 
+\ A named file runs as the command line runs it, loaded by its canonical path
+\ (CHK-APPEND-ENTRY): its own relative requires resolve against its directory,
+\ and a file that requires it back finds it loaded. The engine still reads the
+\ copy the origin pass marked: the marked copy lies at CHK-MARK-PATH, and the
+\ run's loader answers the subject's path with it (src/core/include.f
+\ SOURCE-INPUT:USE), so a refusal in the subject names its own line and column.
+: CHK-WRITE-MARKED ( -- )
+   CHK-RUN-RESET
+   CHK-SUBJ$ CHK-RUN-ORIGIN+
+   CHK-MARK-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
+   CHK-RUN-RESET ;
+
+: CHK-BUILD-READER ( -- )
+   CHK-LF CHK-RUN-C
+   s" : CHECK-F-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: p:ptr pu:n r:ptr ru:n :}" CHK-RUN-LN
+   s" p pu " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
+   CHK-MARK-PATH CHK-RUN-QPATH+  s"  r ru SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
+   s" p pu r ru SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
+   s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN
+   s" CHECK-F-INPUT" CHK-RUN-LN ;
+
+: CHK-BUILD-ACT ( -- )
+   CHK-SUBJ-U @ 0 > if CHK-WRITE-MARKED then
+   CHK-BUILD-HOOK
+   CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
+   CHK-HOOK-ON
+   CHK-SOURCE CHK-RUN-ORIGIN+ ;
+
 \ A source the read admits can still outgrow the run file once the prefix and
 \ the origin marks join it; it is refused here, before the run.
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
-   CHK-BUILD-PREFIX
-   [: CHK-BUILD-ORIGIN ;] CHK-CAPPED ;
-
-: CHK-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
+   [: CHK-BUILD-ACT ;] CHK-CAPPED ;
 
 : CHK-LOAD-RESET ( -- )
    PROC-ARGV-ENV-RESET
@@ -1845,128 +1476,58 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
    CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
-   CHK-LINT-SOURCE CHECKED-BOUNDARY-LINT:FILE
+   CHK-LINT-SOURCE CHK-LABEL CHECKED-BOUNDARY-LINT:FILE-AS
    CHECKED-BOUNDARY-LINT:FINISH ;
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
    2 >FD RESERVED-NAME-LINT:OUT-FD!
    CHK-JSON @ RESERVED-NAME-LINT:JSON!
-   CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT:FILE-AS
+   CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
    RESERVED-NAME-LINT:FINISH ;
 
-\ All-errors on a source read from a path or a source list: every segment in
-\ the order the pre-pass verifies them (a loaded file where its loader sits),
-\ in one checker scope and one multi-error session, as the default check
-\ verifies them in one scope. A segment sees what a whole-file check sees: the
-\ clean definitions before it, refused segments' included, and the declared
-\ signature of each refused definition, so a later call of a refused word
-\ checks against its declaration instead of reporting it undefined. Each
-\ segment reports under its own file. A refusal (70, including SPAN's
-\ E-STATEMENT-THROW for a statement's throw) is collected so every segment
-\ reports. DUP-RC and any status SPAN lets out unreported abort. A duplicate
-\ definition ends the check, as it ends the load and a whole-file check: the
-\ load never reaches a later segment, and the checker's record of the
-\ redefined word is not one a later call can be checked against.
+\ The lexer's file-local diagnostics still visit discovered files. Definition
+\ verification then follows the loader composition in one checker scope and
+\ one multi-error session, so a definition a loaded file makes before its
+\ loader's next statement is in scope there, and a refused definition's
+\ declared signature stands for it, as at a whole-file check.
 
-: CHK-ALL-SEG-ACT ( -- )
-   CHK-ALL-SEG @ {: seg:n :}
-   seg CHK-SEG-SCOPE$
-   seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
-   CHECK-ALL-ERRORS:SPAN ;
+: CHK-ALL-ID-ACT ( -- )
+   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
 
-: CHK-RUN-ALL-SEG ( n -- ) {: seg:n :}
-   seg CHK-ALL-SEG !
-   [: CHK-ALL-SEG-ACT ;] catch {: rc:n :}
+: CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
+   CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
+
+: CHK-RUN-ALL-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-ALL-ID !
+   [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
    rc 0= if exit then
-   rc CHK-E-CHECK = if rc CHK-ALL-RC ! exit then
+   rc CHK-E-CHECK = rc CHECK-ALL-ERRORS:DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
    rc throw ;
 
-: CHK-RUN-ALL-SEGS ( -- )
-   0 begin dup CHK-SEG-N @ < while
-      dup CHK-RUN-ALL-SEG
-      1+
-   repeat drop ;
-
-: CHK-RUN-ALL-EXPANDED ( -- )
+: CHK-RUN-ALL-ORDER ( -- )
    0 CHK-ALL-RC !
-   [: CHK-RUN-ALL-SEGS ;] CHECK-ALL-ERRORS:SESSION
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
+      1+
+   repeat drop
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
 \ The report goes to standard error as the core makes it: every record of every
-\ segment, however many and however long, with no buffer to outgrow.
+\ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
    2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   CHK-EXPANDED? if CHK-RUN-ALL-EXPANDED exit then
-   CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS:FILE ;
+   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
 : CHK-RUN-STATIC ( -- )
    CHK-RUN-ALL ;
 
-\ A segment is verified from its own first byte, in the scope it starts in, so
-\ its diagnostics name the line, column and byte the file has there.
-: CHK-PRE-SCOPE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHK-PRE-SCOPE-U !
-   a CHK-PRE-SCOPE-A ! ;
-
-: CHK-PREVERIFY-ACT ( -- )
-   CHK-PRE-SCOPE-A @ CHK-PRE-SCOPE-U @
-   CHK-SRC-BUF CHK-PRE-AT @ + CHK-PRE-U @
-   CHK-SRC-BUF CHK-PRE-AT @ CHECK-ALL-ERRORS:BYTE-ORIGIN CHK-PRE-AT @
-   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
-
-: CHK-PREVERIFY-CAPTURE ( -- n )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
-   [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF
-   rc ;
-
-\ A statement that threw while it was checked is reported where it stood, by
-\ the record --all-errors writes in the run's mode, and fails the run like a
-\ refusal.
-: CHK-PREVERIFY-THREW ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   rc label labelu CHK-SRC-BUF CHK-PRE-AT @ CHK-PRE-U @ +
-   CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
-   CHK-E-CHECK CHK-THROW ;
-
-\ The checker reports nothing for a duplicate definition, so it is reported by
-\ the record --all-errors writes in the run's mode, and fails the run with the
-\ duplicate's status, as it fails the load.
-: CHK-PREVERIFY-DUP ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   label labelu CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
-
-\ The checker's own diagnostics are JSON lines in either mode.
-: CHK-PREVERIFY-SPAN ( ptr u8 n ptr u8 n n n -- )
-   {: label:ptr labelu:n path:ptr pathu:n start:n end:n :}
-   label labelu DIAG-FILE!
-   0 0= DIAG-JSON!
-   path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL end min start - CHK-PRE-U !
-   start CHK-PRE-AT !
-   CHK-PREVERIFY-CAPTURE {: rc:n :}
-   rc CHECK-ALL-ERRORS:THREW? if rc label labelu CHK-PREVERIFY-THREW then
-   rc CHECK-ALL-ERRORS:DUP-RC = if label labelu CHK-PREVERIFY-DUP then
-   rc 0 <> if rc throw then ;
-
-: CHK-PREVERIFY-SEG ( n -- ) {: seg:n :}
-   seg CHK-SEG-SCOPE$ CHK-PRE-SCOPE!
-   seg CHK-SEG-ID@ CHK-DEP$ 2dup seg CHK-SEG-START@ seg CHK-SEG-END@
-   CHK-PREVERIFY-SPAN ;
-
-: CHK-PREVERIFY-ORDER ( -- )
-   0 begin dup CHK-SEG-N @ < while
-      dup CHK-PREVERIFY-SEG
-      1+
-   repeat drop ;
-
 : CHK-RUN-PREVERIFY-ACT ( -- )
-   CHK-EXPANDED? if CHK-PREVERIFY-ORDER exit then
-   s" " CHK-PRE-SCOPE!
-   CHK-LABEL CHK-SOURCE 0 CHK-SRC-CAP CHK-PREVERIFY-SPAN ;
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
@@ -1994,12 +1555,48 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-PREVERIFY-DIAG-FLUSH
    rc CHK-THROW ;
 
+\ The composition stops in one file of it, the one VERIFY:SOURCE-COMPOSE-
+\ STOPPED$ names: the subject by its label, any other file by its canonical
+\ path. Its bytes are the subject's, or the file's own.
+: CHK-STOPPED-SOURCE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if CHK-SOURCE-BYTES exit then
+   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+
+\ A statement that threw while it was checked is reported where it stood, by
+\ the record --all-errors writes in the run's mode, and fails the run like a
+\ refusal.
+: CHK-PREVERIFY-THREW ( n -- ) {: rc:n :}
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
+   rc a u a u CHK-STOPPED-SOURCE CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
+   CHK-E-CHECK CHK-THROW ;
+
+\ The checker reports nothing for a duplicate definition, so it is reported by
+\ the record --all-errors writes in the run's mode, naming the file that defined
+\ the name again, and fails the run with the duplicate's status, as it fails the
+\ load.
+: CHK-PREVERIFY-DUP ( -- )
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   VERIFY:SOURCE-COMPOSE-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
+
+\ The checker's own diagnostics are JSON lines in either mode, written out when
+\ the composition ends, ahead of a record for its throw.
+: CHK-PREVERIFY-COMPOSE ( -- )
+   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
+   [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
+   DIAG-BUFFER$ CHK-ERR
+   DIAG-BUFFER-OFF
+   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW then
+   rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
+   rc 0 <> if rc throw then ;
+
 \ The preverified files are standalone sources, not a continuation of whatever
 \ package this tool was called from, so the scope starts at neutral top level.
 : CHK-RUN-PREVERIFY ( -- )
    CHK-PREVERIFY-DIAG-START
+   LINT-TRUE DIAG-JSON!
    CHECKER-SCOPE-START-NEUTRAL
-   [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
+   [: CHK-PREVERIFY-COMPOSE ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
@@ -2022,9 +1619,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    at CHK-RUN-PATH-U @ + {: past:n :}
    a past +  u past - ;
 
-\ The run file is the subject line for line (CHK-BUILD-PREFIX), so where the
-\ run's diagnostics name it, as the engine's refusal of a statement does, they
-\ name the subject at that line.
+\ An inlined subject is the run file line for line (CHK-BUILD-HOOK), so where
+\ the run's diagnostics name the run file, as the engine's refusal of a
+\ statement does, they name the subject at that line.
 : CHK-ERR-NAME-SUBJECT ( -- )
    0 CHK-MAP-U !
    CHK-ERR-BUF CHK-ERR-U @
@@ -2085,8 +1682,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS
-   CHK-CHECK-LABEL
-   CHK-RUN-PREVERIFY
+   CHK-ALL @ 0= if CHK-RUN-PREVERIFY then
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;
@@ -2100,7 +1696,86 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;
 
+\ --verify-only is CHECK:VERIFY-BYTES over a named file's bytes, or over stdin's
+\ under --stdin-path, and nothing more: no lint, no in-process verify, no run.
+\ stderr carries its packets and nothing else; stdout carries its prose and, for
+\ an outcome that is not the checker's verdict, a closing line.
+
+: CHK-VERIFY-FILE ( -- ptr u8 n )
+   0 CHK-POS$ {: a:ptr u:n :}
+   a u FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   a u FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
+   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-U !
+   a u ;
+
+: CHK-VERIFY-STDIN-ACT ( -- )
+   CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U ! ;
+
+\ stdin's path need not exist.
+: CHK-VERIFY-STDIN ( -- ptr u8 n )
+   CHK-STDIN-PATH-U @ 0= if CHK-USAGE then
+   [: CHK-VERIFY-STDIN-ACT ;] catch {: rc:n :}
+   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
+   rc 0<> if rc throw then
+   CHK-STDIN-PATH$ ;
+
+\ Read the bytes into the source buffer: the path they stand for.
+: CHK-VERIFY-SELECT ( -- ptr u8 n )
+   CHK-SEL-MODE @ CHK-SEL-FILE = if
+      CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
+      CHK-VERIFY-FILE exit
+   then
+   CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
+   CHK-VERIFY-STDIN ;
+
+: CHK-STATUS-LN ( outcome -- )
+   s" check.f: the verifier did not complete: " CHK-OUT
+   MATCH outcome
+      exited OF s" exit " CHK-OUT CHK-U$ CHK-OUT ENDOF
+      signaled OF s" signal " CHK-OUT CHK-U$ CHK-OUT ENDOF
+      timeout OF s" deadline passed" CHK-OUT ENDOF
+   ;MATCH
+   CHK-LF CHK-OUT-C ;
+
+\ The verifier's packets on stderr, its prose on stdout.
+: CHK-VERIFY-RELAY ( -- )
+   VERIFY-OUT$ CHK-ERR
+   VERIFY-LOG$ CHK-OUT ;
+
+: CHK-VERIFY-REPORT ( verdict -- )
+   CHK-VERIFY-RELAY
+   MATCH verdict
+      verified OF ENDOF
+      refused OF CHK-E-CHECK CHK-THROW ENDOF
+      engine-provided OF
+         s" check.f: the engine provides the source; it is not verified" CHK-OUT-LN
+         CHK-E-USAGE CHK-THROW
+      ENDOF
+      held OF
+         s" check.f: the verifier's own image holds the source; it cannot be verified there" CHK-OUT-LN
+         CHK-E-UNAVAILABLE CHK-THROW
+      ENDOF
+      incomplete OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+   ;MATCH ;
+
+: CHK-VERIFY-ACT ( -- )
+   CHK-VERIFY-SELECT {: path:ptr pathu:n :}
+   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-TIMEOUT-MS >MS VERIFY-BYTES
+   CHK-VERIFY-REPORT ;
+
+\ More output than the verifier's capture holds leaves no verdict: the packets
+\ received before it, the prose and a closing line.
+: CHK-RUN-VERIFY ( -- )
+   [: CHK-VERIFY-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TRUNCATED <> if rc throw then
+   CHK-VERIFY-RELAY
+   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-OUT-LN
+   CHK-E-UNAVAILABLE CHK-THROW ;
+
 : CHK-RUN-INNER ( -- )
+   CHK-VERIFY @ if CHK-RUN-VERIFY exit then
+   CHK-STDIN-PATH-U @ 0<> if CHK-USAGE then
    CHECKED-BOUNDARY-LINT:RESET
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
@@ -2186,7 +1861,8 @@ private
 
 : CHK-MAIN-RUN ( -- )
    RESET
-   CHK-PARSE
+   CHK-VERIFY-ARG? CHK-VERIFY !
+   CHK-PARSE-CLI
    RUN dup 0 <> if throw then drop ;
 
 public

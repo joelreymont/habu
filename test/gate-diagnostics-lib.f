@@ -439,6 +439,30 @@ variable REC-U
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
 
+\ A storage registrar called from source, outside the verifier window, is
+\ refused with a named packet at the load (checker.f CHECKER-REPLAY-NAME-OK?).
+\ tools/check.f runs as a child: the packet comes from its own load child, whose
+\ capture would replace the one an in-process CHECK-CAPTURE holds open.
+: STORAGE-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JRG ( -- n ) 7 ;" GE-SRC-LINE
+   s" package JRP" GE-SRC-LINE
+   s\" s\" n\" s\" JRG\" CHECKER-DEFTYPED-VARIABLE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" habu-json-record.f" WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --json-errors" ARG+
+   s" habu-json-record.f" PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" tools/check.f --json-errors accepted a storage record outside the verifier window" GE-EXPECT-NONZERO
+   s" code" s" E-PKG-CONTEXT" s" storage record refusal code" ERR-JSTR
+   s" verdict" s" rejected" s" storage record refusal verdict" ERR-JSTR
+   s" token" s" JRG" s" storage record refusal token" ERR-JSTR
+   s" repair_class" s" use_storage_definer" s" storage record refusal repair class" ERR-JSTR ;
+
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
    s" EV ( -- n ) evaluate" GE-SRC-CHECK-LINE

@@ -176,6 +176,10 @@ STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 \ mirror carries stack-abi.f's spelling exactly, never a second name for it.
 -3802 constant STACK-ABI:E-STACK-UNGUARDED
 
+\ evaluate-closed's refusal of a text that left cells above its floor, carried
+\ the same way: lib/errors.f E-EVAL-RESIDUE owns it.
+-3804 constant STACK-ABI:E-EVAL-RESIDUE
+
 \ The dividing primitives' refusal code, carried here for the same reason and in
 \ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
 -6400 constant ARITH-ABI:E-DIV-ZERO
@@ -186,7 +190,7 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$90 constant STACK-ABI:EVAL-BYTES
+$120 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself
@@ -485,7 +489,6 @@ create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
 create QNL-KW 63 c, 10 c,       \ ?\n  (REPL reject)
-create CAPNL-KW 10 c,           \ \n  (capacity-exit diagnostic terminator)
 create OKS-KW 32 c, 111 c, 107 c, 10 c,   \ \x20ok\n (REPL accept)
 create BADTAG-SFX-KW 32 c, 116 c, 97 c, 103 c, 10 c,   \ " tag\n" for the MATCH bad-tag die
 create TICK-KW   39 c,          \ '  (0x27)
@@ -996,15 +999,19 @@ variable BAND-IX
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
 \ linked native-stack frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: B-EVAL ( -- )
-   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+\
+\ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
+\ x10: the frame records the data-stack extent in force, and the clean exit
+\ returns to x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
+\ src/habu/habu1.f EVAL-ENTER.
+: EVAL-ENTER ( -- )
    SP SP EVAL-FRAME-SIZE SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
    14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
-   30 14 16 STR,                                     \ leaf prim: x30 = caller return
+   30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
@@ -1021,6 +1028,10 @@ variable BAND-IX
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
+
+: B-EVAL ( -- )
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   EVAL-ENTER ;
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
@@ -1514,7 +1525,15 @@ HB-TARGET-LINUX? [IF]
 
 : BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
-: BEXEC ( -- )   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
+\ Mirror of habu1.f BCALLABLE: a zero typed quotation cell is readable, but
+\ execution is fatal and cannot be recovered by catch.
+: BCALLABLE ( -- )
+   LBL {: live :}
+   9 live CBNZ,
+   S\" hb: unset quotation\n" ENGINE-ERROR:CALLABLE-ABI C-EXIT-DIAG
+   live LBL, ;
+
+: BEXEC ( -- )   A G-POP  BCALLABLE  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A HNDF-SIZE frame on the machine stack saves the COMPLETE caller frame:
@@ -1524,7 +1543,7 @@ HB-TARGET-LINUX? [IF]
 \ caught throw restores return/loop state too (dot
 \ habu-restore-complete-exec-abb8baca). MIRROR of src/habu/habu1.f BCATCH.
 : BCATCH ( -- )
-   A G-POP                               \ xt -> x9
+   A G-POP  BCALLABLE                    \ xt -> x9
    SP SP HNDF-SIZE SUBI,
    30 SP 32 STR,                         \ save link
    11 DATA 8 LDR,  11 SP 0 STR,          \ prev HND
@@ -1619,6 +1638,7 @@ HB-TARGET-LINUX? [IF]
    LBL LBL LBL {: bad unguarded done :}
    12 XDS 24 SUBI,
    9 12 0 LDR, 14 12 8 LDR, 11 12 16 LDR,
+   BCALLABLE
    unguarded GUARDED-EXTENT?
    XDS XDS 24 SUBI,
    SP SP 32 SUBI, 30 SP 0 STR, XDS SP 8 STR,
@@ -1635,6 +1655,31 @@ HB-TARGET-LINUX? [IF]
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text with the caller's depth as
+\ its floor, BASE raised to the cursor and CAP lowered by the same distance, and
+\ refuse a text that left cells with STACK-ABI:E-EVAL-RESIDUE. The caller's
+\ extent waits in this word's frame; the evaluate frame records the floor and
+\ returns to `back`. Mirrors src/habu/habu1.f B-EVAL-CLOSED.
+: B-EVAL-CLOSED ( -- )
+   LBL LBL {: back done :}
+   B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   30 back ADR,
+   EVAL-ENTER
+   back LBL,
+   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   SP SP 16 ADDI,
+   XDS 11 CMP,  C-EQ done BCOND,
+   XDS 11 0 ADDI,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 \ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
 \ result row survives a clean run; the cleanup runs outside the body's handler,
@@ -1643,7 +1688,7 @@ HB-TARGET-LINUX? [IF]
 \ requires, locks through it, so the seed has to carry it.
 : BFINALLY ( -- )
    LBL {: ldone :}
-   A G-POP                               \ cleanup xt
+   A G-POP  BCALLABLE                    \ cleanup xt
    SP SP $10 SUBI,  9 SP 0 STR,
    BCATCH                                \ body xt: run under a handler, exc pushed
    A G-POP  9 SP 8 STR,
@@ -1969,7 +2014,8 @@ HB-TARGET-LINUX? [IF]
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L ;
+   s" evaluate" ['] B-EVAL FPRIM-L
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
 
 : EMIT-ENGINE-PRIMS ( -- )
    s" run-in-stack" ['] BRUNSTACK FPRIM-L
@@ -5996,7 +6042,7 @@ variable CFSK2
    LBL LBL LBL {: ndok msg full :}
    9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
    full B,
-   msg LBL,  s" hb: dictionary full at: " BYTES,  CAPNL-KW 1 BYTES,
+   msg LBL,  S\" hb: dictionary full at: \n" BYTES,
    full LBL,
       0 2 MOVZ,  1 msg ADR,  2 24 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,

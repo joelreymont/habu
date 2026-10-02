@@ -35,16 +35,12 @@ private
 123 constant CA-LBRACE
 70 constant CA-REFUSED                  \ the status of a refusal the checker reported
 
-public
-
 \ The 1-based line and column of byte at in the buffer that starts at a.
 : BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
    1 0 at 0 ?do
       a i + c@ CA-LF = if drop 1+ i 1+ then
    loop
    at swap - 1+ ;
-
-private
 
 create CA-LF-BUF 1 allot
 
@@ -55,10 +51,6 @@ variable CA-JSON-FOUND
 TYPED-VARIABLE CA-SRC-A ptr u8
 variable CA-SRC-U
 variable CA-SRC-CAP
-variable CA-AT                          \ the first byte of the source checked
-variable CA-END                         \ and the byte past its last
-TYPED-VARIABLE CA-SCOPE-A ptr u8        \ and the scope statements it starts in
-variable CA-SCOPE-U
 variable CA-ERR-LEN
 TYPED-VARIABLE CA-ERR-A ptr u8
 variable CA-ERR-CAP
@@ -75,6 +67,10 @@ variable CA-THROW-AT                    \ and the byte of the token the checker 
 TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
 variable CA-JSON
+TYPED-VARIABLE CA-COMPOSE-PATH-A ptr u8
+variable CA-COMPOSE-PATH-U
+TYPED-VARIABLE CA-COMPOSE-LABEL-A ptr u8
+variable CA-COMPOSE-LABEL-U
 
 : CA-TRUE ( -- bool )
    0 0= ;
@@ -344,11 +340,8 @@ variable CA-JSON
    LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
 
 \ The lexer reports more than one defect now, so name the one it hit.
-\ The whole buffer is lexed, so only a defect inside the checked bytes is theirs.
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
-   LINT-LEX:ERROR-BYTE@ CA-AT @ < IF exit THEN
-   LINT-LEX:ERROR-BYTE@ CA-END @ >= IF exit THEN
    CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
    CA-REFUSED throw ;
 
@@ -392,10 +385,7 @@ variable CA-JSON
    CA-ERR-A@ CA-ERR-CAP @ DIAG-BUFFER! ;
 
 : CA-CHECK-FULL-ACT ( -- )
-   CA-SCOPE-A @ CA-SCOPE-U @
-   CA-SRC-A@ CA-AT @ + CA-END @ CA-AT @ -
-   CA-SRC-A@ CA-AT @ BYTE-ORIGIN CA-AT @
-   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
+   CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CA-CHECK-FULL ( -- n )
    CA-RESET-CAPTURE
@@ -403,6 +393,19 @@ variable CA-JSON
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
+\ A source checked as the loader runs it: each top-level loader statement
+\ verifies the file it loads where it stands (VERIFY:SOURCE-COMPOSE-LABELED-IN-
+\ SCOPE), in the session's one checker scope.
+: CA-CHECK-COMPOSE-ACT ( -- )
+   CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
+   CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+: CA-CHECK-COMPOSE ( -- n )
+   CA-RESET-CAPTURE
+   CA-DIAG-FULL-START
+   [: CA-CHECK-COMPOSE-ACT ;] catch
+   CA-DIAG-FINISH ;
 
 
 
@@ -495,6 +498,18 @@ private
    CA-THROW-RECORD$ CA-ERR
    CA-LF$ CA-ERR ;
 
+: CA-ALLOC-SOURCE ( n -- )
+   MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
+
+: CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
+   path pu FILE-SIZE CA-ALLOC-SOURCE
+   path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
+
+: CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CA-SRC-CAP !
+   u CA-SRC-U !
+   a CA-SRC-A! ;
+
 \ Whole-buffer multi-error drive (Option-A no-cascade ruling on
 \ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
 \ file-relative diagnostic for every rejected definition, records each
@@ -516,24 +531,32 @@ private
    rc THREW? IF rc CA-HANDLE-THROW exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
-: CA-ALLOC-SOURCE ( n -- )
-   MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
+\ A duplicate or a statement's throw stops the composition in one of its files,
+\ the one VERIFY:SOURCE-COMPOSE-STOPPED$ names, and its record names that file
+\ and reads the token out of its bytes. Every diagnostic the checker made before
+\ it is reported first.
+: CA-COMPOSE-STOPPED ( -- )
+   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
+   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
+   u CA-FILE-U !  a CA-FILE-A! ;
 
-: CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
-   path pu FILE-SIZE CA-ALLOC-SOURCE
-   path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
+: CA-HANDLE-COMPOSE-THROW ( n -- )
+   CA-THROW!
+   0 CA-EMIT-CAPTURED
+   CA-COMPOSE-STOPPED
+   CA-THROW-RECORD$ CA-ERR
+   CA-LF$ CA-ERR ;
 
-: CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CA-SRC-CAP !
-   u CA-SRC-U !
-   a CA-SRC-A! ;
-
-: CA-WHOLE ( -- )                       \ check every byte of the source
-   0 CA-AT !
-   CA-SRC-U @ CA-END ! ;
+: CA-RUN-COMPOSE-DEFS ( -- )
+   CA-RESET-RESULTS
+   MULTI-ERR-N @ {: before:n :}
+   CA-CHECK-COMPOSE {: rc:n :}
+   MULTI-ERR-N @ before - {: rejects:n :}
+   rc DUP-RC = IF 0 CA-EMIT-CAPTURED CA-COMPOSE-STOPPED CA-HANDLE-DUP exit THEN
+   rc THREW? IF rc CA-HANDLE-COMPOSE-THROW exit THEN
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
 : CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
-   s" " CA-SCOPE-U ! CA-SCOPE-A !
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
@@ -544,6 +567,12 @@ private
 : CA-RUN-SOURCE ( -- )
    CA-LEX
    CA-RUN-DEFS
+   CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
+   CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
+
+: CA-RUN-COMPOSE ( -- )
+   CA-LEX
+   CA-RUN-COMPOSE-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
@@ -577,13 +606,12 @@ public
 : JSON! ( bool -- )
    CA-JSON ! ;
 
-\ Check the sources the given word checks with SPAN, in its order, in one
-\ checker scope and one multi-error session, as a load runs them: each sees
-\ the clean definitions of the ones before it and the declared signature of
-\ every definition they refused. The checked sources are files, not a
-\ continuation of whatever package the caller has open, so the scope opens at
-\ neutral top level, and closing it restores the caller's package on the clean
-\ and the throwing path alike.
+\ Check what the given word checks in one checker scope and one multi-error
+\ session, as a load runs it: a definition sees the clean definitions before
+\ it and the declared signature of every definition refused before it. The
+\ checked sources are files, not a continuation of whatever package the caller
+\ has open, so the scope opens at neutral top level, and closing it restores
+\ the caller's package on the clean and the throwing path alike.
 : SESSION ( [ -- ] -- ) {: q :}
    MULTI-ERR-BEGIN
    CHECKER-SCOPE-START-NEUTRAL
@@ -592,28 +620,10 @@ public
    MULTI-ERR-END drop
    rc 0 <> IF rc throw THEN ;
 
-\ Check bytes start to end of the source file at the given path, reporting them
-\ under the given label at the file's own line and column, inside the scope
-\ the given statements open. Called inside SESSION; a refusal throws the
-\ checker's status after its diagnostics. A duplicate definition throws DUP-RC
-\ and ends the session as it ends a load: the checker's record of the
-\ redefined word is not one a later source can be checked against, so the
-\ caller checks no source after it.
-: SPAN ( ptr u8 n ptr u8 n ptr u8 n n n -- )
-   {: scope:ptr scopeu:n labela:ptr labelu:n patha:ptr pathu:n start:n end:n :}
-   labela labelu CA-START
-   scope CA-SCOPE-A !
-   scopeu CA-SCOPE-U !
-   patha pathu CA-READ-SOURCE
-   start CA-AT !
-   end CA-SRC-U @ min CA-END !
-   CA-RUN-SOURCE ;
-
 \ Check the source file at the given path, reporting it under the given label.
 : FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
    labela labelu CA-START
    patha pathu CA-READ-SOURCE
-   CA-WHOLE
    [: CA-RUN-SOURCE ;] SESSION ;
 
 \ Report the lexer defect of the source file at the given path under the given
@@ -624,14 +634,24 @@ public
    {: labela:ptr labelu:n patha:ptr pathu:n :}
    labela labelu CA-START
    patha pathu CA-READ-SOURCE
-   CA-WHOLE
    CA-LEX ;
+
+\ Check the given source bytes as the file at the given path, reporting them under
+\ the given label: the composition verifies every file a top-level loader
+\ statement loads where it stands, under its own path, in one session.
+\ Lexical defects stay each file's own (LEX-FILE).
+: COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
+   path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
+   label CA-COMPOSE-LABEL-A !  labelu CA-COMPOSE-LABEL-U !
+   label labelu CA-START
+   src srcu CA-SOURCE-BUF!
+   [: CA-RUN-COMPOSE ;] SESSION ;
 
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
-   CA-WHOLE
    [: CA-RUN-SOURCE ;] SESSION ;
 
 \ The record line --all-errors writes for a statement that threw the given code,

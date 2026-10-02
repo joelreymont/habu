@@ -96,12 +96,15 @@ variable BFT-DOC-CODE
    ;MATCH
    orig off BFT-BYTE! ;
 
-\ A labeled fatal exit: process EXITed with the contract code and its stderr
-\ carries the named diagnostic (proves the exit is no longer a bare rc-only).
+\ A labeled fatal exit: process EXITed with the contract code and wrote exactly
+\ the named diagnostic followed by one newline.
 : BFT-ASSERT-SNAP-EXIT ( n ptr u8 n -- ) {: code:n msg:ptr msgu:n :}
    BFT-DOC-EXITED @ TTRUE
    BFT-DOC-CODE @ code T=
-   BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
+   BFT-DOC-ERR$ {: err:ptr erru:n :}
+   erru msgu 1+ T=
+   err msgu msg msgu T$=
+   err msgu BYTE+ c@ 10 T= ;
 
 : TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!

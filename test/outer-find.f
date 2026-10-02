@@ -420,7 +420,9 @@ OFX-AGAIN 14 T=
 s" OUTER-FIND-TEST:OFX-GLOBAL" OUTER-FIND-TEST:XT-OF 0 T=
 
 using OUTER-FIND-FXA
-\ The global wordlist answers before the used publics.
+\ The global wordlist answers before the used publics. The interpreter refuses
+\ the token here (ENGINE-ERROR:USING-SHADOW-GLOBAL), so FIND's answer is
+\ compared with the global's xt ticked before the using.
 s" OFX-SHADOW" OUTER-FIND-TEST:XT-OF  OFX-GLOBAL-XT @  T=
 s" OFX-USED" OUTER-FIND-TEST:XT-OF  ' OFX-USED  T=
 \ A colon-bearing token never reaches the used publics.

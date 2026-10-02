@@ -51,8 +51,10 @@ $20 constant SD-SP
 create SD-PATH SD-PATH-CAP allot
 create SD-ROOT SD-PATH-CAP 1+ allot
 create SD-ENTRY SD-PATH-CAP 1+ allot
+create SD-LOADING SD-PATH-CAP allot
 variable SD-ROOT-U
 variable SD-ENTRY-U
+variable SD-LOADING-U
 
 TYPED-VARIABLE SD-STORAGE SPAN:span<u8>
 PTR-VARIABLE SD-A
@@ -405,6 +407,7 @@ private
 : RUN-SELECTED ( -- )
    SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
+   SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE then
    EVENTS-RESET EVENT-ON DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
    DISCOVERY-OFF EVENT-OFF
@@ -413,6 +416,17 @@ private
    rc 0= 0= if rc throw then ;
 
 public
+
+\ Discovery takes the canonical PATH as a file the loader has begun, as
+\ `bin/hb --load PATH` registers PATH before it loads PATH's closure: a require
+\ of PATH resolves to it whether a file is there or not, never to another file
+\ a fallback root finds. It lasts until the next LOADING!; an empty PATH sets
+\ none.
+: LOADING! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u SD-PATH-CAP > if E-DISC-CAPACITY throw then
+   a SD-LOADING u BYTE-COPY
+   u SD-LOADING-U ! ;
 
 : RUN-IN ( ptr u8 n ptr u8 n -- )
    SELECT-ENTRY

@@ -8,23 +8,41 @@
 \ and READ. The window holds one of each thing the shadow tables carry: a leaf, a
 \ call to a window word, a `does>` definer, a quotation, a code literal naming a
 \ window word, a window DATA literal, a call to a word of the engine's own prefix,
-\ and a declared code cell holding a window word's entry.
+\ and a declared code cell holding a window word's entry. It also holds four
+\ shadowed words that ship no record: a dead private word and two dead retired
+\ ones, the second calling the first, between two shadowed records - the capture
+\ strips the first and does not record the retired ones at all, so past them a
+\ record's window index, its capture index and its shipped row all differ - and
+\ a private `does>` definer that a load-time child keeps live, whose shipped
+\ companion carries its routine.
 \
-\ WHAT IS ASKED. The records and their spans, the call site's target by window
-\ record, the companion's entry against the definer's own `codeaddr`, the
-\ function, code and DATA literals as the capture rewrote them, the prefix call
-\ by name, the code cell by record, and the four tables after a READ of what
+\ WHAT IS ASKED. Every record is found by the name it carries in the capture's
+\ shipped record table, the row the shadow keys it by: the records and their
+\ spans, the call site's target, the companion's entry against the definer's own
+\ `codeaddr`, the function, code and DATA literals as the capture rewrote them,
+\ the prefix call by name, the code cell, the stripped and retired words'
+\ absence and the carried definer, and the four tables after a READ of what
 \ WRITE wrote, then the same file from a second WRITE. Refusing an artifact of
 \ the version before this one is test/aot-chain-capture-suite.f's old-version
-\ row case.
+\ row case; the capture's refusals of a stripped routine or callee no shipped
+\ record carries are test/x86-64-link-records.f's strip and callee children.
 \
 \ WHAT IS REFUSED. Artifacts this WRITE produced with one table field changed: a
 \ record's routine one byte past the shadow code, a site and a code cell naming
-\ the record one past the window's last, each refused by READ by name; and the
+\ the record one past the last shipped one, each refused by READ by name; and the
 \ unchanged artifact, refused by MERGE into a host written without its shadow. A
 \ refusal ends the process that reads, so a child - this file, handed the paths
 \ - does the reading, and the parent asks for the reader's exit code and its
-\ sentence.
+\ sentence. And the capture itself, in children whose windows make the first
+\ retired word live: one adds a public tier-0 word calling the second, which
+\ reaches the first only through that retired body, and one exports the first
+\ into another public package before retiring it, so a live name shares its
+\ body. No shipped record carries its routine, so each capture refuses it by
+\ name. A third child adds a dead retired word reaching the first through an
+\ ordinary private one, which only that dead word reaches, and its capture
+\ completes. Stripped private words follow the same reach: one only a dead
+\ retired word calls is dead, so that capture completes, and one a public
+\ EXPORT alias shares is live, so that capture refuses it by name.
 \
 \ THE MARKS COME FIRST, then the window, then the artifact writer, in the order
 \ test/aot-artifact-roundtrip.f gives its reasons for.
@@ -33,10 +51,43 @@
 \ root: bin/hb --load test/aot-shadow-capture.f
 \ The reader child: bin/hb --load test/aot-shadow-capture.f -- read <artifact>
 \              or: bin/hb --load test/aot-shadow-capture.f -- merge <host> <artifact>
+\ The capturing child: bin/hb --load test/aot-shadow-capture.f -- retired|alias|bridge|helper|export
 
 package AOTSH
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+;package
+
+require lib/string.f
+
+package AOTSH
+public
+: MODE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
+   false ;
+\ What a capturing child's window adds before GONE retires. Live code reaches
+\ GONE through a live tier-0 word calling GONER - it has no x86-64 routine, so
+\ no shipped routine names either retired word - or through an alias of GONE in
+\ another public package. Only dead code reaches it through VIA, retired too,
+\ calling a private tier-0 word that calls GONE. The last two leave GONE dead
+\ and strip a private word: HELP, which only GONEST calls, retired, and SHARED,
+\ whose body the public alias EXPORT makes shares.
+: MODE$ ( -- ptr u8 n )
+   s" retired" MODE? if s" 0 set-tier : KEEP ( -- n ) GONER 1+ ; 1 set-tier" exit then
+   s" alias" MODE? if
+      s" ;package package AOTSH-ALIAS public EXPORT AOTSH-WINDOW:GONE ;package package AOTSH-WINDOW public"
+      exit
+   then
+   s" bridge" MODE? if
+      s" private 0 set-tier : BRIDGE ( -- n ) GONE 1+ ; public 1 set-tier : VIA ( -- n ) BRIDGE 1+ ; undefine VIA"
+      exit
+   then
+   s" helper" MODE? if
+      s" private : HELP ( -- n ) 7 ; public : GONEST ( -- n ) HELP 1+ ; undefine GONEST"
+      exit
+   then
+   s" export" MODE? if s" private : SHARED ( -- n ) 7 ; public EXPORT SHARED" exit then
+   s" " ;
 ;package
 
 require lib/le.f
@@ -69,12 +120,20 @@ create WCELL 8 allot
 7 WCELL !
 
 1 set-tier
+: PEEK ( -- n ) WCELL @ ;
+private : HIDDEN ( n -- ) . ; public
+: GONE ( -- n ) PEEK 1+ ;
+: GONER ( -- n ) GONE 1+ ;
+AOTSH:MODE$ evaluate
+undefine GONE
+undefine GONER
 : LEAF ( n n -- n ) + ;
 : CALLER ( n -- n ) dup LEAF 1 + ;
 : CONST ( n -- ) create , does> ( -- n ) @ ;
+private : MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
+5 MAKER MADE
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
-: PEEK ( -- n ) WCELL @ ;
 : SHOW ( n -- ) . ;
 0 set-tier
 
@@ -86,7 +145,6 @@ ARM-HOOK
 
 AOT-ARM:WINDOW-CLOSE
 
-require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -113,15 +171,26 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 
 : ART$ ( -- ptr u8 n ) ART ART-U @ ;
 
-\ ---- the window, as the capture numbers it --------------------------------------
-: WIDX ( ptr u8 n -- n ) XREF-FIND-INDEX AOT-ARM:R0 @ - ;
-: W-LEAF ( -- n ) s" AOTSH-WINDOW:LEAF" WIDX ;
-: W-CALLER ( -- n ) s" AOTSH-WINDOW:CALLER" WIDX ;
-: W-CONST ( -- n ) s" AOTSH-WINDOW:CONST" WIDX ;
-: W-QUOT ( -- n ) s" AOTSH-WINDOW:QUOT" WIDX ;
-: W-TICK ( -- n ) s" AOTSH-WINDOW:TICK" WIDX ;
-: W-PEEK ( -- n ) s" AOTSH-WINDOW:PEEK" WIDX ;
-: W-SHOW ( -- n ) s" AOTSH-WINDOW:SHOW" WIDX ;
+\ ---- the records, as the capture ships them -------------------------------------
+\ The row of the capture's compact record table that carries `name`, or -1 when
+\ the capture strips the record: the table holds only the records it ships, and
+\ the shadow keys every routine, site and code cell by that row.
+: CREC ( n -- ptr u8 ) {: k:n :} AOT-REC-BUF@ AOT-REC-MAX 48 * + k AOT-CREC-ROW * + ;
+: SHIPPED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1
+   AOT-REC-N @ 0 ?do
+      AOT-NAMES-BUF@ i CREC 8 + LE:U32@ + {: e:ptr :}
+      e 1+ e c@ a u STR= if drop i leave then
+   loop ;
+: W-PEEK ( -- n ) s" PEEK" SHIPPED ;
+: W-LEAF ( -- n ) s" LEAF" SHIPPED ;
+: W-CALLER ( -- n ) s" CALLER" SHIPPED ;
+: W-CONST ( -- n ) s" CONST" SHIPPED ;
+: W-DOES ( -- n ) s" CONST;does" SHIPPED ;
+: W-MAKER-DOES ( -- n ) s" MAKER;does" SHIPPED ;
+: W-QUOT ( -- n ) s" QUOT" SHIPPED ;
+: W-TICK ( -- n ) s" TICK" SHIPPED ;
+: W-SHOW ( -- n ) s" SHOW" SHIPPED ;
 
 \ ---- the tables ---------------------------------------------------------------
 : REC-AT ( n n -- ptr u8 ) {: r:n f:n :}
@@ -136,7 +205,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : CODE-BYTE@ ( n -- n ) AOT-SHADOW:CODE-BUF@ + c@ ;
 : IMM@ ( n -- n ) AOT-SHADOW:CODE-BUF@ + ADDRESS-CARRIER:MOVABSV ;
 
-\ The record row of window record w, or -1.
+\ The shadow's record row keyed by shipped record w, or -1.
 : ROW-OF ( n -- n ) {: w:n :}
    -1
    AOT-SHADOW:REC-N @ 0 ?do
@@ -146,7 +215,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : AT-OF ( n -- n ) ROW-OF 4 REC@ ;
 : LEN-OF ( n -- n ) ROW-OF 8 REC@ ;
 
-\ The first site of `kind` inside window record w's routine, or -1.
+\ The first site of `kind` inside shipped record w's routine, or -1.
 : SITE-IN ( n n -- n ) {: w:n kind:n :}
    w AT-OF {: at:n :}
    w LEN-OF {: len:n :}
@@ -178,16 +247,36 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-CAPTURE:SHADOW-CAPTURE ;
 
 : RECORDS-CASE ( -- )
-   s" every tier-1 window definition is one shadow record in window order, a does> companion beside its definer" T-LABEL
-   AOT-SHADOW:REC-N @ 8 T=
-   W-LEAF ROW-OF 0 T=
-   W-CALLER ROW-OF 1 T=
-   W-CONST ROW-OF 2 T=
-   W-CONST 1+ ROW-OF 3 T=
-   W-QUOT ROW-OF 4 T=
-   W-TICK ROW-OF 5 T=
-   W-PEEK ROW-OF 6 T=
-   W-SHOW ROW-OF 7 T= ;
+   s" every shipped tier-1 definition is one shadow record in window order, a does> companion beside its definer" T-LABEL
+   AOT-SHADOW:REC-N @ 9 T=
+   W-PEEK ROW-OF 0 T=
+   W-LEAF ROW-OF 1 T=
+   W-CALLER ROW-OF 2 T=
+   W-CONST ROW-OF 3 T=
+   W-DOES ROW-OF 4 T=
+   W-MAKER-DOES ROW-OF 5 T=
+   W-QUOT ROW-OF 6 T=
+   W-TICK ROW-OF 7 T=
+   W-SHOW ROW-OF 8 T= ;
+
+: STRIP-CASE ( -- )
+   s" a dead private word and two dead retired ones between two shadowed records ship no record and no routine, and the record after them ships one row past PEEK, four window records on" T-LABEL
+   s" HIDDEN" SHIPPED -1 T=
+   s" GONE" SHIPPED -1 T=
+   s" GONER" SHIPPED -1 T=
+   W-LEAF W-PEEK 1+ T=
+   s" AOTSH-WINDOW:LEAF" XREF-FIND-INDEX  s" AOTSH-WINDOW:PEEK" XREF-FIND-INDEX 4 +  T= ;
+
+: CARRIED-CASE ( -- )
+   s" a live private definer ships no record, and its shipped does> companion carries its routine from the definer's start" T-LABEL
+   s" MAKER" SHIPPED -1 T=
+   W-MAKER-DOES ROW-OF {: r:n :}
+   r 0 >= TTRUE
+   r 12 REC@ {: entry:n :}
+   entry 0 > TTRUE
+   W-MAKER-DOES AOT-SHADOW:FUN SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 0 SITE@ IMM@ entry T= ;
 
 : SPAN-CASE ( -- )
    s" a leaf's span is one x86-64 routine entered at its start, ending in ret, with no site" T-LABEL
@@ -198,7 +287,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-SHADOW:CODE-LEN @ W-SHOW AT-OF W-SHOW LEN-OF + T= ;
 
 : CALL-CASE ( -- )
-   s" a call to a window word is a rel32 call row naming that word's window record, and its field stays zero" T-LABEL
+   s" a call to a window word is a rel32 call row naming that word's shipped record, and its field stays zero" T-LABEL
    W-CALLER AOT-SHADOW:CALL SITE-IN {: s:n :}
    s 0 >= TTRUE
    s 8 SITE@ W-LEAF REC-TARGET T=
@@ -209,10 +298,11 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : DOES-CASE ( -- )
    s" a does> companion shares its definer's routine and enters at the clause, the offset the definer's own codeaddr holds" T-LABEL
    W-CONST ROW-OF {: r:n :}
-   r 1+ 4 REC@ r 4 REC@ T=
-   r 1+ 8 REC@ r 8 REC@ T=
+   W-DOES ROW-OF {: c:n :}
+   c 4 REC@ r 4 REC@ T=
+   c 8 REC@ r 8 REC@ T=
    r 12 REC@ 0 T=
-   r 1+ 12 REC@ {: entry:n :}
+   c 12 REC@ {: entry:n :}
    entry 0 > TTRUE
    W-CONST AOT-SHADOW:FUN SITE-IN {: s:n :}
    s 0 >= TTRUE
@@ -286,7 +376,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-FILE:SHA$ drop FIRST SHA-BYTES BYTE-COPY
    AOT-SHADOW:RESET
    KEY ART$ AOT-FILE:READ
-   AOT-SHADOW:REC-N @ 8 T=
+   AOT-SHADOW:REC-N @ 9 T=
    4 0 ?do
       i REREAD DIGEST
       REREAD SHA-BYTES DIGESTS i SHA-BYTES * + SHA-BYTES T$=
@@ -323,17 +413,77 @@ variable RC
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
+: SHOW-CHILD ( -- )
+   s" aot-shadow-capture: child rc=" type RC @ . cr
+   s" aot-shadow-capture: child stdout:" type cr OUT OUT-U @ type cr
+   s" aot-shadow-capture: child stderr:" type cr ERR ERR-U @ type cr ;
+
 \ The staged child exits with the reader's refusal code, saying `m` on stderr.
 : REFUSED ( ptr u8 n -- ) {: m:ptr mu:n :}
    RUN-CHILD
    ERR ERR-U @ m mu CONTAINS? {: said:bool :}
-   RC @ REFUSE-RC <> said 0= or if
-      s" aot-shadow-capture: child rc=" type RC @ . cr
-      s" aot-shadow-capture: child stdout:" type cr OUT OUT-U @ type cr
-      s" aot-shadow-capture: child stderr:" type cr ERR ERR-U @ type cr
-   then
+   RC @ REFUSE-RC <> said 0= or if SHOW-CHILD then
    RC @ REFUSE-RC T=
    said TTRUE ;
+
+\ ---- the capture's own refusal ------------------------------------------------
+\ The capture refuses with this exit code, naming what it refuses on stdout.
+74 constant CAPTURE-RC
+
+\ The capturing child in `mode` refuses a live routine, saying `w`.
+: LIVE-REFUSED ( ptr u8 n ptr u8 n -- ) {: w:ptr wu:n :}
+   CHILD-ARGS
+   RUN-CHILD
+   OUT OUT-U @ w wu CONTAINS?
+   ERR ERR-U @ s" aot-capture: a live shadow routine no shipped record carries" CONTAINS?
+   and {: said:bool :}
+   RC @ CAPTURE-RC <> said 0= or if SHOW-CHILD then
+   RC @ CAPTURE-RC T=
+   said TTRUE ;
+
+\ The capturing child in `mode` completes its capture.
+: CAPTURED ( ptr u8 n -- )
+   CHILD-ARGS
+   RUN-CHILD
+   OUT OUT-U @ s" aot-shadow-capture: captured" CONTAINS? {: said:bool :}
+   RC @ 0<> said 0= or if SHOW-CHILD then
+   RC @ 0 T=
+   said TTRUE ;
+
+\ In the retired child KEEP, a public tier-0 word, calls GONER, which calls GONE:
+\ both retired, so the capture ships neither, and no shipped routine names either.
+\ Live code reaches GONE only through GONER, a retired body reached itself, and
+\ GONE's map row comes first, so the refusal names GONE.
+: LIVE-RETIRED-CASE ( -- )
+   s" a retired word live code reaches through another retired word, with no shipped routine naming it, is refused by name at capture" T-LABEL
+   s" retired" s" the shadow routine of GONE is live" LIVE-REFUSED ;
+
+\ In the alias child AOTSH-ALIAS:GONE, a public name no map row files, enters
+\ GONE's body; nothing calls either. A shipped name is live, and the body it
+\ shares is GONE's, so GONE's routine is live and no shipped row carries it.
+: ALIAS-CASE ( -- )
+   s" a retired word whose body a live alias in another package shares is refused by name at capture" T-LABEL
+   s" alias" s" the shadow routine of GONE is live" LIVE-REFUSED ;
+
+\ In the bridge child VIA, retired, calls BRIDGE, an ordinary private word, which
+\ calls GONE. Nothing live reaches VIA, so nothing live reaches BRIDGE or GONE.
+: BRIDGE-CASE ( -- )
+   s" a retired word reached only through an ordinary word that only dead retired code reaches is dead, and the capture completes" T-LABEL
+   s" bridge" CAPTURED ;
+
+\ In the helper child GONEST, retired, calls HELP, a private word the capture
+\ strips. ARM64 keeps GONEST's body as a gap and HELP's code with it, but
+\ nothing live reaches GONEST, so nothing live reaches HELP.
+: HELPER-CASE ( -- )
+   s" a stripped private word only dead retired code calls is dead, and the capture completes" T-LABEL
+   s" helper" CAPTURED ;
+
+\ In the export child the public alias SHARED shares the body of the private
+\ SHARED the capture strips. A shipped name is live, so the stripped routine is
+\ live, and no shipped row carries it: the alias would ship with no routine.
+: EXPORT-CASE ( -- )
+   s" a stripped private word whose body a public EXPORT alias shares is refused by name at capture" T-LABEL
+   s" export" s" the shadow routine of SHARED is live" LIVE-REFUSED ;
 
 \ ---- forged artifacts -----------------------------------------------------------
 \ One field of the live tables changed for one WRITE and changed back: the file is
@@ -357,14 +507,14 @@ variable RC
    r 8 REC-AT  AOT-SHADOW:CODE-LEN @ r 4 REC@ - 1+  s" span.aot" FORGE
    s" aot-file: a shadow record's routine lies outside the shadow code" READ-REFUSED ;
 
-\ AOT-REC-N is the window's record count, as the READ above restored it.
+\ AOT-REC-N is the count of shipped records, as the READ above restored it.
 : SITE-FORGED-CASE ( -- )
-   s" READ refuses a shadow call naming window record N of a window of N records" T-LABEL
+   s" READ refuses a shadow call naming shipped record N of N shipped records" T-LABEL
    W-CALLER AOT-SHADOW:CALL SITE-IN 8 SITE-AT  AOT-REC-N @ REC-TARGET  s" site.aot" FORGE
    s" aot-file: a shadow site names neither a window record nor a pool entry" READ-REFUSED ;
 
 : CELL-FORGED-CASE ( -- )
-   s" READ refuses a shadow code cell keyed by window record N of a window of N records" T-LABEL
+   s" READ refuses a shadow code cell keyed by shipped record N of N shipped records" T-LABEL
    0 4 XT-AT  AOT-REC-N @  s" cell.aot" FORGE
    s" aot-file: a shadow code cell names no window record" READ-REFUSED ;
 
@@ -390,7 +540,7 @@ variable RC
       KEY 2 SCRIPT-ARGV$ AOT-FILE:MERGE
       s" aot-shadow-capture: merge=ok" type cr exit
    then
-   s" aot-shadow-capture: expected no arguments, read <artifact>, or merge <host> <artifact>"
+   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, read <artifact>, or merge <host> <artifact>"
    USAGE-RC die ;
 
 \ What the capture carried, for a reader comparing runs.
@@ -403,11 +553,21 @@ variable RC
 public
 
 : RUN ( -- )
+   MODE$ nip 0<> if
+      CAPTURE NSHADOW:CLOSE  s" aot-shadow-capture: captured" type cr exit
+   then
    SCRIPT-ARGC 0 > if NSHADOW:CLOSE CHILD exit then
    CAPTURE
    NSHADOW:CLOSE
    T-RESET
    RECORDS-CASE
+   STRIP-CASE
+   LIVE-RETIRED-CASE
+   ALIAS-CASE
+   BRIDGE-CASE
+   HELPER-CASE
+   EXPORT-CASE
+   CARRIED-CASE
    SPAN-CASE
    CALL-CASE
    DOES-CASE

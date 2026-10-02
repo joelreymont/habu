@@ -28,13 +28,24 @@ require lib/num-types.f
 require lib/span.f
 require lib/net/http.f
 
+\ Force the real startup semaphore initializer to refuse after the job queue
+\ has opened. These helpers exist only in this test image.
+package HTTP
+public
+: TEST-PREOPEN ( -- )
+   0 START-READY TASK:SEMAPHORE-INIT ;
+
+: TEST-UNINJECT ( -- )
+   START-READY TASK:SEMAPHORE-DESTROY ;
+;package
+
 package HTTP-TEST
 
 private
 
 $7F000001 constant LOOPBACK
 1 constant ONE-WORKER             \ the transcript's server: one request order
-2 constant TWO-WORKERS            \ a server that loses one worker and serves on
+2 constant TWO-WORKERS
 $1F4 constant IDLE-MS             \ short, so a keep-alive case ends the test
 $4000 constant RES-CAP
 $3000 constant REQ-CAP
@@ -47,8 +58,9 @@ $2000 constant SCRIPT-CAP         \ the whole transcript
 $2F constant SLASH
 $2E constant DOT-BYTE
 -9990 constant E-BOOM             \ this file's own fixture refusals, outside every lib block
--9991 constant E-HOOK             \ the start hook that is meant to end its worker
+-9991 constant E-HOOK             \ one controlled start hook failure
 -9992 constant E-RENDER           \ the error hook that is meant to fail its answer
+-9993 constant E-HOOK-OTHER
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -72,7 +84,15 @@ variable ETAG-U
 variable SCRIPT-U
 variable WANT-U
 variable BOOM-HITS
-variable THROWN                   \ workers the throwing start hook has ended
+variable THROWN                   \ entries into the controlled start hook
+variable HOOK-FINISHED
+variable HOOK-MODE                \ 0: pass, 1: one fails, 2: both fail, 3: gated
+variable START-DONE
+variable START-OBSERVED
+variable FAILED-PORT
+TASK:SEMAPHORE HOOK-READY
+TASK:SEMAPHORE HOOK-GATE
+TASK:MIN-STACK TASK:TASK HOOK-RELEASER
 variable PARKED                   \ set by the handler that never answers
 
 
@@ -379,11 +399,16 @@ SLOTS TYPED-BUFFER TRACE-U n
 : EXIT-2 ( -- )    MARK-EXIT-2 MARK ;
 
 
-\ Ends the first worker that runs it and no other: the fetch-and-add hands one
-\ worker the zero, exactly as a worker takes its own slot.
+\ The active fixture changes between servers, while registration remains fixed.
 : START-THROWS ( -- )
    MARK-THROWER MARK
-   1 THROWN atomic-add 0= if E-HOOK throw then ;
+   1 THROWN atomic-add {: at:n :}
+   HOOK-MODE @ case
+      1 of at 0= if E-HOOK throw then endof
+      2 of at 0= if E-HOOK throw else E-HOOK-OTHER throw then endof
+      3 of HOOK-READY TASK:SIGNAL HOOK-GATE TASK:WAIT
+           1 HOOK-FINISHED atomic-add drop endof
+   endcase ;
 
 
 \ Never answers: the worker that takes this request is still inside the handler
@@ -1243,8 +1268,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 \ STOP-MARGIN-MS, well under the ceiling here - and then kills it, which is what
 \ KILLED-TASKS counts. The listener and the other worker end themselves, so
 \ ENDED-TASKS is one short of the total. Its own server, started after the
-\ first ones have been stopped and before the throwing start hook every later
-\ server inherits.
+\ first ones have been stopped and before the controlled start hook is added.
 : PARKED-WORKER-CASE ( -- )
    0 PARKED !
    ROOT$ HTTP:STATIC-ROOT
@@ -1263,31 +1287,123 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    held TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-\ A start hook that throws ends its own worker and nothing else: the pool serves
-\ on the worker that is left, the worker it ended still ran the exit hooks -
-\ that is what TASK:AT-EXIT is for - and STOP still gives everything back. The
-\ hooks of the servers before this one are still registered, which is why the
-\ trace begins with their marks.
+\ Every activated worker runs its exit hooks before the failed START throws.
+: FAILED-TRACE ( -- )
+   TWO-WORKERS 0 ?do
+      i TRACE$ s" abt" STARTS-WITH? TTRUE
+      i TRACE$ s" yx" ENDS-WITH? TTRUE
+      i MARK-REQUEST MARK-COUNT 0 T=
+      i MARK-EXIT-1 MARK-COUNT 1 T=
+      i MARK-EXIT-2 MARK-COUNT 1 T=
+   loop ;
+
+
+: START-TWO ( -- )
+   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START ;
+
+
+: START-SAME-PORT ( -- )
+   LOOPBACK FAILED-PORT @ TWO-WORKERS IDLE-MS HTTP:START ;
+
+
+\ Setup can fail after the queue opens. The failed start must release it and
+\ its static tree, leaving the same port usable without a half-open pool.
+: SETUP-REFUSAL-CASE ( -- )
+   ROOT$ HTTP:STATIC-ROOT
+   HTTP:TEST-PREOPEN
+   [: START-TWO ;] E-TASK-SEM-STATE TTHROWSQ
+   HTTP:RUNNING? TFALSE
+   HTTP:STATIC-COUNT 0 T=
+   HTTP:PORT FAILED-PORT !
+   HTTP:TEST-UNINJECT
+   ROOT$ HTTP:STATIC-ROOT
+   START-SAME-PORT
+   HTTP:RUNNING? TTRUE
+   s" GET" s" /api/ping" FETCH 200 T=
+   HTTP:STOP
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
+   HTTP:KILLED-TASKS 0 T= ;
+
+
+\ One hook fails while its peer succeeds. The returned code and both complete
+\ traces prove the caller observes the whole startup outcome before catch ends.
 : THROWING-HOOK-CASE ( -- )
    TRACE-RESET
    0 THROWN !
+   1 HOOK-MODE !
    [: START-THROWS ;] HTTP:ON-WORKER-START
    ROOT$ HTTP:STATIC-ROOT
-   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   [: START-TWO ;] E-HOOK TTHROWSQ
+   HTTP:RUNNING? TFALSE
+   THROWN @ TWO-WORKERS T=
+   HTTP:ENDED-TASKS 1 T=
+   FAILED-TRACE
+   HTTP:PORT FAILED-PORT !
+   TRACE-RESET
+   0 THROWN !
+   2 HOOK-MODE !
+   ROOT$ HTTP:STATIC-ROOT
+   [: START-SAME-PORT ;] catch {: code:n :}
+   code E-HOOK = code E-HOOK-OTHER = or TTRUE
+   HTTP:RUNNING? TFALSE
+   THROWN @ TWO-WORKERS T=
+   FAILED-TRACE
+   TRACE-RESET
+   0 THROWN !
+   0 HOOK-MODE !
+   ROOT$ HTTP:STATIC-ROOT
+   START-SAME-PORT
+   HTTP:RUNNING? TTRUE
    s" GET" s" /api/trace" FETCH 200 T=
    RES$ S\" {\qtrace\q:\qabtr\q}" T$=
    HTTP:STOP
    HTTP:RUNNING? TFALSE
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
+   HTTP:KILLED-TASKS 0 T= ;
+
+
+: RELEASE-HOOKS ( -- )
+   HOOK-READY TASK:WAIT
+   HOOK-READY TASK:WAIT
+   50 >MS TASK:SLEEP
+   START-DONE atomic@ START-OBSERVED !
+   HOOK-GATE TASK:SIGNAL
+   HOOK-GATE TASK:SIGNAL ;
+
+
+: DROP-RELEASER-RESULT ( result<n,n> -- )
+   MATCH result
+      ok OF drop E-BOOM throw ENDOF
+      err OF E-TASK-NO-RESULT <> if E-BOOM throw then ENDOF
+   ;MATCH ;
+
+
+\ The starter cannot return while either worker is held in its start hook.
+: GATED-HOOK-CASE ( -- )
+   TRACE-RESET
+   0 THROWN !
+   0 HOOK-FINISHED !
+   3 HOOK-MODE !
+   0 START-DONE atomic!
+   1 START-OBSERVED !
+   0 HOOK-READY TASK:SEMAPHORE-INIT
+   0 HOOK-GATE TASK:SEMAPHORE-INIT
+   ROOT$ HTTP:STATIC-ROOT
+   [: RELEASE-HOOKS ;] HOOK-RELEASER TASK:ACTIVATE
+   START-TWO
+   1 START-DONE atomic!
+   HOOK-RELEASER TASK:JOIN DROP-RELEASER-RESULT
+   START-OBSERVED @ 0 T=
+   HTTP:RUNNING? TTRUE
    THROWN @ TWO-WORKERS T=
-   HTTP:ENDED-TASKS HTTP:TASK-TOTAL 1- T=
+   HOOK-FINISHED @ TWO-WORKERS T=
+   s" GET" s" /api/trace" FETCH 200 T=
+   HTTP:STOP
+   HTTP:RUNNING? TFALSE
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
-   0
-   TWO-WORKERS 0 ?do
-      i TRACE$ s" abt" STARTS-WITH? TTRUE
-      i TRACE$ s" yx" ENDS-WITH? TTRUE
-      i MARK-REQUEST MARK-COUNT +
-   loop
-   1 T= ;
+   HOOK-READY TASK:SEMAPHORE-DESTROY
+   HOOK-GATE TASK:SEMAPHORE-DESTROY ;
 
 
 : ERROR-HOOK-SERVER ( -- )
@@ -1310,9 +1426,8 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 \ its client the rendered answer and nothing more: each is answered with the
 \ plain-text fallback and the status it was owed, the one worker serves the
 \ next request, every task ends itself, and stderr names each failure under the
-\ id its client was given. The last server, because an installed hook stays for
-\ every server after it; the start hook that throws has thrown its once, and the
-\ trace rows the inherited hooks mark are emptied first.
+\ id its client was given. The trace rows the inherited hooks mark are emptied
+\ first.
 : ERROR-HOOK-CASE ( -- )
    TRACE-RESET
    [: RENDER-THROWS ;] HTTP:ON-ERROR
@@ -1397,8 +1512,10 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    POLICY-CASES
    TRANSCRIPT-CASE
    PARKED-WORKER-CASE
-   THROWING-HOOK-CASE
    ERROR-HOOK-CASE
+   SETUP-REFUSAL-CASE
+   THROWING-HOOK-CASE
+   GATED-HOOK-CASE
    ROOT$ REMOVE-TREE
    AIO-STOP ;
 

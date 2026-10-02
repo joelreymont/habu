@@ -14,6 +14,7 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
 variable RDIAG-ON
+variable RDIAG-FD   2 RDIAG-FD !
 PTR-VARIABLE RDIAG-A
 variable RDIAG-CAP
 variable RDIAG-U
@@ -27,10 +28,12 @@ variable RDIAG-I
    ELSE c ECH c! ECH 1 type THEN ;
 
 : JHEX ( n -- ) {: d:n :}
-   d 10 < IF d 48 + ELSE d 87 + THEN EMIT-RAW ;
+   d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
 
 \ JCHAR writes one byte as the inside of a JSON string: `"`, `\` and every byte
-\ below 32 escaped, as a JSON reader requires.
+\ below 32 escaped, as RFC 8259 section 7 requires. LF, CR and TAB take their
+\ short escapes and every other one \u00XX in upper-case hex, the form
+\ tools/lint/json-writer.f writes.
 : JCHAR {: c :}
    c case
       10 of 92 EMIT-RAW 110 EMIT-RAW endof
@@ -64,6 +67,10 @@ variable RJSON   0 RJSON !
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
+\ Write each unbuffered diagnostic to FD as it is rendered, 2 until set.
+: DIAG-FD! ( n -- )
+   RDIAG-FD ! ;
+
 \ The diagnostic buffer pointer lives in a declared pointer cell (dot
 \ habu-refuse-a-ptr-5ad2734e), so a plain fetch keeps the checked ptr u8 view
 \ the byte store below needs.
@@ -81,7 +88,7 @@ variable RJSON   0 RJSON !
 
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
-   RDIAG-ON @ 0= IF 2 a u write drop EXIT THEN
+   RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
    RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
@@ -1254,19 +1261,21 @@ REC-SIG-INSTALL
 \ no row here to read.
 \
 \ CELLS on both sides, because cells are what the compiler reads a definition's
-\ contract in and what this rule compares. The package and the tail are the
-\ checker's folded spellings, as the shadow diagnostic above renders a package:
-\ every name reaches the record intake already folded, so no raw token survives
-\ this far, and a word is found by a case-insensitive search anyway.
+\ contract in and what this rule compares. The package and the tail are read
+\ from the private twin's symbol, which carries the refused public's own: the
+\ same package and the same tail, in the checker's folded spellings, as the
+\ shadow diagnostic above renders a package. Every name reaches the record
+\ intake already folded, so no raw token survives this far, and a word is found
+\ by a case-insensitive search anyway.
 : SBA-CELLS-TXT ( n n -- )                \ append " (in -- out)"
    {: in:n out:n :}
    s"  (" DTXT  in RNUM  s"  -- " DTXT  out RNUM  41 EMIT1 ;
 : SBARITY-PROSE ( -- )
    s" E-SHADOWED-ARITY habu: public '" DTXT
-   SBA-OWN @ SYM-PKG$ DTXT  58 EMIT1  SBA-OWN @ SYM-NAME$ DTXT  39 EMIT1
+   SBA-TWIN @ SYM-PKG$ DTXT  58 EMIT1  SBA-TWIN @ SYM-NAME$ DTXT  39 EMIT1
    SBA-NIN @ SBA-NOUT @ SBA-CELLS-TXT
    s"  does not bind its own name: the same package's private '" DTXT
-   SBA-OWN @ SYM-NAME$ DTXT  39 EMIT1
+   SBA-TWIN @ SYM-NAME$ DTXT  39 EMIT1
    SBA-PIN @ SBA-POUT @ SBA-CELLS-TXT
    s"  owns that bare tail, a definition's contract is read from the binding its" DTXT
    s"  own name has, and the two do not move the same cells - so the public word" DTXT
@@ -1279,8 +1288,8 @@ REC-SIG-INSTALL
    s" code" JKEY s" E-SHADOWED-ARITY" JSTR 44 EMIT1
    s" repair_class" JKEY s" match_shadowed_private_effect" JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
-   s" token" JKEY SBA-OWN @ SYM-NAME$ JSTR 44 EMIT1
-   s" package" JKEY SBA-OWN @ SYM-PKG$ JSTR 44 EMIT1
+   s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
+   s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
    s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
    125 EMIT1 ;
 : SBARITY-DIAG ( -- )
@@ -1292,7 +1301,8 @@ REC-SIG-INSTALL
 \ Both shadow diagnostics ride ONE checker hook, selected by its argument
 \ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
 \ arity-shadow definition site), because every defer written before `: TRUST`
-\ takes a slot of the engine's pre-trust pending table.
+\ takes a slot of the engine's pre-trust pending table (src/habu/layout.f
+\ PD-CAP).
 : SHADOW-DIAG ( n -- )
    1 = IF SBARITY-DIAG ELSE USHADOW-DIAG THEN ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
@@ -1303,10 +1313,12 @@ SHADOW-DIAG-INSTALL
 \ this is the refusal that stops a stale row from becoming that one.
 : TSTALE-PROSE ( -- )
    s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
-   s" ' names no word: nothing in the open package or the global wordlist" DTXT
-   s"  is spelled that way, so the effect would be recorded against a symbol" DTXT
-   s"  no call can ever reach. Delete the row, or correct the name to the word" DTXT
-   s"  it was meant to describe" DTXT ;
+   s" ' names no word where its record lands: nothing in the open" DTXT
+   s"  section's wordlist, or the global wordlist outside a package, is" DTXT
+   s"  spelled that way, so the effect would be recorded against a symbol" DTXT
+   s"  the engine never defined. Delete the row, correct the name to the" DTXT
+   s"  word it was meant to describe, or write it in the section that" DTXT
+   s"  defines that word" DTXT ;
 : TSTALE-JSON ( -- )
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
@@ -1315,7 +1327,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   s" suggestion" JKEY s" This trust row names a word the engine cannot resolve here. Delete the row if the word is gone, or correct the spelling; a qualified PKG:TAIL name is not checked yet." JSTR
+   s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet." JSTR
    125 EMIT1 ;
 : TSTALE-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
@@ -1323,8 +1335,40 @@ SHADOW-DIAG-INSTALL
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
-: TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
-TSTALE-DIAG-INSTALL
+
+\ --- a checker storage registrar called outside the verifier window (checker.f
+\ CHECKER-REPLAY-NAME-OK?), on the same template: it names the word the
+\ registrar would have recorded and the definer that makes that word soundly.
+: REPLAY-ONLY-PROSE ( -- )
+   s" E-PKG-CONTEXT habu: storage record for '" DTXT  RPL-TOK-A @ RPL-TOK-U @ DTXT
+   s" ' refused outside the engine's verifier window: a checker storage" DTXT
+   s"  registrar records a definer's accessor only while the source pre-pass" DTXT
+   s"  replays the definer that defines the word, so from source the record" DTXT
+   s"  would certify callers against an effect the engine never binds to that" DTXT
+   s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," DTXT
+   s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" DTXT ;
+: REPLAY-ONLY-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-PKG-CONTEXT" JSTR 44 EMIT1
+   s" repair_class" JKEY s" use_storage_definer" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY RPL-TOK-A @ RPL-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JSTR
+   125 EMIT1 ;
+: REPLAY-ONLY-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+\ Both refused-record diagnostics ride ONE checker hook (checker.f
+\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record).
+: RECORD-DIAG ( n -- )
+   1 = IF REPLAY-ONLY-DIAG ELSE TSTALE-DIAG THEN ;
+: RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
+RECORD-DIAG-INSTALL
 
 \ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
 \ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
@@ -1337,7 +1381,8 @@ TSTALE-DIAG-INSTALL
 : STGR-NAME-WHY? ( -- f )
    STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or ;
 : STGR-COUNT-WHY? ( -- f )
-   STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or ;
+   STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or
+   STGR-WHY @ STG-COUNT-WORD = or ;
 : STGR-REASON$ ( -- ptr u8 n )
    STGR-WHY @ STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
    STGR-WHY @ STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
@@ -1346,6 +1391,7 @@ TSTALE-DIAG-INSTALL
    STGR-WHY @ STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
    STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    s" no count for" ;
 : STGR-CLASS$ ( -- ptr u8 n )
    STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
