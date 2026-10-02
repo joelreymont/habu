@@ -328,7 +328,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 64-byte tier-1 name |
+| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:` |
 | Constants | hex versus decimal, `src/config.fs` |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |

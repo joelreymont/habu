@@ -969,13 +969,8 @@ by name with the count it saw and the ceiling, and none truncates.
   8000 bytes: <name> needs <count>`, rc 71, catchable inside `evaluate`. Repair:
   move the long literals into words of their own. The same constant bounds the
   source verifier's body buffer (`E-VS-BODY-CAP`) and the native compiler's unit
-  text (`E-NCOMP-TEXT`).
-- **A definition name at tier 1: 64 bytes** (`src/compiler/native/compiler.f`
-  `NAME-CAP`). Tier 0 and the dictionary take any name the body capture holds;
-  the native compiler names a definition's functions in 128-byte buffers, a
-  quotation's with a suffix. Past it: `ncomp: cannot compile <name>: a
-  <length>-byte name; the limit is 64 bytes`, `E-NCOMP-NAME-CAP`, catchable
-  inside `evaluate`. Repair: shorten the name.
+  text (`E-NCOMP-TEXT`), and it is the only bound on a definition's name, on
+  both tiers.
 - **One REPL line: 255 bytes** (`src/habu/repl.f` `LLINE-MAX`). A longer line is
   refused, `hb: repl line over 255 bytes: <length> typed`, and read again, never
   truncated, evaluated or saved to history. Load long definitions from a file.

@@ -71,10 +71,6 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ A name is copied out of the old module's interner and interned into the new
-\ one, because the two modules number their symbols separately.
-128 constant NAME-CAP
-
 \ Addends is this pass's own: how many loop-invariant values one turn may add.
 32 constant INV-MAX
 
@@ -99,7 +95,6 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
-create NAMEBUF NAME-CAP allot
 
 \ ---- the plan one recognised loop is ----------------------------------------
 \ Every row is written by the scan and read by the rewrite; by the time one
@@ -1227,11 +1222,12 @@ variable W-K?
    1 N-FOLDED +! ;
 
 \ ---- the function ------------------------------------------------------------
+\ The two modules number their symbols separately, so the name is carried from
+\ the old module's interner into the new one.
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
-   IR-SYM:FCOPY {: u:n :}
-   CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
+   IR-BUILD:CARRY-SYMBOL ;
 
 \ The routine's signature, restated in the new module: one cell per input and one
 \ per output, exactly as the old module has them.

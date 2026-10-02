@@ -727,6 +727,20 @@ public
    hit 0 < if key 0 IR-ID:PACK-SYMBOL false exit then
    key hit IR-ID:PACK-SYMBOL true ;
 
+\ ---- carrying a symbol between modules ----------------------------------------
+\ A pass that rebuilds a frozen module names what it builds with the old
+\ module's symbols, and the two modules number their symbols separately, so the
+\ new one interns the same bytes. They cross through a span of the context's
+\ scratch sized to the symbol, which goes back when the context leaves, so no
+\ caller buffer bounds how long a name can be; the intern is INTERN's own.
+: CARRY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key
+      pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id :}
+   rv id FLEN@ {: u:n :}
+   c u 1 max IR-CTX:SCRATCH-TAKE drop {: q:ptr :}
+   pv rv id q u FCOPY drop
+   c a r key q u INTERN ;
+
 private
 get-current prot-wid-add
 

@@ -62,7 +62,9 @@ package TIER-TEST
 
 private
 
-$1000 constant CAP
+\ A child's whole output. A long-name case that fails prints its name, up to
+\ 7900 bytes, and the capture has to hold it for the case to report.
+$4000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
 75 constant NEST-RC                \ jit.f EMIT-SNAP-NEST-CHECK: BEGIN past the bound
@@ -260,40 +262,179 @@ variable RC     variable EXITED
    s" 0 int-mark" RUN  REJECT-RC ASSERT-RC
    ERR$ s" internal engine word" CONTAINS? TTRUE ;
 
-\ ---- 2c. tier 1 refuses a long name by its whole spelling --------------------
+\ ---- 2c. a long name compiles on both tiers -----------------------------------
 \ Tier 0 and the dictionary hold any name the definition's 8000-byte capture
-\ holds; tier 1 refuses a name over 64 bytes (src/compiler/native/compiler.f
-\ NAME-CAP) and names it whole, with its length. A line read from a 64-byte copy
-\ of a longer name prints the previous definition's name, zeros and the bytes
-\ past the copy, and a TRUSTED: definition's signature retract dies finding no
-\ such name. Each line is compared whole up to its newline, so one byte past
-\ the name fails it.
-: TEST-NAME-CAP ( -- )
-   s" tier 0 compiles a name longer than tier 1's limit" T-LABEL
-   s" : TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ; TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 . cr"
-   RUN  s" 65" ASSERT-OK
+\ holds, and tier 1 compiles each of them. Every program is generated around
+\ one name and prints the same answer on both tiers. The lengths are 65, one
+\ past the 64 bytes tier 1 once refused; 1000, past every 128-byte buffer a
+\ function name was once copied through; and 7900, the capture less the rest of
+\ the body. The forms reach each place a tier-1 compile spells the name: a body
+\ with inputs, outputs and a quotation, whose function is named after the
+\ definition; a does> definer with a quotation on each side, whose clause is its
+\ `;does` companion; a TRUSTED: body; a caller; a caller of a word that never
+\ returns, whose trap behind the call is named after the callee; a pending
+\ definition whose body calls the prior word of its name; and an ENUM variant or
+\ family, whose constructors the declaration generates as definitions holding
+\ the name in their own name and body, as a MATCH over the family and a local
+\ of its type hold it. The last three hold the name more than once and so run
+\ at 1000. A long family's constructors take the digest spelling
+\ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
+\ program compiles them, its MATCH and its local, and stops. A refused long name
+\ is reported whole up to its newline, and a refused TRUSTED: one still finds
+\ its signature to retract, which leaves the refusal's own code uncaught.
+$4000 constant LN-CAP
+create LN-BUF LN-CAP allot
+variable LN-U
+variable LN-LEN
 
-   s" tier 1 compiles a name at its limit" T-LABEL
-   s" 1 set-tier : TN-NAME-AT-THE-LIMIT-0123456789-0123456789-0123456789-0123456789 ( -- n ) 64 ; TN-NAME-AT-THE-LIMIT-0123456789-0123456789-0123456789-0123456789 . cr"
-   RUN  s" 64" ASSERT-OK
+: LN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   LN-U @ u + LN-CAP > if E-STR-CAPACITY throw then
+   a LN-BUF LN-U @ + u BYTE-COPY
+   u LN-U +! ;
 
-   s" tier 1 refuses a longer name by its whole spelling and length" T-LABEL
-   s" 1 set-tier : TN-SHORT ( -- n ) 3 ; : TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ;"
-   RUN  UNCAUGHT-RC ASSERT-RC
-   ERR$ S\" ncomp: cannot compile TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678: a 65-byte name; the limit is 64 bytes\n"
-   CONTAINS? TTRUE
-   ERR$ E-NCOMP-NAME-CAP UNCAUGHT$ CONTAINS? TTRUE
+\ The name: a two-byte stem, then `x` up to its length. A word's stem is `LN`;
+\ an ENUM family or variant is a lowercase tail, `ln`.
+: STEM+ ( ptr u8 n -- )
+   LN+  LN-LEN @ 2 - 0 ?do s" x" LN+ loop ;
 
-   s" tier 1 refuses a longer TRUSTED: name the same way" T-LABEL
-   s" 1 set-tier : TN-SHORT ( -- n ) 3 ; TRUSTED: TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678 ( -- n ) 65 ;"
-   RUN  UNCAUGHT-RC ASSERT-RC
-   ERR$ S\" ncomp: cannot compile TN-NAME-PAST-THE-LIMIT-0123456789-0123456789-0123456789-012345678: a 65-byte name; the limit is 64 bytes\n"
-   CONTAINS? TTRUE
-   ERR$ E-NCOMP-NAME-CAP UNCAUGHT$ CONTAINS? TTRUE
+: NAME+ ( -- ) s" LN" STEM+ ;
+: TAIL+ ( -- ) s" ln" STEM+ ;
 
-   \ The elaborator names the token it refused at. A later definition refused
-   \ before elaboration has no such token, and its line must not carry the
-   \ earlier one's.
+: LN-OPEN ( n -- ) {: len:n :}
+   len LN-LEN !
+   0 LN-U ! ;
+
+\ A program opens by selecting its tier.
+: TIER-OPEN ( n n -- ) {: tier:n len:n :}
+   len LN-OPEN
+   tier 1 = if s" 1 set-tier " LN+ exit then
+   s" 0 set-tier " LN+ ;
+
+: LN$ ( -- ptr u8 n ) LN-BUF LN-U @ ;
+
+: QUOT$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" : " LN+ NAME+ s"  ( n -- n ) [: 1 + ;] execute 2 * ; 20 " LN+ NAME+
+   s"  . cr" LN+ LN$ ;
+
+: DOES$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" : " LN+ NAME+ s"  ( n -- n ) dup create , [: 1 + ;] execute does> ( -- n )" LN+
+   s"  [: @ 3 + ;] execute ; 5 " LN+ NAME+ s"  LN-CHILD . LN-CHILD . cr" LN+ LN$ ;
+
+: TRUST$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" TRUSTED: " LN+ NAME+ s"  ( -- n ) 7 ; " LN+ NAME+ s"  . cr" LN+ LN$ ;
+
+: CALL$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" : " LN+ NAME+ s"  ( n -- n ) 1 + ; : LN-CALLER ( -- n ) 4 " LN+ NAME+
+   s"  1 + ; LN-CALLER . cr" LN+ LN$ ;
+
+\ The callee dies, so a tier-1 caller closes its branch behind the call with a
+\ trap whose message names the callee. The branch runs only on 0.
+: NORET$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" : " LN+ NAME+ S\"  ( -- ) s\q died\q 3 die ; : LN-CALLER ( n -- n ) dup 0= if " LN+
+   NAME+ s"  then 1 + ; 5 LN-CALLER . cr" LN+ LN$ ;
+
+\ The pending definition is a package member, so it shadows no global.
+: PRIOR$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" package LN-PRIOR public : " LN+ NAME+ s"  ( n -- n ) 1 + ; ;package " LN+
+   s" package LN-USER using LN-PRIOR : " LN+ NAME+ s"  ( n -- n ) " LN+ NAME+
+   s"  10 * ; ;using public : LN-RUN ( n -- n ) " LN+ NAME+
+   s"  ; ;package 4 LN-USER:LN-RUN . cr" LN+ LN$ ;
+
+: VARIANT$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" ENUM lnfam " LN+ TAIL+ s"  green ;ENUM : LN-E ( lnfam -- n ) MATCH lnfam " LN+
+   TAIL+ s"  OF 10 ENDOF green OF 20 ENDOF ;MATCH ; LNFAM:" LN+ TAIL+
+   s"  LN-E . cr" LN+ LN$ ;
+
+: FAMILY$ ( n n -- ptr u8 n )
+   TIER-OPEN
+   s" ENUM " LN+ TAIL+ s"  red green ;ENUM : LN-E ( " LN+ TAIL+ s"  -- n ) MATCH " LN+
+   TAIL+ s"  red OF 10 ENDOF green OF 20 ENDOF ;MATCH ; : LN-L ( " LN+ TAIL+
+   s"  -- n ) {: v:" LN+ TAIL+ s"  :} 7 ; 30 . cr" LN+ LN$ ;
+
+: UNEVEN$ ( n -- ptr u8 n )
+   1 swap TIER-OPEN
+   s" : TN-SHORT ( -- n ) 3 ; : " LN+ NAME+ s"  ( -- n ) ;" LN+ LN$ ;
+
+: TRUSTED-MISSING$ ( n -- ptr u8 n )
+   1 swap TIER-OPEN
+   s" : TN-SHORT ( -- n ) 3 ; TRUSTED: " LN+ NAME+ s"  ( -- n ) LN-MISSING ;" LN+
+   LN$ ;
+
+\ The line a refusal of the name prints, from the name to the newline.
+: REFUSED-LINE$ ( ptr u8 n n -- ptr u8 n ) {: tail:ptr tu:n len:n :}
+   len LN-OPEN
+   s" ncomp: cannot compile " LN+ NAME+ tail tu LN+ S\" \n" LN+ LN$ ;
+
+: TEST-LONG-NAMES ( -- )
+   s" a 65-byte name with a quotation runs on tier 0" T-LABEL
+   0 65 QUOT$ RUN  s" 42" ASSERT-OK
+   s" a 65-byte name with a quotation runs on tier 1" T-LABEL
+   1 65 QUOT$ RUN  s" 42" ASSERT-OK
+   s" a 1000-byte name with a quotation runs on tier 0" T-LABEL
+   0 1000 QUOT$ RUN  s" 42" ASSERT-OK
+   s" a 1000-byte name with a quotation runs on tier 1" T-LABEL
+   1 1000 QUOT$ RUN  s" 42" ASSERT-OK
+   s" a 7900-byte name with a quotation runs on tier 0" T-LABEL
+   0 7900 QUOT$ RUN  s" 42" ASSERT-OK
+   s" a 7900-byte name with a quotation runs on tier 1" T-LABEL
+   1 7900 QUOT$ RUN  s" 42" ASSERT-OK
+
+   s" a 7900-byte does> definer runs on tier 0" T-LABEL
+   0 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
+   s" a 7900-byte does> definer runs on tier 1" T-LABEL
+   1 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
+
+   s" a 7900-byte TRUSTED: name runs on tier 0" T-LABEL
+   0 7900 TRUST$ RUN  s" 7" ASSERT-OK
+   s" a 7900-byte TRUSTED: name runs on tier 1" T-LABEL
+   1 7900 TRUST$ RUN  s" 7" ASSERT-OK
+
+   s" a caller of a 7900-byte name runs on tier 0" T-LABEL
+   0 7900 CALL$ RUN  s" 6" ASSERT-OK
+   s" a caller of a 7900-byte name runs on tier 1" T-LABEL
+   1 7900 CALL$ RUN  s" 6" ASSERT-OK
+
+   s" a caller of a 7900-byte word that never returns runs on tier 0" T-LABEL
+   0 7900 NORET$ RUN  s" 6" ASSERT-OK
+   s" a caller of a 7900-byte word that never returns runs on tier 1" T-LABEL
+   1 7900 NORET$ RUN  s" 6" ASSERT-OK
+
+   s" a 1000-byte pending name calls its prior word on tier 0" T-LABEL
+   0 1000 PRIOR$ RUN  s" 50" ASSERT-OK
+   s" a 1000-byte pending name calls its prior word on tier 1" T-LABEL
+   1 1000 PRIOR$ RUN  s" 50" ASSERT-OK
+
+   s" a 1000-byte ENUM variant constructs and matches on tier 0" T-LABEL
+   0 1000 VARIANT$ RUN  s" 10" ASSERT-OK
+   s" a 1000-byte ENUM variant constructs and matches on tier 1" T-LABEL
+   1 1000 VARIANT$ RUN  s" 10" ASSERT-OK
+
+   s" a 1000-byte ENUM family, its MATCH and its local compile on tier 0" T-LABEL
+   0 1000 FAMILY$ RUN  s" 30" ASSERT-OK
+   s" a 1000-byte ENUM family, its MATCH and its local compile on tier 1" T-LABEL
+   1 1000 FAMILY$ RUN  s" 30" ASSERT-OK
+
+   s" a refused 1000-byte name is reported whole" T-LABEL
+   1000 UNEVEN$ RUN  REJECT-RC ASSERT-RC
+   ERR$ s" " 1000 REFUSED-LINE$ CONTAINS? TTRUE
+
+   s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
+   1000 TRUSTED-MISSING$ RUN  UNCAUGHT-RC ASSERT-RC
+   ERR$ s"  at LN-MISSING" 1000 REFUSED-LINE$ CONTAINS? TTRUE
+   ERR$ E-HIR-UNMODELED UNCAUGHT$ CONTAINS? TTRUE ;
+
+\ ---- 2d. a refusal line names only its own token ------------------------------
+\ The elaborator names the token it refused at. A later definition refused
+\ before elaboration has no such token, and its line must not carry the earlier
+\ one's.
+: TEST-REFUSAL-TOKEN ( -- )
    s" a refusal line carries no earlier definition's token" T-LABEL
    S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
    RUN  REJECT-RC ASSERT-RC
@@ -538,7 +679,8 @@ public
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL
    TEST-MARK-ROWS
-   TEST-NAME-CAP
+   TEST-LONG-NAMES
+   TEST-REFUSAL-TOKEN
    TEST-TIER0-CONSTRUCTS
    TEST-SNAPSHOT-OWNERSHIP
    TEST-NESTED-QUOTATIONS

@@ -847,6 +847,15 @@ public
    c b USE {: slot:n :}
    c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  p u IR-SYM:INTERN ;
 
+\ Carry one symbol of a FROZEN module into the module being built, so a pass
+\ that rebuilds a module names what it builds by the old module's symbol, never
+\ by a copy of its bytes in a buffer of the pass's own. IR-SYM owns the crossing.
+: CARRY-SYMBOL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder pv:IR-ARENA:view rv:IR-ARENA:view
+      id:IR-ID:ir-symbol-id :}
+   c b USE {: slot:n :}
+   c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  pv rv id IR-SYM:CARRY ;
+
 : ADD-SOURCE ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b USE {: slot:n :}
