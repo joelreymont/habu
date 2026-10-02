@@ -178,6 +178,10 @@ STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 \ the same way: lib/errors.f E-EVAL-RESIDUE owns it.
 -3804 constant STACK-ABI:E-EVAL-RESIDUE
 
+\ evaluate-closed's refusal of a text that ended inside a definition it opened,
+\ carried the same way: lib/errors.f E-EVAL-UNFINISHED owns it.
+-3805 constant STACK-ABI:E-EVAL-UNFINISHED
+
 \ The dividing primitives' refusal code, carried here for the same reason and in
 \ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
 -6400 constant ARITH-ABI:E-DIV-ZERO
@@ -189,6 +193,7 @@ $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
 $90 constant STACK-ABI:EVAL-SEG
+$98 constant STACK-ABI:EVAL-PEND
 $A0 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
@@ -593,6 +598,8 @@ variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
 variable LFLOORREC  variable LFLOORMSG
+variable LUNFINMSG
+: UNFINMSG$ ( -- a u ) S\" hb: closed text ended inside a definition\n" ;   \ EMIT-CLOSED-SOURCE-END's line
 : FLOORMSG$ ( -- a u ) s" hb: interpret stack underdepth: " ;   \ LFLOORREC's line: the token and a newline follow
 variable LEVALREC
 variable LTHROWDISPATCH
@@ -961,9 +968,9 @@ variable BAND-IX
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
 \ x10 and x13 the data stack the frame owns (0 for evaluate): the frame records
-\ the data-stack extent in force and that stack, and the clean exit returns to
-\ x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
-\ src/habu/habu1.f EVAL-ENTER.
+\ the data-stack extent in force, that stack and the definition open at entry
+\ (EVAL-PEND), and the clean exit returns to x30, B-EVAL's caller or
+\ B-EVAL-CLOSED's continuation. Mirrors src/habu/habu1.f EVAL-ENTER.
 : EVAL-ENTER ( -- )
    SP SP EVAL-FRAME-SIZE SUBI,
    14 SP 0 ADDI,
@@ -977,6 +984,7 @@ variable BAND-IX
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR, 11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,                     \ before x13 turns scratch below
+   11 DATA PEND-CELL LDR,  11 14 STACK-ABI:EVAL-PEND STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
    12 14 EVAL-PKG ADDI,
    13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
@@ -1613,35 +1621,37 @@ HB-TARGET-LINUX? [IF]
 \ empty pool maps one), and refuse a text that left cells with
 \ STACK-ABI:E-EVAL-RESIDUE. The caller's extent and cursor wait in this word's
 \ frame; the evaluate frame records the stack and returns to `back`, which
-\ gives the stack back to the pool (EMIT-EVAL-THROW-RECOVER does on a throw).
-\ Mirrors src/habu/habu1.f B-EVAL-CLOSED.
+\ gives the stack back to the pool (EMIT-EVAL-THROW-RECOVER does on a throw,
+\ and on EMIT-CLOSED-SOURCE-END's refusal of a text that ended inside a
+\ definition it opened). Mirrors src/habu/habu1.f B-EVAL-CLOSED.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have take back done :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 48 SUBI,
+   SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
-   XDS SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   XDS SP 16 STR,
    13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
-   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP      \ clobbers x0-x6 and x9
+   11 9 0 ADDI,                                      \ a waits in x11: the map never writes x10 or x11
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
+   9 11 0 ADDI,
    take B,
    have LBL,
    12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
    take LBL,
-   13 SP 40 STR,
-   9 SP 24 LDR,  10 SP 32 LDR,
+   13 SP 24 STR,
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
    30 back ADR,
    EVAL-ENTER
    back LBL,
-   11 SP 40 LDR,                                     \ the text's stack, back to the pool
+   11 SP 24 LDR,                                     \ the text's stack, back to the pool
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
-   SP SP 48 ADDI,
+   SP SP 32 ADDI,
    13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
@@ -3581,6 +3591,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
    LFLOORMSG @ LBL, FLOORMSG$ BYTES,
+   LUNFINMSG @ LBL, UNFINMSG$ BYTES,
    LDEFKWMSG @ LBL, s" hb: compile keyword cannot be a definition name: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
@@ -7783,9 +7794,25 @@ variable P2SK
    10 LRBYE @ CBZ,
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  lmain B, ;
 
+\ A closed text that ends inside a definition it opened throws
+\ STACK-ABI:E-EVAL-UNFINISHED through LEVALREC before its frame is popped, which
+\ rolls the definition back with the frame. Mirrors src/habu/habu2.f
+\ C-CLOSED-SOURCE-END with a fixed line: the seed has no LDIAGDEF or location
+\ tail.
+: EMIT-CLOSED-SOURCE-END ( -- )
+   LBL {: ok :}
+   13 DATA EVAL-TOP-CELL LDR,
+   9 13 STACK-ABI:EVAL-SEG LDR,  9 ok CBZ,
+   9 DATA PEND-CELL LDR,  9 ok CBZ,
+   10 13 STACK-ABI:EVAL-PEND LDR,  9 10 CMP,  C-EQ ok BCOND,
+      0 2 MOVZ,  1 LUNFINMSG @ ADR,  2 UNFINMSG$ nip MOVZ,  NR-WRITE SYS,
+      15 STACK-ABI:E-EVAL-UNFINISHED LIT64,  LEVALREC @ B,
+   ok LBL, ;
+
 : EMIT-EXIT ( n n -- ) {: lexit lmain :}
    lexit LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,
+      EMIT-CLOSED-SOURCE-END
       EMIT-EVAL-CLEAN-EXIT
    LEX0 @ LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
@@ -7827,7 +7854,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
-   LBL LFLOORREC !  LBL LFLOORMSG !
+   LBL LFLOORREC !  LBL LFLOORMSG !  LBL LUNFINMSG !
    LBL LEVALREC !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;

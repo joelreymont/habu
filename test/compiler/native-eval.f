@@ -28,6 +28,9 @@ variable SEEN
 : CLEAN ( -- [ -- ] ) [: ;] ;
 : INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
+\ An inner text that ends inside the definition it opened.
+: INNER-OPEN$ ( -- ptr u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
+
 \ The data-stack base each text of a nested pair sees.
 variable OUTER-BASE
 variable INNER-BASE
@@ -129,9 +132,66 @@ private
    s" an inner text's reach throws 70 through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
+\ A text that ends inside a definition it opened is refused, and the open
+\ definition goes with it: the code it emitted is taken back (a pending
+\ definition has no counted record, so ndict@ cannot show it), the next text
+\ is interpreted rather than compiled into it, and its name resolves to
+\ nothing until it is defined again. The interpretation probe runs before any
+\ other text because a throw out of a text resets the compile state on its
+\ own.
+: UNFIN ( -- n )
+   9 [: s" : NATIVE-EVAL-D ( -- n ) 42" evaluate-closed ;] catch
+   E-EVAL-UNFINISHED T= ;
+
+: UNFIN-NESTED ( -- n )
+   9 [: s" NATIVE-EVAL-TEST:INNER-OPEN$ evaluate-closed" evaluate-closed ;] catch
+   E-EVAL-UNFINISHED T= ;
+
+: UNFINISHED ( -- )
+   s" a text that ends inside a definition throws E-EVAL-UNFINISHED" T-LABEL
+   0 SEEN !
+   cp@ {: code :}
+   UNFIN
+   s" and leaves the caller's cell" T-LABEL
+   9 T=
+   s" the definition's code is rolled back" T-LABEL
+   cp@ code - 0 T=
+   s" the next text is interpreted" T-LABEL
+   s" 5 NATIVE-EVAL-TEST:SEEN !" evaluate-closed
+   SEEN @ 5 T=
+   s" the definition's name resolves to nothing" T-LABEL
+   [: s" NATIVE-EVAL-D" evaluate-closed ;] 70 TTHROWSQ
+   s" and can be defined again" T-LABEL
+   s" : NATIVE-EVAL-D ( -- n ) 7 ;" evaluate-closed
+   s" NATIVE-EVAL-D 7 T=" evaluate-closed ;
+
+: UNFINISHED-NESTED ( -- )
+   s" an inner text's unfinished definition throws through the outer text" T-LABEL
+   cp@ {: code :}
+   UNFIN-NESTED
+   s" and leaves the caller's cell" T-LABEL
+   9 T=
+   s" the inner text's definition is rolled back" T-LABEL
+   cp@ code - 0 T=
+   [: s" NATIVE-EVAL-E" evaluate-closed ;] 70 TTHROWSQ ;
+
+\ An immediate that runs a text while the caller's definition is open: the
+\ text compiles into that definition and ends with it still open, which is
+\ not a definition the text opened, so it is not refused.
+: BUMP ( -- ) SEEN @ 1 + SEEN ! ;
+: CALL-BUMP ( -- ) s" BUMP" evaluate-closed ; immediate
+s" CALL-BUMP" 0 parse-imm
+: BUMPED ( -- ) CALL-BUMP ;
+
+: CALLER-OPEN ( -- )
+   s" a text run inside the caller's open definition compiles into it" T-LABEL
+   0 SEEN !  BUMPED  SEEN @ 1 T= ;
+
 : AGREEMENT ( -- )
    s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
-   E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
+   E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T=
+   s" E-EVAL-UNFINISHED matches the engine's own spelling" T-LABEL
+   E-EVAL-UNFINISHED STACK-ABI:E-EVAL-UNFINISHED T= ;
 
 $1000 constant IO-CAP
 create OUT IO-CAP allot
@@ -180,6 +240,22 @@ create ERR IO-CAP allot
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 
+67 constant UNCAUGHT                    \ habu2.f LUNCAUGHT's exit for a code outside 1..255
+
+\ UNFINISHED's text with no catch around it. The child inherits this
+\ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
+: UNFINISHED-LINE$ ( -- ptr u8 n )
+   S\" s\" : NATIVE-EVAL-F ( -- n ) 42\" evaluate-closed" ;
+
+: UNFINISHED-LINE ( -- )
+   s" an uncaught unfinished text exits as an uncaught throw" T-LABEL
+   UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N UNCAUGHT T=
+   nip LEN>N {: erru:n :}
+   s" and names the definition and where the text ran" T-LABEL
+   ERR erru s" hb: closed text ended inside a definition: NATIVE-EVAL-F at " CONTAINS?
+   TTRUE ;
+
 $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
 \ The text would print; a live task must stop it before it is read.
@@ -201,8 +277,9 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL XT-UNDER AGREEMENT
-   OVERFLOW FLOOR-JUMP TOP-LEVEL LIVE CHECKED
+   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL XT-UNDER UNFINISHED
+   UNFINISHED-NESTED CALLER-OPEN AGREEMENT OVERFLOW FLOOR-JUMP TOP-LEVEL
+   UNFINISHED-LINE LIVE CHECKED
    T-REPORT ;
 
 ' RUN

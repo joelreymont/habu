@@ -90,7 +90,9 @@ public
 : EXIT-BOUNDS ( -- ) EMIT-FAIL ;
 
 \ EMIT-MAP ( cap dst -- ) : emit the code that maps ONE guarded VM stack of
-\ `cap` bytes and leaves its base in register `dst`.
+\ `cap` bytes and leaves its base in register `dst`. It writes x0-x6, x9 and
+\ the syscall registers, never x10 or x11, which habu1.f B-EVAL-CLOSED keeps
+\ live across it.
 \
 \ This is what replaced the per-transfer bounds check. A stack occupies
 \ [base - PAGE, base + cap + PAGE) with the two outer pages inaccessible, so a

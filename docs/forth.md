@@ -30,13 +30,10 @@ lives here; build, test and environment rules live in
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
-  its own and must leave nothing (measured under **Rules learned by
-  refusal**). Three cases stay open:
+  its own, must leave nothing and must close every definition it opens
+  (measured under **Rules learned by refusal**). Two cases stay open:
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
-  - A text may end inside a definition: the interpreter stays compiling, so
-    `s" : D ( -- n ) 42" evaluate-closed`, even from a checked word, lets the
-    caller's next `;` complete `D`.
   - A text's top-level code is unchecked, so what it computes is untyped: with
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
@@ -1404,6 +1401,11 @@ passing suite.
   `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
   `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
   the outer text's caller as -3804; a definition the checker refuses throws 70;
+  a text that ends inside a definition it opened, `s" : D ( -- n ) 42"
+  evaluate-closed`, throws `E-EVAL-UNFINISHED` (-3805) after
+  `hb: closed text ended inside a definition: D at <path>:<line>` (uncaught,
+  rc 67), D is rolled back and the caller's next token is interpreted, and an
+  inner text's unfinished definition reaches the outer text's caller as -3805;
   an xt the text runs cannot reach the caller's cells either: with
   `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
   answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact

@@ -1417,9 +1417,9 @@ variable SZA-I
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
 \ x10 and x13 the data stack the frame owns (0 for evaluate). The frame records
-\ the data-stack extent in force and that stack, and the clean exit returns to
-\ x30: B-EVAL's caller, or the continuation of B-EVAL-CLOSED, which inlines it
-\ on a stack of its own.
+\ the data-stack extent in force, that stack and the definition open at entry
+\ (EVAL-PEND), and the clean exit returns to x30: B-EVAL's caller, or the
+\ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own.
 : EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
@@ -1435,6 +1435,7 @@ variable SZA-I
    11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,
+   11 DATA PEND-CELL LDR,  11 14 STACK-ABI:EVAL-PEND STR,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
@@ -2888,7 +2889,9 @@ public
 \ nested evaluate, run-in-stack or catch inside the text therefore restores to
 \ that stack, and a throw out of the text unwinds to the caller's handler,
 \ which restores its own extent and abandons this frame, while LEVALREC gives
-\ the stack back to the pool. The clean return gives it back here, and the
+\ the stack back to the pool. A text that ends inside a definition it opened
+\ throws STACK-ABI:E-EVAL-UNFINISHED that way from its end (habu2.f
+\ C-CLOSED-SOURCE-END). The clean return gives the stack back here, and the
 \ text must have left nothing: residue is dropped and refused by name with
 \ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
 \ BRUNSTACK above.
@@ -2896,30 +2899,31 @@ public
    LBL LBL LBL LBL {: have:label take:label back:label done:label :}
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 48 SUBI,
+   SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
-   XDS SP 16 STR,  9 SP 24 STR,  10 SP 32 STR,
+   XDS SP 16 STR,
    13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
-   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP      \ clobbers x0-x6 and x9
+   11 9 0 ADDI,                                      \ a waits in x11: the map never writes x10 or x11
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
+   9 11 0 ADDI,
    take B,
    have LBL,
    12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
    take LBL,
-   13 SP 40 STR,
-   9 SP 24 LDR,  10 SP 32 LDR,
+   13 SP 24 STR,
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
    30 back ADR,
    EVAL-ENTER
    back LBL,
-   11 SP 40 LDR,                                     \ the text's stack, back to the pool
+   11 SP 24 LDR,                                     \ the text's stack, back to the pool
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
-   SP SP 48 ADDI,
+   SP SP 32 ADDI,
    13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;

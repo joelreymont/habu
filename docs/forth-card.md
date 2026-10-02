@@ -136,8 +136,9 @@ once, `0 0 ?do … loop` zero times. `evaluate-closed ( ptr u8 n -- )` evaluates
 source in a body: the text's `depth` starts at 0, a token reaching below it
 throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the caller's
 cells intact either way. An xt the text runs cannot reach them: its reach
-under the floor throws 70 too (forth.md **Checked code and primitive
-boundaries** lists the open cases).
+under the floor throws 70 too. A text that ends inside a definition it opened
+throws `E-EVAL-UNFINISHED` and the definition is rolled back (forth.md
+**Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
