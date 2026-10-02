@@ -17,10 +17,6 @@ require src/compiler/native/compiler.f
 package NTRAP-TEST
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 : REC-LEN ( ptr u8 n -- n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" native-trap: record not found" 76 die then
@@ -600,7 +596,7 @@ private
 \ would not pass either.
 
 : COMPILED-DEAD-BYTES-CASE ( -- )
-   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" EV
+   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" evaluate-closed
    s" NTB" RECORD-CODE
 
    s" a compiled all-dead routine moves the machine stack pointer nowhere"
@@ -618,7 +614,7 @@ private
    LAST-TARGET  s" throw" NDICT:CALL-TARGET  T=
 
    s" the replacement cell reaches throw with the expected error code" T-LABEL
-   s" : NTB-RUN ( -- ) 0 NTB ; ' NTB-RUN E-A-EMPTY TTHROWS" EV
+   s" : NTB-RUN ( -- ) 0 NTB ; ' NTB-RUN E-A-EMPTY TTHROWS" evaluate-closed
 
    EMISSION-CODE ;
 
@@ -634,10 +630,10 @@ defer ZERO-THROW ( n -- )
    [: ZERO-BODY ;] 0 TTHROWSQ
    ZERO-CONTINUED @ 0 T=
    s" a compiled guard keeps its successful and throwing paths" T-LABEL
-   s" : NT-GUARD ( n -- n ) dup 0< if E-A-EMPTY throw then 1+ ;" EV
-   s" 41 NT-GUARD 42 T=" EV
-   s" : NT-REFUSE ( -- ) -1 NT-GUARD drop ;" EV
-   s" ' NT-REFUSE E-A-EMPTY TTHROWS" EV ;
+   s" : NT-GUARD ( n -- n ) dup 0< if E-A-EMPTY throw then 1+ ;" evaluate-closed
+   s" 41 NT-GUARD 42 T=" evaluate-closed
+   s" : NT-REFUSE ( -- ) -1 NT-GUARD drop ;" evaluate-closed
+   s" ' NT-REFUSE E-A-EMPTY TTHROWS" evaluate-closed ;
 
 \ The same routine's calling sibling, which is the contrast that makes the case
 \ above say something: a body that calls and DOES come back takes a frame and
@@ -645,7 +641,7 @@ defer ZERO-THROW ( n -- )
 \ in the two writeback transfers that save and restore the link register.
 \ `abs` is an external primitive, so this really is a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
-   s" : NTC ( n -- n ) abs 1 + ;" EV
+   s" : NTC ( n -- n ) abs 1 + ;" evaluate-closed
    s" NTC" RECORD-CODE
    s" its recorded span ends immediately before the trailing return" T-LABEL
    CODE-LEN @ INSN-BYTES / CODE-WORD@ RET-WORD T=

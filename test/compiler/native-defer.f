@@ -20,13 +20,6 @@ package NDEFER-TEST
 
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it so the caller is
-\ compiled only after that new dictionary record exists.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
-
 \ The dispatch cell's contents, and the engine's relocation table. Both are
 \ reads of memory the dictionary named, which is the one thing checked Habu has
 \ no type for; the deciding above them is ordinary checked Habu.
@@ -63,16 +56,19 @@ variable HIT
    HIT @ 0<> ;
 
 \ ---- the words the fixtures bind ---------------------------------------------
+\ Every execution below goes through `evaluate-closed`, or `TEST-EVAL:N` for a
+\ value, so a caller of a word that did not exist when the suite was compiled is
+\ compiled only after that new dictionary record exists.
 \ The deferred word, the body it is bound to, and a compiled caller of it. The
 \ caller exists because a defer is an engine trampoline: it proves a compiled
 \ call reads the cell at run time rather than merely proving direct evaluation.
 : SETUP ( -- )
-   s" defer ND-HOOK ( n -- n )" EV
-   s" : ND-IMPL ( n -- n ) 1 + ;" EV
-   s" : ND-ACTION ( n -- n ) ND-HOOK ;" EV ;
+   s" defer ND-HOOK ( n -- n )" evaluate-closed
+   s" : ND-IMPL ( n -- n ) 1 + ;" evaluate-closed
+   s" : ND-ACTION ( n -- n ) ND-HOOK ;" evaluate-closed ;
 
 : DEF-INSTALL ( -- )
-   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" EV ;
+   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" evaluate-closed ;
 
 \ The cell ND-HOOK dispatches through, asked of the same resolver the chain asks.
 : HOOK-CELL ( -- n )
@@ -84,10 +80,10 @@ variable HIT
    s" the installer is the chain's code" T-LABEL
    s" ND-INSTALL" REC-START 0 T<>
    s" and running it binds the deferred word to the body" T-LABEL
-   s" ND-INSTALL" EV
-   s" 41 ND-HOOK" EV-N 42 T=
+   s" ND-INSTALL" evaluate-closed
+   s" 41 ND-HOOK" TEST-EVAL:N 42 T=
    s" which a compiled caller of the defer then reaches" T-LABEL
-   s" 41 ND-ACTION" EV-N 42 T= ;
+   s" 41 ND-ACTION" TEST-EVAL:N 42 T= ;
 
 \ BIND-CASE proves the live behavior. These assertions prove the stored target
 \ is the quotation emitted with the installer and that the cell is declared by
@@ -121,17 +117,17 @@ variable HIT
 \ not defer targets; the elaborator's own backstop is exercised on a hand-built
 \ tape in test/compiler/native-elaborate.f.
 : SETUP-BAD ( -- )
-   s" create ND-DATA  $4842444546455201 ,  0 ," EV
-   s" : ND-PLAIN ( n -- n ) 2 * ;" EV ;
+   s" create ND-DATA  $4842444546455201 ,  0 ," evaluate-closed
+   s" : ND-PLAIN ( n -- n ) 2 * ;" evaluate-closed ;
 
 : BAD-DATA ( -- )
-   s" : ND-BAD1 ( -- ) [: ND-IMPL ;] is ND-DATA ;" EV ;
+   s" : ND-BAD1 ( -- ) [: ND-IMPL ;] is ND-DATA ;" evaluate-closed ;
 
 : BAD-COLON ( -- )
-   s" : ND-BAD2 ( -- ) [: ND-IMPL ;] is ND-PLAIN ;" EV ;
+   s" : ND-BAD2 ( -- ) [: ND-IMPL ;] is ND-PLAIN ;" evaluate-closed ;
 
 : BAD-ABSENT ( -- )
-   s" : ND-BAD3 ( -- ) [: ND-IMPL ;] is ND-NOWHERE ;" EV ;
+   s" : ND-BAD3 ( -- ) [: ND-IMPL ;] is ND-NOWHERE ;" evaluate-closed ;
 
 70 constant CHECK-RC                 \ the native checker refuses every invalid target
 

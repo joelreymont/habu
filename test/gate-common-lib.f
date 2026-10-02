@@ -479,8 +479,8 @@ variable GE-EVAL-SRC-U
    -1 GE-EVAL-OUT-SAVE !
    -1 GE-EVAL-ERR-SAVE ! ;
 
-TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
-   GE-EVAL-SRC$ evaluate ;
+: GE-EVAL-SOURCE-ACT ( -- )
+   GE-EVAL-SRC$ evaluate-closed ;
 
 : GE-EVAL-SOURCE-RUNSTACK ( -- )
    ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;

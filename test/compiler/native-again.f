@@ -85,14 +85,6 @@ private
 : EV-DEF ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
-
-\ The same with one value already on the stack for the evaluated text to take,
-\ which is how a word is called under `catch` with its argument in place.
-TRUSTED: EV1 ( n ptr u8 n -- n )
-   evaluate ;
-
 \ ---- the cases ---------------------------------------------------------------
 : UP-CASE ( -- )
    s" a begin-again loop leaves through exit" T-LABEL
@@ -104,8 +96,8 @@ TRUSTED: EV1 ( n ptr u8 n -- n )
 : ACC-CASE ( -- )
    s" and one that never returns throws what its turns accumulated" T-LABEL
    s" NAG-FIXTURE:NAG-ACC" KEPT
-   0 s" ' NAG-FIXTURE:NAG-ACC catch nip" EV1 -1 T=
-   2 s" ' NAG-FIXTURE:NAG-ACC catch nip" EV1 -4 T= ;
+   s" 0 ' NAG-FIXTURE:NAG-ACC catch nip" TEST-EVAL:N -1 T=
+   s" 2 ' NAG-FIXTURE:NAG-ACC catch nip" TEST-EVAL:N -4 T= ;
 
 : CALL-CASE ( -- )
    s" a call in the body carries both values round the back edge" T-LABEL
@@ -132,7 +124,7 @@ TRUSTED: EV1 ( n ptr u8 n -- n )
    s" a loop a while has left cannot be closed with again" T-LABEL
    s" : NAG-WA ( n -- n ) begin dup 0 > while 1 - repeat ;" EV-DEF 0 T=
    s" : NAG-WA2 ( n -- n ) begin dup 0 > while 1 - again ;" EV-DEF 0 T<>
-   s" 7 NAG-WA" EV-N 0 T= ;
+   s" 7 NAG-WA" TEST-EVAL:N 0 T= ;
 
 : BARE-CASE ( -- )
    \ Neither definition is executed: both are deliberately nonreturning. The

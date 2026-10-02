@@ -13,11 +13,6 @@ require src/compiler/native/compiler.f
 
 package NCA-TEST
 
-public
-
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 private
 
 \ ---- reading the windows a recorded definition's catch sites took -------------
@@ -51,25 +46,25 @@ private
 \ the recorded window of a body that never returns, and that is unchanged.
 \ 0 NCA-W1  1 [:  2 dup  3 drop  4 5  5 throw  6 ;]  7 catch
 : SRC-DEAD ( -- )
-   s" : NCA-W1 ( n -- n n ) [: dup drop 5 throw ;] catch ;" NCA-TEST:EV ;
+   s" : NCA-W1 ( n -- n n ) [: dup drop 5 throw ;] catch ;" evaluate-closed ;
 
 \ 0 NCA-W2  1 [:  2 1+  3 ;]  4 catch
 : SRC-LIVE ( -- )
-   s" : NCA-W2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;
+   s" : NCA-W2 ( n -- n n ) [: 1+ ;] catch ;" evaluate-closed ;
 
 \ 0 NCA-W0  1 [:  2 1  3 2  4 3  5 throw  6 ;]  7 catch
 : SRC-EMPTY ( -- )
-   s" : NCA-W0 ( n -- n n ) [: 1 2 3 throw ;] catch ;" NCA-TEST:EV ;
+   s" : NCA-W0 ( n -- n n ) [: 1 2 3 throw ;] catch ;" evaluate-closed ;
 
 \ 0 NCA-WS  1 "hi"  2 2drop  3 [:  4 1+  5 ;]  6 catch
 : SRC-STRING ( -- )
-   S\" : NCA-WS ( n -- n n ) s\q hi\q 2drop [: 1+ ;] catch ;" NCA-TEST:EV ;
+   S\" : NCA-WS ( n -- n n ) s\q hi\q 2drop [: 1+ ;] catch ;" evaluate-closed ;
 
 \ 0 NCA-WW  1 [:  2 1+  3 swap  4 1+  5 swap  6 ;]  7 catch
 \ 8 drop  9 [:  10 1+  11 ;]  12 catch
 : SRC-TWO ( -- )
    s" : NCA-WW ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
-   NCA-TEST:EV ;
+   evaluate-closed ;
 
 \ A definition crossing the initial metadata allocation must record every site.
 17 constant CAP-SITES
@@ -100,7 +95,7 @@ variable CAP-U
    SITE-TOKENS * 3 + ;
 
 : SRC-CAP ( -- )
-   CAP-BUILD NCA-TEST:EV ;
+   CAP-BUILD evaluate-closed ;
 
 \ Running one fixture and swallowing whatever compilation made of it. The recorded
 \ windows are the subject here, and they are recorded by the SCAN - which has
@@ -161,7 +156,7 @@ public
 
 : NO-UNIT-CASE ( -- )
    s" a token of no recorded definition answers absent, in both halves" T-LABEL
-   [: s" : NCA-NONE ( n -- n ) 1+ ;" NCA-TEST:EV ;] 0 TTHROWSQ
+   [: s" : NCA-NONE ( n -- n ) 1+ ;" evaluate-closed ;] 0 TTHROWSQ
    0 WIN-IN NDICT:CATCH-NONE T=
    1 WIN-IN NDICT:CATCH-NONE T=
    99 WIN-IN NDICT:CATCH-NONE T=

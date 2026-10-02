@@ -51,11 +51,8 @@ PTR-VARIABLE STACK-A
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-\ `evaluate` is deliberately checker-rejected; this is the single dynamic-source
-\ boundary. The active capability dot is habu-type-isolated-dynamic-244c0e2c.
-\ Retirement owner: habu-batch-candidate-valid-517bfb6f.
-TRUSTED: EVAL ( -- )
-   SRC$ evaluate ;
+: EVAL ( -- )
+   SRC$ evaluate-closed ;
 
 \ `run-in-stack` owns the active allocation, including its floor and capacity.
 \ The fork child must enter evaluation with no catch or TTY recovery handler.

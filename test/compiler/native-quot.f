@@ -12,16 +12,6 @@ package NQUOT-TEST
 
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it so the caller is
-\ compiled only after that new dictionary record exists.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
-TRUSTED: EV-N ( ptr u8 n -- n )
-   evaluate ;
-
 0 constant GLOBAL-WID
 
 : REC ( ptr u8 n -- ptr n )
@@ -125,18 +115,21 @@ $D65F03C0 constant RET-WORD
 \ ---- the definitions the chain compiles --------------------------------------
 \ Each is compiled at top level, so the word it publishes is global and the
 \ callers this suite evaluates afterwards reach it as any program would.
+\ Every execution goes through `evaluate-closed`, or `TEST-EVAL:N` for a value,
+\ so a caller of a word that did not exist when the suite was compiled is
+\ compiled only after that new dictionary record exists.
 : DEF-INC ( -- )
-   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" EV ;
+   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" evaluate-closed ;
 
 : DEF-TAKE ( -- )
-   s" : NQ-TAKE ( [ n -- n ] n -- n ) swap execute ;" EV ;
+   s" : NQ-TAKE ( [ n -- n ] n -- n ) swap execute ;" evaluate-closed ;
 
 : DEF-USE ( -- )
-   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" EV ;
+   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" evaluate-closed ;
 
 : DEF-THREE ( -- )
    s" : NQ-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
-   EV ;
+   evaluate-closed ;
 
 \ A `[:` inside a parenthesised comment and another inside a string literal,
 \ both in front of the real one. Neither is a token the checker's reader hands
@@ -157,27 +150,27 @@ create HID-TXT
 64 constant HID-N
 
 : DEF-HIDDEN ( -- )
-   HID-TXT HID-N EV ;
+   HID-TXT HID-N evaluate-closed ;
 
 \ ---- the cases ---------------------------------------------------------------
 : RUNS-CASE ( -- )
    DEF-INC
    s" the address a compiled definition leaves runs its own body" T-LABEL
    s" NQ-INC" REC-START 0 T<>
-   s" 41 NQ-INC execute" EV-N 42 T=
+   s" 41 NQ-INC execute" TEST-EVAL:N 42 T=
 
    DEF-TAKE DEF-USE
    s" a quotation handed to a callee across a made call still runs" T-LABEL
    s" NQ-USE" REC-START 0 T<>
-   s" 14 NQ-USE" EV-N 42 T=
+   s" 14 NQ-USE" TEST-EVAL:N 42 T=
 
    DEF-THREE
    s" three bodies in one definition are three routines, each its own" T-LABEL
    s" NQ-THREE" REC-START 0 T<>
-   s" : NQ-T2 ( -- n ) NQ-THREE {: z q2 q3 :} 2 3 q2 execute ;" EV
-   s" : NQ-T3 ( -- n ) NQ-THREE {: z q2 q3 :} 4 5 6 q3 execute ;" EV
-   s" NQ-T2" EV-N 2 T=
-   s" NQ-T3" EV-N 4 T= ;
+   s" : NQ-T2 ( -- n ) NQ-THREE {: z q2 q3 :} 2 3 q2 execute ;" evaluate-closed
+   s" : NQ-T3 ( -- n ) NQ-THREE {: z q2 q3 :} 4 5 6 q3 execute ;" evaluate-closed
+   s" NQ-T2" TEST-EVAL:N 2 T=
+   s" NQ-T3" TEST-EVAL:N 4 T= ;
 
 : DECODE-CASE ( -- )
    s" the emission holds exactly one Adr, and it names the body's entry" T-LABEL
@@ -199,26 +192,26 @@ create HID-TXT
    s" a `[:` in a comment or a string opens nothing" T-LABEL
    s" NQ-HID" ADRS 1 T=
    s" NQ-HID" ADR-TARGET  s" NQ-HID" BODY-START  T=
-   s" 41 NQ-HID execute" EV-N 42 T= ;
+   s" 41 NQ-HID execute" TEST-EVAL:N 42 T= ;
 
 \ A throwing quotation can be passed without executing it, or executed under
 \ catch. Its dead fall-through needs no synthetic return.
 : DEF-DIE ( -- )
-   s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" EV
-   s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" EV ;
+   s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" evaluate-closed
+   s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" evaluate-closed ;
 
 : DEF-DEAD ( -- )
-   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV
-   s" : NQ-THROW ( n -- ) [: NQ-DIE ;] execute ;" EV ;
+   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" evaluate-closed
+   s" : NQ-THROW ( n -- ) [: NQ-DIE ;] execute ;" evaluate-closed ;
 
 : RUN-DEAD ( -- )
-   s" 4 NQ-THROW" EV ;
+   s" 4 NQ-THROW" evaluate-closed ;
 
 : DEAD-CASE ( -- )
    DEF-DIE DEF-DEAD
    s" a throwing quotation is compiled and can be passed without running" T-LABEL
    s" NQ-DEAD2" DEFINED? TTRUE
-   s" 42 NQ-DEAD2" EV-N 42 T=
+   s" 42 NQ-DEAD2" TEST-EVAL:N 42 T=
    s" executing a throwing quotation preserves the exception" T-LABEL
    [: RUN-DEAD ;] E-FS-OPEN TTHROWSQ ;
 
@@ -319,7 +312,8 @@ TRUSTED: MINT-ADAPT ( [ phantom -- ] -- )
 private
 
 : OPAQUE-MINT ( -- )
-   s" TRUSTED: NQ-OPAQUE-MINT ( [ NQUOT-TEST:phantom -- ] -- ) NQUOT-TEST:OPAQUE-CALLBACK ! [: 0 NQUOT-TEST:OPAQUE-CALLBACK @ execute ;] NQUOT-TEST:CONSUME ;" EV ;
+   s" TRUSTED: NQ-OPAQUE-MINT ( [ NQUOT-TEST:phantom -- ] -- ) NQUOT-TEST:OPAQUE-CALLBACK ! [: 0 NQUOT-TEST:OPAQUE-CALLBACK @ execute ;] NQUOT-TEST:CONSUME ;"
+   evaluate-closed ;
 
 : MINT-CASE ( -- )
    s" a declared callback ABI survives a trusted nominal mint" T-LABEL
@@ -370,7 +364,7 @@ private
    [: [: 1+ ;] execute [: 2 * ;] execute ;] execute [: 3 + ;] execute ;
 
 : UNKNOWN-NESTED ( -- )
-   s" : NQ-UNKNOWN-NESTED ( -- ) [: [: 1+ ;] drop ;] execute ;" EV ;
+   s" : NQ-UNKNOWN-NESTED ( -- ) [: [: 1+ ;] drop ;] execute ;" evaluate-closed ;
 
 : LEXICAL-CASE ( -- )
    s" nested quotations use their own inputs and return-stack values" T-LABEL

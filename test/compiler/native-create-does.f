@@ -20,8 +20,6 @@ TRUSTED: MAKE-TRUSTED ( n -- ) create , does> ( -- ptr n ) ;
 package NATIVE-CREATE-DOES-TEST
 private
 
-TRUSTED: EVAL ( ptr u8 n -- ) evaluate ;
-
 : MAKE-CELL ( n -- n )
    dup create ,
    1 +
@@ -86,26 +84,26 @@ public
    s" NP1 ( -- ptr n ) PLAIN-MADE" CHECK-QUIET-CANDIDATE! 1 T=
    s" a refused native clause publishes no definer" T-LABEL
    [: s\" : NATIVE-DOES-BAD ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- n ) ;\n"
-      EVAL ;]
+      evaluate-closed ;]
       E-NCOMP-VERDICT TTHROWSQ
    s" a refused clause leaves no parent signature" T-LABEL
    s" NB0 ( n -- ) NATIVE-DOES-BAD" CHECK-QUIET-CANDIDATE! 1 T=
    s\" 9 NATIVE-DOES-BAD BAD-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a refused wrapper parent cannot create a phantom child" T-LABEL
    s" NB1 ( -- ptr n ) BAD-GHOST" CHECK-QUIET-CANDIDATE! 1 T=
-   s\" : NATIVE-DOES-AFTER ( n -- n ) 2 * ;\n" EVAL
+   s\" : NATIVE-DOES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed
    s\" 6 NATIVE-DOES-AFTER AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the definition after a refused clause inherits nothing" T-LABEL
    s" NP2 ( -- ptr n ) AFTER-MADE" CHECK-QUIET-CANDIDATE! 1 T=
    s" a later native refusal retracts an accepted clause" T-LABEL
    [: s\" : NATIVE-DOES-LATE ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- ptr n ) [: 1 ;] drop ;\n"
-      EVAL ;] E-NELAB-QUOT TTHROWSQ
+      evaluate-closed ;] E-NELAB-QUOT TTHROWSQ
    s" a later refusal retracts the parent signature" T-LABEL
    s" NL0 ( n -- ) NATIVE-DOES-LATE" CHECK-QUIET-CANDIDATE! 1 T=
    s\" 9 NATIVE-DOES-LATE LATE-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a later failure cannot leave a wrapper child" T-LABEL
    s" NL1 ( -- ptr n ) LATE-GHOST" CHECK-QUIET-CANDIDATE! 1 T=
-   s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" EVAL
+   s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" evaluate-closed
    s\" 6 NATIVE-DOES-NEXT NEXT-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the next definition inherits no accepted clause from that refusal" T-LABEL
    s" NP3 ( -- ptr n ) NEXT-MADE" CHECK-QUIET-CANDIDATE! 1 T=

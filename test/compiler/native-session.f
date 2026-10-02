@@ -182,9 +182,8 @@ variable RC     variable EXITED
    SB-RESET
    S\" package ZNEST\n" SB-APPEND
    S\" public\n" SB-APPEND
-   S\" TRUSTED: EVAL$ ( ptr u8 n -- ) evaluate ;\n" SB-APPEND
    S\" : BODY ( IR-CTX:ctx -- )\n" SB-APPEND
-   S\"    drop [: s\q : ZN1 ( -- n ) 7 ;\q EVAL$ ;] catch\n" SB-APPEND
+   S\"    drop [: s\q : ZN1 ( -- n ) 7 ;\q evaluate-closed ;] catch\n" SB-APPEND
    S\"    E-IR-CTX-STATE = if s\q refused\q else s\q served\q then type cr ;\n" SB-APPEND
    S\" : RUN ( -- ) NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
    S\" ;package\n" SB-APPEND

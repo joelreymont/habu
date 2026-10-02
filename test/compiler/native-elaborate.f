@@ -248,11 +248,9 @@ using NSRC
 \ before it declares it. It is created through the same front end any definition
 \ goes through, at the scope this case runs in, which is the scope the model
 \ resolves it in.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-
 : CELL-A! ( -- )
    s" CELL-A" 0 search-wl 0<> if exit then
-   s" create CELL-A 1 cells allot" EV ;
+   s" create CELL-A 1 cells allot" evaluate-closed ;
 
 : SEALED-DATA ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
    {: c:IR-CTX:ctx :}
@@ -2081,7 +2079,7 @@ create TW-BUF TW-CAP allot
 : QDEF ( ptr u8 n ptr u8 n -- )
    {: na nu:n sa su:n :}
    na nu 0 search-wl 0<> if exit then
-   sa su EV ;
+   sa su evaluate-closed ;
 
 : QP-ACT! ( -- )
    s" QP-ACT" s" : QP-ACT ( -- [ -- ] ) [: 1 drop ;] ;" QDEF ;

@@ -12,19 +12,17 @@ require src/compiler/native/codewalk.f
 require lib/array.f
 
 \ The array the case maps over. It is global because the caller that maps it is
-\ compiled by `evaluate` at run time, in the scope a program would write it in.
+\ compiled by `evaluate-closed` at run time, in the scope a program would write
+\ it in.
 create NX-BUF 4 cells allot
 
 package NEXEC-TEST
 
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it so the caller is
+\ Every execution below goes through `evaluate-closed`, or `TEST-EVAL:N` for a
+\ value, so a caller of a word that did not exist when the suite was compiled is
 \ compiled only after that new dictionary record exists.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 4 constant REGS
 0 constant GLOBAL-WID
@@ -94,27 +92,27 @@ $94000000 constant BL-FORM
 \ rather than increments: a routine that never entered the body at all, and
 \ simply handed its argument back, answers correctly for anything symmetric.
 : DEF-APPLY ( -- )
-   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" EV ;
+   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" evaluate-closed ;
 
 : DEF-LOCAL ( -- )
    s" : NX-LOCAL ( [ n -- n ] n -- n ) {: q v :} v q execute ;"
-   EV ;
+   evaluate-closed ;
 
 : PARAM-CASE ( -- )
    DEF-APPLY
    s" a quotation handed straight over is entered and computes" T-LABEL
    s" NX-APPLY" REC-START 0 T<>
-   s" : NX-U1 ( n -- n ) [: 3 * ;] swap NX-APPLY ;" EV
-   s" 14 NX-U1" EV-N 42 T=
+   s" : NX-U1 ( n -- n ) [: 3 * ;] swap NX-APPLY ;" evaluate-closed
+   s" 14 NX-U1" TEST-EVAL:N 42 T=
    s" and a different body through the same routine computes differently" T-LABEL
-   s" : NX-U2 ( n -- n ) [: 5 * ;] swap NX-APPLY ;" EV
-   s" 8 NX-U2" EV-N 40 T=
+   s" : NX-U2 ( n -- n ) [: 5 * ;] swap NX-APPLY ;" evaluate-closed
+   s" 8 NX-U2" TEST-EVAL:N 40 T=
 
    DEF-LOCAL
    s" a quotation bound to a local first is entered and computes" T-LABEL
    s" NX-LOCAL" REC-START 0 T<>
-   s" : NX-U3 ( n -- n ) [: 3 * ;] swap NX-LOCAL ;" EV
-   s" 14 NX-U3" EV-N 42 T= ;
+   s" : NX-U3 ( n -- n ) [: 3 * ;] swap NX-LOCAL ;" evaluate-closed
+   s" 14 NX-U3" TEST-EVAL:N 42 T= ;
 
 \ WHAT THE DECODE RULES OUT. `execute` enters a routine nobody can name at
 \ compile time, so there is nothing to inline and nothing to fold: the emission
@@ -131,19 +129,19 @@ $94000000 constant BL-FORM
 \ An untyped stored xt has no such effect; a quotation with a return-stack
 \ clause also remains outside the native calling convention.
 : SELF-EXEC ( -- )
-   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" EV ;
+   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" evaluate-closed ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
 : RSTACK-EXEC ( -- )
-   s" : NX-RS ( [ n -- n | a -- a ] n -- n ) swap execute ;" EV ;
+   s" : NX-RS ( [ n -- n | a -- a ] n -- n ) swap execute ;" evaluate-closed ;
 
 create DIAG-BUF 8192 allot
 
 : OPAQUE-CASE ( -- )
    s" an untyped stored xt rejects with its named diagnostic" T-LABEL
    DIAG-BUF 8192 DIAG-BUFFER! true DIAG-JSON!
-   [: s" : NX-OPAQUE ( -- ) NX-BUF @ execute ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : NX-OPAQUE ( -- ) NX-BUF @ execute ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    DIAG-BUFFER$ s\" \"code\":\"E-EXEC-OPAQUE-XT\"" CONTAINS? TTRUE
    false DIAG-JSON! DIAG-BUFFER-OFF ;
 
@@ -152,7 +150,7 @@ create DIAG-BUF 8192 allot
    SELF-EXEC
    s" NX-SELF" REC-START 0 T<>
    s" the inline quotation executes and computes" T-LABEL
-   s" 41 NX-SELF" EV-N 42 T=
+   s" 41 NX-SELF" TEST-EVAL:N 42 T=
    \ Terms are counted from the TOP of the row and cells from the bottom, so the
    \ quotation of `( [ n -- n ] n -- n )` is term ONE - which is the same index
    \ the parameter rows are opened by, and asking term zero here would answer
@@ -161,7 +159,7 @@ create DIAG-BUF 8192 allot
    T-LABEL
    s" NX-APPLY" 1 NDICT:SPELL-QUOT-DIN 1 T= 1 T=
    s" a return-stack quotation answers no quotation at all" T-LABEL
-   s" : NX-RET ( [ n -- n | a -- a ] n -- n ) swap drop ;" EV
+   s" : NX-RET ( [ n -- n | a -- a ] n -- n ) swap drop ;" evaluate-closed
    s" NX-RET" 1 NDICT:SPELL-QUOT-DIN
    NDICT:QUOT-NONE T= NDICT:QUOT-NONE T=
    s" and executing one never reaches the chain: the checker refuses it first"
@@ -188,8 +186,8 @@ create DIAG-BUF 8192 allot
    s" the compiled multishot site runs the quotation once per element" T-LABEL
    BUF!
    s" : NX-BUMP ( -- ) NX-BUF 4 ARRAY:A-LEN [: swap IDX>N 10 * + ;] ARRAY:A-MAPI! ;"
-   EV
-   s" NX-BUMP" EV
+   evaluate-closed
+   s" NX-BUMP" evaluate-closed
    0 BUF@ 1 T=
    1 BUF@ 12 T=
    2 BUF@ 23 T=

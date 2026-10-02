@@ -19,8 +19,9 @@
 \ a TASK:+USER slot - concrete `-- ptr n`, never a raw cell - keeps being
 \ refused for the reason it always was, WITHOUT the new code.
 \
-\ These run against the live engine's own checker through `evaluate`, which is
-\ the path `bin/hb --load` puts every definition through.
+\ These run against the live engine's own checker through `evaluate-closed`,
+\ the interpreter `bin/hb --load` puts every definition through; a refusal is a
+\ throw out of the compile, not a value.
 require lib/test.f
 require lib/string.f
 require lib/task.f
@@ -49,12 +50,6 @@ NEWTYPE rcpthing 0
 package RAW-CELL-PTR-TEST
 
 private
-
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is how a suite compiles a program that must be REFUSED: the refusal is a throw
-\ out of the compile, not a value.
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
@@ -113,21 +108,21 @@ create DIAG-BUF 8192 allot
 : CASE-VARIABLE ( -- )
    s" a plain variable cannot answer an address it was never given" T-LABEL
    ARM
-   [: s" : RCP-PEEK ( n -- n ) RCP-V ! RCP-V @ @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-PEEK ( n -- n ) RCP-V ! RCP-V @ @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-VARIABLE-STORE ( -- )
    s" and the write half of the same pun is refused at the store" T-LABEL
    ARM
-   [: s" : RCP-POKE ( n n -- ) RCP-V ! RCP-V @ ! ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-POKE ( n n -- ) RCP-V ! RCP-V @ ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-CREATE ( -- )
    s" a create'd cell is the same cell and gets the same answer" T-LABEL
    ARM
-   [: s" : RCP-CPEEK ( n -- n ) RCP-C ! RCP-C @ @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-CPEEK ( n -- n ) RCP-C ! RCP-C @ @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -136,14 +131,14 @@ create DIAG-BUF 8192 allot
 : CASE-CONSTANT ( -- )
    s" a constant's value is not an address either, with no store in sight" T-LABEL
    ARM
-   [: s" : RCP-KPEEK ( -- n ) RCP-K @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-KPEEK ( -- n ) RCP-K @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
 : CASE-HERE ( -- )
    s" here's cell is raw storage and answers the same refusal" T-LABEL
    ARM
-   [: s" : RCP-HPEEK ( n -- n ) here ! here @ @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-HPEEK ( n -- n ) here ! here @ @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -152,7 +147,7 @@ create DIAG-BUF 8192 allot
 : CASE-BYTE-FETCH ( -- )
    s" the byte view of the pun is refused where the cell view is" T-LABEL
    ARM
-   [: s" : RCP-BPEEK ( n -- u8 ) RCP-V ! RCP-V @ c@ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-BPEEK ( n -- u8 ) RCP-V ! RCP-V @ c@ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -161,7 +156,7 @@ create DIAG-BUF 8192 allot
 : CASE-POINTER-IN ( -- )
    s" and a real pointer cannot be put into a plain cell in the first place" T-LABEL
    ARM
-   [: s" : RCP-PSTORE ( ptr a -- ) RCP-V ! ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-PSTORE ( ptr a -- ) RCP-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -177,7 +172,7 @@ create DIAG-BUF 8192 allot
 : CASE-FIELD-FORGE ( -- )
    s" the field of a raw cell is refused, so the seal cannot be walked around" T-LABEL
    ARM
-   [: s" : RCP-FORGE ( n -- n ) RCP-V ! RCP-V 0 ptr-field @ @ ;" EV ;]
+   [: s" : RCP-FORGE ( n -- n ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
@@ -190,7 +185,7 @@ create DIAG-BUF 8192 allot
 : CASE-FIELD-FORGE-NOMINAL ( -- )
    s" and the nominal forgery through that field is refused at the same token" T-LABEL
    ARM
-   [: s" : RCP-FORGE-N ( n -- rcpthing ) RCP-V ! RCP-V 0 ptr-field @ @ ;" EV ;]
+   [: s" : RCP-FORGE-N ( n -- rcpthing ) RCP-V ! RCP-V 0 ptr-field @ @ ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    CODE$ HAS?  REPAIR$ HAS?  FIELD-REASON$ HAS?
    DISARM ;
@@ -204,7 +199,7 @@ create DIAG-BUF 8192 allot
 : CASE-SIGNATURE-BOUNDARY ( -- )
    s" the declared output row refuses it too, and names the same rule" T-LABEL
    ARM
-   [: s" : RCP-VBASE ( -- ptr u8 ) RCP-V @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-VBASE ( -- ptr u8 ) RCP-V @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -217,7 +212,7 @@ create DIAG-BUF 8192 allot
 : CASE-RETURN-BOUNDARY ( -- )
    s" the declared return row refuses it too, and names the same rule" T-LABEL
    ARM
-   [: s" : RCP-VRET ( | -- | ptr n ) RCP-V @ >r ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-VRET ( | -- | ptr n ) RCP-V @ >r ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
 
@@ -227,7 +222,7 @@ create DIAG-BUF 8192 allot
 : CASE-RETURN-JOIN ( -- )
    s" a branch join on the return row names it as well" T-LABEL
    ARM
-   [: s" : RCP-VJOIN ( n | -- | ptr n ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN ;" EV ;]
+   [: s" : RCP-VJOIN ( n | -- | ptr n ) 0= IF RCP-V @ >r ELSE RCP-SLOT >r THEN ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
@@ -239,7 +234,7 @@ create DIAG-BUF 8192 allot
 : CASE-RETURN-CALL ( -- )
    s" a call whose declared return inputs refuse the value names it too" T-LABEL
    ARM
-   [: s" : RCP-RTAKE ( | ptr n -- | ) r> drop ;  : RCP-RPASS ( -- ) RCP-V @ >r RCP-RTAKE ;" EV ;]
+   [: s" : RCP-RTAKE ( | ptr n -- | ) r> drop ;  : RCP-RPASS ( -- ) RCP-V @ >r RCP-RTAKE ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    NAMED
    DISARM ;
@@ -257,14 +252,14 @@ create DIAG-BUF 8192 allot
 : CASE-VARIABLE-AS-XT-CELL ( -- )
    s" a plain variable cannot be declared to hold an execution token" T-LABEL
    ARM
-   [: s" : RCP-QCELL ( -- ptr [ -- n ] ) RCP-V ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-QCELL ( -- ptr [ -- n ] ) RCP-V ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
 : CASE-CREATE-AS-XT-CELL ( -- )
    s" a create'd cell gets the same answer" T-LABEL
    ARM
-   [: s" : RCP-QCELLC ( -- ptr [ -- n ] ) RCP-C ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-QCELLC ( -- ptr [ -- n ] ) RCP-C ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -273,7 +268,7 @@ create DIAG-BUF 8192 allot
 : CASE-QUOTATION-STORE ( -- )
    s" a quotation cannot be stored into an undeclared cell either" T-LABEL
    ARM
-   [: s" : RCP-QPUT ( -- ) [: 1 ;] RCP-V ! ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-QPUT ( -- ) [: 1 ;] RCP-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
 
@@ -286,7 +281,7 @@ create DIAG-BUF 8192 allot
 : CASE-RETURN-BALANCE ( -- )
    s" an ordinary return-stack mismatch is still not named by this rule" T-LABEL
    ARM
-   [: s" : RCP-RBAL ( | -- | n ) ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-RBAL ( | -- | n ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?  RETURN-REPAIR$ HAS?
    DISARM ;
 
@@ -295,7 +290,7 @@ create DIAG-BUF 8192 allot
 \ certifying, the rule has grown past its own statement.
 : CASE-BYTE-BUFFER ( -- )
    s" a create'd byte buffer still certifies through type" T-LABEL
-   [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" EV ;] 0 TTHROWSQ ;
+   [: s" : RCP-SHOW ( -- ) RCP-BYTES 4 type ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The latch is raised inside the unifier, which means it can be raised by a row
 \ that is then thrown away: TRY-PRIMS applies each candidate in turn, so
@@ -306,7 +301,7 @@ create DIAG-BUF 8192 allot
 : CASE-ABANDONED-CANDIDATE ( -- )
    s" a candidate row that was abandoned does not name the real refusal" T-LABEL
    ARM
-   [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-SPEC ( -- n ) RCP-V @ cell+ 0= ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 
@@ -316,19 +311,19 @@ create DIAG-BUF 8192 allot
 \ row.
 : CASE-TYPED-VARIABLE-XT ( -- )
    s" a TYPED-VARIABLE code cell still certifies, and is still executed" T-LABEL
-   [: s" : RCP-HKACC ( -- ptr [ -- n ] ) RCP-HK ;" EV ;] 0 TTHROWSQ
-   [: s" : RCP-HKRUN ( -- n ) RCP-HK @ execute ;" EV ;] 0 TTHROWSQ
-   [: s" : RCP-HKPUT ( -- ) [: 1 ;] RCP-HK ! ;" EV ;] 0 TTHROWSQ ;
+   [: s" : RCP-HKACC ( -- ptr [ -- n ] ) RCP-HK ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-HKRUN ( -- n ) RCP-HK @ execute ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-HKPUT ( -- ) [: 1 ;] RCP-HK ! ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 : CASE-TYPED-BUFFER-XT ( -- )
    s" and a TYPED-BUFFER of hooks certifies the same way" T-LABEL
-   [: s" : RCP-HKBRUN ( -- n ) 0 RCP-HKB @ execute ;" EV ;] 0 TTHROWSQ ;
+   [: s" : RCP-HKBRUN ( -- n ) 0 RCP-HKB @ execute ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 : CASE-DEFER-IS ( -- )
    s" defer/is is the other declared code cell and is untouched" T-LABEL
-   [: s" defer RCP-DF ( -- n )" EV ;] 0 TTHROWSQ
-   [: s" : RCP-DFB ( -- ) [: 7 ;] is RCP-DF ;" EV ;] 0 TTHROWSQ
-   [: s" : RCP-DFC ( -- n ) RCP-DF ;" EV ;] 0 TTHROWSQ ;
+   [: s" defer RCP-DF ( -- n )" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-DFB ( -- ) [: 7 ;] is RCP-DF ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-DFC ( -- n ) RCP-DF ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ `xt!` is the sanctioned mint: the one prim whose purpose is to declare that
 \ the cell it writes holds an execution token (the engine installs its persisted
@@ -336,15 +331,15 @@ create DIAG-BUF 8192 allot
 \ index). Its token opens the window, and it is the only token that does.
 : CASE-XT-STORE ( -- )
    s" xt! declares the cell it writes, so it keeps certifying" T-LABEL
-   [: s" : RCP-XTPUT ( -- ) [: 1 ;] RCP-V xt! ;" EV ;] 0 TTHROWSQ
-   [: s" : RCP-XTPUTD ( -- ) [: 1 ;] data-base 8 + xt! ;" EV ;] 0 TTHROWSQ ;
+   [: s" : RCP-XTPUT ( -- ) [: 1 ;] RCP-V xt! ;" evaluate-closed ;] 0 TTHROWSQ
+   [: s" : RCP-XTPUTD ( -- ) [: 1 ;] data-base 8 + xt! ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The window closes with the token: the next mention of the same cell is judged
 \ by the rule again.
 : CASE-XT-WINDOW-CLOSES ( -- )
    s" and the window it opens does not outlive its own token" T-LABEL
    ARM
-   [: s" : RCP-XTTHEN ( -- ptr [ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" EV ;]
+   [: s" : RCP-XTTHEN ( -- ptr [ -- n ] ) [: 1 ;] RCP-V xt!  RCP-V ;" evaluate-closed ;]
       CHECK-RC TTHROWSQ
    NAMED-EXEC
    DISARM ;
@@ -355,7 +350,7 @@ create DIAG-BUF 8192 allot
 : CASE-TASK-SLOT ( -- )
    s" a TASK:+USER slot is refused as before, and not by the new rule" T-LABEL
    ARM
-   [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" EV ;] CHECK-RC TTHROWSQ
+   [: s" : RCP-SPEEK ( -- n ) RCP-SLOT @ @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 

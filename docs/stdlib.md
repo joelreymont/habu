@@ -2443,11 +2443,12 @@ final unterminated child fragment is still emitted before PASS/FAIL.
 `lib/test/subject.f` publishes `SUBJECT:RUN`, which evaluates one counted source
 inside a disposable fork child, captures bounded stdout and stderr, enforces a
 deadline, and returns a typed process outcome. Copy-on-write isolation prevents
-dictionary and engine-state mutations from escaping the child. Its dynamic
-`evaluate` and raw child stack/handler initialization remain audited boundaries
-owned by `habu-type-isolated-dynamic-244c0e2c`; that capability dot replaces
-both with a digest-bound typed source artifact and explicit isolated execution
-context.
+dictionary and engine-state mutations from escaping the child. The child
+evaluates the source with `evaluate-closed`, so a source that leaves cells exits
+67 with `hb: uncaught throw code -3804` (`E-EVAL-RESIDUE`). Its raw child
+stack/handler initialization remains an audited boundary owned by
+`habu-type-isolated-dynamic-244c0e2c`; that capability dot replaces it with a
+digest-bound typed source artifact and explicit isolated execution context.
 
 `lib/test/eval.f`, loaded by `lib/test.f`, publishes package `TEST-EVAL`:
 `N`, `FLAG` and `RC` take one cell, a flag or the throw code out of a source
