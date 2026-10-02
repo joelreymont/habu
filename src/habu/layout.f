@@ -1291,6 +1291,16 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ JIT-RET-CELL: the machine SP of the innermost live `jit-token` call (habu2.f
+\ DEFWRITE:JIT-TOKEN), else 0. The row runs the tier-0 compile loop for one
+\ token from an interpret loop written in Habu; every way that loop goes on
+\ reaches LMAIN, and EM-COMMENT returns to the row when SP there is this
+\ value. An evaluate the token runs reads at a deeper SP and never matches.
+\ The row's catch puts the outer value back on a throw and REPL recovery zeroes
+\ it, so the cell is 0 whenever no call is live: at every top-level token and
+\ at any capture. The next free cell of the $2800..$3000 band after
+\ EXIT-HOOK-CELL, swept across src lib tools test bootstrap.
+$2820 constant JIT-RET-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

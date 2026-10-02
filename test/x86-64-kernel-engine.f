@@ -550,13 +550,15 @@ REGION SLOT-BYTES - constant TOP-SLOT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the compiler tier and the build scope -----------------------------------
-\ The constant rows, code-origin's unknown answer and tier 1.
+\ The constant rows, code-origin's unknown answer, the tier boot selects (x86
+\ has no tier 0) and tier 1.
 : BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" addr-cells-abi" ROW  0 X64HARNESS:EXPECT-POP,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
    0 X64HARNESS:PUSH-SCRATCH,  CELL X64HARNESS:PUSH,  s" code-origin" ROW
    -1 X64HARNESS:EXPECT-POP,
+   s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
    1 X64HARNESS:PUSH,  s" set-tier" ROW
    s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,

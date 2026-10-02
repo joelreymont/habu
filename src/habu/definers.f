@@ -10,13 +10,14 @@
 \ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
 \ is read, `does>` splits the body and takes the signature of the words it
 \ creates, and `;` compiles the body whole and ends the definition through
-\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
-\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
+\ def-close. That is tier 1. Tier 0 compiles each token as it is read, with
+\ the engine's JIT: the head ends through jit-open and each body token, `;`
+\ among them, goes to jit-token.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
 \ refusal the engine reports is made here first. Unlike the engine's head,
-\ this one leaves no PROT window open: def-open closes its own.
+\ this one leaves no PROT window open: def-open and jit-open close their own.
 
 require lib/prelude.f
 require src/core/checker.f
@@ -30,7 +31,7 @@ package OUTER
 
 private
 
-76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
+76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
@@ -43,15 +44,21 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 TRUSTED: DEF-IMM-MARK ( -- ) imm-mark ;
 TRUSTED: DEF-CAST ( -- ) def-cast ;
 TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
+TRUSTED: DEF-JIT-OPEN ( -- ) jit-open ;
+TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 
 \ ---- tier 0 ------------------------------------------------------------------
-\ The engine's tier 0 compiles each body token as it reads it, with its JIT,
-\ which this loop cannot call yet (habu-hook-tier-0-96e33c29): a head or a body
-\ token at tier 0 refuses, naming the token, where the engine's head makes its
-\ first refusal.
-: DEF-TIER-0 ( -- )
-   s" hb: tier 0 is not in the Habu loop: " SAY
-   DEF-RC-TIER-0 PKG-FAIL ;
+\ Nothing of this loop's is on the stack when jit-token runs: what the token
+\ leaves there is the program's, as after a word the loop runs.
+: DEF-TIER-0? ( -- bool )
+   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= ;
+
+\ A `:` while the JIT's pass 2 reads a body again refuses first, naming the
+\ token, as the engine's head does; `trusted:` is never refused for it.
+: DEF-P2-NEST ( -- )
+   P2-CELL CELL@ 0= if exit then
+   s" hb: nested definition in pass 2: " SAY
+   DEF-RC-P2-NEST PKG-FAIL ;
 
 \ ---- the body capture (habu1.f EMIT-BCAP, habu2.f EM-BODY-CAP-DIE) ------------
 \ The capture's first token, the definition's name, which a head seeds: the
@@ -223,8 +230,9 @@ TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
+\ The record's tier then picks the compiler: tier 0's JIT opens the body.
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   trusted 0= if DEF-P2-NEST then
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
@@ -237,6 +245,7 @@ TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
    else
       DEF-MAYBE-SIG
    then
+   DEF-TIER-0? if DEF-JIT-OPEN exit then
    DEF-DISPATCH ;
 
 \ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
@@ -350,12 +359,12 @@ TRUSTED: DEF-COMPILE ( ptr u8 n -- )
 
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
-\ immediate, splits the body at `does>`, or takes a string keyword's text
-\ (NCOMP-EMIT:EM-COMPILE).
+\ tier 0's JIT compiles it, or tier 1 ends it at `;`, or captures the token,
+\ runs it if it is a neutral immediate, splits the body at `does>`, or takes a
+\ string keyword's text (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   DEF-TIER-0? if DEF-JIT-TOKEN true exit then
    DEF-SEMI? if true exit then
    TOKEN$ DEF-CAPTURE
    DEF-IMMEDIATE? if true exit then

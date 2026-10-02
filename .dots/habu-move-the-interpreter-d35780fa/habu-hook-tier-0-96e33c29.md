@@ -1,9 +1,11 @@
 ---
 title: Hook tier-0 compilation into the Habu loop
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.663677+03:00"
+closed-at: "2026-10-02T13:08:58.910733+03:00"
+close-reason: "jit-open and jit-token rows run tier 0 from the Habu loop: test/outer-interpret.f (177 cases agree, tier-0 bodies, pass 2, refusals, nested jit-token), test/engine-writers.f, PTY REPL recovery, x86 boot tier 1 (hb-x64-kernel-tier 0, tier-zero 70), Gforth no-binary check OK; gen1=gen2=gen3 80031128; jit-close dropped because `;` closes through jit-token"
 ---
 
 Problem: B1 (chosen): the ARM64 product keeps tier 0, so the Habu compile loop needs the JIT, but the `LCOMPILE` dispatch's J-* handlers end in `lmainlbl B,` (`habu2.f:5005-5060`), so Habu cannot call it.

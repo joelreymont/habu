@@ -1,7 +1,8 @@
 \ engine-writers.f - the definition writers an interpreter written in Habu
 \ publishes through: namespace-record, namespace-private, alias-record,
 \ package-scope!, def-open, body-append, trust-sig!, created-sig!, def-close,
-\ imm-mark and def-cast (src/habu/prims.f, "the definition writers").
+\ imm-mark, def-cast, jit-open and jit-token (src/habu/prims.f, "the definition
+\ writers" and "the tier-0 rows").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -74,6 +75,8 @@ TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
 TRUSTED: EW-CLOSE ( -- ) def-close ;
 TRUSTED: EW-IMM ( -- ) imm-mark ;
 TRUSTED: EW-CAST ( -- ) def-cast ;
+TRUSTED: EW-JIT-OPEN ( -- ) jit-open ;
+TRUSTED: EW-JIT-TOKEN ( -- ) jit-token ;
 
 \ The marker a refusal case prints just before the refused call.
 : EW-AT ( -- ) EW-MARK$ type ;
@@ -135,6 +138,15 @@ TRUSTED: EW-CAST-AFTER ( n -- ) {: cell:n :}
 TRUSTED: EW-CAST-MOVED ( -- )
    s" EW-FIRST" get-current DKIND:CAST def-open  ndict@ 1+ ndict!  EW-AT  def-cast ;
 
+\ jit-open on the definition just opened, at the tier the caller set; then
+\ jit-token with no jit-open before it, and a second jit-open.
+TRUSTED: EW-OPEN-JIT ( -- )
+   s" EW-FIRST" get-current 0 def-open  EW-AT  jit-open ;
+TRUSTED: EW-OPEN-TOKEN ( -- )
+   s" EW-FIRST" get-current 0 def-open  EW-AT  jit-token ;
+TRUSTED: EW-JIT-TWICE ( -- )
+   s" EW-FIRST" get-current 0 def-open  jit-open  EW-AT  jit-open ;
+
 private
 
 : BOUNDARY ( -- )
@@ -148,7 +160,9 @@ private
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
    s" def-close" s" EWX ( -- ) def-close" INTERNAL
    s" imm-mark" s" EWX ( -- ) imm-mark" INTERNAL
-   s" def-cast" s" EWX ( -- ) def-cast" INTERNAL ;
+   s" def-cast" s" EWX ( -- ) def-cast" INTERNAL
+   s" jit-open" s" EWX ( -- ) jit-open" INTERNAL
+   s" jit-token" s" EWX ( -- ) jit-token" INTERNAL ;
 
 \ A flagged row answers `using`, a `package` reopen and a qualified name. The
 \ reopen must find this row: a second row would hold X, and `using NSA` and
@@ -260,7 +274,12 @@ private
    s" 0 EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" DKIND:VAL EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" DOESB-CELL EW-CAST-AFTER" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" EW-CAST-MOVED" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" EW-CAST-MOVED" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-JIT-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-JIT-TOKEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 1 set-tier EW-OPEN-JIT" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier EW-OPEN-TOKEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 set-tier EW-JIT-TWICE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 public
 

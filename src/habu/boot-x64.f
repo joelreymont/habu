@@ -122,6 +122,8 @@ variable DATA-BAD
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
 \ the data stack's extent, the argument vector ([rsp] = argc, argv at rsp + 8,
 \ envp past argv's null) and the heap floor with the DP that starts at it.
+\ The tier is 1, the one x86-64 has: the mapping's zero would select tier 0,
+\ whose JIT rows the kernel refuses.
 : DATA-INIT, ( -- )
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
@@ -131,7 +133,8 @@ variable DATA-BAD
    RCX RSP CELL MEM-OFF ASM-SINK ENC-LEA  RCX ARGV-CELL CELL!
    RCX RCX RAX CELL CELL MEM-IDX ASM-SINK ENC-LEA  RCX ENVP-CELL CELL!
    RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
-   RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL! ;
+   RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
+   RAX 1 IMM,  RAX NCOMP-DISPATCH:TIER-CELL CELL! ;
 
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.

@@ -8406,7 +8406,7 @@ public
    absent LBL, ;
 
 : EM-COMMENT ( -- )
-   LBL LBL LBL LBL {: notcom skln skpar notcompile :}
+   LBL LBL LBL LBL LBL {: notcom skln skpar notcompile jitret :}
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
       \ The depth floor: a token that left the stack below the active base is
@@ -8414,6 +8414,9 @@ public
       \ the interpreter's only bounds check; compiled code has none, and a
       \ push past the capacity faults on the stack's guard page.
       9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
+      \ The token a `jit-token` call handed to LCOMPILE is done: return to the
+      \ row instead of reading the next one (DEFWRITE:JIT-TOKEN, JIT-RET-CELL).
+      9 DATA JIT-RET-CELL LDR,  10 SP 0 ADDI,  9 10 CMP,  C-EQ jitret BCOND,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
@@ -8423,6 +8426,11 @@ public
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN LABEL@ B,
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
+      \ The row's caller is compiled code, so the window the token may have
+      \ opened closes first; then the frame LJITRUN pushed returns.
+      jitret LBL,
+         PROT-EMIT:LCLOSE LABEL@ BL,
+         30 SP 0 LDR,  SP SP 16 ADDI,  RET,
       notcom LBL,
       C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
@@ -10672,6 +10680,7 @@ public
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-RESTORE,              \ and the line-start used publics, which the resync names
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
+   9 0 MOVZ,  9 DATA JIT-RET-CELL STR,                \ SP goes back past every jit-token frame
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
@@ -11452,6 +11461,75 @@ public
 
 ;package
 
+\ ---- the tier-0 rows ----------------------------------------------------------
+\ The bodies of jit-open and jit-token (src/habu/prims.f, "the tier-0 rows"):
+\ the JIT half of the `:` head, and one body token through LCOMPILE above, for
+\ an interpret loop written in Habu. FPRIM-WID frames x30 around each, as
+\ around the definition writers, and REFUSE-AT is theirs.
+package DEFWRITE
+
+public
+
+\ jit-open ( -- ): the compile state EM-INTERPRET-COLON and C-TRUSTED reset
+\ for a new body, then NCOMP-EMIT:TIER-COLON-DISPATCH's entry slot. The guard
+\ throws before the window opens, and the window closes again after the link
+\ save: the caller is compiled code. Code already begun, CP past the record's
+\ entry, is refused with the rest.
+: JIT-OPEN ( -- )
+   LBL LBL {: bad done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 9 0 LDR,  CP 10 CMP,  C-NE bad BCOND,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 bad CBNZ,
+   EXECUTABLE-JIT-GUARD
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
+   9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
+   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
+   12 DATA VSP-CELL STR,
+   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+   12 DATA QPATCH-CELL STR,
+   12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ the entry slot, no call seen yet
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,             \ str x30,[sp,#-16]!
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ jit-token ( -- ): the token in TKA/TKL through LCOMPILE, as EM-COMMENT hands
+\ tier 0 a body token. The run pushes its return and puts that SP in
+\ JIT-RET-CELL, and the LMAIN top LCOMPILE ends at returns through it
+\ (EM-COMMENT). The run is caught: a throw puts the outer call's JIT-RET-CELL
+\ back, closes the window and is thrown on. A definition jit-open has not
+\ begun, CP at the record's entry, is refused with the rest.
+: JIT-TOKEN ( -- )
+   LBL LBL LBL {: bad run done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 9 0 LDR,  CP 10 CMP,  C-EQ bad BCOND,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 bad CBNZ,
+   9 DATA JIT-RET-CELL LDR,  SP SP 16 SUBI,  9 SP 0 STR,
+   9 run ADR,  9 G-PUSH
+   BCATCH
+   9 SP 0 LDR,  9 DATA JIT-RET-CELL STR,  SP SP 16 ADDI,
+   9 G-POP  9 done CBZ,
+      9 G-PUSH
+      PROT-EMIT:LCLOSE LABEL@ BL,
+      BTHROW
+      done B,
+   run LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      9 SP 0 ADDI,  9 DATA JIT-RET-CELL STR,
+      LCOMPILE LABEL@ B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+;package
+
 \ The main-loop emitter entry belongs to the emitter package habu1.f opens for
 \ the primitive sections: its caller EMIT-CODE-SECTIONS resolves it bare in the
 \ reopened block below.
@@ -12078,6 +12156,8 @@ package ENGINE-EMIT
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" jit-open" ['] DEFWRITE:JIT-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" jit-token" ['] DEFWRITE:JIT-TOKEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

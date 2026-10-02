@@ -19,10 +19,10 @@
 \ `immediate`. A case defines with the other keywords through evaluate, which
 \ the engine's loop reads.
 \
-\ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
-\ loop compiles and the Habu loop refuses, and the records an exit hook finds
-\ after an uncaught throw: the engine's loop rolls the dictionary back to the
-\ file's start, and the Habu loop does not. And one check runs in a forked copy
+\ Some cases are the Habu loop's alone: the records an exit hook finds after an
+\ uncaught throw, where the engine's loop rolls the dictionary back to the
+\ file's start and the Habu loop does not, and the cell only the Habu loop's
+\ jit-token sets (JIT-RET-CELL). And one check runs in a forked copy
 \ of this process instead, the seam: a fork binds it to a counting spy, and a
 \ loaded file must arrive there.
 
@@ -1031,8 +1031,8 @@ variable WANT-RC
 \ ---- the definition heads -------------------------------------------------------
 \ A head refuses through the engine's tails, in the engine's order, or leaves
 \ its definition pending: nothing compiles until `;`. A case selects tier 1
-\ first; the Habu loop refuses tier 0, whose bodies the engine's loop compiles
-\ as it reads them.
+\ first; at tier 0 the head opens the JIT, which compiles each body token as the
+\ loop reads it (the tier 0 cases below).
 : HEAD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET s" 1 set-tier " GE-SRC+
    src srcu GE-SRC-LINE
@@ -1054,19 +1054,30 @@ variable WANT-RC
    s" oi-trusted-no-name.f" BOTH
    74 s" hb: reader keyword needs a name: trusted: at " S\" oi-trusted-no-name.f:2\n" DIED-AT ;
 
-\ At tier 0 a head and a body token refuse. A body reaches the Habu loop at
-\ tier 0 only when the engine's loop opened its head, as `evaluate` does.
+\ A tier 0 head the input ends after stays pending, as a tier 1 one does.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
    s" : OI-T0" GE-SRC-LINE
-   s" oi-tier-0-head.f" HABU
-   S\" 1\n" CASE$ GE-EXPECT-OUT
-   76 s" hb: tier 0 is not in the Habu loop: : at " S\" oi-tier-0-head.f:2\n" DIED-AT
+   s" oi-tier-0-head.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A throw out of the JIT's pass 2 that a catch takes leaves the pass-2 state
+\ with no definition pending: OI-X throws on its second run, which is pass 2's
+\ of the wide body. The next `:` refuses before anything else in the head.
+: HEAD-PASS-2 ( -- )
    GE-SRC-RESET
-   s" s~ : OI-T0 ( -- )~ evaluate 1 2" QLINE
-   s" oi-tier-0-body.f" HABU
-   76 s" hb: tier 0 is not in the Habu loop: 1 at " S\" oi-tier-0-body.f:1\n" DIED-AT ;
+   s" s~ variable OI-RUNS~ evaluate" QLINE
+   s" s~ TRUSTED: OI-X ( -- ) 1 OI-RUNS +! OI-RUNS @ 2 = if 42 throw then ; immediate~ evaluate" Q+
+   s"   s~ OI-X~ 0 parse-imm" QLINE
+   s" s\~ TRUSTED: OI-TRY ( -- n ) [: s\~ : OI-P ( oiwide<n,n> -- oiwide<n,n> oiwide<n,n> )" Q+
+   s"  OI-X dup ;\~ evaluate ;] catch ;~ evaluate" QLINE
+   s" OI-TRY . OI-RUNS @ ." GE-SRC-LINE
+   s" : OI-T ( -- n ) 3 ;" GE-SRC-LINE
+   s" oi-head-pass-2.f" BOTH
+   S\" 42\n2\n" CASE$ GE-EXPECT-OUT
+   76 s" hb: nested definition in pass 2: : at " S\" oi-head-pass-2.f:5\n" DIED-AT ;
 
 \ A head exits 79 while a task is live, the keyword its whole diagnostic.
 : HEAD-TASK-LIVE ( -- )
@@ -1215,8 +1226,9 @@ variable WANT-RC
 
 \ An immediate that ends the definition it runs in leaves the code window
 \ closed, at tier 0 and tier 1: the word read next runs from the unit the head
-\ held open. The engine's loop reads the head through evaluate, and at tier 1
-\ the loop under test reads it too, whose body runs the immediate.
+\ held open. The engine's loop reads the head through evaluate, and in the last
+\ two the loop under test reads it too, whose body runs the immediate: at tier 0
+\ under jit-token, with the immediate's evaluate nested in that call.
 : IMMEDIATE-SEMI ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: tier:ptr tieru:n head:ptr headu:n name:ptr nameu:n :}
    GE-SRC-RESET
@@ -1235,7 +1247,9 @@ variable WANT-RC
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
    s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
    s" 1 set-tier" s" : OI-F ( n -- n ) OI-M 40 OI-G OI-F ."
-   s" oi-immediate-semi-loop.f" IMMEDIATE-SEMI ;
+   s" oi-immediate-semi-loop.f" IMMEDIATE-SEMI
+   s" 0 set-tier" s" : OI-F ( n -- n ) OI-M 40 OI-G OI-F ."
+   s" oi-immediate-semi-loop-tier-0.f" IMMEDIATE-SEMI ;
 
 \ A body past BODYBUF-CAP refuses, naming the definition and the size the
 \ capture needed.
@@ -1394,15 +1408,16 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR ;
 
-\ At tier 0 the body refuses before an immediate in it runs.
+\ At tier 0 the JIT runs an immediate in the body as the loop reads it, after
+\ the engine's loop opened the head through evaluate.
 : BODY-IMMEDIATE-TIER-0 ( -- )
    GE-SRC-RESET
    NEUTRAL-LINE
    s" 1 ." GE-SRC-LINE
    s" s~ : OI-T0 ( -- )~ evaluate OI-N 2" QLINE
-   s" oi-body-immediate-tier-0.f" HABU
-   S\" 1\n" CASE$ GE-EXPECT-OUT
-   76 s" hb: tier 0 is not in the Habu loop: OI-N at " S\" oi-body-immediate-tier-0.f:3\n" DIED-AT ;
+   s" oi-body-immediate-tier-0.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 1\n9\n" CASE$ GE-EXPECT-OUT ;
 
 \ ---- `does>` in a body --------------------------------------------------------------
 \ OI-END is a neutral immediate that ends the definition it runs in through
@@ -1525,13 +1540,80 @@ variable WANT-RC
    s" " CASE$ GE-EXPECT-OUT
    S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
 
-\ At tier 0 `;` refuses as every body token does: the engine's loop ends a
-\ tier 0 body.
+\ At tier 0 `;` goes to the JIT as every body token does, and ends the body
+\ the engine's loop opened.
 : SEMI-TIER-0 ( -- )
    GE-SRC-RESET
-   s" s~ : OI-T0 ( -- )~ evaluate ;" QLINE
-   s" oi-semi-tier-0.f" HABU
-   76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0.f:1\n" DIED-AT ;
+   s" s~ : OI-T0 ( -- n )~ evaluate 5 ; OI-T0 ." QLINE
+   s" oi-semi-tier-0.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 5\n" CASE$ GE-EXPECT-OUT ;
+
+\ ---- tier 0 ----------------------------------------------------------------------
+\ The default tier: each head opens the JIT (jit-open) and each body token goes
+\ to it (jit-token), `;` among them.
+: TIER-0-BODIES ( -- )
+   GE-SRC-RESET
+   s" : OI-INC ( n -- n ) 1 + ;" GE-SRC-LINE
+   s" : OI-TWICE ( n -- n ) OI-INC OI-INC ;" GE-SRC-LINE
+   s" 40 OI-TWICE ." GE-SRC-LINE
+   s" kernel: OI-K ( -- n ) 5 ; OI-K ." GE-SRC-LINE
+   s" trusted: OI-TR ( -- n ) 6 ; OI-TR ." GE-SRC-LINE
+   s" : OI-LOOP ( n -- n ) 0 swap 0 ?do i + loop ; 5 OI-LOOP ." GE-SRC-LINE
+   s" : OI-BEGIN ( n -- n ) begin 1 - dup 3 < until ; 10 OI-BEGIN ." GE-SRC-LINE
+   s" : OI-IF ( n -- n ) dup 0< if negate else 1 + then ; -4 OI-IF . 4 OI-IF ." GE-SRC-LINE
+   s" : OI-LOC ( n n -- n ) {: a:n b:n :} a b - ; 9 2 OI-LOC ." GE-SRC-LINE
+   s" : OI-Q ( n -- n ) [: 2 * ;] execute ; 21 OI-Q ." GE-SRC-LINE
+   s" : OI-S ( -- ) s~ hi~ type cr ; OI-S" QLINE
+   s" : OI-DEF ( n -- ) create , does> ( -- n ) @ ; 7 OI-DEF OI-SV OI-SV ." GE-SRC-LINE
+   s" oi-tier-0-bodies.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n5\n6\n10\n2\n4\n5\n7\n42\nhi\n7\n" CASE$ GE-EXPECT-OUT ;
+
+\ A body with a wide value runs the JIT's pass 2 from the Habu loop's `;`.
+: TIER-0-PASS-2 ( -- )
+   GE-SRC-RESET
+   s" : OI-WD ( oiwide<n,n> -- oiwide<n,n> oiwide<n,n> ) dup ;" GE-SRC-LINE
+   s" TRUSTED: OI-W4 ( -- n n n n ) OI-WIDE OI-WD ;" GE-SRC-LINE
+   s" OI-W4 . . . ." GE-SRC-LINE
+   s" oi-tier-0-pass-2.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9\n7\n9\n7\n" CASE$ GE-EXPECT-OUT ;
+
+\ The JIT's refusals end the load as the engine's loop's do: an undefined word
+\ in a body, and a body the checker does not certify.
+: TIER-0-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" : OI-BAD ( -- ) OI-NOPE ;" GE-SRC-LINE
+   s" 2 ." GE-SRC-LINE
+   s" oi-tier-0-undefined.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" : OI-BAD2 ( -- n ) ;" GE-SRC-LINE
+   s" 2 ." GE-SRC-LINE
+   s" oi-tier-0-uncertified.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   s" hook: non-certified definition: oi-bad2" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ JIT-RET-CELL holds the stack of the innermost live jit-token call: nonzero
+\ while an immediate runs in a body, back to its value when a nested jit-token
+\ call throws, and 0 at the top level.
+: TIER-0-NESTED ( -- )
+   GE-SRC-RESET
+   s" s~ : OI-RET ( -- n ) JIT-RET-CELL OI-CELL@ ;~ evaluate" QLINE
+   s" s~ TRUSTED: OI-THROW ( -- ) 42 throw ; immediate~ evaluate  s~ OI-THROW~ 0 parse-imm" QLINE
+   s" s\~ TRUSTED: OI-NEST ( -- ) OI-RET dup 0<> . [: s\~ OI-THROW\~ OUTER:INTERPRET ;] catch ." Q+
+   s"  OI-RET = . ; immediate~ evaluate  s~ OI-NEST~ 0 parse-imm" QLINE
+   s" : OI-OUTER ( -- ) OI-NEST ;" GE-SRC-LINE
+   s" OI-OUTER OI-RET . 7 ." GE-SRC-LINE
+   s" oi-tier-0-nested.f" HABU
+   CASE$ GE-EXPECT-OK
+   S\" -1\n42\n-1\n0\n7\n" CASE$ GE-EXPECT-OUT ;
 
 \ ---- `immediate` and `cast:` ---------------------------------------------------------
 \ `immediate` marks the newest record, a definition's or a cast's, and a body
@@ -1732,6 +1814,7 @@ private
    SEAM
    HEAD-NO-NAME
    HEAD-TIER-0
+   HEAD-PASS-2
    HEAD-TASK-LIVE
    HEAD-CAPACITY
    HEAD-NAME-REFUSALS
@@ -1774,6 +1857,10 @@ private
    CAST-UNDERDEPTH
    CAST-CHECKER
    CAST-TASK-LIVE
+   TIER-0-BODIES
+   TIER-0-PASS-2
+   TIER-0-REFUSALS
+   TIER-0-NESTED
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;
