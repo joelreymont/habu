@@ -2348,6 +2348,79 @@ INCLUDE-BUF-CAP 2 * constant FULL-ERR-CAP
    FULL-SOURCE-LEN FULL-ERR-CAP + MEM:BYTES-ALLOC-LEN
    [: FULL-BODY ;] MEM:WITH-BYTES ;
 
+\ ---- a record past the render buffer -----------------------------------------
+\ The renderer holds each record in its own 16 KiB (src/core/render.f RSBUF)
+\ before the scratch sees it. A word of WIDE-N backslashes is within the 7999
+\ bytes `:` defines, and each byte is two in a JSON string, so the record of its
+\ refusal, which names the word and echoes its source, passes that buffer. The
+\ run reports the refusal before it, then that one's as an E-STATEMENT-THROW
+\ record whose throw_code is E-DIAG-CAPACITY (-2901), and exits 70.
+
+7900 constant WIDE-N
+
+: WIDE-HEAD$ ( -- ptr u8 n )
+   s\" : CKT-R ( n -- n ) dup ;\n: " ;
+
+: WIDE-TAIL$ ( -- ptr u8 n )
+   s\"  ( n -- n ) dup ;\n" ;
+
+WIDE-HEAD$ nip WIDE-N + WIDE-TAIL$ nip + constant WIDE-SOURCE-LEN
+
+: WIDE-FILL ( ptr u8 -- ) {: a:ptr :}
+   WIDE-HEAD$ {: h:ptr hu:n :}
+   WIDE-TAIL$ {: t:ptr tu:n :}
+   h a hu BYTE-COPY
+   WIDE-SOURCE-LEN tu - hu ?do $5c a i + c! loop
+   t a WIDE-SOURCE-LEN + tu - tu BYTE-COPY ;
+
+: RENDER-FULL-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   {: a:ptr extent:NUM:alloc-byte-len :}
+   a WIDE-SOURCE-LEN + {: err:ptr :}
+   a WIDE-FILL
+   a WIDE-SOURCE-LEN MODE-ALL MODE-JSON or err REPORT-ERR-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   err erru s\" \"word\":\"ckt-r\"" CONTAINS? TTRUE
+   err erru LAST-LINE-AT {: cut:n :}
+   err cut + erru cut - {: last:ptr lastu:n :}
+   last lastu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   last lastu s\" \"throw_code\":-2901" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
+: TEST-RENDER-FULL ( -- )
+   WIDE-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
+   [: RENDER-FULL-BODY ;] MEM:WITH-BYTES ;
+
+\ The sig recorder renders each certified word's effect through the same buffer.
+\ USE declares none, so it records the one the checker infers: six values of a
+\ type whose name is EFFECT-N bytes, past that buffer. The run reports it as an
+\ E-STATEMENT-THROW record whose throw_code is E-DIAG-CAPACITY (-2901) and exits
+\ 70; the refusal after it would be the last record had the throw been lost.
+
+3000 constant EFFECT-N
+
+: EFFECT-NAME ( -- )
+   EFFECT-N 0 ?do $61 LONG-C loop ;
+
+: EFFECT$ ( -- ptr u8 n )
+   0 LONG-U !
+   s" NEWTYPE " LONG-PUT
+   EFFECT-NAME
+   s\"  0\nTRUSTED: MK ( -- " LONG-PUT
+   EFFECT-NAME
+   s\"  ) 0 ;\n: USE MK MK MK MK MK MK ;\n: CKT-R ( n -- n ) dup ;\n" LONG-PUT
+   LONG-BUF LONG-U @ ;
+
+: TEST-RENDER-FULL-EFFECT ( -- )
+   EFFECT$ MODE-JSON CAP-ERR BUF-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   CAP-ERR erru LAST-LINE-AT {: cut:n :}
+   CAP-ERR cut + erru cut - {: last:ptr lastu:n :}
+   last lastu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   last lastu s\" \"throw_code\":-2901" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
 : LIST-CAP-FILL ( -- )
    LIST-ENTRY-CAP 0 ?do BAD$ FILE loop ;
 
@@ -5068,6 +5141,8 @@ variable LC-CANON-U
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
    s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN
    s" check/scratch-full" [: TEST-SCRATCH-FULL ;] CASE-RUN
+   s" check/render-full" [: TEST-RENDER-FULL ;] CASE-RUN
+   s" check/render-full-effect" [: TEST-RENDER-FULL-EFFECT ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN

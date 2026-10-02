@@ -13,6 +13,7 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
+variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes
 variable RDIAG-ON
 variable RDIAG-FD   2 RDIAG-FD !
 PTR-VARIABLE RDIAG-A
@@ -20,10 +21,26 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
+\ A record that does not fit its buffer, the renderer's own or the caller's, is
+\ refused by this code. lib/errors.f owns it; this file compiles before any lib/
+\ file exists, so the same (code, name) pair is re-registered here -- the one
+\ form tools/error-code-lint.f admits -- and test/diag-buffer-capacity.f keeps
+\ the two spellings equal.
+package RDIAG
+public
+-2901 constant E-DIAG-CAPACITY
+;package
+
+\ RSBUF holds one record whole, a diagnostic or a recorded effect. A record
+\ past it is refused by a throw, with rendering back on stdout and outside any
+\ JSON string, so a refused record leaves the renderer as a delivered one does.
 : EMIT-RAW {: c :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
-     RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
+     RSN @ RSBUF-CAP 2 - > IF
+        0 RDST !  0 RSN !  0 RJSON !
+        RDIAG:E-DIAG-CAPACITY throw
+     THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 
@@ -50,7 +67,6 @@ variable RDIAG-I
 \ Between JOPEN and JCLOSE every byte EMIT1 writes is escaped, so a rendered
 \ type, row or family name is a well-formed JSON string whatever its names
 \ spell: a package may be named `\`, and its families render as `\:tail`.
-variable RJSON   0 RJSON !
 : EMIT1 {: c :}
    RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
 : JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
@@ -85,15 +101,6 @@ variable RJSON   0 RJSON !
       RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
-
-\ A full diagnostic buffer refuses the next record. lib/errors.f owns the code;
-\ this file compiles before any lib/ file exists, so the same (code, name) pair
-\ is re-registered here -- the one form tools/error-code-lint.f admits -- and
-\ test/diag-buffer-capacity.f keeps the two spellings equal.
-package RDIAG
-public
--2901 constant E-DIAG-CAPACITY
-;package
 
 \ The buffer is the caller's and cannot grow, so a record that does not fit is
 \ refused whole by a throw the caller's catch recovers from: the buffer keeps
