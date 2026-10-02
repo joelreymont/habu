@@ -730,7 +730,7 @@ private
    RETS-IN-EMISSION 0 T=
 
    s" and the branch it ends in reaches the one shared routine" T-LABEL
-   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T= ;
+   LAST-TARGET  s" die" NDICT:CALL-TARGET  T= ;
 
 \ The placement survey with trap sites in it. The routine takes and publishes
 \ nothing, so the entry wants the pointer where the caller left it; its two trap
@@ -750,7 +750,7 @@ private
 
    s" and it is the address the dictionary answers for the shared routine"
    T-LABEL
-   T-FIRST @  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
+   T-FIRST @  s" die" NDICT:CALL-TARGET  T=
 
    s" which the two reached from two different placements" T-LABEL
    CODE-PLACEMENT  NPUB:NEXT-SLOT  T<> ;

@@ -61,8 +61,7 @@
 \ division's quotient is result 0 and the source value's; its remainder is a
 \ second result nothing reads; `cqo` and the branch over the zero-divisor refusal
 \ belong to the form's RENDER, which is why the operation carries the runtime
-\ `throw` entry as its own attribute the way a64.sdiv does, and why a target
-\ dictionary without `throw` is refused (E-X64SEL-TRAP).
+\ `throw` entry as its own attribute the way a64.sdiv does.
 \
 \ WHAT THE EMITTER ANSWERS AND WHAT IT STILL OWES. emit-x64.f renders `x64.idiv`
 \ with the two answers this pass cannot give: the branch that hands a zero
@@ -813,13 +812,8 @@ create NAMEBUF NAME-CAP allot
    id mask EMIT-WORD-CALL ;
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The trap registry resolves diagnostics at compile time; only die is needed in
-\ the target dictionary.
-: TRAP-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
-
+\ The trap registry resolves diagnostics at compile time, and every trap site
+\ enters the engine's `die` (NTRAP:ROUTINE).
 : EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id give:n entry:n :}
    at X64IR-OPCODE:TRAP OPEN
@@ -837,7 +831,7 @@ create NAMEBUF NAME-CAP allot
    TRAP-CELLS 0 ?do
       id  id i OPERAND  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
    loop
-   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  TRAP-ENTRY  EMIT-TRAP-BR ;
+   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  NTRAP:ROUTINE  EMIT-TRAP-BR ;
 
 : EMIT-TERMINAL ( IR-ID:ir-op-id n -- ) {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-TRAP throw then
@@ -1229,17 +1223,12 @@ create NAMEBUF NAME-CAP allot
 \ ---- selecting the division --------------------------------------------------
 \ A zero divisor is a CALLER error, so the divide's cold side hands the code to
 \ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
-\ does. The entry is asked for here, where the dictionary is readable, and
-\ carried to the emitter as the operation's own attribute; the name E-X64SEL-TRAP
-\ names is the routine a compiled refusal branches to missing from the target
-\ dictionary, which is the same refusal the ARM64 selector makes. Public, so a
-\ writer that links a compiled routine itself knows the call the divide makes
-\ (src/habu/kernel-x64.f PRIM-HIR).
+\ does. The entry is the engine's `throw`, ticked here whatever the compiled
+\ source's scope holds, and carried to the emitter as the operation's own
+\ attribute. Public, so a writer that links a compiled routine itself knows the
+\ call the divide makes (src/habu/kernel-x64.f PRIM-HIR).
 public
-: THROW-ENTRY ( -- n )
-   s" throw" NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
+TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
 
 private
 

@@ -559,7 +559,7 @@ create SPELL-BUF SPELL-CAP allot
 \ operation in a registered source, so the source is the pending record's name,
 \ copied into TXT as a scanned body is, and the tape is the one row naming it.
 \ A defer's row is its name as written, the body capture's first token, which
-\ the definer registered its effect under and KEEP-ARITY asks by: for a
+\ the definer registered its effect under and NO-RETURN? asks by: for a
 \ qualified name more than the record's tail (habu2.f C-PUSH-DREC-NAME).
 $20 constant NAME-END
 
@@ -587,15 +587,16 @@ $20 constant NAME-END
    NTAPE:PUSH-INTO drop
    tp NTAPE:SEAL 0 M-TAPE ! ;
 
-\ A defer's body has the effect the definer registered before compiling it
-\ (src/habu/definers.f DEF-DEFER): its arity and glue are asked of the checker
-\ by the name the tape holds, and its trailer follows the routine (NPUB).
+\ A defer's body takes and leaves nothing of its own whatever effect the
+\ definer registered (src/habu/definers.f DEF-DEFER): the target its cell
+\ holds meets the caller's stack (NELAB:DEFER), so the routine is declared of
+\ no inputs and no outputs, the checker is asked by the name the tape holds
+\ only whether the defer returns, and its trailer follows the routine (NPUB).
 : DEFER-WORK ( IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    KEEP-TAPE-NAME
-   KEEP-ARITY
-   NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
-   CC BB TAPE p r M-FIXED-VAL @ M-IN @ M-OUT @ NELAB:DEFER drop
+   0 M-IN !  0 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
    EMITTED
    M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
 

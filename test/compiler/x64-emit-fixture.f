@@ -1576,7 +1576,7 @@ private
    X64IR:SP-ALIGN / X64IR:SP-ALIGN * ;
 
 : DIE-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET ;
+   s" die" NDICT:CALL-TARGET ;
 
 : TRAP-SLOT ( -- n )
    DIE-ENTRY SLOT-BELOW ;
@@ -1629,7 +1629,7 @@ $100000000 constant FAR-ENTRY
    0 W-CTX ! CALLEE-ENTRY BUILD-REMAINDER 3 1 M-DALLOCATED 0 PLACED ;
 
 \ Where `hir.trap` goes: `die` in THIS engine's dictionary, which is what the
-\ selector names (select-x64.f TRAP-ENTRY). That address is the host's and moves
+\ selector names (trap.f ROUTINE). That address is the host's and moves
 \ with every engine build, so the call's field is not pinned as bytes: it is read
 \ back and held to the entry less the slot and the routine's own length, the
 \ call being the routine's last instruction.

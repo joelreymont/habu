@@ -1193,7 +1193,7 @@
 -8761 constant E-X64SEL-SOURCE  \ a frozen module that is not the bound one, or a builder holding a dialect that is not HIR
 -8762 constant E-X64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
 -8763 constant E-X64SEL-SHAPE   \ a module or function this pass cannot select: not exactly one source, or a function with no block at all
--8764 constant E-X64SEL-TRAP    \ an operation whose schema says it may trap lowered to a form that does not reproduce the trap - trapping arithmetic has no x86-64 lowering - or a trap whose routine is not in the target dictionary
+-8764 constant E-X64SEL-TRAP    \ an operation whose schema says it may trap lowered to a form that does not reproduce the trap - trapping arithmetic has no x86-64 lowering
 -8765 constant E-X64SEL-ATTR    \ an operation whose attribute is not under the source dialect's key for it
 -8766 constant E-X64SEL-CAP     \ more values, blocks or edge operands in one function than this pass's maps hold
 -8767 constant E-X64SEL-PLACE   \ a calling convention this selector has no rule for: one side mixing register places with data-stack places, or a function whose arity is not the one the contract declares

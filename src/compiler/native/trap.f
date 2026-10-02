@@ -130,10 +130,10 @@ KIND-NORET constant NO-RET
 : COUNT ( -- n )
    ROWS @ ;
 
-\ Trap messages are resolved while compiling. The target needs only the engine
-\ primitive, including while the source runtime itself is being rebuilt.
-: ROUTINE$ ( -- ptr u8 n )
-   s" die" ;
+\ Trap messages are resolved while compiling, so the routine a trap site enters
+\ is the engine primitive `die`, ticked here: no word of that spelling in the
+\ compiled source's scope can take the branch.
+TRUSTED: ROUTINE ( -- n ) ['] die ;
 
 \ ---- the routine every trap site branches to ----------------------------------
 \ Entered with the ordinal and does not come back. A tag matching no arm exits

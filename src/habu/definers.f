@@ -542,10 +542,10 @@ TRUSTED: DEF-TAKE ( -- ) DEF-VALUE ! ;
 \ text: a live task, the room, the name, then the signature, which must be
 \ there, opened and closed, then `defer-unset`, whose cell is allotted before
 \ the qualifier, as the engine's is. The checker gets the effect before NCOMP
-\ compiles the body, which asks it for the arity; NPUB lays the trailer after
-\ the routine and def-close ends the definition. The engine registers after it
-\ publishes, which nothing observes: trust-decl never consults the dictionary
-\ (habu2.f DEF-TRUST).
+\ compiles the body, which asks it whether the defer returns; NPUB lays the
+\ trailer after the routine and def-close ends the definition. The engine
+\ registers after it publishes, which nothing observes: trust-decl never
+\ consults the dictionary (habu2.f DEF-TRUST).
 
 \ With the input at its end the token cells still hold the keyword, which the
 \ refusal names (DEFER-DIAG:DIE-NO-NAME, rc $4A).

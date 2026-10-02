@@ -3175,11 +3175,25 @@ create DN-BUF DN-CAP allot
    PATH-DEAD PATH-END ! ;
 
 
+\ ---- the words a generated call enters ---------------------------------------
+\ A call this compiler generates, rather than one a source token names, enters
+\ the word it means whatever the definition's scope holds. An engine
+\ primitive's entry is its tick, bound when this file is compiled, so no word of
+\ the same spelling in the source's packages can take the call. A library word
+\ (DO-QUOTATION-STORE, VALIDATE-FETCH) is looked up by qualified name at each
+\ compile instead: in a self-build the window holds the fresh copy the code must
+\ enter, while a tick baked into the building engine names the discarded host
+\ copy, whose record the build's logical reset dropped. A qualified name
+\ resolves through the package's public words (dict.f QUALIFIED-REC), never the
+\ search order, so no package-local word shadows it either.
+TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
+TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
+TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
+TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
+
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
-   s" type" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-HIR-UNMODELED throw then
    ix EMIT-STRING
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 
 : DO-STRING ( n -- ) {: ix:n :}
@@ -3259,12 +3273,10 @@ create DN-BUF DN-CAP allot
    a u NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
-   s" xt!" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
    ix cell HIR:ADDR-DATA EMIT-KIND-LIT
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
 : DO-EXEC ( IR-ARENA:arena n -- )
@@ -4029,7 +4041,6 @@ variable DOES-AT
 variable DOES-FUN
 PTR-VARIABLE DOES-SIG
 variable DOES-SIG-U
-variable DOES-PATCH
 \ True when the clause between `does>` and `;` holds no token at all. Such a
 \ clause runs after the created word has pushed its data address and does
 \ nothing to it, so `does-patch` is given a zero entry and publishes the
@@ -4039,7 +4050,6 @@ variable DOES-PATCH
 variable DOES-EMPTY
 variable FIXED-VAL                   \ the cell a definer's body pushes; a defer's dispatch cell
 variable FIXED-KIND                  \ ...and its NDICT definer kind
-variable DEFER-EXEC                  \ `execute`'s entry, which a defer's body calls
 
 public
 
@@ -4063,8 +4073,6 @@ public
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !
    0 DOES-EMPTY !
-   0 DOES-PATCH !
-   0 DEFER-EXEC !
    0 FIXED-VAL ! ;
 
 private
@@ -4107,7 +4115,7 @@ private
    DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
    1 CALL-NEED !
-   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ What a mention of a created word, a variable or a constant folds to
 \ (EMIT-FIXED-SYM): the cell, its kind as the dictionary's stamp translates.
@@ -4115,14 +4123,17 @@ private
    0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
 
 \ What a defer's body does (habu2.f C-DEFER-EMIT-CODE): fetch the execution
-\ token its dispatch cell holds and call it through `execute`, over the
-\ inputs, as DO-EXEC stages an `execute`. The one row is the name, so the
-\ memory the fetch and the call are ordered by is minted here, at row 0.
+\ token its dispatch cell holds and call it through `execute`, which takes
+\ that one cell and leaves nothing of its own. The target meets the caller's
+\ stack where the defer's caller left it, as the engine's `blr` through the
+\ cell does, so no declared input or output is staged. The one row is the
+\ name, so the memory the fetch and the call are ordered by is minted here,
+\ at row 0.
 : STAGE-DEFER ( -- )
    0 EMIT-MEM
    0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
    0 HIR-OPCODE:LOAD EMIT-OPCODE
-   0 DEFER-EXEC @ IN-N @ 1+ OUT-N @ OUT-GLUE @ STAGE-WCALL ;
+   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
@@ -4220,7 +4231,6 @@ public
    din dout ARITY-CK
    c b v UNIT {: n:n :}
    at 1 < at n >= or if E-NELAB-SHAPE throw then
-   s" does-patch" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DOES-PATCH !
    at DOES-AT !  sig DOES-SIG !  sigu DOES-SIG-U !
    0 DOES-EMPTY !
    at 1+ n >= if 1 DOES-EMPTY ! then
@@ -4252,21 +4262,19 @@ public
    c b v p r 1 1 0 1 BUILD-FUN ;
 
 \ A defer's body (NCOMP:COMPILE-FIXED) over the same one-row tape: a function
-\ of the declared arity that calls the execution token in dispatch cell cell
-\ and returns what it leaves, with the frame glue FRAME-GLUE! staged.
-: DEFER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n -- IR-ID:ir-fun-id )
+\ of no inputs and no outputs that calls the execution token in dispatch cell
+\ cell, whatever effect the defer declares (STAGE-DEFER).
+: DEFER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
-      r:IR-ARENA:arena cell:n in:n out:n :}
+      r:IR-ARENA:arena cell:n :}
    RF-RESET
-   in out ARITY-CK
    c b v UNIT {: n:n :}
    n 1 <> if E-NELAB-SHAPE throw then
-   s" execute" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DEFER-EXEC !
    cell FIXED-VAL !
    FUN-DEFER FUN-KIND !
-   FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
    0 FR-GIN ! 0 FR-GOUT !
-   c b v p r 1 1 in out BUILD-FUN ;
+   c b v p r 1 1 0 0 BUILD-FUN ;
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;

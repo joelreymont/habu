@@ -40,11 +40,11 @@
 \ data-stack contract has no cell for. The last check, after every image is
 \ written, asserts that refusal. BUILD-SELFCALLER is RECURSE with no base case,
 \ so it never returns. BUILD-TRAP calls `die`, and BUILD-DIV's cold side
-\ `throw`, each at its address in the host engine's dictionary (select-x64.f
-\ TRAP-ENTRY, THROW-ENTRY), which is no address of an x86 image; the terminal
-\ fixture here renders the same `x64.trap`, and the divide routines the same
-\ `x64.idiv`, to a callee the image carries. BUILD-DIV's bytes are pinned by
-\ test/compiler/x64-emit.f.
+\ `throw`, each at its address in the host engine's dictionary (trap.f
+\ ROUTINE, select-x64.f THROW-ENTRY), which is no address of an x86 image; the
+\ terminal fixture here renders the same `x64.trap`, and the divide routines the
+\ same `x64.idiv`, to a callee the image carries. BUILD-DIV's bytes are pinned
+\ by test/compiler/x64-emit.f.
 require lib/test.f
 require lib/string.f
 require lib/fmt.f

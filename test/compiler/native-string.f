@@ -244,17 +244,17 @@ variable MUTABLE-CELL
    0 UNOWNED-ROW  -1 UNOWNED-ROW
    MUTABLE-CELL PTR>N NSTR:REINTERN-OWNED TFALSE MUTABLE-CELL PTR>N T= ;
 
-\ ROUTINE$ was compiled into the engine by its retained build host. Its literal
+\ HIR:NAME was compiled into the engine by its retained build host. Its literal
 \ predates this load and belongs to the transferred source pool after seeding.
 : SEEDED-OWNER-CASE ( -- )
    s" the rebuilt target owns literals compiled by its retained host" T-LABEL
-   NTRAP:ROUTINE$ {: body:ptr size:n :}
-   body size s" die" T$=
+   HIR:NAME {: body:ptr size:n :}
+   body size s" hir" T$=
    body PTR>N body size OWNED-ROW
    NSTR:WINDOW-OPEN
    body PTR>N body size OWNED-ROW
    body PTR>N 1+ NSTR:REINTERN-OWNED TTRUE
-   s" die" NSTR:INTERN 1+ T= ;
+   s" hir" NSTR:INTERN 1+ T= ;
 
 variable BAD-ROWS
 variable BAD-OFFSET
@@ -282,7 +282,7 @@ TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
    [: BAD-IMPORT ;] E-NSTR-BODY TTHROWSQ
    here PTR>N before T=
    MUTABLE-CELL PTR>N UNOWNED-ROW
-   NTRAP:ROUTINE$ {: body:ptr size:n :}
+   HIR:NAME {: body:ptr size:n :}
    body PTR>N body size OWNED-ROW ;
 
 : IMPORT-CASE ( -- )

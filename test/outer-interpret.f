@@ -2010,6 +2010,106 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    s" checker-defer" CASE$ GE-EXPECT-ERR ;
 
+\ A call the compiler generates enters the engine's own word, whatever the
+\ case's scope holds. A defer's dispatch calls `execute` beside a package word
+\ of that name.
+: DEFER-SCOPE ( -- )
+   GE-SRC-RESET
+   s" package PROBE" GE-SRC-LINE
+   s" : execute ( n -- ) drop 123 . ;" GE-SRC-LINE
+   s" defer D ( -- n )" GE-SRC-LINE
+   s" : X ( -- n ) 7 ;" GE-SRC-LINE
+   s" : SETD ( -- ) ['] X is D ;" GE-SRC-LINE
+   s" SETD D ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" oi-defer-scope.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 7\n" CASE$ GE-EXPECT-OUT ;
+
+\ At tier 1, where both loops compile through NCOMP, a `does>` parent's patch
+\ calls `does-patch`, `."` calls `type` and `is` calls `xt!`, each beside a
+\ package word of its name.
+: GENERATED-CALLS ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier package OI-GEN" GE-SRC-LINE
+   s" : does-patch ( n n n -- ) drop drop drop 99 . ;" GE-SRC-LINE
+   s" : type ( ptr u8 n -- ) drop drop 98 . ;" GE-SRC-LINE
+   s" : xt! ( n n -- ) drop drop 97 . ;" GE-SRC-LINE
+   s" : OI-PAT ( -- ) does> ( -- n ) @ 1 + ;" GE-SRC-LINE
+   s" create OI-B 5 , OI-PAT OI-B ." GE-SRC-LINE
+   s" : OI-HI ( -- ) .~ hi~ ; OI-HI cr" QLINE
+   s" defer OI-D ( -- n ) : OI-X ( -- n ) 7 ; : OI-SET ( -- ) ['] OI-X is OI-D ; OI-SET OI-D ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" oi-generated-calls.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 6\nhi\n7\n" CASE$ GE-EXPECT-OUT ;
+
+\ n cells of a signature row.
+: ROW+ ( n -- )
+   0 ?do s"  n" GE-SRC+ loop ;
+
+\ A defer takes every signature the engine's `defer` takes and runs it alike,
+\ and its record is the engine's: the flags (the checker's minimum input, the
+\ wide mark, the kind and the name's length), the wordlist and the arity the
+\ checker holds, at two inputs, at a wide output and at 255 inputs, the most
+\ the record's minimum-input byte holds (src/habu/layout.f DNAME-MIN-IN), which
+\ `is` then points and a call runs.
+: DEFER-WIDE-IN ( -- )
+   GE-SRC-RESET
+   s" 0 set-tier TRUSTED: OI-AT@ ( n -- n ) @ ;" GE-SRC-LINE
+   s" defer OI-S ( n n -- n ) LATEST XREF-FLAGS . LATEST XREF-WORDLIST get-current = OI-B. s~ OI-S~ NDICT:SPELL-ARITY . ." QLINE
+   s" defer OI-W ( -- oiwide<n,n> ) LATEST XREF-FLAGS . s~ OI-W~ NDICT:SPELL-ARITY . ." QLINE
+   s" defer OI-D (" GE-SRC+ 255 ROW+
+   s"  -- ) LATEST XREF-FLAGS . LATEST XREF-WORDLIST get-current = OI-B. s~ OI-D~ NDICT:SPELL-ARITY . ." QLINE
+   s" TRUSTED: OI-T (" GE-SRC+ 255 ROW+ s"  -- ) 0 255 0 ?do + loop . ;" GE-SRC-LINE
+   s" TRUSTED: OI-PUSH ( --" GE-SRC+ 255 ROW+ s"  ) 255 0 ?do i loop ;" GE-SRC-LINE
+   s" : OI-SET ( -- ) ['] OI-T is OI-D ; OI-SET OI-PUSH OI-D depth ." GE-SRC-LINE
+   s" s~ OI-D~ NDICT:SPELL-DEFER-CELL OI-AT@ ' OI-T = OI-B." QLINE
+   s" oi-defer-wide-in.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9007199254740996\n1\n1\n2\n4611686018427387908\n2\n0\n1148417904979476484\n1\n0\n255\n32385\n0\n1\n"
+   CASE$ GE-EXPECT-OUT ;
+
+\ One input more is refused alike.
+: DEFER-IN-OVER ( -- )
+   GE-SRC-RESET
+   s" 0 set-tier 1 . defer OI-D (" GE-SRC+ 256 ROW+ s"  -- ) 2 ." GE-SRC-LINE
+   s" oi-defer-in-over.f" BOTH
+   76 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   s" checker: min-in exceeds record field" CASE$ GE-EXPECT-ERR-HAS ;
+
+\ An output row is bounded by the definition text: 3994 cells fill OI-D's.
+: DEFER-OUT-FULL ( -- )
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" 1 . defer OI-D ( --" GE-SRC+ 3994 ROW+ s"  ) 2 ." GE-SRC-LINE
+   s" oi-defer-out-full.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 1\n2\n" CASE$ GE-EXPECT-OUT ;
+
+\ One output more is refused alike.
+: DEFER-OUT-OVER ( -- )
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" 1 . defer OI-D ( --" GE-SRC+ 3995 ROW+ s"  ) 2 ." GE-SRC-LINE
+   s" oi-defer-out-over.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   71 s" hb: definition body text full at 8000 bytes: OI-D needs 8002 at " S\" oi-defer-out-over.f:2\n" DIED-AT ;
+
+\ 3985 outputs, the most a target's text holds beside its loop, which `is`
+\ points and a call runs.
+: DEFER-WIDE-OUT ( -- )
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" defer OI-D ( --" GE-SRC+ 3985 ROW+ s"  )" GE-SRC-LINE
+   s" TRUSTED: OI-T ( --" GE-SRC+ 3985 ROW+ s"  ) 3985 0 ?do i loop ;" GE-SRC-LINE
+   s" TRUSTED: OI-SUM ( -- n ) 0 depth 1 - 0 ?do + loop ;" GE-SRC-LINE
+   s" : OI-SET ( -- ) ['] OI-T is OI-D ; OI-SET OI-D depth . OI-SUM ." GE-SRC-LINE
+   s" oi-defer-wide-out.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 3985\n7938120\n" CASE$ GE-EXPECT-OUT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -2166,6 +2266,13 @@ private
    DEFER-USE
    DEFER-REFUSALS
    DEFER-OWNERS
+   DEFER-SCOPE
+   GENERATED-CALLS
+   DEFER-WIDE-IN
+   DEFER-IN-OVER
+   DEFER-OUT-FULL
+   DEFER-OUT-OVER
+   DEFER-WIDE-OUT
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;
