@@ -1,0 +1,9 @@
+---
+title: Report every test timeout with its capture
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-10-02T04:59:27.137195+02:00"
+---
+
+Problem: 25 test and tool sites outside lib/test/outcome.f MATCH a process outcome and answer the timeout arm with a bare `E-PROC-TIMEOUT throw`, so a hung child ends the run with "hb: uncaught throw code -2502" and no label, program or captured output: tools/standalone-load-test.f:39, tools/hb-cli-contracts-test.f:124, tools/hb-build-test.f:174, tools/repair-packet-test.f:167, tools/build-fixpoint-snapshot-test.f:88, tools/bundle-lib-test-lib.f:169 (BLTT-EXPECT-EXIT-NZ), tools/build-fixpoint-test.f:442, test/compiler/native-session.f:51, test/repl-address-cell-rollback.f:23, test/xt-effect-test.f:83, test/proc-pty.f:72, test/aot-capture-bound.f:195, test/aot-wid-suite.f:288, test/boot-row-test.f:79, test/snapshot-writer.f:276, test/stdlib-standalone-load.f:96, test/aot-named-cells-suite.f:30, test/export-package.f:247, test/tokstream-suite.f:179, test/compile-floor-gate.f:92, test/aot-seed-batch-suite.f:112, test/compiler/compile-floor.f:62, test/load-reject-diag-test.f:232, test/top-row-warn-test.f:82, lib/process-task-test.f:152 (line numbers on 53e02ad8). Found by the r4-outcome lane (dot 4ad09793), which moved T-OUTCOME-EXITED=/SIGNALED= to report through SUBJECT:TIMED-OUT. lib/process.f:201 PROC-OUTCOME>RC stays an rc conversion. Acceptance: each site reports a timeout through the shared asserts or SUBJECT:TIMED-OUT (label, program, out and err), or keeps the throw only where a caller catches the deadline on purpose (the build-fixpoint BFT-STEP sites say so in a comment), stated per site; one forced-timeout run shows the report. Base: after 4ad09793 lands. Verify: each touched test passes; full native suite at integration.
