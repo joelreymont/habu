@@ -1,9 +1,11 @@
 ---
 title: "Mark immediate and declare cast: in the Habu loop"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-01T14:29:58.194989+03:00"
+closed-at: "2026-10-02T13:01:18.530226+03:00"
+close-reason: "done: imm-mark and def-cast rows read `immediate` and `cast:` in the Habu loop; test/outer-interpret.f 184 cases agree with the engine loop, test/engine-writers.f ok, 36 x86 definition images exit their statuses, gen1 = gen2 = gen3 c9e69bc2."
 ---
 
 Problem: at interpret level `immediate` (`C-IMMEDIATE`, `src/habu/habu2.f`) and `cast:` (`C-CAST`) are still the assembly interpreter's, so the Habu loop stops at either. Neither has a writer row: `immediate` sets `DNAME-IMM` on the record just published, under the record protection (`LPROTREC`), and `cast:` is the `CHECKER-DEFCAST` registration (`src/core/checker.f`) plus the identity word it publishes. Split from habu-close-definitions-with-8ace78d8 (I5e), which landed `;` and the `def-close` row and found both undesigned.

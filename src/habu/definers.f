@@ -1,8 +1,9 @@
 \ definers.f - the definition heads of the interpret loop written in Habu:
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one. STEP (src/habu/interpret.f) asks COMPILING? after a comment and
-\ DEFINE? after the package keywords.
+\ follows one; `cast:`, which declares and publishes at once, as C-CAST does;
+\ and `immediate`. STEP (src/habu/interpret.f) asks COMPILING? after a comment
+\ and DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
@@ -39,6 +40,9 @@ TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
 TRUSTED: DEF-CLOSE ( -- ) def-close ;
+TRUSTED: DEF-IMM-MARK ( -- ) imm-mark ;
+TRUSTED: DEF-CAST ( -- ) def-cast ;
+TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -204,9 +208,10 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open
-\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
-\ refusals name the token, but the wall and the code room name the tail.
-: DEF-RECORD ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME), then opens
+\ the record with its kind. The refusals name the token, but the wall and the
+\ code room name the tail.
+: DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid FIND-PROBE XREF-FOUND? if
@@ -214,7 +219,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid 0 DEF-OPEN ;
+   a u wid kind DEF-OPEN ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
@@ -225,7 +230,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    trusted DEF-NAME
    0 BODYLEN-CELL CELL!
    TOKEN$ DEF-CAPTURE
-   DEF-QUALIFY DEF-RECORD
+   DEF-QUALIFY 0 DEF-RECORD
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
@@ -358,13 +363,84 @@ TRUSTED: DEF-COMPILE ( ptr u8 n -- )
    DEF-STRING-TEXT
    true ;
 
+\ ---- `cast:` (habu2.f C-CAST) --------------------------------------------------
+\ `cast: NAME ( in -- out )` declares a checked retype: a record of kind
+\ DKIND:CAST whose code is the identity, published at once, with no body and
+\ no `;`. It refuses in the engine's order and with its text: a live task, the
+\ room, the name, then the signature, which must be there, opened and closed,
+\ and is read before the qualifier. With a check hook the checker proves the
+\ retype legal (checker.f CAST-CERTIFY) before def-cast counts the record, so
+\ a refused cast leaves none counted. The engine emits the code before it
+\ asks; its refusal inside evaluate rolls the code back, which this loop
+\ cannot do yet, so here the code waits for the checker.
+
+\ With the input at its end the token cells still hold the keyword, which the
+\ refusal names (C-CAST-DIE-NO-NAME).
+: CAST-NAME ( -- )
+   TOKEN if exit then
+   s" hb: cast: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
+
+\ The owner record stores raw execution tokens; these views state the two
+\ signatures called here.
+TRUSTED: DEF-AS-CAST ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
+TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
+
+\ The checker's cast operation gets the name and the signature: the active
+\ owner's, then the target owner's unless it is the same one (habu2.f
+\ DEF-TRUST:REGISTER-CAST, DECL-OWNER). Either may throw the cast's refusal.
+: CAST-REGISTER ( ptr u8 n -- ) {: sa:ptr su:n :}
+   HOOK-CELL CELL@ 0= if exit then
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-CAST-OFF PKG-OPERATION {: own:n :}
+   own 0<> if DEF-CAPTURED-NAME sa su own DEF-AS-CAST execute then
+   NCOMP-DISPATCH:DECL-CAST-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   target own = if exit then
+   DEF-CAPTURED-NAME sa su target DEF-AS-CAST execute ;
+
+\ A checker word the engine finds by name in the global wordlist as it asks;
+\ with none the process ends naming it (habu2.f C-FIND-GLOBAL).
+: DEF-GLOBAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u 0 FIND-PROBE {: rec:ptr :}
+   rec XREF-FOUND? 0= if a u RC-REJECT FAIL-CLOSED then
+   rec XREF-START ;
+
+\ The checker's facts for the record just counted (habu2.f
+\ EM-REC-WIDE-PUBLISH): rec-wide-publish marks it wide when its effect is,
+\ and the certified minimum input arity rec-min-in@ gives is stored unless 0.
+: CAST-FACTS ( -- )
+   HOOK-CELL CELL@ 0= if exit then
+   s" rec-wide-publish" DEF-GLOBAL PKG-AS-ACTION execute
+   s" rec-min-in@" DEF-GLOBAL DEF-AS-COUNT execute {: mi:n :}
+   mi 0= if exit then
+   ndict@ 1- mi DEF-MIN-IN ;
+
+: CAST-HEAD ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   CAST-NAME
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s end s - DEF-CAPTURE
+   DEF-QUALIFY DKIND:CAST DEF-RECORD
+   s 1 + end s - 2 - {: sa:ptr su:n :}
+   sa su DEF-TRUST-SIG
+   sa su CAST-REGISTER
+   DEF-CAST
+   CAST-FACTS ;
+
 \ ---- the definition keywords --------------------------------------------------
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:` is
-\ matched as LITERAL? matches its keywords.
+\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`
+\ and `immediate` are matched as LITERAL? matches its keywords. `immediate`
+\ marks the newest record, whatever it is, and refuses nothing, as the
+\ engine's does (habu2.f C-IMMEDIATE).
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
+   s" cast:" TOKEN-IS? if CAST-HEAD true exit then
+   s" immediate" TOKEN-IS? if DEF-IMM-MARK true exit then
    false ;
 
 ;package

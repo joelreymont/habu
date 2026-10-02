@@ -36,6 +36,12 @@
 \ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
 \   and whose CP moved: the provenance window closed with code-origin 1 over
 \   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
+\ - hb-x64-kernel-imm-mark, with a task live, marks the newest of two records
+\   immediate and leaves the other's flags.
+\ - hb-x64-kernel-def-cast publishes a tier-1 cast declaration whose state
+\   cells are set: the identity's ret and int3 fill in its code slot, its exact
+\   length in [8], CP past the slot, code-origin 1 over it, NDICT counted, and
+\   PEND, the window, DEF-TIER and the six signature and clause cells clear.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
@@ -52,7 +58,11 @@
 \   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a tier 0 definition
-\   (-def-close-tier-armed).
+\   (-def-close-tier-armed); def-cast with nothing pending (-def-cast-armed),
+\   on a definition of kind 0 (-def-cast-kind-armed), with a `does>` split
+\   (-def-cast-does-armed) and on a cast that is no longer record NDICT
+\   (-def-cast-moved-armed). def-cast with a task live exits 79
+\   (-def-cast-live-armed).
 \ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
 \   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
@@ -156,11 +166,19 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 G-PUSH ;
 
 \ The six signature and clause cells def-open clears, or'd together.
-: PUSH-SIGS, ( -- )
-   RAX ZERO-REG,
+: OR-SIGS, ( -- )
    TSIG-A-CELL OR-CELL,  TSIG-U-CELL OR-CELL,
    TCSIG-A-CELL OR-CELL,  TCSIG-U-CELL OR-CELL,
-   DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,
+   DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL, ;
+
+: PUSH-SIGS, ( -- ) RAX ZERO-REG,  OR-SIGS,  0 G-PUSH ;
+
+\ Those six with PEND, the provenance window and DEF-TIER: 0 once a
+\ definition's end clears them all.
+: PUSH-ENDED, ( -- )
+   RAX ZERO-REG,  OR-SIGS,
+   PEND-CELL OR-CELL,  TIER-PROV:OPEN-CELL OR-CELL,
+   NCOMP-DISPATCH:DEF-TIER-CELL OR-CELL,
    0 G-PUSH ;
 
 \ The long name's second slot less its last byte: 0 when that byte opens the
@@ -335,6 +353,39 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
+: IMM-MARK-CASE, ( -- )
+   s" core" 0 0 X64HARNESS:RECORD,                    \ record 0
+   HELLO$ 0 0 X64HARNESS:RECORD,                      \ record 1, the newest
+   LIVE,
+   X64HARNESS:REST,
+   s" imm-mark" X64HARNESS:CALL-ROW,
+   s" core" nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   HELLO$ nip DNAME-IMM or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   1 CLOSED, ;
+
+\ A cast's code slot: its ret, then int3 to the slot's end.
+$CCCCCCCCCCCCCCC3 constant CAST-RET
+$CCCCCCCCCCCCCCCC constant CAST-PAD
+
+\ A cast declaration def-open opened at the tier TIER-CELL holds.
+: CAST-OPEN, ( -- ) X64HARNESS:REST,  HELLO$ 0 DKIND:CAST DEF-OPEN, ;
+
+: DEF-CAST-CASE, ( -- )
+   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   CAST-OPEN,
+   1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
+   3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
+   6 TRUSTED-CELL X64HARNESS:CELL!,
+   s" def-cast" X64HARNESS:CALL-ROW,
+   DICT-SIZE X64HARNESS:PUSH-REGION-CELL,  CAST-RET X64HARNESS:EXPECT-POP,
+   DICT-SIZE CELL + X64HARNESS:PUSH-REGION-CELL,  CAST-PAD X64HARNESS:EXPECT-POP,
+   1 CODE-SPAN:EXACT 0 REC-AUX X64HARNESS:EXPECT-RECORD,
+   X64HARNESS:PUSH-CP,  SECOND-SLOT X64HARNESS:EXPECT-POP-REGION,
+   DICT-SIZE SECOND-SLOT ORIGIN,  1 X64HARNESS:EXPECT-POP,
+   PUSH-NDICT,  1 X64HARNESS:EXPECT-POP,
+   PUSH-ENDED,  0 X64HARNESS:EXPECT-POP,
+   0 CLOSED, ;
+
 \ ---- the refusals -------------------------------------------------------------
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
@@ -396,6 +447,19 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    X64HARNESS:REST,
    s" w" OWNER-API-PUB-WID 0 DEF-OPEN, ;
 
+: DEF-CAST, ( -- ) s" def-cast" X64HARNESS:CALL-ROW, ;
+
+\ A definition def-open opened with kind 0.
+: CAST-KIND, ( -- ) X64HARNESS:REST,  HELLO$ 0 0 DEF-OPEN,  DEF-CAST, ;
+
+: CAST-LIVE, ( -- ) CAST-OPEN,  LIVE,  DEF-CAST, ;
+
+: CAST-DOES, ( -- ) CAST-OPEN,  1 DOESB-CELL X64HARNESS:CELL!,  DEF-CAST, ;
+
+\ NDICT moved past the pending record.
+: CAST-MOVED, ( -- )
+   CAST-OPEN,  ENGINE-GPR:X64-NDICT >R64 ASM-SINK ENC-INC  DEF-CAST, ;
+
 \ One image: the boot, the case the quotation emits, the depth and balance
 \ checks and the exit.
 : IMAGE ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
@@ -418,6 +482,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
+   [: IMM-MARK-CASE, ;] false s" hb-x64-kernel-imm-mark" TMP-PATH IMAGE
+   [: DEF-CAST-CASE, ;] false s" hb-x64-kernel-def-cast" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )
@@ -439,7 +505,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
    [: TIER-0-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
-   [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE ;
+   [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  DEF-CAST, ;] false s" hb-x64-kernel-def-cast-armed" TMP-PATH IMAGE
+   [: CAST-KIND, ;] false s" hb-x64-kernel-def-cast-kind-armed" TMP-PATH IMAGE
+   [: CAST-LIVE, ;] false s" hb-x64-kernel-def-cast-live-armed" TMP-PATH IMAGE
+   [: CAST-DOES, ;] false s" hb-x64-kernel-def-cast-does-armed" TMP-PATH IMAGE
+   [: CAST-MOVED, ;] false s" hb-x64-kernel-def-cast-moved-armed" TMP-PATH IMAGE ;
 
 public
 

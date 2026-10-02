@@ -10,17 +10,19 @@
 \ it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
-\ (`immediate`, `SUMTYPE`, `constant`, `variable`), so it loads before the
-\ switch, and a case holds only numbers, comments, the literal keywords (`s"`,
-\ `c"`, `."`, their escaped forms, `char` and `'`), the package keywords
-\ (`package`, `public`, `private`, `;package`, `using`, `;using` and
-\ `export`), words, and definitions (`:`, `kernel:` or `trusted:`) that refuse,
-\ stay pending, or end at `;` or by an immediate their body runs. A case
-\ defines with the other keywords through evaluate, which the engine's loop
-\ reads.
+\ (`SUMTYPE`, `constant`, `variable`), so it loads before the switch, and a
+\ case holds only numbers, comments, the literal keywords (`s"`, `c"`, `."`,
+\ their escaped forms, `char` and `'`), the package keywords (`package`,
+\ `public`, `private`, `;package`, `using`, `;using` and `export`), words,
+\ definitions (`:`, `kernel:` or `trusted:`) that refuse, stay pending, or end
+\ at `;` or by an immediate their body runs, `cast:` declarations and
+\ `immediate`. A case defines with the other keywords through evaluate, which
+\ the engine's loop reads.
 \
 \ Some cases are the Habu loop's alone: tier 0, whose definitions the engine's
-\ loop compiles and the Habu loop refuses. And one check runs in a forked copy
+\ loop compiles and the Habu loop refuses, and the records an exit hook finds
+\ after an uncaught throw: the engine's loop rolls the dictionary back to the
+\ file's start, and the Habu loop does not. And one check runs in a forked copy
 \ of this process instead, the seam: a fork binds it to a counting spy, and a
 \ loaded file must arrive there.
 
@@ -1531,6 +1533,109 @@ variable WANT-RC
    s" oi-semi-tier-0.f" HABU
    76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0.f:1\n" DIED-AT ;
 
+\ ---- `immediate` and `cast:` ---------------------------------------------------------
+\ `immediate` marks the newest record, a definition's or a cast's, and a body
+\ then runs the word as it reads it.
+: IMMEDIATE-MARKS ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-IMM. ( -- ) LATEST XREF-FLAGS DNAME-IMM and 0<> OI-B. ;" GE-SRC-LINE
+   s" : OI-I ( -- ) 7 . ; OI-IMM. immediate OI-IMM." GE-SRC-LINE
+   s" s~ OI-I~ 0 parse-imm : OI-J ( -- ) OI-I ; OI-J" QLINE
+   s" cast: OI-CI ( n -- n ) OI-IMM. Immediate OI-IMM." GE-SRC-LINE
+   s" oi-immediate.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 0\n1\n7\n0\n1\n" CASE$ GE-EXPECT-OUT ;
+
+\ A cast publishes the identity at once, at tier 0 as at tier 1: it runs, the
+\ cells a definition's end clears are 0, its code is native, its flags are the
+\ engine's (the cast kind and the checker's facts) and its name is inline; a
+\ qualified name goes to the package's public wordlist.
+: CAST-AT ( ptr u8 n ptr u8 n -- ) {: tier:ptr tieru:n name:ptr nameu:n :}
+   GE-SRC-RESET
+   tier tieru GE-SRC-LINE
+   s" cast: OI-C ( n -- n ) 5 OI-C . OI-ENDED. ' OI-C dup 1 + code-origin ." GE-SRC-LINE
+   s" LATEST XREF-FLAGS . LATEST XREF-RAW-LEN ." GE-SRC-LINE
+   s" cast: OI-PKG:OI-CQ ( n -- n ) 9 OI-PKG:OI-CQ ." GE-SRC-LINE
+   name nameu BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 5\n0\n1\n7881299347898372\n4\n9\n" CASE$ GE-EXPECT-OUT ;
+
+: CAST-PUBLISH ( -- )
+   s" 0 set-tier" s" oi-cast-tier-0.f" CAST-AT
+   s" 1 set-tier" s" oi-cast.f" CAST-AT ;
+
+\ `cast:` at the end of the input names itself (C-CAST-DIE-NO-NAME).
+: CAST-NO-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" cast:" GE-SRC+
+   s" oi-cast-no-name.f" BOTH
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: cast: missing name after cast: at " S\" oi-cast-no-name.f:2\n" DIED-AT ;
+
+\ The signature must be there, opened and closed; the refusal names the cast
+\ at the name's line. It is read before the duplicate test.
+: CAST-SIGNATURE ( -- )
+   s" cast: OI-T 1 2" s" oi-cast-no-signature.f" LINE-CASE
+   76 s" OI-T at " S\" oi-cast-no-signature.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" cast: OI-T" GE-SRC-LINE
+   s" ( n -- n" GE-SRC+
+   s" oi-cast-open-signature.f" BOTH
+   76 s" OI-T at " S\" oi-cast-open-signature.f:1\n" DIED-AT
+   s" cast: oi-two 1 2" s" oi-cast-signature-first.f" LINE-CASE
+   76 s" oi-two at " S\" oi-cast-signature-first.f:1\n" DIED-AT ;
+
+\ The name refuses as a head's does: a duplicate, a compile keyword, a second
+\ colon.
+: CAST-NAME-REFUSALS ( -- )
+   s" cast: oi-two ( n -- n )" s" oi-cast-duplicate.f" LINE-CASE
+   78 s" duplicate definition: oi-two at " S\" oi-cast-duplicate.f:1\n" DIED-AT
+   s" cast: If ( n -- n )" s" oi-cast-if.f" LINE-CASE
+   70 s" hb: compile keyword cannot be a definition name: If at " S\" oi-cast-if.f:1\n" DIED-AT
+   s" cast: OI-A:B:C ( n -- n )" s" oi-cast-two-colons.f" LINE-CASE
+   75 s" OI-A:B:C at " S\" oi-cast-two-colons.f:1\n" DIED-AT ;
+
+\ CP at the code ceiling and a full dictionary refuse first, naming the
+\ keyword.
+: CAST-CAPACITY ( -- )
+   s" dbase@ REGION + $4000 - cp! cast: OI-T ( n -- n )" s" oi-cast-code-full.f" LINE-CASE
+   76 s" hb: code space full at: cast: at " S\" oi-cast-code-full.f:1\n" DIED-AT
+   s" OI-DICT-FULL cast: OI-T ( n -- n )" s" oi-cast-dictionary-full.f" LINE-CASE
+   77 s" hb: dictionary full at: cast: at " S\" oi-cast-dictionary-full.f:1\n" DIED-AT ;
+
+\ The checker's facts reach the record: the cast's certified input arity
+\ refuses it on an empty stack.
+: CAST-UNDERDEPTH ( -- )
+   s" cast: OI-C ( n -- n ) OI-C" s" oi-cast-underdepth.f" LINE-CASE
+   70 CASE$ GE-EXPECT-RC
+   S\" hb: interpret stack underdepth: OI-C\n" CASE$ GE-EXPECT-ERR ;
+
+\ A retype the checker refuses throws its code, uncaught (rc 67): 7129 is
+\ E-CAST-ARITY. The refused cast is not counted: the exit hook, the Habu
+\ loop's alone, finds the dictionary as the code before the cast left it.
+: CAST-CHECKER ( -- )
+   s" cast: OI-B ( n n -- n )" s" oi-cast-arity.f" LINE-CASE
+   67 CASE$ GE-EXPECT-RC
+   S\" hb: uncaught throw code 7129\n" CASE$ GE-EXPECT-ERR
+   GE-SRC-RESET
+   s" s~ variable OI-N : OI-HK ( -- ) ndict@ OI-N @ - . LATEST XREF-NAME$ type cr ;~ evaluate" QLINE
+   s" ' OI-HK data-base EXIT-HOOK-CELL + ! ndict@ OI-N ! cast: OI-B ( n n -- n )" GE-SRC-LINE
+   s" oi-cast-arity-counted.f" HABU
+   67 CASE$ GE-EXPECT-RC
+   S\" 0\nOI-HK\n" CASE$ GE-EXPECT-OUT ;
+
+\ With a task live `cast:` exits 79, the keyword its whole diagnostic;
+\ `immediate` refuses nothing.
+: CAST-TASK-LIVE ( -- )
+   SPIN-PRELUDE
+   s" OI-SPIN cast: OI-T ( n -- n )" s" cast:" s" oi-live-cast.f" LIVE
+   s" 1 set-tier : OI-L ( -- ) ; OI-SPIN immediate LATEST XREF-FLAGS DNAME-IMM and 0<> OI-B."
+   s" oi-live-immediate.f" LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   0 SPIN-U ! ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -1660,6 +1765,15 @@ private
    SEMI-REFUSALS
    SEMI-DISPATCH-UNSET
    SEMI-TIER-0
+   IMMEDIATE-MARKS
+   CAST-PUBLISH
+   CAST-NO-NAME
+   CAST-SIGNATURE
+   CAST-NAME-REFUSALS
+   CAST-CAPACITY
+   CAST-UNDERDEPTH
+   CAST-CHECKER
+   CAST-TASK-LIVE
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

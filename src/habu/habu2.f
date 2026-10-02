@@ -3530,10 +3530,12 @@ public
    9 DATA TRUSTED-CELL STR, ;
 
 \ ---- the definition writers --------------------------------------------------
-\ The bodies of the nine rows src/habu/prims.f specifies under "the definition
-\ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
-\ EMIT-PRIMITIVE-SECTIONS. Each checks everything before it writes, and a
-\ refusal exits the process, so no reader ever sees a half-written row.
+\ The bodies of the eleven rows src/habu/prims.f specifies under "the
+\ definition writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
+\ EMIT-PRIMITIVE-SECTIONS: imm-mark's is the engine's `immediate`
+\ (C-IMMEDIATE), def-cast's follows C-CAST, and the rest follow here. Each
+\ checks everything before it writes, and a refusal exits the process, so no
+\ reader ever sees a half-written row.
 \ FPRIM-WID frames x30 around each body.
 package DEFWRITE
 
@@ -4220,6 +4222,14 @@ package INTERP-EMIT
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
+\ A cast's code, the identity: its entry slot at CP, then an empty body, so
+\ the slot becomes a nop before the ret. `cast:` (C-CAST) and the def-cast row
+\ (DEFWRITE:DEF-CAST) emit it alike.
+: C-CAST-BODY ( -- )
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
+   EM-COMPILE-RET ;                                  \ empty body: the slot becomes a nop
+
 \ The cast declarer joins the other interpret-mode defining-word handlers in
 \ their package: the define-keyword dispatch rows below reopen it and resolve
 \ them bare.
@@ -4298,9 +4308,7 @@ package INTERP-EMIT
    C-STORE-DEF-NAME
    10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,
-   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
-   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
-   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
+   C-CAST-BODY
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
@@ -4311,6 +4319,38 @@ package INTERP-EMIT
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+;package
+
+\ def-cast ( -- ): the definition writer that publishes a cast declaration
+\ def-open opened. It sits here, not with the other DEFWRITE rows, because it
+\ emits C-CAST's code and flush. Past its checks it is C-CAST's publish less
+\ the registrar and the facts, which its caller runs around it
+\ (src/habu/definers.f): the code band opens and the record is declared, the
+\ identity follows at CP, which def-open stored as the entry and as the
+\ provenance window's start, so origin 1 over the window is C-CAST's native
+\ range, and the flush stores the code length.
+package DEFWRITE
+public
+
+: DEF-CAST ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 NDICT REC-AT,  9 10 CMP,  C-NE bad BCOND,         \ the pending record is slot NDICT
+   14 9 16 LDR,  14 14 DKIND:MASK ANDI,
+   15 DKIND:CAST LIT64,  14 15 CMP,  C-NE bad BCOND,    \ opened as a cast
+   14 DATA DOESB-CELL LDR,  14 bad CBNZ,                \ the flush would write record NDICT + 1
+   NAME-BANDS,
+   C-CAST-BODY
+   1 CODE-ORIGIN:CLOSE,
+   EM-COMPILE-FLUSH-PEND
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
 
 ;package
 
@@ -12036,6 +12076,8 @@ package ENGINE-EMIT
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

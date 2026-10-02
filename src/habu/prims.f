@@ -629,15 +629,15 @@ ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
-\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
-\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
-\ These nine rows are how an interpreter written in Habu writes it. Each is
-\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
-\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
-\ is live (the four dictionary rows), 84 for a protected wid after
-\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text.
+\ What `package`, `export`, `:`, `does>`, `;`, `immediate` and `cast:` change
+\ is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG,
+\ TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the records
+\ behind the PROT window. These eleven rows are how an interpreter written in
+\ Habu writes it. Each is registered with ENGINE-PRIMS:GLOBAL-INT-WID on both
+\ targets, so only a TRUSTED: body reaches one. A refusal exits and never
+\ throws: 79 while a task is live (the five dictionary rows), 84 for a
+\ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
+\ other refusal. A caller checks first and prints the engine's own text.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -704,6 +704,20 @@ ETRUSTED-ONLY!
 \ no definition is pending and when the pending one is not the native tier's
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
+ETRUSTED-ONLY!
+\ imm-mark ( -- ): set DNAME-IMM on the newest record, NDICT - 1, between two
+\ flips of its pages: the engine's `immediate` itself (habu2.f C-IMMEDIATE).
+\ Like that keyword and wide-mark, it refuses nothing.
+EPRIM: imm-mark EPRIM;
+ETRUSTED-ONLY!
+\ def-cast ( -- ): publish the declaration def-open opened with kind
+\ DKIND:CAST as the engine's `cast:` publishes one: the identity body at CP,
+\ the record's code length, the TIER-PROV window closed native, origin 1 over
+\ [open, CP), NDICT counted and indexed, and the state def-open set cleared:
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses a live
+\ task, nothing pending, a pending record other than NDICT, a kind other than
+\ DKIND:CAST and a `does>` split, whose flush would write record NDICT + 1.
+EPRIM: def-cast EPRIM;
 ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;

@@ -1,7 +1,7 @@
 \ engine-writers.f - the definition writers an interpreter written in Habu
 \ publishes through: namespace-record, namespace-private, alias-record,
-\ package-scope!, def-open, body-append, trust-sig!, created-sig! and
-\ def-close (src/habu/prims.f, "the definition writers").
+\ package-scope!, def-open, body-append, trust-sig!, created-sig!, def-close,
+\ imm-mark and def-cast (src/habu/prims.f, "the definition writers").
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its fd 1. A row is
@@ -72,6 +72,8 @@ TRUSTED: EW-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
 TRUSTED: EW-CLOSE ( -- ) def-close ;
+TRUSTED: EW-IMM ( -- ) imm-mark ;
+TRUSTED: EW-CAST ( -- ) def-cast ;
 
 \ The marker a refusal case prints just before the refused call.
 : EW-AT ( -- ) EW-MARK$ type ;
@@ -118,6 +120,21 @@ TRUSTED: EW-OPEN-ALIAS ( -- )
 TRUSTED: EW-OPEN-CLOSE ( -- )
    s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
 
+\ A declaration opens and publishes in one call: once def-open returns, the
+\ engine loop reads what follows as the body.
+TRUSTED: EW-DECLARE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u get-current DKIND:CAST def-open  def-cast ;
+
+\ def-cast on a declaration just opened with the kind given; on a cast after 1
+\ is stored at the data cell given, a `does>` split (DOESB-CELL) or a live
+\ task (TASKS-LIVE-CELL); and on one that is no longer slot NDICT.
+TRUSTED: EW-OPEN-CAST ( n -- ) {: kind:n :}
+   s" EW-FIRST" get-current kind def-open  EW-AT  def-cast ;
+TRUSTED: EW-CAST-AFTER ( n -- ) {: cell:n :}
+   s" EW-FIRST" get-current DKIND:CAST def-open  1 data-base cell + !  EW-AT  def-cast ;
+TRUSTED: EW-CAST-MOVED ( -- )
+   s" EW-FIRST" get-current DKIND:CAST def-open  ndict@ 1+ ndict!  EW-AT  def-cast ;
+
 private
 
 : BOUNDARY ( -- )
@@ -129,7 +146,9 @@ private
    s" body-append" s" EWX ( ptr u8 n -- ) body-append" INTERNAL
    s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
-   s" def-close" s" EWX ( -- ) def-close" INTERNAL ;
+   s" def-close" s" EWX ( -- ) def-close" INTERNAL
+   s" imm-mark" s" EWX ( -- ) imm-mark" INTERNAL
+   s" def-cast" s" EWX ( -- ) def-cast" INTERNAL ;
 
 \ A flagged row answers `using`, a `package` reopen and a qualified name. The
 \ reopen must find this row: a second row would hold X, and `using NSA` and
@@ -156,12 +175,18 @@ private
    s\" 6\n1\n" 0 RUNS ;
 
 \ An opened definition is finished by the engine loop at tier 1: `42 ;`
-\ publishes it, and its code, like a spilled name, is native.
+\ publishes it, and its code, like a spilled name, is native. A declaration
+\ opened with the cast kind is published by def-cast as the identity, its code
+\ native too, and imm-mark makes the newest record immediate.
 : DEFINITIONS ( -- )
    s" 1 set-tier parse-name DW EW-COLON 42 ; DW . ' DW dup 4 + code-origin ."
    s\" 42\n1\n" 0 RUNS
    s" 1 set-tier parse-name DEFINED-THROUGH-DEF-OPEN EW-COLON 42 ; DEFINED-THROUGH-DEF-OPEN . ndict@ 1- EW-NAME-ORIGIN ."
-   s\" 42\n1\n" 0 RUNS ;
+   s\" 42\n1\n" 0 RUNS
+   s" parse-name DC EW-DECLARE 5 DC . ' DC dup 4 + code-origin ."
+   s\" 5\n1\n" 0 RUNS
+   s" : SRC ( -- ) ; parse-name SRC tok-imm? . EW-IMM parse-name SRC tok-imm? ."
+   s\" 0\n2\n" 0 RUNS ;
 
 \ The capture takes the bytes and one space up to the buffer's last byte.
 : BODIES ( -- )
@@ -172,7 +197,8 @@ private
    s" EW-LIVE parse-name NSL true EW-AT EW-NS" TASK-LIVE REFUSES
    s" parse-name NSL false EW-NS EW-LIVE EW-AT EW-PRIVATE" TASK-LIVE REFUSES
    s" : S ( -- ) ; EW-LIVE parse-name AL ndict@ 1- get-current EW-AT EW-ALIAS" TASK-LIVE REFUSES
-   s" EW-LIVE parse-name DW get-current 0 EW-AT EW-OPEN" TASK-LIVE REFUSES ;
+   s" EW-LIVE parse-name DW get-current 0 EW-AT EW-OPEN" TASK-LIVE REFUSES
+   s" TASKS-LIVE-CELL EW-CAST-AFTER" TASK-LIVE REFUSES ;
 
 \ Refusals every record writer shares: an empty name, a length no region holds,
 \ a spill past the code ceiling, a live (folded name, wid) pair, NDICT at
@@ -229,7 +255,12 @@ private
    s" parse-name abc EW-AT EW-SIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name abc EW-AT EW-CSIG" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" EW-AT EW-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
-   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
+   s" 0 set-tier EW-OPEN-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-AT EW-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" 0 EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" DKIND:VAL EW-OPEN-CAST" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" DOESB-CELL EW-CAST-AFTER" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" EW-CAST-MOVED" ENGINE-ERROR:SEAL-VIOLATION REFUSES ;
 
 public
 
@@ -241,7 +272,7 @@ public
    s" an alias runs its source and stays immediate" T-LABEL ALIASES T-NEXT
    s" def-open body-append trust-sig! then 42 ; publish natively" T-LABEL DEFINITIONS T-NEXT
    s" body-append fills BODYBUF to its last byte" T-LABEL BODIES T-NEXT
-   s" the four dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
+   s" the five dictionary rows refuse a live task" T-LABEL LIVE-REFUSALS T-NEXT
    s" record writers refuse what would corrupt the dictionary" T-LABEL RECORD-REFUSALS T-NEXT
    s" each row refuses its own corrupting inputs" T-LABEL ROW-REFUSALS T-NEXT
    T-REPORT ;

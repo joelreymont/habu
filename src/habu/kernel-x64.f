@@ -2731,16 +2731,19 @@ private
    C-L RAX RCX ASM-SINK ENC-CMOVCC
    RAX PUSH, ;
 
-\ wide-mark ( -- ): set DNAME-WIDE on the newest record, r14 - 1, between two
-\ flips of its pages, read/write and then back to read/execute, as habu1.f
-\ BWIDEMARK brackets its store with LPROTREC.
-: WIDE-MARK-BODY ( -- )
+\ Or the bits into the newest record's flags, r14 - 1, between two flips of
+\ its pages, read/write and then back to read/execute, as habu1.f BWIDEMARK
+\ and habu2.f C-IMMEDIATE bracket their stores with LPROTREC.
+: NEWEST-MARK, ( n -- ) {: bits:n :}
    R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
    R8 PROT-RW PROT-REC,
-   RAX DNAME-WIDE IMM64,
+   RAX bits IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
+
+\ wide-mark ( -- ): set DNAME-WIDE on the newest record.
+: WIDE-MARK-BODY ( -- ) DNAME-WIDE NEWEST-MARK, ;
 
 : WORDLIST-ROWS, ( -- )
    s" wordlist" [:
@@ -3028,12 +3031,13 @@ public
 : TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
 
 \ ---- definition writers ------------------------------------------------------
-\ The nine rows an interpreter written in Habu publishes definitions, namespace
-\ rows, aliases and package scope through (src/habu/prims.f, "the definition
-\ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
-\ order. Every refusal comes before the first store and writes nothing on fd
-\ 2: a live task exits TASK-LIVE-RC in the four dictionary rows, a
-\ protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE, and every other
+\ The eleven rows an interpreter written in Habu publishes definitions,
+\ namespace rows, aliases and package scope through (src/habu/prims.f, "the
+\ definition writers"): the twins of habu2.f DEFWRITE's bodies and of
+\ C-IMMEDIATE, in each twin's check order. Every refusal comes before the
+\ first store and writes nothing on fd 2: a live task exits TASK-LIVE-RC in
+\ the five dictionary rows, a protected wid after the seal
+\ ENGINE-ERROR:SEAL-PACKAGE, and every other
 \ refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two helper exits can
 \ still end a row: 74 when the index cannot be kept, and
 \ ENGINE-ERROR:CODE-ORIGIN-FULL. Each record carries
@@ -3379,6 +3383,51 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
+\ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
+\ `immediate` does (habu2.f C-IMMEDIATE). It refuses nothing.
+: IMM-MARK-BODY ( -- ) DNAME-IMM NEWEST-MARK, ;
+
+\ A cast's code slot: the identity's ret, then int3 to the slot's end, as
+\ code-publish fills a slot's gap.
+$C3 constant RET-OP
+INT3 $0101010101010101 * constant INT3-CELL
+INT3-CELL $FF invert and RET-OP or constant CAST-CELL
+
+\ def-cast ( -- ): publish the cast declaration def-open opened, as habu2.f
+\ DEFWRITE:DEF-CAST publishes one: the identity's slot at CP, which def-open
+\ stored as the entry and as the provenance window's start; [8] its exact
+\ length; CP past the slot and the window closed native over it; NDICT
+\ counted and indexed; then DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and
+\ PEND-CELL clear. A live task, nothing pending, a pending record other than
+\ NDICT, a kind other than DKIND:CAST and a `does>` split are refused.
+: DEF-CAST-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RDX PEND-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   NDICT-REG RECORD-AT,
+   RDX R8 ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
+   RCX R8 REC-FLAGS MOV-LOAD,
+   RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
+   RAX DKIND:CAST IMM64,  RCX RAX ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
+   RAX DOESB-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   RDI CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   WINDOW-OPEN,                                       \ over [CP, CP + CODE-SLOT)
+   RDI PEND-CELL CELL@,  RSI DREC IMM32,  WINDOW-SPAN,
+   RAX CAST-CELL IMM64,  RAX CP-REG 0 MOV-STORE,
+   RAX INT3-CELL IMM64,  RAX CP-REG CELL MOV-STORE,
+   R8 PEND-CELL CELL@,
+   RAX 1 CODE-SPAN:EXACT IMM64,  RAX R8 REC-CODE CELL + MOV-STORE,
+   CP-REG CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   1 X64PROV:CLOSE,
+   PUBLISH-RECORD,
+   RAX ZERO-REG,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX PEND-CELL CELL!, ;
+
 public
 
 : DEFINITION, ( -- )
@@ -3390,7 +3439,9 @@ public
    s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but
