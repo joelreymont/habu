@@ -2116,13 +2116,17 @@ variable WANT-RC
 \ The hook logs each event as its number, its class and its token, the class
 \ of a word about to run 0 when it is the xt the token names; then it zeroes
 \ the token cells, which the loop must put back; and it answers OI-SKIP to the
-\ package name, 0 to the rest. A throw out of a unit with a definition
-\ pending rolls the definition back in the engine's loop (habu2.f LEVALREC)
-\ but not yet in the Habu loop, so a case whose unit refuses so refuses last,
-\ rethrowing the code unit-compile-run returns.
+\ package name, 0 to the rest. These lines open the fixture package OI-UNIT
+\ with the hook private in it; a case adds its loaders, makes public the
+\ words its run lines and unit files call, which call them qualified, and
+\ closes the package before its run lines. A throw out of a unit with a
+\ definition pending rolls the definition back in the engine's loop (habu2.f
+\ LEVALREC) but not yet in the Habu loop, so a case whose unit refuses so
+\ refuses last, rethrowing the code unit-compile-run returns.
 : UNIT-HOOK-LINES ( -- )
    GE-SRC-RESET
    s" require src/habu/outer.f" GE-SRC-LINE
+   s" package OI-UNIT" GE-SRC-LINE
    s" variable OI-SKIP" GE-SRC-LINE
    s" TRUSTED: OI-CLOBBER ( -- ) 0 data-base TKA-CELL + ! 0 data-base TKL-CELL + ! ;" GE-SRC-LINE
    s" : OI-UNIT-CLASS ( ptr u8 n n n -- n ) {: a:ptr u:n c:n e:n :}" GE-SRC-LINE
@@ -2144,23 +2148,25 @@ variable WANT-RC
    s" oi-unit.f" UNIT-FILE
    UNIT-HOOK-LINES
    s" : OI-LOAD ( -- ) s~ oi-unit.f~ included ;" QLINE
-   s" : OI-TRY ( -- ) ['] OI-LOAD OI-UNIT-RUN throw ;" GE-SRC-LINE
-   last lastu GE-SRC+ s"  OI-TRY" GE-SRC-LINE
+   s" public : OI-TRY ( -- ) ['] OI-LOAD OI-UNIT-RUN throw ; ;package" GE-SRC-LINE
+   last lastu GE-SRC+ s"  OI-UNIT:OI-TRY" GE-SRC-LINE
    name nameu BOTH ;
 
 \ Each event: a token past a comment outside a body with its class (0 a word,
-\ 1 an integer, 2 a float), the package name, a body immediate, a word about
-\ to run and the end of the source. A nonzero answer to the package name skips
-\ the rest of the input, and the end still comes. A definition the unit
-\ leaves unfinished refuses at the end, naming the last token.
+\ 1 an integer, 2 a float), the package name, a body immediate before it runs,
+\ a word before it runs and the end of the source. The fixture's immediate
+\ and word each print a line, which must follow its event. A nonzero answer
+\ to the package name skips the rest of the input, and the end still comes.
+\ A definition the unit leaves unfinished refuses at the end, naming the last
+\ token.
 : UNIT-EVENTS ( -- )
    GE-SRC-RESET
    s" package OI-UA \ a comment" GE-SRC-LINE
    s" private ( another )" GE-SRC-LINE
    s" 41 constant OI-SEED" GE-SRC-LINE
-   s" 1.5 drop" GE-SRC-LINE
+   s" 1.5 drop OI-UNIT:OI-SAY" GE-SRC-LINE
    s" public" GE-SRC-LINE
-   s" : OI-VALUE ( -- n ) OI-UI OI-SEED 1 + ;" GE-SRC-LINE
+   s" : OI-VALUE ( -- n ) OI-UNIT:OI-UI OI-SEED 1 + ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" oi-unit-a.f" UNIT-FILE
    GE-SRC-RESET
@@ -2172,17 +2178,23 @@ variable WANT-RC
    s" : OI-OPEN ( -- n ) 1" GE-SRC-LINE
    s" oi-unit-c.f" UNIT-FILE
    UNIT-HOOK-LINES
-   s" : OI-UI ( -- ) ; immediate  s~ OI-UI~ 0 parse-imm" QLINE
    s" : OI-LOAD-A ( -- ) s~ oi-unit-a.f~ included ;" QLINE
    s" : OI-LOAD-B ( -- ) s~ oi-unit-b.f~ included ;" QLINE
    s" : OI-LOAD-C ( -- ) s~ oi-unit-c.f~ included ;" QLINE
+   s" public" GE-SRC-LINE
+   s" : OI-UI ( -- ) .~ OI-UI ran~ cr ; immediate  s~ OI-UI~ 0 parse-imm" QLINE
+   s" : OI-SAY ( -- ) .~ OI-SAY ran~ cr ;" QLINE
+   s" : OI-RUN-A ( -- ) ['] OI-LOAD-A OI-UNIT-RUN . ;" GE-SRC-LINE
+   s" : OI-RUN-B ( -- ) -1 OI-SKIP ! ['] OI-LOAD-B OI-UNIT-RUN . 0 OI-SKIP ! ;" GE-SRC-LINE
    s" : OI-UNFINISHED ( -- ) ['] OI-LOAD-C OI-UNIT-RUN throw ;" GE-SRC-LINE
-   s" 1 set-tier ' OI-LOAD-A OI-UNIT-RUN . OI-UA:OI-VALUE ." GE-SRC-LINE
-   s" -1 OI-SKIP ! ' OI-LOAD-B OI-UNIT-RUN . 0 OI-SKIP !" GE-SRC-LINE
-   s" OI-UNFINISHED" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" 1 set-tier OI-UNIT:OI-RUN-A OI-UA:OI-VALUE ." GE-SRC-LINE
+   s" OI-UNIT:OI-RUN-B" GE-SRC-LINE
+   s" OI-UNIT:OI-UNFINISHED" GE-SRC-LINE
    s" oi-unit-events.f" BOTH
-   S\" 00 package\n20 OI-UA\n00 private\n01 41\n00 constant\n02 1.5\n00 drop\n40 drop\n00 public\n00 :\n30 OI-UI\n00 ;package\n50 ;package\n0\n42\n"
+   S\" 00 package\n20 OI-UA\n00 private\n01 41\n00 constant\n02 1.5\n00 drop\n40 drop\n00 OI-UNIT:OI-SAY\n40 OI-UNIT:OI-SAY\nOI-SAY ran\n"
    CASE$ GE-EXPECT-OUT-HAS
+   S\" \nOI-SAY ran\n00 public\n00 :\n30 OI-UNIT:OI-UI\nOI-UI ran\n00 ;package\n50 ;package\n0\n42\n" CASE$ GE-EXPECT-OUT-HAS
    S\" \n42\n00 package\n20 OI-UB\n50 OI-UB\n0\n00 package\n20 OI-UC\n00 :\n" CASE$ GE-EXPECT-OUT-HAS
    70 s" 1 at " S\" oi-unit-c.f:3\n" DIED-AT ;
 
