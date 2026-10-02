@@ -605,6 +605,21 @@ variable KEPT-BY
    s" tick other c2" GE-EXPECT-OK
    S\" 4\n" s" tick other c2" GE-EXPECT-OUT ;
 
+\ A TRUSTED: body may use a trusted-only primitive, and its tick is a use: at
+\ either tier the body gets `does-patch`'s address, as the native compiler's
+\ generated-call entries do when a source-only host compiles them at tier 0
+\ (tools/aot-chain-capture.f). A checked body's tick stays refused.
+: TICK-TRUSTED-BODY ( -- )
+   s" package OI-TTB TRUSTED: OI-TT ( -- n ) ['] does-patch ; OI-TT 0<> . ;package" s" oi-tick-trusted-body.f" LINE-CASE
+   s" tick trusted body" GE-EXPECT-OK
+   S\" -1\n" s" tick trusted body" GE-EXPECT-OUT
+   s" 1 set-tier package OI-TTB1 TRUSTED: OI-TT ( -- n ) ['] does-patch ; OI-TT 0<> . ;package" s" oi-tick-trusted-body-1.f" LINE-CASE
+   s" tick trusted body tier 1" GE-EXPECT-OK
+   S\" -1\n" s" tick trusted body tier 1" GE-EXPECT-OUT
+   s" package OI-TCB : OI-TC ( -- n ) ['] does-patch ; ;package" s" oi-tick-trusted-checked.f" LINE-CASE
+   70 s" tick trusted checked" GE-EXPECT-RC
+   S\" hb: trusted-only tick: does-patch\n" s" tick trusted checked" GE-EXPECT-ERR ;
+
 \ The complete C2 image owns this exact scope entry. Its dictionary row is
 \ internal as well, so the earlier interpret gate supplies the diagnostic.
 : TICK-C2-SCOPE ( -- )
@@ -2346,6 +2361,7 @@ private
    TICK-WIDE
    TICK-INTERNAL
    TICK-TRUSTED
+   TICK-TRUSTED-BODY
    TICK-C2-SCOPE
    LITERAL-HOOK
    PACKAGE-SCOPE

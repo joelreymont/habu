@@ -5070,8 +5070,14 @@ variable LTOPHOOK
 \ with that gate here, `: NAMED ( -- point angle side ) ['] BODY ['] CLEAN
 \ finally ;` (test/compiler/native-finally.f, BODY produces a PRODUCT) died
 \ "hb: interpret-mode layout value: BODY", rc 70 - a certified program refused.
+\ A TRUSTED: body skips C-TICK's trusted-only query: it may use a trusted-only
+\ primitive (prims.f ETRUSTED-ONLY!), the checker never walks its tick, and
+\ NCOMP's tick asks nothing, so tier 1 took `TRUSTED: X ( -- n ) ['] does-patch ;`
+\ where this path refused it. The native compiler's generated-call entries are
+\ such bodies, compiled here when a source-only host captures the compiler
+\ (test/outer-interpret.f TICK-TRUSTED-BODY).
 : C-BTICK ( -- )
-   LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label :}
+   LBL LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label asserted:label :}
    LTOK LABEL@ BL,
    0 named CBNZ,
       LKWBTICK LABEL@ 3 C-DIE-KEYWORD-NAME
@@ -5083,6 +5089,7 @@ variable LTOPHOOK
    found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT: C-TICK's gate, at the only other place a name becomes an address
    C-SCOPE-ENTRY-GUARD
+   9 DATA TRUSTED-CELL LDR,  9 asserted CBNZ,            \ a TRUSTED: body asks no trusted-only query
    SP SP 48 SUBI,
    5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
@@ -5092,6 +5099,7 @@ variable LTOPHOOK
    5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
    17 SP 32 LDR,  SP SP 48 ADDI,
    17 LTRUSTTICK LABEL@ CBNZ,
+   asserted LBL,
    C-CODE-ADDR
    bk B,
    usedtry LBL,

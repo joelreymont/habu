@@ -289,7 +289,8 @@ admitted only inside the armed window.
 - **Arming contract.** The window is armed by the generative crossing only —
   `FIELD-PROJ! ( accessor-name-addr accessor-name-len field-id byte-offset -- )`,
   an explicitly trusted-only operation whose record the seal protects, so user
-  source can neither call it from checked code nor execute or tick it. Its four
+  source can neither call it from checked code nor execute or tick it outside a
+  `TRUSTED:` body, which may already call it directly. Its four
   private state cells carry the same restrictions. The generator arms it
   immediately before evaluating the one accessor definition,
   keyed on the accessor word name; the window fires once at the `field-project`
