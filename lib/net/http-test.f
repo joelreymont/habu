@@ -2,11 +2,12 @@
 \
 \ Package CURL is the client for the ordinary response classes, and a raw TCP4
 \ connection is the client for the requests a well-behaved client cannot send
-\ and for the heads CURL does not hand back. The status line and the headers of
-\ every raw case go into a transcript, written to build/http-transcript.txt,
-\ read back and compared whole with the transcript this file expects. The
-\ server that answers the transcript runs one worker, so every request id - and
-\ with it every error body's length - is the same on every run.
+\ and for the heads CURL does not hand back. Where a raw case pins a whole
+\ response head, its status line and headers go into a transcript, written to
+\ build/http-transcript.txt, read back and compared whole with the transcript
+\ this file expects. The server that answers the transcript runs one worker, so
+\ every request id - and with it every error body's length - is the same on
+\ every run.
 \
 \ Every handler is defined before the server starts, because Habu forbids
 \ dictionary mutation while a task is live.
@@ -39,6 +40,18 @@ public
    START-READY TASK:SEMAPHORE-DESTROY ;
 ;package
 
+\ White-box helpers: reopens HTTP so the count of connections its listener has
+\ taken (TAKEN) and its job queue's room plus one (QUEUED), which no public word
+\ answers, are visible here. QUEUED follows JOB-SLOTS, so the full-queue case
+\ still leaves the listener holding one more if the queue grows. The
+\ definitions land in HTTP-TEST, so HTTP's public surface gains nothing for
+\ being tested.
+package HTTP
+: HTTP-TEST:TAKEN ( -- n )
+   ACCEPTED-COUNT atomic@ ;
+: HTTP-TEST:QUEUED ( -- n ) JOB-SLOTS 1+ ;
+;package
+
 package HTTP-TEST
 
 private
@@ -61,6 +74,7 @@ $2E constant DOT-BYTE
 -9991 constant E-HOOK             \ one controlled start hook failure
 -9992 constant E-RENDER           \ the error hook that is meant to fail its answer
 -9993 constant E-HOOK-OTHER
+-9994 constant E-EXIT-HOOK        \ the exit hook that is meant to fail
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -160,6 +174,26 @@ variable ITEM-HOST-N
    seen if hu else 0 then ITEM-HOST-N !
    answer 200 HTTP:STATUS!
    answer [: ITEM-BODY ;] HTTP:JSON! ;
+
+
+\ The version travels to its body the same way.
+PTR-VARIABLE VERSION-A
+variable VERSION-N
+
+: VERSION-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   JSON-WRITE:OBJECT-START
+   s" version" VERSION-A @ VERSION-N @ JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END ;
+
+
+\ The version the request line named, as the client sent it.
+: ASKED-VERSION ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked HTTP:VERSION$ {: va:ptr vu:n :}
+   va VERSION-A !
+   vu VERSION-N !
+   answer 200 HTTP:STATUS!
+   answer [: VERSION-BODY ;] HTTP:JSON! ;
 
 
 $40 constant TEXT-CAP
@@ -359,6 +393,7 @@ $72 constant MARK-REQUEST         \ 'r'
 $74 constant MARK-THROWER         \ 't'
 $78 constant MARK-EXIT-1          \ 'x'
 $79 constant MARK-EXIT-2          \ 'y'
+$7A constant MARK-EXIT-THROWS     \ 'z'
 
 create TRACE-ROWS SLOTS TRACE-CAP * allot
 SLOTS TYPED-BUFFER TRACE-U n
@@ -399,6 +434,12 @@ SLOTS TYPED-BUFFER TRACE-U n
 : EXIT-2 ( -- )    MARK-EXIT-2 MARK ;
 
 
+\ Fails in every worker's exit, after its mark.
+: EXIT-THROWS ( -- )
+   MARK-EXIT-THROWS MARK
+   E-EXIT-HOOK throw ;
+
+
 \ The active fixture changes between servers, while registration remains fixed.
 : START-THROWS ( -- )
    MARK-THROWER MARK
@@ -411,14 +452,22 @@ SLOTS TYPED-BUFFER TRACE-U n
    endcase ;
 
 
+$2710 constant PARK-MS            \ far past every stop bound
+
+
 \ Never answers: the worker that takes this request is still inside the handler
-\ when the stop comes, which is the one thing a cooperative stop cannot wait out.
-\ Its kill ends it at this TASK:PAUSE.
+\ when the stop comes, parked in an AIO wait as a worker serving a slow peer
+\ is, which is the one thing a cooperative stop cannot wait out. Its kill ends
+\ it at the TASK:PAUSE inside AIO:AWAIT.
 : PARK ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    1 PARKED !
-   begin
-      TASK:PAUSE
-   again ;
+   PARK-MS >MS AIO:TIMEOUT AIO:AWAIT
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
 
 
 : TRACE-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
@@ -455,6 +504,7 @@ SLOTS TYPED-BUFFER TRACE-U n
    s" GET" s" /api/trace" [: TRACE ;] HTTP:ROUTE
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
+   s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
@@ -1076,6 +1126,56 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" bad-request" TRANSCRIBE ;
 
 
+\ A ping on HTTP/1.1 whose head carries this one header line, which labels the
+\ assertion that follows.
+: PING-LINE ( ptr u8 n -- )
+   {: line:ptr lu:n :}
+   REQ-RESET
+   s\" GET /api/ping HTTP/1.1\r\n" REQ+
+   line lu REQ+
+   s\" \r\nConnection: close\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   line lu T-LABEL ;
+
+
+: HOST-REFUSED ( -- )
+   s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
+   s" bad_request: " HAS? TTRUE ;
+
+
+: HOST-SERVED ( -- )
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE ;
+
+
+\ RFC 9112 3.2: an HTTP/1.1 request without exactly one valid Host is refused
+\ before any handler runs, while an HTTP/1.0 one may carry none. A valid Host
+\ is uri-host [":" port] (RFC 3986 3.2.2, 3.2.3).
+: HOST-CASE ( -- )
+   s\" GET /api/ping HTTP/1.1\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" no Host" T-LABEL HOST-REFUSED
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" two Hosts" T-LABEL HOST-REFUSED
+   s" Host:" PING-LINE HOST-REFUSED
+   s" Host: a b" PING-LINE HOST-REFUSED
+   s" Host: x:80a" PING-LINE HOST-REFUSED
+   s" Host: x%2" PING-LINE HOST-REFUSED
+   s" Host: [::1" PING-LINE HOST-REFUSED
+   s" Host: [1::2::3]" PING-LINE HOST-REFUSED
+   s" Host: [1:2:3:4:5:6:7:8:9]" PING-LINE HOST-REFUSED
+   s" Host: [::1.2.3.256]" PING-LINE HOST-REFUSED
+   s" Host: [::1.2.3.04]" PING-LINE HOST-REFUSED
+   s" Host: [v.a]" PING-LINE HOST-REFUSED
+   s\" GET /api/ping HTTP/1.0\r\n\r\n" RAW-ONE
+   s" HTTP/1.0 without Host" T-LABEL HOST-SERVED
+   s" Host: 127.0.0.1:8080" PING-LINE HOST-SERVED
+   s" Host: example.com:8080" PING-LINE HOST-SERVED
+   s" Host: %41-._~!$&'()*+,;=:" PING-LINE HOST-SERVED
+   s" Host: [::1]:80" PING-LINE HOST-SERVED
+   s" Host: [1:2:3:4:5:6:7:8]" PING-LINE HOST-SERVED
+   s" Host: [::ffff:1.2.3.255]" PING-LINE HOST-SERVED
+   s" Host: [v1.a:b]" PING-LINE HOST-SERVED ;
+
+
 : BIG-HEADER-CASE ( -- )
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nX-Big: " REQ+
@@ -1135,10 +1235,16 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" keep-alive" TRANSCRIBE ;
 
 
-\ True when the server ends the stream before the collect deadline.
+\ True when the server ends the stream before the collect deadline: the read
+\ answers the end of the stream, not data and not a reset.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn RAW-READY? 0= if false exit then
-   conn RAW-READ-STEP 0= ;
+   conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
+   MATCH TCP4:read-result
+      data OF drop false ENDOF
+      closed OF drop true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
 
 
 \ A connection the peer keeps open and says nothing more on is closed by the
@@ -1264,10 +1370,15 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 
 \ A worker parked inside a handler is the one task a cooperative stop cannot
-\ wait out: the stop asks, waits its own bound - IDLE-MS + LINGER-MS +
-\ STOP-MARGIN-MS, well under the ceiling here - and then kills it, which is what
+\ wait out: the stop asks, waits its own bound - under a second for this
+\ IDLE-MS, well under the ceiling here - and then kills it, which is what
 \ KILLED-TASKS counts. The listener and the other worker end themselves, so
-\ ENDED-TASKS is one short of the total. Its own server, started after the
+\ ENDED-TASKS is one short of the total. The killed worker's exit closes the
+\ connection it was serving, so its peer reads the end of the stream within the
+\ collect deadline instead of waiting on it. The server started next serves a
+\ request - answering the HTTP/1.0 its request line named, not the HTTP/1.1 of
+\ its own status line - and ends every task itself; the trace rows its
+\ inherited hooks mark are emptied first. Its own servers, started after the
 \ first ones have been stopped and before the controlled start hook is added.
 : PARKED-WORKER-CASE ( -- )
    0 PARKED !
@@ -1284,14 +1395,157 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    HTTP:RUNNING? TFALSE
    HTTP:KILLED-TASKS 1 T=
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL 1- T=
-   held TCP4:CLOSE DROP-TCP-STATUS ;
+   held CLOSED-WITHIN? TTRUE
+   held TCP4:CLOSE DROP-TCP-STATUS
+   TRACE-RESET
+   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   s\" GET /api/version HTTP/1.0\r\nHost: x\r\n\r\n"
+   S\" {\qversion\q:\qHTTP/1.0\q}" RAW-ASK TTRUE
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   HTTP:STOP
+   HTTP:KILLED-TASKS 0 T=
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
+
+
+HTTP-TEST:QUEUED TYPED-BUFFER QUEUED-CONN TCP4:connection
+variable OPENED                   \ the peers whose connect succeeded, first in QUEUED-CONN
+
+
+\ True once the listener has taken n connections since its server started,
+\ within the collect deadline.
+: TAKEN-WITHIN? ( n -- bool ) {: want:n :}
+   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      HTTP-TEST:TAKEN want >= if true exit then
+      mono-ns deadline >= if false exit then
+      TASK:PAUSE
+   again ;
+
+
+\ Opens a peer that says nothing, kept only when its connect succeeded.
+: PEER-OPEN ( -- )
+   LOOPBACK TCP4:ADDRESS HTTP:PORT TCP4:PORT TCP4:CONNECT
+   MATCH TCP4:connect-result
+      connected OF OPENED @ QUEUED-CONN ! 1 OPENED +! ENDOF
+      failed OF drop ENDOF
+   ;MATCH ;
+
+
+\ Opens QUEUED peers, each once the listener has taken the one before, and
+\ answers whether it took the last. Opened back to back they would outrun the
+\ listener and overflow the listen backlog, and the kernel may reset the peers
+\ past it instead of queueing them - macOS does, during the connect or just
+\ after it.
+: QUEUE-PEERS ( -- bool )
+   0 OPENED !
+   HTTP-TEST:TAKEN {: before:n :}
+   HTTP-TEST:QUEUED 0 ?do
+      PEER-OPEN
+      before OPENED @ + TAKEN-WITHIN? 0= if false unloop exit then
+   loop
+   true ;
+
+
+\ How many of them read the end of their stream.
+: CLOSED-PEERS ( -- n )
+   0
+   OPENED @ 0 ?do i QUEUED-CONN @ CLOSED-WITHIN? if 1+ then loop ;
+
+
+: DROP-PEERS ( -- )
+   OPENED @ 0 ?do i QUEUED-CONN @ TCP4:CLOSE DROP-TCP-STATUS loop ;
+
+
+\ With its one worker parked inside a handler, the server queues silent peers
+\ until its job queue is full and its listener holds one more. The stop still
+\ ends within its own bound instead of waiting on that queue, kills the parked
+\ worker, and closes every connection no worker took, so each of those peers
+\ reads the end of its stream. The trace rows the inherited hooks mark are
+\ emptied first.
+: FULL-QUEUE-CASE ( -- )
+   TRACE-RESET
+   0 PARKED !
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   RAW-OPEN {: held:TCP4:connection :}
+   REQ-RESET
+   s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
+   held REQ$ RAW-SEND
+   PARK-REACHED? TTRUE
+   s" the listener takes every peer, the last one past a full queue" T-LABEL
+   QUEUE-PEERS TTRUE
+   OPENED @ HTTP-TEST:QUEUED T=
+   mono-ns {: began:n :}
+   HTTP:STOP
+   s" a stop with the job queue full ends within its bound" T-LABEL
+   mono-ns began - STOP-CEILING-MS NS-PER-MS * < TTRUE
+   HTTP:KILLED-TASKS 1 T=
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL 1- T=
+   s" and every queued peer reads the end of its stream" T-LABEL
+   CLOSED-PEERS HTTP-TEST:QUEUED T=
+   held CLOSED-WITHIN? TTRUE
+   held TCP4:CLOSE DROP-TCP-STATUS
+   DROP-PEERS ;
+
+
+$1000 constant CHUNK-BYTES        \ what the peer that keeps sending writes at a time
+$1F4 constant SEND-ON-MS          \ how long it sends before the stop: past the linger deadline
+
+create CHUNK-BUF CHUNK-BYTES allot
+1 TYPED-BUFFER SENDER-CONN TCP4:connection
+TASK:MIN-STACK TASK:TASK SENDER-TASK
+
+
+\ Writes until a write fails: the reset a close sends a peer whose bytes are
+\ still unread.
+: KEEP-SENDING ( -- )
+   0 SENDER-CONN @ {: conn:TCP4:connection :}
+   begin
+      conn CHUNK-BUF CHUNK-BYTES TCP4:TRANSFER-BYTES TCP4:WRITE
+      MATCH TCP4:status
+         ok OF ENDOF
+         failed OF drop exit ENDOF
+      ;MATCH
+   again ;
+
+
+\ True once the task has ended, false at the collect deadline.
+: TASK-ENDED? ( ptr n -- bool ) {: tcb:ptr :}
+   mono-ns COLLECT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      tcb TASK:DONE? if true exit then
+      mono-ns deadline >= if false exit then
+      TASK:PAUSE
+   again ;
+
+
+\ A peer that reads its answer to the end of the stream and then keeps sending
+\ is read until the linger deadline and no longer: the worker closes however
+\ long the peer goes on, which resets it, and is back on its queue well before
+\ a stop that then kills nothing. The peer's writes fail on the reset.
+: SENDING-PEER-CASE ( -- )
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn 0 SENDER-CONN !
+   REQ-RESET
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
+   conn REQ$ RAW-SEND
+   conn RAW-DRAIN
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   [: KEEP-SENDING ;] SENDER-TASK TASK:ACTIVATE
+   SEND-ON-MS >MS TASK:SLEEP
+   HTTP:STOP
+   s" the lingering worker ended itself" T-LABEL
+   HTTP:KILLED-TASKS 0 T=
+   SENDER-TASK TASK-ENDED? TTRUE
+   SENDER-TASK TASK:KILL
+   conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 \ Every activated worker runs its exit hooks before the failed START throws.
 : FAILED-TRACE ( -- )
    TWO-WORKERS 0 ?do
       i TRACE$ s" abt" STARTS-WITH? TTRUE
-      i TRACE$ s" yx" ENDS-WITH? TTRUE
+      i TRACE$ s" zyx" ENDS-WITH? TTRUE
       i MARK-REQUEST MARK-COUNT 0 T=
       i MARK-EXIT-1 MARK-COUNT 1 T=
       i MARK-EXIT-2 MARK-COUNT 1 T=
@@ -1327,11 +1581,14 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
 
 \ One hook fails while its peer succeeds. The returned code and both complete
 \ traces prove the caller observes the whole startup outcome before catch ends.
+\ An exit hook that throws, run first as the last registered, keeps none of the
+\ hooks registered before it from running in either worker.
 : THROWING-HOOK-CASE ( -- )
    TRACE-RESET
    0 THROWN !
    1 HOOK-MODE !
    [: START-THROWS ;] HTTP:ON-WORKER-START
+   [: EXIT-THROWS ;] HTTP:ON-WORKER-EXIT
    ROOT$ HTTP:STATIC-ROOT
    [: START-TWO ;] E-HOOK TTHROWSQ
    HTTP:RUNNING? TFALSE
@@ -1493,6 +1750,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    OVERFLOW-CASE
    STATIC-CASES
    MALFORMED-CASE
+   HOST-CASE
    BIG-HEADER-CASE
    BIG-BODY-CASE
    OVER-BODY-CASE
@@ -1512,6 +1770,8 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    POLICY-CASES
    TRANSCRIPT-CASE
    PARKED-WORKER-CASE
+   FULL-QUEUE-CASE
+   SENDING-PEER-CASE
    ERROR-HOOK-CASE
    SETUP-REFUSAL-CASE
    THROWING-HOOK-CASE

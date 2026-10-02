@@ -19,6 +19,13 @@
 \ exit hooks run through TASK:AT-EXIT, so a worker that throws gives its
 \ resources back as surely as one that is stopped. Registration belongs to a
 \ process's setup and is refused once its server is running.
+\
+\ A handler that goes on in another protocol on its request's connection - a
+\ WebSocket upgrade, lib/net/ws.f - takes the connection from its worker with
+\ TAKE-OVER, and the worker closes it once that handler has ended. Such a taker
+\ reads STOPPING? at least every STOP-WAIT-MS and blocks on its way out no
+\ longer than STOP-BOUND-MS allows a taker (lib/net/ws.f GIVE-UP?). A worker
+\ the stop still has to kill has its connection closed by its exit.
 require lib/net/http-static.f
 require lib/task.f
 require lib/queue.f
@@ -32,7 +39,7 @@ private
 
 $20 constant BACKLOG
 $100000 constant WORKER-STACK
-$40 constant JOB-SLOTS
+$40 constant JOB-SLOTS            \ over MAX-WORKERS stop jobs and one connection (STOP)
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 -1 constant STOP-JOB
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
@@ -84,7 +91,29 @@ variable LEFT-COUNT               \ tasks that left their body, however they lef
 variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
+variable ACCEPTED-COUNT           \ connections the listener has taken since START
 
+
+public
+
+\ True once a stop has been asked for, which is when a handler that took its
+\ connection over is to end the protocol it speaks there and return.
+: STOPPING? ( -- bool )
+   STOPPING atomic@ 0 <> ;
+
+
+\ The longest a taker may park before it reads STOPPING? again: the listener's
+\ own park, so a stop waits a taker out as it waits out the listener.
+: STOP-WAIT-MS ( -- n )
+   ACCEPT-WAIT-MS ;
+
+
+\ The longest a taker's release, and any goodbye it writes on its way out, may
+\ block.
+$C8 constant RELEASE-MS
+
+
+private
 
 : LISTENER@ ( -- TCP4:listener )
    LISTENER-CELL @ TCP4:>LISTENER ;
@@ -99,7 +128,7 @@ variable STARTED                  \ workers successfully activated this start
 \ returns the stopper's thread to a check it repeats.
 : LEAVING ( -- )
    1 LEFT-COUNT atomic-add drop
-   STOPPING atomic@ 0= if exit then
+   STOPPING? 0= if exit then
    0 STOPPER-TCB @ TASK:WAKE ;
 
 
@@ -181,7 +210,8 @@ variable STARTED                  \ workers successfully activated this start
    s" the answer is larger than this server sends in one response" ERROR! ;
 
 
-\ The handler's throw, kept for RENDER-FAULT: a quotation cannot read a local.
+\ The handler's throw, kept for RENDER-FAULT and for a taker's release: a
+\ quotation cannot read a local.
 MAX-WORKERS TYPED-BUFFER FAULT-CODE n
 
 
@@ -191,19 +221,64 @@ MAX-WORKERS TYPED-BUFFER FAULT-CODE n
    idx FAULT-RESPONSE ;
 
 
+\ ---- a connection its handler takes over -------------------------------------
+
+\ A handler that goes on in another protocol on its request's connection - a
+\ WebSocket upgrade, lib/net/ws.f - takes the connection with TAKE-OVER. The
+\ connection is on offer only while that handler runs. The worker answers
+\ nothing on a taken connection: once the handler has returned or thrown it
+\ runs the taker's release, which is where the taker lets go of the descriptor,
+\ and then closes the connection the lingering way.
+0 constant KEPT                   \ the worker's own, as between handlers
+1 constant OFFERED                \ a handler is running and may take it
+2 constant TAKEN                  \ the handler took it and holds it until it ends
+
+MAX-WORKERS TYPED-BUFFER HOLDER n
+MAX-WORKERS TYPED-BUFFER RELEASE-HOOK [ n -- ]
+
+
+\ The release is handed the code the handler threw, zero when it returned.
+: RUN-RELEASE ( -- )
+   SELF-SLOT {: idx:n :}
+   idx FAULT-CODE @ idx RELEASE-HOOK @ execute ;
+
+
+\ The offer ends with the handler. True when the handler took the connection:
+\ its taker's release has then run, under a catch of the worker's own, and a
+\ release that throws is reported like a handler's fault.
+: WITHDRAW ( n -- bool ) {: idx:n :}
+   idx HOLDER @ TAKEN = {: taken:bool :}
+   KEPT idx HOLDER !
+   taken 0= if false exit then
+   [: RUN-RELEASE ;] catch {: failed:n :}
+   failed 0 <> if idx failed REPORT-FAULT then
+   true ;
+
+
 \ Every fault answer is a 500, stored before the hook runs so that a hook that
-\ throws before setting it still leaves the status the client is owed.
-: HANDLE-REQUEST ( n -- ) {: idx:n :}
+\ throws before setting it still leaves the status the client is owed. True
+\ when the handler took the connection, which is then owed no answer at all.
+: HANDLE-REQUEST ( n -- bool ) {: idx:n :}
+   OFFERED idx HOLDER !
    [: RUN-HANDLER ;] catch {: code:n :}
-   code 0= if exit then
-   idx code REPORT-FAULT
    code idx FAULT-CODE !
+   code 0 <> if idx code REPORT-FAULT then
+   idx WITHDRAW if true exit then
+   code 0= if false exit then
    500 idx SLOT-STATUS!
    [: RENDER-FAULT ;] catch {: failed:n :}
-   idx failed HOOK-FAULT ;
+   idx failed HOOK-FAULT
+   false ;
 
 
 \ ---- one connection ---------------------------------------------------------
+
+\ The connection each worker is serving, live from SERVE-CONNECTION's entry
+\ until its close: what TAKE-OVER hands a handler, and what the worker's exit
+\ closes when a stop killed it before that close (RUN-EXIT-HOOKS).
+MAX-WORKERS TYPED-BUFFER SERVING TCP4:connection
+MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
+
 
 : CLOSE-CONNECTION ( TCP4:connection -- )
    TCP4:CLOSE DROP-STATUS ;
@@ -221,11 +296,14 @@ MAX-WORKERS TYPED-BUFFER FAULT-CODE n
 \ A peer still sending when we answer would be reset by a plain close and would
 \ lose the answer with it, which is exactly how a refused oversize request ends.
 \ Half-close instead, read what is still in flight until the peer stops or the
-\ linger deadline passes, and only then close.
+\ linger deadline passes, and only then close. The loop checks the deadline
+\ itself: WAIT-READABLE still asks once past it, and a peer that keeps sending
+\ always has bytes to read.
 : LINGER-CLOSE ( TCP4:connection n -- ) {: conn:TCP4:connection idx:n :}
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    LINGER-MS DEADLINE-AT {: deadline:n :}
    begin
+      mono-ns deadline > if conn CLOSE-CONNECTION exit then
       conn deadline WAIT-READABLE 0= if conn CLOSE-CONNECTION exit then
       conn idx DISCARD 0= if conn CLOSE-CONNECTION exit then
    again ;
@@ -260,9 +338,11 @@ MAX-WORKERS TYPED-BUFFER FAULT-CODE n
    idx failed HOOK-FAULT ;
 
 
+\ A connection its handler took is the taker's while the handler runs and is
+\ closed once it ends, with the lingering close every answered peer gets.
 : ANSWER ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
    idx MAKE-ID
-   idx HANDLE-REQUEST
+   idx HANDLE-REQUEST if construct served answered exit then
    conn idx RESPONSE-OF SEND 0= if construct served silent exit then
    idx KEEP-ALIVE@ 0 <> if construct served keep-open exit then
    construct served answered ;
@@ -281,11 +361,9 @@ MAX-WORKERS TYPED-BUFFER FAULT-CODE n
 \ One connection until a request says otherwise: a peer that has been answered
 \ leaves through the lingering close, one that is gone or silent through a
 \ plain one.
-: SERVE-CONNECTION ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   SELF-SLOT {: idx:n :}
-   idx CONNECTION-RESET
+: SERVE-UNTIL-CLOSED ( TCP4:connection n -- ) {: conn:TCP4:connection idx:n :}
    begin
-      STOPPING atomic@ 0 <> if conn CLOSE-CONNECTION exit then
+      STOPPING? if conn CLOSE-CONNECTION exit then
       conn idx SERVE-ONE
       MATCH served
          keep-open OF ENDOF
@@ -293,6 +371,19 @@ MAX-WORKERS TYPED-BUFFER FAULT-CODE n
          silent OF conn CLOSE-CONNECTION exit ENDOF
       ;MATCH
    again ;
+
+
+\ The connection is the slot's SERVING row until its close has run. Nothing
+\ between that close and the clear pauses, so no halt falls between them: the
+\ exit of a worker that closed its own connection closes nothing, and the exit
+\ of one killed inside a wait before that close closes it.
+: SERVE-CONNECTION ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   SELF-SLOT {: idx:n :}
+   conn idx SERVING !
+   1 idx SERVING-LIVE !
+   idx CONNECTION-RESET
+   conn idx SERVE-UNTIL-CLOSED
+   0 idx SERVING-LIVE ! ;
 
 
 \ ---- the worker lifecycle hooks ---------------------------------------------
@@ -323,10 +414,36 @@ variable EXIT-HOOK-N
 
 
 \ In reverse, so a hook registered over an earlier one's resource gives its own
-\ back first.
+\ back first. Each runs under a catch of its own, so a hook that throws keeps
+\ no other from giving its resource back; the first throw is the answer, zero
+\ when none threw.
+: RUN-EXIT-HOOK-ROWS ( -- n )
+   0
+   EXIT-HOOK-N @ 0 ?do
+      EXIT-HOOK-N @ 1- i - EXIT-HOOK @ catch
+      over 0= if nip else drop then
+   loop ;
+
+
+\ The connection a worker was still serving when it ended: a stop killed it
+\ inside a wait, or a throw left SERVE-CONNECTION before its close.
+: DROP-SERVING ( -- )
+   SELF-SLOT {: idx:n :}
+   idx SERVING-LIVE @ 0= if exit then
+   0 idx SERVING-LIVE !
+   idx SERVING @ CLOSE-CONNECTION ;
+
+
+\ The connection is closed once every hook has run, so a hook that retires what
+\ it kept against that connection - lib/net/ws.f retiring the socket a handle
+\ may outlive - has done so before the descriptor can be handed to another
+\ connection, whatever another hook threw. The first throw then goes on to the
+\ task.
 : RUN-EXIT-HOOKS ( -- )
    SELF-SLOT CLOSE-FILE
-   EXIT-HOOK-N @ 0 ?do EXIT-HOOK-N @ 1- i - EXIT-HOOK @ execute loop ;
+   RUN-EXIT-HOOK-ROWS {: code:n :}
+   DROP-SERVING
+   code 0 <> if code throw then ;
 
 
 \ ---- the worker pool --------------------------------------------------------
@@ -398,7 +515,8 @@ variable EXIT-HOOK-N
 
 : ACCEPTED ( TCP4:connection TCP4:address TCP4:port -- )
    {: conn:TCP4:connection peer:TCP4:address peer-port:TCP4:port :}
-   STOPPING atomic@ 0 <> if conn CLOSE-CONNECTION exit then
+   1 ACCEPTED-COUNT atomic-add drop
+   STOPPING? if conn CLOSE-CONNECTION exit then
    conn TCP4:CONNECTION>N JOBS QUEUE:PUSH ;
 
 
@@ -414,7 +532,7 @@ variable EXIT-HOOK-N
 \ flag between waits and needs nobody to connect to it to be let go.
 : ACCEPT-LOOP ( -- )
    begin
-      STOPPING atomic@ 0 <> if exit then
+      STOPPING? if exit then
       LISTENER@ ACCEPT-WAIT-MS >MS TCP4:PENDING-WITHIN?
       MATCH TCP4:ready-result
          ready OF ACCEPT-ONE ENDOF
@@ -466,15 +584,27 @@ variable EXIT-HOOK-N
    WORKER-COUNT @ 1+ ;
 
 
-\ How long a stop waits for the tasks to end themselves. The listener re-reads
-\ STOPPING every ACCEPT-WAIT-MS; a worker inside a request is bounded by that
-\ request's own deadline (IDLE-MS, SERVE-ONE into lib/net/http-request.f
-\ WAIT-READABLE) and after it by LINGER-MS in LINGER-CLOSE, so the longer of the
-\ two parks is what a stop waits out, plus the scheduling slack.
+\ How long a stop waits for the tasks to end themselves: the longest park any
+\ of them can be in when the flag rises, plus the scheduling slack. The
+\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request is
+\ bounded by that request's own deadline (IDLE-MS, SERVE-ONE into
+\ lib/net/http-request.f WAIT-READABLE) and after it by LINGER-MS in
+\ LINGER-CLOSE. A worker whose handler took its connection over waits out its
+\ taker and then lingers. The taker reads STOPPING? within STOP-WAIT-MS. The
+\ stop cuts short every write on its connection - the one in hand when the
+\ flag rises, every frame after it and the goodbye written once the taker has
+\ read the flag - and they share one RELEASE-MS per slot (lib/net/ws.f
+\ GIVE-UP?). It runs from the first look at the stop, which a write in hand
+\ takes when the send slice it is in ends: within TCP4:SEND-SLICE-MS and two
+\ sends that never wait, whose copies STOP-MARGIN-MS covers. Once it has
+\ passed, the write then in hand gives up when its slice ends, one more slice,
+\ and every later one before its first. So the term is STOP-WAIT-MS, a slice,
+\ RELEASE-MS, a slice, and LINGER-MS.
 : STOP-BOUND-MS ( -- n )
-   IDLE-MS @ LINGER-MS + {: request:n :}
-   request ACCEPT-WAIT-MS < if ACCEPT-WAIT-MS STOP-MARGIN-MS + exit then
-   request STOP-MARGIN-MS + ;
+   IDLE-MS @ LINGER-MS +
+   ACCEPT-WAIT-MS max
+   STOP-WAIT-MS TCP4:SEND-SLICE-MS + RELEASE-MS + TCP4:SEND-SLICE-MS + LINGER-MS + max
+   STOP-MARGIN-MS + ;
 
 
 \ True once the listener and every worker have left their body, which is when
@@ -569,6 +699,18 @@ variable EXIT-HOOK-N
    code throw ;
 
 
+: DROP-JOB ( n -- ) {: job:n :}
+   job 0 < if exit then
+   job TCP4:>CONNECTION CLOSE-CONNECTION ;
+
+
+\ Takes every job queued, waiting for none: a connection no worker took is
+\ closed unserved, and a stop job is dropped.
+: DRAIN-JOBS ( -- )
+   begin JOBS QUEUE:TRY-POP while DROP-JOB repeat
+   drop ;
+
+
 public
 
 \ Opens what a request worker needs of its own, inside that worker, once per
@@ -620,6 +762,24 @@ public
    q 0 FALLBACK-HOOK ! ;
 
 
+\ The connection of the request a handler is answering, and the bytes the peer
+\ has already sent past that request: they are the taker's first input and stay
+\ valid until the handler ends. From here the connection is the handler's and
+\ the worker sends no answer for this request. The release runs in this worker
+\ once the handler has returned or thrown, handed the code the handler threw
+\ (zero when it returned); it is the last moment the taker may touch the
+\ connection, which the worker then closes. Outside a running handler, and a
+\ second time inside one, it is E-STATE.
+: TAKE-OVER ( request [ n -- ] -- TCP4:connection ptr u8 n ) {: subject:request q :}
+   subject SLOT-OF-REQUEST {: idx:n :}
+   idx SELF-SLOT <> if E-HANDLE throw then
+   idx HOLDER @ OFFERED <> if E-STATE throw then
+   q idx RELEASE-HOOK !
+   TAKEN idx HOLDER !
+   idx SERVING @
+   idx idx IN-AT@ idx AVAIL SPAN$ ;
+
+
 \ The address and port to listen on, how many request workers to run, and how
 \ long a connection may stay silent before it is closed. The AIO loop is a
 \ precondition and not this package's to start: every readiness wait the
@@ -642,6 +802,7 @@ public
    0 LEFT-COUNT !
    0 START-ERROR atomic!
    0 STARTED !
+   0 ACCEPTED-COUNT !
    address port BIND-LISTENER
    [: OPEN-RESOURCES ;] catch {: code:n :}
    code 0 <> if RELEASE-RESOURCES code throw then
@@ -690,13 +851,23 @@ public
 \ the flag has somebody to hint at. The kill is only the backstop past the
 \ bound: a task killed there ends inside its wait with the rest of its body
 \ unrun, which is why KILLED-TASKS is public.
+\
+\ Nothing before the bound waits on the queue, however full the workers left
+\ it. The connections queued when the flag rises are closed unserved, which
+\ also lets go a listener held on the full queue: past the flag the listener
+\ queues at most the one connection it holds, so the room JOB-SLOTS leaves
+\ takes that and a stop job for every worker without waiting. What is still
+\ queued once every task has been joined - behind a worker the stop killed -
+\ is closed then.
 : STOP ( -- )
    RUNNING @ 0= if E-STATE throw then
    TASK:SELF 0 STOPPER-TCB !
    1 STOPPING atomic-add drop
+   DRAIN-JOBS
    WORKER-COUNT @ 0 ?do STOP-JOB JOBS QUEUE:PUSH loop
    AWAIT-TASKS
    KILL-TASKS
+   DRAIN-JOBS
    RELEASE-RESOURCES ;
 
 

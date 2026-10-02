@@ -26,6 +26,7 @@ Planned module files:
 - `lib/zip.f`
 - `lib/net/udp4.f`
 - `lib/net/ws-frame.f`
+- `lib/net/ws.f`
 - `lib/pg.f`
 - `lib/net/curl.f`
 - `lib/crypto/evp.f`
@@ -104,6 +105,7 @@ theirs.
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
 | `lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
+| `lib/net/ws.f` | process-wide (one socket to an HTTP worker's slot, its buffers a mapping of its own; sends from any task are serialised by the slot's `TASK:FACILITY`, made ready at load; see [websocket.md](websocket.md)) |
 | `lib/serial.f` | task-local |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
 
@@ -1355,6 +1357,18 @@ answers `need` or `frame`), payload masking (`MASK`) and close status codes
 (`CLOSE-CODE!`). The words read and write the caller's bytes and touch no
 socket. Every protocol fault the RFC names is refused by its own code as soon as
 the bytes held show it. See [WebSocket](websocket.md).
+
+## WebSocket connections
+
+`lib/net/ws.f` reopens package `WS` for the connection: `ACCEPT`, inside an
+HTTP route handler, answers the RFC 6455 opening handshake with `open` and a
+socket, taking the connection over from its worker, or `refused` with the
+status it rendered into the response; `RECEIVE` answers a whole `text` or `binary`
+message, `closed` with the status the socket closed under, or `timeout`,
+reassembling fragments, answering pings and failing a peer that breaks the
+protocol; `SEND-TEXT`, `SEND-BINARY` and `CLOSE` write whole frames from any
+task. The handshake's SHA-1 and base64 are Habu's own. See
+[WebSocket](websocket.md).
 
 ## PostgreSQL
 

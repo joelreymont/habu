@@ -26,16 +26,20 @@ live ([threads.md](threads.md)), and a hook added to a running pool would be
 missed by every worker already started. Installing a hook or a rule while the
 server runs is `E-STATE`.
 
+The AIO loop is itself a live task, so the whole sequence runs from one word:
+an interpreted `s"` after `AIO:START` ends the process.
+
 ```forth
-AIO:START
-HTTP:ROUTES-RESET
-s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
-s" /srv/site" HTTP:STATIC-ROOT
-$7F000001 0 2 500 HTTP:START      \ address, port (0: ephemeral), workers, idle ms
-HTTP:PORT .                       \ the port the listener bound
-\ ... serve ...
-HTTP:STOP
-AIO:STOP
+: SERVE ( -- )
+   AIO:START
+   HTTP:ROUTES-RESET
+   s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
+   s" /srv/site" HTTP:STATIC-ROOT
+   $7F000001 0 2 500 HTTP:START   \ address, port (0: ephemeral), workers, idle ms
+   HTTP:PORT .                    \ the port the listener bound
+   \ ... serve ...
+   HTTP:STOP
+   AIO:STOP ;
 ```
 
 | word | effect | meaning |
@@ -55,11 +59,16 @@ started worker has run its exit hooks and been joined. The listener is closed,
 the server's resources are released, and `RUNNING?` is false; the same address
 and port can be started again. No request is accepted during worker startup.
 
-`STOP` waits `IDLE-MS` + 200 ms of lingering + 200 ms of slack (at least the
-listener's 200 ms accept wait plus slack). A worker parked inside a handler past
-that bound is killed with the rest of its body unrun; `KILLED-TASKS` counts it.
+`STOP` waits the bound `STOP-BOUND-MS` in `lib/net/http.f` derives: at least
+1000 ms, more with a longer `IDLE-MS`. A worker parked inside a handler past
+that bound is killed with the rest of its body unrun; `KILLED-TASKS` counts
+it, and its exit closes the connection it was serving. A worker killed inside
+a send leaves within one send slice, which ends within `TCP4:SEND-SLICE-MS`
+and two sends that never wait before it pauses.
 Every task counts itself out as it leaves its body and wakes the stopper, so a
 stop lasts as long as its slowest task takes to notice, not its whole bound.
+However full the job queue is, `STOP` waits on none of it: each connection
+queued when it begins, or left behind a killed worker, is closed unserved.
 
 The pool is a fixed eight worker TCBs (`MAX-WORKERS`), each with one slot: a
 1 MiB input body, a 1 MiB generated body, a header table and the scratch one
@@ -73,24 +82,26 @@ request needs, carved from one mapping per worker at `START`.
    answer 200 HTTP:STATUS!
    answer [: ITEM-BODY ;] HTTP:JSON! ;
 
-s" GET" s" /items/{id}" [: ITEM ;] HTTP:ROUTE
+: ITEM-ROUTE ( -- )
+   s" GET" s" /items/{id}" [: ITEM ;] HTTP:ROUTE ;
 ```
 
 `ROUTE ( ptr u8 n ptr u8 n [ request response -- ] -- )` registers a method, a
 pattern and a handler; the strings must outlive the server, which a literal
-does. A pattern segment `{name}` matches one nonempty path segment and binds
-its percent-decoded text; any other segment matches itself. The first route
-whose pattern and method both match answers. A path some pattern matches under
-another method is 405 with `Allow` listing the methods that do match; a path
-no pattern matches goes to the static tree, then 404. `ROUTES-RESET` empties
-the table (up to 32 routes).
+does. A quotation compiles only inside a definition, so a program registers
+its routes from a word. A pattern segment `{name}` matches one nonempty path
+segment and binds its percent-decoded text; any other segment matches itself.
+The first route whose pattern and method both match answers. A path some
+pattern matches under another method is 405 with `Allow` listing the methods
+that do match; a path no pattern matches goes to the static tree, then 404.
+`ROUTES-RESET` empties the table (up to 32 routes).
 
 A handle names a worker's slot and the generation it had when the request
 began, so a handle kept past its request is `E-HANDLE`.
 
 | request word | effect |
 | --- | --- |
-| `METHOD$`, `PATH$`, `QUERY$`, `BODY$` | `( request -- ptr u8 n )` |
+| `METHOD$`, `PATH$`, `QUERY$`, `VERSION$`, `BODY$` | `( request -- ptr u8 n )` |
 | `HEADER-OF$` | `( request ptr u8 n -- ptr u8 n bool )`, name case-insensitive, first match |
 | `HEADER-COUNT-OF` | `( request ptr u8 n -- n )`: trust a header only when exactly one arrived |
 | `SEGMENT-OF$` | `( request ptr u8 n -- ptr u8 n bool )`, the decoded text `{name}` bound |
@@ -116,11 +127,44 @@ and a HEAD request gets the head a GET would.
 keeps per-request state indexes its own rows by it. A quotation cannot read an
 enclosing local, which is how values reach a `JSON!` body.
 
+## Taking the connection over
+
+A handler that goes on in another protocol on its request's connection takes
+it from the worker. [WebSocket](websocket.md) is the caller: `WS:ACCEPT`
+answers the upgrade and then speaks frames on the connection.
+
+`TAKE-OVER ( request [ n -- ] -- TCP4:connection ptr u8 n )` answers the
+connection of the request the handler is answering and the bytes the peer had
+already sent past that request, which are the taker's first input and stay
+valid until the handler ends. From there the connection is the handler's:
+
+- the worker sends no answer for the request, whatever the handler built in
+  the response and whether it returns or throws (a throw is still reported on
+  stderr under the request id);
+- once the handler has ended, the worker runs the release quotation in its own
+  task, handing it the code the handler threw, zero when it returned. It is
+  the last moment the taker may touch the connection. A release that throws is
+  reported like a handler's fault;
+- the worker then closes the connection as it closes every answered one:
+  half-close, up to 200 ms of reading what the peer still sends, close.
+
+The connection is on offer only while a handler runs: `TAKE-OVER` anywhere
+else, and a second one in the same handler, is `E-STATE`.
+
+A taker that keeps the connection sees a stop coming through `STOPPING? ( --
+bool )`. It parks at most `STOP-WAIT-MS` (200) before reading it again. Its
+writes, the goodbye in its release among them, go in send slices and give up
+`RELEASE-MS` (200) after the first look that finds the stop, each look taken
+before a slice begins (`lib/net/ws.f` `GIVE-UP?`, `PUT`). A slice ends within
+`SEND-SLICE-MS` (100) and two sends that never wait (`lib/net/tcp4.f`
+`SEND-SLICE`). `STOP`'s bound allows for all of it, so a taker that keeps to
+them ends on its own rather than being killed.
+
 ## Refusals and faults
 
 | status | code | when |
 | --- | --- | --- |
-| 400 | `bad_request` | the request line, a header, the length or the chunk framing does not parse, or the version is not HTTP/1.1 or HTTP/1.0 |
+| 400 | `bad_request` | the request line, a header, the length or the chunk framing does not parse, the version is not HTTP/1.1 or HTTP/1.0, or an HTTP/1.1 request does not carry exactly one valid `Host` (`uri-host [":" port]`, RFC 9112 3.2; an HTTP/1.0 request may carry none but never two, and a Host that arrives is validated in both) |
 | 400 | `bad_path` | a static path that climbs with `..` |
 | 404 | `not_found` | no route and no static file answers the path |
 | 405 | `method_not_allowed` | a route matches the path under another method; `Allow` names them |
@@ -158,9 +202,11 @@ to eight hooks each, for a resource that belongs to the worker task itself (a
 database connection per worker, say). Start hooks run in each worker, in
 registration order, after it has claimed its slot and before its first
 connection; exit hooks run in reverse through `TASK:AT-EXIT`, so a worker that
-throws gives its resources back as surely as one that is stopped. A start hook
-that throws fails `START` for the whole pool. Other workers finish their start
-hooks and run their exit hooks before `START` returns the error. Hooks stay
+throws gives its resources back as surely as one that is stopped. Each exit
+hook runs even when another throws; the worker's connection is closed after the
+last of them, and the first throw then goes on to the task. A start hook that
+throws fails `START` for the whole pool. Other workers finish their start hooks
+and run their exit hooks before `START` returns the error. Hooks stay
 registered for every later server in the process.
 
 ## Static files
@@ -191,7 +237,8 @@ answers its client routes with its one page:
    if s" public, max-age=31536000, immutable" exit then
    s" no-cache" ;
 
-[: SPA-CACHE ;] HTTP:CACHE-RULE!
+: SPA-RULES ( -- )
+   [: SPA-CACHE ;] HTTP:CACHE-RULE! ;
 ```
 
 ## Limits
@@ -213,7 +260,7 @@ published in the package under short names:
 
 | name | code | meaning |
 | --- | --- | --- |
-| `HTTP:E-STATE` | -9340 | `START` on a running server, `STOP` on a stopped one, a hook installed while one runs, a second `STATIC-ROOT` |
+| `HTTP:E-STATE` | -9340 | `START` on a running server, `STOP` on a stopped one, a hook installed while one runs, a second `STATIC-ROOT`, a `TAKE-OVER` outside a running handler or a second one inside it |
 | `HTTP:E-HANDLE` | -9341 | a handle past its request, or one over another worker's slot |
 | `HTTP:E-WORKERS` | -9342 | a worker count outside 1..`MAX-WORKERS`, or an idle deadline under 1 ms |
 | `HTTP:E-CAPACITY` | -9343 | more hooks, headers or bound segments than a table holds, or a negative body length |
@@ -227,11 +274,17 @@ published in the package under short names:
 `bin/hb --load lib/net/http-test.f` (gate row `http`) serves a fixture tree and
 a route table on a loopback port. CURL fetches JSON routes, posts bodies, and
 revalidates a static file with its ETag; raw TCP4 sends what CURL cannot: a bad
-request line, an oversized header block and body, a gzip transfer coding,
-chunked and pipelined requests, and an idle connection. It checks a throwing
-handler answered 500 by a worker that serves on, the hook order, the installed
-error, cache and fallback policy, a stop that kills a parked worker, and a start
-hook that ends its worker. The status line and headers of every raw case are
-written to `build/http-transcript.txt`, read back and compared whole; the server
-that answers them runs one worker, so the request ids and every length are the
-same on every run.
+request line, a missing, repeated or invalid Host and the Host forms that must
+pass, an oversized header block and body, a gzip transfer coding, chunked and
+pipelined requests, and an idle connection. It checks a throwing handler
+answered 500 by a worker that serves on, the hook order, the installed error,
+cache and fallback policy, a stop that kills a parked worker, a stop that ends
+within its bound with the job queue full and closes every connection no worker
+took, a stop that a lingering worker outlasts on its own while its peer keeps
+sending after the answer, a start hook that ends its worker, and an exit hook
+that throws without keeping the others from running. Where a raw case pins a
+whole response head, its status line and headers are written to
+`build/http-transcript.txt`, read back and compared whole; the server that
+answers them runs one worker, so the request ids and every length are the same
+on every run. `TAKE-OVER` is exercised by its caller's suite,
+`lib/net/ws-test.f` ([websocket.md](websocket.md#tests)).

@@ -359,6 +359,200 @@ $7FFFFFF constant MAX-CHUNK        \ a chunk size larger than any body we accept
    idx at HEADER-VALUE$ true ;
 
 
+\ ---- the Host field ---------------------------------------------------------
+
+$2E constant DOT
+$5D constant CLOSE-BRACKET
+8 constant H16-GROUPS              \ the 16-bit groups of an IPv6 address
+
+
+\ How many bytes come before the first c: all of them when none is c.
+: BEFORE ( ptr u8 n n -- n )
+   {: a u:n c:n :}
+   u 0 ?do
+      a i + c@ c = if i unloop exit then
+   loop
+   u ;
+
+
+\ True when every byte passes the test; an empty run passes.
+: EVERY? ( ptr u8 n [ n -- bool ] -- bool )
+   {: a u:n test :}
+   u 0 ?do
+      a i + c@ test execute 0= if false unloop exit then
+   loop
+   true ;
+
+
+\ unreserved and sub-delims (RFC 3986 2.2, 2.3): what a host name holds as is.
+: HOST-BYTE? ( n -- bool )
+   {: c:n :}
+   c $41 >= c $5A <= and if true exit then
+   c $61 >= c $7A <= and if true exit then
+   c STR-DIGIT? if true exit then
+   s" -._~!$&'()*+,;=" c COUNT-CHAR 0 > ;
+
+
+\ The "%" at that offset begins an escape: two hex digits follow it.
+: ESCAPE? ( ptr u8 n n -- bool )
+   {: a u:n at:n :}
+   at 2 + u >= if false exit then
+   a at + 1+ 2 [: HEX-BYTE? ;] EVERY? ;
+
+
+\ reg-name (RFC 3986 3.2.2), which an IPv4address is too, never empty (RFC
+\ 9110 4.2.1).
+: REG-NAME? ( ptr u8 n -- bool )
+   {: a u:n :}
+   u 0= if false exit then
+   u 0 ?do
+      a i + c@ PERCENT = if
+         a u i ESCAPE? 0= if false unloop exit then
+      else
+         a i + c@ HOST-BYTE? 0= if false unloop exit then
+      then
+   loop
+   true ;
+
+
+\ What follows the host: nothing, or ":" and a port, whose digits may be none
+\ (RFC 3986 3.2.3).
+: PORT-PART? ( ptr u8 n -- bool )
+   {: a u:n :}
+   u 0= if true exit then
+   a c@ COLON <> if false exit then
+   a 1+ u 1- [: STR-DIGIT? ;] EVERY? ;
+
+
+\ h16: one to four hex digits.
+: HEX16? ( ptr u8 n -- bool )
+   {: a u:n :}
+   u 1 < u 4 > or if false exit then
+   a u [: HEX-BYTE? ;] EVERY? ;
+
+
+\ dec-octet: 0 to 255, with no leading zero.
+: DEC-OCTET? ( ptr u8 n -- bool )
+   {: a u:n :}
+   u 1 < u 3 > or if false exit then
+   a u STR-DIGITS? 0= if false exit then
+   u 1 > a c@ STR-ZERO = and if false exit then
+   a u s" 255" STR-DIGITS<= ;
+
+
+\ IPv4address: four dec-octets split by ".".
+: IPV4? ( ptr u8 n -- bool )
+   {: a u:n :}
+   a u DOT COUNT-CHAR 3 <> if false exit then
+   0
+   4 0 ?do
+      {: at:n :}
+      a at + u at - DOT BEFORE {: k:n :}
+      a at + k DEC-OCTET? 0= if false unloop exit then
+      at k + 1+
+   loop
+   drop true ;
+
+
+\ The total with a run's last group added: an h16 counts one and a dotted quad
+\ two; -1 when it is neither.
+: LAST-GROUP ( n ptr u8 n -- n )
+   {: total:n a u:n :}
+   a u HEX16? if total 1+ exit then
+   a u IPV4? if total 2 + exit then
+   -1 ;
+
+
+\ The 16-bit groups a run split by single ":" stands for, or -1 when a group
+\ is malformed; only the last may be a dotted quad, and an empty run has none.
+: GROUPS ( ptr u8 n -- n )
+   {: a u:n :}
+   u 0= if 0 exit then
+   0 0
+   begin
+      {: total:n at:n :}
+      a at + u at - COLON BEFORE {: k:n :}
+      at k + u = if total a at + k LAST-GROUP exit then
+      a at + k HEX16? 0= if -1 exit then
+      total 1+ at k + 1+
+   again ;
+
+
+\ The groups on each side of the "::" at that offset: fewer than eight in all,
+\ since it stands for one at least, and no dotted quad before it.
+: ELIDED? ( ptr u8 n n -- bool )
+   {: a u:n at:n :}
+   a at DOT COUNT-CHAR 0 <> if false exit then
+   a at GROUPS {: left:n :}
+   a at + 2 + u at - 2 - GROUPS {: right:n :}
+   left 0 < right 0 < or if false exit then
+   left right + H16-GROUPS < ;
+
+
+\ IPv6address (RFC 3986 3.2.2): eight 16-bit groups, or fewer around the one
+\ "::" that stands for the rest.
+: IPV6? ( ptr u8 n -- bool )
+   {: a u:n :}
+   a u s" ::" FIND-SUB
+   MATCH option
+      none OF a u GROUPS H16-GROUPS = ENDOF
+      some OF IDX>N {: at:n :} a u at ELIDED? ENDOF
+   ;MATCH ;
+
+
+: FUTURE-BYTE? ( n -- bool )
+   {: c:n :}
+   c COLON = if true exit then
+   c HOST-BYTE? ;
+
+
+\ IPvFuture past its "v": a hex version, ".", then at least one unreserved,
+\ sub-delims or ":" byte.
+: FUTURE? ( ptr u8 n -- bool )
+   {: a u:n :}
+   a u DOT BEFORE {: k:n :}
+   k 0= k 1+ u >= or if false exit then
+   a k [: HEX-BYTE? ;] EVERY? 0= if false exit then
+   a k + 1+ u k - 1- [: FUTURE-BYTE? ;] EVERY? ;
+
+
+\ What an IP-literal's brackets hold: IPvFuture after a "v", else IPv6.
+: IP-LITERAL? ( ptr u8 n -- bool )
+   {: a u:n :}
+   u 0= if false exit then
+   a 1 s" v" STR=CI if a 1+ u 1- FUTURE? exit then
+   a u IPV6? ;
+
+
+\ An IP-literal past its "[": the literal up to the "]", then the port part.
+: LITERAL-HOST? ( ptr u8 n -- bool )
+   {: a u:n :}
+   a u CLOSE-BRACKET BEFORE {: k:n :}
+   k u = if false exit then
+   a k IP-LITERAL? 0= if false exit then
+   a k + 1+ u k - 1- PORT-PART? ;
+
+
+\ Host = uri-host [ ":" port ] (RFC 9110 7.2): an IP-literal in brackets, else
+\ a reg-name up to the first ":".
+: HOST-VALUE? ( ptr u8 n -- bool )
+   {: a u:n :}
+   a u s" [" STARTS-WITH? if a 1+ u 1- LITERAL-HOST? exit then
+   a u COLON BEFORE {: k:n :}
+   a k REG-NAME? 0= if false exit then
+   a k + u k - PORT-PART? ;
+
+
+\ RFC 9112 3.2: an HTTP/1.1 request carries one Host and an HTTP/1.0 request
+\ one at most, and a Host that arrives is valid.
+: HOST-OK? ( n -- bool )
+   {: idx:n :}
+   idx s" host" COUNT-HEADER {: count:n :}
+   count 1 > if false exit then
+   count 0= if idx SLOT-VERSION$ s" HTTP/1.0" STR= exit then
+   idx s" host" HEADER$ drop HOST-VALUE? ;
+
+
 \ ---- connection tokens ------------------------------------------------------
 
 : LIST-HAS? ( ptr u8 n ptr u8 n n -- bool )
@@ -613,6 +807,7 @@ $7FFFFFF constant MAX-CHUNK        \ a chunk size larger than any body we accept
    head COMPLETE? 0= if head exit then
    idx PARSE-HEAD {: parsed:parse-result :}
    parsed COMPLETE? 0= if parsed exit then
+   idx HOST-OK? 0= if BAD exit then
    idx DECIDE-KEEP-ALIVE
    conn idx deadline READ-BODY ;
 
@@ -629,6 +824,11 @@ public
 
 : QUERY$ ( request -- ptr u8 n )
    SLOT-OF-REQUEST SLOT-QUERY$ ;
+
+
+\ The version the request line named, as sent: `HTTP/1.1`, `HTTP/1.0`.
+: VERSION$ ( request -- ptr u8 n )
+   SLOT-OF-REQUEST SLOT-VERSION$ ;
 
 
 : BODY$ ( request -- ptr u8 n )
