@@ -14,6 +14,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-fork.f
+require lib/time-cpu.f                   \ a worker runs a measured amount of CPU time
 require lib/test/runner.f
 require test/gate-pool.f
 
@@ -107,9 +108,16 @@ variable GPT-ROOT-SAVE-U
    s" wrap throw worker" GPT-TIMEOUT-MS [: GPT-WRAP-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT ;
 
+: GPT-SPIN-WORKER ( -- )
+   begin 0 0= 0= until ;
+
+\ A row held to 1 ms of CPU is ended at the pool's first reading of it, and its
+\ red line has to name its budget, never a load timeout.
 : GPT-BATTERY-TIMEOUT ( -- )
    s" hang worker" GPT-HANG-TIMEOUT-MS [: GPT-HANG-WORKER ;] GT-POOL-START-FORK
    s" quick worker" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   s" budget worker" GPT-TIMEOUT-MS [: GPT-SPIN-WORKER ;] GT-POOL-START-FORK
+   1 GT-POOL-SEQ @ GT-POOL-CPU-BUDGET!
    GT-POOL-DRAIN-SOFT ;
 
 \ A suite's own inner deadline: lib/process throws E-PROC-TIMEOUT when a child
@@ -133,7 +141,7 @@ variable GPT-ROOT-SAVE-U
       s" soft overflow" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
    loop ;
 
-\ One child process runs every failure class; reds accumulate to 17 and the
+\ One child process runs every failure class; reds accumulate to 19 and the
 \ final fail-closed drain lists every one of them.
 : GPT-BATTERY-CASE ( -- )
    s" gate-pool-test-battery" GT-START
@@ -225,6 +233,11 @@ private
    GPT-OUT outu s" ran=" CONTAINS? TTRUE
    GPT-OUT outu s" PASS: quick worker" CONTAINS? TTRUE ;
 
+: GPT-EXPECT-BUDGET-OUT ( n -- ) {: outu:n :}
+   GPT-OUT outu s" outcome: CPU-BUDGET code: 0" CONTAINS? TTRUE
+   GPT-OUT outu s" RED: budget worker kind=CPU-BUDGET code=0" CONTAINS? TTRUE
+   GPT-OUT outu s" /1ms" CONTAINS? TTRUE ;
+
 \ The row the pool's own reaper never touched: the child reported its own
 \ expired deadline and the pool read that report, so the report reads like the
 \ row a pool-side kill produces and never kind=exit. The count keeps it from
@@ -237,7 +250,7 @@ private
    GPT-OUT outu s" outcome: TIMEOUT-UNDER-LOAD code: 0" CONTAINS? TTRUE ;
 
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}
-   GPT-OUT outu s" red tests: 18" CONTAINS? TTRUE
+   GPT-OUT outu s" red tests: 19" CONTAINS? TTRUE
    GPT-OUT outu s" more failed tests" CONTAINS? TFALSE
    GPT-OUT outu s" RED: soft overflow" GPT-COUNT$ 12 T= ;
 
@@ -251,6 +264,7 @@ private
    outu GPT-EXPECT-SOFT-OUT
    outu GPT-EXPECT-WRAP-OUT
    outu GPT-EXPECT-TIMEOUT-OUT
+   outu GPT-EXPECT-BUDGET-OUT
    outu GPT-EXPECT-INNER-TIMEOUT-OUT
    outu GPT-EXPECT-OVERFLOW-OUT
    erru GPT-EXPECT-BATTERY-ERR ;
@@ -845,6 +859,99 @@ variable GPT-FR-U
    0 >IDX GT-POOL-CODE-PTR @ UNCAUGHT-RC T=
    GT-CLEANUP ;
 
+\ A ROW BOUNDED BY ITS OWN WORK (GT-POOL-CPU-BUDGET!). A budgeted row is ended
+\ once its process tree has run its CPU budget, and its wall deadline is only a
+\ hang guard. The ways this can fail, written down before the pool counted CPU
+\ time:
+\  1. WALL TIME COUNTED AS WORK. A row that only waits - a build starved of a
+\     core on a saturated host - is ended at its budget.
+\  2. WORK UNCOUNTED. A row that spins outlives its budget and meets only its
+\     wall deadline: the reading is in the wrong unit (libproc counts mach time
+\     units, not nanoseconds) or misses the process at work.
+\  3. DESCENDANTS UNCOUNTED. A build row's work is its grandchild's, the
+\     builder's, and the row's own process never reaches the budget.
+\  4. REAPED WORK UNCOUNTED. A child's time passes to its parent when the
+\     parent waits for it, and a reading of the live processes drops it.
+\  5. THE HANG GUARD DROPPED. A row that stopped running gains no CPU time, so
+\     only its wall deadline can end it.
+\  6. A BUDGET KILL REPORTED AS LOAD (GPT-BATTERY-TIMEOUT): the row ran past
+\     its budget at any load.
+\ The red record is what the report is rendered from, so each case reads it.
+500 constant GPT-CPU-MS                  \ the budget of a row that is ended for it
+\ That row's hang guard: far past its budget, and short of the 20.8 s of CPU a
+\ reading in raw mach units (125/3 ns each here) would need to pass it.
+15000 constant GPT-CPU-GUARD-MS
+1500 constant GPT-CPU-WAIT-MS            \ wall time spent waiting, past the budget
+600 constant GPT-CPU-CHILD-MS            \ case 4: the grandchild's CPU time
+700 constant GPT-CPU-SELF-MS             \ and the worker's own: each under the budget
+1000 constant GPT-CPU-SUM-MS             \ case 4's budget, which both together pass
+5000 constant GPT-CPU-HUNG-MS            \ case 5: a budget the stopped row never reaches
+1000 constant GPT-CPU-HANG-MS            \ case 5's hang guard
+
+\ Run ms of this thread's own CPU time.
+: GPT-SPIN-MS ( n -- ) {: ms:n :}
+   TIME:THREAD-CPU-NS ms PROC-NS-PER-MS * + {: done:n :}
+   begin TIME:THREAD-CPU-NS done >= until ;
+
+: GPT-CPU-WAITER ( -- )
+   GPT-CPU-WAIT-MS GPT-SLEEP-MS ;
+
+\ The work is the grandchild's; the worker only waits.
+: GPT-CPU-GRAND-SPIN ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if GPT-SPIN-WORKER then
+   GPT-CPU-GUARD-MS GPT-SLEEP-MS ;
+
+: GPT-CPU-GRANDCHILD ( -- )
+   GPT-CPU-CHILD-MS GPT-SPIN-MS
+   s" " 0 die ;
+
+\ The worker reaps its grandchild, runs its own share and waits out a reading.
+: GPT-CPU-REAPS ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if GPT-CPU-GRANDCHILD then
+   pid PROC-WAIT-STATUS drop
+   GPT-CPU-SELF-MS GPT-SPIN-MS
+   GPT-CPU-WAIT-MS GPT-SLEEP-MS ;
+
+: GPT-CPU-STOPPED ( -- )
+   GPT-CPU-GUARD-MS GPT-SLEEP-MS ;
+
+: GPT-CPU-RUN ( ptr u8 n n n [ -- ] -- ) {: label:ptr labelu:n budget:n guard:n q :}
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   label labelu guard q GT-POOL-START-FORK
+   budget GT-POOL-SEQ @ GT-POOL-CPU-BUDGET!
+   GT-POOL-DRAIN-SOFT ;
+
+: GPT-CPU-ENDED ( -- )
+   GT-POOL-RED# 1 T=
+   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
+   0 GT-POOL-RED-OVER? TTRUE ;
+
+: GPT-CPU-BUDGET-CASE ( -- )
+   s" gate-pool-cpu-budget" GT-START
+   s" cpu waiter" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-CPU-WAITER ;] GPT-CPU-RUN
+   s" cpu budget: a row that waits past its budget is not ended for it" T-LABEL
+   GT-POOL-RED# 0 T=
+   s" cpu spinner" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-SPIN-WORKER ;] GPT-CPU-RUN
+   s" cpu budget: a row that spins past its budget is ended for it" T-LABEL
+   GPT-CPU-ENDED
+   s" cpu grandchild" GPT-CPU-MS GPT-CPU-GUARD-MS [: GPT-CPU-GRAND-SPIN ;] GPT-CPU-RUN
+   s" cpu budget: a grandchild's work counts" T-LABEL
+   GPT-CPU-ENDED
+   s" cpu reaped" GPT-CPU-SUM-MS GPT-CPU-GUARD-MS [: GPT-CPU-REAPS ;] GPT-CPU-RUN
+   s" cpu budget: a reaped grandchild's work counts" T-LABEL
+   GPT-CPU-ENDED
+   s" cpu stopped" GPT-CPU-HUNG-MS GPT-CPU-HANG-MS [: GPT-CPU-STOPPED ;] GPT-CPU-RUN
+   s" cpu budget: a row that stopped running meets its hang guard" T-LABEL
+   GT-POOL-RED# 1 T=
+   0 GT-POOL-RED-TIMED-OUT-PTR @ TTRUE
+   0 GT-POOL-RED-OVER? TFALSE
+   0 GT-POOL-RED-CPU-BUDGET-PTR @ GPT-CPU-HUNG-MS T=
+   GT-CLEANUP ;
+
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
    T-RESET
@@ -869,6 +976,7 @@ variable GPT-FR-U
    GPT-FR-CASE
    GPT-UNCAUGHT-CASE
    GPT-INNER-TIMEOUT-CASE
+   GPT-CPU-BUDGET-CASE
    GPT-BATTERY-REPORT
    T-REPORT
    s" gate-pool-test: ok" type cr ;

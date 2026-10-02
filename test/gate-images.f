@@ -47,7 +47,7 @@ require tools/lint/source-lex.f
 require test/load-refs.f
 require test/gate-pool.f
 require test/image-grant.f
-require test/whitebox-key.f
+require test/keyed-image.f               \ a build's CPU budget and hang guard
 
 package GATE-IMAGES
 
@@ -261,9 +261,13 @@ variable UNION
 3 constant READY
 4 constant FAILED
 
-\ A build row's deadline: a minute beyond the longest builder's own, the
-\ unsealed engine's, for the key hashing and the copy.
-WHITEBOX-KEY:BUILD-TIMEOUT-MS 60000 + constant BUILD-ROW-TIMEOUT-MS
+\ A build row is held to a build's CPU budget, whatever the load
+\ (test/keyed-image.f BOUNDED BY ITS OWN WORK). Its wall deadline is only a
+\ hang guard, a minute beyond the builder's own for the key hashing and the
+\ copy: the builder's deadline governs, its BUILD-RUN names the step and throws
+\ E-PROC-TIMEOUT, and its EMIT removes the work directory before the throw goes
+\ on.
+KEYED-IMAGE:BUILD-TIMEOUT-MS 60000 + constant BUILD-ROW-TIMEOUT-MS
 \ A row that needs a failed image dies as it starts, with this status.
 60000 constant RED-ROW-TIMEOUT-MS
 75 constant RED-ROW-RC
@@ -354,6 +358,7 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
    PROGRAM-BUF PROGRAM-U @ LABEL-BUF LABEL-U @ IMAGE-GRANT:VALUE$
    BUILD-ROW-TIMEOUT-MS START-XT @ execute
    GT-POOL-SEQ @ f SEQ!
+   KEYED-IMAGE:BUILD-CPU-MS f SEQ@ GT-POOL-CPU-BUDGET!
    LIVE f STATE! ;
 
 \ A build row retired. The red table holds a record for every red row the pool

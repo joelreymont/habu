@@ -1,4 +1,5 @@
-\ process-tree.f - end a process and every process descended from it.
+\ process-tree.f - end a process and every process descended from it, or read
+\ the CPU time they have run.
 \
 \ A SPAWNED CHILD LEADS A PROCESS GROUP OF ITS OWN (docs/process-pty.md), so the
 \ kill that reaches a group - PROC-FORK:KILL-GROUP - ends a process and what it
@@ -58,10 +59,11 @@
 \ it spawned, each leading its own group, would be left to init before the
 \ walk could list it.
 \
-\ STORAGE CLASS. PROCESS-WIDE, one walk at a time: the member table and the scan
-\ buffers are this file's. lib/process.f ends a capture's child from whichever
-\ task ran the capture, so KILL-TREE and CATCHES? hold WALKING while they use
-\ them, and a task that finds it held waits its turn.
+\ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time: the member
+\ table and the scan buffers are this file's. lib/process.f ends a capture's
+\ child from whichever task ran the capture, so KILL-TREE, CATCHES? and CPU-NS
+\ hold WALKING while they use them, and a task that finds it held waits its
+\ turn.
 \
 \ BENEATH lib/process.f, which requires this file to end a capture's child. A
 \ walk signals through the kill primitive and times itself with mono-ns, so it
@@ -93,7 +95,7 @@ variable MEMBER-N
 variable SELF
 variable ADDED                      \ members the pass in progress found
 variable AWAKE                      \ what the pass in progress saw that is not yet settled
-variable WALKING                    \ 1 while a walk or a CATCHES? holds the storage above and below
+variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS holds the storage above and below
 
 \ SIGKILL is 9 on every host; SIGSTOP is not one number.
 9 constant SIGKILL
@@ -112,13 +114,16 @@ variable WALKING                    \ 1 while a walk or a CATCHES? holds the sto
    loop
    false ;
 
-\ A member is stopped as it joins. The answer is not read: one that ended since
-\ the scan saw it has nothing left to stop.
-: MEMBER+ ( n -- ) {: pid:n :}
+: JOIN ( n -- ) {: pid:n :}
    MEMBER-N @ MEMBER-MAX >= if E-PROC-TRUNCATED throw then
    pid MEMBER-N @ cells MEMBERS + !
    MEMBER-N @ 1+ MEMBER-N !
-   ADDED @ 1+ ADDED !
+   ADDED @ 1+ ADDED ! ;
+
+\ A member is stopped as it joins. The answer is not read: one that ended since
+\ the scan saw it has nothing left to stop.
+: MEMBER+ ( n -- ) {: pid:n :}
+   pid JOIN
    pid SIGSTOP kill drop ;
 
 \ ---- macOS: libproc ----------------------------------------------------------
@@ -237,16 +242,21 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    SHORT SHORT-PPID + LE:U32@ SELF @ = if exit then
    pid MEMBER+ ;
 
-\ A full buffer is a list that may have been cut: the kernel fills what fits
-\ and says nothing of the rest.
-: LISTED ( n n -- ) {: kind:n pid:n :}
+\ The pids of pid's children or group, in LIST; answers how many. A full buffer
+\ is a list that may have been cut: the kernel fills what fits and says nothing
+\ of the rest.
+: LIST! ( n n -- n ) {: kind:n pid:n :}
    ERRNO-CLEAR
    kind pid LIST LIST-BYTES LIST-PIDS {: bytes:n :}
    bytes 0= ERRNO@ 0<> and if E-PROC-OUTPUT throw then
    bytes LIST-BYTES >= if E-PROC-TRUNCATED throw then
-   bytes PID-BYTES / 0 ?do
-      LIST i PID-BYTES * + LE:U32@ CANDIDATE
-   loop ;
+   bytes PID-BYTES / ;
+
+: LISTED@ ( n -- n ) {: i:n :}
+   LIST i PID-BYTES * + LE:U32@ ;
+
+: LISTED ( n n -- )
+   LIST! 0 ?do i LISTED@ CANDIDATE loop ;
 
 \ The table grows under the loop, so a member found in this pass has its own
 \ children asked for in the same pass.
@@ -262,8 +272,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 \
 \ proc(5): /proc/<pid>/stat is one line, `pid (comm) state ppid pgrp ...`. comm
 \ may itself hold spaces and parentheses, so the fields are read after the LAST
-\ `)`. The three fields wanted sit in the first hundred bytes: comm is at most
-\ 64.
+\ `)`. The fields wanted, the walk's three and CPU-NS's 14 to 17, end within
+\ the first 400 bytes: comm is at most 64 and no number is longer than 20
+\ digits.
 \
 \ That state is the main thread's alone, and any thread may spawn: lib/process.f
 \ runs children from any task. /proc/<pid>/task/<tid>/stat holds each thread's,
@@ -556,6 +567,138 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if pid sig CATCHES-LINUX? exit then
    E-PROC-HOST throw ;
 
+\ ---- the CPU time a tree has run ----------------------------------------------
+\
+\ CPU-NS adds up the CPU time, user and system, that a process and every live
+\ process descended from it have run, each with the time of the children it
+\ reaped: a child's time passes to its parent when the parent waits for it, so
+\ the tree's work is counted whole while its processes come and go. Nothing is
+\ stopped; a reading is a moment of a running tree.
+\
+\ THROUGH PARENTS ONLY. A member's children join it; the groups KILL-TREE also
+\ follows do not. A process whose parent exited before it - an orphan - has
+\ left the tree, and its time with it.
+\
+\ EACH MEMBER IS READ BEFORE ITS CHILDREN ARE LISTED. A child its parent reaps
+\ between the two is in neither count rather than in both, so a reading may
+\ fall short of the tree's time and never exceeds it.
+\
+\ macOS: proc_pid_rusage with RUSAGE_INFO_V2 (2) fills a struct rusage_info_v2
+\ of 160 bytes (sys/resource.h in the local SDK): ri_user_time and
+\ ri_system_time at 16 and 24 are the process's own, ri_child_user_time and
+\ ri_child_system_time at 96 and 104 what it reaped. They count mach absolute
+\ time units, which mach_timebase_info's numer/denom scales to nanoseconds:
+\ 125/3 on the Apple silicon host here, where a child's time read this way
+\ matched the parent's getrusage of it once reaped. A zombie answers with its
+\ final times, a pid already reaped with ESRCH, another user's process with
+\ EPERM (measured).
+\
+\ Linux: fields 14 to 17 of /proc/<pid>/stat are utime, stime, cutime and
+\ cstime, in clock ticks of USER_HZ, 100 on every architecture this engine
+\ targets (proc(5)). A child may be listed before its parent, so /proc is read
+\ again until a pass adds nobody. Written from proc(5); it has run on no host
+\ here.
+
+2 constant RUSAGE-FLAVOR
+160 constant RUSAGE-BYTES
+16 constant RU-USER
+24 constant RU-SYSTEM
+96 constant RU-CHILD-USER
+104 constant RU-CHILD-SYSTEM
+8 constant TIMEBASE-BYTES           \ u32 numer, then u32 denom
+100 constant USER-HZ
+1000000000 constant NS-PER-S
+
+create RUSAGE RUSAGE-BYTES allot
+create TIMEBASE TIMEBASE-BYTES allot
+variable TICKS                      \ the reading in progress
+
+FUNCTION: PID-RUSAGE proc_pid_rusage ( n n ptr u8 -- i32 )
+   2 RUSAGE-BYTES WRITES-BYTES
+;FUNCTION
+
+FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
+   0 TIMEBASE-BYTES WRITES-BYTES
+;FUNCTION
+
+: RU@ ( n -- n ) {: off:n :}
+   RUSAGE off + LE:U64@ ;
+
+\ The time units pid ran and reaped; 0 for one already reaped.
+: UNITS-MACOS ( n -- n ) {: pid:n :}
+   ERRNO-CLEAR
+   pid RUSAGE-FLAVOR RUSAGE PID-RUSAGE 0= if
+      RU-USER RU@ RU-SYSTEM RU@ + RU-CHILD-USER RU@ + RU-CHILD-SYSTEM RU@ + exit
+   then
+   ERRNO@ ESRCH = if 0 exit then
+   E-PROC-OUTPUT throw ;
+
+: UNITS>NS ( n -- n ) {: units:n :}
+   TIMEBASE TIMEBASE-INFO 0<> if E-PROC-OUTPUT throw then
+   units TIMEBASE LE:U32@ * TIMEBASE 4 + LE:U32@ / ;
+
+\ The table grows under the loop, so a member's children are read in the same
+\ pass that lists them.
+: CPU-MACOS ( -- n )
+   0 TICKS !
+   0 begin dup MEMBER-N @ < while
+      dup MEMBER UNITS-MACOS TICKS @ + TICKS !
+      LIST-CHILDREN over MEMBER LIST! 0 ?do
+         i LISTED@ dup MEMBER? if drop else JOIN then
+      loop
+      1+
+   repeat drop
+   TICKS @ UNITS>NS ;
+
+\ Fields 14 to 17 of the line in STAT, with CUR past field 4, the parent.
+: TAKE-TIMES ( -- n )
+   9 0 ?do TAKE-INT drop loop
+   TAKE-INT TAKE-INT + TAKE-INT + TAKE-INT + ;
+
+\ One process of a pass of /proc: it joins, with its time, once its parent is
+\ a member.
+: CPU-ROW ( ptr u8 n n -- ) {: name:ptr nameu:n pid:n :}
+   pid MEMBER? if exit then
+   name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
+   TAKE-STATE drop
+   TAKE-INT MEMBER? 0= if exit then
+   pid JOIN
+   TAKE-TIMES TICKS @ + TICKS ! ;
+
+: CPU-VISIT-LINUX ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu STR>NUMBER? MATCH option
+      none OF ENDOF
+      some OF name nameu rot CPU-ROW ENDOF
+   ;MATCH ;
+
+\ The root's own line; 0 once it is reaped.
+: ROOT-TICKS-LINUX ( n -- n ) {: pid:n :}
+   TASK-DIR-U BUF-RESET
+   s" /proc/" TASK-DIR+
+   pid DIGITS+
+   s\" /stat\z" TASK-DIR+
+   TASK-DIR LOAD-STAT? 0= if 0 exit then
+   TAKE-STATE drop
+   TAKE-INT drop
+   TAKE-TIMES ;
+
+: CPU-LINUX ( -- n )
+   0 MEMBER ROOT-TICKS-LINUX TICKS !
+   begin
+      0 ADDED !
+      s" /proc" [: CPU-VISIT-LINUX ;] FS-LIST:EACH
+      ADDED @ 0=
+   until
+   TICKS @ NS-PER-S USER-HZ / * ;
+
+\ CPU-NS's reading, run with WALKING held.
+: CPU-READ ( n -- n ) {: pid:n :}
+   0 MEMBER-N !
+   pid JOIN
+   HB-TARGET-MACOS? if CPU-MACOS exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if CPU-LINUX exit then
+   E-PROC-HOST throw ;
+
 public
 
 \ SIGKILL pid and every process descended from it. A pid at or below 1 names
@@ -576,5 +719,15 @@ public
 : CATCHES? ( pid n -- bool ) {: pid:pid sig:n :}
    WALK-GET
    pid PID>N sig [: CATCHES-HOST? ;] [: WALK-RELEASE ;] finally ;
+
+\ The CPU time, in nanoseconds, pid and every live process descended from it
+\ have run, user and system, with what each of them reaped; 0 once pid is
+\ reaped. Nothing is stopped. A refusal throws, as in a walk; an absence is
+\ none. A pool holds a row to a CPU budget with it (test/gate-pool.f
+\ GT-POOL-CPU-BUDGET!).
+: CPU-NS ( pid -- n ) {: pid:pid :}
+   pid PID>N 1 <= if E-PROC-OUTPUT throw then
+   WALK-GET
+   pid PID>N [: CPU-READ ;] [: WALK-RELEASE ;] finally ;
 
 ;package

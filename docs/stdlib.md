@@ -2190,9 +2190,9 @@ refuses rather than answers empty; a tree of more than 1024 processes throws
 `E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
 SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
 kills this way, and `lib/process.f` ends a capture's child this way when the
-capture ends it early. One walk runs at a time in a process: a task that calls
-`KILL-TREE` or `CATCHES?` while another task's walk holds the file's tables
-sleeps until it is done.
+capture ends it early. One walk or reading runs at a time in a process: a task
+that calls `KILL-TREE`, `CATCHES?` or `CPU-NS` while another task's call holds
+the file's tables sleeps until it is done.
 
 ## Process signals
 
