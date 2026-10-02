@@ -35,6 +35,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
 require tools/chain-run.f
+require test/tree-copy-lib.f
 
 package HOST-ROW-TEST
 
@@ -54,7 +55,6 @@ create NAME-B FS-PATH-CAP allot        variable NAME-B-U
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
-PTR-VARIABLE INTO-P                    variable INTO-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
@@ -64,16 +64,9 @@ PTR-VARIABLE INTO-P                    variable INTO-U
 : HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
 : REBUILT$ ( -- ptr u8 n ) REBUILT REBUILT-U @ ;
 : DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
-: INTO$ ( -- ptr u8 n ) INTO-P @ INTO-U @ ;
 
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    ROOT$ a u dst JOIN-PATH up ! ;
-
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u begin dup 0 > while
-      1 -
-      a over + c@ 47 = if exit then
-   repeat ;
 
 : SETUP ( -- )
    s" host-checker-row-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -84,23 +77,6 @@ PTR-VARIABLE INTO-P                    variable INTO-U
    s" ref-hb" REF REF-U ROOT-PATH!
    s" host-hb" HOST HOST-U ROOT-PATH!
    s" rebuilt-hb" REBUILT REBUILT-U ROOT-PATH! ;
-
-\ Private copies keep all three builds on exactly the same source bytes, and the
-\ variant's edit away from the checkout.
-: COPY-MEMBER ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? 0= if exit then
-   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
-   INTO$ rel relu DEST JOIN-PATH DEST-U !
-   DEST$ {: dest:ptr destu:n :}
-   dest destu PARENT-U {: parentu:n :}
-   dest parentu MAKE-DIRS
-   a u DEST$ COPY-FILE-STREAM ;
-
-: COPY-TREE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a INTO-P !  u INTO-U !
-   s" src" [: COPY-MEMBER ;] WALK-FILES
-   s" lib" [: COPY-MEMBER ;] WALK-FILES
-   s" tools" [: COPY-MEMBER ;] WALK-FILES ;
 
 \ The row the variant replaces, found at a line start up to its name so a
 \ changed effect still matches, and replaced through its line end. The row put
@@ -197,12 +173,14 @@ PTR-VARIABLE INTO-P                    variable INTO-U
    b bu NAME-B NAME-B-U NAMES!
    NAME-A NAME-A-U @ NAME-B NAME-B-U @ CHAIN-RUN:SAME-FILES? TTRUE ;
 
+\ Private copies keep all three builds on exactly the same source bytes, and the
+\ variant's edit away from the checkout.
 : RUN ( -- )
    T-RESET
    SETUP
    s" host-checker-row-e2e artifacts: " type ROOT$ type cr
-   TREE$ COPY-TREE
-   VARIANT$ COPY-TREE
+   TREE$ TREE-COPY:BUILD-SOURCES
+   VARIANT$ TREE-COPY:BUILD-SOURCES
    MOVE-ROW
    s" the engine under test builds the copied tree" T-LABEL
    ENGINE-CANDIDATE:PATH$ TREE$ REF$ BUILD

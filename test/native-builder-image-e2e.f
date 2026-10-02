@@ -12,6 +12,7 @@ require lib/fs.f
 require lib/process-cwd.f
 require lib/time.f
 require test/native-builder-image-lib.f
+require test/tree-copy-lib.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 
@@ -76,9 +77,9 @@ public
    T-RESET
    s" native-builder-image-e2e" SETUP
    PRIVATE-TREE
-   s" test/c2-init-program.f" COPY-MEMBER
-   s" test/c2-owner-producer-program.f" COPY-MEMBER
-   s" test/c2-owner-producer-refusals.f" COPY-MEMBER
+   s" test/c2-init-program.f" TREE$ TREE-COPY:FILE
+   s" test/c2-owner-producer-program.f" TREE$ TREE-COPY:FILE
+   s" test/c2-owner-producer-refusals.f" TREE$ TREE-COPY:FILE
    s" saved-hb" SAVED SAVED-U ROOT-PATH!
    SEED-PROOF
    EDITED-PRODUCT

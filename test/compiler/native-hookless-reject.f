@@ -26,6 +26,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
 require src/habu/verify-source.f
+require test/tree-copy-lib.f
 
 package HOOKLESS-REJECT-TEST
 private
@@ -34,13 +35,13 @@ $4000 constant CAP
 20000 constant SUBJECT-TIMEOUT-MS
 600000 constant BUILD-TIMEOUT-MS
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+74 constant RC-BUILD                 \ a window build's failure status (tools/native-build-args.f BUILD-RC)
 
 create ROOT FS-PATH-CAP allot          variable ROOT-U
 create TREE FS-PATH-CAP allot          variable TREE-U
 create TMP FS-PATH-CAP allot           variable TMP-U
 create IMAGE FS-PATH-CAP allot         variable IMAGE-U
 create UTIL FS-PATH-CAP allot          variable UTIL-U
-create DEST FS-PATH-CAP allot          variable DEST-U
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
@@ -50,7 +51,6 @@ variable RC
 : TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : UTIL$ ( -- ptr u8 n ) UTIL UTIL-U @ ;
-: DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
@@ -154,26 +154,6 @@ variable RC
    s" hb" IMAGE IMAGE-U ROOT-PATH!
    TREE$ s" src/core/util.f" UTIL JOIN-PATH UTIL-U ! ;
 
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u begin dup 0 > while
-      1 -
-      a over + c@ 47 = if exit then
-   repeat ;
-
-: COPY-MEMBER ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? 0= if exit then
-   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
-   TREE$ rel relu DEST JOIN-PATH DEST-U !
-   DEST$ {: dest:ptr destu:n :}
-   dest destu PARENT-U {: parentu:n :}
-   dest parentu MAKE-DIRS
-   a u DEST$ COPY-FILE-STREAM ;
-
-: COPY-TREE ( -- )
-   s" src" [: COPY-MEMBER ;] WALK-FILES
-   s" lib" [: COPY-MEMBER ;] WALK-FILES
-   s" tools" [: COPY-MEMBER ;] WALK-FILES ;
-
 : CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
    MATCH result
       ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
@@ -190,8 +170,8 @@ variable RC
    PROC-ENV-INHERIT-MISSING ;
 
 \ The copy's util.f is the checkout's with one definition appended. A window
-\ build exits 74 for any failure (tools/native-build-core.f BUILD-RC), so the
-\ reason and the refusal's status are read from what the build printed.
+\ build exits RC-BUILD for any failure (tools/native-build-core.f EXIT-RC), so
+\ the reason and the refusal's status are read from what the build printed.
 : BUILD-PROBE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" src/core/util.f" UTIL$ COPY-FILE-STREAM
    UTIL$ a u APPEND-FILE
@@ -208,7 +188,7 @@ variable RC
 : WINDOW-UNDEFINED ( -- )
    s" the window's prefix names a callee it does not define" T-LABEL
    S\" : PROBE-NZ ( n -- bool ) NO-SUCH-PROBE-WORD ;\n" BUILD-PROBE
-   RC @ 0 T<>
+   RC @ RC-BUILD T=
    s" E-UNDEFINED habu: in probe-nz: undefined word 'NO-SUCH-PROBE-WORD'" SAYS
    s" native-build: uncaught throw code 70" PRINTS ;
 
@@ -216,7 +196,7 @@ variable RC
 : WINDOW-PRELUDE ( -- )
    s" the window's prefix names a prelude word it has not loaded" T-LABEL
    S\" : PROBE-NZ ( n -- bool ) 0<> ;\n" BUILD-PROBE
-   RC @ 0 T<>
+   RC @ RC-BUILD T=
    s" E-UNDEFINED habu: in probe-nz: undefined word '0<>'" SAYS
    s" native-build: uncaught throw code 70" PRINTS ;
 
@@ -229,7 +209,7 @@ variable RC
    SESSION-RECORDED
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
-   COPY-TREE
+   TREE$ TREE-COPY:BUILD-SOURCES
    WINDOW-UNDEFINED
    WINDOW-PRELUDE
    T-REPORT ;

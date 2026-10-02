@@ -31,6 +31,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/time.f
 require test/saved-builder.f
+require test/tree-copy-lib.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 
@@ -42,7 +43,6 @@ create TREE FS-PATH-CAP allot          variable TREE-U
 create TMP FS-PATH-CAP allot           variable TMP-U
 create IMAGE FS-PATH-CAP allot         variable IMAGE-U
 create REPL FS-PATH-CAP allot          variable REPL-U
-create DEST FS-PATH-CAP allot          variable DEST-U
 create OUT CAP allot                   variable OUT-U
 create ERR CAP allot                   variable ERR-U
 variable RC
@@ -52,19 +52,12 @@ variable RC
 : TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : REPL$ ( -- ptr u8 n ) REPL REPL-U @ ;
-: DEST$ ( -- ptr u8 n ) DEST DEST-U @ ;
 
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : TREE-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    TREE$ a u dst JOIN-PATH up ! ;
-
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u begin dup 0 > while
-      1 -
-      a over + c@ 47 = if exit then
-   repeat ;
 
 : ELAPSED ( n ptr u8 n -- ) {: start:n label:ptr size:n :}
    s" native-builder-image ms " type label size type s" : " type
@@ -86,23 +79,12 @@ variable RC
    start s" saved-builder" ELAPSED
    tag tagu type s"  builder: " type IMAGE$ type cr ;
 
-: COPY-MEMBER ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? 0= if exit then
-   a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
-   rel relu DEST DEST-U TREE-PATH!
-   DEST$ {: dest:ptr destu:n :}
-   dest destu PARENT-U {: parentu:n :}
-   dest parentu MAKE-DIRS
-   a u DEST$ COPY-FILE-STREAM ;
-
 \ A private copy of the build's sources makes an edit observable without
 \ touching the checkout. REPL$ is the prefix file the e2e row edits: the build
 \ compiles it under the checker, after everything an edit there may use.
 : PRIVATE-TREE ( -- )
    s" tree" TREE TREE-U ROOT-PATH! TREE$ MAKE-DIRS
-   s" src" [: COPY-MEMBER ;] WALK-FILES
-   s" lib" [: COPY-MEMBER ;] WALK-FILES
-   s" tools" [: COPY-MEMBER ;] WALK-FILES
+   TREE$ TREE-COPY:BUILD-SOURCES
    s" src/habu/repl.f" REPL REPL-U TREE-PATH! ;
 
 : CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
