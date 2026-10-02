@@ -120,6 +120,13 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    a q PKG-CODE-ROOM
    a q false PKG-NS-RECORD XREF-REC XREF-PKG-PUBLIC ;
 
+\ A selected unit owns its definitions: a name with a colon anywhere in it,
+\ at an edge too, refuses before the qualifier could send it to another
+\ package (habu2.f C-UNIT-DEF-NAME-GUARD).
+: DEF-UNIT-GUARD ( -- )
+   UNIT? 0= if exit then
+   TOKEN$ 0 FIND-COLON 0 >= if UNIT-REFUSE then ;
+
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which the refusals after them name, as TKA and
 \ TKL still do: the engine moves those to the tail and back, and this head
@@ -127,6 +134,7 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 \ wordlist; the qualifier is the first colon at neither edge, as FIND-SPLIT
 \ reads it, and a second colon refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
+   DEF-UNIT-GUARD
    SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
@@ -302,10 +310,11 @@ TRUSTED: DEF-PREFLIGHT ( -- )
    data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
    COMPILE-PREFLIGHT-CELL CELL@ execute ;
 
-\ The xt waits on the return stack while the preflight runs, and the stack's
-\ floor holds after the word, as after a word the loop runs.
+\ The xt waits on the return stack while the unit hook and the preflight run,
+\ and the stack's floor holds after the word, as after a word the loop runs.
 TRUSTED: DEF-RUN ( n -- )
-   >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+   >r 0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
+   DEF-PREFLIGHT r> execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then

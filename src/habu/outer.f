@@ -482,6 +482,37 @@ TRUSTED: HOOK ( n n -- )
    HOOK@ 0= if 2drop exit then
    TOKEN$ 2swap HOOK@ execute-floor FLOORED ;
 
+\ ---- the unit hook (habu2.f C-UNIT-HOOK) -----------------------------------------
+\ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
+\ runs (tools/native-unit-compile.f GUARD). The guard gets the token, a class
+\ and one of these events, and only a package name's answer is read: a
+\ nonzero one skips the rest of the input. A token outside a body is classed
+\ 0 for a word, 1 for an integer and 2 for a float; a word about to run is
+\ classed by its xt; the other events are classed 0.
+0 constant UNIT-EV-TOKEN         \ a token outside a body, past a comment
+2 constant UNIT-EV-PACKAGE       \ the name `package` has read
+3 constant UNIT-EV-IMMEDIATE     \ a body immediate about to run
+4 constant UNIT-EV-WORD          \ a word about to run, past its gates
+5 constant UNIT-EV-END           \ the end of the source
+
+: UNIT? ( -- bool )
+   UNIT-COMPILE-CELL CELL@ 0<> ;
+
+TRUSTED: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] ) ;
+
+\ The guard's answer, 0 with none armed. The token cells are put back after
+\ the guard returns, whatever it parsed.
+: UNIT-EVENT ( n n -- n ) {: class:n event:n :}
+   UNIT? 0= if 0 exit then
+   TKA-CELL CELL@ TKL-CELL CELL@ {: a:n u:n :}
+   TOKEN$ class event UNIT-COMPILE-CELL CELL@ UNIT-GUARD execute
+   a TKA-CELL CELL!  u TKL-CELL CELL! ;
+
+\ A unit's misuse names the token, then the engine's compile-die tail
+\ (habu2.f C-DIE-TOKEN with 70).
+: UNIT-REFUSE ( -- )
+   TOKEN$ SAY RC-REJECT THROW-AT ;
+
 \ ---- numbers ------------------------------------------------------------------------
 variable VALUE
 
@@ -548,11 +579,14 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ The xt waits on the return stack while the hook runs.
+\ The unit hook, then the top-row hook, before the word runs. The flags and
+\ the xt wait on the return stack while the unit hook runs, which may run a
+\ loop that moves REC, and the xt while the top-row hook runs.
 TRUSTED: RUN-WORD ( -- )
    LOOKUP GATE
-   REC @ XREF-START >r
-   TOP-EV-WORD WORD-FLAGS HOOK
+   WORD-FLAGS >r  REC @ XREF-START >r
+   r@ UNIT-EV-WORD UNIT-EVENT drop
+   r> r> swap >r  TOP-EV-WORD swap HOOK
    r> execute-floor FLOORED ;
 
 \ ---- keywords (habu2.f CF-ENTRY, LKWCMP) --------------------------------------------

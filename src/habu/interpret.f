@@ -19,8 +19,34 @@ TRUSTED: DISPATCH ( -- )
    NUMERAL? if VALUE @ TOP-EV-NUM 0 HOOK exit then
    RUN-WORD ;
 
+\ ---- the unit hook (habu2.f C-UNIT-DISPATCH, C-UNIT-SOURCE-END) -----------------
+\ With a unit hook armed, each token past a comment outside a body goes to it,
+\ classed as LNUM reads it. In a body none does, and `does>` refuses there:
+\ a selected unit may not split a body, at either tier.
+: UNIT-CLASS ( -- n )
+   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
+   num 0= if 0 exit then
+   flt if 2 exit then
+   1 ;
+
+: UNIT-TOKEN ( -- )
+   UNIT? 0= if exit then
+   PEND-CELL CELL@ 0<> if
+      s" does>" TOKEN-IS? if UNIT-REFUSE then
+      exit
+   then
+   UNIT-CLASS UNIT-EV-TOKEN UNIT-EVENT drop ;
+
+\ The end of the source, past the refusal of a definition left unfinished. It
+\ runs inside the buffer's catch, so a refusal takes the buffer's recovery.
+: UNIT-END ( -- )
+   UNIT? 0= if exit then
+   PEND-CELL CELL@ 0<> if UNIT-REFUSE then
+   0 UNIT-EV-END UNIT-EVENT drop ;
+
 : STEP ( -- )
    COMMENT? if exit then
+   UNIT-TOKEN
    COMPILING? if exit then
    LITERAL? if exit then
    PACKAGE? if exit then
@@ -28,7 +54,8 @@ TRUSTED: DISPATCH ( -- )
    DISPATCH ;
 
 : RUN ( -- )
-   begin TOKEN while STEP repeat ;
+   begin TOKEN while STEP repeat
+   UNIT-END ;
 
 \ Run the buffer under catch and give its code. A throw also puts back the d
 \ used publics below depth d, the includer's: a buffer that closes the

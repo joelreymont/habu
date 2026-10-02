@@ -2110,6 +2110,110 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 3985\n7938120\n" CASE$ GE-EXPECT-OUT ;
 
+\ ---- the unit hook ------------------------------------------------------------------
+\ A case arms a unit hook through unit-compile-run, as
+\ tools/native-unit-compile.f arms its guard, around a unit file it includes.
+\ The hook logs each event as its number, its class and its token, the class
+\ of a word about to run 0 when it is the xt the token names; then it zeroes
+\ the token cells, which the loop must put back; and it answers OI-SKIP to the
+\ package name, 0 to the rest. A throw out of a unit with a definition
+\ pending rolls the definition back in the engine's loop (habu2.f LEVALREC)
+\ but not yet in the Habu loop, so a case whose unit refuses so refuses last,
+\ rethrowing the code unit-compile-run returns.
+: UNIT-HOOK-LINES ( -- )
+   GE-SRC-RESET
+   s" require src/habu/outer.f" GE-SRC-LINE
+   s" variable OI-SKIP" GE-SRC-LINE
+   s" TRUSTED: OI-CLOBBER ( -- ) 0 data-base TKA-CELL + ! 0 data-base TKL-CELL + ! ;" GE-SRC-LINE
+   s" : OI-UNIT-CLASS ( ptr u8 n n n -- n ) {: a:ptr u:n c:n e:n :}" GE-SRC-LINE
+   s"    e 4 <> if c exit then" GE-SRC-LINE
+   s"    a u OUTER:FIND XREF-START c = if 0 else 9 then ;" GE-SRC-LINE
+   s" : OI-UNIT-LOG ( ptr u8 n n n -- n ) {: a:ptr u:n c:n e:n :}" GE-SRC-LINE
+   s"    e [char] 0 + emit  a u c e OI-UNIT-CLASS [char] 0 + emit  space a u type cr" GE-SRC-LINE
+   s"    OI-CLOBBER e 2 = if OI-SKIP @ else 0 then ;" GE-SRC-LINE
+   s" TRUSTED: OI-UNIT-RUN ( [ -- ] -- n ) ['] OI-UNIT-LOG swap unit-compile-run ;" GE-SRC-LINE ;
+
+\ The source buffer as the unit file named, which a case includes.
+: UNIT-FILE ( ptr u8 n -- )
+   NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE ;
+
+\ The source buffer as the unit oi-unit.f, which the case named runs under
+\ the hook after the line given, its code the process's.
+: UNIT-REFUSAL ( ptr u8 n ptr u8 n -- ) {: last:ptr lastu:n name:ptr nameu:n :}
+   s" oi-unit.f" UNIT-FILE
+   UNIT-HOOK-LINES
+   s" : OI-LOAD ( -- ) s~ oi-unit.f~ included ;" QLINE
+   s" : OI-TRY ( -- ) ['] OI-LOAD OI-UNIT-RUN throw ;" GE-SRC-LINE
+   last lastu GE-SRC+ s"  OI-TRY" GE-SRC-LINE
+   name nameu BOTH ;
+
+\ Each event: a token past a comment outside a body with its class (0 a word,
+\ 1 an integer, 2 a float), the package name, a body immediate, a word about
+\ to run and the end of the source. A nonzero answer to the package name skips
+\ the rest of the input, and the end still comes. A definition the unit
+\ leaves unfinished refuses at the end, naming the last token.
+: UNIT-EVENTS ( -- )
+   GE-SRC-RESET
+   s" package OI-UA \ a comment" GE-SRC-LINE
+   s" private ( another )" GE-SRC-LINE
+   s" 41 constant OI-SEED" GE-SRC-LINE
+   s" 1.5 drop" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : OI-VALUE ( -- n ) OI-UI OI-SEED 1 + ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" oi-unit-a.f" UNIT-FILE
+   GE-SRC-RESET
+   s" package OI-UB 99 ." GE-SRC-LINE
+   s" : OI-NEVER ( -- n ) 1 ;" GE-SRC-LINE
+   s" oi-unit-b.f" UNIT-FILE
+   GE-SRC-RESET
+   s" package OI-UC" GE-SRC-LINE
+   s" : OI-OPEN ( -- n ) 1" GE-SRC-LINE
+   s" oi-unit-c.f" UNIT-FILE
+   UNIT-HOOK-LINES
+   s" : OI-UI ( -- ) ; immediate  s~ OI-UI~ 0 parse-imm" QLINE
+   s" : OI-LOAD-A ( -- ) s~ oi-unit-a.f~ included ;" QLINE
+   s" : OI-LOAD-B ( -- ) s~ oi-unit-b.f~ included ;" QLINE
+   s" : OI-LOAD-C ( -- ) s~ oi-unit-c.f~ included ;" QLINE
+   s" : OI-UNFINISHED ( -- ) ['] OI-LOAD-C OI-UNIT-RUN throw ;" GE-SRC-LINE
+   s" 1 set-tier ' OI-LOAD-A OI-UNIT-RUN . OI-UA:OI-VALUE ." GE-SRC-LINE
+   s" -1 OI-SKIP ! ' OI-LOAD-B OI-UNIT-RUN . 0 OI-SKIP !" GE-SRC-LINE
+   s" OI-UNFINISHED" GE-SRC-LINE
+   s" oi-unit-events.f" BOTH
+   S\" 00 package\n20 OI-UA\n00 private\n01 41\n00 constant\n02 1.5\n00 drop\n40 drop\n00 public\n00 :\n30 OI-UI\n00 ;package\n50 ;package\n0\n42\n"
+   CASE$ GE-EXPECT-OUT-HAS
+   S\" \n42\n00 package\n20 OI-UB\n50 OI-UB\n0\n00 package\n20 OI-UC\n00 :\n" CASE$ GE-EXPECT-OUT-HAS
+   70 s" 1 at " S\" oi-unit-c.f:3\n" DIED-AT ;
+
+\ A unit's `does>` in a body refuses at either tier, past which no body token
+\ raised an event, and so does a definition's name with a colon in it,
+\ wherever the colon is and whichever definer reads the name.
+: UNIT-REFUSALS ( -- )
+   GE-SRC-RESET
+   s" package OI-UD" GE-SRC-LINE
+   s" : OI-MAKER ( -- ) create does> ( -- n ) drop 1 ;" GE-SRC-LINE
+   s" 1 set-tier" s" oi-unit-does.f" UNIT-REFUSAL
+   S\" 00 package\n20 OI-UD\n00 :\n" CASE$ GE-EXPECT-OUT
+   70 s" does> at " S\" oi-unit.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" package OI-UD" GE-SRC-LINE
+   s" : OI-MAKER ( -- ) create does> ( -- n ) drop 1 ;" GE-SRC-LINE
+   s" 0 set-tier" s" oi-unit-does-tier-0.f" UNIT-REFUSAL
+   S\" 00 package\n20 OI-UD\n00 :\n" CASE$ GE-EXPECT-OUT
+   70 s" does> at " S\" oi-unit.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" package OI-UQ public" GE-SRC-LINE
+   s" : OI-QX:OI-V ( -- n ) 11 ;" GE-SRC-LINE
+   s" 1 set-tier" s" oi-unit-qualified.f" UNIT-REFUSAL
+   70 s" OI-QX:OI-V at " S\" oi-unit.f:2\n" DIED-AT
+   GE-SRC-RESET
+   s" package OI-UE" GE-SRC-LINE
+   s" 7 constant OI-E:" GE-SRC-LINE
+   s" 1 set-tier" s" oi-unit-edge-colon.f" UNIT-REFUSAL
+   S\" 00 package\n20 OI-UE\n01 7\n00 constant\n" CASE$ GE-EXPECT-OUT
+   70 s" OI-E: at " S\" oi-unit.f:2\n" DIED-AT ;
+
 \ ---- in a forked copy of this process -----------------------------------------------
 
 variable SPY-N
@@ -2273,6 +2377,8 @@ private
    DEFER-OUT-FULL
    DEFER-OUT-OVER
    DEFER-WIDE-OUT
+   UNIT-EVENTS
+   UNIT-REFUSALS
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

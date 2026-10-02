@@ -1,9 +1,11 @@
 ---
 title: Call the unit hook from the Habu loop
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T14:52:44.697860+03:00"
+closed-at: "2026-10-02T21:30:00+03:00"
+close-reason: "outer-interpret 240 agree with UNIT-EVENTS and UNIT-REFUSALS (fail on the base src/habu); e2e under the switch moved to habu-roll-back-failed-64bf2ba5"
 blocks:
   - habu-move-pkgs-using-22f18b81
   - habu-compile-definer-bodies-1292d049
@@ -16,3 +18,5 @@ Files: `src/habu/{interpret,packages,definers}.f`, `test/outer-interpret.f`.
 Verify: `test/native-unit-compile-e2e.f` with its unit loaded through the Habu loop under the switch; a route-equality case whose hook logs (token, class, event) on both routes; gate.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+Lead correction (2026-10-02, at landing): the e2e check moves to habu-roll-back-failed-64bf2ba5. Under the switch `test/native-unit-compile-e2e.f` passes asserts 1-25 and fails assert 26 (expected -2200, got 70): the event-3 refusal in IMMEDIATE-LOAD is caught and the Habu loop leaves the definition pending, so later loads are captured into its body. With that case removed, only asserts 42, 44 and 48 fail (`ndict@ before T=`): the namespace record `package` made before the refusal is not rolled back. Both are LEVALREC's rollback, which that leaf owns; the refusal text matches the engine's. `src/habu/outer.f` joins Files: event 4 fires in `RUN-WORD`, and the shared `UNIT-EVENT`/`UNIT-REFUSE` sit where packages, definers and interpret all reach them.
