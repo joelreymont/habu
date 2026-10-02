@@ -2104,7 +2104,7 @@ variable KEPT-BY
 \ `is` then points and a call runs.
 : DEFER-WIDE-IN ( -- )
    GE-SRC-RESET
-   s" 0 set-tier TRUSTED: OI-AT@ ( n -- n ) @ ;" GE-SRC-LINE
+   s" 0 set-tier package OI-DWI TRUSTED: OI-AT@ ( n -- n ) @ ;" GE-SRC-LINE
    s" defer OI-S ( n n -- n ) LATEST XREF-FLAGS . LATEST XREF-WORDLIST get-current = OI-B. s~ OI-S~ NDICT:SPELL-ARITY . ." QLINE
    s" defer OI-W ( -- oiwide<n,n> ) LATEST XREF-FLAGS . s~ OI-W~ NDICT:SPELL-ARITY . ." QLINE
    s" defer OI-D (" GE-SRC+ 255 ROW+
@@ -2113,6 +2113,7 @@ variable KEPT-BY
    s" TRUSTED: OI-PUSH ( --" GE-SRC+ 255 ROW+ s"  ) 255 0 ?do i loop ;" GE-SRC-LINE
    s" : OI-SET ( -- ) ['] OI-T is OI-D ; OI-SET OI-PUSH OI-D depth ." GE-SRC-LINE
    s" s~ OI-D~ NDICT:SPELL-DEFER-CELL OI-AT@ ' OI-T = OI-B." QLINE
+   s" ;package" GE-SRC-LINE
    s" oi-defer-wide-in.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 9007199254740996\n1\n1\n2\n4611686018427387908\n2\n0\n1148417904979476484\n1\n0\n255\n32385\n0\n1\n"
@@ -2121,7 +2122,8 @@ variable KEPT-BY
 \ One input more is refused alike.
 : DEFER-IN-OVER ( -- )
    GE-SRC-RESET
-   s" 0 set-tier 1 . defer OI-D (" GE-SRC+ 256 ROW+ s"  -- ) 2 ." GE-SRC-LINE
+   s" 0 set-tier package OI-DIO 1 . defer OI-D (" GE-SRC+ 256 ROW+ s"  -- ) 2 ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" oi-defer-in-over.f" BOTH
    76 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
@@ -2130,8 +2132,9 @@ variable KEPT-BY
 \ An output row is bounded by the definition text: 3994 cells fill OI-D's.
 : DEFER-OUT-FULL ( -- )
    GE-SRC-RESET
-   s" 0 set-tier" GE-SRC-LINE
+   s" 0 set-tier package OI-DOF" GE-SRC-LINE
    s" 1 . defer OI-D ( --" GE-SRC+ 3994 ROW+ s"  ) 2 ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" oi-defer-out-full.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 1\n2\n" CASE$ GE-EXPECT-OUT ;
@@ -2139,8 +2142,9 @@ variable KEPT-BY
 \ One output more is refused alike.
 : DEFER-OUT-OVER ( -- )
    GE-SRC-RESET
-   s" 0 set-tier" GE-SRC-LINE
+   s" 0 set-tier package OI-DOO" GE-SRC-LINE
    s" 1 . defer OI-D ( --" GE-SRC+ 3995 ROW+ s"  ) 2 ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" oi-defer-out-over.f" BOTH
    S\" 1\n" CASE$ GE-EXPECT-OUT
    71 s" hb: definition body text full at 8000 bytes: OI-D needs 8002 at " S\" oi-defer-out-over.f:2\n" DIED-AT ;
@@ -2149,11 +2153,12 @@ variable KEPT-BY
 \ points and a call runs.
 : DEFER-WIDE-OUT ( -- )
    GE-SRC-RESET
-   s" 0 set-tier" GE-SRC-LINE
+   s" 0 set-tier package OI-DWO" GE-SRC-LINE
    s" defer OI-D ( --" GE-SRC+ 3985 ROW+ s"  )" GE-SRC-LINE
    s" TRUSTED: OI-T ( --" GE-SRC+ 3985 ROW+ s"  ) 3985 0 ?do i loop ;" GE-SRC-LINE
    s" TRUSTED: OI-SUM ( -- n ) 0 depth 1 - 0 ?do + loop ;" GE-SRC-LINE
    s" : OI-SET ( -- ) ['] OI-T is OI-D ; OI-SET OI-D depth . OI-SUM ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" oi-defer-wide-out.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 3985\n7938120\n" CASE$ GE-EXPECT-OUT ;
