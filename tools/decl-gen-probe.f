@@ -52,8 +52,6 @@ package DECL-GEN-PROBE
 \ Trusted forwarders to the pre-hook generator, plan buffer, and family registry.
 \ Each is a metaprogramming boundary the checker cannot type from a post-hook
 \ checked body, the same idiom src/core/enum-decl.f uses for its registry seams.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;
 TRUSTED: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
 TRUSTED: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
@@ -77,6 +75,10 @@ variable RC-DECL    \ throw code from evaluating the declaration source
 variable RC-CAP     \ throw code from capturing the payload view
 variable RC-REND    \ throw code from rendering the whole constructor set
 variable PI         \ dump cursor
+PTR-VARIABLE DECL-A \ declaration source, read by DECLARE's quotation
+variable DECL-U
+
+: DECL$ ( -- ptr u8 n ) DECL-A @ DECL-U @ ;
 
 : FAM! ( ptr u8 n -- )                    \ resolve the family tail or fail closed
    FAM-FIND 0= IF drop E-PROBE-FAMILY throw THEN
@@ -132,7 +134,8 @@ public
    PEND-CLEAR ;
 
 : DECLARE ( ptr u8 n -- )                 \ evaluate the declaration under catch
-   TRY RC-DECL !
+   DECL-U ! DECL-A !
+   [: DECL$ evaluate-closed ;] catch RC-DECL !
    s" declare throw: " RC-DECL @ STAGE. ;
 
 \ RUN is public and is invoked AFTER the package closes. A declaration evaluated

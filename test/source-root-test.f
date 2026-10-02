@@ -177,6 +177,7 @@ private
 40 constant DEEP-COUNT
 variable ACTIVE
 variable VISITS
+variable EVAL-N
 
 public
 
@@ -191,15 +192,20 @@ public
 
 \ Unlike nested loads, these evaluations have no intervening catch: one throw
 \ must unwind every escaped evaluator frame, including changed package/usings.
-: EVAL-DOWN ( n -- n )
-   dup 0= if drop 7 exit then
-   s" 1- SOURCE-ROOT-TEST:EVAL-DOWN 1+" INCLUDE-EVALUATE ;
+\ Each text is a closed program, so the level count crosses in EVAL-N, not on
+\ the stack.
+: EVAL-DOWN ( -- )
+   EVAL-N @ 0= if 7 EVAL-N ! exit then
+   -1 EVAL-N +!
+   s" SOURCE-ROOT-TEST:EVAL-DOWN" INCLUDE-EVALUATE
+   1 EVAL-N +! ;
 
-: EVAL-FAIL ( n -- n )
-   dup 0= if
+: EVAL-FAIL ( -- )
+   EVAL-N @ 0= if
       s" ;package package EVAL-ESCAPED using FMT 9133 throw" INCLUDE-EVALUATE
    then
-   s" 1- SOURCE-ROOT-TEST:EVAL-FAIL" INCLUDE-EVALUATE ;
+   -1 EVAL-N +!
+   s" SOURCE-ROOT-TEST:EVAL-FAIL" INCLUDE-EVALUATE ;
 
 private
 
@@ -237,12 +243,12 @@ private
    A$ [: s" good/0.f" required ;] WITH ;
 
 : DEEP-EVALS ( -- )
-   40 EVAL-DOWN 47 T=
-   [: 40 EVAL-FAIL drop ;] 9133 TTHROWSQ
+   40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T=
+   [: 40 EVAL-N ! EVAL-FAIL ;] 9133 TTHROWSQ
    RESTORED
    s" public : AFTER-DEEP-EVAL ( -- n ) 17 ;" INCLUDE-EVALUATE
    s" SOURCE-ROOT-TEST:AFTER-DEEP-EVAL 17 T=" INCLUDE-EVALUATE
-   40 EVAL-DOWN 47 T= ;
+   40 EVAL-N ! EVAL-DOWN EVAL-N @ 47 T= ;
 
 : DEEP-LOADS ( -- )
    s" deeply nested throws restore the caller before another dependency chain" T-LABEL

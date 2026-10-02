@@ -1142,7 +1142,7 @@ IWP3 @ TWX-MK-NULLARY TWX-T-WIDTH 3 T=            \ product term self-check
 \ behaviour-preserving: a width-1 layout arg reproduces the declared sum width
 IWP1 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY TWX-T-WIDTH 2 T=       \ opt<enum1> == declared 2
 \ the groundwork proof: a width-3 layout arg widens the sum payload (declared width 2 was degenerate)
-IWP3 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY dup IWT !
+IWP3 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY IWT !
 IWT @ TWX-T-WIDTH 4 T=                            \ opt<pt3>: max(0, width(pt3)=3) + tag = 4
 IWOPT @ TFAM-WIDTH@ 2 T=                          \ family-only width unchanged (still 2) — arg-aware differs
 

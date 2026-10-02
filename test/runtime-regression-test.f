@@ -709,7 +709,7 @@ variable GE-NEST-J
 
 : GE-EVAL-CATCH-SRC ( -- )
    \ The dot-pair reproducer wrapper (test/type-ctor-suite.f TCE-CATCH shape):
-   \ a quotation catch over the audited INCLUDE-EVALUATE boundary. The caller
+   \ a quotation catch over the closed INCLUDE-EVALUATE boundary. The caller
    \ appends one failing source string; the caught code prints to stdout.
    GE-SRC-RESET
    \ GECA holds an ADDRESS, so it is a declared cell: a raw `variable` admits

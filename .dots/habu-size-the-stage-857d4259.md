@@ -1,0 +1,9 @@
+---
+title: Size the stage source readers from the file
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-02T13:00:35.668397+02:00"
+---
+
+Problem (measured 2026-10-02 on lunsnmrw): src/habu/stage2.f READ-SRC and src/habu/maker.f MK-READ-SRC read into a fixed SOURCE-ARENA-CAP buffer ($400000, 4,194,304 B) and refuse a source that fills it. The largest source in the recovery chain, the stdin emission, is 3,304,045 B, leaving 890,258 B. Its summed source grew from 2,610,798 B (master 09-16) to 3,299,185 B (lunsnmrw): about 43 KB a day on average and 231 KB in the last day, so ordinary growth fills the reader in about 4 to 21 days and the Gforth recovery chain then refuses to build. b20c2e727f08 already sizes the boot arena from the baked source (SOURCE-ARENA-LEN = IBUFSZ + SRCN); the readers are the remaining fixed bound. Acceptance: both readers size their buffer from the file they read, as src/habu/maker-source.f READ already does, so no constant bounds source growth; an oversized program is refused where code space actually ends (CODE-CAP-WORDS), by name; the seed mirror gets whatever file-size primitive this needs (check whether bootstrap/cg/forth.fs has stat64 or an equivalent first); tools/build-fixpoint-test.f's reader-limit cases (:461-643) and the src/arch/arm64/icode.f:27-30 note move to the new bound; no compression or comment stripping of the baked source. Verify: Gforth check-only recovery (tools/bootstrap.sh with HABU_ALLOW_BOOTSTRAP=1 HABU_BOOTSTRAP_CHECK_ONLY=1) rc 0; a reader fixture over 4 MB that now loads; test/cold-runtime-test.f; tools/build-fixpoint-test.f; two-generation build identical. Files: src/habu/stage2.f, src/habu/maker.f, src/habu/maker-source.f, bootstrap/cg/forth.fs, src/arch/arm64/icode.f, tools/build-fixpoint-test.f, docs/bootstrap.md. Evidence: the src-arena lane report of 2026-10-02 (prefix 1,229,359 B, hb-stdin-mk maps 7,498,349 B).

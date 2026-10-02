@@ -581,7 +581,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER MY-SLOT drop
 : SESSION$ ( -- ptr u8 n )
    s\" : GENIO-T-DOUBLE ( n -- n ) 2 * ;\n21 GENIO-T-DOUBLE .\n" ;
 
-\ The REPL loop: the engine's own line-reader vector, the audited evaluate the
+\ The REPL loop: the engine's own line-reader vector, the closed evaluate the
 \ loader uses, and the ok the engine prints. Every byte of it leaves through
 \ the output funnel, so it is on the connection.
 : SERVE-LINE ( -- bool )

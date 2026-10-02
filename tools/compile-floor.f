@@ -16,7 +16,7 @@
 \ ratchet argument goes; results are only comparable on a quiet machine.
 \
 \ WHAT IS TIMED. 100 definitions `: Tn ( n -- n ) 1 + ;` and 100 definitions
-\ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's own `evaluate`
+\ `: Un ( n n -- n ) swap drop ;`, each handed to the engine's `evaluate-closed`
 \ one at a time inside a `mono-ns` window. Every source string is built BEFORE
 \ the window opens, so what the window holds is compile time and not string
 \ building. The tier-0 line compiles the trivial body a third time under its
@@ -126,12 +126,12 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    msg mu EMIT-ERR
    thrown throw ;
 
-\ ---- the two trust boundaries this tool needs -------------------------------
-\ `evaluate` and `set-tier` are both refused inside a plain checked body. They
-\ are wrapped one call each, with nothing else in the body, so the unchecked
-\ surface is exactly the two primitives and not the measurement around them.
+\ ---- selecting the tier -----------------------------------------------------
+\ `set-tier` is refused inside a plain checked body. It is wrapped in one call,
+\ with nothing else in the body, so the unchecked surface is exactly the
+\ primitive and not the measurement around it. The built set and its teardown
+\ load through `evaluate-closed`: definitions and undefines leave no cell.
 
-TRUSTED: EVAL$ ( ptr u8 n -- ) evaluate ;
 TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- building one set, before the clock starts ------------------------------
@@ -161,7 +161,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : COMPILE-SET ( -- n )             \ nanoseconds for the whole built set
    mono-ns
-   SET-N 0 ?do i DEF$ EVAL$ loop
+   SET-N 0 ?do i DEF$ evaluate-closed loop
    mono-ns swap - ;
 
 : MEAN-US ( n -- n )  NS-PER-US / SET-N / ;
@@ -175,7 +175,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
    s" undefine " SB-APPEND  LIVE-PREFIX PREFIX-U @ SB-APPEND  ix FMT:SB-U
-   SB$ EVAL$ ;
+   SB$ evaluate-closed ;
 
 : TEARDOWN ( -- )
    SET-LIVE? @ 0= if exit then

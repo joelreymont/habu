@@ -91,7 +91,7 @@ FUNCTION: FFI-T-CLOSE-U32 close ( n -- u32 ) ;FUNCTION
 : FFI-T-CTX-SET ( ffi-ctx -- rc )
    FFI-CTX>N FFI-T-CTX-CALL >RC ;
 
-\ The declarer's contract to the loader's audited evaluate: a declaration
+\ The declarer's contract to the loader's closed evaluate: a declaration
 \ defines words and leaves the stack exactly as it found it. Measured across a
 \ real declaration rather than asserted in a comment.
 variable FFI-T-DEPTH-BEFORE
@@ -503,7 +503,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
 
    \ The declaration is stack-neutral: it defines a word and nothing else, which
-   \ is what the loader's audited evaluate is entitled to assume.
+   \ is what the loader's closed evaluate demands.
    s" a declaration leaves the stack as it found it" T-LABEL
    FFI-T-DEPTH-AFTER @ FFI-T-DEPTH-BEFORE @ T=
    FFI-T-DEPTH-PROBE 0 T<>

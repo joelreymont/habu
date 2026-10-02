@@ -62,8 +62,9 @@ NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 : NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
 : NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
 
-\ Evaluate declaration text with the checker active.
-TRUSTED: NG-EVAL ( -- )  NG$ evaluate ;
+\ Evaluate declaration text with the checker active, as a closed program: a text
+\ that left cells would be refused E-EVAL-RESIDUE.
+: NG-EVAL ( -- )  NG$ evaluate-closed ;
 
 \ ---- surface NAME (UPPER-CASE) -> lowercase family tail -----------------------
 \ A second CODEGEN buffer, kept separate from NG-BUFFER because MINT reads the

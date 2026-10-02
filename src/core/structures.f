@@ -55,7 +55,7 @@ variable STRUCT-GEN-I
    v 10 >= if v 10 / recurse then
    v 10 mod 48 + STRUCT-GEN-C, ;
 
-\ TDECL-EVAL-XT is sumtype.f's audited evaluate boundary. It is a deferred word,
+\ TDECL-EVAL-XT is sumtype.f's closed evaluate boundary. It is a deferred word,
 \ so an engine that never armed it (a stage builder) fails closed here with the
 \ execution-vector error rather than defining anything.
 using TYPE-DECL

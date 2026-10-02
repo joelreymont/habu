@@ -44,9 +44,11 @@ variable #CASE
 \ --- boundary shims: the STRUCTURE opener, evaluate, and the sealed pre-hook
 \ registry / schema reflection words are reached at top level through named
 \ forwarders, TRUSTED: only where the name is engine-internal and a checked body
-\ cannot resolve it (the same idiom test/decl-event-suite.f uses).
+\ cannot resolve it (the same idiom test/decl-event-suite.f uses). TRY and RP-TRY
+\ run their word on copies of the inputs, because a throw restores the depth
+\ catch began with, and drop both so a refusal leaves only its code.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;            \ evaluate under catch -> throw code
+: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 TRUSTED: FAM-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 : FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
@@ -437,7 +439,8 @@ package struct-replay-test
 public
 
 : RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
-TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
+: RP-TRY ( ptr u8 n ptr u8 n -- n )
+   [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 : SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 : CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;

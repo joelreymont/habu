@@ -19,8 +19,7 @@ require test/stripped-lifecycle-semaphore-subject.f
 BEGIN-STRUCTURE STRIP-REC-BYTES
 CELL +FIELD STRIP-FIELD
 END-STRUCTURE
-0 ENUM+ STRIP-E0
-1 ENUM4+ STRIP-E4
+0 ENUM+ STRIP-E0 ENUM4+ STRIP-E4 drop
 : STRIP-MAKE ( n -- ) create , does> ( -- n ) @ ;
 23 STRIP-MAKE STRIP-VALUE
 
