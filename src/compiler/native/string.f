@@ -65,10 +65,9 @@ variable PROBE
 variable FOUND
 variable HV
 
-\ The checker has no term for "the integer this pointer is", and the elaborator
-\ stages the arena address as an ordinary integer literal. Retires with
-\ habu-guard-an-executed-8a0f2f77.
-TRUSTED: PTR>N ( ptr a -- n ) ;
+\ The elaborator stages the arena address as an ordinary integer literal: its
+\ distance from the null pointer.
+: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 : BASE ( -- n )
    ARENA PTR>N ;

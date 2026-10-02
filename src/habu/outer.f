@@ -770,7 +770,7 @@ TRUSTED: PUSH-CHAR ( -- )
 
 \ The active checker owner supplies the trusted-only query, not a source name.
 \ Mirror C-TRUSTED-TICK?'s cold-prefix and replacement-checker windows.
-TRUSTED: TICK-OWNER@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
+: TICK-OWNER@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
 
 : TICK-QUERY-READY? ( -- bool )
    SEAL-NDICT@ 0= if false exit then

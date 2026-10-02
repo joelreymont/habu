@@ -30,6 +30,21 @@ create ERR CAP allot
    refused outu LEN>N 0= and
    ERR erru LEN>N s\" \"code\":\"E-STALE-READ\"" CONTAINS? and ;
 
+\ The product seals C2-MEM with every package it bakes (src/core/internal-mark.f
+\ SEAL-PACKAGES): the engine refuses `package C2-MEM` by name, exit 84, before
+\ the checker sees a body. The checker's reopen cases run where C2-MEM stays
+\ open (test/c2-reopen-refusals.f).
+: SEALED? ( ptr u8 n -- bool )
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   MATCH outcome
+      exited OF ENGINE-ERROR:SEAL-PACKAGE = ENDOF
+      signaled OF drop false ENDOF
+      timeout OF false ENDOF
+   ;MATCH
+   {: outu:len erru:len refused:bool :}
+   refused outu LEN>N 0= and
+   ERR erru LEN>N s" C2-MEM" CONTAINS? and ;
+
 : ACCEPT? ( ptr u8 n -- bool )
    OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
    MATCH outcome
@@ -112,44 +127,8 @@ EXPORT EARLY-R-CALLBACK
    s" : C2OP-UNPACK ( mut-view<p,l,a,u8> -- ptr u8 n ) C2-MEM:MUT-UNPACK ;" REJECT TTRUE
    s" ticking the unpacker does not cross its internal boundary" T-LABEL
    s" : C2OP-TICK ( mut-view<p,l,a,u8> -- ptr u8 n ) ['] C2-MEM:MUT-UNPACK execute ;" REJECT TTRUE
-   s" the raw publisher cannot be exported" T-LABEL
-   s" package C2-MEM public EXPORT PUBLISH-RAW ;package" REJECT TTRUE
-   s" a private unpacker cannot be exported by reopening its package" T-LABEL
-   s" package C2-MEM public EXPORT MUT-UNPACK ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot call root frame lookup" T-LABEL
-   s" package C2-MEM private : C2OP-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot tick root frame lookup" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot export root frame lookup" T-LABEL
-   s" package C2-MEM public EXPORT ROOT-FRAME ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot call append registration" T-LABEL
-   s" package C2-MEM private : C2OP-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot export append registration" T-LABEL
-   s" package C2-MEM public EXPORT APPEND ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose a frame storage accessor" T-LABEL
-   s" package C2-MEM public EXPORT APPEND-HEAD-CELL ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose the task-local owner region" T-LABEL
-   s" package C2-MEM public EXPORT OWNER-REGION ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose the owner frame lookup" T-LABEL
-   s" package C2-MEM public EXPORT OWNER-FRAME ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose the old raw allocation helper" T-LABEL
-   s" package C2-MEM public EXPORT ALLOC-RAW ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose the old append adapter" T-LABEL
-   s" package C2-MEM public EXPORT ALLOC-ON ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot expose root registration" T-LABEL
-   s" package C2-MEM public EXPORT ACQUIRE-BYTES ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot call the raw scoped allocator" T-LABEL
-   s" package C2-MEM private : C2OP-ALLOC-RUN ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot tick the raw scoped allocator" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-ALLOC-RUN ( -- ) ['] ALLOC-RUN drop ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot export the raw scoped allocator" T-LABEL
-   s" package C2-MEM public EXPORT ALLOC-RUN ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot call the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2OP-LOAN-RUN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot tick the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-LOAN-RUN ( -- ) ['] LOAN-RUN drop ; ;package" REJECT TTRUE
-   s" reopening C2-MEM cannot export the raw loan scope" T-LABEL
-   s" package C2-MEM public EXPORT LOAN-RUN ;package" REJECT TTRUE
+   s" the product refuses a reopen of C2-MEM by name" T-LABEL
+   s" package C2-MEM ;package" SEALED? TTRUE
    T-REPORT
    s" c2-owner-producer-refusals: ok" type cr ;
 

@@ -1462,6 +1462,23 @@ variable LONG-J
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
 
+\ A cast whose signature does not parse, here a bare `ptr` that also hides a
+\ wrong-arity layout, is refused at the cast gate before any walk reads the row:
+\ the all-errors run renders the bad stored signature and exits 70.
+: CAST-BADSIG$ ( -- ptr u8 n )
+   SB-RESET
+   s" STRUCTURE ckt-cbox 1 FIELD value a ;STRUCTURE" SB-APPEND
+   $0a SB-APPEND-C
+   s" cast: CKT-CBAD ( ptr -- ckt-cbox )" SB-APPEND
+   SB$ ;
+
+: CAST-BADSIG-ALL ( -- )
+   CAST-BADSIG$ DIRECT-ALL-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" habu: in CKT-CBAD: bad stored signature 'ptr -- ckt-cbox'"
+   CONTAINS? TTRUE ;
+
 : OVERCAP-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
    {: cap:n src:ptr extent:NUM:alloc-byte-len :}
    src cap s" <stdin>" SOURCE ;
@@ -2568,6 +2585,7 @@ variable LC-CANON-U
    s" check/sum-noend" [: TEST-SUM-NOEND ;] CASE-RUN
    s" check/sum-noend-all" [: SUM-NOEND-ALL ;] CASE-RUN
    s" check/tfam-noarity-all" [: TFAM-NOARITY-ALL ;] CASE-RUN
+   s" check/cast-badsig-all-errors" [: CAST-BADSIG-ALL ;] CASE-RUN
    s" check/overcap-source" [: TEST-OVERCAP-SOURCE ;] CASE-RUN
    s" check/selection-capacity" [: TEST-SELECTION-CAPACITY ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN

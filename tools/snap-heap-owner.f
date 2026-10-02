@@ -44,7 +44,7 @@ package SNAP-HEAP-OWNER
    p size ADDRESS-CARRIER:CHAIN-VALUE ;
 
 : HEAP-OFF ( n -- n ) {: addr:n :}
-   addr XREF-N>REC data-base - ;
+   addr data-base BYTE-VIEW NULL-PTR BYTE-VIEW - - ;
 
 \ A package record carries raw wordlist roles in fields [0] and [8] instead of a
 \ code pointer and a length - habu2.f EM-SNAPSHOT-REBASE-DICT skips them the same

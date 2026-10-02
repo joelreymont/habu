@@ -47,18 +47,18 @@ $D65F03C0 constant W-RET
 $FC000000 constant OPC-MASK
 $14000000 constant OPC-B
 
-\ The last instruction word of a name's compiled body: the RET `create` emitted,
-\ or the branch a does> clause put in its place. XREF-N>U8 is the engine's own
-\ byte view of a code address, the cast test/does-clause-record.f decodes with.
-: W32@ ( n -- n ) {: a:n :}
-   a XREF-N>U8 {: p:ptr :}
+\ The little-endian instruction word at a code byte.
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
+\ The last instruction word of a name's compiled body: the RET `create` emitted,
+\ or the branch a does> clause put in its place, read through the byte view the
+\ name's xref record gives of its code start.
 \ A name this file compiled and cannot find is a broken test, not a red case.
 : LAST-INSN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u XREF-FIND-INDEX {: ix:n :}
    ix 0 <= if s" does-empty-clause: subject not in the dictionary" 76 die then
-   ix XREF-REC XREF-START  ix XREF-REC XREF-CODE-BYTES +  4 -  W32@ ;
+   ix XREF-REC XREF-START-SLOT XREF-PTR@  ix XREF-REC XREF-CODE-BYTES +  4 -  W32@ ;
 
 64 constant NAME-CAP
 5 constant SUF-LEN                                     \ ";does"

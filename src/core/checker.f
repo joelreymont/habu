@@ -156,8 +156,8 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 9 constant T-FORALL  10 constant T-BVAR  11 constant T-SCOPE
 4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
-\ Trusted checker internals below are confined to raw mmap-result refinements,
-\ typed views/nulls over checker arenas, and one raw effect query.
+\ Trusted checker internals below are confined to typed views/nulls over
+\ checker arenas and one raw effect query.
 \ Engine primitive effects, including tok-imm?, live in the primitive table.
 \ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
 \ --- growable checker arenas --------------------------------------------
@@ -166,20 +166,12 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ scratch resets to its boot buffer or releases its owned mapping at capture.
 \ No process-local mmap address may enter an image. Growth is geometric so
 \ regrow copies each store O(log n) times over a load, not once per grain.
-3 constant ARENA-PROT-RW
-$1002 constant ARENA-MAP-ANON
--1 constant ARENA-ANON-FD
-0 constant ARENA-OFF-ZERO
+\ `map-anon` answers the mapping as a pointer whose element type the caller
+\ picks, so no refinement turns a syscall result into an address.
 variable ARENA-CP-I   variable ARENA-UB-I
 
-: ARENA-MMAP-RC ( n -- n )
-   0 swap ARENA-PROT-RW ARENA-MAP-ANON ARENA-ANON-FD ARENA-OFF-ZERO mmap
-   dup 0 < IF s" checker: arena mmap failed" 76 die THEN ;
-
-TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
-
 : ARENA-ALLOC ( n -- ptr a )
-   ARENA-MMAP-RC ARENA-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
    0 ARENA-CP-I !
@@ -862,8 +854,9 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ executed xt (dot habu-checker-exec-of-5923c543). Defaults bind below RES-FALSE
 \ (which several need). Hooks reached only after the registry is armed carry no
 \ default and stay unset (executing one before install fails closed via
-\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN query
-\ hooks, whose call sites never run before type-family.f installs them.
+\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN /
+\ TFAM-MEMBERS query hooks, whose call sites never run before type-family.f
+\ installs them.
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
@@ -877,6 +870,7 @@ defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
 defer TFAM-TYPE-SLOT-XT ( n n -- bool )                 \ family id + arg slot -> a phantom element type
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
+defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of its field and variant payload types, instantiated over its args
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
 defer TFAM-MAY-LIN-XT ( n -- bool )                    \ possible ownership in an open schema
 defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell product: cells, bytes, align
@@ -1221,11 +1215,11 @@ CHECKER-PKG-LIVE-DEFAULT
 \ has no caller that could act on it, and reporting it instead of the refusal
 \ would replace a named refusal with an unrelated code. The refusal itself is
 \ never dropped.
-70 constant PKGCTX-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
+70 constant COMPILE-REJECT-RC  \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
    2 S\" hb: no authenticated package context for this definition\n" write drop
-   PKGCTX-REJECT-RC throw ;
+   COMPILE-REJECT-RC throw ;
 
 \ CHECKER-RESOLVE owns the scope questions. AUTHORITY, here, and WALK, the scope
 \ walk beside CHECKER-BIND, answer without refusing; RAISE raises a refusal WALK
@@ -3326,10 +3320,6 @@ PTR-VARIABLE SGA  variable SGU
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
 $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
-3 constant TOKBUF-PROT-RW
-$1002 constant TOKBUF-MAP-ANON
--1 constant TOKBUF-ANON-FD
-0 constant TOKBUF-OFF-ZERO
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
@@ -3363,14 +3353,8 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
    need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
-: TOKBUF-MMAP-RC ( n -- n )
-   0 swap TOKBUF-PROT-RW TOKBUF-MAP-ANON TOKBUF-ANON-FD TOKBUF-OFF-ZERO mmap
-   dup 0 < IF s" checker: token buffer mmap failed" 76 die THEN ;
-
-TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
-
 : TOKBUF-ALLOC ( n -- ptr u8 )
-   TOKBUF-MMAP-RC TOKBUF-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: token buffer mmap failed" 76 die THEN ;
 
 : TOKBUF-GROW {: need :}
    need TOKBUF-ROUND-CAP {: cap :}
@@ -6046,10 +6030,6 @@ PTR-VARIABLE FP
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
-3 constant USIGS-PROT-RW
-$1002 constant USIGS-MAP-ANON
--1 constant USIGS-ANON-FD
-0 constant USIGS-OFF-ZERO
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   PTR-VARIABLE USIGS-GROW-NEXT
@@ -6158,14 +6138,8 @@ variable UCP-I
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
-: USIGS-MMAP-RC ( n -- n )
-   0 swap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
-   dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
-
-TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
-
 : USIGS-ALLOC ( n -- ptr u8 )
-   USIGS-MMAP-RC USIGS-RC>PTR ;
+   map-anon 0 <> IF drop s" checker: user sigs mmap failed" 76 die THEN ;
 
 : USIGS-CLEAR ( -- )
    0 USX-GEN !                    \ every record the index points at is being dropped
@@ -6668,15 +6642,9 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
       USIGS HIDX-EFF-BASE!
    THEN ;
 
-: HIDX-MMAP-RC ( -- n )
-   0 SYM-CAP HIDX-TABLES * cells USIGS-PROT-RW USIGS-MAP-ANON
-   USIGS-ANON-FD USIGS-OFF-ZERO mmap
-   dup 0 < IF s" checker: symbol index mmap failed" 76 die THEN ;
-
-TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
-
 : HIDX-ALLOC-PTR ( -- ptr n )
-   HIDX-MMAP-RC HIDX-RC>PTR ;
+   SYM-CAP HIDX-TABLES * cells map-anon 0 <> IF
+      drop s" checker: symbol index mmap failed" 76 die THEN ;
 
 : HIDX-ALLOC ( -- )
    HIDX-ALLOC-PTR HIDX-MEM! ;
@@ -10726,7 +10694,7 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 
 \ THE WALK ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: WALK leaves
 \ ( sym leg why ), where why is 0 or the code of the refusal the walk reached -
-\ PKGCTX-REJECT-RC when no authority names a package context,
+\ COMPILE-REJECT-RC when no authority names a package context,
 \ E-USING-SHADOW-GLOBAL or E-USING-AMBIGUOUS at the used-publics legs. Under a
 \ refusal sym is not an answer (the global leg leaves the shadowed global's), so
 \ no caller reads it when why is nonzero. It renders nothing. CHECKER-BIND
@@ -10738,7 +10706,7 @@ public
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE BIND-SCOPED 0 EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 BIND-NONE 0 EXIT THEN
-   AUTHORITY 0= IF 2drop drop 0 BIND-NONE PKGCTX-REJECT-RC EXIT THEN
+   AUTHORITY 0= IF 2drop drop 0 BIND-NONE COMPILE-REJECT-RC EXIT THEN
    {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
       pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF BIND-SCOPED 0 EXIT THEN drop
@@ -10758,7 +10726,7 @@ public
 \ fd 2 and throws the reject rc, the using-shadow refusal renders the candidates
 \ CHECKER-USED-SHADOW captured, and the ambiguity throws bare.
 : RAISE ( n -- ) {: why:n :}
-   why PKGCTX-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
+   why COMPILE-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
    why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT THEN
    why throw ;
 
@@ -19017,11 +18985,54 @@ variable CTOR-PEND-I
    q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
    q INTRO-FOREIGN = IF t CAST-OWNER? 0= EXIT THEN
    t TAG T-PTR =  t TAG T-QUOT =  or ;
+\ The layouts a CAST: walk is expanding, outermost first, each with the
+\ direction it was reached in. A layout's members can name the layout again (an
+\ ENUM variant may hold a pointer to its own family), so a walk expands an
+\ instance once per path: the same family over the same argument terms, reached
+\ in the same direction, has the same members and gives the same answer. A
+\ member is instantiated from its family's schema over the owner's own argument
+\ terms, so a recursive member names the same terms, not copies; no declarer
+\ admits a recursion that grows its arguments, and past CAST-PATH-CAP nested
+\ layouts the walk dies rather than guess. An expansion pops what it pushed;
+\ CAST-WALK-RESET empties the path after a throw.
+64 constant CAST-PATH-CAP
+create CAST-PATH-TERM CAST-PATH-CAP cells allot
+create CAST-PATH-POS CAST-PATH-CAP cells allot
+variable CAST-PATH-N
+: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
+\ CAST-SAME-INSTANCE? ( term term -- bool ) : one family over identical terms.
+: CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
+   a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
+   a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
+   0 BEGIN dup a PARAM>ARGC < WHILE
+      a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+\ CAST-DIR ( positive? -- n ) : the direction as the path stores it.
+: CAST-DIR ( bool -- n ) IF 1 ELSE 0 THEN ;
+\ CAST-ON-PATH? ( layout positive? -- bool ) : this walk is already expanding
+\ the instance in this direction.
+: CAST-ON-PATH? ( n bool -- bool ) {: t:n pos:bool :}
+   pos CAST-DIR {: dir:n :}
+   0 BEGIN dup CAST-PATH-N @ < WHILE
+      dup cells CAST-PATH-POS + @ dir = IF
+         dup cells CAST-PATH-TERM + @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: CAST-PATH-PUSH ( n bool -- ) {: t:n pos:bool :}
+   CAST-PATH-N @ CAST-PATH-CAP >= IF
+      s" checker: cast walk nests layouts too deep" 76 die THEN
+   t CAST-PATH-N @ cells CAST-PATH-TERM + !
+   pos CAST-DIR CAST-PATH-N @ cells CAST-PATH-POS + !
+   CAST-PATH-N @ 1 + CAST-PATH-N ! ;
+: CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
 \ CAST-INTRO? ( term-or-row positive? question -- bool ) : whether the question
 \ holds at an introduction position of the destination. Those are the positive
 \ positions: the destination itself, a pointer's pointee (a read through the
-\ pointer yields it), a layout family's arguments (projecting a field yields a
-\ value of the argument type) and a quotation's produced rows. A quotation's
+\ pointer yields it), a layout family's arguments and its members, every field
+\ and variant payload instantiated over those arguments (a projection or a
+\ MATCH arm yields them), and a quotation's produced rows. A quotation's
 \ consumed rows flip the sign, so a consumer handed to a minted quotation is fed
 \ by it. A cell family's arguments are phantom, and each row ends in the
 \ quotation's own base: neither yields a value. A pointer or a quotation found
@@ -19048,22 +19059,30 @@ variable CTOR-PEND-I
    0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
       t over PARAM>ARG pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop
+   t pos CAST-ON-PATH? IF RES-FALSE EXIT THEN
+   t pos CAST-PATH-PUSH
+   t TFAM-MEMBERS-XT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   CAST-PATH-POP ;
 \ CAST-INTRODUCES? ( term question -- bool ) : the question over a whole
 \ destination term, which starts positive.
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
-   TWALK-RESET t RES-TRUE q CAST-INTRO? ;
+   CAST-WALK-RESET t RES-TRUE q CAST-INTRO? ;
 \ CAST-MAY-LINEAR? ( term-or-row -- bool ) : fail closed over the complete
 \ signature term. CAST is an authority boundary, so its question is stricter
 \ than LIN-TYPE-COUNT's runtime ownership accounting: a direct unresolved var
 \ may later bind linear, and every value-bearing family argument subtree can
 \ carry that possibility. Cell-family parameters are structurally phantom, so
-\ their terms contain no owned payload. Concrete family schemas are covered by
-\ TFAM-CON-LIN-XT. Pointers, quotations and atoms own nothing themselves, but a
-\ pointer's pointee is what a read through it yields and a quotation's four
-\ rows are what a call consumes and produces, so both are walked. A quotation
-\ in a signature shares one base between its in and out rows, so the tail it
-\ passes through owns nothing.
+\ their terms contain no owned payload. TFAM-CON-LIN-XT answers for a family
+\ linear as a whole, the reserved views that own by declaration rather than
+\ through a field included. Pointers, quotations and atoms own nothing
+\ themselves, but a pointer's pointee is what a read through it yields and a
+\ quotation's four rows are what a call consumes and produces, so both are
+\ walked, and so are a layout's members, every field and variant payload
+\ instantiated over its arguments: a linear value behind a field's pointer or in
+\ a field's quotation row is one a projection hands out. A quotation in a
+\ signature shares one base between its in and out rows, so the tail it passes
+\ through owns nothing.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -19090,14 +19109,26 @@ variable CTOR-PEND-I
          t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
+      t RES-TRUE CAST-ON-PATH? IF RES-FALSE EXIT THEN
+      t RES-TRUE CAST-PATH-PUSH
+      t TFAM-MEMBERS-XT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
-\ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
-\ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
-\ cast that survives all seven is legal and its declared row is registered by the
-\ caller. Nothing here observes a body.
-: CAST-CERTIFY ( -- )
-   SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
+\ CAST-CERTIFY ( sig$ name$ -- ) : the legality gate, in refusal order. Every
+\ clause reads the parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the
+\ named reject; a cast that survives every clause is legal and its declared row
+\ is registered by the caller. Nothing here observes a body.
+\
+\ A signature that did not parse is refused before anything reads its row: the
+\ walks below instantiate a layout's members over its arguments, and a bad row
+\ could not be registered. Its first fault names the class. A family unknown or
+\ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
+\ syntax or a bare `ptr`, is refused as a definition with that signature is, by
+\ its bad-signature diagnostic and COMPILE-REJECT-RC.
+: CAST-CERTIFY ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
+   SGBAD @ IF sa su na nu BADSIG-XT  COMPILE-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
@@ -19110,9 +19141,9 @@ variable CTOR-PEND-I
    \ from a foreign package violates both rules, and the ownership reject would
    \ otherwise mask the stronger one. Ownership is a packaging question; carrying
    \ an owned value through a retype is an unsoundness, so it names the reject.
-   TWALK-RESET
+   CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
-   TWALK-RESET
+   CAST-WALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
    \ The mint rule comes last for the same reason: a mint that also carries
@@ -20007,7 +20038,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
-   CAST-CERTIFY
+   sa su na nu CAST-CERTIFY
    sa su na nu CHECKER-USIG-CERT-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!

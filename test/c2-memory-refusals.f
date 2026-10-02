@@ -34,6 +34,21 @@ create ERR CAP allot
    refused outu LEN>N 0= and
    ERR erru LEN>N s" stale cell" CONTAINS? and ;
 
+\ The product seals C2-MEM with every package it bakes (src/core/internal-mark.f
+\ SEAL-PACKAGES): the engine refuses `package C2-MEM` by name, exit 84, before
+\ the checker sees a body. The checker's reopen cases run where C2-MEM stays
+\ open (test/c2-reopen-refusals.f).
+: SEALED? ( ptr u8 n -- bool )
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
+   MATCH outcome
+      exited OF ENGINE-ERROR:SEAL-PACKAGE = ENDOF
+      signaled OF drop false ENDOF
+      timeout OF false ENDOF
+   ;MATCH
+   {: outu:len erru:len refused:bool :}
+   refused outu LEN>N 0= and
+   ERR erru LEN>N s" C2-MEM" CONTAINS? and ;
+
 public
 
 : RUN ( -- )
@@ -92,30 +107,8 @@ public
    s" : C2-MEM-READ-THROW ( read-view<p,l,u8> -- read-view<p,l,u8> ) 1 throw ; : C2-MEM-READ-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-THROW ;] C2-MEM:WITH-READ ; : C2-MEM-READ-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;" STALE? TTRUE
    s" an ordinary declaration cannot invent unique scope and region binders" T-LABEL
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 76 STATUS? TTRUE
-   s" a reopened memory package cannot call the raw allocator" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-ALLOC ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" 70 STATUS? TTRUE
-   s" a reopened memory package cannot tick the raw allocator" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-ALLOC ( -- ) ['] ALLOC-RUN drop ; ;package" 70 STATUS? TTRUE
-   s" a reopened memory package cannot export the raw allocator" T-LABEL
-   s" package C2-MEM public EXPORT ALLOC-RUN ;package" 70 STATUS? TTRUE
-   s" a reopened memory package cannot call the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" 70 STATUS? TTRUE
-   s" a reopened memory package cannot tick the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-LOAN ( -- ) ['] LOAN-RUN drop ; ;package" 70 STATUS? TTRUE
-   s" a reopened memory package cannot export the raw loan scope" T-LABEL
-   s" package C2-MEM public EXPORT LOAN-RUN ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot call runtime frame lookup" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot tick runtime frame lookup" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot export runtime frame lookup" T-LABEL
-   s" package C2-MEM public EXPORT ROOT-FRAME ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot call runtime append" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot tick runtime append" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-APPEND ( -- ) ['] APPEND drop ; ;package" 70 STATUS? TTRUE
-   s" a standalone memory load cannot export runtime append" T-LABEL
-   s" package C2-MEM public EXPORT APPEND ;package" 70 STATUS? TTRUE
+   s" the product refuses a reopen of C2-MEM by name" T-LABEL
+   s" package C2-MEM ;package" SEALED? TTRUE
    T-REPORT
    s" c2-memory-refusals: ok" type cr ;
 

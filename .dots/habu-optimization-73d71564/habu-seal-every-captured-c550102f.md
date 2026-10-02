@@ -1,9 +1,11 @@
 ---
 title: "Seal every captured package against reopening"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-16T16:49:49.727440+03:00"
+closed-at: "2026-10-02T14:50:00.000000+02:00"
+close-reason: "Every package the native capture ships is sealed at PREPARE-TARGET (uonquqxy bbcac900, Seal every package the native capture ships): 214 baked namespace rows, public and private wordlists protected, 0 open; reopening or defining into a baked package exits 84 by name on product and app images; whitebox stays open. Engine 2,427,511 B unchanged. Fable review ACCEPT."
 ---
 
 Problem: only the seven RESTAB names (`habu2.f:2153`, mirrored by `checker.f` CHECKER-SEALED-PKG?) and 173 self-protected wordlists are sealed; user source can reopen any other engine package with `package NAME`, and that reach is the only reason a private word of an engine package needs its checker data.

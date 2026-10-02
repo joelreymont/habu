@@ -159,9 +159,10 @@ s\" package SAT-J\n: X ( n -- n ) 1 + ;\n: X ( n n -- n ) + ;\n;package"
 \ as E-USING-SHADOW-GLOBAL against a public the engine never defined. The engine
 \ binds the global there, so the checked word does too: SAT-N-USE answers 7.
 \ The refusal is caught INSIDE the package, by a nested `evaluate`, so that
-\ `;package` still closes SAT-N with its private word for the `using` to read.
+\ `;package` still closes SAT-N with its private word for the `using` to read;
+\ the caught refusal puts the inner string back, which the case drops.
 s" : SAT-T ( -- n ) 7 ;" SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
-s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q ' evaluate catch SHADOWED-ARITY:E-SHADOW-ARITY SHADOWED-ARITY:T=\n;package"
+s\" package SAT-N\n: SAT-T ( n n -- n ) + ;\npublic\ns\q : SAT-T ( n -- n ) 1 + ;\q ' evaluate catch SHADOWED-ARITY:E-SHADOW-ARITY SHADOWED-ARITY:T= 2drop\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=
 s\" using SAT-N\n: SAT-N-USE ( -- n ) SAT-T ;\n;using"
    SHADOWED-ARITY:SAE-CATCH 0 SHADOWED-ARITY:T=

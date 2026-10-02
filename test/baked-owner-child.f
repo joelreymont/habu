@@ -1,15 +1,13 @@
-\ baked-owner-child.f - load one source on an engine whose baked packages are
-\ sealed (test/baked-owner-seal.f).
+\ baked-owner-child.f - load one source on the product engine, whose build
+\ sealed every package it bakes (src/core/internal-mark.f SEAL-PACKAGES).
 \
 \ Run: bin/hb --load test/baked-owner-child.f -- <source>
 \
-\ test/baked-owner-seal.f seals the packages; the source then loads through
-\ `required`, the real load path, and the child prints `owner-ok` only when the
-\ whole source loaded. test/baked-owner.f runs this once per product-path
-\ source.
+\ The source loads through `required`, the real load path, and the child prints
+\ `owner-ok` only when the whole source loaded. test/baked-owner.f runs this
+\ once per product-path source.
 
 require src/os/script-argv.f
-require test/baked-owner-seal.f
 
 package BAKED-OWNER-CHILD
 
@@ -22,5 +20,4 @@ public
 
 ;package
 
-BAKED-OWNER-SEAL:SEAL-BAKED
 BAKED-OWNER-CHILD:LOAD

@@ -7,8 +7,8 @@ private
 
 \ E-NCOMP-OWNER; this small core helper does not require the library layer.
 : BAD ( -- ) -8574 throw ;
-TRUSTED: ADDRESS ( ptr u8 -- n ) ;
-TRUSTED: DATA-SPAN ( -- n n ) data-base here ;
+: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+: DATA-SPAN ( -- n n ) data-base BYTE-VIEW ADDRESS here BYTE-VIEW ADDRESS ;
 
 public
 

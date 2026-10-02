@@ -98,21 +98,15 @@ using A64ASM
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 $2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
-$1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
 $5 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 72 constant ICODE-EXIT-RC
-\ THE MAPPINGS ARE POINTERS AND THEIR CELLS SAY SO. A successful anonymous
-\ mapping is a number the kernel answers, and nothing infers an address from a
-\ syscall result, so ONE refinement states that fact - the shape
-\ src/core/checker.f gives it for its own arenas (ARENA-RC>PTR). Past it both
-\ mappings travel as pointers in cells declared by src/core/pointer-storage.f,
-\ and the two `TRUST` rows that used to re-declare the whole accessor are gone:
-\ a raw `create`d cell may not hold an address at all (dot
-\ habu-refuse-a-ptr-5ad2734e), and re-declaring the reader was never a statement
-\ about the cell. Retirement of this row: habu-read-code-bytes-844e7c50.
-TRUSTED: ICODE-MAP>PTR ( n -- ptr a ) ;
+\ THE MAPPINGS ARE POINTERS AND THEIR CELLS SAY SO. `map-anon` answers fresh
+\ anonymous storage as a pointer whose element type the caller picks, so no
+\ refinement turns a syscall result into an address. Both mappings travel in
+\ cells declared by src/core/pointer-storage.f: a raw `create`d cell may not
+\ hold an address at all (dot habu-refuse-a-ptr-5ad2734e).
 PTR-VARIABLE CODE-A
 PTR-VARIABLE ICODE-TAB-A
 variable ASM-CP
@@ -126,9 +120,8 @@ variable I-N
 variable I-W
 
 : CODE-ALLOC ( -- ptr u8 )
-   0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" icode: code mmap failed" ICODE-EXIT-RC die then
-   ICODE-MAP>PTR ;
+   CODE-CAP-BYTES map-anon 0 <> if
+      drop s" icode: code mmap failed" ICODE-EXIT-RC die then ;
 
 \ An unmapped cell holds the typed null, so the first-emit test compares against
 \ NULL-PTR rather than the integer 0: the cell is a pointer now and `0=` asks a
@@ -138,9 +131,8 @@ variable I-W
    CODE-A @ ;
 
 : ICODE-TAB-ALLOC ( -- ptr n )
-   0 ICODE-TAB-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" icode: table mmap failed" ICODE-EXIT-RC die then
-   ICODE-MAP>PTR ;
+   ICODE-TAB-BYTES map-anon 0 <> if
+      drop s" icode: table mmap failed" ICODE-EXIT-RC die then ;
 
 : ICODE-TABS ( -- ptr n )
    ICODE-TAB-A @ NULL-PTR = IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN

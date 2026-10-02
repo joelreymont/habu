@@ -1,7 +1,9 @@
 \ Scoped C2 allocation and nonowning loans. The public entries are raw until
 \ the exact native image entries receive the checker-owned scope kinds.
-\ This hidden runtime is source composition, not a separately provided module.
-include lib/c2-owner-runtime.f
+\ This hidden runtime is source composition, not a separately provided module,
+\ so it lives below lib/c2-memory/ and not among the flat modules: loaded alone
+\ on a product it would reopen the sealed C2-MEM and exit 84.
+include lib/c2-memory/owner-runtime.f
 require lib/memory.f
 require lib/num-types.f
 

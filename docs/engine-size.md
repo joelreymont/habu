@@ -357,6 +357,53 @@ and 518 of the 520 native suites pass. `native-build-entry` and
 `build-fixpoint-fixtures` ran out of time in the loaded pool (a killed child and
 `E-PROC-TIMEOUT`) and pass run alone.
 
+## Seal every captured package
+
+The native build now seals every package its capture ships
+(`src/core/internal-mark.f` `SEAL-PACKAGES`, called first by
+`tools/native-build-core.f` `PREPARE-TARGET`): both wordlists of each namespace
+row at or above the window's first record take the protected bit before
+`NATIVE-RUNTIME:CAPTURE-PREPARE` sweeps. The product bakes 214 packages, 69 of
+them with no private wordlist. Before, 121 public and 60 private wordlists were
+protected and 85 private ones were open; after, all 214 public and 145 private
+ones are, and none is open. The sweep keeps a private's checker symbol only
+while its package can be reopened (`src/core/checker-surface.f` `KEEP?`), so of
+the 18 privates the image ships by name the checker knew 13 before and knows
+none after.
+
+Measured on the ARM64 Mach-O product built from lxwpuqzz and from the same
+tree with the change:
+
+| Section | Before | After |
+|---|---:|---:|
+| Captured Habu code | 1,604,092 | 1,604,412 |
+| Dictionary records | 64,260 | 64,272 |
+| Name pool | 70,160 | 70,176 |
+| DATA bitmap | 48,536 | 48,468 |
+| DATA values | 344,724 | 344,328 |
+| Protected wordlists | 724 | 1,436 |
+| Mach-O text padding | 5,800 | 5,204 |
+| Complete signed file | 2,427,511 | 2,427,511 |
+
+The file size does not change: the content grows 596 bytes, and the Mach-O text
+padding absorbs them. `SEAL-PACKAGES` adds 320 bytes of code, a 12-byte record
+and a 16-byte name; the protected-wordlist table grows 712 bytes, four for each
+of the 178 newly sealed wordlists. The retired symbols take 464 bytes of DATA
+values and bitmap with them: by owner (`tools/engine-size.f`), `SYM-STR-BOOT`
+falls from 73,626 to 73,399 bytes of image and `DONE` from 233,033 to 232,796.
+
+The SHA-256 before is
+`8c79d9977cf26c53427f7b14434e5130647860b8940c0714fd0f3d5f205c6e6e`, after
+`28976dce935ea46764aa4456fec91d3dd8e32db261a770ca8055c56c714ff996`.
+Generations 1 to 5 are byte-identical; the dot lint and 538 of the 546 native
+suites pass. At load averages near 150, `native-build-entry`,
+`build-fixpoint-fixtures` and `compiler-compile-floor-gate` fail run alone, and
+fail the same way with the parent tree's engine run beside them. `engine`,
+`c2-memory`, `c2-field-loan`, `c2-records` and `xml-c2-consumer` stop where the
+checker's sweep meets an effect node kind it does not walk
+(`src/core/checker.f`, which this change does not touch); with that walk fixed
+on this tree, all five pass.
+
 ## Historical Linux measurements
 
 The block below records one Linux engine measurement. It is an example, not

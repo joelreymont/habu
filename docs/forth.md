@@ -174,6 +174,14 @@ private
   creates no scope and loads no file. Later blocks call earlier private helpers
   and public words unqualified and add exports. Load order is still dependency
   order.
+- A package the engine bakes is sealed when the native build captures it
+  (`src/core/internal-mark.f` `SEAL-PACKAGES`): on the product engine `package
+  NAME` exits 84 with the package name on stderr, and a definition into either
+  of its wordlists exits 84 naming the word (`hb: cannot publish into protected
+  word: NAME:X`). Use its public words qualified or through `using`. Only the
+  whitebox image keeps engine packages open; an application image (a `--repl`
+  snapshot, `APP-IMAGE:SAVE`) keeps its own packages reopenable
+  (`test/package-seal.f`, `test/checker-surface.f`).
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -522,7 +530,13 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   sites emit nothing. A conversion that can refuse is a checked word that
   throws, then the cast. The checker's rule, in refusal order
   (`src/core/checker.f` `CAST-CERTIFY`):
-  - Every family named is declared and visible (`E-CAST-FAM`, 7131).
+  - Every family named is declared, visible and applied to its declared
+    number of arguments (`E-CAST-FAM`, 7131): `( n -- box )` for a
+    one-parameter `box` is refused by name, not by a later death.
+  - Any other signature fault, bad syntax or a bare `ptr`, is refused as a
+    definition with that signature is: the bad-stored-signature diagnostic,
+    then the compile-reject rc 70. The first fault names the class, so
+    `( ptr -- box )` is this reject, not `E-CAST-FAM`.
   - Each side is one term (`E-CAST-ARITY`, 7129); a layout value wider than a
     cell is one term per cell.
   - A scope or region variable, a quantifier-bound variable, a scope, or a
@@ -531,8 +545,10 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
     quotation. An atom, or a pointer to one, on either side, and an atom in an
     introduction position of the destination, are `E-CAST-CLASS` (7130).
-  - A type variable or a linear type anywhere in either term, behind a pointer
-    or in any quotation row, is `E-CAST-LINEAR` (7137).
+  - A type variable or a linear type anywhere in either term, behind a
+    pointer, in any quotation row or in a layout's members, is
+    `E-CAST-LINEAR` (7137): a `PRODUCT` field `ptr lease` or a `STRUCTURE`
+    field `[ -- lease ]` carries the lease through the cast on either side.
   - A scalar-cell family, including a parametric `NEWTYPE` instance, in an
     introduction position belongs to its declaring package (`E-CAST-OWNER`,
     7135): `CAST: >SLOT ( n -- slot )` outside `package DOC` is refused.
@@ -540,16 +556,23 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
     is declared only in a package's private section (`E-CAST-MINT`, 7147).
 
   The introduction positions are where the destination hands out a value: the
-  term itself, a pointer's pointee (a read), a layout family's arguments (a
-  field projection) and a quotation's produced rows (a call), recursively. A
-  quotation's consumed rows flip the direction, so `( n -- [ extent-a -- ] )`
-  introduces no atom and `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A
-  cell family's arguments are phantom and introduce nothing. Owner and private
-  section are read from the engine's live namespace record and actual
-  definition wordlist; mutable `CHECKER-PACKAGE-*` mirror state is not
-  authority. Projections out (`fam -- n`, `ptr t -- n`, `[ … ] -- n`,
-  `box<ptr u8> -- n`) need neither the owner nor a private section: store the
-  projected identity and resolve it back through the owner's public words.
+  term itself, a pointer's pointee (a read), a layout family's arguments and
+  its members (every field and variant payload, instantiated over those
+  arguments: a field projection or a `MATCH` arm) and a quotation's produced
+  rows (a call), recursively. A layout's fields carry its rules down: after
+  `STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
+  is `E-CAST-MINT` outside a private section, and a layout whose field holds
+  another package's family is `E-CAST-OWNER` outside that family's package,
+  the layout's own package included. A layout that points at its own family
+  is read once per instance. A quotation's consumed rows flip the direction,
+  so `( n -- [ extent-a -- ] )` introduces no atom and
+  `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A cell family's arguments
+  are phantom and introduce nothing. Owner and private section are read from
+  the engine's live namespace record and actual definition wordlist; mutable
+  `CHECKER-PACKAGE-*` mirror state is not authority. Projections out
+  (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
+  need neither the owner nor a private section: store the projected identity
+  and resolve it back through the owner's public words.
 - Type, field and variant names are lowercase; generated and project words are
   uppercase.
 - **Raw storage never holds an address.** A `variable`, `create` or `constant`
@@ -1384,11 +1407,13 @@ the rule.
   space-terminated: `11 . 22 . cr` emits `11\n22\n\n`, so an assertion for two
   dotted numbers on one line never matches; digit emitters (`GT-U-TYPE`,
   `TS-N.`) build inline text.
-- **`private` is a convention until the package seals itself.** Any file may
-  reopen `package NAME private` and call its internals. The protection idiom at
-  the foot of a substrate file — `get-current prot-wid-add` — seals the
-  wordlists; after it a second file that reopens the package dies at load with
-  the package name as its whole message (exit 84). Two files that belong
+- **`private` is a convention until the package seals itself, or until the
+  capture does.** Any file may reopen `package NAME private` and call its
+  internals. The protection idiom at the foot of a substrate file —
+  `get-current prot-wid-add` — seals the wordlists; after it a second file that
+  reopens the package dies at load with the package name as its whole message
+  (exit 84). The native build seals every package the engine bakes the same
+  way when it captures the image (**Packages**). Two files that belong
   together are two packages with a one-way dependency, or one package that only
   the last file seals.
 - **An integer becomes an address or an execution token only through a private
@@ -1400,12 +1425,12 @@ the rule.
   integer from a typed source, an address from the distance
   `B NULL-PTR BYTE-VIEW -` and an execution token from `search-wl`. A
   type-variable pointee is `E-CAST-LINEAR` (7137): `( n -- ptr a )` would
-  forge a pointer to any nominal. The open hole is a layout's own `FIELD`
-  types, which the rule does not read: after
+  forge a pointer to any nominal. The rule reads a layout's own `FIELD` and
+  variant payload types as it reads its arguments, through nested layouts: after
   `STRUCTURE pfbox 0 FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
-  certifies at top level and `PFBOX:UNMAKE` hands out a `ptr u8`; a field of
-  another package's family hands out that family outside its owner the same
-  way.
+  is `E-CAST-MINT` at top level, since `PFBOX:UNMAKE` would hand out a
+  `ptr u8`, and certifies in a private section. A layout whose field holds
+  another package's family is `E-CAST-OWNER` outside that family's package.
   test/cast-suite.f runs the round trips; test/cast-negative-suite.f pins the
   refusals.
 - **A `DEFTYPE` a defining word hands out sits in the public section.** A

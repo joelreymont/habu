@@ -11,8 +11,10 @@ belong in the language core.
   The task authorizes bounded delegation without a separate user request.
   Keep small or tightly coupled work direct, with no fixed agent chain.
   Define each worker's ownership and acceptance checks before starting it.
-  Editing workers use isolated `.jj-ws/<task>` workspaces; the integrator owns
-  review, integration, verification and cleanup.
+  Editing workers use isolated `.jj-ws/<agent>-<task>` workspaces, named with
+  the lead's Herdr name: a workspace name is global to the repository, and
+  another agent's cleanup of its own task name forgets a same-named workspace.
+  The integrator owns review, integration, verification and cleanup.
 - Agents work independently in separate worktrees; there are no shared slots.
   Never pause other worktrees for local `jj` errors; back up and recover only
   your own.

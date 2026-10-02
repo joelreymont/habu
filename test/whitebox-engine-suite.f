@@ -10,7 +10,9 @@
 \ WHAT AN UNSEALED ENGINE IS, stated as facts a sealed one denies. The seal
 \ (src/core/internal-mark.f) marks every record with no checker-known effect
 \ DNAME-INT, and habu2.f then fails closed on that flag in exactly two
-\ dispatches: interpret-mode execution and tick.
+\ dispatches: interpret-mode execution and tick. The build also seals every
+\ package a sealed engine bakes (SEAL-PACKAGES there), so `package TOP-ROW`
+\ exits 84 on one and loads here.
 \
 \ USIGS is the engine's own signature arena (src/core/checker.f), a pre-hook
 \ global with no checker effect: the canonical sealed name, and the one
@@ -69,18 +71,32 @@ TRUSTED: NULL-CELL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;
 : CLASS-PROGRAM$ ( -- ptr u8 n )
    S\" ENGINE-INTERNAL:IMAGE-CLASS . cr\n" ;
 
-: CLASS-OF$ ( ptr u8 n -- ptr u8 n ) {: eng:ptr engu:n :}
+\ What a program read from stdin prints on engine `eng`; nothing if it fails.
+: OUTPUT-OF$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: src:ptr srcu:n eng:ptr engu:n :}
    eng engu >LEN
-   CLASS-PROGRAM$ >LEN
+   src srcu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0 <> if s" " exit then
    OUT outu LEN>N ;
 
+: CLASS-OF$ ( ptr u8 n -- ptr u8 n )
+   {: eng:ptr engu:n :}
+   CLASS-PROGRAM$ eng engu OUTPUT-OF$ ;
+
 : PRODUCT-CLASS$ ( -- ptr u8 n )
    PRODUCT-ARGS
    s" bin/hb" CLASS-OF$ ;
+
+\ The product's build seals every package it bakes (src/core/internal-mark.f
+\ SEAL-PACKAGES) and refuses this reopen with exit 84 (test/package-seal.f);
+\ this image's build stood that seal down on the same verdict.
+: REOPEN-OF$ ( -- ptr u8 n )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   S\" package TOP-ROW ;package 7 . cr\n" ENGINE-ID:PATH$ OUTPUT-OF$ ;
 
 \ THE CHILD FOLLOWS THIS ENGINE, AND AN OUTER VARIABLE CANNOT MOVE IT. Every
 \ tool a suite forks asks lib/engine-candidate.f which engine to run, and that
@@ -118,6 +134,9 @@ TRUSTED: NULL-CELL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;
 
    s" this image says it is the whitebox one" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T=
+
+   s" an engine package reopens on this image" T-LABEL
+   REOPEN-OF$ S\" 7\n\n" T$=
 
    \ The product engine is a separate binary that keeps its seal: this one is
    \ not it, and nothing here should ever be installed over it.

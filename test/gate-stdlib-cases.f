@@ -1552,6 +1552,10 @@ SUITE checker-surface
    test/checker-surface.f
 ;SUITE
 
+SUITE package-seal
+   test/package-seal.f
+;SUITE
+
 SUITE immediate-model
    test/immediate-model-test.f
 ;SUITE
@@ -1652,7 +1656,9 @@ SUITE outer-interpret
    test/outer-interpret.f
 ;SUITE
 
-SUITE main-argv
+\ main-argv reloads src/habu/main.f's source, which reopens ENGINE-MAIN; a product
+\ seals every package it ships, so the row runs on the engine that keeps them open.
+WHITEBOX-SUITE main-argv
    test/main-argv.f
 ;SUITE
 
@@ -2438,6 +2444,12 @@ WHITEBOX-SUITE c2-init-schema
 
 WHITEBOX-SUITE c2-init-record-schema
    test/c2-init-record-schema.f
+;SUITE
+
+\ The checker's rules for code written inside C2-MEM, on the engine that keeps
+\ engine packages open; a product seals C2-MEM, which c2-memory pins.
+WHITEBOX-SUITE c2-reopen-refusals
+   test/c2-reopen-refusals.f
 ;SUITE
 
 SUITE c2-init-accessors
