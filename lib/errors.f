@@ -1425,6 +1425,7 @@
 -9370 constant E-URI-SCHEME       \ a scheme other than `file`, compared without case, or none
 -9371 constant E-URI-AUTHORITY    \ after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path
 -9372 constant E-URI-ESCAPE       \ a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped
+-9373 constant E-URI-RELATIVE     \ a path to encode that does not start with `/`, so no file URI names it
 
 \ Content-Length framing (package CONTENT-LENGTH, lib/content-length.f): -9380..-9389.
 -9380 constant E-CONTENT-LENGTH-FIRST

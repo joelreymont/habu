@@ -1,4 +1,4 @@
-\ uri.f - file URIs, decoded to the paths they name.
+\ uri.f - file URIs, decoded to the paths they name, and the paths encoded.
 \
 \ FILE>PATH decodes a `file:` URI that names a file on this machine into the
 \ caller's span and answers the path's length. The scheme is `file` in any
@@ -20,6 +20,13 @@
 \ NUL or `/` is kept, and lib/fs.f refuses a path holding a NUL where it opens
 \ one (E-FS-PATH-UNSAFE).
 \
+\ PATH>FILE is its inverse: `file://`, an empty authority, then the absolute
+\ path with every byte but `/` and RFC 3986's unreserved ones - letters, digits
+\ and `-._~` - escaped as `%XX` in upper-case hex, so FILE>PATH gives back the
+\ path whatever bytes it holds. A path that does not start with `/` is
+\ E-URI-RELATIVE. The URI is measured before a byte is written: a span too
+\ small throws E-SPAN-CAPACITY and a negative path length E-SPAN-LENGTH.
+\
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require lib/errors.f
@@ -39,8 +46,9 @@ $23 constant HASH
 
 : SCHEME$ ( -- ptr u8 n ) s" file:" ;
 : MARKER$ ( -- ptr u8 n ) s" //" ;
+: PREFIX$ ( -- ptr u8 n ) s" file://" ;   \ what PATH>FILE writes before the path
 : LOCALHOST$ ( -- ptr u8 n ) s" localhost" ;
-: HEX-DIGITS ( -- ptr u8 n ) s" 0123456789abcdef" ;
+: HEX-DIGITS ( -- ptr u8 n ) s" 0123456789ABCDEF" ;
 
 : LOCAL? ( ptr u8 n -- bool )
    {: a:ptr u:n :}   \ an authority naming this machine
@@ -65,7 +73,7 @@ $23 constant HASH
 
 : NIBBLE ( n -- n )
    {: c:n :}    \ a hex digit's value; any other byte is E-URI-ESCAPE
-   HEX-DIGITS c ASCII-LOWER INDEX-OF MATCH option
+   HEX-DIGITS c ASCII-UPPER INDEX-OF MATCH option
       none OF E-URI-ESCAPE throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -98,7 +106,46 @@ $23 constant HASH
    {: a:ptr u:n out:ptr :}
    0 0 begin dup u < while a u out PUT repeat 2drop ;
 
+\ A path byte a file URI holds as it is: `/`, a letter, a digit or `-._~`.
+: KEPT? ( n -- bool )
+   {: c:n :}
+   c ASCII-UPPER {: up:n :}
+   up [char] A >= up [char] Z <= and
+   c [char] 0 >= c [char] 9 <= and or
+   c [char] - = or  c [char] . = or  c [char] _ = or  c [char] ~ = or
+   c SLASH = or ;
+
+: WIDTH ( n -- n )   \ the URI bytes a path byte takes
+   KEPT? if 1 else ESCAPE-WIDTH then ;
+
+: ENCODED-LEN ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   0 u 0 ?do a i + c@ WIDTH + loop ;
+
+\ Writes path byte c to out at `at`, and answers the index past it.
+: ENCODE-BYTE ( n ptr u8 n -- n )
+   {: c:n out:ptr at:n :}
+   c KEPT? if c out at + c! at 1+ exit then
+   PERCENT out at + c!
+   HEX-DIGITS drop c NIBBLE-BITS rshift + c@ out at + 1+ c!
+   HEX-DIGITS drop c $F and + c@ out at + 2 + c!
+   at ESCAPE-WIDTH + ;
+
 public
+
+\ The file URI naming an absolute path, written into the span; answers its
+\ length.
+: PATH>FILE ( ptr u8 n SPAN:span<u8> -- n )
+   {: a:ptr u:n s :}
+   u 0 < if E-SPAN-LENGTH throw then
+   u 0= if E-URI-RELATIVE throw then
+   a c@ SLASH <> if E-URI-RELATIVE throw then
+   PREFIX$ {: f:ptr fu:n :}
+   fu a u ENCODED-LEN + {: len:n :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:ptr :}
+   f out fu BYTE-COPY
+   fu u 0 ?do a i + c@ out rot ENCODE-BYTE loop drop
+   len ;
 
 : FILE>PATH ( ptr u8 n SPAN:span<u8> -- n )
    {: a:ptr u:n s :}

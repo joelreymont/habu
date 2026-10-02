@@ -13,7 +13,9 @@
 \ it knows the length and the module allocates nothing. Header lines are
 \ scanned in the reader's buffer; the body bytes the buffer already holds are
 \ copied out of it, and the rest are read straight into the caller's span by
-\ FD-IO:READ-EXACT.
+\ FD-IO:READ-EXACT. A read can take more than one message into the buffer, so
+\ a caller that polls the descriptor to learn whether input waits asks PENDING?
+\ first.
 \
 \ Two refusals are distinct from each other and from the clean end. End of file
 \ inside a header block or a body is E-CONTENT-LENGTH-TRUNCATED. A header block
@@ -330,6 +332,10 @@ public
    r POS@ k + r POS!
    -1 r WANT!
    want k > if r s want k REST then ;
+
+\ True while the buffer holds bytes nothing has taken: a message read from the
+\ descriptor already, which a poll of the descriptor would not show.
+: PENDING? ( ptr reader -- bool )  HELD 0 > ;
 
 \ One message: its header, then its body.
 : SEND ( fd ptr u8 n -- )

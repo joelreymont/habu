@@ -7,10 +7,22 @@
 \ with its capabilities and any other request with -32002. Running, it answers
 \ shutdown with null, initialize with -32600 and any other request with -32601,
 \ and it keeps the documents the client opens, changes and closes: Full sync,
-\ each change carrying the whole text, and positions in UTF-16 units. Closing a
-\ document publishes an empty diagnostics list for it. Shut down, it answers
-\ every request with -32600. Only a running server takes a notification other
-\ than exit; the rest are dropped, as unknown ones always are.
+\ each change carrying the whole text, and positions in UTF-16 units. Shut
+\ down, it answers every request with -32600. Only a running server takes a
+\ notification other than exit; the rest are dropped, as unknown ones always
+\ are.
+\
+\ A running server checks the documents and publishes their diagnostics
+\ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
+\ it waiting for a check, and a save leaves every open document waiting, since
+\ any of them may require the file saved. Input comes first: only when no
+\ message waits, in the reader's buffer or on stdin, is one waiting document
+\ checked, the next after the last one checked, and then input is looked at
+\ again. So a check always takes a document's newest text, the edits that came
+\ while another check ran are all applied before it, and the versions
+\ published for a document only rise. Closing a document publishes an empty
+\ list for it and leaves every open document waiting: any of them may require
+\ the file, whose diagnostics their checks left to it while it was open.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -38,6 +50,8 @@ require lib/json-read.f
 require lib/json-write.f
 require lib/json-rpc.f
 require tools/lsp-docs.f
+require tools/lsp-diag.f
+require tools/lsp-check.f
 
 package LSP
 using SPAN
@@ -77,6 +91,7 @@ TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
 TYPED-VARIABLE W JSON-WRITE:writer
 variable TEXT-LEN                         \ the last change's text length, -1 before one is read
+variable LAST-CHECKED                     \ the slot checked last, -1 before any
 
 : STATE! ( state -- )  0 STATE-BUF ! ;
 : STATE@ ( -- state )  0 STATE-BUF @ ;
@@ -133,23 +148,15 @@ variable TEXT-LEN                         \ the last change's text length, -1 be
          s" positionEncoding" s" utf-16" FIELD-S COMMA
          s" textDocumentSync" KEY OBJECT-START
             s" openClose" true FIELD-BOOL COMMA
-            s" change" FULL-SYNC FIELD-U
+            s" change" FULL-SYNC FIELD-U COMMA
+            s" save" KEY OBJECT-START
+               s" includeText" false FIELD-BOOL
+            OBJECT-END
          OBJECT-END
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
          s" name" s" habu" FIELD-S
       OBJECT-END
-   OBJECT-END
-   END SENT ;
-
-\ An empty diagnostics list for the document at this URI.
-: PUBLISH-EMPTY ( ptr u8 n -- )
-   {: u:ptr uu:n :}
-   WRITER
-   s" textDocument/publishDiagnostics" NOTIFY
-   OBJECT-START
-      s" uri" u uu FIELD-S COMMA
-      s" diagnostics" KEY ARRAY-START ARRAY-END
    OBJECT-END
    END SENT ;
 
@@ -261,9 +268,10 @@ variable TEXT-LEN                         \ the last change's text length, -1 be
 
 : DID-CLOSE ( ptr u8 n -- ptr u8 n )
    {: p:ptr pu:n :}
-   p pu DOC-URI {: u:ptr uu:n :}
-   u uu OPEN-SLOT DOC-CLOSE
-   u uu PUBLISH-EMPTY
+   p pu DOC-URI OPEN-SLOT {: slot:n :}
+   slot LSP-DIAG:RETRACT
+   slot DOC-CLOSE
+   DOC-DIRTY-ALL
    p pu ;
 
 \ The throws that leave a notification unapplied: the server says why and
@@ -271,6 +279,7 @@ variable TEXT-LEN                         \ the last change's text length, -1 be
 : IGNORABLE? ( n -- bool )
    {: code:n :}
    code E-LSP-PARAMS =  code E-LSP-NOT-OPEN = or  code E-JR-NUMBER = or
+   code E-PATH-RANGE = or
    code E-URI-LAST >= code E-URI-FIRST <= and or ;
 
 : GUARDED ( ptr u8 n ptr u8 n [ ptr u8 n -- ptr u8 n ] -- )
@@ -292,7 +301,8 @@ variable TEXT-LEN                         \ the last change's text length, -1 be
    RUNNING? 0= if exit then
    m mu s" textDocument/didOpen" NAMED? if m mu p pu [: DID-OPEN ;] GUARDED exit then
    m mu s" textDocument/didChange" NAMED? if m mu p pu [: DID-CHANGE ;] GUARDED exit then
-   m mu s" textDocument/didClose" NAMED? if m mu p pu [: DID-CLOSE ;] GUARDED then ;
+   m mu s" textDocument/didClose" NAMED? if m mu p pu [: DID-CLOSE ;] GUARDED exit then
+   m mu s" textDocument/didSave" NAMED? if DOC-DIRTY-ALL then ;
 
 \ ---- requests ----------------------------------------------------------------
 
@@ -350,16 +360,45 @@ variable TEXT-LEN                         \ the last change's text length, -1 be
    rc 0= if s" " 0 die then
    s" lsp: input ended before exit" rc die ;
 
+\ Whether stdin holds input, or its end, a poll that a signal cut short asked
+\ again.
+: POLLED? ( -- bool )
+   begin 0 >FD 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
+   0<> ;
+
+\ Whether a message waits: begun in the reader's buffer, or on stdin.
+: INPUT? ( -- bool )
+   INPUT PENDING? if true exit then
+   POLLED? ;
+
+\ The document to check now: the next one waiting after the last checked,
+\ while the server runs and no message waits.
+: DUE ( -- option<n> )
+   RUNNING? 0= if OPTION:NONE exit then
+   LAST-CHECKED @ DOC-NEXT-DIRTY MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF INPUT? if drop OPTION:NONE else OPTION:SOME then ENDOF
+   ;MATCH ;
+
+\ The next message, or the end of input.
+: TAKE-INPUT ( -- )
+   INPUT NEXT-LENGTH MATCH option
+      none OF ENDED ENDOF
+      some OF RECEIVE ENDOF
+   ;MATCH ;
+
 : SERVE ( -- )
    1 >FD FD-NOSIGPIPE!
    2 >FD FD-NOSIGPIPE!
    REPLY-BUF 1 BUF:N>BLEN BUF:INIT       \ the smallest buffer: replies grow it
+   LSP-DIAG:PREPARE
+   -1 LAST-CHECKED !
    construct state starting STATE!
    INPUT 0 >FD HEAD-BUF MAX-BODY BIND
    begin
-      INPUT NEXT-LENGTH MATCH option
-         none OF ENDED ENDOF
-         some OF RECEIVE ENDOF
+      DUE MATCH option
+         some OF dup LAST-CHECKED ! LSP-CHECK:RUN ENDOF
+         none OF TAKE-INPUT ENDOF
       ;MATCH
    again ;
 
