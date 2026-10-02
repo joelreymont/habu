@@ -173,10 +173,11 @@ create ERR IO-CAP allot
 
 : REJECTED-NAMED ( -- )
    s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;"
-   OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   {: src:ptr srcu:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    s" the hook's refusal ends the child with the hook's code" T-LABEL
-   oc HOOK-RC T-OUTCOME-EXITED=
+   src srcu OUT outu LEN>N ERR erru LEN>N oc HOOK-RC T-OUTCOME-EXITED=
    s" the native compiler's line names the definer the hook refused" T-LABEL
    ERR erru LEN>N  S\" ncomp: cannot compile DR-BAD\n" CONTAINS? TTRUE ;
 
