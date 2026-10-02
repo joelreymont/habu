@@ -38,6 +38,7 @@ blocks:
   - habu-bring-the-no-29c5dc0b
   - habu-retire-the-pre-a37792de
   - habu-deliver-standalone-native-a86d4699
+  - habu-compile-a-does-e4cd07c7
 ---
 
 Plan: [PLAN.md](../../PLAN.md) "Required result". Claim: unassigned.
