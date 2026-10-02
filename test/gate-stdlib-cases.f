@@ -2189,6 +2189,10 @@ SUITE closed-source
    test/closed-source-suite.f
 ;SUITE
 
+WHITEBOX-SUITE closed-unit
+   test/closed-unit-suite.f
+;SUITE
+
 WHITEBOX-SUITE engine
    test/engine-suite.f
 ;SUITE

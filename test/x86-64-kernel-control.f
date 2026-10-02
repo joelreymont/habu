@@ -18,6 +18,9 @@
 \                                        returns, then throws; an extent inside
 \                                        DATA throws E-STACK-UNGUARDED; each is
 \                                        caught
+\    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
+\                                        throw and an exactly full stack return
+\                                        restore the caller's stack and extent
 \    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
 \                                        run-in-stack refuse a zero quotation
 \                                        with `hb: unset quotation` on fd 2
@@ -169,6 +172,21 @@ STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
 : ON-DATA ( label -- label ) {: cb:label :}
    ROUTINE  cb PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,  ;ROUTINE ;
 
+: CLOSED-OF ( label -- label ) {: cb:label :}
+   ROUTINE  cb PUSH-XT,  s" source-unit-run" ROW,  ;ROUTINE ;
+
+\ Set the cursor to the physical top and write its final slot before return.
+\ The enclosing source-unit-run must detect this without attempting a push.
+: FILLS-EXTENT ( -- label )
+   ROUTINE
+   RCX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX DATA-REG STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RDX ASM-SINK ENC-ADD-RR
+   RAX 1 IMM,
+   RAX RCX CELL negate MEM-OFF ASM-SINK ENC-MOV-MR
+   DSTACK-REG RCX ASM-SINK ENC-MOV-RR
+   ;ROUTINE ;
+
 \ ( n -- ): exit WRONG-RC unless handed THROWN-CODE, then return clobbered.
 : REPORTS-BACK ( -- label )
    LBL {: fine:label :}
@@ -255,6 +273,20 @@ STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+: BUILD-SOURCE-UNIT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   7 PUSH,  NOTHING CLOSED-OF CALL,  7 EXPECT-POP,
+   7 PUSH,  5 PUSHES CLOSED-OF PUSH-XT,  s" catch" ROW,
+   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,  7 EXPECT-POP,
+   7 PUSH,  13 THROWS CLOSED-OF PUSH-XT,  s" catch" ROW,
+   13 EXPECT-POP,  7 EXPECT-POP,
+   7 PUSH,  FILLS-EXTENT CLOSED-OF PUSH-XT,  s" catch" ROW,
+   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,  7 EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 : BUILD-UNGUARDED ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    NOTHING PUSH-INSIDE-EXTENT,  s" run-in-stack" ROW,
@@ -331,6 +363,7 @@ public
    s" hb-x64-kernel-catch" TMP-PATH BUILD-CATCH
    s" hb-x64-kernel-finally" TMP-PATH BUILD-FINALLY
    s" hb-x64-kernel-run-in-stack" TMP-PATH BUILD-RUN-IN-STACK
+   s" hb-x64-kernel-source-unit" TMP-PATH BUILD-SOURCE-UNIT
    s" hb-x64-kernel-unguarded" TMP-PATH BUILD-UNGUARDED
    s" hb-x64-kernel-unset-execute" TMP-PATH BUILD-UNSET-EXEC
    s" hb-x64-kernel-unset-catch" TMP-PATH BUILD-UNSET-CATCH

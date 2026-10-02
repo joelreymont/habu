@@ -1670,6 +1670,39 @@ private
    EXIT-BOUNDS
    done LBL, ;
 
+\ source-unit-run ( xt -- ): the callback's whole execution uses the caller's
+\ cursor as its floor. No evaluator frame or SOURCE state changes. The saved
+\ cursor is compared before any data-stack push, including when the callback
+\ returns with the guarded extent exactly full.
+: SOURCE-UNIT-RUN, ( -- )
+   LBL LBL {: restore:label done:label :}
+   TASK-LIVE-GUARD,
+   RAX POP,  CALLABLE,
+   RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   DSP RSP RUN-DSP MOV-STORE,
+   RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RCX RSP RUN-BASE MOV-STORE,
+   RDX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,   RDX RSP RUN-CAP MOV-STORE,
+   RSI DSP ASM-SINK ENC-MOV-RR
+   RSI RCX ASM-SINK ENC-SUB-RR
+   RDX RSI ASM-SINK ENC-SUB-RR
+   DSP DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RDX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   RAX ASM-SINK ENC-CALL-REG
+   RCX RSP RUN-DSP MOV-LOAD,
+   RAX ZERO-REG,
+   DSP RCX ASM-SINK ENC-CMP-RR  C-E restore JCC,
+   RAX STACK-ABI:E-EVAL-RESIDUE >IMM32 ASM-SINK ENC-MOV-RI32
+   C-AE restore JCC,
+   RAX 70 >IMM32 ASM-SINK ENC-MOV-RI32
+   restore LBL,
+   RDX RSP RUN-BASE MOV-LOAD,  RDX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RDX RSP RUN-CAP MOV-LOAD,   RDX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   DSP RCX ASM-SINK ENC-MOV-RR
+   RSP RUN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   THROW,
+   done LBL, ;
+
 \ die ( ptr u8 n n -- ): the message and LF on fd 2 when its length is
 \ positive, then the exit hook, then the exit. The rc waits on the machine
 \ stack, and the LF is a cell pushed there for its write. The hook's cell is
@@ -1715,6 +1748,7 @@ public
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" evaluate" REFUSE
    s" evaluate-closed" REFUSE
    s" create" REFUSE

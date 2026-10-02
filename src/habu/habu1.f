@@ -2948,6 +2948,36 @@ public
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
+\ source-unit-run ( xt -- ): close one whole callback at the caller's cursor.
+\ Unlike evaluate-closed, this does not enter an evaluator frame or change
+\ SOURCE. A callback that throws unwinds through the caller's existing catch;
+\ a clean callback must return to the saved cursor. Compare before any data
+\ stack push so a callback that fills the physical extent reports residue.
+: B-SOURCE-UNIT-RUN ( -- )
+   LBL LBL {: restore:label done:label :}
+   B-TASK-LIVE-GUARD
+   A G-POP  BCALLABLE
+   SP SP 32 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
+   XDS SP 16 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   9 BLR,
+   11 SP 16 LDR,
+   9 0 MOVZ,
+   XDS 11 CMP,  C-EQ restore BCOND,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
+   C-CS restore BCOND,
+   9 70 MOVZ,
+   restore LBL,
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 11 0 ADDI,  SP SP 32 ADDI,
+   9 done CBZ,
+   9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
 : BFINALLY ( -- )
@@ -3618,7 +3648,8 @@ public
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
-   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
+   s" source-unit-run" ['] B-SOURCE-UNIT-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L

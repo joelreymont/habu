@@ -339,6 +339,10 @@ EPRIM: unit-compile-run
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ owns the protected unit hook for one source invocation
+EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
+ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
+EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
+ETRUSTED-ONLY!
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM;
 EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM;

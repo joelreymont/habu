@@ -1633,6 +1633,31 @@ HB-TARGET-LINUX? [IF]
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
+\ Mirror of habu1.f B-SOURCE-UNIT-RUN: direct callback with a closed floor.
+: B-SOURCE-UNIT-RUN ( -- )
+   LBL LBL {: restore done :}
+   A G-POP  BCALLABLE
+   SP SP 32 SUBI,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
+   XDS SP 16 STR,
+   13 XDS 11 SUB,  12 12 13 SUB,
+   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   9 BLR,
+   11 SP 16 LDR,
+   9 0 MOVZ,
+   XDS 11 CMP,  C-EQ restore BCOND,
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
+   C-CS restore BCOND,
+   9 70 MOVZ,
+   restore LBL,
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 11 0 ADDI,  SP SP 32 ADDI,
+   9 done CBZ,
+   9 G-PUSH  BTHROW
+   done LBL, ;
+
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 \ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
 \ result row survives a clean run; the cleanup runs outside the body's handler,
@@ -1968,7 +1993,8 @@ HB-TARGET-LINUX? [IF]
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L
-   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM ;
+   s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
+   s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-INT-WID FPRIM-WID ;
 
 : EMIT-ENGINE-PRIMS ( -- )
    s" run-in-stack" ['] BRUNSTACK FPRIM-L
