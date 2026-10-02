@@ -48,7 +48,7 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 94 constant E-AMBIGUOUS
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
+E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
 
 \ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package

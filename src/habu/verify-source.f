@@ -224,12 +224,11 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 \ silently missing, and every tag after the first gap shifted, which is exactly
 \ the kind of quiet registry divergence the parity suite exists to prevent.
 \
-\ The code is the declaration layer's own "declaration too long" (sumtype.f
-\ E-TDECL-CAP), re-declared locally the way structure-decl.f and enum-decl.f
-\ re-declare their reject codes, because that is precisely the condition: this
+\ The code is the declaration layer's own "declaration too long", sumtype.f
+\ E-TDECL-CAP read by name, because that is precisely the condition: this
 \ source is too long for the path that carries it. Source that trips this bound
 \ also trips the engine's TDECL-CAP, so both paths answer the same code.
-7118 constant E-VS-BODY-CAP
+TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 
 : BODY-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
    BODY-U @ u + 1 + BODYBUF-CAP > IF E-VS-BODY-CAP throw THEN

@@ -110,9 +110,10 @@ private
 
 public
 
-7122 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
-7123 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
-7124 constant E-PF-OWNER      \ invalid family / optional-variant ownership
+\ 7122-7124 are layout-buffer.f's E-LAYOUT-BOUNDS / -UNBOUND / -CEIL.
+7148 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
+7149 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
+7150 constant E-PF-OWNER      \ invalid family / optional-variant ownership
 7125 constant E-PF-NAME       \ reserved field tail
 7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
 7127 constant E-PF-LAYOUT     \ invalid field layout metadata / policy
@@ -2462,8 +2463,10 @@ public
 
 package TYPE-NAME
 
-7107 constant E-SYNTAX
-7110 constant E-RESERVED
+\ sumtype.f's TYPE-DECL codes under their own names: that package loads after
+\ this one, so the same (code, name) pair is registered here first.
+7107 constant E-TDECL-SYNTAX
+7110 constant E-TDECL-NAME
 
 public
 
@@ -2533,10 +2536,10 @@ public
    a u RESERVED? ;
 
 : VARIANT-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF E-SYNTAX throw THEN
+   u 0= IF E-TDECL-SYNTAX throw THEN
    a u TF-REQUIRE-CANON
-   a u RESERVED? IF E-RESERVED throw THEN
-   a u FAMILY-TAKEN? IF E-RESERVED throw THEN ;
+   a u RESERVED? IF E-TDECL-NAME throw THEN
+   a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
 
 private
 get-current prot-wid-add

@@ -151,9 +151,9 @@ TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 7117 constant C-RECURSIVE   \ sumtype.f E-TDECL-RECURSIVE
 7118 constant C-CAP         \ sumtype.f E-TDECL-CAP
 7119 constant C-DERIVE      \ sumtype.f E-TDECL-DERIVE
-7122 constant C-PF-ID       \ type-family.f E-PF-ID
-7123 constant C-PF-TX       \ type-family.f E-PF-TX
-7124 constant C-PF-OWNER    \ type-family.f E-PF-OWNER
+7148 constant C-PF-ID       \ type-family.f E-PF-ID
+7149 constant C-PF-TX       \ type-family.f E-PF-TX
+7150 constant C-PF-OWNER    \ type-family.f E-PF-OWNER
 7125 constant C-PF-NAME     \ type-family.f E-PF-NAME
 7126 constant C-PF-SCHEMA   \ type-family.f E-PF-SCHEMA
 7127 constant C-PF-LAYOUT   \ type-family.f E-PF-LAYOUT

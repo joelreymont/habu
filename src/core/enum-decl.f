@@ -70,25 +70,23 @@ using TYPE-DECL
 
 package ENUM-DECL
 
-\ --- named reject codes. Re-declared package-locally (values mirror sumtype.f
-\ E-TDECL-* 7107/7108/7109/7110/7116/7119 and type-family.f E-TFAM-CASE 7101),
-\ exactly as structure-decl.f and decl-event.f re-declare them, because the global
-\ pre-hook constants that own them are removed by the type-DSL cutover and do not
-\ survive the checked engine's fixpoint self-rebuild. E-TFAM-DUP (family/variant
-\ duplicate, 7102) and the field record's own E-PF-NAME / E-TFAM-DUP / E-TFAM-CASE
-\ / E-PF-SCHEMA name+schema gate codes are raised by TFAM-DECL, SUMV-ADD, and the
-\ field-event path and pass through unchanged.
-7107 constant E-SYNTAX      \ malformed: missing name/terminator, mixed mode, header/variant/field out of place
-7108 constant E-ARITY       \ arity token is not a small decimal in [0, cap]
-7109 constant E-PAYLOAD     \ unresolved / unknown field type
-7110 constant E-NAME        \ reserved or colliding family name
-7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
-7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
-7101 constant E-CASE        \ family name is not a lowercase canonical tail
-7102 constant E-DUP         \ duplicate family, variant, or field tail (type-family.f
-                            \ E-TFAM-DUP, raised by TFAM-DECL / SUMV-ADD / the field-event
-                            \ path; named here only so a reason can be armed before those
-                            \ calls)
+\ --- named reject codes: local names for the shared declaration codes, read at
+\ load time from their owners, sumtype.f E-TDECL-* and type-family.f E-TFAM-*.
+\ A post-hook checked body cannot name a pre-hook constant on a from-source
+\ build, but a top-level read can, and the alias leaves each code one numeric
+\ owner (tools/error-code-lint.f). The field record's E-PF-NAME / E-TFAM-DUP /
+\ E-TFAM-CASE / E-PF-SCHEMA name+schema gate codes are raised by TFAM-DECL,
+\ SUMV-ADD, and the field-event path and pass through unchanged.
+E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/terminator, mixed mode, header/variant/field out of place
+E-TDECL-ARITY constant E-ARITY      \ arity token is not a small decimal in [0, cap]
+E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
+E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
+E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
+E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
+E-TFAM-DUP constant E-DUP           \ duplicate family, variant, or field tail, raised by
+                                    \ TFAM-DECL / SUMV-ADD / the field-event path; named here
+                                    \ only so a reason can be armed before those calls
 
 110 constant ASCII-N
 102 constant ASCII-F

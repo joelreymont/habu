@@ -57,7 +57,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 \ The codes the refused cases expect. They live in the package because a global
 \ `E-*` constant is lib/errors.f's surface alone.
-7145 constant E-SHADOW-ARITY   \ E-SHADOWED-ARITY: src/core/checker.f SHADOW-ARITY-CK
+E-SHADOWED-ARITY constant E-SHADOW-ARITY   \ src/core/checker.f SHADOW-ARITY-CK
 70 constant E-REJECT           \ E-UNDEFINED: the checker's compile reject (habu2.f RC-REJECT)
 
 : REPORT ( -- )

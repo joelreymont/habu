@@ -19,8 +19,8 @@ package GENERATED-DECLARATION-TXN-TEST
 -7192 constant E-BODY
 -7193 constant E-DIAGNOSTIC
 70 constant E-GENERATED-REJECT
-7161 constant E-EVENT-TX
-7175 constant E-GENERATED-DICTIONARY-CAP
+7161 constant E-DEV-TX            \ src/core/decl-event.f's, private there
+7175 constant E-DICTIONARY-CAP    \ src/core/generated-declaration-dictionary.f's, private there
 
 101 constant PARTICIPANT-A
 102 constant PARTICIPANT-B
@@ -1246,7 +1246,7 @@ INSTALL-GROW-NESTED
    s" GDEVALFAIL-MAKE ( n -- gdevalfail ) GDEVALFAIL:MAKE"
       ASSERT-NO-STALE-CONSTRUCTOR
    ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
-   [: TRY-EVENT-CURRENT ;] catch E-EVENT-TX T=
+   [: TRY-EVENT-CURRENT ;] catch E-DEV-TX T=
 
    \ The next real declaration must consume the exact rolled-back field/event
    \ ids. Public committed reflection therefore detects provisional leaks
@@ -1294,7 +1294,7 @@ INSTALL-GROW-NESTED
    DICT-CAP ndict@ - {: room:n :}
    RECORD-NATIVE-HIGHWATERS
    room CAPACITY-PREFLIGHT-CATCH 0 T=
-   room 1 + CAPACITY-PREFLIGHT-CATCH E-GENERATED-DICTIONARY-CAP T=
+   room 1 + CAPACITY-PREFLIGHT-CATCH E-DICTIONARY-CAP T=
    ASSERT-NATIVE-HIGHWATERS
    ASSERT-PRODUCTION-IDLE ;
 

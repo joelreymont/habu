@@ -68,12 +68,11 @@ create DIAG-BUF $2000 allot
 
 public
 
-\ The checker's own error constants are prefix-internal and invisible to later
-\ sources, so the code is named here with its checker spelling, the same way
-\ test/using-test.f names 7141.
-7142 constant E-UNBALANCED     \ E-USING-UNBALANCED: `;using` with no using open in a replay
+\ The checker's own error constants, read at load time under local names, the
+\ way test/using-test.f reads E-USING-SHADOW-GLOBAL.
+E-USING-UNBALANCED constant E-UNBALANCED   \ `;using` with no using open in a replay
 
-7144 constant E-AMBIGUOUS      \ two active imported publics claim the same tail
+E-USING-AMBIGUOUS constant E-AMBIGUOUS     \ two active imported publics claim the same tail
 
 \ One replay at neutral top level, with the checker's diagnostics captured rather
 \ than printed: several cases reject deliberately and their text belongs to the

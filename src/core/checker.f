@@ -20726,8 +20726,8 @@ package CHECKER-REG
 $4842554E49543031 constant UNIT-MAGIC
 1 constant UNIT-VERSION
 6 cells constant UNIT-HEADER
+7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
 7160 constant E-UNIT-STATE
-7161 constant E-UNIT-FORMAT
 
 variable UNIT-MARKED
 variable UNIT-SYMN   variable UNIT-UEND   variable UNIT-NEND

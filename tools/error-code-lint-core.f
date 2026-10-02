@@ -1,12 +1,12 @@
 \ error-code-lint-core.f - E- throw-code collision lint.
 \
-\ Negative error codes are one global throw namespace: a thrown code is
-\ ambiguous the moment two different E- names claim it. Three live collisions
-\ motivated this lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at
-\ -5003, E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan
-\ walks tracked .f/.fs sources under src/, lib/, tools/, and test/ for
-\ numeric `constant E-*` claims. Positive checker codes above 255 are checked
-\ for collisions between different E- names in their owning file.
+\ Error codes are one global throw namespace: a thrown code is ambiguous the
+\ moment two different E- names claim it. Three live collisions motivated this
+\ lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at -5003,
+\ E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan walks
+\ tracked .f/.fs sources under src/, lib/, tools/, and test/ for
+\ `-NNNN constant E-*` and `NNNN constant E-*` claims and flags any numeric code
+\ owned by two different E- names.
 \
 \ Which bytes are code is decided by the one shared source lexer, package
 \ LINT-LEX in tools/lint/source-lex.f. It consumes `\` line comments, `( ... )`
@@ -22,21 +22,31 @@
 \ later claim in that source while still printing `0 finding(s)`.
 \
 \ Scope and allowances (each deliberate):
-\ - Positive codes 0..255 are sysexits-style process exit statuses
-\   (64/70/74/76...), shared across tools by design. Higher positive codes
-\   are checker diagnostics, and different owning files may reuse a number.
-\ - Negative `E-*-FIRST` / `E-*-LAST` names are range sentinels
-\   (lib/errors.f blocks). They alias their block's boundary member codes.
+\ - A code is the literal's value as a signed cell, whatever its spelling:
+\   `$FFFFFFFFFFFFDCD7 constant E-X` claims -9001, and `-0` is 0.
+\ - Exit statuses are not claims: a value from 0 to EXIT-MAX is one the kernel
+\   can return as a process exit status, and an uncaught throw of it exits with
+\   it (src/habu/driver-io.f DRV-FAIL), so E-USAGE 64 or a mirrored engine rc
+\   means the same thing in every tool, shared by design. A positive value above
+\   EXIT-MAX can never be an exit status; it is a throw identity held to the same
+\   uniqueness and reserved ranges as a negative one.
+\ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (lib/errors.f blocks):
+\   they alias their block's boundary member codes, not new throw identities.
 \   Each FIRST/LAST pair (matched by shared stem, e.g. E-FS-FIRST/E-FS-LAST) also
-\   reserves the inclusive negative [FIRST,LAST] code range for its file.
-\   Positive FIRST/LAST names are ordinary claims.
-\   A negative E- code claimed INSIDE another file's reserved range is a foreign
+\   reserves the inclusive [FIRST,LAST] code range for the file that declares it.
+\   An E- code claimed INSIDE another file's reserved range is a foreign
 \   claim and is flagged, even before the owning block mints that exact member.
 \ - Identical (code, name) re-registrations are allowed (re-export shims; the
 \   same constant reachable through two entry files), inside another file's
 \   reserved range too: the owner holds the identity and the copy adds no
 \   second name (src/habu/stack-abi.f E-STACK-UNGUARDED for the engine
-\   emitters that compile before lib/ exists).
+\   emitters that compile before lib/ exists; src/core/type-family.f TYPE-NAME,
+\   which loads before sumtype.f's TYPE-DECL).
+\ - `E-OWNER constant E-LOCAL` is an alias, not a claim: the value is read from
+\   the owning constant, so the owner's literal stays the code's one claim. A
+\   file that needs another's code under its own name reads it this way when
+\   the owner is loaded and visible (src/core/enum-decl.f), and re-registers
+\   the identical pair when it is not.
 \ - bootstrap/ is not walked: the frozen recovery seed is a pinned corpus in
 \   its own process space; renumbering it would break the audited seed.
 \
@@ -78,12 +88,15 @@ public
 
 private
 
+\ The largest status the kernel can return from a process: a positive value up to
+\ it doubles as an exit status, a larger one is only ever a throw code.
+255 constant EXIT-MAX
+
 2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims; the table is sized above what it holds, and a full one dies rather than certifying a partial ledger
 1024 constant MAX-RES
 48 constant ZERO-C
 36 constant DOLLAR-C
 45 constant MINUS-C
-255 constant MAX-EXIT-STATUS
 
 \ One file at a time, in a slab sized from the file. It was a fixed arena, and an
 \ arena doubled once already for src/core/checker.f is the shape tools/lint/text.f
@@ -154,7 +167,7 @@ variable JX
       DIGITS ND# @ + c@ emit
    repeat ;
 
-\ signed decimal (codes are negative)
+\ signed decimal
 : EMIT-N ( n -- )
    dup 0 < if MINUS-C emit 0 swap - then
    EMIT-U ;
@@ -201,10 +214,16 @@ variable JX
    ok 0= if 0 LINT-FALSE exit then
    0 v - LINT-TRUE ;
 
+\ a literal's code: its value as a signed cell, spelled with a minus or not
 : CODE? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u NEG? {: code:n negative:bool :}
    negative if code LINT-TRUE exit then
    a u MAG? ;
+
+\ a code that is no exit status: any negative value, or a positive one above
+\ EXIT-MAX
+: THROW-CODE? ( n -- bool ) {: code:n :}
+   code 0 <  code EXIT-MAX > or ;
 
 \ ---- claim table ------------------------------------------------------------
 : SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -337,7 +356,7 @@ variable JX
       1+
    repeat ;
 
-\ token k as a numeric `constant E-NAME` claim
+\ token k as a `<code> constant E-NAME` claim
 : SCAN-CLAIM ( n -- ) {: k:n :}
    k 1+ NEXT-WORD {: ki:n :}
    ki LINT-LEX:COUNT >= if exit then
@@ -349,13 +368,14 @@ variable JX
    k LINT-LEX:TOKEN CODE? {: code:n numeric:bool :}
    numeric 0= if exit then
    na nu SENTINEL? if
-      \ Only negative values reserve a range. A spelled -0 clears a bound.
-      code 0 < if code na nu RES+ exit then
+      \ A sentinel bounds a range where a claim could stand. A spelled -0 clears
+      \ a bound.
+      code THROW-CODE? if code na nu RES+ exit then
       code 0= if
          k LINT-LEX:TOKEN NEG? if na nu RES+ exit then drop
       then
    then
-   code 0 < code MAX-EXIT-STATUS > or if
+   code THROW-CODE? if
       code na nu INTERN N>NAME PATH$ INTERN N>FILE CLAIM+
    then ;
 
@@ -411,8 +431,7 @@ variable JX
 
 : COLLIDE? ( n n -- bool ) {: i:n j:n :}
    i CODE@ j CODE@ =
-   i NAME@ j NAME@ NAME= 0= and
-   i CODE@ 0 < i OWNER@ j OWNER@ FILE= or and ;
+   i NAME@ j NAME@ NAME= 0= and ;
 
 \ one finding per colliding claim pair
 : FINDINGS ( -- )
@@ -569,8 +588,7 @@ public
 : LEDGER ( -- )
    SHOW-ON  WALK  SUMMARY ;
 
-\ gate entry (enforcing): negative codes collide globally; positive checker
-\ codes above 255 collide within one file
+\ gate entry (enforcing): any code claimed by two different E- names fails
 : STRICT ( -- )
    LEDGER
    BAD @ 0 > if 1 throw then ;

@@ -103,7 +103,7 @@ public
 \ The two codes the cases below expect. They live in the package because a
 \ global `E-*` constant is lib/errors.f's surface alone.
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-7143 constant E-STALE           \ E-TRUST-UNRESOLVED: the row names no word here
+E-TRUST-UNRESOLVED constant E-STALE   \ the row names no word here
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

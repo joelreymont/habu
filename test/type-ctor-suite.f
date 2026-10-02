@@ -887,8 +887,8 @@ s" EXPLICIT-CTOR-FAMILY" type cr
 \ ---------------------------------------------------------------------------
 package CTOR-PAYPROV-TEST
 
-7132 constant E-COMMITTED-PAYLOAD   \ type-family.f E-TFAM-PAYLOAD
-7133 constant E-PROVIDER            \ sumtype.f E-TDECL-PROVIDER
+TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
+7133 constant E-TDECL-PROVIDER      \ sumtype.f's, private there
 \ sumtype.f TDPLAN-PREFLIGHT-DEFINITIONS: a generated definition the checker
 \ refused, which is how a whole generated declaration is rejected.
 70   constant E-PREFLIGHT
@@ -1122,7 +1122,7 @@ public
 : FLIP-CALLS ( -- n ) FLIP-N-CALLS @ ;
 : STALE-CODE ( -- n ) [: STALE-BODY ;] catch ;
 : OVERRUN-CODE ( -- n ) [: OVERRUN-BODY ;] catch ;
-: PROVIDER-CODE ( -- n ) E-PROVIDER ;
+: PROVIDER-CODE ( -- n ) E-TDECL-PROVIDER ;
 : COMMITTED-PAYLOAD-CODE ( -- n ) E-COMMITTED-PAYLOAD ;
 
 \ the live probe: one candidate frame, one event transaction, both renders, then

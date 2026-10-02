@@ -20,7 +20,7 @@ using TYPE-DECL
 
 $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
-7121 constant E-LAYOUT-BUFFER
+E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
 7123 constant E-LAYOUT-UNBOUND    \ deferred column accessed before its NAME-BIND
 7124 constant E-LAYOUT-CEIL       \ deferred bind past the generous per-column sanity ceiling

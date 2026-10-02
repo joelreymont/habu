@@ -36,7 +36,7 @@ require lib/string.f
 package PERF-MAP
 private
 
-7401 constant E-IO
+74 constant E-IO                 \ EX_IOERR: the exit status when stdin cannot be read
 $10000 constant IN-CAP           \ one read chunk
 4096 constant LINE-CAP
 $4000 constant OUT-CAP           \ one rewritten line: LINE-CAP bytes plus a name and an offset

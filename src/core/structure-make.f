@@ -64,14 +64,13 @@ using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-\ --- named reject codes (7101-7128 = tfam/schema/pf; 7161-7164 = decl-event;
-\ 7161/7172/7173 are the event token, field-range, and family-scope rejects for
-\ provisional reads). E-SM-DUP re-declares the
-\ field record's duplicate code (E-TFAM-DUP 7102) by value: that pre-hook global
-\ is not visible from a post-hook checked body, so it is re-stated here rather
-\ than referenced — the src/core/decl-event.f idiom for E-DEV-ARITY. 7190-7191
-\ are this module's own.
-7102 constant E-SM-DUP        \ MAKE/UNMAKE already generated (mirrors E-TFAM-DUP)
+\ --- named reject codes (7101-7128 and 7148-7150 = tfam/schema/pf; 7161-7164 =
+\ decl-event; 7161/7172/7173 are the event token, field-range, and family-scope
+\ rejects for provisional reads). E-SM-DUP names the field record's duplicate
+\ code, E-TFAM-DUP, read at load time: that pre-hook constant is not visible
+\ from a post-hook checked body, but a top-level read is — the
+\ src/core/decl-event.f idiom for E-DEV-ARITY. 7190-7191 are this module's own.
+E-TFAM-DUP constant E-SM-DUP  \ MAKE/UNMAKE already generated
 7190 constant E-SM-FAM        \ family id is not a live, public, product-kind family
 7191 constant E-SM-EMPTY      \ product family declares no fields
 

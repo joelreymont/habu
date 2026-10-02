@@ -15,8 +15,8 @@ package DYNAMIC-STORAGE
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
-7121 constant E-SIZE
-7122 constant E-BOUNDS
+E-LAYOUT-BUFFER constant E-SIZE    \ src/core/layout-buffer.f's size and bounds refusals
+E-LAYOUT-BOUNDS constant E-BOUNDS
 7138 constant E-MAP
 7139 constant E-UNMAP
 

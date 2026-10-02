@@ -26,10 +26,10 @@ require test/checker-assert.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 
-\ named storage-boundary codes (mirrors src/core/layout-buffer.f); the checker
+\ named storage-boundary codes, src/core/layout-buffer.f's; the checker
 \ refuses a declaration with src/core/checker.f CHECKER-REJECT-RC
-7121 constant E-STORAGE
-7122 constant E-STORAGE-BOUNDS
+E-LAYOUT-BUFFER constant E-STORAGE
+E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
 78 constant E-STORAGE-DUP
 
 \ ---- families under test ----------------------------------------------------
