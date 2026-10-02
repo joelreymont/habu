@@ -6,6 +6,7 @@ require lib/fs-mutate.f
 require lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package NAMED-CELLS-SUITE
 
@@ -52,9 +53,9 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
       path pathu CHILD.
       s" stdin:" type cr source size type cr
       s" outcome kind (exit=1 signal=2): " type CHILD-KIND @ .
-      s" wanted exit: " type code . s" actual code: " type CHILD-CODE @ .
-      s" stdout bytes/capacity: " type OUT-U @ . $4000 . OUT OUT-U @ type cr
-      s" stderr bytes/capacity: " type ERR-U @ . $4000 . ERR ERR-U @ type cr
+      s" wanted exit: " type code FMT:.INT s"  actual code: " type CHILD-CODE @ FMT:.INT cr
+      s" stdout bytes/capacity: " type OUT-U @ FMT:.INT s" /" type $4000 FMT:.INT cr OUT OUT-U @ type cr
+      s" stderr bytes/capacity: " type ERR-U @ FMT:.INT s" /" type $4000 FMT:.INT cr ERR ERR-U @ type cr
    then
    CHILD-KIND @ 1 T= CHILD-CODE @ code T= ;
 : LIVE ( -- ) OUT OUT-U @ s" named-cells: live" CONTAINS? TTRUE ;

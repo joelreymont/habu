@@ -30,6 +30,7 @@ require test/checker-assert.f
 require lib/string.f
 require lib/process.f
 require lib/test/subject.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The harness owns a package because this suite shares an in-process slice with
 \ others that carry the same test vocabulary; a global `T=` here is a duplicate
@@ -55,7 +56,7 @@ public
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" trust-row-test: expected " type want . s" got " type got . cr
+      T-FAIL s" trust-row-test: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
       #FAIL @ 1 + #FAIL !
    then ;
 

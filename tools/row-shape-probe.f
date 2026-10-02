@@ -38,6 +38,7 @@ require lib/prelude.f
 require lib/errors.f
 require lib/argv.f
 require src/compiler/native/dict.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package ROW-SHAPE-PROBE
 
@@ -153,11 +154,11 @@ variable RS-PAST       \ a run claiming more terms than the row has
 \ claims instead of believing it. A name the checker holds no effect for in THIS
 \ scope says so rather than being counted as anything.
 : SHOW-ROW ( ptr u8 n bool -- ) {: a u:n din:bool :}
-   din if ."   din  t=" EFFECT-DIN-N . ." c=" EFFECT-DIN-CELLS .
-   else ."   dout t=" EFFECT-DOUT-N . ." c=" EFFECT-DOUT-CELLS . then
-   ." slots:"
+   din if ."   din  t=" EFFECT-DIN-N FMT:.INT ."  c=" EFFECT-DIN-CELLS FMT:.INT
+   else ."   dout t=" EFFECT-DOUT-N FMT:.INT ."  c=" EFFECT-DOUT-CELLS FMT:.INT then
+   ."  slots:"
    din if EFFECT-DIN-N else EFFECT-DOUT-N then 0 ?do
-      i din RS-SLOT .
+      space i din RS-SLOT FMT:.INT
    loop
    cr ;
 
@@ -183,19 +184,19 @@ public
       1+
    repeat drop
    ." -- counts ---------------------------------------------------" cr
-   ."   records            " ndict@ . cr
-   ."   retired            " N-RETIRED @ . cr
-   ."   asked              " N-SEEN @ . cr
-   ."   effects held       " N-EFFECT @ . cr
-   ."   rows examined      " N-ROWS @ . cr
-   ."     exact (t = c)    " N-EXACT @ . cr
-   ."     wide, one term   " N-WIDE-1 @ . cr
-   ."     wide, many terms " N-WIDE-N @ . cr
-   ."     unsizeable       " N-UNSIZED @ . cr
+   ."   records            " ndict@ FMT:.INT cr
+   ."   retired            " N-RETIRED @ FMT:.INT cr
+   ."   asked              " N-SEEN @ FMT:.INT cr
+   ."   effects held       " N-EFFECT @ FMT:.INT cr
+   ."   rows examined      " N-ROWS @ FMT:.INT cr
+   ."     exact (t = c)    " N-EXACT @ FMT:.INT cr
+   ."     wide, one term   " N-WIDE-1 @ FMT:.INT cr
+   ."     wide, many terms " N-WIDE-N @ FMT:.INT cr
+   ."     unsizeable       " N-UNSIZED @ FMT:.INT cr
    ."   of the exact rows:" cr
-   ."     hold a bundle    " N-BUNDLED @ . cr
-   ."     two adjacent     " N-ADJACENT @ . cr
-   ."     run past the row " N-PAST @ . cr
+   ."     hold a bundle    " N-BUNDLED @ FMT:.INT cr
+   ."     two adjacent     " N-ADJACENT @ FMT:.INT cr
+   ."     run past the row " N-PAST @ FMT:.INT cr
    ARGV:POS# 0= if exit then
    ." -- the rows named on the command line -----------------------" cr
    0 begin dup ARGV:POS# < while

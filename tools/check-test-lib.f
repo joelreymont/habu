@@ -38,6 +38,7 @@ require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CHECK-TEST
 
@@ -3726,7 +3727,7 @@ variable REQ-U
 \ propagating untouched.
 : CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type
-   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS . cr
+   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS FMT:.INT cr
    E-PROC-TIMEOUT throw ;
 
 : CASE-THREW ( ptr u8 n n -- ) {: label:ptr labelu:n rc:n :}
@@ -3739,7 +3740,7 @@ variable REQ-U
    q catch {: rc:n :}
    label labelu rc CASE-THREW
    s" PASS: " type label labelu type
-   s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
+   s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms)" type cr ;
 
 \ --- package-owned caller: the checker's replay scopes must start neutral ---
 \

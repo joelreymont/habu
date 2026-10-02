@@ -23,6 +23,7 @@ require tools/gate-json-assert-core.f
 require lib/argv.f
 require tools/repair-packet-core.f
 require test/golden.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package REPAIR-PACKET-TEST
 
@@ -166,10 +167,10 @@ create PACKET-BUF FS-PATH-CAP allot
    s" repair-packet-test failure" type cr
    s" case: " type LABEL$ type cr
    s" program: " type ran ranu type cr
-   s" expected exit: " type expect . cr
-   s" code: " type code . cr
-   s" stdout bytes: " type outu . s" / " type CAPTURE-CAP . cr
-   s" stderr bytes: " type erru . s" / " type CAPTURE-CAP . cr
+   s" expected exit: " type expect FMT:.INT cr
+   s" code: " type code FMT:.INT cr
+   s" stdout bytes: " type outu FMT:.INT s"  / " type CAPTURE-CAP FMT:.INT cr
+   s" stderr bytes: " type erru FMT:.INT s"  / " type CAPTURE-CAP FMT:.INT cr
    s" stdout:" type cr
    OUT outu type
    s" stderr:" type cr

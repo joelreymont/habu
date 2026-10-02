@@ -47,6 +47,7 @@ require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -428,7 +429,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
-   rcn 0 <> if s" repl rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 <> if s" repl rc: " type rcn FMT:.INT cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;

@@ -43,6 +43,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/argv.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using TFAM
 using TYPE-DECL
@@ -92,12 +93,12 @@ variable PI         \ dump cursor
    REPEAT ;
 
 : STAGE. ( ptr u8 n n -- ) {: la:ptr lu:n rc:n :}   \ one stage line: label + throw code
-   la lu type rc . cr ;
+   la lu type rc FMT:.INT cr ;
 
 : DUMP-PLAN ( -- )                        \ the rendered text, one definition per line
    0 PI !
    BEGIN PI @ PLAN-ROWS < WHILE
-      s" def " type PI @ . s" : " type PI @ PLAN-DEF$ type cr
+      s" def " type PI @ FMT:.INT s" : " type PI @ PLAN-DEF$ type cr
       PI @ 1 + PI !
    REPEAT ;
 
@@ -108,10 +109,10 @@ variable PI         \ dump cursor
    FAM @ FAM-VAR-START VAR-CTOR-SYM 0 <> ;
 
 : HEADER ( -- )
-   s" family:   " type FAM @ . cr
+   s" family:   " type FAM @ FMT:.INT cr
    s" public:   " type FAM @ FAM-PUBLIC? IF s" yes" ELSE s" no" THEN type cr
-   s" variants: " type FAM @ FAM-VAR-COUNT . cr
-   s" slots:    " type FAM @ FAM-SLOTS . cr ;
+   s" variants: " type FAM @ FAM-VAR-COUNT FMT:.INT cr
+   s" slots:    " type FAM @ FAM-SLOTS FMT:.INT cr ;
 
 public
 

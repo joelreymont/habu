@@ -14,6 +14,8 @@
 \ open package is where the definitions those cases make land — which is why
 \ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
 \ than as globals.
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
 using TFAM
 
 package SCANIDX-TEST
@@ -28,7 +30,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 : TTRUE ( bool -- )

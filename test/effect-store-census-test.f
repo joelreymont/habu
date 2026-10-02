@@ -30,6 +30,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require tools/effect-store-census.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package EFFCENSUS-TEST
 
@@ -43,13 +44,13 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 : T<> ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want = if
-      T-FAIL s" assert: expected anything but " type want . cr
+      T-FAIL s" assert: expected anything but " type want FMT:.INT cr
    then ;
 
 : TTRUE ( bool -- ) if -1 else 0 then -1 T= ;

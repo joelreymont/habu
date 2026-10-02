@@ -21,6 +21,7 @@ require lib/test.f
 require lib/string.f
 require test/checker-assert.f
 require src/compiler/ir/symbol.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package IR-SYM-TEST
 private
@@ -793,7 +794,7 @@ create CBUF 32 allot
    medium 1024 3 * < TTRUE
    large 2048 3 * < TTRUE
    large medium 3 * < TTRUE
-   ." symbol lookup probes (512/1024/2048): " small . medium . large . cr ;
+   ." symbol lookup probes (512/1024/2048): " small FMT:.INT s" /" type medium FMT:.INT s" /" type large FMT:.INT cr ;
 
 
 : CLONE-GROW-BODY ( IR-CTX:ctx -- )

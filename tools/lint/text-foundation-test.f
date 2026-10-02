@@ -10,6 +10,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-TEXT-TEST
 using LINT-SPLIT
@@ -27,7 +28,7 @@ variable TEST-N
       TEST-N @ 1+ TEST-N !
       exit
    THEN
-   s" text-foundation-test failed at assertion " type TEST-N @ . cr
+   s" text-foundation-test failed at assertion " type TEST-N @ FMT:.INT cr
    s" text-foundation-test failed" 1 die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
 : ASSERT$  ( ptr u8 n ptr u8 n -- )  LINT-STR= ASSERT ;
@@ -911,7 +912,7 @@ variable REG-I
    TEST-TOKENIZER
    TEST-TOKEN-LITERALS
    TEST-BIG-LEXER
-   s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
+   s" text-foundation-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 RUN
 

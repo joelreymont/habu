@@ -12,6 +12,7 @@ require lib/engine-id.f
 require tools/native-emit.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package AOT-FILE
 public
@@ -293,7 +294,7 @@ private
    REFUSALS
    s" merge preserves both complete pools and all rebased signature offsets" T-LABEL
    MERGE
-   s" effect-pool: rows=" type WORDS . s" bytes=" type EXPECTED-U @ . cr
+   s" effect-pool: rows=" type WORDS FMT:.INT s"  bytes=" type EXPECTED-U @ FMT:.INT cr
    EXPECTED-RELEASE SIG-STR-STORAGE-RELEASE AOT-SIG-PAYLOAD:STORAGE-RELEASE
    CLEANUP-RUN T-REPORT ;
 

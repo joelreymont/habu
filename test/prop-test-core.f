@@ -19,6 +19,7 @@ require lib/string.f
 require lib/fs.f
 require lib/process.f
 require lib/process-fork.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
 \ remains owned by habu-primitive-effect-axiom-1119f176.
@@ -101,7 +102,7 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
 : PC   ( n -- ) {: c:n :}
    c PBUF PBUF-U @ + c!
    PBUF-U @ 1+ PBUF-U ! ;
-: POS. ( -- )  s" seed " type RUN-SEED @ .  s" iteration " type RI @ . ;
+: POS. ( -- )  s" seed " type RUN-SEED @ FMT:.INT  s"  iteration " type RI @ FMT:.INT ;
 : DEF. ( -- )  PBUF PBUF-U @ type cr ;
 : BODY. ( -- )  BBUF BLEN @ type cr ;
 
@@ -251,11 +252,11 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    FC-EXP !  2 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-LINE  ( n -- )
    s" prop-test: FALSE-CERT " type POS.
-   s" word " type emit s"  " type
+   s"  word " type emit s"  " type
    FC-KIND @ 1 = IF
-      s" expected " type FC-EXP @ .  s" measured " type FC-MEAS @ . cr
+      s" expected " type FC-EXP @ FMT:.INT  s"  measured " type FC-MEAS @ FMT:.INT cr
    ELSE
-      s" expected " type FC-EXP @ .  s" trap during measurement" type cr
+      s" expected " type FC-EXP @ FMT:.INT  s"  trap during measurement" type cr
    THEN ;
 : MEASURE  ( n n n -- ) {: name-ch:n in-arity:n expected:n :}   \ run a CERTIFIED word <nch>; +1 NFC on arity-mismatch or trap
    name-ch in-arity RUN-MEAS
@@ -376,12 +377,12 @@ variable NFC0
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
 : RUN  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
    RUN-CORE
-   s" prop-test: " type N @ . s" programs, " type
-   NCERT @ . s" certified, " type  PROP-NFC @ . s" FALSE-CERT(s), " type
-   NFR @ . s" false-reject(s)" type cr
-   s" prop-test: metamorphic — " type  NSUB @ . s" subsumption + " type
-   NRT @ . s" round-trip + " type  NCMP @ . s" composition runs; " type
-   NSI @ NRI @ + NCI @ +  . s" inconsistency(ies)" type cr ;
+   s" prop-test: " type N @ FMT:.INT s"  programs, " type
+   NCERT @ FMT:.INT s"  certified, " type  PROP-NFC @ FMT:.INT s"  FALSE-CERT(s), " type
+   NFR @ FMT:.INT s"  false-reject(s)" type cr
+   s" prop-test: metamorphic — " type  NSUB @ FMT:.INT s"  subsumption + " type
+   NRT @ FMT:.INT s"  round-trip + " type  NCMP @ FMT:.INT s"  composition runs; " type
+   NSI @ NRI @ + NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
 \ regression baits: programs that a SOUND checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
@@ -466,7 +467,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    ALPHA-MISSING -1 <> IF
       s" prop-test: alphabet class NEVER GENERATED within cap: " type ALPHA-MISSING ALPHA-DET$ type cr
       s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
-   s" prop-test: alphabet OK (" type ALPHA-N . s" op classes generated + certified)" type cr ;
+   s" prop-test: alphabet OK (" type ALPHA-N FMT:.INT s"  op classes generated + certified)" type cr ;
 
 \ shrink self-test: a long certified ( i64 -- i64 ) body must REDUCE under the
 \ "still certifies" predicate — proves the delta-debug loop + token surgery work
@@ -812,7 +813,7 @@ variable SHARD-FAULT
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
    SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" SWEEP-RED @ die THEN
-   s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
+   s" prop-test: sweep OK — " type PROP-SHARD-N FMT:.INT s"  shards x " type DEFAULT-COUNT FMT:.INT s"  iters, distinct seeds" type cr ;
 
 \ shard-seed self-test: distinct per-slot streams. The golden-ratio step is
 \ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd

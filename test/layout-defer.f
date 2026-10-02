@@ -7,6 +7,8 @@
 \ largest reuse; a bind past the sanity ceiling dies NAMED before any mutation
 \ (transactional), leaving the prior bind intact.
 
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
 variable #FAIL
 variable #CASE
 
@@ -17,7 +19,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" expected " type want . s" got " type got . cr
+      T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 \ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------

@@ -1381,7 +1381,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 
 : GT-POOL-OUTCOME-LINE ( idx -- ) {: idx :}
    s" outcome: " type idx GT-POOL-EXITED-PTR @ idx GT-POOL-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
-   s"  code: " type idx GT-POOL-CODE-PTR @ . cr ;
+   s"  code: " type idx GT-POOL-CODE-PTR @ FMT:.INT cr ;
 
 : GT-POOL-CAPTURE-LINES ( idx -- ) {: idx:idx :}
    s" stdout-file" idx 0 GT-POOL-STREAM-FILE$ GT-POOL-LINE$

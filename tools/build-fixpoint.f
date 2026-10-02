@@ -13,6 +13,7 @@ require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consum
 require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -1283,7 +1284,7 @@ package BUILD-FIXPOINT
 
 : BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
    s" certify: " type lab labu type
-   s"  rejected rc " type BF-CERT-RC @ . s" (blocking)" type cr
+   s"  rejected rc " type BF-CERT-RC @ FMT:.INT s"  (blocking)" type cr
    BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
 \ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
@@ -1388,9 +1389,9 @@ package BUILD-FIXPOINT
    s" prefix-src" BF-CENSUS-COUNT {: pfx:n :}
    s" stage2-src" BF-CENSUS-COUNT {: stg:n :}
    s" self-check census (" type BF-CENSUS-TARGET$ type
-   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + .
-   s"   boot prefix = " type pfx .
-   s"   assembled = " type stg . ;
+   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + FMT:.INT
+   s"   boot prefix = " type pfx FMT:.INT
+   s"   assembled = " type stg FMT:.INT cr ;
 
 : BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
    BF-FSHA-CTX a u BF-A$ dg SHA256-FILE-IN dup 0 <> if throw then drop ;

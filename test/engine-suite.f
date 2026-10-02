@@ -19,6 +19,7 @@ ES-CERT-STALE ES-CERT-STALE0 !
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -56,8 +57,8 @@ variable T-LABEL-U
    #CASE @ 1 + #CASE !
    got want <> if
       T-FAIL
-      s" assert: expected " type want .
-      s" got " type got .
+      s" assert: expected " type want FMT:.INT
+      s"  got " type got FMT:.INT cr
    then
    T-LABEL-CLEAR ;
 
@@ -65,8 +66,8 @@ variable T-LABEL-U
    #CASE @ 1 + #CASE !
    gu wu <> if
       T-FAIL
-      s" assert string len: expected " type wu .
-      s" got " type gu .
+      s" assert string len: expected " type wu FMT:.INT
+      s"  got " type gu FMT:.INT cr
       T-LABEL-CLEAR exit
    then
    0 begin dup gu < while

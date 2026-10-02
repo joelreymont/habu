@@ -89,9 +89,9 @@ variable GE-EVAL-SRC-U
    GE-ARGV-BUF GE-ARGV-U @ ;
 
 : GE-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
-   s" spawn raw code: " type pid PID>N . cr
+   s" spawn raw code: " type pid PID>N FMT:.INT cr
    HB-TARGET-MACOS? if
-      s" spawn errno: " type pid PID>N negate . cr
+      s" spawn errno: " type pid PID>N negate FMT:.INT cr
    then ;
 
 : GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}

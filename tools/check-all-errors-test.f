@@ -22,6 +22,7 @@ require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require lib/argv.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CHECK-ALL-ERRORS-TEST
 
@@ -441,10 +442,10 @@ create CAE-LF-BYTE 10 c,
    s" check-all-errors-test failure" type cr
    s" case: " type CAE-CASE$ type cr
    s" source: " type CAE-RUN$ type cr
-   s" expected exit: " type expect . cr
-   s" code: " type code . cr
-   s" stdout bytes: " type outu . s" / " type CAE-BUF-CAP . cr
-   s" stderr bytes: " type erru . s" / " type CAE-BUF-CAP . cr
+   s" expected exit: " type expect FMT:.INT cr
+   s" code: " type code FMT:.INT cr
+   s" stdout bytes: " type outu FMT:.INT s"  / " type CAE-BUF-CAP FMT:.INT cr
+   s" stderr bytes: " type erru FMT:.INT s"  / " type CAE-BUF-CAP FMT:.INT cr
    s" stdout:" type cr
    CAE-OUT outu type
    s" stderr:" type cr
