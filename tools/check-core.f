@@ -64,7 +64,11 @@ $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
-120000 constant CHK-TIMEOUT-MS
+\ The run stage's child, and --verify-only's, has CHK-DEADLINE-MS unless
+\ --deadline-ms gives another. A capture waits in poll(2), whose wait is an int
+\ of milliseconds, so no deadline is longer than CHK-DEADLINE-MAX.
+120000 constant CHK-DEADLINE-MS
+$7FFFFFFF constant CHK-DEADLINE-MAX
 67 constant CHK-E-CAPACITY
 
 0 constant CHK-SEL-NONE
@@ -106,6 +110,7 @@ variable CHK-JSON
 variable CHK-ALL
 variable CHK-VERIFY
 variable CHK-STDIN-PATH-U
+variable CHK-DEADLINE                    \ the --deadline-ms value, 0 when none was given
 variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
 variable CHK-SEL-LABEL-U
@@ -227,7 +232,7 @@ variable CHK-TFAM-NAME-I
    CHK-VERIFY @ if CHK-OUT-LN else CHK-ERR-LN then ;
 
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--all-errors] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
@@ -246,12 +251,16 @@ variable CHK-TFAM-NAME-I
 : CHK-ARG= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
 
+\ --stdin-path and --deadline-ms each consume the next token as their value.
+: CHK-VALUED-ARG? ( n -- bool ) {: idx:n :}
+   idx s" --stdin-path" CHK-ARG= idx s" --deadline-ms" CHK-ARG= or ;
+
 \ Establish the output stream before parsing can reject an earlier argument.
-\ --stdin-path consumes its next token as a value; -- ends option parsing.
+\ A valued option's value is skipped; -- ends option parsing.
 : CHK-VERIFY-ARG? ( -- bool )
    0 begin dup SCRIPT-ARGC < while
       dup s" --" CHK-ARG= if drop false exit then
-      dup s" --stdin-path" CHK-ARG= if
+      dup CHK-VALUED-ARG? if
          2 +
       else
          dup s" --verify-only" CHK-ARG= if drop true exit then
@@ -343,6 +352,27 @@ private
    a CHK-STDIN-PATH-BUF u BYTE-COPY
    u CHK-STDIN-PATH-U ! ;
 
+: CHK-DEADLINE-SET ( n -- ) {: ms:n :}
+   ms 1 < ms CHK-DEADLINE-MAX > or if CHK-USAGE then
+   ms CHK-DEADLINE ! ;
+
+\ The child's deadline in milliseconds, given once: a whole number from 1 to
+\ CHK-DEADLINE-MAX.
+: CHK-PARSE-DEADLINE ( -- )
+   CHK-ARG-I @ 1+ CHK-ARG-I !
+   CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
+   CHK-DEADLINE @ 0<> if CHK-USAGE then
+   CHK-ARG-I @ CHK-ARG$ STR>NUMBER? MATCH option
+      none OF CHK-USAGE ENDOF
+      some OF CHK-DEADLINE-SET ENDOF
+   ;MATCH ;
+
+\ The argument at CHK-ARG-I, and a valued option's value with it.
+: CHK-PARSE-AT ( -- )
+   CHK-ARG-I @ s" --stdin-path" CHK-ARG= if CHK-PARSE-STDIN-PATH exit then
+   CHK-ARG-I @ s" --deadline-ms" CHK-ARG= if CHK-PARSE-DEADLINE exit then
+   CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE ;
+
 : CHK-PARSE ( -- )
    0 CHK-ARG-I !
    begin CHK-ARG-I @ SCRIPT-ARGC < while
@@ -351,11 +381,7 @@ private
          CHK-COLLECT-REST
          exit
       then
-      CHK-ARG-I @ s" --stdin-path" CHK-ARG= if
-         CHK-PARSE-STDIN-PATH
-      else
-         CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE
-      then
+      CHK-PARSE-AT
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
@@ -412,6 +438,7 @@ private
    0 CHK-ALL !
    0 CHK-VERIFY !
    0 CHK-STDIN-PATH-U !
+   0 CHK-DEADLINE !
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
 
@@ -1423,6 +1450,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+ ;
 
+\ The deadline the child is given.
+: CHK-DEADLINE@ ( -- ms )
+   CHK-DEADLINE @ dup 0= if drop CHK-DEADLINE-MS then >MS ;
+
 \ The checked program runs with check.f's own environment: PATH for a TOOL
 \ lookup, HOME and HB_TMP for a scratch tree. An env-less spawn hands it a
 \ one-NULL envp, and a program that resolves an executable through $PATH then
@@ -1430,7 +1461,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
    CHK-HB$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
-   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
+   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-DEADLINE@
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
              0 CHK-RC !
@@ -1457,10 +1488,24 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    s"  of standard error" SB-APPEND
    SB$ CHK-E-CHECK CHK-FAIL ;
 
+\ A run still going at its deadline is ended by the capture with every process
+\ it started (lib/process.f PROC-KILL-CAPTURE), and refused: what it wrote is
+\ not replayed, and one line names the subject and the deadline. A subject that
+\ needs longer is checked with a longer --deadline-ms.
+: CHK-RUN-LATE ( -- )
+   SB-RESET
+   s" check.f: " SB-APPEND
+   CHK-LABEL SB-APPEND
+   s" : the run passed its deadline of " SB-APPEND
+   CHK-DEADLINE@ MS>N FMT:SB-INT
+   s"  ms" SB-APPEND
+   SB$ CHK-E-CHECK CHK-FAIL ;
+
 : CHK-RUN-CAPPED ( -- )
    [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-PROC-TRUNCATED = if CHK-RUN-TOO-BIG then
+   rc E-PROC-TIMEOUT = if CHK-RUN-LATE then
    rc throw ;
 
 : CHK-REPLAY ( -- )
@@ -1744,7 +1789,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    MATCH outcome
       exited OF s" exit " CHK-OUT CHK-U$ CHK-OUT ENDOF
       signaled OF s" signal " CHK-OUT CHK-U$ CHK-OUT ENDOF
-      timeout OF s" deadline passed" CHK-OUT ENDOF
+      timeout OF s" deadline of " CHK-OUT CHK-DEADLINE@ MS>N CHK-U$ CHK-OUT s"  ms passed" CHK-OUT ENDOF
    ;MATCH
    CHK-LF CHK-OUT-C ;
 
@@ -1771,7 +1816,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:ptr pathu:n :}
-   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-TIMEOUT-MS >MS VERIFY-BYTES
+   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-DEADLINE@ VERIFY-BYTES
    CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets

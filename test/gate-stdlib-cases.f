@@ -2483,7 +2483,8 @@ SUITE gate-signal
    test/gate-signal-test.f
 ;SUITE
 
-\ A signalled check.f leaves no process and no scratch behind.
+\ A signalled check.f, and a check run past its deadline, leave no process and
+\ no scratch behind.
 SUITE check-signal
    test/check-signal-test.f
 ;SUITE

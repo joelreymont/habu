@@ -122,6 +122,15 @@ without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
 <suggestion>`. The run exits 64. A list that also names a source the engine does
 not provide is checked.
 
+`tools/check.f` runs a checked program in a child, the run stage, with a
+deadline of 120 s, or the milliseconds `--deadline-ms N` gives, from 1 to
+2147483647. A run still going at its deadline is killed with every process it
+started, what it wrote is not replayed, and stderr gets the one line
+`check.f: <label>: the run passed its deadline of <N> ms`, prose in either mode.
+The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
+under `--json-errors` as in its packets. The run exits 70. A program that runs
+longer is checked with a longer `--deadline-ms`.
+
 Two load-time refusals of a checker record emit a refused-record object: no
 definition encloses them, so they carry `schema_version`, `code`,
 `repair_class`, `verdict` `rejected`, `token` (the name the record would have
@@ -155,6 +164,7 @@ process.
   in its file.
 - The child runs on `bin/hb` in the caller's working directory, which must
   be the tree root, as `check.f`'s run stage does.
+- The child has the run stage's deadline, `--deadline-ms` included.
 
 | `CHECK:verdict` | Meaning | check.f exit |
 | --- | --- | --- |

@@ -1511,6 +1511,49 @@ variable LONG-J
    outu 0 T=
    CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
+\ ---- the child's deadline ----------------------------------------------------
+\ --deadline-ms gives the child a deadline other than check.f's 120 s: a whole
+\ number of milliseconds from 1 to 2147483647, the longest wait poll(2) takes,
+\ given once. Anything else is a usage error. A run past its deadline is
+\ test/check-signal-test.f's: it needs the run's processes watched.
+
+: DEADLINE-RUN ( ptr u8 n -- n n n ) {: value:ptr valueu:n :}
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   value valueu CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: EXPECT-DEADLINE-USAGE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 64 T=
+   label labelu T-LABEL outu 0 T=
+   label labelu T-LABEL CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
+
+: DEADLINE-TWICE ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: DEADLINE-MISSING ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: TEST-DEADLINE-OPTION ( -- )
+   DIRECT$ GOOD$ WRITE-ALL
+   s" 2147483647" DEADLINE-RUN
+   s" deadline: the longest deadline is taken" T-LABEL 0 T=
+   2drop
+   s" 0" DEADLINE-RUN s" deadline: zero" EXPECT-DEADLINE-USAGE
+   s" 2147483648" DEADLINE-RUN s" deadline: past the longest" EXPECT-DEADLINE-USAGE
+   s" 5s" DEADLINE-RUN s" deadline: not a number" EXPECT-DEADLINE-USAGE
+   DEADLINE-TWICE s" deadline: given twice" EXPECT-DEADLINE-USAGE
+   DEADLINE-MISSING s" deadline: no value" EXPECT-DEADLINE-USAGE ;
+
 : TEST-SOURCE-BYTES-COPY ( -- )
    GOOD$ MUT-SRC!
    s" owned-source.f" MUT-LABEL!
@@ -5094,6 +5137,7 @@ variable LC-CANON-U
    s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
+   s" check/deadline-option" [: TEST-DEADLINE-OPTION ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
    s" check/file-path-copy" [: TEST-FILE-PATH-COPY ;] CASE-RUN
    s" check/source-list-idempotent" [: TEST-LIST-IDEMPOTENT ;] CASE-RUN

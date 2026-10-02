@@ -1,4 +1,5 @@
-\ check-signal-test.f - a stopped check.f leaves no process and no scratch behind.
+\ check-signal-test.f - a stopped check.f, and a check run past its deadline,
+\ leave no process and no scratch behind.
 \
 \     bin/hb --load test/check-signal-test.f
 \
@@ -6,7 +7,8 @@
 \ here as a child with a private HB_TMP. check.f's run stage runs the subject in
 \ a child of its own, and the subject starts a sleeper and reports. The test
 \ signals check.f the moment the report is in, so the signal lands while check.f
-\ waits on its child.
+\ waits on its child; or it gives check.f a deadline the subject's wait on its
+\ sleeper outlasts, so the deadline passes while check.f waits.
 \
 \ THE WAYS THIS CAN FAIL, written down before the fix:
 \
@@ -35,6 +37,14 @@
 \     and a kill of pid 0 is a kill of check.f's own process group. Asserted:
 \     check.f fed a refused program on stdin after the signal dies of that
 \     signal and names no step of its answer that threw.
+\  7. A RUN PAST ITS DEADLINE. The capture that waits on check.f's child kills
+\     it at the deadline and throws E-PROC-TIMEOUT, which left check.f as an
+\     uncaught throw - exit 67 and a bare code - and its kill ended the child
+\     alone: the sleeper went on under init. Asserted: check.f exits 70, its
+\     refusal, with one line naming the subject and the deadline, in its
+\     default mode with the run's output open and in --json-errors with it
+\     closed, so the deadline passes in each wait; and failures 1 to 3 do not
+\     happen.
 \
 \ A FAILED CASE LEAVES NOTHING EITHER. Each case ends through CASE-END whatever
 \ it asserted or threw: a check.f still running is killed and reaped, and the
@@ -55,12 +65,14 @@ require lib/process-env.f
 require lib/signal.f
 require lib/engine-candidate.f
 require lib/test/runner.f
+require src/core/include.f               \ SOURCE-ROOT:CANON-OS, the name --json-errors gives a file
 
 package CHECK-SIGNAL-TEST
 
 60000 constant READY-MS              \ check.f's static pass and two engine boots under a loaded pool
 10000 constant EXIT-MS               \ half the sleeper's 20 s: a check.f that waited it out is late
 5000 constant GONE-MS                \ the killed take a moment to finish dying
+5000 constant DEADLINE-MS            \ the subject reported 0.6 s after check.f began, at load 15; the sleeper outlasts it
 30000 constant EXPIRE-MS             \ past the sleeper's 20 s, for a case that failed to end it
 1 cells constant REPORT-BYTES        \ the subject's pid
 512 constant FEED-CHUNK              \ PIPE_BUF on macOS: a write poll admitted cannot block
@@ -216,13 +228,29 @@ NO-FD FEED-WR !
    PIPE-WR CLOSE-CELL
    CHECK-PID @ proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then CHECK-WATCH ! ;
 
-: CHECK-START ( -- )
-   CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   s" test/check-signal-subject.f" >LEN PROC-ARGV+
+: SUBJECT$ ( -- ptr u8 n )
+   s" test/check-signal-subject.f" ;
+
+\ The subject, after whatever options check.f is given ahead of it.
+: SUBJECT-START ( -- )
+   SUBJECT$ >LEN PROC-ARGV+
    s" CHECK_SIGNAL_FD" >LEN PIPE-WR @ FD-TEXT$ >LEN PROC-ENV+
    CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" >LEN s" 1" >LEN PROC-ENV+ then
    OPEN-NULL CHECK-SPAWN ;
+
+: CHECK-START ( -- )
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   SUBJECT-START ;
+
+\ check.f with a deadline of DEADLINE-MS, in --json-errors mode or its default.
+: LATE-START ( bool -- ) {: json:bool :}
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   s" --deadline-ms" >LEN PROC-ARGV+
+   DEADLINE-MS FD-TEXT$ >LEN PROC-ARGV+
+   json if s" --json-errors" >LEN PROC-ARGV+ then
+   SUBJECT-START ;
 
 \ check.f with no input named reads its program from stdin, a pipe this test
 \ writes. The write end is this process's alone, or check.f would hold its own
@@ -262,8 +290,11 @@ NO-FD FEED-WR !
 : CHECK-SIGNAL ( n -- ) {: sig:n :}
    CHECK-PID @ >PID sig PROC-KILL-RAW drop ;
 
+: CHECK-ENDED-WITHIN? ( n -- bool ) {: ms:n :}
+   CHECK-WATCH @ ms READY-WITHIN? ;
+
 : CHECK-ENDED? ( -- bool )
-   CHECK-WATCH @ EXIT-MS READY-WITHIN? ;
+   EXIT-MS CHECK-ENDED-WITHIN? ;
 
 : CHECK-REAP ( -- outcome )
    CHECK-PID @ >PID PROC-WAIT-OUTCOME
@@ -330,6 +361,38 @@ NO-FD FEED-WR !
    s" stdin: no process under check.f is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 
+\ The one line check.f ends a run past its deadline with. It names the subject
+\ as given, or canonically under --json-errors, as each of its reports does.
+: LATE-LINE$ ( bool -- ptr u8 n ) {: json:bool :}
+   SB-RESET
+   s" check.f: " SB-APPEND
+   json if SUBJECT$ SOURCE-ROOT:CANON-OS drop else SUBJECT$ then SB-APPEND
+   s" : the run passed its deadline of " SB-APPEND
+   DEADLINE-MS FMT:SB-INT
+   s\"  ms\n" SB-APPEND
+   SB$ ;
+
+\ check.f counts the deadline from the run's start, which is before the report,
+\ so after the report it ends inside the deadline and the EXIT-MS a signal's
+\ answer gets.
+: LATE-BODY ( bool -- ) {: json:bool :}
+   json LATE-START
+   s" deadline: the subject came up under check.f" T-LABEL
+   REPORT-READ? TTRUE
+   s" deadline: check.f ended inside its bound" T-LABEL
+   DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN? dup TTRUE
+   if
+      s" deadline: check.f exits its refusal status" T-LABEL
+      CHECK-REAP PROC-OUTCOME>RC RC>N 70 T=
+      s" deadline: one line names the subject and the deadline" T-LABEL
+      LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL json LATE-LINE$ T$=
+      s" deadline: the scratch is gone when check.f has ended" T-LABEL
+      TMP-ENTRIES 0 T=
+   then
+   CHECK-END
+   s" deadline: no process under check.f is left" T-LABEL
+   GONE-MS GONE-WITHIN? TTRUE ;
+
 \ Whatever the body asserted or threw. Every step is a no-op for a case that
 \ passed.
 : CASE-END ( -- )
@@ -349,6 +412,12 @@ NO-FD FEED-WR !
    closed CASE-CLOSED !
    sig [: CASE-BODY ;] [: CASE-END ;] finally ;
 
+\ Whether check.f runs in --json-errors mode, and whether the subject closes its
+\ output.
+: LATE-CASE ( bool bool -- ) {: json:bool closed:bool :}
+   closed CASE-CLOSED !
+   json [: LATE-BODY ;] [: CASE-END ;] finally ;
+
 public
 
 : MAIN ( -- )
@@ -366,6 +435,10 @@ public
    SIGNAL:SIGTERM true SIGNAL-CASE
    s" check-signal: SIGTERM before any child, a refused program on stdin" type cr
    [: STDIN-BODY ;] [: CASE-END ;] finally
+   s" check-signal: a run past its deadline" type cr
+   false false LATE-CASE
+   s" check-signal: a run past its deadline, --json-errors, the child's output closed" type cr
+   true true LATE-CASE
    GT-CLEANUP ;
 
 ;package
