@@ -9509,6 +9509,9 @@ PRIM: PATH0          PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PRIM: DIAG-FILE!     PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-ORIGIN!   PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-SOURCE!   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-MAP!      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-SOURCE-OFF PRIM;
 PRIM: DIAG-JSON!     PE-F PE-IN PRIM;
 PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-BUFFER-OFF PRIM;
@@ -10297,7 +10300,7 @@ RECORD-DIAG-DEFAULT
    0 RECORD-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-TRUST-UNRESOLVED throw ;
-PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
+PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 \ ONE hook for both shadow diagnostics, selected by its argument: 0 renders the
@@ -10316,11 +10319,13 @@ SHADOW-DIAG-DEFAULT
 \ public exports the tail. E-USING-AMBIGUOUS, when TWO used publics also match,
 \ is answered first, so the pre-existing rule keeps precedence. CHECKER-BIND
 \ renders the captured candidates and raises; a caller that only asks drops it.
-: CHECKER-USED-SHADOW ( ptr u8 n n -- n ) {: a:ptr u:n gsym:n :}
+\ The token the packet names is the raiser's (CHECKER-RESOLVE:RAISE), the
+\ spelling the checked text holds, not the fold the walk asks about.
+: CHECKER-USED-SHADOW ( ptr u8 n n -- n )
+   {: a:ptr u:n gsym:n :}
    a u CHECKER-USED-SYM {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 EXIT THEN
-   a USH-TOK-A !  u USH-TOK-U !
    gsym USH-GSYM !  usym USH-USYM !
    CK-USED-SLOT @ dup 0 >= IF
       dup CK-USE-SLOT USH-PKG-A !  CK-USE-LEN@ USH-PKG-U !
@@ -10773,12 +10778,19 @@ public
    dup 0 <> IF BIND-SCOPED ELSE BIND-NONE THEN
    r> ;
 
-\ Raise a refusal the walk answered: the package-context refusal names itself on
-\ fd 2 and throws the reject rc, the using-shadow refusal renders the candidates
-\ CHECKER-USED-SHADOW captured, and the ambiguity throws bare.
-: RAISE ( n -- ) {: why:n :}
+\ Raise a refusal the walk answered for a token the checked text spells `s su`:
+\ the package-context refusal names itself on fd 2 and throws the reject rc, the
+\ using-shadow refusal renders that spelling with the candidates
+\ CHECKER-USED-SHADOW captured, and the ambiguity throws bare. The walk may have
+\ asked about a fold the body walk keeps in scratch no source map covers; the
+\ spelling reads as written and locates in the file (render.f USHADOW-JSON).
+: RAISE ( ptr u8 n n -- )
+   {: s:ptr su:n why:n :}
    why COMPILE-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
-   why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT THEN
+   why E-USING-SHADOW-GLOBAL = IF
+      s USH-TOK-A !  su USH-TOK-U !
+      0 SHADOW-DIAG-XT
+   THEN
    why throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME here
@@ -10790,13 +10802,16 @@ public
    WALK >r 2drop r> 0 <> ;
 ;package
 
-: CHECKER-BIND ( ptr u8 n -- n n )
-   CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
-   why 0 <> IF why CHECKER-RESOLVE:RAISE THEN
+\ `a u` is the token to resolve, `s su` its spelling for a refusal to name.
+: CHECKER-BIND ( ptr u8 n ptr u8 n -- n n )
+   {: a:ptr u:n s:ptr su:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
+   why 0 <> IF s su why CHECKER-RESOLVE:RAISE THEN
    sym leg ;
 
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
-   CHECKER-BIND drop ;
+   {: a:ptr u:n :}
+   a u a u CHECKER-BIND drop ;
 
 : CHECKER-TRUSTED-TICK? ( ptr u8 n -- bool )
    CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? ;
@@ -10826,9 +10841,10 @@ package CHECKER-REG
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
 : CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n )
-   CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
+   {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n leg:n why:n :}
    why 0= IF sym EXIT THEN
-   why FQSYM-DEFERRED? 0= IF why CHECKER-RESOLVE:RAISE THEN
+   why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
    0 ;
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
@@ -14138,10 +14154,11 @@ variable TOK-SYM   variable TOK-LEG
 
 \ A literal is claimed before any scope is asked, as the engine claims it
 \ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
-\ resolved as a name.
-: BIND-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+\ resolved as a name. `a u` is the token's fold, `s su` the token as written.
+: BIND-TOK ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n s:ptr su:n :}
    a u ALLDIG?  a u FLODIG?  or IF 0 TOK-SYM !  BIND-NONE TOK-LEG !  EXIT THEN
-   a u CHECKER-BIND TOK-LEG !  TOK-SYM ! ;
+   a u s su CHECKER-BIND TOK-LEG !  TOK-SYM ! ;
 
 : TOK-SCOPED? ( -- bool )
    TOK-LEG @ BIND-SCOPED = ;
@@ -16330,13 +16347,13 @@ variable DIAGL0  variable DIAGC0  variable DIAGB0
    u DIAGFU ! ;
 : DIAG-ORIGIN! {: line col byte :}
    line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
-\ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
-\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
-\ start's own file line/col/byte. Mirrors verify-source ABS-ORIGIN so the native
-\ load path reports the same file-relative positions as the re-driver.
+\ The file line, column and byte of the byte p points at in a buffer whose first
+\ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
+\ counts bytes, and only the buffer's first line starts at column bc.
 variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
-: DIAG-ORIGIN-SPAN! {: base:ptr name:ptr bl:n bc:n bb:n :}
-   name base - DOS-OFF !                    \ name-token byte offset in the buffer
+: DIAG-POS ( ptr u8 ptr u8 n n n -- n n n )
+   {: base:ptr p:ptr bl:n bc:n bb:n :}
+   p base - DOS-OFF !                       \ p's byte offset in the buffer
    1 DOS-LN !  1 DOS-CL !  0 DOS-P !
    BEGIN DOS-P @ DOS-OFF @ < WHILE
       base DOS-P @ + c@ 10 = IF
@@ -16348,8 +16365,78 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
    REPEAT
    bl DOS-LN @ + 1 -                        \ abs line
    DOS-LN @ 1 = IF bc DOS-CL @ + 1 - ELSE DOS-CL @ THEN   \ abs column (col carries only on line 1)
-   bb DOS-OFF @ +                           \ abs byte_start
-   DIAG-ORIGIN! ;
+   bb DOS-OFF @ + ;                         \ abs byte
+\ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
+\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
+\ start's own file line/col/byte.
+: DIAG-ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
+   DIAG-POS DIAG-ORIGIN! ;
+
+\ Where a packet's token lies in the checked file. A driver that checks text it
+\ copied out of a file arms DIAG-SOURCE! with the bytes it scans and the file
+\ line, column and byte of their first byte, and hands DIAG-MAP! the text it
+\ built before each check, with its own table of the runs it copied into that
+\ text: one two-cell row per run, the text offset the run starts at and the
+\ source offset it was read from, ascending from text offset 0. DIAG-LOCATE
+\ takes a pointer into that text, or straight into the source, to the file
+\ position of the byte the scanner read there.
+\ Text with no map keeps the DIAG-ORIGIN! rule above, the definition's origin
+\ plus the token's offset in the checked text: the engine's own load, whose
+\ captured definitions keep no source addresses, text built by `evaluate`, and
+\ the definitions the checker generates for a declaration.
+PTR-VARIABLE DSRC-A  variable DSRC-U
+variable DSRC-L  variable DSRC-C  variable DSRC-B
+PTR-VARIABLE DMAP-A  variable DMAP-U
+PTR-VARIABLE DROW-A  variable DROW-N
+: DIAG-MAP-OFF ( -- )
+   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N ! ;
+: DIAG-SOURCE-OFF ( -- )
+   NULL-PTR DSRC-A !  0 DSRC-U !
+   DIAG-MAP-OFF ;
+: DIAG-SOURCE! ( ptr u8 n n n n -- )
+   {: a:ptr u:n line:n col:n byte:n :}
+   a DSRC-A !  u DSRC-U !
+   line DSRC-L !  col DSRC-C !  byte DSRC-B !
+   DIAG-MAP-OFF ;
+: DIAG-MAP! ( ptr u8 n ptr n n -- )
+   {: a:ptr u:n rows:ptr count:n :}
+   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N ! ;
+: DROW@ ( n -- n )
+   DROW-A @ {: i:n rows:ptr :}
+   i cells rows + @ ;
+\ The source offset of text offset x: the last row starting at or before x,
+\ plus x's distance into that run. The separator after a run maps to the byte
+\ after the run, where its last token ends.
+: DMAP>SRC ( n -- n )
+   {: x:n :}
+   0 BEGIN
+      dup 1 + DROW-N @ < IF dup 1 + 2 * DROW@ x <= ELSE 0 0= 0= THEN
+   WHILE 1 + REPEAT
+   2 * {: row:n :}
+   row 1 + DROW@  x +  row DROW@ - ;
+: DLOC-IN? ( n n -- bool )  \ an end pointer sits at len
+   {: off:n len:n :}
+   off 0 >=  off len <= and ;
+: DSRC-POS ( n -- n n n )
+   {: off:n :}
+   DSRC-A @  DSRC-A @ off +  DSRC-L @ DSRC-C @ DSRC-B @  DIAG-POS ;
+\ The source offset of the byte p points at, true when p lies in the mapped
+\ text or in the source; 0 false when there is no map for it.
+: DIAG>SRC ( ptr u8 -- n bool )
+   {: p:ptr :}
+   DSRC-U @ 0 = IF 0 0 0= 0= EXIT THEN
+   DROW-N @ 0 >  p DMAP-A @ -  DMAP-U @ DLOC-IN?  and IF
+      p DMAP-A @ - DMAP>SRC 0 0= EXIT
+   THEN
+   p DSRC-A @ -  DSRC-U @ DLOC-IN? IF
+      p DSRC-A @ - 0 0= EXIT
+   THEN
+   0 0 0= 0= ;
+\ The file line, column and byte of the byte p points at; 0 0 0 false when
+\ there is no map for it.
+: DIAG-LOCATE ( ptr u8 -- n n n bool )
+   DIAG>SRC 0= IF drop 0 0 0 0 0= 0= EXIT THEN
+   DSRC-POS 0 0= ;
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
 
@@ -16821,9 +16908,14 @@ variable IS-PEND-U                   \ and its length
    IS-PEND-ARM
    RES-TRUE ;
 
+\ The symbol the swallowed target names: its fold resolves, and the token as
+\ written names a refusal (CHECKER-BIND), so a raised shadow locates in the file.
+: IS-TARGET-SYM ( -- n )
+   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND drop ;
+
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-DEFER 0= IF IS-FAIL EXIT THEN
+   IS-TARGET-SYM DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
@@ -16871,7 +16963,7 @@ variable IS-PEND-U                   \ and its length
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   IS-TARGET-SYM {: sym:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    FEP-CLEAR
@@ -17097,7 +17189,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ CF-TOK? 0= IF
-   TKF TKFU @ BIND-TOK                                 \ the token's one resolution, ahead of every spelling-keyed step
+   TKF TKFU @ a u BIND-TOK                             \ the token's one resolution, ahead of every spelling-keyed step
    TKF TKFU @ SPELLED-STEP? 0= IF
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
       a u FAIL-PIN! REJECT-IMMEDIATE

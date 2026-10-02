@@ -26,10 +26,10 @@ Fields:
 | `dead_owner` | string | dead-code only | Terminating token (`throw`, `die`, `exit`, `leave`, `again`, or a no-return word) that made the later token unreachable. |
 | `token_index` | integer | required | Zero-based token index within the captured definition body. |
 | `file` | string | required | Wrapper label or source path attached to the diagnostic. |
-| `line` | integer | required | One-based source line for the token. |
-| `column` | integer | required | One-based source column for the token. |
-| `byte_start` | integer | required | Zero-based byte offset of the token start in the labeled source. |
-| `byte_end` | integer | required | Zero-based byte offset immediately after the token. |
+| `line` | integer | required | One-based line of the token's first byte in the labeled file; LF ends a line. |
+| `column` | integer | required | One-based column of the token's first byte, counted in bytes. |
+| `byte_start` | integer | required | Zero-based byte offset of the token's first byte in the labeled file. |
+| `byte_end` | integer | required | Zero-based byte offset immediately after the token's last byte. |
 | `definition_source` | string | required | Captured definition text without the leading colon and trailing semicolon. |
 | `declared_effect` | string | required for signed definitions | Declared data and return-stack effect, normalized by the checker. |
 | `declared_effect_source` | string | required for signed definitions | Declared effect as written between the signature parentheses, trimmed but preserving source row/type variable names. |
@@ -45,6 +45,17 @@ Fields:
 | `arity_actual` | integer | wrong-arity signature only | The argument count actually written in the signature's family application. Present exactly when `arity_expected` is. |
 | `suggestion` | string | required | Human-readable repair hint derived from `repair_class`. |
 
+The position fields locate the token in the labeled file's bytes. Where a
+driver checks text it read out of the file, they are where its scanner read the
+token, whatever the layout between tokens: verify-source
+(`src/habu/verify-source.f`), which `tools/check.f` runs before it loads a file,
+for `--all-errors` and as `CHECK:VERIFY-BYTES` (below), and `tools/check.f`'s
+declaration pass. Text with no
+file bytes behind it reports its definition's origin plus the token's offset in
+the checked text: the engine's own load (`bin/hb --load` and `tools/check.f`'s
+child run), whose captured definitions keep no source addresses, text built by
+`evaluate`, and the definitions the checker generates for a declaration.
+
 The current checker JSON intentionally uses `definition_source` rather than
 `source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
 copy or normalize these fields instead of requiring the checker to emit aliases.
@@ -54,9 +65,10 @@ declaration-shaped object instead of the definition shape above: code
 `E-BAD-DECLARATION`, repair class `fix_family_declaration`, `verdict`
 `rejected`, plus `decl` (declaration kind), `family` (family name token),
 `token` (offending token), `reason` (short cause), `file`, and `suggestion`.
-Declaration packets never fabricate definition-only fields such as `word`,
-`declared_effect`, `definition_source`, or `return_stack`; source-span fields
-land with the declaration origin plumbing (PLAN item 13).
+When the token locates in the labeled file, `line`, `column`, `byte_start` and
+`byte_end` follow `file`, with the meanings above. Declaration packets never
+fabricate definition-only fields such as `word`, `declared_effect`,
+`definition_source`, or `return_stack`.
 
 Two load-time refusals of a checker record emit a row-shaped object: no
 definition encloses them, so they carry `schema_version`, `code`,

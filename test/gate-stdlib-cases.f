@@ -1979,6 +1979,10 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
+SUITE diag-position
+   test/diag-position-test.f
+;SUITE
+
 SUITE core-prefix-mark
    test/prefix-mark-test.f
 ;SUITE

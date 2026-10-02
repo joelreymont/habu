@@ -781,8 +781,23 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-VREC-FAIL ( n n -- )
    s" value-record" CHK-TYPE-FAIL ;
 
+\ The rows of CHK-EXP-BUF, two cells each: the text offset a run starts at and
+\ the source offset the lexer read it from, which CHK-EXP$ hands to the checker
+\ (src/core/checker.f DIAG-MAP!) so a declaration packet locates its token in
+\ the file. A run takes at least one byte and each later run a separator too,
+\ so CHK-SRC-CAP + 2 cells hold every row the buffer can have.
+TYPED-VARIABLE CHK-EXP-ROW-A ptr n
+variable CHK-EXP-ROWS
+
+: CHK-EXP-ROW ( -- ptr n )
+   CHK-EXP-ROW-A @ 0= if
+      CHK-SRC-CAP 2 + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS CHK-EXP-ROW-A !
+   then
+   CHK-EXP-ROW-A @ ;
+
 : CHK-VREC-RESET ( -- )
-   0 CHK-EXP-U ! ;
+   0 CHK-EXP-U !
+   0 CHK-EXP-ROWS ! ;
 
 : CHK-VREC-ROOM ( n -- )
    CHK-EXP-U @ + CHK-SRC-CAP > IF E-FS-CAPACITY throw THEN ;
@@ -797,16 +812,33 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    a CHK-EXP-BUF CHK-EXP-U @ + u BYTE-COPY
    CHK-EXP-U @ u + CHK-EXP-U ! ;
 
-: CHK-VREC-TOKEN+ ( ptr u8 n -- )
+: CHK-VREC-ROW! ( n -- )        \ the next run, read from source offset n
+   CHK-EXP-ROW {: src:n rows:ptr :}
+   CHK-EXP-U @  CHK-EXP-ROWS @ 2 * cells rows + !
+   src  CHK-EXP-ROWS @ 2 * 1 + cells rows + !
+   CHK-EXP-ROWS @ 1 + CHK-EXP-ROWS ! ;
+
+: CHK-VREC-TOKEN+ ( ptr u8 n n -- )   \ a token and its source offset
+   {: a:ptr u:n src:n :}
    CHK-EXP-U @ 0 > IF CHK-SP CHK-VREC-C THEN
-   CHK-VREC-APP ;
+   src CHK-VREC-ROW!
+   a u CHK-VREC-APP ;
+
+: CHK-VREC-LEX+ ( n -- )        \ lexer token k
+   {: k:n :}
+   k LINT-LEX:TOKEN  k LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
+
+\ The rebuilt declaration body, with its rows armed for the packet it may write.
+: CHK-EXP$ ( -- ptr u8 n )
+   CHK-EXP-BUF CHK-EXP-U @ CHK-EXP-ROW CHK-EXP-ROWS @ DIAG-MAP!
+   CHK-EXP-BUF CHK-EXP-U @ ;
 
 : CHK-VREC-END? ( n -- bool )
    s" END-VALUE-RECORD" CHK-TOK=CI ;
 
 : CHK-VREC-DO-DEF ( -- )
    CHK-VREC-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    CHECKER-DEFRECORD ;
 
 : CHK-VREC-DEFRECORD ( n n -- ) {: def:n name:n :}
@@ -825,7 +857,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
          def name CHK-VREC-DEFRECORD
          1+ exit
       then
-      dup LINT-LEX:TOKEN CHK-VREC-TOKEN+
+      dup CHK-VREC-LEX+
       1+
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
@@ -837,12 +869,12 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 : CHK-SUM-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    CHECKER-DEFSUM ;
 
 : CHK-SUM-DO-NOEND ( -- )        \ unterminated: declaration packet from name + partial body
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    CHECKER-DEFSUM-NOEND ;
 
 \ A failed NEWTYPE/SUMTYPE declaration already reported through the
@@ -882,7 +914,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k 2 +
    begin dup LINT-LEX:COUNT < while
       dup ea eu CHK-TOK=CI if 1+ LINT-TRUE exit then
-      dup LINT-LEX:TOKEN CHK-VREC-TOKEN+
+      dup CHK-VREC-LEX+
       1+
    repeat drop k LINT-FALSE ;
 
@@ -947,22 +979,23 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    b t < IF
       b LINT-LEX:BYTE@ {: s:n :}
       t LINT-LEX:BYTE@ {: e:n :}
+      s CHK-VREC-ROW!
       CHK-SRC-BUF s +  e s -  CHK-VREC-APP
    THEN
-   ea eu CHK-VREC-TOKEN+ ;
+   ea eu  t LINT-LEX:BYTE@  CHK-VREC-TOKEN+ ;
 : CHK-ENUM-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    ENUM-DECL:ED-REPLAY ;
 
 : CHK-STRUCT-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    STRUCTURE-DECL:SD-REPLAY ;
 
 : CHK-PROD-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP-BUF CHK-EXP-U @
+   CHK-EXP$
    CHECKER-DEFPRODUCT ;
 
 : CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
@@ -1078,6 +1111,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
+   CHK-SRC-BUF CHK-NOM-U @ 1 1 0 DIAG-SOURCE!
    CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
    0 CHK-NOM-I !
    begin CHK-NOM-I @ LINT-LEX:COUNT < while
@@ -1118,6 +1152,7 @@ TRUSTED: CHK-VERIFIER-ACTION ( n -- [ -- ] ) ;
 TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
    [: CHK-RUN-NOMINAL ;] catch
+   DIAG-SOURCE-OFF
    CHECKER-OWNER-ABI:VERIFY-DONE-OFF CHK-VERIFIER-XT CHK-VERIFIER-ACTION execute
    dup 0= if drop exit then
    throw ;

@@ -858,22 +858,37 @@ variable MDV-I   variable MDV-F
    ELSE DSUGA @ DSUGE @ < IF  s" Add the missing producer or stop consuming a required value."
    ELSE  s" Change the body so produced types match the signature."
    THEN THEN ;
-variable JPOS  variable JLINE  variable JCOL
-: JLOC-CALC ( -- )
-   1 JLINE !  1 JCOL !  0 JPOS !
-   BEGIN JPOS @ FAILB @ <  JPOS @ TBLEN @ <  and WHILE
-      TBASE 0 ptr-field @ JPOS @ + c@ 10 = IF
-         JLINE @ 1 + JLINE !  1 JCOL !
-      ELSE
-         JCOL @ 1 + JCOL !
-      THEN
-      JPOS @ 1 + JPOS !
-   REPEAT ;
-: JABS-LINE ( -- n )  DIAGL0 @ JLINE @ + 1 - ;
-: JABS-COL ( -- n )
-   JLINE @ 1 = IF DIAGC0 @ JCOL @ + 1 - ELSE JCOL @ THEN ;
-: JABS-BSTART ( -- n )  DIAGB0 @ FAILB @ + ;
-: JABS-BEND ( -- n )  DIAGB0 @ FAILE @ + ;
+\ A packet's position: the file line, column and byte of its token's first byte,
+\ and the byte after its last.
+variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
+\ Locate the token [a, e) in the file (src/core/checker.f DIAG-LOCATE); false
+\ when its text has no map. The end needs only its byte: the file byte of the
+\ source's first byte plus the end's offset in the source.
+: JLOCATE ( ptr u8 ptr u8 -- bool )
+   {: a:ptr e:ptr :}
+   e DIAG>SRC 0= IF drop 0 0= 0= EXIT THEN
+   DSRC-B @ + JLOC-E !
+   a DIAG-LOCATE 0= IF drop drop drop 0 0= 0= EXIT THEN
+   JLOC-B !  JLOC-C !  JLOC-L !
+   0 0= ;
+\ The checked token with no map: the definition's origin plus the token's
+\ offset in the checked text.
+: JLOC-ORIGIN ( -- )
+   TBASE@  TBASE@ FAILB @ +  DIAGL0 @ DIAGC0 @ DIAGB0 @  DIAG-POS
+   JLOC-B !  JLOC-C !  JLOC-L !
+   DIAGB0 @ FAILE @ + JLOC-E ! ;
+: JLOC-FIELDS ( -- )
+   s" line" JKEY  JLOC-L @ JNUM  44 EMIT1
+   s" column" JKEY  JLOC-C @ JNUM  44 EMIT1
+   s" byte_start" JKEY  JLOC-B @ JNUM  44 EMIT1
+   s" byte_end" JKEY  JLOC-E @ JNUM  44 EMIT1 ;
+\ The position fields of a packet that names its token by pointer, present only
+\ when the token locates in the file.
+: JTOKEN-FIELDS ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 > IF
+      a  a u +  JLOCATE IF JLOC-FIELDS THEN
+   THEN ;
 : NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
@@ -1002,7 +1017,7 @@ variable JPOS  variable JLINE  variable JCOL
    THEN
    DIAG-VARIANT ;
 : DIAG-JSON
-   JLOC-CALC
+   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY   DCODE JSTR  44 EMIT1
@@ -1025,10 +1040,7 @@ variable JPOS  variable JLINE  variable JCOL
    THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
-   s" line" JKEY  JABS-LINE JNUM  44 EMIT1
-   s" column" JKEY  JABS-COL JNUM  44 EMIT1
-   s" byte_start" JKEY  JABS-BSTART JNUM  44 EMIT1
-   s" byte_end" JKEY  JABS-BEND JNUM  44 EMIT1
+   JLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    SGSEEN @ IF
      s" declared_effect" JKEY
@@ -1117,7 +1129,7 @@ BADSIG-DIAG-INSTALL
 \ NEWTYPE/SUMTYPE reports a declaration-shaped packet: decl kind, family,
 \ offending token, and reason — with NO invented definition fields (no
 \ declared_effect, definition_source, or return_stack; docs/type-families.md
-\ §24). Source-span fields wait on the declaration origin plumbing (item 13).
+\ §24). The token's position follows `file` when it locates in the file.
 : TDECL-SUGGEST$ ( -- ptr u8 n )
    s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
 : TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -1132,6 +1144,7 @@ BADSIG-DIAG-INSTALL
    s" token" JKEY ta tu JSTR 44 EMIT1
    s" reason" JKEY wa wu JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   ta tu JTOKEN-FIELDS
    s" suggestion" JKEY TDECL-SUGGEST$ JSTR
    125 EMIT1 ;                                            \ }
 : TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -1229,6 +1242,8 @@ REC-SIG-INSTALL
    s" repair_class" JKEY s" disambiguate_using_shadow" JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
    s" used_package" JKEY USH-PKG-A @ USH-PKG-U @ JSTR 44 EMIT1
    s" suggestion" JKEY s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier." JSTR
    125 EMIT1 ;

@@ -1216,6 +1216,19 @@ variable LONG-J
    s" : CKT-ORIGIN-NEXT ( n -- n ) dup ;" SB-APPEND
    SB$ ;
 
+: ORIGIN-MULTI$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-ORIGIN-MULTI ( n -- n )" SB-APPEND  $0a SB-APPEND-C
+   s"    dup ;" SB-APPEND
+   SB$ ;
+
+: ORIGIN-SUM$ ( -- ptr u8 n )      \ the arity slot holds VARIANT
+   SB-RESET
+   s" SUMTYPE cktosum" SB-APPEND  $0a SB-APPEND-C
+   s"    VARIANT Up" SB-APPEND  $0a SB-APPEND-C
+   s" ;SUMTYPE" SB-APPEND
+   SB$ ;
+
 : ORIGIN-VERIFY-BASE ( -- n )
    CHECKER-CANDIDATE-SCOPE-START
    [: ORIGIN-BASE$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
@@ -1225,6 +1238,18 @@ variable LONG-J
 : ORIGIN-VERIFY-NEXT ( -- n )
    CHECKER-CANDIDATE-SCOPE-START
    [: ORIGIN-NEXT$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   CHECKER-CANDIDATE-SCOPE-DONE
+   rc ;
+
+: ORIGIN-VERIFY-MULTI ( -- n )
+   CHECKER-CANDIDATE-SCOPE-START
+   [: ORIGIN-MULTI$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   CHECKER-CANDIDATE-SCOPE-DONE
+   rc ;
+
+: ORIGIN-VERIFY-SUM ( -- n )
+   CHECKER-CANDIDATE-SCOPE-START
+   [: ORIGIN-SUM$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
    CHECKER-CANDIDATE-SCOPE-DONE
    rc ;
 
@@ -1243,6 +1268,27 @@ variable LONG-J
    CAP-ERR BUF-CAP DIAG-BUFFER!
    ORIGIN-VERIFY-NEXT 70 T=
    DIAG-BUFFER$ s\" \"line\":8,\"column\":30,\"byte_start\":136,\"byte_end\":139" CONTAINS? TTRUE
+   DIAG-BUFFER-OFF
+   0 0= 0= DIAG-JSON! ;
+
+\ A body on the line after its name: the packet puts `dup` where the scanner
+\ read it, not at its offset in the one-line body the checker sees.
+: TEST-ORIGIN-MULTI ( -- )
+   CAP-ERR BUF-CAP DIAG-BUFFER!
+   0 0= DIAG-JSON!
+   ORIGIN-VERIFY-MULTI 70 T=
+   DIAG-BUFFER$ s\" \"line\":8,\"column\":4,\"byte_start\":133,\"byte_end\":136" CONTAINS? TTRUE
+   DIAG-BUFFER-OFF
+   0 0= 0= DIAG-JSON! ;
+
+\ The declaration packet of verify-source's SUMTYPE, the CHECK operation's
+\ path, names its token where the scanner read it.
+: TEST-ORIGIN-DECL ( -- )
+   CAP-ERR BUF-CAP DIAG-BUFFER!
+   0 0= DIAG-JSON!
+   ORIGIN-VERIFY-SUM 7108 T=                       \ E-TDECL-ARITY
+   DIAG-BUFFER$ s\" \"token\":\"VARIANT\"" CONTAINS? TTRUE
+   DIAG-BUFFER$ s\" \"line\":8,\"column\":4,\"byte_start\":119,\"byte_end\":126" CONTAINS? TTRUE
    DIAG-BUFFER-OFF
    0 0= 0= DIAG-JSON! ;
 
@@ -2564,6 +2610,8 @@ variable LC-CANON-U
    s" check/forward-ref-json" [: TEST-FWDREF-JSON ;] CASE-RUN
    s" check/origin-scan" [: TEST-ORIGIN-SCAN ;] CASE-RUN
    s" check/origin-base" [: TEST-ORIGIN-BASE ;] CASE-RUN
+   s" check/origin-multi" [: TEST-ORIGIN-MULTI ;] CASE-RUN
+   s" check/origin-declaration" [: TEST-ORIGIN-DECL ;] CASE-RUN
    s" check/forward-ref-raw-load" [: RAW-FWDREF-TEST ;] CASE-RUN
    s" check/unterminated-string" [: TEST-UNTERM-STRING ;] CASE-RUN
    s" check/duplicate-all-errors" [: TEST-DUP-ALL ;] CASE-RUN

@@ -377,10 +377,6 @@ variable GJA-DIRECT
 : GJA-DECL-NO-DEF ( n -- )
    dup s" word" GJA-NO-FIELD
    dup s" token_index" GJA-NO-FIELD
-   dup s" line" GJA-NO-FIELD
-   dup s" column" GJA-NO-FIELD
-   dup s" byte_start" GJA-NO-FIELD
-   dup s" byte_end" GJA-NO-FIELD
    dup s" definition_source" GJA-NO-FIELD
    dup s" declared_effect" GJA-NO-FIELD
    dup s" declared_effect_source" GJA-NO-FIELD
@@ -389,6 +385,24 @@ variable GJA-DIRECT
    dup s" actual" GJA-NO-FIELD
    dup s" return_stack" GJA-NO-FIELD
    s" source_excerpt" GJA-NO-FIELD ;
+
+: GJA-NO-POSITION ( n -- )
+   dup s" line" GJA-NO-FIELD
+   dup s" column" GJA-NO-FIELD
+   dup s" byte_start" GJA-NO-FIELD
+   s" byte_end" GJA-NO-FIELD ;
+
+\ A declaration diagnostic carries all four position fields when its token
+\ locates in the file, and none when it does not.
+: GJA-DECL-POSITION ( n -- )
+   dup s" line" GJA-HAS? IF
+      dup s" line" GJA-REQ-INTF
+      dup s" column" GJA-REQ-INTF
+      dup s" byte_start" GJA-REQ-INTF
+      s" byte_end" GJA-REQ-INTF
+   ELSE
+      GJA-NO-POSITION
+   THEN ;
 
 : GJA-DECL? ( n -- bool ) {: root:n :}
    root s" decl" GJA-HAS? IF GJA-TRUE exit THEN
@@ -422,6 +436,7 @@ variable GJA-DIRECT
 
 : GJA-REPAIR-DECL ( n -- ) {: root:n :}
    root GJA-DECL-NO-DEF
+   root GJA-NO-POSITION
    root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
    root s" decl" GJA-REQ GJA-NONEMPTY-STR
    root s" family" GJA-REQ-STRF
@@ -465,6 +480,7 @@ variable GJA-DIRECT
 : GJA-DIAG-DECL ( n -- )
    dup GJA-DIAG-HEAD
    dup GJA-DECL-NO-DEF
+   dup GJA-DECL-POSITION
    dup s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
    dup s" decl" GJA-REQ GJA-NONEMPTY-STR
    dup s" family" GJA-REQ-STRF

@@ -277,8 +277,12 @@ variable TDA-I
       10 * a TDA-I @ + c@ 48 - +
       TDA-I @ 1 + TDA-I !
    REPEAT ;
-: TDECL-ARITY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 0= IF a u s" missing arity" E-TDECL-ARITY TDECL-THROW THEN
+\ A missing arity has no token of its own, so the family name stands for it, as
+\ for a missing ;SUMTYPE (TDECL-NOEND-BODY): the packet then names a token the
+\ file holds, and an editor can place it.
+: TDECL-ARITY ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 0= IF TDN-A @ TDN-U @ s" missing arity" E-TDECL-ARITY TDECL-THROW THEN
    a u TDECL-DEC? 0= u 2 > or IF
       a u s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW
    THEN

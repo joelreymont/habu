@@ -19,11 +19,6 @@ variable TOKEN-START
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
-variable LINE-N
-variable LINE-START
-variable TOKEN-LINE
-variable TOKEN-COL
-variable TOKEN-BYTE
 variable BASE-LINE
 variable BASE-COL
 variable BASE-BYTE
@@ -36,6 +31,13 @@ variable TOP-PREV-U
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 create BODY-BUF BODYBUF-CAP allot
+\ Each run BODY-APPEND copies into BODY-BUF is a row of two cells: the body
+\ offset it starts at and the source offset it was read from. BODY$ hands the
+\ rows to the checker (DIAG-MAP!), so a packet locates its token at the file
+\ bytes the scanner read. A run takes at least one byte and its separator, so
+\ BODYBUF-CAP cells hold every row a full body can have.
+create BODY-ROW BODYBUF-CAP cells allot
+variable BODY-ROWS
 
 \ Composition is a fixed scanner operation. The subject stays pinned across
 \ nested loads so a require back to it observes these bytes, and an include of
@@ -79,31 +81,14 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    byte BASE-BYTE ! ;
 
 : SCAN-RESET ( -- )
-   0 SCAN-I !
-   1 LINE-N !
-   0 LINE-START ! ;
+   0 SCAN-I ! ;
 
 : SCAN-C@ ( -- n )
    SOURCE@ SCAN-I @ + c@ ;
 
 : SCAN-C+ ( -- n )
-   SCAN-C@ {: c:n :}
-   SCAN-I @ 1 + SCAN-I !
-   c 10 = if
-      LINE-N @ 1 + LINE-N !
-      SCAN-I @ LINE-START !
-   then
-   c ;
-
-: TOKEN-START! ( -- )
-   SCAN-I @ TOKEN-START !
-   BASE-LINE @ LINE-N @ + 1 - TOKEN-LINE !
-   SCAN-I @ LINE-START @ - 1 + {: col:n :}
-   LINE-N @ 1 = if BASE-COL @ col + 1 - else col then TOKEN-COL !
-   BASE-BYTE @ SCAN-I @ + TOKEN-BYTE ! ;
-
-: TOKEN-ORIGIN! ( -- )
-   TOKEN-LINE @ TOKEN-COL @ TOKEN-BYTE @ DIAG-ORIGIN! ;
+   SCAN-C@
+   SCAN-I @ 1 + SCAN-I ! ;
 
 : SKIP-WS ( -- )
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 33 < else 0 0= 0= then while
@@ -119,7 +104,7 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 : NEXT-RAW ( -- ptr u8 n )
    SKIP-WS
    SCAN-I @ SOURCE-U @ >= if SOURCE@ 0 exit then
-   TOKEN-START!
+   SCAN-I @ TOKEN-START !
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
       SCAN-C+ drop
    repeat
@@ -228,14 +213,34 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
 \ also trips the engine's TDECL-CAP, so both paths answer the same code.
 7118 constant E-VS-BODY-CAP
 
-: BODY-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+: BODY-RESET ( -- )
+   0 BODY-U !
+   0 BODY-ROWS ! ;
+
+: BODY-ROW! ( n -- )
+   BODY-ROW {: src:n rows:ptr :}
+   BODY-U @  BODY-ROWS @ 2 * cells rows + !
+   src  BODY-ROWS @ 2 * 1 + cells rows + !
+   BODY-ROWS @ 1 + BODY-ROWS ! ;
+
+\ Every run is read out of the source, and its row says where.
+: BODY-APPEND ( ptr u8 n -- )
+   {: a:ptr u:n :}
    BODY-U @ u + 1 + BODYBUF-CAP > IF E-VS-BODY-CAP throw THEN
+   a SOURCE@ - {: src:n :}
+   src 0 <  src u + SOURCE-U @ >  or IF s" verify-source: body run outside the source" 74 die THEN
+   src BODY-ROW!
    0 BEGIN dup u < WHILE
       dup a + c@  BODY-BUF BODY-U @ + c!
       BODY-U @ 1 + BODY-U !
       1 +
    REPEAT drop
    32 BODY-BUF BODY-U @ + c!  BODY-U @ 1 + BODY-U ! ;
+
+\ The body for the checker, with its rows armed for the packets it writes.
+: BODY$ ( -- ptr u8 n )
+   BODY-BUF BODY-U @ BODY-ROW BODY-ROWS @ DIAG-MAP!
+   BODY-BUF BODY-U @ ;
 
 : MAYBE-SIGNATURE ( -- )
    SKIP-WS
@@ -449,7 +454,7 @@ variable DEFINER-N
 \ The verdict is answered rather than swallowed because a created effect is a
 \ fact about a definition the checker ACCEPTED: a refused body records nothing.
 : VERIFY-BODY ( -- bool )                     \ true = this body certified
-   BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
+   BODY$ CHECK-BODY {: v:n :}
    v -1 = IF 0 0= EXIT THEN
    v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
@@ -464,7 +469,7 @@ TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
    CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
 : VERIFY-DOES-BODY ( ptr u8 n -- bool ) {: sig:ptr sigu:n :}
-   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
+   BODY$ sig sigu CHECK-DOES-BODY {: v:n :}
    v -1 = IF 0 0= EXIT THEN
    v 0 = MULTI-ERR-MODE? and IF 0 0= 0= EXIT THEN
    70 throw ;
@@ -566,11 +571,10 @@ variable WRAP-SIG-U
 : VERIFY-DOES ( -- )
    VERIFY-BODY {: ok:bool :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
-      BODY-U @ 0= if TOKEN-ORIGIN! then
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          sig sigu VERIFY-DOES-BODY ok and IF sig sigu DEFINER-RECORD THEN EXIT
       THEN
@@ -790,17 +794,17 @@ variable NOM-TAIL-U
 
 : RECORD-SUMTYPE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       NEXT-SCAN
       dup 0= IF                        \ EOF before ;SUMTYPE -> declaration packet (§24)
          2drop
-         name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM-NOEND
+         name nameu BODY$ CHECKER-DEFSUM-NOEND
          EXIT
       THEN
       2dup SUMTYPE-END? IF
          2drop
-         name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM
+         name nameu BODY$ CHECKER-DEFSUM
          EXIT
       THEN
       BODY-APPEND
@@ -841,13 +845,13 @@ variable NOM-TAIL-U
 : RECORD-ENUM ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing enum name" 74 die THEN
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       DECL-TOKEN
       dup 0= IF s" verify-source: missing ;ENUM" 74 die THEN
       2dup ENUM-END? IF
          BODY-APPEND
-         name nameu BODY-BUF BODY-U @ ENUM-DECL:ED-REPLAY
+         name nameu BODY$ ENUM-DECL:ED-REPLAY
          EXIT
       THEN
       BODY-APPEND
@@ -868,13 +872,13 @@ variable NOM-TAIL-U
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing structure name" 74 die THEN
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       DECL-TOKEN
       dup 0= IF s" verify-source: missing ;STRUCTURE" 74 die THEN
       2dup STRUCTURE-DECL-END? IF
          BODY-APPEND
-         name nameu BODY-BUF BODY-U @ STRUCTURE-DECL:SD-REPLAY
+         name nameu BODY$ STRUCTURE-DECL:SD-REPLAY
          EXIT
       THEN
       BODY-APPEND
@@ -891,13 +895,13 @@ variable NOM-TAIL-U
 : RECORD-PRODUCT ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing product name" 74 die THEN
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       NEXT-SCAN
       dup 0= IF s" verify-source: missing ;PRODUCT" 74 die THEN
       2dup PRODUCT-END? IF
          2drop
-         name nameu BODY-BUF BODY-U @ CHECKER-DEFPRODUCT
+         name nameu BODY$ CHECKER-DEFPRODUCT
          EXIT
       THEN
       BODY-APPEND
@@ -968,13 +972,13 @@ PTR-VARIABLE STG-START
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
-   0 BODY-U !
+   BODY-RESET
    BEGIN
       NEXT-SCAN
       dup 0= IF s" verify-source: missing END-VALUE-RECORD" 74 die THEN
       2dup VALUE-RECORD-END? IF
          2drop
-         name nameu BODY-BUF BODY-U @ CHECKER-DEFRECORD
+         name nameu BODY$ CHECKER-DEFRECORD
          EXIT
       THEN
       BODY-APPEND
@@ -1200,10 +1204,9 @@ TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
    0 0= 0= ;
 
 : VERIFY-DEFINITION ( -- )
-   0 BODY-U !
+   BODY-RESET
    BODY!
    TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
-   TOKEN-ORIGIN!
    DEF-NAME!
    WRAP-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
@@ -1229,19 +1232,28 @@ TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop ;
 
+\ The checker locates the packets it writes in the bytes being scanned, whose
+\ first byte lies at the base's file line, column and byte.
+: SOURCE-ARM ( -- )
+   SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
+
 \ Nested files share the checker window but not the scanner cursor. The saved
 \ source and token context belongs to the caller; declarations and learned
-\ definers belong to the entire composition.
+\ definers belong to the entire composition. A file's packets locate in that
+\ file, and on return or throw the checker is armed with the caller's bytes
+\ again, or disarmed when the subject's scan ends, so no nested file's bytes,
+\ which its loader frame releases, stay armed.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
-   SOURCE-A @ SOURCE-U @ SCAN-I @ LINE-N @ LINE-START @
+   SOURCE-A @ SOURCE-U @ SCAN-I @
    BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
-   {: olda:ptr oldu:n oldi:n oldln:n oldls:n oldbl:n oldbc:n oldbb:n
+   {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
       oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n oldpath:ptr oldpathu:n :}
    src srcu SOURCE!
+   SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    diag diagu DIAG-FILE!
    [: VERIFY-SOURCE ;] catch {: rc:n :}
@@ -1250,12 +1262,16 @@ TRUSTED: FILE-ACTION ( n -- [ [ -- ] -- ] ) ;
       diagu COMPOSE-STOP-U !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
-   oldln LINE-N !  oldls LINE-START !
    oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
-   oldpathu 0 > IF oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE! THEN
+   oldpathu 0 > IF
+      oldpath oldpathu COMPOSE-DIAG$ DIAG-FILE!
+      SOURCE-ARM
+   ELSE
+      DIAG-SOURCE-OFF
+   THEN
    rc 0<> IF rc throw THEN ;
 
 : COMPOSE-INIT ( -- )
@@ -1285,7 +1301,9 @@ TRUSTED: RUN-COMPOSE ( -- )
 
 TRUSTED: RUN ( -- )
    CHECKER-OWNER-ABI:VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
+   SOURCE-ARM
    [: VERIFY-SOURCE ;] catch
+   DIAG-SOURCE-OFF
    CHECKER-OWNER-ABI:VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    THROW-RESULT ;
 
