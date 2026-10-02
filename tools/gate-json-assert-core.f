@@ -441,10 +441,16 @@ variable GJA-DIRECT
 : GJA-THROW? ( n -- bool )
    s" E-STATEMENT-THROW" GJA-CODE= ;
 
-: GJA-SPAN? ( n -- bool ) {: root:n :}
-   root GJA-THROW? IF GJA-TRUE exit THEN
-   root s" E-UNTERMINATED-STRING" GJA-CODE= IF GJA-TRUE exit THEN
-   root s" E-MALFORMED-REGISTRY-ROW" GJA-CODE= ;
+\ A span record's code names its repair class (docs/repair-diagnostics.md);
+\ the flag is false for a code that is not a span's.
+: GJA-SPAN-CLASS ( n -- ptr u8 n bool ) {: root:n :}
+   root GJA-THROW? IF s" unknown_rejection" GJA-TRUE exit THEN
+   root s" E-UNTERMINATED-STRING" GJA-CODE= IF s" close_string" GJA-TRUE exit THEN
+   root s" E-MALFORMED-REGISTRY-ROW" GJA-CODE= IF s" close_primitive_row" GJA-TRUE exit THEN
+   s" " GJA-FALSE ;
+
+: GJA-SPAN? ( n -- bool )
+   GJA-SPAN-CLASS nip nip ;
 
 : GJA-INPUT? ( n -- bool )
    s" E-ENGINE-PROVIDED" GJA-CODE= ;
@@ -579,37 +585,65 @@ variable GJA-DIRECT
    s" actual" GJA-REQ-STRF
    drop ;
 
-: GJA-DIAG-DECL ( n -- )
-   dup GJA-DIAG-HEAD
-   dup GJA-DECL-NO-DEF
-   dup s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
-   dup s" decl" GJA-REQ GJA-NONEMPTY-STR
-   dup s" family" GJA-REQ-STRF
-   dup s" token" GJA-REQ-STRF
-   s" reason" GJA-REQ GJA-NONEMPTY-STR ;
+: GJA-DIAG-DECL ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-DECL-NO-DEF
+   root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
+   root s" decl" GJA-REQ GJA-NONEMPTY-STR
+   root s" family" GJA-REQ-STRF
+   root s" token" GJA-REQ-STRF
+   root s" reason" GJA-REQ GJA-NONEMPTY-STR
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" declaration verdict is not rejected" GJA-FAIL
+   THEN
+   root s" repair_class" GJA-REQ s" fix_family_declaration" GJA-STR= 0= IF
+      s" declaration repair class is not fix_family_declaration" GJA-FAIL
+   THEN ;
 
 : GJA-DIAG-VERDICT ( n -- )
    s" verdict" GJA-REQ
    dup s" rejected" GJA-STR= IF drop exit THEN
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
-: GJA-DIAG-STORAGE ( n -- )
-   dup GJA-DIAG-HEAD
-   GJA-STORAGE-FIELDS ;
+\ A storage record's repair class follows its reason, so it is one of the
+\ three storage classes (docs/repair-diagnostics.md).
+: GJA-STORAGE-CLASS? ( n -- bool ) {: node:n :}
+   node s" fix_storage_type" GJA-STR= IF GJA-TRUE exit THEN
+   node s" fix_storage_name" GJA-STR= IF GJA-TRUE exit THEN
+   node s" fix_storage_count" GJA-STR= ;
+
+: GJA-DIAG-STORAGE ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-STORAGE-FIELDS
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" storage verdict is not rejected" GJA-FAIL
+   THEN
+   root s" repair_class" GJA-REQ GJA-STORAGE-CLASS? 0= IF
+      s" storage repair class is not a storage class" GJA-FAIL
+   THEN ;
 
 : GJA-DIAG-THROW-CODE ( n -- ) {: root:n :}  \ only a statement throw has one
    root GJA-THROW? IF root s" throw_code" GJA-REQ GJA-SIGNED-INT exit THEN
    root s" throw_code" GJA-NO-FIELD ;
 
-: GJA-DIAG-SPAN ( n -- )
-   dup GJA-DIAG-HEAD
-   dup GJA-SPAN-FIELDS
-   GJA-DIAG-THROW-CODE ;
+: GJA-DIAG-SPAN ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-SPAN-FIELDS
+   root GJA-DIAG-THROW-CODE
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" span verdict is not rejected" GJA-FAIL
+   THEN
+   root s" repair_class" GJA-REQ root GJA-SPAN-CLASS drop GJA-STR= 0= IF
+      s" span repair class is not the one its code names" GJA-FAIL
+   THEN ;
 
-: GJA-DIAG-INPUT ( n -- )
-   dup GJA-DIAG-HEAD
-   dup GJA-INPUT-FIELDS
-   s" verdict" GJA-REQ s" uncheckable" GJA-ASSERT-STR ;
+: GJA-DIAG-INPUT ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-INPUT-FIELDS
+   root s" verdict" GJA-REQ s" uncheckable" GJA-ASSERT-STR
+   root s" repair_class" GJA-REQ s" rebuild_engine" GJA-STR= 0= IF
+      s" input repair class is not rebuild_engine" GJA-FAIL
+   THEN ;
 
 : GJA-DIAG-SHAPE ( n -- ) {: root:n :}
    root GJA-DECL? IF root GJA-DIAG-DECL exit THEN
