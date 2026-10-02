@@ -1286,7 +1286,7 @@ the rule.
   is consumed (`hb: bad layout tag`, rc 85).
 - **Native width depends on how the cells are used.** A 63-cell identity
   compiles and runs in native AOT; the same 64-cell definition currently
-  refuses with `E-A64RAV-DKEEP` (-8611). On Darwin ARM64, binding and consuming
+  refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 on Darwin ARM64, consuming
   all 25 entry cells in a sum currently refuses with `E-A64RA-POOL` (-8446);
   the 24-cell sum passes. Forwarding cells does not require that same
   simultaneous register set. The IR signature list itself holds at most

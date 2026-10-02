@@ -153,7 +153,7 @@ private
    4 T= 7 T= 10 T= 13 T= 16 T= 19 T= 22 T= 25 T= 28 T= 31 T= 34 T= 37 T=
    4 7 10 13 16 19 22 25 28 31 34 37 3 false NCTOR-SPILL12
    37 T= 34 T= 31 T= 28 T= 25 T= 22 T= 19 T= 16 T= 13 T= 10 T= 7 T= 4 T=
-   s" twelve register-resident values survive a wide call and back edge" T-LABEL
+   s" twelve values stay in registers across a wide call and back edge" T-LABEL
    4 7 10 13 16 19 22 25 28 31 34 37 3 NCTOR-LOOP12
    7 T= 7 T= 10 T= 13 T= 16 T= 19 T= 22 T= 25 T= 28 T= 31 T= 34 T= 37 T=
    T-REPORT ;
