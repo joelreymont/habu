@@ -28,6 +28,8 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require src/habu/layout.f
 
 package DOESREC-TEST
@@ -158,6 +160,25 @@ variable REJ0  variable REJ1
    ndict@ REJ0 !
    [: s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;" EV ;] catch drop
    ndict@ REJ1 ! ;
+
+\ The hook refuses DR-BAD at its parent, before the clause is scanned, and the
+\ native compiler's line that follows the hook's must name the definer as it
+\ names a plain one. Stderr is the evidence, so the definer is compiled again in
+\ a forked child of this tier-1 image (lib/test/subject.f).
+$800 constant IO-CAP
+10000 constant CHILD-MS
+70 constant HOOK-RC  \ src/core/check-hook.f CHECK-RC
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+
+: REJECTED-NAMED ( -- )
+   s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;"
+   OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   s" the hook's refusal ends the child with the hook's code" T-LABEL
+   oc HOOK-RC T-OUTCOME-EXITED=
+   s" the native compiler's line names the definer the hook refused" T-LABEL
+   ERR erru LEN>N  S\" ncomp: cannot compile DR-BAD\n" CONTAINS? TTRUE ;
 
 \ ---- the assertions ---------------------------------------------------------
 \ The clause of the definer named by a/u: the record one slot above it.
@@ -310,6 +331,7 @@ public
 
    s" a refused definition counts neither slot" T-LABEL
    REJ1 @ REJ0 @ T=
+   REJECTED-NAMED
 
    POST-EMIT-ROLLBACK
    FORGET-CASE

@@ -70,6 +70,14 @@ variable OBSERVER-ID                   \ address identifies this producer instan
 : STATE-CK ( n -- )
    F-STATE @ <> if E-NFEED-STATE throw then ;
 
+\ A defining word refused at its parent never reaches its clause, so its unit
+\ ends BETWEEN with the parent's refusal as its verdict. The sealed tape still
+\ names the definition, and the caller reports that name (compiler.f
+\ KEEP-TAPE-NAME). An accepted parent must go on to its clause.
+: END-CK ( -- )
+   F-STATE @ ST-BETWEEN = F-VERDICT @ -1 <> and if exit then
+   ST-DONE STATE-CK ;
+
 : DOES? ( -- bool )
    F-DOES @ 0<> ;
 
@@ -306,7 +314,7 @@ TRUSTED: SCAN-ID ( -- n )
 \ Sealing here is where the digest becomes worth sharing: after it the tape
 \ refuses every append. The source is not answered separately - every span names it.
 : END-UNIT ( -- IR-ARENA:view n )
-   ST-DONE STATE-CK
+   END-CK
    CHECKER-OWNER:TAPE-DISARM
    TAPE NTAPE:SEAL
    F-VERDICT @
