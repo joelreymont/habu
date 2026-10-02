@@ -19621,6 +19621,13 @@ defer REG-EXT-BND-RESTORE-XT ( -- )
    [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-RESTORE-XT ;
 REG-EXT-RB-DEFAULTS
 
+\ The source pre-pass (src/habu/verify-source.f DEFINER-SYM) learns definers in
+\ rows keyed by this checker's symbol ids and appends each new row at this
+\ count. A frame rewinds the count with the ids, so a scope that retires a
+\ symbol takes the row naming it: the next scope hands that id to another word,
+\ which a row left behind would read as a definer creating the token after it.
+variable VERIFY-DEFINER-N   0 VERIFY-DEFINER-N !
+
 $0 constant RBF.UEND-OFF
 $8 constant RBF.NEND-OFF
 $10 constant RBF.SYMN-OFF
@@ -19642,7 +19649,8 @@ $88 constant RBF.COORD-OFF
 $90 constant RBF.PKGNEU-OFF
 $98 constant RBF.PKGUSE-OFF
 $A0 constant RBF.FLOOR-OFF
-$A8 constant RBF-REC
+$A8 constant RBF.VDEFN-OFF
+$B0 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -19673,6 +19681,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
 : RBF.PKGUSE ( ptr a -- ptr a ) RBF.PKGUSE-OFF + ;
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
+: RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -19695,7 +19704,8 @@ RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
 RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
 RBF.PKGUSE-OFF 19 cells CHECKER-LAYOUT=
 RBF.FLOOR-OFF 20 cells CHECKER-LAYOUT=
-RBF-REC 21 cells CHECKER-LAYOUT=
+RBF.VDEFN-OFF 21 cells CHECKER-LAYOUT=
+RBF-REC 22 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -19719,6 +19729,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
 0 RBF.PKGNEU RBF.PKGNEU-OFF CHECKER-LAYOUT=
 0 RBF.FLOOR RBF.FLOOR-OFF CHECKER-LAYOUT=
+0 RBF.VDEFN RBF.VDEFN-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -19797,6 +19808,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
    DFER-END @ r RBF.DFEREND !
    PASS-FLOOR @ r RBF.FLOOR !
+   VERIFY-DEFINER-N @ r RBF.VDEFN !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
@@ -19821,6 +19833,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
    r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
    r RBF.FLOOR @ PASS-FLOOR !
+   r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 

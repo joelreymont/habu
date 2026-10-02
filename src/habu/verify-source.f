@@ -522,24 +522,22 @@ TRUSTED: RENDERS-MARK? ( n -- bool )
 \ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
 \ spelling that names the definer resolves through the scope chain the checker
 \ already owns (FIND-SYM above) instead of through a second name table here.
-\ Those ids are the checker's, and a rewound scope truncates them, so the
-\ candidate scope this file opens (SOURCE-BUF) releases the rows recorded inside
-\ it: no row outlives the ids it names.
+\ Those ids are the checker's, and a rewound scope truncates them, so the row
+\ count is one of the marks the checker's rollback frame rewinds
+\ (src/core/checker.f VERIFY-DEFINER-N): every scope releases the rows recorded
+\ inside it, SOURCE-BUF's own candidate scope and the scope a caller opens
+\ around SOURCE-COMPOSE-LABELED-IN-SCOPE or another IN-SCOPE word alike, and no
+\ row outlives the ids it names.
 \ The signature table stays `create … allot`: its elements are bytes, which a
 \ TYPED-BUFFER cannot hold, and BUFFER: lives in lib/string.f, outside this
 \ file's require closure.
 \ The bound is a scope's, not a file's: a preverified require closure holds
-\ several sources in one candidate scope, and the largest single file in the tree
+\ several sources in one checker scope, and the largest single file in the tree
 \ carries 28 `does>` today.
 128 constant DEFINER-CAP                   \ definer rows
 64 constant DEFINER-SIG-SLOT               \ one clause signature: [len][bytes]
 DEFINER-CAP TYPED-BUFFER DEFINER-SYM n
 create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
-variable DEFINER-N
-
-: DEFINER-MARK ( -- n ) DEFINER-N @ ;
-
-: DEFINER-RELEASE ( n -- ) DEFINER-N ! ;
 
 : DEFINER-SLOT ( n -- ptr u8 ) {: row:n :}
    DEFINER-SIG BYTE-VIEW row DEFINER-SIG-SLOT * + ;
@@ -551,17 +549,17 @@ variable DEFINER-N
 \ row index of 0 is a real row.
 : DEFINER-FIND ( n -- n ) {: sym:n :}         \ sym's row + 1, 0 = no such definer
    sym 0= IF 0 EXIT THEN
-   0 BEGIN dup DEFINER-N @ < WHILE
+   0 BEGIN dup VERIFY-DEFINER-N @ < WHILE
       dup DEFINER-SYM @ sym = IF 1 + EXIT THEN
       1 +
    REPEAT drop 0 ;
 
 : DEFINER-ROW ( n -- n ) {: sym:n :}          \ sym's row, appended when it is new
    sym DEFINER-FIND dup 0<> IF 1 - EXIT THEN drop
-   DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
-   DEFINER-N @ {: row:n :}
+   VERIFY-DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
+   VERIFY-DEFINER-N @ {: row:n :}
    sym row DEFINER-SYM !
-   row 1 + DEFINER-N !
+   row 1 + VERIFY-DEFINER-N !
    row ;
 
 \ Record `sig` as the effect the definer named by `sym` creates. A name already
@@ -582,7 +580,7 @@ variable DEFINER-N
 \ a source with. The empty table answers before asking the scope anything, so a
 \ source that uses no such definer pays one cell read per token.
 : DEFINER-EFFECT ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   DEFINER-N @ 0= IF SOURCE@ 0 EXIT THEN
+   VERIFY-DEFINER-N @ 0= IF SOURCE@ 0 EXIT THEN
    a u FIND-SYM DEFINER-FIND dup 0= IF drop SOURCE@ 0 EXIT THEN
    1 - DEFINER-SIG@ ;
 
@@ -1512,14 +1510,12 @@ public
    SOURCE-AT!
    RUN ;
 
-\ The definer rows recorded inside this scope go with it: CHECKER-CANDIDATE-
-\ SCOPE-DONE rewinds the checker's symbol table, and a row names a symbol by id.
+\ Verify a source in a candidate scope of its own: what it defines, and the
+\ definer rows it learns, go when CHECKER-CANDIDATE-SCOPE-DONE rewinds the scope.
 : SOURCE-BUF ( ptr u8 n -- )
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
-   DEFINER-MARK
    [: RUN ;] catch
-   swap DEFINER-RELEASE
    CHECKER-CANDIDATE-SCOPE-DONE
    THROW-RESULT ;
 

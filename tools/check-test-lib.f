@@ -321,11 +321,17 @@ variable START-NS
 \ These stay on a real child process because they are the standalone entry
 \ coverage: argument parsing, reading the program from standard input, and the
 \ exit status of `bin/hb tools/check.f`. Everything else drives the same tool
-\ in this process through the CHECK package's public words.
+\ in this process through the CHECK package's public words, and CLI-PATH is the
+\ verdict such an in-process check must repeat.
 
 : CLI-STDIN ( ptr u8 n -- n n n )
    CHECK-ARGV-START
    CHECK-STDIN-CAPTURE ;
+
+: CLI-PATH ( ptr u8 n -- n n n )
+   CHECK-ARGV-START
+   CHECK-ARG+
+   CHECK-CAPTURE ;
 
 : CLI-ALL-LIST ( ptr u8 n ptr u8 n -- n n n )
    {: aa:ptr au:n ba:ptr bu:n :}
@@ -3954,6 +3960,39 @@ variable REQ-U
    CAP-ERR erru s" ckt-good-use" CONTAINS? TFALSE
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
+\ A check run in this process must give the verdict `bin/hb tools/check.f`
+\ gives the same file. The pre-pass learns a `does>` definer by its checker
+\ symbol, and a check's symbols go when its scope ends, so the next check hands
+\ the same id to its own first word. After agree.f made CKT-AG-D a definer, the
+\ edit that makes it a plain word is refused where the command line refuses it:
+\ in the pre-pass, at CKT-AG-USE. A definer row that outlived its check read the
+\ top-level call of CKT-AG-D as a definer creating the next token, the `:`, so
+\ the pre-pass never read CKT-AG-USE and the run refused it instead.
+create AGREE-ERR BUF-CAP allot
+variable AGREE-ERR-U
+
+: AGREE-DEFINER ( -- )
+   SB-RESET s" : CKT-AG-D ( n -- ) create , does> ( -- n ) @ ;" REQ-LINE+
+   s" agree.f" REQ-WRITE ;
+
+: AGREE-PLAIN ( -- )
+   SB-RESET s" : CKT-AG-D ( -- ) ;" REQ-LINE+
+   s" CKT-AG-D" REQ-LINE+
+   s" : CKT-AG-USE ( -- n ) CKT-AG-NOPE ;" REQ-LINE+
+   s" agree.f" REQ-WRITE ;
+
+: TEST-REPEAT-DEFINER ( -- )
+   AGREE-DEFINER
+   s" agree.f" REQ-RUN EXPECT-ACCEPTED
+   AGREE-PLAIN
+   s" agree.f" REQ-RUN {: outu:n erru:n rc:n :}
+   CAP-ERR AGREE-ERR erru BYTE-COPY  erru AGREE-ERR-U !
+   outu erru rc s" CKT-AG-NOPE" EXPECT-PREVERIFY-UNDEFINED
+   s" agree.f" REQ$ CLI-PATH {: cliu:n clie:n clirc:n :}
+   rc clirc T=
+   outu cliu T=
+   AGREE-ERR AGREE-ERR-U @ CAP-ERR clie T$= ;
+
 \ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
 \ process library, which used to leave the run with nothing but `hb: uncaught
 \ throw code -2502`: it named no case, no child and no budget, so a hung child
@@ -4700,6 +4739,7 @@ variable LC-CANON-U
    s" check/repeat-source-fail" [: TEST-REPEAT-SOURCE-FAIL ;] CASE-RUN
    s" check/repeat-file" [: TEST-REPEAT-FILE ;] CASE-RUN
    s" check/repeat-list" [: TEST-REPEAT-LIST ;] CASE-RUN
+   s" check/repeat-definer" [: TEST-REPEAT-DEFINER ;] CASE-RUN
    s" check/oversize" [: TEST-OVERSIZE ;] CASE-RUN
    DECL-CASES
    REQUIRE-CASES
