@@ -32,9 +32,10 @@ message with no trailing newline and the tail ends the line.
 `LCOMPILEDIE` — bad string literal, counted string too long, data space out of
 range, dictionary/code space full, definition body text full, BEGIN nesting
 full, quotation nesting full, duplicate definition, `does>` in a checker-rejected
-body, malformed stack signature, `;]` with no open quotation, `does>` with
-locals active, a local referenced inside a quotation, locals opener inside a
-quotation, `:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
+body, malformed stack signature, `;]` with no open quotation, `;` with a
+quotation open, `does>` with locals active, a local referenced inside a
+quotation, locals opener inside a quotation, `:`/`cast:`/`defer`/`is` missing a
+name, `is` target not found or not
 deferred, `package`/`export` misuse, the whole `using` family, and the
 `construct`/`match` operand refusals (`hb: construct: unknown family: NOPE at
 <path>:<line>`).

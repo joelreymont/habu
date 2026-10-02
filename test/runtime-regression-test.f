@@ -1311,6 +1311,13 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
    s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
    s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
+   \ The mirror: `;` with one or two quotations open. Published, the body's
+   \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
+   \ hook, so the engine's own refusal at `;` is the one that stops it.
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE

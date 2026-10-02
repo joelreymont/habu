@@ -162,6 +162,7 @@ variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMI
 variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block (dots habu-dictionary-allot-past-4e5c3c2b, habu-name-the-ceiling-98ca1f47)
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
+variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-f0a4c0e6)
 
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
@@ -173,6 +174,7 @@ variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
 : QNEST-MSG$ ( -- ptr u8 n )     s" hb: quotation nesting full at " ;
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
+: SEMIQ-MSG$ ( -- ptr u8 n )     s" hb: ; with a quotation open: " ;
 
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
@@ -184,6 +186,7 @@ variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting
 : DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
 : QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
+: SEMIQ-MSG-LEN ( -- n )     SEMIQ-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
@@ -632,6 +635,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
    LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE composes the same line from JIT-QUOT:LEVELS
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
+   LSEMIQMSG LABEL@ LBL, SEMIQ-MSG$ BYTES,                               \ EM-COMPILE-SEMI appends the definition
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    RELOC-EMIT:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
@@ -10062,8 +10066,22 @@ public
    LMAIN LABEL@ B, ;
 
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}
+   LBL {: closed:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
+      \ A quotation is still open: the mirror of J-SEMIQUOT's `;]` with none.
+      \ Publishing would leave its b-over placeholder, a branch to itself,
+      \ unpatched, so calling the word would spin. QPATCH-CELL is set at every
+      \ depth: J-QUOT parks a frame only while it is set and J-SEMIQUOT restores
+      \ a set one. Refused before anything is emitted and before the checker
+      \ hook, checked and TRUSTED: alike: catchable rc 75 inside evaluate, whose
+      \ rollback zeroes the Q cells and JIT-QUOT:SP-CELL, fail-closed exit 75 at
+      \ top level.
+      9 DATA QPATCH-CELL LDR,  9 closed CBZ,
+         0 2 MOVZ,  1 LSEMIQMSG LABEL@ ADR,  2 SEMIQ-MSG-LEN MOVZ,  NR-WRITE SYS,
+         LDIAGDEF LABEL@ BL,
+         0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
+      closed LBL,
       LVSPILL LABEL@ BL,
       EM-COMPILE-DROP-LOCALS
       DOES-REC:ELIDE-EMPTY
@@ -11357,7 +11375,7 @@ package LABELS
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
-   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !
+   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
