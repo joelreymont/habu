@@ -24,6 +24,9 @@ variable SEQ
 \ the raw cell. Defined here in the first prefix source so every later prefix file
 \ (type-schema.f and type-family.f both load before internal-mark.f) can tag its
 \ cells at their definition site with a single REG-PROTECT.
+\ An index holds only in the process that loads the prefix - a build host
+\ numbers its window's records after its own primitives - so the pass retires
+\ the table once it has run, and no image carries one (internal-mark.f IMK-PASS).
 \ The cap is a real budget, not a round number: 47 of 64 slots were taken when
 \ dot habu-tfam-2b-sealed-1b77662c sealed src/core/sumtype.f, and that seal alone
 \ needs 14 more (11 public `defer` hooks and 3 public control cells - a package

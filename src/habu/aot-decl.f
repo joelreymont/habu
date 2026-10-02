@@ -419,16 +419,19 @@ variable N
 \ each emission once, as its own unplaced routine: a call's field is the zero an
 \ unplaced emission writes, a DATA literal holds its window DATA offset, a code
 \ literal naming a word holds 0, and a `codeaddr` holds its function's offset in
-\ its own emission. A RECORD row is (window record index, emission start in CODE,
-\ emission bytes, entry offset in it): a `does>` definer and its companion are two
-\ rows over one emission, the companion entering where the clause function
-\ starts. A SITE row is (byte offset in CODE, kind, target); a target is a window
-\ record, SITE-REC-TAG beside its window index, or a word of the engine's own
-\ prefix, SITE-NAME-TAG beside its name's pool offset (a qualified name when its
-\ package is not global), the two forms AOT-BUF's image site rows use. An XT row
-\ is (address-cell row, window record index): an address cell whose CODE target
-\ is a window record's entry, keyed by the record and not by the ARM64 blob
-\ offset the address-cell row itself carries.
+\ its own emission. A record is named by its SHIPPED ROW, its row in the record
+\ table the artifact carries: that table holds only the records the capture
+\ ships, so past a stripped private word a window index names the wrong one. A
+\ RECORD row is (shipped row, emission start in CODE, emission bytes, entry offset
+\ in it): a `does>` definer and its companion are two rows over one emission, the
+\ companion entering where the clause function starts. A SITE row is (byte
+\ offset in CODE, kind, target); a target is a shipped record, SITE-REC-TAG beside
+\ its shipped row, or a word of the engine's own prefix, SITE-NAME-TAG beside its
+\ name's pool offset (a qualified name when its package is not global), the two
+\ forms AOT-BUF's image site rows use. An XT row is (address-cell row, shipped
+\ row): an address cell whose CODE target is a shipped record's entry, keyed by
+\ the record and not by the ARM64 blob offset the address-cell row itself
+\ carries.
 package AOT-SHADOW
 private
 DYNAMIC-BUFFER REC-STORAGE n
@@ -449,7 +452,7 @@ public
 12 constant SITE-ROW
 8 constant XT-ROW
 \ An emission is code the window's own region held, so the blob's bound is its
-\ bound; one record row per window record; a site is a call or a ten-byte MOVABS,
+\ bound; one record row per shipped record; a site is a call or a ten-byte MOVABS,
 \ so a byte can start at most one in five; one XT row per address-cell row.
 AOT-BUF:AOT-BLOB-CAP constant CODE-CAP
 AOT-BUF:AOT-REC-MAX constant REC-MAX

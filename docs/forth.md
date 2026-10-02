@@ -295,7 +295,9 @@ and always available, for a one-off call or to escape a collision.
   `:` and an unknown package; it is valid at top level and inside an open
   package. Only the public wordlist joins the search; definitions still target
   the current scope's wordlist. A required file may open `NAME`; when the
-  require returns, the consumer is back in its original scope.
+  require returns, the consumer is back in its original scope. A file loaded or
+  a buffer evaluated while a `using` is open resolves through it, at top level
+  and in definitions.
 - The scope ends at the matching `;using`, at the enclosing `;package` for a
   `using` opened inside a package, or at the end of the load file, whichever
   comes first; consumer files close explicitly with `;using`. `;using` closes
@@ -305,6 +307,14 @@ and always available, for a one-off call or to escape a collision.
   opened before `package` after `;package`. A `;using` inside the package that
   would close an outer one is refused by name (`ENGINE-ERROR:USING-OUTER`, rc
   104; the source verifier's `E-USING-OUTER`, 7146).
+- A load file is a using scope the same way: an included file or an
+  `evaluate`d buffer closes only the usings it opens. A `;using` in it that
+  would close one its includer opened is refused by name with the same codes
+  (`ENGINE-ERROR:USING-OUTER`, rc 104; `E-USING-OUTER`, 7146, for a using the
+  source verifier's replay inherited). Closed, it came back open when the
+  buffer ended, and a `using` the buffer opened next took its slot: after a
+  buffer `;using using UB` under `using UA`, the includer resolved `UB`'s
+  words where `UA`'s had been.
 - Lookup for a bare tail: open-package scope (private, then own public) FIRST,
   then the global wordlist, then each used public wordlist. The open-package
   scope silently wins over a used public. A tail in MORE THAN ONE used public
@@ -316,9 +326,12 @@ and always available, for a one-off call or to escape a collision.
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public
   tails are ordinary verbs cannot be imported: `using TCP4` refuses at the first
   bare `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies)
-  or rename the collision. The checker enforces this in every checked body; the
-  engine's raw interpret and `0 set-check` keep global-first as the explicit
-  unchecked boundary.
+  or rename the collision. The checker enforces this in every checked body (rc
+  67). The interpreter enforces it at top level and for `'`, by name
+  (`ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105, a throw inside `evaluate`);
+  without it `using PS` then a top-level `SHW` ran the global. Only the bodies
+  nothing certifies, `TRUSTED:` and `0 set-check` definitions, keep
+  global-first, as the explicit unchecked boundary.
 - The colliding global need not be one the checker knows: every engine-prefix
   colon word without signature or axiom, and every `0 set-check` definition,
   counts. The reference site asks the ENGINE's wordlists (`search-wl`, the
@@ -340,7 +353,10 @@ and always available, for a one-off call or to escape a collision.
   file, or aborted by a throw, never leaks to the caller. A package an included
   file leaves open keeps none of that file's usings: its using floor drops to
   the restored depth, so the includer's `;package` reopens none of them and its
-  own `;using` inside the package closes.
+  own `;using` inside the package closes. A file that closes its includer's
+  package ends the usings opened in that package, and the includer gets back
+  the depth that `;package` restored, not the one the file entered at: a using
+  the file opened after it ends with the file.
 - **A package word shadows the same-named global or primitive, and nothing
   reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`; in
   a checked body under `using DOC` a bare `close` is refused against
@@ -1192,6 +1208,11 @@ passing suite.
 - **Control words and ticks are compile-only**: `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do` and `;` live inside a `:`
   definition, never at top level; interpreted tests use `'` (`' WORD catch`).
+  Both ticks resolve the name as a bare word does (the open scope, the globals,
+  then the used publics), and a miss is `E-UNDEFINED: NAME`: rc 70 at top
+  level, a catchable 70 under `evaluate`. A tick is no presence probe: require
+  the file that defines the word first (`' NO-SUCH` measured both ways,
+  test/outer-interpret.f TICK-UNDEFINED).
 - **A `begin <cond> while <body> repeat` condition may only add a flag.** The
   stack under the flag at `while` equals the stack at `begin`; a condition that
   net-produces carry values (`a u NEXT-TOKEN` leaving a span under the flag) is
@@ -1279,16 +1300,25 @@ the rule.
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
   own (lib/net/curl.f's fd_sets and out-parameter cells).
-- **A `TYPED-BUFFER` count is a decimal literal, not a constant's name.** The
-  source pre-verifier reads the count as TEXT (`verify-source.f`
-  `RECORD-TYPED-BUFFER` hands the previous token to the checker's
-  `CHECKER-LBUF-COUNT?`, which accepts decimal digits only), so a line the
-  engine loads is refused when the file is checked: `64 constant LB-CAP  LB-CAP
-  TYPED-BUFFER LB-ROWS n` makes `tools/check.f` throw 7121 (rc 67) while `64
-  TYPED-BUFFER LB-ROWS n` passes. `$hex` and expressions are refused too: `Q-MAX
-  Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem` (lib/queue.f:42) is what
-  `tools/check.f lib/queue.f` throws 7121 on today. A table sized from a
-  constant uses `create NAME CAP cells allot` and reads through a `ptr` local.
+- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is a decimal literal or a word
+  of effect `( -- n )`.** The source pre-verifier reads the count as TEXT and
+  never runs it (`verify-source.f` `RECORD-TYPED-BUFFER` hands the previous
+  token to the checker's `CHECKER-LBUF:CERTIFY`). A decimal literal certifies
+  by its value, positive and within `LBUF-COUNT-MAX` for the element width.
+  Any other token certifies by its effect: it must resolve as a body would
+  resolve it (bare, package-qualified or engine-held) to a word that takes no
+  input and leaves one cell `n` accepts. A `constant`, a computed constant
+  (`6 constant OPS  2 constant KEYS  OPS KEYS + constant VOCAB` then
+  `VOCAB TYPED-BUFFER ROWS n`), an engine constant such as `HIR:OPCODES` and a
+  colon `( -- n )` all pass `tools/check.f`. The load bounds the value
+  (`src/core/layout-buffer.f` `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n`
+  passes pre-verification, and its load throws `E-LAYOUT-BUFFER` (7121, rc
+  67). Measured refusals, 7121 from the pre-verifier (rc 67): an unknown name,
+  a `variable` (it leaves an address), a `( -- bool )` word, a word with an
+  input (`4 CAP TYPED-BUFFER` for `CAP ( n -- n )`), a name the scope refuses
+  (a `using` public that shadows a global, or one two used packages export),
+  `$40`, a literal `0`, and an inline expression: `Q-MAX Q-SEM-N * TYPED-BUFFER
+  Q-SEMS TASK:sem` (lib/queue.f:42) is refused on its `*`.
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —

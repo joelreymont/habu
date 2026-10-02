@@ -49,13 +49,14 @@
 \ other value the operation reads or lives across (regalloc.f MB-FIXED-BITS), so
 \ a count or dividend the rest of the function reads - or two counts live over
 \ one interval - keeps its own value elsewhere while the copy takes the
-\ register. The copy stands IMMEDIATELY before the operation so that a value
-\ dying between the two cannot hold the register where the pin is placed. That
-\ holds while the copy is a class of its own. When the allocator coalesces the
-\ copy into a source that dies at it (regalloc.f MB-COALESCE1), the pinned class
-\ opens at the source's definition instead, and a short-lived value holding the
-\ register there makes MB-PIN refuse with E-A64RA-FIXED: `( a b n -- x ) -rot +
-\ swap lshift` under the data-stack convention is refused so. A shift by a
+\ register. The pin is placed where the pinned class OPENS, and the register is
+\ forbidden as well to every value whose range spans that opening (regalloc.f
+\ MB-FORBID-PINS), so the pin holds whether the copy is a class of its own,
+\ opening immediately before the operation, or is coalesced into a source that
+\ dies at it (regalloc.f MB-COALESCE1) and opens at the source's definition:
+\ `( a b n -- x ) -rot + swap lshift` under the data-stack convention loads its
+\ count straight into rcx, and b, which holds a register at that load and dies
+\ at the add, is kept out of rcx. A shift by a
 \ literal keeps the immediate form and carries no constraint at all. A
 \ division's quotient is result 0 and the source value's; its remainder is a
 \ second result nothing reads; `cqo` and the branch over the zero-divisor refusal

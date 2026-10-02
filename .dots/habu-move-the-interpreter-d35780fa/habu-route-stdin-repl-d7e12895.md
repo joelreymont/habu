@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.974480+03:00"
 blocks:
-  - habu-parse-argv-and-2106dd5c
   - habu-recover-throws-across-18bd36f9
 ---
 

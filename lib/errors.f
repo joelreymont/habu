@@ -1214,7 +1214,7 @@
 \ this module's accepted one, a module that is not the bound one, an attribute
 \ the dialect declares and the operation does not carry, and an opcode that is
 \ none of this dialect's.
--8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a negate or a select, which no selection reaches yet, or a double comparison whose condition and result count are not `gt` with one result or `equal` with two
+-8780 constant E-X64EMIT-FORM   \ an operation this emitter does not render: a negate, which no selection reaches, or a double comparison whose condition and result count are not `gt` with one result or `equal` with two
 -8781 constant E-X64EMIT-SHAPE  \ a module this emitter cannot write: no function at all, a function ordinal outside the module, an empty block, a block that does not end in a terminator, or a terminator that is not its block's last operation
 -8782 constant E-X64EMIT-ACCEPT \ no accepted register assignment at all, or one accepted for a different module
 -8783 constant E-X64EMIT-MODULE \ emission before the machine dialect's identities were bound, a frozen module that is not the bound one, or a builder of another dialect or schema version

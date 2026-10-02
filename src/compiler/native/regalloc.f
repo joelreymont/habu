@@ -832,6 +832,16 @@ DYNAMIC-BUFFER FIXP-MASK-BUF n
 : FIXP-MASK ( -- ptr n ) 0 FIXP-MASK-BUF ;
 variable N-FIXP
 0 N-FIXP !
+\ Every PINNED class - one the contract or a form declares into a register - in
+\ the order its hull opens, with that opening. The pin is placed where the class
+\ opens, which is the definition of its earliest member and not the operation
+\ that needs the register when a copy was coalesced into the value it reads.
+DYNAMIC-BUFFER PIN-POS-BUF n
+: PIN-POS ( -- ptr n ) 0 PIN-POS-BUF ;
+DYNAMIC-BUFFER PIN-ROOT-BUF n
+: PIN-ROOT ( -- ptr n ) 0 PIN-ROOT-BUF ;
+variable N-PINS
+0 N-PINS !
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -872,6 +882,8 @@ variable N-FIXP
    OMAX CALL-POS-BUF-RESERVE
    OMAX FIXP-POS-BUF-RESERVE
    OMAX FIXP-MASK-BUF-RESERVE
+   VMAX PIN-POS-BUF-RESERVE
+   VMAX PIN-ROOT-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1154,7 +1166,8 @@ variable N-FIXP
 \ a class two declarations disagree about is refused where a contract's would be
 \ (MB-ONE-DECL) and the fixed-first placement pins it without a rule of its own.
 \ What keeps the pinned register free for it is the forbid every class that
-\ crosses or reads the operation carries (MB-FIXED-BITS). What this pass does
+\ crosses or reads the operation carries (MB-FIXED-BITS), and every class whose
+\ hull spans the pinned class's opening (MB-FORBID-PINS). What this pass does
 \ NOT do is insert a copy for a value that cannot be pre-coloured; the selector
 \ is what keeps two values that both demand one register apart.
 : MB-FIX-REG-CK ( n -- )
@@ -1568,27 +1581,21 @@ variable N-FIXP
       UF-NEXT@
    repeat drop false ;
 
-\ The first call at or after a position, by bisection over the index.
-: MB-CALL-FROM ( n -- n )
-   {: p:n :}
-   0 N-CALLS @
+\ The first row at or after a position of an index whose `u` rows lie in position
+\ order, by bisection.
+: MB-FROM ( n ptr n n -- n )
+   {: p:n at:ptr u:n :}
+   0 u
    begin 2dup < while
       {: lo:n hi:n :}
       lo hi + 2 / {: mid:n :}
-      mid cells CALL-POS + @ p < if mid 1+ hi else lo mid then
+      mid cells at + @ p < if mid 1+ hi else lo mid then
    repeat
    drop ;
 
-\ The same bisection over the fixed-register index.
-: MB-FIX-FROM ( n -- n )
-   {: p:n :}
-   0 N-FIXP @
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid cells FIXP-POS + @ p < if mid 1+ hi else lo mid then
-   repeat
-   drop ;
+: MB-CALL-FROM ( n -- n )   CALL-POS N-CALLS @ MB-FROM ;
+: MB-FIX-FROM ( n -- n )    FIXP-POS N-FIXP @ MB-FROM ;
+: MB-PIN-FROM ( n -- n )    PIN-POS N-PINS @ MB-FROM ;
 
 \ The calls it walks are THIS function's: a class belongs to one function, and
 \ the window below is that function's, so the index is entered at the hull and
@@ -1643,13 +1650,10 @@ variable N-FIXP
 \ be exempt at an operation that reads it for another operand, and no convention
 \ of either machine declares a place a form also fixes.
 \
-\ Together the two rules are what make a pinned operand placeable when its value
-\ is defined immediately before the operation, which is where the selector puts
-\ the copy it makes for a fixed operand: every class holding the register there
-\ either dies at the definition, and is expired before the pin is placed
-\ (MB-STEP), or reaches the operation and is forbidden the register. A value
-\ defined further up can meet a class that holds the register and dies before
-\ the operation; MB-PIN refuses that placement with E-A64RA-FIXED.
+\ Both rules are asked at the OPERATION. Where a pinned operand's class OPENS is
+\ MB-FORBID-PINS's question, because a copy coalesced into the value it reads
+\ opens at that value's definition, further up than any operation this index
+\ names.
 : MB-FIXED-BITS ( n n n -- n )
    {: r:n p:n m:n :}
    r p MB-CROSSES? if m exit then
@@ -1665,6 +1669,31 @@ variable N-FIXP
       r p  i cells FIXP-MASK + @  MB-FIXED-BITS or
    loop ;
 
+\ A PIN IS PLACED WHERE ITS CLASS OPENS, so the register it names has to be free
+\ there, and every class whose HULL spans that opening is forbidden it: such a
+\ class still holds its own register when the pin is placed (MB-STEP expires
+\ only the classes whose last read is at or before the opening), and MB-PIN
+\ would find it taken. The span is the hull's and not the members', because the
+\ holder table keeps a class's register across a gap between its members too. A
+\ class that opens inside the pinned one finds the register held and needs no
+\ rule. The opening is the pinned operand's own definition when the selector's
+\ copy stands alone, and the definition of the value it was copied from when
+\ the copy was coalesced into that value (MB-COALESCE1): `( a b n -- x ) -rot +
+\ swap lshift` loads its count, coalesced with the copy pinned to rcx, while b
+\ still holds a register and dies at the add, so b is kept out of rcx. Only a
+\ class of the pinned class's own file is asked, because one register number
+\ names a different register in each. A contract's pins are its arguments,
+\ which open where their function does, outside every window this is asked over.
+: MB-FORBID-PINS ( n n n n -- n )
+   {: r:n first:n limit:n acc:n :}
+   r FILE-AT {: fl:n :}
+   acc
+   N-PINS @  first MB-PIN-FROM  ?do
+      i cells PIN-POS + @ limit >= if unloop exit then
+      i cells PIN-ROOT + @ {: p:n :}
+      p FILE-AT fl = if  1  p cells CL-FIX + @  lshift or  then
+   loop ;
+
 : MB-FORBID ( n -- n )
    {: r:n :}
    \ No member can cross outside this class's hull. Gaps inside it still need
@@ -1676,7 +1705,8 @@ variable N-FIXP
    \ The fixed scan runs one position FURTHER than the calls one, because the
    \ operation that READS a class for the last time is the last position of its
    \ hull and forbids its fixed registers there.
-   r first limit 1+ acc MB-FORBID-FIXED ;
+   r first limit 1+ acc MB-FORBID-FIXED {: fixed:n :}
+   r first limit fixed MB-FORBID-PINS ;
 
 : MB-DUE? ( n n -- bool )
    {: r:n pos:n :}
@@ -1754,6 +1784,23 @@ variable N-FIXP
          p cells DUE-HEAD + @  k cells DUE-NEXT + !
          k p cells DUE-HEAD + !
       then
+   loop ;
+
+\ The pinned roots, read off the due index one position after another, so the
+\ rows lie in the order MB-PIN-FROM bisects.
+: MB-PIN-INDEX ( -- )
+   0 N-PINS !
+   LINE-N 0 ?do
+      i cells DUE-HEAD + @
+      begin dup 0 >= while
+         {: r:n :}
+         r cells CL-FIX + @ NOBODY <> if
+            i  N-PINS @ cells PIN-POS + !
+            r  N-PINS @ cells PIN-ROOT + !
+            N-PINS @ 1+ N-PINS !
+         then
+         r cells DUE-NEXT + @
+      repeat drop
    loop ;
 
 \ Pinned classes first, because the entry block's arguments are all pinned.
@@ -2388,6 +2435,7 @@ public
    MB-DECLS!
    KEEP-ALL
    MB-DUE-INDEX
+   MB-PIN-INDEX
    MB-FIT
    MB-FINISH
    PLAN-ALL ;
@@ -2548,6 +2596,7 @@ public
    0 N-EVICTED !
    0 N-CALLS !
    0 N-FIXP !
+   0 N-PINS !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private

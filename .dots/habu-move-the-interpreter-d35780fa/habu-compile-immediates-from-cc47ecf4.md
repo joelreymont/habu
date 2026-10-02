@@ -1,9 +1,11 @@
 ---
 title: Compile immediates from the Habu compile loop
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.922296+03:00"
+closed-at: "2026-10-01T11:58:12.000000+03:00"
+close-reason: "done: src/habu/definers.f runs a body's neutral parse immediate as CAPTURE-IMMEDIATE does (LFIND via OUTER:FIND-SCOPE, preflight, floor); bin/hb --load test/outer-interpret.f agrees with the engine on 136 cases (7 new: immediate ends the head through the Habu loop, neutral/non-neutral/parsing, LFIND scope, preflight view and throw, preflight-missing and underflow refusals; each failed on the base loop), ThinkPad and spark; outer-find ok."
 ---
 
 Problem: immediates in compile mode run through the assembly `CAPTURE-IMMEDIATE` (`habu2.f:7529-7545`).

@@ -442,6 +442,21 @@ create TXT
    HIR-OPCODE:ADD n t BINOP RET1
    CLOSE-FUN ;
 
+\ `: LEAF ( a b n -- x ) -rot + swap lshift ;`, or its `rshift` twin - nothing
+\ but its copy reads the count, so the copy is coalesced back into it and the
+\ class pinned to rcx opens where the count is defined. Under the data-stack
+\ convention that is its load, which b crosses on its way to the add: b is kept
+\ out of rcx and the count is loaded straight into it.
+: BUILD-SUM-SHIFT ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD a b BINOP {: s:IR-ID:ir-value-id :}
+   o s n BINOP RET1
+   CLOSE-FUN ;
+
 \ `: LEAF ( a -- n ) invert ;` - the one unary form of this slice.
 : BUILD-NOT ( -- )
    1 1 OPEN-FUN
@@ -1208,6 +1223,112 @@ private
    M-RET0
    M-CLOSE ;
 
+\ ---- the two selects, staged in the dialect ----------------------------------
+\ Nothing selects `x64.cmpsel` or `x64.selz` yet (select-x64.f's header), so each
+\ is staged here under the data-stack boundary the divide keeps. The allocator
+\ picks the registers, so an aliasing case is an IR identity: one value standing
+\ in two operands is one register in both. SEL-TAKE leaves the memory order under
+\ the loaded cells, and each shape picks its operands off the top with a stack
+\ word.
+: SEL-TAKE2 ( -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
+   M-MOD
+   M-BIND-MACHINE
+   BINARY-SIGN M-FUN
+   16 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: b:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 a b ;
+
+: SEL-TAKE3 ( -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
+   M-MOD
+   M-BIND-MACHINE
+   TERNARY-SIGN M-FUN
+   24 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: b:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 16 M-DLOAD {: c:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   t3 a b c ;
+
+\ The answer stored and published, under the order the cells were taken with.
+: SEL-ANSWER ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-BUILD:module )
+   {: t:IR-ID:ir-value-id r:IR-ID:ir-value-id :}
+   r t 0 M-DSTORE {: t1:IR-ID:ir-value-id :}
+   t1 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
+\ Operands 0 and 1 compared signed less-than; operand 2 the answer when that
+\ fails and operand 3 when it holds (x64ir.f DEF-CMPSEL).
+: M-CMPSEL ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id
+      f:IR-ID:ir-value-id h:IR-ID:ir-value-id :}
+   X64IR-OPCODE:CMPSEL M-OPEN
+   a M-OPERAND+
+   b M-OPERAND+
+   f M-OPERAND+
+   h M-OPERAND+
+   M-RESULT+
+   CC MB X64IR:KEY-COND  CC MB X64IR-COND:LT X64IR:COND-ATTR  M-ATTR+
+   M-CLOSE-VALUE ;
+
+\ Operand 0 tested against zero; operand 1 the answer when it is not zero and
+\ operand 2 when it is (x64ir.f DEF-SELZ).
+: M-SELZ ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id nz:IR-ID:ir-value-id z:IR-ID:ir-value-id :}
+   X64IR-OPCODE:SELZ M-OPEN
+   v M-OPERAND+
+   nz M-OPERAND+
+   z M-OPERAND+
+   M-RESULT+
+   M-CLOSE-VALUE ;
+
+\ A fourth value for the general cmpsel, which three cells cannot hold apart.
+public
+1000 constant SEL-LIT
+private
+
+\ `( a b x -- n )`: `a b < if 1000 else x then`, four values in four registers.
+: BUILD-CMPSEL ( -- IR-BUILD:module )
+   SEL-TAKE3  SEL-LIT X64IR:ADDR-NONE M-MOVI  M-CMPSEL SEL-ANSWER ;
+
+\ `( a b y -- n )`, operand 2 = operand 0: the result is the compared register,
+\ and `a` must survive the compare to be the answer when it fails.
+: BUILD-CMPSEL-FA ( -- IR-BUILD:module )
+   SEL-TAKE3  >r over r>  M-CMPSEL SEL-ANSWER ;
+
+\ `( a b x -- n )`, operand 3 = operand 1: `b` must survive the compare to be
+\ moved in.
+: BUILD-CMPSEL-HB ( -- IR-BUILD:module )
+   SEL-TAKE3  over  M-CMPSEL SEL-ANSWER ;
+
+\ `( a b x -- n )`, operand 3 = operand 0: `a` must survive the compare to be
+\ moved in.
+: BUILD-CMPSEL-HA ( -- IR-BUILD:module )
+   SEL-TAKE3  >r over r> swap  M-CMPSEL SEL-ANSWER ;
+
+\ `( a b x -- n )`, operand 2 = operand 3: both sources one register, so the
+\ answer is `x` whichever way the compare goes.
+: BUILD-CMPSEL-SAME ( -- IR-BUILD:module )
+   SEL-TAKE3  dup  M-CMPSEL SEL-ANSWER ;
+
+\ `( v x y -- n )`: `v if x else y then`, three values in three registers.
+: BUILD-SELZ ( -- IR-BUILD:module )
+   SEL-TAKE3  M-SELZ SEL-ANSWER ;
+
+\ `( v y -- n )`, operand 1 = operand 0: the result is the tested register, and
+\ `v` must survive the test to be the answer when it is not zero.
+: BUILD-SELZ-NV ( -- IR-BUILD:module )
+   SEL-TAKE2  >r dup r>  M-SELZ SEL-ANSWER ;
+
+\ `( v x -- n )`, operand 2 = operand 0: `v` must survive the test to be moved
+\ in, which is zero.
+: BUILD-SELZ-ZV ( -- IR-BUILD:module )
+   SEL-TAKE2  over  M-SELZ SEL-ANSWER ;
+
+\ `( v x -- n )`, operand 1 = operand 2: both sources one register.
+: BUILD-SELZ-SAME ( -- IR-BUILD:module )
+   SEL-TAKE2  dup  M-SELZ SEL-ANSWER ;
+
 \ ---- the double comparison the selector never mints --------------------------
 \ `x64.fcmpset` carries its scratch as a variadic result tail (x64ir.f
 \ DEF-FCMPSET), so nothing before the emitter ties the count to the condition: a
@@ -1394,6 +1515,10 @@ private
 : DDIFF-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DIFF 2 1 DSTACK-EMITTED ;
 : DADDR-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-DADDRESSED 1 1 DSTACK-EMITTED ;
 : DLOOP-BYTES ( IR-CTX:ctx -- )    HIR-MOD BUILD-LOOP 2 1 DSTACK-EMITTED ;
+: DSUM-SHL-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:LSHIFT BUILD-SUM-SHIFT 3 1 DSTACK-EMITTED ;
+: DSUM-SHR-BYTES ( IR-CTX:ctx -- )
+   HIR-MOD HIR-OPCODE:RSHIFT BUILD-SUM-SHIFT 3 1 DSTACK-EMITTED ;
 
 : TAIL-BYTES ( IR-CTX:ctx -- )
    HIR-MOD CALLEE-ENTRY BUILD-WORDCALLER TAIL-ALLOCATED 0 PLACED ;
@@ -1739,6 +1864,74 @@ $100000000 constant FAR-ENTRY
    \ mc: retq
    s" 4981ec18000000498b0c24498b442408498b7424104885f60f851700000048c7c200e7ffff498914244981c408000000e8cb0300004881feffffffff0f850a00000048f7d831d2e905000000489948f7fe4801ca498914244981c408000000c3" X= ;
 
+: CMPSEL-BYTES ( IR-CTX:ctx -- )
+   0 W-CTX ! BUILD-CMPSEL 3 1 M-DALLOCATED 0 PLACED ;
+
+: SELZ-BYTES ( IR-CTX:ctx -- )
+   0 W-CTX ! BUILD-SELZ 3 1 M-DALLOCATED 0 PLACED ;
+
+\ The flags between the compare and the move are no value, so each select is
+\ written as the pair; test/x86-64-peer-routines.f runs its aliasing cases.
+: SELECT-CASES ( -- )
+   s" cmpsel: the compare, then the move of the value the condition holds for over the tied one it fails for" T-LABEL
+   WBND [: CMPSEL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rcx
+   \ mc: movq 16(%r12), %rdx
+   \ mc: movabsq $1000, %rsi
+   \ mc: cmpq %rcx, %rax
+   \ mc: cmovlq %rsi, %rdx
+   \ mc: movq %rdx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b4c2408498b54241048bee8030000000000004839c8480f4cd6498914244981c408000000c3" X=
+
+   s" selz: the test against zero, then the move of the zero answer over the tied nonzero one" T-LABEL
+   WBND [: SELZ-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rcx
+   \ mc: movq 16(%r12), %rdx
+   \ mc: testq %rax, %rax
+   \ mc: cmoveq %rdx, %rcx
+   \ mc: movq %rcx, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b4c2408498b5424104885c0480f44ca49890c244981c408000000c3" X= ;
+
+\ A count coalesced into its load, under the data-stack convention: the class
+\ pinned to rcx opens at the load, and b, loaded before it and dead at the add,
+\ is kept out of rcx there (regalloc.f MB-FORBID-PINS).
+: SUM-SHIFT-CASES ( -- )
+   s" a computed left shift whose count is loaded straight into rcx: b, loaded before it and dead at the add, is kept out of rcx" T-LABEL
+   WBND [: DSUM-SHL-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rdx
+   \ mc: movq 16(%r12), %rcx
+   \ mc: addq %rdx, %rax
+   \ mc: movq %rcx, %rcx
+   \ mc: shlq %cl, %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b542408498b4c24104801d04889c948d3e0498904244981c408000000c3" X=
+
+   s" the same shape shifted right" T-LABEL
+   WBND [: DSUM-SHR-BYTES ;] IR-CTX:WITH-CONTEXT
+   \ mc: subq $24, %r12
+   \ mc: movq (%r12), %rax
+   \ mc: movq 8(%r12), %rdx
+   \ mc: movq 16(%r12), %rcx
+   \ mc: addq %rdx, %rax
+   \ mc: movq %rcx, %rcx
+   \ mc: shrq %cl, %rax
+   \ mc: movq %rax, (%r12)
+   \ mc: addq $8, %r12
+   \ mc: retq
+   s" 4981ec18000000498b0424498b542408498b4c24104801d04889c948d3e8498904244981c408000000c3" X= ;
+
 public
 
 : RUN ( -- )
@@ -1903,6 +2096,8 @@ public
    2 X64EMIT:BLOCK-START@ 48 T=
    3 X64EMIT:BLOCK-START@ 37 T=
    X64EMIT:RETIRE
+
+   SUM-SHIFT-CASES
 
    s" the compare-and-branch diamond, placed: both arms written and the block they join at taking the answer as its argument" T-LABEL
    WBND [: DIAMOND-BYTES ;] IR-CTX:WITH-CONTEXT
@@ -2106,6 +2301,7 @@ public
    X64EMIT:RETIRE
 
    DIVIDE-CASES
+   SELECT-CASES
 
    WBND [: ADDRESSED-CASES ;] IR-CTX:WITH-CONTEXT
    STATE-CASES

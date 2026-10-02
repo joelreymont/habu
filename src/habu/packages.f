@@ -191,6 +191,25 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    -1 0 PKG-SCOPE!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
+\ ---- the package scope a throw puts back (habu1.f B-EVAL, habu2.f LEVALREC) --
+\ The open package's row, its parent wordlist, the current wordlist and the
+\ open package's using floor: what the engine's evaluate frame keeps of the
+\ package scope beside the using depth (PKGSNAP).
+: PKG-STATE ( -- n n n n )
+   PKG-REC-CELL CELL@  PKG-PARENT-CELL CELL@  get-current  USE-PKG-SAVE-CELL CELL@ ;
+
+\ Put back the state PKG-STATE read, as the engine's recovery does after a
+\ throw, and have the checker re-read the restored scope. The sealed writers
+\ run only when the failed input changed the scope.
+: PKG-RECOVER ( n n n n -- ) {: rec:n parent:n cur:n floor:n :}
+   floor USE-PKG-SAVE-CELL CELL!
+   PKG-REC-CELL CELL@ rec <>  PKG-PARENT-CELL CELL@ parent <> or
+   get-current cur <> or if
+      rec 0= if -1 0 PKG-SCOPE! else rec XREF-N>REC PKG-INDEX parent PKG-SCOPE! then
+      cur set-current
+   then
+   NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
+
 \ ---- using, ;using (habu2.f C-USING, C-END-USING) ----------------------------
 \ A refusal's message, the token and the compile-die tail.
 : PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
@@ -212,6 +231,13 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    then
    row XREF-PKG-PUBLIC ;
 
+\ The using depth the buffer the Habu loop reads may close down to, as the
+\ engine's evaluate frame keeps it (layout.f EVAL-FRAME:USE-FLOOR): INTERPRET starts
+\ it at the depth the buffer enters at, and a buffer below it, because a
+\ `;package` closed a package opened before the buffer, lowers it to meet the
+\ first using it opens there.
+variable USE-FLOOR
+
 \ The wid joins the used publics at the current depth; the checkers record the
 \ name at that depth before it grows.
 : PKG-USING ( -- )
@@ -222,13 +248,16 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
       s" hb: using: too many concurrent usings: "
       ENGINE-ERROR:USING-OVERFLOW PKG-USING-FAIL
    then
+   d USE-FLOOR @ < if d USE-FLOOR ! then
    wid  d cells USE-WIDS-OFF +  CELL!
    PKG-NOTIFY-USING
    d 1+ USE-DEPTH-CELL CELL! ;
 
 \ In an open package the most recent using must be the package's own: one
 \ opened before `package` sits at or below the depth `;package` restores, so
-\ closing it here would come undone there.
+\ closing it here would come undone there. Nor may a buffer close a using its
+\ includer opened, at or below the buffer's floor: it would come back open
+\ when the buffer ends.
 : PKG-END-USING ( -- )
    TASK-GUARD
    FIND-USE-DEPTH {: d:n :}
@@ -238,6 +267,10 @@ TRUSTED: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] ) ;
    then
    PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
       s" hb: ;using would close a using opened outside the package" SAY
+      ENGINE-ERROR:USING-OUTER THROW-AT
+   then
+   d USE-FLOOR @ <= if
+      s" hb: ;using would close a using opened outside the file" SAY
       ENGINE-ERROR:USING-OUTER THROW-AT
    then
    d 1- USE-DEPTH-CELL CELL! ;

@@ -1481,6 +1481,16 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
+\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
+\ and links it: the records, the routines with every site resolved, the rebased
+\ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
+\ children measure the layout host-independent and refuse, by name, what it
+\ cannot place or link. hb-x64-link-index, for the peer to run, stages the
+\ writer's index where the kernel's own find reads it; it exits 0.
+SUITE x86-64-link-records
+   test/x86-64-link-records.f
+;SUITE
+
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
 \ booted harness: each image's child faults with fd 2 on a pipe, and its parent
 \ checks the dump or the guard page's line and the exit status.
@@ -1632,6 +1642,10 @@ SUITE outer-find
 
 SUITE outer-interpret
    test/outer-interpret.f
+;SUITE
+
+SUITE main-argv
+   test/main-argv.f
 ;SUITE
 
 SUITE engine-writers

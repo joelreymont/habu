@@ -6,9 +6,11 @@
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
-\ tier 1 captures it, for `;` to compile whole. Only tier 1 is read here. The
-\ engine's tier 0 compiles each token as it reads it (its JIT), so at tier 0 a
-\ head or a body token is refused.
+\ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
+\ is read, `does>` splits the body and takes the signature of the words it
+\ creates, and `;` compiles the body whole and ends the definition through
+\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
+\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
@@ -16,6 +18,7 @@
 \ this one leaves no PROT window open: def-open closes its own.
 
 require lib/prelude.f
+require src/core/checker.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
@@ -27,13 +30,15 @@ package OUTER
 private
 
 76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
-76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` with no signature
+76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
 \ ---- the definition writers, each a TRUSTED: boundary ------------------------
 TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
+TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
+TRUSTED: DEF-CLOSE ( -- ) def-close ;
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -177,13 +182,18 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
    s DEF-SIG-END drop {: end:ptr :}
    s end DEF-SIG-TAKE ;
 
-\ `trusted:` needs one, opened and closed, or refuses naming the definition.
-: DEF-REQUIRED-SIG ( -- )
+\ A signature that must be there, opened and closed, or the refusal names the
+\ token: where it starts and the byte past it.
+: DEF-SIG-SPAN ( -- ptr u8 ptr u8 )
    DEF-SIG-START {: s:ptr open:bool :}
    open 0= if DEF-RC-BAD-SIG PKG-FAIL then
    s DEF-SIG-END {: end:ptr closed:bool :}
    closed 0= if DEF-RC-BAD-SIG PKG-FAIL then
-   s end DEF-SIG-TAKE ;
+   s end ;
+
+\ `trusted:` needs one, and the refusal names the definition.
+: DEF-REQUIRED-SIG ( -- )
+   DEF-SIG-SPAN DEF-SIG-TAKE ;
 
 \ ---- the head ----------------------------------------------------------------
 \ Tier 1 compiles through the entry the AOT seed installed; with none the
@@ -248,14 +258,103 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
+\ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
+\ A captured token LFIND resolves to an immediate word runs now when the
+\ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
+\ the input after it or end the definition, and the compiler passes over it at
+\ `;`. Any other immediate waits in the capture for the compiler. The engine
+\ closes the code window over the head's unit before it asks the checker; here
+\ that window is closed already: def-open closes its own, and evaluate's
+\ return closes the one an engine head opened. The engine finds
+\ NEUTRAL-PARSE-IMM? by name as it asks, and exits 70 naming it when no checker
+\ is loaded; this file binds it as it loads, after the engine's checker.
+: DEF-IMMEDIATE ( -- n bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if 0 false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
+   rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
+
+\ An armed checker's preflight gets the body so far, the token and the trusted
+\ cell first; one armed without a preflight is refused (habu2.f
+\ C-CALL-COMPILE-IMMEDIATE, LPREFMISS).
+TRUSTED: DEF-PREFLIGHT ( -- )
+   HOOK-CELL CELL@ 0= if exit then
+   COMPILE-PREFLIGHT-CELL CELL@ 0= if
+      S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
+   then
+   data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
+   COMPILE-PREFLIGHT-CELL CELL@ execute ;
+
+\ The xt waits on the return stack while the preflight runs, and the stack's
+\ floor holds after the word, as after a word the loop runs.
+TRUSTED: DEF-RUN ( n -- )
+   >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+
+: DEF-IMMEDIATE? ( -- bool )
+   DEF-IMMEDIATE if DEF-RUN true exit then
+   drop false ;
+
+\ ---- `does>` in the body (habu2.f NCOMP-EMIT:CAPTURE-DOES) -------------------
+\ `does>` ends a defining word's own part: DOESB takes the capture's length
+\ with `does>` in it, where `;` splits the body, and the signature after it,
+\ which must be there, opened and closed, is the effect of each word the
+\ definer creates. The signature joins no capture: INP passes it and
+\ created-sig! takes a copy of its inside at here, where it outlives the input
+\ (C-PARSE-CREATED-SIG). A second `does>` refuses naming `does>` (C-DIE-DOES),
+\ and a missing or open signature names the token as spelled (C-SIG-BAD).
+
+: DEF-CREATED ( -- )
+   DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s 1 + end s - 2 - COPY-HERE DEF-CREATED-SIG ;
+
+: DEF-DOES ( -- )
+   DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
+   BODYLEN-CELL CELL@ DOESB-CELL CELL!
+   DEF-CREATED ;
+
+\ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
+\ LFIND finds a word of that spelling that is not immediate, which the body
+\ calls instead.
+: DEF-CALL? ( -- bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= ;
+
+: DEF-DOES? ( -- bool )
+   s" does>" TOKEN-IS? 0= if false exit then
+   DEF-CALL? if false exit then
+   DEF-DOES true ;
+
+\ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
+\ `;`, the one byte, ends the definition and joins no capture. The body goes
+\ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
+\ hands it (NCOMP-EMIT:LOAD), checked again here since a body immediate can
+\ have cleared it. The compiler checks, compiles and publishes the record, or
+\ throws with the definition still pending, as the engine's does. On its
+\ return def-close closes the provenance window native and clears what
+\ def-open set.
+TRUSTED: DEF-COMPILE ( ptr u8 n -- )
+   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ execute ;
+
+: DEF-SEMI? ( -- bool )
+   s" ;" TOKEN-IS? 0= if false exit then
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE
+   DEF-CLOSE
+   true ;
+
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 captures it for `;`, a string keyword with its text
+\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
+\ immediate, splits the body at `does>`, or takes a string keyword's text
 \ (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   DEF-SEMI? if true exit then
    TOKEN$ DEF-CAPTURE
+   DEF-IMMEDIATE? if true exit then
+   DEF-DOES? if true exit then
    DEF-STRING-TEXT
    true ;
 

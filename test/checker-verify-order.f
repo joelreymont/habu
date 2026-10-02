@@ -163,13 +163,13 @@ variable SRC-U
 \
 \ IT DEFERS THOSE TWO CODES AND NO OTHER. The probes below run while the very
 \ `using` scopes the rows above verify are open, so the two resolvers are asked
-\ the same live question and answer it differently. The rethrow leg cannot be
-\ driven from here: CHECKER-FIND-ACTIVE-SYM throws nothing but those two codes
-\ (CHECKER-USED-SYM and CHECKER-USED-SHADOW are its only throw sites), so what a
-\ third code would meet is pinned at the classifier the quiet form uses.
-\ The shadow probe makes the resolver print its own `bare 'CVR-F' is ambiguous
-\ under using` line on stderr, once per ask: that line IS the refusal being
-\ measured, not a test failure.
+\ the same live question and answer it differently. The raising leg cannot be
+\ driven from here: the only other refusal the walk answers is the
+\ package-context one, which these open scopes never reach, so what a third code
+\ would meet is pinned at the classifier the quiet form uses.
+\ The shadow probe makes the authoritative resolver print its own `bare 'CVR-F'
+\ is ambiguous under using` line on stderr, once: that line IS the refusal being
+\ measured, not a test failure. The quiet resolver prints nothing.
 TRUSTED: QUIET-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
 TRUSTED: ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
 TRUSTED: QUIET-DEFERS? ( n -- bool ) FQSYM-DEFERRED? ;

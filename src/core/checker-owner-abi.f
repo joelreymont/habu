@@ -103,6 +103,10 @@ $2C0 constant UNIT-IMPORT-OFF
 $2C8 constant TRUSTED-TICK-OFF
 $2D0 constant INIT-LAYOUT-OFF
 $2D8 constant FIELD-SPAN-OFF
+\ The engine's package scope was put back after a throw (src/habu/habu2.f
+\ LEVALREC, EM-REPL-RECOVER; src/habu/interpret.f INTERPRET): the checker
+\ re-reads its package mirror from the restored scope.
+$2E0 constant PKG-RESYNC-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

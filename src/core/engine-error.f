@@ -24,4 +24,5 @@ public
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
+105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
 ;package

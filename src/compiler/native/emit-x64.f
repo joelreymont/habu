@@ -52,13 +52,12 @@
 \ routine whatever it ends in, and a `does>` body is SIZE less its
 \ FUNCTION-OFFSET@.
 \
-\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate and the
-\ two selects `cmpsel` and `selz`, which no selection reaches yet, and an
-\ `x64.fcmpset` whose condition and result count are not one of the two pairs
-\ its render reads the flags for (PUT-FCMPSET). Publication into a code region
-\ is not here either: src/arch/x86-64/passes.f states the sealed emission as
-\ NEMIT's rows from the readers below, and src/compiler/native/publish.f reads
-\ nothing else.
+\ WHAT IS STILL REFUSED BY NAME, each with E-X64EMIT-FORM: the negate, which no
+\ selection reaches, and an `x64.fcmpset` whose condition and result count are
+\ not one of the two pairs its render reads the flags for (PUT-FCMPSET).
+\ Publication into a code region is not here either: src/arch/x86-64/passes.f
+\ states the sealed emission as NEMIT's rows from the readers below, and
+\ src/compiler/native/publish.f reads nothing else.
 
 require lib/prelude.f
 require lib/errors.f
@@ -559,6 +558,36 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id 0 OPD-R64  id IMM-OF >IMM32  s ENC-CMP-RI32
    id s PUT-SETCC ;
 
+\ ---- the selects -------------------------------------------------------------
+\ TWO INSTRUCTIONS FOR ONE OPERATION, for the reason cmpset is four: the flags
+\ the compare leaves and `cmovcc` reads are no SSA value. `cmovcc` moves its
+\ source in only when the condition holds, so the result's register must
+\ already hold the answer for when it fails; the dialect ties the result to
+\ that operand (x64ir.f DEF-CMPSEL, DEF-SELZ) and the accepted allocation put it
+\ there, the same guarantee a two-address form has. So the move is the whole
+\ write, and any aliasing the allocation can make is safe: the compare reads
+\ both its operands before the move writes, and the move reads its source
+\ before it writes. A compared operand can share the result's register only as
+\ the tied operand itself, and the moved source only as the tied value, which
+\ is `cmovcc r, r`. The REX.W form leaves all sixty-four bits when the condition
+\ fails, where the 32-bit one would clear the upper half without moving.
+\
+\ ARM64 writes the same two steps as `cmp` and `csel` (emit.f PUT-CMPSEL,
+\ PUT-SELZ). Its cmpsel names the holding answer first, and this dialect's names
+\ the failing one first, because that is the one the result is tied to.
+: PUT-CMPSEL ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 OPD-R64  id 1 OPD-R64  s ENC-CMP-RR
+   id COND-OF  id 0 RES-R64  id 3 OPD-R64  s ENC-CMOVCC ;
+
+\ `test rv, rv` sets ZF from the value as a compare with zero would, in fewer
+\ bytes; the zero answer is moved in on it, over the tied nonzero one.
+: PUT-SELZ ( IR-ID:ir-op-id ptr a -- )
+   {: id:IR-ID:ir-op-id s:ptr :}
+   id 0 OPD-R64 {: r:r64 :}
+   r r s ENC-TEST-RR
+   C-E  id 0 RES-R64  id 2 OPD-R64  s ENC-CMOVCC ;
+
 \ ---- the branches ------------------------------------------------------------
 \ The arguments are already in the destination's registers by the allocation's
 \ own decision, so they reach no encoder and the whole operation is the jump -
@@ -945,9 +974,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
-\ decision taken HERE rather than a silent fall-through. The refusing arms are
-\ the forms this emitter does not render: each needs a register the machine
-\ names or a lowering, and neither is here.
+\ decision taken HERE rather than a silent fall-through. The refusing arm is the
+\ negate, which no source form lowers to (docs/x86-64.md "No `neg`").
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH
@@ -974,8 +1002,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       idiv     OF id s PUT-IDIV ENDOF
       cmpset   OF id s PUT-CMPSET ENDOF
       cmpseti  OF id s PUT-CMPSETI ENDOF
-      cmpsel   OF E-X64EMIT-FORM throw ENDOF
-      selz     OF E-X64EMIT-FORM throw ENDOF
+      cmpsel   OF id s PUT-CMPSEL ENDOF
+      selz     OF id s PUT-SELZ ENDOF
       br       OF id home s PUT-BR ENDOF
       brz      OF id home s PUT-BRZ ENDOF
       cmpbr    OF id home s PUT-CMPBR ENDOF

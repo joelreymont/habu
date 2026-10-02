@@ -50,6 +50,7 @@ package X64KERNEL
 using X64ASM
 using X64CODE
 using X64RT
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 public
 
@@ -3019,11 +3020,11 @@ public
 : TASK, ( -- ) s" task-entry" [: TASK-ENTRY-BODY ;] PRIM ;
 
 \ ---- definition writers ------------------------------------------------------
-\ The seven rows an interpreter written in Habu publishes definitions, namespace
+\ The nine rows an interpreter written in Habu publishes definitions, namespace
 \ rows, aliases and package scope through (src/habu/prims.f, "the definition
 \ writers"): the twins of habu2.f DEFWRITE's bodies, in each twin's check
 \ order. Every refusal comes before the first store and writes nothing on fd
-\ 2: a live task exits TASK-LIVE-RC in the five dictionary and scope rows, a
+\ 2: a live task exits TASK-LIVE-RC in the four dictionary rows, a
 \ protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE, and every other
 \ refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two helper exits can
 \ still end a row: 74 when the index cannot be kept, and
@@ -3249,10 +3250,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-PARENT the wid and PKG-REC the row; `-1 0`
-\ clears all four.
+\ clears all four. It stores while a task is live, as habu2.f
+\ DEFWRITE:PACKAGE-SCOPE does: the keywords guard, and recovery restores the
+\ scope through it.
 : PACKAGE-SCOPE-BODY ( -- )
    LBL LBL {: set:label done:label :}
-   TASK-LIVE-GUARD,
    RDX POP,  RCX POP,                                 \ the parent wid, the row
    RCX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE set JCC,
    RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,  \ only `-1 0` clears
@@ -3334,13 +3336,40 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX BODYLEN-CELL CELL!,
    done LBL, ;
 
-\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
-\ TSIG-A and TSIG-U.
-: TRUST-SIG-BODY ( -- )
+\ ( ptr u8 n -- ): the span into the friend-arena cells aoff and uoff while a
+\ definition is pending.
+: PENDING-SPAN-BODY ( n n -- ) {: aoff:n uoff:n :}
    RCX POP,  RAX POP,
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
-   RAX TSIG-A-CELL CELL!,  RCX TSIG-U-CELL CELL!, ;
+   RAX aoff CELL!,  RCX uoff CELL!, ;
+
+\ trust-sig! ( ptr u8 n -- ): the pending definition's signature span into
+\ TSIG-A and TSIG-U.
+: TRUST-SIG-BODY ( -- )
+   TSIG-A-CELL TSIG-U-CELL PENDING-SPAN-BODY ;
+
+\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
+\ span into TCSIG-A and TCSIG-U.
+: CREATED-SIG-BODY ( -- )
+   TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
+
+\ def-close ( -- ): the pending definition of the native tier ends, as the
+\ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
+\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL
+\ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+: DEF-CLOSE-BODY ( -- )
+   RDX PEND-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   1 X64PROV:CLOSE,
+   RAX ZERO-REG,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX PEND-CELL CELL!, ;
 
 public
 
@@ -3351,7 +3380,9 @@ public
    s" package-scope!" [: PACKAGE-SCOPE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but
@@ -3708,6 +3739,7 @@ public
    PROFILER,
    ENGINE-PRIMS:COMPLETE ;
 
+;using   \ X64LAYOUT
 ;using
 ;using
 ;using

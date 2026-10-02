@@ -157,7 +157,8 @@ public
 
 \ ---- dictionary search ------------------------------------------------------
 \ OUTER:FIND answers the record the engine's LFIND and LFINDUSED resolve for one
-\ token (habu1.f EMIT-FIND, habu2.f EMIT-FIND-USED), or XREF-NULL. The caller
+\ token (habu1.f EMIT-FIND, habu2.f EMIT-FIND-USED), or XREF-NULL; FIND-SCOPE
+\ answers LFIND's alone, which a body's immediate is looked up with. The caller
 \ reads the immediate, wide, internal and min-in facts from the record's
 \ XREF-FLAGS, as LFIND's flag output folds them.
 \
@@ -251,12 +252,6 @@ TRUSTED: FIND-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
       then
    loop ;
 
-: FIND-BARE-REC ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   a u NDICT:OPEN-PRI FIND-OPEN {: rec:ptr :}
-   rec XREF-FOUND? if rec exit then
-   a u FIND-USED ;
-
 \ The namespace row carries its package's public wid where a word keeps its start.
 : FIND-QUALIFIED ( ptr u8 n n -- ptr n )
    {: a:ptr u:n q:n :}
@@ -264,14 +259,24 @@ TRUSTED: FIND-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    ns XREF-FOUND? 0= if XREF-NULL exit then
    a q 1+ ZPTR+ u q - 1- ns XREF-PKG-PUBLIC FIND-OPEN ;
 
-public
-
-: FIND ( ptr u8 n -- ptr n )
+\ LFIND's answer: the open chain for a bare token, NAME's public wordlist for
+\ NAME:tail, and no used public.
+: FIND-SCOPE ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
    a u FIND-SPLIT {: q:n :}
    q FIND-BAD = if XREF-NULL exit then
-   q FIND-BARE = if a u FIND-BARE-REC exit then
+   q FIND-BARE = if a u NDICT:OPEN-PRI FIND-OPEN exit then
    a u q FIND-QUALIFIED ;
+
+public
+
+\ FIND-USED asks nothing for a token with a colon, so only a bare miss reaches
+\ the used publics.
+: FIND ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? if rec exit then
+   a u FIND-USED ;
 
 ;package
 
@@ -282,10 +287,11 @@ public
 \ their escaped forms, `char` and `'`), numbers and dictionary words, and with
 \ src/habu/packages.f for the package keywords (`package`, `public`, `private`,
 \ `;package`, `using`, `;using` and `export`), and with src/habu/definers.f for
-\ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens.
-\ The engine's other keywords (`;`, `create`, ...) are not read yet: a body
-\ captures them as it captures any token, and elsewhere they are not dictionary
-\ words, so they refuse as undefined.
+\ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens,
+\ with the immediates the body runs, its `does>` and the `;` that ends it.
+\ The engine's other keywords (`create`, `immediate`, ...) are not read yet: a
+\ body captures them as it captures any token, and elsewhere they are not
+\ dictionary words, so they refuse as undefined.
 \
 \ The input is the engine's own. The cursor, its end and the buffer start sit
 \ in INP-CELL, INE-CELL and SRCLOC:INB-CELL, and the token in TKA-CELL and
@@ -422,6 +428,10 @@ variable DIGIT-AT
    s" hb: ambiguous bare word resolves in multiple used packages: " SAY
    TOKEN$ SAY ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
 
+: SHADOWED ( -- )
+   s" hb: bare word a global and a used package both export: " SAY
+   TOKEN$ SAY ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
+
 \ ---- fail-closed exits ----------------------------------------------------------
 \ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
 \ text goes to descriptor 2 and no program code runs: the exit hook
@@ -485,8 +495,13 @@ variable VALUE
 \ ---- words --------------------------------------------------------------------------
 TYPED-VARIABLE REC ptr n
 
+\ A global hit is asked of the used publics as well, as habu2.f
+\ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses it.
 : LOOKUP-GO ( -- )
-   TOKEN$ FIND REC ! ;
+   TOKEN$ FIND REC !
+   REC @ XREF-FOUND? 0= if exit then
+   REC @ XREF-WORDLIST 0<> if exit then
+   TOKEN$ FIND-USED XREF-FOUND? if SHADOWED then ;
 
 \ The token's record lands in REC, XREF-NULL on a miss. FIND's ambiguity is
 \ the engine's refusal.
@@ -600,11 +615,14 @@ TRUSTED: RUN-WORD ( -- )
    q PAST
    s q s - ;
 
-: KEEP ( -- ptr u8 n )
-   TEXT {: a:ptr u:n :}
+\ The bytes copied to the data space at here, which moves past them.
+: COPY-HERE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u ROOM {: d:ptr :}
    a d u BYTE-COPY
    d u ;
+
+: KEEP ( -- ptr u8 n )
+   TEXT COPY-HERE ;
 
 \ c": a count byte, then the text. INP has passed the quote when the length
 \ is checked (habu2.f C-ICQ), so the refusal names the quote's line.
@@ -771,21 +789,19 @@ TRUSTED: TICK-ACTION ( n -- [ ptr u8 n -- bool ] ) ;
    TICK-QUERY dup 0= if drop false exit then
    TICK-ACTION TOKEN$ rot execute ;
 
-\ Whether ' names a word, which then passes the xt gates. A tick runs nothing,
-\ so it has no depth gate, and a name no word has is a quiet miss.
-: TICKED ( -- bool )
+\ The word ' names lands in REC past the xt gates. A tick runs nothing, so it
+\ has no depth gate; a name no word has is undefined, as a word to run is.
+: TICKED ( -- )
    s" '" OPERAND
    SEAL-GUARD
-   SEARCH
-   REC @ XREF-FOUND? dup if
-      XT-GATE
-      SCOPE-ENTRY-GUARD
-      TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then
-   then ;
+   LOOKUP
+   XT-GATE
+   SCOPE-ENTRY-GUARD
+   TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The hook sees the operand as the token and the record's flags.
 TRUSTED: PUSH-XT ( -- )
-   TICKED if REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK then ;
+   TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its

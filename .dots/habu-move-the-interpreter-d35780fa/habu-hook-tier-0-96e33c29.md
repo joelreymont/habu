@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.663677+03:00"
-blocks:
-  - habu-close-definitions-with-8ace78d8
 ---
 
 Problem: B1 (chosen): the ARM64 product keeps tier 0, so the Habu compile loop needs the JIT, but the `LCOMPILE` dispatch's J-* handlers end in `lmainlbl B,` (`habu2.f:5005-5060`), so Habu cannot call it.

@@ -34,11 +34,7 @@ require src/compiler/native/x64ir.f
 \ The production image writer loads at top level, as every production path
 \ loads it: elf.f requires src/os/linux-x86-64/target-layout.f, which opens
 \ package X64LAYOUT, and packages do not nest.
-\ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so it
-\ loads under `using X64CODE`.
-using X64CODE
-require src/os/image-bytes.f
-;using
+require src/os/linux-x86-64/target-layout.f
 require src/os/linux-x86-64/elf.f
 
 package X64HARNESS
@@ -72,6 +68,7 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 s" src/os/linux-x86-64/sys.f" required
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 : IMM ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
@@ -139,9 +136,11 @@ s" src/os/linux-x86-64/sys.f" required
    RAX at MOVABS,
    RAX RCX ASM-SINK ENC-CMP-RR 51 ASSERT-EQ ;
 
+\ exit_group ends every thread: a booted image's task thread that outlives a
+\ thread-local exit(2) would end the process with its own status instead.
 : EXIT, ( -- )
    EXIT-LBL LBL,
-   0 >R32 NR-EXIT >IMM32 ASM-SINK ENC-MOV32-RI32
+   0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL ;
 
 public
@@ -221,7 +220,7 @@ public
    ROUTINE-OFF PAD-TO ;
 
 \ The address the next routine appended lands at, so the one it is emitted at.
-: POSITION ( -- n ) VMBASE CODE-OFF + ASM-LEN + ;
+: POSITION ( -- n ) VMBASE X64LAYOUT:CODE-OFF + ASM-LEN + ;
 
 \ Pad to the unit a code region hands slots out in, where a second routine can
 \ be placed.
@@ -279,7 +278,7 @@ private
 
 \ The `u` staged bytes at absolute address `at`, all of them inside the stream.
 : STAGED ( n n -- ptr u8 ) {: at:n u:n :}
-   at VMBASE CODE-OFF + - {: off:n :}
+   at VMBASE X64LAYOUT:CODE-OFF + - {: off:n :}
    off 0 <  off u + ASM-LEN >  or if E-BUF-BOUNDS throw then
    CODE off + ;
 
@@ -313,7 +312,7 @@ public
    path pathu DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
-   $18 M-OFF M-LE32@ VMBASE CODE-OFF + T=
+   $18 M-OFF M-LE32@ VMBASE X64LAYOUT:CODE-OFF + T=
    $1C M-OFF M-LE32@ 0 T= ;
 
 \ Close a peer image with the exit syscall every check reaches, then write it.
@@ -322,4 +321,5 @@ public
 \ The sink every image is staged in, held across the images of one run.
 : INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;
 : DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
+;using   \ X64LAYOUT
 ;package

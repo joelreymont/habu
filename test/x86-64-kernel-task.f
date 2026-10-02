@@ -24,7 +24,8 @@
 \                                     rbx 0 and the status HALT-REQ the
 \                                     descriptor came with
 \    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
-\                                     from pthread_join
+\                                     from pthread_create, which it checks
+\                                     before the join
 \
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
@@ -135,14 +136,12 @@ $B0B0B0B0B0 constant CALLER-RBX
    ARGS X64HARNESS:PUSH-DATA,  2 N,  s" pthread_join" SYM,  s" ffi-call" ROW ;
 
 \ ---- the cases ---------------------------------------------------------------
-\ Both answers wait on the data stack until the thread is joined. A failed check
-\ exits through exit(2), which ends only its own thread, and a process whose
-\ other thread outlives that exits with the other thread's status.
+\ pthread_create's answer is checked while the thread may still run.
 : THREAD-CASE ( -- )
    BODY DESCRIBE,
    -1 ANSWER X64HARNESS:CELL!,
-   CREATE,  JOIN,
-   0 WANT  0 WANT
+   CREATE,  0 WANT
+   JOIN,  0 WANT
    0 ANSWER X64HARNESS:EXPECT-CELL,
    TASK-ABI:DONE TASK-ABI:STATUS-OFF FIELD X64HARNESS:EXPECT-CELL,
    REGION TASK-TCB-CELL + PUSH-CELL,  DESC X64HARNESS:EXPECT-POP-DATA,

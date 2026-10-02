@@ -1,9 +1,11 @@
 ---
 title: Link records and wids into the x86 image
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.991875+03:00"
+closed-at: "2026-10-01T13:30:00+03:00"
+close-reason: "test/x86-64-link-records.f passes on spark and the ThinkPad: records, routines, rebased wids, bitmap and the writer-built index, host-independent by digest, three refusals by name"
 ---
 
 Problem: no writer lays the captured dictionary out for x86.

@@ -269,6 +269,19 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    HIR-OPCODE:ADD n t BINOP RET1
    CLOSE-FUN ;
 
+\ `: LEAF ( a b n -- x ) -rot + swap lshift ;` - nothing but its copy reads the
+\ count, so the copy is coalesced back into it and the class pinned to rcx opens
+\ where the count is DEFINED. Under the data-stack convention that is its load,
+\ while b - which dies at the add, before the shift - still holds a register.
+: BUILD-SUM-SHIFT ( -- )
+   3 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD a b BINOP {: s:IR-ID:ir-value-id :}
+   HIR-OPCODE:LSHIFT s n BINOP RET1
+   CLOSE-FUN ;
+
 \ `: LEAF ( a b -- n ) / ;` - the dividend is copied into the register the divide
 \ takes it in, the divisor is the free operand, and the remainder is a result
 \ nothing reads.
@@ -825,6 +838,18 @@ $1000 constant THROW-STAND
    6 A64RAV:REG@
    A64RAV:ACCEPTED? ;
 
+\ The class pinned to rcx opens at the count's load, which b crosses, so b is
+\ kept out of rcx (regalloc.f MB-FORBID-PINS): the count is loaded straight into
+\ rcx and its copy shares the register. Value 5 is the count's load and 8 its
+\ copy.
+: DSUM-SHIFT-BODY ( IR-CTX:ctx -- n n bool )
+   HIR-MOD
+   BUILD-SUM-SHIFT
+   3 DSTACK-ALLOCATED drop
+   5 A64RAV:REG@
+   8 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
 : RCX# ( -- n )   X64ASM:RCX X64ASM:R64>N ;
 
 \ The division the selector lowers: the dividend's copy is coalesced into the
@@ -1001,6 +1026,10 @@ public
    s" the same shape under the data-stack convention places the count's copy in rcx and is accepted" T-LABEL
    WBND [: DSHIFT-CROSS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE RCX# T=
+
+   s" a count coalesced into its load pins rcx from there, so a value holding a register at the load and dying before the shift is kept out of rcx: `( a b n -- x ) -rot + swap lshift` under the data-stack convention, once refused with E-A64RA-FIXED" T-LABEL
+   WBND [: DSUM-SHIFT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE RCX# T= RCX# T=
 
    s" a division the selector lowered places the dividend's copy in rax, the divisor out of rax and rdx, and the remainder nothing reads in rdx" T-LABEL
    WBND [: DIVIDE-BODY ;] IR-CTX:WITH-CONTEXT

@@ -18,8 +18,8 @@
 \   its bitmap cell protected, aliases a long-named source: the alias carries
 \   the source's code and length cells and exactly its IMM, WIDE and MIN-IN
 \   bits, neither its VAL nor its EXT bit, and xref-search-wl finds it.
-\ - hb-x64-kernel-package-scope sets the four package cells from a namespace
-\   row, then clears them with `-1 0`.
+\ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
+\   the four package cells from that row, then clears them with `-1 0`.
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
@@ -31,21 +31,28 @@
 \ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
 \ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
 \ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
+\ - hb-x64-kernel-created-sig stores the pending definition's `does>`
+\   signature span.
+\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
+\   and whose CP moved: the provenance window closed with code-origin 1 over
+\   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
 \ The armed images exit a refusal before any store, with nothing on fd 2:
 \ - 79, a task live, one image for each row that guards:
 \   -namespace-record-live-armed, -namespace-private-live-armed,
-\   -alias-record-live-armed, -package-scope-live-armed, -def-open-live-armed.
+\   -alias-record-live-armed, -def-open-live-armed.
 \ - 83, ENGINE-ERROR:SEAL-VIOLATION: def-open of a live name that differs only
 \   in case (-def-open-case-armed), namespace-private on a row whose [8] is set
 \   (-namespace-private-set-armed), an alias of a DNAME-INT source
 \   (-alias-record-int-armed), package-scope! `-1 5`
 \   (-package-scope-clear-armed), a 17-byte def-open with CP 32 bytes below the
 \   code ceiling (-def-open-ceiling-armed), body-append one byte past
-\   BODYBUF-CAP (-body-append-full-armed) and trust-sig! with nothing pending
-\   (-trust-sig-armed).
+\   BODYBUF-CAP (-body-append-full-armed), and trust-sig!, created-sig! and
+\   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
+\   -def-close-armed), and def-close on a tier 0 definition
+\   (-def-close-tier-armed).
 \ - 84, ENGINE-ERROR:SEAL-PACKAGE, after the seal: alias-record into a wid
 \   whose bit is set (-alias-record-prot-armed) and def-open into
 \   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
@@ -113,10 +120,11 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 : APPEND, ( ptr u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-append" X64HARNESS:CALL-ROW, ;
 
-\ trust-sig! over SIG-LEN bytes of BODYBUF, a span whose address DATA fixes.
-: SIG, ( -- )
+\ The signature row named over SIG-LEN bytes of BODYBUF, a span whose address
+\ DATA fixes.
+: SIG, ( ptr u8 n -- ) {: row:ptr rowu:n :}
    BODYBUF-OFF X64HARNESS:PUSH-DATA,  SIG-LEN X64HARNESS:PUSH,
-   s" trust-sig!" X64HARNESS:CALL-ROW, ;
+   row rowu X64HARNESS:CALL-ROW, ;
 
 : XREF, ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
@@ -157,6 +165,17 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 
 \ The long name's second slot less its last byte: 0 when that byte opens the
 \ slot and the fifteen bytes past it are zero.
+\ The tier-1 definition def-close ends: its six signature and clause cells
+\ set and CP 32 bytes past the open window.
+: TIER-1-OPEN, ( -- )
+   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   X64HARNESS:REST,
+   HELLO$ 0 0 DEF-OPEN,
+   1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
+   3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
+   5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
+   DICT-SIZE 32 + CP-AT, ;
+
 : PUSH-PAD, ( -- )
    RAX DBASE-REG SECOND-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
    RCX LONG$ DNAME-INL X64HARNESS:NAME-CELL >IMM32 ASM-SINK ENC-MOV-RI32
@@ -221,6 +240,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" pk" BOTH-WIDS NAMESPACE,                        \ its index, 0, stays for the row
+   LIVE,                                              \ the row stores with a task live
    PARENT-WID X64HARNESS:PUSH,  s" package-scope!" X64HARNESS:CALL-ROW,
    FIRST-WID PKG-PUB-CELL X64HARNESS:EXPECT-CELL,
    FIRST-WID 1+ PKG-PRI-CELL X64HARNESS:EXPECT-CELL,
@@ -293,10 +313,27 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : TRUST-SIG-CASE, ( -- )
    X64HARNESS:REST,
    HELLO$ 0 0 DEF-OPEN,
-   SIG,
+   s" trust-sig!" SIG,
    TSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
    SIG-LEN TSIG-U-CELL X64HARNESS:EXPECT-CELL,
    0 CLOSED, ;
+
+: CREATED-SIG-CASE, ( -- )
+   X64HARNESS:REST,
+   HELLO$ 0 0 DEF-OPEN,
+   s" created-sig!" SIG,
+   TCSIG-A-CELL X64HARNESS:PUSH-DATA-CELL,  BODYBUF-OFF X64HARNESS:EXPECT-POP-DATA,
+   SIG-LEN TCSIG-U-CELL X64HARNESS:EXPECT-CELL,
+   0 CLOSED, ;
+
+: DEF-CLOSE-CASE, ( -- )
+   TIER-1-OPEN,
+   s" def-close" X64HARNESS:CALL-ROW,
+   DICT-SIZE DICT-SIZE 32 + ORIGIN,  1 X64HARNESS:EXPECT-POP,
+   PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
+   0 TIER-PROV:OPEN-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
 \ ---- the refusals -------------------------------------------------------------
 \ Each call but for its refusal is one the row admits.
@@ -311,8 +348,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    SOURCE$ 0 0 X64HARNESS:RECORD,
    LIVE,  X64HARNESS:REST,
    s" al" 0 WID ALIAS, ;
-
-: SCOPE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  -1 0 SCOPE, ;
 
 : DEF-OPEN-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" w" 0 0 DEF-OPEN, ;
 
@@ -349,6 +384,13 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    X64HARNESS:REST,
    s" al" 0 ALIAS-WID ALIAS, ;
 
+\ A pending definition def-open opened at tier 0.
+: TIER-0-CLOSE, ( -- )
+   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   X64HARNESS:REST,
+   HELLO$ 0 0 DEF-OPEN,
+   s" def-close" X64HARNESS:CALL-ROW, ;
+
 : DEF-OPEN-PROT, ( -- )
    AFTER-SEAL,
    X64HARNESS:REST,
@@ -374,13 +416,14 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: BODY-APPEND-CASE, ;] false s" hb-x64-kernel-body-append" TMP-PATH IMAGE
    [: BODY-APPEND-PASS2-CASE, ;] false s" hb-x64-kernel-body-append-pass2" TMP-PATH IMAGE
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
+   [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
+   [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )
    [: NAMESPACE-LIVE, ;] false s" hb-x64-kernel-namespace-record-live-armed" TMP-PATH IMAGE
    [: PRIVATE-LIVE, ;] false s" hb-x64-kernel-namespace-private-live-armed" TMP-PATH IMAGE
    [: ALIAS-LIVE, ;] false s" hb-x64-kernel-alias-record-live-armed" TMP-PATH IMAGE
-   [: SCOPE-LIVE, ;] false s" hb-x64-kernel-package-scope-live-armed" TMP-PATH IMAGE
    [: DEF-OPEN-LIVE, ;] false s" hb-x64-kernel-def-open-live-armed" TMP-PATH IMAGE
    [: CASE-PAIR, ;] false s" hb-x64-kernel-def-open-case-armed" TMP-PATH IMAGE
    [: PRIVATE-SET, ;] false s" hb-x64-kernel-namespace-private-set-armed" TMP-PATH IMAGE
@@ -389,7 +432,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    s" hb-x64-kernel-package-scope-clear-armed" TMP-PATH IMAGE
    [: CEILING, ;] false s" hb-x64-kernel-def-open-ceiling-armed" TMP-PATH IMAGE
    [: FULL, ;] false s" hb-x64-kernel-body-append-full-armed" TMP-PATH IMAGE
-   [: X64HARNESS:REST,  SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  s" trust-sig!" SIG, ;] false s" hb-x64-kernel-trust-sig-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  s" created-sig!" SIG, ;] false
+   s" hb-x64-kernel-created-sig-armed" TMP-PATH IMAGE
+   [: X64HARNESS:REST,  s" def-close" X64HARNESS:CALL-ROW, ;] false
+   s" hb-x64-kernel-def-close-armed" TMP-PATH IMAGE
+   [: TIER-0-CLOSE, ;] false s" hb-x64-kernel-def-close-tier-armed" TMP-PATH IMAGE
    [: ALIAS-PROT, ;] false s" hb-x64-kernel-alias-record-prot-armed" TMP-PATH IMAGE
    [: DEF-OPEN-PROT, ;] false s" hb-x64-kernel-def-open-prot-armed" TMP-PATH IMAGE ;
 

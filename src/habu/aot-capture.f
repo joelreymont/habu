@@ -372,8 +372,22 @@ DYNAMIC-BUFFER ACAP-GSITE n
    boff r AOT-P32!  noff r 4 + AOT-P32!  w r 8 + AOT-P32!
    AOT-SITE-N @ 1+ AOT-SITE-N ! ;
 
+variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
+variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
+variable ACAP-W-D0                       \ its first DATA address
+
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
+
+\ A RECORD HAS TWO INDICES. Its dictionary index names it in the live dictionary
+\ and in a compiler's map of it; its capture index is its row of the verbatim
+\ table, which ACAP-REC-DST, ACAP-NAMED-BIT, ACAP-GRAPH-LIVE? and every walk over
+\ ACAP-REC-ALL take. ACAP-ADD-REC leaves a retired record out, so past one the
+\ two differ, and a reader holding a dictionary index translates it here.
+DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index, or -1
+: ACAP-DICT>CAP ( n -- n ) {: idx:n :}          \ -1 outside the window or retired
+   idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and 0= if -1 exit then
+   idx ACAP-W-R0 @ - ACAP-REC-OF @ ;
 
 \ A record is xt, flags/name-len, inline name and wid and carries no file of its
 \ own, so the name of the definition being added is the whole locator this
@@ -536,10 +550,6 @@ DYNAMIC-BUFFER ACAP-GSITE n
 variable ACAP-PRE-R      \ first record index of the prelude band
 variable ACAP-PRE-D      \ first DATA address of the prelude band
 variable ACAP-MARKED?    \ the band was declared for this capture
-variable ACAP-W-B0                       \ the window's code base, latched at CAPTURE
-variable ACAP-W-R0  variable ACAP-W-R1   \ its record span
-variable ACAP-W-D0                       \ its first DATA address
-DYNAMIC-BUFFER ACAP-REC-OF n             \ per window record, by dictionary order: its capture index or -1
 
 public
 
@@ -1172,17 +1182,22 @@ $14000000 constant ACAP-GBR-TERM
    ACAP-GRAPH-READY @ 0= if true exit then
    k ACAP-GMARK @ 0<> ;
 
-: ACAP-GRAPH-SCAN-AT ( n -- ) {: at:n :}
+\ Where the word at `at` sends control or a code address, besides falling
+\ through: a code literal's target beneath a PC-relative one, -1 for each it
+\ lacks. Raw metadata sends neither, and a named call site's displacement is
+\ relocated by name, so it names no window code.
+: ACAP-GRAPH-EDGES ( n -- n n ) {: at:n :}
    at ACAP-GSITE@ {: site:n :}
-   site 3 = if exit then
+   site 3 = if -1 -1 exit then
    at ACAP-GRAPH-W32@ {: w:n :}
    w ACAP-GRAPH-PC-KIND {: kind:n :}
+   site 2 = if AOT-BLOB-BUF@ at + ADDRESS-CARRIER:CHAINV else -1 then
    kind 0<> site 1 <> and site 4 <> and if
-      at w kind ACAP-GRAPH-PC-TARGET ACAP-GRAPH-MARK-OFF
-   then
-   at ACAP-GSITE@ 2 = if
-      AOT-BLOB-BUF@ at + ADDRESS-CARRIER:CHAINV ACAP-GRAPH-MARK-OFF
-   then ;
+      at w kind ACAP-GRAPH-PC-TARGET
+   else -1 then ;
+
+: ACAP-GRAPH-SCAN-AT ( n -- )
+   ACAP-GRAPH-EDGES ACAP-GRAPH-MARK-OFF ACAP-GRAPH-MARK-OFF ;
 
 : ACAP-GRAPH-ENDS? ( n -- bool ) {: at:n :}
    at ACAP-GSITE@ 4 = if true exit then
@@ -2026,6 +2041,13 @@ variable ACAP-SWEEP-B1
    v lo hi ACAP-TARGET-OFFSET
    k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
+\ The blob offset declared code cell row k holds, or -1 when it holds no window
+\ code.
+: ACAP-GRAPH-CELL-OFF ( n -- n ) {: k:n :}
+   k ACAP-XTCELL-DATA? if -1 exit then
+   k ACAP-XTCELL-AT AOT-CELL@ AOT-CODE-B0 @ - {: off:n :}
+   off 0 >=  off AOT-BLOB-LEN @ <  and if off else -1 then ;
+
 : ACAP-GRAPH-ROOTS ( -- )
    0 ACAP-GWORK-N !
    ACAP-REC-ALL @ 0 ?do
@@ -2040,15 +2062,111 @@ variable ACAP-SWEEP-B1
    loop
    \ Every declared code cell is a root even when its owning definition is
    \ private: the DATA row is part of the captured ABI.
-   ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-DATA? 0= if
-         i ACAP-XTCELL-AT AOT-CELL@ {: target:n :}
-         target AOT-CODE-B0 @ >=
-         target AOT-CODE-B0 @ AOT-BLOB-LEN @ + < and if
-            target AOT-CODE-B0 @ - ACAP-GRAPH-MARK-OFF
-         then
+   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
+
+\ --- the shadow reach ---------------------------------------------------------
+\ A SECOND TARGET'S ROUTINE TRAVELS BY REAL REACHABILITY. A shadowed record the
+\ capture ships no row for, stripped or retired, keeps its routine only while
+\ live code reaches it (src/habu/aot-shadow.f SH-STRIP), and the reach above
+\ cannot say so: the capture files no row for a retired (`undefine`d) record
+\ (ACAP-ADD-REC), so no record owns its body, which is a gap the payload keeps
+\ and the gap sweep scans as a root, live or not, marking what it calls too.
+\ This reach walks the same code from the same roots - the records
+\ ACAP-GRAPH-ROOTS names, the declared code cells and every gap but a retired
+\ body - through ordinary and retired bodies alike, follows an edge only out of
+\ a body it has reached, and marks only nodes of its own, so ARM64 retention
+\ and the payload stay as the reach above leaves them.
+\ A node is a capture record, or a retired window record numbered ACAP-REC-ALL
+\ plus its window offset. Reached code reaches the record that owns it
+\ (ACAP-GOWNER) and the retired record over it, the lowest whose span covers it
+\ as a shared entry names the lowest record (ACAP-TGT>REC); so a name sharing
+\ another's body, an EXPORT alias, reaches that body's record, stripped or
+\ retired. A reached node's code is reached word by word, and so are its edges
+\ and, unless its last word ends it, the word after it. A retired id is a
+\ window offset plus one, 0 for none.
+DYNAMIC-BUFFER ACAP-RWORD n          \ blob word -> retired id over it
+DYNAMIC-BUFFER ACAP-SMARK n          \ node -> 1 once reached
+DYNAMIC-BUFFER ACAP-SWORK n          \ the nodes reached and not yet scanned
+variable ACAP-SWORK-N
+
+\ Where retired window record idx's code lies in the blob; empty when its code
+\ is not the window's.
+: ACAP-RETIRED-SPAN ( n -- n n ) {: idx:n :}
+   idx AOT-REC AOT-RXT AOT-CODE-B0 @ - {: start:n :}
+   start idx AOT-REC AOT-RBYTES + {: end:n :}
+   start 0 >=  end AOT-BLOB-LEN @ <=  and if start end else 0 0 then ;
+
+: ACAP-SHADOW-INDEX ( -- )
+   AOT-BLOB-LEN @ 4 / {: words:n :}
+   ACAP-REC-ALL @ ACAP-W-R1 @ + ACAP-W-R0 @ - {: nodes:n :}
+   words ACAP-RWORD-RESERVE  nodes ACAP-SMARK-RESERVE  nodes ACAP-SWORK-RESERVE
+   words 0 ?do 0 i ACAP-RWORD ! loop
+   nodes 0 ?do 0 i ACAP-SMARK ! loop
+   0 ACAP-SWORK-N !
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i ACAP-DICT>CAP 0 < if
+         i ACAP-W-R0 @ - 1+ {: id:n :}
+         i ACAP-RETIRED-SPAN {: start:n end:n :}
+         end 4 / start 4 / ?do
+            i ACAP-RWORD @ 0= if id i ACAP-RWORD ! then
+         loop
       then
    loop ;
+
+: ACAP-SHADOW-NODE ( n -- ) {: v:n :}
+   v ACAP-SMARK @ 0<> if exit then
+   1 v ACAP-SMARK !
+   v ACAP-SWORK-N @ ACAP-SWORK !
+   ACAP-SWORK-N @ 1+ ACAP-SWORK-N ! ;
+
+\ Code at blob offset off is reached.
+: ACAP-SHADOW-OFF ( n -- ) {: off:n :}
+   off 0<  off AOT-BLOB-LEN @ >=  or if exit then
+   off 4 / ACAP-GOWNER @ {: owner:n :}
+   owner 0<> if owner 1- ACAP-SHADOW-NODE then
+   off 4 / ACAP-RWORD @ {: id:n :}
+   id 0<> if ACAP-REC-ALL @ id + 1- ACAP-SHADOW-NODE then ;
+
+: ACAP-SHADOW-SCAN ( n -- ) {: v:n :}
+   v ACAP-REC-ALL @ < if
+      v ACAP-GRAPH-START  v ACAP-GRAPH-END
+   else
+      v ACAP-REC-ALL @ - ACAP-W-R0 @ + ACAP-RETIRED-SPAN
+   then {: from:n to:n :}
+   from to >= if exit then
+   from begin dup to < while
+      dup ACAP-SHADOW-OFF
+      dup ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
+      4 +
+   repeat drop
+   to 4 - ACAP-GRAPH-ENDS? 0= if to ACAP-SHADOW-OFF then ;
+
+\ A gap word no retired record covers is a root, as the gap sweep has it.
+: ACAP-SHADOW-GAP ( n -- ) {: at:n :}
+   at ACAP-GSITE@ 3 = if exit then
+   at 4 / ACAP-GOWNER @ 0<>  at 4 / ACAP-RWORD @ 0<>  or if exit then
+   at ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
+   at ACAP-GRAPH-ENDS? 0= if at 4 + ACAP-SHADOW-OFF then ;
+
+\ After the sweeps above and before the blob is compacted: it reads their
+\ owners and sites, and the code they read.
+: ACAP-SHADOW-REACH ( -- )
+   ACAP-SHADOW-INDEX
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED-BIT @ 0<>  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
+   loop
+   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-SHADOW-OFF loop
+   AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-SHADOW-GAP loop
+   begin ACAP-SWORK-N @ 0 > while
+      ACAP-SWORK-N @ 1- ACAP-SWORK-N !
+      ACAP-SWORK-N @ ACAP-SWORK @ ACAP-SHADOW-SCAN
+   repeat ;
+
+\ Whether the shadow reach reached window record idx, a captured or a retired one.
+: ACAP-SHADOW-LIVE? ( n -- bool ) {: idx:n :}
+   idx ACAP-DICT>CAP {: k:n :}
+   k 0 < if idx ACAP-W-R0 @ - ACAP-REC-ALL @ + else k then
+   ACAP-SMARK @ 0<> ;
 
 \ A named alias and a direct call through a public wrapper can retain a private
 \ definer's code while stripping its own name. The reach graph marks the entire
@@ -2478,16 +2596,14 @@ TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
 \ named; which names this capture keeps is decided here, and is final only after
 \ ACAP-GRAPH-NAME-DOES. So the window's checker sweeps again
 \ (src/core/checker.f CHECKER-SWEEP STRIP) with this capture's own answer,
-\ before its DATA is copied: ACAP-NAMED-BIT itself, read through ACAP-REC-OF.
+\ before its DATA is copied: ACAP-NAMED-BIT itself, read through ACAP-DICT>CAP.
 \ The engine's own records below the prelude band always ship named. The band
 \ [ACAP-PRE-R, ACAP-W-R0) is the capturing tool's own and never ships
 \ (ACAP-SITE-BAND refuses a call into it), and a record the build defined after
 \ the window never ships.
 : ACAP-SHIPS-NAMED? ( n -- bool ) {: idx:n :}
    idx ACAP-PRE-R @ < if true exit then
-   idx ACAP-W-R0 @ < if false exit then
-   idx ACAP-W-R1 @ >= if false exit then
-   idx ACAP-W-R0 @ - ACAP-REC-OF @ {: k:n :}
+   idx ACAP-DICT>CAP {: k:n :}
    k 0 < if false exit then
    k ACAP-NAMED-BIT @ 0<> ;
 
@@ -2592,6 +2708,7 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
+   ACAP-SHADOW-REACH
    ACAP-GRAPH-NAME-DOES                         \ the names that ship are final here
    bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
    d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied

@@ -70,8 +70,10 @@
 require src/habu/snapshot-format.f
 require src/habu/code-origin-x64.f
 require test/x86-64-boot-harness.f
+require src/os/linux-x86-64/target-layout.f
 
 package X64K-ENGINE
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
@@ -300,7 +302,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" dbase@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
    s" data-base" ROW  0 X64HARNESS:EXPECT-POP-DATA,
-   s" rbase" ROW  CODE-OFF REGION-OFF - X64HARNESS:EXPECT-POP-REGION,
+   s" rbase" ROW  X64LAYOUT:CODE-OFF REGION-OFF - X64HARNESS:EXPECT-POP-REGION,
    s" ndict@" ROW  0 X64HARNESS:EXPECT-POP,
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
    s" wordlist" ROW  s" wordlist" ROW
@@ -751,6 +753,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
+;using   \ X64LAYOUT
 ;package
 
 X64K-ENGINE:RUN
