@@ -34,7 +34,6 @@ package OUTER
 private
 
 76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
-76 constant DEF-RC-TIER-0        \ a definer at tier 0, whose compiler is not NCOMP
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 
@@ -55,12 +54,6 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 \ leaves there is the program's, as after a word the loop runs.
 : DEF-TIER-0? ( -- bool )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= ;
-
-\ A definer at tier 0 refuses, naming the keyword: NCOMP, which compiles its
-\ body, is the tier-1 compiler.
-: DEF-TIER-0 ( -- )
-   s" hb: tier 0 is not in the Habu loop: " SAY
-   DEF-RC-TIER-0 PKG-FAIL ;
 
 \ A `:` while the JIT's pass 2 reads a body again refuses first, naming the
 \ token, as the engine's head does; `trusted:` is never refused for it.
@@ -451,19 +444,18 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
 \ ---- the definers (habu2.f EMIT-CREATE, INTERP-EMIT C-CREATE, C-VARIABLE, C-CONSTANT)
 \ A definer's word is whole when it is read. Its record opens with the stamp a
 \ mention of the word folds to, DKIND:ADDR for a DATA address or DKIND:VAL for
-\ a decided number, which also makes it the record `does-patch` reads (LASTC);
+\ a decided number, which also makes it the record `does-patch` reads (LASTC)
+\ and NCOMP's at either tier, as the engine's definers are native at both;
 \ NCOMP compiles and publishes the body that pushes that cell, and def-close
 \ ends the definition. The engine's check hook then reads the name and the
 \ keyword, and the word's effect is registered as raw storage: `-- ptr a` for
 \ `create` and `variable`, `-- a` for `constant`, never a checked effect,
 \ which could not state it (habu2.f LASTC-TRUST).
 
-\ The head refuses at tier 0, whose compiler is not NCOMP, and while a task is
-\ live, then needs a name, naming kw as the engine bakes it: `variable` is the
-\ engine's `create` with a cell allotted after it. The capture is seeded with
-\ the name for the hook.
+\ The head refuses while a task is live, then needs a name, naming kw as the
+\ engine bakes it: `variable` is the engine's `create` with a cell allotted
+\ after it. The capture is seeded with the name for the hook.
 : DEF-FIXED-HEAD ( ptr u8 n -- ) {: kw:ptr u:n :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TASK-GUARD
    kw u OPERAND
    0 BODYLEN-CELL CELL!

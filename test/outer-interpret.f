@@ -22,8 +22,7 @@
 \ Some cases are the Habu loop's alone: the records an exit hook finds after an
 \ uncaught throw, where the engine's loop rolls the dictionary back to the
 \ file's start and the Habu loop does not; the cell only the Habu loop's
-\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); a definer at tier 0, which the
-\ engine's loop reads and the Habu loop refuses; and `constant` on an empty
+\ jit-token sets (NCOMP-DISPATCH:JIT-RET-CELL); and `constant` on an empty
 \ stack, which the engine's loop reads below its stack. And one check runs in a
 \ forked copy of this process instead, the seam: a fork binds it to a counting
 \ spy, and a loaded file must arrive there.
@@ -1814,14 +1813,24 @@ variable WANT-RC
    s" 1 set-tier OI-SPIN 7 constant OI-T" s" constant" s" oi-live-constant.f" LIVE
    0 SPIN-U ! ;
 
-\ The Habu loop refuses a definer at tier 0, as it does a head, and `constant`
-\ on an empty stack names the underflow; the engine's loop defines the first
-\ and reads below its stack for the second (rc 102).
-: DEFINER-HABU-ONLY ( -- )
+\ At tier 0 the definers are NCOMP's as at tier 1: each word answers its cell
+\ or its value, a JIT body mentions them, and a `does>` parent the JIT compiled
+\ patches the word `create` made last, which a JIT body then reads at the
+\ created signature.
+: DEFINERS-TIER-0 ( -- )
    GE-SRC-RESET
-   s" variable OI-V" GE-SRC-LINE
-   s" oi-variable-tier-0.f" HABU
-   76 s" hb: tier 0 is not in the Habu loop: variable at " S\" oi-variable-tier-0.f:1\n" DIED-AT
+   s" 0 set-tier variable OI-V 5 OI-V ! OI-V @ . 7 constant OI-K OI-K ." GE-SRC-LINE
+   s" create OI-BUF 16 allot 9 OI-BUF ! OI-BUF @ . here OI-BUF - ." GE-SRC-LINE
+   s" : OI-G ( -- n ) OI-BUF @ OI-K + OI-V @ + ; OI-G ." GE-SRC-LINE
+   s" : OI-PAT ( -- ) does> ( -- n ) @ 1 + ;" GE-SRC-LINE
+   s" create OI-B 5 , OI-PAT OI-B . : OI-H ( -- n ) OI-B 2 * ; OI-H ." GE-SRC-LINE
+   s" oi-definers-tier-0.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 5\n7\n9\n16\n21\n6\n12\n" CASE$ GE-EXPECT-OUT ;
+
+\ `constant` on an empty stack names the underflow in the Habu loop; the
+\ engine's loop reads below its stack (rc 102).
+: DEFINER-HABU-ONLY ( -- )
    GE-SRC-RESET
    s" 1 set-tier constant OI-K" GE-SRC-LINE
    s" oi-constant-underflow.f" HABU
@@ -1976,6 +1985,7 @@ private
    DEFINER-DOES-PATCH
    DEFINER-RAW
    DEFINER-REFUSALS
+   DEFINERS-TIER-0
    DEFINER-HABU-ONLY
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT

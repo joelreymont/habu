@@ -3323,6 +3323,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   \ TIER-CELL is 1 here: boot stores 1, SET-TIER-BODY refuses any other tier,
+   \ and a task region, which starts at 0, stops at TASK-LIVE-GUARD, above. So
+   \ every record gets the tier DEFWRITE:DEF-OPEN gives a DKIND:VAL or
+   \ DKIND:ADDR record whatever the tier.
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
    WINDOW-CLOSE,
