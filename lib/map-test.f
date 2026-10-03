@@ -5,6 +5,7 @@ require lib/errors.f
 require lib/string.f
 require lib/map.f
 require test/checker-assert.f
+require lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 \ White-box test: reopen the module's package so the fixtures reach its private
 \ layout, probe and locate words by their bare package-local names, and so the
@@ -38,7 +39,7 @@ create MT-KEY-Z 122 c,
 : MT-ASSERT ( bool -- )
    MT-CASE @ 1 + MT-CASE !
    0= if
-      s" map-test: assertion " type MT-CASE @ . s" failed" type cr
+      s" map-test: assertion " type MT-CASE @ FMT:.INT s"  failed" type cr
       MT-FAIL @ 1 + MT-FAIL !
    then ;
 
@@ -509,7 +510,7 @@ create MT-KEY-Z 122 c,
 
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
-   MT-FAIL @ . s" map-test: failures" type cr
+   s" map-test: " type MT-FAIL @ FMT:.INT s"  failure(s)" type cr
    s" map-test: failures" MT-EX-FAIL die ;
 
 : MT-MAIN ( -- )
