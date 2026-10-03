@@ -1680,7 +1680,7 @@ the rule.
   the word a `generates:` row declares against the row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :77), `CTX0`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :87), `CTX0`
   (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
