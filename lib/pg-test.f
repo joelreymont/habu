@@ -9,6 +9,7 @@
 \ skip.
 
 require lib/test.f
+require lib/memory.f
 require lib/task.f
 require lib/aio.f
 require lib/image-lifecycle.f
@@ -487,6 +488,33 @@ variable STMT-U
    c ;
 
 
+\ A text length is compared with the arena's room, never added to its fill. One
+\ staged parameter is enough for a length near the maximum cell to wrap that sum
+\ back under the capacity, and the copy then runs past the arena.
+: ADD-HUGE-TEXT ( PG:connection -- PG:connection )
+   dup PARAMS
+   dup s" kept" TEXT+
+   dup BIG$ drop MEM-MAX-N 1- TEXT+ ;
+
+
+\ With nothing staged the fill is zero and the same length wraps no sum: the
+\ arena asks for a MEM-MAX-N-byte mapping, and the mapping is what refuses it.
+: ADD-LONE-HUGE-TEXT ( PG:connection -- PG:connection )
+   dup PARAMS
+   dup BIG$ drop MEM-MAX-N 1- TEXT+ ;
+
+
+: PARAM-LENGTH-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" TEXT+ refuses a length that would wrap the arena fill" T-LABEL
+   c [: ADD-HUGE-TEXT ;] catch {: stale-param code:n :}
+   code E-CAPACITY T=
+   s" TEXT+ of that length on an empty list is refused by the allocator" T-LABEL
+   c [: ADD-LONE-HUGE-TEXT ;] catch {: stale-lone lone-code:n :}
+   lone-code E-MEM-MAP T=
+   c PARAMS
+   c ;
+
+
 \ ---- multi-statement scripts ----------------------------------------------
 \ SCRIPT is the only path that takes more than one statement; EXEC and
 \ EXEC-PREPARED ride the extended protocol, where a second command is 42601.
@@ -673,6 +701,7 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    BIG-TEXT-CASES
    BIG-STATEMENT-CASES
    PARAM-COUNT-CASES
+   PARAM-LENGTH-CASES
    MULTI-VIA-EXEC-CASES
    SCRIPT-OK-CASES
    SCRIPT-FAIL-CASES

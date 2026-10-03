@@ -283,6 +283,21 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    need PROC-ENV-EXTRA-BYTES PROC-ENV-REPORT-BYTES
    E-PROC-ENV throw ;
 
+\ The buffer fill after one more run of u bytes and its terminator, held at the
+\ maximum cell instead of wrapping: `>LEN` is an unchecked cast, and a plain sum
+\ of a length near that maximum comes back under the capacity. A held need is
+\ refused like any other that does not fit. Both operands are nonnegative.
+: PROC-ENV-NEED ( n len -- n ) {: used:n u :}
+   u LEN>N MEM-MAX-N used - >= if MEM-MAX-N exit then
+   used u LEN>N + 1 + ;
+
+\ The fill after one name=value row, each length refused when negative before it
+\ is summed. Every row writer checks it before a byte of the name is read.
+: PROC-ENV-ROW-NEED ( n len len -- n ) {: used:n nameu valu :}
+   nameu LEN>N 0 < if E-PROC-ENV throw then
+   valu LEN>N 0 < if E-PROC-ENV throw then
+   used nameu PROC-ENV-NEED valu PROC-ENV-NEED ;
+
 : PROC-ENV-HAS-EQUAL? ( ptr u8 len -- bool ) {: a:ptr u :}
    0 begin dup u LEN>N < while
       dup a + c@ PROC-ENV-EQUAL = if drop PROC-ENV-TRUE exit then
@@ -301,10 +316,13 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    a c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
    a u PROC-ENV-HAS-EQUAL? 0= if E-PROC-ENV throw then ;
 
+\ The room is measured before the entry is read: a length past it is refused
+\ unread, never scanned for its `=`.
 : PROC-ENV-STORE-Z ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
    u LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-OFF @ {: off :}
-   off OFF>N u LEN>N 1 + + PROC-ENV-CHECK-BYTES
+   off OFF>N u PROC-ENV-NEED PROC-ENV-CHECK-BYTES
+   a u PROC-ENV-CHECK-ENTRY
    a PROC-ENV-BUF off OFF>N + u LEN>N BYTE-COPY
    0 PROC-ENV-BUF off OFF>N + u LEN>N + c!
    off OFF>N u LEN>N 1 + + >OFF PROC-ENV-OFF !
@@ -324,7 +342,6 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    PROC-ENV-DEF-N @ COUNT>N 1+ >COUNT PROC-ENV-DEF-N ! ;
 
 : PROC-ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u :}
-   a u PROC-ENV-CHECK-ENTRY
    PROC-ENV-CHECK-EXTRA
    a u PROC-ENV-STORE-Z PROC-ENV-INSTALL-Z ;
 
@@ -379,10 +396,9 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    s" " >LEN PROC-ENV-FALSE ;
 
 : PROC-ENV-ROW-Z ( ptr u8 len ptr u8 len -- ptr u8 ) {: name:ptr nameu:len val:ptr valu:len :}
-   name nameu PROC-ENV-CHECK-NAME
-   valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-OFF @ {: off:off :}
-   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-CHECK-BYTES
+   off OFF>N nameu valu PROC-ENV-ROW-NEED PROC-ENV-CHECK-BYTES
+   name nameu PROC-ENV-CHECK-NAME
    name PROC-ENV-BUF off OFF>N + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL PROC-ENV-BUF off OFF>N + nameu LEN>N + c!
    val PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
@@ -399,16 +415,16 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 \ this overwrites an existing row in place (e.g. one copied from the parent's
 \ own environment by PROC-ENV-INHERIT-MISSING) and appends only when absent.
 : PROC-ENV-SET ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
+   PROC-ENV-OFF @ OFF>N nameu valu PROC-ENV-ROW-NEED PROC-ENV-CHECK-BYTES
    name nameu PROC-ENV-NAME-IDX {: i:n :}
    i 0 < if name nameu val valu PROC-ENV+ exit then
    name nameu val valu PROC-ENV-ROW-Z i >IDX PROC-ENV-SLOT ! ;
 
 : PROC-ENV-DEFAULT+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
-   name nameu PROC-ENV-CHECK-NAME
-   valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-ENV-DEF-CHECK-EXTRA
    PROC-ENV-DEF-OFF @ {: off:off :}
-   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-DEF-CHECK-BYTES
+   off OFF>N nameu valu PROC-ENV-ROW-NEED PROC-ENV-DEF-CHECK-BYTES
+   name nameu PROC-ENV-CHECK-NAME
    name PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + c!
    val PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY

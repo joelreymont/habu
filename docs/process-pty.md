@@ -98,13 +98,18 @@ publishes:
   included -- the descriptors are blocking, so a read no poll authorised could
   block past the caller's deadline. `READ-TO-EOF` and `DRAIN ( fd n -- )` are
   the two bulk shapes.
-- `WAIT-FOR ( ptr u8 n -- bool )` reads the master until the text appears, the
-  child hangs up, or the wait budget passes, on an absolute deadline
-  (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`, reached through `WAIT-OPEN` /
-  `WAIT-LEFT`). No count of polls or reads bounds it: reads that bring data and
-  a dead child's ready-and-empty polls both spend a count without spending time
-  -- measured, the 500-poll budget one of these waits used to carry went by in
-  19 ms.
+- `WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool )` reads the master until
+  the tail appears at or after the end of the head, the child hangs up, or the
+  caller's budget passes, on an absolute deadline (`PROC-DEADLINE-AT` /
+  `PROC-LEFT-MS`, reached through `WAIT-OPEN` / `WAIT-LEFT`). The hang-up
+  answers whether the text came before it. A budget that passes with the child
+  still at the terminal throws `E-PROC-TIMEOUT`: the child has not answered
+  yet, so the row reads as a timeout rather than a failed assertion.
+  `WAIT-AFTER` is the same within `WAIT-BUDGET-MS`, and `WAIT-FOR ( ptr u8 n --
+  bool )` waits for the text anywhere. No count of polls or reads bounds a
+  wait: reads that bring data and a dead child's ready-and-empty polls both
+  spend a count without spending time -- measured, the 500-poll budget one of
+  these waits used to carry went by in 19 ms.
 - `BUF$`, `BUF-CLEAR`, `FIND-FROM`, `IN-BUF?`, `FIND-AFTER` and `AFTER?` are the
   buffer and one span search over it. A full buffer keeps its tail, so old bytes
   do leave it.
@@ -120,9 +125,10 @@ publishes:
 
 The state is process-wide: one child and one wait at a time, and `SPAWN-ON-PTY`
 refuses a second pair while one is open. `lib/pty-harness-test.f` drives the
-buffer, the search, the watches and the spawn's abort path directly, and forces
-the wedge the bounded reap exists for: a child that writes into the terminal
-forever and never exits is killed on the clock, not waited on.
+buffer, the search, the watches and the spawn's abort path directly, ends a wait
+both ways -- on a live child's clock and on its hang-up -- and forces the wedge
+the bounded reap exists for: a child that writes into the terminal forever and
+never exits is killed on the clock, not waited on.
 
 ## Supervised sessions (`lib/process-pty-io.f`)
 

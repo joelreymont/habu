@@ -26,6 +26,7 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 require lib/argv.f
 require tools/repair-packet-core.f
+require lib/test/outcome.f
 
 package LOAD-REJECT-TEST
 
@@ -227,13 +228,14 @@ LOWER-CERT-HOOK:INSTALL
    PATHS!
    FIXTURES! ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ Spawn `<hb> --load <fixture>` with empty stdin, capture the exit outcome.
 : RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -242,7 +244,7 @@ LOWER-CERT-HOOK:INSTALL
    path pathu >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   STORE! ;
+   path pathu STORE! ;
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
@@ -286,17 +288,9 @@ LOWER-CERT-HOOK:INSTALL
 
 : TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
-   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED STORE!
+   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED s" " STORE!
    EXITED @ TFALSE
    RC @ SIGKILL T=
-   OUT-U @ TEST-OUT-U T=
-   ERR-U @ TEST-ERR-U T= ;
-
-: TEST-STORE-TIMEOUT ( -- )
-   s" timeout outcome remains distinguishable from exit" T-LABEL
-   TEST-OUT-U >LEN TEST-ERR-U >LEN OUTCOME:TIMEOUT STORE!
-   EXITED @ TFALSE
-   RC @ 0 T=
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 
@@ -355,6 +349,23 @@ LOWER-CERT-HOOK:INSTALL
    s" family arguments keep distinct declared variables" T-LABEL
    s" NEWTYPE lrd-pair 2 : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
+\ A storage declaration whose definer cannot size its type is the checker's
+\ refusal, named for the declared word and the type, where it used to die on an
+\ uncaught E-LAYOUT-BUFFER with nothing on stderr (dot 2eb1290e).
+: STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
+   BODY$ src srcu WRITE-ALL
+   BODY$ RUN
+   name nameu ASSERT-NAMED
+   ERR$ s" : unknown type 'lrd-stg-none'" CONTAINS? TTRUE ;
+
+: TEST-STORAGE ( -- )
+   s" undefined storage types are named refusals" T-LABEL
+   s" 4 TYPED-BUFFER LRD-STG-TB lrd-stg-none" s" in LRD-STG-TB" STORAGE-REJECT
+   s" TYPED-VARIABLE LRD-STG-TV lrd-stg-none" s" in LRD-STG-TV" STORAGE-REJECT
+   s" 4 LAYOUT-BUFFER LRD-STG-LB lrd-stg-none" s" in LRD-STG-LB" STORAGE-REJECT
+   s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
+   s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -405,12 +416,12 @@ LOWER-CERT-HOOK:INSTALL
    T-RESET
    SETUP
    TEST-STORE-SIGNALED
-   TEST-STORE-TIMEOUT
    TEST-UNDEF
    TEST-BODY
    TEST-PARAMETRIC
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH
+   TEST-STORAGE
    TEST-REQUIRE-CHAIN
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE

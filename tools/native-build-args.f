@@ -3,6 +3,12 @@
 \ it before the build closure loads, so a refused command line costs an engine
 \ boot and not a native compiler; the driver's own entries (NATIVE-BUILD:RUN,
 \ :RUN-IMAGE) check it again for their other callers.
+\
+\ Exit status (NATIVE-BUILD:EXIT-RC): 0 for a promoted build; PROC-TIMEOUT-RC
+\ (124, lib/process.f) when a deadline in the build expired; BUILD-RC for a
+\ refused command line and for every other failure the driver catches, which
+\ it names first as `native-build: uncaught throw code N`; 76 for a broken
+\ internal invariant the driver dies on by name.
 
 require lib/string.f
 require lib/errors.f

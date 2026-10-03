@@ -14,6 +14,7 @@
 
 require lib/prelude.f
 require src/habu/verify-source.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -23,7 +24,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" using-test: expected " type want . s" got " type got . cr
+      T-FAIL s" using-test: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
       #FAIL @ 1 + #FAIL !
    then ;
 
@@ -47,7 +48,7 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 94 constant E-AMBIGUOUS
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
+E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
 
 \ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package

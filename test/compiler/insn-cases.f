@@ -324,7 +324,8 @@ create CHILD-ERR CAPTURE-CAP allot
 
 : CHILD-EXITED= ( ptr u8 n n -- ) {: src:ptr srcu:n rc:n :}
    src srcu CHILD-OUT CAPTURE-CAP >LEN CHILD-ERR CAPTURE-CAP >LEN CHILD-MS >MS
-   SUBJECT:RUN rc T-OUTCOME-EXITED= 2drop ;
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc rc T-OUTCOME-EXITED= ;
 
 : RESERVED-REFUSED-ROW ( n -- ) {: r:n :}
    HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then

@@ -7,6 +7,8 @@
 \ largest reuse; a bind past the sanity ceiling dies NAMED before any mutation
 \ (transactional), leaving the prior bind intact.
 
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
 variable #FAIL
 variable #CASE
 
@@ -17,7 +19,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" expected " type want . s" got " type got . cr
+      T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 \ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------
@@ -131,9 +133,9 @@ variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ INCLUDE-EVALUATE ;
 : DFL-EVAL ( ptr u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
-s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL E-LAYOUT-BUFFER T=
+s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=
 s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL $4E T=      \ redefinition of the accessor
-s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL E-LAYOUT-BUFFER T=
+s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
 
 \ armed-window state stays sealed (no user handle to the one-shot boundary)
 s" LBUF-PEND!" 0 search-wl 0= -1 T=

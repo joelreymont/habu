@@ -69,12 +69,12 @@ $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
 \ $90..$128 are layout.f's: EVAL-INB, EVAL-FRAME:USE-FLOOR, the USE-MAX cells
-\ of EVAL-FRAME:USE-WIDS and EVAL-FRAME:PEND at $120.
+\ of EVAL-FRAME:USE-WIDS and EVAL-FRAME:PEND at $120. $128 is held for the
+\ frame's saved next wordlist id (WIDN).
 \ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
-\ return and the throw recovery give back to the pool; 0 for evaluate. The
-\ last slot: the frame ends at EVAL-BYTES, a multiple of 16 for the machine
-\ stack.
-$128 constant EVAL-SEG
-$130 constant EVAL-BYTES
+\ return and the throw recovery give back to the pool; 0 for evaluate. $138
+\ pads the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
+$130 constant EVAL-SEG
+$140 constant EVAL-BYTES
 
 ;package

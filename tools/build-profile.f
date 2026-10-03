@@ -84,7 +84,7 @@ public
    TEXT-REPORT
    JSON-REPORT
    s" build-profile: reports in " type TEXT$ type s"  and " type JSON$ type cr
-   s" " rc die ;
+   s" " rc NATIVE-BUILD:EXIT-RC die ;
 ;package
 
 BUILD-PROFILE:MAIN

@@ -2,6 +2,8 @@
 \ Every case has an explicit turn limit, including a broken/nonterminating loop.
 \ Run directly in the engine's default JIT tier; also baked into stage0.
 
+require lib/fmt.f
+
 package JIT-PLUSLOOP-TEST
 
 variable STEP
@@ -24,8 +26,8 @@ $100000000000000 constant BIG-STEP
 : EXPECT ( n n -- ) {: actual:n expected:n :}
    1 CASE-N +!
    actual expected <> if
-      s" jit-plusloop: failed case " type CASE-N @ .
-      s" expected " type expected . s" actual " type actual .
+      s" jit-plusloop: failed case " type CASE-N @ FMT:.INT
+      s"  expected " type expected FMT:.INT s"  actual " type actual FMT:.INT cr
       1 throw
    then ;
 

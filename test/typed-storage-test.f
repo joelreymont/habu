@@ -26,9 +26,10 @@ require test/checker-assert.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 
-\ named storage-boundary codes (mirrors src/core/layout-buffer.f)
-7121 constant E-STORAGE
-7122 constant E-STORAGE-BOUNDS
+\ named storage-boundary codes, src/core/layout-buffer.f's; the checker
+\ refuses a declaration with src/core/checker.f CHECKER-REJECT-RC
+E-LAYOUT-BUFFER constant E-STORAGE
+E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
 78 constant E-STORAGE-DUP
 
 \ ---- families under test ----------------------------------------------------
@@ -152,15 +153,16 @@ TYPED-VARIABLE TSL tsres<n,n>
    1 TLB-GET 22 T= ;
 
 \ =============================================================================
-\ 5. Define-time admissibility rejects — each throws the named storage code
+\ 5. Define-time admissibility rejects — a stored type is the checker's refusal,
+\    and a count only the run reads throws the named storage code
 \ =============================================================================
 : TS-SECTION-ADMISSIBILITY ( -- )
-   s" TYPED-VARIABLE BAD-OPEN ptr a" TS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE BAD-VAR a" TS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BAD-OPEN ptr a" TS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE BAD-VAR a" TS-EVAL CHECKER-REJECT-RC T=
    \ a WELL-FORMED xt<effect> quotation cell is now admissible (see
    \ test/xt-cell-test.f); a MALFORMED quotation (missing --) still rejects
-   s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL CHECKER-REJECT-RC T=
+   s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL CHECKER-REJECT-RC T=
    \ overflow: non-positive counts reject
    s" 0 TYPED-BUFFER BAD-ZERO tsk" TS-EVAL E-STORAGE T=
    s" -1 TYPED-BUFFER BAD-NEG tsk" TS-EVAL E-STORAGE T=
@@ -184,7 +186,7 @@ PTR-VARIABLE TS-DP
    here TS-DP 0 ptr-field @ = TTRUE
    \ a rejected admissibility decl also defines nothing and rolls back
    here TS-DP 0 ptr-field !
-   s" TYPED-VARIABLE BAD-RB ptr a" TS-EVAL E-STORAGE T=
+   s" TYPED-VARIABLE BAD-RB ptr a" TS-EVAL CHECKER-REJECT-RC T=
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 

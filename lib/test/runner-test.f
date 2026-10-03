@@ -301,7 +301,7 @@ variable GTT-OFI
 : GTT-TEST-TIMEOUT ( -- )
    GTT-RUN-HANG
    s" hang timeout" GT-TIMEOUT
-   s" hang nonzero" GT-RC-NONZERO
+   [: s" hang rc" GT-RC-NONZERO ;] E-PROC-TIMEOUT TTHROWSQ   \ a deadline has no rc
    GT-FAILURES 0 T= ;
 
 : GTT-TEST-AGGREGATE-FAILURES ( -- )

@@ -202,7 +202,9 @@ public
 : ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: root:ptr rootu:n name:ptr nameu:n :}
    rootu 0 <= if E-BUILD-PATH throw then
    nameu 0 <= if E-BUILD-PATH throw then
-   rootu 1 + nameu + FS-PATH-CAP > if E-BUILD-PATH throw then
+   \ The name is compared with the room the root and its separator leave: in a
+   \ sum, a length near the maximum cell wraps back into range.
+   nameu FS-PATH-CAP 1 - rootu - > if E-BUILD-PATH throw then
    root rootu name nameu BUILD-PATH-BUF JOIN-PATH
    BUILD-PATH-BUF swap ;
 

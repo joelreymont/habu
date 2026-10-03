@@ -256,7 +256,6 @@ $7FFFFFF constant MAX-CHUNK        \ a chunk size larger than any body we accept
 
 : LINE-END ( n n -- n ) {: idx:n at:n :}
    idx HEAD-U@ 1- {: limit:n :}
-   limit at <= if -1 exit then
    limit at ?do
       idx i CRLF-AT? if i unloop exit then
    loop
@@ -453,7 +452,6 @@ $7FFFFFF constant MAX-CHUNK        \ a chunk size larger than any body we accept
 
 : WINDOW-LINE ( n -- n ) {: idx:n :}
    idx IN-U@ 1- {: limit:n :}
-   limit idx IN-AT@ <= if -1 exit then
    limit idx IN-AT@ ?do
       idx i CRLF-AT? if i unloop exit then
    loop

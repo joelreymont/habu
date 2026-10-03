@@ -10,6 +10,7 @@ require lib/fmt.f                  \ the code the child prints is rendered from 
 require lib/process.f
 require lib/process-argv.f         \ the full-table case needs a child engine
 require lib/test/outcome.f
+require lib/test/guard-page.f      \ a path whose bytes end where memory does
 
 package FFI-TEST
 
@@ -209,11 +210,15 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
    FFI-T-ERR u LEN>N ;
 
-: FFI-T-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+\ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
+\ the stdout and stderr lengths.
+: FFI-T-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
-   FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu erru ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
 \ needle follows lib/errors.f instead of repeating its number.
@@ -225,7 +230,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-TABLE-FULL ( -- )
    s" a full declaration table is refused with its own code" T-LABEL
-   FFI-T-FULL-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   FFI-T-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-TABLE-FULL FFI-T-CODE$ CONTAINS? TTRUE
@@ -247,7 +252,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-LIBRARY-TABLE-FULL ( -- )
    s" a full library table names the path and pending declaration" T-LABEL
-   FFI-T-LIB-FULL-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   FFI-T-LIB-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
@@ -273,7 +278,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-LONG-LIBRARY-TABLE-FULL ( -- )
    s" a PATH-CAP path keeps the library-table refusal and its full name" T-LABEL
-   FFI-T-LONG-LIB-FULL-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   FFI-T-LONG-LIB-FULL-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY-FULL FFI-T-CODE$ CONTAINS? TTRUE
@@ -400,6 +405,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 : FFI-T-LONG-BASE ( -- )
    s" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" 5 FFI-T-NAME-A FFI:LIBRARY-NAME$ 2drop ;
 
+
+\ A path one byte longer than the table holds, whose bytes end at an
+\ inaccessible page: the length is refused before the spelling check reads it.
+: FFI-T-GUARDED-PATH ( -- )
+   FFI:LIBRARY-PATH-CAP [char] a GUARD-PAGE:TAIL
+   FFI:LIBRARY-PATH-CAP 1+ FFI-DECL:SELECT-LIBRARY ;
+
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer refuses it where it is stated. The refusal ends the load, which is
 \ why it is measured in a child the way the table ceilings are.
@@ -419,7 +431,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 : FFI-T-FOREIGN-LIBRARY ( -- )
    s" a library name spelled for the other target is refused by name" T-LABEL
-   FFI-T-FOREIGN-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   FFI-T-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
@@ -436,7 +448,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 : FFI-T-LONG-FOREIGN-LIBRARY ( -- )
    s" a PATH-CAP foreign name keeps the target refusal and its full name" T-LABEL
-   FFI-T-LONG-FOREIGN-SRC$ FFI-T-RUN-STDIN FFI-T-UNCAUGHT-RC T-OUTCOME-EXITED=
+   FFI-T-LONG-FOREIGN-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-LIBRARY FFI-T-CODE$ CONTAINS? TTRUE
@@ -560,6 +572,16 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    else s" /opt/build.dylib/libx.so.1" then FFI-DECL:SELECT-LIBRARY
    FFI-DECL:SELECT-PROCESS
    [: FFI-T-LONG-BASE ;] E-FFI-SYNTAX TTHROWSQ
+   s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
+   [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:PROCESS 0 FFI:DECLARE drop ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-GUARDED-PATH ;] E-FFI-SYNTAX TTHROWSQ
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS

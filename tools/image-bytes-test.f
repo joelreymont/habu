@@ -115,6 +115,35 @@ s" MSIZE" s" -- n" TRUST
    MSIZE M-OFF M-PAD-OFF
    1 IMG-M8 ;
 
+\ A write is measured against the room left: `>LEN` is a cast and not a
+\ validator, and a length near the maximum cell would wrap the sum back under
+\ MSIZE. A refused write leaves the cursor where it was.
+: IBT-FILL-EXACT ( -- )
+   M-RESET
+   MSIZE 1- M-OFF M-PAD-OFF
+   s" x" M-LEN M-BYTES-LEN ;
+
+: IBT-FILL-OVER ( -- )
+   M-RESET
+   MSIZE 1- M-OFF M-PAD-OFF
+   s" xy" M-LEN M-BYTES-LEN ;
+
+: IBT-WRITE-NEG ( -- )
+   M-RESET 1 IMG-M8
+   s" x" drop -1 >LEN M-BYTES-LEN ;
+
+: IBT-WRITE-MAX ( -- )
+   M-RESET 1 IMG-M8
+   s" x" drop -1 1 rshift >LEN M-BYTES-LEN ;
+
+: IBT-TEST-ROOM ( -- )
+   IBT-FILL-EXACT M-HERE MSIZE T=
+   [: IBT-FILL-OVER ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-WRITE-NEG ;] M-BOUNDS-RC TTHROWSQ
+   M-HERE 1 T=
+   [: IBT-WRITE-MAX ;] M-BOUNDS-RC TTHROWSQ
+   M-HERE 1 T= ;
+
 : IBT-TEST-REFINE-ERRORS ( -- )
    [: IBT-LEN-NEG ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-OFF-NEG ;] M-BOUNDS-RC TTHROWSQ
@@ -134,6 +163,7 @@ public
    IBT-TEST-COPY-PAD
    IBT-TEST-BIG-ENDIAN
    IBT-TEST-REFINE-ERRORS
+   IBT-TEST-ROOM
    T-REPORT
    s" image-bytes-test: ok" type cr ;
 

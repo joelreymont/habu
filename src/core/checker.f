@@ -120,6 +120,8 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -137,7 +139,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-FILE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:CHECK-REPORT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -859,6 +861,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ TFAM-MEMBERS query hooks, whose call sites never run before type-family.f
 \ installs them.
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
+defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
@@ -1222,11 +1225,11 @@ CHECKER-PKG-LIVE-DEFAULT
 \ has no caller that could act on it, and reporting it instead of the refusal
 \ would replace a named refusal with an unrelated code. The refusal itself is
 \ never dropped.
-70 constant COMPILE-REJECT-RC  \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
+70 constant CHECKER-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
    2 S\" hb: no authenticated package context for this definition\n" write drop
-   COMPILE-REJECT-RC throw ;
+   CHECKER-REJECT-RC throw ;
 
 \ CHECKER-RESOLVE owns the scope questions. AUTHORITY, here, and WALK, the scope
 \ walk CHECKER-FIND-ACTIVE-SYM resolves through, answer without refusing; RAISE
@@ -1630,6 +1633,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 \ `is` to the real query word once the registry exists.
 : TFAM-QUERY-DEFAULTS ( -- )
    [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
+   [: 2drop RES-FALSE ;] is TFAM-CLAIMED?-XT   \ no registry: no family claims a token
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
@@ -3347,6 +3351,9 @@ variable RCUR   variable RBROW
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
 variable THDMASK  variable THRMASK  variable THSET
+\ RENDSET: the body called a word that renders source (CTL-RENDERS). Sticky per
+\ body like UNSAFE: a call on any path is enough for the may-claim.
+variable RENDSET
 variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
@@ -4962,6 +4969,7 @@ variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead
 variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
+variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
@@ -5092,6 +5100,32 @@ variable SIGSCOPE-U
 : SIGSCOPE-OFF ( -- ) 0 SIGSCOPE-ON ! ;
 : SIG-SCOPE$ ( -- ptr u8 n )
    SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
+
+\ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
+\ one, or one that runs the span past the top of the address range. A false
+\ length inside the range cannot be told from a true one here, and a signature
+\ or a field text has no bound of its own; a name has, CK-NAME-MAX below.
+: BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 < IF RES-FALSE EXIT THEN
+   a u + a < IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ THE LONGEST NAME. A definer captures a word's name and one separator into the
+\ definition's body text before it writes the record, so `:` defines a name of
+\ BODYBUF-CAP - 1 bytes and refuses one byte more, rc 71. BODYBUF-CAP is
+\ src/habu/layout.f's, which loads after this file, so it is restated here and
+\ test/aot-sig-pool-suite.f holds the two equal.
+8000 constant CK-BODYBUF-CAP               \ = layout.f BODYBUF-CAP
+CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
+
+\ A name source hands a checker word is a byte span no longer than the longest
+\ name the engine defines. The first reader of such a name asks this before it
+\ reads a byte, and its word refuses a false length as it refuses any name it
+\ cannot take (test/name-length-test.f drives every such word).
+: CK-NAME-SPAN? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u BYTE-SPAN? u CK-NAME-MAX <= and ;
+
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
 \ (0 false) — always two items, so every caller drops the id on the false path.
@@ -5099,8 +5133,10 @@ variable SIGSCOPE-U
 \ (private+public) families first, then the unique public tail; top level uses
 \ the global scope, where every built-in cell family lives public. Qualified
 \ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
-\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
+\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE). A tail whose
+\ length no name has resolves nothing, and the resolver never reads it.
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
 \ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
 \ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
@@ -5111,26 +5147,6 @@ variable SIGSCOPE-U
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
-: TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup u < while
-      a over + c@ dup 60 = swap dup 62 = swap 44 = or or IF drop RES-TRUE EXIT THEN
-      1+
-   repeat drop RES-FALSE ;
-: TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF RES-TRUE EXIT THEN
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
-   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-BAD-CHAR? ;
-
-: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
-   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 : TOK-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}  a c@ {: c:n :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -5183,14 +5199,23 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    c 44 = IF RES-TRUE EXIT THEN
    c 91 = IF RES-TRUE EXIT THEN
    c 93 = ;
+\ Whether the byte at SI exists and is a space (SIG-SPACE?) or a token byte
+\ (SIG-INK?). Each reads it only when SI is inside SL: `and` evaluates both
+\ operands, so a bound test beside the read reads the byte past a signature
+\ that ends where its mapping does.
+: SIG-SPACE? ( -- bool )
+   SI @ SL @ >= IF RES-FALSE EXIT THEN
+   SB@ SI @ + c@ 32 = ;
+: SIG-INK? ( -- bool )
+   SI @ SL @ >= IF RES-FALSE EXIT THEN
+   SB@ SI @ + c@ dup 32 <> swap SIG-DELIM-CHAR? 0= and ;
 : NEXT-SIG-TOK ( -- ptr u8 n )
    PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
-   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+   BEGIN SIG-SPACE? WHILE SI @ 1 + SI ! REPEAT
    SI @ SL @ < 0= IF SB@ 0 EXIT THEN
    SB@ SI @ + SS!
    SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 EXIT THEN
-   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 <> and
-      SB@ SI @ + c@ SIG-DELIM-CHAR? 0= and WHILE SI @ 1 + SI ! REPEAT
+   BEGIN SIG-INK? WHILE SI @ 1 + SI ! REPEAT
    SS@ SB@ SI @ + SS@ - ;
 
 : UPPER? ( n -- bool ) {: c:n :} c 64 > c 91 < and ;
@@ -5203,6 +5228,90 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    a u s" --" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
+
+\ SIG-PTR-TOK? ( ptr u8 n -- bool ) : the pointer constructor. SIG-TYPE reads a
+\ bare `ptr` as `ptr <pointee>` even where a family of that tail resolves, so
+\ TYPE-NAME:FAMILY-RESERVED? refuses the tail by this same word.
+: SIG-PTR-TOK? ( ptr u8 n -- bool )
+   s" ptr" CORE-STR= ;
+
+\ A storage declaration reads its stored type token by token: run time in
+\ src/core/layout-buffer.f STORAGE-PARSE-TYPE, the gate in
+\ src/habu/verify-source.f SCAN-STORAGE-TYPE. The spelling ends at the first
+\ token other than a `ptr` prefix that leaves no bracket open, counting the `<`
+\ `[` and `>` `]` NEXT-SIG-TOK splits out, so a pointer chain, a family
+\ application and a spaced quotation or scheme reach SIG-TYPE whole. Given the
+\ depth open before a token, answer the depth after it and whether the spelling
+\ ends there. A stray closer ends it, and SIG-TYPE refuses the span.
+: SIG-NEST ( n n -- n ) {: depth:n c:n :}   \ bracket depth after one character
+   c 60 = c 91 = or IF depth 1 + EXIT THEN
+   c 62 = c 93 = or IF depth 1 - EXIT THEN
+   depth ;
+: CHECKER-TYPE-SPAN-STEP ( n ptr u8 n -- n bool ) {: depth:n a:ptr u:n :}
+   depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
+   after 0 > IF after RES-FALSE EXIT THEN
+   after a u SIG-PTR-TOK? 0= ;
+\ The spelling also ends with its line. Given the bytes between its last token
+\ and the next one, answer whether they hold a line feed (10). Then, as when no
+\ token follows, the reader leaves that token to the next statement, and
+\ SIG-TYPE refuses a span left open.
+: CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
+
+\ TYPE-RESERVED? ( ptr u8 n -- bool ) : the names DEFLINEAR and VALUE-RECORD
+\ refuse, through their loaders and tools/check.f alike. An effect spells such a
+\ type exactly as declared, so `CELL` and `PTR` are types of their own beside
+\ `cell` and `ptr`. A name is refused when an effect would read it as something
+\ else: stack syntax, a row variable (one upper-case letter heading a stack), a
+\ type already in the table, a family tail some scope reads (TFAM-CLAIMED?), a
+\ type variable, or a token the signature lexer splits or the effect's closing
+\ `)` (41) cuts short. The family test spans the registry because the name is
+\ global: a private tail, or a public one two packages share, is not resolved
+\ from the declaring scope, yet its owning package reads it as the family.
+\ A name holding `(` (40), `"` (34) or `\` (92) is refused wherever that byte
+\ sits. Source names the type again after declaring it, and there a token
+\ holding one of these bytes can open a comment, a string or a line comment
+\ (`(`, `.(`, the `s"` family, a `\`-initial token) for tools/check.f's lexer,
+\ which reads it only where a declaring word takes its name raw: after
+\ `DEFLINEAR \`, a value-record field typed `\` loads, while check.f reads the
+\ rest of that line as a comment and reports a missing END-VALUE-RECORD.
+\ Refusing the byte spares the loader a copy of that lexer's opener list, so
+\ `a(b`, which both read as one word, is refused too.
+: TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
+   c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
+   c 41 = IF RES-TRUE EXIT THEN
+   c 40 = IF RES-TRUE EXIT THEN
+   c 34 = IF RES-TRUE EXIT THEN
+   c 92 = ;
+: TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ TYPE-BAD-BYTE? IF drop RES-TRUE EXIT THEN
+      1+
+   repeat drop RES-FALSE ;
+
+\ A length no name has names no new type, like the empty name. CHECKER-TRY-RECORD
+\ and CHECKER-DEFLINEAR ask this first, so it is where their name is bounded:
+\ without it a length of -1 was taken and moved the value-record or
+\ signature-type string pool's used mark back, and the maximum cell died
+\ reading the name here.
+: TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF RES-TRUE EXIT THEN
+   a u DELIM? IF RES-TRUE EXIT THEN
+   a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
+   a u ROW-LEAD? IF RES-TRUE EXIT THEN
+   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
+   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
+   a u TFAM-CLAIMED?-XT IF RES-TRUE EXIT THEN
+   a u ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
+   a u TYPE-BAD-CHAR? ;
+
+: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
+   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
+   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
 \ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is a `defer`
@@ -5350,12 +5459,12 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
          AGAIN
       ELSE
          PK!                                          \ push back the non-'<' token
-         a u s" ptr" CORE-STR= 0= IF                  \ non-ptr family, no '<' -> 0-arg (arity reject)
+         a u SIG-PTR-TOK? 0= IF                       \ non-ptr family, no '<' -> 0-arg (arity reject)
             PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
          THEN                                         \ `ptr` (no '<') -> MK-PTR fall-through below
       THEN
    ELSE drop THEN                                     \ not a family: drop the 0 family-id
-   a u s" ptr" CORE-STR= IF
+   a u SIG-PTR-TOK? IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
 
@@ -5421,7 +5530,7 @@ PTR-VARIABLE LTS-PKA variable LTS-PKU variable LTS-PKH
    rt dup T-WIDTH 1 - MK-HIDDEN ;
 
 : LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN   \ `:ptr` = inferred pointee
+   a u SIG-PTR-TOK? IF FRESH MK-VAR MK-PTR EXIT THEN        \ `:ptr` = inferred pointee
    SGBAD @ {: sg0:n :}        \ only a NEW verdict is this annotation's: a signature
    LOC-ANN-SAVE               \ that already failed keeps its own diagnostic
    a SB!  u SL !  0 SI !  PKRESET
@@ -5731,25 +5840,36 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    0 SI !
    PSIG ;
 
+variable LBI-T
+variable LBI-BAD
+variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
+
+\ Every storage gate below parses its stored type here, into LBI-T. A scheme is
+\ a callback input only (FORALL-PLACE?), so no storage holds one at any depth
+\ of its stored type; LBI-SCHEME names that refusal for
+\ CHECKER-STORAGE-TYPE-REFUSE.
+: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored type, resolved into LBI-T
+   0 LBI-SCHEME !
+   NEW
+   SGBAD-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a SB!  u SL !  0 SI !
+   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
+   SIG-TYPE T-RES LBI-T !
+   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
+   LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? 0= ;
+
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
 \ the allocation-certificate gate: only a closed, non-linear, addressable
 \ layout — or an arity-0 nominal-scalar cell family (width 1, no variants,
 \ zero image = family id 0, a valid id) — is admitted, and the exact family
 \ id/width are returned to the fixed definer implementation. Ordinary
 \ unification never receives this authority.
-variable LBI-T
-variable LBI-BAD
-
-: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool ) {: a:ptr u:n :}
-   NEW
-   SGBAD-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
-   SIG-TYPE T-RES LBI-T !
-   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 0 RES-FALSE EXIT THEN
-   LBI-T @ HIDDEN-PARAM? IF 0 0 RES-FALSE EXIT THEN
+: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool )
+   STORAGE-RESOLVE? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
@@ -5814,17 +5934,6 @@ variable LBI-BAD
 : STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
-: STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored-type token, resolved into LBI-T
-   NEW
-   SGBAD-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
-   NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
-   SIG-TYPE T-RES LBI-T !
-   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
-   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
-   LBI-T @ HIDDEN-PARAM? 0= ;
-
 : STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
    LBI-T @ SCOPED-TYPE? IF 0 RES-FALSE EXIT THEN
    LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
@@ -5881,9 +5990,7 @@ variable LBI-BAD
    id ;
 
 : VREC-FINISH ( n -- ) {: id:n :}
-   VREC-FIELD-N @ id VREC-START@ - {: n:n :}
-   n 0 <= IF s" checker: empty value-record" 70 die THEN
-   n id cells VREC-COUNT + !
+   VREC-FIELD-N @ id VREC-START@ - id cells VREC-COUNT + !
    VRC-TVN @ id cells VREC-TVN + !
    VRC-RVN @ id cells VREC-RVN + ! ;
 
@@ -5920,27 +6027,70 @@ variable LBI-BAD
    u 0= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
-: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
+\ A refused field is answered, not died on, so the loader and tools/check.f
+\ share this one rule: CHECKER-DEFRECORD dies with the refusal, and the check
+\ tool names the field it refuses. VREC-AT is the byte offset in the field text
+\ of the field being parsed.
+variable VREC-AT
+
+: VREC-REFUSE ( ptr u8 n -- n ptr u8 n ) {: msg:ptr msgu:n :}
+   VREC-AT @ msg msgu ;
+
+\ Parse and store the fields of record id. Answer the end of the field text and
+\ an empty refusal, or the offset of the field refused and the refusal. A field
+\ text whose length describes no memory holds no field, so its record is refused
+\ as an empty one before a byte of it is read.
+: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- n ptr u8 n )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
+   fields fieldsu BYTE-SPAN? 0= IF fieldsu fields 0 EXIT THEN
    fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
+   fieldsu VREC-AT !
    BEGIN
-      NEXT-SIG-TOK dup 0= IF 2drop SGBAD @ IF s" checker: bad value-record field type" 70 die THEN EXIT THEN
-      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" 70 die THEN
-      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" 70 die THEN
-      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" 70 die THEN
+      NEXT-SIG-TOK dup 0= IF
+         2drop SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
+         fieldsu fields 0 EXIT
+      THEN
+      over fields - VREC-AT !
+      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" VREC-REFUSE EXIT THEN
+      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" VREC-REFUSE EXIT THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
       SIG-TYPE
       >r rec recu 2swap r> VREC-FIELD-STORE
-      SGBAD @ IF s" checker: bad value-record field type" 70 die THEN
+      SGBAD @ IF s" checker: bad value-record field type" VREC-REFUSE EXIT THEN
    AGAIN ;
+
+: VREC-DEFINE ( n ptr u8 n ptr u8 n -- n ptr u8 n )
+   {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
+   id rec recu fields fieldsu VREC-PARSE-FIELDS {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF at msg msgu EXIT THEN
+   VREC-FIELD-N @ id VREC-START@ = IF fieldsu s" checker: empty value-record" EXIT THEN
+   id VREC-FINISH
+   at msg msgu ;
+
+\ CHECKER-TRY-RECORD ( name fields -- at refusal ) registers the record, or
+\ leaves every record table as it found it and answers the byte offset in the
+\ field text of the field it refuses (the end of the text for a record with no
+\ field, 0 for a name TYPE-RESERVED? refuses) and the refusal; an empty refusal
+\ means registered. On a refusal it rewinds the five marks a rollback frame
+\ rewinds (RBF.VRECN .. RBF.VRECU).
+: CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
+   {: name:ptr nameu:n fields:ptr fieldsu:n :}
+   name nameu TYPE-RESERVED? IF 0 s" checker: bad or duplicate value-record type" EXIT THEN
+   VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @
+   {: rn:n fn:n dn:n an:n su:n :}
+   name nameu VREC-BEGIN {: id:n :}
+   id name nameu fields fieldsu VREC-DEFINE {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF
+      rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
+   THEN
+   at msg msgu ;
 
 : CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
-   name nameu TYPE-RESERVED? IF s" checker: bad or duplicate value-record type" 70 die THEN
-   name nameu VREC-BEGIN {: id:n :}
-   id name nameu fields fieldsu VREC-PARSE-FIELDS
-   id VREC-FINISH ;
+   name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
+   msgu 0 <> IF msg msgu 70 die THEN ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -6460,8 +6610,17 @@ variable SYM-ID
    SYM-STR-P @ SYM-STR-CAP-V @ nc ARENA-BYTES-GROW SYM-STR-P !
    nc SYM-STR-CAP-V ! ;
 
+\ Every name the checker records is copied here, from declaration words any
+\ source can call (CHECKER-DEFER and CHECKER-UNDEFINE among them), so the
+\ length is compared with the room left instead of added to the used mark: a
+\ length of -1 was taken and moved the mark back, and one whose end passes the
+\ largest cell would wrap the size the pool grows to.
+: SYM-STR-OVERFLOW ( -- )
+   s" checker: symbol string capacity overflow" 76 die ;
+
 : SYM-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
-   SYM-STR-U @ add + SYM-STR-CAP-V @ <= IF exit THEN
+   add 0 < SYM-STR-U @ add + 0 < or IF SYM-STR-OVERFLOW THEN
+   add SYM-STR-CAP-V @ SYM-STR-U @ - <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
 
 : SYM-COPY-FOLD ( ptr u8 n -- n n ) {: a:ptr u:n :}
@@ -8389,6 +8548,12 @@ variable RECMI   0 RECMI !
 \ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
 \ reject and reports through BADSIG-XT (render.f). Either way no row exists,
 \ so later callers reject as undefined instead of trusting a malformed effect.
+\ The multi-error load mode is off by default so the ordinary load path
+\ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
+\ a rejected definition still trusts its DECLARED signature (so later
+\ definitions check against a known effect instead of cascading undefined-word
+\ errors) unless that signature failed to parse, and the reject is counted so
+\ the driver can exit nonzero at end of load.
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -9426,9 +9591,10 @@ variable PE-QDOUT
 \ because a replayed atom does not have one stack effect: PE-A mints a term and
 \ PE-IN consumes one, so a dispatcher that left them on the data stack has a
 \ different depth down each branch and no inferable effect - measured,
-\ `ncomp: cannot compile PE-SPEC-ATOM`, E-NCOMP-ARITY. Every atom below is
-\ ( n -- ), the pending operands live in PE-SPEC-TERMS, and a row that ends with
-\ one left over is malformed and says so.
+\ `ncomp: cannot compile PE-SPEC-ATOM` (src/compiler/native/compiler.f
+\ KEEP-ARITY). Every atom below is ( n -- ), the pending operands live in
+\ PE-SPEC-TERMS, and a row that ends with one left over is malformed and says
+\ so.
 $20 constant PE-SPEC-CAP
 create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS
@@ -9511,6 +9677,9 @@ PRIM: PATH0          PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PRIM: DIAG-FILE!     PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-ORIGIN!   PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-SOURCE!   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-MAP!      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-SOURCE-OFF PRIM;
 PRIM: DIAG-JSON!     PE-F PE-IN PRIM;
 PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-BUFFER-OFF PRIM;
@@ -9547,9 +9716,9 @@ PRIM: CHECKER-VIS-PUBLIC PE-N PE-OUT PRIM;
 \ (dot habu-hb-crash-bare-c5be6634).
 PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-\ TYPE-RESERVED? answers "is this token already a type the checker knows", which
-\ is the question a generator has to ask before it mints a dependency type token.
-\ tools/check-core.f is that caller, and its own `TRUST` row cannot supply the
+\ TYPE-RESERVED? answers "may a DEFLINEAR or VALUE-RECORD declaration take this
+\ name", which tools/check-core.f must ask before the registration that would
+\ die on it. Its own `TRUST` row cannot supply the
 \ answer: the row runs long after the marking pass, and a row can only record an
 \ effect for a name that still resolves, so without the axiom the CLI dies
 \ E-TRUST-UNRESOLVED before it has looked at a single file.
@@ -9588,6 +9757,7 @@ PRIM: CHECKER-AUTH-PACKAGE-MODE@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-AUTH-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-TRY-RECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -9610,7 +9780,16 @@ PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDYNAMIC-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-STORAGE-TYPE-REFUSE
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-TYPE-SPAN-STEP
+   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-VERIFY-SOURCE!
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different
 \ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
 \ the name is already defined in the scope a NEW DEFINITION would land in - the
@@ -10105,8 +10284,12 @@ variable DFER-END
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
+\ A package name is a name (CK-NAME-SPAN?) that fits the mirror's row: one of
+\ -1 bytes used to copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: package name too long" 76 die THEN
+   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+      s" checker: package name too long" 76 die
+   THEN
    0 BEGIN dup u < WHILE
       a over CHECKER-PACKAGE-COPY-C
       1 +
@@ -10185,7 +10368,9 @@ public
 ;package
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
+   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
+      s" checker: using name too long" 76 die
+   THEN
    CK-USE-DEPTH {: d:n :}
    d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
    a u d CHECKER-USE:NAME! ;
@@ -10281,7 +10466,7 @@ PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid whi
 \ ONE hook for both refused-record diagnostics, selected by its argument, for
 \ the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
-\ (CHECKER-REPLAY-NAME-GUARD).
+\ (CHECKER-REPLAY-NAME-OK?).
 defer RECORD-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
 : RECORD-DIAG-DEFAULT ( -- ) [: drop ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-DEFAULT
@@ -10299,7 +10484,7 @@ RECORD-DIAG-DEFAULT
    0 RECORD-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-TRUST-UNRESOLVED throw ;
-PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
+PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 \ ONE hook for both shadow diagnostics, selected by its argument: 0 renders the
@@ -10315,9 +10500,10 @@ SHADOW-DIAG-DEFAULT
 \ A bare tail bound to the global gsym while the used public in slot ix also
 \ exports it: capture both candidates for the diagnostic and answer the
 \ refusal, E-USING-SHADOW-GLOBAL. CHECKER-RESOLVE:RAISE renders the captured
-\ candidates; a caller that only asks drops the answer.
-: CK-SHADOW-CAPTURE ( ptr u8 n n n n -- n ) {: a:ptr u:n gsym:n usym:n ix:n :}
-   a USH-TOK-A !  u USH-TOK-U !
+\ candidates; a caller that only asks drops the answer. The token the packet
+\ names is the raiser's, the spelling the checked text holds, not the fold the
+\ walk asks about.
+: CK-SHADOW-CAPTURE ( n n n -- n ) {: gsym:n usym:n ix:n :}
    gsym USH-GSYM !  usym USH-USYM !
    ix 0 >= IF
       ix CK-USE-SLOT USH-PKG-A !  ix CK-USE-LEN@ USH-PKG-U !
@@ -10335,7 +10521,7 @@ SHADOW-DIAG-DEFAULT
    a u CHECKER-USED-SYM {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 EXIT THEN
-   a u gsym usym CK-USED-SLOT @ CK-SHADOW-CAPTURE ;
+   gsym usym CK-USED-SLOT @ CK-SHADOW-CAPTURE ;
 
 \ --- one resolver for the used-publics leg (dot habu-reject-a-bare-1f43a9a6) ---
 \ The checker and the engine each walk the same scope chain — open package
@@ -10563,9 +10749,12 @@ variable CHECKER-QBAD-TOK
 
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
-\ colon anywhere is a malformed qualified name and must never resolve.
+\ colon anywhere is a malformed qualified name and must never resolve. So is a
+\ name whose length no name has (CK-NAME-SPAN?): this split is the first reader
+\ of every name the checker resolves, and it reads none of that one.
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
+   a u CK-NAME-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a u CHECKER-COLON-SCAN
    CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
    CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
@@ -10592,15 +10781,102 @@ variable CHECKER-QBAD-TOK
    a u s" lower-cert-hook" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" engine-error" CORE-STR=CI ;
 
-: CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+\ --- storage declaration refusals ---------------------------------------------
+\ A storage definer refuses a declaration whose type it cannot size, whose name
+\ it cannot publish, or whose count is a literal outside its extent or a token
+\ the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
+\ (src/core/layout-buffer.f) both refuse through CHECKER-STORAGE-REFUSE, so the
+\ declaration is reported, naming the declared word and the refused token,
+\ wherever it is refused; it used to throw E-CHECKER-LAYOUT-BUFFER with nothing
+\ reported. Like TRUST-STALE it is a hard stop on the ordinary load path, and
+\ rendered and COUNTED under a MULTI-ERROR load. Either way nothing is
+\ registered or defined: the refusing caller returns.
+\
+\ The diagnostic carries a file position only while the verifier window replays
+\ recorded source (CHECKER-VERIFY-PKG-DEPTH), for a token inside the buffer that
+\ pass registered. A run-time definer reads its tokens from the input, whose
+\ place in its file the checker has no record of.
+1 constant STG-UNKNOWN-TYPE     \ the type names nothing the checker knows
+2 constant STG-MALFORMED-TYPE   \ the type does not parse
+3 constant STG-UNSTORABLE-TYPE  \ the type parses, and this definer cannot store it
+4 constant STG-MALFORMED-NAME   \ the name has more than one inner ':'
+5 constant STG-SEALED-NAME      \ the name is qualified into a sealed package
+6 constant STG-BAD-COUNT        \ the literal count is outside the definer's extent
+7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
+8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
+9 constant STG-COUNT-WORD       \ the count token names no word that leaves the count
+10 constant STG-NO-TYPE         \ no token follows the name to be its type
+PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
+PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
+variable STGR-WHY                               \ one of the STG- reasons above
+variable STGR-AT                                \ the token lies in the verifier's source
+PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
+variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
+\ The renderer is its own hook because none of the four installed before it can
+\ carry a declaration: DIAGXT renders a definition with definition fields,
+\ BADSIG-XT a stored signature row, TSTALE-DIAG-XT a trust row, and
+\ SHADOW-DIAG-XT selects between the two using-shadow sites.
+defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
+: STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
+STORAGE-DIAG-DEFAULT
+
+\ src/habu/verify-source.f names each buffer it scans, and where the buffer
+\ starts in its file.
+: CHECKER-VERIFY-SOURCE! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
+   a STGR-SRC-A !  u STGR-SRC-U !
+   line STGR-SRC-LINE !  col STGR-SRC-COL !  byte STGR-SRC-BYTE ! ;
+
+: STGR-IN-SOURCE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   a STGR-SRC-A @ - {: off:n :}
+   off 0 < IF RES-FALSE EXIT THEN
+   off u + STGR-SRC-U @ <= ;
+
+: CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n ta:ptr tu:n why:n :}
+   na STGR-NAME-A !  nu STGR-NAME-U !
+   ta STGR-TOK-A !  tu STGR-TOK-U !
+   why STGR-WHY !
+   ta tu STGR-IN-SOURCE? STGR-AT !
+   STORAGE-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   CHECKER-REJECT-RC throw ;
+
+\ The type query that refused the type (CHECKER-LAYOUT-INFO, -STORAGE-INFO,
+\ -DYNAMIC-INFO) leaves its parse state live: an unknown type names its own
+\ token, and any other refusal names the whole stored type. No type at all is
+\ reported at the name, as a missing count is.
+: CHECKER-STORAGE-TYPE-REFUSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ta:ptr tu:n :}
+   tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REFUSE EXIT THEN
+   SGBAD-UNKNOWN? IF
+      na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REFUSE EXIT
+   THEN
+   na nu ta tu
+   SGBAD @ IF STG-MALFORMED-TYPE ELSE
+      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+   THEN
+   CHECKER-STORAGE-REFUSE ;
+
+\ A name a storage definer publishes has at most one inner ':' and, once the
+\ seal is captured, is not qualified into a sealed package. A refused name
+\ answers false. A length no name has is refused before the refusal that would
+\ echo the name: a definer hands this a token it parsed, so only a direct call
+\ can.
+: CHECKER-LBUF-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? drop
-   CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   CHECKER-QBAD-TOK @ 0 <> IF
+      a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+   THEN
    seal-captured? IF
       a u CHECKER-QUALIFIED? IF
-         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
+         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF
+            a u a u STG-SEALED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
+         THEN
       THEN
    THEN
-   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN ;
+   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   RES-TRUE ;
 
 \ The storage registrars below record a definer's accessor for the source
 \ pre-pass, which replays the definer in the verifier window while the definer
@@ -10613,14 +10889,18 @@ variable CHECKER-QBAD-TOK
 \ --json-errors consumer only as `hb: uncaught throw code 7136`.
 PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid while rendering)
 
-: CHECKER-REPLAY-NAME-GUARD ( ptr u8 n -- )
+\ Inside the window the name is then held to the definer's own name rule, which
+\ answers false once it has reported a refusal. A length no name has answers
+\ false first, before the refusal that would echo the name.
+: CHECKER-REPLAY-NAME-OK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF
       a RPL-TOK-A !  u RPL-TOK-U !
       1 RECORD-DIAG-XT
       E-PKG-CONTEXT throw
    THEN
-   a u CHECKER-LBUF-NAME-GUARD ;
+   a u CHECKER-LBUF-NAME-OK? ;
 
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
@@ -10640,7 +10920,10 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
 : CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
+\ Interning stores the name, so a length no name has is refused with the symbol
+\ pool's own refusal before the split reads it.
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
+   a u CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
@@ -10839,16 +11122,21 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 
 \ THE BINDERS ANSWER THEIR REFUSALS RATHER THAN RAISING THEM: each leaves
 \ ( sym why ), where why is 0 or the code of the refusal it reached -
-\ COMPILE-REJECT-RC when no authority names a package context for a bare token,
+\ CHECKER-REJECT-RC when no authority names a package context for a bare token,
 \ E-USING-SHADOW-GLOBAL when a used public also exports the tail a global
 \ binds, E-USING-AMBIGUOUS when two used publics export it and nothing earlier
 \ binds it or the global does. Under a refusal sym is not an answer, so no
-\ caller reads it when why is nonzero. They render nothing.
-\ CHECKER-FIND-ACTIVE-SYM raises the refusal exactly as each one always
-\ surfaced; a caller that only asks reads why.
+\ caller reads it when why is nonzero. They render nothing. CHECKER-BIND
+\ raises the refusal exactly as each one always surfaced; a caller that only
+\ asks reads why.
+\
+\ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
+\ length no name has) binds nothing in either binder: the engine never binds
+\ it, and neither the pending row nor the lookup reads it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? 0=  CHECKER-QBAD-TOK @ 0=  and IF
-      CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 COMPILE-REJECT-RC EXIT THEN
+   a u CHECKER-QUALIFIED? 0= IF
+      CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
+      CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
       2drop drop
    THEN
    a u CK-PENDING-SYM {: pending:n :}
@@ -10865,7 +11153,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
       two IF 0 E-USING-AMBIGUOUS EXIT THEN
       used 0= 0= IF
          used CK-REC-WID CK-USED-INDEX {: ix:n :}
-         0  a u sym a u ix CK-USED-SYM@ ix CK-SHADOW-CAPTURE  EXIT
+         0  sym a u ix CK-USED-SYM@ ix CK-SHADOW-CAPTURE  EXIT
       THEN
    THEN
    sym 0 ;
@@ -10873,7 +11161,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 : REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE 0 EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 COMPILE-REJECT-RC EXIT THEN
+   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
    {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
       pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
@@ -10891,12 +11179,19 @@ public
    CHECKER-PKG-MIRROR-AUTHORITY? IF REPLAY-BIND EXIT THEN
    LIVE-BIND ;
 
-\ Raise a refusal the walk answered: the package-context refusal names itself on
-\ fd 2 and throws the reject rc, the using-shadow refusal renders the candidates
-\ CK-SHADOW-CAPTURE captured, and the ambiguity throws bare.
-: RAISE ( n -- ) {: why:n :}
-   why COMPILE-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
-   why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT THEN
+\ Raise a refusal the walk answered for a token the checked text spells `s su`:
+\ the package-context refusal names itself on fd 2 and throws the reject rc, the
+\ using-shadow refusal renders that spelling with the candidates
+\ CK-SHADOW-CAPTURE captured, and the ambiguity throws bare. The walk may have
+\ asked about a fold the body walk keeps in scratch no source map covers; the
+\ spelling reads as written and locates in the file (render.f USHADOW-JSON).
+: RAISE ( ptr u8 n n -- )
+   {: s:ptr su:n why:n :}
+   why CHECKER-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
+   why E-USING-SHADOW-GLOBAL = IF
+      s USH-TOK-A !  su USH-TOK-U !
+      0 SHADOW-DIAG-XT
+   THEN
    why throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME here
@@ -10909,10 +11204,16 @@ public
    WALK nip 0 <> ;
 ;package
 
-: CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
-   CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0 <> IF why CHECKER-RESOLVE:RAISE THEN
+\ `a u` is the token to resolve, `s su` its spelling for a refusal to name.
+: CHECKER-BIND ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n s:ptr su:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why 0 <> IF s su why CHECKER-RESOLVE:RAISE THEN
    sym ;
+
+: CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u a u CHECKER-BIND ;
 
 : CHECKER-TRUSTED-TICK? ( ptr u8 n -- bool )
    CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? ;
@@ -10942,10 +11243,49 @@ package CHECKER-REG
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
 : CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n )
-   CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0= IF sym EXIT THEN
-   why FQSYM-DEFERRED? 0= IF why CHECKER-RESOLVE:RAISE THEN
+   why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
    0 ;
+
+\ ---- words a rendering statement may have defined ----------------------------
+\ A top-level statement that calls a CTL-RENDERS word defines words from text the
+\ source pre-pass never reads, and the loader compiles that text into the
+\ wordlist current at that moment (lib/ffi-abi.f CHECK-SCOPE asserts it for
+\ FUNCTION:). So the pre-pass has the checker mark that wordlist
+\ (CHECKER-VERIFY-RENDERS), and a body token that resolves nowhere defers its
+\ definition to the run (verdict 2) only when the lookup walked a marked
+\ wordlist: the statement's own section of its own package, read after the
+\ statement. The mark is a symbol whose name holds a space, which no token can
+\ spell; it carries no effect, and a scope's exit retires it with the scope's
+\ other symbols.
+\ THE LIMIT: a word the checker already holds resolves before any of this is
+\ asked, so a product shadowing it is judged against it, a refusal the load
+\ does not make. That is every engine word on an engine with no seeded pool,
+\ bin/hb among them, and every row a seeded engine has taken. Without the
+\ product's name the pre-pass cannot tell the two apart, and deferring every
+\ name behind a mark would defer every global a marked section calls.
+: UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
+
+: CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
+
+\ The chain CHECKER-FIND-ACTIVE-SYM walks: a qualified token its package's public
+\ wordlist; a bare one the open package's private and public wordlists, the
+\ global wordlist and the used publics.
+: UNSEEN-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
+   CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      pkg pkgu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   THEN
+   UNSEEN-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   CK-USE-SCAN-N 0 ?DO
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC UNSEEN-MARK$ SYM-FIND nip IF unloop RES-TRUE EXIT THEN
+   LOOP
+   RES-FALSE ;
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
@@ -10986,9 +11326,15 @@ package CHECKER-REG
    pub IF SYM-PUBLIC EXIT THEN
    SYM-PRIVATE ;
 
-: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
+\ The key all three questions ask with. A package name or a name whose length
+\ no name has keys no row, and is answered so before either is hashed.
+: ASIG-AUDIT-SYM ( ptr u8 n bool ptr u8 n -- n bool )
    {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   pkg pkgu CK-NAME-SPAN? na nu CK-NAME-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
+   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND ;
+
+: CHECKER-ASIG-KNOWN? ( ptr u8 n bool ptr u8 n -- bool )
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
 
@@ -10996,8 +11342,7 @@ package CHECKER-REG
 \ no signature for it - the one condition a capture must refuse, because that
 \ word is callable from checked code here and would not be in the seeded engine.
 : CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
-   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
@@ -11019,8 +11364,7 @@ package CHECKER-REG
 \ at publish) do not travel either: USIGS' newest-wins rule is answered HERE, so
 \ the artifact's reader never has to implement it a second time.
 : CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
-   {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
-   pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
+   ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF 0 EXIT THEN
    sym ASIG-LAST@ ;
 
@@ -11891,8 +12235,11 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    1 SHADOW-DIAG-XT
    E-SHADOWED-ARITY throw ;
 
+\ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
+\ refused with the symbol pool's refusal before the constructor scan reads it.
 : CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n bool -- )
    {: sa:ptr su:n na:ptr nu:n external:bool :}
+   na nu CK-NAME-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu CHECKER-REC-NAME!
@@ -11927,7 +12274,6 @@ $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
 variable LBUF-SIG-U
 variable LBUF-SIG-I
-variable LBUF-COUNT-N
 variable LBUF-INFO-W
 
 : LBUF-SIG-C, ( n -- ) {: c:n :}
@@ -11942,56 +12288,60 @@ variable LBUF-INFO-W
       LBUF-SIG-I @ 1 + LBUF-SIG-I !
    REPEAT ;
 
-: CHECKER-LBUF-COUNT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF RES-FALSE EXIT THEN
-   0 LBUF-COUNT-N !  0 LBUF-SIG-I !
-   BEGIN LBUF-SIG-I @ u < WHILE
-      a LBUF-SIG-I @ + c@ {: c:n :}
-      c 48 < c 58 >= or IF RES-FALSE EXIT THEN
-      c 48 - {: d:n :}
-      LBUF-COUNT-N @ LBUF-COUNT-MAX d - 10 / > IF RES-FALSE EXIT THEN
-      LBUF-COUNT-N @ 10 * d + LBUF-COUNT-N !
-      LBUF-SIG-I @ 1 + LBUF-SIG-I !
-   REPEAT
-   LBUF-COUNT-N @ 0 > ;
-
 : CHECKER-LBUF-EXTENT? ( n n -- bool ) {: count:n width:n :}
    count 0 <= width 0 <= or IF RES-FALSE EXIT THEN
    count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
    count width * LBUF-COUNT-MAX CELL / <= ;
 
+\ A BUFFER COUNT IS THE TOKEN BEFORE THE DEFINER, READ AND NEVER RUN. The count
+\ is an interpret-stack value, and no static pass models that stack
+\ (src/habu/verify-source.f RECORD-DEFINER?, at `constant`), so the gate path
+\ hands over the token before the definer instead. A token the engine's number
+\ reader reads as an integer IS the count, so it is held to the definer's own
+\ extent bound. No token is no count.
 \ A COUNT NAMED BY A WORD CERTIFIES BY THAT WORD'S EFFECT, NOT BY ITS VALUE. The
 \ preverifier reads the token and never runs it, so a name has no value here;
 \ what it has is the effect the load will run. The name resolves as a body or
 \ the top-row tracker resolves it (CHECKER-RESOLVE:REFUSES?, then EFFECT-QUERY),
-\ so a name the scope refuses there refuses here, and its effect has to be one a
-\ body could hand straight to a `( n -- )` consumer: no input, the return stack
-\ untouched, and an output row that unifies, as a call's input row does, with
-\ its own input row plus one `n`. A `constant` (`-- a`, a raw cell `n` absorbs),
-\ an engine-held constant and a colon `( -- n )` qualify; a `variable` (an
-\ address), a `bool` and a word with an input do not. The definer bounds the
-\ value at load (src/core/layout-buffer.f LBUF-EXTENT?, E-LAYOUT-BUFFER), so a
-\ constant of 0 certifies here and fails there. The unification binds only the
-\ variables it instantiates, in per-definition scratch that NEW clears.
+\ so a name the scope refuses there, or one nothing defines, refuses here. A
+\ word that takes input ends an expression the line computes before the
+\ definer (`Q-MAX Q-SEM-N *`, lib/queue.f), whose value only the load has, so
+\ its count is the definer's to bound, as the load bounds it. A word that takes
+\ none is the count itself, so its effect has to be one a body could hand
+\ straight to a `( n -- )` consumer: the return stack untouched, and an output
+\ row that unifies, as a call's input row does, with its own input row plus one
+\ `n`. A `constant` (`-- a`, a raw cell `n` absorbs), an engine-held constant
+\ and a colon `( -- n )` qualify; a `variable` (an address) and a `bool` do not.
+\ The definer bounds the value at load (src/core/layout-buffer.f LBUF-EXTENT?,
+\ E-LAYOUT-BUFFER), so a constant of 0 certifies here and fails there. The
+\ unification binds only the variables it instantiates, in per-definition
+\ scratch that NEW clears.
 package CHECKER-LBUF
 : BY-EFFECT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RESOLVE:REFUSES? IF RES-FALSE EXIT THEN
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
-   EFFECT-DIN-N 0 <> IF RES-FALSE EXIT THEN
+   EFFECT-DIN-N 0 <> IF RES-TRUE EXIT THEN
    EFFECT-RET-NEUTRAL? 0= IF RES-FALSE EXIT THEN
    FEP @ E-INST-RESET
    EFFQ-DIN @ E-INST {: din:n :}
    EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
 
 public
-\ The one count path of both definers: a decimal literal certifies by its value
-\ and extent, any other token by its effect, and anything else refuses.
-: CERTIFY ( ptr u8 n n -- ) {: a:ptr u:n width:n :}
-   a u CHECKER-LBUF-COUNT? IF
-      LBUF-COUNT-N @ width CHECKER-LBUF-EXTENT? IF EXIT THEN
-      E-CHECKER-LAYOUT-BUFFER throw
+\ The one count path of both definers that take a count: an integer literal
+\ certifies by its value and extent, any other token by the effect of the word
+\ it names, and no token is no count. A refused count is reported at its token, or at the name
+\ when no token precedes the definer (CHECKER-STORAGE-REFUSE), and answers
+\ false.
+: COUNT-OK? ( ptr u8 n ptr u8 n n -- bool )
+   {: na:ptr nu:n a:ptr u:n width:n :}
+   u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT THEN
+   a u num-parse {: v:n flt:bool ok:bool :}
+   flt 0= ok and IF
+      v width CHECKER-LBUF-EXTENT? IF RES-TRUE EXIT THEN
+      na nu a u STG-BAD-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT
    THEN
-   a u BY-EFFECT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN ;
+   a u BY-EFFECT? IF RES-TRUE EXIT THEN
+   na nu a u STG-COUNT-WORD CHECKER-STORAGE-REFUSE RES-FALSE ;
 ;package
 
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
@@ -12003,10 +12353,12 @@ public
 : CHECKER-DEFLAYOUT-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-GUARD
-   type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-LAYOUT-INFO 0= IF
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    nip LBUF-INFO-W !
-   count countu LBUF-INFO-W @ CHECKER-LBUF:CERTIFY
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 \ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
@@ -12023,17 +12375,21 @@ public
 : CHECKER-DEFTYPED-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-GUARD
-   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-STORAGE-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    LBUF-INFO-W !
-   count countu LBUF-INFO-W @ CHECKER-LBUF:CERTIFY
+   name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFTYPED-VARIABLE
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-GUARD
-   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-STORAGE-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
@@ -12091,21 +12447,41 @@ variable LBUF-NM-I
    sfx sfxu LBUF-NM-APP
    LBUF-NM-BUF LBUF-NM-U @ ;
 
-: CHECKER-DEFDYNAMIC-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
+: CHECKER-DEFSUFFIX-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n sfx:ptr sfxu:n sig:ptr sigu:n :}
    name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:ptr genu:n :}
-   gen genu CHECKER-REPLAY-NAME-GUARD
+   gen genu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    sig sigu gen genu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-DEFDYNAMIC-BUFFER
    ( ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n name:ptr nameu:n :}
-   name nameu CHECKER-REPLAY-NAME-GUARD
-   type typeu CHECKER-DYNAMIC-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
    drop                                    \ two control cells: the extent is dynamic
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
-   name nameu s" -RESERVE" s" n --" CHECKER-DEFDYNAMIC-NAME
-   name nameu s" -RELEASE" s" --" CHECKER-DEFDYNAMIC-NAME ;
+   name nameu s" -RESERVE" s" n --" CHECKER-DEFSUFFIX-NAME
+   name nameu s" -RELEASE" s" --" CHECKER-DEFSUFFIX-NAME ;
+
+\ Checker-side registration for the DEFER-LAYOUT-BUFFER gate path (verify-source
+\ RECORD-DEFER-LAYOUT-BUFFER). That definer publishes its accessor
+\ `NAME ( n -- ptr <type> )` and the binders `NAME-BIND ( n -- )` and
+\ `NAME-GROW ( n -- )` from one line (src/core/layout-buffer.f LDEFER-SOURCE),
+\ behind LAYOUT-BUFFER's own CHECKER-LAYOUT-INFO gate. Its count arrives at the
+\ bind, so the line carries none.
+: CHECKER-DEFDEFER-LAYOUT-BUFFER
+   ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
+   type typeu CHECKER-LAYOUT-INFO 0= IF
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN
+   2drop
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
+   name nameu s" -BIND" s" n --" CHECKER-DEFSUFFIX-NAME
+   name nameu s" -GROW" s" n --" CHECKER-DEFSUFFIX-NAME ;
 
 \ CHECK's publication of an inferred effect, through render.f REC-SIG. Its
 \ duplicate question was asked by PUBLISH-REFUSALS before the first write.
@@ -12130,6 +12506,12 @@ $8 constant EFFECT-EXTERNAL
 $10 constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
+\ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
+\ define words at run time that no source text spells. The loader's audited
+\ evaluate boundary carries it by axiom (NORET-AXIOMS) and every checked body
+\ that calls a flagged word inherits it; the source pre-pass asks for it
+\ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
+$80 constant CTL-RENDERS
 
 \ WHICH ENGINE WORD A SYMBOL IS: identity, not spelling. A rule that types an
 \ engine word by what the word does rather than by its row - CELL-FETCH-TOK for
@@ -12150,9 +12532,9 @@ $40 constant CTL-ZERO-FALSE
 \ the owner handover, the unit import and a captured graph. `undefine` retires
 \ them with every other fact (CHECKER-UNDEFINE), a redefinition records none,
 \ and an export does not copy them (EXPORT-META-COPY).
-\ The control word's bits: 0-6 the flags above, 7 and 13-15 free, 8-12 the
-\ INTRINSIC id, 16 the defer bit (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free
-\ outside the flag mask, 20-39 and 40-59 the intact masks (XFER-PACK).
+\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-15
+\ free, 16 the defer bit (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside
+\ the flag mask, 20-39 and 40-59 the intact masks (XFER-PACK).
 8 constant CTL-INTRINSIC-SHIFT
 $1F00 constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -12169,7 +12551,8 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
-$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INTRINSIC-MASK or
+$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-RENDERS or
+CTL-INTRINSIC-MASK or
    constant CTL-GRAPH-FLAGS
 \ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
 \ back-link and the created-word effect below — so the byte cap is scaled with
@@ -12748,12 +13131,18 @@ REG-EXT-AOT-DEFAULTS
 \ 0 = if drop 5 throw then ;` certified with the true arm treated as dead, and
 \ `7 0 P:T2` returned NOTHING where the signature promised a cell - the next
 \ word underflowed. One authority for "does this call end the path", and it is
-\ the record of the word the token really names. The rows after them are the
-\ same authority for "is this the engine's word": the primitives the walk types
-\ by what they do, named by identity (CTL-CORE-OP, CTL-INTRINSIC above).
+\ the record of the word the token really names.
+\
+\ The loader's one evaluate boundary is recorded the same way, so the engine
+\ names its own boundary and no library definer: src/core/include.f
+\ INCLUDE-EVALUATE is the word that turns rendered text into definitions. The
+\ rows after it are the same authority for "is this the engine's word": the
+\ primitives the walk types by what they do, named by identity (CTL-CORE-OP,
+\ CTL-INTRINSIC above).
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
+   s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
    s" dup" CTL-CORE-OP NORET-AXIOM
@@ -12904,6 +13293,12 @@ SYM-AXIOM-INSTALL
 
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
+
+\ The source pre-pass's question about a top-level token (src/habu/verify-source.f
+\ RENDERS-MARK?): does the word it names render source? When it does, the
+\ statement's wordlist is marked here, by the checker that owns the scope.
+: CHECKER-VERIFY-RENDERS ( n -- bool )
+   CTL-FLAGS-SYM CTL-RENDERS and 0 <> dup IF CHECKER-UNSEEN-MARK THEN ;
 
 \ Reference-scoped existence for source callers and load guards. A private or
 \ ABI-only row is not a callable source effect; EFFECT-QUERY still exposes ABI
@@ -13308,7 +13703,7 @@ variable UNSAFE-SYM-N
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
-variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
+variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
@@ -13323,7 +13718,7 @@ variable SV-TRAIL
    FV @ SV-FV !  TRAIL-N @ SV-TRAIL !     \ trail height is the per-TRY-EFF mark
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
-   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
+   OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
@@ -13355,7 +13750,7 @@ variable SV-TRAIL
    SV-FV @ FV !
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
-   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
+   SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
@@ -14322,22 +14717,26 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    SCOPE-FIELD-STEP ;
 
 \ The body token's one resolution: the symbol the shared lookup binds it to
-\ (CHECKER-FIND-ACTIVE-SYM) and the identity that symbol carries (CTL-IDENTITY).
-\ Made on the first ask for the token DO-TOK1 is reading, and read by every later
-\ reader of that token.
+\ (CHECKER-BIND) and the identity that symbol carries (CTL-IDENTITY). Made on
+\ the first ask for the token DO-TOK1 is reading, and read by every later reader
+\ of that token. TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read
+\ it, in the checked text.
 variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
+PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 
 \ A literal is claimed before any scope is asked, as the engine claims it
 \ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
 \ resolved as a name. A qualified token keeps its symbol but no identity: both
 \ compilers match an operator row on the bare spelling alone, so `P:@` reaching
-\ the global `@` is a call, judged by the row like any other call.
+\ the global `@` is a call, judged by the row like any other call. A refusal the
+\ lookup raises names the token as DO-TOK1 read it, which locates in the file;
+\ `a u` may be the fold the body walk keeps in scratch.
 : BIND-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    TOK-DONE @ IF EXIT THEN
    -1 TOK-DONE !
    0 TOK-SYM !  0 TOK-CTL !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM TOK-SYM !
+   a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND TOK-SYM !
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
@@ -14359,6 +14758,7 @@ variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
    id INTRINSIC-CELL-STORE = IF CELL-STORE-TOK EXIT THEN
    id INTRINSIC-RAW-FIELD = IF RAW-FIELD-TOK? IF EXIT THEN THEN
    TOK-SYM @ CURSYM !
+   CURSYM @ CTL-FLAGS-SYM CTL-RENDERS and 0 <> IF -1 RENDSET ! THEN
    CURSYM @ SCOPE-KIND-SYM dup 2 = IF SCOPE-CHILD-STEP EXIT THEN
    dup 3 = IF drop SCOPE-MUT-ROOT-STEP EXIT THEN
    dup 4 = IF SCOPE-CHILD-STEP EXIT THEN
@@ -14393,6 +14793,7 @@ variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
+   a u UNSEEN-COVERS? IF -1 UNSEEN ! THEN          \ the run's to judge: see UNSEEN-MARK$
    -1 UNDEFERR ! -1 UNCK ! THEN ;
 
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
@@ -16532,13 +16933,13 @@ variable DIAGL0  variable DIAGC0  variable DIAGB0
    u DIAGFU ! ;
 : DIAG-ORIGIN! {: line col byte :}
    line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
-\ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
-\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
-\ start's own file line/col/byte. Mirrors verify-source ABS-ORIGIN so the native
-\ load path reports the same file-relative positions as the re-driver.
+\ The file line, column and byte of the byte p points at in a buffer whose first
+\ byte sits at file line bl, column bc and byte bb. LF ends a line, a column
+\ counts bytes, and only the buffer's first line starts at column bc.
 variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
-: DIAG-ORIGIN-SPAN! {: base:ptr name:ptr bl:n bc:n bb:n :}
-   name base - DOS-OFF !                    \ name-token byte offset in the buffer
+: DIAG-POS ( ptr u8 ptr u8 n n n -- n n n )
+   {: base:ptr p:ptr bl:n bc:n bb:n :}
+   p base - DOS-OFF !                       \ p's byte offset in the buffer
    1 DOS-LN !  1 DOS-CL !  0 DOS-P !
    BEGIN DOS-P @ DOS-OFF @ < WHILE
       base DOS-P @ + c@ 10 = IF
@@ -16550,10 +16951,90 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
    REPEAT
    bl DOS-LN @ + 1 -                        \ abs line
    DOS-LN @ 1 = IF bc DOS-CL @ + 1 - ELSE DOS-CL @ THEN   \ abs column (col carries only on line 1)
-   bb DOS-OFF @ +                           \ abs byte_start
-   DIAG-ORIGIN! ;
+   bb DOS-OFF @ + ;                         \ abs byte
+\ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
+\ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
+\ start's own file line/col/byte.
+: DIAG-ORIGIN-SPAN! ( ptr u8 ptr u8 n n n -- )
+   DIAG-POS DIAG-ORIGIN! ;
+
+\ Where a packet's token lies in the checked file. A driver that checks text it
+\ copied out of a file arms DIAG-SOURCE! with the bytes it scans and the file
+\ line, column and byte of their first byte, and hands DIAG-MAP! the text it
+\ built before each check, with its own table of the runs it copied into that
+\ text: one two-cell row per run, the text offset the run starts at and the
+\ source offset it was read from, ascending from text offset 0. DIAG-LOCATE
+\ takes a pointer into that text, or straight into the source, to the file
+\ position of the byte the scanner read there.
+\ Text with no map keeps the DIAG-ORIGIN! rule above, the definition's origin
+\ plus the token's offset in the checked text: the engine's own load, whose
+\ captured definitions keep no source addresses, text built by `evaluate`, and
+\ the definitions the checker generates for a declaration.
+PTR-VARIABLE DSRC-A  variable DSRC-U
+variable DSRC-L  variable DSRC-C  variable DSRC-B
+PTR-VARIABLE DMAP-A  variable DMAP-U
+PTR-VARIABLE DROW-A  variable DROW-N
+: DIAG-MAP-OFF ( -- )
+   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N ! ;
+: DIAG-SOURCE-OFF ( -- )
+   NULL-PTR DSRC-A !  0 DSRC-U !
+   DIAG-MAP-OFF ;
+: DIAG-SOURCE! ( ptr u8 n n n n -- )
+   {: a:ptr u:n line:n col:n byte:n :}
+   a DSRC-A !  u DSRC-U !
+   line DSRC-L !  col DSRC-C !  byte DSRC-B !
+   DIAG-MAP-OFF ;
+: DIAG-MAP! ( ptr u8 n ptr n n -- )
+   {: a:ptr u:n rows:ptr count:n :}
+   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N ! ;
+: DROW@ ( n -- n )
+   DROW-A @ {: i:n rows:ptr :}
+   i cells rows + @ ;
+\ The source offset of text offset x: the last row starting at or before x,
+\ plus x's distance into that run. The separator after a run maps to the byte
+\ after the run, where its last token ends.
+: DMAP>SRC ( n -- n )
+   {: x:n :}
+   0 BEGIN
+      dup 1 + DROW-N @ < IF dup 1 + 2 * DROW@ x <= ELSE 0 0= 0= THEN
+   WHILE 1 + REPEAT
+   2 * {: row:n :}
+   row 1 + DROW@  x +  row DROW@ - ;
+: DLOC-IN? ( n n -- bool )  \ an end pointer sits at len
+   {: off:n len:n :}
+   off 0 >=  off len <= and ;
+: DSRC-POS ( n -- n n n )
+   {: off:n :}
+   DSRC-A @  DSRC-A @ off +  DSRC-L @ DSRC-C @ DSRC-B @  DIAG-POS ;
+\ The source offset of the byte p points at, true when p lies in the mapped
+\ text or in the source; 0 false when there is no map for it.
+: DIAG>SRC ( ptr u8 -- n bool )
+   {: p:ptr :}
+   DSRC-U @ 0 = IF 0 0 0= 0= EXIT THEN
+   DROW-N @ 0 >  p DMAP-A @ -  DMAP-U @ DLOC-IN?  and IF
+      p DMAP-A @ - DMAP>SRC 0 0= EXIT
+   THEN
+   p DSRC-A @ -  DSRC-U @ DLOC-IN? IF
+      p DSRC-A @ - 0 0= EXIT
+   THEN
+   0 0 0= 0= ;
+\ The file line, column and byte of the byte p points at; 0 0 0 false when
+\ there is no map for it.
+: DIAG-LOCATE ( ptr u8 -- n n n bool )
+   DIAG>SRC 0= IF drop 0 0 0 0 0= 0= EXIT THEN
+   DSRC-POS 0 0= ;
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
+
+\ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
+\ TRUST-RAW and TRUST-DECL each refuse its row as E-TRUST-UNRESOLVED with no
+\ spelling rendered, and each does so first: TRUST before its dictionary walk,
+\ whose colon scan ran until the process was killed given the maximum cell;
+\ TRUST-RAW before it turns on raw-definer mode, which a caught refusal would
+\ leave on; TRUST-DECL before it steps the definer latch for a row that is never
+\ stored.
+\ Without the guard those two recorded the row under a length of -1, and died
+\ folding a name of the maximum cell.
 
 \ The registration the two declaration words share. It is factored out rather than
 \ copied because TRUST and TRUST-RAW must record the same row from the same
@@ -16565,8 +17046,13 @@ s" <input>" DIAG-FILE!
 \ definition with no primitive axiom, so user code cannot resolve it at all —
 \ the effect-declaration capability stays exactly where it was, behind `trust`
 \ and `trust-raw` at top level.
+\ A signature whose length describes no memory gets the refusal of one that does
+\ not parse, with no text: the parser would read past it, and the refusal would
+\ print it. Given the maximum cell, the parser read on until the process was
+\ killed.
 : TRUST-USIG! ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu TOKFOLD drop
+   sa su BYTE-SPAN? 0= IF sa 0 TKF TKFU @ USIG-ADD-BAD EXIT THEN
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 \ TRUST-DECL: record the effect a DEFINER just declared for the word it is
@@ -16613,6 +17099,7 @@ s" <input>" DIAG-FILE!
 \ CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal engine
 \ word`, rc 70), and only a TRUSTED: body compiles a call.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    DOES-EFF-STEP
    na nu sa su TRUST-USIG!
    \ The parser filled both input rows. An unchecked body may throw after
@@ -16682,6 +17169,7 @@ package CHECKER-REG
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu sa su TRUST-USIG! ;
 
@@ -16710,6 +17198,7 @@ package CHECKER-REG
 \
 \ Source cannot call it, for the reason TRUST-DECL is sealed: it asks nothing.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;
@@ -17025,9 +17514,14 @@ variable IS-PEND-U                   \ and its length
    IS-PEND-ARM
    RES-TRUE ;
 
+\ The symbol the swallowed target names: its fold resolves, and the token as
+\ written names a refusal (CHECKER-BIND), so a raised shadow locates in the file.
+: IS-TARGET-SYM ( -- n )
+   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND ;
+
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-DEFER 0= IF IS-FAIL EXIT THEN
+   IS-TARGET-SYM DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
@@ -17075,7 +17569,7 @@ variable IS-PEND-U                   \ and its length
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   TKF TKFU @ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   IS-TARGET-SYM {: sym:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    FEP-CLEAR
@@ -17277,7 +17771,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    BIND-HORIZON ! ;
 
 : DO-TOK1 {: a u :}
-   0 CALL-HIT !  0 TOK-DONE !
+   0 CALL-HIT !  0 TOK-DONE !  a TOK-SPELL-A !  u TOK-SPELL-U !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -17338,40 +17832,6 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    TOKIX @ 1 + TOKIX ! ;
-
-\ CHECK-RESET ( a u -- )
-\ --- multi-error load mode ------------------------------------------------
-\ Off by default so the ordinary load path (fixpoint build, gate) keeps the
-\ fail-on-first-reject HOOK behavior. When on, a rejected definition still
-\ trusts its DECLARED signature (so later definitions check against a known
-\ effect instead of cascading undefined-word errors) — unless that signature
-\ itself failed to parse (SGBAD), in which case no row is stored and callers
-\ reject as undefined (USIG-ADD-BAD) — and the reject is counted so the
-\ driver can exit nonzero at end of load. The mode cells and MULTI-ERR? live
-\ above USIG-ADD, which shares them.
-\ File-relative diagnostic origin for a MULTI-ERR load. The driver evaluates a
-\ whole source buffer in one run; per rejected definition the checker re-points
-\ DIAG-ORIGIN! to that def's FILE position so JSON positions are file-relative
-\ (matching tools/check.f --all-errors). The compiler owns the def name-token
-\ position in DATA cell DEF-TKA-CELL; the driver passes that cell's ABSOLUTE
-\ address (data-base DEF-TKA-CELL +) so the checker stays free of engine-layout
-\ constants it cannot name at bake time.
-variable MEO-ON       \ file-relative origin active this load?
-PTR-VARIABLE MEO-BASE \ eval-buffer base ptr (file byte MEO-BB)
-PTR-VARIABLE MEO-NAMEC \ the compiler's def name-token CELL; its content is the token
-variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
-0 MEO-ON !
-
-: MULTI-ERR-ORIGIN! {: base:ptr namec:ptr bl:n bc:n bb:n :}
-   base MEO-BASE !  namec MEO-NAMEC !
-   bl MEO-BL !  bc MEO-BC !  bb MEO-BB !  -1 MEO-ON ! ;
-\ The declared cell holds the CELL the compiler writes the name token into, so
-\ the bytes are named first and the token is the pointer field on them.
-: MEO-NAMEC@ ( -- ptr u8 )
-   MEO-NAMEC @ ;
-
-: MEO-APPLY ( -- )    \ set DIAG-ORIGIN! to the current def's file position
-   MEO-BASE @  MEO-NAMEC@ 0 ptr-field @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
 
 \ A declared type variable must remain a distinct variable after checking the
 \ body. Specializing it to any concrete type would publish a more general
@@ -18828,7 +19288,11 @@ ASIG-GRAPH-CHECK-INSTALL
 \ `take` distinguishes the two callers: the retry decision asks whether a row
 \ would be taken and must leave the tables alone, and the intake takes them. One
 \ walk answers both, so the two can never disagree about what is available.
+\ A name a rendering statement's mark covers (UNSEEN-COVERS?) takes no row: the
+\ load may bind a product of that name ahead of the seeded word, so the
+\ definition stays deferred to the run.
 : CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
+   a u UNSEEN-COVERS? IF RES-FALSE EXIT THEN
    0 CK-AOT-GOT !
    0 CK-AOT-I !
    BEGIN CK-AOT-I @ CK-AOT-ROWS < WHILE
@@ -18925,8 +19389,8 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
-   0 THDMASK !  0 THRMASK !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 THDMASK !  0 THRMASK !  0 THSET !  0 RENDSET !
+   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
@@ -19006,15 +19470,27 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : TAPE-FEED? ( -- bool )
    CHECKER-TAPE:ARMED @ 0 <>  RESCAN @ 0=  and ;
 
+\ Whether byte i of the text exists and is c (TBYTE=?), and whether a token
+\ breaks at i, where the text ends or byte i is a space (TBREAK?). Each reads
+\ byte i only when i is inside TBLEN: `and` evaluates both operands, so a bound
+\ test beside the read reads the byte past a text that ends where its mapping
+\ does.
+: TBYTE=? ( n n -- bool ) {: i:n c:n :}
+   i TBLEN @ >= IF RES-FALSE EXIT THEN
+   i TBYTE@ c = ;
+: TBREAK? ( n -- bool ) {: i:n :}
+   i TBLEN @ >= IF RES-TRUE EXIT THEN
+   i TBYTE@ 32 = ;
+
 : CHECK-SCAN ( -- )
    0 SCAN-TOKS !
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
-     BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
+     BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TI @ TBYTE@ 40 =  TI @ 1 + TBYTE@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
+       TI @ TBYTE@ 40 =  TI @ 1 + TBREAK?  and IF   \ '( ' (not '(CMP)') -> sig or comment
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
-         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          \ only the '( ... )' right after the name is the sig; once it is seen
          \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
          \ parity) and must not touch any signature state.
@@ -19041,7 +19517,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
          TI @ TSTART !
-         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
@@ -19073,8 +19549,14 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
 
+\ Verdict 2 defers the body to the run: it names a word only a rendering
+\ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
+\ is still refused, since the declaration is what gets recorded; past a token of
+\ unknown effect nothing downstream is a judgment, so the rest is the run's.
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ 0 <> IF 0 EXIT THEN
+   UNSEEN @ 0 <> IF 2 EXIT THEN
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification (item 15, docs/type-families.md §9.4).
@@ -19382,10 +19864,10 @@ variable CAST-PATH-N
 \ could not be registered. Its first fault names the class. A family unknown or
 \ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
 \ syntax or a bare `ptr`, is refused as a definition with that signature is, by
-\ its bad-signature diagnostic and COMPILE-REJECT-RC.
+\ its bad-signature diagnostic and CHECKER-REJECT-RC.
 : CAST-CERTIFY ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
-   SGBAD @ IF sa su na nu BADSIG-XT  COMPILE-REJECT-RC throw THEN
+   SGBAD @ IF sa su na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
@@ -19427,6 +19909,22 @@ variable CAST-PATH-N
    SGOUT @ SUNI-COERCE
    0 FO-ON ! ;
 
+\ The refusals a recorded name meets, a closed constructor package and a
+\ duplicate tail, asked before the record step's first write. Its control entry
+\ goes in ahead of the effect record and that store is later-wins, so a refusal
+\ asked after the append left the refused body's flags as the name's newest
+\ entry: a duplicate stripped the first definition of its source authority, and
+\ every later caller of it failed E-CAP-TRUSTED (test/checker-dup-record.f). The
+\ constructor refusal is asked only for a declared signature, as the writers
+\ that publish one ask it; the inferred effect's writer (RECXT) does not.
+\ CHECKER-CERT-DUP? asks without interning, so the step goes on with the
+\ symbols it found. The deferred and multi-error branches of CHECK ask these
+\ before their NORET row; the certified branch asks them in PUBLISH-REFUSALS.
+: CHECK-REC-ADMIT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   CHECK-SIG? IF a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN THEN
+   a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
+
 \ Every refusal a certified definition can meet at publication, asked before its
 \ first write to the store: its NORET row, the symbol it is recorded under and
 \ the record. A refusal asked after one of them left that write behind, and a
@@ -19434,11 +19932,10 @@ variable CAST-PATH-N
 \ the symbol that then hid the global its name binds (E-USING-SHADOW-GLOBAL).
 : PUBLISH-REFUSALS ( ptr u8 n -- )
    {: a:ptr u:n :}
-   CHECK-SIG? IF a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN THEN
-   a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   a u CHECK-REC-ADMIT
    CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
 
-: CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
+: CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
    a u CHECK-RESET
    CHECK-SCAN
@@ -19477,7 +19974,6 @@ variable CAST-PATH-N
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
    dup 0 =  over 1 = JSON-DIAGS @ and  or
-   dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
@@ -19493,10 +19989,13 @@ variable CAST-PATH-N
       \ The identity the symbol already carries (INTRINSIC) stays: a replay
       \ of the engine's own source re-records the word and never runs the
       \ line that tagged it, while `undefine` zeroed it, so a redefinition
-      \ carries none.
-      sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK and CTLNEW !
+      \ carries none. CTL-RENDERS stays for the same reason: the evaluate
+      \ boundary's is an axiom (NORET-AXIOMS) recorded before src/core/include.f
+      \ defines INCLUDE-EVALUATE, and no body derives it.
+      sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK CTL-RENDERS or and CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
+      RENDSET @ IF CTLNEW @ CTL-RENDERS or CTLNEW ! THEN
       ZSUMMARY-EFFECT? IF
          ZSHAPE @ 1 = IF CTLNEW @ CTL-ZERO-TRUE or CTLNEW ! THEN
          ZSHAPE @ 3 = IF CTLNEW @ CTL-ZERO-FALSE or CTLNEW ! THEN
@@ -19522,9 +20021,19 @@ variable CAST-PATH-N
       THEN
       sym CK-CLOSE!
    THEN
+   \ Deferred: the declaration is recorded with authority, so a later caller
+   \ still binds to it and a duplicate is still refused, but no control claim
+   \ is made for a body the run measures; only CTL-RENDERS, a may-claim the walk
+   \ saw directly. The last pass of a retried check records it.
+   dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
+      NMA @ NMU @ CHECK-REC-ADMIT
+      NMA @ NMU @ RENDSET @ IF CTL-RENDERS ELSE 0 THEN NORET-ADD
+      SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
+   THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
+         NMA @ NMU @ CHECK-REC-ADMIT
          NMA @ NMU @ 0 NORET-ADD                       \ no control claims from a failed body
          SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
          RECOVERY-RECORD
@@ -19564,6 +20073,13 @@ defer REG-EXT-BND-RESTORE-XT ( -- )
    [: REG-EXT-RB-NOOP ;] is REG-EXT-BND-RESTORE-XT ;
 REG-EXT-RB-DEFAULTS
 
+\ The source pre-pass (src/habu/verify-source.f DEFINER-SYM) learns definers in
+\ rows keyed by this checker's symbol ids and appends each new row at this
+\ count. A frame rewinds the count with the ids, so a scope that retires a
+\ symbol takes the row naming it: the next scope hands that id to another word,
+\ which a row left behind would read as a definer creating the token after it.
+variable VERIFY-DEFINER-N   0 VERIFY-DEFINER-N !
+
 $0 constant RBF.UEND-OFF
 $8 constant RBF.NEND-OFF
 $10 constant RBF.SYMN-OFF
@@ -19585,7 +20101,8 @@ $88 constant RBF.COORD-OFF
 $90 constant RBF.PKGNEU-OFF
 $98 constant RBF.PKGUSE-OFF
 $A0 constant RBF.FLOOR-OFF
-$A8 constant RBF-REC
+$A8 constant RBF.VDEFN-OFF
+$B0 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -19616,6 +20133,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
 : RBF.PKGUSE ( ptr a -- ptr a ) RBF.PKGUSE-OFF + ;
 : RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
+: RBF.VDEFN ( ptr a -- ptr a ) RBF.VDEFN-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -19638,7 +20156,8 @@ RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
 RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
 RBF.PKGUSE-OFF 19 cells CHECKER-LAYOUT=
 RBF.FLOOR-OFF 20 cells CHECKER-LAYOUT=
-RBF-REC 21 cells CHECKER-LAYOUT=
+RBF.VDEFN-OFF 21 cells CHECKER-LAYOUT=
+RBF-REC 22 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -19662,6 +20181,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
 0 RBF.PKGNEU RBF.PKGNEU-OFF CHECKER-LAYOUT=
 0 RBF.FLOOR RBF.FLOOR-OFF CHECKER-LAYOUT=
+0 RBF.VDEFN RBF.VDEFN-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -19740,6 +20260,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
    DFER-END @ r RBF.DFEREND !
    PASS-FLOOR @ r RBF.FLOOR !
+   VERIFY-DEFINER-N @ r RBF.VDEFN !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
@@ -19764,6 +20285,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
    r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
    r RBF.FLOOR @ PASS-FLOOR !
+   r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
@@ -20185,6 +20707,16 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
    rc 0 <> IF rc throw THEN
    UNJ-VERDICT @ ;
 
+\ What that scan did not print, for a caller that will not enforce the verdict
+\ but must not drop its reason: the native compiler with the check hook cell
+\ empty, which refuses a body the scan left without an effect
+\ (src/compiler/native/compiler.f CHECK-HOOKLESS). CHECK! renders a rejection
+\ only, an uncheckable verdict only as JSON; this renders whichever verdict the
+\ scan reached. It is an owner field like the scan, so the instance that
+\ scanned is the one that renders; ask before another scan replaces its state.
+: CHECKER-CHECK-REPORT ( -- )
+   DIAG-QUIET @ 0= IF DIAGXT THEN ;
+
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
@@ -20406,9 +20938,40 @@ package CHECKER-REG
    ba bu sa su CHECK-DOES-RUN
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
 
-: CHECKER-SOURCE-DOES! {: ba bu sa su :}
+\ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
+\ body itself and the engine's callers of CHECK-DOES! report a refused clause
+\ their own way (src/habu/habu2.f C-DIE-DOES), but nothing after this entry
+\ does, so a clause it refused ended tools/check.f's pre-pass with no
+\ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
+\ is quiet, and a rejection counted in a multi-error load, under the name of the
+\ record the clause publishes - the definer's, folded as a definition's name
+\ is, with the companion suffix (src/habu/habu2.f SUF-LEN). An uncheckable
+\ clause is rendered here too: CHECK leaves that verdict to its callers outside
+\ JSON, and the pre-pass renders nothing of its own for a clause.
+: DOES-SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+
+: DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu TOKFOLD drop
+   TKF NMB nu CCOPY
+   DOES-SUFFIX$ {: sa:ptr su:n :}
+   sa NMB nu + su CCOPY
+   NMB NMA !  nu su + NMU ! ;
+
+: DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
+   v -1 = v 2 = or IF v EXIT THEN
+   na nu DOES-NAME!
+   DIAG-QUIET @ 0= IF DIAGXT THEN
+   v 0 = MULTI-ERR? and IF 1 MULTI-ERR-N +! THEN
+   v ;
+
+\ The name is written after the scan, so the token buffers are sized for it
+\ first: growing them afterwards would drop the refused token being reported.
+: CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
+   nu DOES-SUFFIX$ nip + TOKBUF-ENSURE
    ba bu sa su CHECK-DOES-RUN
-   DOES-EFF-CLEAR ;
+   DOES-EFF-CLEAR
+   na nu DOES-REPORT ;
 
 \ Native compilation scans the parent first to keep the observer tape in source
 \ order. Its accepted clause therefore arrives after the parent's effect record.
@@ -20513,11 +21076,81 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    sym flags TRANSFER-DEFER invert and  packed XFER-DMASK  packed XFER-RMASK  NORET-ADD-SYM
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
+\ THE COPIES LAND IN THE SOURCE'S RECORD ORDER, NOT IN ITS SYMBOL ORDER. Each
+\ copy appends a record and a no-return row here, a defer row for a deferred
+\ word, and interns its name when this owner does not hold it yet, so the order
+\ of the copies is the order those take in the image. A host numbers every name
+\ it holds a PRIM: row for ahead of all others. Walked by source id, a host with
+\ one row fewer than this tree moved that word's record and rows, and a host
+\ with one row more renumbered every symbol interned after its name, in the
+\ engine built from the same source (docs/bootstrap.md). The host certified the
+\ prefix in source order after CHECKER-RESET-SOURCE rewound its user records, so
+\ the store offset just past each record, EW.NEXT, orders the copies the same
+\ way on every host.
+\ ORDER-P holds (offset, id) rows in a private mapping that TRANSFER-CHECKED
+\ releases on every way out: none of it reaches the image.
+2 cells constant ORDER-ROW
+PTR-VARIABLE ORDER-P   variable ORDER-N
+NULL-PTR ORDER-P !   0 ORDER-N !
+
+: ORDER-BASE ( -- ptr n ) ORDER-P @ ;
+: ORDER-KEY ( n -- ptr n ) ORDER-ROW * ORDER-BASE + ;
+: ORDER-ID ( n -- ptr n ) ORDER-KEY CELL + ;
+
+\ The store offset just past the source's record for a symbol, 0 for a symbol
+\ it holds none for; false past its last symbol. Only a record still being
+\ built has offset 0 (E-NEXT@), and the source has finished every record it
+\ hands over, so 0 never stands for a record.
+: SOURCE-AT ( n -- n bool )
+   SOURCE-ROW {: pool:ptr rec:ptr name:ptr packed:n more:bool :}
+   rec 0= if 0 more exit then
+   rec EW.NEXT @ more ;
+
+: ORDER-COUNT ( -- n )
+   0 1 begin dup SOURCE-AT while
+      0 <> if swap 1 + swap then
+      1 +
+   repeat 2drop ;
+
+: ORDER-FILL ( -- )
+   0 1 begin dup SOURCE-AT while
+      {: id:n at:n :}
+      at 0 <> if at over ORDER-KEY !  id over ORDER-ID !  1 + then
+      id 1 +
+   repeat 2drop drop ;
+
+: ORDER-SWAP ( n -- ) {: i:n :}   \ exchange rows i-1 and i
+   i 1 - ORDER-KEY @  i 1 - ORDER-ID @  {: at:n id:n :}
+   i ORDER-KEY @ i 1 - ORDER-KEY !  i ORDER-ID @ i 1 - ORDER-ID !
+   at i ORDER-KEY !  id i ORDER-ID ! ;
+
+\ Insertion sort: the walk meets the host's primitives first and every other
+\ record nearly in order, so a row moves past little more than those.
+: ORDER-SORT ( n -- ) {: n:n :}
+   1 begin dup n < while
+      dup begin
+         dup 0 > if dup 1 - ORDER-KEY @ over ORDER-KEY @ > else RES-FALSE then
+      while dup ORDER-SWAP 1 - repeat drop
+      1 +
+   repeat drop ;
+
+: ORDER-RELEASE ( -- )
+   ORDER-N @ 0= if exit then
+   ORDER-BASE ORDER-N @ ORDER-ROW * munmap 0 <> if
+      s" checker: transfer order munmap failed" 76 die
+   then
+   NULL-PTR ORDER-P !  0 ORDER-N ! ;
+
 : TRANSFER-ROWS ( -- )
-   1 begin
-      dup SOURCE-ROW
-      if TRANSFER-ROW 1+ else 2drop 2drop drop exit then
-   again ;
+   ORDER-COUNT {: n:n :}
+   n 0= if exit then
+   n ORDER-ROW * ARENA-ALLOC ORDER-P !  n ORDER-N !
+   ORDER-FILL
+   n ORDER-SORT
+   0 begin dup n < while
+      dup ORDER-ID @ SOURCE-ROW drop TRANSFER-ROW
+      1 +
+   repeat drop ;
 
 \ CLAIMING IS NOT CONDITIONAL ON HAVING SOMETHING TO IMPORT. A host that never
 \ published an owner record - a bootstrap seed, whose dispatch predates it -
@@ -20533,6 +21166,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    owner BIND-SOURCE
    CHECKER-REC-SYM @ {: saved:n :}
    [: TRANSFER-ROWS ;] catch {: rc:n :}
+   ORDER-RELEASE
    saved CHECKER-REC-SYM !
    DECLARATIONS BIND-SOURCE
    rc 0 <> if rc throw then
@@ -20548,8 +21182,8 @@ package CHECKER-REG
 $4842554E49543031 constant UNIT-MAGIC
 1 constant UNIT-VERSION
 6 cells constant UNIT-HEADER
+7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
 7160 constant E-UNIT-STATE
-7161 constant E-UNIT-FORMAT
 
 variable UNIT-MARKED
 variable UNIT-SYMN   variable UNIT-UEND   variable UNIT-NEND
@@ -21581,9 +22215,11 @@ package CHECKER-REG
 ' CHECKER-CREATES-SYM? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF + xt!
 ' CHECKER-RECORD-CREATED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF + xt!
 ' CHECKER-SOURCE-DOES! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF + xt!
+' CHECKER-VERIFY-RENDERS DECLARATIONS CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF + xt!
 ' CHECKER-NATIVE-DOES-FINISH DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 ' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
 ' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
+' CHECKER-CHECK-REPORT DECLARATIONS CHECKER-OWNER-ABI:CHECK-REPORT-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

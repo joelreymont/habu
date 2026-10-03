@@ -4,6 +4,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -219,6 +220,26 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
 : BT-EMPTY-ARTIFACT ( -- )
    BT-ROOT s" " ARTIFACT 2drop ;
 
+\ An artifact path is refused by its own rule when root, separator and name do
+\ not fit FS-PATH-CAP. The name is compared with the room the root leaves, so a
+\ length near the maximum cell cannot wrap the sum back into range.
+create BT-LONG FS-PATH-CAP allot
+
+: BT-LONG! ( -- )
+   FS-PATH-CAP 0 ?do 122 BT-LONG i + c! loop ;
+
+: BT-ARTIFACT-EXACT ( -- )
+   BT-ROOT BT-LONG FS-PATH-CAP 1- BT-ROOT-U @ - ARTIFACT nip FS-PATH-CAP T= ;
+
+: BT-ARTIFACT-PAST ( -- )
+   BT-ROOT BT-LONG FS-PATH-CAP BT-ROOT-U @ - ARTIFACT 2drop ;
+
+: BT-ARTIFACT-HUGE-NAME ( -- )
+   BT-ROOT BT-LONG MEM-MAX-N ARTIFACT 2drop ;
+
+: BT-ARTIFACT-HUGE-ROOT ( -- )
+   BT-LONG MEM-MAX-N s" artifact.bin" ARTIFACT 2drop ;
+
 : BT-BAD-STEP-RUN ( -- )
    s" bad-step" [: BT-BAD-STEP ;] STEP ;
 
@@ -364,7 +385,12 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
    [: BT-UNCHECKABLE-SOURCE ;] E-BUILD-SOURCE TTHROWSQ
    BT-CHECK-ARTIFACT-PATH
    [: BT-MISSING-EXPECT ;] E-BUILD-PATH TTHROWSQ
-   [: BT-EMPTY-ARTIFACT ;] E-BUILD-PATH TTHROWSQ ;
+   [: BT-EMPTY-ARTIFACT ;] E-BUILD-PATH TTHROWSQ
+   BT-LONG!
+   BT-ARTIFACT-EXACT
+   [: BT-ARTIFACT-PAST ;] E-BUILD-PATH TTHROWSQ
+   [: BT-ARTIFACT-HUGE-NAME ;] E-BUILD-PATH TTHROWSQ
+   [: BT-ARTIFACT-HUGE-ROOT ;] E-BUILD-PATH TTHROWSQ ;
 
 : BUILD-TEST-STEPS ( -- )
    s" ok-step" [: BT-OK-STEP ;] STEP

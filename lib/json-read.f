@@ -15,7 +15,7 @@
 \
 \ The parser lives in `package JR`. External callers use the qualified public API
 \ (JR:INIT, JR:CLOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT, JR:STR,
-\ JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
+\ JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
 \ JR:T-END). Callers allocate JR:STORAGE-BYTES at a cell-aligned address and keep
 \ both storage and source live and exclusive until CLOSE. The byte constants,
 \ opaque representation leaves, cursor state, and scan/decode helpers - including
@@ -805,8 +805,9 @@ private
    state UNESC-ALL
    state UO-OFF + @ ;
 
-: MATCH-INNER ( ptr n ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
-   state KIND-OFF + @ T-KEY <> if E-JR-STATE throw then
+: MATCH-INNER ( ptr n ptr u8 n -- bool )
+   {: state:ptr key:ptr len:n :}
+   state KIND-OFF + @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
    state key len UMODE-MATCH UNESC-RESET
    state UNESC-ALL
    state UMATCH-OFF + @ 0= 0=
@@ -895,6 +896,14 @@ public
 
 : FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool ) {: key:ptr len:n :}
    READER>STATE drop key len FIND-INNER ;
+
+\ Whether the current string or key decodes to exactly these bytes. The bytes
+\ stream through STR's decoder, so no buffer bounds the string, and the cursor
+\ stays where it was.
+: STR-EQ? ( JR:reader ptr u8 n -- JR:reader bool )
+   {: want:ptr len:n :}
+   want len REQUIRE-KEY-SPAN
+   READER>STATE drop want len MATCH-INNER ;
 
 private
 

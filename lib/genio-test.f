@@ -151,11 +151,11 @@ variable LINES-SERVED
    MEM-STATE-SEEN @ MEM-MARK T= ;
 
 : T-LIBRARY-ROUTE ( -- )
-   s" GENIO:EMIT and GENIO:TYPE reach the same device" T-LABEL
+   s" GENIO:EMIT and GENIO:WRITE reach the same device" T-LABEL
    MEM-RESET
    TO-MEMORY
    $58 GENIO:EMIT
-   s" yz" GENIO:TYPE
+   s" yz" GENIO:WRITE
    GENIO:FLUSH
    TO-TERMINAL
    MEM-OUT$ s" Xyz" T$=

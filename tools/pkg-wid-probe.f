@@ -21,9 +21,9 @@ variable HI
 \ 0 means the package has no private wordlist, so it claims nothing.
 : CLAIMS? ( ptr n n -- bool ) {: r w:n :}
    r PKG-REC? 0= if 0 0= 0= exit then
-   r XREF-START w = if 0 0= exit then
+   r XREF-PKG-PUBLIC w = if 0 0= exit then
    w 0= if 0 0= 0= exit then
-   r XREF-LEN w = ;
+   r XREF-PKG-PRIVATE w = ;
 
 public
 
@@ -34,7 +34,7 @@ public
    ndict@ 0 ?do
       i XREF-REC PKG-REC? if
          i XREF-REC a u XREF-MATCH? if
-            drop i XREF-REC XREF-START
+            drop i XREF-REC XREF-PKG-PUBLIC
          then
       then
    loop ;
@@ -54,8 +54,8 @@ public
    0 HI !
    ndict@ 0 ?do
       i XREF-REC PKG-REC? if
-         i XREF-REC XREF-START HI @ > if i XREF-REC XREF-START HI ! then
-         i XREF-REC XREF-LEN   HI @ > if i XREF-REC XREF-LEN   HI ! then
+         i XREF-REC XREF-PKG-PUBLIC  HI @ > if i XREF-REC XREF-PKG-PUBLIC  HI ! then
+         i XREF-REC XREF-PKG-PRIVATE HI @ > if i XREF-REC XREF-PKG-PRIVATE HI ! then
       then
    loop
    HI @ ;

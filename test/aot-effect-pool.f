@@ -12,6 +12,7 @@ require lib/engine-id.f
 require tools/native-emit.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package AOT-FILE
 public
@@ -245,9 +246,9 @@ public
 : BAD-STAGING ( -- ) AOT-SIG-STR-CAP AOT-SIG-STR-LEN ! AOT-SIG-PAYLOAD:BUILD ;
 
 private
-: REJECT ( ptr u8 n n ptr u8 n -- ) {: code:n message:ptr u:n :}
-   OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN
-   code T-OUTCOME-EXITED= {: outu:len erru:len :}
+: REJECT ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n code:n message:ptr u:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN 5000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc code T-OUTCOME-EXITED=
    OUT outu LEN>N message u CONTAINS? ERR erru LEN>N message u CONTAINS? or TTRUE
    CHECK ;
 
@@ -293,7 +294,7 @@ private
    REFUSALS
    s" merge preserves both complete pools and all rebased signature offsets" T-LABEL
    MERGE
-   s" effect-pool: rows=" type WORDS . s" bytes=" type EXPECTED-U @ . cr
+   s" effect-pool: rows=" type WORDS FMT:.INT s"  bytes=" type EXPECTED-U @ FMT:.INT cr
    EXPECTED-RELEASE SIG-STR-STORAGE-RELEASE AOT-SIG-PAYLOAD:STORAGE-RELEASE
    CLEANUP-RUN T-REPORT ;
 

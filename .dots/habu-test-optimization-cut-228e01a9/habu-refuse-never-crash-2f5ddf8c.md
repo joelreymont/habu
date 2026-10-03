@@ -1,0 +1,11 @@
+---
+title: Refuse, never crash, on the keyed linker image
+status: closed
+priority: 2
+issue-type: task
+created-at: "\"2026-10-01T05:07:21.812930+02:00\""
+closed-at: "2026-10-01T13:17:43.815457+02:00"
+close-reason: Fixed by qtmkqknx f8846469 (review 128 ACCEPT)
+---
+
+Problem: a maker run on the keyed AOT linker image (test/preloaded-engine.f) dies SIGSEGV (habu-crash, rc 134) on subjects that rule 3 (test/preloaded-engine.f:24-27, docs/gate.md: only lib modules in the linker's closure are excluded) allows: tools/hb-build-stripped-lifecycle-test.f HBT-LIFE-SRC$ (IMAGE-LIFECYCLE:COUNT), tools/hb-build-stripped-test.f HBT-CELLS-SRC$ (GETENV, argv, MEM:WITH-BYTES) and HBT-PMK-SRC$, while bin/hb links the first two and refuses PMK with its diagnostic. A subject that breaks rule 3 (lib/span.f MEM:ALLOC-SPAN) also crashes instead of being refused, and a subject defining a global the image already holds (SB) gets rc 78 duplicate definition, which rule 3 does not mention. Repro: printf 'require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n' | HB_TMP=<dir> <linker image> -- <subject> 0. Found by the r4-rows-hb lane (myknkvuq). Acceptance: root-cause the crash at its layer; on the keyed linker image a maker links every subject bin/hb links with identical output, or refuses with a stated diagnostic, never crashes; rule 3 states what the image cannot take (registries, names) and the image enforces it by refusal rather than a hand-curated list; the rows that keep builds on source only for these crashes (HBT-CELLS-SRC$, HBT-PMK-SRC$, hb-build-stripped-lifecycle) move to the keyed image if they now link; cases written first and seen to crash. Files: as the cause dictates, test/preloaded-engine.f, docs/gate.md, tools/hb-build-*-test.f. Verify: the hb-build rows, the new cases, convergence if an engine file changes. Depends: habu-cut-the-rows-5280369f (r4-rows-hb). Ownership: linker-image maker safety.

@@ -14,11 +14,15 @@
 \
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
 \
-\ The buffer, its compaction, the span search, the waits and the never-seen
-\ facts are lib/pty-harness.f's. Only the reading step is this file's own: the
-\ bytes come through the supervisor's linear handle, which cannot be handed to
-\ the module's own descriptor reader.
+\ The buffer, its compaction, the span search, the wait clock and the
+\ never-seen facts are lib/pty-harness.f's. The reading step, the waits and
+\ their deadline are this file's own: the bytes come through the supervisor's
+\ linear handle, which cannot be handed to the module's own descriptor reader,
+\ and a deadline must tear that handle's target down before it throws
+\ (DEADLINE), which the harness's WAIT-AFTER-WITHIN does not.
 
+require lib/errors.f
+require lib/fmt.f
 require lib/process-pty-io.f
 require lib/pty-harness.f
 require lib/prelude.f
@@ -47,6 +51,29 @@ $1388 constant EXIT-MS
    n 0 > if n TOOK then
    n ;
 
+\ What the target said so far: the end of every failed wait's diagnostic, which
+\ goes to stdout and leaves stderr to the engine.
+: READ-SO-FAR ( -- )
+   BUF$ {: ra:ptr ru:n :}
+   s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
+
+\ A clock that ends while the target still holds its side has not been answered
+\ YET: a deadline, not a wrong answer, so it asserts nothing. The linear handle
+\ cannot cross the throw, so the target is torn down here; RUN stops the loop
+\ and lets E-PROC-TIMEOUT through, so the engine's report of it is the last line
+\ on stderr and the gate pool reads the row as a timeout (docs/gate.md). The
+\ caller has shown what it waited for.
+: DEADLINE ( process-pty-handle -- )
+   READ-SO-FAR
+   PROCESS-PTY:TEARDOWN
+   E-PROC-TIMEOUT throw ;
+
+\ What a wait waited for, and how long.
+: WAIT-SHOW ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
+   s" expected: " type ta tu type
+   hu 0 > if s"  after " type ha hu type then
+   s"  (wait budget " type WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr ;
+
 \ Keep reading until the tail appears at or after the head, the target hangs up,
 \ or the wait's deadline passes. An empty head waits for the tail anywhere; a
 \ real one waits for the two in that order. A child engine answers in as many
@@ -54,36 +81,44 @@ $1388 constant EXIT-MS
 \ keystroke, and a loaded box splits one echo across dozens of reads -- so no
 \ count of reads or of quiet polls bounds the wait. A partial read is not an
 \ answer and not a failure: only the markers, the hang-up and the clock end it.
+\ The hang-up answers whether the tail came before it; the clock is DEADLINE.
 \ The linear handle stays on top of the stack for READ-STEP.
 : EXPECT-AFTER ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle bool )
    {: ha:ptr hu:n ta:ptr tu:n :}
    WAIT-BUDGET-MS WAIT-OPEN
    begin
       ha hu ta tu AFTER? if true exit then
-      WAIT-LEFT 0= if false exit then
+      WAIT-LEFT 0= if ha hu ta tu WAIT-SHOW DEADLINE then
       READ-STEP {: n:n :}
       n 0 < if ha hu ta tu AFTER? exit then
    again ;
 
-\ After the target exited, read everything it left behind until the hang-up.
+\ After the target exited, read everything it left behind until the hang-up. A
+\ clock that ends first leaves the claims made over the buffer unproven, so it
+\ is a deadline as well.
 : DRAIN-ALL ( process-pty-handle -- process-pty-handle )
    WAIT-BUDGET-MS WAIT-OPEN
-   begin WAIT-LEFT 0 > while
+   begin
+      WAIT-LEFT 0= if
+         s" expected: the target's hang-up (wait budget " type
+         WAIT-BUDGET-MS FMT:.INT s"  ms)" type cr
+         DEADLINE
+      then
       READ-STEP 0 < if exit then
-   repeat ;
+   again ;
 
-\ A failed wait shows what it waited for, how long, and what the child said.
-: WAIT-FAILED ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ta:ptr tu:n :}
-   s" expected: " type ta tu type
-   hu 0 > if s"  after " type ha hu type then
-   s"  (wait budget " type WAIT-BUDGET-MS . s" ms)" type cr
-   BUF$ {: ra:ptr ru:n :}
-   s" read so far (" type ru . s" bytes):" type cr ra ru type cr
-   false TTRUE ;
+\ The target's exit within EXIT-MS. A target still running when that clock ends
+\ has not exited YET, which is a deadline as well.
+: EXPECT-EXIT ( process-pty-handle -- process-pty-handle )
+   EXIT-MS PROCESS-PTY:AWAIT if exit then
+   s" expected: the target's exit (exit budget " type EXIT-MS FMT:.INT s"  ms)" type cr
+   DEADLINE ;
 
+\ A wait the target hung up on fails its case with what it waited for and what
+\ the target said.
 : EXPECT-AFTER! ( process-pty-handle ptr u8 n ptr u8 n -- process-pty-handle )
    {: ha:ptr hu:n ta:ptr tu:n :}
-   ha hu ta tu EXPECT-AFTER 0= if ha hu ta tu WAIT-FAILED then ;
+   ha hu ta tu EXPECT-AFTER 0= if ha hu ta tu WAIT-SHOW READ-SO-FAR false TTRUE then ;
 
 : EXPECT! ( process-pty-handle ptr u8 n -- process-pty-handle ) {: ta:ptr tu:n :}
    ANYWHERE$ ta tu EXPECT-AFTER! ;
@@ -125,7 +160,7 @@ $1388 constant EXIT-MS
    ARITH$ TELL
    PROCESS-PTY:END-INPUT
    s" non-certified definition: tty-bad" EXPECT!
-   EXIT-MS PROCESS-PTY:AWAIT TTRUE
+   EXPECT-EXIT
    DRAIN-ALL
    answered NEVER-SEEN? TTRUE
    PROCESS-PTY:TEARDOWN
@@ -234,20 +269,23 @@ $1388 constant EXIT-MS
    PROCESS-PTY:TEARDOWN
    s" PASS: the prompt barrier is not answered by the echo's own prompt" type cr ;
 
-public
-
-\ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
-\ RUN: it is started after the last definition, because a live task forbids
-\ compilation.
-: RUN ( -- )
-   T-RESET
-   AIO:START
+: CASES ( -- )
    PIPE-STOPS
    TTY-RECOVERS
    ECHO-PROMPT-REJECTED
    TTY-LAYOUT
-   TTY-STACK-RECOVERS
-   AIO:STOP
+   TTY-STACK-RECOVERS ;
+
+public
+
+\ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
+\ RUN: it is started after the last definition, because a live task forbids
+\ compilation. It stops however the cases end, so a deadline's throw (DEADLINE)
+\ passes on with no loop running.
+: RUN ( -- )
+   T-RESET
+   AIO:START
+   [: CASES ;] [: AIO:STOP ;] finally
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 

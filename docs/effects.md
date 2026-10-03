@@ -205,9 +205,9 @@ Three consequences follow directly from that substrate.
   `frame-idx` inside the declaring package and `PKG:frame-idx` outside it.
 - **It is package-scoped.** `DEFTYPE SERIAL` in package `CAMERA` and `DEFTYPE
   SERIAL` in package `FRAME` are two unrelated types with no collision.
-- **A mismatch renders the family application, with its empty argument list.**
-  `: F ( n -- frame-idx ) ;` rejects with
-  `expected: frame-idx<> actual: n` — the `<>` is part of the rendering.
+- **A mismatch names the type as the source spells it.**
+  `: F ( n -- frame-idx ) ;` rejects with `expected: frame-idx actual: n`; a
+  family renders its argument brackets only when it has arguments.
 
 `DEFTYPE` auto-derives the explicit converter pair `>NAME ( n -- name )` and
 `NAME>N ( name -- n )` as no-op identity casts, exactly like `>IDX`/`IDX>N`.
@@ -216,12 +216,16 @@ collapse to `n`. They obey ordinary package visibility, so declaring inside a
 package without `public` keeps them private and `PKG:>NAME` is `E-UNDEFINED`
 from outside.
 
-The name is fail-closed: it cannot reuse a built-in type, a live family, a role,
-an atom prefix, or a one-letter type variable. `DEFTYPE IDX` and `DEFTYPE A`
-both reject with `bad newtype declaration '…': reserved name` (throw 7110, exit
-67). This gives application code (camera serials, frame indexes, exposure-µs,
-GMSL channels) compile-checked distinct integers at zero runtime cost, without
-an engine edit or fixpoint rebuild.
+The name is fail-closed: it cannot reuse a built-in type, a role, an atom prefix,
+a one-letter type variable, or `ptr`, which a signature reads as the pointer
+constructor. `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject in every scope
+with `bad newtype declaration '…': reserved name` (throw 7110, exit 67). A
+family the declaring scope already has is `duplicate family` (throw 7102); a
+package may shadow a global or another package's family, so `DEFTYPE SIDE` in a
+package names its own `side` beside `IR-SCHEMA:side`. `tools/check.f` reports
+each refusal as `E-BAD-NOMINAL-TYPE`. This gives application code (camera
+serials, frame indexes, exposure-µs, GMSL channels) compile-checked distinct
+integers at zero runtime cost, without an engine edit or fixpoint rebuild.
 
 ### `DEFLINEAR name` — a global linear cell type
 
@@ -235,11 +239,26 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   everywhere else, declare these lower case — as the tree does
   (`nom-builder`, `process-pty-handle`).
 - **It is global, not package-scoped.** A second declaration of the same name
-  anywhere, or of a name already in the type table, is
-  `checker: bad or duplicate signature type` (exit 70).
+  anywhere, of a name already in the type table, or of one a signature reads as
+  something else is `checker: bad or duplicate signature type` (exit 70). Those
+  names are a one-letter type or row variable; `--`, `|`, `[`, `]` or
+  `field`; a `VALUE-RECORD` name; a name with an atom prefix (`space-`,
+  `extent-`, `mask-`, `block-`, `geom-`, `parity-`, `align-`, `fresh-region-`,
+  `fresh-extent-`, `fresh-gen-`, `fresh-mask-`); a family tail any package
+  declares, private or public, and `PKG:tail` for PKG's own family; and a
+  token holding `<`, `>`, `,` or `)`. A token holding `(`, `"` or `\` is
+  refused too, wherever the byte sits: source names the type again, and there
+  such a token can open a comment, a string or a line comment (`(`, `.(`, the
+  `s"` family, a `\`-initial token) for `tools/check.f`, which would read a
+  value-record field typed `\` as the rest of its line commented out. Refusing
+  the byte spares the loader a copy of that tool's opener list, so `a(b` is
+  refused although both read it as one word. The family test spans every
+  package because the owning package reads its family first, so a private
+  tail or one two packages publish would shadow the declared type there.
+  `VALUE-RECORD` and `tools/check.f` refuse the same names; `CELL` is a legal
+  name beside `cell`.
 - **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
-  `expected: own actual: n` — no `<>`, because this is a table entry, not a
-  family application.
+  `expected: own actual: n`.
 - **No converters are derived.** Producers and consumers are yours to declare;
   they are what makes the type usable at all.
 - It is top-level-interpret-only and is rejected inside a checked body.
@@ -738,7 +757,7 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   **The seal holds on every path, because it is applied where the cell is
   defined.** `here` is sealed by a baked primitive effect, so it has always held
   everywhere: `: N>ID2 ( n -- CAD-KIND:region ) here ! here @ ;` rejects with
-  `expected: CAD-KIND:region<> actual: a` under a plain `bin/hb --load`. The
+  `expected: cad-kind:region actual: a` under a plain `bin/hb --load`. The
   defining words are now sealed the same way. Whenever the engine publishes a
   word that owns a cell of raw dictionary storage it registers that word's
   effect through `trust-raw` (`TRUST-RAW`, `src/core/checker.f`) instead of
@@ -749,7 +768,7 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   and the `does>`-declared created-word effect (`C-CALL-TRUST-LASTC`), which is
   what seals `PTR-VARIABLE` and every user-written `create ... does>` definer.
   So `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` over a `variable V` rejects
-  under `bin/hb --load` with `expected: CAD-KIND:region<> actual: a`, and so
+  under `bin/hb --load` with `expected: cad-kind:region actual: a`, and so
   does the same forge through `create`, `constant`, or a definer whose `does>`
   clause declares a free type variable such as `( -- a )`.
 

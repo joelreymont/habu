@@ -23,6 +23,7 @@ require tools/gate-json-assert-core.f
 require lib/argv.f
 require tools/repair-packet-core.f
 require test/golden.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package REPAIR-PACKET-TEST
 
@@ -153,52 +154,49 @@ create PACKET-BUF FS-PATH-CAP allot
 : RUN-CHECK-ACT ( -- )
    LABEL$ SRC CHECK-ALL-ERRORS:FILE ;
 
-: RUN-CHECK ( ptr u8 n -- len len outcome )
+\ The check runs in this process, so its result is the code it threw.
+: RUN-CHECK ( ptr u8 n -- len len n )
    LABEL!
    ERR CAPTURE-CAP OUT CAPTURE-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= CHECK-ALL-ERRORS:JSON!
    [: RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 >LEN CHECK-ALL-ERRORS:OUT$ nip >LEN rc OUTCOME:EXITED ;
+   0 >LEN CHECK-ALL-ERRORS:OUT$ nip >LEN rc ;
 
-: OUTCOME-CODE ( outcome -- n bool )   \ code plus exited?
-   MATCH outcome
-     exited OF 0 0= ENDOF
-     signaled OF 0 0= 0= ENDOF
-     timeout OF 0 0 0= 0= ENDOF
-   ;MATCH ;
-
-: DUMP-CAPTURE ( n n n n -- )
-   {: outu:n erru:n code:n expect:n :}
+: DUMP-CAPTURE ( n n n n ptr u8 n -- )
+   {: outu:n erru:n code:n expect:n ran:ptr ranu:n :}
    s" repair-packet-test failure" type cr
    s" case: " type LABEL$ type cr
-   s" source: " type SRC type cr
-   s" diag: " type DIAG-PATH type cr
-   s" packet: " type PACKET type cr
-   s" expected exit: " type expect . cr
-   s" code: " type code . cr
-   s" stdout bytes: " type outu . s" / " type CAPTURE-CAP . cr
-   s" stderr bytes: " type erru . s" / " type CAPTURE-CAP . cr
+   s" program: " type ran ranu type cr
+   s" expected exit: " type expect FMT:.INT cr
+   s" code: " type code FMT:.INT cr
+   s" stdout bytes: " type outu FMT:.INT s"  / " type CAPTURE-CAP FMT:.INT cr
+   s" stderr bytes: " type erru FMT:.INT s"  / " type CAPTURE-CAP FMT:.INT cr
    s" stdout:" type cr
    OUT outu type
    s" stderr:" type cr
    ERR erru type ;
 
-: EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
-   exited 0= if outu LEN>N erru LEN>N code expect DUMP-CAPTURE then
-   code expect <> if outu LEN>N erru LEN>N code expect DUMP-CAPTURE then
+: REPAIR-TOOL$ ( -- ptr u8 n )
+   s" tools/repair-packet.f" ;
+
+: CHECK-TOOL$ ( -- ptr u8 n )
+   s" tools/check.f" ;
+
+\ Each child this file spawns loads a tool; the caller names it last.
+: EXPECT-EXIT ( len len outcome n ptr u8 n -- n n )
+   {: outu:len erru:len oc expect:n ran:ptr ranu:n :}
+   oc MATCH outcome
+     exited OF dup expect <> if outu LEN>N erru LEN>N rot expect ran ranu DUMP-CAPTURE else drop then ENDOF
+     signaled OF outu LEN>N erru LEN>N rot 128 + expect ran ranu DUMP-CAPTURE ENDOF
+     timeout OF ENDOF
+   ;MATCH
    LABEL$ T-LABEL
-   exited TTRUE
-   LABEL$ T-LABEL
-   code expect T=
+   ran ranu OUT outu LEN>N ERR erru LEN>N oc expect T-OUTCOME-EXITED=
    outu LEN>N erru LEN>N ;
 
-: EXPECT-EXIT-NZ ( len len outcome -- n n )
-   OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
-   exited 0= if outu LEN>N erru LEN>N code 0 DUMP-CAPTURE then
-   code 0 = if outu LEN>N erru LEN>N code -1 DUMP-CAPTURE then
-   LABEL$ T-LABEL
-   exited TTRUE
+: EXPECT-EXIT-NZ ( len len n -- n n )
+   {: outu:len erru:len code:n :}
+   code 0 = if outu LEN>N erru LEN>N code -1 SRC DUMP-CAPTURE then
    LABEL$ T-LABEL
    code 0 T<>
    outu LEN>N erru LEN>N ;
@@ -293,14 +291,14 @@ create PACKET-BUF FS-PATH-CAP allot
    JNEXT s" byte_start" 2 JNUM
    JNEXT s" byte_end" 13 JNUM
    JNEXT s" definition_source" s" DIAG-FAMILY ( n -- rptzrc ) " JSTR
-   JNEXT s" declared_effect" s" n -- rptzrc<> " JSTR
+   JNEXT s" declared_effect" s" n -- rptzrc " JSTR
    JNEXT s" declared_effect_source" s" n -- rptzrc" JSTR
    JNEXT s" inferred_effect" s" n -- n " JSTR
    JNEXT s" return_stack" JSONW-KEY JSONW-OBJECT-START
    s" expected" s" " JSTR
    JNEXT s" actual" s" " JSTR
    JSONW-OBJECT-END
-   JNEXT s" expected" s" rptzrc<> " JSTR
+   JNEXT s" expected" s" rptzrc " JSTR
    JNEXT s" actual" s" n " JSTR
    JNEXT s" family" s" rptzrc" JSTR
    JNEXT s" suggestion" s" Change the body so produced types match the signature." JSTR
@@ -325,6 +323,57 @@ create PACKET-BUF FS-PATH-CAP allot
    s" add" s" add_producer" s" : DIAG-ADD ( i64 -- i64 ) drop ;" PACKET-CASE
    s" type" s" fix_type" s" : DIAG-TYPE ( i64 -- i64 ) 0= ;" PACKET-CASE
    s" rstack" s" fix_return_stack" s" : DIAG-RSTACK ( i64 -- ) >r ;" PACKET-CASE ;
+
+\ A record with a source span and no definition: a statement the checker
+\ throws out of, and the lexer's two defects.
+: TEST-SPAN-KINDS ( -- )
+   s" statement" s" unknown_rejection" s" ;using" PACKET-CASE
+   s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
+   s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE ;
+
+\ A storage declaration its definer refuses names the declared word and the
+\ refused token, with no definition around them.
+: TEST-STORAGE ( -- )
+   s" storage" s" fix_storage_type" s" 4 TYPED-BUFFER DIAG-STG no-such-type" PACKET-CASE ;
+
+: ARGV-CHECK-SOURCE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   CHECK-TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --all-errors" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   SRC >LEN PROC-ARGV+ ;
+
+\ A source only the check.f run refuses: its record has no place. The run
+\ exits rc and writes one record. The checker's pre-pass never reads a
+\ declaration that `evaluate` runs (storage-unplaced, rc 70), and a checker
+\ record refused at the load names the token it would have described: a trust
+\ row naming no word and a storage registrar called from source, refused by the
+\ load as an uncaught throw (rc 67).
+: CHILD-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: name:ptr nameu:n class:ptr classu:n src:ptr srcu:n rc:n :}
+   name nameu CASE-PATHS
+   name nameu LABEL!
+   src srcu WRITE-SOURCE
+   ARGV-CHECK-SOURCE
+   HB-CAPTURE rc CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
+   name nameu T-LABEL
+   outu 0 T=
+   erru WRITE-DIAG
+   MAKE-PACKET
+   class classu ASSERT-PACKET
+   name nameu EXPECT-GOLDEN ;
+
+: TEST-STORAGE-UNPLACED ( -- )
+   s" storage-unplaced" s" fix_storage_type"
+   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
+
+: TEST-RECORDS ( -- )
+   s" trust-row" s" fix_stale_trust_row"
+   s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 67 CHILD-CASE
+   s" storage-record" s" use_storage_definer"
+   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE ;
 
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
@@ -355,7 +404,7 @@ create PACKET-BUF FS-PATH-CAP allot
 : ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/repair-packet.f"  >LEN PROC-ARGV+
+   REPAIR-TOOL$ >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
 : RUN-REPAIR-NOARGS ( -- len len outcome )
@@ -364,11 +413,33 @@ create PACKET-BUF FS-PATH-CAP allot
 
 : TEST-NOARGS ( -- )
    s" noargs" LABEL!
-   RUN-REPAIR-NOARGS 64 EXPECT-EXIT {: outu:n erru:n :}
+   RUN-REPAIR-NOARGS 64 REPAIR-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    s" noargs stdout" T-LABEL
    outu 0 T=
    s" noargs usage" T-LABEL
    ERR erru s" usage: tools/repair-packet.f checker-jsonl.err" CONTAINS? TTRUE ;
+
+\ The check.f CLI refuses a source the engine provides before checking it, so
+\ its record comes from the CLI itself.
+: ARGV-CHECK-ENGINE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   CHECK-TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+ ;
+
+: TEST-ENGINE ( -- )
+   s" engine" CASE-PATHS
+   s" engine" LABEL!
+   ARGV-CHECK-ENGINE
+   HB-CAPTURE 64 CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
+   s" engine stdout" T-LABEL
+   outu 0 T=
+   erru WRITE-DIAG
+   MAKE-PACKET
+   s" rebuild_engine" ASSERT-PACKET
+   s" engine" EXPECT-GOLDEN ;
 
 
 \ switchover wave A: GJA-U? returns option<n> (SOME parsed unsigned decimal,
@@ -400,8 +471,13 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-REPAIR-CLASSES
    TEST-FAMILY
    TEST-DECL
+   TEST-SPAN-KINDS
+   TEST-STORAGE
+   TEST-STORAGE-UNPLACED
+   TEST-RECORDS
    TEST-TWO-DIAGS
    TEST-NOARGS
+   TEST-ENGINE
    TEST-GJA-U
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL

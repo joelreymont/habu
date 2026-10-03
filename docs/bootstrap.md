@@ -63,11 +63,11 @@ seed; the release copy for other agents is `/tmp/hazel-release/hb`.
   [dynamic-library loading rules](https://developer.apple.com/library/archive/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryUsageGuidelines.html).
 - Linux gates require a working devpts setup: `/dev/ptmx`, `/dev/pts`, and PTY
   ioctls must be available to the user running the gate.
-- Every gate host needs the PostgreSQL server binaries: `initdb` and `pg_ctl`
-  on `PATH`, with `postgres` beside `pg_ctl`. The `pg` row starts a private
-  cluster with them (`test/db/pg-cluster.f`, see [db.md](db.md#tests)) and
-  fails naming a missing one; it never skips. The gate must run as an ordinary
-  user, because `initdb` refuses to run as root. On macOS, Homebrew
+- Every gate host needs the PostgreSQL server binaries: `initdb` and
+  `postgres` on `PATH`. The `pg` row starts a private cluster with them
+  (`test/db/pg-cluster.f`, see [db.md](db.md#tests)) and fails naming a
+  missing one; it never skips. The gate must run as an ordinary user, because
+  `initdb` refuses to run as root. On macOS, Homebrew
   `postgresql@18` is keg-only and installs no links into `/opt/homebrew/bin`:
   run `brew link postgresql@18`, or put `/opt/homebrew/opt/postgresql@18/bin`
   on `PATH`. On Linux, install the distribution's PostgreSQL server package and
@@ -253,6 +253,17 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
+The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
+tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
+deep until the seed mirrors those frames, or the stage0 build exits 75.
+
+A DATA cell or band the stage0 generator places gets a row in
+`bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
+offset on any engine and the generator does not name, such as checker.f's
+declaration-owner cells at `$360`/`$368`. Loading the generator refuses an
+overlapping pair and names both, so every Gforth harness and the stage0 build
+stop before an engine exists. Without the table, BEGIN frames laid over the
+compile cells showed only when a definition nested 23 deep.
 
 ## Periodic No-Binary Check
 
@@ -302,6 +313,13 @@ generation 2's, or when generation 5 is not byte-identical to generation 4.
 `tools/two-generation-probe.f` is the child fixture that reads one engine's
 shape.
 
+A change to the checker's transfer (`TRANSFER-CHECKED` in `src/core/checker.f`)
+or to the capture of the window's prefix also runs
+`bin/hb --load test/host-checker-row-e2e.f`. It builds this tree through a
+host whose `PRIM:` table names another word and requires the engine and
+`.names` sidecar the engine under test builds (three builds, kept out of the
+registry as a build chain).
+
 The same tool checks build identity independently of convergence:
 
 ```sh
@@ -313,7 +331,9 @@ that same copy and distinct output paths. Both builds are uncached. A difference
 anywhere in the complete files fails the command, reporting a zero-based first
 differing offset. For an offset in captured code, the matching `.names` sidecar
 identifies its owner, including words whose names were stripped from the image;
-offsets without a matching name are reported as unavailable. The image reader
+offsets without a matching name are reported as unavailable. The verdict prints
+before the owners, so an owner lookup that throws is reported with its throw
+code and the command still fails. The image reader
 supplies the code blob's file coordinates, and the sidecar's column names select
 the fields. No installed engine is replaced.
 
@@ -322,6 +342,11 @@ building or interpreting image metadata. It reports the differing-byte count
 for equal lengths, or a length mismatch, and the first differing offset in
 either case. The focused `two-generation-fixtures` gate row covers the byte
 boundaries and sidecar parser without launching a build chain on every gate.
+
+In every mode a verdict prints its lines on stdout and exits 1. A step that
+throws instead, such as a directory that cannot be made or a file that cannot
+be opened, is rethrown uncaught: the engine prints `hb: uncaught throw code C`
+on stderr and exits 67.
 
 Three facts decide how a change reaches the fixpoint:
 
@@ -360,6 +385,25 @@ Three facts decide how a change reaches the fixpoint:
     each engine: a `package` costs 2, a `STRUCTURE` 1, a `TYPED-VARIABLE` 0 and
     a `require` of already baked source 0 — it just no longer reaches a
     product.
+  - *The checker's records do not follow the host's symbol numbering.* The
+    host certifies the window's prefix (`src/core/util.f` through
+    `src/core/layout-valid.f`), and the window's `TRANSFER-CHECKED`
+    (`src/core/checker.f`) copies each certified effect into its own checker:
+    a record and a no-return row per copy, a defer row for a deferred word, and
+    the name interned when the window lacks it, so the order of the copies is
+    their order in the image. A host numbers every name it holds a `PRIM:` row
+    for ahead of all others, so `TRANSFER-ROWS` copies in the order of the
+    host's records — `EW.NEXT`, the store offset just past each, follows the
+    prefix's source order on every host — not of its symbol ids. Measured on
+    the change that made it so: an engine built from a tree with one `PRIM:`
+    row fewer (`CHECKER-STORAGE-INFO`) built the unmodified tree into an engine
+    12,297 bytes off the tree's own, that word's record 2542nd in the store
+    instead of 888th, and one with one row more (`CHECKER-CAPTURE-PREPARE`)
+    into one 427,238 bytes off, every symbol interned after that name
+    renumbered; one more `variable` or `STRUCTURE` moved nothing. After it each
+    of the four builds a byte-identical engine with a byte-identical `.names`
+    sidecar, and `test/host-checker-row-e2e.f` builds through a host whose row
+    names the second word instead of the first.
   - *A record number is the host's, so no window cell may keep one.* The
     window's records follow the HOST's primitives, and the image puts them
     after its own, while the capture copies DATA as bytes: a cell that holds a
@@ -424,10 +468,13 @@ Three facts decide how a change reaches the fixpoint:
   <word>`, rc 70, before any target work (measured: `E-FS-WALK-ACTIVE` in
   `WALK-FILES`). Build a stage engine from the host's own tree plus the new
   declarations alone, then build the tree with that engine. A library the
-  engine bakes and no build file loads — `lib/string.f`, `lib/fmt.f`,
-  `lib/errors.f` itself — is compiled by the target build after the tree's
-  declarations and needs no stage; when nothing else the image bakes changed,
-  the stage and the tree's engine are byte-identical.
+  engine bakes is compiled by the target build after the tree's declarations,
+  so a word it adds needs no stage until a file the host loads calls it: the
+  tree's `lib/float.f` calling a new `lib/string.f` word dies the same way,
+  `E-UNDEFINED habu: in str>float: undefined word 'STR-CHECK-LEN'`, rc 70,
+  and the stage then carries that word's declarations too. When nothing else
+  the image bakes changed, the stage and the tree's engine are
+  byte-identical.
 - **The recovery prologue and `prefix-rewind.f` rewind to different points.**
   `tools/bootstrap.sh`'s boot-hide text reloads the whole core prefix, so it
   rewinds the dictionary to the prefix's *first* record and the signature
@@ -488,6 +535,18 @@ DATA offset 5354888 in the pair measured. The delta is a transient of that pass
 with no reader in a restored image, so it now travels on the stack
 (`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
 in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
+
+The same rule holds for a `--repl` application image, which the snapshot writer
+stores rather than the AOT capture. Two builds of one program differed in
+`LASTC-CELL`, `AOT-CELLS:SPAN-TABLE-CELL` and `AOT-CELLS:SPAN-BASE-CELL`,
+`SIGNAL-ABI:STUB-CELL`, `EVALREC-CELL`, `UNCGH-CELL`, the native compiler's
+cached prior call target and the writer's own output path, and the code
+signature's identifier was the output file's name. Each cell is now declared
+and relocated, kept from the booting process across the restore, zeroed in the
+image, or gone, and the image signs as `hb-prog`.
+`tools/hb-build-repl-twin-test.f` builds one program twice with separate
+`HB_TMP` and cache roots, and once more by the maker directly to another name,
+and requires the same bytes.
 
 **Transient storage is released before DATA is copied.** A `DYNAMIC-BUFFER`
 control record holds its mapping pointer, byte capacity and private registry

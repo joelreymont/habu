@@ -5,6 +5,7 @@
 \ own DATA) are the same grammar in ARM64 and are pinned where they are emitted
 \ (test/gate-aot-image.f CHECK-VGET) and exercised by every build.
 require lib/test.f
+require lib/test/guard-page.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -85,9 +86,19 @@ create VBUF 16 allot
    s" a value no cell could have held is refused" T-LABEL
    VMAX REFUSED ;
 
+\ Only a ten-byte value has a tenth byte to test. A one-byte value whose byte is
+\ the last readable one ends its section where memory ends, so a read of a tenth
+\ byte it does not have faults instead of answering.
+: AT-EDGE ( -- )
+   1 5 GUARD-PAGE:TAIL {: a:ptr :}
+   s" a one-byte value at the end of readable memory reads that byte alone" T-LABEL
+   a 1 CELL-V@ {: got:n w:n :}
+   w 1 T=
+   got 5 T= ;
+
 : RUN ( -- )
    T-RESET
-   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE
+   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE  AT-EDGE
    T-REPORT ;
 
 RUN

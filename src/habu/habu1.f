@@ -1301,6 +1301,23 @@ variable SZA-I
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+\ LASTC-CELL names the record the last create, variable or constant wrote, and
+\ does> patches that record (habu2.f DOESPATCH). A record at or above NDICT is
+\ retired, and the next definition reuses its slot, so every motion that lowers
+\ NDICT - these two sinks, evaluate's error recovery and the REPL's - calls this
+\ after the new count is set. A LASTC below the count is kept: any later create
+\ would have replaced it, so it is still the last created record. One at or above
+\ it is cleared rather than moved to an earlier record, because once a does>
+\ clause patches a created record nothing in the record says a create made it
+\ (layout.f DKIND), and a guessed record is the wrong patch this prevents. A
+\ does> with none refuses by name. Clobbers the two scratch registers.
+: LASTC-TRIM, ( n n -- ) {: t:n u:n :}
+   LBL {: live:label :}
+   t DREC MOVZ,  t NDICT t MUL,  t DBASE t ADD,        \ first retired record
+   u DATA LASTC-CELL LDR,  u t CMP,  C-CC live BCOND,
+   u 0 MOVZ,  u DATA LASTC-CELL STR,
+   live LBL, ;
+
 \ ndict! is the general FORGET/restore sink. The name lookup reads an empty
 \ hash slot as proof that a name is absent, and
 \ that proof only holds while every record below NDICT is in the table. Raising
@@ -1329,6 +1346,7 @@ variable SZA-I
       done B,
    keep LBL,
    NDICT A 0 ADDI,
+   A B LASTC-TRIM,
    done LBL, ;
 
 \ Append the completed native pending record at the caller's expected index.
@@ -1371,6 +1389,7 @@ variable SZA-I
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    NDICT A 0 ADDI,
    HIDX-EMIT:LREBUILD LABEL@ BL,
+   A B LASTC-TRIM,
    9 0 MOVZ,  9 DATA SEAL-NDICT-CELL STR, ;
 
 : BEPOCHSECONDS ( -- )
@@ -3686,8 +3705,9 @@ private
 \ word:
 \   - a real wordlist (0, a package's private or public wid, and the
 \     DICT-WL:NAMESPACE that package rows carry) is guarded by the definer's
-\     duplicate wall (habu2.f C-REJECT-DUP-DEF), which refuses a second
-\     definition of a tail already live in the wordlist being defined into. At
+\     duplicate walls (habu2.f C-REJECT-DUP-DEF, and DOES-REC:REJECT-DUP for
+\     the record a `does>` clause adds), which refuse a second definition of
+\     a tail already live in the wordlist being defined into. At
 \     most one row, so first and last are the same row and the probe reproduces
 \     the scan exactly;
 \   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows

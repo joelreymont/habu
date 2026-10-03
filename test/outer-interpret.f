@@ -96,7 +96,11 @@ variable SPIN-U
 \ definition and rolled it back. OI-ROOM is the data space left below its
 \ ceiling, and OI-ALIAS gives the last record a second name. OI-ENDED. prints
 \ the cells a definition's end clears or'd together, 0 when all are: PEND, the
-\ provenance window, TSIG, TCSIG, DOESB, TRUSTED and the definition's tier.
+\ provenance window, TSIG, TCSIG, DOESB, TRUSTED and the definition's tier. OI-DX holds a
+\ private does> definer whose clause name is longer than DNAME-INL bytes, and
+\ OI-DX. prints whether the record above its public export is that export's
+\ clause, and the clause's name. OI-DH holds a private definer and, in its
+\ public wordlist, a word under that definer's clause name.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -132,6 +136,11 @@ variable SPIN-U
    s" : OI-BODY. ( -- ) data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL OI-CELL@ type cr ;" GE-SRC-LINE
    s" : OI-STATE. ( -- ) TSIG-U-CELL OI-CELL@ . TRUSTED-CELL OI-CELL@ . NCOMP-DISPATCH:DEF-TIER-CELL OI-CELL@ . ;" GE-SRC-LINE
    s" : OI-DUMP ( -- ) OI-PEND OI-REC. OI-BODY. OI-STATE. ;" GE-SRC-LINE
+   s" TRUSTED: OI-DICT-ALMOST ( -- ) 0 data-base HIDXP-CELL + ! DICT-CAP 1 - ndict! ;" GE-SRC-LINE
+   s" package OI-DX : OI-MAKER-WORD ( n -- ) create , does> ( -- n ) @ 1 + ; ;package" GE-SRC-LINE
+   s" : OI-CLAUSE. ( n -- ) {: k:n :} k XREF-DOES-COMPANION? dup OI-B. if k 1+ XREF-REC XREF-NAME$ type cr then ;" GE-SRC-LINE
+   s" : OI-DX. ( -- ) s~ OI-DX:OI-MAKER-WORD~ XREF-FIND-INDEX OI-CLAUSE. ;" QLINE
+   s" package OI-DH public : OI-HELD;does ( -- n ) 3 ; private : OI-HELD ( n -- ) create , does> ( -- n ) @ ; ;package" GE-SRC-LINE
    s" : OI-HERE ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - ;" GE-SRC-LINE
    s" variable OI-AT" GE-SRC-LINE
    s" : OI-MARK ( -- ) OI-HERE OI-AT ! ;" GE-SRC-LINE
@@ -174,9 +183,10 @@ variable WANT-RC
 : WANT-ERR$ ( -- ptr u8 n )
    WANT-ERR WANT-ERR-U @ ;
 
-\ The engine's run, kept while the Habu loop's runs.
-: KEEP ( -- )
-   GT-RC@ WANT-RC !
+\ The engine's run, kept while the Habu loop's runs. A run that ran out of time
+\ fails under label with its capture (GE-RC@).
+: KEEP ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu GE-RC@ WANT-RC !
    GT-OUT$ {: oa:ptr ou:n :}  oa WANT-OUT ou BYTE-COPY  ou WANT-OUT-U !
    GT-ERR$ {: ea:ptr eu:n :}  ea WANT-ERR eu BYTE-COPY  eu WANT-ERR-U ! ;
 
@@ -189,7 +199,7 @@ variable WANT-RC
 
 \ The Habu loop's run against the kept engine run.
 : SAME ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
+   label labelu GE-RC@ WANT-RC @ <> if s" rc differs from the engine's" label labelu MISMATCH then
    GT-OUT$ WANT-OUT$ STR= 0= if s" stdout differs from the engine's" label labelu MISMATCH then
    GT-ERR$ WANT-ERR$ STR= 0= if s" stderr differs from the engine's" label labelu MISMATCH then ;
 
@@ -207,7 +217,7 @@ variable WANT-RC
 : BOTH ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu CASE-BUF GT-PATH CASE-U !
    CASE$ SRC>FILE
-   false RUN KEEP
+   false RUN name nameu KEEP
    true RUN
    name nameu SAME
    1 CASES +! ;
@@ -986,6 +996,23 @@ variable WANT-RC
    70 s" export internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" export internal" GE-EXPECT-ERR ;
 
+\ A does> definer's export carries the definer's clause into the slot above
+\ its own, under the clause's name, which a name past DNAME-INL bytes puts at
+\ CP. The clause's slot, its name in the current wordlist and that name's room
+\ are refused as the export's own are, the dictionary refusal naming the
+\ operand and the other two the clause.
+: EXPORT-DEFINER ( -- )
+   s" package OI-DX public export OI-MAKER-WORD ;package OI-DX." s" oi-export-definer.f" LINE-CASE
+   s" export definer" GE-EXPECT-OK
+   S\" 1\nOI-MAKER-WORD;does\n" s" export definer" GE-EXPECT-OUT
+   s" package OI-DH public export OI-HELD" s" oi-export-clause-held.f" LINE-CASE
+   78 s" duplicate definition: OI-HELD;does at " S\" oi-export-clause-held.f:1\n" DIED-AT
+   s" package OI-DX public OI-DICT-ALMOST export OI-MAKER-WORD" s" oi-export-clause-slot.f" LINE-CASE
+   77 s" hb: dictionary full at: OI-MAKER-WORD at " S\" oi-export-clause-slot.f:1\n" DIED-AT
+   s" package OI-DX public dbase@ REGION + $4000 - 8 - cp! export OI-MAKER-WORD"
+   s" oi-export-clause-code.f" LINE-CASE
+   76 s" hb: code space full at: OI-MAKER-WORD;does at " S\" oi-export-clause-code.f:1\n" DIED-AT ;
+
 \ With the dictionary full a new package refuses, naming what DEF-TKA and
 \ DEF-TKL hold, which `package` never writes: here the operand of the `export`
 \ before it. A long name that would reach the code ceiling refuses too;
@@ -1757,6 +1784,7 @@ private
    EXPORT-ALIASES
    EXPORT-REFUSALS
    EXPORT-INTERNAL
+   EXPORT-DEFINER
    CAPACITY
    PROTECTED-PACKAGES
    TASK-LIVE

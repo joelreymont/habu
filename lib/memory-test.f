@@ -291,6 +291,11 @@ create RBT-ERR RBT-CAP allot
    then
    pid PROC-WAIT-OUTCOME ;
 
+\ The child ran to a clean exit. A blocking wait has no deadline, so there is no
+\ capture to report and the outcome reads as the child's rc.
+: MEMT-FORK-CLEAN ( [ -- ] -- )
+   MEMT-FORK PROC-OUTCOME>RC RC>N 0 T= ;
+
 : RBT-RELEASED-BASE ( -- ptr u8 )
    MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
    over {: base:ptr :}
@@ -382,19 +387,23 @@ create RBT-ERR RBT-CAP allot
 : RBT-ONE-FAULT-SRC ( -- ptr u8 n )
    s" package MEM RBT-ONE-FAULT ;package" ;
 
-: RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+\ Runs the source in a subject child and asserts its exit code, leaving the
+\ stdout and stderr lengths.
+: RBT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
-   RBT-TIMEOUT-MS >MS SUBJECT:RUN
-   MEMT-FAULT-RC T-OUTCOME-EXITED=
-   LEN>N 0 > TTRUE
-   LEN>N 0 T= ;
+   RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
-: RBT-EXPECT-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
-   RBT-TIMEOUT-MS >MS SUBJECT:RUN
-   0 T-OUTCOME-EXITED=
-   LEN>N 0 T=
-   LEN>N 0 T= ;
+: RBT-EXPECT-FAULT ( ptr u8 n -- )
+   MEMT-FAULT-RC RBT-EXITS
+   0 > TTRUE
+   0 T= ;
+
+: RBT-EXPECT-CLEAN ( ptr u8 n -- )
+   0 RBT-EXITS
+   0 T=
+   0 T= ;
 
 : RBT-EXACT-SPANS ( -- )
    T-RESET
@@ -457,11 +466,10 @@ create CAP-ERR CAP allot
 
 : EXPECT-FATAL ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   FATAL-RC T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   CAP-ERR erru S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
+   {: outu:len erru:len oc :}
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
 : RELEASE-SRC ( -- ptr u8 n )
    s" package MFR : RUN ( -- ) MEM:ALLOC-64K swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
@@ -491,7 +499,7 @@ package MEM
 private
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
-7122 constant E-WBT-FRAME-BOUNDS
+E-LAYOUT-BOUNDS constant E-WBT-FRAME-BOUNDS
 
 : WBT-PROBE-RELEASED ( -- )
    2 close
@@ -588,11 +596,11 @@ PTR-VARIABLE WBT-OUTER
 
 : TEST-WITH-BYTES ( -- )
    T-RESET
-   [: WBT-NORMAL-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-THROW-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-INNER-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-OUTER-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-RETAINED-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-NORMAL-CHILD ;] MEMT-FORK-CLEAN
+   [: WBT-THROW-CHILD ;] MEMT-FORK-CLEAN
+   [: WBT-INNER-CHILD ;] MEMT-FORK-CLEAN
+   [: WBT-OUTER-CHILD ;] MEMT-FORK-CLEAN
+   [: WBT-RETAINED-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-ALLOC-FAIL ;] E-MEM-MAP TTHROWSQ
    MEM-64K BYTES-ALLOC-LEN [: WBT-ALLOC-RETRY ;] WITH-BYTES
    WB-DEPTH @ 0 T=

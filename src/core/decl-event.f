@@ -108,10 +108,12 @@ package DECL-EVENT
 7172 constant E-DEV-FIELD-SCOPE \ provisional field is outside the token's declaration/family
 7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
 
-\ The shared malformed-arity code mirrors sumtype.f.  The bound itself comes
-\ from type-family.f's canonical declaration alphabet through the normal
-\ post-hook seam below, so front ends and the event validator cannot drift.
-7108 constant E-DEV-ARITY       \ arity outside [0, cap] — the shared malformed-arity code
+\ The shared malformed-arity code is sumtype.f's, read at load time: a post-hook
+\ checked body cannot name that pre-hook constant on a from-source build. The
+\ bound itself comes from type-family.f's canonical declaration alphabet through
+\ the normal post-hook seam below, so front ends and the event validator cannot
+\ drift.
+TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the shared malformed-arity code
 
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 

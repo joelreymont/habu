@@ -2018,11 +2018,10 @@ create TW-BUF TW-CAP allot
 \ ebe19a15a048 deleted that refusal: an inner opener now records the enclosing
 \ body as its owner and the bodies are elaborated in lexical owner order, so
 \ there is no longer a fault for a row to name. What a nested pair really does is
-\ test/compiler/native-quot.f LEXICAL-CASE's subject, over real compiled source
-\ with values - nested inputs, a nested `exit`, siblings, and the two shapes
-\ nesting still does NOT grant (a captured local, an unknown calling
-\ convention). The engine's own JIT tier still refuses to compile a nested
-\ opener (rc 75), which is why no tape for one can come from a real compilation.
+\ test/compiler/native-quot-scope.f NESTED-CASE's subject, over real compiled
+\ source with values - nested inputs, a nested `exit`, siblings - and
+\ test/compiler/native-quot.f LEXICAL-CASE holds the two shapes nesting still
+\ does NOT grant (a captured local, an unknown calling convention).
 : QUOT-ORPHAN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" QORPH dup ;]" TEXT!

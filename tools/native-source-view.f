@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/image-lifecycle.f
 require lib/engine-id.f
+require tools/source-discovery.f
 require tools/event-closure-lib.f
 
 package SOURCE-VIEW
@@ -37,6 +38,7 @@ variable QUERY-USE-N
 variable FILE-N
 variable LOAD-N
 variable POOL-N
+variable SCRATCH-N
 variable READY
 variable IMAGE-HOOK-ARMED
 
@@ -150,13 +152,19 @@ create HASH-CELL 1 cells allot
    id QUERY-USED
    id QUERY-ANSWER$ id LAST-CELL QUERY@ 0<> ;
 
+\ A quotation sees no locals, so the path rides the stack through the read and
+\ comes back unchanged, keeping the catch around it stack-preserving; the byte
+\ count goes to SCRATCH-N, and a refusal still has the path to name.
+: READ-SCRATCH ( ptr u8 n -- ptr u8 n )
+   2dup 0 SCRATCH INCLUDE-BUF-CAP READ-ALL SCRATCH-N ! ;
+
 : READ-COLLECT ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: a:ptr u:n root:ptr rootu:n :}
    a u root rootu FILE-FIND {: id:n :}
    id 0 >= if id FILE-BYTES$ exit then
    INCLUDE-BUF-CAP SCRATCH-RESERVE
-   a u 0 SCRATCH INCLUDE-BUF-CAP READ-ALL {: got:n :}
-   a u root rootu 0 SCRATCH got FILE-ADD got ;
+   a u [: READ-SCRATCH ;] catch DISCOVER:READ-THROW
+   a u root rootu 0 SCRATCH SCRATCH-N @ FILE-ADD SCRATCH-N @ ;
 
 : READ-LOOKUP ( ptr u8 n ptr u8 n -- ptr u8 n )
    FILE-FIND {: id:n :}

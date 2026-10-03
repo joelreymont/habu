@@ -191,7 +191,7 @@ variable SEAL-SEEN?
 
 \ Manifest identity is relative to the child's invocation root. Give it real
 \ copies of the two boundary files, one private dependency, and links to the
-\ unchanged test/tool libs.
+\ unchanged test/tool libs and to driver-io.f's own require, src/habu/sign-id.f.
 : MANIFEST$ ( -- ptr u8 n ) ROOT$ s" manifest" JOIN ;
 
 : MANIFEST-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -203,6 +203,7 @@ variable SEAL-SEEN?
    MANIFEST$ s" src/core" JOIN MAKE-DIRS
    s" lib" MANIFEST-LINK s" tools" MANIFEST-LINK s" test" MANIFEST-LINK
    s" src/habu/task-abi.f" MANIFEST-LINK
+   s" src/habu/sign-id.f" MANIFEST-LINK
    MANIFEST$ s" whitebox-manifest-private.f" JOIN
    s\" \\ private dependency\n" WRITE-ALL ;
 

@@ -294,12 +294,12 @@ create LF-BYTE 10 c,
    OUT BUF-CAP LINT-OUT-BUFFER!
    strict CHECKED-BOUNDARY-LINT:STRICT! ;
 
-: CORE-FINISH ( -- n n outcome )
+: CORE-FINISH ( -- n n n )
    [: CHECKED-BOUNDARY-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 rc OUTCOME:EXITED ;
+   0 rc ;
 
-: RUN-CURRENT ( -- n n outcome )
+: RUN-CURRENT ( -- n n n )
    LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
@@ -307,69 +307,70 @@ create LF-BYTE 10 c,
    s" tools/hook-sites.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
-: RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
+: RUN-CORE-FILE ( ptr u8 n bool -- n n n ) {: path:ptr pathu:n strict:bool :}
    strict CORE-SETUP
    path pathu CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
-: RUN-CORE-GOOD ( -- n n outcome )
+: RUN-CORE-GOOD ( -- n n n )
    GOOD LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-LARGE ( -- n n outcome )
+: RUN-CORE-LARGE ( -- n n n )
    LARGE LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-BAD ( -- n n outcome )
+: RUN-CORE-BAD ( -- n n n )
    BAD LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-NOPREF ( -- n n outcome )
+: RUN-CORE-NOPREF ( -- n n n )
    NOPREF LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-STRICT-GOOD ( -- n n outcome )
+: RUN-CORE-STRICT-GOOD ( -- n n n )
    GOOD LINT-TRUE RUN-CORE-FILE ;
 
-: RUN-CORE-STRICT-TRUSTED ( -- n n outcome )
+: RUN-CORE-STRICT-TRUSTED ( -- n n n )
    TRUSTED LINT-TRUE RUN-CORE-FILE ;
 
-: RUN-CORE-ROGUE ( -- n n outcome )
+: RUN-CORE-ROGUE ( -- n n n )
    ROGUE LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-TOPROGUE ( -- n n outcome )
+: RUN-CORE-TOPROGUE ( -- n n n )
    TOPROGUE LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-TOPNAME ( -- n n outcome )
+: RUN-CORE-TOPNAME ( -- n n n )
    TOPNAME LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-NAMEONLY ( -- n n outcome )
+: RUN-CORE-NAMEONLY ( -- n n n )
    NAMEONLY LINT-FALSE RUN-CORE-FILE ;
 
-: RUN-CORE-QUIET ( -- n n outcome )
+: RUN-CORE-QUIET ( -- n n n )
    QUIET LINT-FALSE RUN-CORE-FILE ;
 
 \ Lint every file the registry names, through its own committed path.
-: RUN-SITES ( -- n n outcome )
+: RUN-SITES ( -- n n n )
    LINT-FALSE CORE-SETUP
    HOOK-SITES:COUNT 0 ?do i HOOK-SITES:PATH$ CHECKED-BOUNDARY-LINT:FILE loop
    CORE-FINISH ;
 
 \ The same files, addressed as `./path`, which is not what the registry records.
-: RUN-DOT-SITES ( -- n n outcome )
+: RUN-DOT-SITES ( -- n n n )
    LINT-FALSE CORE-SETUP
    HOOK-SITES:COUNT 0 ?do i DOT-SITE$ CHECKED-BOUNDARY-LINT:FILE loop
    CORE-FINISH ;
 
-: RUN-CORE-CROSS ( -- n n outcome )
+: RUN-CORE-CROSS ( -- n n n )
    LINT-FALSE CORE-SETUP
    OFF CHECKED-BOUNDARY-LINT:FILE
    CROSS CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
-: ASSERT-CLEAN ( n n outcome -- )
-   0 T-OUTCOME-EXITED= {: outu:n erru:n :}
+: EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
+   code want T=
+   outu erru ;
+
+: ASSERT-CLEAN ( n n n -- )
+   0 EXPECT-EXIT {: outu:n erru:n :}
    OUT outu EMPTY$ T$=
    erru 0 T= ;
-
-: EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED= ;
 
 : TEST-CURRENT ( -- )
    RUN-CURRENT ASSERT-CLEAN ;

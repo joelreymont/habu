@@ -1,7 +1,5 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
-\ tools/bundle-lib-core.f tools/bundle-lib-test.f
+\ Run: bin/hb --load tools/bundle-lib-test.f (it requires what this file uses).
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
@@ -139,15 +137,23 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-MISSING BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
+: BLTT-BUILD ( -- )
    BL-RESET
    BLTT-BUNDLE BL-OUT!
    s" errors" BL-MOD+
    s" array" BL-MOD+
    BLTT-DRIVER BL-SCRIPT!
    BL-VERIFY
-   BL-EMIT-BUNDLE
-   0 >LEN 0 >LEN 0 OUTCOME:EXITED ;
+   BL-EMIT-BUNDLE ;
+
+\ The builder runs in a fork of this image, which already holds the builder, so
+\ its exit status, stdout and stderr are the builder's own: a builder that dies
+\ or prints fails the row by its exit code and streams, instead of killing the
+\ test with no row or passing silently.
+: BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
+   s" BLTT-BUILD" BLTT-OUT BLTT-BUF-CAP >LEN
+   BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
+   SUBJECT:RUN ;
 
 : BLTT-RUN-BUNDLE ( -- len len outcome )
    PROC-ARGV-RESET
@@ -158,15 +164,22 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" args" BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
-: BLTT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+\ The program is what the run executed: the forked builder's source or the
+\ bundle's path, so a timeout report names the right one.
+: BLTT-EXPECT-EXIT ( len len outcome n ptr u8 n -- n n )
+   {: outu:len erru:len oc expect:n prog:ptr progu:n :}
+   prog progu BLTT-OUT outu LEN>N BLTT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : BLTT-EXPECT-EXIT-NZ ( len len outcome -- n n )
    MATCH outcome
      exited OF 0 T<> ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF 1 0 T= ENDOF
+     timeout OF
+        2dup LEN>N >r LEN>N >r
+        s" tools/bundle-lib.f" BLTT-OUT r> BLTT-ERR r> T-TIMED-OUT
+     ENDOF
    ;MATCH
    LEN>N swap LEN>N swap ;
 
@@ -191,7 +204,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 \ separates them - E-A-FIRST is defined in lib/errors.f and A-LEN in
 \ lib/array.f, so their presence is the presence of the module's text.
 : BLTT-TEST-BUILD-BUNDLE ( -- )
-   BLTT-RUN-BUNDLE-LIB 0 BLTT-EXPECT-EXIT {: outu:n erru:n :}
+   BLTT-RUN-BUNDLE-LIB 0 s" BLTT-BUILD" BLTT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu:n :}
@@ -209,7 +222,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
 
 : BLTT-TEST-RUN-BUNDLE ( -- )
-   BLTT-RUN-BUNDLE 0 BLTT-EXPECT-EXIT {: outu:n erru:n :}
+   BLTT-RUN-BUNDLE 0 BLTT-BUNDLE BLTT-EXPECT-EXIT {: outu:n erru:n :}
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-OUT outu BLTT-OK$ CONTAINS? TTRUE ;
 

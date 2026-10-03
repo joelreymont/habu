@@ -2,7 +2,8 @@
 
 This is the stable machine contract for Habu checker repair feedback. The
 implemented surface today is one JSON object per failed top-level definition from
-the native `tools/check.f` runner with `--json-errors --all-errors`. A repair packet is the normalized
+the native `tools/check.f` runner with `--json-errors --all-errors`, plus the
+records below for a refusal outside a definition. A repair packet is the normalized
 LLM prompt object built from those checker diagnostics.
 
 ## Checker Diagnostic JSON
@@ -11,7 +12,9 @@ Checker diagnostics are newline-delimited JSON objects with
 `schema_version: 1`. They are emitted on stderr and remain valid JSON object
 lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
-diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`.
+diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
+each record in the shape its `code` names: a declaration, a storage refusal, a
+span, an input, a refused checker record, or otherwise a definition.
 
 Fields:
 
@@ -26,10 +29,10 @@ Fields:
 | `dead_owner` | string | dead-code only | Terminating token (`throw`, `die`, `exit`, `leave`, `again`, or a no-return word) that made the later token unreachable. |
 | `token_index` | integer | required | Zero-based token index within the captured definition body. |
 | `file` | string | required | Wrapper label or source path attached to the diagnostic. |
-| `line` | integer | required | One-based source line for the token. |
-| `column` | integer | required | One-based source column for the token. |
-| `byte_start` | integer | required | Zero-based byte offset of the token start in the labeled source. |
-| `byte_end` | integer | required | Zero-based byte offset immediately after the token. |
+| `line` | integer | required | One-based line of the token's first byte in the labeled file; LF ends a line. |
+| `column` | integer | required | One-based column of the token's first byte, counted in bytes. |
+| `byte_start` | integer | required | Zero-based byte offset of the token's first byte in the labeled file. |
+| `byte_end` | integer | required | Zero-based byte offset immediately after the token's last byte. |
 | `definition_source` | string | required | Captured definition text without the leading colon and trailing semicolon. |
 | `declared_effect` | string | required for signed definitions | Declared data and return-stack effect, normalized by the checker. |
 | `declared_effect_source` | string | required for signed definitions | Declared effect as written between the signature parentheses, trimmed but preserving source row/type variable names. |
@@ -43,28 +46,104 @@ Fields:
 | `payload_pos` | integer | construct payload mismatch only | 0-based declaration-order index of the variant payload slot whose type failed to unify. Present only with `variant`, and only when the checker pinned the failure to a specific payload cell (absent for whole-row or post-expansion failures). |
 | `arity_expected` | integer | wrong-arity signature only | The family's declared arity, on `E-WRONG-ARITY` / `fix_signature_arity` packets. |
 | `arity_actual` | integer | wrong-arity signature only | The argument count actually written in the signature's family application. Present exactly when `arity_expected` is. |
+| `reason` | string | storage refusal, or a definition refusal with a stated cause | Short cause: on every `E-BAD-STORAGE` record, and on a definition record whose refusal names one, such as `E-INPUT-UNDERFLOW` or a `match` or `construct` form. |
 | `suggestion` | string | required | Human-readable repair hint derived from `repair_class`. |
 
-The current checker JSON intentionally uses `definition_source` rather than
-`source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
-copy or normalize these fields instead of requiring the checker to emit aliases.
+The position fields locate the token in the labeled file's bytes. Where a
+driver checks text it read out of the file, they are where its scanner read the
+token, whatever the layout between tokens: verify-source
+(`src/habu/verify-source.f`), which `tools/check.f` runs before it loads a file,
+for `--all-errors` and as `CHECK:VERIFY-BYTES` (below), and `tools/check.f`'s
+declaration pass. Text with no
+file bytes behind it reports its definition's origin plus the token's offset in
+the checked text: the engine's own load (`bin/hb --load` and `tools/check.f`'s
+child run), whose captured definitions keep no source addresses, text built by
+`evaluate`, and the definitions the checker generates for a declaration.
+
+The checker JSON uses `definition_source` where a packet has `source_excerpt`.
+It always carries `suggestion`; `reason` appears only on the records the
+`reason` row names and on a declaration record. Packet builders must copy or
+normalize these fields instead of requiring the checker to emit aliases.
 
 Top-level type-family declaration failures (`NEWTYPE`/`SUMTYPE`) emit a
 declaration-shaped object instead of the definition shape above: code
 `E-BAD-DECLARATION`, repair class `fix_family_declaration`, `verdict`
 `rejected`, plus `decl` (declaration kind), `family` (family name token),
 `token` (offending token), `reason` (short cause), `file`, and `suggestion`.
-Declaration packets never fabricate definition-only fields such as `word`,
-`declared_effect`, `definition_source`, or `return_stack`; source-span fields
-land with the declaration origin plumbing (PLAN item 13).
+When the token locates in the labeled file, `line`, `column`, `byte_start` and
+`byte_end` follow `file`, with the meanings above. Declaration packets never
+fabricate definition-only fields such as `word`, `declared_effect`,
+`definition_source`, or `return_stack`.
 
-Two load-time refusals of a checker record emit a row-shaped object: no
+A storage declaration its definer refuses (`LAYOUT-BUFFER`,
+`DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
+`word` (the declared name as written), `token` (the refused token), `reason`,
+`file` and `suggestion`. The repair class follows the reason:
+`fix_storage_type` for an unknown, malformed or unstorable type,
+`fix_storage_name` for a name with more than one `:` or in a sealed package,
+and `fix_storage_count` for a literal count outside the extent, a count token
+that resolves to no `( -- n )` word, or no count. An
+unknown type names its own token, any other type refusal the whole stored type.
+`tools/check.f` reads the declaration before the run, so there the object also
+carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
+definer under `bin/hb --load` has no record of its token's place and carries
+none. It has no definition fields, and the checker continues past it under
+`--all-errors`, counting it as a refusal.
+
+A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
+`rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
+`byte_end`, and `suggestion`, and no definition fields. There are three:
+
+- `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
+  threw while the checker checked it, with or without `--all-errors`, such as a
+  `;using` with no `using` open (`E-USING-UNBALANCED`, 7142). The `token` is the
+  one the checker read last, and the record adds the signed integer
+  `throw_code` it raised. The checker does not continue past that statement in
+  its source, and the run exits 70 as for a refusal. Without
+  `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
+  throw <throw_code> at '<token>'`.
+- `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
+  at `token` does not close in the checked source.
+- `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
+  `PPRIM:` primitive-axiom row opened at `token` does not close.
+
+The lexer cannot read past either defect, so it is reported in place of
+checking that source. `--all-errors` reports both classes for a file or
+standard input; `tools/check.f` also reports an open string in a file in its
+default mode, in the file that holds it (a required file included), since
+source discovery stops there. Without `--json-errors` a file gets
+`check.f: discovery rejected: unterminated string` and standard input the bare
+code on its own line.
+
+A second definition of a name in one wordlist, with or without
+`--all-errors`, emits a definition-shaped object with code
+`E-DUPLICATE-DEFINITION` and repair class `rename_duplicate`, whose `file` is
+the source that defined the name again. Its `word`, `token` and
+`definition_source` are the placeholder `duplicate-definition` at line 1,
+column 1, not the duplicate's own name and place. Nothing after it is checked,
+and the run exits 78 as the load does. Without `--json-errors` it is the line
+`checker: duplicate definition in <file>`.
+
+`tools/check.f` refuses, before checking anything, a single file or a
+`--source-list` whose every input is a source the engine provides, since a run
+loads nothing from such a source. Each input gets an input record: code
+`E-ENGINE-PROVIDED`, repair class `rebuild_engine`, `verdict` `uncheckable`,
+the input's `file` as given with `line` 1 and `column` 1, and `suggestion`;
+without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
+<suggestion>`. The run exits 64. A list that also names a source the engine does
+not provide is checked.
+
+Two load-time refusals of a checker record emit a refused-record object: no
 definition encloses them, so they carry `schema_version`, `code`,
 `repair_class`, `verdict` `rejected`, `token` (the name the record would have
-described), `file` and `suggestion`, and no span or definition-only field.
+described), `file` and `suggestion`, and no span, `throw_code` or
+definition-only field. Each code names its repair class:
 `E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
 where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
 storage registrar called from source outside the engine's verifier window.
+`tools/check.f` meets either only in its run stage, after every definition has
+checked, and exits 67 as the load's uncaught throw does.
 
 ## Checking Without Running
 
@@ -86,8 +165,11 @@ process.
   visible. The subject's packets name PATH, canonical and absolute, with
   positions in the bytes; a dependency's name the dependency, with positions
   in its file.
-- The child runs on `bin/hb` in the caller's working directory, which must
-  be the tree root, as `check.f`'s run stage does.
+- The child runs, in the caller's working directory, on the engine
+  `lib/engine-candidate.f` names (`HABU_UNDER_TEST` if set, else the running
+  engine), as `check.f`'s run stage does, and loads
+  `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
+  `tools/check-verify-core.f` was loaded from.
 
 | `CHECK:verdict` | Meaning | check.f exit |
 | --- | --- | --- |
@@ -105,6 +187,10 @@ prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
 An argument that exceeds the source path capacity exits 67 and explains the
 limit on stdout. Ordinary checks explain it on stderr with the same status.
+An engine `HABU_UNDER_TEST` names that is not an executable exits 67 in every
+mode, default, `--verify-only` and `--json-errors`, with only
+`hb: uncaught throw code -2102` (`E-FS-OPEN`) on stderr, naming neither the
+engine nor `HABU_UNDER_TEST`.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
@@ -125,7 +211,7 @@ thirty files.
 The child, `tools/check-verify-child.f`, is run only by the operation:
 
 ```text
-ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
 ```
 
 SUBJECT is canonical and absolute, and each DEP is a file of the closure,
@@ -142,8 +228,10 @@ status.
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
-fields that its shape cannot supply. Schema 1 has definition and declaration
-packet shapes.
+fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
+from the first diagnostic, in the shape that diagnostic's record has: Schema 1
+has definition, declaration, storage, span, input and refused-record packet
+shapes.
 
 Definition packet fields:
 
@@ -194,6 +282,79 @@ Declaration packets carry only declaration evidence:
 Declaration packets do not fabricate `word`, source spans, effects, stack rows,
 or `source_excerpt`.
 
+Storage packets carry a storage record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `word` | string | required | The declared name as written. |
+| `token` | string | required | The refused token. |
+| `reason` | string | required | Short refusal cause. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | with a place | One-based source line. |
+| `column` | integer | with a place | One-based source column. |
+| `byte_start` | integer | with a place | Token start byte. |
+| `byte_end` | integer | with a place | Token end byte. |
+| `code` | string | required | `E-BAD-STORAGE`. |
+| `repair_class` | string | required | `fix_storage_type`, `fix_storage_name` or `fix_storage_count`. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the storage declaration so its definer accepts it. Output only corrected Habu code.` |
+
+The packet copies the record's four place fields when it has them and none when
+it has none, such as a declaration `evaluate` runs; it has no definition fields.
+
+Span packets carry a span record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | Diagnostic token. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | required | One-based source line. |
+| `column` | integer | required | One-based source column. |
+| `byte_start` | integer | required | Token start byte. |
+| `byte_end` | integer | required | Token end byte. |
+| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING` or `E-MALFORMED-REGISTRY-ROW`. |
+| `throw_code` | integer or null | required | The code a statement threw; null for a lexer defect. |
+| `repair_class` | string | required | Stable repair bucket. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the source at this token so it checks. Output only corrected Habu code.` |
+
+Input packets carry an input record's evidence, since no edit to the source
+answers it:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `file` | string | required | The input as given. |
+| `line` | integer | required | `1`. |
+| `column` | integer | required | `1`. |
+| `code` | string | required | `E-ENGINE-PROVIDED`. |
+| `repair_class` | string | required | `rebuild_engine`. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Rebuild bin/hb to check this source; no code change answers this diagnostic.` |
+
+Refused-record packets carry a refused checker record's evidence, which has no
+place:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | The name the record would have described. |
+| `file` | string | required | Source label or path. |
+| `code` | string | required | `E-TRUST-UNRESOLVED` or `E-PKG-CONTEXT`. |
+| `repair_class` | string | required | `fix_stale_trust_row` or `use_storage_definer`, the one the code names. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
+
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
 top-level array whose items each carry the fields above.
@@ -242,9 +403,37 @@ Current checker classes:
   element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
+- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
+  rest) ended the source with no name after it (`E-MISSING-NAME`); the packet
+  is located at the definer.
+- `fix_record_field`: a `VALUE-RECORD` field had a bad or duplicate name or a
+  missing or unknown type, or the record had no field (`E-BAD-RECORD-FIELD`);
+  `reason` carries the registration's refusal and the packet is located at the
+  field (at `END-VALUE-RECORD` for a record with no field).
 - `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
+- `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+  names an unknown or malformed type, or one its definer cannot store; declare
+  the type before the storage or store a type the definer admits.
+- `fix_storage_name`: a storage declaration's name has more than one `:` or lies
+  in a sealed package.
+- `fix_storage_count`: a storage declaration's literal count is outside the
+  buffer's extent, its count token resolves to no `( -- n )` word, or the
+  declaration has no count.
+- `rename_duplicate`: a name was defined a second time in one wordlist; rename
+  it or `undefine` the first definition.
+- `close_string`: a string literal does not close.
+- `close_primitive_row`: a `PRIM:` or `PPRIM:` primitive-axiom row does not
+  close.
+- `rebuild_engine`: the input is a source the engine provides, so loading it
+  checks nothing; rebuild `bin/hb` to check a change to it.
+- `fix_stale_trust_row`: a `trust` row names no word in the wordlist its record
+  lands in; delete the row, correct the name, or write the row in the section
+  that defines the word.
+- `use_storage_definer`: a checker storage registrar was called from source,
+  outside the engine's verifier window; define the storage with its definer.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -273,7 +462,18 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
+| `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
+| `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |
 | `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
+| `fix_storage_type` | `Declare the type before the storage, or store a closed, copyable type this definer admits.` |
+| `fix_storage_name` | `Name the storage with at most one inner ':', outside a sealed system package.` |
+| `fix_storage_count` | `Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression.` |
+| `rename_duplicate` | `Rename the word or undefine the old definition before redefining it.` |
+| `close_string` | `Close the string literal before the definition ends.` |
+| `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
+| `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
+| `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
+| `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

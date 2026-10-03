@@ -14,16 +14,23 @@
 \ Every case here therefore reads STRUCTURE and not text: the record at the
 \ parent's index PLUS ONE, the bytes of its name, its wordlist, the two spans'
 \ shared end, and the instruction actually planted at the created word's RET -
-\ decoded, so the opcode and the target are both checked. Two cases define a
-\ decoy word literally NAMED `<PARENT>;does` before the definer runs, so
-\ "a record with that name exists" cannot pass for "the clause has that record":
-\ what is asserted is that the branch lands on the record the definer made.
+\ decoded, so the opcode and the target are both checked.
+\
+\ THE NAME IS STILL A NAME. A wordlist holds at most one live row per folded
+\ name (src/habu/habu1.f WLFIND), and the clause is a row of its parent's
+\ wordlist, so a word already holding `<PARENT>;does` there refuses the definer
+\ at `does>` with the duplicate-definition code, under both compilers, exactly
+\ as that word is refused when it comes second. The same word in another
+\ wordlist refuses nothing. An exported definer carries its clause into the
+\ export's wordlist, under the same wall.
 \
 \ Run: bin/hb --load test/does-clause-record.f
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require src/habu/layout.f
 
 package DOESREC-TEST
@@ -80,7 +87,7 @@ variable WANT-U
 
 : WANT$ ( -- ptr u8 n ) WANT WANT-U @ ;
 
-variable N0  variable N1  variable N2  variable N3
+variable N0  variable N1  variable N2
 variable MK-CP
 
 \ ---- the subjects, compiled through the real interpreter ---------------------
@@ -95,13 +102,56 @@ variable MK-CP
    s" 7 DR-MK DR-SEVEN drop" EV
    s" : DR-LONG-DEFINER-NAME ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
    s" 9 DR-LONG-DEFINER-NAME DR-NINE drop" EV
-   \ the decoy: a real word already carrying the name the clause will take
-   s" : DR-DECOY;does ( -- n ) 111 ;" EV
-   s" : DR-DECOY ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
-   s" 5 DR-DECOY DR-FIVE drop" EV
-   \ a package keeps its clause in its own wordlist
-   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV
-   ndict@ N3 ! ;
+   \ a package keeps its clause in its own wordlist, whatever the global one holds
+   s" : MK;does ( -- n ) 222 ;" EV
+   s" package DRP public : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV ;
+
+\ ---- a clause name a live word already holds ---------------------------------
+\ Each holder is spelled in another case than the clause would be: the
+\ comparison is folded. DUP-DEF-RC is the engine's duplicate-definition code
+\ (habu2.f C-DUP-DEF-FAIL).
+$4E constant DUP-DEF-RC
+variable HELD-ND  variable HELD-CP
+
+: HELD-MARK ( -- )
+   ndict@ HELD-ND !  cp@ HELD-CP ! ;
+
+\ After the refusal: nothing published, and the holder still answers.
+: ?HELD ( ptr u8 n ptr u8 n -- ) {: d:ptr du:n h:ptr hu:n :}
+   s" the refused definer publishes neither record and moves no code" T-LABEL
+   ndict@ HELD-ND @ T=
+   cp@ HELD-CP @ T=
+   d du GLOBAL-WID search-wl 0= TTRUE
+   s" the word that holds the name still answers" T-LABEL
+   h hu EV-N 111 T= ;
+
+\ Tier 0, the legacy JIT every `--load` and the REPL run: J-DOES.
+: HELD-JIT ( -- )
+   s" : dr-jit;DOES ( -- n ) 111 ;" EV
+   HELD-MARK
+   s" the legacy compiler refuses a definer whose clause name is held" T-LABEL
+   [: s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   DUP-DEF-RC TTHROWSQ
+   s" DR-JIT" s" dr-jit;DOES" ?HELD
+   s" undefining the holder frees the name for the definer" T-LABEL
+   s" undefine dr-jit;DOES" EV
+   s" : DR-JIT ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 6 DR-JIT DR-JIT-SIX" EV-N 7 T=
+   s" DR-JIT-SIX" EV-N 6 T= ;
+
+\ Tier 1, the native chain an executable build runs: NCOMP-EMIT:CAPTURE-DOES.
+: HELD-NATIVE ( -- )
+   s" : Dr-Held;Does ( -- n ) 111 ;" EV
+   HELD-MARK
+   s" the native compiler refuses a definer whose clause name is held" T-LABEL
+   [: s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   DUP-DEF-RC TTHROWSQ
+   s" DR-HELD" s" Dr-Held;Does" ?HELD
+   s" undefining the holder frees the name for the definer" T-LABEL
+   s" undefine Dr-Held;Does" EV
+   s" : DR-HELD ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 6 DR-HELD DR-HELD-SIX" EV-N 7 T=
+   s" DR-HELD-SIX" EV-N 6 T= ;
 
 \ A definition the check hook refuses must leave BOTH slots uncounted.
 variable REJ0  variable REJ1
@@ -110,6 +160,26 @@ variable REJ0  variable REJ1
    ndict@ REJ0 !
    [: s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;" EV ;] catch drop
    ndict@ REJ1 ! ;
+
+\ The hook refuses DR-BAD at its parent, before the clause is scanned, and the
+\ native compiler's line that follows the hook's must name the definer as it
+\ names a plain one. Stderr is the evidence, so the definer is compiled again in
+\ a forked child of this tier-1 image (lib/test/subject.f).
+$800 constant IO-CAP
+10000 constant CHILD-MS
+70 constant HOOK-RC  \ src/core/check-hook.f CHECK-RC
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+
+: REJECTED-NAMED ( -- )
+   s" : DR-BAD ( n -- n ) dup create , DR-NO-SUCH-WORD does> ( -- n ) @ ;"
+   {: src:ptr srcu:n :}
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   s" the hook's refusal ends the child with the hook's code" T-LABEL
+   src srcu OUT outu LEN>N ERR erru LEN>N oc HOOK-RC T-OUTCOME-EXITED=
+   s" the native compiler's line names the definer the hook refused" T-LABEL
+   ERR erru LEN>N  S\" ncomp: cannot compile DR-BAD\n" CONTAINS? TTRUE ;
 
 \ ---- the assertions ---------------------------------------------------------
 \ The clause of the definer named by a/u: the record one slot above it.
@@ -222,10 +292,73 @@ variable FORGET-NAME-A
    s" 4 DR-FORGET-MK DR-FORGET-CELL" EV-N 5 T=
    s" DR-FORGET-CELL" EV-N 4 T= ;
 
+\ ---- an exported definer carries its clause ---------------------------------
+\ `export` gives a body a second record (habu2.f C-EXPORT), and a does>
+\ definer's export gives its clause one too, in the slot above: the clause's
+\ entry under the clause's name, in the wordlist the export publishes into, so
+\ the qualifier that reaches the alias reaches its clause. Each compiler lays a
+\ clause's name out its own way, so the pair is checked under both.
+
+\ The exported definer d$, the qualified clause name k$ and a word w$ made
+\ through the alias.
+: ?EXPORTED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: da:ptr du:n ka:ptr ku:n wa:ptr wu:n :}
+   s" an exported definer's clause takes the slot above the export" T-LABEL
+   ka ku IDX  da du CLAUSE  T=
+   s" ... under the clause's own name" T-LABEL
+   da du CLAUSE NAME$ s" MK;does" STR= TTRUE
+   da du ?WID
+   da du ?SPAN
+   da du wa wu ?BRANCH ;
+
+: EXPORTED-JIT ( -- )
+   s" package DRXJ : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
+   s" 7 DRXJ:MK DRXJ-SEVEN drop" EV
+   s" DRXJ:MK" s" DRXJ:MK;does" s" DRXJ-SEVEN" ?EXPORTED
+   s" a word made through the alias runs the clause" T-LABEL
+   s" DRXJ-SEVEN" EV-N 7 T= ;
+
+\ Undefining the private original retires its own pair and leaves the export's;
+\ undefining the export retires its clause with it (src/habu/xref.f
+\ XREF-RETIRE-INDEX), and neither moves code.
+: EXPORTED-NATIVE ( -- )
+   s" package DRXN : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; public export MK ;package" EV
+   s" 7 DRXN:MK DRXN-SEVEN drop" EV
+   s" DRXN:MK" s" DRXN:MK;does" s" DRXN-SEVEN" ?EXPORTED
+   s" undefining the private original leaves the exported pair" T-LABEL
+   s" package DRXN private undefine MK ;package" EV
+   s" DRXN:MK;does" IDX  s" DRXN:MK" CLAUSE  T=
+   s" 8 DRXN:MK DRXN-EIGHT drop" EV
+   s" DRXN-EIGHT" EV-N 8 T=
+   s" undefining the export retires its clause with it" T-LABEL
+   s" package DRXN public undefine MK ;package" EV
+   s" DRXN:MK;does" IDX 0 < TTRUE
+   s" ... and the words it made keep their clause" T-LABEL
+   s" DRXN-SEVEN" EV-N 7 T= ;
+
+\ A clause name the export's wordlist already holds refuses the export, as it
+\ refuses a definer defined there.
+: EXPORT-HELD ( -- )
+   s" package DRXH public : mk;DOES ( -- n ) 111 ; private : MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ; ;package" EV
+   HELD-MARK
+   s" an export whose clause name its wordlist holds is refused" T-LABEL
+   [: s" package DRXH public export MK ;package" EV ;] DUP-DEF-RC TTHROWSQ
+   s" the refused export publishes neither record and moves no code" T-LABEL
+   ndict@ HELD-ND @ T=
+   cp@ HELD-CP @ T=
+   s" DRXH:MK" IDX 0 < TTRUE
+   s" the word that holds the name still answers" T-LABEL
+   s" DRXH:mk;DOES" EV-N 111 T= ;
+
 public
 
-: RUN ( -- )
+\ Before the native chain is selected.
+: RUN-JIT ( -- )
    T-RESET
+   HELD-JIT
+   EXPORTED-JIT ;
+
+: RUN ( -- )
    SUBJECTS
    RUN-REJECTED
 
@@ -247,28 +380,20 @@ public
    s" DR-LONG-DEFINER-NAME" ?FINDABLE
    s" DR-LONG-DEFINER-NAME" s" DR-NINE" ?BRANCH
 
-   \ the decoy carries the same name and is NOT the record the branch names
-   s" DR-DECOY" ?NAME
-   s" DR-DECOY" ?SPAN
-   s" DR-DECOY" s" DR-FIVE" ?BRANCH
-   \ the decoy sits one slot BELOW its namesake's parent, because it was defined
-   \ immediately before it; a lookup by name answers the later record, which is
-   \ exactly why nothing here is asked by name.
-   s" the decoy one slot below the definer carries the same name" T-LABEL
-   s" DR-DECOY" IDX 1- NAME$  s" DR-DECOY" CLAUSE NAME$  STR= TTRUE
-   s" ... in the same wordlist, and is a different record" T-LABEL
-   s" DR-DECOY" IDX 1- WID  s" DR-DECOY" CLAUSE WID  T=
-   s" DR-DECOY" IDX 1- START  s" DR-DECOY" CLAUSE START  <> TTRUE
-   s" the branch lands on the clause and not on the decoy that shares its name" T-LABEL
-   s" DR-FIVE" IDX END TGT  s" DR-DECOY" IDX 1- START  <> TTRUE
-
    s" a packaged definer keeps its clause in the package's wordlist" T-LABEL
    s" DRP:MK" IDX 1+ WID  s" DRP:MK" IDX WID  T=
    s" ... and that is not the global wordlist" T-LABEL
    s" DRP:MK" IDX WID  GLOBAL-WID <>  TTRUE
+   s" ... so the global word holding its clause name stands beside it" T-LABEL
+   s" MK;does" EV-N 222 T=
+
+   HELD-NATIVE
+   EXPORTED-NATIVE
+   EXPORT-HELD
 
    s" a refused definition counts neither slot" T-LABEL
    REJ1 @ REJ0 @ T=
+   REJECTED-NAMED
 
    POST-EMIT-ROLLBACK
    FORGET-CASE
@@ -286,6 +411,8 @@ public
 \ span. The layout measured below is the native publication's - habu2.f
 \ DOES-REC:NATIVE-PRIM appends the permanent name past both spans - so this file
 \ selects tier 1 the way an executable build does, ahead of the definitions.
+\ The one tier-0 case runs first.
+DOESREC-TEST:RUN-JIT
 require src/compiler/native/compiler.f
 1 set-tier
 

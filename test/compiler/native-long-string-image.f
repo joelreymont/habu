@@ -1,8 +1,11 @@
 \ Build and run native images with decoded literals across the old 4096-byte
 \ elaborator limit. The printed directory retains both source files and images
-\ so the same build command can be repeated after this test exits.
+\ so the same build command can be repeated after this test exits. The subjects
+\ require nothing, so each build's maker runs on the keyed linker image
+\ (test/preloaded-engine.f) and compiles the literals as it loads the subject.
 require test/gate-common.f
 require lib/engine-candidate.f
+require test/preloaded-engine.f
 
 package NATIVE-LONG-STRING-IMAGE-TEST
 
@@ -60,6 +63,7 @@ create IMAGE FS-PATH-CAP allot    variable IMAGE-U
    s" : MAIN ( -- ) NLB-SUBJECT:RUN ;" GE-SRC-LINE ;
 
 : BUILD ( -- )
+   PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
    SUBJECT$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -68,7 +72,7 @@ create IMAGE FS-PATH-CAP allot    variable IMAGE-U
    SUBJECT$ GE-ARG+
    s" -o" GE-ARG+
    IMAGE$ GE-ARG+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN linker linkeru >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ GE-TIMEOUT-MS GE-RUN-ENV
    s" long literal production build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" long literal executable" GE-FAIL then ;

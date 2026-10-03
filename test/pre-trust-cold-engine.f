@@ -6,7 +6,7 @@ package PRE-TRUST-COLD-ENGINE
    SCRIPT-ARGC 1 <> if s" pre-trust cold engine: expected output path" 76 die then
    0 0= STDIN? !
    NULL$ ENGINE-EMIT:FORTH
-   s" hb" 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE ;
+   SIGN-ID:ENGINE$ 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE ;
 
 RUN
 ;package

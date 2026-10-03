@@ -87,7 +87,7 @@
 -2900 constant E-DIAG-FIRST
 -2999 constant E-DIAG-LAST
 -2900 constant E-DIAG-SCHEMA
--2901 constant E-DIAG-CAPACITY
+-2901 constant E-DIAG-CAPACITY \ re-registered as the same (code, name) in src/core/render.f package RDIAG, which compiles before lib/
 -2902 constant E-DIAG-ORIGIN
 
 \ Tables: -3000..-3099
@@ -220,7 +220,10 @@
 -4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
 -4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
--4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
+\ -4006 was E-ZED-TIMEOUT: a ZED run's expired deadline throws E-PROC-TIMEOUT
+\ from PROC-CMD:RUN-RC, as every process deadline does. The number stays unused.
+\ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
+\ raises it when its bin/hb spawn that emits a PTX kernel exits nonzero.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
 \ Floating mathematics: -9020..-9029, minted by lib/fmath.f, which owns package
@@ -277,8 +280,8 @@
 -5902 constant E-FMT-BAND        \ layout FMT-ABI band width disagrees with FMT-NUM-CAP
 
 \ Bounded pointers (package SPAN, lib/span.f): -6100..-6199. The block sits
-\ between lib/type/deftype.f's own -6001/-6002 and lib/render.f's -6210; both of
-\ those keep their codes in their own files and reserve no range.
+\ after lib/type/deftype.f's own -6001/-6002; that file keeps its codes to
+\ itself and reserves no range.
 -6100 constant E-SPAN-FIRST
 -6199 constant E-SPAN-LAST
 -6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
@@ -973,10 +976,11 @@
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
 -8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open
--8571 constant E-NCOMP-TEXT    \ definition source or name longer than the engine capture can hold
+-8571 constant E-NCOMP-TEXT    \ definition source longer than the engine capture can hold
 -8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-NCOMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
+-8575 constant E-NCOMP-NAME-CAP \ a definition name longer than the native compiler's function names hold
 -8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
@@ -1143,7 +1147,7 @@
 \ capability; while it is open the refusal is what the chain answers, and it is
 \ its own code rather than the generic unmodelled-word one so a census can tell a
 \ quotation the chain declined from a word it has never heard of.
--8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` inside another one, which the engine itself refuses to compile; a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
+-8651 constant E-NELAB-QUOT     \ a quotation this elaborator has no rule for: a `[:` the body never closes; a `;]` with no `[:` open; a quotation nothing consumes, or one two consumers reach because its value was duplicated; a body whose declared effect is not an ordinary routine's; or a body holding a locals group
 
 \ `is NAME` binds a quotation to a deferred word by storing into that word's
 \ dispatch cell, so what the elaborator has to be sure of is that NAME really
@@ -1423,3 +1427,26 @@
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
 -9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
 -9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main
+
+\ File URIs (package URI, lib/uri.f): -9370..-9379.
+-9370 constant E-URI-FIRST
+-9379 constant E-URI-LAST
+-9370 constant E-URI-SCHEME       \ a scheme other than `file`, compared without case, or none
+-9371 constant E-URI-AUTHORITY    \ after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path
+-9372 constant E-URI-ESCAPE       \ a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped
+-9373 constant E-URI-RELATIVE     \ a path to encode that does not start with `/`, so no file URI names it
+
+\ Content-Length framing (package CONTENT-LENGTH, lib/content-length.f): -9380..-9389.
+-9380 constant E-CONTENT-LENGTH-FIRST
+-9389 constant E-CONTENT-LENGTH-LAST
+-9380 constant E-CONTENT-LENGTH-MALFORMED  \ a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP
+-9381 constant E-CONTENT-LENGTH-TRUNCATED  \ end of file inside a header block or a body
+-9382 constant E-CONTENT-LENGTH-STATE      \ a reader used before BIND or after a refusal, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum
+
+\ JSON-RPC 2.0 envelope (package JSON-RPC, lib/json-rpc.f): -9390..-9399.
+-9390 constant E-JSON-RPC-FIRST
+-9399 constant E-JSON-RPC-LAST
+-9390 constant E-JSON-RPC-ID             \ a response written with an empty id
+
+\ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
+\ LSP.

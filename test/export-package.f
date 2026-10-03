@@ -37,6 +37,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/outcome.f
 
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS
@@ -240,13 +241,16 @@ create XPK-EMPTY 1 allot
 
 \ --- child spawn + outcome capture --------------------------------------------
 
-: XPK-STORE! ( len len outcome -- )
-   MATCH outcome
+: XPK-STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N XPK-OUT-U !  erru LEN>N XPK-ERR-U !
+   oc MATCH outcome
      exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
      signaled OF XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
-     timeout OF 0 XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
-   ;MATCH
-   LEN>N XPK-ERR-U !  LEN>N XPK-OUT-U ! ;
+     timeout OF
+        src srcu XPK-OUT XPK-OUT-U @ XPK-ERR XPK-ERR-U @ T-TIMED-OUT
+     ENDOF
+   ;MATCH ;
 
 : XPK-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u XPK-CAP > if E-FS-CAPACITY throw then
@@ -254,20 +258,21 @@ create XPK-EMPTY 1 allot
    u XPK-IN-U ! ;
 
 : XPK-RUN-LOAD ( ptr u8 n -- )
-   XPK-CHILD 2swap WRITE-ALL
+   {: src:ptr srcu:n :}
+   XPK-CHILD src srcu WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    XPK-CHILD >LEN PROC-ARGV+
    XPK-HB$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   XPK-STORE! ;
+   src srcu XPK-STORE! ;
 
 : XPK-RUN-STDIN ( ptr u8 n -- )
    XPK-IN!
    PROC-ARGV-RESET
    XPK-HB$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   XPK-STORE! ;
+   XPK-IN$ XPK-STORE! ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}
    XPK-EXITED @ TTRUE

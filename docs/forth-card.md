@@ -39,16 +39,21 @@ public
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
-  `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. The new
-  `R` is checked and called as itself even when it spells an engine word: the
-  checker's rules for `@`, `!`, `create` and the like follow the engine's
+  `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. A
+  `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`. The
+  new `R` is checked and called as itself even when it spells an engine word:
+  the checker's rules for `@`, `!`, `create` and the like follow the engine's
   `INTRINSIC` tag, which a redefinition does not carry.
 - A call binds a word the engine holds. A name only the checker knows - a row
   `CHECK!` alone recorded, a word `VERIFY:SOURCE-BUF-IN-SCOPE` scanned - is
   `E-UNDEFINED` in a body; `VERIFY:CANDIDATE-IN-SCOPE`
   (`require src/habu/verify-source.f`) asks the certify path, where it binds.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
-  `E-RESERVED-DEFINITION`. A number-shaped name (`: 42`) is refused by
+  `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
+  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer the lint
+  reads (`:`, `TRUSTED:`, `defer`, `constant`, …), since `tools/check.f` reads
+  their spelling to skip the target arms the engine never runs; it refuses
+  them, not `--load`. A number-shaped name (`: 42`) is refused by
   `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
@@ -108,11 +113,13 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `@` on a `ptr u8` | `E-MISMATCH` — use `c@` |
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
 | a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE`, rc 75 |
-| a second `[:` while one is open | **rc 75, bare `[:` on stderr, no code** |
+| a 33rd `[:` while 32 are open | `E-UNCHECKABLE`; `--load` exits 75, `hb: quotation nesting full at 32 levels` |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
+| a definer (`:`, `DEFTYPE`, `package`, …) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 67 |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses | `E-BAD-STORAGE`, rc 70 |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
@@ -178,19 +185,26 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `s>number?` | `STR>NUMBER?`, `lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
+A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
+`CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
+`tools/check.f` leaves to its run, which type-checks their uses there.
+
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
 plus `[: IMPL ;] is W`, `parse-name`, `MATCH … ;MATCH`, `undefine`, and
 `true false 0<> fdup` with no require. An `endcase` default arm producing a
-value must leave the selector on top (`30 swap endcase`); `0 0 do … loop` runs
-once, `0 0 ?do … loop` zero times. `evaluate-closed ( ptr u8 n -- )` evaluates
-source in a body: the text's `depth` starts at 0, a token reaching below it
-throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the caller's
-cells intact either way. An xt the text runs cannot reach them: its reach
-under the floor throws 70 too. A text that ends inside a definition it opened
-is refused as every source is, `hb: source ended inside definition: NAME`,
-rc 74, and the definition is rolled back (forth.md **Checked code and
-primitive boundaries** lists the open cases).
+value must leave the selector on top (`30 swap endcase`). `do` always takes its
+first turn: `0 0 do … loop` and `-1 0 do … loop` run once. `?do … loop` enters
+only while start < limit, signed, so `0 0`, `-1 0` and `MIN-N 0` run zero times
+and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
+`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ptr u8 n -- )`
+evaluates source in a body: the text's `depth` starts at 0, a token reaching
+below it throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the
+caller's cells intact either way. An xt the text runs cannot reach them: its
+reach under the floor throws 70 too. A text that ends inside a definition it
+opened is refused as every source is,
+`hb: source ended inside definition: NAME`, rc 74, and the definition is rolled
+back (forth.md **Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -250,12 +264,12 @@ never holds an address".
 
 - Library codes are named constants in `lib/errors.f`; checker throws also use
   positive codes above 255 in their owning source. Codes 0..255 serve as
-  process exit statuses and may be shared. Positive checker codes may be reused
-  across files, but distinct `E-` names in one file must have distinct codes.
-  Negative library codes are unique across files. A library owns one inclusive
-  block of about a hundred bounded by its own `E-X-FIRST` / `E-X-LAST` (arrays
-  `-2000`, filesystem `-2100`, strings `-2200`, …) and reserves that whole
-  range whether or not every code is minted;
+  process exit statuses and may be shared. Every other code, negative or above
+  255, has one `E-` name across the tree; a file that needs it under its own
+  name reads the owner's constant (`E-OWNER constant E-LOCAL`). A library owns
+  one inclusive block of about a hundred bounded by its own `E-X-FIRST` /
+  `E-X-LAST` (arrays `-2000`, filesystem `-2100`, strings `-2200`, …) and
+  reserves that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
 - A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
   in the file that owns the package (`lib/json-read.f`), and `lib/errors.f`
@@ -283,17 +297,22 @@ forth.md: **Errors**, **Integer arithmetic**.
 
 - `require lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
-  path resolves against the `--load` entry's directory, then the working
-  directory, so `require lib/…` names the tree root. Every file requires its
-  **own** dependencies.
+  path resolves against the root that resolved the requiring file (the
+  `--load` entry's directory for the entry), then the working directory, so
+  `require lib/…` names the tree root. A file found through the working
+  directory keeps that root for its own requires: an overlay copy of one tree
+  file, required by a tree file, loads beside the tree's copy and dies on the
+  duplicate (exit 78; test/aot-capture-bound.f copies the requirer too). Every
+  file requires its **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws 70, a file that ends with cells on
   the stack is `E-EVAL-RESIDUE`, and one that ends inside a definition it
   opened is refused there, rc 74, as every source is. A value crosses a load
   only as a word the file defines.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
-  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
-  `src/` file:
+  `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
+  `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`
+  refuses one with `E-ENGINE-PROVIDED`):
   their words resolve with no require and a `require` is a no-op. Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
@@ -332,7 +351,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin` |
+| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 64-byte tier-1 name |
 | Constants | hex versus decimal, `src/config.fs` |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |

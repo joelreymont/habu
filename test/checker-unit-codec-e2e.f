@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 package CHECKER-UNIT-CODEC-TEST
 
 $40000 constant ART-CAP
+7159 constant E-UNIT-FORMAT   \ src/core/checker.f CHECKER-REG's, private there
 create ART ART-CAP allot
 create BAD ART-CAP allot
 variable ART-U
@@ -25,7 +26,7 @@ create PATH FS-PATH-CAP allot
 TRUSTED: MARK ( -- )
    OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ execute ;
 
-TRUSTED: EXPORT ( -- ptr u8 n )
+TRUSTED: UNIT-EXPORT ( -- ptr u8 n )
    OWNER CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + CELL-VIEW @ execute ;
 
 TRUSTED: IMPORT ( ptr u8 n -- )
@@ -42,7 +43,7 @@ TRUSTED: DEFER-CHANGE ( -- )
    s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate ;
 
 : SAVE ( -- )
-   EXPORT {: a:ptr u:n :}
+   UNIT-EXPORT {: a:ptr u:n :}
    u ART-CAP <= TTRUE
    a ART u BYTE-COPY
    u ART-U !
@@ -85,14 +86,14 @@ TRUSTED: DEFER-CHANGE ( -- )
    \ EW.SYM is graph-header cell nine; $10000 marks defer metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-ROOT-GRAPH ( -- )
    ART BAD ART-U @ BYTE-COPY
    \ A private root bit cannot be imported as graph control metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ $20000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-DEFER-CONTROL ( -- )
    ART 5 cells + CELL-VIEW @ 0 > TTRUE
@@ -100,7 +101,7 @@ TRUSTED: DEFER-CHANGE ( -- )
    \ A control row stores its symbol ordinal, then packed flags and masks.
    BAD FIRST-CONTROL-OFF + CELL + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 public
 
@@ -120,7 +121,7 @@ public
    CHECK-CLIENT
    s" unit exporter refuses changed defer state" T-LABEL
    MARK DEFER-CHANGE
-   [: EXPORT 2drop ;] catch 0<> TTRUE
+   [: UNIT-EXPORT 2drop ;] catch 0<> TTRUE
    T-REPORT
    s" checker unit artifact: " type ROOT$ type
    s" /unit-nbr.checker-unit" type cr ;

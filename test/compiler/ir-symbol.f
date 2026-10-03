@@ -8,7 +8,8 @@
 \ the byte-compare verify step; byte packing round-trips across cell
 \ boundaries through EQ? and COPY; capacity for rows and for pool bytes
 \ rejects named at the committed ceilings while the stores stay readable and
-\ duplicate interns still answer; foreign keys, foreign symbol-ids, foreign
+\ duplicate interns still answer, and a byte length no pool holds rejects before
+\ a byte is read; foreign keys, foreign symbol-ids, foreign
 \ contexts, cross-module store pairings, and cross-context identities
 \ reject; non-interner, misaligned, and span-forged arenas reject
 \ fail-closed; a frozen module serves every reader through the arena views
@@ -20,6 +21,7 @@ require lib/test.f
 require lib/string.f
 require test/checker-assert.f
 require src/compiler/ir/symbol.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package IR-SYM-TEST
 private
@@ -161,6 +163,27 @@ create CBUF 32 allot
 : LN-CASE ( -- )
    s" a negative byte length is rejected at intern" T-LABEL
    [: LN-RUN ;] E-IR-SYM-LEN TTHROWSQ ;
+
+\ ---- a byte length no pool holds ---------------------------------------------
+\ INTERN hashes the presented bytes before it looks them up. No symbol is longer
+\ than the pool's committed bytes, so a longer length is refused before a byte is
+\ read: the maximum cell ran the hash off the three-byte span, and in whole cells
+\ it wraps the room check's sum back under the ceiling.
+-1 1 rshift constant MAX-CELL
+
+: LX-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 64 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   s" abc" {: p u:n :}
+   c a r key p MAX-CELL IR-SYM:INTERN drop ;
+
+: LX-RUN ( -- )
+   BND [: LX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LX-CASE ( -- )
+   s" a byte length past the pool is rejected before a byte is read" T-LABEL
+   [: LX-RUN ;] E-IR-SYM-BYTES TTHROWSQ ;
 
 \ ---- foreign owners ----------------------------------------------------------
 : XO-ID-BODY ( IR-CTX:ctx -- )
@@ -569,6 +592,7 @@ create CBUF 32 allot
    CL-CASE
    CP-CASE
    LN-CASE
+   LX-CASE
    XO-CASES
    BD-CASE
    CAP-CASES
@@ -770,7 +794,7 @@ create CBUF 32 allot
    medium 1024 3 * < TTRUE
    large 2048 3 * < TTRUE
    large medium 3 * < TTRUE
-   ." symbol lookup probes (512/1024/2048): " small . medium . large . cr ;
+   ." symbol lookup probes (512/1024/2048): " small FMT:.INT s" /" type medium FMT:.INT s" /" type large FMT:.INT cr ;
 
 
 : CLONE-GROW-BODY ( IR-CTX:ctx -- )

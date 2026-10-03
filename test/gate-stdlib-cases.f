@@ -41,6 +41,20 @@ SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
 
+\ The next two need no keyed image either, so they run beside the image build
+\ rows through the registry's first two holds: hb-build-stripped below waits
+\ for the saver and linker images, 6.5 s into a measured gate start, and
+\ aot-named-cells-image for the fixture writer and cold host, 19.7 s in.
+\ Registered after those rows they left two slots idle through the first hold
+\ and one or two through the second.
+SUITE build-fixpoint-fixtures
+   tools/build-fixpoint-test.f
+;SUITE
+
+SUITE stripped-entry
+   test/stripped-entry.f
+;SUITE
+
 \ Each C2 acceptance row builds its own rooted and ordinary native images,
 \ then loads fresh source and saved-image consumers from its owned source tree.
 SUITE c2-memory
@@ -69,14 +83,6 @@ SUITE hb-build-stripped-cache
 
 SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
-;SUITE
-
-SUITE stripped-entry
-   test/stripped-entry.f
-;SUITE
-
-SUITE build-fixpoint-fixtures
-   tools/build-fixpoint-test.f
 ;SUITE
 
 SUITE hb-build-large-source
@@ -132,6 +138,10 @@ SUITE hb-build-timeout-json
    tools/hb-build-timeout-json-test.f
 ;SUITE
 
+SUITE hb-build-repl-twin
+   tools/hb-build-repl-twin-test.f
+;SUITE
+
 SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE
@@ -144,13 +154,33 @@ SUITE hb-build-aot-cache
 
 \ app-image is the first row that needs the unsealed engine: it holds the
 \ registry until whitebox-engine-build retires (test/gate-images.f), about 89 s.
-\ Every row above needs no image or only the fixture writer and cold host, so
-\ they keep the other slots busy through that build. The long rows that need
-\ the engine follow the hold, longest in the pool first, so none of them starts
-\ behind the short rows and sets the drain tail; the checker-scan-index rows
-\ take under a second.
+\ Every row above needs no image, the fixture writer and cold host, or the saver
+\ and linker images (4.5 s and 2.9 s to build in a full pool), so they keep the
+\ other slots busy through that build. The long rows that need the engine follow
+\ the hold, longest in the pool first, so none of them starts behind the short
+\ rows and sets the drain tail; the checker-scan-index rows take under a second.
 SUITE app-image
    test/app-image.f
+;SUITE
+
+\ The saved native builder rows (test/native-builder-image-lib.f lists them)
+\ run the keyed builder test/saved-builder.f, so each holds the registry until
+\ saved-builder-build retires. They follow the whitebox hold: that build row
+\ starts beside whitebox-engine-build, and its save took 21 s CPU where the
+\ unsealed engine's build took 74 s, measured on one loaded host. The whitebox
+\ and e2e rows run one engine build each; the refusals row's build stops at the
+\ first post-hook prefix file. The whitebox row compares the saved builder's
+\ unsealed engine with whitebox-engine-build's.
+SUITE native-builder-image-whitebox
+   test/native-builder-image-whitebox.f
+;SUITE
+
+SUITE native-builder-image
+   test/native-builder-image-e2e.f
+;SUITE
+
+SUITE native-builder-image-refusals
+   test/native-builder-image-refusals.f
 ;SUITE
 
 SUITE native-window-owner
@@ -303,6 +333,10 @@ SUITE check-cli-boundary
 
 SUITE check-verify
    tools/check-verify-test.f
+;SUITE
+
+SUITE lsp-boundary
+   tools/lsp-test.f
 ;SUITE
 
 SUITE streaming-sha256
@@ -557,6 +591,10 @@ SUITE compiler-native-arm-frame-order
    test/compiler/native-arm-frame-order.f
 ;SUITE
 
+SUITE compiler-native-wide-frame
+   test/compiler/native-wide-frame.f
+;SUITE
+
 SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
@@ -685,15 +723,19 @@ SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
 ;SUITE
 
-\ Both rows run on the linker image (test/preloaded-engine.f). The first row that
-\ needs it holds the registry until app-image-build and linker-build pass, so the
-\ second adds no hold of its own.
+\ These three rows run on the linker image (test/preloaded-engine.f). The first
+\ row that needs it holds the registry until app-image-build and linker-build
+\ pass, so the others add no hold of their own.
 SUITE stripped-address
    test/stripped-address.f
 ;SUITE
 
 SUITE native-gate-aot-negative
    test/gate-aot-negative.f
+;SUITE
+
+SUITE stripped-preloaded-runtime
+   test/stripped-preloaded-runtime.f
 ;SUITE
 
 SUITE stripped-literal
@@ -733,6 +775,10 @@ SUITE compiler-native-provider-rows
 
 SUITE compiler-native-internal-call
    test/compiler/native-internal-call.f
+;SUITE
+
+SUITE compiler-native-hookless-reject
+   test/compiler/native-hookless-reject.f
 ;SUITE
 
 SUITE compiler-native-stored-quot
@@ -811,6 +857,10 @@ SUITE compiler-native-loop
 
 SUITE compiler-jit-plusloop
    test/compiler/jit-plusloop.f
+;SUITE
+
+SUITE compiler-jit-do
+   test/compiler/jit-do.f
 ;SUITE
 
 SUITE compiler-native-edge-permutation
@@ -1234,6 +1284,28 @@ SUITE base64
    lib/base64-test.f
 ;SUITE
 
+SUITE utf16-units
+   lib/utf16-test.f
+;SUITE
+
+SUITE file-uri
+   lib/uri-test.f
+;SUITE
+
+\ Exact reads and full writes over pipes; the write cases run under the
+\ profiler's SIGALRM storm to force short writes.
+SUITE fd-io
+   lib/fd-io-test.f
+;SUITE
+
+SUITE content-length
+   lib/content-length-test.f
+;SUITE
+
+SUITE json-rpc
+   lib/json-rpc-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
@@ -1262,11 +1334,13 @@ SUITE five-bindings
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
 \ starts on a Unix-domain socket, runs lib/pg-test.f and then lib/db/rows-test.f
-\ against, and stops however they end. initdb and pg_ctl on PATH are a gate
-\ requirement (docs/bootstrap.md). The harness's step deadlines sum to 300 s,
-\ inside SUITE-TIMEOUT-MS.
+\ against, and stops however they end; then the same harness killed by a pool,
+\ which must leave no server process and no socket directory. initdb and
+\ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
+\ step deadlines sum to 300 s, inside SUITE-TIMEOUT-MS.
 SUITE pg
    test/db/pg-cluster.f
+   test/db/pg-kill-test.f
 ;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
@@ -1401,6 +1475,18 @@ SUITE date-helpers
 
 SUITE compiler-compile-floor
    test/compiler/compile-floor.f
+;SUITE
+
+\ The budgets are thread CPU time on each measurement's cheapest sample, over
+\ rounds that outlast a slow stretch, and the floor means meet only a loose
+\ ceiling. Measured in this pool on this 12-core machine: a scratch registry of
+\ sixteen copies of this row, eight slots, beside a native build, at load
+\ average 105-164: 400 of 400 rows green in 25 passes. The tools with one floor
+\ round and three bench rounds were red in 2 of 128 rows in the same pool at
+\ load 122-129: a whole tier-0 floor set on a slow core, and one tier-1
+\ benchmark slow in all three rounds.
+SUITE compiler-compile-floor-gate
+   test/compile-floor-gate.f
 ;SUITE
 
 SUITE icode-fixup
@@ -1692,6 +1778,10 @@ SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
 
+SUITE engine-span-end
+   test/engine-span-end.f
+;SUITE
+
 SUITE checker-owner-descriptor
    test/checker-owner-descriptor.f
 ;SUITE
@@ -1702,6 +1792,14 @@ SUITE checker-soundness
 
 SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
+;SUITE
+
+SUITE checker-dup-record
+   test/checker-dup-record.f
+;SUITE
+
+SUITE diag-buffer-capacity
+   test/diag-buffer-capacity.f
 ;SUITE
 
 WHITEBOX-SUITE checker-verify-order
@@ -1971,6 +2069,10 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
+SUITE diag-position
+   test/diag-position-test.f
+;SUITE
+
 SUITE core-prefix-mark
    test/prefix-mark-test.f
 ;SUITE
@@ -2009,6 +2111,10 @@ SUITE tmp-path
 
 SUITE gate-pool
    test/gate-pool-test.f
+;SUITE
+
+SUITE gate-common
+   test/gate-common-test.f
 ;SUITE
 
 SUITE num-types
@@ -2091,6 +2197,12 @@ SUITE process-env
    lib/process-env-test.f
 ;SUITE
 
+\ A tree walk the kernel refuses throws rather than reading the refusal as
+\ nobody there.
+SUITE process-tree
+   lib/process-tree-test.f
+;SUITE
+
 SUITE test-subject
    lib/test/subject-test.f
 ;SUITE
@@ -2127,6 +2239,10 @@ SUITE fixture-cache
    test/fixture-cache-test.f
 ;SUITE
 
+SUITE keyed-image-reap
+   test/keyed-image-reap-test.f
+;SUITE
+
 SUITE build-cache-retain
    lib/build-cache-retain-test.f
 ;SUITE
@@ -2149,6 +2265,14 @@ SUITE realpath
 
 SUITE source-root
    test/source-root-test.f
+;SUITE
+
+SUITE room-left
+   test/room-left-test.f
+;SUITE
+
+SUITE name-length
+   test/name-length-test.f
 ;SUITE
 
 SUITE boot-row
@@ -2394,6 +2518,17 @@ SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE
 
+\ A signalled gate root, and a row past its deadline, leave no process and no
+\ scratch behind.
+SUITE gate-signal
+   test/gate-signal-test.f
+;SUITE
+
+\ A signalled check.f leaves no process and no scratch behind.
+SUITE check-signal
+   test/check-signal-test.f
+;SUITE
+
 WHITEBOX-SUITE generated-declaration-transaction
    test/generated-declaration-transaction-suite.f
 ;SUITE
@@ -2510,12 +2645,6 @@ SUITE type-match
 \ lib/test/suite.f), so anywhere earlier every slot idles until the rows before
 \ it finish, and the rows after it start only when it ends.
 GROUP SEQ native-serial-gates
-
-\ Compiler budgets measure microseconds. The parallel pool can exceed them
-\ through scheduling contention even when the unchanged engine passes alone.
-SUITE compiler-compile-floor-gate
-   test/compile-floor-gate.f
-;SUITE
 
 \ The PTY REPL fixture starts and reaps eight engine children. Keep it in the
 \ idle serial group so the fixed 20 s child-reap budget is not consumed by a

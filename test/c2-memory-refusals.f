@@ -74,7 +74,7 @@ public
    s" a return-stack cell cannot hide exclusive authority" T-LABEL
    s" : C2-MEM-RETURN ( mut-view<p,q,a,u8> -- ) >r ;" 70 STATUS? TTRUE
    s" a typed global cannot hold exclusive authority" T-LABEL
-   s" TYPED-VARIABLE C2-MEM-GLOBAL mut-view<p,q,a,u8>" 67 STATUS? TTRUE
+   s" TYPED-VARIABLE C2-MEM-GLOBAL mut-view<p,q,a,u8>" 70 STATUS? TTRUE
    s" a task exit quotation cannot capture a borrowed local" T-LABEL
    s" : C2-MEM-TASK ( read-view<p,q,u8> -- ) {: view :} [: view drop ;] TASK:SELF TASK:AT-EXIT ;" 75 STATUS? TTRUE
    s" a mutable view cannot be relabeled as a raw pointer" T-LABEL

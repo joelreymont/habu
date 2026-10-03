@@ -19,6 +19,8 @@
 \ the checked build stays fail-closed through the image writer).
 
 require src/habu/address-cells.f
+require src/habu/aot-arm.f
+require src/habu/aot-decl.f
 require src/habu/code-span.f
 require src/habu/sites.f
 require src/habu/terminal-call.f
@@ -38,6 +40,10 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-DBASE ( -- ptr n ) dbase@ AOT-N>U8 CELL-VIEW ;
 : AOT-DBASE-N ( -- n ) dbase@ ;
 : AOT-DATA-N ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
+\ WLFIND). The primitive is trusted-only by its own row (prims.f), as for
+\ outer.f WL-PROBE.
+TRUSTED: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-LIVE-DATA ( -- ptr n ) data-base ;
 : AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
@@ -638,8 +644,19 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    loop
    -1 ;
 
-: ACAP-PKG-PUB ( n -- n ) {: w:n :}               \ the package row publishing wid w, or -1
-   w 0 0= ACAP-PKG-ROW ;
+\ The package row publishing wid w, or -1, from the target index rather than the
+\ walk above, because the call scan asks it once per site into a package: 417 of
+\ the compiler chain's 7020 capture samples were that walk. The index holds every
+\ record under its [0], a package row's [0] is its public wid, and an ordinary
+\ record's [0] is a code entry, which no wordlist number reaches. So the lowest
+\ record the index answers for w is the row the walk finds, unless it is a
+\ retired one - and a wid is allocated once (habu1.f BWORDLIST counts up), so no
+\ live row carries the wid of a retired one.
+: ACAP-PKG-PUB ( n -- n ) {: w:n :}
+   w ACAP-TGT>REC {: p:n :}
+   p 0 < if -1 exit then
+   p AOT-REC AOT-RWID DICT-WL:NAMESPACE = if p exit then
+   -1 ;
 
 : ACAP-QUAL$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n wa:ptr wu:n :}
    pu wu + 1+ ACAP-QUAL-CAP > if
@@ -685,11 +702,19 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 
 variable ACAP-P
 
-\ A private word of a pre-window package is the one callee no scope can carry:
-\ the qualifier reaches a package's PUBLIC wordlist only. It is also unreachable -
-\ a caller in that package's private scope is itself a record of that package, and
-\ ACAP-?WID refuses a window record whose wid the window did not create - so this
-\ names the next producer of one rather than a case that arrives.
+\ A callee is refused when no record carrying its entry sits in a scope the seed
+\ can search: the qualifier reaches a package's PUBLIC wordlist only, and a record
+\ `undefine` retired is in no wordlist at all. The producer is a window word
+\ compiled against a word that was then retired and replaced
+\ (test/aot-band-retired.f): its spelling now reaches another body. A call to a
+\ private word with no public alias does not arrive here - a caller outside its
+\ package cannot name it, and one inside is a window record of that package,
+\ which ACAP-?WID refuses first. Nor does a branch into the does> clause of a
+\ private definer that a window word was made with through its public alias:
+\ EXPORT publishes the clause with the definer (habu2.f DOES-REC "the clause an
+\ export carries"), so ACAP-SITE-REC finds the public record of the clause
+\ (test/aot-band-export-does.f), and goes on finding it after `undefine`
+\ retired the private pair (test/aot-band-export-undef.f).
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
@@ -717,7 +742,35 @@ variable ACAP-P
    s" , which its own window created; a call site carries no window coordinate" type cr
    s" aot-capture: call site scope inside the capture window" 74 die ;
 
-: ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: k:n :}   \ callee record -> name, scope
+\ Whether ACAP-SITE-SCOPE below spells record k's wordlist without refusing it:
+\ a layout constant (wid 0 among them) or a pre-window package's public wordlist.
+: ACAP-SCOPE-NAMED? ( n -- bool ) {: k:n :}
+   k AOT-REC AOT-RWID {: w:n :}
+   w 0 >= w FIRST-DYNAMIC-WID < and if true exit then
+   w ACAP-WID-IN? if false exit then
+   w ACAP-PKG-PUB 0 >= ;
+
+\ WHICH RECORD NAMES A CALLEE. `EXPORT` gives a body a second record under a
+\ public name (habu2.f C-EXPORT), so the first record carrying a callee's entry -
+\ the one ACAP-TGT>REC answers - can be a private word whose only public name is a
+\ later record. When the first record's scope is one the seed cannot search, the
+\ site travels under the first later record of the same entry whose scope it can,
+\ taken from below the prelude mark because a record above it is in no target. No
+\ such record leaves the first one, and ACAP-SITE-SCOPE refuses it by name. The
+\ walk runs only where that refusal used to end the capture.
+: ACAP-SITE-REC ( n -- n ) {: k:n :}
+   k ACAP-SCOPE-NAMED? if k exit then
+   k ACAP-PRE-R @ >= if k exit then
+   k AOT-REC AOT-RXT {: xt:n :}
+   ACAP-PRE-R @ k 1+ ?do
+      i AOT-REC AOT-RXT xt = if
+         i ACAP-SCOPE-NAMED? if i unloop exit then
+      then
+   loop
+   k ;
+
+: ACAP-SITE-SCOPE ( n -- ptr u8 n n ) {: callee:n :}   \ callee record -> name, scope
+   callee ACAP-SITE-REC {: k:n :}
    k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN {: a:ptr u:n :}
    k AOT-REC AOT-RWID {: w:n :}
    w 0 >= w FIRST-DYNAMIC-WID < and if a u w exit then
@@ -1633,10 +1686,39 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-XREF-XT ( ptr n -- n )
    dup XREF-FOUND? if XREF-START exit then drop 0 ;
 
-: ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
-   w WID-QUAL = if a u XREF-FIND ACAP-XREF-XT exit then
-   a u w XREF-FIND-WL ACAP-XREF-XT ;
+\ ONE PROBE PER SITE, NOT ONE PASS. The lookup is the engine's one-wordlist search
+\ (habu1.f WLFIND), the routine EM-AOT-PATCH-NAMED-SITES calls for a scoped site,
+\ and it answers from the dictionary's hash index. xref.f XREF-FIND-WL answers the
+\ same question by walking every record down from the newest, and asked once per
+\ call site that walk was the capture: 99% of CAPTURE's profile samples on a
+\ 1024-filler window and 92% on the compiler chain, growing as sites times records.
+: ACAP-WL-XT ( ptr u8 n n -- n ) AOT-WL-RECORD ACAP-XREF-XT ;
 
+\ A qualified name splits where xref.f XREF-FIND splits it - at its one colon, with
+\ a second colon resolving nothing and an edge colon leaving the name bare - and
+\ each half is one probe: the qualifier in the namespace wordlist, the tail in the
+\ public wordlist that package row carries.
+: ACAP-QUAL-XT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = if 0 exit then
+   q 0 < if a u 0 ACAP-WL-XT exit then
+   a q DICT-WL:NAMESPACE AOT-WL-RECORD {: ns:ptr :}
+   ns XREF-FOUND? 0= if 0 exit then
+   a q 1+ +  u q - 1-  ns XREF-PKG-PUBLIC  ACAP-WL-XT ;
+
+: ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
+   w WID-QUAL = if a u ACAP-QUAL-XT exit then
+   a u w ACAP-WL-XT ;
+
+\ The probe misses a live callee asked under its own name and scope only where
+\ that name does not identify it, and both such names belong to a does>-clause
+\ record, which J-DOES names after its definer (habu2.f DOES-REC) without the
+\ duplicate wall. A public definer whose tail ends in a colon has a clause whose
+\ qualified spelling holds two colons, which the qualifier path refuses
+\ (test/aot-band-site.f). And a clause's name can already be live in its
+\ wordlist, held by a word defined as X;does before X was, and the probe answers
+\ that older row. The clause of a definer `undefine` replaced is not one: it
+\ retires with its definer (xref.f XREF-RETIRE-INDEX, test/aot-band-redef.f).
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .
    s" bakes the name " type a u type
@@ -2418,7 +2500,11 @@ public
 
 : BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > if s" aot-capture: boot-run name too long" 74 die then
-   AOT-BOOTRUN-LEN @ u + 2 + AOT-BOOTRUN-CAP > if s" aot-capture: boot-run overflow" 74 die then
+   \ The length is the caller's: a negative one is refused, and the rest is
+   \ compared with the room left rather than added to what is used.
+   u 0 < u AOT-BOOTRUN-CAP 2 - AOT-BOOTRUN-LEN @ - > or if
+      s" aot-capture: boot-run overflow" 74 die
+   then
    AOT-BOOTRUN-LEN @ {: off:n :}
    u  AOT-BOOTRUN-BUF@ off + c!                     \ [len]
    u 0 ?do a i + c@  AOT-BOOTRUN-BUF@ off + 1+ i + c!  loop

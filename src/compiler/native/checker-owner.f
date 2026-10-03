@@ -31,6 +31,7 @@ defer SOURCE-QUOT-IN ( n n -- n n )
 defer SOURCE-QUOT-OUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
+defer SOURCE-REPORT ( -- )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -67,10 +68,11 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 \ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CHECK-OFF with
 \ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CHECK-OFF certifies there.
 
-\ These six callbacks already belong to the original 54-cell owner record.
-\ Bind them once while this source compiler and its checker are paired. A tick
-\ of an internal pre-hook word is intentionally refused by the JIT engine;
-\ the owner's callable field is the authority for this private typed binding.
+\ These callbacks are fields of the owner record. Bind them once while this
+\ source compiler and its checker are paired. A tick of an internal pre-hook
+\ word is intentionally refused by the JIT engine, and a checked body may not
+\ call a trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED); the owner's
+\ callable field is the authority for this private typed binding.
 : SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    RECORD {: rec:ptr :}
    rec 0= if a u REFUSE then
@@ -86,7 +88,8 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
    NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
-   NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN ;
+   NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
+   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -135,6 +138,14 @@ public
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
    dup 0= if drop SOURCE-UNJUDGED exit then
    AS-CHECK execute ;
+
+\ The diagnostic that scan suppressed, rendered by the same owner while it still
+\ holds the scan's state: the reason for a verdict this compiler does not
+\ enforce but may refuse over (compiler.f CHECK-HOOKLESS).
+: REPORT ( -- )
+   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" scan report" FIELD
+   dup 0= if drop SOURCE-REPORT exit then
+   AS-ACTION execute ;
 
 : TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD

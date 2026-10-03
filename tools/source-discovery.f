@@ -207,9 +207,12 @@ variable SD-SCOPES
    SD-PATH-OVF @ 0= 0= if E-DISC-CAPACITY SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
 
+\ A name reader with nothing after it ends the source, so no loader form is left
+\ to find. The missing name is the loader's to refuse; tools/check.f refuses it
+\ at the definer.
 : SD-CHECK-NAME ( -- )
    SD-RAW {: off:n len:n :}
-   len 0= if E-DISC-UNTERM throw then
+   len 0= if exit then
    off len SD-RESERVED? if E-DISC-SHADOW SD-REJECT then ;
 
 \ UNDEFINE-IF-DEFINED retiring a loader word (or fed a non-literal name that
@@ -287,35 +290,15 @@ variable SD-SCOPES
    SD-SCOPES @ 0 > if SD-SCOPES @ 1- SD-SCOPES ! then ;
 
 
-: SD-SCOPE-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR=CI if true exit then
-   a u s" begin" STR=CI if true exit then
-   a u s" do" STR=CI if true exit then
-   a u s" ?do" STR=CI if true exit then
-   a u s" case" STR=CI if true exit then
-   a u s" MATCH" STR=CI if true exit then
-   a u s" of" STR=CI ;
-
-
-: SD-SCOPE-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR=CI if true exit then
-   a u s" until" STR=CI if true exit then
-   a u s" repeat" STR=CI if true exit then
-   a u s" again" STR=CI if true exit then
-   a u s" loop" STR=CI if true exit then
-   a u s" +loop" STR=CI if true exit then
-   a u s" endcase" STR=CI if true exit then
-   a u s" ;MATCH" STR=CI if true exit then
-   a u s" endof" STR=CI ;
-
-
 : SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET exit then
    off len SD-TOK$ s" else" STR=CI if SD-SCOPE-RESTORE exit then
-   off len SD-TOK$ SD-SCOPE-OPENER? if SD-SCOPE-OPEN exit then
-   off len SD-TOK$ SD-SCOPE-CLOSER? if SD-SCOPE-CLOSE then ;
+   off len SD-TOK$ BLOCK-OPENER? if SD-SCOPE-OPEN exit then
+   off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
+\ A local is looked up before the parsing keywords: in a body a local named
+\ `char` is that local and takes no operand.
 : SD-STEP ( n n -- ) {: off:n len:n :}
    SD-PEND @ {: pend:n :}
    0 SD-PEND !
@@ -326,6 +309,7 @@ variable SD-SCOPES
    then
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
+   off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
    off len SD-TOK$ s" {:" STR= if SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
@@ -376,7 +360,27 @@ variable SD-SCOPES
    pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
    root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U ! ;
 
+public
+
+\ `throw` for a closure member's read. A zero code is no refusal; any other
+\ names the file on fd 2 and is rethrown unchanged, because the code alone
+\ (E-FS-STAT or E-FS-OPEN for a missing file) does not say which member it was.
+\ RUN-IN's reader and the source view's (tools/native-source-view.f
+\ READ-COLLECT) both refuse through it, so the line names no tool. The write
+\ result is dropped because the next step raises the refusal itself, as
+\ src/core/checker.f's compile rejects do.
+: READ-THROW ( ptr u8 n n -- ) {: pa:ptr pu:n rc:n :}
+   rc 0= if exit then
+   2 s" cannot read " write drop
+   2 pa pu write drop
+   2 S\" \n" write drop
+   rc throw ;
+
 private
+
+: READ-SELECTED ( -- )
+   [: SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;] catch {: rc:n :}
+   SD-ENTRY SD-ENTRY-U @ rc READ-THROW ;
 
 : RUN-SELECTED ( -- )
    SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
@@ -404,7 +408,7 @@ public
 
 : RUN-IN ( ptr u8 n ptr u8 n -- )
    SELECT-ENTRY
-   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY
+   READ-SELECTED
    RUN-SELECTED ;
 
 : RUN-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- )

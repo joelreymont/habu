@@ -121,7 +121,7 @@ variable IMK-QI
 
 \ Package row p's public colon records, from p or the prefix's first record.
 : IMK-PKG-PUBLICS ( n n -- ) {: p:n first:n :}
-   p IMK-REC XREF-START {: pub:n :}
+   p IMK-REC XREF-PKG-PUBLIC {: pub:n :}
    ndict@ p 1 + first max ?do
       i IMK-WID pub = IF p i IMK-CLASSIFY-PUB THEN
    loop ;

@@ -1,9 +1,14 @@
 \ build-fixpoint-main.f - CLI entrypoint for tools/build-fixpoint.f.
-\ Load after tools/build-fixpoint.f, by design: tools/bootstrap.sh composes one
-\ --load list for the whole chain, and the guard below reports that list when it
-\ is absent, which a require of a file that itself requires none of the preamble
-\ could not do. BUILD-FIXPOINT:BF-CLI is the fail-closed boundary: any escaped
-\ throw is reported on stderr and exits BF-BUILD-RC.
+\ Load after tools/build-fixpoint.f: tools/bootstrap.sh, tools/seed.f and
+\ tools/ddc-verify.f compose one --load list for the whole chain, and
+\ tools/build-fixpoint-refresh.f is the self-contained entry that requires it.
+\ That order is the callers' convention, not a loader limit: with a `require
+\ tools/build-fixpoint.f` here, build-fixpoint.f's own BF-NEED-PREAMBLE reports
+\ the same load list when the preamble is absent (rc 64), and with the preamble
+\ the CLI runs. BUILD-FIXPOINT:BF-CLI is the fail-closed boundary: any escaped
+\ throw is reported on stderr and exits PROC-TIMEOUT-RC (124, lib/process.f)
+\ when it is a deadline that expired, BF-BUILD-RC (74) otherwise. A refused
+\ command line exits 64.
 
 \ Load-discipline guard, mirroring tools/build-fixpoint.f. Loading this CLI entry
 \ without its full chain (lib preamble + tools/build-fixpoint.f) otherwise dies

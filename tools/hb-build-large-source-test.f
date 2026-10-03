@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-large-source-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -68,8 +69,12 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
    rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
 
 \ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
-\ in the emitted code span of a build on this engine, and the link that follows
-\ is then a statement about the declaration and not about the value.
+\ in the emitted code span of a build on this image, and the link that follows
+\ is then a statement about the declaration and not about the value. The
+\ subject requires lib/codegen.f, which the engine bakes, so every maker carries
+\ its words below the band, and neither program reaches anything of the
+\ linker's load, so both builds link on the image (test/preloaded-engine.f
+\ rule 3).
 : HBT-STRIPPED-LITERAL-BODY ( -- )
    HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
    HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
@@ -111,6 +116,7 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 public
 : HBT-LARGE-SOURCE-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LITERAL-BODY
    HBT-BUILD-LARGE-SOURCE

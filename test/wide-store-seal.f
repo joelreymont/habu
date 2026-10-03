@@ -20,8 +20,6 @@ $800 constant WSS-CAP
 create WSS-OUT WSS-CAP allot
 create WSS-ERR WSS-CAP allot
 
-variable WSS-OUT-U
-
 : WSS-LINE ( ptr u8 n -- )
    SB-APPEND
    $A SB-APPEND-C ;
@@ -131,14 +129,10 @@ variable WSS-OUT-U
    src srcu WSS-OUT WSS-CAP >LEN WSS-ERR WSS-CAP >LEN
    WSS-TIMEOUT-MS >MS SUBJECT:RUN ;
 
-: WSS-ASSERT ( len len outcome n -- ) {: want:n :}
-   want T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N WSS-OUT-U !
-   WSS-OUT WSS-OUT-U @ s" WSS-ARMED" CONTAINS? TTRUE ;
-
 : WSS-EXPECT ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
-   src srcu WSS-RUN want WSS-ASSERT ;
+   src srcu WSS-RUN {: outu:len erru:len oc :}
+   src srcu WSS-OUT outu LEN>N WSS-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   WSS-OUT outu LEN>N s" WSS-ARMED" CONTAINS? TTRUE ;
 
 : WSS-NORMAL-TEST ( -- )
    s" ordinary W=2 store remains green" T-LABEL

@@ -31,8 +31,8 @@ public
 
 \ THE CAPTURE WINDOW, LATCHED AROUND THE TWO CELLS AND NOTHING ELSE.
 \ COLLECT-XT-CELLS collects the declared address-cell rows that fall inside
-\ [BLOB-SRC, BLOB-END], the window tools/aot-build-core.f opens with
-\ AOT-DATA-START and closes with AOT-DATA-SPAN around the application it links.
+\ [BLOB-SRC, BLOB-END], the window tools/aot-build-open.f opens with
+\ AOT-DATA-START and closes with AOT-DATA-SPAN around the application it loads.
 \ The two bounds are written directly here: the latch words also open a string
 \ pool and reserve the carried-constant run, neither of which has anything to do
 \ with the bodies, and DATA grows by the two cells alone between them.

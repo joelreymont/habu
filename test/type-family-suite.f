@@ -7,6 +7,8 @@
 \ every registry op is a top-level interpret line so the checker-internal words
 \ stay in scope. A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
 using SCHEMA-REG
 using TFAM
 
@@ -19,7 +21,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 : T-TRUE ( bool -- )
    #CASE @ 1 + #CASE !
@@ -27,7 +29,7 @@ variable #CASE
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
    gu wu <> if
-      T-FAIL s" assert string len: expected " type wu . s" got " type gu . cr exit
+      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
    then
    0 begin dup gu < while
       dup ga + c@  over wa + c@ <> if
@@ -513,6 +515,16 @@ PFTX @ TF-FIELD:ROLLBACK
 UNAMED @ TWX-SUMV-PAY-N 2 T=
 UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
+\ The rollback leaves no row behind under its owner either: the same owner takes
+\ the same name and layout again, and a second one is still a duplicate.
+TF-FIELD:OPEN PFTX !
+PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 2 1 2 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD PFTX !
+PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 3 1 3 cells CELL CELL PF-FLAGS-NONE
+   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+TC @ E-TFAM-DUP T=
+PFTX @ TF-FIELD:ROLLBACK
+UNAMED @ TWX-SUMV-PAY-N 2 T=
 
 \ If any variant carries a legacy positional schema while the family publishes
 \ named rows, both variants fail at the family-level representation boundary.

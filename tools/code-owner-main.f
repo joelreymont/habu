@@ -1,11 +1,12 @@
 \ code-owner-main.f - CLI entry for tools/code-owner.f.
-\ Run: <engine> --load tools/code-owner.f tools/code-owner-main.f -- <region offset>
+\ Run: <engine> --load tools/code-owner-main.f -- <region offset>
 \ The argument is a REGION OFFSET, not an address: the region moves every boot, so
 \ an absolute address caught in one process is meaningless in this one.
 
 require lib/errors.f
 require lib/string.f
 require lib/adt/option.f
+require tools/code-owner.f
 
 package CODE-OWNER-CLI
 
@@ -13,11 +14,11 @@ package CODE-OWNER-CLI
 
 : ?ARGS ( -- )
    SCRIPT-ARGC 0 > if exit then
-   s" usage: --load tools/code-owner.f tools/code-owner-main.f -- <region offset>"
+   s" usage: --load tools/code-owner-main.f -- <region offset>"
    RC die ;
 
 : HEX-BODY ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   u 1 > a c@ 36 = and if a 1 + u 1 - 0 0= exit then
+   u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    a u 0 0= 0= ;
 
 : DIGIT ( n -- n ) {: c:n :}
@@ -29,7 +30,6 @@ package CODE-OWNER-CLI
 variable ACC
 : HEX>N ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 ACC !
-   u 0= if s" code-owner: empty offset" RC die then
    u 0 ?do
       a i + c@ DIGIT {: d:n :}
       d 0 < if s" code-owner: offset is not a number" RC die then

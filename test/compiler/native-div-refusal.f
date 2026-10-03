@@ -29,6 +29,8 @@
 \ test/compiler/native-div-image.f at tier 1 and keeps only what its closure
 \ reaches, so the image catches the zero divide only if the closure followed the
 \ guard's branch into the helper. The directory the case prints keeps the image.
+\ The subject requires nothing, so the build's maker runs on the keyed linker
+\ image (test/preloaded-engine.f).
 \
 \ The runtime cases run in a child process: `set-tier` is engine-global state,
 \ and a child's own source names its tier. The one word whose bytes are read is
@@ -42,6 +44,7 @@ require lib/test/subject.f
 require lib/engine-candidate.f
 require src/habu/xref.f
 require test/gate-common.f
+require test/preloaded-engine.f
 
 package NDIVREF-TEST
 
@@ -67,16 +70,16 @@ variable EXITED
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N ERR-U !  outu LEN>N OUT-U !
+   oc MATCH outcome
      exited   OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout  OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout  OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
 \ A case passes when the child EXITED cleanly and printed what the program says
 \ it prints. The exit code alone would pass for a program that died before its
@@ -192,6 +195,7 @@ variable IMAGE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 : BUILD-IMAGE ( -- )
+   PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
    s" ndiv-image" HB-TMP-MKDIR GT-COPY-ROOT!
    s" ndiv-image" IMAGE GT-PATH IMAGE-U !
    GE-HB-RESET
@@ -202,13 +206,13 @@ variable IMAGE-U
    s" -o" GE-ARG+
    IMAGE$ GE-ARG+
    s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN linker linkeru >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
 
 : IMAGE-CASES ( -- )
    BUILD-IMAGE
    s" tools/hb-build.f builds the stripped division image" T-LABEL
-   GT-RC@ 0 T=
+   T-LABEL$ GE-RC@ 0 T=
    GT-ERR$ nip 0 T=
    IMAGE$ EXECUTABLE? {: built:bool :}
    built TTRUE
@@ -217,7 +221,7 @@ variable IMAGE-U
    GE-HB-RESET
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    s" the stripped image catches its compiled zero divide by the code" T-LABEL
-   GT-RC@ 0 T=
+   T-LABEL$ GE-RC@ 0 T=
    GT-OUT$ S\" -6400\n" T$=
    s" artifacts: " type GT-ROOT type cr ;
 

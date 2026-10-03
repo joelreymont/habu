@@ -11,7 +11,6 @@ create SLOTS
    HOOK-CELL ,                         0 ,
    COMPILE-PREFLIGHT-CELL ,             0 ,
    TOP-HOOK-CELL ,                      0 ,
-   ENGINE-SNAP-XT-CELL ,                0 ,
    EXIT-HOOK-CELL ,                     0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
@@ -19,6 +18,7 @@ create SLOTS
    APP-ENTRY:XT-CELL ,                  0 ,
    REPLH-CELL ,                         0 ,
    BPWBASE-CELL ,                       1 ,
+   LASTC-CELL ,                         0 ,
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

@@ -82,6 +82,35 @@ variable INCREMENT
 : NEST ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do j 10 * i + + 2 +loop 3 +loop ;
 
+\ A counting-down `?do ... +loop` inside a `?do ... loop` and the other way
+\ round: each opener's entry test is its own closer's.
+: QNEST-DOWN ( -- n )
+   0 ITERATIONS !
+   2 0 ?do 0 3 ?do j 10 * i + VISIT -1 +loop loop
+   ITERATIONS @ ;
+: QNEST-UP ( -- n )
+   0 ITERATIONS !
+   0 3 ?do 2 0 ?do j 10 * i + VISIT loop -1 +loop
+   ITERATIONS @ ;
+
+\ Twenty-four step loops nested, two turns each, so the body runs 2^24 times.
+\ Every level's frame is live across the update in the body and the pool cannot
+\ hold them all, so the allocator evicts on the order of depth^2 classes; the
+\ fit reads what the evicted classes need as one count per position and file,
+\ so each eviction costs one pass over the line, not a recount of every class
+\ evicted before it at every position. The frame passes 4095 bytes, past one
+\ add/sub immediate, so its reservation takes the two-word form.
+: DEEP ( -- n )
+   0 ITERATIONS !
+   2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
+   2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
+   2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do 2 0 ?do
+   1 ITERATIONS +!
+   1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
+   1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
+   1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop 1 +loop
+   ITERATIONS @ ;
+
 \ Frame discharge: leave, unloop before exit, and a body that never returns.
 : EARLY ( n -- n ) {: lim:n :}
    0 lim 0 do 1 + i 6 >= if leave then 2 +loop ;
@@ -184,6 +213,9 @@ private
    0 0 1 NPL-FIXTURE:QTURNS 0 T=
    7 7 -1 NPL-FIXTURE:QTURNS 0 T=
    10 0 4 NPL-FIXTURE:QTURNS 3 T=
+   s" ?do counts down to a limit below its start" T-LABEL
+   0 10 -1 NPL-FIXTURE:QTURNS 11 T=
+   0 10 -3 NPL-FIXTURE:QTURNS 4 T=
    s" a step computed from the index each turn" T-LABEL
    10 NPL-FIXTURE:DOUBLING 4 T=
    100 NPL-FIXTURE:DOUBLING 7 T= ;
@@ -191,7 +223,16 @@ private
 : NEST-CASE ( -- )
    s" two step loops nest and i and j read the right frames" T-LABEL
    s" NPL-FIXTURE:NEST" KEPT2
-   6 4 NPL-FIXTURE:NEST 64 T= ;
+   6 4 NPL-FIXTURE:NEST 64 T=
+   s" a counting-down ?do nests in a ?do loop both ways round" T-LABEL
+   NPL-FIXTURE:QNEST-DOWN 8 T=
+   0 3 VISITED-IS  3 0 VISITED-IS  4 13 VISITED-IS  7 10 VISITED-IS
+   NPL-FIXTURE:QNEST-UP 8 T=
+   0 30 VISITED-IS  1 31 VISITED-IS  6 0 VISITED-IS  7 1 VISITED-IS ;
+
+: DEEP-CASE ( -- )
+   s" twenty-four nested step loops compile and take every turn" T-LABEL
+   NPL-FIXTURE:DEEP 1 24 lshift T= ;
 
 : FRAME-CASE ( -- )
    s" leave and unloop exit discharge a step loop's frame" T-LABEL
@@ -220,6 +261,7 @@ public
    OPPOSITE-CASE
    STEP-CASE
    NEST-CASE
+   DEEP-CASE
    FRAME-CASE
    REPRODUCER-CASE ;
 

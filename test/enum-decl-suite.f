@@ -26,6 +26,7 @@ require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 reje
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 require test/replay-scope.f         \ REPLAY-SCOPE: the check tool's replay scope
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM
@@ -44,7 +45,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 : T-TRUE ( bool -- ) {: b:bool :}
    #CASE @ 1 + #CASE !
@@ -370,6 +371,9 @@ s" ENUM-DECL:ED-RUN eempty ;ENUM" TRY 7107 T=                            \ an en
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TRY 7110 T=                          \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TRY 7101 T=                           \ upper-case family name (case)
 s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=                             \ single-letter family name
+\ An effect reads a bare `ptr` as the pointer constructor, never as a family, so
+\ the tail is reserved ahead of the global `ptr` family's duplicate check (7102).
+s" ENUM-DECL:ED-RUN ptr red ;ENUM" TRY 7110 T=
 s" ENUM-DECL:ED-RUN erf 0 VARIANT alpha FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
 s" ENUM-DECL:ED-RUN ecf 0 VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
 s" ENUM-DECL:ED-RUN ebs 0 VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
@@ -504,6 +508,9 @@ s" allowed-compact" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" EV
 s" allowed-full" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
+\ A package may shadow a global family, but not `ptr`: an effect in this
+\ package would still read `ptr` as the pointer constructor.
+s" ENUM-DECL:ED-RUN ptr ready ;ENUM" 7110 REJECT-SAME
 
 ;package
 
@@ -1266,15 +1273,16 @@ enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 \
 \     A family, variant, or field named `if` would be compiled as the control
 \     word `if` wherever the generated code names it, so no declaration position
-\     may take one. The legacy definers have always refused them (sumtype.f
-\     TDECL-RESERVED?); this front end only consulted the grammar-keyword list,
-\     so `ENUM-DECL:ED-RUN if red green ;ENUM` was accepted here while
-\     `ENUM if red green ;ENUM` was refused 7110 — measured on the parent commit,
-\     and the reason the global ENUM token could not move to this front end
-\     without losing the reject. The list now lives once, in TYPE-NAME:CONTROL?
-\     (src/core/type-family.f); this front end reads it through CONTROL-KW?, the
-\     legacy definer reads it from TDECL-RESERVED?, and field rows read it from
-\     PF-RESERVED?. A second copy is what let the two drift apart.
+\     may take one. The legacy definers have always refused them (the family
+\     gate, TYPE-NAME:FAMILY-RESERVED?); this front end only consulted the
+\     grammar-keyword list, so `ENUM-DECL:ED-RUN if red green ;ENUM` was
+\     accepted here while `ENUM if red green ;ENUM` was refused 7110 — measured
+\     on the parent commit, and the reason the global ENUM token could not move
+\     to this front end without losing the reject. The list now lives once, in
+\     TYPE-NAME:CONTROL? (src/core/type-family.f); every family definer, this
+\     front end included, reads it through TYPE-NAME:FAMILY-RESERVED?, and field
+\     rows read it from PF-RESERVED?. A second copy is what let the two drift
+\     apart.
 \
 \     24a walks the whole list so a word silently dropped from the owner is a
 \     failure here; 24b proves the two spellings of the same declaration answer

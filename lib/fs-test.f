@@ -294,6 +294,30 @@ create FS-TEST-U64
 : FS-TEST-JOIN-NEG-PARENT ( -- )
    s" root" drop -1 s" child" FS-TEST-OUT JOIN-PATH drop ;
 
+: FS-TEST-JOIN-NEG-NAME ( -- )
+   s" root" s" child" drop -1 FS-TEST-OUT JOIN-PATH drop ;
+
+\ A long name joined to a short parent, `extra` bytes past an exact fill.
+: FS-TEST-JOIN-NAME-FILL ( n -- n ) {: extra :}
+   s" root" {: pa:ptr pu :}
+   pa pu FS-TEST-LONG FS-PATH-CAP pu - 1 - extra + FS-TEST-OUT JOIN-PATH ;
+
+\ A negative length is malformed whatever the other length is. Each pair sums
+\ to exactly FS-PATH-CAP, so only the sign can refuse it.
+: FS-TEST-JOIN-NEG-PARENT-LONG-NAME ( -- )
+   s" root" drop -2 FS-TEST-LONG FS-PATH-CAP 1 + FS-TEST-OUT JOIN-PATH drop ;
+
+: FS-TEST-JOIN-LONG-PARENT-NEG-NAME ( -- )
+   FS-TEST-LONG FS-PATH-CAP 1 + s" child" drop -2 FS-TEST-OUT JOIN-PATH drop ;
+
+\ A length near the maximum cell must meet the join's own capacity rule, not
+\ wrap the summed length back under FS-PATH-CAP.
+: FS-TEST-JOIN-HUGE-NAME ( -- )
+   s" root" FS-TEST-LONG MEM-MAX-N FS-TEST-OUT JOIN-PATH drop ;
+
+: FS-TEST-JOIN-HUGE-PARENT ( -- )
+   FS-TEST-LONG MEM-MAX-N s" z" FS-TEST-OUT JOIN-PATH drop ;
+
 : FS-TEST-CAP-TOO-LONG ( -- )
    FS-PATH-CAP 1 + FS-CHECK-JOIN-CAP ;
 
@@ -393,7 +417,8 @@ create FS-TEST-U64
    s" src/" s" core" FS-TEST-JOIN$ s" src/core" FS-TEST$=
    s" /" s" tmp" FS-TEST-JOIN$ s" /tmp" FS-TEST$=
    FS-TEST-LONG FS-PATH-CAP 2 - s" z" FS-TEST-OUT JOIN-PATH
-   FS-PATH-CAP FS-TEST= ;
+   FS-PATH-CAP FS-TEST=
+   0 FS-TEST-JOIN-NAME-FILL FS-PATH-CAP FS-TEST= ;
 
 : FS-TEST-WALK-CB ( ptr u8 n -- ) {: a:ptr u :}
    FS-TEST-WALK-COUNT @ 1 + FS-TEST-WALK-COUNT !
@@ -582,6 +607,12 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
    [: FS-TEST-PATH-TOO-LONG ;] E-FS-PATH TTHROWSQ
    [: FS-TEST-JOIN-TOO-LONG ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-JOIN-NEG-PARENT ;] E-FS-PATH TTHROWSQ
+   [: FS-TEST-JOIN-NEG-NAME ;] E-FS-PATH TTHROWSQ
+   [: 1 FS-TEST-JOIN-NAME-FILL drop ;] E-FS-CAPACITY TTHROWSQ
+   [: FS-TEST-JOIN-NEG-PARENT-LONG-NAME ;] E-FS-PATH TTHROWSQ
+   [: FS-TEST-JOIN-LONG-PARENT-NEG-NAME ;] E-FS-PATH TTHROWSQ
+   [: FS-TEST-JOIN-HUGE-NAME ;] E-FS-CAPACITY TTHROWSQ
+   [: FS-TEST-JOIN-HUGE-PARENT ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-CAP-TOO-LONG ;] E-FS-CAPACITY TTHROWSQ
    [: FS-TEST-MISSING-STAT ;] E-FS-STAT TTHROWSQ
    [: FS-TEST-MISSING-FILE-SIZE ;] E-FS-STAT TTHROWSQ

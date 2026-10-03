@@ -9,18 +9,20 @@
 \ for the whole process. INIT reads the engine's two published SIGNAL-ABI cells
 \ in the MAIN task - a spawned task's region carries neither - and keeps them,
 \ so every later arm and disarm reaches the same word by its absolute address.
-\ INIT also records the task that ran it: CATCH and RELEASE share SA-ACT, SA-OLD
-\ and the caught set, so they answer to that task alone. FD, PENDING? and WAIT
-\ touch none of the three and are callable from any task; the four-byte staging
-\ span WAIT reads into is a TASK:+USER row, so two tasks polling the read end
-\ never share it. See docs/signal.md.
+\ INIT also records the task that ran it: CATCH, IGNORED? and RELEASE share
+\ SA-ACT, SA-OLD and the caught set, so they answer to that task alone. FD,
+\ PENDING?, WAIT and TAKE touch none of the three and are callable from any
+\ task; the four-byte staging span WAIT and TAKE read into is a TASK:+USER row,
+\ so two tasks reading the read end never share it. See docs/signal.md.
 \
 \ HOSTS. Linux and macOS, on aarch64. The signal numbers, SA_RESTART and the
 \ struct sigaction layout all differ between the two and are selected here the
 \ way lib/process.f O-NONBLOCK, lib/fs.f and lib/process-pty-io.f select theirs.
 \ A third target reaches no arm and INIT refuses it with E-PROC-HOST rather than
 \ installing the stub for whatever signal the Linux numbers happen to name
-\ there. macOS is selected for but untested: no macOS host runs this suite.
+\ there. Both arms run: process-signals (lib/signal-test.f) passes on Linux and
+\ macOS, and on macOS the check-signal, gate-signal and pg suites catch and
+\ answer real stops through this file.
 
 s" lib/errors.f" required
 s" lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers
@@ -88,6 +90,7 @@ SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 
 0 constant SA-NO-FLAGS
 0 constant SIG-DFL
+1 constant SIG-IGN
 
 4 constant SIGNO-BYTES             \ the width the stub writes, and under PIPE_BUF
 1 constant SIG-MIN
@@ -295,9 +298,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : NEED-READY ( -- )
    READY @ 0= if E-SIGNAL-STATE throw then ;
 
-\ CATCH and RELEASE share SA-ACT, SA-OLD and the caught set, so the facility has
-\ one owner - the task that ran INIT - rather than a documented convention two
-\ tasks could each believe they were keeping.
+\ CATCH, IGNORED? and RELEASE share SA-ACT, SA-OLD and the caught set, so the
+\ facility has one owner - the task that ran INIT - rather than a documented
+\ convention two tasks could each believe they were keeping.
 : NEED-OWNER ( -- )
    TASK:SELF-N OWNER @ <> if E-SIGNAL-STATE throw then ;
 
@@ -353,10 +356,32 @@ public
    sig INSTALL-STUB
    sig CAUGHT+ ;
 
+\ TRUE when signal n is ignored. A process is started with its caller's ignored
+\ signals still ignored - nohup's SIGHUP, the SIGINT of a background job under
+\ a shell without job control - and a CATCH over one undoes that choice, so a
+\ program that means to honour it asks first. From the task that ran INIT: the
+\ query fills the shared SA-OLD.
+: IGNORED? ( n -- bool ) {: sig:n :}
+   NEED-READY
+   NEED-OWNER
+   sig SIG-CHECK
+   sig NULL-PTR SA-OLD SIGACTION-CALL 0 <> if E-SIGNAL-INSTALL throw then
+   SA-OLD cell-view @ SIG-IGN = ;
+
 \ The read end, for a program that polls it beside its sockets.
 : FD ( -- fd )
    NEED-READY
    READ-FD ;
+
+\ The next delivered signal, or `timeout` at once when none is waiting. This
+\ is the read for a program that waits in a loop of its own - FD in its poll
+\ set, or a poll that a signal interrupts - and so runs no AIO loop.
+: TAKE ( -- signal-result )
+   NEED-READY
+   SIGNO@ dup SIGNO-REFUSED = if
+      drop SIGNAL-SIGNAL--RESULT:timeout exit
+   then
+   SIGNAL-SIGNAL--RESULT:signal ;
 
 \ Readable now, without consuming: a zero-length window, which the kernel serves
 \ inline for a descriptor that is already ready. "Ready" is not "readable": a
@@ -400,5 +425,46 @@ public
    FORGET-FDS
    false READY !
    r w CLOSE-PIPE ;
+
+\ ---- the stop signals ---------------------------------------------------------
+\
+\ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
+\ program that runs children or makes scratch ends where it stands, and what it
+\ started and made outlives it: a spawned child leads a process group of its
+\ own (docs/process-pty.md) and runs on under init, and nothing removes the
+\ scratch. Such a program calls CATCH-STOPS before it starts either, asks TAKE
+\ wherever it waits, and answers a signal by ending what it started and
+\ removing what it made, then DIE-OF. The gate root (test/gate-pool.f), the pg
+\ cluster (test/db/pg-cluster.f) and check.f (tools/check-core.f) answer so.
+\
+\ A signal the process was started with IGNORED stays ignored. nohup's SIGHUP
+\ and the SIGINT of a background job are the caller's choice, and a catch over
+\ one would undo it.
+
+private
+
+: CATCH-STOP ( n -- ) {: sig:n :}
+   sig IGNORED? if exit then
+   sig CATCH ;
+
+public
+
+\ INIT, then the catch of each of the three, from the main task.
+: CATCH-STOPS ( -- )
+   INIT
+   SIGTERM CATCH-STOP
+   SIGINT CATCH-STOP
+   SIGHUP CATCH-STOP ;
+
+\ The end of an answer: the process dies OF the signal, under the default
+\ action again, so its caller reads the status an uncaught one would have left.
+\ The stub stays installed until here, so a second signal during the answer is
+\ written to the pipe and read by nobody. The die ends a process whose signal
+\ another thread took, with the status a shell gives that death; it is not
+\ reached when this one took it.
+: DIE-OF ( ptr u8 n n -- ) {: msg:ptr msgu:n sig:n :}
+   RELEASE
+   getpid >PID sig PROC-KILL-RAW drop
+   msg msgu 128 sig + die ;
 
 ;package

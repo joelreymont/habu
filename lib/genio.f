@@ -443,7 +443,7 @@ private
 \ engine's output funnel reaches a device write from inside `emit`, where a
 \ throw would unwind through engine internals, so it falls back to the terminal
 \ when the row it names is empty. This layer has to agree with it, or `type`
-\ and GENIO:TYPE would disagree about where a closed device's output goes.
+\ and GENIO:WRITE would disagree about where a closed device's output goes.
 : LIVE-ROW ( n -- n ) {: idx:n :}
    idx STATUS@ LIVE <> if TERMINAL-ROW exit then
    idx ;
@@ -476,7 +476,7 @@ private
 
 public
 
-\ EMIT and TYPE raise the funnel's guard for the same reason the funnel does:
+\ EMIT and WRITE raise the funnel's guard for the same reason the funnel does:
 \ while a device's write runs, an `emit` or `type` INSIDE it must reach the
 \ terminal rather than call that write again. They do not read the guard --
 \ asking this layer for a device explicitly is not the implicit path the guard
@@ -490,7 +490,7 @@ public
    c idx OP-EMIT @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
-: TYPE ( ptr u8 n -- ) {: bytes:ptr len:n :}
+: WRITE ( ptr u8 n -- ) {: bytes:ptr len:n :}
    OUT-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
@@ -498,9 +498,6 @@ public
    idx ACTIVE-PTR !  1 BUSY-PTR !
    bytes len idx OP-WRITE @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
-
-: WRITE ( ptr u8 n -- )
-   TYPE ;
 
 : FLUSH ( -- )
    OUT-ROW {: idx:n :}

@@ -155,12 +155,8 @@ variable FIX-U
    s" 7146 constant E-USING-OUTER  7151 constant E-CAST-SCOPE" ERROR-CODE-LINT:COUNT 0 T=
    s" 256 constant E-XA  256 constant E-XB" ERROR-CODE-LINT:COUNT 1 T=
    s" $1BEA constant E-USING-OUTER  7146 constant E-CAST-SCOPE" ERROR-CODE-LINT:COUNT 1 T=
-   \ A positive FIRST/LAST name is an ordinary diagnostic claim in its file.
-   s" 7146 constant E-A-FIRST  7146 constant E-B" ERROR-CODE-LINT:COUNT 1 T=
-   s" 7146 constant E-A-LAST  7146 constant E-B" ERROR-CODE-LINT:COUNT 1 T=
-   \ negative codes collide across files; positive diagnostics alias there
+   \ codes collide across files
    s" -9001 constant E-XA" s" -9001 constant E-XB" ERROR-CODE-LINT:COUNT2 1 T=
-   s" 7146 constant E-USING-OUTER" s" 7146 constant E-CAST-SCOPE" ERROR-CODE-LINT:COUNT2 0 T=
    \ hex and decimal literals claim the same numeric code
    s" -$10 constant E-HA  -16 constant E-HB" ERROR-CODE-LINT:COUNT 1 T=
    \ Unsigned-looking hex can evaluate to a negative signed cell.
@@ -174,7 +170,7 @@ variable FIX-U
    \ exact (code, name) re-registration is a shim, not a collision
    s" -9001 constant E-XA  -9001 constant E-XA" ERROR-CODE-LINT:COUNT 0 T=
    s" 7146 constant E-USING-OUTER  7146 constant E-USING-OUTER" ERROR-CODE-LINT:COUNT 0 T=
-   \ process exit codes are shared by design
+   \ a value from 0 to 255 is a process exit status, shared by design
    s" 0 constant E-XA  0 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
    s" 76 constant E-XA  76 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
    s" 255 constant E-XA  255 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
@@ -183,17 +179,24 @@ variable FIX-U
    s" -9100 constant E-X-FIRST  -9100 constant E-XM" ERROR-CODE-LINT:COUNT 0 T=
    s" -9199 constant E-X-LAST  -9199 constant E-XZ" ERROR-CODE-LINT:COUNT 0 T= ;
 
+\ A positive code above 255 cannot be an exit status, so it is a throw identity
+\ like any negative one: a catch on 7177 cannot tell two names for it apart.
+: POSITIVE ( -- )
+   s" 7177 constant E-XA  7177 constant E-XB" ERROR-CODE-LINT:COUNT 1 T=
+   s" $1C19 constant E-HA  7193 constant E-HB" ERROR-CODE-LINT:COUNT 1 T=
+   \ the sign is part of the code
+   s" -7177 constant E-XA  7177 constant E-XB" ERROR-CODE-LINT:COUNT 0 T=
+   \ positive codes collide across files as negative ones do
+   s" 7146 constant E-USING-OUTER" s" 7146 constant E-CAST-SCOPE" ERROR-CODE-LINT:COUNT2 1 T=
+   \ a positive block reserves its range the way a negative one does
+   s" 7100 constant E-FOO-FIRST  7199 constant E-FOO-LAST"
+   s" 7150 constant E-BAR" ERROR-CODE-LINT:COUNT2 1 T= ;
+
 : RANGES ( -- )
    \ FIRST/LAST reserve [FIRST,LAST]; a foreign file minting inside is flagged
    \ even though the owning block has not yet minted that exact member code
    s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST"
    s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 1 T=
-   \ positive FIRST/LAST names do not reserve a global range
-   s" 7100 constant E-FOO-FIRST  7199 constant E-FOO-LAST"
-   s" 7146 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
-   \ Wrapped negative spelling is positive by value and reserves no range.
-   s" -$FFFFFFFFFFFFFF00 constant E-FOO-FIRST -$FFFFFFFFFFFFFE00 constant E-FOO-LAST"
-   s" 300 constant E-BAR" ERROR-CODE-LINT:COUNT2 0 T=
    \ Hex spelling without a minus still reserves a negative range by value.
    s" $FFFFFFFFFFFFDC74 constant E-FOO-FIRST $FFFFFFFFFFFFDC11 constant E-FOO-LAST"
    s" -9150 constant E-BAR" ERROR-CODE-LINT:COUNT2 1 T=
@@ -277,13 +280,14 @@ variable FIX-U
    [: UNTERM$ ERROR-CODE-LINT:COUNT drop ;] ERROR-CODE-LINT:E-QUOTE TTHROWSQ ;
 
 : LIVE ( -- )
-   \ the live source walk enforces the same namespace as the fixture scan
+   \ the real tree is clean: every E- throw code has exactly one owner
    ERROR-CODE-LINT:STRICT ;
 
 : MAIN ( -- )
    T-RESET
    DETECT
    ALLOWANCES
+   POSITIVE
    RANGES
    RANGE-TRANSITIONS
    NOT-CLAIMS

@@ -42,8 +42,10 @@ create SPAN-ERR $100 allot
 
 : SPAN-MALFORMED ( -- )
    s" package AOT-CAPTURE SPAN-BAD-REC CELL-VIEW AOT-RBODY drop ;package"
-   SPAN-OUT $100 >LEN SPAN-ERR $100 >LEN 1000 >MS SUBJECT:RUN
-   74 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: src:ptr srcu:n :}
+   src srcu SPAN-OUT $100 >LEN SPAN-ERR $100 >LEN 1000 >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   src srcu SPAN-OUT outu LEN>N SPAN-ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
    outu LEN>N 0 T=
    SPAN-ERR erru LEN>N S\" hb: malformed dictionary code length\n" T$= ;
 

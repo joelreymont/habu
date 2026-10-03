@@ -510,7 +510,7 @@ private
    PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-TA@  PS-X @ PS-I @ -  PS-COMMENT PS-SAVE-TOKEN ;
 
 : PS-LEX-WORD ( -- )
-   begin PS-END? 0= PS-C@ PS-WS? 0= and while
+   begin PS-SRC-A@ PS-SRC-U @ PS-X @ LINT-INK-AT? while
       PS-ADV drop
    repeat
    PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-ONE 0  PS-WORD PS-SAVE-TOKEN

@@ -10,19 +10,19 @@
 \ state and scratch-copy machinery stay package-private.
 \
 \ The entry is `SNAP:PERSIST` - it builds the header, canonicalises the two
-\ regions and writes the image, then exits. The tail is deliberately not `GO`:
-\ several other files already define a `GO`, the name says nothing about what
-\ the word does, and snap.f calls this entry from an UNCHECKED `TRUSTED:` body,
-\ where the engine's global-first order would bind a same-named global ahead of
-\ the used public with no diagnostic. snap.f imports this package with
-\ `using SNAP` and calls the entry by its plain tail.
+\ regions, writes and signs the image beside its output path and renames it
+\ over that path, then exits. The tail is deliberately not `GO`:
+\ several other files already define a `GO`, and the name says nothing about
+\ what the word does. src/habu/app-image-core.f APP-IMAGE:SAVE calls the entry.
 
 require lib/fs.f
+require lib/fs-mutate.f
 require lib/codesign.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
 require src/habu/fdio.f
+require src/habu/sign-id.f
 require src/habu/stack-abi.f
 
 package SNAP
@@ -30,11 +30,14 @@ package SNAP
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
 
-\ Refresh builds keep their existing temporary artifact name. Applications
-\ select a path before capture, copied into DATA rather than retained in argv.
-: OUT-PATH ( -- ptr u8 n )
-   OUTPUT-U @ if OUTPUT OUTPUT-U @ exit then
-   s" hb-snap0" TMP-PATH ;
+\ Every persist names its output first (PATH!), copied into DATA rather than
+\ retained in argv. The image stores none of it (SND-ZERO-WRITER), so a restored
+\ process that persists without naming its own path is refused instead of
+\ writing where its build did.
+: OUT-PATH ( -- ptr u8 n ) OUTPUT OUTPUT-U @ ;
+
+: OUT-PATH-NAMED ( -- )
+   OUTPUT-U @ 0= if s" snap: persist has no output path" 74 die then ;
 
 \ Snapshot trailer format version (item 12 slice 3b, dot
 \ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
@@ -181,8 +184,9 @@ TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 \ text base, stack, argv, cached label addresses) and are all overwritten
 \ by the loader/startup (EM-SNAPSHOT-RESTORE + EM-STARTUP-RUNTIME-STATE,
 \ src/habu/habu2.f). Zero them in a scratch copy so images are
-\ byte-identical; the two-build compare fails loudly if a new live cell
-\ ever appears here without being added.
+\ byte-identical. tools/hb-build-repl-twin-test.f builds one program twice
+\ and compares the images, so a new live cell left out of this list fails
+\ that row loudly.
 variable SND-N
 
 TRUSTED: SND-PTR ( -- ptr u8 ) SND-N @ ;
@@ -217,6 +221,11 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    LOOPSP-CELL SND-ZERO-CELL  DOESP-CELL SND-ZERO-CELL
    CREATEP-CELL SND-ZERO-CELL RRECP-CELL SND-ZERO-CELL
    LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL
+   EVALREC-CELL SND-ZERO-CELL UNCGH-CELL SND-ZERO-CELL
+   SIGNAL-ABI:STUB-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
+   AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
    TSIG-A-CELL SND-ZERO-CELL  TSIG-U-CELL SND-ZERO-CELL
    TCSIG-A-CELL SND-ZERO-CELL TCSIG-U-CELL SND-ZERO-CELL
    CRSIG-A-CELL SND-ZERO-CELL CRSIG-U-CELL SND-ZERO-CELL
@@ -227,7 +236,6 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    TKA-CELL SND-ZERO-CELL     TKL-CELL SND-ZERO-CELL
    PENDTKA-CELL SND-ZERO-CELL
    DEF-TKA-CELL SND-ZERO-CELL
-   ENGINE-SNAP-XT-CELL SND-ZERO-CELL
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
    EVAL-TOP-CELL SND-ZERO-CELL  CLOSED-FREE-CELL SND-ZERO-CELL
@@ -308,17 +316,6 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ROWS {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
-\ A baked native payload publishes its unnamed code-span table in text and
-\ the captured blob's base in the region. A snapshot copies both areas at new
-\ live addresses; keep their offsets here and restore the two bases at boot.
-\ An engine with no captured spans has no table or blob to rebase.
-: SND-CANON-AOT-SPAN ( -- )
-   AOT-CELLS:SPAN-N-CELL SND-XT-CELL@ 0= if exit then
-   AOT-CELLS:SPAN-TABLE-CELL SND-XT-CELL@ STB @ -
-      AOT-CELLS:SPAN-TABLE-CELL SND-XT-CELL!
-   AOT-CELLS:SPAN-BASE-CELL SND-XT-CELL@ SDB @ -
-      AOT-CELLS:SPAN-BASE-CELL SND-XT-CELL! ;
-
 \ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
 \ pointers before the subtraction. `MBUF-A` is a PTR-VARIABLE, so the bare
 \ `MBUF-A data-base -` asked `-`'s `ptr a ptr a -- n` row to make the DATA base
@@ -337,7 +334,10 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    MLEN SND-ZERO-OFF SND-ZERO-CELL
    STB SND-ZERO-OFF SND-ZERO-CELL
    SDB SND-ZERO-OFF SND-ZERO-CELL
-   SFD SND-ZERO-OFF SND-ZERO-CELL ;
+   SFD SND-ZERO-OFF SND-ZERO-CELL
+   OUTPUT-U SND-ZERO-OFF SND-ZERO-CELL
+   OUTPUT SND-ZERO-OFF {: out:n :}
+   FS-PATH-CAP 0 ?do out i + SND-ZERO-CELL CELL +loop ;
 
 \ PERSIST admitted the complete retained code interval before copying. Freeze
 \ exactly that interval, excluding abandoned rows and the old engine's ASLR
@@ -361,8 +361,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ZERO-LIVE
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
-   SND-CANON-XT-CELLS
-   SND-CANON-AOT-SPAN ;
+   SND-CANON-XT-CELLS ;
 
 : CANON-REGION ( -- )
    SNC-ALLOC
@@ -452,39 +451,65 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
    SNAPSHOT-FORMAT:HEAP-GRID SHF !  grid SHL !
    WRITE-GRID ;
 
-;package
+\ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
+\ the close it checks, and it does nothing. It is private, so no qualified name
+\ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
+\ close the fd early, which proves WRITE-BYTES fails closed (rc 74) and leaves
+\ the output path as it was.
+defer BEFORE-CLOSE ( n -- )
 
-\ ---- test-only final-close fault seam ----
-\ snap-lib.f is builder-only: RETIRE-AND-PERSIST forgets this whole tail before
-\ snapshot header is written, so nothing here reaches a shipped image. The seam
-\ lets the snapshot-writer suite force the final close to fail and prove
-\ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
-\ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
-\ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
-\ every build so no normal or shipping path can reach it.
-package SNAP-CLOSE-SEAM
-
-defer BEFORE ( n -- )
-
-: NOOP ( n -- )
+: CLOSE-NOOP ( n -- )
    drop ;
 
-: RESET ( -- )
-   [: NOOP ;] is BEFORE ;
+: CLOSE-DEFAULT ( -- )
+   [: CLOSE-NOOP ;] is BEFORE-CLOSE ;
 
-RESET
+CLOSE-DEFAULT
 
-public
+\ The image is written to a sibling of the output path and renamed over it only
+\ after the write, the close and the signature succeed, so a failure never
+\ leaves a partial or unsigned executable where a later run finds it. The
+\ sibling is created exclusively under a per-process name (lib/fs-mutate.f
+\ RESERVE-SIBLING), so a concurrent writer of the same output stages its own.
+\ It is chosen after CANON-DATA copies DATA, so the image never holds its name.
+create STAGED FS-PATH-CAP allot
+variable STAGED-U
 
-: INSTALL-TEST ( [ n -- ] -- )
-   is BEFORE ;
+: STAGED-PATH ( -- ptr u8 n ) STAGED STAGED-U @ ;
 
-: RUN ( n -- )
-   BEFORE ;
+\ Registered for removal at exit before a byte is written, so every `die` and
+\ uncaught throw from here to the rename takes the sibling with it
+\ (lib/fs-mutate.f CLEANUP-AT-EXIT); after the rename the path names nothing and
+\ the removal skips it. A full registry refuses the claim, and the empty sibling
+\ goes then.
+: CLAIM ( ptr u8 n -- ptr u8 n )
+   2dup CLEANUP+ ;
 
-;package
+\ Keeps the sibling's path in STAGED and its descriptor in SFD and leaves the
+\ output path, so a refusal leaves the stack as it found it.
+: RESERVE-STAGED ( ptr u8 n -- ptr u8 n )
+   2dup RESERVE-SIBLING SFD ! {: path:ptr size:n :}
+   path STAGED size BYTE-COPY
+   size STAGED-U ! ;
 
-package SNAP
+\ A sibling that cannot be created (a missing or denied directory, an output
+\ path too long for the sibling's suffix) is an output that cannot be opened,
+\ refused by name like PERSIST's other refusals; nothing exists yet to remove.
+: STAGE ( -- )
+   OUT-PATH [: RESERVE-STAGED ;] catch {: open-code:n :} 2drop
+   open-code 0<> if s" snap: cannot open output" 74 die then
+   STAGED-PATH [: CLAIM ;] catch {: claim-code:n :} 2drop
+   claim-code 0<> if STAGED-PATH REMOVE-FILE claim-code throw then ;
+
+\ rename replaces the output path in one step: it names the previous file or
+\ the whole signed image, never a part of either. An output the rename cannot
+\ replace (a directory in its place) is refused by name, and the exit hook
+\ removes the sibling.
+: PUBLISH ( -- )
+   STAGED-PATH CHMOD-X
+   STAGED-PATH SIGN-ID:PROG$ CODESIGN:SIGN-AS
+   [: STAGED-PATH OUT-PATH RENAME-FILE ;] catch
+   0<> if s" snap: cannot replace output" 74 die then ;
 
 : WRITE-PAD ( -- )
    16 0 ?do 0 PAD-ZEROS i + c! loop
@@ -507,8 +532,7 @@ package SNAP
    SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, live dict rows, code, structured DATA, trailer
    \ (the heap section last in DATA, raw or grid as SHF says)
-   OUT-PATH PATH0 1537 493 open SFD !
-   SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
+   STAGE
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}
    RESET-BUF
@@ -527,7 +551,7 @@ package SNAP
    WRITE-PAD
    SFD @ TRL SNAP-TRL-BYTES FDIO:WALL
    SFD @ extra SNAP-EXTRA-SIZE FDIO:WALL
-   SFD @ SNAP-CLOSE-SEAM:RUN
+   SFD @ BEFORE-CLOSE
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 
 : WRITE-IMAGE ( snap -- )
@@ -536,9 +560,20 @@ package SNAP
 
 TRUSTED: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + @ ;
 
+: DATA-SET? ( n -- bool ) data-base + @ 0<> ;
+
+\ Compiler state is zero at rest. Each cell here is set only while a definition
+\ compiles, which includes an immediate running inside its body: the
+\ control-flow and BEGIN-snapshot depths, the record being built (PEND-CELL),
+\ the innermost open quotation (QPATCH-CELL) and the count of enclosing ones
+\ parked under it (JIT-QUOT). An image captured with any of them set holds a
+\ half-built definition.
 : VERIFY-QUIESCENT ( -- )
    CF-DEPTH 0<>
-   data-base JIT-SNAP:SP-CELL + @ 0<> or if
+   JIT-SNAP:SP-CELL DATA-SET? or
+   PEND-CELL DATA-SET? or
+   QPATCH-CELL DATA-SET? or
+   JIT-QUOT:SP-CELL DATA-SET? or if
       s" snap: active compiler state at capture" 74 die
    then ;
 
@@ -552,6 +587,7 @@ public
    size OUTPUT-U ! ;
 
 : PERSIST ( -- )
+   OUT-PATH-NAMED
    SNAPSHOT-FORMAT:VERIFY
    VERIFY-QUIESCENT
    \ The retained region includes hidden bodies and stored quotations. Checking
@@ -569,7 +605,7 @@ public
    ENCODE-HEAP
    FRAME
    WRITE-IMAGE
-   OUT-PATH CODESIGN:ENSURE
+   PUBLISH
    s" " 0 die ;
 
 ;package

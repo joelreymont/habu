@@ -13,14 +13,80 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: STATUS? ( ptr u8 n n -- bool ) {: expected:n :}
+\ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
+\ whether it exited with the expected status.
+: EXITED? ( ptr u8 n n -- len len bool ) {: expected:n :}
    OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
    MATCH outcome
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
       timeout OF false ENDOF
-   ;MATCH
-   >r 2drop r> ;
+   ;MATCH ;
+
+: STATUS? ( ptr u8 n n -- bool )
+   EXITED? >r 2drop r> ;
+
+\ Exited with the expected status, WHY in the diagnostic and SAID in the output.
+: REPORTED? ( ptr u8 n n ptr u8 n ptr u8 n -- bool )
+   {: expected:n why:ptr whyu:n said:ptr saidu:n :}
+   expected EXITED? {: outu:len erru:len exited:bool :}
+   exited ERR erru LEN>N why whyu CONTAINS? and
+   OUT outu LEN>N said saidu CONTAINS? and ;
+
+\ A typed global holds a quotation and never a scheme. An unclosed spelling
+\ ends with its line, and the next line is the next statement's: the refusal is
+\ caught so the definition after it runs.
+: STORED ( -- )
+   s" an ordinary quotation may be stored in a typed global" T-LABEL
+   s" TYPED-VARIABLE C2-QUOTE-SLOT [ n -- n ]" 0 STATUS? TTRUE
+   s" a scheme cannot be stored in a typed global" T-LABEL
+   s" TYPED-VARIABLE C2-SCOPE-SLOT forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
+   70 s" in C2-SCOPE-SLOT: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   s" a scheme cannot be stored behind a pointer" T-LABEL
+   s" 2 TYPED-BUFFER C2-SCOPE-SLOTS ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
+   70 s" in C2-SCOPE-SLOTS: scheme in a stored type 'ptr forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   s" a stored type ends at the end of its line" T-LABEL
+   s\" NEWTYPE c2-line-pair 2\n' TYPED-VARIABLE catch C2-LINE-SLOT c2-line-pair<n,n\n: C2-LINE-NEXT ( -- n ) 4242 >r r> ;\nC2-LINE-NEXT . throw"
+   70 s" in C2-LINE-SLOT: malformed type 'c2-line-pair<n,n'" s" 4242" REPORTED? TTRUE
+   s" a stored quotation ends at the end of its line" T-LABEL
+   s\" ' TYPED-VARIABLE catch C2-LINE-XT [ n -- n\n: C2-LINE-XT-NEXT ( -- n ) 4343 ;\nC2-LINE-XT-NEXT . throw"
+   70 s" in C2-LINE-XT: malformed type '[ n -- n'" s" 4343" REPORTED? TTRUE ;
+
+\ The layout definers read their type by the same rule: a scheme is refused
+\ whole and the rest of its line is the next statement's, a family closed over
+\ a quotation is stored, a pointer type is refused whole, and no type at all is
+\ a named refusal in every storage definer.
+: LAYOUT-STORED ( -- )
+   s" a scheme cannot fill a layout buffer" T-LABEL
+   s" 4 LAYOUT-BUFFER C2-SCOPE-ROWS forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
+   70 s" in C2-SCOPE-ROWS: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   s" a scheme cannot fill a deferred layout column" T-LABEL
+   s" DEFER-LAYOUT-BUFFER C2-SCOPE-COLUMN forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
+   70 s" in C2-SCOPE-COLUMN: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
+   s" a refused layout type leaves the rest of its line to the next statement" T-LABEL
+   s" 4 ' LAYOUT-BUFFER catch C2-REST-ROWS forall<p,[ n -- n ]> nip 4444 . throw"
+   70 s" in C2-REST-ROWS: scheme in a stored type 'forall<p,[ n -- n ]>'" s" 4444" REPORTED? TTRUE
+   s" layout storage holds a family closed over a quotation" T-LABEL
+   s\" STRUCTURE c2hook 1 DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
+   0 s" " s" 42" REPORTED? TTRUE
+   s\" STRUCTURE c2hook 1 DERIVE addr FIELD fn a ;STRUCTURE\nDEFER-LAYOUT-BUFFER C2-HOOKC c2hook<[ n -- n ]>\n: C2-H ( -- n ) 2 C2-HOOKC-BIND [: 2 + ;] C2HOOK:MAKE 1 C2-HOOKC ! 41 1 C2-HOOKC C2HOOK:FN @ execute ;\nC2-H ."
+   0 s" " s" 43" REPORTED? TTRUE
+   s" a layout pointer type is refused whole" T-LABEL
+   s" 4 LAYOUT-BUFFER C2-PTR-ROWS ptr n"
+   70 s" in C2-PTR-ROWS: type this definer cannot store 'ptr n'" s" " REPORTED? TTRUE
+   s" DEFER-LAYOUT-BUFFER C2-PTR-COLUMN ptr n"
+   70 s" in C2-PTR-COLUMN: type this definer cannot store 'ptr n'" s" " REPORTED? TTRUE
+   s" a missing stored type is a named refusal" T-LABEL
+   s" 4 LAYOUT-BUFFER C2-NO-ROWS-TYPE"
+   70 s" in C2-NO-ROWS-TYPE: no type for 'C2-NO-ROWS-TYPE'" s" " REPORTED? TTRUE
+   s" DEFER-LAYOUT-BUFFER C2-NO-COLUMN-TYPE"
+   70 s" in C2-NO-COLUMN-TYPE: no type for 'C2-NO-COLUMN-TYPE'" s" " REPORTED? TTRUE
+   s" TYPED-VARIABLE C2-NO-SLOT-TYPE"
+   70 s" in C2-NO-SLOT-TYPE: no type for 'C2-NO-SLOT-TYPE'" s" " REPORTED? TTRUE
+   s" 4 TYPED-BUFFER C2-NO-SLOTS-TYPE"
+   70 s" in C2-NO-SLOTS-TYPE: no type for 'C2-NO-SLOTS-TYPE'" s" " REPORTED? TTRUE
+   s" DYNAMIC-BUFFER C2-NO-DYN-TYPE"
+   70 s" in C2-NO-DYN-TYPE: no type for 'C2-NO-DYN-TYPE'" s" " REPORTED? TTRUE ;
 
 public
 
@@ -70,8 +136,8 @@ public
    s" NEWTYPE c2-quote-holder 1 : C2-QUOTE-FAMILY ( c2-quote-holder<[ n -- n ]> -- ) drop ;" 0 STATUS? TTRUE
    s" a family argument cannot contain a scheme" T-LABEL
    s" NEWTYPE c2-scope-holder 1 : C2-SCOPE-FAMILY ( c2-scope-holder<forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>> -- ) drop ;" 70 STATUS? TTRUE
-   s" a scheme cannot be stored in a typed global" T-LABEL
-   s" TYPED-VARIABLE C2-SCOPE-SLOT forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>" 67 STATUS? TTRUE
+   STORED
+   LAYOUT-STORED
    s" an extra child view cannot leave its loan" T-LABEL
    s" : C2-CHILD-DIRECT ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup ;] C2-MEM:WITH-READ ;" 70 STATUS? TTRUE
    s" a nested aggregate cannot hide a child view" T-LABEL
@@ -89,7 +155,7 @@ public
    s" typed pointer storage cannot retain a child ceiling" T-LABEL
    s" : C2-CHILD-TYPED ( read-view<p,l,u8> ptr read-view<p,l,u8> -- ) ! ;" 70 STATUS? TTRUE
    s" a global cannot declare a child-scoped view" T-LABEL
-   s" TYPED-VARIABLE C2-CHILD-SLOT read-view<p,l,u8>" 67 STATUS? TTRUE
+   s" TYPED-VARIABLE C2-CHILD-SLOT read-view<p,l,u8>" 70 STATUS? TTRUE
    s" an ordinary helper cannot relabel the loan ceiling" T-LABEL
    s" : C2-CHILD-RELABEL ( read-view<p,q,u8> -- read-view<p,r,u8> ) ;" 70 STATUS? TTRUE
    s" a fixed existing-loan callback cannot claim a fresh child" T-LABEL

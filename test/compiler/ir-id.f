@@ -46,33 +46,6 @@ WORST-CHILD-MS HANG-MARGIN * constant HANG-MS
 create SUBJECT-OUT SUBJECT-CAP allot
 create SUBJECT-ERR SUBJECT-CAP allot
 
-\ One assert per call, exactly like the shared T-OUTCOME-EXITED= it replaces,
-\ but every way of not exiting gets its own name. A guard that expired and a
-\ child that exited with the wrong status are different findings and must never
-\ print the same line: the shared assertion reports both as `expected 0 got 1`,
-\ which is how a busy host and a broken allocator became indistinguishable here.
-\ Naming the guard needs the budget, and only this caller knows it; giving
-\ lib/test/outcome.f its own per-variant diagnostics needs that file packaged
-\ first, which is tracked by dot habu-name-the-outcome-a80c2197.
-: CHILD-HUNG ( -- )
-   T-NEXT
-   s" child never exited: deadlock guard expired" T-ASSERT-DETAIL
-   s" guard ms: " type HANG-MS .
-   T-LABEL-CLEAR ;
-
-: CHILD-SIGNALED ( n -- ) {: sig:n :}
-   T-NEXT
-   s" child died on a signal without an exit status" T-ASSERT-DETAIL
-   s" signal: " type sig .
-   T-LABEL-CLEAR ;
-
-: CHILD-EXITED= ( outcome n -- ) {: want:n :}
-   MATCH outcome
-     exited OF want T= ENDOF
-     signaled OF CHILD-SIGNALED ENDOF
-     timeout OF CHILD-HUNG ENDOF
-   ;MATCH ;
-
 : SCALAR-CASES ( -- )
    0 IR-ID:COUNT IR-ID:COUNT-N 0 T=
    $7FFFFFFFFFFFFFFF IR-ID:COUNT IR-ID:COUNT-N
@@ -186,10 +159,14 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" IR-KEY-ERASE ( IR-ID:ir-module-key -- n )"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: SUBJECT-RUN ( ptr u8 n -- len len outcome )
-   SUBJECT-OUT SUBJECT-CAP >LEN
+\ Runs the source in a subject child under the deadlock guard and asserts its
+\ exit code, leaving the stdout and stderr lengths.
+: SUBJECT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
+   src srcu SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   HANG-MS >MS SUBJECT:RUN ;
+   HANG-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu SUBJECT-OUT outu LEN>N SUBJECT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : CONCURRENT-SOURCE$ ( n -- ptr u8 n ) {: mode:n :}
    SB-RESET
@@ -209,35 +186,33 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s"  IR-ID-CONCURRENCY:RUN" SB-APPEND
    SB$ ;
 
-: CONCURRENT-RUN ( n -- len len outcome ) {: mode:n :}
+\ Runs the concurrency child in this mode on a fresh engine under the deadlock
+\ guard and asserts its exit code, leaving the stdout and stderr lengths.
+: CONCURRENT-EXITS ( n n -- n n ) {: mode:n want:n :}
    mode CONCURRENT-SOURCE$ {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    0 ARGV$ >LEN src srcu >LEN
    SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   HANG-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   HANG-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   src srcu SUBJECT-OUT outu LEN>N SUBJECT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : CONCURRENT-GREEN ( -- )
    s" concurrent allocator barrier" T-LABEL
-   1 CONCURRENT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   1 0 CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : CONCURRENT-MUTATION ( -- )
    s" barrier-removal mutation fails overlap witness" T-LABEL
-   0 CONCURRENT-RUN OVERLAP-RC CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   0 OVERLAP-RC CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : CONCURRENT-ACTIVATE-CLEANUP ( -- )
    s" activation cleanup permits same-process task reuse" T-LABEL
-   2 CONCURRENT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   2 0 CONCURRENT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
@@ -248,21 +223,15 @@ create SUBJECT-ERR SUBJECT-CAP allot
 
 : SEAL-CASE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n needle:ptr needleu:n :}
-   src srcu SUBJECT-RUN ENGINE-ERROR:SEAL-PACKAGE CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   src srcu ENGINE-ERROR:SEAL-PACKAGE SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    SUBJECT-ERR erru needle needleu CONTAINS? TTRUE ;
 
 : CONTEXT-SEAL-CASE ( ptr u8 n -- )
-   SUBJECT-RUN ENGINE-ERROR:SEAL-VIOLATION CHILD-EXITED=
-   LEN>N drop
-   LEN>N drop ;
+   ENGINE-ERROR:SEAL-VIOLATION SUBJECT-EXITS 2drop ;
 
 : OWNER-CAST-REJECT ( ptr u8 n -- )
-   SUBJECT-RUN UNCAUGHT-RC CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   UNCAUGHT-RC SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    SUBJECT-ERR erru s" uncaught throw code 7135" CONTAINS? TTRUE ;
 
@@ -337,7 +306,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" sealed qualified tail cannot define" T-LABEL
    s" : IR-ID:FORGE ( -- ) ;" s" IR-ID:FORGE" SEAL-CASE
    s" sealed private wordlist cannot mutate" T-LABEL
-   S\" s\" IR-ID\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current\n: FORGE ( -- ) ;"
+   S\" s\" IR-ID\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE set-current\n: FORGE ( -- ) ;"
       s" FORGE" SEAL-CASE
    s" sealed source cannot include twice" T-LABEL
    S\" s\" src/compiler/ir/id.f\" included" s" IR-ID" SEAL-CASE
@@ -356,9 +325,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" current WID cannot diverge from its package" T-LABEL
    s" 1 data-base $28 + !" CONTEXT-SEAL-CASE
    s" module serial survives require replay" T-LABEL
-   RELOAD-STABLE$ SUBJECT-RUN 0 CHILD-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   RELOAD-STABLE$ 0 SUBJECT-EXITS {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
@@ -454,8 +421,8 @@ private
 
 : RAW-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    AUTH-NS {: ns:ptr :}
-   a u ns XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
-   a u ns XREF-LEN XREF-FIND-WL XREF-FOUND? TTRUE ;
+   a u ns XREF-PKG-PUBLIC XREF-FIND-WL XREF-FOUND? TFALSE
+   a u ns XREF-PKG-PRIVATE XREF-FIND-WL XREF-FOUND? TTRUE ;
 
 
 \ Read the public metadata surface; checker lookup helpers are private, so the
@@ -480,7 +447,7 @@ TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
 
 : DICTIONARY-OWNERSHIP ( -- )
    RAW# 0 ?do i RAW$ RAW-ROW loop
-   s" SERIAL-NEXT" AUTH-NS XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
+   s" SERIAL-NEXT" AUTH-NS XREF-PKG-PUBLIC XREF-FIND-WL XREF-FOUND? TFALSE
    s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE ;
 
 public

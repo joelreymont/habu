@@ -1,11 +1,13 @@
 \ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
 \ errors the hb-build CLI reports - a cache root that is a file, as JSON and as
-\ text - and a MAIN whose effect breaks the application contract, refused by
-\ the app-build child and passed through by the CLI.
+\ text, an -o too long to replace - and a MAIN whose effect breaks the
+\ application contract, refused by the app-build child and passed through by
+\ the CLI.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
 require tools/hb-build-test-lib.f
+require test/app-image-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -77,6 +79,36 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
    HBT-CHECK-PATH-TEXT
    HBT-BAD-OUT REMOVE-FILE ;
 
+FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
+
+\ An -o of u bytes under the scratch root, its last name all `o`.
+: HBT-LONG-OUT$ ( n -- ptr u8 n )
+   {: u:n :}
+   HBT-ROOT {: root:ptr rootu:n :}
+   root HBT-LONG-OUT-BUF rootu BYTE-COPY
+   [char] / HBT-LONG-OUT-BUF rootu + c!
+   u rootu 1+ ?do [char] o HBT-LONG-OUT-BUF i + c! loop
+   HBT-LONG-OUT-BUF u ;
+
+\ -o is replaced through a sibling with a longer name (lib/fs-mutate.f
+\ SIBLING-PATH-MAX), so the CLI refuses an -o with no room for one by name
+\ before it builds anything: the usage exit, the message on stderr and nothing
+\ on stdout. One byte past FS-PATH-CAP is the same refusal.
+: HBT-OUT-TOO-LONG ( n -- )
+   {: u:n :}
+   HBT-ARGV-BASE
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   u HBT-LONG-OUT$ >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-USAGE-RC T=
+   outu 0 T=
+   HBT-ERR erru S\" hb-build: output path too long\n" T$= ;
+
+: CLI-OUT-TOO-LONG ( -- )
+   SIBLING-PATH-MAX 1+ HBT-OUT-TOO-LONG
+   FS-PATH-CAP 1+ HBT-OUT-TOO-LONG ;
+
 \ MAIN must satisfy the application's empty input/output contract at build
 \ time: the app-build child refuses one that takes or leaves a value when it
 \ compiles the startup word that calls it, and says so `in enter`. The child's
@@ -99,7 +131,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 \ exit or diagnostic. tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY is
 \ the AOT path's.
 : HBT-REFUSE-MAIN-CLI ( n -- ) {: want:n :}
-   HBT-ARGV-BASE
+   HBT-ARGV-BASE-REPL
    s" --repl" >LEN PROC-ARGV+
    HBT-REPL-BAD-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -118,8 +150,10 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 public
 : HBT-CLI-ERRORS-MAIN ( -- )
    T-RESET
+   NULL$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    CLI-PATH-ERROR
+   CLI-OUT-TOO-LONG
    HBT-BAD-MAIN-EFFECTS
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

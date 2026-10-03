@@ -15,10 +15,11 @@
 \ holding the two together: a trailing branch to the block laid out next
 \ (FALL-THRU?), a copy into its own register (COPY?), and a data-stack
 \ adjustment of nothing, and a reload of the frame cell just stored from the
-\ same register. Adjacent data-stack adjustments are combined before
-\ either pass, and plain stack transfers with identical source spans are paired,
-\ without changing the accepted IR. An elided instruction gets NO
-\ source-map row, because row k describes the instruction WORD@ k answers.
+\ same register, and the page half of a frame under one page (PAGES-ELIDED?).
+\ Adjacent data-stack adjustments are combined before either pass, and plain
+\ stack transfers with identical source spans are paired, without changing the
+\ accepted IR. An elided instruction gets NO source-map row, because row k
+\ describes the instruction WORD@ k answers.
 \
 \ Block zero is written first and the block control leaves through last.
 \ Publication explicitly distinguishes a trailing RET slot from a full span.
@@ -484,13 +485,35 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
 
+\ A frame moves the pointer in two halves: its whole 4 KiB pages over the
+\ shifted add/sub immediate and the rest over the plain one. The contract's
+\ deepest frame, A64M:FRAME-MAX, is under eight pages, so both halves fit their
+\ fields; both are multiples of the alignment, so the pointer stays aligned
+\ between them. A frame under one page has no pages to move (PAGES-ELIDED?).
+12 constant PAGE-BITS
+1 PAGE-BITS lshift 1- constant PAGE-REST-MASK
+
+: FRAME-PAGES ( IR-ID:ir-op-id -- n )
+   FRAME-SIZE PAGE-BITS rshift ;
+
+: FRAME-REST ( IR-ID:ir-op-id -- n )
+   FRAME-SIZE PAGE-REST-MASK and ;
+
+: WORD-RESERVE-PAGES ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-PAGES  ENC-SUBI-LSL12 ;
+
 : WORD-RESERVE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64M:SP-GPR A64M:SP-GPR  id FRAME-SIZE  ENC-SUBI ;
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-REST  ENC-SUBI ;
+
+: WORD-RELEASE-PAGES ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-PAGES  ENC-ADDI-LSL12 ;
 
 : WORD-RELEASE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   A64M:SP-GPR A64M:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
+   A64M:SP-GPR A64M:SP-GPR  id FRAME-REST  ENC-ADDI ;
 
 \ Over the pointer is the scaled unsigned field, Ldr and Str; under it is the
 \ unscaled signed field, Ldur and Stur. One dialect form written two ways.
@@ -675,11 +698,14 @@ variable N-FUNS                        \ how many functions the emission holds
 3 constant DIV-INSNS                 \ instructions one division is
 DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 
-\ A property of the FORM: comparisons and conditional selects take two;
-\ division, calls, compare-and-branches and data addresses have longer forms.
+\ A property of the FORM: comparisons, conditional selects and the two ends of
+\ a frame take two; division, calls, compare-and-branches and data addresses
+\ have longer forms.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-DATAADDR = if 3 exit then
+   k O-RESERVE = if 2 exit then
+   k O-RELEASE = if 2 exit then
    k O-SELZ = if 2 exit then
    k O-CMPSEL = if 2 exit then
    k O-SELZD = if 2 exit then
@@ -895,12 +921,21 @@ INSN-PER-OP-CK
    id SLOT-AT {: k:n :}
    k O-LINKSAVE = k O-RELEASE = or ;
 
+\ A frame under one page moves the pointer in its plain half alone, which keeps
+\ every such frame the one word it always was.
+: PAGES-ELIDED? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT {: k:n :}
+   k O-RESERVE = k O-RELEASE = or 0= if false exit then
+   id FRAME-PAGES 0= ;
+
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT INSNS-OF
    id home FALL-THRU? if 1- then
    id SELF-MOV? if 1- then
    id FUSED-SILENT? if 1- then
+   id PAGES-ELIDED? if 1- then
    id DZERO-MOVES - ;
 
 \ These frame forms move eight bytes at SP without writeback. Exact operation
@@ -946,6 +981,7 @@ INSN-PER-OP-CK
    id SLOT-AT INSNS-OF
    id SELF-MOV? if 1- then
    id FUSED-SILENT? if 1- then
+   id PAGES-ELIDED? if 1- then
    id DZERO-MOVES - ;
 
 : OP-SILENT? ( IR-ID:ir-op-id -- bool ) OP-LEFT 0= ;
@@ -1494,6 +1530,7 @@ variable CH-AT
 : PUT-RESERVE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    EM-FUSED @ 0<> if id WORD-LNKPUSH APPEND exit then
+   id PAGES-ELIDED? 0= if id  id WORD-RESERVE-PAGES  APPEND then
    id  id WORD-RESERVE  APPEND ;
 
 : PUT-LINKSAVE ( IR-ID:ir-op-id -- )
@@ -1509,7 +1546,8 @@ variable CH-AT
 : PUT-RELEASE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    EM-FUSED @ 0<> if exit then
-   id  id WORD-RELEASE  APPEND ;
+   id  id WORD-RELEASE  APPEND
+   id PAGES-ELIDED? 0= if id  id WORD-RELEASE-PAGES  APPEND then ;
 
 \ An elided copy gets no source-map row, for the reason an elided branch gets none.
 : PUT-MOV ( IR-ID:ir-op-id -- )

@@ -40,7 +40,7 @@ variable BYTE
 : CHECK-JSON ( -- )
    CHECK:RESET
    s" json-errors" CHECK:OPT
-   [: CHECK-ACT ;] GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME!
+   [: CHECK-ACT ;] GE-CAPTURE-ACTION
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
 : TOKEN-FIELD ( n -- )

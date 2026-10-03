@@ -19,6 +19,8 @@
 \ (no require).
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
 using SCHEMA-REG
 using TFAM
 
@@ -31,7 +33,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): sealed pre-hook registry /

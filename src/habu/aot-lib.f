@@ -1,30 +1,72 @@
-\ aot-lib.f - stripped AOT linker words. Load after src/habu/aot-closure.f.
+\ aot-lib.f - stripped AOT linker words, over src/habu/aot-closure.f's members.
 \
 \ tools/aot-build.f loads the application through the retained native compiler.
 \ LINK writes the selected entry's reachable closure into a standalone image,
 \ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
 \ the output paths; the default application entry is MAIN.
-require src/habu/stack-abi.f
-require src/habu/rt.f
-require src/habu/crash.f
-require src/habu/aot-decl.f
-require src/habu/aot-window-latch.f
-require src/habu/aot-owned-cells.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
 
-\ Full-image emission owns its signer and driver. This linker loads only after
-\ the application span is latched; snapshot support needs neither dependency.
+\ No static require can name a target's file, so the emission that needs one
+\ selects it, as src/habu/app-image-core.f and tools/object-image.f do. The
+\ system calls come first: this file's startup code, src/habu/rt.f and
+\ src/habu/crash.f emit through SYS, and the target's call numbers.
 package AOT-LINK
 private
 
-: LOAD-SIGNER ( -- )
-   HB-TARGET-LINUX? if s" src/os/linux/sign.f" required exit then
-   HB-TARGET-MACOS? if s" src/os/macos/sign2.f" required exit then
-   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sign.f" required exit then
+: LOAD-SYS ( -- )
+   HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
+   HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
+   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    s" aot: unsupported target" 76 die ;
 
-' LOAD-SIGNER
+' LOAD-SYS
 ;package
 execute
+require src/os/env-base.f
+require src/habu/stack-abi.f
+require src/habu/layout.f
+require src/habu/rt.f
+require src/habu/crash.f
+require src/habu/xref.f
+require src/habu/fdio.f
+require src/habu/address-carrier.f
+require src/habu/aot-decl.f
+require src/habu/aot-window-latch.f
+require src/habu/aot-owned-cells.f
+require src/habu/aot-closure.f
+
+\ Full-image emission owns its signer and driver. This linker loads only after
+\ the application span is latched; snapshot support needs neither dependency.
+\ Each signer patches its target's image format and the format builds in
+\ src/os/image-bytes.f's buffer, so the buffer loads first, then the format.
+require src/os/image-bytes.f
+package AOT-LINK
+private
+
+: LOAD-IMAGE ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/elf.f" required
+      s" src/os/linux/sign.f" required
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/macho.f" required
+      s" src/os/macos/sign2.f" required
+      exit
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/elf.f" required
+      s" src/os/linux-x86-64/sign.f" required
+      exit
+   then
+   s" aot: unsupported target" 76 die ;
+
+' LOAD-IMAGE
+;package
+execute
+require src/habu/sign-id.f
 require src/habu/driver-io.f
 
 \ The AOT relocation core compiles checked. It works over CLOSURE MEMBERS - a
@@ -1014,12 +1056,13 @@ variable RP  variable RE
 
 public
 
-\ The span is already latched: tools/aot-build-core.f calls AOT-DATA-SPAN the moment
+\ The span is already latched: tools/aot-build-open.f calls AOT-DATA-SPAN the moment
 \ the application has loaded, because this file - and every lib module the linker
 \ needs - is loaded AFTER that and allots above BLOB-END. LINK therefore reads the
 \ bounds it is given and never latches them itself; latching here would put the
 \ whole linker inside the span.
 : LINK ( -- )
+   AOT-APP-POOL                                     \ reached literals are copied into the window's pool
    CARRY-CELLS                                      \ the engine constants this image carries
    CARRY-TASK-EXIT                                  \ active carried task exit quotations
    COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
@@ -1028,7 +1071,7 @@ public
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
-   s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
+   SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 
 ;using
 ;package

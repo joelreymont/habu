@@ -445,7 +445,7 @@ variable F-IDLE
 : STEP ( -- )
    GATHER CHECK TICK STALL RUN-PACKET COMMIT
    0 JUMPED ! BRANCH-DUE
-   IDLE-TICKS @ 1 > if IDLE-TICKS @ 1- 0 ?do IDLE-ONE loop then ;
+   IDLE-TICKS @ 1- 0 ?do IDLE-ONE loop ;
 
 public
 

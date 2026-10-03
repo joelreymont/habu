@@ -120,7 +120,7 @@ public
 
 : PROC-ARGV-CHECK-PATH ( ptr u8 len -- ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   pathu LEN>N 1 + PROC-PATHZ-CAP > if E-PROC-OUTPUT throw then ;
+   pathu LEN>N PROC-PATHZ-CAP >= if E-PROC-OUTPUT throw then ;
 
 : PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- ) {: pathz:ptr argv:ptr :}
    pathz argv PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-RAW {: pid :}

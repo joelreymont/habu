@@ -3,6 +3,7 @@
 \ bin/hb --load test/native-unit-compile-e2e.f
 
 require lib/test.f
+require lib/test/outcome.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/test/subject.f
@@ -169,14 +170,14 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    UNIT-COMPILE:BORROWED-CLEAR? TTRUE
    AFTER-THROW ;
 
-: REFUSED ( ptr u8 n -- )
-   OUT 1024 >LEN ERR 1024 >LEN 10000 >MS SUBJECT:RUN
-   MATCH outcome
+: REFUSED ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u OUT 1024 >LEN ERR 1024 >LEN 10000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
       exited OF 70 T= ENDOF
       signaled OF drop false TTRUE ENDOF
-      timeout OF false TTRUE ENDOF
+      timeout OF src u OUT outu LEN>N ERR ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH
-   LEN>N ERR-U ! LEN>N drop
    ERR ERR-U @ s" unit-compile-run" CONTAINS? TTRUE ;
 
 : HOOK-GATE ( -- )

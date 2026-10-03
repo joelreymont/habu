@@ -504,6 +504,65 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    [: JRT-BAD-FIND-KEY-LEN ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-FIND-KEY-PTR ;] E-JR-STATE TTHROWSQ ;
 
+\ ---- JR:STR-EQ? -----------------------------------------------------------
+\ Whether a one-string document decodes to the given bytes; the cursor must
+\ still be on the string, so the document ends at the next token.
+: JRT-EQ? ( ptr u8 n ptr u8 n -- bool )
+   {: src:ptr su:n want:ptr wu:n :}
+   src su JRT-OPEN-A
+   JR:NEXT JR:T-STR T=
+   want wu JR:STR-EQ? {: same:bool :}
+   JR:NEXT JR:T-END T=
+   JR:CLOSE
+   same ;
+
+: JRT-TEST-STR-EQ ( -- )
+   s\" \"\"" s" " JRT-EQ? TTRUE
+   s\" \"\"" s" a" JRT-EQ? TFALSE
+   s\" \"a\"" s" " JRT-EQ? TFALSE
+   s\" \"initialize\"" s" initialize" JRT-EQ? TTRUE
+   s\" \"\\u0069nit\\u0069alize\"" s" initialize" JRT-EQ? TTRUE
+   JRT-SUR-SRC$ JRT-SUR-WANT$ JRT-EQ? TTRUE
+   JRT-ESC-SRC$ JRT-ESC-WANT$ JRT-EQ? TTRUE
+   s\" \"initialize\"" s" init" JRT-EQ? TFALSE
+   s\" \"init\"" s" initialize" JRT-EQ? TFALSE
+   s\" \"\\u0069nit\"" s" initialize" JRT-EQ? TFALSE
+   s\" \"initializf\"" s" initialize" JRT-EQ? TFALSE
+   s\" \"\\u0041\"" s" B" JRT-EQ? TFALSE
+   s\" \"\\n\"" s\" \t" JRT-EQ? TFALSE
+   s\" \"a\\nb\"" s\" a\\nb" JRT-EQ? TFALSE ;
+
+\ A key compares the same way, and a repeated comparison sees the same key.
+: JRT-TEST-STR-EQ-KEY ( -- )
+   s\" {\"m\\u0065thod\":\"x\"}" JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T=
+   s" method" JR:STR-EQ? TTRUE
+   s" meth" JR:STR-EQ? TFALSE
+   s" method" JR:STR-EQ? TTRUE
+   JR:NEXT JR:T-STR T=
+   s" x" JR:STR-EQ? TTRUE
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
+
+: JRT-BAD-EQ-KIND ( -- )
+   s" 1" JRT-OPEN-A
+   JR:NEXT drop s" 1" JR:STR-EQ? drop JR:CLOSE ;
+
+: JRT-BAD-EQ-LEN ( -- )
+   JRT-HI-SRC$ JRT-OPEN-A
+   JR:NEXT drop JRT-ZERO-U8 -1 JR:STR-EQ? drop JR:CLOSE ;
+
+: JRT-BAD-EQ-PTR ( -- )
+   JRT-HI-SRC$ JRT-OPEN-A
+   JR:NEXT drop JRT-ZERO-U8 2 JR:STR-EQ? drop JR:CLOSE ;
+
+: JRT-TEST-STR-EQ-MISUSE ( -- )
+   [: JRT-BAD-EQ-KIND ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-EQ-LEN ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-EQ-PTR ;] E-JR-STATE TTHROWSQ ;
+
 \ ---- explicit reader ownership and isolation -----------------------------
 : JRT-TEST-INTERLEAVE ( -- )
    s" [1,3]" JRT-OPEN-A
@@ -584,10 +643,11 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
 : JRT-TEST-SEALED ( -- )
    s" package JR : FORGE ( ptr a -- JR:reader ) MINT-READER ; ;package"
-   JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N drop ;
+   {: src:ptr srcu:n :}
+   src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   src srcu JRT-SUBJECT-OUT outu LEN>N JRT-SUBJECT-ERR erru LEN>N
+   oc ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
    s" JRT-BAD-PREMINT ( ptr a -- ptr n n ) JR:STORAGE>PREMINT" JRT-REJECTED
@@ -760,6 +820,9 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-TEST-FIND-ESCAPED
    JRT-TEST-FIND-ANCHOR
    JRT-TEST-FIND-MISUSE
+   JRT-TEST-STR-EQ
+   JRT-TEST-STR-EQ-KEY
+   JRT-TEST-STR-EQ-MISUSE
    JRT-TEST-INTERLEAVE
    JRT-TEST-CATCH-ISOLATION
    JRT-TEST-OWNERSHIP

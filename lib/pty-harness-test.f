@@ -2,9 +2,11 @@
 \
 \ Most cases here feed bytes through ROOM$ / TOOK, the same append the fd readers
 \ use, so the compaction, the span search and the never-seen facts are exercised
-\ where they can be driven exactly. The last one is the spawn's own abort path,
-\ which needs a real pair. The rest of the pty half - the waits and both barrier
-\ shapes against a live child - is test/proc-pty.f's.
+\ where they can be driven exactly. The last ones need a real pair: the spawn's
+\ own abort path, the two ends of a wait - a clock that runs out on a live child
+\ and a child that hangs up - and the wedged reap. The rest of the pty half - the
+\ waits and both barrier shapes against a child engine's own answers - is
+\ test/proc-pty.f's.
 \
 \ Run: bin/hb --load lib/pty-harness-test.f
 require lib/test.f
@@ -19,6 +21,8 @@ using PTY-HARNESS
 $400 constant FEED-LIMIT           \ chunks one fill loop may feed before giving up
 $64 constant WEDGE-MS              \ the wedge case's own budget, short enough to watch
 $BB8 constant WEDGE-SLACK-MS       \ what a loaded box may add to it before the claim fails
+$401 constant PATH-OVER            \ one byte past the harness's $400-byte path store
+$64 constant LATE-MS               \ the late case's wait, which nothing is asked within
 
 create FILLER 64 allot
 variable HIT                       \ did the loop reach the case it was feeding for?
@@ -29,6 +33,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
 : MARK$ ( -- ptr u8 n )     s" edge-marker" ;
 : GONE$ ( -- ptr u8 n )     s" dropped-marker" ;
 : ABSENT$ ( -- ptr u8 n )   s" never-fed-marker" ;
+: ANYWHERE$ ( -- ptr u8 n ) s" " ;  \ an empty head: the tail may be anywhere
 
 
 : FILLER! ( -- )                   \ 64 bytes no marker below can match
@@ -177,25 +182,60 @@ variable HIT                       \ did the loop reach the case it was feeding 
    [: s" " WATCH+ drop ;] catch 0 <> TTRUE
    s" and so is a needle longer than the pool holds" T-LABEL
    [: FILLER 65 WATCH+ drop ;] catch 0 <> TTRUE
+   s" and so is a negative one" T-LABEL
+   [: FILLER -1 WATCH+ drop ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 WATCH+ drop ;] E-PTY-CAPACITY TTHROWSQ
    s" and the table itself is bounded" T-LABEL
    [: FILL-WATCHES ;] catch 0 <> TTRUE ;
 
 
+\ A negative length is refused before it reaches a copy or a write: write()
+\ answers -1 for bytes it refused, which a length of -1 would take for success,
+\ and a negative needle would be found at offset 0. No pair is open yet.
+: CASE-NEGATIVE-LENGTHS ( -- )
+   BUF-CLEAR
+   s" a spawn path past the store, or negative, is refused" T-LABEL
+   [: FILLER PATH-OVER SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER -1 SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 SPAWN-ON-PTY ;] E-PTY-CAPACITY TTHROWSQ
+   s" a negative send length is refused before the write" T-LABEL
+   [: FILLER -1 SEND ;] E-PTY-CAPACITY TTHROWSQ
+   [: FILLER STR-MIN-I64 SEND ;] E-PTY-CAPACITY TTHROWSQ
+   s" a barrier on a negative needle is refused, not found at 0" T-LABEL
+   [: FILLER -1 WAIT-BARRIER drop ;] E-STR-BOUNDS TTHROWSQ
+   [: FILLER STR-MIN-I64 WAIT-BARRIER drop ;] E-STR-BOUNDS TTHROWSQ ;
+
+
+\ A reader hands TOOK the count it wrote into ROOM$: a negative one moved the read
+\ cursor back, and one past the room moved it past the buffer.
+: TOOK-AFTER-MARK ( n -- ) {: got:n :}
+   BUF-CLEAR
+   MARK$ FEED
+   got TOOK ;
+
+
+: TOOK-PAST-ROOM ( -- )
+   BUF-CLEAR
+   MARK$ FEED
+   ROOM$ {: room:ptr cap:n :}
+   cap 1+ TOOK ;
+
+
+: CASE-TOOK-BOUNDS ( -- )
+   WATCH-RESET
+   s" a negative count is refused before the cursor moves" T-LABEL
+   [: -1 TOOK-AFTER-MARK ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   [: STR-MIN-I64 TOOK-AFTER-MARK ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   s" and so is a count one past the room" T-LABEL
+   [: TOOK-PAST-ROOM ;] E-PTY-CAPACITY TTHROWSQ
+   BUF-LEN MARK$ nip T=
+   BUF-CLEAR ;
+
+
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
-
-
-\ Only the editor's own prompt proves the child holds the terminal raw, and only
-\ then is ^D a key rather than a canonical end of file (test/proc-pty.f
-\ PTY-EDITOR-READY has the whole reasoning).
-: STOP-CHILD ( -- )
-   BUF-CLEAR
-   s" 123 456 + ." SEND-LINE
-   s" 579" WAIT-FOR TTRUE
-   s" 579" s" habu> " WAIT-AFTER TTRUE
-   4 SEND-BYTE
-   REAP 0 T-OUTCOME-EXITED=
-   CLOSE-MASTER ;
 
 
 \ A spawn that throws must leave neither end of its pair open: the master cell is
@@ -216,7 +256,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
 \ the editor prints once it holds the terminal raw again, not the echoed one.
 \ (A pair that never appears waits the whole 20 s budget out; CASE-ORDER pins
 \ the refusal on the buffer, where it costs nothing.) The child is the one
-\ CASE-SPAWN-ABORT left at its prompt, and STOP-CHILD proves it still exits.
+\ CASE-SPAWN-ABORT left at its prompt, and CASE-HANGUP proves it still exits.
 : CASE-WAIT-AFTER ( -- )
    BUF-CLEAR
    s" 42 ." SEND-LINE
@@ -224,8 +264,47 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s"  ok" WAIT-FOR TTRUE
    s" and the prompt after it is a later one than the echo's" T-LABEL
    s"  ok" s" habu> " WAIT-AFTER TTRUE
-   s"  ok" s" habu> " FIND-AFTER  0 s" habu> " FIND-FROM  > TTRUE
-   STOP-CHILD ;
+   s"  ok" s" habu> " FIND-AFTER  0 s" habu> " FIND-FROM  > TTRUE ;
+
+
+\ A wait whose clock ends while the child still holds the terminal has not been
+\ answered YET: a slow child is not a failed one, so the wait throws the deadline
+\ instead of answering false, and the row reads as a timeout. The child is asked
+\ nothing until that clock has ended, so no scheduling can answer the wait in
+\ time; asked afterwards, it answers, which is what makes it late and not hung.
+: CASE-LATE-ANSWER ( -- )
+   BUF-CLEAR
+   s" a wait whose clock ends with the child alive throws the deadline" T-LABEL
+   [: ANYWHERE$ s" 48879" LATE-MS WAIT-AFTER-WITHIN drop ;] E-PROC-TIMEOUT TTHROWSQ
+   s" and the child it ran out on answers once asked" T-LABEL
+   s" $BEEF ." SEND-LINE
+   s" 48879" s" habu> " WAIT-AFTER TTRUE ;
+
+
+\ The other end of a wait: the child hangs up. That ends it at once with whether
+\ the text came first, never with the deadline, and a barrier the child hangs up
+\ on retires the window an earlier barrier closed. Only the editor's own prompt
+\ proves the child holds the terminal raw, and only then is ^D a key rather than
+\ a canonical end of file (test/proc-pty.f PTY-EDITOR-READY has the reasoning).
+: CASE-HANGUP ( -- )
+   BUF-CLEAR
+   s" 123 456 + ." SEND-LINE
+   s" a barrier closes a window at the answer" T-LABEL
+   s" 579" WAIT-BARRIER TTRUE
+   ABSENT$ WINDOW-ABSENT? TTRUE
+   s" 579" s" habu> " WAIT-AFTER TTRUE
+   4 SEND-BYTE
+   s" a wait the child hangs up on answers false, not the deadline" T-LABEL
+   ABSENT$ WAIT-FOR TFALSE
+   s" and a barrier it hangs up on leaves no window" T-LABEL
+   ABSENT$ WAIT-BARRIER TFALSE
+   ABSENT$ WINDOW-ABSENT? TFALSE
+   s" the child exits cleanly" T-LABEL
+   \ The terminal carries both of the child's streams, so BUF$ is its stdout
+   \ and there is no stderr apart from it.
+   REAP {: oc :}
+   HB$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   CLOSE-MASTER ;
 
 
 \ A child that writes into the terminal faster than anyone empties it and never
@@ -256,8 +335,12 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-KEEP-TAIL
    CASE-NO-WINDOW
    CASE-WATCH-REFUSALS
+   CASE-NEGATIVE-LENGTHS
+   CASE-TOOK-BOUNDS
    CASE-SPAWN-ABORT
    CASE-WAIT-AFTER
+   CASE-LATE-ANSWER
+   CASE-HANGUP
    CASE-WEDGE-REAP ;
 
 

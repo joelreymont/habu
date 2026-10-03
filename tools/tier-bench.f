@@ -3,10 +3,10 @@
 \ Run:
 \     bin/hb --load tools/tier-bench.f -- <tier> <source-file>
 \
-\ Prints one line per benchmark, three timed runs and their median, in
-\ microseconds:
+\ Prints one line per benchmark, one timed run per round (RUNS of them) and
+\ their median, in microseconds:
 \
-\     B <name> <run1> <run2> <run3> <median>
+\     B <name> <run1> <run2> ... <run15> <median>
 \
 \ WHY THE TIER IS SELECTED BEFORE THE REQUIRES. Only code compiled after
 \ `set-tier` is the selected tier's; the engine's baked words - the checker, the
@@ -14,18 +14,37 @@
 \ engine was built and do not change. So a benchmark that ran a baked word would
 \ report the same number at both tiers no matter what either compiler does. The
 \ selection is therefore top-level code at the head of this file, ahead of the
-\ requires, and every word under test comes from a file loaded after it:
-\ lib/array.f for the integer loops and tools/lint/text.f for the text work.
+\ targets' requires, and every word under test comes from a file loaded after
+\ it: lib/array.f for the integer loops and tools/lint/text.f for the text work.
 \
 \ WHY `harness` IS MEASURED TOO. The timing loop in this file is compiled at the
 \ selected tier along with everything else, so part of every number below is the
 \ loop, not the word. `harness` times the same loop over a body that does
 \ nothing; subtract it before comparing a small benchmark across tiers.
 \
-\ WHY THREE RUNS AND A MEDIAN. This measures wall-clock time on a shared
-\ machine. One run can be anything; the median of three survives a single
-\ neighbour. Quote a number only with the load average it was taken at - see
-\ tools/compile-floor.f, which says the same thing about compile time.
+\ WHY FIFTEEN ROUNDS, AND WHY THEY ARE INTERLEAVED. Every window reads this
+\ thread's CPU time (TIME:THREAD-CPU-NS, lib/time-cpu.f), so a slice the
+\ scheduler gave a neighbour is not in it, but the core it ran on is: a run on
+\ an efficiency core, or beside a neighbour that evicted its cache, still reads
+\ slow, and only ever slower. A round times every benchmark once and the
+\ rounds run one after another, so a benchmark's runs lie a whole round apart
+\ instead of back to back inside one stretch on a slow core.
+\ test/compile-floor-gate.f judges the least of them, the cost on the fastest
+\ core the run found, so the rounds have to outlast a slow stretch. Measured
+\ on this 12-core machine at load average 90, beside seven copies of this tool
+\ and a native build (32 runs of 101 rounds at each tier): a benchmark ran
+\ over its gate budget in at most five rounds in a row, and no seven rounds in
+\ a row had their least over it. A round costs about 31 ms of CPU at tier 0
+\ and 8 ms at tier 1. The median is for reading by eye. Quote a number with
+\ the host and the load it was taken at - see tools/compile-floor.f, which
+\ times compile work the same way.
+
+\ The clock is not under test, so it loads ahead of the selection, at the
+\ engine's tier: loaded after it, its FFI and task runtime cost a tier-1 run
+\ about a second of compiling. The only files it shares with the benchmark
+\ targets are baked into the engine (lib/errors.f, lib/string.f, lib/memory.f,
+\ lib/adt/option.f), so no word under test is compiled before the selection.
+require lib/time-cpu.f
 
 package TIER-SELECT
 private
@@ -65,7 +84,7 @@ $40000 constant CELLS-N             \ 262144 cells under the integer loops
 $100000 constant TEXT-CAP           \ destination for the byte-moving benchmarks
 1000 constant MAX-LINES             \ LINT-SPLIT:SPLIT-LINES holds $400 fields
 1000 constant NS-PER-US
-3 constant RUNS
+15 constant RUNS
 32 constant DIG-CAP
 $0A constant LF
 $20 constant SP
@@ -73,8 +92,8 @@ $20 constant SP
 74 constant IO-RC                   \ sysexits EX_IOERR
 
 \ Repeat counts, one per benchmark, chosen so a run lands in tens of
-\ milliseconds at tier 0 on this machine: long enough to swamp `mono-ns`, short
-\ enough that three runs of seven benchmarks stay under a minute.
+\ milliseconds at tier 0 on this machine: long enough to swamp the clock read,
+\ short enough that fifteen rounds cost about half a second of CPU at tier 0.
 8 constant ARITH-REPS
 8 constant BRANCH-REPS
 1 constant SEARCH-REPS
@@ -91,17 +110,27 @@ create CHB 1 allot                  \ EMIT-C's own byte; sharing DIG would let i
 variable DEC-V                      \ overwrite the digit EMIT-DEC has not read yet
 variable DEC-K
 
-create RUN-NS RUNS cells allot
+\ RUN-NS holds RUNS samples per benchmark, one row per benchmark.
+0 constant HARNESS-ROW
+1 constant ARITH-ROW
+2 constant BRANCH-ROW
+3 constant SEARCH-ROW
+4 constant FOLD-ROW
+5 constant MOVE-ROW
+6 constant LINES-ROW
+7 constant ROWS
+create RUN-NS ROWS RUNS * cells allot
+create SORTED RUNS cells allot      \ one row's samples, ascending: its median
 
 variable TEXT-N                     \ bytes of the loaded source actually used
 variable LINES-N                    \ bytes of it holding at most MAX-LINES lines
 variable SINK                       \ keeps a benchmark's result from being dead
 
 \ ---- output -----------------------------------------------------------------
-\ This file requires nothing beyond its benchmark targets, for the reason
-\ tools/tier-census.f gives: a tool that loaded lib/string.f for its own output
-\ would have compiled it at the engine's tier before the selection above, and
-\ every word it reaches would then be missing from the comparison.
+\ This file requires nothing beyond its benchmark targets and its clock, for
+\ the reason tools/tier-census.f gives: a tool that loaded lib/string.f for its
+\ own output would have compiled it at the engine's tier before the selection
+\ above, and every word it reaches would then be missing from the comparison.
 
 : EMIT-C ( n -- ) {: c :}
    c CHB c!
@@ -194,45 +223,75 @@ variable SINK                       \ keeps a benchmark's result from being dead
 
 \ ---- timing -----------------------------------------------------------------
 
-: MEDIAN3 ( -- n )
-   RUN-NS 0 cells + @ {: a :}
-   RUN-NS 1 cells + @ {: b :}
-   RUN-NS 2 cells + @ {: c :}
-   a b > if a b else b a then {: hi lo :}
-   c lo < if lo exit then
-   c hi > if hi exit then
-   c ;
+: SAMPLE ( n n -- ptr n ) {: row run :}
+   RUN-NS row RUNS * run + cells + ;
 
-: REPORT ( ptr u8 n -- ) {: name:ptr nu :}
+: SORTED-AT ( n -- ptr n ) cells SORTED + ;
+
+\ v into SORTED's first k samples, which are in ascending order.
+: INSERT ( n n -- ) {: v k :}
+   k begin
+      dup 0 > if dup 1 - SORTED-AT @ v > else false then
+   while
+      dup 1 - SORTED-AT @ over SORTED-AT !
+      1 -
+   repeat
+   SORTED-AT v swap ! ;
+
+\ RUNS is odd, so the median is one sample.
+: MEDIAN ( n -- n ) {: row :}
+   RUNS 0 ?do row i SAMPLE @ i INSERT loop
+   RUNS 2 / SORTED-AT @ ;
+
+: REPORT ( n ptr u8 n -- ) {: row name:ptr nu :}
    s" B " type
    name nu type
-   RUNS 0 ?do RUN-NS i cells + @ NS-PER-US / EMIT-FIELD loop
-   MEDIAN3 NS-PER-US / EMIT-FIELD
+   RUNS 0 ?do row i SAMPLE @ NS-PER-US / EMIT-FIELD loop
+   row MEDIAN NS-PER-US / EMIT-FIELD
    LF EMIT-C ;
 
-\ One `xt` per benchmark would need a quotation the checker can call three
-\ times; naming the bodies and timing each in its own word costs one line each
+\ One `xt` per benchmark would need a quotation the checker can call from a
+\ loop; naming the bodies and timing each in its own word costs one line each
 \ and keeps every body a plain checked call.
-: TIME-HARNESS ( -- ) RUNS 0 ?do mono-ns B-HARNESS mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-ARITH   ( -- ) RUNS 0 ?do mono-ns B-ARITH   mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-BRANCH  ( -- ) RUNS 0 ?do mono-ns B-BRANCH  mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-SEARCH  ( -- ) RUNS 0 ?do mono-ns B-SEARCH  mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-FOLD    ( -- ) RUNS 0 ?do mono-ns B-FOLD    mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-MOVE    ( -- ) RUNS 0 ?do mono-ns B-MOVE    mono-ns swap - RUN-NS i cells + ! loop ;
-: TIME-LINES   ( -- ) RUNS 0 ?do mono-ns B-LINES   mono-ns swap - RUN-NS i cells + ! loop ;
+: TIME-HARNESS ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-HARNESS TIME:THREAD-CPU-NS swap - HARNESS-ROW run SAMPLE ! ;
+: TIME-ARITH ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-ARITH TIME:THREAD-CPU-NS swap - ARITH-ROW run SAMPLE ! ;
+: TIME-BRANCH ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-BRANCH TIME:THREAD-CPU-NS swap - BRANCH-ROW run SAMPLE ! ;
+: TIME-SEARCH ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-SEARCH TIME:THREAD-CPU-NS swap - SEARCH-ROW run SAMPLE ! ;
+: TIME-FOLD ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-FOLD TIME:THREAD-CPU-NS swap - FOLD-ROW run SAMPLE ! ;
+: TIME-MOVE ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-MOVE TIME:THREAD-CPU-NS swap - MOVE-ROW run SAMPLE ! ;
+: TIME-LINES ( n -- ) {: run :}
+   TIME:THREAD-CPU-NS B-LINES TIME:THREAD-CPU-NS swap - LINES-ROW run SAMPLE ! ;
+
+\ A round times every benchmark once, and the rounds are the outer loop, so a
+\ benchmark's runs lie a whole round apart instead of back to back on one core.
+: ROUND ( n -- ) {: run :}
+   run TIME-HARNESS
+   run TIME-ARITH
+   run TIME-BRANCH
+   run TIME-SEARCH
+   run TIME-FOLD
+   run TIME-MOVE
+   run TIME-LINES ;
 
 public
 
 : MAIN ( -- )
    1 script-argv$ LOAD-SOURCE
    FILL-CELLS
-   TIME-HARNESS s" harness" REPORT
-   TIME-ARITH   s" arith"   REPORT
-   TIME-BRANCH  s" branch"  REPORT
-   TIME-SEARCH  s" search"  REPORT
-   TIME-FOLD    s" fold"    REPORT
-   TIME-MOVE    s" move"    REPORT
-   TIME-LINES   s" lines"   REPORT ;
+   RUNS 0 ?do i ROUND loop
+   HARNESS-ROW s" harness" REPORT
+   ARITH-ROW   s" arith"   REPORT
+   BRANCH-ROW  s" branch"  REPORT
+   SEARCH-ROW  s" search"  REPORT
+   FOLD-ROW    s" fold"    REPORT
+   MOVE-ROW    s" move"    REPORT
+   LINES-ROW   s" lines"   REPORT ;
 
 ;package
 

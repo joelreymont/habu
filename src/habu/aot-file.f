@@ -155,6 +155,17 @@
 \ APPENDS the artifact to a capture that already happened, in that capture's
 \ coordinates, because the engine bakes ONE of everything; the section that says
 \ what they disagree about is at the merge itself.
+\
+\ EVERY REQUIRE BELOW IS A src/ FILE, and in both metabuild texts a no-op:
+\ tools/bootstrap.sh marks every file it inlines provided, and
+\ tools/build-fixpoint.f inlines icode.f, fdio.f, aot-decl.f and aot-ident.f as
+\ modules ahead of this file, while layout.f is a boot row of the host
+\ (src/habu/native-runtime.f).
+require src/arch/arm64/icode.f
+require src/habu/layout.f
+require src/habu/fdio.f
+require src/habu/aot-decl.f
+require src/habu/aot-ident.f
 
 package AOT-FILE
 using AOT-BUF
@@ -989,7 +1000,10 @@ variable SH-PREV
          s" aot-file: the closure list ends inside an entry" DIE
       then
       CBUF CUR @ + U64@ {: pu:n :}
-      CUR @ 8 + pu + CLEN @ > if
+      \ pu is the artifact's: a negative one is refused, and the rest is compared
+      \ with the bytes left after its length cell. Added to the cursor, a length
+      \ near the maximum cell wraps back inside the section.
+      pu 0 <  pu CLEN @ CUR @ 8 + - >  or if
          FD @ close
          s" aot-file: the closure list ends inside a path" DIE
       then

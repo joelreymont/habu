@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -106,13 +107,16 @@ package HB-BUILD-CLI
 \ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
 \ locals of the call now, and the copy BUFFER is the cell that stands there.
+\ That order is the claim, so this program builds on the engine: lib/fs.f and
+\ lib/fs-mutate.f are modules of the linker's lib closure the engine does not
+\ bake, and the linker image refuses it at COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
    s" c.txt" s" two" HBT-LIB-FILE!
    HBT-LIB-SRC!
    HBT-LIB-OUT HBT-REMOVE-FILE?
-   HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-LIB-SRC HBT-LIB-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-LIB-OUT FILE? TTRUE
    HBT-LIB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
@@ -174,7 +178,10 @@ package HB-BUILD-CLI
 \ image: the environment (explicit and inherited), argv, and an allocation
 \ through the baked dynamic-storage registry. Before src/habu/aot-owned-cells.f
 \ this very program was refused with
-\ `outside the restored span caller=GETENV target=ENV-QU`.
+\ `outside the restored span caller=GETENV target=ENV-QU`. The walk reaches
+\ engine words the build stripped through the payload's span table, which the
+\ keyed linker image this build runs on reads at the address its own boot
+\ published (src/habu/habu2.f EM-SNAPSHOT-RESTORE).
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
    HBT-CELLS-SRC HBT-CELLS-SRC$ WRITE-ALL
    HBT-CELLS-OUT HBT-REMOVE-FILE?
@@ -243,6 +250,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-ENGINE-CELLS

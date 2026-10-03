@@ -13,7 +13,7 @@ package TYPE-FIELD-OWNER-TEST
 
 $400 constant CAP
 1000 constant TIMEOUT-MS
-7161 constant E-EVENT-TX
+7161 constant E-DEV-TX            \ src/core/decl-event.f's, private there
 70 constant CHECK-REJECT-RC
 
 create OUT CAP allot
@@ -43,13 +43,17 @@ variable RC
 : QUALIFIED-ABSENT ( ptr u8 n -- )
    XREF-FIND XREF-FOUND? 0= TTRUE ;
 
+\ Runs the source in a subject child and asserts its exit code, leaving the
+\ stdout and stderr lengths.
+: EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
+
 \ a real child load of the bad definition exits 70 naming the token
 : LOAD-REJECTS ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n name:ptr nameu:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   CHECK-REJECT-RC T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   src srcu CHECK-REJECT-RC EXITS {: outu:n erru:n :}
    outu 0 T=
    ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
    ERR erru name nameu CONTAINS? TTRUE ;
@@ -265,10 +269,7 @@ public
 
 : REOPEN-SEALED ( -- )
    S\" package TYPE-FIELD-OWNER\nTX-TOP\n;package"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   ENGINE-ERROR:SEAL-PACKAGE EXITS {: outu:n erru:n :}
    outu 0 T=
    ERR erru s" TYPE-FIELD-OWNER" CONTAINS? TTRUE ;
 
@@ -280,10 +281,7 @@ public
 \ caller a way to retire field frames out of order.
 : REOPEN-CLEANUP-SEALED ( -- )
    S\" package TYPE-FIELD-OWNER\n0 ROLLBACK-THROUGH\n;package"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
+   ENGINE-ERROR:SEAL-PACKAGE EXITS {: outu:n erru:n :}
    outu 0 T=
    ERR erru s" TYPE-FIELD-OWNER" CONTAINS? TTRUE ;
 
@@ -419,40 +417,40 @@ TF-STR-U@ STRING-N !
 COMMITTED-EVENT-STABLE
 
 ' TRY-CURRENT catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-DECL catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-ARITY catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-POLICY catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-DERIVE catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-VARIANT catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-END-VARIANT catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-FIELD catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-FIELD-SCHEMA catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-PREPARE catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-COMMIT catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 ' TRY-PUBLISH catch RC !
-RC @ E-EVENT-TX T=
+RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 
 TOK @ DECL-EVENT:ROLLBACK

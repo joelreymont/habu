@@ -58,11 +58,14 @@ TRUSTED: PKG-INDEX ( ptr n -- n ) dbase@ - DREC / ;
 \ No record slot left (habu2.f C-QUALIFY-CAP). The refusal names what DEF-TKA
 \ and DEF-TKL hold, which `package` never writes: for it, what the last
 \ definition or `export` left there.
-: PKG-DICT-ROOM ( -- )
-   ndict@ DICT-CAP < if exit then
+: PKG-DICT-FULL ( -- )
    s" hb: dictionary full at: " SAY
    DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ SAY
    PKG-RC-DICT-FULL THROW-AT ;
+
+: PKG-DICT-ROOM ( -- )
+   ndict@ DICT-CAP < if exit then
+   PKG-DICT-FULL ;
 
 \ A name past DNAME-INL bytes is copied to CP, 4-aligned, below the code
 \ ceiling (habu2.f DEFWRITE:NAME-ROOM). The comparisons are unsigned, so a CP
@@ -309,10 +312,35 @@ variable USE-FLOOR
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    src ;
 
+\ The record index of the source's does> clause, which its export carries
+\ (habu2.f DOES-REC "the clause an export carries"), or -1 for a source that
+\ is not a definer.
+: PKG-CLAUSE ( ptr n -- n ) {: src:ptr :}
+   src PKG-INDEX {: k:n :}
+   k XREF-DOES-COMPANION? if k 1+ exit then
+   -1 ;
+
+\ The clause takes the slot above the export's own, and its name must not be
+\ live in the current wordlist (habu2.f C-EXPORT-CLAUSE-ROOM).
+: PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
+   ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
+   k XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   a u get-current WL-PROBE XREF-FOUND? if
+      s" duplicate definition: " SAY
+      a u SAY PKG-RC-DUPLICATE THROW-AT
+   then ;
+
+\ The clause's entry and length under its name, in the current wordlist
+\ (habu2.f C-EXPORT-CLAUSE-RECORD).
+: PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
+   k XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   a u PKG-CODE-ROOM
+   a u k get-current PKG-ALIAS ;
+
 \ In a package, publish an existing word under its tail into the current
-\ wordlist: its code, its immediate, wide and certified-input bits. At top
-\ level the name is consumed and nothing else happens: there `export` is
-\ hb-build's directive.
+\ wordlist: its code, its immediate, wide and certified-input bits, and a
+\ does> definer's clause in the slot above. At top level the name is consumed
+\ and nothing else happens: there `export` is hb-build's directive.
 : PKG-EXPORT ( -- )
    TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-NAME exit then
@@ -323,10 +351,13 @@ variable USE-FLOOR
    ta tu get-current WL-PROBE XREF-FOUND? if
       s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
    then
+   src PKG-CLAUSE {: clause:n :}
+   clause 0 >= if clause PKG-CLAUSE-ROOM then
    PKG-CHECK-EXPORT
    get-current PKG-OPEN-WID
    ta tu PKG-CODE-ROOM
-   ta tu src PKG-INDEX get-current PKG-ALIAS ;
+   ta tu src PKG-INDEX get-current PKG-ALIAS
+   clause 0 >= if clause PKG-CLAUSE-ALIAS then ;
 
 \ ---- the package keywords ----------------------------------------------------
 \ The engine's EM-INTERPRET-DEFINE-KEYWORDS rows for packages, matched as

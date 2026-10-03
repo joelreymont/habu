@@ -2,6 +2,7 @@
 \ Run: bin/hb --load lib/test/suite-test.f
 
 require lib/test.f
+require lib/test/outcome.f
 require lib/string.f
 require lib/process.f
 require lib/test/subject.f
@@ -233,23 +234,23 @@ variable T-SUBJ-ERR-U
 variable T-SUBJ-EXITED
 variable T-SUBJ-RC
 
-: T-SUBJ-STORE! ( len len outcome -- )
-   MATCH outcome
-     exited OF T-SUBJ-RC ! 0 0= T-SUBJ-EXITED ! ENDOF
-     signaled OF T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
-     timeout OF 0 T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
-   ;MATCH
-   LEN>N T-SUBJ-ERR-U !  LEN>N T-SUBJ-OUT-U ! ;
-
 : T-SUBJ-OUT$ ( -- ptr u8 n )
    T-SUBJ-OUT T-SUBJ-OUT-U @ ;
 
 : T-SUBJ-ERR$ ( -- ptr u8 n )
    T-SUBJ-ERR T-SUBJ-ERR-U @ ;
 
-: T-RUN-SUBJECT ( ptr u8 n -- )
-   T-SUBJ-OUT T-SUBJ-CAP >LEN T-SUBJ-ERR T-SUBJ-CAP >LEN
-   T-SUBJ-TIMEOUT-MS >MS SUBJECT:RUN T-SUBJ-STORE! ;
+: T-SUBJ-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N T-SUBJ-ERR-U !  outu LEN>N T-SUBJ-OUT-U !
+   oc MATCH outcome
+     exited OF T-SUBJ-RC ! 0 0= T-SUBJ-EXITED ! ENDOF
+     signaled OF T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
+     timeout OF src u T-SUBJ-OUT$ T-SUBJ-ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
+
+: T-RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u T-SUBJ-OUT T-SUBJ-CAP >LEN T-SUBJ-ERR T-SUBJ-CAP >LEN
+   T-SUBJ-TIMEOUT-MS >MS SUBJECT:RUN src u T-SUBJ-STORE! ;
 
 \ The refusal names the row on stdout (OVERSIZE's manner) and leaves E-SUITE-ROW
 \ uncaught, so the child dies before it can register or run anything further.

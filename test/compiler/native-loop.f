@@ -184,9 +184,9 @@ public
 : NLPT-VARSTART ( n n n -- n ) {: seed:n st:n len:n :}
    seed len st ?do i + loop ;
 
-\ THE START AT THE TOP OF THE RANGE, which is the one ordering the trip-count
-\ table has no row for: `index + 1` wraps to the bottom, which IS below the limit,
-\ so the loop runs round nearly the whole integer range instead of once.
+\ THE START AT THE TOP OF THE RANGE, which no limit is above: the guard skips
+\ the loop at every limit, where `index + 1` would wrap to the bottom of the range
+\ and run round nearly all of it.
 : NLPT-MAXSTART ( n n -- n ) {: seed:n len:n :}
    seed len 9223372036854775807 ?do i + loop ;
 
@@ -230,9 +230,8 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    LOOPS-IN 0<> ;
 
 \ ---- the folded rows ---------------------------------------------------------
-\ Trip counts zero, one, two and small; a negative limit, where `?do` runs ONE
-\ turn rather than none; and a thousand, which is past anything the small cases
-\ could pass by accident.
+\ Trip counts zero, one and sixteen. A limit below the start is TINY-CASE's row,
+\ where a stray turn would show; here it would add an index of zero.
 : SUM-CASE ( -- )
    s" the sum of a counted loop's indices, against the loop" T-LABEL
    s" NLPT-FIXTURE:NLPT-SUM" GONE
@@ -261,7 +260,10 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" NLPT-FIXTURE:NLPT-TINY" GONE
    100 0 NLPT-FIXTURE:NLPT-TINY 100 T=
    100 1 NLPT-FIXTURE:NLPT-TINY 104 T=
-   100 3 NLPT-FIXTURE:NLPT-TINY 112 T= ;
+   100 3 NLPT-FIXTURE:NLPT-TINY 112 T=
+   s" a limit below the start takes no turn" T-LABEL
+   100 -1 NLPT-FIXTURE:NLPT-TINY 100 T=
+   100 MIN-INT NLPT-FIXTURE:NLPT-TINY 100 T= ;
 
 \ Four times two to the sixty-second is two to the sixty-fourth, which wraps to
 \ nothing: the row that says the multiplication is the loop's wrapping one.
@@ -442,16 +444,18 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    0 0 0 NLPT-FIXTURE:NLPT-VARSTART 0 T=
    0 2 9 NLPT-FIXTURE:NLPT-VARSTART 35 T= ;
 
-\ The start at the top of the range, at the two limits that terminate: the limit
-\ equal to the start, where the guard skips the loop, and the smallest integer,
-\ where `index + 1` wraps to the smallest integer, which is not below it, so the
-\ loop runs one turn. Every other limit runs for hours, which is the reason this
-\ start is refused.
+\ The start at the top of the range: no limit is above it, so the guard skips the
+\ loop at the limit equal to it, at the smallest integer and at every limit
+\ between, and the fold may take it. The last row would run round nearly the
+\ whole range on an engine whose guard let that start in, so it runs only once
+\ the loop is gone.
 : MAXSTART-CASE ( -- )
-   s" a start at the top of the range keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-MAXSTART" KEPT
+   s" a start at the top of the range never enters, so its loop folds" T-LABEL
+   s" NLPT-FIXTURE:NLPT-MAXSTART" GONE
    0 MAX-INT NLPT-FIXTURE:NLPT-MAXSTART 0 T=
-   0 MIN-INT NLPT-FIXTURE:NLPT-MAXSTART MAX-INT T= ;
+   0 MIN-INT NLPT-FIXTURE:NLPT-MAXSTART 0 T=
+   s" NLPT-FIXTURE:NLPT-MAXSTART" STILL-A-LOOP? if exit then
+   7 100 NLPT-FIXTURE:NLPT-MAXSTART 7 T= ;
 
 : UNTIL-CASE ( -- )
    s" a loop that is not counted keeps its loop" T-LABEL

@@ -1,4 +1,11 @@
 \ Actual captured cells, then byte-exact file/owned/merge and malformed rows.
+\ The harness loads before the tier selection: only the subject below it is
+\ compiled at the requested tier (docs/gate.md).
+require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
+require lib/fs-mutate.f
+require lib/engine-id.f
 package NAMED-CELLS-TIER
 : REQUESTED ( -- n )
    SCRIPT-ARGC 0= if tier@ exit then
@@ -19,11 +26,6 @@ EXPORT ALIAS
 package NAMED-CELLS-TEST
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
-require lib/test.f
-require lib/test/outcome.f
-require lib/test/subject.f
-require lib/fs-mutate.f
-require lib/engine-id.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -172,7 +174,8 @@ private
    {: source:ptr sourceu:n code:n text:ptr size:n :}
    source sourceu T-LABEL
    source sourceu OUT 4096 >LEN ERR 4096 >LEN 5000 >MS SUBJECT:RUN
-   code T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: outu:len erru:len oc :}
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc code T-OUTCOME-EXITED=
    OUT outu LEN>N text size CONTAINS? ERR erru LEN>N text size CONTAINS? or
    dup 0= if
       s" named-cells: refused source:" type cr source sourceu type cr

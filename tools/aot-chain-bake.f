@@ -70,13 +70,13 @@ create ENG-BUF FS-PATH-CAP allot   variable ENG-U
    KEEP
    s" aot-chain-bake: hb-chain ready" type cr ;
 
-\ Fail-closed CLI boundary, the same one BUILD-FIXPOINT's own entry has: an escaped
-\ throw exits with the raw code masked to 8 bits and NO diagnostic, so a code that
-\ is a multiple of 256 exits 0 and a failed bake reads as a successful one. Name it
-\ and die with the build rc instead.
+\ Fail-closed CLI boundary: an escaped throw exits with the raw code masked to 8
+\ bits and NO diagnostic, so a code that is a multiple of 256 exits 0 and a failed
+\ bake reads as a successful one. Name it and die with PROC-TIMEOUT-RC for an
+\ expired deadline and the build rc for every other code.
 : FAIL ( n -- ) {: rc:n :}
    s" aot-chain-bake: failed: uncaught throw code " type rc . cr
-   s" aot-chain-bake: no engine was written" BF-BUILD-RC die ;
+   s" aot-chain-bake: no engine was written" rc BF-BUILD-RC PROC-EXIT-RC die ;
 
 public
 

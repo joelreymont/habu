@@ -157,8 +157,11 @@ public
    RBUF RN @ +  BUF-CAP RN @ - ;
 
 
+\ The count is what the reader wrote into ROOM$: never negative, never past the
+\ room, so the cursor never moves back or past the buffer.
 : TOOK ( n -- ) {: got:n :}
    RN @ {: old:n :}
+   got 0 < got BUF-CAP old - > or if E-PTY-CAPACITY throw then
    old got + RN !
    old SCAN-WATCHES ;
 
@@ -211,8 +214,10 @@ public
    repeat ;
 
 
-\ A short write is an error, never a silent truncation.
+\ A short write is an error, never a silent truncation. A negative length is
+\ refused before the write, whose -1 error answer would equal a length of -1.
 : WRITE-ALL ( fd ptr u8 n -- ) {: f:fd a:ptr u:n :}
+   u 0 < if E-PTY-CAPACITY throw then
    f FD>N a u write u <> if E-PTY-IO throw then ;
 
 
@@ -318,8 +323,12 @@ public
 
 \ Reap a child that is no longer writing to us, bounded by ms: the exit if it
 \ comes, the killed outcome if the budget runs out first. Never an unbounded
-\ wait - that is PROC-WAIT-RC's contract, not this one's.
+\ wait - that is PROC-WAIT-RC's contract, not this one's. A pid at or below 0
+\ names no child: macOS watches pid 0 and never reports its exit, so the expiry
+\ would kill(0), the caller's own process group, and a negative pid reads as
+\ exited and its waitpid reaps some other child.
 : WAIT-EXIT ( pid n -- outcome ) {: p:pid ms:n :}
+   p PID>N 0 <= if E-PTY-IO throw then
    p ms EXIT-READY? 0= if p ms KILL-EXPIRED exit then
    p PROC-WAIT-OUTCOME ;
 
@@ -355,7 +364,7 @@ private
 \ The transaction below cannot read a local, so the path it execs travels
 \ through storage.
 : STORE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
-   u PATH-CAP > if E-PTY-CAPACITY throw then
+   u 0 < u PATH-CAP > or if E-PTY-CAPACITY throw then
    a PATH-BUF u BYTE-COPY
    u PATH-U ! ;
 
@@ -422,45 +431,50 @@ public
    FIND-AFTER 0 >= ;
 
 
-\ Keep reading the master until the text appears, the child hangs up, or the
-\ wait budget passes. A child engine answers in as many pieces as the host's
-\ scheduling chooses - its line editor redraws on every keystroke, and a loaded
-\ box splits one echo across dozens of reads - so no count of polls bounds the
-\ wait. A partial read is not an answer and not a failure: only the text, the
-\ hang-up and the clock end the loop.
-: WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
-   begin
-      a u IN-BUF? if true exit then
-      WAIT-LEFT 0= if false exit then
-      MASTER-FD READ-STEP 0 < if a u IN-BUF? exit then
-   again ;
-
-
-\ The same wait for the TAIL AT OR AFTER THE HEAD, which is the only wait that
-\ can tell the prompt a child prints once it holds the terminal raw from the
-\ one its line editor redrew while echoing the line. The editor redraws
-\ "habu> " plus the line on every keystroke, so the prompt is in the buffer
-\ before the answer is; a wait for the prompt alone is satisfied by the echo
-\ and a ^D sent then lands while the child has the terminal cooked between
-\ the answer and the next read, where the line discipline turns it into an end
-\ of file the raw-mode read later sees as a NUL and ignores. Measured (strace
-\ of test/repl-address-cell-rollback.f): the child restores cooked mode before
-\ it prints " ok" and takes raw mode about 100 us later; a driver that reacts
-\ within that window hangs the child at its read, and a loaded box widens the
-\ window to milliseconds for any driver.
-: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n ta:ptr tu:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
+\ Keep reading the master until the tail appears AT OR AFTER THE END OF THE
+\ HEAD, the child hangs up, or ms pass on the clock. A child engine answers in
+\ as many pieces as the host's scheduling chooses - its line editor redraws on
+\ every keystroke, and a loaded box splits one echo across dozens of reads - so
+\ no count of polls bounds the wait. A partial read is not an answer and not a
+\ failure: only the text, the hang-up and the clock end the loop. The hang-up
+\ answers whether the text came before it. The clock answers nothing: a child
+\ that still holds the terminal has not answered YET, which is a deadline and
+\ not a wrong answer, so the wait throws E-PROC-TIMEOUT and the row reads as a
+\ timeout instead of a failed assertion (docs/gate.md).
+: WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool ) {: ha:ptr hu:n ta:ptr tu:n ms:n :}
+   ms WAIT-OPEN
    begin
       ha hu ta tu AFTER? if true exit then
-      WAIT-LEFT 0= if false exit then
+      WAIT-LEFT 0= if E-PROC-TIMEOUT throw then
       MASTER-FD READ-STEP 0 < if ha hu ta tu AFTER? exit then
    again ;
 
 
+\ The wait for the TAIL AT OR AFTER THE HEAD is the only wait that can tell the
+\ prompt a child prints once it holds the terminal raw from the one its line
+\ editor redrew while echoing the line. The editor redraws "habu> " plus the
+\ line on every keystroke, so the prompt is in the buffer before the answer is;
+\ a wait for the prompt alone is satisfied by the echo and a ^D sent then lands
+\ while the child has the terminal cooked between the answer and the next read,
+\ where the line discipline turns it into an end of file the raw-mode read
+\ later sees as a NUL and ignores. Measured (strace of
+\ test/repl-address-cell-rollback.f): the child restores cooked mode before it
+\ prints " ok" and takes raw mode about 100 us later; a driver that reacts
+\ within that window hangs the child at its read, and a loaded box widens the
+\ window to milliseconds for any driver.
+: WAIT-AFTER ( ptr u8 n ptr u8 n -- bool )
+   WAIT-BUDGET-MS WAIT-AFTER-WITHIN ;
+
+
+\ The text anywhere: an empty head puts the tail anywhere.
+: WAIT-FOR ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " a u WAIT-AFTER ;
+
+
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
-\ have appeared; a failed wait leaves no window, so the claim behind it is
+\ have appeared. The window retires before the wait, so a wait the child hangs
+\ up on and one whose clock ends both leave none, and the claim behind it is
 \ refused as well.
 : WAIT-BARRIER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    -1 WEND !
@@ -485,7 +499,7 @@ public
 \ so the fact can only refuse a claim, never grant one wrongly.
 : WATCH+ ( ptr u8 n -- watch ) {: a:ptr u:n :}
    WATCH-N @ WATCH-CAP >= if E-PTY-CAPACITY throw then
-   u 0= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
+   u 0 <= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
    WATCH-N @ {: w:n :}
    a  NEEDLE w NEEDLE-CAP * +  u BYTE-COPY
    u w NEEDLE-LEN-AT !

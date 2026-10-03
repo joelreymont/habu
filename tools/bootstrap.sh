@@ -85,19 +85,24 @@ fi
 # generates an accessor that calls DYNAMIC-STORAGE:RESERVE, and the first one
 # is in src/habu/primitive-registry.f, which src/habu/habu1.f requires from
 # disk. The compiler sources come after, as they do in a native build.
+# The ARM64 assembler and the OS seam's syscall emitter are not prefix files and
+# load right after src/core/include.f: icode.f and mnem.f require what they use,
+# and the boot hide takes the startup load's `require` away until include.f
+# defines it again (measured: hb-stage0 died E-UNDEFINED `require`, exit 70,
+# with them ahead of it).
 SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
   "$OS_TARGET"
-  src/arch/arm64/asm.f
-  src/arch/arm64/icode.f
-  src/arch/arm64/mnem.f
   "$OS_LAYOUT"
-  "$OS_SYS"
   src/habu/stack-abi.f
   src/habu/layout.f
   src/os/env-base.f
   src/core/include.f
+  src/arch/arm64/asm.f
+  src/arch/arm64/icode.f
+  src/arch/arm64/mnem.f
+  "$OS_SYS"
   src/os/script-argv.f
   src/core/enums.f
   src/core/sha256.f
@@ -249,7 +254,7 @@ emit_provided() {
 emit_src() {
   local out="$1"
   local driver="$2"
-  local tail=(src/habu/driver-io.f)
+  local tail=(src/habu/sign-id.f src/habu/driver-io.f)
   if [[ "$driver" == "src/habu/stdin.f" ]]; then
     tail+=(src/habu/aot-arm.f src/habu/aot-capture.f src/habu/aot-file.f)
   fi
@@ -363,6 +368,17 @@ bootstrap_ptr_cell_mark_gate() {
 }
 
 bootstrap_ptr_cell_mark_gate
+
+# Every `begin` the seed compiles pushes a snapshot frame, up to 28 of them
+# (bootstrap/cg/jit.fs LVSNAP). A frame band that overlaps the seed's compile
+# cells loses the EXIT or LEAVE chain a deep nest spans: in the low header, a
+# nest of 23 crashed the word or refused its `loop`. This gate compiles and runs
+# a 28-deep nest across both chains, and sees a 29th refused by name, exit 75.
+bootstrap_begin_nest_gate() {
+  "$GF" test/bootstrap-begin-nest.fs
+}
+
+bootstrap_begin_nest_gate
 
 # An undefined word inside `evaluate` has to be a catchable rc-70 throw, not a
 # rollback that returns and lets a handlerless caller keep interpreting.

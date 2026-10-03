@@ -382,12 +382,10 @@ create ERR CAPTURE-CAP allot
 : REFUSES ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   SUBJECT:RUN
-   REFUSE-RC T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru want wantu T$= ;
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   ERR erru LEN>N want wantu T$= ;
 
 : REFUSAL-CASES ( -- )
    s" a site whose label was never bound refuses the link" T-LABEL

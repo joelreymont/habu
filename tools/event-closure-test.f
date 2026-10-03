@@ -4,7 +4,7 @@
 \ tools/event-closure-lib.f tools/event-closure-test.f
 \
 \ Proves the ordered transitive closure list (require/included followed, provided
-\ and require-known not, canonical-path dedup, missing files skipped, transitive
+\ and require-known not, canonical-path dedup, a missing file refused, transitive
 \ descent) and the property the hb-build cache key relies on: a content edit to
 \ any closure file changes the closure key, while an untouched closure or an edit
 \ to a non-closure file leaves it stable.
@@ -17,6 +17,9 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/source.f
 require lib/content-key.f
+require lib/fmt.f                  \ the code a child prints is rendered from its name
+require lib/test/outcome.f
+require lib/test/subject.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 
@@ -135,13 +138,37 @@ variable ECT-I
    EC:COUNT 1 T=
    0 EC:PATH$ ECT-ENTRY$ T$= ;
 
-\ --- a require to a nonexistent path is skipped -------------------------------
+\ --- a require to a nonexistent path is refused where it is read --------------
+\ A closure without the member would key fewer files than the build reads. A
+\ child runs each walk, so its stderr shows what an uncaught refusal tells the
+\ user: the code alone does not say which member is missing.
+67 constant ECT-UNCAUGHT-RC           \ hb's exit status for an uncaught throw
+20000 constant ECT-CHILD-MS
+$100 constant ECT-OUT-CAP
+$1000 constant ECT-ERR-CAP
+ECT-OUT-CAP BUFFER: ECT-OUT
+ECT-ERR-CAP BUFFER: ECT-ERR
+
+: ECT-CODE$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET
+   s" uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
+
+: ECT-REFUSES-MISSING ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
+   SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc ECT-UNCAUGHT-RC
+   T-OUTCOME-EXITED=
+   ECT-ERR erru LEN>N E-FS-STAT ECT-CODE$ CONTAINS? TTRUE
+   ECT-ERR erru LEN>N ECT-DC$ CONTAINS? TTRUE ;
+
 : ECT-TEST-MISSING ( -- )
    ECT-DC$ FILE? if ECT-DC$ REMOVE-FILE then
-   SB-RESET ECT-DC$ ECT-REQ-LINE ECT-ENTRY$ SB$ ECT-WRITE
-   ECT-ENTRY$ EC:BUILD
-   EC:COUNT 1 T=
-   0 EC:PATH$ ECT-ENTRY$ T$= ;
+   ECT-DA$ s\" \\ a\n" ECT-WRITE
+   SB-RESET ECT-DA$ ECT-REQ-LINE ECT-DC$ ECT-REQ-LINE ECT-ENTRY$ SB$ ECT-WRITE
+   s" ECT-ENTRY$ EC:BUILD" ECT-REFUSES-MISSING
+   s" ECT-ENTRY$ EC:LOAD-ORDER" ECT-REFUSES-MISSING ;
 
 \ --- key sensitivity: the property hb-build relies on -------------------------
 : ECT-TEST-KEY-CLOSURE-EDIT ( -- )

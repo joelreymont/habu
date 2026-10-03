@@ -503,6 +503,17 @@ variable PST-NUM-U
    PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
    PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
+\ The real CLI runs in a child: queue its arguments after PROC-ARGV-RESET, then
+\ capture its output and error lengths and its exit code.
+: PST-ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: PST-CAPTURE ( -- n n n )
+   s" bin/hb" >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
+   10000 >MS RUN-ARGV-CAPTURE MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
+
 package PST-CAST
 
 : SOURCE$ ( -- ptr u8 n )
@@ -521,23 +532,14 @@ package PST-CAST
    s" ;package" SB-APPEND PST-LF
    SB$ ;
 
-: ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: CAPTURE ( -- n n n )
-   s" bin/hb" >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
-      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
-   ;MATCH ;
-
 : SCAN ( bool -- n n n ) {: trust:bool :}
    PROC-ARGV-RESET
-   s" --load" ARG+ PST-FIX ARG+
-   s" tools/public-signatures-core.f" ARG+
-   s" tools/public-signatures.f" ARG+
-   s" --" ARG+
-   trust if s" --trust" ARG+ then
-   PST-FIX ARG+ CAPTURE ;
+   s" --load" PST-ARG+ PST-FIX PST-ARG+
+   s" tools/public-signatures-core.f" PST-ARG+
+   s" tools/public-signatures.f" PST-ARG+
+   s" --" PST-ARG+
+   trust if s" --trust" PST-ARG+ then
+   PST-FIX PST-ARG+ PST-CAPTURE ;
 
 public
 : RUN ( -- )
@@ -557,6 +559,50 @@ public
 
 ;package
 
+\ A source whose last token ends on the last byte of the slab it is read into:
+\ the slab is the file rounded up to 64 KiB, so a 64 KiB multiple fills it.
+\ The word scan used to read the byte after that token, past the slab, which
+\ faults (rc 134) when nothing is mapped there. At 2 MiB nothing was, on every
+\ measured macOS run; smaller slabs mostly sat beside another mapping, where
+\ the read passed unseen.
+package PST-SLAB-END
+
+$200000 constant SIZE
+
+variable PATH-U
+create PATH-BUF FS-PATH-CAP allot
+
+: PATH ( -- ptr u8 n )
+   PATH-BUF PATH-U @ ;
+
+: TAIL$ ( -- ptr u8 n )
+   s" : LAST ( n -- n ) 1 + ;" ;
+
+\ Blank lines, then the one definition, whose `;` is the file's last byte.
+: WRITE-FIXTURE ( -- )
+   SIZE MEM-ALLOC-BYTES {: a:ptr u:n :}
+   TAIL$ {: t:ptr tu:n :}
+   u tu - 0 ?do 10 a i + c! loop
+   t a u tu - + tu BYTE-COPY
+   PATH a u WRITE-ALL
+   a u MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+public
+: RUN ( -- )
+   PST-ROOT s" ps-slab-end.f" PATH-BUF JOIN-PATH PATH-U !
+   PATH CLEANUP+
+   WRITE-FIXTURE
+   PROC-ARGV-RESET
+   s" --load" PST-ARG+ s" tools/public-signatures.f" PST-ARG+
+   s" --" PST-ARG+ PATH PST-ARG+
+   PST-CAPTURE 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" LAST" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (n -- n)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu 123 COUNT-CHAR 2 T= ;  \ document + exactly one definition
+
+;package
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
@@ -573,6 +619,7 @@ public
    PST-TEST-CONST-LAYOUT
    PST-TEST-SUM-LAYOUT
    PST-CAST:RUN
+   PST-SLAB-END:RUN
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
    T-REPORT

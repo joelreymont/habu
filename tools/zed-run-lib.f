@@ -5,9 +5,10 @@
 \ never a shell-interpolated remote command built from untrusted input. Remote
 \ command strings are assembled here from controlled path tokens only; test data
 \ travels as files, not as command arguments. Failures map to named E-ZED-*
-\ throw codes (lib/errors.f). Device availability is policy: when HABU_ZED is
-\ unset or `0`, manual callers can report that the device is unavailable; when set,
-\ every failure is fail-closed.
+\ throw codes (lib/errors.f); a run whose deadline expired throws E-PROC-TIMEOUT
+\ like every other process deadline. Device availability is policy: when
+\ HABU_ZED is unset or `0`, manual callers can report that the device is
+\ unavailable; when set, every failure is fail-closed.
 \
 \ Config via env (each has a default): HABU_ZED (availability), ZED_HOST (ssh
 \ target, default `zed`), ZED_SSH/ZED_SCP/ZED_RSYNC (tool paths).
@@ -109,13 +110,6 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
      err OF >RC ENDOF
    ;MATCH ;
 
-: TIMED-OUT? ( -- bool )
-   PROC-CMD:OUTCOME@ MATCH outcome
-     exited OF drop 0 0= 0= ENDOF
-     signaled OF drop 0 0= 0= ENDOF
-     timeout OF 0 0= ENDOF
-   ;MATCH ;
-
 \ ---- newline/whitespace trim (mktemp output) ---------------------------------
 
 : WS-BYTE? ( n -- bool ) {: c:n :}   \ trailing whitespace: LF $0A, CR $0D, space $20
@@ -164,13 +158,13 @@ public
 \ Remote tools may legitimately exit 255 (ptxas does), so a general command rc
 \ cannot distinguish transport failure from tool failure. PING owns the
 \ transport class: running `true`, ANY nonzero rc is unreachability. RUN-OK
-\ classifies every nonzero rc of an ordinary command as a remote failure.
+\ classifies every nonzero rc of an ordinary command as a remote failure. A run
+\ whose deadline expired never reaches either: PROC-CMD:RUN-RC throws
+\ E-PROC-TIMEOUT for it.
 : UNREACH-OK ( rc -- )
-   TIMED-OUT? if drop E-ZED-TIMEOUT throw then
    RC>N 0 <> if E-ZED-UNREACH throw then ;
 
 : RUN-OK ( rc -- )
-   TIMED-OUT? if drop E-ZED-TIMEOUT throw then
    RC>N 0 <> if E-ZED-RC throw then ;
 
 : OUT$ ( -- ptr u8 n )

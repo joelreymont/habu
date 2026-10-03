@@ -135,7 +135,8 @@ variable BOUND
    0 POS ! ;
 
 : TAG? ( n -- bool ) {: t :}
-   TOK-U @ 1 = TOK-A @ AT t = and ;
+   TOK-U @ 1 <> if false exit then
+   TOK-A @ AT t = ;
 
 : READ-TOTALS ( ptr n -- ) {: t:ptr :}
    TOTALS 0 ?do NUM t i !N loop ;

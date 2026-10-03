@@ -95,12 +95,11 @@ private
 : EXITED-CELL ( ptr ptr u8 -- ptr n ) 8 COUNT-CELL ;    \ 1: completed by exit (vs signal) when not timed out
 : TIMED-OUT-CELL ( ptr ptr u8 -- ptr n ) 9 COUNT-CELL ; \ 1: capture deadline hit
 : CODE-CELL ( ptr ptr u8 -- ptr n ) 10 COUNT-CELL ;     \ exit code or signal number; 0 for timeout
-: RC-CELL ( ptr ptr u8 -- ptr n ) 11 COUNT-CELL ;
-: INHERIT-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
+: INHERIT-CELL ( ptr ptr u8 -- ptr n ) 11 COUNT-CELL ;
 \ Rows in the envp vector as PREPARE leaves it: the caller's own ENV-N rows plus
 \ whatever inheritance appended for this run. ENV-N stays the caller's count, so
 \ a second run inherits into the same place rather than after the last run's copy.
-: ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 13 COUNT-CELL ;
+: ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
 
 : PATHZ ( ptr ptr u8 -- ptr u8 ) BASE PATHZ-OFF + ;
 : CWDZ ( ptr ptr u8 -- ptr u8 ) BASE CWDZ-OFF + ;
@@ -126,8 +125,7 @@ private
    0 h ERR-LEN-CELL !
    1 h EXITED-CELL !
    0 h TIMED-OUT-CELL !
-   0 h CODE-CELL !
-   0 h RC-CELL ! ;
+   0 h CODE-CELL ! ;
 
 public
 
@@ -156,11 +154,10 @@ private
 
 \ An argument is copied NUL-terminated into the context's ARG-BUF and its
 \ address installed straight into the argv vector: no lib/process-argv.f
-\ staging is on this path.
+\ staging is on this path. PROC-ZCOPY is handed the room left and makes the fit
+\ rule, so no second one is kept here to drift from it.
 : ARG-ZCOPY ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
    h ARG-OFF-CELL @ {: off:n :}
-   off u LEN>N 1 + + ARG-BUF-CAP > if E-PROC-OUTPUT throw then
    a u h ARG-BUF off + ARG-BUF-CAP off - >LEN PROC-ZCOPY {: z:ptr :}
    off u LEN>N 1 + + h ARG-OFF-CELL !
    z ;
@@ -203,7 +200,8 @@ private
 : ENV-STORE-Z ( ptr ptr u8 ptr u8 len -- ptr u8 ) {: h:ptr a:ptr u:len :}
    u LEN>N 0 < if E-PROC-ENV throw then
    h ENV-OFF-CELL @ {: off:n :}
-   off u LEN>N 1 + + ENV-BUF-CAP > if E-PROC-ENV throw then
+   off u PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   a u PROC-ENV-CHECK-ENTRY
    a h ENV-BUF off + u LEN>N BYTE-COPY
    0 h ENV-BUF off + u LEN>N + c!
    off u LEN>N 1 + + h ENV-OFF-CELL !
@@ -212,17 +210,15 @@ private
 public
 
 : ENV-ENTRY+ ( ptr ptr u8 ptr u8 len -- ) {: h:ptr a:ptr u:len :}
-   a u PROC-ENV-CHECK-ENTRY
    h ENV-CHECK-EXTRA
    h h a u ENV-STORE-Z ENV-INSTALL-Z ;
 
 : ENV+ ( ptr ptr u8 ptr u8 len ptr u8 len -- )
    {: h:ptr name:ptr nameu:len val:ptr valu:len :}
-   name nameu PROC-ENV-CHECK-NAME
-   valu LEN>N 0 < if E-PROC-ENV throw then
    h ENV-CHECK-EXTRA
    h ENV-OFF-CELL @ {: off:n :}
-   off nameu LEN>N valu LEN>N + 2 + + ENV-BUF-CAP > if E-PROC-ENV throw then
+   off nameu valu PROC-ENV-ROW-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+   name nameu PROC-ENV-CHECK-NAME
    name h ENV-BUF off + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL h ENV-BUF off + nameu LEN>N + c!
    val h ENV-BUF off + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
@@ -344,10 +340,13 @@ public
    h OUT-BUF OUT-CAP >LEN
    h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME h STORE-RUN
-   h OUTCOME@ dup PROC-OUTCOME>RC RC>N h RC-CELL ! ;
+   h OUTCOME@ ;
 
-\ Wrap the stored completion rc into a result<n,n>: ok = clean exit (0), err =
-\ the nonzero completion code (a nonzero exit code, or 128+signal). The captured
+\ Wrap the stored outcome's completion rc into a result<n,n>: ok = clean exit
+\ (0), err = the nonzero completion code (a nonzero exit code, or 128+signal).
+\ A run its deadline killed has no completion code: RC@ and RUN-RC throw
+\ E-PROC-TIMEOUT for it (PROC-OUTCOME>RC), and only a caller that acts on the
+\ deadline reads it as data through OUTCOME@ or RUN-OUTCOME. The captured
 \ output stays in the context's own buffers (read via OUT$/ERR$), so the return
 \ carries only the code - no capture product here, unlike the RUN-*-CAPTURE
 \ words that return the lengths.
@@ -359,7 +358,7 @@ private
 public
 
 : RC@ ( ptr ptr u8 -- result<n,n> ) {: h:ptr :}
-   h RC-CELL @ RC>RESULT ;
+   h OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
 
 : RUN-RC ( ptr ptr u8 ptr u8 len ms -- result<n,n> )
    {: h:ptr path:ptr pathu:len timeout:ms :}
@@ -401,12 +400,11 @@ public
 \    : NAME ( -- ptr ptr u8 ) NAME#VEC ;
 \    NAME#BUF NAME#VEC CMD:BIND
 \
-\ A name this definer generates is invisible to tools/check.f: its preverify
-\ (VERIFY:SOURCE-BUF-IN-SCOPE) reads the source without running the load-time
-\ INCLUDE-EVALUATE, so a later mention of NAME refuses E-UNDEFINED unless the
-\ engine image already carries NAME. Measured on a source the engine does not
-\ carry, lib/task.f's `+USER` row refuses the same way; a command context is
-\ verified through the real load path, lib/process-command-test.f.
+\ The source pre-pass never sees the names this renders: it reads the text
+\ without running INCLUDE-EVALUATE. It learns that COMMAND renders, so a later
+\ definition naming NAME, NAME#VEC or NAME#BUF in the same wordlist is left to
+\ tools/check.f's run, which certifies it (docs/forth.md, the INCLUDE-EVALUATE
+\ rule); `tools/check.f -- lib/process-command-test.f` passes.
 : COMMAND ( -- )
    COMMAND-NAME {: name:ptr nameu:n :}
    GEN CODEGEN:RESET

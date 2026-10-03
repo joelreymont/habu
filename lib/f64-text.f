@@ -226,9 +226,9 @@ private
 \ The native scientific spelling has exactly precision digits and a signed exponent.
 : SCIENTIFIC-PARTS ( ptr u8 n n -- n n ) {: text:ptr len:n precision:n :}
    text c@ $30 -
-   precision 1 > if precision 1- 0 ?do
+   precision 1- 0 ?do
       10 * text i 2 + + c@ $30 - +
-   loop then {: digits:n :}
+   loop {: digits:n :}
    precision 1 = if 2 else precision 2 + then {: sign-at:n :}
    text sign-at 1+ + len sign-at 1+ - SMALL-NUMBER
    text sign-at + c@ $2D = if negate then digits swap ;

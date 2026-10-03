@@ -84,11 +84,11 @@ public
    s" a generic store cannot hide a view dependency" T-LABEL
    s" : C2-GENERIC-STORE ( a ptr a -- ) ! ; : C2-GENERIC-BAD ( read-view<p,q,u8> ptr read-view<p,q,u8> -- ) C2-GENERIC-STORE ;" 70 REJECT TTRUE
    s" a typed global cannot hold a scoped view" T-LABEL
-   s" TYPED-VARIABLE C2-TYPED-SLOT read-view<p,q,u8>" 67 REJECT TTRUE
+   s" TYPED-VARIABLE C2-TYPED-SLOT read-view<p,q,u8>" 70 REJECT TTRUE
    s" a dynamic buffer cannot hold a scoped view" T-LABEL
-   s" DYNAMIC-BUFFER C2-DYNAMIC-SLOT read-view<p,q,u8>" 67 REJECT TTRUE
+   s" DYNAMIC-BUFFER C2-DYNAMIC-SLOT read-view<p,q,u8>" 70 REJECT TTRUE
    s" a quotation dependency cannot enter typed state" T-LABEL
-   s" TYPED-VARIABLE C2-CALLBACK [ read-view<p,q,u8> -- ]" 67 REJECT TTRUE
+   s" TYPED-VARIABLE C2-CALLBACK [ read-view<p,q,u8> -- ]" 70 REJECT TTRUE
    s" xt! cannot retain a scoped quotation in raw state" T-LABEL
    s" variable C2-XT-SLOT : C2-XT-STORE ( [ read-view<p,q,u8> -- ] -- ) C2-XT-SLOT xt! ;" 70 REJECT TTRUE
    s" a generic xt! helper cannot retain a scoped quotation" T-LABEL

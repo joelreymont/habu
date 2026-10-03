@@ -500,7 +500,7 @@ $3680 constant ENVP-CELL
 $3688 constant PEND-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
-$36A0 constant INP-CELL
+$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
 $36A8 constant INE-CELL
 $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
@@ -514,9 +514,10 @@ $48 constant EVAL-PKG
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
-\ EVAL-FRAME:USE-WIDS $A0..$120, EVAL-FRAME:PEND $120 and STACK-ABI:EVAL-SEG
-\ $128, which fill the frame to STACK-ABI:EVAL-BYTES ($130), keeping the native
-\ stack 16-byte aligned.
+\ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
+\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130 and $138
+\ pads the frame to STACK-ABI:EVAL-BYTES ($140), keeping the native stack
+\ 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -1243,6 +1244,8 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ happen in the instance that renders; the counter itself is unreachable from a
 \ baked compiler, which is the whole reason this is an operation and not a cell.
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
+\ The diagnostic that scan suppressed, rendered by the instance that scanned.
+CHECKER-OWNER-ABI:CHECK-REPORT-OFF constant DECL-CHECK-REPORT-OFF
 \ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
@@ -1262,6 +1265,7 @@ CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF constant DECL-VERIFY-RECORD-CREATED-OFF
 CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF constant DECL-VERIFY-SOURCE-DOES-OFF
+CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF constant DECL-VERIFY-RENDERS-OFF
 CHECKER-OWNER-ABI:VERIFY-START-OFF constant DECL-VERIFY-START-OFF
 CHECKER-OWNER-ABI:VERIFY-DONE-OFF constant DECL-VERIFY-DONE-OFF
 ;package
@@ -1269,14 +1273,26 @@ CHECKER-OWNER-ABI:VERIFY-DONE-OFF constant DECL-VERIFY-DONE-OFF
 
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
-\ states its own offset: the $600..$800 hole below it is free header space.
+\ states its own offset. Below it, $600..$690 is GENIO-ABI, AOT-SPAN and
+\ SIGNAL-ABI, $690..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF
+\ and $7D0..$7E0 is FRAME-CELL and QFRAME-CELL.
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
 $578 constant LVD-CELL
 $580 constant LVH-OFF
-$2C0 constant LVF-OFF
+\ LVF-OFF: the locals-frame bytes open when each DO level was entered, which
+\ that level's `leave` releases back to. It takes the top LV-LEVELS cells of
+\ the $690..$750 hole below LVQ-OFF, swept for a claimant across src lib tools
+\ test bootstrap and read back as zero out of a booted engine that had compiled
+\ loops at both tiers.
+$6D0 constant LVF-OFF
+$750 constant LVQ-OFF      \ `?do` entry-branch offset per DO level; 0 for `do`
+\ LVH, LVF and LVQ hold one cell per level up to GENIO-ABI ($600), LVQ-OFF
+\ ($750) and FRAME-CELL ($7D0): a definition nests at most this many `do`/`?do`
+\ levels.
+16 constant LV-LEVELS
 $560 constant LASTC-CELL
 $1F0 constant DOESP-CELL
 $230 constant CREATEP-CELL
@@ -1329,7 +1345,7 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
 \ PROT-GUARD band (habu1.f GUARD-SPAN/PROT-GUARD) so a post-seal raw store
 \ traps ENGINE-ERROR:SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
-\ the reclaimed band between TRUSTED-CELL ($27B8) and RSTK-OFF ($2800) and is
+\ the reclaimed band between TRUSTED-CELL ($27B8) and SRCLOC:PATH-CELL ($2800) and is
 \ snapshot-persistent (< DATA-START) like HOOK-CELL. When installed, the
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER
 \ / the pushing string keywords / C-TICK / C-CHAR) emit one pre-continue
@@ -1337,14 +1353,10 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
 \ (word/tick classes; 0 for literal classes).
 $27F0 constant TOP-HOOK-CELL
-\ ENGINE-SNAP-XT-CELL retains the first cold-prefix checker's snapshot-prepare
-\ hook while a --build payload loads a second checker copy. Snapshot capture
-\ invokes that first-copy hook before serializing DATA; capture and startup
-\ clear it so no build-process code pointer reaches a restored image. $27F8 is
-\ the final reclaimed cell before RSTK-OFF and is protected with TOP-HOOK-CELL.
-$27F8 constant ENGINE-SNAP-XT-CELL
+\ The ENGINE-HOOK band is the two hook cells above. $27F8, after it, is free:
+\ it held the retired engine snapshot hook.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
-3 cells constant ENGINE-HOOK-LEN
+2 cells constant ENGINE-HOOK-LEN
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: the normal top-level exit
@@ -1361,7 +1373,7 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ tools/native-layout.f row every declared engine cell below the heap floor
 \ needs. A stripped image claims it FRESH (src/habu/aot-owned-cells.f): a new
 \ process has no hook, and the library that wants one arms it at runtime.
-\ It is NOT in the ENGINE-HOOK-OFF band above. Those three are the checker's
+\ It is NOT in the ENGINE-HOOK-OFF band above. Those two are the checker's
 \ crown jewels, sealed against a post-seal raw store; this vector is armed by
 \ ordinary library code (lib/fs-mutate.f) long after the seal. $2818 is the next
 \ free cell of the $2800..$3000 free header band, after SRCLOC's three above -
@@ -1404,6 +1416,31 @@ $2848 constant TOKFRF-CELL
 \ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
 \ claim.
 $2850 constant PENDTKA-CELL
+\ JIT-QUOT: quotations open inside quotations on tier 0. QPATCH-CELL, QENT-CELL,
+\ QXH-CELL and QFRAME-CELL describe the INNERMOST open quotation, which is all
+\ that J-EXIT, the locals guards and `;]` read. A `[:` opened while one is open
+\ parks those four cells in the next frame, in that order, before it reuses
+\ them, and its `;]` pops the frame back after closing its own body: the AOT
+\ scanner's open row and the enclosing row each opener records
+\ (src/compiler/native/elaborate.f QOPEN-ROW and QCLOSE-ROW). LEVELS is the most
+\ quotations open at once, the checker's control-frame capacity (src/core/checker.f
+\ CF-PUSH holds 32 frames and each `[:` takes one), so the loader refuses no
+\ nesting the checker certifies; one more is refused by name (habu2.f
+\ EM-QUOT-NEST-DIE). SP-CELL counts the parked frames. It is definition-scoped
+\ like QPATCH-CELL and is zeroed beside it in every reset run, so a definition
+\ that fails with quotations open leaves nothing parked. The innermost
+\ quotation never needs a frame, so there are LEVELS-1. Both sit after
+\ PENDTKA-CELL in the $2800..$3000 free header band - swept for a claimant
+\ across src lib tools test bootstrap - below $7FF8 for the 12-bit scaled
+\ `DATA <off> LDR/STR` form, and below DATA-START.
+package JIT-QUOT
+public
+32 constant LEVELS                                  \ quotations open at once
+32 constant FRAME-BYTES                             \ QPATCH, QENT, QXH, QFRAME
+$2858 constant SP-CELL                              \ frames parked
+$2860 constant STK-OFF                              \ base of the frame area
+STK-OFF LEVELS 1- FRAME-BYTES * + constant END
+;package
 \ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
 \ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
 \ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
@@ -1415,9 +1452,11 @@ $2850 constant PENDTKA-CELL
 \ and a task region reads zero because lib/task.f copies only the cells it
 \ names. Both hold this process's addresses, so boot stores them and snapshots
 \ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
-\ the reasons EXIT-HOOK-CELL gives: $2858 .. $2868 are its next free cells,
-\ after PENDTKA-CELL, swept for a claimant across src lib tools test bootstrap.
-$2858 constant FLOORREC-CELL
+\ the reasons EXIT-HOOK-CELL gives: $2CD0 .. $2CE0, past the quotation frames
+\ (JIT-QUOT:END, $2C40) and the $2C40..$2CD0 run held for the package
+\ publication cells, swept for a claimant across src lib tools test bootstrap
+\ docs.
+$2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
 \ the list is empty) and gives it back on the clean return, and habu2.f
@@ -1425,8 +1464,8 @@ $2858 constant FLOORREC-CELL
 \ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE) and
 \ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits beside
 \ FLOORREC-CELL in the free header band.
-$2860 constant CLOSED-FREE-CELL
-$2868 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
+$2CD8 constant CLOSED-FREE-CELL
+$2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

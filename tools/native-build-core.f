@@ -291,7 +291,7 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    dup XREF-FOUND? 0= if
       drop s" native-build: literal owner missing" 76 die
    then
-   XREF-LEN  s" IMPORT-ROWS" rot XREF-FIND-WL
+   XREF-PKG-PRIVATE  s" IMPORT-ROWS" rot XREF-FIND-WL
    dup XREF-FOUND? 0= if
       drop s" native-build: literal importer missing" 76 die
    then
@@ -640,6 +640,13 @@ public
    out outu OUTPUT!
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
 
+\ The exit status of a finished build, for every driver that ends the process
+\ with one (RUN, RUN-IMAGE, RUN-UNIT and tools/build-profile.f): 0,
+\ PROC-TIMEOUT-RC when a deadline expired (lib/process.f), and BUILD-RC for any
+\ other failure. RUN-READY-RC has already printed the throw code itself.
+: EXIT-RC ( n -- n )
+   BUILD-RC PROC-EXIT-RC ;
+
 \ The build says which of the two images it wrote, on the way out, so a build
 \ log records the class instead of leaving it to be inferred from a size.
 : REPORT-CLASS ( -- )
@@ -650,7 +657,7 @@ public
    BUILD-ARGS!
    0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
    rc 0= if REPORT-CLASS then
-   s" " rc die ;
+   s" " rc EXIT-RC die ;
 
 \ APP-ENTRY changes the argv slice. Own both arguments before clearing it and
 \ enter the same protected build scope used by the source-loaded driver.
@@ -663,6 +670,6 @@ public
    0 data-base APP-ENTRY:XT-CELL + !
    query bootstrap writer [: RUN-READY-RC ;] EXECUTABLE-BUILD:WITH {: rc:n :}
    rc 0= if REPORT-CLASS then
-   s" " rc die ;
+   s" " rc EXIT-RC die ;
 
 ;package

@@ -22,7 +22,7 @@ get-current constant FIELD-WL
       CODE-SPAN:INSN-BYTES +
    repeat drop false ;
 
-: FIELD ( ptr n -- ) {: rec:ptr :}
+: CHECK-FIELD ( ptr n -- ) {: rec:ptr :}
    rec XREF-FOUND? dup TTRUE 0= if exit then
    rec XREF-START dbase@ - {: off:n :}
    off DICT-SIZE >= off REGION < and dup TTRUE 0= if exit then
@@ -30,9 +30,9 @@ get-current constant FIELD-WL
 
 : CHECK ( -- )
    \ ENV-DATA-PTR comes from the engine's captured prefix, before this load.
-   s" ENV-DATA-PTR" 0 XREF-FIND-WL FIELD
+   s" ENV-DATA-PTR" 0 XREF-FIND-WL CHECK-FIELD
    ENV-DATA-PTR @ data-base = TTRUE
-   s" FRESH-FIELD" FIELD-WL XREF-FIND-WL FIELD ;
+   s" FRESH-FIELD" FIELD-WL XREF-FIND-WL CHECK-FIELD ;
 
 public
 : RUN ( -- )

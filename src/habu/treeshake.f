@@ -116,9 +116,12 @@ variable SCAN-MODE
    BEGIN TKP @ SHK-U @ < WHILE
       SHK-A@ TKP @ SHK-C@  TKP @ 1+ TKP !  SHK-C @ = IF EXIT THEN REPEAT ;
 
+\ Only a two-byte token has the bytes this tests: `and` evaluates both operands,
+\ so a length test beside the reads reads past a one-byte last token.
 : OPN2? ( ptr u8 n n -- bool )
    SHK-C ! KEEP-U ! KEEP-A !
-   KEEP-U @ 2 = KEEP-A@ c@ SHK-C @ = and KEEP-A@ 1 SHK-C@ $22 = and ;
+   KEEP-U @ 2 <> IF SHK-FALSE EXIT THEN
+   KEEP-A@ c@ SHK-C @ = KEEP-A@ 1 SHK-C@ $22 = and ;
 
 : NEXT-TOK ( -- ptr u8 n )            \ next word token; null at end; skips comments/literals
    BEGIN

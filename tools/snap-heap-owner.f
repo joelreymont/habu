@@ -27,6 +27,7 @@
 \ not retired its dictionary yet. It reads the dictionary through
 \ src/habu/xref.f, which the native engine provides, and the pure carrier module.
 
+require lib/fmt.f
 require src/habu/address-carrier.f
 
 package SNAP-HEAP-OWNER
@@ -57,10 +58,12 @@ package SNAP-HEAP-OWNER
    rec XREF-RETIRED? if FALSE exit then
    rec XREF-FLAGS DKIND:MASK and DKIND:ADDR = ;
 
+\ `.` ends its number with a newline, so row numbers print through FMT:.INT to
+\ keep each row on the one line the maps promise.
 : HEAP-ROW ( ptr n -- ) {: rec:ptr :}
    rec CHAIN-VALUE HEAP-OFF {: off:n :}
    off 0 < if exit then
-   off .
+   off FMT:.INT space
    rec XREF-NAME$ type cr ;
 
 : HEAP-SLOT ( n -- ) {: idx:n :}
@@ -72,8 +75,8 @@ package SNAP-HEAP-OWNER
    rec CODE? 0= if exit then
    rec XREF-START dbase@ - {: off:n :}
    off 0 < if exit then
-   off .
-   rec XREF-LEN .
+   off FMT:.INT space
+   rec XREF-LEN FMT:.INT space
    rec XREF-NAME$ type cr ;
 
 public
@@ -86,7 +89,7 @@ public
 \ the whole code map, headed by the region base and heap top this run got
 : CODE-MAP ( -- )
    s" heap-owner region-base " type dbase@ .
-   s" heap-owner heap-top " type here data-base - . cr
+   s" heap-owner heap-top " type here data-base - .
    ndict@ 0 ?do i XREF-REC CODE-ROW loop ;
 
 ;package

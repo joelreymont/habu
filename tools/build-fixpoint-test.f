@@ -12,6 +12,7 @@ require tools/build-fixpoint-test-lib.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/test/mapped.f
+require lib/test/outcome.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
@@ -75,7 +76,7 @@ create BFT-KEY1 64 allot
    pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
    BFT-OUT BFT-CAPTURE-CAP >LEN BFT-ERR BFT-CAPTURE-CAP >LEN PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC
-   BFT-CAPTURE>N ;
+   BFT-CAPTURE>N BFT-ERR BFT-FIXPOINT-RC ;
 
 : BFT-RUN-BUILD ( -- n n n )
    BFT-ARGV-BUILD BFT-BUILD-ARGV# T=
@@ -191,26 +192,64 @@ create BFT-KEY1 64 allot
    BFT-STAMP REMOVE-FILE
    BFT-STAMP-UNSCOPE ;
 
+\ The candidate is installed into a directory of its own, so a sibling an
+\ install left beside the engine is a file there the engine is not.
+FS-PATH-CAP BUFFER: BFT-BIN-BUF
+FS-PATH-CAP BUFFER: BFT-BIN-HB-BUF
+variable BFT-BIN-U
+variable BFT-BIN-HB-U
+variable BFT-BIN-FILES
+
+: BFT-BIN ( -- ptr u8 n )
+   BFT-BIN-BUF BFT-BIN-U @ ;
+
+: BFT-BIN-HB ( -- ptr u8 n )
+   BFT-BIN-HB-BUF BFT-BIN-HB-U @ ;
+
+: BFT-BIN-COUNT ( ptr u8 n -- )
+   2drop BFT-BIN-FILES @ 1+ BFT-BIN-FILES ! ;
+
+: BFT-BIN-FILES# ( -- n )
+   0 BFT-BIN-FILES !
+   BFT-BIN [: BFT-BIN-COUNT ;] WALK-FILES
+   BFT-BIN-FILES @ ;
+
 : BFT-BOOT-REFUSED ( ptr u8 n -- )
    s" hb-stdin" BF-A$ COPY-FILE-STREAM
    [: BF-INSTALL-HB ;] E-BUILD-STATUS TTHROWSQ
-   BFT-ENG-A s" /usr/bin/true" BF-FILE= TTRUE
-   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BFT-BIN-HB s" /usr/bin/true" BF-FILE= TTRUE
+   BFT-BIN-FILES# 1 T=
    BF-BOOT-ROOT$ EXISTS? TFALSE ;
+
+\ A candidate that passed its boot and cannot replace the engine, here a
+\ directory, fails the install with the directory as it was and no sibling.
+: BFT-RENAME-REFUSED ( -- )
+   BFT-BIN-HB REMOVE-FILE
+   BFT-BIN-HB MAKE-DIR
+   BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
+   [: BF-INSTALL-HB ;] E-FS-IO TTHROWSQ
+   BFT-BIN-HB DIR? TTRUE
+   BFT-BIN-FILES# 0 T=
+   BF-BOOT-ROOT$ EXISTS? TFALSE
+   BFT-BIN-HB REMOVE-DIR ;
 
 : BFT-TEST-CANDIDATE-BOOT ( -- )
    BFT-ROOT s" candidate-boot" BFT-CP-BUF JOIN-PATH
    BFT-CP-BUF swap 2dup MAKE-DIRS BF-TMP!
-   BFT-ENG-A BF-ENGINE!
-   s" /usr/bin/true" BFT-ENG-A COPY-FILE-STREAM
+   BFT-ROOT s" candidate-bin" BFT-BIN-BUF JOIN-PATH BFT-BIN-U !
+   BFT-BIN s" hb" BFT-BIN-HB-BUF JOIN-PATH BFT-BIN-HB-U !
+   BFT-BIN MAKE-DIRS
+   BFT-BIN-HB BF-ENGINE!
+   s" /usr/bin/true" BFT-BIN-HB COPY-FILE-STREAM
    \ A failed boot and a successful exit without running the probe both refuse.
    s" /usr/bin/false" BFT-BOOT-REFUSED
    s" /usr/bin/true" BFT-BOOT-REFUSED
+   BFT-RENAME-REFUSED
    BFT-HB s" hb-stdin" BF-A$ COPY-FILE-STREAM
    BF-INSTALL-HB
-   BFT-ENG-A BFT-HB BF-FILE= TTRUE
+   BFT-BIN-HB BFT-HB BF-FILE= TTRUE
    s" hb-stdin" BF-A$ EXISTS? TFALSE
-   BF-INSTALL-TMP$ EXISTS? TFALSE
+   BFT-BIN-FILES# 1 T=
    BF-BOOT-ROOT$ EXISTS? TFALSE
    BF-ENGINE-RESET BF-TMP-RESET ;
 
@@ -460,8 +499,11 @@ create BFT-KEY1 64 allot
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
 \ so IBUFSZ+1 is not the runtime input boundary. Bracket the boundary with a
-\ bounded exponential search, refine it by binary search, then rerun the adjacent
-\ successful/failing sizes against the freshly built candidate's --build path.
+\ bounded exponential search and refine it by binary search, every probe on the
+\ freshly built candidate's --build path. PROBE asserts each outcome - a clean
+\ exit, or 74 with exactly the buffer-full line, newline and no pad byte - so
+\ OK-N was accepted and BAD-N refused when each was recorded, and a sharp
+\ boundary leaves them adjacent.
 
 $10000 constant PROBE-START
 
@@ -486,24 +528,27 @@ variable BAD-N
 : WRITE-SRC ( n -- ) {: bytes:n :}
    s" bft-srcfull.f" BF-A$ SRC-BUF bytes WRITE-ALL ;
 
-: RUN-CANDIDATE ( -- )
+\ Builds the source at the path. A run past its deadline is reported here, and
+\ BFT-STEP names the step before it rethrows E-PROC-TIMEOUT.
+: RUN-CANDIDATE ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    BFT-HB >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
    BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   MATCH outcome
+   RUN-ARGV-ENV-CAPTURE-OUTCOME {: ou:len eu:len oc :}
+   eu LEN>N ERR-U !
+   oc MATCH outcome
      exited OF EXIT-CODE ! 0 0= EXITED ! ENDOF
      signaled OF EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH {: ou:len eu:len :}
-   eu LEN>N ERR-U ! ;
+     timeout OF src srcu BFT-OUT ou LEN>N ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : RUN-SOURCE ( -- )
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
-   s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
+   s" bft-srcfull.f" BF-A$ 2dup >LEN PROC-ARGV+
    RUN-CANDIDATE ;
 
 : PROBE ( n -- bool ) {: bytes:n :}
@@ -518,7 +563,7 @@ variable BAD-N
       0 0= exit
    then
    EXIT-CODE @ 74 T=
-   ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   ERR$ S\" hb: source prefix buffer full\n" T$=
    0 0= 0= ;
 
 : EXP-NEXT ( -- n )
@@ -563,14 +608,12 @@ variable BAD-N
    EXP
    BINARY
    BAD-N @ OK-N @ 1 + T=
-   OK-N @ PROBE TTRUE
-   BAD-N @ PROBE TFALSE
    BF-TMP-RESET ;
 
 : RUN-BUILD ( ptr u8 n -- )
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
-   >LEN PROC-ARGV+
+   2dup >LEN PROC-ARGV+
    RUN-CANDIDATE ;
 
 : EXPECT-OK ( -- )

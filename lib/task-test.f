@@ -7,6 +7,7 @@ require lib/test.f
 require lib/process.f
 require lib/process-argv.f
 require lib/task.f
+require lib/time-cpu.f            \ TIME:THREAD-CPU-NS, the clock the sleeping cases read
 require src/habu/task-abi.f       \ the baked TCB size this suite pins
 require src/habu/xref.f           \ XREF-N>U8: the byte view the entry is read through
 require lib/adt/result.f          \ the join's answer is MATCHed here
@@ -19,14 +20,13 @@ package TASK-TEST
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
 
 \ ---- what the sleeping cases measure -----------------------------------------
-$10 constant THREAD-CLOCK-BYTES       \ struct timespec on LP64
-1000000 constant US-PER-S
 1000000 constant NS-PER-MS
 50 constant SLEEP-MS                 \ the duration every sleeping case asks for
 SLEEP-MS NS-PER-MS * constant SLEEP-LEAST-NS
 \ nanosleep promises a minimum duration. Scheduling and Darwin timer coalescing
 \ can delay the return; the suite timeout bounds liveness, not this measurement.
-5000 constant SLEEP-CPU-US           \ a PAUSE loop over the same 50 ms costs ten times this
+5000000 constant SLEEP-CPU-NS        \ a PAUSE loop over the same 50 ms costs ten times this
+20000000 constant SPIN-NS            \ the wall time the spinning case keeps its thread busy
 1000000 constant SLEEP-ZERO-NS       \ a zero sleep never enters the kernel
 \ The concurrent case sleeps longer than the timed ones: a gate host running
 \ twenty suites at once hands a freshly started thread its first slice tens of
@@ -49,7 +49,6 @@ CELL TASK:+USER TASK-USER-CELL
 CELL TASK:+USER TASK-LOCAL-ID
 CELL TASK:+USER TASK-LOCAL-FFI
 CELL TASK:+USER TASK-EXIT-MARK
-THREAD-CLOCK-BYTES TASK:+USER TASK-CLOCK
 drop
 
 TASK:MIN-STACK TASK:TASK WORKER-A
@@ -384,19 +383,23 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    s" TASK:#USER USER-BAND:END over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+\ Runs the source on a fresh engine's stdin and asserts its exit code, leaving
+\ the stdout and stderr lengths.
+: TASK-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
-   TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   outu erru ;
 
 : TASK-TEST-LIVE-COMPILE-GUARD ( -- )
-   TASK-LIVE-COMPILE$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   TASK-LIVE-COMPILE$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N s" variable" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
-   src srcu TASK-RUN-STDIN want T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
 
@@ -461,7 +464,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    BUILD-BAD @ 0 T= ;
 
 : TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu TASK-RUN-STDIN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   src srcu 0 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 
@@ -1054,33 +1057,33 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 \ "it waited without running". Wall time proves the duration, the calling task's
 \ own CPU time proves it was parked in the kernel rather than spinning, and the
 \ concurrent case proves that being parked costs the tasks beside it nothing.
+\ The CPU time is TIME:THREAD-CPU-NS, which counts only the calling OS thread.
 
-PROCESS-SYMBOLS
-
-FUNCTION: THREAD-CLOCK clock_gettime ( n ptr u8 -- i32 )
-   1 THREAD-CLOCK-BYTES WRITES-BYTES
-;FUNCTION
-
-\ Measure only this OS thread, including when other Habu tasks are running.
-: THREAD-US ( -- n )
-   HB-TARGET-MACOS? if 16 else 3 then
-   TASK-CLOCK BYTE-VIEW THREAD-CLOCK
-   0 <> if E-TASK-THREAD throw then
-   TASK-CLOCK @ US-PER-S *
-   TASK-CLOCK CELL + @ 1000 / + ;
+\ The clock the sleeping cases trust has to move. A spin costs the spinning
+\ task CPU time, and never more than the wall time the spin spanned, so a
+\ clock that never advanced or misread its timespec fails here although it
+\ passes every sleep.
+: TASK-TEST-SPIN-CPU ( -- )
+   mono-ns {: t0:n :}
+   TIME:THREAD-CPU-NS {: cpu0:n :}
+   t0 SPIN-NS + begin dup mono-ns > while repeat drop
+   TIME:THREAD-CPU-NS cpu0 - {: cpu:n :}
+   mono-ns t0 - {: wall:n :}
+   cpu 0 > TTRUE
+   cpu wall <= TTRUE ;
 
 \ One sleep, measured from inside whichever task takes it: the wall time it
 \ spanned and the CPU time it cost that task.
 : SLEEP-MEASURE ( -- n n )
-   THREAD-US {: cpu0:n :}
+   TIME:THREAD-CPU-NS {: cpu0:n :}
    mono-ns {: t0:n :}
    SLEEP-MS >MS TASK:SLEEP
    mono-ns t0 -
-   THREAD-US cpu0 - ;
+   TIME:THREAD-CPU-NS cpu0 - ;
 
 : SLEEP-CHECK ( n n -- ) {: elapsed:n cpu:n :}
    elapsed SLEEP-LEAST-NS >= TTRUE
-   cpu SLEEP-CPU-US < TTRUE ;
+   cpu SLEEP-CPU-NS < TTRUE ;
 
 : TASK-TEST-SLEEP-MAIN ( -- )
    SLEEP-MEASURE SLEEP-CHECK ;
@@ -2068,7 +2071,7 @@ variable BIND-PAIR-Q-WON
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
-   TASK-WORKER-ACTIVATES$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   TASK-WORKER-ACTIVATES$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N s" variable" T$= ;
 
@@ -2130,6 +2133,7 @@ variable BIND-PAIR-Q-WON
    TASK-TEST-JOIN-HALTED
    TASK-TEST-EXIT-HALT
    TASK-TEST-JOIN-REFUSED
+   TASK-TEST-SPIN-CPU
    TASK-TEST-SLEEP-MAIN
    TASK-TEST-SLEEP-WORKER
    TASK-TEST-SLEEP-EDGES

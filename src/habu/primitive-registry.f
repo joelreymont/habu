@@ -16,9 +16,11 @@ package ENGINE-PRIMS
 
 6 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
-\ Match the generated storage accessors' size and index refusals.
-7121 constant E-SIZE
-7122 constant E-INDEX
+\ The generated storage accessors' size and index refusals: src/core/
+\ layout-buffer.f's codes, which every chain that reaches this file (the native
+\ prefix, the Gforth recovery prefix) has loaded before it.
+E-LAYOUT-BUFFER constant E-SIZE
+E-LAYOUT-BOUNDS constant E-INDEX
 \ Both specification gates exit with the table's own refusal status.
 76 constant SPEC-RC
 DYNAMIC-BUFFER ROWS n
@@ -26,7 +28,7 @@ DYNAMIC-BUFFER NAMES n
 variable USED
 variable NAME-BYTES
 
-: FIELD ( n n -- ptr n ) {: row:n field:n :}
+: ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
    row 0 < row USED @ >= or if E-INDEX throw then
    row ROW-CELLS * field + ROWS ;
 
@@ -59,15 +61,15 @@ public
    row 1+ USED !
    row ;
 
-: FIRST-LABEL ( n -- label ) 0 FIELD @ >LABEL ;
-: LAST-LABEL ( n -- label ) 1 FIELD @ >LABEL ;
-: NAME-LEN ( n -- n ) 2 FIELD @ ;
+: FIRST-LABEL ( n -- label ) 0 ROW-FIELD @ >LABEL ;
+: LAST-LABEL ( n -- label ) 1 ROW-FIELD @ >LABEL ;
+: NAME-LEN ( n -- n ) 2 ROW-FIELD @ ;
 : NAME$ ( n -- ptr u8 n ) {: row:n :}
-   0 NAMES BYTE-VIEW row 3 FIELD @ + row NAME-LEN ;
-: NAME-LABEL ( n -- label ) 4 FIELD @ >LABEL ;
-: NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 FIELD ! ;
-: WID ( n -- n ) 5 FIELD @ ;
-: WID! ( n n -- ) 5 FIELD ! ;
+   0 NAMES BYTE-VIEW row 3 ROW-FIELD @ + row NAME-LEN ;
+: NAME-LABEL ( n -- label ) 4 ROW-FIELD @ >LABEL ;
+: NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
+: WID ( n -- n ) 5 ROW-FIELD @ ;
+: WID! ( n n -- ) 5 ROW-FIELD ! ;
 
 \ THE TABLE IS WHICH PRIMITIVES EXIST. Every body registers under a name that
 \ src/habu/prims.f already specifies - the row states the effect, the body

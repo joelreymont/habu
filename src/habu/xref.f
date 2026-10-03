@@ -2,6 +2,15 @@
 \
 \ Load after src/habu/layout.f. These words inspect the running image dictionary
 \ through dbase@/ndict@ and are intended for the REPL/debug path.
+\
+\ Checked by the engine build (tools/native-build.f), not by tools/check.f
+\ alone. This file is a cold-prefix row (src/habu/habu2.f PFX-FILES, LPXREF)
+\ that loads after src/core/check-hook.f installs the checker hook and has no
+\ `0 set-check` span, so every definition here is checked as the prefix
+\ compiles. tools/check.f refuses the file on its own, and rightly: it defines
+\ `undefine`, which the checker's source pass dispatches itself
+\ (E-RESERVED-DEFINITION, as for src/core/include.f's loader words), and every
+\ engine already holds its words (E-DUPLICATE-DEFINITION).
 
 \ CODE-SPAN is loaded immediately before XREF by the cold prefix.
 
@@ -91,8 +100,10 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
    wid 6 rshift 8 * data-base PROT-BITS-OFF + + @
    wid 63 and rshift 1 and 0= 0= ;
 
-\ Keep the namespace private-WID API and the historical body length distinct
-\ from the exact code span. A raw length is only for record serialization.
+\ Keep the historical body length distinct from the exact code span. A namespace
+\ row's length cell holds a wordlist id, so it is answered raw rather than sent
+\ through CODE-SPAN; a package reader names that cell XREF-PKG-PRIVATE. A raw
+\ length is only for record serialization.
 : XREF-LEN ( ptr n -- n ) {: rec:ptr :}
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec XREF-RAW-LEN exit then
    rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
@@ -234,10 +245,10 @@ private
    dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
-   dup XREF-START pub <> if
+   dup XREF-PKG-PUBLIC pub <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
-   dup XREF-LEN pri <> if
+   dup XREF-PKG-PRIVATE pri <> if
       drop s" " MODE-NONE XREF-FALSE exit
    then
    cur pub = if MODE-PUB NAME-OUT exit then
@@ -317,14 +328,14 @@ variable XREF-QI
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
-   XREF-START {: qwid:n :}
+   XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
 : XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
-   XREF-START {: qwid:n :}
+   XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
 
 : XREF-FIND ( ptr u8 n -- ptr n )
@@ -380,6 +391,23 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
    XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
+\ One wordlist's record for a name, from the dictionary's hash index (habu1.f
+\ WLFIND), the index the definer's own duplicate wall asks. The primitive is
+\ trusted-only by its own row (prims.f), as for outer.f WL-PROBE.
+TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+
+\ The record a generated name would meet in the scope it will LAND in: a
+\ qualified name in the public wordlist its namespace row carries, a bare one in
+\ the current wordlist. XREF-FIND-TARGET-INDEX answers the same question by
+\ walking every record, which a declaration asked once per generated word.
+: TARGET-RECORD ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q -2 = IF XREF-NULL EXIT THEN
+   q 0 < IF a u get-current WL-RECORD EXIT THEN
+   a q XREF-NAMESPACE-WL WL-RECORD {: ns:ptr :}
+   ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
+   a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
+
 public
 
 \ A generated declaration is qualified exactly when it reserves a constructor
@@ -398,7 +426,7 @@ public
    a u TFAM-CTOR-WORD? 0= IF
       s" xref: generated declaration visibility mismatch" 76 die
    THEN
-   a u XREF-FIND-TARGET-INDEX 0 >= IF
+   a u TARGET-RECORD XREF-FOUND? IF
       s" xref: generated declaration already exists" 76 die
    THEN ;
 
@@ -447,11 +475,39 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
       1-
    repeat drop ;
 
+\ A does> definer's clause is a record of its own (habu2.f DOES-REC): published
+\ one slot above the definer, in its wordlist, under its name with `;does`
+\ added, and starting inside its body. Record k+1 is k's clause when it is all
+\ four; the body test is what tells the clause from a word someone named X;does.
+\ aot-capture.f ACAP-DOES-COMPANION? asks the same of a captured record.
+: XREF-DOES-COMPANION? ( n -- bool ) {: k:n :}
+   k 1+ ndict@ >= if XREF-FALSE exit then
+   k XREF-REC {: parent:ptr :}
+   k 1+ XREF-REC {: clause:ptr :}
+   parent XREF-WORDLIST clause XREF-WORDLIST <> if XREF-FALSE exit then
+   parent XREF-NAME$ {: name:ptr len:n :}
+   clause XREF-NAME$ {: derived:ptr dlen:n :}
+   s" ;does" {: suffix:ptr sufu:n :}
+   dlen len sufu + <> if XREF-FALSE exit then
+   derived len name len XREF-STR=CI 0= if XREF-FALSE exit then
+   derived len + sufu suffix sufu XREF-STR=CI 0= if XREF-FALSE exit then
+   parent XREF-START {: first:n :}
+   clause XREF-START {: entry:n :}
+   entry first <= if XREF-FALSE exit then
+   entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
+
 \ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
 \ in the package wordlist. Retire from that resolved record identity; the
 \ original spelling remains the checker-side symbol identity below.
-: XREF-RETIRE-INDEX ( n -- )
-   XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
+\ A definer's clause goes with it, as a record rather than by name. The AOT seed
+\ finds the clause under the definer's derived name, a redefinition publishes a
+\ new clause under that same name, and a wordlist holding two live rows for one
+\ name answers the older (habu1.f WLFIND), so a clause left live would go on
+\ answering for the new definer's words. Retiring moves no code: a word the old
+\ definer made still branches to the old clause.
+: XREF-RETIRE-INDEX ( n -- ) {: k:n :}
+   k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF-RETIRE then
+   k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!

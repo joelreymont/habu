@@ -2,6 +2,7 @@
 
 require test/checker-assert.f
 require test/layout-valid-guard-base.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LOWER-CERT-TEST
 
@@ -16,7 +17,7 @@ variable CERT-N
    CASES @ 1 + CASES !
    got want <> if
       FAIL
-      s" expected " type want . s" got " type got . cr
+      s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 : YES ( bool -- ) {: value:bool :}

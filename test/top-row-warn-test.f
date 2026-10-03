@@ -43,6 +43,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/outcome.f
 
 package TOP-ROW-WARN-TEST
 
@@ -80,13 +81,14 @@ create TW-EMPTY 1 allot
    2drop
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
 
-: TW-STORE! ( len len outcome -- )
-   MATCH outcome
+: TW-STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N TW-OUT-U !  erru LEN>N TW-ERR-U !
+   oc MATCH outcome
      exited OF TW-RC ! 0 0= TW-EXITED ! ENDOF
      signaled OF TW-RC ! 0 0= 0= TW-EXITED ! ENDOF
-     timeout OF 0 TW-RC ! 0 0= 0= TW-EXITED ! ENDOF
-   ;MATCH
-   LEN>N TW-ERR-U !  LEN>N TW-OUT-U ! ;
+     timeout OF src srcu TW-OUT TW-OUT-U @ TW-ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ Stage the child tier through its env: HABU_TOP_TIER=2 -> tier-2 reject, any other
 \ value -> tier-1 warn. The tier is pinned EXPLICITLY (not merely omitted) so a
@@ -103,15 +105,16 @@ create TW-EMPTY 1 allot
 \ Write the assembled program (SB$) to the child file and run it via --load, with
 \ an explicit env table (RUN-ARGV-ENV-* consults PROC-ENV; the plain RUN-ARGV-*
 \ inherits the parent environ and ignores it).
-: TW-RUN-TIER ( ptr u8 n n -- ) {: tier:n :}
-   TW-CHILD 2swap WRITE-ALL
+: TW-RUN-TIER ( ptr u8 n n -- )
+   {: src:ptr srcu:n tier:n :}
+   TW-CHILD src srcu WRITE-ALL
    PROC-ARGV-RESET
    tier TW-SET-TIER
    s" --load" >LEN PROC-ARGV+
    TW-CHILD >LEN PROC-ARGV+
    TW-HB$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
    TW-ERR TW-CAP >LEN  TW-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   TW-STORE! ;
+   src srcu TW-STORE! ;
 
 : TW-RUN ( ptr u8 n -- )  TW-TIER1 TW-RUN-TIER ;   \ default: tier-1 warn
 : TW-RUN2 ( ptr u8 n -- ) TW-TIER2 TW-RUN-TIER ;   \ staged: tier-2 reject

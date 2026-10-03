@@ -6,7 +6,8 @@
 \ the header's independent magic/version/count and the producer engine digest.
 \ A separate reader process checks chosen rows; MERGE checks location/target
 \ rebasing and raw-cell/instruction-chain DATA relocation sites. Old versions,
-\ partial rows and invalid row coordinates must fail through the file reader.
+\ partial rows, invalid row coordinates and forged closure path lengths must fail
+\ through the file reader.
 \
 \ The production capture tool is also loaded and must name its empty-window
 \ refusal: the booted engine already provides its chain. The producer's live-row
@@ -216,6 +217,13 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" bad-data-site" s" DATA relocation site reaches past its blob" ROW-REFUSED
    s" bad-chain-site" s" DATA relocation site reaches past its blob" ROW-REFUSED ;
 
+\ The reader walks the closure list itself, so a forged path length is refused
+\ there by name and is never handed to AOT-IDENT:PATH+.
+: PROBE-CLOSURE ( -- )
+   s" closure-over" s" the closure list ends inside a path" ROW-REFUSED
+   s" closure-negative" s" the closure list ends inside a path" ROW-REFUSED
+   s" closure-max" s" the closure list ends inside a path" ROW-REFUSED ;
+
 : SPAN-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u s" file" RUN-DATA-SITES want ROW-RC
    a u s" owned" RUN-DATA-SITES want ROW-RC ;
@@ -262,6 +270,7 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    PROBE-PRODUCER
    PROBE-CAPTURE-TOOL
    PROBE-ADDRESS-ROWS
+   PROBE-CLOSURE
    s" owned" RUN-OWNED-CAPTURE
    0 ROW-RC
    s" owned-capture: restored after source release" SAID?

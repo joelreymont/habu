@@ -2,7 +2,8 @@
 \
 \ The module lives in `package CODESIGN`. External callers use the qualified public
 \ API (CODESIGN:VERIFY, CODESIGN:VERIFY-RC, CODESIGN:FORCE, CODESIGN:ENSURE,
-\ CODESIGN:TOOL, CODESIGN:PROMOTE-EXECUTABLE, CODESIGN:PROMOTE-SIGNED-EXECUTABLE);
+\ CODESIGN:SIGN-AS, CODESIGN:TOOL, CODESIGN:PROMOTE-EXECUTABLE,
+\ CODESIGN:PROMOTE-SIGNED-EXECUTABLE);
 \ the per-target signing/verify helpers and capture buffers are package-private.
 require lib/errors.f
 require lib/memory.f
@@ -97,6 +98,17 @@ private
    a u  >LEN PROC-ARGV+
    CODESIGN-RUN CODESIGN-RC0 ;
 
+: CODESIGN-MACOS-FORCE-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u id:ptr idu :}
+   a u CODESIGN-EXPECT-FILE
+   PROC-ARGV-RESET
+   s" -s"  >LEN PROC-ARGV+
+   s" -"  >LEN PROC-ARGV+
+   s" -i"  >LEN PROC-ARGV+
+   id idu  >LEN PROC-ARGV+
+   s" --force"  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
+   CODESIGN-RUN CODESIGN-RC0 ;
+
 : CODESIGN-LINUX-VERIFY-RC ( ptr u8 n -- n )
    CODESIGN-EXPECT-EXECUTABLE
    0 ;
@@ -137,6 +149,22 @@ public
    HB-TARGET-MACOS? if
       a u VERIFY-RC 0= if exit then
       a u FORCE
+      a u VERIFY
+      exit
+   then
+   CODESIGN-TARGET-UNKNOWN ;
+
+\ Sign under a fixed identifier, whatever the file already carries. Without one
+\ codesign names the signature after the file, so the name a writer happened to
+\ use would travel inside the image.
+: SIGN-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n id:ptr idu:n :}
+   HB-TARGET-LINUX? if
+      a u FORCE
+      a u VERIFY
+      exit
+   then
+   HB-TARGET-MACOS? if
+      a u id idu CODESIGN-MACOS-FORCE-AS
       a u VERIFY
       exit
    then

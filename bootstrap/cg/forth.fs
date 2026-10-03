@@ -106,8 +106,9 @@ require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ (len + up to 16 name bytes, 24 B each). User data (DP) starts past the header.
 0   constant DP-CELL    8  constant HND-CELL
 16  constant LOCN-CELL   24 constant LOCF-CELL
-$3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
+$3000 constant LOCNAMES   \ LOC-RECS records of LOC-REC bytes ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
+64  constant LOC-RECS     \ locals per definition: C-LBRACE-STORE-ONE refuses the next (native layout.f LOC-RECS)
 \ Friend arena (TFAM 2b-i): contiguous write-protected band mirroring
 \ src/habu/layout.f. Latch cell == arena base (0 open / FRIEND-ARENA-LEN sealed).
 \ Package cells and protected-WID state mirror native, as do the two
@@ -190,8 +191,8 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$128 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below)
-$130 constant STACK-ABI:EVAL-BYTES
+$130 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below) and the $128 slot held for WIDN
+$140 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself
@@ -258,7 +259,9 @@ $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
-$36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
+$36D0 constant BPTAB-OFF   \ BP-MAX slots (addr, saved-instr, hits, ctrl), addr 0 = empty
+8 constant BP-MAX          \ breakpoint slots EMIT-TRAPH scans
+5 constant BP-SLOT-SHIFT   \ a slot is 32 bytes: index << 5
 $43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
@@ -277,7 +280,7 @@ $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
-3 cells constant ENGINE-HOOK-LEN
+2 cells constant ENGINE-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 \ The process-exit vector, at the offset src/habu/layout.f gives it: an xt the
 \ seed calls once, with the cell cleared first, before the exit_group of each
@@ -289,20 +292,14 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
-$2858 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
-$2860 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
-$2868 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
+$2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
+$2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
                             \ SIGNAL-ABI: block, RBASE-CELL and the cells above
 $5000 constant TXN-STATE-OFF
-\ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
-\ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
-\ the BAND-TAB row below guard 11520 bytes the transaction never owned; that
-\ run is USER-BAND now. A recovery engine that still guarded it would refuse
-\ every task-local store an engine built natively accepts.
-$300 constant TXN-STATE-LEN
 $10000 constant PROT-PAGE-MAX \ maximum supported arm64 page granule (DGX/Jetson Linux: 64 KiB)
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
@@ -324,7 +321,13 @@ TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
 TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
 TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
-64 constant TXN-LIVE-W-CAP
+LOC-RECS constant TXN-LIVE-W-CAP          \ one certified live width per local slot
+\ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
+\ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
+\ the BAND-TAB row below guard 11520 bytes the transaction never owned; that
+\ run is USER-BAND now. A recovery engine that still guarded it would refuse
+\ every task-local store an engine built natively accepts.
+TXN-LIVE-W-OFF TXN-LIVE-W-CAP cells + TXN-STATE-OFF - constant TXN-STATE-LEN
 
 \ Private build-time mirror of the package LOWER-CERT ABI. The generated
 \ stage0 runtime reads the package-owned artifact; these constants only encode
@@ -372,10 +375,11 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
 $37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips cold prefix reload
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800 in the DATA header. The frames are a guarded mapping now
-\ (STACK-ABI:LOOP-BASE-CELL/LOOP-BYTES), so this states its own offset; the
-\ $600..$800 hole below it is free header space.
+\ (STACK-ABI:LOOP-BASE-CELL/LOOP-BYTES), so this states its own offset. Below
+\ it, $600..$800 holds SIGNAL-ABI, LVF, LVQ and FRAME/QFRAME (data-claims.fs).
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
+BODYBUF-CAP 2 + constant BODYBUF-LEN \ the band BAND-TAB guards (native data-bands.f, data-claims.f)
 \ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
 \ not the $2800..$3000 header band it used to be: a band inside a $8000 header
 \ cannot carry an inaccessible page, and an overflow there silently overwrote
@@ -388,7 +392,9 @@ $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
-$2C0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
+$6D0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
+$750 constant LVQ-OFF     \ `?do` entry branch per nesting level; 0 for `do`
+16 constant LV-LEVELS     \ nesting levels LVH, LVF and LVQ hold (mirror of src/habu/layout.f)
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)
@@ -429,11 +435,21 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
-\ USER-REGION-END remains the fixed library arena boundary. $5300..$7690 is USER-BAND (lib/task.f
-\ TASK:+USER), $7690..$7BC0 is FS-ABI, $7BC0..$7BF8 is FMT-ABI and $7BF8..$8000
-\ is STRING-ABI, none of which this stage names: the recovery chain has to
-\ agree about the GUARD, not about the library bands behind it.
+\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A88
+\ is USER-BAND (lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
+\ FS-ABI, $7BC0..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
+\ libraries is in this seed's emitted prefix (PFX-LOAD-STDLIB-FILES loads only
+\ lib/prelude.f and lib/errors.f from lib/). The stage2 build loads lib/fmt.f
+\ and, through it, lib/float.f and lib/string.f, by require: src/habu/habu2.f
+\ `require lib/fmt.f`, lib/fmt.f `require lib/float.f`, lib/float.f `require
+\ lib/string.f`. No code this seed runs calls an SB or FMT: word, so it reads
+\ none of these bands. STRING-ABI is named here only so that the
+\ USER-REGION-END this file carries bounds a registered claim, its
+\ data-claims.fs row. The recovery chain agrees about the GUARD, not about the
+\ library bands behind it, so none of them is in BAND-TAB.
 $8000 constant USER-REGION-END
+$408 constant STRING-ABI:BYTES
+USER-REGION-END STRING-ABI:BYTES - constant STRING-ABI:START
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
@@ -456,7 +472,18 @@ USE-BAND-OFF          constant USE-DEPTH-CELL    \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF      \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
-USE-BAND-END constant PD-TABLE-OFF
+\ --- BEGIN-snapshot frames (bootstrap/cg/jit.fs LVSNAP/LVRECON): one (k, p0,
+\ p1) frame per open `begin`, at most SNAP-FRAMES of them. Native keeps the same
+\ frames (src/habu/layout.f JIT-SNAP) in a band appended above its last
+\ published table, and so does this stage, above USE-BAND, with the private
+\ pending table above them. The low header has no room for the band: frames
+\ there run over LASTC/RSP/EXITH/LVD/LVH ($560..$600), and src/core/checker.f
+\ keeps its declaration-owner cells at $360/$368 on this engine too.
+28 constant SNAP-FRAMES                   \ EMIT-SNAP-NEST-CHECK's bound (native JIT-SNAP:FRAMES)
+24 constant SNAP-FRAME-BYTES
+USE-BAND-END constant SNAPSTK-OFF
+SNAPSTK-OFF SNAP-FRAMES SNAP-FRAME-BYTES * + constant SNAPSTK-END
+SNAPSTK-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 PD-TABLE-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
@@ -732,6 +759,25 @@ previous definitions
 : G-PUSH ( reg -- ) XDS 8 STR-POST, ;
 : G-POP ( reg -- ) XDS -8 LDR-PRE, ;
 
+\ The name of the definition being compiled: x9 = its start, x10 = its length.
+\ It is the first token of the body buffer, where LBCAP seeds "NAME " before
+\ C-QUALIFY-DEF rewrites the token, so it is the qualified `PKG:tail`. A space or
+\ a NUL ends it, and BODYLEN bounds it, so an empty capture gives length 0.
+\ Clobbers x12 and x13 only: C-PUSH-DREC-NAME's callers keep the registrar XT
+\ in x11.
+: C-DEF-NAME ( -- )
+   LBL LBL {: scan done :}
+   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
+      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,                      \ NUL also ends it (safety)
+      10 10 1 ADDI,  scan B,
+   done LBL, ;
+
 : C-EMITW ( n -- ) 9 swap LIT64, LCEMIT @ BL, ;
 
 : C-CALL-EMIT-MOVZ-X16 ( -- )
@@ -754,6 +800,7 @@ previous definitions
 
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
 require jit.fs          \ runtime abstract value stack for the : compiler
+require data-claims.fs  \ build-time refusal of overlapping DATA cells and bands
 
 \ Span-aware stage0 mirror of src/habu/habu1.f. x13 holds the checked end and
 \ x12 is scratch; address+length wrap and intersection with every compiler-owned
@@ -785,7 +832,7 @@ create BAND-TAB
    FRIEND-ARENA ,    FRIEND-ARENA-LEN ,
    PROT-REG-OFF ,    PROT-REG-LEN ,
    ENGINE-HOOK-OFF , ENGINE-HOOK-LEN ,
-   BODYBUF-OFF ,     BODYBUF-CAP 2 + ,
+   BODYBUF-OFF ,     BODYBUF-LEN ,
    TXN-STATE-OFF ,   TXN-STATE-LEN ,
    0 ,               0 ,
 
@@ -2777,10 +2824,10 @@ create ZBYTE 0 c,
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
    LBL {: emu :}  LBL {: fin :}  LBL {: oneshot :}
    LBL LBL {: stackbad stackempty :}
-   6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
+   6 BP-MAX MOVZ,  7 0 MOVZ,                         \ x6 = BP-MAX, x7 = i  (scan BPTAB[0..BP-MAX))
    bscan LBL,
       7 6 CMP,  C-GE tno BCOND,
-      8 7 5 LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i] (32 B stride)
+      8 7 BP-SLOT-SHIFT LSLI,  14 BPTAB-OFF LIT64,  8 8 14 ADD,  8 DATA 8 ADD,   \ &BPTAB[i]
       13 8 0 LDR,  13 bnext CBZ,                     \ empty slot (addr 0)
       10 13 CMP,  C-EQ bhit BCOND,
       bnext LBL,  7 7 1 ADDI,  bscan B,
@@ -3900,10 +3947,18 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
-: J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+: J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=LVQ[LVD]=0, LVD++
+   LBL {: lvok :}
    9 DATA LVD-CELL LDR,
+   12 LV-LEVELS MOVZ,  9 12 CMP,  C-LT lvok BCOND,   \ a level free -> ok; else fail closed as LCFPUSH does
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   lvok LBL,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   12 10 0 STR,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
@@ -3941,10 +3996,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-DO ( -- )
    J-FRAME  J-LVOPEN  C-PUSHCP ;
 
-: J-?DO ( -- )              \ DO, but skip the loop when limit = start
+\ Mirror of the native J-?DO: emit `loop`'s entry test, start < limit, and
+\ record the branch in LVQ for a closing `+loop` to rewrite to skip equal bounds.
+: J-?DO ( -- )              \ DO, but skip the loop unless start < limit
    J-FRAME  J-LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
-   $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   11 CP DBASE SUB,  11 10 0 STR,
+   $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
    J-LVLEAVE
    C-PUSHCP ;
 
@@ -3971,6 +4031,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-+LOOP ( -- )                   \ cross the limit boundary in the step's direction
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
+   LBL {: plain :}
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ a `?do` opened this level: rewrite its entry
+   10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
+   9 10 0 LDR,  9 plain CBZ,
+   10 DBASE 9 ADD,  11 $54000041 LIT64,  11 10 0 STRW,  \ b.ne +8: skip equal bounds only
+   plain LBL,
    W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -4059,26 +4125,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    ok LBL, ;
 
 \ MIRROR of src/habu/habu2.f C-PUSH-DREC-NAME. Push the definition's ORIGINAL
-\ qualified spelling for the engine->checker record calls. It is the first token
-\ of the body buffer: LBCAP seeds "NAME " there before C-QUALIFY-DEF rewrites the
-\ token, so it is the QUALIFIED `PKG:tail`, where the published dictionary record
-\ carries only the bare tail (C-QUALIFY-DEF advances TKA past the `PKG:` prefix).
-\ Reading the record instead registered `tail` for a `PKG:tail` definition, and a
-\ bare-global row for a package-private name certifies callers the engine refuses.
-\ Scratch stays off x11: the FIND words leave the registrar XT there for the
-\ caller's later C-CALL-X11-SAVED, so this word must preserve it.
+\ qualified spelling (C-DEF-NAME) for the engine->checker record calls. The
+\ published dictionary record carries only the bare tail (C-QUALIFY-DEF advances
+\ TKA past the `PKG:` prefix). Reading the record instead registered `tail` for
+\ a `PKG:tail` definition, and a bare-global row for a package-private name
+\ certifies callers the engine refuses. Scratch stays off x11: the FIND words
+\ leave the registrar XT there for the caller's later C-CALL-X11-SAVED.
 : C-PUSH-DREC-NAME ( -- )
-   LBL LBL {: scan done :}
-   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
-   10 0 MOVZ,                           \ x10 = name length
-   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
-   scan LBL,
-      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
-      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
-      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
-      13 done CBZ,                      \ NUL also ends it (safety)
-      10 10 1 ADDI,  scan B,
-   done LBL,
+   C-DEF-NAME
    9 G-PUSH
    10 G-PUSH ;
 
@@ -4833,7 +4887,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ row, declares one.
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
-   11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
+   11 DATA LOCN-CELL LDR,  11 LOC-RECS CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    nlok LBL,
@@ -5124,7 +5178,7 @@ also LOWER-CERT
 
 : EM-P2-CARVE-W ( -- )
    LBL LBL LBL {: localok bindok widthok :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC localok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC localok BCOND,
       EM-P2-SLOT-DIE
    localok LBL,
    11 DATA TXN-CERT-A-CELL LDR,
@@ -5147,7 +5201,7 @@ previous
 
 : EM-P2-LIVE-W ( -- )
    LBL {: ok :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
    12 TXN-LIVE-W-OFF MOVZ,  12 DATA 12 ADD,
@@ -5155,7 +5209,7 @@ previous
 
 : EM-P2-LIVE-CUM ( -- )
    LBL LBL LBL {: ok loop done :}
-   9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
+   9 SP 0 LDR,  9 TXN-LIVE-W-CAP CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
    10 0 MOVZ,  11 0 MOVZ,

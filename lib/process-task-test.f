@@ -46,15 +46,13 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    PTT-CAP-BAD @ 1 + PTT-CAP-BAD ! ;
 
 \ Runs INSIDE the captor task, so it asserts nothing: it counts, and this
-\ thread reads the counts after the join.
+\ thread reads the counts after the join. A deadline throws E-PROC-TIMEOUT,
+\ which the join throws again.
 : PTT-ONE-CAPTURE ( -- )
    PROC-CMD:RESET
    s" hello" >LEN PROC-CMD:ARG+
-   s" /bin/echo" >LEN PTT-CAPTURE-MS >MS PROC-CMD:RUN-RC
-   MATCH result
-     ok  OF drop ENDOF
-     err OF drop PTT-CAP-BAD+ ENDOF
-   ;MATCH
+   s" /bin/echo" >LEN PTT-CAPTURE-MS >MS PROC-CMD:RUN-OUTCOME
+   PROC-OUTCOME>RC RC>N 0<> if PTT-CAP-BAD+ then
    PROC-CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
    PTT-DID @ 1 + PTT-DID ! ;
 
@@ -84,12 +82,17 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    repeat
    0 0= ;
 
+\ A worker's code, which a deadline in its capture makes the row's own deadline.
+: PTT-WORKER-ERR ( n -- ) {: code:n :}
+   code E-PROC-TIMEOUT = if E-PROC-TIMEOUT throw then
+   code 0 T= ;
+
 : PTT-JOIN-CAPTOR ( -- )
    begin PTT-CAPTOR TASK:DONE? 0= while TASK:PAUSE repeat
    PTT-CAPTOR TASK:JOIN
    MATCH result
      ok  OF PTT-CAPTURES T= ENDOF
-     err OF 0 T= ENDOF                           \ the captor threw; its code is not 0
+     err OF PTT-WORKER-ERR ENDOF                 \ the captor threw; its code is not 0
    ;MATCH ;
 
 : PTT-CONCURRENT-CAPTURE-AND-POLL ( -- )
@@ -139,13 +142,14 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    repeat ;
 
 \ Runs INSIDE a worker, so it asserts nothing: a bad completion throws and the
-\ join reports the code; a wrong capture is counted and returned.
+\ join reports the code, a deadline throws E-PROC-TIMEOUT and the join throws it
+\ again; a wrong capture is counted and returned.
 : PTT-PRINT ( ptr ptr u8 -- ) {: h:ptr :}
    h s" /usr/bin/printf" >LEN PTT-RUN-MS >MS CMD:RUN-OUTCOME
    MATCH outcome
       exited OF 0<> if E-PROC-OUTPUT throw then ENDOF
       signaled OF drop E-PROC-OUTPUT throw ENDOF
-      timeout OF E-PROC-OUTPUT throw ENDOF
+      timeout OF E-PROC-TIMEOUT throw ENDOF
    ;MATCH ;
 
 \ ( bad round -- bad round+1 ): the counter rides the stack because a local
@@ -182,7 +186,7 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 : PTT-JOIN-ZERO ( ptr n -- )
    TASK:JOIN MATCH result
      ok  OF 0 T= ENDOF                            \ rounds whose capture was not its own
-     err OF 0 T= ENDOF                            \ the worker threw; its code is not 0
+     err OF PTT-WORKER-ERR ENDOF                  \ the worker threw; its code is not 0
    ;MATCH ;
 
 : PTT-TWO-COMMANDS ( -- )
@@ -230,11 +234,8 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    s" stdin for three" ;
 
 : PTT-RUN-OK ( ptr ptr u8 ptr u8 len -- ) {: h:ptr path:ptr pathu:len :}
-   h path pathu PTT-RUN-MS >MS CMD:RUN-RC
-   MATCH result
-     ok  OF drop ENDOF
-     err OF throw ENDOF
-   ;MATCH ;
+   h path pathu PTT-RUN-MS >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   rc 0<> if rc throw then ;
 
 : PTT-ENV-ROUND ( n n -- n ) {: bad:n ix:n :}
    ix PTT-SLOT CMD:RESET

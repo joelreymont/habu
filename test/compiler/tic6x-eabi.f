@@ -4,6 +4,7 @@ require src/arch/tic6x/asm.f
 require src/arch/tic6x/sim.f
 require src/arch/tic6x/eabi.f
 require lib/ieee754.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package C6XEABI-TEST
 private
@@ -62,7 +63,7 @@ variable REMAINDER
    PROGRAM$ CALL drop ;
 
 : CHECK ( bool ptr u8 n -- ) {: ok:bool text size:n :}
-   ok 0= if 1 FAILURES +! s" eabi: " type text size type s"  x=" type 4 A@ . s"  y=" type 4 B@ . cr then ;
+   ok 0= if 1 FAILURES +! s" eabi: " type text size type s"  x=" type 4 A@ FMT:.INT s"  y=" type 4 B@ FMT:.INT cr then ;
 
 
 \ The oracle's verdict on the division helper in HELPER after a call on x y:

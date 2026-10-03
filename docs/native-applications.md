@@ -71,6 +71,18 @@ The native REPL build compiles the current source into a fresh running image.
 It does not use the AOT maker or artifact caches. The existing build report
 therefore records no cache source and no cache hits for `--repl`.
 
+A `--repl` image stores no cell that only the building process can read. The
+cells a process fills at startup are stored as zero, region addresses such as
+the engine hooks and `LASTC-CELL` are declared and relocated, the snapshot
+output path is not stored, and the image is signed as `hb-prog` like every
+program image rather than under its file name. So two builds of one program
+from one tree write the same bytes whatever their output names
+(`tools/hb-build-repl-twin-test.f`), and a persist in the running
+application must name its own output with `SNAP:PATH!` or it stops with
+`snap: persist has no output path`. The include registry does keep the
+canonical path of every file the build loaded, which `require` reads to skip a
+file already loaded, so builds from different tree roots differ in those rows.
+
 ### Process page size
 
 `OS-MEMORY:PAGE-SIZE` reports the current process's host page size through the
@@ -148,6 +160,11 @@ arena. Literal bytes belong to the application; the owner and row tables used
 by the compiler to intern and relocate them do not. `NSTR:SOURCE-ROWS` exposes
 those tables to the engine build driver, not to a stripped runtime. Persisting
 one of its table pointers refuses at link time and names the retaining cell.
+The pool is the application's only while the application loads: latching the
+span hands the maker back the pool it compiled into before, so nothing the
+maker compiles afterwards (`tools/aot-build.f`, the linker) adds a byte to the
+image, and the link selects the application's pool again to copy each literal
+the closure reaches into the window.
 
 The application therefore sees **only what it requires itself**. Nothing is
 preloaded on its behalf any more, so a program that used a `lib` word without
@@ -410,9 +427,11 @@ callback after restore and a semaphore released by capture cleanup.
 The ownership list is collected after lifecycle cleanup with the current
 capture window. This also applies when a saved linker already loaded the list:
 `test/stripped-preloaded-runtime.f` links an application extending baked TASK
-and FFI declarations through that linker. A saved linker rebases its baked
-code-span table and blob base during snapshot restore, so the later AOT closure
-can inspect those spans in the current process.
+and FFI declarations through that linker. A saved linker's snapshot restore
+keeps the code-span table and blob base its own boot published across the DATA
+copy, and the image stores neither (src/habu/habu2.f `EM-SNAPSHOT-RESTORE`,
+src/habu/snap-lib.f `SND-ZERO-LIVE`), so the later AOT closure inspects the
+spans of the current process.
 
 A stripped image restores the program's own DATA window byte for byte, so a
 persistent cell arrives holding whatever the BUILD process put there. For a cell

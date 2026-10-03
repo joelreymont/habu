@@ -42,6 +42,32 @@
 \               the same way and still named, but placed BELOW the band instead of
 \               inside it. The pair is what shows the band classifies the address
 \               rather than decorating every refusal with the same sentence.
+\   site/empty  SEVEN branches to the does>-clause of a package definer named MK:,
+\               whose qualified name AOT-BAND-SITE:MK:;does holds two colons and
+\               resolves nowhere: refused by the name audit, which runs after this
+\               band's and needs a capture in a booted engine just as much.
+\   export/empty  CALLER calls a private word through the public name EXPORT gave
+\               it: captured, two call sites. The body's first record is the
+\               private one, so a capture that named a callee by its first record
+\               would refuse a call the loader accepted.
+\   retired/empty  CALLER calls a word `undefine` retired and a second body
+\               replaced: refused by the scope audit, naming the callee. No live
+\               name carries the first body, and its spelling now calls another.
+\   redef/empty SEVEN is made inside the window by a does> definer that was
+\               undefined and defined again, so two clause records have carried
+\               the name SEVEN's branch bakes: captured, one call site, because
+\               the undefine retired the first clause with its definer. The case
+\               prints the loader's values for SEVEN and for OLD, made by the
+\               first definer, and both are asserted beside the capture.
+\   export-does/empty  SEVEN is made inside the window through the public name
+\               EXPORT gave a private does> definer: captured, one call site,
+\               because the export published the definer's clause beside it. The
+\               loader's value for SEVEN is asserted beside the capture.
+\   export-undef/empty  the same, after the private original was undefined while
+\               its public alias lived: captured, one call site. The undefine
+\               retired only the original's pair, so the alias still names the
+\               definer and its clause. The loader's values for EIGHT and for OLD,
+\               made by the original, are asserted beside the capture.
 \
 \ THE WORDLIST SPAN HAS NO CASE HERE, and that is a deletion rather than a gap:
 \ it used to be declared by a call of its own, so "the tool declared the band and
@@ -49,7 +75,7 @@
 \ WINDOW-CLOSE now latch the span with the other three coordinates, so no
 \ producer can leave it undeclared and the refusal that named it is gone with it.
 \
-\ Cost: six child bin/hb runs, no metabuild. Registered as
+\ Cost: thirteen child bin/hb runs, no metabuild. Registered as
 \ `SUITE aot-prelude-band` in test/gate-stdlib-cases.f. Run standalone:
 \   bin/hb --load test/aot-prelude-band-suite.f
 
@@ -106,6 +132,12 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 
 : CALL-CASE ( ptr u8 n -- ) s" test/aot-band-call.f" 2swap RUN-CASE ;
 : DATA-CASE ( ptr u8 n -- ) s" test/aot-band-data.f" 2swap RUN-CASE ;
+: SITE-CASE ( ptr u8 n -- ) s" test/aot-band-site.f" 2swap RUN-CASE ;
+: EXPORT-CASE ( ptr u8 n -- ) s" test/aot-band-export.f" 2swap RUN-CASE ;
+: RETIRED-CASE ( ptr u8 n -- ) s" test/aot-band-retired.f" 2swap RUN-CASE ;
+: REDEF-CASE ( ptr u8 n -- ) s" test/aot-band-redef.f" 2swap RUN-CASE ;
+: EXPORT-DOES-CASE ( ptr u8 n -- ) s" test/aot-band-export-does.f" 2swap RUN-CASE ;
+: EXPORT-UNDEF-CASE ( ptr u8 n -- ) s" test/aot-band-export-undef.f" 2swap RUN-CASE ;
 
 \ The diagnostic goes to stdout ahead of the die, so both streams are searched:
 \ which one carries it is the engine's business, not this suite's.
@@ -174,6 +206,62 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    s" in the prelude band" SAID? 0= TTRUE
    s" below this process's own start" SAID? TTRUE ;
 
+: PROBE-SITE-UNNAMED ( -- )
+   s" empty" SITE-CASE
+   s" a call site whose name resolves nowhere is refused" T-LABEL
+   s" aot-capture: a call site's name does not resolve the way the seed asks" REFUSED
+   s" ... naming the qualified spelling it would have baked" T-LABEL
+   s" bakes the name AOT-BAND-SITE:MK:;does" SAID? TTRUE ;
+
+: PROBE-EXPORT-CAPTURED ( -- )
+   s" empty" EXPORT-CASE
+   s" a call to a private word through its exported name captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... and both calls are call sites" T-LABEL
+   s" sites=2" SAID? TTRUE ;
+
+: PROBE-RETIRED-REFUSED ( -- )
+   s" empty" RETIRED-CASE
+   s" a call to a retired word no live name reaches is refused" T-LABEL
+   s" aot-capture: call site into a wordlist the seed cannot name" REFUSED
+   s" ... naming the caller and the callee" T-LABEL
+   s" window word CALLER calls GONE" SAID? TTRUE ;
+
+: PROBE-REDEF-NAMED ( -- )
+   s" empty" REDEF-CASE
+   s" a replaced definer's created word captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the new clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-redef: new 8" SAID? TTRUE
+   s" ... while a word the first definer made keeps the first clause" T-LABEL
+   s" aot-band-redef: old 7" SAID? TTRUE ;
+
+: PROBE-EXPORT-DOES-NAMED ( -- )
+   s" empty" EXPORT-DOES-CASE
+   s" a word made through an exported private definer captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the exported clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-export-does: seven 7" SAID? TTRUE ;
+
+: PROBE-EXPORT-UNDEF-NAMED ( -- )
+   s" empty" EXPORT-UNDEF-CASE
+   s" a word made through the alias of an undefined original captures" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+   s" ... through one call site, its branch to the alias's clause" T-LABEL
+   s" sites=1" SAID? TTRUE
+   s" ... which the loader runs for it" T-LABEL
+   s" aot-band-export-undef: eight 8" SAID? TTRUE
+   s" ... as it does for a word the original made" T-LABEL
+   s" aot-band-export-undef: old 8" SAID? TTRUE ;
+
 : BODY ( -- )
    SETUP
    PROBE-CALL-REFUSED
@@ -182,7 +270,13 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    PROBE-MARK-ABOVE
    PROBE-DATA-MARK-ABOVE
    PROBE-DATA-REFUSED
-   PROBE-DATA-BELOW ;
+   PROBE-DATA-BELOW
+   PROBE-SITE-UNNAMED
+   PROBE-EXPORT-CAPTURED
+   PROBE-RETIRED-REFUSED
+   PROBE-REDEF-NAMED
+   PROBE-EXPORT-DOES-NAMED
+   PROBE-EXPORT-UNDEF-NAMED ;
 
 public
 

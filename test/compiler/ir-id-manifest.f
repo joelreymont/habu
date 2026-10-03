@@ -52,20 +52,24 @@ private
 : SCALAR-VECTOR-RUN ( -- )
    SCALAR-ROWS 0 ?do i SCALAR-ROW-RUN loop ;
 
-: REPLAY-OUTCOME ( bool -- outcome ) {: forced:bool :}
+\ Loads the replay probe in a child engine, forced or not, and asserts its exit
+\ code.
+: REPLAY-EXITS ( bool n -- ) {: forced:bool want:n :}
+   s" test/compiler/ir-id-replay.f" {: path:ptr pathu:n :}
    PROC-CMD:RESET
    forced if
       s" HABU_IR_ID_REPLAY_FORCE" >LEN s" 1" >LEN PROC-CMD:ENV+
    then
    s" --load" >LEN PROC-CMD:ARG+
-   s" test/compiler/ir-id-replay.f" >LEN PROC-CMD:ARG+
-   s" bin/hb" >LEN 60000 >MS PROC-CMD:RUN-OUTCOME ;
+   path pathu >LEN PROC-CMD:ARG+
+   s" bin/hb" >LEN 60000 >MS PROC-CMD:RUN-OUTCOME {: oc :}
+   path pathu PROC-CMD:OUT$ PROC-CMD:ERR$ oc want T-OUTCOME-EXITED= ;
 
 : REPLAY-COVERAGE ( -- )
    s" the module allocator survives a require replay in a child load" T-LABEL
-   false REPLAY-OUTCOME 0 T-OUTCOME-EXITED=
+   false 0 REPLAY-EXITS
    s" a forced replay of the identity source is refused by the seal" T-LABEL
-   true REPLAY-OUTCOME ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
+   true ENGINE-ERROR:SEAL-PACKAGE REPLAY-EXITS ;
 
 public
 

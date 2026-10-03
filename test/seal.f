@@ -18,6 +18,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -382,13 +383,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ --- child spawn + outcome capture ---
 
-: SLV-STORE! ( len len outcome -- )
-   MATCH outcome
+: SLV-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+   erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
+   oc MATCH outcome
      exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
      signaled OF SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
-     timeout OF 0 SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
-   ;MATCH
-   LEN>N SLV-ERR-U !  LEN>N SLV-OUT-U ! ;
+     timeout OF src u SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : SLV-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u SLV-CAP > if E-FS-CAPACITY throw then
@@ -396,14 +397,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    u SLV-IN-U ! ;
 
 \ Run the forge as a --load file with empty stdin.
-: SLV-RUN-LOAD ( ptr u8 n -- )
-   SLV-CHILD 2swap WRITE-ALL
+: SLV-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   SLV-CHILD src u WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
    SLV-HB$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   SLV-STORE! ;
+   src u SLV-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SLV-RUN-STDIN ( ptr u8 n -- )
@@ -411,11 +412,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   SLV-STORE! ;
+   SLV-IN$ SLV-STORE! ;
 
-: SLV-SUBJECT ( ptr u8 n -- )
-   SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
-   SLV-TIMEOUT-MS >MS SUBJECT:RUN SLV-STORE! ;
+: SLV-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
+   SLV-TIMEOUT-MS >MS SUBJECT:RUN src u SLV-STORE! ;
 
 : SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
    SLV-EXITED @ TTRUE

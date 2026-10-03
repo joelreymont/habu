@@ -14,7 +14,10 @@ Planned module files:
 - `lib/vector.f`
 - `lib/string.f`
 - `lib/base64.f`
+- `lib/utf16.f`
+- `lib/uri.f`
 - `lib/json-write.f`
+- `lib/json-rpc.f`
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/span.f`
@@ -41,12 +44,15 @@ Planned module files:
 - `lib/object-index.f`
 - `lib/object-resolve.f`
 - `lib/object-link.f`
+- `lib/fd-io.f`
+- `lib/content-length.f`
 - `lib/process.f`
 - `lib/process-fork.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
 - `lib/process-command.f`
 - `lib/process-cwd.f`
+- `lib/process-tree.f`
 - `lib/argv.f`
 - `lib/test.f`
 - `lib/test/assert.f`
@@ -83,11 +89,17 @@ theirs.
 | `lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `lib/json-write.f` | caller-owned |
 | `lib/json-read.f` | caller-owned |
+| `lib/utf16.f` | caller-owned |
+| `lib/uri.f` | caller-owned |
+| `lib/fd-io.f` | caller-owned (the descriptor and the span) |
+| `lib/content-length.f` | caller-owned (the reader record and its buffer) / task-local (`SEND`'s header row) |
+| `lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
 | `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
 | `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
+| `lib/process-tree.f` | process-wide |
 | `lib/net/tcp4.f` | task-local |
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
@@ -663,8 +675,11 @@ the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 i64 and returns `option<n>`: SOME value, or NONE on invalid or out-of-range
 input.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
-roles and reject negative values. Typed variants such as `SB-APPEND-LEN` keep
-already-refined lengths from being laundered through plain `n`. `BUFFER:`
+roles and reject negative values. `STR-CHECK-LEN` throws `E-STR-BOUNDS` for a
+negative length and `STR-CHECK-LENS` for either of two; every word here that
+takes a length calls one of them before it reads a byte. Typed variants such as
+`SB-APPEND-LEN` keep already-refined lengths from being laundered through plain
+`n`. `BUFFER:`
 defines caller-owned byte buffers; `BUF-*` helpers reset, read,
 and append into a caller-owned `(buffer, capacity, length-cell)` triple and throw
 instead of truncating or overflowing.
@@ -673,6 +688,8 @@ instead of truncating or overflowing.
 STR-LEN         ( n -- len )
 STR-OFF         ( n -- off )
 STR-COUNT       ( n -- count )
+STR-CHECK-LEN   ( n -- )
+STR-CHECK-LENS  ( n n -- )
 STR-TRUE        ( -- bool )
 STR-FALSE       ( -- bool )
 BUFFER:         ( n -- )
@@ -735,6 +752,24 @@ any read. The package owns no mutable cursor, scratch cell, or return buffer.
 UTF8:NEXT ( ptr u8 n n -- scalar-step )
 ```
 
+## UTF-16 Units
+
+`lib/utf16.f` owns package `UTF16`. `UTF16:UNITS` answers how many UTF-16 code
+units a UTF-8 byte span encodes to, the measure LSP positions take by default:
+the column of a byte offset on a line is the units of the bytes before it.
+
+```forth
+UTF16:UNITS ( ptr u8 n -- n )
+```
+
+It reads the span with `UTF8:NEXT`: a scalar below U+10000 is one unit and one
+at or above it is two, a surrogate pair. Invalid UTF-8 counts as `UTF8:NEXT`
+reads it, one unit for every byte it answers as `raw-byte`, the width of the
+U+FFFD that stands for that byte. Unicode's maximal-subpart practice agrees on
+every ill-formed byte except a truncated sequence that starts well (`E2 82`
+then an `A`, or `F0 9F 98` at the end of the span), which it counts as one unit
+and this counts as one per byte. A negative length is `E-STR-BOUNDS`.
+
 ## Base64
 
 `lib/base64.f` owns package `BASE64`: RFC 4648 base64 in the standard alphabet
@@ -760,6 +795,31 @@ the encoding of a `SHA1:digest`. `lib/base64-test.f` runs RFC 4648's section 10
 vectors, decodes the whole alphabet against `base64 -d`, round-trips every byte
 value, asserts each refusal, and derives RFC 6455's
 `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`.
+
+## File URIs
+
+`lib/uri.f` owns package `URI`. `URI:FILE>PATH` decodes a `file:` URI that
+names a file on this machine into the caller's span and answers the path's
+length.
+
+```forth
+URI:FILE>PATH ( ptr u8 n SPAN:span<u8> -- n )
+```
+
+The scheme is `file` in any case, followed by `//` and an authority that is
+empty or `localhost` in any case; the authority ends at the `/` that starts the
+path, so every answer is an absolute path. Each `%XX` decodes once, in either
+hex case, to the byte it names, and every other byte is copied as it is. A
+scheme other than `file` is `E-URI-SCHEME`. Anything else before the path - no
+`//` (RFC 8089's `file:/path` form), a host, a port, user information, or no
+path at all - is `E-URI-AUTHORITY`. A `%` without two hex digits is
+`E-URI-ESCAPE`, and so is a bare `?` or `#`: RFC 8089's file URI has no query
+or fragment, and a generic parser would split the path there. The whole URI is
+checked and the path measured before a byte is written: a span too small for
+the path throws `E-SPAN-CAPACITY` and a negative URI length `E-SPAN-LENGTH`, so
+a refusal leaves the span as it was. The path is bytes, as the file system takes
+them: a decoded NUL or `/` is kept, and `lib/fs.f` refuses a path holding a NUL
+(`E-FS-PATH-UNSAFE`) where it opens one.
 
 ## JSON Write
 
@@ -842,13 +902,21 @@ JSON-WRITE:COMMA        ( ptr writer -- ptr writer )
 JSON-WRITE:NULL         ( ptr writer -- ptr writer )
 JSON-WRITE:BOOL         ( ptr writer bool -- ptr writer )
 JSON-WRITE:U            ( ptr writer n -- ptr writer )
+JSON-WRITE:INT          ( ptr writer n -- ptr writer )
 JSON-WRITE:FIELD-RAW    ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
 JSON-WRITE:FIELD-S      ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
 JSON-WRITE:FIELD-U      ( ptr writer ptr u8 n n -- ptr writer )
+JSON-WRITE:FIELD-INT    ( ptr writer ptr u8 n n -- ptr writer )
 JSON-WRITE:FIELD-BOOL   ( ptr writer ptr u8 n bool -- ptr writer )
 JSON-WRITE:FIELD-NULL   ( ptr writer ptr u8 n -- ptr writer )
 JSON-WRITE:$            ( ptr writer -- ptr u8 n )
 ```
+
+`JSON-WRITE:U` writes a nonnegative number and refuses a negative one with
+`E-JW-BYTE`. `JSON-WRITE:INT` writes every cell, with a leading `-` for a
+negative one such as a JSON-RPC error code; the minimum cell, whose magnitude
+has no positive form, is written from `STR-MIN-I64$`. Both reserve the whole
+number's width before its first byte.
 
 Prefer these words over constructing quoted JSON literals by hand. Use
 `JSON-WRITE:FIELD-S` when the value is arbitrary text and `JSON-WRITE:FIELD-RAW`
@@ -885,6 +953,7 @@ JR:NEXT       ( JR:reader -- JR:reader n )
 JR:INT        ( JR:reader -- JR:reader n )
 JR:FLOAT      ( JR:reader -- JR:reader r )
 JR:STR        ( JR:reader ptr u8 n -- JR:reader n )
+JR:STR-EQ?    ( JR:reader ptr u8 n -- JR:reader bool )
 JR:SKIP-VALUE ( JR:reader -- JR:reader )
 JR:FIND-KEY   ( JR:reader ptr u8 n -- JR:reader bool )
 ```
@@ -903,6 +972,71 @@ captures that object's depth, skips each unmatched value completely, and stops
 at the matching object close; array, top-level scalar, and after-key phases
 throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
 unescape path as `STR`, so valid key length is not bounded by reader storage.
+`STR-EQ?` compares the current string or key the same way: true when it
+decodes to exactly the given bytes, so `"init"` equals `init`. No buffer
+bounds the string and the reader stays on the token, which may be compared
+again. Any other token, a negative length, or a null pointer with a positive
+length is `E-JR-STATE`.
+
+## JSON-RPC
+
+`lib/json-rpc.f` owns package `JSON-RPC`: the JSON-RPC 2.0 envelope.
+`>MESSAGE` sorts one message body into a `JSON-RPC:message`, and the writers
+build replies and notifications on a caller's `JSON-WRITE` writer. Framing a
+body on a stream is `lib/content-length.f`'s (Content-Length framing, below).
+
+```forth
+JSON-RPC:PARSE-ERROR      ( -- n )                  \ -32700
+JSON-RPC:INVALID-REQUEST  ( -- n )                  \ -32600
+JSON-RPC:METHOD-NOT-FOUND ( -- n )                  \ -32601
+JSON-RPC:INVALID-PARAMS   ( -- n )                  \ -32602
+JSON-RPC:INTERNAL-ERROR   ( -- n )                  \ -32603
+JSON-RPC:id                                         \ an id's JSON text
+JSON-RPC:message          \ request id method params | notification method params
+                          \ | success id value | failure id value | invalid code why id
+JSON-RPC:ID$      ( JSON-RPC:id -- ptr u8 n )
+JSON-RPC:NULL-ID  ( -- JSON-RPC:id )
+JSON-RPC:>MESSAGE ( ptr a n ptr u8 n -- JSON-RPC:message )
+JSON-RPC:METHOD?  ( ptr a n ptr u8 n ptr u8 n -- bool )
+JSON-RPC:RESULT   ( ptr JSON-WRITE:writer JSON-RPC:id -- ptr JSON-WRITE:writer )
+JSON-RPC:ERROR    ( ptr JSON-WRITE:writer JSON-RPC:id n ptr u8 n -- ptr JSON-WRITE:writer )
+JSON-RPC:NOTIFY   ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+JSON-RPC:END      ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+```
+
+`>MESSAGE` parses in the caller's JR storage (`ptr a n`, at least
+`JR:STORAGE-BYTES`; less is `JR:E-CAPACITY`) and borrows the body: every part
+of a message is the body's own JSON text. An id is a number's digits, a string
+with its quotes and escapes, or `null`; a method keeps its quotes; params, a
+result and an error are the whole value, and params absent or null are empty.
+Member names are compared decoded, the last of a repeated name counts, and
+members outside the envelope are passed over.
+`METHOD?` takes JR storage, a method's text and a name, and compares them
+decoded, so `"initialize"` names `initialize`.
+
+A body that is not one JSON value, as JR reads RFC 8259 (nesting past its 64
+levels included), is `invalid` with `PARSE-ERROR`: JR's syntax codes
+`E-JR-MALFORMED` through `E-JR-COMMA` map there, and its other codes, such as
+`JR:E-CAPACITY`, are thrown. Everything
+else wrong is `INVALID-REQUEST`: an array (a batch, which this reader does not
+take), a root that is not an object, `jsonrpc` other than the string `"2.0"`, an
+id that is not a number, string or null, a method that is not a string, params
+that are not an object, an array or null, a message with neither a method nor
+an id, a response without exactly one of `result` and `error`, and an error
+that is not an error object: one whose `code` is an integer and whose `message`
+is a string, its `data` and other members passed over. `why` is a short phrase
+for the fault. An invalid message carries its own id when the id is valid and
+the message has a method, else the null id, so a reply never answers a
+response. The body is read once: the walk that validates it records each
+envelope member as it meets it.
+
+`RESULT` writes `{"jsonrpc":"2.0","id":ID,"result":`, the caller writes the
+value and `END` closes the object. `ERROR` writes a whole error reply,
+`{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`. `NOTIFY` writes
+`{"jsonrpc":"2.0","method":M,"params":`, closed by `END` after the caller's
+params. The id is written as its JSON text, as `>MESSAGE` gave it or `NULL-ID`
+makes it; an empty id is `E-JSON-RPC-ID` before any byte is written. The
+writer's own refusals are `JSON-WRITE`'s.
 
 ## Unicode comparison
 
@@ -1098,82 +1232,50 @@ parse/escape/edit/readback round trips.
 
 ## Map
 
-`lib/map.f` provides a fixed-capacity open-addressed string-key map.
-The source-backed surface uses caller-owned `ptr a` cell storage. Capacities and
-stored counts are `count`, slot indexes are `idx`, slot field offsets are `off`,
-and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
-capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
-
-Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
-`occupied`) with generated constructors `SLOT--STATE:EMPTY`,
-`SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
-consumer through `MATCH slot-state` or the `MAP-*?` predicates. The nominal
-getter/setter API prevents checked callers from laundering state through `n`.
-The caller still owns raw map storage and `MAP-SLOT-FIELD` intentionally exposes
-its representation. `MAP-SLOT-STATE@` is therefore a validating decoder: raw
-tags 0/1/2 become constructors and every other tag throws `ENGINE-ERROR:BAD-TAG`.
-
-The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
-no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
-generated constructors `MAP--LOC:FULL`, `MAP--LOC:FREE`, and `MAP--LOC:FOUND`.
-The carried `idx` payload replaces the old `-1` index placeholder, and every
-consumer dispatches through exhaustive `MATCH map-loc`.
-
-The published words expose checked storage layout plus lookup/update helpers:
+`lib/map.f` (package `MAP`) provides a fixed-capacity open-addressed string-key
+map over caller-owned `ptr a` cell storage. Capacities and stored counts are
+`count` and key lengths are `len`; key strings use `ptr u8 len`.
+`MAP:CELL-COUNT` returns the cell count to allocate for a capacity, and
+`MAP:INIT` initializes that storage.
 
 ```forth
-MAP-CHECK-CAP       ( count -- )
-MAP-CHECK-LEN       ( len -- )
-MAP-CELLS           ( count -- count )
-MAP-EMPTY?          ( slot-state -- bool )
-MAP-DELETED?        ( slot-state -- bool )
-MAP-OCCUPIED?       ( slot-state -- bool )
-MAP-CAP@            ( ptr a -- count )
-MAP-CAP!            ( count ptr a -- )
-MAP-CHECK-HANDLE    ( ptr a count -- )
-MAP-COUNT@          ( ptr a -- count )
-MAP-DELETED@        ( ptr a -- count )
-MAP-COUNT!          ( count ptr a -- )
-MAP-DELETED!        ( count ptr a -- )
-MAP-SLOTS           ( ptr a -- ptr a )
-MAP-CHECK-INDEX     ( ptr a idx -- )
-MAP-SLOT            ( ptr a idx -- ptr a )
-MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
-MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
-MAP-SLOT-HASH@      ( ptr a idx -- n )
-MAP-SLOT-HASH!      ( n ptr a idx -- )
-MAP-SLOT-KEY-A@     ( ptr a idx -- ptr u8 )
-MAP-SLOT-KEY-A!     ( ptr u8 ptr a idx -- )
-MAP-SLOT-KEY-U@     ( ptr a idx -- len )
-MAP-SLOT-KEY-U!     ( len ptr a idx -- )
-MAP-SLOT-VALUE@     ( ptr a idx -- a )
-MAP-SLOT-VALUE!     ( a ptr a idx -- )
-MAP-SLOT-CLEAR      ( ptr a idx -- )
-MAP-CLEAR           ( ptr a -- )
-MAP-INIT            ( ptr a count -- )
-MAP-HASH            ( ptr u8 len -- n )
-MAP-INDEX           ( n count -- idx )
-MAP-PROBE           ( n count count -- idx )
-MAP-SLOT-MATCH?     ( ptr a idx n ptr u8 len -- bool )
-MAP-REMEMBER-FREE   ( n idx -- n )
-MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n map-loc )
-MAP-LOCATE          ( ptr a count ptr u8 len -- map-loc n )
-MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
-MAP-HAS?    ( ptr a count ptr u8 len -- bool )
-MAP-GET     ( ptr a count ptr u8 len -- option<n> )
-MAP-SET     ( n ptr a count ptr u8 len -- )
-MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
+MAP:CELL-COUNT ( count -- count )
+MAP:INIT       ( ptr a count -- )
+MAP:CLEAR      ( ptr a -- )
+MAP:CAP@       ( ptr a -- count )
+MAP:COUNT@     ( ptr a -- count )
+MAP:HAS?       ( ptr n count ptr u8 len -- bool )
+MAP:GET        ( ptr n count ptr u8 len -- option<n> )
+MAP:SET        ( n ptr n count ptr u8 len -- )
+MAP:EACH       ( ptr n count [ ptr u8 len n -- ] -- )
 ```
 
-`MAP-GET` returns `SOME` with the stored value when the key is present, else
-`NONE`. `MAP-SET` inserts or replaces one numeric value. An insert stores the
+`MAP:GET` returns `SOME` with the stored value when the key is present, else
+`NONE`. `MAP:SET` inserts or replaces one numeric value. An insert stores the
 caller's key pointer and length, not a copy of the bytes, and a replacement
 keeps the first key's pointer, so the caller must keep those key bytes alive
 and unchanged for as long as the entry exists: every lookup compares against
-them and `MAP-EACH` passes them to its quotation. Capacity, malformed
-storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
-`E-MAP-FULL`.
+them and `MAP:EACH` passes them to its quotation. `MAP:EACH` visits occupied
+entries in ascending storage-slot order. Capacity, malformed storage, and
+full-table states throw named errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`;
+the capacity passed to a lookup or update must be the one the storage was
+initialized with.
+
+The header and slot layout, the hash, the probe sequence and the locate step
+are package-private; `lib/map-test.f` reopens `package MAP` to test them. Two
+families are public because only a public family has generated constructors,
+and the private words are their only producers and consumers:
+
+- `MAP:slot-state` (`empty`, `deleted`, `occupied`), constructed as
+  `MAP-SLOT--STATE:EMPTY`, `MAP-SLOT--STATE:DELETED` and
+  `MAP-SLOT--STATE:OCCUPIED`, is the per-slot lifecycle state. The slot reader
+  is a validating decoder: raw tags 0/1/2 become constructors and every other
+  tag throws `ENGINE-ERROR:BAD-TAG`, and the nominal getter and setter keep
+  checked code from laundering a state through `n`.
+- `MAP:loc` is the lookup verdict: `full` (table exhausted, no payload),
+  `free idx` (insertion slot) and `found idx` (hit slot), constructed as
+  `MAP-LOC:FULL`, `MAP-LOC:FREE` and `MAP-LOC:FOUND`. Every consumer dispatches
+  through exhaustive `MATCH`.
 
 ## Memory
 
@@ -1361,6 +1463,9 @@ MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
 ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
+RESERVE-SIBLING         ( ptr u8 n -- ptr u8 n n )
+REPLACE-STAGED          ( ptr u8 n [ ptr u8 n -- ] -- )
+SIBLING-PATH-MAX        ( -- n )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
 HB-TMP-MKDIR            ( ptr u8 n -- ptr u8 n )
@@ -1368,6 +1473,7 @@ CLEANUP-RESET           ( -- )
 CLEANUP+                ( ptr u8 n -- )
 CLEANUP-DIR+            ( ptr u8 n -- )
 CLEANUP-TREE+           ( ptr u8 n -- )
+CLEANUP-FORGET          ( ptr u8 n -- )
 CLEANUP-RUN             ( -- )
 FS-SKIP-DIR?            ( ptr u8 n -- bool )
 FS-SKIP-SELF-ENTRY?     ( ptr u8 n -- bool )
@@ -1431,6 +1537,12 @@ an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 `COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
 large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
 writes a sibling `.tmp` file and renames it over the destination.
+`RESERVE-SIBLING` creates and opens that unique sibling for a writer that
+streams its file, and `REPLACE-STAGED` runs one: it hands the sibling's path to
+a filler, renames the sibling over the destination once the filler returns, and
+removes it if the filler or the rename throws or the filler dies, so the
+destination names its old file or the whole new one. A destination longer than
+`SIBLING-PATH-MAX` has no room for a sibling and is `E-SPAN-CAPACITY`.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
 handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.
@@ -1448,7 +1560,9 @@ tree made under it goes away even with the process killed before its own
 paths into owned storage and `CLEANUP-RUN` removes them in reverse order, so
 nested directory cleanups can register parent before child and still remove child first.
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
-Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
+`CLEANUP-FORGET` drops the newest registration of a path its owner has already
+removed, so a process that makes and removes a tree per job keeps the table
+from filling; a path nothing registered is a no-op. Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.
 
 The registry also runs at process exit, so a `die`, an uncaught top-level throw
@@ -1788,6 +1902,85 @@ a trailing newline, strips a trailing carriage return before `\n`, and throws
 buffer. `SOURCE-LS-*` words are the checked implementation steps behind that
 streaming API.
 
+## Descriptor IO
+
+`lib/fd-io.f` owns package `FD-IO`: exact reads and full writes on a blocking
+descriptor the caller owns, such as a pipe or a server's stdin and stdout.
+
+```forth
+FD-IO:fill                                          \ full | eof bytes
+FD-IO:READ-EXACT ( fd SPAN:span<u8> -- FD-IO:fill )
+FD-IO:WRITE-FULL ( fd ptr u8 n -- )
+```
+
+`READ-EXACT` reads until the span is full and answers `full`; a read that
+answers short, as a pipe does with fewer bytes than asked, is read again. End
+of file first is an answer, not an error: `eof` carries how many bytes arrived,
+which head the span, and `eof 0` is a stream that ended on the boundary. An
+empty span is `full` without a read. `WRITE-FULL` writes until the kernel has
+taken every byte: a blocking write answers short when a caught signal lands
+after some bytes moved, and every handler that returns sets `SA_RESTART`, so a
+signal before any byte moved restarts the call ([signal.md](signal.md)). A read
+or write the kernel refuses, a write that takes no byte and a count past what
+was asked throw `E-FS-IO`; a negative length is `E-SPAN-LENGTH`. A write to a
+pipe with no reader raises `SIGPIPE`, which ends the process unless the caller
+armed `FD-NOSIGPIPE!` (below); then it throws `E-FS-IO`. The engine reports
+`EAGAIN` as a failed call, so a nonblocking descriptor is not for these words.
+
+## Content-Length framing
+
+`lib/content-length.f` owns package `CONTENT-LENGTH`: the framing LSP and DAP
+put around every message, over a blocking descriptor. A header block of
+`name: value` lines, each ended by CR LF and the block by an empty line, comes
+before exactly as many body bytes as its Content-Length header names. The module
+knows nothing of what a body holds; `lib/json-rpc.f` reads a JSON-RPC body.
+
+```forth
+CONTENT-LENGTH:reader                               \ the caller's reader record
+CONTENT-LENGTH:LINE-CAP    ( -- n )                 \ 1024, the longest header line
+CONTENT-LENGTH:BIND        ( ptr reader fd SPAN:span<u8> n -- )
+CONTENT-LENGTH:NEXT-LENGTH ( ptr reader -- option<n> )
+CONTENT-LENGTH:BODY        ( ptr reader SPAN:span<u8> -- )
+CONTENT-LENGTH:SEND        ( fd ptr u8 n -- )
+```
+
+`BIND` binds the caller's record (`TYPED-VARIABLE R CONTENT-LENGTH:reader`) to
+a descriptor, a buffer span of at least `LINE-CAP` + 2 bytes and the longest
+body it takes. A message is read in two steps. `NEXT-LENGTH` reads one header
+block and answers the body's length, or `none` when the stream ended on a
+message boundary, the one end of input that is not an error. `BODY` then reads
+exactly that many bytes into the head of the caller's span, so the caller sizes
+its storage once it knows the length; a shorter span is `E-SPAN-CAPACITY`. The
+module allocates nothing: header lines are scanned in the reader's buffer, the
+body bytes it already holds are copied out, and the rest are read straight into
+the span by `FD-IO:READ-EXACT`. Header names are matched without case; blanks
+and tabs around Content-Length's value, and leading zeros in it, are allowed.
+Content-Type is read for its `charset` parameter, and other headers are read
+past.
+
+End of file inside a header block or a body is `E-CONTENT-LENGTH-TRUNCATED`. A
+header block is `E-CONTENT-LENGTH-MALFORMED` when a line is not ended by CR LF
+(an LF alone, or a CR anywhere else in it), has no colon, has a name before it
+that is not an HTTP token (one or more RFC 7230 `tchar` bytes), or is longer
+than `LINE-CAP` bytes; when no line names Content-Length, or two do; when its
+value is not a decimal count, is over the reader's maximum or, leading zeros
+aside, does not fit a cell; or when a Content-Type names a `charset` other than
+`utf-8` or the older `utf8`, in any case, bare or quoted, since UTF-8 is the one
+encoding LSP and DAP content has. After either refusal the stream has no
+boundary left to resume at: the reader is spent, and every later `NEXT-LENGTH`
+or `BODY` is `E-CONTENT-LENGTH-STATE`. So are a reader never bound,
+`NEXT-LENGTH` while a body is pending, `BODY` with none, and `BIND` with a
+smaller buffer or a negative maximum. A read the kernel refuses is `E-FS-IO`
+and spends the reader too: inside a body it may have taken bytes the caller
+never saw.
+
+`SEND` writes `Content-Length: N`, CR LF twice, then the body, each through
+`FD-IO:WRITE-FULL`, so a pipe with no reader is `SIGPIPE` or `E-FS-IO` as
+there; a negative length is `E-SPAN-LENGTH`. It builds the header in a
+`TASK:+USER` row of its own, so a body the caller built anywhere, the string
+builder `SB` included, goes out as it was, and tasks sending at once share
+nothing.
+
 ## Processes
 
 `lib/process.f` wraps native process primitives in checked contracts. Public
@@ -1811,6 +2004,9 @@ PROC-WAIT-STATUS         ( pid -- n )
 PROC-STATUS>OUTCOME ( n -- outcome )
 PROC-OUTCOME>RC     ( outcome -- rc )
 PROC-STATUS>RC      ( n -- rc )
+PROC-TIMEOUT-RC          ( -- n )
+PROC-EXIT-RC             ( n n -- n )
+PROC-OUTCOME>DEADLINE-RC ( outcome -- rc )
 PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
 PROC-SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
@@ -1865,13 +2061,38 @@ the signal number, or `timeout` (capture deadline; always SIGKILL-reaped, no
 payload), with generated constructors `OUTCOME:EXITED`, `OUTCOME:SIGNALED`, and
 `OUTCOME:TIMEOUT`. Consumers dispatch through exhaustive `MATCH outcome`.
 `PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
-normal exits, `128 + signal` for signal deaths and timeouts; `PROC-STATUS>RC`
-and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture API returns the sum:
+normal exits and `128 + signal` for signal deaths, so a deliberate kill still
+reads 137. A capture's own expired deadline has no rc: it throws
+`E-PROC-TIMEOUT`, as the `lib/test/outcome.f` asserts that want an exit or a
+signal do, so a test that reads it reports a timeout instead of failing an
+assertion on the 137 of the SIGKILL that reaped the child. A caller that
+MATCHes the outcome into a verdict of its own throws `E-PROC-TIMEOUT` from its
+`timeout` arm the same way; only a caller that acts on the deadline keeps it as
+data. `PROC-STATUS>RC` and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture
+API returns the sum:
 `PROC-CAPTURE-OUTCOME@` and the `RUN-*-OUTCOME` runners yield
 `( -- len len outcome )` and every consumer dispatches by `MATCH outcome` (or
 the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
 state: it keeps only the raw wait status plus a timed-out flag, and
 `PROC-CAPTURE-OUTCOME ( -- outcome )` derives the sum on demand.
+
+A throw code does not cross a process boundary: `die` and the uncaught-throw
+exit turn every negative code into exit 67. `PROC-TIMEOUT-RC` (124, the status
+coreutils `timeout` exits with) carries a deadline across instead. A tool exits
+with it for `E-PROC-TIMEOUT`, and the process that runs the tool throws
+`E-PROC-TIMEOUT` again when it sees that status. `PROC-EXIT-RC ( code fail --
+status )` is the exit side: 0 for no throw, `PROC-TIMEOUT-RC` for
+`E-PROC-TIMEOUT`, and the tool's own failure status `fail` for any other code.
+`tools/native-build-core.f`, `tools/build-fixpoint.f` and the chain entries
+`tools/chain-run-build.f` and `tools/chain-plan-build.f` exit through it;
+`tools/chain-run.f` throws `E-PROC-TIMEOUT` again when a native build exits
+with `PROC-TIMEOUT-RC`.
+`PROC-OUTCOME>DEADLINE-RC` is the capture side: it flattens an outcome as
+`PROC-OUTCOME>RC` does, except that a capture whose own deadline expired reads
+`PROC-TIMEOUT-RC`, the status `timeout` reports for the command it killed,
+instead of throwing. A caller that throws `E-PROC-TIMEOUT` again on that status
+treats its own deadline and the child's alike, and a tool that dies with the
+rc hands the deadline on to its parent.
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
@@ -1899,26 +2120,29 @@ so a signal-killed child would read as rc 0 (a swallowed crash). Wait through
 engines do not have the `fork` primitive during the build prelude.
 
 ```forth
-PROC-FORK-RAW ( -- pid )
-PROC-FORK     ( -- pid )
+PROC-FORK:RAW     ( -- pid )
+PROC-FORK:CHECKED ( -- pid )
 ```
 
-`PROC-FORK` forks the current image without exec; the parent receives the child
-pid and the child receives pid 0. It is intended for isolated test workers and
-other copy-on-write process boundaries where the already-loaded dictionary must
-be reused. The child must exit or die after its worker body; returning into the
-parent's control path is a bug. Parent code reaps the child with `PROC-WAIT-RC`
-or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
-`PROC-FORK` converts that to `E-PROC-SPAWN`.
+`PROC-FORK:CHECKED` forks the current image without exec; the parent receives
+the child pid and the child receives pid 0. It is intended for isolated test
+workers and other copy-on-write process boundaries where the already-loaded
+dictionary must be reused. The child must exit or die after its worker body;
+returning into the parent's control path is a bug. Parent code reaps the child
+with `PROC-WAIT-RC` or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative
+target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
 `PROC-CAPTURE-PID!`): the default vector arms nothing; `lib/process-fork.f`
-installs the live vector, which arms a co-located `PROC-SPAWN-REAPER` in the
-child's process group watching the fd published in `PROC-REAP-WATCH-FD`
-(-1 = no context). A pool worker publishes its worker-alive read end there, so
-a quiet capture child — its own group leader, invisible to the worker's
-group-kill — dies with the worker instead of lingering. Every capture
+installs the live vector, which arms a co-located `PROC-FORK:SPAWN-REAPER` in
+the child's process group watching the fd published in
+`PROC-FORK:REAP-WATCH-FD` (-1 = no context). A pool worker publishes its
+worker-alive read end there, so a quiet capture child — its own group leader,
+invisible to the worker's group-kill — dies with the worker instead of
+lingering. A reaper whose fork fails throws `E-PROC-SPAWN`, and the capture is
+refused like a failed spawn: `PROC-CAPTURE-PID!` kills and reaps the child and
+closes the capture descriptors before the throw goes on. Every capture
 terminator calls `PROC-REAP-DISARM`, which kills and waits the reaper by its
 specific pid, so no reaper outlives its capture and `wait(-1)` callers never
 see a stray child.
@@ -2099,10 +2323,13 @@ own environment holds it — so only the caller's rows occupy the context's byte
 A row past `CMD:ENV-ROWS` names the ceiling and the row on stderr and throws
 `E-PROC-ENV`. `RUN-OUTCOME` validates the path and timeout, prepares the two
 vectors, captures bounded stdout/stderr into the context's buffers, stores the
-decomposed outcome and returns it. `RUN-RC` wraps the `PROC-OUTCOME>RC`
-completion in a `result<n,n>` (ok on a clean exit, err carrying the nonzero
-code) for callers that branch on success/failure. `OUT$`, `ERR$`, `OUTCOME@` and
-`RC@` expose the stored result after the run. `WIPE` explicitly zero-fills the
+decomposed outcome and returns it. `RUN-RC` wraps the outcome's completion rc
+in a `result<n,n>` (ok on a clean exit, err carrying the nonzero exit code or
+`128 + signal`) for callers that branch on success/failure. A run its deadline
+killed has no completion code: `RUN-RC` and `RC@` throw `E-PROC-TIMEOUT` for it,
+as `PROC-OUTCOME>RC` does, while `RUN-OUTCOME` and `OUTCOME@` keep the deadline
+as data for a caller that acts on it. `OUT$`, `ERR$`, `OUTCOME@` and `RC@`
+expose the stored result after the run. `WIPE` explicitly zero-fills the
 full stdin, stdout and stderr buffers and clears their lengths, including after
 a refused run. `RESET` only resets lengths and state; no run wipes implicitly.
 Wiping leaves the command's arguments, environment, working directory and
@@ -2146,6 +2373,31 @@ that the process can still be watched. An owned-child caller receiving
 `-ESRCH` can finish with a matching wait for that child; other errors must keep
 their failure meaning. See Apple's [process filter](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_event.c)
 and [exit and wait paths](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c).
+
+`lib/process-tree.f` ends a process and every process descended from it, which
+a group kill cannot do: every spawned child leads a process group of its own.
+
+```forth
+PROC-TREE:KILL-TREE ( pid -- )
+```
+
+It stops the process, then grows the tree through the kernel's own links - the
+children of every member, and the members of every group a member leads, a
+zombie member's included - and stops each process as it joins, until two passes
+in a row add nobody and find every member settled, or until two seconds have
+passed (`SETTLE-MS`). Then every member is sent SIGKILL: a tree that has not
+settled by then is killed as it stands. Settled is stopped and, on macOS, with
+no runnable thread (libproc's `pti_numrunning`), or on Linux with every thread
+shown stopped in `/proc/<pid>/task`. A macOS thread blocked in the kernel
+partway into a spawn is not runnable, so a child that spawn has not made yet can
+still appear after the kill ([gate.md](gate.md)). The caller and the caller's
+other children are never members, and a process whose parent is gone and whose
+group id names no member is out of reach. A pid at or below 1, or the caller's
+own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
+refuses rather than answers empty; a tree of more than 1024 processes throws
+`E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
+SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
+kills this way.
 
 ## Process signals
 
@@ -2338,6 +2590,7 @@ GT-CLEANUP      ( -- )
 GT-PATH         ( ptr u8 n ptr u8 -- n )
 GT-RUN          ( ptr u8 n n -- )
 GT-RUN-DEFAULT  ( ptr u8 n -- )
+GT-CAPTURE-ACTION ( [ -- ] ptr u8 n SPAN:span<u8> SPAN:span<u8> -- len len n )
 GT-PROGRESS-RUN ( ptr u8 n -- )
 GT-U-TYPE       ( n -- )
 GT-PROGRESS-PASS ( ptr u8 n -- )
@@ -2398,7 +2651,10 @@ the next assertion, and successful or failed assertions clear the label after
 printing details. Numeric mismatches print on one line, for example
 `assert: expected 3 got 9`; string mismatches preserve embedded newlines.
 `TTHROWSQ` takes a stack-preserving quotation plus an expected
-throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
+throw code and uses the checker's modeled `catch` effect. A deadline is no
+verdict: when the quotation throws `E-PROC-TIMEOUT` and another code is
+expected, `TTHROWSQ` lets it go uncaught, so the gate pool reports the row as
+a timeout instead of a wrong throw code. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
 
@@ -2431,6 +2687,21 @@ and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
 named failures so test scripts can report all local expectation failures before
 exiting. Test runner paths are counted byte strings; stdout/stderr assertions
 never truncate silently because process capture still enforces bounded output.
+`GT-CAPTURE-ACTION` captures an action run in this process instead: its stdout
+and stderr go to two files under the given directory, read back into the two
+spans when it returns or throws, with its throw code (0 when it returned).
+Files rather than pipes keep output past a pipe's buffer from blocking the
+action and keep the capture out of the process row the action's own child
+captures reset. Each file is unlinked once it is open and read back through a
+descriptor of its own, so none is left behind, and a capture nested in the
+action reads its own bytes while the outer one keeps the rest. Eight captures
+may be open at once, and a ninth throws `E-TBL-BOUNDS`; the streams are the
+process's, so two tasks never capture at once.
+The streams a capture saves and the descriptors it reads through sit at fd 10
+or above and close on exec, so a child the action spawns inherits none of them.
+Output past a span throws `E-PROC-TRUNCATED`, even when a child the action left
+running wrote it after the action returned, and the streams are restored on
+every exit path.
 Test scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
 `GT-PROGRESS-PASS` after successful completion. Long poll loops should cap their
 poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet
@@ -2501,6 +2772,8 @@ The same package bounds what builds leave under the root:
 BUILD-CACHE:RETAIN-SECONDS ( -- n )
 BUILD-CACHE:USED           ( ptr u8 n -- bool )
 BUILD-CACHE:PRUNE          ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+BUILD-CACHE:WORK-OPEN      ( ptr u8 n -- ptr u8 n fd )
+BUILD-CACHE:WORK-CLOSE     ( ptr u8 n fd -- )
 ```
 
 Every entry is keyed: a writer publishes `<prefix><key><suffix>` with a 64-digit
@@ -2526,6 +2799,21 @@ keeps its old mtime, so any publisher's prune can still take it.
 Ages are one host's wall clock against the filesystem's mtimes, so a wall-clock
 step forward of `RETAIN-SECONDS` or more during a run can make an entry still in
 use stale to another process's sweep.
+
+A build that publishes by rename works in a directory `WORK-OPEN` makes for its
+family in the root, `build-cache-work-<family>-<seed>-<attempt>`, and returns
+with its path (valid until the next `WORK-OPEN`) and the hold: a descriptor on
+the directory carrying an exclusive `flock`, which the process's children
+inherit. The directory is registered for removal at exit; `WORK-CLOSE` removes
+it and then closes the hold. An empty family is `E-FS-PATH`. Before it makes
+one, `WORK-OPEN` removes every work directory that nothing holds, which only a
+killed build leaves (a reboot kills every build and drops every lock); it takes
+each only while holding its lock and after checking that the path still names
+the directory it locked, and a build that loses its new directory that way
+makes another. It reports what it cannot remove on fd 2, as `PRUNE` does. A
+filesystem that cannot lock a directory fails `WORK-OPEN` with `E-FS-IO`. A
+lock is seen only by the kernel that keeps it, so a cache root shared with
+another kernel is not supported.
 
 `tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
 success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,

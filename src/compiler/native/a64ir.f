@@ -158,7 +158,6 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 
 12 constant OFF-BITS                 \ the add/sub immediate and the offset field
 1 OFF-BITS lshift 1- constant OFF-MAX
-OFF-MAX dup A64M:SP-ALIGN mod - constant FRAME-LIM
 
 \ ---- the writeback field -----------------------------------------------------
 \ The signed byte count an indexed load or store moves its base register by.
@@ -266,13 +265,14 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-SLOT throw then
    dup SLOT-BYTES A64M:SLOT-REACH > if E-A64IR-SLOT throw then ;
 
-\ The stack pointer stays aligned, the frame stays inside the region NEFF can
-\ describe, and it stays inside the one immediate that claims it.
+\ The stack pointer stays aligned and the frame stays inside the region NEFF can
+\ describe. Every such frame is reserved: past one add/sub immediate the
+\ emitter moves the pointer by whole pages and the rest (src/compiler/native/
+\ emit.f WORD-RESERVE).
 : FRAME ( n -- n )
    dup 0 < if E-A64IR-FRAME throw then
    dup A64M:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
-   dup A64M:FRAME-MAX > if E-A64IR-FRAME throw then
-   dup FRAME-LIM > if E-A64IR-FRAME throw then ;
+   dup A64M:FRAME-MAX > if E-A64IR-FRAME throw then ;
 
 \ Twelve bits, UNSIGNED, with the shift bit hardwired to zero, so a negative
 \ immediate is a value these forms cannot express - `cmp rn, #-k` is `cmn`.
@@ -383,8 +383,6 @@ public
 \ registers across a call would say so here and the allocator would follow.
 : REGFILE ( -- NREGFILE:file )
    MACHINE NMACH:REGFILE ;
-
-: FRAME-LIMIT ( -- n )   FRAME-LIM ;
 
 : OFF-LIMIT ( -- n )     OFF-MAX ;
 

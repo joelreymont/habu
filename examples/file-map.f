@@ -3,17 +3,17 @@
 
 8 constant FM-CAP
 
-create FM-MAP FM-CAP >COUNT MAP-CELLS COUNT>N cells allot
+create FM-MAP FM-CAP >COUNT MAP:CELL-COUNT COUNT>N cells allot
 
 : FM-INIT ( -- )
-   FM-MAP FM-CAP >COUNT MAP-INIT ;
+   FM-MAP FM-CAP >COUNT MAP:INIT ;
 
 : FM-INC ( ptr u8 n -- ) {: key:ptr len :}
-   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET MATCH option
+   FM-MAP FM-CAP >COUNT key len >LEN MAP:GET MATCH option
      none OF 1 ENDOF                                    \ not present: count starts at 1
      some OF 1+ ENDOF                                   \ present: increment the value
    ;MATCH
-   FM-MAP FM-CAP >COUNT key len >LEN MAP-SET ;
+   FM-MAP FM-CAP >COUNT key len >LEN MAP:SET ;
 
 : FM-CLASSIFY ( ptr u8 n -- ) {: a:ptr u :}
    a u s" .f" ENDS-WITH? if s" forth" FM-INC exit then
@@ -21,7 +21,7 @@ create FM-MAP FM-CAP >COUNT MAP-CELLS COUNT>N cells allot
    s" other" FM-INC ;
 
 : FM-COUNT ( ptr u8 n -- n ) {: key:ptr len :}
-   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET MATCH option
+   FM-MAP FM-CAP >COUNT key len >LEN MAP:GET MATCH option
      none OF 0 ENDOF                                    \ not present: 0
      some OF ENDOF                                      \ present: the stored count
    ;MATCH ;

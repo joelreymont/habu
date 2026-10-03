@@ -3,11 +3,14 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-$40000 constant DO-FILE-CAP
+\ The CLI reads a source as large as tools/check.f reads (CHK-SRC-CAP): what
+\ the engine loads from one file.
+INCLUDE-BUF-CAP constant DO-FILE-CAP
 32 constant DO-NUM-CAP
 
 1 constant DO-WORD
@@ -19,6 +22,7 @@ $40000 constant DO-FILE-CAP
 40 constant DO-LPAREN
 41 constant DO-RPAREN
 58 constant DO-COLON-C
+59 constant DO-SEMI-C
 92 constant DO-BSLASH
 
 create DO-NUM-BUF DO-NUM-CAP allot
@@ -47,6 +51,7 @@ variable DO-ORIG-LINE
 variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
+variable DO-RUN-X             \ first word of the current run, -1 for none (DO-STEP)
 TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
 variable DO-OUT-CAP
@@ -100,7 +105,7 @@ variable DO-OUT-BUF?
 
 : DO-BUF-ROOM ( n -- ) {: u :}
    u 0 < if s" diag-origin: negative output" 74 DO-FAIL then
-   DO-OUT-U @ u + DO-OUT-CAP @ > if s" diag-origin: output too large" 74 DO-FAIL then ;
+   DO-OUT-U @ u + DO-OUT-CAP @ > if E-FS-CAPACITY throw then ;
 
 : DO-BUF-OUT ( ptr u8 n -- ) {: a:ptr u :}
    u DO-BUF-ROOM
@@ -190,12 +195,19 @@ variable DO-OUT-BUF?
    line DO-TOK-LINE !
    col DO-TOK-COL ! ;
 
+: DO-RUN-END ( -- )
+   -1 DO-RUN-X ! ;
+
+: DO-RUN+ ( -- )
+   DO-RUN-X @ 0 < if DO-TOK-BYTE @ DO-RUN-X ! then ;
+
 : DO-SKIP-IGNORED ( -- )
    begin DO-END? 0= while
       DO-C@ LINT-WS? if
          DO-ADV drop
       else DO-C@ DO-BSLASH = if
          DO-SKIP-LINE
+         DO-RUN-END
       else
          exit
       then then
@@ -214,7 +226,7 @@ variable DO-OUT-BUF?
    DO-COMMENT start DO-X @ line col DO-SAVE-TOKEN ;
 
 : DO-WORD-TOKEN ( n n n -- ) {: start line col :}
-   begin DO-END? 0= DO-C@ LINT-WS? 0= and while
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-INK-AT? while
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
@@ -244,13 +256,35 @@ variable DO-OUT-BUF?
    DO-SAVE-LINE @ DO-LINE !
    DO-SAVE-COL @ DO-COL ! ;
 
-: DO-COLON? ( -- bool )
+: DO-CHAR-WORD? ( n -- bool )
+   {: c:n :}
    DO-TOK-K @ DO-WORD <> if DO-FALSE exit then
    DO-TOK-U @ 1 <> if DO-FALSE exit then
-   DO-TOK-A@ c@ DO-COLON-C = ;
+   DO-TOK-A@ c@ c = ;
+
+: DO-COLON? ( -- bool )
+   DO-COLON-C DO-CHAR-WORD? ;
+
+: DO-SEMI? ( -- bool )
+   DO-SEMI-C DO-CHAR-WORD? ;
+
+\ The word opens a string literal, whose text the scan has skipped.
+: DO-STRING? ( -- bool )
+   DO-TOK-A@ DO-TOK-U @ LINT-ESC-STRING-OPENER? if DO-TRUE exit then
+   DO-TOK-A@ DO-TOK-U @ LINT-NORMAL-STRING-OPENER? ;
 
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
+
+: DO-PARSER? ( -- bool )
+   DO-ORIGIN-WORD? 0= if DO-FALSE exit then
+   DO-TOK-A@ DO-TOK-U @ SOURCE:PARSING-KEYWORD? ;
+
+\ A parsing keyword's operand is the next whitespace-delimited token, read raw:
+\ `char :` and `[char] :` start no definition, so nothing is marked there.
+: DO-SKIP-OPERAND ( -- )
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-GAP-AT? while DO-ADV drop repeat
+   begin DO-SRC-A@ DO-SRC-U @ DO-X @ LINT-INK-AT? while DO-ADV drop repeat ;
 
 : DO-EMIT-RANGE ( n n -- ) {: start end :}
    end start <= if exit then
@@ -263,20 +297,26 @@ variable DO-OUT-BUF?
 : DO-EMIT-NUM ( n -- )
    DO-U$ DO-OUT ;
 
+\ A marker holds no line break, so every line of the output is the source's line
+\ of the same number.
 : DO-EMIT-MARKER ( n n n n -- ) {: line col byte pos :}
    pos DO-EMIT-UNTIL
-   DO-LF DO-C
+   DO-SP DO-C
    line DO-EMIT-NUM DO-SP DO-C
    col DO-EMIT-NUM DO-SP DO-C
    byte DO-EMIT-NUM
    s"  DIAG-ORIGIN!" DO-OUT
-   DO-LF DO-C ;
+   DO-SP DO-C ;
 
+\ The marker goes where the `:`'s run of words began, never between a definer
+\ and its name. In `create :` followed by `: F` both colons are marked before
+\ `create`, and F's marker, the later, is in force when F is checked. The
+\ origin is the token after the `:`, the name it reads.
 : DO-MARK-COLON ( -- )
    DO-TOK-LINE @ DO-ORIG-LINE !
    DO-TOK-COL @ DO-ORIG-COL !
    DO-TOK-BYTE @ DO-ORIG-BYTE !
-   DO-TOK-BYTE @ DO-ORIG-POS !
+   DO-RUN-X @ DO-ORIG-POS !
    DO-SAVE-SCAN
    DO-NEXT-TOKEN if
       DO-ORIGIN-WORD? if
@@ -298,23 +338,44 @@ variable DO-OUT-BUF?
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
-: DIAG-ORIGIN-RUN ( ptr u8 n -- )
-   DO-FILE-BUF DO-FILE-CAP READ-FILE
-   DO-SRC-U ! DO-SRC-A!
+\ A definer reads the token after it as its name, and the scan cannot tell
+\ which words are definers: `create`, `variable` and any word made from them,
+\ in this file or one it requires. So a marker never directly follows a word. A
+\ run of words starts after the last token that leaves no name to read: a `;`,
+\ a comment, a string literal or a parsing keyword's operand, or at the start
+\ of the file. A definer that names `;` and reads more after it
+\ (`TYPED-VARIABLE ; n`) is split; no tree definer does.
+: DO-STEP ( -- )
+   DO-ORIGIN-WORD? 0= if DO-RUN-END exit then
+   DO-PARSER? if DO-SKIP-OPERAND DO-RUN-END exit then
+   DO-SEMI? if DO-RUN-END exit then
+   DO-STRING? if DO-RUN-END exit then
+   DO-RUN+
+   DO-COLON? if DO-MARK-COLON then ;
+
+: DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
+   src DO-SRC-A!
+   u DO-SRC-U !
    0 DO-X !
    0 DO-OUT-X !
    1 DO-LINE !
    1 DO-COL !
-   begin DO-NEXT-TOKEN while
-      DO-COLON? if DO-MARK-COLON then
-   repeat
+   DO-RUN-END
+   begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
+\ The engine's own rewrite comments a leading `#!` line, so the scan and the
+\ marked copy read it as the engine does (src/core/include.f SHEBANG-COMMENT).
 : DIAG-ORIGIN ( ptr u8 n -- )
    DO-OUT-FD!
-   DIAG-ORIGIN-RUN ;
+   DO-FILE-BUF DO-FILE-CAP READ-FILE {: a:ptr u:n :}
+   a u SOURCE-ROOT:SHEBANG-COMMENT
+   a u DO-MARK ;
 
-: DIAG-ORIGIN>BUF ( ptr u8 n ptr u8 len -- len ) {: path:ptr pathu out:ptr cap :}
+\ The marked copy of source bytes the caller already holds, into the caller's
+\ buffer. Every bound is the caller's: the source is whatever it read, and a
+\ copy that outgrows the buffer is E-FS-CAPACITY for the caller to report.
+: DIAG-ORIGIN-SOURCE>BUF ( ptr u8 n ptr u8 len -- len ) {: src:ptr u out:ptr cap :}
    out cap DO-OUT-BUF!
-   path pathu DIAG-ORIGIN-RUN
+   src u DO-MARK
    DO-OUT-U @ >LEN ;

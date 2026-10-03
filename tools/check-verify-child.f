@@ -1,9 +1,10 @@
 \ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES runs.
 \
-\ tools/check-verify-core.f spawns it on bin/hb, in the caller's working
-\ directory, the tree root; nothing else runs it:
+\ tools/check-verify-core.f spawns it on the engine lib/engine-candidate.f
+\ names, by its absolute path in the tree that file was loaded from, in the
+\ caller's working directory; nothing else runs it:
 \
-\    ENGINE --load tools/check-verify-child.f -- SUBJECT < BYTES
+\    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and

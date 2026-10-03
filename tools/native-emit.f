@@ -15,6 +15,19 @@ package NATIVE-EMIT
       s" src/os/linux-x86-64/sys.f" required exit
    then
    s" native-emit: unknown target" 76 die ;
+' LOAD-SYS
+;package
+execute
+
+require src/os/script-argv.f
+require src/habu/treeshake.f
+require src/habu/rt.f
+require src/habu/crash.f
+require src/os/image-bytes.f
+
+\ The target writers read image-bytes.f's MSIZE as they load, and tools/check.f
+\ checks the files a body loads after that body, so LOAD-IMAGE follows it.
+package NATIVE-EMIT
 : LOAD-IMAGE ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
@@ -35,17 +48,6 @@ package NATIVE-EMIT
       s" src/os/linux-x86-64/proc-control.f" required exit
    then
    s" native-emit: unknown target" 76 die ;
-' LOAD-SYS
-;package
-execute
-
-require src/os/script-argv.f
-require src/habu/treeshake.f
-require src/habu/rt.f
-require src/habu/crash.f
-require src/os/image-bytes.f
-
-package NATIVE-EMIT
 ' LOAD-IMAGE
 ;package
 execute
@@ -59,6 +61,7 @@ require src/habu/aot-decl.f
 require src/habu/aot-ident.f
 require src/habu/aot-owned.f
 require src/habu/habu2.f
+require src/habu/sign-id.f
 require src/habu/driver-io.f
 require tools/native-layout.f
 
@@ -140,7 +143,7 @@ public
    host count TRANSLATE-FIXED
    0 0= STDIN? !
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
-   s" hb" path size DRV-EMIT-IMAGE ;
+   SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
 
 : WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
    dup AOT-OWNED:ORIGIN@ {: origin:n :}

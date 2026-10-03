@@ -24,6 +24,8 @@ require src/arch/arm64/mnem.f
 \ below answers "is driver-io.f loaded", which is a different question.
 require src/habu/fdio.f
 
+require src/habu/sign-id.f
+
 \ The target sources below are `require`d for the reason the encoders above
 \ are: a word probe ("is SYS, / BUILD-IMAGE / DRV-WRITE-IMAGE defined?") asks
 \ whether some file defined that word, and an `include` behind a false probe
@@ -38,7 +40,11 @@ require src/habu/fdio.f
    HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    E-OBJ-SCHEMA throw ;
 
-: OBJIMG-LOAD-TARGET-IMAGE ( -- )
+\ The target writers read image-bytes.f's MSIZE as they load, so its loader
+\ precedes theirs in this one body: tools/check.f checks the files a body loads
+\ after that body, in the order the body names them.
+: OBJIMG-LOAD-IMAGE ( -- )
+   s" src/os/image-bytes.f" required
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
       s" src/os/linux/sign.f" required
@@ -55,10 +61,6 @@ require src/habu/fdio.f
       exit
    then
    E-OBJ-SCHEMA throw ;
-
-: OBJIMG-LOAD-IMAGE ( -- )
-   s" src/os/image-bytes.f" required
-   OBJIMG-LOAD-TARGET-IMAGE ;
 
 : OBJIMG-LOAD-DRIVER ( -- )
    s" src/habu/driver-io.f" required ;
@@ -84,10 +86,15 @@ public
 : ADD ( -- )
    OBJLINK:ADD ;
 
+\ An object's text is a stripped program as the maker's link emitted it
+\ (src/habu/aot-lib.f LINK writes both), so this writes that link's image under
+\ the identifier that link signs, SIGN-ID:PROG$ (src/habu/sign-id.f says why
+\ the identifier is part of the bytes), and a relink is the file a fresh build
+\ writes (tools/hb-build-stripped-cache-test.f HBT-STRIPPED-OBJECT-RELINK).
 : WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    OBJLINK:APPLY
    NONEMPTY-TEXT
    TEXT>ASM
-   s" hb-obj" path pathu DRV-EMIT-IMAGE ;
+   SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
 
 ;package

@@ -19,6 +19,7 @@ ES-CERT-STALE ES-CERT-STALE0 !
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -56,8 +57,8 @@ variable T-LABEL-U
    #CASE @ 1 + #CASE !
    got want <> if
       T-FAIL
-      s" assert: expected " type want .
-      s" got " type got .
+      s" assert: expected " type want FMT:.INT
+      s"  got " type got FMT:.INT cr
    then
    T-LABEL-CLEAR ;
 
@@ -65,8 +66,8 @@ variable T-LABEL-U
    #CASE @ 1 + #CASE !
    gu wu <> if
       T-FAIL
-      s" assert string len: expected " type wu .
-      s" got " type gu .
+      s" assert string len: expected " type wu FMT:.INT
+      s"  got " type gu FMT:.INT cr
       T-LABEL-CLEAR exit
    then
    0 begin dup gu < while
@@ -827,8 +828,15 @@ TG-PERSIST
 USIGS-P @ TG-RBASE !
 s" usigs persisted pool is DATA under the heap top" T-LABEL
 TG-RBASE @ here < -1 T=
-s" usigs persisted pool capped at the grain" T-LABEL
-USIGS-CAP-U @ UEND @ CELL + TG-ROUND T=
+\ The cap is the grain above the content plus at most the spare grain
+\ USIGS-PERSIST-CAP adds; a store the engine restored already keeps its baked
+\ cap, so the exact grain depends on how much this suite has appended.
+s" usigs persisted pool capped at a grain boundary" T-LABEL
+USIGS-CAP-U @ USIGS-GRAIN mod 0 T=
+s" usigs persisted pool holds its content" T-LABEL
+USIGS-CAP-U @ UEND @ CELL + < 0 T=
+s" usigs persisted pool spares at most one grain" T-LABEL
+USIGS-CAP-U @ UEND @ CELL + USIGS-PERSIST-CAP > 0 T=
 UEND @ 64 + USIGS-CAP-U !
 s" COK-RESTORED-GROW ( n -- n ) dup drop 1 +" T-CHECK-PASSES
 s" usigs restored-pool grow relocated" T-LABEL
@@ -1483,59 +1491,12 @@ DIAG-BUFFER-OFF  0 DIAG-JSON!
 : TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ whitebox multi-error boundary
 : TR-ME-END ( -- n ) MULTI-ERR-END ;
 TRUSTED: TR-ME? ( -- bool ) MULTI-ERR? ;
-TRUSTED: TR-ME-ORIGIN! ( ptr a ptr a n n n -- ) MULTI-ERR-ORIGIN! ;
 TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
 s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
 s" multi-err mode cleared after end" T-LABEL
 TR-ME? 0= -1 T=
-\ --- MULTI-ERR file-relative diagnostic origin (dot habu-native-file-relative).
-\ The driver evaluates a whole source buffer in one MULTI-ERR run and passes the
-\ buffer base plus the ABSOLUTE address of the compiler's def name-token cell
-\ (data-base DEF-TKA-CELL +) to MULTI-ERR-ORIGIN!; the checker then reports each
-\ rejected def's FILE position instead of a def-buffer-relative one. With the
-\ origin set, the JSON positions use the same file coordinates as tools/check.f
-\ --all-errors. Off by default: without
-\ MULTI-ERR-ORIGIN! a def on file line 3 still reports line 1.
-create MEO-CAP 8192 allot
-variable MEO-SA  variable MEO-SU
-: MEO-AT? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   hu nu < if 0 0= 0= exit then
-   0 begin dup nu < while
-      dup n + c@  over h + c@ <> if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-variable MEO-CI
-: MEO-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
-   0 MEO-CI !
-   begin MEO-CI @ nu + hu <= while
-      h MEO-CI @ +  nu  n nu MEO-AT? if 0 0= exit then
-      MEO-CI @ 1+ MEO-CI !
-   repeat 0 0= 0= ;
-\ negative: no origin set -> a rejected def on file line 3 reports def-relative line 1
-MEO-CAP 8192 DIAG-BUFFER!  -1 DIAG-JSON!
-TR-ME-BEGIN
-s\" : MEOFF-A ( -- ) ;\n: MEOFF-B ( -- ) ;\n: MEOFF-BAD ( i64 -- i64 ) dup ;\n" evaluate
-TR-ME-END drop
-s" multi-err without origin stays def-relative (line 1)" T-LABEL
-DIAG-BUFFER$ s\" \"line\":1," MEO-CONTAINS? -1 T=
-s" multi-err without origin reports no file line 3" T-LABEL
-DIAG-BUFFER$ s\" \"line\":3," MEO-CONTAINS? 0 T=
-DIAG-BUFFER-OFF  0 DIAG-JSON!
-\ positive: origin set -> file-relative positions match the all-errors golden
-s\" : GDX-AE-OK ( i64 -- i64 ) dup * ;\n: GDX-AE-SEMI ( -- i64 ) [char] ; ;\n: GDX-AE-BAD1 ( i64 -- i64 ) dup ;\n: GDX-AE-BAD2 ( i64 -- ) >r ;\n" MEO-SU !  MEO-SA !
-MEO-CAP 8192 DIAG-BUFFER!  -1 DIAG-JSON!
-TR-ME-BEGIN
-MEO-SA @  data-base DEF-TKA-CELL +  1 1 0  TR-ME-ORIGIN!
-MEO-SA @ MEO-SU @ evaluate
-s" multi-err origin collects both rejects" T-LABEL
-TR-ME-END 2 T=
-s" multi-err origin BAD1 file-relative position matches golden" T-LABEL
-DIAG-BUFFER$ s\" \"line\":3,\"column\":30,\"byte_start\":100,\"byte_end\":103" MEO-CONTAINS? -1 T=
-s" multi-err origin BAD2 file-relative position matches golden" T-LABEL
-DIAG-BUFFER$ s\" \"line\":4,\"column\":26,\"byte_start\":131,\"byte_end\":133" MEO-CONTAINS? -1 T=
-DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- user-declarable nominal integer types (dot habu-declarable-nominal-int).
 \ `DEFTYPE NAME` registers a fresh nominal AND auto-derives its explicit no-op
 \ converter pair >NAME ( n -- NAME ) / NAME>N ( NAME -- n ). The nominal is
@@ -1551,12 +1512,26 @@ s" DNI-NOWIDEN ( frame-idx -- n )" T-CHECK-REJECTS
 s" DNI-NOCAST ( n -- frame-idx )" T-CHECK-REJECTS
 s" DNI-DISTINCT ( frame-idx -- exposure-us )" T-CHECK-REJECTS
 s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
-\ user nominal types render by NAME in diagnostics, not as '?'
-MEO-CAP 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+\ user nominal types render by NAME in diagnostics, not as '?', and bare, as the
+\ source spells them: a family with no arguments has no '<>'. The needles are
+\ the whole rendered fields: the packet also echoes the source text in
+\ definition_source and declared_effect_source, so a bare 'frame-idx' would be
+\ found there even if the type renderer printed '?'.
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  -1 DIAG-JSON!
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
-DIAG-BUFFER$ s\" frame-idx" MEO-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"frame-idx \"" T-HAS? -1 T=
+s" nominal declared effect renders bare" T-LABEL
+DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" T-HAS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
+\ The inferred effect REC-SIG renders for a sig-less word is that same spelling. A
+\ render is re-read as source (test/prop-test-core.f ROUNDTRIP re-declares a body
+\ with its rendered effect), and DNI-MK above shows the parser reads it; the AOT
+\ capture carries the verified graph, not this text (CHECKER-ASIG-CAPTURE).
+s" sigless nominal certifies" T-LABEL
+s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
+s" sigless nominal effect renders bare" T-LABEL
+ES-REND-SIG$ s" n -- frame-idx" T$=
 : T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 \ A callee the later rows name is compiled: a call binds the record the engine's

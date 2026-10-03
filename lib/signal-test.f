@@ -24,8 +24,8 @@ private
 \ asserting one host's values would make this suite - and the process-signals
 \ gate that runs it - red by construction on the other supported target. The
 \ arms below are a second, independent spelling of the same platform facts, so a
-\ wrong arm in the library still fails here. The macOS arm is never executed:
-\ no macOS host runs this suite, and a third target is refused by name.
+\ wrong arm in the library still fails here. Both arms run, on Linux and macOS
+\ hosts; a third target is refused by name.
 : EXPECT-SIGUSR1 ( -- n )
    HB-TARGET-LINUX? if 10 exit then
    HB-TARGET-MACOS? if 30 exit then

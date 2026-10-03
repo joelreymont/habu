@@ -75,6 +75,12 @@ create ERR IO-CAP allot
    s" ... and is named as an undefined word" T-LABEL
    ERR erru s" undefined word 'REG-PROT-CAP'" CONTAINS? TTRUE ;
 
+\ The source verifier tools/check.f loads names checker cells defined before the
+\ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row.
+: VERIFIER-CASE ( -- )
+   s" the source verifier loads on the cold host" T-LABEL
+   S\" require src/habu/verify-source.f\n" LOAD nip 0 T= ;
+
 public
 
 : COLD-NAMING-TEST-MAIN ( -- )
@@ -82,6 +88,7 @@ public
    SETUP
    AXIOM-CASES
    NO-AXIOM-CASE
+   VERIFIER-CASE
    CLEANUP-RUN
    T-REPORT
    s" cold-naming-test: ok" type cr ;

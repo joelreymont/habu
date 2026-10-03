@@ -35,7 +35,7 @@ variable LIT-ACC
 
 : DEF-NAMES? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k WORD-TOK? 0= if false exit then
-   k LINT-DEF:DIRECT-KIND LINT-DEF:COLON <> if false exit then
+   k LINT-DEF:DIRECT-KIND LINT-DEF:COLON-KIND <> if false exit then
    k LINT-DEF:NAME-I MATCH option
       none OF false ENDOF
       some OF a u TOK-IS? ENDOF
@@ -50,7 +50,7 @@ variable LIT-ACC
 : DEF-CLOSE ( n -- n ) {: b:n :}
    b
    begin dup LINT-LEX:COUNT < while
-      dup LINT-DEF:COLON LINT-DEF:CLOSE? if exit then
+      dup LINT-DEF:COLON-KIND LINT-DEF:CLOSE? if exit then
       1+
    repeat
    drop E-CID-DEF throw ;
@@ -109,7 +109,7 @@ public
 
 : DEF-HEAD? ( n -- bool ) {: k:n :}
    k WORD-TOK? 0= if false exit then
-   k LINT-DEF:DIRECT-KIND LINT-DEF:COLON <> if false exit then
+   k LINT-DEF:DIRECT-KIND LINT-DEF:COLON-KIND <> if false exit then
    k LINT-DEF:NAME-I MATCH option
       none OF false ENDOF
       some OF drop true ENDOF

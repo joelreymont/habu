@@ -48,7 +48,7 @@ public
    s" scope entry tick cannot turn the field operation into a value" T-LABEL
    s" : FL-TICK ( -- ) ' C2-MEM:WITH-FIELD drop ;" 70 STATUS? TTRUE
    s" a scoped child view cannot be stored globally" T-LABEL
-   s" TYPED-VARIABLE FL-GLOBAL mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>>" 67 STATUS? TTRUE
+   s" TYPED-VARIABLE FL-GLOBAL mut-view<b,j,c,init<i,C2-FIELD-LOAN-WRAPPER:pair>>" 70 STATUS? TTRUE
    T-REPORT
    s" c2-field-loan-refusals: ok" type cr ;
 ;package

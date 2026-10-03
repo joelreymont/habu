@@ -132,12 +132,11 @@ variable MISSING-U
 
 : EXPECT-FAIL ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: mode:ptr modeu:n path:ptr pathu:n code:ptr codeu:n :}
-   mode modeu path pathu RUN-CHILD
-   1 T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru code codeu CONTAINS? TTRUE ;
+   mode modeu path pathu RUN-CHILD {: outu:len erru:len oc :}
+   s" tools/hb-build-direct-lints-test.f" OUT outu LEN>N ERR erru LEN>N oc 1
+   T-OUTCOME-EXITED=
+   outu LEN>N 0 T=
+   ERR erru LEN>N code codeu CONTAINS? TTRUE ;
 
 : TEST-AOT-BAD ( -- )
    s" aot-bad" AOT-BAD$ s" E-AOT-UNSUPPORTED" EXPECT-FAIL ;

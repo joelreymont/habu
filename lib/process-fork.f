@@ -4,6 +4,7 @@
 \ PROC-CMD). External callers use the qualified public API:
 \   PROC-FORK:RAW      raw fork wrapper (pid, negative on failure)
 \   PROC-FORK:CHECKED  fork that throws E-PROC-SPAWN on primitive failure
+\   PROC-FORK:FORK-CALL / FORK-CALL-DEFAULT  the fork RAW makes, for a test to refuse
 \   PROC-FORK:SET-PGID place a pid into a process group
 \   PROC-FORK:KILL-GROUP signal a whole process group
 \   PROC-FORK:DEATH-PIPE / CLOSE-EXCEPT2 / MAXFD  reaper fd plumbing
@@ -44,8 +45,19 @@ private
 
 public
 
+\ The fork RAW makes. It is a vector only so that a test can refuse a fork:
+\ RLIMIT_NPROC counts every process of the user and never refuses root, so no
+\ limit can refuse a reaper's fork alone - after FORK-REAPER's first fork or a
+\ capture's spawn - without racing the rest of the host. lib/process-fork-test.f
+\ and test/gate-pool-test.f install their refusals here.
+defer FORK-CALL ( -- n )
+
+: FORK-CALL-DEFAULT ( -- )
+   [: fork ;] is FORK-CALL ;
+FORK-CALL-DEFAULT
+
 : RAW ( -- pid )
-   fork >PID {: pid:pid :}
+   FORK-CALL >PID {: pid:pid :}
    pid PID>N 0= if ENTER-CHILD then
    pid ;
 
@@ -62,7 +74,11 @@ public
 
 \ Signal the process group led by pid (kill(-pid, sig)); pid must be a group
 \ leader (its child set `0 0 PROC-FORK:SET-PGID`), so this reaches its grandchildren.
+\ A pid at or below 1 leads no such group: kill(0) is the caller's own group and
+\ kill(-1) every process the caller may signal, so it is refused, as
+\ lib/process-tree.f KILL-TREE refuses one.
 : KILL-GROUP ( pid n -- rc ) {: pid:pid sig:n :}
+   pid PID>N 1 <= if E-PROC-OUTPUT throw then
    pid PID>N negate >PID sig PROC-KILL-RAW ;
 
 \ ---- parent-death reaper ----------------------------------------------------
@@ -136,6 +152,9 @@ private
       rc EINTR# negate <> if exit then
    again ;
 
+\ FORK-REAPER's intermediate exits with this when it cannot fork the reaper.
+1 constant REAPER-REFUSED-RC
+
 public
 
 \ Arm a parent-death reaper that is INVISIBLE to the worker's own wait(-1):
@@ -148,17 +167,24 @@ public
 \ pipe (wa) so it exits on its own when the worker finishes, leaving no orphan
 \ - the worker never has to track or kill it. The worker must already be its
 \ own group leader; it keeps the wa write end open (dropped only at its exit).
+\ A failed fork of either kind throws E-PROC-SPAWN in the worker. The first
+\ fork's pid, -1 from macOS's libc fork, must not reach the wait, where
+\ wait4(-1) reaps any child of the worker. The intermediate must not throw,
+\ which would unwind its copy of the worker's stack, so it answers through its
+\ exit status: REAPER-REFUSED-RC when the reaper's fork fails, 0 once the
+\ reaper runs, and only 0 arms.
 : FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
-   RAW {: ipid:pid :}
+   CHECKED {: ipid:pid :}
    ipid PID>N 0= if
       RAW {: r2:pid :}
       r2 PID>N 0= if
          pd wa CLOSE-EXCEPT2
          pd wa PROC-REAP-WATCH2
       then
+      r2 PID>N 0 < if s" " REAPER-REFUSED-RC die then
       s" " 0 die
    then
-   ipid PROC-WAIT-STATUS drop ;
+   ipid PROC-WAIT-STATUS 0<> if E-PROC-SPAWN throw then ;
 
 \ ---- co-located reaper for a SPAWNED child ---------------------------------
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
@@ -194,9 +220,11 @@ public
 \ killing, so it can never signal the arming parent's own group. After a
 \ successful join it closes every inherited fd but the pool-death read end and
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
-\ SIGKILLs the child's group.
+\ SIGKILLs the child's group. A failed fork throws E-PROC-SPAWN: no reaper
+\ watches the child, and its caller ends it (PROC-CAPTURE-PID! kills the
+\ capture child, the gate pool kills every slot).
 : SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
-   RAW {: rpid:pid :}
+   CHECKED {: rpid:pid :}
    rpid PID>N 0= if
       0 >PID cpid SET-PGID RC>N 0 < if
          s" " 0 die

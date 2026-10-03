@@ -1,6 +1,8 @@
 \ Application-image writer behavior through APP-IMAGE:SAVE: transient return
 \ frames are cleared, protected namespaces survive restore, corrupt images
-\ fail closed, and a failed final close is reported.
+\ fail closed, an output that cannot be opened is refused by name and creates
+\ nothing, a failed final close is reported and leaves the output path as it
+\ was, and a capture with a definition or quotation open is refused.
 require lib/test.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
@@ -14,12 +16,13 @@ require lib/process-env.f
 require lib/engine-candidate.f
 require lib/codesign.f
 require test/app-image-engine.f
+require lib/test/outcome.f
 
 package SNAP-WRITER-TEST
 
 $8000 constant CAP
 240000 constant TIMEOUT-MS
-74 constant CLOSE-FAIL-RC
+74 constant OUTPUT-FAIL-RC       \ the writer cannot open, close or replace its output
 79 constant SNAP-BAD-RC          \ EM-SNAPSHOT-RESTORE's corrupt-image exit
 ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC
 create OUT CAP allot
@@ -207,9 +210,10 @@ variable IMGU
 
 \ The fixture is loaded on the keyed host with the saver already loaded
 \ (test/app-image-engine.f), which starts at tier 0 where app-image.f set tier 1.
-\ `load` names the word that loads it: `require`, or `include`.
-: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
+\ `load` names the word that loads it: `require`, or `include`. `rest` follows
+\ on stdin, where a capture must run: one inside a load is refused.
+: BUILD-RUNNING-TO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n rest:ptr restu:n :}
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
@@ -218,11 +222,16 @@ variable IMGU
    SB-RESET
    s\" 1 set-tier\n" SB-APPEND
    load loadu SB-APPEND  s"  " SB-APPEND
-   fixture size SB-APPEND
-   s\" \n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   fixture size SB-APPEND  s\" \n" SB-APPEND
+   rest restu SB-APPEND
    host hostu >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
+
+: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
+   target targetu load loadu fixture size
+   s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" BUILD-RUNNING-TO ;
 
 : BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n fixture:ptr size:n :}
@@ -267,13 +276,14 @@ variable IMGU
    BAD-SNAP$ IMG IMGU @ WRITE-ALL ;
 
 \ ---- warm snapshot probes ----
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT OUT-U @ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : WARM-LOAD ( ptr u8 n -- ) {: s:ptr su:n :}
    SNAP-SRC$ s su WRITE-ALL
@@ -281,12 +291,12 @@ variable IMGU
    s" --load" >LEN PROC-ARGV+
    SNAP-SRC$ >LEN PROC-ARGV+
    SNAP0$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : WARM-STDIN ( ptr u8 n -- ) {: s:ptr su:n :}
    PROC-ARGV-RESET
    SNAP0$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : PARSE-OUT ( -- n )
    OUT OUT-U @ TRIM STR>NUMBER? MATCH option
@@ -341,7 +351,7 @@ variable BAND-WID
 : RUN-BAND-COPY ( -- )
    PROC-ARGV-RESET
    BAD-BAND$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME BAD-BAND$ STORE! ;
 
 \ Doctor one byte of the persisted image, run the result, restore the byte so the
 \ later imgdump probes still see the image the writer produced.
@@ -544,7 +554,7 @@ variable BAND-WID
    WRITE-BAND-COPY
    PROC-ARGV-RESET
    BAD-BAND$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME s su STORE! ;
 
 : HOLE-PROBE$ ( -- ptr u8 n ) s\" SNAP-WRITER-HOLE:RESTORED .\n" ;
 
@@ -603,14 +613,15 @@ variable BAND-WID
 
 \ A fresh process that saves the image again, with nothing new defined.
 : RECAP$ ( -- ptr u8 n ) s" recapture" PATH$ ;
+: RECAP-SRC$ ( -- ptr u8 n ) s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 : RECAPTURE ( -- )
    PROC-ARGV-RESET
    s" --" >LEN PROC-ARGV+
    RECAP$ >LEN PROC-ARGV+
-   SNAP0$ >LEN  s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   SNAP0$ >LEN  RECAP-SRC$ >LEN
    OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME RECAP-SRC$ STORE! ;
 
 \ The recapture's heap holds per-run input the first image's does not: the
 \ output path and the line the save was read from sit in a few cells, so the
@@ -751,11 +762,76 @@ variable PADDED
    s" nonzero padding after a raw heap is refused" T-LABEL
    DOCTOR-PAD ASSERT-BAND-REFUSED ;
 
+\ ---- a failed write leaves the output path as it was ------------------------
+: CLOSE-FAIL$ ( -- ptr u8 n ) s" close-fail" PATH$ ;
+
+variable STRAYS
+
+\ A file a failed write could leave under the root: the close-fail target, which
+\ did not exist before, or anything beside the application image or the
+\ directory output named after it.
+: STRAY ( ptr u8 n -- )
+   BASENAME {: a:ptr u:n :}
+   a u s" close-fail" STARTS-WITH?  a u s" application." STARTS-WITH?  or
+   a u s" dir-out." STARTS-WITH?  or
+   if 1 STRAYS +! then ;
+
+: STRAYS@ ( -- n )
+   0 STRAYS !
+   ROOT [: STRAY ;] WALK-FILES
+   STRAYS @ ;
+
+\ The file holds exactly the bytes LOAD-IMAGE read last.
+: HOLDS-IMG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FILE? 0= if false exit then
+   a u FILE-SIZE IMGU @ <> if false exit then
+   IMGU @ MEM-ALLOC-BYTES {: buf:ptr size:n :}
+   a u buf size READ-ALL size =
+   buf size IMG IMGU @ STR= and
+   buf size munmap drop ;
+
 : CLOSE-FAIL-CASE ( -- )
-   s" test/snapshot-writer-close-fail.f" BUILD-WITH
+   CLOSE-FAIL$ s" test/snapshot-writer-close-fail.f" BUILD-WITH-TO
    s" snapshot writer fails closed when the final close fails" T-LABEL
-   RC @ CLOSE-FAIL-RC T=
-   ERR$ s" snap: output close failed" CONTAINS? TTRUE ;
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: output close failed" CONTAINS? TTRUE
+   s" a failed write leaves no image where there was none" T-LABEL
+   CLOSE-FAIL$ EXISTS? TFALSE
+   STRAYS@ 0 T=
+   RELOAD
+   s" test/snapshot-writer-close-fail.f" BUILD-WITH
+   s" a failed write leaves the previous image in place" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   SNAP0$ HOLDS-IMG? TTRUE
+   STRAYS@ 0 T= ;
+
+\ ---- an output that cannot be opened dies by name ---------------------------
+: MISSING$ ( -- ptr u8 n ) s" missing" PATH$ ;
+: IN-MISSING$ ( -- ptr u8 n ) s" missing/application" PATH$ ;
+
+\ The application loads nothing new: the writer refuses before it writes a byte.
+: OPEN-FAIL-CASE ( -- )
+   IN-MISSING$ s" lib/string.f" BUILD-WITH-TO
+   s" an output in a missing directory is refused by name" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: cannot open output" CONTAINS? TTRUE
+   s" an output that cannot be opened creates nothing" T-LABEL
+   MISSING$ EXISTS? TFALSE ;
+
+\ ---- an output the rename cannot replace dies by name -----------------------
+: DIR-OUT$ ( -- ptr u8 n ) s" dir-out" PATH$ ;
+
+\ A directory at the output path lets the sibling be written and signed, then
+\ refuses the rename.
+: REPLACE-FAIL-CASE ( -- )
+   DIR-OUT$ MAKE-DIR
+   DIR-OUT$ s" lib/string.f" BUILD-WITH-TO
+   s" an output the rename cannot replace is refused by name" T-LABEL
+   RC @ OUTPUT-FAIL-RC T=
+   ERR$ s" snap: cannot replace output" CONTAINS? TTRUE
+   s" the refused output stays as it was and the staged image goes" T-LABEL
+   DIR-OUT$ DIR? TTRUE
+   STRAYS@ 0 T= ;
 
 : SHADOW$ ( -- ptr u8 n )
    SB-RESET
@@ -775,6 +851,42 @@ variable PADDED
    ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
    SHADOW-SNAP$ EXISTS? TFALSE ;
 
+\ ---- live compiler state refuses capture -----------------------------------
+: ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
+: QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
+
+\ `rest` reaches SNAP-WRITER-ACTIVE:SAVE, an immediate that saves.
+: ACTIVE-BUILD ( ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n rest:ptr restu:n :}
+   target targetu s" require" s" test/snapshot-writer-active.f" rest restu
+   BUILD-RUNNING-TO ;
+
+: ACTIVE-REFUSED ( ptr u8 n -- ) {: rest:ptr restu:n :}
+   ACTIVE-SNAP$ rest restu ACTIVE-BUILD
+   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
+   RC @ 74 T=
+   ERR$ s" snap: active compiler state at capture" CONTAINS? TTRUE
+   ACTIVE-SNAP$ EXISTS? TFALSE ;
+
+\ Tier 1 compiles a definition as one unit, so only its pending record is live
+\ when the immediate runs. Tier 0 also holds the innermost open quotation and
+\ parks each enclosing one; its code has no native provenance either, so the
+\ rc and the message show the quiescence check refuses before that one does.
+: ACTIVE-CASE ( -- )
+   QUIESCENT-SNAP$ s\" SNAP-WRITER-ACTIVE:SAVE\n" ACTIVE-BUILD
+   s" a capture from the immediate with nothing open saves" T-LABEL
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
+   RC @ 0 T=
+   QUIESCENT-SNAP$ EXISTS? TTRUE
+   s" a capture with a definition open is refused" T-LABEL
+   s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
+   s" a capture with a quotation open is refused" T-LABEL
+   s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
+   ACTIVE-REFUSED
+   s" a capture with an enclosing quotation parked is refused" T-LABEL
+   s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;] drop ;\n"
+   ACTIVE-REFUSED ;
+
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
@@ -782,7 +894,10 @@ variable PADDED
    TAIL-CASE
    DATA-SIZE DENSE-DATA > if DENSE-CASE then
    CLOSE-FAIL-CASE
+   OPEN-FAIL-CASE
+   REPLACE-FAIL-CASE
    SHADOW-CASE
+   ACTIVE-CASE
    IMG IMGU @ munmap drop ;
 
 public

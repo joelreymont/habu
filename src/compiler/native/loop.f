@@ -2,10 +2,9 @@
 \ that loop would have computed. One concern: recognising those loops and
 \ writing the module that holds the closed form instead.
 \
-\ Trip count, measured on this engine rather than derived: start = limit skips
-\ the loop at the guard; start < limit runs limit - start turns; start > limit
-\ runs ONE turn. A start of the largest integer wraps below the limit, so the
-\ start must be a compile-time constant and must not be that maximum.
+\ Trip count: the `?do` guard lets control in only while start < limit, and the
+\ loop then runs T = limit - start turns, at least one, with no index wrapping
+\ on the way. The fold takes a start only when it is a compile-time constant.
 \
 \ With T turns, entry accumulator acc0, K added every turn and the index added m
 \ times a turn, the loop leaves acc0 + K*T + m*(start*T + T*(T-1)/2), in
@@ -56,7 +55,6 @@ variable SCRATCH-OPS
 \ ---- the bound dialect -------------------------------------------------------
 HIR-OPCODE:CONST HIR:ORD constant O-CONST
 HIR-OPCODE:ADD   HIR:ORD constant O-ADD
-HIR-OPCODE:SUB   HIR:ORD constant O-SUB
 HIR-OPCODE:LT    HIR:ORD constant O-LT
 HIR-OPCODE:BR    HIR:ORD constant O-BR
 HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
@@ -120,8 +118,6 @@ variable P-M                         \ how many times a turn the index is added
 variable P-START                     \ the start, as the number its constant carries
 variable P-KCONST                    \ the constant part of what one turn adds
 variable P-INV-N                     \ how many non-constant values one turn adds
-variable P-ONE                       \ the arm that runs the T=1 form, as a new block ordinal
-variable P-MANY                      \ the arm that runs the general form
 variable P-MOV-N                     \ how many operations the pre-header takes off the body
 
 INV-MAX TYPED-BUFFER P-INV IR-ID:ir-value-id
@@ -602,7 +598,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
    true ;
 
 \ `brz` takes its SECOND successor when the tested value is not zero, so control
-\ reaches the pre-header exactly when limit and start differ.
+\ reaches the pre-header exactly when start < limit.
 : PLAN-GUARD? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-G @ BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
@@ -613,12 +609,12 @@ DYNAMIC-BUFFER P-THRU-BUF n
    f P-G @ BLOCK-AT {: gb:IR-ID:ir-block-id :}
    gb  t 0 OPERAND-AT  DEF-INDEX {: d:n :}
    d 0 < if false exit then
-   gb d OP-AT {: sb:IR-ID:ir-op-id :}
-   sb O-SUB OP-IS? 0= if false exit then
-   sb OPERANDS-OF 2 <> if false exit then
+   gb d OP-AT {: tst:IR-ID:ir-op-id :}
+   tst O-LT OP-IS? 0= if false exit then
+   tst OPERANDS-OF 2 <> if false exit then
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
-   sb 0 OPERAND-AT  pt P-IDX @ 1+ OPERAND-AT  SAME-VALUE? 0= if false exit then
-   sb 1 OPERAND-AT  pt P-IDX @ OPERAND-AT     SAME-VALUE? 0= if false exit then
+   tst 0 OPERAND-AT  pt P-IDX @ OPERAND-AT     SAME-VALUE? 0= if false exit then
+   tst 1 OPERAND-AT  pt P-IDX @ 1+ OPERAND-AT  SAME-VALUE? 0= if false exit then
    true ;
 
 \ ---- the header's own shape --------------------------------------------------
@@ -742,8 +738,8 @@ variable CH-STATE
    n 1+ P-INV-N ! ;
 
 \ A number the block builds is FOLDED at compile time and not moved: four
-\ additions of one become one number, where moving them would leave the arms
-\ four values to add. That is why every loop that already folded folds the same.
+\ additions of one become one number, where moving them would leave the closed
+\ form four values to add. That is why every loop that already folded folds the same.
 : CHAIN-ADDEND ( IR-ID:ir-block-id IR-ID:ir-value-id -- )
    {: hb:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
    v  hb P-IDX @ ARG-AT  SAME-VALUE? if P-M @ 1+ P-M ! exit then
@@ -864,16 +860,11 @@ variable CH-STATE
    loop ;
 
 \ ---- the start, which has to be a number this pass can read ------------------
-\ The one start the trip-count table has no row for: there index + 1 wraps below
-\ the limit and the loop runs round nearly the whole range.
-$7FFFFFFFFFFFFFFF constant MAX-START
-
 : PLAN-START? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
    f  pt P-IDX @ OPERAND-AT  FUN-CONST {: v:n ok:bool :}
    ok 0= if false exit then
-   v MAX-START = if false exit then
    v P-START !
    true ;
 
@@ -944,7 +935,7 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    1 P-OK ! ;
 
 \ The new block ordinals, written once the plan is settled: the three blocks of
-\ the loop lose theirs, and the two arms take the two that follow the pre-header.
+\ the loop lose theirs.
 : PLAN-ORDS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    0
@@ -954,10 +945,6 @@ $7FFFFFFFFFFFFFFF constant MAX-START
       else
          dup i cells P-NEW + !
          1+
-         i P-PR @ = if
-            dup P-ONE !  1+
-            dup P-MANY ! 1+
-         then
       then
    loop drop ;
 
@@ -991,17 +978,12 @@ $7FFFFFFFFFFFFFFF constant MAX-START
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
-\ A successor named by a NEW ordinal, which the two arms are: they exist only in
-\ the module being written, so there is no old ordinal to translate.
-: NSUCC+ ( n -- )
+\ A successor named by an OLD ordinal, translated through the plan's table.
+: SUCC+ ( n -- )
    {: b:n :}
    CTX BLD
-   BLD IR-BUILD:MODULE-KEY  b  IR-ID:PACK-BLOCK
+   BLD IR-BUILD:MODULE-KEY  b NEW-ORD  IR-ID:PACK-BLOCK
    IR-BUILD:ADD-SUCCESSOR ;
-
-\ And one named by an OLD ordinal, translated through the plan's table.
-: SUCC+ ( n -- )
-   NEW-ORD NSUCC+ ;
 
 \ Each takes the old operation whose span it stands at, so a diagnostic about
 \ the closed form points at the loop it replaced.
@@ -1146,15 +1128,15 @@ $7FFFFFFFFFFFFFFF constant MAX-START
 \ ---- the closed form ---------------------------------------------------------
 1 TYPED-BUFFER W-K IR-ID:ir-value-id     \ what one turn adds that is not the index
 variable W-K?
-1 TYPED-BUFFER W-ACC IR-ID:ir-value-id   \ the arm's answer, built up one term at a time
+1 TYPED-BUFFER W-ACC IR-ID:ir-value-id   \ the closed form's answer, built up one term at a time
 
 : K-ADD ( IR-ID:ir-op-id IR-ID:ir-value-id -- )
    {: sp:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
    W-K? @ 0= if v 0 W-K !  1 W-K? !  exit then
    sp HIR-OPCODE:ADD  0 W-K @  v  MK2  0 W-K ! ;
 
-\ Staged in the pre-header because both arms read it. Constants the loop built
-\ in its own header are added up here at compile time rather than copied out.
+\ Constants the loop built in its own header are added up here at compile time
+\ rather than copied out.
 : EMIT-K ( IR-ID:ir-op-id -- )
    {: sp:IR-ID:ir-op-id :}
    0 W-K? !
@@ -1196,49 +1178,41 @@ variable W-K?
    then
    0 W-IX @ ;
 
-\ ---- the two arms ------------------------------------------------------------
-\ The arm's own answer at the accumulator's position, and the value the
+\ ---- the branch to the join --------------------------------------------------
+\ The closed form's answer at the accumulator's position, and the value the
 \ pre-header was handing the header at every other.
-: ARM-OPERAND ( IR-ID:ir-op-id IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+: JOIN-OPERAND ( IR-ID:ir-op-id IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: pt:IR-ID:ir-op-id lat:IR-ID:ir-op-id i:n :}
    i P-K @ = if 0 W-ACC @ exit then
    i THRU? if lat i CARRY-ARG OPERAND-AT VOF exit then
    pt i CARRY-ARG OPERAND-AT VOF ;
 
-: ARM-TERM ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
+: JOIN-TERM ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
    {: f:IR-ID:ir-fun-id sp:IR-ID:ir-op-id :}
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
    f P-LA @ BLOCK-AT TERM-AT {: lat:IR-ID:ir-op-id :}
    sp HIR-OPCODE:BR OPEN
    P-A @ 0 ?do
-      pt lat i ARM-OPERAND OPERAND+
+      pt lat i JOIN-OPERAND OPERAND+
    loop
    P-JN @ SUCC+
    CLOSE drop ;
 
-\ The formula at T = 1, where both products are gone.
-: EMIT-ONE ( IR-ID:ir-fun-id -- )
+\ ---- the pre-header, which runs the closed form ------------------------------
+\ The guard let control in only while start < limit, so the trip count is the
+\ plain difference, and the answer goes straight to the join the exits met in.
+: EMIT-PRE ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
+   f P-PR @ BLOCK-AT {: pb:IR-ID:ir-block-id :}
+   pb TERM-AT {: pt:IR-ID:ir-op-id :}
    f P-H @ BLOCK-AT TERM-AT {: sp:IR-ID:ir-op-id :}
-   f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
-   CTX BLD IR-BUILD:BEGIN-BLOCK
-   CTX BLD  f P-H @ BLOCK-AT BLOCK-SPAN  IR-BUILD:SET-BLOCK-SPAN
-   pt P-K @ CARRY-ARG OPERAND-AT VOF 0 W-ACC !
-   W-K? @ 0<> if sp  0 W-K @  ACC-ADD then
-   P-M @ P-START @ * {: ms:n :}
-   ms 0<> if sp  sp ms MKC  ACC-ADD then
-   f sp ARM-TERM
-   CLOSE-BLOCK ;
-
-\ The trip count is the guard's own subtraction, REUSED rather than recomputed:
-\ the guard dominates this arm.
-: EMIT-MANY ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   f P-H @ BLOCK-AT TERM-AT {: sp:IR-ID:ir-op-id :}
-   f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
-   f P-G @ BLOCK-AT TERM-AT 0 OPERAND-AT VOF {: t:IR-ID:ir-value-id :}
-   CTX BLD IR-BUILD:BEGIN-BLOCK
-   CTX BLD  f P-H @ BLOCK-AT BLOCK-SPAN  IR-BUILD:SET-BLOCK-SPAN
+   pb OPEN-BLOCK
+   f EMIT-MOVED
+   pt EMIT-K
+   sp HIR-OPCODE:SUB
+   pt P-IDX @ 1+ OPERAND-AT VOF
+   pt P-IDX @ OPERAND-AT VOF
+   MK2 {: t:IR-ID:ir-value-id :}
    pt P-K @ CARRY-ARG OPERAND-AT VOF 0 W-ACC !
    W-K? @ 0<> if sp HIR-OPCODE:MUL  0 W-K @  t MK2 {: kt:IR-ID:ir-value-id :}
       sp kt ACC-ADD
@@ -1248,28 +1222,7 @@ variable W-K?
       sp t one  pt P-IDX @ OPERAND-AT VOF  EMIT-INDEX {: ix:IR-ID:ir-value-id :}
       sp ix ACC-ADD
    then
-   f sp ARM-TERM
-   CLOSE-BLOCK ;
-
-\ ---- the pre-header, which now decides which form to run ---------------------
-\ The comparison and the branch that reads it are the pair select.f fuses into
-\ one compare-and-branch, so the test costs no register.
-: EMIT-PRE ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   f P-PR @ BLOCK-AT {: pb:IR-ID:ir-block-id :}
-   pb TERM-AT {: pt:IR-ID:ir-op-id :}
-   pb OPEN-BLOCK
-   f EMIT-MOVED
-   pt EMIT-K
-   pt HIR-OPCODE:LT
-   pt P-IDX @ OPERAND-AT VOF
-   pt P-IDX @ 1+ OPERAND-AT VOF
-   MK2 {: fl:IR-ID:ir-value-id :}
-   pt HIR-OPCODE:BRZ OPEN
-   fl OPERAND+
-   P-ONE @ NSUCC+
-   P-MANY @ NSUCC+
-   CLOSE drop
+   f sp JOIN-TERM
    CLOSE-BLOCK
    1 N-FOLDED +! ;
 
@@ -1295,12 +1248,7 @@ variable W-K?
 : WALK-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    b DROPPED? if exit then
-   b P-PR @ = if
-      f EMIT-PRE
-      f EMIT-ONE
-      f EMIT-MANY
-      exit
-   then
+   b P-PR @ = if f EMIT-PRE exit then
    f b COPY-BLOCK ;
 
 : WALK-FUN ( IR-ID:ir-fun-id -- )

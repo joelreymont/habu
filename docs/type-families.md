@@ -47,21 +47,22 @@ Family and sum-variant tails share one collision policy within the global or
 active package scope: whichever is declared second rejects with
 `E-TDECL-NAME`. Package-local variant tails do not reserve unrelated packages.
 
-These reserved-name rejects split into two diagnostic codes by mechanism, and
-the split is deliberate — do not "fix" it by folding `ptr` into the reserved-name
-class. A **reserved concrete-cell or grammar token** — a single-letter signature
-var `a`..`z` (so the builtins `n`/`f`/`r`), `field`, atom prefixes, control
-words, and grammar keywords — is caught by the name gate (`TDECL-RESERVED?`,
-`src/core/sumtype.f`) *before* any family row is created, and rejects
-`E-TDECL-NAME` (7110, "reserved name"). A token that is itself a **live
-registered parametric family tail** — `ptr` (seeded arity 2), `span`, `matrix`,
-and the other cell families seeded in `src/core/type-family.f` — is not a
-reserved-name token at all: it passes the name gate and instead collides at
-registration (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family").
-So `NEWTYPE n 0` reports reserved-name while `NEWTYPE ptr 0` reports
-duplicate-family, and both are correct: `ptr` genuinely *is* a registered family,
-so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
-(`test/type-decl-suite.f` pins both codes.) A package family may share a tail
+These reserved-name rejects split into two diagnostic codes by mechanism. A
+**reserved concrete-cell or grammar token** — a single-letter signature var
+`a`..`z` (so the builtins `n`/`f`/`r`), `field`, `ptr`, value record names,
+atom prefixes, control words, and grammar keywords — is caught by the name gate
+every family definer asks (`TYPE-NAME:FAMILY-RESERVED?`,
+`src/core/type-family.f`) *before* any family row is created, and rejects
+`E-TDECL-NAME` (7110, "reserved name"). `ptr` is a seeded family (arity 2), but
+an effect reads a bare `ptr` as the pointer constructor in every scope, so no
+scope can name a family by that tail; the gate asks the parser's own
+predicate, `SIG-PTR-TOK?`. Any other **live
+registered parametric family tail** — `span`, `matrix`, and the other cell
+families seeded in
+`src/core/type-family.f` — passes the name gate and collides at registration
+(`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family"). So
+`NEWTYPE n 0` and `NEWTYPE ptr 0` report reserved-name while `NEWTYPE span 3`
+reports duplicate-family. (`test/type-decl-suite.f` pins both codes.) A package family may share a tail
 with a global or foreign package family. A bare tail resolves the active package's
 exact family first, the global exact family second, then public families in
 explicit `using` imports, then one foreign public legacy fallback. Multiple
@@ -2066,8 +2067,11 @@ capabilities stay distinct:
 | closed non-linear layout family (`res<n,n>`) | admit | admit |
 | arity-0 nominal scalar (`CAD-KIND:node-id`) | admit | admit |
 | closed typed pointer (`ptr fam`, `ptr res<n,n>`, `ptr ptr fam`) | reject | **admit** |
-| open type var / bare `ptr a` / `ptr n` | reject | reject |
-| quotation / linear value / hidden field | reject | reject |
+| closed structural cell (`n`, `bool`, `i64`, role tokens; `ptr u8`, `ptr n`, `ptr ptr u8`) | reject | **admit** |
+| open type var / bare `ptr a` | reject | reject |
+| closed quotation (`[ n -- n ]`) | reject | **admit** |
+| linear value / hidden field | reject | reject |
+| scheme `forall<…>` at any depth (`ptr forall<…>`, `fam<forall<…>>`) | reject | reject |
 | non-positive `count`, unresolved args, duplicate name | reject | reject |
 
 A "closed typed pointer" is a `ptr` whose pointee chain bottoms out at a nominal
@@ -2080,11 +2084,24 @@ constants still require a checked producer: a raw `n` cannot initialize a typed
 (`TVK-RAW`) that reject a nominal family in value position — the definers are the
 sound alternative to that laundering, not a bypass. Same-family `!`/`@` through a
 definer accessor certifies and executes; cross-family, `E-LAYOUT-BOUNDS` (index),
-`E-LAYOUT-BUFFER` (admissibility/overflow), and `E-DUP-DEFINITION` (duplicate)
-reject, and a rejected declaration rolls the allocation back and defines nothing.
+`E-LAYOUT-BUFFER` (overflow), and `E-DUP-DEFINITION` (duplicate) reject, and a
+rejected declaration rolls the allocation back and defines nothing. A stored
+type that is inadmissible is the checker's named `E-BAD-STORAGE` refusal, exit
+70 (`CHECKER-REJECT-RC`), with its reason: unknown, malformed, a scheme, or a
+type this definer cannot store. No type at all, at the end of the source, is
+refused as `no type for` the declared word, at the name, as a missing count is.
+A scheme is a callback input only, so no storage holds one. Every storage
+definer (`LAYOUT-BUFFER`, `DEFER-LAYOUT-BUFFER`, `TYPED-VARIABLE`,
+`TYPED-BUFFER`, `DYNAMIC-BUFFER`) reads the stored type whole, to the token that
+closes its last bracket, so the refusal names the complete spelling and the
+rest of the line is the next statement. Its first token is read as `parse-name`
+reads one; a spelling once begun never continues past the end of its line: one
+still open there is refused as malformed, and the next line is the next
+statement (`test/c2-memory-scope-refusals.f`).
 The gate path is the verify-source scanner (`RECORD-TYPED-BUFFER` /
 `RECORD-TYPED-VARIABLE` → `CHECKER-DEFTYPED-BUFFER` / `CHECKER-DEFTYPED-VARIABLE`),
-mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` pins the surface.
+mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` and
+`test/typed-storage-structural-test.f` pin the surface.
 
 ---
 
@@ -2333,8 +2350,10 @@ Each frame saves every mutable high-water mark. `checker.f` owns the core frame
 
 ```text
 UEND  NORET-END  SYM-N  SYM-STR-U  CTN  CT-STR-U  LIN-NDECL
-VREC-N  VREC-FIELD-N  VREC-NODE-N  VREC-STR-U  CHK-CAND  VSIG
-CHECKER-PACKAGE-MODE  CHECKER-PACKAGE-U  (+ package-name bytes)  DFER-END
+VREC-N  VREC-FIELD-N  VREC-NODE-N  VNARG-N  VREC-STR-U  CHK-CAND  VSIG
+CHECKER-PACKAGE-MODE  CHECKER-PACKAGE-U  (+ package-name bytes)
+CHECKER-PACKAGE-NEUTRAL  CHECKER-USE-OWNED-N  DFER-END  PASS-FLOOR
+VERIFY-DEFINER-N
 ```
 
 The TFAM/SUMV/SCHEMA registries hang parallel frames off the

@@ -447,7 +447,16 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ habu-bound-pointers replaces the parameter with the caller's own span and
 \ this adapter disappears; every destination this module owns already passes
 \ JOIN-PATH-INTO a span from its producer.
+\ A negative length is a malformed path whatever the other length is, so both
+\ signs are refused first. Each length then meets the capacity on its own before
+\ the two are summed: a length near the maximum cell would wrap the join back
+\ under FS-PATH-CAP, and the parent's last byte is read only once the parent is
+\ known to fit.
 : JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
+   pu 0 < if E-FS-PATH throw then
+   nu 0 < if E-FS-PATH throw then
+   pu FS-CHECK-JOIN-CAP
+   nu FS-CHECK-JOIN-CAP
    pa pu nu FS-JOIN-LEN FS-CHECK-JOIN-CAP
    pa pu na nu  dst FS-PATH-CAP SPAN:MAKE  JOIN-PATH-INTO ;
 

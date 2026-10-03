@@ -31,7 +31,6 @@ private
 
 : ESCAPED-SIZE ( ptr u8 n bool -- n )
    {: source size:n attr:bool :}
-   source size SPAN-CHECK
    0 0
    begin dup size < while
       {: total:n cursor:n :}
@@ -61,8 +60,10 @@ private
 
 : ESCAPE-INTO ( ptr u8 n bool ptr u8 n -- n )
    {: source size:n attr:bool destination cap:n :}
-   source size attr ESCAPED-SIZE {: needed:n :}
+   source size SPAN-CHECK
    destination cap SPAN-CHECK
+   size cap > if E-CAPACITY throw then        \ every scalar escapes to at least its own width
+   source size attr ESCAPED-SIZE {: needed:n :}
    needed cap > if E-CAPACITY throw then
    source size destination cap OVERLAP? if E-ALIAS throw then
    source size attr destination ESCAPE-WRITE
