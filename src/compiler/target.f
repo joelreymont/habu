@@ -44,6 +44,7 @@
 require lib/prelude.f
 require lib/errors.f
 require src/compiler/digest.f
+require src/compiler/native/fetch-check.f
 
 package CTARGET
 public
@@ -410,72 +411,101 @@ public
 \ rather than compiling with a backend that is not there. That is what lets a
 \ binary carry only the backend its own sources require.
 \
-\ THE ROW. The key is the architecture's wire code. That code is injective and
-\ may never be renumbered - the identity rule above is what fixes it - which is
-\ exactly what a key needs, and taking it means the registry has no opinion on
-\ how many variants the family has: the table is sized by how many backends one
-\ image may hold, so a new architecture adds nothing here. (It also keeps a row
-\ a plain cell. A TYPED-BUFFER of the family VALUE is refused by the native
-\ chain's own dialect - E-HIR-UNMODELED, measured while compiling this file into
-\ an engine - so the row could not have held one anyway.)
-\
-\ Beside the key sit the two stages - lowering, which builds the machine module,
-\ and emission, which writes the instructions - each a quotation answering
-\ whether that stage can serve one exact contract. They are separate rows
-\ because the two stages ask separately, each with its own refusal, and a
-\ backend may lower for a machine whose instructions it cannot yet write. A
-\ quotation is not a structure field, so the row is parallel TYPED-BUFFERs
-\ indexed together; a table that later stores a stage's pass beside its
-\ predicate is indexed the same way, which is why ROW is public and is the one
-\ answer to "which row is this architecture".
-\
-\ A ROW IS NEVER RELEASED. Code that has loaded cannot unload. A second module
-\ claiming an architecture that already has a row is a build defect - `require`
-\ makes loading one module twice a no-op - so it is refused instead of replacing
-\ the row the loaded code is already reaching through.
+\ The descriptor gives the implementation a stable id, separate from the
+\ architecture's wire code and the row that sorted insertion may move. Native
+\ passes install at the insertion row before this registry publishes the count.
 
 public
 
-\ The rows an image may hold at once, and the size of every table indexed
-\ beside them.
-4 constant BACKEND-ROWS
+STRUCTURE backend-id 0 DERIVE eq
+   FIELD code n
+;STRUCTURE
+
+STRUCTURE backend 0
+   FIELD id backend-id
+   FIELD arch arch
+   FIELD lower [ CTARGET:contract -- bool ]
+   FIELD emit [ CTARGET:contract -- bool ]
+;STRUCTURE
+
+: ID ( n -- CTARGET:backend-id )
+   dup 0 <= if E-CTGT-ID throw then
+   CTARGET-BACKEND--ID:MAKE ;
+
+: ID-CODE ( CTARGET:backend-id -- n )
+   CTARGET-BACKEND--ID:UNMAKE ;
 
 private
 
-BACKEND-ROWS TYPED-BUFFER B-ARCH  n
-BACKEND-ROWS TYPED-BUFFER B-LOWER [ CTARGET:contract -- bool ]
-BACKEND-ROWS TYPED-BUFFER B-EMIT  [ CTARGET:contract -- bool ]
-
-\ Rows 0..B-N-1 are claimed, in claim order. A claim publishes itself by bumping
-\ this AFTER the row's cells are stored, so a half-built row is never found.
+DEFER-LAYOUT-BUFFER B-ROWS backend
 variable B-N
+1 B-ROWS-BIND
+
+: BACK-ID ( CTARGET:backend -- CTARGET:backend-id )
+   CTARGET-BACKEND:UNMAKE 2drop drop ;
+
+: BACK-ARCH ( CTARGET:backend -- CTARGET:arch )
+   CTARGET-BACKEND:UNMAKE 2drop nip ;
+
+: BACK-LOWER ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
+   CTARGET-BACKEND:UNMAKE {: id:backend-id a:arch lo em :} lo ;
+
+: BACK-EMIT ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
+   CTARGET-BACKEND:UNMAKE {: id:backend-id a:arch lo em :} em ;
 
 : FIND-ROW ( CTARGET:arch -- n )
-   ARCH-CODE {: a:n :}
-   -1 B-N @ 0 ?do
-      a i B-ARCH @ = if drop i leave then
+   {: a:arch :}
+   B-N @ 0 ?do
+      a i B-ROWS @ BACK-ARCH CTARGET-ARCH:EQ if i unloop exit then
+   loop
+   -1 ;
+
+: ID-CLAIMED? ( CTARGET:backend-id -- bool )
+   {: id:backend-id :}
+   B-N @ 0 ?do
+      id i B-ROWS @ BACK-ID CTARGET-BACKEND--ID:EQ if true unloop exit then
+   loop
+   false ;
+
+: INSERT-AT ( CTARGET:backend-id -- n )
+   ID-CODE {: code:n :}
+   B-N @ 0 ?do
+      code i B-ROWS @ BACK-ID ID-CODE < if i unloop exit then
+   loop
+   B-N @ ;
+
+: SHIFT ( n -- )
+   {: at:n :}
+   B-N @ at - 0 ?do
+      B-N @ i - 1- B-ROWS @ B-N @ i - B-ROWS !
    loop ;
 
 public
 
-: REGISTERED? ( CTARGET:arch -- bool )
-   FIND-ROW 0 >= ;
+: COUNT ( -- n ) B-N @ ;
 
-\ The row an architecture's backend holds, so a table indexed beside the
-\ registry's own rows has one place to ask.
+: BACKEND@ ( n -- CTARGET:backend )
+   dup 0 < over B-N @ >= or if E-CTGT-ROW throw then
+   B-ROWS @ ;
+
+: REGISTERED? ( CTARGET:arch -- bool ) FIND-ROW 0 >= ;
+
 : ROW ( CTARGET:arch -- n )
    FIND-ROW dup 0 < if E-CTGT-UNLOADED throw then ;
 
-\ The registration a backend module performs as it loads.
-: REGISTER ( CTARGET:arch [ CTARGET:contract -- bool ] [ CTARGET:contract -- bool ] -- )
-   {: a:arch lower emit :}
-   a REGISTERED? if E-CTGT-REGISTERED throw then
-   B-N @ {: row:n :}
-   row BACKEND-ROWS >= if E-CTGT-ROW throw then
-   a ARCH-CODE row B-ARCH !
-   lower row B-LOWER !
-   emit row B-EMIT !
-   row 1+ B-N ! ;
+\ The installer reserves and installs its parallel pass row at the insertion
+\ position. The descriptor and visible count move only after it returns.
+: REGISTER ( CTARGET:backend [ n -- ] -- )
+   {: d:backend install :}
+   d BACK-ID ID-CODE 0 <= if E-CTGT-ID throw then
+   d BACK-ID ID-CLAIMED? if E-CTGT-REGISTERED throw then
+   d BACK-ARCH REGISTERED? if E-CTGT-REGISTERED throw then
+   d BACK-ID INSERT-AT {: at:n :}
+   B-N @ 1+ B-ROWS-GROW
+   at install execute
+   at SHIFT
+   d at B-ROWS !
+   B-N @ 1+ B-N ! ;
 
 \ Can the loaded backend for this contract's architecture lower for it? Emit for
 \ it? The contract is revalidated here for the reason the header gives, so the
@@ -484,10 +514,10 @@ public
 \ "no code for this machine in this image" and "this backend does not serve this
 \ machine" stay different answers with different owners.
 : LOWERS? ( CTARGET:contract -- bool )
-   VALIDATE dup ARCH@ ROW B-LOWER @ execute ;
+   VALIDATE dup ARCH@ ROW B-ROWS @ BACK-LOWER execute ;
 
 : EMITS? ( CTARGET:contract -- bool )
-   VALIDATE dup ARCH@ ROW B-EMIT @ execute ;
+   VALIDATE dup ARCH@ ROW B-ROWS @ BACK-EMIT execute ;
 
 
 ;package

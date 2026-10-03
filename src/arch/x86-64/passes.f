@@ -296,20 +296,17 @@ public
    OPEN-ROWS
    SEAL-ROWS ;
 
-\ The row this backend fills as it loads, stage by stage. src/arch/x86-64/
-\ backend.f has already claimed the registry row these are stored beside.
+\ Publish only after every callback is defined. The id names this provider,
+\ independent of target wire codes and its sorted runtime row.
 : INSTALL ( -- )
-   ARCH [: DECLARE ;] NBACK:DECLARE!
-   ARCH [: SELECT ;] NBACK:SELECT!
-   ARCH [: PRUNE ;] NBACK:PRUNE!
-   ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
-   ARCH [: EMIT ;] NBACK:EMIT!
-   ARCH [: EMIT-UNPLACED ;] NBACK:EMIT-UNPLACED!
-   ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: RETIRE ;] NBACK:RETIRE!
-   ARCH [: X64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
-   ARCH [: X64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
-   ARCH [: PREPARE ;] NBACK:PREPARE! ;
+   X64BACK:ID ARCH [: X64BACK:SERVES? ;] [: X64BACK:SERVES? ;]
+      CTARGET-BACKEND:MAKE
+   NBACK-MODE:EXCLUSIVE-SESSION
+   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: EMIT ;] [: EMIT-UNPLACED ;] [: RELEASE ;] [: RETIRE ;]
+   [: X64IR:PROTOTYPE ;] [: X64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
+      NBACK-PASS:MAKE
+   NBACK:REGISTER ;
 
 ;package
 
