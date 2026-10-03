@@ -499,8 +499,8 @@ $3680 constant ENVP-CELL
 $3688 constant PEND-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
-$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL
-$36A8 constant INE-CELL
+$36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
+$36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF
 $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
@@ -513,8 +513,10 @@ $48 constant EVAL-PKG
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
-\ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; STACK-ABI:EVAL-BYTES
-\ ($130) pads the frame to keep the native stack 16-byte aligned.
+\ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
+\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130 and $138
+\ pads the frame to STACK-ABI:EVAL-BYTES ($140), keeping the native stack
+\ 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -1195,6 +1197,10 @@ CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
 CHECKER-OWNER-ABI:DOES-IN-OFF constant DECL-DOES-IN-OFF
 CHECKER-OWNER-ABI:DOES-OUT-OFF constant DECL-DOES-OUT-OFF
 CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DECL-DOES-WIDE-OFF
+CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DECL-DOES-IN-N-OFF
+CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DECL-DOES-OUT-N-OFF
+CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DECL-DOES-IN-SLOT-OFF
+CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
 CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
@@ -1202,6 +1208,8 @@ CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant DECL-CALL-QUOT-OUT-OFF
+CHECKER-OWNER-ABI:INIT-LAYOUT-OFF constant DECL-INIT-LAYOUT-OFF
+CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant DECL-FIELD-SPAN-OFF
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
 CHECKER-OWNER-ABI:TRUST-DECL-OFF constant DECL-TRUST-DECL-OFF
@@ -1235,6 +1243,8 @@ CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ happen in the instance that renders; the counter itself is unreachable from a
 \ baked compiler, which is the whole reason this is an operation and not a cell.
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
+\ The diagnostic that scan suppressed, rendered by the instance that scanned.
+CHECKER-OWNER-ABI:CHECK-REPORT-OFF constant DECL-CHECK-REPORT-OFF
 \ Family/variant ids and all metadata about them share the live source owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
 CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
@@ -1247,6 +1257,16 @@ CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant DECL-VARIANT-TAG-OFF
 CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
+\ --- the verifier pre-pass: the symbol and definer questions it asks the live
+\ checker, and the frame around one run
+CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF constant DECL-VERIFY-RECORD-CREATED-OFF
+CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF constant DECL-VERIFY-SOURCE-DOES-OFF
+CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF constant DECL-VERIFY-RENDERS-OFF
+CHECKER-OWNER-ABI:VERIFY-START-OFF constant DECL-VERIFY-START-OFF
+CHECKER-OWNER-ABI:VERIFY-DONE-OFF constant DECL-VERIFY-DONE-OFF
 ;package
 
 
@@ -1420,6 +1440,31 @@ $2858 constant SP-CELL                              \ frames parked
 $2860 constant STK-OFF                              \ base of the frame area
 STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 ;package
+\ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
+\ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
+\ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
+\ stripped image bakes the same handler. The handler resumes a data access below
+\ the base at that address, from the engine's own code or the JIT region, and
+\ CODE-END-CELL bounds the first: [RBASE-CELL, CODE-END-CELL) is the engine code
+\ up to its baked source (LSRC). Zero means no entry, and the fault keeps the
+\ named bounds exit: a stripped image leaves both cells at its mapping's zero,
+\ and a task region reads zero because lib/task.f copies only the cells it
+\ names. Both hold this process's addresses, so boot stores them and snapshots
+\ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
+\ the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the quotation frames
+\ (JIT-QUOT:END, $2C40) and the $2C40..$2CD0 run held for the package
+\ publication cells, swept for a claimant across src lib tools test bootstrap
+\ docs.
+$2CD0 constant FLOORREC-CELL
+\ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
+\ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
+\ the list is empty) and gives it back on the clean return, and habu2.f
+\ LEVALREC gives back the stack of every closed frame a throw pops. The stacks
+\ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE) and
+\ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits beside
+\ FLOORREC-CELL in the free header band.
+$2CD8 constant CLOSED-FREE-CELL
+$2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ The design seal (lib/policy.f, docs/policy.md): the two cells that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above

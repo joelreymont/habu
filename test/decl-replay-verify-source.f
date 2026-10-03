@@ -300,16 +300,19 @@ VSPARITY:VS-LOAD
 s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 
 \ Checked uses must work immediately after replay, including parametric
-\ payloads and product make/unmake. No runtime word is evaluated here.
+\ payloads and product make/unmake. No runtime word is evaluated here. The
+\ replay compiles nothing, so the names it registers are facts of the certify
+\ path, and every candidate below asks that path (VERIFY:CANDIDATE-IN-SCOPE):
+\ compiled code holds no record of them.
 s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
 VSPARITY:VS-LOAD
-s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
-s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 
 \ ---------------------------------------------------------------------------
 \ 3. A STRUCTURE named as a later declaration's payload type. Without a
@@ -402,16 +405,16 @@ DECL-DIAG:OFF
 s" package adrep public STRUCTURE rec 0 DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
 VSPARITY:VS-LOAD
 
-s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" ADR-AT ( ptr adrep:rec n -- ptr adrep:rec ) ADREP-REC:AT" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" ADR-BYTES ( -- n ) ADREP-REC:BYTES" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
-s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" ADR-AT ( ptr adrep:rec n -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" ADR-BYTES ( -- n ) ADREP-REC:BYTES" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 \ the projection is the field's, not the record's: a replayed accessor that
 \ answered its own input would be a registered lie
-s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
-s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
-s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 
 \ The private spelling. A private product publishes FAMILY-MEMBER into its
 \ declaring package's private wordlist, so the only place the names resolve is
@@ -420,7 +423,7 @@ s" package adprv STRUCTURE prec 0 DERIVE addr FIELD lo n FIELD hi n ;STRUCTURE :
 VSPARITY:VS-LOAD
 
 \ and stays private: the same name outside the package does not resolve
-s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 
 VSPARITY:REPORT
 

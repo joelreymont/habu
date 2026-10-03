@@ -19,6 +19,7 @@
 \ memory operations transport no layout at all.
 
 require test/checker-assert.f
+require src/habu/verify-source.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
@@ -167,9 +168,11 @@ cr
 \ MAKE/UNMAKE pair conserves the resource, and TMn that MATCH hands the payload
 \ to the arm as a linear value the arm must discharge exactly once.
 \
-\ FREE-MODEL / MINT-TOK are the abstract consumer and producer (test-fixture
-\ boundary, the FREE-MTOK pattern of test/type-match-suite.f) so an arm can fully
-\ discharge or fully re-supply the resource without a runtime.
+\ FREE-MODEL / MINT-TOK are the abstract consumer and producer, so an arm can
+\ fully discharge or fully re-supply the resource without a runtime. They are
+\ bodiless TRUST rows: the engine holds no record of either, so compiled code
+\ cannot call them, and the candidates that do ask the certify path, where the
+\ rows bind (VERIFY:CANDIDATE-IN-SCOPE).
 \
 \ The whole section lives in package TLIN, which is also how production writes
 \ these types (maki/infer/weight-store.f owns `WSTORE:resident` the same way).
@@ -203,7 +206,7 @@ s" TC4=" type s" TC4 ( model model -- model ) nip" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC5=" type s" TC5 ( model n -- n model ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC6=" type s" TC6 ( model -- ) >r" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC7=" type s" TC7 ( model -- model model ) >r r@ r>" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC8=" type s" TC8 ( model -- ) FREE-MODEL" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC8=" type s" TC8 ( model -- ) FREE-MODEL" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 \ one more level of nesting is still one linear unit, not zero.
 s" TC9=" type s" TC9 ( deep -- deep )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC10=" type s" TC10 ( deep -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -331,16 +334,16 @@ s" TM6=" type s" TM6 ( load-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TM7=" type s" TM7 ( load-result -- load-result load-result ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ MATCH hands the payload to the branch as a linear value: discharging it once
 \ certifies, and copying, dropping, stranding or leaving it does not.
-s" TM8=" type s" TM8 ( load-result -- n ) MATCH load-result loaded OF FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM8=" type s" TM8 ( load-result -- n ) MATCH load-result loaded OF FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" TM9=" type s" TM9 ( load-result -- n ) MATCH load-result loaded OF drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM10=" type s" TM10 ( load-result -- n ) MATCH load-result loaded OF dup FREE-MODEL FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM10=" type s" TM10 ( load-result -- n ) MATCH load-result loaded OF dup FREE-MODEL FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 s" TM11=" type s" TM11 ( load-result -- n ) MATCH load-result loaded OF 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" TM12=" type s" TM12 ( load-result -- n ) MATCH load-result loaded OF >r 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" TM13=" type s" TM13 ( load-result -- n ) MATCH load-result loaded OF exit ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ reconstructing load-result is a legitimate discharge, and so is moving the model
 \ out through the join — both consume the branch's value exactly once.
 s" TM14=" type s" TM14 ( load-result -- load-result ) MATCH load-result loaded OF construct load-result loaded ENDOF rejected OF construct load-result rejected ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM15=" type s" TM15 ( load-result -- model ) MATCH load-result loaded OF ENDOF rejected OF drop MINT-TOK 0 TLIN-BOX:MAKE 0 TLIN-MODEL:MAKE ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM15=" type s" TM15 ( load-result -- model ) MATCH load-result loaded OF ENDOF rejected OF drop MINT-TOK 0 TLIN-BOX:MAKE 0 TLIN-MODEL:MAKE ENDOF ;MATCH" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 \ unpacking the payload inside the branch keeps the obligation on the parts.
 s" TM16=" type s" TM16 ( load-result -- n ) MATCH load-result loaded OF TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 cr

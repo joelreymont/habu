@@ -18,6 +18,7 @@ require src/habu/fdio.f
 require src/habu/aot-file.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f
+require lib/tier.f
 
 package GRAPH-PUBLICATION
 $800000 constant CAP
@@ -203,8 +204,8 @@ TRUSTED: WIDTH-REFUSAL-ATOMIC ( -- )
 
 TRUSTED: ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
 TRUSTED: ABI-BEGIN ( -- )
-   check@ SAVED-CHECK ! tier@ SAVED-TIER ! 0 set-check 1 set-tier ;
-TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ set-tier ;
+   check@ SAVED-CHECK ! tier@ SAVED-TIER ! 0 set-check 1 TIER:SELECT ;
+TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ TIER:SELECT ;
 TRUSTED: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 TRUSTED: DECLARE-WIDE ( -- )
    s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY

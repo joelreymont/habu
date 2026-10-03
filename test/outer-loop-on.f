@@ -3,8 +3,9 @@
 \ the engine's `evaluate`. The switch is the loaded-bytes seam
 \ SOURCE-ROOT:INCLUDE-INTERPRET, which src/core/include.f binds to the engine's
 \ loop inside the closed boundary, INCLUDE-EVALUATE. The Habu loop runs inside
-\ the same boundary, so a loaded file is a closed program under either loop: its
-\ floor is its loader's depth and a cell it leaves is refused E-EVAL-RESIDUE.
+\ the same boundary, so a loaded file is a closed program under either loop: it
+\ runs on a data stack of its own, a cell it leaves is refused E-EVAL-RESIDUE,
+\ and a definition it leaves open is refused at its end, as every buffer's is.
 
 require src/habu/interpret.f
 

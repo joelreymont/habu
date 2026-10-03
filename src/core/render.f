@@ -851,6 +851,14 @@ variable MDV-I   variable MDV-F
    DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
    DSUGA @ DSUGE @ < IF s" add_producer" ELSE
    s" fix_type" THEN THEN ;
+\ The repair for a signature the parser refused, by SGBAD's kind: shared by
+\ SUGGEST-TEXT below, a bad stored signature's diagnostic and a refused
+\ `generates:` row's.
+: SGBAD-SUGGEST$ ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
+   SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
+   SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
+   s" Repair the stack-effect comment syntax, including --." ;
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- ptr u8 n )
@@ -882,18 +890,7 @@ variable MDV-I   variable MDV-F
    QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
-   SGBAD @ IF
-      SGBAD-UNKNOWN? IF
-         s" Use a known stack-signature type or a single-letter type variable."
-      ELSE SGBAD-BAREPTR? IF
-         s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
-      ELSE SGBAD-ARITY? IF
-         s" Give the type family its exact declared number of arguments."
-      ELSE
-         s" Repair the stack-effect comment syntax, including --."
-      THEN THEN THEN
-      EXIT
-   THEN
+   SGBAD @ IF SGBAD-SUGGEST$ EXIT THEN
    RETURN-BORROWED? IF s" Read or pop only return-row cells this definition pushed with >r or declared after |; below them lies the caller's frame." EXIT THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
    DEXP @ 0= IF
@@ -1147,11 +1144,6 @@ DIAG-PRINT-INSTALL
    SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
    SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
    s" fix_signature_syntax" ;
-: BADSIG-SUGGEST ( -- ptr u8 n )
-   SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
-   SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
-   SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
-   s" Repair the stack-effect comment syntax, including --." ;
 : BADSIG-JSON ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
@@ -1161,7 +1153,7 @@ DIAG-PRINT-INSTALL
    s" token" JKEY na nu JSTR 44 EMIT1
    s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   s" suggestion" JKEY BADSIG-SUGGEST JSTR
+   s" suggestion" JKEY SGBAD-SUGGEST$ JSTR
    125 EMIT1 ;                                            \ }
 : BADSIG-PROSE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
@@ -1292,9 +1284,9 @@ REC-SIG-INSTALL
    USH-USYM @ USH-EFF
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
-\ The used packages a bare token resolves in: the used-scan slots
-\ CHECKER-USED-SYM marked in CK-USED-MASK, in the order the using scan reads
-\ them, each package once however often it is used.
+\ The used packages a bare token resolves in: the used-scan slots the checker's
+\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK, CHECKER-USED-SYM), in the
+\ order the using scan reads them, each package once however often it is used.
 : UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
    1 swap lshift CK-USED-MASK @ and 0 <> ;
 : UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
@@ -1581,5 +1573,68 @@ RECORD-DIAG-INSTALL
    RSBUF-FLUSH ;
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
+
+\ --- a `generates:` row the checker cannot keep (checker.f CHECKER-GENERATES),
+\ on the trust row's template above (TSTALE-JSON): the kind says which of the
+\ row's three claims failed, and each has its own repair: a name to correct, a
+\ row to delete, or the effect, which takes the signature refusal's own class
+\ and text. The pre-pass hands the registrar the name where its scanner read
+\ it, so the packet locates it as the shadow diagnostic's does.
+: GENR-BADSIG-PROSE ( -- )
+   SGBAD-UNKNOWN? IF
+      s" unknown type '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" ' in its effect" DTXT EXIT
+   THEN
+   SGBAD-BAREPTR? IF s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT THEN
+   SGBAD-ARITY? IF
+      s" wrong arity for type family '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" '" DTXT EXIT
+   THEN
+   s" its effect is not a stack-effect comment" DTXT ;
+: GENR-PROSE ( n -- )
+   {: kind:n :}
+   s" E-GENERATES-ROW habu: generates: row for '" DTXT  GENR-TOK-A @ GENR-TOK-U @ DTXT
+   kind GENR-UNRESOLVED = IF
+      s" ' names no word here: the row follows its definer's definition and" DTXT
+      s"  names it as the code there spells it. Define the definer first or" DTXT
+      s"  correct the name" DTXT EXIT
+   THEN
+   kind GENR-CREATES = IF
+      s" ' already creates: its does> clause, an earlier generates: row or the" DTXT
+      s"  definer it wraps already states what it makes. Delete the row" DTXT EXIT
+   THEN
+   s" ': " DTXT  GENR-BADSIG-PROSE ;
+: GENR-SUGGEST$ ( n -- ptr u8 n )
+   {: kind:n :}
+   kind GENR-UNRESOLVED = IF
+      s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it." EXIT
+   THEN
+   kind GENR-CREATES = IF
+      s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row." EXIT
+   THEN
+   SGBAD-SUGGEST$ ;
+: GENR-CLASS$ ( n -- ptr u8 n )
+   {: kind:n :}
+   kind GENR-UNRESOLVED = IF s" fix_generates_row" EXIT THEN
+   kind GENR-CREATES = IF s" delete_generates_row" EXIT THEN
+   BADSIG-CLASS ;
+: GENR-JSON ( n -- )
+   {: kind:n :}
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-GENERATES-ROW" JSTR 44 EMIT1
+   s" repair_class" JKEY kind GENR-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY GENR-TOK-A @ GENR-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   GENR-TOK-A @ GENR-TOK-U @ JTOKEN-FIELDS
+   s" suggestion" JKEY kind GENR-SUGGEST$ JSTR
+   125 EMIT1 ;
+: GENR-DIAG ( n -- )
+   {: kind:n :}
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF kind GENR-JSON ELSE kind GENR-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
+GENERATES-DIAG-INSTALL
 
 ;using

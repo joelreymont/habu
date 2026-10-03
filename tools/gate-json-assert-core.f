@@ -366,6 +366,10 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_generates_row" s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" delete_generates_row" s" This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet."

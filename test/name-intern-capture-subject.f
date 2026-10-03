@@ -1,5 +1,7 @@
 \ One spelling belongs to four distinct declarations. The saved images keep
 \ their effects and source order while later scopes rewind symbol text.
+require lib/tier.f
+
 package NI-ALPHA
 private
 : NiShArEd ( n -- n ) 1+ ;
@@ -81,9 +83,9 @@ TRUSTED: REWIND-ROWS ( -- )
    s" NI-TEMP-C" SYM-PUBLIC s" NIREWIND" SYM-FIND nip ASSERT ;
 
 TRUSTED: DEFINE-DELTA ( -- )
-   1 set-tier
+   1 TIER:SELECT
    s" package NI-DELTA public : NiShArEd ( n -- n ) 4 * ; ;package" evaluate
-   0 set-tier ;
+   0 TIER:SELECT ;
 TRUSTED: DELTA-RUN ( -- n )
    s" 3 NI-DELTA:NISHARED" evaluate ;
 

@@ -131,6 +131,10 @@ variable RX  variable RACC
    a u s" Lreplroute" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lfindused" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
+   \ x12 name the first and second record.
+   a u s" Lfindused-core" LINT-STR=CI if
+      0 5 CL-ADD 6 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 16 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    a u s" Lvralloc" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lfralloc" LINT-STR=CI if 0 14 CL-ADD exit then

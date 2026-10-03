@@ -432,10 +432,35 @@ Three facts decide how a change reaches the fixpoint:
   dictionary, so stage 1 emits and registers the primitive with its
   `PRIM:`/`TRUST` row and builds; stage 2 adds the prefix code that calls it
   and builds again. A one-stage landing dies `E-UNDEFINED` (rc 70) in the host
-  before any build. A `TRUSTED:` bridge turned into a checked call is the same
-  shape: the callee's `PRIM:`/`PPRIM:` row must exist in the host first, or an
-  old host dies at `--load` of the build tool with `ncomp: cannot compile
-  <word>`.
+  before any build; a body the window compiles before its own hook dies in the
+  host's native compiler instead, naming the caller and not the primitive:
+  `ncomp: cannot compile LIVE-BIND`, `uncaught throw code -8579`
+  (`E-NCOMP-ARITY`), rc 67 (measured: the `scope-find` landing's second stage
+  built straight from the stage-1 host, which lacks the primitive). A
+  `TRUSTED:` bridge turned into a checked call is the same shape: the callee's
+  `PRIM:`/`PPRIM:` row must exist in the host first, or an old host dies at
+  `--load` of the build tool with `ncomp: cannot compile <word>`.
+- **Build-prefix source must satisfy the host's checker and the tree's.**
+  `tools/native-build.f` compiles `src/habu/aot-file.f` and its siblings under
+  the host's checker, and the window compiles them again under the tree's, so
+  a checker change that refuses what the old one required needs a form both
+  accept. Measured when a package `DIE` ending in `die` became no-return:
+  `… DIE 0 ;` in a `( -- n )` word is `E-DEAD-CODE` under the new checker and
+  `… DIE ;` a stack mismatch under the old one, while
+  `cond 0= if … DIE then  value ;` certifies under both.
+- **A core-prefix definition the checker cannot judge dies without its cause.**
+  The window compiles `src/core/util.f` through `src/core/layout-valid.f`
+  before its own `src/core/check-hook.f` installs a hook, so
+  `src/compiler/native/compiler.f` `CHECK-PARENT` runs the owner's scan and
+  drops the verdict. A body the scan cannot judge records no effect, and
+  `KEEP-ARITY` stops the build with `ncomp: cannot compile <WORD>` and
+  `uncaught throw code -8579` (`E-NCOMP-ARITY`), rc 67, naming no token.
+  Measured: `: EXP-FWD ( -- n ) EXP-LATER ;  : EXP-LATER ( -- n ) 5 ;`
+  appended to `src/core/util.f` dies exactly so; the same two lines at the top
+  of `src/core/roles.f`, past the hook, die `E-UNDEFINED habu: in exp-fwd:
+  undefined word 'EXP-LATER'`, rc 70. A body with no inferable effect dies the
+  same silent way (`src/core/checker.f` `PE-SPEC-ATOM`). To see the cause,
+  move the definition past `check-hook.f` for one build.
 - **A new `lib/errors.f` code or `src/habu/layout.f` band that `lib/fs.f`
   reads lands through a stage host.** `tools/native-build-core.f` requires
   `lib/fs.f` from the tree, and the host resolves its names against its own

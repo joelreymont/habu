@@ -16,14 +16,16 @@
 \ from an xt to the first `ret` and finds only the current wordlist, and its
 \ output prints one operand per line, which a side-by-side reading cannot use.
 \
-\ This file requires one thing only, for the reason tools/tier-census.f gives:
+\ This file requires two things only, for the reason tools/tier-census.f gives:
 \ the string and formatting libraries are corpus a tier comparison wants to
-\ weigh, and a tool that loaded them for its own use could not. The one require
-\ is src/habu/code-bytes.f, the boundary that turns a record's code address into
-\ bytes. It requires nothing itself, and the only comparison it disturbs is one
-\ whose corpus names that file, which is already loaded by then.
+\ weigh, and a tool that loaded them for its own use could not. The two requires
+\ are src/habu/code-bytes.f, the boundary that turns a record's code address
+\ into bytes, and lib/tier.f, the word that selects the tier. Neither requires
+\ anything, and the only comparison they disturb is one whose corpus names one
+\ of them, which is already loaded by then.
 
 require src/habu/code-bytes.f
+require lib/tier.f
 
 package TIER-DUMP
 private
@@ -35,9 +37,6 @@ private
 420 constant MODE-0644
 
 create PATHZ PATH-CAP 1 + allot
-
-\ `set-tier` is refused inside a plain checked body; one row, nothing else in it.
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : USAGE ( -- )
    s" usage: bin/hb --load tools/tier-dump.f -- <tier> <WORD> <out> <corpus.f>..."
@@ -115,7 +114,7 @@ public
 
 : MAIN ( -- )
    script-argc 4 < if USAGE then
-   0 script-argv$ TIER-ARG SELECT-TIER
+   0 script-argv$ TIER-ARG TIER:SELECT
    LOAD-CORPUS
    1 script-argv$ SPAN {: code:ptr bytes :}
    2 script-argv$ code bytes WRITE-SPAN ;

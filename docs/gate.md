@@ -12,8 +12,10 @@ HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
   $HOST --load tools/native-build.f -- $OUT
 ```
 
-Put that candidate at the private tree's `bin/hb`, then run the native registry
-from that tree:
+Copy that candidate and its matching `hb.names` into the private tree's `bin/`
+as regular files, then run the native registry from that tree. The fixpoint
+fixtures copy `bin/hb` through `TREE-COPY:FILE`, which refuses a symlink whose
+target is outside the tree (`E-FS-PATH`).
 
 ```sh
 bin/hb --load test/run.f

@@ -1,6 +1,6 @@
 \ xt-cell-test.f - xt<effect> storage cells (dot habu-typed-xt-storage-ddad4af8).
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\   src/habu/verify-source.f test/checker-assert.f test/xt-cell-test.f
+\   test/checker-assert.f test/xt-cell-test.f
 \
 \ Pins the xt<effect> storage-cell capability: `TYPED-VARIABLE NAME [ in -- out ]`
 \ declares a persistent monomorphic code cell whose @ recovers xt<E> as a T-QUOT.
@@ -15,7 +15,6 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/fs.f
-require src/habu/verify-source.f
 require test/checker-assert.f
 
 package XT-CELL-TEST
@@ -140,11 +139,12 @@ create XC-DBUF 8192 allot
    DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
 : XC-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
 
-: XC-REG-RAW ( -- )
-   s" variable XCRAW" VERIFY:SOURCE-BUF-IN-SCOPE ;
+\ The raw cell and the defer below are compiled here, because a candidate binds
+\ the record the compiler binds: a name only the source pre-scan registered has
+\ no engine record, and a live candidate cannot name it.
+variable XCRAW
 
 : XC-SECTION-STAGE3 ( -- )
-   XC-REG-RAW
    \ the raw-variable launder now rejects, named E-EXEC-OPAQUE-XT (was -1 before the flip)
    s" L1 ( -- ) XCRAW @ execute" XC-CODE<
    s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
@@ -158,11 +158,9 @@ create XC-DBUF 8192 allot
 \ rejected with the same E-EXEC-OPAQUE-XT code, but the reason names 'catch'. The
 \ typed catch routes (direct tick, quotation parameter, typed xt cell, defer) fit-
 \ check the caught row and stay green.
-: XC-REG-CATCH ( -- )
-   s" defer XC-DF ( n -- n )" VERIFY:SOURCE-BUF-IN-SCOPE ;
+defer XC-DF ( n -- n )
 
 : XC-SECTION-CATCH ( -- )
-   XC-REG-CATCH
    \ the raw-variable catch launder rejects, named E-EXEC-OPAQUE-XT (catch sibling of L1)
    s" LC ( -- n ) XCRAW @ catch" XC-CODE<
    s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?

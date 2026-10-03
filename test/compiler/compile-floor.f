@@ -40,6 +40,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/argv.f
 require lib/test/outcome.f
+require lib/tier.f
 
 package COMPILE-FLOOR-TEST
 
@@ -133,8 +134,6 @@ variable RC     variable EXITED
 variable ORIG-XT
 variable PRIOR-TIER
 
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
-
 \ This file never INSTALLS a dispatch; it only reads the cell to see whether the
 \ tool put the original back, and `=` has no row over quotation terms. So the
 \ test's accessor declares the cell as the machine word it compares, while the
@@ -175,7 +174,7 @@ private
 \ reach one, with `duplicate definition: T1`.
 : TEST-RESTORES-AFTER-SUCCESS ( -- )
    s" a completed in-process run gives the dispatch and the tier back" T-LABEL
-   1 SELECT-TIER
+   1 TIER:SELECT
    tier@ PRIOR-TIER !
    ARGV:MOCK-CLEAR
    CATCH-MAIN 0 T=
@@ -183,7 +182,7 @@ private
 
 : TEST-RESTORES-AFTER-REFUSAL ( -- )
    s" a refused in-process run gives both back on the way out" T-LABEL
-   1 SELECT-TIER
+   1 TIER:SELECT
    tier@ PRIOR-TIER !
    ARGV:MOCK-CLEAR  s" 0" ARGV:MOCK+
    CATCH-MAIN E-FLOOR-EXCEEDED T=
@@ -198,7 +197,7 @@ public
    TEST-RATCHET-PASSES
    TEST-RESTORES-AFTER-SUCCESS
    TEST-RESTORES-AFTER-REFUSAL
-   0 SELECT-TIER
+   0 TIER:SELECT
    ARGV:USE-SCRIPT
    T-REPORT
    s" compile-floor: ok" type cr ;

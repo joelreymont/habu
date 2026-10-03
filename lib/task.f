@@ -1633,6 +1633,10 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \ private copy of it. The calls are qualified rather than imported: a bare RESET
 \ under `using CODEGEN` collides with the global RESET (E-USING-SHADOW-GLOBAL),
 \ which is the collision docs/forth.md names as the case for qualifying.
+\
+\ The text is the only statement of the slot word's effect, and the source
+\ pre-verifier never runs it, so the `generates:` row after +USER states it for
+\ checkers: a source that declares a slot and uses it checks before it runs.
 $60 constant SLOT-GEN-CAP
 SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 
@@ -1651,6 +1655,7 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
    s"  + ;" SLOT-GEN CODEGEN:APPEND-STRING
    SLOT-GEN CODEGEN:CONTENTS INCLUDE-EVALUATE
    next ;
+generates: +USER ( -- ptr n )
 
 : HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;

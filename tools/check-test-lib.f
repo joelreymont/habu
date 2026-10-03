@@ -44,6 +44,9 @@ package CHECK-TEST
 using CHECK
 private
 
+7153 constant GENR-RC
+7141 constant SHADOW-RC
+
 $4000 constant BUF-CAP
 $100001 constant OVERCAP-SOURCE-LEN
 128 constant LIST-ENTRY-CAP
@@ -1238,7 +1241,10 @@ variable LONG-J
 \ certifies it, but only after the rendering statement and only in the wordlist
 \ that statement ran in; anything else unknown is still refused by the
 \ pre-pass. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
-\ for TASK:+USER, the renderer lib/crypto/evp.f uses.
+\ for TASK:+USER, the renderer lib/crypto/evp.f uses. The pre-pass checks
+\ FUNCTION:'s word against its declaration group and a TASK:+USER slot
+\ against the `generates:` row lib/task.f states; CMD:COMMAND's row declares
+\ only NAME, so NAME#VEC and NAME#BUF are left to the run.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
    s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
@@ -1304,6 +1310,17 @@ variable LONG-J
 : RENDER-CALLER$ ( -- ptr u8 n )
    s" : CKR-USE ( -- n ) CKR-SEVEN ; : CKR-CALLER ( -- ) CKR-USE ;" CKR-AFTER$ ;
 
+: RENDER-CMD$ ( ptr u8 n -- ptr u8 n )
+   {: use:ptr useu:n :}
+   SB-RESET s" require lib/process-command.f CMD:COMMAND CKR-CMD " SB-APPEND
+   use useu SB-APPEND SB$ ;
+
+: RENDER-CMD-VEC$ ( -- ptr u8 n )
+   s" : CKR-VEC ( -- ptr ptr u8 ) CKR-CMD#VEC ;" RENDER-CMD$ ;
+
+: RENDER-CMD-BUF$ ( -- ptr u8 n )
+   s" : CKR-BUF ( -- ) CKR-CMD#BUF drop ;" RENDER-CMD$ ;
+
 : EXPECT-PREVERIFY-REFUSED ( n n n -- )
    70 T= {: outu:n erru:n :}
    outu 0 T=
@@ -1351,6 +1368,12 @@ variable LONG-J
    outc 0 T=
    CAP-ERR errc s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR errc s" ckr-caller" CONTAINS? TTRUE ;
+
+: TEST-RENDERED-COMMAND ( -- )
+   RENDER-CMD-VEC$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-CMD-BUF$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-CMD-VEC$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
+   RENDER-CMD-BUF$ DIRECT-ALL-STDIN EXPECT-ACCEPTED ;
 
 \ A definer's created effect is its clause's declaration, so CKR-X is learned
 \ when the clause or the definer's own body names a product only the run can
@@ -5333,6 +5356,36 @@ variable LC-CANON-U
    label labelu T-LABEL rc want T=
    erru label labelu UAMB-PACKET ;
 
+\ bin/hb --load compiles the source, and the checker binds a body's token
+\ through the engine's lookup (checker.f LIVE-BIND), not through the replay
+\ check.f's packet comes from. With no global of the tail the engine's own
+\ lookup refuses the token first (rc 94); a global defined under both usings
+\ binds, and the checker refuses the reference as ambiguous, naming both
+\ packages there too, at tier 0 and at tier 1.
+: UAMB-LOAD$ ( n -- ptr u8 n )
+   {: tier:n :}
+   SB-RESET
+   s" package CKT-UAMB-A public : CKT-UAMB-W ( n -- ) drop ; ;package" SB-APPEND
+   $0a SB-APPEND-C
+   s" package CKT-UAMB-B public : CKT-UAMB-W ( n -- ) drop ; ;package" SB-APPEND
+   $0a SB-APPEND-C
+   tier 0 <> IF s" 1 set-tier" SB-APPEND $0a SB-APPEND-C THEN
+   s" using CKT-UAMB-A using CKT-UAMB-B" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-UAMB-W ( n -- ) drop ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-UAMB-USE ( -- ) 1 CKT-UAMB-W ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;using ;using" SB-APPEND
+   SB$ ;
+
+: UAMB-LOAD-CASE ( n ptr u8 n -- )
+   {: tier:n label:ptr labelu:n :}
+   tier UAMB-LOAD$ HB-LOAD-SRC rot drop {: erru:n rc:n :}
+   label labelu T-LABEL rc 67 T=
+   label labelu T-LABEL
+   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE ;
+
 : TEST-USING-AMBIGUOUS ( -- )
    SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
    CHECK-ARGV-START UAMB-RUN 67 s" using-ambiguous: plain" UAMB-JSON-CASE
@@ -5348,7 +5401,9 @@ variable LC-CANON-U
    s" using-ambiguous: --all-errors" T-LABEL
    CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE
    s" using-ambiguous: --all-errors" T-LABEL
-   CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+   CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" using-ambiguous: --load" UAMB-LOAD-CASE
+   1 s" using-ambiguous: --load at tier 1" UAMB-LOAD-CASE ;
 
 \ A source checked with the files it loads; a case list of its own keeps
 \ TEST-MAIN under the 8000-byte body limit.
@@ -5439,6 +5494,194 @@ variable LC-CANON-U
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
    s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN ;
 
+\ --- a definer that writes its word as text: the generates: row --------------
+\ CKT-GMAKE builds `: NAME ( -- n ) OFF ;` and evaluates it, the shape of
+\ lib/process-command.f COMMAND, so only its `generates:` row tells the
+\ preverify what it makes. The row is a claim: the preverify believes it, and
+\ the run stage, which compiles the generated text, holds it to the real word.
+: GENR-PRELUDE ( -- )
+   SB-RESET
+   s\" require lib/codegen.f\n$60 CODEGEN:BUFFER CKT-GTEXT\n" SB-APPEND
+   s\" : CKT-GMAKE ( n -- )\n   {: off:n :}\n   parse-name\n   {: a:ptr u:n :}\n" SB-APPEND
+   s\"    CKT-GTEXT CODEGEN:RESET  s\q : \q CKT-GTEXT CODEGEN:APPEND-STRING\n" SB-APPEND
+   s\"    a u CKT-GTEXT CODEGEN:APPEND-STRING  s\q  ( -- n ) \q CKT-GTEXT CODEGEN:APPEND-STRING\n" SB-APPEND
+   s\"    off CKT-GTEXT CODEGEN:APPEND-DECIMAL  s\q  ;\q CKT-GTEXT CODEGEN:APPEND-STRING\n" SB-APPEND
+   s\"    CKT-GTEXT CODEGEN:CONTENTS INCLUDE-EVALUATE ;\n" SB-APPEND ;
+
+\ The created word is known, so the undefined word named is the real one. The
+\ use sits outside the package section the statement marks: inside it, the mark
+\ would leave the whole definition to the run, row or no row.
+: TEST-GENR-UNDEFINED ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- n )\npackage CKT-GP\npublic\n7 CKT-GMAKE CKT-GSEVEN\n;package\n" SB-APPEND
+   s\" : CKT-GUSE ( -- n ) CKT-GP:CKT-GSEVEN CKT-GNOPE + ;\n" SB-APPEND
+   SB$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"CKT-GNOPE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"CKT-GP:CKT-GSEVEN\"" CONTAINS? TFALSE ;
+
+\ A lying row is believed: callers that use the word as its text defines it are
+\ refused before the run ...
+: TEST-GENR-LIE-CONTRADICTED ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- ptr n )\n7 CKT-GMAKE CKT-GSEVEN\n: CKT-GUSE ( -- n ) CKT-GSEVEN 1 + ;\n" SB-APPEND
+   SB$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" preverify" CONTAINS? TTRUE ;
+
+\ ... and callers that agree with the lie pass the preverify and are refused
+\ by the run stage against the word the text really defines.
+: TEST-GENR-LIE-AGREED ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- ptr n )\n7 CKT-GMAKE CKT-GSEVEN\n: CKT-GUSE ( -- ptr n ) CKT-GSEVEN ;\n" SB-APPEND
+   SB$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" at 'CKT-GSEVEN' expected: ptr n actual: n" CONTAINS? TTRUE
+   CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
+
+\ A row the preverify cannot keep is refused under its own code, saying why. The
+\ code arrives raw, as TEST-DECL-OVER-CAP's does; the command line exits 67.
+: GENR-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n why:ptr whyu:n :}
+   GENR-PRELUDE
+   src srcu SB-APPEND
+   SB$ DIRECT-STDIN GENR-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
+   CAP-ERR erru s" E-GENERATES-ROW" CONTAINS? TTRUE
+   CAP-ERR erru why whyu CONTAINS? TTRUE ;
+
+: TEST-GENR-ON-DOES ( -- )
+   s\" : CKT-GDD ( n -- ) create , does> ( -- ptr n ) ;\ngenerates: CKT-GDD ( -- ptr n )\n"
+   s" already states what it makes" GENR-REFUSED ;
+
+: TEST-GENR-BEFORE ( -- )
+   s\" generates: CKT-GLATE ( -- n )\n: CKT-GLATE ( n -- ) CKT-GMAKE ;\n"
+   s" names no word here" GENR-REFUSED ;
+
+: TEST-GENR-BADSIG ( -- )
+   s\" generates: CKT-GMAKE ( -- i32 )\n"
+   s" Use a known stack-signature type" GENR-REFUSED ;
+
+\ A row whose effect does not parse carries the signature refusal's own class.
+: TEST-GENR-BADSIG-JSON ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- i32 )\n" SB-APPEND
+   SB$ DIRECT-JSON-STDIN GENR-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-GENERATES-ROW" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"repair_class\":\"fix_signature_type\"" CONTAINS? TTRUE ;
+
+\ Under --all-errors a refused row is one finding among the file's others.
+: TEST-GENR-ALL-ERRORS ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- i32 )\n: CKT-GBAD ( -- n n ) 1 ;\n" SB-APPEND
+   SB$ ALL-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-GENERATES-ROW" CONTAINS? TTRUE
+   CAP-ERR erru s" ckt-gbad" CONTAINS? TTRUE ;
+
+\ A support file's row is replayed ahead of the file that uses it once per
+\ scope, so no replay meets the row an earlier one recorded.
+: TEST-GENR-CLOSURE ( -- )
+   GENR-PRELUDE
+   s\" generates: CKT-GMAKE ( -- n )\n" SB-APPEND
+   SUP$ SB$ WRITE-ALL
+   USE$ s\" 7 CKT-GMAKE CKT-GSEVEN\n: CKT-GUSE ( -- n ) CKT-GSEVEN ;\n" WRITE-ALL
+   SUP$ USE$ CLI-ALL-LIST 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+\ A name the definer never makes passes the preverify on the row's word and is
+\ undefined when the source really runs.
+: TEST-GENR-NEVER-MADE ( -- )
+   SB-RESET
+   s\" : CKT-GNOP ( n -- ) drop parse-name 2drop ;\ngenerates: CKT-GNOP ( -- n )\n" SB-APPEND
+   s\" 7 CKT-GNOP CKT-GHOLLOW\n: CKT-GUSE ( -- n ) CKT-GHOLLOW ;\n" SB-APPEND
+   SB$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED: CKT-GHOLLOW" CONTAINS? TTRUE
+   CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
+
+\ A definer name the used scopes refuse is refused by the preverify as a use of
+\ it is, with that refusal's own code and repair class: here a used public
+\ shadows a global, which the load refuses as E-USING-SHADOW-GLOBAL.
+: TEST-GENR-SHADOW ( -- )
+   SB-RESET
+   s\" : CKT-GW ( n -- ) drop ;\npackage CKT-GP\npublic\n: CKT-GW ( n -- ) drop parse-name 2drop ;\n;package\n" SB-APPEND
+   s\" using CKT-GP\ngenerates: CKT-GW ( -- n )\n;using\n" SB-APPEND
+   SB$ DIRECT-STDIN SHADOW-RC T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
+   CAP-ERR erru s" E-USING-SHADOW-GLOBAL" CONTAINS? TTRUE
+   CAP-ERR erru s" disambiguate_using_shadow" CONTAINS? TTRUE ;
+
+\ Every mode reads a row as the load does, so each takes the row the load takes
+\ and refuses the row it refuses: the load, the check, and the check that stops
+\ before the run. Each runs in a process of its own, as a pre-pass that dies
+\ ends its process. The definer makes nothing, so the row is all a source says.
+: GENR-MODE ( n n n bool -- )
+   {: outu:n erru:n rc:n taken:bool :}
+   taken IF rc 0 T= ELSE rc 0 T<> THEN ;
+
+: GENR-MODES ( ptr u8 n bool -- )
+   {: row:ptr rowu:n taken:bool :}
+   SB-RESET
+   s\" : CKT-GNOP ( n -- ) drop parse-name 2drop ;\n" SB-APPEND
+   row rowu SB-APPEND
+   s" generates: row under --load" T-LABEL
+   SB$ HB-LOAD-SRC taken GENR-MODE
+   s" generates: row under check.f" T-LABEL
+   SB$ CLI-STDIN taken GENR-MODE
+   s" generates: row under check.f --verify-only" T-LABEL
+   CHECK-ARGV-START
+   s" --verify-only" CHECK-ARG+
+   s" --stdin-path" CHECK-ARG+
+   s" generates-row.f" CHECK-ARG+
+   SB$ CHECK-STDIN-CAPTURE taken GENR-MODE ;
+
+\ `undefine` retires the definer's row, so the definer defined again states
+\ what it makes afresh.
+: TEST-GENR-UNDEFINE ( -- )
+   s\" generates: CKT-GNOP ( -- n )\nundefine CKT-GNOP\n: CKT-GNOP ( n -- ) drop parse-name 2drop ;\ngenerates: CKT-GNOP ( -- ptr n )\n"
+   0 0= GENR-MODES ;
+
+\ The effect is read as a definition head's signature is: the first `)` byte
+\ closes it, whatever it is glued to or followed by ...
+: TEST-GENR-GLUED-CLOSE ( -- )
+   s\" generates: CKT-GNOP ( -- n)\n" 0 0= GENR-MODES ;
+
+: TEST-GENR-AFTER-CLOSE ( -- )
+   s\" generates: CKT-GNOP ( -- n )7 drop\n" 0 0= GENR-MODES ;
+
+\ ... a `(` opens it glued to a token ...
+: TEST-GENR-GLUED-OPEN ( -- )
+   s\" generates: CKT-GNOP (-- n )\n" 0 0= GENR-MODES ;
+
+\ ... a line feed inside it stays in the token it ends, which no type names ...
+: TEST-GENR-EFFECT-LINES ( -- )
+   s\" generates: CKT-GNOP ( -- n\n)\n" 0 0= 0= GENR-MODES ;
+
+\ ... and the name is the next token, a comment opener too, so no effect follows.
+: TEST-GENR-COMMENT-NAME ( -- )
+   s\" generates: \\ the definer\nCKT-GNOP ( -- n )\n" 0 0= 0= GENR-MODES ;
+
+\ The pre-pass keeps room for every effect the engine takes: here 76 bytes.
+: TEST-GENR-LONG-EFFECT ( -- )
+   s\" generates: CKT-GNOP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n ptr u8 n ptr u8 n )\n"
+   0 0= GENR-MODES ;
+
 : TEST-MAIN ( -- )
    T-RESET
    s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
@@ -5450,6 +5693,7 @@ variable LC-CANON-U
    s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
    s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
    s" check/rendered-product" [: TEST-RENDERED-PRODUCT ;] CASE-RUN
+   s" check/rendered-command" [: TEST-RENDERED-COMMAND ;] CASE-RUN
    s" check/rendered-does" [: TEST-RENDERED-DOES ;] CASE-RUN
    s" check/refused-clause" [: TEST-REFUSED-CLAUSE ;] CASE-RUN
    s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN
@@ -5541,6 +5785,24 @@ variable LC-CANON-U
    s" check/image-tool-sources" [: TEST-IMAGE-TOOL-SOURCES ;] CASE-RUN
    s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
    s" check/file-load-context" [: TEST-LOAD-CONTEXT ;] CASE-RUN
+   s" check/generates-undefined" [: TEST-GENR-UNDEFINED ;] CASE-RUN
+   s" check/generates-lie-contradicted" [: TEST-GENR-LIE-CONTRADICTED ;] CASE-RUN
+   s" check/generates-lie-agreed" [: TEST-GENR-LIE-AGREED ;] CASE-RUN
+   s" check/generates-on-does" [: TEST-GENR-ON-DOES ;] CASE-RUN
+   s" check/generates-before" [: TEST-GENR-BEFORE ;] CASE-RUN
+   s" check/generates-badsig" [: TEST-GENR-BADSIG ;] CASE-RUN
+   s" check/generates-badsig-json" [: TEST-GENR-BADSIG-JSON ;] CASE-RUN
+   s" check/generates-all-errors" [: TEST-GENR-ALL-ERRORS ;] CASE-RUN
+   s" check/generates-closure" [: TEST-GENR-CLOSURE ;] CASE-RUN
+   s" check/generates-never-made" [: TEST-GENR-NEVER-MADE ;] CASE-RUN
+   s" check/generates-shadow" [: TEST-GENR-SHADOW ;] CASE-RUN
+   s" check/generates-undefine" [: TEST-GENR-UNDEFINE ;] CASE-RUN
+   s" check/generates-glued-close" [: TEST-GENR-GLUED-CLOSE ;] CASE-RUN
+   s" check/generates-after-close" [: TEST-GENR-AFTER-CLOSE ;] CASE-RUN
+   s" check/generates-glued-open" [: TEST-GENR-GLUED-OPEN ;] CASE-RUN
+   s" check/generates-effect-lines" [: TEST-GENR-EFFECT-LINES ;] CASE-RUN
+   s" check/generates-comment-name" [: TEST-GENR-COMMENT-NAME ;] CASE-RUN
+   s" check/generates-long-effect" [: TEST-GENR-LONG-EFFECT ;] CASE-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

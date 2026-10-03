@@ -704,8 +704,9 @@ WHITEBOX-SUITE whitebox-engine
    test/whitebox-engine-suite.f
 ;SUITE
 
-\ PRIM: / PPRIM: / CLOSE-PRIVATE are sealed in the product image, which is why
-\ this suite drove its fixture through a from-source child window.
+\ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
+\ sealed in the product image, which is why this suite drives its fixture
+\ through a from-source child window that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
@@ -984,6 +985,17 @@ SUITE reopen-binding-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/reopen-binding.f
+;SUITE
+
+SUITE undefine-binding
+   test/undefine-binding.f
+;SUITE
+
+SUITE undefine-binding-aot
+   lib/test.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/undefine-binding.f
 ;SUITE
 
 SUITE compiler-native-dictionary-record

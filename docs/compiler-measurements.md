@@ -479,14 +479,8 @@ file, arming the clock, and loading real source through the engine's own
 `included` / `required`:
 
 ```forth
-package PFDRV
-private
-TRUSTED: SET ( n -- ) set-tier ;
-public
-: SELECT1 ( -- ) 1 SET ;
-;package
-
-PFDRV:SELECT1
+require lib/tier.f
+1 TIER:SELECT
 250 prof-rate
 0 prof-on
 s" /tmp/gen-trivial.f" included      \ or the corpus `required` one file at a time

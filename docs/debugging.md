@@ -554,27 +554,42 @@ this die", and they are not interchangeable:
   still anywhere near the per-token path, and they only ever fire from the
   interpreter — a stripped application has no interpreter to name the token,
   so the same underflow there is a guard-page fault instead (below).
-- `hb: stack bounds exceeded (data)` / `(return)` / `(loop)` (exit 102,
-  `ENGINE-ERROR:STACK-BOUNDS`) is a guard-page fault: a push past the capacity
-  or a read below the base takes SIGSEGV/SIGBUS, and `src/habu/crash.f` reads
-  the faulting address out of the signal context and classifies which of the
-  three named stacks it landed in — the parenthetical names the stack, not
-  the operation. A descriptor counts as a stack when its base is a cell
-  boundary and its top a page boundary; the named ranges are the page at the
-  top and the page under the base rounded down to a page. `evaluate-closed`
-  raises the data base to the caller's depth and keeps the top, so an overflow
-  inside a closed text is named (`test/compiler/native-eval.f` OVERFLOW), and
-  so is a read past the mapping's base while the caller holds less than a page
-  of cells: `7 s" 1 ' W3 execute" evaluate-closed` with `W3 ( n n n -- n )`
-  exits 102. A jump into the caller's cells under the floor faults on the
-  fetch, not a bound, and gets the register dump, exit 134, as at top level
-  (CALLER-JUMP); while the caller holds a page or more of cells, such a jump
-  into the page under the rounded floor is still named `(data)`.
-  This is what a per-transfer bounds check used to report generically; the
-  message and exit code are unchanged from before guard pages, only the
-  `(name)` suffix is new, so match it as a prefix (`hb: stack bounds exceeded`)
-  rather than the whole line if the specific stack does not matter to the
-  assertion.
+- A guard-page fault: a push past the capacity or a read below the base takes
+  SIGSEGV/SIGBUS, and `src/habu/crash.f` reads the faulting address out of the
+  signal context and classifies which of the three named stacks it landed in.
+  One kind of fault is thrown, not exited: a load or store in the data stack's
+  low guard page by the engine's own code or the JIT region, such as compiled
+  code reached through `execute`, `catch`, `finally` or a quotation xt taking
+  more cells than the stack holds. `C-CRASH-DATA-RECOVER` resumes the thread
+  at `habu2.f` LFLOORREC, which writes `hb: interpret stack underdepth:
+  <token>` with the token the interpreter was running and throws 70: a `catch`
+  receives it with the stack its frame saved, `evaluate` unwinds its frames,
+  the REPL recovers the line, and uncaught it exits 70. `1 ' W execute` with
+  `W ( n n -- n )` and one cell is `hb: interpret stack underdepth: execute`,
+  rc 70. `evaluate-closed` runs each text on a guarded data stack of its own,
+  so the cell under a text's floor is that stack's low guard page:
+  `5 s" 1 ' W execute" evaluate-closed` throws 70 and the caller's 5 is never
+  read (`test/compiler/native-eval.f` XT-UNDER, TOP-LEVEL).
+  A descriptor counts as a stack when its base is a cell boundary and its top
+  a page boundary, and its low guard is the page under the base rounded down
+  to a page: `source-unit-run` raises the data base to the caller's cursor
+  inside the caller's mapping, so a callback's read of the caller's cells under
+  that floor does not fault, while an overflow is named as anywhere else.
+  Every other guard-page fault is `hb: stack bounds exceeded (data)` /
+  `(return)` / `(loop)` (exit 102, `ENGINE-ERROR:STACK-BOUNDS`): an overflow
+  (an overflow inside a closed text too, OVERFLOW), a jump into a guard page
+  (the instruction fetch faults and nothing was read, FLOOR-JUMP), and the
+  return and loop stacks. The handler never resumes a fault whose pc lies in
+  foreign code; on macOS arm64 such a fault on a guard page currently hangs
+  in the handler instead of exiting (dot habu-report-a-guard-ae3318e1). An access
+  below the base also keeps exit 102 where no throw entry exists: on a task's
+  own stack (a task region's `FLOORREC-CELL` reads zero), in a stripped AOT
+  image and on the x86-64 engine. The parenthetical names the stack, not the
+  operation. This is what a per-transfer bounds check used to report
+  generically; the message and exit code are unchanged from before guard
+  pages, only the `(name)` suffix is new, so match it as a prefix
+  (`hb: stack bounds exceeded`) rather than the whole line if the specific
+  stack does not matter to the assertion.
 - `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
   the same number for the engine emitters, and `test/stack-guard.f` proves
   the two agree) is run-in-stack's own admission check
@@ -611,9 +626,10 @@ this die", and they are not interchangeable:
   stack (`: FOO2 ( n -- n n ) dup ;`) warns once and then still runs FOO2:
   since FOO2 is compiled code invoked through `execute`, not a token the
   interpreter reads directly, its `dup` reading below the base faults the
-  data stack's guard page — `hb: stack bounds exceeded (data)`, rc 102 — not
-  `E-UNDERFLOW`. A bare `drop` on an empty stack, entered directly at the top
-  level or through `evaluate`, ends in `hb: interpret stack underdepth: drop`
+  data stack's guard page, which is thrown as `hb: interpret stack
+  underdepth: execute`, rc 70 — not `E-UNDERFLOW`. A bare `drop` on an empty
+  stack, entered directly at the top level or through `evaluate`, ends in
+  `hb: interpret stack underdepth: drop`
   rc 70, because its record states min-in 1 and the band refuses it before
   the body runs; a `TRUSTED: ( -- )` word that drops passes the band and ends
   in `E-UNDERFLOW` at the floor (see `test/xt-effect-test.f` XE-TIER1,

@@ -13,9 +13,9 @@
 \ warning; p3 then runs to rc 0, and p1 runs FOO2's `dup` -- compiled code, which
 \ carries no per-transfer bounds check under guard pages -- so the read below the
 \ base faults the data stack's guard page before the interpreter's own depth
-\ floor can see it: the crash handler's named "(data)" exit, rc 102, not
-\ E-UNDERFLOW/70 (that diagnostic stays rc 70, but only for a top-level word
-\ interpreted directly). Tier-2 (docs §4 Tier 2): p1, p2 `0 0 catch` (non-xt to catch,
+\ floor can see it, and the crash handler turns that fault into the underdepth
+\ throw: `hb: interpret stack underdepth: execute`, rc 70, never the "(data)"
+\ bounds exit. Tier-2 (docs §4 Tier 2): p1, p2 `0 0 catch` (non-xt to catch,
 \ which crashes rc 134 at tier-1), and p3 each REJECT pre-execution - one named
 \ diagnostic, clean exit rc 70, no crash. p2 proves the crash is eliminated.
 \ Negatives (the four zero-warning guards, quiet at BOTH tiers - the no-false-reject
@@ -52,7 +52,6 @@ package TOP-ROW-WARN-TEST
 1 constant TW-TIER1                      \ child default: warn only
 2 constant TW-TIER2                      \ child HABU_TOP_TIER=2: reject pre-execution
 70 constant TW-REJECT-RC                 \ clean rc-70 reject (RC-REJECT)
-102 constant TW-STACK-BOUNDS-RC          \ guard-page fault (ENGINE-ERROR:STACK-BOUNDS)
 
 variable TW-ROOT-U
 variable TW-CHILD-U
@@ -202,9 +201,10 @@ variable TW-CNT
 : TW-POSITIVES ( -- )                    \ tier-1: warn, then run (the guard page faults for real)
    s" tier-1 p1 ' FOO2 execute emits exactly one xt-underflow warning" T-LABEL
    TW-P1$ 1 TW-ASSERT-WARNS
-   s" tier-1 p1's dup faults the data-stack guard page (rc 102)" T-LABEL
-   TW-EXITED @ TTRUE  TW-RC @ TW-STACK-BOUNDS-RC T=
-   TW-ERR$ s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE
+   s" tier-1 p1's dup below the base throws the underdepth reject (rc 70)" T-LABEL
+   TW-EXITED @ TTRUE  TW-RC @ TW-REJECT-RC T=
+   TW-ERR$ s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   TW-ERR$ s" stack bounds exceeded" CONTAINS? TFALSE
    s" tier-1 p3 byte pointer into a scalar consumer emits exactly one warning" T-LABEL
    TW-P3$ 1 TW-ASSERT-WARNS
    s" tier-1 p3 leaves rc 0 (execution unchanged)" T-LABEL

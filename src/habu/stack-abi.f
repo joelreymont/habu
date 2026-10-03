@@ -6,7 +6,9 @@
 \ one inaccessible page below it, the capacity itself, one inaccessible page
 \ above it. A push past the capacity or a read below the base therefore FAULTS,
 \ and src/habu/crash.f turns that fault into `hb: stack bounds exceeded (<which>)`
-\ with the ENGINE-ERROR:STACK-BOUNDS exit. That is what replaced the
+\ with the ENGINE-ERROR:STACK-BOUNDS exit -- except a data-stack access below
+\ the base by engine or compiled code, which it throws as the underdepth reject
+\ (crash.f ONE FAULT IS NOT AN EXIT). That is what replaced the
 \ per-transfer bounds check the engine used to run at every push and pop: the
 \ capacity is enforced by the MMU, so compiled code carries no guard at all.
 \
@@ -66,6 +68,13 @@ $50 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-$130 constant EVAL-BYTES   \ layout.f EVAL-FRAME:PEND at $120 is the frame's last field, then padding to 16 bytes
+\ $90..$128 are layout.f's: EVAL-INB, EVAL-FRAME:USE-FLOOR, the USE-MAX cells
+\ of EVAL-FRAME:USE-WIDS and EVAL-FRAME:PEND at $120. $128 is held for the
+\ frame's saved next wordlist id (WIDN).
+\ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
+\ return and the throw recovery give back to the pool; 0 for evaluate. $138
+\ pads the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
+$130 constant EVAL-SEG
+$140 constant EVAL-BYTES
 
 ;package

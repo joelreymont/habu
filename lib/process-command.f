@@ -401,10 +401,13 @@ public
 \    NAME#BUF NAME#VEC CMD:BIND
 \
 \ The source pre-pass never sees the names this renders: it reads the text
-\ without running INCLUDE-EVALUATE. It learns that COMMAND renders, so a later
-\ definition naming NAME, NAME#VEC or NAME#BUF in the same wordlist is left to
-\ tools/check.f's run, which certifies it (docs/forth.md, the INCLUDE-EVALUATE
-\ rule); `tools/check.f -- lib/process-command-test.f` passes.
+\ without running INCLUDE-EVALUATE. The `generates:` row after COMMAND states
+\ NAME's effect, so a later mention of NAME checks against the row, and the run
+\ holds the row to the word the text really defines. No row states NAME#VEC or
+\ NAME#BUF: the pre-pass learns that COMMAND renders, so a later definition
+\ naming either in the same wordlist is left to tools/check.f's run, which
+\ certifies it (docs/forth.md, the INCLUDE-EVALUATE rule);
+\ `tools/check.f -- lib/process-command-test.f` passes.
 : COMMAND ( -- )
    COMMAND-NAME {: name:ptr nameu:n :}
    GEN CODEGEN:RESET
@@ -422,6 +425,7 @@ public
    name nameu GEN+
    s" #VEC CMD:BIND" GEN+
    GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
+generates: COMMAND ( -- ptr ptr u8 )
 
 ;package
 

@@ -93,8 +93,9 @@ $340000000 constant DATA-VA
 19 constant XDS  31 constant SP
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 \ crash.fs's guard-page classification reads STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
-\ (below), so it is required after that block, not immediately here -- see the
-\ require crash.fs statement following STACK-ABI:EVAL-BYTES.
+\ and the header cells RBASE-CELL, FLOORREC-CELL and CODE-END-CELL (below), so it
+\ is required after them, not immediately here -- see the require crash.fs
+\ statement following CODE-END-CELL.
 
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE-PROF-CNT-BYTES)
@@ -190,7 +191,8 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$130 constant STACK-ABI:EVAL-BYTES
+$130 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below) and the $128 slot held for WIDN
+$140 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself
@@ -200,10 +202,6 @@ $130 constant STACK-ABI:EVAL-BYTES
 $678 constant SIGNAL-ABI:STUB-CELL
 $680 constant SIGNAL-ABI:FD-PTR-CELL
 $688 constant SIGNAL-ABI:FD-CELL
-
-require crash.fs           \ in-binary crash handler + the signal stub;
-                            \ needs STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
-                            \ and the SIGNAL-ABI: block above
 
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
@@ -294,6 +292,13 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
+$2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
+$2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
+$2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+
+require crash.fs           \ in-binary crash handler + the signal stub; needs
+                            \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
+                            \ SIGNAL-ABI: block, RBASE-CELL and the cells above
 $5000 constant TXN-STATE-OFF
 $10000 constant PROT-PAGE-MAX \ maximum supported arm64 page granule (DGX/Jetson Linux: 64 KiB)
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
@@ -617,6 +622,10 @@ variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
+variable LFLOORREC  variable LFLOORMSG
+variable LSRCENDMSG
+: SRCENDMSG$ ( -- a u ) S\" hb: source ended inside definition\n" ;   \ EMIT-DEF-SOURCE-END's line
+: FLOORMSG$ ( -- a u ) s" hb: interpret stack underdepth: " ;   \ LFLOORREC's line: the token and a newline follow
 variable LEVALREC
 variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
@@ -636,7 +645,7 @@ variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDO
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME variable LKEYNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWEXPORT
-variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LSCOPEREC
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
 variable LSIGPTRA variable LSIGA   \ the two effects a raw-storage definer publishes
 variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
@@ -975,9 +984,10 @@ variable BAND-IX
 \ EVALERR-CELL, and makes the region RX before it delivers to the handler.
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
-\ x10: the frame records the data-stack extent in force, and the clean exit
-\ returns to x30, B-EVAL's caller or B-EVAL-CLOSED's continuation. Mirrors
-\ src/habu/habu1.f EVAL-ENTER.
+\ x10 and x13 the data stack the frame owns (0 for evaluate): the frame records
+\ the data-stack extent in force, that stack and the definition open at entry
+\ (EVAL-FRAME:PEND), and the clean exit returns to x30, B-EVAL's caller or
+\ B-EVAL-CLOSED's continuation. Mirrors src/habu/habu1.f EVAL-ENTER.
 : EVAL-ENTER ( -- )
    LBL {: run :}
    SP SP EVAL-FRAME-SIZE SUBI,
@@ -992,6 +1002,7 @@ variable BAND-IX
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR, 11 14 STACK-ABI:EVAL-CAP STR,
+   13 14 STACK-ABI:EVAL-SEG STR,                     \ before x13 turns scratch below
    11 DATA DP-CELL LDR,  11 14 56 STR,
    12 14 EVAL-PKG ADDI,
    13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
@@ -1014,6 +1025,7 @@ variable BAND-IX
 
 : B-EVAL ( -- )
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
+   13 0 MOVZ,                                        \ no stack of its own
    EVAL-ENTER ;
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
@@ -1645,28 +1657,43 @@ HB-TARGET-LINUX? [IF]
    9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
-\ evaluate-closed ( ptr u8 n -- ): evaluate the text with the caller's depth as
-\ its floor, BASE raised to the cursor and CAP lowered by the same distance, and
-\ refuse a text that left cells with STACK-ABI:E-EVAL-RESIDUE. The caller's
-\ extent waits in this word's frame; the evaluate frame records the floor and
-\ returns to `back`. Mirrors src/habu/habu1.f B-EVAL-CLOSED.
+\ evaluate-closed ( ptr u8 n -- ): evaluate the text on a data stack of its
+\ own, a PAGE-BYTES guarded stack from the pool CLOSED-FREE-CELL heads (an
+\ empty pool maps one), and refuse a text that left cells with
+\ STACK-ABI:E-EVAL-RESIDUE. The caller's extent and cursor wait in this word's
+\ frame; the evaluate frame records the stack and returns to `back`, which
+\ gives the stack back to the pool (EMIT-EVAL-THROW-RECOVER does on a throw,
+\ and on EMIT-DEF-SOURCE-END's refusal of a text that ended inside a
+\ definition it opened). Mirrors src/habu/habu1.f B-EVAL-CLOSED.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL {: back done :}
+   LBL LBL LBL LBL {: have take back done :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 16 SUBI,
+   SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
-   13 XDS 11 SUB,  12 12 13 SUB,                     \ CAP - (XDS - BASE): the same top
-   XDS DATA STACK-ABI:BASE-CELL STR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 16 STR,
+   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   11 9 0 ADDI,                                      \ a waits in x11: the map never writes x10 or x11
+   STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
+   9 11 0 ADDI,
+   take B,
+   have LBL,
+   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
+   take LBL,
+   13 SP 24 STR,
+   13 DATA STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 13 0 ADDI,
    30 back ADR,
    EVAL-ENTER
    back LBL,
-   11 DATA STACK-ABI:BASE-CELL LDR,                  \ the floor, as the clean exit restored it
+   11 SP 24 LDR,                                     \ the text's stack, back to the pool
+   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   SP SP 16 ADDI,
-   XDS 11 CMP,  C-EQ done BCOND,
-   XDS 11 0 ADDI,
+   13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
+   SP SP 32 ADDI,
+   13 11 CMP,  C-EQ done BCOND,
    9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
    done LBL, ;
 
@@ -1916,6 +1943,12 @@ HB-TARGET-LINUX? [IF]
    done LBL,  11 G-PUSH ;
 : BCOMPILERSWL ( -- ) C-SWL-RESULTS 12 G-PUSH ;
 
+\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): SCOPE-REC's four answers.
+: BSCOPEFIND ( -- )
+   10 G-POP  9 G-POP
+   LSCOPEREC @ BL,
+   14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
+
 : BPARSE-NAME ( -- )
    LBL LBL {: none done :}
    LTOK @ BL,
@@ -2073,6 +2106,7 @@ HB-TARGET-LINUX? [IF]
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" xref-search-wl" ['] BCOMPILERSWL PRIM-INT-WID FPRIM-WID
+   s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM
@@ -2458,6 +2492,43 @@ HB-TARGET-LINUX? [IF]
       ENGINE-ERROR:USING-AMBIGUOUS C-USING-DIE-TOKEN     \ exit_group: no caller resumes, so the compile
                                                         \ loop's RW code region needs no flip back to RX
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
+
+\ ---- SCOPE-REC ( x9=tka x10=tkl -- x14=bound x16=used x17=used2 x15=flags ) ----
+\ Mirror of src/habu/habu2.f EMIT-SCOPE-REC, the name lookup `scope-find` answers
+\ for the checker, the optimizing compiler and the outer interpreter: FIND, then
+\ the used publics, in the order this engine's own compile path asks them. x14 is
+\ the bound record (FIND's, else the used publics' one; 0 when nothing binds),
+\ x16 the used publics' record, and x15 is 1 when the bound record is a seeded
+\ primitive, below dict[LNCOUNT]. Both leaves here answer found in x13 and leave
+\ x5 undefined on a miss, so x13 decides. The seed's FIND-USED exits on an
+\ ambiguous tail instead of answering flag 2, so no second used record ever
+\ reaches here and x17 is always 0: this transient engine compiles only the
+\ tree, and the native build refuses any ambiguity in it first.
+\ x9/x10 are preserved.
+: EMIT-SCOPE-REC ( -- )
+   LBL LBL LBL LBL {: nofind noused have notseed :}
+   LSCOPEREC @ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
+   LFIND @ BL,
+   14 0 MOVZ,  13 nofind CBZ,  14 5 0 ADDI,
+   nofind LBL,
+   14 SP 24 STR,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   LFINDUSED @ BL,
+   16 0 MOVZ,  13 noused CBZ,  16 5 0 ADDI,
+   noused LBL,
+   14 SP 24 LDR,  14 have CBNZ,
+      14 16 0 ADDI,                                       \ FIND missed: the used publics bind
+   have LBL,
+   15 0 MOVZ,  17 0 MOVZ,
+   14 notseed CBZ,
+   12 LNCOUNT @ ADR,  12 12 0 LDR,  13 DREC MOVZ,  12 12 13 MUL,  12 DBASE 12 ADD,
+   14 12 CMP,  C-CS notseed BCOND,                        \ at or past dict[LNCOUNT]: not seeded
+      15 1 MOVZ,
+   notseed LBL,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   30 SP 0 LDR,  SP SP 32 ADDI,
+   RET, ;
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok x17=range-refused ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
@@ -3708,6 +3779,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
+   LFLOORMSG @ LBL, FLOORMSG$ BYTES,
+   LSRCENDMSG @ LBL, SRCENDMSG$ BYTES,
    LDEFKWMSG @ LBL, s" hb: compile keyword cannot be a definition name: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
@@ -5995,6 +6068,7 @@ variable CFSK2
    9 DATA TXN-FETCH-I-CELL STR,
    9 DATA TXN-BLOB-A-CELL STR,  9 DATA TXN-BLOB-CAP-CELL STR,
    9 DATA SIGNAL-ABI:FD-CELL STR,        \ no signal fd inherited from restored bytes
+   9 DATA CLOSED-FREE-CELL STR,          \ nor an idle closed-text stack
    G-INSTALL-CRASH
    G-INSTALL-TRAP
    9 LSIGH @ ADR,  9 DATA SIGNAL-ABI:STUB-CELL STR,
@@ -6013,6 +6087,8 @@ variable CFSK2
    EMIT-STARTUP-RUNTIME-STATE ;
 
 : EMIT-MAIN-RUNTIME-LABELS ( n -- ) {: lmain :}
+   9 LFLOORREC @ ADR,  9 DATA FLOORREC-CELL STR,     \ crash.fs C-CRASH-DATA-RECOVER's resume entry
+   9 LSRC @ ADR,  9 DATA CODE-END-CELL STR,          \ and its engine-code bound
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,
@@ -7809,7 +7885,7 @@ variable P2SK
 : EMIT-EVAL-THROW-RECOVER ( -- )
    LEVALREC @ LBL,
    LBL {: bad :}
-   LBL LBL LBL {: loop pop deliver :}
+   LBL LBL LBL LBL {: loop pop deliver unowned :}
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,
@@ -7825,6 +7901,14 @@ variable P2SK
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,          \ a closed frame's stack: back to the pool
+      9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
+      9 13 24 LDR,                                            \ and its caller's extent, B-EVAL-CLOSED's frame
+      14 9 0 LDR,  10 9 8 LDR,  12 9 16 LDR,  0 bad STACK-GUARD:CHECK-CURSOR
+      14 DATA STACK-ABI:BASE-CELL STR,
+      12 9 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+      XDS 9 16 LDR,
+      unowned LBL,
       \ Native recovery filters address declarations before this DP rewind.
       \ The seed owns no such rows: addr-cells-abi is zero, xt! only stores,
       \ and ptr-cell-mark only consumes its address (EMIT-MEMORY-PRIMS).
@@ -7850,6 +7934,19 @@ variable P2SK
    9 15 0 ADDI,
    LTHROWDISPATCH @ B,
    bad LBL, STACK-GUARD:EXIT-BOUNDS ;
+
+\ LFLOORREC: crash.fs C-CRASH-DATA-RECOVER resumes a thread here when engine or
+\ compiled code loaded or stored in the data stack's low guard page. Mirrors
+\ src/habu/habu2.f:
+\ empty the stack (XDS may point under the base, and the uncaught exit runs the
+\ exit hook on it), name the token, throw 70 through LEVALREC.
+: EMIT-FLOORREC ( -- )
+   LFLOORREC @ LBL,
+   XDS DATA STACK-ABI:BASE-CELL LDR,
+   0 2 MOVZ,  1 LFLOORMSG @ ADR,  2 FLOORMSG$ nip MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   15 70 MOVZ,  LEVALREC @ B, ;
 
 : EMIT-PREFMISS ( -- )
    LPREFMISS @ LBL,
@@ -7914,9 +8011,25 @@ variable P2SK
    10 LRBYE @ CBZ,
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  lmain B, ;
 
+\ A buffer that ends inside a definition it opened throws 74 through LEVALREC
+\ before its frame is popped, which rolls the definition back with the frame,
+\ and a closed text's stack back to the pool. The definition open as the
+\ buffer began (EVAL-FRAME:PEND) is an outer buffer's. Mirrors
+\ src/habu/habu2.f C-DEF-SOURCE-END with a fixed line: the seed has no
+\ LDIAGDEF or location tail.
+: EMIT-DEF-SOURCE-END ( -- )
+   LBL {: closed :}
+   9 DATA PEND-CELL LDR,  9 closed CBZ,
+   10 DATA EVAL-TOP-CELL LDR,  10 10 EVAL-FRAME:PEND LDR,
+   9 10 CMP,  C-EQ closed BCOND,
+      0 2 MOVZ,  1 LSRCENDMSG @ ADR,  2 SRCENDMSG$ nip MOVZ,  NR-WRITE SYS,
+      15 74 MOVZ,  LEVALREC @ B,
+   closed LBL, ;
+
 : EMIT-EXIT ( n n -- ) {: lexit lmain :}
    lexit LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,
+      EMIT-DEF-SOURCE-END
       EMIT-EVAL-CLEAN-EXIT
    LEX0 @ LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
@@ -7938,6 +8051,7 @@ variable P2SK
 	   LCOMPILE LBL,
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
+	   EMIT-FLOORREC
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT
       LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
@@ -7946,7 +8060,7 @@ variable P2SK
    ICODE-RESET  0 #PL !  0 PNP !  0 CF-DEF-GUARD !  0 CF-DEF-LMAIN ! ;
 
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LSCOPEREC !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LDIVZERO !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
@@ -7957,6 +8071,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
+   LBL LFLOORREC !  LBL LFLOORMSG !  LBL LSRCENDMSG !
    LBL LEVALREC !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
@@ -8075,6 +8190,7 @@ variable P2SK
    EMIT-FLUSH
    EMIT-FIND
    EMIT-FIND-USED
+   EMIT-SCOPE-REC
    EMIT-NUM ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )

@@ -169,14 +169,14 @@ variable RC     variable EXITED
    s" -1 set-tier" RUN  REJECT-RC ASSERT-RC
    ERR$ s" set-tier" CONTAINS? TTRUE ;
 
-\ ---- 2b. the two primitives are callable from CHECKED code -------------------
+\ ---- 2b. checked code reads the tier and selects it through TIER --------------
 \ Registering a primitive in the engine dictionary is only half of it. Without a
 \ checker effect row the word is E-UNDEFINED inside every checked body, so
 \ `: R ( -- n ) tier@ ;` rejected and no checked build driver could select a
-\ tier at all. The rows follow the policy their neighbours already carry: tier@
-\ is an ordinary reader like check@, set-tier is a trust boundary like
-\ set-check. BOTH halves are asserted, because a set-tier any checked body could
-\ call would let checked code swap the compiler out from under itself.
+\ tier at all. tier@ is an ordinary reader like check@. set-tier's one row is
+\ package TIER's (lib/tier.f), so a checked body selects a tier by calling
+\ TIER:SELECT, and a plain checked body that names set-tier itself does not find
+\ it: the selection stays one deliberate, named call.
 : TEST-CHECKER-ROWS ( -- )
    s" tier@ is callable from a checked body on tier 0" T-LABEL
    s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
@@ -184,15 +184,15 @@ variable RC     variable EXITED
    s" tier@ is callable from a checked body on tier 1" T-LABEL
    s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
 
-   s" set-tier is callable from a TRUSTED: body on tier 0" T-LABEL
-   s" TRUSTED: ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   s" TIER:SELECT selects from a checked body on tier 0" T-LABEL
+   s" require lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
 
-   s" set-tier is callable from a TRUSTED: body on tier 1" T-LABEL
-   s" 1 set-tier TRUSTED: ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+   s" TIER:SELECT selects from a checked body on tier 1" T-LABEL
+   s" 1 set-tier require lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
 
-   s" set-tier is refused in a plain checked body" T-LABEL
+   s" set-tier is undefined in a plain checked body" T-LABEL
    s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE ;
+   ERR$ s" undefined word 'set-tier'" CONTAINS? TTRUE ;
 
 \ ---- 2b0. certification is the engine's hook CELL, read per definition --------
 \ Tier 0 reads the cell for every definition, which is what makes `0 set-check`
@@ -586,7 +586,7 @@ variable LN-LEN
    s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
    0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
    s" a tier change inside an immediate affects only the next definition" T-LABEL
-   S\" 0 set-tier TRUSTED: OR-SW ( -- ) 1 set-tier ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+   S\" 0 set-tier require lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
    0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
    s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
    S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
@@ -659,7 +659,7 @@ variable OR-U
    S\" require lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 49\n49\n0\n" STR= TTRUE
    s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
-   S\" require lib/executable-build.f\nTRUSTED: BS-BAD ( -- ) 0 set-tier ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
+   S\" require lib/executable-build.f\nrequire lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
    0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
    ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
    s" arbitrary throws preserve their code and the outer tier" T-LABEL

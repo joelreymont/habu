@@ -8,6 +8,15 @@ variable IMK-NDICT0
 
 variable SEQ
 
+\ The cell of a dictionary record (src/habu/layout.f DREC) that holds the
+\ wordlist it was published into, 0 for the global one. src/habu/xref.f reads
+\ records by it, and src/core/checker.f, which loads before xref.f, maps the
+\ record the engine's lookup binds to a scope by it.
+5 constant DICT-WORDLIST-SLOT
+
+\ The scope-find flag bit set when two used publics hold the tail.
+2 constant SCOPE-FIND-AMBIGUOUS
+
 \ --- checker registry write-protection (dots habu-protect-type-field-04d91409,
 \ habu-protect-sibling-type-44eec932). A registry control cell (variable/create)
 \ is a din=0 data record, so the seal-time internal-word pass

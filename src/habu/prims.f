@@ -455,7 +455,7 @@ EPRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;
 EPRIM: fence      EPRIM;
 EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-\ `evaluate-closed` runs its text with the stack floor at the caller's depth and
+\ `evaluate-closed` runs its text on a data stack of its own and
 \ throws E-EVAL-RESIDUE when the text leaves cells, so whatever the text does
 \ its net effect is ( -- ) and the row states the string alone. `evaluate`,
 \ whose effect is the text's, stays elaborated below and unsafe in a body.
@@ -562,6 +562,14 @@ EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
+\ addrmap-set's owner-private row: inside package NPUB it wins, so the
+\ publisher's own RELOC-ADDR (src/compiler/native/publish.f) is checked code.
+\ The global row above stays beside it. A checked caller elsewhere is refused
+\ by it (E-CAP-TRUSTED), and the TRUSTED: callers outside NPUB
+\ (tools/native-unit-object.f ADDR-MAP, the relocation-map tests) need it: the
+\ optimizing compiler builds their call window from a global row, and a seed
+\ primitive with none is E-HIR-UNMODELED there.
+EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ points a live dictionary record at new code
 \ The seal's own two record writers. A row here is what lets the OPTIMIZING
@@ -621,11 +629,13 @@ EPRIM: set-preflight PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPRIM: set-top-check PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ Choosing the compiler is the same class of boundary as installing the hook and
-\ takes the same restriction. Its callers are build drivers, which already reach
-\ it from top level or from a TRUSTED: word, exactly as they reach set-check.
-EPRIM: set-tier      PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
+\ Choosing the compiler belongs to package TIER (lib/tier.f), and this row is
+\ that owner's alone: TIER:SELECT is the checked caller every other scope calls,
+\ a checked body outside TIER does not find the name, and a build driver's
+\ top-level `1 set-tier` runs unchecked. No TRUSTED: body outside TIER calls it,
+\ so no global row is kept for one (tier 1 builds such a caller's call window
+\ from a global row; addrmap-set keeps its row for that).
+EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
@@ -735,6 +745,8 @@ EPRIM: set-current    PE-N PE-IN EPRIM;
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
+EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
+                      PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
 \ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
@@ -774,9 +786,10 @@ ETRUSTED-ONLY!
 
 \ ---- package FFI's owner-private capability rows ----------------------------
 \ Each primitive here keeps the global ETRUSTED-ONLY! row above — the outside
-\ boundary (E-CAP-TRUSTED) and the record's callability past the seal — and gains
-\ an owner-private row, so a CHECKED body compiled inside package FFI resolves it
-\ and every other scope misses the symbol. This is what retires the TRUSTED:
+\ boundary (E-CAP-TRUSTED), and the call window the optimizing compiler reads for
+\ the TRUSTED: bodies outside FFI that still call it (lib/fs-identity.f,
+\ lib/f64-text.f) — and gains an owner-private row, so a CHECKED body compiled
+\ inside package FFI resolves it. This is what retires the TRUSTED:
 \ bodies in lib/ffi-abi.f and lib/net/udp4.f: FFI's own words become ordinary
 \ checked Habu, and no consumer can reach a raw foreign call at all.
 EPPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE

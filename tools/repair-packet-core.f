@@ -254,7 +254,7 @@ variable RP-NODE
    count s" Repair the type-family declaration. Output only corrected Habu code."
    RP-PACKET-END ;
 
-\ throw_code is the code a statement threw, and null for a lexer defect.
+\ throw_code is the code a statement threw, and null for any other span.
 : RP-SPAN-PACKET ( n n -- ptr u8 n )
    {: root:n count:n :}
    RP-PACKET-START

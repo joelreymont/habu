@@ -642,16 +642,20 @@ private
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
    c r  c b id BKEY-CK  m PLAIN-ROW ;
 
-\ A package may bind the same spelling to another word. Only the engine's
-\ global binding has this intrinsic meaning; scoped words use ordinary
-\ dictionary resolution and their own checked effects.
+\ A row stands for the seeded primitive of its spelling, so it may claim a token
+\ only when the engine's lookup binds that primitive's own record (NDICT
+\ SPELL-PRIM?, the JIT's C-OP-ROW-GATE). A package word of that spelling, and a
+\ global one defined after `undefine`, is another record: it uses ordinary
+\ dictionary resolution and its own checked effect. Asking whether the binding
+\ was the global wordlist's answered the second case wrong: after `undefine dup
+\ : dup ( n -- n ) 100 + ;` the scope and the global wordlist agreed on the new
+\ `dup`, and the row lowered the primitive the checker had not certified.
 \
 \ It takes the BYTES and not a symbol because one of its two callers is the
 \ reader's binding gate, which holds no interner to read a spelling out of. WHERE
 \ each caller asks it, and why there are two, is the block below.
 : INTRINSIC-BOUND? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u NDICT:SPELL-START a u 0 search-wl = ;
+   NDICT:SPELL-PRIM? ;
 
 \ ---- where the gate is asked -------------------------------------------------
 \ ONE RULE, ASKED WHERE ITS ANSWER IS STILL TRUE WHEN THE ROW IS READ: a

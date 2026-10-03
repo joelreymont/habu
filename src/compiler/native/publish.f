@@ -34,7 +34,10 @@ TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
 TRUSTED: RELOC-EXTERNAL ( n -- )
    callmap-set ;
 
-TRUSTED: RELOC-ADDR ( n -- )
+\ Inside NPUB addrmap-set binds this package's private row (src/habu/prims.f),
+\ so this caller is checked. The primitive's global row is trusted-only: a
+\ checked caller anywhere else is refused (E-CAP-TRUSTED).
+: RELOC-ADDR ( n -- )
    addrmap-set ;
 
 TRUSTED: PUBLISH-REC ( n n n -- )

@@ -38,7 +38,7 @@ TRUSTED: DISPATCH ( -- )
 : RUN-CAUGHT ( n -- n )
    {: d:n :}
    d 0= if [: RUN DEF-SOURCE-END ;] catch exit then
-   d 1- FIND-USE-WID {: wid:n :}
+   d 1- cells USE-WIDS-OFF + CELL@ {: wid:n :}
    d 1- RECURSE {: code:n :}
    code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
    code ;

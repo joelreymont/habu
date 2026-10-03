@@ -194,7 +194,7 @@ variable CARRY-USED
 \ cell while the builder's address-cell registry is still live. The normal
 \ collection, closure root and entry relocation then handle those quotations.
 \ The destination is the exact carried copy of TASK-EXIT-QT's typed slot.
-TRUSTED: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] ) ;
+CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 
 : CARRY-TASK-EXIT ( -- )
    TASK:OWNED-EXIT-N 0 ?do

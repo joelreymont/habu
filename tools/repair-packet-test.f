@@ -324,8 +324,8 @@ create PACKET-BUF FS-PATH-CAP allot
    s" type" s" fix_type" s" : DIAG-TYPE ( i64 -- i64 ) 0= ;" PACKET-CASE
    s" rstack" s" fix_return_stack" s" : DIAG-RSTACK ( i64 -- ) >r ;" PACKET-CASE ;
 
-\ A record with a source span and no definition: a statement the checker
-\ throws out of, and the lexer's two defects.
+\ Source spans without a definition: a statement the checker throws out of
+\ and the lexer's two defects.
 : TEST-SPAN-KINDS ( -- )
    s" statement" s" unknown_rejection" s" ;using" PACKET-CASE
    s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
@@ -360,6 +360,13 @@ create PACKET-BUF FS-PATH-CAP allot
    MAKE-PACKET
    class classu ASSERT-PACKET
    name nameu EXPECT-GOLDEN ;
+
+\ A pre-read row has a source position; one evaluated at run time has none.
+: TEST-GENERATES ( -- )
+   s" generates" s" fix_generates_row" s" generates: DIAG-GEN ( -- n )" PACKET-CASE
+   s" generates-unplaced" s" fix_generates_row"
+   s\" s\" generates: DIAG-GEN-EVAL ( -- n )\" evaluate" 67 CHILD-CASE
+   DIAG-PATH GJA-DIAG-CONTRACT ;
 
 \ The checker's pre-pass never reads a declaration that `evaluate` runs, so only
 \ the run refuses it, and its record has no place.
@@ -535,6 +542,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-SPAN-KINDS
    TEST-STORAGE
    TEST-STORAGE-UNPLACED
+   TEST-GENERATES
    TEST-RECORDS
    TEST-WARNING
    TEST-USING

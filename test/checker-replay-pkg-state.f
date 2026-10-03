@@ -7,8 +7,8 @@
 \ the checker's mirror; the `using` half was not, and two resolution legs
 \ consulted the live engine regardless:
 \
-\   - CK-OPEN-CLAIMS? asked the engine which wordlist would bind a bare tail,
-\     which during a replay is the CALLER's open package. A standalone
+\   - the open-package leg asked the engine which wordlist would bind a bare
+\     tail, which during a replay is the CALLER's open package. A standalone
 \     `: R ( n -- n n ) dup ;` was refused with E-UNDEFINED for `dup` purely
 \     because the calling package defined its own DUP.
 \   - the used-publics scan was bounded by the engine's live using depth, so the

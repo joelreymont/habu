@@ -85,6 +85,7 @@ require lib/fmt.f
 require lib/float.f
 require lib/argv.f
 require lib/time-cpu.f
+require lib/tier.f
 
 -7700 constant E-FLOOR-UNCOMPILED
 -7701 constant E-FLOOR-EXCEEDED
@@ -147,15 +148,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    msg mu EMIT-ERR
    thrown throw ;
 
-\ ---- selecting the tier -----------------------------------------------------
-\ `set-tier` is refused inside a plain checked body. It is wrapped in one call,
-\ with nothing else in the body, so the unchecked surface is exactly the
-\ primitive and not the measurement around it. The built set and its teardown
-\ load through `evaluate-closed`: definitions and undefines leave no cell.
-
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
-
 \ ---- building one set, before the clock starts ------------------------------
+\ The built set and its teardown load through `evaluate-closed`: definitions
+\ and undefines leave no cell.
 
 : SRC+ ( ptr u8 n n -- ) {: a:ptr u ix :}
    SRC-FILL @ u + SRC-CAP > if E-FLOOR-CAPACITY throw then
@@ -250,14 +245,14 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    SB$ E-FLOOR-UNCOMPILED REFUSE ;
 
 : RUN-TIER1 ( -- )
-   1 SELECT-TIER
+   1 TIER:SELECT
    s" T" s"  ( n -- n ) 1 + ; " TRIV-T1 MEASURE
    SET-N DISPATCHES s" the trivial tier-1 set" EXPECT
    s" U" s"  ( n n -- n ) swap drop ; " THREE-T1 MEASURE
    SET-N DISPATCHES s" the three-op tier-1 set" EXPECT ;
 
 : RUN-TIER0 ( -- )
-   0 SELECT-TIER
+   0 TIER:SELECT
    s" V" s"  ( n -- n ) 1 + ; " TRIV-T0 MEASURE
    0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
 
@@ -313,7 +308,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ SELECT-TIER ;
+   PRIOR-TIER @ TIER:SELECT ;
 
 : MEASURE-ALL ( -- )
    RESET-SETS

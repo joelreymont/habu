@@ -40,7 +40,14 @@ public
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
   `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. A
-  `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`.
+  `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`. The
+  new `R` is checked and called as itself even when it spells an engine word:
+  the checker's rules for `@`, `!`, `create` and the like follow the engine's
+  `INTRINSIC` tag, which a redefinition does not carry.
+- A call binds a word the engine holds. A name only the checker knows - a row
+  `CHECK!` alone recorded, a word `VERIFY:SOURCE-BUF-IN-SCOPE` scanned - is
+  `E-UNDEFINED` in a body; `VERIFY:CANDIDATE-IN-SCOPE`
+  (`require src/habu/verify-source.f`) asks the certify path, where it binds.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
   `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer the lint
@@ -49,7 +56,8 @@ public
   them, not `--load`. A number-shaped name (`: 42`) is refused by
   `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.
 
-forth.md: **Naming**, **Packages**, **Importing … with `using`**.
+forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
+learned by refusal**.
 
 ## 2 Effects, locals, quotations
 
@@ -117,7 +125,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 70 |
 | the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
-| a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
+| a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
 exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
@@ -179,7 +187,9 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
-`tools/check.f` leaves to its run, which type-checks their uses there.
+`tools/check.f` leaves to its run, which type-checks their uses there, unless
+the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
+word (§ 4) are checked before the run, `--verify-only` included.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
@@ -192,8 +202,11 @@ and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
 `0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ptr u8 n -- )`
 evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the
-caller's cells intact either way. An xt the text `execute`s can still reach
-them (forth.md **Checked code and primitive boundaries** lists the open cases).
+caller's cells intact either way. An xt the text runs cannot reach them: its
+reach under the floor throws 70 too. A text that ends inside a definition it
+opened is refused as every source is,
+`hb: source ended inside definition: NAME`, rc 74, and the definition is rolled
+back (forth.md **Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -214,6 +227,11 @@ Every form loaded and its accessor effect certified.
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p 0 FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled |
+
+A definer that writes its word as text (`+USER`, `COMMAND`) states what it makes
+with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
+that word's uses before the run; what no row states, such as `COMMAND`'s
+`NAME#VEC`, is left to the run (§ 3). `FUNCTION:` needs no row.
 
 `PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
 snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come
@@ -296,9 +314,10 @@ forth.md: **Errors**, **Integer arithmetic**.
   test/aot-capture-bound.f copies the requirer too). Every file requires its
   **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
-  token reaching its loader's cells throws 70, and a file that ends with cells
-  on the stack is `E-EVAL-RESIDUE`. A value crosses a load only as a word the
-  file defines.
+  token reaching its loader's cells throws 70, a file that ends with cells on
+  the stack is `E-EVAL-RESIDUE`, and one that ends inside a definition it
+  opened is refused there, rc 74, as every source is. A value crosses a load
+  only as a word the file defines.
 - At the top level of a stdin session or of a program file run as
   `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in

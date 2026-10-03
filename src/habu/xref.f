@@ -18,7 +18,7 @@
 1 constant XREF-LEN-SLOT
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
-5 constant XREF-WORDLIST-SLOT
+DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ The two non-wordlist values a record's wordlist cell can carry. They are
 \ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
 \ same cell, and XREF-RETIRE below is the one writer that changes it after a
@@ -393,7 +393,7 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
 \ WLFIND), the index the definer's own duplicate wall asks. The primitive is
-\ trusted-only by its own row (prims.f), as for outer.f FIND-PROBE.
+\ trusted-only by its own row (prims.f), as for outer.f WL-PROBE.
 TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 \ The record a generated name would meet in the scope it will LAND in: a

@@ -1,9 +1,9 @@
 \ dict.f - what the running engine's dictionary says a spelling denotes. One
 \ concern: turning a name a program wrote into the fact the chain needs about it.
 \
-\ The lookup order is the engine's own (habu1.f EMIT-FIND): the open package's
-\ private wordlist, then its public one, then the global one, then the live used
-\ publics, plus a NAME:tail through the namespace record.
+\ Which record a spelling binds is the engine's own answer, the `scope-find`
+\ primitive (habu2.f LSCOPEREC): the JIT's lookup, asked with this tier's token.
+\ This file only decides what the chain may do with that record.
 \
 \ No record slot holds what a `create`d or `constant` word pushes and decoding
 \ its body is forbidden, so the only honest answer is to ENTER the word - and
@@ -31,18 +31,11 @@ public
 private
 
 \ ---- which record a spelling denotes -----------------------------------------
--2 constant QUAL-BAD
-
-: USE-DEPTH ( -- n )
-   data-base USE-DEPTH-CELL + @ ;
-
-: USE-WID ( n -- n )
-   cells data-base USE-WIDS-OFF + + @ ;
-
 \ The raw indexed record stays inside this protected package. Visibility is
 \ checked after namespace resolution. Retirement: habu-attr-and-remove-2b13e978.
 TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
+1 constant SCOPE-SEEDED              \ LSCOPEREC flag: the bound record is a seeded primitive
 
 \ Public search hides internal words; the compiler admits them only while a
 \ TRUSTED: definition is being compiled. Re-read that authority on every call.
@@ -54,67 +47,43 @@ TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
    rec XREF-WORDLIST OWNER-API-PRI-WID <>
    rec XREF-START 0<> and ;
 
+public
 
-: WL-CANDIDATE ( ptr u8 n n -- ptr n )
-   WL-RECORD
-   dup XREF-FOUND? 0= if exit then
-   dup VISIBLE-RECORD? 0= if drop XREF-NULL then ;
+\ The bound record whatever its flags, or none: what the JIT's call site binds
+\ the spelling to. Two used publics that both export the tail, with nothing
+\ earlier binding it, are the ambiguity the engine refuses.
+: SCOPE-REC ( ptr u8 n -- ptr n )
+   scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
+   rec ;
 
-\ Duplicate `using` of one package is one binding. Two distinct records are the
-\ same ambiguity the engine refuses before it executes or compiles the token.
-: USED-REC ( ptr u8 n -- ptr n )
-   {: a:ptr u:n :}
-   XREF-NULL
-   USE-DEPTH 0 ?do
-      a u i USE-WID WL-CANDIDATE
-      dup XREF-FOUND? if
-         over XREF-FOUND? if
-            2dup <> if E-USING-AMBIGUOUS throw then
-         then
-         nip
-      else
-         drop
-      then
-   loop ;
+\ Whether an operator row may stand for the spelling: the lookup binds the
+\ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`
+\ has no record). A package word, an EXPORT alias and a redefinition after
+\ `undefine` each bind a record of their own, and the call path reaches it.
+: SPELL-PRIM? ( ptr u8 n -- bool )
+   scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   flags SCOPE-FIND-AMBIGUOUS and 0<> if false exit then
+   rec XREF-FOUND? 0= if true exit then
+   flags SCOPE-SEEDED and 0<> ;
 
-\ ---- the engine's scope order, retaining its indexed record ------------------
-: OPEN-REC ( ptr u8 n -- ptr n )
-   {: a u:n :}
-   OPEN-PRI 0= if XREF-NULL exit then
-   a u OPEN-PRI WL-CANDIDATE {: pri:ptr :}
-   pri XREF-FOUND? if pri exit then
-   a u OPEN-PUB WL-CANDIDATE ;
+private
 
-: BARE-REC ( ptr u8 n -- ptr n )
-   {: a u:n :}
-   a u OPEN-REC {: open:ptr :}
-   open XREF-FOUND? if open exit then
-   a u 0 WL-CANDIDATE {: global:ptr :}
-   global XREF-FOUND? if global exit then
-   a u USED-REC ;
-
-
-: QUALIFIED-REC ( ptr u8 n n -- ptr n )
-   {: a u:n split:n :}
-   a split XREF-NAMESPACE-WL WL-RECORD
-   dup XREF-FOUND? 0= if exit then
-   XREF-PKG-PUBLIC {: wid:n :}
-   a split 1+ ZPTR+ u split - 1- wid WL-CANDIDATE ;
-
-
+\ The record a compilation may call. One it may not is refused where it binds, as
+\ the JIT's call guard refuses it (habu2.f C-COMPILE-CALL-GUARD): the spelling is
+\ never handed on to a later scope.
 : SPELL-REC ( ptr u8 n -- ptr n )
-   {: a u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q QUAL-BAD = if XREF-NULL exit then
-   q 0 >= if a u q QUALIFIED-REC exit then
-   a u BARE-REC ;
+   SCOPE-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if rec exit then
+   rec VISIBLE-RECORD? 0= if XREF-NULL exit then
+   rec ;
 
 \ ---- entering the word the spelling denoted ----------------------------------
 \ FIXED-VALUE admits only a live constant/create/variable record before entering
 \ it. The definer stamp supplies the single-cell callable layout; the value's
 \ number/address interpretation remains the caller's recorded kind.
-TRUSTED: AS-FIXED ( n -- [ -- n ] ) ;
-TRUSTED: RUN-WORD ( n -- n )
+CAST: AS-FIXED ( n -- [ -- n ] )
+: RUN-WORD ( n -- n )
    AS-FIXED execute ;
 
 \ A cell and not a local: a local bound AFTER the entered word ran would itself

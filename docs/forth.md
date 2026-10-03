@@ -22,27 +22,32 @@ lives here; build, test and environment rules live in
   or asserting its effect, does not make it a primitive.
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` interns the
   axiom into the OWNER package's private wordlist: only a body compiled inside
-  that package resolves the name; callers are still checked. For now such a prim
-  also keeps its global `PRIM-TRUSTED-ONLY!` row: `src/core/internal-mark.f`
-  classifies a record by its BARE name, so an owner-private-only primitive is
-  sealed `DNAME-INT` with no checked caller. `test/prim-owner-scope.f` pins the
-  matrix.
+  that package resolves the name; callers are still checked. A primitive may be
+  that row alone: `src/core/internal-mark.f` classifies a global record no
+  top-level row types by the owner-private row that reaches it, so the owner's
+  checked callers compile at both tiers and an outside checked caller is
+  refused by name. A checked `[']` of it, by its own name or an `EXPORT`
+  alias's, is admitted and refused exactly where that call is. The seed
+  primitive `set-tier` is such a row alone: package `TIER` (`lib/tier.f`) owns
+  it and `TIER:SELECT` is how any other scope selects a tier. Top-level source
+  is not checked: there `'` yields the xt and a call runs the primitive. An
+  engine primitive (`src/habu/prims.f`) that a `TRUSTED:` body outside the
+  owner calls keeps its global trusted-only row beside the private one, as
+  `addrmap-set` and `ffi-call-bounded` do: tier 1 builds that caller's call
+  window from a global row and refuses the caller without one
+  (`E-HIR-UNMODELED`). A row for a word the owner defines itself types only
+  that word: it does not keep a global record of the same name out of
+  `DNAME-INT`. `test/prim-owner-scope.f` pins the matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
-  `evaluate-closed ( ptr u8 n -- )`: the text runs with the data-stack floor at
-  the caller's depth and must leave nothing (measured under **Rules learned by
-  refusal**). The loader and every source-generating definer evaluate through
-  it, so a loaded file (**Packages**) and a generated declaration are closed
-  programs too. Four cases stay open:
-  - An xt the text runs through `execute` is guarded only by `execute`'s own
-    one cell: with `W ( n n -- n ) +`, `5 s" 1 ' W execute" evaluate-closed`
-    warns `hb: top-row: execute: xt target underflows the interpret stack` and
-    leaves 6 where the 5 was.
+  `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
+  its own, must leave nothing and must close every definition it opens
+  (measured under **Rules learned by refusal**). The loader and every
+  source-generating definer evaluate through it, so a loaded file
+  (**Packages**) and a generated declaration are closed programs too. Two cases
+  stay open:
   - A text that runs `0 set-check` leaves every later definition unchecked,
     inside the text and after it.
-  - A text may end inside a definition: the interpreter stays compiling, so
-    `s" : D ( -- n ) 42" evaluate-closed`, even from a checked word, lets the
-    caller's next `;` complete `D`.
   - A text's top-level code is unchecked, so what it computes is untyped: with
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
@@ -258,7 +263,12 @@ public
   includer's cells throws 70, and a file that ends with cells on the stack is
   refused `E-EVAL-RESIDUE` (`--load` of a file ending `1 2` exits
   `hb: uncaught throw code -3804`, rc 67), so a value crosses a load only as a
-  word the file defines. Fix a file that leaves cells; never loosen the loader.
+  word the file defines. A file that ends inside a definition it opened is
+  refused at its end, as every source is (**Rules learned by refusal**):
+  `--load` of a file ending `: D ( -- n ) 42` exits
+  `hb: source ended inside definition: D at <path>:<line>`, rc 74, so no
+  definition spans a load. Fix a file that leaves cells or a definition; never
+  loosen the loader.
   `hb prog.f` and a program on stdin are not loaded files and keep their
   top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
@@ -1610,24 +1620,28 @@ the rule.
   `E-MISMATCH` the effect deserves, not `E-UNDEFINED`, and `TASK:MIN-STACK
   TASK:TASK T1  : F ( -- ptr n ) T1 ;` certifies.
 - **A word whose body reaches `INCLUDE-EVALUATE` defines words the source
-  pre-pass cannot see; the run checks their uses.** `FUNCTION:`/`;FUNCTION`,
-  `CMD:COMMAND` and `TASK:+USER` render a definition and hand it to the
-  loader's evaluate boundary, so no source text spells the product. The checker
-  carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and on every checked
-  body that calls a flagged word (`checker.f` `NORET-AXIOMS`, `RENDSET`). When
-  the pre-pass meets a top-level statement naming such a word it marks the
-  wordlist the statement runs in, which is where the loader compiles the
-  product; a later definition naming a word nothing resolves, looked up through
-  a marked wordlist, gets `CHECK` verdict 2: no diagnostic, its declared
-  signature recorded for its callers, its body left to the `bin/hb --load` run
-  that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
+  pre-pass cannot see; the run checks the uses the source does not declare.**
+  `FUNCTION:`/`;FUNCTION`, `CMD:COMMAND` and `TASK:+USER` render a definition
+  and hand it to the loader's evaluate boundary, so no source text spells the
+  product. The checker carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and
+  on every checked body that calls a flagged word (`checker.f` `NORET-AXIOMS`,
+  `RENDSET`). When the pre-pass meets a top-level statement naming such a word
+  it marks the wordlist the statement runs in, which is where the loader
+  compiles the product; a later definition naming a word nothing resolves,
+  looked up through a marked wordlist, gets `CHECK` verdict 2: no diagnostic,
+  its declared signature recorded for its callers, its body left to the
+  `bin/hb --load` run that check.f performs next (`checker.f` `UNSEEN-MARK$`,
+  `UNSEEN-COVERS?`). A product the source declares resolves, so the pre-pass
+  checks its uses itself: `FUNCTION:`'s word against its declaration group and
+  the word a `generates:` row declares against the row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
   `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :75), `CTX0`
-  (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
-  product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
-  run's `E-UNDEFINED`. The mark covers only what follows the statement and only
+  product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
+  same scope the run's `E-UNDEFINED`; `--verify-only`, which does not run,
+  passes both. The mark covers only what follows the statement and only
   its own section: a use before it, from another package, or of a private
   product from outside its package is still refused by the pre-pass. It also
   covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
@@ -1649,6 +1663,46 @@ the rule.
   `: DEFR ( n -- ) create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN +
   DEFR ;  5 MK Y  : V ( -- n ) Y ;` loads 0 and checks 70 (`E-UNDEFINED` `Y`
   in `V`).
+- **A definer that writes its word as text states what it makes with
+  `generates:`.** `+USER` (lib/task.f) and `COMMAND` (lib/process-command.f)
+  build a colon definition and run it through `INCLUDE-EVALUATE`, so no `does>`
+  clause declares their words, and without a row the mark above leaves every
+  use of them to the run. `generates: D ( effect )` at top level, after D's
+  definition, is that declaration: the engine stores the effect on D's CREATES
+  cell (`checker.f` `CHECKER-GENERATES`) and the source pre-verifier records it
+  from the text (`verify-source.f` `RECORD-GENERATES`), so every word D makes
+  has that effect, as a `does>` definer's words have their clause's, and the
+  pre-pass checks its uses. `FUNCTION:` (lib/ffi-abi.f) needs no row: the
+  pre-verifier reads its declaration group as the word's effect, an `i32`
+  result as `n`. A statement naming D still marks its wordlist, so what the row
+  does not declare stays the run's: `COMMAND`'s row declares `NAME`, not
+  `NAME#VEC` or `NAME#BUF`. Measured after `require lib/process-command.f
+  CMD:COMMAND C`: `: U ( -- ptr ptr u8 ) C ;`, the same with `C#VEC`, and
+  `: U ( -- ) C#BUF drop ;` check 0 plain, under `--verify-only` and under
+  `--all-errors`; `: U ( -- n ) C ;` checks 70 under all three, where without
+  the row `--verify-only` passed it, and `: U ( -- n ) C#VEC ;` is still the
+  run's (70 plain, 0 under `--verify-only`). A `+USER` slot and a `FUNCTION:`
+  word measure as `C` does. The row is a claim, not a proof: it never touches
+  the made word's own effect, so a caller that contradicts the row is the
+  pre-verifier's `E-MISMATCH`, a caller that agrees with a lying row is refused
+  when the file loads, against the word the text really defines, and a name D
+  never makes is still `E-UNDEFINED` there. `generates:` refuses with
+  `E-GENERATES-ROW` (7153; `tools/check.f` exits 67, `--verify-only` 70) when
+  D names no word there, when D already states what it makes (its `does>`
+  clause, an earlier row, or the definer it wraps), or when the effect does
+  not parse (`( -- i32 )`); a D the used scopes refuse is that refusal
+  (`E-USING-SHADOW-GLOBAL`, 7141; `E-USING-AMBIGUOUS`, 7144). The load and
+  every `tools/check.f` mode read a row alike, as a definition head is read
+  (`checker.f` `CHECKER-SIG-SPAN`, the rule of `habu2.f` `C-SIG-START` and
+  `C-SIG-END`): D is the next blank-delimited token, a comment opener too; the
+  effect opens at a `(` past the blanks, glued to a token or not, and closes at
+  the first `)` byte, whatever it is glued to or followed by, and a line feed
+  inside it stays in the token it ends, so `( -- n` LF `)` is refused as a `:`
+  head spelled so is. An effect holds at most 256 bytes (`GENR-SIG-CAP`): a
+  longer one dies 76 in the load and 74 in the pre-pass. `undefine D` retires
+  D's row with D's other facts, so a D defined again states what it makes
+  afresh. `tools/check.f` certifies `lib/process-command.f` and
+  `lib/process-task-test.f`.
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):
@@ -1659,6 +1713,40 @@ the rule.
   (-8503, test/compiler/native-elaborate.f `RGLUE`). A count that disagrees is
   `E-NELAB-ARITY` either way, and a forged tag is still refused where the value
   is consumed (`hb: bad layout tag`, rc 85).
+- **A name binds one word at every tier, and that word's own facts judge it.**
+  The checker, the JIT and tier 1 ask the engine's one lookup (`scope-find`:
+  the open package, the global wordlist, then the used publics), so a word
+  redefined after `undefine`, a package word spelled like an engine word and
+  an `EXPORT` alias are each checked and called as the word they are. The
+  rules that type an engine word by what it does (`@`, `!`, `?dup`,
+  `record-at`, `create`, `variable`, …) follow the identity the engine
+  registered on that word's symbol (its `INTRINSIC` id, or `CTL-CORE-OP` for
+  the stack shuffles and zero tests), which a redefinition does not carry, and
+  the control facts a definition earns are recorded on its own symbol. After
+  `undefine dup  : dup ( n -- n ) 100 + ;`, `: T ( -- n ) 5 dup ;` leaves
+  `105` at both tiers (test/undefine-binding.f), and `package P : DIE ( ptr u8
+  n -- ) 3 die ;  : T ( -- n ) s" x" DIE 0 ;` is `E-DEAD-CODE`
+  (test/checker-dead-path-suite.f). A definition binds its own pending name
+  first, so it may reuse a name two used packages export; references to the
+  bare name stay ambiguous (test/using-test.f).
+- **A name the engine holds no word for binds nowhere in compiled code.** The
+  checker binds a token to the word the lookup finds, to the definition it
+  recorded last and the engine has not yet published, or to a keyword it types
+  by axiom (`>r`, `r@`). A name only the checker knows - a row `CHECK!` alone
+  recorded, a qualified `TRUST` row with no word behind it, a word the source
+  pre-verifier registered, a `CHECKER-EXPORT` alias - is unresolvable, bare or
+  qualified, as the compiler finds it `E-UNDEFINED`. It binds on the certify
+  path, which replays over the checker's records: `VERIFY:CANDIDATE-IN-SCOPE`
+  (`src/habu/verify-source.f`) answers what that path says of a candidate. A
+  candidate scope checks rows that publish together, so each row binds for the
+  scope's later rows until it closes: a `STRUCTURE` deriving `hash` checks a
+  `HASH` that calls its `UNMAKE` before either is published. Measured on
+  `bin/hb`: after `s" SPANX ( -- n ) 1" CHECK!`, `: C ( -- n ) SPANX ;` is
+  `E-UNDEFINED` and the candidate `C ( -- n ) SPANX` answers 1 live, as
+  `s" C ( -- n ) SPANX" CHECK!` does, and -1 through `VERIFY:CANDIDATE-IN-SCOPE`
+  (test/engine-suite.f, test/pointer-storage-test.f);
+  `STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE` declares and its
+  `DER:HASH` runs (test/structure-certify-suite.f).
 - **Native width depends on how the cells are used.** A 63-cell identity
   compiles and runs in native AOT; the same 64-cell definition currently
   refuses with `E-A64RAV-DKEEP` (-8611). At tier 1 on Darwin ARM64, consuming
@@ -1732,10 +1820,14 @@ the rule.
   existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
   place the defer after `: TRUST`.
 - **A pre-hook word needs an axiom row in a checked body on a from-source
-  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP` and
-  `E-PATH-RANGE`. A constant without a row can be read at top level into a
+  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP`,
+  `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS`. A constant without a row can be read at top level into a
   file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
-  checks the refusal and the accepted forms.
+  checks the refusal and the accepted forms. A pre-hook colon or `TRUSTED:`
+  word run at top level needs a row too: without one the seal marks it
+  `DNAME-INT` there, and a use dies `hb: internal engine word: NAME`, rc 70,
+  as `generates:` did in `lib/task.f` on `tools/build-fixpoint.f`'s `hb-host`
+  and `hb-stdin` before its row (`src/core/checker.f`).
 - **`MATCH` and the other compile keywords name words, not constants**, even
   inside a package; a `case` default runs with the selector still on the
   stack. Two flags are not compared with `=` (`bool bool` is refused): a test
@@ -1848,8 +1940,8 @@ the rule.
   CATCH-STALE-DROP`).
 - **A checked word evaluates source with `evaluate-closed`, never
   `evaluate`.** A body naming `evaluate` is `E-UNSAFE`: its effect is the
-  text's. `evaluate-closed` raises the data-stack base to the caller's depth for
-  the text and refuses whatever the text leaves, so its row is
+  text's. `evaluate-closed` runs the text on a guarded data stack of its own
+  and refuses whatever the text leaves, so its row is
   `( ptr u8 n -- )` and `: X ( ptr u8 n -- ) evaluate-closed ;` certifies.
   Measured (`test/compiler/native-eval.f`): `depth` in a text starts at 0;
   `7 [: s" drop" evaluate-closed ;] catch` answers 70
@@ -1857,8 +1949,22 @@ the rule.
   `s" 1 2" evaluate-closed` throws `E-EVAL-RESIDUE` (-3804; uncaught,
   `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
   the outer text's caller as -3804; a definition the checker refuses throws 70;
-  a data-stack overflow in a text exits `hb: stack bounds exceeded (data)`,
-  rc 102, as outside one ([debugging.md](debugging.md)); with a task live it
+  a text that ends inside a definition it opened, `s" : D ( -- n ) 42"
+  evaluate-closed`, is refused as every source is, rc 74 after
+  `hb: source ended inside definition: D at <path>:<line>` (uncaught, rc 74),
+  D is rolled back with the text's stack and the caller's next token is
+  interpreted, and an inner text's unfinished definition reaches the outer
+  text's caller as 74;
+  an xt the text runs cannot reach the caller's cells either: with
+  `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
+  answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact
+  and W unfinished, as do `' W CLEAN finally`, a quotation xt and a reach in
+  an inner text, and `1 ' W catch` inside the text receives the 70 itself,
+  because one cell under the text's floor is its stack's guard page and the
+  engine throws that fault; at plain top level `1 ' W execute` is the same
+  line and rc 70, not a crash; a data-stack overflow in a text exits
+  `hb: stack bounds exceeded (data)`, rc 102, as outside one, and so does a
+  jump under the floor ([debugging.md](debugging.md)); with a task live it
   exits `$4F` before reading the text and prints nothing, as `evaluate` does.
   The open cases are under **Checked code and primitive boundaries**.
 - **A test takes a value out of a text with `TEST-EVAL`, never an `evaluate`
@@ -1871,10 +1977,10 @@ the rule.
   (`lib/test/eval-test.f`): an empty text throws 70
   (`hb: interpret stack underdepth: TEST-EVAL:N!`), `1 2` throws
   `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
-  inside the text of N, and `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
-  (`expected: bool actual: n`). N keeps `evaluate-closed`'s open cases; a text
-  that ends inside a definition compiles N's store into it, so N answers the
-  value the previous N stored.
+  inside the text of N, `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
+  (`expected: bool actual: n`), and a text that ends inside a definition it
+  opened is refused at its own end, rc 74. N keeps `evaluate-closed`'s open
+  cases.
 
 ## Spans: a pointer that carries its reach
 

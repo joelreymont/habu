@@ -37,14 +37,14 @@
 \ dictionary when the corpus asked for them. The decimal writer and the line
 \ buffer below are the price of being able to measure them.
 \
-\ The one require is src/habu/code-bytes.f, the boundary that turns a record's
-\ code address into bytes. It requires nothing itself, and it loads before MAIN
-\ takes the `ndict@` the report range starts from, so it adds no rows to any
-\ report. It pays the same price every other pre-loaded file pays, and the price
-\ is exactly one corpus: a census that names src/habu/code-bytes.f now weighs it
-\ at nothing, because it is already in the dictionary when the corpus asks.
-\ Measure that file with tools/tier-dump.f, or with a census run from a tree
-\ where it is not this tool's dependency.
+\ The two requires are src/habu/code-bytes.f, the boundary that turns a
+\ record's code address into bytes, and lib/tier.f, the word that selects the
+\ tier. Neither requires anything, and both load before MAIN takes the `ndict@`
+\ the report range starts from, so they add no rows to any report. They pay the
+\ same price every other pre-loaded file pays, and the price is exactly one
+\ corpus each: a census that names one of them weighs it at nothing, because it
+\ is already in the dictionary when the corpus asks. Measure such a file with a
+\ census run from a tree where it is not this tool's dependency.
 \
 \ WHAT THE COUNTS MEAN. Bytes and instructions are the whole baked span
 \ (XREF-CODE-BYTES). `bl` counts branch-with-link instructions - every call the
@@ -60,6 +60,7 @@
 \ therefore instruction traffic, not a count of address sites.
 
 require src/habu/code-bytes.f
+require lib/tier.f
 
 package TIER-CENSUS
 private
@@ -122,13 +123,6 @@ variable W-MOVK
 
 variable WID-CACHE                 \ last wordlist id resolved to a package name
 variable WID-CACHE-IX              \ its namespace record index, -1 when none
-
-\ ---- the one trust boundary -------------------------------------------------
-\ `set-tier` is refused inside a plain checked body. It gets one row with
-\ nothing else in it, so the unchecked surface is the primitive and not the
-\ census around it.
-
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- output ----------------------------------------------------------------
 
@@ -332,7 +326,7 @@ public
    0 script-argv$ TIER-ARG {: tier :}
    -1 WID-CACHE !  -1 WID-CACHE-IX !
    1 script-argv$ OPEN-REPORT
-   tier SELECT-TIER
+   tier TIER:SELECT
    ndict@ {: first :}
    LOAD-CORPUS
    tier HEADER

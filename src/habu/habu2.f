@@ -155,6 +155,7 @@ variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LKWDESIG
 : POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
+variable LFLOORREC   \ the same underdepth throw for a data access below the base (crash.f C-CRASH-DATA-RECOVER resumes here)
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
 35 constant PREFMISSMSG-LEN   \ byte length of "hb: compile preflight hook missing\n"
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
@@ -8456,6 +8457,7 @@ ardone LBL,
 : EM-STARTUP-RUNTIME-STATE ( -- )
    CODE-ORIGIN:RESTORE-REGION,
    9 LANCHOR LABEL@ ADR,  10 LSRC LABEL@ ADR,
+   10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
    9 10 CODE-ORIGIN:NATIVE-RANGE,
    9 0 MOVZ,
    \ This process owns no registration lock inherited from captured bytes.
@@ -8484,6 +8486,9 @@ ardone LBL,
    \ the stub armed carries that program's descriptor number, which names nothing
    \ this process ever opened.
    9 DATA SIGNAL-ABI:FD-CELL STR,
+   \ No idle closed-text stack either: the list names mappings of the process
+   \ that wrote the bytes.
+   9 DATA CLOSED-FREE-CELL STR,
    \ The engine's own handler is baked beside this startup, so ADR reaches it and
    \ every generation of every build chain measures that. A stripped image's
    \ handler is not: src/habu/aot-lib.f EMIT-ENTRY loads the same register with
@@ -8500,6 +8505,7 @@ ardone LBL,
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
    9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
+   9 LFLOORREC LABEL@ ADR,  9 DATA FLOORREC-CELL STR,     \ underdepth throw entry (the crash handler resumes an access below the base here)
    9 LUNCAUGHT LABEL@ ADR,  9 DATA UNCGH-CELL STR,        \ uncaught top-level throw reporter (BTHROW THROW-NOREC branches here)
    LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,             \ VRTAB/VRITAB fill + dict hash table (data mapped, NDICT final)
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -9265,15 +9271,28 @@ public
 \ leaf reaches it INSTEAD of LFIND, and one of the two answering a question the
 \ other cannot is how the two shapes drift apart.
 : EMIT-FIND-USED ( -- )
-   LFINDUSED LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan:label qnone:label ret:label uloop:label mloop:label member:label
       ninl:label ncmp:label nmatch:label unext:label udone:label amb:label ambmsg:label
       lscan:label kloop:label knext:label ploop:label pnext:label pinl:label
-      pcmp:label pmatch:label :}
+      pcmp:label pmatch:label pamb:label :}
+   \ The compile and interpret paths die on an ambiguous tail; scope-find
+   \ (BSCOPEFIND) reports it instead. So the search is one leaf, LFINDUSED-CORE,
+   \ which answers x6 = the number of distinct records it met (0, 1, or 2 when it
+   \ stopped at the second), and LFINDUSED is that leaf plus the death. At 2 no
+   \ record binds (x13 = 0, x5 = 0) and both are named: x16 the first, x12 the
+   \ second.
+   LFINDUSED LABEL@ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      LFINDUSED-CORE LABEL@ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
+      6 2 CMPI,  C-GE amb BCOND,
+      RET,
+   LFINDUSED-CORE LABEL@ LBL,
    13 0 MOVZ,
    17 0 MOVZ,
+   6 0 MOVZ,                                                        \ the match count every exit answers
    qscan LBL,
       17 10 CMP,  C-GE qnone BCOND,
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ ret BCOND,   \ colon -> not a bare tail; miss
@@ -9318,8 +9337,8 @@ public
          12 5 2 LSLI,  12 14 12 ADD,  12 12 0 LDRW,                \ x12 = this slot's record again
          12 12 1 SUBI,  11 DREC MOVZ,  12 12 11 MUL,  12 DBASE 12 ADD,
          12 16 CMP,  C-EQ knext BCOND,                             \ same record again (same package used twice)
+         6 6 1 ADDI,  6 2 CMPI,  C-GE pamb BCOND,                  \ 2nd distinct record -> ambiguous: x16 1st, x12 2nd
          16 12 0 ADDI,
-         6 6 1 ADDI,  6 2 CMPI,  C-GE amb BCOND,                   \ 2nd distinct record -> ambiguous
    knext LBL,
       3 3 1 ADDI,  kloop B,
    pnext LBL,
@@ -9354,8 +9373,9 @@ public
             15 14 CMP,  C-NE unext BCOND,
             17 17 1 ADDI,  ncmp B,
          nmatch LBL,
-            6 6 1 ADDI,  16 5 0 ADDI,                              \ count++, remember record
-            6 2 CMPI,  C-GE amb BCOND,                             \ 2nd distinct match -> ambiguous
+            6 6 1 ADDI,  12 5 0 ADDI,                              \ count++, x12 = this record
+            6 2 CMPI,  C-GE pamb BCOND,                            \ 2nd distinct match -> ambiguous: x16 1st, x12 2nd
+            16 5 0 ADDI,                                           \ remember record
       unext LBL,  5 5 DREC ADDI,  4 4 1 SUBI,  uloop B,
    udone LBL,
    13 0 MOVZ,                                                      \ the probes used x13 as a byte index
@@ -9373,6 +9393,7 @@ public
    13 1 MOVZ,  13 13 14 ORR,
    RET,                                                            \ hit: x5 is the matched record, LFIND's own output shape
    ret LBL,  5 0 MOVZ,  RET,                                       \ every miss leaves x5 = 0, including the two that never wrote it
+   pamb LBL,  13 0 MOVZ,  5 0 MOVZ,  RET,                          \ a second distinct record: none binds, x6 = 2
    amb LBL,
       0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
       PROT-EMIT:LCLOSE LABEL@ BL,                             \ region -> RX (idempotent; a compile-path caller is RW here)
@@ -9408,6 +9429,51 @@ public
       105 C-DIE-TOKEN                              \ 105 = ENGINE-ERROR:USING-SHADOW-GLOBAL
    msg LBL,  ma mu BYTES, ;
 ;package
+
+\ LSCOPEREC: THE NAME LOOKUP, as one leaf for every reader but the call site
+\ itself. It runs the call site's two leaves in the call site's order (habu2.f
+\ EM-COMPILE-CALL): LFIND - the open package's private and public wordlists, then
+\ the global one, or NAME:tail - and, only as the binding when LFIND missed, the
+\ used publics. In: x9/x10 = the token, preserved. Out: x14 = the bound record
+\ (0 when nothing binds), x16 = the used publics' record (0 when none, the first
+\ of two), x17 = the second of two (0 below two), x15 = flags: 1 when the bound
+\ record is a seeded primitive, 2 when the used publics hold two distinct
+\ records. Two bind nothing when LFIND missed; both are named so that a reader
+\ can tell which candidate it would hide. Clobbers x2-x17 as the leaves do.
+\
+\ SEEDED IS THE IDENTITY OF AN OPERATOR ROW'S WORD. The boot copies the
+\ primitives' records to dict[0..LNCOUNT); every later record - a package word,
+\ an EXPORT alias, a redefinition after `undefine` - sits at LNCOUNT or above.
+\ An operator row lowers its token as the primitive of that spelling, so it may
+\ claim the token only when the lookup bound that primitive's own record: a
+\ spelling, or a record's wordlist, is not that identity (C-OP-ROW-GATE below,
+\ src/compiler/native/hir-word.f INTRINSIC-BOUND?). The checker names the same
+\ word by the identity NORET-AXIOMS registers on its symbol (src/core/checker.f
+\ CTL-CORE-OP, CTL-INTRINSIC).
+: EMIT-SCOPE-REC ( -- )
+   LBL LBL LBL {: two:label have:label notseed:label :}
+   LSCOPEREC LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
+   LFIND LABEL@ BL,                                       \ x5 = the record, 0 on a miss
+   5 SP 24 STR,
+   9 SP 8 LDR,  10 SP 16 LDR,                             \ LFIND moved them onto a qualified tail
+   LFINDUSED-CORE LABEL@ BL,                              \ x5 = the one used record, x6 = records met
+   17 12 0 ADDI,
+   6 2 CMPI,  C-GE two BCOND,                             \ two: x16 the first, x17 the second, x5 = 0
+      16 5 0 ADDI,  17 0 MOVZ,
+   two LBL,
+   14 SP 24 LDR,  14 have CBNZ,
+      14 5 0 ADDI,                                        \ LFIND missed: the used publics bind
+   have LBL,
+   6 2 CMPI,  15 C-GE CSET,  15 15 1 LSLI,               \ flag 2: two distinct used records
+   14 notseed CBZ,
+   12 LNCOUNT LABEL@ ADR,  12 12 0 LDR,  13 DREC MOVZ,  12 12 13 MUL,  12 DBASE 12 ADD,
+   14 12 CMP,  C-CS notseed BCOND,                        \ at or past dict[LNCOUNT]: not seeded
+      13 1 MOVZ,  15 15 13 ORR,
+   notseed LBL,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   30 SP 0 LDR,  SP SP 32 ADDI,
+   RET, ;
 
 : C-CALL-CHECKER-EXPORT ( -- )
    LCHKEXPORT 14 C-FIND-GLOBAL
@@ -10086,29 +10152,29 @@ variable P2SK
 : EM-P2X-STORE ( -- )
    5 DATA P2W0-CELL LDR,  LP2STORE LABEL@ BL, ;
 
-\ The scope chain is asked before any row that lowers a token as one of the
-\ engine's own words by its spelling. A token LFIND binds outside the global
-\ wordlist is that scope's word - `dup` inside a package that defines `dup` -
-\ and it takes the call path, whatever it spells and wherever its operands sit.
-\ The operator rows used to claim such a token when its operands were constants
-\ or registers and pass it to the call only when they were in memory, so one
-\ spelling meant two words inside one package and the checker, which certifies
-\ the scope chain's word (src/core/checker.f CHECKER-BIND), certified one of
-\ them: `: dup ( n -- n ) 1 + ;  : T ( -- n ) 5 dup ;` left two cells where one
-\ was certified (test/reopen-binding.f). A record's wordlist is its cell [40],
-\ 0 for the global one; a miss leaves the rows their token, because a keyword
-\ such as `>r` has no record at all.
-: C-SCOPED-SKIP ( label -- ) {: scoped:label :}
-   LBL {: global:label :}
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 global CBZ,
-   14 5 40 LDR,  14 scoped CBNZ,
-   global LBL, ;
+\ An operator row lowers its token as the seeded primitive of that spelling, so
+\ it claims the token only when the lookup binds that primitive (LSCOPEREC
+\ above). Any other record takes the call path, whatever it spells and wherever
+\ its operands sit: `dup` inside a package that defines `dup`, and a global `dup`
+\ defined after `undefine dup`. The rows used to claim such a token by its
+\ spelling, so the JIT inlined the primitive where the checker certified the
+\ word the scope binds: `undefine dup  : dup ( n -- n ) 100 + ;  : T ( -- n )
+\ 5 dup ;` certified ( -- n ) and left 5 and one extra cell
+\ (test/reopen-binding.f). A token with no record keeps its row, because a
+\ keyword such as `>r` has none; ambiguous used publics take the call path,
+\ which names them.
+: C-OP-ROW-GATE ( label -- ) {: call:label :}
+   LBL {: rows:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LSCOPEREC LABEL@ BL,
+   16 15 2 ANDI,  16 call CBNZ,
+   14 rows CBZ,
+   16 15 1 ANDI,  16 call CBZ,
+   rows LBL, ;
 
 \ The pass-2 width rows: EM-COMPILE-P2WIDE dispatches through them and
-\ COMPILE-EMIT:EMIT-ROW-WALK replays them. A row answers only in pass 2, but
-\ there it answers before any lookup but the scope chain's (C-SCOPED-SKIP), so
-\ a name it spells is a row like any other.
+\ COMPILE-EMIT:EMIT-ROW-WALK replays them. A row answers only in pass 2,
+\ after the scope gate (C-OP-ROW-GATE), so its spelling alone cannot shadow
+\ the record the checker binds.
 : EM-P2WIDE-ROWS ( -- )
    LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
    LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
@@ -10138,7 +10204,7 @@ variable P2SK
 : EM-COMPILE-P2WIDE ( -- )
    LBL {: notp2:label :}
    9 DATA P2-CELL LDR,  9 notp2 CBZ,
-   notp2 C-SCOPED-SKIP
+   notp2 C-OP-ROW-GATE
    EM-P2WIDE-ROWS
    notp2 LBL, ;
 
@@ -11046,7 +11112,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL {: bounds:label owned:label scope:label :}
+   LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -11074,6 +11140,21 @@ public
       12 13 8 LDR,   12 DATA INE-CELL STR,
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
       XDS 13 32 LDR,
+      \ A closed frame owns its text's data stack: back to the pool, whether or
+      \ not the frame owns the compile. The extent in force becomes its
+      \ caller's, which habu1.f B-EVAL-CLOSED keeps in its own frame, the one
+      \ [frame+24] names: base, capacity and cursor at [0], [8] and [16].
+      \ Compiled code runs before a handler's own extent is back (EM-PKG-RESYNC
+      \ at LEVLD), and none may run on a stack the pool holds: the pool links an
+      \ idle stack through its first cell.
+      10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,
+      9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
+      9 13 24 LDR,
+      14 9 0 LDR,  10 9 8 LDR,  12 9 16 LDR,  0 bounds STACK-GUARD:CHECK-CURSOR
+      14 DATA STACK-ABI:BASE-CELL STR,
+      12 9 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+      XDS 9 16 LDR,
+      unowned LBL,
       12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
          \ The outer definition as the interrupted token began (layout.f TOKBODY-CELL).
          12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,
@@ -11286,6 +11367,24 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
+   \ LFLOORREC: crash.f C-CRASH-DATA-RECOVER resumes a thread here, every other
+   \ register as it faulted, when engine or compiled code loaded or stored in
+   \ the data stack's low guard page: a word took more cells than the stack
+   \ held. The guard page stopped the access, so no cell under the base was read
+   \ or written. XDS may point under the base, so the stub empties the stack
+   \ before anything can run on it: LEVALREC restores XDS from the eval or catch
+   \ frame it delivers to, and the uncaught exit runs the exit hook, compiled
+   \ code, on the empty stack. TKA/TKL still name the token the interpreter was
+   \ running. The throw goes through LEVALREC, not LDIAGRET's reject of a token
+   \ that has not run: the fault is inside running code, maybe under a catch at
+   \ top level, which must receive it as it receives a throw. LEVALREC closes
+   \ the code window first, as it does for any throw.
+   LFLOORREC LABEL@ LBL,
+   XDS DATA STACK-ABI:BASE-CELL LDR,
+   0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   15 RC-REJECT MOVZ,  LEVALREC LABEL@ B,
    LPREFMISS LABEL@ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG LABEL@ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
@@ -12107,7 +12206,7 @@ public
    EM-COMPILE-P2WIDE
    EM-COMPILE-KEYWORDS
    EM-COMPILE-LITERAL
-   call C-SCOPED-SKIP
+   call C-OP-ROW-GATE
    ENGINE-EMIT:EM-COMPILE-OPS
    call LBL,
    EM-COMPILE-CALL ;
@@ -12251,7 +12350,8 @@ package LABELS
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
-   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL INTERP-EMIT:LFINDSHADOW !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDUSED-CORE !  LBL LSCOPEREC !
+   LBL INTERP-EMIT:LFINDSHADOW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -12269,7 +12369,7 @@ package LABELS
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
    LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !
-   LBL LMININ !  LBL LMINMSG !
+   LBL LMININ !  LBL LMINMSG !  LBL LFLOORREC !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFKIND !  LBL LCFKINDMSG !
@@ -12759,6 +12859,18 @@ variable CUR
    done LBL,
    A G-PUSH ;
 
+\ scope-find ( ptr u8 n -- ptr n ptr n ptr n n ): LSCOPEREC's four answers for
+\ a token the caller holds - the bound record, the used publics' record, the
+\ second used record when two hold the tail, the flags. It is the lookup the
+\ checker, the optimizing compiler and the Habu interpreter ask, so each binds a
+\ spelling to the record the JIT's call binds it to rather than to the answer of
+\ a walk of its own. A global row, checked like any other: a caller reads a
+\ record's cells as src/habu/xref.f XREF-WORDLIST does.
+: BSCOPEFIND ( -- )
+   10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr
+   LSCOPEREC LABEL@ BL,
+   14 G-PUSH  16 G-PUSH  17 G-PUSH  15 G-PUSH ;
+
 \ Build sequencing: the section emitters join the emitter package habu1.f opens
 \ for EMIT-PRIMS, EMIT-PROTWID and EMIT-DICT, which they call bare, and FORTH is
 \ this package's one public word -- what src/habu/build.f, src/habu/stdin.f and
@@ -12782,6 +12894,7 @@ package ENGINE-EMIT
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
+   s" scope-find" ['] BSCOPEFIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
@@ -12802,6 +12915,7 @@ package ENGINE-EMIT
    WLFIND:EMIT
    EMIT-FIND-USED
    INTERP-EMIT:FIND-SHADOW
+   EMIT-SCOPE-REC
    EMIT-HIDX
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME

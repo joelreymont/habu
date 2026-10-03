@@ -34,6 +34,10 @@ private
       construct shape source-span s" close_string" s" " EXIT THEN
    c u s" E-MALFORMED-REGISTRY-ROW" STR= IF
       construct shape source-span s" close_primitive_row" s" " EXIT THEN
+   c u s" E-GENERATES-ROW" STR= IF
+      construct shape record
+      s" fix_generates_row delete_generates_row fix_signature_syntax fix_signature_type fix_signature_arity fix_bare_ptr_element"
+      s" " EXIT THEN
    c u s" E-ENGINE-PROVIDED" STR= IF
       construct shape input s" rebuild_engine" s" " EXIT THEN
    c u s" E-TRUST-UNRESOLVED" STR= IF

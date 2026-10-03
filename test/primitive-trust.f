@@ -24,6 +24,8 @@ create ERR IO-CAP allot
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    fixture u >LEN PROC-ARGV+
+   \ The window has no `require`: it loads a fixture's dependencies from here.
+   s" lib/tier.f" >LEN PROC-ARGV+
    native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
    WHITEBOX-CHILD:ENV! ;
 

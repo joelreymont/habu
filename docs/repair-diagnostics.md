@@ -109,7 +109,7 @@ none. It has no definition fields, and the checker continues past it under
 
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
-`byte_end`, and `suggestion`, and no definition fields. There are three:
+`byte_end`, and `suggestion`, and no definition fields. There are four:
 
 - `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
   threw while the checker checked it, with or without `--all-errors`, such as a
@@ -119,6 +119,19 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   its source, and the run exits 70 as for a refusal. Without
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
   throw <throw_code> at '<token>'`.
+- `E-GENERATES-ROW`: a `generates: D ( effect )` row the checker refused, its
+  `token` D. Its repair class names the claim that failed: `fix_generates_row`
+  when D names no word where the row stands, `delete_generates_row` when D
+  already states what it makes (its `does>` clause, an earlier row, or the
+  definer it wraps), and the signature refusal's own class
+  (`fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or
+  `fix_signature_syntax`) when the effect does not parse. A load refuses the
+  row with `hb: uncaught throw code 7153` and exits 67. `tools/check.f` reads
+  the row before the run, so its record carries the token's place, and exits
+  67 likewise (70 under `--verify-only`) or, under `--all-errors`, continues
+  past it, counting it as a refusal. A row in text that `evaluate` runs is
+  refused by the run alone, which has no record of its token's place, so that
+  record carries none.
 - `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
   at `token` does not close in the checked source.
 - `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
@@ -429,7 +442,7 @@ Span packets carry a span record's evidence:
 | `byte_start` | integer | required | Token start byte. |
 | `byte_end` | integer | required | Token end byte. |
 | `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING` or `E-MALFORMED-REGISTRY-ROW`. |
-| `throw_code` | integer or null | required | The code a statement threw; null for a lexer defect. |
+| `throw_code` | integer or null | required | The code a statement threw; null for any other span. |
 | `repair_class` | string | required | Stable repair bucket. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
@@ -462,7 +475,7 @@ position fields when its named token locates in the checked text:
 | `signature` or `package` | string | the field its code adds | Copied from the record. |
 | `file` | string | required | Source label or path. |
 | `line`, `column`, `byte_start`, `byte_end` | integer | all four or none | Copied source positions when known. |
-| `code` | string | required | A refused-record code. |
+| `code` | string | required | A refused-record code or `E-GENERATES-ROW`. |
 | `repair_class` | string | required | One its code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
@@ -537,6 +550,11 @@ Current checker classes:
   of arguments; give it its exact declared arity.
 - `fix_bare_ptr_element`: a signature named `ptr` with no element type; give it an
   element type, e.g. `ptr u8` or `ptr a`.
+- `fix_generates_row`: a `generates: D ( effect )` row's D names no word where
+  the row stands; write the row after D's definition, spelled as it spells D.
+- `delete_generates_row`: a `generates: D ( effect )` row's D already states
+  what it makes: its `does>` clause, an earlier row, or the definer it wraps.
+  Delete the row.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
 - `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
@@ -584,9 +602,9 @@ Current checker classes:
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
 
-The checker `suggestion` field is stable short text derived only from
-`repair_class`; it does not replace the raw `expected`, `actual`, or
-`return_stack` evidence:
+The checker `suggestion` field is stable short text; for each class in this
+table it is derived only from `repair_class`. It does not replace the raw
+`expected`, `actual`, or `return_stack` evidence:
 
 | `repair_class` | `suggestion` |
 | --- | --- |
@@ -617,6 +635,8 @@ The checker `suggestion` field is stable short text derived only from
 | `rename_duplicate` | `Rename the word or undefine the old definition before redefining it.` |
 | `close_string` | `Close the string literal before the definition ends.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
+| `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
+| `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
