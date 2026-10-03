@@ -3,11 +3,13 @@
 require lib/errors.f
 require lib/prelude.f
 
+package PROCESS-PTY
+
+\ The three lifecycle tokens. Declared inside the package, so it owns them:
+\ only its private section may mint or erase one.
 DEFLINEAR process-pty-reservation
 DEFLINEAR process-pty-handle
 DEFLINEAR process-pty-teardown
-
-package PROCESS-PTY
 
 \ The six supervisor roles. Each is a distinct one-cell nominal family so the
 \ checker refuses a cross-role swap: a supervisor pid is not a process-group id
@@ -45,18 +47,14 @@ SLOT-CAP TYPED-BUFFER SLOT-TARGET-WATCH target-watch
 SLOT-CAP TYPED-BUFFER SLOT-SUP-WATCH sup-watch
 create SLOT-OWNER SLOT-CAP cells allot
 
-\ Packed slot/generation cell <-> three distinct linear lifecycle tokens. These
-\ six stay trusted because a cast may not carry linear ownership: `CAST:` refuses
-\ every one of them with 7137 E-CAST-LINEAR (measured), and rightly so — minting
-\ or erasing a use-once token through a zero-instruction retype is exactly the
-\ unsoundness the rule exists to stop. The checker cannot refine or erase these
-\ use-once roles yet; retirement owner: habu-recover-checked-pty-04fcb611.
-TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
-TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
-TRUSTED: N>RESERVATION ( n -- process-pty-reservation ) ;
-TRUSTED: RESERVATION>N ( process-pty-reservation -- n ) ;
-TRUSTED: N>TEARDOWN ( n -- process-pty-teardown ) ;
-TRUSTED: TEARDOWN>N ( process-pty-teardown -- n ) ;
+\ Packed slot/generation cell <-> the three linear lifecycle tokens: the
+\ checker certifies each row as this package's private mint or erase.
+LINEAR: N>HANDLE ( n -- process-pty-handle )
+LINEAR: HANDLE>N ( process-pty-handle -- n )
+LINEAR: N>RESERVATION ( n -- process-pty-reservation )
+LINEAR: RESERVATION>N ( process-pty-reservation -- n )
+LINEAR: N>TEARDOWN ( n -- process-pty-teardown )
+LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
 
 \ The twelve supervisor-role conversions are checked casts: one cell in, one cell
 \ out, and every destination is either a family this package declares (the six
