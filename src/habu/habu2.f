@@ -3226,6 +3226,7 @@ public
 
 : J-QUOT ( -- )
    LBL LBL {: qok:label qroom:label :}
+   C-CF-ROOM                                       \ refuse before parking an enclosing quotation
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ a quotation is open: park it
       10 DATA JIT-QUOT:SP-CELL LDR,
       10 JIT-QUOT:LEVELS 1- CMPI,  C-LT qroom BCOND,
@@ -3234,7 +3235,6 @@ public
       QUOT-FRAME,  QUOT-PARK,
       10 10 1 ADDI,  10 DATA JIT-QUOT:SP-CELL STR,
    qok LBL,
-   C-CF-ROOM                                       \ the quotation's entry: refused at the cap before QPATCH is set
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    CFK-QUOT C-PUSHCP                               \ closers inside see the quotation, not the body around it
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder

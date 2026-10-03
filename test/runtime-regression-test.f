@@ -1332,7 +1332,7 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: control-flow word does not match the open structure: ;]" GE-RXE-TOP
    s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
@@ -1861,6 +1861,23 @@ create GE-END-AT 16 allot
    1 s" 7 repeat" s" +" GE-FAMILY
    1 s" 7 endcase" s" +" GE-FAMILY ;
 
+\ A refused nested quotation must not park a frame. The outer definition
+\ survives the caught evaluate, so its real quotation must still close once.
+: GE-EMIT-QUOT-ROOM ( -- )
+   GE-SRC-RESET
+   s" 0 set-check" GE-SRC-LINE
+   s" : GEENDCAT ( -- ) " GE-SRC+
+   s" [:" GE-SRC-S"  s"  evaluate " GE-SRC+
+   CFSTK-DEPTH-MAX 1- GE-SRC-U+  s"  0 ?do " GE-SRC+
+   s" 0 0= if" GE-SRC-S"  s"  evaluate loop [: " GE-SRC+
+   s" [:" GE-SRC-S"  s"  evaluate ;] catch . " GE-SRC+
+   CFSTK-DEPTH-MAX 1- GE-SRC-U+  s"  0 ?do " GE-SRC+
+   s" then" GE-SRC-S"  s"  evaluate loop " GE-SRC+
+   s" 42 ;] execute" GE-SRC-S"  s"  evaluate ; immediate" GE-SRC-LINE
+   s" : GEEND ( -- n ) GEENDCAT ;" GE-SRC-LINE
+   s" GEEND . depth ." GE-SRC-LINE
+   S\" 70\n42\n0\n" s" caught quotation capacity refusal" GE-EMIT-EXPECT ;
+
 \ A refusal two evaluates down, caught one level up, keeps what the inner
 \ evaluate completed, as at one level: GEENDIN's 7 stays in GEEND. Each popped
 \ frame put back the mark of the token that called its evaluate, so the outer
@@ -1935,6 +1952,7 @@ create GE-END-AT 16 allot
 : GE-END-EMIT ( -- )
    GE-EMIT-SHAPES
    GE-EMIT-FAMILIES
+   GE-EMIT-QUOT-ROOM
    GE-EMIT-DEEP
    2 0 do
       i GE-EMIT-NEST
