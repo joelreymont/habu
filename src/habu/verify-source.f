@@ -635,12 +635,17 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
 
+: MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
+
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
 \ mode state, dynamic signature publication, raw-definer mode, and the scope's
 \ own name resolution.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+\ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, or
+\ in a multi-error load.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
-   CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
+   CHECK! dup 1 = JSON-DIAGS @ 0= and MULTI-ERR-MODE? 0= and DIAG-QUIET @ 0= and
+   IF DIAGXT THEN ;
 
 \ The scope's two questions about a name, asked of the checker that owns the
 \ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
@@ -780,21 +785,18 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
    a u FIND-SYM DEFINER-FIND dup 0= IF drop SOURCE@ 0 EXIT THEN
    1 - DEFINER-SIG@ ;
 
-: MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
-
 \ A body's verdict as this scan acts on it: -1 certified, 2 deferred to the run
-\ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a verdict-0 reject RETURNS
-\ instead of throwing: CHECK has already emitted the diagnostic, counted
-\ MULTI-ERR-N, and recorded the declared signature (no-cascade), so the scan
-\ continues at the next definition. Verdict-1 (uncheckable) still throws in
-\ BOTH modes: MULTI-ERR-N counts verdict-0 only, so continuing past
-\ uncheckables would let an all-uncheckable file exit 0 - fail-open.
+\ (see RENDERS-MARK?), 0 refused. In MULTI-ERR mode a refusal, rejected (0) or
+\ uncheckable (1), RETURNS 0 instead of throwing: the checker has rendered it,
+\ counted it in MULTI-ERR-N, which keeps the run failing, and recorded the
+\ declared signature (no-cascade), so the scan continues at the next
+\ definition. Outside MULTI-ERR mode every refusal throws.
 \ The verdict is answered rather than swallowed because a created effect is a
 \ fact about a definition the checker did not refuse: a refused body records
 \ nothing.
 : BODY-VERDICT ( n -- n ) {: v:n :}
    v -1 = v 2 = or IF v EXIT THEN
-   v 0 = MULTI-ERR-MODE? and IF v EXIT THEN
+   MULTI-ERR-MODE? IF 0 EXIT THEN
    70 throw ;
 
 : VERIFY-BODY ( -- n )

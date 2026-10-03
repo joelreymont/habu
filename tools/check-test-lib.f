@@ -2187,10 +2187,12 @@ variable SIZED-U
 
 1 constant MODE-JSON                     \ check.f --json-errors
 2 constant MODE-ALL                      \ check.f --all-errors
+4 constant MODE-VERIFY                   \ check.f --verify-only
 
 : MODE-ARGS ( n -- ) {: mode:n :}
    mode MODE-JSON and 0<> if s" --json-errors" CHECK-ARG+ then
-   mode MODE-ALL and 0<> if s" --all-errors" CHECK-ARG+ then ;
+   mode MODE-ALL and 0<> if s" --all-errors" CHECK-ARG+ then
+   mode MODE-VERIFY and 0<> if s" --verify-only" CHECK-ARG+ then ;
 
 \ check.f on the source as a file, in the given modes, with its standard error
 \ captured into the given buffer.
@@ -2383,6 +2385,60 @@ REFUSAL-N REFUSAL-LINE-LEN * constant REFUSAL-SOURCE-LEN
 : TEST-REFUSALS ( -- )
    REFUSAL-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
    [: REFUSALS-BODY ;] MEM:WITH-BYTES ;
+
+\ ---- every refusal after an undefined word ------------------------------------
+\ An undefined word refuses CKT-UONE. A later definition sees it by its declared
+\ effect: CKT-UCALL uses that effect and certifies, CKT-UMISUSE calls it with
+\ nothing on the stack and is refused, and CKT-UBAD is refused on its own.
+\ --all-errors and --verify-only report the three refusals, one packet each, and
+\ --verify-only writes nothing to standard output; without --all-errors check.f
+\ stops at the first.
+
+: EVERY-SOURCE$ ( -- ptr u8 n )
+   s\" : CKT-UONE ( n -- n ) NOPE ;\n: CKT-UCALL ( n -- n ) CKT-UONE 1 + ;\n: CKT-UMISUSE ( -- n ) CKT-UONE ;\n: CKT-UBAD ( n -- n ) dup ;\n" ;
+
+: EVERY-HAS? ( n ptr u8 n -- bool ) {: erru:n s:ptr su:n :}
+   CAP-ERR erru s su CONTAINS? ;
+
+\ check.f in the given modes refuses the source: what it wrote to standard
+\ output and to standard error.
+: EVERY-RUN ( n ptr u8 n -- n n ) {: mode:n label:ptr labelu:n :}
+   EVERY-SOURCE$ mode CAP-ERR BUF-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   label labelu T-LABEL rc 70 T=
+   SCRATCH-EMPTY
+   outu erru ;
+
+: EVERY-REPORTED ( n ptr u8 n -- ) {: erru:n label:ptr labelu:n :}
+   label labelu T-LABEL CAP-ERR erru 10 COUNT-CHAR 3 T=
+   label labelu T-LABEL erru s\" \"word\":\"ckt-uone\",\"token\":\"NOPE\"" EVERY-HAS? TTRUE
+   label labelu T-LABEL erru s\" \"word\":\"ckt-umisuse\",\"token\":\"CKT-UONE\"" EVERY-HAS? TTRUE
+   label labelu T-LABEL erru s\" \"word\":\"ckt-ubad\",\"token\":\"dup\"" EVERY-HAS? TTRUE
+   label labelu T-LABEL erru s\" \"word\":\"ckt-ucall\"" EVERY-HAS? TFALSE ;
+
+: TEST-EVERY-REFUSAL ( -- )
+   MODE-ALL MODE-JSON or s" every-refusal: --all-errors" EVERY-RUN nip
+   s" every-refusal: --all-errors" EVERY-REPORTED
+   MODE-VERIFY s" every-refusal: --verify-only" EVERY-RUN {: outu:n erru:n :}
+   s" every-refusal: --verify-only's stdout" T-LABEL outu 0 T=
+   erru s" every-refusal: --verify-only" EVERY-REPORTED
+   MODE-JSON s" every-refusal: --json-errors" EVERY-RUN nip {: first:n :}
+   s" every-refusal: --json-errors reports the first" T-LABEL
+   first s\" \"word\":\"ckt-uone\",\"token\":\"NOPE\"" EVERY-HAS? TTRUE
+   s" every-refusal: --json-errors stops there" T-LABEL
+   first s\" \"word\":\"ckt-umisuse\"" EVERY-HAS? TFALSE ;
+
+\ An uncheckable definition is reported before its record, which a name that
+\ keys no record refuses by a throw (checker.f CHECKER-RECORD-NAME), so prose
+\ --all-errors reports both: the definition's undefined word, then the record.
+: EVERY-MALNAME$ ( -- ptr u8 n )
+   s" : CKT:UQ:B ( n -- n ) NOPE ;" ;
+
+: TEST-EVERY-RECORD ( -- )
+   EVERY-MALNAME$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED habu: in ckt:uq:b: undefined word 'NOPE'" CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED habu: record for 'ckt:uq:b' refused" CONTAINS? TTRUE ;
 
 \ ---- a report past the scratch -----------------------------------------------
 \ --all-errors renders every refusal into a scratch of INCLUDE-BUF-CAP bytes and
@@ -5344,6 +5400,8 @@ variable LC-CANON-U
    s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
    s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN
+   s" check/every-refusal" [: TEST-EVERY-REFUSAL ;] CASE-RUN
+   s" check/every-refusal-record" [: TEST-EVERY-RECORD ;] CASE-RUN
    s" check/scratch-full" [: TEST-SCRATCH-FULL ;] CASE-RUN
    s" check/render-full" [: TEST-RENDER-FULL ;] CASE-RUN
    s" check/render-full-effect" [: TEST-RENDER-FULL-EFFECT ;] CASE-RUN
