@@ -1,9 +1,11 @@
 ---
 title: Add RFC 6455 WebSocket server support over lib/net/http.f
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-30T13:39:54.079864+02:00\""
+created-at: "\"\\\"2026-09-30T13:39:54.079864+02:00\\\"\""
+closed-at: "2026-10-03T16:55:36.880172+03:00"
+close-reason: "Landed on habu master as b25bffcc (Add WebSocket connections over the HTTP server), on 4dc7496f. Reviewed by Fable through ws-rev13 (ACCEPT) with Astra coverage. The connection error block is -9410..-9419, not the -9360..-9369 this dot names, because master's C2 and URI blocks took those. TCP4 also gained UNREAD and UNSENT, which bound the pong-fill wait by its progress. Proof on the pushed tree: native-build rc 0; ws-test x3, ws-frame, tcp4, http, genio, aio, curl, five-bindings, error-code-lint and snapshot-writer all rc 0; full registry 584/584 rc 0 on rerun. The first run's two reds, native-build-entry and c2-memory, were TIMEOUT-UNDER-LOAD at sat 8/8 and pass alone on both engines (logs /private/tmp/claude-501/wsland7)."
 blocks:
   - habu-move-tender-s-b5dbc521
 ---
