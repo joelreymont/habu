@@ -433,11 +433,14 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ Its row is `!`'s row, so the value and the pointee are the same type and a
 \ quotation-typed cell is written with a quotation of exactly its own effect.
 \ What the row still cannot say is that the pointee MUST be an execution token:
-\ there is no quotation-kinded type variable, only TVK-ANY and TVK-RAW, so `xt!`
-\ into a plain integer cell type-checks today and would have the loader shift an
-\ ordinary integer. That missing kind, and the rule that would make a plain `!`
-\ of a quotation into a persisted cell a reject, are dotted as
-\ habu-add-a-quotation-1610f30c.
+\ there is no quotation-kinded type variable (no TVK kind admits only
+\ quotations), so `xt!` into a plain integer cell type-checks today and would
+\ have the loader shift an ordinary integer. That missing kind is owned by
+\ dot habu-give-xt-a-9fc427a9.
+\ A plain `!` of a quotation into such a cell is already refused
+\ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
+\ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
+\ cells).
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;

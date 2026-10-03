@@ -5379,7 +5379,8 @@ TFAM-MEMBERS-INSTALL
 \ Such a width contradiction must NEVER certify — reject it unconditionally, including a
 \ CHECK-CANDIDATE probe. SIGNED pass-2 corrections (a native emitter that removes cells,
 \ not only adds) would make these lowerable; that capability is tracked by dot
-\ habu-signed-pass-2-4fc2b960 and will flip these rejects to exact-width construct/MATCH.
+\ habu-construct-asymmetric-growth-0f4df0fa and will flip these rejects to exact-width
+\ construct/MATCH.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
@@ -5404,7 +5405,7 @@ TFAM-MEMBERS-INSTALL
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
    {: extra:n :}
    extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
 
 \ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
 \ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a STRUCTURE UNMAKE
@@ -5433,7 +5434,7 @@ TFAM-MEMBERS-INSTALL
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
    {: extra:n :}
    extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
 
 public
 

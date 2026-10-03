@@ -225,8 +225,8 @@ private
 \ compiled, so the routine has to be found after the load; a public wrapper
 \ would be a well-typed way for any source to invoke literal ownership import,
 \ which test/compiler/native-string.f exists to forbid, and an engine cell for
-\ the token costs a fixed slot and a layout row. Recorded as the one keep-set
-\ entry of habu-ship-no-dictionary-2fee2dea until that trade is decided.
+\ the token costs a fixed slot and a layout row. So the capture ships this name
+\ on purpose: it is a keep-set entry in src/habu/aot-capture.f ACAP-KEEP?.
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
    rows source-off source-len IMPORT-CHECK

@@ -167,7 +167,7 @@ s\" s\q TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST
 \ A QUALIFIED spelling is accepted, and this case exists to pin that as a STATED
 \ GAP rather than a silent one. `search-wl` answers per wordlist on the raw
 \ spelling and a closed package's publics live in none it can reach, so PKG:TAIL
-\ has no resolver in the boot prefix yet (dot habu-a-qualified-name-3913fe54).
+\ has no resolver in the boot prefix yet (dot habu-resolve-qualified-trust-2826761a).
 \ When that lands, this case changes verdict and says so.
 s\" s\q TRWB:TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 \ ... including for a package that does not exist at all, which is the whole of

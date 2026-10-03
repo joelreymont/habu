@@ -1216,9 +1216,10 @@ CHECKER-PKG-LIVE-DEFAULT
 \ unhandled refusal exits exactly 70, while an enclosing `catch` (a nested
 \ `evaluate`, the check tool, a test harness) still receives a catchable reject
 \ instead of a process exit. Which programs are refused does not change here,
-\ only how the refusal surfaces. Whether a bare word list ought to BE a legal
-\ definition context is a separate question, owned by dot
-\ habu-model-bare-wordlists-9e7c3521.
+\ only how the refusal surfaces. A bare word list is not a definition context:
+\ `wordlist set-current` followed by a checked definition is refused here, and
+\ test/gate-dictionary-lib.f WORDLIST-BARE pins that refusal beside the package
+\ that answers the same need.
 \
 \ The `write` result is dropped because the next thing this word does is raise,
 \ so a short or failed diagnostic write has no caller that could act on it, and
@@ -2909,8 +2910,8 @@ variable STALE-HIT
 \ execution token, for a persisted cell whose address the caller works out at
 \ run time from a table base and a row index (`' W DECLARATIONS <off> + xt!`,
 \ dot habu-declare-persisted-cb-b150b5d5). Its row cannot say so -- there is no
-\ quotation-kinded type variable, only TVK-ANY and TVK-RAW (dot
-\ habu-add-a-quotation-1610f30c) -- so the window is opened on the token, in
+\ quotation-kinded type variable (no TVK kind admits only quotations; dot
+\ habu-give-xt-a-9fc427a9) -- so the window is opened on the token, in
 \ DO-TOK1, and closed with the same token's latches. It covers that one step:
 \ every OTHER way of putting a quotation into an undeclared cell or a
 \ base-derived address, `!` included, is refused.
@@ -15480,8 +15481,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 \ depth/.s report raw physical cells: over a row holding hidden fields they
 \ would expose the physical expansion of a logical value, so they fail closed
 \ PERMANENTLY (TFAM 12 item-5 verdict 2026-07-09; docs §17 sanctions reject
-\ over logical-shape reporting). The lift — logical-shape introspection that
-\ counts whole bundles — is capability dot habu-logical-shape-depth-9686f5c1.
+\ over logical-shape reporting).
 : HIDROW-STEP? ( -- bool )
    DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
    0 OK !  -1 FAILSET !
@@ -17479,9 +17479,9 @@ package CHECKER-REG
 \ special-case every primitive axiom, which have no recorded effect to find.
 \
 \ A QUALIFIED SPELLING IS ACCEPTED, and that is a stated gap rather than an
-\ oversight (dot habu-a-qualified-name-3913fe54): the probe that hides internal
-\ rows, `search-wl`, matches a record's own name within one wordlist, and
-\ PKG:TAIL is not a record's name. It is also the narrower half of
+\ oversight (dot habu-resolve-qualified-trust-2826761a): the probe that hides
+\ internal rows, `search-wl`, matches a record's own name within one wordlist,
+\ and PKG:TAIL is not a record's name. It is also the narrower half of
 \ the hole: only a BARE top-level name mints the global checker symbol that
 \ surfaces two layers away as E-USING-SHADOW-GLOBAL, which is the failure this
 \ refusal exists to stop. A malformed token is asked as a bare one: the engine
@@ -17552,16 +17552,13 @@ package CHECKER-REG
 \ (BSEALCAP, src/habu/habu1.f) dies fail-closed at SEAL-CAPTURE (exit 73, naming
 \ each undrained defer) if the table is non-empty because the drain never ran, so
 \ a removed or botched drain can never boot silently.
-\ The earlier runtime-lookup transition shim (TRUSTED: DRAIN-PRETRUST-COMPAT,
-\ owner habu-checker-exec-of-5923c543, which resolved the prim by `search-wl` so a
-\ previous-fixpoint engine lacking the prim could still load this boot prefix) was
-\ removed once this tree began declaring real pre-trust defers of its own — the
-\ TFAM query hooks TFAM-RESOLVE-XT.. above, before `: TRUST-DECL`, captured into the
-\ pending table. With those present, an engine without DRAIN-PRETRUST cannot load
-\ this prefix regardless of the shim: the bare token is E-UNDEFINED (exit 70) on
-\ it, and even the shim's lookup-miss branch would leave the table undrained and
-\ hit the exit-73 backstop. The shim therefore protected no engine and only
-\ carried a trusted execute-of-plain-n boundary (RSEXEC), so it is gone.
+\ The primitive is called by its bare token, never looked up at run time: this
+\ prefix declares pre-trust defers of its own (the TFAM query hooks
+\ TFAM-RESOLVE-XT.. above, before `: TRUST-DECL`), so an engine without
+\ DRAIN-PRETRUST cannot load it either way. The bare token is E-UNDEFINED (exit
+\ 70) there, and a `search-wl` lookup that missed would leave the table undrained
+\ and hit the exit-73 backstop, while costing a trusted execute-of-plain-n
+\ boundary (RSEXEC).
 \ The bare token sits between the two unique PTD-REGRESSION-BLANK sentinels so the
 \ negative regression (test/pre-trust-defer.f) can blank exactly this region and
 \ prove the exit-73 undrained backstop still fires, naming a real prefix defer;

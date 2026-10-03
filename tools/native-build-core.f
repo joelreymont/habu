@@ -286,7 +286,7 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
 \ this file was compiled, and the alternatives are a public wrapper - a
 \ well-typed way for any source to invoke literal ownership import, which
 \ test/compiler/native-string.f forbids - or a fixed engine cell for the token.
-\ It is the keep-set entry habu-ship-no-dictionary-2fee2dea has to carry.
+\ The capture keeps its name for this lookup: src/habu/aot-capture.f ACAP-KEEP?.
 : TARGET-IMPORTER ( -- n )
    s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if

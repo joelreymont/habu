@@ -14,13 +14,14 @@
 \ Tier-1 scope: value knowledge is a coarse family (scalar / byte-pointer / xt /
 \ gray) carried from literals, ticks and the pointer-arithmetic family only; every
 \ other word grays its outputs. Tier-1.5 (this file) reads a certified word's
-\ din/dout arity + families through the checker's minimal effect-read export API
-\ (src/core/checker.f EFFECT-QUERY / EFFECT-DIN-N / EFFECT-DOUT-N / EFFECT-DIN-FAM /
-\ EFFECT-DOUT-FAM, dot habu-expose-checker-effect-95e853eb) - used here only for the
-\ zero-risk pure-consumer precise pop below. Full effect-record row unification with
-\ precise OUTPUT family propagation (real per-word din/dout apply) is tier-2, dot
-\ habu-typed-top-tier-589c550f. This file loads from the checkout at boot; the raw
-\ effect-store internals stay hidden behind the export API's coarse family projection.
+\ fixed dout term count through the checker's minimal effect-read export API
+\ (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N, dot
+\ habu-expose-checker-effect-95e853eb) - used here only for the zero-risk
+\ pure-consumer precise pop below, whose din width comes from the event flags.
+\ Full effect-record row unification with precise OUTPUT family propagation (real
+\ per-word din/dout apply) is not built; dot habu-unify-a-certified-e16b3f8d owns
+\ it. This file loads from the checkout at boot; the raw effect-store internals
+\ stay hidden behind the export API's coarse family projection.
 
 package TOP-ROW
 
@@ -203,8 +204,8 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ KEEP the tail's precise families, instead of graying the whole row at the next
 \ event. Same warning gates; better shadow fidelity across pure consumers. The query
 \ reads raw effect-store state the checker cannot type, so it sits behind a TRUSTED:
-\ boundary. Precise OUTPUT family propagation and row unification are tier-2, dot
-\ habu-typed-top-tier-589c550f.
+\ boundary. Precise OUTPUT family propagation and row unification are not
+\ built; dot habu-unify-a-certified-e16b3f8d owns them.
 \ EFFECT-QUERY resolves the name as a definition would and refuses where the scope
 \ does: no authority names a package context (inside a package after `0
 \ set-current`), or a used public collides with the tail. The tracker only
