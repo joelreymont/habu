@@ -1784,12 +1784,10 @@ variable CH-AT
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64EMIT-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64EMIT-MODULE throw then ;
 
-\ Emission asks the registry for itself. The lowering stage accepted this
-\ contract for its own reasons; whether instructions can be written for the
-\ machine is this stage's question, and an architecture with no backend loaded
-\ never reaches it - the registry refuses with E-CTGT-UNLOADED first.
+\ Emission checks this implementation's pure capability predicate before
+\ writing bytes. Full provider registration belongs to passes.f.
 : TARGET-CK ( IR-CTX:ctx -- )
-   A64IR:CONTRACT@ CTARGET:EMITS?
+   A64IR:CONTRACT@ CTARGET:VALIDATE A64BACK:SERVES?
    0= if E-A64EMIT-TARGET throw then ;
 
 \ The probe makes staleness a refusal before a byte is written. It asks whether

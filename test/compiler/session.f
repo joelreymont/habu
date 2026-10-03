@@ -3,11 +3,15 @@
 require lib/test.f
 require lib/task.f
 require src/compiler/session/lease.f
+require src/compiler/session/backend.f
+require test/compiler/native-chain-fixture.f
+require src/arch/x86-64/passes.f
 
 package COMPILER-SESSION-TEST
 private
 
 TYPED-VARIABLE SAVED NLEASE:lease
+TYPED-VARIABLE WRONG NSESSION:session
 variable ENTERED
 TASK:MIN-STACK TASK:TASK WORKER
 
@@ -60,6 +64,23 @@ TASK:MIN-STACK TASK:TASK WORKER
    0 T= NLEASE:E-TASK T=
    SAVED @ NLEASE:CHECK ;
 
+: WRONG-PROVIDER ( -- )
+   WRONG @ NSESSION:RESOLVE drop drop ;
+
+: PROVIDER-WORK ( NSESSION:session -- )
+   NSESSION-SESSION:UNMAKE
+   {: c:IR-CTX:ctx id:CTARGET:backend-id l:NLEASE:lease :}
+   c X64BACK:ID l NSESSION-SESSION:MAKE WRONG !
+   [: WRONG-PROVIDER ;] NLEASE:E-STATE TTHROWSQ
+   c id l NSESSION-SESSION:MAKE NSESSION:RESOLVE drop drop ;
+
+: PROVIDER-CTX ( IR-CTX:ctx -- )
+   SAVED @ NSESSION:NEW [: PROVIDER-WORK ;] NSESSION:WITH-WORK ;
+
+: PROVIDER-ROOT ( NLEASE:lease -- )
+   SAVED !
+   NFIX:BINDING [: PROVIDER-CTX ;] IR-CTX:WITH-CONTEXT ;
+
 public
 
 : RUN ( -- )
@@ -80,7 +101,10 @@ public
    [: TASK-REFUSAL ;] NLEASE:WITH
    ENTER
    ENTERED @ 2 T=
-   NLEASE:IDLE-CK ;
+   NLEASE:IDLE-CK
+
+   s" a forged provider cannot select another architecture's live passes" T-LABEL
+   [: PROVIDER-ROOT ;] NLEASE:WITH ;
 
 ;package
 
