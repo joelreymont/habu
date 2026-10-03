@@ -1138,9 +1138,9 @@ s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 s" NEWTYPE span 3" E-TFAM-DUP TDT-NEG
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains E-TFAM-DUP.
-\ variant names may not collide with any family the declaring scope resolves,
-\ in ANY scope: builtin tails, prior user families, and (inside a package)
-\ the package's own tails all reject; the verdict matches across scopes.
+\ variant names may not collide with any family the declaring scope resolves:
+\ builtin tails and prior user families reject in every scope, the package's
+\ own tails inside that package.
 s" SUMTYPE tdvres 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 NEWTYPE tduserfam 1
 s" SUMTYPE tdvres2 1 VARIANT tduserfam a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG

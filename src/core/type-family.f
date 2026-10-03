@@ -2513,12 +2513,18 @@ private
    a u CONTROL? IF RES-TRUE EXIT THEN
    a u TF-GRAMMAR-KEYWORD? ;
 
+public
+
+\ FAMILY-TAKEN? is the variant-name collision rule, asked by VARIANT-REQUIRE
+\ below and by SUMTYPE's variant gate (sumtype.f): the name matches a family
+\ the declaring scope can already resolve, the global scope always plus the
+\ active package's own rows when one is open. A family is taken wherever the
+\ declaring scope resolves it: a global family in every scope, a package family
+\ inside its package.
 : FAMILY-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
-
-public
 
 \ FAMILY-RESERVED? is the family-name gate, the one list every family definer
 \ asks: SUMTYPE, PRODUCT and NEWTYPE (sumtype.f) and the STRUCTURE and ENUM front

@@ -203,15 +203,6 @@ private
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
 
-\ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the
-\ declaring scope can already resolve — the global scope always, plus the
-\ active package's own rows when one is open. Scope-independent by design:
-\ the top-level and in-package verdicts for the same token agree.
-: TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
-
 variable TDECL-NI
 : TDECL-VAR-SCOPE? ( n -- bool )
    SUMV-FAM@ TFAM-PKG$ {: pa:ptr pu:n :}
@@ -247,10 +238,11 @@ variable TDECL-NI
    THEN ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
-\ the declaring scope resolves is a reserved name, in every scope.
+\ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
+\ in every scope.
 : TDECL-REQUIRE-VARIANT-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
-   a u TDECL-FAM-TAKEN? 0= IF EXIT THEN
+   a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family" E-TDECL-NAME TDECL-THROW ;
 
 \ --- arity token: small decimal, capped by the positional letter params.
