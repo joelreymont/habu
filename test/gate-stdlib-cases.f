@@ -525,6 +525,29 @@ SUITE compiler-wasm-target
    test/compiler/wasm-target.f
 ;SUITE
 
+\ The HBR2 wire goldens over lib/browser/hbr-v2-registry.json: its canonical
+\ digest, headers, control record, wrapper ABI, STOP packet and limits.
+SUITE wasm-hbr2-fixtures
+   test/wasm/hbr2-fixtures.f
+;SUITE
+
+\ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
+\ its printed bytes compared, on the default tier and the optimizing compiler.
+SUITE wasm-numeric
+   test/wasm/numeric.f
+;SUITE
+
+SUITE wasm-numeric-aot
+   lib/test.f
+   lib/string.f
+   lib/test/outcome.f
+   lib/test/subject.f
+   lib/ieee754.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/wasm/numeric.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.

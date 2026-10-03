@@ -11,7 +11,7 @@ Wasm sections (17 to 21) and the Wasm detail beneath them; where the two
 differ, portability.md wins (its §0.1). HBR2 lands in Habu as
 docs/browser-runtime.md with the HBR2 runtime dot
 (habu-build-hbr2-runtime-731d5ddd); until then "HBR2 §n" cites the HBR2 design
-by section. Its registry, `hbr-v2-registry.json`, does not exist yet.
+by section. Its registry is `lib/browser/hbr-v2-registry.json` (§12.1).
 
 Claims about existing code are re-audited against master 67a66d28; the page was
 first written against aed8416b. The backend uses memory32 with 64-bit Habu
@@ -418,7 +418,7 @@ No SharedArrayBuffer, JSPI, memory64 or Wasm GC is silently required by the base
 
 #### Schemas and generated bindings
 
-`hbr-v2-registry.json`, once it exists (P0w), is the authority for numeric operations, field layouts and typed results. Generate Habu codecs, host-side validation tables, TypeScript declarations, interface metadata and golden vectors from its pinned content. Production generation is a checked Habu build action; independent reference tools remain tests, not a new compiler implementation dependency. [HBR2 §§21.2, 25]
+`lib/browser/hbr-v2-registry.json` is the authority for numeric operations, field layouts and typed results. Generate Habu codecs, host-side validation tables, TypeScript declarations, interface metadata and golden vectors from its pinned content. Production generation is a checked Habu build action; independent reference tools remain tests, not a new compiler implementation dependency. [HBR2 §§21.2, 25]
 
 Artifact admission compares generated signatures/limits and actual emitted bytes, not just matching filenames. A schema change updates both sides, fixtures, feature digest and changelog together. AppData can select only approved application data schemas, never new host operations.
 
@@ -537,7 +537,7 @@ The wire magic is `HBR2`, major 2, minor 0. The registry digest HBR2's appendix 
 a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599
 ```
 
-The registry does not exist in Habu yet, so this digest is attributed to HBR2, not recomputed, and becomes a fixture only once the registry exists (P0w). The production build imports `hbr-v2-registry.json` from the selected v2 package and recomputes its specified sorted compact UTF-8 JSON digest excluding `contentDigest`. It fails if that digest differs. Optional feature schemas have separate digests and must not renumber the core registry. [HBR2 §§24–25, 28.2, Appendix A]
+Habu cannot reproduce this digest: HBR2 publishes the tables but not the registry's JSON, and the member names and nesting of Habu's file are Habu's. It stays attributed to HBR2 and is not a fixture. Habu generates the registry from HBR2's normative tables (Appendix A.1–A.4, §4.2, §24.1–§24.6) into `lib/browser/hbr-v2-registry.json`, whose `sources` member names the table behind each member. Its own digest, `fdd071a5d0df682af409a9d4c2c7ae409b75554fa0602e3f06f790982dcc9677`, is SHA-256 of its sorted compact UTF-8 JSON without `contentDigest`. The file stores that canonical form itself (keys in byte order, no escapes, no floats), and test/wasm/hbr2-fixtures.f recomputes the digest and pins it. The production build imports `hbr-v2-registry.json` from the selected v2 package and recomputes its specified sorted compact UTF-8 JSON digest excluding `contentDigest`. It fails if that digest differs. Optional feature schemas have separate digests and must not renumber the core registry. [HBR2 §§24–25, 28.2, Appendix A]
 
 #### Imports
 

@@ -91,10 +91,12 @@ A genuine conflict is an explicit integration change with new versioning and
 tests, not an implementer's local choice. No v1 browser compatibility is
 promised. [B1; B2 §0; P1 §§1, 4, 10]
 
-Two authorities this design cites do not exist yet: the Windows/COM design
-[WN] and the HBR2 registry `hbr-v2-registry.json`. Both are open future work;
-until they land, the sections that defer to them (§15.4 here, and the registry
-parts of §18.1 and §20.4 in [wasm-backend.md](wasm-backend.md) §12.1 and §11.1)
+The Windows/COM design [WN] this design cites does not exist yet and is open
+future work. The HBR2 registry exists as `lib/browser/hbr-v2-registry.json`,
+generated from HBR2's tables and pinned by its own digest, but no build imports
+it yet ([wasm-backend.md](wasm-backend.md) §12.1). Until they land, the sections
+that defer to them (§15.4 here, and the registry parts of §18.1 and §20.4 in
+[wasm-backend.md](wasm-backend.md) §12.1 and §11.1)
 state requirements, not bindings.
 
 ### 0.2 Notation and evidence
@@ -1406,7 +1408,7 @@ P0 and P1 are split in two. P0n pins the native contracts and P0w the HBR2 wire 
 | Work package | Concrete deliverable | Depends on | Exit gate |
 |---|---|---|---|
 | P0n — pin native contracts | Literal CTARGET digests, primitive and layout goldens (habu-pin-native-target-12e4fbb7) | None | Old behavior reproducible on currently qualified hosts; unknown results labelled untested |
-| P0w — pin HBR2 wire and Wasm numerics | HBR2 wire fixtures, the registry once it exists, Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | Wire goldens; N01–N06 with the NaN print rows and the three `?do` rows, run natively |
+| P0w — pin HBR2 wire and Wasm numerics | HBR2 wire fixtures, the registry and its digest, Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | Wire goldens; N01–N06 with the NaN print rows and the three `?do` rows, run natively |
 | P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one sealed commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
 | P1b — action/target model | ExecutionPlatform, CompilerProduct, ResolvedTarget, alias resolver, separate compatibility predicates (habu-resolve-build-targets-ae8e65c1) | P1a | T01–T06, T15; no changed legacy digest meanings |
 | P2 — provider/session adapter | Backend manifest capacity, context-owned artifact adapter, exclusive legacy-provider guard (habu-give-each-backend-b6f7ea4f) | P1b | T07–T09; ARM64/Intel failures leave parent state valid |
@@ -1487,7 +1489,7 @@ Reproducibility can also fail through unordered tables, floating compile-time ev
 
 This design checks its integration contracts against [wasm-backend.md](wasm-backend.md), HBR2 and [package-build.md](package-build.md). It does not claim that HBR2's runtime is reimplemented, that its state machines are independently reproved, or that every repository branch is audited. The Windows/COM design [WN] does not exist, so the Windows rows state requirements only.
 
-The HBR2 registry (`hbr-v2-registry.json`) does not exist yet. The digest HBR2 reports for it is attributed to HBR2, not recomputed. An implementation generates the registry, recomputes its digest and checks it before producing a qualified release (P0w).
+Habu generates the HBR2 registry, `lib/browser/hbr-v2-registry.json`, from HBR2's tables and pins its own digest (P0w; [wasm-backend.md](wasm-backend.md) §12.1). The digest HBR2 reports cannot be reproduced, because HBR2 does not publish the registry's JSON, so it stays attributed to HBR2. A qualified release imports the registry and checks its digest.
 
 ## 29. Sources and provenance
 
@@ -1500,7 +1502,7 @@ design.
 | Label | Document | Status |
 |---|---|---|
 | [B1] | [wasm-backend.md](wasm-backend.md), the Wasm backend design, first written against aed8416b | In Habu, reconciled with this page |
-| [B2] | Habu Browser Runtime, consolidated design, revision 2 (HBR2), 2 October 2026 | Lands as docs/browser-runtime.md with habu-build-hbr2-runtime-731d5ddd. HBR2 reports the digest of its registry, `hbr-v2-registry.json`, as `a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599`; the registry does not exist yet |
+| [B2] | Habu Browser Runtime, consolidated design, revision 2 (HBR2), 2 October 2026 | Lands as docs/browser-runtime.md with habu-build-hbr2-runtime-731d5ddd. HBR2 reports the digest of its registry, `hbr-v2-registry.json`, as `a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599`; Habu generates the registry from its tables and cannot reproduce that digest ([wasm-backend.md](wasm-backend.md) §12.1) |
 | [P1] | [package-build.md](package-build.md), the package incremental-build design, baseline 37b2c1b7 | In Habu, reviewed only at its interface with this page; its full review is habu-review-and-schedule-dbdba551 |
 | [WN] | A Windows/COM design | Does not exist; open future work |
 
