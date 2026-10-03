@@ -273,11 +273,12 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    SRC$ 0 NFETCH:CAPTURE ;
 
 
+\ RECORD opened this unit with NFEED:BEGIN-DOES-UNIT, which refused a cut that
+\ is not just past a `does> ` in this source (E-NFEED-CUT).
 : CHECK-DOES-SPLIT ( -- n )
    CHECKER-OWNER:DOES-BEGIN
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
-   cut 6 < cut M-SRC-U @ > or if E-NCOMP-TEXT throw then
    M-SRC @ cut 6 - CHECK-PARENT
    TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
    M-SRC @ cut 6 - 0 NFETCH:CAPTURE
