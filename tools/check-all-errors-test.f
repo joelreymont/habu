@@ -682,10 +682,9 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" : CAE-UNCHK ( n -- n ) ?dup drop ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ Fail-closed negative: uncheckable definitions are not counted by the
-\ multi-error reject counter, so a file whose only definition is uncheckable
-\ must still exit nonzero (verdict 1 aborts the scan; continuing past it
-\ would let an all-uncheckable file read as clean).
+\ Fail-closed negative: the scan continues past an uncheckable definition, so
+\ a file whose only definition is uncheckable exits nonzero only because the
+\ multi-error counter counts that refusal; uncounted, it would read as clean.
 : CAE-TEST-UNCHECKABLE-FAILS ( -- )
    s" all-uncheckable" CAE-CASE!
    CAE-IN CAE-UNCHK-SOURCE$ WRITE-ALL

@@ -4,8 +4,11 @@ package LOWER-CERT-HOOK
 
 70 constant CHECK-RC
 
+\ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, or
+\ in a multi-error load.
 : REPORT-UNCHECKABLE ( n -- n )
-   dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and if DIAGXT then ;
+   dup 1 = JSON-DIAGS @ 0= and MULTI-ERR? 0= and DIAG-QUIET @ 0= and
+   if DIAGXT then ;
 
 : PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
    drop

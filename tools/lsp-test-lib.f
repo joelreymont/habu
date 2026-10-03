@@ -72,11 +72,13 @@
 \   throw that stopped it .................................... stdout-closed
 \
 \ Diagnostics, each checked against the test's own CHECK:VERIFY-BYTES of the
-\ same text and path, whose first packet must be the diagnostic's data
+\ same text and path, whose packets, in order, must be the diagnostics' data
 \ - an opened document's list not published with its version, or a diagnostic
 \   whose range is not its packet's byte offsets in lines and UTF-16 units, or
 \   whose severity, code, source, message or data is not the packet's
 \   ...................................................... diagnostics-open
+\ - a refusal after an undefined word not listed, or a definition that uses
+\   the undefined one as declared listed ................... diagnostics-open
 \ - a require of a file of the tree not resolved, or a changed document not
 \   checked again .................................... diagnostics-require
 \ - a change that came while another waited checked on its own, or a version
@@ -1124,10 +1126,13 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
 
 \ ---- the diagnostics expected ----------------------------------------------------
 
+variable PACKET-NEXT                     \ where the check's next packet starts
+
 \ The test's own check of the text as the file at PATH, whose packets and prose
 \ the server's check of them must publish and write, given what is left of the
 \ conversation's time. The words below read it.
 : CHECKS ( ptr u8 n ptr u8 n -- )
+   0 PACKET-NEXT !
    DEADLINE @ PROC-LEFT-MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
       verified OF ENDOF
       refused OF ENDOF
@@ -1136,12 +1141,15 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
       incomplete OF PROC-OUTCOME>RC drop ENDOF
    ;MATCH ;
 
-\ The check's first packet: its first line.
-: PACKET$ ( -- ptr u8 n )
-   CHECK:VERIFY-OUT$ {: a:ptr u:n :}
-   a u 10 INDEX-OF MATCH option
-      none OF a u ENDOF
-      some OF IDX>N a swap ENDOF
+\ The check's packet AT bytes into its output: the line from there, empty
+\ past the last.
+: PACKET-FROM$ ( n -- ptr u8 n )
+   CHECK:VERIFY-OUT$ {: at:n a:ptr u:n :}
+   at u min {: from:n :}
+   a from + u from - {: p:ptr pu:n :}
+   p pu 10 INDEX-OF MATCH option
+      none OF p pu ENDOF
+      some OF IDX>N p swap ENDOF
    ;MATCH ;
 
 \ The raw text of a top-level member of the packet, a string's between its
@@ -1188,28 +1196,40 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s\" ,\"character\":" EXP+ c2 INT$ EXP+
    s\" }}" EXP+ ;
 
-\ The diagnostic ended: this code, then the check's first packet's message and
-\ data.
-: CODED+ ( ptr u8 n -- )
+\ The check's next packet for this code, advancing to the following packet.
+: PACKET-FOR ( ptr u8 n -- ptr u8 n )
    {: c:ptr cu:n :}
-   PACKET$ {: a:ptr u:n :}
+   PACKET-NEXT @ PACKET-FROM$ {: a:ptr u:n :}
+   SB-RESET LABEL$ SB-APPEND s" : a packet for " SB-APPEND c cu SB-APPEND SB$ T-LABEL
+   u 0 > TTRUE
+   u 0= if a u exit then
+   PACKET-NEXT @ u + 1+ PACKET-NEXT !
+   a u ;
+
+\ The diagnostic ended: this code, then its packet's message and data.
+: CODED+ ( ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n a:ptr u:n :}
    s\" ,\"code\":\"" EXP+ c cu EXP+
    s\" \",\"source\":\"habu\",\"message\":" EXP+ a u MESSAGE+
    s\" ,\"data\":" EXP+ a u EXP+ s" }" EXP+ ;
 
-\ The diagnostic the list holds next: the check's first packet, from line L1,
+\ The diagnostic the list holds next: the check's next packet, from line L1,
 \ character C1 to line L2, character C2, with this severity and code.
 : DIAG+ ( n n n n n ptr u8 n -- )
    {: l1:n c1:n l2:n c2:n sev:n c:ptr cu:n :}
+   c cu PACKET-FOR {: a:ptr u:n :}
+   u 0= if exit then
    l1 c1 l2 c2 RANGE+
    s\" ,\"severity\":" EXP+ sev INT$ EXP+
-   c cu CODED+ ;
+   c cu a u CODED+ ;
 
 \ DIAG+ for a packet with no verdict, whose diagnostic has no severity.
 : UNRATED+ ( n n n n ptr u8 n -- )
    {: l1:n c1:n l2:n c2:n c:ptr cu:n :}
+   c cu PACKET-FOR {: a:ptr u:n :}
+   u 0= if exit then
    l1 c1 l2 c2 RANGE+
-   c cu CODED+ ;
+   c cu a u CODED+ ;
 
 \ The next frame is the publish expected.
 : PUBLISHES ( -- )
@@ -1236,6 +1256,25 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    SAY
    HEAR CAPABILITIES
    A-PATH 1 F-LISTED ;
+
+\ An undefined word refuses LSPT-U1. LSPT-U2 uses its declared effect and
+\ certifies; LSPT-U3 calls it with nothing on the stack and LSPT-U4 leaves a
+\ cell short, and each is refused.
+: TEXT-U ( -- ptr u8 n )
+   s\" : LSPT-U1 ( n -- n ) NOPE ;\n: LSPT-U2 ( n -- n ) LSPT-U1 1 + ;\n: LSPT-U3 ( -- n ) LSPT-U1 ;\n: LSPT-U4 ( n -- n ) drop ;\n" ;
+
+\ A opened as F, then changed to U: every refusal listed, in order.
+: OPEN-TURNS ( -- )
+   F-OPENED
+   A-PATH TEXT-U 2 CHANGES
+   SAY
+   TEXT-U A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 2 EXPECT
+   0 21 0 25 1 s" E-UNDEFINED" DIAG+
+   2 19 2 26 1 s" E-INPUT-UNDERFLOW" DIAG+
+   3 21 3 25 1 s" E-MISMATCH" DIAG+
+   PUBLISHES ;
 
 \ Three changes in one turn: the last alone is checked.
 : SUPERSEDE-TURNS ( -- )
@@ -1555,7 +1594,7 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+ PUBLISHES ;
 
 : TEST-DIAGNOSTICS ( -- )
-   s" diagnostics-open" [: F-OPENED ;] TALK
+   s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK
    s" save-dirties-all" [: SAVE-TURNS ;] TALK

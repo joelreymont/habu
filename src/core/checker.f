@@ -8569,12 +8569,13 @@ variable RECMI   0 RECMI !
 \ so later callers reject as undefined instead of trusting a malformed effect.
 \ The multi-error load mode is off by default so the ordinary load path
 \ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
-\ a rejected definition still trusts its DECLARED signature (so later
-\ definitions check against a known effect instead of cascading undefined-word
-\ errors) unless that signature failed to parse, and the reject is counted so
-\ the driver can exit nonzero at end of load.
+\ a refused definition, rejected or uncheckable (an undefined word in it
+\ included), still trusts its DECLARED signature (so later definitions check
+\ against a known effect instead of cascading undefined-word errors) unless that
+\ signature failed to parse, and the refusal is counted so the driver can exit
+\ nonzero at end of load.
 variable MULTI-ERR      \ multi-error load mode active?
-variable MULTI-ERR-N    \ rejected definitions recorded this load
+variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
 \ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). A `defer`
 \ with a no-op DEFAULT so the diagnostic call is statically effect-known; the
@@ -19813,7 +19814,11 @@ variable CAST-PATH-N
    dup DVERD !
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
    dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
-   dup 0 =  over 1 = JSON-DIAGS @ and  or
+   \ An uncheckable verdict is rendered here as JSON and in a multi-error load,
+   \ whose record step below may refuse the definition by a throw (a duplicate,
+   \ a name that keys no record) that would otherwise come before it; elsewhere
+   \ CHECK's callers render it.
+   dup 0 =  over 1 = JSON-DIAGS @ MULTI-ERR? or and  or
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
@@ -19858,7 +19863,9 @@ variable CAST-PATH-N
       NMA @ NMU @ RENDSET @ IF CTL-RENDERS ELSE 0 THEN NORET-ADD
       SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
    THEN
-   dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
+   \ A refusal in multi-error mode, rejected or uncheckable alike, once the last
+   \ pass of a retried check has judged it:
+   dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and  CK-AOT-RETRY-DUE @ 0= and IF
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
          NMA @ NMU @ CHECK-REC-ADMIT
@@ -20534,9 +20541,10 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 \ but must not drop its reason: the native compiler with the check hook cell
 \ empty, which refuses a body the scan left without an effect
 \ (src/compiler/native/compiler.f CHECK-HOOKLESS). CHECK! renders a rejection
-\ only, an uncheckable verdict only as JSON; this renders whichever verdict the
-\ scan reached. It is an owner field like the scan, so the instance that
-\ scanned is the one that renders; ask before another scan replaces its state.
+\ only, an uncheckable verdict only as JSON or in a multi-error load; this
+\ renders whichever verdict the scan reached. It is an owner field like the
+\ scan, so the instance that scanned is the one that renders; ask before
+\ another scan replaces its state.
 : CHECKER-CHECK-REPORT ( -- )
    DIAG-QUIET @ 0= IF DIAGXT THEN ;
 
@@ -20767,11 +20775,12 @@ package CHECKER-REG
 \ their own way (src/habu/habu2.f C-DIE-DOES), but nothing after this entry
 \ does, so a clause it refused ended tools/check.f's pre-pass with no
 \ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
-\ is quiet, and a rejection counted in a multi-error load, under the name of the
-\ record the clause publishes - the definer's, folded as a definition's name
-\ is, with the companion suffix (src/habu/habu2.f SUF-LEN). An uncheckable
-\ clause is rendered here too: CHECK leaves that verdict to its callers outside
-\ JSON, and the pre-pass renders nothing of its own for a clause.
+\ is quiet, and counted in a multi-error load, rejected or uncheckable, under
+\ the name of the record the clause publishes - the definer's, folded as a
+\ definition's name is, with the companion suffix (src/habu/habu2.f SUF-LEN). An
+\ uncheckable clause is rendered here too: CHECK leaves that verdict to its
+\ callers outside JSON and a multi-error load, and the pre-pass renders nothing
+\ of its own for a clause.
 : DOES-SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
 
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
@@ -20785,7 +20794,7 @@ package CHECKER-REG
    v -1 = v 2 = or IF v EXIT THEN
    na nu DOES-NAME!
    DIAG-QUIET @ 0= IF DIAGXT THEN
-   v 0 = MULTI-ERR? and IF 1 MULTI-ERR-N +! THEN
+   MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
    v ;
 
 \ The name is written after the scan, so the token buffers are sized for it

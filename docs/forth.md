@@ -1228,8 +1228,12 @@ passing suite.
   Remove scratch and debug prints before commit.
 - A definition that fails to compile in raw engine mode reports the undefined
   word on stderr and may spill the rest of the definition through the
-  interpreter; `tools/check.f --json-errors --all-errors` wraps matched
-  undefined tokens in schema-1 JSON diagnostics.
+  interpreter. `tools/check.f --all-errors` and `--verify-only` report every
+  refused definition, one with an undefined word included, as a schema-1 JSON
+  diagnostic under `--json-errors` and always under `--verify-only`, and check
+  each later definition against a refused one's declared effect
+  ([repair-diagnostics.md](repair-diagnostics.md)). Without them check.f stops
+  at the first refusal.
 
 ## Habu Native Tooling Gotchas
 

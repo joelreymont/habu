@@ -527,14 +527,12 @@ private
 
 \ Whole-buffer multi-error drive (Option-A no-cascade ruling on
 \ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
-\ file-relative diagnostic for every rejected definition, records each
-\ reject's declared signature so later callers check against it (no phantom
-\ E-UNDEFINED cascade), and continues to the next definition - the native
-\ load path and this tool now share the same machinery. A duplicate
-\ definition throws DUP-RC (reported exactly as before), and a verdict-1
-\ uncheckable still aborts fail-closed at its definition: uncheckables are
-\ not counted by MULTI-ERR-N, so continuing past them would let an
-\ all-uncheckable file read as clean.
+\ file-relative diagnostic for every refused definition, rejected or
+\ uncheckable, counts it in MULTI-ERR-N, records its declared signature so
+\ later callers check against it (no phantom E-UNDEFINED cascade), and
+\ continues to the next definition - the native load path and this tool now
+\ share the same machinery. A duplicate definition throws DUP-RC (reported
+\ exactly as before).
 \ The session is the caller's (SESSION), so a source's rejects are the ones
 \ counted while it was checked. A source with none still gets what the checker
 \ wrote of it, its warnings.

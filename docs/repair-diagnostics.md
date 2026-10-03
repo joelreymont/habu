@@ -20,6 +20,16 @@ span, an input, a refused record, a using refusal, a warning, or otherwise a def
 definition's: its shape, the repair classes it names and the field a refused
 record adds. That check and `tools/repair-packet.f` both read it.
 
+Under `--all-errors`, and in `CHECK:VERIFY-BYTES` (below), every refused
+definition is reported, rejected or uncheckable alike, one with an undefined
+word included, and the check goes on at the next definition, unless recording
+the refused one throws, as a duplicate's or a malformed name's record does
+(below): then the check ends after reporting it. A later definition
+sees a refused one by its declared signature when that parses: a use that fits
+it gets no record, one that does not gets that definition's own; a use of one
+whose signature does not parse is `E-UNDEFINED`. Without `--all-errors`
+`tools/check.f` stops at the first refusal.
+
 Fields:
 
 | Field | Type | Presence | Meaning |
