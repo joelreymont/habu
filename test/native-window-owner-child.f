@@ -96,6 +96,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
 
 \ The dictionary row holds the fresh source reset as a code address integer.
 CAST: SOURCE-RESET-XT ( n -- [ -- ] )
+CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
 
 : ACTIVATE-SOURCE ( -- )
    s" SOURCE-INPUT:RESET" XREF-FIND dup XREF-FOUND? 0= if
@@ -103,9 +104,19 @@ CAST: SOURCE-RESET-XT ( n -- [ -- ] )
    then
    XREF-START SOURCE-RESET-XT execute ;
 
+: REGISTER-CLAUSE ( -- )
+   s" provided" XREF-FIND dup XREF-FOUND? 0= if
+      drop s" window: fresh provided missing" 76 die
+   then
+   XREF-START SOURCE-PROVIDE-XT {: register :}
+   s" src/core/does-clause.f" register execute ;
+
 : LOAD-OPTIONAL ( ptr u8 n -- )
    2dup included
-   s" src/core/include.f" STR= if ACTIVATE-SOURCE then ;
+   s" src/core/include.f" STR= if
+      ACTIVATE-SOURCE
+      REGISTER-CLAUSE
+   then ;
 
 \ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---
 
@@ -118,6 +129,7 @@ CAST: SOURCE-RESET-XT ( n -- [ -- ] )
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/habu/prims.f" included
+   s" src/core/does-clause.f" included
    s" src/core/checker.f" included
    source CHECK-RETAINED-OWNER
    s" src/core/engine-error-effects.f" included

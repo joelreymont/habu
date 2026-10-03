@@ -113,7 +113,7 @@ public
    s" NP3 ( -- ptr n ) NEXT-MADE" CHECK-QUIET-CANDIDATE! 1 T=
    s" a does> cut outside the compiled source is refused as the cut" T-LABEL
    [: s\" : NATIVE-DOES-FORGED ( n -- ) create , does> ( -- n ) NATIVE-CREATE-DOES-PUBLIC:FORGE-CUT @ ;\n"
-      EVAL ;] E-NFEED-CUT TTHROWSQ
+      evaluate-closed ;] E-NFEED-CUT TTHROWSQ
    s" a refused cut publishes no definer" T-LABEL
    s" NF0 ( n -- ) NATIVE-DOES-FORGED" CHECK-QUIET-CANDIDATE! 1 T=
 

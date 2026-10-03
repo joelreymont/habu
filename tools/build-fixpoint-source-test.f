@@ -31,6 +31,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/prims.f" BF-APPEND-SOURCE
+   out outu s" src/core/does-clause.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
@@ -120,6 +121,7 @@ package BUILD-FIXPOINT
    BF-CERTIFY-PREFIX
    BFT-PREFIX BFT-READ {: u:n :}
    BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : SUFFIX$ (" CONTAINS? TTRUE
    BFT-READ-BUF u s" : CHECK! (" CONTAINS? TTRUE
    s" prefix-src" BF-A$ s" : BFT-PFX-BAD ( n -- n ) drop ;" APPEND-FILE
    [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ

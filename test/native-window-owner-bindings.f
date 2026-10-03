@@ -8,9 +8,11 @@ package OWNER-BINDING-CHECK
 
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 : EQ! ( n n -- ) <> if 79 throw then ;
+: CLAUSE-SUFFIX$ ( -- ptr u8 n ) DOES-CLAUSE:SUFFIX$ ;
 
 : RUN ( -- )
    tier@ 0 EQ!
+   CLAUSE-SUFFIX$ s" ;does" CORE-STR= TRUE!
    CHECKER-OWNER:BY-NAME? TRUE!
    s" BINDING-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK-UNJUDGED -1 EQ!
    s" BINDING-SCAN" CHECKER-OWNER:QUERY TRUE!
