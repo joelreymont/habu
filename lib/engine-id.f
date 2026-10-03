@@ -71,24 +71,26 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
       -1 EID-CLEANUP-LIVE !
    then ;
 
-: ENGINE-SELF-MACOS ( -- n )
-   getpid EID-PATH EID-PATH-CAP SELF-PATH
-   dup 0 <= over EID-PATH-CAP >= or if drop 0 then ;
-
-: ENGINE-SELF-LINUX ( -- n )
-   EID-PROC-EXE EID-PATH EID-PATH-CAP readlink
-   dup 0 < if drop 0 then ;
-
+\ The kernel's byte count for the engine's pathname in EID-PATH; zero or
+\ negative when it refuses.
 : ENGINE-SELF-PATH ( -- n )
-   HB-TARGET-MACOS? if ENGINE-SELF-MACOS exit then
-   HB-TARGET-LINUX? if ENGINE-SELF-LINUX exit then
-   HB-TARGET-LINUX-X86-64? if ENGINE-SELF-LINUX exit then
+   HB-TARGET-MACOS? if getpid EID-PATH EID-PATH-CAP SELF-PATH exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      EID-PROC-EXE EID-PATH EID-PATH-CAP readlink exit
+   then
    0 ;
 
+\ Throws E-ENGINE-PATH while the kernel will not report the pathname: a sandbox
+\ that refuses proc_pidpath, a Linux without /proc, or a pathname longer than
+\ PATH-CAP. EID-PATH holds one byte more than PATH-CAP, so a count that fills it
+\ is a truncated pathname: readlink stops at the buffer's size without saying
+\ so. Only a reported, whole pathname is cached.
 : CACHED-PATH ( -- ptr u8 n )
    EID-PATH-DONE @ 0= if
       REGISTER-CLEANUP
-      ENGINE-SELF-PATH dup 0 <= if drop E-ENGINE-PATH throw then
+      ENGINE-SELF-PATH dup 0 <= over EID-PATH-CAP >= or if
+         drop E-ENGINE-PATH throw
+      then
       EID-PATH-U !  -1 EID-PATH-DONE !
    then
    EID-PATH EID-PATH-U @ ;
