@@ -326,6 +326,10 @@ variable RC
    s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
    s" shadow.f" FIXTURE!
    s" " SHADOW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" SHADE" 8 4 87 92 AT
+   s" --all-errors" SHADOW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT ;
 
 \ `[']` and `is` read their target themselves, past the body walk's own token.
@@ -334,6 +338,7 @@ variable RC
    s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
    s" tick-shadow.f" FIXTURE!
    s" " SHADOW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 8 91 96 AT ;
 
 : TEST-IS-SHADOW ( -- )
@@ -341,6 +346,7 @@ variable RC
    s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
    s" is-shadow.f" FIXTURE!
    s" " SHADOW-RC CHECK-EXIT
+   ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 13 100 105 AT ;
 
 : TEST-ALL-ERRORS ( -- )

@@ -3054,7 +3054,8 @@ create BIG $2000 allot   variable BIG-U
 \ its name the same way; either operand is data. After `char \`, `[char] \`
 \ and `char (` the second line is ordinary source, so the number-shaped
 \ definition there is refused as it is anywhere, and so it is after `create
-\ char`, which names a word `char` that takes nothing. `char s"` and `[char] s"`
+\ char`, which names a word `char` that takes nothing. The top-level `char`
+\ values are dropped, so each source has a closed load. `char s"` and `[char] s"`
 \ open no string, so each source loads and checks alike and prints 115. A check
 \ of standard input skips source discovery, so these sources are checked as the
 \ file the load read. `' :` names no word, so the load refuses it as an
@@ -3107,9 +3108,9 @@ create BIG $2000 allot   variable BIG-U
 \ The last source reaches the pre-verifier's registration of `DEFLINEAR N` when
 \ the nominal pass misses it, and that registration dies, ending this process.
 : TEST-RAW-OPERAND ( -- )
-   s" char \" s" : 42 ( -- ) ;" RAW-NUMERIC
+   s" char \ drop" s" : 42 ( -- ) ;" RAW-NUMERIC
    s" : CKT-P ( -- n ) [char] \" s" ; : 42 ( -- ) ;" RAW-NUMERIC
-   s" char (" s" : 42 ( -- ) ;" RAW-NUMERIC
+   s" char ( drop" s" : 42 ( -- ) ;" RAW-NUMERIC
    s" create char" s" : 42 ( -- ) ;" RAW-NUMERIC
    s\" char s\" constant CKT-SQ CKT-SQ ." s" 115" RAW-PRINTS
    s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." s" 115" RAW-PRINTS

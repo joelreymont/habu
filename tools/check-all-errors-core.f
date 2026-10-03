@@ -426,11 +426,11 @@ variable CA-COMPOSE-LABEL-U
       CA-FILTER-JSON
       CA-JSON-FOUND @ 0= IF
          CA-ERR-A@ CA-ERR-LEN @ CA-ERR
-         rc 0 <> IF rc CA-RAW-FAILURE ! THEN
       THEN
    ELSE
       CA-ERR-A@ CA-ERR-LEN @ CA-ERR
-   THEN ;
+   THEN
+   rc 0 <> IF rc CA-RAW-FAILURE ! THEN ;
 
 \ ---- a statement that throws while it is checked ----------------------------
 \ The checker reports a definition it refuses and returns, but a statement can
@@ -486,12 +486,21 @@ variable CA-COMPOSE-LABEL-U
    CA-THROW-RC !
    VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
 
+\ These checker refusals render their own diagnostic before throwing. They
+\ must retain that packet and exit code, not acquire a statement-throw record.
+: REPORTED-THROW? ( n -- bool )
+   {: rc:n :}
+   rc E-USING-SHADOW-GLOBAL =
+   rc E-TRUST-UNRESOLVED = or
+   rc E-SHADOWED-ARITY = or ;
+
 public
 
-\ True for the status of a check that a statement threw out of: neither clean
-\ nor a refusal or duplicate the checker reported.
+\ True for the status of a check that a statement threw out of without
+\ reporting its own refusal.
 : THREW? ( n -- bool ) {: rc:n :}
-   rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and ;
+   rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
+   rc REPORTED-THROW? 0= and ;
 
 private
 
