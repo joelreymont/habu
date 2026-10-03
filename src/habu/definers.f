@@ -212,7 +212,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ boot is broken, and the process ends (habu2.f NCOMP-EMIT:LOAD).
 : DEF-DISPATCH ( -- )
    NCOMP-DISPATCH:XT-CELL CELL@ 0<> if exit then
-   S\" hb: native compiler dispatch unset\n" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
+   s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open

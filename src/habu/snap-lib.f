@@ -61,7 +61,7 @@ variable SNL  variable SFTS  variable SPAD  variable SFD
 variable SHF  variable SHL           \ heap form (SNAPSHOT-FORMAT:HEAP-RAW/-GRID), stored heap bytes
 create PAD-ZEROS 16 allot
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
 : STB-CELL@ STB @ ;
@@ -160,8 +160,8 @@ variable SNC-N
 
 \ Scratch region view: raw anonymous mmap address held as a cell; the
 \ typed view is the one audited reinterpret (same class as IMGD-MMAP-PTR).
-\ All scratch views, zeroers, and quarantine-table reads retire under
-\ habu-builder-trust-rows-c5d41af6.
+\ All scratch views, zeroers, and quarantine-table reads share one owner.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: SNC-PTR ( -- ptr u8 ) SNC-N @ ;
 TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 
@@ -222,6 +222,7 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    CREATEP-CELL SND-ZERO-CELL RRECP-CELL SND-ZERO-CELL
    LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL
    EVALREC-CELL SND-ZERO-CELL UNCGH-CELL SND-ZERO-CELL
+   REFUSAL-CELL SND-ZERO-CELL
    SIGNAL-ABI:STUB-CELL SND-ZERO-CELL
    AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
    AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL

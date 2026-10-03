@@ -159,7 +159,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ libc calls use separate pointer directions and target-specific termios
 \ extents. Darwin ioctl passes its variadic pointer on the stack.
 \ errno is a libc-owned, thread-local C int. The wait is not among them: it is
-\ AIO's. Retirement owner: checked foreign bindings.
+\ AIO's. Retirement owner: habu-sweep-trusted-out-f872acb0.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 TRUSTED: ERRNO-POINTER ( -- ptr u8 )
    FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;

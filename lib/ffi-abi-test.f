@@ -9,7 +9,7 @@ create FFI-T-KP-CELL 1 cells allot
 
 \ Local stubs, instruction bytes, and call targets are fixed. Caller data pointers
 \ are constrained by each exact FFI schema and its registered READABLE/WRITABLE
-\ extents. Retirement owner: habu-ptx-m1-c-1df1d6e7.
+\ extents. Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
    $F9000001 fn patch32
    $D65F03C0 fn $4 + patch32

@@ -276,8 +276,10 @@ variable RC     variable EXITED
 \ definition whose body calls the prior word of its name; and an ENUM variant or
 \ family, whose constructors the declaration generates as definitions holding
 \ the name in their own name and body, as a MATCH over the family and a local
-\ of its type hold it. The last three hold the name more than once and so run
-\ at 1000. A long family's constructors take the digest spelling
+\ of its type hold it. The last three hold the name more than once, so the
+\ pending definition runs at 1000 and the ENUM forms at LN-TAIL-MAX, the longest
+\ family or variant name a declaration takes, still past every 128-byte buffer.
+\ A long family's constructors take the digest spelling
 \ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
 \ program compiles them, its MATCH and its local, and stops. A refused long name
 \ is reported whole up to its newline, and a refused TRUSTED: one still finds
@@ -301,6 +303,10 @@ variable LN-LEN
 
 : NAME+ ( -- ) s" LN" STEM+ ;
 : TAIL+ ( -- ) s" ln" STEM+ ;
+
+\ The longest family or variant name, src/core/type-family.f TF-NAME-MAX: the
+\ declaration refuses a longer one before either tier compiles anything.
+TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 : LN-OPEN ( n -- ) {: len:n :}
    len LN-LEN !
@@ -422,15 +428,15 @@ variable LN-LEN
    s" a 1000-byte pending name calls its prior word on tier 1" T-LABEL
    1 1000 PRIOR$ RUN  s" 50" ASSERT-OK
 
-   s" a 1000-byte ENUM variant constructs and matches on tier 0" T-LABEL
-   0 1000 VARIANT$ RUN  s" 10" ASSERT-OK
-   s" a 1000-byte ENUM variant constructs and matches on tier 1" T-LABEL
-   1 1000 VARIANT$ RUN  s" 10" ASSERT-OK
+   s" the longest ENUM variant constructs and matches on tier 0" T-LABEL
+   0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
+   s" the longest ENUM variant constructs and matches on tier 1" T-LABEL
+   1 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
 
-   s" a 1000-byte ENUM family, its MATCH and its local compile on tier 0" T-LABEL
-   0 1000 FAMILY$ RUN  s" 30" ASSERT-OK
-   s" a 1000-byte ENUM family, its MATCH and its local compile on tier 1" T-LABEL
-   1 1000 FAMILY$ RUN  s" 30" ASSERT-OK
+   s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
+   0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
+   s" the longest ENUM family, its MATCH and its local compile on tier 1" T-LABEL
+   1 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
 
    s" a refused 1000-byte name is reported whole" T-LABEL
    1000 UNEVEN$ RUN  REJECT-RC ASSERT-RC
@@ -661,7 +667,7 @@ variable OR-U
    s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
    S\" require lib/executable-build.f\nrequire lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
    0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
-   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" arbitrary throws preserve their code and the outer tier" T-LABEL
    S\" 1 set-tier require lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
@@ -673,7 +679,7 @@ variable OR-U
    \ the saved guard error after the lookups, preserving its rejection code.
    S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
    REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
-   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" raw stores cannot erase retained provenance" T-LABEL
    s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" raw stores cannot disable the executable scope" T-LABEL

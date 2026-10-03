@@ -55,9 +55,9 @@ So do the refusals that `exit_group` without any tail: the boot source errors
 (`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones
 (`hb: unknown flag`, `hb: cannot open`), `hb: uncaught throw code N`,
 `hb: catch frame corrupt`, the snapshot, AOT, protected-WID, lowering,
-address-cell and mmap families, and `hb: repl line over`.
-For those the checker's own diagnostics (which carry `<path>:<line>` of their
-own) or a bisect are still the way in.
+address-cell and mmap families, and `hb: repl line over`. Each ends its line
+with a newline. For those the checker's own diagnostics (which carry
+`<path>:<line>` of their own) or a bisect are still the way in.
 
 ## `.s` — data-stack inspector (in the standalone)
 `forth.fs` defines a `.s` primitive: prints the whole data stack (base..top), one
@@ -146,8 +146,13 @@ An uncaught throw in a `--load` or spawned child exits by its code. A code from
 1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
 code prints `hb: uncaught throw code N` on stderr and exits 67: `-2504 throw`
 (`E-PROC-TRUNCATED`) exits 67 with that line, so read the `E-*` from the
-message, not from the status. A one-byte diagnostic and a clean exit means a raw
-engine capacity path (`exit_group`), not a throw.
+message, not from the status. A refusal the checker rendered before throwing its
+code - a bad declaration, a stale `trust` row, a used public shadowing a global -
+prints the same line after its diagnostic and exits 70, the status of every
+refusal; the engine keeps the code of the last refusal rendered
+(`src/habu/layout.f` `REFUSAL-CELL`), so only a throw of that code exits 70. A
+one-byte diagnostic and a clean exit means a raw engine capacity path
+(`exit_group`), not a throw.
 
 ## gdb/lldb — native stepping boundary
 Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
@@ -692,15 +697,15 @@ machine stack for that word's callers. The surface:
 | word | effect | what it does |
 | --- | --- | --- |
 | `n prof-on` | `( n -- )` | build the pc index, clear the counters, start the clock. `n` is a sample limit: at the `n`-th sample the profiler prints the text report and exits 99. `0` samples until `prof-off`. |
-| `prof-off` | `( -- )` | stop the clock. The handler stays installed and every counter keeps its value, so the phase just measured can be reported afterwards. |
+| `prof-off` | `( -- )` | stop the clock. The handler stays installed and every counter keeps its value, so the phase just measured can be reported afterwards. A tick the kernel delivers after the timer stopped counts nothing, so the counts are final when `prof-off` returns. |
 | `prof-report` | `( -- )` | print the text report. |
 | `prof-json` | `( -- )` | print the same walk as one JSON object. |
-| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. The clock stops for the clears and starts again unless `prof-off` stopped it. |
+| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. The clock is held for the clears, so no tick counts during them, and starts again unless `prof-off` stopped it. |
 | `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000, also asked for by `0`); any positive interval arms, a second or more included. A negative `n` throws `E-PROF-RATE` (-3803) before anything is stored, so a caller that catches it keeps the rate it had. Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
 | `n prof-row` | `( n -- )` | print the row for one dictionary record, whatever its rank, with its callers. A phase word takes no exclusive samples at all, so no ranking will ever show it; this is how you read one. The record index comes from the caller, where `XREF` already answers a name. |
 | `pc prof-pc>rec` | `( n -- n )` | the record index the armed index gives that pc, or -1. This is the handler's own search, which is what `test/prof-index.f` compares against an exhaustive dictionary scan. |
 
-A report never samples itself: it stops the clock for the walk and starts it
+A report never samples itself: it holds the clock for the walk and starts it
 again if `prof-off` has not already stopped it, so the phase loses at most one
 interval. Without that the header's own identity would be false by one, because
 the report owns x20 and its own ticks read as a foreign context.

@@ -11,6 +11,8 @@ require lib/process-argv.f
 require tools/aot-call-report-lib.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
+using AOT-CALL-REPORT
+
 $D503201F constant ACRT-NOP-INSTR
 12 constant ACRT-STENCIL-PADDING-BYTES
 4 constant ACRT-WORD-BYTES
@@ -28,10 +30,12 @@ create ACRT-BUF ACRT-BUF-CAP allot
 create ACRT-PATH FS-PATH-CAP allot
 create ACRT-SMALL-PATH FS-PATH-CAP allot
 create ACRT-BOUNDARY-PATH FS-PATH-CAP allot
+create ACRT-MISSING-PATH FS-PATH-CAP allot
 variable ACRT-FD
 variable ACRT-N
 variable ACRT-SMALL-U
 variable ACRT-BOUNDARY-U
+variable ACRT-MISSING-U
 TYPED-VARIABLE ACRT-JSON-A ptr u8
 TYPED-VARIABLE ACRT-ERR-A ptr u8
 
@@ -97,12 +101,16 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
 : ACRT-BOUNDARY$ ( -- ptr u8 n )
    ACRT-BOUNDARY-PATH ACRT-BOUNDARY-U @ ;
 
+: ACRT-MISSING$ ( -- ptr u8 n )
+   ACRT-MISSING-PATH ACRT-MISSING-U @ ;
+
 : ACRT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-aot-report" HB-TMP-MKDIR 2dup CLEANUP-TREE+
    {: root:ptr rootu:n :}
    root rootu s" small.bin" ACRT-SMALL-PATH JOIN-PATH ACRT-SMALL-U !
-   root rootu s" boundary.bin" ACRT-BOUNDARY-PATH JOIN-PATH ACRT-BOUNDARY-U ! ;
+   root rootu s" boundary.bin" ACRT-BOUNDARY-PATH JOIN-PATH ACRT-BOUNDARY-U !
+   root rootu s" missing.bin" ACRT-MISSING-PATH JOIN-PATH ACRT-MISSING-U ! ;
 
 : ACRT-W32! ( n n -- ) {: w off :}
    w ACRT-BUF off + c!
@@ -185,13 +193,44 @@ variable ACRT-SHORT-CAP
    REPORT-OUT$ ACRT-JSON ACRT-SHORT-CAP @ STR= ACRT-ASSERT
    ACRT-NEXT-FD fd ACRT= ;
 
+\ Misuse is refused by a named throw the caller reports, never by ending the
+\ process. E-FS-PATH: the shortest length the path buffer cannot hold with its
+\ NUL, the largest cell (it wraps when one is added) and a negative length.
+\ E-JW-OUTPUT: a null output buffer or a negative capacity. E-FMT-DOMAIN: a
+\ negative number. E-FS-OPEN: an input that does not open. E-FS-IO: one that
+\ opens but does not read, a directory, its descriptor closed after.
+: ACRT-TEST-MISUSE ( -- )
+   [: ACRT-BUF REPORT-PATH-CAP REPORT-FILE! ;] catch E-FS-PATH ACRT=
+   [: ACRT-BUF -1 REPORT-FILE! ;] catch E-FS-PATH ACRT=
+   [: ACRT-BUF STR-MAX-I64 REPORT-FILE! ;] catch E-FS-PATH ACRT=
+   [: NULL$ REPORT-BUFFER! ;] catch E-JW-OUTPUT ACRT=
+   [: ACRT-ERR -1 REPORT-BUFFER! ;] catch E-JW-OUTPUT ACRT=
+   [: -1 JSON-NUM ;] catch E-FMT-DOMAIN ACRT=
+   [: ACRT-MISSING$ REPORT-FILE! REPORT-COUNT ;] catch E-FS-OPEN ACRT=
+   ACRT-NEXT-FD {: fd:n :}
+   [: s" ." REPORT-FILE! REPORT-COUNT ;] catch E-FS-IO ACRT=
+   ACRT-NEXT-FD fd ACRT= ;
+
+\ The CLI ends a refused report with exit 74 and the refusal in words.
+: ACRT-CLI-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n msg:ptr msgu:n :}
+   path pathu ACRT-CLI-RUN
+   {: outu:n erru:n rc:n :}
+   rc 74 ACRT=
+   outu 0 ACRT=
+   ACRT-ERR erru 1- msg msgu STR= ACRT-ASSERT ;
+
+: ACRT-TEST-CLI-REFUSED ( -- )
+   ACRT-MISSING$ s" aot-call-report: cannot open input" ACRT-CLI-REFUSED
+   s" ." s" aot-call-report: read failed" ACRT-CLI-REFUSED ;
+
 : ACRT-TEST-CLI ( -- )
    ACRT-SMALL$ ACRT-CLI-RUN
    {: outu:n erru:n rc:n :}
    rc 0 ACRT=
    erru 0 ACRT=
    outu 0 > ACRT-ASSERT
-   ACRT-JSON outu 1- + c@ ACR-C-LF ACRT= ;
+   ACRT-JSON outu 1- + c@ STR-LF ACRT= ;
 
 : ACRT-MAIN ( -- )
    1 ACRT-N !
@@ -199,8 +238,12 @@ variable ACRT-SHORT-CAP
    ACRT-TEST-SMALL
    ACRT-TEST-BOUNDARY
    ACRT-TEST-FULL
+   ACRT-TEST-MISUSE
    ACRT-TEST-CLI
+   ACRT-TEST-CLI-REFUSED
    CLEANUP-RUN
    s" aot-call-report-test: ok (" type ACRT-N @ 1- FMT:.INT s"  assertions)" type cr ;
+
+;using
 
 ACRT-MAIN

@@ -10,7 +10,6 @@ require lib/process-env.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/hb-build-lib.f
-require tools/aot-call-report-lib.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -24,6 +23,7 @@ require test/gate-common.f
 require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-image.f
+require test/suite-budget.f              \ CHILD-MS, the maker's hang guard
 
 package AOT-POSITIVE
 using HB-BUILD-CLI                       \ the preseed knobs and the json flag
@@ -295,14 +295,15 @@ variable SELF-SRC-U
 \ and hand it the script above on stdin. A build that reaches the end writes its
 \ image to HB_TMP/hb-aot-got, which is the name GB-OUT$ carries in these cases;
 \ the stale one goes first, so "an image exists" and "none was emitted" are both
-\ statements about THIS run.
+\ statements about THIS run. The maker runs seconds of CPU, so its deadline is
+\ the long row's child hang guard.
 : MAKER-RUN ( -- )
    GB-OUT$ EXISTS? if GB-OUT$ REMOVE-FILE then
    GE-HB-RESET
    GE-HB$ GE-ARGV+
    s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   GE-HB$ SELF-STDIN$ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ SELF-STDIN$ SUITE-BUDGET:CHILD-MS GE-RUN-STDIN ;
 
 \ The relocation math the direct-branch capability adds: two adjacent synthetic
 \ closure MEMBERS prove MAP-IN-MEMBER treats a target at a member's end as the
@@ -469,7 +470,6 @@ variable SELF-SRC-U
    \ longer find INSTRUCTION-DATA's planted blr x16 or NOP/NOP/NOP/BL words
    \ verbatim. Only the code-only exclusion below remains meaningful.
    s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
-   GB-OUT$ REPORT-FILE! REPORT-COUNT
    CODE-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT

@@ -82,6 +82,7 @@
 -2803 constant E-BUILD-PATH
 -2804 constant E-BUILD-BOOT-DRIFT
 -2805 constant E-BUILD-CERTIFY
+-2806 constant E-BUILD-INSTALL
 
 \ Diagnostics: -2900..-2999
 -2900 constant E-DIAG-FIRST
@@ -1115,15 +1116,12 @@
 -8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
 -8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
-\ The trap terminator's family table: -8640..-8649
+\ The trap terminator's message: -8640..-8649
 \
 \ src/compiler/native/trap.f owns the one routine a compiled trap branches to and
-\ the table that says which family each trap site is trapping on. An ordinal out
-\ of that table is compiled into published code, so the table refuses rather than
-\ reuses, and a reader refuses rather than naming some other family.
--8640 constant E-NTRAP-ORD      \ an ordinal that names no row of the family table: the number was written into a published routine by this same process, so a number outside the table means the module or the table is corrupt and naming another family would be worse than saying nothing
+\ the message each trap site carries, built from the name of the family or the
+\ callee the site is about.
 -8641 constant E-NTRAP-NAME     \ an empty family or callee name, which no trap message could name
--8642 constant E-NTRAP-CAP      \ more families than the table holds, or more name bytes than its arena holds. The ordinals it has already answered are compiled into published routines, so a name it cannot hold is a refusal rather than a reused ordinal
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
 
 \ The tag-dispatch forms: -8650..-8659

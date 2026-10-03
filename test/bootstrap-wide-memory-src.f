@@ -35,12 +35,15 @@ align variable BWM-ATOMIC
 : BWM-FAIL ( -- )
    BWM-FAILS @ 1 + BWM-FAILS ! ;
 
+\ The stage0 seed has no inline number printer and cannot load lib/fmt.f, so
+\ each number closes its own line with `.`'s newline.
 : BWM= ( n n -- ) {: got:n want:n :}
    BWM-CASES @ 1 + BWM-CASES !
    got want <> if
       BWM-FAIL
       s" case " type BWM-CASES @ .
-      s" expected " type want . s" got " type got . cr
+      s" expected " type want .
+      s" got " type got .
    then ;
 
 : BWM-TEST-ATOMICS ( -- )

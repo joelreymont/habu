@@ -214,7 +214,7 @@ variable BUILD-FMT-READY
 TASK-STRLEN-LOAD constant TASK-STRLEN-XT
 
 \ Exact strlen fixture pauses after task-local argument staging to prove tasks
-\ do not share FFI tables. Retirement owner: habu-ptx-m1-c-1df1d6e7.
+\ do not share FFI tables. Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    FFI:RESET
    cstr 0 FFI:READABLE!
@@ -396,7 +396,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : TASK-TEST-LIVE-COMPILE-GUARD ( -- )
    TASK-LIVE-COMPILE$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N s" variable" T$= ;
+   TASK-ERR erru LEN>N S\" variable\n" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2073,7 +2073,7 @@ variable BIND-PAIR-Q-WON
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N s" variable" T$= ;
+   TASK-ERR erru LEN>N S\" variable\n" T$= ;
 
 : TASK-TEST-RUN ( -- )
    T-RESET

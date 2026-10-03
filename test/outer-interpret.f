@@ -486,6 +486,11 @@ variable WANT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside a ( comment at " S\" oi-comment-end.f:2\n" DIED-AT ;
 
+\ A fail-closed exit that names a token: stderr is that token and a newline.
+: ERR-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   SB-RESET  a u SB-APPEND  GE-SB-LF
+   SB$ CASE$ GE-EXPECT-ERR ;
+
 \ No closing quote: the refusal names the keyword's line, not the end's.
 : UNTERMINATED ( -- )
    GE-SRC-RESET
@@ -554,17 +559,17 @@ variable WANT-RC
    74 s" hb: reader keyword needs a name: ' at " S\" oi-tick-no-name.f:4\n" DIED-AT ;
 
 \ ' of a token qualified by a sealed package ends the process, the token its
-\ whole diagnostic. Every package the engine seals is asked once, in assorted
-\ case, and a second colon does not spare the token. The exit is fail-closed:
-\ the exit hook the program armed, `cr` (in src/habu/layout.f EXIT-HOOK-CELL),
-\ does not run.
+\ whole diagnostic line. Every package the engine seals is asked once, in
+\ assorted case, and a second colon does not spare the token. The exit is
+\ fail-closed: the exit hook the program armed, `cr` (in src/habu/layout.f
+\ EXIT-HOOK-CELL), does not run.
 : SEALED ( ptr u8 n -- ) {: t:ptr u:n :}
    GE-SRC-RESET
    s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
    s" ' " GE-SRC+ t u GE-SRC-LINE
    s" oi-sealed.f" BOTH
    ENGINE-ERROR:SEAL-PACKAGE t u GE-EXPECT-RC
-   t u t u GE-EXPECT-ERR ;
+   t u ERR-LINE ;
 
 : SEALED-PACKAGES ( -- )
    s" tfam:x" SEALED
@@ -748,12 +753,12 @@ variable WANT-RC
 
 \ The checker resolves a definition's bare names through the same usings, so
 \ it finds a used public that shadows a global tail only when `using` told it
-\ the package's name.
+\ the package's name. The refusal it renders exits 70, as every refusal does.
 : USING-SHADOW ( -- )
    GE-SRC-RESET
    s" using OI-PKG s~ : OI-SH ( -- n ) OI-SEVEN ;~ evaluate" QLINE
    s" oi-using-shadow.f" BOTH
-   67 s" using shadow" GE-EXPECT-RC
+   70 s" using shadow" GE-EXPECT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
 \ The interpreter refuses the same tail by name, as a word and as a tick's
@@ -1026,7 +1031,7 @@ variable WANT-RC
    76 s" hb: code space full at: OI-LONG-NAMED-TWIN at " S\" oi-export-code-full.f:1\n" DIED-AT ;
 
 \ `package` of a sealed package's name, or of a package whose public wordlist
-\ is protected, ends the process, the name its whole diagnostic; so does
+\ is protected, ends the process, the name its whole diagnostic line; so does
 \ `export` into a protected wordlist, naming its guard and the word. The exit
 \ is fail-closed: the exit hook the program armed, `cr`, does not run.
 : ARMED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -1038,9 +1043,9 @@ variable WANT-RC
 
 : PROTECTED-PACKAGES ( -- )
    s" package ENGINE-ERROR" s" oi-sealed-package.f" ARMED
-   s" ENGINE-ERROR" CASE$ GE-EXPECT-ERR
+   s" ENGINE-ERROR" ERR-LINE
    s" package OI-EX public get-current prot-wid-add ;package package OI-EX" s" oi-protected-package.f" ARMED
-   s" OI-EX" CASE$ GE-EXPECT-ERR
+   s" OI-EX" ERR-LINE
    s" package OI-EX public get-current prot-wid-add export OI-TWO" s" oi-protected-export.f" ARMED
    S\" hb: cannot publish into protected word: OI-TWO\n" CASE$ GE-EXPECT-ERR ;
 
@@ -1075,11 +1080,11 @@ variable WANT-RC
    0 SPIN-U ! ;
 
 \ A package keyword exits 79 while a task is live, the keyword its whole
-\ diagnostic, before it reads anything.
+\ diagnostic line, before it reads anything.
 : LIVE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n kw:ptr kwu:n name:ptr nameu:n :}
    src srcu name nameu LINE-CASE
    79 CASE$ GE-EXPECT-RC
-   kw kwu CASE$ GE-EXPECT-ERR ;
+   kw kwu ERR-LINE ;
 
 : TASK-LIVE-KEYWORDS ( -- )
    SPIN-PRELUDE
@@ -1201,7 +1206,7 @@ variable WANT-RC
 \ with no native compiler installed end the process without the exit hook.
 : HEAD-FAIL-CLOSED ( -- )
    s" 1 set-tier : tfam:x" s" oi-head-sealed.f" ARMED
-   s" tfam:x" CASE$ GE-EXPECT-ERR
+   s" tfam:x" ERR-LINE
    s" 1 set-tier package OI-EX public get-current prot-wid-add ;package : OI-EX:OI-T" s" oi-head-protected.f" ARMED
    S\" hb: cannot publish into protected word: OI-EX:OI-T\n" CASE$ GE-EXPECT-ERR
    s" 1 set-tier package OI-EX public get-current prot-wid-add : OI-T" s" oi-head-protected-current.f" ARMED

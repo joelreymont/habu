@@ -83,6 +83,7 @@ E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
 E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
 E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
 E-TFAM-DUP constant E-DUP           \ duplicate family, variant, or field tail, raised by
                                     \ TFAM-DECL / SUMV-ADD / the field-event path; named here
@@ -91,6 +92,10 @@ E-TFAM-DUP constant E-DUP           \ duplicate family, variant, or field tail, 
 110 constant ASCII-N
 102 constant ASCII-F
 114 constant ASCII-R
+
+\ The longest family, variant or field name, which every spelling derived from
+\ it has room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
+TF-NAME-MAX constant NAME-MAX
 
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
@@ -122,6 +127,7 @@ TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
+TRUSTED: NAME-LONG$ ( -- ptr u8 n ) TF-NAME-LONG$ ;
 TRUSTED: NAME-RESERVED? ( ptr u8 n -- bool ) TYPE-NAME:FAMILY-RESERVED? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: SUMV-N@ ( -- n ) SUMV-N @ ;    \ variant-cursor high-water (variant range start)
@@ -199,8 +205,11 @@ ED-RESET
 \ (`if`), then value record names (`ENUM vr` in a package after `VALUE-RECORD
 \ vr`).
 \ ---------------------------------------------------------------------------
+: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
+
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    2dup CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
@@ -361,12 +370,14 @@ ED-RESET
    ED-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
+   na nu NAME-LONG? IF NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    ED-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
    ED-NEXT dup 0= IF
-      2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
+      2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
    VARIANT-NAME {: na:ptr nu:n :}
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
@@ -400,6 +411,7 @@ ED-RESET
    s" field" CORE-STR=CI ;
 : COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
    {: na:ptr nu:n :}
+   na nu NAME-LONG? IF NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
    na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT

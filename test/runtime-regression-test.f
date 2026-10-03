@@ -145,7 +145,35 @@ variable GE-SCRIPT-U
    s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( -- n ) drop 5 ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    75 s" does>-split wide facts fail closed" GE-EXPECT-RC
-   s" does>-split cannot lower layout width facts" s" does>-split wide diagnostic" GE-EXPECT-ERR-HAS ;
+   S\" hb: does>-split cannot lower layout width facts: ;\n"
+      s" does>-split wide diagnostic" GE-EXPECT-ERR ;
+
+\ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
+\ closed naming the limit and the token that carved it. No one value may
+\ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
+: GE-P2-FRAME-WIDE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" PRODUCT gep8 0" GE-SRC-LINE
+   s"    FIELD f0 n FIELD f1 n FIELD f2 n FIELD f3 n" GE-SRC-LINE
+   s"    FIELD f4 n FIELD f5 n FIELD f6 n FIELD f7 n" GE-SRC-LINE
+   s" ;PRODUCT" GE-SRC-LINE
+   s" PRODUCT gep64 0" GE-SRC-LINE
+   s"    FIELD g0 gep8 FIELD g1 gep8 FIELD g2 gep8 FIELD g3 gep8" GE-SRC-LINE
+   s"    FIELD g4 gep8 FIELD g5 gep8 FIELD g6 gep8 FIELD g7 gep8" GE-SRC-LINE
+   s" ;PRODUCT" GE-SRC-LINE
+   s" PRODUCT gep192 0 FIELD h0 gep64 FIELD h1 gep64 FIELD h2 gep64 ;PRODUCT" GE-SRC-LINE
+   s" TRUSTED: GE-MK8 ( -- gep8 ) 0 0 0 0 0 0 0 0 ;" GE-SRC-LINE
+   s" TRUSTED: GE-MK64 ( -- gep64 ) GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 ;" GE-SRC-LINE
+   s" TRUSTED: GE-MK192 ( -- gep192 ) GE-MK64 GE-MK64 GE-MK64 ;" GE-SRC-LINE
+   s" : GE-WFRAME ( -- )" GE-SRC-LINE
+   22 0 do
+      s"    GE-MK192 {: l" GE-SRC+  i GE-SRC-U+  s" :gep192 :}" GE-SRC-LINE
+   loop
+   s" ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   75 s" pass-2 frame past the slot reach fails closed" GE-EXPECT-RC
+   S\" hb: locals frame over 4096 cells: :}\n" s" pass-2 frame past the slot reach diagnostic" GE-EXPECT-ERR ;
 
 \ A created word's clause effect is an effect like any other: `does>
 \ ( -- gewide<n,n> )` publishes a wider-than-cell layout value, so the created
@@ -220,6 +248,7 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
+   GE-P2-FRAME-WIDE
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
    GE-DOES-SCALAR
@@ -957,12 +986,12 @@ package RUNTIME-REGRESSION
    GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
-   s" set-check: invalid checker xt" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
+   S\" set-check: invalid checker xt\n" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET s" dbase@ $1B0 + @ set-check" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
-   s" set-check: invalid checker xt" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
+   S\" set-check: invalid checker xt\n" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
    s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
 
 create GE-CF-BODY GE-SRC-CAP allot

@@ -288,6 +288,10 @@ variable LBL-U
    s" CON-FAM" FAM-DIES-AT-MAX
    s" VAR" FAM-DIES-AT-MAX ;
 
+\ A code above 255 that nothing catches ends the child on `hb: uncaught throw
+\ code N`. It exits 70, the refusal status, when the checker rendered that
+\ refusal - the declarations' `habu: bad ...` line, a stale trust row - and
+\ UNCAUGHT-RC (67) when it was thrown with nothing rendered.
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
@@ -296,14 +300,16 @@ variable LBL-U
    s" RECORD-IT" 70 S\" checker: bad or duplicate value-record type\n" DIES
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 83 S\" seal: cannot truncate sealed checker signatures\n" DIES
-   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
-   s" USING-IT" 76 S\" checker: using name too long\n" DIES
+   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES-NO-SPAN
+   CEIL 1 + s" ceiling+1" s" PACKAGE-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES-NO-SPAN
+   CEIL 1 + s" ceiling+1" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
-   s" FAMILY-IT" 67 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
-   s" SUM-IT" 67 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
-   s" SUM-NOEND-IT" 67 S\" habu: bad sumtype declaration '': missing ;SUMTYPE\nhb: uncaught throw code 7107\n" DIES
-   s" PRODUCT-IT" 67 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
+   s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
+   s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
+   s" SUM-NOEND-IT" 70 S\" habu: bad sumtype declaration '': missing ;SUMTYPE\nhb: uncaught throw code 7107\n" DIES
+   s" PRODUCT-IT" 70 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
 \ TRUST, PTX-BARRIER! and CHECKER-DEFCAST have no effect a checked body may call,
@@ -331,9 +337,9 @@ variable WANT-U
 
 : TEST-TOP-LEVEL ( -- )
    s" BAD$ PTX-BARRIER!" 76 S\" PTX-BARRIER!: unknown word\n" DIES
-   s" BAD$ SIG$ TRUST" 67 s" " STALE$ DIES
-   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 s" " STALE$ DIES
-   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 s" " STALE$ DIES
+   s" BAD$ SIG$ TRUST" 70 s" " STALE$ DIES
+   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 70 s" " STALE$ DIES
+   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 70 s" " STALE$ DIES
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
 
 \ ---- a name no record is keyed by --------------------------------------------
@@ -341,7 +347,8 @@ variable WANT-U
 \ CHECKER-RECORD-SYM answers symbol 0 for one. No row may carry symbol 0: a
 \ defer row keyed 0 is the defer store's terminator and hides every row after
 \ it. A trust row refuses the name as naming no word, and echoes it; every other
-\ word that records a symbol for it names it as malformed and throws.
+\ word that records a symbol for it names it as malformed and throws. Each
+\ refusal is rendered before its throw, so the child exits 70.
 : MAL$ ( -- ptr u8 n ) s" q:q:q" ;
 : MALFORMED$ ( -- ptr u8 n )
    S\" E-BAD-QUALIFIED-RECORD habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7152\n" ;
@@ -349,12 +356,12 @@ variable WANT-U
    {: src:ptr srcu:n rc:n want:ptr wantu:n :}
    0 s" two inner colons" src srcu rc want wantu DIES-AT ;
 : TEST-MALFORMED ( -- )
-   s" MAL$ CHECKER-DEFER" 67 MALFORMED$ MAL-DIES
-   s" MAL$ CHECKER-UNDEFINE" 67 MALFORMED$ MAL-DIES
-   s" MAL$ CAST$ CHECKER-DEFCAST" 67 MALFORMED$ MAL-DIES
-   s" MAL$ SIG$ TRUST" 67 MAL$ STALE$ MAL-DIES
-   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 67 MALFORMED$ MAL-DIES
-   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 67 MALFORMED$ MAL-DIES ;
+   s" MAL$ CHECKER-DEFER" 70 MALFORMED$ MAL-DIES
+   s" MAL$ CHECKER-UNDEFINE" 70 MALFORMED$ MAL-DIES
+   s" MAL$ CAST$ CHECKER-DEFCAST" 70 MALFORMED$ MAL-DIES
+   s" MAL$ SIG$ TRUST" 70 MAL$ STALE$ MAL-DIES
+   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 70 MALFORMED$ MAL-DIES
+   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 70 MALFORMED$ MAL-DIES ;
 
 \ A field text is no name, so only -1 and the maximum cell describe no text.
 : TEST-FIELD-TEXT ( -- )
@@ -367,7 +374,8 @@ variable WANT-U
 \ rejected, a cast throws E-CAST-ARITY. CHECK-DOES! is trusted-only and
 \ CHECKER-DEFCAST has no effect a checked body may call, so the child names them
 \ at its top level. An arity token past two digits is refused as a bad arity,
-\ and its text is echoed only when its length is one a name can have.
+\ and its text is echoed only when its length is one a name can have; that
+\ refusal is rendered, so the child exits 70, and the cast's is not (67).
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
 : ARITY$ ( -- ptr u8 n )
    S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters\nhb: uncaught throw code 7108\n" ;
@@ -382,11 +390,11 @@ variable WANT-U
    s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
    s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 67 S\" hb: uncaught throw code 7129\n"
    DIES-NO-SPAN
-   -1 s" -1" s" ARITY-IT" 67 ARITY$ DIES-AT
-   ARITY-CAP 1 + s" cap+1" s" ARITY-IT" 67
+   -1 s" -1" s" ARITY-IT" 70 ARITY$ DIES-AT
+   ARITY-CAP 1 + s" cap+1" s" ARITY-IT" 70
    S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters at 'qqq'\nhb: uncaught throw code 7108\n"
    DIES-AT
-   MAX-CELL s" max" s" ARITY-IT" 67 ARITY$ DIES-AT ;
+   MAX-CELL s" max" s" ARITY-IT" 70 ARITY$ DIES-AT ;
 
 \ ---- a name of exactly the ceiling ------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.

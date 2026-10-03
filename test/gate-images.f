@@ -47,7 +47,7 @@ require tools/lint/source-lex.f
 require test/load-refs.f
 require test/gate-pool.f
 require test/image-grant.f
-require test/keyed-image.f               \ a build's CPU budget and hang guard
+require test/suite-budget.f              \ a build row's budget and hang guard
 
 package GATE-IMAGES
 
@@ -261,13 +261,6 @@ variable UNION
 3 constant READY
 4 constant FAILED
 
-\ A build row is held to a build's CPU budget, whatever the load
-\ (test/keyed-image.f BOUNDED BY ITS OWN WORK). Its wall deadline is only a
-\ hang guard, a minute beyond the builder's own for the key hashing and the
-\ copy: the builder's deadline governs, its BUILD-RUN names the step and throws
-\ E-PROC-TIMEOUT, and its EMIT removes the work directory before the throw goes
-\ on.
-KEYED-IMAGE:BUILD-TIMEOUT-MS 60000 + constant BUILD-ROW-TIMEOUT-MS
 \ A row that needs a failed image dies as it starts, with this status.
 60000 constant RED-ROW-TIMEOUT-MS
 75 constant RED-ROW-RC
@@ -350,15 +343,19 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n n -- ]
    s" -build" LABEL+ ;
 
 \ A build row is granted its family and the prerequisites its module settles on
-\ the way.
+\ the way. It is held to a row's CPU budget, whatever the load, and its wall
+\ deadline is only a hang guard a minute beyond the builder's own, for the key
+\ hashing and the copy (test/suite-budget.f): the builder's deadline governs,
+\ its BUILD-RUN names the step and throws E-PROC-TIMEOUT, and its EMIT removes
+\ the work directory before the throw goes on.
 : BUILD ( n -- ) {: f:n :}
    f PROGRAM!
    f BUILD-LABEL!
    f BIT f PRE@ or GRANT!
    PROGRAM-BUF PROGRAM-U @ LABEL-BUF LABEL-U @ IMAGE-GRANT:VALUE$
-   BUILD-ROW-TIMEOUT-MS START-XT @ execute
+   SUITE-BUDGET:ROW-MS START-XT @ execute
    GT-POOL-SEQ @ f SEQ!
-   KEYED-IMAGE:BUILD-CPU-MS f SEQ@ GT-POOL-CPU-BUDGET!
+   SUITE-BUDGET:CPU-MS f SEQ@ GT-POOL-CPU-BUDGET!
    LIVE f STATE! ;
 
 \ A build row retired. The red table holds a record for every red row the pool

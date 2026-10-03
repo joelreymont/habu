@@ -97,17 +97,31 @@ emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
 `word` (the declared name as written, or the definer when no name stands on
 its line: as written under `tools/check.f`, in its canonical uppercase
 spelling under `bin/hb --load`), `token` (the refused token), `reason`, `file` and `suggestion`. The
-repair class follows the reason: `fix_storage_type` for an unknown, malformed
-or unstorable type or none on the name's line, `fix_storage_name` for no name
-on the definer's line or a name with more than one `:` or in a sealed package,
-and `fix_storage_count` for a literal count outside the extent, a count token
-that resolves to no `( -- n )` word, or no count. An unknown type names its own
-token, a missing one the name, any other type refusal the whole stored type.
-`tools/check.f` reads the declaration before the run, so there the object also
-carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
-definer under `bin/hb --load` has no record of its token's place and carries
-none. It has no definition fields, and the checker continues past it under
-`--all-errors`, counting it as a refusal.
+`reason` is one of the texts below and the repair class follows it.
+`diag-contract` (tools/gate-json-assert-core.f `GJA-STORAGE-CLASS$`) holds a
+record to this table and refuses one under another class or with a reason not
+listed:
+
+| `repair_class` | `reason` | Refusal |
+| --- | --- | --- |
+| `fix_storage_type` | `unknown type` | The type names nothing the checker knows. |
+| `fix_storage_type` | `malformed type` | The type does not parse. |
+| `fix_storage_type` | `type this definer cannot store` | The type parses, and this definer cannot store it. |
+| `fix_storage_type` | `scheme in a stored type` | The type holds a scheme, which no storage holds. |
+| `fix_storage_type` | `no type for` | No token follows the name on its line to be its type. |
+| `fix_storage_name` | `more than one ':' in name` | The name has more than one inner `:`. |
+| `fix_storage_name` | `name in a sealed package` | The name is qualified into a sealed package. |
+| `fix_storage_name` | `no name for` | No token follows the definer on its line to be its name. |
+| `fix_storage_count` | `count outside the buffer's extent` | The literal count is outside the definer's extent. |
+| `fix_storage_count` | `count resolves to no ( -- n ) word` | The count token names no word that leaves the count. |
+| `fix_storage_count` | `no count for` | No token precedes the definer to be its count. |
+
+An unknown type names its own token, a missing one the name, any other type
+refusal the whole stored type. `tools/check.f` reads the declaration before the
+run, so there the object also carries the token's `line`, `column`, `byte_start`
+and `byte_end`; a run-time definer under `bin/hb --load` has no record of its
+token's place and carries none. It has no definition fields, and the checker
+continues past it under `--all-errors`, counting it as a refusal.
 
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
@@ -192,28 +206,30 @@ none are. It has no `throw_code` or definition-only field. The code names its re
 | `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name. |
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
-| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature | `signature`, as written | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse; `token` is the name it is stored for. |
+| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
+| `E-USING-SHADOW-GLOBAL` | `disambiguate_using_shadow` | `used_package` | `token`, a bare name in a definition, resolves to a global while a package in use exports the same tail. |
 | `E-SHADOWED-ARITY` | `match_shadowed_private_effect` | `package` | The package public `token` moves another number of cells than the private word of its package with the same tail. |
 
-`tools/check.f` meets the first two only in its run stage, after every
-definition has checked. The refusal throws its code past every handler, so the
-load ends on `hb: uncaught throw code <code>` and exits 67, as for any
-unhandled throw ([debugging.md](debugging.md)). The record for a malformed name
-throws `E-BAD-QUALIFIED` (7152), so nothing after it in its source is checked. A
-definition or declaration spelled that way (`defer P:Q:R ( -- )`) never reaches
-the record under `--load`: the engine refuses the name itself and exits 75.
-`tools/check.f`'s pre-pass asks the checker for that record and reports the
-statement that asked for it as one that threw. A record entry called at run
-time with such a name (`s" P:Q:R" CHECKER-DEFER`) ends the load on
-`hb: uncaught throw code 7152` and exit 67, and `tools/check.f` meets it in its
-run stage. A run that ends on
-the throw of `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED` exits 70
-from `tools/check.f`, as for a refusal; a run that ends on any other throw
-exits with the load's status. Only `--all-errors` renders
-`E-BAD-STORED-SIGNATURE`, counting it as a refusal (exit 70); the default mode
-stops there with exit 76 and the line
-`<token>: <signature>: checker: bad stored signature`. The named definition and using refusals below place their own token when the
-checked text locates it in the file; no statement-throw packet follows them.
+A named checker record refuses before its load can continue. If the run
+reaches one, its refusal throws its code past every handler, so the
+load ends on `hb: uncaught throw code <code>` and exits 70 for a refusal the
+checker rendered ([debugging.md](debugging.md)). A malformed name in a
+definition or declaration (`defer P:Q:R ( -- )`) is refused by the engine itself
+under `--load` with exit 75. The source pre-pass can ask the checker for its
+record and report the statement that asked for it as one that threw. A record
+entry called at run time with that name (`s" P:Q:R" CHECKER-DEFER`) throws
+`E-BAD-QUALIFIED` (7152); the load exits 70 and no later statement runs.
+
+`E-BAD-STORED-SIGNATURE` is rendered in every mode. Under `--all-errors`, a
+source `trust` row is counted and checking continues, even if it names the
+definition just checked. Otherwise the load throws 7156 where the signature
+was stored; the pre-pass places a following `E-STATEMENT-THROW` span when it
+meets that statement. A row reached only at run time, such as through
+`evaluate`, also exits 70. Its prose is `habu: in <token>: bad stored
+signature '<signature>'`, with a reason for a row too deep or too wide to
+record. Named definition and using refusals place their own token when the
+checked text locates it, without a following statement-throw packet.
+`tools/check.f` exits with the run's status.
 
 `W-EFFECT-NOT-RECORDED` is a warning, outside this contract: a definition with
 no declared signature certified, but its inferred effect has more than 23 type
@@ -234,7 +250,7 @@ by `evaluate` or generated has no bytes in the file.
   `rejected`: a package's public definition moves other cells than the private
   word of that package whose tail it shares (forth.md **Packages**). It
   carries `token`, the tail as the checker folds it, `package`, `file` and
-  `suggestion`, and the load stops there, rc 67.
+  `suggestion`, and the load stops there, rc 70.
 - `W-EFFECT-NOT-RECORDED`, with no `repair_class` or `verdict`: a definition
   without a declared effect certified, but its inferred effect cannot be
   recorded, so a later caller does not find it. It carries `word`, the name as
@@ -257,9 +273,11 @@ than one used package export. The object carries `schema_version`, `code`,
 each, in the order `using` searches them: one for the shadow, two or more for
 the ambiguity. Under `--all-errors` without `--json-errors` it is a line that
 begins with the code and names the token and each candidate, `PKG:TOK` for a
-package's. A refused definition ends the check: `tools/check.f` exits 67 as
-the load's uncaught throw does, and 70 under `--verify-only`; under
-`--all-errors` the refusal is the report, not an `E-STATEMENT-THROW` record.
+package's. A refused definition ends the check: `tools/check.f` exits 70
+for `E-USING-SHADOW-GLOBAL` and 67 for `E-USING-AMBIGUOUS`, matching the
+load's status in each case; `--verify-only` exits 70 for either refusal.
+Under `--all-errors` the refusal is the report, without an
+`E-STATEMENT-THROW` record.
 The engine refuses an ambiguous use at top level, and under `bin/hb --load` in
 a definition too, before the checker (`docs/forth.md`, Packages).
 
@@ -304,10 +322,10 @@ for `engine-provided`, `held` and `incomplete`. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
-An argument that exceeds the source path capacity exits 67 and explains the
-limit on stdout. Ordinary checks explain it on stderr with the same status.
-An engine `HABU_UNDER_TEST` names that is not an executable exits 67 in every
-mode, default, `--verify-only` and `--json-errors`, with only
+An argument that exceeds the source path capacity is a usage error, exits 64
+and explains the limit on stdout. Ordinary checks explain it on stderr with the
+same status. An engine `HABU_UNDER_TEST` names that is not an executable exits
+67 in every mode, default, `--verify-only` and `--json-errors`, with only
 `hb: uncaught throw code -2102` (`E-FS-OPEN`) on stderr, naming neither the
 engine nor `HABU_UNDER_TEST`.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
@@ -567,6 +585,9 @@ Current checker classes:
 - `delete_generates_row`: a `generates: D ( effect )` row's D already states
   what it makes: its `does>` clause, an earlier row, or the definer it wraps.
   Delete the row.
+- `fix_signature_size`: a stored signature is more than 4096 levels deep or takes
+  more than 255 cells, more than its record holds; `reason` names the bound, the
+  row's count and the limit. Keep bulk values in a buffer.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
 - `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
@@ -637,6 +658,7 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
 | `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
+| `fix_signature_size` | `Declare fewer cells: keep bulk values in a buffer, not on the stack.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
 | `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |

@@ -1314,9 +1314,9 @@ DYNAMIC-BUFFER HOST-REG n
    w 0= if 0 exit then
    w WID-REL-BASE >= w A-SPAN @ WID-REL-BASE + < and 0= if
       s" aot-file: merged record " type noff NAME.
-      s"  names wordlist offset " type w .
+      s"  names wordlist offset " type w .INT
       s" , which its own window did not create; that window allocated [" type
-      WID-REL-BASE .  s" ," type A-SPAN @ WID-REL-BASE + .  s" )" type cr
+      WID-REL-BASE .INT  s" ," type A-SPAN @ WID-REL-BASE + .INT  s" )" type cr
       s" aot-file: a merged record names a wid its window did not create" DIE
    then
    H-SPAN @ w + ;
@@ -1359,7 +1359,7 @@ DYNAMIC-BUFFER HOST-REG n
       r 8 + U32@ {: w:n :}
       w SCOPE-FIXED? 0= if
          s" aot-file: merged call site " type r 4 + U32@ NAME.
-         s"  carries scope " type w .
+         s"  carries scope " type w .INT
          s" , which no capture writes; a site scope holds no window coordinate" type cr
          s" aot-file: a merged call site names a wordlist the format cannot move" DIE
       then
@@ -1430,9 +1430,9 @@ DYNAMIC-BUFFER HOST-REG n
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 8 S-SIGSTR BASE@ FIELD+ ;
 
 : ?DVALUE ( n n -- ) {: boff:n v:n :}
-   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
-   s" holds " type v .
-   s" which its own window's DATA span does not contain" type cr
+   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .INT
+   s"  holds " type v .INT
+   s"  which its own window's DATA span does not contain" type cr
    s" aot-file: a merged DATA literal is outside the artifact's DATA window" DIE ;
 
 
@@ -1496,9 +1496,9 @@ DYNAMIC-BUFFER HOST-REG n
    loop ;
 
 : ?CVALUE ( n n -- ) {: boff:n v:n :}
-   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
-   s" holds code offset " type v .
-   s" which its own blob does not contain" type cr
+   s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .INT
+   s"  holds code offset " type v .INT
+   s"  which its own blob does not contain" type cr
    s" aot-file: a merged CODE literal is outside the artifact's blob" DIE ;
 
 \ Each holds an offset into the artifact's own blob, canonicalized against code

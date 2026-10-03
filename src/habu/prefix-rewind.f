@@ -41,7 +41,7 @@ private
 \ clears the floor as one operation, which is what lets the recompiled prefix
 \ reopen the engine's own packages below the mark. tools/native-build.f
 \ LOGICAL-RESET drives the same seam for the in-process window build.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: DICT! ( n -- ) seed-ndict! ;
 
 \ The checker boundary is reached by its own name. It is a pre-hook definition,

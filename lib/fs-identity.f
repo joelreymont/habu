@@ -50,7 +50,7 @@ FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
 
 \ Private fixed libc signatures. Symbols are resolved afresh per invocation;
 \ no process-owned callable or errno pointer survives application capture.
-\ Retirement owner: Habu's checked fixed-schema foreign calls.
+\ Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: STAT-CALL ( n -- n ) >r ARGS REG-LENS 2 r> ffi-call-bounded ;
 TRUSTED: ERRNO-CALL ( n -- ptr u8 ) >r ARGS REG-LENS 0 r> ffi-call-bounded ;
 

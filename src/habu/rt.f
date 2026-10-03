@@ -45,14 +45,14 @@ variable MAP-CAP  variable MAP-DST
 variable MAP-MSG  variable MAP-OK   variable MAP-ROK
 variable MAP-BAD  variable MAP-DONE
 
-31 constant MAP-MSG-LEN     \ "hb: cannot map guarded VM stack"
 78 constant MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
 
 : EMIT-FAIL ( -- )
+   S\" hb: stack bounds exceeded\n" {: ma:ptr mu:n :}
    LBL FAIL-MESSAGE !
-   0 2 MOVZ,  1 FAIL-MESSAGE LABEL@ ADR,  2 25 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 FAIL-MESSAGE LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS,
-   FAIL-MESSAGE LABEL@ LBL,  s" hb: stack bounds exceeded" BYTES, ;
+   FAIL-MESSAGE LABEL@ LBL,  ma mu BYTES, ;
 
 \ The descriptor itself must not wrap, even
 \ when it came from a saved frame or a task rather than run-in-stack.
@@ -119,6 +119,7 @@ public
 \ compiler can check it.
 : EMIT-MAP ( n n -- )
    MAP-DST !  MAP-CAP !
+   S\" hb: cannot map guarded VM stack\n" {: ma:ptr mu:n :}
    LBL MAP-MSG !  LBL MAP-OK !  LBL MAP-ROK !  LBL MAP-BAD !  LBL MAP-DONE !
    0 0 MOVZ,
    1 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
@@ -146,9 +147,9 @@ public
    MAP-DST @ 9 0 ADDI,
    MAP-DONE LABEL@ B,
    MAP-BAD LABEL@ LBL,
-   0 2 MOVZ,  1 MAP-MSG LABEL@ ADR,  2 MAP-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 MAP-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
-   MAP-MSG LABEL@ LBL,  s" hb: cannot map guarded VM stack" BYTES,
+   MAP-MSG LABEL@ LBL,  ma mu BYTES,
    MAP-DONE LABEL@ LBL, ;
 
 ;package

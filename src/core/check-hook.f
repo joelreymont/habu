@@ -124,7 +124,7 @@ public
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation.
-\ Retirement: cap:checker-hook-identity.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;

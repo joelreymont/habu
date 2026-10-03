@@ -5,6 +5,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require test/whitebox-child.f
+require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package FIELD-BOUNDARY-SUITE
 
@@ -54,12 +55,11 @@ create ERR IO-CAP allot
    WHITEBOX-CHILD:ENV! ;
 
 \ The native case compiles the window's whole core prefix through the
-\ optimizing chain, which is minutes on a loaded box (test/native-window-owner.f
-\ measured 2m11s); the bound catches a hang, not a slow build.
-600000 constant DEADLINE-MS
-
+\ optimizing chain, tens of seconds of CPU, so every case takes the long row's
+\ child deadline (test/suite-budget.f): it catches a hang, not a slow build.
 : RESULT ( -- )
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
+   SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N S\" field boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or

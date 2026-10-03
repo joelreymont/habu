@@ -241,7 +241,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" PASS: prof-rate sets the interval the next prof-on arms" type cr ;
 
 \ --- dot habu-stop-the-clock-83ae936a: prof-on arms an interval of a second or
-\ more, prof-reset stops the clock for its clears, prof-rate throws a
+\ more, prof-reset holds the clock for its clears, prof-rate throws a
 \ negative interval back to its caller, and a refused arm is named and fatal.
 \ GDB-DELAY ( n -- ): spin until n more nanoseconds have passed by mono-ns.
 : GDB-DELAY-SRC ( -- )
@@ -274,10 +274,13 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ prof-reset 1000 times at 50 us, each time followed by prof-off and the
 \ header's identity, words + other + new + defer + spill + foreign == samples,
-\ read with the clock stopped. Each turn arms afresh, so a reset run straight
-\ after the arm would always start a whole interval before the first tick;
-\ a delay of 64 steps of 800 ns between the two moves the reset's start across
-\ the interval. The child prints how many resets left the identity false.
+\ read with the clock stopped. Under load Darwin delivers a tick after the
+\ timer stopped in a few of 1000 stops, so the identity holds only because a
+\ held or stopped clock counts nothing (src/habu/prof-abi.f, PROF-ARMED). Each
+\ turn arms afresh, so a reset run straight after the arm would always start a
+\ whole interval before the first tick; a delay of 64 steps of 800 ns between
+\ the two moves the reset's start across the interval. The child prints how
+\ many resets left the identity false.
 : GDB-PROFILER-RESETS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -294,9 +297,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROF-RUN
    s" profiler resets in a hot loop" GE-EXPECT-OK
    GT-OUT$ s" skewed" GDB-FIELD 0 <> if
-      s" prof-reset left the identity false: a tick landed between its clears" GE-FAIL
+      s" a tick counted while prof-reset or prof-off held the clock" GE-FAIL
    then
-   s" PASS: prof-reset stops the clock, so the identity survives 1000 resets at 50 us" type cr ;
+   s" PASS: a held clock counts nothing, so the identity survives 1000 resets at 50 us" type cr ;
 
 \ The engine's whole stderr for an uncaught throw of the code.
 : GDB-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}

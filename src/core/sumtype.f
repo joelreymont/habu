@@ -52,7 +52,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
-7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
+7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP (item 13 C2), or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 
 private
@@ -143,7 +143,8 @@ private
 
 \ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
 \ any throw the registries roll back and the failure is reported; a multi-error
-\ load counts the reject and continues, otherwise the named code propagates.
+\ load counts the reject and continues, otherwise the named code propagates as
+\ the refusal the report rendered (checker.f CHECKER-REFUSE).
 : TDECL-RUN ( [ -- ] -- )
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
@@ -152,7 +153,7 @@ private
    TDECL-RESTORE
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
-   rc throw ;
+   rc CHECKER-REFUSE ;
 
 \ The declared name is read first by the body's name gate and by the report. A
 \ length no name has (CK-NAME-SPAN?) is recorded as no name, so the declaration
@@ -203,15 +204,6 @@ private
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
 
-\ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the
-\ declaring scope can already resolve — the global scope always, plus the
-\ active package's own rows when one is open. Scope-independent by design:
-\ the top-level and in-package verdicts for the same token agree.
-: TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
-
 variable TDECL-NI
 : TDECL-VAR-SCOPE? ( n -- bool )
    SUMV-FAM@ TFAM-PKG$ {: pa:ptr pu:n :}
@@ -228,8 +220,11 @@ variable TDECL-NI
       TDECL-NI @ 1 + TDECL-NI !
    REPEAT RES-FALSE ;
 
+\ A family, variant or field name longer than TF-NAME-MAX has no room in the
+\ spellings derived from it (type-family.f TF-CTOR-BUF).
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing name" E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail" E-TFAM-CASE TDECL-THROW
    THEN
@@ -247,10 +242,11 @@ variable TDECL-NI
    THEN ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
-\ the declaring scope resolves is a reserved name, in every scope.
+\ the declaring scope resolves (TYPE-NAME:FAMILY-TAKEN?) is a reserved name,
+\ in every scope.
 : TDECL-REQUIRE-VARIANT-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
-   a u TDECL-FAM-TAKEN? 0= IF EXIT THEN
+   a u TYPE-NAME:FAMILY-TAKEN? 0= IF EXIT THEN
    a u s" collides with a type family" E-TDECL-NAME TDECL-THROW ;
 
 \ --- arity token: small decimal, capped by the positional letter params.
@@ -894,6 +890,7 @@ private
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$ E-TDECL-CAP TDECL-THROW THEN
    a u DELIM? IF a u s" bad field name" E-TDECL-SYNTAX TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW

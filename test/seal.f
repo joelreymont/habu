@@ -484,7 +484,9 @@ variable PWG-U
    s" ;ENUM" PWG-APPEND  10 PWG-C
    PWG$ ;
 
-UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
+\ The ENUM front end renders its refusal before it throws 7169, so the child
+\ exits 70, the refusal status (src/habu/habu2.f RC-REJECT).
+70 constant SLV-PWID-PREFLIGHT-RC
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 : SLV-ASSERT-PWID-PREFLIGHT ( -- )
    SLV-EXITED @ TTRUE
@@ -502,7 +504,7 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 : SLV-ASSERT-PWID-OOR ( -- )
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   SLV-ERR$ s" hb: protected-WID id above the bound" CONTAINS? TTRUE ;
+   SLV-ERR$ S\" hb: protected-WID id above the bound\n" CONTAINS? TTRUE ;
 
 : SLV-PWID-CAP ( -- )
    s" 17 public ADT families succeed past the old 16 cap" T-LABEL

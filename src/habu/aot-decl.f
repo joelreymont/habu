@@ -775,3 +775,23 @@ public
    then ;
 
 ;package
+
+\ The number printer every AOT refusal shares: capture, shadow, x86-64 link and
+\ artifact merge all require this file, and their diagnostics print wids,
+\ offsets and counts in the middle of a line. The engine's `.` ends its line
+\ (measured: `1 . 2 .` writes "1\n2\n"), and lib/fmt.f FMT:.INT is not in the
+\ engine: requiring it here would load fmt (56 records, measured) below every
+\ capture window a test opens after this file, where a window word that calls
+\ FMT calls into the prelude band the capture refuses (aot-capture.f
+\ ACAP-SITE-BAND). So the AOT layer carries its own: signed decimal, no space,
+\ no newline.
+\ The digits come from the value made nonpositive, which keeps MIN-N in range.
+package AOT-BUF
+private
+: NONPOS-DIGITS ( n -- )
+   dup -10 > if negate [char] 0 + emit exit then
+   dup 10 / RECURSE  10 mod negate [char] 0 + emit ;
+public
+: .INT ( n -- )
+   dup 0< if [char] - emit else negate then NONPOS-DIGITS ;
+;package

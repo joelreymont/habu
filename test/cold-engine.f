@@ -26,7 +26,7 @@ require lib/build-cache.f
 require lib/content-key.f
 require test/fixture-writer.f
 require test/image-grant.f
-require test/keyed-image.f               \ the emission's CPU budget and hang guard
+require test/suite-budget.f              \ CHILD-MS, the emission's hang guard
 
 package COLD-ENGINE
 
@@ -123,7 +123,7 @@ variable RESOLVED?
    FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    WRITER-ARGS
    writer writeru >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN KEYED-IMAGE:BUILD-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

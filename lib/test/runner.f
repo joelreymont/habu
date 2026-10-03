@@ -531,6 +531,6 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
       s" test-runner: ok" type cr
       exit
    then
-   s" test-runner: " type GT-FAIL# @ . s" failure(s)" type cr
+   s" test-runner: " type GT-FAIL# @ FMT:.INT s"  failure(s)" type cr
    GT-REPORT-FAILS
    s" test-runner: failures" GT-EX-FAIL die ;

@@ -344,12 +344,20 @@ public
    n 10 < if 1 exit then
    n 10 / RECURSE 1+ ;
 
-\ The longest path RESERVE-SIBLING and ATOMIC-WRITE-FILE stage beside: its
-\ `.tmp-<seed>-<attempt>` sibling still fits FS-PATH-CAP with the largest seed,
-\ the largest nonnegative cell `-1 1 rshift`, and the last attempt, so whether
-\ a path has room for one never depends on the seed it drew.
-FS-PATH-CAP 6 - -1 1 rshift FS-MUT-U-DIGITS -
-FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS - constant SIBLING-PATH-MAX
+\ The longest `.tmp-<seed>-<attempt>` suffix RESERVE-SIBLING and
+\ ATOMIC-WRITE-FILE append to a path: the largest seed, the largest
+\ nonnegative cell `-1 1 rshift`, and the last attempt, so whether a path has
+\ room for its sibling never depends on the seed it drew.
+6 -1 1 rshift FS-MUT-U-DIGITS +
+FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS + constant FS-MUT-SIBLING-SUFFIX-MAX
+
+\ NAME_MAX, the longest name a directory holds on Linux and macOS. The host
+\ refuses a longer one, so a sibling past it fails to open (E-FS-OPEN).
+255 constant FS-MUT-NAME-MAX
+
+\ The longest path, and the longest last name, a sibling still fits beside.
+FS-PATH-CAP FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-PATH-MAX
+FS-MUT-NAME-MAX FS-MUT-SIBLING-SUFFIX-MAX - constant SIBLING-NAME-MAX
 
 : FS-MUT-ATOMIC-U+ ( n SPAN:span<u8> n -- n ) {: value:n dst off:n :}
    value 0 < if E-FS-PATH throw then

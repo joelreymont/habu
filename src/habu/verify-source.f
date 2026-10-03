@@ -640,8 +640,9 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 : MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
-\ mode state, dynamic signature publication and raw-definer mode.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ mode state, dynamic signature publication, raw-definer mode, and the scope's
+\ own name resolution.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 \ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, or
 \ in a multi-error load.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
@@ -671,10 +672,8 @@ CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
 CAST: RENDERS-ACTION ( n -- [ n -- bool ] )
 
 \ The checked dispatchers name their offsets through layout.f's
-\ NCOMP-DISPATCH:DECL-VERIFY-* mirrors: CHECKER-OWNER-ABI loads before the
-\ checker, so a host compiling this file from source refuses
-\ CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF in a checked body with E-UNDEFINED
-\ (tools/build-fixpoint-test.f "watermark required", measured).
+\ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
+\ checker, so a source boot has no checked row for its constants.
 : RECORD-SYM? ( ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only

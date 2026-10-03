@@ -34,22 +34,24 @@ create ERR CAP allot
 
 public
 
+\ A refused STRUCTURE exits 70: the checker renders the declaration's refusal
+\ before it throws the refusal's code.
 : RUN ( -- )
    T-RESET
    s" a prior value use cannot become a scope" T-LABEL
-   s" STRUCTURE c2mixfirst 2 FIELD value a FIELD source read-view<a,b,u8> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2mixfirst 2 FIELD value a FIELD source read-view<a,b,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a later value use cannot consume a scope" T-LABEL
-   s" STRUCTURE c2mixlast 2 FIELD source read-view<a,b,u8> FIELD value a ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2mixlast 2 FIELD source read-view<a,b,u8> FIELD value a ;STRUCTURE" 70 STATUS? TTRUE
    s" an element type parameter cannot become a scope" T-LABEL
-   s" STRUCTURE c2mixelement 3 FIELD source read-view<a,b,c> FIELD extra read-view<c,b,u8> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2mixelement 3 FIELD source read-view<a,b,c> FIELD extra read-view<c,b,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a phantom element cannot become an owning field" T-LABEL
-   s" STRUCTURE c2ownstype 3 FIELD source read-view<a,b,c> FIELD value c ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2ownstype 3 FIELD source read-view<a,b,c> FIELD value c ;STRUCTURE" 70 STATUS? TTRUE
    s" a wide value cannot bind a constructor cell" T-LABEL
    s" STRUCTURE c2vowner 1 FIELD payload a ;STRUCTURE : C2V-WIDE-OWNER ( c2vowner<c2vpair> -- c2vpair ) C2VOWNER:UNMAKE ;" 70 STATUS? TTRUE
    s" a raw pointer cannot hide a borrowed field" T-LABEL
-   s" STRUCTURE c2ptrview 2 FIELD source ptr read-view<a,b,u8> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2ptrview 2 FIELD source ptr read-view<a,b,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a parametric field cannot recursively name its owner" T-LABEL
-   s" STRUCTURE c2recursive 1 FIELD next ptr c2recursive<a> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2recursive 1 FIELD next ptr c2recursive<a> ;STRUCTURE" 70 STATUS? TTRUE
    s" nested record cannot escape an owner callback" T-LABEL
    s" -1 JSON-DIAGS ! : C2V-S ( read-view<p,l,u8> -- c2vinner<p,l> read-view<p,l,u8> ) dup 1 C2VINNER:MAKE swap ; : C2V-B ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) [: C2V-S ;] C2-MEM:WITH-READ swap drop ;" SCOPE-ESCAPE? TTRUE
    s" raw global storage cannot retain a borrowed record" T-LABEL

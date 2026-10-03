@@ -9,7 +9,8 @@
 \ file against the Gforth-recovered candidate, so native and recovery must agree.
 \ The in-process cases assert the restored VALUES a checked r>/loop-index sees; the
 \ forged-frame child fixtures assert the sentinel/underflow guards fail closed with
-\ ENGINE-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory.
+\ ENGINE-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory,
+\ for a throw at top level (habu1.f BTHROW) and inside evaluate (habu2.f LEVALREC).
 
 require lib/errors.f
 require lib/string.f
@@ -90,7 +91,7 @@ variable ERRLEN
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
 
-: DIAG$ ( -- ptr u8 n )  s" hb: catch frame corrupt" ;
+: DIAG$ ( -- ptr u8 n )  S\" hb: catch frame corrupt\n" ;
 
 : ERR$ ( -- ptr u8 n )  ERR ERRLEN @ ;
 
@@ -122,6 +123,9 @@ variable ERRLEN
    FORGE-FAILS-CLOSED
    s" saved-depth over region fails closed rc 87"
    s" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  RSTK-CELLS 1 + FF 40 + !  FF data-base HND-CELL + !  5 throw"
+   FORGE-FAILS-CLOSED
+   s" a throw inside evaluate fails closed rc 87"
+   S\" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  s\" FF data-base HND-CELL + !  5 throw\" evaluate"
    FORGE-FAILS-CLOSED ;
 
 public

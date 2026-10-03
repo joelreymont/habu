@@ -17,7 +17,7 @@ require src/arch/arm64/icode.f
 
 IBT-LOAD-IMAGE-BYTES
 
-\ These republished test effects retire with habu-builder-trust-rows-c5d41af6.
+\ Republished test effects. Retirement: habu-campaign-c2-mem-c3d7662b.
 \ MBUF exposes the audited raw image buffer; M-BOUNDS-RC its bounds status.
 s" MBUF" s" -- ptr u8" TRUST
 s" M-BOUNDS-RC" s" -- n" TRUST

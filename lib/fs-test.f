@@ -8,6 +8,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/memory.f                \ the walk contexts the two-context rows own
 require lib/task.f                  \ two tasks through READ-ALL / FILE-SIZE at once
+require lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 1 constant FS-TEST-EX-FAIL
 $34 constant FS-TEST-U16-LO
@@ -661,7 +662,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 
 : FS-TEST-REPORT ( -- )
    FS-TEST-FAIL @ 0 = if s" fs-test: ok" type cr exit then
-   FS-TEST-FAIL @ . s" fs-test: failures" type cr
+   s" fs-test: " type FS-TEST-FAIL @ FMT:.INT s"  failure(s)" type cr
    s" fs-test: failures" FS-TEST-EX-FAIL die ;
 
 : FS-TEST-CLEANUP ( -- )

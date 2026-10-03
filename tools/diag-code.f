@@ -22,12 +22,14 @@ private
 
 \ A code's row: its shape, the repair classes it names, separated by spaces, and
 \ the field its record adds to its token. A code that names no class leaves
-\ the class to the record's own evidence.
+\ the class to the record's own evidence: a storage refusal's is the class its
+\ reason takes (tools/gate-json-assert-core.f GJA-STORAGE-CLASS$), which
+\ GJA-STORAGE-CLASS holds it to.
 : ROW ( ptr u8 n -- shape ptr u8 n ptr u8 n ) {: c:ptr u:n :}
    c u s" E-BAD-DECLARATION" STR= IF
       construct shape declaration s" fix_family_declaration" s" " EXIT THEN
    c u s" E-BAD-STORAGE" STR= IF
-      construct shape storage s" fix_storage_type fix_storage_name fix_storage_count" s" " EXIT THEN
+      construct shape storage s" " s" " EXIT THEN
    c u s" E-STATEMENT-THROW" STR= IF
       construct shape source-span s" unknown_rejection" s" " EXIT THEN
    c u s" E-UNTERMINATED-STRING" STR= IF
@@ -48,7 +50,7 @@ private
       construct shape record s" fix_qualified_name" s" " EXIT THEN
    c u s" E-BAD-STORED-SIGNATURE" STR= IF
       construct shape record
-      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax"
+      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax fix_signature_size"
       s" signature" EXIT THEN
    c u s" E-USING-SHADOW-GLOBAL" STR= IF
       construct shape using-refusal s" disambiguate_using_shadow" s" " EXIT THEN

@@ -952,7 +952,7 @@ create CS-XD CMAX cells allot
 create CS-EXIT CMAX cells allot
 create CS-END CMAX cells allot       \ whether the arm before this frame's `else` ended
 create CS-W CMAX cells allot         \ cells one value of a tag-dispatch frame's subject occupies
-create CS-TRAP CMAX cells allot      \ the ordinal a `MATCH` mismatch traps with
+create CS-TRAP CMAX cells allot      \ the family a `MATCH` mismatch traps on
 create CS-OFIX CMAX cells allot      \ the row of the `of` that opened the arm being read, or -1
 create CS-JOINED CMAX cells allot    \ whether any arm of this frame reached its join
 create CS-RD CMAX cells allot        \ parked values the return vector held when this structure opened
@@ -1926,9 +1926,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    pads ix TOK-CK cells MPAD + !
    pay ix TOK-CK cells MPAY + ! ;
 
-: MMATCH! ( n n n -- ) {: ix:n w:n ord:n :}
+\ The family, not its name: the type-family string pool grows and moves
+\ (src/core/type-family.f), so the trap reads the name when it is built.
+: MMATCH! ( n n n -- ) {: ix:n w:n fam:n :}
    w ix TOK-CK cells MWID + !
-   ord ix TOK-CK cells MTAG + ! ;
+   fam ix TOK-CK cells MTAG + ! ;
 
 : MGLUE! ( n n -- ) {: ix:n glue:n :}
    glue ix TOK-CK cells MGLUE + ! ;
@@ -1982,7 +1984,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix NDICT:MATCH-CELLS {: w:n :}
    w NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    w fam NFAM:WIDTH < if E-NELAB-MATCH throw then
-   CB-ROW @  w  fam NFAM:NAME$ NTRAP:FAMILY  MMATCH!
+   CB-ROW @  w  fam  MMATCH!
    MK-MATCH fam w MS-PUSH
    MM-VARIANT MM ! ;
 
@@ -2971,19 +2973,18 @@ here CELL 1- and CELL swap - CELL 1- and allot
    base ix MGLUE@ VGLUE-RUN ;
 
 \ Copy the diagnostic through the same owned literal path as source strings;
-\ no emitted trap depends on the build host's ordinal table or helper code.
-: TRAP-ARGS ( n n -- ) {: ix:n ord:n :}
-   ord NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+\ no emitted trap depends on the build host's helper code.
+: TRAP-ARGS ( n ptr u8 n n -- ) {: ix:n a:ptr u:n rc:n :}
    ix a u NSTR:INTERN HIR:ADDR-DATA STAGE-LIT
    ix u HIR:ADDR-NONE STAGE-LIT
    ix rc HIR:ADDR-NONE STAGE-LIT ;
 
 \ The block a tag that matched no variant runs into, which is the last arm's
 \ mismatch edge.
-: MATCH-TRAP ( n n -- ) {: ix:n ord:n :}
+: MATCH-TRAP ( n n -- ) {: ix:n fam:n :}
    LIT-MARK {: m:n :}
    ix OPEN-PLAIN
-   ix ord TRAP-ARGS
+   ix  fam NFAM:NAME$ NTRAP:BAD-TAG  TRAP-ARGS
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    m LIT-RELEASE ;
@@ -3130,13 +3131,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
    k oglue VGLUE-RUN ;
 
 \ ---- a call control does not come back from ----------------------------------
-: DEAD-ORD ( IR-ID:ir-symbol-id -- n )
-   SPELL$ NTRAP:NO-RETURN ;
-
-\ The ordinal is staged FRESH and not taken off the literal memo.
+\ The message is staged FRESH and not taken off the literal memo.
 : DEAD-END ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  ix WSYM DEAD-ORD TRAP-ARGS
+   ix  ix WSYM SPELL$ NTRAP:RETURNED  TRAP-ARGS
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    PATH-DEAD PATH-END ! ;

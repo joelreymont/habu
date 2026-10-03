@@ -22,7 +22,9 @@ variable PATH-U
 variable PATH2-U
 variable LABEL-U
 
-$1000 constant REC-CAP
+\ A record is read whole from a child's stderr, so it holds what that capture
+\ holds: a record names its file, whose path grows with the row's scratch root.
+GT-ERR-CAP constant REC-CAP
 create REC-BUF REC-CAP allot
 variable REC-U
 create SPLICE-BUF REC-CAP allot
@@ -208,12 +210,17 @@ TYPED-VARIABLE SPLICE-LEN len
 : REC$ ( -- ptr u8 n )
    REC-BUF REC-U @ ;
 
+\ A record of u bytes fits its buffer, or the test fails by name.
+: REC-FITS ( n -- ) {: u:n :}
+   u REC-CAP > if s" record outgrows its buffer" GE-FAIL then ;
+
 : REC! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u REC-CAP > if E-STR-CAPACITY throw then
+   u REC-FITS
    a REC-BUF u BYTE-COPY
    u REC-U ! ;
 
 : REC-SPLICE ( n n ptr u8 n -- ) {: at:n oldu:n new:ptr newu:n :}
+   REC-U @ oldu - newu + REC-FITS
    SPLICE-LEN BUF-RESET
    REC-BUF at SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
    new newu SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
@@ -236,6 +243,16 @@ TYPED-VARIABLE SPLICE-LEN len
      none OF s" record has no line end" GE-FAIL ENDOF
      some OF IDX>N 1+ REC-U ! ENDOF
    ;MATCH ;
+
+\ Take the line of A U that holds TEXT: one record among those an --all-errors
+\ run wrote.
+: REC-LINE-OF ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n text:ptr textu:n :}
+   0 begin
+      >r a u 10 r> SPLIT-NEXT
+   while
+      >r 2dup text textu CONTAINS? IF REC! r> drop EXIT THEN 2drop r>
+   repeat
+   drop 2drop s" no record holds the text" GE-FAIL ;
 
 : WRITE-REC ( ptr u8 n -- )
    PATH!
@@ -534,14 +551,34 @@ TYPED-VARIABLE SPLICE-LEN len
    s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-qual-class.err" s" repair class is not one its code names" s" malformed record under the trust row's class refused" REFUSED ;
 
-\ A stored signature that does not parse (checker.f USIG-ADD-BAD), under the
-\ first and the last of the classes its code names. Only a multi-error load
-\ renders the record; the default mode stops there.
+\ A stored signature that does not parse, or is deeper or wider than a record
+\ holds (checker.f USIG-ADD-BAD), under the first and the last two of the
+\ classes its code names. The default mode renders the first record and stops
+\ there; a multi-error load renders all four, the deep and the wide one each
+\ with the bound it passed. The class mutation takes the first run's one
+\ record, which the 1 KB string builder splices whole.
 : SIGNATURE-RECORD-REFUSAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s\" s\" GDX-SIG-TYPE\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
    s\" s\" GDX-SIG-SYNTAX\" s\" n n\" trust" GE-SRC-LINE
+   s\" s\" GDX-SIG-DEEP\" s\" --" GE-SRC+
+   4097 0 ?do s"  n" GE-SRC+ loop
+   s\" \" trust" GE-SRC-LINE
+   s\" s\" GDX-SIG-WIDE\" s\" " GE-SRC+
+   256 0 ?do s" n " GE-SRC+ loop
+   s\" --\" trust" GE-SRC-LINE
+   s" habu-json-signature.f" s" tools/check.f --json-errors accepted a bad stored signature" RECORD-CHECK
+   s" code" s" E-BAD-STORED-SIGNATURE" s" first stored signature code" ERR-JSTR
+   s" token" s" gdx-sig-type" s" first stored signature token" ERR-JSTR
+   s\" \"token\":\"gdx-sig-syntax\"" s" default mode stopped at the first stored signature" GE-EXPECT-ERR-LACKS
+   s" habu-json-signature-first.err" WRITE-ERR
+   s" habu-json-signature-first.err" s" first stored signature contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
+   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED
+   GE-HB-RESET
    s" habu-json-signature.f" RECORD-ARGS
    s" --all-errors" ARG+
    s" habu-json-signature.f" s" tools/check.f --json-errors --all-errors accepted bad stored signatures" RECORD-RUN
@@ -549,12 +586,56 @@ TYPED-VARIABLE SPLICE-LEN len
    s" token" s" gdx-sig-type" s" stored signature token" ERR-JSTR
    s" signature" s" -- gdx-no-such-type" s" stored signature as written" ERR-JSTR
    s" repair_class" s" fix_signature_syntax" s" malformed stored signature class" ERR-JSTR
+   s\" \"repair_class\":\"fix_signature_size\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-deep\""
+   s" deep stored signature class" GE-EXPECT-ERR-HAS
+   s" reason" s" effect too deep to record (depth 4097, at most 4096)" s" deep stored signature reason" ERR-JSTR
+   s\" \"repair_class\":\"fix_signature_size\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-wide\""
+   s" wide stored signature class" GE-EXPECT-ERR-HAS
+   s" reason" s" input row too wide to record (256 cells, at most 255)" s" wide stored signature reason" ERR-JSTR
    s" habu-json-signature.err" WRITE-ERR
-   s" habu-json-signature.err" s" stored signature contract" DIAG-CONTRACT
-   GT-ERR$ REC!
-   s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
-   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED ;
+   s" habu-json-signature.err" s" stored signature contract" DIAG-CONTRACT ;
+
+\ A stored signature whose length describes no memory (checker.f TRUST-USIG!)
+\ is refused as one that does not parse, with no text, so its record's
+\ signature is empty. The pre-pass reads only a row of two literal strings, so
+\ a TRUSTED: body runs this one, after a caught refusal under another class:
+\ its class is its own.
+: SIGNATURE-NOSPAN-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SIG-KIND ( -- n ) 1 ;" GE-SRC-LINE
+   s" : GDX-SIG-NOSPAN ( -- n ) 1 ;" GE-SRC-LINE
+   s" TRUSTED: GDX-SIG-ROWS ( -- )" GE-SRC-LINE
+   s\"    [: s\" GDX-SIG-KIND\" s\" -- gdx-no-such-type\" trust ;] catch drop" GE-SRC-LINE
+   s\"    s\" GDX-SIG-NOSPAN\" s\" -- n\" drop -1 trust ;" GE-SRC-LINE
+   s" GDX-SIG-ROWS" GE-SRC-LINE
+   s" habu-json-nospan.f" RECORD-ARGS
+   s" --all-errors" ARG+
+   s" habu-json-nospan.f" s" tools/check.f --json-errors --all-errors accepted a signature that is no span" RECORD-RUN
+   s\" \"repair_class\":\"fix_signature_syntax\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-nospan\",\"signature\":\"\","
+   s" no-span stored signature record" GE-EXPECT-ERR-HAS
+   s" habu-json-nospan.err" WRITE-ERR
+   s" habu-json-nospan.err" s" no-span stored signature contract" DIAG-CONTRACT ;
+
+\ A bad `trust` row naming the definition checked just before it is a source
+\ row like any other (checker.f TRUST): a multi-error load renders and counts
+\ it and checks on, so the mismatch after it follows its record.
+: SIGNATURE-CHECKED-NAME-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SIG-OWN ( -- n ) 1 ;" GE-SRC-LINE
+   s\" s\" GDX-SIG-OWN\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
+   s" : GDX-SIG-NEXT ( -- n ) 1 2 ;" GE-SRC-LINE
+   s" habu-json-own.f" RECORD-ARGS
+   s" --all-errors" ARG+
+   s" habu-json-own.f" s" tools/check.f --json-errors --all-errors accepted a bad row naming the definition before it" RECORD-RUN
+   70 s" a bad row naming the definition before it did not exit as a refusal" GE-EXPECT-RC
+   GT-ERR$ s\" {\"schema_version\":1,\"code\":\"E-BAD-STORED-SIGNATURE\",\"repair_class\":\"fix_signature_type\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-own\"," STARTS-WITH?
+   0= if s" the first record is not the bad row naming the definition before it" GE-FAIL then
+   s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\",\"verdict\":\"rejected\",\"word\":\"gdx-sig-next\","
+   s" the mismatch after the bad row was not reported" GE-EXPECT-ERR-HAS
+   s" habu-json-own.err" WRITE-ERR
+   s" habu-json-own.err" s" own-name stored signature contract" DIAG-CONTRACT ;
 
 \ A package public whose private twin owns its bare tail at another width.
 : ARITY-RECORD-REFUSAL ( -- )
@@ -911,8 +992,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-tfam-class.err" s" repair class is not one its code names" s" declaration under another class refused" REFUSED ;
 
 \ A refusal only the run reads carries no place.
-\ The contract refuses the record under an uncheckable verdict or a class
-\ outside the three storage classes.
+\ The contract refuses the record under an uncheckable verdict or a reason the
+\ renderer never writes.
 : RUN-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -929,9 +1010,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-storage-verdict.err" s" storage verdict is not rejected" s" uncheckable storage refused" REFUSED
    s\" \"verdict\":\"uncheckable\"" s\" \"verdict\":\"rejected\"" REC-SWAP
-   s\" \"repair_class\":\"fix_storage_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
-   s" fix_storage_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-storage-class.err" s" repair class is not one its code names" s" storage under a definition class refused" REFUSED ;
+   s\" \"reason\":\"unknown type\"" s\" \"reason\":\"type unknown\"" REC-SWAP
+   s" habu-storage-unknown.err" s" storage reason is not one the renderer writes" s" storage under a reason the renderer never writes refused" REFUSED ;
 
 \ A storage declaration its definer refuses is neither a definition nor a family
 \ declaration: it names the declared word, the refused token and the reason.
@@ -946,7 +1026,8 @@ TYPED-VARIABLE SPLICE-LEN len
 \ reads its name on its own line and its type's first token on the name's: one
 \ on the next line is missing, refused at the name or the definer, and that
 \ line is the next statement, here a declaration refused at its own place or a
-\ definition a later one calls.
+\ definition a later one calls. The contract refuses the misnamed declaration's
+\ record under the type class, which its reason does not take.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1035,6 +1116,11 @@ TYPED-VARIABLE SPLICE-LEN len
    s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":34,\"column\":17"
    s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
+   GT-ERR$ s\" \"word\":\"JSTG:A:B\"" REC-LINE-OF
+   s\" \"repair_class\":\"fix_storage_name\"" s\" \"repair_class\":\"fix_storage_type\"" REC-SWAP
+   s" fix_storage_name" GJA-SUGGEST-FOR s" fix_storage_type" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-storage-reason.err" s" storage repair class does not follow its reason"
+   s" storage name refusal under the type class refused" REFUSED
    RUN-STORAGE ;
 
 : ERROR-SOURCE ( -- )
