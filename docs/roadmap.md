@@ -12,7 +12,8 @@ the campaign dots are the ledger.
   contract and implemented native view, storage and cleanup surface.
 - C5: the decisions appended to [database-models.md](database-models.md) and
   [tasking-models.md](tasking-models.md).
-- C6: [x86-64.md](x86-64.md) and [cortex-m.md](cortex-m.md).
+- C6: [x86-64.md](x86-64.md), [cortex-m.md](cortex-m.md),
+  [portability.md](portability.md) and [wasm-backend.md](wasm-backend.md).
 - C3 and C4 are specified by their child dots and by MISSING.md; C1 by
   PLAN.md and the release checklist.
 
