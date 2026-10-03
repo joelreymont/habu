@@ -66,13 +66,15 @@ land with the declaration origin plumbing (PLAN item 13).
 A storage declaration its definer refuses (`LAYOUT-BUFFER`,
 `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
 emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
-`word` (the declared name as written), `token` (the refused token), `reason`,
-`file` and `suggestion`. The repair class follows the reason:
-`fix_storage_type` for an unknown, malformed or unstorable type,
-`fix_storage_name` for a name with more than one `:` or in a sealed package,
+`word` (the declared name as written, or the definer when no name stands on
+its line: as written under `tools/check.f`, in its canonical uppercase
+spelling under `bin/hb --load`), `token` (the refused token), `reason`, `file` and `suggestion`. The
+repair class follows the reason: `fix_storage_type` for an unknown, malformed
+or unstorable type or none on the name's line, `fix_storage_name` for no name
+on the definer's line or a name with more than one `:` or in a sealed package,
 and `fix_storage_count` for a literal count outside the extent, a count token
-that resolves to no `( -- n )` word, or no count. An
-unknown type names its own token, any other type refusal the whole stored type.
+that resolves to no `( -- n )` word, or no count. An unknown type names its own
+token, a missing one the name, any other type refusal the whole stored type.
 `tools/check.f` reads the declaration before the run, so there the object also
 carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
 definer under `bin/hb --load` has no record of its token's place and carries
@@ -279,7 +281,7 @@ Storage packets carry a storage record's evidence:
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
-| `word` | string | required | The declared name as written. |
+| `word` | string | required | The declared name as written; the definer when it has none (as written under `tools/check.f`, uppercase under `bin/hb --load`). |
 | `token` | string | required | The refused token. |
 | `reason` | string | required | Short refusal cause. |
 | `file` | string | required | Source label or path. |
@@ -406,10 +408,11 @@ Current checker classes:
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  names an unknown or malformed type, or one its definer cannot store; declare
-  the type before the storage or store a type the definer admits.
-- `fix_storage_name`: a storage declaration's name has more than one `:` or lies
-  in a sealed package.
+  names an unknown or malformed type, one its definer cannot store, or no type
+  on the name's line; declare the type before the storage or store a type the
+  definer admits.
+- `fix_storage_name`: a storage declaration has no name on its definer's line,
+  or its name has more than one `:` or lies in a sealed package.
 - `fix_storage_count`: a storage declaration's literal count is outside the
   buffer's extent, its count token resolves to no `( -- n )` word, or the
   declaration has no count.

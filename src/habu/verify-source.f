@@ -1202,41 +1202,55 @@ variable NOM-TAIL-U
       BODY-APPEND
    AGAIN ;
 
-\ Every storage definer's gate registration reads its stored type here, as its
+\ Every storage definer's gate registration reads its declaration here, as its
 \ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
 \ be `ptr* base`, a family application or a spaced quotation or scheme, so the
 \ type is a contiguous multi-token span from the scanner buffer, ended where the
-\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The first token is
-\ read raw, as parse-name reads it, so a `(` or `\` there is the type the
-\ definer refuses, not a comment (NAME-TOKEN reads a name the same way). When
-\ the source has no first token the span is empty, and the checker refuses that
-\ by name.
+\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The declaration
+\ ends with its line: the name is read on the definer's own line and the type's
+\ first token on the name's, raw, as parse-name reads them, so a `(` or `\`
+\ there is the name or type the definer refuses, not a comment. With no name
+\ there the definer is refused at its own token; with no first token the span
+\ is empty, and the checker refuses that by name.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
 
-\ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). The next token is read
-\ as the definer's parse-name reads it, and only from the same line, so a token
-\ on a later line starts the next statement.
-: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
-   ended IF 0 0= 0= EXIT THEN
+\ The next token, as the definer's parse-name reads it, when it stands on the
+\ scanner's line: the bytes before it hold no line feed
+\ (CHECKER-TYPE-SPAN-BREAK?). A token on a later line starts the next
+\ statement, and none is read.
+: SCAN-LINE-TOKEN ( -- ptr u8 n )
    SCAN-I @ {: end:n :}
    SKIP-WS
-   SCAN-I @ SOURCE-U @ >= IF 0 0= 0= EXIT THEN
-   SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF 0 0= 0= EXIT THEN
-   NEXT-RAW STG-U !  STG-A !
+   SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF SOURCE@ 0 EXIT THEN
+   NEXT-RAW ;
+
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line.
+: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended IF 0 0= 0= EXIT THEN
+   SCAN-LINE-TOKEN {: a:ptr u:n :}
+   u 0= IF 0 0= 0= EXIT THEN
+   a STG-A !  u STG-U !
    0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
-   NEXT-RAW STG-U !  STG-A !
+   SCAN-LINE-TOKEN STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
 
+\ The declared name. With none on the definer's line it is empty, and the
+\ definer's token is refused as its run refuses it.
+: SCAN-STORAGE-NAME ( -- ptr u8 n )
+   SCAN-LINE-TOKEN
+   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE THEN ;
+
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
@@ -1245,18 +1259,21 @@ PTR-VARIABLE STG-START
 \ and a type it cannot size goes unreported until the run. No count token: the
 \ count arrives at the bind.
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
@@ -1267,7 +1284,8 @@ PTR-VARIABLE STG-START
 \ src/habu/aot-decl.f's AOT-NAMES-RESERVE was, which took the stage2 certify pass
 \ with it. No count token: a dynamic buffer's extent is set at run time.
 : RECORD-DYNAMIC-BUFFER ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 

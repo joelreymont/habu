@@ -4046,14 +4046,11 @@ variable REQ-U
 \ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
 \ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
 \ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
-\ checker read last. The 250-byte name has a line of its own, under the engine's
-\ 255-byte line.
+\ checker read last: the type, after the 250-byte name on the definer's line.
 : CAP-THROW-FILES ( -- )
-   SB-RESET s" DYNAMIC-BUFFER" REQ-LINE+
-   s" CKT-CT-" SB-APPEND
+   SB-RESET s" DYNAMIC-BUFFER CKT-CT-" SB-APPEND
    243 0 ?do $4e SB-APPEND-C loop
-   $0a SB-APPEND-C
-   s" n" REQ-LINE+
+   s"  n" REQ-LINE+
    s" cap-throw.f" REQ-WRITE ;
 
 : TEST-CAPACITY-THROW ( -- )
@@ -4062,7 +4059,7 @@ variable REQ-U
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
    CAP-ERR erru s\" \"token\":\"n\"" CONTAINS? TTRUE
-   CAP-ERR erru s\" cap-throw.f\",\"line\":3,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru s\" cap-throw.f\",\"line\":1,\"column\":267," CONTAINS? TTRUE
    CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
 \ A top-level loader inside a package, or under a file-level `using`, runs its

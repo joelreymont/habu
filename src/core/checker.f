@@ -5264,10 +5264,13 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
    after 0 > IF after RES-FALSE EXIT THEN
    after a u SIG-PTR-TOK? 0= ;
-\ The spelling also ends with its line. Given the bytes between its last token
-\ and the next one, answer whether they hold a line feed (10). Then, as when no
-\ token follows, the reader leaves that token to the next statement, and
-\ SIG-TYPE refuses a span left open.
+\ The declaration also ends with its line: the name stands on the definer's
+\ line, the type's first token on the name's, and the spelling never goes past
+\ it. Given the bytes between one token and the next, answer whether they hold
+\ a line feed (10). Then, as when no token follows, the reader leaves that token
+\ to the next statement: a missing name or type is refused by name
+\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REFUSE), and SIG-TYPE
+\ refuses a span left open.
 : CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
 
@@ -9801,6 +9804,7 @@ PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
 PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-TYPE-REFUSE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-STORAGE-NAME-REFUSE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-TYPE-SPAN-STEP
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -10821,9 +10825,9 @@ variable CHECKER-QBAD-TOK
    a u s" engine-error" CORE-STR=CI ;
 
 \ --- storage declaration refusals ---------------------------------------------
-\ A storage definer refuses a declaration whose type it cannot size, whose name
-\ it cannot publish, or whose count is a literal outside its extent or a token
-\ the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
+\ A storage definer refuses a declaration whose type it cannot size, that has no
+\ name or one it cannot publish, or whose count is a literal outside its extent
+\ or a token the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
 \ (src/core/layout-buffer.f) both refuse through CHECKER-STORAGE-REFUSE, so the
 \ declaration is reported, naming the declared word and the refused token,
 \ wherever it is refused; it used to throw E-CHECKER-LAYOUT-BUFFER with nothing
@@ -10844,7 +10848,8 @@ variable CHECKER-QBAD-TOK
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
 8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
 9 constant STG-COUNT-WORD       \ the count token names no word that leaves the count
-10 constant STG-NO-TYPE         \ no token follows the name to be its type
+10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
+11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
 PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
 PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
 variable STGR-WHY                               \ one of the STG- reasons above
@@ -10895,6 +10900,11 @@ STORAGE-DIAG-DEFAULT
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
+
+\ A definer with no name on its line declares no word, so it is refused at its
+\ own token, which stands in for the word.
+: CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
+   da du da du STG-NO-NAME CHECKER-STORAGE-REFUSE ;
 
 \ A name a storage definer publishes has at most one inner ':' and, once the
 \ seal is captured, is not qualified into a sealed package. A refused name

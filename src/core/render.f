@@ -1396,14 +1396,16 @@ RECORD-DIAG-INSTALL
 
 \ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
 \ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
-\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason.
+\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason;
+\ with no name on its line the definer stands in for the word and the token.
 \ It is not a definition, so it carries no definition fields. A refusal the
 \ verifier located carries the token's place in its file; a run-time refusal,
 \ whose place nothing recorded, carries none.
 : STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
 : STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
 : STGR-NAME-WHY? ( -- f )
-   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or ;
+   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or
+   STGR-WHY @ STG-NO-NAME = or ;
 : STGR-COUNT-WHY? ( -- f )
    STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or
    STGR-WHY @ STG-COUNT-WORD = or ;
@@ -1417,6 +1419,7 @@ RECORD-DIAG-INSTALL
    STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    STGR-WHY @ STG-NO-TYPE = IF s" no type for" EXIT THEN
+   STGR-WHY @ STG-NO-NAME = IF s" no name for" EXIT THEN
    s" no count for" ;
 : STGR-CLASS$ ( -- ptr u8 n )
    STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
