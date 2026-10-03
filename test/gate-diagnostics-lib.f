@@ -25,6 +25,8 @@ variable LABEL-U
 $1000 constant REC-CAP
 create REC-BUF REC-CAP allot
 variable REC-U
+create SPLICE-BUF REC-CAP allot
+TYPED-VARIABLE SPLICE-LEN len
 
 : USAGE ( -- )
    s" diagnostics: invalid assertion mode" USAGE-RC die ;
@@ -212,14 +214,15 @@ variable REC-U
    u REC-U ! ;
 
 : REC-SPLICE ( n n ptr u8 n -- ) {: at:n oldu:n new:ptr newu:n :}
-   SB-RESET
-   REC-BUF at SB-APPEND
-   new newu SB-APPEND
-   REC-BUF at + oldu + REC-U @ at - oldu - SB-APPEND
-   SB$ REC! ;
+   SPLICE-LEN BUF-RESET
+   REC-BUF at SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   new newu SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   REC-BUF at + oldu + REC-U @ at - oldu -
+   SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   SPLICE-BUF SPLICE-LEN BUF-LEN@ REC! ;
 
 \ Replace the first OLD in the record with NEW. Neither may point into the
-\ string builder, which the splice rebuilds.
+\ splice buffer, which the replacement rebuilds at the record's capacity.
 : REC-SWAP ( ptr u8 n ptr u8 n -- ) {: old:ptr oldu:n new:ptr newu:n :}
    REC$ old oldu FIND-SUB MATCH option
      none OF s" record has no text to replace" GE-FAIL ENDOF
