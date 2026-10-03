@@ -146,11 +146,15 @@ storage registrar called from source outside the engine's verifier window;
 `E-BAD-QUALIFIED` / `fix_qualified_name` is a record for a malformed qualified
 name, which keys no word. A call to such a name is refused under the same code
 and class in its definition, with the definition's fields. `tools/check.f`
-meets the first two only in its run stage, after every definition has checked,
-and exits 67 as the load's uncaught throw does. A record for a malformed name
-also throws 7147, so nothing after it in its source is checked: a load exits 67
-after `hb: uncaught throw code 7147`, and `tools/check.f` reports the statement
-that asked for the record as one that threw.
+meets the first two only in its run stage, after every definition has checked.
+The refusal throws its code past every handler, so the load ends on
+`hb: uncaught throw code <code>` and exits 67, as for any unhandled throw
+([debugging.md](debugging.md)). A record for a malformed name also throws 7147,
+so nothing after it in its source is checked: a load exits 67 after
+`hb: uncaught throw code 7147`, and `tools/check.f` reports the statement that
+asked for the record as one that threw. A run that ends on the throw of any of
+the three codes exits 70 from `tools/check.f`, as for a refusal; a run that
+ends on any other throw exits with the load's status.
 
 ## Checking Without Running
 

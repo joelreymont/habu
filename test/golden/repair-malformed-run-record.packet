@@ -1,0 +1,1 @@
+{"schema_version":1,"kind":"habu_repair_packet","token":"DIAG:MAL:RUN","file":"<root>/malformed-run-record.f","code":"E-BAD-QUALIFIED","repair_class":"fix_qualified_name","suggestion":"Use one ':' qualifier, e.g. PKG:WORD.","diagnostic_count":1,"instruction":"Fix the statement that records this token so it loads. Output only corrected Habu code."}
