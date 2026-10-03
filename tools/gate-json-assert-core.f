@@ -425,8 +425,7 @@ variable GJA-DIRECT
    s" byte_end" GJA-NO-FIELD ;
 
 : GJA-DECL-NO-DEF ( n -- )
-   dup GJA-NO-DEF
-   GJA-NO-PLACE ;
+   GJA-NO-DEF ;
 
 \ The code names the shape of every record that is not a definition's: a
 \ declaration, a source span outside any definition, a refused input, or a
@@ -434,6 +433,17 @@ variable GJA-DIRECT
 : GJA-CODE= ( n ptr u8 n -- bool ) {: root:n code:ptr codeu:n :}
    root s" code" GJA-REQ code codeu GJA-STR= ;
 
+\ A declaration diagnostic carries all four position fields when its token
+\ locates in the file, and none when it does not.
+: GJA-DECL-POSITION ( n -- )
+   dup s" line" GJA-HAS? IF
+      dup s" line" GJA-REQ-INTF
+      dup s" column" GJA-REQ-INTF
+      dup s" byte_start" GJA-REQ-INTF
+      s" byte_end" GJA-REQ-INTF
+   ELSE
+      GJA-NO-PLACE
+   THEN ;
 : GJA-DECL? ( n -- bool ) {: root:n :}
    root s" decl" GJA-HAS? IF GJA-TRUE exit THEN
    root s" E-BAD-DECLARATION" GJA-CODE= ;
@@ -502,6 +512,7 @@ variable GJA-DIRECT
 
 : GJA-REPAIR-DECL ( n -- ) {: root:n :}
    root GJA-DECL-NO-DEF
+   root GJA-NO-PLACE
    root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
    root s" decl" GJA-REQ GJA-NONEMPTY-STR
    root s" family" GJA-REQ-STRF
@@ -588,6 +599,7 @@ variable GJA-DIRECT
 : GJA-DIAG-DECL ( n -- ) {: root:n :}
    root GJA-DIAG-HEAD
    root GJA-DECL-NO-DEF
+   root GJA-DECL-POSITION
    root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
    root s" decl" GJA-REQ GJA-NONEMPTY-STR
    root s" family" GJA-REQ-STRF

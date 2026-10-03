@@ -737,6 +737,11 @@ variable REC-U
    s" habu-tfam-decl.err" WRITE-ERR
    s" code" s" E-BAD-DECLARATION" s" declaration diagnostic code" ERR-JSTR
    s" repair_class" s" fix_family_declaration" s" declaration repair class" ERR-JSTR
+   s" token" s" samev" s" declaration token" ERR-JSTR
+   s" line" s" 1" s" declaration line" ERR-JRAW
+   s" column" s" 51" s" declaration column" ERR-JRAW
+   s" byte_start" s" 50" s" declaration byte_start" ERR-JRAW
+   s" byte_end" s" 55" s" declaration byte_end" ERR-JRAW
    s" habu-tfam-decl.err" s" declaration diagnostic contract" DIAG-CONTRACT
    s" json-one-schema" s" habu-tfam-decl.err" s" declaration diagnostic schema" GJA1
    GT-ERR$ REC!

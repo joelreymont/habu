@@ -1427,3 +1427,26 @@
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
 -9361 constant E-C2-STATE          \ a frame operation contradicts its transition state
 -9364 constant E-C2-CAPTURE        \ capture saw an active owner or loan in main
+
+\ File URIs (package URI, lib/uri.f): -9370..-9379.
+-9370 constant E-URI-FIRST
+-9379 constant E-URI-LAST
+-9370 constant E-URI-SCHEME       \ a scheme other than `file`, compared without case, or none
+-9371 constant E-URI-AUTHORITY    \ after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path
+-9372 constant E-URI-ESCAPE       \ a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped
+-9373 constant E-URI-RELATIVE     \ a path to encode that does not start with `/`, so no file URI names it
+
+\ Content-Length framing (package CONTENT-LENGTH, lib/content-length.f): -9380..-9389.
+-9380 constant E-CONTENT-LENGTH-FIRST
+-9389 constant E-CONTENT-LENGTH-LAST
+-9380 constant E-CONTENT-LENGTH-MALFORMED  \ a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP
+-9381 constant E-CONTENT-LENGTH-TRUNCATED  \ end of file inside a header block or a body
+-9382 constant E-CONTENT-LENGTH-STATE      \ a reader used before BIND or after a refusal, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum
+
+\ JSON-RPC 2.0 envelope (package JSON-RPC, lib/json-rpc.f): -9390..-9399.
+-9390 constant E-JSON-RPC-FIRST
+-9399 constant E-JSON-RPC-LAST
+-9390 constant E-JSON-RPC-ID             \ a response written with an empty id
+
+\ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
+\ LSP.

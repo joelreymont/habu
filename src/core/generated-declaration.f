@@ -80,9 +80,11 @@ package DECL-REJECT
 \ borrowed spans: a declaration body spans several input lines, the engine
 \ refills its input buffer per line when the source is a stream, and the family
 \ name is read on the first line but rendered after a reject on a later one.  A
-\ borrowed span would render whatever bytes later occupied that buffer.
+\ borrowed span would render whatever bytes later occupied that buffer.  Each
+\ slot also keeps the span it was copied from, which a token that locates
+\ renders instead (TOKEN-SPAN@), until GUARD ends the declaration.
 4 constant SLOTS
-96 constant SPAN-CAP        \ per-slot bytes; a longer span is capped, never overruns
+96 constant SPAN-CAP        \ per-slot bytes; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
 
@@ -93,8 +95,9 @@ package DECL-REJECT
 
 create SPAN-BUF  SLOTS SPAN-CAP * allot
 create SPAN-LEN  SLOTS cells allot
+create SLOT-SRC  SLOTS 2 * cells allot
 
-\ The one raw-memory boundary in this package.  A checked body cannot type the
+\ The raw-memory boundary of this package.  A checked body cannot type the
 \ address arithmetic from a `create` region to a `ptr u8` span, exactly as
 \ structure-decl.f's PEND! / PEND@ pushback cells cannot be typed; every other
 \ word here is ordinary checked Habu.  SLOT! clamps to SPAN-CAP, so no caller can
@@ -106,6 +109,20 @@ create SPAN-LEN  SLOTS cells allot
 \ report a different identifier than the source contains, which is strictly worse
 \ than the legacy definer's borrowed span; the marker keeps the bounded copy
 \ honest while still refusing to read memory the declaration no longer owns.
+\
+\ SRC! and SRC@ hold the span a slot was copied from; FORGET-SRC drops them all.
+TRUSTED: SRC! ( ptr u8 n n -- )   \ span, slot
+   {: a:ptr u:n s:n :}
+   a  s 2 * cells SLOT-SRC + !
+   u  s 2 * 1 + cells SLOT-SRC + ! ;
+TRUSTED: SRC@ ( n -- ptr u8 n )
+   {: s:n :}
+   s 2 * cells SLOT-SRC + @  s 2 * 1 + cells SLOT-SRC + @ ;
+TRUSTED: FORGET-SRC ( -- )
+   0 BEGIN dup SLOTS 2 * < WHILE
+      0 over cells SLOT-SRC + !
+      1 +
+   REPEAT drop ;
 TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
    u SPAN-CAP > IF SPAN-CAP ELSE u THEN {: len:n :}
    len s cells SPAN-LEN + !
@@ -119,7 +136,8 @@ TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
          MARK-BYTE over d + c!
          1 +
       REPEAT drop
-   THEN ;
+   THEN
+   a u s SRC! ;
 TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
@@ -127,6 +145,21 @@ TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
 \ definers report through, so prose, JSON, and the check tool's packet capture
 \ all behave identically for a unified declaration.
 TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
+
+\ The offending token RENDER hands the writer, which locates a token by its
+\ pointer: the span it was copied from when that lies in text a driver armed
+\ for locating packets (checker.f DIAG>SRC), so the packet carries its file
+\ position; else the copy, which has none.  Those borrowed bytes are intact: an
+\ armed text stays put while its declaration runs, as DECL-REPLAY borrows the
+\ caller's buffers.  A span in an input buffer the engine refills per line lies
+\ in no armed text, so its stale bytes are never read.  The borrowed span is
+\ whole: SPAN-CAP and its marker bound only the copy, so a located token renders
+\ in full and names the same bytes as its byte range.
+TRUSTED: TOKEN-SPAN@ ( -- ptr u8 n )
+   S-TOKEN SRC@
+   {: a:ptr u:n :}
+   a DIAG>SRC nip IF a u EXIT THEN
+   S-TOKEN SLOT@ ;
 
 \ Multi-error load state, the checker's own (checker.f). Under `--all-errors` a
 \ rejected definition is counted and the load continues instead of stopping at
@@ -263,7 +296,7 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
    code CODE-REASON ;
 
 : RENDER ( n -- ) {: code:n :}
-   S-KIND SLOT@  S-FAMILY SLOT@  S-TOKEN SLOT@  code PICK-REASON  DIAG ;
+   S-KIND SLOT@  S-FAMILY SLOT@  TOKEN-SPAN@  code PICK-REASON  DIAG ;
 
 public
 
@@ -294,7 +327,9 @@ public
 \ Point the offending token back at the family name.  A close-stage fault is a
 \ property of the whole declaration, not of the terminator token that happened
 \ to be read last, and the legacy definers anchor those on the family too.
-: AT-FAMILY ( -- ) S-FAMILY SLOT@ TOKEN! ;
+: AT-FAMILY ( -- )
+   S-FAMILY SLOT@ TOKEN!
+   S-FAMILY SRC@ S-TOKEN SRC! ;
 
 \ EXPECT ( reason code -- ) : arm the reason for a fault a deeper owner may
 \ raise, immediately before the call that can raise it.
@@ -332,10 +367,16 @@ public
 \ were code. Resynchronizing is the front end's job — only it knows its own
 \ terminator — so each one skips to its own before raising; MULTI-ERROR? below is
 \ how it asks whether this load will swallow.
+\
+\ The spans the declaration borrowed are forgotten on both exits: they are good
+\ only while it runs, and one left behind would be read stale or baked into an
+\ image with its build-time address, so that successive engine generations
+\ differ.
 : GUARD ( [ -- ] -- )
    catch {: rc:n :}
-   rc 0= IF EXIT THEN
+   rc 0= IF FORGET-SRC EXIT THEN
    rc RENDER
+   FORGET-SRC
    MULTI? IF MULTI-COUNT+ EXIT THEN
    rc throw ;
 

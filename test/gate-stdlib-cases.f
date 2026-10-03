@@ -335,6 +335,10 @@ SUITE check-verify
    tools/check-verify-test.f
 ;SUITE
 
+SUITE lsp-boundary
+   tools/lsp-test.f
+;SUITE
+
 SUITE streaming-sha256
    tools/sha256-file-test.f
 ;SUITE
@@ -1269,6 +1273,28 @@ SUITE base64
    lib/base64-test.f
 ;SUITE
 
+SUITE utf16-units
+   lib/utf16-test.f
+;SUITE
+
+SUITE file-uri
+   lib/uri-test.f
+;SUITE
+
+\ Exact reads and full writes over pipes; the write cases run under the
+\ profiler's SIGALRM storm to force short writes.
+SUITE fd-io
+   lib/fd-io-test.f
+;SUITE
+
+SUITE content-length
+   lib/content-length-test.f
+;SUITE
+
+SUITE json-rpc
+   lib/json-rpc-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
@@ -2030,6 +2056,10 @@ SUITE shadowed-arity-refusal
 
 SUITE load-reject-diag
    test/load-reject-diag-test.f
+;SUITE
+
+SUITE diag-position
+   test/diag-position-test.f
 ;SUITE
 
 SUITE core-prefix-mark
