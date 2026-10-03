@@ -1487,6 +1487,7 @@ ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
 RESERVE-SIBLING         ( ptr u8 n -- ptr u8 n n )
 REPLACE-STAGED          ( ptr u8 n [ ptr u8 n -- ] -- )
 SIBLING-PATH-MAX        ( -- n )
+SIBLING-NAME-MAX        ( -- n )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
 HB-TMP-MKDIR            ( ptr u8 n -- ptr u8 n )
@@ -1563,7 +1564,9 @@ streams its file, and `REPLACE-STAGED` runs one: it hands the sibling's path to
 a filler, renames the sibling over the destination once the filler returns, and
 removes it if the filler or the rename throws or the filler dies, so the
 destination names its old file or the whole new one. A destination longer than
-`SIBLING-PATH-MAX` has no room for a sibling and is `E-SPAN-CAPACITY`.
+`SIBLING-PATH-MAX` has no room for a sibling and is `E-SPAN-CAPACITY`; one
+whose last name is longer than `SIBLING-NAME-MAX` gives a sibling name the
+host refuses, `E-FS-OPEN`.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
 handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.
@@ -2918,6 +2921,12 @@ Both renderers grow to fit the retained root, so diagnostic formatting cannot
 replace the owning `E-BUILD-PATH` failure with a string-capacity error.
 Text mode JSON-quotes the root, escaping control characters so one failure is
 always exactly one labelled output line.
+
+An `-o` that passes the CLI's up-front checks can still be refused at install:
+the host will not make its sibling or rename it over `-o`, as in a directory
+the user cannot write or one removed during the build. The in-process build
+throws `E-BUILD-INSTALL`; the CLI cleans up and exits with the build failure
+status and `hb-build: cannot replace output` on stderr, nothing on stdout.
 
 `lib/build.f` lives in `package BUILD` and owns build step modeling, checked
 source certification, artifact path construction, and fail-closed status

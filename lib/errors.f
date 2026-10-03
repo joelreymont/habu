@@ -82,6 +82,7 @@
 -2803 constant E-BUILD-PATH
 -2804 constant E-BUILD-BOOT-DRIFT
 -2805 constant E-BUILD-CERTIFY
+-2806 constant E-BUILD-INSTALL
 
 \ Diagnostics: -2900..-2999
 -2900 constant E-DIAG-FIRST
