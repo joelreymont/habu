@@ -23,8 +23,12 @@ variable DTC-SIG-U
 
 : DTC-CLEAR ( -- ) 0 DTC-U ! ;
 
+\ Any source can call DTC+, so the length is compared with the room left: in a
+\ sum, a length near the maximum cell wraps back under the capacity.
 : DTC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   DTC-U @ u + DTC-CAP > IF s" nominal: converter text too long" 70 die THEN
+   u 0 < u DTC-CAP DTC-U @ - > or IF
+      s" nominal: converter text too long" 70 die
+   THEN
    0 BEGIN dup u < WHILE
       dup a + c@  DTC-BUF DTC-U @ + c!
       DTC-U @ 1 + DTC-U !  1+
@@ -169,8 +173,9 @@ variable VRDEF-I
 : VRDEF-CLEAR ( -- )
    0 VRDEF-U ! ;
 
-: VRDEF-ROOM ( n -- )
-   VRDEF-U @ + VRDEF-CAP > IF
+\ Compared with the room left, like DTC+: VRDEF-APP takes any caller's length.
+: VRDEF-ROOM ( n -- ) {: u:n :}
+   u 0 < u VRDEF-CAP VRDEF-U @ - > or IF
       s" value-record: field list too long" 70 die
    THEN ;
 

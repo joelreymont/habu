@@ -1682,7 +1682,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 \ Body tokens one definition may have.
 variable TMAX                       \ token count of the current unit
 PTR-VARIABLE TOK-TABLES
-10 constant TOK-FIELDS
+11 constant TOK-FIELDS
 
 : TOK-ROOM ( n -- ) {: n:n :}
    n IR-CTX:SCRATCH-LIMIT TOK-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
@@ -2341,6 +2341,30 @@ here CELL 1- and CELL swap - CELL 1- and allot
    {: ix:n j:n :}
    j ix TOK-CK cells JOIN-TAB + ! ;
 
+\ Which word closes each counted loop, against its opener's token. `?do` tests
+\ its bounds before the first turn by the closer's own rule, and the closer
+\ comes after it, so the skeleton records it on the way past.
+0 constant CLOSER-NONE               \ the skeleton met no closer for this opener
+1 constant CLOSER-LOOP               \ `loop`
+2 constant CLOSER-STEP               \ `+loop`
+
+: CLOSER-TAB ( -- ptr n ) 10 TOK-FIELD ;
+
+: CLOSER-RESET ( -- )
+   TMAX @ 0 ?do
+      CLOSER-NONE i cells CLOSER-TAB + !
+   loop ;
+
+: CLOSER! ( n n -- )
+   {: ix:n k:n :}
+   k ix TOK-CK cells CLOSER-TAB + ! ;
+
+\ An opener with no closer recorded is a refusal, as an unrecorded join is.
+: CLOSER-STEP? ( n -- bool )
+   TOK-CK cells CLOSER-TAB + @ {: k:n :}
+   k CLOSER-NONE = if E-NELAB-CTRL throw then
+   k CLOSER-STEP = ;
+
 : SK-PUSH ( HIR:ctrl n -- )
    {: k:HIR:ctrl ix:n :}
    k 0 ix CS-PUSH ;
@@ -2410,8 +2434,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
    PATH-DEAD PATH-END ! ;
 
 
-: SK-CLOSE-LOOP ( -- )
+: SK-CLOSE-LOOP ( n -- )
+   {: k:n :}
    HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
+   t CS-JOIN@ k CLOSER!
    PATH-ENDED? 0= if NB @ 3 + NB ! t CS-JOINED+ then
    t CS-JOINED? if
       t CS-JOIN@ NB @ JOIN!
@@ -2513,8 +2539,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
       open-do      OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 1+ NB ! ENDOF
       open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH
                       CS-TOP CS-JOINED+ NB @ 3 + NB ! ENDOF
-      close-loop   OF SK-CLOSE-LOOP ENDOF
-      close-loop-step OF SK-CLOSE-LOOP ENDOF
+      close-loop   OF CLOSER-LOOP SK-CLOSE-LOOP ENDOF
+      close-loop-step OF CLOSER-STEP SK-CLOSE-LOOP ENDOF
       index        OF ENDOF
       outer-index  OF ENDOF
       drop-loop    OF ENDOF
@@ -2545,6 +2571,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    hi TMAX @ > if E-NELAB-BLOCK throw then
    0 NB !
    JOIN-RESET
+   CLOSER-RESET
    CS-RESET
    EXIT-RESET
    hi lo ?do
@@ -2760,10 +2787,19 @@ here CELL 1- and CELL swap - CELL 1- and allot
    ix JOIN-OF {: j:n :}
    st lm  ix  NB @ 1+  VN @  j  DO-ENTER ;
 
+\ `?do` enters only where its closer lets the first turn run. `loop` goes on while
+\ index < limit, so the test is start < limit and a limit at or below the start
+\ takes no turn. The step of `+loop` is a per-turn value that may count down to
+\ a limit below the start, so equal bounds are all it can refuse.
 : DO-OPEN-DO-SKIP ( n -- )
    {: ix:n :}
    DO-PAIR {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id :}
-   ix HIR-OPCODE:SUB EMIT-OPCODE
+   ix CLOSER-STEP? if
+      ix HIR-OPCODE:SUB EMIT-OPCODE
+   else
+      2 VDROP  st VPUSH  lm VPUSH
+      ix HIR-OPCODE:LT EMIT-OPCODE
+   then
    VN @ 1- {: d:n :}
    NB @ {: c:n :}
    ix JOIN-OF JOIN-CK {: j:n :}

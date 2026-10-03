@@ -171,11 +171,11 @@ TFAM. Recorded here so the pivot is explicit.
    fixtures, and `../loom/docs/ptx.md` examples, or allow atoms (device) + TFAM (golden) to coexist
    during transition? (Capability is unaffected either way; this is a consistency
    call.) Recommend: migrate opportunistically, single substrate as the target.
-2. **`#`→tail mangling scheme.** `TDECL-RESERVED?` (`src/core/sumtype.f:152-160`)
+2. **`#`→tail mangling scheme.** `TYPE-NAME:FAMILY-RESERVED?` (`src/core/type-family.f`)
    fails a declaration closed when the tail is a single letter (`u 1 =`), an
    atom-prefix token (`ATOM-TOK?`: `extent-`/`space-`/`mask-`/`block-`/`geom-`/
    `parity-`/`align-`), a builtin or CT-role name (`CON-OF`), or a control/keyword
-   token (`TYPE-NAME:CONTROL?`/`TDECL-KEYWORD?`). So **both** `#M`→`m` (single-letter)
+   token (`TYPE-NAME:CONTROL?`/`TF-GRAMMAR-KEYWORD?`). So **both** `#M`→`m` (single-letter)
    **and** `#M`→`extent-m` (atom prefix) are rejected at declaration. The mangling
    scheme must avoid single-letter tails, the atom prefixes, existing
    CT-role/builtin names, and control/keyword tokens — e.g. a multi-letter,

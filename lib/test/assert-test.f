@@ -11,6 +11,29 @@ require lib/test/runner.f
 : TT-THROW-5 ( -- )
    5 throw ;
 
+\ A deadline is no verdict: a throw check that wants another code lets
+\ E-PROC-TIMEOUT go uncaught and counts nothing, so the gate pool reports the
+\ row as a timeout; a check that wants the deadline still catches it.
+: TT-THROW-DEADLINE ( -- )
+   E-PROC-TIMEOUT throw ;
+
+: TT-DEADLINE-WANT-OTHER ( -- )
+   [: TT-THROW-DEADLINE ;] E-PROC-TRUNCATED TTHROWSQ ;
+
+: TT-DEADLINE-PASSES ( -- )
+   [: TT-DEADLINE-WANT-OTHER ;] catch E-PROC-TIMEOUT T= ;
+
+\ A throw check run inside the xt of another keeps each expected code with its
+\ own call: the inner check wants 5, then the outer xt throws the outer's code.
+: TT-INNER-WANTS-5 ( -- )
+   [: TT-THROW-5 ;] 5 TTHROWSQ ;
+
+: TT-NESTED-THEN-7 ( -- )
+   TT-INNER-WANTS-5 7 throw ;
+
+: TT-NESTED-THEN-5 ( -- )
+   TT-INNER-WANTS-5 TT-THROW-5 ;
+
 \ A child engine's deliberately failing T= pins the one-line
 \ "assert: expected 3 got 9" shape lib/test/assert.f prints.
 create TAT-SCRIPT-PATH FS-PATH-CAP allot
@@ -84,6 +107,23 @@ T-RESET
 ' TT-THROW-5 4 TTHROWS
 1 TAT-EXPECT-FAILURES
 T-CASES 1 T=
+1 TAT-EXPECT-FAILURES
+
+T-RESET
+TT-DEADLINE-PASSES
+0 TAT-EXPECT-FAILURES
+T-CASES 1 T=
+' TT-THROW-DEADLINE E-PROC-TIMEOUT TTHROWS
+0 TAT-EXPECT-FAILURES
+
+\ The outer check passes on its own code and fails on the inner's.
+T-RESET
+' TT-NESTED-THEN-7 7 TTHROWS
+0 TAT-EXPECT-FAILURES
+T-CASES 2 T=
+0 TAT-EXPECT-FAILURES
+T-RESET
+' TT-NESTED-THEN-5 9 TTHROWS
 1 TAT-EXPECT-FAILURES
 
 TAT-SB-SURVIVES-FAILURE

@@ -10,6 +10,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-TEXT-TEST
 using LINT-SPLIT
@@ -27,7 +28,7 @@ variable TEST-N
       TEST-N @ 1+ TEST-N !
       exit
    THEN
-   s" text-foundation-test failed at assertion " type TEST-N @ . cr
+   s" text-foundation-test failed at assertion " type TEST-N @ FMT:.INT cr
    s" text-foundation-test failed" 1 die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
 : ASSERT$  ( ptr u8 n ptr u8 n -- )  LINT-STR= ASSERT ;
@@ -327,6 +328,32 @@ variable REG-I
    4 LINT-LEX:TOKEN s" ;" ASSERT$
    5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
    6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
+
+\ An operand is data and names nothing: after `' :` the `:` defines nothing, so
+\ the `.(` after it opens a printing comment.
+: TEST-LEXER-OPERAND-NAMES-NOTHING ( -- )
+   s" ' : .( z ) x" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 4 ASSERT=
+   1 LINT-LEX:TOKEN s" :" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  z " ASSERT$
+   3 LINT-LEX:TOKEN s" x" ASSERT$ ;
+
+\ A parsing keyword the engine runs takes the next whitespace-delimited token raw,
+\ whatever it spells: `char \` is one word and hides nothing after it, and
+\ `['] (` opens no comment. Named after a definer, `char` is a name and takes
+\ nothing, so the `( -- n )` after it is that definition's stack comment.
+: TEST-LEXER-PARSER-OPERAND ( -- )
+   s" : char ( -- n ) 7 ; char \ x ['] ( y" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 11 ASSERT=
+   1 LINT-LEX:TOKEN s" char" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   5 LINT-LEX:TOKEN s" char" ASSERT$
+   6 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    6 LINT-LEX:TOKEN s" \" ASSERT$
+   7 LINT-LEX:TOKEN s" x" ASSERT$
+   9 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    9 LINT-LEX:TOKEN s" (" ASSERT$
+   10 LINT-LEX:TOKEN s" y" ASSERT$ ;
 
 : TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
    ROW-RESET
@@ -848,6 +875,25 @@ variable REG-I
    s" MINT-CELL-OFF" s" MINT-INDEX" -1 ASSERT-CMP
    s" MINT-BYTE-LEN" s" MINT-INDEX" -1 ASSERT-CMP ;
 
+\ The split words read no byte outside the caller's span. Each span here lies
+\ against an inaccessible page (MEM-ALLOC-GUARDED keeps one on either side), so
+\ a read past its end or before its start faults instead of answering.
+: TEST-SPLIT-EDGES ( -- )
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: a:ptr u:n :}
+   s" x yz" {: t:ptr tu:n :}
+   t  a u tu - +  tu BYTE-COPY
+   a u tu - +  tu SPLIT-WHITESPACE                      \ the last word ends at the edge
+   SN# @ 2 ASSERT=
+   1 S@ s" yz" ASSERT$
+   32 a u 1- + c!
+   a u 1- +  1 SPLIT-WHITESPACE                         \ a blank ends at the edge
+   SN# @ 0 ASSERT=
+   10 a c!
+   a 1 SPLIT-LINES                                      \ an empty first line starts at it
+   SN# @ 1 ASSERT=
+   0 S@ nip 0 ASSERT=
+   a u MEM-RELEASE-GUARDED ;
+
 : RUN  ( -- )
    1 TEST-N !
    TEST-EMPTY-MOVE
@@ -859,6 +905,8 @@ variable REG-I
    TEST-LEXER-PAREN-CALL
    TEST-LEXER-PRINT-PAREN
    TEST-LEXER-PRINT-NAME-POS
+   TEST-LEXER-OPERAND-NAMES-NOTHING
+   TEST-LEXER-PARSER-OPERAND
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE
@@ -883,7 +931,8 @@ variable REG-I
    TEST-TOKENIZER
    TEST-TOKEN-LITERALS
    TEST-BIG-LEXER
-   s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
+   TEST-SPLIT-EDGES
+   s" text-foundation-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 RUN
 

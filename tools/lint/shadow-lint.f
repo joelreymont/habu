@@ -23,6 +23,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package SHADOW-LINT-TOOL
 
@@ -147,7 +148,7 @@ variable IN-DEFINITION
 \ silently skipping real definitions.
 : SL-UNTERM-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
    s" shadow-lint: unterminated string literal in " type pa pu type
-   s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
+   s"  (line " type LINT-LEX:ERROR-LINE@ FMT:.INT s" )" type cr
    E-SHADOW-UNTERM throw ;
 
 \ Same fail-closed rule, different defect: an incomplete primitive-axiom row also
@@ -155,7 +156,7 @@ variable IN-DEFINITION
 \ a missing quote.
 : SL-REGISTRY-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
    s" shadow-lint: malformed primitive registry row in " type pa pu type
-   s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
+   s"  (line " type LINT-LEX:ERROR-LINE@ FMT:.INT s" )" type cr
    E-SHADOW-REGISTRY throw ;
 
 \ The lexer reports more than one defect, so name the one it actually hit.
@@ -224,13 +225,13 @@ variable IN-DEFINITION
    s" src/os/linux-x86-64/proc-control.f" LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
+   s" src/habu/sign-id.f"   LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
-   s" src/habu/snap.f"      LINT-FILE
    \ `1 die` alone left die's message operands to the CALLER's stack — a
    \ latent below-base read the certified-underdepth gate now rejects (dot
    \ habu-habu-certified-words-84e84eaf); die carries its own message.
-   BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr
+   BAD @ 0 > IF  s" shadow-lint: " type BAD @ FMT:.INT s"  collision(s)" type cr
       s" shadow-lint: prim-name collision(s)" 1 die
-   ELSE  s" shadow-lint: clean (" type PN# @ . s"  prims checked)" type cr  THEN ;
+   ELSE  s" shadow-lint: clean (" type PN# @ FMT:.INT s"  prims checked)" type cr  THEN ;
 SHADOW-LINT
 ;package

@@ -6,6 +6,7 @@ require lib/fs-mutate.f
 require lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package NAMED-CELLS-SUITE
 
@@ -23,27 +24,38 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : ARG+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 : LOAD ( ptr u8 n -- ) PROC-ARGV-RESET s" --load" ARG+ ARG+ ;
-: STATUS! ( outcome -- )
-   MATCH outcome
+: CHILD. ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   s" named-cells: child " type path pathu type cr
+   CHILD-ARGC @ 0 ?do i 1+ >IDX PROC-ARGV-SLOT @ dup ZLEN type cr loop ;
+
+\ A run past its deadline names the child and its arguments, then reports the
+\ stdin it was given and its capture (T-TIMED-OUT).
+: STATUS! ( outcome ptr u8 n ptr u8 n -- )
+   {: oc path:ptr pathu:n source:ptr size:n :}
+   oc MATCH outcome
       exited OF 1 CHILD-KIND ! CHILD-CODE ! ENDOF
       signaled OF 2 CHILD-KIND ! CHILD-CODE ! ENDOF
-      timeout OF 3 CHILD-KIND ! 0 CHILD-CODE ! ENDOF
+      timeout OF
+         path pathu CHILD.
+         source size OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT
+      ENDOF
    ;MATCH ;
 
 : RUN-CHILD ( ptr u8 n ptr u8 n n -- )
    {: path:ptr pathu:n source:ptr size:n code:n :}
    PROC-ARGV-N @ COUNT>N CHILD-ARGC !
    path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN 120000 >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME STATUS!
-   LEN>N ERR-U ! LEN>N OUT-U !
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc path pathu source size STATUS!
    CHILD-KIND @ 1 <> CHILD-CODE @ code <> or if
-      s" named-cells: child " type path pathu type cr
-      CHILD-ARGC @ 0 ?do i 1+ >IDX PROC-ARGV-SLOT @ dup ZLEN type cr loop
+      path pathu CHILD.
       s" stdin:" type cr source size type cr
-      s" outcome kind (exit=1 signal=2 timeout=3): " type CHILD-KIND @ .
-      s" wanted exit: " type code . s" actual code: " type CHILD-CODE @ .
-      s" stdout bytes/capacity: " type OUT-U @ . $4000 . OUT OUT-U @ type cr
-      s" stderr bytes/capacity: " type ERR-U @ . $4000 . ERR ERR-U @ type cr
+      s" outcome kind (exit=1 signal=2): " type CHILD-KIND @ .
+      s" wanted exit: " type code FMT:.INT s"  actual code: " type CHILD-CODE @ FMT:.INT cr
+      s" stdout bytes/capacity: " type OUT-U @ FMT:.INT s" /" type $4000 FMT:.INT cr OUT OUT-U @ type cr
+      s" stderr bytes/capacity: " type ERR-U @ FMT:.INT s" /" type $4000 FMT:.INT cr ERR ERR-U @ type cr
    then
    CHILD-KIND @ 1 T= CHILD-CODE @ code T= ;
 : LIVE ( -- ) OUT OUT-U @ s" named-cells: live" CONTAINS? TTRUE ;

@@ -1,5 +1,6 @@
 require lib/test.f
 require lib/engine-candidate.f
+require lib/fmt.f
 require tools/two-generation-core.f
 
 package TWO-GEN
@@ -11,9 +12,13 @@ create TGT-A FS-PATH-CAP allot
 variable TGT-A-U
 create TGT-B FS-PATH-CAP allot
 variable TGT-B-U
+create TGT-M FS-PATH-CAP allot
+variable TGT-M-U
+67 constant TGT-UNCAUGHT-RC                 \ hb's exit status for an uncaught throw
 
 : TGT-A$ ( -- ptr u8 n ) TGT-A TGT-A-U @ ;
 : TGT-B$ ( -- ptr u8 n ) TGT-B TGT-B-U @ ;
+: TGT-M$ ( -- ptr u8 n ) TGT-M TGT-M-U @ ;
 : TGT-ROOT$ ( -- ptr u8 n ) TGT-ROOT TGT-ROOT-U @ ;
 
 : TGT-PREP ( -- )
@@ -22,7 +27,8 @@ variable TGT-B-U
    a TGT-ROOT u BYTE-COPY u TGT-ROOT-U !
    TGT-ROOT$ CLEANUP-TREE+
    TGT-ROOT$ s" a" TGT-A JOIN-PATH TGT-A-U !
-   TGT-ROOT$ s" b" TGT-B JOIN-PATH TGT-B-U ! ;
+   TGT-ROOT$ s" b" TGT-B JOIN-PATH TGT-B-U !
+   TGT-ROOT$ s" missing" TGT-M JOIN-PATH TGT-M-U ! ;
 
 : TGT-COMPARE ( n n -- ) {: count:n first:n :}
    TGT-A$ TGT-B$ TG-BYTE-DIFF count T=
@@ -76,16 +82,19 @@ variable TGT-B-U
    at 0 > TTRUE len 0 > TTRUE
    at len + s" bin/hb" FILE-SIZE < TTRUE ;
 
-: TGT-CLI ( n -- ) {: want:n :}
+\ --compare of file a against the given path: stdout and stderr lengths, rc.
+: TGT-CLI-RUN ( ptr u8 n -- len len n ) {: b:ptr bu:n :}
    PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/two-generation-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+ s" --compare" >LEN PROC-ARGV+
-   TGT-A$ >LEN PROC-ARGV+ TGT-B$ >LEN PROC-ARGV+
+   TGT-A$ >LEN PROC-ARGV+ b bu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
    TG-OUT TG-CAP-OUT >LEN TG-ERR TG-CAP-OUT >LEN 10000 >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
-   {: outu:len erru:len rc:n :}
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N ;
+
+: TGT-CLI ( n -- ) {: want:n :}
+   TGT-B$ TGT-CLI-RUN {: outu:len erru:len rc:n :}
    rc want T= erru LEN>N 0 T=
    want 0= if
       TG-OUT outu LEN>N s" 0 differing bytes" CONTAINS? TTRUE
@@ -93,10 +102,27 @@ variable TGT-B-U
       TG-OUT outu LEN>N s" length mismatch; first differing offset 32768" CONTAINS? TTRUE
    then ;
 
+\ The line the engine prints for an uncaught code, rendered from the name so the
+\ needle follows lib/errors.f instead of repeating its number.
+: TGT-FAILED$ ( -- ptr u8 n )
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   E-FS-OPEN FMT:SB-INT
+   SB$ ;
+
+\ A missing file is no verdict: MAIN rethrows the step's code, so the engine
+\ names it on stderr and exits with its status for an uncaught throw.
+: TGT-CLI-MISSING ( -- )
+   s" a failed step's throw reaches the engine on stderr" T-LABEL
+   TGT-M$ TGT-CLI-RUN {: outu:len erru:len rc:n :}
+   rc TGT-UNCAUGHT-RC T= outu LEN>N 0 T=
+   TG-ERR erru LEN>N TGT-FAILED$ CONTAINS? TTRUE ;
+
 : TGT-RUN ( -- )
    T-RESET TGT-PREP TGT-BYTES TGT-NAMES TGT-IMAGE
    s" the command refuses unequal products and accepts equal ones" T-LABEL
    1 TGT-CLI TGT-A$ TGT-B$ COPY-FILE-STREAM 0 TGT-CLI
+   TGT-CLI-MISSING
    TG-MAP-RELEASE CLEANUP-RUN T-REPORT ;
 
 TGT-RUN

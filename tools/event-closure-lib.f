@@ -12,7 +12,11 @@
 \ bare `provided` registers a path without loading it, so neither adds content.
 \ Distinct entries are deduplicated by canonical absolute pathname. Discovery itself
 \ rejects fail-closed (shadowed/undefined loader word, dynamic path, unsupported
-\ opener); this file propagates that so a broken closure cannot be keyed.
+\ opener); this file propagates that so a broken closure cannot be keyed. A
+\ loading event whose path is not a file joins the list like any other, and the
+\ walk refuses it where it reads the file (DISCOVER:RUN-IN names it on fd 2 and
+\ rethrows E-FS-STAT), as BUILD-WITH's reader refuses it: a closure that left it
+\ out would key fewer files than the build reads.
 \
 \ This file only produces the ordered list (BUILD / COUNT / PATH$). Content
 \ hashing and package-scope replay live in the consumers.
@@ -108,14 +112,10 @@ variable EC-ORD-N
    k EV-REQUIRED = i EVENT-STATE@ EV-STATE-FRESH = and if EC-TRUE exit then
    EC-FALSE ;
 
-: EC-ENQUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
-   a u FILE? 0= if exit then
-   a u root rootu EC-ADD ;
-
 : EC-SCAN-EVENTS ( -- )
    0 EC-I !
    begin EC-I @ EVENT-COUNT < while
-      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ENQUEUE then
+      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ADD then
       EC-I @ 1+ EC-I !
    repeat ;
 
@@ -131,11 +131,15 @@ variable EC-ORD-N
 \ Load-faithful (depth-first, post-order) closure. BUILD produces the same set
 \ breadth-first, which is right for content keying but not for replaying package
 \ open/public/private/;package scope that stays UNCLOSED across nested deps:
-\ that residual must be threaded file-by-file in true load order. This DFS mirrors
-\ tools/check-core.f CHK-EXPAND-ID - each file's own require/include closure is
-\ fully expanded (post-order pushed) before the file itself, so a dep's scope
-\ tokens replay exactly where its content would load. Only loading events
-\ (EC-LOADS?) contribute, so the ordered list is a permutation of BUILD's set.
+\ that residual must be threaded file-by-file in true load order. Each file's own
+\ require/include closure is fully expanded (post-order pushed) before the file
+\ itself, so a dep's scope tokens replay exactly where its content would load.
+\ Inside a require cycle this stays plain post-order, where tools/check-core.f
+\ CHK-EXPAND-ID puts the cycle's first-entered file first; only package scope
+\ replays here, and both files of the tree's one cycle (lib/aio.f and
+\ lib/aio-macos.f) close their packages, so the order inside it changes nothing.
+\ Only loading events (EC-LOADS?) contribute, so the ordered list is a
+\ permutation of BUILD's set.
 
 : EC-CLEAR ( -- )
    0 EC-N !  0 EC-POOL-N !  0 EC-HEAD ! ;
@@ -167,13 +171,9 @@ variable EC-ORD-N
    id EC-ORDER EC-ORD-N @ cells + !
    EC-ORD-N @ 1+ EC-ORD-N ! ;
 
-: EC-DIR-QUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
-   a u FILE? 0= if exit then
-   a u root rootu EC-INTERN EC-DIR-PUSH ;
-
 : EC-EVENT-DIR+ ( n -- ) {: ix:n :}
    ix EC-LOADS? 0= if exit then
-   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ EC-DIR-QUEUE ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ EC-INTERN EC-DIR-PUSH ;
 
 : EC-COLLECT-DEPS ( -- )
    0 begin dup EVENT-COUNT < while

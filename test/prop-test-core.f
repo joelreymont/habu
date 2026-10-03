@@ -9,21 +9,31 @@
 \ The default run shards the sweep across PROP-SHARD-N forked slots, each a
 \ distinct seed running DEFAULT-COUNT iterations, so one direct run covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel; one red shard fails the
-\ phase. The `bin/hb <seed> <count>` argv override runs one seed serially to
-\ reproduce a specific run. Fork wrappers load before the check hook so their
-\ own definitions certify under the default checker, not the throw-on-reject
-\ prop hook.
+\ phase. The `<engine> --load test/prop-test.f -- <seed> <count>` override
+\ runs one seed serially to reproduce a specific run. Fork wrappers load before
+\ the check hook so their own definitions certify under the default checker,
+\ not the throw-on-reject prop hook.
 
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require lib/process.f
 require lib/process-fork.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
+
+\ The harness's own words and every candidate compile at tier 0, whatever tier
+\ the caller selected (the libraries above compile at the caller's tier). Tier 1 compiles against a static stack picture and the
+\ effect the checker recorded, and refuses what this harness compiles:
+\ CLEAR-MEAS's untyped row drain (E-NELAB-UNDER), a candidate CHK compiles
+\ after CHECK! recorded its signature (a duplicate definition, rc 78), and the
+\ rejected body CONFIRM-FR? runs, which has no recorded effect (KEEP-ARITY,
+\ rc 70).
+0 set-tier
 
 \ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
 \ remains owned by habu-primitive-effect-axiom-1119f176.
 : PROP-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> if 70 throw then ;
+   CHECK! dup -1 <> if CHECKER-REJECT-RC throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] PROP-CHECK-HOOK set-check ;
@@ -35,7 +45,7 @@ variable BASE  variable MC
 \ Retirement owner: habu-typed-depth-introspection-18f0efda.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
-variable VERD                     \ last verdict, set by the check hook
+variable VERD                     \ last verdict CHK read from CHECK!
 \ Reads the engine's evaluate-error cell by its NAMED layout constant
 \ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
 \ layout change can't silently point this peek at the wrong cell.
@@ -101,7 +111,7 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
 : PC   ( n -- ) {: c:n :}
    c PBUF PBUF-U @ + c!
    PBUF-U @ 1+ PBUF-U ! ;
-: POS. ( -- )  s" seed " type RUN-SEED @ .  s" iteration " type RI @ . ;
+: POS. ( -- )  s" seed " type RUN-SEED @ FMT:.INT  s"  iteration " type RI @ FMT:.INT ;
 : DEF. ( -- )  PBUF PBUF-U @ type cr ;
 : BODY. ( -- )  BBUF BLEN @ type cr ;
 
@@ -192,24 +202,26 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ without compiling; accepted candidates are compiled with the hook off after
 \ CHECK! has already certified their effect. Two levels (program + shrink variant)
 \ let shrinking roll back inside a program's own checkpoint.
+\ The signature store rewinds through USIGS-RESTORE-END, the checker's own
+\ truncation seam, which pops only the index entries above the mark. A bare
+\ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
+\ the whole store at the next check: 86% of a sweep's samples, and one
+\ 2000-program seed took 16.9 s against 1.0 s with identical verdicts and depths.
+\ test/effect-intern-suite.f owns the raw-rewind rebuild.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
 : MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND !  UTERM! ;
+TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND !  UTERM! ;
+TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
-TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM! ;
+TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
    0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
-\ Records CHECK!'s verdict while accepting the candidate. Dynamic checker
-\ invocation belongs to habu-primitive-effect-axiom-1119f176.
-: CHK-HOOK ( ptr u8 n -- n )
-   CHECK! dup VERD ! drop -1 ;
 \ Differential boundary: certification already happened via CHECK! in CHK;
 \ the compile stage runs unchecked so the fuzzer measures the candidate's
 \ true runtime arity without re-entering the hook. Dynamic evaluate remains
@@ -245,11 +257,11 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    FC-EXP !  2 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-LINE  ( n -- )
    s" prop-test: FALSE-CERT " type POS.
-   s" word " type emit s"  " type
+   s"  word " type emit s"  " type
    FC-KIND @ 1 = IF
-      s" expected " type FC-EXP @ .  s" measured " type FC-MEAS @ . cr
+      s" expected " type FC-EXP @ FMT:.INT  s"  measured " type FC-MEAS @ FMT:.INT cr
    ELSE
-      s" expected " type FC-EXP @ .  s" trap during measurement" type cr
+      s" expected " type FC-EXP @ FMT:.INT  s"  trap during measurement" type cr
    THEN ;
 : MEASURE  ( n n n -- ) {: name-ch:n in-arity:n expected:n :}   \ run a CERTIFIED word <nch>; +1 NFC on arity-mismatch or trap
    name-ch in-arity RUN-MEAS
@@ -312,10 +324,13 @@ variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
 \ in the self-test). Drops one trailing token per step, restoring any drop that
 \ breaks the predicate. Token surgery just moves BLEN — the bytes stay put. ----
 variable BSAVE
-: TRIM-TRAIL ( -- )  begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 = and while  BLEN @ 1- BLEN !  repeat ;
+: LAST-SPACE? ( -- bool )   \ BBUF has a last byte and it is a space
+   BLEN @ 0= IF 0 0= 0= exit THEN
+   BBUF BLEN @ 1- + c@ 32 = ;
+: TRIM-TRAIL ( -- )  begin LAST-SPACE? while  BLEN @ 1- BLEN !  repeat ;
 : DROP-LAST  ( -- bool )   \ remove the last space-delimited token; f = did-remove
    TRIM-TRAIL  BLEN @ 0= IF 0 0= 0= exit THEN
-   begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 <> and while  BLEN @ 1- BLEN !  repeat  0 0= ;
+   begin BLEN @ 0 > LAST-SPACE? 0= and while  BLEN @ 1- BLEN !  repeat  0 0= ;
 : REBUILD-G ( -- )  0 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+ ;   \ PBUF := ": G ( NIN -- DOUT ) BBUF ;"
 : FCFAIL?  ( -- bool )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
    SMARK  REBUILD-G  PBUF PBUF-U @ CHK
@@ -324,8 +339,8 @@ variable BSAVE
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 \ Differential boundary: deliberately compiles a checker-REJECTED body to
-\ confirm a false reject. Dynamic evaluate remains owned by
-\ habu-primitive-effect-axiom-1119f176.
+\ confirm a false reject, which only tier 0 does (`0 set-tier` above). Dynamic
+\ evaluate remains owned by habu-primitive-effect-axiom-1119f176.
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
@@ -370,12 +385,12 @@ variable NFC0
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
 : RUN  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
    RUN-CORE
-   s" prop-test: " type N @ . s" programs, " type
-   NCERT @ . s" certified, " type  PROP-NFC @ . s" FALSE-CERT(s), " type
-   NFR @ . s" false-reject(s)" type cr
-   s" prop-test: metamorphic — " type  NSUB @ . s" subsumption + " type
-   NRT @ . s" round-trip + " type  NCMP @ . s" composition runs; " type
-   NSI @ NRI @ + NCI @ +  . s" inconsistency(ies)" type cr ;
+   s" prop-test: " type N @ FMT:.INT s"  programs, " type
+   NCERT @ FMT:.INT s"  certified, " type  PROP-NFC @ FMT:.INT s"  FALSE-CERT(s), " type
+   NFR @ FMT:.INT s"  false-reject(s)" type cr
+   s" prop-test: metamorphic — " type  NSUB @ FMT:.INT s"  subsumption + " type
+   NRT @ FMT:.INT s"  round-trip + " type  NCMP @ FMT:.INT s"  composition runs; " type
+   NSI @ NRI @ + NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
 \ regression baits: programs that a SOUND checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
@@ -460,7 +475,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    ALPHA-MISSING -1 <> IF
       s" prop-test: alphabet class NEVER GENERATED within cap: " type ALPHA-MISSING ALPHA-DET$ type cr
       s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
-   s" prop-test: alphabet OK (" type ALPHA-N . s" op classes generated + certified)" type cr ;
+   s" prop-test: alphabet OK (" type ALPHA-N FMT:.INT s"  op classes generated + certified)" type cr ;
 
 \ shrink self-test: a long certified ( i64 -- i64 ) body must REDUCE under the
 \ "still certifies" predicate — proves the delta-debug loop + token surgery work
@@ -471,6 +486,18 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    BLEN @  [: STILLCERT? ;] SHRINK  BLEN @  >  0= IF
       s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
+
+\ No generated seed reaches the false-reject oracle (seeds 1..40 and 123, 2000
+\ programs each, yield no non-perturbed reject), so this drives it: a bool into
+\ `+` is rejected yet leaves the declared one cell. It is the run that proves
+\ CONFIRM-FR? compiles a rejected body, the tier-0 fact `0 set-tier` rests on.
+: SELFTEST-FR ( -- )
+   0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
+   PBUF PBUF-U @ CHK  VERD @ -1 = IF
+      s" prop-test: self-test FR canary CERTIFIED (no rejected body to confirm)" 1 die THEN
+   CONFIRM-FR? 0= IF
+      s" prop-test: self-test FALSE-REJECT ORACLE BROKEN (rejected body did not confirm)" 1 die THEN
+   s" prop-test: false-reject oracle OK (a rejected body runs to its declared arity)" type cr ;
 
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
@@ -488,7 +515,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
       48 -  ARG-N @ 10 * +  ARG-N !
       ARG-I @ 1+ ARG-I !
    repeat  ARG-N @ 0 0= ;
-: USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
+: USAGE ( -- )  s" prop-test: usage: <whitebox-engine> --load test/prop-test.f [-- seed count]" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
 : SCRIPT-ARG-U ( n -- n )
@@ -737,6 +764,7 @@ public
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
+   SELFTEST-FR
    RUN
    FINISH ;
 
@@ -806,7 +834,7 @@ variable SHARD-FAULT
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
    SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" SWEEP-RED @ die THEN
-   s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
+   s" prop-test: sweep OK — " type PROP-SHARD-N FMT:.INT s"  shards x " type DEFAULT-COUNT FMT:.INT s"  iters, distinct seeds" type cr ;
 
 \ shard-seed self-test: distinct per-slot streams. The golden-ratio step is
 \ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd
@@ -856,6 +884,7 @@ private
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
+   SELFTEST-FR
    PRIM-PROP:RUN
    SELFTEST-SHARD-SEEDS
    SELFTEST-SWEEP-RED

@@ -1,6 +1,7 @@
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
 require test/checker-assert.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -12,7 +13,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" expected " type want . s" got " type got . cr
+      T-FAIL s" expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 SUMTYPE lb-res 2
@@ -92,8 +93,8 @@ variable LB-EVAL-U
 s" 0 LAYOUT-BUFFER LB-ZERO lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
 s" -1 LAYOUT-BUFFER LB-NEG lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
 s" $7FFFFFFFFFFFFFFF LAYOUT-BUFFER LB-EXTENT lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
-s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL E-LAYOUT-BUFFER T=
-s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL E-LAYOUT-BUFFER T=
+s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL CHECKER-REJECT-RC T=
+s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL CHECKER-REJECT-RC T=
 
 PTR-VARIABLE LB-DP
 
@@ -108,10 +109,10 @@ LB-DUP-RC $4E T=
 here LB-DP 0 ptr-field @ = -1 T=
 
 here LB-DP 0 ptr-field !
-s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 
 here LB-DP 0 ptr-field !
-s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 
 \ ---- nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction ----
 NEWTYPE lbtk 0

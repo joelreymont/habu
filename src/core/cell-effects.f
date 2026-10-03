@@ -37,7 +37,11 @@ s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 \ storage effects let the multi-error operations below check normally.
 PRIM: MULTI-ERR PE-PTR-N PE-OUT PRIM;
 PRIM: MULTI-ERR-N PE-PTR-N PE-OUT PRIM;
-PRIM: MEO-ON PE-PTR-N PE-OUT PRIM;
+
+\ src/habu/verify-source.f counts its learned definers in this checker cell,
+\ which the rollback frame rewinds (src/core/checker.f), and names it in
+\ checked bodies loaded after the hook.
+PRIM: VERIFY-DEFINER-N PE-PTR-N PE-OUT PRIM;
 
 s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
@@ -45,11 +49,11 @@ s" SIG-RAW-MODE" s" -- ptr n" TRUST
 \ The floor is read from this source owner's private effect arena.
 TRUSTED: MULTI-ERR-BEGIN ( -- )
    UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
-   -1 MULTI-ERR !  0 MULTI-ERR-N !  0 MEO-ON ! ;
+   -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
 
 
 : MULTI-ERR-END ( -- n )
-   MULTI-ERR-N @  0 MULTI-ERR !  0 MEO-ON ! ;
+   MULTI-ERR-N @  0 MULTI-ERR ! ;
 
 
 \ Read finalized numeric call facts without exposing the unification graph.

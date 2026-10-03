@@ -24,8 +24,10 @@
 \ be resolved in another.
 \
 \ Run inside the engine being studied:
-\   <engine> --load tools/code-owner.f -- <hex-or-decimal region offset>
+\   <engine> --load tools/code-owner-main.f -- <hex-or-decimal region offset>
 \ or require it and call CODE-OWNER:AT. / CODE-OWNER:REGION-OWNER. directly.
+
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CODE-OWNER
 
@@ -40,10 +42,10 @@ variable HITS
 
 : ROW. ( n ptr n -- ) {: a:n r:ptr :}
    s" owner=" type r XREF-NAME$ type
-   s"  wid=" type r XREF-WORDLIST .
-   s"  start=" type r XREF-START .
-   s"  len=" type r XREF-CODE-BYTES .
-   s"  off=" type a r XREF-START - . cr ;
+   s"  wid=" type r XREF-WORDLIST FMT:.INT
+   s"  start=" type r XREF-START FMT:.INT
+   s"  len=" type r XREF-CODE-BYTES FMT:.INT
+   s"  off=" type a r XREF-START - FMT:.INT cr ;
 
 public
 
@@ -63,8 +65,8 @@ public
    HITS @ ;
 
 : AT. ( n -- ) {: a:n :}
-   s" addr=" type a .
-   s"  region-off=" type a BASE - . cr
+   s" addr=" type a FMT:.INT
+   s"  region-off=" type a BASE - FMT:.INT cr
    a AT 0= if s" no record owns it - a primitive in __text, or not in a routine" type cr then ;
 
 : REGION-OWNER. ( n -- ) {: off:n :}

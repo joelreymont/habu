@@ -212,8 +212,12 @@ public
 
 private
 
+\ Both callers bound u with CHECK. The root length is the caller's, so it is
+\ compared with the room the name and its separator leave: in a sum, a length
+\ near the maximum cell wraps back into range.
 : JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
-   rootu u + 1+ WORK-BYTES >= if E-PATH-RANGE throw then
+   rootu 0 < if E-PATH-RANGE throw then
+   rootu WORK-BYTES 1- u - >= if E-PATH-RANGE throw then
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
    a WORK-BUF rootu 1+ + u BYTE-COPY
@@ -733,8 +737,12 @@ $0A INCLUDE-LF 0 ZBYTE!
 : INCLUDE-DIAG-RESET ( -- )
    0 INCLUDE-DIAG-U ! ;
 
+\ A piece that does not fit is dropped. It is compared with the room left, so a
+\ length near the maximum cell cannot wrap the sum back under the capacity, and
+\ a negative one is dropped too.
 : INCLUDE-DIAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   INCLUDE-DIAG-U @ u + INCLUDE-DIAG-CAP > if exit then
+   u 0 < if exit then
+   u INCLUDE-DIAG-CAP INCLUDE-DIAG-U @ - > if exit then
    a INCLUDE-DIAG INCLUDE-DIAG-U @ + u BYTE-COPY
    INCLUDE-DIAG-U @ u + INCLUDE-DIAG-U ! ;
 
@@ -857,8 +865,12 @@ variable DISC-TOK-U
 : EVENT-RECS-ROOM ( -- )
    EVENT-N @ EVENT-MAX >= if s" events: too many events" INCLUDE-EVENT-RC die then ;
 
-: EVENT-POOL-ROOM ( n -- )
-   EVENT-POOL-N @ + EVENT-POOL-CAP > if s" events: pool overflow" INCLUDE-EVENT-RC die then ;
+\ The bytes wanted are compared with the room left in the pool: added to its
+\ fill, a length near the maximum cell wraps back under the capacity.
+: EVENT-POOL-ROOM ( n -- ) {: u:n :}
+   u 0 < u EVENT-POOL-CAP EVENT-POOL-N @ - > or if
+      s" events: pool overflow" INCLUDE-EVENT-RC die
+   then ;
 
 : EVENT-COPY-PATH ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u EVENT-POOL-ROOM
@@ -998,6 +1010,17 @@ public
 : READ-OS ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop INCLUDE-READ-ALL ;
 
+\ A source whose first two bytes are `#!` names its interpreter on that line,
+\ and the engine reads the line as a comment: the two bytes become `\ `, so
+\ every line and column stays the file's own. The program stream an engine
+\ runs gets the same rewrite (src/habu/habu2.f EMIT-SHEBANG-COMMENT).
+: SHEBANG-COMMENT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 2 < if exit then
+   a c@ $23 <> if exit then
+   a 1 + c@ $21 <> if exit then
+   $5c a c!
+   $20 a 1 + c! ;
+
 \ The loop a loaded file's bytes go through, inside the closed boundary:
 \ INCLUDE-EVAL-BIND below binds INCLUDE-EVALUATE, and test/outer-loop-on.f binds
 \ the loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, under
@@ -1011,6 +1034,7 @@ private
    SOURCE-INPUT:READ {: a:ptr u:n :}
    u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
    a SOURCE <> if a SOURCE u BYTE-COPY then
+   SOURCE u SHEBANG-COMMENT
    SOURCE u INCLUDE-INTERPRET ;
 
 : LOAD-UNIT ( -- )

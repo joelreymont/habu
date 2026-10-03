@@ -121,11 +121,11 @@ package PROGRAM-DIAGNOSTICS
    s" test/bootstrap-created-effect-src.f" 70
       s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" NEGATIVE
    s" test/bootstrap-created-raw-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id<> actual: a" NEGATIVE
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id actual: a" NEGATIVE
    s" test/bootstrap-created-const-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id<> actual: a" NEGATIVE
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id actual: a" NEGATIVE
    s" test/bootstrap-created-does-src.f" 70
-      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id<> actual: a" NEGATIVE ;
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id actual: a" NEGATIVE ;
 
 : DIAGNOSTICS ( -- )
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC

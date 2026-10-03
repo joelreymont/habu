@@ -108,6 +108,11 @@ $2D8 constant FIELD-SPAN-OFF
 \ re-reads its package mirror from the restored scope.
 $2E0 constant PKG-RESYNC-OFF
 $2E8 constant VERIFY-FILE-OFF
+$2F0 constant VERIFY-RENDERS-OFF
+\ Renders the diagnostic a quiet scan suppressed, for a caller that will not
+\ enforce the verdict but must not drop its reason (src/compiler/native/compiler.f
+\ CHECK-HOOKLESS).
+$2F8 constant CHECK-REPORT-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

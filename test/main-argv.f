@@ -142,9 +142,10 @@ variable WANT-RC
    S\" A\n" s" load, a flag-shaped file" GE-EXPECT-OUT
    s" include: cannot open " s" load, a flag-shaped file" GE-EXPECT-ERR-HAS
    s" /--x" s" load, a flag-shaped file" GE-EXPECT-ERR-HAS
-   \ The registry loads the file as written: a `#!` line is a token.
+   \ The registry reads a leading `#!` line as a comment, as the program file
+   \ does (src/core/include.f SHEBANG-COMMENT).
    [: s" --load" GE-ARG+ s" sh.f" FIX GE-ARG+ ;] s" load, a shebang" BOTH
-   70 S\" E-UNDEFINED: #!/usr/bin/env\n" s" load, a shebang" REFUSED
+   S\" SH\n" s" load, a shebang" OUT
    [: s" --load" GE-ARG+ s" missing.f" FIX GE-ARG+ ;] s" load, a missing file" BOTH
    74 s" load, a missing file" GE-EXPECT-RC
    s" include: cannot open " s" load, a missing file" GE-EXPECT-ERR-HAS ;
@@ -165,12 +166,11 @@ variable WANT-RC
    [: s" --build" GE-ARG+ s" def.f" FIX GE-ARG+ s" use-def.f" FIX GE-ARG+ ;]
    s" build, a definition carries" BOTH
    S\" HI\n" s" build, a definition carries" OUT
-   \ A later file is loaded as written: its `#!` line is a token.
+   \ A later file loads through the registry, which reads its leading `#!`
+   \ line as a comment too.
    [: s" --build" GE-ARG+ s" a.f" FIX GE-ARG+ s" sh.f" FIX GE-ARG+ ;]
    s" build, a later shebang" BOTH
-   70 s" build, a later shebang" GE-EXPECT-RC
-   S\" A\n" s" build, a later shebang" GE-EXPECT-OUT
-   S\" E-UNDEFINED: #!/usr/bin/env\n" s" build, a later shebang" GE-EXPECT-ERR
+   S\" A\nSH\n" s" build, a later shebang" OUT
    \ The first file runs before the registry looks for a later one.
    [: s" --build" GE-ARG+ s" a.f" FIX GE-ARG+ s" missing.f" FIX GE-ARG+ ;]
    s" build, a later missing file" BOTH

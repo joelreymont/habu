@@ -1,10 +1,14 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
-\ and its report through the CLI, the report a failed build invalidates, the
-\ cache keys, the rejected inputs and the size of a snapshot and a stripped
-\ image. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ and its report through the CLI, an install that fails, the report a failed
+\ build invalidates, the cache keys, the rejected inputs and the size of a
+\ snapshot and a stripped image. tools/hb-build-test-lib.f lists the other
+\ hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
+require lib/test/outcome.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -30,6 +34,14 @@ create HBT-LOST-OUT-BUF FS-PATH-CAP allot
 variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
 variable HBT-SEQ-N       \ how many the image holds
 variable HBT-SEQ-IP      \ that scan's cursor
+
+\ The failed install's -o and the directory it sits in, and the files that
+\ directory holds.
+variable HBT-INST-DIR-U
+variable HBT-INST-OUT-U
+create HBT-INST-DIR-BUF FS-PATH-CAP allot
+create HBT-INST-OUT-BUF FS-PATH-CAP allot
+variable HBT-INST-FILES
 
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
@@ -82,17 +94,47 @@ variable HBT-SEQ-IP      \ that scan's cursor
 \ cache that was asked and missed. CHECK-REPORT takes the expected cache
 \ fields from this process's options, so they are set to the CLI's build.
 \ The output already holds stale bytes, and no other case builds over one: the
-\ CLI renames its copy onto -o (HBB-INSTALL-OUT-ACT), and HBT-RUN-REPL's exact
+\ CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's exact
 \ stdout proves the new image replaced them.
 : CLI-REPORT ( -- )
    HBT-REPL-OUT s" stale" WRITE-ALL
-   HBT-ARGV-BASE
+   HBT-ARGV-BASE-REPL
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
    HBB-RESET-OPTIONS HBB-REPL-ON
    HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+
+\ The install stages the engine in a sibling of -o and renames it over -o
+\ (HBB-INSTALL-OUT). A directory at -o lets the sibling be filled and made
+\ executable, then refuses the rename: the build throws E-FS-IO, -o is still
+\ the directory, and no file is left in the directory that holds it.
+: HBT-INST-DIR ( -- ptr u8 n )
+   HBT-INST-DIR-BUF HBT-INST-DIR-U @ ;
+
+: HBT-INST-OUT ( -- ptr u8 n )
+   HBT-INST-OUT-BUF HBT-INST-OUT-U @ ;
+
+: HBT-INST-FILE ( ptr u8 n -- )
+   2drop 1 HBT-INST-FILES +! ;
+
+: HBT-INST-FILES@ ( -- n )
+   0 HBT-INST-FILES !
+   HBT-INST-DIR [: HBT-INST-FILE ;] WALK-FILES
+   HBT-INST-FILES @ ;
+
+: HBT-INSTALL-FAIL ( -- )
+   HBT-ROOT s" install" HBT-INST-DIR-BUF HBT-INST-DIR-U HBT-PATH!
+   HBT-INST-DIR s" out" HBT-INST-OUT-BUF HBT-INST-OUT-U HBT-PATH!
+   HBT-INST-DIR MAKE-DIR
+   HBT-INST-OUT MAKE-DIR
+   HBT-REPL-SRC HBT-INST-OUT HBT-HBB-PREPARE-REPL
+   [: HBB-BUILD ;] E-FS-IO TTHROWSQ
+   HBB-GOT-NAME$ BF-REMOVE-TMP
+   BF-TMP-RESET
+   HBT-INST-OUT DIR? TTRUE
+   HBT-INST-FILES@ 0 T= ;
 
 \ A build that fails invalidates the report the last one left: this runs after
 \ HBT-SIZE-AOT-LOST-BLOB, whose in-process build left a valid one. It is the
@@ -129,18 +171,21 @@ variable HBT-SEQ-IP      \ that scan's cursor
    PROC-ENV-INHERIT-MISSING
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 <> if s" repl args rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 <> if s" repl args rc: " type rcn FMT:.INT cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-ARGS-EXPECTED$ T-STR= 0= if
       s" repl args stdout: " type HBT-RUN-OUT outn type cr
-      s" actual len: " type outn . cr
-      s" expect len: " type HBT-REPL-ARGS-EXPECTED$ nip . cr
+      s" actual len: " type outn FMT:.INT cr
+      s" expect len: " type HBT-REPL-ARGS-EXPECTED$ nip FMT:.INT cr
    then
    HBT-RUN-OUT outn HBT-REPL-ARGS-EXPECTED$ T$= ;
 
 : HBT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
+
+: HBT-IMGDUMP$ ( -- ptr u8 n )
+   s" tools/imgdump.f" ;
 
 : HBT-IMGDUMP-ARGV ( -- )
    PROC-ARGV-ENV-RESET
@@ -149,7 +194,7 @@ variable HBT-SEQ-IP      \ that scan's cursor
    s" lib/string.f" HBT-ARG+
    s" lib/memory.f" HBT-ARG+
    s" lib/fs.f" HBT-ARG+
-   s" tools/imgdump.f" HBT-ARG+
+   HBT-IMGDUMP$ HBT-ARG+
    s" --" HBT-ARG+
    HBT-REPL-OUT HBT-ARG+ ;
 
@@ -160,18 +205,14 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-IMGDUMP-NAME$ BF-A$ ;
 
 \ The dump, read back through its own size. A buffer sized before the child runs
-\ cannot bound it (see below), so the file's size is what sizes the read.
+\ cannot bound it (see below), so the file's size is what sizes the read. A
+\ child stopped at its deadline may have printed nothing yet.
 : HBT-IMGDUMP-READ$ ( -- ptr u8 n )
-   HBT-IMGDUMP-DUMP$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   HBT-IMGDUMP-DUMP$ FILE-SIZE {: size:n :}
+   size 0= if s" " exit then
+   size MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    HBT-IMGDUMP-DUMP$ buf cap READ-ALL {: u:n :}
    buf u ;
-
-: HBT-IMGDUMP-RC ( outcome -- n )
-   MATCH outcome
-     exited   OF ENDOF
-     signaled OF 128 + ENDOF
-     timeout  OF -1 ENDOF
-   ;MATCH ;
 
 \ ---- where each image class's bytes went --------------------------------------
 \ tools/image-size-lib.f attributes every byte of the image to a class and
@@ -345,11 +386,11 @@ variable HBT-SEQ-IP      \ that scan's cursor
    HBT-IMGDUMP-ARGV
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" HBT-IMGDUMP-DUMP$ HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE      \ ( len outcome )
-   swap LEN>N {: errn:n :}
-   HBT-IMGDUMP-RC 0 T=
-   HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-IMGDUMP-READ$ s" + " CONTAINS? TTRUE
+   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE {: erru:len oc :}
+   HBT-IMGDUMP-READ$ {: dump:ptr dumpu:n :}
+   HBT-IMGDUMP$ dump dumpu HBT-RUN-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   HBT-RUN-ERR erru LEN>N HBT-EMPTY$ T$=
+   dump dumpu s" + " CONTAINS? TTRUE
    HBT-IMGDUMP-NAME$ BF-REMOVE-TMP
    BF-TMP-RESET ;
 
@@ -424,9 +465,11 @@ variable HBT-SEQ-IP      \ that scan's cursor
 public
 : HBT-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    CLI-REPORT
+   HBT-INSTALL-FAIL
    HBT-CACHE-KEY-CHANGES
    HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL

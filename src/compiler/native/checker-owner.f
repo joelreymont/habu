@@ -131,6 +131,14 @@ TRUSTED: CHECK-UNJUDGED ( ptr u8 n -- n )
    dup 0= if drop SOURCE-UNJUDGED exit then
    AS-CHECK execute ;
 
+\ The diagnostic that scan suppressed, rendered by the same owner while it still
+\ holds the scan's state: the reason for a verdict this compiler does not
+\ enforce but may refuse over (compiler.f CHECK-HOOKLESS).
+TRUSTED: REPORT ( -- )
+   CHECKER-OWNER-ABI:CHECK-REPORT-OFF s" scan report" FIELD
+   dup 0= if drop CHECKER-CHECK-REPORT exit then
+   AS-ACTION execute ;
+
 TRUSTED: TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    CHECKER-OWNER-ABI:TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then

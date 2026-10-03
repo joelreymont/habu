@@ -20,7 +20,7 @@ using TYPE-DECL
 
 $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
-7121 constant E-LAYOUT-BUFFER
+E-CHECKER-LAYOUT-BUFFER constant E-LAYOUT-BUFFER   \ the checker's layout refusal, one code
 7122 constant E-LAYOUT-BOUNDS
 7123 constant E-LAYOUT-UNBOUND    \ deferred column accessed before its NAME-BIND
 7124 constant E-LAYOUT-CEIL       \ deferred bind past the generous per-column sanity ceiling
@@ -62,17 +62,23 @@ variable LBUF-BYTES
    cellsn LBUF-N-MAX CELL / > if 0 LBUF-FALSE exit then
    cellsn cells LBUF-TRUE ;
 
-: LBUF-VALIDATE ( n ptr u8 n -- ) {: count:n type:ptr typeu:n :}
-   type typeu CHECKER-LAYOUT-INFO 0= if 2drop E-LAYOUT-BUFFER throw then
+: LBUF-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
+   {: count:n name:ptr nameu:n type:ptr typeu:n :}
+   type typeu CHECKER-LAYOUT-INFO 0= if
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
+   then
    LBUF-W ! drop
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if drop E-LAYOUT-BUFFER throw then
-   LBUF-BYTES ! ;
+   LBUF-BYTES ! LBUF-TRUE ;
 
-: LBUF-NAME-GUARD ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu CHECKER-LBUF-NAME-GUARD
+\ A name the checker refuses answers false, and the definer defines nothing:
+\ the checker has reported it (src/core/checker.f CHECKER-STORAGE-REFUSE).
+: LBUF-NAME-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-OK? 0= if LBUF-FALSE exit then
    name nameu CHECKER-DEFINED-HERE? if E-DUP-DEFINITION throw then
-   name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then ;
+   name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then
+   LBUF-TRUE ;
 
 : LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
    0 LBUF-I !
@@ -127,13 +133,19 @@ variable LBUF-BYTES
 \ The rule is about DP-derived offsets, which is exactly what a definer bakes.
 : LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
 
-\ The storage word is a definition like any other, so its name is guarded the
-\ same way NAME-BIND and NAME-GROW are: a collision fails loudly here instead of
-\ silently rebinding somebody's word.
-: LBUF-BASE-GUARD ( ptr u8 n -- ) {: name:ptr nameu:n :}
+\ Every name a definer derives from the declared one - the storage word, and
+\ NAME-BIND, NAME-GROW, NAME-RESERVE, NAME-RELEASE - is a definition like any
+\ other, so it is guarded the way the declared name is: a collision fails loudly
+\ here instead of silently rebinding somebody's word. LBUF-NAMES-OK? guards the
+\ declared name and its storage word, which every definer publishes.
+: LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
    LBUF-CLEAR
-   name nameu LBUF-APP  LBUF-BASE$ LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD ;
+   name nameu LBUF-APP  sfx sfxu LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-OK? ;
+
+: LBUF-NAMES-OK? ( ptr u8 n -- bool ) {: name:ptr nameu:n :}
+   name nameu LBUF-NAME-OK? 0= if LBUF-FALSE exit then
+   name nameu LBUF-BASE$ LBUF-SUFFIX-OK? ;
 
 : LBUF-BASE, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-APP  LBUF-BASE$ LBUF-APP ;
@@ -281,9 +293,8 @@ STORAGE-CAPTURE-INSTALL
    parse-name {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAME-GUARD
-   name nameu LBUF-BASE-GUARD
-   count type typeu LBUF-VALIDATE
+   name nameu LBUF-NAMES-OK? 0= if exit then
+   count name nameu type typeu LBUF-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
@@ -471,13 +482,12 @@ PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    parse-name {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAME-GUARD
-   name nameu LBUF-BASE-GUARD                              \ guard the control-cell word too
-   LBUF-CLEAR  name nameu LBUF-APP  s" -BIND" LBUF-APP     \ guard the published NAME-BIND too
-   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD
-   LBUF-CLEAR  name nameu LBUF-APP  s" -GROW" LBUF-APP     \ guard the published NAME-GROW too
-   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD
-   type typeu CHECKER-LAYOUT-INFO 0= if 2drop E-LAYOUT-BUFFER throw then
+   name nameu LBUF-NAMES-OK? 0= if exit then              \ the name and its control-cell word
+   name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then   \ guard the published NAME-BIND too
+   name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then   \ guard the published NAME-GROW too
+   type typeu CHECKER-LAYOUT-INFO 0= if
+      2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
+   then
    LBUF-W !  drop                                          \ width (cells) from the layout family
    type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
@@ -498,43 +508,49 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ generated-accessor evaluation under the armed window, transactional rollback),
 \ gated by the broader CHECKER-STORAGE-INFO admissibility. TYPED-BUFFER reuses
 \ LBUF-SOURCE (the indexed `( n -- ptr type )` accessor); TYPED-VARIABLE emits a
-\ single-cell `( -- ptr type )` accessor. Both parse a `ptr* base` stored type so
-\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) are expressible.
+\ single-cell `( -- ptr type )` accessor. Both read a multi-token stored type, so
+\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are
+\ expressible.
 
-: STORAGE-PTR-TOK? ( ptr u8 n -- bool )   \ token is the pointer constructor `ptr`
-   s" ptr" CORE-STR= ;
-
-: STORAGE-QUOT-OPEN? ( ptr u8 n -- bool )   \ token is the quotation opener `[`
-   s" [" CORE-STR= ;
-
-: STORAGE-QUOT-CLOSE? ( ptr u8 n -- bool )   \ token is the quotation closer `]`
-   s" ]" CORE-STR= ;
-
-\ Consume a spaced `[ in -- out ]` xt<effect> quotation type token by token, up
-\ to and including the closer, so the returned span is the whole quotation.
-: STORAGE-PARSE-QUOT ( -- )
-   begin STGT-A @ STGT-U @ STORAGE-QUOT-CLOSE? 0= while
-      parse-name STGT-U !  STGT-A !
-      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
-   repeat ;
-
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture a `ptr* base` or `[ in -- out ]` stored-type source span
+: STORAGE-NEXT-TOK ( -- )   \ the stored type's first token, which the source must have
    parse-name STGT-U !  STGT-A !
-   STGT-U @ 0= if E-LAYOUT-BUFFER throw then
+   STGT-U @ 0= if E-LAYOUT-BUFFER throw then ;
+
+\ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
+\ that file loads after this one. Pointing it back at a token parse-name read
+\ leaves that token to the next statement.
+$36A0 constant STGT-INP-CELL
+: STORAGE-UNREAD ( ptr u8 -- )
+   NULL-PTR - data-base STGT-INP-CELL + ! ;
+
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). A token on a later line
+\ goes back to the input.
+: STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended if LBUF-FALSE exit then
+   STGT-A @ STGT-U @ + {: end:ptr :}
+   parse-name {: a:ptr u:n :}
+   u 0= if LBUF-FALSE exit then
+   end a end - CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD LBUF-FALSE exit then
+   a STGT-A !  u STGT-U !  LBUF-TRUE ;
+
+\ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
+\ or with its line.
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
+   STORAGE-NEXT-TOK
    STGT-A @ STGT-START !
-   begin STGT-A @ STGT-U @ STORAGE-PTR-TOK? while
-      parse-name STGT-U !  STGT-A !
-      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
-   repeat
-   STGT-A @ STGT-U @ STORAGE-QUOT-OPEN? if STORAGE-PARSE-QUOT then
+   0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
-: STORAGE-VALIDATE ( n ptr u8 n -- ) {: count:n type:ptr typeu:n :}
-   type typeu CHECKER-STORAGE-INFO 0= if drop E-LAYOUT-BUFFER throw then
+: STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
+   {: count:n name:ptr nameu:n type:ptr typeu:n :}
+   type typeu CHECKER-STORAGE-INFO 0= if
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
+   then
    LBUF-W !
    count LBUF-N !
    count LBUF-W @ LBUF-EXTENT? 0= if drop E-LAYOUT-BUFFER throw then
-   LBUF-BYTES ! ;
+   LBUF-BYTES ! LBUF-TRUE ;
 
 : TYPED-VAR-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
@@ -553,9 +569,8 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAME-GUARD
-   name nameu LBUF-BASE-GUARD
-   count type typeu STORAGE-VALIDATE
+   name nameu LBUF-NAMES-OK? 0= if exit then
+   count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
@@ -568,9 +583,8 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAME-GUARD
-   name nameu LBUF-BASE-GUARD
-   1 type typeu STORAGE-VALIDATE
+   name nameu LBUF-NAMES-OK? 0= if exit then
+   1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
@@ -621,9 +635,11 @@ PRIM: TYPED-VARIABLE PRIM;
 \ exactly LBUF-W cells.
 variable DBUF-W
 
-: DBUF-VALIDATE ( ptr u8 n -- ) {: type:ptr typeu:n :}
-   type typeu CHECKER-DYNAMIC-INFO 0= if drop E-LAYOUT-BUFFER throw then
-   DBUF-W ! ;
+: DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
+   type typeu CHECKER-DYNAMIC-INFO 0= if
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE LBUF-FALSE exit
+   then
+   DBUF-W ! LBUF-TRUE ;
 
 : DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
@@ -642,10 +658,6 @@ variable DBUF-W
    s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
-: DBUF-SUFFIX-GUARD ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n suffix:ptr su:n :}
-   LBUF-CLEAR name nu LBUF-APP suffix su LBUF-APP
-   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD ;
-
 \ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
 \ AND commits its cell, so the definer allots the two count cells behind it and
 \ zeroes the record it measured. The same transactional check — if anything else
@@ -663,11 +675,10 @@ variable DBUF-W
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAME-GUARD
-   name nameu LBUF-BASE-GUARD
-   name nameu s" -RESERVE" DBUF-SUFFIX-GUARD
-   name nameu s" -RELEASE" DBUF-SUFFIX-GUARD
-   type typeu DBUF-VALIDATE
+   name nameu LBUF-NAMES-OK? 0= if exit then
+   name nameu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
+   name nameu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   name nameu type typeu DBUF-VALIDATE 0= if exit then
    3 cells LBUF-BYTES !
    LBUF-ALIGN
    here {: base:ptr :}

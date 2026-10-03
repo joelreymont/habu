@@ -1242,14 +1242,14 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b  A64M:FRAME-MAX A64M:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
-\ A frame inside the region NEFF can describe and past the one immediate that
-\ claims it. The two bounds are different fields - a slot offset is scaled by the
-\ access width and the frame immediate is not - so a frame between them is the
-\ only case that reaches the second bound at all.
-: FRAME-DEEP-BODY ( IR-CTX:ctx -- )
+\ The deepest frame the slot offsets reach, which is past one add/sub immediate:
+\ a slot offset is scaled by the access width and the immediate is not, and the
+\ emitter reserves such a frame by whole pages and the rest, so the dialect
+\ holds every frame NEFF can describe.
+: FRAME-DEEPEST-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
+   c b  A64M:FRAME-MAX  A64IR:FRAME-ATTR drop ;
 
 \ ---- the data-stack operand refusals -----------------------------------------
 \ A data-stack offset the load and store forms cannot address, and an adjustment
@@ -1297,7 +1297,7 @@ private
 : DBYTES-LOW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN + negate  A64IR:DBYTES-ATTR drop ;
+   c b  A64IR:OFF-LIMIT 1+ negate  A64IR:DBYTES-ATTR drop ;
 
 : DBYTES-DOWN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -1307,7 +1307,7 @@ private
 : DBYTES-HIGH-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b  A64IR:FRAME-LIMIT A64M:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
+   c b  A64IR:OFF-LIMIT 1+  A64IR:DBYTES-ATTR drop ;
 
 \ The writeback field is nine SIGNED bits, which is a much narrower bound than
 \ the add-and-subtract immediate a standalone move rides in - and a move of
@@ -1449,8 +1449,8 @@ private
 : FRAME-HIGH ( -- )
    BND [: FRAME-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: FRAME-DEEP ( -- )
-   BND [: FRAME-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FRAME-DEEPEST ( -- )
+   BND [: FRAME-DEEPEST-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : SLOT-REFUSE-CASES ( -- )
    s" a frame slot that is not a whole access from the frame is refused" T-LABEL
@@ -1464,14 +1464,14 @@ private
    s" a frame that does not keep the stack pointer aligned is refused" T-LABEL
    [: FRAME-ODD ;] E-A64IR-FRAME TTHROWSQ ;
 
-\ The two frame depths are a group of their own: each of these abandons a
-\ context holding a module, and the registry gives those slots back only when a
-\ live enclosing context leaves.
+\ The two frame depths are a group of their own: the refusal abandons a context
+\ holding a module, and the registry gives those slots back only when a live
+\ enclosing context leaves.
 : FRAME-DEPTH-CASES ( -- )
    s" a frame deeper than the offset field can reach is refused" T-LABEL
    [: FRAME-HIGH ;] E-A64IR-FRAME TTHROWSQ
-   s" a frame deeper than the immediate that claims it is refused" T-LABEL
-   [: FRAME-DEEP ;] E-A64IR-FRAME TTHROWSQ ;
+   s" the deepest frame the offset field reaches is held" T-LABEL
+   [: FRAME-DEEPEST ;] catch 0 T= ;
 
 : IMM-HIGH ( -- )
    BND [: IMM-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1900,8 +1900,6 @@ public
    OPCODE-ORDINAL-CASE
    BOUND-CASE
    FRAME-BOUND-CASE
-   s" the deepest frame this dialect can reserve is the add-sub immediate" T-LABEL
-   A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64M:SP-ALIGN mod -  T=
    HALVES-CASE
    COND-CASE
    FCOND-CASE

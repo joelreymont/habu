@@ -9,6 +9,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require tools/aot-call-report-lib.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 $D503201F constant ACRT-NOP-INSTR
 12 constant ACRT-STENCIL-PADDING-BYTES
@@ -177,6 +178,6 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    ACRT-TEST-BOUNDARY
    ACRT-TEST-CLI
    CLEANUP-RUN
-   s" aot-call-report-test: ok (" type ACRT-N @ 1- . s"  assertions)" type cr ;
+   s" aot-call-report-test: ok (" type ACRT-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 ACRT-MAIN

@@ -2,8 +2,8 @@
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path FS-MUT-PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), ATOMIC-WRITE-FILE's unique `.tmp-*` sibling
-\ FS-MUT-ATOMIC-PATH, and
+\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE, RESERVE-SIBLING
+\ and REPLACE-STAGED name, FS-MUT-ATOMIC-PATH, and
 \ MAKE-TEMP-DIR's FS-MUT-TMP-PATH - the one this module RETURNS a span into -
 \ are the FS-MUT-ABI band of the per-task DATA region, so two tasks renaming,
 \ symlinking, writing atomically or making a temporary directory at once share
@@ -20,8 +20,9 @@
 \ band could carry; a second task that must copy needs its own buffer); and the
 \ cleanup registry, which is a PROCESS exit registry and not per-call scratch -
 \ REGISTERING is safe from any task, because a registration claims its slot with
-\ one atomic-add and writes only that slot, and the RUN belongs to the process.
-\ See docs/threads.md.
+\ one atomic-add and writes only that slot, FORGETTING is too, because it empties
+\ only the slot naming its path and gives the top back with one atomic-cas, and
+\ the RUN belongs to the process. See docs/threads.md.
 \
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so
@@ -343,6 +344,13 @@ public
    n 10 < if 1 exit then
    n 10 / RECURSE 1+ ;
 
+\ The longest path RESERVE-SIBLING and ATOMIC-WRITE-FILE stage beside: its
+\ `.tmp-<seed>-<attempt>` sibling still fits FS-PATH-CAP with the largest seed,
+\ the largest nonnegative cell `-1 1 rshift`, and the last attempt, so whether
+\ a path has room for one never depends on the seed it drew.
+FS-PATH-CAP 6 - -1 1 rshift FS-MUT-U-DIGITS -
+FS-MUT-ATOMIC-RETRIES 1- FS-MUT-U-DIGITS - constant SIBLING-PATH-MAX
+
 : FS-MUT-ATOMIC-U+ ( n SPAN:span<u8> n -- n ) {: value:n dst off:n :}
    value 0 < if E-FS-PATH throw then
    value 10 >= if value 10 / dst off RECURSE else off then {: next:n :}
@@ -355,8 +363,7 @@ public
 
 : FS-MUT-BUILD-ATOMIC-TMP ( ptr u8 n n n -- ptr u8 n ) {: path:ptr pathu seed attempt :}
    pathu 0 < if E-FS-PATH throw then
-   pathu 6 + seed FS-MUT-U-DIGITS + attempt FS-MUT-U-DIGITS +
-   FS-PATH-CAP > if E-SPAN-CAPACITY throw then
+   pathu SIBLING-PATH-MAX > if E-SPAN-CAPACITY throw then
    FS-MUT-ATOMIC-PATH {: dst :}
    path pathu dst SPAN:COPY
    s" .tmp-" dst pathu SPAN:SKIP SPAN:COPY
@@ -443,8 +450,20 @@ public
       rename-code throw
    then ;
 
+\ Two live processes never share a pid, and the clock tells a reused pid from a
+\ sibling its last owner left behind.
+: FS-MUT-ATOMIC-SEED ( -- n )
+   mono-ns getpid xor ;
+
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu mono-ns getpid xor FS-MUT-ATOMIC-WRITE-SEED ;
+   path pathu src srcu FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-WRITE-SEED ;
+
+\ Create and open the unique `.tmp-*` sibling ATOMIC-WRITE-FILE stages through,
+\ for a writer that streams its file or must finish it before RENAME-FILE
+\ publishes it. Answers the sibling's path, which stays this task's until its
+\ next reservation, and the descriptor. The caller owns both and the removal.
+: RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
+   FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-RESERVE ;
 
 : FS-MUT-BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
    SB-RESET
@@ -549,10 +568,9 @@ public
    2 SB$ write drop ;
 
 \ This file's ONE raw boundary is FS-MUT-ARM-EXIT below: the exit vector is a
-\ fixed engine DATA cell holding a code pointer, reached through `data-base` the
-\ way src/habu/snap.f reads ENGINE-SNAP-XT-CELL. Arming is the only place an
-\ opaque xt is handled; calling one back is ordinary checked code, because the
-\ saved vector lands in a typed xt cell.
+\ fixed engine DATA cell holding a code pointer, reached through `data-base`.
+\ Arming is the only place an opaque xt is handled; calling one back is ordinary
+\ checked code, because the saved vector lands in a typed xt cell.
 \
 \ THE VECTOR IS A CHAIN, not a claim. Arming finds one of three states: zero,
 \ and ours goes in; already ours, and nothing happens; FOREIGN - some other
@@ -637,3 +655,62 @@ TRUSTED: FS-MUT-ARM-EXIT ( -- )
 
 : CLEANUP-TREE+ ( ptr u8 n -- )
    FS-MUT-CLEANUP-TREE FS-MUT-CLEANUP+ ;
+
+\ A PATH ITS OWNER HAS REMOVED IS FORGOTTEN, so the table holds only what is
+\ still owed: a process that makes and removes a tree per job registers each
+\ one and forgets it once it is gone, and its count never walks toward
+\ FS-MUT-CLEANUP-MAX. The newest slot naming the path is emptied - the state
+\ CLEANUP-RUN steps over - and, when it is the top of the table, given back
+\ with one atomic-cas on the count. A claim another task made meanwhile defeats
+\ the cas, keeps its own slot, and leaves the emptied one empty. A path no slot
+\ names is a no-op; an empty path is E-FS-PATH, since an empty slot is not one.
+: FS-MUT-CLEANUP-NAMES? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+   idx FS-MUT-CLEANUP-U-PTR @ u <> if 0 0= 0= exit then
+   idx FS-MUT-CLEANUP-SLOT u SPAN:TAKE SPAN:$ a u STR= ;
+
+\ The newest slot naming the path, or -1.
+: FS-MUT-CLEANUP-FIND ( ptr u8 n -- n ) {: a:ptr u :}
+   FS-MUT-CLEANUP-N @ begin dup 0 > while
+      1 -
+      dup >r a u r> FS-MUT-CLEANUP-NAMES? if exit then
+   repeat
+   drop -1 ;
+
+: CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 <= if E-FS-PATH throw then
+   a u FS-MUT-CLEANUP-FIND {: idx :}
+   idx 0 < if exit then
+   0 idx FS-MUT-CLEANUP-U-PTR !
+   idx 1 + idx FS-MUT-CLEANUP-N atomic-cas drop ;
+
+\ ---- replacing a file through its sibling --------------------------------------
+
+\ Stack-preserving under `catch`: the caller still holds the sibling to remove
+\ when a step throws.
+: FS-MUT-STAGED-RUN ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- ptr u8 n ptr u8 n [ ptr u8 n -- ] )
+   {: path:ptr pathu tmp:ptr tmpu fill :}
+   tmp tmpu CLEANUP+
+   tmp tmpu fill execute
+   tmp tmpu path pathu RENAME-FILE
+   path pathu tmp tmpu fill ;
+
+\ Replace the file at path with the one fill writes at the path it is handed:
+\ the sibling RESERVE-SIBLING creates, its descriptor closed, renamed over path
+\ once fill returns. Until then path holds what it held, so it names its old
+\ file or the whole new one. The sibling is registered for removal at exit
+\ while it is held, so a throw from fill or the rename, or a `die` in fill,
+\ takes it with it; only a killed process leaves one behind. A full registry
+\ refuses the claim, and the sibling goes then. fill must not reserve a
+\ sibling of its own (ATOMIC-WRITE-FILE does): RESERVE-SIBLING's path is this
+\ task's only until its next reservation.
+: REPLACE-STAGED ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: path:ptr pathu fill :}
+   path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
+   \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
+   \ why a failed close is not retried.
+   fd FS-ATOMIC:CLOSE-FD 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP E-FS-IO throw then
+   path pathu tmp tmpu fill [: FS-MUT-STAGED-RUN ;] catch {: code:n :}
+   drop 2drop 2drop
+   code 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP then
+   tmp tmpu CLEANUP-FORGET
+   code 0<> if code throw then ;

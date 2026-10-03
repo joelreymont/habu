@@ -500,7 +500,7 @@ GROUP-BYTES CELL-BITS * constant GROUP-CELLS      \ cells such a group covers
 : RUN-V@ ( n n -- n n ) {: at:n avail:n :}
    at avail RUN-VW {: w:n :}
    w 0= if E-ES-WALK throw then
-   w CELL-VMAX = at CELL-VMAX 1- + U8@ 1 > and if E-ES-WALK throw then
+   w CELL-VMAX = if at CELL-VMAX 1- + U8@ 1 > if E-ES-WALK throw then then
    at w RUN-VV {: v:n :}
    v w ;
 
@@ -2606,6 +2606,10 @@ $D37EF54A constant XTC-LSL2
    at INSN + INSN@ XTC-LSR2 = and
    at 2 INSN * + INSN@ XTC-LSL2 = and ;
 
+: XTC-MOVK? ( n -- bool ) {: at:n :}
+   at INSN IN-IMAGE? 0= if false exit then
+   at INSN@ 11 AOT-STARTUP-SHAPE:MOVK-RD? ;
+
 \ The LIT64, chain by which src/habu/aot-lib.f EMIT-XT-CELLS puts the row count
 \ in x11, then the ADR x12 that must follow it and name this image's code base
 \ (EMIT-XT-CELLS' own scratch, a plain ADR, and not a TEXT-ADR, site): two
@@ -2616,8 +2620,7 @@ $D37EF54A constant XTC-LSL2
    IP @ INSN@ 11 AOT-STARTUP-SHAPE:MOVZ-RD? 0= if -1 exit then
    IP @ INSN@ AOT-STARTUP-SHAPE:MOVW-CHUNK MOVACC !
    IP @ INSN + IP !
-   begin IP @ INSN IN-IMAGE?
-         IP @ INSN@ 11 AOT-STARTUP-SHAPE:MOVK-RD? and while
+   begin IP @ XTC-MOVK? while
       MOVACC @ IP @ INSN@ AOT-STARTUP-SHAPE:MOVW-CHUNK or MOVACC !
       IP @ INSN + IP !
    repeat
@@ -2828,6 +2831,11 @@ public
 \ File coordinates of the captured code, matching the start/len columns in
 \ native-build's .names sidecar. Valid after MEASURE on a baked engine.
 : CODE-BLOB-RANGE ( -- n n ) BLOB-OFF @ BLOB-LEN @ ;
+
+\ File coordinates of a stripped image's DATA blob: its header, cell map and
+\ values, the window's whole cell stream, empty when the window carries none.
+\ Valid after MEASURE on a stripped image.
+: DATA-BLOB-RANGE ( -- n n ) BLOB-AT @ BLOB-STOP @ BLOB-AT @ - ;
 
 \ The same rows again, printed this time, with the class's own notes under them.
 : REPORT ( -- )

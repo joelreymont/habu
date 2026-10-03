@@ -41,6 +41,7 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/test/subject.f
 require src/compiler/native/compiler.f
 
@@ -140,17 +141,14 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: RUN ( ptr u8 n -- n )   \ source -> child exit status (-1 = signal or timeout)
-   OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
-   MATCH outcome
+: RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
+   src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF ENDOF
      signaled OF drop -1 ENDOF
-     timeout OF -1 ENDOF
-   ;MATCH
-   {: rc:n :}
-   LEN>N ERR-U !
-   LEN>N drop
-   rc ;
+     timeout OF src u OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;

@@ -13,7 +13,6 @@ $800 constant CAP
 
 create OUT CAP allot
 create ERR CAP allot
-variable OUT-U
 
 : LINE ( ptr u8 n -- )
    SB-APPEND
@@ -78,10 +77,9 @@ variable OUT-U
    src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
-   src srcu CAPTURE want T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N OUT-U !
-   OUT OUT-U @ s" DTP-ARMED" CONTAINS? TTRUE ;
+   src srcu CAPTURE {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   OUT outu LEN>N s" DTP-ARMED" CONTAINS? TTRUE ;
 
 : REJECTS ( ptr u8 n -- )
    SOURCE$ ENGINE-ERROR:SEAL-VIOLATION EXPECT ;

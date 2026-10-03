@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 package CHECKER-UNIT-CODEC-TEST
 
 $40000 constant ART-CAP
+7159 constant E-UNIT-FORMAT   \ src/core/checker.f CHECKER-REG's, private there
 create ART ART-CAP allot
 create BAD ART-CAP allot
 variable ART-U
@@ -85,14 +86,14 @@ TRUSTED: DEFER-CHANGE ( -- )
    \ EW.SYM is graph-header cell nine; $10000 marks defer metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-ROOT-GRAPH ( -- )
    ART BAD ART-U @ BYTE-COPY
    \ A private root bit cannot be imported as graph control metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ $20000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 : CHECK-DEFER-CONTROL ( -- )
    ART 5 cells + CELL-VIEW @ 0 > TTRUE
@@ -100,7 +101,7 @@ TRUSTED: DEFER-CHANGE ( -- )
    \ A control row stores its symbol ordinal, then packed flags and masks.
    BAD FIRST-CONTROL-OFF + CELL + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch 7161 T= ;
+   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
 public
 

@@ -35,6 +35,7 @@
 \ entry the in-process tools use when the registrations must persist, and it is
 \ the one whose result this file can actually read.
 
+require lib/errors.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
@@ -203,14 +204,13 @@ public
 
 \ --- source builder, for the bodies that have to be too long to write out.
 $4000 constant SRC-CAP        \ 16384: comfortably past BODYBUF-CAP (8000)
-9001 constant E-SRCB-CAP      \ fixture builder overflow (harness bound, not a product code)
 create SRC-BUF SRC-CAP allot
 variable SRC-U
 
 \ Same `create`-region boundary the product code documents: a checked body
 \ cannot address a `create` region as a typed `ptr u8` span.
 : SRC-C ( n -- ) {: c:n :}
-   SRC-U @ SRC-CAP >= IF E-SRCB-CAP throw THEN
+   SRC-U @ SRC-CAP >= IF E-TEST-CAPACITY throw THEN
    c SRC-BUF SRC-U @ + c!
    SRC-U @ 1 + SRC-U ! ;
 : SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;

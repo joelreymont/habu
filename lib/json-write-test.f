@@ -9,6 +9,8 @@ require lib/property.f
 require lib/json-write.f
 require lib/byte-buffer.f
 require lib/json-read.f
+require lib/memory.f
+require lib/test/guard-page.f
 require test/checker-assert.f
 
 \ White-box test: reopen the module's package so the fixtures reach json-write's
@@ -425,12 +427,29 @@ create JWT-NAME
 : JWT-U-NEG ( -- )
    JWT-OPEN-A -1 U drop ;
 
+: JWT-STRING-MIN ( -- )
+   JWT-OPEN-A s" x" drop MEM-MAX-N negate 1- STRING drop ;
+
+\ Every source byte takes at least one byte of output, so text longer than the
+\ room is refused before a byte of it is read: these bytes end at an
+\ inaccessible page, and the claim runs one past them.
+: JWT-STRING-UNREAD ( n -- ) {: u:n :}
+   JWT-OPEN-SMALL JWT-SMALL-CAP [char] a GUARD-PAGE:TAIL u STRING drop ;
+
+: JWT-KEY-UNREAD ( n -- ) {: u:n :}
+   JWT-OPEN-SMALL JWT-SMALL-CAP [char] a GUARD-PAGE:TAIL u KEY drop ;
+
 : JWT-TEST-ERRORS ( -- )
    [: JWT-RAW-NEG ;] E-JW-SOURCE TTHROWSQ
    [: JWT-STRING-NEG ;] E-JW-SOURCE TTHROWSQ
+   [: JWT-STRING-MIN ;] E-JW-SOURCE TTHROWSQ
    [: JWT-C-NEG ;] E-JW-BYTE TTHROWSQ
    [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
-   [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ ;
+   [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ
+   [: JWT-SMALL-CAP 1+ JWT-STRING-UNREAD ;] E-JW-CAPACITY TTHROWSQ
+   [: MEM-MAX-N JWT-STRING-UNREAD ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-SMALL-CAP 1+ JWT-KEY-UNREAD ;] E-JW-CAPACITY TTHROWSQ
+   [: MEM-MAX-N JWT-KEY-UNREAD ;] E-JW-CAPACITY TTHROWSQ ;
 
 \ One random source string: plain ASCII, a control byte, a quote, a backslash,
 \ or a two-byte UTF-8 scalar, so every escape width is exercised.

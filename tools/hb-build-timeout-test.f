@@ -2,6 +2,7 @@
 \ Run: bin/hb --load tools/hb-build-timeout-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT
 
@@ -64,6 +65,7 @@ package HB-BUILD-CLI
 public
 : HBT-TIMEOUT-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-MAKER-TIMEOUTS
    CLEANUP-RUN

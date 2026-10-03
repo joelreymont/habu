@@ -4,6 +4,7 @@
 \ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
 \ The encoders are package A64ASM's public surface, imported here once and called
 \ bare, which is what this layer did when they were global names.
+require src/arch/arm64/asm.f
 using A64ASM
 
 \ ---- the window this assembler emits into ------------------------------------
@@ -83,11 +84,9 @@ using A64ASM
 \ per-section refusal "is larger than the buffer it fills" goes dead, because the
 \ aggregate budget refuses first.
 \
-\ IT CANNOT BE COMPUTED HERE: the boot prefix loads this file before
-\ src/habu/layout.f (tools/bootstrap.sh, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), so CODE-BAND:BYTES does not exist yet and the value is
-\ spelled out instead. test/aot-data-sites.f pins the inequality, under "the
-\ section budget admits a full code band", where both files are loaded.
+\ IT IS SPELLED OUT, not computed from src/habu/layout.f's CODE-BAND:BYTES, and
+\ test/aot-data-sites.f pins the inequality, under "the section budget admits a
+\ full code band", where both files are loaded.
 \
 \ WHY IT GREW AGAIN (2026-09-16). REGION went $A00000 -> $2000000 on 2026-09-14
 \ and took CODE-BAND:BYTES from 7,335,936 to 30,404,608 with it; this constant
@@ -326,8 +325,9 @@ variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
 variable I-RLIMIT                   \ the field's exclusive bound, in bytes
 
-\ THE NUMBER WRITER IS THIS FILE'S OWN. icode.f is the fifth file of the boot
-\ prefix (tools/bootstrap.sh), so lib/fmt.f's renderers do not exist yet and a
+\ THE NUMBER WRITER IS THIS FILE'S OWN. Both build texts load icode.f ahead of
+\ lib/fmt.f (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
+\ BF-APPEND-COMMON), so lib/fmt.f's renderers do not exist yet and a
 \ refusal may not wait for them: the conversion is here, private, and built from
 \ nothing but arithmetic and this file's own byte cursor.
 $14 constant IDEC-CAP               \ -9223372036854775808: nineteen digits and a sign
@@ -385,7 +385,9 @@ variable IMSG-V
 
 : IMSG+ ( ptr u8 n -- )
    IMSG-U ! IMSG-A !
-   IMSG-N @ IMSG-U @ + IMSG-CAP > if
+   \ Any source can call IMSG+, so the length is compared with the room left: in
+   \ a sum, a length near the maximum cell wraps back under the capacity.
+   IMSG-U @ 0 <  IMSG-U @ IMSG-CAP IMSG-N @ - >  or if
       s" icode: a reach refusal outgrew its own message buffer" ICODE-EXIT-RC die
    then
    0 BEGIN dup IMSG-U @ < WHILE

@@ -9,6 +9,7 @@
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM
@@ -23,12 +24,12 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
    gu wu <> if
-      T-FAIL s" assert string len: expected " type wu . s" got " type gu . cr exit
+      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
    then
    0 begin dup gu < while
       dup ga + c@  over wa + c@ <> if
@@ -37,7 +38,7 @@ variable #CASE
       1+
    repeat drop ;
 
-\ substring search (diag packet assertions), engine-suite MEO-CONTAINS? shape.
+\ substring search (diag packet assertions).
 variable TDC-I
 : TDT-AT? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
    hu nu < if 0 0= 0= exit then
@@ -1121,6 +1122,9 @@ s" NEWTYPE field 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE str 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE space-x 1" E-TDECL-NAME TDT-NEG
 s" NEWTYPE fresh-mask-x 1" E-TDECL-NAME TDT-NEG
+\ an effect reads a bare `ptr` as the pointer constructor, never as a family,
+\ so the tail is reserved ahead of the global `ptr` family's duplicate check.
+s" NEWTYPE ptr 0" E-TDECL-NAME TDT-NEG
 \ item 9 reserved token protocol: construct/match/;match may not name a
 \ family or a variant (;match already fails the canonical-tail gate).
 s" NEWTYPE construct 1" E-TDECL-NAME TDT-NEG
@@ -1131,7 +1135,6 @@ s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
-s" NEWTYPE ptr 0" E-TFAM-DUP TDT-NEG
 s" NEWTYPE span 3" E-TFAM-DUP TDT-NEG
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains E-TFAM-DUP.
@@ -1318,7 +1321,7 @@ s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpptr 1 FIELD x ptr ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ bad field names: uppercase, grammar keyword, control word. The control-word arm
 \ comes from TYPE-NAME:CONTROL?, the one place that list is written down, which
-\ this file's family-name gate (TDECL-RESERVED?) has always consulted; the field
+\ the family-name gate (TYPE-NAME:FAMILY-RESERVED?) has always consulted; the field
 \ gate did not, so `FIELD if n` used to register while `PRODUCT if` was refused.
 \ The unified STRUCTURE and ENUM front ends reach the identical answer through
 \ the same owner (test/structure-decl-suite.f, test/enum-decl-suite.f § 24).
@@ -2157,15 +2160,15 @@ s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " TDT-CONTAINS? -1 T=
 \ enum-tier annotation term on the EXPECTED side of the :} bind check
 \ (pre-fix rendered 'expected: oplv<>').
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: tdlv<> actual: tdlp<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: tdlv actual: tdlp " TDT-CONTAINS? -1 T=
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2174,7 +2177,7 @@ NEWTYPE tdlrfam 0
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " TDT-CONTAINS? -1 T=
 
 \ Same row, but the package was declared in UPPER case. TDLR4 above cannot see
 \ the difference — `tdlrpk` is already lowercase — so the renderer used to echo
@@ -2191,18 +2194,18 @@ NEWTYPE tdlrfamu 0
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " TDT-CONTAINS? 0 T=
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu<> \"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu<> \"" TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" TDT-CONTAINS? 0 T=
 0 DIAG-JSON!
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2210,8 +2213,8 @@ DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu<> \"" TDT-CONTAINS? 0 T=
 package tdlrpku
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrfamu<> " TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrfamu " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " TDT-CONTAINS? 0 T=
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 
@@ -2284,7 +2287,7 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2<>>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" TDT-CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2327,7 +2330,7 @@ DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2<>,n>" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=

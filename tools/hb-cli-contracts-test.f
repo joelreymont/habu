@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 
 package CLI-CONTRACTS
 
@@ -117,13 +118,16 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF JOIN-PATH HCT-CHILD-U !
    HCT-CHILD HCT-CHILD$ WRITE-ALL ;
 
-: HCT-STORE! ( len len outcome -- )
-   MATCH outcome
+: HCT-STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N HCT-OUT-U !  erru LEN>N HCT-ERR-U !
+   oc MATCH outcome
      exited OF HCT-RC ! 0 0= HCT-EXITED ! ENDOF
      signaled OF HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
-     timeout OF 0 HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
-   ;MATCH
-   LEN>N HCT-ERR-U !  LEN>N HCT-OUT-U ! ;
+     timeout OF
+        src srcu HCT-OUT HCT-OUT-U @ HCT-ERR HCT-ERR-U @ T-TIMED-OUT
+     ENDOF
+   ;MATCH ;
 
 : HCT-EXPECT-LOAD-STDIN ( -- )
    PROC-ARGV-RESET
@@ -136,7 +140,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-CHILD HCT-STORE!
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
@@ -146,7 +151,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    PROC-ARGV-RESET
    s" --loadx"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   s" bin/hb --loadx" HCT-STORE!
    s" unknown flag exits 64" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" stderr echoes the offending flag" T-LABEL
@@ -162,7 +168,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    PROC-ARGV-RESET
    s" --nonsense"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   s" bin/hb --nonsense" HCT-STORE!
    s" unknown flag rejected even with a piped program" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" the piped stdin program did not run" T-LABEL
@@ -174,7 +181,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" --load"  >LEN PROC-ARGV+
    s" /dev/null"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   s" bin/hb --load /dev/null" HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
 
@@ -187,7 +195,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" alpha" >LEN PROC-ARGV+
    s" beta" >LEN PROC-ARGV+
    s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-CHILD HCT-STORE!
    s" build source exits after explicit seal" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T=
@@ -204,7 +213,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-ARGV-NONE ( -- )
    HCT-ARGV-LOAD
    s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-CHILD HCT-STORE!
    s" zero script args reject negative and zero indexes" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T=
@@ -218,7 +228,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" " >LEN PROC-ARGV+
    s" omega" >LEN PROC-ARGV+
    s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-CHILD HCT-STORE!
    s" script argv preserves first, last, and empty values and rejects bounds" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T=

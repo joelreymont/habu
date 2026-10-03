@@ -61,9 +61,9 @@ private
 \ THE LIFECYCLE CALLBACKS RUN HERE, BEFORE THE CAPTURE READS THE APPLICATION'S
 \ DATA. A registrant holds process-local state - lib/task.f's eight dlsym cells,
 \ a mapped buffer, an open session - taken by THIS process while the application
-\ loaded, and the image restores none of it. src/habu/snap.f RETIRE-AND-PERSIST
-\ runs PREPARE first for the snapshot path and src/habu/native-runtime.f
-\ CAPTURE-PREPARE does the same for the engine build; the stripped link did not,
+\ loaded, and the image restores none of it. src/habu/native-runtime.f
+\ CAPTURE-PREPARE runs PREPARE first for the engine build and for the snapshot
+\ path (src/habu/app-image-core.f APP-IMAGE:SAVE); the stripped link did not,
 \ so an application whose load-time code took a foreign address was refused with
 \ `stripped AOT persistent data holds a pointer into memory the build mapped
 \ word=MUNMAP-XT` (test/stripped-lifecycle-prepare.f). Last before LINK, not

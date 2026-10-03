@@ -20,9 +20,8 @@ create ERR CAP allot
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
-   src u CAPTURE want T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N drop ;
+   src u CAPTURE {: outu:len erru:len oc :}
+   src u OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED= ;
 
 : REJECTS ( ptr u8 n -- )
    VIOLATION-RC EXPECT ;

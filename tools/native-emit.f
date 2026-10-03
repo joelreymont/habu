@@ -59,6 +59,7 @@ require src/habu/aot-decl.f
 require src/habu/aot-ident.f
 require src/habu/aot-owned.f
 require src/habu/habu2.f
+require src/habu/sign-id.f
 require src/habu/driver-io.f
 require tools/native-layout.f
 
@@ -140,7 +141,7 @@ public
    host count TRANSLATE-FIXED
    0 0= STDIN? !
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
-   s" hb" path size DRV-EMIT-IMAGE ;
+   SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
 
 : WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
    dup AOT-OWNED:ORIGIN@ {: origin:n :}

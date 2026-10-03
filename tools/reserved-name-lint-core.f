@@ -104,12 +104,6 @@ private
 : RNL-TOK-END ( n -- n ) {: k :}
    k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
-: RNL-PARSE-NEXT? ( n -- bool ) {: k :}
-   k LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" [char]" LINT-STR=CI if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" [']" LINT-STR= ;
-
 : RNL-COLON-DEFINER? ( n -- bool ) {: k :}
    k LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" +:" LINT-STR= if LINT-TRUE exit then
@@ -260,7 +254,6 @@ private
    a 1+ u 1- RNL-NUM-BODY? ;
 
 : RNL-DOT-DIGIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ contains a ".<digit>" tail
-   u 2 < if LINT-FALSE exit then
    u 1- 0 ?do
       a i + c@ RNL-DOT-C =
       a i + 1+ c@ RNL-DIGIT? and if LINT-TRUE unloop exit then
@@ -337,19 +330,29 @@ private
    k LINT-LEX:TOKEN RNL-NUMERIC-NAME? if k RNL-REPORT-NUM then ;
 
 : RNL-HANDLE-IN-DEF ( -- )
-   RNL-I @ RNL-PARSE-NEXT? if RNL-I @ 1+ RNL-I ! exit then
    RNL-I @ LINT-LEX:TOKEN s" ;" LINT-STR= if 0 RNL-IN-DEF ! then ;
+
+\ A definer reads its name with parse-name, so the lexer reads the token after
+\ one again by that rule and marks it an operand: `: \` defines `\`, a reserved
+\ word on the next line is not its name, and the scan skips the name.
+: RNL-NAME ( -- )
+   RNL-I @ LINT-LEX:OPERAND
+   RNL-I @ 1+ RNL-CHECK-NAME ;
 
 : RNL-HANDLE-TOP ( -- )
    RNL-I @ RNL-COLON-DEFINER? if
-      RNL-I @ 1+ RNL-CHECK-NAME
+      RNL-NAME
       -1 RNL-IN-DEF !
       exit
    then
-   RNL-I @ RNL-DATA-DEFINER? if RNL-I @ 1+ RNL-CHECK-NAME then ;
+   RNL-I @ RNL-DATA-DEFINER? if RNL-NAME then ;
 
+\ An operand is data in either state: `char : constant COLON` defines COLON,
+\ not a word named `constant`, `[char] ;` ends no definition, and after
+\ `create char` the next `:` starts one.
 : RNL-SCAN-TOKEN ( -- )
    RNL-I @ RNL-WORD? 0= if exit then
+   RNL-I @ LINT-LEX:OPERAND? if exit then
    RNL-IN-DEF @ if RNL-HANDLE-IN-DEF else RNL-HANDLE-TOP then ;
 
 : RNL-SCAN ( -- )

@@ -1,8 +1,7 @@
 \ stripped-entry-lib.f - the fixture the stripped-entry gate rows share: the
 \ hostile subject whose private, public and global words collide by name, the
 \ stripped build through tools/hb-build.f, the image run, and the refusal check
-\ on the maker child alone. BUILD preloads tools/hb-build-lib.f at tier 0, so a
-\ build skips the tier-1 library compile that test/stripped-image.f keeps.
+\ on the maker child alone.
 \ Loaded by test/stripped-entry.f and test/stripped-entry-qualified.f. It runs
 \ nothing; each row reopens package STRIPPED-ENTRY-TEST and runs the cases it
 \ owns in a tree of its own.
@@ -45,7 +44,6 @@ variable GOT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+
-   s" tools/hb-build-lib.f" GE-ARG+
    s" tools/hb-build.f" GE-ARG+
    s" --" GE-ARG+
    entryu 0 > if

@@ -1,0 +1,9 @@
+---
+title: Give every source scanner the raw operand rule
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-10-01T07:21:13.506088+02:00"
+---
+
+Problem: pprlwrtl 0a59948c makes check.f's pre-pass take a parsing keyword's operand raw (parse-name's rule), but two scanners still do not. (1) tools/reserved-name-lint-core.f:348 skips one LINT-LEX token, and tools/lint/source-lex.f's SOURCE loop (:539) drops a '\' operand with the rest of its line, so after 'char \' the lint skips the next line's first word: 'char \' NL ': 42 ( -- ) ;' loads rc 0, the parent's check.f refused it E-NUMERIC-DEFINITION, the reviewed tree admits it (also the body form '[char] \'). (2) tools/source-discovery.f SD-STEP (:317) has no parsing-keyword rule, so 'char s" constant SQ', ': F ( -- n ) [char] s" ; F .' and "' :" load rc 0 but check.f dies 'discovery rejected: unterminated string' rc 70. docs/forth.md:1266-1282 claims every stage follows the rule; it also says '[char] in a body' while BODY-PARSER? (src/habu/verify-source.f:291) takes 'char' too (found by the review of pprlwrtl). Acceptance: the operand rule lives where tokens are made (source-lex.f emits the raw field after a parsing word, as FIELD-OPERAND/PARSE-NEXT? already do for row bodies near :420-430; SD-STEP takes SD-RAW after one), one rule shared with the definer-name operand (dot 629efa23); every input above loads and checks alike, the numeric definition is refused again; cases written first and seen to fail; docs/forth.md states the rule as implemented. Files: tools/lint/source-lex.f, tools/reserved-name-lint-core.f, tools/source-discovery.f, tools/check-test-lib.f or tools/reserved-name-lint-test.f, docs/forth.md. Verify: tools/check-test.f, tools/reserved-name-lint-test.f, tools/source-discovery-test.f, tools/lint/text-foundation-test.f, tools/diag-origin-test.f. Ownership: raw operand rule across source scanners.

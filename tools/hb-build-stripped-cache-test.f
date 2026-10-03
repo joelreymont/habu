@@ -1,11 +1,13 @@
 \ hb-build-stripped-cache-test.f - checked fixture for tools/hb-build-lib.f:
 \ a program that allocates at run time links and runs, two links of it under
-\ separate cache roots are the same bytes, and a declared cell caching a baked
-\ table's address is mapped to the carried copy, or refused when no claim names
-\ the table. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ separate cache roots are the same bytes and so is an object hit's relink of
+\ it, and a declared cell caching a baked table's address is mapped to the
+\ carried copy, or refused when no claim names the table.
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cache-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -64,15 +66,6 @@ package HB-BUILD-CLI
 : HBT-MAPL-EXPECTED$ ( -- ptr u8 n )
    S\" A\n" ;
 
-\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
-\ offset on failure instead of printing two images into the capture.
-: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
-   au bu min 0 ?do
-      a i + c@  b i + c@ <> if i unloop exit then
-   loop
-   au bu <> if au bu min exit then
-   -1 ;
-
 \ THE ALLOCATION MOVED INTO MAIN LINKS, RUNS AND PRINTS ITS OWN BYTE: the
 \ program tools/hb-build-stripped-cells-test.f HBT-STRIPPED-MAPPED-CELL refuses,
 \ written the way that refusal suggests.
@@ -85,12 +78,23 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn HBT-MAPL-EXPECTED$ T$= ;
 
+\ The images at HBT-MAPL-OUT and HBT-MAPL-OUT2 are the same length and differ
+\ at no offset.
+: HBT-MAPL-SAME-BYTES ( -- )
+   HBT-MAPL-OUT2 FILE-SIZE  HBT-MAPL-OUT FILE-SIZE T=
+   HBT-MAPL-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
+   HBT-MAPL-OUT abuf acap READ-ALL {: au:n :}
+   HBT-MAPL-OUT2 FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
+   HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
+   abuf au bbuf bu HBT-DIFF-AT -1 T= ;
+
 \ ... and TWO LINKS OF IT ARE THE SAME BYTES. This is the equality the mapped
 \ cell broke: three stripped builds of Tender's server differed in the middle
 \ bytes of eight window cells and nowhere else. Under one cache root the second
 \ build is no link at all - the artifact cache answers it with a copy of the
 \ first, and equal bytes would prove nothing about the linker - so it gets a
 \ cache root of its own, and the maker having run is asserted, not assumed.
+\ The second link stays for HBT-STRIPPED-OBJECT-RELINK.
 : HBT-STRIPPED-SAME-TWICE ( -- )
    HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
@@ -101,12 +105,25 @@ package HB-BUILD-CLI
    HBT-MAPL-SRC HBT-MAPL-OUT2 HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-TMP BUILD-CACHE:ROOT!
-   HBT-MAPL-OUT2 FILE-SIZE  HBT-MAPL-OUT FILE-SIZE T=
-   HBT-MAPL-OUT FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
-   HBT-MAPL-OUT abuf acap READ-ALL {: au:n :}
-   HBT-MAPL-OUT2 FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
-   HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
-   abuf au bbuf bu HBT-DIFF-AT -1 T=
+   HBT-MAPL-SAME-BYTES
+   HBT-MAPL-OUT HBT-REMOVE-FILE? ;
+
+\ ... and AN OBJECT HIT WRITES THE BYTES THE MAKER WROTE. The second link above
+\ is a fresh build: its maker wrote HBT-MAPL-OUT2 and the build stored the
+\ object text under that root. With that root's artifact entry gone, the same
+\ source misses the artifact and hits the object, and this process relinks it
+\ through tools/object-image.f OBJIMG:WRITE. One source, target and engine are
+\ one image whichever cache path writes it. A relink signed under an identifier
+\ of its own (`hb-obj`, where the maker signs `hb-prog`) was one byte shorter,
+\ differing in the code signature and the two header fields that size it.
+: HBT-STRIPPED-OBJECT-RELINK ( -- )
+   HBT-TWICE-CACHE BUILD-CACHE:ROOT!
+   HBT-REMOVE-ARTIFACT
+   HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBB-OBJECT-HIT @ 0 <> TTRUE
+   HBB-MAKER-RUN @ 0= TTRUE
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-MAPL-SAME-BYTES
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
 
@@ -141,8 +158,10 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-CACHE-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
+   HBT-STRIPPED-OBJECT-RELINK
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED
    CLEANUP-RUN

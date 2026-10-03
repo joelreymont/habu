@@ -10,7 +10,7 @@
 \ pulls in app-image-core.f, and that requires eight lib modules including
 \ lib/process-env.f, so GETENV's table was already below the window before the
 \ application was even read. The latch words therefore cannot live in aot-lib.f
-\ with the rest of the linker. tools/aot-build-core.f loads THIS file, opens the
+\ with the rest of the linker. tools/aot-build-open.f loads THIS file, opens the
 \ window, loads the application, latches the span, and only then loads the linker
 \ above it. src/habu/aot-decl.f is the other lib-free candidate and is deliberately
 \ not used: it is baked into the engine (tools/bootstrap.sh SRC_COMMON,
@@ -50,21 +50,42 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ the same one-liner for package AOT-ARM, which this file's package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
+\ The dictionary record count tools/aot-build-open.f takes right after
+\ requiring this file, before it loads anything an application can name. A
+\ record above the engine's own seal watermark and below it was loaded by this
+\ process ahead of the maker - on the engine this file's own private records,
+\ on the keyed linker image the image's whole load (test/preloaded-engine.f
+\ rule 3) - and aot-closure.f ADD-CLO refuses to carry one. The window opens
+\ later, at AOT-DATA-START: the opener's own requires land between the two, so
+\ the module they load (lib/executable-build.f) is the copy a production build
+\ carries.
+variable OPENER-NDICT
+
+\ The window owns a literal pool, and the application owns it only while it
+\ loads: a body interned into it lands inside the span and travels in the image.
+\ AOT-DATA-START keeps the maker's active pool and opens the application's;
+\ AOT-DATA-SPAN hands the maker its pool back, so nothing the maker compiles
+\ after the application - tools/aot-build.f, which only the engine's maker
+\ compiles, and the linker - adds a byte to the image (tools/hb-build-aot-test.f
+\ BUILD-AOT-SPAN-ENGINE). AOT-APP-POOL selects the application's pool again for
+\ the link.
+PTR-VARIABLE MAKER-POOL
+PTR-VARIABLE APP-POOL
+
 : AOT-DATA-START ( -- )
+   NSTR:ACTIVE MAKER-POOL !
    NSTR:WINDOW-OPEN
+   NSTR:ACTIVE APP-POOL !
    \ The application owns the literal bodies, not the compiler's lookup tables.
    \ NEW-POOL places its owner and row tables before the arena. Start at the
    \ arena so the tables stay outside capture like the compiler's ACTIVE-P.
    \ A saved SOURCE-ROWS pointer then takes the ordinary unrestored-DATA refusal.
    NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
-\ Latch the application span before loading the linker. tools/aot-build.f saves
-\ its active NSTR owner, opens a separate pool for the linker, and switches back
-\ before LINK. Closure compilation therefore interns into the application pool;
-\ DATA-TARGET's REINTERN-OWNED copies any reached literal from another pool into
-\ it. Linker-only literals stay above BLOB-END. Keeping the application pool
-\ active during linker loading carried even fs-identity's three NUL-terminated
-\ symbol strings into an empty MAIN image (HBT-SIZE-AOT).
+\ Latch the application span before loading the linker, and hand the maker back
+\ its literal pool. Keeping the application's pool active while the linker
+\ loaded carried even fs-identity's three NUL-terminated symbol strings into an
+\ empty MAIN image (HBT-SIZE-AOT).
 \
 \ THE CARRIED RUN: room inside the window for the engine constants the application
 \ READS. An application that FORMATS an integer, PARSES one or HASHES a string
@@ -105,7 +126,14 @@ PTR-VARIABLE CARRY-P
 : AOT-DATA-SPAN ( -- )
    CARRY-RESERVE
    HERE-N  BLOB-END !
-   BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
+   BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN !
+   MAKER-POOL @ NSTR:SWITCH ;
+
+\ The link's only interning: aot-closure.f MAPPED-DATA copies each literal the
+\ closure reaches from another pool into the ACTIVE one, which must be the pool
+\ inside the window.
+: AOT-APP-POOL ( -- )
+   APP-POOL @ NSTR:SWITCH ;
 
 \ Opening the window is a separate maker script from linking (tools/aot-build-open.f
 \ and tools/aot-build-core.f), so linking without it is a reachable mistake rather

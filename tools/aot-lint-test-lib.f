@@ -111,23 +111,24 @@ create OUT BUF-CAP allot
    OUT BUF-CAP LINT-OUT-BUFFER!
    json AOT-LINT:JSON! ;
 
-: CORE-FINISH ( -- n n outcome )
+: CORE-FINISH ( -- n n n )
    [: AOT-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 rc OUTCOME:EXITED ;
+   0 rc ;
 
-: RUN-CORE ( ptr u8 n -- n n outcome )
+: RUN-CORE ( ptr u8 n -- n n n )
    LINT-FALSE CORE-SETUP
    AOT-LINT:FILE
    CORE-FINISH ;
 
-: RUN-JSON-LABEL ( ptr u8 n -- n n outcome ) {: a:ptr u:n :}
+: RUN-JSON-LABEL ( ptr u8 n -- n n n ) {: a:ptr u:n :}
    LINT-TRUE CORE-SETUP
    a u s" <stdin>" AOT-LINT:FILE-AS
    CORE-FINISH ;
 
-: EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED= ;
+: EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
+   code want T=
+   outu erru ;
 
 : TEST-GOOD ( -- )
    GOOD RUN-CORE 0 EXPECT-EXIT {: outu:n erru:n :}

@@ -14,6 +14,7 @@
 require test/checker-assert.f
 require tools/prot-wid-probe.f
 require lib/adt/result.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM
@@ -28,12 +29,12 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
    gu wu <> if
-      T-FAIL s" assert string len: expected " type wu . s" got " type gu . cr exit
+      T-FAIL s" assert string len: expected " type wu FMT:.INT s"  got " type gu FMT:.INT cr exit
    then
    0 begin dup gu < while
       dup ga + c@  over wa + c@ <> if
@@ -886,8 +887,8 @@ s" EXPLICIT-CTOR-FAMILY" type cr
 \ ---------------------------------------------------------------------------
 package CTOR-PAYPROV-TEST
 
-7132 constant E-COMMITTED-PAYLOAD   \ type-family.f E-TFAM-PAYLOAD
-7133 constant E-PROVIDER            \ sumtype.f E-TDECL-PROVIDER
+TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
+7133 constant E-TDECL-PROVIDER      \ sumtype.f's, private there
 \ sumtype.f TDPLAN-PREFLIGHT-DEFINITIONS: a generated definition the checker
 \ refused, which is how a whole generated declaration is rejected.
 70   constant E-PREFLIGHT
@@ -1121,7 +1122,7 @@ public
 : FLIP-CALLS ( -- n ) FLIP-N-CALLS @ ;
 : STALE-CODE ( -- n ) [: STALE-BODY ;] catch ;
 : OVERRUN-CODE ( -- n ) [: OVERRUN-BODY ;] catch ;
-: PROVIDER-CODE ( -- n ) E-PROVIDER ;
+: PROVIDER-CODE ( -- n ) E-TDECL-PROVIDER ;
 : COMMITTED-PAYLOAD-CODE ( -- n ) E-COMMITTED-PAYLOAD ;
 
 \ the live probe: one candidate frame, one event transaction, both renders, then

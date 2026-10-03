@@ -331,7 +331,9 @@ variable VFY-PATH-U
 
 \ The child's run on the subject's bytes, CHK-BYTES-A and CHK-BYTES-U: its
 \ stdout into VFY-OUT and its stderr into VFY-LOG, their lengths and its end
-\ left where PROC-CAPTURE-OUTCOME@ reads them.
+\ left where PROC-CAPTURE-OUTCOME@ reads them. The end is read there, so the
+\ one returned here is dropped through the conversion that reads a deadline as
+\ a status rather than throwing it.
 : VFY-CAPTURE ( -- )
    VFY-ARGV
    VFY-OUT-CAP VFY-OUT-RESERVE
@@ -339,7 +341,7 @@ variable VFY-PATH-U
    s" bin/hb" >LEN CHK-BYTES-A @ CHK-BYTES-U @ >LEN
    0 VFY-OUT VFY-OUT-CAP >LEN 0 VFY-LOG VFY-ERR-CAP >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   PROC-OUTCOME>RC drop 2drop ;
+   PROC-OUTCOME>DEADLINE-RC drop 2drop ;
 
 
 : VFY-ANSWER-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}

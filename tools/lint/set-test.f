@@ -8,6 +8,7 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-INTERN
 private
@@ -15,7 +16,7 @@ private
 variable TEST-N
 : ASSERT  ( bool -- )
    0= if
-      s" set-test failed at assertion " type TEST-N @ . cr
+      s" set-test failed at assertion " type TEST-N @ FMT:.INT cr
       s" set-test failed" 1 die
    then
    TEST-N @ 1+ TEST-N ! ;
@@ -129,7 +130,7 @@ create ATTR-BUF ATTR-CAP allot
    TEST-ATTRIBUTION
    TEST-ATTRIBUTION-OK
    INTERN-RESET
-   s" set-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
+   s" set-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 SET-TEST
 

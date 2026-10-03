@@ -1,0 +1,1 @@
+{"schema_version":1,"kind":"habu_repair_packet","file":"lib/string.f","line":1,"column":1,"code":"E-ENGINE-PROVIDED","repair_class":"rebuild_engine","suggestion":"The engine provides this source; rebuild bin/hb to check a change to it.","diagnostic_count":1,"instruction":"Rebuild bin/hb to check this source; no code change answers this diagnostic."}

@@ -20,9 +20,9 @@
 \ builder's closure, or another engine, names another file, and no stale host
 \ is reused.
 \
-\ PROVIDE is the whole interface: it names the private path a caller wants its
-\ own copy at. The keyed artifact itself is never handed out, so no suite can
-\ run from - or clobber - the shared bytes. Under a gate the engine must be
+\ PROVIDE names the private path a caller wants its own copy at, so no suite
+\ runs from - or clobbers - the shared bytes; PATH$ names the keyed artifact
+\ itself for a caller that only reads it. Under a gate the engine must be
 \ granted (test/image-grant.f): the gate's whitebox-engine build row settles it
 \ and copies it for the WHITEBOX-SUITE rows (test/gate-images.f), and a row
 \ that fetches its own copy starts only after that row passed.
@@ -53,6 +53,7 @@ create ERR IO-CAP allot
 
 variable PATH-U
 variable WORK-U
+variable WORK-FD
 variable TMP-U
 variable EMIT-RC
 variable RESOLVED?
@@ -95,15 +96,16 @@ variable RESOLVED?
 
 \ The builder writes into a private directory of its own, so a half-written
 \ image is never visible at the keyed path: only the closing rename publishes it.
-\ It is registered for removal at exit, so a die before WORK-CLOSE still removes
-\ it.
+\ It is held until WORK-CLOSE and registered for removal at exit, so a die
+\ before WORK-CLOSE still removes it, and the next build removes it after a
+\ kill (BUILD-CACHE:WORK-OPEN).
 : WORK-OPEN ( -- )
-   BUILD-CACHE:ROOT$ WORK-PREFIX$ MAKE-TEMP-DIR WORK-BUF WORK-U COPY-OUT!
-   WORK-BYTES CLEANUP-TREE+
+   WORK-PREFIX$ BUILD-CACHE:WORK-OPEN FD>N WORK-FD !
+   WORK-BUF WORK-U COPY-OUT!
    WORK-BYTES s" hb-whitebox" TMP-BUF JOIN-PATH TMP-U ! ;
 
 : WORK-CLOSE ( -- )
-   WORK-BYTES REMOVE-TREE ;
+   WORK-BYTES WORK-FD @ >FD BUILD-CACHE:WORK-CLOSE ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -130,10 +132,17 @@ variable RESOLVED?
    BUILD-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN WHITEBOX-KEY:BUILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type
    2 ERR erru LEN>N write drop
+   \ A deadline that expired, this capture's or one in the build
+   \ (tools/native-build-args.f), is named and thrown again, so the gate pool
+   \ labels this build row TIMEOUT-UNDER-LOAD.
+   rc PROC-TIMEOUT-RC = if
+      s" whitebox-engine: unsealed engine build ran out of time" type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
 
 : PUBLISH ( -- )
@@ -148,7 +157,9 @@ variable RESOLVED?
 \ own code: a throw is caught here, and a die in BUILD-RUN or PUBLISH ends the
 \ process, whose exit registry removes what WORK-OPEN registered. A published
 \ engine then prunes its family (BUILD-CACHE:PRUNE), which reports its own
-\ failures and never fails the build.
+\ failures and never fails the build. WORK-PREFIX$ is also the stem of the
+\ whitebox-engine-<seed>-<attempt> work directories a builder that holds none
+\ made, which pruning takes once they are a day old.
 : EMIT ( -- )
    WORK-OPEN
    ['] BUILD-RUN catch EMIT-RC !

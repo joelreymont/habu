@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/float.f
 require lib/ieee754.f
+require lib/test/guard-page.f
 require src/core/bytes.f
 
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
@@ -168,6 +169,33 @@ public
 
 ;package
 
+\ A negative length is refused before a byte is read; each span ends at an
+\ inaccessible page, so a read faults. Unrefused, STR>FLOAT read the first byte,
+\ answered SOME for a sign and -1, and for a sign and the minimum cell `u 1-`
+\ wrapped to the maximum and the exponent scan ran past the span.
+: FL-DROP ( option<r> -- )
+   MATCH option
+     none OF ENDOF
+     some OF drop ENDOF
+   ;MATCH ;
+
+: FL-EDGE-NEG ( n -- ) {: u:n :}
+   0 0 GUARD-PAGE:TAIL u STR>FLOAT FL-DROP ;
+
+: FL-SIGNED-NEG ( n n -- ) {: sign:n u:n :}
+   2 [char] 1 GUARD-PAGE:TAIL {: a:ptr :}
+   sign a c!
+   a u STR>FLOAT FL-DROP ;
+
+: FL-NEGATIVE-LENGTHS ( -- )
+   [: STR-MINUS -1 FL-SIGNED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: STR-PLUS -1 FL-SIGNED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: STR-MINUS STR-MIN-I64 FL-SIGNED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: STR-PLUS STR-MIN-I64 FL-SIGNED-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: -1 FL-EDGE-NEG ;] E-STR-BOUNDS TTHROWSQ
+   [: STR-MIN-I64 FL-EDGE-NEG ;] E-STR-BOUNDS TTHROWSQ ;
+
 FL-RUN
 DECIMAL-FLOAT-TEST:RUN
+FL-NEGATIVE-LENGTHS
 T-REPORT

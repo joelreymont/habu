@@ -81,11 +81,16 @@ private
 \ its source.
 BODYBUF-CAP constant TEXT-CAP
 
-\ A name past it is refused rather than truncated into one that denotes another word.
+\ The longest definition name this compiler takes. Tier 0 and the dictionary hold
+\ any name the body capture holds, but each backend copies a function's name into
+\ a 128-byte buffer, and a quotation's function is named by the definition's
+\ name, `;does`, `[:` and its ordinal. A longer name is refused by its length
+\ rather than truncated into one that denotes another word.
 64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
-create NAME-BUF NAME-CAP allot
+\ The definition's name is its spelling in TXT, whole, which stays put until the
+\ next definition is recorded: no copy that a longer name could run past.
 PTR-VARIABLE NAME-A
 variable NAME-U
 
@@ -109,11 +114,10 @@ variable PRIOR-GLUE
 variable PRIOR-DEAD
 variable PRIOR-CAST
 variable PRIOR-CALLABLE
-variable PRIOR-TARGET-VALUE
-variable PRIOR-TARGET-U
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
+variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
@@ -215,9 +219,10 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 \ when a rejected second `:` left a tentative spelling in the record slot.
 : KEEP-TAPE-NAME ( -- )
    TAPE-NAME$ {: a:ptr u:n :}
-   a NAME-A !  u NAME-U !
-   u NAME-CAP > if E-NCOMP-TEXT throw then
-   a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
+   a NAME-A !  u NAME-U ! ;
+
+: NAME$ ( -- ptr u8 n )
+   NAME-A @ NAME-U @ ;
 
 \ TRUST-DECL is deliberately unavailable to checked code. Register only after
 \ the scan has recorded the exact source spelling from the tape: the pending
@@ -238,7 +243,7 @@ TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
 \ exactly what tier 0 does under `0 set-check`, and what a window depends on,
 \ because LOGICAL-RESET clears the hook and the window's own check-hook.f
 \ installs one part-way through its prefix - but the tape still has to be filled,
-\ so the owner's scan runs and its verdict is dropped rather than enforced.
+\ so the owner's scan runs and its verdict is reported rather than enforced.
 TRUSTED: AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
 
 TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
@@ -253,11 +258,22 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
-: CHECK-PARENT ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ The scan with the hook cell empty. Its verdict refuses nothing, but a body it
+\ did not certify may have left no effect to compile against, and KEEP-ARITY
+\ refuses that over the verdict kept here. The reason is printed now, while the
+\ owner still holds the scan that found it: a does> head's scan is replaced by
+\ its clause's before KEEP-ARITY runs.
+: CHECK-HOOKLESS ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u CHECKER-OWNER:CHECK-UNJUDGED {: v:n :}
+   v -1 <> if CHECKER-OWNER:REPORT then
+   v M-UNJUDGED ! ;
+
+: CHECK-PARENT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
-   hook 0= if
-      a u CHECKER-OWNER:CHECK-UNJUDGED drop -1 exit then
+   hook 0= if a u CHECK-HOOKLESS -1 exit then
    a u hook CALL-INSTALLED ;
 
 : CHECK-SOURCE ( -- n )
@@ -299,7 +315,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then
-   TRUSTED? if NAME-BUF NAME-U @ TRUST-SIG$ REGISTER-TRUST then ;
+   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -340,7 +356,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop false exit then
-   XREF-START  rec XREF-WORDLIST  = ;
+   XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
 : RECORD-NAME? ( ptr n ptr u8 n -- bool )
    {: rec:ptr a:ptr u:n :}
@@ -354,11 +370,18 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ owns the record. Matching only the tail would let another package impersonate
 \ this definition.
 : RECORD-NAME-CK ( -- )
-   REC-INDEX XREF-REC  NAME-BUF NAME-U @  RECORD-NAME? 0= if
+   REC-INDEX XREF-REC  NAME$  RECORD-NAME? 0= if
       E-NCOMP-NAME throw
    then ;
 
+\ Refused after the scan, like every other post-scan refusal, so RETRACT finds
+\ the signature the scan or REGISTER-TRUST recorded under the whole name.
+: NAME-LEN-CK ( -- )
+   NAME-U @ NAME-CAP > if E-NCOMP-NAME-CAP throw then ;
+
 \ ---- what the definition takes and leaves ------------------------------------
+70 constant RC-REJECT     \ the check hook's reject status (check-hook.f CHECK-RC)
+
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
 \ from src/compiler/native/dict.f at the point it is used, and this is the same
 \ reader asked about the definition being compiled - so the routine's contract
@@ -367,25 +390,32 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
 \ vector against; a term of a family more than one cell wide makes the two
 \ counts differ, and dict.f EFF-CELLS is where that choice is stated.
 \
-\ ASKED WITH THE SOURCE SPELLING copied by KEEP-TAPE-NAME: bare for an
+\ ASKED WITH THE SOURCE SPELLING kept by KEEP-TAPE-NAME: bare for an
 \ author's private definition, qualified when a public definition names a
 \ different wordlist. A TRUSTED: effect is registered under that same spelling
 \ after the scan, so a family-typed qualified effect has one owner here.
 \
-\ THE ABSENT ANSWER IS NAMED AND HAS NO REACHING CASE TODAY, which is written
-\ down rather than left for a reader to assume either way. SPELL-ARITY answers
-\ ARITY-NONE for a name the checker holds no effect for, so the code below is the
-\ reader's own contract handled rather than a -1 let through to NELAB:COLON,
-\ which would refuse it as E-NELAB-ARITY and name the wrong thing. No shape
-\ reaches it: E-NCOMP-VERDICT already refuses anything the engine's check did
-\ not certify, and this asks about a record published one step earlier in the
-\ scope that published it. A package opened and closed by the source is
-\ E-NCOMP-NAME,
-\ an unsigned body answers its inferred effect. Dot
-\ habu-reach-the-absent-360162f5 owns finding one or retiring the code.
+\ THE ABSENT ANSWER. SPELL-ARITY answers ARITY-NONE for a name the checker holds
+\ no effect for, and it is refused here rather than let through to NELAB:COLON
+\ as a -1, which would refuse it as E-NELAB-ARITY and name the wrong thing. With
+\ a check hook installed nothing reaches it: E-NCOMP-VERDICT has refused every
+\ body the check did not certify. With the cell empty nothing has
+\ (CHECK-HOOKLESS), and the checker records no effect for a body it rejects or
+\ cannot check: branches that leave different depths, another type error, a
+\ callee it cannot resolve (in a window's core prefix that includes a prelude
+\ word such as `0<>`, not loaded yet), a callee the host's checker holds as a
+\ trust-boundary primitive (E-CAP-TRUSTED, from a PRIM: row the window lacks),
+\ or an unsigned body naming a word left to the run. The scan has printed why,
+\ so the refusal takes the check hook's reject status. Multi-error mode records
+\ a rejected body's declaration, and compiling goes on against it. After a
+\ certified scan nothing reaches it either: a package opened and closed by the
+\ source is E-NCOMP-NAME and an unsigned body answers its inferred effect.
 : KEEP-ARITY ( -- )
-   NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = if E-NCOMP-ARITY throw then
+   NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
+   din NDICT:ARITY-NONE = if
+      M-UNJUDGED @ -1 <> if RC-REJECT throw then
+      E-NCOMP-ARITY throw
+   then
    din M-IN !  dout M-OUT ! ;
 
 \ ---- binding an earlier definition shadowed by the pending record -------------
@@ -409,11 +439,10 @@ create SPELL-BUF SPELL-CAP allot
    \ an ambiguous token cannot be identified as a local here. Ambiguity proves
    \ that the token is not a prior binding; preserve that result and leave the
    \ normal elaborator to resolve the local first.
-   u PRIOR-TARGET-U !
-   [: SPELL-BUF PRIOR-TARGET-U @ NDICT:CALL-TARGET PRIOR-TARGET-VALUE ! ;] catch {: rc:n :}
+   u [: SPELL-BUF swap NDICT:CALL-TARGET ;] catch {: target rc:n :}
    rc E-USING-AMBIGUOUS = if exit then
    rc 0<> if rc throw then
-   PRIOR-TARGET-VALUE @ PRIOR-ENTRY @ <> if exit then
+   target PRIOR-ENTRY @ <> if exit then
    r sy HIR-WORD:MODELS? if exit then
    \ Structural operands can have the same spelling as the definition's bare
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
@@ -435,7 +464,7 @@ create SPELL-BUF SPELL-CAP allot
 \ compiled against that same certificate. A wrong answer cannot publish a wrong
 \ routine: either direction is refused by the validator or the memory-order rule.
 : NO-RETURN? ( -- bool )
-   NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
+   NAME$ NDICT:SPELL-DEAD? ;
 
 \ How control reaches and leaves this definition's routine. The backend composes
 \ its own machine contract from this and from what the definition takes and
@@ -523,9 +552,10 @@ create SPELL-BUF SPELL-CAP allot
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
+   NAME-LEN-CK
    KEEP-ARITY
    p r BIND-PRIOR
-   NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
+   NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
    EMITTED
    PUBLISH-IT
@@ -638,12 +668,12 @@ INSTALL-FORGET
    then
    TRUSTED? if
       NAME-U @ 0= if exit then
-      NAME-BUF NAME-U @ CHECKER-OWNER:USIG-TRUNCATE
+      NAME$ CHECKER-OWNER:USIG-TRUNCATE
       exit
    then
    M-VERDICT @ -1 <> if exit then
    NAME-U @ 0= if exit then
-   NAME-A @ NAME-U @ CHECKER-OWNER:USIG-TRUNCATE ;
+   NAME$ CHECKER-OWNER:USIG-TRUNCATE ;
 
 : LENGTH-CK ( -- )
    M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
@@ -654,11 +684,30 @@ INSTALL-FORGET
 : ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop ;
 
-: REPORT-FAILURE ( -- )
-   s" ncomp: cannot compile " ERROR-TEXT
-   NAME-BUF NAME-U @ ERROR-TEXT
+create DIGIT 1 allot
+
+\ A count for a person, in decimal.
+: COUNT-TEXT ( n -- )
+   {: v:n :}
+   v 10 >= if v 10 / RECURSE then
+   v 10 mod STR-ZERO + DIGIT c!
+   DIGIT 1 ERROR-TEXT ;
+
+: NAME-CAP-TEXT ( -- )
+   s" : a " ERROR-TEXT  NAME-U @ COUNT-TEXT
+   s" -byte name; the limit is " ERROR-TEXT  NAME-CAP COUNT-TEXT
+   s"  bytes" ERROR-TEXT ;
+
+\ The elaborator's refusal names the token it stopped at.
+: REFUSED-TEXT ( -- )
    NELAB:REFUSED$ {: a:ptr u:n :}
-   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
+   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then ;
+
+: REPORT-FAILURE ( n -- )
+   {: rc:n :}
+   s" ncomp: cannot compile " ERROR-TEXT
+   NAME$ ERROR-TEXT
+   rc E-NCOMP-NAME-CAP = if NAME-CAP-TEXT else REFUSED-TEXT then
    S\" \n" ERROR-TEXT ;
 
 : RUN ( -- )
@@ -672,7 +721,7 @@ INSTALL-FORGET
       entry-rc throw
    then
    M-RC @ {: rc:n :}
-   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
+   rc 0 <> if rc REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
@@ -682,6 +731,7 @@ INSTALL-FORGET
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
+   -1 M-UNJUDGED !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !
@@ -690,7 +740,8 @@ INSTALL-FORGET
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
-   0 NAME-U ! ;
+   0 NAME-U !
+   NELAB:REFUSED-RESET ;
 
 public
 

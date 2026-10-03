@@ -17,6 +17,7 @@
 
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using SCHEMA-REG
 using TFAM
@@ -35,7 +36,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 : T-TRUE ( bool -- ) {: b:bool :}
    #CASE @ 1 + #CASE !
@@ -111,6 +112,7 @@ DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 \ ---------------------------------------------------------------------------
 s" STRUCTURE field 0 ;STRUCTURE" TRY 7110 T=                     \ reserved keyword name
 s" STRUCTURE n 0 ;STRUCTURE" TRY 7110 T=                         \ single-letter type name
+s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=             \ the pointer constructor's tail
 s" STRUCTURE Bad 0 ;STRUCTURE" TRY 7101 T=                       \ upper-case name (case)
 s" STRUCTURE foo q ;STRUCTURE" TRY 7108 T=                       \ non-numeric arity
 s" STRUCTURE foo 24 ;STRUCTURE" TRY 7108 T=                      \ arity above the shared 23 cap
@@ -126,6 +128,13 @@ s" STRUCTURE foo 0 VARIANT q ;VARIANT ;STRUCTURE" TRY 7107 T=    \ mixed legacy 
 s" STRUCTURE foo 0 FIELD x n" TRY 7107 T=                        \ missing ;STRUCTURE
 s" STRUCTURE foo 0 POLICY nope FIELD x n ;STRUCTURE" TRY 7116 T= \ unknown layout policy
 s" STRUCTURE foo 0 DERIVE nope FIELD x n ;STRUCTURE" TRY 7119 T= \ unknown derive feature
+
+\ An effect reads a bare `ptr` as the pointer constructor in every scope, so the
+\ tail is reserved ahead of the global `ptr` family's duplicate check (7102),
+\ and a package may not shadow it as it may shadow any other global family.
+package SDPTR
+s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=
+;package
 
 \ ---------------------------------------------------------------------------
 \ 8. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
@@ -523,11 +532,11 @@ s" rpsdafter" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
 \
 \ A family or field named `if` would be compiled as the control word `if`
 \ wherever generated code names it. The legacy definers have always refused such
-\ names (sumtype.f TDECL-RESERVED?); this front end consulted only the
-\ grammar-keyword half of that list, so `STRUCTURE if 0 FIELD x n ;STRUCTURE`
+\ names (the family gate, TYPE-NAME:FAMILY-RESERVED?); this front end consulted
+\ only the grammar-keyword half of that list, so `STRUCTURE if 0 FIELD x n ;STRUCTURE`
 \ was accepted while the legacy spelling of the same name was refused 7110. The
 \ list now lives once, in TYPE-NAME:CONTROL? (src/core/type-family.f), read here
-\ through CONTROL-KW? and by field rows through PF-RESERVED?.
+\ through TYPE-NAME:FAMILY-RESERVED? and by field rows through PF-RESERVED?.
 \
 \ The family position answers 7110 (this front end's own name gate) and the
 \ field position answers 7125 (the field record's gate, the same code and wording
@@ -827,7 +836,7 @@ s" SDAG2 ( ptr sdagen<a> -- ptr n ) SDAGEN:V" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ...but a type argument that is itself a FAMILY is not an instantiation of the
 \ accessor at all, whatever its width: the parameter binds no family term
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), so the call
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), so the call
 \ is refused at the accessor's own token before any address arithmetic is judged.
 STRUCTURE sdaw1 0 FIELD z n ;STRUCTURE                 \ one cell
 STRUCTURE sdaw2 0 FIELD z n FIELD w n ;STRUCTURE       \ two cells

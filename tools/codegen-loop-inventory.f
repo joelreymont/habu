@@ -206,17 +206,19 @@ create CANREACH SPAN-MAX allot
    -1 ;
 
 \ One round of the walk: mark every successor of an already-reached instruction
-\ that stays inside the span. Answers whether anything changed.
+\ that stays inside the span. Answers whether anything changed. A mark is read
+\ only inside the span: a branch target can lie at any distance, and `and`
+\ evaluates both operands, so a span test beside the read would not stop it.
 : REACH-ROUND ( n n -- bool ) {: lo:n hi:n :}
    false
    hi 1+ lo ?do
       i REACHED? if
-         i INSN@ FALLS? i 1+ hi <= and i 1+ REACHED? 0= and if
-            i 1+ REACH! drop true
+         i INSN@ FALLS? i 1+ hi <= and if
+            i 1+ REACHED? 0= if i 1+ REACH! drop true then
          then
          i TARGET-IX {: t:n :}
-         t lo >= t hi <= and t REACHED? 0= and if
-            t REACH! drop true
+         t lo >= t hi <= and if
+            t REACHED? 0= if t REACH! drop true then
          then
       then
    loop ;
@@ -251,12 +253,12 @@ create CANREACH SPAN-MAX allot
    false
    hi 1+ lo ?do
       i CANREACH? 0= if
-         i INSN@ FALLS? i 1+ hi <= and i 1+ CANREACH? and if
-            i CANREACH! drop true
+         i INSN@ FALLS? i 1+ hi <= and if
+            i 1+ CANREACH? if i CANREACH! drop true then
          then
          i TARGET-IX {: t:n :}
-         t lo >= t hi <= and t CANREACH? and i CANREACH? 0= and if
-            i CANREACH! drop true
+         t lo >= t hi <= and if
+            t CANREACH? i CANREACH? 0= and if i CANREACH! drop true then
          then
       then
    loop ;

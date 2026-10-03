@@ -139,6 +139,16 @@ variable PAT-I
 : PAT-HUGE-ARG ( -- )
    PROC-ARGV-RESET PAT-LONG MEM-MAX-N >LEN PROC-ARGV+ ;
 
+\ The path rule can fail the same ways: an exact fill refused, one byte past it
+\ taken, a negative length taken, and a length whose NUL wraps the sum back into
+\ range.
+: PAT-PATH-BOUNDS ( -- )
+   s" a path fits when its bytes and NUL fit PROC-PATHZ-CAP" T-LABEL
+   [: PAT-LONG PROC-PATHZ-CAP 1- >LEN PROC-ARGV-CHECK-PATH ;] catch 0 T=
+   [: PAT-LONG PROC-PATHZ-CAP >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG -1 >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG MEM-MAX-N >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ ;
+
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
    s" %s:%s"  >LEN PROC-ARGV+
@@ -212,7 +222,9 @@ variable PAT-I
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-CAT ( -- )
    PROC-ARGV-RESET
    s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE-OUTCOME
-   0 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 13 T=
+   {: outu:len erru:len oc :}
+   s" /bin/cat" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 13 T=
    PAT-CAP-OUT 13 s" stdin-outcome" T$= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-TIMEOUT ( -- )
@@ -226,8 +238,9 @@ variable PAT-I
    PAT-EARLY-IN!
    s" /usr/bin/false" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
-   PAT-STDIN-CAPTURE-OUTCOME
-   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
+   PAT-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   s" /usr/bin/false" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 \ Direct both-arm coverage for RUN-ARGV-CAPTURE: printf exits clean -> ok(captured)
 \ carrying the two lengths; false exits 1 -> err(failed) carrying lengths + code.
@@ -298,6 +311,7 @@ variable PAT-SAVED-STDIN
    PAT-FITS-BOUNDS
    [: PAT-NEG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-HUGE-ARG ;] E-PROC-OUTPUT TTHROWSQ
+   PAT-PATH-BOUNDS
    PAT-RUN-ARGV-CAPTURE
    PAT-RUN-ARGV-CAPTURE-RESULT
    PAT-RUN-ARGV-CAPTURE-EXACT

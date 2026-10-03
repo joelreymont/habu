@@ -13,6 +13,7 @@ require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consum
 require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 require tools/build-target.f              \ the target the emitted sources are for
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -165,9 +166,7 @@ create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
 create BF-TMP-BUF FS-PATH-CAP allot
-FS-PATH-CAP SPAN-BUFFER: BF-INSTALL-TMP-BUF     \ FS-MUT-SUFFIX-PATH destinations
-FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF
-FS-PATH-CAP SPAN-BUFFER: BF-HOST-TMP-BUF
+FS-PATH-CAP SPAN-BUFFER: BF-HOST-DST-BUF       \ a FS-MUT-SUFFIX-PATH destination
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -205,9 +204,7 @@ variable BF-REC-PREFIX?
 variable BF-REC-STAGE?
 variable BF-REC-STDIN?
 variable BF-ENGINE-U
-variable BF-INSTALL-TMP-U
 variable BF-HOST-DST-U
-variable BF-HOST-TMP-U
 variable BF-FORCE
 variable BF-PIN-N
 variable BF-PIN-ON
@@ -364,8 +361,13 @@ variable BF-CERT-PATH-U
 : BF-EXPECT ( ptr u8 n -- )
    BF-ART$ BF-EXPECT-PATH ;
 
-: BF-RC0 ( n -- )
-   0 <> if E-BUILD-STATUS throw then ;
+\ A child's completion code. PROC-TIMEOUT-RC is a deadline that expired in the
+\ child (native-build's smoke check, lib/process.f), so it throws E-PROC-TIMEOUT
+\ again here instead of becoming one more failed child.
+: BF-RC0 ( n -- ) {: rc:n :}
+   rc 0= if exit then
+   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   E-BUILD-STATUS throw ;
 
 : BF-REMOVE-TMP ( ptr u8 n -- ) {: a:ptr u :}
    a u BF-A$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -1004,7 +1006,7 @@ package BUILD-FIXPOINT
 \ builder) and ahead of aot-decl.f, which is where the AOT artifact writer's
 \ closure begins.
 : BF-APPEND-FDIO ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" src/habu/fdio.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/fdio.f" BF-APPEND-MODULE ;   \ aot-file.f requires it
 
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/include.f" BF-APPEND-SOURCE
@@ -1058,15 +1060,21 @@ package BUILD-FIXPOINT
 
 \ The verifier reads the emitted buffer and does not follow require. Include
 \ the required build modules at their dependency boundaries, in habu1.f's own
-\ require order: data-claims.f before data-bands.f's claim check reads its rows
-\ (a module habu1.f requires but this list omits certifies as `undefined word`,
-\ which is how the DATA-CLAIMS split first failed here); code-origin.f
-\ registers its helpers through ENGINE-PRIMS, so its source follows
-\ primitive-registry.f, at habu1.f's own require line.
+\ require order: regalloc-abi.f, address-cells.f and prof-abi.f, which
+\ data-claims.f requires for the register allocator's, the address-cell
+\ registry's and the profiler's rows, then data-claims.f before data-bands.f's
+\ claim check reads its rows (a module habu1.f requires but this list omits
+\ certifies as `undefined word`, which is how the DATA-CLAIMS split first
+\ failed here);
+\ code-origin.f registers its helpers through ENGINE-PRIMS, so its source
+\ follows primitive-registry.f, at habu1.f's own require line.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
 
 : BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
+   out outu s" src/habu/regalloc-abi.f" BF-APPEND-MODULE
+   out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
+   out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
    out outu s" src/habu/data-bands.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
@@ -1097,8 +1105,8 @@ package BUILD-FIXPOINT
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
    out outu s" lib/prelude.f" BF-APPEND-MODULE
-   out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
-   out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
+   out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
+   out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-SYS
    out outu BF-APPEND-SCRIPT-ARGV
@@ -1111,7 +1119,6 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu BF-APPEND-HABU1
    out outu BUILD-EXT:APPEND
-   out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE   \ prof.f requires it
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
@@ -1120,16 +1127,16 @@ package BUILD-FIXPOINT
    \ The span type family, in the engine prefix's position right after errors.f
    \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
    out outu s" lib/span.f" BF-APPEND-MODULE
-   out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
-   out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
-   out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-decl.f" BF-APPEND-MODULE   \ aot-capture.f requires it
+   out outu s" src/habu/aot-ident.f" BF-APPEND-MODULE   \ aot-file.f requires it
    out outu BF-APPEND-FMT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/habu/sign-id.f" BF-APPEND-MODULE   \ driver-io.f requires it
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
@@ -1168,7 +1175,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-COMMON
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
-   out outu s" src/habu/aot-arm.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-arm.f" BF-APPEND-MODULE   \ aot-capture.f requires it
    out outu s" src/habu/terminal-call.f" BF-APPEND-MODULE
    out outu s" lib/le.f" BF-APPEND-MODULE
    out outu s" src/habu/sites.f" BF-APPEND-MODULE
@@ -1283,7 +1290,7 @@ package BUILD-FIXPOINT
 
 : BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
    s" certify: " type lab labu type
-   s"  rejected rc " type BF-CERT-RC @ . s" (blocking)" type cr
+   s"  rejected rc " type BF-CERT-RC @ FMT:.INT s"  (blocking)" type cr
    BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
 \ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
@@ -1388,9 +1395,9 @@ package BUILD-FIXPOINT
    s" prefix-src" BF-CENSUS-COUNT {: pfx:n :}
    s" stage2-src" BF-CENSUS-COUNT {: stg:n :}
    s" self-check census (" type BF-CENSUS-TARGET$ type
-   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + .
-   s"   boot prefix = " type pfx .
-   s"   assembled = " type stg . ;
+   s" ): 0 uncheckable, 0 rejected, certified = " type pfx stg + FMT:.INT
+   s"   boot prefix = " type pfx FMT:.INT
+   s"   assembled = " type stg FMT:.INT cr ;
 
 : BF-SRC-DIGEST ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dg:ptr :}
    BF-FSHA-CTX a u BF-A$ dg SHA256-FILE-IN dup 0 <> if throw then drop ;
@@ -1762,13 +1769,6 @@ variable BF-DRV-R
    BF-SAVE-SNAPSHOT
    s" snapshot image OK: candidate validated" type cr ;
 
-: BF-INSTALL-TMP$ ( -- ptr u8 n )
-   BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !
-   BF-INSTALL-TMP-BUF BF-INSTALL-TMP-U @ SPAN:TAKE SPAN:$ ;
-
-: BF-INSTALL-CLEAN-TMP ( -- )
-   BF-INSTALL-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
 create BF-BOOT-ROOT FS-PATH-CAP allot
 variable BF-BOOT-ROOT-U
 create BF-BOOT-PATH FS-PATH-CAP allot
@@ -1807,11 +1807,12 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
          outu LEN>N erru LEN>N rc RC>N ENDOF
    ;MATCH ;
 
-: BF-BOOT-RUN ( -- )
+: BF-BOOT-RUN ( ptr u8 n -- )
+   {: cand:ptr candu:n :}
    BF-BOOT-TREE
    BF-PREPARE-ENV
    PROC-ARGV-RESET
-   BF-INSTALL-TMP$ SOURCE-ROOT:CANONICAL drop >LEN
+   cand candu SOURCE-ROOT:CANONICAL drop >LEN
    BF-BOOT-ROOT$ >LEN BF-BOOT-PROGRAM$ >LEN
    BF-BOOT-OUT BF-BOOT-OUT-CAP >LEN BF-BOOT-ERR BF-BOOT-ERR-CAP >LEN
    BF-BOOT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
@@ -1824,19 +1825,24 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 
 : BF-BOOT-CLEAN ( -- ) BF-BOOT-ROOT$ REMOVE-TREE ;
 
-: BF-CHECK-CANDIDATE ( -- )
+: BF-CHECK-CANDIDATE ( ptr u8 n -- )
+   {: cand:ptr candu:n :}
    BF-TMP$ s" boot-check" MAKE-TEMP-DIR SOURCE-ROOT:CANONICAL drop
    {: root:ptr size:n :}
    root BF-BOOT-ROOT size BYTE-COPY size BF-BOOT-ROOT-U !
-   [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
+   cand candu [: BF-BOOT-RUN ;] [: BF-BOOT-CLEAN ;] finally ;
+
+\ The candidate is copied into the engine's sibling, booted there and renamed
+\ over the engine only once it passed (lib/fs-mutate.f REPLACE-STAGED), so a
+\ failed install leaves the engine as it was and no sibling.
+: BF-INSTALL-HB-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   s" hb-stdin" BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X
+   tmp tmpu BF-CHECK-CANDIDATE ;
 
 : BF-INSTALL-HB ( -- )
-   BF-INSTALL-CLEAN-TMP
-   s" hb-stdin" BF-A$ BF-INSTALL-TMP$ COPY-FILE-STREAM
-   BF-INSTALL-TMP$ CHMOD-X
-   [: BF-CHECK-CANDIDATE ;] catch {: rc:n :}
-   rc 0<> if BF-INSTALL-CLEAN-TMP rc throw then
-   BF-INSTALL-TMP$ BF-ENGINE$ RENAME-FILE
+   BF-ENGINE$ [: BF-INSTALL-HB-FILL ;] REPLACE-STAGED
    s" hb-stdin" BF-REMOVE-TMP ;
 
 \ The CAPTURE HOST is kept beside the engine it captured for. A fixture whose
@@ -1844,22 +1850,19 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 \ family-count bracket) cannot run against the product - the product already
 \ provides the chain, so the load it wants to measure is a no-op - and
 \ rebuilding a host per fixture is the cost this file exists to pay once. The
-\ path derives from BF-ENGINE$ the way the install tmp does, so a fixture
-\ install under HABU_FIXPOINT_ENGINE keeps its host in its own sandbox and
-\ never writes this repo's bin.
+\ path derives from BF-ENGINE$, so a fixture install under HABU_FIXPOINT_ENGINE
+\ keeps its host in its own sandbox and never writes this repo's bin.
 : BF-HOST-DST$ ( -- ptr u8 n )
    BF-ENGINE$ s" -host" BF-HOST-DST-BUF FS-MUT-SUFFIX-PATH BF-HOST-DST-U !
    BF-HOST-DST-BUF BF-HOST-DST-U @ SPAN:TAKE SPAN:$ ;
 
-: BF-HOST-TMP$ ( -- ptr u8 n )
-   BF-ENGINE$ s" -host.tmp" BF-HOST-TMP-BUF FS-MUT-SUFFIX-PATH BF-HOST-TMP-U !
-   BF-HOST-TMP-BUF BF-HOST-TMP-U @ SPAN:TAKE SPAN:$ ;
+: BF-INSTALL-HOST-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   s" hb-host" BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X ;
 
 : BF-INSTALL-HOST ( -- )
-   BF-HOST-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then
-   s" hb-host" BF-A$ BF-HOST-TMP$ COPY-FILE-STREAM
-   BF-HOST-TMP$ CHMOD-X
-   BF-HOST-TMP$ BF-HOST-DST$ RENAME-FILE ;
+   BF-HOST-DST$ [: BF-INSTALL-HOST-FILL ;] REPLACE-STAGED ;
 
 : BF-BIN-HB? ( ptr u8 n -- bool )
    2dup s" bin/hb" STR= if 2drop BF-TRUE exit then
@@ -2143,13 +2146,12 @@ variable CHAIN-I
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
 
-\ Fail-closed CLI boundary. BTHROW's no-handler path exits with the raw throw
-\ code masked to 8 bits and NO diagnostic (a code that is a multiple of 256
-\ exits 0), so a crashed refresh child whose BF-RC0 E-BUILD-STATUS throw
-\ escaped BF-MAIN used to fail silently with an arbitrary exit code. BF-CLI
-\ catches every escaped throw, names it on stderr, and dies with the
-\ deterministic build rc so any failure anywhere in the refresh chain is loud
-\ and nonzero under every seed.
+\ Fail-closed CLI boundary. BF-CLI catches every throw that escapes BF-MAIN,
+\ names it on stderr, and dies with a fixed status, so a failure anywhere in the
+\ refresh chain is loud and nonzero under every seed. The status is the tool's
+\ exit contract: PROC-TIMEOUT-RC (lib/process.f) when a deadline expired, in
+\ this process or in a child that exited with it (BF-RC0), and BF-BUILD-RC for
+\ every other throw. A refused command line exits BF-USAGE-RC.
 $80 constant BF-FAIL-CAP
 $18 constant BF-FAIL-DG-CAP
 create BF-FAIL-BUF BF-FAIL-CAP allot
@@ -2189,14 +2191,15 @@ variable BF-FAIL-N
 : BF-FAIL-NAME+ ( n -- ) {: rc:n :}
    rc E-BUILD-STATUS = if s"  (E-BUILD-STATUS: refresh child failed)" BF-FAIL+ exit then
    rc E-BUILD-PATH = if s"  (E-BUILD-PATH: build artifact missing)" BF-FAIL+ exit then
-   rc E-BUILD-CERTIFY = if s"  (E-BUILD-CERTIFY: generated stage source rejected)" BF-FAIL+ exit then ;
+   rc E-BUILD-CERTIFY = if s"  (E-BUILD-CERTIFY: generated stage source rejected)" BF-FAIL+ exit then
+   rc E-PROC-TIMEOUT = if s"  (E-PROC-TIMEOUT: a deadline expired)" BF-FAIL+ exit then ;
 
 : BF-FAIL-DIE ( n -- ) {: rc:n :}
    0 BF-FAIL-U !
    s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
    rc BF-FAIL-CODE+
    rc BF-FAIL-NAME+
-   BF-FAIL-BUF BF-FAIL-U @ BF-BUILD-RC die ;
+   BF-FAIL-BUF BF-FAIL-U @ rc BF-BUILD-RC PROC-EXIT-RC die ;
 
 variable BF-CLI-RAN
 

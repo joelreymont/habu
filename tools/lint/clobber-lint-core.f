@@ -7,6 +7,7 @@ require lib/string.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CLOBBER-CENSUS
 
@@ -555,7 +556,8 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    DI @ OPLO ! ;
 
 : ROUTINE-NEXT-OPEN? ( -- bool )
-   RNEXT @ ON# @ <  DI @ RNEXT @ OPEN@ = and ;
+   RNEXT @ ON# @ >= if LINT-FALSE exit then
+   DI @ RNEXT @ OPEN@ = ;
 
 : ROUTINE-ADVANCE-OPEN ( -- )
    LASTSTOP @ if
@@ -874,7 +876,7 @@ variable TRACK-LR
    CLOBBER-CENSUS:PROVE  CLOSE-CLOBBERS  0 BAD !  ALL-PASS2
    CLOBBER-CENSUS:REPORT
    BAD @ 0 > if
-      s" clobber-lint: " type BAD @ . s"  finding(s)" type NL
+      s" clobber-lint: " type BAD @ FMT:.INT s"  finding(s)" type NL
       s" clobber-lint: findings" 1 die
    else
       s" clobber-lint: clean" type NL

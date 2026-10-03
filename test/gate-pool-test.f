@@ -4,6 +4,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
+require lib/fmt.f
 require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
@@ -551,6 +552,122 @@ variable GPT-FC-DONE-U
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" gate-pool stdin worker" CONTAINS? TTRUE
    GT-CLEANUP ;
 
+\ A SPAWNED SLOT WHOSE REAPER CANNOT FORK ENDS THE POOL. PROC-FORK:SPAWN-REAPER
+\ throws when its fork fails, and GT-POOL-ARM-SPAWN-REAPER then kills every
+\ slot, the child just spawned included, before E-PROC-SPAWN goes on:
+\ otherwise that child would outlive a killed pool. PROC-FORK:FORK-CALL refuses
+\ RAW's fork alone, answering Linux's -EAGAIN; the slot's spawn is the spawn
+\ primitive, so the one refusal counted is the reaper's, after its child exists.
+variable GPT-RR-REFUSALS
+
+: GPT-RR-REFUSE ( -- n )
+   1 GPT-RR-REFUSALS +!
+   -11 ;
+
+: GPT-RR-START ( -- )
+   PROC-ARGV-RESET
+   s" 30" >LEN PROC-ARGV+
+   s" /bin/sleep" s" reaper refused" GPT-TIMEOUT-MS GT-POOL-START ;
+
+: GPT-REAPER-REFUSED-CASE ( -- )
+   s" gate-pool-reaper-refused" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   0 GPT-RR-REFUSALS !
+   [: GPT-RR-REFUSE ;] is PROC-FORK:FORK-CALL
+   s" reaper refused: a spawned slot whose reaper cannot fork throws E-PROC-SPAWN" T-LABEL
+   [: GPT-RR-START ;] E-PROC-SPAWN TTHROWSQ
+   PROC-FORK:FORK-CALL-DEFAULT
+   GPT-RR-REFUSALS @ 1 T=
+   s" reaper refused: the pool killed and reaped the slot's child" T-LABEL
+   0 >IDX GT-POOL-PID@ PID>N -1 T=
+   GT-CLEANUP ;
+
+\ A FORKED WORKER WHOSE REAPER CANNOT FORK ENDS AS A FAILED ROW. The worker
+\ arms its reaper before its body; when PROC-FORK:FORK-REAPER's intermediate
+\ cannot fork the reaper, the worker throws E-PROC-SPAWN and must end on it.
+\ Unwound instead, it returns into its copy of the driver's control path and
+\ runs on as a second driver beside the real one. PROC-FORK:FORK-CALL refuses
+\ forks only in the third generation - the driver is generation 0, the worker
+\ 1, the intermediate 2 - so the driver's fork of the worker and the worker's
+\ fork of the intermediate are real. The refusal is installed only while the
+\ driver forks that worker, so the sibling row started before it arms normally.
+variable GPT-RF-GEN
+variable GPT-RF-DRIVER
+variable GPT-RF-SIB-PID
+variable GPT-RF-VIC-PID
+
+: GPT-RF-FORK ( -- n )
+   GPT-RF-GEN @ 2 >= if -11 exit then
+   fork dup 0= if 1 GPT-RF-GEN +! then ;
+
+: GPT-RF-BODY$ ( -- ptr u8 n )
+   s" reaper-fork refused worker body" ;
+
+: GPT-RF-VICTIM ( -- )
+   GPT-RF-BODY$ type cr ;
+
+: GPT-RF-SIBLING ( -- )
+   s" reaper-fork sibling worker" type cr ;
+
+\ What GT-POOL-FORK-THROW reports for E-PROC-SPAWN on the worker's stderr.
+: GPT-RF-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s" fork worker throw rc " SB-APPEND
+   E-PROC-SPAWN FMT:SB-INT
+   SB$ ;
+
+\ True once the process group pgid names is empty: a worker leads its own
+\ group, and its intermediate and reaper stay in it. The sibling's reaper
+\ leaves on its own once its worker exits, so this waits a bounded time.
+: GPT-RF-GONE? ( n -- bool ) {: pgid:n :}
+   mono-ns GPT-TIMEOUT-MS PROC-NS-PER-MS * + {: deadline:n :}
+   begin
+      pgid negate 0 kill-errno ESRCH# negate = if true exit then
+      mono-ns deadline <
+   while
+      20 GPT-SLEEP-MS
+   repeat
+   false ;
+
+: GPT-RF-START ( -- )
+   s" reaper-fork sibling" GPT-TIMEOUT-MS [: GPT-RF-SIBLING ;] GT-POOL-START-FORK
+   0 >IDX GT-POOL-PID@ PID>N GPT-RF-SIB-PID !
+   0 GPT-RF-GEN !
+   [: GPT-RF-FORK ;] is PROC-FORK:FORK-CALL
+   s" reaper-fork refused" GPT-TIMEOUT-MS [: GPT-RF-VICTIM ;] GT-POOL-START-FORK
+   1 >IDX GT-POOL-PID@ PID>N GPT-RF-VIC-PID ! ;
+
+: GPT-REAPER-FORK-CASE ( -- )
+   s" gate-pool-reaper-fork" GT-START
+   2 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   getpid GPT-RF-DRIVER !
+   [: GPT-RF-START ;] catch {: code:n :}
+   PROC-FORK:FORK-CALL-DEFAULT
+   getpid GPT-RF-DRIVER @ <> if
+      s" reaper fork: a forked worker returned into the driver's control path" 3 die
+   then
+   s" reaper fork: the driver started both rows" T-LABEL
+   code 0 T=
+   GT-POOL-DRAIN-SOFT
+   s" reaper fork: only the refused worker's row is red" T-LABEL
+   GT-POOL-RED# 1 T=
+   0 GT-POOL-RED-LABEL$ s" reaper-fork refused" T$=
+   0 GT-POOL-RED-EXITED-PTR @ TTRUE
+   s" reaper fork: the row reports E-PROC-SPAWN's code" T-LABEL
+   1 >IDX GT-POOL-ERR-BUF 1 >IDX GT-POOL-ERR-U-PTR @ GPT-RF-WANT$ CONTAINS? TTRUE
+   s" reaper fork: the refused worker's body never ran" T-LABEL
+   1 >IDX GT-POOL-OUT-BUF 1 >IDX GT-POOL-OUT-U-PTR @ GPT-RF-BODY$ CONTAINS? TFALSE
+   s" reaper fork: the sibling row ran unharmed" T-LABEL
+   0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" reaper-fork sibling worker" CONTAINS? TTRUE
+   s" reaper fork: no process the case started remains" T-LABEL
+   GPT-RF-SIB-PID @ GPT-RF-GONE? TTRUE
+   GPT-RF-VIC-PID @ GPT-RF-GONE? TTRUE
+   GT-CLEANUP ;
+
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH (gate-pool.f GT-POOL-CHILD-TMP!).
 \ Each spawned child is given a directory of its own as HB_TMP, so the tree it
 \ makes the ordinary way - lib/fs-mutate.f HB-TMP-MKDIR - lands inside it, and
@@ -746,6 +863,8 @@ variable GPT-FR-U
    GPT-EXTERNAL-KILL-CASE
    GPT-FC-CASE
    GPT-STDIN-CASE
+   GPT-REAPER-REFUSED-CASE
+   GPT-REAPER-FORK-CASE
    GPT-CHILD-TMP-CASE
    GPT-FR-CASE
    GPT-UNCAUGHT-CASE

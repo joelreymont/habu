@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/span.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -11,29 +12,24 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/content-key.f
 require lib/test/runner.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 $40000 constant GE-SRC-CAP
-64 constant GE-SRC-MAX
 \ Generous deadlock deadline for one engine-gate child.
 120000 constant GE-TIMEOUT-MS
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
-0 constant GE-F-DUPFD
-10 constant GE-FD-SAVE-MIN
 1 constant GE-STDOUT-FD
 2 constant GE-STDERR-FD
 
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
-GE-SRC-MAX TYPED-BUFFER GE-SRC-A ptr u8
-create GE-SRC-LEN GE-SRC-MAX cells allot
 create GE-ARGV-BUF GE-SRC-CAP allot
 create GE-HB-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
-variable GE-SRC-N
 variable GE-RD
 variable GE-INFD
 variable GE-ARGV-U
@@ -42,8 +38,6 @@ variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
-variable GE-EVAL-OUT-SAVE
-variable GE-EVAL-ERR-SAVE
 TYPED-VARIABLE GE-EVAL-STACK-A ptr u8
 TYPED-VARIABLE GE-EVAL-SRC-A ptr u8
 variable GE-EVAL-SRC-U
@@ -95,9 +89,9 @@ variable GE-EVAL-SRC-U
    GE-ARGV-BUF GE-ARGV-U @ ;
 
 : GE-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
-   s" spawn raw code: " type pid PID>N . cr
+   s" spawn raw code: " type pid PID>N FMT:.INT cr
    HB-TARGET-MACOS? if
-      s" spawn errno: " type pid PID>N negate . cr
+      s" spawn errno: " type pid PID>N negate FMT:.INT cr
    then ;
 
 : GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
@@ -161,8 +155,8 @@ variable GE-EVAL-SRC-U
 
 : GE-OUTCOME-CODE. ( outcome -- )
    MATCH outcome
-     exited OF . ENDOF
-     signaled OF . ENDOF
+     exited OF FMT:.INT ENDOF
+     signaled OF FMT:.INT ENDOF
      timeout OF s" -" type ENDOF
    ;MATCH ;
 
@@ -195,29 +189,15 @@ variable GE-EVAL-SRC-U
       s" unmapped" type
    endcase ;
 
-\ Fail-closed gate entry. Re-throwing the escaped code sent the exit through the
-\ engine's BTHROW no-handler path, where a pre-hardening or candidate engine
-\ masks it to 8 bits - a multiple of 256 exits 0 SILENTLY (the fail-open that
-\ cost a multi-step diagnosis). Route the exit through die instead: BDIE's own
-\ range guard maps any out-of-range code to UNCAUGHT-RC and never masks to 0, so
-\ the gate is loud and nonzero under every engine - it no longer depends on the
-\ no-handler hardening (mirrors tools/build-fixpoint.f BF-FAIL-DIE). The throw
-\ code and name are still named on stdout above.
-: GE-THROW-REPORT ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
-   rc 0= if exit then
-   s" FAIL: " type label labelu type cr
-   s" throw: " type rc .
-   s" name: " type rc GE-RC-NAME. cr
-   s" gate entry: uncaught throw" rc die ;
-
 : GE-PRINT-OUTCOME ( -- )
    s" outcome: " type GT-OUTCOME@ GE-OUTCOME.
    s"  code: " type GT-OUTCOME@ GE-OUTCOME-CODE.
-   s" rc: " type GT-RC@ . s" (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
+   GT-TIMED-OUT @ if cr exit then          \ a deadline has no rc: GT-RC@ throws
+   s"  rc: " type GT-RC@ FMT:.INT s"  (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
-   s" stdout bytes: " type GT-OUT$ nip . s" / " type GT-OUT-CAP . cr
-   s" stderr bytes: " type GT-ERR$ nip . s" / " type GT-ERR-CAP . cr ;
+   s" stdout bytes: " type GT-OUT$ nip FMT:.INT s"  / " type GT-OUT-CAP FMT:.INT cr
+   s" stderr bytes: " type GT-ERR$ nip FMT:.INT s"  / " type GT-ERR-CAP FMT:.INT cr ;
 
 : GE-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type cr
@@ -231,16 +211,39 @@ variable GE-EVAL-SRC-U
    GT-OUT$ type
    s" stderr:" type cr
    GT-ERR$ type
+   \ A child whose deadline expired failed no check of its own: report the
+   \ deadline, so the pool reads a timeout instead of this check's failure. That
+   \ is this capture's deadline, or one inside the child, which then exits
+   \ PROC-TIMEOUT-RC (lib/process.f).
+   GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
+   GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
 
+\ Run a row's checks in a process its parent reads by exit status, as on the
+\ linker image (test/preloaded-engine.f LINKER-LOAD). A throw code does not
+\ cross that boundary, so a deadline that escapes the checks ends this process
+\ with PROC-TIMEOUT-RC (lib/process.f), which the parent throws again as
+\ E-PROC-TIMEOUT; any other throw reaches the top level with its own code.
+: GE-CHILD-RUN ( [ -- ] -- )
+   catch {: code:n :}
+   code E-PROC-TIMEOUT = if s" native test ran out of time" PROC-TIMEOUT-RC die then
+   code throw ;
+
+\ The entry's exit status for an rc check. A timed-out entry has none, and
+\ GT-RC@ would throw before any report, so it fails here: GE-FAIL prints its
+\ capture and then throws E-PROC-TIMEOUT.
+: GE-RC@ ( ptr u8 n -- n ) {: label:ptr labelu:n :}
+   GT-TIMED-OUT @ if label labelu GE-FAIL then
+   GT-RC@ ;
+
 : GE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ 0 <> if label labelu GE-FAIL then ;
+   label labelu GE-RC@ 0 <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-RC ( n ptr u8 n -- ) {: want:n label:ptr labelu:n :}
-   GT-RC@ want <> if label labelu GE-FAIL then ;
+   label labelu GE-RC@ want <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-NONZERO ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ 0= if label labelu GE-FAIL then ;
+   label labelu GE-RC@ 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-SILENT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-OUT$ nip 0 <> if label labelu GE-FAIL then
@@ -270,20 +273,7 @@ variable GE-EVAL-SRC-U
    GE-SB-LF ;
 
 : GE-SRC-RESET ( -- )
-   0 GE-SRC-U !
-   0 GE-SRC-N ! ;
-
-: GE-SRC$ ( n -- ptr u8 n ) {: idx:n :}
-   idx 0 < if E-STR-BOUNDS throw then
-   idx GE-SRC-N @ >= if E-STR-BOUNDS throw then
-   idx GE-SRC-A @
-   idx cells GE-SRC-LEN + @ ;
-
-: GE-SRC-PATH+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   GE-SRC-N @ GE-SRC-MAX >= if E-STR-CAPACITY throw then
-   path GE-SRC-N @ GE-SRC-A !
-   pathu GE-SRC-LEN GE-SRC-N @ cells + !
-   GE-SRC-N @ 1+ GE-SRC-N ! ;
+   0 GE-SRC-U ! ;
 
 : GE-SRC-C ( n -- ) {: c:n :}
    c 0 < if E-STR-BOUNDS throw then
@@ -329,7 +319,6 @@ variable GE-EVAL-SRC-U
    s"  CHECK! ." GE-SRC-LINE ;
 
 : GE-SRC-FILE+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu GE-SRC-PATH+
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -
    READ-ALL GE-RD !
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
@@ -391,34 +380,6 @@ variable GE-EVAL-SRC-U
    then
    2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
 
-: GE-CHECK-EXE ( -- ptr u8 n )
-   GE-HB$ ;
-
-: GE-CHECK-SUPPORT-ARGV ( -- )
-   s" lib/errors.f" GE-ARG+
-   s" lib/date.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/vector.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" tools/lint/text.f" GE-ARG+
-   s" tools/lint/token.f" GE-ARG+
-   s" tools/lint/lib.f" GE-ARG+
-   s" tools/lint/json-writer.f" GE-ARG+
-   s" tools/lint/source-lex.f" GE-ARG+
-   s" tools/diag-origin-core.f" GE-ARG+
-   s" tools/json.f" GE-ARG+
-   s" tools/json-only-core.f" GE-ARG+
-   s" tools/checked-boundary-lint-core.f" GE-ARG+
-   s" tools/reserved-name-lint-core.f" GE-ARG+
-   s" tools/check-all-errors-core.f" GE-ARG+
-   s" lib/argv.f" GE-ARG+
-   s" tools/check-core.f" GE-ARG+ ;
-
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
@@ -457,27 +418,14 @@ variable GE-EVAL-SRC-U
    GE-EVAL-CURRENT @ set-current
    GE-EVAL-JSON-DIAGS @ JSON-DIAGS ! ;
 
-: GE-EVAL-DUP-FD ( n -- n ) {: fd:n :}
-   fd GE-F-DUPFD GE-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;
-
 : GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
 
 : GE-EVAL-REDIRECT! ( -- )
-   GE-STDOUT-FD GE-EVAL-DUP-FD GE-EVAL-OUT-SAVE !
-   GE-STDERR-FD GE-EVAL-DUP-FD GE-EVAL-ERR-SAVE !
    PROC-OUT-W @ GE-STDOUT-FD GE-EVAL-DUP2!
    PROC-ERR-W @ GE-STDERR-FD GE-EVAL-DUP2!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
-
-: GE-EVAL-RESTORE! ( -- )
-   GE-EVAL-OUT-SAVE @ GE-STDOUT-FD GE-EVAL-DUP2!
-   GE-EVAL-ERR-SAVE @ GE-STDERR-FD GE-EVAL-DUP2!
-   GE-EVAL-OUT-SAVE @ close
-   GE-EVAL-ERR-SAVE @ close
-   -1 GE-EVAL-OUT-SAVE !
-   -1 GE-EVAL-ERR-SAVE ! ;
 
 : GE-EVAL-SOURCE-ACT ( -- )
    GE-EVAL-SRC$ evaluate-closed ;
@@ -489,29 +437,17 @@ variable GE-EVAL-SRC-U
 : GE-EVAL-SOURCE ( -- )
    GE-EVAL-SOURCE-RUNSTACK ;
 
-\ Store a synthesized in-process outcome (exited rc) straight into the GT
-\ runner state; the capture machine no longer stores a (kind code) pair to
-\ forge, so the runner copy is the single synthesized-state home.
-: GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
-   rc PROC-RC !
-   PROC-OUT-LEN @ >LEN PROC-ERR-LEN @ >LEN rc OUTCOME:EXITED GE-STORE-OUTCOME ;
-
-: GE-EVAL-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
-
-: GE-CAPTURE-ACTION ( [ -- ] -- n ) {: q :}
-   GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
-   GE-EVAL-REDIRECT!
-   q catch {: rc:n :}
-   GE-EVAL-RESTORE!
-   GE-EVAL-DRAIN
-   PROC-CLOSE-ALL-CAPTURE-FDS
-   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME
-   rc ;
+\ An in-process action's capture (lib/test/runner.f GT-CAPTURE-ACTION), stored
+\ as an exit whose code is the action's throw code.
+: GE-CAPTURE-ACTION ( [ -- ] -- )
+   {: q :}
+   q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
+   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   outu erru rc OUTCOME:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-CAPTURE-SRC ( ptr u8 n -- )
    GE-EVAL-SRC!
-   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC ;
+   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION ;
 
 : GE-EVAL-CAPTURE ( -- )
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-CAPTURE-SRC ;
@@ -566,34 +502,3 @@ variable GE-EVAL-SRC-U
 
 : GE-CLEAN-BIN ( -- )
    s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
-
-: GE-CHECK-ARGV ( -- )
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   GE-CHECK-SUPPORT-ARGV
-   s" tools/check-main.f" GE-ARG+
-   s" --" GE-ARG+ ;
-
-: GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-OK
-   label labelu GE-EXPECT-SILENT ;
-
-: GE-CHECK-RUN-BAD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   rc label labelu GE-EXPECT-RC
-   needle needleu label labelu GE-EXPECT-ERR-HAS ;
-
-: GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --source-list" GE-ARG+
-   0 begin dup GE-SRC-N @ < while
-      dup GE-SRC$ GE-ARG+
-      1+
-   repeat drop
-   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GE-EXPECT-SILENT ;

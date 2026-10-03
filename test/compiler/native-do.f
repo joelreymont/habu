@@ -28,6 +28,23 @@ public
 : NDO-QSUM ( n n -- n ) {: lim:n st:n :}
    0 lim st ?do i + loop ;
 
+\ The indices themselves, one by one, where a sum could hide two wrong ones.
+8 constant VISITED-CAP
+create VISITED VISITED-CAP cells allot
+variable ITERATIONS
+
+: VISIT ( n -- )
+   ITERATIONS @ VISITED-CAP < if ITERATIONS @ cells VISITED + ! else drop then
+   1 ITERATIONS +! ;
+
+: VISITED@ ( n -- n )
+   cells VISITED + @ ;
+
+: NDO-QVISIT ( n n -- n ) {: lim:n st:n :}
+   0 ITERATIONS !
+   lim st ?do i VISIT loop
+   ITERATIONS @ ;
+
 \ Two counted loops open at once, both plain. The inner `i` is the inner loop's,
 \ which is the frame search answering with the innermost of two frames that were
 \ pushed by the new opener.
@@ -95,12 +112,20 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" unequal and signed-wrap bounds keep their exact turn counts" T-LABEL
    5 0 NDO-FIXTURE:NDO-TURNS 5 T=
    5 0 NDO-FIXTURE:NDO-QTURNS 5 T=
-   0 1 NDO-FIXTURE:NDO-TURNS 1 T=
-   0 1 NDO-FIXTURE:NDO-QTURNS 1 T=
    -3 -5 NDO-FIXTURE:NDO-TURNS 2 T=
    -3 -5 NDO-FIXTURE:NDO-QTURNS 2 T=
+
+   s" a limit below the start: do takes one turn and ?do none" T-LABEL
+   0 1 NDO-FIXTURE:NDO-TURNS 1 T=
+   0 1 NDO-FIXTURE:NDO-QTURNS 0 T=
+   -1 0 NDO-FIXTURE:NDO-TURNS 1 T=
+   -1 0 NDO-FIXTURE:NDO-QTURNS 0 T=
+   -3 0 NDO-FIXTURE:NDO-TURNS 1 T=
+   -3 0 NDO-FIXTURE:NDO-QTURNS 0 T=
+   MIN-INT 0 NDO-FIXTURE:NDO-TURNS 1 T=
+   MIN-INT 0 NDO-FIXTURE:NDO-QTURNS 0 T=
    MIN-INT MAX-INT NDO-FIXTURE:NDO-TURNS 1 T=
-   MIN-INT MAX-INT NDO-FIXTURE:NDO-QTURNS 1 T= ;
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-QTURNS 0 T= ;
 
 \ The same pairs read through the indices the body sees rather than a count, so a
 \ loop that ran the right number of turns from the wrong index would still be
@@ -115,15 +140,37 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    -1 -1 NDO-FIXTURE:NDO-SUM -1 T=
    -1 -1 NDO-FIXTURE:NDO-QSUM 0 T=
 
-   s" ordinary and wrap-bound loops expose the exact visited indices" T-LABEL
+   s" ordinary loops expose the exact visited indices" T-LABEL
    5 0 NDO-FIXTURE:NDO-SUM 10 T=
    5 0 NDO-FIXTURE:NDO-QSUM 10 T=
-   0 1 NDO-FIXTURE:NDO-SUM 1 T=
-   0 1 NDO-FIXTURE:NDO-QSUM 1 T=
    -3 -5 NDO-FIXTURE:NDO-SUM -9 T=
    -3 -5 NDO-FIXTURE:NDO-QSUM -9 T=
+
+   s" a limit below the start exposes do's single index and ?do's skip" T-LABEL
+   0 1 NDO-FIXTURE:NDO-SUM 1 T=
+   0 1 NDO-FIXTURE:NDO-QSUM 0 T=
+   -1 3 NDO-FIXTURE:NDO-SUM 3 T=
+   -1 3 NDO-FIXTURE:NDO-QSUM 0 T=
+   MIN-INT 7 NDO-FIXTURE:NDO-SUM 7 T=
+   MIN-INT 7 NDO-FIXTURE:NDO-QSUM 0 T=
    MIN-INT MAX-INT NDO-FIXTURE:NDO-SUM MAX-INT T=
-   MIN-INT MAX-INT NDO-FIXTURE:NDO-QSUM MAX-INT T= ;
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-QSUM 0 T= ;
+
+: VISITED-IS ( n n -- ) {: idx:n want:n :}
+   idx NDO-FIXTURE:VISITED@ want T= ;
+
+: VISIT-CASE ( -- )
+   s" ?do visits each index from the start up to the limit" T-LABEL
+   3 0 NDO-FIXTURE:NDO-QVISIT 3 T=
+   0 0 VISITED-IS  1 1 VISITED-IS  2 2 VISITED-IS
+   0 -2 NDO-FIXTURE:NDO-QVISIT 2 T=
+   0 -2 VISITED-IS  1 -1 VISITED-IS
+   MAX-INT MAX-INT 2 - NDO-FIXTURE:NDO-QVISIT 2 T=
+   0 MAX-INT 2 - VISITED-IS  1 MAX-INT 1- VISITED-IS
+   s" ?do visits nothing with the limit at or below the start" T-LABEL
+   -1 0 NDO-FIXTURE:NDO-QVISIT 0 T=
+   MIN-INT 0 NDO-FIXTURE:NDO-QVISIT 0 T=
+   4 4 NDO-FIXTURE:NDO-QVISIT 0 T= ;
 
 : NEST-CASE ( -- )
    s" two plain do loops nest and the index is the inner one's" T-LABEL
@@ -133,7 +180,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ THE TWO ROWS KEEP DIFFERENT NUMBERS OF LOOPS, AND THE DIFFERENCE IS THE FOLD'S
 \ OWN PRECONDITION. With the `?do` INSIDE, the inner loop still has the guard
 \ src/compiler/native/loop.f insists on - a pre-header entered only from a `brz`
-\ over `limit - start` - so it folds and one loop is left. With the `?do`
+\ over `start < limit` - so it folds and one loop is left. With the `?do`
 \ OUTSIDE, neither folds: the inner `do` has no such guard, and the outer loop's
 \ header is not the whole loop because another loop stands inside it. Both rows
 \ answer the engine either way, which is what says the fold that did fire was
@@ -166,6 +213,7 @@ public
 : RUN ( -- )
    TURNS-CASE
    SUM-CASE
+   VISIT-CASE
    NEST-CASE
    DOQ-CASE
    CALL-CASE

@@ -39,6 +39,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/outcome.f
 
 package XT-EFFECT-TEST
 
@@ -76,13 +77,14 @@ create XE-EMPTY 1 allot
    2drop
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
 
-: XE-STORE! ( len len outcome -- )
-   MATCH outcome
+: XE-STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N XE-OUT-U !  erru LEN>N XE-ERR-U !
+   oc MATCH outcome
      exited OF XE-RC ! 0 0= XE-EXITED ! ENDOF
      signaled OF XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
-     timeout OF 0 XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
-   ;MATCH
-   LEN>N XE-ERR-U !  LEN>N XE-OUT-U ! ;
+     timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ Stage the child tier through HABU_TOP_TIER (pinned explicitly so a tier-2 gate
 \ leg cannot leak into a tier-1 child); inherit the rest of the parent env.
@@ -95,15 +97,16 @@ create XE-EMPTY 1 allot
 
 \ Write the assembled program (SB$) to the child file and run it via --load with an
 \ explicit env table (RUN-ARGV-ENV-* consults PROC-ENV).
-: XE-RUN-TIER ( ptr u8 n n -- ) {: tier:n :}
-   XE-CHILD 2swap WRITE-ALL
+: XE-RUN-TIER ( ptr u8 n n -- )
+   {: src:ptr srcu:n tier:n :}
+   XE-CHILD src srcu WRITE-ALL
    PROC-ARGV-RESET
    tier XE-SET-TIER
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
    XE-HB$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
    XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   XE-STORE! ;
+   src srcu XE-STORE! ;
 
 : XE-RUN ( ptr u8 n -- )  XE-WARN-TIER XE-RUN-TIER ;     \ tier-1 (warn / compile-time)
 : XE-RUN2 ( ptr u8 n -- ) XE-REJECT-TIER XE-RUN-TIER ;   \ tier-2 (reject)

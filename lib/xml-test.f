@@ -1,5 +1,6 @@
 require lib/test.f
 require lib/xml.f
+require lib/test/guard-page.f
 
 package XML-TEST
 using XML
@@ -327,6 +328,11 @@ CAST: TOKEN>N ( XML:kind -- n )
    TEXT-BUF swap s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
    s" " TEXT-BUF 0 ESCAPE-TEXT 0 T=
    [: s" &" TEXT-BUF 4 ESCAPE-TEXT drop ;] E-CAPACITY TTHROWSQ
+   \ Every scalar escapes to at least its own width, so a source longer than the
+   \ destination is refused before it is read; this one ends at an inaccessible
+   \ page one byte short of the length it claims.
+   [: 4 [char] a GUARD-PAGE:TAIL 5 TEXT-BUF 4 ESCAPE-TEXT drop ;] E-CAPACITY TTHROWSQ
+   [: 4 [char] a GUARD-PAGE:TAIL 5 TEXT-BUF 4 ESCAPE-ATTR drop ;] E-CAPACITY TTHROWSQ
    [: s\" \z" TEXT-BUF TEXT-CAP ESCAPE-TEXT drop ;] E-SCALAR TTHROWSQ ;
 
 : CHECKED-OWNERSHIP ( -- )

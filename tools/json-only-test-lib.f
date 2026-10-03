@@ -1,8 +1,5 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ lib/argv.f tools/cli-run.f tools/json.f tools/json-only-core.f
-\ tools/json-only-test.f
+\ Run: bin/hb --load tools/json-only-test.f (it requires what this file uses).
 
 1024 constant JOT-BUF-CAP
 10000 constant JOT-TIMEOUT-MS
@@ -141,40 +138,44 @@ variable JOT-ERR-A
    CLI-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: JOT-RUN-CORE ( ptr u8 n -- len len outcome )
+\ The filter runs in this process with its two streams sent to JOT-OUT and
+\ JOT-ERR. It has no exit status to report: it returns the lengths it wrote, and
+\ a filter that dies ends the test with its own code.
+: JOT-RUN-CORE ( ptr u8 n -- n n )
    JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
    JSON-ONLY-FILTER
-   JSON-ONLY-JSON$ nip >LEN
-   JSON-ONLY-PROSE$ nip >LEN
-   JSON-ONLY-BUFFERS-OFF
-   0 OUTCOME:EXITED ;
+   JSON-ONLY-JSON$ nip
+   JSON-ONLY-PROSE$ nip
+   JSON-ONLY-BUFFERS-OFF ;
 
-: JOT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+: JOT-EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   s" tools/json-only.f" JOT-OUT outu LEN>N JOT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : JOT-MIXED-CASE ( -- )
-   JOT-MIXED-IN$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
+   JOT-MIXED-IN$ JOT-RUN-CORE {: outu:n erru:n :}
    JOT-OUT outu JOT-MIXED-OUT$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 
 : JOT-BAD-CASE ( -- )
-   JOT-BAD$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
+   JOT-BAD$ JOT-RUN-CORE {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-BAD$ T$= ;
 
 : JOT-ARRAY-CASE ( -- )
-   JOT-ARRAY$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
+   JOT-ARRAY$ JOT-RUN-CORE {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-ARRAY$ T$= ;
 
 : JOT-PROSE-CASE ( -- )
-   JOT-PROSE$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
+   JOT-PROSE$ JOT-RUN-CORE {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-PROSE$ T$= ;
 
 : JOT-ZERO-CASE ( -- )
-   JOT-EMPTY$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
+   JOT-EMPTY$ JOT-RUN-CORE {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 

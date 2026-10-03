@@ -4,7 +4,11 @@
 \ FDIO:WALL, which loads immediately before this one in every builder. It moved
 \ because it is the only part of this file a process without the image writer can
 \ use: everything below reaches MBUF, BUILD-IMAGE and the target's signer, so a
-\ booted engine cannot load this file at all.
+\ booted engine cannot load this file at all. The code-signature identifiers live
+\ in src/habu/sign-id.f for the same reason: src/habu/snap-lib.f signs in a
+\ booted engine.
+
+require src/habu/sign-id.f
 
 variable DRV-WFD
 
@@ -25,11 +29,13 @@ variable DRV-WFD
    path pathu DRV-WRITE-IMAGE-PATH ;
 
 \ The single high-level image-emission tail: assemble the current CODE into the
-\ target image, sign it with the caller's sigid, and write it to path. Every
-\ engine driver (stage2/build/stdin/maker/aot-lib) and the object image writer
-\ (tools/object-image.f OBJIMG:WRITE) route through this one word, so exactly one
-\ BUILD-IMAGE+sign+write implementation exists. Loads after the target image
-\ writer (macho/elf + sign) in every context that includes driver-io.f.
+\ target image, sign it with the identifier the caller names (SIGN-ID:PROG$ for
+\ a program, SIGN-ID:ENGINE$ for an engine), and write it to path. Every engine
+\ driver (stage2/build/stdin/maker/aot-lib), tools/native-emit.f and the object
+\ image writer (tools/object-image.f OBJIMG:WRITE) route through this one word,
+\ so exactly one BUILD-IMAGE+sign+write implementation exists. Loads after the
+\ target image writer (macho/elf + sign) in every context that includes
+\ driver-io.f.
 : DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
    ASM-CODE BUILD-IMAGE
    sig sigu SET-SIGID CODESIG2

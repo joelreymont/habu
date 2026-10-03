@@ -5,6 +5,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/memory.f
 require lib/argv.f
 require test/checker-assert.f
 
@@ -289,6 +290,27 @@ variable TEST-FAIL
    s" ARGV-CONFIG-SCALAR ( span -- ) ARGV-LABEL !"
       CHECK-QUIET-CANDIDATE! 0 ASSERT= ;
 
+\ FAIL builds its line in one fixed buffer: the message, a newline, "usage: ",
+\ the usage text and a newline. Each piece is compared with the room left, so a
+\ length near the maximum cell cannot wrap the fill back into range and send the
+\ copy past the buffer, and a negative one is refused like one too long.
+10 constant MSG-FIXED                    \ a one-byte message, "usage: " and the two newlines
+create MSG-TEXT ARGV-MSG-CAP allot
+
+: MSG-FAIL-RC ( n -- n ) {: u:n :}       \ FAIL's code under a usage text of u bytes
+   -1 QUIET!
+   MSG-TEXT u USAGE!
+   [: s" x" FAIL ;] catch ;
+
+: TEST-MSG-BOUNDS ( -- )
+   ARGV-MSG-CAP 0 do 117 MSG-TEXT i + c! loop
+   ARGV-MSG-CAP MSG-FIXED - MSG-FAIL-RC E-USAGE ASSERT-RC
+   ARGV-MSG-CAP MSG-FIXED - 1+ MSG-FAIL-RC E-INTERNAL ASSERT-RC
+   MEM-MAX-N MSG-FAIL-RC E-INTERNAL ASSERT-RC
+   -1 QUIET!
+   [: MSG-TEXT -1 FAIL ;] catch E-INTERNAL ASSERT-RC
+   s" usage" USAGE! ;
+
 : TEST-MOCKS ( -- )
    TEST-COMMON
    TEST-DEFAULTS
@@ -298,6 +320,7 @@ variable TEST-FAIL
    TEST-UNKNOWN
    TEST-MISSING-LABEL
    TEST-MISSING-OUT
+   TEST-MSG-BOUNDS
    TEST-POS-LOW
    TEST-POS-HIGH
    TEST-REQUIRE-OUT

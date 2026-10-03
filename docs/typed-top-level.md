@@ -253,7 +253,7 @@ mains, prelude/whitebox scripts, eval fixtures):
 | single trailing MAIN call | `test/engine-suite.f` REPORT, `maki/test.f` TEST:RUN | unaffected `( -- )` |
 | literal → certified-call lines | `maki/eval/fixture.f` (`s" K …" EVAL:CHECK-PASSES? TTRUE`), `5 FOO2 + . cr` | unaffected; now fully checked |
 | `CHECK!` probe idiom | `s" : X … ;" CHECK! . cr` (underdepth-gate positive) | unaffected (TRUST `ptr u8 n -- n`) |
-| `' HOOK set-check` installs | `tools/lint/text.f:17`, `tools/check-core.f:24`, `test/engine-suite.f:1436,1525` | unaffected after `set-check`/`check@` retype (§3); `0 set-check` special-cased |
+| `' HOOK set-check` installs | `tools/lint/text.f` LINT-CHECK-HOOK, `tools/check-core.f` CHK-CHECK-HOOK and the run file's CHECK-F-HOOK, `test/engine-suite.f` ES-VERDICT-HOOK | unaffected after `set-check`/`check@` retype (§3); `0 set-check` special-cased |
 | `0 set-check` whitebox windows | `test/engine-suite.f` (5 sites), `test/prop-test-core.f`, `src/core/internal-mark.f:48`, `src/habu/aot-lib.f:18` | unaffected by design — the escape hatch |
 | sig-less word calls at top level | engine-suite whitebox sections | run + gray reseed; depth still enforced; **not** rejected |
 | mid-stream `TRUSTED:` shim calls | whitebox suites | unaffected — certified path, no reset (§2.3) |
@@ -342,7 +342,7 @@ rule.** No per-kind NOM-SCALAR? widening should be implemented now.
 Probe evidence (current engine, rc captured):
 
 - Arity-0 nominal scalar IS governed: `variable NS-X  : NS-P ( -- ptr
-  attn-stage-q ) NS-X ;` rejects rc 70 (`expected: ptr attn-stage-q<>
+  attn-stage-q ) NS-X ;` rejects rc 70 (`expected: ptr attn-stage-q
   actual: ptr a`) — `NOMPTR-BLOCK?` (`src/core/checker.f:1161`) working as
   landed.
 - Parametric family is NOT: the identical shape with

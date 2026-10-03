@@ -31,10 +31,11 @@ message with no trailing newline and the tail ends the line.
 **What is located, and what is not.** Located: every refusal routed through
 `LCOMPILEDIE` — bad string literal, counted string too long, data space out of
 range, dictionary/code space full, definition body text full, BEGIN nesting
-full, nested quotation, duplicate definition, `does>` in a checker-rejected
-body, malformed stack signature, `;]` with no open quotation, `does>` with
-locals active, a local referenced inside a quotation, locals opener inside a
-quotation, `:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
+full, quotation nesting full, duplicate definition, `does>` in a checker-rejected
+body, malformed stack signature, `;]` with no open quotation, `;` with a
+quotation or a control structure open, `does>` with locals active, a local
+referenced inside a quotation, locals opener inside a quotation,
+`:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
 deferred, `package`/`export` misuse, the whole `using` family, and the
 `construct`/`match` operand refusals (`hb: construct: unknown family: NOPE at
 <path>:<line>`).
@@ -135,10 +136,11 @@ clobbers the executing line (SIGILL). Write a runtime stub at `cp@` from inside
 the exact ARM64 encodings and search the on-disk `bin/hb` for the contiguous
 stream — ASLR slides the xt, file bytes do not move.
 
-An uncaught throw in a `--load` or spawned child exits with the throw code's
-low eight bits and prints nothing: exit 56 is `E-PROC-TRUNCATED` (-2504), 104
-is `E-STR-BOUNDS` (-2200). Add multiples of 256 until a known `E-*` appears
-before hunting for the site; a one-byte diagnostic and a clean exit means a raw
+An uncaught throw in a `--load` or spawned child exits by its code. A code from
+1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
+code prints `hb: uncaught throw code N` on stderr and exits 67: `-2504 throw`
+(`E-PROC-TRUNCATED`) exits 67 with that line, so read the `E-*` from the
+message, not from the status. A one-byte diagnostic and a clean exit means a raw
 engine capacity path (`exit_group`), not a throw.
 
 ## gdb/lldb — native stepping boundary
@@ -176,7 +178,7 @@ JIT region, where no external symbol table reaches: `nm` and lldb see the loaded
 carries its routine's start and length.
 
 ```sh
-<engine> --load tools/code-owner.f tools/code-owner-main.f -- '$181954'
+<engine> --load tools/code-owner-main.f -- '$181954'
 ```
 
 The argument is a **region offset**, not an address — ASLR moves the region every
@@ -216,18 +218,18 @@ answers the question from the dictionary instead. It prints two maps:
   every word that has code, headed by the region base and heap top this run got,
   so a program counter caught by a debugger watchpoint turns into a name.
 
-It has to run inside a process that has the source under investigation loaded and
-has not retired its dictionary, because that is the only place the names exist.
-The way to get one is to add two lines to `src/habu/snap.f` just above the final
-`RETIRE-AND-PERSIST`, run a snapshot build, and take the lines off again:
-
-```
-require tools/snap-heap-owner.f
-SNAP-HEAP-OWNER:DUMP
-```
+It has to run inside a process that has the source under investigation loaded,
+because that is the only place the names exist. A snapshot build leaves that
+process's two inputs in `HB_TMP`: the native engine `hb-native` and the snapshot
+source `hb-snap-src` (`tools/build-fixpoint.f` `BF-SNAP-SOURCE`), whose last line
+calls `APP-IMAGE:SAVE`. Run that engine on the same source with the dump in place
+of the save:
 
 ```sh
-HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap > owners.txt
+HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
+{ grep -v 'APP-IMAGE:SAVE' <private-root>/hb-snap-src
+  printf '%s\n' 'require tools/snap-heap-owner.f' 'SNAP-HEAP-OWNER:DUMP'
+} | HB_TMP=<private-root> <private-root>/hb-native > owners.txt
 ```
 
 The heap map that produced the owner table in dot

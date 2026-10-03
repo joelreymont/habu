@@ -430,7 +430,7 @@ variable CS-CHILD-ERR-U
 \ A layout value occupies W hidden physical cells on the row, and `catch` wraps
 \ each of them one at a time. Staleness is a property of the VALUE: every
 \ question that finds the group sees through the wrapper, so an `option<cspt>`
-\ window comes back as one `stale<option<cspt<>>>` that one `drop` removes and
+\ window comes back as one `stale<option<cspt>>` that one `drop` removes and
 \ one `nip` moves, and every typed use of it - a word input, a typed local, a
 \ `MATCH` - is E-STALE-READ. Read as three lone cells instead, two `drop`s left
 \ one behind and the third was E-NELAB-UNDER in the native elaborator, which
@@ -465,7 +465,7 @@ PRODUCT cspt 0
    \ passing it to a word that declares the logical type reads it, and the
    \ diagnostic names the value, not a hidden field
    s" B2 ( option<cspt> -- n ) [: CS-BUNDLE-THROW ;] catch {: rc:n :} CS-READ-BUNDLE" CS-CODE<
-   CS-STALE?  s" stale<option<cspt<>>>" CS-CODE?  CS-CODE-END
+   CS-STALE?  s" stale<option<cspt>>" CS-CODE?  CS-CODE-END
    \ a typed local is the same read
    s" B3 ( option<cspt> -- ) [: CS-BUNDLE-THROW ;] catch {: o:option<cspt> rc:n :}" CS-CODE<
    CS-STALE?  CS-CODE-END

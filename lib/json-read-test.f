@@ -584,10 +584,11 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
 : JRT-TEST-SEALED ( -- )
    s" package JR : FORGE ( ptr a -- JR:reader ) MINT-READER ; ;package"
-   JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N drop ;
+   {: src:ptr srcu:n :}
+   src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   src srcu JRT-SUBJECT-OUT outu LEN>N JRT-SUBJECT-ERR erru LEN>N
+   oc ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
    s" JRT-BAD-PREMINT ( ptr a -- ptr n n ) JR:STORAGE>PREMINT" JRT-REJECTED

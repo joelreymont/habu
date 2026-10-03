@@ -116,6 +116,21 @@ lives here; build, test and environment rules live in
   mirrors the engine parser (`EMIT-NUM`, `src/habu/habu1.f`) token for token;
   GD-LITERAL-FLOAT-FIRST pins the matrix, including that the checker rejects a
   call to a number-shaped word.
+- **Engine-provided sources are exempt from the reserved-word rule.** They
+  implement the language, and several define the reserved words themselves:
+  `TRUST` and `CHECK-DOES!` (`src/core/checker.f`), the loaders
+  (`src/core/include.f`), `NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`,
+  `LAYOUT-BUFFER` and `undefine`. The lint guards what `tools/check.f` reads,
+  and check.f loads and checks nothing from such a source (given only those, it
+  refuses each, `E-ENGINE-PROVIDED`, rc 64); rebuilding `bin/hb` checks it. So
+  their other words of a reserved spelling, such as `DECL-EVENT:FIELD` and
+  `NFAM:VARIANT`, stand too. The number-shaped rule has no exemption: such a
+  word is unreachable in any source. Each target's engine provides only its own
+  `src/os/<target>/target.f`; on another host check.f does not take a foreign
+  target's copy (it refuses it, as it redefines the host's predicates), so a
+  target.f is checked by building its target's engine. A `src/` file no engine
+  provides, such as `src/habu/primitive-registry.f`, is checked and keeps both
+  rules.
 - **Namespaces are wordlists.** A qualified name has exactly one non-edge colon
   (`HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`): the qualifier names the wordlist, the
   record stores the tail. Qualifier case matches the vocabulary: project words
@@ -265,7 +280,10 @@ public
   clears checker signature, defer-target and control metadata, then the name may
   be reused. Shadowing an outer, global or built-in word from inside a package
   is legal (a different wordlist), and one tail may live in several packages
-  (`APP:RESET`, `MK:RESET`).
+  (`APP:RESET`, `MK:RESET`). A `does>` definer `MK` also publishes its clause
+  as `MK;does` in its own wordlist, so a live `MK;does` there refuses `MK` at
+  `does>` and a later `MK;does` is refused, rc 78 either way
+  (test/does-clause-record.f).
 - A **public** definition whose tail a **private** word of the same package owns
   is the forwarder pattern (`lib/task.f` publishes `: PREPARE ( ptr n -- )
   PREPARE ;` over its private `PREPARE`): legal, but both effects must move the
@@ -288,7 +306,9 @@ public
   MAKI public` publishes `MAKI:RUN`; a bare `EXPORT HELPER` in the public
   section promotes the private `HELPER`. Refused: an undefined source, a private
   word behind a CLOSED package, a source qualified into a sealed system package,
-  a primitive and a duplicate tail in the target section. Re-exporting a
+  a primitive and a duplicate tail in the target section. An exported `does>`
+  definer `MK` brings its clause along as `MK;does`, so a live `MK;does` in the
+  target section refuses it, rc 78 (test/does-clause-record.f). Re-exporting a
   generated constructor under a second name is allowed; adding tails INTO a
   generated constructor package is not. AOT tree-shake keeps one body; alias
   rows roll back with checker scope frames. At TOP LEVEL `EXPORT name…` is the
@@ -463,7 +483,7 @@ certifies and keeps the quantifier) and the same arity check. The one spelling
 only a local has is `{: p:ptr :}`: an annotation is a single token, so the bare
 `ptr` means an INFERRED pointee, and `{: p:ptr n :}` is two locals, not a
 pointee. The annotation is asserted, not decoration: a wrong family, a scalar
-spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag<>), a wrong
+spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag), a wrong
 family argument and a bare tail of a family of arity > 0 are all refused. See
 [the multi-cell type
 rules](type-system.md#5-families-records-alternatives-and-generics).
@@ -602,6 +622,26 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   guard follow the replacement effect, including zero inputs or a scalar result.
   An empty replacement removes the earlier clause and restores the created
   word's original body.
+- **`does>` patches the word the last `create`, `variable` or `constant`
+  made, only while that word lives.** A forget, an `undefine`, a failed
+  `evaluate` or a failed REPL line that retires it leaves `does>` nothing to
+  patch, even when an earlier created word survives, and `does>` is then
+  refused with `hb: does> has no created word` (rc 70, a catchable throw
+  inside `evaluate`). Measured in `test/code-reclaim.f`:
+
+  ```forth
+  create K 7 ,
+  : M ( -- ) ;
+  create G 5 ,
+  s" M" FORGET-DEFS-FROM
+  : B ( -- ) does> ( -- n ) @ ;
+  B
+  ```
+
+  A native engine boots with no created word, so a `does>` before any
+  `create` is refused the same way. An image restored from a `--repl` build
+  keeps its build's last created word instead, and its first `does>` patches
+  that word (`tools/hb-build-repl-twin-test.f`).
 - **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
   inside the body is refused with `E-BAD-DECLARATION`; put comments above the
   opener, including comments explaining the header or fields.
@@ -724,6 +764,9 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   file. Run multi-file tools as `hb --load lib/a.f lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
   is not a tty. Use `--load` only with more than one source file.
+- **A leading `#!` line is a comment** in a program `hb` runs from a file or
+  standard input, in every file `--load`, `include` and `require` load, and in
+  the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.
 - **Keep physical lines short.** Factor long `--load` builders and check-source
   appenders; a line near the interpreter input buffer truncates and surfaces
   later as unrelated top-level words.
@@ -803,16 +846,17 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `=` (`bool bool` is refused).
 - **Quotations are xts, not closures.** `[: … ;]` cannot read surrounding
   locals: declaring or referencing a local inside a quotation is
-  `E-BAD-LOCAL-SHAPE`, checker and compiler reject local references while a
-  quotation is open, and on the JIT tier a `{:` group inside `[: ;]` is refused.
-  A body that needs locals inside a quotation becomes a named private word. A
-  value a `catch`, `finally` or locked body needs travels through storage it can
-  address; where it differs per task, that storage is the task's own slot (a
-  `TASK:+USER` cell or a typed-buffer row indexed by the task) that the
-  quotation reads for the running task. Only one `[:` is open at a time: a
-  second refuses `hb: a quotation may not open inside a quotation: <name>`, rc
-  75, catchable inside `evaluate`; sequential quotations in one definition are
-  fine.
+  `E-BAD-LOCAL-SHAPE`, checker and compiler reject local references while any
+  quotation is open, including in an enclosing quotation after an inner `;]`,
+  and on the JIT tier a `{:` group inside `[: ;]` is refused. A body that needs
+  locals inside a quotation becomes a named private word. A value a `catch`,
+  `finally` or locked body needs travels through storage it can address; where
+  it differs per task, that storage is the task's own slot (a `TASK:+USER` cell
+  or a typed-buffer row indexed by the task) that the quotation reads for the
+  running task. Quotations nest: each `[:` inside another opens its own body,
+  with its own inputs, calls and `exit`, and the enclosing body resumes after
+  its `;]`; at most 32 are open at once (**Engine limits ordinary source
+  reaches**).
 - **A handle over caller-owned storage is a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller**, a checked `ptr PKG:type`.
   No `TRUSTED:` mint, state and consume leaves: `CAST:` refuses a linear
@@ -847,10 +891,16 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   frames of the current quotation or definition, never an enclosing quotation's;
   loop frames are separate from the typed return stack. A `do` whose every body
   path returns or throws has no normal continuation; `?do` keeps its zero-trip
-  exit; `leave` is the explicit exit. `+loop` adds its step wrapping and ends
-  only when the index crosses between limit-1 and limit in the step's direction
-  (Forth 2012 6.1.0140): equal bounds run once with a negative step and a whole
-  cycle with a positive one, unlike `loop`.
+  exit; `leave` is the explicit exit. `do` always takes its first turn. `?do`
+  tests its bounds by its closer's rule before that turn: `?do … loop` enters
+  only while start < limit, signed, so `-1 0 ?do` and `MIN-N 0 ?do` skip as
+  `0 0 ?do` does and a count at or below zero takes no turn; `?do … +loop`
+  skips only equal bounds, since its step may count down to a limit below the
+  start. `+loop` adds its step wrapping and ends only when the index crosses
+  between limit-1 and limit in the step's direction (Forth 2012 6.1.0140):
+  equal bounds run once with a negative step and a whole cycle with a positive
+  one, unlike `loop`. The checker models frames, not trip counts, so the entry
+  rule changes no effect.
 - **`RECURSE` uses the declared effect**, a fresh copy per call; keep the raw
   declared signature stable after `CHECK!`.
 - **Checked `catch` is quotation catch**: `[: WORD drop ;] catch`, consuming
@@ -959,7 +1009,7 @@ boundary cases are contracts every backend answers alike.
 
 ## Engine limits ordinary source reaches
 
-Four ceilings are reachable from plain Habu rather than a runaway; each refuses
+These ceilings are reachable from plain Habu rather than a runaway; each refuses
 by name with the count it saw and the ceiling, and none truncates.
 
 - **A definition's captured source text: `BODYBUF-CAP`, 8000 bytes**
@@ -970,12 +1020,28 @@ by name with the count it saw and the ceiling, and none truncates.
   move the long literals into words of their own. The same constant bounds the
   source verifier's body buffer (`E-VS-BODY-CAP`) and the native compiler's unit
   text (`E-NCOMP-TEXT`).
+- **A definition name at tier 1: 64 bytes** (`src/compiler/native/compiler.f`
+  `NAME-CAP`). Tier 0 and the dictionary take any name the body capture holds;
+  the native compiler names a definition's functions in 128-byte buffers, a
+  quotation's with a suffix. Past it: `ncomp: cannot compile <name>: a
+  <length>-byte name; the limit is 64 bytes`, `E-NCOMP-NAME-CAP`, catchable
+  inside `evaluate`. Repair: shorten the name.
 - **One REPL line: 255 bytes** (`src/habu/repl.f` `LLINE-MAX`). A longer line is
   refused, `hb: repl line over 255 bytes: <length> typed`, and read again, never
   truncated, evaluated or saved to history. Load long definitions from a file.
 - **`begin` nesting in one definition: `JIT-SNAP:FRAMES`, 28**
   (`src/habu/layout.f`), the JIT's value-stack snapshot frames per definition.
   Past it: `hb: BEGIN nesting full at 28 frames: <name> needs <depth>`, rc 75.
+  Factor the inner loops into their own words.
+- **Quotation nesting in one definition: `JIT-QUOT:LEVELS`, 32**
+  (`src/habu/layout.f`), the most `[:` bodies open at once, which is the
+  checker's control-frame capacity. Past it:
+  `hb: quotation nesting full at 32 levels: <name> needs 33`, rc 75, catchable
+  inside `evaluate`; `tools/check.f` refuses the same source first,
+  `E-UNCHECKABLE`. Factor the inner quotations into named words.
+- **`do` and `?do` nesting in one definition: `LV-LEVELS`, 16**
+  (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
+  records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.
   Factor the inner loops into their own words.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is
@@ -1144,7 +1210,7 @@ passing suite.
   growable byte row. It is the one definer that takes `u8`, the only sub-cell
   type with accessors of its own: `DYNAMIC-BUFFER BYTES u8` loads and `0 BYTES
   c@` reads byte 0 (test/dynamic-buffer.f), while `DYNAMIC-BUFFER X u16`
-  throws 7121. `count NAME-RESERVE` allocates at least that many elements and
+  is refused. `count NAME-RESERVE` allocates at least that many elements and
   keeps contents; `index NAME` answers `ptr Type`, rejecting negative and
   beyond-capacity indices; a smaller reserve keeps the allocation; growth may
   move it, so retain indices and reacquire pointers. A growing reserve copies
@@ -1210,11 +1276,16 @@ passing suite.
 - **Check native emitters before building an image**: checked algorithms,
   emitted code validated by focused tests; pre-checker emitters keep their
   source-shape checks until converted, which justify no new unchecked bodies.
-- **Fixed DATA header cells need a layout audit** against the reserved ranges in
-  `src/habu/layout.f` (`VTAG-OFF`, `VVAL-OFF`, `SNAPSTK-OFF`, body buffer,
-  return stack, locals table, register tables, breakpoints, snapshot cells); a
-  cell inside a scratch range is overwritten by compiled source. Add a
-  regression for the exact overlap class.
+- **Fixed DATA header cells need a layout audit** against the reserved ranges:
+  `VTAG-OFF`, `VVAL-OFF`, `JIT-SNAP:STK-OFF`, `JIT-QUOT:STK-OFF`,
+  `BODYBUF-OFF`, `LOCNAMES`, `BPTAB-OFF` and the `SNAP-RELOC` call and address
+  maps in `src/habu/layout.f`, and the register tables
+  `REGALLOC-ABI:VRTAB-OFF`/`VRITAB-OFF` in `src/habu/regalloc-abi.f`. A cell
+  inside a scratch range is overwritten by compiled source. The return and
+  loop stacks are guarded mappings (`STACK-ABI`), not header ranges. Give the
+  cell a row in `src/habu/data-claims.f`, whose `CLAIMS-ASSERT` refuses an
+  overlapping pair at build and names both, and add a regression for the exact
+  overlap class.
 - **Snapshot builders retire the baked tail** (`undefine NAME` for one word,
   `HIDE-DEFS-FROM` only for refresh tail truncation) and append the snapshot
   entry file; they never replay baked core, target or image files to mask
@@ -1322,40 +1393,116 @@ the rule.
   record; the runtime closes the child loan on throw or task halt.
   `test/c2-field-loan-e2e.f` exercises the nested nonzero-offset Pair, source
   and native lowering, a saved explicit callback scheme, refusals and cleanup.
+- **A storage declaration its definer refuses is the checker's refusal, named
+  and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
+  refuse an unknown, malformed or unstorable type, a name with more than one
+  `:` or in a sealed package, and a literal count outside the extent (the
+  pre-verifier also refuses a count token that resolves to no `( -- n )` word):
+  `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
+  `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
+  reports it as `E-BAD-STORAGE` at the type's file, line and column in every
+  mode (test/load-reject-diag-test.f, tools/check-test-lib.f
+  `check/storage-type`). Nothing is defined. A count word's value is the run's
+  to refuse, with the definer's catchable `E-LAYOUT-BUFFER` (7121).
 - **A `TYPED-BUFFER` element is a storage type, never bare `u8`.**
-  `2 TYPED-BUFFER TB u8` throws `E-LAYOUT-BUFFER` (7121) from
-  `STORAGE-VALIDATE`; a byte row is `n BUFFER: B` (lib/string.f),
-  `( -- ptr u8 )`. A fixed element is a whole allotted cell, and a stored `u8`
-  would mint a `ptr u8` that cell `@` cannot read. **`DYNAMIC-BUFFER` is the
-  one definer that does take `u8`**, because it allots no element storage and
-  scales the index by the element's own width: `DYNAMIC-BUFFER BYTES u8` loads
-  and `0 BYTES c@` reads byte 0 (test/dynamic-buffer.f), while
-  `DYNAMIC-BUFFER X u16` still throws 7121 — `u8` is the only sub-cell type
-  with accessors of its own.
+  `2 TYPED-BUFFER TB u8` is refused at the declaration,
+  `habu: in TB: type this definer cannot store 'u8'` (exit 70); a byte row is
+  `n BUFFER: B` (lib/string.f), `( -- ptr u8 )`. A fixed element is a whole
+  allotted cell, and a stored `u8` would mint a `ptr u8` that cell `@` cannot
+  read. **`DYNAMIC-BUFFER` is the one definer that does take `u8`**, because it
+  allots no element storage and scales the index by the element's own width:
+  `DYNAMIC-BUFFER BYTES u8` loads and `0 BYTES c@` reads byte 0
+  (test/dynamic-buffer.f), while `DYNAMIC-BUFFER X u16` is refused the same
+  way, `habu: in X: type this definer cannot store 'u16'` — `u8` is the only
+  sub-cell type with accessors of its own.
   `create … allot`, `BUFFER:` and `TYPED-BUFFER` all allot
   zeroed space on a cell-rounded address (measured: after `create A 1 allot
   create B`, `B FFI:>CELL 7 and` is 0 and the bytes read back zero), so a row
   a foreign call reads as an aligned C object needs no alignment word of its
   own (lib/net/curl.f's fd_sets and out-parameter cells).
-- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is a decimal literal or a word
-  of effect `( -- n )`.** The source pre-verifier reads the count as TEXT and
-  never runs it (`verify-source.f` `RECORD-TYPED-BUFFER` hands the previous
-  token to the checker's `CHECKER-LBUF:CERTIFY`). A decimal literal certifies
-  by its value, positive and within `LBUF-COUNT-MAX` for the element width.
-  Any other token certifies by its effect: it must resolve as a body would
-  resolve it (bare, package-qualified or engine-held) to a word that takes no
-  input and leaves one cell `n` accepts. A `constant`, a computed constant
-  (`6 constant OPS  2 constant KEYS  OPS KEYS + constant VOCAB` then
-  `VOCAB TYPED-BUFFER ROWS n`), an engine constant such as `HIR:OPCODES` and a
-  colon `( -- n )` all pass `tools/check.f`. The load bounds the value
-  (`src/core/layout-buffer.f` `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n`
-  passes pre-verification, and its load throws `E-LAYOUT-BUFFER` (7121, rc
-  67). Measured refusals, 7121 from the pre-verifier (rc 67): an unknown name,
-  a `variable` (it leaves an address), a `( -- bool )` word, a word with an
-  input (`4 CAP TYPED-BUFFER` for `CAP ( n -- n )`), a name the scope refuses
-  (a `using` public that shadows a global, or one two used packages export),
-  `$40`, a literal `0`, and an inline expression: `Q-MAX Q-SEM-N * TYPED-BUFFER
-  Q-SEMS TASK:sem` (lib/queue.f:42) is refused on its `*`.
+- **A `TYPED-BUFFER` or `LAYOUT-BUFFER` count is an integer literal, a word of
+  effect `( -- n )`, or an expression.** The source pre-verifier reads the
+  token before the definer as TEXT and never runs it (`verify-source.f`
+  `RECORD-TYPED-BUFFER` hands it to the checker's `CHECKER-LBUF:COUNT-OK?`).
+  A token the engine's number reader reads as an integer is the count, held to
+  the definer's extent for the element width: `0 TYPED-BUFFER B n` is refused
+  by `tools/check.f`'s preverify at the `0`, `E-BAD-STORAGE` with reason
+  `count outside the buffer's extent`, exit 70, and `$40 TYPED-BUFFER B n`
+  checks. Any other token certifies by the effect of the word it names, which
+  must resolve as a body would resolve it (bare, package-qualified or
+  engine-held). A word that takes no input is the count itself and must leave
+  one cell `n` accepts: a `constant`, a computed constant (`6 constant OPS
+  2 constant KEYS  OPS KEYS + constant VOCAB` then `VOCAB TYPED-BUFFER ROWS
+  n`), an engine constant such as `HIR:OPCODES` and a colon `( -- n )` pass. A
+  word that takes input ends an expression whose value only the load computes,
+  so `N 2 * TYPED-BUFFER B n`, `Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem`
+  (lib/queue.f:42) and `4 CAP TYPED-BUFFER` for `CAP ( n -- n )` pass, as
+  they load. The load bounds every value (`src/core/layout-buffer.f`
+  `LBUF-EXTENT?`): `0 constant Z  Z TYPED-BUFFER R n` passes pre-verification,
+  and its run is refused with the definer's 7121, exit 67. The pre-verifier
+  refuses, at the token, `E-BAD-STORAGE` with reason `count resolves to no
+  ( -- n ) word`, exit 70: an unknown name, a name the scope refuses (a `using`
+  public that shadows a global, or one two used packages export), a `variable`
+  (it leaves an address) and a `( -- bool )` word (tools/check-test-lib.f
+  `check/buffer-count`, `check/layout-buffer-count`).
+- **A parsing keyword's operand is data to every stage of `tools/check.f`.**
+  `'` and `char` at top level and `[']` and `[char]` in a body take the next
+  whitespace-delimited token whatever it spells, across line ends, matched
+  case-folded as the engine's keyword compare folds; the engine refuses each
+  outside its own state. The source pre-verifier (`verify-source.f`
+  `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char` and `[char]`,
+  `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
+  (`lib/source.f`): `tools/lint/source-lex.f` reads the operand raw where it
+  makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
+  marks a definer's name, and the reserved-name lint and the nominal pass skip
+  a marked token; source discovery reads it with `SD-RAW` (`SD-STEP`); the
+  origin-marker rewriter skips it (`DO-SKIP-OPERAND`). The keyword stays the
+  token before what follows, so `char 0 TYPED-BUFFER B n` leaves its count,
+  48, to the run. Measured: `char : constant COLON`, `' TYPED-BUFFER constant
+  TB` and `char 0 TYPED-BUFFER B n` load and were refused (a definition named
+  `constant`, a definer, a zero count), and `: F ( -- n ) [char] ( ;` and
+  `[char] :` in a body load and were refused (a comment, a definition start)
+  (tools/check-test-lib.f `check/parsed-operand`). `char \`, `[char] \` and
+  `char (` before a line `: 42 ( -- ) ;` loaded and were admitted (the lint
+  skipped that line's first word), `char s"` and `[char] s"` loaded and were
+  refused (discovery: unterminated string), `' :` was refused (a definition
+  with no name), and `[char] ;` before a local `newtype` was refused (the
+  nominal pass read the local as a declaration); now the first group is
+  refused for its `42`, `' :` as the load refuses it (`E-UNDEFINED: :`, an
+  undefined tick, rc 70) and the rest check as they load, and `create char`,
+  which names a word that takes nothing, leaves the next line's `: 42` refused
+  (`check/raw-operand`). A local of a keyword's name is that local in a body
+  (`{: [char] :} [char]` loads), and only discovery tracks locals: the others
+  read the keyword, so a body using a local `char` or `[char]` is refused by
+  the pre-verifier (rc 74) though it loads, and after `{: ['] :} ['] ;` the
+  lint and the nominal pass read past the `;`, so a reserved or number-shaped
+  name defined later in the file is not refused. The pre-verifier's
+  body set lacks `[']`, so `['] \` in a body is refused the same way after a
+  word `\` is defined. A dictionary word that parses, such as `require` or
+  `SEE`, is not one of these: the word a spelling names depends on scope, and
+  the tree defines words that take no operand under both spellings, so the
+  token after one is an ordinary token.
+- **A definer's name is read as the loader reads it, by every stage of
+  `tools/check.f`.** The loader takes it with `parse-name`, so
+  `package ( ;package` names the package `(`, `: \ ( -- n ) 1 ;` the word `\`
+  and `DEFLINEAR \` the type `\`, which it then refuses. The
+  source pre-verifier reads every definer's name with `NAME-TOKEN`
+  (`verify-source.f`). The nominal pass and the reserved-name lint work on
+  `tools/lint/source-lex.f` tokens and ask `LINT-LEX:OPERAND` to read the token
+  after a definer again, because only they know the definer is at top level:
+  inside a body `DEFLINEAR` is a call and a `(` after it opens a comment.
+  `create \`, `variable \` and `1 constant \` name `\` the same way. A name the
+  loader reads and refuses is refused at that token. A type name holding `(` or
+  `\` is refused ([effects.md](effects.md) "`DEFLINEAR name`"), so
+  `DEFLINEAR (`, `DEFLINEAR \` and `VALUE-RECORD ( x n END-VALUE-RECORD` are
+  `E-BAD-NOMINAL-TYPE` on that token, and `NEWTYPE`, `SUMTYPE`, `ENUM`,
+  `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
+  the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
+  `check/operand-name-admitted`, `-refused`). A definer with nothing after it
+  has no name: the loader refuses it, and `tools/check.f` refuses it at the
+  definer, in prose and as `E-MISSING-NAME`, for each of the eleven definers it
+  reads and for `undefine` (`check/operand-missing`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
@@ -1379,6 +1526,46 @@ the rule.
   ptr n ) ;` in a required module, `5 MOD:TD W  : G ( -- n ) W ;` is the
   `E-MISMATCH` the effect deserves, not `E-UNDEFINED`, and `TASK:MIN-STACK
   TASK:TASK T1  : F ( -- ptr n ) T1 ;` certifies.
+- **A word whose body reaches `INCLUDE-EVALUATE` defines words the source
+  pre-pass cannot see; the run checks their uses.** `FUNCTION:`/`;FUNCTION`,
+  `CMD:COMMAND` and `TASK:+USER` render a definition and hand it to the
+  loader's evaluate boundary, so no source text spells the product. The checker
+  carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and on every checked
+  body that calls a flagged word (`checker.f` `NORET-AXIOMS`, `RENDSET`). When
+  the pre-pass meets a top-level statement naming such a word it marks the
+  wordlist the statement runs in, which is where the loader compiles the
+  product; a later definition naming a word nothing resolves, looked up through
+  a marked wordlist, gets `CHECK` verdict 2: no diagnostic, its declared
+  signature recorded for its callers, its body left to the `bin/hb --load` run
+  that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
+  Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
+  i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:51, used at :78), `CTX0`
+  (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
+  `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
+  product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the
+  run's `E-UNDEFINED`. The mark covers only what follows the statement and only
+  its own section: a use before it, from another package, or of a private
+  product from outside its package is still refused by the pre-pass. It also
+  covers any other unresolved name there: in lib/aio-macos.f, private `AIO`
+  after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
+  now the run's to judge. A definer's created words keep its `does>` clause's
+  declared effect when the clause or the definer's own body is deferred; the
+  run judges the deferred text (verify-source.f `VERIFY-DOES`). Four limits
+  remain. A `TRUSTED:` body is asserted, not walked, and an evaluate reached
+  through a `defer` or executed xt is not seen, so neither makes its caller a
+  renderer. A word the checker already holds resolves before any mark is
+  asked, so a product shadowing it is judged against that word, a refusal the
+  load does not make: every engine word on bin/hb, which carries no seeded
+  pool, and every row a seeded engine has taken. A product `BYTE-COPY` or
+  `BYTE-CHECK-N` used in `package P private` loads 0 and checks 70
+  (`E-INPUT-UNDERFLOW`). A straight-line wrapper around a definer is learned
+  only from a certified body (verify-source.f `VERIFY-WRAPPER`), so one whose
+  body is deferred creates words the pre-pass does not know outside the mark's
+  cover: with `CKR-SEVEN` a product of package `P`'s public section,
+  `: DEFR ( n -- ) create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN +
+  DEFR ;  5 MK Y  : V ( -- n ) Y ;` loads 0 and checks 70 (`E-UNDEFINED` `Y`
+  in `V`).
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):
@@ -1450,7 +1637,8 @@ the rule.
 - **A checker atom prefix reserves the whole lowercase `prefix-*` namespace.** A
   `layout-` prefix makes an ENUM variant spelled `layout-conflict` throw 7110;
   sweep with `rg '\bprefix-'` before choosing one. Declaration-grammar keywords
-  are reserved family names too (`ENUM policy` throws 7110).
+  are reserved family names too (`ENUM policy` throws 7110), and so is a value
+  record's name (`STRUCTURE vr` after `VALUE-RECORD vr` throws 7110).
 - **`0 set-check` also disarms the compile preflight.** A program that opens
   with it runs with neither gate. Declare the primitive instead, in the axiom
   form the engine's own primitives use (`PRIM: name PE-… PRIM;`), and the rest
@@ -1555,18 +1743,24 @@ the rule.
   it afterwards is `E-STALE-READ` (`expected: XML:reader actual:
   stale<XML:reader>`) and dropping it is the linear refusal — a linear cell may
   not be dropped, with or without a catch. `TYPED-VARIABLE V XML:reader` and `1
-  TYPED-BUFFER V XML:reader` both throw **7121** at the declaration, so the
-  one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The two
+  TYPED-BUFFER V XML:reader` are both refused at the declaration, so the
+  one-slot `TYPED-BUFFER` route does not apply to a linear nominal. The three
   shapes that work: open the handle INSIDE the caught body (`lib/xml-test.f
-  BAD`), or, where the handle must SURVIVE the caught failure, name the body and
+  BAD`); where the handle must SURVIVE the caught failure, name the body and
   call `['] WORD catch` (`lib/byte-edit-test.f`, `lib/xml-test.f`
   `CAPACITY-AND-STATE`, `lib/json-read-test.f JRT-CATCH-BAD`), which survives
   exactly while WORD's own throw paths leave the handle where they found it, the
-  evidence the tick carries. A MULTICELL bundle is stale as one value, not as
-  the W hidden cells that carry it: an `option<pt>` window comes back as ONE
-  `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an untyped
-  local holds it and gives it back stale, and every typed use (a word input, a
-  typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
+  evidence the tick carries; or, where the failure is to propagate, catch
+  nothing and dispose of the handle in the word that ends in `throw`
+  (`test/process-pty-tty-smoke.f DEADLINE`): the throw kills that path, so the
+  arm needs no balance. `['] X catch` then a teardown, X passing the handle
+  through a word before its throw, is `E-STALE-READ`; a word that consumes the
+  handle and returns inside an `if` arm is a mismatch at `then`; consuming it
+  and throwing in the arm certifies. A MULTICELL bundle is stale as one value,
+  not as the W hidden cells that carry it: an `option<pt>` window comes back as
+  ONE `stale<option<pt>>` — one `drop` removes it, `nip`/`swap` move it, an
+  untyped local holds it and gives it back stale, and every typed use (a word
+  input, a typed local, a `MATCH`) is `E-STALE-READ` naming the logical type
   (`test/catch-stale-suite.f CS-SECTION-BUNDLES`, `test/compiler/native-catch.f
   CATCH-STALE-DROP`).
 - **A checked word evaluates source with `evaluate-closed`, never

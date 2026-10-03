@@ -25,6 +25,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/outcome.f
 
 package TOKSTREAM-TEST
 
@@ -172,18 +173,21 @@ create EMPTY 1 allot
 
 \ --- child runs ---------------------------------------------------------------
 
+: TOOL$ ( -- ptr u8 n )   s" tools/tokstream.f" ;
+
 : STORE! ( len len outcome -- )
-   MATCH outcome
+   {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF TOOL$ OUT$ ERR ERR-U @ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : ARGV-HEAD ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" tools/tokstream.f" >LEN PROC-ARGV+
+   TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+ ;
 
 : SPAWN ( -- )

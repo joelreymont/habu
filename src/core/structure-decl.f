@@ -53,23 +53,21 @@ using TFAM
 
 package STRUCTURE-DECL
 
-\ --- named reject codes. Re-declared package-locally (values mirror sumtype.f
-\ E-TDECL-*: 7107/7108/7109/7110/7116/7119 and type-family.f E-TFAM-CASE 7101),
-\ because the global pre-hook constants that own them are removed by the type-DSL
-\ cutover and do not survive the checked engine's fixpoint self-rebuild (the same
-\ reason decl-event.f re-declares its E-DEV-* codes). E-TFAM-DUP (family duplicate,
-\ 7102) and the field record's E-PF-NAME / E-TFAM-DUP / E-TFAM-CASE name-gate
-\ codes are raised by TFAM-DECL / the field-event path and pass through unchanged.
-7107 constant E-SYNTAX      \ malformed: missing name/arity/terminator, unexpected/legacy token
-7108 constant E-ARITY       \ arity token is not a small decimal in [0, cap]
-7109 constant E-PAYLOAD     \ unresolved / unknown field type
-7110 constant E-NAME        \ reserved or colliding family name
-7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
-7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
-7101 constant E-CASE        \ family name is not a lowercase canonical tail
-7102 constant E-DUP         \ duplicate family or field tail (type-family.f E-TFAM-DUP,
-                            \ raised by TFAM-DECL / the field-event path; named here only
-                            \ so a reason can be armed for it before those calls)
+\ --- named reject codes: local names for the shared declaration codes, read at
+\ load time from their owners, sumtype.f TYPE-DECL:E-TDECL-* and type-family.f
+\ E-TFAM-*, as enum-decl.f reads them. The field record's E-PF-NAME /
+\ E-TFAM-DUP / E-TFAM-CASE name-gate codes are raised by TFAM-DECL / the
+\ field-event path and pass through unchanged.
+TYPE-DECL:E-TDECL-SYNTAX constant E-SYNTAX    \ malformed: missing name/arity/terminator, unexpected/legacy token
+TYPE-DECL:E-TDECL-ARITY constant E-ARITY      \ arity token is not a small decimal in [0, cap]
+TYPE-DECL:E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
+TYPE-DECL:E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
+TYPE-DECL:E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
+TYPE-DECL:E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+E-TFAM-CASE constant E-CASE                   \ family name is not a lowercase canonical tail
+E-TFAM-DUP constant E-DUP                     \ duplicate family or field tail, raised by TFAM-DECL /
+                                              \ the field-event path; named here only so a
+                                              \ reason can be armed for it before those calls
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -108,8 +106,7 @@ TRUSTED: QUOT-SCH ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
 TRUSTED: QUOT-ROLLBACK ( -- ) TYPE-DECL:QUOT-ROLLBACK ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
-TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
+TRUSTED: FAMILY-RESERVED? ( ptr u8 n -- bool ) TYPE-NAME:FAMILY-RESERVED? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
@@ -194,20 +191,16 @@ SD-RESET
 : UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
-\ name gate: a reserved family name is a grammar keyword, a control word, the
-\ STRUCTURE openers, a single-character token (would collide with a type letter /
-\ arity param), or a concrete checker type name. Case + duplicate are enforced by
-\ TFAM-DECL itself. The control-word arm reads TYPE-NAME:CONTROL?, the single
-\ owner of that list, so this front end refuses `if` exactly where the legacy
-\ PRODUCT / SUMTYPE definers refuse it through TDECL-RESERVED?.
+\ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
+\ list every family definer asks, or a STRUCTURE opener. Case + duplicate are
+\ enforced by TFAM-DECL itself. A copy of the list kept here drifted from the
+\ legacy definers twice: it admitted the control words (`if`), then value
+\ record names (`STRUCTURE vr` after `VALUE-RECORD vr`).
 \ ---------------------------------------------------------------------------
 : NAME-RESERVED? ( ptr u8 n -- bool )
-   2dup GRAMMAR-KW? IF 2drop YES EXIT THEN
-   2dup CONTROL-KW? IF 2drop YES EXIT THEN
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
-   dup 1 = IF 2drop YES EXIT THEN
-   CON-CODE 0 <> ;
+   FAMILY-RESERVED? ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN

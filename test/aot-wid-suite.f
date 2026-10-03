@@ -125,6 +125,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
+require lib/test/outcome.f
 
 package AOT-WID-SUITE
 
@@ -232,7 +233,11 @@ create NUM-BUF 32 allot   variable NUM-U
             o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
-   ;MATCH ;
+   ;MATCH
+   \ The builder exits PROC-TIMEOUT-RC when a deadline expired in it: replay its
+   \ stderr, which names the step, and throw E-PROC-TIMEOUT again, so the gate
+   \ pool labels this row TIMEOUT-UNDER-LOAD.
+   RC @ PROC-TIMEOUT-RC = if ERR$ type cr E-PROC-TIMEOUT throw then ;
 
 : BUILD-VARIANT ( -- )
    PROC-ENV-RESET
@@ -277,13 +282,14 @@ create GWID-BUF 32 allot   variable GWID-U
    RUN-BUILDER ;
 
 \ --- forge child spawn + outcome capture (parameterised by engine) ---
-: STORE! ( len len outcome -- )
-   MATCH outcome
+: STORE! ( len len outcome ptr u8 n -- )
+   {: outu:len erru:len oc src:ptr srcu:n :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout OF src srcu OUT OUT-U @ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 : FORGE-LOAD ( ptr u8 n ptr u8 n -- ) {: e:ptr eu:n s:ptr su:n :}   \ e=engine s=source, run as --load
    FORGE$ s su WRITE-ALL
@@ -291,14 +297,14 @@ create GWID-BUF 32 allot   variable GWID-U
    s" --load" >LEN PROC-ARGV+
    FORGE$ >LEN PROC-ARGV+
    e eu >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  s su STORE! ;
 
 : FORGE-STDIN ( ptr u8 n ptr u8 n -- ) {: e:ptr eu:n s:ptr su:n :}   \ same source piped on stdin
    su FORGE-CAP > if E-FS-CAPACITY throw then
    s FIN su BYTE-COPY  su FIN-U !
    PROC-ARGV-RESET
    e eu >LEN  FIN FIN-U @ >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  s su STORE! ;
 
 : PARSE-OUT ( -- n )                 \ child stdout -> number, fail the test if not numeric
    OUT OUT-U @ TRIM STR>NUMBER? MATCH option
@@ -326,7 +332,7 @@ create GWID-BUF 32 allot   variable GWID-U
 : BOOT-EMPTY ( ptr u8 n -- ) {: e:ptr eu:n :}
    PROC-ARGV-RESET
    e eu >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME  STORE! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME  e eu STORE! ;
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 
@@ -369,10 +375,9 @@ create GWID-BUF 32 allot   variable GWID-U
 \ evidence: the two outcomes carry different codes AND different diagnostics, so
 \ an 84 can only have come from the protected-WID bitmap.
 82 constant SEED-RC                  \ src/core/engine-error.f ENGINE-ERROR:AOT-SEED
-70 constant CTX-RC                   \ src/core/checker.f COMPILE-REJECT-RC
 : ASSERT-NOT-PROTECTED ( -- )
    EXITED @ TTRUE
-   RC @ CTX-RC T=
+   RC @ CHECKER-REJECT-RC T=
    ERR$ s" hb: cannot publish into protected word" CONTAINS? 0= TTRUE ;
 
 \ --- forge / probe sources (interpreted by the child engine) ---
@@ -631,10 +636,11 @@ create PRB PRB-CAP allot   variable PRB-U
    s" src/core/top-row.f" COLD-PATH wid sealed COLD-FIXTURE$ APPEND-FILE ;
 
 : COLD-RUN ( ptr u8 n -- )
+   {: e:ptr eu:n :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   >LEN COLD-ROOT$ >LEN EMPTY 0 >LEN
+   e eu >LEN COLD-ROOT$ >LEN EMPTY 0 >LEN
    OUT CAP >LEN ERR CAP >LEN PROBE-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME STORE! ;
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME e eu STORE! ;
 
 : COLD-PROBE ( -- )
    FORGE$ ALIAS-PROBE$ WRITE-ALL

@@ -19,10 +19,13 @@
 \   - PACKAGE SCOPING: `DEFTYPE SERIAL` in package CAMERA and the same line in
 \       package FRAME are two DISTINCT types (the ergonomic prize a global type
 \       table cannot deliver: a second same-named declaration would collide)
+\   - a tail an effect reads as something other than the family (`ptr`) is a
+\       reserved name in every scope; shadowing another package's family is not
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require lib/type/deftype.f
 require test/checker-assert.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -33,7 +36,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
@@ -114,6 +117,24 @@ TWX-SNAP-PREP
 \ the same contract survives the persist: identity accepts, projection to n rejects.
 s" VN-PP-ID ( pserial -- pserial )"  CHECK-QUIET-CANDIDATE! -1 T=
 s" VN-PP-N ( pserial -- n )"         CHECK-QUIET-CANDIDATE!  0 T=
+;package
+
+\ ---------------------------------------------------------------------------
+\ 5. the name rule: a tail an effect reads as something other than the family is
+\    a reserved name in every scope. A bare `ptr` is the pointer constructor, so
+\    a package's own `ptr` would leave its converter `( n -- ptr )` without a
+\    pointee. Shadowing another package's family stays legal: `side` is
+\    IR-SCHEMA's public enum, and the package's own `side` is a distinct type.
+\ ---------------------------------------------------------------------------
+s" PTR" ' VNOM:MINT catch nip nip TYPE-DECL:E-TDECL-NAME T=
+package CTORPKG
+s" PTR" ' VNOM:MINT catch nip nip TYPE-DECL:E-TDECL-NAME T=
+;package
+
+package SIDEPKG
+DEFTYPE SIDE
+s" VN-SIDE-MK ( n -- side ) >SIDE"          CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-SIDE-X ( side -- IR-SCHEMA:side )"    CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
 : REPORT ( -- )

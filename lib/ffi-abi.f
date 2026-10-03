@@ -159,6 +159,7 @@ $41C8 constant FFI-SCRATCH-END
 \ Copy a Habu byte-string into dst and NUL-terminate it, yielding a C string
 \ for the callee. dst must hold at least n+1 bytes; the caller owns it.
 : COPY-CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
+   u 0 < if E-FFI-SYNTAX throw then
    src dst u BYTE-COPY
    0 dst u + c! ;                         \ dst+u : NUL terminator
 
@@ -280,12 +281,23 @@ variable FN-REGISTERED
    idx LIB-CHECK
    value LIB-HANDLES idx cells + ! ;
 
+\ Every call stages its own arguments in the register and spill buffers, the
+\ dlopen/dlsym buffer and the two length buffers, so between calls they hold
+\ only the last call's values: proc_pidpath's process id, for one, which made
+\ two --repl builds of one program differ (tools/hb-build-repl-twin-test.f).
+\ Kernel params are not per call; they stay until FFI-KPARAM-RESET.
+: FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do 0 a i + c! loop ;
+
 \ Image capture is quiescent, and these are borrowed process addresses: clearing
 \ them needs no foreign call. The next call after a restore re-resolves against
 \ the new process.
 : FORGET-SYMBOLS ( -- )
    FN-MAX 0 ?do 0 i FN-ADDR! loop
-   LIB-MAX 0 ?do 0 i LIB-HANDLE! loop ;
+   LIB-MAX 0 ?do 0 i LIB-HANDLE! loop
+   FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
+   FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
+   FFI-REG-LEN-BUF BYTE-VIEW FFI-SCRATCH-END FFI-REG-LEN-BUF-OFF - FORGET-STAGED ;
 
 \ The registered flag is set only after REGISTER completes, so a throwing
 \ registration leaves flag and registry consistent for a retry (forth.md's
@@ -325,12 +337,12 @@ variable ERRNO-FN-CELL
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
 
 : NAME-ROOM ( n -- n ) {: u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0 <= if E-FFI-SYNTAX throw then
    u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then
    u ;
 
 : PATH-ROOM ( n -- n ) {: u:n :}
-   u 0= if E-FFI-SYNTAX throw then
+   u 0 <= if E-FFI-SYNTAX throw then
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then
    u ;
 
@@ -1099,6 +1111,9 @@ public
    src idx ARG-EXT-ARG! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
+   \ LIB-OVERFLOW holds CAP bytes; the length is bounded before the spelling check
+   \ reads the path.
+   u 0 <= u FFI:LIBRARY-PATH-CAP > or if E-FFI-SYNTAX throw then
    path u CHECK-SPELLING
    FFI:LIBRARY-ROOM? if
       path u FFI:LIBRARY-PATH CUR-LIB !

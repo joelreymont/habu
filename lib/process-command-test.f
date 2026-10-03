@@ -12,6 +12,7 @@ require lib/process-env.f
 require lib/fs-mutate.f
 require lib/process-command.f
 require lib/test/outcome.f
+require lib/test/guard-page.f
 
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
@@ -104,15 +105,24 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PCMDT-CHECK-INHERITED-ENV ;
 
+\ A deadline is no completion code: RC@ and RUN-RC throw E-PROC-TIMEOUT for
+\ it, where RUN-OUTCOME and OUTCOME@ keep it as data.
+: PCMDT-RC@ ( -- )
+   PROC-CMD:RC@ PCMDT-RC>N drop ;
+
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )
    PROC-CMD:RESET
    s" 5" >LEN PROC-CMD:ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN-OUTCOME
    T-OUTCOME-TIMEOUT
-   PROC-CMD:RC@ MATCH result ok OF drop 1 0 T= ENDOF err OF 137 T= ENDOF ;MATCH   \ timeout reaped as SIGKILL -> err(137)
-
+   [: PCMDT-RC@ ;] E-PROC-TIMEOUT TTHROWSQ
    PCMDT-OUT-LEN 0 T=
    PCMDT-ERR-LEN 0 T= ;
+
+: PCMDT-RUN-RC-TIMEOUT ( -- )
+   PROC-CMD:RESET
+   s" 5" >LEN PROC-CMD:ARG+
+   s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-PROC-RUN-RC drop ;
 
 : PCMDT-RUN-YES-TRUNCATED ( -- )
    PROC-CMD:RESET
@@ -366,6 +376,77 @@ CMD:COMMAND PCMDT-CMD
    b CMD:BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    h BYTE-VIEW CMD:VEC-CELLS cells MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+\ A context's argument and environment bytes are fixed regions, and a row is
+\ compared with the room left in its region: an exact fill is taken, one byte
+\ past it is refused, and neither a negative length nor one near the maximum
+\ cell gets past the rule. One fill serves both, so it spans the larger region.
+PROC-ENV-EXTRA-BYTES PROC-ARGV-BUF-CAP max constant PCMDT-FILL-LEN
+create PCMDT-FILL PCMDT-FILL-LEN allot
+
+: PCMDT-FILL! ( -- )
+   PCMDT-FILL-LEN 0 ?do 120 PCMDT-FILL i + c! loop
+   61 PCMDT-FILL 1+ c! ;                 \ "x=xxx...": an entry at any length from two
+
+: PCMDT-ENTRY-AT ( n -- ) {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENV-AT ( n -- ) {: valu:n :}
+   PROC-CMD:RESET s" N" PCMDT-FILL valu PCMDT-ENV+ ;
+
+: PCMDT-ENV-BYTE-BOUNDS ( -- )
+   PCMDT-FILL!
+   s" an env entry fits when its bytes and NUL fit the region" T-LABEL
+   [: PROC-ENV-EXTRA-BYTES 1- PCMDT-ENTRY-AT ;] catch 0 T=
+   [: PROC-ENV-EXTRA-BYTES PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENTRY-AT ;] E-PROC-ENV TTHROWSQ
+   s" an env row fits when its name, value and two terminators fit the region" T-LABEL
+   [: PROC-ENV-EXTRA-BYTES 3 - PCMDT-ENV-AT ;] catch 0 T=
+   [: PROC-ENV-EXTRA-BYTES 2 - PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENV-AT ;] E-PROC-ENV TTHROWSQ
+   PROC-CMD:RESET ;
+
+\ The room left is checked before a byte of the caller's text is read. One entry
+\ leaves PCMDT-LEFT bytes of the region; the text holds no `=` and ends at an
+\ inaccessible page, so a scan that runs first reads past it.
+8 constant PCMDT-LEFT
+
+: PCMDT-FILL-TO-LEFT ( -- )
+   PROC-CMD:RESET PCMDT-FILL PROC-ENV-EXTRA-BYTES PCMDT-LEFT - 1- PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENTRY-UNREAD ( n -- ) {: u:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 1- [char] x GUARD-PAGE:TAIL u PCMDT-ENV-ENTRY+ ;
+
+: PCMDT-ENV-UNREAD ( n -- ) {: nameu:n :}
+   PCMDT-FILL-TO-LEFT PCMDT-LEFT 2 - [char] x GUARD-PAGE:TAIL nameu s" " PCMDT-ENV+ ;
+
+: PCMDT-ENV-BOUND-BEFORE-SCAN ( -- )
+   PCMDT-FILL!
+   s" an env entry or row is measured against the room before it is read" T-LABEL
+   [: PCMDT-LEFT PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PCMDT-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: PCMDT-LEFT 1- PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: MEM-MAX-N PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: -1 PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR-MIN-I64 PCMDT-ENV-UNREAD ;] E-PROC-ENV TTHROWSQ
+   PROC-CMD:RESET ;
+
+\ The argument region is PROC-ARGV-BUF-CAP bytes, and PROC-ZCOPY alone compares
+\ an argument and its NUL with the room left in it.
+: PCMDT-ARG-AT ( n -- ) {: u:n :}
+   PROC-CMD:RESET PCMDT-FILL u >LEN PROC-CMD:ARG+ ;
+
+: PCMDT-ARG-BYTE-BOUNDS ( -- )
+   PCMDT-FILL!
+   s" an argument fits when its bytes and NUL fit the region" T-LABEL
+   [: PROC-ARGV-BUF-CAP 1- PCMDT-ARG-AT ;] catch 0 T=
+   [: PROC-ARGV-BUF-CAP PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   [: -1 PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   [: MEM-MAX-N PCMDT-ARG-AT ;] E-PROC-OUTPUT TTHROWSQ
+   PROC-CMD:RESET ;
+
 : PROCESS-COMMAND-TEST-MAIN ( -- )
    T-RESET
    PROC-CMD:TEST-WIPE
@@ -377,12 +458,17 @@ CMD:COMMAND PCMDT-CMD
    PCMDT-RUN-RC-OK
    PCMDT-RUN-RC-ERR
    PCMDT-RUN-TIMEOUT-OUTCOME
+   [: PCMDT-RUN-RC-TIMEOUT ;] E-PROC-TIMEOUT TTHROWSQ
+   PROC-CMD:OUTCOME@ T-OUTCOME-TIMEOUT
    PCMDT-RUN-CWD
    [: PCMDT-CWD-MISSING ;] E-PROC-PATH TTHROWSQ
    [: PCMDT-RUN-YES-TRUNCATED ;] E-PROC-TRUNCATED TTHROWSQ
    [: PCMDT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
    [: PCMDT-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
    [: PCMDT-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
+   PCMDT-ENV-BYTE-BOUNDS
+   PCMDT-ENV-BOUND-BEFORE-SCAN
+   PCMDT-ARG-BYTE-BOUNDS
    PROC-CMD:TEST-WIPE-AFTER-REFUSAL
    PCMDT-CMD CMD:TEST-WIPE
    PCMDT-CMD PCMDT-H-PRINTF

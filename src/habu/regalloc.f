@@ -5,13 +5,18 @@
 \   - VRFREE-CELL: the free bitmask in the DATA header, bit = pool INDEX.
 \   - VRTAB/VRITAB: DATA byte tables idx->reg and reg->idx, filled at startup
 \     by LVRINIT from VRPACK; LVRALLOC and LVBIT read them at JIT time.
+\   - Their DATA offsets, and FRFREE-CELL's, are package REGALLOC-ABI
+\     (src/habu/regalloc-abi.f), where src/habu/data-claims.f can claim them.
 \ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
 \   jit.f: LVSPILL (reset to VRALL), LVDROP/LVNIPX/LVBINPREP/LVPUSHR/LVRECON
 \   (free/claim via LVBIT)   habu2.f: the WHILE and J-REPEAT VRALL stores
 \ Load after mnem.f/sys.f, before jit.f.
 
+require src/habu/regalloc-abi.f
+
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
+using REGALLOC-ABI
 
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
@@ -22,12 +27,8 @@ VRPACK PK# constant #POOL1
 #POOL1 VRPACK2 PK# + constant #POOL
 1 #POOL lshift 1 - constant VRALL
 
-$208  constant VRFREE-CELL      \ free-register bitmask, bit = pool index
-$36B0 constant FRFREE-CELL      \ FLOAT pool free bits: bit i = d(8+i) free
 $FF   constant FRALL            \ d8..d15 (d0-d7 stay prim scratch; contiguous,
                                 \ so idx+8 math replaces a table here)
-$3600 constant VRTAB-OFF        \ 32 B: idx -> register number   (after LOCNAMES)
-$3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled)
 
 \ LVRINIT ( -- ) : fill VRTAB/VRITAB from the VRPACK literal. Run once at startup
 \ (idempotent; snapshot images carry the tables but re-running is harmless).
@@ -36,7 +37,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
    LBL {: pl :}  LBL {: pd :}  LBL {: fl :}  LBL {: fd :}
    5 0 MOVZ,
    pl LBL,                                   \ poison the inverse table
-      5 32 CMPI,  C-GE pd BCOND,
+      5 VRTAB-BYTES CMPI,  C-GE pd BCOND,
       6 $FF MOVZ,  7 VRITAB-OFF LIT64,  7 DATA 7 ADD,  7 7 5 ADD,  6 7 0 STRB,
       5 5 1 ADDI,  pl B,
    pd LBL,
@@ -93,4 +94,5 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
    10 VRITAB-OFF LIT64,  10 DATA 10 ADD,  10 10 7 ADD,  10 10 0 LDRB,
    8 1 MOVZ,  8 8 10 LSLV,  RET, ;
 
+;using
 ;using

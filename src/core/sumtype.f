@@ -154,8 +154,12 @@ private
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc throw ;
 
+\ The declared name is read first by the body's name gate and by the report. A
+\ length no name has (CK-NAME-SPAN?) is recorded as no name, so the declaration
+\ is refused as a missing name and the report reads none of it.
 : TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
    TDB-U ! TDB-A !
+   2dup CK-NAME-SPAN? 0= IF drop 0 THEN
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDT-U !  NULL-PTR TDT-A !
@@ -190,27 +194,14 @@ public
    [: TDECL-NOEND-BODY ;] TDECL-RUN ;
 
 \ --- name gate: reserved signature/type tokens, control words, and grammar
-\ keywords may not name a family or variant (docs §1, PLAN item 6).
+\ keywords may not name a family or variant (docs §1, PLAN item 6). The family
+\ list is TYPE-NAME:FAMILY-RESERVED? (type-family.f), which every family definer
+\ asks, so the definers cannot drift apart on it.
 
 private
 
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
-
-\ The control-word list itself lives once, in TYPE-NAME:CONTROL? (type-family.f).
-\ This file used to carry a second copy; the two drifted (the unified front ends
-\ inherited only the grammar-keyword half), so the list now has a single owner
-\ and every gate asks it. `construct`, `match` and `;match` — the item 9 reserved
-\ token protocol and MATCH control form — are part of that list.
-: TDECL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
-   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
-   a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + declared CT names
-   a u ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
-   a u TDECL-KEYWORD? ;
 
 \ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the
 \ declaring scope can already resolve — the global scope always, plus the
@@ -242,7 +233,7 @@ variable TDECL-NI
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail" E-TFAM-CASE TDECL-THROW
    THEN
-   a u TDECL-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
+   a u TYPE-NAME:FAMILY-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
 
 \ A FAMILY name must remain valid grammar and must not collide with an in-scope
 \ sum variant. Exact same-package collisions fall through to TFAM-DECL's
@@ -1140,6 +1131,7 @@ variable TDPLAN-N   REG-PROTECT
 private
 
 variable TDPLAN-I
+variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
 
 public
@@ -1213,6 +1205,7 @@ public
 : TDPLAN-BEGIN ( -- )
    0 TDPLAN-U !
    0 TDPLAN-N !
+   0 TDPLAN-SYM-HI !
    CTOR-PEND-CLEAR ;
 
 
@@ -1252,15 +1245,21 @@ private
 : TDPLAN-SYM@ ( n -- n )
    TDPLAN-ROW TDPLAN.SYM @ ;
 
+\ A symbol above every planned one cannot repeat one, and a freshly interned
+\ name always is, so the duplicate walk runs only for a symbol at or below the
+\ plan's largest; a plan of fresh names is checked in constant time per row.
 : TDPLAN-SYM+ ( n -- ) {: sym:n :}
-   0
-   BEGIN dup TDPLAN-N @ < WHILE
-      dup TDPLAN-SYM@ sym = IF
-         TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
-      THEN
-      1 +
-   REPEAT
-   drop
+   sym TDPLAN-SYM-HI @ <= IF
+      0
+      BEGIN dup TDPLAN-N @ < WHILE
+         dup TDPLAN-SYM@ sym = IF
+            TDGEN-NA @ TDGEN-NU @ s" generated declaration name already defined" E-TDECL-NAME TDECL-THROW
+         THEN
+         1 +
+      REPEAT
+      drop
+   THEN
+   sym TDPLAN-SYM-HI @ max TDPLAN-SYM-HI !
    TDPLAN-ROW-ENSURE
    sym TDPLAN-N @ TDPLAN-ROW TDPLAN.SYM !
    TDPLAN-N @ 1 + TDPLAN-N ! ;
@@ -1531,6 +1530,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    TDPLAN-ROW-CAP-INIT TDPLAN-ROW-CAP !
    0 TDPLAN-U !
    0 TDPLAN-N !
+   0 TDPLAN-SYM-HI !
    TDPV-CNT-BOOT TDPV-CNT-P !
    TDPV-CELLS-BOOT TDPV-CELLS-P !
    TDPV-OFF-BOOT TDPV-OFF-P !
@@ -2244,13 +2244,15 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    fam fid store TFAM-INIT-MEMBER$ TDGEN-DRV-REF
    TDINIT-NAME-END ;
 
+\ The recorded span is the effect between the parentheses, the text TRUSTED:
+\ hands TRUST-DECL (habu2.f C-SIG-INNER$), so a replay row declares it as is.
 : TDINIT-SIG-BEGIN ( -- )
-   TDGEN-U @ TDINIT-SIG-OFF !
-   s" ( " TDGEN-APP ;
+   s" ( " TDGEN-APP
+   TDGEN-U @ TDINIT-SIG-OFF ! ;
 
 : TDINIT-SIG-END ( -- )
-   s"  ) " TDGEN-APP
-   TDGEN-U @ TDINIT-SIG-OFF @ - TDINIT-SIG-U ! ;
+   TDGEN-U @ TDINIT-SIG-OFF @ - TDINIT-SIG-U !
+   s"  ) " TDGEN-APP ;
 
 : TDINIT-RAW-ROW ( n -- ) {: cellsn:n :}
    cellsn 0 ?do s" n " TDGEN-APP loop ;
@@ -2316,51 +2318,61 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 : TDINIT-NAME-PREFLIGHT ( -- )
    TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
 
-: TDINIT-PRIVATE ( -- ) s" private" TDECL-EVAL-XT ;
-: TDINIT-RESTORE ( n -- )
-   TFAM-PUBLIC? IF s" public" ELSE s" private" THEN TDECL-EVAL-XT ;
+\ A live declaration switches the engine's wordlist with `private` / `public`,
+\ and the engine passes each switch on to the checker (DECLARATIONS
+\ PRIVATE-OFF). A replay defines no word, and the pre-pass that runs it
+\ (src/habu/verify-source.f, tools/check-core.f) opens the source's package in
+\ the checker alone, so the engine has no package to switch: `private` there
+\ dies `private at tools/check.f:1`. A replay switches the checker's mode only.
+: TDINIT-PRIVATE ( bool -- ) {: replay:bool :}
+   replay IF CHECKER-PRIVATE EXIT THEN
+   s" private" TDECL-EVAL-XT ;
+: TDINIT-RESTORE ( n bool -- ) {: fam:n replay:bool :}
+   fam TFAM-PUBLIC? 0= IF replay TDINIT-PRIVATE EXIT THEN
+   replay IF CHECKER-PUBLIC EXIT THEN
+   s" public" TDECL-EVAL-XT ;
 
-: TDINIT-HELP-NAME-CHECK ( n -- ) {: fam:n :}
-   TDINIT-PRIVATE
+: TDINIT-HELP-NAME-CHECK ( n bool -- ) {: fam:n replay:bool :}
+   replay TDINIT-PRIVATE
    [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
-   fam TDINIT-RESTORE
+   fam replay TDINIT-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 : TDINIT-HELP-EVAL ( n -- ) {: fam:n :}
-   TDINIT-PRIVATE
+   RES-FALSE TDINIT-PRIVATE
    [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT TDINIT-MARK-LAST ;] catch {: rc:n :}
-   fam TDINIT-RESTORE
+   fam RES-FALSE TDINIT-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 : TDINIT-HELP-REPLAY ( n -- ) {: fam:n :}
-   TDINIT-PRIVATE
+   RES-TRUE TDINIT-PRIVATE
    [: TDGEN-NA @ TDGEN-NU @
       TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;]
       catch {: rc:n :}
-   fam TDINIT-RESTORE
+   fam RES-TRUE TDINIT-RESTORE
    rc 0 <> IF rc throw THEN ;
 
 : TDINIT-REPLAY-ROW ( -- )
    TDGEN-NA @ TDGEN-NU @
    TDGEN-BUF TDINIT-SIG-OFF @ + TDINIT-SIG-U @ TDINIT-DECLARE ;
 
-: TDINIT-PREFLIGHT ( n -- ) {: fam:n :}
+: TDINIT-PREFLIGHT ( n bool -- ) {: fam:n replay:bool :}
    fam TDINIT-REQUIRE
    fam TFAM-FLD-START@ {: fs:n :}
-   fam TDINIT-RECEIVER fam TDINIT-HELP-NAME-CHECK
+   fam TDINIT-RECEIVER fam replay TDINIT-HELP-NAME-CHECK
    TDGEN-NA @ TDGEN-NU @ fam TFAM-FLD-COUNT@ 3 * 1 +
        TDECL-CAPACITY-PREFLIGHT-XT
    0 TDINIT-I !
    BEGIN TDINIT-I @ fam TFAM-FLD-COUNT@ < WHILE
       fs TDINIT-I @ + {: fid:n :}
-      fam fid TDINIT-HELP fam TDINIT-HELP-NAME-CHECK
+      fam fid TDINIT-HELP fam replay TDINIT-HELP-NAME-CHECK
       fam fid TDINIT-GET TDINIT-NAME-PREFLIGHT
       fam fid TDINIT-SET TDINIT-NAME-PREFLIGHT
       TDINIT-I @ 1 + TDINIT-I !
    REPEAT ;
 
 : TDINIT-GENERATE ( n bool -- ) {: fam:n replay:bool :}
-   fam TDINIT-PREFLIGHT
+   fam replay TDINIT-PREFLIGHT
    fam TFAM-FLD-START@ {: fs:n :}
    fam TDINIT-RECEIVER
    replay IF fam TDINIT-HELP-REPLAY ELSE fam TDINIT-HELP-EVAL THEN
@@ -2476,10 +2488,10 @@ public
 
 \ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
 \ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
-\ one adapter, and nowhere beneath it. This adapter is also where the committed
-\ payload view is chosen: a definer that has already published its rows reads
-\ them back through TDECL-SUMV-PROVIDER. A refused declaration leaves -1 (the
-\ multi-error continue path in TDECL-RUN) and generates nothing.
+\ two adapters below, and nowhere beneath them. TDECL-CTOR-WORDS is also where the
+\ committed payload view is chosen: a definer that has already published its
+\ rows reads them back through TDECL-SUMV-PROVIDER. A refused declaration leaves
+\ -1 (the multi-error continue path in TDECL-RUN) and generates nothing.
 
 private
 
@@ -2493,10 +2505,22 @@ private
    fam 0 < IF EXIT THEN
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-ARM-XT THEN ;
 
+public
+
+\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens it
+\ had already lexed (src/habu/verify-source.f): the checked effects of the words
+\ the definer would generate, so later source in that pass can call them, and no
+\ word. Those include a PRODUCT's initialized-field accessors when it derives
+\ init (TDECL-PRODUCT-INIT-ARM above); its rows are committed once the
+\ registration returns, which is all TDINIT-REQUIRE reads.
+: TDECL-CTOR-WORDS-REPLAY ( -- )
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TDECL-CTOR-REPLAY
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
+
 \ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
-
-public
 
 : TDECL-NEWTYPE ( -- )
    parse-name {: na:ptr nu:n :}

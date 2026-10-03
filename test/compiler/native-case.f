@@ -11,13 +11,14 @@ $2000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: CHECK-RESULT ( len len outcome n -- ) {: want:n :}
-   MATCH outcome
+: CHECK-RESULT ( len len outcome ptr u8 n n -- )
+   {: outl:len errl:len oc src:ptr u:n want:n :}
+   outl LEN>N {: outu:n :} errl LEN>N {: erru:n :}
+   oc MATCH outcome
       exited OF want T= ENDOF
       signaled OF drop false TTRUE ENDOF
-      timeout OF false TTRUE ENDOF
+      timeout OF src u OUT outu ERR erru T-TIMED-OUT ENDOF
    ;MATCH
-   LEN>N {: erru:n :} LEN>N {: outu:n :}
    want 0= if
       erru 0<> if ERR erru type then
       erru 0 T=
@@ -34,7 +35,7 @@ create ERR CAP allot
    tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
    source size SB-APPEND
    SB$ OUT CAP >LEN ERR CAP >LEN 20000 >MS SUBJECT:RUN
-   want CHECK-RESULT ;
+   SB$ want CHECK-RESULT ;
 
 
 : CHECK-TIER ( n -- ) {: tier:n :}

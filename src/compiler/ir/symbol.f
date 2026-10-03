@@ -446,13 +446,23 @@ private
    drop ;
 
 \ ---- append ------------------------------------------------------------------
+\ No symbol is longer than the pool's committed bytes, so a longer length can
+\ neither hit nor fit. INTERN refuses it before HASH reads the bytes, where a
+\ length near the maximum cell would run off the caller's span.
+: BYTES-CK ( IR-ARENA:reader n -- )
+   {: pr:IR-ARENA:reader u:n :}
+   u pr HC-CAP IR-ARENA:RD@ CELL-BYTES * > if E-IR-SYM-BYTES throw then ;
+
 \ Both room checks run before the first cell is written and each arena's
 \ ceiling equals its committed capacity exactly, so an intern either appends
-\ its bytes and its row whole or mutates nothing.
+\ its bytes and its row whole or mutates nothing. The bytes are compared with
+\ the room left in bytes, so the check holds for any length on its own: rounded
+\ up to cells, a length near the maximum cell wraps negative, and its sum with
+\ the cells used falls back under the ceiling.
 : ROOM-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader u:n :}
    rr CNT rr HC-CAP IR-ARENA:RD@ >= if E-IR-SYM-CAP throw then
-   pr PCELLS u BYTES>CELLS + pr HC-CAP IR-ARENA:RD@ > if E-IR-SYM-BYTES throw then ;
+   u  pr HC-CAP IR-ARENA:RD@ pr PCELLS -  CELL-BYTES *  > if E-IR-SYM-BYTES throw then ;
 
 \ An intern writes BOTH arenas, so both are reserved here, before either is
 \ touched: a row whose bytes went in and whose row did not is a symbol table
@@ -571,6 +581,7 @@ public
    a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
    r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
    pr rr key KEY-CK
+   pr u BYTES-CK
    p u HASH {: hash:n :}
    pr rr p u hash LOOKUP {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-SYMBOL exit then

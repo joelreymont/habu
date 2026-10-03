@@ -92,4 +92,16 @@ public
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
+\ The timeout arm of a caller that MATCHes a RUN outcome itself. The capture
+\ drained what the child printed before its deadline, and that is the only
+\ evidence of where it stopped: print the program the child ran, its stdout and
+\ its stderr, then throw E-PROC-TIMEOUT so the row still reports a timeout.
+: TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
+   s" timeout: the child passed its deadline" type cr
+   s" program:" type cr src srcu type cr
+   s" stdout:" type cr out outu type cr
+   s" stderr:" type cr err erru type cr
+   E-PROC-TIMEOUT throw ;
+
 ;package

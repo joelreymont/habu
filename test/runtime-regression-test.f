@@ -1027,6 +1027,78 @@ variable GE-CF-BODY-U
    s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
+\ Build "variable HITS : DEEP ( -- ) " + n * opener + "1 HITS +! " + n * closer
+\ + "; DEEP ...": n nested counted loops of two turns each, run once, and a
+\ check that prints true when they took 2^LV-LEVELS turns.
+: GE-DO-NEST ( n ptr u8 n ptr u8 n -- ) {: n:n op:ptr opu:n cl:ptr clu:n :}
+   GE-CF-BODY-RESET
+   s" variable HITS : DEEP ( -- ) " GE-CF-BODY+
+   n 0 ?do op opu GE-CF-BODY+ loop
+   s" 1 HITS +! " GE-CF-BODY+
+   n 0 ?do cl clu GE-CF-BODY+ loop
+   s" ; DEEP HITS @ 1 LV-LEVELS lshift = . cr" GE-CF-BODY+ ;
+
+: GE-DO-OVERCAP-1 ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: op:ptr opu:n cl:ptr clu:n label:ptr labelu:n :}
+   \ One `do` level past LV-LEVELS must fail closed rc 70 with the named cap
+   \ diagnostic, never a register dump: the JIT keeps a `leave` chain head
+   \ (LVH) and a `?do` entry-test offset (LVQ) per level, the cell past LVQ's
+   \ last is FRAME-CELL, and a `+loop` rewrites code at the offset it reads
+   \ there. LVOPEN refuses before it writes either.
+   GE-HB-RESET
+   LV-LEVELS 1 + op opu cl clu GE-DO-NEST
+   GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
+   70 label labelu GE-EXPECT-RC
+   s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+: GE-DO-DEPTH-CAP ( -- )
+   \ LV-LEVELS nested loops compile and take every turn, each `+loop` settling
+   \ its own `?do`; one more `?do` or `do` is refused.
+   GE-HB-RESET
+   LV-LEVELS s" 2 0 ?do " s" 1 +loop " GE-DO-NEST
+   GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
+   s" hb do-cap legal" GE-EXPECT-OK
+   s" -1" s" hb do-cap legal turns" GE-EXPECT-OUT-HAS
+   s" 2 0 ?do " s" 1 +loop " s" hb do-cap ?do plus1" GE-DO-OVERCAP-1
+   s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
+   s" PASS: do nesting cap fail-closed rc70 (no overflow)" type cr ;
+
+\ Build "<tier> set-tier", then a definition holding n values on the virtual
+\ stack in a counted loop that leaves on its second turn and reads its local
+\ after the loop, and print its answer for 100: each turn adds 1 + ... + n, so
+\ the answer is 100 + n(n+1).
+: GE-LEAVE-VS-CASE ( n n ptr u8 n -- ) {: n:n tier:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier GE-SRC-U+ s"  set-tier" GE-SRC-LINE
+   s" : GE-LV ( n -- n ) {: a:n :} 0 3 0 do" GE-SRC-LINE
+   n 0 ?do i 1+ GE-SRC-U+ GE-SRC-SP loop GE-SRC-LF
+   n 0 ?do s" + " GE-SRC+ loop GE-SRC-LF
+   s" i 1 = if leave then loop a + ;" GE-SRC-LINE
+   s" 100 GE-LV ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   label labelu GE-EXPECT-OK
+   SB-RESET  n 1+ n * 100 + FMT:SB-U  GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LEAVE-DEEP-VS ( -- )
+   \ Tier 0 holds a body's values on the virtual stack, VVAL-OFF's VSMAX cells,
+   \ and `leave` releases the locals bound since its loop was entered, counted
+   \ from the frame bytes the LVF-OFF level array kept at `do`. That array lay
+   \ inside the virtual stack ($2C0 is its slot 14), so a loop body holding 15
+   \ or more values overwrote level 0 and its `leave` released a wrong byte
+   \ count: 15 values crashed (rc 134), 16 to VSMAX stopped the compile with
+   \ "transfer immediate out of range" (rc 75), and VSMAX + 1, which write every
+   \ virtual-stack cell and then spill it, crashed.
+   15 0 s" hb leave under 15 values tier 0" GE-LEAVE-VS-CASE
+   16 0 s" hb leave under 16 values tier 0" GE-LEAVE-VS-CASE
+   VSMAX 1+ 0 s" hb leave past a full virtual stack tier 0" GE-LEAVE-VS-CASE
+   15 1 s" hb leave under 15 values tier 1" GE-LEAVE-VS-CASE
+   16 1 s" hb leave under 16 values tier 1" GE-LEAVE-VS-CASE
+   VSMAX 1+ 1 s" hb leave past a full virtual stack tier 1" GE-LEAVE-VS-CASE
+   s" PASS: leave under a deep virtual stack keeps its frame at both tiers" type cr ;
+
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
    \ dot habu-raw-exit-compile: one recoverable compile-error misuse evaluated
@@ -1080,6 +1152,9 @@ variable GE-CF-BODY-U
    s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 75 s" local cannot be inside quotation" GE-RXE-TOP
    s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
    s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
+   \ An inner quotation's `;]` reopens the enclosing quotation, not the definition.
+   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
+   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
    s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" does>" GE-RXE-CATCH-USABLE
    s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
@@ -1103,6 +1178,19 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-SRC-BUF GE-RXE-TML-BUF GE-RXE-TML-U @ BYTE-COPY ;
 
 : GE-RXE-TML$ ( -- ptr u8 n )  GE-RXE-TML-BUF GE-RXE-TML-U @ ;
+
+\ ": RXQ ( -- )" is 12 bytes and each opener " [:" three more.
+JIT-QUOT:LEVELS 1+ 3 * 12 + constant GE-RXE-QNEST-CAP
+create GE-RXE-QNEST-BUF GE-RXE-QNEST-CAP allot   variable GE-RXE-QNEST-U
+
+: GE-RXE-QNEST-BUILD ( -- )   \ ": RXQ ( -- ) [: [: ..." with one `[:` past JIT-QUOT:LEVELS
+   GE-SRC-RESET
+   s" : RXQ ( -- )" GE-SRC+
+   JIT-QUOT:LEVELS 1+ 0 ?do  s"  [:" GE-SRC+  loop
+   GE-SRC-U @ GE-RXE-QNEST-U !
+   GE-SRC-BUF GE-RXE-QNEST-BUF GE-RXE-QNEST-U @ BYTE-COPY ;
+
+: GE-RXE-QNEST$ ( -- ptr u8 n )  GE-RXE-QNEST-BUF GE-RXE-QNEST-U @ ;
 
 : GE-RXE-BS ( -- )  $5C GE-SRC-C ;                     \ backslash byte into the source builder
 
@@ -1217,12 +1305,31 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ proves byte-identical fail-closed exit + diagnostic.
    s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" 75" s" does>" GE-RXE-CATCH-USABLE
    s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" 75 s" does>" GE-RXE-TOP
-   s" : RXQ ( -- ) [: [: 5 ;] drop ;] drop ;" s" 75"
-      s" hb: a quotation may not open inside a quotation: RXQ" GE-RXE-CATCH-USABLE
-   s" : RXQ ( -- ) [: [: 5 ;] drop ;] drop ;" 75
-      s" hb: a quotation may not open inside a quotation: RXQ" GE-RXE-TOP
+   GE-RXE-QNEST-BUILD
+   GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
+   GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
    s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
    s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
+   \ The mirror: `;` with one or two quotations open. Published, the body's
+   \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
+   \ hook, so the engine's own refusal at `;` is the one that stops it.
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+   \ `;` with a control structure open. Published, the forward branch that
+   \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
+   \ word spins when called; `do` leaves its loop frame behind. An `if` left
+   \ open inside a closed quotation is still on the control stack at `;`. A
+   \ checked body is refused the same way, before the checker hook.
+   s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE
@@ -1238,35 +1345,46 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-RXE-CSTR-TOP
    s" PASS: residual compile dies recover inside evaluate + fail-closed at top level" type cr ;
 
-\ A quotation opened while another is open (dot habu-name-the-nested-6a8e1b28).
-\ The engine compiles at most one quotation per definition: QPATCH-CELL holds the
-\ single `b-over` placeholder J-SEMIQUOT patches, so a second `[:` has nowhere to
-\ record its own. J-QUOT refused it by echoing the CURRENT TOKEN to fd 2 — the
-\ two bytes `[:`, no label, no newline, no definition, no reason — and exiting
-\ 75 (measured on release 5a3d9f82 by the forth-card lane).
-\ The refusing layer is the engine, not the checker: CF-QUOT/CF-SEMIQ keep a
-\ QDEPTH counter and a CFS frame per open quotation (src/core/checker.f), so the
-\ one-at-a-time limit is the engine's single cell and not a checker rule, and the
-\ compile aborts before any check runs. Measured both ways on the same program:
-\ `tools/check.f --json-errors --all-errors` printed the same two bytes and the
-\ same 75 the load path did — the tool runs the program through the engine — so
-\ this refusal carries a prose line and no JSON code.
-\ The line now names the rule and the definition it aborted, through the same
-\ LCOMPILEDIE tail EM-SNAP-NEST-DIE uses: same exit code, catchable inside
-\ evaluate (the eval-catch leg is in GE-RAWEXIT-RESIDUAL above), fail-closed
-\ exit 75 at top level.
+\ Quotation nesting per definition (dots habu-name-the-nested-6a8e1b28,
+\ habu-open-a-quotation-f6c2a55f). Tier 0 compiles the innermost open quotation in
+\ QPATCH-CELL..QFRAME-CELL and parks each enclosing one in JIT-QUOT's frames, so
+\ JIT-QUOT:LEVELS quotations may be open at once: the checker's control-frame
+\ capacity, so the loader refuses no nesting the checker certifies. One level
+\ more refuses before anything is emitted, named with the definition and the
+\ depth it needed, rc 75 - catchable inside evaluate (the RXQ pair in
+\ GE-RAWEXIT-RESIDUAL above). The line is prose and the load path's alone:
+\ tools/check.f refuses the same source before its run, E-UNCHECKABLE at the
+\ checker's 33rd control frame.
+: GE-QNEST-SRC ( n -- ) {: depth:n :}   \ ": GEQDEEP ( n -- n ) [: ... 1+ ;] execute ... ;" then 41 GEQDEEP
+   s" : GEQDEEP ( n -- n )" GE-SRC+
+   depth 0 ?do  s"  [:" GE-SRC+  loop
+   s"  1+" GE-SRC+
+   depth 0 ?do  s"  ;] execute" GE-SRC+  loop
+   s"  ; 41 GEQDEEP . cr" GE-SRC-LINE ;
+
+: GE-QNEST-RUN ( n -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-QNEST-SRC
+   RUNTIME-RUNNER:BUFFER ;
+
+: GE-QNEST-DIAG$ ( -- ptr u8 n )
+   SB-RESET
+   s" hb: quotation nesting full at " SB-APPEND
+   JIT-QUOT:LEVELS FMT:SB-U
+   s"  levels: GEQDEEP needs " SB-APPEND
+   JIT-QUOT:LEVELS 1+ FMT:SB-U
+   SB$ ;
+
 : GE-QUOT-NEST ( -- )
-   \ control: two SEQUENTIAL quotations in one definition still compile and run,
-   \ so the refusal is the nest and not the second `[:` of a definition
-   s" : GEQSEQ ( -- n ) [: 1 ;] execute [: 2 ;] execute + ; GEQSEQ . cr" 0
-      s" sequential quotations compile" RUNTIME-RUNNER:LINE-RC
-   s" 3" s" sequential quotations run" GE-EXPECT-OUT-HAS
-   s" : GEQNEST ( -- n ) [: [: 1 ;] execute ;] execute ;" 75
-      s" nested-quotation exit rc" RUNTIME-RUNNER:LINE-RC
-   s" hb: a quotation may not open inside a quotation: GEQNEST"
-      s" nested-quotation exit diagnostic" GE-EXPECT-ERR-HAS
-   s" habu-crash" s" nested-quotation no-crash" GE-EXPECT-ERR-LACKS
-   s" PASS: a quotation opened inside a quotation is named with its definition" type cr ;
+   JIT-QUOT:LEVELS GE-QNEST-RUN
+   0 s" quotation nesting at the level ceiling compiles" GE-EXPECT-RC
+   s" 42" s" quotation nesting at the level ceiling runs" GE-EXPECT-OUT-HAS
+   JIT-QUOT:LEVELS 1+ GE-QNEST-RUN
+   75 s" quotation-nesting exit rc" GE-EXPECT-RC
+   GE-QNEST-DIAG$ s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" quotation-nesting no-crash" GE-EXPECT-ERR-LACKS
+   s" PASS: quotations nest to the level ceiling and one more is named with its depth" type cr ;
 
 \ --- Package-scope rollback across compile-error recovery (dot habu-recovery-pkg-scope-e0bd98e2) ---
 \ A compile error aborting an in-package definition must roll the OPEN-PACKAGE scope
@@ -1429,6 +1547,8 @@ public
    GE-ORPHAN-CLOSER
    LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
+   GE-DO-DEPTH-CAP
+   GE-LEAVE-DEEP-VS
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL
    GE-QUOT-NEST

@@ -1,5 +1,8 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
 require src/habu/layout.f
+require src/habu/regalloc-abi.f
+require src/habu/address-cells.f
+require src/habu/prof-abi.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
 \ WHY IT EXISTS. lib/task.f handed out TASK:+USER rows from $41C8 bounded by
@@ -20,12 +23,16 @@ require src/habu/layout.f
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
-\ library band lives, and all DATA-BANDS rows. THREE LOW CLAIMS ARE OUT,
-\ because their extent exists only as an emitter convention and inventing one
-\ would be worse than omitting it: LVH-OFF ($580) and LVF-OFF ($2C0), the
-\ DO/LEAVE level arrays LVD-CELL indexes with no declared cap, and the $1A0 seal
-\ fixture poke cell, which no constant names. All three are below $800, where no
-\ library band reaches.
+\ library band lives, and all DATA-BANDS rows; the register allocator's cells
+\ and tables, which src/habu/regalloc-abi.f declares for this file to read;
+\ the address-cell registry's mutex and index cells (src/habu/address-cells.f
+\ LOCK-CELL and INDEX-CELL); and the profiler band, the top PROF-CNT-BYTES of
+\ DATA, placed as src/habu/prof-abi.f PROF-BAND-AT places it for the global
+\ DATA-SIZE, the target's in a native build. An x86-64 build reads its target's
+\ only as X64LAYOUT:DATA-SIZE, which differs from the global one on a macOS
+\ host, so src/habu/kernel-x64.f places the band again with it through
+\ BAND-ASSERT. ONE CLAIM IS OUT: the $1A0 seal fixture poke cell, which no
+\ constant names.
 \
 \ DELIBERATE ALIASES ARE ONE ROW, NOT TWO. The friend arena is one row, not the
 \ eighteen cells inside it. VVAL-STACK is one row of VSMAX cells: DEF-TKA-CELL
@@ -86,6 +93,7 @@ variable NAMES-U
    s" CMPADS-CELL" NAME,
    s" CMFRD-CELL" NAME,
    s" CMFR-STACK" NAME,
+   s" ADDRESS-CELLS-LOCK" NAME,
    s" CMFAM-CELL" NAME,
    s" BODYLEN-CELL" NAME,
    s" RBASE-CELL" NAME,
@@ -95,6 +103,7 @@ variable NAMES-U
    s" GTOD-SCRATCH" NAME,
    s" DOESP-CELL" NAME,
    s" VSP-CELL" NAME,
+   s" VRFREE-CELL" NAME,
    s" VTAG-STACK" NAME,
    s" CREATEP-CELL" NAME,
    s" QPATCH-CELL" NAME,
@@ -111,9 +120,12 @@ variable NAMES-U
    s" RSP-CELL" NAME,
    s" EXITH-CELL" NAME,
    s" LVD-CELL" NAME,
+   s" LVH-LEVELS" NAME,
    s" GENIO-ABI" NAME,
    s" AOT-SPAN" NAME,
    s" SIGNAL-ABI" NAME,
+   s" LVF-LEVELS" NAME,
+   s" LVQ-LEVELS" NAME,
    s" FRAME-CELL" NAME,
    s" QFRAME-CELL" NAME,
    s" BODYBUF" NAME,
@@ -130,7 +142,12 @@ variable NAMES-U
    s" PROT-WLO" NAME,
    s" PROT-RLO" NAME,
    s" ENGINE-HOOK" NAME,
+   s" EXIT-HOOK-CELL" NAME,
+   s" JIT-QUOT-SP-CELL" NAME,
+   s" JIT-QUOT-FRAMES" NAME,
    s" LOCNAMES" NAME,
+   s" VRTAB" NAME,
+   s" VRITAB" NAME,
    s" REPLH-CELL" NAME,
    s" RSAVCP-CELL" NAME,
    s" RSAVND-CELL" NAME,
@@ -145,8 +162,10 @@ variable NAMES-U
    s" TKL-CELL" NAME,
    s" INP-CELL" NAME,
    s" INE-CELL" NAME,
+   s" FRFREE-CELL" NAME,
    s" FRCLM-CELL" NAME,
    s" BPA-CELL" NAME,
+   s" ADDRESS-CELLS-INDEX" NAME,
    s" BPTAB" NAME,
    s" EVALD-CELL" NAME,
    s" EVALERR-CELL" NAME,
@@ -197,6 +216,7 @@ variable NAMES-U
    s" UNIT-COMPILE" NAME,
    s" RPKG:FLOOR" NAME,
    s" RPKG:WIDS" NAME,
+   s" PROF-BAND" NAME,
 
 create TAB
    DP-CELL                        ,  1 cells ,
@@ -209,6 +229,7 @@ create TAB
    CMPADS-CELL                    ,  1 cells ,
    CMFRD-CELL                     ,  1 cells ,
    CMFR-OFF                       ,  CMFR-MAX cells ,
+   ADDRESS-CELLS:LOCK-CELL        ,  1 cells ,
    CMFAM-CELL                     ,  1 cells ,
    BODYLEN-CELL                   ,  1 cells ,
    RBASE-CELL                     ,  1 cells ,
@@ -218,6 +239,7 @@ create TAB
    GTOD-SCRATCH                   ,  2 cells ,
    DOESP-CELL                     ,  1 cells ,
    VSP-CELL                       ,  1 cells ,
+   REGALLOC-ABI:VRFREE-CELL       ,  1 cells ,
    VTAG-OFF                       ,  VSMAX ,
    CREATEP-CELL                   ,  1 cells ,
    QPATCH-CELL                    ,  1 cells ,
@@ -234,9 +256,12 @@ create TAB
    RSP-CELL                       ,  1 cells ,
    EXITH-CELL                     ,  1 cells ,
    LVD-CELL                       ,  1 cells ,
+   LVH-OFF                        ,  LV-LEVELS cells ,
    GENIO-ABI:OUT-CELL             ,  GENIO-ABI:END GENIO-ABI:OUT-CELL - ,
    AOT-CELLS:SPAN-TABLE-CELL      ,  3 cells ,
    SIGNAL-ABI:STUB-CELL           ,  3 cells ,
+   LVF-OFF                        ,  LV-LEVELS cells ,
+   LVQ-OFF                        ,  LV-LEVELS cells ,
    FRAME-CELL                     ,  1 cells ,
    QFRAME-CELL                    ,  1 cells ,
    BODYBUF-OFF                    ,  BODYBUF-CAP 2 + ,
@@ -253,7 +278,12 @@ create TAB
    PROT:WLO                       ,  1 cells ,
    PROT:RLO                       ,  1 cells ,
    ENGINE-HOOK-OFF                ,  ENGINE-HOOK-LEN ,
+   EXIT-HOOK-CELL                 ,  1 cells ,
+   JIT-QUOT:SP-CELL               ,  1 cells ,
+   JIT-QUOT:STK-OFF               ,  JIT-QUOT:END JIT-QUOT:STK-OFF - ,
    LOCNAMES                       ,  LOC-RECS LOC-REC * ,
+   REGALLOC-ABI:VRTAB-OFF         ,  REGALLOC-ABI:VRTAB-BYTES ,
+   REGALLOC-ABI:VRITAB-OFF        ,  REGALLOC-ABI:VRTAB-BYTES ,
    REPLH-CELL                     ,  1 cells ,
    RSAVCP-CELL                    ,  1 cells ,
    RSAVND-CELL                    ,  1 cells ,
@@ -268,8 +298,10 @@ create TAB
    TKL-CELL                       ,  1 cells ,
    INP-CELL                       ,  1 cells ,
    INE-CELL                       ,  1 cells ,
+   REGALLOC-ABI:FRFREE-CELL       ,  1 cells ,
    FRCLM-CELL                     ,  1 cells ,
    BPA-CELL                       ,  1 cells ,
+   ADDRESS-CELLS:INDEX-CELL       ,  1 cells ,
    BPTAB-OFF                      ,  EVALD-CELL BPTAB-OFF - ,
    EVALD-CELL                     ,  1 cells ,
    EVALERR-CELL                   ,  1 cells ,
@@ -320,6 +352,8 @@ create TAB
    UNIT-COMPILE-CELL              ,  1 cells ,
    RPKG:FLOOR                     ,  1 cells ,
    RPKG:WIDS                      ,  USE-MAX cells ,
+   \ The profiler band stays the last row, where BAND-ASSERT places it again.
+   0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )
@@ -361,6 +395,23 @@ create TAB
       repeat drop
       1+
    repeat drop ;
+
+COUNT-ROWS 1- constant PROF-ROW
+
+\ The last row is the band PROF-BAND-AT placed for the global DATA-SIZE; a row
+\ added after it would be the one BAND-ASSERT moves instead.
+: PROF-ROW-ASSERT ( -- )
+   PROF-ROW ROW-OFF 0 DATA-SIZE PROF-ABI:PROF-BAND-AT <> if
+      s" layout: DATA-CLAIMS last row is not PROF-BAND" 76 die
+   then ;
+PROF-ROW-ASSERT
+
+\ Place the profiler band for a target whose DATA is n bytes and check the
+\ table again, for a build whose target's DATA-SIZE is not the global one.
+: BAND-ASSERT ( n -- )
+   {: size :}
+   0 size PROF-ABI:PROF-BAND-AT  PROF-ROW ROW-CELLS * cells TAB + !
+   CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT
 ;package

@@ -46,9 +46,9 @@ create SPAN-BUF 32 allot   variable SPAN-U
 : BOOT-DIES ( n -- ) {: want:n :}
    PROC-ARGV-RESET
    HB$ >LEN  BATCH-PROGRAM$ >LEN  OUT CAP >LEN  ERR CAP >LEN  PROBE-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   want T-OUTCOME-EXITED=
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   BATCH-PROGRAM$ OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED= ;
 
 \ 2*DATA-SIZE in decimal. DATA-SIZE is per target, so the forged span is
 \ computed from it rather than pinned to one host's literal.

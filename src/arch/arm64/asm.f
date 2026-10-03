@@ -303,6 +303,12 @@ public
 
 : ENC-SUBI ( n n n -- n ) XRDI ?IMM12 $D1000000 RRI ;
 
+\ The same forms with the shift bit set: imm12 counts 4 KiB pages,
+\ `add xd, xn, #imm12, lsl #12`.
+: ENC-ADDI-LSL12 ( n n n -- n ) XRDI ?IMM12 $91400000 RRI ;
+
+: ENC-SUBI-LSL12 ( n n n -- n ) XRDI ?IMM12 $D1400000 RRI ;
+
 \ logical-shift-left immediate (LSL #sh via UBFM): rd rn sh
 : ENC-LSLI ( n n n -- n )
    XRDI ?SHIFT ARM-SH ! ARM-RN ! ARM-RD !

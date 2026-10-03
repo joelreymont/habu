@@ -20,12 +20,41 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
-: EMIT1 {: c :}
+: EMIT-RAW {: c :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
      RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
+
+: JHEX ( n -- ) {: d:n :}
+   d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
+
+\ JCHAR writes one byte as the inside of a JSON string: `"`, `\` and every byte
+\ below 32 escaped, as RFC 8259 section 7 requires. LF, CR and TAB take their
+\ short escapes and every other one \u00XX in upper-case hex, the form
+\ tools/lint/json-writer.f writes.
+: JCHAR {: c :}
+   c case
+      10 of 92 EMIT-RAW 110 EMIT-RAW endof
+      13 of 92 EMIT-RAW 114 EMIT-RAW endof
+      9 of 92 EMIT-RAW 116 EMIT-RAW endof
+      34 of 92 EMIT-RAW c EMIT-RAW endof
+      92 of 92 EMIT-RAW c EMIT-RAW endof
+      c 32 < IF
+         92 EMIT-RAW 117 EMIT-RAW 48 EMIT-RAW 48 EMIT-RAW
+         c 4 rshift JHEX  c 15 and JHEX
+      ELSE c EMIT-RAW THEN
+   endcase ;
+
+\ Between JOPEN and JCLOSE every byte EMIT1 writes is escaped, so a rendered
+\ type, row or family name is a well-formed JSON string whatever its names
+\ spell: a package may be named `\`, and its families render as `\:tail`.
+variable RJSON   0 RJSON !
+: EMIT1 {: c :}
+   RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
+: JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
+: JCLOSE ( -- )  0 RJSON !  34 EMIT-RAW ;
 
 : DIAG-BUFFER! ( ptr u8 n -- )
    {: a:ptr cap:n :}
@@ -57,12 +86,31 @@ variable RDIAG-I
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
+\ A full diagnostic buffer refuses the next record. lib/errors.f owns the code;
+\ this file compiles before any lib/ file exists, so the same (code, name) pair
+\ is re-registered here -- the one form tools/error-code-lint.f admits -- and
+\ test/diag-buffer-capacity.f keeps the two spellings equal.
+package RDIAG
+public
+-2901 constant E-DIAG-CAPACITY
+;package
+
+\ The buffer is the caller's and cannot grow, so a record that does not fit is
+\ refused whole by a throw the caller's catch recovers from: the buffer keeps
+\ every record before it.
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
-   RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
+   RDIAG-U @ u + RDIAG-CAP @ > IF RDIAG:E-DIAG-CAPACITY throw THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
+
+\ Hand the record rendered in RSBUF on, with rendering back on stdout first,
+\ so a refused record leaves the renderer as a delivered one does.
+: RSBUF-FLUSH ( -- )
+   RSBUF RSN @
+   0 RDST !  0 RSN !
+   RDIAG-APPEND ;
 PERSISTED-PTR-VARIABLE SEEN-P   NULL-PTR SEEN-P !
 variable SEEN-CAP   0 SEEN-CAP !
 \ Only the assigned prefix needs clearing; allocation initializes every cell
@@ -234,11 +282,12 @@ REG-SCRATCH-SNAP-INSTALL
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
    fam FAM-QNAME-REND ;
 
-\ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
+\ PARAM-HEAD renders a family application's name; QREND adds the argument list.
+\ A hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
 \ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
 \ sig containing a lone hidden cell. Full runs never reach here: row rendering
 \ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
-: PARAM-START {: t:n :}
+: PARAM-HEAD {: t:n :}
    t HIDDEN-PARAM? IF
       1 RQM !
       64 EMIT1
@@ -251,8 +300,7 @@ REG-SCRATCH-SNAP-INSTALL
       THEN
    ELSE
       t FAM-NAME-REND
-   THEN
-   60 EMIT1 ;
+   THEN ;
 
 \ HID-RUN-REST ( n -- n bool ) : from a resolved S-PUSH node whose type is a
 \ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
@@ -385,15 +433,21 @@ create RBIND QDEPTH-MAX cells allot
         s" <live-scope-" RSTR r PAY RNUM 62 EMIT1
       endof
       T-ATOM of r ATOM-REND endof
+      \ Brackets only around arguments: a family applied to none renders as its
+      \ bare name, the spelling a signature uses and SIG-TYPE reads back (a bare
+      \ family token builds the same zero-argument application as `name<>`).
       T-PARAM of
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
-           r PARAM-START
-           0 BEGIN dup r PARAM>ARGC < WHILE
-             dup 0 > IF 44 EMIT1 THEN
-             r over PARAM>ARG d 1+ 0 RECURSE
-             1 +
-           REPEAT drop 62 EMIT1
+           r PARAM-HEAD
+           r PARAM>ARGC 0 > IF
+              60 EMIT1
+              0 BEGIN dup r PARAM>ARGC < WHILE
+                dup 0 > IF 44 EMIT1 THEN
+                r over PARAM>ARG d 1+ 0 RECURSE
+                1 +
+              REPEAT drop 62 EMIT1
+           THEN
         ELSE 63 EMIT1 THEN
       endof
       63 EMIT1
@@ -480,25 +534,11 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
-\ JCHAR writes one byte of a JSON string. RFC 8259 section 7 admits no raw byte
-\ below 32 there: LF, CR and TAB take their short escapes and every other one
-\ \u00XX in upper-case hex, the form tools/lint/json-writer.f writes.
-: JHEX ( n -- )  dup 10 < IF 48 ELSE 55 THEN + EMIT1 ;
-: JCHAR {: c :}
-   c case
-      10 of 92 EMIT1 110 EMIT1 endof
-      13 of 92 EMIT1 114 EMIT1 endof
-      9 of 92 EMIT1 116 EMIT1 endof
-      34 of 92 EMIT1 c EMIT1 endof
-      92 of 92 EMIT1 c EMIT1 endof
-      c 32 < IF  92 EMIT1 117 EMIT1 48 EMIT1 48 EMIT1  c 4 rshift JHEX  c 15 and JHEX
-      ELSE c EMIT1 THEN
-   endcase ;
-: JSTR ( ptr u8 n -- ) {: a:ptr u:n :}
-   34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JSTR ( ptr u8 n -- )
+   JOPEN DTXT JCLOSE ;
 : JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u JSTR  58 EMIT1 ;
-: JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
+: JROW {: s :}  JOPEN  s DROW  JCLOSE ;
 : SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
 : SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -511,10 +551,10 @@ variable DSUGE  variable DSUGA
    REPEAT drop a 0 ;
 : SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
 : JEFFECT {: din dout rin rout hasr :}
-   34 EMIT1
+   JOPEN
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
-   34 EMIT1 ;
+   JCLOSE ;
 \ --- item 9 slice 4: match/construct reason surface (docs §24). The checker
 \ latches an MDIAG reason code with the token pin; these words map it to a
 \ stable JSON code, repair class, suggestion, and §24 prose. MD-NONEXH also
@@ -695,8 +735,8 @@ variable MDV-I   variable MDV-F
       MDV-I @ 1 + MDV-I !
    REPEAT ;
 
-: MDIAG-MISSING-JSTR ( -- )   \ canonical lowercase tails: JCHAR-safe verbatim
-   34 EMIT1  0 0= MDIAG-MISSING-WALK  34 EMIT1 ;
+: MDIAG-MISSING-JSTR ( -- )
+   JOPEN  0 0= MDIAG-MISSING-WALK  JCLOSE ;
 
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
@@ -998,7 +1038,7 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF
-      44 EMIT1 s" family" JKEY  34 EMIT1 fam FAM-QNAME-REND 34 EMIT1
+      44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
 : DIAG-JSON
@@ -1014,11 +1054,9 @@ variable JPOS  variable JLINE  variable JCOL
    MDIAG @ 0 <> IF
      s" reason" JKEY
      \ The shortfall belongs IN the reason, so the underflow builds its own
-     \ string: a literal this file owns plus digits, none of which JCHAR would
-     \ have anything to escape (MDIAG-MISSING-JSTR writes variant names the
-     \ same way). Every other reason goes through JSTR unchanged.
+     \ string from the reason and its counts.
      MDIAG @ MD-UNDERFLOW = IF
-       34 EMIT1  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  34 EMIT1
+       JOPEN  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  JCLOSE
      ELSE MDIAG-REASON$ JSTR THEN
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
@@ -1054,12 +1092,12 @@ variable JPOS  variable JLINE  variable JCOL
    DF-ACT @ 0 <>  DEXP @ 0= and IF
       44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
    NPBAD @ IF                                             \ non-parametric declared effect
-     44 EMIT1 s" quantifier" JKEY 34 EMIT1 NPBAD-Q1 @ JCHAR 34 EMIT1
+     44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE
      NPBAD-KIND @ 1 = IF
-       44 EMIT1 s" quantifier2" JKEY 34 EMIT1 NPBAD-Q2 @ JCHAR 34 EMIT1
+       44 EMIT1 s" quantifier2" JKEY JOPEN NPBAD-Q2 @ EMIT1 JCLOSE
      ELSE
        NPBAD-TERM @ NP-FAM dup 0 >= IF
-         44 EMIT1 s" family" JKEY 34 EMIT1 FAM-QNAME-REND 34 EMIT1
+         44 EMIT1 s" family" JKEY JOPEN FAM-QNAME-REND JCLOSE
        ELSE drop THEN
      THEN
    THEN
@@ -1072,8 +1110,7 @@ variable JPOS  variable JLINE  variable JCOL
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 : DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
 DIAG-PRINT-INSTALL
 
@@ -1108,8 +1145,7 @@ DIAG-PRINT-INSTALL
    1 RDST !  0 RSN !
    sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
@@ -1145,8 +1181,7 @@ BADSIG-DIAG-INSTALL
    ka ku fa fu ta tu wa wu
    JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
 \ (conservatively, the word stays unrecorded) on unknown tags or absurd var
@@ -1176,8 +1211,7 @@ BADSIG-DIAG-INSTALL
    1 RDST !  0 RSN !
    na nu wa wu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 : REC-REFUSE-DIAG ( ptr u8 n -- )
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
@@ -1236,8 +1270,7 @@ REC-SIG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ --- a package public its own private tail shadows (checker.f SHADOW-ARITY-CK).
 \ The definition-site twin of the diagnostic above: there two scopes claimed one
@@ -1283,8 +1316,7 @@ REC-SIG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 \ Both shadow diagnostics ride ONE checker hook, selected by its argument
 \ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
 \ arity-shadow definition site), because every defer written before `: TRUST`
@@ -1320,11 +1352,10 @@ SHADOW-DIAG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF TSTALE-JSON ELSE TSTALE-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 
 \ --- a checker storage registrar called outside the verifier window (checker.f
-\ CHECKER-REPLAY-NAME-GUARD), on the same template: it names the word the
+\ CHECKER-REPLAY-NAME-OK?), on the same template: it names the word the
 \ registrar would have recorded and the definer that makes that word soundly.
 : REPLAY-ONLY-PROSE ( -- )
    s" E-PKG-CONTEXT habu: storage record for '" DTXT  RPL-TOK-A @ RPL-TOK-U @ DTXT
@@ -1348,13 +1379,80 @@ SHADOW-DIAG-INSTALL
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
    10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
+   RSBUF-FLUSH ;
 \ Both refused-record diagnostics ride ONE checker hook (checker.f
 \ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record).
 : RECORD-DIAG ( n -- )
    1 = IF REPLAY-ONLY-DIAG ELSE TSTALE-DIAG THEN ;
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
+
+\ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
+\ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
+\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason.
+\ It is not a definition, so it carries no definition fields. A refusal the
+\ verifier located carries the token's place in its file; a run-time refusal,
+\ whose place nothing recorded, carries none.
+: STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
+: STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
+: STGR-NAME-WHY? ( -- f )
+   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or ;
+: STGR-COUNT-WHY? ( -- f )
+   STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or
+   STGR-WHY @ STG-COUNT-WORD = or ;
+: STGR-REASON$ ( -- ptr u8 n )
+   STGR-WHY @ STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
+   STGR-WHY @ STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
+   STGR-WHY @ STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
+   STGR-WHY @ STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
+   STGR-WHY @ STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
+   STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
+   s" no count for" ;
+: STGR-CLASS$ ( -- ptr u8 n )
+   STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
+   STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
+   s" fix_storage_type" ;
+: STGR-SUGGEST$ ( -- ptr u8 n )
+   STGR-NAME-WHY? IF s" Name the storage with at most one inner ':', outside a sealed system package." EXIT THEN
+   STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
+   s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
+: STGR-LOCATE ( -- )   \ the token's place, counted from the start of the verifier's buffer
+   STGR-SRC-A @ STGR-TOK-A @ STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
+   DIAG-ORIGIN-SPAN! ;
+: STGR-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-STORAGE" JSTR 44 EMIT1
+   s" repair_class" JKEY STGR-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" word" JKEY STGR-NAME$ JSTR 44 EMIT1
+   s" token" JKEY STGR-TOK$ JSTR 44 EMIT1
+   s" reason" JKEY STGR-REASON$ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   STGR-AT @ IF
+      s" line" JKEY DIAGL0 @ JNUM 44 EMIT1
+      s" column" JKEY DIAGC0 @ JNUM 44 EMIT1
+      s" byte_start" JKEY DIAGB0 @ JNUM 44 EMIT1
+      s" byte_end" JKEY DIAGB0 @ STGR-TOK-U @ + JNUM 44 EMIT1
+   THEN
+   s" suggestion" JKEY STGR-SUGGEST$ JSTR
+   125 EMIT1 ;
+: STGR-PROSE ( -- )
+   STGR-AT @ IF
+      DIAGFB DIAGFU @ DTXT  58 EMIT1  DIAGL0 @ JNUM  58 EMIT1  DIAGC0 @ JNUM
+      s" : " DTXT
+   THEN
+   s" habu: in " DTXT  STGR-NAME$ DTXT  s" : " DTXT  STGR-REASON$ DTXT
+   s"  '" DTXT  STGR-TOK$ DTXT  s" '" DTXT ;
+: STGR-DIAG ( -- )
+   STGR-AT @ IF STGR-LOCATE THEN
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF STGR-JSON ELSE STGR-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
+STGR-DIAG-INSTALL
 
 ;using

@@ -74,8 +74,8 @@ private
 : ?LEXED ( ptr u8 n -- ) {: a:ptr u:n :}
    LINT-LEX:ERROR? 0= if exit then
    s" tokstream: lexer refused " type a u type
-   s"  kind=" type LINT-LEX:ERROR-KIND@ .
-   s" line=" type LINT-LEX:ERROR-LINE@ . cr
+   s"  kind=" type LINT-LEX:ERROR-KIND@ FMT:.INT
+   s"  line=" type LINT-LEX:ERROR-LINE@ FMT:.INT cr
    s" tokstream: source did not lex" 1 die ;
 
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}

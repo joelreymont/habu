@@ -368,11 +368,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    cap slot ARENA-CAP! ;
 
 
+\ The bytes wanted are compared with the room left, and with what a cell can
+\ still count, before they join the fill: added first, a length near the maximum
+\ cell wraps the sum under the capacity and the arena is never grown.
 : ARENA-ENSURE ( n n -- ) {: slot:n extra:n :}
    extra 0 < if E-CAPACITY throw then
-   slot ARENA-U@ extra + {: want:n :}
-   want slot ARENA-CAP@ <= if exit then
-   slot slot ARENA-CAP@ want ARENA-FIT ARENA-MOVE ;
+   extra slot ARENA-CAP@ slot ARENA-U@ - <= if exit then
+   extra MEM-MAX-N slot ARENA-U@ - > if E-CAPACITY throw then
+   slot slot ARENA-CAP@ slot ARENA-U@ extra + ARENA-FIT ARENA-MOVE ;
 
 
 : ARENA-BYTE+ ( n n -- ) {: c:n slot:n :}

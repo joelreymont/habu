@@ -24,9 +24,9 @@ require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the c
 \ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
 \ than importing a public surface. Exporting those internals would widen the
 \ tool's own interface for the benefit of its own test. The local fixture
-\ scopes this file used to carry (BFT-SNAP-HOOK, BFT-CAP, BFT-CHAIN,
-\ STALE-SEED) were there only because the file had no package of its own; they
-\ are ordinary private words of the tool's package now.
+\ scopes this file used to carry (BFT-CAP, BFT-CHAIN, STALE-SEED) were there
+\ only because the file had no package of its own; they are ordinary private
+\ words of the tool's package now.
 package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP
@@ -214,6 +214,14 @@ create BFT-ERR BFT-CAPTURE-CAP allot
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
+\ build-fixpoint exits PROC-TIMEOUT-RC when a deadline expired under it (BF-CLI,
+\ lib/process.f). Replay the child's stderr, which names the throw, and throw
+\ E-PROC-TIMEOUT again, so BFT-STEP hands the row to the gate pool's timeout
+\ label instead of failing it as one more unexpected exit code.
+: BFT-FIXPOINT-RC ( n n n ptr u8 -- n n n ) {: outn:n errn:n code:n err:ptr :}
+   code PROC-TIMEOUT-RC = if err errn type E-PROC-TIMEOUT throw then
+   outn errn code ;
+
 : BFT-READ ( ptr u8 n -- n ) {: pa:ptr pu:n :}
    pa pu FILE-SIZE BFT-ALLOC-READ
    pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
@@ -304,13 +312,18 @@ variable IX
    BFT-BIG-ERR BFT-BIG-CAP >LEN
    BFT-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-   BFT-CAPTURE>N ;
+   BFT-CAPTURE>N BFT-BIG-ERR BFT-FIXPOINT-RC ;
 
+\ A child that outlives BFT-TIMEOUT-MS (E-PROC-TIMEOUT from lib/process) leaves
+\ the row uncaught once its step is named: the engine's report is then the row's
+\ last stderr line, which the gate pool labels TIMEOUT-UNDER-LOAD (test/gate-pool.f
+\ GT-POOL-INNER-TIMEOUT?). Every other throw ends the row here as a failed step.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
    q catch {: rc:n :}
    rc 0= if exit then
    a u type s" : throw " type rc . cr
+   rc E-PROC-TIMEOUT = if rc throw then
    s" build-fixpoint-test-lib: subtest threw" T-EX-FAIL die ;
 
 \ The common driver tail: every row removes its scratch tree, then reports.

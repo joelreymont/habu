@@ -4,10 +4,11 @@
 \ tools/compile-floor.f exists to be QUOTED by other lanes, so the things that
 \ can silently spoil a quote are what this file pins:
 \
-\   1. The line is there and carries its proof. `compiled 200` is the tool's
-\      own count of dispatches into NCOMP:COMPILE. A run that reported a floor
-\      without it would be a tier-0 number wearing a tier-1 label, and the
-\      whole yardstick would be off by two orders of magnitude.
+\   1. The line is there and carries its proof. `compiled 1000` is the tool's
+\      own count of dispatches into NCOMP:COMPILE, five rounds of two sets. A
+\      run that reported a floor without it would be a tier-0 number wearing a
+\      tier-1 label, and the whole yardstick would be off by two orders of
+\      magnitude.
 \   2. The ratchet has both directions. A ratchet that only ever exits 0 is
 \      not a ratchet, and one that only ever exits nonzero blocks the lanes it
 \      is meant to measure. A floor of 0 must refuse and say why; a floor no
@@ -38,13 +39,14 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/argv.f
+require lib/test/outcome.f
 
 package COMPILE-FLOOR-TEST
 
 private
 
 $1000 constant CAP
-120000 constant TIMEOUT-MS         \ three measured sets per run, each about 100 definitions
+120000 constant TIMEOUT-MS         \ five rounds of three 100-definition sets per run
 
 create OUT CAP allot
 create ERR CAP allot
@@ -54,13 +56,16 @@ variable RC     variable EXITED
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
 
+: TOOL$ ( -- ptr u8 n )  s" tools/compile-floor.f" ;
+
 : STORE! ( len len outcome -- )
-   MATCH outcome
+   {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   oc MATCH outcome
      exited   OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
-     timeout  OF 0 RC ! 0 0= 0= EXITED ! ENDOF
-   ;MATCH
-   LEN>N ERR-U !  LEN>N OUT-U ! ;
+     timeout  OF TOOL$ OUT$ ERR$ T-TIMED-OUT ENDOF
+   ;MATCH ;
 
 \ The binary under test, honouring the suite's override the same way test/tier.f
 \ does, so a build driver can point every child at the engine it just built.
@@ -77,7 +82,7 @@ variable RC     variable EXITED
 : RUN-FLOOR ( ptr u8 n -- ) {: arg:ptr au :}
    PROC-ARGV-RESET
    s" --load" ARG+
-   s" tools/compile-floor.f" ARG+
+   TOOL$ ARG+
    au 0 > if s" --" ARG+  arg au ARG+ then
    HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME STORE! ;
@@ -90,7 +95,7 @@ variable RC     variable EXITED
    OUT$ s" floor: trivial-t1 " CONTAINS? TTRUE
    OUT$ s" three-op-t1 " CONTAINS? TTRUE
    OUT$ s" trivial-t0 " CONTAINS? TTRUE
-   OUT$ s" compiled 200" CONTAINS? TTRUE ;
+   OUT$ s" compiled 1000 " CONTAINS? TTRUE ;
 
 : TEST-REPORTS ( -- )
    s" without a floor the tool reports and exits 0" T-LABEL

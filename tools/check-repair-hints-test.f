@@ -24,6 +24,7 @@ require tools/check-all-errors-core.f
 require tools/cli-run.f
 require tools/json.f
 require tools/gate-json-assert-core.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CHECK-REPAIR-HINTS-TEST
 
@@ -197,11 +198,11 @@ create ERR BUF-CAP allot
    s" exe: " type CLI-TOOLS$ type cr
    s" source: " type SRC type cr
    s" diag: " type DIAG type cr
-   s" expected exit: " type expect . cr
-   s" code: " type code dup .
-   s" (" type RC-NAME. s" )" type cr
-   s" stdout bytes: " type outu . s" / " type BUF-CAP . cr
-   s" stderr bytes: " type erru . s" / " type BUF-CAP . cr
+   s" expected exit: " type expect FMT:.INT cr
+   s" code: " type code dup FMT:.INT
+   s"  (" type RC-NAME. s" )" type cr
+   s" stdout bytes: " type outu FMT:.INT s"  / " type BUF-CAP FMT:.INT cr
+   s" stderr bytes: " type erru FMT:.INT s"  / " type BUF-CAP FMT:.INT cr
    s" stdout:" type cr
    OUT outu type
    s" stderr:" type cr

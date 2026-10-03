@@ -159,7 +159,10 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------
+\ The length is refused before the first byte is read: the sign strip takes one
+\ from it, and the minimum cell less one wraps to a scan past the span.
 : STR>FLOAT ( ptr u8 n -- option<r> ) {: a0:ptr u0:n :}
+   u0 STR-CHECK-LEN
    a0 u0 FL-ENGINE-DECIMAL-ADMITTED? {: admitted:bool :}
    -1 FL-VALID !
    a0 u0 FL-STRIP-SIGN {: a:ptr u neg :}

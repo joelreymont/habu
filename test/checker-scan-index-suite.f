@@ -6,28 +6,30 @@
 \ gate runs it in its unsealed whitebox engine; standalone under bin/hb it
 \ exits 70 (docs/gate.md "How a suite runs").
 \
-\ WHAT IS UNDER TEST. Four lookups stopped walking their store and started
-\ asking an index (dot habu-the-checker-s-8c4e7273):
+\ WHAT IS UNDER TEST. Each lookup below stopped walking its store and started
+\ asking an index (dot habu-the-checker-s-8c4e7273 for all but SUMV-FIND):
 \
 \   SCAN-USIGS-SYM       newest effect record for a symbol      HT-USX
 \   NORET-SCAN-SYM       newest control-flag entry for a symbol HT-NRX
 \   SUMV-FROM-CTOR-SYM   lowest variant for a constructor sym   HT-SVX
+\   SUMV-FIND            lowest variant for a (family, tail)    VNX
 \   TFAM-FIND-IN         family row for a (package, tail)       TFX buckets
 \
 \ Each store still carries the walk that defines the answer — USIG-NEWEST-LINEAR,
-\ NORET-NEWEST-LINEAR, SUMV-CTOR-FIRST-LINEAR, TFAM-FIND-IN-LINEAR — and section
-\ 2 differentials the index against it for EVERY symbol and EVERY family in the
-\ live image; the effect and control walks are made once for all symbols
-\ rather than once per symbol. Section 1 comes first and is the one that would
-\ notice a specification and an index that are wrong together: it pins the
-\ ORDER the answer depends on (redefinition, deletion, shadowing) through the
-\ ordinary load path, before any index word is named. Section 3 pins the same
-\ order across the checker's rollback frames.
+\ NORET-NEWEST-LINEAR, SUMV-CTOR-FIRST-LINEAR, SUMV-FIND-LINEAR and
+\ TFAM-FIND-IN-LINEAR — and section 2 differentials the index against it for
+\ EVERY symbol, EVERY variant and EVERY family in the live image; the effect and
+\ control walks are made once for all symbols rather than once per symbol.
+\ Section 1 comes first and is the one that would notice a specification and an
+\ index that are wrong together: it pins the ORDER the answer depends on
+\ (redefinition, deletion, shadowing) through the ordinary load path, before
+\ any index word is named. Section 3 pins the same order across the checker's
+\ rollback frames.
 \
 \ TWO ROWS, ONE FIXTURE. The assertions, the shims and the differential are
 \ test/checker-scan-index-lib.f. This row holds the cases that share state and
 \ run in order in one image: section 1 defines SCXA, SCXT and the scxfam rows;
-\ section 2's differential builds all four indexes before a rollback case reads
+\ section 2's differential builds all five indexes before a rollback case reads
 \ their marks; 3d and 3e roll back records of SCXA and SCXT; section 5's
 \ survival checks read section 1's answers. The other row,
 \ test/checker-scan-index-rollback-suite.f, holds the cases that touch none of
@@ -162,9 +164,9 @@ TRUSTED: SCX-SUMDECL ( -- )
 s" SCXA" SCX-ACTIVE-SYM SCX-SUMV-FROM-CTOR TFALSE drop
 
 \ ---------------------------------------------------------------------------
-\ 2. DIFFERENTIAL. For every symbol the image has interned and every family it
-\    has declared, the index and the walk that specifies it agree
-\    (SCX-DIFF-ALL, test/checker-scan-index-lib.f). It also builds all four
+\ 2. DIFFERENTIAL. For every symbol the image has interned and every family and
+\    variant it has declared, the index and the walk that specifies it agree
+\    (SCX-DIFF-ALL, test/checker-scan-index-lib.f). It also builds all five
 \    indexes, so the rollback cases below read marks that mean something.
 \ ---------------------------------------------------------------------------
 SCX-TFAM-N 0 > TTRUE                           \ the family differential is not vacuous

@@ -22,6 +22,7 @@ require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require lib/argv.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package CHECK-ALL-ERRORS-TEST
 
@@ -36,7 +37,6 @@ private
 variable CAE-ROOT-U
 variable CAE-IN-U
 variable CAE-LARGE-U
-variable CAE-XSUP-PATH-U
 variable CAE-NUM-I
 TYPED-VARIABLE CAE-RUN-A ptr u8
 variable CAE-RUN-U
@@ -50,7 +50,6 @@ variable CAE-START-NS
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
 create CAE-LARGE-BUF FS-PATH-CAP allot
-create CAE-XSUP-PATH-BUF FS-PATH-CAP allot
 create CAE-OUT CAE-BUF-CAP allot
 create CAE-ERR CAE-BUF-CAP allot
 create CAE-NUM CAE-NUM-CAP allot
@@ -68,9 +67,6 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-LARGE ( -- ptr u8 n )
    CAE-LARGE-BUF CAE-LARGE-U @ ;
-
-: CAE-XSUP ( -- ptr u8 n )
-   CAE-XSUP-PATH-BUF CAE-XSUP-PATH-U @ ;
 
 : CAE-RUN-A@ ( -- ptr u8 )
    CAE-RUN-A @ ;
@@ -346,10 +342,8 @@ create CAE-LF-BYTE 10 c,
    CAE-ROOT CLEANUP-DIR+
    CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !
    CAE-ROOT s" large.f" CAE-LARGE-BUF JOIN-PATH CAE-LARGE-U !
-   CAE-ROOT s" xsup-a.f" CAE-XSUP-PATH-BUF JOIN-PATH CAE-XSUP-PATH-U !
    CAE-IN CLEANUP+
    CAE-LARGE CLEANUP+
-   CAE-XSUP CLEANUP+
    CAE-IN CAE-SOURCE$ WRITE-ALL ;
 
 : CAE-APPEND-LF ( ptr u8 n -- )
@@ -448,10 +442,10 @@ create CAE-LF-BYTE 10 c,
    s" check-all-errors-test failure" type cr
    s" case: " type CAE-CASE$ type cr
    s" source: " type CAE-RUN$ type cr
-   s" expected exit: " type expect . cr
-   s" code: " type code . cr
-   s" stdout bytes: " type outu . s" / " type CAE-BUF-CAP . cr
-   s" stderr bytes: " type erru . s" / " type CAE-BUF-CAP . cr
+   s" expected exit: " type expect FMT:.INT cr
+   s" code: " type code FMT:.INT cr
+   s" stdout bytes: " type outu FMT:.INT s"  / " type CAE-BUF-CAP FMT:.INT cr
+   s" stderr bytes: " type erru FMT:.INT s"  / " type CAE-BUF-CAP FMT:.INT cr
    s" stdout:" type cr
    CAE-OUT outu type
    s" stderr:" type cr
@@ -590,6 +584,66 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
    s" cli-smoke diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+\ ---- the command's report holds whatever the source makes it hold -----------
+\ tools/check-all-errors.f itself, run as a child on refused definitions: a prose
+\ record here is about 60 bytes and a JSON record about 560, so either report
+\ passes 64 KiB, and the whole-file pass renders every diagnostic into the
+\ command's scratch before the per-definition pass. The command must exit 70
+\ with one line per refusal on standard error and nothing on standard output.
+1200 constant CAE-REFUSAL-N
+$100000 constant CAE-CHILD-ERR-CAP
+54000 constant CAE-CHILD-MS              \ the bound check-test gives a check.f child
+
+: CAE-WRITE-REFUSALS ( -- )
+   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-REFUSAL-N 0 ?do
+      CAE-LARGE s" : CAE-R" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) dup ;" APPEND-FILE
+      CAE-LARGE CAE-APPEND-LF
+   loop ;
+
+: CAE-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then ;
+
+: CAE-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
+
+: CAE-CLI-ARGV ( bool -- ) {: json:bool :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check-all-errors.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   json if s" --json-errors" >LEN PROC-ARGV+ then
+   s" --label" >LEN PROC-ARGV+
+   CAE-LARGE >LEN PROC-ARGV+
+   CAE-LARGE >LEN PROC-ARGV+ ;
+
+: CAE-REFUSALS-MODE ( ptr u8 bool -- ) {: err:ptr json:bool :}
+   json CAE-CLI-ARGV
+   CAE-HB$ >LEN CAE-OUT CAE-BUF-CAP >LEN err CAE-CHILD-ERR-CAP >LEN
+   CAE-CHILD-MS >MS RUN-ARGV-CAPTURE CAE-CAPTURE>N {: outu:n erru:n rc:n :}
+   CAE-CASE$ T-LABEL
+   rc 70 T=
+   CAE-CASE$ T-LABEL
+   outu 0 T=
+   CAE-CASE$ T-LABEL
+   err erru 10 COUNT-CHAR CAE-REFUSAL-N T= ;
+
+: CAE-REFUSALS-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: err:ptr extent:NUM:alloc-byte-len :}
+   s" cli-refusals-prose" CAE-CASE!
+   err 0 1 = CAE-REFUSALS-MODE
+   s" cli-refusals-json" CAE-CASE!
+   err 0 0= CAE-REFUSALS-MODE ;
+
+: CAE-TEST-CLI-REFUSALS ( -- )
+   CAE-WRITE-REFUSALS
+   CAE-CHILD-ERR-CAP MEM:BYTES-ALLOC-LEN
+   [: CAE-REFUSALS-BODY ;] MEM:WITH-BYTES ;
 
 : CAE-CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns CAE-START-NS !
@@ -931,36 +985,6 @@ CAE-PKG-RUN-REJECT
    CAE-CASE$ T-LABEL
    CAE-PKG-REJECT-RC @ 70 T= ;
 
-\ Cross-file support: a prior source-list file's type and word are in scope
-\ for the checked buffer only when its path is registered through
-\ CHECK-ALL-ERRORS:SUPPORT+; the same buffer without registration fail-closed
-\ rejects. This is the hook the check source-list redrive drives per file.
-: CAE-XSUP-SUP$ ( -- ptr u8 n )
-   SB-RESET
-   s" DEFTYPE CAE-XT" SB-APPEND CAE-LF
-   s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
-   SB$ ;
-
-: CAE-XSUP-USE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : CAE-XT-USE ( cae-xt -- cae-xt ) CAE-XT-ID ;" SB-APPEND CAE-LF
-   SB$ ;
-
-: CAE-TEST-XSUP-REPLAY ( -- )
-   s" xsup-replay" CAE-CASE!
-   CAE-XSUP CAE-XSUP-SUP$ WRITE-ALL
-   CHECK-ALL-ERRORS:SUPPORT-RESET
-   CAE-XSUP-USE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
-   CAE-CASE$ T-LABEL
-   CAE-ERR erru s" cae-xt-use" CAE-WORD-JSON$ CONTAINS? TTRUE
-   CAE-XSUP CHECK-ALL-ERRORS:SUPPORT+
-   CAE-XSUP-USE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu2:n erru2:n :}
-   CAE-CASE$ T-LABEL
-   outu2 0 T=
-   CAE-CASE$ T-LABEL
-   erru2 0 T=
-   CHECK-ALL-ERRORS:SUPPORT-RESET ;
-
 public
 
 : RUN ( -- )
@@ -981,7 +1005,6 @@ public
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
    s" export-alias" [: CAE-TEST-EXPORT-ALIAS ;] CAE-CASE-RUN
    s" package-caller-export" [: CAE-TEST-PKG-EXPORT ;] CAE-CASE-RUN
-   s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
    s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN
@@ -993,6 +1016,7 @@ public
    s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
    s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
+   s" cli-refusals" [: CAE-TEST-CLI-REFUSALS ;] CAE-CASE-RUN
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
    CAE-ROOT EXISTS? TFALSE

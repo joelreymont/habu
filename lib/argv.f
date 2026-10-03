@@ -94,7 +94,8 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
 : ARGV-BUF-FAIL ( -- )  E-INTERNAL throw ;
 
 : ARGV-MSG+ ( ptr u8 n -- ) {: a:ptr u :}
-   ARGV-MSG-L @ u + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
+   u 0 < if ARGV-BUF-FAIL then
+   u ARGV-MSG-CAP ARGV-MSG-L @ - > if ARGV-BUF-FAIL then
    0 begin dup u < while
       dup a + c@  ARGV-MSG ARGV-MSG-L @ + c!
       ARGV-MSG-L @ 1 + ARGV-MSG-L !

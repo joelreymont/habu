@@ -29,6 +29,7 @@ require src/habu/code-span.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
 require src/habu/code-bytes.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package NTAILPROBE
 
@@ -153,9 +154,9 @@ public
 \ last of them, and whether it leaves through a branch.
 : REPORT1 ( ptr u8 n -- ) {: a:ptr u:n :}
    a u type
-   s"  bytes " type a u LEN .
-   s"  calls " type a u CALLS .
-   a u CALLS 0<> if s"  after-last-call " type a u AFTER-LAST-CALL . then
+   s"  bytes " type a u LEN FMT:.INT
+   s"  calls " type a u CALLS FMT:.INT
+   a u CALLS 0<> if s"  after-last-call " type a u AFTER-LAST-CALL FMT:.INT then
    a u TAIL-BRANCH? if s"  leaves by branch" type then
    a u TRAILER-RET? 0= if s"  no trailing return" type then
    cr ;
@@ -163,7 +164,7 @@ public
 \ The whole of a word's compiled code with its trailing return, so a report can
 \ show what moved rather than assert it.
 : DUMP ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" --- " type a u type s"  bytes " type a u LEN . cr
+   s" --- " type a u type s"  bytes " type a u LEN FMT:.INT cr
    a u CODE-BYTES INSN-BYTES / 0 ?do
       a u START i INSN-BYTES * + W@ DIS1
    loop ;

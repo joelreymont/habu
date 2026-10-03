@@ -208,7 +208,6 @@ DEFAULT-RULES
 
 \ FS-LIST separates the names with one newline and no terminator.
 : LINE-STOP ( n n -- n ) {: total:n at:n :}
-   total at <= if total exit then
    total at ?do
       NAMES-BUF i SPAN:U8@ LF = if i unloop exit then
    loop

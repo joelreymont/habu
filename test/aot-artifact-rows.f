@@ -1,4 +1,5 @@
-\ Exact address-row IO and MERGE through files, with independently chosen fields.
+\ Exact address-row IO and MERGE through files, with independently chosen fields,
+\ and a closure list whose last path length is forged under an honest digest.
 \ Run with an artifact path and case name; the registered capture suite owns both.
 require test/aot-artifact-roundtrip.f
 
@@ -32,6 +33,11 @@ package AOT-FILE
    loop
    PAYLEN @ 4 - PAYLEN ! ;
 
+\ The offset of the closure list's last length cell: the list is a count, then
+\ each path's length and bytes.
+: ROW-TEST-LAST-PATH ( -- n )
+   8  CBUF U64@ 1- 0 ?do  CBUF over + U64@ 8 + +  loop ;
+
 
 public
 
@@ -49,6 +55,22 @@ public
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
    SEC-N 0 ?do i SEC-PTR i BASE@ + i ROW-LEN@ PUT loop
+   FD @ close ;
+
+\ An honest artifact but for the closure list's last path length. The payload
+\ digest is taken over the forged list, so only the reader's own walk of the list
+\ can refuse it.
+: ROW-TEST-CLOSURE ( ptr u8 ptr u8 n n -- )
+   {: prod path pathu:n pu:n :}
+   STAGE
+   pu ROW-TEST-LAST-PATH CB!
+   BUILD-TABLE BASES-ALONE
+   PAYLOAD-DIGEST
+   DERIVED AOT-IDENT:CHAIN-DIGEST
+   prod BUILD-HEADER
+   path pathu PATH0 1537 493 open FD !
+   FD @ 0 < if s" artifact-row-test: cannot write forged file" DIE then
+   WRITE-BODY
    FD @ close ;
 
 ;package
@@ -341,6 +363,20 @@ variable CHAIN-VALUE
    false ;
 
 
+: CLOSURE-READ ( n -- ) {: pu:n :}
+   AOTRT:KEY ART$ pu ROW-TEST-CLOSURE READ-ARTIFACT ;
+
+\ The closure list's last path length, forged: one past the bytes the section
+\ holds, negative, and the maximum cell, which wraps a sum with the cursor back
+\ inside the section.
+: FORGE-CLOSURE ( -- bool )
+   AOT-IDENT:COUNT 1- AOT-IDENT:PATH$ nip {: last:n :}
+   s" closure-over" CASE? if last 1+ CLOSURE-READ true exit then
+   s" closure-negative" CASE? if -1 CLOSURE-READ true exit then
+   s" closure-max" CASE? if -1 1 rshift CLOSURE-READ true exit then
+   false ;
+
+
 public
 
 : RUN ( -- )
@@ -354,6 +390,7 @@ public
       1 XTOFF-N !
       AOTRT:KEY ART$ true ROW-TEST-WRITE READ-ARTIFACT exit
    then
+   FORGE-CLOSURE if exit then
    FORGE-SITE if
       WRITE-ARTIFACT HOST!
       AOTRT:KEY ART$ MERGE exit

@@ -96,8 +96,11 @@ create M-FAIL-NL 1 allot
 : M-ROOM1 ( -- )
    M-HERE MSIZE >= if s" image-bytes: cursor exceeds buffer" M-FAIL then ;
 
+\ `>LEN` is a cast, not a validator, so the length is compared with the room
+\ left: in a sum, a length near the maximum cell wraps back under MSIZE.
 : M-CHECK-ROOM ( len -- )
-   LEN>N M-HERE + MSIZE > if s" image-bytes: write exceeds buffer" M-FAIL then ;
+   LEN>N {: u:n :}
+   u 0 < u MSIZE M-HERE - > or if s" image-bytes: write exceeds buffer" M-FAIL then ;
 
 : IMG-M8 ( n -- )
    M-ROOM1

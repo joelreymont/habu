@@ -10,6 +10,7 @@
 \ what the answers must be.
 
 require lib/pty-harness.f
+require lib/test/subject.f
 
 package PROC-PTY
 
@@ -63,12 +64,15 @@ variable PID
 
 \ Completion, in this file's own counters: the bounded reaps answer an outcome,
 \ and only a clean exit with this code passes. A reap that ran out of clock
-\ answers timeout, which reds here instead of hanging the run.
-: T-EXIT= ( outcome n -- ) {: want:n :}
-   MATCH outcome
+\ answers timeout: that is a deadline, not a wrong answer, so it prints the
+\ program and what the case drained from the child (SUBJECT:TIMED-OUT, which
+\ throws E-PROC-TIMEOUT for RUN to report).
+: T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
+   {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
+   oc MATCH outcome
      exited OF want T= ENDOF
      signaled OF drop 1 0 T= ENDOF
-     timeout OF 1 0 T= ENDOF
+     timeout OF src srcu out outu err erru SUBJECT:TIMED-OUT ENDOF
    ;MATCH ;
 
 \ Every drain starts from an empty buffer: the bytes it swallows are the ones a
@@ -94,21 +98,13 @@ variable PID
    WAIT-FOR TTRUE ;
 
 \ A redraw while echoing the input already contains a prompt. Completion
-\ requires a prompt after the answer, using the same predicate in the wait
-\ and the live echo regression below.
+\ requires a prompt after the answer, the same ordered pair in the wait
+\ (lib/pty-harness.f WAIT-AFTER) and the live echo regression below.
 : PROMPT-READY? ( ptr u8 n -- bool )
    s" habu> " AFTER? ;
 
-: WAIT-PROMPT ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   WAIT-BUDGET-MS WAIT-OPEN
-   begin
-      a u PROMPT-READY? if true exit then
-      WAIT-LEFT 0= if false exit then
-      MASTER-FD READ-STEP 0 < if a u PROMPT-READY? exit then
-   again ;
-
 : PROMPT-AFTER ( ptr u8 n -- )
-   WAIT-PROMPT TTRUE ;
+   s" habu> " WAIT-AFTER TTRUE ;
 
 \ Wait for a marker and close an absence claim's window at its end. The marker
 \ has to be one the child prints PAST the point where the rejected text could
@@ -146,12 +142,17 @@ variable PID
    OUT-W @ close
    ERR-W @ close ;
 
+: CAPTURE-SOURCE$ ( -- ptr u8 n )
+   s" 2 3 + ." ;
+
 : CAPTURE-SEND-SOURCE ( -- )
-   IN-W @ >FD s" 2 3 + ." WRITE-LINE
+   IN-W @ >FD CAPTURE-SOURCE$ WRITE-LINE
    IN-W @ close ;
 
+\ The pipes are read after the reap, so a deadline here has drained nothing.
 : CAPTURE-EXPECT-RC ( -- )
-   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT= ;
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT {: oc :}
+   CAPTURE-SOURCE$ s" " s" " oc 0 T-EXIT= ;
 
 : CAPTURE-EXPECT-OUT ( -- )
    BUF-CLEAR
@@ -235,7 +236,8 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    SEED-TOKEN!
    OUT-R @ close
    ERR-R @ close
-   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT 0 T-EXIT=
+   PID @ >PID WAIT-BUDGET-MS WAIT-EXIT {: oc :}
+   SEED-LINE$ BUF$ s" " oc 0 T-EXIT=                 \ stderr is never read
    SEEDNUM-U @ 0 > TTRUE ;
 
 : PTY-SEED-SURFACE ( -- )
@@ -679,6 +681,20 @@ variable PTY-LONG-U
    PTY-PKGSCOPE-FRESH
    PTY-PKGSCOPE-GLOBAL ;
 
+\ A line whose create is rolled back retires that record, and the next
+\ definition reuses its slot. The does> after it has no created record to
+\ patch, so it is refused by name and the session reads on, where it used to
+\ patch the reused slot's new owner.
+: PTY-LASTC-RECOVERY ( -- )
+   s" create PLC-GONE 5 , PLC-NO-SUCH-WORD" STEP-LN
+   s" PLC-NO-SUCH-WORD" PROMPT-AFTER
+   s" : PLC-BEHAVE ( -- ) does> ( -- n ) @ ;" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s" PLC-BEHAVE" STEP-LN
+   s" hb: does> has no created word" PROMPT-AFTER
+   PROBE-BARRIER
+   s"  ok" REJECT ;
+
 \ The package's using floor comes back with the scope (dot
 \ habu-restore-pkg-state-d09394b9). The failing line closes PRF2, opens a using
 \ and PRF3, and aborts: recovery reopens PRF2 with its own floor, so a using
@@ -787,7 +803,8 @@ variable PTY-LONG-U
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
    4 SEND-BYTE
-   REAP 0 T-EXIT=
+   REAP {: oc :}
+   HB-EXE$ BUF$ s" " oc 0 T-EXIT=   \ the terminal carries both streams
    CLOSE-MASTER ;
 
 \ --- a terminal that hangs up mid-line ends the session -----------------------
@@ -883,6 +900,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    PTY-THROW-RECOVERY
    PTY-COMPILE-RECOVERY
    PTY-PKGSCOPE-RECOVERY
+   PTY-LASTC-RECOVERY
    PTY-PKGFLOOR-RECOVERY
    PTY-PKGSLOT-RECOVERY
    PTY-REJECT-BARRIER ;
@@ -899,9 +917,21 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    #FAIL @ 0 = if s" PASS: process/pty primitives" type cr exit then
    #FAIL @ . s" proc-pty: failures" 1 die ;
 
-CAPTURE-HB
-PTY-HB
-REPORT
+\ A deadline is no failed case: a reap that ran out of clock, or a wait whose
+\ clock ended with the child still at the terminal (lib/pty-harness.f
+\ WAIT-AFTER-WITHIN), throws E-PROC-TIMEOUT. This run then exits
+\ PROC-TIMEOUT-RC (lib/process.f), and the gate entry that runs it reports a
+\ timeout instead of counting a failure. Every other throw is the run's own.
+: RUN ( -- )
+   [: CAPTURE-HB PTY-HB ;] catch {: code:n :}
+   code E-PROC-TIMEOUT = if
+      s" proc-pty: deadline in case " type #CASE @ 1 + . cr
+      s" proc-pty: a wait or a reap ran out of time" PROC-TIMEOUT-RC die
+   then
+   code 0<> if code throw then
+   REPORT ;
+
+RUN
 
 ;using
 

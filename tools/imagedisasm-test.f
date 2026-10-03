@@ -86,9 +86,11 @@ variable IMDT-LDRB-U
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: IMDT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
-   expect T-OUTCOME-EXITED=
-   LEN>N swap LEN>N swap ;
+: IMDT-EXPECT-EXIT ( len len outcome n -- n n )
+   {: outu:len erru:len oc expect:n :}
+   s" tools/imagedisasm.f" IMDT-OUT outu LEN>N IMDT-ERR erru LEN>N oc expect
+   T-OUTCOME-EXITED=
+   outu LEN>N erru LEN>N ;
 
 : IMDT-TEST-RET ( -- )
    IMDT-RET$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}

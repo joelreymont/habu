@@ -11,7 +11,7 @@
 \                    or a pointer to one; or the destination introduces an atom
 \   - E-CAST-FAM   : in/out names an undeclared family, or applies one to the
 \                    wrong number of arguments
-\   - COMPILE-REJECT-RC (70): any other signature fault, bad syntax or a bare
+\   - CHECKER-REJECT-RC (70): any other signature fault, bad syntax or a bare
 \                    `ptr`, with the bad-signature diagnostic
 \   - E-CAST-LINEAR: a linear type or a type variable anywhere in in/out,
 \                    pointees, quotation rows and layout fields included
@@ -34,6 +34,7 @@
 require test/checker-assert.f
 require src/habu/verify-source.f
 require lib/test/subject.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable #FAIL
 variable #CASE
@@ -44,7 +45,7 @@ variable #CASE
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-      T-FAIL s" assert: expected " type want . s" got " type got . cr
+      T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
 \ Silence expected rejection diagnostics (verdicts are asserted, not printed).
@@ -111,10 +112,10 @@ s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL E-CAST-FAM T=
 s" cast: CNF3 ( n -- ptr cnpbox )"   CN-RUN:DECL E-CAST-FAM T=
 s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL E-CAST-FAM T=
 \ Any other signature fault, here a bare `ptr`, is refused before a walk reads
-\ the row, as a definition with that signature is: COMPILE-REJECT-RC. The first
+\ the row, as a definition with that signature is: CHECKER-REJECT-RC. The first
 \ fault names the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
-s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL COMPILE-REJECT-RC T=
-s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL COMPILE-REJECT-RC T=
+s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL CHECKER-REJECT-RC T=
+s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL CHECKER-REJECT-RC T=
 \ Neither direction, linear-to-linear, nor transitive containment may cross
 \ CAST:, even when both sides occupy one machine cell.
 s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=
@@ -467,17 +468,14 @@ $4A constant NO-NAME-RC
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
-: RUN ( ptr u8 n -- n )   \ source -> child exit status (-1 = signal or timeout)
-   OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
-   MATCH outcome
+: RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
+   src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   erru LEN>N ERR-U !
+   oc MATCH outcome
      exited OF ENDOF
      signaled OF drop -1 ENDOF
-     timeout OF -1 ENDOF
-   ;MATCH
-   {: rc:n :}
-   LEN>N ERR-U !
-   LEN>N drop
-   rc ;
+     timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
+   ;MATCH ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 ;package
 

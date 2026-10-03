@@ -35,6 +35,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -313,7 +314,10 @@ variable TG-COL-NAME
    s" .names" drop TG-MAP-PATH pathu + 6 BYTE-COPY
    TG-MAP-PATH pathu 6 + FILE? 0= if s" " exit then
    TG-MAP-PATH pathu 6 + FILE-SIZE dup TG-MAP-U ! CELL + CELL / TG-MAP-RESERVE
-   TG-MAP-PATH pathu 6 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL drop
+   \ A file that shrank after FILE-SIZE leaves the previous generation's bytes
+   \ past the read in TG-MAP, and they would parse as this map's rows.
+   TG-MAP-PATH pathu 6 + 0 TG-MAP BYTE-VIEW TG-MAP-U @ READ-ALL
+   TG-MAP-U @ <> if E-FS-IO throw then
    0 TG-MAP-POS !
    TG-MAP-LINE$ s" habu-names 1" STR= 0= if s" " exit then
    TG-MAP-LINE$ {: header:ptr headeru:n :}
@@ -329,15 +333,28 @@ variable TG-COL-NAME
       TG-MAP-LINE$ off TG-MAP-ROW$ dup 0 > if exit then 2drop
    repeat s" " ;
 
-: TG-OWNER ( n -- ) {: gen:n :}
+\ The record owning the first differing byte, or an empty string when the byte
+\ is outside the code blob or the names map has no row for it.
+: TG-OWNER$ ( n -- ptr u8 n ) {: gen:n :}
    gen TG-GEN$ IMAGE-SIZE:MEASURE
    IMAGE-SIZE:CODE-BLOB-RANGE {: base:n size:n :}
-   s" two-gen: gen " type gen TG-U. s"  first-difference owner " type
    TG-FIRST-DIFF @ base - {: off:n :}
-   off 0 >= off size < and if
-      gen TG-GEN$ off TG-MAP-NAME$ dup 0 > if type cr exit then 2drop
-   then
+   off 0 >= off size < and if gen TG-GEN$ off TG-MAP-NAME$ exit then
+   s" " ;
+
+: TG-OWNER. ( n -- ) {: gen:n :}
+   gen TG-OWNER$ {: name:ptr nameu:n :}
+   s" two-gen: gen " type gen TG-U. s"  first-difference owner " type
+   nameu 0 > if name nameu type cr exit then
    s" unavailable at this file offset" type cr ;
+
+\ An owner only explains a verdict already printed, so a lookup that throws is
+\ named on its own line and the verdict's exit status stands.
+: TG-OWNER ( n -- ) {: gen:n :}
+   gen [: dup TG-OWNER. ;] catch nip {: code:n :}
+   code 0= if exit then
+   s" two-gen: gen " type gen TG-U.
+   s"  owner lookup failed: throw code " type code FMT:.INT cr ;
 
 \ One line per pair, and the count the caller decides about.
 : TG-PAIR-DIFF ( n n -- n ) {: a:n b:n :}
@@ -385,8 +402,9 @@ variable TG-COL-NAME
    0 TG-GEN$ TG-HOST!
    2 TG-GEN
    1 2 TG-PAIR-DIFF 0 <> if
+      s" two-gen: same-host builds differ" type cr
       1 TG-OWNER 2 TG-OWNER
-      s" two-gen: same-host builds differ" type cr TG-FAIL-RC throw
+      TG-FAIL-RC throw
    then
    s" two-gen: same-host builds match byte for byte" type cr ;
 
@@ -415,8 +433,13 @@ variable TG-COL-NAME
 
 public
 
+\ A verdict printed its own lines and exits TG-FAIL-RC. Any other throw is a
+\ step that failed; it is rethrown, so the engine names its code on stderr and
+\ exits with its status for an uncaught throw.
 : MAIN ( -- )
    [: TG-RUN ;] catch {: code:n :}
-   code 0 <> if s" " code die then ;
+   code 0= if exit then
+   code TG-FAIL-RC = if s" " code die then
+   code throw ;
 
 ;package

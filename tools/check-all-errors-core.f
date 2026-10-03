@@ -1,5 +1,6 @@
 \ check-all-errors-core.f - reusable all-errors checker core.
 
+require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/vector.f
@@ -33,11 +34,18 @@ private
 
 10 constant CA-LF
 123 constant CA-LBRACE
+70 constant CA-REFUSED                  \ the status of a refusal the checker reported
+
+\ The 1-based line and column of byte at in the buffer that starts at a.
+: BYTE-ORIGIN ( ptr u8 n -- n n ) {: a:ptr at:n :}
+   1 0 at 0 ?do
+      a i + c@ CA-LF = if drop 1+ i 1+ then
+   loop
+   at swap - 1+ ;
 
 create CA-LF-BUF 1 allot
 
 
-variable CA-FULL-R
 variable CA-FAILED
 variable CA-RAW-FAILURE
 variable CA-JSON-FOUND
@@ -50,9 +58,12 @@ variable CA-ERR-CAP
 variable CA-OUT-LEN
 TYPED-VARIABLE CA-OUT-A ptr u8
 variable CA-OUT-CAP
+variable CA-OUT-FD                      \ where the report goes, or -1 for the buffer
+-1 CA-OUT-FD !
 variable CA-LS
 variable CA-LE
-variable CA-TOKU                        \ length of the source word at a lexer diagnostic
+variable CA-THROW-RC                    \ what a statement threw while it was checked
+variable CA-THROW-AT                    \ and the byte of the token the checker read last
 
 TYPED-VARIABLE CA-FILE-A ptr u8
 variable CA-FILE-U
@@ -99,8 +110,6 @@ variable CA-COMPOSE-LABEL-U
 : CA-JSON? ( -- bool )
    CA-JSON @ 0 <> ;
 
-: CA-FAIL ( ptr u8 n n -- )
-   die ;
 
 
 
@@ -117,12 +126,19 @@ variable CA-COMPOSE-LABEL-U
 
 
 
-
+\ The report buffer is the caller's and cannot grow, so a record that does not
+\ fit is refused whole by a throw, after every record before it. A streamed
+\ report has no buffer to outgrow.
 : CA-OUT-ROOM ( n -- )
-   CA-OUT-LEN @ + CA-OUT-CAP @ > IF s" check-all-errors: output buffer full" 76 CA-FAIL THEN ;
+   CA-OUT-FD @ 0 >= IF drop exit THEN
+   CA-OUT-LEN @ + CA-OUT-CAP @ > IF E-DIAG-CAPACITY throw THEN ;
 
 : CA-ERR ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF exit THEN
+   CA-OUT-FD @ 0 >= IF
+      CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN
+      exit
+   THEN
    u CA-OUT-ROOM
    a CA-OUT-A@ CA-OUT-LEN @ + u BYTE-COPY
    CA-OUT-LEN @ u + CA-OUT-LEN ! ;
@@ -131,62 +147,13 @@ variable CA-COMPOSE-LABEL-U
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
-\ ---- Cross-file support (source-list redrive) ----------------------------
-\ A caller checking an ordered file list registers each already-verified file
-\ here; every checker scope opened for the current file first replays the
-\ registered files with VERIFY:SOURCE-BUF-IN-SCOPE, so cross-file prefix state
-\ (types, packages, definitions) is in scope exactly as at runtime. A support
-\ replay failure is annotated and rethrown - never swallowed.
+\ A record goes in with its line feed or not at all, so a report a full buffer
+\ cut short ends on a whole line.
+: CA-ERR-LN ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1+ CA-OUT-ROOM
+   a u CA-ERR
+   CA-LF$ CA-ERR ;
 
-$80 constant CA-XSUP-MAX
-
-create CA-XSUP-PATHS CA-XSUP-MAX FS-PATH-CAP * allot
-create CA-XSUP-US CA-XSUP-MAX cells allot
-variable CA-XSUP-N
-variable CA-XSUP-I
-variable CA-XSUP-RC
-TYPED-VARIABLE CA-XSUP-BUF-A ptr u8
-variable CA-XSUP-BUF-CAP
-
-: CA-XSUP-BUF-A@ ( -- ptr u8 )
-   CA-XSUP-BUF-A @ ;
-
-: CA-XSUP-BUF-A! ( ptr u8 -- )
-   CA-XSUP-BUF-A ! ;
-
-: CA-XSUP$ ( n -- ptr u8 n ) {: i:n :}
-   CA-XSUP-PATHS i FS-PATH-CAP * +
-   CA-XSUP-US i cells + @ ;
-
-: CA-XSUP-BUF ( n -- ptr u8 n ) {: need:n :}
-   need CA-XSUP-BUF-CAP @ > IF
-      need MEM-ALLOC-64K-SPAN CA-XSUP-BUF-CAP ! CA-XSUP-BUF-A!
-   THEN
-   CA-XSUP-BUF-A@ CA-XSUP-BUF-CAP @ ;
-
-: CA-XSUP-REPLAY-ONE ( n -- ) {: i:n :}
-   i CA-XSUP$ {: pa:ptr pu:n :}
-   pa pu FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
-   pa pu buf cap READ-ALL {: u:n :}
-   buf u VERIFY:SOURCE-BUF-IN-SCOPE ;
-
-: CA-XSUP-NOTE ( n n -- ) {: i:n rc:n :}
-   rc 0= IF exit THEN
-   rc CA-XSUP-RC !
-   s" all-errors: support replay failed: " CA-ERR
-   i CA-XSUP$ CA-ERR
-   CA-LF$ CA-ERR
-   rc throw ;
-
-: CA-XSUP-REPLAY-CUR ( -- )
-   CA-XSUP-I @ CA-XSUP-REPLAY-ONE ;
-
-: CA-XSUP-REPLAY ( -- )
-   0 CA-XSUP-I !
-   begin CA-XSUP-I @ CA-XSUP-N @ < while
-      [: CA-XSUP-REPLAY-CUR ;] catch CA-XSUP-I @ swap CA-XSUP-NOTE
-      CA-XSUP-I @ 1+ CA-XSUP-I !
-   repeat ;
 
 
 
@@ -242,8 +209,7 @@ variable CA-XSUP-BUF-CAP
    CA-ERR-A@ start + end start - ;
 
 : CA-EMIT-ERR-LINE ( n n -- ) {: start:n end:n :}
-   start end CA-ERR-LINE LINT-TRIM CA-ERR
-   CA-LF$ CA-ERR ;
+   start end CA-ERR-LINE LINT-TRIM CA-ERR-LN ;
 
 
 
@@ -267,7 +233,7 @@ variable CA-XSUP-BUF-CAP
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" rename_duplicate" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" word" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
    s" token" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
@@ -287,56 +253,60 @@ variable CA-XSUP-BUF-CAP
    s" actual" CA-JSON-EMPTY-FIELD
    LJW-OBJECT-END LJW-COMMA
    s" suggestion" LJW-KEY s" Rename the word or undefine the old definition before redefining it." LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW-OBJECT-END ;
 
+\ A session checks several files, so the line names the one that defined the
+\ word again, as the JSON record does.
 : CA-PROSE-DUP ( -- )
-   s" checker: duplicate definition" CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW-RESET
+   s" checker: duplicate definition in " LJW-RAW
+   CA-FILE-A@ CA-FILE-U @ LJW-RAW ;
+
+\ Both renderings are built in the JSON writer's buffer.
+: CA-DUP-RECORD$ ( -- ptr u8 n )
+   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   LJW$ ;
 
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
-   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   CA-DUP-RECORD$ CA-ERR-LN
    DUP-RC CA-RAW-FAILURE ! ;
+
+: CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
+   begin dup CA-SRC-U @ < if CA-SRC-A@ over + c@ 32 > else CA-FALSE then while
+      1+
+   repeat ;
+
+\ Each lexer defect sits at an opener word, a string opener or a row opener, so
+\ the reported token is that word read out of the source, at its own width.
+: CA-LEX-TOKEN-U ( -- n )
+   LINT-LEX:ERROR-BYTE@ dup CA-WORD-END swap - ;
+
+: CA-LEX-TOKEN$ ( -- ptr u8 n )
+   CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-LEX-TOKEN-U ;
 
 : CA-JSON-LEX-UNTERM ( -- )
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-UNTERMINATED-STRING" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" close_string" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + 2 LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
    s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ 2 + LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY s" Close the string literal before the definition ends." LJW-STRING
    LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW$ CA-ERR-LN ;
 
 \ ---- malformed primitive-axiom row --------------------------------------------
 \ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
 \ exactly like an open string does, but it needs its own code and its own repair
 \ text: a caller told to close a string literal will look for a quote that is not
-\ there. The diagnostic site is the row OPENER, so the reported token is the opener
-\ word read out of the source.
-: CA-ROW-TOKEN-U ( -- n )
-   0 CA-TOKU !
-   begin
-      LINT-LEX:ERROR-BYTE@ CA-TOKU @ + CA-SRC-U @ <
-      CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-TOKU @ + c@ 32 > and
-   while
-      CA-TOKU @ 1+ CA-TOKU !
-   repeat
-   CA-TOKU @ ;
-
-: CA-ROW-TOKEN$ ( -- ptr u8 n )
-   CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-ROW-TOKEN-U ;
-
+\ there.
 : CA-ROW-SUGGESTION$ ( -- ptr u8 n )
    s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE." ;
 
@@ -345,26 +315,23 @@ variable CA-XSUP-BUF-CAP
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-MALFORMED-REGISTRY-ROW" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" close_primitive_row" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-ROW-TOKEN$ LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-LEX-TOKEN$ LJW-STRING LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
    s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-ROW-TOKEN-U + LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-LEX-TOKEN-U + LJW-U LJW-COMMA
    s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
    LJW-OBJECT-END
-   LJW$ CA-ERR
-   CA-LF$ CA-ERR ;
+   LJW$ CA-ERR-LN ;
 
 : CA-PROSE-LEX-ROW ( -- )
-   s" E-MALFORMED-REGISTRY-ROW" CA-ERR
-   CA-LF$ CA-ERR ;
+   s" E-MALFORMED-REGISTRY-ROW" CA-ERR-LN ;
 
 : CA-PROSE-LEX-UNTERM ( -- )
-   s" E-UNTERMINATED-STRING" CA-ERR
-   CA-LF$ CA-ERR ;
+   s" E-UNTERMINATED-STRING" CA-ERR-LN ;
 
 : CA-EMIT-LEX-ROW ( -- )
    CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN ;
@@ -379,7 +346,7 @@ variable CA-XSUP-BUF-CAP
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
    CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
-   70 throw ;
+   CA-REFUSED throw ;
 
 
 
@@ -429,6 +396,9 @@ variable CA-XSUP-BUF-CAP
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
+\ A source checked as the loader runs it: each top-level loader statement
+\ verifies the file it loads where it stands (VERIFY:SOURCE-COMPOSE-LABELED-IN-
+\ SCOPE), in the session's one checker scope.
 : CA-CHECK-COMPOSE-ACT ( -- )
    CA-SRC-A@ CA-SRC-U @ CA-COMPOSE-PATH-A @ CA-COMPOSE-PATH-U @
    CA-COMPOSE-LABEL-A @ CA-COMPOSE-LABEL-U @
@@ -439,26 +409,6 @@ variable CA-XSUP-BUF-CAP
    CA-DIAG-FULL-START
    [: CA-CHECK-COMPOSE-ACT ;] catch
    CA-DIAG-FINISH ;
-
-: CA-CHECK-COMPOSE-SCOPE ( -- n )
-   0 CA-FULL-R !
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CA-CHECK-COMPOSE CA-FULL-R ! ;] catch
-   CHECKER-SCOPE-DONE
-   dup 0= IF drop CA-FULL-R @ EXIT THEN ;
-
-\ The replayed file is standalone source, so it is checked at neutral top level
-\ whatever package the caller had open - otherwise a top-level EXPORT directive
-\ in that source reads as an in-package re-export and the run fails. The
-\ neutrality is the scope opener's job, not this call site's; the matching
-\ CHECKER-SCOPE-DONE pops the frame and restores the caller's exact package on
-\ both the clean and the throwing path.
-: CA-CHECK-FULL-SCOPE ( -- n )
-   0 CA-FULL-R !
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CA-XSUP-REPLAY CA-CHECK-FULL CA-FULL-R ! ;] catch
-   CHECKER-SCOPE-DONE
-   dup 0= IF drop CA-FULL-R @ exit THEN ;
 
 
 
@@ -482,36 +432,73 @@ variable CA-XSUP-BUF-CAP
       CA-ERR-A@ CA-ERR-LEN @ CA-ERR
    THEN ;
 
-\ Whole-buffer multi-error drive (Option-A no-cascade ruling on
-\ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
-\ file-relative diagnostic for every rejected definition, records each
-\ reject's declared signature so later callers check against it (no phantom
-\ E-UNDEFINED cascade), and continues to the next definition - the native
-\ load path and this tool now share the same machinery. A duplicate
-\ definition throws DUP-RC (reported exactly as before), and a verdict-1
-\ uncheckable still aborts fail-closed at its definition: uncheckables are
-\ not counted by MULTI-ERR-N, so continuing past them would let an
-\ all-uncheckable file read as clean.
-: CA-RUN-DEFS ( -- )
-   CA-RESET-RESULTS
-   MULTI-ERR-BEGIN
-   CA-CHECK-FULL-SCOPE {: rc:n :}
-   MULTI-ERR-END {: rejects:n :}
-   CA-XSUP-RC @ 0 <> IF CA-XSUP-RC @ throw THEN
-   rc DUP-RC = IF CA-HANDLE-DUP exit THEN
-   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+\ ---- a statement that throws while it is checked ----------------------------
+\ The checker reports a definition it refuses and returns, but a statement can
+\ also throw out of it with nothing reported: a `;using` with no `using` open
+\ throws E-USING-UNBALANCED. That throw is reported as E-STATEMENT-THROW at the
+\ token the checker read last, after whatever it reported before it, and fails
+\ the source like a refusal, so the run ends with the checker's status. The
+\ rest of the source is not checked. Both renderings are built in the JSON
+\ writer's buffer.
+: CA-THROW-END ( -- n )
+   CA-THROW-AT @ CA-WORD-END ;
 
-: CA-RUN-COMPOSE-DEFS ( -- )
-   CA-RESET-RESULTS
-   MULTI-ERR-BEGIN
-   CA-CHECK-COMPOSE-SCOPE {: rc:n :}
-   MULTI-ERR-END {: rejects:n :}
-   rc DUP-RC = IF
-      0 CA-EMIT-CAPTURED
-      VERIFY:SOURCE-COMPOSE-STOPPED$ CA-FILE-U ! CA-FILE-A!
-      CA-HANDLE-DUP EXIT
-   THEN
-   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+: CA-THROW-TOKEN$ ( -- ptr u8 n )
+   CA-SRC-A@ CA-THROW-AT @ + CA-THROW-END CA-THROW-AT @ - ;
+
+: CA-THROW-ORIGIN ( -- n n )
+   CA-SRC-A@ CA-THROW-AT @ BYTE-ORIGIN ;
+
+: CA-JSON-THROW ( -- )
+   CA-THROW-ORIGIN {: line:n col:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-STATEMENT-THROW" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-THROW-TOKEN$ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY line LJW-U LJW-COMMA
+   s" column" LJW-KEY col LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY CA-THROW-AT @ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY CA-THROW-END LJW-U LJW-COMMA
+   s" throw_code" LJW-KEY CA-THROW-RC @ LJW-INT LJW-COMMA
+   s" suggestion" LJW-KEY s" Inspect the token, signature, and raw stack evidence." LJW-STRING
+   LJW-OBJECT-END ;
+
+: CA-PROSE-THROW ( -- )
+   CA-THROW-ORIGIN {: line:n col:n :}
+   LJW-RESET
+   s" E-STATEMENT-THROW " LJW-RAW
+   CA-FILE-A@ CA-FILE-U @ LJW-RAW
+   s" :" LJW-RAW line LJW-U
+   s" :" LJW-RAW col LJW-U
+   s" : throw " LJW-RAW CA-THROW-RC @ LJW-INT
+   s"  at '" LJW-RAW CA-THROW-TOKEN$ LJW-RAW
+   s" '" LJW-RAW ;
+
+: CA-THROW-RECORD$ ( -- ptr u8 n )
+   CA-JSON? IF CA-JSON-THROW ELSE CA-PROSE-THROW THEN
+   LJW$ ;
+
+: CA-THROW! ( n -- )                     \ what threw, at the token read last
+   CA-THROW-RC !
+   VERIFY:TOKEN-BYTE@ CA-THROW-AT ! ;
+
+public
+
+\ True for the status of a check that a statement threw out of: neither clean
+\ nor a refusal or duplicate the checker reported.
+: THREW? ( n -- bool ) {: rc:n :}
+   rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and ;
+
+private
+
+: CA-HANDLE-THROW ( n -- )
+   CA-THROW!
+   0 CA-EMIT-CAPTURED
+   CA-THROW-RECORD$ CA-ERR-LN ;
 
 : CA-ALLOC-SOURCE ( n -- )
    MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
@@ -525,19 +512,70 @@ variable CA-XSUP-BUF-CAP
    u CA-SRC-U !
    a CA-SRC-A! ;
 
-: CA-RUN-SOURCE ( -- )
+\ Whole-buffer multi-error drive (Option-A no-cascade ruling on
+\ habu-multi-err-checking-42db26f4): ONE verify pass in MULTI-ERR mode emits a
+\ file-relative diagnostic for every rejected definition, records each
+\ reject's declared signature so later callers check against it (no phantom
+\ E-UNDEFINED cascade), and continues to the next definition - the native
+\ load path and this tool now share the same machinery. A duplicate
+\ definition throws DUP-RC (reported exactly as before), and a verdict-1
+\ uncheckable still aborts fail-closed at its definition: uncheckables are
+\ not counted by MULTI-ERR-N, so continuing past them would let an
+\ all-uncheckable file read as clean.
+\ The session is the caller's (SESSION), so a source's rejects are the ones
+\ counted while it was checked.
+: CA-RUN-DEFS ( -- )
+   CA-RESET-RESULTS
+   MULTI-ERR-N @ {: before:n :}
+   CA-CHECK-FULL {: rc:n :}
+   MULTI-ERR-N @ before - {: rejects:n :}
+   rc DUP-RC = IF CA-HANDLE-DUP exit THEN
+   rc THREW? IF rc CA-HANDLE-THROW exit THEN
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+
+\ A duplicate or a statement's throw stops the composition in one of its files,
+\ the one VERIFY:SOURCE-COMPOSE-STOPPED$ names, and its record names that file
+\ and reads the token out of its bytes. Every diagnostic the checker made before
+\ it is reported first.
+: CA-COMPOSE-STOPPED ( -- )
+   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
+   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? 0= IF a u CA-READ-SOURCE THEN
+   u CA-FILE-U !  a CA-FILE-A! ;
+
+: CA-HANDLE-COMPOSE-THROW ( n -- )
+   CA-THROW!
+   0 CA-EMIT-CAPTURED
+   CA-COMPOSE-STOPPED
+   CA-THROW-RECORD$ CA-ERR-LN ;
+
+: CA-RUN-COMPOSE-DEFS ( -- )
+   CA-RESET-RESULTS
+   MULTI-ERR-N @ {: before:n :}
+   CA-CHECK-COMPOSE {: rc:n :}
+   MULTI-ERR-N @ before - {: rejects:n :}
+   rc DUP-RC = IF 0 CA-EMIT-CAPTURED CA-COMPOSE-STOPPED CA-HANDLE-DUP exit THEN
+   rc THREW? IF rc CA-HANDLE-COMPOSE-THROW exit THEN
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+
+: CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
+   labelu CA-FILE-U !
+   labela CA-FILE-A! ;
+
+: CA-LEX ( -- )
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   CA-HANDLE-LEX-DEFECT
+   CA-HANDLE-LEX-DEFECT ;
+
+: CA-RUN-SOURCE ( -- )
+   CA-LEX
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
-   CA-FAILED @ 0 <> IF 70 throw THEN ;
+   CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
 : CA-RUN-COMPOSE ( -- )
-   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   CA-HANDLE-LEX-DEFECT
+   CA-LEX
    CA-RUN-COMPOSE-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
-   CA-FAILED @ 0 <> IF 70 throw THEN ;
+   CA-FAILED @ 0 <> IF CA-REFUSED throw THEN ;
 
 public
 
@@ -550,59 +588,89 @@ public
    outa CA-OUT-A!
    errcap CA-ERR-CAP !
    erra CA-ERR-A!
-   0 CA-OUT-LEN ! ;
+   0 CA-OUT-LEN !
+   -1 CA-OUT-FD ! ;
 
 \ The report the last run accumulated in the caller's first buffer.
 : OUT$ ( -- ptr u8 n )
    CA-OUT-A@ CA-OUT-LEN @ ;
+
+\ BUFFERS! for a report written to the given file descriptor as it is made, so
+\ it holds as many records, each as long, as the checked sources make; the
+\ buffer is the scratch. OUT$ is then empty.
+: STREAM! ( fd ptr u8 n -- ) {: fd:fd erra:ptr errcap:n :}
+   s" " erra errcap BUFFERS!
+   fd FD>N CA-OUT-FD ! ;
 
 \ True selects one JSON diagnostic record per rejected definition; false
 \ selects the prose rendering.
 : JSON! ( bool -- )
    CA-JSON ! ;
 
-\ Empty the ordered list of already-verified files replayed before each run.
-: SUPPORT-RESET ( -- )
-   0 CA-XSUP-N ! ;
-
-\ Append one already-verified file path to that replay list.
-: SUPPORT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CA-XSUP-N @ CA-XSUP-MAX >= IF E-TBL-BOUNDS throw THEN
-   u FS-PATH-CAP > IF E-FS-CAPACITY throw THEN
-   a CA-XSUP-PATHS CA-XSUP-N @ FS-PATH-CAP * + u BYTE-COPY
-   u CA-XSUP-US CA-XSUP-N @ cells + !
-   CA-XSUP-N @ 1+ CA-XSUP-N ! ;
+\ Check what the given word checks in one checker scope and one multi-error
+\ session, as a load runs it: a definition sees the clean definitions before
+\ it and the declared signature of every definition refused before it. The
+\ checked sources are files, not a continuation of whatever package the caller
+\ has open, so the scope opens at neutral top level, and closing it restores
+\ the caller's package on the clean and the throwing path alike.
+: SESSION ( [ -- ] -- ) {: q :}
+   MULTI-ERR-BEGIN
+   CHECKER-SCOPE-START-NEUTRAL
+   q catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   MULTI-ERR-END drop
+   rc 0 <> IF rc throw THEN ;
 
 \ Check the source file at the given path, reporting it under the given label.
 : FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   0 CA-XSUP-RC !
-   labelu CA-FILE-U !
-   labela CA-FILE-A!
+   labela labelu CA-START
    patha pathu CA-READ-SOURCE
-   CA-RUN-SOURCE ;
+   [: CA-RUN-SOURCE ;] SESSION ;
 
-\ Lexical defects remain a per-file check even when definitions are checked
-\ through one native load composition.
-: LEX-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   labelu CA-FILE-U !  labela CA-FILE-A!
+\ Report the lexer defect of the source file at the given path under the given
+\ label, by the record FILE writes for it, and throw the refusal status; return
+\ when the file lexes clean. Nothing is checked, so a caller that cannot check
+\ the file still reports the defect where it stands.
+: LEX-FILE ( ptr u8 n ptr u8 n -- )
+   {: labela:ptr labelu:n patha:ptr pathu:n :}
+   labela labelu CA-START
    patha pathu CA-READ-SOURCE
-   CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   CA-HANDLE-LEX-DEFECT ;
+   CA-LEX ;
 
+\ Check the given source bytes as the file at the given path, reporting them under
+\ the given label: the composition verifies every file a top-level loader
+\ statement loads where it stands, under its own path, in one session.
+\ Lexical defects stay each file's own (LEX-FILE).
 : COMPOSE-BUF ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n :}
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
    label CA-COMPOSE-LABEL-A !  labelu CA-COMPOSE-LABEL-U !
-   label CA-FILE-A!  labelu CA-FILE-U !
+   label labelu CA-START
    src srcu CA-SOURCE-BUF!
-   CA-RUN-COMPOSE ;
+   [: CA-RUN-COMPOSE ;] SESSION ;
 
 \ Check an in-memory source buffer, reporting it under the given label.
 : BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
-   0 CA-XSUP-RC !
-   labelu CA-FILE-U !
-   labela CA-FILE-A!
+   labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
-   CA-RUN-SOURCE ;
+   [: CA-RUN-SOURCE ;] SESSION ;
+
+\ The record line --all-errors writes for a statement that threw the given code,
+\ for a caller that ran the checker itself over the given source under the
+\ given label: at the token the checker read last, in the mode JSON! selected,
+\ with no line feed.
+: THROW-RECORD$ ( n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n labela:ptr labelu:n srca:ptr srcu:n :}
+   labela labelu CA-START
+   srca srcu CA-SOURCE-BUF!
+   rc CA-THROW!
+   CA-THROW-RECORD$ ;
+
+\ The record line --all-errors writes for a duplicate definition, for a caller
+\ that ran the checker itself over the source it reports under the given label:
+\ in the mode JSON! selected, with no line feed.
+: DUP-RECORD$ ( ptr u8 n -- ptr u8 n )
+   CA-START
+   CA-DUP-RECORD$ ;
 
 ;package

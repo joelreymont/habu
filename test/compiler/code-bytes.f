@@ -53,8 +53,9 @@ private
 \ The out-of-region refusal exits the process, so it is proven in a child.
 : REFUSES ( -- )
    s" : CB-OUT-OF-REGION ( -- ) 12 4 CODE-BYTES:AT drop drop ; CB-OUT-OF-REGION"
-   OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN
-   74 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   {: src:ptr srcu:n :}
+   src srcu OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N S\" hb: span outside the code region\n" T$= ;
 
@@ -91,6 +92,12 @@ private
    \ the sum lands below the band top and the span is admitted.
    rbase $7FFFFFFFFFFFFFFF CODE-BYTES:IN-CODE? TFALSE
    cp@ INSN-BYTES - $7FFFFFFFFFFFFFFF CODE-BYTES:IN-CODE? TFALSE
+
+   s" an address so high that its span wraps is refused" T-LABEL
+   \ The length is one the region admits; the start is what wraps the sum
+   \ negative, below the band top.
+   $7FFFFFFFFFFFFFFE INSN-BYTES CODE-BYTES:IN-CODE? TFALSE
+   $7FFFFFFFFFFFFFFF 1 CODE-BYTES:IN-CODE? TFALSE
 
    s" an admitted span answers its own bytes and its own length" T-LABEL
    s" XREF-START" REC-START s" XREF-START" REC-BYTES CODE-BYTES:AT

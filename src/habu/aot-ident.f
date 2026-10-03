@@ -79,8 +79,9 @@ variable N
    s" aot-ident: closure exceeds the file table" REFUSE-RC die ;
 
 : ?FITS ( n -- ) {: u:n :}
-   u PATH-CAP <= if exit then
-   s" aot-ident: closure path longer than the path cap" REFUSE-RC die ;
+   u 0 < u PATH-CAP > or if
+      s" aot-ident: closure path longer than the path cap" REFUSE-RC die
+   then ;
 
 public
 
@@ -91,7 +92,8 @@ public
 \ Append one path, in load order. Both refusals are the table's own invariants -
 \ more paths than it holds, or a path longer than a slot - and a path that does
 \ not fit is refused rather than cut, because a cut path names a different file
-\ and would still hash.
+\ and would still hash. The length is the caller's, so a negative one, which no
+\ slot holds either, is refused with the long one.
 : PATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
    N @ ?ROOM
    u ?FITS

@@ -105,7 +105,7 @@ public
    s" a cast cannot erase the initialized lifetime" T-LABEL
    s" CAST: C2-INIT-CAST ( init<p,n> -- n )" 67 STATUS? TTRUE
    s" initialized storage cannot enter a global slot" T-LABEL
-   s" TYPED-VARIABLE C2-INIT-GLOBAL init<p,n>" 67 STATUS? TTRUE ;
+   s" TYPED-VARIABLE C2-INIT-GLOBAL init<p,n>" 70 STATUS? TTRUE ;
 
 ;package
 

@@ -1,11 +1,13 @@
 \ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
 \ groups that build and run one program each - the object producer, the native
 \ call sites, the division refusal, the span definer as a snapshot and
-\ stripped, the empty does> clause and one foreign call.
+\ stripped (by both makers, to the same DATA), a build driver, the empty does>
+\ clause and one foreign call - and the programs the keyed linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -18,6 +20,24 @@ package HB-BUILD-CLI
 
 : HBT-SPAN-OUT ( -- ptr u8 n )
    HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
+
+\ The same span program linked by the engine's maker, beside the linker
+\ image's HBT-SPAN-OUT.
+variable HBT-SPAN-ENG-U
+create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
+
+: HBT-SPAN-ENG ( -- ptr u8 n )
+   HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U @ ;
+
+\ The DATA blob of the stripped image at a path, read whole: the cell stream its
+\ window carries, framed as tools/image-size-lib.f DATA-BLOB-RANGE says.
+: HBT-DATA-BLOB ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   path pathu IMAGE-SIZE:MEASURE
+   IMAGE-SIZE:CLASS$ s" stripped" T$=
+   IMAGE-SIZE:DATA-BLOB-RANGE {: at:n len:n :}
+   path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   path pathu buf cap READ-ALL drop
+   buf at +  len ;
 
 \ A zero divisor in a STRIPPED image. The division is compiled by the native
 \ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
@@ -47,12 +67,18 @@ package HB-BUILD-CLI
 \ package FFI's staged call, which resolves `getpid` through the loader at the
 \ FIRST CALL - in the image's own process, never the builder's - so the program
 \ prints 1 only if the image carried everything that resolution needs: the FFI
-\ table, in the program's own DATA window; the loader's two GOT slots, which
-\ src/os/linux/elf.f relocates in every image it writes; and the engine's
-\ text-base cell, which src/os/linux/layout.f locates those slots from and
-\ src/habu/aot-owned-cells.f claims TEXT-BASE. Left at the fresh mapping's zero
-\ that cell made this program build without a word of complaint and take SIGSEGV
-\ inside DLSYM-SLOT's `@`.
+\ table; the loader's two GOT slots, which src/os/linux/elf.f relocates in every
+\ image it writes; and the engine's text-base cell, which src/os/linux/layout.f
+\ locates those slots from and src/habu/aot-owned-cells.f claims TEXT-BASE.
+\ Left at the fresh mapping's zero that cell made this program build without a
+\ word of complaint and take SIGSEGV inside DLSYM-SLOT's `@`. lib/ffi-abi.f is
+\ baked into the engine (src/habu/layout.f puts its buffer block at a fixed
+\ engine offset; `require lib/ffi-abi.f` compiles nothing), so on the engine's
+\ maker and on the linker image alike the table lies below the window and
+\ src/habu/aot-owned-cells.f ENGINE-CARRY claims it; this program reaches no
+\ word of the linker's load, so it links on the image (test/preloaded-engine.f
+\ rule 3). test/stripped-preloaded-runtime.f drives the maker directly for the
+\ same claim; this row takes the hb-build path.
 : HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
    S\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
@@ -161,7 +187,9 @@ package HB-BUILD-CLI
 \ following a direct branch OUT of the member puts that record in the closure;
 \ without it the relocation refused this very program with `aot: PC-relative
 \ target removed or outside closure`. Running the image is what proves the clause
-\ was copied and retargeted rather than merely counted.
+\ was copied and retargeted rather than merely counted. The engine bakes both
+\ modules the program requires, so the linker image links it
+\ (KEYED-PRE-WINDOW-REFUSED below says why).
 : BUILD-AOT-SPAN ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
@@ -170,8 +198,112 @@ package HB-BUILD-CLI
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT FILE? TTRUE
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT ;
+\ HBT-SPAN-OUT stays on disk: BUILD-AOT-SPAN-ENGINE compares its DATA blob.
+
+\ ... AND THE ENGINE'S MAKER CARRIES THE SAME DATA. The production maker
+\ compiles tools/aot-build.f after the application has loaded
+\ (tools/hb-build-lib.f HBB-RUN-MAKER-CMD), where the linker image's require of
+\ it is a no-op, so a literal the maker compiles into the application's pool
+\ lands inside the capture window and travels in the engine's image alone:
+\ `tools/aot-build-core.f` did, in every image the engine linked. Neither maker
+\ may add a byte of its own, so both links of one source carry one cell stream.
+\ Their code differs: each window is restored at the DATA address its maker
+\ opened it at, and the linker image's sits above the linker. The maker key
+\ names the engine that runs it, so the second build is a link, not the first
+\ one's artifact.
+: BUILD-AOT-SPAN-ENGINE ( -- )
+   HBT-ROOT s" spaneng" HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U HBT-PATH!
+   HBT-SPAN-ENG HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-ENG HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-HBB-BUILD-OUT
+   HBB-MAKER-RUN @ 0 <> TTRUE
+   HBT-SPAN-OUT HBT-DATA-BLOB {: img:ptr imgu:n :}
+   HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
+   imgu 0 > TTRUE
+   img imgu eng engu HBT-DIFF-AT -1 T=
    HBT-REMOVE-ARTIFACT
+   HBT-SPAN-ENG HBT-REMOVE-FILE?
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
+
+\ A program requiring a module of the linker's lib closure that the engine does
+\ not bake, and calling a word of it.
+: HBT-REQUIRED-SRC$ ( -- ptr u8 n )
+   S\" require lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
+
+\ The same program without its require: it names a word of the linker's
+\ closure that it never required.
+: HBT-UNREQUIRED-SRC$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
+
+\ A build driver's shape: tools/app-build.f and tools/build-profile.f run their
+\ work through lib/executable-build.f's WITH. The production maker requires that
+\ module before it opens the capture window (tools/aot-build-open.f), so this
+\ program's require is a no-op there and its closure reaches the maker's WITH.
+: HBT-EXBUILD-SRC$ ( -- ptr u8 n )
+   S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
+
+\ THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
+\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f and
+\ lib/executable-build.f with the linker, before its maker latched the band, so
+\ the first and third programs' requires resolve to those copies and the second
+\ program's FMT:.INT names one without a require. Each closure reaches a word
+\ compiled outside the window, and the maker refuses the first such word rather
+\ than carry the image's copy. The engine compiles the first program's module
+\ inside the window, refuses the second program's name and links the third
+\ (BUILD-AOT-EXBUILD). The first program's module is one the engine does not
+\ bake: a baked module's words lie below the engine's seal watermark, where the
+\ band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them
+\ and the image links a program that requires one.
+: KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   HBT-SPAN-SRC src srcu WRITE-ALL
+   HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
+   rc 74 T=
+   HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened" CONTAINS? TTRUE ;
+
+\ The same refusal through the CLI under --json-errors, which promises its
+\ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
+\ and the CLI keeps only the JSON lines of the maker's stderr
+\ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
+\ text.
+: KEYED-PRE-WINDOW-JSON ( -- )
+   HBT-SPAN-SRC HBT-EXBUILD-SRC$ WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   s" --json-errors" >LEN PROC-ARGV+
+   HBT-SPAN-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-SPAN-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 74 T=
+   outu 0 T=
+   HBT-ERR erru S\" \qschema_version\q:1," CONTAINS? TTRUE
+   HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
+   HBT-ERR erru S\" \qword\q:\qWITH\q" CONTAINS? TTRUE
+   HBT-SPAN-OUT EXISTS? TFALSE ;
+
+: BUILD-AOT-PRE-WINDOW ( -- )
+   HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-EXBUILD-SRC$ KEYED-PRE-WINDOW-REFUSED
+   KEYED-PRE-WINDOW-JSON ;
+
+\ THE ENGINE LINKS THE BUILD DRIVER, and runs it. Its maker latches the band
+\ before it requires lib/executable-build.f (tools/aot-build-open.f), so the
+\ band holds only the latch file's own private records and WITH is carried
+\ like any word above it. A band latched when the window opens holds WITH and
+\ refuses this program, as the linker image, which loaded that unbaked module
+\ below the window, does (KEYED-PRE-WINDOW-JSON).
+: BUILD-AOT-EXBUILD ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-EXBUILD-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
+   HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 \ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
 \ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
@@ -207,12 +339,16 @@ package HB-BUILD-CLI
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
    BUILD-AOT-DIV-REFUSAL
    BUILD-REPL-SPAN
    BUILD-AOT-SPAN
+   BUILD-AOT-SPAN-ENGINE
+   BUILD-AOT-PRE-WINDOW
+   BUILD-AOT-EXBUILD
    BUILD-AOT-DOES-EMPTY
    BUILD-AOT-FFI
    CLEANUP-RUN

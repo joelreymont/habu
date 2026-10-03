@@ -267,8 +267,7 @@ calls by real user-source files loaded through `--load`:
 - `lib/memory-test.f:82,84,96,99` — `here data-base -`.
 - `test/gate-common-lib.f:443-450,484-487` — `get-current`/`set-current`,
   `ndict@`/`ndict!`, `data-base S0-CELL + !` (swaps the eval stack base).
-- `test/engine-suite.f` — `dbase@`, `cp@`, `ndict@`, `patch32`, `data-base HOOK-CELL + @`,
-  `data-base DEF-TKA-CELL +` (MULTI-ERR-ORIGIN!).
+- `test/engine-suite.f` — `dbase@`, `cp@`, `ndict@`, `patch32`, `data-base HOOK-CELL + @`.
 - `test/prop-test-core.f:22,180,182,281` — `' HOOK set-check` / `0 set-check`
   (installs a custom checker hook — HOOK-CELL); `MARK/FORGET` use `cp@/ndict@/ndict!/cp!`.
 - `test/gate-aot-negative-lib.f:8`, `test/engine-suite.f:1191,1206,1234` — `set-check`.

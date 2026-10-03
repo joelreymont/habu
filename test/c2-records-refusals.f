@@ -49,7 +49,7 @@ public
    s" a table cannot be relabeled as a raw byte span" T-LABEL
    s" : C2-TABLE-RAW ( records<b,i,a,C2-RECORDS-TYPES:pair> -- ptr u8 n ) ;" 70 STATUS? TTRUE
    s" a table cannot be stored in a global" T-LABEL
-   s" TYPED-VARIABLE C2-TABLE-GLOBAL records<b,i,a,C2-RECORDS-TYPES:pair>" 67 STATUS? TTRUE
+   s" TYPED-VARIABLE C2-TABLE-GLOBAL records<b,i,a,C2-RECORDS-TYPES:pair>" 70 STATUS? TTRUE
    s" an extra table authority cannot leave its owner callback" T-LABEL
    s" : C2-TABLE-ESCAPE ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> ) 1 1 2 C2--RECORDS--TYPES-PAIR:MAKE [: dup ;] C2-MEM:WITH-RECORDS ;" 70 STATUS? TTRUE
    s" an element view cannot be copied" T-LABEL

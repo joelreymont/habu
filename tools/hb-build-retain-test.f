@@ -30,6 +30,7 @@
 \ Run: bin/hb --load tools/hb-build-retain-test.f
 
 require tools/hb-build-test-lib.f
+require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -231,6 +232,7 @@ variable HBR-STRAY
 public
 : HBR-RETAIN-MAIN ( -- )
    T-RESET
+   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBR-SLOTS-RESET
    HBT-ROOT s" cache" HBR-ROOT-BUF HBR-ROOT-U HBT-PATH!

@@ -110,9 +110,10 @@ private
 
 public
 
-7122 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
-7123 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
-7124 constant E-PF-OWNER      \ invalid family / optional-variant ownership
+\ 7122-7124 are layout-buffer.f's E-LAYOUT-BOUNDS / -UNBOUND / -CEIL.
+7148 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
+7149 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
+7150 constant E-PF-OWNER      \ invalid family / optional-variant ownership
 7125 constant E-PF-NAME       \ reserved field tail
 7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
 7127 constant E-PF-LAYOUT     \ invalid field layout metadata / policy
@@ -233,6 +234,7 @@ public
 
 : TF-CANON? ( ptr u8 n -- bool ) {: a:ptr u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN      \ a length no name has is no tail
    0 TF-I !
    BEGIN TF-I @ u < WHILE
       a TF-I @ + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
@@ -518,15 +520,33 @@ public
    id TFAM-PRODUCT? IF id TFAM-SLOTS@ EXIT THEN
    1 ;
 
+\ TFM-EPOCH dates the family facts memo (TFM, further down). Every event that can
+\ change a memoized answer moves it: the four mutators below, a variant or field
+\ row appended, the field commit watermark moving, and any rewind that retires a
+\ family, variant or field row. Rows never change in place otherwise, so an
+\ answer stamped with the current epoch is still the answer a walk would give.
+\ It starts at 1 so a zeroed memo cell never looks current.
+
+private
+
+variable TFM-EPOCH   1 TFM-EPOCH !   REG-PROTECT
+
+public
+
+: TFM-EPOCH+ ( -- ) TFM-EPOCH @ 1 + TFM-EPOCH ! ;
+
 \ --- friend-only field mutators (populated by later declaration passes / tests).
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
-   p id TF-REC@ TF.LAYOUT ! ;
-: TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS ! ;
+   p id TF-REC@ TF.LAYOUT !
+   TFM-EPOCH+ ;
+: TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
 : TFAM-VAR-RANGE! ( n n n -- ) {: id:n s:n c:n :}
-   s id TF-REC@ TF.VAR-START !  c id TF-REC@ TF.VAR-COUNT ! ;
+   s id TF-REC@ TF.VAR-START !  c id TF-REC@ TF.VAR-COUNT !
+   TFM-EPOCH+ ;
 : TFAM-FLD-RANGE! ( n n n -- ) {: id:n s:n c:n :}
-   s id TF-REC@ TF.FLD-START !  c id TF-REC@ TF.FLD-COUNT ! ;
+   s id TF-REC@ TF.FLD-START !  c id TF-REC@ TF.FLD-COUNT !
+   TFM-EPOCH+ ;
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 : TFAM-SCHEMA-ROOT! ( n n -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
 : TFAM-SPAN! ( n n n -- ) {: id:n off:n u:n :}
@@ -1042,6 +1062,121 @@ public
    REPEAT
    0 ;
 
+\ --- variant tail index (VNX) ---------------------------------------------------
+\ SUMV-FIND wants the row with one tail in one family, and the generated-word
+\ recognizer below wants every row spelled like one tail in any family. Both
+\ walked the whole variant store, and generating an ENUM's constructors asks
+\ each question once per variant, so the declaration cost the square of its
+\ variant count. Rows are chained by the hash of their FOLDED tail, which serves
+\ both: the exact comparison still rejects a non-canonical spelling, and every
+\ row the case-insensitive comparison could match sits in the one bucket.
+\
+\ Rows are pushed in id order by SUMV-ADD and retired newest-first by
+\ TFAM-REWIND, so a retired row is always its bucket's head (the TFX
+\ discipline). Buckets and links are process-local: a capture drops them, and a
+\ capacity change rebuilds them. A store that moved outside those two seams is
+\ rebuilt by the next lookup, and refused by a rewind that comes first
+\ (VNX-RETIRE).
+
+private
+
+8 constant VNX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
+variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !   REG-PROTECT
+: VNX-SLOTS ( -- n ) VNX-SLOTS-V @ ;
+create VNX-B-BOOT   VNX-SLOTS-INIT cells allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE VNX-B-P   VNX-B-BOOT VNX-B-P !   REG-PROTECT
+create VNX-L-BOOT   SUMV-CAP-INIT cells allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE VNX-L-P   VNX-L-BOOT VNX-L-P !   REG-PROTECT
+variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   REG-PROTECT   \ rows the link array holds
+variable VNX-READY   0 VNX-READY !   REG-PROTECT
+
+public
+
+variable VNX-HI      0 VNX-HI !      REG-PROTECT   \ SUMV-N the chains cover
+
+private
+
+variable VNX-CAP     0 VNX-CAP !     REG-PROTECT   \ SUMV-CAP the buckets were sized for
+variable VNX-CUR              \ private bucket-walk cursor
+
+: VNX-BKT ( n -- ptr n ) {: slot:n :}   \ bucket head: row id + 1, 0 = empty
+   slot cells VNX-B-P @ + ;
+: VNX-LINK ( n -- ptr n ) {: id:n :}    \ next row id + 1 in the row's bucket
+   id cells VNX-L-P @ + ;
+
+: VNX-HASH ( ptr u8 n -- n ) {: a:ptr u:n :}
+   HIDX-FNV-BASIS
+   0 BEGIN dup u < WHILE
+      dup a + c@ CORE-FOLD-C rot xor HIDX-FNV-PRIME * swap
+      1 +
+   REPEAT drop
+   VNX-SLOTS 1 - and ;
+
+: VNX-ROW-BKT ( n -- ptr n ) SUMV-NAME$ VNX-HASH VNX-BKT ;
+
+: VNX-PUSH ( n -- ) {: id:n :}
+   id VNX-ROW-BKT {: b:ptr :}
+   b @ id VNX-LINK !
+   id 1 + b ! ;
+
+: VNX-POP ( n -- ) {: id:n :}
+   id VNX-ROW-BKT {: b:ptr :}
+   b @ id 1 + <> IF s" tfam: variant tail index corrupt" 76 die THEN
+   id VNX-LINK @ b ! ;
+
+\ The links follow the variant store's capacity and the buckets keep the load
+\ factor at or below one half. Both only ever grow: SUMV-CAP never shrinks.
+: VNX-RESIZE ( -- )
+   SUMV-CAP VNX-CAP !
+   SUMV-CAP VNX-LCAP @ > IF
+      VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  REG-GROW1
+      SUMV-CAP VNX-LCAP !
+   THEN
+   VNX-SLOTS-INIT BEGIN dup SUMV-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
+   need VNX-SLOTS <= IF EXIT THEN
+   VNX-B-P  VNX-SLOTS cells  need cells  REG-GROW1
+   need VNX-SLOTS-V ! ;
+
+: VNX-BUILD ( -- )
+   VNX-RESIZE
+   VNX-B-P @ 0 VNX-SLOTS ARENA-CELLS-ZERO
+   0 BEGIN dup SUMV-N @ < WHILE dup VNX-PUSH 1 + REPEAT drop
+   SUMV-N @ VNX-HI !
+   -1 VNX-READY ! ;
+
+\ Three cell reads on every lookup: built, covering exactly the live rows, and
+\ sized for the store's current capacity.
+: VNX-ENSURE ( -- )
+   VNX-READY @ 0=
+   SUMV-N @ VNX-HI @ <> or
+   VNX-CAP @ SUMV-CAP <> or IF VNX-BUILD THEN ;
+
+\ VNX-RETIRE ( n -- ) : pop rows [newn, SUMV-N) before SUMV-N rewinds to newn,
+\ newest first, so each popped row is at its bucket head.
+\
+\ IT REFUSES TO RUN ON CHAINS THAT DO NOT COVER EXACTLY THE LIVE ROWS, as
+\ TFX-RETIRE does. Every writer of SUMV-N keeps them in step: SUMV-ADD and
+\ TFAM-REWIND move VNX-HI with it, and TFAM-RESET and REG-AOT-INSTALL drop the
+\ chains. Unequal marks mean a caller moved the counter around those seams.
+\ Popping then would unlink rows the chains never held, or stamp chains that
+\ still hold rows past the end of the store as current, which erases the signal
+\ VNX-ENSURE rebuilds on. Dying here names the caller that broke the order.
+: VNX-RETIRE ( n -- ) {: newn:n :}
+   VNX-READY @ 0= IF EXIT THEN
+   VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
+   SUMV-N @ 1 -
+   BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
+   newn VNX-HI ! ;
+
+\ Capture: the grown buffers are process-local, so the image keeps the boot
+\ stores and the restored process rebuilds. Mirrors TFX-SNAP-RESET.
+: VNX-SNAP-RESET ( -- )
+   VNX-B-BOOT VNX-B-P !   VNX-SLOTS-INIT VNX-SLOTS-V !
+   VNX-L-BOOT VNX-L-P !   SUMV-CAP-INIT VNX-LCAP !   0 VNX-CAP !
+   0 VNX-READY !   0 VNX-HI ! ;
+
+public
+
 \ generated-constructor protection predicates (item 8 slice 3). Names are
 \ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
 \ folded alias cannot reopen a constructor package, extend it with a new
@@ -1105,10 +1240,21 @@ public
 \ The QUALIFIED half of the generated-word scan. Its private half, and the two
 \ recognizers that join them, sit beside TF-CTOR-PRIV$ below: a recognizer must
 \ read the spelling from the derivation that generates it, never restate it.
+\ A constructor word's tail is its variant's tail, so only the rows in that
+\ tail's VNX bucket can be one. A derived word is recognized from its family,
+\ not a row, so only the three derived tails still walk the store.
 : TF-CTOR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ PKG:VARIANT / derived word?
+   a u TF-CW-TAIL$ {: ta:ptr tu:n :}
+   VNX-ENSURE
+   ta tu VNX-HASH VNX-BKT @ VNX-CUR !
+   BEGIN VNX-CUR @ 0 <> WHILE
+      VNX-CUR @ 1 - {: id:n :}
+      a u id TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
+      id VNX-LINK @ VNX-CUR !
+   REPEAT
+   ta tu TFAM-DERIVED-TAIL? 0= IF RES-FALSE EXIT THEN
    0 TF-CI !
    BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
       a u TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
@@ -1123,7 +1269,24 @@ package TFAM
 
 public
 
+\ The lowest matching row, as the store walk answered: a chain runs newest
+\ first, so the last match it meets is the lowest.
 : SUMV-FIND ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
+   VNX-ENSURE
+   -1
+   na nu VNX-HASH VNX-BKT @ VNX-CUR !
+   BEGIN VNX-CUR @ 0 <> WHILE
+      VNX-CUR @ 1 - {: id:n :}
+      fam na nu id SUMV-MATCH? IF drop id THEN
+      id VNX-LINK @ VNX-CUR !
+   REPEAT
+   dup 0 < IF drop 0 RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) : the SPECIFICATION of what VNX
+\ answers, by walking the store. test/checker-scan-index-suite.f differentials
+\ the two.
+: SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ SUMV-N @ < WHILE
       fam na nu TF-I @ SUMV-MATCH? IF TF-I @ RES-TRUE EXIT THEN
@@ -1135,6 +1298,7 @@ public
    na nu TF-REQUIRE-CANON
    fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
+   VNX-ENSURE                             \ size the index before the slot is committed
    SUMV-N @ {: id:n :}
    na nu TF-INTERN {: noff:n :}
    id 1 + SUMV-N !
@@ -1142,6 +1306,8 @@ public
    fam r SV.FAM !   noff r SV.NAME-OFF !   nu r SV.NAME-U !
    tag r SV.TAG !   ss r SV.SCH-START !   sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
    0 r SV.CTOR-SYM !   0 r SV.CTOR-PKG-OFF !   0 r SV.CTOR-PKG-U !
+   id VNX-PUSH   SUMV-N @ VNX-HI !
+   TFM-EPOCH+
    id ;
 
 \ ---------------------------------------------------------------------------
@@ -1400,8 +1566,10 @@ defer TFAM-ADDR-WORD-XT ( ptr u8 n -- bool )
 ;package
 
 \ A generated word wears either the qualified public spelling or the bare private
-\ one, and the colon decides which scan answers for it.
+\ one, and the colon decides which scan answers for it. A length no name has
+\ (CK-NAME-SPAN?) spells no generated word; CHECKER-UNDEFINE asks this first.
 : TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact generated word?
+   a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-SPLIT? IF
       a u TF-CTOR-QUAL-WORD? IF RES-TRUE EXIT THEN
    ELSE
@@ -1413,10 +1581,14 @@ package TFAM
 
 \ A private family reserves no namespace, so it has no package for a stray tail
 \ to extend and this stays the qualified rule alone.
+\ The generated-word test runs first: it answers every generated definition
+\ from the tail index, while the package test walks the variant store and is
+\ needed only for a name the generator does not own.
 : TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
    a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
-   a u TFAM-CTOR-WORD? 0= ;
+   TF-CW-COL @ {: col:n :}
+   a u TFAM-CTOR-WORD? IF RES-FALSE EXIT THEN
+   a col TFAM-CTOR-PKG? ;
 
 public
 
@@ -1584,6 +1756,197 @@ public
 : PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
 : PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
+\ --- field owner index (FVX) ------------------------------------------------------
+\ Every question about one owner's fields — is this name taken, does this
+\ layout overlap, what is this variant's payload — wants the rows of one
+\ (family, variant) pair. They walked every field row, or every row of the
+\ family, and an ENUM asks them once per field or per variant, so declaring one
+\ field per variant cost the square of its variant count. Rows are chained by
+\ the hash of their owner; a bucket can hold other owners' rows, so a reader
+\ keeps only the rows whose owner it asked for. Chains run newest first.
+\
+\ The discipline is VNX's: ADD pushes each row in id order as it publishes it,
+\ PF-REWIND pops retired rows newest first while their owner cells are still
+\ intact, so a retired row is always its bucket's head. Buckets and links are
+\ process-local: a capture drops them, and a capacity change or a store that
+\ moved outside those two seams rebuilds them.
+
+private
+
+8 constant FVX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
+variable FVX-SLOTS-V   FVX-SLOTS-INIT FVX-SLOTS-V !   REG-PROTECT
+: FVX-SLOTS ( -- n ) FVX-SLOTS-V @ ;
+create FVX-B-BOOT   FVX-SLOTS-INIT cells allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE FVX-B-P   FVX-B-BOOT FVX-B-P !   REG-PROTECT
+create FVX-L-BOOT   PF-CAP-INIT cells allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE FVX-L-P   FVX-L-BOOT FVX-L-P !   REG-PROTECT
+variable FVX-LCAP   PF-CAP-INIT FVX-LCAP !   REG-PROTECT   \ rows the link array holds
+variable FVX-READY   0 FVX-READY !   REG-PROTECT
+variable FVX-HI      0 FVX-HI !      REG-PROTECT   \ PF-N the chains cover
+variable FVX-CAP     0 FVX-CAP !     REG-PROTECT   \ PF-CAP the buckets were sized for
+
+: FVX-BKT ( n -- ptr n ) {: slot:n :}   \ bucket head: row id + 1, 0 = empty
+   slot cells FVX-B-P @ + ;
+: FVX-LINK ( n -- ptr n ) {: id:n :}    \ next row id + 1 in the row's bucket
+   id cells FVX-L-P @ + ;
+
+: FVX-HASH ( n n -- n ) {: fam:n var:n :}
+   HIDX-FNV-BASIS fam xor HIDX-FNV-PRIME *  var xor HIDX-FNV-PRIME *
+   FVX-SLOTS 1 - and ;
+
+: PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
+   r PF.FAM @ fam = r PF.VAR @ var = and ;
+
+\ Read through PF-BASE, not PF-ROW: ADD links its row before PF-N publishes it.
+: FVX-ROW-BKT ( n -- ptr n ) {: id:n :}
+   id PF-REC * PF-BASE + {: r:ptr :}
+   r PF.FAM @ r PF.VAR @ FVX-HASH FVX-BKT ;
+
+: FVX-PUSH ( n -- ) {: id:n :}
+   id FVX-ROW-BKT {: b:ptr :}
+   b @ id FVX-LINK !
+   id 1 + b ! ;
+
+: FVX-POP ( n -- ) {: id:n :}
+   id FVX-ROW-BKT {: b:ptr :}
+   b @ id 1 + <> IF s" tfam: field owner index corrupt" 76 die THEN
+   id FVX-LINK @ b ! ;
+
+\ The links follow the field store's capacity and the buckets keep the load
+\ factor at or below one half. Both only ever grow: PF-CAP never shrinks.
+: FVX-RESIZE ( -- )
+   PF-CAP FVX-CAP !
+   PF-CAP FVX-LCAP @ > IF
+      FVX-L-P  FVX-LCAP @ cells  PF-CAP cells  REG-GROW1
+      PF-CAP FVX-LCAP !
+   THEN
+   FVX-SLOTS-INIT BEGIN dup PF-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
+   need FVX-SLOTS <= IF EXIT THEN
+   FVX-B-P  FVX-SLOTS cells  need cells  REG-GROW1
+   need FVX-SLOTS-V ! ;
+
+: FVX-BUILD ( -- )
+   FVX-RESIZE
+   FVX-B-P @ 0 FVX-SLOTS ARENA-CELLS-ZERO
+   0 BEGIN dup PF-N @ < WHILE dup FVX-PUSH 1 + REPEAT drop
+   PF-N @ FVX-HI !
+   -1 FVX-READY ! ;
+
+\ Three cell reads on every lookup: built, covering exactly the live rows, and
+\ sized for the store's current capacity.
+: FVX-ENSURE ( -- )
+   FVX-READY @ 0=
+   PF-N @ FVX-HI @ <> or
+   FVX-CAP @ PF-CAP <> or IF FVX-BUILD THEN ;
+
+\ FVX-RETIRE ( n -- ) : pop rows [newn, PF-N) before PF-N rewinds to newn,
+\ newest first. Chains that no longer cover exactly the live rows are dropped
+\ for a rebuild instead: popping rows the chains never held would corrupt them.
+\ The field store has two rewinders, field transactions and checker frames, and
+\ they need not nest: a failed declaration rolls back its field transaction
+\ before it restores a checker scope its body leaked, whose mark lies above
+\ those rows (test/generated-declaration-transaction-suite.f,
+\ TEST-CHECKER-LEAK-PREPARE). That restore moves PF-N forward over scrubbed
+\ rows the chains no longer hold, so it drops them too.
+: FVX-RETIRE ( n -- ) {: newn:n :}
+   FVX-READY @ 0= IF EXIT THEN
+   FVX-HI @ PF-N @ <>  newn PF-N @ > or IF 0 FVX-READY ! EXIT THEN
+   PF-N @ 1 -
+   BEGIN dup newn >= WHILE dup FVX-POP 1 - REPEAT drop
+   newn FVX-HI ! ;
+
+\ Capture: the grown buffers are process-local, so the image keeps the boot
+\ stores and the restored process rebuilds. Mirrors VNX-SNAP-RESET.
+: FVX-SNAP-RESET ( -- )
+   FVX-B-BOOT FVX-B-P !   FVX-SLOTS-INIT FVX-SLOTS-V !
+   FVX-L-BOOT FVX-L-P !   PF-CAP-INIT FVX-LCAP !   0 FVX-CAP !
+   0 FVX-READY !   0 FVX-HI ! ;
+
+\ One owner's rows, newest first: FVX-FIRST answers the cursor of its bucket's
+\ newest row and FVX-NEXT the cursor after a cursor's row, each a row id + 1
+\ with 0 for the end. The cursor lives on the stack, so a reader may recurse
+\ into another owner's walk.
+: FVX-FIRST ( n n -- n ) {: fam:n var:n :}
+   FVX-ENSURE
+   fam var FVX-HASH FVX-BKT @ ;
+: FVX-NEXT ( n -- n ) 1 - FVX-LINK @ ;
+
+public
+
+\ PF-LINK ( n -- ) : chain row id, which ADD has written and is about to
+\ publish as PF-N's next value.
+: PF-LINK ( n -- ) {: id:n :}
+   FVX-ENSURE                             \ covers [0, id) and fits the capacity
+   id FVX-PUSH
+   id 1 + FVX-HI ! ;
+
+\ THE field store rewind: TYPE-FIELD-OWNER:ROLLBACK, a checker frame's restore
+\ and the prefix rewind all put the rows back to a saved mark through here.
+\ The index pops the retired rows before the scrub clears the owner cells it
+\ finds their buckets by.
+: PF-REWIND ( n n -- ) {: pfn:n commitn:n :}
+   pfn FVX-RETIRE
+   pfn PF-N @ <>  commitn PF-COMMIT-N @ <> or IF TFM-EPOCH+ THEN
+   pfn PF-N @ PF-SCRUB                    \ scrub the rows this rewind retires
+   pfn PF-N !
+   commitn PF-COMMIT-N ! ;
+
+\ --- family facts memo (TFM) -----------------------------------------------------
+\ A checked use of a family's type asks three questions about the whole family:
+\ is its named payload sound (SUM-NAMED-PAYLOAD?), does it own a linear value
+\ (TFAM-CONCRETE-LINEAR?), and how wide is a closed instance (SUM-IWIDTH at arity
+\ 0). Each walks every variant, and certifying one generated constructor asks
+\ them several times, so generating an ENUM's constructors cost the square of its
+\ variant count. Each answer is memoized per family under TFM-EPOCH (see the
+\ family mutators): a cell stamped with the current epoch holds the answer a walk
+\ would give now. A refusal is a throw and is never memoized, so a broken
+\ registry is re-proved on every query. Process-local, like VNX.
+
+private
+
+0 constant TFM-NAMED
+1 constant TFM-LINEAR
+2 constant TFM-WIDTH
+6 cells constant TFM-REC                    \ (stamp, answer) per fact
+create TFM-BOOT   TF-CAP-INIT TFM-REC * allot   REG-PROTECT
+PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !   REG-PROTECT
+variable TFM-CAP   TF-CAP-INIT TFM-CAP !   REG-PROTECT   \ families TFM-P holds
+
+\ Grown with the family store. The new rows are zeroed, and zero is never a
+\ current stamp.
+: TFM-ENSURE ( -- )
+   TFM-CAP @ TF-CAP >= IF EXIT THEN
+   TFM-P  TFM-CAP @ TFM-REC *  TF-CAP TFM-REC *  REG-GROW1
+   TFM-P @  TFM-CAP @ TFM-REC * CELL /  TF-CAP TFM-REC * CELL /  ARENA-CELLS-ZERO
+   TF-CAP TFM-CAP ! ;
+
+: TFM-AT ( n n -- ptr n ) {: fam:n k:n :}   \ the fact's stamp cell; its answer follows
+   TFM-ENSURE
+   fam TFM-REC *  k 2 * cells +  TFM-P @ + ;
+
+: TFM@ ( n n -- n bool ) {: fam:n k:n :}
+   fam k TFM-AT {: c:ptr :}
+   c @ TFM-EPOCH @ <> IF 0 RES-FALSE EXIT THEN
+   c CELL + @ RES-TRUE ;
+
+: TFM! ( n n n -- ) {: v:n fam:n k:n :}
+   fam k TFM-AT {: c:ptr :}
+   TFM-EPOCH @ c !
+   v c CELL + ! ;
+
+: TFM-FLAG@ ( n n -- bool bool ) TFM@ {: ok:bool :} 0 <> ok ;
+: TFM-FLAG! ( bool n n -- ) {: b:bool fam:n k:n :}
+   b IF 1 ELSE 0 THEN fam k TFM! ;
+
+\ Capture: back to the zeroed boot store, under a new epoch.
+: TFM-SNAP-RESET ( -- )
+   TFM-BOOT 0 TF-CAP-INIT TFM-REC * CELL / ARENA-CELLS-ZERO
+   TFM-BOOT TFM-P !
+   TF-CAP-INIT TFM-CAP !
+   TFM-EPOCH+ ;
+
+public
+
 \ A variant has one declared-payload source. Legacy SUMTYPE declarations store
 \ positional roots in the SUMV schema range. The unified ENUM front end stores
 \ named rows in TYPE-FIELD and leaves that range empty. The accessors below are
@@ -1597,6 +1960,23 @@ public
 
 private
 
+\ A variant's named payload is the rows of its owner chain (FVX) that sit inside
+\ its family's field slice. The chain can also hold the owner's rows outside the
+\ slice, provisional ones included, which no reader counts; it runs newest
+\ first, so declaration order is counted back from its far end.
+: SUMV-SLICE-ROW? ( n n n -- bool ) {: fam:n vid:n id:n :}
+   fam TFAM-FLD-START@ {: base:n :}
+   id base <  id base fam TFAM-FLD-COUNT@ + >=  or IF RES-FALSE EXIT THEN
+   fam vid id PF-ROW PF-ROW-OWNER? ;
+
+: SUMV-SLICE-N ( n n -- n ) {: fam:n vid:n :}    \ the variant's rows in the slice
+   0  fam vid FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - {: id:n :}
+      fam vid id SUMV-SLICE-ROW? IF swap 1 + swap THEN
+      FVX-NEXT
+   REPEAT drop ;
+
 : SUMV-NAMED-FIELD ( n n -- n bool ) {: vid:n wanted:n :}
    wanted 0 < IF 0 RES-FALSE EXIT THEN
    vid SUMV-FAM@ {: fam:n :}
@@ -1606,14 +1986,16 @@ private
    count 0 < IF 0 RES-FALSE EXIT THEN
    base PF-COMMIT-N @ > IF 0 RES-FALSE EXIT THEN
    count PF-COMMIT-N @ base - > IF 0 RES-FALSE EXIT THEN
-   0
-   0 BEGIN dup count < WHILE
-      base over + {: fid:n :}
-      fid PF-FAM@ fam = fid PF-VAR@ vid = and IF
-         over wanted = IF 2drop fid RES-TRUE EXIT THEN
-         swap 1 + swap
+   fam vid SUMV-SLICE-N wanted - 1 -             \ the variant's rows newer than the wanted one
+   dup 0 < IF drop 0 RES-FALSE EXIT THEN
+   fam vid FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - {: id:n :}
+      fam vid id SUMV-SLICE-ROW? IF
+         over 0= IF 2drop id RES-TRUE EXIT THEN
+         swap 1 - swap
       THEN
-      1 +
+      FVX-NEXT
    REPEAT 2drop 0 RES-FALSE ;
 
 : SUMV-FAMILY-LEGACY-PAYLOAD? ( n -- bool ) {: fam:n :}
@@ -1629,7 +2011,7 @@ private
       1 +
    REPEAT drop RES-FALSE ;
 
-: SUM-NAMED-PAYLOAD? ( n -- bool ) {: fam:n :}
+: SUM-NAMED-PAYLOAD-WALK? ( n -- bool ) {: fam:n :}
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
    fam TFAM-FLD-START@ {: base:n :}
    fam TFAM-FLD-COUNT@ {: count:n :}
@@ -1653,6 +2035,10 @@ private
    REPEAT drop
    RES-TRUE ;
 
+: SUM-NAMED-PAYLOAD? ( n -- bool ) {: fam:n :}
+   fam TFM-NAMED TFM-FLAG@ IF EXIT THEN drop
+   fam SUM-NAMED-PAYLOAD-WALK? dup fam TFM-NAMED TFM-FLAG! ;
+
 : SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
 
 public
@@ -1663,14 +2049,7 @@ public
 
 : SUMV-PAY-N ( n -- n ) {: vid:n :}
    vid SUMV-NAMED-PAYLOAD? 0= IF vid SUMV-SCH-COUNT@ EXIT THEN
-   vid SUMV-FAM@ {: fam:n :}
-   fam TFAM-FLD-START@ {: base:n :}
-   0
-   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      base over + {: fid:n :}
-      fid PF-FAM@ fam = fid PF-VAR@ vid = and IF swap 1 + swap THEN
-      1 +
-   REPEAT drop ;
+   vid SUMV-FAM@ vid SUMV-SLICE-N ;
 
 : SUMV-PAY-ROOT ( n n -- n ) {: vid:n index:n :}
    index 0 < IF E-TFAM-PAYLOAD throw THEN
@@ -1684,12 +2063,12 @@ public
 : SUMV-PAYCELLS@ ( n -- n ) {: vid:n :}
    vid SUMV-NAMED-PAYLOAD? 0= IF vid SUMV-RAW-PAYCELLS@ EXIT THEN
    vid SUMV-FAM@ {: fam:n :}
-   fam TFAM-FLD-START@ {: base:n :}
-   0
-   fam TFAM-FLD-COUNT@ 0 ?do
-      base i + {: fid:n :}
-      fid PF-VAR@ vid = IF fid PF-CELLS@ + THEN
-   loop ;
+   0  fam vid FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - {: id:n :}
+      fam vid id SUMV-SLICE-ROW? IF swap id PF-CELLS@ + swap THEN
+      FVX-NEXT
+   REPEAT drop ;
 
 \ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
 \ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
@@ -1719,19 +2098,20 @@ private
       1 +
    REPEAT drop ;
 
-\ Called after validating the family once. Interleaved rows need a field scan
-\ per variant, but each field's recursive width is computed only for its owner.
+\ Called after validating the family once. It reads only this variant's rows,
+\ and the cursor stays on the stack while a field's width recurses.
 : SUMV-NAMED-IWIDTH ( n n -- n ) {: vid:n term:n :}
    term PARAM>FAM {: fam:n :}
-   fam TFAM-FLD-START@ {: fields:n :}
-   0 fam TFAM-FLD-COUNT@ 0 ?do
-      fields i + {: fid:n :}
-      fid PF-VAR@ vid = IF
-         fid PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH +
+   0  fam vid FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - {: id:n :}
+      fam vid id SUMV-SLICE-ROW? IF
+         swap id PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH + swap
       THEN
-   loop ;
+      FVX-NEXT
+   REPEAT drop ;
 
-: SUM-IWIDTH ( n -- n ) {: term:n :}            \ tag + max variant payload inst-width
+: SUM-IWIDTH-WALK ( n -- n ) {: term:n :}       \ tag + max variant payload inst-width
    term PARAM>FAM {: fam:n :}
    fam SUM-NAMED-PAYLOAD? {: named:bool :}
    fam TFAM-VAR-START@ {: vs:n :}
@@ -1743,6 +2123,13 @@ private
       1 +
    REPEAT drop
    1 + ;                                         \ + tag cell
+\ A closed family has no parameter for an argument to widen, so every instance
+\ has one width and it is memoized; a parametric one is walked per instance.
+: SUM-IWIDTH ( n -- n ) {: term:n :}
+   term PARAM>FAM {: fam:n :}
+   fam TFAM-ARITY@ 0 <> IF term SUM-IWIDTH-WALK EXIT THEN
+   fam TFM-WIDTH TFM@ IF EXIT THEN drop
+   term SUM-IWIDTH-WALK dup fam TFM-WIDTH TFM! ;
 : PRODUCT-IWIDTH ( n -- n ) {: term:n :}        \ sum of field inst-widths (no tag)
    term PARAM>FAM {: fam:n :}
    fam TFAM-FLD-START@ {: fs:n :}
@@ -1803,8 +2190,6 @@ private
    THEN
    RES-FALSE ;
 
-: PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
-   r PF.FAM @ fam = r PF.VAR @ var = and ;
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
    fam var r PF-ROW-OWNER? 0= IF RES-FALSE EXIT THEN
@@ -1984,7 +2369,7 @@ public
    PF-N @ ;
 : COMMIT ( n -- ) {: tx:n :}
    tx PREPARE drop
-   PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N ! THEN
+   PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N !  TFM-EPOCH+ THEN
    STATE-COMMITTED TX-TOP PFTX.STATE ! ;
 : FINALIZE ( n -- ) {: tx:n :}
    tx STATE-COMMITTED TX-STATE-REQUIRE
@@ -1998,11 +2383,8 @@ public
    TX-TOP PFTX.STATE @ STATE-OPEN =
       IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
    TX-TOP {: r:ptr :}
-   r PFTX.PFN @ {: keep:n :}
-   keep PF-N @ PF-SCRUB              \ scrub the provisional rows this rollback retires
-   keep PF-N !
+   r PFTX.PFN @ r PFTX.COMMITN @ PF-REWIND   \ retire the provisional rows
    r PFTX.STRU @ TF-STR-U !
-   r PFTX.COMMITN @ PF-COMMIT-N !
    RELEASE ;
 
 \ The field owner is the only authority that can read a provisional row.  The
@@ -2081,16 +2463,17 @@ public
 
 package TYPE-NAME
 
-7107 constant E-SYNTAX
-7110 constant E-RESERVED
+\ sumtype.f's TYPE-DECL codes under their own names: that package loads after
+\ this one, so the same (code, name) pair is registered here first.
+7107 constant E-TDECL-SYNTAX
+7110 constant E-TDECL-NAME
 
 public
 
 \ CONTROL? is the ONE place the control-word list is written down. Every
 \ declaration name gate in the engine asks this word rather than keeping a list
-\ of its own: this package's own RESERVED? (variant names), sumtype.f's
-\ TDECL-RESERVED? (legacy family names), PF-RESERVED? below (field names), and
-\ the unified STRUCTURE / ENUM front ends through their CONTROL-KW? forwarders.
+\ of its own: this package's RESERVED? (variant names), which FAMILY-RESERVED?
+\ extends for every family definer, and PF-RESERVED? below (field names).
 \ A name that spells a control word would compile into a definition body as that
 \ control word, so no declaration position may take one; keeping a second copy of
 \ the list is how the front ends and the legacy definers drifted apart before.
@@ -2124,7 +2507,6 @@ private
 : RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CON-OF 0 <> IF RES-TRUE EXIT THEN
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
@@ -2138,11 +2520,26 @@ private
 
 public
 
+\ FAMILY-RESERVED? is the family-name gate, the one list every family definer
+\ asks: SUMTYPE, PRODUCT and NEWTYPE (sumtype.f) and the STRUCTURE and ENUM front
+\ ends. A family tail must be one an effect reads as that family. The effect
+\ parser reads a value record name (checker.f PSTACK) and a bare `ptr`
+\ (SIG-PTR-TOK?) ahead of any family, and an atom-shaped tail as an atom wherever
+\ the family does not resolve; its other readings (`[`, stack syntax, row
+\ variables, split characters) are never canonical tails. A package may shadow
+\ a global family, so without the `ptr` row a package's `ptr` registered and its
+\ CAST: converter `( n -- ptr )` died as a pointer with no pointee; a front end
+\ without the value record row loaded `ENUM vr` in a package after
+\ `VALUE-RECORD vr`, one name naming two kinds.
+: FAMILY-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
+   a u RESERVED? ;
+
 : VARIANT-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF E-SYNTAX throw THEN
+   u 0= IF E-TDECL-SYNTAX throw THEN
    a u TF-REQUIRE-CANON
-   a u RESERVED? IF E-RESERVED throw THEN
-   a u FAMILY-TAKEN? IF E-RESERVED throw THEN ;
+   a u RESERVED? IF E-TDECL-NAME throw THEN
+   a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
 
 private
 get-current prot-wid-add
@@ -2395,16 +2792,16 @@ public
 
 : PF-OVERLAP? ( n n n n n n -- bool )
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
-   0 TF-I !
-   BEGIN TF-I @ PF-N @ < WHILE
-      TF-I @ PF-ROW {: r:ptr :}
+   fam var FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - PF-ROW {: r:ptr :}
       fam var r PF-ROW-OWNER? IF
-         slot cellsn r PF.SLOT @ r PF.CELLS @ PF-RANGE-OVERLAP? IF RES-TRUE EXIT THEN
-         boff bytesn r PF.BYTE-OFF @ r PF.BYTES @ PF-RANGE-OVERLAP? IF RES-TRUE EXIT THEN
+         slot cellsn r PF.SLOT @ r PF.CELLS @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
+         boff bytesn r PF.BYTE-OFF @ r PF.BYTES @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
       THEN
-      TF-I @ 1 + TF-I !
+      FVX-NEXT
    REPEAT
-   RES-FALSE ;
+   drop RES-FALSE ;
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    flags PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
@@ -2430,15 +2827,15 @@ public
       E-PF-LAYOUT throw
    ENDCASE ;
 : PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
-   0 TF-I !
-   BEGIN TF-I @ PF-N @ < WHILE
-      TF-I @ PF-ROW {: r:ptr :}
+   fam var FVX-FIRST
+   BEGIN dup 0 <> WHILE
+      dup 1 - PF-ROW {: r:ptr :}
       fam var r PF-ROW-OWNER? IF
-         r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= IF RES-TRUE EXIT THEN
+         r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= IF drop RES-TRUE EXIT THEN
       THEN
-      TF-I @ 1 + TF-I !
+      FVX-NEXT
    REPEAT
-   RES-FALSE ;
+   drop RES-FALSE ;
 
 ;package
 
@@ -2465,7 +2862,9 @@ public
    slot r PF.SLOT !   cellsn r PF.CELLS !
    boff r PF.BYTE-OFF !   bytesn r PF.BYTES !
    al r PF.ALIGN !   flags r PF.FLAGS !
+   id PF-LINK                       \ chain the row under its owner before publishing it
    id 1 + PF-N !
+   TFM-EPOCH+
    tx ;
 
 private
@@ -2715,12 +3114,7 @@ package TFAM
 \ Pointer and quotation nodes are non-owning boundaries.
 defer TFCL-NODE-XT ( n -- bool )
 
-public
-
-: TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
-   fam C2-MUT-FAM @ = IF RES-TRUE EXIT THEN
-   fam C2-RECORDS-FAM @ = IF RES-TRUE EXIT THEN
-   fam C2-READ-FAM @ = IF RES-FALSE EXIT THEN
+: TFAM-CONCRETE-LINEAR-WALK? ( n -- bool ) {: fam:n :}
    fam TFAM-PRODUCT? IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
          fam TFAM-FLD-START@ over + PF-ROW PF.SCH @ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
@@ -2739,6 +3133,15 @@ public
       REPEAT drop
    THEN
    RES-FALSE ;
+
+public
+
+: TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
+   fam C2-MUT-FAM @ = IF RES-TRUE EXIT THEN
+   fam C2-RECORDS-FAM @ = IF RES-TRUE EXIT THEN
+   fam C2-READ-FAM @ = IF RES-FALSE EXIT THEN
+   fam TFM-LINEAR TFM-FLAG@ IF EXIT THEN drop
+   fam TFAM-CONCRETE-LINEAR-WALK? dup fam TFM-LINEAR TFM-FLAG! ;
 
 : TFCL-NODE? ( n -- bool ) {: node:n :}
    node SCHEMA-CON? IF node SCHEMA-A@ CT-LINEAR? EXIT THEN
@@ -2941,6 +3344,9 @@ public
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
+   0 VNX-READY !                         \ ... and every row the variant tail index chains
+   0 FVX-READY !                         \ ... and every row the field owner index chains
+   TFM-EPOCH+                            \ ... and every family a memoized fact describes
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !
@@ -2953,12 +3359,13 @@ TFAM-RESET
 \ those counters down.
 \
 \ WHY IT IS ONE WORD AND NOT FIVE STORES AT EACH CALL SITE. Two of these stores
-\ are read through an index — TFAM-FIND-IN through the tail index, and
-\ SUMV-FROM-CTOR-SYM through the constructor-symbol index — and an index chains
-\ rows by id. A row whose id has gone out of range but is still chained is found
-\ by the next lookup, which then reads a record past the end of the store and
-\ dies. So the rows must be unchained BEFORE the counters move, and that
-\ ordering is a property of the registry, not of whoever is rolling back.
+\ are read through three indexes — TFAM-FIND-IN through the family tail index,
+\ SUMV-FROM-CTOR-SYM through the constructor-symbol index and SUMV-FIND through
+\ the variant tail index — and an index chains rows by id. A row whose id has
+\ gone out of range but is still chained is found by the next lookup, which then
+\ reads a record past the end of the store and dies. So the rows must be
+\ unchained BEFORE the counters move, and that ordering is a property of the
+\ registry, not of whoever is rolling back.
 \
 \ The declaration layer used to write these counters itself (src/core/sumtype.f,
 \ TDECL-RESTORE) and skipped both retirements. What made that so hard to see is
@@ -2971,10 +3378,12 @@ TFAM-RESET
 \
 \ WHAT THIS DOES NOT OWN. Product-field rows (PF-*) and schema nodes (SCH-*) are
 \ other participants with their own frames; a caller that also owns those rewinds
-\ them itself, after this.
+\ them itself, after this (the field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
+   sumvn VNX-RETIRE                      \ and the tail chains
+   tfamn TFAM-N @ <> sumvn SUMV-N @ <> or IF TFM-EPOCH+ THEN
    tfamn TFAM-N !
    stru TF-STR-U !
    pkn TF-PK-N !
@@ -2988,10 +3397,12 @@ TFAM-RESET
 \ scope/candidate pops them so a rejected family declaration leaves no family,
 \ variant, field, or layout row and no interned name behind. These registries use
 \ scans keyed on (package, tail), so restoring the counters IS entry retirement:
-\ SUMV-FIND/PF-FIND/LAY-FIND only scan [0,N), and re-adding under the same name
-\ interns fresh at the restored pool end. The two lookups that now go through an
-\ index — TFAM-FIND-IN and SUMV-FROM-CTOR-SYM — unchain their rows from that same
-\ restore (TFX-RETIRE, SVX-TRUNCATE) so the index retires exactly with the rows.
+\ PF-FIND/LAY-FIND only scan [0,N), and re-adding under the same name interns
+\ fresh at the restored pool end. The three lookups that now go through an index
+\ — TFAM-FIND-IN, SUMV-FROM-CTOR-SYM and SUMV-FIND — unchain their rows from that
+\ same restore (TFX-RETIRE, SVX-TRUNCATE, VNX-RETIRE), and the field owner index
+\ from the PF-REWIND that follows it (FVX-RETIRE), so each index retires exactly
+\ with the rows.
 \ Pushed/popped in lockstep with checker.f's core frame.
 \ ---------------------------------------------------------------------------
 
@@ -3098,10 +3509,8 @@ package CHECKER-DECL-FRAME
    TF-RELEASE
    {: r:ptr :}
    r TFRB.TFAMN @  r TFRB.STRU @  r TFRB.PKN @  r TFRB.SUMVN @  r TFRB.LAYN @
-   TFAM-REWIND                        \ retires the two indexes, then moves the counters
-   r TFRB.PFN @ PF-N @ PF-SCRUB       \ scrub product-field rows this rejected declaration retires
-   r TFRB.PFN @ PF-N !
-   r TFRB.PFCOMMITN @ PF-COMMIT-N ! ;
+   TFAM-REWIND                        \ retires the three indexes, then moves the counters
+   r TFRB.PFN @ r TFRB.PFCOMMITN @ PF-REWIND ;   \ the field rows this rejected declaration added
 
 : TF-RESTORE ( -- )
    TF-RBF-TOP PF-DEPTH=
@@ -3146,8 +3555,8 @@ package TFAM
 \ throw 7113). So this moves no depth. It records the same counters TF-SAVE does
 \ and runs the same restore body TF-RESTORE-TOP runs, minus TF-RELEASE, which is
 \ the stack pop and has nothing to pop here. Restoring the counters IS
-\ retirement: the rows are pointer-free and TFAM-REWIND unchains the two indexes
-\ before they move.
+\ retirement: the rows are pointer-free, and TFAM-REWIND unchains the three
+\ indexes and PF-REWIND the field owner index before they move.
 \
 \ AT REST IS PART OF THE CONTRACT. A recorded set only describes the registries
 \ when nothing is half-declared, so both halves refuse a live field transaction
@@ -3187,9 +3596,7 @@ variable BPF    variable BPFC   variable BSCH  variable BSCHR
    AT-REST
    BSCH @ BSCHR @ REWIND
    BTFAM @ BSTRU @ BPK @ BSUMV @ BLAY @ TFAM-REWIND
-   BPF @ PF-N @ PF-SCRUB
-   BPF @ PF-N !
-   BPFC @ PF-COMMIT-N ! ;
+   BPF @ BPFC @ PF-REWIND ;
 
 \ Installed, not published: the boundary has ONE public seam and it is the
 \ checker's. These are its extension halves, reached exactly the way a scope's
@@ -4273,6 +4680,9 @@ variable REG-AOT-MEMO-U
       REG-AOT-CUR @ bytes + REG-AOT-CUR !
    loop
    TFX-SNAP-RESET
+   VNX-SNAP-RESET
+   FVX-SNAP-RESET
+   TFM-EPOCH+
    0 SVX-GEN ! ;
 
 \ The loader's private operation throws before publication on invalid input.
@@ -4565,15 +4975,38 @@ public
    rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
    rc throw ;
 
+private
+
+\ TFAM-CLAIMED? ( ptr u8 n -- bool ) : some scope reads this signature token as
+\ a family (the checker's TFAM-CLAIMED?-XT target). The package that declares a
+\ tail reads its own row first, private or public; a global row is read
+\ everywhere, and another package's public row through `using` or the unique
+\ fallback. So every row of an unqualified tail claims it, ambiguous or not. A
+\ qualified `PKG:tail` claims PKG's row, which PKG reads even while private.
+\ The checker refuses a DEFLINEAR or VALUE-RECORD name that is claimed: the
+\ mirror of a family declaration refusing a declared type's name.
+: TFAM-CLAIMED? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
+   na nu TF-HIDDEN? IF RES-FALSE EXIT THEN
+   na nu TFQ-SPLIT? IF TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN nip EXIT THEN
+   TFX-ENSURE
+   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   BEGIN TFX-CUR @ 0 <> WHILE
+      TFX-CUR @ 1 - {: id:n :}
+      na nu id TFAM-NAME-MATCH? IF RES-TRUE EXIT THEN
+      id TF-REC@ TF.TAILNEXT @ TFX-CUR !
+   REPEAT
+   RES-FALSE ;
+
 \ Install the checker registry's persist hook only after this module's final
 \ signature-resolution scratch has been declared, so the same owner clears the
 \ raw token spans before DATA is baked.
-private
-
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
    TFX-SNAP-RESET              \ tail-index buckets are process-local
+   VNX-SNAP-RESET              \ variant tail-index buckets and links too
+   FVX-SNAP-RESET              \ and the field owner index
+   TFM-SNAP-RESET              \ and the family facts memo
    PF-TX-SNAP-RESET            \ field transactions are process-local
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
@@ -5119,7 +5552,7 @@ variable FPRJ-FFAM
 \ caller either, only by a generator that armed a window with an id its text does
 \ not describe. No caller reaches it today for a second reason as well — a type
 \ argument that is a family does not bind an accessor's parameter at all
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1<>>`), and every
+\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), and every
 \ other argument is one cell. Its judgeable twin is RECORD-AT-EXACT? in
 \ src/core/checker.f, which a written-out `record-at` call DOES reach with a
 \ concrete wide pointee; test/structure-decl-suite.f case 15 pins it there, and
@@ -5262,6 +5695,7 @@ private
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
+   [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
    [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
    [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
    [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject

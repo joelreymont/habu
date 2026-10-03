@@ -3,6 +3,7 @@
 \ The private tree and child output remain under the printed directory.
 
 require lib/test.f
+require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/fs-list.f
@@ -56,6 +57,17 @@ variable RC
          outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
    ;MATCH ;
 
+\ The child's MISSING case collects missing.f, whose required absent-child.f
+\ does not exist. The refusal keeps the read's code, and stderr names the file,
+\ which the code alone does not; nothing else reaches stderr.
+: MISSING-LINE$ ( -- ptr u8 n )
+   ROOT$ SOURCE-ROOT:CANON-OS drop s" absent-child.f" PATH JOIN-PATH PATH-U !
+   SB-RESET
+   s" cannot read " SB-APPEND
+   PATH PATH-U @ SB-APPEND
+   S\" \n" SB-APPEND
+   SB$ ;
+
 : RUN-CHILD ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
@@ -66,7 +78,7 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T=
-   ERR-U @ 0 T=
+   ERR ERR-U @ MISSING-LINE$ T$=
    OUT OUT-U @ s" source-view: ok" CONTAINS? TTRUE
    s" result.txt" ROOT-PATH!
    PATH PATH-U @ OUT OUT-U @ WRITE-ALL ;

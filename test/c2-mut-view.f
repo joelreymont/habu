@@ -60,7 +60,7 @@ public
    s" typed pointer storage cannot hold an exclusive view" T-LABEL
    s" : C2-MUT-TYPED-STORE ( mut-view<p,q,a,u8> ptr mut-view<p,q,a,u8> -- ) ! ;" 70 REJECT TTRUE
    s" a typed global cannot hold an exclusive view" T-LABEL
-   s" TYPED-VARIABLE C2-MUT-SLOT mut-view<p,q,a,u8>" 67 REJECT TTRUE
+   s" TYPED-VARIABLE C2-MUT-SLOT mut-view<p,q,a,u8>" 70 REJECT TTRUE
    s" two raw cells cannot introduce exclusive authority" T-LABEL
    s" : C2-MUT-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 REJECT TTRUE
    s" a shared view cannot become exclusive by identity" T-LABEL

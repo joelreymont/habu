@@ -58,8 +58,6 @@ create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-STAGE-DIR-BUF FS-PATH-CAP allot
 create HBB-STAGE-BUF FS-PATH-CAP allot
-create HBB-INSTALL-TMP-PATH FS-PATH-CAP allot
-variable HBB-INSTALL-TMP-U
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
@@ -155,6 +153,14 @@ variable HBB-MAKER-TIMEOUT-MS
 
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
+
+\ -o is replaced through a sibling with a longer name, which has room only
+\ beside a path of at most SIBLING-PATH-MAX bytes (lib/fs-mutate.f), so the CLI
+\ refuses a longer one by name, before it builds anything.
+: HBB-OUT-ARG! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u SIBLING-PATH-MAX > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   a u HBB-OUT! ;
 
 : HBB-SRC$ ( -- ptr u8 n )
    HBB-SRC-PATH HBB-SRC-U @ ;
@@ -322,7 +328,7 @@ variable HBB-MAKER-TIMEOUT-MS
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then
    HBB-I @ HBB-ARG$ HBB-SRC!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
-   HBB-I @ 2 + HBB-ARG$ HBB-OUT!
+   HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
    HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
@@ -450,7 +456,6 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-KEY-LOAD-FILES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" tools/hb-build.f" HBB-KEY-FILE+
-   s" tools/hb-build-core.f" HBB-KEY-FILE+
    s" lib/errors.f" HBB-KEY-FILE+
    s" lib/string.f" HBB-KEY-FILE+
    s" lib/memory.f" HBB-KEY-FILE+
@@ -535,6 +540,7 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/image-bytes.f" HBB-KEY-FILE+
    s" src/os/script-argv.f" HBB-KEY-FILE+
    s" src/habu/fdio.f" HBB-KEY-FILE+
+   s" src/habu/sign-id.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
    s" src/habu/cell-grid.f" HBB-KEY-FILE+
@@ -550,33 +556,6 @@ HBB-INSTALL-CHILD-LINT
    HBB-KEY-TARGET-SOURCES
    HBB-KEY-DRIVER-SOURCES
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
-
-: HBB-INSTALL-TMP$ ( -- ptr u8 n )
-   HBB-INSTALL-TMP-PATH HBB-INSTALL-TMP-U @ ;
-
-\ Unique destination-sibling staging path for same-directory publication.
-: HBB-INSTALL-TMP! ( ptr u8 n -- ) {: dst:ptr dstu:n :}
-   SB-RESET
-   dst dstu SB-APPEND
-   s" ." SB-APPEND  getpid FS-MUT-SB-U
-   s" -" SB-APPEND  mono-ns FS-MUT-SB-U
-   s" .tmp" SB-APPEND
-   SB$ {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a HBB-INSTALL-TMP-PATH u BYTE-COPY
-   u HBB-INSTALL-TMP-U ! ;
-
-\ Copy across filesystems, then chmod and rename within the destination directory.
-: HBB-PUBLISH-CLEAN-TMP ( -- )
-   HBB-INSTALL-TMP$ EXISTS? if
-      [: HBB-INSTALL-TMP$ REMOVE-FILE ;] catch drop
-   then ;
-
-: HBB-PUBLISH-DONE ( n -- ) {: rc:n :}
-   rc 0 <> if
-      HBB-PUBLISH-CLEAN-TMP
-      rc throw
-   then ;
 
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
@@ -638,18 +617,19 @@ HBB-INSTALL-CHILD-LINT
       timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
    ;MATCH ;
 
-: HBB-REMOVE-OUT ( -- )
-   HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
-: HBB-INSTALL-OUT-ACT ( -- )
-   HBB-GOT-NAME$ BF-A$ HBB-INSTALL-TMP$ COPY-FILE-STREAM
-   HBB-INSTALL-TMP$ CHMOD-X
-   HBB-INSTALL-TMP$ HBB-OUT$ RENAME-FILE ;
+\ Every file hb-build writes at -o is written to its sibling and renamed over
+\ -o only once it is whole and executable (lib/fs-mutate.f REPLACE-STAGED), so
+\ a failed install, restore or object write leaves -o as it was and no sibling.
+\ The engine the child wrote under HB_TMP may be on another filesystem; it is
+\ copied.
+: HBB-INSTALL-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   HBB-GOT-NAME$ BF-A$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X ;
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   HBB-OUT$ HBB-INSTALL-TMP!
-   [: HBB-INSTALL-OUT-ACT ;] catch HBB-PUBLISH-DONE
+   HBB-OUT$ [: HBB-INSTALL-FILL ;] REPLACE-STAGED
    HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
@@ -759,22 +739,28 @@ HBB-INSTALL-CHILD-LINT
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 
+: HBB-RESTORE-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   HBB-ARTIFACT$ tmp tmpu COPY-FILE-STREAM
+   tmp tmpu CHMOD-X ;
+
+: HBB-RESTORE-OUT ( -- )
+   HBB-OUT$ [: HBB-RESTORE-FILL ;] REPLACE-STAGED ;
+
 \ An artifact found in the cache is dated as used (lib/build-cache.f), and one a
 \ prune took after the check is built again. So is one a prune takes after USED
-\ dated it: a copy that fails while the artifact is gone is a miss. The copy
-\ opens the artifact before it creates the output, and once open it reads the
-\ whole artifact whatever happens to its name.
+\ dated it: a copy that fails while the artifact is gone is a miss, and -o is
+\ as it was. The copy opens the artifact before it writes a byte, and once open
+\ it reads the whole artifact whatever happens to its name.
 : HBB-RESTORE-ARTIFACT? ( -- bool )
    HBB-ARTIFACT-CACHE @ 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ EXECUTABLE? 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
-   HBB-REMOVE-OUT
-   [: HBB-ARTIFACT$ HBB-OUT$ COPY-FILE-STREAM ;] catch {: code:n :}
+   [: HBB-RESTORE-OUT ;] catch {: code:n :}
    code 0<> if
       HBB-ARTIFACT$ FS-TRY-LSTAT if code throw then
       HBB-FALSE exit
    then
-   HBB-OUT$ CHMOD-X
    -1 HBB-ARTIFACT-HIT !
    HBB-TRUE ;
 
@@ -816,11 +802,15 @@ HBB-INSTALL-CHILD-LINT
    OBJRES:STORE 2drop
    -1 HBB-OBJECT-STORE ! ;
 
+: HBB-OBJECT-FILL ( ptr u8 n -- )
+   {: tmp:ptr tmpu:n :}
+   tmp tmpu OBJIMG:WRITE
+   tmp tmpu CHMOD-X ;
+
 : HBB-WRITE-OBJECT ( -- )
-   HBB-REMOVE-OUT
    OBJIMG:RESET
    OBJIMG:ADD
-   HBB-OUT$ OBJIMG:WRITE
+   HBB-OUT$ [: HBB-OBJECT-FILL ;] REPLACE-STAGED
    -1 HBB-OBJECT-HIT ! ;
 
 : HBB-OBJECT-HIT? ( -- bool )

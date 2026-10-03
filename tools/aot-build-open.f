@@ -10,12 +10,19 @@
 \ therefore loads THIS file first (tools/hb-build-lib.f HBB-RUN-MAKER-CMD), then
 \ tools/aot-build.f, then calls AOT-LINK:BUILD-NATIVE.
 \
-\ Only lib-free files may be required here. Both of these are baked into the
-\ engine or free of lib by construction; neither can pull a lib module in.
+\ Only lib-free files may be required here: each is baked into the engine or
+\ free of lib by construction, so none can pull a lib module in. The latch file
+\ comes first because the band aot-closure.f refuses to carry ends before
+\ anything an application can name loads (aot-window-latch.f OPENER-NDICT):
+\ a build driver requires lib/executable-build.f too, and the copy loaded here
+\ is the one its stripped image carries.
 1 set-tier
+require src/habu/aot-window-latch.f
+package AOT-LINK
+ndict@ OPENER-NDICT !
+;package
 require lib/executable-build.f
 require src/os/script-argv.f
-require src/habu/aot-window-latch.f
 
 package AOT-LINK
 private

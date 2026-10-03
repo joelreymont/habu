@@ -4,10 +4,11 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require tools/json.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 variable TEST-N
 : ASSERT ( bool -- )
-   0= IF s" json-test failed at assertion " type TEST-N @ . cr 1 throw THEN
+   0= IF s" json-test failed at assertion " type TEST-N @ FMT:.INT cr 1 throw THEN
    TEST-N @ 1+ TEST-N ! ;
 
 : ASSERT= ( n n -- )
@@ -352,6 +353,6 @@ variable NODE
    TEST-JSONL-ROW-OUTCOMES
    TEST-JSONL-FINAL-PARTIAL
    TEST-JSONL-NONSYNTAX-ERROR
-   s" json-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
+   s" json-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 JSON-TEST

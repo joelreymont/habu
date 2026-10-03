@@ -108,25 +108,31 @@ variable VALUE                     \ the number the first one carried
 \ The one question the mirror asks, and the three ways it can fail.
 : ?MIRROR ( ptr u8 n n -- ) {: na:ptr nu:n want:n :}
    na nu SCAN-FOR
-   s" the checker defines the mirrored constant exactly once" T-LABEL
+   s" the source defines the mirrored constant exactly once" T-LABEL
    HITS @ 1 T=
    s" ... and its number is the layout constant it names" T-LABEL
    VALUE @ want T= ;
 
-: LOAD-CHECKER ( -- )
-   CHECKER$ LINT-SOURCE:LOAD
+: LOAD-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
-   s" the checker source lexes without a diagnostic" T-LABEL
+   s" the source lexes without a diagnostic" T-LABEL
    LINT-LEX:ERROR? 0= TTRUE ;
+
+: LOAD-CHECKER ( -- ) CHECKER$ LOAD-SOURCE ;
 
 \ ---- case one: every mirrored pair agrees ------------------------------------
 \ Two pairs are the signature pool's; four were already in the tree carrying only
 \ a comment, and they are here for the same reason - the drift risk is the same
 \ risk, and a check that covered only the new pairs would leave the older ones
-\ exactly as unverified as they were. The list is the checker's live mirror set,
-\ so a name that is no longer mirrored has to leave this list with the mirror it
-\ describes: naming one that no definition answers reads as drift on the layout
-\ side (0 definitions, 0 for the number) and says nothing about either file.
+\ exactly as unverified as they were. CK-BODYBUF-CAP is a capacity rather than an
+\ offset, the body-text capacity that bounds every name the checker takes, and
+\ drifts the same way. src/core/layout-buffer.f loads before layout.f too and
+\ mirrors the input cursor STORAGE-UNREAD writes. The list is the live mirror
+\ set of both files, so a name that is no longer mirrored has to leave this list
+\ with the mirror it describes: naming one that no definition answers reads as
+\ drift on the layout side (0 definitions, 0 for the number) and says nothing
+\ about either file.
 
 : MIRROR-CASE ( -- )
    LOAD-CHECKER
@@ -136,7 +142,10 @@ variable VALUE                     \ the number the first one carried
    s" CK-PKG-PRI-OFF"      PKG-PRI-CELL      ?MIRROR
    s" CK-PKG-REC-OFF"      PKG-REC-CELL      ?MIRROR
    s" CK-USE-DEPTH-OFF"    USE-DEPTH-CELL    ?MIRROR
-   s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR ;
+   s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR
+   s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR
+   s" src/core/layout-buffer.f" LOAD-SOURCE
+   s" STGT-INP-CELL"       INP-CELL          ?MIRROR ;
 
 \ ---- case two: the reader cannot be fooled -----------------------------------
 \ Synthetic sources through the SAME entry points the live read uses, each built

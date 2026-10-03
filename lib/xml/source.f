@@ -296,10 +296,18 @@ private
    repeat
    2drop ;
 
+\ The fewest bytes size bytes of UTF-8 encode to: all of them in UTF-8, and in
+\ UTF-16 two for every three, the width of a three-byte scalar.
+: SRC-ENCODE-FLOOR ( ptr n n -- n ) {: state size:n :}
+   state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N = if size exit then
+   size 3 / 2 * ;
+
 : SRC-ENCODE-INTO ( ptr n ptr u8 n ptr u8 n -- n )
    {: state input size:n output cap:n :}
-   state input size SRC-ENCODE-SIZE {: needed:n :}
+   input size SPAN-CHECK
    output cap SPAN-CHECK
+   state size SRC-ENCODE-FLOOR cap > if E-CAPACITY throw then   \ measured before the input is read
+   state input size SRC-ENCODE-SIZE {: needed:n :}
    needed cap > if E-CAPACITY throw then
    input size output cap OVERLAP? if E-ALIAS throw then
    state SRC-ORIGINAL$ output cap OVERLAP? if E-ALIAS throw then

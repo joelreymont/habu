@@ -264,10 +264,44 @@ private
    DEEP-GOOD
    VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED ;
 
+\ JOIN takes its root length from the caller, and INCLUDE-DIAG+ is an engine
+\ word any source can call. Both measure the length against the room left, so
+\ one near the maximum cell cannot wrap the sum back under the capacity and a
+\ negative one is refused (JOIN) or dropped like any piece that does not fit
+\ (INCLUDE-DIAG+).
+PATH-CAP 1+ 2 * constant JOIN-WORK          \ include.f WORK-BYTES
+-1 1 rshift constant MAX-CELL
+create JOIN-SRC JOIN-WORK allot
+
+: JOIN-ROOT$ ( n -- ptr u8 n ) JOIN-SRC swap ;
+
+: JOIN-ROOM ( -- )
+   JOIN-WORK 0 ?do 97 JOIN-SRC i + c! loop
+   47 JOIN-SRC c!
+   s" a root that fills the join buffer exactly" T-LABEL
+   JOIN-WORK 3 - JOIN-ROOT$ s" x" JOIN nip JOIN-WORK 1- T=
+   s" a root one past the join buffer, -1 and the maximum cell are refused" T-LABEL
+   [: JOIN-WORK 2 - JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
+   [: -1 JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ
+   [: MAX-CELL JOIN-ROOT$ s" x" JOIN 2drop ;] E-PATH-RANGE TTHROWSQ ;
+
+: DIAG-ROOM ( -- )
+   s" a diagnostic piece that fills the buffer is kept" T-LABEL
+   INCLUDE-DIAG-RESET s" ab" INCLUDE-DIAG+
+   JOIN-SRC INCLUDE-DIAG-CAP 2 - INCLUDE-DIAG+
+   INCLUDE-DIAG$ nip INCLUDE-DIAG-CAP T=
+   s" a piece one past the buffer, -1 and the maximum cell are dropped" T-LABEL
+   INCLUDE-DIAG-RESET s" ab" INCLUDE-DIAG+
+   JOIN-SRC INCLUDE-DIAG-CAP 1- INCLUDE-DIAG+
+   JOIN-SRC -1 INCLUDE-DIAG+
+   JOIN-SRC MAX-CELL INCLUDE-DIAG+
+   INCLUDE-DIAG$ nip 2 T=
+   INCLUDE-DIAG-RESET ;
+
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS DEEP-EVALS
-   ENGINE-ALIASES
+   ENGINE-ALIASES JOIN-ROOM DIAG-ROOM
    CLEANUP-RUN T-REPORT ;
 
 RUN

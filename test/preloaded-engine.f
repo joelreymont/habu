@@ -13,18 +13,40 @@
 \ Under a gate the gate's app-image and linker build rows settle both before a
 \ row that loads this module starts (test/gate-images.f), so the row only finds
 \ them. Production hb-build keeps compiling the linker per build
-\ (tools/hb-build-lib.f): a prebuilt linker is only valid for the subjects rule 3
-\ admits.
+\ (tools/hb-build-lib.f): a prebuilt linker links only the subjects rule 3
+\ admits, and its maker refuses the rest by name.
 \
 \ RULES FOR A ROW THAT RUNS IT, beside test/app-image-engine.f's.
 \ 1. Take the path before staging the child's argv or env: a build stages its
 \    own in the same process-wide tables.
 \ 2. A link on LINKER$ keeps the production maker script verbatim; its require
 \    of tools/aot-build.f is then a no-op.
-\ 3. A subject linked on LINKER$ shares any library the linker already loaded.
-\    Such state sits below the capture window and needs a named AOT ownership
-\    claim; test/stripped-preloaded-runtime.f exercises the baked FFI and TASK
-\    claims. Other below-window state still gets the restored-span refusal.
+\ 3. A subject linked on LINKER$ reaches no word the linker's load left above
+\    the engine, and no cell of it but those an AOT ownership claim names. That
+\    load ran before the capture window opens (tools/aot-build-open.f), and it
+\    holds the linker's lib closure in the require registry, its packages and
+\    words in the dictionary and its cells below the window. A subject's
+\    require of one of those modules resolves to that copy, a name of one it
+\    never required resolves too, and a `package` line naming one of its
+\    packages reopens it; the engine's maker compiles the module inside the
+\    window (lib/executable-build.f excepted: it carries the copy its opener
+\    loaded, and that file's names even when the subject never required it),
+\    refuses the name and creates the package. So the maker refuses a closure
+\    that reaches such a word (`aot: closure reaches a word defined before the
+\    capture window opened word=NAME`, `E-AOT-PRE-WINDOW` under
+\    `--json-errors`, src/habu/aot-closure.f ADD-CLO) or such a cell (`aot:
+\    address refers to data outside the restored span`). A cell a named claim
+\    carries or refreshes is not such a cell: src/habu/aot-owned-cells.f
+\    COLLECT claims the FFI and TASK state the engine bakes below the window,
+\    and test/stripped-preloaded-runtime.f links and runs a subject
+\    that shares both libraries with the image. A subject that defines a word
+\    the image holds, globally or in a package it reopens, dies at that line
+\    (`duplicate definition`, rc 78), where the engine's maker dies at the
+\    library's line once the linker loads. A subject that requires such a
+\    module, or adds new words to such a package, and reaches none of the
+\    image's words links as on the engine. The image-lifecycle registry holds
+\    the linker's persistent hooks ahead of the subject's, so PREPARE runs them
+\    after the subject's, where the engine's maker runs them first.
 \ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
 \    inside an image ENGINE-ID:PATH$ names the image, so outside a gate its
 \    children would run the image too.
@@ -94,7 +116,10 @@ public
    LINKER-PATH$ ;
 
 \ Run a file on LINKER$ as `--load <file>`, with this process's stdout and
-\ stderr and an empty stdin, and die with the child's status when it fails.
+\ stderr and an empty stdin, and die with the child's status when it fails. A
+\ child whose deadline expired exits PROC-TIMEOUT-RC (test/gate-common-lib.f
+\ GE-CHILD-RUN), which is named and thrown again, so the gate pool labels the
+\ row TIMEOUT-UNDER-LOAD.
 : LINKER-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    LINKER$ {: eng:ptr engu:n :}
    PROC-ARGV-ENV-RESET
@@ -108,6 +133,10 @@ public
       ok OF ENDOF
       err OF ENDOF
    ;MATCH {: rc:n :}
+   rc PROC-TIMEOUT-RC = if
+      s" preloaded-engine: linked row ran out of time" type cr
+      E-PROC-TIMEOUT throw
+   then
    rc 0 <> if s" preloaded-engine: linked row failed" rc die then ;
 
 ;package

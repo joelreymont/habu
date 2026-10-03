@@ -4,18 +4,21 @@
 \ groups it owns:
 \   tools/hb-build-test.f                     CLI REPL build and report, cache
 \                                             keys, rejected inputs, image size
-\   tools/hb-build-cli-errors-test.f          cache path error, MAIN effects
+\   tools/hb-build-cli-errors-test.f          cache path error, -o too long,
+\                                             MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
 \   tools/hb-build-timeout-env-test.f         deadline override validation
 \   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-aot-cache-test.f           object cache and its keys
+\   tools/hb-build-aot-cache-test.f           object cache and its keys, failed
+\                                             publication
 \   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
 \   tools/hb-build-large-source-test.f        literal bodies, large source
+\   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
 
 require lib/errors.f
@@ -46,6 +49,7 @@ require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -96,6 +100,12 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 create HBT-REPORT-BUF FS-PATH-CAP allot
 create HBT-AOT-HEX 80 allot
+
+\ The keyed images a row's builds run on (HBT-KEYED!); empty, the engine.
+create HBT-LINKER-BUF FS-PATH-CAP allot
+create HBT-SAVER-BUF FS-PATH-CAP allot
+variable HBT-LINKER-U
+variable HBT-SAVER-U
 
 \ The three stripped-window fixtures: an application whose own require closure
 \ owns the library cells it touches, one that reads the engine runtime cells the
@@ -318,24 +328,61 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BUILD-CACHE:RESET
    HBT-TMP BUILD-CACHE:ROOT! ;
 
-\ The CLI with its library preloaded at tier 0: the requires of
-\ tools/hb-build-core.f, which tools/hb-build.f loads, are then no-ops, so a
-\ spawn skips the ~9 s tier-1 compile of that library and runs the same
-\ HBB-MAIN on the same argv. test/stripped-image.f spawns tools/hb-build.f
-\ alone, the production load with the library at tier 1.
-: HBT-ARGV-BASE-TMP ( ptr u8 n -- )
+\ THE ENGINE A BUILD'S CHILD RUNS. Before it reaches its subject a maker child
+\ compiles the AOT linker, 5.1 to 6.8 s of each one measured alone, and an
+\ app-build child compiles the image saver, 3.3 s. A row whose subjects need
+\ neither load hands HBT-KEYED! the keyed images that hold them
+\ (test/preloaded-engine.f LINKER$, test/app-image-engine.f PATH$) before it
+\ stages any argv. Its AOT builds, maker refusals and CLI spawns' makers then
+\ run the production maker script on the linker image, and its REPL builds, app
+\ refusals and REPL CLI spawns (HBT-ARGV-BASE-REPL) run on the saver image
+\ (docs/gate.md). A row with no maker to run hands an empty linker and loads
+\ only the saver's module. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the
+\ engine, which compiles the linker above the application: for a subject whose
+\ closure reaches a word, or an unclaimed cell, of a module of the linker's lib
+\ closure the engine does not bake, which the linker image refuses by name
+\ (test/preloaded-engine.f rule 3), and for a case about that order. A subject that only requires such a
+\ module links on the image. A row that records no image builds every program
+\ on the engine.
+: HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
+   linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
+   saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;
+
+: HBT-LINKER ( -- ptr u8 n )
+   HBT-LINKER-BUF HBT-LINKER-U @ ;
+
+: HBT-SAVER ( -- ptr u8 n )
+   HBT-SAVER-BUF HBT-SAVER-U @ ;
+
+: HBT-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if BF-ENGINE-RESET exit then
+   a u BF-ENGINE! ;
+
+\ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
+\ requires its library, so every row spawns the command a user runs. Its maker
+\ or app-build child runs the image named second, unless that is empty.
+: HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   engu 0 > if
+      s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+
+   then
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
-   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
+: HBT-ARGV-BASE-TMP ( ptr u8 n -- )
+   HBT-LINKER HBT-ARGV-CLI ;
+
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
+
+\ A --repl build's CLI, whose app-build child runs the saver image.
+: HBT-ARGV-BASE-REPL ( -- )
+   HBT-TMP HBT-SAVER HBT-ARGV-CLI ;
 
 : HBT-TIMEOUT-ENV ( ptr u8 n -- )
    PROC-ENV-RESET
@@ -364,6 +411,15 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
    2dup FILE? if REMOVE-FILE else 2drop then ;
 
+\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
+\ offset on failure instead of printing two images into the capture.
+: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
+   au bu min 0 ?do
+      a i + c@  b i + c@ <> if i unloop exit then
+   loop
+   au bu <> if au bu min exit then
+   -1 ;
+
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" 10" SB-APPEND
@@ -377,7 +433,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
-   rcn 0 <> if s" repl rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 <> if s" repl rc: " type rcn FMT:.INT cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;
@@ -386,12 +442,18 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-RESET-OPTIONS
    HBB-REPL-ON
    HBB-PATHS!
-   HBT-TMP BF-TMP! ;
+   HBT-TMP BF-TMP!
+   HBT-SAVER HBT-ENGINE! ;
 
 : HBT-HBB-PREPARE-AOT ( ptr u8 n ptr u8 n -- )
    HBB-RESET-OPTIONS
    HBB-PATHS!
-   HBT-TMP BF-TMP! ;
+   HBT-TMP BF-TMP!
+   HBT-LINKER HBT-ENGINE! ;
+
+: HBT-HBB-PREPARE-AOT-SOURCE ( ptr u8 n ptr u8 n -- )
+   HBT-HBB-PREPARE-AOT
+   BF-ENGINE-RESET ;
 
 \ A program that builds is built in this process: HBB-BUILD runs what
 \ tools/hb-build.f runs once it has parsed argv (for an AOT build the lint
@@ -432,6 +494,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    ;MATCH ;
 
 : HBT-RUN-MAKER ( ptr u8 n -- n n n )
+   HBT-LINKER HBT-ENGINE!
    HBB-RESET-OPTIONS
    HBB-SRC!
    HBT-TMP BF-TMP!
@@ -440,6 +503,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BF-TMP-RESET ;
 
 : HBT-RUN-APP ( ptr u8 n -- n n n )
+   HBT-SAVER HBT-ENGINE!
    HBB-RESET-OPTIONS
    HBB-REPL-ON
    HBB-SRC!
