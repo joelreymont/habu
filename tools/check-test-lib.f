@@ -2436,22 +2436,33 @@ WIDE-HEAD$ nip WIDE-N + WIDE-TAIL$ nip + constant WIDE-SOURCE-LEN
 
 \ The sig recorder renders each certified word's effect through the same buffer.
 \ USE declares none, so it records the one the checker infers: six values of a
-\ type whose name is EFFECT-N bytes, past that buffer. The run reports it as an
-\ E-STATEMENT-THROW record whose throw_code is E-DIAG-CAPACITY (-2901) and exits
-\ 70; the refusal after it would be the last record had the throw been lost.
+\ 12-parameter family whose name and arguments are each EFFECT-N bytes, the
+\ longest a declared name may be. A value renders in about 3.3 KB, the six past
+\ that buffer. The run reports it as an E-STATEMENT-THROW record whose
+\ throw_code is E-DIAG-CAPACITY (-2901) and exits 70; the refusal after it
+\ would be the last record had the throw been lost.
 
-3000 constant EFFECT-N
+TFAM:TF-NAME-MAX constant EFFECT-N
 
-: EFFECT-NAME ( -- )
-   EFFECT-N 0 ?do $61 LONG-C loop ;
+\ EFFECT-N bytes of the given letter.
+: EFFECT-NAME ( n -- ) {: c:n :}
+   EFFECT-N 0 ?do c LONG-C loop ;
 
 : EFFECT$ ( -- ptr u8 n )
    0 LONG-U !
    s" NEWTYPE " LONG-PUT
-   EFFECT-NAME
-   s\"  0\nTRUSTED: MK ( -- " LONG-PUT
-   EFFECT-NAME
-   s\"  ) 0 ;\n: USE MK MK MK MK MK MK ;\n: CKT-R ( n -- n ) dup ;\n" LONG-PUT
+   $62 EFFECT-NAME
+   s\"  0\nNEWTYPE " LONG-PUT
+   $61 EFFECT-NAME
+   s\"  12\nTRUSTED: MK ( -- " LONG-PUT
+   $61 EFFECT-NAME
+   s" <" LONG-PUT
+   $62 EFFECT-NAME
+   11 0 ?do
+      s" ," LONG-PUT
+      $62 EFFECT-NAME
+   loop
+   s\" > ) 0 ;\n: USE MK MK MK MK MK MK ;\n: CKT-R ( n -- n ) dup ;\n" LONG-PUT
    LONG-BUF LONG-U @ ;
 
 : TEST-RENDER-FULL-EFFECT ( -- )
@@ -4102,6 +4113,275 @@ variable REQ-U
    CAP-ERR erru s\" cap-throw.f\",\"line\":1,\"column\":267," CONTAINS? TTRUE
    CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
+\ ---- what the checker cannot store is refused by name ------------------------
+\ Each of these ended the process with die 76 (review 389): a declared name
+\ whose derived constructor spelling overran src/core/type-family.f TF-CTOR-BUF,
+\ a package name past the checker's package row (src/core/checker.f
+\ CHECKER-PACKAGE-CAP) and a definition whose effect was deeper than the effect
+\ store's walks go (src/core/checker.f EFFECT-DEPTH-MAX) or took more cells
+\ than its record holds (EFFECT-MIN-IN-MAX). Each is now the
+\ located refusal of its declaration, statement or definition, rc 70, and the
+\ longest that fits is still taken. The sources are built in LONG-BUF.
+
+\ count bytes of c into the long source.
+: CAPN-REP ( n n -- )
+   {: c:n count:n :}
+   count 0 ?do c LONG-C loop ;
+
+\ head, count bytes of c, then tail: a declaration around one long name.
+: CAPN-DECL+ ( ptr u8 n n n ptr u8 n -- )
+   {: h:ptr hu:n c:n count:n t:ptr tu:n :}
+   h hu LONG-PUT
+   c count CAPN-REP
+   t tu LONG-PUT ;
+
+\ The long source as the fixture named f, checked with --json-errors.
+: CAPN-RUN ( ptr u8 n -- n n n )
+   {: f:ptr fu:n :}
+   f fu REQ$ LONG-BUF LONG-U @ WRITE-ALL
+   f fu ST-JSON-RUN ;
+
+\ The declaration in fixture f is refused at its long name: the packet names
+\ the declaration's kind, carries the name as its token and the limit in its
+\ reason, and the run fails as for a refusal.
+: CAPN-DECL-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n kind:ptr kindu:n at:ptr atu:n :}
+   f fu CAPN-RUN {: outu:n erru:n rc:n :}
+   f fu T-LABEL rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? TTRUE
+   CAP-ERR erru kind kindu CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE
+   CAP-ERR erru s\" \"reason\":\"name longer than 255 bytes\"" CONTAINS? TTRUE ;
+
+\ A family, variant or field name is at most 255 bytes in every declaration
+\ front end. The SUMTYPE tail and the STRUCTURE field are review 389's 1100-byte
+\ fixtures; a 255-byte tail is still declared.
+: TEST-DECLARED-NAME-CAP ( -- )
+   0 LONG-U !
+   s" SUMTYPE " $61 1100 s"  1 VARIANT value a ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s" capn-sum-tail.f" s\" \"decl\":\"sumtype\""
+   s\" \"token\":\"aaaaaaaaaaaaaaaa" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s\" SUMTYPE capn-sv 0\nVARIANT " $76 256 s\"  ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s" capn-sum-variant.f" s\" \"decl\":\"sumtype\""
+   s\" \"token\":\"vvvvvvvvvvvvvvvv" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" PRODUCT capn-pr 0 FIELD " $66 256 s"  n ;PRODUCT" CAPN-DECL+
+   s" capn-product-field.f" s\" \"decl\":\"product\""
+   s\" \"token\":\"ffffffffffffffff" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" STRUCTURE " $73 256 s"  0 FIELD x n ;STRUCTURE" CAPN-DECL+
+   s" capn-struct-tail.f" s\" \"decl\":\"structure\""
+   s\" \"token\":\"ssssssssssssssss" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s\" require lib/c2-memory.f\npackage CAPN-FLD\npublic\nSTRUCTURE capn-rec 0 DERIVE init FIELD "
+   $65 1100 s\"  n FIELD right n ;STRUCTURE\n;package" CAPN-DECL+
+   s" capn-struct-field.f" s\" \"decl\":\"structure\""
+   s\" \"token\":\"eeeeeeeeeeeeeeee" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" ENUM " $6d 256 s"  0 VARIANT red ;VARIANT ;ENUM" CAPN-DECL+
+   s" capn-enum-tail.f" s\" \"decl\":\"enum\""
+   s\" \"token\":\"mmmmmmmmmmmmmmmm" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" ENUM capn-col 0 VARIANT " $76 256 s"  ;VARIANT ;ENUM" CAPN-DECL+
+   s" capn-enum-variant.f" s\" \"decl\":\"enum\""
+   s\" \"token\":\"vvvvvvvvvvvvvvvv" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" ENUM capn-tone " $74 256 s"  ;ENUM" CAPN-DECL+
+   s" capn-enum-compact.f" s\" \"decl\":\"enum\""
+   s\" \"token\":\"tttttttttttttttt" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" ENUM capn-shape 0 VARIANT dot FIELD " $64 256 s"  n ;VARIANT ;ENUM" CAPN-DECL+
+   s" capn-enum-field.f" s\" \"decl\":\"enum\""
+   s\" \"token\":\"dddddddddddddddd" CAPN-DECL-REFUSED
+   0 LONG-U !
+   s" SUMTYPE " $62 255 s\"  0 VARIANT capn-one ;VARIANT ;SUMTYPE\n" CAPN-DECL+
+   s" SUMTYPE " $63 256 s"  0 VARIANT capn-two ;VARIANT ;SUMTYPE" CAPN-DECL+
+   s" capn-sum-edge.f" CAPN-RUN {: outu:n erru:n rc:n :}
+   s" capn-sum-edge.f" T-LABEL rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"family\":\"ccc" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"family\":\"bbb" CONTAINS? TFALSE ;
+
+\ A package name is at most 255 bytes: `package` and `using` refuse a longer
+\ one, a statement throw at the name, as `package` does review 389's 1100-byte
+\ tf3.f and a name longer than any the engine defines (CK-NAME-MAX), which
+\ ended the process as no name at all. The 255-byte package on the lines before
+\ it is opened and closed.
+: CAPN-PKG+ ( n n -- )
+   {: c:n count:n :}
+   s" package " LONG-PUT
+   c count CAPN-REP
+   s\" \n;package\n" LONG-PUT ;
+
+: CAPN-PKG-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n at:ptr atu:n :}
+   f fu CAPN-RUN {: outu:n erru:n rc:n :}
+   f fu T-LABEL rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"throw_code\":7154" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+: TEST-PACKAGE-NAME-CAP ( -- )
+   0 LONG-U !
+   s" package " $61 1100 s\" \nNEWTYPE tt 0\n;package\n" CAPN-DECL+
+   s" capn-pkg.f" s\" capn-pkg.f\",\"line\":1,\"column\":9," CAPN-PKG-REFUSED
+   0 LONG-U !
+   $61 8001 CAPN-PKG+
+   s" capn-pkg-long.f" s\" capn-pkg-long.f\",\"line\":1,\"column\":9," CAPN-PKG-REFUSED
+   0 LONG-U !
+   $50 255 CAPN-PKG+
+   $51 256 CAPN-PKG+
+   s" capn-pkg-edge.f" s\" capn-pkg-edge.f\",\"line\":3,\"column\":9," CAPN-PKG-REFUSED
+   0 LONG-U !
+   s" using " $55 256 s\" \n;using\n" CAPN-DECL+
+   s" capn-using.f" s\" capn-using.f\",\"line\":1,\"column\":7," CAPN-PKG-REFUSED
+   0 LONG-U !
+   s" using " $55 8001 s\" \n;using\n" CAPN-DECL+
+   s" capn-using-long.f" s\" capn-using-long.f\",\"line\":1,\"column\":7," CAPN-PKG-REFUSED ;
+
+\ A qualifier longer than any package name names no package, so the type it
+\ qualifies is unknown.
+: TEST-QUALIFIER-CAP ( -- )
+   0 LONG-U !
+   s" : CKT-QL ( " $71 300 s\" :tail -- ) drop ;\n" CAPN-DECL+
+   s" capn-qual.f" CAPN-RUN {: outu:n erru:n rc:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" capn-qual.f\",\"line\":1,\"column\":12," CONTAINS? TTRUE ;
+
+\ `: name 1 1 ... ;`, count literals, on a line of its own.
+: CAPN-ONES+ ( ptr u8 n n -- )
+   {: a:ptr u:n count:n :}
+   s" : " LONG-PUT
+   a u LONG-PUT
+   count 0 ?do s"  1" LONG-PUT loop
+   s\"  ;\n" LONG-PUT ;
+
+\ CKT-EA leaves 2048 cells and CKT-EB 4096, the deepest effect recorded.
+: CAPN-ROWS+ ( -- )
+   s" CKT-EA" 2048 CAPN-ONES+
+   s\" : CKT-EB CKT-EA CKT-EA ;\n" LONG-PUT ;
+
+\ Fixture f's definition is uncheckable: the packet names the word and the
+\ depth against the ceiling, at the definition's last token.
+: CAPN-DEEP-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n w:ptr wu:n why:ptr whyu:n at:ptr atu:n :}
+   f fu CAPN-RUN {: outu:n erru:n rc:n :}
+   f fu T-LABEL rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
+   CAP-ERR erru w wu CONTAINS? TTRUE
+   CAP-ERR erru why whyu CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+\ A recorded effect is at most 4096 levels deep: a row's entries, and below
+\ an entry the levels its type nests. A definition leaving 4096 cells is
+\ recorded and a caller instantiates it, while one leaving 4097, or returning a
+\ quotation that leaves 8192, is uncheckable. Review 389's bigb5.f left 10000;
+\ a record of 8191 was taken and then faulted the data stack of every checked
+\ caller. The quotation's refusal renders the top 64 cells of its row:
+\ rendering the whole row faulted the data stack (exit 102).
+: TEST-EFFECT-DEPTH-CAP ( -- )
+   0 LONG-U !
+   CAPN-ROWS+
+   s\" : CKT-EE CKT-EB ;\n: CKT-EC CKT-EB 1 ;\n" LONG-PUT
+   s" capn-row.f" s\" \"word\":\"ckt-ec\""
+   s\" \"reason\":\"effect too deep to record (depth 4097, at most 4096)\""
+   s\" capn-row.f\",\"line\":4,\"column\":17," CAPN-DEEP-REFUSED
+   0 LONG-U !
+   CAPN-ROWS+
+   s\" : CKT-EQ [: CKT-EB CKT-EB ;] ;\n" LONG-PUT
+   s" capn-quot.f" s\" \"word\":\"ckt-eq\""
+   s\" \"reason\":\"effect too deep to record (depth 8194, at most 4096)\""
+   s\" capn-quot.f\",\"line\":3,\"column\":27," CAPN-DEEP-REFUSED ;
+
+\ `: name ( n ... n -- )`, count cells in.
+: CAPN-WIDE+ ( ptr u8 n n -- )
+   {: a:ptr u:n count:n :}
+   s" : " LONG-PUT  a u LONG-PUT  s"  (" LONG-PUT
+   count 0 ?do s"  n" LONG-PUT loop
+   s"  -- )" LONG-PUT ;
+
+\ CKT-W254 drops 254 cells, and CKT-W255 and its caller CKT-WE take 255, the
+\ widest input row recorded.
+: CAPN-WIDTHS+ ( -- )
+   s" CKT-W254" 254 CAPN-WIDE+
+   127 0 ?do s"  2drop" LONG-PUT loop
+   s\"  ;\n" LONG-PUT
+   s" CKT-W255" 255 CAPN-WIDE+  s\"  drop CKT-W254 ;\n" LONG-PUT
+   s" CKT-WE" 255 CAPN-WIDE+  s\"  CKT-W255 ;\n" LONG-PUT ;
+
+: CAPN-W256$ ( -- ptr u8 n )
+   s\" \"reason\":\"input row too wide to record (256 cells, at most 255)\"" ;
+
+\ CKT-WR names CKT-SEVEN, which only the run defines: it cannot be deferred,
+\ so it is uncheckable by its width, at that token, and CKT-SEVEN is no
+\ undefined word.
+: CAPN-UNDEFERRED ( -- )
+   s" capn-width-defer.f" CAPN-RUN {: outu:n erru:n rc:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"verdict\":\"uncheckable\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"ckt-wr\"" CONTAINS? TTRUE
+   CAP-ERR erru CAPN-W256$ CONTAINS? TTRUE
+   CAP-ERR erru s\" capn-width-defer.f\",\"line\":6,\"column\":529," CONTAINS? TTRUE
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
+
+\ Under --all-errors CKT-WJ is refused for leaving its 256 inputs, and the
+\ check goes on past it to certify CKT-WK.
+: CAPN-WIDE-REJECTED ( -- )
+   s" capn-width-reject.f" REQ$ LONG-BUF LONG-U @ WRITE-ALL
+   s" capn-width-reject.f" REQ-PLAIN-RUN {: outu:n erru:n rc:n :}
+   rc 70 T=
+   CAP-ERR erru s\" \"word\":\"ckt-wj\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"ckt-wk\"" CONTAINS? TFALSE ;
+
+\ A recorded input row is at most 255 cells: the minimum a call must provide,
+\ in eight bits of the record. A definition taking more, inferred or declared,
+\ returning or not, is uncheckable by that width, and so is a RECURSE in a body
+\ declared that wide. A body the run would judge cannot be deferred, since
+\ deferring records the declaration. A body refused for its own reason keeps
+\ it, and under --all-errors keeps no record. Each ended the process with die
+\ 76.
+: TEST-INPUT-WIDTH-CAP ( -- )
+   0 LONG-U !
+   CAPN-WIDTHS+
+   s\" : CKT-W508 CKT-W254 CKT-W254 ;\n" LONG-PUT
+   s" capn-width.f" s\" \"word\":\"ckt-w508\""
+   s\" \"reason\":\"input row too wide to record (508 cells, at most 255)\""
+   s\" capn-width.f\",\"line\":4,\"column\":21," CAPN-DEEP-REFUSED
+   0 LONG-U !
+   CAPN-WIDTHS+
+   s" CKT-WD" 256 CAPN-WIDE+  s\"  2drop CKT-W254 ;\n" LONG-PUT
+   s" capn-width-decl.f" s\" \"word\":\"ckt-wd\"" CAPN-W256$
+   s\" capn-width-decl.f\",\"line\":4,\"column\":535," CAPN-DEEP-REFUSED
+   0 LONG-U !
+   s\" : CKT-BOOM ( -- ) s\" boom\" 1 die ;\n" LONG-PUT
+   s" CKT-WN" 256 CAPN-WIDE+  s\"  CKT-BOOM ;\n" LONG-PUT
+   s" capn-width-dead.f" s\" \"word\":\"ckt-wn\"" CAPN-W256$
+   s\" capn-width-dead.f\",\"line\":2,\"column\":529," CAPN-DEEP-REFUSED
+   0 LONG-U !
+   \ No declaration too deep to record reaches a RECURSE: each level costs at
+   \ least a two-byte token and a definition's text holds 8000 bytes, so 4097
+   \ outputs are refused at the text and 3985, the most that fit, certify.
+   s" CKT-WQ" 256 CAPN-WIDE+  s\"  RECURSE ;\n" LONG-PUT
+   s" capn-width-recurse.f" s\" \"word\":\"ckt-wq\"" CAPN-W256$
+   s\" capn-width-recurse.f\",\"line\":1,\"column\":529," CAPN-DEEP-REFUSED
+   0 LONG-U !
+   s\" : CKT-MAKE ( -- ) s\" : CKT-SEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ;\nCKT-MAKE\n"
+   LONG-PUT
+   CAPN-WIDTHS+
+   s" CKT-WR" 256 CAPN-WIDE+  s\"  CKT-SEVEN drop 2drop CKT-W254 ;\n" LONG-PUT
+   CAPN-UNDEFERRED
+   0 LONG-U !
+   s" CKT-WJ" 256 CAPN-WIDE+  s\"  ;\n: CKT-WK ( -- n ) 1 ;\n" LONG-PUT
+   CAPN-WIDE-REJECTED ;
+
 \ A top-level loader inside a package, or under a file-level `using`, runs its
 \ file in that scope: the file defines into the package and sees the package's
 \ words and the used publics, and the rest of the source sees the file's words.
@@ -5285,6 +5565,11 @@ variable LC-CANON-U
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
    s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN
    s" check/capacity-throw" [: TEST-CAPACITY-THROW ;] CASE-RUN
+   s" check/declared-name-cap" [: TEST-DECLARED-NAME-CAP ;] CASE-RUN
+   s" check/package-name-cap" [: TEST-PACKAGE-NAME-CAP ;] CASE-RUN
+   s" check/qualifier-cap" [: TEST-QUALIFIER-CAP ;] CASE-RUN
+   s" check/effect-depth-cap" [: TEST-EFFECT-DEPTH-CAP ;] CASE-RUN
+   s" check/input-width-cap" [: TEST-INPUT-WIDTH-CAP ;] CASE-RUN
    s" check/storage-type" [: TEST-STORAGE-TYPE ;] CASE-RUN
    s" check/storage-name" [: TEST-STORAGE-NAME ;] CASE-RUN
    s" check/storage-defer" [: TEST-STORAGE-DEFER ;] CASE-RUN

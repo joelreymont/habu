@@ -294,8 +294,10 @@ variable LBL-U
    s" RECORD-IT" 70 S\" checker: bad or duplicate value-record type\n" DIES
    s" TRUNCATE-RAW-IT" 76 S\" checker: missing signature truncation mark\n" DIES
    s" TRUNCATE-IT" 83 S\" seal: cannot truncate sealed checker signatures\n" DIES
-   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES
-   s" USING-IT" 76 S\" checker: using name too long\n" DIES
+   s" PACKAGE-IT" 76 S\" checker: package name too long\n" DIES-NO-SPAN
+   CEIL 1 + s" ceiling+1" s" PACKAGE-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES-NO-SPAN
+   CEIL 1 + s" ceiling+1" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 67 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES

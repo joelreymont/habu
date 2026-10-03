@@ -988,6 +988,42 @@ by name with the count it saw and the ceiling, and none truncates.
   (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
   records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.
   Factor the inner loops into their own words.
+- **A family, variant or field name: `TF-NAME-MAX`, 255 bytes**
+  (`src/core/type-family.f`), the longest package name, so every constructor
+  and member spelling derived from it fits. `SUMTYPE`, `PRODUCT`, `NEWTYPE`,
+  `STRUCTURE` and `ENUM` refuse a longer one with `E-TDECL-CAP` (7118):
+  `tools/check.f` reports `E-BAD-DECLARATION` with the name as its token and
+  the reason `name longer than 255 bytes`, rc 70; `--load` prints `habu: bad
+  <kind> declaration '<family>': name longer than 255 bytes at '<name>'` and
+  exits 67. Shorten the name.
+- **A package name: `CHECKER-PACKAGE-CAP` less one, 255 bytes**
+  (`src/core/checker.f`). `package`, and `using` of a namespace a qualified
+  definition made, throw `E-PACKAGE-NAME-CAP` (7154) out of the statement for a
+  longer one: `tools/check.f` reports `E-STATEMENT-THROW` with that throw code
+  at the name, rc 70; `--load` exits 67 with `hb: uncaught throw code 7154`. A
+  type qualified by a longer name names no package, `E-UNKNOWN-SIGNATURE-TYPE`.
+  Shorten the name.
+- **A definition's effect: `EFFECT-DEPTH-MAX`, 4096 levels deep**
+  (`src/core/checker.f`): a row of 4096 cells, where a cell's type adds the
+  levels it nests, so a returned quotation's row counts from the cell that
+  holds it. Recording an effect and instantiating it for a caller recurse once
+  a level, and half the walk's depth budget and of the 8192-cell data stack is
+  left for what the stacks already hold. Past it the definition is
+  uncheckable: `E-UNCHECKABLE` with the reason `effect too deep to record
+  (depth <depth>, at most 4096)`, rc 70 from `tools/check.f` and from `--load`,
+  which adds `hook: non-certified definition: <name>`. Keep bulk values in a
+  buffer, not on the stack.
+- **A definition's input row: `EFFECT-MIN-IN-MAX`, 255 cells**
+  (`src/core/checker.f`), the most a call must provide that a published
+  word's record holds, in eight bits. Declared or inferred, a wider input row
+  makes the definition uncheckable: `E-UNCHECKABLE` with the reason `input row
+  too wide to record (<cells> cells, at most 255)`, rc 70 from `tools/check.f`
+  and from `--load`. A `RECURSE` in a body declared that wide is refused for
+  the same reason, and `tools/check.f` refuses rather than defers a body
+  calling a word only the run defines. Nothing is recorded for it, so callers
+  find no effect; under `--all-errors` a refused definition with such a
+  declaration keeps no record of it either. Pass bulk values in a buffer, not
+  on the stack.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is
   per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and the

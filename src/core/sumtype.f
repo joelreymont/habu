@@ -52,7 +52,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
-7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
+7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP (item 13 C2), or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 
 private
@@ -228,8 +228,11 @@ variable TDECL-NI
       TDECL-NI @ 1 + TDECL-NI !
    REPEAT RES-FALSE ;
 
+\ A family, variant or field name longer than TF-NAME-MAX has no room in the
+\ spellings derived from it (type-family.f TF-CTOR-BUF).
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing name" E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$ E-TDECL-CAP TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" name must be a lowercase family tail" E-TFAM-CASE TDECL-THROW
    THEN
@@ -893,6 +896,7 @@ private
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
+   u TF-NAME-MAX > IF a u TF-NAME-LONG$ E-TDECL-CAP TDECL-THROW THEN
    a u DELIM? IF a u s" bad field name" E-TDECL-SYNTAX TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW

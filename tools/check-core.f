@@ -1256,9 +1256,20 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ state (RBF.PKGMODE/PKGU). Boundary: the name is the token parse-name takes
 \ after `package`, and CHK-DEFINER? refuses a missing one, while
 \ native-loader misuse (nesting, public outside a package, ':' in a name)
-\ stays fail-closed through preverify and the child run.
+\ stays fail-closed through preverify and the child run. A package the checker
+\ refuses to open, such as a name longer than its 255-byte package row, gives
+\ the scan no scope to register into, so the scan of the file stops there: the
+\ preverify meets the same statement, stops at it too and reports the throw
+\ where it stands (E-STATEMENT-THROW).
+variable CHK-PKG-NAME-I
+
+: CHK-PKG-OPEN ( -- )
+   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-PACKAGE ;
+
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
-   k 1+ LINT-LEX:TOKEN CHECKER-PACKAGE
+   k 1+ CHK-PKG-NAME-I !
+   [: CHK-PKG-OPEN ;] catch {: rc:n :}
+   rc 0 <> IF LINT-LEX:COUNT EXIT THEN
    k 2 + ;
 
 : CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled

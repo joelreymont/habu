@@ -352,7 +352,12 @@ variable HRC  variable HRI  variable HRF  variable HRS
 \ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
 \ combinator call sites (dip, keep) are checked against them. Only a genuine '?'
 \ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
+\ A quotation's row renders its top RBUF-CAP values, as REND-COLLECT keeps a
+\ top-level row's: the renderer recurses once per value of a row, so a
+\ quotation leaving 10000 cells faulted the data stack (exit 102) and one
+\ leaving 8000 filled RSBUF.
 6 constant QDEPTH-MAX                        \ quotation nesting render budget
+64 constant RBUF-CAP                         \ row render budget (values), top-level or nested
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 create RBIND QDEPTH-MAX cells allot
 
@@ -366,8 +371,9 @@ create RBIND QDEPTH-MAX cells allot
    REPEAT drop 0 ;
 
 \ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
-\ bottom-to-top (space-separated); mode=0 renders a type. RECURSE re-enters with
-\ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
+\ bottom-to-top (space-separated) from its mode-th value down to its RBUF-CAP-th;
+\ mode=0 renders a type. RECURSE re-enters with the mode, so nested quots reuse
+\ it at depth d+1 up to QDEPTH-MAX.
 : QREND ( n n n -- ) {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF                 \ ( node )
@@ -375,15 +381,21 @@ create RBIND QDEPTH-MAX cells allot
             dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
                swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
                HRS @ IF MK-STALE THEN              \ ( rest logical )
-               swap dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+               swap dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
+                  d mode 1 + RECURSE 32 EMIT1
+               ELSE drop THEN
                d 0 RECURSE
             ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
                drop
-               dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+               dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
+                  d mode 1 + RECURSE 32 EMIT1
+               ELSE drop THEN
                P>TYPE d 0 RECURSE
             THEN
          ELSE
-            dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+            dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
+               d mode 1 + RECURSE 32 EMIT1
+            ELSE drop THEN
             P>TYPE d 0 RECURSE
          THEN
       ELSE drop THEN
@@ -461,7 +473,6 @@ create RBIND QDEPTH-MAX cells allot
    endcase ;
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
-64 constant RBUF-CAP                             \ diagnostic-row render budget (values)
 create RBUF RBUF-CAP cells allot   variable RBN
 variable RSHOW-DST
 
@@ -608,6 +619,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
       MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
+      MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
+      MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -646,6 +659,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-EXTENT of s" fix_host_extent" endof
       MD-RIGID-GEN    of s" fix_stale_generation" endof
       MD-RIGID-XDOM   of s" fix_rigid_domain" endof
+      MD-EFFECT-DEPTH of s" rewrite_uncheckable" endof
+      MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -685,6 +700,8 @@ variable MDV-I   variable MDV-F
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
+      MD-EFFECT-DEPTH of s" Leave fewer cells: keep bulk values in a buffer, not on the stack." endof
+      MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -727,6 +744,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
+      MD-EFFECT-DEPTH of s" effect too deep to record" endof
+      MD-INPUT-WIDTH  of s" input row too wide to record" endof
       s" bad match: rejected" rot
    endcase ;
 
@@ -748,11 +767,26 @@ variable MDV-I   variable MDV-F
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
-\ The underflow shortfall, latched with the reason. Digits and spaces only, so
-\ the one word serves the prose line and the inside of the JSON reason string.
+\ The counts a reason latches with it: the underflow's shortfall, and the depth
+\ of an effect too deep to record or the width of an input row too wide to
+\ record against its ceiling. Digits, letters and spaces only, so the one word
+\ serves the prose line and the inside of the JSON reason string.
 : MDIAG-UF-COUNTS ( -- )
    s"  (needs " DTXT  MDIAG-NEED @ JNUM
    s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
+
+: MDIAG-DEPTH-COUNTS ( -- )
+   s"  (depth " DTXT  MDIAG-DEPTH @ JNUM
+   s" , at most " DTXT  EFFECT-DEPTH-MAX JNUM  s" )" DTXT ;
+
+: MDIAG-WIDTH-COUNTS ( -- )
+   s"  (" DTXT  MDIAG-WIDTH @ JNUM
+   s"  cells, at most " DTXT  EFFECT-MIN-IN-MAX JNUM  s" )" DTXT ;
+
+: MDIAG-COUNTS ( -- )
+   MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
+   MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH-COUNTS EXIT THEN
+   MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH-COUNTS THEN ;
 
 : IMM-CODE$ ( -- ptr u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
@@ -995,7 +1029,7 @@ variable JPOS  variable JLINE  variable JCOL
    MDIAG @ 0 <> IF
      s"  " DTXT  MDIAG-REASON$ DTXT
      MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
-     MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS THEN
+     MDIAG-COUNTS
    THEN
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
@@ -1060,11 +1094,9 @@ variable JPOS  variable JLINE  variable JCOL
    DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    MDIAG @ 0 <> IF
      s" reason" JKEY
-     \ The shortfall belongs IN the reason, so the underflow builds its own
-     \ string from the reason and its counts.
-     MDIAG @ MD-UNDERFLOW = IF
-       JOPEN  MDIAG-REASON$ DTXT  MDIAG-UF-COUNTS  JCLOSE
-     ELSE MDIAG-REASON$ JSTR THEN
+     \ A reason's counts belong IN it, so the string is the reason's text
+     \ and then its counts.
+     JOPEN  MDIAG-REASON$ DTXT  MDIAG-COUNTS  JCLOSE
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN

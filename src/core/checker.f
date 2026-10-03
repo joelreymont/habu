@@ -2289,8 +2289,10 @@ defer FO-INPUT-XT ( n -- bool )
 
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
-\ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
-\ real walk never nears TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
+\ bindings acyclic) whose type nesting is small — hundreds at most. A walk that
+\ recurses along a stack row (E-COPY*) descends one level per entry as well,
+\ and a recorded effect is at most EFFECT-DEPTH-MAX levels deep, so a real walk
+\ stays below TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
 \ descends without bound; the guard trips far below the native stack limit and
 \ dies with a named diagnostic instead of overflowing the stack (SIGSEGV). A
 \ call-count budget cannot help: the native stack blows at ~80k frames, so the
@@ -2298,6 +2300,18 @@ defer FO-INPUT-XT ( n -- bool )
 \ each RECURSE (charge on descent, release when the child returns — exit-safe
 \ however the child returns); each public wrapper resets depth before descending.
 $2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native stack limit
+
+\ THE DEEPEST EFFECT A DEFINITION RECORDS: 4096 levels as TERM-DEPTH counts
+\ them, a row of 4096 plain entries. Recording an effect (E-COPY*) and
+\ instantiating it for a caller (E-INST-FROM) recurse once per level, on the
+\ walk's depth budget and on the 8192-cell data and return stacks
+\ (src/habu/stack-abi.f), and E-INST-FROM holds a data cell for each entry it
+\ is down a row. A definition whose effect is deeper is uncheckable, by name
+\ (CHECK-DEPTH-FITS), and half of each bound is left for what the stacks
+\ already hold: a definition leaving 10000 cells died here, and one leaving
+\ 8191 was recorded and then faulted the data stack of every checked caller
+\ (exit 102).
+TWALK-MAX-DEPTH 2 / constant EFFECT-DEPTH-MAX
 variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D ! ;
 : TWALK-DEEPER ( -- )
@@ -3592,6 +3606,8 @@ variable LTC-P
 35 constant MD-C2-COPY       \ a C2 exclusive value was copied by a transport
 36 constant MD-C2-DROP       \ a C2 exclusive value was discarded by a transport
 37 constant MD-C2-ESCAPE     \ a C2 owner or loan survived its scope boundary
+38 constant MD-EFFECT-DEPTH  \ an effect deeper than EFFECT-DEPTH-MAX levels (CHECK-DEPTH-FITS)
+39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -3599,6 +3615,8 @@ variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check
 variable MDIAG-VCNT   \ nonexhaustive: variant count
 variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
+variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
+variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
 
 : MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
    MDIAG @ 0 <> IF EXIT THEN
@@ -4983,6 +5001,7 @@ variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in b
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
+variable UNFIT                \ the effect a record would hold is too deep or too wide (ROWS-FIT?)
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
@@ -7946,6 +7965,47 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
    E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
+\ TERM-DEPTH ( n -- n ) : how many levels deep E-COPY* goes in term t, the
+\ count EFFECT-DEPTH-MAX bounds. It goes down a level into an entry's type and
+\ the rest of its row, a quotation's rows, a pointer's target, a binder's parts
+\ and a family's arguments, so a row of k plain entries is k levels deep and a
+\ quotation's row starts below the entry holding it. A row is a loop here and
+\ only nesting recurses. Past EFFECT-DEPTH-MAX the walk goes no further down, so
+\ it recurses at most that deep, but a row it entered is counted to its end.
+variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
+
+: TERM-DEPTH* ( n n -- )
+   {: t:n lvl:n :}
+   lvl TD-MAX @ max TD-MAX !
+   t 0=  lvl EFFECT-DEPTH-MAX >  or IF EXIT THEN
+   t E-RES {: x:n :}
+   x TAG S-PUSH = IF
+      lvl x                             \ ( level row ): each entry a level below the last
+      BEGIN dup TAG S-PUSH = WHILE
+         swap 1 + swap
+         2dup P>TYPE swap RECURSE
+         P>REST R-RES
+      REPEAT 2drop EXIT
+   THEN
+   lvl 1 + {: in:n :}
+   x TAG T-QUOT = IF
+      x Q>DIN in RECURSE  x Q>DOUT in RECURSE
+      x Q>RIN in RECURSE  x Q>ROUT in RECURSE  EXIT
+   THEN
+   x TAG T-PTR = IF x PTR>INNER in RECURSE EXIT THEN
+   x TAG T-FORALL = IF
+      x F>BODY in RECURSE  x F>PARENT in RECURSE  x F>SECOND in RECURSE  EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE  \ data-stack index (RECURSE-safe)
+         x over PARAM>ARG in RECURSE
+         1 +
+      REPEAT drop
+   THEN ;
+
+: TERM-DEPTH ( n -- n )
+   0 TD-MAX !  0 TERM-DEPTH*  TD-MAX @ ;
+
 \ --- immutable effect content interning ---------------------------------------
 \ Entries identify content, never bindings. Both hash and equality read all
 \ eight cells, including variable counts and external minimum. The index is
@@ -8388,8 +8448,13 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    UEND @ rec E-OFF - CELL / rec ER.NEXT !
    UTERM! ;
 
+\ THE WIDEST INPUT ROW AN EFFECT RECORDS: 255 cells, the minimum a call must
+\ provide, which the publish tail keeps in the eight bits of DNAME-MIN-IN (RECMI
+\ below). A definition taking more is uncheckable, by name (CHECK-DEPTH-FITS).
+255 constant EFFECT-MIN-IN-MAX
+
 : EFFECT-MIN-IN ( n -- n )
-   ROW-CELLS dup 255 > if s" checker: min-in exceeds record field" 76 die then ;
+   ROW-CELLS dup EFFECT-MIN-IN-MAX > if s" checker: min-in exceeds record field" 76 die then ;
 
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    din EFFECT-MIN-IN {: minin:n :}
@@ -10321,6 +10386,18 @@ variable DFER-END
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
+\ A package name has a row of CHECKER-PACKAGE-CAP bytes here and in every
+\ `using` slot, so it is at most 255 bytes. Source that names a longer one —
+\ `package`, or `using` of the namespace a qualified definition made — is
+\ refused by name: E-PACKAGE-NAME-CAP, a throw out of its statement, which
+\ tools/check.f reports at the name. A length that describes no memory is a
+\ caller's fault and stays the dies below.
+7154 constant E-PACKAGE-NAME-CAP
+
+: CHECKER-PACKAGE-LONG? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u BYTE-SPAN? u CHECKER-PACKAGE-CAP >= and ;
+
 \ A package name is a name (CK-NAME-SPAN?) that fits the mirror's row: one of
 \ -1 bytes used to copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -10405,9 +10482,8 @@ public
 ;package
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
-      s" checker: using name too long" 76 die
-   THEN
+   a u CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
+   a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
    a u d CHECKER-USE:NAME! ;
@@ -10658,6 +10734,7 @@ CTOR-PROT-DEFAULTS
    a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
+   2dup CHECKER-PACKAGE-LONG? IF E-PACKAGE-NAME-CAP throw THEN
    2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
    CK-USE-DEPTH CHECKER-PACKAGE-USE-N !
    CHECKER-PACKAGE-COPY
@@ -15703,12 +15780,28 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    SGSEEN? 0= IF RES-FALSE EXIT THEN
    RECEFF-ON? ;
 
+\ Whether an effect with these rows fits a record: at most EFFECT-DEPTH-MAX
+\ levels deep and EFFECT-MIN-IN-MAX cells in. One that does not sets UNFIT and
+\ keeps the count its refusal names, the depth first.
+: ROWS-FIT? ( n n n n -- bool ) {: in:n out:n rin:n rout:n :}
+   in TERM-DEPTH  out TERM-DEPTH max  rin TERM-DEPTH max  rout TERM-DEPTH max {: d:n :}
+   d EFFECT-DEPTH-MAX > IF d MDIAG-DEPTH !  -1 UNFIT !  RES-FALSE EXIT THEN
+   in ROW-CELLS {: w:n :}
+   w EFFECT-MIN-IN-MAX > IF w MDIAG-WIDTH !  -1 UNFIT !  RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ The reason an unfit effect is refused with.
+: UNFIT-WHY ( -- n )
+   MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
+
 \ SIG-EFF-CACHE! ( -- ) : cache the parsed declared sig as an arena effect record
 \ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
-\ The record carries sym 0 so signature lookup never sees it.
+\ The record carries sym 0 so signature lookup never sees it. The declared rows
+\ are measured here, before the body binds their tails: a sig too deep or too
+\ wide to record has no cache, and its definition is unfit (CHECK-DEPTH-FITS).
 : SIG-EFF-CACHE!
    SGBAD @ IF EXIT THEN
-   SGIN @ EFFECT-MIN-IN drop
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? 0= IF EXIT THEN
    UEND @ RECEFF-UEND !
    CHECKER-REC-SYM @ RECEFF-SYM !
    0 CHECKER-REC-SYM !
@@ -15735,10 +15828,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
 
+\ A RECURSE instantiates the cached declared effect. With none it is
+\ uncheckable, and when the declaration is too big to record that is the reason.
 : CF-RECURSE
    -1 WRAPBENT !
-   RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
-   ELSE -1 UNCK ! THEN ;
+   RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF EXIT THEN
+   UNFIT @ IF UNFIT-WHY MDIAG! THEN
+   -1 UNCK ! ;
 
 \ M5b uniform-branch acceptance. `if` normally consumes a plain `bool`. A GPU
 \ predicate that is provably identical across every lane of the block is a
@@ -19135,6 +19231,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 ZSHAPE !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
+   0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
@@ -19300,6 +19397,28 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
+
+\ A definition whose effect cannot be recorded is uncheckable (ROWS-FIT?): one
+\ deeper than EFFECT-DEPTH-MAX levels, with the depth of its deepest row, or
+\ one taking more than EFFECT-MIN-IN-MAX cells, with its input row's width.
+\ Every record of a checked declaration holds the declared rows, which
+\ SIG-EFF-CACHE! measured; an inferred effect is measured here. Asked before
+\ the verdict, and UNFIT keeps every record step from it. A refused or
+\ uncheckable definition keeps its own reason. A deferred one cannot be
+\ deferred, since deferring records its declaration: it is uncheckable for
+\ this reason instead, and the token the run would define is no undefined word.
+: CHECK-DEPTH-FITS ( -- )
+   SGBAD @ 0 <> IF EXIT THEN
+   CHECK-SIG? 0= IF
+      OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
+      BROW @ DCUR @ RBROW @ RCUR @ ROWS-FIT? IF EXIT THEN
+   THEN
+   UNFIT @ 0= IF EXIT THEN
+   UNSEEN @ 0 <> IF
+      0 UNSEEN !  0 UNDEFERR !  UNFIT-WHY MDIAG !  -1 UNCK !  EXIT
+   THEN
+   OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
+   UNFIT-WHY MDIAG!  -1 UNCK ! ;
 
 \ Verdict 2 defers the body to the run: it names a word only a rendering
 \ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
@@ -19578,6 +19697,7 @@ variable CTOR-PEND-I
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
    CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
+   CHECK-DEPTH-FITS                                   \ an effect too deep to record is uncheckable
    CHECK-VERDICT                                      \ malformed/unsafe/non-parametric rejects
    dup DVERD !
    CK-AOT-LATCH-RETRY                                 \ is a seeded signature still to come?
@@ -19629,12 +19749,12 @@ variable CTOR-PEND-I
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
+      CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF       \ retain analysis facts without
          NMA @ NMU @ CHECK-REC-ADMIT
          NMA @ NMU @ 0 NORET-ADD                       \ no control claims from a failed body
          SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
          RECOVERY-RECORD
-      THEN                                              \ unless the sig itself was bad
+      THEN                                              \ unless the sig is bad or too big to record
    THEN ;
 
 \ ---------------------------------------------------------------------------

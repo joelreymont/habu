@@ -1371,6 +1371,20 @@ public
 
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
 
+\ THE LONGEST FAMILY, VARIANT OR FIELD NAME: 255 bytes, the longest package name
+\ (src/core/checker.f CHECKER-PACKAGE-CAP), so every spelling derived from these
+\ names fits TF-CTOR-BUF. The longest is an escaped package and tail joined by
+\ '-', at most 2*255 + 1 + 2*255 = 1021 bytes; a private member spelling is at
+\ most 255 + 1 + 255 + 12, the segment list 1 + 255. The declaration front ends
+\ (sumtype.f, structure-decl.f, enum-decl.f) refuse a longer name with
+\ E-TDECL-CAP and TF-NAME-LONG$'s reason, so the dies in TF-CTOR-C,,
+\ TF-CTOR-SEG-C, and TFAM-INIT-MEMBER$ guard only that arithmetic.
+CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
+
+\ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
+\ number formatter loads before this file, and the refusal carries the name.
+: TF-NAME-LONG$ ( -- ptr u8 n ) s" name longer than 255 bytes" ;
+
 private
 
 : TF-CTOR-C, ( n -- )            \ append one byte to the derived-name buffer
@@ -4921,7 +4935,8 @@ variable TFQ-COLON
    u TFQ-U ! ;
 
 \ TFQ-SPLIT? ( ptr u8 n -- bool ) : one non-edge ':' splits qualifier/tail
-\ (engine FIND parity); edge or repeated colons never split (and never resolve).
+\ (engine FIND parity); edge or repeated colons never split (and never resolve),
+\ and neither does a qualifier longer than TFQ-BUF, which no package name is.
 : TFQ-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    -1 TFQ-COLON !
    0 TF-I !
@@ -4935,6 +4950,7 @@ variable TFQ-COLON
    TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
    TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
    TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
+   TFQ-COLON @ TFQ-CAP > IF RES-FALSE EXIT THEN      \ names no package
    a TFQ-COLON @ TFQ-FOLD-COPY
    a TFQ-COLON @ + 1 + TFQ-TA !
    u TFQ-COLON @ - 1 - TFQ-TU !
