@@ -38,9 +38,8 @@ publishes no effect for (the checker publishes `CHECK-QUIET-CANDIDATE!` and
 The generated engine maps `IBUFSZ + SRCN` bytes: `IBUFSZ` for the cold prefix
 and argv or stdin input, plus exactly the bytes baked into the image. The stage2
 reader grows its buffer with `stage2-src`, so the source the recovery chain bakes
-is bounded only by the image's code window; the maker reader refuses source at
-`SOURCE-ARENA-CAP` (4 MiB). Baked source cannot consume the read allowance;
-`SOURCE-ARENA-LEN` in `src/habu/habu2.f` and its seed mirror in
+is bounded only by the image's code window. Baked source cannot consume the read
+allowance; `SOURCE-ARENA-LEN` in `src/habu/habu2.f` and its seed mirror in
 `bootstrap/cg/forth.fs` govern the mapping and baked copy. Reader overflow exits
 74 with `hb: source prefix buffer full`.
 What is still narrower on the recovery lineage than on a `tools/native-build.f`

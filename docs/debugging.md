@@ -455,8 +455,8 @@ embedded CodeDirectory when signature behavior is involved.
 
 ## Source arenas
 
-The engine input arena holds boot input and baked source. The stage2 and maker
-readers each hold one source stream. `SOURCE-ARENA-CAP` is the read allowance:
+The engine input arena holds boot input and baked source. The stage2 reader
+holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
 
 - `IBUFSZ` equals `SOURCE-ARENA-CAP`: the cold source prefix and later program
   input share it. The argv files include generated path rows and separators;
@@ -478,15 +478,11 @@ readers each hold one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`. A
   candidate-backed regression reads a source one byte past `SOURCE-ARENA-CAP`
   whole.
-- `MK-SOURCE-CAP` is the dictionary allocation used by `src/habu/maker.f` to
-  read the generated AOT/REPL maker source. It is not the stage2 mapping. Its
-  candidate-backed reader regression proves cap-minus-one succeeds and exact-cap
-  exits 74 with `maker: source exceeds buffer`.
 
 `SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
-recovery carry matching owner tokens; the maker reader aliases that owner. The
-assembler image window budgets one baked source stream; the generated engine
-maps the actual baked size separately from its `IBUFSZ` read allowance.
+recovery carry matching owner tokens. The assembler image window budgets one
+baked source stream; the generated engine maps the actual baked size separately
+from its `IBUFSZ` read allowance.
 
 The three ceilings a PROGRAM reaches — one definition's captured body text
 (`BODYBUF-CAP`, rc 71), one REPL line (`LLINE-MAX`, refused at the prompt) and

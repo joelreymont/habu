@@ -668,36 +668,6 @@ variable BAD-N
    S\" stage2: empty source\n" EXPECT-74
    BF-TMP-RESET ;
 
-: MAKER-SOURCE ( -- ptr u8 n )
-   s" hb-maker-src" BF-A$ ;
-
-: MAKER-DRIVER$ ( -- ptr u8 n )
-   s" bft-maker-driver.f" ;
-
-: MAKER-DRIVER ( -- ptr u8 n )
-   MAKER-DRIVER$ BF-A$ ;
-
-: WRITE-MAKER-DRIVER ( -- )
-   MAKER-DRIVER$ {: out:ptr outu:n :}
-   out outu DRIVER-BASE
-   out outu s" src/habu/maker.f" s" : MK-RUN" BF-APPEND-SOURCE-BEFORE
-   out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE
-   out outu S\" s\" MK-READ-SRC\" s\" --\" TRUST" BF-APPEND-LINE
-   out outu s" : BFT-MK-READ-EXIT ( -- ) MK-READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
-   out outu s" BFT-MK-READ-EXIT" BF-APPEND-LINE ;
-
-: MAKER ( -- )
-   BFT-ROOT BF-TMP!
-   SRC-ALLOC
-   WRITE-MAKER-DRIVER
-   MAKER-SOURCE SOURCE-ARENA-CAP 1 - WRITE-SPACES
-   MAKER-DRIVER RUN-BUILD
-   EXPECT-OK
-   MAKER-SOURCE SRC-BUF 1 APPEND-FILE
-   MAKER-DRIVER RUN-BUILD
-   S\" maker: source exceeds buffer\n" EXPECT-74
-   BF-TMP-RESET ;
-
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
    BF-TMP$ BFT-ROOT T$=
@@ -907,7 +877,6 @@ public
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
    s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source size" [: STAGE2 ;] BFT-STEP
-   s" maker source cap" [: MAKER ;] BFT-STEP
    s" source buffer growth releases" [: BFT-SOURCE-GROWTH-RELEASES ;] BFT-STEP
    s" build-fixpoint-test: ok" BFT-FINISH ;
 
