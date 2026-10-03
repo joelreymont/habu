@@ -554,10 +554,12 @@ public
    rc REPORTED-THROW? 0= and ;
 
 \ True for the code the pre-verifier stops with at a string or a
-\ primitive-axiom row the file never closes, a defect the lexer reads too.
+\ primitive-axiom row the file never closes, and discovery at a string or a
+\ locals group, a defect the lexer reads too but for the group.
 : LEX-STOP? ( n -- bool ) {: rc:n :}
    rc VERIFY:E-UNTERMINATED-STRING =
-   rc VERIFY:E-MALFORMED-REGISTRY-ROW = or ;
+   rc VERIFY:E-MALFORMED-REGISTRY-ROW = or
+   rc E-DISC-UNTERM = or ;
 
 private
 

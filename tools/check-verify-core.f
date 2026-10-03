@@ -163,7 +163,7 @@ variable CHK-EXPAND-TOP
    rc E-DISC-DYNAMIC = if s" discovery rejected: dynamic (non-literal) loader path" exit then
    rc E-DISC-OPENER = if s" discovery rejected: unsupported string opener before a loader word" exit then
    rc E-DISC-RETIRE = if s" discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" exit then
-   rc E-DISC-UNTERM = if s" discovery rejected: unterminated string" exit then
+   rc E-DISC-UNTERM = if s" discovery rejected: unterminated string or locals group" exit then
    s" discovery rejected: capacity exceeded" ;
 
 : CHK-DISCOVER-ACT ( -- )
@@ -272,8 +272,9 @@ variable VFY-STOP-AT                    \ the byte of the token it read last,
 variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
 variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
 TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
-variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT
+variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT,
 variable VFY-STOP-U
+TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
 
 
 : VFY-CHILD$ ( -- ptr u8 n )
@@ -296,6 +297,7 @@ variable VFY-STOP-U
    0 VFY-LOG-U !
    VFY-NONE VFY-ANSWER !
    0 VFY-STOP-RC !
+   false VFY-STOP-DISC !
    false VFY-PREPASS ! ;
 
 
@@ -332,6 +334,16 @@ variable VFY-STOP-U
    s" : " VFY-LOG+
    rc CHK-E-NOINPUT = if s" no such source" VFY-LOG-LN exit then
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
+
+
+\ Discovery that ended the walk at a string or a locals group a file never
+\ closes stops the verification at its opener, in the file CHK-DISC-ID names.
+: VFY-DISC-STOP ( n -- ) {: rc:n :}
+   rc E-DISC-UNTERM <> if exit then
+   rc VFY-STOP-RC !
+   DISCOVER:OPENER-AT VFY-STOP-AT !
+   CHK-DISC-ID @ CHK-BYTES-ID @ = VFY-STOP-SUBJ !
+   true VFY-STOP-DISC ! ;
 
 
 : VFY-ARGV ( -- )
@@ -492,8 +504,9 @@ public
    0 VFY-LOG VFY-LOG-U @ ;
 
 \ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
-\ ends the verification refuses it, and VERIFY-STOP and the words after it say
-\ with what and where. An empty PATH is E-FS-PATH; a closure over CHK-DEP-MAX
+\ ends the verification refuses it, as does a string or a locals group a file
+\ of the closure never closes, and VERIFY-STOP and the words after it say with
+\ what and where. An empty PATH is E-FS-PATH; a closure over CHK-DEP-MAX
 \ files, an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn
 \ throws as well.
 \ More child output than the capture holds, 4 MiB of stdout or 256 KiB of
@@ -505,7 +518,7 @@ public
    path pathu VFY-PATH!
    VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
    src srcu VFY-CLOSURE {: rc:n :}
-   rc 0<> if rc VFY-CLOSURE-LOG CHECK-VERDICT:refused exit then
+   rc 0<> if rc VFY-CLOSURE-LOG rc VFY-DISC-STOP CHECK-VERDICT:refused exit then
    deadline VFY-DEADLINE !
    VFY-RUN VFY-VERDICT ;
 
@@ -531,14 +544,15 @@ public
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 
-\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with, 0
-\ when none did.
+\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with,
+\ E-DISC-UNTERM for discovery's stop at a string or group, 0 when none did.
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
 
-\ Where it stopped: the byte where the token the verifier read last starts,
-\ whether that is in the bytes it was given, and the file it is in, PATH's
-\ canonical spelling or the LABEL for those bytes.
+\ Where it stopped: the byte where the token it stopped at starts, the one the
+\ verifier read last or the opener of the statement it was in, whether that is
+\ in the bytes it was given, and the file it is in, PATH's canonical spelling or
+\ the LABEL for those bytes.
 : VERIFY-STOP-AT ( -- n )
    VFY-STOP-AT @ ;
 
@@ -552,6 +566,7 @@ public
    VFY-STOP-SUBJ @ ;
 
 : VERIFY-STOPPED$ ( -- ptr u8 n )
+   VFY-STOP-DISC @ if CHK-DISC-ID @ CHK-DEP$ exit then
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 ;using

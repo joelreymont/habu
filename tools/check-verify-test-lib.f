@@ -18,8 +18,11 @@
 \   an engine-provided path is verified because of its bytes              engine-provided
 \   the verifier's own source is verified in the image that holds it      held
 \   a child that ends without a result reads as a verdict                 no-result, deadline
-\   a child that dies drops the packets it made before, a dependency's
-\   or the subject's                                                      died-after-packet
+\   a child that dies drops the packets it made before                    no-result
+\   a statement the source leaves open is no refusal, or is not placed
+\   at its opener in its file                                             open-stop
+\   a stop drops the packets made before it, or names another file than
+\   the one it is in, a dependency's or the subject's                     stop-after-packet
 \   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
@@ -207,7 +210,7 @@ variable CLI-OUT-U
 : BAD-DEP$SRC ( -- ptr u8 n )
    s\" : CVT-EIGHT ( -- n ) 8 ;\n: CVT-BROKEN ( -- n n ) 8 ;\n" ;
 
-\ A refused definition, then one left open, where the verifier dies.
+\ A refused definition, then one left open, where the verifier stops.
 : OPEN-DEP$SRC ( -- ptr u8 n )
    s\" : CVT-BAD-DEP ( -- n n ) 8 ;\n: CVT-OPEN-DEP ( -- n ) 1\n" ;
 
@@ -267,6 +270,10 @@ variable CLI-OUT-U
       s" : CVT-B" GEN+ i GEN-N+ s\"  ( -- n n ) 8 ;\n" GEN+
    loop
    0 GEN GEN-U @ ;
+
+\ A refused definition, then a `generates:` row with no definer name.
+: BARE-GENERATES$SRC ( -- ptr u8 n )
+   s\" : CVT-BAD-GEN ( -- n n ) 8 ;\ngenerates:\n" ;
 
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
@@ -380,13 +387,36 @@ variable CLI-OUT-U
    3 s" held: the verifier's own source" EXPECT-KIND ;
 
 
-\ An open definition makes the verifier die: no result line, its exit and its words.
-: NO-RESULT ( -- )
+\ Where the second line of the given text starts.
+: LINE-TWO ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ 10 <> else false then while 1+ repeat 1+ ;
+
+
+\ An open definition stops the verifier at its opener (7155, a code private to
+\ src/habu/verify-source.f): a refusal with no packet that says where.
+: OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
+   v 1 s" open-stop: refused" EXPECT-KIND
+   s" open-stop: the code" T-LABEL CHECK:VERIFY-STOP 7155 T=
+   s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
+   s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
+   s" open-stop: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+
+
+\ The verifier dies after it refused a definition: no result line, its exit and
+\ its words, and the packet it made first is kept. The input is the
+\ pre-verifier's generates: reader die (src/habu/verify-source.f
+\ RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it into a refusal and
+\ re-points this case.
+: NO-RESULT ( -- )
+   BARE-GENERATES$SRC s" bare-generates.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
    s" no-result: the child's exit" T-LABEL v STATUS 74 T=
    s" no-result: the child's words" T-LABEL
-   CHECK:VERIFY-LOG$ s" unterminated definition" CONTAINS? TTRUE ;
+   CHECK:VERIFY-LOG$ s" missing generates: definer name" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-gen" PACKET {: p:n :}
+   s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
 : DEADLINE ( -- )
@@ -395,19 +425,28 @@ variable CLI-OUT-U
    s" deadline: timed out" T-LABEL v STATUS -2 T= ;
 
 
-\ The verifier dies at an open definition after it refused one: the packet it
-\ made first is kept, a dependency's and then the subject's.
-: DIED-AFTER-PACKET ( -- )
+\ The verifier stops at an open definition after it refused one: the packet it
+\ made first is kept, and the stop is at the opener in the file it is in, a
+\ dependency's and then the subject's.
+: STOP-AFTER-PACKET ( -- )
    s\" require open-dep.f\n: CVT-OPEN-USE ( -- n ) 1 ;\n" s" open-use.f" GUARD-MS CHECK-AS {: v :}
-   v 4 s" died-after-packet: incomplete" EXPECT-KIND
-   s" died-after-packet: the verifier's exit" T-LABEL v STATUS 74 T=
+   v 1 s" stop-after-packet: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:n :}
-   s" died-after-packet: the dependency's packet" T-LABEL
+   s" stop-after-packet: the dependency's packet" T-LABEL
    p s" file" STRING$ s" open-dep.f" AT$ T$=
-   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" s" open-own.f" GUARD-MS CHECK-AS {: w :}
-   w 4 s" died-after-packet: the subject's, incomplete" EXPECT-KIND
+   s" stop-after-packet: in the dependency" T-LABEL
+   CHECK:VERIFY-STOP-SUBJECT? TFALSE
+   CHECK:VERIFY-STOPPED$ s" open-dep.f" AT$ T$=
+   s" stop-after-packet: at its opener" T-LABEL
+   CHECK:VERIFY-STOP-AT OPEN-DEP$SRC LINE-TWO T=
+   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" {: own:ptr ownu:n :}
+   own ownu s" open-own.f" GUARD-MS CHECK-AS {: w :}
+   w 1 s" stop-after-packet: the subject's, refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:n :}
-   s" died-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$= ;
+   s" stop-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$=
+   s" stop-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" stop-after-packet: at the subject's opener" T-LABEL
+   CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
 
 
 : MISSING-DEPENDENCY ( -- )
@@ -715,9 +754,10 @@ public
    s" failing-dependency" [: FAILING-DEPENDENCY ;] RUN-CASE
    s" engine-provided" [: ENGINE-PROVIDED ;] RUN-CASE
    s" held" [: HELD ;] RUN-CASE
+   s" open-stop" [: OPEN-STOP ;] RUN-CASE
    s" no-result" [: NO-RESULT ;] RUN-CASE
    s" deadline" [: DEADLINE ;] RUN-CASE
-   s" died-after-packet" [: DIED-AFTER-PACKET ;] RUN-CASE
+   s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
    s" truncated" [: TRUNCATED ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE

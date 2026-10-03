@@ -1069,15 +1069,7 @@ variable LONG-J
    SB$ ;
 
 : DIE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : CKT-BYE ( -- ) s" SB-APPEND
-   $22 SB-APPEND-C
-   s"  bye" SB-APPEND
-   $22 SB-APPEND-C
-   s"  5 die ;" SB-APPEND
-   $0a SB-APPEND-C
-   s" CKT-BYE" SB-APPEND
-   SB$ ;
+   s\" : CKT-BYE ( -- ) s\q bye\q 5 die ;\nCKT-BYE" ;
 
 : UNTERM-SDQ$ ( -- ptr u8 n )
    SB-RESET
@@ -2331,13 +2323,10 @@ variable SIZED-U
    OUT-OVER$ SCRATCH-FILE-RUN SIZED$ EXPECT-RUN-OVER
    ERR-OVER$ SCRATCH-STDIN-RUN s" <stdin>" EXPECT-RUN-OVER ;
 
-\ verify-source ends the process with `die` on an unterminated signature.
-: DIE-SIGNATURE$ ( -- ptr u8 n )
-   s" : CKT-OPEN-SIG ( n -- n" ;
-
+\ A source that dies when it runs ends the check with its exit code.
 : TEST-DIE-SCRATCH ( -- )
-   DIE-SIGNATURE$ SCRATCH-STDIN-RUN {: outu:n erru:n rc:n :}
-   rc 0 T<>
+   DIE$ SCRATCH-STDIN-RUN {: outu:n erru:n rc:n :}
+   rc 5 T=
    SCRATCH-EMPTY ;
 
 \ ---- the report carries whatever the source makes it carry -------------------
@@ -4331,7 +4320,10 @@ variable REQ-U
    s\" \"file\":\"<stdin>\",\"line\":2,\"column\":3," LEXD-REFUSED
    s\" \\ lead\n  PPRIM:\n" s" E-MALFORMED-REGISTRY-ROW"
    s" :2:3: primitive-axiom row opened at 'PPRIM:' does not close"
-   s\" \"file\":\"<stdin>\",\"line\":2,\"column\":3," LEXD-REFUSED ;
+   s\" \"file\":\"<stdin>\",\"line\":2,\"column\":3," LEXD-REFUSED
+   s" PRIM: CKR char" s" E-MALFORMED-REGISTRY-ROW"
+   s" :1:1: primitive-axiom row opened at 'PRIM:' does not close"
+   s\" \"file\":\"<stdin>\",\"line\":1,\"column\":1," LEXD-REFUSED ;
 
 \ Standard input skips source discovery, so a file it requires is first read
 \ by the pre-verifier, and what that file leaves open stops the check there.
@@ -4426,6 +4418,8 @@ variable REQ-U
    s" E-MISSING-NAME" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
    s\" \\ lead\n  PRIM:\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
    s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
+   s" PRIM: CKR char" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
+   s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-new.f" s\" \",\"line\":1,\"column\":1," VO-LOCATED
    s" ckt-vo-dep.f" s\" \\ lead\n  package\n" NEST-FILE
    s" ckt-vo.f" s" ckt-vo-dep.f" NEST-SRC$ NEST-FILE
    s" ckt-vo.f" REQ$ VO-FILE-RUN
@@ -4434,6 +4428,220 @@ variable REQ-U
    s" ckt-vo.f" s" ckt-vo-row.f" NEST-SRC$ NEST-FILE
    s" ckt-vo.f" REQ$ VO-FILE-RUN
    s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-row.f" s\" \",\"line\":1,\"column\":1," VO-LOCATED ;
+
+\ A statement the source ends inside, or one that lacks a part it must have,
+\ stops the check at its opener: a definition, its signature or a locals group
+\ never closed (7155), a definer's signature missing or never closed (7157), a
+\ TRUST with no name and signature strings before it (7158), a declaration
+\ never ended (TYPE-DECL:E-TDECL-SYNTAX, 7107). A table of the pre-verifier's
+\ that is full (7194) stops it at the token it read last. Each is reported
+\ where it stands, by the record of a statement that throws: first in prose,
+\ alone under --all-errors, in JSON and under --verify-only, for standard
+\ input, a file and a file standard input requires. The nominal pass refuses
+\ an unended ENUM, STRUCTURE, PRODUCT or VALUE-RECORD in the subject itself,
+\ so those reach the pre-verifier from a file the subject requires.
+TYPED-VARIABLE SS-TXT-A ptr u8                \ the statement, a source's second line
+variable SS-TXT-U
+variable SS-CODE                              \ the code it stops with
+variable SS-LINE                              \ where
+variable SS-COL
+TYPED-VARIABLE SS-TOK-A ptr u8                \ and the token there
+variable SS-TOK-U
+
+: SS-STOP! ( ptr u8 n n n n ptr u8 n -- )
+   {: txt:ptr txtu:n code:n line:n col:n tok:ptr toku:n :}
+   txt SS-TXT-A !  txtu SS-TXT-U !
+   code SS-CODE !  line SS-LINE !  col SS-COL !
+   tok SS-TOK-A !  toku SS-TOK-U ! ;
+
+: SS-TOK$ ( -- ptr u8 n )
+   SS-TOK-A @ SS-TOK-U @ ;
+
+\ The source, built again for each run, since the check uses the builder too.
+: SS-SRC$ ( -- ptr u8 n )
+   s" \ lead" SS-TXT-A @ SS-TXT-U @ NONAME-SRC$ ;
+
+: SS-FILE$ ( -- ptr u8 n )
+   s" ckt-ss.f" ;
+
+: SS-AT$ ( -- ptr u8 n )
+   s" /ckt-ss.f" ;
+
+\ The prose record starts the report and names the place in the file whose
+\ name ends with the given text, the code and the token there.
+: SS-PROSE ( n ptr u8 n -- )
+   {: erru:n f:ptr fu:n :}
+   CAP-ERR erru s" E-STATEMENT-THROW " STARTS-WITH? TTRUE
+   SB-RESET f fu SB-APPEND
+   $3a SB-APPEND-C SS-LINE @ FMT:SB-U $3a SB-APPEND-C SS-COL @ FMT:SB-U
+   s" : throw " SB-APPEND SS-CODE @ FMT:SB-INT
+   s"  at '" SB-APPEND SS-TOK$ SB-APPEND 39 SB-APPEND-C
+   CAP-ERR erru SB$ CONTAINS? TTRUE ;
+
+: SS-JSON ( n ptr u8 n -- )
+   {: erru:n f:ptr fu:n :}
+   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   SB-RESET s\" \"token\":\"" SB-APPEND SS-TOK$ SB-APPEND s\" \",\"file\":\"" SB-APPEND
+   CAP-ERR erru SB$ CONTAINS? TTRUE
+   SB-RESET f fu SB-APPEND s\" \",\"line\":" SB-APPEND SS-LINE @ FMT:SB-U
+   s\" ,\"column\":" SB-APPEND SS-COL @ FMT:SB-U $2c SB-APPEND-C
+   CAP-ERR erru SB$ CONTAINS? TTRUE
+   SB-RESET s\" \"throw_code\":" SB-APPEND SS-CODE @ FMT:SB-INT $2c SB-APPEND-C
+   CAP-ERR erru SB$ CONTAINS? TTRUE ;
+
+: SS-PROSE-RUN ( n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n f:ptr fu:n :}
+   rc 70 T=
+   outu 0 T=
+   erru f fu SS-PROSE ;
+
+: SS-STDIN-JSON ( -- )
+   SS-SRC$ DIRECT-JSON-STDIN REFUSED-LINE STDIN-LABEL$ SS-JSON ;
+
+: SS-STDIN ( -- )
+   SS-SRC$ DIRECT-STDIN STDIN-LABEL$ SS-PROSE-RUN
+   SS-SRC$ DIRECT-ALL-STDIN REFUSED-LINE STDIN-LABEL$ SS-PROSE
+   SS-STDIN-JSON ;
+
+: SS-FILE ( -- )
+   SS-FILE$ SS-SRC$ NEST-FILE
+   SS-FILE$ REQ$ PATH-RUN SS-AT$ SS-PROSE-RUN ;
+
+: SS-NESTED ( -- )
+   SS-FILE$ SS-SRC$ NEST-FILE
+   SS-FILE$ NEST-SRC$ DIRECT-STDIN SS-AT$ SS-PROSE-RUN
+   SS-FILE$ NEST-SRC$ DIRECT-ALL-STDIN REFUSED-LINE SS-AT$ SS-PROSE
+   SS-FILE$ NEST-SRC$ DIRECT-JSON-STDIN REFUSED-LINE SS-AT$ SS-JSON ;
+
+\ --verify-only writes the record on standard error and its prose on standard
+\ output.
+: SS-VERIFIED ( n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n f:ptr fu:n :}
+   rc 70 T=
+   CAP-ERR erru 10 COUNT-CHAR 1 T=
+   erru f fu SS-JSON ;
+
+: SS-VERIFY ( -- )
+   SS-FILE$ SS-SRC$ NEST-FILE
+   SS-FILE$ REQ$ VO-FILE-RUN SS-AT$ SS-VERIFIED ;
+
+: SS-EVERY ( -- )
+   SS-STDIN SS-FILE SS-NESTED SS-VERIFY ;
+
+\ The line and the column of the given byte of BIG.
+: BIG-PLACE ( n -- n n )
+   {: at:n :}
+   1 1 at 0 ?do
+      BIG i + c@ $0a = if drop 1+ 1 else 1+ then
+   loop ;
+
+\ BIG stops with the given code at the token that starts at the given byte.
+: BIG-STOP! ( n n -- )
+   {: code:n at:n :}
+   at begin dup BIG-U @ < if BIG over + c@ 32 > else false then while 1+ repeat
+   {: end:n :}
+   BIG 0 code at BIG-PLACE BIG at + end at - SS-STOP! ;
+
+: BIG-N ( n -- )
+   SB-RESET FMT:SB-U SB$ BIG-APP ;
+
+: SS-BIG-JSON ( -- )
+   BIG BIG-U @ DIRECT-JSON-STDIN REFUSED-LINE STDIN-LABEL$ SS-JSON ;
+
+\ A DEFTYPE name longer than the pre-verifier folds.
+: CAP-NAME ( -- )
+   0 BIG-U !
+   s" require lib/type/deftype.f" BIG-APP $0a BIG-C,
+   s" DEFTYPE " BIG-APP
+   BIG-U @ {: at:n :}
+   65 0 ?do $4e BIG-C, loop $0a BIG-C,
+   7194 at BIG-STOP! ;
+
+\ A clause signature longer than the definer table holds: a slot holds the
+\ longest effect a `generates:` row states (verify-source.f DEFINER-SIG-SLOT).
+: CAP-CLAUSE ( -- )
+   0 BIG-U !
+   s" : CKO ( n -- ) create , does> (" BIG-APP
+   GENR-SIG-CAP 0 ?do 32 BIG-C, loop
+   s" -- n ) @ " BIG-APP
+   BIG-U @ {: at:n :}
+   s" ;" BIG-APP $0a BIG-C,
+   7194 at BIG-STOP! ;
+
+\ One does> definer more than the table holds.
+: CAP-DEFINERS ( -- )
+   0 BIG-U !
+   129 1 ?do
+      s" : CKD" BIG-APP i BIG-N
+      s"  ( n -- ) create , does> ( -- n ) @ ;" BIG-APP $0a BIG-C,
+   loop
+   s" : CKD129 ( n -- ) create , does> ( -- n ) @ " BIG-APP
+   BIG-U @ {: at:n :}
+   s" ;" BIG-APP $0a BIG-C,
+   7194 at BIG-STOP! ;
+
+\ One load more than the pre-verifier holds while an open package keeps the
+\ loads its definitions make waiting.
+: CAP-LOADS ( -- )
+   0 BIG-U !
+   s" package CKP" BIG-APP $0a BIG-C,
+   17 1 ?do
+      s" : CKL" BIG-APP i BIG-N
+      s\"  ( -- ) s\" ckt-x.f\" required ;" BIG-APP $0a BIG-C,
+   loop
+   s\" : CKL17 ( -- ) s\" ckt-x.f\" " BIG-APP
+   BIG-U @ {: at:n :}
+   s" required ;" BIG-APP $0a BIG-C,
+   s" ;package" BIG-APP $0a BIG-C,
+   7194 at BIG-STOP! ;
+
+: TEST-STATEMENT-STOP-LOCATED ( -- )
+   s" : CKD ( -- n ) 1" 7155 2 3 s" :" SS-STOP! SS-EVERY
+   s" defer CKF" 7157 2 3 s" defer" SS-STOP! SS-EVERY
+   s" TRUST" 7158 2 3 s" TRUST" SS-STOP! SS-EVERY
+   s" BEGIN-STRUCTURE CKB 8 +FIELD CKB-X" 7107 2 3 s" BEGIN-STRUCTURE" SS-STOP! SS-EVERY
+   s" : CKG ( n -- n" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   s" : CKL ( n -- n ) {: a" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   s" : CKO ( n -- ) create , does> ( -- n ) @" 7155 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   s" TRUSTED: CKT ( -- ) 1 drop" 7155 2 3 s" TRUSTED:" SS-STOP! SS-STDIN-JSON
+   s" defer CKF foo" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
+   s" defer CKF ( n -- n" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
+   s" : CKO ( n -- ) create , does> @ ;" 7157 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   s\" s\" CKX\" TRUST" 7158 2 11 s" TRUST" SS-STOP! SS-STDIN-JSON
+   s" ENUM ckcolor red" 7107 2 3 s" ENUM" SS-STOP! SS-NESTED SS-VERIFY
+   s" STRUCTURE ckpoint 0 FIELD x n" 7107 2 3 s" STRUCTURE" SS-STOP! SS-NESTED SS-VERIFY
+   s" PRODUCT ckpair 0 FIELD x n" 7107 2 3 s" PRODUCT" SS-STOP! SS-NESTED SS-VERIFY
+   s" VALUE-RECORD ckvr x n" 7107 2 3 s" VALUE-RECORD" SS-STOP! SS-NESTED SS-VERIFY
+   CAP-NAME SS-BIG-JSON
+   CAP-CLAUSE SS-BIG-JSON
+   CAP-DEFINERS SS-BIG-JSON
+   CAP-LOADS SS-BIG-JSON ;
+
+\ Discovery walks every file of a closure before the check, and a string or a
+\ locals group a file never closes ends the walk at its opener. A string is
+\ reported there by the lexer's record, and a group, which the lexer does not
+\ read, by the statement-throw record of discovery's code: under --verify-only
+\ for a file, for standard input under --stdin-path and for a file the subject
+\ requires, and in every mode of a file check.
+: TEST-DISCOVERY-LOCATED ( -- )
+   s" ckt-vod.f" s\" : CKS ( -- ) s\" abc ;" NEST-FILE
+   s" ckt-vod.f" REQ$ VO-FILE-RUN
+   s" E-UNTERMINATED-STRING" s" ckt-vod.f" s\" \",\"line\":1,\"column\":14," VO-LOCATED
+   s\" : CKS ( -- ) s\" abc ;" s" ckt-vod-new.f" REQ$ VO-STDIN-RUN
+   s" E-UNTERMINATED-STRING" s" ckt-vod-new.f" s\" \",\"line\":1,\"column\":14," VO-LOCATED
+   s" ckt-vod-dep.f" s\" : CKS ( -- ) s\" abc ;" NEST-FILE
+   s" ckt-vod.f" s" ckt-vod-dep.f" NEST-SRC$ NEST-FILE
+   s" ckt-vod.f" REQ$ VO-FILE-RUN
+   s" E-UNTERMINATED-STRING" s" ckt-vod-dep.f" s\" \",\"line\":1,\"column\":14," VO-LOCATED
+   s" : CKL ( n -- n ) {: a" E-DISC-UNTERM 2 20 s" {:" SS-STOP!
+   SS-FILE$ SS-SRC$ NEST-FILE
+   SS-FILE$ REQ$ PATH-RUN REFUSED-LINE SS-AT$ SS-PROSE
+   SS-FILE$ ST-JSON-RUN REFUSED-LINE SS-AT$ SS-JSON
+   SS-FILE$ ALL-PROSE-RUN REFUSED-LINE SS-AT$ SS-PROSE
+   SS-FILE$ REQ-PLAIN-RUN REFUSED-LINE SS-AT$ SS-JSON
+   SS-VERIFY
+   s\" \\ lead\n  : CKL ( n -- n ) {: a\n" s" ckt-vod-new.f" REQ$ VO-STDIN-RUN
+   s" /ckt-vod-new.f" SS-VERIFIED ;
 
 \ The run refuses what the checker leaves to it: a `using` of a package nothing
 \ defines dies in the engine, which names the file and line it is reading. The
@@ -6096,6 +6304,8 @@ variable LC-CANON-U
    s" check/lexer-defect-located" [: TEST-LEX-LOCATED ;] CASE-RUN
    s" check/nested-stop-located" [: TEST-NESTED-LOCATED ;] CASE-RUN
    s" check/verify-only-located" [: TEST-VERIFY-LOCATED ;] CASE-RUN
+   s" check/statement-stop-located" [: TEST-STATEMENT-STOP-LOCATED ;] CASE-RUN
+   s" check/discovery-stop-located" [: TEST-DISCOVERY-LOCATED ;] CASE-RUN
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
    s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN

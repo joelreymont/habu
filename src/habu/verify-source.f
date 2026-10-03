@@ -23,6 +23,16 @@ public
 
 private
 
+\ A statement the source ends inside, or one that lacks a part it must have,
+\ stops the scan with one of these at its opener (STATEMENT-STOP), and a table
+\ of this scan's that is full stops it at the token read last. tools/check.f
+\ reports each by the record of a statement that throws.
+7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
+7157 constant E-VS-MISSING-SIGNATURE       \ a definer's, absent or unclosed
+7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
+7194 constant E-VS-CAPACITY                \ a table of this scan is full
+TYPE-DECL:E-TDECL-SYNTAX constant E-VS-DECL-SYNTAX \ a declaration never ends
+
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 variable SCAN-I
@@ -128,6 +138,13 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
       SCAN-C+ drop
    repeat
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
+
+\ The scan stops at the statement it is in, at its opener: the top-level token
+\ it read last.
+: STATEMENT-STOP ( n -- )
+   {: code:n :}
+   TOP-CUR-A @ SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
+   code throw ;
 
 : SC-LEAD? ( n -- bool )
    dup $73 = over $53 = or over $63 = or swap $43 = or ;
@@ -295,23 +312,25 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 
 \ The signature ahead of the scan, read as the engine reads a definition head's
 \ (checker.f CHECKER-SIG-SPAN): from its `(` through its `)`, and whether one
-\ opens there. The scan passes it.
-: SCAN-SIG ( -- ptr u8 n bool )
+\ opens there. The scan passes it. One that never closes stops the statement
+\ with the given code.
+: SCAN-SIG ( n -- ptr u8 n bool )
+   {: unclosed:n :}
    SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
    {: at:ptr left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
    open left = IF at 0 0 0= 0= EXIT THEN
-   close 0= IF s" verify-source: unterminated signature" 74 die THEN
+   close 0= IF unclosed STATEMENT-STOP THEN
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
 : MAYBE-SIGNATURE ( -- )
-   SCAN-SIG IF BODY-APPEND ELSE 2drop THEN ;
+   E-VS-UNTERMINATED-DEFINITION SCAN-SIG IF BODY-APPEND ELSE 2drop THEN ;
 
 \ The effect inside the parentheses.
 : REQUIRE-SIGNATURE ( -- ptr u8 n )
-   SCAN-SIG 0= IF s" verify-source: missing signature" 74 die THEN
+   E-VS-MISSING-SIGNATURE SCAN-SIG 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
    {: sig:ptr sigu:n :}
    sig 1 +  sigu 2 - ;
 
@@ -425,7 +444,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
 
 : PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
-   PEND-N @ PEND-MAX >= IF s" verify-source: too many loaders in definitions" 74 die THEN
+   PEND-N @ PEND-MAX >= IF E-VS-CAPACITY throw THEN
    a PEND-N @ PEND-A !  u PEND-N @ PEND-U !  inc PEND-N @ PEND-INC !
    PEND-N @ 1 + PEND-N ! ;
 
@@ -547,8 +566,9 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
 \ only stops recording. A dropped name spelled as a parsing keyword or string
 \ opener and then used still hides the `;`: with nothing after it to close the
-\ scan the pre-pass dies rc 74 with no location, else the merged body registers
-\ and the checker names the local; the loader refuses that body at the name.
+\ scan the scan stops at the string or the definition the source ends inside,
+\ else the merged body registers and the checker names the local; the loader
+\ refuses that body at the name.
 : LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
    LOCAL-N @ LOC-RECS >= IF EXIT THEN
    0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
@@ -600,7 +620,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    0 0= 0= ;
 
 : GROUP-NEXT ( -- ptr u8 n )
-   NEXT-RAW dup 0= IF s" verify-source: unterminated locals group" 74 die THEN ;
+   NEXT-RAW dup 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN ;
 
 : APPEND-GROUP ( -- )
    BEGIN GROUP-NEXT 2dup BODY-APPEND GROUP-TOKEN UNTIL ;
@@ -793,7 +813,7 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 
 : DEFINER-APPEND ( n -- n )                   \ a new row for sym
    {: sym:n :}
-   VERIFY-DEFINER-N @ DEFINER-CAP >= IF s" verify-source: too many does> definers" 74 die THEN
+   VERIFY-DEFINER-N @ DEFINER-CAP >= IF E-VS-CAPACITY throw THEN
    VERIFY-DEFINER-N @
    {: row:n :}
    sym row DEFINER-SYM !
@@ -809,7 +829,7 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 \ time does: a replacement clause replaces the old created-word effect.
 : DEFINER-ADD ( ptr u8 n n -- ) {: sig:ptr sigu:n sym:n :}
    sym 0= IF EXIT THEN                        \ never recorded: nothing to hang it on
-   sigu DEFINER-SIG-SLOT > IF s" verify-source: does> signature too long" 74 die THEN
+   sigu DEFINER-SIG-SLOT > IF E-VS-CAPACITY throw THEN
    sym DEFINER-ROW
    {: row:n :}
    sigu row DEFINER-LEN !
@@ -933,7 +953,7 @@ variable WRAP-SIG-U
    LOCALS-RESET
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
+      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
          0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
@@ -980,11 +1000,6 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
    DTC-BUILD-OUT
    CAST-TRUST ;
 
-: TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   NAME-TOKEN
-   dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
-   sig sigu DECL-SIGNATURE ;
-
 \ ---- a definition of a name the scope already holds ---------------------------
 \ The checker's own guard (src/core/checker.f CHECKER-CERT-DUP?) refuses a colon
 \ definition, a cast, a typed storage definition and a re-export whose name its
@@ -1011,8 +1026,8 @@ variable DUPLICATE-U
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
-\ RAW-TRUST-NEXT: like TRUST-NEXT, but registers the created word's effect with
-\ TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
+\ RAW-TRUST-NEXT: registers the given effect for the word the next token names,
+\ with TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
 \ Used for the raw storage definers create/variable/constant/PTR-VARIABLE and
 \ PERSISTED-PTR-VARIABLE so a
 \ fetch from their raw cell yields a RAW value that cannot launder into a nominal
@@ -1064,7 +1079,7 @@ variable DUPLICATE-U
    LOCALS-RESET
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
+      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
          REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
@@ -1139,7 +1154,7 @@ variable NOM-TAIL-U
 \ MANGLE ( ptr u8 n -- ptr u8 n ) folds the UPPER-CASE surface name to the
 \ lowercase family tail, matching deftype.f's ASCII-LOWER fold.
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u NOM-TAIL-CAP > IF s" verify-source: nominal name too long" 74 die THEN
+   u NOM-TAIL-CAP > IF E-VS-CAPACITY throw THEN
    0 NOM-TAIL-U !
    0 BEGIN dup u < WHILE
       dup a + c@ FOLD-C  NOM-TAIL-BUF NOM-TAIL-U @ + c!
@@ -1234,7 +1249,7 @@ variable NOM-TAIL-U
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF s" verify-source: missing ;ENUM" 74 die THEN
+      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup ENUM-END? IF
          BODY-APPEND
          name nameu BODY$ ENUM-DECL:ED-REPLAY
@@ -1261,7 +1276,7 @@ variable NOM-TAIL-U
    BODY-RESET
    BEGIN
       DECL-TOKEN
-      dup 0= IF s" verify-source: missing ;STRUCTURE" 74 die THEN
+      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup STRUCTURE-DECL-END? IF
          BODY-APPEND
          name nameu BODY$ STRUCTURE-DECL:SD-REPLAY
@@ -1284,7 +1299,7 @@ variable NOM-TAIL-U
    BODY-RESET
    BEGIN
       NEXT-SCAN
-      dup 0= IF s" verify-source: missing ;PRODUCT" 74 die THEN
+      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup PRODUCT-END? IF
          2drop
          name nameu BODY$ CHECKER-DEFPRODUCT
@@ -1397,7 +1412,7 @@ PTR-VARIABLE STG-START
    BODY-RESET
    BEGIN
       NEXT-SCAN
-      dup 0= IF s" verify-source: missing END-VALUE-RECORD" 74 die THEN
+      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup VALUE-RECORD-END? IF
          2drop
          name nameu BODY$ CHECKER-DEFRECORD
@@ -1407,8 +1422,8 @@ PTR-VARIABLE STG-START
    AGAIN ;
 
 : RECORD-TRUST ( -- )
-   STR-LAST-U @ 0= IF s" verify-source: TRUST missing signature string" 74 die THEN
-   STR-PREV-U @ 0= IF s" verify-source: TRUST missing name string" 74 die THEN
+   STR-LAST-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
+   STR-PREV-U @ 0= IF E-VS-BARE-TRUST STATEMENT-STOP THEN
    STR-PREV-A @ STR-PREV-U @
    STR-LAST-A @ STR-LAST-U @
    TRUST-SIGNATURE ;
@@ -1588,7 +1603,7 @@ variable FILE-USE
    name nameu s" -- n" DECL-SIGNATURE
    BEGIN
       NEXT-SCAN
-      dup 0= IF s" verify-source: missing END-STRUCTURE" 74 die THEN
+      dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
       2dup STRUCTURE-END? IF 2drop EXIT THEN
       \ A pointer field's POINTEE is independent of the record's element type: a
       \ cell record may hold a byte pointer. `ptr ptr a` tied the two together,
@@ -1754,7 +1769,7 @@ variable FFI-SIG-U
    MAYBE-SIGNATURE
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
+      TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY -1 = IF VERIFY-WRAPPER THEN EXIT THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES EXIT THEN

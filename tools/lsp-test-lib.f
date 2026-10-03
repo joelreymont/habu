@@ -104,6 +104,8 @@
 \ - one document's words seen by another's check ................ two-in-turn
 \ - a check that ended without a verdict publishing, or not saying how it
 \   ended ................................................. incomplete, held
+\ - a definition never ended, at which the verifier stops, not said refused
+\   with the verifier's prose, or its list not published ............ unended
 \ - a packet placed at the name of the definition it refuses, a public word
 \   whose private twin moves other cells, not published at that name
 \   ......................................................... shadowed-arity
@@ -163,12 +165,16 @@ using BUF
 \ conversations added since, dependency-close, dependency-symlink and
 \ dependency-shared, took 660 to 1111 ms in single runs at a load average of
 \ about 140, when big-frame took up to 1289 ms. CONVERSATION-MS is ten times
-\ its busiest measurement and CHECKED-MS about eight times big-frame's 1230 ms,
-\ and neither is larger, so that all 24 conversations of the one kind and 16 of
-\ the other could reach their bounds and still end inside the gate row's
-\ SUITE-TIMEOUT-MS of 360 s (test/gate-stdlib-lib.f), each failing by name.
+\ its busiest measurement and CHECKED-MS about six times big-frame's 1230 to
+\ 1289 ms, and neither is larger, so that all 25 runs bounded by the one (the
+\ 22 conversations CONVERSE runs, answers-at-once, stdout-closed and
+\ TEST-EXIT-TIMEOUT's child) and the 19 conversations bounded by the other
+\ could reach their bounds and still end inside the row's 360 s, each failing
+\ by name: a server that spins to its bound spends that much of the row's CPU
+\ budget (test/suite-budget.f CPU-MS), and one that blocks spends none and
+\ ends long before the row's hang guard (ROW-MS).
 8000 constant CONVERSATION-MS
-10000 constant CHECKED-MS
+8000 constant CHECKED-MS
 
 $10000 constant OUT-CAP                  \ the most a conversation writes to stdout
 $1000 constant ERR-CAP                   \ and to stderr
@@ -1527,15 +1533,31 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    B-PATH s" refused" COMPLETED
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-\ A definition never ended: the verifier exits without a verdict.
+\ A definition never ended: the verifier stops at its opener and refuses the
+\ document with no packet, so the list is empty.
 : UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
 
-: INCOMPLETE-TURNS ( -- )
+: UNENDED-TURNS ( -- )
    INITIALIZE
    A-PATH UNENDED 1 OPENS
    SAY
    HEAR CAPABILITIES
    UNENDED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT PUBLISHES ;
+
+\ A `generates:` row with no definer name: the verifier exits without a
+\ verdict. The input is the pre-verifier's generates: reader die
+\ (src/habu/verify-source.f RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it
+\ into a refusal and re-points this case.
+: BARE-GENERATES ( -- ptr u8 n )  s" generates:" ;
+
+: INCOMPLETE-TURNS ( -- )
+   INITIALIZE
+   A-PATH BARE-GENERATES 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   BARE-GENERATES A-PATH CHECKS
    A-PATH s" not checked: exit 74" SAID
    LOGGED ;
 
@@ -1607,6 +1629,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" dependency-symlink" [: DEP-SYMLINK-TURNS ;] TALK
    s" dependency-shared" [: DEP-SHARED-TURNS ;] TALK
    s" two-in-turn" [: TWO-TURNS ;] TALK
+   s" unended" [: UNENDED-TURNS ;] TALK
    s" incomplete" [: INCOMPLETE-TURNS ;] TALK
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK

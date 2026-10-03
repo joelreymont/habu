@@ -134,7 +134,16 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `throw_code` it raised. The checker does not continue past that statement in
   its source, and the run exits 70 as for a refusal. Without
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
-  throw <throw_code> at '<token>'`.
+  throw <throw_code> at '<token>'`. The pre-verifier stops the same way at the
+  opener of a statement the source ends inside or that lacks a part it must
+  have: a definition, its signature or a locals group never closed (7155), a
+  definer's signature missing or never closed (7157), `TRUST` without the name
+  and signature strings before it (7158), and an `ENUM`, `STRUCTURE`,
+  `BEGIN-STRUCTURE`, `PRODUCT` or `VALUE-RECORD` never ended
+  (`TYPE-DECL:E-TDECL-SYNTAX`, 7107; the nominal pass refuses one in a file it
+  reads first). A table of its own that is full stops it at the token it read
+  last (7194). Source discovery's stop at a `{:` group a file never closes is
+  this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103).
 - `E-GENERATES-ROW`: a `generates: D ( effect )` row the checker refused, its
   `token` D. Its repair class names the claim that failed: `fix_generates_row`
   when D names no word where the row stands, `delete_generates_row` when D
@@ -160,8 +169,9 @@ either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
 `VERIFY:E-MALFORMED-REGISTRY-ROW`). Without `--json-errors` it is the line
 `<code> <file>:<line>:<column>: string literal opened at '<token>' does not
 close`, or `primitive-axiom row` in place of `string literal`. Under
-`--verify-only` a string discovery stops at keeps the closure's `discovery
-rejected: unterminated string` line.
+`--verify-only` a string or group discovery stops at keeps the closure's
+`discovery rejected: unterminated string or locals group` line among the
+prose and adds its record.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -319,10 +329,11 @@ process.
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
-for `engine-provided`, `held` and `incomplete`. A verification that stopped at
-a word with no name after it, or at a string or primitive-axiom row its file
-never closes, adds the record the other modes write for it, at that place,
-after the packets made before it. Child output beyond the
+for `engine-provided`, `held` and `incomplete`. A verification that stopped,
+at a word with no name after it, a string or primitive-axiom row its file
+never closes, a statement that threw, or where discovery stopped, adds the
+record the other modes write for it, at that place, after the packets made
+before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
@@ -342,7 +353,9 @@ deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
 `CHECK:VERIFY-LOG$` the prose, until the next call. A throw that ended the
 verification refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
 `CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
-`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. An empty
+`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. Discovery's
+stop at a string or a `{:` group a file of the closure never closes refuses it
+too, with `E-DISC-UNTERM` at the opener in that file. An empty
 PATH throws
 `E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
 Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
@@ -373,9 +386,10 @@ definitions` for each file a throw stopped. The second form stops at
 the first refused definition, as the load does, names the subject LABEL in its
 packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
 DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it
-read last starts, where the name it refused as a duplicate starts and its
-length (0 when it kept none), 1 when the stop is in BYTES, and the file it is
-in, SUBJECT or LABEL for BYTES. The answer is
+stopped at starts (the one it read last, or the opener of the statement it was
+in), where the name it refused as a duplicate starts and its length (0 when it
+kept none), 1 when the stop is in BYTES, and the file it is in, SUBJECT or
+LABEL for BYTES. The answer is
 read from the result line after a clean exit, never from the exit status.
 
 Because check.f's default pre-pass runs in this child, it resolves the
