@@ -167,8 +167,9 @@ public
    dup 0= if drop CHECKER-TAPE:ADVANCE exit then
    AS-ACTION execute ;
 
-TRUSTED: DOES-CHECK ( ptr u8 n ptr u8 n -- n )
-   CHECKER-OWNER-ABI:DOES-CHECK-OFF s" does> split" FIELD
+\ CHECK-DOES! binds CHECKER-OWNER's private row (src/core/checker.f).
+: DOES-CHECK ( ptr u8 n ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
    dup 0= if drop CHECK-DOES! exit then
    AS-DOES-CHECK execute ;
 

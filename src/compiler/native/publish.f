@@ -28,25 +28,29 @@ $4000 constant CODE-RESERVE
 TYPED-VARIABLE UNIT-OBSERVER [ n n n -- ]
 variable UNIT-ARMED
 
-TRUSTED: CODE-WINDOW ( ptr u8 n n -- )
+\ Inside NPUB the publication primitives bind this package's private rows
+\ (src/habu/prims.f), so their callers here are checked. Anywhere else a
+\ checked caller is refused by name: code-publish, xref-retarget and
+\ does-record are undefined there, and the global rows of callmap-set and
+\ addrmap-set are trusted-only.
+: CODE-WINDOW ( ptr u8 n n -- )
    code-publish ;
 
-TRUSTED: RELOC-EXTERNAL ( n -- )
+: RELOC-EXTERNAL ( n -- )
    callmap-set ;
 
-\ Inside NPUB addrmap-set binds this package's private row (src/habu/prims.f),
-\ so this caller is checked. The primitive's global row is trusted-only: a
-\ checked caller anywhere else is refused (E-CAP-TRUSTED).
 : RELOC-ADDR ( n -- )
    addrmap-set ;
 
-TRUSTED: PUBLISH-REC ( n n n -- )
+: PUBLISH-REC ( n n n -- )
    xref-retarget ;
 
+\ min-in-mark and ndict-append are seed records the engine marks internal
+\ (ENGINE-PRIMS:GLOBAL-INT-WID), and only a TRUSTED: body compiles a call to one.
 TRUSTED: MIN-IN-REC ( n n -- )
    min-in-mark ;
 
-TRUSTED: DOES-RECORD ( n n -- )
+: DOES-RECORD ( n n -- )
    does-record ;
 
 TRUSTED: APPEND-PENDING ( n -- )

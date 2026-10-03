@@ -204,8 +204,8 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ KEEP the tail's precise families, instead of graying the whole row at the next
 \ event. Same warning gates; better shadow fidelity across pure consumers. The query
 \ reads raw effect-store state the checker cannot type, so it sits behind a TRUSTED:
-\ boundary - the same idiom TR-INSTALL uses. Precise OUTPUT family propagation and row
-\ unification are tier-2, dot habu-typed-top-tier-589c550f.
+\ boundary. Precise OUTPUT family propagation and row unification are tier-2, dot
+\ habu-typed-top-tier-589c550f.
 \ EFFECT-QUERY resolves the name as a definition would and refuses where the scope
 \ does: no authority names a package context (inside a package after `0
 \ set-current`), or a used public collides with the tail. The tracker only
@@ -258,12 +258,12 @@ TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing n
    cls TR-EV-NUM = a u s" 0" CORE-STR= and TR-LASTZERO !
    a u cls flg live lz TR-EVENT ;
 
-\ set-top-check is a guarded-deref trust-boundary prim (mirrors check-hook.f's
-\ TRUSTED: INSTALL owning ' HOOK set-check); the one-line install is the named,
-\ tested boundary the checker cannot express. The audited escape window is the
-\ set-top-check install itself: only TR-HOOK may be installed (checked-boundary
-\ lint UB-TOP-HOOK-ALLOWED? audit row).
-TRUSTED: TR-INSTALL ( -- )
+\ set-top-check is a guarded-deref trust-boundary prim. TOP-ROW's private row
+\ (src/habu/prims.f) takes a hook of TR-HOOK's shape, so this install is
+\ checked; outside TOP-ROW only a TRUSTED: body may call it. The audited escape
+\ window is the set-top-check install itself: only TR-HOOK may be installed
+\ (checked-boundary lint UB-TOP-HOOK-ALLOWED? audit row).
+: TR-INSTALL ( -- )
    0 TR-N !  0 TR-DIRTY !  0 TR-SUSP !  0 TR-LASTZERO !
    ['] TR-HOOK set-top-check ;
 
