@@ -44,7 +44,7 @@ $4000 constant CAP
 
 create ROOT FS-PATH-CAP allot          variable ROOT-U
 create TREE FS-PATH-CAP allot          variable TREE-U
-create VARIANT FS-PATH-CAP allot       variable VARIANT-U
+create VARIANT-ROOT FS-PATH-CAP allot  variable VARIANT-ROOT-U
 create TMP FS-PATH-CAP allot           variable TMP-U
 create REF FS-PATH-CAP allot           variable REF-U
 create HOST FS-PATH-CAP allot          variable HOST-U
@@ -58,7 +58,7 @@ variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : TREE$ ( -- ptr u8 n ) TREE TREE-U @ ;
-: VARIANT$ ( -- ptr u8 n ) VARIANT VARIANT-U @ ;
+: VARIANT$ ( -- ptr u8 n ) VARIANT-ROOT VARIANT-ROOT-U @ ;
 : TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
 : REF$ ( -- ptr u8 n ) REF REF-U @ ;
 : HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
@@ -72,7 +72,7 @@ variable RC
    s" host-checker-row-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
-   s" variant" VARIANT VARIANT-U ROOT-PATH!
+   s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!
    s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS
    s" ref-hb" REF REF-U ROOT-PATH!
    s" host-hb" HOST HOST-U ROOT-PATH!

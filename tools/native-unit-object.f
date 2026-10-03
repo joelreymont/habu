@@ -281,7 +281,7 @@ TRUSTED: ADDR-MAP ( n -- ) addrmap-set ;
 
 public
 
-: EXPORT ( ptr u8 n ptr u8 n ptr u8 n -- )
+: EXPORT-UNIT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n key:ptr keyu:n checker:ptr checku:n :}
    CODE-PROFILE RECORD-PROFILE RECORDS-PROFILE
    CALLS-PROFILE ADDRS-PROFILE PROTECTION-PROFILE

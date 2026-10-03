@@ -164,9 +164,9 @@ variable DUPCUR
    b CHARGE ;
 
 : TAG-AT ( n -- n ) N-TAG + CELL-AT ;
-: FIELD ( n n -- n ) + CELL-AT ;
+: FIELD-AT ( n n -- n ) + CELL-AT ;
 : ARG-AT ( n n -- n ) {: p:n i:n :}   \ the i-th arg offset of an EN-PARAM node
-   p N-D FIELD i cells + CELL-AT ;
+   p N-D FIELD-AT i cells + CELL-AT ;
 
 \ WALK ( n -- ) : charge the subterm at `off` to the record being visited, once.
 \ A node below the window belongs to an earlier load and is counted as a
@@ -184,15 +184,15 @@ variable DUPCUR
    NODES-V @ 1 + NODES-V !
    NODE-BYTES TAKE
    off TAG-AT {: tg:n :}
-   tg T-PTR = IF off N-A FIELD RECURSE EXIT THEN
-   tg T-PUSH = IF off N-A FIELD RECURSE  off N-B FIELD RECURSE EXIT THEN
+   tg T-PTR = IF off N-A FIELD-AT RECURSE EXIT THEN
+   tg T-PUSH = IF off N-A FIELD-AT RECURSE  off N-B FIELD-AT RECURSE EXIT THEN
    tg T-QUOT = IF
-      off N-A FIELD RECURSE  off N-B FIELD RECURSE
-      off N-C FIELD RECURSE  off N-D FIELD RECURSE EXIT THEN
-   tg T-ATOM = IF off N-B FIELD ALIGN8 TAKE EXIT THEN
+      off N-A FIELD-AT RECURSE  off N-B FIELD-AT RECURSE
+      off N-C FIELD-AT RECURSE  off N-D FIELD-AT RECURSE EXIT THEN
+   tg T-ATOM = IF off N-B FIELD-AT ALIGN8 TAKE EXIT THEN
    tg T-PARAM = IF
-      off N-B FIELD ALIGN8 TAKE
-      off N-C FIELD {: argc:n :}
+      off N-B FIELD-AT ALIGN8 TAKE
+      off N-C FIELD-AT {: argc:n :}
       argc cells TAKE
       0 BEGIN dup argc < WHILE
          off over ARG-AT RECURSE
@@ -213,32 +213,32 @@ variable DUPCUR
    off 0= IF 0 EXIT THEN
    off TAG-AT {: tg:n :}
    tg T-PTR = IF
-      off N-A FIELD RECURSE {: ca:n :}
+      off N-A FIELD-AT RECURSE {: ca:n :}
       H0 tg H+ ca H+ H@ dup SHT+ EXIT THEN
    tg T-PUSH = IF
-      off N-A FIELD RECURSE {: ca:n :}
-      off N-B FIELD RECURSE {: cb:n :}
-      H0 tg H+ ca H+ cb H+ off N-C FIELD H+ H@ dup SHT+ EXIT THEN
+      off N-A FIELD-AT RECURSE {: ca:n :}
+      off N-B FIELD-AT RECURSE {: cb:n :}
+      H0 tg H+ ca H+ cb H+ off N-C FIELD-AT H+ H@ dup SHT+ EXIT THEN
    tg T-QUOT = IF
-      off N-A FIELD RECURSE {: qa:n :}
-      off N-B FIELD RECURSE {: qb:n :}
-      off N-C FIELD RECURSE {: qc:n :}
-      off N-D FIELD RECURSE {: qd:n :}
+      off N-A FIELD-AT RECURSE {: qa:n :}
+      off N-B FIELD-AT RECURSE {: qb:n :}
+      off N-C FIELD-AT RECURSE {: qc:n :}
+      off N-D FIELD-AT RECURSE {: qd:n :}
       H0 tg H+ qa H+ qb H+ qc H+ qd H+
-      off N-E FIELD H+ off N-F FIELD H+ off N-G FIELD H+ off N-H FIELD H+
+      off N-E FIELD-AT H+ off N-F FIELD-AT H+ off N-G FIELD-AT H+ off N-H FIELD-AT H+
       H@ dup SHT+ EXIT THEN
    tg T-ATOM = IF
-      off N-A FIELD off N-B FIELD STR-HASH {: sh:n :}
-      H0 tg H+ sh H+ off N-B FIELD H+ off N-C FIELD H+ H@ dup SHT+ EXIT THEN
+      off N-A FIELD-AT off N-B FIELD-AT STR-HASH {: sh:n :}
+      H0 tg H+ sh H+ off N-B FIELD-AT H+ off N-C FIELD-AT H+ H@ dup SHT+ EXIT THEN
    \ The running fold is parked on the RETURN stack across each argument, never in
    \ a variable: the recursion below re-enters this word and would overwrite a
    \ shared accumulator, which is how the count first came out ABOVE the node
    \ count - one node answering with two different shapes.
    tg T-PARAM = IF
-      off N-A FIELD off N-B FIELD STR-HASH {: ph:n :}
-      off N-C FIELD {: argc:n :}
-      H0 tg H+ ph H+ off N-B FIELD H+ argc H+
-      off N-E FIELD H+ off N-H FIELD H+
+      off N-A FIELD-AT off N-B FIELD-AT STR-HASH {: ph:n :}
+      off N-C FIELD-AT {: argc:n :}
+      H0 tg H+ ph H+ off N-B FIELD-AT H+ argc H+
+      off N-E FIELD-AT H+ off N-H FIELD-AT H+
       H@ >r
       0 BEGIN dup argc < WHILE
          off over ARG-AT RECURSE
@@ -246,9 +246,9 @@ variable DUPCUR
          1 +
       REPEAT drop
       r> dup SHT+ EXIT THEN
-   H0 tg H+ off N-A FIELD H+ off N-B FIELD H+
+   H0 tg H+ off N-A FIELD-AT H+ off N-B FIELD-AT H+
    \ The storage restriction is independent of the variable's ordinary kind.
-   tg T-VAR = tg T-ROW = or IF off N-C FIELD H+ THEN
+   tg T-VAR = tg T-ROW = or IF off N-C FIELD-AT H+ THEN
    H@ dup SHT+ ;
 
 \ ---- the two passes -----------------------------------------------------------
@@ -259,7 +259,7 @@ variable DUPCUR
 : MARK-SHADOWED ( -- )
    BASE-V @ CUR-V !
    BEGIN CUR-V @ REC-NEXT 0 <> WHILE
-      CUR-V @ R-SYMPREV FIELD {: p:n :}
+      CUR-V @ R-SYMPREV FIELD-AT {: p:n :}
       p 0 <> IF p 1 - BASE-V @ >= IF p 1 - SHADOW THEN THEN
       CUR-V @ REC-NEXT CUR-V !
    REPEAT ;

@@ -17,15 +17,15 @@ require tools/lint/source-lex.f
 package LINT-DEF
 public
 
-0 constant NONE
-1 constant COLON
-2 constant SUMTYPE
-3 constant PRODUCT
-4 constant ENUM
-5 constant STRUCTURE
-6 constant VALUE-RECORD
-7 constant LOW-STRUCTURE
-8 constant DATA
+0 constant NONE-KIND
+1 constant COLON-KIND
+2 constant SUMTYPE-KIND
+3 constant PRODUCT-KIND
+4 constant ENUM-KIND
+5 constant STRUCTURE-KIND
+6 constant VALUE-RECORD-KIND
+7 constant LOW-STRUCTURE-KIND
+8 constant DATA-KIND
 
 private
 
@@ -40,16 +40,16 @@ private
 
 \ CAST: sits among the colon-shaped forms in the table above but it is NOT one:
 \ a cast declares a name and an effect and ends at its closing paren, with no
-\ body and no `;` to close. Classifying it as COLON would leave a scan open
+\ body and no `;` to close. Classifying it as COLON-KIND would leave a scan open
 \ across whatever follows until the NEXT definition's `;`, which is exactly the
 \ mis-attribution the package-diff walk is built on this classifier to avoid.
 5 constant CAST-FORM
 
 : FORM-KIND ( n -- n ) {: k:n :}
-   k CAST-FORM = if DATA exit then
-   k 7 < if COLON exit then
+   k CAST-FORM = if DATA-KIND exit then
+   k 7 < if COLON-KIND exit then
    k 13 < if k 5 - exit then
-   DATA ;
+   DATA-KIND ;
 
 : FORM$ ( n -- ptr u8 n )
    case
@@ -125,30 +125,30 @@ public
          FORM-KIND exit
       then
       1+
-   repeat drop NONE ;
+   repeat drop NONE-KIND ;
 
 private
 
 : CLOSE$ ( n -- ptr u8 n )
    case
-      LINT-DEF:COLON of s" ;" endof
-      LINT-DEF:SUMTYPE of s" ;SUMTYPE" endof
-      LINT-DEF:PRODUCT of s" ;PRODUCT" endof
-      LINT-DEF:ENUM of s" ;ENUM" endof
-      LINT-DEF:STRUCTURE of s" ;STRUCTURE" endof
-      LINT-DEF:VALUE-RECORD of s" END-VALUE-RECORD" endof
-      LINT-DEF:LOW-STRUCTURE of s" END-STRUCTURE" endof
+      LINT-DEF:COLON-KIND of s" ;" endof
+      LINT-DEF:SUMTYPE-KIND of s" ;SUMTYPE" endof
+      LINT-DEF:PRODUCT-KIND of s" ;PRODUCT" endof
+      LINT-DEF:ENUM-KIND of s" ;ENUM" endof
+      LINT-DEF:STRUCTURE-KIND of s" ;STRUCTURE" endof
+      LINT-DEF:VALUE-RECORD-KIND of s" END-VALUE-RECORD" endof
+      LINT-DEF:LOW-STRUCTURE-KIND of s" END-STRUCTURE" endof
       E-TBL-BOUNDS throw
    endcase ;
 
 public
 
 : CLOSE? ( n n -- bool ) {: tok:n kind:n :}
-   kind NONE = kind DATA = or if LINT-FALSE exit then
+   kind NONE-KIND = kind DATA-KIND = or if LINT-FALSE exit then
    tok kind CLOSE$ TOK=CI ;
 
 : NAME-I ( n -- option<n> ) {: tok:n :}
-   tok DIRECT-KIND NONE = if OPTION:NONE exit then
+   tok DIRECT-KIND NONE-KIND = if OPTION:NONE exit then
    tok 1+ dup LINT-LEX:COUNT >= if drop OPTION:NONE exit then
    dup LINT-LEX:KIND@ LINT-LEX:WORD = if
       OPTION:SOME
