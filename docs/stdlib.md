@@ -1985,7 +1985,10 @@ observes EOF. On timeout, it kills the child and every process the child
 started (`PROC-TREE:KILL-TREE`), reaps the child, closes owned fds, and then
 throws `E-PROC-TIMEOUT`. Truncation, a refused reaper arm and other capture
 failures end the child's tree and reap it the same way, and close all owned fds,
-before throwing a named process error.
+before throwing a named process error. A tree walk that throws there has still
+killed the child, which is reaped all the same: the capture keeps its own
+answer, and stderr gets the line `process: process tree of a capture child not
+walked, throw <code>`.
 The `*-OUTCOME` capture variants return stdout length, stderr length, and the
 `outcome` sum. They classify timeout as the `timeout` outcome instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still

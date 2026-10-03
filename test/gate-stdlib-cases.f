@@ -2161,7 +2161,8 @@ SUITE process-env
 ;SUITE
 
 \ A tree walk the kernel refuses throws rather than reading the refusal as
-\ nobody there.
+\ nobody there, and one at a capture's early end leaves the capture its own
+\ answer and names the walk's code.
 SUITE process-tree
    lib/process-tree-test.f
 ;SUITE

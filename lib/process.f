@@ -419,15 +419,44 @@ PROC-REAP-ARM-DEFAULT
    then
    PROC-REAP-DISARM ;
 
+\ ---- a tree walk that throws -------------------------------------------------
+\
+\ A capture ends its child early for a reason of its own - its deadline, an
+\ overflow, a refused reaper arm, a stop - and its caller acts on that reason:
+\ tools/check.f names a run past its deadline. A walk of the child's tree that
+\ throws there must not stand in for it, nor vanish, so stderr gets one line
+\ naming the walk's code and the capture answers as it would have. The line is
+\ written a piece at a time from constant text, so it takes no storage two
+\ tasks could share.
+
+: PROC-DIAG ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   2 a u write drop ;
+
+\ The decimal digits of v's magnitude. v is at most 0, so MIN-N has one too: /
+\ and mod truncate toward zero.
+: PROC-DIAG-DIGITS ( n -- )
+   {: v:n :}
+   v -10 <= if v 10 / RECURSE then
+   s" 0123456789" drop v 10 mod negate + 1 PROC-DIAG ;
+
+: PROC-WALK-REPORT ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   s" process: process tree of a capture child not walked, throw " PROC-DIAG
+   code 0 < if s" -" PROC-DIAG code else code negate then PROC-DIAG-DIGITS
+   s\" \n" PROC-DIAG ;
+
 \ Kill the capture child and every process it started, then reap the child.
 \ A spawned child leads a process group of its own, and so does each process
 \ it spawns, so neither a kill of its pid nor one of its group reaches them;
-\ lib/process-tree.f KILL-TREE freezes the tree before it lists it. The child
-\ is reaped whatever the walk throws, since KILL-TREE kills every member it
-\ found, the child first, and the walk's code goes on after the reap.
+\ lib/process-tree.f KILL-TREE freezes the tree before it lists it. A walk that
+\ throws has still killed every member it found, the child first, so the child
+\ is reaped all the same, and the walk's code is reported, not thrown.
 : PROC-KILL-CAPTURE ( -- )
    PROC-PID @ 0 > if
-      [: PROC-PID @ >PID PROC-TREE:KILL-TREE ;] [: PROC-REAP-CAPTURE ;] finally
+      [: PROC-PID @ >PID PROC-TREE:KILL-TREE ;] catch PROC-WALK-REPORT
+      PROC-REAP-CAPTURE
    then ;
 
 \ A capture that ends its child early - its deadline, an overflow, a refused

@@ -317,9 +317,11 @@ NO-FD FEED-WR !
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL type cr ;
 
 \ check.f names each step of its answer that threw (tools/check-core.f
-\ CHK-SAY-THROW).
+\ CHK-SAY-THROW), and lib/process.f a walk of the child's tree it could not
+\ finish (PROC-WALK-REPORT).
 : LOG-THREW? ( -- bool )
-   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL s" threw" CONTAINS? ;
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP READ-ALL {: a:ptr u:n :}
+   a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
 
 : CASE-BODY ( n -- ) {: sig:n :}
    CHECK-START

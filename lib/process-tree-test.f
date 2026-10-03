@@ -9,7 +9,9 @@
 \ sandbox that denies the call leaves EPERM. This test runs a WALKER - this
 \ file again, with `walker` as its one argument - under sandbox-exec, once
 \ denying process-info-listpids and once process-info-pidinfo. The walker
-\ spawns a victim and asks KILL-TREE to end it.
+\ spawns a victim and asks KILL-TREE to end it. A second walker, `capture`,
+\ runs under the listing denial two captures of a sleeper whose deadline
+\ passes, so each capture's early end walks a tree the kernel will not list.
 \
 \ THE WAYS THIS CAN FAIL, written down before the fix:
 \
@@ -21,6 +23,15 @@
 \     it kills what it found, and the victim is left stopped.
 \ Asserted by the walker in each case: KILL-TREE throws E-PROC-OUTPUT, and the
 \ victim died of SIGKILL.
+\  4. A REFUSED WALK THAT REPLACES A CAPTURE'S ANSWER. A capture that ends its
+\     child early walks the child's tree (lib/process.f PROC-KILL-CAPTURE). A
+\     walk that throws there went on through the capture's cleanup, so its
+\     code replaced the capture's own: a deadline read as E-PROC-OUTPUT, and a
+\     deadline read as data threw it rather than answering the timeout.
+\ Asserted by the capture walker: a capture past its deadline throws
+\ E-PROC-TIMEOUT, one read as data answers the timeout outcome, and each
+\ sleeper died of SIGKILL and was reaped; and here, that the walker's stderr is
+\ one line per capture naming the refused walk's E-PROC-OUTPUT.
 \
 \ HOSTS. macOS only: sandbox-exec is the way here to make the kernel refuse.
 \ The Linux walk reads /proc through open, whose failure the engine reports
@@ -29,11 +40,14 @@
 \ NOTHING IS LEFT. The victim is the walker's own child, so its pid is not
 \ handed on before the walker reaps it. Whatever the walk did, the walker sends
 \ it SIGTERM and then SIGCONT, which end it even if it was left stopped, and
-\ reaps it; a victim that was not killed is then reaped as dead of SIGTERM.
+\ reaps it; a victim that was not killed is then reaped as dead of SIGTERM. A
+\ captured sleeper is the capture's to reap, and a walker stuck reaping one
+\ the walk left alive is ended with it at WALKER-MS.
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -45,6 +59,8 @@ package PROC-TREE-TEST
 15 constant SIGTERM
 19 constant SIGCONT-MACOS
 30000 constant WALKER-MS             \ one engine boot and one walk, on a loaded host
+1 constant CAPTURE-MS                \ passes long before the sleeper's 30 s
+2 constant CAPTURES                  \ the capture walker's, each walking once
 $4000 constant CAP
 
 create OUT CAP allot
@@ -80,6 +96,45 @@ variable VICTIM
    VICTIM @ >PID PROC-WAIT-OUTCOME SIGKILL KILLED-BY? TTRUE
    T-REPORT ;
 
+\ ---- the capture walker, under the sandbox ----------------------------------
+\
+\ The walker's own capture buffers are free here: it captures nothing else.
+
+: SLEEPER-ARGS ( -- )
+   PROC-ARGV-RESET
+   s" 30" >LEN PROC-ARGV+ ;
+
+\ A sleeper captured past its deadline, which reaches no result.
+: SLEEPER-CAPTURE ( -- )
+   SLEEPER-ARGS
+   s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
+   RUN-ARGV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
+     err OF PCAP-FAILED:UNMAKE drop 2drop ENDOF
+   ;MATCH ;
+
+\ The same deadline read as data.
+: SLEEPER-OUTCOME ( -- )
+   SLEEPER-ARGS
+   s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME T-OUTCOME-TIMEOUT 2drop ;
+
+: SLEEPER-REAPED ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu T-LABEL
+   PROC-PID @ PROC-NO-PID T=
+   PROC-STATUS @ PROC-STATUS>RC RC>N 128 SIGKILL + T= ;
+
+: CAPTURE-WALK ( -- )
+   T-RESET
+   s" refused: a capture past its deadline throws E-PROC-TIMEOUT" T-LABEL
+   [: SLEEPER-CAPTURE ;] E-PROC-TIMEOUT TTHROWSQ
+   s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
+   s" refused: a deadline read as data answers the timeout outcome" T-LABEL
+   [: SLEEPER-OUTCOME ;] 0 TTHROWSQ
+   s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
+   T-REPORT ;
+
 \ ---- the cases --------------------------------------------------------------
 
 : SANDBOX$ ( -- ptr u8 n )
@@ -95,9 +150,10 @@ variable VICTIM
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-\ The walker under a profile that denies one operation. Its own report is its
-\ verdict; on a failure it is printed here.
-: REFUSED ( ptr u8 n ptr u8 n -- ) {: profile:ptr profileu:n label:ptr labelu:n :}
+\ This file again as the walker named mode, under a profile that denies one
+\ operation: its stdout and stderr lengths and its exit code.
+: SANDBOXED ( ptr u8 n ptr u8 n -- n n n )
+   {: profile:ptr profileu:n mode:ptr modeu:n :}
    PROC-ARGV-RESET
    s" -p" >LEN PROC-ARGV+
    profile profileu >LEN PROC-ARGV+
@@ -105,15 +161,41 @@ variable VICTIM
    s" --load" >LEN PROC-ARGV+
    s" lib/process-tree-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   s" walker" >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
    SANDBOX$ >LEN OUT CAP >LEN ERR CAP >LEN WALKER-MS >MS RUN-ARGV-CAPTURE
-   CAPTURE>RC {: outn:n errn:n rc:n :}
+   CAPTURE>RC ;
+
+\ A walker's own report is its verdict; on a failure it is printed here.
+: VERDICT ( n n n ptr u8 n -- )
+   {: outn:n errn:n rc:n label:ptr labelu:n :}
    label labelu T-LABEL
    rc 0 T=
    rc 0<> if
       s" the walker's output:" type cr
       OUT outn type ERR errn type cr
    then ;
+
+: REFUSED ( ptr u8 n ptr u8 n -- )
+   {: profile:ptr profileu:n label:ptr labelu:n :}
+   profile profileu s" walker" SANDBOXED label labelu VERDICT ;
+
+\ What stderr gets from lib/process.f for each walk the kernel refused.
+: WALK-LINES$ ( -- ptr u8 n )
+   SB-RESET
+   CAPTURES 0 ?do
+      s" process: process tree of a capture child not walked, throw " SB-APPEND
+      E-PROC-OUTPUT FMT:SB-INT
+      $0A SB-APPEND-C
+   loop
+   SB$ ;
+
+: REFUSED-CAPTURE ( -- )
+   s" (version 1)(allow default)(deny process-info-listpids)"
+   s" capture" SANDBOXED {: outn:n errn:n rc:n :}
+   outn errn rc
+   s" a capture whose tree walk is refused keeps its own answer" VERDICT
+   s" the walker's stderr names each refused walk" T-LABEL
+   ERR errn WALK-LINES$ T$= ;
 
 : CASES ( -- )
    T-RESET
@@ -124,13 +206,15 @@ variable VICTIM
    s" (version 1)(allow default)(deny process-info-listpids)"
    s" a refused listing throws, and the named process still dies" REFUSED
    s" (version 1)(allow default)(deny process-info-pidinfo)"
-   s" a refused record throws, and the named process still dies" REFUSED ;
+   s" a refused record throws, and the named process still dies" REFUSED
+   REFUSED-CAPTURE ;
 
 public
 
 : MAIN ( -- )
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" walker" STR= if WALK exit then
+      0 SCRIPT-ARGV$ s" capture" STR= if CAPTURE-WALK exit then
       s" process-tree-test: unknown mode" 64 die
    then
    CASES
