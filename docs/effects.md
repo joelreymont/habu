@@ -259,8 +259,12 @@ the declaration appends a `CT-LINEAR` row, exactly beside `idx` and `i64`.
   name beside `cell`.
 - **A mismatch renders the bare name.** `: F ( n -- own ) ;` rejects with
   `expected: own actual: n`.
-- **No converters are derived.** Producers and consumers are yours to declare;
-  they are what makes the type usable at all.
+- **No converters are derived; the declaring package mints and erases.**
+  `DEFLINEAR` records the package it runs in, and that package's private
+  section alone declares the producer and consumer, `LINEAR: MINT ( ptr n --
+  PKG:tok )` and `LINEAR: ERASE ( PKG:tok -- ptr n )`; they are what makes the
+  type usable at all. A type declared at top level has no owner and no mint
+  ([forth.md](forth.md) **Structures And Enums**).
 - It is top-level-interpret-only and is rejected inside a checked body.
 
 What the type *means* is the rest of this section. A `DEFLINEAR` type is
