@@ -255,9 +255,10 @@ variable HBB-MAKER-TIMEOUT-MS
 : HBB-SEED-HEX$ ( -- ptr u8 n )
    HBB-SEED-HEX-BUF HBB-SEED-HEX-U @ ;
 
-\ A name the maker cannot hold is refused by name before anything is built.
+\ A name the maker cannot hold, empty or too long, is refused by name before
+\ anything is built.
 : HBB-PRESEED-ENTRY! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
+   u 0 <= if s" hb-build: --preseed-entry name empty" HBB-USAGE-RC die then
    u HBB-ENTRY-NAME-CAP > if
       s" hb-build: --preseed-entry name too long" HBB-USAGE-RC die
    then

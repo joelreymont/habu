@@ -1,8 +1,8 @@
 \ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
 \ errors the hb-build CLI reports - a cache root that is a file, as JSON and as
-\ text, an -o too long to replace, a preseeded entry name too long for the
-\ maker - and a MAIN whose effect breaks the application contract, refused by
-\ the app-build child and passed through by the CLI.
+\ text, an -o too long to replace, a preseeded entry name empty or too long
+\ for the maker - and a MAIN whose effect breaks the application contract,
+\ refused by the app-build child and passed through by the CLI.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
@@ -112,14 +112,14 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 HBB-ENTRY-NAME-CAP 1+ constant HBT-LONG-ENTRY-U
 HBT-LONG-ENTRY-U BUFFER: HBT-LONG-ENTRY-BUF
 
-\ The maker's AOT closure holds a preseeded entry name of at most
-\ HBB-ENTRY-NAME-CAP bytes, so the CLI refuses a longer one by name before it
-\ builds anything, as it does a long -o.
-: CLI-PRESEED-TOO-LONG ( -- )
-   HBT-LONG-ENTRY-U 0 ?do  [char] E HBT-LONG-ENTRY-BUF i + c!  loop
+\ The maker's AOT closure holds a preseeded entry name of one to
+\ HBB-ENTRY-NAME-CAP bytes, so the CLI refuses an empty or longer one by name
+\ before it builds anything, as it does a long -o.
+: HBT-PRESEED-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n want:ptr wantu:n :}
    HBT-ARGV-BASE
    s" --preseed-entry" >LEN PROC-ARGV+
-   HBT-LONG-ENTRY-BUF HBT-LONG-ENTRY-U >LEN PROC-ARGV+
+   name nameu >LEN PROC-ARGV+
    s" --preseed-seed" >LEN PROC-ARGV+
    s" 00" >LEN PROC-ARGV+
    HBT-AOT-SRC >LEN PROC-ARGV+
@@ -128,7 +128,15 @@ HBT-LONG-ENTRY-U BUFFER: HBT-LONG-ENTRY-BUF
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc HBB-USAGE-RC T=
    outu 0 T=
-   HBT-ERR erru S\" hb-build: --preseed-entry name too long\n" T$= ;
+   HBT-ERR erru want wantu T$= ;
+
+: CLI-PRESEED-EMPTY ( -- )
+   s" " S\" hb-build: --preseed-entry name empty\n" HBT-PRESEED-REFUSED ;
+
+: CLI-PRESEED-TOO-LONG ( -- )
+   HBT-LONG-ENTRY-U 0 ?do  [char] E HBT-LONG-ENTRY-BUF i + c!  loop
+   HBT-LONG-ENTRY-BUF HBT-LONG-ENTRY-U
+   S\" hb-build: --preseed-entry name too long\n" HBT-PRESEED-REFUSED ;
 
 \ MAIN must satisfy the application's empty input/output contract at build
 \ time: the app-build child refuses one that takes or leaves a value when it
@@ -175,6 +183,7 @@ public
    HBT-PREPARE
    CLI-PATH-ERROR
    CLI-OUT-TOO-LONG
+   CLI-PRESEED-EMPTY
    CLI-PRESEED-TOO-LONG
    HBT-BAD-MAIN-EFFECTS
    CLEANUP-RUN
