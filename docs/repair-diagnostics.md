@@ -149,10 +149,10 @@ The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
 under `--json-errors` as in its packets. The run exits 70. A program that runs
 longer is checked with a longer `--deadline-ms`.
 
-A refusal that names its token but not its place emits a refused-record
-object: `schema_version`, `code`, `repair_class`, `verdict` `rejected`, `token`,
-`file`, `suggestion` and the field its code adds, and no span, `throw_code` or
-definition-only field. The code names its repair class and that field:
+A refusal of a named checker record emits a refused-record object: `schema_version`, `code`, `repair_class`, `verdict` `rejected`, `token`,
+`file`, `suggestion` and the field its code adds. When the checked text
+locates its named token, all four source position fields are present; otherwise
+none are. It has no `throw_code` or definition-only field. The code names its repair class and that field:
 
 | `code` | `repair_class` | Added field | Refusal |
 | --- | --- | --- | --- |
@@ -160,7 +160,6 @@ definition-only field. The code names its repair class and that field:
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
 | `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature | `signature`, as written | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse; `token` is the name it is stored for. |
-| `E-USING-SHADOW-GLOBAL` | `disambiguate_using_shadow` | `used_package` | `token`, a bare name in a definition, resolves to a global while a package in use exports the same tail. |
 | `E-SHADOWED-ARITY` | `match_shadowed_private_effect` | `package` | The package public `token` moves another number of cells than the private word of its package with the same tail. |
 
 `tools/check.f` meets the first two only in its run stage, after every
@@ -442,16 +441,17 @@ answers it:
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Rebuild bin/hb to check this source; no code change answers this diagnostic.` |
 
-Refused-record packets carry a refused-record object's evidence, which has no
-place:
+Refused-record packets carry the object's evidence, including all four source
+position fields when its named token locates in the checked text:
 
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
 | `token` | string | required | The record's token, as its code describes it. |
-| `signature`, `used_package` or `package` | string | the field its code adds | Copied from the record. |
+| `signature` or `package` | string | the field its code adds | Copied from the record. |
 | `file` | string | required | Source label or path. |
+| `line`, `column`, `byte_start`, `byte_end` | integer | all four or none | Copied source positions when known. |
 | `code` | string | required | A refused-record code. |
 | `repair_class` | string | required | One its code names. |
 | `suggestion` | string | required | Checker repair hint. |

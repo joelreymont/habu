@@ -367,7 +367,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" storage-unplaced" s" fix_storage_type"
    s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
 
-\ A refused record names its token and no place. A trust row naming no word, a
+\ A refused record names its token and any known position. A trust row, a
 \ storage registrar called from source and a record entry called with a
 \ malformed name at run time each end the load on an uncaught throw (exit 67
 \ under `--load`), and check.f exits 70 for it, as for any refusal. A

@@ -454,8 +454,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
 
-\ A refused record names its token but not its place, so check.f writes it in a
-\ shape of its own, under a repair class its code names
+\ A refused record names its token and any known position, under the shape
+\ and repair class its code names
 \ (docs/repair-diagnostics.md). tools/check.f runs as a child: the packet comes
 \ from its own load child, whose capture would replace the one an in-process
 \ CHECK-CAPTURE holds open.
@@ -568,7 +568,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-json-arity.f" s" tools/check.f --json-errors accepted a public its private twin shadows" RECORD-CHECK
    s" code" s" E-SHADOWED-ARITY" s" shadowed arity code" ERR-JSTR
    s" package" s" gdx-sba" s" shadowed arity package" ERR-JSTR
-   s" habu-json-arity.err" WRITE-ERR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-arity.err" WRITE-REC
    s" habu-json-arity.err" s" shadowed arity contract" DIAG-CONTRACT ;
 
 \ A definition whose inferred effect the checker cannot record (render.f

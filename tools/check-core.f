@@ -1779,14 +1779,14 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       CHK-REPLAY
       exit
    then
-   CHK-RC @ CHK-RUN-STATUS CHK-CHILD-RC !
+   CHK-RC @ CHK-RUN-STATUS {: rc:n :}
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
       CHK-RUN-JSON-ONLY
    else
       CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    then
-   CHK-RC @ CHK-THROW ;
+   rc CHK-THROW ;
 
 \ The nominal pass registers the declarations it finds in the subject source.
 \ Those declarations belong to the packages that source declares, so the scope
