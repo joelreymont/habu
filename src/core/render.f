@@ -1123,7 +1123,9 @@ DIAG-PRINT-INSTALL
 
 \ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror
-\ REPAIR-CLASS's signature arm (same stable strings).
+\ REPAIR-CLASS's signature arm (same stable strings). The JSON is a refused
+\ record (docs/repair-diagnostics.md): the row's name is its token, and the
+\ signature as written the field its code adds.
 : BADSIG-CLASS ( -- ptr u8 n )
    SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
    SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
@@ -1140,8 +1142,8 @@ DIAG-PRINT-INSTALL
    s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
    s" repair_class" JKEY BADSIG-CLASS JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
-   s" word" JKEY na nu JSTR 44 EMIT1
-   s" declared_effect_source" JKEY sa su SIG-TRIM JSTR 44 EMIT1
+   s" token" JKEY na nu JSTR 44 EMIT1
+   s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" suggestion" JKEY BADSIG-SUGGEST JSTR
    125 EMIT1 ;                                            \ }
@@ -1206,11 +1208,14 @@ BADSIG-DIAG-INSTALL
    s" habu: in " DTXT  na nu DTXT
    s" : effect not recorded: " DTXT  wa wu DTXT ;
 
+\ A warning, outside the repair contract (docs/repair-diagnostics.md): the word
+\ loaded, so the JSON carries no verdict or repair class.
 : REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" W-EFFECT-NOT-RECORDED" JSTR 44 EMIT1
    s" word" JKEY na nu JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" reason" JKEY wa wu JSTR
    125 EMIT1 ;
 
@@ -1263,6 +1268,9 @@ REC-SIG-INSTALL
    USH-USYM @ USH-EFF
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
+\ A refused record (docs/repair-diagnostics.md), as is SBARITY-JSON's: no place,
+\ since the refusal throws out of the definition, and check.f places the
+\ statement that threw.
 : USHADOW-JSON ( -- )
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
@@ -1271,6 +1279,7 @@ REC-SIG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
    s" used_package" JKEY USH-PKG-A @ USH-PKG-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" suggestion" JKEY s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier." JSTR
    125 EMIT1 ;
 : USHADOW-DIAG ( -- )
@@ -1317,6 +1326,7 @@ REC-SIG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
    s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
    125 EMIT1 ;
 : SBARITY-DIAG ( -- )
@@ -1389,17 +1399,19 @@ SHADOW-DIAG-INSTALL
    RSBUF-FLUSH ;
 
 \ --- a record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), on
-\ the same template, with the code, repair class and suggestion a call to such a
-\ name gets (E-BAD-QUALIFIED above).
+\ the same template, with the repair class and suggestion a call to such a name
+\ gets (E-BAD-QUALIFIED above). The record has a code of its own, in a refused
+\ record's shape, where the call's is a definition's (tools/diag-code.f); its
+\ refusal still throws E-BAD-QUALIFIED.
 : BADQUAL-PROSE ( -- )
-   s" E-BAD-QUALIFIED habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+   s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
    s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
    s"  PKG:WORD" DTXT ;
 : BADQUAL-JSON ( -- )
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-BAD-QUALIFIED" JSTR 44 EMIT1
+   s" code" JKEY s" E-BAD-QUALIFIED-RECORD" JSTR 44 EMIT1
    s" repair_class" JKEY s" fix_qualified_name" JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1

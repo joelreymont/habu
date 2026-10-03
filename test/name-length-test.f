@@ -342,7 +342,7 @@ variable WANT-U
 \ word that records a symbol for it names it as malformed and throws.
 : MAL$ ( -- ptr u8 n ) s" q:q:q" ;
 : MALFORMED$ ( -- ptr u8 n )
-   S\" E-BAD-QUALIFIED habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7147\n" ;
+   S\" E-BAD-QUALIFIED-RECORD habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7147\n" ;
 : MAL-DIES ( ptr u8 n n ptr u8 n -- )
    {: src:ptr srcu:n rc:n want:ptr wantu:n :}
    0 s" two inner colons" src srcu rc want wantu DIES-AT ;

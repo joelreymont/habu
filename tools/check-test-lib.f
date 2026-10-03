@@ -3926,7 +3926,7 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7147 at ';'" CONTAINS? TTRUE
    MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
    outu2 0 T=
-   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED-RECORD\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"throw_code\":7147" CONTAINS? TTRUE ;
@@ -3935,7 +3935,7 @@ variable REQ-U
    MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
-   CAP-ERR erru s" E-BAD-QUALIFIED habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
    CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7147 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
 
 \ The throw leaves a raw storage definer's signature (verify-source.f
