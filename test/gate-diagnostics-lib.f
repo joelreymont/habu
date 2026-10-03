@@ -244,6 +244,16 @@ TYPED-VARIABLE SPLICE-LEN len
      some OF IDX>N 1+ REC-U ! ENDOF
    ;MATCH ;
 
+\ Take the line of A U that holds TEXT: one record among those an --all-errors
+\ run wrote.
+: REC-LINE-OF ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n text:ptr textu:n :}
+   0 begin
+      >r a u 10 r> SPLIT-NEXT
+   while
+      >r 2dup text textu CONTAINS? IF REC! r> drop EXIT THEN 2drop r>
+   repeat
+   drop 2drop s" no record holds the text" GE-FAIL ;
+
 : WRITE-REC ( ptr u8 n -- )
    PATH!
    PATH$ REC$ WRITE-ALL ;
@@ -918,8 +928,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s" habu-tfam-class.err" s" repair class is not one its code names" s" declaration under another class refused" REFUSED ;
 
 \ A refusal only the run reads carries no place.
-\ The contract refuses the record under an uncheckable verdict or a class
-\ outside the three storage classes.
+\ The contract refuses the record under an uncheckable verdict or a reason the
+\ renderer never writes.
 : RUN-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -936,9 +946,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-storage-verdict.err" s" storage verdict is not rejected" s" uncheckable storage refused" REFUSED
    s\" \"verdict\":\"uncheckable\"" s\" \"verdict\":\"rejected\"" REC-SWAP
-   s\" \"repair_class\":\"fix_storage_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
-   s" fix_storage_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-storage-class.err" s" repair class is not one its code names" s" storage under a definition class refused" REFUSED ;
+   s\" \"reason\":\"unknown type\"" s\" \"reason\":\"type unknown\"" REC-SWAP
+   s" habu-storage-unknown.err" s" storage reason is not one the renderer writes" s" storage under a reason the renderer never writes refused" REFUSED ;
 
 \ A storage declaration its definer refuses is neither a definition nor a family
 \ declaration: it names the declared word, the refused token and the reason.
@@ -953,7 +962,8 @@ TYPED-VARIABLE SPLICE-LEN len
 \ reads its name on its own line and its type's first token on the name's: one
 \ on the next line is missing, refused at the name or the definer, and that
 \ line is the next statement, here a declaration refused at its own place or a
-\ definition a later one calls.
+\ definition a later one calls. The contract refuses the misnamed declaration's
+\ record under the type class, which its reason does not take.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1042,6 +1052,11 @@ TYPED-VARIABLE SPLICE-LEN len
    s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":34,\"column\":17"
    s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
+   GT-ERR$ s\" \"word\":\"JSTG:A:B\"" REC-LINE-OF
+   s\" \"repair_class\":\"fix_storage_name\"" s\" \"repair_class\":\"fix_storage_type\"" REC-SWAP
+   s" fix_storage_name" GJA-SUGGEST-FOR s" fix_storage_type" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-storage-reason.err" s" storage repair class does not follow its reason"
+   s" storage name refusal under the type class refused" REFUSED
    RUN-STORAGE ;
 
 : ERROR-SOURCE ( -- )

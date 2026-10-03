@@ -97,17 +97,31 @@ emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
 `word` (the declared name as written, or the definer when no name stands on
 its line: as written under `tools/check.f`, in its canonical uppercase
 spelling under `bin/hb --load`), `token` (the refused token), `reason`, `file` and `suggestion`. The
-repair class follows the reason: `fix_storage_type` for an unknown, malformed
-or unstorable type or none on the name's line, `fix_storage_name` for no name
-on the definer's line or a name with more than one `:` or in a sealed package,
-and `fix_storage_count` for a literal count outside the extent, a count token
-that resolves to no `( -- n )` word, or no count. An unknown type names its own
-token, a missing one the name, any other type refusal the whole stored type.
-`tools/check.f` reads the declaration before the run, so there the object also
-carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
-definer under `bin/hb --load` has no record of its token's place and carries
-none. It has no definition fields, and the checker continues past it under
-`--all-errors`, counting it as a refusal.
+`reason` is one of the texts below and the repair class follows it.
+`diag-contract` (tools/gate-json-assert-core.f `GJA-STORAGE-CLASS$`) holds a
+record to this table and refuses one under another class or with a reason not
+listed:
+
+| `repair_class` | `reason` | Refusal |
+| --- | --- | --- |
+| `fix_storage_type` | `unknown type` | The type names nothing the checker knows. |
+| `fix_storage_type` | `malformed type` | The type does not parse. |
+| `fix_storage_type` | `type this definer cannot store` | The type parses, and this definer cannot store it. |
+| `fix_storage_type` | `scheme in a stored type` | The type holds a scheme, which no storage holds. |
+| `fix_storage_type` | `no type for` | No token follows the name on its line to be its type. |
+| `fix_storage_name` | `more than one ':' in name` | The name has more than one inner `:`. |
+| `fix_storage_name` | `name in a sealed package` | The name is qualified into a sealed package. |
+| `fix_storage_name` | `no name for` | No token follows the definer on its line to be its name. |
+| `fix_storage_count` | `count outside the buffer's extent` | The literal count is outside the definer's extent. |
+| `fix_storage_count` | `count resolves to no ( -- n ) word` | The count token names no word that leaves the count. |
+| `fix_storage_count` | `no count for` | No token precedes the definer to be its count. |
+
+An unknown type names its own token, a missing one the name, any other type
+refusal the whole stored type. `tools/check.f` reads the declaration before the
+run, so there the object also carries the token's `line`, `column`, `byte_start`
+and `byte_end`; a run-time definer under `bin/hb --load` has no record of its
+token's place and carries none. It has no definition fields, and the checker
+continues past it under `--all-errors`, counting it as a refusal.
 
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
