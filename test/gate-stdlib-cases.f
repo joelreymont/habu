@@ -508,6 +508,14 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
+SUITE compiler-target-digest-goldens
+   test/compiler/target-digest-goldens.f
+;SUITE
+
+SUITE compiler-target-native-layout-goldens
+   test/compiler/target-native-layout-goldens.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
@@ -676,10 +684,11 @@ SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
-\ The behaviour half of src/habu/prims.f: one case set per row, run against this
-\ backend's primitive and against the row's reference implementation. It stays
-\ on the product engine - a case may only reach a primitive the way any checked
-\ program does.
+\ Native primitive goldens live in prim-cases.f and prim-float-cases.f, owned
+\ by prim-parity.f. They pin wrap at MAX-N+1, MIN-N/-1, divisor throws,
+\ modulo-64 shifts, and canonical NaN outputs through compiled primitive calls.
+\ Each case runs against this backend and its available reference implementation
+\ on the product engine.
 SUITE prim-parity
    test/prim-parity.f
 ;SUITE
