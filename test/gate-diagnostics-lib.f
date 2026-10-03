@@ -1186,8 +1186,8 @@ TYPED-VARIABLE SPLICE-LEN len
    s" 1 LAYOUT-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
    s" DEFER-LAYOUT-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
    s" 1 TYPED-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
-   s" TYPED-VARIABLE LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
-   s" DYNAMIC-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" TYPED-VARIABLE LOWER-CERT-HOOK:HOOK ;using" GE-SRC-LINE
+   s" DYNAMIC-BUFFER LOWER-CERT-HOOK:HOOK TYPED-VARIABLE" GE-SRC-LINE
    s" : GDX-AFTER ( n -- n ) drop ;" GE-SRC-LINE
    s" tools/check.f accepted sealed storage names" CHECK-JSON-ALL
    s" habu-storage-name.err" WRITE-ERR
@@ -1205,6 +1205,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":5,"
       s" dynamic buffer name refused before duplicate" ERR-JRAW
    s" word" s" gdx-after" s" checker continued after sealed names" ERR-JSTR
+   s\" \"reason\":\"no name for\"" s" a refused declaration's type was scanned as a definer" GE-EXPECT-ERR-LACKS
    s\" \"repair_class\":\"rename_duplicate\"" s" sealed storage names reported as duplicates" GE-EXPECT-ERR-LACKS
    s" habu-storage-name.err" s" sealed storage name contract" DIAG-CONTRACT ;
 

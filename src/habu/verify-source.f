@@ -1322,10 +1322,14 @@ PTR-VARIABLE STG-START
 
 \ The declared name. With none on the definer's line it is empty, and the
 \ definer's token is refused as its run refuses it.
+\ A refused name still owns its type span; consume it before resuming the
+\ statement scan so a type token cannot be interpreted as a new statement.
 : SCAN-STORAGE-NAME ( -- ptr u8 n )
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
-   2dup CHECKER-LBUF-NAME-OK? 0= IF 2drop SOURCE@ 0 THEN ;
+   2dup CHECKER-LBUF-NAME-OK? 0= IF
+      2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0
+   THEN ;
 
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
