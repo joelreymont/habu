@@ -34,7 +34,6 @@
 
 require lib/prelude.f
 require lib/errors.f
-require lib/string.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/abi.f
@@ -80,13 +79,6 @@ private
 \ an exit rather than a throw. The capture is at least three bytes shorter than
 \ its source.
 BODYBUF-CAP constant TEXT-CAP
-
-\ The longest definition name this compiler takes. Tier 0 and the dictionary hold
-\ any name the body capture holds, but each backend copies a function's name into
-\ a 128-byte buffer, and a quotation's function is named by the definition's
-\ name, `;does`, `[:` and its ordinal. A longer name is refused by its length
-\ rather than truncated into one that denotes another word.
-64 constant NAME-CAP
 
 create TXT TEXT-CAP allot
 \ The definition's name is its spelling in TXT, whole, which stays put until the
@@ -374,11 +366,6 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
       E-NCOMP-NAME throw
    then ;
 
-\ Refused after the scan, like every other post-scan refusal, so RETRACT finds
-\ the signature the scan or REGISTER-TRUST recorded under the whole name.
-: NAME-LEN-CK ( -- )
-   NAME-U @ NAME-CAP > if E-NCOMP-NAME-CAP throw then ;
-
 \ ---- what the definition takes and leaves ------------------------------------
 70 constant RC-REJECT     \ the check hook's reject status (check-hook.f CHECK-RC)
 
@@ -419,9 +406,17 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    din M-IN !  dout M-OUT ! ;
 
 \ ---- binding an earlier definition shadowed by the pending record -------------
-64 constant SPELL-CAP                \ the longest prior spelling this lookup accepts
+\ The dictionary key a body token names.
+: TOKEN-KEY ( n -- IR-ID:ir-symbol-id )
+   {: ix:n :}
+   CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
 
-create SPELL-BUF SPELL-CAP allot
+\ The entry that key calls. It takes and answers a plain number so `catch` can
+\ run it: a symbol handle cannot cross `catch` (docs/forth.md, "A quotation
+\ sees no locals and must be stack-preserving under catch").
+: TOKEN-TARGET ( n -- n )
+   TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
+   CC BB sy HIR-WORD:FIX-SPELL NDICT:CALL-TARGET ;
 
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
@@ -430,19 +425,16 @@ create SPELL-BUF SPELL-CAP allot
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
-   CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM
-   {: sy:IR-ID:ir-symbol-id :}
-   CC BB sy IR-BUILD:SYMBOL-LEN SPELL-CAP > if exit then
-   CC BB sy SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    \ A local can have the same spelling as a public word in more than one
    \ used package. This pass runs before NELAB has built its local table, so
    \ an ambiguous token cannot be identified as a local here. Ambiguity proves
    \ that the token is not a prior binding; preserve that result and leave the
    \ normal elaborator to resolve the local first.
-   u [: SPELL-BUF swap NDICT:CALL-TARGET ;] catch {: target rc:n :}
+   ix [: TOKEN-TARGET ;] catch {: target rc:n :}
    rc E-USING-AMBIGUOUS = if exit then
    rc 0<> if rc throw then
    target PRIOR-ENTRY @ <> if exit then
+   ix TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? if exit then
    \ Structural operands can have the same spelling as the definition's bare
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
@@ -552,7 +544,6 @@ create SPELL-BUF SPELL-CAP allot
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
-   NAME-LEN-CK
    KEEP-ARITY
    p r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
@@ -684,30 +675,12 @@ INSTALL-FORGET
 : ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop ;
 
-create DIGIT 1 allot
-
-\ A count for a person, in decimal.
-: COUNT-TEXT ( n -- )
-   {: v:n :}
-   v 10 >= if v 10 / RECURSE then
-   v 10 mod STR-ZERO + DIGIT c!
-   DIGIT 1 ERROR-TEXT ;
-
-: NAME-CAP-TEXT ( -- )
-   s" : a " ERROR-TEXT  NAME-U @ COUNT-TEXT
-   s" -byte name; the limit is " ERROR-TEXT  NAME-CAP COUNT-TEXT
-   s"  bytes" ERROR-TEXT ;
-
 \ The elaborator's refusal names the token it stopped at.
-: REFUSED-TEXT ( -- )
-   NELAB:REFUSED$ {: a:ptr u:n :}
-   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then ;
-
-: REPORT-FAILURE ( n -- )
-   {: rc:n :}
+: REPORT-FAILURE ( -- )
    s" ncomp: cannot compile " ERROR-TEXT
    NAME$ ERROR-TEXT
-   rc E-NCOMP-NAME-CAP = if NAME-CAP-TEXT else REFUSED-TEXT then
+   NELAB:REFUSED$ {: a:ptr u:n :}
+   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
    S\" \n" ERROR-TEXT ;
 
 : RUN ( -- )
@@ -721,7 +694,7 @@ create DIGIT 1 allot
       entry-rc throw
    then
    M-RC @ {: rc:n :}
-   rc 0 <> if rc REPORT-FAILURE RETRACT rc throw then ;
+   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}

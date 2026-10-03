@@ -488,6 +488,31 @@ variable REC-U
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-trust-verdict.err" s" record verdict is not rejected" s" uncheckable stale trust row refused" REFUSED ;
 
+\ A record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), with
+\ the statement its throw ends. A call to such a name is refused under the same
+\ code in its definition, so the code names the record's shape only where no
+\ `word` places it, and both pass.
+: QUALIFIED-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-MAL-CALL ( -- ) GDX:MAL:CALL ;" GE-SRC-LINE
+   s" habu-json-qcall.f" s" tools/check.f --json-errors accepted a call to a malformed qualified name" RECORD-CHECK
+   s" word" s" gdx-mal-call" s" malformed call word" ERR-JSTR
+   s" habu-json-qcall.err" WRITE-ERR
+   s" habu-json-qcall.err" s" malformed call contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer GDX:MAL:NAME ( -- )" GE-SRC-LINE
+   s" habu-json-qual.f" s" tools/check.f --json-errors accepted a record for a malformed qualified name" RECORD-CHECK
+   s" code" s" E-BAD-QUALIFIED" s" malformed record code" ERR-JSTR
+   s" token" s" gdx:mal:name" s" malformed record token" ERR-JSTR
+   s" habu-json-qual.err" WRITE-ERR
+   s" habu-json-qual.err" s" malformed record contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_qualified_name\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
+   s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-qual-class.err" s" record repair class is not the one its code names" s" malformed record under the trust row's class refused" REFUSED ;
+
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
    s" EV ( -- n ) evaluate" GE-SRC-CHECK-LINE
@@ -809,7 +834,11 @@ variable REC-U
 \ by the same rule: a scheme and a pointer type are refused whole, a family
 \ closed over a quotation is registered, a comment opener where the name or the
 \ first type token stands is that name or type, as parse-name reads it, and a
-\ type missing at the end of the source is refused at the name.
+\ type missing at the end of the source is refused at the name. Every definer
+\ reads its name on its own line and its type's first token on the name's: one
+\ on the next line is missing, refused at the name or the definer, and that
+\ line is the next statement, here a declaration refused at its own place or a
+\ definition a later one calls.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -833,6 +862,19 @@ variable REC-U
    s" : JSTG-HOOK-USE ( -- ) 2 JSTG-DQ-BIND 0 JSTG-LQ drop 0 JSTG-DQ drop ;" GE-SRC-LINE
    s" TYPED-VARIABLE JSTG-CM ( c ) n" GE-SRC-LINE
    s" DEFER-LAYOUT-BUFFER \ c" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-VN" GE-SRC-LINE
+   s" 4 TYPED-BUFFER JSTG-BN" GE-SRC-LINE
+   s" DYNAMIC-BUFFER JSTG-YN" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER JSTG-LN" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER JSTG-DN" GE-SRC-LINE
+   s" : JSTG-N1 ( -- n ) 1 ;" GE-SRC-LINE
+   s" TYPED-VARIABLE" GE-SRC-LINE
+   s" 4 TYPED-BUFFER" GE-SRC-LINE
+   s" DYNAMIC-BUFFER" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER" GE-SRC-LINE
+   s" : JSTG-N2 ( -- n ) JSTG-N1 ;" GE-SRC-LINE
+   s" : JSTG-N3 ( -- n ) JSTG-N2 ;" GE-SRC-LINE
    s" 4 LAYOUT-BUFFER JSTG-LM" GE-SRC-LINE
    s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
    s" habu-bad-storage.err" WRITE-ERR
@@ -862,7 +904,27 @@ variable REC-U
    s" storage type's first token read raw" ERR-JRAW
    s" word" s\" \"\\\\\",\"token\":\"c\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":20,\"column\":23"
    s" deferred layout name read raw" ERR-JRAW
-   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":21,\"column\":17"
+   s" word" s\" \"JSTG-VN\",\"token\":\"JSTG-VN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":21,\"column\":16"
+   s" variable type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-BN\",\"token\":\"JSTG-BN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":22,\"column\":16"
+   s" buffer type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-YN\",\"token\":\"JSTG-YN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":23,\"column\":16"
+   s" dynamic type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-LN\",\"token\":\"JSTG-LN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":24,\"column\":17"
+   s" layout type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-DN\",\"token\":\"JSTG-DN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":25,\"column\":21"
+   s" deferred layout type on the next line refused at its name" ERR-JRAW
+   s" repair_class" s\" \"fix_storage_name\",\"verdict\":\"rejected\",\"word\":\"TYPED-VARIABLE\",\"token\":\"TYPED-VARIABLE\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":27,\"column\":1"
+   s" variable name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"TYPED-BUFFER\",\"token\":\"TYPED-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":28,\"column\":3"
+   s" buffer name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"DYNAMIC-BUFFER\",\"token\":\"DYNAMIC-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":29,\"column\":1"
+   s" dynamic name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"LAYOUT-BUFFER\",\"token\":\"LAYOUT-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":30,\"column\":3"
+   s" layout name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"DEFER-LAYOUT-BUFFER\",\"token\":\"DEFER-LAYOUT-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":31,\"column\":1"
+   s" deferred layout name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":34,\"column\":17"
    s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    RUN-STORAGE ;

@@ -32,6 +32,11 @@ variable UNIT-ID
 : DEP-EDIT ( -- )
    s" dep.f" S\" 1 drop\n" PUT ;
 
+\ The selected unit's own bytes after the cut, as a definition appended to it.
+: UNIT-EDIT ( -- )
+   s" pkg.f"
+   S\" s\" dep.f\" included\nNATIVE-UNIT-KEY-TEST:CUT\n0 drop\n1 drop\n" PUT ;
+
 : BAD-SOURCE ( -- )
    s" bad.f" S\" 1 drop\n" PUT ;
 
@@ -88,13 +93,14 @@ private
    LATE-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 T$=
    KEY-CUR KEY-LATE 64 BYTE-COPY
    EARLY-EDIT ONE-LOAD KEY-CUR 64 KEY-LATE 64 STR= 0= TTRUE
-   ORIGINAL DEP-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 STR= 0= TTRUE ;
+   ORIGINAL DEP-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 STR= 0= TTRUE
+   DEP-SOURCE UNIT-EDIT ONE-LOAD KEY-CUR 64 KEY-OLD 64 STR= 0= TTRUE ;
 
 public
 
 : RUN ( -- )
    T-RESET
-   s" package key ignores a later same-file edit and sees an earlier edit" T-LABEL
+   s" package key sees its own, a dependency's and an earlier loader edit, not a later one" T-LABEL
    s" native-unit-key-e2e" HB-TMP-MKDIR {: path:ptr size:n :}
    path ROOT size BYTE-COPY size ROOT-U !
    UNIT-SOURCE

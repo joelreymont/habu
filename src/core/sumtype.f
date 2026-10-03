@@ -268,19 +268,20 @@ variable TDA-I
       10 * a TDA-I @ + c@ 48 - +
       TDA-I @ 1 + TDA-I !
    REPEAT ;
-\ A missing arity has no token of its own, so the family name stands for it, as
-\ for a missing ;SUMTYPE (TDECL-NOEND-BODY): the packet then names a token the
-\ file holds, and an editor can place it.
-: TDECL-ARITY ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+\ CHECKER-DEFFAMILY hands its arity token straight from the caller, so a length
+\ past the two digits is refused before a byte is read, and the report echoes
+\ the token only when its length is one a name can have (CK-NAME-SPAN?).
+2 constant TDECL-ARITY-DIGITS   \ the digits of TFAM-DECL-PARAM-COUNT, 23
+: TDECL-ARITY-REFUSE ( ptr u8 n -- )
+   2dup CK-NAME-SPAN? 0= IF drop 0 THEN
+   s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW ;
+: TDECL-ARITY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   \ A missing arity has no token; use the family name's source position.
    u 0= IF TDN-A @ TDN-U @ s" missing arity" E-TDECL-ARITY TDECL-THROW THEN
-   a u TDECL-DEC? 0= u 2 > or IF
-      a u s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW
-   THEN
+   u 0 < u TDECL-ARITY-DIGITS > or IF a u TDECL-ARITY-REFUSE THEN
+   a u TDECL-DEC? 0= IF a u TDECL-ARITY-REFUSE THEN
    a u TDECL-DEC
-   dup TFAM-DECL-PARAM-COUNT > IF
-      drop a u s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW
-   THEN ;
+   dup TFAM-DECL-PARAM-COUNT > IF drop a u TDECL-ARITY-REFUSE THEN ;
 
 \ --- package scope: a declaration registers in the active checker package with
 \ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the

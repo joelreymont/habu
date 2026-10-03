@@ -369,11 +369,15 @@ create PACKET-BUF FS-PATH-CAP allot
    s" storage-unplaced" s" fix_storage_type"
    s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
 
+\ A record for a malformed qualified name is refused by the pre-pass, so the
+\ check meets it in process, before the statement its throw ends, and the
+\ packet is the record's.
 : TEST-RECORDS ( -- )
    s" trust-row" s" fix_stale_trust_row"
    s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 67 CHILD-CASE
    s" storage-record" s" use_storage_definer"
-   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE ;
+   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE
+   s" malformed-record" s" fix_qualified_name" s" defer DIAG:MAL:NAME ( -- )" PACKET-CASE ;
 
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS

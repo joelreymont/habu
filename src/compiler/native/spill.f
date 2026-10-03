@@ -76,8 +76,10 @@ variable SCRATCH-OPS
 1 constant BOUND-YES
 -1 constant NO-SLOT
 
-\ A name is copied out of the old module's interner and interned into the new
-\ one, because the two modules number their symbols separately.
+\ A form's or a key's name is copied out of the old module's interner and
+\ interned into the new one, because the two modules number their symbols
+\ separately. The dialect declared both, so this buffer bounds no name a program
+\ chose; a function's name is carried whole (FUN-NAME).
 128 constant NAME-CAP
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -852,9 +854,8 @@ create NAMEBUF NAME-CAP allot
 
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
-   IR-SYM:FCOPY {: u:n :}
-   CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
+   IR-BUILD:CARRY-SYMBOL ;
 
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
 \ One virtual register per input and one per output, as the old module has them.

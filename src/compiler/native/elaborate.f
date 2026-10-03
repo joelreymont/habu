@@ -375,7 +375,6 @@ variable VRW-N                       \ values still to find
 \ A local or group occupies a source token. Reserve from that count.
 variable LMAX
 variable LVMAX                       \ physical cells reserved for live locals
-64 constant LNAME-CAP                \ bytes one declaration spelling may hold
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable LN                          \ how many locals were declared
@@ -421,24 +420,15 @@ DYNAMIC-BUFFER LOCAL-TABLES n
 : LPEND ( -- ptr n ) 8 LOCAL-FIELD ;
 : LBASE ( -- ptr n ) 9 LOCAL-FIELD ;
 : LWIDTH ( -- ptr n ) 10 LOCAL-FIELD ;
-create LBUF LNAME-CAP allot
-create WBUF LNAME-CAP allot          \ a mention's spelling, for the locals compare
-
-\ A local answers to its DECLARED SPELLING, so the name a mention is compared
-\ under is the one written, not the folded dictionary key HIR-WORD:KEY-SYM
-\ builds. Declarations intern the same way (DECLARE-LOCAL), so both sides name
-\ one table and SAME-SYM? decides them. A token too long to be a local name
-\ keeps its own symbol and matches no declaration.
-: LOCAL-SPELL ( IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
-   {: sy:IR-ID:ir-symbol-id :}
-   CTX BLD sy IR-BUILD:SYMBOL-LEN LNAME-CAP > if sy exit then
-   CTX BLD sy WBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   CTX BLD WBUF u IR-BUILD:INTERN-SYMBOL ;
 
 \ ---- the name a body token writes, as it writes it ---------------------------
+\ A local answers to its DECLARED SPELLING, so a mention is compared under the
+\ symbol written, not the folded dictionary key HIR-WORD:KEY-SYM builds.
+\ Declarations intern the same way (DECLARE-LOCAL), so both sides name one
+\ table and SAME-SYM? decides them.
 : WRAW ( n -- IR-ID:ir-symbol-id )
    {: ix:n :}
-   VW MKEY ix NTAPE:SPELL@ LOCAL-SPELL ;
+   VW MKEY ix NTAPE:SPELL@ ;
 
 : LRESET ( -- )
    0 LN !
@@ -836,17 +826,25 @@ variable LIT-N
    {: r:IR-ARENA:arena ix:n :}
    r ix  ix WSYM  EMIT-FIXED-SYM ;
 
-\ ---- a string literal ----------------------------------------------------------
-DYNAMIC-BUFFER SB-BUF u8
+\ ---- what a token spells ------------------------------------------------------
+\ A symbol's bytes, in a byte row that grows to them: a name, a type or a string
+\ the body writes is as long as the body capture holds. The span lasts until the
+\ next spelling is taken.
+DYNAMIC-BUFFER SPELL-BUF u8
 
-: STRING-BODY ( n -- ptr u8 n ) {: ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+: SPELL$ ( IR-ID:ir-symbol-id -- ptr u8 n )
+   {: sy:IR-ID:ir-symbol-id :}
    CTX BLD sy IR-BUILD:SYMBOL-LEN {: u:n :}
-   u 1 max SB-BUF-RESERVE
-   0 SB-BUF  CTX BLD sy 0 SB-BUF u IR-BUILD:SYMBOL-COPY ;
+   u 1 max SPELL-BUF-RESERVE
+   0 SPELL-BUF  CTX BLD sy 0 SPELL-BUF u IR-BUILD:SYMBOL-COPY ;
 
+: QSPELL ( n -- ptr u8 n )
+   {: ix:n :}
+   VW MKEY ix NTAPE:SPELL@ SPELL$ ;
+
+\ ---- a string literal ----------------------------------------------------------
 : EMIT-STRING ( n -- ) {: ix:n :}
-   ix STRING-BODY {: a u:n :}
+   ix QSPELL {: a u:n :}
    ix  a u NSTR:INTERN  HIR:ADDR-DATA  EMIT-KIND-LIT
    ix  u  EMIT-LIT ;
 
@@ -1523,12 +1521,12 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    LN @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
-   CTX BLD  VW MKEY ix NTAPE:SPELL@  LBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
+   ix QSPELL {: a:ptr u:n :}
+   a u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
    nu 1 < if E-NELAB-LOCAL throw then
-   CTX BLD LBUF nu HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
+   CTX BLD a nu HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
    r sy PRE-FRAME? if E-NELAB-LOCAL throw then
-   CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL LN @ LNAME !
+   CTX BLD a nu IR-BUILD:INTERN-SYMBOL LN @ LNAME !
    -1 LN @ LROW!
    -1 LN @ LEND!
    -1 LN @ LSLOT!
@@ -1716,21 +1714,8 @@ PTR-VARIABLE TOK-TABLES
 : QINSIDE? ( n -- bool )
    QOWN@ QOWNER-DEF <> ;
 
-128 constant QSPELL-CAP
-
-here CELL 1- and CELL swap - CELL 1- and allot
-create QSPELL-BUF QSPELL-CAP allot
-
-: QSPELL ( n -- ptr u8 n )
-   {: ix:n :}
-   CTX BLD  VW MKEY ix NTAPE:SPELL@  QSPELL-BUF QSPELL-CAP IR-BUILD:SYMBOL-COPY
-   QSPELL-BUF swap ;
-
 : PARSE-IMM-TOKEN? ( n -- bool ) {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   \ Leave oversized names to normal admission, which records their refusal.
-   CTX BLD VW MKEY ix NTAPE:SPELL@ IR-BUILD:SYMBOL-LEN
-   QSPELL-CAP > if false exit then
    ix QSPELL CHECKER-OWNER:PARSE-IMM? ;
 
 : WALK-SKIP? ( n -- bool )
@@ -1885,8 +1870,6 @@ create QSPELL-BUF QSPELL-CAP allot
 0 constant MK-MATCH                  \ the open form is a `MATCH`
 1 constant MK-CASE                   \ the open form is a `case`
 
-128 constant MTOK-CAP                \ bytes of one operand token this pass can read
-
 here CELL 1- and CELL swap - CELL 1- and allot
 : MROLE ( -- ptr n ) 2 TOK-FIELD ;
 : MTAG ( -- ptr n ) 3 TOK-FIELD ;
@@ -1895,7 +1878,6 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : MWID ( -- ptr n ) 6 TOK-FIELD ;
 : MGLUE ( -- ptr n ) 7 TOK-FIELD ;
 : MEND ( -- ptr n ) 8 TOK-FIELD ;
-create MTOK MTOK-CAP allot
 
 CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
 create MS-KIND MSMAX cells allot     \ MK-MATCH or MK-CASE
@@ -1987,7 +1969,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ ---- one operand token -------------------------------------------------------
 : MTOK$ ( n -- ptr u8 n ) {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-MATCH throw then
-   MTOK  CTX BLD  VW MKEY ix NTAPE:SPELL@  MTOK MTOK-CAP IR-BUILD:SYMBOL-COPY ;
+   ix QSPELL ;
 
 \ ---- the operand steps, one per mode -----------------------------------------
 : MSCAN-MATCH-FAM ( n -- ) {: ix:n :}
@@ -3145,14 +3127,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
    k oglue VGLUE-RUN ;
 
 \ ---- a call control does not come back from ----------------------------------
-128 constant DN-CAP                  \ bytes of a callee's spelling this asks about
-here CELL 1- and CELL swap - CELL 1- and allot
-create DN-BUF DN-CAP allot
-
 : DEAD-ORD ( IR-ID:ir-symbol-id -- n )
-   {: sy:IR-ID:ir-symbol-id :}
-   CTX BLD sy DN-BUF DN-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   DN-BUF u NTRAP:NO-RETURN ;
+   SPELL$ NTRAP:NO-RETURN ;
 
 \ The ordinal is staged FRESH and not taken off the literal memo.
 : DEAD-END ( IR-ARENA:arena n -- )
@@ -3808,10 +3784,8 @@ variable IX                          \ the body token the walk stands on
    in VMAX > out VMAX > or if E-NELAB-ARITY throw then ;
 
 \ ---- the name a quotation's own function carries ------------------------------
-128 constant QNAME-CAP
-
-here CELL 1- and CELL swap - CELL 1- and allot
-create QNAME-BUF QNAME-CAP allot
+\ The definition's name and a suffix, in a byte row that grows to hold them.
+DYNAMIC-BUFFER QNAME-BUF u8
 variable QNAME-U
 variable FUN-KIND
 0 constant FUN-COLON
@@ -3820,16 +3794,16 @@ variable FUN-KIND
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
-   QNAME-U @ u + QNAME-CAP > if E-NELAB-QUOT-CAP throw then
-   a  QNAME-BUF QNAME-U @ +  u BYTE-COPY
+   QNAME-U @ u + QNAME-BUF-RESERVE
+   a  QNAME-U @ QNAME-BUF  u BYTE-COPY
    QNAME-U @ u + QNAME-U ! ;
 
 variable QNAME-P                     \ the place value the digit loop is on
 
 : QNAME-DIGIT ( n -- )
    {: d:n :}
-   QNAME-U @ 1+ QNAME-CAP > if E-NELAB-QUOT-CAP throw then
-   QNAME-BUF QNAME-U @ +  48 d +  swap c!
+   QNAME-U @ 1+ QNAME-BUF-RESERVE
+   48 d +  QNAME-U @ QNAME-BUF  c!
    QNAME-U @ 1+ QNAME-U ! ;
 
 : QNAME-DIGITS ( n -- )
@@ -3851,13 +3825,13 @@ variable QNAME-P                     \ the place value the digit loop is on
    FUN-KIND @ FUN-DOES-CLAUSE = if s" ;does" QNAME+ then
    s" [:" QNAME+
    k QNAME-DIGITS
-   QNAME-BUF QNAME-U @ ;
+   0 QNAME-BUF QNAME-U @ ;
 
 : DOES-NAME ( -- ptr u8 n )
    0 QNAME-U !
    0 QSPELL QNAME+
    s" ;does" QNAME+
-   QNAME-BUF QNAME-U @ ;
+   0 QNAME-BUF QNAME-U @ ;
 
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key

@@ -980,7 +980,6 @@
 -8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-NCOMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
--8575 constant E-NCOMP-NAME-CAP \ a definition name longer than the native compiler's function names hold
 -8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
@@ -1121,7 +1120,7 @@
 \ of that table is compiled into published code, so the table refuses rather than
 \ reuses, and a reader refuses rather than naming some other family.
 -8640 constant E-NTRAP-ORD      \ an ordinal that names no row of the family table: the number was written into a published routine by this same process, so a number outside the table means the module or the table is corrupt and naming another family would be worse than saying nothing
--8641 constant E-NTRAP-NAME     \ a family name this table cannot hold: empty, or longer than the message buffer's room for one
+-8641 constant E-NTRAP-NAME     \ an empty family or callee name, which no trap message could name
 -8642 constant E-NTRAP-CAP      \ more families than the table holds, or more name bytes than its arena holds. The ordinals it has already answered are compiled into published routines, so a name it cannot hold is a refusal rather than a reused ordinal
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
 

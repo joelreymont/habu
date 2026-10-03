@@ -10,9 +10,10 @@
 \ digits covering what the entry was made from: hb-build its artifacts,
 \ hb-build-out-<key> (tools/hb-build-lib.f), and its object cache, <key>.hbo and
 \ <key>.idx (lib/object-resolve.f); the gate its keyed images (test/keyed-image.f,
-\ test/cold-engine.f, test/whitebox-engine.f). A key moves with every edit to
-\ what it covers, so each publish lands beside the entries it replaces, and
-\ nothing but PRUNE removes one.
+\ test/cold-engine.f, test/whitebox-engine.f) and its NBR package unit
+\ (test/native-unit-image.f). A key moves with every edit to what it covers, so
+\ each publish lands beside the entries it replaces, and nothing but PRUNE
+\ removes one.
 \
 \ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Builds on other trees share
 \ the cache under keys of their own, and some run an entry in place, so keeping

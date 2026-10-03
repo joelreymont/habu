@@ -70,6 +70,9 @@ create GT-POOL-ERR-TOTALS GT-POOL-MAX cells allot
 create GT-POOL-SEQS GT-POOL-MAX cells allot
 create GT-POOL-WAITS GT-POOL-MAX cells allot
 create GT-POOL-SAT-LIVES GT-POOL-MAX cells allot
+create GT-POOL-CPU-BUDGETS GT-POOL-MAX cells allot
+create GT-POOL-CPU-USEDS GT-POOL-MAX cells allot
+create GT-POOL-CPU-ATS GT-POOL-MAX cells allot
 create GT-POOL-RED-LABELS GT-POOL-RED-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-RED-LABEL-US GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
@@ -81,6 +84,8 @@ create GT-POOL-RED-WAITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIVES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-MSS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-CPU-BUDGETS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-CPU-USEDS GT-POOL-RED-MAX cells allot
 
 TYPED-VARIABLE GT-POOL-OUT-BUFS-A ptr u8
 TYPED-VARIABLE GT-POOL-ERR-BUFS-A ptr u8
@@ -231,9 +236,15 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-TIMEOUT-KIND$ ( -- ptr u8 n )
    s" TIMEOUT-UNDER-LOAD" ;
 
-: GT-POOL-KIND-NAME. ( bool bool -- )   \ exited timed-out -> printed kind name
-   if drop GT-POOL-TIMEOUT-KIND$ type exit then
-   if s" exit" type exit then
+\ A slot the pool ended for its CPU budget (GT-POOL-CPU-BUDGET!): its own work
+\ ran past what it was allowed, which no load explains.
+: GT-POOL-BUDGET-KIND$ ( -- ptr u8 n )
+   s" CPU-BUDGET" ;
+
+: GT-POOL-KIND-NAME. ( bool bool bool -- ) {: exited:bool timed:bool over:bool :}
+   timed over and if GT-POOL-BUDGET-KIND$ type exit then
+   timed if GT-POOL-TIMEOUT-KIND$ type exit then
+   exited if s" exit" type exit then
    s" signal" type ;
 
 : GT-POOL-DONE-PTR ( idx -- ptr n )
@@ -277,6 +288,23 @@ GT-POOL-ABORT-BARE!
 
 : GT-POOL-SAT-LIVE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SAT-LIVES + ;
+
+\ A slot's CPU budget in ms, 0 for none; the ms its process tree had run at
+\ the last reading; and the mono-ns of that reading (GT-POOL-CPU-OUT?).
+: GT-POOL-CPU-BUDGET-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-CPU-BUDGETS + ;
+
+: GT-POOL-CPU-USED-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-CPU-USEDS + ;
+
+: GT-POOL-CPU-AT-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-CPU-ATS + ;
+
+: GT-POOL-OVER-BUDGET? ( n n -- bool ) {: used:n budget:n :}
+   budget 0 > used budget >= and ;
+
+: GT-POOL-SLOT-OVER? ( idx -- bool ) {: idx:idx :}
+   idx GT-POOL-CPU-USED-PTR @ idx GT-POOL-CPU-BUDGET-PTR @ GT-POOL-OVER-BUDGET? ;
 
 : GT-POOL-OUT-PATH-BUF ( idx -- ptr u8 )
    IDX>N FS-PATH-CAP * GT-POOL-OUT-PATHS + ;
@@ -626,6 +654,8 @@ false GT-POOL-CATCHING !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-WAITS-PTR !
    0 idx GT-POOL-SAT-LIVE-PTR !
+   0 idx GT-POOL-CPU-BUDGET-PTR !
+   0 idx GT-POOL-CPU-USED-PTR !
    0 0= idx GT-POOL-EXITED-PTR !
    0 0= 0= idx GT-POOL-TIMED-OUT-PTR !
    0 idx GT-POOL-CODE-PTR !
@@ -669,13 +699,17 @@ false GT-POOL-CATCHING !
 
 \ A retired slot is reused by the next start, so the capture sequence number,
 \ unique per start, is the one handle a caller can keep on a row it started.
-: GT-POOL-SEQ-LIVE? ( n -- bool ) {: seq:n :}
+\ The live slot whose capture seq is n, or -1.
+: GT-POOL-SEQ-SLOT ( n -- n ) {: seq:n :}
    0 begin dup GT-POOL-LIMIT @ < while
       dup >IDX GT-POOL-DONE@ 0=
-      over >IDX GT-POOL-SEQ-PTR @ seq = and if drop true exit then
+      over >IDX GT-POOL-SEQ-PTR @ seq = and if exit then
       1+
    repeat drop
-   false ;
+   -1 ;
+
+: GT-POOL-SEQ-LIVE? ( n -- bool )
+   GT-POOL-SEQ-SLOT 0 >= ;
 
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
@@ -1036,6 +1070,15 @@ false GT-POOL-CATCHING !
 : GT-POOL-RED-SAT-MS-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-SAT-MSS + ;
 
+: GT-POOL-RED-CPU-BUDGET-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-CPU-BUDGETS + ;
+
+: GT-POOL-RED-CPU-USED-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-CPU-USEDS + ;
+
+: GT-POOL-RED-OVER? ( n -- bool ) {: i:n :}
+   i GT-POOL-RED-CPU-USED-PTR @ i GT-POOL-RED-CPU-BUDGET-PTR @ GT-POOL-OVER-BUDGET? ;
+
 : GT-POOL-RED-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
@@ -1072,6 +1115,8 @@ false GT-POOL-CATCHING !
    idx GT-POOL-SAT-LIVE-PTR @ i GT-POOL-RED-SAT-LIVE-PTR !
    GT-POOL-LIMIT @ i GT-POOL-RED-SAT-LIMIT-PTR !
    idx GT-POOL-ELAPSED-MS i GT-POOL-RED-SAT-MS-PTR !
+   idx GT-POOL-CPU-BUDGET-PTR @ i GT-POOL-RED-CPU-BUDGET-PTR !
+   idx GT-POOL-CPU-USED-PTR @ i GT-POOL-RED-CPU-USED-PTR !
    idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR ! ;
 
 : GT-POOL-RED+ ( idx -- ) {: idx:idx :}
@@ -1092,20 +1137,29 @@ false GT-POOL-CATCHING !
    repeat drop
    -1 ;
 
-\ Saturation suffix, appended only for a pool-timeout (TIMEOUT-UNDER-LOAD) red:
-\ the live/limit depth and WAIT-heartbeat count that witness the contention, plus
-\ how long the killed slot ran. Non-timeout reds are byte-identical to before.
+\ Saturation suffix, appended only for a pool-timeout (TIMEOUT-UNDER-LOAD or
+\ CPU-BUDGET) red: the live/limit depth and WAIT-heartbeat count that witness
+\ the contention, plus how long the killed slot ran, and for a budgeted slot the
+\ CPU time its tree had run of its budget - little of it at a wall timeout is a
+\ row that stopped running, not one starved of a core. Non-timeout reds are
+\ byte-identical to before.
 : GT-POOL-RED-SAT-LINE ( n -- ) {: i:n :}
    i GT-POOL-RED-TIMED-OUT-PTR @ 0= if exit then
    s"  sat=" type i GT-POOL-RED-SAT-LIVE-PTR @ GT-POOL-N-TYPE
    $2F emit i GT-POOL-RED-SAT-LIMIT-PTR @ GT-POOL-N-TYPE
    s"  waits=" type i GT-POOL-RED-WAITS-PTR @ GT-POOL-N-TYPE
    s"  ran=" type i GT-POOL-RED-SAT-MS-PTR @ GT-POOL-N-TYPE
-   s" ms" type ;
+   s" ms" type
+   i GT-POOL-RED-CPU-BUDGET-PTR @ 0 > if
+      s"  cpu=" type i GT-POOL-RED-CPU-USED-PTR @ GT-POOL-N-TYPE
+      $2F emit i GT-POOL-RED-CPU-BUDGET-PTR @ GT-POOL-N-TYPE
+      s" ms" type
+   then ;
 
 : GT-POOL-RED-LINE ( n -- ) {: i:n :}
    s" RED: " type i GT-POOL-RED-LABEL$ type
-   s"  kind=" type i GT-POOL-RED-EXITED-PTR @ i GT-POOL-RED-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
+   s"  kind=" type
+   i GT-POOL-RED-EXITED-PTR @ i GT-POOL-RED-TIMED-OUT-PTR @ i GT-POOL-RED-OVER? GT-POOL-KIND-NAME.
    s"  code=" type i GT-POOL-RED-CODE-PTR @ GT-POOL-N-TYPE
    s"  out=" type i GT-POOL-RED-OUT$ type
    s"  err=" type i GT-POOL-RED-ERR$ type
@@ -1140,6 +1194,7 @@ false GT-POOL-CATCHING !
    label labelu idx GT-POOL-LABEL!
    mono-ns idx GT-POOL-START-PTR !
    idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
+   idx GT-POOL-START-PTR @ idx GT-POOL-CPU-AT-PTR !
    timeout idx GT-POOL-TIMEOUT-PTR ! ;
 
 : GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
@@ -1288,6 +1343,46 @@ false GT-POOL-CATCHING !
    idx GT-POOL-EXITED-PTR @
    idx GT-POOL-CODE-PTR @ 0= and ;
 
+\ ---- a row bounded by its own work --------------------------------------------
+\
+\ A SLOT'S DEADLINE IS WALL TIME, and on a saturated host most of a row's wall
+\ time is other processes' turns (docs/gate.md has the measurement). A row given
+\ a CPU budget (GT-POOL-CPU-BUDGET!) is ended once its process tree has run
+\ that much CPU time, user and system, with what its members reaped
+\ (lib/process-tree.f CPU-NS), and its wall deadline is then only a hang guard:
+\ a row that stopped running gains no CPU time, and only that deadline ends it.
+\ The tree is read at most once a GT-POOL-CPU-POLL-MS. A slot ended for its
+\ budget reads kind=CPU-BUDGET: it did more work than it was allowed, at any
+\ load. A reading that throws ends the run, as a refused reaper fork does: a
+\ budget the pool cannot read bounds nothing.
+1000 constant GT-POOL-CPU-POLL-MS
+variable GT-POOL-CPU-NS                  \ the reading, out of its catch
+
+: GT-POOL-CPU-READ ( idx -- ) {: idx:idx :}
+   mono-ns idx GT-POOL-CPU-AT-PTR !
+   idx GT-POOL-PID@ [: dup PROC-TREE:CPU-NS GT-POOL-CPU-NS ! ;] catch {: code:n :}
+   drop
+   code 0= if GT-POOL-CPU-NS @ PROC-NS-PER-MS / idx GT-POOL-CPU-USED-PTR ! exit then
+   s" test pool: CPU time of " type idx GT-POOL-LABEL$ type
+   s"  not read, throw " type code FMT:.INT cr
+   code GT-POOL-THROW ;
+
+\ TRUE once a budgeted slot's tree has run its budget.
+: GT-POOL-CPU-OUT? ( idx -- bool ) {: idx:idx :}
+   idx GT-POOL-CPU-BUDGET-PTR @ 0 <= if false exit then
+   mono-ns idx GT-POOL-CPU-AT-PTR @ - PROC-NS-PER-MS / GT-POOL-CPU-POLL-MS < if
+      false exit
+   then
+   idx GT-POOL-CPU-READ
+   idx GT-POOL-SLOT-OVER? ;
+
+\ Hold the live row whose capture seq is seq (GT-POOL-SEQ-SLOT) to ms of CPU
+\ time; the deadline it was started with becomes its hang guard.
+: GT-POOL-CPU-BUDGET! ( n n -- ) {: ms:n seq:n :}
+   seq GT-POOL-SEQ-SLOT {: i:n :}
+   i 0 < if E-TBL-BOUNDS GT-POOL-THROW then
+   ms i >IDX GT-POOL-CPU-BUDGET-PTR ! ;
+
 \ ---- a deadline the child itself owned ---------------------------------------
 \
 \ lib/process throws E-PROC-TIMEOUT when a child a suite spawned outlives the
@@ -1381,7 +1476,8 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    idx GT-POOL-ERR-BUF idx GT-POOL-ERR-U-PTR @ type ;
 
 : GT-POOL-OUTCOME-LINE ( idx -- ) {: idx :}
-   s" outcome: " type idx GT-POOL-EXITED-PTR @ idx GT-POOL-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
+   s" outcome: " type
+   idx GT-POOL-EXITED-PTR @ idx GT-POOL-TIMED-OUT-PTR @ idx GT-POOL-SLOT-OVER? GT-POOL-KIND-NAME.
    s"  code: " type idx GT-POOL-CODE-PTR @ FMT:.INT cr ;
 
 : GT-POOL-CAPTURE-LINES ( idx -- ) {: idx:idx :}
@@ -1419,7 +1515,8 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 : GT-POOL-TIMEOUT? ( idx -- bool ) {: idx :}
    idx GT-POOL-DONE@ 0= 0= if 0 0= 0= exit then
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS /
-   idx GT-POOL-TIMEOUT-PTR @ >= ;
+   idx GT-POOL-TIMEOUT-PTR @ >= if 0 0= exit then
+   idx GT-POOL-CPU-OUT? ;
 
 : GT-POOL-TIMEOUT ( idx -- ) {: idx :}
    OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!

@@ -1025,13 +1025,8 @@ by name with the count it saw and the ceiling, and none truncates.
   8000 bytes: <name> needs <count>`, rc 71, catchable inside `evaluate`. Repair:
   move the long literals into words of their own. The same constant bounds the
   source verifier's body buffer (`E-VS-BODY-CAP`) and the native compiler's unit
-  text (`E-NCOMP-TEXT`).
-- **A definition name at tier 1: 64 bytes** (`src/compiler/native/compiler.f`
-  `NAME-CAP`). Tier 0 and the dictionary take any name the body capture holds;
-  the native compiler names a definition's functions in 128-byte buffers, a
-  quotation's with a suffix. Past it: `ncomp: cannot compile <name>: a
-  <length>-byte name; the limit is 64 bytes`, `E-NCOMP-NAME-CAP`, catchable
-  inside `evaluate`. Repair: shorten the name.
+  text (`E-NCOMP-TEXT`), and it is the only bound on a definition's name, on
+  both tiers.
 - **One REPL line: 255 bytes** (`src/habu/repl.f` `LLINE-MAX`). A longer line is
   refused, `hb: repl line over 255 bytes: <length> typed`, and read again, never
   truncated, evaluated or saved to history. Load long definitions from a file.
@@ -1417,10 +1412,12 @@ the rule.
 - **A storage declaration its definer refuses is the checker's refusal, named
   and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  refuse an unknown, malformed, unstorable or missing type, a name with more
-  than one `:` or in a sealed package, and a literal count outside the extent
-  (the pre-verifier also refuses a count token that resolves to no `( -- n )`
-  word):
+  refuse an unknown, malformed, unstorable or missing type, a missing name, a
+  name with more than one `:` or in a sealed package, and a literal count
+  outside the extent (the pre-verifier also refuses a count token that resolves
+  to no `( -- n )` word). The name must stand on the definer's line and the
+  type's first token on the name's; one on the next line is missing, and that
+  line is the next statement ([type-families.md](type-families.md)):
   `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
   `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
   reports it as `E-BAD-STORAGE` at the type's file, line and column in every

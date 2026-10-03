@@ -96,7 +96,7 @@ theirs.
 | `lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
 | `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
-| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
+| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` and `PROC-STOP` vectors) |
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
 | `lib/process-tree.f` | process-wide |
@@ -2190,10 +2190,14 @@ the same two lengths PLUS the completion code (a nonzero exit code, or
 retired in favor of the exhaustive `MATCH`. Captures are bounded by the caller capacities; if either
 stream would exceed its capacity, the word throws `E-PROC-TRUNCATED` rather than
 truncating silently. Exact-capacity output is accepted when the next read
-observes EOF. On timeout, it sends `SIGKILL` through the checked
-`PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
-`E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
-fds and terminate/reap the active child before throwing a named process error.
+observes EOF. On timeout, it kills the child and every process the child
+started (`PROC-TREE:KILL-TREE`), reaps the child, closes owned fds, and then
+throws `E-PROC-TIMEOUT`. Truncation, a refused reaper arm and other capture
+failures end the child's tree and reap it the same way, and close all owned fds,
+before throwing a named process error. A tree walk that throws there has still
+killed the child, which is reaped all the same: the capture keeps its own
+answer, and stderr gets the line `process: process tree of a capture child not
+walked, throw <code>`.
 The `*-OUTCOME` capture variants return stdout length, stderr length, and the
 `outcome` sum. They classify timeout as the `timeout` outcome instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
@@ -2397,7 +2401,10 @@ own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
 refuses rather than answers empty; a tree of more than 1024 processes throws
 `E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
 SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
-kills this way.
+kills this way, and `lib/process.f` ends a capture's child this way when the
+capture ends it early. One walk or reading runs at a time in a process: a task
+that calls `KILL-TREE`, `CATCHES?` or `CPU-NS` while another task's call holds
+the file's tables sleeps until it is done.
 
 ## Process signals
 

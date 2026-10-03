@@ -111,7 +111,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `package`, …) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 67 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses | `E-BAD-STORAGE`, rc 70 |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE`, rc 70 |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
@@ -339,7 +339,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 64-byte tier-1 name |
+| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:` |
 | Constants | hex versus decimal, `src/config.fs` |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |

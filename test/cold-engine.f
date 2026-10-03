@@ -26,11 +26,11 @@ require lib/build-cache.f
 require lib/content-key.f
 require test/fixture-writer.f
 require test/image-grant.f
+require test/keyed-image.f               \ the emission's CPU budget and hang guard
 
 package COLD-ENGINE
 
 $10000 constant IO-CAP
-240000 constant WRITER-TIMEOUT-MS
 75 constant COLD-RC
 64 constant KEY-HEX-LEN
 128 constant NAME-CAP
@@ -123,7 +123,7 @@ variable RESOLVED?
    FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    WRITER-ARGS
    writer writeru >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN WRITER-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN KEYED-IMAGE:BUILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

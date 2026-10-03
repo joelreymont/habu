@@ -45,6 +45,17 @@
 \ granted it, which the gate's own build rows settled before the row started
 \ (test/image-grant.f, test/gate-images.f); ENSURE asks before it looks.
 \
+\ BOUNDED BY ITS OWN WORK. A gate's build row is ended once its processes have
+\ run BUILD-CPU-MS of CPU time, user and system, whatever the load
+\ (test/gate-pool.f GT-POOL-CPU-BUDGET!). The builder's own capture deadline,
+\ BUILD-TIMEOUT-MS, is then only a hang guard: a build that stopped running
+\ gains no CPU time, so wall time alone ends it. The guard is five times the
+\ budget, so a build within its budget reaches it only on less than a fifth of
+\ a core. Every family's builder is held to these two, test/whitebox-engine.f's,
+\ test/cold-engine.f's and test/native-unit-image.f's as well. The longest
+\ build, the unsealed engine's, runs 77 s of CPU; docs/gate.md has the
+\ measurements behind both numbers.
+\
 \ An image is handed out in place: its callers only execute it, and it writes
 \ nothing but the paths they name, so no caller can clobber the shared bytes.
 
@@ -62,8 +73,16 @@ require test/image-grant.f
 
 package KEYED-IMAGE
 
+public
+
+\ A build's CPU budget and its builder's hang guard (BOUNDED BY ITS OWN WORK,
+\ above).
+360000 constant BUILD-CPU-MS
+BUILD-CPU-MS 5 * constant BUILD-TIMEOUT-MS
+
+private
+
 $10000 constant IO-CAP
-240000 constant BUILD-TIMEOUT-MS
 75 constant BUILD-RC
 128 constant NAME-CAP
 

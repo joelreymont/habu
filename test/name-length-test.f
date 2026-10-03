@@ -1,5 +1,5 @@
-\ name-length-test.f - every checker word source can call with a name refuses a
-\ length that describes no name.
+\ name-length-test.f - every checker word source can call with a name or a text
+\ refuses a length that describes no name or no text.
 \
 \ A definer captures a word's name and one separator into the definition's body
 \ text before it writes the record (src/habu/layout.f BODYBUF-CAP), so the
@@ -17,8 +17,23 @@
 \ reading on through whatever is mapped after it.
 \
 \ CHECKER-DEFRECORD's and CHECKER-TRY-RECORD's second string is the record's
-\ field text, which is no name: its length is refused only when it describes no
-\ memory, -1 or the maximum cell.
+\ field text, which is no name, and so are a definition's source text, which
+\ CHECK and its entries judge, and a signature, which CHECK-DOES! and
+\ CHECKER-DEFCAST parse: each length is refused only when it describes no
+\ memory, -1 or the maximum cell. CHECK judges raw source, and the engine
+\ captures a definition without its comments and runs of spaces, so a source
+\ text one byte past BODYBUF-CAP still certifies.
+\
+\ A stored type's text, which the storage gates parse, is bounded by the
+\ definition body text: a storage definer spells its stored type in the effect
+\ of the accessor it generates, which the engine captures into BODYBUF-CAP
+\ bytes. Each storage gate is driven with -1, BODYBUF-CAP plus one and the
+\ maximum cell, a text of exactly BODYBUF-CAP is still taken, and the past-cap
+\ text is one the gate would otherwise take. CHECKER-DEFFAMILY's arity token is
+\ bounded by the two digits of the largest arity.
+\
+\ A name with a second inner ':' has a length a name has and still keys no
+\ record; every word that records a symbol refuses it too (TEST-MALFORMED).
 \
 \ Run: bin/hb --load test/name-length-test.f
 
@@ -37,12 +52,14 @@ $8000 constant ERR-CAP             \ a diagnostic that names a whole name
 10000 constant TIMEOUT-MS
 -1 1 rshift constant MAX-CELL
 BODYBUF-CAP 1 - constant CEIL      \ the longest name `:` defines
+BODYBUF-CAP constant TEXT-CAP      \ the longest stored-type text
+2 constant ARITY-CAP               \ digits of the largest arity, 23
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
 
-\ Room for a name one past the ceiling, in whole pages between two guard pages,
-\ every byte q.
-CEIL 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES * constant ROOM
+\ Room for a text one past its cap, in whole pages between two guard pages.
+\ Every byte of the names is q.
+TEXT-CAP 1 + STACK-ABI:PAGE-BYTES / 1 + STACK-ABI:PAGE-BYTES * constant ROOM
 PTR-VARIABLE NAMES
 : NAMES! ( -- )
    ROOM MEM-ALLOC-GUARDED drop {: p:ptr :}
@@ -63,8 +80,30 @@ variable LEN
    u 0 < u ROOM > or IF 2 TAIL drop u EXIT THEN
    u TAIL ;
 
+\ The text the next case hands its word: LEN bytes ending at the guard page,
+\ `head` and then spaces, or for a length no span has, two spaces.
+PTR-VARIABLE TEXTS
+: TEXTS! ( -- ) ROOM MEM-ALLOC-GUARDED drop TEXTS ! ;
+TEXTS!
+: TEXT ( ptr u8 n -- ptr u8 n )
+   {: h:ptr hu:n :}
+   TEXTS @ {: p:ptr :}
+   ROOM 0 ?do 32 p i + c! loop
+   LEN @ {: u:n :}
+   u 0 < u ROOM > or IF p ROOM + 2 - u EXIT THEN
+   p ROOM + u - {: t:ptr :}
+   hu 0 ?do h i + c@ t i + c! loop
+   t u ;
+
+\ A definition CHECK certifies, and a type every storage gate admits: the
+\ product this file declares below.
+: BODY$ ( -- ptr u8 n ) s" NLT-W ( -- )" TEXT ;
+: STORED$ ( -- ptr u8 n ) s" nlt-pair" TEXT ;
+
 : SIG$ ( -- ptr u8 n ) s" --" ;
 : CAST$ ( -- ptr u8 n ) s" len -- n" ;
+: CAST-NAME$ ( -- ptr u8 n ) s" nltcast" ;
+: CLAUSE$ ( -- ptr u8 n ) s" drop 1 +" ;
 
 \ The checker's pool marks, which a refused name leaves where it found them.
 13 constant MARK-N
@@ -120,6 +159,9 @@ create BEFORE MARK-N cells allot
 : MATCH-FAM ( -- ) MARKS! BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
 : CON-FAM ( -- ) MARKS! BAD$ TFL-CON-FAM? nip 0= VERDICT ;
 : VAR ( -- ) MARKS! BAD$ 0 TFAM:TFL-VAR? nip 0= VERDICT ;
+: LAYOUT-TEXT ( -- ) MARKS! STORED$ CHECKER-LAYOUT-INFO nip nip 0= VERDICT ;
+: STORAGE-TEXT ( -- ) MARKS! STORED$ CHECKER-STORAGE-INFO nip 0= VERDICT ;
+: DYNAMIC-TEXT ( -- ) MARKS! STORED$ CHECKER-DYNAMIC-INFO nip 0= VERDICT ;
 
 : DEFER-IT ( -- ) BAD$ CHECKER-DEFER ;
 : UNDEFINE-IT ( -- ) BAD$ CHECKER-UNDEFINE ;
@@ -137,6 +179,11 @@ create BEFORE MARK-N cells allot
 : SUM-IT ( -- ) BAD$ s" 0 VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
 : SUM-NOEND-IT ( -- ) BAD$ s" 0" CHECKER-DEFSUM-NOEND ;
 : PRODUCT-IT ( -- ) BAD$ s" 0 FIELD a n" CHECKER-DEFPRODUCT ;
+: ARITY-IT ( -- ) s" nltfam" BAD$ CHECKER-DEFFAMILY ;
+: CHECK-IT ( -- ) BODY$ CHECK drop ;
+: CHECK!-IT ( -- ) BODY$ CHECK! drop ;
+: CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
+: HOOK-IT ( -- ) BODY$ LOWER-CERT-HOOK:HOOK drop ;
 
 \ A product of this file's own, so a field transaction has a family to add to:
 \ the family of the field row it just committed.
@@ -180,17 +227,29 @@ variable LBL-U
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
 
-\ -1, the ceiling plus one and the maximum cell: no name has any of them.
-: RETURNS ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+\ -1, the cap plus one and the maximum cell: no name or text the cap bounds has
+\ any of them.
+: RETURNS-PAST ( n ptr u8 n -- )
+   {: cap:n src:ptr srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
-   CEIL 1 + s" ceiling+1" src srcu RETURNS-AT
+   cap 1 + s" cap+1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu RETURNS-AT ;
+: RETURNS ( ptr u8 n -- ) {: src:ptr srcu:n :} CEIL src srcu RETURNS-PAST ;
 
 : DIES ( ptr u8 n n ptr u8 n -- )
    {: src:ptr srcu:n rc:n want:ptr wantu:n :}
    -1 s" -1" src srcu rc want wantu DIES-AT
    CEIL 1 + s" ceiling+1" src srcu rc want wantu DIES-AT
+   MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
+
+\ -1 and the maximum cell alone, for a text with no bound of its own.
+: RETURNS-NO-SPAN ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   -1 s" -1" src srcu RETURNS-AT
+   MAX-CELL s" max" src srcu RETURNS-AT ;
+: DIES-NO-SPAN ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
+   -1 s" -1" src srcu rc want wantu DIES-AT
    MAX-CELL s" max" src srcu rc want wantu DIES-AT ;
 
 : TEST-QUERIES ( -- )
@@ -251,21 +310,81 @@ variable LBL-U
 \ them, as the engine's own callers do. A trust row refuses a false name as it
 \ refuses one that names no word, without echoing it; a cast reaches its name
 \ once its signature certifies, and stores it.
-: STALE$ ( -- ptr u8 n )
-   S\" E-TRUST-UNRESOLVED habu: trust row for '' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" ;
+$400 constant WANT-CAP
+create WANT WANT-CAP allot
+variable WANT-U
+: WANT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a WANT WANT-U @ + u BYTE-COPY
+   WANT-U @ u + WANT-U ! ;
+
+\ The trust-row refusal, naming the row's name `a u`.
+: STALE$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   0 WANT-U !
+   s" E-TRUST-UNRESOLVED habu: trust row for '" WANT+
+   a u WANT+
+   S\" ' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
+   WANT WANT-U @ ;
+
 : TEST-TOP-LEVEL ( -- )
    s" BAD$ PTX-BARRIER!" 76 S\" PTX-BARRIER!: unknown word\n" DIES
-   s" BAD$ SIG$ TRUST" 67 STALE$ DIES
-   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 STALE$ DIES
-   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 STALE$ DIES
+   s" BAD$ SIG$ TRUST" 67 s" " STALE$ DIES
+   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 67 s" " STALE$ DIES
+   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 67 s" " STALE$ DIES
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
+
+\ ---- a name no record is keyed by --------------------------------------------
+\ The engine defines no word named with a second inner ':' (rc 75), and
+\ CHECKER-RECORD-SYM answers symbol 0 for one. No row may carry symbol 0: a
+\ defer row keyed 0 is the defer store's terminator and hides every row after
+\ it. A trust row refuses the name as naming no word, and echoes it; every other
+\ word that records a symbol for it names it as malformed and throws.
+: MAL$ ( -- ptr u8 n ) s" q:q:q" ;
+: MALFORMED$ ( -- ptr u8 n )
+   S\" E-BAD-QUALIFIED habu: record for 'q:q:q' refused: malformed qualified name, where one non-edge ':' selects a package and a second ':' names no word. Use one ':' qualifier, e.g. PKG:WORD\nhb: uncaught throw code 7147\n" ;
+: MAL-DIES ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n want:ptr wantu:n :}
+   0 s" two inner colons" src srcu rc want wantu DIES-AT ;
+: TEST-MALFORMED ( -- )
+   s" MAL$ CHECKER-DEFER" 67 MALFORMED$ MAL-DIES
+   s" MAL$ CHECKER-UNDEFINE" 67 MALFORMED$ MAL-DIES
+   s" MAL$ CAST$ CHECKER-DEFCAST" 67 MALFORMED$ MAL-DIES
+   s" MAL$ SIG$ TRUST" 67 MAL$ STALE$ MAL-DIES
+   s" TRUSTED: NL-TD ( -- ) MAL$ SIG$ TRUST-DECL ; NL-TD" 67 MALFORMED$ MAL-DIES
+   s" TRUSTED: NL-TR ( -- ) MAL$ SIG$ TRUST-RAW ; NL-TR" 67 MALFORMED$ MAL-DIES ;
 
 \ A field text is no name, so only -1 and the maximum cell describe no text.
 : TEST-FIELD-TEXT ( -- )
-   -1 s" -1" s" TRY-FIELDS" RETURNS-AT
-   MAX-CELL s" max" s" TRY-FIELDS" RETURNS-AT
-   -1 s" -1" s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES-AT
-   MAX-CELL s" max" s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES-AT ;
+   s" TRY-FIELDS" RETURNS-NO-SPAN
+   s" FIELDS-IT" 70 S\" checker: empty value-record\n" DIES-NO-SPAN ;
+
+\ The storage gates answer no and move no pool mark. CHECK and every entry that
+\ reaches it end with the token buffer's refusal, which the maximum cell already
+\ met. A signature is refused as one that does not parse: a does> clause is
+\ rejected, a cast throws E-CAST-ARITY. CHECK-DOES! is trusted-only and
+\ CHECKER-DEFCAST has no effect a checked body may call, so the child names them
+\ at its top level. An arity token past two digits is refused as a bad arity,
+\ and its text is echoed only when its length is one a name can have.
+: TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
+: ARITY$ ( -- ptr u8 n )
+   S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters\nhb: uncaught throw code 7108\n" ;
+: TEST-TEXTS ( -- )
+   TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
+   TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
+   TEXT-CAP s" DYNAMIC-TEXT" RETURNS-PAST
+   s" CHECK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
+   s" CHECK!-IT" 76 TOO-LARGE$ DIES-NO-SPAN
+   s" CANDIDATE-IT" 76 TOO-LARGE$ DIES-NO-SPAN
+   s" HOOK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
+   s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
+   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 67 S\" hb: uncaught throw code 7129\n"
+   DIES-NO-SPAN
+   -1 s" -1" s" ARITY-IT" 67 ARITY$ DIES-AT
+   ARITY-CAP 1 + s" cap+1" s" ARITY-IT" 67
+   S\" habu: bad newtype declaration 'nltfam': arity must be a decimal, at most 23 parameters at 'qqq'\nhb: uncaught throw code 7108\n"
+   DIES-AT
+   MAX-CELL s" max" s" ARITY-IT" 67 ARITY$ DIES-AT ;
 
 \ ---- a name of exactly the ceiling ------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
@@ -334,15 +453,32 @@ variable LBL-U
    CEIL$ CHECKER-UNDEFINE
    CEIL$ CHECKER-RESOLVES? TFALSE ;
 
+\ A stored-type text of exactly the cap is still taken, and a source text one
+\ past it certifies.
+: TEST-TEXT-CAP ( -- )
+   TEXT-CAP LEN !
+   s" a stored type at the cap is a layout" T-LABEL
+   STORED$ CHECKER-LAYOUT-INFO nip nip TTRUE
+   s" ... is storage" T-LABEL
+   STORED$ CHECKER-STORAGE-INFO nip TTRUE
+   s" ... is a dynamic element" T-LABEL
+   STORED$ CHECKER-DYNAMIC-INFO nip TTRUE
+   TEXT-CAP 1 + LEN !
+   s" a definition text one past the capture certifies" T-LABEL
+   BODY$ CHECK-CANDIDATE! -1 T= ;
+
 : MAIN ( -- )
    T-RESET
    TEST-QUERIES
    TEST-FAMILIES
    TEST-DECLARERS
    TEST-TOP-LEVEL
+   TEST-MALFORMED
    TEST-FIELD-TEXT
+   TEST-TEXTS
    TEST-ENGINE
    TEST-CEILING
+   TEST-TEXT-CAP
    T-REPORT
    s" name-length-test: ok" type cr ;
 

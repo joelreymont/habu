@@ -89,10 +89,6 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ A name is copied out of the old module's interner and interned into the new
-\ one, because the two modules number their symbols separately.
-128 constant NAME-CAP
-
 \ Values in one function, and operations in one block. Both are the ceilings the
 \ neighbouring passes keep, for the same reason.
 : OPS-MAX ( -- n ) OMAX ;
@@ -128,7 +124,6 @@ DYNAMIC-BUFFER USE-COUNTS n
    VMAX VSET-BUF-RESERVE
    VMAX USE-COUNTS-RESERVE
    ;
-create NAMEBUF NAME-CAP allot
 
 \ One cell per operation of the module: whether the walk writes it, and what a
 \ removed transfer hands back to the operation in front of it.
@@ -512,11 +507,12 @@ DYNAMIC-BUFFER ABSORB-BUF n
    B-BASE @ n + B-BASE !
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
+\ The two modules number their symbols separately, so the name is carried from
+\ the old module's interner into the new one.
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
-   IR-SYM:FCOPY {: u:n :}
-   CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
+   IR-BUILD:CARRY-SYMBOL ;
 
 \ The routine's signature, restated in the new module: one virtual register per
 \ input and one per output, exactly as the old module has them.

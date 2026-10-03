@@ -95,8 +95,6 @@ HIR-OPCODE:XOR      HIR:ORD constant O-XOR
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-128 constant NAME-CAP
-
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
 BOUND-NO BND-MODE !
@@ -156,7 +154,6 @@ DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
 DYNAMIC-BUFFER VREAL-BUF n
 : VREAL ( -- ptr n ) 0 VREAL-BUF ;
-create NAMEBUF NAME-CAP allot
 
 \ ---- what the if-conversion below is working on ------------------------------
 \ Package storage rather than per-call, under the single-task discipline.
@@ -3098,13 +3095,12 @@ create D-MEET DSLOT-MAX cells allot
    DPLACE-CHOOSE ;
 
 \ ---- opening the selected function -------------------------------------------
-\ The two modules number their symbols separately, so the name is copied out of
-\ the source module's interner and interned into the new one.
+\ The two modules number their symbols separately, so the name is carried from
+\ the source module's interner into the new one.
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
-   IR-SYM:FCOPY {: u:n :}
-   CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
+   IR-BUILD:CARRY-SYMBOL ;
 
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
    {: f:IR-ID:ir-fun-id :}

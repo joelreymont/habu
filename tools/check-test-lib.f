@@ -1479,6 +1479,49 @@ variable LONG-J
    outu 0 T=
    CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
+\ ---- the child's deadline ----------------------------------------------------
+\ --deadline-ms gives the child a deadline other than check.f's 120 s: a whole
+\ number of milliseconds from 1 to 2147483647, the longest wait poll(2) takes,
+\ given once. Anything else is a usage error. A run past its deadline is
+\ test/check-signal-test.f's: it needs the run's processes watched.
+
+: DEADLINE-RUN ( ptr u8 n -- n n n ) {: value:ptr valueu:n :}
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   value valueu CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: EXPECT-DEADLINE-USAGE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 64 T=
+   label labelu T-LABEL outu 0 T=
+   label labelu T-LABEL CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
+
+: DEADLINE-TWICE ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: DEADLINE-MISSING ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: TEST-DEADLINE-OPTION ( -- )
+   DIRECT$ GOOD$ WRITE-ALL
+   s" 2147483647" DEADLINE-RUN
+   s" deadline: the longest deadline is taken" T-LABEL 0 T=
+   2drop
+   s" 0" DEADLINE-RUN s" deadline: zero" EXPECT-DEADLINE-USAGE
+   s" 2147483648" DEADLINE-RUN s" deadline: past the longest" EXPECT-DEADLINE-USAGE
+   s" 5s" DEADLINE-RUN s" deadline: not a number" EXPECT-DEADLINE-USAGE
+   DEADLINE-TWICE s" deadline: given twice" EXPECT-DEADLINE-USAGE
+   DEADLINE-MISSING s" deadline: no value" EXPECT-DEADLINE-USAGE ;
+
 : TEST-SOURCE-BYTES-COPY ( -- )
    GOOD$ MUT-SRC!
    s" owned-source.f" MUT-LABEL!
@@ -3885,6 +3928,46 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
+\ A name with a second ':' after a non-edge first one keys no record, and the
+\ checker refuses it where the record would be written (checker.f
+\ CHECKER-RECORD-NAME) by a throw, so the check reports it as a statement that
+\ threw, at the statement, in prose and JSON. Under --all-errors a definition
+\ refused before it is still reported: ending the process there reported
+\ nothing but the refusal's own line.
+: MALNAME$ ( -- ptr u8 n )
+   s" : CKT:MAL:NAME ( -- ) ;" ;
+
+: MALNAME-AFTER$ ( -- ptr u8 n )
+   s\" : CKT-MAL-BAD ( -- ) 1 ;\ndefer CKT:MAL:DEF ( -- )" ;
+
+: TEST-MALFORMED-NAME ( -- )
+   MALNAME$ DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7147 at ';'" CONTAINS? TTRUE
+   MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"throw_code\":7147" CONTAINS? TTRUE ;
+
+: TEST-MALFORMED-NAME-ALL ( -- )
+   MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7147 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
+
+\ The throw leaves a raw storage definer's signature (verify-source.f
+\ RAW-TRUST-NEXT) mid-parse; a later check in the same process must still read
+\ an ordinary signature's type variables as ordinary, not as raw cells.
+: TEST-MALFORMED-RAW ( -- )
+   s" variable CKT:MAL:VAR" DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   CAP-ERR erru s" throw 7147" CONTAINS? TTRUE
+   s\" : CKT-MAL-KEEP ( a -- a ) ;\n: CKT-MAL-USE ( ptr u8 -- ptr u8 ) CKT-MAL-KEEP ;"
+   DIRECT-STDIN 0 T= {: outu2:n erru2:n :}
+   erru2 0 T= ;
+
 \ A string the file never closes stops source discovery before any file is
 \ composed. Every --json-errors mode reports it by the one record --all-errors
 \ writes for it on standard input, in the file that holds it and at the string,
@@ -4023,14 +4106,11 @@ variable REQ-U
 \ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
 \ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
 \ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
-\ checker read last. The 250-byte name has a line of its own, under the engine's
-\ 255-byte line.
+\ checker read last: the type, after the 250-byte name on the definer's line.
 : CAP-THROW-FILES ( -- )
-   SB-RESET s" DYNAMIC-BUFFER" REQ-LINE+
-   s" CKT-CT-" SB-APPEND
+   SB-RESET s" DYNAMIC-BUFFER CKT-CT-" SB-APPEND
    243 0 ?do $4e SB-APPEND-C loop
-   $0a SB-APPEND-C
-   s" n" REQ-LINE+
+   s"  n" REQ-LINE+
    s" cap-throw.f" REQ-WRITE ;
 
 : TEST-CAPACITY-THROW ( -- )
@@ -4039,7 +4119,7 @@ variable REQ-U
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
    CAP-ERR erru s\" \"token\":\"n\"" CONTAINS? TTRUE
-   CAP-ERR erru s\" cap-throw.f\",\"line\":3,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru s\" cap-throw.f\",\"line\":1,\"column\":267," CONTAINS? TTRUE
    CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
 \ A top-level loader inside a package, or under a file-level `using`, runs its
@@ -4201,12 +4281,13 @@ variable REQ-U
 \ loads whenever the body does and the other arm never: its file left to the
 \ run leaves the word undefined, and the other arm's file checked too reads
 \ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
-\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
-\ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
-\ any other condition is the run's: the one in CKT-RQ-COND never runs, and
-\ its file defines the word again. So are those of req-alt4.f, which defines
-\ the word itself: each of its `if`s tests a local pushed after a target
-\ predicate, not the predicate.
+\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`;
+\ req-alt3.f nests a target `if` in the `else` arm of another; and req-alt5.f
+\ ends every arm in `EXIT`, which the engine reads as `exit`, so the loader
+\ after the arms never runs. A loader under any other condition is the run's:
+\ the one in CKT-RQ-COND never runs, and its file defines the word again. So
+\ are those of req-alt4.f, which defines the word itself: each of its `if`s
+\ tests a local pushed after a target predicate, not the predicate.
 : REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
    s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
@@ -4250,14 +4331,22 @@ variable REQ-U
    s" HB-TARGET-LINUX? off" s" req-alt-cond.f" s"  required then drop" REQ-PICK+
    s" HB-TARGET-MACOS? off" s" req-alt-cond.f" s"  required then drop ;" REQ-PICK+
    s" 0 0= 0= CKT-RQ-LOCAL" REQ-LINE+
-   s" req-alt4.f" REQ-ALT-USE ;
+   s" req-alt4.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK4 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required EXIT then" REQ-PICK+
+   s"    " SB-APPEND s" req-alt-cond.f" REQ-LIT+ s"  required ;" REQ-LINE+
+   s" CKT-RQ-PICK4" REQ-LINE+
+   s" req-alt5.f" REQ-ALT-USE ;
 
 : TEST-REQUIRE-TARGET ( -- )
    REQ-TARGET-FILES
    s" req-alt.f" REQ-ACCEPTED-EVERY
    s" req-alt2.f" REQ-ACCEPTED-EVERY
    s" req-alt3.f" REQ-ACCEPTED-EVERY
-   s" req-alt4.f" REQ-ACCEPTED-EVERY ;
+   s" req-alt4.f" REQ-ACCEPTED-EVERY
+   s" req-alt5.f" REQ-ACCEPTED-EVERY ;
 
 \ The pre-pass reads a target predicate's spelling as the engine's answer, so a
 \ source that defines that spelling, by `:` or by `defer`, is refused at the
@@ -5205,6 +5294,7 @@ variable LC-CANON-U
    s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
+   s" check/deadline-option" [: TEST-DEADLINE-OPTION ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
    s" check/file-path-copy" [: TEST-FILE-PATH-COPY ;] CASE-RUN
    s" check/source-list-idempotent" [: TEST-LIST-IDEMPOTENT ;] CASE-RUN
@@ -5272,6 +5362,9 @@ variable LC-CANON-U
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
+   s" check/malformed-name" [: TEST-MALFORMED-NAME ;] CASE-RUN
+   s" check/malformed-name-all-errors" [: TEST-MALFORMED-NAME-ALL ;] CASE-RUN
+   s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN

@@ -183,6 +183,23 @@ SUITE native-builder-image-refusals
    test/native-builder-image-refusals.f
 ;SUITE
 
+\ The NBR package unit rows wait for native-unit-build, which exports the unit
+\ from this tree once (test/native-unit-image.f) beside whitebox-engine-build
+\ and takes about as long. Each row runs one engine build
+\ (test/native-unit-lib.f): the import, compared with whitebox-engine-build's
+\ engine, and an import refused at NBR. The unit's layers after the stale
+\ entry - key, artifact file, bounded package compile - take under a second.
+SUITE native-unit
+   test/native-unit-e2e.f
+;SUITE
+
+SUITE native-unit-refusals
+   test/native-unit-stale.f
+   test/native-unit-key-e2e.f
+   test/native-unit-file.f
+   test/native-unit-compile-e2e.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
@@ -2187,7 +2204,8 @@ SUITE process-env
 ;SUITE
 
 \ A tree walk the kernel refuses throws rather than reading the refusal as
-\ nobody there.
+\ nobody there, and one at a capture's early end leaves the capture its own
+\ answer and names the walk's code.
 SUITE process-tree
    lib/process-tree-test.f
 ;SUITE
@@ -2513,9 +2531,16 @@ SUITE gate-signal
    test/gate-signal-test.f
 ;SUITE
 
-\ A signalled check.f leaves no process and no scratch behind.
+\ A signalled check.f, and a check run past its deadline, leave no process and
+\ no scratch behind.
 SUITE check-signal
    test/check-signal-test.f
+;SUITE
+
+\ A capture that ends its child early - its deadline, an overflow, a refused
+\ reaper arm - leaves nothing the child started.
+SUITE capture-tree
+   test/capture-tree-test.f
 ;SUITE
 
 WHITEBOX-SUITE generated-declaration-transaction

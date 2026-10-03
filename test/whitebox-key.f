@@ -11,11 +11,11 @@
 \ whose engine sources changed without a reinstall got a whitebox host built
 \ from the older sources.
 \
-\ This is a module of its own so that a file can key the engine, or take its
-\ build deadline, without reaching the image: the gate grants a row the keyed
-\ images whose modules its load closure reaches (test/gate-images.f),
+\ This is a module of its own so that a file can key the engine without
+\ reaching the image: the gate grants a row the keyed images whose modules its
+\ load closure reaches (test/gate-images.f), and
 \ test/whitebox-engine-key-test.f keys a copied tree with ENTRY-PATH! and never
-\ runs the engine, and the gate times its build row from BUILD-TIMEOUT-MS.
+\ runs the engine.
 
 require lib/errors.f
 require lib/string.f
@@ -49,14 +49,6 @@ public
 \ test/whitebox-engine.f's prune finds the family.
 : IMAGE-PREFIX$ ( -- ptr u8 n )
    s" hb-whitebox-" ;
-
-\ The builder's own deadline (test/whitebox-engine.f BUILD-RUN). It starts only
-\ after the key is hashed, so a caller that builds the engine under a deadline
-\ of its own gives that one a margin beyond this (test/gate-images.f
-\ BUILD-ROW-TIMEOUT-MS): the inner deadline then governs, BUILD-RUN names it and
-\ throws E-PROC-TIMEOUT, and EMIT removes the work directory before it passes
-\ the throw on.
-360000 constant BUILD-TIMEOUT-MS
 
 private
 

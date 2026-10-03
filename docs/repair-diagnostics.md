@@ -15,6 +15,8 @@ The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
 span, an input, a refused checker record, or otherwise a definition.
+`E-BAD-QUALIFIED` names a refused checker record only without a `word`, and a
+definition with one.
 
 Fields:
 
@@ -78,13 +80,15 @@ fabricate definition-only fields such as `word`, `declared_effect`,
 A storage declaration its definer refuses (`LAYOUT-BUFFER`,
 `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
 emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
-`word` (the declared name as written), `token` (the refused token), `reason`,
-`file` and `suggestion`. The repair class follows the reason:
-`fix_storage_type` for an unknown, malformed or unstorable type,
-`fix_storage_name` for a name with more than one `:` or in a sealed package,
+`word` (the declared name as written, or the definer when no name stands on
+its line: as written under `tools/check.f`, in its canonical uppercase
+spelling under `bin/hb --load`), `token` (the refused token), `reason`, `file` and `suggestion`. The
+repair class follows the reason: `fix_storage_type` for an unknown, malformed
+or unstorable type or none on the name's line, `fix_storage_name` for no name
+on the definer's line or a name with more than one `:` or in a sealed package,
 and `fix_storage_count` for a literal count outside the extent, a count token
-that resolves to no `( -- n )` word, or no count. An
-unknown type names its own token, any other type refusal the whole stored type.
+that resolves to no `( -- n )` word, or no count. An unknown type names its own
+token, a missing one the name, any other type refusal the whole stored type.
 `tools/check.f` reads the declaration before the run, so there the object also
 carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
 definer under `bin/hb --load` has no record of its token's place and carries
@@ -134,16 +138,31 @@ without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
 <suggestion>`. The run exits 64. A list that also names a source the engine does
 not provide is checked.
 
-Two load-time refusals of a checker record emit a refused-record object: no
+`tools/check.f` runs a checked program in a child, the run stage, with a
+deadline of 120 s, or the milliseconds `--deadline-ms N` gives, from 1 to
+2147483647. A run still going at its deadline is killed with every process it
+started, what it wrote is not replayed, and stderr gets the one line
+`check.f: <label>: the run passed its deadline of <N> ms`, prose in either mode.
+The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
+under `--json-errors` as in its packets. The run exits 70. A program that runs
+longer is checked with a longer `--deadline-ms`.
+
+Three load-time refusals of a checker record emit a refused-record object: no
 definition encloses them, so they carry `schema_version`, `code`,
 `repair_class`, `verdict` `rejected`, `token` (the name the record would have
 described), `file` and `suggestion`, and no span, `throw_code` or
 definition-only field. Each code names its repair class:
 `E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
 where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
-storage registrar called from source outside the engine's verifier window.
-`tools/check.f` meets either only in its run stage, after every definition has
-checked, and exits 67 as the load's uncaught throw does.
+storage registrar called from source outside the engine's verifier window;
+`E-BAD-QUALIFIED` / `fix_qualified_name` is a record for a malformed qualified
+name, which keys no word. A call to such a name is refused under the same code
+and class in its definition, with the definition's fields. `tools/check.f`
+meets the first two only in its run stage, after every definition has checked,
+and exits 67 as the load's uncaught throw does. A record for a malformed name
+also throws 7147, so nothing after it in its source is checked: a load exits 67
+after `hb: uncaught throw code 7147`, and `tools/check.f` reports the statement
+that asked for the record as one that threw.
 
 ## Checking Without Running
 
@@ -170,6 +189,7 @@ process.
   engine), as `check.f`'s run stage does, and loads
   `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
   `tools/check-verify-core.f` was loaded from.
+- The child has the run stage's deadline, `--deadline-ms` included.
 
 | `CHECK:verdict` | Meaning | check.f exit |
 | --- | --- | --- |
@@ -288,7 +308,7 @@ Storage packets carry a storage record's evidence:
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
-| `word` | string | required | The declared name as written. |
+| `word` | string | required | The declared name as written; the definer when it has none (as written under `tools/check.f`, uppercase under `bin/hb --load`). |
 | `token` | string | required | The refused token. |
 | `reason` | string | required | Short refusal cause. |
 | `file` | string | required | Source label or path. |
@@ -349,8 +369,8 @@ place:
 | `kind` | string | required | Must be `habu_repair_packet`. |
 | `token` | string | required | The name the record would have described. |
 | `file` | string | required | Source label or path. |
-| `code` | string | required | `E-TRUST-UNRESOLVED` or `E-PKG-CONTEXT`. |
-| `repair_class` | string | required | `fix_stale_trust_row` or `use_storage_definer`, the one the code names. |
+| `code` | string | required | `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED`. |
+| `repair_class` | string | required | `fix_stale_trust_row`, `use_storage_definer` or `fix_qualified_name`, the one the code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
@@ -392,8 +412,9 @@ Current checker classes:
   could drop it; keep the linear value on the stack and factor instead.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
-- `fix_qualified_name`: a call used a malformed qualified name with more than one
-  `:`; use a single `:` qualifier such as `PKG:WORD`.
+- `fix_qualified_name`: a call, or a record of a definition or declaration, used
+  a malformed qualified name with more than one `:`; use a single `:` qualifier
+  such as `PKG:WORD`.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
@@ -415,10 +436,11 @@ Current checker classes:
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  names an unknown or malformed type, or one its definer cannot store; declare
-  the type before the storage or store a type the definer admits.
-- `fix_storage_name`: a storage declaration's name has more than one `:` or lies
-  in a sealed package.
+  names an unknown or malformed type, one its definer cannot store, or no type
+  on the name's line; declare the type before the storage or store a type the
+  definer admits.
+- `fix_storage_name`: a storage declaration has no name on its definer's line,
+  or its name has more than one `:` or lies in a sealed package.
 - `fix_storage_count`: a storage declaration's literal count is outside the
   buffer's extent, its count token resolves to no `( -- n )` word, or the
   declaration has no count.

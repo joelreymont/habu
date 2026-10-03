@@ -214,7 +214,6 @@ HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-128 constant NAME-CAP
 3 constant TRAP-CELLS                \ the address, the length and the exit code
 64 constant EDGE-MAX                 \ operands one edge may carry
 
@@ -261,9 +260,6 @@ variable R-BASE                      \ where this function's blocks start in the
 variable R-NEWBASE                   \ and where they start in the module being built
 variable LIVE-WORDS                  \ cells in one block's value set, this function
 variable LIVE-CHANGED                \ whether the last dataflow pass moved a set
-
-here CELL 1- and CELL swap - CELL 1- and allot
-create NAMEBUF NAME-CAP allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -2099,13 +2095,12 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    v VALUE-FOLDS u = ;
 
 \ ---- opening the selected function -------------------------------------------
-\ The two modules number their symbols separately, so the name is copied out of
-\ the source module's interner and interned into the new one.
+\ The two modules number their symbols separately, so the name is carried from
+\ the source module's interner into the new one.
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
-   IR-SYM:FCOPY {: u:n :}
-   CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
+   CTX BLD  V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@
+   IR-BUILD:CARRY-SYMBOL ;
 
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
    {: f:IR-ID:ir-fun-id :}

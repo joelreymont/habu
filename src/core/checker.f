@@ -5101,8 +5101,9 @@ variable SIGSCOPE-U
 
 \ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
 \ one, or one that runs the span past the top of the address range. A false
-\ length inside the range cannot be told from a true one here, and a signature
-\ or a field text has no bound of its own; a name has, CK-NAME-MAX below.
+\ length inside the range cannot be told from a true one here, and a signature,
+\ a field text or a definition's source text has no bound of its own; a name
+\ has, CK-NAME-MAX below, and so has a stored type's text, CK-TEXT-SPAN?.
 : BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 < IF RES-FALSE EXIT THEN
    a u + a < IF RES-FALSE EXIT THEN
@@ -5123,6 +5124,19 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 : CK-NAME-SPAN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CK-NAME-MAX <= and ;
+
+\ THE LONGEST STORED TYPE. The gates read a stored type's raw source span
+\ (src/core/layout-buffer.f STORAGE-PARSE-TYPE), which its definer then spells
+\ into a $1000-byte buffer: LBUF-GEN on the load path (E-LAYOUT-BUFFER past
+\ LBUF-GEN-CAP) and LBUF-SIG-BUF in the checker's own registration
+\ (LBUF-SIG-CAP), so no stored type the engine takes is longer than
+\ CK-BODYBUF-CAP; the definition capture, which drops runs of spaces, does not
+\ bound it.
+\ STORAGE-RESOLVE?, the first reader of such a text, asks this before it reads
+\ a byte (test/name-length-test.f drives every storage gate).
+: CK-TEXT-SPAN? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u BYTE-SPAN? u CK-BODYBUF-CAP <= and ;
 
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
@@ -5249,10 +5263,13 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    depth u 0 ?do a i + c@ SIG-NEST loop {: after:n :}
    after 0 > IF after RES-FALSE EXIT THEN
    after a u SIG-PTR-TOK? 0= ;
-\ The spelling also ends with its line. Given the bytes between its last token
-\ and the next one, answer whether they hold a line feed (10). Then, as when no
-\ token follows, the reader leaves that token to the next statement, and
-\ SIG-TYPE refuses a span left open.
+\ The declaration also ends with its line: the name stands on the definer's
+\ line, the type's first token on the name's, and the spelling never goes past
+\ it. Given the bytes between one token and the next, answer whether they hold
+\ a line feed (10). Then, as when no token follows, the reader leaves that token
+\ to the next statement: a missing name or type is refused by name
+\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REFUSE), and SIG-TYPE
+\ refuses a span left open.
 : CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
 
@@ -5832,9 +5849,12 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
+\ CHECK-DOES! and CHECKER-DEFCAST hand it the signature their callers gave them,
+\ so a length that describes no memory parses as the empty text, which has no
+\ `--`: each refuses it as a signature that does not parse, and no byte is read.
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
    a SB!
-   u SL !
+   a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
    PSIG ;
 
@@ -5851,7 +5871,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u CK-TEXT-SPAN? 0= IF RES-FALSE EXIT THEN
    a SB!  u SL !  0 SI !
    NEXT-SIG-TOK dup 0= IF 2drop RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
@@ -9783,6 +9803,7 @@ PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
 PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-TYPE-REFUSE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-STORAGE-NAME-REFUSE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-TYPE-SPAN-STEP
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-TYPE-SPAN-BREAK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -10460,12 +10481,15 @@ package CHECKER-REG
 \ to prevent: a stale row minted a bare global checker symbol out of nothing,
 \ and the collision surfaced at some later file's `using` instead of at the row.
 7143 constant E-TRUST-UNRESOLVED
+\ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
+7147 constant E-BAD-QUALIFIED
 PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
-\ ONE hook for both refused-record diagnostics, selected by its argument, for
-\ the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
+\ ONE hook for the three refused-record diagnostics, selected by its argument,
+\ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
 \ `trust` row here, 1 the storage record refused outside the verifier window
-\ (CHECKER-REPLAY-NAME-OK?).
-defer RECORD-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
+\ (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
+\ (CHECKER-RECORD-NAME).
+defer RECORD-DIAG-XT ( n -- )               \ render.f installs the three diagnostics behind one selector
 : RECORD-DIAG-DEFAULT ( -- ) [: drop ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-DEFAULT
 
@@ -10805,9 +10829,9 @@ variable CHECKER-QBAD-TOK
    a u s" engine-error" CORE-STR=CI ;
 
 \ --- storage declaration refusals ---------------------------------------------
-\ A storage definer refuses a declaration whose type it cannot size, whose name
-\ it cannot publish, or whose count is a literal outside its extent or a token
-\ the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
+\ A storage definer refuses a declaration whose type it cannot size, that has no
+\ name or one it cannot publish, or whose count is a literal outside its extent
+\ or a token the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
 \ (src/core/layout-buffer.f) both refuse through CHECKER-STORAGE-REFUSE, so the
 \ declaration is reported, naming the declared word and the refused token,
 \ wherever it is refused; it used to throw E-CHECKER-LAYOUT-BUFFER with nothing
@@ -10828,7 +10852,8 @@ variable CHECKER-QBAD-TOK
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
 8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
 9 constant STG-COUNT-WORD       \ the count token names no word that leaves the count
-10 constant STG-NO-TYPE         \ no token follows the name to be its type
+10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
+11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
 PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
 PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
 variable STGR-WHY                               \ one of the STG- reasons above
@@ -10879,6 +10904,11 @@ STORAGE-DIAG-DEFAULT
       LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
+
+\ A definer with no name on its line declares no word, so it is refused at its
+\ own token, which stands in for the word.
+: CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
+   da du da du STG-NO-NAME CHECKER-STORAGE-REFUSE ;
 
 \ A name a storage definer publishes has at most one inner ':' and, once the
 \ seal is captured, is not qualified into a sealed package. A refused name
@@ -11991,8 +12021,21 @@ variable DFER-POS
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
+\ The symbol a declaration's rows are keyed by. CHECKER-RECORD-SYM answers 0 for
+\ a malformed qualified name, which keys no word, and no row may carry 0: a
+\ defer row keyed 0 is DFERS' terminator and hides every row after it from the
+\ scan, and an effect row keyed 0 is anonymous. So the name is refused, and
+\ named, before the caller writes anything. The refusal is a throw because source
+\ reaches it through the pre-pass (src/habu/verify-source.f), whose drivers
+\ report a throw at its statement after every diagnostic made before it.
 : CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u CHECKER-RECORD-SYM CHECKER-REC-SYM !
+   a u CHECKER-RECORD-SYM {: sym:n :}
+   sym 0= IF
+      a TSR-TOK-A !  u TSR-TOK-U !
+      2 RECORD-DIAG-XT
+      E-BAD-QUALIFIED throw
+   THEN
+   sym CHECKER-REC-SYM !
    a u ;
 
 : CHECKER-DEFER ( ptr u8 n -- )
@@ -16937,9 +16980,9 @@ package CHECKER-REG
 \ today (dot habu-a-qualified-name-3913fe54). It is also the narrower half of
 \ the hole: only a BARE top-level name mints the global checker symbol that
 \ surfaces two layers away as E-USING-SHADOW-GLOBAL, which is the failure this
-\ refusal exists to stop. A malformed token is passed through for the same
-\ reason CHECKER-RECORD-SYM passes it: refusing it here would report the wrong
-\ thing about it.
+\ refusal exists to stop. A malformed token is asked as a bare one: the engine
+\ defines no word spelled that way, so no wordlist claims it and the row names no
+\ word. Where nothing is asked, CHECKER-RECORD-NAME refuses it as malformed.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE = IF data-base CK-PKG-PRI-OFF + @ EXIT THEN
@@ -16949,7 +16992,6 @@ package CHECKER-REG
 : TRUST-RESOLVES? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF RES-TRUE EXIT THEN
-   CHECKER-QBAD-TOK @ IF RES-TRUE EXIT THEN
    CHECKER-PKG-MIRROR-AUTHORITY? IF RES-TRUE EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
@@ -19154,7 +19196,10 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    SGHASR @ IF SGRIN @ R-RES SGROUT @ R-RES <> IF RES-FALSE EXIT THEN THEN
    RES-TRUE ;
 
+\ A length that describes no memory (BYTE-SPAN?) is refused before any state is
+\ reset, with the refusal the token buffers gave the maximum cell.
 : CHECK-RESET {: a u :}
+   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE

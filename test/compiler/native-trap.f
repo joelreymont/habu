@@ -535,6 +535,15 @@ variable CHILD-RC
    ERR-BUF CHILD-ERR-N @ ;
 
 \ ---- the other kind of row, and the other exit -------------------------------
+\ A callee's name is as long as the definition capture lets it be, past every
+\ fixed buffer the message was once built in.
+1000 constant LONG-N
+LONG-N BUFFER: LONG-BUF
+
+: LONG-NAME$ ( -- ptr u8 n )
+   LONG-N 0 ?do 121 LONG-BUF i + c! loop
+   LONG-BUF LONG-N ;
+
 \ A trap site the ELABORATOR builds after a call that does not come back carries
 \ a row of the second kind, and reaching it would mean the certificate the caller
 \ was compiled against was false. It says so in its own words and with its own
@@ -555,7 +564,17 @@ variable CHILD-RC
    f  s" ntrapz" NTRAP:FAMILY  T=
    d  s" ntrapz" NTRAP:NO-RETURN  T=
 
-   s" a name this table cannot hold is refused for either kind" T-LABEL
+   s" a long callee name is held whole, and so is its message" T-LABEL
+   LONG-NAME$ NTRAP:NO-RETURN {: g:n :}
+   g NTRAP:NAME$ LONG-NAME$ T$=
+   g NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+   rc ENGINE-ERROR:CODE-CERT T=
+   u LONG-N 13 + T=
+   a 4 s" hb: " T$=
+   a 4 + LONG-N LONG-NAME$ T$=
+   a u + 9 - 9 s"  returned" T$=
+
+   s" an empty name is refused for either kind" T-LABEL
    [: s" " NTRAP:NO-RETURN drop ;] E-NTRAP-NAME TTHROWSQ
 
    s" the no-return exit is ENGINE-ERROR:CODE-CERT, not the bad-tag one" T-LABEL
@@ -773,7 +792,7 @@ public
    [: NTRAP:COUNT NTRAP:NAME$ drop drop ;] E-NTRAP-ORD TTHROWSQ
    [: -1 NTRAP:NAME$ drop drop ;] E-NTRAP-ORD TTHROWSQ
 
-   s" a name this table cannot hold is refused rather than truncated" T-LABEL
+   s" an empty name is refused, since no message could name it" T-LABEL
    [: s" " NTRAP:FAMILY drop ;] E-NTRAP-NAME TTHROWSQ
 
    \ ---- the terminator through the production pipeline ----
