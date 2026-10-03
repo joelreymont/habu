@@ -136,22 +136,22 @@ variable HI
    s" x64link: a code record the capture's shadow carries no routine for" REFUSE ;
 
 : STRAY-ROUTINE ( n -- ) {: r:n :}
-   s" x64link: the shadow routine of shipped row " type r SH-REC .
+   s" x64link: the shadow routine of shipped row " type r SH-REC .INT
    r SH-REC AOT-REC-N @ < if
-      s" lands on package row " type r SH-REC CREC-NAME$ type
+      s"  lands on package row " type r SH-REC CREC-NAME$ type
    else
-      s" names none of the " type AOT-REC-N @ . s" shipped records" type
+      s"  names none of the " type AOT-REC-N @ .INT s"  shipped records" type
    then cr
    s" x64link: the shadow's routines do not match the shipped records" REFUSE ;
 
 : WID-OUT ( n n -- ) {: k:n w:n :}
-   k WINDOW. s"  carries wid " type w .
-   s" outside the window's " type AOT-WID-SPAN @ . s" wordlists" type cr
+   k WINDOW. s"  carries wid " type w .INT
+   s"  outside the window's " type AOT-WID-SPAN @ .INT s"  wordlists" type cr
    s" x64link: a wid outside the capture window" REFUSE ;
 
 : PROT-OUT ( n -- ) {: row:n :}
-   s" x64link: protected-wid row " type row .
-   s" is window wordlist " type row PWIN@ . s" of " type AOT-WID-SPAN @ . cr
+   s" x64link: protected-wid row " type row .INT
+   s"  is window wordlist " type row PWIN@ .INT s"  of " type AOT-WID-SPAN @ .INT cr
    s" x64link: a protected wid outside the window or at PROT-WID-MAX" REFUSE ;
 
 \ The shadow row whose emission holds shadow code byte n: the first row of the
@@ -227,12 +227,12 @@ variable HI
 : ?FITS ( -- )
    ENGINE-PRIMS:COUNT AOT-REC-N @ + {: n:n :}
    n DICT-CAP > if
-      s" x64link: " type n . s" records against DICT-CAP " type DICT-CAP . cr
+      s" x64link: " type n .INT s"  records against DICT-CAP " type DICT-CAP .INT cr
       s" x64link: the records do not fit the dictionary" REFUSE
    then
    CODE-END @ {: size:n :}
    size X64KERNEL:CODE-CEILING DICT-SIZE - > if
-      s" x64link: " type size . s" bytes of names and routines past the code ceiling" type cr
+      s" x64link: " type size .INT s"  bytes of names and routines past the code ceiling" type cr
       s" x64link: the routines do not fit the code band" REFUSE
    then ;
 
@@ -440,21 +440,21 @@ private
 
 : SITE. ( n -- ) {: s:n :}
    s" x64link: the shadow routine of " type s SITE-AT ROW-AT SH-REC CREC-NAME$ type
-   s"  at code byte " type s SITE-AT . ;
+   s"  at code byte " type s SITE-AT .INT ;
 
 : UNCARRIED ( n -- ) {: s:n :}
-   s SITE. s" names " type s SITE-NAME$ type
+   s SITE. s"  names " type s SITE-NAME$ type
    s" , which no x86-64 kernel body carries" type cr
    s" x64link: a shadow site names a word the x86-64 kernel does not carry" REFUSE ;
 
 : ROUTINELESS ( n -- ) {: s:n :}
    s 8 SITE@ SITE-TARGET-MASK and {: k:n :}
-   s SITE. s" names shipped row " type k . k CREC-NAME$ type
+   s SITE. s"  names shipped row " type k .INT space k CREC-NAME$ type
    s" , which has no x86-64 routine" type cr
    s" x64link: a shadow site names a record with no x86-64 routine" REFUSE ;
 
 : OUT-OF-REACH ( n n -- ) {: s:n d:n :}
-   s SITE. s" lies " type d . s" bytes from its target, past a rel32" type cr
+   s SITE. s"  lies " type d .INT s"  bytes from its target, past a rel32" type cr
    s" x64link: a shadow call or branch does not reach its target" REFUSE ;
 
 \ The image address a site's target enters: a shipped record's routine at its
@@ -520,17 +520,17 @@ private
    AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + f + LE:U32@ ;
 
 : NO-XT ( n -- ) {: c:n :}
-   s" x64link: address-cell row " type c .
-   s" holds window code no shipped record enters" type cr
+   s" x64link: address-cell row " type c .INT
+   s"  holds window code no shipped record enters" type cr
    s" x64link: a code cell targets code no shipped record enters" REFUSE ;
 
 : CELL-UNCARRIED ( n -- ) {: c:n :}
-   s" x64link: address-cell row " type c . s" holds " type c CELL-NAME$ type
+   s" x64link: address-cell row " type c .INT s"  holds " type c CELL-NAME$ type
    s" , which no x86-64 kernel body carries" type cr
    s" x64link: a code cell names a word the x86-64 kernel does not carry" REFUSE ;
 
 : CELL-ROUTINELESS ( n n -- ) {: c:n k:n :}
-   s" x64link: address-cell row " type c . s" holds shipped row " type k . k CREC-NAME$ type
+   s" x64link: address-cell row " type c .INT s"  holds shipped row " type k .INT space k CREC-NAME$ type
    s" , which has no x86-64 routine" type cr
    s" x64link: a code cell names a record with no x86-64 routine" REFUSE ;
 

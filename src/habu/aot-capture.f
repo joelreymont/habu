@@ -399,10 +399,8 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ own, so the name of the definition being added is the whole locator this
 \ refusal can give. ACAP-NAME. prints the same pair and is defined below this
 \ site, which is why the two accessors are read here.
-\ THREE LINES, NOT ONE: the engine's `.` ends its line (measured: `1 . 2 .`
-\ writes "1\n2\n"), and the only formatter that renders a number mid-line,
-\ lib/fmt.f FMT:.U, is not in the engine - requiring it here would put a library
-\ in front of every window a build opens. Each line carries the prefix instead.
+\ Three lines, one fact each and each with the prefix: the count, the bound and
+\ the record being added (test/aot-capture-bound.f reads them as lines).
 : ACAP-REC-REFUSE ( n -- ) {: k:n :}
    s" aot-capture: records captured " type AOT-REC-N @ .
    s" aot-capture: record bound " type AOT-REC-MAX .
@@ -497,10 +495,10 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    w ACAP-WID-IN? if exit then
    s" aot-capture: window record " type
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@  type
-   s"  names wordlist " type w .
+   s"  names wordlist " type w .INT
    s" , which its window did not create; the window allocated [" type
-   AOT-WID-W0 @ .
-   s" ," type AOT-WID-W0 @ AOT-WID-SPAN @ + .
+   AOT-WID-W0 @ .INT
+   s" ," type AOT-WID-W0 @ AOT-WID-SPAN @ + .INT
    s" )" type cr
    s" aot-capture: captured wid outside the window" 74 die ;
 
@@ -595,8 +593,8 @@ private
    k ACAP-PRE-R @ < if exit then
    k ACAP-W-R0 @ >= k ACAP-W-R1 @ < and if exit then
    s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
-   s"  at blob offset " type boff .
-   s" calls " type k ACAP-NAME.
+   s"  at blob offset " type boff .INT
+   s"  calls " type k ACAP-NAME.
    s" , which the booting engine has and no target does" type cr
    s" aot-capture: window call into the prelude band" 74 die ;
 
@@ -719,7 +717,7 @@ variable ACAP-P
 : ACAP-REFUSE-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
-   s"  in wordlist " type w .
+   s"  in wordlist " type w .INT
    s" , which its window did not create and no package publishes" type cr
    s" aot-capture: call site into a wordlist the seed cannot name" 74 die ;
 
@@ -739,7 +737,7 @@ variable ACAP-P
 : ACAP-REFUSE-WIN-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.
-   s"  in wordlist " type w .
+   s"  in wordlist " type w .INT
    s" , which its own window created; a call site carries no window coordinate" type cr
    s" aot-capture: call site scope inside the capture window" 74 die ;
 
@@ -1535,8 +1533,8 @@ variable ACAP-PROVE-SX                                        \ span-row cursor
       ext  i 24 >= and  i 32 < and  0= if
          s i + c@  v i + c@  = 0= if
             ACAP-RECMM @ 12 < if
-               s" record " type k . s"  byte " type i .
-               s"  expected " type s i + c@ . s"  actual " type v i + c@ .
+               s" record " type k .INT s"  byte " type i .INT
+               s"  expected " type s i + c@ .INT s"  actual " type v i + c@ .INT
                s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
             then
             1 ACAP-RECMM +!
@@ -1571,7 +1569,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 : ACAP-REFUSE-SIG-WID ( n n -- ) {: k:n w:n :}
    s" aot-capture: window record " type k ACAP-NAME.
-   s"  is in wordlist " type w .
+   s"  is in wordlist " type w .INT
    s" , which no package record claims" type cr
    s" aot-capture: a window record's wordlist names no package" 74 die ;
 
@@ -1721,9 +1719,9 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ that older row. The clause of a definer `undefine` replaced is not one: it
 \ retires with its definer (xref.f XREF-RETIRE-INDEX, test/aot-band-redef.f).
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
-   s" aot-capture: call site " type s .
-   s" bakes the name " type a u type
-   s"  in scope " type w .
+   s" aot-capture: call site " type s .INT
+   s"  bakes the name " type a u type
+   s"  in scope " type w .INT
    s" , which does not resolve to " type k ACAP-NAME.
    s"  in this engine" type cr
    s" aot-capture: a call site's name does not resolve the way the seed asks" 74 die ;
@@ -1772,8 +1770,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    k ACAP-SITE-ADD ;
 : ACAP-REFUSE-BRANCH ( n -- ) {: t:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
-   s"  at blob offset " type ACAP-P @ .
-   s" branches out of the window to " type t .
+   s"  at blob offset " type ACAP-P @ .INT
+   s"  branches out of the window to " type t .INT
    s" , which is no record's entry and so has no name the seed can resolve" type cr
    s" aot-capture: out-of-window branch to no record" 74 die ;
 : ACAP-BRANCH-HERE ( -- )
@@ -1868,10 +1866,10 @@ variable ACAP-SWEEP-B1
 \ recorded chains has nothing correct to bake, so it dies rather than choosing.
 : ACAP-UNCLASSIFIED ( n n -- ) {: boff:n v:n :}
    s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
-   s"  at blob offset " type boff .
-   s" carries " type v .
-   s" which is " type v ACAP-BAND.
-   s" and so in neither the window's DATA span nor its code span" type cr
+   s"  at blob offset " type boff .INT
+   s"  carries " type v .INT
+   s"  which is " type v ACAP-BAND.
+   s"  and so in neither the window's DATA span nor its code span" type cr
    s" aot-capture: recorded address site outside both window spans" 74 die ;
 
 \ A recorded chain the window's DATA span does not hold. Three outcomes, and the
@@ -2116,9 +2114,9 @@ variable ACAP-SWEEP-B1
       v lo < v hi >= or if v ACAP-CELL-NAMED exit then
    then
    v 0<> v lo < v hi >= or and if
-      s" aot-capture: address row " type k .
-      s"  cell DATA+" type k ACAP-XTCELL-OFF .
-      s"  expected range " type lo . hi . cr
+      s" aot-capture: address row " type k .INT
+      s"  cell DATA+" type k ACAP-XTCELL-OFF .INT
+      s"  expected range " type lo .INT space hi .INT cr
    then
    v lo hi ACAP-TARGET-OFFSET
    k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
@@ -2812,19 +2810,6 @@ TRUSTED: ACAP-STRIP-XT ( n -- [ [ n -- bool ] -- ] ) ;
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
 private
-
-\ --- host validation dump (bring-up only) ---
-: ACAP-. ( -- )
-   s" aot-capture: recs=" type AOT-REC-N @ . s" sites=" type AOT-SITE-N @ .
-   s" blob=" type AOT-BLOB-LEN @ . s" names=" type AOT-NAMES-LEN @ . cr
-   AOT-SITE-N @ 0 ?do
-      i ACAP-SITE-ROW {: r:ptr :}
-      r ACAP-W32@ {: boff:n :}                         \ blob-off u32
-      r 4 + ACAP-W32@ {: noff:n :}                     \ name-off u32
-      s"   site off=" type boff .
-      s" name=" type
-      AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type cr
-   loop ;
 
 \ --- build-time regression: a wordlist ID above 255 must round-trip through the
 \ compact record format. Runs here in the live metabuild (the only context where

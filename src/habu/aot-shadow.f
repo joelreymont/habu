@@ -64,39 +64,39 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
    s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
-   s"  at emission byte " type off . ;
+   s"  at emission byte " type off .INT ;
 
 : SH-UNNAMED ( n n -- ) {: off:n v:n :}
-   off SH-WHERE s" names " type v .
-   s" which is no window record's entry and no word of the engine's own prefix" type cr
+   off SH-WHERE s"  names " type v .INT
+   s"  which is no window record's entry and no word of the engine's own prefix" type cr
    s" aot-capture: a shadow site names a target the image cannot resolve" 74 die ;
 
 : SH-DATA-OUT ( n n -- ) {: off:n v:n :}
-   off SH-WHERE s" holds DATA address " type v .
-   s" which is " type v ACAP-BAND. cr
+   off SH-WHERE s"  holds DATA address " type v .INT
+   s"  which is " type v ACAP-BAND. cr
    s" aot-capture: a shadow DATA literal outside the window's DATA span" 74 die ;
 
 : SH-NOT-MOVABS ( n -- ) {: off:n :}
-   off SH-WHERE s" is no mov r64, imm64 inside its emission" type cr
+   off SH-WHERE s"  is no mov r64, imm64 inside its emission" type cr
    s" aot-capture: a shadow address site is not a MOVABS" 74 die ;
 
 : SH-BAD-KIND ( n n -- ) {: off:n kind:n :}
-   off SH-WHERE s" has site kind " type kind . cr
+   off SH-WHERE s"  has site kind " type kind .INT cr
    s" aot-capture: a shadow site of a kind the capture does not carry" 74 die ;
 
 : SH-ORDER-REFUSE ( n -- ) {: idx:n :}
-   s" aot-capture: shadow record " type idx .
-   s" is filed after a record at or above it" type cr
+   s" aot-capture: shadow record " type idx .INT
+   s"  is filed after a record at or above it" type cr
    s" aot-capture: the shadow's records are not in publication order" 74 die ;
 
 : SH-XT-REFUSE ( n n -- ) {: celloff:n v:n :}
-   s" aot-capture: declared code cell at DATA+" type celloff .
-   s" holds " type v .
-   s" which is window code no shipped record enters" type cr
+   s" aot-capture: declared code cell at DATA+" type celloff .INT
+   s"  holds " type v .INT
+   s"  which is window code no shipped record enters" type cr
    s" aot-capture: a shadowed code cell targets code no shipped record enters" 74 die ;
 
 : SH-UNSHIPPED ( n n -- ) {: off:n idx:n :}
-   off SH-WHERE s" names window record " type idx ACAP-NAME.
+   off SH-WHERE s"  names window record " type idx ACAP-NAME.
    s" , which the capture does not ship" type cr
    s" aot-capture: a shadow site names a record the capture strips" 74 die ;
 
