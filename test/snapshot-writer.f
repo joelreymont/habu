@@ -887,6 +887,43 @@ variable STRAYS
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;] drop ;\n"
    ACTIVE-REFUSED ;
 
+\ ---- policy belongs to the sealing process, not its saved image ----------
+: POLICY-SAVE$ ( -- ptr u8 n )
+   S\" : SAVE-POLICY ( -- ) s\q PDEP\q POLICY:ALLOW 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
+
+: POLICY-SEALED-SAVE$ ( -- ptr u8 n )
+   S\" : SAVE-POLICY ( -- ) s\q PDEP\q POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
+
+: POLICY-PROBE$ ( -- ptr u8 n )
+   S\" POLICY-NDICT-CELL data-base + @ .\n: POLICY-BYTES ( -- n ) 0 PROT-BITS-BYTES 0 ?do POLICY-BITS-OFF data-base + i + c@ 0<> if 1+ then loop ; POLICY-BYTES .\n" ;
+
+: POLICY-DATA-ZERO? ( -- bool )
+   DATA-OFF 8 + POLICY-NDICT-CELL + U64@ 0<> if false exit then
+   PROT-BITS-BYTES 0 ?do
+      DATA-OFF 8 + POLICY-BITS-OFF + i + U8@ 0<> if false unloop exit then
+   loop
+   true ;
+
+: POLICY-ARTIFACT$ ( -- ptr u8 n ) s" build/policy-image-run.txt" ;
+
+: POLICY-IMAGE-CASE ( ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n label:ptr labelu:n :}
+   s" test/policy/image-save.f" source sourceu BUILT-RUNNING
+   s" saved policy DATA is clear" T-LABEL
+   POLICY-DATA-ZERO? TTRUE
+   s" restored policy starts clear" T-LABEL
+   POLICY-PROBE$ WARM-STDIN
+   EXITED @ TTRUE  RC @ 0 T=  ERR-U @ 0 T=
+   OUT OUT-U @ S\" 0\n0\n" T$=
+   POLICY-ARTIFACT$ label labelu APPEND-FILE
+   POLICY-ARTIFACT$ OUT OUT-U @ APPEND-FILE ;
+
+: POLICY-CASE ( -- )
+   s" build" MAKE-DIRS
+   POLICY-ARTIFACT$ s" " WRITE-ALL
+   POLICY-SAVE$ S\" allow\n" POLICY-IMAGE-CASE
+   POLICY-SEALED-SAVE$ S\" sealed\n" POLICY-IMAGE-CASE ;
+
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
@@ -898,6 +935,7 @@ variable STRAYS
    REPLACE-FAIL-CASE
    SHADOW-CASE
    ACTIVE-CASE
+   POLICY-CASE
    IMG IMGU @ munmap drop ;
 
 public

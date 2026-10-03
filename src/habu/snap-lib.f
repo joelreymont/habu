@@ -244,6 +244,12 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL ;
 
+\ Admissions and the seal belong to the writing process. A saved image starts
+\ with a fresh vocabulary even when its writer was sealed during capture.
+: SND-ZERO-POLICY ( -- )
+   POLICY-NDICT-CELL SND-ZERO-CELL
+   PROT-BITS-BYTES 0 ?do POLICY-BITS-OFF i + SND-ZERO-CELL CELL +loop ;
+
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;
 
@@ -359,6 +365,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    \ precedes IMK-NDICT0. Owners retire transient state before this copy.
    SND-COPY
    SND-ZERO-LIVE
+   SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
    SND-CANON-XT-CELLS ;

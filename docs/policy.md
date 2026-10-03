@@ -141,10 +141,12 @@ The admitted public words are the design's whole reach.
 
 ## Where it lives
 
-The seal is two cells of the DATA header (`src/habu/layout.f`
-`POLICY-NDICT-CELL`, `POLICY-BITS-OFF`): the dictionary size at the seal, and a
-bitmap of admitted wordlist ids. `policy-admit` and `policy-seal`
-(`src/habu/habu1.f`) are the only writers. The readers are the sites where a
+The seal is a DATA header watermark (`src/habu/layout.f`
+`POLICY-NDICT-CELL`) and an admission bitmap (`POLICY-BITS-OFF`): the dictionary
+size at the seal, and the admitted wordlist ids. `policy-admit` and `policy-seal`
+(`src/habu/habu1.f`) write the live policy. Image capture clears both in its
+DATA copy, and warm restore clears both before the fresh process reads source.
+The readers are the sites where a
 source token is read (`src/habu/habu2.f`): `LPOLICYREC` for a found record,
 `LKWCMP` for a matched keyword, `LUNDEF` for a miss, `CAPTURE-IMMEDIATE`'s
 predicate for every tier-1 body token, and `EMIT-QUALIFY-DEF` for a definition
