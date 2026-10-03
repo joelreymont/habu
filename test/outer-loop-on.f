@@ -3,11 +3,9 @@
 \ the engine's `evaluate`. The switch is the loaded-bytes seam
 \ SOURCE-ROOT:INCLUDE-INTERPRET, which src/core/include.f binds to the engine's
 \ loop inside the closed boundary, INCLUDE-EVALUATE. The Habu loop runs inside
-\ the same boundary and reads the file as a closed text's
-\ (OUTER:INTERPRET-CLOSED), so a loaded file is a closed program under either
-\ loop: it runs on a data stack of its own, a cell it leaves is refused
-\ E-EVAL-RESIDUE and a definition it leaves open E-EVAL-UNFINISHED, named at
-\ the file's end.
+\ the same boundary, so a loaded file is a closed program under either loop: it
+\ runs on a data stack of its own, a cell it leaves is refused E-EVAL-RESIDUE,
+\ and a definition it leaves open is refused at its end, as every buffer's is.
 
 require src/habu/interpret.f
 
@@ -19,9 +17,12 @@ variable SRC-U
 public
 
 \ The loaded bytes are read before the loop runs, so a load nested in them can
-\ store its own.
+\ store its own. LOADED is immediate: a file an immediate word loads while a
+\ definition is open reaches the loop then too, as the engine's loop reads such
+\ a file into the definition, where a plain word would compile into it.
 : LOADED ( -- )
-   SRC-A @ SRC-U @ OUTER:INTERPRET-CLOSED ;
+   SRC-A @ SRC-U @ OUTER:INTERPRET ; immediate
+s" OUTER-LOOP-ON:LOADED" 0 parse-imm
 
 private
 

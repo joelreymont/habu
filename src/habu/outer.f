@@ -235,6 +235,7 @@ private
 70 constant RC-REJECT            \ habu2.f RC-REJECT: a refused token, catchable
 74 constant RC-BAD-LITERAL       \ habu2.f C-QUOTE-EOF: no closing quote, or a bad escape
 74 constant RC-NO-NAME           \ habu2.f C-DIE-KEYWORD-NAME: a keyword's operand is missing
+74 constant RC-UNCLOSED          \ habu2.f LSRCEND, LCOMEND, LSRCCLOSE: the input ends inside a definition or a ( comment, or closes one it did not open
 76 constant RC-TOO-LONG          \ habu2.f LCSTR: a counted string past CSTR-MAX bytes
 79 constant RC-TASK-LIVE         \ habu2.f C-TASK-LIVE-GUARD's $4F: a keyword while a task is live
 52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
@@ -284,22 +285,6 @@ TRUSTED: ADDR! ( ptr u8 n -- ) data-base + ! ;
    s TKA-CELL ADDR!
    t s - TKL-CELL CELL!
    true ;
-
-\ ---- comments (habu2.f EM-COMMENT) -----------------------------------------------
-\ A backslash or `(` opens a comment only as a whole one-byte token. The comment
-\ runs past the next newline or `)`, or to the end of the input.
-: SKIP-PAST ( n -- ) {: c:n :}
-   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
-   p begin dup e < if dup c@ c <> else false then while 1 + repeat
-   dup e < if 1 + then
-   INP-CELL ADDR! ;
-
-: COMMENT? ( -- bool )
-   TKL-CELL CELL@ 1 <> if false exit then
-   TKA-CELL ADDR@ c@ {: b:n :}
-   b LINE-COMMENT = if NEWLINE SKIP-PAST true exit then
-   b OPEN-COMMENT = if CLOSE-COMMENT SKIP-PAST true exit then
-   false ;
 
 \ ---- refusals (habu2.f EM-COMPILE-UNDEF, EM-INTERPRET-UNDERFLOW) ---------------
 \ Each writes the engine's text on descriptor 2 and throws its code. Like the
@@ -384,6 +369,32 @@ variable DIGIT-AT
    wid 0 < wid PROT-WID-MAX >= or if false exit then
    wid 6 rshift cells PROT-BITS-OFF + CELL@
    wid 63 and rshift 1 and 0<> ;
+
+\ ---- comments (habu2.f EM-COMMENT) -----------------------------------------------
+\ A backslash or `(` opens a comment only as a whole one-byte token. The comment
+\ runs past the next newline or `)`. A backslash comment may also run to the end
+\ of the input; a `(` comment the input ends inside is refused at the `(`.
+\ Whether c was found: INP stops past it, else at the end of the input.
+: SKIP-PAST ( n -- bool )
+   {: c:n :}
+   INP-CELL ADDR@ INE-CELL ADDR@ {: p:ptr e:ptr :}
+   p begin dup e < if dup c@ c <> else false then while 1 + repeat
+   dup e < {: found:bool :}
+   found if 1 + then
+   INP-CELL ADDR!
+   found ;
+
+\ The refusal's line is the `(`'s, so the cursor goes back to the token.
+: UNCLOSED ( -- )
+   TKA-CELL CELL@ INP-CELL CELL!
+   s" hb: source ended inside a ( comment" SAY RC-UNCLOSED THROW-AT ;
+
+: COMMENT? ( -- bool )
+   TKL-CELL CELL@ 1 <> if false exit then
+   TKA-CELL ADDR@ c@ {: b:n :}
+   b LINE-COMMENT = if NEWLINE SKIP-PAST drop true exit then
+   b OPEN-COMMENT = if CLOSE-COMMENT SKIP-PAST 0= if UNCLOSED then true exit then
+   false ;
 
 \ ---- running program code -------------------------------------------------------
 \ A word or the hook runs through execute-floor, which answers whether it left

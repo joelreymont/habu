@@ -1,0 +1,88 @@
+\ A definition held open across tty lines, at both compiler tiers. The line
+\ reader is compiled code that runs between the lines, and the open definition
+\ holds the compile loop's bands RW; its end of input is the pipe's refusal,
+\ rc 74, since no input remains for the REPL to recover into.
+require lib/test.f
+require lib/pty-harness.f
+require lib/engine-candidate.f
+
+package REPL-OPEN-DEF-TEST
+using PTY-HARNESS
+
+\ Only the prompt after an answer shows the child reading raw again, so a step
+\ waits for that one and ^D goes only after a step that saw it
+\ (lib/pty-harness.f WAIT-AFTER).
+: STEP ( ptr u8 n -- bool )
+   BUF-CLEAR SEND-LINE
+   s"  ok" WAIT-FOR if s"  ok" s" habu> " WAIT-AFTER else false then ;
+
+\ A REPL child on the pty, set to the tier under test.
+: OPEN ( n -- bool )
+   {: tier:n :}
+   ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
+   s" habu> " WAIT-FOR if
+      tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
+   else false then ;
+
+\ The child's exit code, or -1 when a signal or the reap deadline ended it.
+: EXIT-CODE ( -- n )
+   REAP MATCH outcome
+      exited OF ENDOF
+      signaled OF drop -1 ENDOF
+      timeout OF -1 ENDOF
+   ;MATCH
+   CLOSE-MASTER ;
+
+\ The body of the definition SPAN-CASE opened, on its own line, defines a
+\ word that runs.
+: SPAN-LINES ( -- )
+   s" 4321 ;" STEP TTRUE
+   s" SPAN-X ." STEP TTRUE
+   s" 4321" IN-BUF? TTRUE ;
+
+\ A branch opened on one line resolves on the next.
+: BRANCH-LINES ( -- )
+   s" : SPAN-W ( n -- n )" STEP TTRUE
+   s" dup 0 > if 100 +" STEP TTRUE
+   s" else 100 - then ;" STEP TTRUE
+   s" 7 SPAN-W ." STEP TTRUE
+   s" 107" IN-BUF? TTRUE
+   s" -7 SPAN-W ." STEP TTRUE
+   s" -107" IN-BUF? TTRUE ;
+
+: SPAN-CASE ( n -- )
+   {: tier:n :}
+   tier OPEN dup TTRUE if
+      s" : SPAN-X ( -- n )" STEP dup TTRUE if
+         SPAN-LINES
+         BRANCH-LINES
+         4 SEND-BYTE
+      then
+   then
+   EXIT-CODE 0 T= ;
+
+\ ^D with the definition still open names it and exits 74.
+: EOF-CASE ( n -- )
+   {: tier:n :}
+   tier OPEN dup TTRUE if
+      s" : EOF-Y ( -- )" STEP dup TTRUE if
+         4 SEND-BYTE
+      then
+   then
+   EXIT-CODE 74 T=
+   s" hb: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   2 0 do
+      i SPAN-CASE
+      i EOF-CASE
+   loop
+   T-REPORT ;
+
+;using
+;package
+
+REPL-OPEN-DEF-TEST:RUN

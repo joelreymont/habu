@@ -85,7 +85,7 @@ require nf.fs
 \ under the same name in bootstrap/cg/forth.fs. The stage value is pinned where
 \ it is observable instead -- BES-DATA's run-in-stack refusals print -3802.
 : BES-ABI ( -- )
-   s" STACK-ABI:BASE-CELL . STACK-ABI:CAP-CELL . STACK-ABI:REPL-BASE-CELL . STACK-ABI:REPL-CAP-CELL . STACK-ABI:PAGE-BYTES . STACK-ABI:BOOT-BYTES . STACK-ABI:RETURN-BASE-CELL . STACK-ABI:LOOP-BASE-CELL . STACK-ABI:RETURN-BYTES . STACK-ABI:RETURN-CELLS . STACK-ABI:LOOP-BYTES . STACK-ABI:LOOP-FRAME-BYTES . STACK-ABI:LOOP-FRAMES . STACK-ABI:CATCH-BASE . STACK-ABI:CATCH-CAP . STACK-ABI:CATCH-BYTES . STACK-ABI:CATCH-MAGIC . STACK-ABI:EVAL-BASE . STACK-ABI:EVAL-CAP . STACK-ABI:EVAL-BYTES . STACK-ABI:EVAL-SEG . STACK-ABI:EVAL-PEND ." BES-OK
+   s" STACK-ABI:BASE-CELL . STACK-ABI:CAP-CELL . STACK-ABI:REPL-BASE-CELL . STACK-ABI:REPL-CAP-CELL . STACK-ABI:PAGE-BYTES . STACK-ABI:BOOT-BYTES . STACK-ABI:RETURN-BASE-CELL . STACK-ABI:LOOP-BASE-CELL . STACK-ABI:RETURN-BYTES . STACK-ABI:RETURN-CELLS . STACK-ABI:LOOP-BYTES . STACK-ABI:LOOP-FRAME-BYTES . STACK-ABI:LOOP-FRAMES . STACK-ABI:CATCH-BASE . STACK-ABI:CATCH-CAP . STACK-ABI:CATCH-BYTES . STACK-ABI:CATCH-MAGIC . STACK-ABI:EVAL-BASE . STACK-ABI:EVAL-CAP . STACK-ABI:EVAL-BYTES . STACK-ABI:EVAL-SEG ." BES-OK
    0 NF-CMD-U !
    STACK-ABI:BASE-CELL BES-NUMBER STACK-ABI:CAP-CELL BES-NUMBER
    STACK-ABI:REPL-BASE-CELL BES-NUMBER STACK-ABI:REPL-CAP-CELL BES-NUMBER
@@ -98,7 +98,6 @@ require nf.fs
    STACK-ABI:CATCH-BYTES BES-NUMBER STACK-ABI:CATCH-MAGIC BES-NUMBER
    STACK-ABI:EVAL-BASE BES-NUMBER STACK-ABI:EVAL-CAP BES-NUMBER
    STACK-ABI:EVAL-BYTES BES-NUMBER STACK-ABI:EVAL-SEG BES-NUMBER
-   STACK-ABI:EVAL-PEND BES-NUMBER
    NF-CMD NF-CMD-U @ NF= 0= abort" recovery stack ABI differs from its source leaf" ;
 
 \ The recovery seed must answer the native dictionary marking primitives with
@@ -214,13 +213,14 @@ require nf.fs
 
 : BES-CLOSED ( -- )
    \ evaluate-closed on the seed. A text that ends inside a definition it
-   \ opened throws STACK-ABI:E-EVAL-UNFINISHED with the seed's fixed line, and
-   \ the token after the catch is interpreted, not compiled into that
-   \ definition. The refusal gives the text's stack back to the pool, so OK's
-   \ two clean texts take it from there and return through the wrapper.
-   s\" : GO ( -- ) s\" : D ( -- n ) 42\" evaluate-closed ; : OK ( -- ) s\" 2 .\" evaluate-closed ; ' GO catch . OK OK 1 ." BES-OK
-   s\" hb: closed text ended inside a definition\n-3805\n2\n2\n1\n" NF= 0=
-      abort" recovery closed text kept its unfinished definition" ;
+   \ opened is refused, 74 with the seed's fixed line, as an evaluate's is
+   \ (forth.fs EMIT-DEF-SOURCE-END), and the token after the catch is
+   \ interpreted, not compiled into that definition. The refusal gives the
+   \ closed text's stack back to the pool, so OK's two clean texts take it from
+   \ there and return through the wrapper.
+   s\" s\" : E ( -- n ) 42\" ' evaluate catch . 2drop : GO ( -- ) s\" : D ( -- n ) 42\" evaluate-closed ; : OK ( -- ) s\" 2 .\" evaluate-closed ; ' GO catch . OK OK 1 ." BES-OK
+   s\" hb: source ended inside definition\n74\nhb: source ended inside definition\n74\n2\n2\n1\n" NF= 0=
+      abort" recovery source kept its unfinished definition" ;
 
 : BES-CAT ( a u b v -- c w ) {: a u b v :}
    u v + allocate throw {: c :}

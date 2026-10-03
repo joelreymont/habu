@@ -208,7 +208,6 @@
 -3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (thrown by src/habu/habu1.f BRUNSTACK through the same (code, name) re-registered in src/habu/stack-abi.f)
 -3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (thrown by src/habu/prof.f BPROF-RATE and src/habu/kernel-x64.f's prof-rate row through the same (code, name) re-registered in src/habu/prof-abi.f)
 -3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (thrown by src/habu/habu1.f B-EVAL-CLOSED through the same (code, name) re-registered in src/habu/stack-abi.f)
--3805 constant E-EVAL-UNFINISHED \ an evaluate-closed text ended inside a definition it opened (thrown from src/habu/habu2.f EM-COMPILE-EXIT through the same (code, name) re-registered in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999, minted by lib/json-read.f, which owns package JR.
 

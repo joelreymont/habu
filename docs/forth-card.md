@@ -188,8 +188,9 @@ source in a body: the text's `depth` starts at 0, a token reaching below it
 throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the caller's
 cells intact either way. An xt the text runs cannot reach them: its reach
 under the floor throws 70 too. A text that ends inside a definition it opened
-throws `E-EVAL-UNFINISHED` and the definition is rolled back (forth.md
-**Checked code and primitive boundaries** lists the open cases).
+is refused as every source is, `hb: source ended inside definition: NAME`,
+rc 74, and the definition is rolled back (forth.md **Checked code and
+primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -288,8 +289,8 @@ forth.md: **Errors**, **Integer arithmetic**.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws 70, a file that ends with cells on
   the stack is `E-EVAL-RESIDUE`, and one that ends inside a definition it
-  opened is `E-EVAL-UNFINISHED`. A value crosses a load only as a word the
-  file defines.
+  opened is refused there, rc 74, as every source is. A value crosses a load
+  only as a word the file defines.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and every
   `src/` file:

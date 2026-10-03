@@ -232,11 +232,11 @@ public
   refused `E-EVAL-RESIDUE` (`--load` of a file ending `1 2` exits
   `hb: uncaught throw code -3804`, rc 67), so a value crosses a load only as a
   word the file defines. A file that ends inside a definition it opened is
-  refused `E-EVAL-UNFINISHED` at its end (`--load` of a file ending
-  `: D ( -- n ) 42` exits `hb: closed text ended inside a definition: D at
-  <path>:<line>` and `hb: uncaught throw code -3805`, rc 67), so no definition
-  spans a load. Fix a file that leaves cells or a definition; never loosen the
-  loader.
+  refused at its end, as every source is (**Rules learned by refusal**):
+  `--load` of a file ending `: D ( -- n ) 42` exits
+  `hb: source ended inside definition: D at <path>:<line>`, rc 74, so no
+  definition spans a load. Fix a file that leaves cells or a definition; never
+  loosen the loader.
   `hb prog.f` and a program on stdin are not loaded files and keep their
   top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
@@ -1289,6 +1289,21 @@ passing suite.
 Each of these was measured on the engine; the fact that proved it is beside
 the rule.
 
+- **A definition and a `(` comment close in the source that opened them.** A
+  file, an `evaluate` string and stdin each end inside nothing they opened:
+  `hb: source ended inside definition: NAME` covers an open colon body with
+  its stack comment, `{:` locals or `[:` quotation and is located on the line
+  of the definition's name, or of the word that ran `def-open`;
+  `hb: source ended inside a ( comment` is located at the `(`. Stdin names no
+  line. Both are rc 74, catchable inside `evaluate` with the definition rolled
+  back (test/runtime-regression-test.f `GE-SOURCE-END`). So
+  `s" : W ( -- n ) 8" evaluate ;` is refused although the next token would
+  close W. An immediate word's `evaluate` may compile into a definition
+  already open when the string began, but a `;` it reads there, or in a file
+  it includes, is `hb: source closed a definition it did not open: NAME`,
+  rc 74, located at the `;`. A refusal caught around that `evaluate`, however
+  many evaluates down it fired, leaves the outer definition compiling with
+  every token each evaluate completed before the refused one.
 - **Initialized scoped storage has two bounds.** A callback for
   `C2-MEM:WITH-INIT` may declare `forall<i inside [l,T],[ ... ]>`; its fresh
   scope `i` is inside the byte view's lifetime `l` and every scope dependency
@@ -1612,10 +1627,11 @@ the rule.
   `hb: uncaught throw code -3804`, rc 67), and an inner text's residue reaches
   the outer text's caller as -3804; a definition the checker refuses throws 70;
   a text that ends inside a definition it opened, `s" : D ( -- n ) 42"
-  evaluate-closed`, throws `E-EVAL-UNFINISHED` (-3805) after
-  `hb: closed text ended inside a definition: D at <path>:<line>` (uncaught,
-  rc 67), D is rolled back and the caller's next token is interpreted, and an
-  inner text's unfinished definition reaches the outer text's caller as -3805;
+  evaluate-closed`, is refused as every source is, rc 74 after
+  `hb: source ended inside definition: D at <path>:<line>` (uncaught, rc 74),
+  D is rolled back with the text's stack and the caller's next token is
+  interpreted, and an inner text's unfinished definition reaches the outer
+  text's caller as 74;
   an xt the text runs cannot reach the caller's cells either: with
   `W ( n n -- n ) +`, `5 [: s" 1 ' W execute" evaluate-closed ;] catch`
   answers 70 (`hb: interpret stack underdepth: execute`) with the 5 intact
@@ -1640,8 +1656,8 @@ the rule.
   `E-EVAL-RESIDUE`, `drop 1` throws 70 with the caller's cells intact, N runs
   inside the text of N, `: W ( -- bool ) s" 1" TEST-EVAL:N ;` is refused
   (`expected: bool actual: n`), and a text that ends inside a definition it
-  opened throws `E-EVAL-UNFINISHED` at the end of N's own closed text. N keeps
-  `evaluate-closed`'s open cases.
+  opened is refused at its own end, rc 74. N keeps `evaluate-closed`'s open
+  cases.
 
 ## Spans: a pointer that carries its reach
 

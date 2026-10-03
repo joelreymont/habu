@@ -256,28 +256,16 @@ private
 : BANDS, ( label -- ) {: trap:label :}
    0 BEGIN dup DATA-BANDS:LEN 0 <> WHILE  dup trap BAND,  1+  REPEAT drop ;
 
-\ The open transaction's blob: the twin of habu1.f GUARD:SPAN. With a blob
-\ open, a span that ends past its start and starts below its end overlaps it.
-: BLOB, ( label -- ) {: trap:label :}
-   LBL {: skip:label :}
-   RAX DATA-REG TXN-BLOB-A-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E skip JCC,
-   RDX RAX ASM-SINK ENC-CMP-RR  C-BE skip JCC,
-   RAX DATA-REG TXN-BLOB-CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM
-   RDI RAX ASM-SINK ENC-CMP-RR  C-B trap JCC,
-   skip LBL, ;
-
 \ (PROT-SPAN) ( rdi = address, rsi = byte length ): the twin of habu1.f
 \ GUARD-SPAN. It passes while the friend latch is open and for an empty span;
-\ a span that wraps, meets a band or meets the open blob exits SEAL-VIOLATION.
-\ The hull test skips the band walk for a span outside [DATA-BANDS:LO,
-\ DATA-BANDS:HI), which is every DP heap address. Registered as an engine
-\ helper, as habu1.f EMIT-PROT-SPAN registers the ARM64 body, so a compiled
-\ word that reaches it by a direct call is carried and relocated with it.
+\ a span that wraps or meets a band exits SEAL-VIOLATION. The hull test skips
+\ the band walk for a span outside [DATA-BANDS:LO, DATA-BANDS:HI), which is
+\ every DP heap address. Registered as an engine helper, as habu1.f
+\ EMIT-PROT-SPAN registers the ARM64 body, so a compiled word that reaches it
+\ by a direct call is carried and relocated with it.
 : SPAN-HELPER, ( -- )
    SPAN-LBL {: start:label :}
-   LBL LBL LBL {: end:label trap:label past:label :}
-   LBL {: ok:label :}
+   LBL LBL LBL {: end:label trap:label ok:label :}
    s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    RAX DATA-REG FRIEND-LATCH-CELL MEM-OFF ASM-SINK ENC-MOV-RM
@@ -286,12 +274,10 @@ private
    RDX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA            \ the span's end
    RDX RDI ASM-SINK ENC-CMP-RR  C-B trap JCC,          \ unsigned wrap
    RAX DATA-REG DATA-BANDS:HI MEM-OFF ASM-SINK ENC-LEA
-   RDI RAX ASM-SINK ENC-CMP-RR  C-AE past JCC,         \ start >= hull end
+   RDI RAX ASM-SINK ENC-CMP-RR  C-AE ok JCC,           \ start >= hull end
    RAX DATA-REG DATA-BANDS:LO MEM-OFF ASM-SINK ENC-LEA
-   RDX RAX ASM-SINK ENC-CMP-RR  C-BE past JCC,         \ end <= hull start
+   RDX RAX ASM-SINK ENC-CMP-RR  C-BE ok JCC,           \ end <= hull start
    trap BANDS,
-   past LBL,
-   trap BLOB,
    ok LBL,
    ASM-SINK ENC-RET
    trap LBL,

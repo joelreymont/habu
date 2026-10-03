@@ -2366,10 +2366,6 @@ SUITE p2-map-rewind
    test/p2-map-rewind.f
 ;SUITE
 
-SUITE lower-txn-protection
-   test/lower-txn-protection.f
-;SUITE
-
 SUITE lower-txn-large
    test/lower-txn-large.f
 ;SUITE
@@ -2526,6 +2522,12 @@ SUITE compiler-compile-floor-gate
 \ saturated suite pool.
 SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
+;SUITE
+
+\ The open-definition PTY fixture starts and reaps four engine children, under
+\ the same fixed reap budget.
+SUITE repl-open-definition
+   test/repl-open-definition.f
 ;SUITE
 
 SUITE native-gate-diagnostics

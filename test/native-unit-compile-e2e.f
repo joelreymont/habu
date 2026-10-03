@@ -66,6 +66,8 @@ variable SIDE-EFFECT
       S\" package UQK\npublic\n7 constant QKO:VALUE\n;package\n" PUT
    s" missing-close.f"
       S\" package UCM\npublic\n: VALUE ( -- n ) 4 ;\n" PUT
+   s" open-definition.f"
+      S\" package UCO\npublic\n: VALUE ( -- n ) 4\n" PUT
    s" retry.f"
       S\" package UCR\npublic\n: VALUE ( -- n ) 7 ;\n;package\n" PUT
    s" throw.f"
@@ -98,6 +100,7 @@ TRUSTED: BAD-HOOK ( [ -- ] -- n )
 : LOAD-QUALIFIED-COLON ( -- ) s" qualified-colon.f" included ;
 : LOAD-QUALIFIED-CONSTANT ( -- ) s" qualified-constant.f" included ;
 : LOAD-MISSING-CLOSE ( -- ) s" missing-close.f" included ;
+: LOAD-OPEN-DEFINITION ( -- ) s" open-definition.f" included ;
 : LOAD-RETRY ( -- ) s" retry.f" included ;
 : LOAD-THROW ( -- ) s" throw.f" included ;
 : LOAD-AFTER-THROW ( -- ) s" after-throw.f" included ;
@@ -116,6 +119,7 @@ TRUSTED: BAD-HOOK ( [ -- ] -- n )
 : QUALIFIED-COLON ( -- ) s" UQC" [: ON-BODY ;] [: LOAD-QUALIFIED-COLON ;] UNIT-COMPILE:WITH ;
 : QUALIFIED-CONSTANT ( -- ) s" UQK" [: ON-BODY ;] [: LOAD-QUALIFIED-CONSTANT ;] UNIT-COMPILE:WITH ;
 : MISSING-CLOSE ( -- ) s" UCM" [: ON-BODY ;] [: LOAD-MISSING-CLOSE ;] UNIT-COMPILE:WITH ;
+: OPEN-DEFINITION ( -- ) s" UCO" [: ON-BODY ;] [: LOAD-OPEN-DEFINITION ;] UNIT-COMPILE:WITH ;
 : RETRY ( -- ) s" UCR" [: ON-BODY ;] [: LOAD-RETRY ;] UNIT-COMPILE:WITH ;
 : THROWN ( -- ) s" UCT" [: ON-THROW ;] [: LOAD-THROW ;] UNIT-COMPILE:WITH ;
 : AFTER-THROW ( -- ) s" UCAFT" [: ON-BODY ;] [: LOAD-AFTER-THROW ;] UNIT-COMPILE:WITH ;
@@ -219,6 +223,9 @@ CAST: XT>N ( [ -- ] -- n )
    SIDE-EFFECT @ 17 T=
    ndict@ {: missing-before:n :}
    [: MISSING-CLOSE ;] catch 70 T=
+   ndict@ missing-before T=
+   \ A unit that ends inside a definition is refused as any source is, rc 74.
+   [: OPEN-DEFINITION ;] catch 74 T=
    ndict@ missing-before T=
    [: RETRY ;] catch 0 T= ;
 

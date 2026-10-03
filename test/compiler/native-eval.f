@@ -151,23 +151,25 @@ private
    s" an inner text's reach throws 70 through the outer text" T-LABEL
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
-\ A text that ends inside a definition it opened is refused, and the open
-\ definition goes with it: the code it emitted is taken back (a pending
-\ definition has no counted record, so ndict@ cannot show it), the next text
-\ is interpreted rather than compiled into it, and its name resolves to
-\ nothing until it is defined again. The interpretation probe runs before any
-\ other text because a throw out of a text resets the compile state on its
-\ own.
+74 constant UNCLOSED                    \ habu2.f EM-SOURCE-END-DIE's code: a source ended inside a definition it opened
+
+\ A text that ends inside a definition it opened is refused as every buffer
+\ is, and the open definition goes with it: the code it emitted is taken back
+\ (a pending definition has no counted record, so ndict@ cannot show it), the
+\ next text is interpreted rather than compiled into it, and its name resolves
+\ to nothing until it is defined again. The interpretation probe runs before
+\ any other text because a throw out of a text resets the compile state on
+\ its own.
 : UNFIN ( -- n )
    9 [: s" : NATIVE-EVAL-D ( -- n ) 42" evaluate-closed ;] catch
-   E-EVAL-UNFINISHED T= ;
+   UNCLOSED T= ;
 
 : UNFIN-NESTED ( -- n )
    9 [: s" NATIVE-EVAL-TEST:INNER-OPEN$ evaluate-closed" evaluate-closed ;] catch
-   E-EVAL-UNFINISHED T= ;
+   UNCLOSED T= ;
 
 : UNFINISHED ( -- )
-   s" a text that ends inside a definition throws E-EVAL-UNFINISHED" T-LABEL
+   s" a text that ends inside a definition is refused, rc 74" T-LABEL
    0 SEEN !
    cp@ {: code :}
    UNFIN
@@ -206,11 +208,31 @@ s" CALL-BUMP" 0 parse-imm
    s" a text run inside the caller's open definition compiles into it" T-LABEL
    0 SEEN !  BUMPED  SEEN @ 1 T= ;
 
+\ The same immediate with a text whose token the compile refuses: the refusal,
+\ caught inside the immediate, leaves the caller's definition compiling, as it
+\ does for any buffer begun inside one (habu2.f EM-EVAL-THROW-RECOVER), and
+\ the refused text's stack still goes back to the pool: the next pair takes
+\ the same two stacks as the pair before it.
+variable CAUGHT
+: TRY-BAD ( -- ) [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch CAUGHT ! ; immediate
+s" TRY-BAD" 0 parse-imm
+
+: CALLER-OPEN-REFUSED ( -- )
+   s" a text refused inside the caller's open definition is caught there" T-LABEL
+   OUTER-BASE$ evaluate-closed
+   OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
+   0 CAUGHT !
+   s" package NATIVE-EVAL-TEST public : HOST ( -- n ) TRY-BAD 5 ; ;package" evaluate-closed
+   CAUGHT @ 70 T=
+   s" and the caller's definition goes on compiling" T-LABEL
+   s" NATIVE-EVAL-TEST:HOST 5 T=" evaluate-closed
+   s" and the refused text's stack goes back to the pool" T-LABEL
+   OUTER-BASE$ evaluate-closed
+   OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
+
 : AGREEMENT ( -- )
    s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
-   E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T=
-   s" E-EVAL-UNFINISHED matches the engine's own spelling" T-LABEL
-   E-EVAL-UNFINISHED STACK-ABI:E-EVAL-UNFINISHED T= ;
+   E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
 
 $1000 constant IO-CAP
 create OUT IO-CAP allot
@@ -259,20 +281,18 @@ create ERR IO-CAP allot
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 
-67 constant UNCAUGHT                    \ habu2.f LUNCAUGHT's exit for a code outside 1..255
-
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
 : UNFINISHED-LINE$ ( -- ptr u8 n )
    S\" s\" : NATIVE-EVAL-F ( -- n ) 42\" evaluate-closed" ;
 
 : UNFINISHED-LINE ( -- )
-   s" an uncaught unfinished text exits as an uncaught throw" T-LABEL
+   s" an uncaught unfinished text exits 74" T-LABEL
    UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N UNCAUGHT T=
+   PROC-OUTCOME>RC RC>N UNCLOSED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
-   ERR erru s" hb: closed text ended inside a definition: NATIVE-EVAL-F at " CONTAINS?
+   ERR erru s" hb: source ended inside definition: NATIVE-EVAL-F at " CONTAINS?
    TTRUE ;
 
 $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
@@ -298,7 +318,8 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
    T-RESET
    DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW XT-UNDER
    UNFINISHED
-   UNFINISHED-NESTED CALLER-OPEN AGREEMENT OVERFLOW FLOOR-JUMP TOP-LEVEL
+   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
+   TOP-LEVEL
    UNFINISHED-LINE LIVE CHECKED
    T-REPORT ;
 

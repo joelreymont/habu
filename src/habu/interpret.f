@@ -3,7 +3,6 @@
 \ package keywords src/habu/packages.f defines and the definition heads and
 \ body capture src/habu/definers.f defines.
 
-require src/habu/stack-abi.f
 require src/habu/outer.f
 require src/habu/packages.f
 require src/habu/definers.f
@@ -28,38 +27,23 @@ TRUSTED: DISPATCH ( -- )
    DEFINE? if exit then
    DISPATCH ;
 
-\ Whether the buffer is a closed text's (INTERPRET-CLOSED) and the definition
-\ open as it began, PEND-CELL then.
-variable CLOSED?   0 CLOSED? !
-variable CLOSED-PEND   0 CLOSED-PEND !
-
-\ The end of a closed text (habu2.f C-CLOSED-SOURCE-END), with the input cells
-\ still the buffer's: a definition the buffer opened and left open is refused,
-\ named, at the buffer's end, and the throw rolls it back (habu2.f LEVALREC).
-\ One already open when the buffer began may still be open.
-: CLOSED-END ( -- )
-   CLOSED? @ 0= if exit then
-   PEND-CELL CELL@ {: now:n :}
-   now 0= if exit then
-   now CLOSED-PEND @ = if exit then
-   s" hb: closed text ended inside a definition: " SAY
-   DEF-CAPTURED-NAME SAY
-   STACK-ABI:E-EVAL-UNFINISHED THROW-AT ;
-
 : RUN ( -- )
-   begin TOKEN while STEP repeat
-   CLOSED-END ;
+   begin TOKEN while STEP repeat ;
 
-\ Run the buffer under catch and give its code. A throw also puts back the d
-\ used publics below depth d, the includer's: a buffer that closes the
-\ includer's package and opens a using writes into one of them (habu1.f B-EVAL
-\ keeps the engine's in its frame). Each call keeps one slot.
-: RUN-CAUGHT ( n -- n ) {: d:n :}
-   d 0= if [: RUN ;] catch exit then
+\ Run the buffer under catch, refusing at its end a definition it opened, and
+\ give its code. A throw also puts back the d used publics below depth d, the
+\ includer's: a buffer that closes the includer's package and opens a using
+\ writes into one of them (habu1.f B-EVAL keeps the engine's in its frame).
+\ Each call keeps one slot.
+: RUN-CAUGHT ( n -- n )
+   {: d:n :}
+   d 0= if [: RUN DEF-SOURCE-END ;] catch exit then
    d 1- cells USE-WIDS-OFF + CELL@ {: wid:n :}
    d 1- RECURSE {: code:n :}
    code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
    code ;
+
+public
 
 \ Interpret the buffer as the engine's evaluate reads it, and put the input
 \ cells and the using depth back after, whether the buffer ends or a token
@@ -74,36 +58,29 @@ variable CLOSED-PEND   0 CLOSED-PEND !
 \ keeps none of its usings: the package's using floor drops to the restored
 \ depth. A clean end also clears the evaluate error cell, as the engine's does:
 \ an `evaluate` the buffer caught recorded its code there, and include.f reads
-\ a nonzero cell after the buffer as a failed evaluation.
-: INTERPRET-AS ( ptr u8 n bool -- )
-   {: a:ptr u:n closed:bool :}
+\ a nonzero cell after the buffer as a failed evaluation. A definition the
+\ buffer opened and left open is refused at its end, while the input cells
+\ still name the buffer, and a throw gives up a definition the buffer opened:
+\ the record pending as it began is pending again (definers.f ENTRY-PEND).
+: INTERPRET ( ptr u8 n -- )
+   {: a:ptr u:n :}
    INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
-   {: p:n e:n b:n d:n :}
+   ENTRY-PEND @
+   {: p:n e:n b:n d:n o:n :}
    PKG-STATE {: rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
-   CLOSED? @ CLOSED-PEND @ {: closed0:n pend0:n :}
-   closed CLOSED? !  PEND-CELL CELL@ CLOSED-PEND !
    d USE-FLOOR !
+   PEND-CELL CELL@ {: entry:n :}
+   entry ENTRY-PEND !
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    d RUN-CAUGHT {: code:n :}
-   closed0 CLOSED? !  pend0 CLOSED-PEND !
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
-   code 0<> if d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
+   o ENTRY-PEND !
+   code 0<> if entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
    back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;
-
-public
-
-: INTERPRET ( ptr u8 n -- )
-   false INTERPRET-AS ;
-
-\ The buffer as a closed text's, as evaluate-closed reads one: INTERPRET, and a
-\ definition the buffer opens is refused at its end if it is still open
-\ (CLOSED-END above).
-: INTERPRET-CLOSED ( ptr u8 n -- )
-   true INTERPRET-AS ;
 
 ;package

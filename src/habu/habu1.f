@@ -238,24 +238,6 @@ variable LFINDSHADOW
    EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
    skip LBL, ;
 
-package GUARD
-
-: BLOB-SPAN ( n label -- ) {: addr:n trap:label :}
-   LBL {: skip:label :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG DREG CMP,  C-LS skip BCOND,
-   EREG DATA TXN-BLOB-CAP-CELL LDR,
-   DREG DREG EREG ADD,
-   addr DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
-public
-
-: SPAN ( n label -- ) BLOB-SPAN ;
-
-;package
-
 \ Span-aware protected-memory guard. addr and len name runtime registers. A
 \ zero-length write is inert. Any address+length wrap traps before the region
 \ tests, then every protected half-open interval is checked for intersection.
@@ -274,8 +256,9 @@ variable BAND-IX
       BAND-IX @ 1+ BAND-IX !
    REPEAT ;
 
-: GUARD-SPAN ( n n -- ) {: addr:n len:n :}
-   LBL LBL LBL {: ok:label trap:label past:label :}
+: GUARD-SPAN ( n n -- )
+   {: addr:n len:n :}
+   LBL LBL {: ok:label trap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
@@ -289,12 +272,10 @@ variable BAND-IX
    \ the hull ends before pending scratch and DATA-START; no span intersecting
    \ a band is admitted.
    DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
-   addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
+   addr DREG CMP,  C-CS ok BCOND,       \ start >= hull end
    DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
-   EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
+   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= hull start
    addr trap BANDS-EMIT
-   past LBL,
-   addr trap GUARD:SPAN
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -1441,7 +1422,7 @@ public
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
 \ x10 and x13 the data stack the frame owns (0 for evaluate). The frame records
 \ the data-stack extent in force, that stack and the definition open at entry
-\ (EVAL-PEND), and the clean exit returns to x30: B-EVAL's caller, or the
+\ (EVAL-FRAME:PEND), and the clean exit returns to x30: B-EVAL's caller, or the
 \ continuation of B-EVAL-CLOSED, which inlines it on a stack of its own.
 : EVAL-ENTER ( -- )
    SP SP STACK-ABI:EVAL-BYTES SUBI,
@@ -1451,6 +1432,7 @@ public
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
+   11 DATA PEND-CELL LDR,  11 14 EVAL-FRAME:PEND STR,   \ the definition open as this buffer begins
    30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
@@ -1458,7 +1440,6 @@ public
    11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,
-   11 DATA PEND-CELL LDR,  11 14 STACK-ABI:EVAL-PEND STR,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
@@ -3169,9 +3150,9 @@ public
 \ the stack back to the pool and puts back the caller's extent this frame
 \ holds: base, capacity and cursor at [0], [8] and [16], the text's stack at
 \ [24] (habu2.f EM-EVAL-THROW-RECOVER). A text that ends inside a definition
-\ it opened throws STACK-ABI:E-EVAL-UNFINISHED that way from its end (habu2.f
-\ C-CLOSED-SOURCE-END). The clean return gives the stack back here, and the
-\ text must have left nothing: residue is dropped and refused by name with
+\ it opened is refused that way from its end, rc 74, as every buffer is
+\ (habu2.f C-DEF-SOURCE-END). The clean return gives the stack back here, and
+\ the text must have left nothing: residue is dropped and refused by name with
 \ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
 \ BRUNSTACK above.
 : B-EVAL-CLOSED ( -- )

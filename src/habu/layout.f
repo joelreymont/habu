@@ -323,9 +323,26 @@ $8000000000000000 constant DNAME-INT
 \ `asm: 16-bit immediate out of range` on a missed one, so none can drift.
 65536 constant DICT-CAP
 $300000 constant CFSTK-OFF
-24 constant CF-REC
+32 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
+24 constant CF-KIND
+\ CF-KIND names the structure that pushed the entry, so a closer refuses an
+\ entry it does not close before it pops or patches anything (habu2.f C-CF-AT).
+\ The origin cell alone cannot say: `begin` and `if` both record a CP, so a
+\ `then` took a `begin`'s loop top for a branch to patch and ORed a branch
+\ offset into the call there. One kind serves every opener that the same
+\ closers accept: `else` leaves an IF entry, `?do` a DO entry and a match
+\ variant arm an OF entry.
+1 constant CFK-IF      \ if, else: closed by then or else
+2 constant CFK-BEGIN   \ begin: closed by until, again, or by repeat under a WHILE
+3 constant CFK-WHILE   \ while, opened on a BEGIN: closed by repeat
+4 constant CFK-DO      \ do, ?do: closed by loop or +loop
+5 constant CFK-CASE    \ case: closed by endcase through its ENDOF entries
+6 constant CFK-OF      \ of, a match variant arm: closed by endof
+7 constant CFK-ENDOF   \ endof: closed by endcase or ;match, continued by of
+8 constant CFK-MATCH   \ match: closed by ;match through its ENDOF entries
+9 constant CFK-QUOT    \ [: closed by ;]
 \ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
 \ then CF-REC-byte records. CFSTK-REGION-CAP is how many records fit above the
 \ counter without spilling into the JIT code area at DBASE+DICT-SIZE. LCFPUSH
@@ -334,9 +351,9 @@ $300000 constant CFSTK-OFF
 \ opposite-direction sibling of the LCFPOP orphan-underflow guard). The cap is
 \ min(region capacity, a sane ceiling) and always exceeds the checker's CFS cap
 \ 31 (CF-PUSH marks UNCK past 31), so no checker-certified nesting is rejected.
-DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP   \ 170 records fit
+DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP   \ 127 records fit
 256 constant CFSTK-SANE-MAX                                          \ forward sanity ceiling
-CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min(region, sane)
+CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min(region, sane)
 
 \ Profiler counter band: one 64-bit sample counter per dictionary slot, reserved
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).
@@ -496,10 +513,10 @@ $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer START, saved beside INP ([frame+0])
 \ and INE ([frame+8]) so a nested evaluate restores it. PKGSNAP fills
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
-\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98
-\ and EVAL-FRAME:USE-WIDS the USE-MAX cells up to $120, where STACK-ABI:EVAL-SEG
-\ and EVAL-PEND fill the frame to STACK-ABI:EVAL-BYTES ($130), keeping the
-\ native stack 16-byte aligned.
+\ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
+\ EVAL-FRAME:USE-WIDS $A0..$120, EVAL-FRAME:PEND $120 and STACK-ABI:EVAL-SEG
+\ $128, which fill the frame to STACK-ABI:EVAL-BYTES ($130), keeping the native
+\ stack 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -517,6 +534,12 @@ $98 constant USE-FLOOR
 \ into a slot the includer keeps; the checker reads each slot's name back from
 \ the restored wid (checker.f CHECKER-RESYNC).
 $A0 constant USE-WIDS
+\ PEND: PEND-CELL as the buffer began. A definition the buffer opened must
+\ close in it, so its end refuses one still open (habu2.f C-DEF-SOURCE-END); one
+\ already open here belongs to an outer buffer, whose immediate word's evaluate
+\ compiles into it, and a throw that unwinds this buffer leaves it compiling
+\ (habu2.f EM-EVAL-THROW-RECOVER).
+$120 constant PEND
 ;package
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------
@@ -1347,6 +1370,40 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
+\ TOKBODY-CELL .. TOKFRF-CELL: the token-start mark, six cells. Before every
+\ token the interpret loop stores BODYLEN-CELL, LOCN-CELL, CP (as an offset
+\ from the region base, like every code position a DATA cell keeps, so no
+\ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
+\ and FRFREE-CELL here (habu2.f EM-COMMENT), and nothing else stores them. A
+\ throw that unwinds an evaluate frame begun inside an open definition leaves
+\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all six
+\ back: the text the checker certifies holds no token whose compile the throw
+\ abandoned, a `{:` group refused part way declares none of its names, and the
+\ code and the spill a refused token emitted before its check are gone. A spill
+\ only moves virtual stack entries to the data stack and leaves the entries
+\ themselves in place, so the depth and the two register masks restore the
+\ virtual stack. Every other compile cell is the refusing word's to leave
+\ alone: it checks first.
+\ One mark serves every frame. Popping a frame leaves it at the innermost
+\ buffer's current token, or at that buffer's end once it exits cleanly, a
+\ point after a complete token, so each frame a throw pops keeps its buffer's
+\ completed tokens, as the control-flow stack, locals and quotation state do
+\ (test/runtime-regression-test.f GE-EMIT-DEEP).
+\ $2820 .. $2848 are the next free cells of the $2800..$3000 header band, after
+\ EXIT-HOOK-CELL, swept for a claimant across src lib tools test bootstrap.
+$2820 constant TOKBODY-CELL
+$2828 constant TOKLOCN-CELL
+$2830 constant TOKCP-CELL
+$2838 constant TOKVSP-CELL
+$2840 constant TOKVRF-CELL
+$2848 constant TOKFRF-CELL
+\ TKA-CELL as an opener stores PEND-CELL: the name token (`:`, kernel:,
+\ TRUSTED:) or the word that ran def-open; C-DEF-SOURCE-END locates a source
+\ that ends inside the definition there. CAST: and defer set PEND-CELL only
+\ within their keyword, so no source can end inside them. A transient address
+\ like TKA-CELL, zeroed at snapshot: no native-layout row, no stripped-image
+\ claim.
+$2850 constant PENDTKA-CELL
 \ FLOORREC-CELL: runtime address of the underdepth throw entry (LFLOORREC,
 \ habu2.f), stored at startup like EVALREC-CELL because the crash handler that
 \ jumps there (crash.f C-CRASH-DATA-RECOVER) cannot name an emit-time label: a
@@ -1358,19 +1415,18 @@ $2818 constant EXIT-HOOK-CELL
 \ and a task region reads zero because lib/task.f copies only the cells it
 \ names. Both hold this process's addresses, so boot stores them and snapshots
 \ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
-\ the reasons EXIT-HOOK-CELL gives, swept for a claimant across src lib tools
-\ test bootstrap.
-$2820 constant FLOORREC-CELL
+\ the reasons EXIT-HOOK-CELL gives: $2858 .. $2868 are its next free cells,
+\ after PENDTKA-CELL, swept for a claimant across src lib tools test bootstrap.
+$2858 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
 \ the list is empty) and gives it back on the clean return, and habu2.f
 \ LEVALREC gives back the stack of every closed frame a throw pops. The stacks
 \ are this process's mappings, so boot (habu2.f EM-STARTUP-RUNTIME-STATE) and
-\ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits in the free
-\ header band for the reasons EXIT-HOOK-CELL gives, swept for a claimant across
-\ src lib tools test bootstrap.
-$2828 constant CLOSED-FREE-CELL
-$2830 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
+\ snapshots (snap-lib.f SND-ZERO-LIVE) zero the cell. It sits beside
+\ FLOORREC-CELL in the free header band.
+$2860 constant CLOSED-FREE-CELL
+$2868 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
@@ -1432,7 +1488,6 @@ TXN-STATE-OFF $38 + constant TXN-WF-I-CELL
 TXN-STATE-OFF $40 + constant P2BODY0-CELL
 TXN-STATE-OFF $48 + constant P2INP-CELL
 TXN-STATE-OFF $50 + constant P2INE-CELL
-TXN-STATE-OFF $58 + constant P2DP-CELL
 TXN-STATE-OFF $60 + constant P2W0-CELL
 TXN-STATE-OFF $68 + constant P2W1-CELL
 TXN-STATE-OFF $70 + constant P2W2-CELL

@@ -180,10 +180,6 @@ STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 \ the same way: lib/errors.f E-EVAL-RESIDUE owns it.
 -3804 constant STACK-ABI:E-EVAL-RESIDUE
 
-\ evaluate-closed's refusal of a text that ended inside a definition it opened,
-\ carried the same way: lib/errors.f E-EVAL-UNFINISHED owns it.
--3805 constant STACK-ABI:E-EVAL-UNFINISHED
-
 \ The dividing primitives' refusal code, carried here for the same reason and in
 \ src/habu/arith-abi.f's spelling: lib/errors.f E-DIV-ZERO owns it.
 -6400 constant ARITH-ABI:E-DIV-ZERO
@@ -194,8 +190,7 @@ $50 constant STACK-ABI:CATCH-BYTES
 $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
-$120 constant STACK-ABI:EVAL-SEG
-$128 constant STACK-ABI:EVAL-PEND
+$128 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below)
 $130 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
@@ -268,6 +263,9 @@ $43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at re
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
+\ EVAL-FRAME:PEND: PEND-CELL as the buffer began, mirroring src/habu/layout.f;
+\ nonzero means an immediate word's evaluate compiling into an open definition.
+$120 constant EVAL-FRAME:PEND
 
 $48 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer (friend arena)
 $50 constant TSIG-U-CELL
@@ -291,9 +289,9 @@ $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors s
 \ (BADDRESSCELLSVERSION below), so nothing declares the cell here; the seed's own
 \ snapshot format relocates nothing, exactly as it does not for xt!.
 $2818 constant EXIT-HOOK-CELL
-$2820 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
-$2828 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
-$2830 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2858 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
+$2860 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
+$2868 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
@@ -317,7 +315,6 @@ TXN-STATE-OFF $38 + constant TXN-WF-I-CELL
 TXN-STATE-OFF $40 + constant P2BODY0-CELL
 TXN-STATE-OFF $48 + constant P2INP-CELL
 TXN-STATE-OFF $50 + constant P2INE-CELL
-TXN-STATE-OFF $58 + constant P2DP-CELL
 TXN-STATE-OFF $60 + constant P2W0-CELL
 TXN-STATE-OFF $68 + constant P2W1-CELL
 TXN-STATE-OFF $70 + constant P2W2-CELL
@@ -599,8 +596,8 @@ variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
 variable LFLOORREC  variable LFLOORMSG
-variable LUNFINMSG
-: UNFINMSG$ ( -- a u ) S\" hb: closed text ended inside a definition\n" ;   \ EMIT-CLOSED-SOURCE-END's line
+variable LSRCENDMSG
+: SRCENDMSG$ ( -- a u ) S\" hb: source ended inside definition\n" ;   \ EMIT-DEF-SOURCE-END's line
 : FLOORMSG$ ( -- a u ) s" hb: interpret stack underdepth: " ;   \ LFLOORREC's line: the token and a newline follow
 variable LEVALREC
 variable LTHROWDISPATCH
@@ -777,33 +774,6 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    DREG len LIT64,
    EREG DREG CMP,  C-CC trap BCOND, ;
 
-\ Gforth recovery-host mirror of Habu's GUARD package.
-vocabulary GUARD
-also GUARD definitions
-
-: BLOB-SPAN ( n n -- )
-   {: addr trap :}
-   LBL {: skip :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG DREG CMP,  C-LS skip BCOND,
-   EREG DATA TXN-BLOB-CAP-CELL LDR,
-   DREG DREG EREG ADD,
-   addr DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
-: BLOB-ADDR ( n n -- )
-   {: addr trap :}
-   LBL {: skip :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG addr DREG SUB,
-   DREG DATA TXN-BLOB-CAP-CELL LDR,
-   EREG DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
-previous definitions
-
 \ The protected bands, as one table, mirroring src/habu/data-bands.f DATA-BANDS.
 \ GUARD-SPAN reads it twice - once for the hull [BAND-LO, BAND-HI) its bounding
 \ test compares against, once for the per-band interval tests - and PROT-GUARD
@@ -858,7 +828,7 @@ variable BAND-IX
 
 : GUARD-SPAN ( n n -- )
    {: addr len :}
-   LBL LBL LBL {: ok trap past :}
+   LBL LBL {: ok trap :}
    BANDS-HULL
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
@@ -866,12 +836,10 @@ variable BAND-IX
    EREG addr len ADD,
    EREG addr CMP,  C-CC trap BCOND,
    DREG BAND-HI @ LIT64,  DREG DATA DREG ADD,
-   addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
+   addr DREG CMP,  C-CS ok BCOND,       \ start >= hull end
    DREG BAND-LO @ LIT64,  DREG DATA DREG ADD,
-   EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
+   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= hull start
    addr trap BANDS-EMIT
-   past LBL,
-   addr trap [ also GUARD ] BLOB-SPAN [ previous ]
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -882,7 +850,6 @@ variable BAND-IX
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    addr trap BANDS-ADDR-EMIT
-   addr trap [ also GUARD ] BLOB-ADDR [ previous ]
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -964,28 +931,31 @@ variable BAND-IX
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
-\ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
-\ linked native-stack frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+\ labels). End-of-buffer (LEXIT), when EVALD>0, restores the linked native-stack
+\ frame and returns here with EVALERR-CELL 0 (EMIT-EVAL-CLEAN-EXIT). A failure
+\ never returns here: LEVALREC rolls each escaped frame back, records the code in
+\ EVALERR-CELL, and makes the region RX before it delivers to the handler.
 \
 \ EVAL-ENTER is that frame and jump, with a and u already popped into x9 and
 \ x10 and x13 the data stack the frame owns (0 for evaluate): the frame records
 \ the data-stack extent in force, that stack and the definition open at entry
-\ (EVAL-PEND), and the clean exit returns to x30, B-EVAL's caller or
+\ (EVAL-FRAME:PEND), and the clean exit returns to x30, B-EVAL's caller or
 \ B-EVAL-CLOSED's continuation. Mirrors src/habu/habu1.f EVAL-ENTER.
 : EVAL-ENTER ( -- )
+   LBL {: run :}
    SP SP EVAL-FRAME-SIZE SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
    14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
+   11 DATA PEND-CELL LDR,  11 14 EVAL-FRAME:PEND STR,   \ the definition open as this buffer begins
    30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA STACK-ABI:BASE-CELL LDR, 11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR, 11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,                     \ before x13 turns scratch below
-   11 DATA PEND-CELL LDR,  11 14 STACK-ABI:EVAL-PEND STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
    12 14 EVAL-PKG ADDI,
    13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
@@ -997,6 +967,13 @@ variable BAND-IX
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
+   \ The compile loop holds the region RW and runs an immediate word with it RX
+   \ (EMIT-COMPILE-CALL), so a buffer that begins inside an open definition makes
+   \ it RW, as habu2.f EM-COMPILE-LEGACY reopens the window at its first token;
+   \ EMIT-EVAL-CLEAN-EXIT closes it.
+   9 14 EVAL-FRAME:PEND LDR,  9 run CBZ,
+      2 3 MOVZ,  LPROT @ BL,                         \ region -> RW
+   run LBL,
    9 DATA LMAINP-CELL LDR,  9 BR, ;
 
 : B-EVAL ( -- )
@@ -1632,7 +1609,7 @@ HB-TARGET-LINUX? [IF]
 \ STACK-ABI:E-EVAL-RESIDUE. The caller's extent and cursor wait in this word's
 \ frame; the evaluate frame records the stack and returns to `back`, which
 \ gives the stack back to the pool (EMIT-EVAL-THROW-RECOVER does on a throw,
-\ and on EMIT-CLOSED-SOURCE-END's refusal of a text that ended inside a
+\ and on EMIT-DEF-SOURCE-END's refusal of a text that ended inside a
 \ definition it opened). Mirrors src/habu/habu1.f B-EVAL-CLOSED.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have take back done :}
@@ -3747,7 +3724,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
    LFLOORMSG @ LBL, FLOORMSG$ BYTES,
-   LUNFINMSG @ LBL, UNFINMSG$ BYTES,
+   LSRCENDMSG @ LBL, SRCENDMSG$ BYTES,
    LDEFKWMSG @ LBL, s" hb: compile keyword cannot be a definition name: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
@@ -6016,7 +5993,7 @@ variable CFSK2
    9 DATA PKGRESYNC-CELL STR,
    9 DATA P2-CELL STR,  9 DATA TXN-WF-I-CELL STR,
    9 DATA P2BODY0-CELL STR,  9 DATA P2INP-CELL STR,
-   9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
+   9 DATA P2INE-CELL STR,
    9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,
    9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
    9 DATA P2LOC0-CELL STR,
@@ -7016,7 +6993,6 @@ also LOWER-CERT also LOWER-TXN definitions
    9 DATA P2BODY0-CELL LDR,  9 10 9 ADD,  9 DATA INP-CELL STR,
    9 DATA TXN-SRC-U-CELL LDR,  9 10 9 ADD,  9 DATA INE-CELL STR,
    11 DATA PEND-CELL LDR,  CP 11 0 LDR,
-   9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    C-COLON-RESET-COMPILE-STATE
@@ -7210,7 +7186,6 @@ variable P2SK
       C-COLON-DICT-ROOM
       C-COLON-PENDING-DREC
       C-COLON-MAYBE-SIG
-      9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,
       9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,
       C-COLON-RESET-COMPILE-STATE
       C-COLON-WORD-PROLOGUE
@@ -7524,6 +7499,7 @@ variable P2SK
       14 DATA TRUSTED-CELL LDR,  14 lundef CBZ,
    allowed LBL,
    14 13 2 ANDI,  14 notimm CBZ,
+      9 DATA P2-CELL LDR,  9 lmain CBNZ,          \ pass 2 never runs an immediate (habu2.f EM-COMPILE-CALL)
       SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT @ BL,
       9 DATA HOOK-CELL LDR,  9 callimm CBZ,
@@ -7936,7 +7912,10 @@ variable P2SK
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : EMIT-EVAL-CLEAN-EXIT ( -- )
-   LBL {: bad :}
+   LBL LBL {: bad shut :}
+   13 DATA EVAL-TOP-CELL LDR,  9 13 EVAL-FRAME:PEND LDR,  9 shut CBZ,
+      2 5 MOVZ,  LPROT @ BL,                         \ region -> RX: the immediate word's code resumes
+   shut LBL,
    13 DATA EVAL-TOP-CELL LDR,
    14 13 STACK-ABI:EVAL-BASE LDR, 10 13 STACK-ABI:EVAL-CAP LDR,
    12 XDS 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
@@ -7967,25 +7946,25 @@ variable P2SK
    10 LRBYE @ CBZ,
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  lmain B, ;
 
-\ A closed text that ends inside a definition it opened throws
-\ STACK-ABI:E-EVAL-UNFINISHED through LEVALREC before its frame is popped, which
-\ rolls the definition back with the frame. Mirrors src/habu/habu2.f
-\ C-CLOSED-SOURCE-END with a fixed line: the seed has no LDIAGDEF or location
-\ tail.
-: EMIT-CLOSED-SOURCE-END ( -- )
-   LBL {: ok :}
-   13 DATA EVAL-TOP-CELL LDR,
-   9 13 STACK-ABI:EVAL-SEG LDR,  9 ok CBZ,
-   9 DATA PEND-CELL LDR,  9 ok CBZ,
-   10 13 STACK-ABI:EVAL-PEND LDR,  9 10 CMP,  C-EQ ok BCOND,
-      0 2 MOVZ,  1 LUNFINMSG @ ADR,  2 UNFINMSG$ nip MOVZ,  NR-WRITE SYS,
-      15 STACK-ABI:E-EVAL-UNFINISHED LIT64,  LEVALREC @ B,
-   ok LBL, ;
+\ A buffer that ends inside a definition it opened throws 74 through LEVALREC
+\ before its frame is popped, which rolls the definition back with the frame,
+\ and a closed text's stack back to the pool. The definition open as the
+\ buffer began (EVAL-FRAME:PEND) is an outer buffer's. Mirrors
+\ src/habu/habu2.f C-DEF-SOURCE-END with a fixed line: the seed has no
+\ LDIAGDEF or location tail.
+: EMIT-DEF-SOURCE-END ( -- )
+   LBL {: closed :}
+   9 DATA PEND-CELL LDR,  9 closed CBZ,
+   10 DATA EVAL-TOP-CELL LDR,  10 10 EVAL-FRAME:PEND LDR,
+   9 10 CMP,  C-EQ closed BCOND,
+      0 2 MOVZ,  1 LSRCENDMSG @ ADR,  2 SRCENDMSG$ nip MOVZ,  NR-WRITE SYS,
+      15 74 MOVZ,  LEVALREC @ B,
+   closed LBL, ;
 
 : EMIT-EXIT ( n n -- ) {: lexit lmain :}
    lexit LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 @ CBZ,
-      EMIT-CLOSED-SOURCE-END
+      EMIT-DEF-SOURCE-END
       EMIT-EVAL-CLEAN-EXIT
    LEX0 @ LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE @ CBZ,
@@ -8027,7 +8006,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
-   LBL LFLOORREC !  LBL LFLOORMSG !  LBL LUNFINMSG !
+   LBL LFLOORREC !  LBL LFLOORMSG !  LBL LSRCENDMSG !
    LBL LEVALREC !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;

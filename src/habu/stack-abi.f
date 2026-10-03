@@ -61,12 +61,6 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 \ the two spellings equal.
 -3804 constant E-EVAL-RESIDUE
 
-\ evaluate-closed's refusal of a text that ended inside a definition it opened
-\ (src/habu/habu2.f C-CLOSED-SOURCE-END), re-registered for the same reason:
-\ lib/errors.f owns it as E-EVAL-UNFINISHED and test/compiler/native-eval.f
-\ keeps the two spellings equal.
--3805 constant E-EVAL-UNFINISHED
-
 \ Preserve the old frame fields; append the active allocation descriptor.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
@@ -74,16 +68,13 @@ $50 constant CATCH-BYTES
 $CA7CF4A3E00E constant CATCH-MAGIC
 $80 constant EVAL-BASE
 $88 constant EVAL-CAP
-\ $90..$120 are layout.f's: EVAL-INB, EVAL-FRAME:USE-FLOOR and the USE-MAX cells
-\ of EVAL-FRAME:USE-WIDS.
+\ $90..$128 are layout.f's: EVAL-INB, EVAL-FRAME:USE-FLOOR, the USE-MAX cells
+\ of EVAL-FRAME:USE-WIDS and EVAL-FRAME:PEND at $120.
 \ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
-\ return and the throw recovery give back to the pool; 0 for evaluate.
-$120 constant EVAL-SEG
-\ The definition open when the text began (PEND-CELL at entry): a closed text
-\ that ends with another one open is refused (habu2.f C-CLOSED-SOURCE-END).
-\ The last slot: the frame ends at EVAL-BYTES, a multiple of 16 for the
-\ machine stack.
-$128 constant EVAL-PEND
+\ return and the throw recovery give back to the pool; 0 for evaluate. The
+\ last slot: the frame ends at EVAL-BYTES, a multiple of 16 for the machine
+\ stack.
+$128 constant EVAL-SEG
 $130 constant EVAL-BYTES
 
 ;package

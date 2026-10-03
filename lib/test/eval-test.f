@@ -43,8 +43,8 @@ package EVAL-TEST
    [: s" 1 2" TEST-EVAL:N drop ;] E-EVAL-RESIDUE TTHROWSQ ;
 
 : UNFINISHED ( -- )
-   s" N refuses a text that ends inside a definition it opened" T-LABEL
-   [: s" : EVAL-TEST-OPEN ( -- n ) 1" TEST-EVAL:N drop ;] E-EVAL-UNFINISHED TTHROWSQ ;
+   s" N refuses a text that ends inside a definition it opened, rc 74" T-LABEL
+   [: s" : EVAL-TEST-OPEN ( -- n ) 1" TEST-EVAL:N drop ;] 74 TTHROWSQ ;
 
 : UNDER ( -- n )
    7 [: s" drop 1" TEST-EVAL:N drop ;] catch 70 T= ;
