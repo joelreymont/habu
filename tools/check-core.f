@@ -121,7 +121,6 @@ variable CHK-OUT-U
 variable CHK-ERR-U
 variable CHK-MAP-U
 variable CHK-RC
-variable CHK-CHILD-RC
 variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
@@ -403,7 +402,6 @@ private
    0 CHK-OUT-U !
    0 CHK-ERR-U !
    0 CHK-RC !
-   0 CHK-CHILD-RC !
    0 CHK-NUM-I !
    0 CHK-LABEL-U !
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
@@ -1406,8 +1404,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-U$ CHK-ERR ;
 
 \ The run file's prefix turns checking off, names the subject for the checker's
-\ diagnostics and builds the hook the run is checked with (CHK-HOOK-ON turns it
-\ on). It shares the subject's first line when the subject follows it, and the
+\ diagnostics, turns its warnings off and builds the hook the run is checked
+\ with (CHK-HOOK-ON turns it on). The check before the run wrote the warnings,
+\ each in its own file and placed: the run loads what that check checked, so
+\ its warnings would repeat them, naming the subject for every file and placing
+\ none. It shares the subject's first line when the subject follows it, and the
 \ origin markers add no line break, so line N of the run file is line N of the
 \ subject: the engine counts the lines of the file it reads when it refuses a
 \ statement.
@@ -1416,6 +1417,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    s"  DIAG-FILE!" CHK-RUN-SP
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
+   s" 0 WARN-DIAGS !" CHK-RUN-SP
    s" : CHECK-F-HOOK ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;" CHK-RUN-SP
    s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP ;
 
@@ -1605,9 +1607,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-: CHK-RUN-STATIC ( -- )
-   CHK-RUN-ALL ;
-
 : CHK-RUN-PREVERIFY-ACT ( -- )
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
@@ -1726,24 +1725,21 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    2 >FD 2 >FD JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
-: CHK-HANDLE-HB-NONJSON ( -- )
-   CHK-ERR-U @ 0= if CHK-RUN-STATIC exit then
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
-
+\ The check before the run wrote what the checker refuses and warns of. A run
+\ that fails adds what it wrote: its packets under --json-errors, else all of
+\ its standard error.
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
       exit
    then
-   CHK-RC @ CHK-CHILD-RC !
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
-      CHK-RUN-STATIC
       CHK-RUN-JSON-ONLY
    else
-      CHK-HANDLE-HB-NONJSON
+      CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    then
-   CHK-CHILD-RC @ CHK-THROW ;
+   CHK-RC @ CHK-THROW ;
 
 \ The nominal pass registers the declarations it finds in the subject source.
 \ Those declarations belong to the packages that source declares, so the scope

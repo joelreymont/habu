@@ -297,7 +297,8 @@ public
   definition's contract is read from that binding
   (`src/compiler/native/compiler.f` KEEP-ARITY asks `NDICT:SPELL-ARITY` with the
   bare name). A mismatch is refused where written, `E-SHADOWED-ARITY` (checker
-  7145, rc 67), naming the package, the tail and both widths; the native build's
+  7145, rc 67), naming the package, the tail and both widths, its packet placed
+  at the public definition's name; the native build's
   `-8303 E-NELAB-ARITY` stays as the backstop. The rule judges only a colon
   definition with a DECLARED signature; a public word made by a storage definer
   (`constant`, `variable`, `create`) is judged by its definer's row, so a

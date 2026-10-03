@@ -2695,6 +2695,7 @@ PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
 PTR-VARIABLE NMA  variable NMU           \ current definition name (set by DO-TOK1)
+variable NMOFF                           \ its token's offset in the checked text (NAME-TOK)
 
 \ Count only owning schema positions. Scope, region, read-view element, pointer,
 \ and quotation parameters describe access or representation, not payload.
@@ -17589,7 +17590,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ binds; anywhere else - the live load path, a candidate probe whose name is a
 \ label - the name claims nothing and the body binds against the whole store.
 : NAME-TOK ( -- )
-   TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 !
+   TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  TSTART @ NMOFF !  0 TOK0 !
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF NMA @ NMU @ OWN-RECORD ELSE 0 THEN
    BIND-HORIZON ! ;
 

@@ -936,6 +936,10 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    u 0 > IF
       a  a u +  JLOCATE IF JLOC-FIELDS THEN
    THEN ;
+\ The position fields of the checked definition's name token, where the
+\ scanner read it.
+: JNAME-FIELDS ( -- )
+   NMOFF @ TADDR NMU @ JTOKEN-FIELDS ;
 : NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
@@ -1224,6 +1228,8 @@ BADSIG-DIAG-INSTALL
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" W-EFFECT-NOT-RECORDED" JSTR 44 EMIT1
    s" word" JKEY na nu JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   JNAME-FIELDS
    s" reason" JKEY wa wu JSTR
    125 EMIT1 ;
 
@@ -1233,7 +1239,13 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
+\ The checker writes a warning, a packet with no verdict, while WARN-DIAGS is
+\ on. tools/check.f's run turns it off: the run loads what the check before it
+\ checked, and that check wrote the warnings with their files and positions.
+variable WARN-DIAGS   -1 WARN-DIAGS !
+
 : REC-REFUSE-DIAG ( ptr u8 n -- )
+   WARN-DIAGS @ 0= IF 2drop EXIT THEN
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
 
 \ The render is no longer thrown away. It was here only to detect unmodeled tags
@@ -1332,6 +1344,8 @@ REC-SIG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
    s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   JNAME-FIELDS
    s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
    125 EMIT1 ;
 : SBARITY-DIAG ( -- )

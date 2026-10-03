@@ -164,6 +164,27 @@ also throws 7152, so nothing after it in its source is checked: a load exits 67
 after `hb: uncaught throw code 7152`, and `tools/check.f` reports the statement
 that asked for the record as one that threw.
 
+Two packets name a definition, not a token of its body, and are placed at the
+definition's name as written: where the checked text locates in the labeled
+file, `line`, `column`, `byte_start` and `byte_end` follow `file`, with the
+meanings above. Elsewhere they carry `file` alone, since a definition the
+engine's own load captured keeps no source address for its name and one built
+by `evaluate` or generated has no bytes in the file.
+
+- `E-SHADOWED-ARITY`, repair class `match_shadowed_private_effect`, `verdict`
+  `rejected`: a package's public definition moves other cells than the private
+  word of that package whose tail it shares (forth.md **Packages**). It
+  carries `token`, the tail as the checker folds it, `package`, `file` and
+  `suggestion`, and the load stops there, rc 67.
+- `W-EFFECT-NOT-RECORDED`, with no `repair_class` or `verdict`: a definition
+  without a declared effect certified, but its inferred effect cannot be
+  recorded, so a later caller does not find it. It carries `word`, the name as
+  the checker folds it, `file` and `reason`, and the check goes on.
+  `tools/check.f` writes it once in every mode, from its check before the run:
+  the run loads what that check checked and writes no warning (`WARN-DIAGS`,
+  `src/core/render.f`), so a definition only the run builds, with `evaluate`,
+  gets none.
+
 ## Checking Without Running
 
 `tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
