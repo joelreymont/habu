@@ -20649,6 +20649,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ the record into NDICT, so a rejected cast leaves no name behind in either the
 \ checker's tables or the dictionary.
 : CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   sa su BYTE-SPAN? 0= IF E-CAST-ARITY throw THEN
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
