@@ -2129,6 +2129,17 @@ variable GE-KIND-N
    {: c:n :}
    c 2 < c 7 = or if 1 else 0 then ;
 
+\ `;` names the unfinished definition and its source location as well.
+: GE-KIND-SEMI-LINE$ ( bool -- ptr u8 n )
+   {: chk:bool :}
+   SB-RESET
+   s" hb: ; with a control structure open: GEKT at " SB-APPEND
+   GE-END-PATH GE-END-U @ SB-APPEND
+   s" :" SB-APPEND
+   chk if 1 else 2 then FMT:SB-U
+   GE-SB-LF
+   SB$ ;
+
 \ Closer c straight in a definition at tier 0: rc 70, and the refusal naming
 \ its token is the whole of stderr.
 : GE-KIND-TOP ( n bool -- )
@@ -2141,6 +2152,7 @@ variable GE-KIND-N
    GE-END-TOP
    c GE-KIND-TOK {: t:ptr tu:n :}
    70 t tu GE-EXPECT-RC
+   c 13 = if chk GE-KIND-SEMI-LINE$ t tu GE-EXPECT-ERR exit then
    t tu GE-KIND-LINE$ t tu GE-EXPECT-ERR ;
 
 : GE-CF-KIND ( -- )
