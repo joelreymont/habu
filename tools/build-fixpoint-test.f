@@ -643,22 +643,29 @@ variable BAD-N
    STAGE2-DRIVER$ {: out:ptr outu:n :}
    out outu DRIVER-BASE
    out outu s" src/habu/stage2.f" s" : RUN ( -- )" BF-APPEND-SOURCE-BEFORE
-   out outu s" : BFT-S2-READ-EXIT ( -- ) READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
+   out outu s" SOURCE-ARENA-CAP 1 + constant BFT-S2-SIZE" BF-APPEND-LINE
+   out outu s" : BFT-S2-READ-EXIT ( -- )" BF-APPEND-LINE
+   out outu s"    READ-SRC LEN @ BFT-S2-SIZE <>" BF-APPEND-LINE
+   out outu S\"    IF s\" bft: stage2 read part of its source\" 74 die THEN" BF-APPEND-LINE
+   out outu s"    DRV-EXIT-OK ;" BF-APPEND-LINE
    out outu s" BFT-S2-READ-EXIT" BF-APPEND-LINE ;
 
 : WRITE-SPACES ( ptr u8 n n -- ) {: path:ptr pathu:n u:n :}
    path pathu SRC-BUF u WRITE-ALL ;
 
+\ The reader's buffer grows with the source, so one byte past the shared read
+\ allowance reads whole; an empty source is still refused.
 : STAGE2 ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
    WRITE-STAGE2-DRIVER
-   BFT-STAGE2 SOURCE-ARENA-CAP 1 - WRITE-SPACES
-   STAGE2-DRIVER RUN-BUILD
-   EXPECT-OK
+   BFT-STAGE2 SOURCE-ARENA-CAP WRITE-SPACES
    BFT-STAGE2 SRC-BUF 1 APPEND-FILE
    STAGE2-DRIVER RUN-BUILD
-   S\" stage2: source exceeds buffer\n" EXPECT-74
+   EXPECT-OK
+   BFT-STAGE2 0 WRITE-SPACES
+   STAGE2-DRIVER RUN-BUILD
+   S\" stage2: empty source\n" EXPECT-74
    BF-TMP-RESET ;
 
 : MAKER-SOURCE ( -- ptr u8 n )
@@ -899,7 +906,7 @@ public
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
    s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
-   s" stage2 source cap" [: STAGE2 ;] BFT-STEP
+   s" stage2 source size" [: STAGE2 ;] BFT-STEP
    s" maker source cap" [: MAKER ;] BFT-STEP
    s" source buffer growth releases" [: BFT-SOURCE-GROWTH-RELEASES ;] BFT-STEP
    s" build-fixpoint-test: ok" BFT-FINISH ;

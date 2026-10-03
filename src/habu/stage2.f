@@ -15,7 +15,7 @@ package STAGE2
 private
 
 \ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
-\ These rows expose the fixed path scratch and raw source-buffer cell.
+\ This row exposes the fixed path scratch.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 create PATH-BUF PATH-CAP allot
 s" PATH-BUF" s" -- ptr u8" TRUST
@@ -42,34 +42,30 @@ s" PATH-BUF" s" -- ptr u8" TRUST
 
 : OUT-PATH$ ( -- ptr u8 n )
    s" stage2-got" PATH ;
-variable BUF  variable LEN  variable FD  variable GOT
-SOURCE-ARENA-CAP constant SOURCE-CAP     \ mmap'd generated compiler source
-$1002 constant MAP-PRIVATE-ANON
-: BUF@ BUF @ ;
-s" BUF@" s" -- ptr u8" TRUST
+variable LEN  variable CAP  variable FD  variable GOT
+DYNAMIC-BUFFER SRC u8   \ READ-SRC doubles it as the source needs
+$10000 constant SOURCE-START
 
-: ALLOC-SOURCE ( -- )
-   0 SOURCE-CAP 3 MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" stage2: source mmap failed" 74 die then
-   BUF ! ;
-
+\ The size is learnt by reading, not from stat: the Gforth-built hb-stage0 runs
+\ this driver first and its primitives (bootstrap/cg/forth.fs EMIT-PRIMS) have
+\ no stat64, which a stat-sized reader met as rc 70 naming `stat64`.
 : READ-SRC ( -- )
    SRC-PATH$ PATH0 0 0 open FD !
    FD @ 0 < IF s" stage2: cannot open source" 74 die THEN
-   ALLOC-SOURCE  0 LEN !
+   SOURCE-START SRC-RESERVE  SOURCE-START CAP !  0 LEN !
    BEGIN                                                 \ loop: read() may return short
-     FD @  BUF@ LEN @ +  SOURCE-CAP LEN @ -  read GOT !
+     LEN @ CAP @ = IF CAP @ 2 * dup SRC-RESERVE CAP ! THEN
+     FD @  LEN @ SRC  CAP @ LEN @ -  read GOT !
      GOT @ 0 >
    WHILE  LEN @ GOT @ + LEN !  REPEAT
    GOT @ 0 < IF FD @ close s" stage2: read failed" 74 die THEN
    FD @ close
-   LEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
-   LEN @ SOURCE-CAP = IF s" stage2: source exceeds buffer" 74 die THEN ;
+   LEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN ;
 
 : DRIVE ( -- )
    READ-SRC
    DRV-RETIRE-RELOADS
-   BUF@ LEN @ ENGINE-BUILD:BUILD
+   0 SRC LEN @ ENGINE-BUILD:BUILD
    SIGN-ID:ENGINE$ OUT-PATH$ DRV-EMIT-IMAGE ;
 
 public

@@ -471,17 +471,20 @@ readers each hold one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   `--build` payload byte for byte. A seeded engine emits no cold prefix, so
   installed `bin/hb` starts program input at the arena base. Baked source
   has separate space: the mapping is `SOURCE-ARENA-LEN = IBUFSZ + SRCN`.
-- `S2-SOURCE-CAP` is the anonymous mapping used by `src/habu/stage2.f` to read
-  the generated fixpoint compiler source. It is not the engine input arena. A
-  candidate-backed regression proves cap-minus-one succeeds and exact-cap exits
-  74 with `stage2: source exceeds buffer`.
+- `src/habu/stage2.f` reads the generated fixpoint compiler source into a
+  `DYNAMIC-BUFFER` byte row that doubles from 64 KiB until the source fits. It
+  is not the engine input arena and has no fixed bound; the code window refuses
+  a source an image cannot carry. It learns the size by reading because
+  `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`. A
+  candidate-backed regression reads a source one byte past `SOURCE-ARENA-CAP`
+  whole.
 - `MK-SOURCE-CAP` is the dictionary allocation used by `src/habu/maker.f` to
   read the generated AOT/REPL maker source. It is not the stage2 mapping. Its
-  candidate-backed reader regression proves the same adjacent boundary with the
-  exact `maker: source exceeds buffer` diagnostic.
+  candidate-backed reader regression proves cap-minus-one succeeds and exact-cap
+  exits 74 with `maker: source exceeds buffer`.
 
 `SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
-recovery carry matching owner tokens; stage2 and maker alias that owner. The
+recovery carry matching owner tokens; the maker reader aliases that owner. The
 assembler image window budgets one baked source stream; the generated engine
 maps the actual baked size separately from its `IBUFSZ` read allowance.
 
