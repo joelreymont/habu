@@ -520,8 +520,9 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ The engine refuses a live local past its LOC-RECS records, and the checker
 \ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
 \ only stops recording. A dropped name spelled as a parsing keyword or string
-\ opener and then used still hides the `;` (rc 74, no location); the loader
-\ refuses that body at the name.
+\ opener and then used still hides the `;`: with nothing after it to close the
+\ scan the pre-pass dies rc 74 with no location, else the merged body registers
+\ and the checker names the local; the loader refuses that body at the name.
 : LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
    LOCAL-N @ LOC-RECS >= IF EXIT THEN
    0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
