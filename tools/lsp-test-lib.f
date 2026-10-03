@@ -116,6 +116,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/test.f
 require lib/test/outcome.f
+require lib/test/subject.f
 require lib/span.f
 require lib/memory.f
 require lib/byte-buffer.f
@@ -458,8 +459,29 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
 \ the conversation and what the server wrote are printed.
 : EXITED ( outcome n -- )
    {: r want:n :}
-   r PROC-OUTCOME>RC RC>N ARCHIVE
-   LABEL$ T-LABEL IN$ OUT$ ERR$ r want T-OUTCOME-EXITED= ;
+   LABEL$ T-LABEL IN$ OUT$ ERR$ r want T-OUTCOME-EXITED=
+   r PROC-OUTCOME>RC RC>N ARCHIVE ;
+
+\ Exercise this adapter's timeout arm without waiting for a slow server.
+: TIMEOUT-EXIT-PROBE ( -- )
+   s" timed-out conversation" CONVERSATION
+   s" timeout input" IN+
+   s" timeout stdout" dup OUT-LEN ! OUT-SPAN SPAN:COPY
+   s" timeout stderr" dup ERR-LEN ! ERR-SPAN SPAN:COPY
+   OUTCOME:TIMEOUT 0 EXITED ;
+
+: TEST-EXIT-TIMEOUT ( -- )
+   s" LSP timeout reports the conversation and both streams" T-LABEL
+   s" package LSP-TEST TIMEOUT-EXIT-PROBE ;package" {: src:ptr srcu:n :}
+   src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
+   CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
+   src srcu OUT-SPAN SPAN:$ drop outu LEN>N
+   ERR-SPAN SPAN:$ drop erru LEN>N r UNCAUGHT-RC T-OUTCOME-EXITED=
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stderr" CONTAINS? TTRUE
+   ERR-SPAN SPAN:$ drop erru LEN>N s" uncaught throw code -2502" CONTAINS? TTRUE ;
 
 : TOOK ( n -- )
    {: ns:n :}
@@ -1514,6 +1536,7 @@ public
    TXT-B READY
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET
+   TEST-EXIT-TIMEOUT
    TEST-LIFECYCLE
    TEST-ANSWERS-AT-ONCE
    TEST-EXIT-WITHOUT-SHUTDOWN
