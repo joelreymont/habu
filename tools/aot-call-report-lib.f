@@ -1,6 +1,8 @@
 \ aot-call-report-lib.f - report patched AOT call stencils in a binary.
 \ Load before tools/aot-call-report.f or tools/aot-call-report-test.f.
 
+require lib/errors.f
+
 $D503201F constant NOP-INSTR
 $FC000000 constant BL-MASK
 $94000000 constant BL-OP
@@ -110,15 +112,12 @@ variable JSON-NUM-N
 : REPORT-BUFFERED? ( -- bool )
    REPORT-OUT-A@ 0= 0= ;
 
-: REPORT-ROOM ( n -- ) {: add:n :}
-   add 0 < if s" aot-call-report: output append invalid" 74 die then
-   REPORT-OUT-U @ 0 < if s" aot-call-report: output length invalid" 74 die then
-   add REPORT-OUT-CAP @ REPORT-OUT-U @ - > if
-      s" aot-call-report: output buffer full" 74 die
-   then ;
-
-: REPORT-BUF-C ( n -- ) {: c:n :}
-   1 REPORT-ROOM
+\ The report buffer is the caller's and cannot grow. A byte past its capacity
+\ is refused as the JSON writer refuses fixed output that cannot hold a value,
+\ by E-JW-CAPACITY, and the buffer keeps the report up to it.
+: REPORT-BUF-C ( n -- )
+   {: c:n :}
+   REPORT-OUT-U @ REPORT-OUT-CAP @ >= if E-JW-CAPACITY throw then
    c REPORT-OUT-A@ REPORT-OUT-U @ + c!
    REPORT-OUT-U @ 1+ REPORT-OUT-U ! ;
 
@@ -269,12 +268,19 @@ variable JSON-NUM-N
    SAVE-CARRY
    REPORT-TRUE ;
 
-: ACR-SCAN-FILE ( n -- ) {: mode:n :}
+: ACR-SCAN-READS ( -- )
+   begin ACR-SCAN-ONE-READ while repeat ;
+
+: ACR-SCAN-CLOSE ( -- )
+   ACR-FD @ close ;
+
+\ A report refused mid-scan still closes the input.
+: ACR-SCAN-FILE ( n -- )
+   {: mode:n :}
    mode ACR-MODE !
    ACR-SCAN-RESET
    OPEN-INPUT ACR-FD !
-   begin ACR-SCAN-ONE-READ while repeat
-   ACR-FD @ close ;
+   [: ACR-SCAN-READS ;] [: ACR-SCAN-CLOSE ;] finally ;
 
 : REPORT-COUNT ( -- )
    0 REPORT-BYTES !

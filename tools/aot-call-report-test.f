@@ -163,6 +163,28 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    1 ACRT=
    $4010 ACRT= ;
 
+\ The report buffer is the caller's and cannot grow: a report that outgrows it
+\ is refused by name, and the input the scan had open is closed, so the lowest
+\ free descriptor is the same before and after. The short buffer ends four bytes
+\ before the whole report, inside the stencil-site list the last scan writes,
+\ and keeps the report up to the cut.
+variable ACRT-SHORT-CAP
+
+: ACRT-SHORT-REPORT ( -- )
+   ACRT-SMALL$ ACRT-ERR ACRT-SHORT-CAP @ REPORT-JSON-BUFFER 2drop ;
+
+: ACRT-NEXT-FD ( -- n )
+   ACRT-SMALL$ ACRT-PATH!
+   ACRT-PATH 0 0 open dup close ;
+
+: ACRT-TEST-FULL ( -- )
+   ACRT-SMALL$ ACRT-JSON ACRT-JSON-CAP REPORT-JSON-BUFFER nip
+   4 - ACRT-SHORT-CAP !
+   ACRT-NEXT-FD {: fd:n :}
+   [: ACRT-SHORT-REPORT ;] catch E-JW-CAPACITY ACRT=
+   REPORT-OUT$ ACRT-JSON ACRT-SHORT-CAP @ STR= ACRT-ASSERT
+   ACRT-NEXT-FD fd ACRT= ;
+
 : ACRT-TEST-CLI ( -- )
    ACRT-SMALL$ ACRT-CLI-RUN
    {: outu:n erru:n rc:n :}
@@ -176,6 +198,7 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
    ACRT-PREPARE
    ACRT-TEST-SMALL
    ACRT-TEST-BOUNDARY
+   ACRT-TEST-FULL
    ACRT-TEST-CLI
    CLEANUP-RUN
    s" aot-call-report-test: ok (" type ACRT-N @ 1- FMT:.INT s"  assertions)" type cr ;
