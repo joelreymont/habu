@@ -11,6 +11,8 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-env.f                \ a child run with an HB_TMP of its own
+require lib/fmt.f
 require lib/test/runner.f
 
 create GTT-OK-PATH FS-PATH-CAP allot
@@ -19,6 +21,11 @@ create GTT-HANG-PATH FS-PATH-CAP allot
 create GTT-LINE-PATH FS-PATH-CAP allot
 create GTT-REC-PATH FS-PATH-CAP allot
 create GTT-DETAIL-PATH FS-PATH-CAP allot
+create GTT-ROOM-PATH FS-PATH-CAP allot
+create GTT-LONG-PATH FS-PATH-CAP allot
+create GTT-TMP-PATH FS-PATH-CAP allot
+create GTT-NAME GT-NAME-MAX 1+ allot
+200 constant GTT-SEG-MAX                 \ a long directory's longest name
 128 constant GTT-LINE-CAP
 5000 constant GTT-HB-TIMEOUT-MS
 \ A nested child starts its own engine and then runs a child of its own on the
@@ -36,6 +43,8 @@ variable GTT-HANG-U
 variable GTT-LINE-U
 variable GTT-REC-U
 variable GTT-DETAIL-U
+variable GTT-ROOM-U
+variable GTT-TMP-U
 variable GTT-LINE-LEN
 variable GTT-LINE-FD
 variable GTT-OFI
@@ -57,6 +66,9 @@ variable GTT-OFI
 
 : GTT-DETAIL$ ( -- ptr u8 n )
    GTT-DETAIL-PATH GTT-DETAIL-U @ ;
+
+: GTT-ROOM$ ( -- ptr u8 n )
+   GTT-ROOM-PATH GTT-ROOM-U @ ;
 
 : GTT-LF ( -- )
    10 SB-APPEND-C ;
@@ -110,6 +122,28 @@ variable GTT-OFI
    S\" s\q " SB-APPEND
    a u SB-APPEND
    S\" \q" SB-APPEND ;
+
+: GTT-ROOM-PREFIX$ ( -- ptr u8 n )
+   s" long-root" ;
+
+\ A child that starts a root under the HB_TMP it is given, then joins and
+\ writes the longest name GT-PATH takes there; room-ok says both went.
+: GTT-ROOM-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/fs-mutate.f" SB-APPEND GTT-LF
+   s" require lib/test/runner.f" SB-APPEND GTT-LF
+   s" create P FS-PATH-CAP allot" SB-APPEND GTT-LF
+   s" create N GT-NAME-MAX allot" SB-APPEND GTT-LF
+   s" : ROOM ( -- )" SB-APPEND GTT-LF
+   s"    GT-NAME-MAX 0 ?do 110 N i + c! loop" SB-APPEND GTT-LF
+   s"    " SB-APPEND GTT-ROOM-PREFIX$ GTT-LIT+ s"  GT-START" SB-APPEND GTT-LF
+   s"    N GT-NAME-MAX P GT-PATH {: u:n :}" SB-APPEND GTT-LF
+   s"    P u " SB-APPEND s" room" GTT-LIT+ s"  WRITE-ALL" SB-APPEND GTT-LF
+   s"    " SB-APPEND s" room-ok" GTT-LIT+ s"  type cr" SB-APPEND GTT-LF
+   s"    GT-CLEANUP ;" SB-APPEND GTT-LF
+   s" ROOM" SB-APPEND GTT-LF
+   s" 0 0 0 die" SB-APPEND GTT-LF
+   SB$ ;
 
 \ A child that runs the fail fixture through the real runner, then asserts two
 \ values that hold and three that do not, so its whole stdout witnesses what a
@@ -209,7 +243,8 @@ variable GTT-OFI
    s" hang.f" GTT-HANG-PATH GT-PATH GTT-HANG-U !
    s" lines.txt" GTT-LINE-PATH GT-PATH GTT-LINE-U !
    s" record.f" GTT-REC-PATH GT-PATH GTT-REC-U !
-   s" detail.f" GTT-DETAIL-PATH GT-PATH GTT-DETAIL-U ! ;
+   s" detail.f" GTT-DETAIL-PATH GT-PATH GTT-DETAIL-U !
+   s" room.f" GTT-ROOM-PATH GT-PATH GTT-ROOM-U ! ;
 
 : GTT-WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL ;
@@ -221,6 +256,7 @@ variable GTT-OFI
    GTT-FAIL$ GTT-FAIL-SRC$ GTT-WRITE
    GTT-HANG$ GTT-HANG-SRC$ GTT-WRITE
    GTT-REC$ GTT-REC-SRC$ GTT-WRITE
+   GTT-ROOM$ GTT-ROOM-SRC$ GTT-WRITE
    GTT-DETAIL-WRITE ;
 
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
@@ -409,6 +445,77 @@ variable GTT-OFI
    GT-ERR$ s" " T$=
    GT-RC@ 0 T= ;
 
+: GTT-TMP-C+ ( n -- ) {: c:n :}
+   c GTT-TMP-PATH GTT-TMP-U @ + c!
+   GTT-TMP-U @ 1+ GTT-TMP-U ! ;
+
+\ A slash and a name of n bytes.
+: GTT-SEG+ ( n -- ) {: k:n :}
+   47 GTT-TMP-C+
+   k 0 ?do 100 GTT-TMP-C+ loop ;
+
+\ The name length of the next segment while need bytes are still to add: at
+\ most GTT-SEG-MAX, and never one that leaves a single byte, a slash with no
+\ name after it.
+: GTT-SEG-LEN ( n -- n ) {: need:n :}
+   need 1- GTT-SEG-MAX min {: k:n :}
+   need 1- k - 1 = if k 1- exit then
+   k ;
+
+\ A directory under the runner's root whose path is exactly n bytes long.
+: GTT-TMP-DIR ( n -- ptr u8 n ) {: n:n :}
+   GT-ROOT {: root:ptr rootu:n :}
+   root GTT-TMP-PATH rootu BYTE-COPY
+   rootu GTT-TMP-U !
+   begin GTT-TMP-U @ n < while
+      n GTT-TMP-U @ - GTT-SEG-LEN GTT-SEG+
+   repeat
+   GTT-TMP-PATH n 2dup MAKE-DIRS ;
+
+\ room.f run by bin/hb with tmp as its HB_TMP and the rest of the environment
+\ inherited.
+: GTT-RUN-ROOM ( ptr u8 n -- ) {: tmp:ptr tmpu:n :}
+   PROC-ARGV-ENV-RESET
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV-SET
+   PROC-ENV-INHERIT-MISSING
+   GTT-ROOM$ >LEN PROC-ARGV+
+   s" bin/hb" >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   GTT-HB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME GT-STORE-RUN ;
+
+\ The refusal's detail line up to the limit, for an HB_TMP of n bytes and a
+\ limit of max.
+: GTT-ROOM-DETAIL$ ( n n -- ptr u8 n ) {: n:n max:n :}
+   SB-RESET
+   s" runner: HB_TMP is " SB-APPEND n FMT:SB-INT
+   s"  bytes; at most " SB-APPEND max FMT:SB-INT
+   SB$ ;
+
+\ Both sides of the longest HB_TMP GT-START takes: at that length the root
+\ and a GT-NAME-MAX name fit, and one byte longer it is refused once, by name,
+\ with the report's exit.
+: GTT-TEST-ROOM ( -- )
+   GTT-ROOM-PREFIX$ nip GT-HB-TMP-MAX {: max:n :}
+   max GTT-TMP-DIR GTT-RUN-ROOM
+   GT-RC@ 0 T=
+   GT-OUT$ s" room-ok" CONTAINS? TTRUE
+   max 1+ GTT-TMP-DIR GTT-RUN-ROOM
+   GT-RC@ GT-EX-FAIL T=
+   GT-OUT$ s" FAIL: HB_TMP leaves the test root no room" CONTAINS? TTRUE
+   GT-OUT$ max 1+ max GTT-ROOM-DETAIL$ CONTAINS? TTRUE
+   GT-OUT$ s" room-ok" CONTAINS? TFALSE ;
+
+\ A name one byte longer than GT-NAME-MAX.
+: GTT-OVER-NAME$ ( -- ptr u8 n )
+   GT-NAME-MAX 1+ 0 ?do 110 GTT-NAME i + c! loop
+   GTT-NAME GT-NAME-MAX 1+ ;
+
+\ The longest name joins under any root GT-START made; a longer one is refused
+\ whatever room this root has.
+: GTT-TEST-NAME-MAX ( -- )
+   GTT-OVER-NAME$ 1- GTT-LONG-PATH GT-PATH
+   GT-ROOT nip 1+ GT-NAME-MAX + T=
+   [: GTT-OVER-NAME$ GTT-LONG-PATH GT-PATH drop ;] E-FS-CAPACITY TTHROWSQ ;
+
 : TEST-RUNNER-TEST-MAIN ( -- )
    T-RESET
    GTT-PREPARE
@@ -426,6 +533,8 @@ variable GTT-OFI
    GTT-TEST-PROGRESS-CAPTURE
    GTT-TEST-PROGRESS-CAPTURE-FLUSH
    GTT-TEST-PROGRESS-STDIN-CAPTURE
+   GTT-TEST-ROOM
+   GTT-TEST-NAME-MAX
    GT-CLEANUP
    GT-ROOT EXISTS? TFALSE
    T-REPORT
