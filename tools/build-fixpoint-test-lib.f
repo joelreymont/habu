@@ -19,6 +19,7 @@ require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
+require test/suite-budget.f            \ CHILD-MS, every step's hang guard
 
 \ This fixture drives the tool's internals - the emitted stage sources, the
 \ stamp preimage, the chain fold - so it REOPENS package BUILD-FIXPOINT rather
@@ -31,7 +32,7 @@ package BUILD-FIXPOINT
 
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
-120000 constant BFT-TIMEOUT-MS
+SUITE-BUDGET:CHILD-MS constant BFT-TIMEOUT-MS
 
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U

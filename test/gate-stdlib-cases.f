@@ -6,16 +6,15 @@ using TEST
 \ below and each waits for a free slot, so a long row registered late starts
 \ late and alone sets the gate's tail. The long rows lead, longest first.
 
-\ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL, EXCEPT AS NAMED BELOW.
-\ tools/hb-build-test.f once
-\ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
-\ SUITE-TIMEOUT-MS slot its child gets: three of five full runs reported
-\ kind=TIMEOUT-UNDER-LOAD for it while other suites ran beside it. A row is
-\ measured in the pool, by its PASS line in the gate log, and stays under half
-\ of SUITE-TIMEOUT-MS (180 s) there: in a full pool a row runs 2-3x slower than
-\ alone, so a solo time proves nothing. Move a fixture group into a new row
-\ file - the shared fixture stays in the family's *-lib.f - rather than letting
-\ one row grow past that.
+\ A ROW STAYS UNDER HALF ITS CPU BUDGET. The gate ends a row once its process
+\ tree has run SUITE-BUDGET:CPU-MS (360 s) of CPU time, and its wall deadline
+\ is only a hang guard (test/suite-budget.f). CPU time is the row's own work,
+\ which load does not stretch as it does wall time, so a row is measured
+\ outside the gate:
+\ user plus system from `/usr/bin/time bin/hb --load <file>`, under 180 s.
+\ c2-memory, the longest, runs 113 s. Move a fixture group into a new row
+\ file - the shared fixture stays in the family's *-lib.f - rather than
+\ letting one row grow past that.
 
 \ native-build-entry loads and captures the x86 window (about 55 s alone) and
 \ needs no image, so it leads.
@@ -34,9 +33,8 @@ SUITE native-gate-aot-positive-preseed
    test/gate-aot-positive-preseed.f
 ;SUITE
 
-\ Exception: snap must build a fresh native engine and save that engine's
-\ image. Reusing the fixtures engine would skip the snap verb's build path.
-\ Its own 360 s deadline remains the acceptance bound.
+\ snap must build a fresh native engine and save that engine's image. Reusing
+\ the fixtures engine would skip the snap verb's build path.
 SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
@@ -1311,7 +1309,8 @@ SUITE five-bindings
 \ against, and stops however they end; then the same harness killed by a pool,
 \ which must leave no server process and no socket directory. initdb and
 \ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
-\ step deadlines sum to 300 s, inside SUITE-TIMEOUT-MS.
+\ step deadlines sum to 300 s, inside the row's hang guard (test/suite-budget.f
+\ ROW-MS).
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
