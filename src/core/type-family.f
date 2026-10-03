@@ -5476,9 +5476,9 @@ public
 private
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG! 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG! 0 RES-FALSE EXIT THEN
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
 \ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : apply the inline generated-constructor
@@ -5508,7 +5508,7 @@ private
    THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
-   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG! RES-FALSE EXIT THEN
+   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
@@ -5550,9 +5550,9 @@ private
 \ liveness across tokens, so construct and nested matches may interleave).
 \ ---------------------------------------------------------------------------
 : TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
-   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG! 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG! 0 RES-FALSE EXIT THEN
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-FAM-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}

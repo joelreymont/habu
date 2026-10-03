@@ -1304,6 +1304,18 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 4 EXPECT 1 15 1 19 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
+\ X has an unknown signature type and an undefined word: the load refuses the
+\ word, so the diagnostic is E-UNDEFINED at NOPE, not at zz.
+: TEXT-X ( -- ptr u8 n )  s" : X ( n -- zz ) NOPE ;" ;
+
+: ONE-REFUSAL-TURNS ( -- )
+   F-OPENED
+   A-PATH TEXT-X 2 CHANGES
+   SAY
+   TEXT-X A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 2 EXPECT 0 16 0 20 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
+
 : REQUIRES-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( n -- ) FMT:SB-U ;\n" ;
 : UNDERFLOWS-FMT ( -- ptr u8 n )  s\" require lib/fmt.f\n: G ( -- ) FMT:SB-U ;\n" ;
 
@@ -1787,6 +1799,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
    s" diagnostics-supersede" [: SUPERSEDE-TURNS ;] TALK
+   s" diagnostics-one-refusal" [: ONE-REFUSAL-TURNS ;] TALK
    s" save-dirties-all" [: SAVE-TURNS ;] TALK
    s" close" [: CLOSE-TURNS ;] TALK
    s" engine-provided" [: ENGINE-TURNS ;] TALK

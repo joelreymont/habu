@@ -1352,6 +1352,19 @@ passing suite.
   and its stderr carries packets, one for a require closure it cannot follow
   among them, at the form that stops the walk; under `--json-errors` packets
   alone, as it says on stdout, too, a throw that ends the check uncaught.
+  A definition with several faults is reported for the one the load
+  refuses it for, at that fault's token: the first body word the load cannot
+  compile (undefined, called or ticked, a local it cannot bind, a construct or
+  match it cannot read, a control-flow word with no structure or another's
+  open, a name under `using` that a tick or the engine's lookup refuses), then
+  a structure still open where the definition ends, at its `;` or `does>`, else
+  the first name a used public shadows or makes ambiguous beside a global,
+  else a signature that does not parse, else the first failing check. A word
+  the engine holds that no checker row types, as one a `create` caller made,
+  is no word the load cannot compile: its tick is admitted, and its call is a
+  failing check, `E-UNDEFINED`. A word after a terminating word, or inside a
+  match nested past the checker's control-frame depth, is not resolved, though
+  the load names it if undefined.
 
 ## Habu Native Tooling Gotchas
 

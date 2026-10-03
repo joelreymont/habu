@@ -43,7 +43,7 @@ Fields:
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
 | `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LOCAL-NAME-TOO-LONG`, `E-TOO-MANY-LOCALS`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, `E-INPUT-UNDERFLOW`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
-| `verdict` | string | required | `rejected` or `uncheckable`, or `deferred` on a deferral; certification is not emitted as a diagnostic. |
+| `verdict` | string | required | `uncheckable` for an `E-UNCHECKABLE` refusal, `deferred` on a deferral, else `rejected`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
 | `token` | string | required | Token that anchored the diagnostic. |
 | `dead_owner` | string | dead-code only | Terminating token (`throw`, `die`, `exit`, `leave`, `again`, or a no-return word) that made the later token unreachable. |
@@ -84,6 +84,82 @@ The checker JSON uses `definition_source` where a packet has `source_excerpt`.
 It always carries `suggestion`; `reason` appears only on the records the
 `reason` row names and on a declaration record. Packet builders must copy or
 normalize these fields instead of requiring the checker to emit aliases.
+
+A definition may fail more than one check; its record names one refusal, and
+the `code`, `verdict`, `token`, position fields, `repair_class`, `suggestion`,
+the prose line and each field the table above gives to one kind of refusal
+(`dead_owner`, `reason`, `expected` and `actual` with the family fields,
+`arity_expected` and `arity_actual`) all describe that one. It is the refusal
+the engine's own load reports for the definition, chosen in the load's order:
+
+1. A body token the load cannot compile: an undefined word, one the engine
+   holds no word for, called or ticked with `[']`, a call to a malformed
+   qualified name (`A:B:C`, named `E-BAD-QUALIFIED` here and `E-UNDEFINED` by
+   the load), a retired global, a
+   local it cannot bind (a name over 16 bytes, a local past the 64th, a local
+   bound or referenced inside a quotation), an unmodeled immediate, a
+   `construct` or `match` family that is not a sum or enum, a variant its
+   family does not declare, a `match` variant without `OF`, a `;MATCH`
+   outside a match, a control-flow word with no structure open or another
+   structure's (`then` with no `if`, `begin then`, a `leave` outside every
+   `do`), named `E-REJECTED`, or a bare name under `using` the load's tick or
+   lookup refuses: a ticked name a used public shadows a global for
+   (`E-USING-SHADOW-GLOBAL`) or two used publics export
+   (`E-USING-AMBIGUOUS`), or a called one two used publics export where no
+   global binds it (`E-USING-AMBIGUOUS`). The load refuses these while it
+   compiles the body, before
+   it checks anything at `;`, so the first in source order refuses the
+   definition: `( n -- zz ) NOPE`, `( n -- zz ) ['] NOPE` and
+   `( n -- n ) evaluate NOPE` are all `E-UNDEFINED` at `NOPE`, and
+   `( n -- zz ) then` and `( n -- n ) then NOPE` are `E-REJECTED` at `then`.
+   A structure still open where the definition ends is refused at its `;`,
+   or at the `does>` ending a definer's body, after every other:
+   `( n -- zz ) dup if`, `SHADE IF` and `( n -- n ) dup if exit 1` are
+   `E-REJECTED` at `;`, and an unterminated `match` is
+   `E-MATCH-UNTERMINATED` there.
+2. Otherwise the first bare name under `using`, called or the target of `is`,
+   that a used public shadows a global for (`E-USING-SHADOW-GLOBAL`) or two
+   used publics export beside a global (`E-USING-AMBIGUOUS`): the load's
+   checker refuses it at `;` before anything else it checks.
+   `( n -- zz ) SHADE` and `( n -- n ) evaluate SHADE` are
+   `E-USING-SHADOW-GLOBAL` at `SHADE`; `SHADE NOPE` is `E-UNDEFINED` at
+   `NOPE`.
+3. Otherwise a signature that does not parse, at its type:
+   `( n -- zz ) evaluate` is `E-UNKNOWN-SIGNATURE-TYPE` at `zz`.
+4. Otherwise the first token whose check fails, in source order:
+   `( n -- n ) evaluate 1 c2-invoke` is `E-UNSAFE` at `evaluate`;
+   `( n -- ) >r 1 c@` is `E-MISMATCH` at `c@`, repair class
+   `remove_producer`, though the `>r` leaves the return row unbalanced too;
+   and `( n -- n ) dup c@ {: a -- b :} a` is `E-MISMATCH` at `c@`, verdict
+   `rejected`, though the `--` after it has an effect the checker cannot
+   model. Code after a terminating word is such a check: `E-DEAD-CODE` at its
+   first token, with `dead_owner` the word that ended the path. So is a
+   `RECURSE` in a definition whose declared effect is too big to record, and
+   a call to a word the engine holds that no checker row types, as one a
+   `create` caller made, `E-UNDEFINED` at that word: after
+   `: MK ( -- ) create ; MK MADE`, `( -- zz ) MADE` is
+   `E-UNKNOWN-SIGNATURE-TYPE` at `zz` and `( -- ) evaluate MADE` is
+   `E-UNSAFE` at `evaluate`, while `( -- ) ['] MADE drop` is admitted.
+5. Otherwise the checks made at `;`, among them an effect more than 4096
+   levels deep or an input row wider than 255 cells, `E-UNCHECKABLE` with
+   verdict `uncheckable` and the bound in `reason`.
+
+The checker does not resolve a word after a terminating word, nor the
+variants and branch words of a `match` nested past its control-frame depth
+(`E-MATCH-DEPTH`). So for `( n -- n ) exit NOPE` it names the dead code,
+`E-DEAD-CODE` at `NOPE`, where the load names the undefined word. Nor does
+it judge a control-flow word past one: `( n -- n ) exit 1 then` is
+`E-DEAD-CODE` at `1`, where the load refuses the `then` that closes nothing.
+Nor past an opener nested deeper than its 32 control frames, which leaves the
+definition `E-UNCHECKABLE` at that opener.
+It refuses `is NOPE` as `E-REJECTED` at `is`, where the load names no
+deferred word `NOPE`, and admits `['] >r`, which the load refuses as
+undefined. An orphan `;match`, and a `;MATCH` ending a match arm over a
+structure opened after its `OF`, are `E-MATCH-STRAY` where the load says
+`E-UNDEFINED`; an orphan `;]`, and a `[:` still open at `;`, are refused at
+the load's token with exit 70 where the load exits 75.
+Apart from these differences and the malformed qualified name's code above,
+the load's own refusal at `;` is this record's prose line, so the two agree.
 
 Top-level type-family declaration failures (`NEWTYPE`/`SUMTYPE`) emit a
 declaration-shaped object instead of the definition shape above: code
@@ -693,7 +769,9 @@ Current checker classes:
 - `remove_producer`: the body leaves more data-stack values than declared.
 - `add_producer`: the body leaves fewer data-stack values than declared.
 - `fix_type`: data-stack arity matches, but one or more types differ.
-- `fix_return_stack`: return-stack row differs from the declaration.
+- `fix_return_stack`: the return-stack row refused the definition: it differs
+  from the declaration, or the body read return-row cells below its declared
+  frame.
 - `supply_missing_input`: a call inside the body consumed more cells than the
   declared inputs leave, so it reached under them into the caller's stack. The
   reason names both counts. Push the missing inputs before the call or declare

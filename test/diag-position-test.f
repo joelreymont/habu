@@ -600,6 +600,378 @@ variable RC
    s" " CHECK
    0 s" size" 3 10 42 46 AT ;
 
+\ The one-line fixture NAME holding TEXT.
+: LINE-FIXTURE ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n name:ptr nameu:n :}
+   SB-RESET
+   text textu SB-APPEND LF+
+   name nameu FIXTURE! ;
+
+\ The check gave one packet, a rejection named CODE.
+: REJECTED-AS ( ptr u8 n -- )
+   {: c:ptr cu:n :}
+   GJA-LINE# @ 1 T=
+   0 s" code" c cu FIELD=
+   0 s" verdict" s" rejected" FIELD= ;
+
+\ Each check of the fixture, plain, --all-errors and --verify-only (which names
+\ it by its resolved path), gives one packet, a rejection: CODE at TOK, on LINE
+\ at COL, in bytes [BS, BE).
+: REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT
+   s" --all-errors" CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT
+   s" --verify-only" CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ The load compiles a body before it checks the definition at `;`, so a body
+\ word it cannot compile, undefined or a local it cannot bind, refuses a
+\ definition whose signature does not parse, at that word; any other error in
+\ the body leaves the refusal to the signature, at its type.
+: TEST-BAD-SIGNATURE ( -- )
+   s" a signature that does not parse and an undefined word" T-LABEL
+   s" : X ( n -- zz ) NOPE ;" s" badsig-undefined.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 17 16 20 REFUSED-AT
+   s" that signature alone" T-LABEL
+   s" : X ( n -- zz ) 1 ;" s" badsig.f" LINE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT
+   s" that undefined word alone" T-LABEL
+   s" : X ( n -- n ) NOPE ;" s" undefined.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
+   s" that signature and a local name over 16 bytes" T-LABEL
+   s" : X ( n -- zz ) {: abcdefghijklmnopq :} 1 ;" s" badsig-local.f" LINE-FIXTURE
+   s" E-LOCAL-NAME-TOO-LONG" s" abcdefghijklmnopq" 1 20 19 36 REFUSED-AT
+   s" that signature and an unsafe word" T-LABEL
+   s" : X ( n -- zz ) evaluate ;" s" badsig-unsafe.f" LINE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
+
+\ The same order without a signature fault: a body word the load cannot
+\ compile refuses the definition at that word before any check made at `;`, and
+\ otherwise the first token whose check fails does, its verdict included.
+: TEST-REFUSAL-ORDER ( -- )
+   s" an undefined word before a trust-boundary word" T-LABEL
+   s" : X ( n -- n ) NOPE evaluate ;" s" undef-unsafe.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 16 15 19 REFUSED-AT
+   s" an undefined word after a trust-boundary word" T-LABEL
+   s" : X ( n -- n ) evaluate NOPE ;" s" unsafe-undef.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 25 24 28 REFUSED-AT
+   s" a malformed qualified call after a trust-boundary word" T-LABEL
+   s" : X ( n -- n ) evaluate A:B:C ;" s" unsafe-qual.f" LINE-FIXTURE
+   s" E-BAD-QUALIFIED" s" A:B:C" 1 25 24 29 REFUSED-AT
+   s" a trust-boundary word before a TRUSTED-only primitive" T-LABEL
+   s" : X ( n -- n ) evaluate 1 c2-invoke ;" s" unsafe-cap.f" LINE-FIXTURE
+   s" E-UNSAFE" s" evaluate" 1 16 15 23 REFUSED-AT
+   s" an unknown construct variant after a trust-boundary word" T-LABEL
+   s" SUMTYPE rf 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- rf ) evaluate construct rf nope ;"
+      s" unsafe-variant.f" LINE-FIXTURE
+   s" E-CONSTRUCT-UNKNOWN-VARIANT" s" nope" 1 83 82 86 REFUSED-AT
+   s" a mismatch before a token of unknown effect" T-LABEL
+   s" : X ( n -- n ) dup c@ {: a -- b :} a ;" s" mismatch-unck.f" LINE-FIXTURE
+   s" E-MISMATCH" s" c@" 1 20 19 21 REFUSED-AT
+   s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
+   s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
+
+\ The last check's packet repairs its refusal as CLASS with the suggestion SUG.
+: REPAIRED-AS ( ptr u8 n ptr u8 n -- )
+   {: cls:ptr clsu:n sug:ptr sugu:n :}
+   0 s" repair_class" cls clsu FIELD=
+   0 s" suggestion" sug sugu FIELD= ;
+
+\ The repair class and the suggestion name the refusal the code names: a
+\ mismatch before an unbalanced return row is the mismatch's to repair.
+: TEST-REPAIR-FOLLOWS ( -- )
+   s" a mismatch before an unbalanced return row" T-LABEL
+   s" : X ( n -- ) >r 1 c@ ;" s" mismatch-rstack.f" LINE-FIXTURE
+   s" E-MISMATCH" s" c@" 1 19 18 20 REFUSED-AT
+   s" remove_producer" s" Remove an extra producer or drop the surplus value." REPAIRED-AS
+   s" that unbalanced return row alone" T-LABEL
+   s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE
+   s" E-REJECTED" s" >r" 1 14 13 15 REFUSED-AT
+   s" fix_return_stack" s" Balance return-stack transfers before the definition exits." REPAIRED-AS ;
+
+\ A match whose scrutinee does not fit, and a match or case one of whose
+\ branches fails, still has live words, in its branches and after it, that the
+\ load compiles: the first undefined one refuses the definition.
+: TEST-LIVE-BRANCHES ( -- )
+   s" an undefined word in a match whose scrutinee does not fit" T-LABEL
+   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF FIRST ENDOF ;MATCH SECOND ;"
+      s" scrutinee-first.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" FIRST" 1 79 78 83 REFUSED-AT
+   s" that word alone in the branch" T-LABEL
+   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF NOPE ENDOF ;MATCH ;"
+      s" scrutinee-branch.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 79 78 82 REFUSED-AT
+   s" an undefined word after that match" T-LABEL
+   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( n -- n ) MATCH mres ok OF 1 ENDOF ;MATCH SECOND ;"
+      s" scrutinee-after.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" SECOND" 1 94 93 99 REFUSED-AT
+   s" an undefined word after a match branch that fails" T-LABEL
+   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE : X ( mres -- n ) MATCH mres ok OF 1 c@ ENDOF ;MATCH NOPE ;"
+      s" match-branch-after.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 100 99 103 REFUSED-AT
+   s" an undefined word after a case branch that fails" T-LABEL
+   s" : X ( n -- n ) CASE 1 OF 1 c@ ENDOF ENDCASE NOPE ;" s" case-branch-after.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 45 44 48 REFUSED-AT ;
+
+\ Each check of the fixture certifies it: rc 0 and no packet.
+: CERTIFIED ( -- )
+   s" " 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --all-errors" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T= ;
+
+\ A word `[']` ticks that does not exist refuses the definition at that word,
+\ as an undefined call does: before a signature that does not parse and
+\ before an earlier failing check.
+: TEST-TICK-TARGET ( -- )
+   s" a signature that does not parse and an undefined ticked word" T-LABEL
+   s" : X ( n -- zz ) ['] NOPE ;" s" badsig-tick.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 21 20 24 REFUSED-AT
+   s" an undefined ticked word after a trust-boundary word" T-LABEL
+   s" : X ( n -- n ) evaluate ['] NOPE ;" s" unsafe-tick.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 29 28 32 REFUSED-AT
+   s" an undefined ticked word alone" T-LABEL
+   s" : X ( -- n ) ['] NOPE ;" s" tick-undefined.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 18 17 21 REFUSED-AT
+   s" a defined ticked word" T-LABEL
+   s" : X ( -- n ) ['] dup ;" s" tick-defined.f" LINE-FIXTURE
+   CERTIFIED ;
+
+\ The fixture NAME holding the line TEXT after a create caller made MADE, a word
+\ the engine binds and no checker row types.
+: MADE-FIXTURE ( ptr u8 n ptr u8 n -- )
+   {: text:ptr textu:n name:ptr nameu:n :}
+   SB-RESET
+   s" : MK ( -- ) create ;" SB-APPEND LF+
+   s" MK MADE" SB-APPEND LF+
+   text textu SB-APPEND LF+
+   name nameu FIXTURE! ;
+
+\ Packet k of the last check defers the stretch after MK to the run.
+: MK-DEFERRED ( n -- )
+   {: k:n :}
+   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" verdict" s" deferred" FIELD=
+   k s" MK" 2 1 21 23 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ The plain check and --all-errors each give one packet, a rejection: CODE at
+\ TOK, on LINE at COL, in bytes [BS, BE).
+: RUN-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   s" " CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT
+   s" --all-errors" CHECK
+   c cu REJECTED-AS
+   0 tok toku line col bs be AT ;
+
+\ --verify-only leaves the stretch after MK to the run: one packet, rc 0.
+: VERIFY-DEFERS ( -- )
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 MK-DEFERRED ;
+
+\ RUN-REFUSED-AT, and --verify-only gives that rejection after the deferral.
+: VERIFY-REFUSED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: c:ptr cu:n tok:ptr toku:n line:n col:n bs:n be:n :}
+   c cu tok toku line col bs be RUN-REFUSED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 2 T=
+   0 MK-DEFERRED
+   1 s" code" c cu FIELD=
+   1 s" verdict" s" rejected" FIELD=
+   1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ The load of the fixture exits WANT, its error output holding TEXT, or empty
+\ when TEXT is.
+: LOADED ( ptr u8 n n -- )
+   {: text:ptr textu:n want:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   FX-PATH$ >LEN PROC-ARGV+
+   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   STORE!
+   RC @ want T=
+   textu 0= IF ERR-U @ 0 T= EXIT THEN
+   ERR$ text textu CONTAINS? TTRUE ;
+
+\ A word the engine binds and no checker row types, as one a create caller
+\ made, is no word the load cannot compile: its tick is admitted, and a call to
+\ it fails its check in source order, after a signature that does not parse and
+\ an earlier failing check, as the load reports. A name nothing defines is
+\ still the load's compiler's to refuse, before any check.
+: TEST-UNROWED ( -- )
+   s" a ticked word the engine binds and no row types" T-LABEL
+   s" : X ( -- ) ['] MADE drop ; X" s" made-tick.f" MADE-FIXTURE
+   s" " 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   s" --all-errors" 0 CHECK-EXIT
+   GJA-LINE# @ 0 T=
+   VERIFY-DEFERS
+   s" " 0 LOADED
+   s" a signature that does not parse and a call of that word" T-LABEL
+   s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" x at 'zz'" REJECT-RC LOADED
+   s" a signature that does not parse and a tick of that word" T-LABEL
+   s" : X ( -- zz ) ['] MADE drop ;" s" made-badsig-tick.f" MADE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" x at 'zz'" REJECT-RC LOADED
+   s" that signature, a call of that word and a trust-boundary word" T-LABEL
+   s" : X ( -- zz ) MADE evaluate ;" s" made-badsig-unsafe.f" MADE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 VERIFY-REFUSED-AT
+   s" x at 'zz'" REJECT-RC LOADED
+   s" a trust-boundary word before a call of that word" T-LABEL
+   s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
+   s" E-UNSAFE" s" evaluate" 3 12 40 48 RUN-REFUSED-AT
+   VERIFY-DEFERS
+   s" x at 'evaluate'" REJECT-RC LOADED
+   s" a call of that word alone" T-LABEL
+   s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
+   s" E-UNDEFINED" s" MADE" 3 12 40 44 RUN-REFUSED-AT
+   VERIFY-DEFERS
+   s" x at 'MADE'" REJECT-RC LOADED
+   s" a signature that does not parse and a word nothing defines" T-LABEL
+   s" : X ( -- zz ) NOPE ;" s" made-nope.f" MADE-FIXTURE
+   s" E-UNDEFINED: NOPE" REJECT-RC LOADED
+   s" that signature, a call of MADE and a word nothing defines" T-LABEL
+   s" : X ( -- zz ) MADE NOPE ;" s" made-call-nope.f" MADE-FIXTURE
+   s" E-UNDEFINED: NOPE" REJECT-RC LOADED ;
+
+\ A control-flow word with no structure open, or another structure's, is one
+\ the load cannot compile: it refuses the definition at that word, before a
+\ signature that does not parse, an earlier failing check and a later
+\ undefined word.
+: TEST-CONTROL-ORPHAN ( -- )
+   s" a signature that does not parse and a then with no if" T-LABEL
+   s" : X ( n -- zz ) then ;" s" badsig-then.f" LINE-FIXTURE
+   s" E-REJECTED" s" then" 1 17 16 20 REFUSED-AT
+   s" a then with no if before an undefined word" T-LABEL
+   s" : X ( n -- n ) then NOPE ;" s" then-undefined.f" LINE-FIXTURE
+   s" E-REJECTED" s" then" 1 16 15 19 REFUSED-AT
+   s" a trust-boundary word before a then with no if" T-LABEL
+   s" : X ( n -- n ) evaluate then ;" s" unsafe-then.f" LINE-FIXTURE
+   s" E-REJECTED" s" then" 1 25 24 28 REFUSED-AT
+   s" an endcase with no case before an undefined word" T-LABEL
+   s" : X ( n -- n ) endcase NOPE ;" s" endcase-undefined.f" LINE-FIXTURE
+   s" E-REJECTED" s" endcase" 1 16 15 22 REFUSED-AT
+   s" a signature that does not parse and a then closing a begin" T-LABEL
+   s" : X ( n -- zz ) begin then ;" s" badsig-begin-then.f" LINE-FIXTURE
+   s" E-REJECTED" s" then" 1 23 22 26 REFUSED-AT
+   s" a leave outside every do before an undefined word" T-LABEL
+   s" : X ( n -- n ) leave NOPE ;" s" leave-undefined.f" LINE-FIXTURE
+   s" E-REJECTED" s" leave" 1 16 15 20 REFUSED-AT ;
+
+\ The load's compiler takes a second else, as it takes an else over an if's
+\ frame: the check fails there, which leaves the refusal to a later undefined
+\ word, a signature that does not parse and an earlier trust-boundary word.
+: TEST-SECOND-ELSE ( -- )
+   s" a second else before an undefined word" T-LABEL
+   s" : X ( bool -- ) if else else then NOPE ;" s" else2-undefined.f" LINE-FIXTURE
+   s" E-UNDEFINED" s" NOPE" 1 35 34 38 REFUSED-AT
+   s" a signature that does not parse and a second else" T-LABEL
+   s" : X ( bool -- zz ) if else else then ;" s" badsig-else2.f" LINE-FIXTURE
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 15 14 16 REFUSED-AT
+   s" a trust-boundary word before a second else" T-LABEL
+   s" : X ( bool -- ) evaluate if else else then ;" s" unsafe-else2.f" LINE-FIXTURE
+   s" E-UNSAFE" s" evaluate" 1 17 16 24 REFUSED-AT
+   s" a second else alone" T-LABEL
+   s" : X ( bool -- ) if else else then ;" s" else2.f" LINE-FIXTURE
+   s" E-REJECTED" s" else" 1 25 24 28 REFUSED-AT ;
+
+\ A structure still open where its definition ends is one the load cannot
+\ compile: it refuses the definition at the `;`, or at the `does>` ending a
+\ definer's body, before a signature that does not parse, a called shadowed
+\ name, a trust-boundary word and dead code. An open match keeps its reason.
+: TEST-CONTROL-OPEN ( -- )
+   s" a signature that does not parse and an if open at ;" T-LABEL
+   s" : X ( n -- zz ) dup if ;" s" badsig-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 24 23 24 REFUSED-AT
+   s" a called shadowed name and an IF open at ;" T-LABEL
+   s" : SHADE ( -- ) ;" s"    SHADE IF ;" SHADOW-FIXTURE
+   s" shade-open.f" FIXTURE!
+   s" E-REJECTED" s" ;" 8 13 96 97 REFUSED-AT
+   s" a trust-boundary word and an if open at ;" T-LABEL
+   s" : X ( n -- n ) evaluate if ;" s" unsafe-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 28 27 28 REFUSED-AT
+   s" dead code and an if open at ;" T-LABEL
+   s" : X ( n -- n ) dup if exit 1 ;" s" dead-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 30 29 30 REFUSED-AT
+   s" an if open at the does> ending a definer's body" T-LABEL
+   s" : CONST ( n -- ) create dup , 0= if does> ( -- n ) @ ;" s" does-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" does>" 1 37 36 41 REFUSED-AT
+   s" an if open at the ; ending a does> clause" T-LABEL
+   s" : CONST ( n -- ) create , does> ( -- n ) @ dup 0= if ;" s" clause-open.f" LINE-FIXTURE
+   s" E-REJECTED" s" ;" 1 54 53 54 REFUSED-AT
+   s" a match open at ;" T-LABEL
+   SB-RESET
+   s" SUMTYPE mres 0 VARIANT ok n ;VARIANT ;SUMTYPE" SB-APPEND LF+
+   s" : X ( mres -- n ) MATCH mres ok OF 1 ;" SB-APPEND LF+
+   s" match-open.f" FIXTURE!
+   s" E-MATCH-UNTERMINATED" s" ;" 2 38 83 84 REFUSED-AT ;
+
+\ AMB, which packages PA and PB both publish, and with GLOBAL the global
+\ wordlist too (line 9 defines AMC otherwise), and on line 13 the body BODY of
+\ a definition under `using PA` and `using PB`.
+: AMBIG-FIXTURE ( bool ptr u8 n -- )
+   {: global:bool body:ptr bodyu:n :}
+   SB-RESET
+   s" package PA" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : AMB ( -- ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" package PB" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : AMB ( -- ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   global IF s" : AMB ( -- ) ;" ELSE s" : AMC ( -- ) ;" THEN SB-APPEND LF+
+   s" using PA" SB-APPEND LF+
+   s" using PB" SB-APPEND LF+
+   s" : USE-IT ( -- )" SB-APPEND LF+
+   body bodyu SB-APPEND LF+
+   s" ;using" SB-APPEND LF+
+   s" ;using" SB-APPEND LF+ ;
+
+\ A called name a used public shadows a global for, or two used publics export
+\ beside one, is refused by the load's check at `;`: after every word the load
+\ cannot compile, wherever it stands, and before any other check. Ticked, or
+\ exported by two used publics and no global, the load's tick or lookup
+\ refuses it while compiling, in source order.
+: TEST-USING-ORDER ( -- )
+   s" a called shadowed name before an undefined word" T-LABEL
+   s" : SHADE ( -- ) ;" s"    SHADE NOPE ;" SHADOW-FIXTURE
+   s" shade-undefined.f" FIXTURE!
+   s" E-UNDEFINED" s" NOPE" 8 10 93 97 REFUSED-AT
+   s" an undefined word before a called shadowed name" T-LABEL
+   s" : SHADE ( -- ) ;" s"    NOPE SHADE ;" SHADOW-FIXTURE
+   s" undefined-shade.f" FIXTURE!
+   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REFUSED-AT
+   s" an undefined word before a ticked shadowed name" T-LABEL
+   s" : SHADE ( -- ) ;" s"    NOPE ['] SHADE drop ;" SHADOW-FIXTURE
+   s" undefined-tick-shade.f" FIXTURE!
+   s" E-UNDEFINED" s" NOPE" 8 4 87 91 REFUSED-AT
+   s" a trust-boundary word before a called shadowed name" T-LABEL
+   s" : SHADE ( -- ) ;" s"    evaluate SHADE ;" SHADOW-FIXTURE
+   s" unsafe-shade.f" FIXTURE!
+   s" E-USING-SHADOW-GLOBAL" s" SHADE" 8 13 96 101 REFUSED-AT
+   s" a called name two used publics and a global export before an undefined word" T-LABEL
+   true s"    AMB NOPE ;" AMBIG-FIXTURE
+   s" ambig-global-undefined.f" FIXTURE!
+   s" E-UNDEFINED" s" NOPE" 13 8 140 144 REFUSED-AT
+   s" an undefined word before a name only two used publics export" T-LABEL
+   false s"    NOPE AMB ;" AMBIG-FIXTURE
+   s" undefined-ambig.f" FIXTURE!
+   s" E-UNDEFINED" s" NOPE" 13 4 136 140 REFUSED-AT ;
+
 : MAIN ( -- )
    T-RESET
    ROOT!
@@ -632,6 +1004,16 @@ variable RC
    TEST-ENUM
    TEST-ENUM-CLOSE
    TEST-STRUCTURE
+   TEST-BAD-SIGNATURE
+   TEST-REFUSAL-ORDER
+   TEST-REPAIR-FOLLOWS
+   TEST-LIVE-BRANCHES
+   TEST-TICK-TARGET
+   TEST-UNROWED
+   TEST-CONTROL-ORPHAN
+   TEST-SECOND-ELSE
+   TEST-CONTROL-OPEN
+   TEST-USING-ORDER
    CLEANUP-RUN
    T-REPORT
    s" diag-position-test: ok" type cr ;

@@ -335,6 +335,12 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    BODY-BUF BODY-U @ BODY-ROW BODY-ROWS @ DIAG-MAP!
    BODY-BUF BODY-U @ ;
 
+\ The body of the definition the current token closes, its `;` or the `does>`
+\ ending a definer's body. The body holds no closer, so the checker is told
+\ where it stands (DIAG-CLOSER!) and refuses a structure still open there.
+: DEF-BODY$ ( -- ptr u8 n )
+   BODY$  TOKEN-A @ TOKEN-U @ DIAG-CLOSER! ;
+
 \ The signature ahead of the scan, read as the engine reads a definition head's
 \ (checker.f CHECKER-SIG-SPAN): from its `(` through its `)`, and whether one
 \ opens there. The scan passes it. One that never closes stops the statement
@@ -953,7 +959,7 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
    70 throw ;
 
 : VERIFY-BODY ( -- n )
-   BODY$ CHECK-BODY BODY-VERDICT ;
+   DEF-BODY$ CHECK-BODY BODY-VERDICT ;
 
 \ The pre-pass's own does>-clause entry point. It is not the engine's
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
@@ -966,7 +972,7 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
    NCOMP-DISPATCH:DECL-VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
 : VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
-   BODY$ sig sigu na nu CHECK-DOES-BODY BODY-VERDICT ;
+   DEF-BODY$ sig sigu na nu CHECK-DOES-BODY BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is

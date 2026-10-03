@@ -3719,11 +3719,14 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
    THEN
    dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
 
+\ Forget the rows and the variant a failure captured.
+: CAPTURE-CLEAR ( -- )
+   0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS ! ;
+
 : C2-REJECT ( n n -- ) {: actual:n reason:n :}
    MDIAG @ 0 <> FAILSET @ 0 <> or IF 0 OK ! -1 FAILSET ! EXIT THEN
    reason MDIAG !
-   actual C2-LOGICAL DF-ACT !
-   0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS !
+   CAPTURE-CLEAR  actual C2-LOGICAL DF-ACT !
    0 OK !  -1 FAILSET ! ;
 
 : UF>DIAG ( -- )
@@ -3764,12 +3767,14 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
 \ refused by the same cell rules, so a refusal there has to be named in the same
 \ instruction between the failure and the pin closing (dot
 \ habu-name-a-raw-09fe04d0: `variable RV  : RS3 ( | -- | ptr n ) RV @ >r ;`
-\ answered a bare return-stack imbalance). It latches the reason only: the row
-\ pair is already rendered from the declared and inferred return rows
+\ answered a bare return-stack imbalance). It latches the reason and RSBAD only:
+\ the row pair is already rendered from the declared and inferred return rows
 \ (`return_stack`), and claiming DEXP/DACT as well would relabel every ordinary
 \ return-stack mismatch as a value mismatch.
+variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below
 : RS-CAPTURE ( -- )
    CELL-DIAG!
+   1 RSBAD !
    -1 FAILSET ! ;
 
 \ The return row's SUNI family. It sits here rather than beside SUNI because the
@@ -5095,6 +5100,90 @@ variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phant
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
 variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
+
+\ ---- the refusal a definition's diagnostic names -----------------------------
+\ One failure refuses a definition, and its code, token, position, repair class,
+\ suggestion, prose and per-code fields all describe that one. The load's order
+\ chooses it. The load compiles the body before it checks anything at `;`, so a
+\ body token it cannot compile (an undefined word, a retired global, a local it
+\ cannot bind, an unmodeled immediate, a construct or match it cannot read)
+\ refuses the definition at that token, the first in source order
+\ (CREFUSE, taken by REFUSAL-STEP). A name `using` makes the walk refuse
+\ (CHECKER-RESOLVE:RAISE) is such a token when it is ticked or no global binds
+\ it, for the load's lookup refuses it there. Otherwise the first name a used
+\ public shadows a global for, or makes ambiguous beside one, refuses it
+\ (CUSING): the load's checker refuses that name at `;` before it checks
+\ anything else. Otherwise a signature that does not parse refuses it
+\ (SGBAD-FAIL!), and otherwise the first token whose check fails (REFUSAL-OF on
+\ the flags that token raised), or the checks made at `;` when no token failed
+\ (REFUSAL@).
+1 constant RF-IMM            \ an unmodeled compile-time immediate (IMMERR)
+2 constant RF-UNDEF          \ an undefined word or a retired global (UNDEFERR)
+3 constant RF-QUAL           \ a malformed qualified name
+4 constant RF-LOCAL          \ a local the load cannot bind (LOCALBAD)
+5 constant RF-SIG            \ a signature type that does not parse (SGBAD)
+6 constant RF-DEAD           \ code after a terminating control word (DEADERR)
+7 constant RF-NP             \ a non-parametric declared effect (NPBAD)
+8 constant RF-CAP            \ a TRUSTED-only capability primitive (CAPREQ)
+9 constant RF-UNSAFE         \ a trust-boundary word (UNSAFE)
+10 constant RF-LINLOCAL      \ a linear value bound to a local (LINLOCBAD)
+11 constant RF-REASON        \ a latched reason (MDIAG)
+12 constant RF-UNCHECKABLE   \ a token of unknown effect (UNCK)
+13 constant RF-MISMATCH      \ a stack row that does not fit (DEXP)
+14 constant RF-RETURN        \ a return row that does not fit (RSBAD)
+15 constant RF-REJECTED      \ a refusal with no finer name
+16 constant RF-USHADOW       \ a bare name a used public shadows a global for (E-USING-SHADOW-GLOBAL)
+17 constant RF-UAMBIG        \ a bare name two used publics export (E-USING-AMBIGUOUS)
+variable REFUSAL             \ the RF-* kind the diagnostic names; 0 = none chosen yet
+variable CREFUSE             \ the RF-* kind the load refuses this token for while compiling; 0 = none
+variable CRTGT               \ CREFUSE refuses the word this token ticks, not the token
+variable RCOMPILE            \ a compile-time refusal holds the diagnostic
+variable CUSING              \ the using refusal the walk raised at this token; 0 = none
+
+: USING-KIND? ( n -- bool )
+   {: k:n :}
+   k RF-USHADOW =  k RF-UAMBIG =  or ;
+
+\ The kind the flags of one failure name. A check raises its flag where it
+\ fails, so asked as the first failing token ends, or at `;` when no token
+\ failed, the flags present are that failure's.
+: REFUSAL-OF ( -- n )
+   DEADERR @ IF RF-DEAD EXIT THEN
+   SGBAD @ IF RF-SIG EXIT THEN
+   NPBAD @ IF RF-NP EXIT THEN
+   CAPREQ @ IF RF-CAP EXIT THEN
+   UNSAFE @ IF RF-UNSAFE EXIT THEN
+   LINLOCBAD @ IF RF-LINLOCAL EXIT THEN
+   MDIAG @ 0 <> IF RF-REASON EXIT THEN
+   UNDEFERR @ IF RF-UNDEF EXIT THEN
+   UNCK @ IF RF-UNCHECKABLE EXIT THEN
+   DEXP @ 0 <> IF RF-MISMATCH EXIT THEN
+   RSBAD @ 0 <> IF RF-RETURN EXIT THEN
+   RF-REJECTED ;
+
+\ The refusal a definition's diagnostic names: the one the checking of its
+\ tokens chose, else the one the checks made at `;` raised. render.f's code,
+\ repair class, suggestion, prose, verdict and per-code fields all name it.
+: REFUSAL@ ( -- n )
+   REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
+   REFUSAL-OF ;
+
+\ The load refuses this token for KIND while compiling it. A token refused
+\ twice keeps the first: the load's preflight refuses an unmodeled immediate
+\ before anything resolves it, so one the checker cannot resolve either is
+\ refused as the immediate.
+: CREFUSE! ( n -- )
+   CREFUSE @ 0 <> IF drop EXIT THEN
+   CREFUSE ! ;
+
+\ A reason the load refuses while compiling, a construct or match family that
+\ resolves nothing: it names the refusal unless an earlier compile-time refusal
+\ holds the diagnostic or refused this token, whatever reason an earlier check
+\ latched.
+: MDIAG-COMPILE! ( n -- )
+   {: code:n :}
+   RCOMPILE @  CREFUSE @ 0 <>  or IF EXIT THEN
+   code MDIAG !  RF-REASON CREFUSE ! ;
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -9931,6 +10020,7 @@ PRIM: DIAG-FILE!     PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-ORIGIN!   PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-SOURCE!   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-MAP!      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-CLOSER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-SOURCE-OFF PRIM;
 PRIM: DIAG-JSON!     PE-F PE-IN PRIM;
 PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -10836,6 +10926,9 @@ RECORD-DIAG-DEFAULT
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
+variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
+variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
+variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
 \ ONE hook for the diagnostics located at a token, selected by its argument: 0
 \ renders the using-shadow reference site below, 1 the arity-shadow definition
 \ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
@@ -10853,9 +10946,10 @@ SHADOW-DIAG-DEFAULT
 
 \ A refusal of the definition being checked that leaves its body's or does>
 \ clause's walk by a throw, its packet rendered where it was found: a using
-\ refusal (CHECKER-RESOLVE:RAISE) or a shadowed arity (SHADOW-ARITY-CK). A
-\ using refusal leaves a top-level token's walk the same way, and refuses the
-\ token as it refuses a definition (CHECKER-VERIFY-TOP). The
+\ refusal (CHECKER-RESOLVE:RAISE; a body token's is held by the walk and raised
+\ at its end, USING-RAISE) or a shadowed arity (SHADOW-ARITY-CK). A using
+\ refusal leaves a top-level token's walk the same way, and refuses the token
+\ as it refuses a definition (CHECKER-VERIFY-TOP). The
 \ code is kept as it is raised, so the walk's entry (DEF-REFUSED) tells the
 \ definition's refusal from a throw nothing judged - an arena or capacity
 \ failure, a bug - which propagates. CHECKER-REFUSAL-CELL cannot tell them: it
@@ -10928,7 +11022,7 @@ variable DEF-REFUSAL
 \ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
 : CHECKER-USED-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-USED-SYM {: usym:n :}
-   CHECKER-USE:WHY @ 0 <> IF 0 CHECKER-USE:WHY @ EXIT THEN
+   CHECKER-USE:WHY @ 0 <> IF -1 USING-UNBOUND !  0 CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 0 EXIT THEN
    a u GLOBAL-BOUND? IF 0  a u 0 CHECKER-USED-SHADOW EXIT THEN
    usym 0 ;
@@ -11544,6 +11638,12 @@ variable BIND-SEEDED
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
 \ length no name has) binds nothing in either binder: the engine never binds
 \ it, and neither the pending row nor the lookup reads it.
+\
+\ A sym of 0 without a refusal is not proof the load cannot bind the name: the
+\ engine holds words no checker symbol names, as one a create caller made. So
+\ LIVE-BIND sets WALK-REC when its answer is the record the engine's lookup
+\ found, whether or not a symbol names it. A replay binds the source's own
+\ symbols and never sets it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -11568,7 +11668,7 @@ variable BIND-SEEDED
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
-      two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
+      two IF -1 USING-UNBOUND !  a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       a u CHECKER-QUALIFIED? IF 0 0 EXIT THEN
       a u CK-AXIOM-SYM 0 EXIT
    THEN
@@ -11582,6 +11682,7 @@ variable BIND-SEEDED
          0  sym a u ix CK-USED-SYM@ ix CK-SHADOW-CAPTURE  EXIT
       THEN
    THEN
+   -1 WALK-REC !
    sym 0 ;
 
 : REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
@@ -11602,6 +11703,7 @@ variable BIND-SEEDED
 package CHECKER-RESOLVE
 public
 : WALK ( ptr u8 n -- n n )
+   0 USING-UNBOUND !  0 WALK-REC !
    CHECKER-PKG-MIRROR-AUTHORITY? IF REPLAY-BIND EXIT THEN
    LIVE-BIND ;
 
@@ -11610,9 +11712,22 @@ public
 \ that spelling with the candidates CK-SHADOW-CAPTURE captured or the used
 \ packages CK-USED-MASK marked. The spelling locates in the file (render.f
 \ USHADOW-JSON), even when the walk asked about a scratch fold.
+\ Inside a body token's walk (USING-HOLD) a using refusal renders nothing and
+\ throws nothing: the token's first one is the selector's to rank (CUSING,
+\ REFUSAL-STEP), a compile refusal when the tick or the engine's own lookup
+\ refuses it, the walk goes on as after a failed check, and the scan's end
+\ raises it here if the definition is refused for it (USING-RAISE).
 : RAISE ( ptr u8 n n -- )
    {: s:ptr su:n why:n :}
    why CHECKER-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
+   USING-HOLD @ IF
+      CUSING @ 0 <> IF EXIT THEN
+      s USH-TOK-A !  su USH-TOK-U !
+      why E-USING-SHADOW-GLOBAL = IF RF-USHADOW ELSE RF-UAMBIG THEN CUSING !
+      CRTGT @ 0 <>  USING-UNBOUND @ 0 <>  or IF CUSING @ CREFUSE! THEN
+      0 OK !  -1 FAILSET !
+      EXIT
+   THEN
    why E-USING-SHADOW-GLOBAL = IF
       s USH-TOK-A !  su USH-TOK-U !
       0 SHADOW-DIAG-XT
@@ -11633,6 +11748,32 @@ public
 : REFUSES? ( ptr u8 n -- bool )
    WALK nip 0 <> ;
 ;package
+
+\ The using refusal the selector took (REFUSAL-TAKE): its token and what the
+\ walk captured for it, kept from the later lookups and refusals that move
+\ them, so the scan's end raises it as the walk found it.
+PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
+variable UHELD-GSYM   variable UHELD-USYM
+PTR-VARIABLE UHELD-PKG-A   variable UHELD-PKG-U
+variable UHELD-MASK
+
+: USING-SAVE ( -- )
+   USH-TOK-A @ UHELD-TOK-A !  USH-TOK-U @ UHELD-TOK-U !
+   USH-GSYM @ UHELD-GSYM !  USH-USYM @ UHELD-USYM !
+   USH-PKG-A @ UHELD-PKG-A !  USH-PKG-U @ UHELD-PKG-U !
+   CK-USED-MASK @ UHELD-MASK ! ;
+
+\ A definition refused for a using refusal leaves its check as one raised
+\ outside a body token's walk does: RAISE renders the packet and throws, and
+\ DEF-REFUSED counts it.
+: USING-RAISE ( -- )
+   REFUSAL @ USING-KIND? 0= IF EXIT THEN
+   UHELD-GSYM @ USH-GSYM !  UHELD-USYM @ USH-USYM !
+   UHELD-PKG-A @ USH-PKG-A !  UHELD-PKG-U @ USH-PKG-U !
+   UHELD-MASK @ CK-USED-MASK !
+   UHELD-TOK-A @ UHELD-TOK-U @
+   REFUSAL @ RF-USHADOW = IF E-USING-SHADOW-GLOBAL ELSE E-USING-AMBIGUOUS THEN
+   CHECKER-RESOLVE:RAISE ;
 
 \ `a u` is the token to resolve, `s su` its spelling for a refusal to name.
 : CHECKER-BIND ( ptr u8 n ptr u8 n -- n )
@@ -12122,8 +12263,8 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ NO RECORDED ROWS IS THE NEUTRAL ANSWER, AND IT IS A PROOF RATHER THAN A
 \ DEFAULT. E-BUILD-EFFECT copies rin and rout only when the signature carried a
 \ clause, so a word without one records two zeros - and a word without one is
-\ exactly the word CHECK held to `RCUR @ R-RES RBROW @ R-RES <>`, the balance
-\ check that refuses a body leaving the return row anything but as it found it.
+\ exactly the word CHECK held to CHECK-RBALANCE, the balance check that
+\ refuses a body leaving the return row anything but as it found it.
 \ The absent rows are therefore where the checker WROTE DOWN that it proved
 \ neutrality, which is why reading them as neutral is not the same move as
 \ reading the clause: the clause says what an author spelled, the absence says
@@ -12180,6 +12321,7 @@ variable FIELD-LOAN-ORD
 variable FIELD-LOAN-OFF
 variable FIELD-LOAN-PENDING
 variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
+variable TOK-LIVE-REC
 variable TOK-DEAD
 PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 PTR-VARIABLE TOK-REC
@@ -14714,7 +14856,7 @@ variable UNSAFE-SYM-N
 variable SV-FV    variable SV-SPN   variable SV-PFN   variable SV-FACTS
 variable SV-QEN   variable SV-PTRN  variable SV-STLN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK  variable SV-UNSEEN
-variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-RSBAD  variable SV-DF-ACT  variable SV-DF-EXP
 variable SV-DVAR  variable SV-DPOS  variable SV-MDIAG
 variable SV-SGBAD
 PTR-VARIABLE SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
@@ -14729,7 +14871,7 @@ variable SV-TRAIL
    SPN @ SV-SPN !  CATCH-PF-N @ SV-PFN !  FACTS @ SV-FACTS !
    QEN @ SV-QEN !  PTRN @ SV-PTRN !  STLN @ SV-STLN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !  UNSEEN @ SV-UNSEEN !
-   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
+   FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !  RSBAD @ SV-RSBAD !
    DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    MDIAG @ SV-MDIAG !                     \ the reason is part of the cursor a trial may abandon
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
@@ -14761,7 +14903,7 @@ variable SV-TRAIL
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !  SV-UNSEEN @ UNSEEN !
-   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
+   SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !  SV-RSBAD @ RSBAD !
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !                     \ a reason raised by an abandoned candidate is abandoned too
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
@@ -15775,10 +15917,12 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    SCOPE-FIELD-STEP ;
 
 \ The body token's one resolution: the symbol the shared lookup binds it to
-\ (CHECKER-BIND) and the identity that symbol carries (CTL-IDENTITY). Made on
-\ the first ask for the token DO-TOK1 is reading, and read by every later reader
-\ of that token. TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read
-\ it, in the checked text.
+\ (CHECKER-BIND), whether it bound the engine's record (WALK-REC) and the
+\ identity that symbol carries (CTL-IDENTITY). Made on the first ask for the
+\ token DO-TOK1 is reading, and read by every later reader of that token.
+\ TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read it, in the
+\ checked text. TOK-REC retains the bound record for the compiler owner;
+\ TOK-LIVE-REC retains the live lookup result for refusal selection.
 \ A literal is claimed before any scope is asked, as the engine claims it
 \ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
 \ resolved as a name. A qualified token keeps its symbol but no identity: both
@@ -15791,6 +15935,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    -1 TOK-DONE !
    0 TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
    NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
+   0 TOK-LIVE-REC !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND TOK-SYM !
@@ -15799,6 +15944,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    BIND-PEND-OFF @ TOK-PEND-OFF !
    BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
+   WALK-REC @ TOK-LIVE-REC !
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
@@ -15927,13 +16073,31 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 C2-STOW-BORROW-INSTALL
 
 \ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
-\ name), the name joins the lazy intake's queue (ASIG-MISS+), and a name a
-\ rendering statement in scope may define is left to the run (UNSEEN-COVERS?).
-: CALL-UNDEFINED ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
+\ name, which CHECKER-QBAD-TOK holds once UNSEEN-COVERS? has split this name),
+\ the name joins the lazy intake's queue (ASIG-MISS+), and a name a rendering
+\ statement in scope may define is left to the run (UNSEEN-COVERS?), which the
+\ flag answers.
+: CALL-UNDEFINED ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
-   a u UNSEEN-COVERS? IF -1 UNSEEN ! THEN          \ the run's to judge: see UNSEEN-MARK$
-   -1 UNDEFERR !  -1 UNCK ! ;
+   -1 UNDEFERR !  -1 UNCK !
+   a u UNSEEN-COVERS?                              \ the run's to judge: see UNSEEN-MARK$
+   {: unseen:bool :}
+   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
+   unseen IF -1 UNSEEN ! THEN
+   unseen ;
+
+\ The load's compiler finds no word named A U: it refuses the definition there
+\ while compiling, unless the run may define the name. A name the walk refused
+\ for a `using` (CUSING) is not undefined. Nor is one whose record the engine's
+\ lookup found (WALK-REC), though no checker symbol or row types it, as a word
+\ a create caller made, so neither caller asks this of it: the load compiles
+\ the call, which only fails its check (CALL-UNDEFINED in DO-TOK-BODY), and the
+\ tick, which BTICK-TOK admits.
+: REFUSE-UNDEFINED ( ptr u8 n -- )
+   CUSING @ 0 <> IF 2drop EXIT THEN
+   CALL-UNDEFINED IF EXIT THEN
+   CHECKER-QBAD-TOK @ 0 <> IF RF-QUAL ELSE RF-UNDEF THEN CREFUSE! ;
 
 : DO-TOK-BODY ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
@@ -15973,7 +16137,9 @@ C2-STOW-BORROW-INSTALL
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE a u CALL-UNDEFINED THEN ;
+   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY EXIT THEN
+   TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
+   a u REFUSE-UNDEFINED ;
 
 : ZERO-USE-TEST ( n n -- ) {: pre:n prer:n :}
    OK @ 0= IF EXIT THEN
@@ -16464,6 +16630,7 @@ defer LOCSHOWXT ( ptr u8 n n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
+variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
 
 variable LCO
 
@@ -16515,13 +16682,16 @@ variable LCO
 \ was previously skipped by the checker (-1 UNCK !), hiding every stack error in
 \ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic
 \ that names the exceeded limit (LOCALBAD-KIND selects the text in render.f).
-\ The kind and width are recorded only for the FIRST failure of the definition,
-\ the one whose token CAP-FAIL pinned: a later local fault must not relabel that
-\ token, and a local fault after an unrelated failure leaves that failure's
-\ diagnostic in charge. The verdict is forced either way.
+\ The load refuses such a local while compiling the body, so the fault refuses
+\ the definition at its token unless an earlier compile-time refusal holds the
+\ diagnostic (REFUSAL-STEP); only then are its kind and width recorded, so a
+\ later local fault cannot relabel the refused token. The verdict is forced
+\ either way.
 : LOC-REJECT ( n n -- ) {: len:n kind:n :}
-   FAILSET @ 0= IF kind LOCALBAD-KIND !  len LOCALBAD-LEN !  -1 LOCALBAD ! THEN
-   0 OK !  -1 FAILSET ! ;
+   RCOMPILE @ 0= IF
+      kind LOCALBAD-KIND !  len LOCALBAD-LEN !  RF-LOCAL CREFUSE!
+   THEN
+   -1 LOCALBAD !  0 OK !  -1 FAILSET ! ;
 
 : LOC-ADD ( ptr u8 ptr u8 n -- ) {: ra:ptr a:ptr u:n :}   \ raw declaration, folded declaration, their shared length
    a u LCOLON
@@ -16907,10 +17077,6 @@ SCOPE-INTRO-FENCE-INSTALL
 : XSET? ( -- bool )
    XSET @ 0 <> ;
 
-: CF-BELOW-CASE? ( -- bool )
-   #CFC @ 2 < IF RES-FALSE EXIT THEN
-   #CFC @ 2 - CF-ROW CF.KND @ 7 = ;
-
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
@@ -16937,7 +17103,7 @@ SCOPE-INTRO-FENCE-INSTALL
 \ takes nothing from a body that pushed one.
 : CF-PUSH {: k s0 s1 r0 r1 :}
    -1 WRAPBENT !
-   #CFC @ 31 > IF -1 UNCK ! ELSE
+   #CFC @ 31 > IF -1 UNCK !  -1 CF-OVER ! ELSE
      #CFC @ CF-ROW {: rec:ptr :}
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
@@ -16983,6 +17149,24 @@ SCOPE-INTRO-FENCE-INSTALL
    0 OK !
    -1 FAILSET ! ;
 
+\ A control-flow word the load's compiler refuses while compiling it: the token
+\ is refused. The frames are the compiler's only while every token was walked
+\ and every opener kept one: a word after a terminating word is skipped
+\ (DEADERR), and an opener skipped so, or one past the deepest frame (CF-OVER),
+\ leaves its closer no frame here though the compiler has one.
+: CF-REFUSE ( -- )
+   DEADERR @ 0=  CF-OVER @ 0=  and IF RF-REJECTED CREFUSE! THEN ;
+
+\ Whether the open frame is of kind k1 or k2, the kinds that stand for the frame
+\ the load's compiler requires there. A control-flow word over no frame or
+\ another kind's is one the compiler refuses (src/habu/habu2.f C-CF-AT2).
+: CF-AT? ( n n -- bool )
+   {: k1:n k2:n :}
+   CF-MT? 0= IF
+      CF@K k1 =  CF@K k2 =  or IF RES-TRUE EXIT THEN
+   THEN
+   CF-REFUSE  CF-FAIL  RES-FALSE ;
+
 : CF-LOOPS= ( n -- )
    CF-LOOPS @ <> IF CF-FAIL THEN ;
 
@@ -17027,13 +17211,20 @@ SCOPE-INTRO-FENCE-INSTALL
 : ROW-OPEN? ( n -- bool )
    R-RES TAG S-ROW = ;
 
-: CHECK-ROW-NOT-BORROWED ( n -- )
-   dup 0= if drop exit then
-   ROW-OPEN? 0= if 0 OK ! then ;
+\ The body bound the open tail below this declared frame: it read the caller's
+\ cells.
+: ROW-BORROWED? ( n -- bool )
+   dup 0= IF drop RES-FALSE EXIT THEN
+   ROW-OPEN? 0= ;
 
+\ A borrowed return frame that is the definition's first failure is the return
+\ row's (RSBAD 2).
 : CHECK-NO-BORROW ( -- )
-   SGDBASE @ CHECK-ROW-NOT-BORROWED
-   SGRBASE @ CHECK-ROW-NOT-BORROWED ;
+   SGDBASE @ ROW-BORROWED? IF 0 OK ! THEN
+   SGRBASE @ ROW-BORROWED? IF
+      FAILSET @ 0=  OK @ and IF 2 RSBAD !  -1 FAILSET ! THEN
+      0 OK !
+   THEN ;
 
 variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SYM
 
@@ -17065,6 +17256,12 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 \ The reason an unfit effect is refused with.
 : UNFIT-WHY ( -- n )
    MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
+
+\ Whether a reason is an unfit effect's: its definition is uncheckable, where
+\ every other reason refuses one.
+: UNFIT-REASON? ( n -- bool )
+   {: why:n :}
+   why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or ;
 
 \ SIG-EFF-CACHE! ( -- ) : cache the parsed declared sig as an arena effect record
 \ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
@@ -17189,7 +17386,6 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    0 CF-TOP CF.DED ! ;
 
 : CF-CASE-ACCUM ( n -- ) {: idx:n :}
-   OK @ 0= IF EXIT THEN
    DEADP @ IF EXIT THEN
    idx CF-CASE-HAS? IF
       idx CF-CASE-DATA@ DCUR @ idx CF-CASE-RET@ RCUR @
@@ -17207,16 +17403,16 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    THEN ;
 
 : CF-OF ( -- )
-   CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
+   7 7 CF-AT? IF
       STEP-N-IN
       CF@A SUNI
       CF@RA RSUNI
       STEP-N-IN
       8 CF@A 0 CF@RA 0 CF-PUSH
-   THEN THEN ;
+   THEN ;
 
-: CF-ENDOF ( -- )
-   CF-BELOW-CASE? 0= IF CF-FAIL ELSE CF@K 8 <> IF CF-FAIL ELSE
+: CF-ENDOF ( -- )                    \ an OF frame sits on its CASE (CF-OF)
+   8 8 CF-AT? IF
       CF-CASE-IDX CF-CASE-ACCUM
       CF@A CTMP !  CF@RA RTMP !
       CF@LA CF-LOOPS !
@@ -17225,10 +17421,10 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       CF-DROP
       CTMP @ DCUR !  RTMP @ RCUR !
       CF-ENTRY-FACTS
-   THEN THEN ;
+   THEN ;
 
 : CF-ENDCASE ( -- )
-   CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
+   7 7 CF-AT? IF
       DEADP @ 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
       CF@DED 0 <> IF
@@ -17240,10 +17436,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       THEN
       CF-LOC-REST
       CF-DROP
-   THEN THEN ;
+   THEN ;
 
+\ An if's frame and an else's are both the compiler's IF frame, which its else
+\ takes and leaves (src/habu/habu2.f J-ELSE): a second else compiles, and the
+\ check, which models one, fails there.
 : CF-ELSE
-   CF-MT? IF CF-FAIL ELSE CF@K 1 <> IF CF-FAIL ELSE
+   1 2 CF-AT? IF CF@K 1 <> IF CF-FAIL ELSE
      DEADP @ CF-TOP CF.DED !  0 DEADP !                  \ save if-branch deadness; else runs live
      DCUR @ CTMP !  CF@A DCUR !
      RCUR @ RTMP !  CF@RA RCUR !
@@ -17278,7 +17477,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    THEN ;
 
 : CF-THEN
-   CF-MT? IF CF-FAIL ELSE
+   1 2 CF-AT? IF
      CF@K 1 = IF                                          \ IF ... THEN (no else)
         DEADP? IF
            CF@A DCUR !  CF@RA RCUR !  CF-ENTRY-FACTS
@@ -17295,10 +17494,11 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
            CF@LA CF-LOOPS=
         THEN
         CF-LOC-REST  CF-DROP
-     ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
+     ELSE                                                 \ IF ... ELSE ... THEN
         CF-THEN-ELSE-MERGE
         CF-LOC-REST  CF-DROP
-     ELSE CF-FAIL THEN THEN THEN ;
+     THEN
+   THEN ;
 
 : CF-EXIT ( -- )
    -1 WRAPBENT !
@@ -17321,42 +17521,42 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 
 : CF-UNTIL
    STEP-BOOL-IN
-   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
+   3 3 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI  CF@RA RSUNI
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF@LA CF-LOOPS=
-     CF-LOC-REST  CF-DROP THEN THEN ;
+     CF-LOC-REST  CF-DROP THEN ;
 
 : CF-AGAIN ( -- )
-   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
+   3 3 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
-     CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
+     CF-LOC-REST  CF-DROP  -1 DEADP ! THEN ;
 
 : CF-WHILE
    STEP-BOOL-IN
-   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
+   3 3 CF-AT? IF
      4 CF-TOP CF.KND !
      DCUR @ CF-TOP CF.SB !
      RCUR @ CF-TOP CF.RB !
      CF-LOOPS @ CF-TOP CF.LB !
-   THEN THEN ;
+   THEN ;
 
 : CF-REPEAT
-   CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
+   4 4 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
      THEN
      CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
      CF@LB CF-LOOPS !  0 DEADP !
-     CF-LOC-REST  CF-DROP THEN THEN ;
+     CF-LOC-REST  CF-DROP THEN ;
 
 : CF-DO ( -- )
    STEP-NN-IN
@@ -17371,7 +17571,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 \ A live latch, a zero-trip ?do or LEAVE reaches the DO-point exit row.
 \ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
-   CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
+   5 5 CF-AT? IF
      DEADP @ IF CF@DED 0= DEADP !
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
@@ -17380,7 +17580,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      THEN
      CF@LA CF-LOOPS !
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
-     CF-LOC-REST  CF-DROP THEN THEN ;
+     CF-LOC-REST  CF-DROP THEN ;
 
 : CF-+LOOP
    DEADP? 0= IF STEP-N-IN THEN
@@ -17404,13 +17604,25 @@ variable LVDO  variable LVDN
      dup CF-ROW CF.KND @ 6 = IF -1 LVDN ! THEN
      1 - REPEAT drop ;
 
+\ Whether a DO is open anywhere in the definition. The load's compiler refuses
+\ a `leave` while compiling it only when none is (src/habu/habu2.f LVREQUIRE):
+\ one a quotation keeps from its DO compiles, and its check refuses it.
+: CF-ANY-DO? ( -- bool )
+   0 BEGIN dup #CFC @ < WHILE
+      dup CF-ROW CF.KND @ 5 = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 \ CF-LEAVE : early loop exit. The stack at `leave` must match the loop-exit row
 \ (= the DO-point row CF.SA, since the body is stack-neutral); likewise the return
 \ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
 : CF-LEAVE
    -1 WRAPBENT !
    CF-FINDDO
-   LVDO @ 0< IF CF-FAIL ELSE
+   LVDO @ 0< IF
+      CF-ANY-DO? 0= IF CF-REFUSE THEN
+      CF-FAIL
+   ELSE
      LVDO @ CF-LOOP-BIT LVDO @ CF-ROW CF.LA @ or CF-LOOPS=
      LVDO @ CF-ROW CF.SA @ DCUR @
      LVDO @ CF-ROW CF.RA @ RCUR @ CF-CARRIED=
@@ -17435,7 +17647,7 @@ variable LVDO  variable LVDN
 variable QTMP
 
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
-   CF-MT? IF CF-FAIL ELSE CF@K 6 <> IF CF-FAIL ELSE
+   6 6 CF-AT? IF
      XSET @ IF                                   \ fold the quote's OWN early returns into its effect
        DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
        ELSE
@@ -17459,7 +17671,7 @@ variable QTMP
      CF-TOP CF.FA @ FACTS !
      QTMP @  CF@A  MK-PUSH DCUR !
      CF-LOC-REST
-     CF-DROP THEN THEN ;
+     CF-DROP THEN ;
 
 \ --- MATCH eliminator (item 9 slice 3, docs/type-families.md §13-14). `MATCH
 \ family  variant OF ... ENDOF ...  ;MATCH` is a checker control form: the
@@ -17596,15 +17808,17 @@ variable MSEEN-I
       MSEEN-I @ 1 + MSEEN-I !
    REPEAT RES-TRUE ;
 
-variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of
+variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 refused, read unmodeled
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
+variable MSKIP   \ matches open in a refused match the walk reads unmodeled (MM 4)
 
 \ Rigid host-identity mismatch naming (dot habu-define-rigid-host). RIGID-ATOM-DOMAIN
 \ classifies a resolved term as a rigid-identity atom of a given domain (0 = none).
 \ RIGID-DIAG-CLASSIFY runs on the captured mismatch pair after the verdict is a
-\ reject: when both sides are rigid-domain atoms it names WHICH bug it is, so a
-\ stale index, a wrong region, and a wrong extent are distinguishable rejects.
+\ reject: when the mismatch is the refusal and both sides are rigid-domain atoms
+\ it names WHICH bug it is, so a stale index, a wrong region, and a wrong extent
+\ are distinguishable rejects; the named reason is then the refusal.
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
    T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
@@ -17613,21 +17827,40 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
    u 7 >= IF a 7 s" extent-" CORE-STR= IF 2 EXIT THEN THEN
    u 4 >= IF a 4 s" gen-"    CORE-STR= IF 3 EXIT THEN THEN
    0 ;
+: RIGID-DOMAIN-REASON ( n n -- n )   \ expected and actual domains -> MD-RIGID-*
+   {: de:n da:n :}
+   de da <> IF MD-RIGID-XDOM EXIT THEN            \ different domains -> identity confusion
+   de 1 = IF MD-RIGID-REGION EXIT THEN
+   de 2 = IF MD-RIGID-EXTENT EXIT THEN
+   MD-RIGID-GEN ;
 : RIGID-DIAG-CLASSIFY ( -- )
-   MDIAG @ IF EXIT THEN                           \ a match/construct reason already won
+   REFUSAL@ RF-MISMATCH <> IF EXIT THEN
    DF-EXP @ 0= IF EXIT THEN
    DF-ACT @ 0= IF EXIT THEN
    DF-EXP @ RIGID-ATOM-DOMAIN {: de:n :}
    DF-ACT @ RIGID-ATOM-DOMAIN {: da:n :}
    de 0= IF EXIT THEN
    da 0= IF EXIT THEN                             \ both sides must be rigid-domain atoms
-   de da <> IF MD-RIGID-XDOM MDIAG ! EXIT THEN    \ different domains -> identity confusion
-   de 1 = IF MD-RIGID-REGION MDIAG ! EXIT THEN
-   de 2 = IF MD-RIGID-EXTENT MDIAG ! EXIT THEN
-   MD-RIGID-GEN MDIAG ! ;
+   de da RIGID-DOMAIN-REASON MDIAG !
+   RF-REASON REFUSAL ! ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
+
+\ A match whose family resolves nothing, which the load refuses there while
+\ compiling, or one nested past the frame depth leaves the walk without the
+\ roles of its tokens: which are variants the load reads as operands and which
+\ are branch words it compiles. The walk reads them unmodeled through the
+\ match's own `;MATCH`, as it reads dead code, rather than resolve a variant as
+\ a word.
+: MATCH-ABANDON ( -- )
+   MATCH-REJECT  1 MSKIP !  4 MM ! ;
+
+: MATCH-SKIP-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" match" CORE-STR= IF 1 MSKIP +! EXIT THEN
+   a u s" ;match" CORE-STR= 0= IF EXIT THEN
+   -1 MSKIP +!
+   MSKIP @ 0= IF 0 MM ! THEN ;
 
 : MATCH-BEGIN ( -- )
    1 MM ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
@@ -17666,16 +17899,15 @@ variable MTCH-W                      \ the bundle width the walk below really co
    t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
    MD-SCRUT MDIAG! ;
 
-: MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop MATCH-REJECT EXIT THEN
-   {: fam:n :}
-   #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
-   fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
-   DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
-   MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
+\ Open the frames of a match on family FAM: its branches start from MTCH-ROW,
+\ their payloads come from MTCH-TAGT (0: none), and LOST says whether a
+\ scrutinee cell was lost (ROW-TOP-LOST).
+: MATCH-OPEN ( n n -- )
+   {: fam:n lost:n :}
    MF-ENSURE
    MF-DEPTH @ 1 + MF-DEPTH !
-   MF-CUR {: r:ptr :}
+   MF-CUR
+   {: r:ptr :}
    fam r MF.FAM !
    MTCH-TAGT @ r MF.TERM !
    MTCH-ROW @ r MF.BASE !
@@ -17689,8 +17921,27 @@ variable MTCH-W                      \ the bundle width the walk below really co
    lost CF-TOP CF.FT !
    2 MM ! ;
 
+\ A scrutinee that does not fit refuses the match at its family token, but the
+\ family still gives the match's tokens their roles: the walk reads its
+\ variants and compiles its branch words as the load does, each branch from the
+\ row the scrutinee left and binding no payload.
+: MATCH-SCRUT-FAIL ( n -- )
+   {: fam:n :}
+   fam MATCH-SCRUT-DIAG
+   0 OK !  -1 FAILSET !  -1 MREJ !
+   DCUR @ MTCH-ROW !  0 MTCH-TAGT !
+   fam 0 MATCH-OPEN ;
+
+: MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u MATCH-FAM-XT 0= IF drop MATCH-ABANDON EXIT THEN
+   {: fam:n :}
+   #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
+   fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
+   DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
+   MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
+   fam lost MATCH-OPEN ;
+
 : MATCH-ACCUM ( -- )
-   OK @ 0= IF EXIT THEN
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
@@ -17752,7 +18003,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
-      drop MD-VAR-UNKNOWN MDIAG! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
+      drop MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
    {: vid:n :}
    vid MATCH-VTAG-XT {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
@@ -17761,12 +18012,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
    3 MM ! ;
 
 : MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
-   MPEND @ 0 < 0= IF
+   MPEND @ 0 < 0=  r MF.TERM @ 0 <>  and IF
       MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
       CF-TOP CF.FT @ 0 <> IF
          DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
@@ -17781,6 +18032,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    MM @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
    MM @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
+   MM @ 4 = IF a u MATCH-SKIP-TOK EXIT THEN
    a u MATCH-OF-TOK ;
 
 : CF-ENDOF-DISPATCH ( -- )   \ ENDOF serves CASE (7/8) and MATCH (10) by frame kind
@@ -17798,7 +18050,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
    a u s" endof" CORE-STR= IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" CORE-STR= IF MD-STRAY MDIAG! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
+   a u s" ;match" CORE-STR= IF MD-STRAY MDIAG-COMPILE! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
    a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
@@ -17867,7 +18119,8 @@ variable SKI  variable SKF
    SGBAD-COPY-TOKEN
    SGBAD-SPAN!
    0 FAILIX !
-   -1 FAILSET ! ;
+   -1 FAILSET !
+   RF-SIG REFUSAL ! ;
 
 : CHECKER-BYTE@ ( ptr u8 n -- n )
    + c@ ;
@@ -18168,12 +18421,20 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 \ plus the token's offset in the checked text: the engine's own load, whose
 \ captured definitions keep no source addresses, text built by `evaluate`, and
 \ the definitions the checker generates for a declaration.
+\ After DIAG-MAP! the driver hands DIAG-CLOSER! the token in the source that
+\ closes the mapped text's definition, its `;` or the `does>` ending a
+\ definer's body, which the text does not hold: a control structure still open
+\ there is refused at that token, as the load's compiler refuses it (CLOSER-REFUSE).
 PTR-VARIABLE DSRC-A  variable DSRC-U
 variable DSRC-L  variable DSRC-C  variable DSRC-B
 PTR-VARIABLE DMAP-A  variable DMAP-U
 PTR-VARIABLE DROW-A  variable DROW-N
+PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
+: DIAG-CLOSER-OFF ( -- )
+   NULL-PTR DCLOSE-A !  0 DCLOSE-U ! ;
 : DIAG-MAP-OFF ( -- )
-   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N ! ;
+   NULL-PTR DMAP-A !  0 DMAP-U !  NULL-PTR DROW-A !  0 DROW-N !
+   DIAG-CLOSER-OFF ;
 : DIAG-SOURCE-OFF ( -- )
    NULL-PTR DSRC-A !  0 DSRC-U !
    DIAG-MAP-OFF ;
@@ -18184,7 +18445,11 @@ PTR-VARIABLE DROW-A  variable DROW-N
    DIAG-MAP-OFF ;
 : DIAG-MAP! ( ptr u8 n ptr n n -- )
    {: a:ptr u:n rows:ptr count:n :}
-   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N ! ;
+   a DMAP-A !  u DMAP-U !  rows DROW-A !  count DROW-N !
+   DIAG-CLOSER-OFF ;
+: DIAG-CLOSER! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a DCLOSE-A !  u DCLOSE-U ! ;
 : DROW@ ( n -- n )
    DROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
@@ -18552,14 +18817,14 @@ variable RTL-I                        \ retired-token local scan index
 \ diagnostic, so the checker verdict and the interpreter's own error name the
 \ same failure; RETIRED is what forces verdict 0 in CHECK-VERDICT.
 : REJECT-RETIRED ( -- )
-   -1 RETIRED !  -1 UNDEFERR !  0 OK !  -1 FAILSET ! ;
+   -1 RETIRED !  -1 UNDEFERR !  RF-UNDEF CREFUSE!  0 OK !  -1 FAILSET ! ;
 
 \ M5: a block collective/barrier reached inside an open control frame is not
-\ block-uniform-reachable; latch the reason on the pinned token, then reject.
-\ MDIAG! must precede FAILSET (it latches only while the pin is open).
-: REJECT-DIVBAR ( ptr u8 n -- )
+\ block-uniform-reachable; latch the reason, then reject. CAP-FAIL pinned this
+\ token if it is the first failure; MDIAG! must precede FAILSET (it latches only
+\ while the pin is open).
+: REJECT-DIVBAR ( -- )
    MD-DIVBAR MDIAG!
-   FAIL-PIN!
    0 OK !  -1 FAILSET ! ;
 
 \ p5 certificate soundness (dot habu-checker-fitting-arity-70dc94e4): an
@@ -18692,7 +18957,7 @@ public
 ;package
 
 : REJECT-IMMEDIATE ( -- )
-   -1 IMMERR !  0 OK !  -1 FAILSET ! ;
+   -1 IMMERR !  RF-IMM CREFUSE!  0 OK !  -1 FAILSET ! ;
 
 variable ISQ
 PTR-VARIABLE IS-TA
@@ -18842,13 +19107,17 @@ variable IS-PEND-U                   \ and its length
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
+\ Pin the word a tick consumed where it stands.
+: TARGET-PIN! ( -- )
+   IS-TA@ IS-TU @ FAIL-PIN!
+   IS-TOFF @ FAILB !
+   FAILB @ FAILTU @ + FAILE ! ;
+
 \ A refused tick names the ticked word where it stands, as a refused call names
 \ the call; DO-TOK1 pinned the `[']` that consumed it.
 : TICK-PIN ( -- )
    FAILSET @ 0 <> IF EXIT THEN
-   IS-TA@ IS-TU @ FAIL-PIN!
-   IS-TOFF @ FAILB !
-   FAILB @ FAILTU @ + FAILE ! ;
+   TARGET-PIN! ;
 
 \ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY, NOT ITS INPUT STACK. The row
 \ gives the tick its quotation signature below, but an ABI-only row cannot
@@ -18870,14 +19139,15 @@ variable IS-PEND-U                   \ and its length
    sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
    TKF TKFU @ EXPORT-TAIL$ PE-OWNER-ROW 0 < IF RES-FALSE EXIT THEN
    TICK-PIN
-   TKF TKFU @ CALL-UNDEFINED
+   TKF TKFU @ CALL-UNDEFINED drop
    PE-N BTICK-PUSH
    RES-TRUE ;
 
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
+   -1 CRTGT !                              \ the load's tick refuses its target while compiling
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   IS-TARGET-SYM {: sym:n :}
+   IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
@@ -18892,7 +19162,10 @@ variable IS-PEND-U                   \ and its length
          RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
       THEN
       FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
-   ELSE PE-N BTICK-PUSH THEN ;
+   ELSE
+      sym 0=  rec 0=  and IF TKF TKFU @ REFUSE-UNDEFINED THEN   \ the load's tick finds no such word
+      PE-N BTICK-PUSH
+   THEN ;
 
 \ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
 \ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
@@ -19086,10 +19359,60 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    ELSE 0 THEN
    BIND-HORIZON ! ;
 
+\ The refusal this token decides (see REFUSAL-OF): the first token the load
+\ cannot compile takes the pin and the diagnostic from every failure before it,
+\ rows included. Otherwise the first name a used public refuses (CUSING) takes
+\ them from every checking failure, the signature's included, and otherwise
+\ the first failure keeps both. Past a token a rendering statement may define
+\ (UNSEEN) the rest is the run's to judge, so no later check names the refusal;
+\ the checks at `;` do (CHECK-DEPTH-FITS).
+: REFUSAL-TAKE ( n -- )
+   dup REFUSAL !  CAPTURE-CLEAR
+   USING-KIND? IF USING-SAVE THEN ;
+
+: REFUSAL-STEP ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   CREFUSE @ 0 <>  RCOMPILE @ 0=  and IF
+      CRTGT @ IF TARGET-PIN! ELSE a u FAIL-PIN! THEN
+      CREFUSE @ REFUSAL-TAKE  -1 RCOMPILE !  EXIT
+   THEN
+   CUSING @ 0 <>  RCOMPILE @ 0=  and  REFUSAL @ USING-KIND? 0=  and IF
+      a u FAIL-PIN!  CUSING @ REFUSAL-TAKE  EXIT
+   THEN
+   FAILSET @ 0 <>  REFUSAL @ 0=  and  UNSEEN @ 0=  and IF REFUSAL-OF REFUSAL ! THEN ;
+
+\ A structure is open: a locals declaration, a control frame, a construct or a
+\ match.
+: CF-OPEN? ( -- bool )
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or ;
+
+\ The closer DIAG-CLOSER! names is the load's last token of the mapped text's
+\ definition, and the load's compiler refuses a structure still open there
+\ (src/habu/habu2.f EM-COMPILE-SEMI) before its checker sees the definition.
+\ So at the walk's end (CHECK-SCAN), before a held using refusal raises and
+\ the checks at `;` run, this takes the pin and the diagnostic as REFUSAL-STEP
+\ takes a compile refusal, unless an earlier one holds them, and fails the
+\ definition, so no later check moves the pin. The walk drops only openers
+\ (DEADERR, CF-OVER), so a structure open here is open in the load. A
+\ truncated construct or match keeps its reason; any other open structure is
+\ RF-REJECTED.
+: CLOSER-REFUSE ( -- )
+   CF-OPEN? 0=  DCLOSE-U @ 0=  or  TBASE @ DMAP-A @ - 0 <>  or  RCOMPILE @ 0 <>  or IF EXIT THEN
+   CONM @ 0 <> IF MD-CON-TRUNC ELSE
+      MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE 0 THEN
+   THEN {: why:n :}
+   why 0 <> IF why MDIAG !  RF-REASON ELSE RF-REJECTED THEN
+   REFUSAL-TAKE  -1 RCOMPILE !
+   DCLOSE-A @ DCLOSE-U @ FAIL-PIN!
+   DCLOSE-A @ TBASE @ - FAILB !
+   FAILB @ FAILTU @ + FAILE !
+   CF-FAIL ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
-   a TOK-SPELL-A !  u TOK-SPELL-U !
+   a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
+   0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -19119,14 +19442,12 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ SPELLED-STEP? 0= IF
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
-      a u FAIL-PIN! REJECT-IMMEDIATE
-   THEN   \ live immediate with a usig: wrong-certificate reject (p5)
+   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
+   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
    TKF TKFU @ PARSE-LIT? IF
       SKIP-PARSE-LIT-PAYLOAD
@@ -19151,6 +19472,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
+   0 USING-HOLD !
+   a u REFUSAL-STEP
    TOKIX @ 1 + TOKIX ! ;
 
 \ A declared type variable must remain a distinct variable after checking the
@@ -20713,19 +21036,20 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    WRAP-CLEAR
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
    0 ZSHAPE !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-WIDTH !  0 UNFIT !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 RSBAD !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
    0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
+   0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
@@ -20818,7 +21142,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 = ;
 
-: CHECK-SCAN ( -- )
+: CHECK-SCAN-WALK ( -- )
    0 SCAN-TOKS !
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
@@ -20868,6 +21192,18 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
      THEN
    REPEAT ;
 
+\ The walk holds a body's using refusals (USING-HOLD) and its end raises the one
+\ that refuses the definition, before the checks at `;` and a retry, as a raise
+\ in the walk did; a structure open at the closer is refused first, as the
+\ load's compiler refuses it (CLOSER-REFUSE). A throw out of the walk leaves the
+\ hold off.
+: CHECK-SCAN ( -- )
+   [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !
+   {: rc:n :}
+   rc 0 <> IF rc throw THEN
+   CLOSER-REFUSE
+   USING-RAISE ;
+
 : CHECK-FOLD-EXITS ( -- )
    XSET @ IF                                         \ fold early-return states into the output
      DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !  XFACT @ FACTS !
@@ -20885,6 +21221,15 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
+
+\ A body with no return clause leaves the return row as it found it; one that
+\ does not, as the definition's first failure, is the return row's (RSBAD 1).
+: CHECK-RBALANCE ( -- )
+   SGHASR @ 0 <> IF EXIT THEN
+   CHECK-RETURNS? 0= IF EXIT THEN
+   RCUR @ R-RES  RBROW @ R-RES  = IF EXIT THEN
+   FAILSET @ 0=  OK @ and IF 1 RSBAD !  -1 FAILSET ! THEN
+   0 OK ! ;
 
 \ A definition whose effect cannot be recorded is uncheckable (ROWS-FIT?): one
 \ deeper than EFFECT-DEPTH-MAX levels, with the depth of its deepest row, or
@@ -21352,8 +21697,8 @@ variable CAST-PATH-N
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
-   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
+   CF-OPEN? IF CF-FAIL THEN
+   CHECK-RBALANCE
    CHECK-RET-SIG? IF
       SGROUT @ RSUNI-COERCE                     \ RSUNI-COERCE names a cell refusal on the return row
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
@@ -22409,8 +22754,8 @@ package CHECKER-REG
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
-   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
+   CF-OPEN? IF CF-FAIL THEN
+   CHECK-RBALANCE
    SGHASR @ IF SGROUT @ RSUNI-COERCE THEN
    CHECK-VERDICT dup DVERD !
    dup -1 = IF CALL-FINALIZE THEN

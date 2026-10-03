@@ -1449,9 +1449,10 @@ s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
 DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" T-HAS? -1 T=
 DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" T-HAS? -1 T=
-\ Only the FIRST fault's kind is recorded, the one whose token is pinned: a
-\ later local fault of another kind, or a local fault after an unrelated
-\ failure, must not relabel the pinned token.
+\ A local the load cannot bind refuses the definition at its token, as the
+\ load does while it compiles the body, ahead of any check failure before it.
+\ Only the FIRST local fault's kind is recorded: a later local fault of another
+\ kind must not relabel the pinned token.
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" quotation local before a wide local rejects" T-LABEL
 s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
@@ -1465,9 +1466,9 @@ DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-wide-then-shape: local '
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" type fault before a wide local rejects" T-LABEL
 s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
-s" type fault before a wide local keeps the first fault's diagnostic" T-LABEL
-DIAG-BUFFER$ s" at 'c@'" T-HAS? -1 T=
-DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG" T-HAS? 0 T=
+s" type fault before a wide local names the local, as the load does" T-LABEL
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-after-mismatch: local 'abcdefghijklmnopq:n' has a 17-byte name" T-HAS? -1 T=
+DIAG-BUFFER$ s" at 'c@'" T-HAS? 0 T=
 \ The JSON packet carries the same distinction: code, repair class and suggestion.
 8192 constant LOCJ-CAP
 create LOCJ-BUF LOCJ-CAP allot
