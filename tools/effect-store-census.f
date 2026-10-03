@@ -34,8 +34,13 @@
 \ window reuses may live in a node below its base. Before interning, the whole
 \ store held 84 nodes for every shape.
 \
-\ Run it over a load:
-\   bin/hb --load tools/effect-store-census-run.f -- src/compiler/native/compiler.f
+\ IT RUNS ON THE WHITEBOX ENGINE. The sealed bin/hb strips the checker names the
+\ read boundary below calls and refuses this file (E-UNDEFINED: E-PTR); the
+\ unsealed engine test/whitebox-engine.f builds keeps them. Put a copy at
+\ bin/hb-whitebox with WHITEBOX-ENGINE:PROVIDE, then census a load:
+\   echo 'require test/whitebox-engine.f s" bin/hb-whitebox" WHITEBOX-ENGINE:PROVIDE' | bin/hb
+\   bin/hb-whitebox --load tools/effect-store-census-run.f -- lib/json-read.f
+\ (tools/effect-store-census-run.f says which loads have a window to measure),
 \ or drive it in-process: MARK, load, RUN, then read the counters.
 
 require lib/errors.f
@@ -46,9 +51,11 @@ package EFF-CENSUS
 
 \ ---- the read boundary onto the checker's private store -----------------------
 \ Read-only: offsets in, cells and bytes out, no store word and no mutation. The
-\ same shape test/engine-suite.f's TG-* shims use, and for the same reason - the
-\ store is checker-internal and its names are stripped past the seal, so a tool
-\ reaches it as compiled calls from named one-line boundaries.
+\ same shape test/engine-suite.f's TG-* shims use: E-PTR, SYM-RETIRED? and their
+\ kin are trust-boundary primitives a checked body may not call (E-CAP-TRUSTED),
+\ so each is called once, from a named one-line TRUSTED: definition. The boundary
+\ does not cross the seal: the product strips these names and refuses the bodies
+\ themselves (header above).
 TRUSTED: STORE-END ( -- n ) UEND @ ;
 TRUSTED: CELL-AT ( n -- n ) USIGS-CELL-AT @ ;
 TRUSTED: REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
@@ -386,23 +393,23 @@ public
 
 : REPORT ( -- )
    s" effect-store-census" type cr
-   s" window-bytes " type WINDOW-BYTES . cr
-   s" records " type RECORDS . cr
-   s" shadowed-records " type SHADOWED . cr
-   s" header-bytes " type HEADER-BYTES . cr
-   s" contents " type CONTENTS . cr
-   s" content-bytes " type CONTENT-TOTAL-BYTES . cr
-   s" nodes " type NODES . cr
-   s" node-bytes " type NODE-TOTAL-BYTES . cr
-   s" shapes " type SHAPES . cr
-   s" shares " type SHARES . cr
-   s" share-bytes " type SHARE-BYTES . cr
-   s" below-window-refs " type BELOW-WINDOW . cr
-   s" final-bytes " type FINAL-BYTES . cr
-   s" dup-bytes " type DUP-BYTES . cr
-   s" dead-bytes " type DEAD-BYTES . cr
-   s" orphan-bytes " type ORPHAN-BYTES . cr
-   s" unkeyed-bindings " type UNKEYED . cr
-   s" retired-symbol-bindings " type RETIRED-KEYED . cr ;
+   s" window-bytes " type WINDOW-BYTES .
+   s" records " type RECORDS .
+   s" shadowed-records " type SHADOWED .
+   s" header-bytes " type HEADER-BYTES .
+   s" contents " type CONTENTS .
+   s" content-bytes " type CONTENT-TOTAL-BYTES .
+   s" nodes " type NODES .
+   s" node-bytes " type NODE-TOTAL-BYTES .
+   s" shapes " type SHAPES .
+   s" shares " type SHARES .
+   s" share-bytes " type SHARE-BYTES .
+   s" below-window-refs " type BELOW-WINDOW .
+   s" final-bytes " type FINAL-BYTES .
+   s" dup-bytes " type DUP-BYTES .
+   s" dead-bytes " type DEAD-BYTES .
+   s" orphan-bytes " type ORPHAN-BYTES .
+   s" unkeyed-bindings " type UNKEYED .
+   s" retired-symbol-bindings " type RETIRED-KEYED . ;
 
 ;package

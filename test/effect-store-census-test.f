@@ -1,7 +1,13 @@
 \ effect-store-census-test.f — the effect-store census, on windows whose
 \ composition is known before it is asked.
 \
-\     bin/hb --load test/effect-store-census-test.f
+\ A whitebox suite: the gate runs it as a WHITEBOX-SUITE row on the unsealed
+\ engine test/whitebox-engine.f builds, because the sealed bin/hb strips the
+\ checker names the census reads (E-UNDEFINED: E-PTR). Standalone, from the
+\ repository root, put a copy at bin/hb-whitebox with WHITEBOX-ENGINE:PROVIDE:
+\
+\     echo 'require test/whitebox-engine.f s" bin/hb-whitebox" WHITEBOX-ENGINE:PROVIDE' | bin/hb
+\     bin/hb-whitebox --load test/effect-store-census-test.f
 \
 \ WHY A CENSUS NEEDS FIXTURES. tools/effect-store-census.f is the acceptance
 \ instrument for dot habu-the-effect-store-45bdc561: the claim "the store lost
