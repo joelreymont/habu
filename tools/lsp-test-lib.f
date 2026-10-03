@@ -454,11 +454,12 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    SB-RESET DIR$ SB-APPEND s" /exits" SB-APPEND
    SB$ MSG$ APPEND-FILE ;
 
-\ The server ended so, and must have exited with this code.
+\ The server ended so, and must have exited with this code; past its deadline,
+\ the conversation and what the server wrote are printed.
 : EXITED ( outcome n -- )
    {: r want:n :}
    r PROC-OUTCOME>RC RC>N ARCHIVE
-   LABEL$ T-LABEL r want T-OUTCOME-EXITED= ;
+   LABEL$ T-LABEL IN$ OUT$ ERR$ r want T-OUTCOME-EXITED= ;
 
 : TOOK ( n -- )
    {: ns:n :}

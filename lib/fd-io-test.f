@@ -129,7 +129,7 @@ variable ERR-FD                   \ the descriptor a refusal case uses
    DST @ PATTERN? TTRUE
    r SMALL READ-EXACT OUTCOME 0 T=
    r FD>N close
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" forked writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 \ The premise of WRITE-FULL's case: with the storm landing on a write blocked by
 \ a full pipe, one raw write of PAYLOAD comes back short.
@@ -146,7 +146,7 @@ variable ERR-FD                   \ the descriptor a refusal case uses
    w FD>N close
    wrote 0 > TTRUE
    wrote PAYLOAD < TTRUE
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" forked reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 \ The same storm and the same held-back reader: WRITE-FULL meets the short
 \ writes the premise proved, and the reader gets every byte in order, then the
@@ -162,7 +162,7 @@ variable ERR-FD                   \ the descriptor a refusal case uses
    w SRC @ $ WRITE-FULL
    prof-off
    w FD>N close
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" forked reader" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 : READ-CLOSED ( -- )
    ERR-FD @ >FD SMALL READ-EXACT OUTCOME drop ;

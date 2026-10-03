@@ -2071,7 +2071,7 @@ variable BIND-PAIR-Q-WON
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
-   TASK-WORKER-ACTIVATES$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
+   TASK-WORKER-ACTIVATES$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N s" variable" T$= ;
 

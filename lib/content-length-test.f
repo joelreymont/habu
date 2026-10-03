@@ -249,7 +249,7 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
    NEXT-LEN -1 T=
    DONE
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" big writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 \ ---- a message in pieces ----------------------------------------------------
 
@@ -271,7 +271,7 @@ TYPED-VARIABLE PAD-LEN len
    3 BODY$ s" abc" T$=
    NEXT-LEN -1 T=
    DONE
-   pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" piece writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
 
 \ ---- misuse -----------------------------------------------------------------
 
