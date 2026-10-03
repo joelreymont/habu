@@ -82,7 +82,7 @@ create SPAN-BUF 32 allot   variable SPAN-U
    s" the forged span dies at the seed with ENGINE-ERROR:AOT-SEED" T-LABEL
    ENGINE-ERROR:AOT-SEED BOOT-DIES
    s" ... naming the guard, before any input is read" T-LABEL
-   ERR$ s" hb: AOT data span out of range" CONTAINS? TTRUE
+   ERR$ S\" hb: AOT data span out of range\n" T$=
    OUT$ s" batch-answer=" CONTAINS? 0= TTRUE ;
 
 : PROBE-TRAP ( -- )

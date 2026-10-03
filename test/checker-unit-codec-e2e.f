@@ -26,7 +26,7 @@ create PATH FS-PATH-CAP allot
 TRUSTED: MARK ( -- )
    OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ execute ;
 
-TRUSTED: EXPORT ( -- ptr u8 n )
+TRUSTED: UNIT-EXPORT ( -- ptr u8 n )
    OWNER CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + CELL-VIEW @ execute ;
 
 TRUSTED: IMPORT ( ptr u8 n -- )
@@ -43,7 +43,7 @@ TRUSTED: DEFER-CHANGE ( -- )
    s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate ;
 
 : SAVE ( -- )
-   EXPORT {: a:ptr u:n :}
+   UNIT-EXPORT {: a:ptr u:n :}
    u ART-CAP <= TTRUE
    a ART u BYTE-COPY
    u ART-U !
@@ -121,7 +121,7 @@ public
    CHECK-CLIENT
    s" unit exporter refuses changed defer state" T-LABEL
    MARK DEFER-CHANGE
-   [: EXPORT 2drop ;] catch 0<> TTRUE
+   [: UNIT-EXPORT 2drop ;] catch 0<> TTRUE
    T-REPORT
    s" checker unit artifact: " type ROOT$ type
    s" /unit-nbr.checker-unit" type cr ;

@@ -290,33 +290,11 @@ variable SD-SCOPES
    SD-SCOPES @ 0 > if SD-SCOPES @ 1- SD-SCOPES ! then ;
 
 
-: SD-SCOPE-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR=CI if true exit then
-   a u s" begin" STR=CI if true exit then
-   a u s" do" STR=CI if true exit then
-   a u s" ?do" STR=CI if true exit then
-   a u s" case" STR=CI if true exit then
-   a u s" MATCH" STR=CI if true exit then
-   a u s" of" STR=CI ;
-
-
-: SD-SCOPE-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR=CI if true exit then
-   a u s" until" STR=CI if true exit then
-   a u s" repeat" STR=CI if true exit then
-   a u s" again" STR=CI if true exit then
-   a u s" loop" STR=CI if true exit then
-   a u s" +loop" STR=CI if true exit then
-   a u s" endcase" STR=CI if true exit then
-   a u s" ;MATCH" STR=CI if true exit then
-   a u s" endof" STR=CI ;
-
-
 : SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET exit then
    off len SD-TOK$ s" else" STR=CI if SD-SCOPE-RESTORE exit then
-   off len SD-TOK$ SD-SCOPE-OPENER? if SD-SCOPE-OPEN exit then
-   off len SD-TOK$ SD-SCOPE-CLOSER? if SD-SCOPE-CLOSE then ;
+   off len SD-TOK$ BLOCK-OPENER? if SD-SCOPE-OPEN exit then
+   off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
 
 \ A local is looked up before the parsing keywords: in a body a local named

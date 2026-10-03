@@ -114,6 +114,7 @@ private
    k LINT-LEX:TOKEN s" create" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" variable" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" constant" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" defer" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" LAYOUT-BUFFER" LINT-STR=CI ;
 
 : RNL-RESERVED-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u :}
@@ -192,11 +193,20 @@ private
    a u s" required" LINT-STR=CI if LINT-TRUE exit then
    a u s" provided" LINT-STR=CI ;
 
+\ tools/check.f reads a target predicate's spelling as the engine's answer to
+\ skip the arms of an `if` the engine never runs (src/habu/verify-source.f
+\ TARGET-GUARD).
+: RNL-RESERVED-TARGET? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" hb-target-linux?" LINT-STR=CI if LINT-TRUE exit then
+   a u s" hb-target-macos?" LINT-STR=CI if LINT-TRUE exit then
+   a u s" hb-target-linux-x86-64?" LINT-STR=CI ;
+
 : RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then
    a u RNL-RESERVED-PARSER? if LINT-TRUE exit then
    a u RNL-RESERVED-DEFINER? if LINT-TRUE exit then
-   a u RNL-RESERVED-LOADER? ;
+   a u RNL-RESERVED-LOADER? if LINT-TRUE exit then
+   a u RNL-RESERVED-TARGET? ;
 
 \ ---- number-shaped names (numeric parse wins over the dictionary) ---------
 : RNL-DIGIT? ( n -- bool )

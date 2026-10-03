@@ -2086,14 +2086,15 @@ sound alternative to that laundering, not a bypass. Same-family `!`/`@` through 
 definer accessor certifies and executes; cross-family, `E-LAYOUT-BOUNDS` (index),
 `E-LAYOUT-BUFFER` (overflow), and `E-DUP-DEFINITION` (duplicate) reject, and a
 rejected declaration rolls the allocation back and defines nothing. A stored
-type that is present and inadmissible is the checker's named `E-BAD-STORAGE`
-refusal, exit 70 (`CHECKER-REJECT-RC`), with its reason: unknown, malformed, a
-scheme, or a type this definer cannot store. When no token follows the name at
-all, the load path throws `E-LAYOUT-BUFFER` and the gate dies `verify-source:
-missing storage type`, exit 74. A scheme is a callback input only, so no
-storage holds one. `TYPED-VARIABLE`, `TYPED-BUFFER` and `DYNAMIC-BUFFER` read
-the stored type whole, to the token that closes its last bracket, so the
-refusal names the complete spelling. Its first token is read as `parse-name`
+type that is inadmissible is the checker's named `E-BAD-STORAGE` refusal, exit
+70 (`CHECKER-REJECT-RC`), with its reason: unknown, malformed, a scheme, or a
+type this definer cannot store. No type at all, at the end of the source, is
+refused as `no type for` the declared word, at the name, as a missing count is.
+A scheme is a callback input only, so no storage holds one. Every storage
+definer (`LAYOUT-BUFFER`, `DEFER-LAYOUT-BUFFER`, `TYPED-VARIABLE`,
+`TYPED-BUFFER`, `DYNAMIC-BUFFER`) reads the stored type whole, to the token that
+closes its last bracket, so the refusal names the complete spelling and the
+rest of the line is the next statement. Its first token is read as `parse-name`
 reads one; a spelling once begun never continues past the end of its line: one
 still open there is refused as malformed, and the next line is the next
 statement (`test/c2-memory-scope-refusals.f`).

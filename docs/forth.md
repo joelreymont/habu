@@ -89,15 +89,21 @@ lives here; build, test and environment rules live in
   REPL, the name is taken.
 - **Never shadow a native primitive name**; `shadow-lint` gates this.
 - **Never define a parser or control reserved word** as a published name (by
-  `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`): `I`, `J`, `DO`,
-  `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
-  `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`,
-  `UNDEFINE` and the other compiler-dispatch and lifecycle tokens. Lexical
-  locals such as `{: i:n :}` stay legal. A generated converter that strips
-  prefixes runs `tools/reserved-name-lint.f` after naturalization (`CC-I`
-  becomes `IX`, `CC-J` becomes `JX`); `tools/check.f` runs that lint before
-  spawning the checker child and reports `E-RESERVED-DEFINITION` with file, line
-  and token instead of a silent rc 70.
+  `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
+  `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
+  `REPEAT`, `TRUST`, `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`,
+  `PUBLIC`, `PRIVATE`, `UNDEFINE` and the other compiler-dispatch and lifecycle
+  tokens. The loaders `include`, `included`, `require`, `required` and
+  `provided` are reserved because `tools/check.f`'s discovery reads their
+  spelling lexically. The target predicates `HB-TARGET-LINUX?`,
+  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?` are reserved too:
+  `tools/check.f` reads their spelling lexically to skip the arms of an `if` the
+  engine's target never runs, and a source's own word of that spelling could
+  answer otherwise. Lexical locals such as `{: i:n :}` stay legal. A generated
+  converter that strips prefixes runs `tools/reserved-name-lint.f` after
+  naturalization (`CC-I` becomes `IX`, `CC-J` becomes `JX`); `tools/check.f`
+  runs that lint before spawning the checker child and reports
+  `E-RESERVED-DEFINITION` with file, line and token instead of a silent rc 70.
 - **Never define a number-shaped word.** hb parses numeric literals BEFORE
   dictionary lookup (`test/gate-dictionary-lib.f` GD-LITERAL-FIRST), so a word
   named like a literal (`42`, `.0`, `1.5`, `-.5`, `$FF`) loads but is
@@ -1411,9 +1417,10 @@ the rule.
 - **A storage declaration its definer refuses is the checker's refusal, named
   and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  refuse an unknown, malformed or unstorable type, a name with more than one
-  `:` or in a sealed package, and a literal count outside the extent (the
-  pre-verifier also refuses a count token that resolves to no `( -- n )` word):
+  refuse an unknown, malformed, unstorable or missing type, a name with more
+  than one `:` or in a sealed package, and a literal count outside the extent
+  (the pre-verifier also refuses a count token that resolves to no `( -- n )`
+  word):
   `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
   `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
   reports it as `E-BAD-STORAGE` at the type's file, line and column in every
@@ -1466,8 +1473,8 @@ the rule.
   whitespace-delimited token whatever it spells, across line ends, matched
   case-folded as the engine's keyword compare folds; the engine refuses each
   outside its own state. The source pre-verifier (`verify-source.f`
-  `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char` and `[char]`,
-  `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
+  `TOP-PARSER?` with `'` and `char`, `BODY-PARSER?` with `char`, `[']` and
+  `[char]`, `OPERAND`) skips it. The rest share `SOURCE:PARSING-KEYWORD?`
   (`lib/source.f`): `tools/lint/source-lex.f` reads the operand raw where it
   makes the token and marks it (`LINT-LEX:OPERAND?`), as `LINT-LEX:OPERAND`
   marks a definer's name, and the reserved-name lint and the nominal pass skip
@@ -1487,14 +1494,28 @@ the rule.
   refused for its `42`, `' :` as the load refuses it (`E-UNDEFINED: :`, an
   undefined tick, rc 70) and the rest check as they load, and `create char`,
   which names a word that takes nothing, leaves the next line's `: 42` refused
-  (`check/raw-operand`). A local of a keyword's name is that local in a body
-  (`{: [char] :} [char]` loads), and only discovery tracks locals: the others
-  read the keyword, so a body using a local `char` or `[char]` is refused by
-  the pre-verifier (rc 74) though it loads, and after `{: ['] :} ['] ;` the
-  lint and the nominal pass read past the `;`, so a reserved or number-shaped
-  name defined later in the file is not refused. The pre-verifier's
-  body set lacks `[']`, so `['] \` in a body is refused the same way after a
-  word `\` is defined. A dictionary word that parses, such as `require` or
+  (`check/raw-operand`). In a body every stage looks a token up among the live
+  locals first, byte for byte, as the loader (`EM-COMPILE-LOCAL` ahead of the
+  keyword rows) and the checker (`LOC-REF?`) do, so a local named after a
+  keyword, a string opener or `.(` is that local and takes nothing. A `{: … :}`
+  group's names are read raw, and a name ends at its first `:`. A local lives
+  to the end of the control block that declared it (`SOURCE:BLOCK-OPENER?` and
+  `BLOCK-CLOSER?`; `else` ends the true arm's), and inside a quotation an
+  enclosing local is still that local, which the load refuses at that token
+  (rc 75) and the check refuses as `E-BAD-LOCAL-SHAPE`. The pre-verifier holds
+  them in `LOCAL?` and `BLOCK-STEP`, the lexer reads them from its own tokens
+  (`STEP`, again on a rescan), and discovery keeps its own (`SD-LOCAL?`), which
+  hides an enclosing local inside a quotation: that differs only on source the
+  load refuses there. Measured before: `{: char :} char ;`, `{: [char] :}
+  [char] ;` and `{: .( :} .( ;` loaded and were refused by the pre-verifier
+  (rc 74, unterminated definition); after any of the `char`, `[char]`, `[']`
+  and `'` forms the lint and the nominal pass read past the `;`, so
+  `: 42 ( -- ) ;` after the `[']` and `'` forms was admitted and
+  `DEFLINEAR N` after any of them was refused with no location; and the
+  pre-verifier's body set lacked `[']`, so `['] \` in a body after a word `\`
+  was refused (rc 74). Now each loads and checks alike, the `42` is refused
+  `E-NUMERIC-DEFINITION` and `DEFLINEAR N` `E-BAD-NOMINAL-TYPE` at its name
+  (`check/local-operand`). A dictionary word that parses, such as `require` or
   `SEE`, is not one of these: the word a spelling names depends on scope, and
   the tree defines words that take no operand under both spellings, so the
   token after one is an ordinary token.

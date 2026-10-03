@@ -171,12 +171,45 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    vlen 0 < IF EXIT THEN
    SOURCE@ TOKEN-START @ + pfx + vlen STR-RING-PUSH ;
 
+\ ---- the locals a body declares -----------------------------------------------
+\ The engine and the checker look a body token up among the live locals before
+\ every keyword but `;` (src/habu/habu2.f EM-COMPILE-LOCAL, src/core/checker.f
+\ LOC-REF?), byte for byte, so a local named `char`, `[']`, `s"`, `.(` or
+\ `does>` is that local: one ordinary body token. Only the `\` and `(` comments
+\ come first, so NEXT looks a body token up between them and `.(`. Only a body
+\ reader consults the table, and each resets it first: between bodies it still
+\ holds the last body's names, which point into a source that may be gone. A
+\ `{: … :}` group reads its names raw (C-LBRACE-PARSE-NAMES), and a name ends at
+\ its first `:`. A local lives to the end of the control block that declared it,
+\ as the engine's control-flow stack restores the count (LCFPUSH, LCFPOP), and
+\ `else` drops the true arm's. An enclosing local is still that local inside a
+\ quotation, where the engine and the checker refuse it at that token.
+\ lib/source.f BLOCK-OPENER? and BLOCK-CLOSER? hold the same block words for the
+\ tools' scanners. Blocks are counted only while a local lives: one opened with
+\ none live drops none, and a local only needs the count to change from its own
+\ group on.
+LOC-RECS TYPED-BUFFER LOCAL-A ptr u8          \ a live local's name
+LOC-RECS TYPED-BUFFER LOCAL-U n               \ and its length
+LOC-RECS TYPED-BUFFER LOCAL-D n               \ the block depth that declared it
+variable LOCAL-N
+variable LOCAL-DEPTH                          \ blocks open, counted while a local lives
+
+: LOCALS-RESET ( -- )
+   0 LOCAL-N !  0 LOCAL-DEPTH ! ;
+
+: LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LOCAL-N @ 0 ?do
+      a u i LOCAL-A @ i LOCAL-U @ CORE-STR= if 0 0= unloop exit then
+   loop
+   0 0= 0= ;
+
 : NEXT ( -- ptr u8 n )
    BEGIN
       NEXT-RAW
       dup 0= IF EXIT THEN
       2dup 1 = swap c@ 92 = and IF 2drop 10 SKIP-PAST ELSE
       2dup 1 = swap c@ 40 = and IF 2drop 41 SKIP-PAST ELSE
+      SKIP-STRINGS @ 0= IF 2dup LOCAL? IF EXIT THEN THEN
       2dup PRINT-OPENER? IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
          2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE 4 RECORD-SKIPPED-STRING ELSE
@@ -340,9 +373,16 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ file being read has closed every package and file-level `using` it opened, in
 \ the order of the loaders, and at the end of that file at the latest
 \ (VERIFY-SOURCE, PEND-RELEASE). A loader under a condition may not run - a
-\ target's layout loads only on that target (tools/imgdump.f) - so its file is
-\ the run's to load. The path is the literal right before the loader word; any
-\ other loader form in a body is discovery's to refuse (tools/source-discovery.f).
+\ target's layout loads only when the image lacks one (tools/imgdump.f) - so
+\ its file is the run's to load. A target predicate right before an `if` is no
+\ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
+\ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
+\ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
+\ tools/object-image.f loads its target's sys.f that way, and the three
+\ targets' files define the same words. A source cannot define a predicate's
+\ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
+\ engine's. The path is the literal right before the loader word; any other
+\ loader form in a body is discovery's to refuse (tools/source-discovery.f).
 \ Each entry's path lies in the bytes of the file being read, which live until
 \ that file ends.
 16 constant PEND-MAX
@@ -353,9 +393,19 @@ variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
 variable BODY-BENT                            \ the body read so far is no straight line
+0 constant GUARD-NONE                         \ the body token before is no target predicate
+1 constant GUARD-LIVE                         \ it is one the engine answers true
+2 constant GUARD-DEAD                         \ it is one the engine answers false
+variable BODY-GUARD                           \ which of the three
+variable BODY-ARMS                            \ the target `if`s whose running arm the line is in
+variable BODY-DEAD                            \ in an arm that never runs: 1 + the `if`s open in it
+
+\ Neither a literal nor a target predicate is right before the next body token.
+: BODY-PREV-CLEAR ( -- )
+   0 BODY-LIT-U !  GUARD-NONE BODY-GUARD ! ;
 
 : BODY-LOAD-RESET ( -- )
-   0 BODY-BENT !  0 BODY-LIT-U ! ;
+   0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
 
 : PEND-PUSH ( ptr u8 n n -- ) {: a:ptr u:n inc:n :}
    PEND-N @ PEND-MAX >= IF s" verify-source: too many loaders in definitions" 74 die THEN
@@ -365,20 +415,62 @@ variable BODY-BENT                            \ the body read so far is no strai
 \ The text of a `s"` literal from the rest STRING-REST read: past the one
 \ delimiting space, short of the closing quote. Any other opener leaves none.
 : BODY-LIT! ( ptr u8 n ptr u8 n -- ) {: o:ptr ou:n s:ptr su:n :}
+   BODY-PREV-CLEAR
    o ou NORMAL-STRING-OPENER? su 2 >= and IF
-      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !  EXIT
+      s 1 + BODY-LIT-A !  su 2 - BODY-LIT-U !
+   THEN ;
+
+: >GUARD ( bool -- n )
+   IF GUARD-LIVE EXIT THEN GUARD-DEAD ;
+
+\ What a body token tells an `if` right after it.
+: TARGET-GUARD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" HB-TARGET-LINUX?" STR=CI IF HB-TARGET-LINUX? >GUARD EXIT THEN
+   a u s" HB-TARGET-MACOS?" STR=CI IF HB-TARGET-MACOS? >GUARD EXIT THEN
+   a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
+      HB-TARGET-LINUX-X86-64? >GUARD EXIT
    THEN
-   0 BODY-LIT-U ! ;
+   GUARD-NONE ;
+
+\ `if`, `else` and `then` on the straight line, true when the token is one. A
+\ target predicate right before an `if` opens a target `if`, whose running arm
+\ stays on the line and whose other arm is read only for its end (DEAD-TOKEN).
+\ Any other `if`, and an `else` or `then` no target `if` opened, ends the line.
+\ The three match case-folded, as the engine's keywords do.
+: ARM-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR=CI IF
+      BODY-GUARD @ GUARD-NONE = IF 1 BODY-BENT ! 0 0= EXIT THEN
+      BODY-ARMS @ 1 + BODY-ARMS !
+      BODY-GUARD @ GUARD-DEAD = IF 1 BODY-DEAD ! THEN
+      0 0= EXIT
+   THEN
+   a u s" else" STR=CI a u s" then" STR=CI or 0= IF 0 0= 0= EXIT THEN
+   BODY-ARMS @ 0= IF 1 BODY-BENT ! 0 0= EXIT THEN
+   a u s" else" STR=CI IF 1 BODY-DEAD ! 0 0= EXIT THEN
+   BODY-ARMS @ 1 - BODY-ARMS !
+   0 0= ;
+
+\ A token in an arm that never runs, read only for the arm's end: the `else`
+\ of its own target `if` starts the arm that runs, and its `then` closes it.
+: DEAD-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" if" STR=CI IF BODY-DEAD @ 1 + BODY-DEAD ! EXIT THEN
+   a u s" else" STR=CI BODY-DEAD @ 1 = and IF 0 BODY-DEAD ! EXIT THEN
+   a u s" then" STR=CI 0= IF EXIT THEN
+   BODY-DEAD @ 1 - BODY-DEAD !
+   BODY-DEAD @ 0= IF BODY-ARMS @ 1 - BODY-ARMS ! THEN ;
 
 \ A body token that is no string literal: a loader word right after one, on a
 \ straight line, waits while a composition reads the source.
 : BODY-TOKEN-SEEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
+   BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
    a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
    COMPOSE-ON @ 0<> BODY-LIT-U @ 0 > and BODY-BENT @ 0= and IF
       a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 PEND-PUSH THEN
       a u s" included" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 1 PEND-PUSH THEN
    THEN
-   0 BODY-LIT-U ! ;
+   0 BODY-LIT-U !
+   a u TARGET-GUARD BODY-GUARD ! ;
 
 : APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BODY-APPEND
@@ -395,10 +487,11 @@ variable BODY-BENT                            \ the body read so far is no strai
 \ opener there is data and never a token of the program. At top level the
 \ keywords are the engine's interpret-state ones (src/habu/habu2.f
 \ EM-INTERPRET-DEFINE-KEYWORDS, C-TICK and C-CHAR); in a body they are the ones
-\ the checker's body reader takes (src/core/checker.f PARSE-LIT?). `char` is
-\ both. Each matches case-folded and ahead of any lookup, as the engine's keyword
-\ compare (LKWCMP) and the checker's TOKFOLD do, so no source can shadow one and
-\ the spelling decides.
+\ the checker's body reader takes (src/core/checker.f PARSE-LIT? and
+\ BTICK-CAND?). `char` is both. Each matches case-folded and ahead of any
+\ dictionary lookup, as the engine's keyword compare (LKWCMP) and the checker's
+\ TOKFOLD do, so no definition can shadow one; in a body a live local is looked
+\ up first (LOCAL? above).
 \
 \ A dictionary word that parses is not one of these. Which word `require`
 \ (src/core/include.f) or `SEE` (src/habu/xref.f) names is a scope question,
@@ -414,6 +507,7 @@ variable BODY-BENT                            \ the body read so far is no strai
 
 : BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHAR-KEYWORD? IF 0 0= EXIT THEN
+   a u s" [']" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 
 : OPERAND ( -- ptr u8 n )
@@ -427,9 +521,94 @@ variable BODY-BENT                            \ the body read so far is no strai
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
+\ ---- recording a body's locals ------------------------------------------------
+: LOCAL-TOKEN? ( -- bool )
+   TOKEN-A @ TOKEN-U @ LOCAL? ;
+
+\ The engine refuses a live local past its LOC-RECS records, and the checker
+\ names that local (E-TOO-MANY-LOCALS) when this body registers, so the table
+\ only stops recording. A dropped name spelled as a parsing keyword or string
+\ opener and then used still hides the `;`: with nothing after it to close the
+\ scan the pre-pass dies rc 74 with no location, else the merged body registers
+\ and the checker names the local; the loader refuses that body at the name.
+: LOCAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+   LOCAL-N @ LOC-RECS >= IF EXIT THEN
+   0 BEGIN dup u < IF a over + c@ $3A <> ELSE 0 0= 0= THEN WHILE 1 + REPEAT
+   LOCAL-N @ LOCAL-U !
+   a LOCAL-N @ LOCAL-A !
+   LOCAL-DEPTH @ LOCAL-N @ LOCAL-D !
+   LOCAL-N @ 1 + LOCAL-N ! ;
+
+: BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR=CI
+   a u s" begin" STR=CI or
+   a u s" do" STR=CI or
+   a u s" ?do" STR=CI or
+   a u s" case" STR=CI or
+   a u s" of" STR=CI or
+   a u s" match" STR=CI or
+   a u s" [:" CORE-STR= or ;
+
+: BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" then" STR=CI
+   a u s" until" STR=CI or
+   a u s" repeat" STR=CI or
+   a u s" again" STR=CI or
+   a u s" loop" STR=CI or
+   a u s" +loop" STR=CI or
+   a u s" endof" STR=CI or
+   a u s" endcase" STR=CI or
+   a u s" ;match" STR=CI or
+   a u s" ;]" CORE-STR= or ;
+
+\ Drop the locals the innermost open block declared.
+: BLOCK-DROP ( -- )
+   BEGIN
+      LOCAL-N @ 0 > IF LOCAL-N @ 1 - LOCAL-D @ LOCAL-DEPTH @ >= ELSE 0 0= 0= THEN
+   WHILE
+      LOCAL-N @ 1 - LOCAL-N !
+   REPEAT ;
+
+: BLOCK-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   LOCAL-N @ 0= IF EXIT THEN
+   a u BLOCK-OPENER? IF LOCAL-DEPTH @ 1 + LOCAL-DEPTH ! EXIT THEN
+   a u s" else" STR=CI IF BLOCK-DROP EXIT THEN
+   a u BLOCK-CLOSER? IF BLOCK-DROP LOCAL-DEPTH @ 1 - LOCAL-DEPTH ! THEN ;
+
+\ One token of a group: its closer ends it, and any other token is a name.
+: GROUP-TOKEN ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" :}" CORE-STR= IF 0 0= EXIT THEN
+   a u LOCAL-ADD
+   0 0= 0= ;
+
+: GROUP-NEXT ( -- ptr u8 n )
+   NEXT-RAW dup 0= IF s" verify-source: unterminated locals group" 74 die THEN ;
+
+: APPEND-GROUP ( -- )
+   BEGIN GROUP-NEXT 2dup BODY-APPEND GROUP-TOKEN UNTIL ;
+
+: SKIP-GROUP ( -- )
+   BEGIN GROUP-NEXT GROUP-TOKEN UNTIL ;
+
+\ A local, a group and a block word in a body, ahead of the parsing keywords and
+\ string openers the body token readers below take. A local or a group skips
+\ BODY-TOKEN-SEEN, so it clears what the token before it told an `if`: a local,
+\ even one spelled as a target predicate, opens no target `if`.
 : APPEND-BODY-TOKEN ( -- )
+   LOCAL-TOKEN? IF
+      BODY-PREV-CLEAR
+      TOKEN-A @ TOKEN-U @ BODY-APPEND
+      EXIT
+   THEN
+   TOKEN-A @ TOKEN-U @ s" {:" CORE-STR= IF
+      BODY-PREV-CLEAR
+      TOKEN-A @ TOKEN-U @ BODY-APPEND
+      APPEND-GROUP
+      EXIT
+   THEN
+   TOKEN-A @ TOKEN-U @ BLOCK-STEP
    TOKEN-A @ TOKEN-U @ BODY-PARSER? IF
-      0 BODY-LIT-U !
+      BODY-PREV-CLEAR
       TOKEN-A @ TOKEN-U @ BODY-APPEND
       OPERAND BODY-APPEND
       exit
@@ -442,9 +621,17 @@ variable BODY-BENT                            \ the body read so far is no strai
    THEN ;
 
 : SKIP-BODY-TOKEN ( -- )
-   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop 0 BODY-LIT-U ! exit THEN
+   TOKEN-A @ TOKEN-U @ BODY-PARSER? IF OPERAND 2drop BODY-PREV-CLEAR exit THEN
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST exit THEN
    TOKEN-A @ TOKEN-U @ BODY-TOKEN-SEEN ;
+
+\ SKIP-BODY-TOKEN for a definition body, which declares locals; a primitive row
+\ declares none.
+: SKIP-DEF-TOKEN ( -- )
+   LOCAL-TOKEN? IF BODY-PREV-CLEAR EXIT THEN
+   TOKEN-A @ TOKEN-U @ s" {:" CORE-STR= IF BODY-PREV-CLEAR SKIP-GROUP EXIT THEN
+   TOKEN-A @ TOKEN-U @ BLOCK-STEP
+   SKIP-BODY-TOKEN ;
 
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
 \ mode state, dynamic signature publication, raw-definer mode, and the scope's
@@ -689,6 +876,7 @@ variable WRAP-SIG-U
    VERIFY-BODY {: def:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    BODY-RESET
+   LOCALS-RESET
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
@@ -789,14 +977,15 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 \ checker-owner.f says `s" does> split"` in eight trusted bodies).
 : SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
    BODY-LOAD-RESET
+   LOCALS-RESET
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
-      TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF
+      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" CORE-STR=  and IF
          REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
       ELSE
-         SKIP-BODY-TOKEN
+         SKIP-DEF-TOKEN
       THEN
    AGAIN ;
 
@@ -1019,33 +1208,18 @@ variable NOM-TAIL-U
       BODY-APPEND
    AGAIN ;
 
-: RECORD-LAYOUT-BUFFER ( -- )
-   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
-   NEXT-SCAN {: type:ptr typeu:n :}
-   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
-
-\ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
-\ one line, so a later definition calling one is E-UNDEFINED without this row,
-\ and a type it cannot size goes unreported until the run. No count token: the
-\ count arrives at the bind.
-: RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
-   NEXT-SCAN {: type:ptr typeu:n :}
-   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
-
-\ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
-\ A stored type may be `ptr* base`, a family application or a spaced quotation
-\ or scheme, so the type is a contiguous multi-token span from the scanner
-\ buffer, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP) or with its
-\ line.
+\ Every storage definer's gate registration reads its stored type here, as its
+\ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
+\ be `ptr* base`, a family application or a spaced quotation or scheme, so the
+\ type is a contiguous multi-token span from the scanner buffer, ended where the
+\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The first token is
+\ read raw, as parse-name reads it, so a `(` or `\` there is the type the
+\ definer refuses, not a comment (NAME-TOKEN reads a name the same way). When
+\ the source has no first token the span is empty, and the checker refuses that
+\ by name.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
-
-: SCAN-STORAGE-TOK ( -- )   \ the stored type's first token, which the source must have
-   NEXT-SCAN STG-U !  STG-A !
-   STG-U @ 0= IF s" verify-source: missing storage type" 74 die THEN ;
 
 \ Whether the spelling goes on past its last token: not when that token ended
 \ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). The next token is read
@@ -1061,10 +1235,25 @@ PTR-VARIABLE STG-START
    0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
-   SCAN-STORAGE-TOK
+   NEXT-RAW STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
+
+: RECORD-LAYOUT-BUFFER ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
+
+\ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
+\ one line, so a later definition calling one is E-UNDEFINED without this row,
+\ and a type it cannot size goes unreported until the run. No count token: the
+\ count arrives at the bind.
+: RECORD-DEFER-LAYOUT-BUFFER ( -- )
+   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
@@ -1225,7 +1414,9 @@ variable FILE-USE
 
 \ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
 \ their comments, strings, and raw operands before a live closer is considered.
+\ A row declares no locals, so none of the last body's stay live in it.
 : RECORD-PRIM-ROW ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
+   LOCALS-RESET
    NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
    2drop
    BEGIN
@@ -1360,14 +1551,17 @@ variable FILE-USE
    DEF-NAME!
    WRAP-RESET
    BODY-LOAD-RESET
+   LOCALS-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
    MAYBE-SIGNATURE
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY -1 = IF VERIFY-WRAPPER THEN EXIT THEN
-      TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF VERIFY-DOES EXIT THEN
-      TOKEN-A @ TOKEN-U @ WRAP-TOKEN
+      LOCAL-TOKEN? 0= IF
+         TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF VERIFY-DOES EXIT THEN
+         TOKEN-A @ TOKEN-U @ WRAP-TOKEN
+      THEN
       APPEND-BODY-TOKEN
    AGAIN ;
 

@@ -501,8 +501,9 @@ variable BFT-BIN-FILES
 \ so IBUFSZ+1 is not the runtime input boundary. Bracket the boundary with a
 \ bounded exponential search and refine it by binary search, every probe on the
 \ freshly built candidate's --build path. PROBE asserts each outcome - a clean
-\ exit, or 74 with the buffer-full diagnostic - so OK-N was accepted and BAD-N
-\ refused when each was recorded, and a sharp boundary leaves them adjacent.
+\ exit, or 74 with exactly the buffer-full line, newline and no pad byte - so
+\ OK-N was accepted and BAD-N refused when each was recorded, and a sharp
+\ boundary leaves them adjacent.
 
 $10000 constant PROBE-START
 
@@ -562,7 +563,7 @@ variable BAD-N
       0 0= exit
    then
    EXIT-CODE @ 74 T=
-   ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   ERR$ S\" hb: source prefix buffer full\n" T$=
    0 0= 0= ;
 
 : EXP-NEXT ( -- n )

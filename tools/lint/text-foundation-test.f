@@ -355,6 +355,81 @@ variable REG-I
    9 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    9 LINT-LEX:TOKEN s" (" ASSERT$
    10 LINT-LEX:TOKEN s" y" ASSERT$ ;
 
+\ A body looks a token up among its live locals before the parsing keywords and
+\ the string openers, byte for byte, as the engine and the checker do, so a
+\ local named `char`, `[']` or `s"` takes no operand and opens nothing, and the
+\ `;` after them ends the definition. A `{: … :}` group reads its names raw, each
+\ a marked operand, and its closer is a plain word. After the `;` the `char` is
+\ the top-level keyword again. A group that never closes ends with the input.
+: TEST-LEXER-LOCAL-NAMES ( -- )
+   ROW-RESET
+   s" : F ( n -- n ) {: char ['] s" ROW+ ROW-Q
+   s"  :} char ['] s" ROW+ ROW-Q
+   s"  ; char X" ROW+
+   ROW$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 14 ASSERT=
+   3 LINT-LEX:TOKEN s" {:" ASSERT$        3 LINT-LEX:OPERAND? 0= ASSERT
+   4 LINT-LEX:TOKEN s" char" ASSERT$      4 LINT-LEX:OPERAND? ASSERT
+   5 LINT-LEX:TOKEN s" [']" ASSERT$       5 LINT-LEX:OPERAND? ASSERT
+   6 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT= 6 LINT-LEX:CONTENT nip 0 ASSERT=
+   6 LINT-LEX:OPERAND? ASSERT
+   7 LINT-LEX:TOKEN s" :}" ASSERT$        7 LINT-LEX:OPERAND? 0= ASSERT
+   8 LINT-LEX:TOKEN s" char" ASSERT$      8 LINT-LEX:OPERAND? 0= ASSERT
+   9 LINT-LEX:TOKEN s" [']" ASSERT$       9 LINT-LEX:OPERAND? 0= ASSERT
+   10 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT= 10 LINT-LEX:CONTENT nip 0 ASSERT=
+   10 LINT-LEX:OPERAND? 0= ASSERT
+   11 LINT-LEX:TOKEN s" ;" ASSERT$        11 LINT-LEX:OPERAND? 0= ASSERT
+   13 LINT-LEX:TOKEN s" X" ASSERT$        13 LINT-LEX:OPERAND? ASSERT
+   s" : U {: a b" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   4 LINT-LEX:TOKEN s" b" ASSERT$         4 LINT-LEX:OPERAND? ASSERT ;
+
+\ A local lives to the end of the control block that declared it, as the
+\ engine's control-flow stack keeps the locals count, and `else` drops the true
+\ arm's, so the `char` after `else` is the keyword again. An enclosing local is
+\ still that local inside a quotation, where the engine and the checker refuse
+\ it at that token, so the `;]` after it closes the quotation. A local matches
+\ byte for byte while a keyword folds: `CHAR` beside a local `char` is the
+\ keyword, and the `;` it takes is data that ends nothing.
+: TEST-LEXER-LOCAL-SCOPE ( -- )
+   s" : G ( n -- ) {: [char] :} if {: char :} char else char A then [: [char] ;] [char] ; char B"
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 22 ASSERT=
+   10 LINT-LEX:TOKEN s" char" ASSERT$     10 LINT-LEX:OPERAND? 0= ASSERT
+   11 LINT-LEX:TOKEN s" else" ASSERT$
+   13 LINT-LEX:TOKEN s" A" ASSERT$        13 LINT-LEX:OPERAND? ASSERT
+   16 LINT-LEX:TOKEN s" [char]" ASSERT$   16 LINT-LEX:OPERAND? 0= ASSERT
+   17 LINT-LEX:TOKEN s" ;]" ASSERT$       17 LINT-LEX:OPERAND? 0= ASSERT
+   19 LINT-LEX:TOKEN s" ;" ASSERT$        19 LINT-LEX:OPERAND? 0= ASSERT
+   21 LINT-LEX:TOKEN s" B" ASSERT$        21 LINT-LEX:OPERAND? ASSERT
+   s" : H ( n -- n ) {: char :} CHAR ; char ; ' x" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 12 ASSERT=
+   7 LINT-LEX:TOKEN s" ;" ASSERT$         7 LINT-LEX:OPERAND? ASSERT
+   8 LINT-LEX:TOKEN s" char" ASSERT$      8 LINT-LEX:OPERAND? 0= ASSERT
+   9 LINT-LEX:OPERAND? 0= ASSERT
+   11 LINT-LEX:TOKEN s" x" ASSERT$        11 LINT-LEX:OPERAND? ASSERT ;
+
+\ OPERAND scans the rest of the source again from its token with the locals that
+\ are live there: the `char` after the operand it marks is still the local. A
+\ `{:` taken as an operand opens no group, so the word after it is no name.
+: TEST-LEXER-LOCAL-RESCAN ( -- )
+   s" : P ( n -- n ) {: char :} create char char ;" LINT-LEX:SOURCE
+   6 LINT-LEX:OPERAND
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 10 ASSERT=
+   7 LINT-LEX:TOKEN s" char" ASSERT$      7 LINT-LEX:OPERAND? ASSERT
+   8 LINT-LEX:TOKEN s" char" ASSERT$      8 LINT-LEX:OPERAND? 0= ASSERT
+   9 LINT-LEX:TOKEN s" ;" ASSERT$         9 LINT-LEX:OPERAND? 0= ASSERT
+   s" create {: x :}" LINT-LEX:SOURCE
+   0 LINT-LEX:OPERAND
+   LINT-LEX:COUNT 4 ASSERT=
+   1 LINT-LEX:TOKEN s" {:" ASSERT$        1 LINT-LEX:OPERAND? ASSERT
+   2 LINT-LEX:TOKEN s" x" ASSERT$         2 LINT-LEX:OPERAND? 0= ASSERT ;
+
 : TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
    ROW-RESET
    s" LEFT" ROW+  c ROW-C+
@@ -907,6 +982,9 @@ variable REG-I
    TEST-LEXER-PRINT-NAME-POS
    TEST-LEXER-OPERAND-NAMES-NOTHING
    TEST-LEXER-PARSER-OPERAND
+   TEST-LEXER-LOCAL-NAMES
+   TEST-LEXER-LOCAL-SCOPE
+   TEST-LEXER-LOCAL-RESCAN
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE

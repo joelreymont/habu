@@ -20,8 +20,8 @@ require src/habu/aot-capture.f
 
 AOT-ARM:WINDOW-OPEN
 package AOT-XTCELL-OFF-GRID
-create FIELD 8 allot
-FIELD 4 + ptr-cell-mark
+create SLOT 8 allot
+SLOT 4 + ptr-cell-mark
 create TAIL 16 allot
 ;package
 AOT-ARM:WINDOW-CLOSE

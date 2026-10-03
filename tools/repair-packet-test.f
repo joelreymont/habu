@@ -345,20 +345,35 @@ create PACKET-BUF FS-PATH-CAP allot
    s" --json-errors" >LEN PROC-ARGV+
    SRC >LEN PROC-ARGV+ ;
 
-\ The checker's pre-pass never reads a declaration that `evaluate` runs, so
-\ only the check.f run refuses it, and its record has no place.
-: TEST-STORAGE-UNPLACED ( -- )
-   s" storage-unplaced" CASE-PATHS
-   s" storage-unplaced" LABEL!
-   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" WRITE-SOURCE
+\ A source only the check.f run refuses: its record has no place. The run
+\ exits rc and writes one record. The checker's pre-pass never reads a
+\ declaration that `evaluate` runs (storage-unplaced, rc 70), and a checker
+\ record refused at the load names the token it would have described: a trust
+\ row naming no word and a storage registrar called from source, refused by the
+\ load as an uncaught throw (rc 67).
+: CHILD-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: name:ptr nameu:n class:ptr classu:n src:ptr srcu:n rc:n :}
+   name nameu CASE-PATHS
+   name nameu LABEL!
+   src srcu WRITE-SOURCE
    ARGV-CHECK-SOURCE
-   HB-CAPTURE 70 CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
-   s" storage-unplaced stdout" T-LABEL
+   HB-CAPTURE rc CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
+   name nameu T-LABEL
    outu 0 T=
    erru WRITE-DIAG
    MAKE-PACKET
-   s" fix_storage_type" ASSERT-PACKET
-   s" storage-unplaced" EXPECT-GOLDEN ;
+   class classu ASSERT-PACKET
+   name nameu EXPECT-GOLDEN ;
+
+: TEST-STORAGE-UNPLACED ( -- )
+   s" storage-unplaced" s" fix_storage_type"
+   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
+
+: TEST-RECORDS ( -- )
+   s" trust-row" s" fix_stale_trust_row"
+   s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 67 CHILD-CASE
+   s" storage-record" s" use_storage_definer"
+   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE ;
 
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
@@ -459,6 +474,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-SPAN-KINDS
    TEST-STORAGE
    TEST-STORAGE-UNPLACED
+   TEST-RECORDS
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE

@@ -6041,20 +6041,22 @@ public
 \ established WIDN and cleared the live bitmap.  Records are not registered yet,
 \ so the window base is still exactly the WIDN that SEAL-WIDS, rebases against.
 : EMIT-AOT-PROT-RESTORE ( -- )
-   LBL LBL {: bad:label msg:label :}
+   LBL LBL  S\" hb: AOT wid outside the capture window\n"
+   {: bad:label msg:label ma mu :}
    LAOTPROT LABEL@ LBL,
    bad AOT-WINDOW:SEAL-WIDS,
    RET,
    bad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT wid outside the capture window\n" BYTES, ;
+   msg LBL,  ma mu BYTES, ;
 
 : EM-AOT-REGISTER-RECS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   S\" hb: AOT wid outside the capture window\n"
    {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
       pkg-wid:label next:label extname:label nameok:label
-      bad:label msg:label done:label :}
+      bad:label msg:label done:label ma mu :}
    LBL LBL LBL LBL
    {: fixed:label loaded:label ordinary:label decoded:label :}
    SP SP 48 SUBI,                                  \ fixed row scratch, stream end, format
@@ -6175,9 +6177,9 @@ public
    SP SP 48 ADDI,
    LBL {: finish:label :} finish B,
    bad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT wid outside the capture window\n" BYTES,
+   msg LBL,  ma mu BYTES,
    finish LBL, ;
 
 \ Validate the baked name pool and mark true entry offsets in a boot-owned
@@ -6403,7 +6405,8 @@ public
    RELOC-EMIT:LCALLS LABEL@ BL, ;
 
 : EM-AOT-PATCH-SITES ( -- )
-   LBL LBL LBL LBL {: bound:label done:label bad:label msg:label :}
+   LBL LBL LBL LBL  S\" hb: AOT call metadata corrupt\n"
+   {: bound:label done:label bad:label msg:label ma mu :}
    9 5 LAOTNSITE LABEL@ TADR,  9 9 0 LDR,
    5 9 34 LSRI,  5 bad CBNZ,                 \ no unknown format flags
    5 SITE-COUNT-MASK LIT64,  6 9 5 AND,
@@ -6416,9 +6419,9 @@ public
    SEEDED-RUNTIME? if bad EM-AOT-BOUND-SITES else bad B, then
    done B,
    bad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 30 MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT call metadata corrupt\n" BYTES,
+   msg LBL,  ma mu BYTES,
    done LBL, ;
 
 \ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
@@ -6621,9 +6624,9 @@ public
 \ residue, and from there the whole window arrives with every cell exactly as
 \ aligned as it was captured. It costs at most seven bytes of DATA once per boot.
 : EM-AOT-RELOC-DATA ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL  S\" hb: AOT data span out of range\n"
    {: dloop:label drdone:label ok:label msg:label chain:label next:label
-      absolute:label mark:label :}
+      absolute:label mark:label sa su :}
    LBL LBL LBL LBL {: fixed:label loaded:label positive:label corrupt:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = canonical DATA base (capture base's 8-residue)
@@ -6632,9 +6635,9 @@ public
    5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,       \ x5 = REPL DATA span
    7 DATA-SIZE LIT64,  7 DATA 7 ADD,  7 7 3 SUB,    \ x7 = headroom = (data-base + DATA-SIZE) - seed DP
    5 7 CMP,  C-LS ok BCOND,                         \ span <= headroom -> ok; else fall into the boot die
-      1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 su MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT data span out of range\n" BYTES,
+   msg LBL,  sa su BYTES,
    ok LBL,
    AOT-WINDOW:ZERO-SPAN                             \ the span, decided rather than inherited
    AOT-WINDOW:APPLY-CELLS                           \ ... and the window's own present cells
@@ -6713,11 +6716,12 @@ public
    LBL {: consumed:label :} 5 consumed CBZ,
    25 SP 0 LDR, 21 25 CMP, C-NE corrupt BCOND,
    consumed LBL, SP SP 48 ADDI,
-   LBL LBL {: complete:label badmsg:label :} complete B,
+   LBL LBL  S\" hb: AOT metadata corrupt\n"
+   {: complete:label badmsg:label bada badu :} complete B,
    corrupt LBL,
-      1 badmsg ADR, 0 2 MOVZ, 2 25 MOVZ, NR-WRITE SYS,
+      1 badmsg ADR, 0 2 MOVZ, 2 badu MOVZ, NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ, NR-EXIT-GROUP SYS,
-   badmsg LBL, S\" hb: AOT metadata corrupt\n" BYTES,
+   badmsg LBL, bada badu BYTES,
    complete LBL,
    AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
 
@@ -6776,9 +6780,9 @@ public
 \ shape EM-SEED-AOT's metadata check uses.
 package AOT-XTSITE
 public
-36 constant MSG-LEN   \ byte length of "hb: AOT named code site unresolved\n"
 : PATCH-CHAINS ( -- )
-   LBL LBL LBL LBL {: xloop:label xdone:label xnf:label msg:label :}
+   LBL LBL LBL LBL  S\" hb: AOT named code site unresolved\n"
+   {: xloop:label xdone:label xnf:label msg:label ma mu :}
    21 10 LROWS LABEL@ TADR,                       \ x21 = row cursor (8B rows)
    23 10 LCOUNT LABEL@ TADR,  23 23 0 LDR,        \ x23 = row count
    22 0 MOVZ,
@@ -6803,9 +6807,9 @@ public
       5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       21 21 8 ADDI,  22 22 1 ADDI,  xloop B,
    xnf LBL,
-      1 msg ADR,  0 2 MOVZ,  2 MSG-LEN MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT named code site unresolved\n" BYTES,
+   msg LBL,  ma mu BYTES,
    xdone LBL, ;
 ;package
 
@@ -6928,7 +6932,8 @@ public
 \ partial captures run it after the cold prefix, before the first user token.
 : EM-SEED-AOT ( -- )
    AOT-REC-N @ 0= if exit then
-   LBL LBL LBL {: askip:label bad:label msg:label :}
+   LBL LBL LBL  S\" hb: AOT metadata corrupt\n"
+   {: askip:label bad:label msg:label ma mu :}
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR, 11 11 $FFFFFFFF ANDI, \ x11 = N
    11 bad CBZ,                                      \ a native runtime seed is mandatory
    SP SP 16 SUBI,                                  \ transient name-entry map pointer/length
@@ -6957,9 +6962,9 @@ public
    9 CP 11 SUB,  9 CP CODE-ORIGIN:CAPTURE-RANGE,
    askip B,
    bad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 25 MOVZ,  NR-WRITE SYS,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: AOT metadata corrupt\n" BYTES,
+   msg LBL,  ma mu BYTES,
    askip LBL, ;
 
 : EM-SEED-DICT ( -- )

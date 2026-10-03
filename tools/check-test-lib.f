@@ -6,7 +6,6 @@
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/checked-boundary-lint-core.f
-\ tools/reserved-name-lint-core.f
 \ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-core.f tools/check-test.f
 
@@ -35,7 +34,6 @@ require tools/diag-origin-core.f
 require tools/json.f
 require tools/json-only-core.f
 require tools/checked-boundary-lint-core.f
-require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
@@ -1069,16 +1067,6 @@ variable LONG-J
    s" : CKF-PRIV ( ckfp:ckfpfam -- ckfp:ckfpfam ) ;" SB-APPEND
    SB$ ;
 
-: RESERVED-LIST-RUN ( -- n n n )
-   LIST$ RESERVED$ WRITE-ALL
-   RESERVED-NAME-LINT:RESET
-   CAP-ERR BUF-CAP LINT-OUT-BUFFER!
-   LIST$ s" <source-list>" RESERVED-NAME-LINT:FILE-AS
-   [: RESERVED-NAME-LINT:FINISH ;] catch {: rc:n :}
-   LINT-OUT$ nip
-   LINT-OUT-BUFFER-OFF
-   0 swap rc ;
-
 : DIE$ ( -- ptr u8 n )
    SB-RESET
    s" : CKT-BYE ( -- ) s" SB-APPEND
@@ -1549,6 +1537,74 @@ variable LONG-J
    LINT-OUT-BUFFER-OFF
    RESET ;
 
+\ ---- a source list lints each listed file for the checked boundary ----------
+\ The list runs one `required` line per listed file, so the boundary lint reads
+\ the listed files: one that switches the checker off and then defines is
+\ refused in every mode at its own line and column, as the single file is. The
+\ switch carries across the list: a definition in a later file is refused at
+\ its own line and column. An engine source beside a clean subject is not
+\ linted, as the run loads nothing from it: the strict lint refuses
+\ src/habu/prims.f's `set-check`.
+: BOUNDARY-OFF$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-BX ( -- n ) 1 ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: BOUNDARY-PROSE$ ( ptr u8 n -- ptr u8 n ) {: at:ptr atu:n :}
+   SB-RESET
+   s" UNCHECKED-DEFINITION " SB-APPEND
+   LIST$ SB-APPEND
+   at atu SB-APPEND
+   s"  `CKT-BX`" SB-APPEND
+   SB$ ;
+
+: BOUNDARY-MUTATION$ ( -- ptr u8 n )
+   SB-RESET
+   s" CHECKER-MUTATION " SB-APPEND
+   SUP$ SB-APPEND
+   s" :1:3:" SB-APPEND
+   SB$ ;
+
+: BOUNDARY-JSON$ ( -- ptr u8 n )
+   SB-RESET
+   s\" \"file\":\"" SB-APPEND
+   LIST$ SB-APPEND
+   s\" \",\"line\":2,\"column\":3," SB-APPEND
+   SB$ ;
+
+: BOUNDARY-LIST-RUN ( [ -- ] -- n n n ) {: setup :}
+   RESET
+   setup execute
+   LIST-OPT
+   LIST$ FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: EXPECT-BOUNDARY ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n want:ptr wantu:n :}
+   rc 1 T=
+   outu 0 T=
+   CAP-ERR erru want wantu CONTAINS? TTRUE ;
+
+: TEST-BOUNDARY-LIST ( -- )
+   LIST$ BOUNDARY-OFF$ WRITE-ALL
+   [: ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   [: s" all-errors" OPT ;] BOUNDARY-LIST-RUN s" :2:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   [: s" json-errors" OPT ;] BOUNDARY-LIST-RUN
+   {: outu:n erru:n rc:n :}
+   outu erru rc BOUNDARY-JSON$ EXPECT-BOUNDARY
+   CAP-ERR erru s\" \"code\":\"E-UNCHECKED-DEFINITION\"" CONTAINS? TTRUE
+   SUP$ s\" 0 set-check\n" WRITE-ALL
+   LIST$ s\" : CKT-BX ( -- n ) 1 ;\n" WRITE-ALL
+   [: SUP$ FILE ;] BOUNDARY-LIST-RUN
+   {: outu:n erru:n rc:n :}
+   outu erru rc s" :1:3:" BOUNDARY-PROSE$ EXPECT-BOUNDARY
+   CAP-ERR erru BOUNDARY-MUTATION$ CONTAINS? TTRUE
+   LIST$ GOOD$ WRITE-ALL
+   [: s" src/habu/prims.f" FILE ;] BOUNDARY-LIST-RUN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 : TEST-OPTIONS ( -- )
    RESET
    s" json-errors" OPT
@@ -1715,12 +1771,20 @@ variable LONG-J
    CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
    CAP-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
 
+\ A source list lints each file it names, so the finding names that file.
+: RESERVED-LIST-AT$ ( -- ptr u8 n )
+   SB-RESET
+   LIST$ SB-APPEND
+   s" :1:10: `I`" SB-APPEND
+   SB$ ;
+
 : RESERVED-LIST-TEST ( -- )
-   RESERVED-LIST-RUN 1 T=
+   LIST$ RESERVED$ WRITE-ALL
+   LIST$ LIST-RUN 1 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   CAP-ERR erru s" <source-list>" CONTAINS? TTRUE ;
+   CAP-ERR erru RESERVED-LIST-AT$ CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
    \ The resident harness has already provided lib/test.f. A fresh tool
@@ -1743,10 +1807,15 @@ variable LONG-J
 
 \ test/gate-images.f requires lib/aio.f, which ends by loading its macOS host
 \ module (a require cycle) and calls SUMTYPE constructors it declares itself.
+\ tools/object-image.f loads its target's image writers in target arms, and
+\ src/habu/driver-io.f, which it loads after them, calls their ASM-CODE.
+\ tools/native-emit.f's writers read src/os/image-bytes.f's MSIZE as they load.
 : TEST-IMAGE-TOOL-SOURCES ( -- )
    s" tools/engine-size.f" CHECK-TOOL-SOURCE
    s" tools/imgdump.f" CHECK-TOOL-SOURCE
-   s" test/gate-images.f" CHECK-TOOL-SOURCE ;
+   s" test/gate-images.f" CHECK-TOOL-SOURCE
+   s" tools/object-image.f" CHECK-TOOL-SOURCE
+   s" tools/native-emit.f" CHECK-TOOL-SOURCE ;
 
 \ ---- a subject the engine provides -------------------------------------------
 \ A run loads nothing from a source the engine carries, so it checks nothing
@@ -1825,6 +1894,8 @@ variable LONG-J
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 0 T=
    {: outu:n erru:n :}
    outu 0 T= erru 0 T=
+   \ Nor is it linted: src/core/include.f defines the loaders the lint reserves.
+   s" src/core/include.f" LIST$ CLI-ALL-LIST EXPECT-CHECKED
    LIST$ UNDEFINED$SRC WRITE-ALL
    s" src/core/type-schema.f" LIST$ CLI-ALL-LIST 70 T=
    {: outu:n erru:n :}
@@ -2307,6 +2378,79 @@ INCLUDE-BUF-CAP 2 * constant FULL-ERR-CAP
 : TEST-SCRATCH-FULL ( -- )
    FULL-SOURCE-LEN FULL-ERR-CAP + MEM:BYTES-ALLOC-LEN
    [: FULL-BODY ;] MEM:WITH-BYTES ;
+
+\ ---- a record past the render buffer -----------------------------------------
+\ The renderer holds each record in its own 16 KiB (src/core/render.f RSBUF)
+\ before the scratch sees it. A word of WIDE-N backslashes is within the 7999
+\ bytes `:` defines, and each byte is two in a JSON string, so the record of its
+\ refusal, which names the word and echoes its source, passes that buffer. The
+\ run reports the refusal before it, then that one's as an E-STATEMENT-THROW
+\ record whose throw_code is E-DIAG-CAPACITY (-2901), and exits 70.
+
+7900 constant WIDE-N
+
+: WIDE-HEAD$ ( -- ptr u8 n )
+   s\" : CKT-R ( n -- n ) dup ;\n: " ;
+
+: WIDE-TAIL$ ( -- ptr u8 n )
+   s\"  ( n -- n ) dup ;\n" ;
+
+WIDE-HEAD$ nip WIDE-N + WIDE-TAIL$ nip + constant WIDE-SOURCE-LEN
+
+: WIDE-FILL ( ptr u8 -- ) {: a:ptr :}
+   WIDE-HEAD$ {: h:ptr hu:n :}
+   WIDE-TAIL$ {: t:ptr tu:n :}
+   h a hu BYTE-COPY
+   WIDE-SOURCE-LEN tu - hu ?do $5c a i + c! loop
+   t a WIDE-SOURCE-LEN + tu - tu BYTE-COPY ;
+
+: RENDER-FULL-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   {: a:ptr extent:NUM:alloc-byte-len :}
+   a WIDE-SOURCE-LEN + {: err:ptr :}
+   a WIDE-FILL
+   a WIDE-SOURCE-LEN MODE-ALL MODE-JSON or err REPORT-ERR-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   err erru s\" \"word\":\"ckt-r\"" CONTAINS? TTRUE
+   err erru LAST-LINE-AT {: cut:n :}
+   err cut + erru cut - {: last:ptr lastu:n :}
+   last lastu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   last lastu s\" \"throw_code\":-2901" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
+
+: TEST-RENDER-FULL ( -- )
+   WIDE-SOURCE-LEN REPORT-ERR-CAP + MEM:BYTES-ALLOC-LEN
+   [: RENDER-FULL-BODY ;] MEM:WITH-BYTES ;
+
+\ The sig recorder renders each certified word's effect through the same buffer.
+\ USE declares none, so it records the one the checker infers: six values of a
+\ type whose name is EFFECT-N bytes, past that buffer. The run reports it as an
+\ E-STATEMENT-THROW record whose throw_code is E-DIAG-CAPACITY (-2901) and exits
+\ 70; the refusal after it would be the last record had the throw been lost.
+
+3000 constant EFFECT-N
+
+: EFFECT-NAME ( -- )
+   EFFECT-N 0 ?do $61 LONG-C loop ;
+
+: EFFECT$ ( -- ptr u8 n )
+   0 LONG-U !
+   s" NEWTYPE " LONG-PUT
+   EFFECT-NAME
+   s\"  0\nTRUSTED: MK ( -- " LONG-PUT
+   EFFECT-NAME
+   s\"  ) 0 ;\n: USE MK MK MK MK MK MK ;\n: CKT-R ( n -- n ) dup ;\n" LONG-PUT
+   LONG-BUF LONG-U @ ;
+
+: TEST-RENDER-FULL-EFFECT ( -- )
+   EFFECT$ MODE-JSON CAP-ERR BUF-CAP SCRATCH-MODE-RUN
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   CAP-ERR erru LAST-LINE-AT {: cut:n :}
+   CAP-ERR cut + erru cut - {: last:ptr lastu:n :}
+   last lastu s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   last lastu s\" \"throw_code\":-2901" CONTAINS? TTRUE
+   SCRATCH-EMPTY ;
 
 : LIST-CAP-FILL ( -- )
    LIST-ENTRY-CAP 0 ?do BAD$ FILE loop ;
@@ -2918,23 +3062,26 @@ create BIG $2000 allot   variable BIG-U
 \ with no name; it starts no definition, so the nominal pass reads the line after
 \ it as top-level source. `[char] ;` ends none, so the pass does not read the
 \ local `newtype` after it as a declaration.
-: RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
-   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
-   a u b v OPERAND-SRC$ DIRECT-JSON-STDIN 1 T=
+: NUMERIC-REFUSED ( n n n -- )
+   1 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
    CAP-ERR erru s\" \"word\":\"42\"" CONTAINS? TTRUE ;
 
-: RAW-PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
+: RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   a u b v OPERAND-SRC$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
+
+: RAW-PRINTS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n want:ptr wantu:n :}
    a u HB-LOAD-SRC 0 T=
    {: outu:n erru:n :}
    erru 0 T=
-   CAP-OUT outu s" 115" CONTAINS? TTRUE
+   CAP-OUT outu want wantu CONTAINS? TTRUE
    BAD$ PATH-RUN 0 T=
    {: outu2:n erru2:n :}
    erru2 0 T=
-   CAP-OUT outu2 s" 115" CONTAINS? TTRUE ;
+   CAP-OUT outu2 want wantu CONTAINS? TTRUE ;
 
 : RAW-ADMITTED ( ptr u8 n -- )
    HB-LOAD-SRC NOM-LOAD-ADMITTED
@@ -2964,12 +3111,127 @@ create BIG $2000 allot   variable BIG-U
    s" : CKT-P ( -- n ) [char] \" s" ; : 42 ( -- ) ;" RAW-NUMERIC
    s" char (" s" : 42 ( -- ) ;" RAW-NUMERIC
    s" create char" s" : 42 ( -- ) ;" RAW-NUMERIC
-   s\" char s\" constant CKT-SQ CKT-SQ ." RAW-PRINTS
-   s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." RAW-PRINTS
+   s\" char s\" constant CKT-SQ CKT-SQ ." s" 115" RAW-PRINTS
+   s\" : CKT-Q ( -- n ) [char] s\" ; CKT-Q ." s" 115" RAW-PRINTS
    RAW-TICK-KEYWORD
    RAW-LOCAL$ RAW-ADMITTED
    s" ' :" s" DEFLINEAR N" OPERAND-SRC$ HB-LOAD-SRC RAW-TICK-LOAD-REFUSED
    s" ' :" s" DEFLINEAR N" OPERAND-SRC$ NOM-CHECK-REFUSED ;
+
+\ A body looks a token up among its live locals before the parsing keywords, as
+\ the loader and the checker do, byte for byte: after `{: KW :}` the `KW` pushes
+\ the local, takes no operand, and the `;` after it ends the definition. `.(`
+\ is the same: the loader looks it up after the locals, unlike the `\` and `(`
+\ comments. Each form loads and checks alike and prints 5, the `42` after one
+\ is refused and `DEFLINEAR N` after one is refused at its name, on line 2.
+\ Measured before every scanner of the check looked locals up: the
+\ pre-verifier refused the `char`, `[char]` and `.(` forms (rc 74,
+\ unterminated definition) though they load, and the reserved-name lint and
+\ the nominal pass read past the `;` of every form, so the `42` after the
+\ `[']` and `'` forms was admitted and `DEFLINEAR N` after any form was
+\ refused with no location.
+: LOCAL-KW$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: kw:ptr kwu:n tail:ptr tailu:n :}
+   SB-RESET
+   s" : CKT-LK ( n -- n ) {: " SB-APPEND  kw kwu SB-APPEND
+   s"  :} " SB-APPEND  kw kwu SB-APPEND  s"  ;" SB-APPEND
+   $0a SB-APPEND-C  tail tailu SB-APPEND
+   SB$ ;
+
+: LOCAL-NOMINAL ( ptr u8 n -- ) {: kw:ptr kwu:n :}
+   kw kwu s" DEFLINEAR N" LOCAL-KW$ HB-LOAD-SRC NOM-LOAD-REFUSED
+   kw kwu s" DEFLINEAR N" LOCAL-KW$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-BAD-NOMINAL-TYPE\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"token\":\"N\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"line\":2,\"column\":11," CONTAINS? TTRUE ;
+
+: LOCAL-KW ( ptr u8 n -- ) {: kw:ptr kwu:n :}
+   kw kwu s" 5 CKT-LK ." LOCAL-KW$ s" 5" RAW-PRINTS
+   kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ HB-LOAD-SRC NOM-LOAD-ADMITTED
+   kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
+
+\ `['] \` in a body ticks a word named `\`, as the loader reads it, and the
+\ check runs the source and prints 7. Measured before `[']` joined the
+\ pre-verifier's body keywords: its operand opened a comment there and hid the
+\ `;` (rc 74, unterminated definition).
+: TICK-NAME$ ( -- ptr u8 n )
+   SB-RESET
+   s" : \ ( -- ) ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-TB ( -- [ -- ] ) ['] \ ;" SB-APPEND $0a SB-APPEND-C
+   s" CKT-TB drop 7 ." SB-APPEND
+   SB$ ;
+
+\ An enclosing local is still that local inside a quotation: the loader refuses
+\ it at that token (rc 75) and the check refuses it as a local in a quotation,
+\ after the `;` that ends the definition. Measured before: the pre-verifier read
+\ the `;` as the keyword's operand (rc 74, unterminated definition).
+: LOCAL-QUOTATION$ ( -- ptr u8 n )
+   s" : CKT-LQ ( n -- n ) {: char :} [: char ;" ;
+
+: LOCAL-QUOTATION ( -- )
+   LOCAL-QUOTATION$ HB-LOAD-SRC 75 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" char at" CONTAINS? TTRUE
+   LOCAL-QUOTATION$ DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE ;
+
+\ A parsing keyword outside its own state is refused by the loader and the check
+\ alike: `[char]` at top level, and `char` and `'` in a body.
+: OUT-OF-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   a u DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
+
+\ A body binding a 65th local is refused by the loader at that local (rc 70),
+\ and the check refuses it the same way, with the checker's located
+\ E-TOO-MANY-LOCALS. Measured before the pre-verifier stopped recording locals
+\ at the engine's cap: it died first, rc 74 with no location.
+: MANY-LOCALS$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-ML ( " SB-APPEND
+   65 0 ?do s" n " SB-APPEND loop
+   s" -- ) {:" SB-APPEND
+   65 0 ?do s"  l" SB-APPEND i 1 + FMT:SB-U loop
+   s"  :} ;" SB-APPEND
+   SB$ ;
+
+: MANY-LOCALS ( -- )
+   MANY-LOCALS$ HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" more than 64 locals in one definition: l65" CONTAINS? TTRUE
+   MANY-LOCALS$ DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-TOO-MANY-LOCALS\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"token\":\"l65\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"line\":1,\"column\":397," CONTAINS? TTRUE ;
+
+\ The 65-local body and the DEFLINEAR sources come last: a pre-verifier that
+\ dies on the first, or a nominal pass that misses one of the others and hands
+\ it to the pre-verifier's registration, ends this process.
+: TEST-LOCAL-OPERAND ( -- )
+   s" char" LOCAL-KW
+   s" [char]" LOCAL-KW
+   s" [']" LOCAL-KW
+   s" '" LOCAL-KW
+   s" .(" LOCAL-KW
+   TICK-NAME$ s" 7" RAW-PRINTS
+   LOCAL-QUOTATION
+   s" [char] A ." OUT-OF-STATE
+   s" : CKT-OC ( -- n ) char A ;" OUT-OF-STATE
+   s" : CKT-OT ( -- n ) ' dup drop 1 ;" OUT-OF-STATE
+   MANY-LOCALS
+   s" char" LOCAL-NOMINAL
+   s" [char]" LOCAL-NOMINAL
+   s" [']" LOCAL-NOMINAL
+   s" '" LOCAL-NOMINAL
+   s" .(" LOCAL-NOMINAL ;
 
 \ Value-records whose fields the registration refuses. The loader dies at the
 \ first with the registration's message and rc 70. The check names every
@@ -3932,6 +4194,115 @@ variable REQ-U
    s" req-dup.f" REQ-RUN EXPECT-DUP-PROSE
    s" req-dup.f" ALL-PROSE-RUN EXPECT-DUP-PROSE ;
 
+\ The files of a set, one per target, define the same word, and a body loads
+\ the one its target predicate answers for, as tools/object-image.f loads
+\ sys.f. The engine answers every HB-TARGET-*? one way, so the arm it runs
+\ loads whenever the body does and the other arm never: its file left to the
+\ run leaves the word undefined, and the other arm's file checked too reads
+\ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
+\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
+\ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
+\ any other condition is the run's: the one in CKT-RQ-COND never runs, and
+\ its file defines the word again. So are those of req-alt4.f, which defines
+\ the word itself: each of its `if`s tests a local pushed after a target
+\ predicate, not the predicate.
+: REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
+   s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
+   file fileu REQ-LIT+ tail tailu REQ-LINE+ ;
+
+: REQ-ALT-USE ( ptr u8 n -- )   \ the use, and the built text becomes the fixture
+   s" : CKT-RQ-ALT-USE ( -- n ) CKT-RQ-ALT ;" REQ-LINE+
+   REQ-WRITE ;
+
+: REQ-TARGET-FILES ( -- )
+   SB-RESET s" : CKT-RQ-ALT ( -- n ) 1 ;" REQ-LINE+
+   s" req-alt-linux.f" REQ-WRITE
+   s" req-alt-macos.f" REQ-WRITE
+   s" req-alt-x64.f" REQ-WRITE
+   s" req-alt-cond.f" REQ-WRITE
+   SB-RESET s" : CKT-RQ-PICK ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-PICK" REQ-LINE+
+   s" : CKT-RQ-COND ( -- )" REQ-LINE+
+   s" 0 0= 0=" s" req-alt-cond.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-COND" REQ-LINE+
+   s" req-alt.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK2 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required then ;" REQ-PICK+
+   s" CKT-RQ-PICK2" REQ-LINE+
+   s" req-alt2.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK3 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required" REQ-PICK+
+   s"    else HB-TARGET-MACOS? if " SB-APPEND
+   s" req-alt-macos.f" REQ-LIT+ s"  required" REQ-LINE+
+   s"    else " SB-APPEND s" req-alt-linux.f" REQ-LIT+ s"  required then then ;" REQ-LINE+
+   s" CKT-RQ-PICK3" REQ-LINE+
+   s" req-alt3.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-ALT ( -- n ) 1 ;" REQ-LINE+
+   s" : CKT-RQ-LOCAL ( bool -- )" REQ-LINE+
+   s"    {: off:bool :}" REQ-LINE+
+   s" HB-TARGET-LINUX? off" s" req-alt-cond.f" s"  required then drop" REQ-PICK+
+   s" HB-TARGET-MACOS? off" s" req-alt-cond.f" s"  required then drop ;" REQ-PICK+
+   s" 0 0= 0= CKT-RQ-LOCAL" REQ-LINE+
+   s" req-alt4.f" REQ-ALT-USE ;
+
+: TEST-REQUIRE-TARGET ( -- )
+   REQ-TARGET-FILES
+   s" req-alt.f" REQ-ACCEPTED-EVERY
+   s" req-alt2.f" REQ-ACCEPTED-EVERY
+   s" req-alt3.f" REQ-ACCEPTED-EVERY
+   s" req-alt4.f" REQ-ACCEPTED-EVERY ;
+
+\ The pre-pass reads a target predicate's spelling as the engine's answer, so a
+\ source that defines that spelling, by `:` or by `defer`, is refused at the
+\ name before an arm is skipped on the engine's word, in every mode: a source
+\ list lints each file it names. Each subject defines both host predicates, so
+\ the refusal does not depend on the host.
+: REQ-SHADOW-FILES ( -- )
+   SB-RESET s" : CKT-RQ-SH ( -- n ) 3 ;" REQ-LINE+
+   s" req-shadow-dep.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-SHADOW" REQ-LINE+
+   s" : HB-TARGET-LINUX? ( -- bool ) 0 0= ;" REQ-LINE+
+   s" : HB-TARGET-MACOS? ( -- bool ) 0 0= ;" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-RQ-SH-LOAD ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-shadow-dep.f" s"  required exit then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-shadow-dep.f" s"  required then ;" REQ-PICK+
+   s" ;package" REQ-LINE+
+   s" CKT-RQ-SHADOW:CKT-RQ-SH-LOAD" REQ-LINE+
+   s" : CKT-RQ-SH-USE ( -- n ) CKT-RQ-SH ;" REQ-LINE+
+   s" req-shadow.f" REQ-WRITE
+   SB-RESET s" package CKT-RQ-SHADOW-D" REQ-LINE+
+   s" defer HB-TARGET-LINUX? ( -- bool )" REQ-LINE+
+   s" defer HB-TARGET-MACOS? ( -- bool )" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" req-shadow-defer.f" REQ-WRITE ;
+
+: EXPECT-RESERVED-AT ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n at:ptr atu:n :}
+   rc 1 T=
+   outu 0 T=
+   CAP-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE ;
+
+\ The default run reports the place in prose, the all-errors runs as JSON.
+: SHADOW-CASE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n at:ptr atu:n jat:ptr jatu:n :}
+   f fu REQ-RUN at atu EXPECT-RESERVED-AT
+   f fu REQ-PLAIN-RUN jat jatu EXPECT-RESERVED-AT
+   f fu REQ-ALL-RUN jat jatu EXPECT-RESERVED-AT ;
+
+: TEST-TARGET-SHADOW ( -- )
+   REQ-SHADOW-FILES
+   s" req-shadow.f" s" req-shadow.f:2:3"
+   s\" req-shadow.f\",\"line\":2,\"column\":3," SHADOW-CASE
+   s" req-shadow-defer.f" s" req-shadow-defer.f:2:7"
+   s\" req-shadow-defer.f\",\"line\":2,\"column\":7," SHADOW-CASE ;
+
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal at the type, in every mode, for every definer that sizes one (dot
 \ 2eb1290e), not a throw out of the pre-pass, which reads a DEFER-LAYOUT-BUFFER
@@ -4755,6 +5126,8 @@ variable LC-CANON-U
    s" check/require-cascade" [: TEST-REQUIRE-CASCADE ;] CASE-RUN
    s" check/require-duplicate" [: TEST-REQUIRE-DUPLICATE ;] CASE-RUN
    s" check/require-duplicate-prose" [: TEST-REQUIRE-DUPLICATE-PROSE ;] CASE-RUN
+   s" check/require-target" [: TEST-REQUIRE-TARGET ;] CASE-RUN
+   s" check/target-shadow" [: TEST-TARGET-SHADOW ;] CASE-RUN
    s" check/require-size-all" [: TEST-REQUIRE-SIZE-ALL ;] CASE-RUN
    s" check/require-size-all-list" [: TEST-REQUIRE-SIZE-ALL-LIST ;] CASE-RUN
    s" check/require-size-prose" [: TEST-REQUIRE-SIZE-PROSE ;] CASE-RUN ;
@@ -4799,6 +5172,7 @@ variable LC-CANON-U
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
+   s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
    s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
@@ -4836,6 +5210,7 @@ variable LC-CANON-U
    s" check/source-list-promotion" [: TEST-LIST-PROMOTION ;] CASE-RUN
    s" check/empty-source-mode" [: TEST-EMPTY-SOURCE-MODE ;] CASE-RUN
    s" check/boundary-phase" [: TEST-BOUNDARY-PHASE ;] CASE-RUN
+   s" check/source-list-boundary" [: TEST-BOUNDARY-LIST ;] CASE-RUN
    s" check/options" [: TEST-OPTIONS ;] CASE-RUN
    s" check/mode-collisions" [: TEST-MODE-COLLISIONS ;] CASE-RUN
    s" check/die" [: TEST-DIE ;] CASE-RUN
@@ -4879,6 +5254,8 @@ variable LC-CANON-U
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN
    s" check/refusals" [: TEST-REFUSALS ;] CASE-RUN
    s" check/scratch-full" [: TEST-SCRATCH-FULL ;] CASE-RUN
+   s" check/render-full" [: TEST-RENDER-FULL ;] CASE-RUN
+   s" check/render-full-effect" [: TEST-RENDER-FULL-EFFECT ;] CASE-RUN
    s" check/list-capacity" [: TEST-LIST-CAPACITY ;] CASE-RUN
    s" check/empty-list" [: TEST-EMPTY-LIST ;] CASE-RUN
    s" check/missing-file" [: TEST-MISSING-FILE ;] CASE-RUN

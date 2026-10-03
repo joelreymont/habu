@@ -15,6 +15,19 @@ package NATIVE-EMIT
       s" src/os/linux-x86-64/sys.f" required exit
    then
    s" native-emit: unknown target" 76 die ;
+' LOAD-SYS
+;package
+execute
+
+require src/os/script-argv.f
+require src/habu/treeshake.f
+require src/habu/rt.f
+require src/habu/crash.f
+require src/os/image-bytes.f
+
+\ The target writers read image-bytes.f's MSIZE as they load, and tools/check.f
+\ checks the files a body loads after that body, so LOAD-IMAGE follows it.
+package NATIVE-EMIT
 : LOAD-IMAGE ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
@@ -35,17 +48,6 @@ package NATIVE-EMIT
       s" src/os/linux-x86-64/proc-control.f" required exit
    then
    s" native-emit: unknown target" 76 die ;
-' LOAD-SYS
-;package
-execute
-
-require src/os/script-argv.f
-require src/habu/treeshake.f
-require src/habu/rt.f
-require src/habu/crash.f
-require src/os/image-bytes.f
-
-package NATIVE-EMIT
 ' LOAD-IMAGE
 ;package
 execute

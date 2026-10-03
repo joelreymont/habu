@@ -764,15 +764,12 @@ private
    k LINT-LEX:OPERAND
    LINT-TRUE ;
 
-: CHK-BODY-PARSER? ( n -- bool ) {: k:n :}
-   k s" char" CHK-TOK=CI if LINT-TRUE exit then
-   k s" [char]" CHK-TOK=CI ;
-
-
+\ The lexer marks a parsing keyword's operand, and leaves a local of the
+\ keyword's name unmarked with nothing taken, so the `;` that ends a definition
+\ is the first unmarked one.
 : CHK-WALK-DEF ( n -- n )                \ from past the opener to past its `;`
    begin dup LINT-LEX:COUNT < while
       dup CHK-TOK-SEMI? if 1+ exit then
-      dup CHK-BODY-PARSER? if 1+ then
       1+
    repeat ;
 
@@ -1316,7 +1313,6 @@ variable CHK-EXP-ROWS
    path pathu CHK-RUN-NOMINAL-FILE ;
 
 : CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
-   id CHK-DEP-LOADABLE? 0= if false exit then
    id CHK-DEP$ RESOLVE nip nip 0= ;
 
 : CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
@@ -1499,18 +1495,34 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
+\ A source list materializes as one `required` line per listed file, so a lint
+\ reads the listed files themselves, in list order, except a source the engine
+\ provides, which the run loads nothing from.
+: CHK-LINT-LISTED ( [ ptr u8 n -- ] -- ) {: lint :}
+   CHK-POS-N @ 0 ?do
+      i CHK-POS$ ENGINE-PROVIDES? 0= if i CHK-POS$ lint execute then
+   loop ;
+
 : CHK-RUN-BOUNDARY ( -- )
    2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
    CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
    LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
-   CHK-LINT-SOURCE CHK-LABEL CHECKED-BOUNDARY-LINT:FILE-AS
+   CHK-SEL-MODE @ CHK-SEL-LIST = if
+      [: CHECKED-BOUNDARY-LINT:FILE ;] CHK-LINT-LISTED
+   else
+      CHK-LINT-SOURCE CHK-LABEL CHECKED-BOUNDARY-LINT:FILE-AS
+   then
    CHECKED-BOUNDARY-LINT:FINISH ;
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT:RESET
    2 >FD RESERVED-NAME-LINT:OUT-FD!
    CHK-JSON @ RESERVED-NAME-LINT:JSON!
-   CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
+   CHK-SEL-MODE @ CHK-SEL-LIST = if
+      [: RESERVED-NAME-LINT:FILE ;] CHK-LINT-LISTED
+   else
+      CHK-LINT-SOURCE CHK-LABEL RESERVED-NAME-LINT:FILE-AS
+   then
    RESERVED-NAME-LINT:FINISH ;
 
 \ The lexer's file-local diagnostics still visit discovered files. Definition

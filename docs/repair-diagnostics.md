@@ -14,7 +14,7 @@ lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
-span, an input, or otherwise a definition.
+span, an input, a refused checker record, or otherwise a definition.
 
 Fields:
 
@@ -134,13 +134,16 @@ without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
 <suggestion>`. The run exits 64. A list that also names a source the engine does
 not provide is checked.
 
-Two load-time refusals of a checker record emit a row-shaped object: no
+Two load-time refusals of a checker record emit a refused-record object: no
 definition encloses them, so they carry `schema_version`, `code`,
 `repair_class`, `verdict` `rejected`, `token` (the name the record would have
-described), `file` and `suggestion`, and no span or definition-only field.
+described), `file` and `suggestion`, and no span, `throw_code` or
+definition-only field. Each code names its repair class:
 `E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
 where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
 storage registrar called from source outside the engine's verifier window.
+`tools/check.f` meets either only in its run stage, after every definition has
+checked, and exits 67 as the load's uncaught throw does.
 
 ## Checking Without Running
 
@@ -227,7 +230,8 @@ Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
 from the first diagnostic, in the shape that diagnostic's record has: Schema 1
-has definition, declaration, storage, span and input packet shapes.
+has definition, declaration, storage, span, input and refused-record packet
+shapes.
 
 Definition packet fields:
 
@@ -336,6 +340,21 @@ answers it:
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Rebuild bin/hb to check this source; no code change answers this diagnostic.` |
 
+Refused-record packets carry a refused checker record's evidence, which has no
+place:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | The name the record would have described. |
+| `file` | string | required | Source label or path. |
+| `code` | string | required | `E-TRUST-UNRESOLVED` or `E-PKG-CONTEXT`. |
+| `repair_class` | string | required | `fix_stale_trust_row` or `use_storage_definer`, the one the code names. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
+
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
 top-level array whose items each carry the fields above.
@@ -410,6 +429,11 @@ Current checker classes:
   close.
 - `rebuild_engine`: the input is a source the engine provides, so loading it
   checks nothing; rebuild `bin/hb` to check a change to it.
+- `fix_stale_trust_row`: a `trust` row names no word in the wordlist its record
+  lands in; delete the row, correct the name, or write the row in the section
+  that defines the word.
+- `use_storage_definer`: a checker storage registrar was called from source,
+  outside the engine's verifier window; define the storage with its definer.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -448,6 +472,8 @@ The checker `suggestion` field is stable short text derived only from
 | `close_string` | `Close the string literal before the definition ends.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE.` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
+| `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
+| `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 
