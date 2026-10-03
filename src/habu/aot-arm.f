@@ -6,9 +6,6 @@ require src/core/checker-owner-guard.f
 
 package AOT-ARM
 
-\ Raw cell boundary, the same shape aot-capture.f uses for the same two cells:
-\ the live DATA base is a `ptr n` and storing a cell through it is what the
-\ checker cannot state on its own. Retirement: habu-builder-trust-rows-c5d41af6.
 : LIVE ( -- ptr n ) data-base ;
 : CELL! ( n ptr n -- ) ! ;
 

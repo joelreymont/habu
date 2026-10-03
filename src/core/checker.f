@@ -162,7 +162,7 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ Trusted checker internals below are confined to typed views/nulls over
 \ checker arenas and one raw effect query.
 \ Engine primitive effects, including tok-imm?, live in the primitive table.
-\ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 \ --- growable checker arenas --------------------------------------------
 \ Shared mmap primitives for growable checker stores. Their owners decide the
 \ lifetime: persistent registries copy external storage into image DATA;
@@ -10155,7 +10155,7 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ stack effect needs. Giving any of those an OPEN row would delete the trust
 \ boundary rather than cross it, so their wrappers stay named boundaries.
 \ `execute` and the two raw-address casts stay for the reasons their own files
-\ give (owners habu-typed-xt-storage-ddad4af8, habu-guard-an-executed-8a0f2f77).
+\ give. Retirement: habu-sweep-trusted-out-41e973ce.
 \ The registry half of this block is PPRIM: TFAM now, for the reason the
 \ high-water block above gives. TFL-MATCH-FAM? and TFL-CON-FAM? keep PRIM: rows
 \ because those two words keep global scope: habu2.f compiles `match` and
@@ -16983,8 +16983,8 @@ package CHECKER-REG
 \ A REPLAY IS NOT ASKED, for the same reason CK-OPEN-CLAIMS? declines under
 \ mirror authority: the source being replayed has not been compiled in this
 \ process, so this dictionary is not the one the row is a claim about. A row
-\ sitting directly under its own definition - the src/os/env-base.f and
-\ src/habu/hide.f idiom - would otherwise be refused during
+\ sitting directly under its own definition - the src/habu/hide.f idiom -
+\ would otherwise be refused during
 \ VERIFY:SOURCE-BUF, which is how tools/build-fixpoint.f certifies a generated
 \ stage source, and the refusal would be about a word the replayed text defines
 \ two lines up. Nothing is lost by declining: every row is still asked on the

@@ -670,9 +670,9 @@ $27C8 constant CLAIMS
 \ record span has been declared in this bracket.
 \ PROT:CF: a latch, not a range - the CONTROL-FLOW band's extent is the constant
 \ [CFSTK-OFF, DICT-SIZE), so there is nothing per-bracket to record but whether it
-\ is open. Dot habu-move-the-control-c7de6246 retires this band by moving the
-\ control-flow stack out of the protected region; when it lands, this cell and
-\ PROT-EMIT:LCF go with it.
+\ is open. Moving the control-flow stack out of the protected region retires
+\ this band; when it lands, this cell and PROT-EMIT:LCF go with it.
+\ Retirement: habu-campaign-c1-finish-1f129a00.
 \ src/habu/habu1.f EMIT-PROT-WINDOW owns every read and write of all five;
 \ engine-emitted code is their only writer.
 \

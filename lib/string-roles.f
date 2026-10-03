@@ -33,15 +33,13 @@ require lib/num-arithmetic.f
 \ mirroring VEC's ITEM-COUNT>N/INDEX>N and MEM's ALLOC-*>N: the raw scan words and
 \ their byte pointers still consume a bare `n`, so the typed boundary reads a
 \ validated role's cell to drive them. Private, no public export, confined to
-\ lib/string.f; retire when TVK-RAW (habu-nominal-storage-raw-a3430ef2) lets the
-\ byte-scan primitives take the nominal role directly. The typed layer wraps the
-\ raw words as black boxes (RAW-* aliases captured before the package words shadow
-\ their global names) and only STR:SPLIT-NEXT adds a check the raw word cannot
-\ express: the largest field boundary it can report is one past the string end, so
-\ the offset advance (end + 1) is proven through the B5.2 NUM:ADVANCE-BYTE-OFF
-\ BEFORE the scan, turning an offset-space overflow into an E-STR-BOUNDS throw
-\ instead of a silent wrap.
-\ Retirement owner: habu-epic-model-cad-70b629a9.
+\ lib/string.f. The typed layer wraps the raw words as black boxes (RAW-* aliases
+\ captured before the package words shadow their global names) and only
+\ STR:SPLIT-NEXT adds a check the raw word cannot express: the largest field
+\ boundary it can report is one past the string end, so the offset advance
+\ (end + 1) is proven through the B5.2 NUM:ADVANCE-BYTE-OFF BEFORE the scan,
+\ turning an offset-space overflow into an E-STR-BOUNDS throw instead of a
+\ silent wrap.
 
 package STR
 private

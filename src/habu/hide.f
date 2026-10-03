@@ -27,7 +27,7 @@
 
 \ Dictionary records and long names are addressed by integers. This prelude
 \ defines globals and truncates them away, and a global pointer CAST: is
-\ E-CAST-MINT. Retirement: habu-builder-trust-rows-c5d41af6.
+\ E-CAST-MINT. Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: BFR-N>REC ( n -- ptr n ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
 \ THE LOWERING SEAM, and `seed-ndict!` rather than public `ndict!` because the
@@ -50,7 +50,7 @@ TRUSTED: BFR-NDICT! ( n -- ) seed-ndict! ;
 \ region with the hook silenced, but the blocking pre-pass (tools/
 \ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, so the
 \ window's only effect is stage-compile hook silence.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 
 : BFR-REC-ADDR ( n -- n )

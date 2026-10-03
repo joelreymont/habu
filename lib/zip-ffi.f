@@ -110,7 +110,7 @@ TRUSTED: DISCARD-CALL ( -- )
 
 \ The only asserted effects are exact C entry points. Habu owns all policy,
 \ range checks and storage. Pointer results are libzip-owned opaque objects.
-\ Retirement owner: ZIP, when the compiler supports declared C imports.
+\ Retirement owner: habu-sweep-trusted-out-f872acb0.
 
 TRUSTED: OPEN-CALL ( -- ptr u8 )
    ARGS REG-LENS 3 OPEN-FN @ ffi-call-bounded ;

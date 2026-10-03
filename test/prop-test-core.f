@@ -30,8 +30,8 @@ require lib/fmt.f                        \ FMT:.INT - one-line number text
 \ rc 70).
 0 set-tier
 
-\ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
-\ remains owned by habu-primitive-effect-axiom-1119f176.
+\ PROP-INSTALL-HOOK arms the fail-closed hook through set-check.
+\ Retirement: habu-trusted-dies-prim-4fd12d60.
 : PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if CHECKER-REJECT-RC throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
@@ -42,15 +42,15 @@ PROP-INSTALL-HOOK
 \ ---- measurement: compare stack depth before and after a certified run
 variable BASE  variable MC
 \ Drains an arbitrary residual row while preserving its measured depth.
-\ Retirement owner: habu-typed-depth-introspection-18f0efda.
+\ Retirement owner: habu-give-tests-a-8d8cdc19.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict CHK read from CHECK!
 \ Reads the engine's evaluate-error cell by its NAMED layout constant
 \ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
 \ layout change can't silently point this peek at the wrong cell.
-\ habu-type-isolated-dynamic-244c0e2c retires this direct read by returning a
-\ typed raw dynamic-evaluate outcome.
+\ Retirement: habu-give-tests-a-8d8cdc19, whose typed evaluate boundary returns the
+\ outcome itself.
 : ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
@@ -224,15 +224,14 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTOR
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 \ Differential boundary: certification already happened via CHECK! in CHK;
 \ the compile stage runs unchecked so the fuzzer measures the candidate's
-\ true runtime arity without re-entering the hook. Dynamic evaluate remains
-\ owned by habu-primitive-effect-axiom-1119f176.
+\ true runtime arity without re-entering the hook.
+\ Retirement: habu-give-tests-a-8d8cdc19.
 TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    0 set-check
    evaluate
    PROP-INSTALL-HOOK ;
 : CHK-BODY$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a 2 + u 4 - ;
-\ Dynamic candidate evaluation belongs to habu-primitive-effect-axiom-1119f176.
 : CHK  ( ptr u8 n -- )
    CHK-MARK
    0 VERD !
@@ -244,8 +243,8 @@ TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
       CHK-FORGET
    THEN ;
 \ Dynamic measurement records exact residual depth or an evaluate trap.
-\ Dynamic evaluate belongs to habu-primitive-effect-axiom-1119f176; arbitrary
-\ residual-row measurement belongs to habu-typed-depth-introspection-18f0efda.
+\ Dynamic evaluate and arbitrary residual-row measurement.
+\ Retirement: habu-give-tests-a-8d8cdc19.
 TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    0 LAST-TRAP !  RUN1  PBUF PBUF-U @ evaluate
    ERR@ 0 = IF
@@ -339,8 +338,8 @@ variable BSAVE
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 \ Differential boundary: deliberately compiles a checker-REJECTED body to
-\ confirm a false reject, which only tier 0 does (`0 set-tier` above). Dynamic
-\ evaluate remains owned by habu-primitive-effect-axiom-1119f176.
+\ confirm a false reject, which only tier 0 does (`0 set-tier` above).
+\ Retirement: habu-give-tests-a-8d8cdc19.
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
@@ -538,8 +537,7 @@ private
 variable DOUT
 
 \ Dynamic `evaluate` has source-dependent effects that the checker cannot
-\ express. Retire this boundary with habu-type-isolated-dynamic-244c0e2c when
-\ typed isolated evaluation can return the measurement result directly.
+\ express. Retirement: habu-give-tests-a-8d8cdc19.
 TRUSTED: EVAL-RUNNER ( -- n )
    PBUF PBUF-U @ evaluate ;
 

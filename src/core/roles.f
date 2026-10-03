@@ -90,7 +90,6 @@ variable DTC-SIG-U
 \ them executable at top level (LAYOUT-BUFFER parity, dots
 \ habu-checker-deftype-deflinear-8e9d1dc5,
 \ habu-checker-unsafety-must-d12bc784).
-\ Retirement: habu-multishot-quotations-typed-8832cace.
 
 CAST: >IDX ( n -- idx )
 CAST: IDX>N ( idx -- n )

@@ -40,7 +40,8 @@ private
    cells data-base USE-WIDS-OFF + + @ ;
 
 \ The raw indexed record stays inside this protected package. Visibility is
-\ checked after namespace resolution. Retirement: habu-attr-and-remove-2b13e978.
+\ checked after namespace resolution.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 
@@ -474,7 +475,8 @@ private
 
 \ ---- and which cell a deferred word dispatches through ------------------------
 \ The trailer is recognised by DEFER-MAGIC and never by its shape, because an
-\ ordinary integer may hold any value. Retires with habu-typed-xt-storage-ddad4af8.
+\ ordinary integer may hold any value.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: TRAILER@ ( n -- n )
    @ ;
 

@@ -31,7 +31,7 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
 
-\ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
+\ Checker axioms. Retirement: habu-campaign-c2-mem-c3d7662b.
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
 \ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.

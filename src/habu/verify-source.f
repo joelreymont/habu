@@ -640,7 +640,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ Verifier trust rows below cover recursive checker entrypoints, checker-owned
 \ mode state, dynamic signature publication, raw-definer mode, and the scope's
 \ own name resolution.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 \ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, or
 \ in a multi-error load.
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )

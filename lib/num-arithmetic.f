@@ -31,8 +31,7 @@
 \ the validated value is built. The only new audited boundaries here are the
 \ six proof-erasure projections that read a role's raw cell for the arithmetic
 \ (slice 1 shipped `BYTE-LEN>N` and `CELL-COUNT>N`; the other six families need
-\ the same read). They have no public inverse and are retired with TVK-RAW
-\ (dot habu-nominal-storage-raw-a3430ef2), exactly as the slice 1 projections.
+\ the same read). They have no public inverse.
 \
 \ No `require lib/memory.f`: MEM:ALLOC-* consumes NUM alloc roles, so a
 \ dependency would be a cycle; CELL-BYTES-N mirrors the machine cell size that

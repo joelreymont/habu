@@ -3,8 +3,8 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and ENGINE-EMIT:FORTH follow in part 2 (habu2.f).
-\ Trusted rows expose the builder-mode cell and the data-driven raw-code emitter.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ A trusted row exposes the builder-mode cell.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
@@ -4365,9 +4365,9 @@ package ENGINE-EMIT
 \ at or below CP declares the single word at CP rather than a negative length.
 \
 \ PROT-EMIT:LCF ( -- ) declares the whole control-flow band, register-transparently, so
-\ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry. Dot
-\ habu-move-the-control-c7de6246 moves that stack out of the protected region;
-\ when it lands, this body and PROT:CF go with it and the band disappears.
+\ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry.
+\ Moving that stack out of the protected region retires this body and PROT:CF
+\ with the band. Retirement: habu-campaign-c1-finish-1f129a00.
 \
 \ PROT-EMIT:LCLOSE ( -- ) flips every open band back and clears its record. With
 \ nothing open it is a no-op, which is what the several defensive "region -> RX,

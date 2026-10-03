@@ -185,7 +185,7 @@ USER-BAND:END constant TASK-USER-END
    NULL$ drop CELL-VIEW ;
 
 \ TCB raw-cell pointer refinement and pointer-slot reinterpretation are outside
-\ checker inference. Retirement owner: habu-typed-defining-words-aa224eb5.
+\ checker inference. Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: TASK-N>PTR ( n -- ptr n ) ;
 
 TRUSTED: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n ) ;
@@ -257,7 +257,7 @@ variable SYMBOLS-READY
    again ;
 
 \ Exact task-internal C bindings fix every pointer extent and scalar role before
-\ entering the bounded FFI trampoline. Retirement owner: habu-ptx-m1-c-1df1d6e7.
+\ entering the bounded FFI trampoline. Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: MUNMAP-CALL ( ptr n n -- n ) {: a:ptr len:n :}
    TASK-SYMBOLS FFI:RESET
    a 0 FFI:READABLE!

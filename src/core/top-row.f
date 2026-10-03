@@ -102,8 +102,7 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ §2.3). The 0 set-check window (TR-SUSP) still suspends ALL enforcement - inside
 \ the audited escape window tier-2 degrades to silence (docs §2.4), never a reject.
 \ Trusted sites are the raw effect query and dynamic top-row hook install described
-\ below. Retirement: habu-checker-self-typing-9ff8ba86 and
-\ cap:checker-hook-identity, respectively.
+\ below. Retirement: habu-sweep-trusted-out-41e973ce.
 2 constant TR-TIER2                      \ reject pre-execution (rc 70 diagnostic)
 70 constant TR-REJECT-RC                 \ RC-REJECT: catchable, rc 70 uncaught
 : TR-TIER2? ( -- bool )

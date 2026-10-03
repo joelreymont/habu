@@ -4,7 +4,7 @@
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1

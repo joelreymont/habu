@@ -19,7 +19,7 @@ require src/habu/proc-maps.f
 
 \ The checker registry does not publish its diagnostic-mode cell to later
 \ checked loads, so the AOT diagnostic reader types that boundary here.
-\ Retirement: habu-primitive-effect-axiom-1119f176.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 package AOT-LINK
@@ -27,8 +27,8 @@ using SNAP-RELOC
 using ADDRESS-CARRIER
 
 \ These views expose mixed dictionary fields and the live code/dictionary extent
-\ used to classify stripped-image cells. Retirement:
-\ habu-builder-trust-rows-c5d41af6.
+\ used to classify stripped-image cells.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
 \ Live-extent bounds as integers, for value-domain range tests (CELL-TEXTPTR?):

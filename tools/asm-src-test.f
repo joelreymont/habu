@@ -16,7 +16,7 @@ require src/arch/arm64/mnem.f
 \ the trusted rows below name them the way the dictionary now records them.
 using A64ASM
 
-\ Raw ARM64 fixture effects retire with habu-builder-trust-rows-c5d41af6.
+\ Raw ARM64 fixture effects. Retirement: habu-campaign-c2-mem-c3d7662b.
 \ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
 s" A64ASM:MOVZHW" s" n n n -- n" TRUST
 s" A64ASM:ENC-ADD" s" n n n -- n" TRUST

@@ -169,7 +169,6 @@ create SP-BYTES 100 allot
 : ENUM-BUNDLE ( lamp n -- n lamp )
    swap ;
 
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
 : TRY ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 

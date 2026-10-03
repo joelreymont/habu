@@ -17,7 +17,7 @@
 PTR-VARIABLE HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
 \ HB exposes the raw baked-source buffer cell.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 : HB@ ( -- ptr u8 ) HB @ ;
 s" HB@" s" -- ptr u8" TRUST
 

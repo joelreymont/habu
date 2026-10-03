@@ -47,8 +47,8 @@ lives here; build, test and environment rules live in
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
     Only the text's definitions are certified, each against its own signature.
-- Existing TRUST forms are legacy awaiting removal, tracked in [minimal PRIM
-  migration](../.dots/habu-trusted-dies-prim-4fd12d60/habu-finish-minimal-prim-c00c6a93.md);
+- Existing TRUST forms are legacy awaiting removal, tracked in [Campaign
+  C2](../.dots/habu-campaign-c2-mem-c3d7662b/habu-campaign-c2-mem-c3d7662b.md);
   mentions below describe legacy syntax only.
 
 ## Naming
