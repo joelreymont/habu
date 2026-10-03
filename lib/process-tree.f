@@ -419,8 +419,6 @@ variable CUR                        \ the read position in STAT
    code FS-LIST:E-OPEN = if exit then
    code throw ;
 
-\ Directory listings do not nest, so the threads are read once the walk of
-\ /proc is done.
 : SCAN-LINUX ( -- )
    s" /proc" [: VISIT-LINUX ;] FS-LIST:EACH
    MEMBER-N @ 0 ?do
@@ -729,5 +727,15 @@ public
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
    pid PID>N [: CPU-READ ;] [: WALK-RELEASE ;] finally ;
+
+\ Frees the walk storage in a process just forked. fork copies only the thread
+\ that called it, so a WALKING another task held stays held in the child with
+\ nothing there to release it, and the child's first walk or query would wait
+\ for ever. No walk or query forks, so the walk this ends is never the
+\ child's own. PROC-FORK:RAW runs it on the child's first instruction
+\ (lib/process-fork.f ENTER-CHILD); anywhere else it would let a second walk
+\ in beside a running one.
+: CHILD-RESET ( -- )
+   WALK-RELEASE ;
 
 ;package

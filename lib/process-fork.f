@@ -23,6 +23,7 @@
 require lib/errors.f
 require lib/process.f
 require lib/fs-mutate.f                  \ the fs cleanup table a forked child must not inherit; see ENTER-CHILD
+require lib/process-tree.f               \ the walk lock a forked child must not inherit; see ENTER-CHILD
 
 package PROC-FORK
 
@@ -40,8 +41,14 @@ private
 \ thing it owns. (Measured before this reset: a gate pool member that ran its
 \ own cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the
 \ whole capture root out from under its live siblings.)
+\
+\ lib/process-tree.f's WALKING is held by whichever task walks, and fork copies
+\ only the thread that forked: a walk another task was in has no thread in the
+\ child to end it, and the child's first walk or query would wait for it for
+\ ever (lib/process-tree-fork-test.f).
 : ENTER-CHILD ( -- )
-   CLEANUP-RESET ;
+   CLEANUP-RESET
+   PROC-TREE:CHILD-RESET ;
 
 public
 

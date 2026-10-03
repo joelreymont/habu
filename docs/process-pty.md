@@ -82,12 +82,13 @@ publishes:
 - `REAP ( -- outcome )` reaps that child within `WAIT-BUDGET-MS`. It reads the
   master to the hang-up first, because a child on a terminal nobody empties
   blocks in write() until someone does, and then waits out what is left of the
-  budget on the child's lifetime watch. On expiry it kills the child and names
-  it -- the pid, the budget it overran and the bytes still unread at the master
-  -- and answers `OUTCOME:TIMEOUT`, so a case asserting a clean exit reds
-  instead of hanging. `REAP-WITHIN ( n -- outcome )` is the same with the
-  caller's own budget, and `WAIT-EXIT ( pid n -- outcome )` the same bound for a
-  child that is no longer writing to us, such as a suite's pipe children.
+  budget on the child's lifetime watch. On expiry it kills the child, with
+  every process it started (`PROC-KILL-TREE`), and names it -- the pid, the
+  budget it overran and the bytes still unread at the master -- and answers
+  `OUTCOME:TIMEOUT`, so a case asserting a clean exit reds instead of hanging.
+  `REAP-WITHIN ( n -- outcome )` is the same with the caller's own budget, and
+  `WAIT-EXIT ( pid n -- outcome )` the same bound for a child that is no longer
+  writing to us, such as a suite's pipe children.
   `PROC-WAIT-RC` keeps its unbounded contract for callers that want one.
 - `SEND` / `SEND-LINE` / `SEND-BYTE` type at the master; `WRITE-ALL`,
   `WRITE-BYTE` and `WRITE-LINE` write to any descriptor, so a suite's pipe
@@ -128,7 +129,8 @@ refuses a second pair while one is open. `lib/pty-harness-test.f` drives the
 buffer, the search, the watches and the spawn's abort path directly, ends a wait
 both ways -- on a live child's clock and on its hang-up -- and forces the wedge
 the bounded reap exists for: a child that writes into the terminal forever and
-never exits is killed on the clock, not waited on.
+never exits is killed on the clock, not waited on. A child that started a
+sleeper on its terminal is killed with it, so the master hangs up.
 
 ## Supervised sessions (`lib/process-pty-io.f`)
 
@@ -149,6 +151,11 @@ Both modes share the handle lifecycle (`LAUNCH`, `ALIVE?`, `AWAIT`, `SIGNAL`,
   dozens of reads -- so a caller waiting for text loops to its marker under an
   absolute deadline (`PROC-DEADLINE-AT` / `PROC-LEFT-MS`) and ends only on the
   marker, the `-1`, or the clock.
+
+`TEARDOWN` kills each supervised pid with every process it started
+(`PROC-KILL-TREE`), so nothing the target spawned outlives the session holding
+its pipe or terminal; a tree walk the kernel refuses is reported on stderr,
+never thrown past the linear token.
 
 `AWAIT` and `AWAIT-BYTES` wait on the AIO loop ([aio.md](aio.md)): one
 `AIO:POLL` for the milliseconds the caller named and one `AIO:AWAIT`, with

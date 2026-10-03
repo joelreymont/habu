@@ -1237,8 +1237,8 @@ variable LONG-J
 \ CKR-SEVEN. A definition naming such a product is left to the run, which
 \ certifies it, but only after the rendering statement and only in the wordlist
 \ that statement ran in; anything else unknown is still refused by the
-\ pre-pass. `FUNCTION:` is resident here (lib/fs-mutate.f requires
-\ lib/ffi-abi.f), and TASK:+USER is the renderer lib/crypto/evp.f uses.
+\ pre-pass. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
+\ for TASK:+USER, the renderer lib/crypto/evp.f uses.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
    s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
@@ -1830,8 +1830,8 @@ variable LONG-J
    CAP-ERR erru RESERVED-LIST-AT$ CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
-   \ The resident harness has already provided lib/test.f. A fresh tool
-   \ process also exercises its resident verification instead of skipping it.
+   \ check.f in a process of its own, which never loaded lib/test.f, checks
+   \ the source list as this harness does in process.
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
    s" lib/test.f" CHECK-ARG+
@@ -3946,7 +3946,7 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7152 at ';'" CONTAINS? TTRUE
    MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
    outu2 0 T=
-   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED-RECORD\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"throw_code\":7152" CONTAINS? TTRUE ;
@@ -3955,7 +3955,7 @@ variable REQ-U
    MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
-   CAP-ERR erru s" E-BAD-QUALIFIED habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
    CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7152 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
 
 \ The throw leaves a raw storage definer's signature (verify-source.f
@@ -4497,17 +4497,44 @@ variable AGREE-ERR-U
    s" : CKT-AG-USE ( -- n ) CKT-AG-NOPE ;" REQ-LINE+
    s" agree.f" REQ-WRITE ;
 
+\ The fixture is refused by the pre-pass as undefined at the token, here and on
+\ the command line, with the same report.
+: AGREE-UNDEFINED ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n tok:ptr toku:n :}
+   file fileu REQ-RUN {: outu:n erru:n rc:n :}
+   CAP-ERR AGREE-ERR erru BYTE-COPY  erru AGREE-ERR-U !
+   outu erru rc tok toku EXPECT-PREVERIFY-UNDEFINED
+   file fileu REQ$ CLI-PATH {: cliu:n clie:n clirc:n :}
+   rc clirc T=
+   outu cliu T=
+   AGREE-ERR AGREE-ERR-U @ CAP-ERR clie T$= ;
+
 : TEST-REPEAT-DEFINER ( -- )
    AGREE-DEFINER
    s" agree.f" REQ-RUN EXPECT-ACCEPTED
    AGREE-PLAIN
-   s" agree.f" REQ-RUN {: outu:n erru:n rc:n :}
-   CAP-ERR AGREE-ERR erru BYTE-COPY  erru AGREE-ERR-U !
-   outu erru rc s" CKT-AG-NOPE" EXPECT-PREVERIFY-UNDEFINED
-   s" agree.f" REQ$ CLI-PATH {: cliu:n clie:n clirc:n :}
-   rc clirc T=
-   outu cliu T=
-   AGREE-ERR AGREE-ERR-U @ CAP-ERR clie T$= ;
+   s" agree.f" s" CKT-AG-NOPE" AGREE-UNDEFINED ;
+
+\ The pre-pass sees the program the run loads: the engine and what the subject
+\ loads. A word only the checking process loaded - lib/test.f's T= in this
+\ harness, lib/fs.f's FILE-SIZE here and in check.f alike - is undefined to it
+\ in both, a subject that requires lib/fs.f itself has FILE-SIZE, and one that
+\ includes lib/process.f declares its `outcome` family afresh, as the load
+\ does, though this process declared it when it loaded the file.
+: TEST-PREPASS-VIEW ( -- )
+   SB-RESET s" : CKT-PV-ASSERT ( n n -- ) T= ;" REQ-LINE+
+   s" view-harness.f" REQ-WRITE
+   s" view-harness.f" s" T=" AGREE-UNDEFINED
+   SB-RESET s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   s" view-tool.f" REQ-WRITE
+   s" view-tool.f" s" FILE-SIZE" AGREE-UNDEFINED
+   SB-RESET s" require lib/fs.f" REQ-LINE+
+   s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   s" view-own.f" REQ-WRITE
+   s" view-own.f" REQ-RUN EXPECT-ACCEPTED
+   s" view-own.f" REQ$ CLI-PATH EXPECT-ACCEPTED
+   SB-RESET s" include lib/process.f" REQ-LINE+
+   s" view-family.f" REQ-WRITE
+   s" view-family.f" REQ-RUN EXPECT-ACCEPTED ;
 
 \ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
 \ process library, which used to leave the run with nothing but `hb: uncaught
@@ -4974,10 +5001,10 @@ variable LC-CANON-U
    erru s" code" s" E-ENGINE-PROVIDED" LC-PACKET s" file" LC-STRING$
    s" load-context: engine-provided, file as given" T-LABEL s" lib/string.f" T$= ;
 
-\ A file of check.f's own closure is held by the checking image though the
-\ engine does not provide it: resident verification skips it, as `require`
-\ skips a held file, and the run stage checks it in an engine of its own, as
-\ `bin/hb --load` loads it.
+\ A file of check.f's own closure, which the engine does not provide, is
+\ checked as any other: the pre-pass verifies it in the verifier child, whose
+\ image does not hold it, and the run stage loads it in an engine of its own,
+\ as `bin/hb --load` does.
 : LC-TOOL-CLOSURE-CASE ( -- )
    s" lib/process.f" LC-ALL
    s" load-context: a file of check.f's own closure" LC-EXPECT-CLEAN ;
@@ -5357,6 +5384,7 @@ variable LC-CANON-U
    s" check/repeat-file" [: TEST-REPEAT-FILE ;] CASE-RUN
    s" check/repeat-list" [: TEST-REPEAT-LIST ;] CASE-RUN
    s" check/repeat-definer" [: TEST-REPEAT-DEFINER ;] CASE-RUN
+   s" check/prepass-view" [: TEST-PREPASS-VIEW ;] CASE-RUN
    s" check/oversize" [: TEST-OVERSIZE ;] CASE-RUN
    DECL-CASES
    REQUIRE-CASES

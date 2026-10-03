@@ -78,8 +78,8 @@ package PG-CLUSTER
 
 $10000 constant CAPTURE-CAP     \ initdb's chatter, or the server's log
 \ The step deadlines - initdb, start, each case file and stop - sum to 300 s,
-\ inside the row's 360 s (test/gate-stdlib-lib.f SUITE-TIMEOUT-MS), so this
-\ process and not the pool is the one that gives up and stops the server.
+\ inside the row's hang guard (test/suite-budget.f ROW-MS), so this process
+\ and not the pool is the one that gives up and stops the server.
 60000 constant TOOL-MS
 60000 constant FILE-MS
 \ A signalled stop. An immediate shutdown SIGKILLs the children still alive

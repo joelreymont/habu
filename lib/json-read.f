@@ -83,12 +83,12 @@ private
 47 constant SLASH
 48 constant ZERO
 58 constant COLON
-69 constant E-UPPER
+69 constant EXP-UPPER
 91 constant LBRACK
 92 constant BACKSLASH
 93 constant RBRACK
 98 constant CH-B
-101 constant E-LOWER
+101 constant EXP-LOWER
 102 constant CH-F
 110 constant CH-N
 114 constant CH-R
@@ -423,8 +423,8 @@ private
    dup MINUS = if drop TRUE exit then
    dup PLUS = if drop TRUE exit then
    dup DOT = if drop TRUE exit then
-   dup E-LOWER = if drop TRUE exit then
-   E-UPPER = ;
+   dup EXP-LOWER = if drop TRUE exit then
+   EXP-UPPER = ;
 
 : SCAN-NUMBER ( ptr n -- ) {: state:ptr :}
    state POS-OFF + @ state TOK-AT-OFF + !
@@ -469,7 +469,7 @@ private
 
 : NV-EXP? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    state NI-OFF + @ u >= if TRUE exit then
-   a state NI-OFF + @ + c@ dup E-LOWER <> swap E-UPPER <> and if TRUE exit then
+   a state NI-OFF + @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if TRUE exit then
    T-FLOAT state KIND-OFF + !
    state NI-OFF + dup @ 1+ swap !
    state NI-OFF + @ u < if

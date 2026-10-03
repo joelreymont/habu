@@ -32,6 +32,13 @@
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, and each
 \ sleeper died of SIGKILL and was reaped; and here, that the walker's stderr is
 \ one line per capture naming the refused walk's E-PROC-OUTPUT.
+\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. TEARDOWN kills each of
+\     a session's three pids with its tree (lib/process-pty-io.f IO-KILL-REAP),
+\     and a throw out of it would strand the linear teardown token and leak
+\     the slot.
+\ Asserted by a third walker, `pty`, under the listing denial: TEARDOWN
+\ returns and the target is reaped; and here, that its stderr is one line per
+\ supervised pid naming the refused walk.
 \
 \ HOSTS. macOS only: sandbox-exec is the way here to make the kernel refuse.
 \ The Linux walk reads /proc through open, whose failure the engine reports
@@ -50,6 +57,7 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-pty-io.f
 require lib/process-env.f
 require lib/engine-candidate.f
 require lib/process-tree.f
@@ -61,12 +69,14 @@ package PROC-TREE-TEST
 30000 constant WALKER-MS             \ one engine boot and one walk, on a loaded host
 1 constant CAPTURE-MS                \ passes long before the sleeper's 30 s
 2 constant CAPTURES                  \ the capture walker's, each walking once
+3 constant SUPERVISED                \ the pty walker's: target, anchor and monitor
 $4000 constant CAP
 
 create OUT CAP allot
 create ERR CAP allot
 create SANDBOX FS-PATH-CAP allot
 variable VICTIM
+variable TARGET
 
 : KILLED-BY? ( outcome n -- bool ) {: sig:n :}
    MATCH outcome
@@ -135,6 +145,18 @@ variable VICTIM
    s" refused: that sleeper died of SIGKILL and was reaped" SLEEPER-REAPED
    T-REPORT ;
 
+\ ---- the pty walker, under the sandbox --------------------------------------
+
+: PTY-WALK ( -- )
+   T-RESET
+   s" /usr/bin/true" >LEN PROCESS-PTY:SPAWN
+   PROCESS-PTY:LAUNCH
+   PROCESS-PTY:TARGET PID>N TARGET !
+   PROCESS-PTY:TEARDOWN
+   s" refused: a torn-down session's target was reaped" T-LABEL
+   TARGET @ 0 kill-errno ESRCH# negate T=
+   T-REPORT ;
+
 \ ---- the cases --------------------------------------------------------------
 
 : SANDBOX$ ( -- ptr u8 n )
@@ -179,11 +201,11 @@ variable VICTIM
    {: profile:ptr profileu:n label:ptr labelu:n :}
    profile profileu s" walker" SANDBOXED label labelu VERDICT ;
 
-\ What stderr gets from lib/process.f for each walk the kernel refused.
-: WALK-LINES$ ( -- ptr u8 n )
+\ What stderr gets from lib/process.f for n walks the kernel refused.
+: WALK-LINES$ ( n -- ptr u8 n ) {: walks:n :}
    SB-RESET
-   CAPTURES 0 ?do
-      s" process: process tree of a capture child not walked, throw " SB-APPEND
+   walks 0 ?do
+      s" process: process tree of a killed child not walked, throw " SB-APPEND
       E-PROC-OUTPUT FMT:SB-INT
       $0A SB-APPEND-C
    loop
@@ -195,7 +217,15 @@ variable VICTIM
    outn errn rc
    s" a capture whose tree walk is refused keeps its own answer" VERDICT
    s" the walker's stderr names each refused walk" T-LABEL
-   ERR errn WALK-LINES$ T$= ;
+   ERR errn CAPTURES WALK-LINES$ T$= ;
+
+: REFUSED-PTY ( -- )
+   s" (version 1)(allow default)(deny process-info-listpids)"
+   s" pty" SANDBOXED {: outn:n errn:n rc:n :}
+   outn errn rc
+   s" a session whose tree walks are refused is torn down" VERDICT
+   s" the walker's stderr names each refused walk" T-LABEL
+   ERR errn SUPERVISED WALK-LINES$ T$= ;
 
 : CASES ( -- )
    T-RESET
@@ -207,7 +237,8 @@ variable VICTIM
    s" a refused listing throws, and the named process still dies" REFUSED
    s" (version 1)(allow default)(deny process-info-pidinfo)"
    s" a refused record throws, and the named process still dies" REFUSED
-   REFUSED-CAPTURE ;
+   REFUSED-CAPTURE
+   REFUSED-PTY ;
 
 public
 
@@ -215,6 +246,7 @@ public
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" walker" STR= if WALK exit then
       0 SCRIPT-ARGV$ s" capture" STR= if CAPTURE-WALK exit then
+      0 SCRIPT-ARGV$ s" pty" STR= if PTY-WALK exit then
       s" process-tree-test: unknown mode" 64 die
    then
    CASES

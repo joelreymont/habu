@@ -4,9 +4,9 @@
 \ use, so the compaction, the span search and the never-seen facts are exercised
 \ where they can be driven exactly. The last ones need a real pair: the spawn's
 \ own abort path, the two ends of a wait - a clock that runs out on a live child
-\ and a child that hangs up - and the wedged reap. The rest of the pty half - the
-\ waits and both barrier shapes against a child engine's own answers - is
-\ test/proc-pty.f's.
+\ and a child that hangs up - the wedged reap, and the kill that ends what the
+\ child started. The rest of the pty half - the waits and both barrier shapes
+\ against a child engine's own answers - is test/proc-pty.f's.
 \
 \ Run: bin/hb --load lib/pty-harness-test.f
 require lib/test.f
@@ -23,6 +23,7 @@ $64 constant WEDGE-MS              \ the wedge case's own budget, short enough t
 $BB8 constant WEDGE-SLACK-MS       \ what a loaded box may add to it before the claim fails
 $401 constant PATH-OVER            \ one byte past the harness's $400-byte path store
 $64 constant LATE-MS               \ the late case's wait, which nothing is asked within
+$1388 constant HANGUP-MS           \ the hang-up after a kill, on a loaded box
 
 create FILLER 64 allot
 variable HIT                       \ did the loop reach the case it was feeding for?
@@ -34,6 +35,8 @@ variable HIT                       \ did the loop reach the case it was feeding 
 : GONE$ ( -- ptr u8 n )     s" dropped-marker" ;
 : ABSENT$ ( -- ptr u8 n )   s" never-fed-marker" ;
 : ANYWHERE$ ( -- ptr u8 n ) s" " ;  \ an empty head: the tail may be anywhere
+: SLEEPER$ ( -- ptr u8 n )         \ a 30 s sleeper on the child's own terminal
+   s\" PROC-ARGV-RESET s\" 30\" >LEN PROC-ARGV+ s\" /bin/sleep\" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop $BEEF ." ;
 
 
 : FILLER! ( -- )                   \ 64 bytes no marker below can match
@@ -325,6 +328,37 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CLOSE-MASTER ;
 
 
+\ Whether the master hangs up within ms: read it until it does or the clock ends.
+: HANGUP-WITHIN? ( n -- bool ) {: ms:n :}
+   ms WAIT-OPEN
+   begin
+      WAIT-LEFT 0= if false exit then
+      MASTER-FD READ-STEP 0 < if true exit then
+   again ;
+
+
+\ A child that started a process of its own on its terminal. The sleeper holds
+\ the slave as well, so the master hangs up only once both are gone. A kill of
+\ the child's pid alone left the sleeper, leading a group of its own, holding
+\ the terminal for the rest of its 30 s under init (dot
+\ habu-kill-a-pty-1841a310); the wedge's kill ends the child's whole tree.
+: CASE-TREE-REAP ( -- )
+   BUF-CLEAR
+   HB$ SPAWN-ON-PTY
+   s" habu> " WAIT-FOR TTRUE
+   s" require lib/process-argv.f" SEND-LINE
+   s"  ok" s" habu> " WAIT-AFTER TTRUE
+   BUF-CLEAR
+   SLEEPER$ SEND-LINE
+   s" the child started a sleeper on its terminal" T-LABEL
+   s" 48879" s" habu> " WAIT-AFTER TTRUE
+   s" a child at its prompt is reaped as a timeout" T-LABEL
+   WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
+   s" and the terminal hangs up: nothing the child started still holds it" T-LABEL
+   HANGUP-MS HANGUP-WITHIN? TTRUE
+   CLOSE-MASTER ;
+
+
 : BODY ( -- )
    FILLER!
    CASE-APPEND
@@ -341,7 +375,8 @@ variable HIT                       \ did the loop reach the case it was feeding 
    CASE-WAIT-AFTER
    CASE-LATE-ANSWER
    CASE-HANGUP
-   CASE-WEDGE-REAP ;
+   CASE-WEDGE-REAP
+   CASE-TREE-REAP ;
 
 
 : RUN ( -- )

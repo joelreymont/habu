@@ -345,12 +345,8 @@ create PACKET-BUF FS-PATH-CAP allot
    s" --json-errors" >LEN PROC-ARGV+
    SRC >LEN PROC-ARGV+ ;
 
-\ A source only the check.f run refuses: its record has no place. The run
-\ exits rc and writes one record. The checker's pre-pass never reads a
-\ declaration that `evaluate` runs (storage-unplaced, rc 70), and a checker
-\ record refused at the load names the token it would have described: a trust
-\ row naming no word and a storage registrar called from source, refused by the
-\ load as an uncaught throw (rc 67).
+\ A source tools/check.f refuses, checked by the CLI in a child: the run exits
+\ rc, and the packet comes from the first refusal it writes.
 : CHILD-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: name:ptr nameu:n class:ptr classu:n src:ptr srcu:n rc:n :}
    name nameu CASE-PATHS
@@ -365,19 +361,42 @@ create PACKET-BUF FS-PATH-CAP allot
    class classu ASSERT-PACKET
    name nameu EXPECT-GOLDEN ;
 
+\ The checker's pre-pass never reads a declaration that `evaluate` runs, so only
+\ the run refuses it, and its record has no place.
 : TEST-STORAGE-UNPLACED ( -- )
    s" storage-unplaced" s" fix_storage_type"
    s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
 
-\ A record for a malformed qualified name is refused by the pre-pass, so the
+\ A refused record names its token and no place. A trust row naming no word, a
+\ storage registrar called from source and a record entry called with a
+\ malformed name at run time each end the load on an uncaught throw (exit 67
+\ under `--load`), and check.f exits 70 for it, as for any refusal. A
+\ declaration's record for a malformed name is refused by the pre-pass, so the
 \ check meets it in process, before the statement its throw ends, and the
-\ packet is the record's.
+\ packet is the record's. A stored signature that does not parse is counted by
+\ the multi-error pre-pass (rc 70). The two shadow refusals throw out of their
+\ definition (rc 70), so the statement that threw follows the record. The
+\ packet keeps the field each code adds.
 : TEST-RECORDS ( -- )
    s" trust-row" s" fix_stale_trust_row"
-   s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 67 CHILD-CASE
+   s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 70 CHILD-CASE
    s" storage-record" s" use_storage_definer"
-   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE
-   s" malformed-record" s" fix_qualified_name" s" defer DIAG:MAL:NAME ( -- )" PACKET-CASE ;
+   s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 70 CHILD-CASE
+   s" malformed-record" s" fix_qualified_name" s" defer DIAG:MAL:NAME ( -- )" PACKET-CASE
+   s" malformed-run-record" s" fix_qualified_name"
+   s\" s\" DIAG:MAL:RUN\" CHECKER-DEFER" 70 CHILD-CASE
+   s" stored-signature" s" fix_signature_type"
+   s\" s\" DIAG-SIG\" s\" -- diag-no-such-type\" trust" 70 CHILD-CASE
+   s" using-shadow" s" disambiguate_using_shadow"
+   s" : DIAG-SH ( -- n ) 7 ; package DIAG-UP public : DIAG-SH ( -- n ) 8 ; ;package using DIAG-UP : DIAG-SH-USE ( -- n ) DIAG-SH ; ;using" 70 CHILD-CASE
+   s" shadowed-arity" s" match_shadowed_private_effect"
+   s" package DIAG-SBA : DIAG-TWIN ( n n -- n ) + ; public : DIAG-TWIN ( n -- n ) 1 + ; ;package" 70 CHILD-CASE ;
+
+\ A warning is no refusal: the packet comes from the refusal after it, of the
+\ call it leaves undefined, and counts that one alone.
+: TEST-WARNING ( -- )
+   s" warning" s" unknown_rejection"
+   s" : DIAG-WIDE drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ; : DIAG-WIDE-CALL ( -- ) DIAG-WIDE ;" 70 CHILD-CASE ;
 
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
@@ -479,6 +498,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-STORAGE
    TEST-STORAGE-UNPLACED
    TEST-RECORDS
+   TEST-WARNING
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE

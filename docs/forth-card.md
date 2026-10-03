@@ -29,7 +29,7 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) in a definition and
+  global also owns is `E-USING-SHADOW-GLOBAL` (rc 70) in a definition and
   `ENGINE-ERROR:USING-SHADOW-GLOBAL` (rc 105) at top level or after `'` —
   rename the public. A file loaded under a `using` resolves through it.
   Close a using opened before `package` after `;package`: a `;using` inside
@@ -110,11 +110,11 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `package`, …) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
-| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 67 |
+| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE`, rc 70 |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
-| a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
+| a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 70 |
 | the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP` and `E-PATH-RANGE` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
