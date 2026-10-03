@@ -3240,9 +3240,9 @@ create BIG $2000 allot   variable BIG-U
 
 \ ---- a loaded file is composed where its loader sits ------------------------
 \ The pre-pass verifies a source and the files it loads in the order the loader
-\ runs them (VERIFY:SOURCE-COMPOSE): the text before a top-level `required`
-\ first, then the file it loads (once), then the rest. How that can fail, and
-\ what holds each way:
+\ runs them (VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE): the text before a
+\ top-level `required` first, then the file it loads (once), then the rest. How
+\ that can fail, and what holds each way:
 \   - the loaded file checked ahead of the whole source, so a word the source
 \     defines before its require is undefined in it (REQ-ORDER, the reduced
 \     case behind every library that requires lib/aio.f);
@@ -3258,13 +3258,12 @@ create BIG $2000 allot   variable BIG-U
 \     neutral top-level point (PEND-RELEASE), and after a top-level loader in
 \     that package, which runs first (REQ-BODY, the shape of lib/aio.f's
 \     AIO-LOAD:HOST); a loader inside a control word is left to the run;
-\   - a top-level loader inside a package or under a `using`, composed once the
-\     scope closes (at the end of the file, for a `using` never closed): the
-\     loader runs the file in that scope, so its file and the rest of the
-\     source are checked in the scope the loader gives them, and the file's
-\     own usings end with it (REQ-PKG, REQ-USING);
+\   - a top-level loader inside a package or under a `using`, composed where it
+\     sits, inside that scope: the loader runs the file in that scope, so its
+\     file and the rest of the source are checked in the scope the loader gives
+\     them, and the file's own usings end with it (REQ-PKG, REQ-USING);
 \   - a diagnostic after a loaded file naming the wrong file, line or column
-\     (REQ-ORIGIN): the composition announces the including file again;
+\     (REQ-ORIGIN): the composition names the including file again;
 \   - the check run loading in another order: it loads through the real loader,
 \     and every accepted case here runs it;
 \   - `--all-errors --source-list` checking whole files in dependency order, or
