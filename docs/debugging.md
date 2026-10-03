@@ -33,17 +33,23 @@ message with no trailing newline and the tail ends the line.
 range, dictionary/code space full, definition body text full, BEGIN nesting
 full, quotation nesting full, duplicate definition, `does>` in a checker-rejected
 body, malformed stack signature, `;]` with no open quotation, `;` with a
-quotation or a control structure open, `does>` with locals active, a local
-referenced inside a quotation, locals opener inside a quotation,
-`:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not
-deferred, `package`/`export` misuse, the whole `using` family, and the
+quotation or control structure open, source that ends
+inside a definition it opened (at the definition's name, or the word that ran
+`def-open`, naming the definition) or
+inside a `(` comment (at the `(`), a `;` that closes a definition its source
+did not open (at the `;`, naming the definition), `does>` with locals active,
+a local referenced inside a quotation, locals opener inside a quotation,
+`:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not deferred,
+`package`/`export` misuse, the whole `using` family, and the
 `construct`/`match` operand refusals (`hb: construct: unknown family: NOPE at
 <path>:<line>`).
 
 Still unlocated, and why: the interpret-level diagnostics share a **different**
 tail (`LDIAGRET`) — `hb: undefined: X`, `hb: interpret-mode layout value`,
 `hb: internal engine word`, `hb: interpret stack underdepth`,
-`hb: control-flow closer without opener`, `hb: control-flow nesting too deep`,
+`hb: control-flow closer without opener`,
+`hb: control-flow word does not match the open structure`,
+`hb: control-flow nesting too deep`,
 `hb: local name over 16 bytes`, `hb: more than 64 locals in one definition`.
 So do the refusals that `exit_group` without any tail: the boot source errors
 (`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones

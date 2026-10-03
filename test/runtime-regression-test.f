@@ -865,8 +865,11 @@ variable GE-NEST-J
 package LOOP-OPENER
 private
 
-: REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: open:ptr openu:n tok:ptr toku:n label:ptr labelu:n :}
+: KIND$ ( -- ptr u8 n )  s" control-flow word does not match the open structure" ;
+: ORPHAN$ ( -- ptr u8 n )  s" control-flow closer without opener" ;
+
+: REJECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: open:ptr openu:n tok:ptr toku:n diag:ptr diagu:n label:ptr labelu:n :}
    \ Plain stdin: a loop-family word (LOOP / +LOOP / LEAVE) whose innermost open
    \ control-flow frame is not a `do` frame -- or which has no open frame at all --
    \ must fail closed rc 70 with the named engine diagnostic and the offending
@@ -876,7 +879,8 @@ private
    \ cover it. With an IF or BEGIN frame open, LOOP/+LOOP still popped the CF stack
    \ happily and then indexed level -1 of the level stack; LVH's cell -1 IS
    \ LVD-CELL itself, so LBCHAIN was handed a junk chain head and dereferenced it.
-   \ J-LVREQUIRE now proves a level is open in every consumer of that stack.
+   \ LOOP/+LOOP now refuse an entry that is not a DO's (habu2.f C-CF-AT) and
+   \ LEAVE refuses with no open DO level (LVREQUIRE).
    GE-HB-RESET
    GE-SRC-RESET
    s" : XM ( -- ) " GE-SRC+
@@ -886,7 +890,7 @@ private
    s"  ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 label labelu GE-EXPECT-RC
-   s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
+   diag diagu label labelu GE-EXPECT-ERR-HAS
    tok toku label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
 
@@ -925,15 +929,15 @@ public
    \ Every loop-family word against an IF frame, a BEGIN frame, and no frame at
    \ all. The IF and BEGIN rows were rc 134 register dumps for LOOP/+LOOP and a
    \ silent LVD-CELL corruption for LEAVE before the guard.
-   s" 1 IF drop"    s" LOOP"   s" hb mispair if-loop"     REJECT
-   s" 1 IF drop"    s" +LOOP"  s" hb mispair if-+loop"    REJECT
-   s" 1 IF"         s" LEAVE"  s" hb mispair if-leave"    REJECT
-   s" 1 BEGIN drop" s" LOOP"   s" hb mispair begin-loop"  REJECT
-   s" 1 BEGIN drop" s" +LOOP"  s" hb mispair begin-+loop" REJECT
-   s" 1 BEGIN"      s" LEAVE"  s" hb mispair begin-leave" REJECT
-   s" "             s" LOOP"   s" hb mispair bare-loop"   REJECT
-   s" "             s" +LOOP"  s" hb mispair bare-+loop"  REJECT
-   s" "             s" LEAVE"  s" hb mispair bare-leave"  REJECT
+   s" 1 IF drop"    s" LOOP"   KIND$   s" hb mispair if-loop"     REJECT
+   s" 1 IF drop"    s" +LOOP"  KIND$   s" hb mispair if-+loop"    REJECT
+   s" 1 IF"         s" LEAVE"  ORPHAN$ s" hb mispair if-leave"    REJECT
+   s" 1 BEGIN drop" s" LOOP"   KIND$   s" hb mispair begin-loop"  REJECT
+   s" 1 BEGIN drop" s" +LOOP"  KIND$   s" hb mispair begin-+loop" REJECT
+   s" 1 BEGIN"      s" LEAVE"  ORPHAN$ s" hb mispair begin-leave" REJECT
+   s" "             s" LOOP"   ORPHAN$ s" hb mispair bare-loop"   REJECT
+   s" "             s" +LOOP"  ORPHAN$ s" hb mispair bare-+loop"  REJECT
+   s" "             s" LEAVE"  ORPHAN$ s" hb mispair bare-leave"  REJECT
    FORGE
    LEGAL
    s" PASS: loop family over a wrong/absent DO opener fails closed rc70 (no SIGSEGV)" type cr ;
@@ -1524,6 +1528,692 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-LOC-NO-FILE
    s" PASS: load refusals name their file and line (file/nested/no-file)" type cr ;
 
+\ Source that ends inside a construct it opened (dot habu-eof-inside-a-7a539941).
+\ A file whose last line was `: GEEND ( -- )` exited 0 at top level with GEEND
+\ dropped, and the next --load row compiled into its body. Loaded through
+\ `included` from a compiled word, the caller's next words compiled into it
+\ too, at both tiers. Every ending is refused where the source ends: rc 74, named,
+\ located on the line the definition opened on (a comment at its `(`), and
+\ catchable with the definition rolled back.
+create GE-END-PATH FS-PATH-CAP allot
+variable GE-END-U
+create GE-END-AT 16 allot
+
+: GE-END-DEF$ ( -- ptr u8 n )  s" hb: source ended inside definition: GEEND at " ;
+: GE-END-COM$ ( -- ptr u8 n )  s" hb: source ended inside a ( comment at " ;
+
+\ Tier 1 compiles what follows its line at tier 1.
+: GE-END-TIER ( n -- )
+   1 = if s" 1 set-tier" GE-SRC-LINE then ;
+
+\ The source built so far as hb-end.f.
+: GE-END-SAVE ( -- )
+   GT-ROOT s" hb-end.f" GE-END-PATH JOIN-PATH GE-END-U !
+   GE-END-PATH GE-END-U @ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
+
+\ The ending as the last line of hb-end.f, after the tier line.
+: GE-END-WRITE ( ptr u8 n n -- )
+   {: a:ptr u:n tier:n :}
+   GE-SRC-RESET
+   tier GE-END-TIER
+   a u GE-SRC-LINE
+   GE-END-SAVE ;
+
+\ `hb-end.f:<line>` and the newline that ends the refusal; line is one digit.
+: GE-END-AT$ ( n -- ptr u8 n )
+   {: line:n :}
+   s" hb-end.f:" {: a:ptr u:n :}
+   a GE-END-AT u BYTE-COPY
+   line [char] 0 + GE-END-AT u + c!
+   $0A GE-END-AT u 1 + + c!
+   GE-END-AT u 2 + ;
+
+\ hb-end.f on the --load line.
+: GE-END-TOP ( -- )
+   GE-HB-RESET
+   s" --load" GE-ARG+  GE-END-PATH GE-END-U @ GE-ARG+  s" --" GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
+
+\ The file GE-LOC-FIXTURE wrote last on the --load line, hb-end.f its argument.
+: GE-END-RUN-ARG ( -- )
+   GE-HB-RESET
+   s" --load" GE-ARG+  GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
+   s" --" GE-ARG+  GE-END-PATH GE-END-U @ GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
+
+\ hb-end.f through `included` from a word compiled at the tier.
+: GE-END-INC ( n -- )
+   GE-SRC-RESET
+   GE-END-TIER
+   s" : GEENDRUN ( -- ) 0 SCRIPT-ARGV$ included ;" GE-SRC-LINE
+   s" GEENDRUN" GE-SRC-LINE
+   s" hb-end-run.f" GE-SRC-BUF GE-SRC-U @ GE-LOC-FIXTURE
+   GE-END-RUN-ARG ;
+
+\ rc 74, the refusal and its line, and no crash dump.
+: GE-END-EXPECT ( ptr u8 n n ptr u8 n -- )
+   {: msg:ptr msgu:n line:n label:ptr labelu:n :}
+   74 label labelu GE-EXPECT-RC
+   msg msgu label labelu GE-EXPECT-ERR-HAS
+   line GE-END-AT$ label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+\ One ending at both tiers, on the --load line and through `included`. line is
+\ the refusal's line at tier 0: the name token for a definition, the `(` for
+\ a comment. Tier 1's `1 set-tier` line puts it one line later.
+: GE-END-CASE ( ptr u8 n ptr u8 n n -- )
+   {: src:ptr srcu:n msg:ptr msgu:n line:n :}
+   2 0 do
+      src srcu i GE-END-WRITE
+      GE-END-TOP  msg msgu line i + src srcu GE-END-EXPECT
+      i GE-END-INC  msg msgu line i + src srcu GE-END-EXPECT
+   loop ;
+
+\ An open colon body, stack comment, locals block and quotation, the tokens tier
+\ 1 captures without closing anything, a comment in and out of a body, and a
+\ TRUSTED: head that the source ends before or inside its signature.
+: GE-END-ENDINGS ( -- )
+   s" : GEEND ( -- )" GE-END-DEF$ 1 GE-END-CASE
+   s" TRUSTED: GEEND" GE-END-DEF$ 1 GE-END-CASE
+   s" TRUSTED: GEEND ( --" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) 1 drop" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( --" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) {: a:n" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) {: a:n :}" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) [:" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) [: 1 drop ;]" GE-END-DEF$ 1 GE-END-CASE
+   s" : GEEND ( -- ) begin" GE-END-DEF$ 1 GE-END-CASE
+   s" ( GEEND" GE-END-COM$ 1 GE-END-CASE
+   s" : GEEND ( -- ) ( note" GE-END-COM$ 1 GE-END-CASE ;
+
+\ `require` loads through the same frame: the refusal names the required file.
+: GE-END-REQUIRE ( -- )
+   s" : GEEND ( -- ) 1 drop" 0 GE-END-WRITE
+   s" hb-end-req.f" S\" require hb-end.f\n" GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   GE-END-DEF$ 1 s" require" GE-END-EXPECT ;
+
+\ A definition left open with its body on the next line. Located on the
+\ source's last line, the refusal named the body's line, or a blank line past
+\ it; it names the line of the definition's name token. hb-end.f holds the tier
+\ line, `: GEEND` on line 2, its body on line 3 and nl newlines: 0 ends it
+\ without one, 2 leaves a blank line.
+: GE-HALF-CASE ( n n ptr u8 n -- )
+   {: tier:n nl:n label:ptr labelu:n :}
+   GE-SRC-RESET
+   tier GE-SRC-U+  s"  set-tier" GE-SRC-LINE
+   s" : GEEND ( -- )" GE-SRC-LINE
+   s" 1 drop" GE-SRC+
+   nl 0 ?do GE-SRC-LF loop
+   GE-END-SAVE
+   GE-END-TOP  GE-END-DEF$ 2 label labelu GE-END-EXPECT ;
+
+\ def-open leaves a definition open as `:` does, located at the word that ran
+\ it, on line 2, with its body on line 3 and a blank line after it. GEENDOPEN
+\ starts the capture the refusal names, as `:` does.
+: GE-END-DEFOPEN ( -- )
+   GE-SRC-RESET
+   s" TRUSTED: GEENDOPEN ( ptr u8 n -- ) {: a:ptr u:n :} 0 data-base BODYLEN-CELL + ! a u get-current 0 def-open a u body-append ;" GE-SRC-LINE
+   S\" s\" GEEND\" GEENDOPEN" GE-SRC-LINE
+   s" 1 drop" GE-SRC-LINE
+   GE-SRC-LF
+   GE-END-SAVE
+   GE-END-TOP
+   GE-END-DEF$ 2 s" def-open" GE-END-EXPECT ;
+
+: GE-END-OPENER ( -- )
+   0 0 s" half body, no final newline" GE-HALF-CASE
+   0 2 s" half body, a blank line" GE-HALF-CASE
+   1 2 s" half body, a blank line, tier 1" GE-HALF-CASE
+   GE-END-DEFOPEN ;
+
+\ A caught refusal leaves nothing of the definition and the load going: the
+\ name defines afresh, where a published GEEND would be a duplicate (rc 78),
+\ and the rest of the file runs.
+: GE-END-CAUGHT ( n -- )
+   {: tier:n :}
+   s" : GEEND ( -- ) 1 drop" tier GE-END-WRITE
+   GE-SRC-RESET
+   tier GE-END-TIER
+   s" : GEENDTRY ( -- n ) [: 0 SCRIPT-ARGV$ included ;] catch ;" GE-SRC-LINE
+   s" GEENDTRY ." GE-SRC-LINE
+   s" : GEEND ( -- n ) 12321 ;" GE-SRC-LINE
+   s" GEEND ." GE-SRC-LINE
+   s" hb-end-catch.f" GE-SRC-BUF GE-SRC-U @ GE-LOC-FIXTURE
+   GE-END-RUN-ARG
+   s" caught refusal" GE-EXPECT-OK
+   S\" 74\n12321\n" s" caught refusal" GE-EXPECT-OUT
+   GE-END-DEF$ s" caught refusal" GE-EXPECT-ERR-HAS ;
+
+\ A definition open as a buffer begins is an outer buffer's: an immediate
+\ word's evaluate compiles into it and returns. The control for EVAL-FRAME:PEND.
+: GE-END-MACRO ( -- )
+   s" hb-end-macro.f"
+      S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
+      GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   s" macro evaluate" GE-EXPECT-OK
+   S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
+
+\ The closing direction. A `;` in a buffer that an immediate word's evaluate or
+\ included began inside an open definition closed the outer buffer's
+\ definition while the immediate word still ran, at both tiers. It is refused
+\ at the `;`, rc 74, named and located on the first line
+\ of the buffer that holds it.
+: GE-CLOSE-DEF$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: GEEND at " ;
+
+\ hb-end.f's immediate word evaluates the `;`: the line counts in the string.
+\ TRUSTED: admits the evaluate, and parse-imm is what lets a checked body run
+\ the immediate: tier 0 refuses any other one there (E-UNMODELED-IMMEDIATE)
+\ and tier 1 captures it unrun.
+: GE-CLOSE-EVAL ( n -- )
+   {: tier:n :}
+   GE-SRC-RESET
+   S\" TRUSTED: GEENDMAC ( -- ) s\" ;\" evaluate ; immediate" GE-SRC-LINE
+   S\" s\" GEENDMAC\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEEND ( -- ) 1 drop GEENDMAC" GE-SRC-LINE
+   s" GEEND 2 ." GE-SRC-LINE
+   GE-END-SAVE
+   GE-END-TOP
+   GE-CLOSE-DEF$ 1 s" evaluate closes" GE-END-EXPECT ;
+
+\ hb-end-run.f's immediate word includes hb-end.f, which holds only the `;`.
+: GE-CLOSE-INC ( n -- )
+   {: tier:n :}
+   GE-SRC-RESET
+   s" ;" GE-SRC-LINE
+   GE-END-SAVE
+   GE-SRC-RESET
+   s" : GEENDINC ( -- ) 0 SCRIPT-ARGV$ included ; immediate" GE-SRC-LINE
+   S\" s\" GEENDINC\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEEND ( -- ) 1 drop GEENDINC" GE-SRC-LINE
+   s" GEEND 2 ." GE-SRC-LINE
+   s" hb-end-run.f" GE-SRC-BUF GE-SRC-U @ GE-LOC-FIXTURE
+   GE-END-RUN-ARG
+   GE-CLOSE-DEF$ 1 s" included closes" GE-END-EXPECT ;
+
+: GE-END-CLOSE ( -- )
+   2 0 do
+      i GE-CLOSE-EVAL
+      i GE-CLOSE-INC
+   loop ;
+
+\ A refusal an immediate word catches inside its evaluate, while an outer
+\ buffer's definition is open. The unwind reset that definition under the
+\ immediate word, and the rest of its body ran as top-level words. The catch
+\ now returns the refusal's code
+\ and the definition keeps compiling without the refused token, closes in its
+\ own source and runs. mac defines GEENDCAT; out is the whole stdout.
+: GE-CATCH-CASE ( ptr u8 n n ptr u8 n -- )
+   {: mac:ptr macu:n tier:n out:ptr outu:n :}
+   GE-SRC-RESET
+   mac macu GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEEND ( -- ) 1 drop GEENDCAT" GE-SRC-LINE
+   s" 2 . ;" GE-SRC-LINE
+   s" GEEND" GE-SRC-LINE
+   GE-END-SAVE
+   GE-END-TOP
+   mac macu GE-EXPECT-OK
+   out outu mac macu GE-EXPECT-OUT
+   s" habu-crash" mac macu GE-EXPECT-ERR-LACKS ;
+
+\ A `{:` group refused part way declares none of its names: GEA stays the
+\ word. A half-declared local GEA compiled a read of a frame never carved.
+: GE-CATCH-LOCALS ( -- )
+   GE-SRC-RESET
+   s" : GEA ( -- n ) 5 ;" GE-SRC-LINE
+   S\" TRUSTED: GEENDCAT ( -- ) [: s\" {: GEA averyveryverylongname :}\" evaluate ;] catch . ; immediate" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   s" : GEEND ( -- n ) GEENDCAT" GE-SRC-LINE
+   s" GEA ;" GE-SRC-LINE
+   s" GEEND ." GE-SRC-LINE
+   GE-END-SAVE
+   GE-END-TOP
+   s" caught locals refusal" GE-EXPECT-OK
+   S\" 70\n5\n" s" caught locals refusal" GE-EXPECT-OUT
+   s" habu-crash" s" caught locals refusal" GE-EXPECT-ERR-LACKS ;
+
+\ An undefined word refuses at tier 0 only: tier 1 resolves the body at `;`,
+\ outside the catch. The `;` and an unterminated string refuse at both tiers.
+: GE-END-CATCH ( -- )
+   S\" TRUSTED: GEENDCAT ( -- ) [: s\" nosuchword\" evaluate ;] catch . ; immediate"
+      0 S\" 70\n2\n" GE-CATCH-CASE
+   2 0 do
+      S\" TRUSTED: GEENDCAT ( -- ) [: s\" ;\" evaluate ;] catch . ; immediate"
+         i S\" 74\n2\n" GE-CATCH-CASE
+      S\" TRUSTED: GEENDCAT ( -- ) [: S\\\" s\\q abc\" evaluate ;] catch . ; immediate"
+         i S\" 74\n2\n" GE-CATCH-CASE
+   loop
+   GE-CATCH-LOCALS ;
+
+\ An immediate word's evaluate that emits code into the open definition
+\ compiles as if written in its place, at both tiers: tier 0 reopens the code
+\ window at the evaluate's first token (habu2.f EM-COMPILE-LEGACY). The source
+\ built so far runs; out is its whole stdout.
+: GE-EMIT-EXPECT ( ptr u8 n ptr u8 n -- )
+   {: out:ptr outu:n label:ptr labelu:n :}
+   GE-END-SAVE
+   GE-END-TOP
+   label labelu GE-EXPECT-OK
+   out outu label labelu GE-EXPECT-OUT
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+\ GEENDCAT evaluates ev; def uses it and run runs it.
+: GE-EMIT-SHAPE ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ev:ptr evu:n def:ptr defu:n run:ptr runu:n tier:n out:ptr outu:n :}
+   GE-SRC-RESET
+   s" TRUSTED: GEENDCAT ( -- ) " GE-SRC+  ev evu GE-SRC-S"  s"  evaluate ; immediate" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   def defu GE-SRC-LINE
+   run runu GE-SRC-LINE
+   out outu ev evu GE-EMIT-EXPECT ;
+
+: GE-EMIT-SHAPES ( -- )
+   2 0 do
+      s" drop" s" : GEEND ( n n -- n ) GEENDCAT ;" s" 1 2 GEEND . depth ."
+         i S\" 1\n0\n" GE-EMIT-SHAPE
+      s" if 5 else 6 then" s" : GEEND ( bool -- n ) GEENDCAT ;" s" 0 0= GEEND . depth ."
+         i S\" 5\n0\n" GE-EMIT-SHAPE
+      s" begin 1- dup 0= until" s" : GEEND ( n -- n ) GEENDCAT ;" s" 3 GEEND . depth ."
+         i S\" 0\n0\n" GE-EMIT-SHAPE
+      s" GEENDW2" s" : GEENDW2 ( n -- n ) 1+ ;  : GEEND ( n -- n ) GEENDCAT ;"
+         s" 3 GEEND . depth ." i S\" 4\n0\n" GE-EMIT-SHAPE
+   loop ;
+
+\ A refusal that fires after its token spilled or emitted code, caught at tier
+\ 0, the tier that compiles inside the evaluate. GEENDCAT opens n `if`s,
+\ catches ref and then a `leave` (no DO level may stay open), evaluates fol and
+\ closes the `if`s, so GEEND adds 7 only if the refused token left its 7, the
+\ data stack and every compile cell as they were. Each failed, once the band
+\ was open: the leftover pop, a lost or stale control-flow entry, DO level or
+\ BEGIN snapshot gave a wrong sum, an orphaned `then` or a bounds fault. The
+\ checker certifies a shallower nesting than the control-flow cap, so a row at
+\ the cap compiles unchecked.
+: GE-FAMILY ( n ptr u8 n ptr u8 n -- )
+   {: n:n ref:ptr refu:n fol:ptr folu:n :}
+   GE-SRC-RESET
+   n CFSTK-DEPTH-MAX = if s" 0 set-check" GE-SRC-LINE  s" : " else s" TRUSTED: " then GE-SRC+
+   s" GEENDCAT ( -- ) " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
+   s" 0 0= if" GE-SRC-S"  s"  evaluate loop [: " GE-SRC+
+   ref refu GE-SRC-S"  s"  evaluate ;] catch . [: " GE-SRC+
+   s" leave" GE-SRC-S"  s"  evaluate ;] catch . " GE-SRC+
+   fol folu GE-SRC-S"  s"  evaluate " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
+   s" then" GE-SRC-S"  s"  evaluate loop ; immediate" GE-SRC-LINE
+   n CFSTK-DEPTH-MAX <> if S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE then
+   s" : GEEND ( n -- n ) GEENDCAT ;" GE-SRC-LINE
+   s" 5 GEEND . depth ." GE-SRC-LINE
+   S\" 70\n70\n12\n0\n" ref refu GE-EMIT-EXPECT ;
+
+: GE-EMIT-FAMILIES ( -- )
+   CFSTK-DEPTH-MAX s" 7 if" s" +" GE-FAMILY
+   CFSTK-DEPTH-MAX s" 7 while" s" +" GE-FAMILY
+   CFSTK-DEPTH-MAX s" 7 of" s" +" GE-FAMILY
+   CFSTK-DEPTH-MAX s" 7 0 do" s" + +" GE-FAMILY
+   CFSTK-DEPTH-MAX s" 7 0 ?do" s" + +" GE-FAMILY
+   CFSTK-DEPTH-MAX s" 7 begin" s" +" GE-FAMILY
+   0 s" 7 until" s" +" GE-FAMILY
+   0 s" 7 again" s" +" GE-FAMILY
+   1 s" 7 repeat" s" +" GE-FAMILY
+   1 s" 7 endcase" s" +" GE-FAMILY ;
+
+\ A refusal two evaluates down, caught one level up, keeps what the inner
+\ evaluate completed, as at one level: GEENDIN's 7 stays in GEEND. Each popped
+\ frame put back the mark of the token that called its evaluate, so the outer
+\ pop dropped the 7 and the checker refused GEEND's `+` as an input underflow,
+\ rc 70, at both tiers.
+: GE-EMIT-NEST ( n -- )
+   {: tier:n :}
+   GE-SRC-RESET
+   S\" TRUSTED: GEENDIN ( -- ) s\" 7 ;\" evaluate ; immediate" GE-SRC-LINE
+   S\" s\" GEENDIN\" 0 parse-imm" GE-SRC-LINE
+   S\" TRUSTED: GEENDCAT ( -- ) [: s\" GEENDIN\" evaluate ;] catch . ; immediate" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEEND ( n -- n ) GEENDCAT + ;" GE-SRC-LINE
+   s" 5 GEEND . depth ." GE-SRC-LINE
+   S\" 74\n12\n0\n" s" nested evaluate" GE-EMIT-EXPECT ;
+
+\ A structure that an evaluate two levels down opens before its refusal, which
+\ a catch one level up takes, and the outer source closes; aft is what GEENDIN
+\ runs after its evaluate, a throw once that evaluate has ended cleanly. Each
+\ popped frame put back the mark of the token that called its evaluate, so the
+\ outer pop rolled CP, the virtual stack and the body text back past the inner
+\ buffer's completed tokens while the control-flow stack, DO level, BEGIN
+\ snapshot and quotation kept them: the checker refused GEEND (rc 70), and
+\ compiled unchecked (mode 1) it exceeded the data stack bounds (rc 102) or,
+\ for `case`, returned 5 for 2. run runs GEEND; out is the whole stdout. The
+\ rows run at tier 0 only: tier 1 defers an undefined word to `;`, which
+\ refuses GEEND (rc 70) with no inner throw for the catch to take; GE-EMIT-NEST
+\ holds the tier-1 case.
+: GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n mode:n out:ptr outu:n :}
+   GE-SRC-RESET
+   s" TRUSTED: GEENDIN ( -- ) " GE-SRC+  ev evu GE-SRC-S"  s"  evaluate" GE-SRC+
+   aft aftu GE-SRC+  s"  ; immediate" GE-SRC-LINE
+   S\" s\" GEENDIN\" 0 parse-imm" GE-SRC-LINE
+   S\" TRUSTED: GEENDCAT ( -- ) [: s\" GEENDIN\" evaluate ;] catch . ; immediate" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   mode 1 = if s" 0 set-check" GE-SRC-LINE then
+   def defu GE-SRC-LINE
+   run runu GE-SRC-LINE
+   out outu ev evu GE-EMIT-EXPECT ;
+
+: GE-EMIT-DEEP ( -- )
+   2 0 do
+      s" dup 0= if 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + then ;"
+         s" 0 GEEND . 5 GEEND . depth ." i S\" 70\n1\n5\n0\n" GE-DEEP-ROW
+      s" 0 swap 0 do 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + loop ;"
+         s" 3 GEEND . depth ." i S\" 70\n3\n0\n" GE-DEEP-ROW
+      s" [: 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + ;] execute ;"
+         s" 5 GEEND . depth ." i S\" 70\n6\n0\n" GE-DEEP-ROW
+      s" begin 1- dup nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 3 < until ;"
+         s" 9 GEEND . depth ." i S\" 70\n2\n0\n" GE-DEEP-ROW
+      s" case 1 of nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 5 endof 9 swap endcase ;"
+         s" 1 GEEND . 2 GEEND . depth ." i S\" 70\n5\n9\n0\n" GE-DEEP-ROW
+      s" dup 0= if 1" s"  70 throw" s" : GEEND ( n -- n ) GEENDCAT + then ;"
+         s" 0 GEEND . 5 GEEND . depth ." i S\" 70\n1\n5\n0\n" GE-DEEP-ROW
+   loop ;
+
+\ A `does>` refused at its signature declares no clause. DOESB was set before
+\ the signature: the definition's `;` then refused the `does>` at tier 0 (rc
+\ 70) and died in the native compiler at tier 1 (rc 67).
+: GE-EMIT-DOES ( n -- )
+   {: tier:n :}
+   GE-SRC-RESET
+   S\" TRUSTED: GEENDCAT ( -- ) [: s\" does> 5\" evaluate ;] catch . ; immediate" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEEND ( -- n ) GEENDCAT 9 ;" GE-SRC-LINE
+   s" GEEND . depth ." GE-SRC-LINE
+   S\" 76\n9\n0\n" s" malformed does> signature" GE-EMIT-EXPECT ;
+
+: GE-END-EMIT ( -- )
+   GE-EMIT-SHAPES
+   GE-EMIT-FAMILIES
+   GE-EMIT-DEEP
+   2 0 do
+      i GE-EMIT-NEST
+      i GE-EMIT-DOES
+   loop ;
+
+\ A control-flow word whose open entry is another structure's. The closers
+\ proved only that enough entries were open: in `begin dup 0<> if 0<> until
+\ then`, `until` took the IF entry for its loop top and `then` patched the
+\ BEGIN's loop top as a forward branch, ORing its offset into the call there.
+\ The call then landed where the engine's layout put it, in atomic-cas (the
+\ habu-crash dump, rc 134) on one build and in 2over's tail (the run printed
+\ 2) on its parent. Every closer, and `while` and `of`, now refuses an entry
+\ of another kind at its token, rc 70, named; `;`, `does>` and `;]` refuse a
+\ structure still open inside them.
+: GE-KIND$ ( -- ptr u8 n )  s" hb: control-flow word does not match the open structure: " ;
+
+create GE-KIND-LINE 96 allot
+
+\ The whole refusal line for token t.
+: GE-KIND-LINE$ ( ptr u8 n -- ptr u8 n )
+   {: t:ptr tu:n :}
+   GE-KIND$ {: m:ptr mu:n :}
+   m GE-KIND-LINE mu BYTE-COPY
+   t GE-KIND-LINE mu + tu BYTE-COPY
+   $0A GE-KIND-LINE mu + tu + c!
+   GE-KIND-LINE mu tu + 1 + ;
+
+\ Opener o, the text around the word under test in a body ( n -- n ). The
+\ body maps 5 to 13 only if the 7 that the word's own text pushed before it
+\ survives its refusal and the opener's entry is as it was.
+: GE-KIND-PRE+ ( n -- )
+   case
+      0 of s" 0 0= if " GE-SRC+ endof
+      1 of s" begin " GE-SRC+ endof
+      2 of s" begin dup 6 < while " GE-SRC+ endof
+      3 of s" 1 0 do " GE-SRC+ endof
+      4 of s" 1 0 ?do " GE-SRC+ endof
+      5 of s" case " GE-SRC+ endof
+      6 of s" dup case 5 of " GE-SRC+ endof
+      7 of s" case 4 of 12 endof " GE-SRC+ endof
+      8 of s" [: " GE-SRC+ endof
+   endcase ;
+
+: GE-KIND-POST+ ( n -- )
+   case
+      0 of s"  + 1+ then" GE-SRC+ endof
+      1 of s"  + 1+ 0 0= until" GE-SRC+ endof
+      2 of s"  + 1+ repeat" GE-SRC+ endof
+      3 of s"  + 1+ loop" GE-SRC+ endof
+      4 of s"  + 1+ loop" GE-SRC+ endof
+      5 of s"  + dup endcase 1+" GE-SRC+ endof
+      6 of s"  + 1+ endof endcase" GE-SRC+ endof
+      7 of s"  + dup endcase 1+" GE-SRC+ endof
+      8 of s"  + ;] execute 1+" GE-SRC+ endof
+   endcase ;
+
+\ Closer c's token; 13 is `;`.
+: GE-KIND-TOK ( n -- ptr u8 n )
+   case
+      0 of s" then" endof
+      1 of s" else" endof
+      2 of s" until" endof
+      3 of s" again" endof
+      4 of s" while" endof
+      5 of s" repeat" endof
+      6 of s" loop" endof
+      7 of s" +loop" endof
+      8 of s" endof" endof
+      9 of s" endcase" endof
+      10 of s" of" endof
+      11 of s" does>" endof
+      12 of s" ;]" endof
+      s" ;" rot
+   endcase ;
+
+\ The openers closer c closes or continues, one bit per opener.
+: GE-KIND-OWN ( n -- n )
+   case
+      0 of 1 endof
+      1 of 1 endof
+      2 of 2 endof
+      3 of 2 endof
+      4 of 2 endof
+      5 of 4 endof
+      6 of 24 endof
+      7 of 24 endof
+      8 of 64 endof
+      9 of 160 endof
+      10 of 160 endof
+      12 of 256 endof
+      0 swap
+   endcase ;
+
+: GE-KIND-MAC+ ( n -- )  s" GEKC" GE-SRC+  GE-SRC-U+ ;
+
+\ GEKC<c> evaluates `7` and closer c's token and prints its catch code.
+: GE-KIND-MACRO ( n bool -- )
+   {: c:n chk:bool :}
+   chk if s" TRUSTED: " else s" : " then GE-SRC+
+   c GE-KIND-MAC+
+   S\"  ( -- ) [: s\" 7 " GE-SRC+  c GE-KIND-TOK GE-SRC+
+   S\" \" evaluate ;] catch . ; immediate" GE-SRC-LINE
+   chk if S\" s\" " GE-SRC+  c GE-KIND-MAC+  S\" \" 0 parse-imm" GE-SRC-LINE then ;
+
+\ GEK<row>: opener o around GEKC<c>, inside a quotation for `;]`; run on 5.
+: GE-KIND-ROW ( n n n -- )
+   {: o:n c:n row:n :}
+   s" : GEK" GE-SRC+  row GE-SRC-U+  s"  ( n -- n ) " GE-SRC+
+   c 12 = if s" [: " GE-SRC+ then
+   o GE-KIND-PRE+  c GE-KIND-MAC+  o GE-KIND-POST+
+   c 12 = if s"  ;] execute" GE-SRC+ then
+   s"  ;" GE-SRC-LINE
+   s" 5 GEK" GE-SRC+  row GE-SRC-U+  s"  ." GE-SRC-LINE ;
+
+\ GEKT: closer c's text straight in the body around opener o; `;` closes an
+\ `if` that is still open.
+: GE-KIND-BODY ( n n -- )
+   {: o:n c:n :}
+   c 13 = if s" : GEKT ( n -- n ) 0 0= if 1+ ;" GE-SRC-LINE exit then
+   s" : GEKT ( n -- n ) " GE-SRC+
+   c 12 = if s" [: " GE-SRC+ then
+   o GE-KIND-PRE+  s" 7 " GE-SRC+  c GE-KIND-TOK GE-SRC+  o GE-KIND-POST+
+   c 12 = if s"  ;] execute" GE-SRC+ then
+   s"  ;" GE-SRC-LINE ;
+
+create GE-KIND-WANT 2048 allot
+variable GE-KIND-WANT-U
+variable GE-KIND-N
+
+: GE-KIND-WANT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   GE-KIND-WANT-U @ u + 2048 > if E-STR-CAPACITY throw then
+   a GE-KIND-WANT GE-KIND-WANT-U @ + u BYTE-COPY
+   GE-KIND-WANT-U @ u + GE-KIND-WANT-U ! ;
+
+: GE-KIND-LABEL ( bool -- ptr u8 n )
+   if s" closer kinds caught, checked" else s" closer kinds caught, unchecked" then ;
+
+\ Every closer against every opener it neither closes nor continues, inside a
+\ caught evaluate at tier 0: each prints the catch code, 70, and its word
+\ maps 5 to 13. Then a `;` refused inside the evaluate that opened its
+\ definition drops that definition, so GEKS defines afresh.
+: GE-KIND-EVAL ( bool -- )
+   {: chk:bool :}
+   chk GE-KIND-LABEL {: l:ptr lu:n :}
+   GE-SRC-RESET
+   0 GE-KIND-N !  0 GE-KIND-WANT-U !
+   chk if else s" 0 set-check" GE-SRC-LINE then
+   13 0 do i chk GE-KIND-MACRO loop
+   13 0 do
+      9 0 do
+         j GE-KIND-OWN 1 i lshift and 0= if
+            i j GE-KIND-N @ GE-KIND-ROW
+            GE-KIND-N @ 1+ GE-KIND-N !
+            S\" 70\n13\n" GE-KIND-WANT+
+         then
+      loop
+   loop
+   chk if s" TRUSTED: " else s" : " then GE-SRC+
+   S\" GEKSEMI ( -- ) [: s\" : GEKS ( n -- n ) 0 0= if 1+ ;\" evaluate ;] catch . ;" GE-SRC-LINE
+   s" GEKSEMI  : GEKS ( n -- n ) 1+ ;  5 GEKS .  depth ." GE-SRC-LINE
+   S\" 70\n6\n0\n" GE-KIND-WANT+
+   GE-END-SAVE
+   GE-END-TOP
+   l lu GE-EXPECT-OK
+   GE-KIND-WANT GE-KIND-WANT-U @ l lu GE-EXPECT-OUT
+   GE-KIND$ l lu GE-EXPECT-ERR-HAS
+   s" habu-crash" l lu GE-EXPECT-ERR-LACKS ;
+
+\ The opener closer c meets at top level: the shapes that crashed or ran wrong
+\ code, `begin ... then`, `if ... until` and `if ... repeat`.
+: GE-KIND-TOP-OPENER ( n -- n )
+   {: c:n :}
+   c 2 < c 7 = or if 1 else 0 then ;
+
+\ Closer c straight in a definition at tier 0: rc 70, and the refusal naming
+\ its token is the whole of stderr.
+: GE-KIND-TOP ( n bool -- )
+   {: c:n chk:bool :}
+   GE-SRC-RESET
+   chk if else s" 0 set-check" GE-SRC-LINE then
+   c GE-KIND-TOP-OPENER c GE-KIND-BODY
+   s" 5 GEKT ." GE-SRC-LINE
+   GE-END-SAVE
+   GE-END-TOP
+   c GE-KIND-TOK {: t:ptr tu:n :}
+   70 t tu GE-EXPECT-RC
+   t tu GE-KIND-LINE$ t tu GE-EXPECT-ERR ;
+
+: GE-CF-KIND ( -- )
+   true GE-KIND-EVAL
+   false GE-KIND-EVAL
+   14 0 do
+      i true GE-KIND-TOP
+      i false GE-KIND-TOP
+   loop
+   s" PASS: a control-flow word whose open entry is another structure's is refused at its token at tier 0" type cr ;
+
+\ Source on stdin has no file to name: the same refusals, unlocated.
+: GE-END-STDIN ( -- )
+   s" : GEEND ( -- ) 1 drop" 74 s" stdin definition" RUNTIME-RUNNER:LINE-RC
+   S\" hb: source ended inside definition: GEEND\n" s" stdin definition" GE-EXPECT-ERR
+   s" ( GEEND" 74 s" stdin comment" RUNTIME-RUNNER:LINE-RC
+   S\" hb: source ended inside a ( comment\n" s" stdin comment" GE-EXPECT-ERR ;
+
+: GE-SOURCE-END ( -- )
+   GE-END-ENDINGS
+   GE-END-REQUIRE
+   GE-END-OPENER
+   0 GE-END-CAUGHT
+   1 GE-END-CAUGHT
+   GE-END-MACRO
+   GE-END-CLOSE
+   GE-END-CATCH
+   GE-END-EMIT
+   GE-END-STDIN
+   s" PASS: a definition or comment the source did not close, or a definition it did not open, is refused and located, a definition at the line it opened on; a macro's evaluate compiles into the definition, and its caught refusal leaves it as before the refused token" type cr ;
+
+\ An immediate word in a body whose wide local sends it through pass 2 at tier
+\ 0. Pass 2 ran the word again over the body capture, which never holds what a
+\ parsing word read: GEP2SKIP read the `1` (the word then ran `k +`: rc 102,
+\ stack bounds exceeded); GEP2FLIP's second run undefined GEP2X (rc 70);
+\ GEP2SAY's caught refusal printed twice; GEP2GRAB allotted twice; GEP2SEE's
+\ second run ran with the lowering transaction open and its blob mapped. Each
+\ runs once at both tiers, and the cell GEP2GRAB allots keeps its 77: pass 2
+\ also took DP back to the definition's start, so with the word run once the
+\ next allot wrote 99 there.
+
+\ imm defines the immediate word, body follows GEP2W's locals and run is the
+\ last line; hb-end.f runs at the tier.
+: GE-P2-RUN ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: imm:ptr immu:n body:ptr bodyu:n run:ptr runu:n tier:n :}
+   GE-SRC-RESET
+   s" require lib/adt/option.f" GE-SRC-LINE
+   imm immu GE-SRC-LINE
+   tier GE-END-TIER
+   s" : GEP2W ( option<n> n -- n ) {: o:option<n> k:n :} k " GE-SRC+
+   body bodyu GE-SRC+
+   s"  ;" GE-SRC-LINE
+   s" : GEP2RUN ( -- ) 5 OPTION:SOME 41 GEP2W . ;" GE-SRC-LINE
+   run runu GE-SRC-LINE
+   GE-END-SAVE
+   GE-END-TOP ;
+
+\ rc 0 and the whole of stdout and stderr.
+: GE-P2-EXPECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: out:ptr outu:n err:ptr erru:n label:ptr labelu:n :}
+   label labelu GE-EXPECT-OK
+   out outu label labelu GE-EXPECT-OUT
+   err erru label labelu GE-EXPECT-ERR ;
+
+: GE-P2-SHAPES ( n -- )
+   {: tier:n :}
+   S\" : GEP2SKIP ( -- ) parse-name 2drop ; immediate\ns\" GEP2SKIP\" 1 parse-imm"
+      s" GEP2SKIP junk 1 +" s" GEP2RUN" tier GE-P2-RUN
+   S\" 42\n" s" " s" pass 2 parsing immediate" GE-P2-EXPECT
+   S\" variable GEP2RUNS\n: GEP2X ( n -- n ) 1 + ;\n: GEP2FLIP ( -- ) GEP2RUNS @ 0<> if s\" GEP2X\" UNDEFINE-NAME then 1 GEP2RUNS ! ; immediate\ns\" GEP2FLIP\" 0 parse-imm"
+      s" GEP2FLIP GEP2X" s" GEP2RUN" tier GE-P2-RUN
+   S\" 42\n" s" " s" pass 2 immediate undefining on a rerun" GE-P2-EXPECT
+   S\" TRUSTED: GEP2SAY ( -- ) [: s\" ;\" evaluate ;] catch . ; immediate\ns\" GEP2SAY\" 0 parse-imm"
+      s" GEP2SAY 1 +" s" GEP2RUN" tier GE-P2-RUN
+   s" pass 2 immediate printing a caught refusal" GE-EXPECT-OK
+   S\" 74\n42\n" s" pass 2 immediate printing a caught refusal" GE-EXPECT-OUT
+   s" hb: source closed a definition it did not open: GEP2W at "
+      s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+   \ GEP2SAY's caught refusal is located on line 1 of the string it evaluates.
+   1 GE-END-AT$ s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+   S\" variable GEP2RUNS\nvariable GEP2AT\nTRUSTED: GEP2GRAB ( -- ) GEP2RUNS @ 1+ GEP2RUNS ! here GEP2AT ! 77 , ; immediate\ns\" GEP2GRAB\" 0 parse-imm"
+      s" GEP2GRAB 1 +" s" create GEP2NEXT 99 , GEP2RUN GEP2RUNS @ . GEP2AT @ @ ." tier GE-P2-RUN
+   S\" 42\n1\n77\n" s" " s" pass 2 immediate allotting" GE-P2-EXPECT
+   S\" TRUSTED: GEP2SEE ( -- ) data-base TXN-ACTIVE-CELL + @ . data-base TXN-BLOB-A-CELL + @ . ; immediate\ns\" GEP2SEE\" 0 parse-imm"
+      s" GEP2SEE 1 +" s" GEP2RUN" tier GE-P2-RUN
+   S\" 0\n0\n42\n" s" " s" pass 2 immediate and the lowering transaction" GE-P2-EXPECT ;
+
+: GE-PASS2-IMMEDIATE ( -- )
+   2 0 do i GE-P2-SHAPES loop
+   s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at both tiers" type cr ;
+
 public
 
 : RUN ( -- )
@@ -1555,6 +2245,9 @@ public
    GE-LOCAL-NAME-WIDTH
    GE-PKGSCOPE-RECOVERY
    GE-REFUSAL-LOCATION
+   GE-SOURCE-END
+   GE-CF-KIND
+   GE-PASS2-IMMEDIATE
    GE-SET-CHECK-NEG ;
 
 : TEST ( -- )

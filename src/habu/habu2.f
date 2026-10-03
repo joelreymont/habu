@@ -150,6 +150,8 @@ variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile
 35 constant PREFMISSMSG-LEN   \ byte length of "hb: compile preflight hook missing\n"
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
+variable LCFKIND   variable LCFKINDMSG   \ control-flow word whose open entry is another structure's (C-CF-AT, C-CF-NONE) + its message
+57 constant CFKINDMSG-LEN  \ byte length of "hb: control-flow word does not match the open structure: " (LCFKINDMSG)
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 variable LLOCWIDE   variable LLOCWIDEMSG   \ local name wider than LOC-NAME-CAP reject (C-LBRACE-STORE-ONE) + its message
 30 constant LOCWIDEMSG-LEN   \ byte length of "hb: local name over 16 bytes: " (LLOCWIDEMSG)
@@ -178,6 +180,9 @@ variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
 variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-f0a4c0e6)
 variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-3cf9a606)
+variable LSRCEND   variable LSRCENDMSG   \ a source buffer ended inside a definition it opened (C-DEF-SOURCE-END, LRBYE); LDIAGDEF names it
+variable LCOMEND   variable LCOMENDMSG   \ a source buffer ended inside a `(` comment (EM-COMMENT)
+variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an outer buffer opened (C-DEF-SOURCE-CLOSE); LDIAGDEF names it
 
 : DPBAD-MSG$ ( -- ptr u8 n )     s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n )      s"  of " ;
@@ -191,6 +196,9 @@ variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the 
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
 : SEMIQ-MSG$ ( -- ptr u8 n )     s" hb: ; with a quotation open: " ;
 : SEMICF-MSG$ ( -- ptr u8 n )    s" hb: ; with a control structure open: " ;
+: SRCEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside definition: " ;
+: COMEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside a ( comment" ;
+: SRCCLOSE-MSG$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: " ;
 
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
@@ -204,6 +212,9 @@ variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the 
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
 : SEMIQ-MSG-LEN ( -- n )     SEMIQ-MSG$ nip ;
 : SEMICF-MSG-LEN ( -- n )    SEMICF-MSG$ nip ;
+: SRCEND-MSG-LEN ( -- n )    SRCEND-MSG$ nip ;
+: COMEND-MSG-LEN ( -- n )    COMEND-MSG$ nip ;
+: SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
@@ -640,6 +651,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
+   LCFKINDMSG LABEL@ LBL, s" hb: control-flow word does not match the open structure: " BYTES,   \ CFKINDMSG-LEN bytes; LCFKIND appends the token + newline
    LLOCWIDEMSG LABEL@ LBL, s" hb: local name over 16 bytes: " BYTES,             \ LOCWIDEMSG-LEN bytes; LLOCWIDE appends the declaration token + newline
    LLOCMANYMSG LABEL@ LBL, s" hb: more than 64 locals in one definition: " BYTES, \ LOCMANYMSG-LEN bytes; LLOCMANY appends the declaration token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
@@ -657,6 +669,9 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
    LSEMIQMSG LABEL@ LBL, SEMIQ-MSG$ BYTES,                               \ EM-COMPILE-SEMI appends the definition
    LSEMICFMSG LABEL@ LBL, SEMICF-MSG$ BYTES,
+   LSRCENDMSG LABEL@ LBL, SRCEND-MSG$ BYTES,                             \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location
+   LCOMENDMSG LABEL@ LBL, COMEND-MSG$ BYTES,                             \ LCOMPILEDIE appends the location of the `(`
+   LSRCCLOSEMSG LABEL@ LBL, SRCCLOSE-MSG$ BYTES,                         \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location of the `;`
    LSNAPBAD LABEL@ LBL, S\" hb: snapshot trailer corrupt\n" BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, S\" hb: snapshot format version unsupported\n" BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    RELOC-EMIT:LCALLMSG LABEL@ LBL, S\" hb: snapshot call map mismatch\n" BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
@@ -1314,14 +1329,20 @@ public
 \ MODE-BUILD is not a user-source entry: build-fixpoint first certifies its
 \ compiler payload, LCOLDPFXB leaves the latch open for that compiler prefix,
 \ and the payload executes SEAL-FRIEND before its driver.
-\ Raw target ioctl emitter for startup TTY detection.
+\ Raw target ioctl emitter for TTY detection: x0 = 0 when fd 0 is a terminal.
+\ The attributes the request returns land in an 80-byte frame on the machine
+\ stack and are dropped (macOS's struct termios is 72 bytes, Linux's 36). They
+\ are never written to BODYBUF: the route test (EMIT-REPL-ROUTE) runs at every
+\ line end, where a definition open across lines still holds its body capture.
 : C-EMIT-TTY-PROBE ( -- )
+   SP SP 80 SUBI,
    0 0 MOVZ,
    HB-TARGET-LINUX? if 1 $5401 LIT64, else
       HB-TARGET-MACOS? if 1 $40487413 LIT64, else C-TARGET-UNKNOWN then
    then
-   2 DATA BODYBUF-OFF ADDI,
-   NR-IOCTL SYS, ;
+   2 SP 0 ADDI,
+   NR-IOCTL SYS,
+   SP SP 80 ADDI, ;
 
 \ Return x9=true only for the live interactive route.  A writable REPL hook is
 \ not authority to recover: batch source can name its installer, and --load may
@@ -2050,6 +2071,7 @@ public
       9 12 0 STR,
       13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,
       13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
+      15 12 CF-KIND STR,                                   \ x15 = the entry's kind (C-CF-PUSH)
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP LABEL@ LBL,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,      \ x11 = control-flow depth (peek before pop)
@@ -2291,25 +2313,86 @@ variable LKEYNONAME
 : C-POP-X16 ( -- )
    W-POP16 C-EMITW ;
 
-: C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH LABEL@ BL, ;
+: C-CF-PUSH ( n -- )
+   {: kind:n :}
+   15 kind MOVZ,  LCFPUSH LABEL@ BL, ;   \ x9 = the entry's origin
+
+: C-PUSHCP ( n -- )   9 CP 0 ADDI,  C-CF-PUSH ;
+
+\ A refusal caught inside an immediate word's evaluate leaves the outer
+\ definition compiling, restored to the refused token's start mark (layout.f
+\ TOKBODY-CELL): its body text, locals count, CP and virtual-stack depth and
+\ register masks. So a control word may spill or emit code before it refuses,
+\ but it refuses before it pushes or pops the control-flow stack, opens a DO
+\ level, takes or reconciles to a BEGIN snapshot, shifts CMBK or patches code
+\ below CP; none of those is in the mark. Checking first is chosen over a
+\ wider mark: the refusal depends only on the control-flow depth and the kinds
+\ of its entries, known before the word touches anything, and costs nothing on
+\ the tokens that never refuse.
+\ C-CF-ROOM refuses an opener at the control-flow depth cap (LCFPUSH's own
+\ check, made first). C-CF-AT refuses a word whose entry pos below the top is
+\ missing (LORPHAN) or of another kind (LCFKIND); C-CF-NONE refuses a word that
+\ ends a body while an entry is open. A depth check alone let `if until` and
+\ `if repeat` pop the IF entry as a loop top and reconcile to a BEGIN snapshot
+\ that was not theirs, and the `then` after them patch the BEGIN's loop top.
+\ All clobber x5 and x10-x12, as LCFPUSH does.
+: C-CF-DEPTH ( -- )
+   5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR, ;
+
+: C-CF-ROOM ( -- )
+   LBL {: ok:label :}
+   C-CF-DEPTH
+   12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,  C-LT ok BCOND,
+      LCFCAP LABEL@ B,
+   ok LBL, ;
+
+\ x12 = the kind of entry x11 (an index from the bottom).
+: C-CF-KIND@ ( -- )
+   12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 CF-KIND 8 + LDR, ;
+
+: C-CF-AT2 ( n n n -- )
+   {: pos:n k1:n k2:n :}
+   LBL LBL {: have:label ok:label :}
+   C-CF-DEPTH
+   11 pos 1 + CMPI,  C-GE have BCOND,
+      LORPHAN LABEL@ B,
+   have LBL,
+   11 11 pos 1 + SUBI,  C-CF-KIND@
+   12 k1 CMPI,  C-EQ ok BCOND,
+   k2 k1 <> if  12 k2 CMPI,  C-EQ ok BCOND,  then
+      LCFKIND LABEL@ B,
+   ok LBL, ;
+
+: C-CF-AT ( n n -- )  dup C-CF-AT2 ;
+
+: C-CF-NONE ( -- )
+   LBL {: ok:label :}
+   C-CF-DEPTH  11 ok CBZ,
+      LCFKIND LABEL@ B,
+   ok LBL, ;
 
 : C-BBACK ( n n -- ) {: opc mask :}
    10 9 CP SUB,  10 10 2 ASRI,  5 mask LIT64,  10 10 5 AND,  9 opc LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL, ;
 
-: J-IF ( -- )    C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
+: J-IF ( -- )    C-POPFLAG  CFK-IF C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-THEN ( -- )  LCFPOP LABEL@ BL,  LPAT LABEL@ BL, ;
+: J-THEN ( -- )  0 CFK-IF C-CF-AT  LCFPOP LABEL@ BL,  LPAT LABEL@ BL, ;
 
-: J-ELSE ( -- )
+\ Pop the top entry, open a kind entry at a forward B and patch the popped
+\ branch past that B: the shared tail of else and endof.
+: C-ELSE ( n -- )
+   {: kind:n :}
    LCFPOP LABEL@ BL,
    14 9 0 ADDI,
-   C-PUSHCP
+   kind C-PUSHCP
    $14000000 C-EMITW
    9 14 0 ADDI,
    LPAT LABEL@ BL, ;
 
+: J-ELSE ( -- )  0 CFK-IF C-CF-AT  CFK-IF C-ELSE ;
+
 : J-CASE ( -- )
-   9 0 MOVZ,  LCFPUSH LABEL@ BL, ;
+   9 0 MOVZ,  CFK-CASE C-CF-PUSH ;
 
 \ construct keyword (TFAM 10 slice 2): arm the operand capture (CMM=1). CFN
 \ entry — no spill: construct only ADDS VS constants on top, exactly like the
@@ -2327,7 +2410,7 @@ variable LKEYNONAME
 \ point and the first arm's compare, and the mismatch-skip chain never touches x19
 \ or x9 before the next compare, so every arm's cmp reuses this one load.
 : J-MATCH ( -- )
-   9 0 MOVZ,  LCFPUSH LABEL@ BL,
+   9 0 MOVZ,  CFK-MATCH C-CF-PUSH
    9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
    12 3 MOVZ,  12 DATA CMM-CELL STR,
    $F85F8269 C-EMITW ;                  \ ldur x9,[x19,#-8]: single per-dispatch tag peek
@@ -2343,11 +2426,13 @@ variable LKEYNONAME
 \ like the shared exit->join B and the former cbz. Saves one word (4 bytes) and
 \ one executed instruction per arm.
 : J-OF ( -- )
+   0 CFK-CASE CFK-ENDOF C-CF-AT2         \ an arm continues its case
+   C-CF-ROOM
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,
    C-POP-X16                             \ pop arm value into x16
    $F85F8269 C-EMITW                     \ ldur x9,[x19,#-8]  peek scrutinee
    $EB10013F C-EMITW                     \ cmp x9,x16
-   C-PUSHCP
+   CFK-OF C-PUSHCP
    $54000001 C-EMITW                     \ b.ne +0  (skip to next arm on mismatch)
    $D1002273 C-EMITW ;                   \ sub x19,x19,#8  drop scrutinee on match
 
@@ -2355,15 +2440,28 @@ variable LKEYNONAME
 \ then pop the CMBK branch-kind bit — a MATCH variant branch (1) re-arms the token
 \ machine to CMM=4 (want variant-or-;match), a CASE arm or nested case/match ENDOF
 \ (0) leaves CMM untouched. This is the compiler analogue of the checker's
-\ CF-ENDOF-DISPATCH frame-kind routing, with no per-frame kind on the CF stack.
+\ CF-ENDOF-DISPATCH frame-kind routing; both arms leave a CFK-OF entry.
 : J-ENDOF ( -- )
    LBL {: nm:label :}
-   J-ELSE
+   0 CFK-OF C-CF-AT  CFK-ENDOF C-ELSE
    14 DATA CMBK-CELL LDR,  15 14 1 ANDI,  14 14 1 LSRI,  14 DATA CMBK-CELL STR,
    15 nm CBZ,  12 4 MOVZ,  12 DATA CMM-CELL STR,  nm LBL, ;
 
 : J-ENDCASE ( -- )
-   LBL LBL {: cloop:label done:label :}
+   LBL LBL LBL LBL LBL {: cloop:label done:label scan:label more:label found:label :}
+   \ The loop below pops and patches down to the case marker (J-CASE's 0), so
+   \ the entries above it must be its arms' ENDOFs and the marker a case's,
+   \ proved before it pops anything: x11 walks the depth down.
+   C-CF-DEPTH
+   scan LBL,
+      11 more CBNZ,
+         LORPHAN LABEL@ B,
+      more LBL,
+      11 11 1 SUBI,  C-CF-KIND@
+      12 CFK-ENDOF CMPI,  C-EQ scan BCOND,
+      12 CFK-CASE CMPI,  C-EQ found BCOND,
+         LCFKIND LABEL@ B,
+   found LBL,
    $D1002273 C-EMITW
    cloop LBL,
       LCFPOP LABEL@ BL,
@@ -2375,11 +2473,12 @@ variable LKEYNONAME
 \ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
 \ x17 — never a VS register, so the reconcile reload can't clobber the flag.
-: J-BEGIN ( -- )  LVSNAP LABEL@ BL,  C-PUSHCP ;
+: J-BEGIN ( -- )  C-CF-ROOM  LVSNAP LABEL@ BL,  CFK-BEGIN C-PUSHCP ;
 
-: J-AGAIN ( -- )  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK ;
+: J-AGAIN ( -- )  0 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK ;
 
 : J-UNTILX ( -- )                                 \ shared tail: reconcile + cbz x17,top
+   0 CFK-BEGIN C-CF-AT
    LVRECON LABEL@ BL,
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
@@ -2388,9 +2487,9 @@ variable LKEYNONAME
 : J-UNTIL ( -- )
    W-POP17 C-EMITW  J-UNTILX ;                        \ pop flag -> x17
 
-: J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
+: J-WHILE ( -- ) 0 CFK-BEGIN C-CF-AT  C-POPFLAG  CFK-WHILE C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-REPEAT ( -- ) LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,
+: J-REPEAT ( -- ) 0 CFK-WHILE C-CF-AT  1 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,
    SP SP 16 SUBI,  9 SP 0 STR,  14 SP 8 STR,
    LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
@@ -2466,9 +2565,10 @@ package LOOP-EMIT
 \ consumer of the level stack now proves a level exists BEFORE reading or
 \ writing it, and otherwise takes the shared closer-without-opener reject, the
 \ exact sibling of LCFPOP's underflow guard (dot habu-fix-loop-closer-9e5d012e).
-\ Guarding `leave` is what keeps LVD-CELL a sole-writer count of open `do`
-\ levels, so the `loop`/`+loop` guard is an existence check and not a value
-\ test an earlier stray `leave` could defeat.
+\ `loop` and `+loop` prove it through their CFK-DO entry: `do` and `?do` open
+\ the entry and the level together and those two close both, so a DO entry on
+\ top is an open level. Guarding `leave` is what keeps LVD-CELL a sole-writer
+\ count of open `do` levels.
 \ Clobbers x9 only; every call site reloads or overwrites x9 immediately after.
 : LVREQUIRE ( -- )                              \ reject a loop-family word with no open DO level
    LBL {: ok:label :}
@@ -2488,21 +2588,21 @@ package LOOP-EMIT
    LCEMIT LABEL@ BL, ;
 
 : J-DO ( -- )
-   J-FRAME  LVOPEN  C-PUSHCP ;
+   C-CF-ROOM  J-FRAME  LVOPEN  CFK-DO C-PUSHCP ;
 
 \ `?do` enters only where its closer lets the first turn run. It emits `loop`'s
 \ test, start < limit, so a limit at or below the start takes no turn, and
 \ records the branch in LVQ: `+loop` steps by a per-turn value that may count
 \ down, so the `+loop` closing this level rewrites it to skip equal bounds only.
 : J-?DO ( -- )                                  \ DO, but skip the loop unless start < limit
-   J-FRAME  LVOPEN
+   C-CF-ROOM  J-FRAME  LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
    10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
    11 CP DBASE SUB,  11 10 0 STR,
    $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
    LVLEAVE
-   C-PUSHCP ;
+   CFK-DO C-PUSHCP ;
 
 : J-LEAVE ( -- )  LVLEAVE ;
 
@@ -2517,7 +2617,7 @@ package LOOP-EMIT
    LBCHAIN LABEL@ BL, ;
 
 : J-LOOP ( -- )
-   LVREQUIRE                             \ no open DO level: reject before emitting or popping
+   0 CFK-DO C-CF-AT                      \ no open DO entry: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
@@ -2526,7 +2626,7 @@ package LOOP-EMIT
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                                \ cross the limit boundary in the step's direction
-   LVREQUIRE                             \ no open DO level: reject before emitting or popping
+   0 CFK-DO C-CF-AT                      \ no open DO entry: reject before emitting or popping
    LBL {: plain:label :}
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ a `?do` opened this level: rewrite its entry
    10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
@@ -3134,7 +3234,9 @@ public
       QUOT-FRAME,  QUOT-PARK,
       10 10 1 ADDI,  10 DATA JIT-QUOT:SP-CELL STR,
    qok LBL,
+   C-CF-ROOM                                       \ the quotation's entry: refused at the cap before QPATCH is set
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
+   CFK-QUOT C-PUSHCP                               \ closers inside see the quotation, not the body around it
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder
    9 CP 0 ADDI,  9 DATA QENT-CELL STR,            \ the quotation's entry
    9 DATA EXITH-CELL LDR,  9 DATA QXH-CELL STR,   \ scope the EXIT chain
@@ -3149,6 +3251,7 @@ public
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    sqok LBL,
+   0 CFK-QUOT C-CF-AT  LCFPOP LABEL@ BL,               \ every structure opened inside is closed
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
    EM-COMPILE-RET                                       \ its own frame, its own ret
@@ -3895,7 +3998,7 @@ public
    14 0 MOVZ,  14 9 8 STR,
    14 9 16 LDR,  14 14 4 ORR,  14 9 16 STR,           \ the kind beside the length
    3 9 40 STR,
-   9 DATA PEND-CELL STR,
+   9 DATA PEND-CELL STR,  14 DATA TKA-CELL LDR,  14 DATA PENDTKA-CELL STR,
    14 0 MOVZ,
    14 DATA TSIG-A-CELL STR,   14 DATA TSIG-U-CELL STR,
    14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,
@@ -3967,10 +4070,14 @@ public
       0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    dok LBL,
    DOES-REC:REJECT-DUP
-   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-CF-NONE                             \ a structure open across the split would branch into the clause
    C-PARSE-CREATED-SIG
    C-EMIT-CRSIG-SET
    DOES-REC:NAME$  DOES-REC:ROOM
+   \ DOESB marks the clause only once nothing above can refuse: set before the
+   \ signature, a refusal caught inside an immediate word's evaluate left it on
+   \ a definition with no clause, and its `;` refused the `does>` (rc 70).
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    DOES-REC:ENTRY-ADR                    \ adr x10, D = past word 4 and the name bytes
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16
@@ -4325,8 +4432,23 @@ package INTERP-EMIT
    bad LBL,  C-SIG-BAD
    done LBL, ;
 
+\ C-TRUSTED has set PEND and PENDTKA before its signature, so an input that
+\ ends before the signature closes is the source ending inside the definition,
+\ refused as C-DEF-SOURCE-END refuses it. C-SIG-START also misses at a byte
+\ other than `(`, below INE: that is a bad signature. CAST: and defer take
+\ C-PARSE-REQUIRED-SIG before they set PEND.
 : C-PARSE-TRUST-SIG ( -- )
-   C-PARSE-REQUIRED-SIG ;
+   LBL LBL LBL LBL {: done:label bad:label start:label ended:label :}
+   start C-SIG-START
+   ended C-SIG-END
+   C-SIG-CAPTURE-TSIG
+   done B,
+   start LBL,  11 12 CMP,  C-LT bad BCOND,
+   ended LBL,
+      9 DATA PENDTKA-CELL LDR,  9 DATA INP-CELL STR,
+      LSRCEND LABEL@ B,
+   bad LBL,  C-SIG-BAD
+   done LBL, ;
 
 : C-COLON-MAYBE-SIG ( -- )
    LBL LBL {: nsig scd :}
@@ -4353,6 +4475,7 @@ package INTERP-EMIT
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP LABEL@ BL,
    C-QUALIFY-DEF
+   10 DATA TKA-CELL LDR,  10 DATA PENDTKA-CELL STR,     \ the opener's token (layout.f PENDTKA-CELL)
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
    1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this body will publish
@@ -5664,9 +5787,12 @@ variable CFSK2
    lmainlbl B,
    CFSK LABEL@ LBL, ;
 
-: J-IFR ( -- )  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL, ;
+\ A kind entry at a cbz on the condition register x14 (CFB-ENTRY).
+: C-CBZR ( n -- )  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL, ;
 
-: J-WHILER ( -- )  J-IFR ;
+: J-IFR ( -- )  CFK-IF C-CBZR ;
+
+: J-WHILER ( -- )  0 CFK-BEGIN C-CF-AT  CFK-WHILE C-CBZR ;
 
 : J-UNTILR ( -- )                                 \ reg flag -> x17 first: the reconcile
    8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ may reload into it
@@ -8295,7 +8421,7 @@ ardone LBL,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot (dot habu-recovery-pkg-scope)
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
-   9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
+   9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,
    9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,  9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
    9 DATA P2LOC0-CELL STR,
    9 DATA TXN-ACTIVE-CELL STR,  9 DATA TXN-SRC-A-CELL STR,  9 DATA TXN-SRC-U-CELL STR,
@@ -8438,11 +8564,28 @@ ardone LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,
    LMAIN LABEL@ B, ;
 
+\ A `;` closes a definition only in the buffer that opened it. One open as this
+\ buffer began (EVAL-FRAME:PEND) is an outer buffer's, which an immediate word's
+\ evaluate or included entered: closing it here published it while that
+\ immediate word was still running, and a throw later in this buffer had no
+\ sound recovery, since either leg of EM-EVAL-THROW-RECOVER would move CP back
+\ below the published word. Each tier's `;` runs this first; the refusal is
+\ EM-SOURCE-END-DIE's LSRCCLOSE.
+: C-DEF-SOURCE-CLOSE ( -- )
+   LBL {: own:label :}
+   10 DATA EVAL-TOP-CELL LDR,  10 own CBZ,             \ no frame: the top-level source opened it
+   9 DATA PEND-CELL LDR,  9 own CBZ,
+   10 10 EVAL-FRAME:PEND LDR,
+   9 10 CMP,  C-NE own BCOND,
+   LSRCCLOSE LABEL@ B,
+   own LBL, ;
+
 package NCOMP-EMIT
 
 public
 
-: CAPTURE-DOES ( label -- ) {: notdoes:label :}
+: CAPTURE-DOES ( label -- )
+   {: notdoes:label :}
    LBL {: first:label :}
    9 DATA TKL-CELL LDR,  9 5 CMPI,  C-NE notdoes BCOND,
    0 LKWDOES LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,
@@ -8451,8 +8594,11 @@ public
       C-DIE-DOES
    first LBL,
    DOES-REC:REJECT-DUP
-   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   \ DOESB after the signature, as J-DOES sets it: before, a malformed one
+   \ caught inside an immediate word's evaluate left DOESB on a definition with
+   \ no clause, and its `;` died in the native compiler (rc 67).
    C-PARSE-CREATED-SIG
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    LMAIN LABEL@ B, ;
 
 : CAPTURE-PLAIN-STRING ( -- )
@@ -8512,6 +8658,7 @@ public
    \ fall-through is no longer load-bearing either way.
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
+      C-DEF-SOURCE-CLOSE
       PROT-EMIT:LCLOSE LABEL@ BL,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
@@ -8556,12 +8703,22 @@ public
       \ the interpreter's only bounds check; compiled code has none, and a
       \ push past the capacity faults on the stack's guard page.
       9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
+      \ The token-start mark (layout.f TOKBODY-CELL): a throw that leaves an
+      \ outer buffer's definition compiling puts it back (EM-EVAL-THROW-RECOVER).
+      \ Stored before LTOK, so the pass that meets a buffer's end marks
+      \ everything its last token compiled.
+      9 DATA BODYLEN-CELL LDR,  9 DATA TOKBODY-CELL STR,
+      9 DATA LOCN-CELL LDR,  9 DATA TOKLOCN-CELL STR,
+      9 CP DBASE SUB,  9 DATA TOKCP-CELL STR,
+      9 DATA VSP-CELL LDR,  9 DATA TOKVSP-CELL STR,
+      9 DATA VRFREE-CELL LDR,  9 DATA TOKVRF-CELL STR,
+      9 DATA FRFREE-CELL LDR,  9 DATA TOKFRF-CELL STR,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
       9 92 CMPI,  C-EQ skln BCOND,
       9 40 CMPI,  C-NE notcom BCOND,
-      skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
+      skpar LBL,  11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LCOMEND LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN LABEL@ B,
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
@@ -8589,7 +8746,8 @@ public
 \ the exits that run the exit hook (LRBYE, LUNCAUGHT). `die` is compiled code,
 \ so it never runs under the window. When the head goes on, tier 0's next body
 \ token opens it again (EM-COMPILE-LEGACY); tier 1 only captures until `;`.
-: EM-INTERPRET-COLON ( label -- ) {: lnotcolon:label :}
+: EM-INTERPRET-COLON ( label -- )
+   {: lnotcolon:label :}
    LBL LBL LBL LBL LBL {: cpok:label ndok:label named:label kcolon:label ktry:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 $3A CMPI,  C-NE ktry BCOND,
@@ -8614,6 +8772,7 @@ public
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
       LBCAP LABEL@ BL,             \ seed with the NAME (checker records certified sigs)
       C-QUALIFY-DEF
+      10 DATA TKA-CELL LDR,  10 DATA PENDTKA-CELL STR,     \ the opener's token (layout.f PENDTKA-CELL)
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
       1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this body will publish
@@ -8625,7 +8784,6 @@ public
       12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
       C-CLEAR-TRUSTED-STATE
       C-COLON-MAYBE-SIG
-         9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
          9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
          12 0 MOVZ,  12 DATA VSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
@@ -10217,9 +10375,12 @@ public
 
 \ pass-2 entry: the hook produced a sealed lowering transaction. Save the live
 \ input, repoint the tokenizer at its frozen source span, rewind CP to
-\ the colon entry (the name bytes stay) and DP to the definition watermark,
-\ reset the per-definition compile state exactly as EM-INTERPRET-COLON does,
-\ re-emit the prologue, and re-run the compile loop width-aware.
+\ the colon entry (the name bytes stay), reset the per-definition compile
+\ state exactly as EM-INTERPRET-COLON does, re-emit the prologue, and re-run
+\ the compile loop width-aware.
+\
+\ DP stays where pass 1 left it: the compiler allots none in a body (LDPBAD
+\ note); an immediate's allot is pass 1's and the word does not run again.
 \
 \ THE REWIND OWNS EVERY RECORD KEYED ON THE CURSOR IT REWINDS, and two are: the
 \ region-to-text call map and the address-literal map, both indexed by region
@@ -10235,8 +10396,7 @@ public
 \ refuses the image outright when the bytes disagree - so the stale bit is not a
 \ wasted bit, it is an image this engine will not load, and the AOT capture
 \ refuses the same site one build step earlier (aot-capture.f ACAP-UNCLASSIFIED).
-\ So the span pass 1 emitted is cleared in both maps in the same breath as the
-\ two cursors are put back. It is DP's watermark's counterpart for CP.
+\ So the span pass 1 emitted is cleared in both maps as the cursor is put back.
 \
 \ The span is exactly [entry, pass-1 CP): the entry is the pending definition's
 \ own code field, read from PEND-CELL, which is where CP is being put back to,
@@ -10260,7 +10420,6 @@ public
    0 CODE-ORIGIN:CLOSE,
    CP 10 0 ADDI,                                      \ CP back to the colon entry: below the band
    CODE-ORIGIN:OPEN,
-   9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
    PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
@@ -10393,6 +10552,7 @@ public
    LBL LBL {: noquot:label closed:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
+      C-DEF-SOURCE-CLOSE
       \ A quotation is still open: the mirror of J-SEMIQUOT's `;]` with none.
       \ Publishing would leave its b-over placeholder, a branch to itself,
       \ unpatched, so calling the word would spin. QPATCH-CELL is set at every
@@ -10687,6 +10847,13 @@ public
    LVSPILL LABEL@ BL,
    11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
+      \ Pass 2 never runs an immediate: pass 1 ran it once on the real input
+      \ and the capture pass 2 lowers holds what it compiled (LBCAP; a
+      \ parse-name payload is never captured, checker.f PIMM-STREAM), as tier 1
+      \ lowers the same capture without running it (checker-owner.f
+      \ PARSE-IMM?). Run again, a parsing word read the next captured token and
+      \ every side effect happened twice.
+      9 DATA P2-CELL LDR,  9 LMAIN LABEL@ CBNZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
          9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
@@ -10729,9 +10896,25 @@ public
 
 \ A throw whose nearest handler lies beyond one or more active evaluate boundaries
 \ lands here (BTHROW branch via EVALREC-CELL), x15 = throw code. Each escaped eval
-\ frame is rolled back — input cursor, dictionary top (CP/NDICT), data-stack base
-\ (XDS), data pointer (DP), and compile state — and EVALERR-CELL records the code,
-\ so the handler resumes with clean state. Popping stops as soon as EVALD reaches 0
+\ frame gives back what it owns — input cursor, data-stack base (XDS), package
+\ and using scope — and EVALERR-CELL records the code, so the handler resumes
+\ with clean state. A frame that began with no definition open also owns
+\ everything compiled since: dictionary top (CP/NDICT), data pointer (DP) and
+\ compile state roll back, dropping any definition it opened. A frame that
+\ began inside an open definition (EVAL-FRAME:PEND) is an immediate word's evaluate
+\ compiling into an outer buffer's definition, which it neither opened nor may
+\ close (C-DEF-SOURCE-CLOSE): that definition stays open with what the frame
+\ compiled before the throw, put back to the token-start mark (layout.f
+\ TOKBODY-CELL: body capture, locals count, CP, virtual stack), which every
+\ refusal precedes with no other change (habu2.f C-CF-ROOM states the rule).
+\ Resetting it here dropped the definition under the immediate word, and the
+\ rest of its body ran as top-level words. The mark
+\ is the innermost buffer's current token, or its end when that buffer exited
+\ cleanly before the throw, and popping leaves it there: every frame popped
+\ keeps the completed tokens of the buffers inside it. Each frame inside one
+\ begun in an open definition begins in it too, as only its own source closes
+\ it, so all such frames pop before any frame that owns the compile, while the
+\ mark still holds. Popping stops as soon as EVALD reaches 0
 \ or the nearest handler (x11, read once because EM-RESET-COMPILE-STATE zeroes the
 \ HND-CELL copy) is inside the current eval frame; then the throw is delivered to
 \ that handler / REPL / process exit exactly as the non-evaluate path does.
@@ -10741,7 +10924,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL {: bounds:label :}
+   LBL LBL LBL {: bounds:label owned:label scope:label :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -10768,12 +10951,24 @@ public
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
       12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
+      XDS 13 32 LDR,
+      12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
+         \ The outer definition as the interrupted token began (layout.f TOKBODY-CELL).
+         12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,
+         12 DATA TOKLOCN-CELL LDR,  12 DATA LOCN-CELL STR,
+         12 DATA TOKCP-CELL LDR,  CP DBASE 12 ADD,
+         12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
+         12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
+         12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
+         scope B,
+      owned LBL,
       CODE-ORIGIN:ABANDON,
-      CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      CP 13 40 LDR,  NDICT 13 48 LDR,
       12 13 56 LDR,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
+      scope LBL,
       \ Restore package/search state from this escaped native-stack frame.
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
@@ -10788,6 +10983,7 @@ public
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
+      12 13 EVAL-FRAME:PEND LDR,  12 LEVLL LABEL@ CBNZ, \ the outer buffer's definition keeps compiling
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
       LEVLL LABEL@ B,
    LEVLD LABEL@ LBL,
@@ -10926,9 +11122,10 @@ public
    9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
       \ Inside evaluate: the aborted nested :-compile unwinds as a catchable throw
       \ (RC-REJECT) via the eval throw-recovery (the same LEVALREC path BTHROW uses),
-      \ which rolls back every escaped eval frame -- dropping the partial definition
-      \ (CP/NDICT/XDS/DP) -- and delivers to the enclosing catch, or fails closed with
-      \ rc70 when no handler exists (exactly like LRDIE). We abort mid-compile with the
+      \ which gives back what each escaped eval frame owns -- dropping a partial
+      \ definition the frame opened (CP/NDICT/XDS/DP) -- and delivers to the
+      \ enclosing catch, or fails closed with rc70 when no handler exists (exactly
+      \ like LRDIE). We abort mid-compile with the
       \ dict region RW; restore RX before re-entering executable (EV/handler) code.
       PROT-EMIT:LCLOSE LABEL@ BL,                      \ region -> RX
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
@@ -10974,6 +11171,11 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
+   LCFKIND LABEL@ LBL,                                \ branch target from C-CF-AT/C-CF-NONE: the open entry is another structure's (TKA/TKL hold the token)
+   0 2 MOVZ,  1 LCFKINDMSG LABEL@ ADR,  2 CFKINDMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
    LCFCAP LABEL@ LBL,                                 \ branch target from LCFPUSH: opener at the control-flow stack depth cap (TKA/TKL hold the opener token)
    0 2 MOVZ,  1 LCFCAPMSG LABEL@ ADR,  2 CFCAPMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -10998,10 +11200,11 @@ public
 \ tools/error-code-lint-core.f). Each die site writes its diagnostic to fd 2, sets
 \ x0 = its code, then `LCOMPILEDIE LABEL@ B,` here. Inside evaluate (EVALD>0) the
 \ aborted nested compile unwinds as a catchable throw of that code via the eval
-\ throw-recovery (the same LEVALREC path BTHROW/LDIAGRET use) — rolling back every
-\ escaped eval frame (input cursor, CP/NDICT truncation drops the partial record,
-\ XDS/DP, compile state; HIDX transparently skips any rolled-back record index) —
-\ and delivers to the enclosing catch, else fails closed with exit_group(x0). At
+\ throw-recovery (the same LEVALREC path BTHROW/LDIAGRET use) — giving back what
+\ each escaped eval frame owns (input cursor; for a frame that opened the
+\ definition, CP/NDICT truncation drops the partial record, XDS/DP, compile
+\ state; HIDX transparently skips any rolled-back record index) — and delivers
+\ to the enclosing catch, else fails closed with exit_group(x0). At
 \ top level (EVALD==0) it exit_group(x0), byte-identical to the old raw exit. We may
 \ abort mid-compile with the code region RW, so restore RX (idempotent when already
 \ RX) before re-entering executable EV/handler code. x15 carries the code across the
@@ -11207,6 +11410,34 @@ public
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ Source that ends inside a construct it opened (dot habu-eof-inside-a-7a539941).
+\ An evaluate frame popped with a definition it opened still open hands its
+\ caller the compile state: at top level the next --load row compiled into the
+\ body and the load exited 0, and through `included` from a compiled word so did
+\ the caller's next words. Both refusals take rc 74, the code of the
+\ other input-ended refusals (an unterminated string literal, a keyword missing
+\ its name), through the LCOMPILEDIE tail: a catchable throw inside evaluate
+\ whose rollback drops the partial record and resets compile state, a
+\ fail-closed exit at top level. A definition is named and located at its name
+\ token, or for def-open at the word that ran it (C-DEF-SOURCE-END); a comment
+\ is located at its `(`, as a literal is at its keyword. A `;` that closes a
+\ definition an outer buffer opened (C-DEF-SOURCE-CLOSE) takes the same code,
+\ named and located at the `;`.
+: EM-SOURCE-END-DIE ( -- )
+   LSRCEND LABEL@ LBL,
+   0 2 MOVZ,  1 LSRCENDMSG LABEL@ ADR,  2 SRCEND-MSG-LEN MOVZ,  NR-WRITE SYS,
+   LDIAGDEF LABEL@ BL,
+   0 74 MOVZ,  LCOMPILEDIE LABEL@ B,
+   LCOMEND LABEL@ LBL,
+   9 DATA TKA-CELL LDR,  9 DATA INP-CELL STR,          \ the line of the `(`
+   0 2 MOVZ,  1 LCOMENDMSG LABEL@ ADR,  2 COMEND-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 74 MOVZ,  LCOMPILEDIE LABEL@ B,
+   LSRCCLOSE LABEL@ LBL,
+   9 DATA TKA-CELL LDR,  9 DATA INP-CELL STR,          \ the line of the `;`
+   0 2 MOVZ,  1 LSRCCLOSEMSG LABEL@ ADR,  2 SRCCLOSE-MSG-LEN MOVZ,  NR-WRITE SYS,
+   LDIAGDEF LABEL@ BL,
+   0 74 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
 \ The buffer ran out: return to evaluate's caller, which is compiled code, so a
 \ head the buffer left pending has its code window closed first.
 : EM-EVAL-CLEAN-EXIT ( -- )
@@ -11291,19 +11522,31 @@ public
 \ Refuse an unfinished selected unit before the evaluate frame is popped, so
 \ its ordinary throw path restores package scope and dictionary together.
 : C-UNIT-SOURCE-END ( -- )
-   LBL LBL {: absent:label complete:label :}
+   LBL {: absent:label :}
    10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,
    9 absent CBZ,
-   9 DATA PEND-CELL LDR,  9 complete CBZ,
-      70 C-DIE-TOKEN
-   complete LBL,
    15 0 MOVZ,  16 5 MOVZ,  C-UNIT-HOOK
    absent LBL, ;
 
+\ Refuse a definition this buffer opened and did not close, before the frame
+\ is popped: the one open as the buffer began (EVAL-FRAME:PEND) is an outer buffer's.
+\ The refusal is located at the definition's name token, or for def-open at the
+\ word that ran it (layout.f PENDTKA-CELL), an address in this buffer because
+\ this buffer opened it; the buffer's last line can be blank.
+: C-DEF-SOURCE-END ( -- )
+   LBL {: closed:label :}
+   9 DATA PEND-CELL LDR,  9 closed CBZ,
+   10 DATA EVAL-TOP-CELL LDR,  10 10 EVAL-FRAME:PEND LDR,
+   9 10 CMP,  C-EQ closed BCOND,
+      9 DATA PENDTKA-CELL LDR,  9 DATA INP-CELL STR,
+      LSRCEND LABEL@ B,
+   closed LBL, ;
+
 : EM-COMPILE-EXIT ( -- )
-   LBL {: nousrc:label :}
+   LBL LBL {: nousrc:label closed:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
+      C-DEF-SOURCE-END                                        \ the named refusal first, a unit's too
       C-UNIT-SOURCE-END
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
@@ -11330,6 +11573,13 @@ public
    EM-REPL-READ
    LRBYE LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,     \ region -> RX: the source may end inside a definition (EMIT-EXITHOOK)
+   \ The input ended inside a definition. No input remains for the tty route to
+   \ recover into, so the refusal is final there as it is on a pipe: clearing
+   \ the reader makes LCOMPILEDIE take its exit leg, rc 74.
+   9 DATA PEND-CELL LDR,  9 closed CBZ,
+      9 0 MOVZ,  9 DATA REPLH-CELL STR,
+      LSRCEND LABEL@ B,
+   closed LBL,
    0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;   \ the deliberate success exit runs the exit hook
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
@@ -11600,7 +11850,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16,#tag
       $EB10013F C-EMITW                 \ cmp x9,x16
    tagdone LBL,
-   C-PUSHCP
+   CFK-OF C-PUSHCP
    $54000001 C-EMITW                    \ b.ne +0  (skip to next variant on tag mismatch)
    14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,
    8 $D1000273 LIT64,  7 14 3 LSLI,  LADDSUBIMM LABEL@ BL,   \ sub x19,x19,#(8*(1+pads))
@@ -11711,6 +11961,7 @@ package ENGINE-EMIT
    EM-BODY-CAP-DIE
    EM-SNAP-NEST-DIE
    EM-QUOT-NEST-DIE
+   EM-SOURCE-END-DIE
    EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER
    EM-COMMENT
@@ -11805,6 +12056,7 @@ package LABELS
    LBL LMININ !  LBL LMINMSG !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
+   LBL LCFKIND !  LBL LCFKINDMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
@@ -11813,6 +12065,8 @@ package LABELS
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
    LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !
+   LBL LSRCEND !  LBL LSRCENDMSG !  LBL LCOMEND !  LBL LCOMENDMSG !
+   LBL LSRCCLOSE !  LBL LSRCCLOSEMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !

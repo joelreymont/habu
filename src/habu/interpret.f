@@ -30,12 +30,14 @@ TRUSTED: DISPATCH ( -- )
 : RUN ( -- )
    begin TOKEN while STEP repeat ;
 
-\ Run the buffer under catch and give its code. A throw also puts back the d
-\ used publics below depth d, the includer's: a buffer that closes the
-\ includer's package and opens a using writes into one of them (habu1.f B-EVAL
-\ keeps the engine's in its frame). Each call keeps one slot.
-: RUN-CAUGHT ( n -- n ) {: d:n :}
-   d 0= if [: RUN ;] catch exit then
+\ Run the buffer under catch, refusing at its end a definition it opened, and
+\ give its code. A throw also puts back the d used publics below depth d, the
+\ includer's: a buffer that closes the includer's package and opens a using
+\ writes into one of them (habu1.f B-EVAL keeps the engine's in its frame).
+\ Each call keeps one slot.
+: RUN-CAUGHT ( n -- n )
+   {: d:n :}
+   d 0= if [: RUN DEF-SOURCE-END ;] catch exit then
    d 1- FIND-USE-WID {: wid:n :}
    d 1- RECURSE {: code:n :}
    code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
@@ -56,19 +58,27 @@ public
 \ keeps none of its usings: the package's using floor drops to the restored
 \ depth. A clean end also clears the evaluate error cell, as the engine's does:
 \ an `evaluate` the buffer caught recorded its code there, and include.f reads
-\ a nonzero cell after the buffer as a failed evaluation.
-: INTERPRET ( ptr u8 n -- ) {: a:ptr u:n :}
+\ a nonzero cell after the buffer as a failed evaluation. A definition the
+\ buffer opened and left open is refused at its end, while the input cells
+\ still name the buffer, and a throw gives up a definition the buffer opened:
+\ the record pending as it began is pending again (definers.f ENTRY-PEND).
+: INTERPRET ( ptr u8 n -- )
+   {: a:ptr u:n :}
    INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
-   {: p:n e:n b:n d:n :}
+   ENTRY-PEND @
+   {: p:n e:n b:n d:n o:n :}
    PKG-STATE {: rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
    d USE-FLOOR !
+   PEND-CELL CELL@ {: entry:n :}
+   entry ENTRY-PEND !
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    d RUN-CAUGHT {: code:n :}
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
-   code 0<> if d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
+   o ENTRY-PEND !
+   code 0<> if entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
    back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;

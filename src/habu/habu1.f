@@ -238,24 +238,6 @@ variable LFINDSHADOW
    EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
    skip LBL, ;
 
-package GUARD
-
-: BLOB-SPAN ( n label -- ) {: addr:n trap:label :}
-   LBL {: skip:label :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG DREG CMP,  C-LS skip BCOND,
-   EREG DATA TXN-BLOB-CAP-CELL LDR,
-   DREG DREG EREG ADD,
-   addr DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
-public
-
-: SPAN ( n label -- ) BLOB-SPAN ;
-
-;package
-
 \ Span-aware protected-memory guard. addr and len name runtime registers. A
 \ zero-length write is inert. Any address+length wrap traps before the region
 \ tests, then every protected half-open interval is checked for intersection.
@@ -274,8 +256,9 @@ variable BAND-IX
       BAND-IX @ 1+ BAND-IX !
    REPEAT ;
 
-: GUARD-SPAN ( n n -- ) {: addr:n len:n :}
-   LBL LBL LBL {: ok:label trap:label past:label :}
+: GUARD-SPAN ( n n -- )
+   {: addr:n len:n :}
+   LBL LBL {: ok:label trap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
@@ -289,12 +272,10 @@ variable BAND-IX
    \ the hull ends before pending scratch and DATA-START; no span intersecting
    \ a band is admitted.
    DREG DATA-BANDS:HI LIT64,  DREG DATA DREG ADD,
-   addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
+   addr DREG CMP,  C-CS ok BCOND,       \ start >= hull end
    DREG DATA-BANDS:LO LIT64,  DREG DATA DREG ADD,
-   EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
+   EREG DREG CMP,  C-LS ok BCOND,       \ checked end <= hull start
    addr trap BANDS-EMIT
-   past LBL,
-   addr trap GUARD:SPAN
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
@@ -1469,6 +1450,7 @@ public
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    11 DATA SRCLOC:INB-CELL LDR,  11 14 EVAL-INB STR,   \ buffer START, for the refusal line number
+   11 DATA PEND-CELL LDR,  11 14 EVAL-FRAME:PEND STR,   \ the definition open as this buffer begins
    30 14 16 STR,                                     \ x30 = where the clean exit returns
    11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,

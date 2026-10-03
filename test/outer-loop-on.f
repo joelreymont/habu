@@ -16,9 +16,12 @@ variable SRC-U
 public
 
 \ The loaded bytes are read before the loop runs, so a load nested in them can
-\ store its own.
+\ store its own. LOADED is immediate: a file an immediate word loads while a
+\ definition is open reaches the loop then too, as the engine's loop reads such
+\ a file into the definition, where a plain word would compile into it.
 : LOADED ( -- )
-   SRC-A @ SRC-U @ OUTER:INTERPRET ;
+   SRC-A @ SRC-U @ OUTER:INTERPRET ; immediate
+s" OUTER-LOOP-ON:LOADED" 0 parse-imm
 
 private
 

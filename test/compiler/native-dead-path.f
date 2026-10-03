@@ -107,7 +107,7 @@ private
 \   : DPC-AFTER ( n n -- n ) 0 = if drop E-A-EMPTY throw 7 then ;
 \       habu: in dpc-after: at '7' after 'throw'
 \   : DPC-LOOPD ( n -- n ) begin E-A-EMPTY throw repeat ;
-\       hb: control-flow closer without opener: repeat
+\       hb: control-flow word does not match the open structure: repeat
 \
 \ So the elaborator's check is a backstop against the two walks of the body
 \ disagreeing, in the same class as the other backstops this file keeps, and a
