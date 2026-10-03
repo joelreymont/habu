@@ -18,9 +18,9 @@
 \ JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ ..
 \ JR:T-END). Callers allocate JR:STORAGE-BYTES at a cell-aligned address and keep
 \ both storage and source live and exclusive until CLOSE. The byte constants,
-\ opaque representation leaves, cursor state, and scan/decode helpers - including
-\ the bounds-checked source reader AT - are package-private and sealed after the
-\ module is assembled.
+\ the reader's LINEAR: mint and erase, cursor state, and scan/decode helpers -
+\ including the bounds-checked source reader AT - are package-private and sealed
+\ after the module is assembled.
 \
 \ Cursor state machine (STATE): a value token drives one transition each.
 \  ST-VALUE   value required (doc start / after ':' / after ',' in an array)
@@ -198,24 +198,16 @@ public
 
 private
 
-\ ---- opaque reader representation boundary ------------------------------
-\ STORAGE>PREMINT, READER>STATE, and CONSUME-READER are one audited abstraction.
-\ Checked INIT owns validation and initialization; only those representation
-\ refinements remain trusted until bounded storage can express extent and lifetime.
-\ Retirement owner: cap:raw-pointer-lifetime.
-\ Expose cell-state and numeric-address views for checked pre-mint validation.
-TRUSTED: STORAGE>PREMINT ( ptr a -- ptr n n )
-   dup ;
+\ ---- reader token ---------------------------------------------------------
+\ A JR:reader is the caller's cell storage under a linear token. These private
+\ rows are its only mint and erase, so outside JR a reader comes only from INIT
+\ and ends only at CLOSE.
+LINEAR: MINT-READER ( ptr n -- JR:reader )
+LINEAR: ERASE-READER ( JR:reader -- ptr n )
 
-TRUSTED: MINT-READER ( ptr a -- JR:reader ) ;
-
-\ Keep the linear token live while exposing views of its same backing storage.
-TRUSTED: READER>STATE ( JR:reader -- JR:reader ptr n ptr u8 )
-   dup dup ;
-
-\ CLOSE consumes the token but never frees caller-owned storage.
-TRUSTED: CONSUME-READER ( JR:reader -- )
-   drop ;
+\ Keep the token live while exposing its cell state.
+: READER>STATE ( JR:reader -- JR:reader ptr n )
+   ERASE-READER dup MINT-READER swap ;
 
 : CTX-SLOT ( ptr n n -- ptr n )   \ ( state depth -- cell address of that stack slot )
    cells CTX-OFF + + ;
@@ -257,24 +249,25 @@ TRUSTED: CONSUME-READER ( JR:reader -- )
 
 public
 
-: INIT ( ptr a n ptr u8 n -- JR:reader ) {: storage:ptr cap:n source:ptr len:n :}
+: INIT ( ptr n n ptr u8 n -- JR:reader )
+   {: storage:ptr cap:n source:ptr len:n :}
    storage 0= if E-STORAGE throw then
-   storage STORAGE>PREMINT
-   CELL 1- and 0 <> if E-STORAGE throw then
+   storage NULL-PTR - CELL 1- and 0 <> if E-STORAGE throw then
    cap STORAGE-BYTES < if E-CAPACITY throw then
    len 0 < if E-SOURCE throw then
    len 0 > source 0= and if E-SOURCE throw then
-   source len INIT-STATE
+   storage source len INIT-STATE
    storage MINT-READER ;
 
+\ CLOSE consumes the token but never frees caller-owned storage.
 : CLOSE ( JR:reader -- )
-   CONSUME-READER ;
+   ERASE-READER drop ;
 
 : TOKEN ( JR:reader -- JR:reader n )
-   READER>STATE drop KIND-OFF + @ ;
+   READER>STATE KIND-OFF + @ ;
 
 : SPAN$ ( JR:reader -- JR:reader ptr u8 n )
-   READER>STATE drop {: state:ptr :}
+   READER>STATE {: state:ptr :}
    state SRC-IDX ptr-field @ state TOK-AT-OFF + @ +
    state TOK-LEN-OFF + @ ;
 
@@ -656,7 +649,7 @@ private
 public
 
 : NEXT ( JR:reader -- JR:reader n )
-   READER>STATE drop NEXT-INNER ;
+   READER>STATE NEXT-INNER ;
 
 private
 
@@ -678,10 +671,10 @@ private
 public
 
 : INT ( JR:reader -- JR:reader n )
-   READER>STATE drop INT-INNER ;
+   READER>STATE INT-INNER ;
 
 : FLOAT ( JR:reader -- JR:reader r )
-   READER>STATE drop FLOAT-INNER ;
+   READER>STATE FLOAT-INNER ;
 
 private
 
@@ -815,8 +808,9 @@ private
 
 public
 
-: STR ( JR:reader ptr u8 n -- JR:reader n ) {: dst:ptr cap:n :}
-   READER>STATE drop dst cap STR-INNER ;
+: STR ( JR:reader ptr u8 n -- JR:reader n )
+   {: dst:ptr cap:n :}
+   READER>STATE dst cap STR-INNER ;
 
 private
 
@@ -882,7 +876,7 @@ private
 public
 
 : SKIP-VALUE ( JR:reader -- JR:reader )
-   READER>STATE drop SKIP-INNER ;
+   READER>STATE SKIP-INNER ;
 
 : VALUE-SPAN-INNER ( ptr n -- ptr u8 n ) {: state:ptr :}
    state KIND-OFF + @ OPENER? 0= if E-JR-STATE throw then
@@ -892,10 +886,11 @@ public
    state POS-OFF + @ start - ;
 
 : VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
-   READER>STATE drop VALUE-SPAN-INNER ;
+   READER>STATE VALUE-SPAN-INNER ;
 
-: FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool ) {: key:ptr len:n :}
-   READER>STATE drop key len FIND-INNER ;
+: FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool )
+   {: key:ptr len:n :}
+   READER>STATE key len FIND-INNER ;
 
 \ Whether the current string or key decodes to exactly these bytes. The bytes
 \ stream through STR's decoder, so no buffer bounds the string, and the cursor
@@ -903,7 +898,7 @@ public
 : STR-EQ? ( JR:reader ptr u8 n -- JR:reader bool )
    {: want:ptr len:n :}
    want len REQUIRE-KEY-SPAN
-   READER>STATE drop want len MATCH-INNER ;
+   READER>STATE want len MATCH-INNER ;
 
 private
 
