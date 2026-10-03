@@ -553,25 +553,29 @@ ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary 
 \ admits only in whole instruction words.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
 \ ENGINE-ERROR:SEAL-VIOLATION.
-EPRIM: code-publish  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ the bulk publication window is code injection too
+\
+\ THE PUBLISHER OWNS ITS PRIMITIVES. The rows closed ECLOSE-PRIVATE for NPUB
+\ resolve only inside that package, so the publisher's own words
+\ (src/compiler/native/publish.f) are checked code, and a checked caller
+\ anywhere else is refused by name. code-publish, xref-retarget and does-record
+\ (below) are that row alone: outside NPUB the name is undefined to a checked
+\ caller. callmap-set and addrmap-set keep a global trusted-only row beside it
+\ for their TRUSTED: callers outside NPUB (tools/native-unit-object.f CALL-MAP
+\ and ADDR-MAP, the relocation-map tests): the optimizing compiler builds such
+\ a caller's call window from a global row, and a seed primitive with none is
+\ E-HIR-UNMODELED there. The same reason keeps the global rows of
+\ reloc-maps-clear and set-top-check beside their owners' rows below.
+EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: native-unit-publish
    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ installs relocated package code and dictionary rows
 EPRIM: callmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
+EPPRIM: NPUB callmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
-\ addrmap-set's owner-private row: inside package NPUB it wins, so the
-\ publisher's own RELOC-ADDR (src/compiler/native/publish.f) is checked code.
-\ The global row above stays beside it. A checked caller elsewhere is refused
-\ by it (E-CAP-TRUSTED), and the TRUSTED: callers outside NPUB
-\ (tools/native-unit-object.f ADDR-MAP, the relocation-map tests) need it: the
-\ optimizing compiler builds their call window from a global row, and a seed
-\ primitive with none is E-HIR-UNMODELED there.
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ points a live dictionary record at new code
+EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ The seal's own two record writers. A row here is what lets the OPTIMIZING
 \ compiler build the call window from src/core/internal-mark.f's TRUSTED:
 \ wrappers, the same reason CHECKER-VERIFY-PKG-START below carries one: that
@@ -588,12 +592,13 @@ EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
+\ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
+EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native defining-word runtime patch
 \ `does-record ( entry len -- )` records the pending definition's `;does`
 \ clause and writes its name at CP, zero-padded to a code slot.
-EPRIM: does-record PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ native `;does` companion publication
+EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 EPRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: close         PE-N PE-IN EPRIM;
@@ -629,6 +634,11 @@ EPRIM: set-preflight PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPRIM: set-top-check PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+\ The top-level tracker's own install (src/core/top-row.f TR-INSTALL): its row
+\ takes a hook of the shape the tracker is called with, where the global row
+\ above takes any cell.
+EPPRIM: TOP-ROW set-top-check
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 \ Choosing the compiler belongs to package TIER (lib/tier.f), and this row is
 \ that owner's alone: TIER:SELECT is the checked caller every other scope calls,
 \ a checked body outside TIER does not find the name, and a build driver's

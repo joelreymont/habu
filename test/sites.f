@@ -263,10 +263,11 @@ $01D2E3F4 constant WIDE
 
 \ ---- EACH-IN-SPAN over the engine's own band -----------------------------------
 \ The words above the code pointer are unclaimed until something publishes there,
-\ so the suite may mark and clear them. The three primitives are admitted only
-\ through a trusted boundary, as src/compiler/native/publish.f and
-\ src/habu/xref.f declare theirs; each takes an address the checked words below
-\ compute.
+\ so the suite may mark and clear them. The three primitives keep trusted-only
+\ global rows, so this suite reaches them through TRUSTED: words, while
+\ src/compiler/native/publish.f and src/habu/xref.f call them from checked `:`
+\ words through their owners' private rows (NPUB, CODE-RECLAIM); each takes an
+\ address the checked words below compute.
 TRUSTED: CALL-SET ( n -- )
    callmap-set ;
 

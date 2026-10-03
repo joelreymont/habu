@@ -1353,10 +1353,10 @@ private
 \ Arm the sealed field-projection window for this row, if it carries an arming.
 \ Called immediately before each of the two readings of the row's text; the
 \ window is single-shot and disarms at the `field-project` token even on a
-\ reject, so each reading arms for itself. The window's two mutators are
-\ trust-boundary primitives reached through named thin forwarders — the
-\ generative crossing the window exists for (src/core/checker.f FIELD-PROJ!).
-TRUSTED: TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
+\ reject, so each reading arms for itself. Arming is the generative crossing the
+\ window exists for: FIELD-PROJ! binds TYPE-DECL's private row
+\ (src/core/checker.f), so this caller is checked code.
+: TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
 TRUSTED: TDPLAN-FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
 
 : TDPLAN-ARM ( n -- ) {: i:n :}

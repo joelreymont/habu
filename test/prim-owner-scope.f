@@ -184,6 +184,81 @@ variable EXP-U
    s" t1 set-tier other package"          s" rejected" CASE+
    s" t1 tier select other package"       s" compiled" CASE+ ;
 
+\ The engine's own owners. Each owner compiles its checked callers and ticks at
+\ both tiers, a reopened owner too; everywhere else they are refused by name.
+\ code-publish, xref-retarget and does-record have no global row; every other
+\ primitive here keeps its trusted-only one, so its TRUSTED: callers outside the
+\ owner compile at both tiers. FIELD-PROJ! is sealed (REG-PROTECT), so TYPE-DECL's
+\ admission is measured before the seal, in test/prim-owner-scope-prepare.f,
+\ where a refusal stops the window before the first line here.
+: NPUB-SITE-LINES ( -- )
+   s" t0 code-publish inside owner"          s" compiled" CASE+
+   s" t0 xref-retarget inside owner"         s" compiled" CASE+
+   s" t0 does-record inside owner"           s" compiled" CASE+
+   s" t0 callmap-set inside owner"           s" compiled" CASE+
+   s" t0 tick code-publish inside owner"     s" compiled" CASE+
+   s" t0 code-publish top level"             s" rejected" CASE+
+   s" t0 tick code-publish top level"        s" rejected" CASE+
+   s" t0 does-record top level"              s" rejected" CASE+
+   s" t0 xref-retarget other package"        s" rejected" CASE+
+   s" t0 callmap-set other package"          s" rejected" CASE+
+   s" t0 callmap-set trusted top level"      s" compiled" CASE+
+   s" t1 code-publish inside owner"          s" compiled" CASE+
+   s" t1 xref-retarget inside owner"         s" compiled" CASE+
+   s" t1 does-record inside owner"           s" compiled" CASE+
+   s" t1 callmap-set inside owner"           s" compiled" CASE+
+   s" t1 xref-retarget top level"            s" rejected" CASE+
+   s" t1 tick does-record other package"     s" rejected" CASE+
+   s" t1 callmap-set trusted top level"      s" compiled" CASE+ ;
+
+: RECLAIM-LINES ( -- )
+   s" t0 reloc-maps-clear inside owner"        s" compiled" CASE+
+   s" t0 tick reloc-maps-clear inside owner"   s" compiled" CASE+
+   s" t0 reloc-maps-clear top level"           s" rejected" CASE+
+   s" t0 tick reloc-maps-clear other package"  s" rejected" CASE+
+   s" t0 reloc-maps-clear reopened owner"      s" compiled" CASE+
+   s" t0 reloc-maps-clear trusted top level"   s" compiled" CASE+
+   s" t1 reloc-maps-clear inside owner"        s" compiled" CASE+
+   s" t1 reloc-maps-clear other package"       s" rejected" CASE+
+   s" t1 reloc-maps-clear trusted top level"   s" compiled" CASE+ ;
+
+: TOP-ROW-LINES ( -- )
+   s" t0 set-top-check inside owner"            s" compiled" CASE+
+   s" t0 set-top-check wrong hook inside owner" s" rejected" CASE+
+   s" t0 tick set-top-check inside owner"       s" compiled" CASE+
+   s" t0 set-top-check top level"               s" rejected" CASE+
+   s" t0 tick set-top-check other package"      s" rejected" CASE+
+   s" t0 set-top-check reopened owner"          s" compiled" CASE+
+   s" t0 set-top-check trusted top level"       s" compiled" CASE+
+   s" t1 set-top-check inside owner"            s" compiled" CASE+
+   s" t1 set-top-check other package"           s" rejected" CASE+
+   s" t1 set-top-check trusted top level"       s" compiled" CASE+ ;
+
+: CK-OWNER-LINES ( -- )
+   s" t0 check-does! inside owner"          s" compiled" CASE+
+   s" t0 tick check-does! inside owner"     s" compiled" CASE+
+   s" t0 check-does! top level"             s" rejected" CASE+
+   s" t0 tick check-does! other package"    s" rejected" CASE+
+   s" t0 check-does! reopened owner"        s" compiled" CASE+
+   s" t0 check-does! trusted top level"     s" compiled" CASE+
+   s" t1 check-does! inside owner"          s" compiled" CASE+
+   s" t1 check-does! other package"         s" rejected" CASE+
+   s" t1 check-does! trusted top level"     s" compiled" CASE+ ;
+
+: TYPE-DECL-LINES ( -- )
+   s" t0 field-proj! reopened owner after the seal" s" rejected" CASE+
+   s" t0 field-proj! top level"                     s" rejected" CASE+
+   s" t0 tick field-proj! other package"            s" rejected" CASE+
+   s" t0 field-proj! trusted top level"             s" compiled" CASE+
+   s" t1 field-proj! trusted top level"             s" compiled" CASE+ ;
+
+: OWNER-SITE-LINES ( -- )
+   NPUB-SITE-LINES
+   RECLAIM-LINES
+   TOP-ROW-LINES
+   CK-OWNER-LINES
+   TYPE-DECL-LINES ;
+
 : EXPECT$ ( -- ptr u8 n )
    0 EXP-U !
    AXIOM-LINES
@@ -196,6 +271,7 @@ variable EXP-U
    DUAL-T1-LINES
    OWNER-T0-LINES
    OWNER-T1-LINES
+   OWNER-SITE-LINES
    S\" prim-owner: ok\nwindow: 0\n" EXP+
    EXP EXP-U @ ;
 
@@ -203,6 +279,29 @@ variable EXP-U
 : ERR-HAS ( ptr u8 n ptr u8 n -- ) {: ea:ptr eu:n la:ptr lu:n :}
    la lu T-LABEL
    ea eu la lu CONTAINS? TTRUE ;
+
+\ The engine owners' refusals, by name: a primitive with no global row is
+\ undefined outside its owner, to a call and a tick alike, and a global
+\ trusted-only row answers E-CAP-TRUSTED. Inside TOP-ROW a hook of the wrong
+\ shape fails on its type, not its trust. After the seal FIELD-PROJ! is an
+\ internal engine word: undefined to a call, refused to a tick.
+: OWNER-SITE-ERRS ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-tcp0-top: undefined word 'code-publish'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-dr0-top: undefined word 'does-record'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-xr0-oth: undefined word 'xref-retarget'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-xr1-top: undefined word 'xref-retarget'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-tdr1-oth: undefined word 'does-record'" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-cm0-oth: 'callmap-set' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-rm0-top: 'reloc-maps-clear' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-rm1-oth: 'reloc-maps-clear' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-stc0-top: 'set-top-check' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-stc1-oth: 'set-top-check' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-cd0-top: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-cd1-oth: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
+   ea eu s" habu: in pos-stc0-bad: at 'set-top-check' expected:" ERR-HAS
+   ea eu s" E-UNDEFINED: FIELD-PROJ!" ERR-HAS
+   ea eu s" hb: internal engine word: FIELD-PROJ!" ERR-HAS ;
 
 : WINDOW ( -- )
    ARGS
@@ -236,7 +335,8 @@ variable EXP-U
    ea eu s" E-CAP-TRUSTED habu: in pos-ffi-top: 'ffi-call-bounded' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-am0-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-am0-oth: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
-   ea eu s" E-CAP-TRUSTED habu: in pos-am1-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS ;
+   ea eu s" E-CAP-TRUSTED habu: in pos-am1-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
+   ea eu OWNER-SITE-ERRS ;
 
 \ ---- the running engine -------------------------------------------------------
 \ A user's checked definition outside the owner, compiled by the engine that runs
@@ -286,11 +386,25 @@ variable EXP-U
    rc 0 T=
    OUT outu LEN>N S\" 1\n" T$= ;
 
+\ NPUB's private-only primitives are engine primitives, not prefix words, so the
+\ build records no ABI-only row for them: the shipped engine refuses a checked
+\ call or tick outside NPUB as the window does, by the undefined name.
+: SITE-RUNNING-ENGINE ( -- )
+   s" : POS-SEALED-CP ( ptr u8 n n -- ) code-publish ;"
+   s" E-UNDEFINED habu: in pos-sealed-cp: undefined word 'code-publish'" SEALED
+   s" : POS-SEALED-TCP ( -- ) ['] code-publish drop ;"
+   s" E-UNDEFINED habu: in pos-sealed-tcp: undefined word 'code-publish'" SEALED
+   s" : POS-SEALED-XR ( n n n -- ) xref-retarget ;"
+   s" E-UNDEFINED habu: in pos-sealed-xr: undefined word 'xref-retarget'" SEALED
+   s" : POS-SEALED-DR ( n n -- ) does-record ;"
+   s" E-UNDEFINED habu: in pos-sealed-dr: undefined word 'does-record'" SEALED ;
+
 public
 : RUN ( -- )
    T-RESET
    RUNNING-ENGINE
    TIER-SELECT-RUNS
+   SITE-RUNNING-ENGINE
    [: PREPARE WINDOW ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 ;package

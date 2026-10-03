@@ -9754,8 +9754,16 @@ PRIM: CHECKER-RESET-SOURCE PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-TRUSTED-TICK? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
+\ Outside TYPE-DECL only a TRUSTED: caller, such as test/field-proj-lib.f FP-ARM,
+\ arms the window through this global row.
 PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!                       \ only the generated accessor's trusted crossing may arm it
+PRIM-TRUSTED-ONLY!
+\ The type declarer arms the window for each generated accessor
+\ (src/core/sumtype.f TDPLAN-FP-ARM), as checked code inside TYPE-DECL. That
+\ caller compiles before the seal: FIELD-PROJ! is REG-PROTECT, so the seal
+\ marks its record DNAME-INT, and after that no checked body calls it, its
+\ owner's included.
+PPRIM: TYPE-DECL FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
 \ The same restriction covers direct access to the armer's private storage.
 PRIM: FIELD-PROJ-A PE-PTR-U8 PE-PTR PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
@@ -9865,6 +9873,10 @@ PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFCAST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
+\ The native compiler's does> split (src/compiler/native/checker-owner.f
+\ DOES-CHECK) calls it as checked code inside its owner. The global row above
+\ stays for the TRUSTED: callers outside CHECKER-OWNER.
+PPRIM: CHECKER-OWNER CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 PRIM: CHECK-DOES-DIN-CELLS PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DOUT-CELLS PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-WIDE? PE-F PE-OUT PRIM;
@@ -10140,7 +10152,8 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \
 \ WHAT IS DELIBERATELY NOT HERE. `patch32`, `code-publish`, `callmap-set`,
 \ `addrmap-set`, `xref-retarget`, `int-mark` and `min-in-mark` already have rows
-\ above, marked PRIM-TRUSTED-ONLY! so a CHECKED caller is refused; `evaluate`
+\ (src/habu/prims.f) that refuse a CHECKED caller outside an owner package: a
+\ global row marked trusted-only, NPUB's private row, or both; `evaluate`
 \ belongs with them, and has the elaborator rule of its own that its dynamic
 \ stack effect needs. Giving any of those an OPEN row would delete the trust
 \ boundary rather than cross it, so their wrappers stay named boundaries.

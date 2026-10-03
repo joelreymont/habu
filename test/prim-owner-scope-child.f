@@ -276,6 +276,212 @@ $0A constant LF-C
    PKG-CLOSE
    0 TIER:SELECT ;
 
+\ ---- the engine's own owners -------------------------------------------------
+\ Each primitive here has one checked caller in the engine, a word of the
+\ package that owns its row: NPUB's publication window and record writers
+\ (src/compiler/native/publish.f), CODE-RECLAIM's relocation-map clear
+\ (src/habu/xref.f), TOP-ROW's hook install (src/core/top-row.f), CHECKER-OWNER's
+\ does> check (src/compiler/native/checker-owner.f) and TYPE-DECL's field
+\ projection (src/core/sumtype.f). code-publish, xref-retarget and does-record
+\ are their NPUB row alone, as no TRUSTED: body outside NPUB calls one: outside
+\ it a checked call or tick misses the name. Every other primitive here keeps
+\ its global trusted-only row beside its owner's for its TRUSTED: callers
+\ outside the owner, so a checked caller there gets the named E-CAP-TRUSTED.
+: RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" EV ;
+: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" EV ;
+: CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" EV ;
+: TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" EV ;
+
+\ NPUB exists from the dual-row cases above, so each block here reopens it.
+: NPUB-SITE-T0-CASES ( -- )
+   0 TIER:SELECT
+   NPUB-OPEN
+   s" t0 code-publish inside owner"
+   s" : POS-CP0-IN ( ptr u8 n n -- ) code-publish ;" EVAL
+   s" t0 xref-retarget inside owner"
+   s" : POS-XR0-IN ( n n n -- ) xref-retarget ;" EVAL
+   s" t0 does-record inside owner"
+   s" : POS-DR0-IN ( n n -- ) does-record ;" EVAL
+   s" t0 callmap-set inside owner"
+   s" : POS-CM0-IN ( n -- ) callmap-set ;" EVAL
+   s" t0 tick code-publish inside owner"
+   s" : POS-TCP0-IN ( -- ) ['] code-publish drop ;" EVAL
+   PKG-CLOSE
+   s" t0 code-publish top level"
+   s" : POS-CP0-TOP ( ptr u8 n n -- ) code-publish ;" EVAL
+   s" t0 tick code-publish top level"
+   s" : POS-TCP0-TOP ( -- ) ['] code-publish drop ;" EVAL
+   s" t0 does-record top level"
+   s" : POS-DR0-TOP ( n n -- ) does-record ;" EVAL
+   OTHER-OPEN
+   s" t0 xref-retarget other package"
+   s" : POS-XR0-OTH ( n n n -- ) xref-retarget ;" EVAL
+   s" t0 callmap-set other package"
+   s" : POS-CM0-OTH ( n -- ) callmap-set ;" EVAL
+   PKG-CLOSE
+   s" t0 callmap-set trusted top level"
+   s" TRUSTED: POS-CM0-TR ( n -- ) callmap-set ;" EVAL ;
+
+: NPUB-SITE-T1-CASES ( -- )
+   1 TIER:SELECT
+   NPUB-OPEN
+   s" t1 code-publish inside owner"
+   s" : POS-CP1-IN ( ptr u8 n n -- ) code-publish ;" EVAL
+   s" t1 xref-retarget inside owner"
+   s" : POS-XR1-IN ( n n n -- ) xref-retarget ;" EVAL
+   s" t1 does-record inside owner"
+   s" : POS-DR1-IN ( n n -- ) does-record ;" EVAL
+   s" t1 callmap-set inside owner"
+   s" : POS-CM1-IN ( n -- ) callmap-set ;" EVAL
+   PKG-CLOSE
+   s" t1 xref-retarget top level"
+   s" : POS-XR1-TOP ( n n n -- ) xref-retarget ;" EVAL
+   OTHER-OPEN
+   s" t1 tick does-record other package"
+   s" : POS-TDR1-OTH ( -- ) ['] does-record drop ;" EVAL
+   PKG-CLOSE
+   s" t1 callmap-set trusted top level"
+   s" TRUSTED: POS-CM1-TR ( n -- ) callmap-set ;" EVAL
+   0 TIER:SELECT ;
+
+: RECLAIM-CASES ( -- )
+   0 TIER:SELECT
+   RECLAIM-OPEN
+   s" t0 reloc-maps-clear inside owner"
+   s" : POS-RM0-IN ( n n -- ) reloc-maps-clear ;" EVAL
+   s" t0 tick reloc-maps-clear inside owner"
+   s" : POS-TRM0-IN ( -- ) ['] reloc-maps-clear drop ;" EVAL
+   PKG-CLOSE
+   s" t0 reloc-maps-clear top level"
+   s" : POS-RM0-TOP ( n n -- ) reloc-maps-clear ;" EVAL
+   OTHER-OPEN
+   s" t0 tick reloc-maps-clear other package"
+   s" : POS-TRM0-OTH ( -- ) ['] reloc-maps-clear drop ;" EVAL
+   PKG-CLOSE
+   RECLAIM-OPEN
+   s" t0 reloc-maps-clear reopened owner"
+   s" : POS-RM0-RE ( n n -- ) reloc-maps-clear ;" EVAL
+   PKG-CLOSE
+   s" t0 reloc-maps-clear trusted top level"
+   s" TRUSTED: POS-RM0-TR ( n n -- ) reloc-maps-clear ;" EVAL
+   1 TIER:SELECT
+   RECLAIM-OPEN
+   s" t1 reloc-maps-clear inside owner"
+   s" : POS-RM1-IN ( n n -- ) reloc-maps-clear ;" EVAL
+   PKG-CLOSE
+   OTHER-OPEN
+   s" t1 reloc-maps-clear other package"
+   s" : POS-RM1-OTH ( n n -- ) reloc-maps-clear ;" EVAL
+   PKG-CLOSE
+   s" t1 reloc-maps-clear trusted top level"
+   s" TRUSTED: POS-RM1-TR ( n n -- ) reloc-maps-clear ;" EVAL
+   0 TIER:SELECT ;
+
+\ The owner's row types the hook: an xt of the shape the top-level tracker calls,
+\ where the global row takes any cell. A hook of another shape is refused.
+: TOP-ROW-CASES ( -- )
+   0 TIER:SELECT
+   TOP-ROW-OPEN
+   s" t0 set-top-check inside owner"
+   s" : POS-STC0-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
+   s" t0 set-top-check wrong hook inside owner"
+   s" : POS-STC0-BAD ( [ ptr u8 n n -- ] -- ) set-top-check ;" EVAL
+   s" t0 tick set-top-check inside owner"
+   s" : POS-TSTC0-IN ( -- ) ['] set-top-check drop ;" EVAL
+   PKG-CLOSE
+   s" t0 set-top-check top level"
+   s" : POS-STC0-TOP ( n -- ) set-top-check ;" EVAL
+   OTHER-OPEN
+   s" t0 tick set-top-check other package"
+   s" : POS-TSTC0-OTH ( -- ) ['] set-top-check drop ;" EVAL
+   PKG-CLOSE
+   TOP-ROW-OPEN
+   s" t0 set-top-check reopened owner"
+   s" : POS-STC0-RE ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
+   PKG-CLOSE
+   s" t0 set-top-check trusted top level"
+   s" TRUSTED: POS-STC0-TR ( n -- ) set-top-check ;" EVAL
+   1 TIER:SELECT
+   TOP-ROW-OPEN
+   s" t1 set-top-check inside owner"
+   s" : POS-STC1-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
+   PKG-CLOSE
+   OTHER-OPEN
+   s" t1 set-top-check other package"
+   s" : POS-STC1-OTH ( n -- ) set-top-check ;" EVAL
+   PKG-CLOSE
+   s" t1 set-top-check trusted top level"
+   s" TRUSTED: POS-STC1-TR ( n -- ) set-top-check ;" EVAL
+   0 TIER:SELECT ;
+
+\ CHECK-DOES! is a word of the re-included src/core/checker.f, and its global
+\ row keeps the seal from marking it DNAME-INT, so its owner calls it here.
+: CK-OWNER-CASES ( -- )
+   0 TIER:SELECT
+   CK-OWNER-OPEN
+   s" t0 check-does! inside owner"
+   s" : POS-CD0-IN ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   s" t0 tick check-does! inside owner"
+   s" : POS-TCD0-IN ( -- ) ['] CHECK-DOES! drop ;" EVAL
+   PKG-CLOSE
+   s" t0 check-does! top level"
+   s" : POS-CD0-TOP ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   OTHER-OPEN
+   s" t0 tick check-does! other package"
+   s" : POS-TCD0-OTH ( -- ) ['] CHECK-DOES! drop ;" EVAL
+   PKG-CLOSE
+   CK-OWNER-OPEN
+   s" t0 check-does! reopened owner"
+   s" : POS-CD0-RE ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   PKG-CLOSE
+   s" t0 check-does! trusted top level"
+   s" TRUSTED: POS-CD0-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   1 TIER:SELECT
+   CK-OWNER-OPEN
+   s" t1 check-does! inside owner"
+   s" : POS-CD1-IN ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   PKG-CLOSE
+   OTHER-OPEN
+   s" t1 check-does! other package"
+   s" : POS-CD1-OTH ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   PKG-CLOSE
+   s" t1 check-does! trusted top level"
+   s" TRUSTED: POS-CD1-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   0 TIER:SELECT ;
+
+\ FIELD-PROJ! is REG-PROTECT (src/core/checker.f): the seal marks its record
+\ DNAME-INT, which no checked body may call, so its owner's row admits TYPE-DECL
+\ only before the seal - where src/core/sumtype.f's caller compiles, and where
+\ test/prim-owner-scope-prepare.f measures it. After the seal a reopened owner
+\ is refused too, and only a TRUSTED: body reaches the record, through the
+\ global row the field-projection tests' TRUSTED: armer keeps.
+: TYPE-DECL-CASES ( -- )
+   0 TIER:SELECT
+   TYPE-DECL-OPEN
+   s" t0 field-proj! reopened owner after the seal"
+   s" : POS-FP0-RE ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   PKG-CLOSE
+   s" t0 field-proj! top level"
+   s" : POS-FP0-TOP ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   OTHER-OPEN
+   s" t0 tick field-proj! other package"
+   s" : POS-TFP0-OTH ( -- ) ['] FIELD-PROJ! drop ;" EVAL
+   PKG-CLOSE
+   s" t0 field-proj! trusted top level"
+   s" TRUSTED: POS-FP0-TR ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   1 TIER:SELECT
+   s" t1 field-proj! trusted top level"
+   s" TRUSTED: POS-FP1-TR ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   0 TIER:SELECT ;
+
+: OWNER-SITE-CASES ( -- )
+   NPUB-SITE-T0-CASES
+   NPUB-SITE-T1-CASES
+   RECLAIM-CASES
+   TOP-ROW-CASES
+   CK-OWNER-CASES
+   TYPE-DECL-CASES ;
+
 public
 
 : RUN ( -- )
@@ -289,6 +495,7 @@ public
    DUAL-T1-CASES
    OWNER-T0-CASES
    OWNER-T1-CASES
+   OWNER-SITE-CASES
    s" prim-owner: ok" type LF-C emit ;
 
 ;package

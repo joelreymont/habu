@@ -554,9 +554,10 @@ package CODE-RECLAIM
 
 private
 
-\ The raw engine primitive edits relocation metadata and is callable only at
-\ this audited boundary with TRUNCATE's proved [start,start+len) span.
-TRUSTED: CLEAR-MAPS ( n n -- )
+\ The raw engine primitive edits relocation metadata. Its CODE-RECLAIM row
+\ (src/habu/prims.f) admits this checked word, which TRUNCATE calls with its
+\ proved [start,start+len) span; no other checked caller reaches it.
+: CLEAR-MAPS ( n n -- )
    reloc-maps-clear ;
 
 \ ---- which bytes a reclamation is allowed to be about ------------------------
