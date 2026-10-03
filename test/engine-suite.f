@@ -754,9 +754,9 @@ s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
 : ::x ( -- n ) 0 ;
 s" tq:tail" s" -- n" TRUST
 s" double-colon token rejects" T-LABEL
-s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 0 T=
 s" trailing-second-colon token rejects" T-LABEL
-s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 0 T=
 s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
@@ -765,7 +765,7 @@ s" COK-QUAL-ONE ( -- n ) tq:tail" CHECK-QUIET-CANDIDATE! -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
-s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 1 T=
+s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 0 T=
 0 0= 0= ES-JSON-DIAGS!
 s" qualified diag code" T-LABEL
 DIAG-BUFFER$ s" E-BAD-QUALIFIED" T-HAS? -1 T=

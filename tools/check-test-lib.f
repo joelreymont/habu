@@ -3949,6 +3949,24 @@ variable REQ-U
    CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
    CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7152 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
 
+\ A call to a malformed qualified name can never resolve, so its definition is
+\ refused like any other and --all-errors goes on to report each later one, in
+\ prose and JSON, one record per definition.
+: MALCALL$ ( -- ptr u8 n )
+   s\" : CKT-MAL-CALL ( -- ) CKT:MAL:CALL ;\n: CKT-MAL-LATER ( -- ) 1 ;" ;
+
+: TEST-MALFORMED-CALL-ALL ( -- )
+   MALCALL$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru 10 COUNT-CHAR 2 T=
+   CAP-ERR erru s" E-BAD-QUALIFIED habu: in ckt-mal-call: malformed qualified name 'CKT:MAL:CALL'" CONTAINS? TTRUE
+   CAP-ERR erru s" habu: in ckt-mal-later: at '1'" CONTAINS? TTRUE
+   MALCALL$ ALL-JSON-STDIN 70 T= {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 10 COUNT-CHAR 2 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED\",\"repair_class\":\"fix_qualified_name\",\"verdict\":\"rejected\",\"word\":\"ckt-mal-call\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\",\"verdict\":\"rejected\",\"word\":\"ckt-mal-later\"" CONTAINS? TTRUE ;
+
 \ The throw leaves a raw storage definer's signature (verify-source.f
 \ RAW-TRUST-NEXT) mid-parse; a later check in the same process must still read
 \ an ordinary signature's type variables as ordinary, not as raw cells.
@@ -5559,6 +5577,7 @@ variable LC-CANON-U
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
    s" check/malformed-name" [: TEST-MALFORMED-NAME ;] CASE-RUN
    s" check/malformed-name-all-errors" [: TEST-MALFORMED-NAME-ALL ;] CASE-RUN
+   s" check/malformed-call-all-errors" [: TEST-MALFORMED-CALL-ALL ;] CASE-RUN
    s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN

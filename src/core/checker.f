@@ -19424,10 +19424,12 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
 \ is still refused, since the declaration is what gets recorded; past a token of
 \ unknown effect nothing downstream is a judgment, so the rest is the run's.
+\ A call to a malformed qualified name (QUALBAD) is no such token: no word can
+\ ever answer it, so its body is refused like any other, not left uncheckable.
 : CHECK-VERDICT ( -- n )
    SGBAD @ 0 <> IF 0 EXIT THEN
    UNSEEN @ 0 <> IF 2 EXIT THEN
-   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
+   UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ --- generated-product certification (item 15, docs/type-families.md §9.4).
