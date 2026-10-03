@@ -1817,6 +1817,7 @@ PROC-CLOSE-CELL          ( ptr fd -- )
 PROC-CLOSE-CAPTURE-FDS   ( -- )
 PROC-REAP-CAPTURE        ( -- )
 PROC-REAP-CAPTURE-TIMEOUT ( -- )
+PROC-KILL-TREE           ( pid -- )
 PROC-KILL-CAPTURE        ( -- )
 PROC-THROW-CAPTURE       ( n -- )
 PROC-OPEN-PIPE           ( ptr a ptr a -- )
@@ -1987,8 +1988,10 @@ throws `E-PROC-TIMEOUT`. Truncation, a refused reaper arm and other capture
 failures end the child's tree and reap it the same way, and close all owned fds,
 before throwing a named process error. A tree walk that throws there has still
 killed the child, which is reaped all the same: the capture keeps its own
-answer, and stderr gets the line `process: process tree of a capture child not
-walked, throw <code>`.
+answer, and stderr gets the line `process: process tree of a killed child not
+walked, throw <code>`. `PROC-KILL-TREE ( pid -- )` is that kill on its own: the
+tree's SIGKILL with a walk's throw reported on that line instead of thrown, for
+a caller that reaps the child itself.
 The `*-OUTCOME` capture variants return stdout length, stderr length, and the
 `outcome` sum. They classify timeout as the `timeout` outcome instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
@@ -2192,10 +2195,12 @@ own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
 refuses rather than answers empty; a tree of more than 1024 processes throws
 `E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
 SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
-kills this way, and `lib/process.f` ends a capture's child this way when the
-capture ends it early. One walk or reading runs at a time in a process: a task
-that calls `KILL-TREE`, `CATCHES?` or `CPU-NS` while another task's call holds
-the file's tables sleeps until it is done.
+kills this way. `lib/process.f` `PROC-KILL-TREE` does it for a capture's child
+the capture ends early, a pty child `lib/pty-harness.f` kills on expiry and
+each pid of a supervised session `lib/process-pty-io.f` tears down. One walk
+or reading runs at a time in a process: a task that calls `KILL-TREE`,
+`CATCHES?` or `CPU-NS` while another task's call holds the file's tables sleeps
+until it is done.
 
 ## Process signals
 
