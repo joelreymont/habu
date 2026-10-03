@@ -28,6 +28,9 @@ require src/compiler/native/hir.f
 require src/compiler/native/emit-x64.f
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
+require src/compiler/session/emission.f
+require src/compiler/session/lease.f
+require src/compiler/session/backend.f
 
 package X64KHIR
 private
@@ -42,6 +45,8 @@ private
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
 1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
 1 TYPED-BUFFER W-TOK IR-ID:ir-value-id  \ the memory the next fetch reads
+TYPED-VARIABLE W-LEASE NLEASE:lease
+TYPED-VARIABLE W-SESSION NSESSION:session
 ARG-CAP TYPED-BUFFER ARGV IR-ID:ir-value-id
 RES-CAP TYPED-BUFFER RESV IR-ID:ir-value-id
 PTR-VARIABLE NAME-A                     \ the row's name, the module's source
@@ -73,7 +78,6 @@ variable TOK?                           \ nonzero once the function has a token
    IR-BUILD:PLAN-DEFAULT
    c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
    c b HIR:REGISTER
-   c 0 W-CTX !
    b 0 W-BLD !
    a NAME-A !
    u NAME-U !
@@ -146,23 +150,38 @@ variable TOK?                           \ nonzero once the function has a token
    CC BB IR-BUILD:END-FUN drop ;
 
 \ ---- the chain ---------------------------------------------------------------
-: BODY ( ptr u8 n n n [ -- ] [ -- ] IR-CTX:ctx -- )
-   {: a:ptr u:n in:n out:n stage use c:IR-CTX:ctx :}
+: CHAIN ( ptr u8 n n n [ -- ] [ NART:emission -- ] NSESSION:session -- )
+   {: a:ptr u:n in:n out:n stage use s:NSESSION:session :}
+   s W-SESSION !
+   s NSESSION:RESOLVE drop {: c:IR-CTX:ctx :}
+   c 0 W-CTX !
    c a u MODULE
    a u in out OPEN-FUN
    stage execute
    N-RES @ out <> if s" leaves another result count" REFUSE then
    RETURN
-   c in out NBACK:L-NONE NBACK:DECLARE
-   c BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   c hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   s in out NBACK:L-NONE NBACK:DECLARE
+   s BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   c m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   c m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
-   c m X64PASS:EMIT-UNPLACED
-   use execute
-   c NBACK:RETIRE
-   c NBACK:RELEASE ;
+   s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   s m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   s m NBACK:EMIT-UNPLACED
+   c NART:COPY use execute ;
+
+: CLEAN ( -- )
+   W-SESSION @ NBACK:RELEASE
+   W-SESSION @ NBACK:RETIRE ;
+
+: WORK ( ptr u8 n n n [ -- ] [ NART:emission -- ] NSESSION:session -- )
+   [: CHAIN ;] [: CLEAN ;] finally ;
+
+: BODY ( ptr u8 n n n [ -- ] [ NART:emission -- ] IR-CTX:ctx -- )
+   W-LEASE @ NSESSION:NEW [: WORK ;] NSESSION:WITH-WORK ;
+
+: OWNED ( ptr u8 n n n [ -- ] [ NART:emission -- ] NLEASE:lease -- )
+   W-LEASE !
+   X64ABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
 public
 
@@ -212,7 +231,7 @@ public
 \ ---- the seam ----------------------------------------------------------------
 \ Compile the function the stager builds for the row named, of `in` cells and
 \ `out` results, and run `use` while its sealed emission stands.
-: COMPILE ( ptr u8 n n n [ -- ] [ -- ] -- )
-   X64ABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
+: COMPILE ( ptr u8 n n n [ -- ] [ NART:emission -- ] -- )
+   [: OWNED ;] NLEASE:WITH ;
 
 ;package

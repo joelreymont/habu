@@ -1,8 +1,7 @@
 \ x64ir.f - checked x86-64 machine dialect tests.
 \
-\ Proves the contract of src/compiler/native/x64ir.f: loading the backend puts
-\ the x86-64 row in the compiler's target registry and both stages accept the
-\ machine this dialect builds for; registering the dialect defines the machine
+\ Proves the contract of src/compiler/native/x64ir.f: loading the low-level
+\ dialect admits the machine it builds for; registering the dialect defines the machine
 \ opcodes and their declared fields read back through the frozen schema table,
 \ with the two-address forms declaring the tie that says WHICH operand the
 \ instruction overwrites; the register file is the machine's, with the stack
@@ -54,7 +53,7 @@ private
    CBIND:BIND ;
 
 \ A GPU kernel contract: this dialect is the native pipeline's, and PTX has no
-\ backend loaded at all, so the registry refuses before this dialect is asked.
+\ provider predicate declines before this dialect builds a module.
 : PCTR ( -- CTARGET:contract )
    CTARGET-ARCH:PTX CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -80,14 +79,12 @@ private
    b ;
 
 \ ---- the registry row --------------------------------------------------------
-\ src/arch/x86-64/backend.f is required by this dialect, so the row exists
-\ exactly because backend code is loaded, and both stages answer for the machine
-\ the dialect builds for.
+\ Loading the low-level dialect does not publish a native pass provider. The
+\ pure capability predicate still answers for the machine it builds for.
 : REGISTRY-CASE ( -- )
-   s" loading the x86-64 backend fills its registry row" T-LABEL
-   CTARGET-ARCH:X86-64 CTARGET:REGISTERED? TTRUE
-   CTR CTARGET:LOWERS? TTRUE
-   CTR CTARGET:EMITS? TTRUE
+   s" loading the dialect does not publish incomplete native passes" T-LABEL
+   CTARGET-ARCH:X86-64 CTARGET:REGISTERED? TFALSE
+   CTR X64BACK:SERVES? TTRUE
    s" an architecture with no backend loaded is refused by the registry" T-LABEL
    [: PCTR CTARGET:LOWERS? drop ;] E-CTGT-UNLOADED TTHROWSQ ;
 
@@ -508,15 +505,10 @@ private
    16 T= X64IR:IMM-LIMIT 1- T= 64 T= 1 31 lshift T= ;
 
 \ ---- the machine this dialect cannot build for -------------------------------
-\ The registry refuses first and by its own name: PTX has no backend loaded in
-\ this image, so CTARGET:LOWERS? throws E-CTGT-UNLOADED before this dialect is
-\ asked whether it serves the machine. A loaded backend that declines a coherent
-\ contract is the other refusal, E-IR-SCHEMA-TARGET, and no such x86-64 contract
-\ exists to build here: src/compiler/target.f admits no big-endian or 32-bit
-\ x86-64.
+\ The dialect itself refuses a coherent foreign machine before allocating.
 : TARGET-CASE ( -- )
-   s" a machine with no backend loaded cannot own a module of this dialect" T-LABEL
-   [: FOREIGN ;] E-CTGT-UNLOADED TTHROWSQ ;
+   s" a foreign machine cannot own a module of this dialect" T-LABEL
+   [: FOREIGN ;] E-IR-SCHEMA-TARGET TTHROWSQ ;
 
 \ A refusing case runs INSIDE an enclosing context: an abandoned context gives
 \ its registry slots back only when a live enclosing context leaves normally.

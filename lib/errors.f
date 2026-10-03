@@ -331,7 +331,8 @@
 -6615 constant E-CTGT-BASE        \ the baseline instruction-set feature is absent
 -6616 constant E-CTGT-UNLOADED    \ no backend for the architecture is loaded in this image
 -6617 constant E-CTGT-REGISTERED  \ a second backend claims an architecture that already has a row
--6618 constant E-CTGT-ROW         \ the backend registry has no free row left
+-6618 constant E-CTGT-ROW         \ an unpublished descriptor row was requested
+-6619 constant E-CTGT-ID          \ a backend id must be positive
 
 \ Compiler numerical policy (package CNUM): -6620..-6629
 -6620 constant E-CNUM-CONTRACT    \ contraction is allowed under a bit-exact rewrite licence

@@ -304,19 +304,20 @@ NBR:INSN-BYTES constant INSN-BYTES
 
 public
 
-\ The row this backend fills as it loads, stage by stage. src/arch/arm64/
-\ backend.f has already claimed the registry row these are stored beside.
+: UNPLACED-UNSUPPORTED ( IR-CTX:ctx IR-BUILD:module -- )
+   E-CTGT-UNLOADED throw ;
+
+\ Publish only after every callback is defined. The id names this provider,
+\ independent of target wire codes and its sorted runtime row.
 : INSTALL ( -- )
-   ARCH [: DECLARE ;] NBACK:DECLARE!
-   ARCH [: SELECT ;] NBACK:SELECT!
-   ARCH [: PRUNE ;] NBACK:PRUNE!
-   ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
-   ARCH [: EMIT ;] NBACK:EMIT!
-   ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: RETIRE ;] NBACK:RETIRE!
-   ARCH [: A64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
-   ARCH [: A64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
-   ARCH [: PREPARE ;] NBACK:PREPARE! ;
+   A64BACK:ID ARCH [: A64BACK:SERVES? ;] [: A64BACK:SERVES? ;]
+      CTARGET-BACKEND:MAKE
+   NBACK-MODE:EXCLUSIVE-SESSION
+   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: EMIT ;] [: UNPLACED-UNSUPPORTED ;] [: RELEASE ;] [: RETIRE ;]
+   [: A64IR:PROTOTYPE ;] [: A64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
+      NBACK-PASS:MAKE
+   NBACK:REGISTER ;
 
 ;package
 

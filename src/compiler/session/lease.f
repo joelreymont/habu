@@ -55,6 +55,13 @@ public
    CHECK
    WORKING @ 0= if E-STATE throw then ;
 
+: QUIET ( NLEASE:lease -- )
+   CHECK
+   WORKING @ 0 <> if E-BUSY throw then ;
+
+: LIVE? ( NLEASE:lease -- bool )
+   SERIAL dup 0 <> swap CURRENT @ = and ;
+
 \ Admission precedes all compiler mutation. A refused child never installs
 \ cleanup and cannot release the parent's lease or its active provider work.
 : WITH ( R [ R NLEASE:lease -- S ] -- S )

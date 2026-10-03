@@ -42,6 +42,7 @@ require src/compiler/ir/build.f
 require src/compiler/native/backend.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
+require src/compiler/session/emission.f
 require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/x64ir.f
@@ -554,8 +555,8 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 \ src/compiler/native/publish.f reads NEMIT and never this emitter, so the emit
 \ row states the sealed emission there: the image the emitter sealed, no
 \ trailing return because the span is exact, and the slot it was measured from.
-\ The retire row clears the rows on the accepting path too, so the publisher,
-\ asked after it, refuses before it moves the code pointer or the dictionary.
+\ Owned rows remain readable after backend retirement. This foreign artifact
+\ still refuses publication into the host before moving CP or the dictionary.
 : ROWS-BODY ( IR-CTX:ctx -- bool n n n n )
    HIR-MOD
    BUILD-DIFF
@@ -564,10 +565,11 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    NEMIT:BYTES NEMIT:SIZE DIFF-IMAGE? {: same:bool :}
    NEMIT:RET-BYTES {: ret:n :}
    NEMIT:PLACEMENT {: at:n :}
+   CC NART:COPY {: e:NART:emission :}
    CC NBACK:RETIRE
    cp@ {: cp0:n :}
    ndict@ {: nd0:n :}
-   [: NPUB:PUBLISH-PENDING ;] E-NEMIT-STATE TTHROWSQ
+   e [: NPUB:PUBLISH-PENDING ;] catch E-NPUB-TARGET T= drop
    CC NBACK:RELEASE
    same ret at  cp@ cp0 -  ndict@ nd0 - ;
 
@@ -727,4 +729,3 @@ public
    T-REPORT ;
 
 ;package
-
