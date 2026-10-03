@@ -1231,6 +1231,7 @@ SUITE proc-capture-under-signals
 
 SUITE process-fork-wrappers
    lib/process-fork-test.f
+   lib/process-tree-fork-test.f
 ;SUITE
 
 SUITE proc-pty-io-supervisor-smoke
