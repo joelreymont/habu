@@ -333,6 +333,8 @@ NO-FD FEED-WR !
    if
       s" signal: check.f's status names the signal" T-LABEL
       CHECK-REAP sig KILLED-BY? TTRUE
+      s" signal: no step of the answer threw" T-LABEL
+      LOG-THREW? TFALSE
       s" signal: the scratch is gone when check.f has ended" T-LABEL
       TMP-ENTRIES 0 T=
    then
