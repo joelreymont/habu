@@ -656,18 +656,19 @@ public
    [: CA-RUN-SOURCE ;] SESSION ;
 
 \ The record line --all-errors writes for a statement that threw the given code,
-\ for a caller that ran the checker itself over the given source under the
-\ given label: at the token the checker read last, in the mode JSON! selected,
-\ with no line feed.
-: THROW-RECORD$ ( n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: rc:n labela:ptr labelu:n srca:ptr srcu:n :}
+\ for a caller that had the checker run over the given source under the given
+\ label: at the token that starts at the given byte, the one the checker read
+\ last, in the mode JSON! selected, with no line feed.
+: THROW-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: rc:n at:n labela:ptr labelu:n srca:ptr srcu:n :}
    labela labelu CA-START
    srca srcu CA-SOURCE-BUF!
-   rc CA-THROW!
+   rc CA-THROW-RC !
+   at CA-THROW-AT !
    CA-THROW-RECORD$ ;
 
 \ The record line --all-errors writes for a duplicate definition, for a caller
-\ that ran the checker itself over the source it reports under the given label:
+\ that had the checker run over the source it reports under the given label:
 \ in the mode JSON! selected, with no line feed.
 : DUP-RECORD$ ( ptr u8 n -- ptr u8 n )
    CA-START

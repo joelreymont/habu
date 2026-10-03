@@ -25,6 +25,10 @@
 \ is the prose: why a closure could not be discovered, and the child's stderr.
 \ Both hold until the next call.
 \
+\ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
+\ first refused definition stops it, as it stops the load, and the subject's
+\ packets carry the label check.f reports the subject by.
+\
 \ The require closure, discovered for the command line's named files as well,
 \ is kept here, so a caller of the operation loads neither the lints nor the
 \ all-errors core.
@@ -32,6 +36,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/adt/result.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
@@ -239,6 +244,7 @@ $0A constant VFY-LF
 1 constant VFY-VERIFIED
 2 constant VFY-REFUSED
 3 constant VFY-HELD
+4 constant VFY-STOPPED
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
@@ -248,6 +254,14 @@ variable VFY-ANSWER
 TYPED-VARIABLE VFY-DEADLINE ms          \ the child's, for VFY-CAPTURE
 create VFY-PATH FS-PATH-CAP allot
 variable VFY-PATH-U
+TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
+TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
+variable VFY-LABEL-U
+variable VFY-STOP-RC                    \ a stopped pre-pass: the code it stopped with,
+variable VFY-STOP-AT                    \ the byte of the token it read last,
+TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
+variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT
+variable VFY-STOP-U
 
 
 : VFY-CHILD$ ( -- ptr u8 n )
@@ -268,7 +282,8 @@ variable VFY-PATH-U
 : VFY-RESET ( -- )
    0 VFY-OUT-U !
    0 VFY-LOG-U !
-   VFY-NONE VFY-ANSWER ! ;
+   VFY-NONE VFY-ANSWER !
+   false VFY-PREPASS ! ;
 
 
 \ PATH's canonical absolute spelling, a relative PATH read from the working
@@ -312,6 +327,7 @@ variable VFY-PATH-U
    VFY-CHILD$ CHK-ARG+
    s" --" CHK-ARG+
    VFY-PATH$ CHK-ARG+
+   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
    PROC-ENV-INHERIT-MISSING ;
 
 
@@ -330,10 +346,54 @@ variable VFY-PATH-U
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
 
 
-: VFY-ANSWER-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}
+: VFY-STOPPED$ ( -- ptr u8 n )
+   s" check-verify: stopped " ;
+
+
+\ Where the field of VFY-OUT that starts at AT ends: at its space, or at END.
+: VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
+   at begin
+      dup end < if dup VFY-OUT c@ $20 <> else false then
+   while 1+ repeat ;
+
+
+\ The number VFY-OUT spells from AT to STOP, and whether it spells one.
+: VFY-FIELD-N ( n n -- n bool ) {: at:n stop:n :}
+   at VFY-OUT stop at - STR>NUMBER? MATCH option
+      some OF true ENDOF
+      none OF 0 false ENDOF
+   ;MATCH ;
+
+
+\ The rest of a stopped line, from AT to END in VFY-OUT: RC BYTE IN-SUBJECT
+\ FILE. VFY-STOPPED with them kept, or VFY-NONE for a line that does not read
+\ so; a stop is never code 0, and IN-SUBJECT is 1 or 0.
+: VFY-STOP-PARSE ( n n -- n ) {: at:n end:n :}
+   at end VFY-FIELD-END {: e1:n :}
+   at e1 VFY-FIELD-N {: rc:n rc-ok:bool :}
+   e1 1+ end VFY-FIELD-END {: e2:n :}
+   e1 1+ e2 VFY-FIELD-N {: byte:n byte-ok:bool :}
+   e2 1+ end VFY-FIELD-END {: e3:n :}
+   e2 1+ e3 VFY-FIELD-N {: subj:n subj-ok:bool :}
+   rc-ok byte-ok and subj-ok and rc 0<> and
+   subj 0 = subj 1 = or and
+   e3 1+ end < and 0= if VFY-NONE exit then
+   rc VFY-STOP-RC !
+   byte VFY-STOP-AT !
+   subj 1 = VFY-STOP-SUBJ !
+   e3 1+ VFY-STOP-OFF !
+   end e3 1+ - VFY-STOP-U !
+   VFY-STOPPED ;
+
+
+\ The answer the result line from AT to END in VFY-OUT gives, its line feed
+\ excluded.
+: VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
+   at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
+   a u VFY-STOPPED$ STARTS-WITH? if at VFY-STOPPED$ nip + end VFY-STOP-PARSE exit then
    VFY-NONE ;
 
 
@@ -353,7 +413,7 @@ variable VFY-PATH-U
    end VFY-OUT-U !
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
-   at VFY-OUT end 1- at - VFY-ANSWER-CODE VFY-ANSWER !
+   at end 1- VFY-ANSWER-AT VFY-ANSWER !
    VFY-ANSWER @ VFY-NONE = if exit then
    at VFY-OUT-U ! ;
 
@@ -378,26 +438,35 @@ variable VFY-PATH-U
    ;MATCH ;
 
 
-: VFY-ANSWERED ( -- verdict )
-   VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
-   VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
-   CHECK-VERDICT:held ;
-
-
-\ The child's answer once it has given one and exited clean; any other end
-\ is incomplete.
+\ The child's answer once it has given one of the first form's and exited
+\ clean; any other end is incomplete.
 : VFY-VERDICT ( outcome -- verdict ) {: o :}
-   o VFY-CLEAN-EXIT? VFY-ANSWER @ VFY-NONE <> and if VFY-ANSWERED exit then
+   o VFY-CLEAN-EXIT? if
+      VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
+      VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-HELD = if CHECK-VERDICT:held exit then
+   then
    o CHECK-VERDICT:incomplete ;
+
+
+\ The pre-pass's answer once it has given one and exited clean: 0 verified,
+\ else the code it stopped with. Any other end is the error.
+: VFY-PREVERDICT ( outcome -- result<n,outcome> ) {: o :}
+   o VFY-CLEAN-EXIT? if
+      VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
+      VFY-ANSWER @ VFY-STOPPED = if VFY-STOP-RC @ RESULT:OK exit then
+   then
+   o RESULT:ERR ;
 
 public
 
-\ The packets of the last VERIFY-BYTES, one JSON object per line.
+\ The packets of the last VERIFY-BYTES or PREVERIFY-BYTES, one JSON object per
+\ line.
 : VERIFY-OUT$ ( -- ptr u8 n )
    VFY-OUT-U @ 0= if NULL$ exit then
    0 VFY-OUT VFY-OUT-U @ ;
 
-\ The prose of the last VERIFY-BYTES.
+\ The prose of the last VERIFY-BYTES or PREVERIFY-BYTES.
 : VERIFY-LOG$ ( -- ptr u8 n )
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
@@ -416,6 +485,40 @@ public
    rc 0<> if rc VFY-CLOSURE-LOG CHECK-VERDICT:refused exit then
    deadline VFY-DEADLINE !
    VFY-RUN VFY-VERDICT ;
+
+\ check.f's pre-pass of the bytes as the file at PATH, the subject named LABEL
+\ in its packets, the child given DEADLINE. The child's image is the one
+\ VERIFY-BYTES verifies on, so the pre-pass resolves the engine's words and the
+\ subject's loads, as the run does, never a word only this process loaded. It
+\ stops at the first definition the checker refuses, as the load does: ok 0 when
+\ nothing stopped it, else ok the code it stopped with, and PREVERIFY-AT,
+\ PREVERIFY-SUBJECT? and PREVERIFY-STOPPED$ say where. err is how a child ended
+\ that gave no answer. An empty PATH is E-FS-PATH; a failed spawn throws, and
+\ more child output than the capture holds is E-PROC-TRUNCATED, as for
+\ VERIFY-BYTES.
+: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,outcome> )
+   {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
+   VFY-RESET
+   path pathu VFY-PATH!
+   true VFY-PREPASS !
+   label VFY-LABEL-A !
+   labelu VFY-LABEL-U !
+   src CHK-BYTES-A !
+   srcu CHK-BYTES-U !
+   deadline VFY-DEADLINE !
+   VFY-RUN VFY-PREVERDICT ;
+
+\ Where the last PREVERIFY-BYTES stopped: the byte where the token it read last
+\ starts, whether that is in the bytes it was given, and the file it is in, the
+\ LABEL for those bytes.
+: PREVERIFY-AT ( -- n )
+   VFY-STOP-AT @ ;
+
+: PREVERIFY-SUBJECT? ( -- bool )
+   VFY-STOP-SUBJ @ ;
+
+: PREVERIFY-STOPPED$ ( -- ptr u8 n )
+   VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 ;using
 ;package

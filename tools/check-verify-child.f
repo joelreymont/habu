@@ -1,9 +1,11 @@
-\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES runs.
+\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES and
+\ CHECK:PREVERIFY-BYTES run.
 \
 \ tools/check-verify-core.f spawns it on bin/hb, in the caller's working
 \ directory, the tree root; nothing else runs it:
 \
 \    ENGINE --load tools/check-verify-child.f -- SUBJECT < BYTES
+\    ENGINE --load tools/check-verify-child.f -- SUBJECT LABEL < BYTES
 \
 \ BYTES is the subject's text and SUBJECT the canonical absolute path it is
 \ checked as. The image is the engine's boot prefix, the verifier and
@@ -17,16 +19,31 @@
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
-\ packet made before; then one result line:
+\ packet made before; then one result line. The first form verifies with all
+\ errors and answers
 \
 \    check-verify: verified | refused | held
 \
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
-\ cannot be verified here. The parent answers engine-provided itself. stderr is
-\ prose: a line for each file whose verification a throw stopped, and whatever
-\ else the engine writes there, a `die`'s message among it. A child that ends
-\ any other way, the verifier's own `die` included, writes no result line.
+\ cannot be verified here. The parent answers engine-provided itself.
+\
+\ The second form is check.f's pre-pass. The first definition the checker
+\ refuses stops the composition, as it stops the load, and the subject's packets
+\ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
+\ It answers
+\
+\    check-verify: verified | stopped RC BYTE IN-SUBJECT FILE
+\
+\ RC is the code the composition stopped with, BYTE where the token the verifier
+\ read last starts, IN-SUBJECT 1 when that token is in BYTES and 0 when it is in
+\ a file they load, and FILE, the rest of the line, the name of the file it is
+\ in, LABEL for BYTES.
+\
+\ stderr is prose: for the first form, a line for each file whose verification
+\ a throw stopped, and whatever else the engine writes there, a `die`'s message
+\ among it. A child that ends any other way, the verifier's own `die` included,
+\ writes no result line.
 
 require src/habu/verify-source.f
 
@@ -70,9 +87,9 @@ create NL 1 allot
    NUM NUM-I @ + NUM-CAP NUM-I @ - ;
 
 
-: ERR-N ( n -- ) {: n:n :}
-   n 0 < if ERR-FD s" -" WRITE ERR-FD 0 n - U$ WRITE exit then
-   ERR-FD n U$ WRITE ;
+: FD-N ( n n -- ) {: fd:n n:n :}
+   n 0 < if fd s" -" WRITE fd 0 n - U$ WRITE exit then
+   fd n U$ WRITE ;
 
 
 : READ-SUBJECT ( -- )
@@ -92,9 +109,9 @@ create NL 1 allot
 : STOPPED ( ptr u8 n n n -- ) {: label:ptr labelu:n rc:n rejects:n :}
    ERR-FD label labelu WRITE
    ERR-FD s" : verification stopped by throw " WRITE
-   rc ERR-N
+   ERR-FD rc FD-N
    ERR-FD s"  after " WRITE
-   rejects ERR-N
+   ERR-FD rejects FD-N
    ERR-FD s"  rejected definitions" WRITE
    ERR-FD NEWLINE ;
 
@@ -126,25 +143,52 @@ create NL 1 allot
    OUT-FD NEWLINE ;
 
 
-\ Every diagnostic the checker renders from here is a packet on stdout.
-: VERIFY-CLOSURE ( -- )
-   0 FAILED !
+\ Run the verification in one neutral checker scope, every diagnostic the
+\ checker renders a packet on stdout: the code it threw, 0 for none.
+: SCOPED ( [ -- ] -- n ) {: q :}
    0 0= DIAG-JSON!
    OUT-FD DIAG-FD!
    CHECKER-SCOPE-START-NEUTRAL
-   [: VERIFY-ALL ;] catch {: rc:n :}
-   CHECKER-SCOPE-DONE
+   q catch
+   CHECKER-SCOPE-DONE ;
+
+
+: VERIFY-CLOSURE ( -- )
+   0 FAILED !
+   [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if
-      ERR-FD s" check-verify: stopped by throw " WRITE rc ERR-N ERR-FD NEWLINE
+      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
       rc throw
    then
    FAILED @ 0<> if s" refused" RESULT exit then
    s" verified" RESULT ;
 
+
+: PREVERIFY-CUR ( -- )
+   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
+
+
+: STOP-RESULT ( n -- ) {: rc:n :}
+   OUT-FD s" check-verify: stopped " WRITE
+   OUT-FD rc FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD VERIFY:TOKEN-BYTE@ FD-N
+   OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if s"  1 " else s"  0 " then WRITE
+   OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED$ WRITE
+   OUT-FD NEWLINE ;
+
+
+: PREVERIFY ( -- )
+   [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
+   rc 0<> if rc STOP-RESULT exit then
+   s" verified" RESULT ;
+
 public
 
 : MAIN ( -- )
-   SCRIPT-ARGC 1 <> if s" usage: check-verify-child.f -- SUBJECT" 64 die then
+   SCRIPT-ARGC 2 = if READ-SUBJECT PREVERIFY exit then
+   SCRIPT-ARGC 1 <> if s" usage: check-verify-child.f -- SUBJECT [LABEL]" 64 die then
    READ-SUBJECT
    0 SCRIPT-ARGV$ HELD? if s" held" RESULT exit then
    VERIFY-CLOSURE ;

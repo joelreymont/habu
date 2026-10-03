@@ -64,9 +64,10 @@ $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
-\ The run stage's child, and --verify-only's, has CHK-DEADLINE-MS unless
-\ --deadline-ms gives another. A capture waits in poll(2), whose wait is an int
-\ of milliseconds, so no deadline is longer than CHK-DEADLINE-MAX.
+\ The run stage's child, and the verifier child of the pre-pass and of
+\ --verify-only, has CHK-DEADLINE-MS unless --deadline-ms gives another. A
+\ capture waits in poll(2), whose wait is an int of milliseconds, so no
+\ deadline is longer than CHK-DEADLINE-MAX.
 120000 constant CHK-DEADLINE-MS
 $7FFFFFFF constant CHK-DEADLINE-MAX
 67 constant CHK-E-CAPACITY
@@ -649,9 +650,9 @@ private
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
 \ sources - a single file is a set of one - is refused at each input, as the
-\ input is given. Any other input is checked by the run, in an engine of its
-\ own, even when this process has loaded it: resident verification skips a
-\ file this image holds, as `require` skips it.
+\ input is given. Any other input is checked even when this process has loaded
+\ it: the pre-pass verifies it in the verifier child and the run loads it, each
+\ in an engine of its own.
 : CHK-INPUTS-ALL? ( [ ptr u8 n -- bool ] -- bool ) {: q :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ q execute 0= if unloop false exit then
@@ -1589,10 +1590,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-STATIC ( -- )
    CHK-RUN-ALL ;
 
-: CHK-RUN-PREVERIFY-ACT ( -- )
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL
-   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
-
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
    s" check.f: source-list entries:" CHK-ERR-LN
@@ -1603,37 +1600,29 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       1+
    repeat drop ;
 
-: CHK-PREVERIFY-DIAG-START ( -- )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
-
-: CHK-PREVERIFY-DIAG-FLUSH ( -- )
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF ;
-
 : CHK-PREVERIFY-FAIL ( n -- ) {: rc:n :}
-   CHK-JSON @ if CHK-PREVERIFY-DIAG-FLUSH rc CHK-THROW then
+   CHK-JSON @ if rc CHK-THROW then
    s" check.f: source preverify failed before run" CHK-ERR-LN
    s" check.f: label " CHK-ERR  CHK-LABEL CHK-ERR  CHK-LF CHK-ERR-C
    s" check.f: throw code " CHK-ERR  rc CHK-ERR-NONNEG  CHK-LF CHK-ERR-C
    CHK-SOURCE-LIST-REPORT
-   CHK-PREVERIFY-DIAG-FLUSH
    rc CHK-THROW ;
 
-\ The composition stops in one file of it, the one VERIFY:SOURCE-COMPOSE-
-\ STOPPED$ names: the subject by its label, any other file by its canonical
-\ path. Its bytes are the subject's, or the file's own.
-: CHK-STOPPED-SOURCE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if CHK-SOURCE-BYTES exit then
-   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+\ The pre-pass stops in one file of the composition, the one
+\ PREVERIFY-STOPPED$ names: the subject by its label, any other file by its
+\ canonical path. Its bytes are the subject's, or the file's own.
+: CHK-STOPPED-SOURCE ( -- ptr u8 n )
+   PREVERIFY-SUBJECT? if CHK-SOURCE-BYTES exit then
+   PREVERIFY-STOPPED$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
 
 \ A statement that threw while it was checked is reported where it stood, by
-\ the record --all-errors writes in the run's mode, and fails the run like a
-\ refusal.
-: CHK-PREVERIFY-THREW ( n -- ) {: rc:n :}
+\ the record --all-errors writes in the run's mode, and the check fails with a
+\ refusal's status, which this answers.
+: CHK-PREVERIFY-THREW ( n -- n ) {: rc:n :}
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
-   rc a u a u CHK-STOPPED-SOURCE CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
-   CHK-E-CHECK CHK-THROW ;
+   rc PREVERIFY-AT PREVERIFY-STOPPED$ CHK-STOPPED-SOURCE
+   CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
+   CHK-E-CHECK ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined
@@ -1641,29 +1630,62 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ load.
 : CHK-PREVERIFY-DUP ( -- )
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   VERIFY:SOURCE-COMPOSE-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
+   PREVERIFY-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
-\ The checker's own diagnostics are JSON lines in either mode, written out when
-\ the composition ends, ahead of a record for its throw.
-: CHK-PREVERIFY-COMPOSE ( -- )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
-   [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF
-   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW then
+\ The pre-pass stopped with the given code: the record a throw or a duplicate
+\ leaves, then the failure.
+: CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
+   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW CHK-PREVERIFY-FAIL then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
-   rc 0 <> if rc throw then ;
-
-\ The preverified files are standalone sources, not a continuation of whatever
-\ package this tool was called from, so the scope starts at neutral top level.
-: CHK-RUN-PREVERIFY ( -- )
-   CHK-PREVERIFY-DIAG-START
-   LINT-TRUE DIAG-JSON!
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CHK-PREVERIFY-COMPOSE ;] catch {: rc:n :}
-   CHECKER-SCOPE-DONE
-   rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
+
+\ How a verifier child that gave no answer ended, as the closing line of its
+\ report: on stdout under --verify-only, with the rest of its prose, and on
+\ stderr for the pre-pass.
+: CHK-STATUS-LN ( outcome -- )
+   SB-RESET
+   s" check.f: the verifier did not complete: " SB-APPEND
+   MATCH outcome
+      exited OF s" exit " SB-APPEND CHK-U$ SB-APPEND ENDOF
+      signaled OF s" signal " SB-APPEND CHK-U$ SB-APPEND ENDOF
+      timeout OF s" deadline of " SB-APPEND CHK-DEADLINE@ MS>N CHK-U$ SB-APPEND s"  ms passed" SB-APPEND ENDOF
+   ;MATCH
+   SB$ CHK-EXPLAIN-LN ;
+
+: CHK-TRUNCATED-LN ( -- )
+   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-EXPLAIN-LN ;
+
+\ The pre-pass's packets and its child's prose, both on stderr.
+: CHK-PREVERIFY-RELAY ( -- )
+   VERIFY-OUT$ CHK-ERR
+   VERIFY-LOG$ CHK-ERR ;
+
+\ The pre-pass runs in the verifier child, on the engine's image
+\ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
+\ ones the subject loads, the words the run will have, never a word only this
+\ process loaded: lib/fs.f's FILE-SIZE for check.f, lib/test.f's T= for a
+\ harness that checks in process. Its packets and the child's prose come
+\ first, then what its stop leaves.
+: CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
+   CHK-PREVERIFY-RELAY
+   MATCH result
+      ok OF {: rc:n :} rc 0<> if rc CHK-PREVERIFY-STOPPED then ENDOF
+      err OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+   ;MATCH ;
+
+: CHK-PREVERIFY-ACT ( -- )
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@ PREVERIFY-BYTES
+   CHK-PREVERIFY-REPORT ;
+
+\ More output than the child's capture holds leaves no answer: the packets and
+\ prose received before it, and a closing line.
+: CHK-RUN-PREVERIFY ( -- )
+   [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TRUNCATED <> if rc throw then
+   CHK-PREVERIFY-RELAY
+   CHK-TRUNCATED-LN
+   CHK-E-UNAVAILABLE CHK-THROW ;
 
 : CHK-MAP+ ( ptr u8 n -- )
    >LEN CHK-MAP-BUF CHK-ERR-CAP >LEN CHK-MAP-U SOURCE-APPEND-BYTES ;
@@ -1811,15 +1833,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
    CHK-VERIFY-STDIN ;
 
-: CHK-STATUS-LN ( outcome -- )
-   s" check.f: the verifier did not complete: " CHK-OUT
-   MATCH outcome
-      exited OF s" exit " CHK-OUT CHK-U$ CHK-OUT ENDOF
-      signaled OF s" signal " CHK-OUT CHK-U$ CHK-OUT ENDOF
-      timeout OF s" deadline of " CHK-OUT CHK-DEADLINE@ MS>N CHK-U$ CHK-OUT s"  ms passed" CHK-OUT ENDOF
-   ;MATCH
-   CHK-LF CHK-OUT-C ;
-
 \ The verifier's packets on stderr, its prose on stdout.
 : CHK-VERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
@@ -1853,7 +1866,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    rc 0= if exit then
    rc E-PROC-TRUNCATED <> if rc throw then
    CHK-VERIFY-RELAY
-   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-OUT-LN
+   CHK-TRUNCATED-LN
    CHK-E-UNAVAILABLE CHK-THROW ;
 
 : CHK-RUN-INNER ( -- )

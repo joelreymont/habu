@@ -231,21 +231,36 @@ before it in `CHECK:VERIFY-OUT$` and the stderr received in
 one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
 thirty files.
 
-The child, `tools/check-verify-child.f`, is run only by the operation:
+The child, `tools/check-verify-child.f`, is run only by this operation and by
+`CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 
 ```text
-ENGINE --load tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+ENGINE --load tools/check-verify-child.f -- SUBJECT < BYTES
+ENGINE --load tools/check-verify-child.f -- SUBJECT LABEL < BYTES
 ```
 
-SUBJECT is canonical and absolute, and each DEP is a file of the closure,
-canonical and absolute, in dependency order; a DEP the image holds is skipped,
-as `require` skips it. stdout carries the packets in verification order, each
+SUBJECT is canonical and absolute. The child follows the loader forms of
+BYTES and of the files they load; a file the image holds is skipped, as
+`require` skips it. stdout carries the packets in verification order, each
 written as the checker makes it, so a child that dies has passed on every
-packet made before; then one result line, `check-verify: verified`, `refused`
-or `held`. stderr carries prose, including `PATH: verification stopped by
-throw RC after N rejected definitions` for each file a throw stopped. The
-verdict is read from the result line after a clean exit, never from the exit
-status.
+packet made before; then one result line. The first form verifies with all
+errors and answers `check-verify: verified`, `refused` or `held`; stderr
+carries prose, including `PATH: verification stopped by throw RC after N
+rejected definitions` for each file a throw stopped. The second form stops at
+the first refused definition, as the load does, names the subject LABEL in its
+packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
+IN-SUBJECT FILE`: the code it stopped with, where the token it read last
+starts, 1 when that token is in BYTES, and the file it is in. The answer is
+read from the result line after a clean exit, never from the exit status.
+
+Because check.f's default pre-pass runs in this child, it resolves the
+engine's words and those the subject loads, the words its run has. A word only
+the checking process loaded, such as `lib/fs.f`'s `FILE-SIZE` under check.f or
+`lib/test.f`'s `T=` in a harness that checks in its own process, is
+`E-UNDEFINED` to it, and check.f reports it there in every mode. The pre-pass
+child has the run stage's deadline, `--deadline-ms` included; one that ends
+without its result line fails the check with 69, as `incomplete` fails
+`--verify-only`, with its closing line on stderr.
 
 ## Repair Packet JSON
 
