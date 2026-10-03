@@ -71,7 +71,7 @@ public
    s" a cursor-scoped view cannot overwrite a longer-lived table field" T-LABEL
    s" : C2-CURSOR-STORE ( mut-view<b,j,a,init<i,C2-RECORDS-TYPES:shelf<p,q,t,u>>> read-view<p,j,u8> -- mut-view<b,j,a,init<i,C2-RECORDS-TYPES:shelf<p,q,t,u>>> ) C2--RECORDS--TYPES-SHELF:SOURCE! ;" 70 STATUS? TTRUE
    s" a normal trusted declaration cannot mint a table" T-LABEL
-   s" TRUSTED: C2-TABLE-FORGE ( -- records<b,i,a,C2-RECORDS-TYPES:pair> ) 0 0 ;" 76 STATUS? TTRUE
+   s" TRUSTED: C2-TABLE-FORGE ( -- records<b,i,a,C2-RECORDS-TYPES:pair> ) 0 0 ;" 67 STATUS? TTRUE
    T-REPORT
    s" c2-records-refusals: ok" type cr ;
 

@@ -74,7 +74,7 @@ public
    s" a checked word cannot mint an owner scope" T-LABEL
    s" : C2-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 70 REJECT TTRUE
    s" a trusted declaration cannot mint an owner scope" T-LABEL
-   s" TRUSTED: C2-TRUST-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 76 REJECT TTRUE
+   s" TRUSTED: C2-TRUST-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 67 REJECT TTRUE
    s" a rigid allocation identity is not a scope" T-LABEL
    s" : C2-REGION ( read-view<fresh-region-a,fresh-region-a,u8> -- ) drop ;" 70 REJECT TTRUE
    s" raw storage cannot hold a scoped view" T-LABEL

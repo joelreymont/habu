@@ -519,14 +519,34 @@ variable REC-U
    s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-qual-class.err" s" repair class is not one its code names" s" malformed record under the trust row's class refused" REFUSED ;
 
-\ A stored signature that does not parse (checker.f USIG-ADD-BAD), under the
-\ first and the last of the classes its code names. Only a multi-error load
-\ renders the record; the default mode stops there.
+\ A stored signature that does not parse, or is deeper or wider than a record
+\ holds (checker.f USIG-ADD-BAD), under the first and the last two of the
+\ classes its code names. The default mode renders the first record and stops
+\ there; a multi-error load renders all four, the deep and the wide one each
+\ with the bound it passed. The class mutation takes the first run's one
+\ record, which the 1 KB string builder splices whole.
 : SIGNATURE-RECORD-REFUSAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s\" s\" GDX-SIG-TYPE\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
    s\" s\" GDX-SIG-SYNTAX\" s\" n n\" trust" GE-SRC-LINE
+   s\" s\" GDX-SIG-DEEP\" s\" --" GE-SRC+
+   4097 0 ?do s"  n" GE-SRC+ loop
+   s\" \" trust" GE-SRC-LINE
+   s\" s\" GDX-SIG-WIDE\" s\" " GE-SRC+
+   256 0 ?do s" n " GE-SRC+ loop
+   s\" --\" trust" GE-SRC-LINE
+   s" habu-json-signature.f" s" tools/check.f --json-errors accepted a bad stored signature" RECORD-CHECK
+   s" code" s" E-BAD-STORED-SIGNATURE" s" first stored signature code" ERR-JSTR
+   s" token" s" gdx-sig-type" s" first stored signature token" ERR-JSTR
+   s\" \"token\":\"gdx-sig-syntax\"" s" default mode stopped at the first stored signature" GE-EXPECT-ERR-LACKS
+   s" habu-json-signature-first.err" WRITE-ERR
+   s" habu-json-signature-first.err" s" first stored signature contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
+   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED
+   GE-HB-RESET
    s" habu-json-signature.f" RECORD-ARGS
    s" --all-errors" ARG+
    s" habu-json-signature.f" s" tools/check.f --json-errors --all-errors accepted bad stored signatures" RECORD-RUN
@@ -534,12 +554,56 @@ variable REC-U
    s" token" s" gdx-sig-type" s" stored signature token" ERR-JSTR
    s" signature" s" -- gdx-no-such-type" s" stored signature as written" ERR-JSTR
    s" repair_class" s" fix_signature_syntax" s" malformed stored signature class" ERR-JSTR
+   s\" \"repair_class\":\"fix_signature_size\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-deep\""
+   s" deep stored signature class" GE-EXPECT-ERR-HAS
+   s" reason" s" effect too deep to record (depth 4097, at most 4096)" s" deep stored signature reason" ERR-JSTR
+   s\" \"repair_class\":\"fix_signature_size\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-wide\""
+   s" wide stored signature class" GE-EXPECT-ERR-HAS
+   s" reason" s" input row too wide to record (256 cells, at most 255)" s" wide stored signature reason" ERR-JSTR
    s" habu-json-signature.err" WRITE-ERR
-   s" habu-json-signature.err" s" stored signature contract" DIAG-CONTRACT
-   GT-ERR$ REC!
-   s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
-   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED ;
+   s" habu-json-signature.err" s" stored signature contract" DIAG-CONTRACT ;
+
+\ A stored signature whose length describes no memory (checker.f TRUST-USIG!)
+\ is refused as one that does not parse, with no text, so its record's
+\ signature is empty. The pre-pass reads only a row of two literal strings, so
+\ a TRUSTED: body runs this one, after a caught refusal under another class:
+\ its class is its own.
+: SIGNATURE-NOSPAN-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SIG-KIND ( -- n ) 1 ;" GE-SRC-LINE
+   s" : GDX-SIG-NOSPAN ( -- n ) 1 ;" GE-SRC-LINE
+   s" TRUSTED: GDX-SIG-ROWS ( -- )" GE-SRC-LINE
+   s\"    [: s\" GDX-SIG-KIND\" s\" -- gdx-no-such-type\" trust ;] catch drop" GE-SRC-LINE
+   s\"    s\" GDX-SIG-NOSPAN\" s\" -- n\" drop -1 trust ;" GE-SRC-LINE
+   s" GDX-SIG-ROWS" GE-SRC-LINE
+   s" habu-json-nospan.f" RECORD-ARGS
+   s" --all-errors" ARG+
+   s" habu-json-nospan.f" s" tools/check.f --json-errors --all-errors accepted a signature that is no span" RECORD-RUN
+   s\" \"repair_class\":\"fix_signature_syntax\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-nospan\",\"signature\":\"\","
+   s" no-span stored signature record" GE-EXPECT-ERR-HAS
+   s" habu-json-nospan.err" WRITE-ERR
+   s" habu-json-nospan.err" s" no-span stored signature contract" DIAG-CONTRACT ;
+
+\ A bad `trust` row naming the definition checked just before it is a source
+\ row like any other (checker.f TRUST): a multi-error load renders and counts
+\ it and checks on, so the mismatch after it follows its record.
+: SIGNATURE-CHECKED-NAME-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SIG-OWN ( -- n ) 1 ;" GE-SRC-LINE
+   s\" s\" GDX-SIG-OWN\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
+   s" : GDX-SIG-NEXT ( -- n ) 1 2 ;" GE-SRC-LINE
+   s" habu-json-own.f" RECORD-ARGS
+   s" --all-errors" ARG+
+   s" habu-json-own.f" s" tools/check.f --json-errors --all-errors accepted a bad row naming the definition before it" RECORD-RUN
+   70 s" a bad row naming the definition before it did not exit as a refusal" GE-EXPECT-RC
+   GT-ERR$ s\" {\"schema_version\":1,\"code\":\"E-BAD-STORED-SIGNATURE\",\"repair_class\":\"fix_signature_type\",\"verdict\":\"rejected\",\"token\":\"gdx-sig-own\"," STARTS-WITH?
+   0= if s" the first record is not the bad row naming the definition before it" GE-FAIL then
+   s\" \"code\":\"E-MISMATCH\",\"repair_class\":\"remove_producer\",\"verdict\":\"rejected\",\"word\":\"gdx-sig-next\","
+   s" the mismatch after the bad row was not reported" GE-EXPECT-ERR-HAS
+   s" habu-json-own.err" WRITE-ERR
+   s" habu-json-own.err" s" own-name stored signature contract" DIAG-CONTRACT ;
 
 \ A bare name a global and a used public both own (checker.f
 \ CHECKER-USED-SHADOW). The refusal throws out of the definition, so the

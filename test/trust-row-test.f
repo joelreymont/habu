@@ -15,8 +15,7 @@
 \ THE ROW, which is a statement about WHEN the throw happens and not only that
 \ one happens. Evaluating one source string at a time makes that observable: the
 \ code comes back from the string that carried the row, and the ordered cases
-\ below prove a following statement never ran. A refusal that ends the process
-\ is evaluated the same way, in a forked child.
+\ below prove a following statement never ran.
 \
 \ WHAT THE FIXTURES ARE BUILT TO FOOL. The check reads the dictionary, so the
 \ fixtures put the name everywhere text-matching would find it and the
@@ -28,10 +27,8 @@
 \ would be rejecting live rows and the whole boot prefix with them.
 
 require test/checker-assert.f
-require lib/string.f
-require lib/process.f
-require lib/test/subject.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
+require lib/type/deftype.f               \ DEFTYPE - a nominal a raw type variable refuses
 
 \ The harness owns a package because this suite shares an in-process slice with
 \ others that carry the same test vocabulary; a global `T=` here is a duplicate
@@ -63,47 +60,11 @@ public
 
 : TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
 
-private
-
-\ A refusal that ends the process is observed from a forked child: its exit code
-\ and the stderr it wrote. A signal reads as the shell's 128+n and the deadline
-\ as -1, which no exit code can be.
-$400 constant CHILD-CAP
-10000 constant CHILD-MS
-create CHILD-OUT CHILD-CAP allot
-create CHILD-ERR CHILD-CAP allot
-
-: OUTCOME-RC ( outcome -- n )
-   MATCH outcome
-     exited OF ENDOF
-     signaled OF 128 + ENDOF
-     timeout OF -1 ENDOF
-   ;MATCH ;
-
-: T$= ( ptr u8 n ptr u8 n -- ) {: got:ptr gotu:n want:ptr wantu:n :}
-   #CASE @ 1 + #CASE !
-   got gotu want wantu STR= 0= if
-      T-FAIL s" trust-row-test: expected " type want wantu type
-      s" got " type got gotu type cr
-      #FAIL @ 1 + #FAIL !
-   then ;
-
-public
-
-\ Evaluate one source string in a forked child, where the refusal under test ends
-\ the process, and compare its exit code and all it wrote to stderr.
-: T-EXITS ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n rc:n want:ptr wantu:n :}
-   src srcu CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN CHILD-MS >MS
-   SUBJECT:RUN
-   OUTCOME-RC rc T=
-   LEN>N {: erru:n :}
-   drop
-   CHILD-ERR erru want wantu T$= ;
-
-\ The two codes the cases below expect. They live in the package because a
+\ The codes the cases below expect. They live in the package because a
 \ global `E-*` constant is lib/errors.f's surface alone.
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-TRUST-UNRESOLVED constant E-STALE   \ the row names no word here
+E-BAD-STORED-SIGNATURE constant E-BAD-SIG   \ the row's signature does not parse
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
@@ -148,15 +109,20 @@ s\" TRUSTED: TRW-ND2 ( -- ) s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-dec
 \ --- a signature that is no span --------------------------------------------
 \ The signature is text the parser reads, so a length that describes no memory
 \ gets the refusal of a signature that does not parse, before a byte of it is
-\ read or printed. On the load path that refusal ends the process, so these rows
-\ run in a forked child. Given the maximum cell, the parser read on past the text
-\ until the process was killed, its memory past 2 GB; given -1, the refusal
-\ handed that length to `write` with the text. `trust-raw`, called from a
+\ read or printed. Given the maximum cell, the parser read on past the text until
+\ the process was killed, its memory past 2 GB. test/gate-diagnostics-lib.f
+\ SIGNATURE-NOSPAN-RECORD renders the refusal of -1. `trust-raw`, called from a
 \ TRUSTED: body, shares the registration, and with it the refusal.
-s\" s\q TRW-LIVE\q s\q -- n\q drop -1 trust" 76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
-s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" 76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
+s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG TRUST-ROW:T=
 s\" TRUSTED: TRW-NS1 ( -- ) s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust-raw ; TRW-NS1"
-   76 s\" trw-live: : checker: bad stored signature\n" TRUST-ROW:T-EXITS
+   TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG TRUST-ROW:T=
+
+\ `trust-raw` parses in raw-definer mode, and the refusal above left it by a
+\ throw. Raw mode ends with the registration however the registration ends: left
+\ on, it would seal the type variables of every later signature, and the
+\ identity below would refuse a nominal value.
+s" DEFTYPE TRWSER : TRW-PASS ( a -- a ) ; : TRW-PASS-SER ( trwser -- trwser ) TRW-PASS ;"
+   TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
 
 \ --- fixtures built to fool a text match ------------------------------------
 \ The name in a COMMENT. Nothing defines it, so the row is refused; a check that

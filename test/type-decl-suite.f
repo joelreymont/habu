@@ -1755,22 +1755,20 @@ s" TDSME3" TWX-CHECKER-FIND-USIG -1 T=
 \ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
 \ malformed effect is not stored.
 \
-\ THE ROW NAMES A WORD THE SAME SOURCE DEFINES, and both halves of that matter.
-\ A row must now name a word the engine resolves (src/core/checker.f
-\ TRUST-RESOLVES?, dot habu-make-trust-refuse-cc8e19de), so a row for a word
-\ nothing defines is refused for its NAME and never reaches the signature parser
-\ - which is the case below, not this one. And the row is written AFTER a second
-\ definition on purpose: USIG-ADD-BAD suppresses the row whose name is the
-\ definition CHECK just handled (that one was already diagnosed and counted), so
-\ naming TDTBAD immediately after defining it would report nothing at all.
+\ THE ROW NAMES THE WORD DEFINED JUST BEFORE IT. A row must name a word the
+\ engine resolves (src/core/checker.f TRUST-RESOLVES?, dot
+\ habu-make-trust-refuse-cc8e19de), so a row for a word nothing defines is
+\ refused for its NAME and never reaches the signature parser - which is the
+\ case below, not this one. A source row is counted even when it names the
+\ definition CHECK just handled (src/core/checker.f USIG-ADD-BAD); only a
+\ definer's re-record of that definition's own signature is skipped there.
 \
 \ "No row stored" is asserted as the effect TDTBAD KEEPS, because a defined word
 \ always has one. That is the invariant the original spelling was reaching for:
 \ a signature that does not parse must never become a word's effect.
 TWX-MULTI-ERR-BEGIN
-s\" : TDTBAD ( n -- n ) ; : TDTOK ( n -- n ) ; s\" TDTBAD\" s\" nope<n> -- n\" TRUST" evaluate
+s\" : TDTBAD ( n -- n ) ; s\" TDTBAD\" s\" nope<n> -- n\" TRUST" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDTOK" TWX-CHECKER-FIND-USIG -1 T=
 s" TDTKEPT ( n -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDTTOOK ( -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! 0 T=
 \ A raw TRUST row naming NO word: the same treatment as its sibling above -

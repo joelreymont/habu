@@ -1011,8 +1011,12 @@ by name with the count it saw and the ceiling, and none truncates.
   left for what the stacks already hold. Past it the definition is
   uncheckable: `E-UNCHECKABLE` with the reason `effect too deep to record
   (depth <depth>, at most 4096)`, rc 70 from `tools/check.f` and from `--load`,
-  which adds `hook: non-certified definition: <name>`. Keep bulk values in a
-  buffer, not on the stack.
+  which adds `hook: non-certified definition: <name>`. A `trust` row that deep
+  is refused as a bad one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`,
+  with the same reason, as `tools/check.f` refuses a `defer` or `TRUSTED:` row
+  that deep; `--load` stops such a definer first at its 8000-byte text (`hb:
+  definition body text full`, rc 71). Keep bulk values in a buffer, not on the
+  stack.
 - **A definition's input row: `EFFECT-MIN-IN-MAX`, 255 cells**
   (`src/core/checker.f`), the most a call must provide that a published
   word's record holds, in eight bits. Declared or inferred, a wider input row
@@ -1022,8 +1026,10 @@ by name with the count it saw and the ceiling, and none truncates.
   the same reason, and `tools/check.f` refuses rather than defers a body
   calling a word only the run defines. Nothing is recorded for it, so callers
   find no effect; under `--all-errors` a refused definition with such a
-  declaration keeps no record of it either. Pass bulk values in a buffer, not
-  on the stack.
+  declaration keeps no record of it either. A stored signature that wide, a
+  `trust` row's, a `TRUSTED:` definition's or a `defer`'s, is refused as a bad
+  one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`, with the same
+  reason. Pass bulk values in a buffer, not on the stack.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is
   per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and the
@@ -1602,8 +1608,8 @@ the rule.
 - **A `DEFTYPE` a defining word hands out sits in the public section.** A
   `does>` body is checked code and may publish a nominal handle directly, but
   the child's stored signature names the type, and a private one does not
-  resolve for a reader: the definition is refused as it is made (`checker: bad
-  stored signature`), even when only the package uses the converters.
+  resolve for a reader: the definition is refused as it is made
+  (`E-BAD-STORED-SIGNATURE`), even when only the package uses the converters.
 - **A nominal error needs its own result family.** Constructing `RESULT:OK` in
   the ok-only path leaves the err variable of `result<a,b>` free, and a free
   variable unifies with a structural type but not with a nominal ENUM or

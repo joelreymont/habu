@@ -1220,11 +1220,10 @@ CHECKER-PKG-LIVE-DEFAULT
 \ definition context is a separate question, owned by dot
 \ habu-model-bare-wordlists-9e7c3521.
 \
-\ The `write` result is dropped for the same reason USIG-ADD-BAD below drops it:
-\ the next thing this word does is raise, so a short or failed diagnostic write
-\ has no caller that could act on it, and reporting it instead of the refusal
-\ would replace a named refusal with an unrelated code. The refusal itself is
-\ never dropped.
+\ The `write` result is dropped because the next thing this word does is raise,
+\ so a short or failed diagnostic write has no caller that could act on it, and
+\ reporting it instead of the refusal would replace a named refusal with an
+\ unrelated code. The refusal itself is never dropped.
 70 constant CHECKER-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
@@ -2301,16 +2300,16 @@ defer FO-INPUT-XT ( n -- bool )
 \ however the child returns); each public wrapper resets depth before descending.
 $2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native stack limit
 
-\ THE DEEPEST EFFECT A DEFINITION RECORDS: 4096 levels as TERM-DEPTH counts
-\ them, a row of 4096 plain entries. Recording an effect (E-COPY*) and
-\ instantiating it for a caller (E-INST-FROM) recurse once per level, on the
-\ walk's depth budget and on the 8192-cell data and return stacks
-\ (src/habu/stack-abi.f), and E-INST-FROM holds a data cell for each entry it
-\ is down a row. A definition whose effect is deeper is uncheckable, by name
-\ (CHECK-DEPTH-FITS), and half of each bound is left for what the stacks
-\ already hold: a definition leaving 10000 cells died here, and one leaving
-\ 8191 was recorded and then faulted the data stack of every checked caller
-\ (exit 102).
+\ THE DEEPEST EFFECT A RECORD HOLDS: 4096 levels as TERM-DEPTH counts them, a
+\ row of 4096 plain entries. Recording an effect (E-COPY*) and instantiating it
+\ for a caller (E-INST-FROM) recurse once per level, on the walk's depth budget
+\ and on the 8192-cell data and return stacks (src/habu/stack-abi.f), and
+\ E-INST-FROM holds a data cell for each entry it is down a row. A definition
+\ whose effect is deeper is uncheckable, by name (CHECK-DEPTH-FITS), a stored
+\ signature that deep is refused as a bad one (USIG-ADD-AS), and half of each
+\ bound is left for what the stacks already hold: a definition leaving 10000
+\ cells died here, and one leaving 8191, as a `trust` row did, was recorded and
+\ then faulted the data stack of every checked caller (exit 102).
 TWALK-MAX-DEPTH 2 / constant EFFECT-DEPTH-MAX
 variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D ! ;
@@ -4987,12 +4986,15 @@ variable NRES  variable NDI  variable NDH
 1 constant SGBAD-UNKNOWN-KIND
 2 constant SGBAD-BAREPTR-KIND
 3 constant SGBAD-ARITY-KIND
+4 constant SGBAD-DEPTH-KIND
+5 constant SGBAD-WIDTH-KIND
 variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
 variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
+variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
@@ -5059,6 +5061,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
    -1 SGBAD-AR-GOT !
+   0 SGBAD-SIZE !
    0 SGBAD !
    NULL-PTR SGBAD-A !
    0 SGBAD-U !
@@ -5091,6 +5094,16 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    a u SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
+: SGBAD-SIZE! ( ptr u8 n n n -- )   \ a row too deep or too wide for a record,
+   {: a:ptr u:n kind:n size:n :}     \ measured only once it parsed (USIG-ADD-AS)
+   size SGBAD-SIZE !
+   a u kind SGBAD-SET ;
+: SGBAD-DEPTH? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-DEPTH-KIND = and ;
+: SGBAD-WIDTH? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-WIDTH-KIND = and ;
+: SGBAD-SIZE? ( -- bool )
+   SGBAD-DEPTH? SGBAD-WIDTH? or ;
 
 : BAD-SIG-TYPE ( ptr u8 n -- n )
    SGBAD-UNKNOWN!
@@ -8006,6 +8019,13 @@ variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
 : TERM-DEPTH ( n -- n )
    0 TD-MAX !  0 TERM-DEPTH*  TD-MAX @ ;
 
+\ The depth of an effect with these rows, its deepest row's: the count
+\ EFFECT-DEPTH-MAX bounds in a definition's effect (ROWS-FIT?) and in a stored
+\ one (USIG-ADD-AS).
+: ROWS-DEPTH ( n n n n -- n )
+   {: in:n out:n rin:n rout:n :}
+   in TERM-DEPTH  out TERM-DEPTH max  rin TERM-DEPTH max  rout TERM-DEPTH max ;
+
 \ --- immutable effect content interning ---------------------------------------
 \ Entries identify content, never bindings. Both hash and equality read all
 \ eight cells, including variable counts and external minimum. The index is
@@ -8450,7 +8470,10 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 
 \ THE WIDEST INPUT ROW AN EFFECT RECORDS: 255 cells, the minimum a call must
 \ provide, which the publish tail keeps in the eight bits of DNAME-MIN-IN (RECMI
-\ below). A definition taking more is uncheckable, by name (CHECK-DEPTH-FITS).
+\ below). A definition taking more is uncheckable, by name (CHECK-DEPTH-FITS),
+\ and a stored signature taking more is refused as a bad one (USIG-ADD-AS).
+\ Only a primitive-axiom row (PE-CLOSE-SYM), which the engine's maker writes,
+\ still reaches the die below.
 255 constant EFFECT-MIN-IN-MAX
 
 : EFFECT-MIN-IN ( n -- n )
@@ -8645,14 +8668,16 @@ variable RECMI   0 RECMI !
    THEN ;
 
 \ --- stored-signature intake. USIG-ADD parses a declared/trusted signature
-\ into an effect row. A signature that does not parse is a hard stop on the
-\ ordinary load path (a baked or TRUSTed effect must never be silently wrong).
-\ In a MULTI-ERROR load it must not abort the run and must not store a row: a
-\ rejected DEFINITION was already diagnosed and counted by CHECK (the native
-\ re-records every published definition's declared sig through TRUST), so its
-\ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
-\ reject and reports through BADSIG-XT (render.f). Either way no row exists,
-\ so later callers reject as undefined instead of trusting a malformed effect.
+\ into an effect row. A signature that does not parse stores no row and reports
+\ through BADSIG-XT (render.f), then refuses as a stale trust row does
+\ (TRUST-STALE): the ordinary load path throws E-BAD-STORED-SIGNATURE, since a
+\ baked or TRUSTed effect must never be silently wrong. A MULTI-ERROR load must
+\ not abort the run: a rejected DEFINITION was already diagnosed and counted by
+\ CHECK (the native re-records every published definition's declared sig through
+\ TRUST-DECL), so a definer's row under its name is suppressed here; any other
+\ row, and a source TRUST row whatever it names, is reported and counted as a
+\ reject (USIG-ADD-BAD). Either way no row exists, so later
+\ callers reject as undefined instead of trusting a malformed effect.
 \ The multi-error load mode is off by default so the ordinary load path
 \ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
 \ a rejected definition still trusts its DECLARED signature (so later
@@ -8662,11 +8687,21 @@ variable RECMI   0 RECMI !
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
+7156 constant E-BAD-STORED-SIGNATURE   \ a stored signature does not parse
 \ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). A `defer`
-\ with a no-op DEFAULT so the diagnostic call is statically effect-known; the
-\ default drops the sig+name spans, exactly the old 0-hook fallback.
+\ so the diagnostic call is statically effect-known. Until render.f loads,
+\ BADSIG-PLAIN writes `name: sig: bad stored signature` on fd 2, so a row the
+\ boot refuses still names itself before the throw. The write results are
+\ dropped because the refusal follows at once; a failed write has no caller
+\ that could act on it.
 defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
-: BADSIG-DEFAULT ( -- ) [: 2drop 2drop ;] is BADSIG-XT ;
+: BADSIG-PLAIN ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n :}
+   2 na nu write drop
+   2 s" : " write drop
+   2 sa su write drop
+   2 S\" : bad stored signature\n" write drop ;
+: BADSIG-DEFAULT ( -- ) [: BADSIG-PLAIN ;] is BADSIG-XT ;
 BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
@@ -8991,25 +9026,39 @@ variable ASIG-MISS-K
 
 : ASIG-MISS-A@ ( n -- ptr u8 ) {: at:n :} ASIG-MISS at 2 + + ;
 
-: USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+\ A source `trust` row (TRUST) is rendered and counted whatever it names. Every
+\ other row is a definer's, and one naming the definition CHECK just handled
+\ re-records that definition's own signature (the native publish tail calls
+\ TRUST-DECL for every definition): a multi-error load skips it, since CHECK
+\ already rendered and counted that definition's refusal.
+: USIG-ADD-BAD ( ptr u8 n ptr u8 n bool -- )
+   {: sa:ptr su:n na:ptr nu:n src:bool :}
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
-   MULTI-ERR? 0= IF
-      2 na nu write drop
-      2 s" : " write drop
-      2 sa su write drop                 \ name the offending stored sig text
-      s" : checker: bad stored signature" 76 die
-   THEN
-   na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
-   1 MULTI-ERR-N +!
-   sa su na nu BADSIG-XT ;
+   MULTI-ERR? src 0= and na nu USIG-BAD-FOREIGN? 0= and IF EXIT THEN
+   sa su na nu BADSIG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   E-BAD-STORED-SIGNATURE throw ;
 
-: USIG-ADD-AS ( ptr u8 n ptr u8 n bool -- )
-   {: sa:ptr su:n na:ptr nu:n external:bool :}
+: USIG-ADD-AS ( ptr u8 n ptr u8 n bool bool -- )
+   {: sa:ptr su:n na:ptr nu:n external:bool src:bool :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   SGBAD @ if sa su na nu USIG-ADD-BAD exit then
+   SGBAD @ if sa su na nu src USIG-ADD-BAD exit then
+   \ An effect deeper than a record holds, or an input row too wide for its
+   \ min-in field, is a stored signature no record can hold: refused as a bad
+   \ one, by the bound it passes, the depth first as a definition's is.
+   din dout rin rout ROWS-DEPTH {: depth:n :}
+   depth EFFECT-DEPTH-MAX > if
+      sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
+      sa su na nu src USIG-ADD-BAD exit
+   then
+   din ROW-CELLS {: width:n :}
+   width EFFECT-MIN-IN-MAX > if
+      sa su SGBAD-WIDTH-KIND width SGBAD-SIZE!
+      sa su na nu src USIG-ADD-BAD exit
+   then
    \ This path records an asserted signature. Checked definitions publish their
    \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
    \ introduce a lexical callback binder.
@@ -9020,7 +9069,7 @@ variable ASIG-MISS-K
    sa su CHECKER-ASIG-CAPTURE ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- )
-   RES-TRUE USIG-ADD-AS ;
+   RES-TRUE RES-FALSE USIG-ADD-AS ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -12245,7 +12294,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu CHECKER-REC-NAME!
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ external USIG-ADD-AS ;
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
    RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
@@ -15783,8 +15832,9 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 \ Whether an effect with these rows fits a record: at most EFFECT-DEPTH-MAX
 \ levels deep and EFFECT-MIN-IN-MAX cells in. One that does not sets UNFIT and
 \ keeps the count its refusal names, the depth first.
-: ROWS-FIT? ( n n n n -- bool ) {: in:n out:n rin:n rout:n :}
-   in TERM-DEPTH  out TERM-DEPTH max  rin TERM-DEPTH max  rout TERM-DEPTH max {: d:n :}
+: ROWS-FIT? ( n n n n -- bool )
+   {: in:n out:n rin:n rout:n :}
+   in out rin rout ROWS-DEPTH {: d:n :}
    d EFFECT-DEPTH-MAX > IF d MDIAG-DEPTH !  -1 UNFIT !  RES-FALSE EXIT THEN
    in ROW-CELLS {: w:n :}
    w EFFECT-MIN-IN-MAX > IF w MDIAG-WIDTH !  -1 UNFIT !  RES-FALSE EXIT THEN
@@ -16894,10 +16944,11 @@ s" <input>" DIAG-FILE!
 
 \ The registration the two declaration words share. It is factored out rather than
 \ copied because TRUST and TRUST-RAW must record the same row from the same
-\ code; the only thing that differs between them is whether the signature
-\ parser is in raw-definer mode while it runs. TRUST-RAW cannot reach the
-\ registration by calling TRUST, because `trust` is one of the tokens refused
-\ inside a checked body (UNSAFE-TOK?) and these bodies are themselves checked.
+\ code; the only things that differ between them are whether the signature
+\ parser is in raw-definer mode while it runs and whether the row is source's.
+\ TRUST-RAW cannot reach the registration by calling TRUST, because `trust` is
+\ one of the tokens refused inside a checked body (UNSAFE-TOK?) and these bodies
+\ are themselves checked.
 \ Like CHECKER-USIG-ADD below it, this helper is an ordinary checker-internal
 \ definition with no primitive axiom, so user code cannot resolve it at all —
 \ the effect-declaration capability stays exactly where it was, behind `trust`
@@ -16905,11 +16956,15 @@ s" <input>" DIAG-FILE!
 \ A signature whose length describes no memory gets the refusal of one that does
 \ not parse, with no text: the parser would read past it, and the refusal would
 \ print it. Given the maximum cell, the parser read on until the process was
-\ killed.
-: TRUST-USIG! ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+\ killed. Nothing is parsed, so the parser's state is cleared first: the
+\ refusal's class is otherwise the one an earlier refused signature left.
+\ Only TRUST's row is source's: a bad one is rendered and counted even when it
+\ names the definition CHECK just handled (USIG-ADD-BAD).
+: TRUST-USIG! ( ptr u8 n ptr u8 n bool -- )
+   {: na:ptr nu:n sa:ptr su:n src:bool :}
    na nu TOKFOLD drop
-   sa su BYTE-SPAN? 0= IF sa 0 TKF TKFU @ USIG-ADD-BAD EXIT THEN
-   sa su  TKF TKFU @  CHECKER-USIG-ADD ;
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ src USIG-ADD-BAD EXIT THEN
+   sa su  TKF TKFU @ CHECKER-RECORD-NAME RES-TRUE src USIG-ADD-AS ;
 
 \ TRUST-DECL: record the effect a DEFINER just declared for the word it is
 \ publishing. The engine calls it by name from its publish tail and from the
@@ -16957,7 +17012,7 @@ s" <input>" DIAG-FILE!
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    DOES-EFF-STEP
-   na nu sa su TRUST-USIG!
+   na nu sa su RES-FALSE TRUST-USIG!
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
    \ cells for a later catch.
@@ -17025,7 +17080,7 @@ package CHECKER-REG
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
-   na nu sa su TRUST-USIG! ;
+   na nu sa su RES-TRUE TRUST-USIG! ;
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
 \ that seals a storage cell at the moment its definer publishes it.
@@ -17048,14 +17103,14 @@ package CHECKER-REG
 \ The mode is restored to off rather than to its previous value on purpose.
 \ Raw registration is a top-level definer act; it never nests inside another
 \ signature parse, and leaving the mode latched on would silently seal ordinary
-\ signatures registered afterwards.
+\ signatures registered afterwards. So the mode ends however the registration
+\ ends, including the throw that refuses a signature that does not parse.
 \
 \ Source cannot call it, for the reason TRUST-DECL is sealed: it asks nothing.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
-   na nu sa su TRUST-USIG!
-   RES-FALSE SIG-RAW-DEFINER! ;
+   na nu sa su [: RES-FALSE TRUST-USIG! ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally ;
 REG-PROTECT
 package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!

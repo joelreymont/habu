@@ -69,7 +69,9 @@ top-level `--`, then `Dout = R`, `Rout = S`, and then refuses the definition:
 nothing may follow the output side, so the trailing `-- S a` is a syntax reject
 at that token (`fix_signature_syntax`, exit 70). Writing the top-level shape
 inside a quotation is refused the same way: `[ R a | S -- R | S a ]` is a hard
-syntax reject (`checker: bad stored signature`, exit 76).
+syntax reject (`fix_signature_syntax`), at the `|` in a definition (exit 70) and
+as `E-BAD-STORED-SIGNATURE` in a stored signature such as a `trust` row's, whose
+uncaught throw ends the load (exit 67).
 
 ### Rows, variables, and lexing
 

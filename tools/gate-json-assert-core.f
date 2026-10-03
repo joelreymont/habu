@@ -352,6 +352,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_bare_ptr_element" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_signature_size" s" Declare fewer cells: keep bulk values in a buffer, not on the stack."
+   GJA-SUGGEST-ROW IF exit THEN
    s" fix_nominal_type" s" Choose a unique non-reserved nominal type name."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_missing_name" s" Give the definer a name: the next whitespace-delimited token."
@@ -465,7 +467,8 @@ variable GJA-DIRECT
    root s" column" GJA-REQ-INTF ;
 
 \ A refused checker record names the token it would have described, with the
-\ field its code adds, and has no place for that token.
+\ field its code adds, and has no place for that token. The field is text, and
+\ empty only as the signature of a row that stored none.
 : GJA-RECORD-FIELDS ( n -- ) {: root:n :}
    root GJA-NO-DEF
    root GJA-NO-PLACE
@@ -473,6 +476,7 @@ variable GJA-DIRECT
    root s" token" GJA-REQ GJA-NONEMPTY-STR
    root GJA-CODE$ DIAG-CODE:EVIDENCE {: key:ptr keyu:n :}
    keyu 0= IF exit THEN
+   root GJA-CODE$ s" E-BAD-STORED-SIGNATURE" GJA-BYTES= IF root key keyu GJA-REQ-STRF exit THEN
    root key keyu GJA-REQ GJA-NONEMPTY-STR ;
 
 : GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}

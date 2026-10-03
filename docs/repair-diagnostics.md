@@ -147,7 +147,7 @@ definition-only field. The code names its repair class and that field:
 | `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name. |
 | `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
 | `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
-| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature | `signature`, as written | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse; `token` is the name it is stored for. |
+| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature; `fix_signature_size` for a row too deep or too wide to record | `signature`, as written, empty when the row stored no text; and `reason` for a row too deep or too wide to record, naming the bound with the row's count and the limit | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse, or is more than 4096 levels deep or takes more than 255 cells, more than its record holds; `token` is the name it is stored for. |
 | `E-USING-SHADOW-GLOBAL` | `disambiguate_using_shadow` | `used_package` | `token`, a bare name in a definition, resolves to a global while a package in use exports the same tail. |
 | `E-SHADOWED-ARITY` | `match_shadowed_private_effect` | `package` | The package public `token` moves another number of cells than the private word of its package with the same tail. |
 
@@ -160,10 +160,16 @@ load exits 67 after `hb: uncaught throw code 7152`, and `tools/check.f` reports
 the statement that asked for the record as one that threw. A run that ends on
 the throw of `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED` exits 70
 from `tools/check.f`, as for a refusal; a run that ends on any other throw
-exits with the load's status. Only `--all-errors` renders
-`E-BAD-STORED-SIGNATURE`, counting it as a refusal (exit 70); the default mode
-stops there with exit 76 and the line
-`<token>: <signature>: checker: bad stored signature`. The two shadow refusals
+exits with the load's status. `E-BAD-STORED-SIGNATURE` is rendered in every
+mode. Under `--all-errors` the source pre-pass counts it as a refusal and checks
+on (exit 70). Otherwise the load throws it (7156) where the signature is stored:
+met by the pre-pass, the `E-STATEMENT-THROW` span of the statement that threw
+follows the record and places it, nothing after that statement is checked, and
+the run exits 70; met only in the run stage, as in text that `evaluate` runs,
+the run ends on that throw with the load's status, 67, and without
+`--json-errors` its record is the line `habu: in <token>: bad stored signature
+'<signature>'`, with the reason after it for a row too deep or too wide to
+record. The two shadow refusals
 throw out of their definition (7141 and 7145), so the `E-STATEMENT-THROW` span
 of the statement that threw follows the record and places it; the run exits 70.
 
@@ -441,6 +447,9 @@ Current checker classes:
   of arguments; give it its exact declared arity.
 - `fix_bare_ptr_element`: a signature named `ptr` with no element type; give it an
   element type, e.g. `ptr u8` or `ptr a`.
+- `fix_signature_size`: a stored signature is more than 4096 levels deep or takes
+  more than 255 cells, more than its record holds; `reason` names the bound, the
+  row's count and the limit. Keep bulk values in a buffer.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
 - `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
@@ -508,6 +517,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
 | `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
+| `fix_signature_size` | `Declare fewer cells: keep bulk values in a buffer, not on the stack.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
 | `fix_missing_name` | `Give the definer a name: the next whitespace-delimited token.` |
 | `fix_record_field` | `Declare at least one field, each with a unique name and a known type.` |

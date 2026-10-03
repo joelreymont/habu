@@ -44,7 +44,7 @@ private
       construct shape record s" fix_qualified_name" s" " EXIT THEN
    c u s" E-BAD-STORED-SIGNATURE" STR= IF
       construct shape record
-      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax"
+      s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax fix_signature_size"
       s" signature" EXIT THEN
    c u s" E-USING-SHADOW-GLOBAL" STR= IF
       construct shape record s" disambiguate_using_shadow" s" used_package" EXIT THEN

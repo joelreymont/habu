@@ -664,6 +664,15 @@ variable MDV-I   variable MDV-F
       s" fix_match_syntax" rot
    endcase ;
 
+\ An effect too deep or an input row too wide to record, a definition's
+\ (MD-EFFECT-DEPTH, MD-INPUT-WIDTH) or a stored signature's (BADSIG-REASON):
+\ the reason each carries.
+: DEPTH-REASON$ ( -- ptr u8 n )
+   s" effect too deep to record" ;
+
+: WIDTH-REASON$ ( -- ptr u8 n )
+   s" input row too wide to record" ;
+
 : MDIAG-SUGGEST$ ( -- ptr u8 n )
    MDIAG @ case
       MD-NONEXH       of s" Add an OF branch for every listed variant; v1 has no default branch." endof
@@ -744,8 +753,8 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
-      MD-EFFECT-DEPTH of s" effect too deep to record" endof
-      MD-INPUT-WIDTH  of s" input row too wide to record" endof
+      MD-EFFECT-DEPTH of DEPTH-REASON$ endof
+      MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       s" bad match: rejected" rot
    endcase ;
 
@@ -770,23 +779,27 @@ variable MDV-I   variable MDV-F
 \ The counts a reason latches with it: the underflow's shortfall, and the depth
 \ of an effect too deep to record or the width of an input row too wide to
 \ record against its ceiling. Digits, letters and spaces only, so the one word
-\ serves the prose line and the inside of the JSON reason string.
+\ serves the prose line and the inside of the JSON reason string. The depth and
+\ the width are a definition's (MDIAG-DEPTH, MDIAG-WIDTH) or a stored
+\ signature's (SGBAD-SIZE).
 : MDIAG-UF-COUNTS ( -- )
    s"  (needs " DTXT  MDIAG-NEED @ JNUM
    s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
 
-: MDIAG-DEPTH-COUNTS ( -- )
-   s"  (depth " DTXT  MDIAG-DEPTH @ JNUM
+: DEPTH-COUNTS ( n -- )
+   {: depth:n :}
+   s"  (depth " DTXT  depth JNUM
    s" , at most " DTXT  EFFECT-DEPTH-MAX JNUM  s" )" DTXT ;
 
-: MDIAG-WIDTH-COUNTS ( -- )
-   s"  (" DTXT  MDIAG-WIDTH @ JNUM
+: WIDTH-COUNTS ( n -- )
+   {: width:n :}
+   s"  (" DTXT  width JNUM
    s"  cells, at most " DTXT  EFFECT-MIN-IN-MAX JNUM  s" )" DTXT ;
 
 : MDIAG-COUNTS ( -- )
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
-   MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH-COUNTS THEN ;
+   MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
+   MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH @ WIDTH-COUNTS THEN ;
 
 : IMM-CODE$ ( -- ptr u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
@@ -1153,22 +1166,30 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
 DIAG-PRINT-INSTALL
 
-\ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
+\ --- bad stored-signature diagnostics (checker.f USIG-ADD-BAD, in every mode).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror
-\ REPAIR-CLASS's signature arm (same stable strings). The JSON is a refused
-\ record (docs/repair-diagnostics.md): the row's name is its token, and the
-\ signature as written the field its code adds.
+\ REPAIR-CLASS's signature arm (same stable strings). A row that parsed but is
+\ too deep or too wide to record has a class of its own and a reason naming the
+\ bound it passed, with its count and limit. The JSON is a refused record
+\ (docs/repair-diagnostics.md): the row's name is its token, and the signature
+\ as written the field its code adds.
 : BADSIG-CLASS ( -- ptr u8 n )
    SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
    SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
    SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
+   SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
    s" fix_signature_syntax" ;
 : BADSIG-SUGGEST ( -- ptr u8 n )
    SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
    SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
+   SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
    s" Repair the stack-effect comment syntax, including --." ;
-: BADSIG-JSON ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-REASON ( -- )
+   SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
+   WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
+: BADSIG-JSON ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n :}
    123 EMIT1                                              \ {
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
@@ -1176,12 +1197,15 @@ DIAG-PRINT-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY na nu JSTR 44 EMIT1
    s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
+   SGBAD-SIZE? IF s" reason" JKEY JOPEN BADSIG-REASON JCLOSE 44 EMIT1 THEN
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" suggestion" JKEY BADSIG-SUGGEST JSTR
    125 EMIT1 ;                                            \ }
-: BADSIG-PROSE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: BADSIG-PROSE ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n na:ptr nu:n :}
    s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
-   sa su SIG-TRIM DTXT  s" '" DTXT ;
+   sa su SIG-TRIM DTXT  s" '" DTXT
+   SGBAD-SIZE? IF s"  " DTXT BADSIG-REASON THEN ;
 : BADSIG-DIAG ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    1 RDST !  0 RSN !
    sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN

@@ -108,6 +108,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a 33rd `[:` while 32 are open | `E-UNCHECKABLE`; `--load` exits 75, `hb: quotation nesting full at 32 levels` |
 | a definition leaving 4097 cells, or returning a quotation that leaves 4095 | `E-UNCHECKABLE`, `effect too deep to record (depth 4097, at most 4096)` |
 | a definition taking 256 cells, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (256 cells, at most 255)` |
+| a `trust` row leaving 4097 cells, or one, `TRUSTED:` or `defer` taking 256 | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a family, variant or field name over 255 bytes | `E-BAD-DECLARATION`, `name longer than 255 bytes`; `--load` exits 67 |
 | `package` with a name over 255 bytes | `E-STATEMENT-THROW`, throw code 7154; `--load` exits 67 |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
