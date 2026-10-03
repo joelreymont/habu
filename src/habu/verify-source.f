@@ -666,14 +666,26 @@ TRUSTED: CREATES-ACTION ( n -- [ n -- n ] ) ;
 TRUSTED: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] ) ;
 TRUSTED: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] ) ;
 
-TRUSTED: RECORD-SYM? ( ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
+\ The owner ABI offsets are read here at top level, not in the bodies below: the
+\ checker of an engine that boots its prefix from source holds no row for a
+\ word defined before the check hook, so a checked body naming one is
+\ E-UNDEFINED there (docs/forth.md, "A pre-hook word needs an axiom row";
+\ test/cold-naming-test.f loads this file on such an engine).
+CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant RECORD-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant FIND-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant CREATES-SYM-OFF
+CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF constant RECORD-CREATED-OFF
+CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF constant RENDERS-OFF
+CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF constant SOURCE-DOES-OFF
+
+: RECORD-SYM? ( ptr u8 n -- n )
+   RECORD-SYM-OFF OWNER-XT SYM-ACTION execute ;
 \ FIND-SYM is the QUIET resolver: this scan asks it of tokens it is only
 \ classifying, and the two refusals the authoritative resolver owns (a used
 \ public shadowing a global, a tail two used packages both export) belong to the
 \ definition's own check, which resolves the same token straight after.
-TRUSTED: FIND-SYM ( ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
+: FIND-SYM ( ptr u8 n -- n )
+   FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
 \ The same two questions about a definer this pre-pass never read - one compiled
 \ in THIS process, whose clause the checker certified at its `;` and whose
@@ -683,18 +695,18 @@ TRUSTED: FIND-SYM ( ptr u8 n -- n )
 \ effect stays where the checker built it: it is handed over as a record, not as
 \ text, so the type variables the clause declared keep the raw-definer seal the
 \ engine's own `trust-raw` gives them.
-TRUSTED: CREATES-SYM? ( n -- n )
-   CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
-TRUSTED: RECORD-CREATED ( ptr u8 n n -- bool )
-   CHECKER-OWNER-ABI:VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
+: CREATES-SYM? ( n -- n )
+   CREATES-SYM-OFF OWNER-XT CREATES-ACTION execute ;
+: RECORD-CREATED ( ptr u8 n n -- bool )
+   RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
 \ Does the symbol name a word that renders source when it runs (src/core/checker.f
 \ CTL-RENDERS)? When it does, the checker marks the wordlist the statement runs
 \ in, and a definition read after it that names a word nothing in scope defines
 \ is left to the run (CHECK's verdict 2) instead of refused E-UNDEFINED.
 TRUSTED: RENDERS-ACTION ( n -- [ n -- bool ] ) ;
-TRUSTED: RENDERS-MARK? ( n -- bool )
-   CHECKER-OWNER-ABI:VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
+: RENDERS-MARK? ( n -- bool )
+   RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -809,8 +821,8 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 \ definer it READ goes into the table above instead (src/core/checker.f
 \ CHECKER-SOURCE-DOES! carries the reason). It takes the definer's name, which
 \ names the clause in the diagnostic of a refused one.
-TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   CHECKER-OWNER-ABI:VERIFY-SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
+: CHECK-DOES-BODY ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   SOURCE-DOES-OFF OWNER-XT DOES-ACTION execute ;
 
 : VERIFY-DOES-BODY ( ptr u8 n ptr u8 n -- n ) {: sig:ptr sigu:n na:ptr nu:n :}
    BODY$ sig sigu na nu CHECK-DOES-BODY BODY-VERDICT ;

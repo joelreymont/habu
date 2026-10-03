@@ -74,7 +74,9 @@ create ERR IO-CAP allot
    ERR erru s" undefined word 'REG-PROT-CAP'" CONTAINS? TTRUE ;
 
 \ The source verifier tools/check.f loads names checker cells defined before the
-\ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row.
+\ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row,
+\ and its owner bridges read the owner ABI offsets, which have none, through
+\ constants it binds at top level (RECORD-SYM-OFF).
 : VERIFIER-CASE ( -- )
    s" the source verifier loads on the cold host" T-LABEL
    S\" require src/habu/verify-source.f\n" LOAD nip 0 T= ;
