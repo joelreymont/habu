@@ -223,7 +223,7 @@ $41C8 constant FFI-SCRATCH-END
 
 $100 constant FN-MAX                      \ $100 rows * $50 bytes = $5000 bytes
 $30 constant FN-NAME-CAP                  \ NUL-terminated C symbol
-$08 constant LIB-MAX                    \ FFI:LIBRARY-MAX; 8 path rows and 8 handle cells
+FN-MAX constant LIB-MAX                 \ each callable row may name a distinct library
 PATH-CAP 1 + constant LIB-PATH-CAP      \ a library path of PATH-CAP bytes and its NUL
 $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders around
 9999 constant LIB-VERSION-MAX             \ ... and its soname version
@@ -234,6 +234,7 @@ create FN-LIBS FN-MAX cells allot
 create FN-ARGCS FN-MAX cells allot
 create FN-SPILLS FN-MAX cells allot
 create LIB-PATHS LIB-MAX LIB-PATH-CAP * allot
+create LIB-LENS LIB-MAX cells allot
 create LIB-HANDLES LIB-MAX cells allot
 
 variable FN-N
@@ -272,6 +273,14 @@ variable FN-REGISTERED
 : LIB-PATH ( n -- ptr u8 ) {: idx:n :}
    idx LIB-CHECK
    LIB-PATHS idx LIB-PATH-CAP * + ;
+
+: LIB-LEN@ ( n -- n ) {: idx:n :}
+   idx LIB-CHECK
+   LIB-LENS idx cells + @ ;
+
+: LIB-LEN! ( n n -- ) {: u:n idx:n :}
+   idx LIB-CHECK
+   u LIB-LENS idx cells + ! ;
 
 : LIB-HANDLE@ ( n -- n ) {: idx:n :}
    idx LIB-CHECK
@@ -471,13 +480,20 @@ public
 
 : ROOM? ( -- bool ) FN-N @ FN-MAX < ;
 
-\ The path table's own fail-closed guard. The declarer asks LIBRARY-ROOM? first
-\ and holds the overflowing path until the FUNCTION: word and symbol are known,
-\ so its refusal can name all three; a full table reached any other way is
-\ refused here by code alone.
+\ Path identity is the complete byte span, including its length. Reusing an
+\ occupied row leaves its resolved handle in place, even when the table is full.
+\ Only a new path consumes a row; the declarer catches that refusal so it can
+\ name the pending FUNCTION: word and symbol.
 : LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
+   u PATH-ROOM drop
+   LIB-N @ 0 ?do
+      i LIB-LEN@ u = if
+         path u i LIB-PATH u STR= if i 1+ unloop exit then
+      then
+   loop
    LIBRARY-ROOM? 0= if E-FFI-LIBRARY-FULL throw then
-   path u PATH-ROOM LIB-N @ LIB-PATH CSTR
+   path u LIB-N @ LIB-PATH CSTR
+   u LIB-N @ LIB-LEN!
    0 LIB-N @ LIB-HANDLE!
    LIB-N @ 1 + dup LIB-N ! ;
 
@@ -539,6 +555,7 @@ ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
    FN-ARGCS FN-MAX cells carry execute
    FN-SPILLS FN-MAX cells carry execute
    LIB-PATHS LIB-MAX LIB-PATH-CAP * carry execute
+   LIB-LENS LIB-MAX cells carry execute
    FN-N BYTE-VIEW CELL carry execute
    LIB-N BYTE-VIEW CELL carry execute
    ERRNO-FN-CELL BYTE-VIEW CELL carry execute
@@ -1047,6 +1064,9 @@ variable SCOPE-HOOK
    get-current SCOPE-WID !
    1 SCOPE-SET ! ;
 
+: TAKE-LIBRARY ( -- )
+   LIB-OVERFLOW CODEGEN:CONTENTS FFI:LIBRARY-PATH CUR-LIB ! ;
+
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
    get-current SCOPE-WID @ <> if E-FFI-LIBRARY throw then ;
@@ -1113,13 +1133,13 @@ public
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    \ LIB-OVERFLOW holds CAP bytes; the length is bounded before the spelling check
    \ reads the path.
-   u 0 <= u FFI:LIBRARY-PATH-CAP > or if E-FFI-SYNTAX throw then
+   u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
    path u CHECK-SPELLING
-   FFI:LIBRARY-ROOM? if
-      path u FFI:LIBRARY-PATH CUR-LIB !
-   else
-      LIB-OVERFLOW CODEGEN:RESET
-      path u LIB-OVERFLOW CODEGEN:APPEND-STRING
+   LIB-OVERFLOW CODEGEN:RESET
+   path u LIB-OVERFLOW CODEGEN:APPEND-STRING
+   [: TAKE-LIBRARY ;] catch {: code:n :}
+   code 0 <> if
+      code E-FFI-LIBRARY-FULL <> if code throw then
       -1 CUR-LIB !
    then
    RECORD-SCOPE ;

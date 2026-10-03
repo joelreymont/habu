@@ -410,18 +410,22 @@ consumer shares. `lib/ffi-test.f` covers the declarer, including the refusals an
 the invariant that a declaration leaves the stack as it found it.
 
 Every declaration in an image shares one table, sized for a server that binds
-five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $48 bytes
-each, $4800 bytes of image data, and `FFI:ROOM?` answers whether another row is
+five or six libraries at once: `FFI:DECLARATION-MAX` is 256 rows of $50 bytes
+each, $5000 bytes of image data, and `FFI:ROOM?` answers whether another row is
 left. A declaration that finds the table full is `E-FFI-TABLE-FULL`, and the
 declarer names the Habu word and the C symbol it could not give a row on stderr
 before it throws. `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`, `CRYPTO`
 and `TASK` in one image and declares past their combined bindings.
 
-The loaded-library table is a separate named ceiling: `FFI:LIBRARY-MAX` is
-eight paths (832 bytes for path storage and handles), and a `LIBRARY` selection
-retains an overflowing path until the next `FUNCTION:` declaration reports it.
-That declaration throws `E-FFI-LIBRARY-FULL` and names the path, Habu word, and
-C symbol on stderr; `PROCESS-SYMBOLS` selects the process library without
+The loaded-library table has a separate named ceiling: `FFI:LIBRARY-MAX` is
+256 distinct paths, enough for every callable row to name a different library.
+The fixed path, length and handle arrays occupy 266,496 image bytes. A
+`LIBRARY` selection reuses an existing row only when its length and every path
+byte match, including after the table fills; different versions, directories
+and case remain distinct. Missing libraries remain unresolved until a declared
+function is called. A new path beyond the ceiling is retained until the next
+`FUNCTION:` declaration reports `E-FFI-LIBRARY-FULL` with the path, Habu word
+and C symbol on stderr. `PROCESS-SYMBOLS` selects the process library without
 consuming a path row.
 
 ```forth

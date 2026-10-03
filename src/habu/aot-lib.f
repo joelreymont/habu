@@ -177,7 +177,7 @@ variable CARRY-USED
    \ ship twice. The bound above admits the whole mapping and cannot see this.
    i AOT-OWNED:AT len + BLOB-SRC @ > IF
       s" aot: a carried claim reaches into the capture window" 74 die THEN
-   CARRY-USED @ len + CARRY-BYTES > IF
+   CARRY-USED @ len + CARRY-BYTES @ > IF
       s" aot: carried engine cells exceed the window's carried run" 74 die THEN
    i AOT-OWNED:AT DATA-PTR  CARRY-BASE$ CARRY-USED @ +  len  BYTE-COPY
    CARRY-BASE @ CARRY-USED @ +  i AOT-OWNED:DEST!

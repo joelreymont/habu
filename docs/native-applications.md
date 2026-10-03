@@ -259,11 +259,11 @@ nothing below the window is written.
 
 **The carried run travels in every stripped image.** The copies are made for
 every link, whether the program reaches them or not, and the blob ships only
-nonzero bytes of the window. The run has a capacity of $8000 bytes: the old
-$400 budget, at most 26,656 bytes of FFI declaration metadata with full
-`PATH-CAP` library paths, 160 bytes of
-TASK symbol names and cells, and 2,056 bytes of task exit declarations. Unused
-rows remain zero in the data blob.
+nonzero bytes of the window. Before closing the application window, the linker
+reserves exactly the cell-aligned lengths declared by the carried ownership
+list. FFI and TASK declarations inside the window already travel with it and
+need no copy; their baked declarations use the full table extents, preserving
+room for new rows after restore. Unused rows remain zero in the data blob.
 A claim that exceeds the run fails the build with *aot: carried engine cells
 exceed the window's carried run*, and
 a claim reaching into the capture window fails with *aot: a carried claim

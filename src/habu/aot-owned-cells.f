@@ -45,18 +45,9 @@
 \ that links - which is this one. It is the linker's question in any case: which
 \ engine cells a stripped entry may own is AOT policy, and src/core and src/os do
 \ not otherwise know that AOT exists.
-require src/core/util.f
-require lib/image-lifecycle.f
-require src/os/env-base.f
-require src/core/dynamic-storage.f
-require src/core/sha256.f
-require src/core/type-family-sha.f
-require lib/memory.f
-require lib/string.f
-require lib/ffi-abi.f
-require lib/task.f
+\ These runtime owners are baked into the native engine. Loading libraries here
+\ would put their data before the application's capture window.
 require src/habu/layout.f
-require src/habu/aot-window-latch.f
 
 package AOT-OWNED
 private
@@ -160,6 +151,35 @@ public
 \ until CARRY-CELLS runs, which is before anything maps an address into it.
 : DEST ( n -- n ) cells DESTS + @ ;
 : DEST! ( n n -- ) {: at:n i:n :} at i cells DESTS + ! ;
+
+private
+
+\ Visit the same extents when reserving the carried run and collecting claims.
+\ Only collection inspects live process resources or publishes claim rows.
+: TABLES ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
+   STR-MAX-I64$ STR-I64-DIGITS carry execute
+   STR-MIN-I64$ STR-I64-DIGITS carry execute
+   KK BYTE-VIEW 64 cells carry execute
+   HH0 BYTE-VIEW 8 cells carry execute
+   carry fresh FFI:OWNED-CELLS
+   carry fresh TASK:OWNED-CELLS ;
+
+variable CARRY-TOTAL
+
+: CARRY-LEN ( ptr u8 n -- )
+   {: c:ptr len:n :}
+   c len ENGINE-DATA? if
+      len 7 + 8 / 8 * CARRY-TOTAL +!
+   then ;
+
+public
+
+: CARRY-SIZE ( n -- n )
+   ENGINE-WINDOW !
+   0 CARRY-TOTAL !
+   [: CARRY-LEN ;] [: 2drop ;] TABLES
+   CARRY-TOTAL @ ;
 
 private
 
@@ -308,13 +328,9 @@ public
    data-base EXIT-HOOK-CELL + FRESH
    data-base CB-XDS + CB-BAND-BYTES FRESH-BYTES
    data-base RBASE-CELL + TEXT-BASE
-   STR-MAX-I64$ STR-I64-DIGITS CARRIED
-   STR-MIN-I64$ STR-I64-DIGITS CARRIED
-   KK  64 cells CARRIED
-   HH0  8 cells CARRIED
    TF-SHA-CTX FRESH  SHA-DIGEST FRESH
-   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] FFI:OWNED-CELLS
-   window [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] TASK:OWNED-CELLS
+   window TASK:CHECK-OWNED
+   [: ENGINE-CARRY ;] [: ENGINE-FRESH ;] TABLES
    PZB PATH-CAP 1 + FRESH-BYTES ;
 
 ;package

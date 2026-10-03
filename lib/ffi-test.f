@@ -9,6 +9,7 @@ require lib/string.f               \ SB / CONTAINS? - the child's stderr is matc
 require lib/fmt.f                  \ the code the child prints is rendered from its name
 require lib/process.f
 require lib/process-argv.f         \ the full-table case needs a child engine
+require lib/engine-candidate.f
 require lib/test/outcome.f
 require lib/test/guard-page.f      \ a path whose bytes end where memory does
 
@@ -183,7 +184,7 @@ FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
 \ undefines ONE name, so whichever turn runs out of rows, the refusal carries
 \ that word and that symbol - and the symbol is one no library exports, which a
 \ declaration is entitled to because it never resolves.
-$200 constant FFI-T-SRC-CAP
+$400 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 30000 constant FFI-T-TIMEOUT-MS
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
@@ -214,7 +215,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 \ the stdout and stderr lengths.
 : FFI-T-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
-   s" bin/hb" >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-OUTCOME-EXITED=
@@ -238,14 +239,57 @@ create FFI-T-LONG-PATH PATH-CAP allot
    erru FFI-T-ERR$ s" habu-ffi-table-probe" CONTAINS? TTRUE
    erru FFI-T-ERR$ s" ZZ-OVER" CONTAINS? TTRUE ;
 
+: FFI-T-LIBRARY-SHARED-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require lib/ffi-abi.f\nrequire lib/codegen.f\n" FFI-T-SRC+
+   s\" 128 CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
+   s\" : SELECT-DISTINCT ( -- ) 10 0 ?do\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-MISSING habu-missing ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"    s\" undefine ZZ-MISSING\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" loop ;\nSELECT-DISTINCT\n" FFI-T-SRC+
+   s" LIBRARY " FFI-T-SRC+
+   HB-TARGET-MACOS? if
+      s" /usr/lib/libSystem.B.dylib" FFI-T-SRC+
+   else
+      s" libc.so.6" FFI-T-SRC+
+   then
+   s\" \nFUNCTION: PID-A getpid ( -- i32 ) ;FUNCTION\n;package\n" FFI-T-SRC+
+   s\" package ZZ-LIB-B\n: SELECT-REPEATED ( -- ) 20 0 ?do s\" LIBRARY " FFI-T-SRC+
+   HB-TARGET-MACOS? if
+      s" /usr/lib/libSystem.B.dylib" FFI-T-SRC+
+   else
+      s" libc.so.6" FFI-T-SRC+
+   then
+   s\" \" INCLUDE-EVALUATE loop ;\nSELECT-REPEATED\n" FFI-T-SRC+
+   s\" FUNCTION: PID-B getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
+   s\" : RUN ( -- ) ZZ-LIB-A:PID-A 0 > PID-B 0 > and if s\" shared-library:ok\" type cr else s\" getpid refused\" 1 die then ;\nRUN\n;package\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-LIBRARY-SHARED ( -- )
+   s" repeated library selections share a callable binding" T-LABEL
+   FFI-T-LIBRARY-SHARED-SRC$ 0 FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   FFI-T-OUT outu LEN>N s\" shared-library:ok\n" T$=
+   erru LEN>N 0 T= ;
+
 \ The overflowing path carries no extension: it stands for a literal LIBRARY row
 \ on either target, which the spelling rule below leaves alone.
 : FFI-T-LIB-FULL-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
-   s\" require lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
-   s\" : ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 1+ 0 ?do\n" FFI-T-SRC+
-   s\"    s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" require lib/ffi-abi.f\nrequire lib/codegen.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-EARLY getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
+   s\" 128 CODEGEN:BUFFER ZZ-NAME\n: ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 0 ?do\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-library-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
    s\" loop\n" FFI-T-SRC+
+   s\" s\" LIBRARY /tmp/habu-ffi-library-0\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" s\" FUNCTION: ZZ-REUSED absent-symbol ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\" ZZ-EARLY 0 <= if s\" prior call failed\" 1 die then\n" FFI-T-SRC+
+   s\" s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\" ;\nZZ-LIB-FILL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
@@ -263,6 +307,21 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-LONG-PATH! ( -- )
    PATH-CAP 0 ?do [char] a FFI-T-LONG-PATH i + c! loop ;
 
+: FFI-T-PATH-IDENTITY ( -- )
+   s" different path bytes use different rows" T-LABEL
+   s" /tmp/ffi-path/libx.so.1" FFI:LIBRARY-PATH {: a:n :}
+   s" /tmp/ffi-path/libx.so.1" FFI:LIBRARY-PATH a T=
+   s" /tmp/ffi-path/libx.so.2" FFI:LIBRARY-PATH a T<>
+   s" /tmp/ffi-path/libX.so.1" FFI:LIBRARY-PATH a T<>
+   s" /tmp/ffi-other/libx.so.1" FFI:LIBRARY-PATH a T<>
+   s" path length is exact from one through PATH-CAP" T-LABEL
+   [: FFI-T-LONG-PATH 0 FFI:LIBRARY-PATH drop ;] E-FFI-SYNTAX TTHROWSQ
+   FFI-T-LONG-PATH!
+   FFI-T-LONG-PATH PATH-CAP FFI:LIBRARY-PATH {: long:n :}
+   FFI-T-LONG-PATH PATH-CAP FFI:LIBRARY-PATH long T=
+   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:LIBRARY-PATH drop ;]
+   E-FFI-SYNTAX TTHROWSQ ;
+
 : FFI-T-LONG-SRC! ( -- )
    FFI-T-SRC CODEGEN:RESET
    s\" require lib/ffi-abi.f\ncreate ZZ-P PATH-CAP allot\n" FFI-T-SRC+
@@ -270,8 +329,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 : FFI-T-LONG-LIB-FULL-SRC$ ( -- ptr u8 n )
    FFI-T-LONG-SRC!
+   s\" require lib/codegen.f\n128 CODEGEN:BUFFER ZZ-NAME\n" FFI-T-SRC+
    s\" PROCESS-SYMBOLS\n: ZZ-LIB-FILL ( -- ) FFI:LIBRARY-MAX 0 ?do\n" FFI-T-SRC+
-   s\"   s\" LIBRARY /tmp/habu-ffi-library-overflow\" INCLUDE-EVALUATE\n" FFI-T-SRC+
+   s\"   ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-library-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"   i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
+   s\"   ZZ-NAME CODEGEN:CONTENTS FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
    s\" loop ZZ-LONG FFI-DECL:SELECT-LIBRARY\n" FFI-T-SRC+
    s\" s\" FUNCTION: ZZ-LIB-OVER habu-ffi-library-probe ( -- n ) ;FUNCTION\" INCLUDE-EVALUATE ;\nZZ-LIB-FILL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
@@ -411,6 +473,10 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 : FFI-T-GUARDED-PATH ( -- )
    FFI:LIBRARY-PATH-CAP [char] a GUARD-PAGE:TAIL
    FFI:LIBRARY-PATH-CAP 1+ FFI-DECL:SELECT-LIBRARY ;
+
+: FFI-T-GUARDED-DIRECT ( -- )
+   PATH-CAP [char] a GUARD-PAGE:TAIL
+   PATH-CAP 1+ FFI:LIBRARY-PATH drop ;
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer refuses it where it is stated. The refusal ends the load, which is
@@ -582,11 +648,14 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-CSTR-SRC -1 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-DECL:SELECT-LIBRARY ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-GUARDED-DIRECT ;] E-FFI-SYNTAX TTHROWSQ
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
 
    FFI-T-TABLE-FULL
+   FFI-T-LIBRARY-SHARED
+   FFI-T-PATH-IDENTITY
    FFI-T-LIBRARY-TABLE-FULL
    FFI-T-LONG-LIBRARY-TABLE-FULL
    FFI-T-FOREIGN-LIBRARY

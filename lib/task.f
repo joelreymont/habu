@@ -2009,15 +2009,20 @@ TASK-MIN-STACK constant MIN-STACK
 \ Callback rows are process state too: ROWS-SWEEP refuses a row in flight at
 \ capture and unbinds the rest, so every row restarts at zero, and the store
 \ counts beside them (MOVES) are compared only within one process.
-: OWNED-CELLS ( n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: window:n carry fresh :}
+: CHECK-OWNED ( n -- )
+   {: window:n :}
    TASK-SYM-PTHREAD-CREATE FFI:>CELL window < if
       TASK-SEM-POOL-N 0 ?do
          i SEM-POOL-USED @ 0<> if
             s" task: stripped image cannot carry a live semaphore" 74 die
          then
       loop
-   then
+   then ;
+
+\ Enumerating the declarations does not inspect process state. The linker sizes
+\ its carried run before cleanup, then checks live resources before collection.
+: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
+   {: carry fresh :}
    TASK-SYM-PTHREAD-CREATE
    TASK-USER-NEXT FFI:>CELL TASK-SYM-PTHREAD-CREATE FFI:>CELL -
    carry execute

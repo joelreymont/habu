@@ -17,6 +17,7 @@
 \ tools/build-fixpoint.f BF-APPEND-COMMON), so a change there costs three
 \ generations and buys nothing this file does not give.
 require src/habu/layout.f
+require src/habu/aot-owned-cells.f
 
 package AOT-LINK
 
@@ -96,19 +97,19 @@ PTR-VARIABLE APP-POOL
 \ src/habu/aot-owned-cells.f into this run at link time, and it is inside the
 \ window, so the copy travels in the image's own data blob with no entry code and
 \ no write below the window. It is reserved HERE, in the last moment DATA still
-\ grows inside the span: the list itself loads with the linker, above BLOB-END,
-\ and nothing it names could be given a home after the span is latched. The
+\ grows inside the span: nothing it names could be given a home after the span
+\ is latched. The lib-free ownership visitor is already available for sizing;
+\ live claims are collected after the application's cleanup. The
 \ reserve is zeroed, so whatever no claim uses is invisible to aot-lib.f
 \ EACH-BLOB-RUN and costs the image nothing but address space. WHAT THE CLAIMS DO
 \ USE TRAVELS IN EVERY IMAGE: the copies are made for every link, reached or not,
 \ and their non-zero bytes are blob content like any other window byte (measured:
 \ a hello-world image carries 390 written data bytes, 64 without the copies).
 \ docs/native-applications.md states the run's capacity and ownership.
-\ The old $400 run plus at most 26,656 bytes of FFI declaration metadata and
-\ 160 bytes of TASK symbols/cells plus 2,056 bytes of task exit declarations
-\ fits in $8000 with PATH-CAP-sized library paths. The link refuses any claim that
-\ outgrows it; the image writes only nonzero bytes from this reserved run.
-$8000 constant CARRY-BYTES
+\ The ownership list sizes this run from the same aligned extents it collects
+\ after cleanup. Fresh cells need no copy; in-window declarations already travel
+\ with the application. The image writes only nonzero bytes from the reserve.
+variable CARRY-BYTES
 variable CARRY-BASE
 PTR-VARIABLE CARRY-P
 
@@ -120,10 +121,11 @@ PTR-VARIABLE CARRY-P
    HERE-N 7 and dup 0<> IF 8 swap - allot ELSE drop THEN
    here BYTE-VIEW CARRY-P !
    HERE-N CARRY-BASE !
-   CARRY-BYTES allot
-   CARRY-BYTES 0 ?do 0 CARRY-BASE$ i + c! loop ;
+   CARRY-BYTES @ allot
+   CARRY-BYTES @ 0 ?do 0 CARRY-BASE$ i + c! loop ;
 
 : AOT-DATA-SPAN ( -- )
+   BLOB-SRC @ AOT-OWNED:CARRY-SIZE CARRY-BYTES !
    CARRY-RESERVE
    HERE-N  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN !
