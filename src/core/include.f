@@ -210,11 +210,30 @@ private
 : CANON$ ( -- ptr u8 n ) CANON-BUF CANON-U @ ;
 
 
-: CWD-INIT ( -- )
-   CWD-U @ 0= 0= if exit then
-   s" ." TRY-CANON 0= if INCLUDE-IO-RC throw then
+\ The working directory is the root of every command-line entry, a root of every
+\ relative require and the engine root's first candidate, so it must fit
+\ PATH-CAP as every root does; every path below a longer one is longer still,
+\ so the engine refuses it by name rather than resolve without it. realpath
+\ does not say why it fails, so the refusal names what a removed, unsearchable
+\ or long directory all are not; macOS's refuses a result of 1023 bytes or
+\ more, and glibc answers a longer path whole, which the canon answer refuses
+\ with E-PATH-RANGE.
+: CWD-DIE ( -- )
+   s" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes"
+   INCLUDE-IO-RC die ;
+
+
+: CWD-READ ( -- )
+   s" ." TRY-CANON 0= if CWD-DIE then
    CANON-BUF CWD-BUF CANON-U @ 1+ BYTE-COPY
    CANON-U @ CWD-U ! ;
+
+
+: CWD-INIT ( -- )
+   CWD-U @ 0= 0= if exit then
+   [: CWD-READ ;] catch {: rc:n :}
+   rc E-PATH-RANGE = if CWD-DIE then
+   rc 0= 0= if rc throw then ;
 
 public
 
