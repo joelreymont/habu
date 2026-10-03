@@ -29,7 +29,6 @@ $10000 constant BF-CERT-DIAG-CAP
 64 constant BF-USAGE-RC
 74 constant BF-BUILD-RC
 34 constant BF-DQ
-$2F constant BF-SLASH
 64 constant BF-STAMP-HEX-U
 12 constant BF-STAMP-PREFIX-U
 32 constant BF-STAMP-DG-U
@@ -1914,17 +1913,9 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    BF-STAMP-DIR$ s" stamp" BF-STAMP-DEF-BUF JOIN-PATH BF-STAMP-DEF-U !
    BF-STAMP-DEF-BUF BF-STAMP-DEF-U @ ;
 
-: BF-PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u begin dup 0 > while
-      1 -
-      a over + c@ BF-SLASH = if exit then
-   repeat ;
-
 : BF-STAMP-ENSURE-DIR ( -- )
    BF-STAMP-DEFAULT? if BF-STAMP-DIR$ MAKE-DIRS exit then
-   BF-STAMP-PATH$ {: a:ptr u:n :}
-   a u BF-PARENT-U {: pu:n :}
-   pu 0 > if a pu MAKE-DIRS then ;
+   BF-STAMP-PATH$ SOURCE-ROOT:DIRNAME MAKE-DIRS ;
 
 : BF-STAMP-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
    BF-STAMP-U @ u + BF-STAMP-CAP > if E-STR-CAPACITY throw then

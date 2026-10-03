@@ -314,8 +314,11 @@ public
    NORMAL-BUF NORMAL-U @ INCLUDE-FALSE ;
 
 
-: DIRNAME ( ptr u8 n -- ptr u8 n )
-   over swap PARENT-U ;
+\ A name with no slash lies in the current directory, so its directory is `.`;
+\ PARENT-U alone would keep its first byte.
+: DIRNAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u 0 SEG-END u = if s" ." exit then
+   a a u PARENT-U ;
 
 
 \ The product lives at <tree>/bin/hb. Resolve its running executable physically

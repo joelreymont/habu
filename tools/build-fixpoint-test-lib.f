@@ -240,8 +240,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BFT-STALE-DST {: d:ptr du:n :}
-   d du BF-PARENT-U {: pu:n :}
-   pu 0 > if d pu MAKE-DIRS then
+   d du SOURCE-ROOT:DIRNAME MAKE-DIRS
    a u d du COPY-FILE-STREAM ;
 
 : BFT-STALE-COPY-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
