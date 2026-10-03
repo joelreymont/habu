@@ -16,6 +16,8 @@ variable SCAN-I
 variable SKIP-STRINGS
 variable FOUND
 variable TOKEN-START
+\ The stopped token survives scanner restoration after a nested file throws.
+variable TOKEN-BYTE
 PTR-VARIABLE TOKEN-A
 variable TOKEN-U
 variable BODY-U
@@ -108,6 +110,7 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    SKIP-WS
    SCAN-I @ SOURCE-U @ >= if SOURCE@ 0 exit then
    SCAN-I @ TOKEN-START !
+   BASE-BYTE @ SCAN-I @ + TOKEN-BYTE !
    begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
       SCAN-C+ drop
    repeat

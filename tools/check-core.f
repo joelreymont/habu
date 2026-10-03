@@ -1018,11 +1018,6 @@ variable CHK-EXP-ROWS
       swap 1+ swap
    repeat drop ;
 
-: CHK-VREC-DO-DEF ( -- )
-   CHK-VREC-NAME-I @ LINT-LEX:TOKEN
-   CHK-EXP$
-   CHECKER-DEFRECORD ;
-
 \ The registration answers the field it refuses instead of dying, and leaves
 \ no part of the record behind, so the scan reports it and goes on.
 : CHK-VREC-DEFRECORD ( n n -- ) {: def:n name:n :}
