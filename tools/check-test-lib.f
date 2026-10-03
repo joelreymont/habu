@@ -3150,12 +3150,15 @@ create BIG $2000 allot   variable BIG-U
    s" PRODUCT ( 0 FIELD x n ;PRODUCT" s" '('" OPERAND-REFUSED
    s" PRODUCT \ 0 FIELD x n ;PRODUCT" s" '\'" OPERAND-REFUSED ;
 
-\ A definer, or `undefine`, with nothing after it has no name to read. Each
-\ source puts one alone on its second line, two columns in: the loader refuses
-\ the source, and the check refuses it in prose and in JSON at that place,
-\ naming that word, without reading past the last token. Checked as a file,
-\ whose statements are also walked to place the files it loads, it is refused
-\ once.
+\ A definer, a parsing word, or `undefine`, with nothing after it has no name
+\ to read. Each source puts one alone on its second line, two columns in: the
+\ loader refuses the source, and the check refuses it at that place, naming
+\ that word, without reading past the last token: in prose and under
+\ --all-errors by the one line the nominal pass writes, and in JSON. The
+\ pre-verifier reads the names the nominal pass does not list (`defer`,
+\ `create`, a learned definer, `char`, a field word) and refuses them by that
+\ same line. Checked as a file, whose statements are also walked to place the
+\ files it loads, it is refused once.
 : NONAME-SRC$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n d:ptr du:n :}
    SB-RESET
    a u SB-APPEND $0a SB-APPEND-C
@@ -3163,17 +3166,27 @@ create BIG $2000 allot   variable BIG-U
    d du SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
-: NONAME-REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n d:ptr du:n :}
-   a u d du NONAME-SRC$ HB-LOAD-SRC
-   {: outu:n erru:n rc:n :}
-   rc 0 T<>
-   a u d du NONAME-SRC$ DIRECT-STDIN 70 T=
-   {: outu2:n erru2:n :}
-   outu2 0 T=
+: NONAME-LINE$ ( ptr u8 n -- ptr u8 n )
+   {: d:ptr du:n :}
    SB-RESET
    s" check.f: <stdin>:2:3: missing name after '" SB-APPEND
    d du SB-APPEND 39 SB-APPEND-C
-   CAP-ERR erru2 SB$ CONTAINS? TTRUE
+   SB$ ;
+
+: NONAME-PROSE ( n n n ptr u8 n -- )
+   {: outu:n erru:n rc:n d:ptr du:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru d du NONAME-LINE$ CONTAINS? TTRUE
+   CAP-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: NONAME-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n d:ptr du:n :}
+   a u d du NONAME-SRC$ HB-LOAD-SRC
+   {: outu:n erru:n rc:n :}
+   rc 0 T<>
+   a u d du NONAME-SRC$ DIRECT-STDIN d du NONAME-PROSE
+   a u d du NONAME-SRC$ DIRECT-ALL-STDIN d du NONAME-PROSE
    a u d du NONAME-SRC$ DIRECT-JSON-STDIN 70 T=
    {: outu3:n erru3:n :}
    outu3 0 T=
@@ -3200,7 +3213,29 @@ create BIG $2000 allot   variable BIG-U
    s" \ lead" s" package" NONAME-REFUSED
    s" \ lead" s" :" NONAME-REFUSED
    s" \ lead" s" TRUSTED:" NONAME-REFUSED
-   s" \ lead" s" undefine" NONAME-REFUSED ;
+   s" \ lead" s" undefine" NONAME-REFUSED
+   s" \ lead" s" defer" NONAME-REFUSED
+   s" \ lead" s" cast:" NONAME-REFUSED
+   s" \ lead" s" using" NONAME-REFUSED
+   s" \ lead" s" EXPORT" NONAME-REFUSED
+   s" \ lead" s" create" NONAME-REFUSED
+   s" \ lead" s" variable" NONAME-REFUSED
+   s" \ lead" s" constant" NONAME-REFUSED
+   s" \ lead" s" PTR-VARIABLE" NONAME-REFUSED
+   s" \ lead" s" PERSISTED-PTR-VARIABLE" NONAME-REFUSED
+   s" \ lead" s" PTR-U8-TABLE" NONAME-REFUSED
+   s" \ lead" s" PERSISTED-PTR-U8-TABLE-VARIABLE" NONAME-REFUSED
+   s" \ lead" s" RESERVED-PTR-U8-CELL" NONAME-REFUSED
+   s" \ lead" s" BEGIN-STRUCTURE" NONAME-REFUSED
+   s" \ lead" s" '" NONAME-REFUSED
+   s" \ lead" s" char" NONAME-REFUSED
+   s" : CKC ( -- n )" s" char" NONAME-REFUSED
+   s" : CKC ( -- n )" s" [char]" NONAME-REFUSED
+   s" : CKC ( -- n )" s" [']" NONAME-REFUSED
+   s" BEGIN-STRUCTURE CKB" s" +FIELD" NONAME-REFUSED
+   s" BEGIN-STRUCTURE CKB" s" CFIELD:" NONAME-REFUSED
+   s" BEGIN-STRUCTURE CKB" s" PTR-FIELD:" NONAME-REFUSED
+   s" : CKM ( n -- ) create , does> ( -- ptr n ) ;" s" CKM" NONAME-REFUSED ;
 
 \ A parsing keyword takes the next whitespace-delimited token raw, whatever it
 \ spells, in every scanner of the check as in the loader, and a definer takes
@@ -4251,6 +4286,154 @@ variable REQ-U
    s" ckt-ut.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
    s" ckt-ut-req.f" UT-SDQ-TOKEN$ UT-SDQ-AT$ UT-MODES
    s" ckt-ut-esc.f" UT-ESC-TOKEN$ UT-ESC-AT$ UT-MODES ;
+
+\ A refusal: status 70, nothing on stdout, one line on stderr, whose length
+\ this answers.
+: REFUSED-LINE ( n n n -- n )
+   {: outu:n erru:n rc:n :}
+   rc 70 T=
+   outu 0 T=
+   CAP-ERR erru 10 COUNT-CHAR 1 T=
+   erru ;
+
+\ A string or a primitive-axiom row the subject never closes stops the check
+\ where the lexer sees it. Read from standard input the subject is refused by
+\ the record --all-errors writes for the defect, in prose and in JSON, and
+\ checked as a file it is refused by that prose, each at the opener as
+\ written. The prose names the code, the file and the place.
+: LEXD-FILE$ ( -- ptr u8 n )
+   s" ckt-lxd.f" REQ$ ;
+
+: LEXD-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n code:ptr codeu:n at:ptr atu:n place:ptr placeu:n :}
+   LEXD-FILE$ src srcu WRITE-ALL
+   src srcu DIRECT-STDIN REFUSED-LINE {: e1:n :}
+   SB-RESET code codeu SB-APPEND s"  <stdin>" SB-APPEND at atu SB-APPEND
+   CAP-ERR e1 SB$ STARTS-WITH? TTRUE
+   src srcu DIRECT-JSON-STDIN REFUSED-LINE {: e2:n :}
+   SB-RESET s\" \"code\":\"" SB-APPEND code codeu SB-APPEND $22 SB-APPEND-C
+   CAP-ERR e2 SB$ CONTAINS? TTRUE
+   CAP-ERR e2 place placeu CONTAINS? TTRUE
+   LEXD-FILE$ PATH-RUN REFUSED-LINE {: e3:n :}
+   CAP-ERR e3 code codeu STARTS-WITH? TTRUE
+   SB-RESET s" /ckt-lxd.f" SB-APPEND at atu SB-APPEND
+   CAP-ERR e3 SB$ CONTAINS? TTRUE ;
+
+: TEST-LEX-LOCATED ( -- )
+   s\" : CKS ( -- ) s\" abc ;" s" E-UNTERMINATED-STRING"
+   s\" :1:14: string literal opened at 's\"' does not close"
+   s\" \"file\":\"<stdin>\",\"line\":1,\"column\":14," LEXD-REFUSED
+   s" PRIM: CKR PE-N PE-IN" s" E-MALFORMED-REGISTRY-ROW"
+   s" :1:1: primitive-axiom row opened at 'PRIM:' does not close"
+   s\" \"file\":\"<stdin>\",\"line\":1,\"column\":1," LEXD-REFUSED
+   s\" \\ lead\n  PRIM:\n" s" E-MALFORMED-REGISTRY-ROW"
+   s" :2:3: primitive-axiom row opened at 'PRIM:' does not close"
+   s\" \"file\":\"<stdin>\",\"line\":2,\"column\":3," LEXD-REFUSED
+   s\" \\ lead\n  PPRIM:\n" s" E-MALFORMED-REGISTRY-ROW"
+   s" :2:3: primitive-axiom row opened at 'PPRIM:' does not close"
+   s\" \"file\":\"<stdin>\",\"line\":2,\"column\":3," LEXD-REFUSED ;
+
+\ Standard input skips source discovery, so a file it requires is first read
+\ by the pre-verifier, and what that file leaves open stops the check there.
+\ The stop is reported where it stands in that file, by the record the subject
+\ would get: a definer with no name by the nominal pass's line, an open string
+\ or primitive-axiom row by the lexer's, in prose, under --all-errors and in
+\ JSON.
+: NEST-FILE ( ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n txt:ptr txtu:n :}
+   f fu REQ$ txt txtu WRITE-ALL ;
+
+: NEST-SRC$ ( ptr u8 n -- ptr u8 n )
+   {: f:ptr fu:n :}
+   SB-RESET s" require " SB-APPEND f fu REQ$ SB-APPEND SB$ ;
+
+\ The fixture's name after a slash, then what follows the file in the record.
+: NEST-AT$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: f:ptr fu:n at:ptr atu:n :}
+   SB-RESET $2f SB-APPEND-C f fu SB-APPEND at atu SB-APPEND SB$ ;
+
+: NEST-PROSE ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n head:ptr headu:n f:ptr fu:n at:ptr atu:n :}
+   outu erru rc REFUSED-LINE drop
+   CAP-ERR erru head headu STARTS-WITH? TTRUE
+   CAP-ERR erru f fu at atu NEST-AT$ CONTAINS? TTRUE ;
+
+: NEST-REFUSED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n head:ptr headu:n code:ptr codeu:n at:ptr atu:n jat:ptr jatu:n :}
+   f fu NEST-SRC$ DIRECT-STDIN head headu f fu at atu NEST-PROSE
+   f fu NEST-SRC$ DIRECT-ALL-STDIN head headu f fu at atu NEST-PROSE
+   f fu NEST-SRC$ DIRECT-JSON-STDIN REFUSED-LINE {: e:n :}
+   CAP-ERR e code codeu CONTAINS? TTRUE
+   CAP-ERR e f fu jat jatu NEST-AT$ CONTAINS? TTRUE ;
+
+: TEST-NESTED-LOCATED ( -- )
+   s" ckt-nst-create.f" s\" \\ lead\n  create\n" NEST-FILE
+   s" ckt-nst-create.f" s" check.f: /" s\" \"code\":\"E-MISSING-NAME\""
+   s" :2:3: missing name after 'create'"
+   s\" \",\"line\":2,\"column\":3," NEST-REFUSED
+   s" ckt-nst-package.f" s\" \\ lead\n  package\n" NEST-FILE
+   s" ckt-nst-package.f" s" check.f: /" s\" \"code\":\"E-MISSING-NAME\""
+   s" :2:3: missing name after 'package'"
+   s\" \",\"line\":2,\"column\":3," NEST-REFUSED
+   s" ckt-nst-str.f" s\" : CKS ( -- ) s\" abc ;" NEST-FILE
+   s" ckt-nst-str.f" s" E-UNTERMINATED-STRING /"
+   s\" \"code\":\"E-UNTERMINATED-STRING\""
+   s\" :1:14: string literal opened at 's\"' does not close"
+   s\" \",\"line\":1,\"column\":14," NEST-REFUSED
+   s" ckt-nst-row.f" s" PRIM: CKR PE-N PE-IN" NEST-FILE
+   s" ckt-nst-row.f" s" E-MALFORMED-REGISTRY-ROW /"
+   s\" \"code\":\"E-MALFORMED-REGISTRY-ROW\""
+   s" :1:1: primitive-axiom row opened at 'PRIM:' does not close"
+   s\" \",\"line\":1,\"column\":1," NEST-REFUSED ;
+
+\ --verify-only locates a refused definition by its packet, and a stop by the
+\ packet the other modes write for it: the one line on standard error, naming
+\ the file the stop is in and the place of the reader or the row opener. The
+\ subject is a file, or standard input under --stdin-path, a path that need
+\ not exist; a file the subject requires stops it the same way.
+: VO-FILE-RUN ( ptr u8 n -- n n n )
+   RESET
+   s" verify-only" OPT
+   FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: VO-STDIN-RUN ( ptr u8 n ptr u8 n -- n n n )
+   {: src:ptr srcu:n path:ptr pathu:n :}
+   SCRATCH-MAKE
+   CHECK-ARGV-START
+   s" --verify-only" CHECK-ARG+
+   s" --stdin-path" CHECK-ARG+
+   path pathu CHECK-ARG+
+   SCRATCH-ENV
+   HB$ >LEN src srcu >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
+   CAPTURE>N
+   SCRATCH-EMPTY ;
+
+: VO-LOCATED ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n code:ptr codeu:n f:ptr fu:n at:ptr atu:n :}
+   rc 70 T=
+   CAP-ERR erru 10 COUNT-CHAR 1 T=
+   SB-RESET s\" \"code\":\"" SB-APPEND code codeu SB-APPEND $22 SB-APPEND-C
+   CAP-ERR erru SB$ CONTAINS? TTRUE
+   CAP-ERR erru f fu at atu NEST-AT$ CONTAINS? TTRUE ;
+
+: TEST-VERIFY-LOCATED ( -- )
+   s" ckt-vo.f" s" \ lead" s" create" NONAME-SRC$ NEST-FILE
+   s" ckt-vo.f" REQ$ VO-FILE-RUN
+   s" E-MISSING-NAME" s" ckt-vo.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
+   s\" : CKC ( -- n )\n  char\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
+   s" E-MISSING-NAME" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
+   s\" \\ lead\n  PRIM:\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
+   s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
+   s" ckt-vo-dep.f" s\" \\ lead\n  package\n" NEST-FILE
+   s" ckt-vo.f" s" ckt-vo-dep.f" NEST-SRC$ NEST-FILE
+   s" ckt-vo.f" REQ$ VO-FILE-RUN
+   s" E-MISSING-NAME" s" ckt-vo-dep.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
+   s" ckt-vo-row.f" s" PRIM: CKR PE-N PE-IN" NEST-FILE
+   s" ckt-vo.f" s" ckt-vo-row.f" NEST-SRC$ NEST-FILE
+   s" ckt-vo.f" REQ$ VO-FILE-RUN
+   s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-row.f" s\" \",\"line\":1,\"column\":1," VO-LOCATED ;
 
 \ The run refuses what the checker leaves to it: a `using` of a package nothing
 \ defines dies in the engine, which names the file and line it is reading. The
@@ -5910,6 +6093,9 @@ variable LC-CANON-U
    s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN
+   s" check/lexer-defect-located" [: TEST-LEX-LOCATED ;] CASE-RUN
+   s" check/nested-stop-located" [: TEST-NESTED-LOCATED ;] CASE-RUN
+   s" check/verify-only-located" [: TEST-VERIFY-LOCATED ;] CASE-RUN
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
    s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN

@@ -24,10 +24,12 @@
 \ errors and answers
 \
 \    check-verify: verified | refused | held
+\                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
-\ cannot be verified here. The parent answers engine-provided itself.
+\ cannot be verified here. The parent answers engine-provided itself. stopped
+\ is a throw that ended the composition, whatever was refused before it.
 \
 \ The second form is check.f's pre-pass. The first definition the checker
 \ refuses stops the composition, as it stops the load, and the subject's packets
@@ -40,8 +42,8 @@
 \ read last starts, DUP-AT and DUP-LEN where the name it refused as a duplicate
 \ starts and its length, DUP-LEN 0 when it kept no name (VERIFY:DUPLICATE),
 \ IN-SUBJECT 1 when the stop is in BYTES and 0 when it is in a file they load,
-\ and FILE, the rest of the line, the name of the file it is in, LABEL for
-\ BYTES.
+\ and FILE, the rest of the line, the name of the file it is in: for BYTES,
+\ SUBJECT in the first form and LABEL in the second.
 \
 \ stderr is prose: for the first form, a line for each file whose verification
 \ a throw stopped, and whatever else the engine writes there, a `die`'s message
@@ -66,6 +68,7 @@ DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
 variable SUBJECT-U
 variable RD
 variable FAILED
+variable STOP                           \ the code a throw ended the composition with, 0 for none
 variable NUM-I
 create NUM NUM-CAP allot
 create NL 1 allot
@@ -130,7 +133,8 @@ create NL 1 allot
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
-   rc 0<> rejects 0<> or if -1 FAILED ! then
+   rejects 0<> if -1 FAILED ! then
+   rc STOP !
    rc 0= if exit then
    VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
 
@@ -156,22 +160,7 @@ create NL 1 allot
    CHECKER-SCOPE-DONE ;
 
 
-: VERIFY-CLOSURE ( -- )
-   0 FAILED !
-   [: VERIFY-ALL ;] SCOPED {: rc:n :}
-   rc 0<> if
-      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
-      rc throw
-   then
-   FAILED @ 0<> if s" refused" RESULT exit then
-   s" verified" RESULT ;
-
-
-: PREVERIFY-CUR ( -- )
-   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
-   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
-
-
+\ The answer for a throw that ended the composition, with where it stopped.
 : STOP-RESULT ( n -- ) {: rc:n :}
    VERIFY:DUPLICATE {: at:n u:n :}
    OUT-FD s" check-verify: stopped " WRITE
@@ -185,6 +174,24 @@ create NL 1 allot
    OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if s"  1 " else s"  0 " then WRITE
    OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED$ WRITE
    OUT-FD NEWLINE ;
+
+
+: VERIFY-CLOSURE ( -- )
+   0 FAILED !
+   0 STOP !
+   [: VERIFY-ALL ;] SCOPED {: rc:n :}
+   rc 0<> if
+      ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
+      rc throw
+   then
+   STOP @ 0<> if STOP @ STOP-RESULT exit then
+   FAILED @ 0<> if s" refused" RESULT exit then
+   s" verified" RESULT ;
+
+
+: PREVERIFY-CUR ( -- )
+   0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ 1 SCRIPT-ARGV$
+   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 
 : PREVERIFY ( -- )

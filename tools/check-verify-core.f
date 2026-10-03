@@ -267,7 +267,7 @@ SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHIL
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
-variable VFY-STOP-RC                    \ a stopped pre-pass: the code it stopped with,
+variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
 variable VFY-STOP-AT                    \ the byte of the token it read last,
 variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
 variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
@@ -295,6 +295,7 @@ variable VFY-STOP-U
    0 VFY-OUT-U !
    0 VFY-LOG-U !
    VFY-NONE VFY-ANSWER !
+   0 VFY-STOP-RC !
    false VFY-PREPASS ! ;
 
 
@@ -457,11 +458,12 @@ variable VFY-STOP-U
 
 
 \ The child's answer once it has given one of the first form's and exited
-\ clean; any other end is incomplete.
+\ clean, a stop refused; any other end is incomplete.
 : VFY-VERDICT ( outcome -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
       VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-STOPPED = if CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-HELD = if CHECK-VERDICT:held exit then
    then
    o CHECK-VERDICT:incomplete ;
@@ -489,9 +491,11 @@ public
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
 
-\ Check the bytes as the file at PATH, the child given DEADLINE. An empty PATH
-\ is E-FS-PATH; a closure over CHK-DEP-MAX files, an engine
-\ lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn throws as well.
+\ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
+\ ends the verification refuses it, and VERIFY-STOP and the words after it say
+\ with what and where. An empty PATH is E-FS-PATH; a closure over CHK-DEP-MAX
+\ files, an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn
+\ throws as well.
 \ More child output than the capture holds, 4 MiB of stdout or 256 KiB of
 \ stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
 \ received before it.
@@ -510,8 +514,8 @@ public
 \ VERIFY-BYTES verifies on, so the pre-pass resolves the engine's words and the
 \ subject's loads, as the run does, never a word only this process loaded. It
 \ stops at the first definition the checker refuses, as the load does: ok 0 when
-\ nothing stopped it, else ok the code it stopped with, and PREVERIFY-AT,
-\ PREVERIFY-DUPLICATE, PREVERIFY-SUBJECT? and PREVERIFY-STOPPED$ say where.
+\ nothing stopped it, else ok the code it stopped with, and VERIFY-STOP-AT,
+\ PREVERIFY-DUPLICATE, VERIFY-STOP-SUBJECT? and VERIFY-STOPPED$ say where.
 \ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
 \ failed spawn throws, and more child output than the capture holds is
 \ E-PROC-TRUNCATED, as for VERIFY-BYTES.
@@ -527,10 +531,15 @@ public
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 
-\ Where the last PREVERIFY-BYTES stopped: the byte where the token it read last
-\ starts, whether that is in the bytes it was given, and the file it is in, the
-\ LABEL for those bytes.
-: PREVERIFY-AT ( -- n )
+\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with, 0
+\ when none did.
+: VERIFY-STOP ( -- n )
+   VFY-STOP-RC @ ;
+
+\ Where it stopped: the byte where the token the verifier read last starts,
+\ whether that is in the bytes it was given, and the file it is in, PATH's
+\ canonical spelling or the LABEL for those bytes.
+: VERIFY-STOP-AT ( -- n )
    VFY-STOP-AT @ ;
 
 \ The name the last PREVERIFY-BYTES refused as a duplicate, in the same file:
@@ -539,10 +548,10 @@ public
 : PREVERIFY-DUPLICATE ( -- n n )
    VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ ;
 
-: PREVERIFY-SUBJECT? ( -- bool )
+: VERIFY-STOP-SUBJECT? ( -- bool )
    VFY-STOP-SUBJ @ ;
 
-: PREVERIFY-STOPPED$ ( -- ptr u8 n )
+: VERIFY-STOPPED$ ( -- ptr u8 n )
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 ;using

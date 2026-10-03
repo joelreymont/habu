@@ -10,6 +10,19 @@ require src/habu/layout.f
 
 package VERIFY
 
+public
+
+\ A source the scan cannot read on stops it with one of these, TOKEN-BYTE@ at
+\ the word that cannot finish: a reader (a definer, a parsing word) with no
+\ token after it, a string opener with no closing quote, a PRIM: or PPRIM: row
+\ with no closer. tools/check.f reports each where it stands, by the record it
+\ writes when it finds the same defect itself.
+7187 constant E-MISSING-NAME
+7188 constant E-UNTERMINATED-STRING
+7189 constant E-MALFORMED-REGISTRY-ROW
+
+private
+
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
 variable SCAN-I
@@ -309,7 +322,7 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    ELSE
       34 SKIP-PAST
    THEN
-   FOUND @ 0= IF s" verify-source: unterminated string" 74 die THEN
+   FOUND @ 0= IF E-UNTERMINATED-STRING throw THEN
    SOURCE@ start + SCAN-I @ start - ;
 
 : FOLD-C ( n -- n )
@@ -515,13 +528,14 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    a u s" [char]" STR=CI ;
 
 : OPERAND ( -- ptr u8 n )
-   NEXT-RAW dup 0= IF s" verify-source: missing parsed token" 74 die THEN ;
+   NEXT-RAW dup 0= IF E-MISSING-NAME throw THEN ;
 
 \ A definer takes its name by the same rule: the engine reads it with LTOK or
 \ parse-name, so `: \`, `DEFLINEAR (` and `create s"` name a word `\`, a type
 \ `(` (which the registration then refuses) and a word `s"`. A comment or string
-\ rule there would hand the definer a later token instead. Each caller reports a
-\ missing name its own way.
+\ rule there would hand the definer a later token instead. With no token left
+\ TOKEN-BYTE stays at the definer, and a caller throws E-MISSING-NAME there;
+\ NEWTYPE and SUMTYPE leave the refusal to their declaration packet.
 : NAME-TOKEN ( -- ptr u8 n )
    NEXT-RAW ;
 
@@ -1005,7 +1019,7 @@ variable DUPLICATE-U
 \ atom or family (habu-nominal-storage-raw, VALUE side).
 : RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    NAME-TOKEN
-   dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
+   dup 0= IF E-MISSING-NAME throw THEN
    -1 SIG-RAW-MODE!
    sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally ;
 
@@ -1019,7 +1033,7 @@ variable DUPLICATE-U
    a u FIND-SYM {: dsym:n :}
    dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing defining-word name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu dsym RECORD-CREATED ;
 
 : TRUST-DEFER-SIGNATURE ( ptr u8 n -- ) {: name:ptr nameu:n :}
@@ -1028,7 +1042,7 @@ variable DUPLICATE-U
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing defer name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu TRUST-DEFER-SIGNATURE ;
 
 \ A trusted body is ASSERTED, never verified - but its `does>` clause is a
@@ -1061,7 +1075,7 @@ variable DUPLICATE-U
 
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
    name nameu SCAN-TRUSTED-BODY ;
 
@@ -1071,19 +1085,19 @@ variable DUPLICATE-U
 \ refused here too and not merely recorded.
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing cast name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu REFUSE-DUPLICATE
    name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing undefine name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
 : RECORD-PACKAGE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing package name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-PACKAGE ;
 
 : RECORD-PUBLIC ( -- )
@@ -1105,7 +1119,7 @@ variable DUPLICATE-U
 \ that moves it.
 : RECORD-USING ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing using name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-USING-PUSH ;
 
 : RECORD-END-USING ( -- )
@@ -1135,7 +1149,7 @@ variable NOM-TAIL-U
 
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing nominal name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
    name nameu tail tailu RECORD-CAST-IN
@@ -1143,7 +1157,7 @@ variable NOM-TAIL-U
 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing deflinear name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
@@ -1216,7 +1230,7 @@ variable NOM-TAIL-U
 \ buffered with the body because the front end parses its own terminator.
 : RECORD-ENUM ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing enum name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -1243,7 +1257,7 @@ variable NOM-TAIL-U
 \ `FAMILY:MAKE` in the same source resolves; no dictionary word is defined.
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing structure name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -1266,7 +1280,7 @@ variable NOM-TAIL-U
 \ dictionary words are generated on this path (engine-definer-only, sum parity).
 : RECORD-PRODUCT ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing product name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
       NEXT-SCAN
@@ -1379,7 +1393,7 @@ PTR-VARIABLE STG-START
 
 : RECORD-VALUE-RECORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    BODY-RESET
    BEGIN
       NEXT-SCAN
@@ -1410,7 +1424,7 @@ PTR-VARIABLE STG-START
 \ does, so its refusal is caught here and kept at the name as written.
 : RECORD-EXPORT ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch {: rc:n :}
@@ -1518,25 +1532,33 @@ variable FILE-USE
 
 \ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
 \ their comments, strings, and raw operands before a live closer is considered.
-\ A row declares no locals, so none of the last body's stay live in it.
-: RECORD-PRIM-ROW ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
+\ A row declares no locals, so none of the last body's stay live in it. A row
+\ the source ends inside, before its name, package or closer, stops the scan at
+\ its opener, the byte RECORD-PRIM or RECORD-PPRIM was entered at.
+: ROW-UNCLOSED ( n -- )
+   TOKEN-BYTE !
+   E-MALFORMED-REGISTRY-ROW throw ;
+
+: RECORD-PRIM-ROW ( n ptr u8 n ptr u8 n -- )
+   {: at:n end:ptr endu:n alt:ptr altu:n :}
    LOCALS-RESET
-   NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
+   NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
    BEGIN
       BODY!
-      TOKEN-U @ 0= IF s" verify-source: missing primitive row closer" 74 die THEN
+      TOKEN-U @ 0= IF at ROW-UNCLOSED THEN
       end endu alt altu ROW-CLOSER? IF EXIT THEN
       SKIP-BODY-TOKEN
    AGAIN ;
 
 : RECORD-PRIM ( -- )
-   s" PRIM;" s" " RECORD-PRIM-ROW ;
+   TOKEN-BYTE @ s" PRIM;" s" " RECORD-PRIM-ROW ;
 
 : RECORD-PPRIM ( -- )
-   NEXT-RAW dup 0= IF s" verify-source: missing primitive package" 74 die THEN
+   TOKEN-BYTE @ {: at:n :}
+   NEXT-RAW dup 0= IF at ROW-UNCLOSED THEN
    2drop
-   s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PRIM-ROW ;
+   at s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -1555,14 +1577,14 @@ variable FILE-USE
 
 : RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing structure field name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu sig sigu TRUST-STRUCTURE-FIELD ;
 
 \ Record the size word (`-- n`) then each field accessor with its runtime effect
 \ so BEGIN-STRUCTURE layouts self-certify their field uses.
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing structure name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu s" -- n" DECL-SIGNATURE
    BEGIN
       NEXT-SCAN
@@ -1722,7 +1744,7 @@ variable FFI-SIG-U
 : VERIFY-DEFINITION ( -- )
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
-   TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
+   TOKEN-U @ 0= if E-MISSING-NAME throw then
    DEF-NAME!
    DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE
    WRAP-RESET

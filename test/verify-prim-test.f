@@ -3,8 +3,9 @@
 \ Run: bin/hb --load test/verify-prim-test.f
 \
 \ Every case calls production VERIFY:SOURCE-BUF. Hidden definers remain undefined;
-\ live row closers expose the following top-level definition. Process-exit cases
-\ run in a child because the malformed-source boundary uses die.
+\ live row closers expose the following top-level definition. The production
+\ differential runs in children; a row or string the source never closes stops
+\ the scan with a named throw, caught in process.
 
 require lib/errors.f
 require lib/string.f
@@ -378,7 +379,6 @@ variable NEEDLE-U
 : TEST-POSITIVE ( -- )
    PLAIN-ROWS REAL-ROWS FOLLOWING-PRIM FOLLOWING-PPRIM ;
 
-create PATH-BUF FS-PATH-CAP allot
 $1000 constant CHILD-MAX
 create CHILD-OUT CHILD-MAX allot
 create CHILD-ERR CHILD-MAX allot
@@ -397,25 +397,6 @@ variable ROOT-U
 
 : CHILD-CAP ( -- len ) CHILD-MAX >LEN ;
 : CHILD-TIMEOUT ( -- ms ) CHILD-TIMEOUT-MS >MS ;
-
-: BUILD-DRIVER ( ptr u8 n -- ) {: row:ptr rowu:n :}
-   BUF-CLEAR
-   s" require lib/errors.f" ADD ADD-LF
-   s" require lib/string.f" ADD ADD-LF
-   s" require lib/fs.f" ADD ADD-LF
-   s" require src/habu/verify-source.f" ADD ADD-LF
-   s" s" ADD ADD-QUOTE SPACE-C ADD-C row rowu ADD ADD-QUOTE
-   s"  VERIFY:SOURCE-BUF" ADD ADD-LF ;
-
-: PREP-CHILD ( ptr u8 n -- ptr u8 len ) {: row:ptr rowu:n :}
-   CLEANUP-RESET
-   s" habu-verify-prim" HB-TMP-MKDIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-DIR+
-   root rootu s" miss.f" PATH-BUF JOIN-PATH >LEN {: pathu:len :}
-   PATH-BUF pathu LEN>N CLEANUP+
-   row rowu BUILD-DRIVER
-   PATH-BUF pathu LEN>N BUILD$ WRITE-ALL
-   PATH-BUF pathu ;
 
 : CAPTURE> ( result<pcap:captured,pcap:failed> -- len len n )
    MATCH result
@@ -571,64 +552,37 @@ variable ROOT-U
    DRIVER-PATH DRIVER-U @ >LEN EXPECT-CHILD-OK
    CLEANUP-RUN ;
 
-: PREP-SOURCE-CHILD ( ptr u8 n -- ptr u8 len )
-   {: src:ptr srcu:n :}
-   srcu CORPUS-MAX > if E-STR-CAPACITY throw then
-   src CORPUS-A srcu BYTE-COPY
-   CLEANUP-RESET
-   s" habu-verify-prim-source" HB-TMP-MKDIR {: root:ptr rootu:n :}
-   root rootu CLEANUP-DIR+
-   root rootu s" source.f" NATIVE-PATH JOIN-PATH NATIVE-U !
-   root rootu s" driver.f" DRIVER-PATH JOIN-PATH DRIVER-U !
-   NATIVE-PATH NATIVE-U @ CLEANUP+
-   DRIVER-PATH DRIVER-U @ CLEANUP+
-   NATIVE-PATH NATIVE-U @ CORPUS-A srcu WRITE-ALL
-   NATIVE-PATH NATIVE-U @ >LEN BUILD-VERIFY-DRIVER
-   DRIVER-PATH DRIVER-U @ BUILD$ WRITE-ALL
-   DRIVER-PATH DRIVER-U @ >LEN ;
-
-: EXPECT-SOURCE-RC74 ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
-   src srcu PREP-SOURCE-CHILD
-   CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP CHILD-TIMEOUT RUN-CHILD
-   {: outn:len errn:len code:n :}
-   code 74 T=
-   CHILD-OUT outn LEN>N s" " T$=
-   CHILD-ERR errn LEN>N
-   s" verify-source: unterminated string" CONTAINS? TTRUE
-   CLEANUP-RUN ;
+\ The scan stops at a string a row never closes with E-UNTERMINATED-STRING at
+\ the string's opener, and at a row the source ends inside with
+\ E-MALFORMED-REGISTRY-ROW at the row's opener, the first byte here, however
+\ far the row went: tools/check.f reports each by the lexer's record there.
+: EXPECT-STOP ( n n -- )
+   {: code:n at:n :}
+   VERIFY-BUF code T=
+   VERIFY:TOKEN-BYTE@ at T= ;
 
 : MISSING-NORMAL-QUOTE ( -- )
-   s" an unterminated normal string in a PRIM: row fails closed with rc 74" T-LABEL
+   s" an unterminated normal string in a PRIM: row stops at the string" T-LABEL
    BUF-CLEAR
    s" PRIM: VP-BAD " ADD ADD-STRING-OPEN s" no-close" ADD
-   BUILD$ EXPECT-SOURCE-RC74 ;
+   VERIFY:E-UNTERMINATED-STRING 13 EXPECT-STOP ;
 
 : MISSING-ESCAPED-QUOTE ( -- )
-   s" an unterminated escaped string in a PPRIM: row fails closed with rc 74" T-LABEL
+   s" an unterminated escaped string in a PPRIM: row stops at the string" T-LABEL
    BUF-CLEAR
    s" PPRIM: VP-PKG VP-P-BAD " ADD ADD-ESC-OPEN s" no-close" ADD
-   BUILD$ EXPECT-SOURCE-RC74 ;
-
-: EXPECT-RC74 ( ptr u8 n ptr u8 n -- )
-   {: row:ptr rowu:n msg:ptr msgu:n :}
-   row rowu PREP-CHILD
-   CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP CHILD-TIMEOUT RUN-CHILD
-   {: outn:len errn:len code:n :}
-   code 74 T=
-   outn LEN>N 0 T=
-   CHILD-ERR errn LEN>N msg msgu CONTAINS? TTRUE
-   CLEANUP-RUN ;
+   VERIFY:E-UNTERMINATED-STRING 23 EXPECT-STOP ;
 
 : EXPECT-CLOSER-FAIL ( ptr u8 n -- )
-   s" verify-source: missing primitive row closer" EXPECT-RC74 ;
+   BUF-CLEAR ADD
+   VERIFY:E-MALFORMED-REGISTRY-ROW 0 EXPECT-STOP ;
 
 : MISSING-PRIM ( -- )
-   s" a PRIM: row with no closer fails closed in a child with rc 74" T-LABEL
+   s" a PRIM: row with no closer stops at its opener" T-LABEL
    s" PRIM: FOO PE-N PE-OUT" EXPECT-CLOSER-FAIL ;
 
 : MISSING-PPRIM ( -- )
-   s" a PPRIM: row with no closer fails closed in a child with rc 74" T-LABEL
+   s" a PPRIM: row with no closer stops at its opener" T-LABEL
    s" PPRIM: PKG FOO PE-N PE-OUT" EXPECT-CLOSER-FAIL ;
 
 : WRONG-PRIM ( -- )
@@ -640,22 +594,20 @@ variable ROOT-U
    s" PPRIM: PKG FOO PE-N PRIM;" EXPECT-CLOSER-FAIL ;
 
 : MISSING-PRIM-PRIVATE ( -- )
-   s" a bare PRIM: row closed only with CLOSE-PRIVATE still fails closed with rc 74" T-LABEL
+   s" a bare PRIM: row closed only with CLOSE-PRIVATE still stops at its opener" T-LABEL
    s" PRIM: FOO PE-N CLOSE-PRIVATE" EXPECT-CLOSER-FAIL ;
 
 : MISSING-PPRIM-PRIVATE ( -- )
-   s" a PPRIM: row with neither PPRIM; nor CLOSE-PRIVATE fails closed with rc 74" T-LABEL
+   s" a PPRIM: row with neither PPRIM; nor CLOSE-PRIVATE stops at its opener" T-LABEL
    s" PPRIM: PKG FOO PE-N PE-IN CLOSE-PRIVATEX" EXPECT-CLOSER-FAIL ;
 
 : MISSING-PPRIM-PACKAGE ( -- )
-   s" a PPRIM: row with no package fails closed in a child with rc 74" T-LABEL
-   s" PPRIM:"
-   s" verify-source: missing primitive package" EXPECT-RC74 ;
+   s" a PPRIM: row with no package stops at its opener" T-LABEL
+   s" PPRIM:" EXPECT-CLOSER-FAIL ;
 
 : MISSING-PPRIM-NAME ( -- )
-   s" a PPRIM: row with a package but no name fails closed in a child with rc 74" T-LABEL
-   s" PPRIM: PKG"
-   s" verify-source: missing primitive name" EXPECT-RC74 ;
+   s" a PPRIM: row with a package but no name stops at its opener" T-LABEL
+   s" PPRIM: PKG" EXPECT-CLOSER-FAIL ;
 
 : TEST-FAIL-CLOSED ( -- )
    MISSING-PRIM

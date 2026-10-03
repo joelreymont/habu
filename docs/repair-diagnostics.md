@@ -154,12 +154,14 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `PPRIM:` primitive-axiom row opened at `token` does not close.
 
 The lexer cannot read past either defect, so it is reported in place of
-checking that source. `--all-errors` reports both classes for a file or
-standard input; `tools/check.f` also reports an open string in a file in its
-default mode, in the file that holds it (a required file included), since
-source discovery stops there. Without `--json-errors` a file gets
-`check.f: discovery rejected: unterminated string` and standard input the bare
-code on its own line.
+checking that source, in the file that holds it (a required file included):
+source discovery stops at an open string in a file, and the pre-verifier at
+either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
+`VERIFY:E-MALFORMED-REGISTRY-ROW`). Without `--json-errors` it is the line
+`<code> <file>:<line>:<column>: string literal opened at '<token>' does not
+close`, or `primitive-axiom row` in place of `string literal`. Under
+`--verify-only` a string discovery stops at keeps the closure's `discovery
+rejected: unterminated string` line.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -317,7 +319,10 @@ process.
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
-for `engine-provided`, `held` and `incomplete`. Child output beyond the
+for `engine-provided`, `held` and `incomplete`. A verification that stopped at
+a word with no name after it, or at a string or primitive-axiom row its file
+never closes, adds the record the other modes write for it, at that place,
+after the packets made before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
@@ -334,7 +339,11 @@ without it are usage errors; so is `--stdin-path` given twice or without
 `CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- CHECK:verdict )` takes the bytes,
 PATH, a relative one read from the working directory, and the child's
 deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
-`CHECK:VERIFY-LOG$` the prose, until the next call. An empty PATH throws
+`CHECK:VERIFY-LOG$` the prose, until the next call. A throw that ended the
+verification refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
+`CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
+`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. An empty
+PATH throws
 `E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
 Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
 the child and throws `E-PROC-TRUNCATED`, with every complete packet received
@@ -357,15 +366,16 @@ BYTES and of the files they load; a file the image holds is skipped, as
 `require` skips it. stdout carries the packets in verification order, each
 written as the checker makes it, so a child that dies has passed on every
 packet made before; then one result line. The first form verifies with all
-errors and answers `check-verify: verified`, `refused` or `held`; stderr
-carries prose, including `PATH: verification stopped by throw RC after N
-rejected definitions` for each file a throw stopped. The second form stops at
+errors and answers `check-verify: verified`, `refused` or `held`, or the
+second form's `stopped` line for a throw that ended it; stderr carries prose,
+including `PATH: verification stopped by throw RC after N rejected
+definitions` for each file a throw stopped. The second form stops at
 the first refused definition, as the load does, names the subject LABEL in its
 packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
 DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it
 read last starts, where the name it refused as a duplicate starts and its
 length (0 when it kept none), 1 when the stop is in BYTES, and the file it is
-in. The answer is
+in, SUBJECT or LABEL for BYTES. The answer is
 read from the result line after a clean exit, never from the exit status.
 
 Because check.f's default pre-pass runs in this child, it resolves the
@@ -589,9 +599,10 @@ Current checker classes:
   row's count and the limit. Keep bulk values in a buffer.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
-- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
-  rest) ended the source with no name after it (`E-MISSING-NAME`); the packet
-  is located at the definer.
+- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `create`, a
+  learned `create … does>` definer and the rest) or a parsing word (`char`,
+  `'`, a field word) ended the source with no name after it
+  (`E-MISSING-NAME`); the packet is located at that word.
 - `fix_record_field`: a `VALUE-RECORD` field had a bad or duplicate name or a
   missing or unknown type, or the record had no field (`E-BAD-RECORD-FIELD`);
   `reason` carries the registration's refusal and the packet is located at the

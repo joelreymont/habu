@@ -1636,10 +1636,15 @@ the rule.
   `E-BAD-NOMINAL-TYPE` on that token, and `NEWTYPE`, `SUMTYPE`, `ENUM`,
   `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
   the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
-  `check/operand-name-admitted`, `-refused`). A definer with nothing after it
-  has no name: the loader refuses it, and `tools/check.f` refuses it at the
-  definer, in prose and as `E-MISSING-NAME`, for each of the eleven definers it
-  reads and for `undefine` (`check/operand-missing`).
+  `check/operand-name-admitted`, `-refused`). A definer or a parsing word with
+  nothing after it has no name: the loader refuses it, and `tools/check.f`
+  refuses it at that word by one record in every mode, `E-MISSING-NAME`. The
+  nominal pass finds the eleven definers it reads and `undefine` in the subject;
+  the pre-verifier stops with `VERIFY:E-MISSING-NAME` at any other (`defer`,
+  `create`, a learned definer, `char`, `'`, a field word) and at any in a file
+  the subject loads, and check.f writes the nominal pass's record for that token
+  (`check/operand-missing`, `check/nested-stop-located`,
+  `check/verify-only-located`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
