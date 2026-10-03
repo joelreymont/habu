@@ -987,13 +987,50 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 variable DUPLICATE-AT
 variable DUPLICATE-U
 
-\ Refuse the definition named by the token just scanned, n bytes long.
-: DUPLICATE! ( n -- )
-   TOKEN-BYTE @ DUPLICATE-AT !  DUPLICATE-U !
+\ Whether the path is the subject's, whose bytes are the supplied ones.
+: COMPOSE-SUBJ? ( ptr u8 n -- bool )
+   COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= ;
+
+\ A file's name as its packets give it: the label, for the subject.
+: COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   path pathu COMPOSE-SUBJ? IF COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT THEN
+   path pathu ;
+
+public
+
+\ What the refusal does, given where the name starts, its length, the file it
+\ is in, named as its packets name it, and whether that is the supplied bytes.
+\ This throws E-DUP-DEFINITION, which stops the scan as the duplicate stops the
+\ load, and DUPLICATE answers the name. A word installed in its place that
+\ returns has reported the duplicate: the scan counts it in MULTI-ERR-N, as a
+\ refused definition, skips the definition and goes on.
+defer ON-DUPLICATE ( n n ptr u8 n bool -- )
+
+private
+
+: DUPLICATE-STOP ( n n ptr u8 n bool -- )
+   drop 2drop
+   DUPLICATE-U !  DUPLICATE-AT !
    E-DUP-DEFINITION throw ;
 
-: REFUSE-DUPLICATE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-CERT-DUP? IF u DUPLICATE! THEN ;
+: DUPLICATE-INIT ( -- )
+   ['] DUPLICATE-STOP is ON-DUPLICATE ;
+
+DUPLICATE-INIT
+
+\ Refuse the definition named by the token just scanned, n bytes long.
+: DUPLICATE! ( n -- )
+   {: u:n :}
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
+   {: path:ptr pathu:n :}
+   TOKEN-BYTE @ u path pathu COMPOSE-DIAG$ path pathu COMPOSE-SUBJ? ON-DUPLICATE
+   1 MULTI-ERR-N +! ;
+
+\ Whether the scan refused the definition the name names, and goes on past it.
+: REFUSE-DUPLICATE ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
@@ -1072,7 +1109,7 @@ variable DUPLICATE-U
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing cast name" 74 die THEN
-   name nameu REFUSE-DUPLICATE
+   name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
 : UNDEFINE-WORD ( -- )
@@ -1321,20 +1358,21 @@ PTR-VARIABLE STG-START
 
 \ The declared name. With none on the definer's line it is empty, and the
 \ definer's token is refused as its run refuses it.
-\ A refused name still owns its type span; consume it before resuming the
-\ statement scan so a type token cannot be interpreted as a new statement.
+\ A refused name, malformed or a duplicate, is empty and still owns its type
+\ span; consume it before resuming the statement scan so a type token cannot
+\ be interpreted as a new statement.
 : SCAN-STORAGE-NAME ( -- ptr u8 n )
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
-   2dup CHECKER-LBUF-NAME-OK? 0= IF
-      2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0
-   THEN ;
+   2dup CHECKER-LBUF-NAME-OK? IF
+      2dup REFUSE-DUPLICATE 0= IF EXIT THEN
+   THEN
+   2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
-   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
@@ -1345,7 +1383,6 @@ PTR-VARIABLE STG-START
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
-   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
@@ -1353,14 +1390,12 @@ PTR-VARIABLE STG-START
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
-   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
-   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
@@ -1373,7 +1408,6 @@ PTR-VARIABLE STG-START
 : RECORD-DYNAMIC-BUFFER ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
-   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 
@@ -1414,7 +1448,7 @@ PTR-VARIABLE STG-START
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch {: rc:n :}
-   rc E-DUP-DEFINITION = IF nameu DUPLICATE! THEN
+   rc E-DUP-DEFINITION = IF nameu DUPLICATE! EXIT THEN
    rc 0<> IF rc throw THEN ;
 
 \ The core resolver answers the canonical path and require-known state. A
@@ -1462,12 +1496,6 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
 
 : COMPOSE-RAW-PATH ( -- ptr u8 n )
    NEXT-RAW dup 0= IF E-DISC-DYNAMIC throw THEN ;
-
-: COMPOSE-DIAG$ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
-   path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= IF
-      COMPOSE-SUBJ-LABEL COMPOSE-SUBJ-LABEL-U @ EXIT
-   THEN
-   path pathu ;
 
 \ The loads that wait in this file, in the order of their loaders. A file one
 \ of them loads keeps its own entries above them, and they end with it.
@@ -1719,12 +1747,25 @@ variable FFI-SIG-U
    a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
    renders ;
 
+\ A refused definition's signature and body, to its `;`, skipped as a trusted
+\ body is, so nothing of it is checked or recorded.
+: SKIP-DEFINITION ( -- )
+   SCAN-SIG drop 2drop
+   BODY-LOAD-RESET
+   LOCALS-RESET
+   BEGIN
+      BODY!
+      TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
+      SKIP-DEF-TOKEN
+   AGAIN ;
+
 : VERIFY-DEFINITION ( -- )
    BODY-RESET
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
    DEF-NAME!
-   DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE
+   DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    WRAP-RESET
    BODY-LOAD-RESET
    LOCALS-RESET
@@ -1795,7 +1836,7 @@ variable FFI-SIG-U
    rc 0<> COMPOSE-STOP-U @ 0= and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
-      path pathu COMPOSE-SUBJ-PATH COMPOSE-SUBJ-PATH-U @ CORE-STR= COMPOSE-STOP-SUBJ !
+      path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
    THEN
    olda SOURCE-A !  oldu SOURCE-U !  oldi SCAN-I !
    oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
@@ -1874,8 +1915,8 @@ public
 : TOKEN-BYTE@ ( -- n )
    TOKEN-BYTE @ ;
 
-\ The name of the definition the last scan refused because its scope already
-\ held it (REFUSE-DUPLICATE): the byte where it starts, at the same base as
+\ The name of the definition the last scan stopped at because its scope
+\ already held it (ON-DUPLICATE): the byte where it starts, at the same base as
 \ TOKEN-BYTE@, and its length, which is 0 when the scan refused no written
 \ name.
 : DUPLICATE ( -- n n )

@@ -21,6 +21,11 @@
 \   a child that dies drops the packets it made before, a dependency's
 \   or the subject's                                                      died-after-packet
 \   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
+\   a duplicate is no packet, or not the record --all-errors writes; the
+\   scan stops at it; --all-errors goes past it               cli-duplicate,
+\                                    cli-duplicate-goes-on, duplicate-in-dependency
+\   a name the definer generates is no packet                             duplicate-made
+\   a child that dies after a duplicate drops its record                  duplicate-then-dies
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
@@ -75,6 +80,7 @@ DYNAMIC-BUFFER OUT u8
 DYNAMIC-BUFFER ERR u8
 DYNAMIC-BUFFER FILE-BYTES u8
 DYNAMIC-BUFFER GEN u8                   \ generated source
+DYNAMIC-BUFFER ALL-ERR u8               \ --all-errors' stderr, to compare
 variable GEN-U
 variable START-NS
 variable CLI-OUT-U
@@ -268,6 +274,14 @@ variable CLI-OUT-U
    loop
    0 GEN GEN-U @ ;
 
+\ DA defined twice, the second DA at line 2, column 3, bytes 20-22; and LATE,
+\ refused after it.
+: DUP$SRC ( -- ptr u8 n )
+   s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
+
+: DUP-LATE$SRC ( -- ptr u8 n )
+   s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: LATE ( n -- n ) drop ;\n" ;
+
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
    s" dep.f" DEP$SRC FIXTURE
@@ -288,6 +302,8 @@ variable CLI-OUT-U
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-floor-require.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\nrequire order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-double.f" s\" include order-dep.f\ninclude order-dep.f\n" FIXTURE
+   s" dup.f" DUP$SRC FIXTURE
+   s" dup-late.f" DUP-LATE$SRC FIXTURE
    s" big.f" BIG$SRC FIXTURE ;
 
 
@@ -679,6 +695,94 @@ variable CLI-OUT-U
    s" duplicate-after-packet: both packets retained" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
 
 
+\ ---- a duplicate ------------------------------------------------------------
+\
+\ A duplicate is the record --all-errors writes for it, at the name defined
+\ again: the second DA, at line 2, column 3, bytes 20-22. The scan goes past it
+\ to the definitions after it, as past any refused definition, where
+\ --all-errors stops at it as the load does.
+
+\ include order-dep.f twice: the second defines VALUE again, in order-dep.f.
+: DUPLICATE-IN-DEPENDENCY ( -- )
+   s\" include order-dep.f\ninclude order-dep.f\n" s" double.f" GUARD-MS CHECK-AS
+   1 s" duplicate-in-dependency: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   s" duplicate-in-dependency: names the dependency" T-LABEL
+   p s" file" STRING$ s" order-dep.f" AT$ T$=
+   s" duplicate-in-dependency: the word" T-LABEL p s" word" STRING$ s" VALUE" T$=
+   s" duplicate-in-dependency: its line there" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" duplicate-in-dependency: its column there" T-LABEL p s" column" NUMBER$ s" 3" T$= ;
+
+
+\ The definer generates GD-RESERVE, which the line before defined: there is no
+\ written name to place, so the record is the placeholder, and the scan stops.
+: MADE$SRC ( -- ptr u8 n )
+   s\" : GD-RESERVE ( n -- ) drop ;\nDYNAMIC-BUFFER GD u8\n" ;
+
+
+: DUPLICATE-MADE ( -- )
+   MADE$SRC s" made.f" GUARD-MS CHECK-AS
+   1 s" duplicate-made: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   s" duplicate-made: the placeholder" T-LABEL
+   p s" word" STRING$ s" duplicate-definition" T$=
+   s" duplicate-made: names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" duplicate-made: the scan stopped" T-LABEL
+   CHECK:VERIFY-LOG$ s" verification stopped by throw 78" CONTAINS? TTRUE ;
+
+
+\ The verifier dies at an open definition right after a duplicate: no result
+\ line ends its output, and the duplicate's record is kept.
+: DUPLICATE-THEN-DIES ( -- )
+   s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n" s" dup-open.f" GUARD-MS CHECK-AS {: v :}
+   v 4 s" duplicate-then-dies: incomplete" EXPECT-KIND
+   s" duplicate-then-dies: the verifier's exit" T-LABEL v STATUS 74 T=
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   s" duplicate-then-dies: the duplicate's record" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
+
+
+\ --verify-only writes, byte for byte, the record --all-errors writes, and no
+\ prose: the scan went past the duplicate.
+: CLI-DUPLICATE ( -- )
+   CLI-START s" --json-errors" ARG+ s" --all-errors" ARG+ s" dup.f" AT$ ARG+
+   s" " CLI {: allu:n allrc:n :}
+   s" cli-duplicate: --all-errors exits as the load" T-LABEL allrc 78 T=
+   allu 1 max ALL-ERR-RESERVE
+   0 ERR 0 ALL-ERR allu BYTE-COPY
+   CLI-START s" --verify-only" ARG+ s" dup.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-duplicate: refused" T-LABEL rc 70 T=
+   s" cli-duplicate: the record --all-errors writes" T-LABEL
+   0 ERR erru 0 ALL-ERR allu T$=
+   0 ERR erru s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   s" cli-duplicate: line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" cli-duplicate: column 3" T-LABEL p s" column" NUMBER$ s" 3" T$=
+   s" cli-duplicate: byte 20" T-LABEL p s" byte_start" NUMBER$ s" 20" T$=
+   s" cli-duplicate: to byte 22" T-LABEL p s" byte_end" NUMBER$ s" 22" T$=
+   s" cli-duplicate: no prose" T-LABEL CLI-OUT-U @ 0 T= ;
+
+
+\ Under --all-errors --verify-only LATE's refusal follows the duplicate's;
+\ plain --all-errors stops at the duplicate.
+: CLI-DUPLICATE-GOES-ON ( -- )
+   CLI-START s" --all-errors" ARG+ s" --verify-only" ARG+ s" dup-late.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-duplicate-goes-on: refused" T-LABEL rc 70 T=
+   0 ERR erru JSONL-START-STRICT
+   s" cli-duplicate-goes-on: the duplicate first" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" cli-duplicate-goes-on: LATE's refusal next" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-MISMATCH" T$=
+   s" cli-duplicate-goes-on: nothing else" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CLI-START s" --json-errors" ARG+ s" --all-errors" ARG+ s" dup-late.f" AT$ ARG+
+   s" " CLI {: erru2:n rc2:n :}
+   s" cli-duplicate-goes-on: --all-errors exits as the load" T-LABEL rc2 78 T=
+   0 ERR erru2 JSONL-START-STRICT
+   s" cli-duplicate-goes-on: --all-errors reports the duplicate" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" cli-duplicate-goes-on: and stops there" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
+
+
 \ ---- the measurement -------------------------------------------------------
 
 : MS. ( -- )
@@ -734,6 +838,11 @@ public
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
+   s" duplicate-in-dependency" [: DUPLICATE-IN-DEPENDENCY ;] RUN-CASE
+   s" duplicate-made" [: DUPLICATE-MADE ;] RUN-CASE
+   s" duplicate-then-dies" [: DUPLICATE-THEN-DIES ;] RUN-CASE
+   s" cli-duplicate" [: CLI-DUPLICATE ;] RUN-CASE
+   s" cli-duplicate-goes-on" [: CLI-DUPLICATE-GOES-ON ;] RUN-CASE
    MEASURE
    ROOT$ REMOVE-TREE
    T-REPORT

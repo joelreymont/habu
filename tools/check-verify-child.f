@@ -21,7 +21,9 @@
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
 \ packet made before; then one result line. The first form verifies with all
-\ errors and answers
+\ errors, going past a duplicate definition as past any refused definition,
+\ and writes for each duplicate, which the checker writes no packet for, the
+\ second form's stopped line among the packets, code 78. It answers
 \
 \    check-verify: verified | refused | held
 \
@@ -123,15 +125,47 @@ create NL 1 allot
    0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
 
-\ One multi-error window covers the complete load composition.
+\ The stopped line, given the duplicate's place and length, its file, whether
+\ that is the subject's bytes, and the code.
+: STOP-LINE ( n n ptr u8 n bool n -- )
+   {: at:n u:n file:ptr fileu:n subj:bool rc:n :}
+   OUT-FD s" check-verify: stopped " WRITE
+   OUT-FD rc FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD VERIFY:TOKEN-BYTE@ FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD at FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD u FD-N
+   OUT-FD subj if s"  1 " else s"  0 " then WRITE
+   OUT-FD file fileu WRITE
+   OUT-FD NEWLINE ;
+
+
+: STOP-RESULT ( n -- )
+   {: rc:n :}
+   VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
+   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? rc STOP-LINE ;
+
+
+\ A duplicate the first form goes past, which the checker writes no packet for.
+: DUPLICATE-LINE ( n n ptr u8 n bool -- )
+   E-DUP-DEFINITION STOP-LINE ;
+
+
+\ One multi-error window covers the complete load composition, and goes past
+\ a duplicate as past any refused definition. A duplicate it cannot go past,
+\ a name the definer generates, stops it with its stopped line.
 : VERIFY-ALL ( -- )
    0 SCRIPT-ARGV$ DIAG-FILE!
    1 1 0 DIAG-ORIGIN!
+   ['] DUPLICATE-LINE is VERIFY:ON-DUPLICATE
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
    rc 0<> rejects 0<> or if -1 FAILED ! then
    rc 0= if exit then
+   rc E-DUP-DEFINITION = if rc STOP-RESULT then
    VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
 
 
@@ -172,19 +206,6 @@ create NL 1 allot
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 
-: STOP-RESULT ( n -- ) {: rc:n :}
-   VERIFY:DUPLICATE {: at:n u:n :}
-   OUT-FD s" check-verify: stopped " WRITE
-   OUT-FD rc FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD VERIFY:TOKEN-BYTE@ FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD at FD-N
-   OUT-FD s"  " WRITE
-   OUT-FD u FD-N
-   OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if s"  1 " else s"  0 " then WRITE
-   OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED$ WRITE
-   OUT-FD NEWLINE ;
 
 
 : PREVERIFY ( -- )
