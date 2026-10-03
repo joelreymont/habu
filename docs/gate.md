@@ -259,11 +259,11 @@ at its deadline.
   build row took 449 s. The pool reads the CPU time, user and system, of the
   row's process and every live process descended from it, with what each
   reaped (`lib/process-tree.f` `CPU-NS`), at most once a second, and ends the
-  row as `kind=CPU-BUDGET` once it has run the build's budget
-  (`test/keyed-image.f` `BUILD-CPU-MS`, 360 s; `test/gate-pool.f`
+  row as `kind=CPU-BUDGET` once it has run the budget every gate row has
+  (`test/suite-budget.f` `CPU-MS`, 360 s; `test/gate-pool.f`
   `GT-POOL-CPU-BUDGET!`). Its wall deadline is only a hang guard, sized for a
   saturated pool: every builder's capture deadline is five times the budget
-  (`BUILD-TIMEOUT-MS`) and the row's a minute more, so a build within its
+  (`CHILD-MS`) and the row's a minute more (`ROW-MS`), so a build within its
   budget meets it only on less than a fifth of a core. A build that stopped
   running gains no CPU time and still ends there, as
   `kind=TIMEOUT-UNDER-LOAD`; its red line ends with the CPU time the row had
@@ -279,8 +279,13 @@ at its deadline.
   process it starts `CHILD-MS`, five times the budget, as its deadline: the C2
   acceptance rows (`test/c2-*-e2e.f` but `c2-init-accessor-e2e.f`, whose three
   children run 4 s of CPU in all against 120 s each),
-  `test/native-build-entry.f` and the build-fixpoint rows
-  (`tools/build-fixpoint-test-lib.f` `BFT-TIMEOUT-MS`). Alone, the longest rows
+  `test/native-build-entry.f`, the build-fixpoint rows
+  (`tools/build-fixpoint-test-lib.f` `BFT-TIMEOUT-MS`),
+  `test/native-window-owner.f`, `test/app-image.f` and
+  `test/field-proj-boundary.f`, whose tier-1 windows run 20 to 27 s of CPU.
+  The aot-positive rows give it to their maker child
+  (`test/gate-aot-positive-lib.f` `MAKER-RUN`, 6 s of CPU); their other
+  children keep shorter deadlines (below). Alone, the longest rows
   run 61 to 113 s of CPU, c2-memory the most. Beside 64 CPU-bound processes,
   at load averages up to 240, the gate's driver ran eleven of these rows (the
   C2, build-fixpoint and native-build-entry rows) both ways. Bounded by wall
@@ -296,7 +301,15 @@ at its deadline.
   30 s) each run about 20 ms of CPU, and on a freshly signed copy of the
   engine each ended within 0.1 s beside those 64 processes, its signing
   (`lib/codesign.f`, 10 s) within 0.25 s, so load does not reach those
-  deadlines.
+  deadlines. Nor does it reach compile-floor-gate's 180 s, whose tools run
+  about a second of CPU each, check.f's run stage (`tools/check-core.f`
+  `CHK-DEADLINE-MS`, 120 s), where no check.f a gate row starts runs a second,
+  hb-build's makers in the aot-positive rows (`tools/hb-build-lib.f`
+  `HBB-MAKER-DEFAULT-MS`, 600 s), 6 s of CPU each, or the runs of the images
+  they build (`test/gate-common-lib.f` `GE-TIMEOUT-MS`, 120 s), a fraction of
+  a second: beside 64 CPU-bound processes, at load averages up to 185, each
+  ran in at most ten times its CPU time, a maker in up to 53 s, the tools in
+  9 s and a check.f in 7 s.
 - A suite whose assertions depend on the compiler tier selects it itself.
   Only code compiled after `1 set-tier` belongs to the tier, so the line goes
   after the harness and tool requires (`lib/test.f`, the code-reading tools,

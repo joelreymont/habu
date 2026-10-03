@@ -6,11 +6,11 @@ require lib/memory.f
 require lib/process-cwd.f
 require lib/pty.f
 require test/whitebox-child.f
+require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package APP-IMAGE-TEST
 
 $10000 constant CAP
-600000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
 create ROOT-BUF FS-PATH-CAP allot
@@ -133,7 +133,7 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
    BUILD-SOURCE$ >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
    OUT swap S\" 1\n\n1\n\n" T$=
    IMAGE$ EXECUTABLE? TTRUE ;
@@ -149,7 +149,7 @@ variable PROBE-SOURCE-U
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
    s" application immediates cannot select JIT while building" T-LABEL
    rc 70 T=
@@ -159,7 +159,7 @@ variable PROBE-SOURCE-U
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: path:ptr pathu:n input:ptr inputu:n :}
    path pathu >LEN ROOT$ >LEN input inputu >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT ;
 
 : CHECK-APPLICATION ( ptr u8 n -- )
@@ -325,7 +325,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" test/address-cell-owner.f" >LEN PROC-ARGV+
-   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-CAPTURE RESULT CLEAN
    OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
 
@@ -356,7 +356,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    WHITEBOX-CHILD:ENV!
    WHITEBOX-CHILD:ENGINE$ >LEN
    S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
    SECOND$ EXECUTABLE? TTRUE
    0 0 <> RUN-ADDRESS-OWNER
