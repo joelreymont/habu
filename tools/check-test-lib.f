@@ -4224,12 +4224,13 @@ variable REQ-U
 \ loads whenever the body does and the other arm never: its file left to the
 \ run leaves the word undefined, and the other arm's file checked too reads
 \ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
-\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
-\ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
-\ any other condition is the run's: the one in CKT-RQ-COND never runs, and
-\ its file defines the word again. So are those of req-alt4.f, which defines
-\ the word itself: each of its `if`s tests a local pushed after a target
-\ predicate, not the predicate.
+\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`;
+\ req-alt3.f nests a target `if` in the `else` arm of another; and req-alt5.f
+\ ends every arm in `EXIT`, which the engine reads as `exit`, so the loader
+\ after the arms never runs. A loader under any other condition is the run's:
+\ the one in CKT-RQ-COND never runs, and its file defines the word again. So
+\ are those of req-alt4.f, which defines the word itself: each of its `if`s
+\ tests a local pushed after a target predicate, not the predicate.
 : REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
    s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
@@ -4273,14 +4274,22 @@ variable REQ-U
    s" HB-TARGET-LINUX? off" s" req-alt-cond.f" s"  required then drop" REQ-PICK+
    s" HB-TARGET-MACOS? off" s" req-alt-cond.f" s"  required then drop ;" REQ-PICK+
    s" 0 0= 0= CKT-RQ-LOCAL" REQ-LINE+
-   s" req-alt4.f" REQ-ALT-USE ;
+   s" req-alt4.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK4 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required EXIT then" REQ-PICK+
+   s"    " SB-APPEND s" req-alt-cond.f" REQ-LIT+ s"  required ;" REQ-LINE+
+   s" CKT-RQ-PICK4" REQ-LINE+
+   s" req-alt5.f" REQ-ALT-USE ;
 
 : TEST-REQUIRE-TARGET ( -- )
    REQ-TARGET-FILES
    s" req-alt.f" REQ-ACCEPTED-EVERY
    s" req-alt2.f" REQ-ACCEPTED-EVERY
    s" req-alt3.f" REQ-ACCEPTED-EVERY
-   s" req-alt4.f" REQ-ACCEPTED-EVERY ;
+   s" req-alt4.f" REQ-ACCEPTED-EVERY
+   s" req-alt5.f" REQ-ACCEPTED-EVERY ;
 
 \ The pre-pass reads a target predicate's spelling as the engine's answer, so a
 \ source that defines that spelling, by `:` or by `defer`, is refused at the

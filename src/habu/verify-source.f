@@ -320,36 +320,38 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ control-flow DISPATCHER and pushes a frame for every token it recognises, so
 \ asking it would move the checker's state. These are its token list, plus the
 \ compile-time brackets a definer call (WRAP-TOKEN) or a loader (BODY-TOKEN-SEEN)
-\ must not hide behind.
+\ must not hide behind. Each matches case-folded, as the checker reads a token
+\ after TOKFOLD and the engine's keywords ignore case, so `EXIT` ends the line
+\ as `exit` does.
 : WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" CORE-STR=
-   a u s" else" CORE-STR= or
-   a u s" then" CORE-STR= or
-   a u s" case" CORE-STR= or
-   a u s" of" CORE-STR= or
-   a u s" endof" CORE-STR= or
-   a u s" endcase" CORE-STR= or ;
+   a u s" if" STR=CI
+   a u s" else" STR=CI or
+   a u s" then" STR=CI or
+   a u s" case" STR=CI or
+   a u s" of" STR=CI or
+   a u s" endof" STR=CI or
+   a u s" endcase" STR=CI or ;
 
 : WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" begin" CORE-STR=
-   a u s" while" CORE-STR= or
-   a u s" repeat" CORE-STR= or
-   a u s" until" CORE-STR= or
-   a u s" again" CORE-STR= or
-   a u s" do" CORE-STR= or
-   a u s" ?do" CORE-STR= or
-   a u s" loop" CORE-STR= or
-   a u s" +loop" CORE-STR= or
-   a u s" leave" CORE-STR= or
-   a u s" exit" CORE-STR= or ;
+   a u s" begin" STR=CI
+   a u s" while" STR=CI or
+   a u s" repeat" STR=CI or
+   a u s" until" STR=CI or
+   a u s" again" STR=CI or
+   a u s" do" STR=CI or
+   a u s" ?do" STR=CI or
+   a u s" loop" STR=CI or
+   a u s" +loop" STR=CI or
+   a u s" leave" STR=CI or
+   a u s" exit" STR=CI or ;
 
 : WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [:" CORE-STR=
-   a u s" ;]" CORE-STR= or
-   a u s" [" CORE-STR= or
-   a u s" ]" CORE-STR= or
-   a u s" postpone" CORE-STR= or
-   a u s" recurse" CORE-STR= or ;
+   a u s" [:" STR=CI
+   a u s" ;]" STR=CI or
+   a u s" [" STR=CI or
+   a u s" ]" STR=CI or
+   a u s" postpone" STR=CI or
+   a u s" recurse" STR=CI or ;
 
 : WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u WRAP-COND-TOK?
