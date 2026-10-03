@@ -3890,13 +3890,14 @@ private
    nl LBL,  POLICY-NL$ BYTES,
    bound LBL,  POLICY-BOUND$ BYTES,
    bounded LBL,
-   \ Every record of the wordlist: [40] its wid, [16] its name length (the low
-   \ 50 bits) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its address.
+   \ Every record of the wordlist: [40] its wid, [16] its name length (below the
+   \ DNAME-FLAG-BITS) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its
+   \ address.
    6 DBASE 0 ADDI,  7 NDICT 0 ADDI,
    walk LBL,
       7 walked CBZ,
       8 6 40 LDR,  8 11 CMP,  C-NE next BCOND,
-      8 6 16 LDR,  10 8 14 LSLI,  10 10 14 LSRI,      \ x10 = the name's length
+      8 6 16 LDR,  10 8 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,      \ x10 = the name's length
       9 6 24 ADDI,
       8 8 DNAME-EXT ANDI,  8 inline CBZ,  9 6 24 LDR,
       inline LBL,                                    \ x9 = the name
@@ -4027,7 +4028,7 @@ public
       4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 1 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 pinl CBZ,
          16 5 24 LDR,
@@ -4050,7 +4051,7 @@ public
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
-      9 5 16 LDR,  9 9 14 LSLI,  9 9 14 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      9 5 16 LDR,  9 9 DNAME-FLAG-BITS LSLI,  9 9 DNAME-FLAG-BITS LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 SWL-INL LABEL@ CBZ,
          16 5 24 LDR,
@@ -4858,7 +4859,7 @@ variable LHIDXBUILD
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
    2 5 40 LDR,
    16 5 24 ADDI,
-   15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,
+   15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,
    4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
       16 5 24 LDR,
    rinl LBL,
@@ -4896,7 +4897,7 @@ variable LHIDXBUILD
       4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
       4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
-      4 5 16 LDR,  4 4 14 LSLI,  4 4 14 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
+      4 5 16 LDR,  4 4 DNAME-FLAG-BITS LSLI,  4 4 DNAME-FLAG-BITS LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
       16 5 24 ADDI,
       4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 dinl CBZ,
          16 5 24 LDR,
@@ -5293,7 +5294,7 @@ variable FIND-HMATCH
       4 3 1 SUBI,  4 NDICT CMP,  C-GE qhnext BCOND,            \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                 \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE qhnext BCOND,              \ not a wordlist record
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 qhinl CBZ,
          16 5 24 LDR,
@@ -5315,7 +5316,7 @@ variable FIND-HMATCH
    FIND-NLOOP LABEL@ LBL,
       6 FIND-NEND LABEL@ CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -5370,7 +5371,7 @@ variable FIND-HMATCH
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
-      16 5 16 LDR,  16 16 14 LSLI,  16 16 14 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 FIND-HINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -5405,7 +5406,7 @@ variable FIND-HMATCH
    FIND-LOOP LABEL@ LBL,
       6 FIND-DONE LABEL@ CBZ,
       14 5 40 LDR,  14 2 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-INL LABEL@ CBZ,
          16 5 24 LDR,

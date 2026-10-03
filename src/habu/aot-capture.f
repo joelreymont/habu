@@ -22,6 +22,7 @@ require src/habu/address-cells.f
 require src/habu/aot-arm.f
 require src/habu/aot-decl.f
 require src/habu/code-span.f
+require src/habu/layout.f
 require src/habu/sites.f
 require src/habu/terminal-call.f
 require src/core/does-clause.f
@@ -60,8 +61,8 @@ TRUSTED: AOT-WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 : AOT-RBODY ( ptr n -- n ) AOT-RLEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
 : AOT-RBYTES ( ptr n -- n ) AOT-RLEN CODE-SPAN:BYTES ;
 : AOT-RFLAGS ( ptr n -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
-: AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
-: AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
+: AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS DNAME-LEN-MASK and ;      \ [16] name length
+: AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS DNAME-EXT and 0= 0= ;
 : AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
 : AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
@@ -1435,6 +1436,8 @@ $14000000 constant ACAP-GBR-TERM
    v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
    v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
    v 20 + ACAP-W32@ 18 rshift 3 and {: dkind:n :}          \ DKIND pair ([16] bits 50-51)
+   \ [16] bits 32-49 hold the length's high bits and DNAME-OWNED (bit 49); the
+   \ compact record carries neither, so the mask is wider than the length's.
    v 20 + ACAP-W32@ $0003FFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)

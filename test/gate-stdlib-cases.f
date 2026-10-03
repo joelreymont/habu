@@ -1922,6 +1922,10 @@ SUITE engine-writers
    test/engine-writers.f
 ;SUITE
 
+SUITE owner-access
+   test/owner-access.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE

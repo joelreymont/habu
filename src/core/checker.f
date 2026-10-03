@@ -11830,7 +11830,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ door, so no cast mints it.
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$0003FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$0001FFFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 : CK-REC-NAME$ ( ptr n -- ptr u8 n )
    {: rec:ptr :}

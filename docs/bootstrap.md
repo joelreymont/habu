@@ -270,6 +270,23 @@ The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.
 
+The stage0 generator does not carry `DNAME-OWNED` (`src/habu/layout.f`). Its
+`EMIT-DICT` stamps a `PRIM-INT-WID` primitive with `DNAME-INT` alone, and its
+`EMIT-COMPILE-CALL` guard sends a `DNAME-INT` call outside a `TRUSTED:` body to
+`EMIT-UNDEF` (undefined word, rc 70) without testing the owned bit that the
+engine's guards (`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`,
+`src/compiler/native/dict.f` `NDICT:INT-CALL?`, which `CALL-BINDING` and
+`src/compiler/native/hir-word.f` `RESOLVE-SITE` ask) admit. Recovery passes
+because no source the seed compiles makes a checked call to an owned
+primitive: of the three owned primitives (the `src/habu/prims.f` `EPPRIM:` rows
+registered `GLOBAL-INT-WID`: `source-unit-run`, `namespace-record`,
+`package-scope!`) the seed registers only `source-unit-run`, so a
+seed-compiled call to either other is undefined whatever its bit, and every
+caller of `source-unit-run` is a `test/` file that runs on a product engine.
+Seed-compiled source that adds such a checked call needs the seed twins
+first: a `PRIM-OWNED` marker beside `PRIM-INT-WID` that `EMIT-DICT` stamps as
+`DNAME-OWNED`, and the owned-bit test in the guard.
+
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed
 offset on any engine and the generator does not name, such as checker.f's

@@ -101,7 +101,9 @@ public
 
 \ A primitive whose dictionary record is globally searchable but cannot be
 \ executed or ticked by ordinary source. The sentinel lives only in this
-\ build-side registry; the emitted record carries WID 0 and DNAME-INT.
+\ build-side registry; the emitted record carries WID 0 and DNAME-INT, and
+\ DNAME-OWNED as well when a package row types the primitive (OWNED?): its
+\ owner's checked callers compile.
 -1 constant GLOBAL-INT-WID
 
 \ An engine helper is an engine-resident routine that guarded primitives reach
@@ -134,12 +136,26 @@ private
    then
    depth 52 lshift ;
 
+\ Whether a package row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states the
+\ primitive's effect. An internal primitive with one is its owner's to call, so
+\ DNAME stamps it DNAME-OWNED (src/habu/layout.f).
+: OWNED? ( ptr u8 n -- bool ) {: name:ptr size:n :}
+   PRIM-SPEC:COUNT 0 ?do
+      i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
+         i PRIM-SPEC:NAME$ name size CORE-STR= if unloop 0 0= exit then
+      then
+   loop
+   0 0= 0= ;
+
 public
 
 : DNAME ( n -- n ) {: idx:n :}
    idx NAME-LEN  idx NAME$ MIN-IN-BITS or
    idx WID {: wid:n :}
-   wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then ;
+   wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then
+   wid GLOBAL-INT-WID = if
+      idx NAME$ OWNED? if DNAME-OWNED or then
+   then ;
 
 : HELPER-WID ( n -- n )
    WID dup GLOBAL-INT-WID = if drop 0 then ;

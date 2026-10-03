@@ -44,13 +44,15 @@ $7FFFFFFF constant CODE-SPAN:MASK
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $FFFFFFFE constant WID:MAX
-$0003FFFFFFFFFFFF constant DNAME-LEN-MASK
+15 constant DNAME-FLAG-BITS      \ bits 49-63 above the name length; name reads clear them
+-1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 $000C000000000000 constant DKIND:CAST
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
 \ habu-habu-certified-words-84e84eaf). The seed's min-in-mark writes the same
-\ band. CAST: stamps kind 3 in bits 50-51. Name reads therefore clear fourteen
-\ bits, matching the production dictionary and its capture format.
+\ band. CAST: stamps kind 3 in bits 50-51. Name reads therefore clear the
+\ DNAME-FLAG-BITS, matching the production dictionary, whose registry stamps
+\ DNAME-OWNED (bit 49) where the seed stamps none, and its capture format.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -2195,7 +2197,7 @@ HB-TARGET-LINUX? [IF]
    12 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
-      9 5 16 LDR,  9 9 14 LSLI,  9 9 14 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      9 5 16 LDR,  9 9 DNAME-FLAG-BITS LSLI,  9 9 DNAME-FLAG-BITS LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
          16 5 24 LDR,
@@ -2631,7 +2633,7 @@ HB-TARGET-LINUX? [IF]
    qloop LBL,
       6 qmiss CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE qnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 7 CMP,  C-NE qnext BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 7 CMP,  C-NE qnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 qinl CBZ,
          16 5 24 LDR,
@@ -2669,7 +2671,7 @@ HB-TARGET-LINUX? [IF]
          8 2 CMP,  C-NE fnext BCOND,  14 1 MOVZ,
       fcmp LBL,
       14 7 CMP,  C-LT fnext BCOND,
-      15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 4 CMP,  C-NE fnext BCOND,
+      15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 4 CMP,  C-NE fnext BCOND,
       16 5 24 ADDI,
       15 5 16 LDR,  15 15 DNAME-EXT ANDI,  15 finl CBZ,
          16 5 24 LDR,
@@ -2743,7 +2745,7 @@ HB-TARGET-LINUX? [IF]
          15 14 CMP,  C-EQ member BCOND,
          3 3 1 ADDI,  mloop B,
       member LBL,
-         15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
          2 5 24 ADDI,
          14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
             2 5 24 LDR,
@@ -4694,7 +4696,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: inl :}
    11 DATA PEND-CELL LDR,
    12 11 16 LDR,
-   13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,
+   13 12 0 ADDI,  13 13 DNAME-FLAG-BITS LSLI,  13 13 DNAME-FLAG-BITS LSRI,
    14 11 24 ADDI,
    12 12 DNAME-EXT ANDI,  12 inl CBZ,
       14 11 24 LDR,
@@ -5029,7 +5031,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nloop LBL,
       6 nmake CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -5277,7 +5279,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    {: hit miss :}
    LBL LBL {: cmp inl :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
+   14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inl CBZ,

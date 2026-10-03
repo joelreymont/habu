@@ -709,6 +709,12 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
+\ namespace-record's and package-scope!'s owner-private rows: inside package
+\ CHECKER-OVERLAY they win, so the overlay's checked code calls the two writers,
+\ and each record carries DNAME-INT|DNAME-OWNED (src/habu/layout.f). The global
+\ trusted-only rows stay beside them for the TRUSTED: callers outside the owner
+\ (src/habu/packages.f); a checked caller elsewhere is refused by them.
+EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
@@ -732,6 +738,7 @@ ETRUSTED-ONLY!
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
 \ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,

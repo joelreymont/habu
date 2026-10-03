@@ -38,6 +38,22 @@ lives here; build, test and environment rules live in
   (`E-HIR-UNMODELED`). A row for a word the owner defines itself types only
   that word: it does not keep a global record of the same name out of
   `DNAME-INT`. `test/prim-owner-scope.f` pins the matrix.
+- An internal engine primitive (`DNAME-INT`: the prompt, `'`, `search-wl`
+  and a checked `[']` refuse it, and only a `TRUSTED:` body compiles a call
+  to it) that a package row in `src/habu/prims.f` types is its owner's:
+  `ENGINE-PRIMS:DNAME` stamps `DNAME-OWNED` beside `DNAME-INT`
+  (`src/habu/layout.f`). The bit opens only the call, and the call is the
+  checker's decision through the rows: the owner's checked callers compile at
+  both tiers, a checked caller elsewhere gets the global trusted-only row's
+  `E-CAP-TRUSTED`, and a checked `[']` stays refused at both tiers, the
+  owner's included. Unchecked code (`0 set-check`) compiles the call at both
+  tiers, where no checker decides: tier 1 reports the global row's
+  `E-CAP-TRUSTED`, as it reports every unjudged verdict, and compiles it.
+  `namespace-record` and `package-scope!` are `CHECKER-OVERLAY`'s;
+  `source-unit-run`'s `SOURCE-ROOT` row is trusted-only, so no checked caller
+  is admitted, inside `SOURCE-ROOT` included: a `TRUSTED:` body or unchecked
+  tier-0 code calls it.
+  `test/owner-access.f` and `test/prim-owner-scope.f` pin the rule.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of

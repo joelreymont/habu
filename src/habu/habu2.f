@@ -3703,7 +3703,7 @@ public
    LBL {: inl:label :}
    11 DATA PEND-CELL LDR,
    12 11 16 LDR,
-   13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,       \ the parent's own name length
+   13 12 0 ADDI,  13 13 DNAME-FLAG-BITS LSLI,  13 13 DNAME-FLAG-BITS LSRI,       \ the parent's own name length
    14 11 24 ADDI,
    12 12 DNAME-EXT ANDI,  12 inl CBZ,
       14 11 24 LDR,                                    \ ... which is a pointer when it is long
@@ -3825,7 +3825,7 @@ public
 \ clobbered. The four registers differ.
 : NAME-OF, ( n n n n -- ) {: rec:n a:n u:n t:n :}
    LBL {: inl:label :}
-   u rec 16 LDR,  u u 14 LSLI,  u u 14 LSRI,
+   u rec 16 LDR,  u u DNAME-FLAG-BITS LSLI,  u u DNAME-FLAG-BITS LSRI,
    a rec 24 ADDI,
    t rec 16 LDR,  t t DNAME-EXT ANDI,  t inl CBZ,
       a rec 24 LDR,                                    \ ... which is a pointer when it is long
@@ -4264,7 +4264,7 @@ public
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
@@ -4401,7 +4401,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -8005,7 +8005,7 @@ ardone LBL,
       \ the bytes live outside the record.
       14 5 16 LDR,
       6 DNAME-EXT LIT64,  6 14 6 AND,
-      2 14 0 ADDI,  2 2 14 LSLI,  2 2 14 LSRI,          \ x2 = name length
+      2 14 0 ADDI,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,          \ x2 = name length
       1 5 24 ADDI,                                      \ x1 = the inline bytes
       6 winl CBZ,  1 5 24 LDR,                          \ EXT: [24] points at them
       winl LBL,
@@ -9175,7 +9175,7 @@ public
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
+   14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
@@ -9499,7 +9499,7 @@ public
       11 11 1 SUBI,  11 NDICT CMP,  C-GE pnext BCOND,              \ stale (truncated) index
       12 DREC MOVZ,  12 11 12 MUL,  12 DBASE 12 ADD,               \ x12 = record ptr
       11 12 40 LDR,  11 2 CMP,  C-NE pnext BCOND,                  \ wid mismatch
-      11 12 16 LDR,  11 11 14 LSLI,  11 11 14 LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
+      11 12 16 LDR,  11 11 DNAME-FLAG-BITS LSLI,  11 11 DNAME-FLAG-BITS LSRI,  11 10 CMP,  C-NE pnext BCOND,  \ name-len mismatch
       17 12 24 ADDI,
       11 12 16 LDR,  11 11 DNAME-EXT ANDI,  11 pinl CBZ,
          17 12 24 LDR,
@@ -9541,7 +9541,7 @@ public
          15 14 CMP,  C-EQ member BCOND,
          3 3 1 ADDI,  mloop B,
       member LBL,
-         15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
          2 5 24 ADDI,
          14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
             2 5 24 LDR,
@@ -11182,9 +11182,14 @@ public
 ;package
 
 
+\ A compiled call to an internal record (DNAME-INT) needs the TRUSTED: cell
+\ armed, unless its owner's rows type it (DNAME-OWNED, src/habu/layout.f):
+\ then the call is the checker's to admit or refuse, as every checked call is.
+\ LFIND left the record in x5.
 : C-COMPILE-CALL-GUARD ( -- )
    LBL {: allowed:label :}
    14 13 16 ANDI,  14 allowed CBZ,                 \ LFIND's DNAME-INT flag
+   14 5 16 LDR,  14 14 DNAME-OWNED ANDI,  14 allowed CBNZ,
    14 DATA TRUSTED-CELL LDR,  14 LUNDEF LABEL@ CBZ,
    allowed LBL, ;
 
