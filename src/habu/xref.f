@@ -12,8 +12,7 @@
 \ (E-RESERVED-DEFINITION, as for src/core/include.f's loader words), and every
 \ engine already holds its words (E-DUPLICATE-DEFINITION).
 
-\ CODE-SPAN is loaded immediately before XREF by the cold prefix.
-require src/core/does-clause.f
+\ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
 
 0 constant XREF-START-SLOT
 1 constant XREF-LEN-SLOT
