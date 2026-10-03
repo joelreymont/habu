@@ -87,7 +87,7 @@ create CODE-PATH FS-PATH-CAP allot
 : SCAN-STARTUP ( n -- )
    0 DATA-COUNT !
    begin
-      dup INSTR@ BL? 0=
+      dup INSTR@ AOT-CALL-REPORT:BL? 0=
    while
       dup DATA-RESTORE? if
          dup DATA-BLOB-OFF DATA-OFF !
@@ -125,7 +125,7 @@ public
    GB-OUT$ CODE-RANGE {: off:n size:n :}
    s" hb-aot-code" CODE-PATH GT-PATH {: pathu:n :}
    CODE-PATH pathu off GB-ADDR size WRITE-ALL
-   CODE-PATH pathu GB-REPORT-BUF GB-REPORT-CAP REPORT-JSON-BUFFER
+   CODE-PATH pathu GB-REPORT-BUF GB-REPORT-CAP AOT-CALL-REPORT:REPORT-JSON-BUFFER
    {: out:ptr outu:n :}
    GB-REPORT$ out outu WRITE-ALL ;
 

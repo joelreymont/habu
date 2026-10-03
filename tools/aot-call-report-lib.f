@@ -5,6 +5,8 @@
 
 require lib/errors.f
 
+package AOT-CALL-REPORT
+
 $D503201F constant NOP-INSTR
 $FC000000 constant BL-MASK
 $94000000 constant BL-OP
@@ -357,3 +359,19 @@ variable JSON-NUM-N
    [: REPORT-RUN ;] catch
    dup 0= if drop exit then
    REPORT-REFUSED ;
+
+\ What the CLI, the AOT gates and the focused test call; the rest stays private.
+public
+EXPORT REPORT-PATH-CAP
+EXPORT REPORT-BYTES
+EXPORT REPORT-STENCILS
+EXPORT REPORT-BLS
+EXPORT REPORT-FILE!
+EXPORT REPORT-BUFFER!
+EXPORT REPORT-OUT$
+EXPORT JSON-NUM
+EXPORT BL?
+EXPORT REPORT-COUNT
+EXPORT REPORT-JSON-BUFFER
+EXPORT REPORT-MAIN
+;package

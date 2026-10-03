@@ -10,7 +10,6 @@ require lib/process-env.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/hb-build-lib.f
-require tools/aot-call-report-lib.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -469,7 +468,6 @@ variable SELF-SRC-U
    \ longer find INSTRUCTION-DATA's planted blr x16 or NOP/NOP/NOP/BL words
    \ verbatim. Only the code-only exclusion below remains meaningful.
    s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
-   GB-OUT$ REPORT-FILE! REPORT-COUNT
    CODE-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT

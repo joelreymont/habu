@@ -11,6 +11,8 @@ require lib/process-argv.f
 require tools/aot-call-report-lib.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
+using AOT-CALL-REPORT
+
 $D503201F constant ACRT-NOP-INSTR
 12 constant ACRT-STENCIL-PADDING-BYTES
 4 constant ACRT-WORD-BYTES
@@ -228,7 +230,7 @@ variable ACRT-SHORT-CAP
    rc 0 ACRT=
    erru 0 ACRT=
    outu 0 > ACRT-ASSERT
-   ACRT-JSON outu 1- + c@ ACR-C-LF ACRT= ;
+   ACRT-JSON outu 1- + c@ STR-LF ACRT= ;
 
 : ACRT-MAIN ( -- )
    1 ACRT-N !
@@ -241,5 +243,7 @@ variable ACRT-SHORT-CAP
    ACRT-TEST-CLI-REFUSED
    CLEANUP-RUN
    s" aot-call-report-test: ok (" type ACRT-N @ 1- FMT:.INT s"  assertions)" type cr ;
+
+;using
 
 ACRT-MAIN
