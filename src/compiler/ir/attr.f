@@ -315,6 +315,7 @@ $8000000000000000 constant INT-MIN
       thumb2  OF 3 ENDOF
       c66x    OF 4 ENDOF
       x86-64  OF 5 ENDOF
+      wasm    OF 6 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -325,6 +326,7 @@ $8000000000000000 constant INT-MIN
       aapcs32       OF 3 ENDOF
       c6000-eabi    OF 4 ENDOF
       sysv-amd64    OF 5 ENDOF
+      habu-wasm-cell64-v1 OF 6 ENDOF
    ;MATCH ;
 
 : ENDN-CODE ( CTARGET:endian -- n )
@@ -387,6 +389,7 @@ $8000000000000000 constant INT-MIN
       3 of CTARGET-ARCH:THUMB2 endof
       4 of CTARGET-ARCH:C66X endof
       5 of CTARGET-ARCH:X86-64 endof
+      6 of CTARGET-ARCH:WASM endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -398,6 +401,7 @@ $8000000000000000 constant INT-MIN
       3 of CTARGET-ABI:AAPCS32 endof
       4 of CTARGET-ABI:C6000-EABI endof
       5 of CTARGET-ABI:SYSV-AMD64 endof
+      6 of CTARGET-ABI:HABU-WASM-CELL64-V1 endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -424,8 +428,8 @@ $8000000000000000 constant INT-MIN
       F-CON  of 2 endof
       F-FAS  of 3 endof
       F-CMP  of 3 endof
-      F-ARCH of 5 endof
-      F-ABI  of 5 endof
+      F-ARCH of 7 endof
+      F-ABI  of 7 endof
       F-END  of 2 endof
       F-PTRW of 2 endof
       E-IR-ATTR-STATE throw
@@ -1359,6 +1363,8 @@ create DBUF 24 allot
       2 of s" a32" endof
       3 of s" thumb2" endof
       4 of s" c66x" endof
+      5 of s" x86-64" endof
+      6 of s" wasm" endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -1369,6 +1375,8 @@ create DBUF 24 allot
       2 of s" ptx-kernel" endof
       3 of s" aapcs32" endof
       4 of s" c6000-eabi" endof
+      5 of s" sysv-amd64" endof
+      6 of s" habu-wasm-cell64-v1" endof
       E-IR-ATTR-STATE throw
    endcase ;
 

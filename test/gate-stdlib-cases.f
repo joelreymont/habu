@@ -516,6 +516,11 @@ SUITE compiler-target-native-layout-goldens
    test/compiler/target-native-layout-goldens.f
 ;SUITE
 
+\ The sealed Wasm target, scalar-FP split and function convention.
+SUITE compiler-wasm-target
+   test/compiler/wasm-target.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.

@@ -209,7 +209,7 @@ private
 \ feature is refused at the first float schema.
 : FP-TARGET ( IR-CTX:ctx -- )
    IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+   CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
 \ Design lines 236-238: a value-producing straight-line operation ends no block,
@@ -227,7 +227,7 @@ public
 \ Every consumer compares the version exactly, so a table with a new required
 \ attribute and one without are two different tables.
 0 constant MAJOR
-6 constant MINOR
+7 constant MINOR
 
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These are the stable codes stored by HIR-WORD, not enum representation.

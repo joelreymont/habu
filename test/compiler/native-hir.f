@@ -325,7 +325,7 @@ private
    qv rv key ri 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
    qv rv key ri 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
    qv rv key br 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   rv fa IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS? ;
+   rv fa IR-SCHEMA:FFEATURES@ CTARGET:F-SCALAR-FP CTARGET:HAS? ;
 
 : FSHAPE-CASE ( -- )
    s" the float opcodes carry the double type at every position, and need the unit" T-LABEL
@@ -385,8 +385,8 @@ private
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv fl IR-SCHEMA:FTRAPS?
    rv fz IR-SCHEMA:FTRAPS?
-   rv fl IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS?
-   rv fz IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS? ;
+   rv fl IR-SCHEMA:FFEATURES@ CTARGET:F-SCALAR-FP CTARGET:HAS?
+   rv fz IR-SCHEMA:FFEATURES@ CTARGET:F-SCALAR-FP CTARGET:HAS? ;
 
 : FCMP-TRAP-CASE ( -- )
    s" a float comparison is total and needs the floating unit" T-LABEL
@@ -437,6 +437,14 @@ private
 : PTX-BODY ( IR-CTX:ctx -- )
    DIALECT-NEW drop ;
 
+: SCALAR-PTX-BND ( -- CBIND:binding )
+   CTARGET-ARCH:PTX CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
+   CTARGET-PTR--WIDTH:BITS64
+   CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH CTARGET:CONTRACT
+   CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
+
 : PTX-REG ( -- )
    PBND [: PTX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -454,6 +462,7 @@ private
 : REG-REFUSE-CASES ( -- )
    s" shared HIR registers against a coherent GPU target" T-LABEL
    PTX-REG
+   SCALAR-PTX-BND [: PTX-BODY ;] IR-CTX:WITH-CONTEXT
    s" and on a machine with no floating unit the double type cannot be interned" T-LABEL
    [: NOFP-REG ;] E-IR-TYPE-TARGET TTHROWSQ
    s" registering the dialect twice into one module is refused" T-LABEL

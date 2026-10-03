@@ -313,6 +313,7 @@ private
       3 of CTARGET-ARCH:THUMB2 endof
       4 of CTARGET-ARCH:C66X endof
       5 of CTARGET-ARCH:X86-64 endof
+      6 of CTARGET-ARCH:WASM endof
       E-IR-CTX-STATE throw
    endcase ;
 
@@ -324,6 +325,7 @@ private
       3 of CTARGET-ABI:AAPCS32 endof
       4 of CTARGET-ABI:C6000-EABI endof
       5 of CTARGET-ABI:SYSV-AMD64 endof
+      6 of CTARGET-ABI:HABU-WASM-CELL64-V1 endof
       E-IR-CTX-STATE throw
    endcase ;
 

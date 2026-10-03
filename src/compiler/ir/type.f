@@ -330,8 +330,8 @@ private
    MATCH fmt
       half   OF CTARGET:F-FP16 ENDOF
       bfloat OF CTARGET:F-BF16 ENDOF
-      single OF CTARGET:F-FP ENDOF
-      double OF CTARGET:F-FP ENDOF
+      single OF CTARGET:F-SCALAR-FP ENDOF
+      double OF CTARGET:F-SCALAR-FP ENDOF
    ;MATCH ;
 
 : FMT-CK ( IR-CTX:ctx IR-TYPE:fmt -- )
@@ -350,6 +350,7 @@ private
       thumb2  OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
       c66x    OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
       x86-64  OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
+      wasm    OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
    ;MATCH ;
 
 : SPACE-CK ( IR-CTX:ctx IR-TYPE:space -- )

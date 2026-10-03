@@ -194,7 +194,7 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 
 \ A machine without a floating unit cannot hold these schemas at all.
 : FP-TARGET ( -- )
-   CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
 \ A value-producing machine operation ends no block, names no successor, holds
@@ -215,7 +215,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-14 constant MINOR
+15 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;

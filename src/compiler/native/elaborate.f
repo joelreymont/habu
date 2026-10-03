@@ -3836,6 +3836,11 @@ variable QNAME-P                     \ the place value the digit loop is on
    DOES-CLAUSE:SUFFIX$ QNAME+
    0 QNAME-BUF QNAME-U @ ;
 
+: CONVENTION ( IR-CTX:ctx -- IR-FUN:convention )
+   IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
+   CTARGET-ARCH:WASM CTARGET-ARCH:EQ
+   if IR--FUN-CONVENTION:WASM else IR--FUN-CONVENTION:HABU then ;
+
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       in:n out:n :}
@@ -3843,7 +3848,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    c b  c b in out SIGNATURE  IR-BUILD:SET-SIGNATURE
    c b IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
    c b IR--FUN-VISIBILITY:EXPORTED IR-BUILD:SET-VISIBILITY
-   c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
+   c b c CONVENTION IR-BUILD:SET-CONVENTION
    c b  v key 0 NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
 
 : OPEN-DOES-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n n -- )
@@ -3853,7 +3858,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    c b  c b in out SIGNATURE  IR-BUILD:SET-SIGNATURE
    c b IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
    c b IR--FUN-VISIBILITY:HIDDEN IR-BUILD:SET-VISIBILITY
-   c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
+   c b c CONVENTION IR-BUILD:SET-CONVENTION
    c b  v key at NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
 
 : OPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
@@ -3880,7 +3885,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    c b  c b in out SIGNATURE  IR-BUILD:SET-SIGNATURE
    c b IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
    c b IR--FUN-VISIBILITY:HIDDEN IR-BUILD:SET-VISIBILITY
-   c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
+   c b c CONVENTION IR-BUILD:SET-CONVENTION
    c b  v key k QAT@ NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
 
 : QOPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )

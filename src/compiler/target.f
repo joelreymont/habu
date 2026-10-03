@@ -56,6 +56,7 @@ ENUM arch DERIVE eq
    thumb2
    c66x
    x86-64
+   wasm
 ;ENUM
 
 \ The calling and object convention. AAPCS32 base PCS covers both ARM and
@@ -67,6 +68,7 @@ ENUM abi DERIVE eq
    aapcs32
    c6000-eabi
    sysv-amd64
+   habu-wasm-cell64-v1
 ;ENUM
 
 \ Byte order of stored multi-byte values.
@@ -116,33 +118,35 @@ $020 constant BIT-TF32     \ tensorfloat32 arithmetic
 $040 constant BIT-ATOMIC   \ hardware atomic read-modify-write
 $080 constant BIT-MMA      \ matrix-multiply-accumulate unit
 $100 constant BIT-ASYNC    \ asynchronous global-to-shared copy
+$200 constant BIT-SCALAR-FP \ single and double arithmetic without fused FMA
 
 BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-TF32 or
-BIT-ATOMIC or BIT-MMA or BIT-ASYNC or constant BIT-ALL
+BIT-ATOMIC or BIT-MMA or BIT-ASYNC or BIT-SCALAR-FP or constant BIT-ALL
 
 \ What each architecture can have. A feature outside its architecture's mask is
 \ a description of a machine that does not exist, not an unsupported target.
 BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-ATOMIC or
-constant MASK-AARCH64
+BIT-SCALAR-FP or constant MASK-AARCH64
 
 BIT-BASE BIT-FP or BIT-FP16 or BIT-BF16 or BIT-TF32 or BIT-ATOMIC or
-BIT-MMA or BIT-ASYNC or constant MASK-PTX
+BIT-MMA or BIT-ASYNC or BIT-SCALAR-FP or constant MASK-PTX
 
 \ A32 and Thumb-2 describe instruction states, not one core's optional units.
 \ A concrete core declares only the features it actually implements.
 BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-ATOMIC or
-constant MASK-ARM32
+BIT-SCALAR-FP or constant MASK-ARM32
 
-\ C66x has packed arithmetic. F-FP includes fused multiply-add, so its
-\ non-fused floating-point instructions do not satisfy that feature.
-BIT-BASE BIT-SIMD or constant MASK-C66X
+\ C66x has packed and scalar arithmetic, but no fused FMA capability.
+BIT-BASE BIT-SIMD or BIT-SCALAR-FP or constant MASK-C66X
 
 \ x86-64 baseline carries SSE2, and cores implement FMA, the half and bfloat
 \ formats and the full atomic set. The matrix unit is deliberately absent: AMX
 \ is a machine this compiler has no way to describe the operands of, so a
 \ contract claiming it would name a target no stage could answer for.
 BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-ATOMIC or
-constant MASK-X86-64
+BIT-SCALAR-FP or constant MASK-X86-64
+
+BIT-BASE BIT-SCALAR-FP or constant MASK-WASM
 
 : MK ( n -- CTARGET:features )
    CTARGET-FEATURES:MAKE ;
@@ -160,6 +164,7 @@ constant MASK-X86-64
       thumb2  OF 3 ENDOF
       c66x    OF 4 ENDOF
       x86-64  OF 5 ENDOF
+      wasm    OF 6 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -170,6 +175,7 @@ constant MASK-X86-64
       aapcs32       OF 3 ENDOF
       c6000-eabi    OF 4 ENDOF
       sysv-amd64    OF 5 ENDOF
+      habu-wasm-cell64-v1 OF 6 ENDOF
    ;MATCH ;
 
 : ENDIAN-CODE ( CTARGET:endian -- n )
@@ -195,6 +201,7 @@ constant MASK-X86-64
                        a CTARGET-ARCH:THUMB2 CTARGET-ARCH:EQ or ENDOF
       c6000-eabi    OF a CTARGET-ARCH:C66X CTARGET-ARCH:EQ ENDOF
       sysv-amd64    OF a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ENDOF
+      habu-wasm-cell64-v1 OF a CTARGET-ARCH:WASM CTARGET-ARCH:EQ ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for big-endian storage? Darwin's arm64 ABI is little-endian
@@ -208,6 +215,7 @@ constant MASK-X86-64
       aapcs32       OF true ENDOF
       c6000-eabi    OF true ENDOF
       sysv-amd64    OF false ENDOF
+      habu-wasm-cell64-v1 OF false ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for 32-bit addresses? Both AArch64 ABIs named here are
@@ -221,6 +229,7 @@ constant MASK-X86-64
       aapcs32       OF true ENDOF
       c6000-eabi    OF true ENDOF
       sysv-amd64    OF false ENDOF
+      habu-wasm-cell64-v1 OF true ENDOF
    ;MATCH ;
 
 : PTR64-OK? ( CTARGET:abi -- bool )
@@ -231,6 +240,7 @@ constant MASK-X86-64
       aapcs32       OF false ENDOF
       c6000-eabi    OF false ENDOF
       sysv-amd64    OF true ENDOF
+      habu-wasm-cell64-v1 OF true ENDOF
    ;MATCH ;
 
 : MASK-N ( CTARGET:arch -- n )
@@ -241,6 +251,7 @@ constant MASK-X86-64
       thumb2  OF MASK-ARM32 ENDOF
       c66x    OF MASK-C66X ENDOF
       x86-64  OF MASK-X86-64 ENDOF
+      wasm    OF MASK-WASM ENDOF
    ;MATCH ;
 
 : ABI-CK ( CTARGET:arch CTARGET:abi -- )
@@ -304,7 +315,8 @@ public
 : HAS? ( CTARGET:features CTARGET:features -- bool )
    {: set:features probe:features :}
    probe BITS {: want:n :}
-   set BITS want and want = ;
+   set BITS dup BIT-FP and 0<> if BIT-SCALAR-FP or then
+   want and want = ;
 
 \ The features an architecture is able to have.
 : ARCH-MASK ( CTARGET:arch -- CTARGET:features )
@@ -319,6 +331,7 @@ public
 : F-ATOMIC ( -- CTARGET:features ) BIT-ATOMIC MK ;
 : F-MMA ( -- CTARGET:features )    BIT-MMA MK ;
 : F-ASYNC ( -- CTARGET:features )  BIT-ASYNC MK ;
+: F-SCALAR-FP ( -- CTARGET:features ) BIT-SCALAR-FP MK ;
 
 \ ---- construction and validation --------------------------------------------
 \ The production entry point: an incoherent combination throws a named error and

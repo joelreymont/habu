@@ -14,7 +14,7 @@
 \    compare equal and digest equal, at every level including the binding.
 \
 \ 3. EVERY SEMANTIC FIELD CHANGES IDENTITY. The suite enumerates the ENTIRE legal
-\    domain - 516 target contracts, 60 numerical policies - and shows the digests
+\    domain - 1036 target contracts, 60 numerical policies - and shows the digests
 \    are pairwise distinct, and that digest equality holds exactly where the
 \    structural comparison holds. Enumerating everything is what makes this a
 \    proof over the domain rather than a sample: it covers every field, every
@@ -34,18 +34,17 @@ private
 
 \ ---- enumeration shape -------------------------------------------------------
 \ Target contracts: architecture x ABI x byte order x pointer width x every
-\ feature mask over the nine defined bits. A single flat index keeps the sweep to
+\ feature mask over the ten defined bits. A single flat index keeps the sweep to
 \ one loop; the projections below take it apart.
-6 constant ARCH#
-6 constant ABI#
+7 constant ARCH#
+7 constant ABI#
 2 constant END#
 2 constant PTR#
-$200 constant RAW#
+$400 constant RAW#
 ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
-\ 484 before the x86-64 row: SysV AMD64 admits one byte order and one pointer
-\ width, and MASK-X86-64 has five optional bits above the baseline, so it adds
-\ exactly 32 contracts.
-516 constant LEGAL-CONTRACTS
+\ All ten raw bits are enumerated independently of HAS? implication. The seven
+\ architecture and ABI rows admit 1036 coherent contracts.
+1036 constant LEGAL-CONTRACTS
 
 \ Numerical policies: the full product of the five families.
 2 constant OVF#
@@ -122,16 +121,18 @@ variable N
    dup 1 = if drop CTARGET-ARCH:PTX exit then
    dup 2 = if drop CTARGET-ARCH:A32 exit then
    dup 3 = if drop CTARGET-ARCH:THUMB2 exit then
-   4 = if CTARGET-ARCH:C66X exit then
-   CTARGET-ARCH:X86-64 ;
+   dup 4 = if drop CTARGET-ARCH:C66X exit then
+   5 = if CTARGET-ARCH:X86-64 exit then
+   CTARGET-ARCH:WASM ;
 
 : N>ABI ( n -- CTARGET:abi )
    dup 0= if drop CTARGET-ABI:AAPCS64-DARWIN exit then
    dup 1 = if drop CTARGET-ABI:AAPCS64-LINUX exit then
    dup 2 = if drop CTARGET-ABI:PTX-KERNEL exit then
    dup 3 = if drop CTARGET-ABI:AAPCS32 exit then
-   4 = if CTARGET-ABI:C6000-EABI exit then
-   CTARGET-ABI:SYSV-AMD64 ;
+   dup 4 = if drop CTARGET-ABI:C6000-EABI exit then
+   5 = if CTARGET-ABI:SYSV-AMD64 exit then
+   CTARGET-ABI:HABU-WASM-CELL64-V1 ;
 
 : N>ENDIAN ( n -- CTARGET:endian )
    0= if CTARGET-ENDIAN:LITTLE exit then
@@ -185,30 +186,41 @@ variable N
    arch 1 = if abi 2 = exit then
    arch 4 = if abi 4 = exit then
    arch 5 = if abi 5 = exit then
+   arch 6 = if abi 6 = exit then
    abi 3 = ;
 
 : OK-ENDIAN? ( n n -- bool )
    {: abi:n endian:n :}
    endian 0= if true exit then
-   abi 5 = if false exit then
+   abi 5 = abi 6 = or if false exit then
    abi 1 = abi 3 >= or ;
 
 : OK-PTR? ( n n -- bool )
    {: abi:n ptr:n :}
    abi 5 = if ptr 1 = exit then
+   abi 6 = if true exit then
    abi 3 >= if ptr 0= exit then
    ptr 1 = if true exit then
    abi 2 = ;
 
-\ The feature mask must carry the baseline bit and nothing the architecture has
-\ not. The architecture's mask is read back from the module under test; the
-\ hostile per-feature cases below pin the rule itself with exact error codes.
+\ These masks are the suite's independent legal-domain description. The raw
+\ F-FP and scalar-FP bits remain separate even though HAS? implies scalar.
+: MASK-FOR ( n -- n )
+   case
+      0 of $25F endof
+      1 of $3FB endof
+      2 of $25F endof
+      3 of $25F endof
+      4 of $205 endof
+      5 of $25F endof
+      6 of $201 endof
+      0 swap
+   endcase ;
+
 : OK-FEAT? ( n n -- bool )
    {: arch:n raw:n :}
-   CTARGET:F-BASE CTARGET:FEATURES-N {: base:n :}
-   raw base and 0= if false exit then
-   arch N>ARCH CTARGET:ARCH-MASK CTARGET:FEATURES-N {: mask:n :}
-   raw mask invert and 0= ;
+   raw $001 and 0= if false exit then
+   raw arch MASK-FOR invert and 0= ;
 
 : OK-COMBO? ( n -- bool )
    {: c:n :}
@@ -275,6 +287,10 @@ variable N
    A64 CTARGET:PTR-BITS 64 T=
    A64 CTARGET:FEATURES@ A64-FEATURES CTARGET-FEATURES:EQ TTRUE
    GPU CTARGET:PTR-BITS 64 T=
+   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT CTARGET:PTR-BITS 32 T=
+   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE CTARGET:CONTRACT CTARGET:PTR-BITS 64 T=
    FUSED CNUM:OVERFLOW@ CNUM-OVERFLOW:TRAP CNUM-OVERFLOW:EQ TTRUE
    FUSED CNUM:FLOAT@ CNUM-FLOAT--MODEL:FLUSH-DENORMAL CNUM-FLOAT--MODEL:EQ TTRUE
    FUSED CNUM:CONTRACTION@ CNUM-CONTRACTION:ALLOWED CNUM-CONTRACTION:EQ TTRUE
@@ -284,6 +300,16 @@ variable N
    GPU FUSED CBIND:BIND CBIND:POLICY@ FUSED CNUM:SAME? TTRUE ;
 
 : FEATURE-ALGEBRA ( -- )
+   CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
+      CTARGET:F-FP CTARGET:HAS? TFALSE
+   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+      CTARGET:F-SCALAR-FP CTARGET:HAS? TTRUE
+   CTARGET:F-FP CTARGET:FEATURES-N $002 T=
+   CTARGET:F-SCALAR-FP CTARGET:FEATURES-N $200 T=
+   CTARGET-ARCH:WASM CTARGET:ARCH-MASK CTARGET:FEATURES-N $201 T=
+   CTARGET-ARCH:C66X CTARGET:ARCH-MASK CTARGET:F-SCALAR-FP CTARGET:HAS? TTRUE
+   CTARGET-ARCH:C66X CTARGET:ARCH-MASK CTARGET:F-FP CTARGET:HAS? TFALSE
+   CTARGET-ARCH:PTX CTARGET:ARCH-MASK CTARGET:F-SCALAR-FP CTARGET:HAS? TTRUE
    CTARGET:F-BASE CTARGET:FEATURES-N CTARGET:FEATURE-SET
       CTARGET:F-BASE CTARGET-FEATURES:EQ TTRUE
    A64-FEATURES CTARGET:F-FP CTARGET:HAS? TTRUE
@@ -295,6 +321,12 @@ variable N
 
 \ ---- 2. illegal combinations reject ------------------------------------------
 : BAD-ABI ( -- )
+   [: CTARGET-ARCH:AARCH64 CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-ABI TTHROWSQ
+   [: CTARGET-ARCH:WASM CTARGET-ABI:SYSV-AMD64 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-ABI TTHROWSQ
    [: CTARGET-ARCH:AARCH64 CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
       CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE TRY-CONTRACT ;]
       E-CTGT-ABI TTHROWSQ
@@ -306,6 +338,9 @@ variable N
       E-CTGT-ABI TTHROWSQ ;
 
 : BAD-ENDIAN ( -- )
+   [: CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:BIG
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-ENDIAN TTHROWSQ
    [: CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:BIG
       CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE TRY-CONTRACT ;]
       E-CTGT-ENDIAN TTHROWSQ
@@ -348,7 +383,7 @@ variable N
    c 2 CDIGEST:SLOT@ 4 T= c 3 CDIGEST:SLOT@ 4 T= ;
 
 : BAD-FEATURES ( -- )
-   [: $200 CTARGET:FEATURE-SET CTARGET-FEATURES:UNMAKE drop ;]
+   [: $400 CTARGET:FEATURE-SET CTARGET-FEATURES:UNMAKE drop ;]
       E-CTGT-FEATURE-BITS TTHROWSQ
    [: -1 CTARGET:FEATURE-SET CTARGET-FEATURES:UNMAKE drop ;]
       E-CTGT-FEATURE-BITS TTHROWSQ
@@ -374,6 +409,9 @@ variable N
 
 : BAD-BINDING ( -- )
    [: A64-NO-FP FUSED TRY-BIND ;] E-CBIND-CONTRACT TTHROWSQ
+   [: CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
+      CTARGET:CONTRACT FUSED TRY-BIND ;] E-CBIND-CONTRACT TTHROWSQ
    [: A64-NO-FP STRICT CBIND:BIND DROP-BINDING ;] 0 TTHROWSQ ;
 
 \ A forged record - one the generated constructor assembled without passing
@@ -433,6 +471,13 @@ variable N
    base 4 CDIGEST:SLOT@ 0 T=
    base 5 CDIGEST:SLOT@ 1 T=
    base 6 CDIGEST:SLOT@ GPU CTARGET:FEATURES@ CTARGET:FEATURES-N T=
+   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
+      CTARGET:CONTRACT CTARGET:ENCODE drop {: wasm:ptr :}
+   wasm 2 CDIGEST:SLOT@ 6 T=
+   wasm 3 CDIGEST:SLOT@ 6 T=
+   wasm 5 CDIGEST:SLOT@ 0 T=
+   wasm 6 CDIGEST:SLOT@ $201 T=
    FUSED CNUM:ENCODE {: pbase:ptr plen:n :}
    plen 56 T=
    pbase 0 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T=
@@ -447,7 +492,14 @@ variable N
    bbase 0 CDIGEST:SLOT@ CDIGEST:TAG-BINDING T=
    bbase 1 CDIGEST:SLOT@ 1 T=
    bbase 2 CDIGEST:SLOT@ CDIGEST:TAG-TARGET T=
-   bbase 9 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T= ;
+   bbase 9 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T=
+   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
+      CTARGET:CONTRACT STRICT CBIND:BIND CBIND:ENCODE drop {: wb:ptr :}
+   wb 4 CDIGEST:SLOT@ 6 T=
+   wb 5 CDIGEST:SLOT@ 6 T=
+   wb 7 CDIGEST:SLOT@ 0 T=
+   wb 8 CDIGEST:SLOT@ $201 T= ;
 
 \ Every address residue includes the aligned native path and the byte fallback.
 \ Inspect canonical bytes independently of SLOT@ and preserve neighboring bytes.
@@ -506,6 +558,7 @@ variable N
 
 \ ---- 5. every field changes identity, over the whole legal domain -------------
 : COLLECT-CONTRACTS ( -- )
+   COMBO# 200704 T=
    0 N !
    COMBO# 0 ?do
       i OK-COMBO? if

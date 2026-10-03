@@ -117,11 +117,9 @@
 \ block. The one hidden shape is a plain hidden definition.
 \
 \ THE CALLING CONVENTION IS CHECKED AGAINST THE BOUND TARGET (design line 391
-\ with section 5.4). Each convention names the architecture that can implement
-\ it - the section 7.6 Habu word ABI and the target contract's C ABI are
-\ AArch64 facts, a kernel entry point is a PTX fact - and END-FUN rejects a
-\ convention the context's bound contract cannot provide, exactly as IR-SCHEMA
-\ rejects an operation the bound contract cannot execute.
+\ with section 5.4). Habu and C conventions belong to the native architecture
+\ set, kernel to PTX, and Wasm to its dedicated architecture. END-FUN rejects a
+\ convention the context's bound contract cannot provide.
 \
 \ APPENDING IS ALL-OR-NOTHING. Every check - the stores' headers and module
 \ binding, the staged fields, each referenced symbol, type, attribute, value,
@@ -189,13 +187,12 @@ ENUM visibility DERIVE eq
    exported
 ;ENUM
 
-\ Design line 391: how arguments and results cross a call boundary. Each member
-\ belongs to exactly one architecture, which is what binds it to the context's
-\ target contract.
+\ Design line 391: how arguments and results cross a call boundary.
 ENUM convention DERIVE eq
    habu
    c-abi
    kernel
+   wasm
 ;ENUM
 
 private
@@ -259,6 +256,7 @@ private
 0 constant CV-HABU
 1 constant CV-C
 2 constant CV-KERNEL
+3 constant CV-WASM
 
 : LNK-CODE ( IR-FUN:linkage -- n )
    MATCH linkage
@@ -278,6 +276,7 @@ private
       habu   OF CV-HABU ENDOF
       c-abi  OF CV-C ENDOF
       kernel OF CV-KERNEL ENDOF
+      wasm   OF CV-WASM ENDOF
    ;MATCH ;
 
 \ A stored code outside the family's vocabulary is a corrupted or forged row, so
@@ -302,6 +301,7 @@ private
       CV-HABU   of IR--FUN-CONVENTION:HABU endof
       CV-C      of IR--FUN-CONVENTION:C-ABI endof
       CV-KERNEL of IR--FUN-CONVENTION:KERNEL endof
+      CV-WASM   of IR--FUN-CONVENTION:WASM endof
       E-IR-FUN-STATE throw
    endcase ;
 
@@ -657,29 +657,28 @@ variable BSTG-SLEN
    FSTG-LNK @ LK-REPLACEABLE = FSTG-VIS @ VS-EXPORTED <> and
    if E-IR-FUN-LINKAGE throw then ;
 
-\ Design line 391 with section 5.4: each convention belongs to one KIND of
-\ architecture, and the context's bound contract has to be of that kind. A
-\ kernel entry point is a PTX fact and nothing else can provide it. The section
-\ 7.6 Habu word ABI and the target contract's C ABI are facts of a NATIVE
-\ architecture and not of one native architecture: every backend that compiles
-\ Habu words hands arguments over in the same data-stack slots (docs/x86-64.md,
-\ "Calls between compiled words"), and the C ABI a contract names is its own -
-\ AAPCS64 on AArch64, SysV on x86-64. Naming AArch64 here refused every
-\ function of a second native backend before it had an operation in it.
-: CC-KERNEL? ( n -- bool )
-   CV-KERNEL = ;
-
-: PTX? ( CTARGET:arch -- bool )
-   CTARGET-ARCH:PTX CTARGET-ARCH:EQ ;
+\ A function's convention must be provided by the context's architecture. The
+\ Habu and C conventions are native, kernel is PTX, and Wasm has its own
+\ internal Habu-cell convention.
+: NATIVE? ( CTARGET:arch -- bool )
+   {: a:CTARGET:arch :}
+   a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   a CTARGET-ARCH:A32 CTARGET-ARCH:EQ or
+   a CTARGET-ARCH:THUMB2 CTARGET-ARCH:EQ or
+   a CTARGET-ARCH:C66X CTARGET-ARCH:EQ or
+   a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ or ;
 
 : TARGET-CK ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ PTX? {: ptx:bool :}
-   FSTG-CC @ CC-KERNEL? if
-      ptx 0= if E-IR-FUN-TARGET throw then
-      exit
-   then
-   ptx if E-IR-FUN-TARGET throw then ;
+   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ {: a:CTARGET:arch :}
+   FSTG-CC @ case
+      CV-HABU   of a NATIVE? endof
+      CV-C      of a NATIVE? endof
+      CV-KERNEL of a CTARGET-ARCH:PTX CTARGET-ARCH:EQ endof
+      CV-WASM   of a CTARGET-ARCH:WASM CTARGET-ARCH:EQ endof
+      false swap
+   endcase
+   0= if E-IR-FUN-TARGET throw then ;
 
 \ Every block this function is about to claim must already name this function as
 \ its parent. The block window and the parent field are both section 6.3 fields
