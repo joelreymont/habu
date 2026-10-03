@@ -103,6 +103,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    status 404 = if s" Not Found" exit then
    status 405 = if s" Method Not Allowed" exit then
    status 413 = if s" Content Too Large" exit then
+   status 426 = if s" Upgrade Required" exit then
    status 431 = if s" Request Header Fields Too Large" exit then
    status 500 = if s" Internal Server Error" exit then
    status 501 = if s" Not Implemented" exit then

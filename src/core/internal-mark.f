@@ -47,13 +47,22 @@ TRUSTED: PROTECTED-RETIRE ( -- )
 : IMK-MIN-IN ( n -- n )
    dup IMK-NAME-A swap IMK-NAME-U KNOWN-MIN-IN ;
 
+\ A GLOBAL RECORD NO TOP-LEVEL ROW TYPES MAY STILL BE A PACKAGE'S PRIMITIVE: a
+\ package-private row (checker.f CLOSE-PRIVATE) types it for checked code inside
+\ the owner, where the engine binds the name to this record. Marking it DNAME-INT
+\ would refuse that caller too, so the record takes the owner's row instead, and
+\ DNAME-INT stays the mark of a record no row types anywhere.
+: IMK-OWNED-MIN-IN ( n -- n )
+   dup IMK-NAME-A swap IMK-NAME-U EFFECT-OWNED-MIN-IN ;
+
 : IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
    m 0 < IF i MARK-INTERNAL EXIT THEN
    m 0 > IF i m MARK-MIN-IN THEN ;
 
 : IMK-CLASSIFY ( n -- ) {: i:n :}   \ a global record, under its bare name
    i IMK-GLOBAL-EXECUTABLE? 0= IF EXIT THEN
-   i i IMK-MIN-IN IMK-MARK ;
+   i IMK-MIN-IN dup 0 < IF drop i IMK-OWNED-MIN-IN THEN
+   i swap IMK-MARK ;
 
 : IMK-WALK ( n -- )          \ classify every source-prefix record, from the first
    ndict@ swap ?do i IMK-CLASSIFY loop ;

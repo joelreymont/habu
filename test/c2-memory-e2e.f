@@ -8,13 +8,12 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
+require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package C2-MEMORY-E2E
 private
 
 $8000 constant IO-CAP
-600000 constant BUILD-TIMEOUT-MS
-30000 constant CHILD-TIMEOUT-MS
 
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot
@@ -73,11 +72,11 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    source size >LEN PROC-ARGV+ ;
 
-: RUN-ON ( ptr u8 n ptr u8 n n -- )
-   {: engine:ptr engineu:n cwd:ptr cwdu:n timeout:n :}
+: RUN-ON ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n cwd:ptr cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN timeout >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : SAVE-LOG ( ptr u8 n ptr u8 n -- )
@@ -98,7 +97,7 @@ variable RC
    s" --" >LEN PROC-ARGV+
    s" hb-root" AT-A >LEN PROC-ARGV+
    s" hb-ordinary" AT-A >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ BUILD-TIMEOUT-MS RUN-ON
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ RUN-ON
    s" build.out" s" build.err" SAVE-LOG
    s" unique owner native image build completes" T-LABEL NEED-OK
    RC @ 0<> if exit then
@@ -113,13 +112,13 @@ variable RC
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n source:ptr sourceu:n :}
    source sourceu ARGS
-   image imageu AT-A ROOT$ CHILD-TIMEOUT-MS RUN-ON ;
+   image imageu AT-A ROOT$ RUN-ON ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n input:ptr inputu:n :}
    PROC-ENV-INHERIT-MISSING
    image imageu AT-A >LEN ROOT$ >LEN input inputu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
 : ROOT-CASES ( -- )
@@ -402,7 +401,7 @@ variable RC
    s" test/c2-memory-partial-write.f" ARGS
    s" --" >LEN PROC-ARGV+
    s" hb-partial" AT-A >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ BUILD-TIMEOUT-MS RUN-ON
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ RUN-ON
    s" partial.out" s" partial.err" SAVE-LOG
    s" partial capture cannot bind public C2 entries" T-LABEL
    RC @ 74 T=

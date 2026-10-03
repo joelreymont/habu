@@ -300,9 +300,9 @@ $41 constant KEY-A                   \ the first byte the fold moves
 $5A constant KEY-Z                   \ and the last
 $20 constant KEY-BIT                 \ the bit it sets
 
-\ A longer spelling is answered unfolded rather than truncated into a name that
-\ denotes some other word.
-\ The longest spelling this table can key. It is the ceiling the declarers that
+\ The longest spelling this table folds. A longer one is its own key, unfolded,
+\ rather than truncated into a name that denotes some other word; its row is
+\ written and asked under that same symbol.
 64 constant KEY-CAP
 
 create KEY-BUF KEY-CAP allot
@@ -341,9 +341,9 @@ public
    a u FOLD-INTO
    c b KEY-BUF u IR-BUILD:INTERN-SYMBOL ;
 
-\ A spelling too long to be any row's answers itself, so the refusal names the
-\ word the body wrote.
-\ The same key for a spelling this module has already interned, which is the form
+\ The same key for a spelling this module has already interned. A spelling past
+\ KEY-CAP answers itself, so its row, or the refusal of it, names the word as
+\ the body wrote it.
 : KEY-SYM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    c b id IR-BUILD:SYMBOL-LEN KEY-CAP > if id exit then
@@ -552,12 +552,21 @@ private
    v UNUSED UNUSED UNUSED
    ROW-ADD ;
 
-\ A qualified `NAME:tail` is the longer form a spelling can take; one past this
-\ is refused by the interner rather than truncated.
-\ Where the spelling of a fixed word is read back out of the module's interner so
-64 constant FIX-NAME-CAP
+\ The spelling of a word the body names, read back out of the module's interner
+\ into a byte row that grows to it, so the dictionary is asked about the whole
+\ name, as long as the body capture let it be. The span lasts until the next
+\ spelling is taken.
+DYNAMIC-BUFFER FIX-NAME u8
 
-create FIX-NAME FIX-NAME-CAP allot
+public
+
+: FIX-SPELL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- ptr u8 n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN {: u:n :}
+   u 1 max FIX-NAME-RESERVE
+   0 FIX-NAME  c b id 0 FIX-NAME u IR-BUILD:SYMBOL-COPY ;
+
+private
 
 \ The whole translation between the dictionary's vocabulary for definers and
 \ this chain's for literals; a kind neither definer stamped never reaches it.
@@ -668,9 +677,7 @@ create FIX-NAME FIX-NAME-CAP allot
 : BVOCAB? ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r HC-LINK LCELL@ LINK-SESSION = if true exit then
-   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
-   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   FIX-NAME u INTRINSIC-BOUND? ;
+   c b id FIX-SPELL INTRINSIC-BOUND? ;
 
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
@@ -710,9 +717,9 @@ public
 : DECLARE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
-   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   c b id FIX-SPELL {: a:ptr u:n :}
    c r  c b id BKEY-CK
-   FIX-NAME u NDICT:FIXED-VALUE  FIX-NAME u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
+   a u NDICT:FIXED-VALUE  a u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
 
 \ Declare that a source word is another word this definition CALLS: where its
 \ A caller that states a callee by hand states no glue and no deadness, and gets
@@ -736,12 +743,11 @@ public
 : RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
-   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
-   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   FIX-NAME u NDICT:SPELL-FIXED {: k:n :}
+   c b id FIX-SPELL {: a:ptr u:n :}
+   a u NDICT:SPELL-FIXED {: k:n :}
    k NDICT:FIXED-NONE = if false exit then
    c r  c b id BKEY-CK
-   FIX-NAME u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
+   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
    true ;
 
 \ Declare that a source word elaborates to one operation of this dialect. The
@@ -890,17 +896,16 @@ public
 : RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
-   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
-   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   FIX-NAME u NDICT:CALL-BINDING {: entry:n kind:n :}
+   c b id FIX-SPELL {: a:ptr u:n :}
+   a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry 0= if false exit then
-   FIX-NAME u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
+   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
    in NDICT:ARITY-NONE = if false exit then
    neutral 0= if false exit then
    glue NDICT:GLUE-UNKNOWN = if false exit then
    kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
    c r  c b id BKEY-CK  entry in out glue
-   FIX-NAME u entry RESOLVED-NORET CALLABLE-ROW
+   a u entry RESOLVED-NORET CALLABLE-ROW
    true ;
 
 \ ---- reading -----------------------------------------------------------------

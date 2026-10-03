@@ -208,34 +208,30 @@ variable IMGU
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
+: SAVE-LINE$ ( -- ptr u8 n ) s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+
 \ The fixture is loaded on the keyed host with the saver already loaded
 \ (test/app-image-engine.f), which starts at tier 0 where app-image.f set tier 1.
-\ `load` names the word that loads it: `require`, or `include`. `rest` follows
-\ on stdin, where a capture must run: one inside a load is refused.
-: BUILD-RUNNING-TO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n rest:ptr restu:n :}
+\ `rest` follows on stdin, where a capture must run: one inside a load is
+\ refused.
+: BUILD-RUNNING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu:n fixture:ptr size:n rest:ptr restu:n :}
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    target targetu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    SB-RESET
-   s\" 1 set-tier\n" SB-APPEND
-   load loadu SB-APPEND  s"  " SB-APPEND
+   s\" 1 set-tier\nrequire " SB-APPEND
    fixture size SB-APPEND  s\" \n" SB-APPEND
    rest restu SB-APPEND
    host hostu >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
 
-: BUILD-LOADING-TO ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: target:ptr targetu:n load:ptr loadu:n fixture:ptr size:n :}
-   target targetu load loadu fixture size
-   s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" BUILD-RUNNING-TO ;
-
 : BUILD-WITH-TO ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n fixture:ptr size:n :}
-   target targetu s" require" fixture size BUILD-LOADING-TO ;
+   target targetu fixture size SAVE-LINE$ BUILD-RUNNING-TO ;
 
 : BUILD-WITH ( ptr u8 n -- ) {: fixture:ptr size:n :}
    SNAP0$ fixture size BUILD-WITH-TO ;
@@ -536,14 +532,16 @@ variable BAND-WID
    IMG IMGU @ munmap drop
    SNAP0$ LOAD-IMAGE ;
 
-: BUILT-BY ( ptr u8 n ptr u8 n -- ) {: load:ptr loadu:n fixture:ptr size:n :}
-   SNAP0$ load loadu fixture size BUILD-LOADING-TO
+: BUILT-RUNNING ( ptr u8 n ptr u8 n -- )
+   {: fixture:ptr size:n rest:ptr restu:n :}
+   SNAP0$ fixture size rest restu BUILD-RUNNING-TO
    RC @ 0<> if OUT OUT-U @ type ERR$ type then
    RC @ 0 T=
    RELOAD ;
 
-: BUILT ( ptr u8 n -- ) {: fixture:ptr size:n :}
-   s" require" fixture size BUILT-BY ;
+: BUILT ( ptr u8 n -- )
+   {: fixture:ptr size:n :}
+   fixture size SAVE-LINE$ BUILT-RUNNING ;
 
 : DOCTOR-CELL ( n n -- ) {: off:n value:n :}
    off U64@ {: old:n :}
@@ -732,10 +730,13 @@ variable PADDED
    s" a last cell with a byte above the extent is refused" T-LABEL
    EXTENT 1- DOCTOR-EXTENT ASSERT-BAND-REFUSED ;
 
-\ Included, not required: see the fixture's header.
+\ The tail is laid after the capture's prepare: see the fixture's header.
+: TAIL-SAVE$ ( -- ptr u8 n )
+   s\" NATIVE-RUNTIME:CAPTURE-PREPARE SNAP-WRITER-TAIL:LAY 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+
 : TAIL-CASE ( -- )
    s" a heap that ends inside a cell builds" T-LABEL
-   s" include" s" test/snapshot-writer-tail.f" BUILT-BY
+   s" test/snapshot-writer-tail.f" TAIL-SAVE$ BUILT-RUNNING
    s" the grid stores a heap that ends inside a cell" T-LABEL
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
    EXTENT CELL-GRID:CELL-BYTES mod TAIL-BYTES T=
@@ -858,8 +859,7 @@ variable STRAYS
 \ `rest` reaches SNAP-WRITER-ACTIVE:SAVE, an immediate that saves.
 : ACTIVE-BUILD ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n rest:ptr restu:n :}
-   target targetu s" require" s" test/snapshot-writer-active.f" rest restu
-   BUILD-RUNNING-TO ;
+   target targetu s" test/snapshot-writer-active.f" rest restu BUILD-RUNNING-TO ;
 
 : ACTIVE-REFUSED ( ptr u8 n -- ) {: rest:ptr restu:n :}
    ACTIVE-SNAP$ rest restu ACTIVE-BUILD

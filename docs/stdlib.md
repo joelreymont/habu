@@ -26,6 +26,7 @@ Planned module files:
 - `lib/zip.f`
 - `lib/net/udp4.f`
 - `lib/net/ws-frame.f`
+- `lib/net/ws.f`
 - `lib/pg.f`
 - `lib/net/curl.f`
 - `lib/crypto/evp.f`
@@ -96,7 +97,7 @@ theirs.
 | `lib/json-rpc.f` | caller-owned (the JR storage, the body and the writer) |
 | `lib/crypto/sha1.f` | caller-owned (the digest context) |
 | `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
-| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` vector) |
+| `lib/process.f` | task-local (the path staging buffer, the pollfd array and the per-call capture slots) / process-wide (the `PROC-REAP-ARM` and `PROC-STOP` vectors) |
 | `lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `lib/process-cwd.f` | process-wide |
 | `lib/process-tree.f` | process-wide |
@@ -104,6 +105,7 @@ theirs.
 | `lib/net/udp4.f` | task-local |
 | `lib/net/curl.f` | task-local |
 | `lib/net/http.f` | process-wide (one server per image; each worker's request state is a row of its own slot, found through a `TASK:+USER` row; see [http.md](http.md)) |
+| `lib/net/ws.f` | process-wide (one socket to an HTTP worker's slot, its buffers a mapping of its own; sends from any task are serialised by the slot's `TASK:FACILITY`, made ready at load; see [websocket.md](websocket.md)) |
 | `lib/serial.f` | task-local |
 | `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
 
@@ -1356,6 +1358,18 @@ answers `need` or `frame`), payload masking (`MASK`) and close status codes
 socket. Every protocol fault the RFC names is refused by its own code as soon as
 the bytes held show it. See [WebSocket](websocket.md).
 
+## WebSocket connections
+
+`lib/net/ws.f` reopens package `WS` for the connection: `ACCEPT`, inside an
+HTTP route handler, answers the RFC 6455 opening handshake with `open` and a
+socket, taking the connection over from its worker, or `refused` with the
+status it rendered into the response; `RECEIVE` answers a whole `text` or `binary`
+message, `closed` with the status the socket closed under, or `timeout`,
+reassembling fragments, answering pings and failing a peer that breaks the
+protocol; `SEND-TEXT`, `SEND-BINARY` and `CLOSE` write whole frames from any
+task. The handshake's SHA-1 and base64 are Habu's own. See
+[WebSocket](websocket.md).
+
 ## PostgreSQL
 
 `lib/pg.f` owns package `PG`: PostgreSQL over libpq, declared through the
@@ -1585,7 +1599,10 @@ except `.` and `..` to a quotation in directory order; `NAMES` writes the names
 newline-separated and in byte order into a caller buffer of a stated capacity,
 so two listings of one directory compare equal, and refuses a buffer that is
 too small with `E-FS-LIST-CAPACITY`. It reads through the raw directory-entry
-primitive and shares the record decoding with `WALK-FILES`.
+primitive and shares the record decoding with `WALK-FILES`. A listing is the
+call's own: each call maps its descriptor, cursor and dirent block and gives
+them back, the descriptor closed, however it ends, so tasks list at once and a
+quotation may list again inside `EACH`.
 
 `lib/pty.f` (package `PTY`) is the tree's one pseudoterminal-pair opener:
 `OPEN` unlocks `/dev/ptmx` — with `TIOCSPTLCK`/`TIOCGPTN` and `/dev/pts/<n>` on
@@ -2026,6 +2043,7 @@ PROC-CLOSE-CELL          ( ptr fd -- )
 PROC-CLOSE-CAPTURE-FDS   ( -- )
 PROC-REAP-CAPTURE        ( -- )
 PROC-REAP-CAPTURE-TIMEOUT ( -- )
+PROC-KILL-TREE           ( pid -- )
 PROC-KILL-CAPTURE        ( -- )
 PROC-THROW-CAPTURE       ( n -- )
 PROC-OPEN-PIPE           ( ptr a ptr a -- )
@@ -2130,7 +2148,10 @@ workers and other copy-on-write process boundaries where the already-loaded
 dictionary must be reused. The child must exit or die after its worker body;
 returning into the parent's control path is a bug. Parent code reaps the child
 with `PROC-WAIT-RC` or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative
-target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`.
+target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`. The child
+starts without what it cannot own: an empty fs cleanup table, since the paths
+in the parent's are still the parent's, and `lib/process-tree.f`'s walk lock
+free, since the task that held it was not copied.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
@@ -2190,10 +2211,16 @@ the same two lengths PLUS the completion code (a nonzero exit code, or
 retired in favor of the exhaustive `MATCH`. Captures are bounded by the caller capacities; if either
 stream would exceed its capacity, the word throws `E-PROC-TRUNCATED` rather than
 truncating silently. Exact-capacity output is accepted when the next read
-observes EOF. On timeout, it sends `SIGKILL` through the checked
-`PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
-`E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
-fds and terminate/reap the active child before throwing a named process error.
+observes EOF. On timeout, it kills the child and every process the child
+started (`PROC-TREE:KILL-TREE`), reaps the child, closes owned fds, and then
+throws `E-PROC-TIMEOUT`. Truncation, a refused reaper arm and other capture
+failures end the child's tree and reap it the same way, and close all owned fds,
+before throwing a named process error. A tree walk that throws there has still
+killed the child, which is reaped all the same: the capture keeps its own
+answer, and stderr gets the line `process: process tree of a killed child not
+walked, throw <code>`. `PROC-KILL-TREE ( pid -- )` is that kill on its own: the
+tree's SIGKILL with a walk's throw reported on that line instead of thrown, for
+a caller that reaps the child itself.
 The `*-OUTCOME` capture variants return stdout length, stderr length, and the
 `outcome` sum. They classify timeout as the `timeout` outcome instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
@@ -2397,7 +2424,14 @@ own, is refused with `E-PROC-OUTPUT`, and so is a libproc call the kernel
 refuses rather than answers empty; a tree of more than 1024 processes throws
 `E-PROC-TRUNCATED`. A walk that throws still kills every member it found; a
 SIGKILL of the caller leaves them stopped. The gate pool ends every slot it
-kills this way.
+kills this way. `lib/process.f` `PROC-KILL-TREE` does it for a capture's child
+the capture ends early, a pty child `lib/pty-harness.f` kills on expiry and
+each pid of a supervised session `lib/process-pty-io.f` tears down. One walk
+or reading runs at a time in a process: a task that calls `KILL-TREE`,
+`CATCHES?` or `CPU-NS` while another task's call holds the file's tables sleeps
+until it is done. fork copies only the calling thread, so `PROC-FORK:RAW` frees
+the tables in a new child with `PROC-TREE:CHILD-RESET` before any caller code
+runs there.
 
 ## Process signals
 

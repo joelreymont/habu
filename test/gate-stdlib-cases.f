@@ -6,16 +6,15 @@ using TEST
 \ below and each waits for a free slot, so a long row registered late starts
 \ late and alone sets the gate's tail. The long rows lead, longest first.
 
-\ A ROW STAYS UNDER HALF ITS DEADLINE IN THE POOL, EXCEPT AS NAMED BELOW.
-\ tools/hb-build-test.f once
-\ ran every hb-build group in one row, and that row took 353-355 s of the 360 s
-\ SUITE-TIMEOUT-MS slot its child gets: three of five full runs reported
-\ kind=TIMEOUT-UNDER-LOAD for it while other suites ran beside it. A row is
-\ measured in the pool, by its PASS line in the gate log, and stays under half
-\ of SUITE-TIMEOUT-MS (180 s) there: in a full pool a row runs 2-3x slower than
-\ alone, so a solo time proves nothing. Move a fixture group into a new row
-\ file - the shared fixture stays in the family's *-lib.f - rather than letting
-\ one row grow past that.
+\ A ROW STAYS UNDER HALF ITS CPU BUDGET. The gate ends a row once its process
+\ tree has run SUITE-BUDGET:CPU-MS (360 s) of CPU time, and its wall deadline
+\ is only a hang guard (test/suite-budget.f). CPU time is the row's own work,
+\ which load does not stretch as it does wall time, so a row is measured
+\ outside the gate:
+\ user plus system from `/usr/bin/time bin/hb --load <file>`, under 180 s.
+\ c2-memory, the longest, runs 113 s. Move a fixture group into a new row
+\ file - the shared fixture stays in the family's *-lib.f - rather than
+\ letting one row grow past that.
 
 \ native-build-entry loads and captures the x86 window (about 55 s alone) and
 \ needs no image, so it leads.
@@ -34,9 +33,8 @@ SUITE native-gate-aot-positive-preseed
    test/gate-aot-positive-preseed.f
 ;SUITE
 
-\ Exception: snap must build a fresh native engine and save that engine's
-\ image. Reusing the fixtures engine would skip the snap verb's build path.
-\ Its own 360 s deadline remains the acceptance bound.
+\ snap must build a fresh native engine and save that engine's image. Reusing
+\ the fixtures engine would skip the snap verb's build path.
 SUITE build-fixpoint-snapshot
    tools/build-fixpoint-snapshot-test.f
 ;SUITE
@@ -181,6 +179,23 @@ SUITE native-builder-image
 
 SUITE native-builder-image-refusals
    test/native-builder-image-refusals.f
+;SUITE
+
+\ The NBR package unit rows wait for native-unit-build, which exports the unit
+\ from this tree once (test/native-unit-image.f) beside whitebox-engine-build
+\ and takes about as long. Each row runs one engine build
+\ (test/native-unit-lib.f): the import, compared with whitebox-engine-build's
+\ engine, and an import refused at NBR. The unit's layers after the stale
+\ entry - key, artifact file, bounded package compile - take under a second.
+SUITE native-unit
+   test/native-unit-e2e.f
+;SUITE
+
+SUITE native-unit-refusals
+   test/native-unit-stale.f
+   test/native-unit-key-e2e.f
+   test/native-unit-file.f
+   test/native-unit-compile-e2e.f
 ;SUITE
 
 SUITE native-window-owner
@@ -689,8 +704,9 @@ WHITEBOX-SUITE whitebox-engine
    test/whitebox-engine-suite.f
 ;SUITE
 
-\ PRIM: / PPRIM: / CLOSE-PRIVATE are sealed in the product image, which is why
-\ this suite drove its fixture through a from-source child window.
+\ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
+\ sealed in the product image, which is why this suite drives its fixture
+\ through a from-source child window that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
@@ -1229,6 +1245,7 @@ SUITE proc-capture-under-signals
 
 SUITE process-fork-wrappers
    lib/process-fork-test.f
+   lib/process-tree-fork-test.f
 ;SUITE
 
 SUITE proc-pty-io-supervisor-smoke
@@ -1337,7 +1354,8 @@ SUITE five-bindings
 \ against, and stops however they end; then the same harness killed by a pool,
 \ which must leave no server process and no socket directory. initdb and
 \ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
-\ step deadlines sum to 300 s, inside SUITE-TIMEOUT-MS.
+\ step deadlines sum to 300 s, inside the row's hang guard (test/suite-budget.f
+\ ROW-MS).
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
@@ -2174,6 +2192,12 @@ SUITE websocket-frame
    lib/net/ws-frame-test.f
 ;SUITE
 
+\ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
+\ TCP4; writes build/ws-transcript.txt and compares it whole.
+SUITE websocket
+   lib/net/ws-test.f
+;SUITE
+
 \ The process row is per task: a capturing task and a polling task at once.
 SUITE process-tasks
    lib/process-task-test.f
@@ -2198,7 +2222,8 @@ SUITE process-env
 ;SUITE
 
 \ A tree walk the kernel refuses throws rather than reading the refusal as
-\ nobody there.
+\ nobody there, and one at a capture's early end leaves the capture its own
+\ answer and names the walk's code.
 SUITE process-tree
    lib/process-tree-test.f
 ;SUITE
@@ -2281,6 +2306,10 @@ SUITE boot-row
 
 SUITE boot-relocation
    test/boot-relocation-e2e.f
+;SUITE
+
+SUITE source-root-exe
+   test/source-root-exe-test.f
 ;SUITE
 
 SUITE json
@@ -2524,9 +2553,16 @@ SUITE gate-signal
    test/gate-signal-test.f
 ;SUITE
 
-\ A signalled check.f leaves no process and no scratch behind.
+\ A signalled check.f, and a check run past its deadline, leave no process and
+\ no scratch behind.
 SUITE check-signal
    test/check-signal-test.f
+;SUITE
+
+\ A capture that ends its child early - its deadline, an overflow, a refused
+\ reaper arm - leaves nothing the child started.
+SUITE capture-tree
+   test/capture-tree-test.f
 ;SUITE
 
 WHITEBOX-SUITE generated-declaration-transaction

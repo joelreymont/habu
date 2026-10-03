@@ -3,6 +3,7 @@
 require lib/memory.f
 require lib/argv.f
 require tools/json.f
+require tools/diag-code.f
 
 \ Checked CLI packet builder. Raw fd primitives are used through checked effects.
 
@@ -83,25 +84,6 @@ variable RP-NODE
    ARGV:COUNT 1 <> if RP-USAGE then
    0 ARGV:TOK$ ;
 
-: RP-COUNT ( ptr u8 n -- n )
-   JSONL-START
-   0 RP-N !
-   begin
-      JSONL-NEXT-OBJECT dup -1 <>
-   while
-      drop
-      RP-N @ 1+ RP-N !
-   repeat
-   drop
-   RP-N @ ;
-
-: RP-FIRST ( ptr u8 n -- n )
-   JSONL-START
-   JSONL-NEXT-OBJECT dup -1 = if
-      drop
-      s" repair-packet: no diagnostics" RP-E-IO RP-FAIL
-   then ;
-
 : RP-NULL ( -- )
    s" null" JSONW-RAW ;
 
@@ -122,38 +104,40 @@ variable RP-NODE
       s" repair-packet: missing diagnostic field" RP-E-IO RP-FAIL
    then ;
 
-: RP-STR= ( n ptr u8 n -- bool ) {: node:n want:ptr wantu:n :}
-   node JSON-KIND J-STR <> if 0 0= 0= exit then
-   node JSON-STRING$ want wantu JSON-STR= ;
+\ The record's code names its shape and the field a refused record adds
+\ (tools/diag-code.f).
+: RP-CODE$ ( n -- ptr u8 n )
+   s" code" RP-REQ dup JSON-KIND J-STR <> if
+      drop
+      s" repair-packet: expected string field" RP-E-IO RP-FAIL
+   then
+   JSON-STRING$ ;
 
-: RP-CODE= ( n ptr u8 n -- bool ) {: root:n code:ptr codeu:n :}
-   root s" code" RP-REQ code codeu RP-STR= ;
+\ A warning is no refusal: the packet neither counts it nor comes from it.
+: RP-REFUSAL? ( n -- bool )
+   RP-CODE$ DIAG-CODE:REFUSAL? ;
 
-: RP-DECL? ( n -- bool ) {: root:n :}
-   root s" decl" JSON-GET dup -1 <> if drop 0 0= exit then
+: RP-COUNT ( ptr u8 n -- n )
+   JSONL-START
+   0 RP-N !
+   begin
+      JSONL-NEXT-OBJECT dup -1 <>
+   while
+      RP-REFUSAL? if RP-N @ 1+ RP-N ! then
+   repeat
    drop
-   root s" E-BAD-DECLARATION" RP-CODE= ;
+   RP-N @ ;
 
-\ A source span outside any definition: a statement the checker threw out of,
-\ or a lexer defect.
-: RP-SPAN? ( n -- bool ) {: root:n :}
-   root s" E-STATEMENT-THROW" RP-CODE= if 0 0= exit then
-   root s" E-UNTERMINATED-STRING" RP-CODE= if 0 0= exit then
-   root s" E-MALFORMED-REGISTRY-ROW" RP-CODE= ;
-
-\ An input the checker refused whole, naming no source to edit.
-: RP-INPUT? ( n -- bool )
-   s" E-ENGINE-PROVIDED" RP-CODE= ;
-
-\ A storage declaration its definer refused, outside any definition.
-: RP-STORAGE? ( n -- bool )
-   s" E-BAD-STORAGE" RP-CODE= ;
-
-\ A checker record refused at the load: a trust row naming no word, or a storage
-\ registrar called from source. No definition encloses it to place its token.
-: RP-RECORD? ( n -- bool ) {: root:n :}
-   root s" E-TRUST-UNRESOLVED" RP-CODE= if 0 0= exit then
-   root s" E-PKG-CONTEXT" RP-CODE= ;
+: RP-FIRST ( ptr u8 n -- n )
+   JSONL-START
+   begin
+      JSONL-NEXT-OBJECT dup -1 <>
+   while
+      dup RP-REFUSAL? if exit then
+      drop
+   repeat
+   drop
+   s" repair-packet: no diagnostics" RP-E-IO RP-FAIL ;
 
 : RP-REQ-STR ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-STR <> if
@@ -299,9 +283,9 @@ variable RP-NODE
    count s" Rebuild bin/hb to check this source; no code change answers this diagnostic."
    RP-PACKET-END ;
 
-\ Only a refusal tools/check.f's pre-pass read carries the token's place, so the
-\ record has all four place fields or none.
-: RP-STORAGE-PLACE ( n -- ) {: root:n :}
+\ A record carries all four place fields, when its token locates in the file,
+\ or none.
+: RP-PLACE ( n -- ) {: root:n :}
    root s" line" JSON-GET -1 = if exit then
    JSONW-COMMA root s" line" RP-REQ-NUM-FIELD
    JSONW-COMMA root s" column" RP-REQ-NUM-FIELD
@@ -315,31 +299,59 @@ variable RP-NODE
    JSONW-COMMA root s" token" RP-REQ-STR-FIELD
    JSONW-COMMA root s" reason" RP-REQ-STR-FIELD
    JSONW-COMMA root s" file" RP-REQ-STR-FIELD
-   root RP-STORAGE-PLACE
+   root RP-PLACE
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
    count s" Fix the storage declaration so its definer accepts it. Output only corrected Habu code."
    RP-PACKET-END ;
 
+\ The field a refused record's code adds to its token, when it names one.
+: RP-EVIDENCE ( n -- ) {: root:n :}
+   root RP-CODE$ DIAG-CODE:EVIDENCE {: key:ptr keyu:n :}
+   keyu 0= if exit then
+   JSONW-COMMA root key keyu RP-REQ-STR-FIELD ;
+
 : RP-RECORD-PACKET ( n n -- ptr u8 n )
    {: root:n count:n :}
    RP-PACKET-START
    JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   root RP-EVIDENCE
    JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   root RP-PLACE
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
-   count s" Fix the statement that records this token so it loads. Output only corrected Habu code."
+   count s" Fix the statement that names this token so it loads. Output only corrected Habu code."
+   RP-PACKET-END ;
+
+: RP-USING-PACKET ( n n -- ptr u8 n )
+   {: root:n count:n :}
+   RP-PACKET-START
+   JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   root RP-PLACE
+   JSONW-COMMA s" used_packages" JSONW-KEY
+   root s" used_packages" RP-REQ
+   dup JSON-KIND J-ARR <> if s" repair-packet: used_packages is not array" RP-E-IO RP-FAIL then
+   JSON-EMIT
+   JSONW-COMMA root s" code" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
+   count s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code."
    RP-PACKET-END ;
 
 : RP-PACKET ( n n -- ptr u8 n ) {: root:n count:n :}
-   root RP-DECL? if root count RP-DECL-PACKET exit then
-   root RP-STORAGE? if root count RP-STORAGE-PACKET exit then
-   root RP-SPAN? if root count RP-SPAN-PACKET exit then
-   root RP-INPUT? if root count RP-INPUT-PACKET exit then
-   root RP-RECORD? if root count RP-RECORD-PACKET exit then
-   root count RP-DEF-PACKET ;
+   root RP-CODE$ DIAG-CODE:SHAPE MATCH DIAG-CODE:shape
+      definition OF root count RP-DEF-PACKET ENDOF
+      declaration OF root count RP-DECL-PACKET ENDOF
+      storage OF root count RP-STORAGE-PACKET ENDOF
+      source-span OF root count RP-SPAN-PACKET ENDOF
+      input OF root count RP-INPUT-PACKET ENDOF
+      record OF root count RP-RECORD-PACKET ENDOF
+      warning OF s" repair-packet: a warning has no packet" RP-E-IO RP-FAIL ENDOF
+      using-refusal OF root count RP-USING-PACKET ENDOF
+   ;MATCH ;
 
 : RP-MAIN ( -- )
    RP-INPUT$ RP-READ-FILE 2dup RP-COUNT >r RP-FIRST r> RP-PACKET type cr ;

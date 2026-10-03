@@ -135,12 +135,9 @@ create JOIN-BUF WORK-BYTES allot
 create WORK-BUF WORK-BYTES allot
 create ZBUF WORK-BYTES allot
 create OWNER-BUF PATH-BYTES allot
+create OWNER-SAVE PATH-BYTES allot
 create REQUEST-BUF WORK-BYTES allot
-create ENGINE-ROOT-BUF PATH-BYTES allot
 variable REQUEST-U
-variable ENGINE-ROOT-U
-variable ENGINE-ROOT-READY
-variable ENGINE-PATH-BOUND
 variable CWD-U
 variable CANON-U
 variable NORMAL-U
@@ -150,17 +147,27 @@ variable OWNER-U
 PTR-VARIABLE CURRENT-A
 variable CURRENT-U
 variable SCOPES
-
-\ The native product binds this after loading its executable identity module.
-\ Source-only hosts retain the invocation-root behavior during boot.
-defer ENGINE-PATH-XT ( -- ptr u8 n )
-
+create ENGINE-BUF PATH-BYTES allot
+variable ENGINE-U
+variable ENGINE-READ
+\ The stack PUSHPATH fills: a mapped copy of each saved current path and its
+\ length, 0 for the working directory.
+8 constant PATH-DEPTH
+PATH-DEPTH PTR-U8-TABLE SLOT-A
+create SLOT-U PATH-DEPTH cells allot
+variable SLOT-N
 
 : CURRENT-PTR ( -- ptr u8 ) CURRENT-A @ ;
 
 
 : CURRENT! ( ptr u8 n -- )
    CURRENT-U ! CURRENT-A ! ;
+
+\ The current path as set, null for the working directory, which a scope saves
+\ and restores: CURRENT$ would hand back CWD-BUF, which no top-level path may
+\ hold (RESET clears it, and CD and POPPATH release the path they replace).
+: CURRENT@ ( -- ptr u8 n )
+   CURRENT-PTR CURRENT-U @ ;
 
 
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -173,11 +180,16 @@ defer ENGINE-PATH-XT ( -- ptr u8 n )
    a dst u BYTE-COPY 0 dst u + c! ;
 
 
+\ realpath of a path into CANON-BUF: its length, -2 when that does not fit,
+\ below 0 when the path does not resolve.
+: CANON-N ( ptr u8 n -- n )
+   ZBUF COPY-Z
+   ZBUF CANON-BUF PATH-BYTES realpath ;
+
 public
 
 : CANON-OS ( ptr u8 n -- ptr u8 n bool )
-   ZBUF COPY-Z
-   ZBUF CANON-BUF PATH-BYTES realpath {: n:n :}
+   CANON-N {: n:n :}
    n -2 = if E-PATH-RANGE throw then
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
@@ -318,28 +330,6 @@ public
    over swap PARENT-U ;
 
 
-\ The product lives at <tree>/bin/hb. Resolve its running executable physically
-\ so a copied tree keeps its baked module identity when invoked from elsewhere.
-\ A loose build candidate has no tree of its own and keeps CWD as its source root.
-: ENGINE-ROOT-INIT ( -- )
-   REQUIRE-BOOT-OPEN? if exit then
-   ENGINE-PATH-BOUND @ 0= if exit then
-   ENGINE-ROOT-READY @ if exit then
-   INCLUDE-TRUE ENGINE-ROOT-READY !
-   ENGINE-PATH-XT {: a:ptr u:n :}
-   u 0= if exit then
-   a u CANONICAL 0= if 2drop exit then
-   {: path:ptr size:n :}
-   size 7 <= if exit then
-   path size 7 - + 7 s" /bin/hb" CORE-STR= 0= if exit then
-   path ENGINE-ROOT-BUF size 7 - BYTE-COPY
-   size 7 - ENGINE-ROOT-U ! ;
-
-
-: ENGINE-ROOT$ ( -- ptr u8 n )
-   ENGINE-ROOT-INIT ENGINE-ROOT-BUF ENGINE-ROOT-U @ ;
-
-
 : JOIN ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u CHECK
    a c@ 47 = if 2drop a u exit then
@@ -378,12 +368,38 @@ private
    46 JOIN-BUF JOIN-U @ 1+ + c!
    JOIN-BUF JOIN-U @ 2 + TRY-CANON 0= if INCLUDE-IO-RC throw then ;
 
+\ A source-root refusal: its reason, then the path it names.
+: PATH-DIE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n path:ptr pathu:n :}
+   a WORK-BUF u BYTE-COPY
+   path WORK-BUF u + pathu BYTE-COPY
+   WORK-BUF u pathu + INCLUDE-IO-RC die ;
+
+\ Whether the n canonical bytes in CANON-BUF name a directory this process can
+\ search, which is all a root needs: the files below a directory resolve without
+\ read permission on it. macOS realpath answers a file's own path for
+\ `<file>/.`, so the kernel's lookup of `<path>/.` decides, and it passes only
+\ through a searchable directory. It opens nothing, so a FIFO cannot make it
+\ wait. Without errno a file and an unsearchable directory fail alike, and the
+\ refusal names what both are not.
+: ENGINE-DIR? ( n -- bool ) {: n:n :}
+   CANON-BUF ZBUF n BYTE-COPY
+   47 ZBUF n + c!
+   46 ZBUF n 1+ + c!
+   0 ZBUF n 2 + + c!
+   ZBUF 0 access 0= ;
+
+\ A fresh mapping holding n path bytes and the NUL after them.
+: MAP-COPY ( ptr u8 n -- ptr u8 )
+   {: a:ptr u:n :}
+   u 1+ map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: fresh:ptr :}
+   a fresh u 1+ BYTE-COPY
+   fresh ;
+
 : ROOT-ENTER ( ptr u8 n -- ptr u8 n ptr u8 n )
    ROOT-CANON
    CANON-U @ {: u:n :}
-   u 1+ map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: fresh:ptr :}
-   CANON-BUF fresh u 1+ BYTE-COPY
-   CURRENT$ {: old:ptr oldu:n :}
+   CANON-BUF u MAP-COPY {: fresh:ptr :}
+   CURRENT@ {: old:ptr oldu:n :}
    fresh u CURRENT!
    1 SCOPES +!
    fresh u old oldu ;
@@ -408,7 +424,7 @@ public
 \ A builder's target source is discovered from the invocation root. Restore
 \ its caller's source root after compilation, including on a checker refusal.
 : WITH-CWD ( [ -- ] -- ) {: q :}
-   CURRENT$ {: old:ptr oldu:n :}
+   CURRENT@ {: old:ptr oldu:n :}
    CWD$ CURRENT!
    1 SCOPES +!
    q catch {: rc:n :}
@@ -421,25 +437,116 @@ private
 : CLEAR-BYTES ( ptr u8 n -- )
    0 ?do 0 over i + c! loop drop ;
 
+\ The path words act on the top level only: each open scope, a load's among
+\ them, holds the current path it replaced and restores it on exit.
+: TOP-ONLY ( ptr u8 n -- )
+   SCOPES @ 0= if 2drop exit then
+   INCLUDE-IO-RC die ;
+
+\ At the top level a current path is CD's mapping, or POPPATH's.
+: RELEASE-CURRENT ( -- )
+   CURRENT-U @ 0 > if
+      CURRENT-PTR CURRENT-U @ 1+ munmap 0 < if INCLUDE-IO-RC throw then
+   then
+   NULL$ CURRENT! ;
+
+: SLOT-FIELD ( n -- ptr ptr u8 )
+   cells SLOT-A + 0 ptr-field ;
+
+: SLOT-U! ( n n -- )
+   cells SLOT-U + ! ;
+
+\ The interpreter's input cursor and end (src/habu/layout.f).
+INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
+INE-CELL RESERVED-PTR-U8-CELL INPUT-END
+
+\ Whether the rest of the input line holds no name. The tokenizer reads a
+\ newline as a blank and a piped stdin session is one buffer, so a bare CD
+\ would otherwise take the next line's first word as its directory.
+: LINE-BLANK? ( -- bool )
+   INPUT-AT @ INPUT-END @ {: e:ptr :}
+   begin dup e < while
+      dup c@ 10 = if drop INCLUDE-TRUE exit then
+      dup c@ 32 > if drop INCLUDE-FALSE exit then
+      1 +
+   repeat
+   drop INCLUDE-TRUE ;
+
+\ CD's directory: the current path, which a relative require searches first,
+\ becomes it, relative to the current path when relative. It never changes the
+\ process's directory or the engine root. A refusal names the absolute
+\ spelling tried.
+: CD-PATH ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u INCLUDE-PATH-CAP > if s" CD: path is too long" INCLUDE-IO-RC die then
+   CURRENT$ a u JOIN {: p:ptr pu:n :}
+   pu INCLUDE-PATH-CAP > if s" CD: path is too long" INCLUDE-IO-RC die then
+   p pu CANON-N {: n:n :}
+   n -2 = if s" CD: path is too long" INCLUDE-IO-RC die then
+   n 0 < if s" CD: does not exist: " p pu PATH-DIE then
+   n ENGINE-DIR? 0= if s" CD: is not a searchable directory: " p pu PATH-DIE then
+   CANON-BUF n MAP-COPY {: fresh:ptr :}
+   RELEASE-CURRENT
+   fresh n CURRENT! ;
+
 public
 
+\ SwiftForth's path words, at the top level of a stdin session or of a program
+\ file run as `bin/hb file.f`; inside a loaded file (`--load`, `require`) they
+\ are refused, and a file scopes a root with WITH. `CD <dir>` on its own line
+\ moves the current path (CD-PATH), and a bare CD prints it.
+: CD ( -- )
+   s" CD: only at top level" TOP-ONLY
+   LINE-BLANK? if CURRENT$ type cr exit then
+   parse-name CD-PATH ;
+
+\ PUSHPATH saves the current path; a null slot is the working directory.
+: PUSHPATH ( -- )
+   s" PUSHPATH: only at top level" TOP-ONLY
+   SLOT-N @ PATH-DEPTH >= if
+      s" PUSHPATH: directory stack is full" INCLUDE-IO-RC die
+   then
+   SLOT-N @ {: ix:n :}
+   CURRENT-U @ {: u:n :}
+   u 0 > if CURRENT-PTR u MAP-COPY ix SLOT-FIELD ! then
+   u ix SLOT-U!
+   ix 1+ SLOT-N ! ;
+
+\ POPPATH restores the path PUSHPATH saved last.
+: POPPATH ( -- )
+   s" POPPATH: only at top level" TOP-ONLY
+   SLOT-N @ 0= if s" POPPATH: directory stack is empty" INCLUDE-IO-RC die then
+   SLOT-N @ 1- {: ix:n :}
+   RELEASE-CURRENT
+   ix cells SLOT-U + @ {: u:n :}
+   u 0 > if ix SLOT-FIELD @ u CURRENT! then
+   NULL$ drop ix SLOT-FIELD !
+   0 ix SLOT-U!
+   ix SLOT-N ! ;
+
+\ A captured image starts at the working directory, so it refuses a saved
+\ path as it refuses an open scope, and releases CD's.
 : RESET ( -- )
    SCOPES @ 0= 0= if INCLUDE-IO-RC throw then
+   SLOT-N @ 0= 0= if
+      s" PUSHPATH: an image cannot be saved with a path pushed" INCLUDE-IO-RC die
+   then
+   RELEASE-CURRENT
    CWD-BUF PATH-BYTES CLEAR-BYTES
    CANON-BUF PATH-BYTES CLEAR-BYTES
    NORMAL-BUF WORK-BYTES CLEAR-BYTES
    CANDIDATE-BUF PATH-BYTES CLEAR-BYTES
    OWNER-BUF PATH-BYTES CLEAR-BYTES
+   OWNER-SAVE PATH-BYTES CLEAR-BYTES
    JOIN-BUF WORK-BYTES CLEAR-BYTES
    WORK-BUF WORK-BYTES CLEAR-BYTES
    ZBUF WORK-BYTES CLEAR-BYTES
    REQUEST-BUF WORK-BYTES CLEAR-BYTES
-   ENGINE-ROOT-BUF PATH-BYTES CLEAR-BYTES
+   ENGINE-BUF PATH-BYTES CLEAR-BYTES
    0 REQUEST-U !
-   0 ENGINE-ROOT-U ! 0 ENGINE-ROOT-READY !
    0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
    0 JOIN-U ! 0 OWNER-U !
-   NULL$ CURRENT! ;
+   0 ENGINE-U ! 0 ENGINE-READ ! ;
 
 ;package
 
@@ -594,28 +701,83 @@ public
 : REQUIRE-CHECK-ROOM ( -- )
    REQUIRE-N @ REQUIRE-MAX >= if s" require: too many files" INCLUDE-DIE then ;
 
-\ A boot row is recorded PORTABLY, in the one spelling BOOT-KNOWN? asks for: the
-\ path relative to CWD where it lies below CWD, and the canonical path where it
-\ does not, which is exactly what `CWD$ RELATIVE` answers. Store and query share
-\ that root deliberately. Against the load's OWN owner root a nested require -
-\ one issued by a boot file rather than by the manifest - would shorten to a bare
-\ basename that no query ever spells, and a basename names a different file in
-\ every directory.
-\
-\ Recording the canonical absolute spelling instead baked the build directory
-\ into the engine binary, so two builds of one revision from two directories
-\ differed (dot habu-bake-prefix-src-1047b604). An application row keeps its
-\ canonical identity, so identical names in distinct roots still coexist. The two
-\ spellings cannot collide: a canonical name always begins with `/` and a
-\ portable one never does.
-: REQUIRE-STORE ( ptr u8 n -- )
-   REQUIRE-CHECK-ROOM
-   REQUIRE-BOOT-OPEN? if CWD$ RELATIVE then {: a:ptr u:n :}
-   a u REQUIRE-REG:APPEND ;
-
 package SOURCE-ROOT
 private
 
+\ The engine's own source root: the working directory when it carries the
+\ engine's first row; else the executable's tree when that does (`%`, two
+\ levels above the executable, <tree>/bin/hb, as SwiftForth places it); else
+\ the working directory. The working directory comes first because it is
+\ searched before the root and only the root's physical copy of a row is
+\ frozen: with `%` first, a copied tree there would load as application source.
+\ A build's fresh registry holds no row, so nothing is a tree and the rows it
+\ records are relative to the working directory whatever host builds them.
+\ The root is derived on the first question that needs it, from the
+\ executable's path and realpath rather than through SOURCE-INPUT: it
+\ is a fact of this process, not a source file a view answers. RESET forgets
+\ it with the bytes, so a captured image derives the root of the executable
+\ that restores it. Deriving touches only JOIN, WORK, Z and CANON scratch, so a
+\ candidate held in NORMAL-BUF or CANDIDATE-BUF survives.
+
+\ The running engine's path: on macOS the one execve received, in the
+\ executable_path= apple string past envp's terminator; on Linux
+\ /proc/self/exe. Both name the engine, not the script, for a `#!` program
+\ file. lib/engine-id.f asks proc_pidpath through FUNCTION:, which this layer
+\ cannot use.
+: ENVP-END ( -- n )
+   0 begin dup ENVP 0= 0= while 1+ repeat 1+ ;
+
+\ Apple strings can be empty, so the scan ends at the null pointer.
+: APPLE-EXE ( -- ptr u8 n )
+   ENVP-BASE 0= if NULL$ exit then
+   ENVP-END begin dup ENVP 0= 0= while
+      dup ENVP s" executable_path" ENV=? if
+         ENVP s" executable_path=" nip ZPTR+ dup ZLEN exit
+      then
+      1+
+   repeat drop NULL$ ;
+
+\ `%` in CANON-BUF, as a length: the canonical executable cut twice to its
+\ parent. 0 when there is no path, it does not fit or realpath refuses it;
+\ never a throw: the length is checked before CANON-N, and neither path
+\ holds a NUL.
+: EXE$ ( -- n )
+   HB-TARGET-MACOS? if APPLE-EXE else s" /proc/self/exe" then {: a:ptr u:n :}
+   u 0= u INCLUDE-PATH-CAP > or if 0 exit then
+   a u CANON-N {: n:n :}
+   n 0 <= if 0 exit then
+   CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
+
+\ Whether a directory carries the engine's first row: one access, no read.
+: TREE? ( ptr u8 n -- bool )
+   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZBUF COPY-Z
+   ZBUF 0 access 0= ;
+
+\ The root's length in CANON-BUF, 0 for the working directory.
+: ENGINE-FIND ( -- n )
+   REQUIRE-BOOT-LIMIT 0= if 0 exit then
+   CWD$ TREE? if 0 exit then
+   EXE$ {: n:n :}
+   n 0= if 0 exit then
+   CANON-BUF n TREE? 0= if 0 exit then
+   n ;
+
+: ENGINE-INIT ( -- )
+   ENGINE-READ @ 0= 0= if exit then
+   ENGINE-FIND {: n:n :}
+   CANON-BUF ENGINE-BUF n BYTE-COPY
+   n ENGINE-U !
+   1 ENGINE-READ ! ;
+
+public
+
+\ The engine's source root, canonical.
+: ENGINE$ ( -- ptr u8 n )
+   ENGINE-INIT
+   ENGINE-U @ 0= if CWD$ exit then
+   ENGINE-BUF ENGINE-U @ ;
+
+private
 
 : REQUEST! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECK
@@ -634,69 +796,97 @@ private
 
 : CANDIDATE$ ( -- ptr u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
 
-\ A directory symlink may carry an invocation-root engine spelling outside
-\ CWD. Check only that spelling's portable row, then require its normalized path to
-\ resolve to the same physical candidate: symlink/.. can name another file.
-: BOOT-CANDIDATE ( ptr u8 n n -- ptr u8 n bool ) {: first:n :}
-   first REQUIRE-BOOT-LIMIT >= if INCLUDE-FALSE exit then
-   dup CANDIDATE-U ! CANDIDATE-BUF swap BYTE-COPY
-   CANDIDATE$ CWD$ RELATIVE first BOOT-KNOWN? if CANDIDATE$ INCLUDE-TRUE exit then
-   ENGINE-ROOT$ {: root:ptr rootu:n :}
-   rootu 0 > if
-      CANDIDATE$ root rootu RELATIVE first BOOT-KNOWN? if
-         CANDIDATE$ INCLUDE-TRUE exit
-      then
-   then
-   REQUEST$ ABSOLUTE!
-   \ The invocation spelling may be longer than its canonical symlink target.
-   JOIN-BUF JOIN-U @ WORK-BYTES 1- NORMALIZE-LIMIT
-   NORMAL-BUF NORMAL-U @ CWD$ BELOW? if
-      NORMAL-BUF NORMAL-U @ CWD$ RELATIVE first BOOT-KNOWN? if
+\ A request spelled under a root, normalized but not resolved, in NORMAL-BUF.
+\ The root's spelling may be longer than its canonical symlink target.
+: UNDER ( ptr u8 n ptr u8 n -- ptr u8 n )
+   JOIN WORK-BYTES 1- NORMALIZE-LIMIT
+   NORMAL-BUF NORMAL-U @ ;
+
+\ Whether a selected candidate is the engine root's own copy of a frozen row,
+\ from row `first` on. Below the root its physical path spells the row. A
+\ directory symlink inside the root can carry the root's spelling of a row
+\ outside it, so the request spelled under the root is asked too, and counts
+\ only when it resolves to the same physical candidate: symlink/.. can name
+\ another file. Spelling the request reuses NORMAL-BUF, which holds the
+\ candidate, so the candidate is copied first.
+: BOOT-CANDIDATE ( ptr u8 n ptr u8 n ptr u8 n n -- ptr u8 n bool )
+   {: a:ptr u:n root:ptr rootu:n req:ptr requ:n first:n :}
+   first REQUIRE-BOOT-LIMIT >= if a u INCLUDE-FALSE exit then
+   a u root rootu RELATIVE first BOOT-KNOWN? if a u INCLUDE-TRUE exit then
+   u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
+   root rootu req requ UNDER root rootu BELOW? if
+      NORMAL-BUF NORMAL-U @ root rootu RELATIVE first BOOT-KNOWN? if
          NORMAL-BUF NORMAL-U @ CANONICAL drop
          CANDIDATE$ CORE-STR= CANDIDATE$ rot exit
       then
    then
    CANDIDATE$ INCLUDE-FALSE ;
 
-: CANDIDATE ( ptr u8 n bool -- ptr u8 n bool bool ) {: fallback:bool :}
+\ One root's candidate for REQUEST$: its canonical path, whether it is known,
+\ and whether a search stops there (known, or on disk). Under any root the
+\ candidate can be the engine root's physical copy of a frozen row, counted
+\ from row `first`: the root's files reached through its parent directory or a
+\ symlinked working directory are still the engine's, and BOOT-CANDIDATE's
+\ physical test keeps another directory's file with an engine file's name its
+\ own.
+: CANDIDATE ( ptr u8 n n -- ptr u8 n bool bool )
+   {: first:n :}
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
    2dup REQUIRE-KNOWN? {: known:bool :}
-   fallback REQUIRE-BOOT-OPEN? 0= or known 0= and if
-      REQUIRE-BASE @ BOOT-CANDIDATE
+   known 0= if
+      ENGINE$ REQUEST$ first BOOT-CANDIDATE
    else known then
    dup exists or ;
+
+\ A relative request's roots in order, each once: its owner, the working
+\ directory, then the engine root. The first root whose candidate stops the
+\ search answers; when none does, the owner's answer names the missing file.
+\ The working directory stays ahead of the engine root: nested checking copies
+\ subject text into a temporary child loader and relies on finding files there.
+: SEARCH-ROOTS ( n -- ptr u8 n bool )
+   {: first:n :}
+   CURRENT$ first CANDIDATE if exit then drop 2drop
+   CWD$ CURRENT$ CORE-STR= 0= if
+      CWD$ first CANDIDATE if exit then drop 2drop
+   then
+   ENGINE$ CURRENT$ CORE-STR= ENGINE$ CWD$ CORE-STR= or 0= if
+      ENGINE$ first CANDIDATE if exit then drop 2drop
+   then
+   CURRENT$ first CANDIDATE drop ;
 
 : ABS-OWNER ( ptr u8 n -- )
    2dup CURRENT$ BELOW? if 2drop CURRENT$ OWNER! exit then
    2dup CWD$ BELOW? if 2drop CWD$ OWNER! exit then
    DIRNAME OWNER! ;
 
-public
-
-: RESOLVE ( ptr u8 n -- ptr u8 n bool )
-   REQUEST!
+\ The file a require of REQUEST$ selects, with frozen rows counted from row
+\ `first`.
+: SELECT ( n -- ptr u8 n bool )
+   {: first:n :}
    REQUEST-BUF c@ $2F = if
       REQUEST$ CANONICAL drop
       2dup ABS-OWNER
       2dup REQUIRE-KNOWN? {: known:bool :}
       known 0= if
-         REQUIRE-BASE @ BOOT-CANDIDATE
+         ENGINE$ REQUEST$ first BOOT-CANDIDATE
       else known then
       exit
    then
-   CURRENT$ CWD$ CORE-STR= if
-      CWD$ INCLUDE-TRUE CANDIDATE drop exit
-   then
-   CURRENT$ INCLUDE-FALSE CANDIDATE if exit then drop 2drop
-   CWD$ INCLUDE-TRUE CANDIDATE if exit then drop 2drop
-   CURRENT$ INCLUDE-FALSE CANDIDATE drop ;
+   first SEARCH-ROOTS ;
 
-\ Command-line entries are relative to the invocation directory; dependencies
-\ beneath them inherit the entry directory as their primary root.
+public
+
+: RESOLVE ( ptr u8 n -- ptr u8 n bool )
+   REQUEST! REQUIRE-BASE @ SELECT ;
+
+\ Command-line entries are relative to the invocation directory only;
+\ dependencies beneath them inherit the entry directory as their primary root.
+\ Like an absolute path, an entry is the engine's own file only as the physical
+\ copy at the engine root.
 : ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
    REQUEST!
-   CWD$ INCLUDE-TRUE CANDIDATE
+   CWD$ REQUIRE-BASE @ CANDIDATE
    {: path:ptr pathu:n known:bool exists:bool :}
    exists if
       path pathu DIRNAME OWNER!
@@ -712,16 +902,63 @@ public
 \ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
 \ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror of it) or
 \ literally (src/habu/native-runtime.f). So one question answers for every
-\ engine kind: BOOT-CANDIDATE, which checks the resolved candidate against
-\ both CWD-relative and engine-root-relative portable rows. A canonical scan
-\ alongside it would answer for no engine and hide a prefix that had stopped
-\ opening the registry.
+\ engine kind: BOOT-CANDIDATE, which asks the engine-root spelling the rows are
+\ stored in of the source a require would select.
+\ A canonical scan alongside it would answer for no engine and hide a prefix
+\ that had stopped opening the registry. The selection counts every frozen row
+\ whatever REQUIRE-BASE is, so a frozen row is the engine's even where its file
+\ is missing, and this process's own rows only steer where it stops. The
+\ question leaves the caller's RESOLVED-ROOT$ as the caller's own RESOLVE left
+\ it.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
-   REQUEST!
-   REQUEST$ CANONICAL drop
-   0 BOOT-CANDIDATE nip nip ;
+   OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
+   OWNER-U @ {: owner:n :}
+   REQUEST! 0 SELECT drop
+   ENGINE$ REQUEST$ 0 BOOT-CANDIDATE nip nip
+   OWNER-SAVE OWNER-BUF owner BYTE-COPY
+   owner OWNER-U ! ;
+
+\ The row a boot file is recorded as: the spelling BOOT-CANDIDATE asks for. That
+\ is its path below the engine root, or, for a file a directory symlink inside
+\ the root carries from outside it, the request spelled under the root when that
+\ resolves to this very file. Any other file is refused by name: its row could
+\ only be its canonical path, and an engine carrying one takes that file for a
+\ stranger under every other root. Below the row, the file again from
+\ CANDIDATE-BUF, which the check leaves intact for the caller's load.
+: BOOT-ROW ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+   u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
+   ENGINE$ {: root:ptr rootu:n :}
+   CANDIDATE$ root rootu BELOW? if
+      CANDIDATE$ CANDIDATE$ root rootu RELATIVE exit
+   then
+   root rootu REQUEST$ UNDER root rootu BELOW? if
+      NORMAL-BUF NORMAL-U @ CANONICAL drop CANDIDATE$ CORE-STR=
+   else INCLUDE-FALSE then
+   0= if s" source root: a boot file is outside the engine root: " CANDIDATE$ PATH-DIE then
+   CANDIDATE$ root rootu REQUEST$ UNDER root rootu RELATIVE ;
 
 ;package
+
+\ A boot row is recorded PORTABLY, in the one spelling BOOT-KNOWN? asks for,
+\ relative to the engine root (SOURCE-ROOT:BOOT-ROW). Store and query share that
+\ root deliberately. A build records the tree it compiles: its fresh registry
+\ holds no row, so its root is the working directory. Against the load's OWN
+\ owner root a nested
+\ require - one issued by a boot file rather than by the manifest - would shorten
+\ to a bare basename that no query ever spells, and a basename names a different
+\ file in every directory.
+\
+\ Recording the canonical absolute spelling instead baked the build directory
+\ into the engine binary, so two builds of one revision from two directories
+\ differed (dot habu-bake-prefix-src-1047b604). An application row keeps its
+\ canonical identity, so identical names in distinct roots still coexist. The two
+\ spellings cannot collide: a canonical name always begins with `/` and a
+\ portable one never does. The path comes back in storage the store did not
+\ reuse, for the caller's load.
+: REQUIRE-STORE ( ptr u8 n -- ptr u8 n )
+   REQUIRE-CHECK-ROOM
+   REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
+   REQUIRE-REG:APPEND ;
 
 \ One scratch line for diagnostics that have to name a path. Sized so the
 \ longest accepted path plus the longest prefix below always fits, and the
@@ -844,7 +1081,12 @@ variable DISC-TOK-U
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
 : DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
-: EVENTS-RESET ( -- )     0 EVENT-N !  0 EVENT-POOL-N ! ;
+\ The pool holds resolved paths and their roots, so the bytes used are zeroed
+\ too: snapshot preparation resets it, and a captured image keeps no path of
+\ the machine that recorded them.
+: EVENTS-RESET ( -- )
+   EVENT-POOL-N @ 0 ?do 0 EVENT-POOL i + c! loop
+   0 EVENT-N !  0 EVENT-POOL-N ! ;
 
 : LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
 : LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;
@@ -958,7 +1200,7 @@ PTR-VARIABLE TOP
 \ The engine's refusal tail prints ` at <path>:<line>` from these two cells and
 \ nothing else decides when they are right: they are republished on every PUSH
 \ and every POP, so they name the file the interpreter is inside and read 0 when
-\ it is inside none (tty REPL, `-e`, the boot prefix).
+\ it is inside none (the REPL or another stdin session, the boot prefix).
 : PUBLISH-LOCATION ( -- )
    INCLUDE-DEPTH @ 0 <= if
       0 data-base INCLUDE-SRCLOC-PATH-CELL + !
@@ -1149,7 +1391,7 @@ public
 : REQUIRE-BODY ( ptr u8 n bool -- ) {: known:bool :}
    2dup EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
-   2dup REQUIRE-STORE
+   REQUIRE-STORE
    DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    INCLUDE-LOAD ;
 
@@ -1171,7 +1413,7 @@ public
    RESOLVE {: known:bool :}
    2dup EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if 2drop exit then
-   REQUIRE-STORE ;
+   REQUIRE-STORE 2drop ;
 
 : include ( -- )
    parse-name INCLUDE-CHECK-PATH included ;

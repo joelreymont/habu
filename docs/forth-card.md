@@ -29,7 +29,7 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is `E-USING-SHADOW-GLOBAL` (rc 67) in a definition and
+  global also owns is `E-USING-SHADOW-GLOBAL` (rc 70) in a definition and
   `ENGINE-ERROR:USING-SHADOW-GLOBAL` (rc 105) at top level or after `'` —
   rename the public. A file loaded under a `using` resolves through it.
   Close a using opened before `package` after `;package`: a `;using` inside
@@ -118,11 +118,11 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `exit` after a word ending in `die` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `package`, …) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
-| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 67 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses | `E-BAD-STORAGE`, rc 70 |
+| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE`, rc 70 |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
-| a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 67 |
+| a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 70 |
 | the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
@@ -298,17 +298,24 @@ forth.md: **Errors**, **Integer arithmetic**.
 - `require lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
   path resolves against the root that resolved the requiring file (the
-  `--load` entry's directory for the entry), then the working directory, so
-  `require lib/…` names the tree root. A file found through the working
-  directory keeps that root for its own requires: an overlay copy of one tree
-  file, required by a tree file, loads beside the tree's copy and dies on the
-  duplicate (exit 78; test/aot-capture-bound.f copies the requirer too). Every
-  file requires its **own** dependencies.
+  `--load` entry's directory for the entry), then the working directory, then
+  the engine's source root (the working directory when it is a Habu tree, else
+  the tree above the running `bin/hb`), so `require lib/…` names the tree
+  root. A file found through the working directory keeps that root for its own
+  requires: an overlay copy of one tree file, required by a tree file, loads
+  beside the tree's copy and dies on the duplicate (exit 78;
+  test/aot-capture-bound.f copies the requirer too). Every file requires its
+  **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws 70, a file that ends with cells on
   the stack is `E-EVAL-RESIDUE`, and one that ends inside a definition it
   opened is refused there, rc 74, as every source is. A value crosses a load
   only as a word the file defines.
+- At the top level of a stdin session or of a program file run as
+  `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
+  `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in
+  `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused
+  (exit 74): scope a root with `SOURCE-ROOT:WITH`.
 - The engine provides `lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
   `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`
@@ -351,7 +358,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Checker & type model | loop frames, higher-order effects, `defer` |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 64-byte tier-1 name |
+| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:` |
 | Constants | hex versus decimal, `src/config.fs` |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |

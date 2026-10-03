@@ -21,6 +21,9 @@ package GENERATED-DECL-DICTIONARY
 
 7174 constant E-DICTIONARY-TX
 7175 constant E-DICTIONARY-CAP
+\ What a declaration reject reports for each code (generated-declaration.f).
+s" generated-name transaction is out of order" E-DICTIONARY-TX DECL-REJECT:EXPLAIN
+s" generated-name table is full" E-DICTIONARY-CAP DECL-REJECT:EXPLAIN
 
 0 cells constant ROW.NDICT-OFF
 1 cells constant ROW.CP-OFF

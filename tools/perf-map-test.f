@@ -105,7 +105,7 @@ variable ACC
 \ line - symbol column and dso - is left alone.
 : LIVE-FRAME$ ( -- ptr u8 n )
    s" MARKER" FIND-REC {: idx:n :}
-   idx 0 < if s" perf-map-test: MARKER is not in the dictionary" 7402 die then
+   idx 0 < if s" perf-map-test: MARKER is not in the dictionary" 76 die then
    SB-RESET
    S\" \t          " SB-APPEND
    idx XREF-REC XREF-START HEX+

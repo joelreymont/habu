@@ -7,11 +7,11 @@ require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
 require test/gate-entry-guard.f
+require test/suite-budget.f              \ a row's CPU budget and hang guard
 require lib/engine-id.f                  \ ENGINE-ID:PATH$ - this gate's own binary
 
 package STDLIB-GATE
 
-360000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 \ A row's argv tokens, each a length cell and its bytes: at most what the
 \ process-wide argv table takes.
@@ -119,10 +119,17 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    label labelu GATE-IMAGES:ROW-RED
    0 0<> ;
 
+\ A suite row is held to a CPU budget, whatever the load (test/suite-budget.f
+\ BOUNDED BY ITS OWN WORK): each start below gives the row the hang guard
+\ SUITE-BUDGET:ROW-MS as its deadline, and ROW-BUDGET! the budget.
+: ROW-BUDGET! ( -- )
+   SUITE-BUDGET:CPU-MS GT-POOL-SEQ @ GT-POOL-CPU-BUDGET! ;
+
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu SUITE-READY? 0= if exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   PRODUCT-SPAWN$ label labelu SUITE-TIMEOUT-MS GT-POOL-START ;
+   PRODUCT-SPAWN$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
+   ROW-BUDGET! ;
 
 \ A WHITEBOX-SUITE row runs on the gate's private copy of the unsealed engine,
 \ which the whitebox-engine build row puts in place.
@@ -130,12 +137,14 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    GATE-IMAGES:ROW-WHITEBOX
    label labelu SUITE-READY? 0= if exit then
    GATE-IMAGES:WHITEBOX$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   GATE-IMAGES:WHITEBOX$ label labelu SUITE-TIMEOUT-MS GT-POOL-START ;
+   GATE-IMAGES:WHITEBOX$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
+   ROW-BUDGET! ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
    label labelu SUITE-READY? 0= if exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   PRODUCT-SPAWN$ label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
+   PRODUCT-SPAWN$ label labelu in inu SUITE-BUDGET:ROW-MS GT-POOL-START-STDIN
+   ROW-BUDGET! ;
 
 \ A keyed image's build row: the product engine, handed its program on stdin
 \ with no arguments, granted the family it settles and that family's

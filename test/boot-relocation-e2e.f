@@ -1,9 +1,11 @@
 \ A copied engine and its source tree must recognize baked modules when the
-\ invocation directory is the copied tree's parent. On macOS the same child
-\ runs again under a sandbox that denies process-info-pidinfo, where
-\ proc_pidpath refuses the engine its own path: the tree must still be found,
-\ and ENGINE-ID:PATH$ must still throw E-ENGINE-PATH. Keep the children and
-\ their logs.
+\ invocation directory is the copied tree's parent. The copy holds the engine's
+\ first boot file, src/core/util.f, so it is a Habu tree and the engine's root
+\ (src/core/include.f SOURCE-ROOT:ENGINE$). On macOS the same child runs again
+\ under a sandbox that denies process-info-pidinfo, where proc_pidpath refuses
+\ the engine its own path: the tree must still be found, and ENGINE-ID:PATH$
+\ must still throw E-ENGINE-PATH. The engine does not bake lib/engine-id.f, so
+\ the copy holds it for the child. Keep the children and their logs.
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -60,12 +62,15 @@ variable RC
    ROOT$ s" tree" TREE JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ MAKE-DIRS
    s" lib/c2-memory" PATH! PATH PATH-U @ MAKE-DIRS
+   s" src/core" PATH! PATH PATH-U @ MAKE-DIRS
    TREE$ s" bin/hb" ENGINE JOIN-PATH ENGINE-U !
    ENGINE-CANDIDATE:PATH$ ENGINE$ COPY-FILE-STREAM
    ENGINE$ CHMOD-X
    s" lib/errors.f" COPY-SOURCE
    s" lib/c2-memory.f" COPY-SOURCE
    s" lib/c2-memory/owner-runtime.f" COPY-SOURCE
+   s" src/core/util.f" COPY-SOURCE
+   s" lib/engine-id.f" COPY-SOURCE
    WRITE-ENTRY ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}

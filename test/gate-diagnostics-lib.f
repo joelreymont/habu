@@ -25,6 +25,8 @@ variable LABEL-U
 $1000 constant REC-CAP
 create REC-BUF REC-CAP allot
 variable REC-U
+create SPLICE-BUF REC-CAP allot
+TYPED-VARIABLE SPLICE-LEN len
 
 : USAGE ( -- )
    s" diagnostics: invalid assertion mode" USAGE-RC die ;
@@ -212,19 +214,32 @@ variable REC-U
    u REC-U ! ;
 
 : REC-SPLICE ( n n ptr u8 n -- ) {: at:n oldu:n new:ptr newu:n :}
-   SB-RESET
-   REC-BUF at SB-APPEND
-   new newu SB-APPEND
-   REC-BUF at + oldu + REC-U @ at - oldu - SB-APPEND
-   SB$ REC! ;
+   SPLICE-LEN BUF-RESET
+   REC-BUF at SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   new newu SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   REC-BUF at + oldu + REC-U @ at - oldu -
+   SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
+   SPLICE-BUF SPLICE-LEN BUF-LEN@ REC! ;
 
 \ Replace the first OLD in the record with NEW. Neither may point into the
-\ string builder, which the splice rebuilds.
+\ splice buffer, which the replacement rebuilds at the record's capacity.
 : REC-SWAP ( ptr u8 n ptr u8 n -- ) {: old:ptr oldu:n new:ptr newu:n :}
    REC$ old oldu FIND-SUB MATCH option
      none OF s" record has no text to replace" GE-FAIL ENDOF
      some OF IDX>N oldu new newu REC-SPLICE ENDOF
    ;MATCH ;
+
+\ Keep the record's first line. A refusal a definition throws out of check.f is
+\ followed on stderr by the engine's report of that throw, which is no record.
+: REC-LINE ( -- )
+   REC$ s\" \n" FIND-SUB MATCH option
+     none OF s" record has no line end" GE-FAIL ENDOF
+     some OF IDX>N 1+ REC-U ! ENDOF
+   ;MATCH ;
+
+: WRITE-REC ( ptr u8 n -- )
+   PATH!
+   PATH$ REC$ WRITE-ALL ;
 
 \ tools/gate-json-assert.f diag-contract refuses the record and says why. It
 \ runs in its own process, since a refusal ends the process.
@@ -439,20 +454,26 @@ variable REC-U
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
 
-\ A checker record refused at the load has no definition around it, so check.f
-\ writes it in a shape of its own, under the repair class its code names
+\ A refused record names its token and any known position, under the shape
+\ and repair class its code names
 \ (docs/repair-diagnostics.md). tools/check.f runs as a child: the packet comes
 \ from its own load child, whose capture would replace the one an in-process
 \ CHECK-CAPTURE holds open.
-: RECORD-CHECK ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+: RECORD-ARGS ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu WRITE-SRC
    s" --load" ARG+
    s" tools/check.f" ARG+
    s" --" ARG+
-   s" --json-errors" ARG+
+   s" --json-errors" ARG+ ;
+
+: RECORD-RUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    src srcu PATH-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-NONZERO ;
+
+: RECORD-CHECK ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   src srcu RECORD-ARGS
+   src srcu label labelu RECORD-RUN ;
 
 \ A storage registrar called from source, outside the verifier window
 \ (checker.f CHECKER-REPLAY-NAME-OK?).
@@ -471,7 +492,7 @@ variable REC-U
    GT-ERR$ REC!
    s\" \"repair_class\":\"use_storage_definer\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
    s" use_storage_definer" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-record-class.err" s" record repair class is not the one its code names" s" storage record under the trust row's class refused" REFUSED ;
+   s" habu-record-class.err" s" repair class is not one its code names" s" storage record under the trust row's class refused" REFUSED ;
 
 \ A trust row naming no word where its record lands (checker.f
 \ TRUST-RECORD-WL).
@@ -487,6 +508,118 @@ variable REC-U
    GT-ERR$ REC!
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-trust-verdict.err" s" record verdict is not rejected" s" uncheckable stale trust row refused" REFUSED ;
+
+\ A record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), with
+\ the statement its throw ends, under a code of its own: a call to such a name
+\ is refused as E-BAD-QUALIFIED in its definition, in a definition's shape, and
+\ both pass.
+: QUALIFIED-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-MAL-CALL ( -- ) GDX:MAL:CALL ;" GE-SRC-LINE
+   s" habu-json-qcall.f" s" tools/check.f --json-errors accepted a call to a malformed qualified name" RECORD-CHECK
+   s" word" s" gdx-mal-call" s" malformed call word" ERR-JSTR
+   s" habu-json-qcall.err" WRITE-ERR
+   s" habu-json-qcall.err" s" malformed call contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer GDX:MAL:NAME ( -- )" GE-SRC-LINE
+   s" habu-json-qual.f" s" tools/check.f --json-errors accepted a record for a malformed qualified name" RECORD-CHECK
+   s" code" s" E-BAD-QUALIFIED-RECORD" s" malformed record code" ERR-JSTR
+   s" token" s" gdx:mal:name" s" malformed record token" ERR-JSTR
+   s" habu-json-qual.err" WRITE-ERR
+   s" habu-json-qual.err" s" malformed record contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_qualified_name\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
+   s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-qual-class.err" s" repair class is not one its code names" s" malformed record under the trust row's class refused" REFUSED ;
+
+\ A stored signature that does not parse (checker.f USIG-ADD-BAD), under the
+\ first and the last of the classes its code names. Only a multi-error load
+\ renders the record; the default mode stops there.
+: SIGNATURE-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s\" s\" GDX-SIG-TYPE\" s\" -- gdx-no-such-type\" trust" GE-SRC-LINE
+   s\" s\" GDX-SIG-SYNTAX\" s\" n n\" trust" GE-SRC-LINE
+   s" habu-json-signature.f" RECORD-ARGS
+   s" --all-errors" ARG+
+   s" habu-json-signature.f" s" tools/check.f --json-errors --all-errors accepted bad stored signatures" RECORD-RUN
+   s" code" s" E-BAD-STORED-SIGNATURE" s" stored signature code" ERR-JSTR
+   s" token" s" gdx-sig-type" s" stored signature token" ERR-JSTR
+   s" signature" s" -- gdx-no-such-type" s" stored signature as written" ERR-JSTR
+   s" repair_class" s" fix_signature_syntax" s" malformed stored signature class" ERR-JSTR
+   s" habu-json-signature.err" WRITE-ERR
+   s" habu-json-signature.err" s" stored signature contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"repair_class\":\"fix_signature_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
+   s" fix_signature_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-signature-class.err" s" repair class is not one its code names" s" stored signature under a definition class refused" REFUSED ;
+
+\ A package public whose private twin owns its bare tail at another width.
+: ARITY-RECORD-REFUSAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GDX-SBA" GE-SRC-LINE
+   s" : GDX-TWIN ( n n -- n ) + ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : GDX-TWIN ( n -- n ) 1 + ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" habu-json-arity.f" s" tools/check.f --json-errors accepted a public its private twin shadows" RECORD-CHECK
+   s" code" s" E-SHADOWED-ARITY" s" shadowed arity code" ERR-JSTR
+   s" package" s" gdx-sba" s" shadowed arity package" ERR-JSTR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-arity.err" WRITE-REC
+   s" habu-json-arity.err" s" shadowed arity contract" DIAG-CONTRACT ;
+
+\ A definition whose inferred effect the checker cannot record (render.f
+\ REC-SIG) gets a warning, outside the repair contract, before the refusal of
+\ the caller it leaves undefined. A warning that carries a verdict is refused.
+: WARNING-RECORD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-WIDE drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;" GE-SRC-LINE
+   s" : GDX-WIDE-CALL ( -- ) GDX-WIDE ;" GE-SRC-LINE
+   s" habu-json-warning.f" s" tools/check.f --json-errors accepted a call to a word with no recorded effect" RECORD-CHECK
+   s" code" s" W-EFFECT-NOT-RECORDED" s" unrecorded effect warning code" ERR-JSTR
+   s" word" s" gdx-wide" s" unrecorded effect warning word" ERR-JSTR
+   s" code" s" E-UNDEFINED" s" unrecorded effect caller code" ERR-JSTR
+   s" habu-json-warning.err" WRITE-ERR
+   s" habu-json-warning.err" s" unrecorded effect contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"word\":\"gdx-wide\"" s\" \"verdict\":\"rejected\",\"word\":\"gdx-wide\"" REC-SWAP
+   s" habu-warning-verdict.err" s" unexpected JSON field" s" warning with a verdict refused" REFUSED ;
+
+\ A bare token refused at its reference because it resolves in a used package
+\ and in another scope too (checker.f CHECKER-RESOLVE:RAISE): a global and a
+\ used public, or two used publics. Both records place the token and take the
+\ repair class their code names. The throw ends check.f, so the engine reports
+\ it after the record.
+: USING-RECORDS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SW ( n -- ) drop ;" GE-SRC-LINE
+   s" package GDX-SP public : GDX-SW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" using GDX-SP : GDX-SU ( -- ) 1 GDX-SW ; ;using" GE-SRC-LINE
+   s" habu-json-shadow.f" s" tools/check.f --json-errors accepted a global a used public shadows" RECORD-CHECK
+   s" code" s" E-USING-SHADOW-GLOBAL" s" using shadow code" ERR-JSTR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-shadow.err" WRITE-REC
+   s" habu-json-shadow.err" s" using shadow contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GDX-UA public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" package GDX-UB public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" using GDX-UA using GDX-UB : GDX-UU ( -- ) 1 GDX-UW ; ;using ;using" GE-SRC-LINE
+   s" habu-json-ambiguous.f" s" tools/check.f --json-errors accepted a name two used packages export" RECORD-CHECK
+   s" code" s" E-USING-AMBIGUOUS" s" using ambiguity code" ERR-JSTR
+   s" token" s" GDX-UW" s" using ambiguity token" ERR-JSTR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-ambiguous.err" WRITE-REC
+   s" habu-json-ambiguous.err" s" using ambiguity contract" DIAG-CONTRACT
+   s\" \"repair_class\":\"disambiguate_using_ambiguous\"" s\" \"repair_class\":\"disambiguate_using_shadow\"" REC-SWAP
+   s" disambiguate_using_ambiguous" GJA-SUGGEST-FOR s" disambiguate_using_shadow" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-using-class.err" s" repair class is not one its code names" s" ambiguity under the shadow's class refused" REFUSED ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
@@ -775,7 +908,7 @@ variable REC-U
    s\" \"verdict\":\"uncheckable\"" s\" \"verdict\":\"rejected\"" REC-SWAP
    s\" \"repair_class\":\"fix_family_declaration\"" s\" \"repair_class\":\"fix_nominal_type\"" REC-SWAP
    s" fix_family_declaration" GJA-SUGGEST-FOR s" fix_nominal_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-tfam-class.err" s" declaration repair class is not fix_family_declaration" s" declaration under another class refused" REFUSED ;
+   s" habu-tfam-class.err" s" repair class is not one its code names" s" declaration under another class refused" REFUSED ;
 
 \ A refusal only the run reads carries no place.
 \ The contract refuses the record under an uncheckable verdict or a class
@@ -798,7 +931,7 @@ variable REC-U
    s\" \"verdict\":\"uncheckable\"" s\" \"verdict\":\"rejected\"" REC-SWAP
    s\" \"repair_class\":\"fix_storage_type\"" s\" \"repair_class\":\"fix_type\"" REC-SWAP
    s" fix_storage_type" GJA-SUGGEST-FOR s" fix_type" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-storage-class.err" s" storage repair class is not a storage class" s" storage under a definition class refused" REFUSED ;
+   s" habu-storage-class.err" s" repair class is not one its code names" s" storage under a definition class refused" REFUSED ;
 
 \ A storage declaration its definer refuses is neither a definition nor a family
 \ declaration: it names the declared word, the refused token and the reason.
@@ -809,7 +942,11 @@ variable REC-U
 \ by the same rule: a scheme and a pointer type are refused whole, a family
 \ closed over a quotation is registered, a comment opener where the name or the
 \ first type token stands is that name or type, as parse-name reads it, and a
-\ type missing at the end of the source is refused at the name.
+\ type missing at the end of the source is refused at the name. Every definer
+\ reads its name on its own line and its type's first token on the name's: one
+\ on the next line is missing, refused at the name or the definer, and that
+\ line is the next statement, here a declaration refused at its own place or a
+\ definition a later one calls.
 : BAD-STORAGE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -833,6 +970,19 @@ variable REC-U
    s" : JSTG-HOOK-USE ( -- ) 2 JSTG-DQ-BIND 0 JSTG-LQ drop 0 JSTG-DQ drop ;" GE-SRC-LINE
    s" TYPED-VARIABLE JSTG-CM ( c ) n" GE-SRC-LINE
    s" DEFER-LAYOUT-BUFFER \ c" GE-SRC-LINE
+   s" TYPED-VARIABLE JSTG-VN" GE-SRC-LINE
+   s" 4 TYPED-BUFFER JSTG-BN" GE-SRC-LINE
+   s" DYNAMIC-BUFFER JSTG-YN" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER JSTG-LN" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER JSTG-DN" GE-SRC-LINE
+   s" : JSTG-N1 ( -- n ) 1 ;" GE-SRC-LINE
+   s" TYPED-VARIABLE" GE-SRC-LINE
+   s" 4 TYPED-BUFFER" GE-SRC-LINE
+   s" DYNAMIC-BUFFER" GE-SRC-LINE
+   s" 4 LAYOUT-BUFFER" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER" GE-SRC-LINE
+   s" : JSTG-N2 ( -- n ) JSTG-N1 ;" GE-SRC-LINE
+   s" : JSTG-N3 ( -- n ) JSTG-N2 ;" GE-SRC-LINE
    s" 4 LAYOUT-BUFFER JSTG-LM" GE-SRC-LINE
    s" tools/check.f --all-errors accepted refused storage" CHECK-JSON-ALL
    s" habu-bad-storage.err" WRITE-ERR
@@ -862,7 +1012,27 @@ variable REC-U
    s" storage type's first token read raw" ERR-JRAW
    s" word" s\" \"\\\\\",\"token\":\"c\",\"reason\":\"type this definer cannot store\",\"file\":\"<stdin>\",\"line\":20,\"column\":23"
    s" deferred layout name read raw" ERR-JRAW
-   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":21,\"column\":17"
+   s" word" s\" \"JSTG-VN\",\"token\":\"JSTG-VN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":21,\"column\":16"
+   s" variable type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-BN\",\"token\":\"JSTG-BN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":22,\"column\":16"
+   s" buffer type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-YN\",\"token\":\"JSTG-YN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":23,\"column\":16"
+   s" dynamic type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-LN\",\"token\":\"JSTG-LN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":24,\"column\":17"
+   s" layout type on the next line refused at its name" ERR-JRAW
+   s" word" s\" \"JSTG-DN\",\"token\":\"JSTG-DN\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":25,\"column\":21"
+   s" deferred layout type on the next line refused at its name" ERR-JRAW
+   s" repair_class" s\" \"fix_storage_name\",\"verdict\":\"rejected\",\"word\":\"TYPED-VARIABLE\",\"token\":\"TYPED-VARIABLE\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":27,\"column\":1"
+   s" variable name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"TYPED-BUFFER\",\"token\":\"TYPED-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":28,\"column\":3"
+   s" buffer name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"DYNAMIC-BUFFER\",\"token\":\"DYNAMIC-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":29,\"column\":1"
+   s" dynamic name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"LAYOUT-BUFFER\",\"token\":\"LAYOUT-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":30,\"column\":3"
+   s" layout name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"DEFER-LAYOUT-BUFFER\",\"token\":\"DEFER-LAYOUT-BUFFER\",\"reason\":\"no name for\",\"file\":\"<stdin>\",\"line\":31,\"column\":1"
+   s" deferred layout name on the next line refused at the definer" ERR-JRAW
+   s" word" s\" \"JSTG-LM\",\"token\":\"JSTG-LM\",\"reason\":\"no type for\",\"file\":\"<stdin>\",\"line\":34,\"column\":17"
    s" missing layout type refused at its name" ERR-JRAW
    s" habu-bad-storage.err" s" storage diagnostic contract" DIAG-CONTRACT
    RUN-STORAGE ;
@@ -940,7 +1110,7 @@ variable REC-U
    GT-ERR$ REC!
    s\" \"repair_class\":\"close_string\"" s\" \"repair_class\":\"close_primitive_row\"" REC-SWAP
    s" close_string" GJA-SUGGEST-FOR s" close_primitive_row" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-unterm-class.err" s" span repair class is not the one its code names" s" open string under the open row's class refused" REFUSED
+   s" habu-unterm-class.err" s" repair class is not one its code names" s" open string under the open row's class refused" REFUSED
    GE-HB-RESET
    GE-SRC-RESET
    s" PRIM: GDX-ROW PE-N PE-IN" GE-SRC-LINE
@@ -974,7 +1144,7 @@ variable REC-U
    GT-ERR$ REC!
    s\" \"repair_class\":\"rebuild_engine\"" s\" \"repair_class\":\"unknown_rejection\"" REC-SWAP
    s" rebuild_engine" GJA-SUGGEST-FOR s" unknown_rejection" GJA-SUGGEST-FOR REC-SWAP
-   s" habu-engine-class.err" s" input repair class is not rebuild_engine" s" engine-provided input under another class refused" REFUSED ;
+   s" habu-engine-class.err" s" repair class is not one its code names" s" engine-provided input under another class refused" REFUSED ;
 
 : PUBLIC-SIGNATURES ( -- )
    GT-OUT-BUF GT-OUT-CAP PS-OUT-BUFFER!

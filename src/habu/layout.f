@@ -1452,7 +1452,7 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 \ and a task region reads zero because lib/task.f copies only the cells it
 \ names. Both hold this process's addresses, so boot stores them and snapshots
 \ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
-\ the reasons EXIT-HOOK-CELL gives: $2CD0 .. $2CE0, past the quotation frames
+\ the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the quotation frames
 \ (JIT-QUOT:END, $2C40) and the $2C40..$2CD0 run held for the package
 \ publication cells, swept for a claimant across src lib tools test bootstrap
 \ docs.

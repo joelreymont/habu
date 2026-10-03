@@ -22,11 +22,20 @@ lives here; build, test and environment rules live in
   or asserting its effect, does not make it a primitive.
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` interns the
   axiom into the OWNER package's private wordlist: only a body compiled inside
-  that package resolves the name; callers are still checked. For now such a prim
-  also keeps its global `PRIM-TRUSTED-ONLY!` row: `src/core/internal-mark.f`
-  classifies a record by its BARE name, so an owner-private-only primitive is
-  sealed `DNAME-INT` with no checked caller. `test/prim-owner-scope.f` pins the
-  matrix.
+  that package resolves the name; callers are still checked. A primitive may be
+  that row alone: `src/core/internal-mark.f` classifies a global record no
+  top-level row types by the owner-private row that reaches it, so the owner's
+  checked callers compile at both tiers and an outside checked caller is
+  refused by name. A checked `[']` of it, by its own name or an `EXPORT`
+  alias's, is admitted and refused exactly where that call is. Top-level source
+  is not checked: there `'` yields the xt and a call runs the primitive. An
+  engine primitive (`src/habu/prims.f`) that a `TRUSTED:` body outside the
+  owner calls keeps its global trusted-only row beside the private one, as
+  `addrmap-set` and `ffi-call-bounded` do: tier 1 builds that caller's call
+  window from a global row and refuses the caller without one
+  (`E-HIR-UNMODELED`). A row for a word the owner defines itself types only
+  that word: it does not keep a global record of the same name out of
+  `DNAME-INT`. `test/prim-owner-scope.f` pins the matrix.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
@@ -261,10 +270,35 @@ public
   `hb prog.f` and a program on stdin are not loaded files and keep their
   top-level stack. `test/closed-source-suite.f` pins the boundary.
 - A named `--load` entry's canonical directory is the primary source root.
-  Relative dependencies search that root, then the invocation working directory;
-  a dependency keeps the root that resolved it for its own loads; absolute paths
-  bypass the search; the process working directory never changes. So
-  `/work/app/main.f` can require `src/model.f`, and that file `src/math.f`.
+  Relative dependencies search that root, then the invocation working
+  directory, then the engine's source root, each root once.
+  `SOURCE-ROOT:ENGINE$ ( -- ptr u8 n )` is the working directory when it is a
+  Habu tree (it holds the engine's first boot file, `src/core/util.f`), else
+  the tree two levels above the engine's executable (SwiftForth's `%`, found
+  through symlinks) when that is one, else the working directory. So an
+  installed `hb` runs from any directory, and inside a checkout the checkout
+  is the root. No variable or word sets it. The working directory is searched
+  before the engine root, so while the root is the executable's tree, a
+  working directory that is not a tree must not hold copies of engine files:
+  its `lib/errors.f` is an application file, and loading it beside the
+  engine's is a duplicate definition, exit 78. With no tree at either place
+  the working directory is the root, so its `lib/errors.f` is the engine's
+  row and is never loaded. A relative `--load` entry is relative to the
+  working directory alone; a dependency keeps the root that resolved it for
+  its own loads; absolute paths bypass the search; the process working
+  directory never changes. So `/work/app/main.f` can require `src/model.f`,
+  and that file `src/math.f`.
+- At the top level of a stdin session or of a program file run as
+  `bin/hb file.f`, SwiftForth's path words, public in package `SOURCE-ROOT`
+  (`SOURCE-ROOT:CD`, or `CD` under `using SOURCE-ROOT`), move the current
+  path, the first root a relative path searches: `CD <dir>` sets it, relative
+  to the current path when relative, and a bare `CD` prints it; `PUSHPATH`
+  saves it, up to 8 deep, and `POPPATH` restores it. A missing directory, a
+  file, a path over the loader's cap, a full or empty stack and a word inside
+  a loaded file (`--load` or `require`) are refused by name, exit 74. They
+  never change the engine root or the process working directory, and an
+  image cannot be saved with a path pushed. A file scopes a root with
+  `SOURCE-ROOT:WITH`.
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )` scopes an explicit root, restoring
   the caller's on return or throw; fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
@@ -274,10 +308,14 @@ public
   owner roots.
 - The engine marks its baked prefix files `provided` before user source runs, so
   `require src/core/sha256.f` skips the prefix-owned copy; `provided` is honored
-  before a missing file is opened. Frozen facts keep root-relative names, so the
-  engine runs from another checkout or without its compiled sources; snapshots
-  keep these facts and clear process-local roots and resolver scratch. Relocated
-  reloading of a deleted application source tree is not promised.
+  before a missing file is opened. Frozen facts keep names relative to the
+  engine's source root and match only that root's own copy, so the engine runs
+  from another checkout or without its compiled sources, and an application's
+  file named like an engine file stays the application's. A build records each
+  boot file by that relative name, so one outside the engine root is refused by
+  name, exit 74 (bootstrap.md, "Refresh `bin/hb`"); snapshots keep these facts
+  and clear process-local roots and resolver scratch. Relocated reloading of a
+  deleted application source tree is not promised.
 - A package wordlist is a case-insensitive no-duplicate set (`RESET` and `reset`
   are one tail) across reopened blocks and across `:`, `create`, `variable`,
   `constant` and `TRUSTED:`; silent last-definition-wins shadowing is always an
@@ -296,7 +334,8 @@ public
   definition's contract is read from that binding
   (`src/compiler/native/compiler.f` KEEP-ARITY asks `NDICT:SPELL-ARITY` with the
   bare name). A mismatch is refused where written, `E-SHADOWED-ARITY` (checker
-  7145, rc 67), naming the package, the tail and both widths; the native build's
+  7145, rc 67), naming the package, the tail and both widths, its packet placed
+  at the public definition's name; the native build's
   `-8303 E-NELAB-ARITY` stays as the backstop. The rule judges only a colon
   definition with a DECLARED signature; a public word made by a storage definer
   (`constant`, `variable`, `create`) is judged by its definer's row, so a
@@ -365,6 +404,16 @@ and always available, for a one-off call or to escape a collision.
   wordlist is `E-USING-AMBIGUOUS`; the same package named twice is not
   ambiguous. `using` never silently changes an existing binding: it is the sole
   resolver of an otherwise-unresolved name, or a hard error.
+- In a definition `tools/check.f` refuses an ambiguous tail at the reference
+  site (checker 7144), naming each used package it resolves in
+  (`used_packages`, docs/repair-diagnostics.md; `ga:TOK`, `gb:TOK` in the line
+  `--all-errors` prints without `--json-errors`); qualify the one meant or
+  rename the collision. It exits 67, and 70 under `--verify-only`. The engine
+  refuses it earlier, before the checker: at top level, and in a definition
+  under `bin/hb --load`, it prints
+  `hb: ambiguous bare word resolves in multiple used packages: TOK at FILE:LINE`
+  and exits 94, and so does `tools/check.f` for a top-level use, in its run
+  stage.
 - A bare tail resolving to a GLOBAL while a used package ALSO exports it is
   `E-USING-SHADOW-GLOBAL` (checker 7141) at the reference site, naming both
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public
@@ -1024,13 +1073,8 @@ by name with the count it saw and the ceiling, and none truncates.
   8000 bytes: <name> needs <count>`, rc 71, catchable inside `evaluate`. Repair:
   move the long literals into words of their own. The same constant bounds the
   source verifier's body buffer (`E-VS-BODY-CAP`) and the native compiler's unit
-  text (`E-NCOMP-TEXT`).
-- **A definition name at tier 1: 64 bytes** (`src/compiler/native/compiler.f`
-  `NAME-CAP`). Tier 0 and the dictionary take any name the body capture holds;
-  the native compiler names a definition's functions in 128-byte buffers, a
-  quotation's with a suffix. Past it: `ncomp: cannot compile <name>: a
-  <length>-byte name; the limit is 64 bytes`, `E-NCOMP-NAME-CAP`, catchable
-  inside `evaluate`. Repair: shorten the name.
+  text (`E-NCOMP-TEXT`), and it is the only bound on a definition's name, on
+  both tiers.
 - **One REPL line: 255 bytes** (`src/habu/repl.f` `LLINE-MAX`). A longer line is
   refused, `hb: repl line over 255 bytes: <length> typed`, and read again, never
   truncated, evaluated or saved to history. Load long definitions from a file.
@@ -1416,10 +1460,12 @@ the rule.
 - **A storage declaration its definer refuses is the checker's refusal, named
   and exit 70.** The five definers that size a type (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  refuse an unknown, malformed, unstorable or missing type, a name with more
-  than one `:` or in a sealed package, and a literal count outside the extent
-  (the pre-verifier also refuses a count token that resolves to no `( -- n )`
-  word):
+  refuse an unknown, malformed, unstorable or missing type, a missing name, a
+  name with more than one `:` or in a sealed package, and a literal count
+  outside the extent (the pre-verifier also refuses a count token that resolves
+  to no `( -- n )` word). The name must stand on the definer's line and the
+  type's first token on the name's; one on the next line is missing, and that
+  line is the next statement ([type-families.md](type-families.md)):
   `4 TYPED-BUFFER B no-such-type` under `bin/hb --load` prints
   `habu: in B: unknown type 'no-such-type'` and exits 70, and `tools/check.f`
   reports it as `E-BAD-STORAGE` at the type's file, line and column in every
@@ -1575,7 +1621,7 @@ the rule.
   that check.f performs next (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:51, used at :78), `CTX0`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :75), `CTX0`
   (lib/process-command.f:437), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product is the run's `E-MISMATCH` (exit 70) and a typo in the same scope the

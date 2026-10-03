@@ -39,6 +39,7 @@ require lib/process-env.f
 require lib/build-cache.f
 require lib/engine-candidate.f
 require test/image-grant.f
+require test/keyed-image.f               \ the build's CPU budget and hang guard
 require test/whitebox-key.f
 
 package WHITEBOX-ENGINE
@@ -131,7 +132,7 @@ variable RESOLVED?
 : BUILD-RUN ( -- )
    BUILD-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN WHITEBOX-KEY:BUILD-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN KEYED-IMAGE:BUILD-TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

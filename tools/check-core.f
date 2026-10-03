@@ -11,7 +11,6 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f                \ the run stage spawns with an environment
 require lib/engine-candidate.f           \ and on the engine this names
-require lib/process-tree.f               \ a signal's answer ends the run stage's child tree
 require lib/signal.f                     \ check.f answers SIGTERM, SIGINT and SIGHUP
 require lib/fmt.f                        \ the answer names a step that throws
 require lib/source.f
@@ -66,8 +65,21 @@ $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
-120000 constant CHK-TIMEOUT-MS
+\ The run stage's child, and the verifier child of the pre-pass and of
+\ --verify-only, has CHK-DEADLINE-MS unless --deadline-ms gives another. A
+\ capture waits in poll(2), whose wait is an int of milliseconds, so no
+\ deadline is longer than CHK-DEADLINE-MAX.
+120000 constant CHK-DEADLINE-MS
+$7FFFFFFF constant CHK-DEADLINE-MAX
 67 constant CHK-E-CAPACITY
+\ A throw nothing handles ends a load: a code outside 1..255 is named on the
+\ last line of standard error, `hb: uncaught throw code N`, and exits
+\ UNCAUGHT-RC (docs/debugging.md). A checker record refused at the load throws
+\ its own code (docs/repair-diagnostics.md).
+UNCAUGHT-RC constant CHK-UNCAUGHT-RC
+E-TRUST-UNRESOLVED constant CHK-E-TRUST-ROW
+E-PKG-CONTEXT constant CHK-E-PKG-RECORD
+E-BAD-QUALIFIED constant CHK-E-QUALIFIED-RECORD
 
 0 constant CHK-SEL-NONE
 1 constant CHK-SEL-SOURCE
@@ -108,6 +120,7 @@ variable CHK-JSON
 variable CHK-ALL
 variable CHK-VERIFY
 variable CHK-STDIN-PATH-U
+variable CHK-DEADLINE                    \ the --deadline-ms value, 0 when none was given
 variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
 variable CHK-SEL-LABEL-U
@@ -117,7 +130,6 @@ variable CHK-OUT-U
 variable CHK-ERR-U
 variable CHK-MAP-U
 variable CHK-RC
-variable CHK-CHILD-RC
 variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
@@ -220,7 +232,7 @@ variable CHK-TFAM-NAME-I
    CHK-VERIFY @ if CHK-OUT-LN else CHK-ERR-LN then ;
 
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--all-errors] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
@@ -239,12 +251,16 @@ variable CHK-TFAM-NAME-I
 : CHK-ARG= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
 
+\ --stdin-path and --deadline-ms each consume the next token as their value.
+: CHK-VALUED-ARG? ( n -- bool ) {: idx:n :}
+   idx s" --stdin-path" CHK-ARG= idx s" --deadline-ms" CHK-ARG= or ;
+
 \ Establish the output stream before parsing can reject an earlier argument.
-\ --stdin-path consumes its next token as a value; -- ends option parsing.
+\ A valued option's value is skipped; -- ends option parsing.
 : CHK-VERIFY-ARG? ( -- bool )
    0 begin dup SCRIPT-ARGC < while
       dup s" --" CHK-ARG= if drop false exit then
-      dup s" --stdin-path" CHK-ARG= if
+      dup CHK-VALUED-ARG? if
          2 +
       else
          dup s" --verify-only" CHK-ARG= if drop true exit then
@@ -336,6 +352,27 @@ private
    a CHK-STDIN-PATH-BUF u BYTE-COPY
    u CHK-STDIN-PATH-U ! ;
 
+: CHK-DEADLINE-SET ( n -- ) {: ms:n :}
+   ms 1 < ms CHK-DEADLINE-MAX > or if CHK-USAGE then
+   ms CHK-DEADLINE ! ;
+
+\ The child's deadline in milliseconds, given once: a whole number from 1 to
+\ CHK-DEADLINE-MAX.
+: CHK-PARSE-DEADLINE ( -- )
+   CHK-ARG-I @ 1+ CHK-ARG-I !
+   CHK-ARG-I @ SCRIPT-ARGC >= if CHK-USAGE then
+   CHK-DEADLINE @ 0<> if CHK-USAGE then
+   CHK-ARG-I @ CHK-ARG$ STR>NUMBER? MATCH option
+      none OF CHK-USAGE ENDOF
+      some OF CHK-DEADLINE-SET ENDOF
+   ;MATCH ;
+
+\ The argument at CHK-ARG-I, and a valued option's value with it.
+: CHK-PARSE-AT ( -- )
+   CHK-ARG-I @ s" --stdin-path" CHK-ARG= if CHK-PARSE-STDIN-PATH exit then
+   CHK-ARG-I @ s" --deadline-ms" CHK-ARG= if CHK-PARSE-DEADLINE exit then
+   CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE ;
+
 : CHK-PARSE ( -- )
    0 CHK-ARG-I !
    begin CHK-ARG-I @ SCRIPT-ARGC < while
@@ -344,11 +381,7 @@ private
          CHK-COLLECT-REST
          exit
       then
-      CHK-ARG-I @ s" --stdin-path" CHK-ARG= if
-         CHK-PARSE-STDIN-PATH
-      else
-         CHK-ARG-I @ CHK-ARG$ CHK-PARSE-ONE
-      then
+      CHK-PARSE-AT
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
@@ -378,7 +411,6 @@ private
    0 CHK-OUT-U !
    0 CHK-ERR-U !
    0 CHK-RC !
-   0 CHK-CHILD-RC !
    0 CHK-NUM-I !
    0 CHK-LABEL-U !
    NULL$ drop CHK-LABEL-A CHK-PTR-U8!
@@ -403,6 +435,7 @@ private
    0 CHK-ALL !
    0 CHK-VERIFY !
    0 CHK-STDIN-PATH-U !
+   0 CHK-DEADLINE !
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
 
@@ -605,9 +638,9 @@ private
 \ The engine carries its own sources, so a run loads nothing from one and checks
 \ nothing there; rebuilding the engine checks it. An input set that is all such
 \ sources - a single file is a set of one - is refused at each input, as the
-\ input is given. Any other input is checked by the run, in an engine of its
-\ own, even when this process has loaded it: resident verification skips a
-\ file this image holds, as `require` skips it.
+\ input is given. Any other input is checked even when this process has loaded
+\ it: the pre-pass verifies it in the verifier child and the run loads it, each
+\ in an engine of its own.
 : CHK-INPUTS-ALL? ( [ ptr u8 n -- bool ] -- bool ) {: q :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ q execute 0= if unloop false exit then
@@ -1380,8 +1413,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-U$ CHK-ERR ;
 
 \ The run file's prefix turns checking off, names the subject for the checker's
-\ diagnostics and builds the hook the run is checked with (CHK-HOOK-ON turns it
-\ on). It shares the subject's first line when the subject follows it, and the
+\ diagnostics, turns its warnings off and builds the hook the run is checked
+\ with (CHK-HOOK-ON turns it on). The check before the run wrote the warnings,
+\ each in its own file and placed: the run loads what that check checked, so
+\ its warnings would repeat them, naming the subject for every file and placing
+\ none. It shares the subject's first line when the subject follows it, and the
 \ origin markers add no line break, so line N of the run file is line N of the
 \ subject: the engine counts the lines of the file it reads when it refuses a
 \ statement.
@@ -1390,6 +1426,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-LABEL CHK-RUN-QPATH+
    s"  DIAG-FILE!" CHK-RUN-SP
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-SP then
+   s" 0 WARN-DIAGS !" CHK-RUN-SP
    s" : CHECK-F-HOOK ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;" CHK-RUN-SP
    s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-SP ;
 
@@ -1447,6 +1484,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+ ;
 
+\ The deadline the child is given.
+: CHK-DEADLINE@ ( -- ms )
+   CHK-DEADLINE @ dup 0= if drop CHK-DEADLINE-MS then >MS ;
+
 \ The checked program runs with check.f's own environment: PATH for a TOOL
 \ lookup, HOME and HB_TMP for a scratch tree. An env-less spawn hands it a
 \ one-NULL envp, and a program that resolves an executable through $PATH then
@@ -1458,7 +1499,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
-   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
+   CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-DEADLINE@
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
              0 CHK-RC !
@@ -1485,10 +1526,24 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    s"  of standard error" SB-APPEND
    SB$ CHK-E-CHECK CHK-FAIL ;
 
+\ A run still going at its deadline is ended by the capture with every process
+\ it started (lib/process.f PROC-KILL-CAPTURE), and refused: what it wrote is
+\ not replayed, and one line names the subject and the deadline. A subject that
+\ needs longer is checked with a longer --deadline-ms.
+: CHK-RUN-LATE ( -- )
+   SB-RESET
+   s" check.f: " SB-APPEND
+   CHK-LABEL SB-APPEND
+   s" : the run passed its deadline of " SB-APPEND
+   CHK-DEADLINE@ MS>N FMT:SB-INT
+   s"  ms" SB-APPEND
+   SB$ CHK-E-CHECK CHK-FAIL ;
+
 : CHK-RUN-CAPPED ( -- )
    [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-PROC-TRUNCATED = if CHK-RUN-TOO-BIG then
+   rc E-PROC-TIMEOUT = if CHK-RUN-LATE then
    rc throw ;
 
 : CHK-REPLAY ( -- )
@@ -1561,13 +1616,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-: CHK-RUN-STATIC ( -- )
-   CHK-RUN-ALL ;
-
-: CHK-RUN-PREVERIFY-ACT ( -- )
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL
-   VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
-
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
    s" check.f: source-list entries:" CHK-ERR-LN
@@ -1578,37 +1626,29 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       1+
    repeat drop ;
 
-: CHK-PREVERIFY-DIAG-START ( -- )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
-
-: CHK-PREVERIFY-DIAG-FLUSH ( -- )
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF ;
-
 : CHK-PREVERIFY-FAIL ( n -- ) {: rc:n :}
-   CHK-JSON @ if CHK-PREVERIFY-DIAG-FLUSH rc CHK-THROW then
+   CHK-JSON @ if rc CHK-THROW then
    s" check.f: source preverify failed before run" CHK-ERR-LN
    s" check.f: label " CHK-ERR  CHK-LABEL CHK-ERR  CHK-LF CHK-ERR-C
    s" check.f: throw code " CHK-ERR  rc CHK-ERR-NONNEG  CHK-LF CHK-ERR-C
    CHK-SOURCE-LIST-REPORT
-   CHK-PREVERIFY-DIAG-FLUSH
    rc CHK-THROW ;
 
-\ The composition stops in one file of it, the one VERIFY:SOURCE-COMPOSE-
-\ STOPPED$ names: the subject by its label, any other file by its canonical
-\ path. Its bytes are the subject's, or the file's own.
-: CHK-STOPPED-SOURCE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if CHK-SOURCE-BYTES exit then
-   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+\ The pre-pass stops in one file of the composition, the one
+\ PREVERIFY-STOPPED$ names: the subject by its label, any other file by its
+\ canonical path. Its bytes are the subject's, or the file's own.
+: CHK-STOPPED-SOURCE ( -- ptr u8 n )
+   PREVERIFY-SUBJECT? if CHK-SOURCE-BYTES exit then
+   PREVERIFY-STOPPED$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
 
 \ A statement that threw while it was checked is reported where it stood, by
-\ the record --all-errors writes in the run's mode, and fails the run like a
-\ refusal.
-: CHK-PREVERIFY-THREW ( n -- ) {: rc:n :}
+\ the record --all-errors writes in the run's mode, and the check fails with a
+\ refusal's status, which this answers.
+: CHK-PREVERIFY-THREW ( n -- n ) {: rc:n :}
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   VERIFY:SOURCE-COMPOSE-STOPPED$ {: a:ptr u:n :}
-   rc a u a u CHK-STOPPED-SOURCE CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
-   CHK-E-CHECK CHK-THROW ;
+   rc PREVERIFY-AT PREVERIFY-STOPPED$ CHK-STOPPED-SOURCE
+   CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
+   CHK-E-CHECK ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined
@@ -1616,29 +1656,62 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ load.
 : CHK-PREVERIFY-DUP ( -- )
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   VERIFY:SOURCE-COMPOSE-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
+   PREVERIFY-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
-\ The checker's own diagnostics are JSON lines in either mode, written out when
-\ the composition ends, ahead of a record for its throw.
-: CHK-PREVERIFY-COMPOSE ( -- )
-   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
-   [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
-   DIAG-BUFFER$ CHK-ERR
-   DIAG-BUFFER-OFF
-   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW then
+\ The pre-pass stopped with the given code: the record a throw or a duplicate
+\ leaves, then the failure.
+: CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
+   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW CHK-PREVERIFY-FAIL then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
-   rc 0 <> if rc throw then ;
-
-\ The preverified files are standalone sources, not a continuation of whatever
-\ package this tool was called from, so the scope starts at neutral top level.
-: CHK-RUN-PREVERIFY ( -- )
-   CHK-PREVERIFY-DIAG-START
-   LINT-TRUE DIAG-JSON!
-   CHECKER-SCOPE-START-NEUTRAL
-   [: CHK-PREVERIFY-COMPOSE ;] catch {: rc:n :}
-   CHECKER-SCOPE-DONE
-   rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
+
+\ How a verifier child that gave no answer ended, as the closing line of its
+\ report: on stdout under --verify-only, with the rest of its prose, and on
+\ stderr for the pre-pass.
+: CHK-STATUS-LN ( outcome -- )
+   SB-RESET
+   s" check.f: the verifier did not complete: " SB-APPEND
+   MATCH outcome
+      exited OF s" exit " SB-APPEND CHK-U$ SB-APPEND ENDOF
+      signaled OF s" signal " SB-APPEND CHK-U$ SB-APPEND ENDOF
+      timeout OF s" deadline of " SB-APPEND CHK-DEADLINE@ MS>N CHK-U$ SB-APPEND s"  ms passed" SB-APPEND ENDOF
+   ;MATCH
+   SB$ CHK-EXPLAIN-LN ;
+
+: CHK-TRUNCATED-LN ( -- )
+   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-EXPLAIN-LN ;
+
+\ The pre-pass's packets and its child's prose, both on stderr.
+: CHK-PREVERIFY-RELAY ( -- )
+   VERIFY-OUT$ CHK-ERR
+   VERIFY-LOG$ CHK-ERR ;
+
+\ The pre-pass runs in the verifier child, on the engine's image
+\ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
+\ ones the subject loads, the words the run will have, never a word only this
+\ process loaded: lib/fs.f's FILE-SIZE for check.f, lib/test.f's T= for a
+\ harness that checks in process. Its packets and the child's prose come
+\ first, then what its stop leaves.
+: CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
+   CHK-PREVERIFY-RELAY
+   MATCH result
+      ok OF {: rc:n :} rc 0<> if rc CHK-PREVERIFY-STOPPED then ENDOF
+      err OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+   ;MATCH ;
+
+: CHK-PREVERIFY-ACT ( -- )
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHK-DEADLINE@ PREVERIFY-BYTES
+   CHK-PREVERIFY-REPORT ;
+
+\ More output than the child's capture holds leaves no answer: the packets and
+\ prose received before it, and a closing line.
+: CHK-RUN-PREVERIFY ( -- )
+   [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TRUNCATED <> if rc throw then
+   CHK-PREVERIFY-RELAY
+   CHK-TRUNCATED-LN
+   CHK-E-UNAVAILABLE CHK-THROW ;
 
 : CHK-MAP+ ( ptr u8 n -- )
    >LEN CHK-MAP-BUF CHK-ERR-CAP >LEN CHK-MAP-U SOURCE-APPEND-BYTES ;
@@ -1682,24 +1755,38 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    2 >FD 2 >FD JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
-: CHK-HANDLE-HB-NONJSON ( -- )
-   CHK-ERR-U @ 0= if CHK-RUN-STATIC exit then
-   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
+\ Whether the run ended on an uncaught throw of code.
+: CHK-RUN-THREW? ( n -- bool ) {: code:n :}
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   CHK-LF SB-APPEND-C
+   CHK-ERR-BUF CHK-ERR-U @ SB$ ENDS-WITH? ;
+
+\ check.f exits with its run's status, but a run that ends on a refused checker
+\ record's throw exits UNCAUGHT-RC as any unhandled throw does, and as check.f
+\ exits for an overlong path (CHK-E-CAPACITY). That run is refused, so it exits
+\ as a refusal.
+: CHK-RUN-STATUS ( n -- n ) {: rc:n :}
+   rc CHK-UNCAUGHT-RC <> if rc exit then
+   CHK-E-TRUST-ROW CHK-RUN-THREW? if CHK-E-CHECK exit then
+   CHK-E-PKG-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
+   CHK-E-QUALIFIED-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
+   rc ;
 
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
       exit
    then
-   CHK-RC @ CHK-CHILD-RC !
+   CHK-RC @ CHK-RUN-STATUS {: rc:n :}
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
-      CHK-RUN-STATIC
       CHK-RUN-JSON-ONLY
    else
-      CHK-HANDLE-HB-NONJSON
+      CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
    then
-   CHK-CHILD-RC @ CHK-THROW ;
+   rc CHK-THROW ;
 
 \ The nominal pass registers the declarations it finds in the subject source.
 \ Those declarations belong to the packages that source declares, so the scope
@@ -1767,15 +1854,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
    CHK-VERIFY-STDIN ;
 
-: CHK-STATUS-LN ( outcome -- )
-   s" check.f: the verifier did not complete: " CHK-OUT
-   MATCH outcome
-      exited OF s" exit " CHK-OUT CHK-U$ CHK-OUT ENDOF
-      signaled OF s" signal " CHK-OUT CHK-U$ CHK-OUT ENDOF
-      timeout OF s" deadline passed" CHK-OUT ENDOF
-   ;MATCH
-   CHK-LF CHK-OUT-C ;
-
 \ The verifier's packets on stderr, its prose on stdout.
 : CHK-VERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
@@ -1799,7 +1877,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 : CHK-VERIFY-ACT ( -- )
    CHK-VERIFY-SELECT {: path:ptr pathu:n :}
-   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-TIMEOUT-MS >MS VERIFY-BYTES
+   CHK-SRC-BUF CHK-SRC-U @ path pathu CHK-DEADLINE@ VERIFY-BYTES
    CHK-VERIFY-REPORT ;
 
 \ More output than the verifier's capture holds leaves no verdict: the packets
@@ -1809,7 +1887,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    rc 0= if exit then
    rc E-PROC-TRUNCATED <> if rc throw then
    CHK-VERIFY-RELAY
-   s" check.f: the verifier did not complete: its output exceeded the capture" CHK-OUT-LN
+   CHK-TRUNCATED-LN
    CHK-E-UNAVAILABLE CHK-THROW ;
 
 : CHK-RUN-INNER ( -- )
@@ -1859,27 +1937,19 @@ private
 \ capture waited. RUN catches nothing: a program that runs a check in process
 \ keeps its own answer.
 \
-\ The answer kills the child with every process under it (lib/process-tree.f)
-\ and reaps it, removes the temporary directory, and dies of the signal. A step
-\ that throws is named and the answer goes on. A run that ended before its child
-\ started - a refused program, a usage error, resident inputs - leaves the row's
-\ pid at 0 or PROC-NO-PID, and neither names a child: kill(0) is check.f's own
-\ process group.
+\ The answer kills the child with every process under it and reaps it
+\ (lib/process.f PROC-KILL-CAPTURE), removes the temporary directory, and dies
+\ of the signal. A step that throws is named and the answer goes on. A run that
+\ ended before its child started - a refused program, a usage error, resident
+\ inputs - leaves the row's pid at 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
+\ kills nothing for either: kill(0) is check.f's own process group.
 : CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then
    s" check: " CHK-ERR what whatu CHK-ERR s"  threw " CHK-ERR
    SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;
 
-: CHK-KILL-TREE ( -- )
-   PROC-PID @ >PID PROC-TREE:KILL-TREE ;
-
-: CHK-KILL-CHILD ( -- )
-   PROC-PID @ 0 <= if exit then
-   s" child tree kill" [: CHK-KILL-TREE ;] catch CHK-SAY-THROW
-   s" child reap" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW ;
-
 : CHK-SIGNAL-ANSWER ( n -- ) {: sig:n :}
-   CHK-KILL-CHILD
+   s" child kill" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW
    s" cleanup" [: CHK-TEMP-CLEAN ;] catch CHK-SAY-THROW
    s" check: signal" sig SIGNAL:DIE-OF ;
 

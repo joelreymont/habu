@@ -23,9 +23,9 @@
 \ terminal's buffer fills, so a reap that only waits waits for a child that is
 \ waiting for it: measured, 5 m 34 s in do_wait before a hand kill. REAP reads
 \ the master until the child hangs up, waits out what is left of the budget on
-\ the child's lifetime watch, and on expiry kills the child and names it with the
-\ bytes it left unread. PROC-WAIT-RC is still the unbounded wait for callers that
-\ want one.
+\ the child's lifetime watch, and on expiry kills the child, with every process
+\ it started, and names it with the bytes it left unread. PROC-WAIT-RC is still
+\ the unbounded wait for callers that want one.
 \
 \ CLAIMS. A full buffer keeps its tail, so a scan of BUF$ cannot answer a
 \ question about bytes a compaction dropped. Two shapes answer a negative claim
@@ -283,8 +283,11 @@ private
    0 begin LEFTOVER-STEP 0= if exit then again ;
 
 
+\ Kill the child and every process it started, then reap the child. What the
+\ child spawned holds the terminal too, and the master hangs up only once that
+\ is gone; lib/process.f PROC-KILL-TREE reports a walk that throws.
 : KILL-REAP ( pid -- ) {: p:pid :}
-   p SIGKILL PROC-KILL-RAW drop
+   p PROC-KILL-TREE
    p PROC-WAIT-STATUS drop ;
 
 

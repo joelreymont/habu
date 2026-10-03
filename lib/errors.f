@@ -980,7 +980,6 @@
 -8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-NCOMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
--8575 constant E-NCOMP-NAME-CAP \ a definition name longer than the native compiler's function names hold
 -8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
@@ -1121,7 +1120,7 @@
 \ of that table is compiled into published code, so the table refuses rather than
 \ reuses, and a reader refuses rather than naming some other family.
 -8640 constant E-NTRAP-ORD      \ an ordinal that names no row of the family table: the number was written into a published routine by this same process, so a number outside the table means the module or the table is corrupt and naming another family would be worse than saying nothing
--8641 constant E-NTRAP-NAME     \ a family name this table cannot hold: empty, or longer than the message buffer's room for one
+-8641 constant E-NTRAP-NAME     \ an empty family or callee name, which no trap message could name
 -8642 constant E-NTRAP-CAP      \ more families than the table holds, or more name bytes than its arena holds. The ordinals it has already answered are compiled into published routines, so a name it cannot hold is a refusal rather than a reused ordinal
 -8643 constant E-A64SEL-ORDER   \ a block whose edges disagree about the memory order it is entered with, or that no edge reaches at all. The machine two-way branch carries no operands, so an order two paths differ on cannot be handed over as an argument here; a source that needs one says so among the block's own arguments
 
@@ -1392,9 +1391,8 @@
 \ The database layer over package PG: -9320..-9329, the decade after
 \ IMAGE-LIFECYCLE's, minted by lib/db/rows.f, which owns package DB-ROWS.
 
-\ WebSocket, RFC 6455 (package WS): -9330..-9339. The frame codec
-\ (lib/net/ws-frame.f) mints from the head of the block; the codes after it are
-\ left for the connection words.
+\ The WebSocket frame codec, RFC 6455 (package WS, lib/net/ws-frame.f):
+\ -9330..-9339. The codes after E-WS-MASK are its reserve.
 -9330 constant E-WS-FIRST
 -9339 constant E-WS-LAST
 -9330 constant E-WS-RSV           \ a reserved bit set in a frame's first byte
@@ -1407,7 +1405,7 @@
 \ The HTTP/1.1 server (package HTTP, lib/net/http.f): -9340..-9349.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
--9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT
+-9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it
 -9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot
 -9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
 -9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
@@ -1450,3 +1448,13 @@
 
 \ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
 \ LSP.
+
+\ WebSocket connections over the HTTP server (package WS, lib/net/ws.f):
+\ -9410..-9419.
+-9410 constant E-WS-CONN-FIRST
+-9419 constant E-WS-CONN-LAST
+-9410 constant E-WS-CLOSED        \ a send on a socket that is closing, closed or past its handler, or whose connection failed under the send
+-9411 constant E-WS-CODE          \ a close status no endpoint may send: outside 1000..4999, reserved or unassigned
+-9412 constant E-WS-SOCKET        \ RECEIVE through a handle that is not the calling worker's own live socket
+-9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
+-9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)

@@ -1237,8 +1237,8 @@ variable LONG-J
 \ CKR-SEVEN. A definition naming such a product is left to the run, which
 \ certifies it, but only after the rendering statement and only in the wordlist
 \ that statement ran in; anything else unknown is still refused by the
-\ pre-pass. `FUNCTION:` is resident here (lib/fs-mutate.f requires
-\ lib/ffi-abi.f), and TASK:+USER is the renderer lib/crypto/evp.f uses.
+\ pre-pass. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
+\ for TASK:+USER, the renderer lib/crypto/evp.f uses.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
    s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
@@ -1478,6 +1478,49 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
+
+\ ---- the child's deadline ----------------------------------------------------
+\ --deadline-ms gives the child a deadline other than check.f's 120 s: a whole
+\ number of milliseconds from 1 to 2147483647, the longest wait poll(2) takes,
+\ given once. Anything else is a usage error. A run past its deadline is
+\ test/check-signal-test.f's: it needs the run's processes watched.
+
+: DEADLINE-RUN ( ptr u8 n -- n n n ) {: value:ptr valueu:n :}
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   value valueu CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: EXPECT-DEADLINE-USAGE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 64 T=
+   label labelu T-LABEL outu 0 T=
+   label labelu T-LABEL CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
+
+: DEADLINE-TWICE ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   s" --deadline-ms" CHECK-ARG+
+   s" 60000" CHECK-ARG+
+   DIRECT$ CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: DEADLINE-MISSING ( -- n n n )
+   CHECK-ARGV-START
+   s" --deadline-ms" CHECK-ARG+
+   CHECK-CAPTURE ;
+
+: TEST-DEADLINE-OPTION ( -- )
+   DIRECT$ GOOD$ WRITE-ALL
+   s" 2147483647" DEADLINE-RUN
+   s" deadline: the longest deadline is taken" T-LABEL 0 T=
+   2drop
+   s" 0" DEADLINE-RUN s" deadline: zero" EXPECT-DEADLINE-USAGE
+   s" 2147483648" DEADLINE-RUN s" deadline: past the longest" EXPECT-DEADLINE-USAGE
+   s" 5s" DEADLINE-RUN s" deadline: not a number" EXPECT-DEADLINE-USAGE
+   DEADLINE-TWICE s" deadline: given twice" EXPECT-DEADLINE-USAGE
+   DEADLINE-MISSING s" deadline: no value" EXPECT-DEADLINE-USAGE ;
 
 : TEST-SOURCE-BYTES-COPY ( -- )
    GOOD$ MUT-SRC!
@@ -1787,8 +1830,8 @@ variable LONG-J
    CAP-ERR erru RESERVED-LIST-AT$ CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
-   \ The resident harness has already provided lib/test.f. A fresh tool
-   \ process also exercises its resident verification instead of skipping it.
+   \ check.f in a process of its own, which never loaded lib/test.f, checks
+   \ the source list as this harness does in process.
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
    s" lib/test.f" CHECK-ARG+
@@ -3885,6 +3928,46 @@ variable REQ-U
    CAP-ERR erru s" E-STATEMENT-THROW " CONTAINS? TTRUE
    CAP-ERR erru s" st-throw.f:2:1: throw 7142 at ';using'" CONTAINS? TTRUE ;
 
+\ A name with a second ':' after a non-edge first one keys no record, and the
+\ checker refuses it where the record would be written (checker.f
+\ CHECKER-RECORD-NAME) by a throw, so the check reports it as a statement that
+\ threw, at the statement, in prose and JSON. Under --all-errors a definition
+\ refused before it is still reported: ending the process there reported
+\ nothing but the refusal's own line.
+: MALNAME$ ( -- ptr u8 n )
+   s" : CKT:MAL:NAME ( -- ) ;" ;
+
+: MALNAME-AFTER$ ( -- ptr u8 n )
+   s\" : CKT-MAL-BAD ( -- ) 1 ;\ndefer CKT:MAL:DEF ( -- )" ;
+
+: TEST-MALFORMED-NAME ( -- )
+   MALNAME$ DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7152 at ';'" CONTAINS? TTRUE
+   MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED-RECORD\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"throw_code\":7152" CONTAINS? TTRUE ;
+
+: TEST-MALFORMED-NAME-ALL ( -- )
+   MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7152 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
+
+\ The throw leaves a raw storage definer's signature (verify-source.f
+\ RAW-TRUST-NEXT) mid-parse; a later check in the same process must still read
+\ an ordinary signature's type variables as ordinary, not as raw cells.
+: TEST-MALFORMED-RAW ( -- )
+   s" variable CKT:MAL:VAR" DIRECT-STDIN 70 T= {: outu:n erru:n :}
+   CAP-ERR erru s" throw 7152" CONTAINS? TTRUE
+   s\" : CKT-MAL-KEEP ( a -- a ) ;\n: CKT-MAL-USE ( ptr u8 -- ptr u8 ) CKT-MAL-KEEP ;"
+   DIRECT-STDIN 0 T= {: outu2:n erru2:n :}
+   erru2 0 T= ;
+
 \ A string the file never closes stops source discovery before any file is
 \ composed. Every --json-errors mode reports it by the one record --all-errors
 \ writes for it on standard input, in the file that holds it and at the string,
@@ -4023,14 +4106,11 @@ variable REQ-U
 \ A checker capacity fault is no storage refusal: a DYNAMIC-BUFFER whose derived
 \ names overrun the checker's name buffer (src/core/checker.f LBUF-NM-CAP)
 \ throws E-CHECKER-LAYOUT-BUFFER (7121) out of its statement, at the token the
-\ checker read last. The 250-byte name has a line of its own, under the engine's
-\ 255-byte line.
+\ checker read last: the type, after the 250-byte name on the definer's line.
 : CAP-THROW-FILES ( -- )
-   SB-RESET s" DYNAMIC-BUFFER" REQ-LINE+
-   s" CKT-CT-" SB-APPEND
+   SB-RESET s" DYNAMIC-BUFFER CKT-CT-" SB-APPEND
    243 0 ?do $4e SB-APPEND-C loop
-   $0a SB-APPEND-C
-   s" n" REQ-LINE+
+   s"  n" REQ-LINE+
    s" cap-throw.f" REQ-WRITE ;
 
 : TEST-CAPACITY-THROW ( -- )
@@ -4039,7 +4119,7 @@ variable REQ-U
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
    CAP-ERR erru s\" \"token\":\"n\"" CONTAINS? TTRUE
-   CAP-ERR erru s\" cap-throw.f\",\"line\":3,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru s\" cap-throw.f\",\"line\":1,\"column\":267," CONTAINS? TTRUE
    CAP-ERR erru s\" \"throw_code\":7121" CONTAINS? TTRUE ;
 
 \ A top-level loader inside a package, or under a file-level `using`, runs its
@@ -4201,12 +4281,13 @@ variable REQ-U
 \ loads whenever the body does and the other arm never: its file left to the
 \ run leaves the word undefined, and the other arm's file checked too reads
 \ the word as a duplicate. req-alt.f picks as tools/object-image.f does, an
-\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`; and
-\ req-alt3.f nests a target `if` in the `else` arm of another. A loader under
-\ any other condition is the run's: the one in CKT-RQ-COND never runs, and
-\ its file defines the word again. So are those of req-alt4.f, which defines
-\ the word itself: each of its `if`s tests a local pushed after a target
-\ predicate, not the predicate.
+\ arm ending in `exit`; req-alt2.f reads each target `if` to its `then`;
+\ req-alt3.f nests a target `if` in the `else` arm of another; and req-alt5.f
+\ ends every arm in `EXIT`, which the engine reads as `exit`, so the loader
+\ after the arms never runs. A loader under any other condition is the run's:
+\ the one in CKT-RQ-COND never runs, and its file defines the word again. So
+\ are those of req-alt4.f, which defines the word itself: each of its `if`s
+\ tests a local pushed after a target predicate, not the predicate.
 : REQ-PICK+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: guard:ptr guardu:n file:ptr fileu:n tail:ptr tailu:n :}
    s"    " SB-APPEND guard guardu SB-APPEND s"  if " SB-APPEND
@@ -4250,14 +4331,22 @@ variable REQ-U
    s" HB-TARGET-LINUX? off" s" req-alt-cond.f" s"  required then drop" REQ-PICK+
    s" HB-TARGET-MACOS? off" s" req-alt-cond.f" s"  required then drop ;" REQ-PICK+
    s" 0 0= 0= CKT-RQ-LOCAL" REQ-LINE+
-   s" req-alt4.f" REQ-ALT-USE ;
+   s" req-alt4.f" REQ-ALT-USE
+   SB-RESET s" : CKT-RQ-PICK4 ( -- )" REQ-LINE+
+   s" HB-TARGET-LINUX?" s" req-alt-linux.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-MACOS?" s" req-alt-macos.f" s"  required EXIT then" REQ-PICK+
+   s" HB-TARGET-LINUX-X86-64?" s" req-alt-x64.f" s"  required EXIT then" REQ-PICK+
+   s"    " SB-APPEND s" req-alt-cond.f" REQ-LIT+ s"  required ;" REQ-LINE+
+   s" CKT-RQ-PICK4" REQ-LINE+
+   s" req-alt5.f" REQ-ALT-USE ;
 
 : TEST-REQUIRE-TARGET ( -- )
    REQ-TARGET-FILES
    s" req-alt.f" REQ-ACCEPTED-EVERY
    s" req-alt2.f" REQ-ACCEPTED-EVERY
    s" req-alt3.f" REQ-ACCEPTED-EVERY
-   s" req-alt4.f" REQ-ACCEPTED-EVERY ;
+   s" req-alt4.f" REQ-ACCEPTED-EVERY
+   s" req-alt5.f" REQ-ACCEPTED-EVERY ;
 
 \ The pre-pass reads a target predicate's spelling as the engine's answer, so a
 \ source that defines that spelling, by `:` or by `defer`, is refused at the
@@ -4408,17 +4497,44 @@ variable AGREE-ERR-U
    s" : CKT-AG-USE ( -- n ) CKT-AG-NOPE ;" REQ-LINE+
    s" agree.f" REQ-WRITE ;
 
+\ The fixture is refused by the pre-pass as undefined at the token, here and on
+\ the command line, with the same report.
+: AGREE-UNDEFINED ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n tok:ptr toku:n :}
+   file fileu REQ-RUN {: outu:n erru:n rc:n :}
+   CAP-ERR AGREE-ERR erru BYTE-COPY  erru AGREE-ERR-U !
+   outu erru rc tok toku EXPECT-PREVERIFY-UNDEFINED
+   file fileu REQ$ CLI-PATH {: cliu:n clie:n clirc:n :}
+   rc clirc T=
+   outu cliu T=
+   AGREE-ERR AGREE-ERR-U @ CAP-ERR clie T$= ;
+
 : TEST-REPEAT-DEFINER ( -- )
    AGREE-DEFINER
    s" agree.f" REQ-RUN EXPECT-ACCEPTED
    AGREE-PLAIN
-   s" agree.f" REQ-RUN {: outu:n erru:n rc:n :}
-   CAP-ERR AGREE-ERR erru BYTE-COPY  erru AGREE-ERR-U !
-   outu erru rc s" CKT-AG-NOPE" EXPECT-PREVERIFY-UNDEFINED
-   s" agree.f" REQ$ CLI-PATH {: cliu:n clie:n clirc:n :}
-   rc clirc T=
-   outu cliu T=
-   AGREE-ERR AGREE-ERR-U @ CAP-ERR clie T$= ;
+   s" agree.f" s" CKT-AG-NOPE" AGREE-UNDEFINED ;
+
+\ The pre-pass sees the program the run loads: the engine and what the subject
+\ loads. A word only the checking process loaded - lib/test.f's T= in this
+\ harness, lib/fs.f's FILE-SIZE here and in check.f alike - is undefined to it
+\ in both, a subject that requires lib/fs.f itself has FILE-SIZE, and one that
+\ includes lib/process.f declares its `outcome` family afresh, as the load
+\ does, though this process declared it when it loaded the file.
+: TEST-PREPASS-VIEW ( -- )
+   SB-RESET s" : CKT-PV-ASSERT ( n n -- ) T= ;" REQ-LINE+
+   s" view-harness.f" REQ-WRITE
+   s" view-harness.f" s" T=" AGREE-UNDEFINED
+   SB-RESET s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   s" view-tool.f" REQ-WRITE
+   s" view-tool.f" s" FILE-SIZE" AGREE-UNDEFINED
+   SB-RESET s" require lib/fs.f" REQ-LINE+
+   s" : CKT-PV-SIZE ( ptr u8 n -- n ) FILE-SIZE ;" REQ-LINE+
+   s" view-own.f" REQ-WRITE
+   s" view-own.f" REQ-RUN EXPECT-ACCEPTED
+   s" view-own.f" REQ$ CLI-PATH EXPECT-ACCEPTED
+   SB-RESET s" include lib/process.f" REQ-LINE+
+   s" view-family.f" REQ-WRITE
+   s" view-family.f" REQ-RUN EXPECT-ACCEPTED ;
 
 \ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
 \ process library, which used to leave the run with nothing but `hb: uncaught
@@ -4885,10 +5001,10 @@ variable LC-CANON-U
    erru s" code" s" E-ENGINE-PROVIDED" LC-PACKET s" file" LC-STRING$
    s" load-context: engine-provided, file as given" T-LABEL s" lib/string.f" T$= ;
 
-\ A file of check.f's own closure is held by the checking image though the
-\ engine does not provide it: resident verification skips it, as `require`
-\ skips a held file, and the run stage checks it in an engine of its own, as
-\ `bin/hb --load` loads it.
+\ A file of check.f's own closure, which the engine does not provide, is
+\ checked as any other: the pre-pass verifies it in the verifier child, whose
+\ image does not hold it, and the run stage loads it in an engine of its own,
+\ as `bin/hb --load` does.
 : LC-TOOL-CLOSURE-CASE ( -- )
    s" lib/process.f" LC-ALL
    s" load-context: a file of check.f's own closure" LC-EXPECT-CLEAN ;
@@ -5100,6 +5216,116 @@ variable LC-CANON-U
    LC-SPELLING-CASE
    LC-STDIN-CASE ;
 
+\ A bare name two used packages both export is refused in a definition
+\ (E-USING-AMBIGUOUS, checker.f CHECKER-USED-SYM) with a diagnostic of its own,
+\ as a used public a global shadows is: every check.f path writes a packet
+\ naming the token where the file holds it and each package it resolves in, or
+\ under --all-errors the same as prose, and none reports a statement throw. The
+\ token has a line of its own, so its place is the token's, not the
+\ definition's.
+: UAMB-LINES ( -- )
+   s" package CKT-UAMB-A" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UAMB-W ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" package CKT-UAMB-B" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UAMB-W ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-UAMB-A" REQ-LINE+
+   s" using CKT-UAMB-B" REQ-LINE+
+   s" : CKT-UAMB-USE ( -- )" REQ-LINE+
+   s"    1" REQ-LINE+
+   s"    CKT-UAMB-W" REQ-LINE+
+   s" ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" ;using" REQ-LINE+ ;
+
+: UAMB$ ( -- ptr u8 n )  s" ckt-uamb.f" REQ$ ;
+
+\ tools/check.f run on the fixture as the command line runs it, after the
+\ options CHECK-ARG+ added: its stderr length and exit status.
+: UAMB-RUN ( -- n n )
+   UAMB$ CHECK-ARG+
+   CHECK-CAPTURE rot drop ;
+
+: UAMB-NUM ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: p:n key:ptr keyu:n want:ptr wantu:n label:ptr labelu:n :}
+   label labelu T-LABEL p key keyu LC-NUMBER$ want wantu T$= ;
+
+\ The checker's packet, and no statement-throw record.
+: UAMB-PACKET ( n ptr u8 n -- )
+   {: erru:n label:ptr labelu:n :}
+   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:n :}
+   label labelu T-LABEL p 0 >= TTRUE
+   label labelu T-LABEL
+   p s" repair_class" LC-STRING$ s" disambiguate_using_ambiguous" T$=
+   label labelu T-LABEL p s" token" LC-STRING$ s" CKT-UAMB-W" T$=
+   p s" file" LC-STRING$ UAMB$ label labelu LC-EXPECT-FILE
+   p s" line" s" 13" label labelu UAMB-NUM
+   p s" column" s" 4" label labelu UAMB-NUM
+   p s" byte_start" s" 192" label labelu UAMB-NUM
+   p s" byte_end" s" 202" label labelu UAMB-NUM
+   label labelu T-LABEL
+   CAP-ERR erru s\" \"used_packages\":[\"ckt-uamb-a\",\"ckt-uamb-b\"]," CONTAINS? TTRUE
+   label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+
+\ A refused definition ends the check as the uncaught refusal does (67), and
+\ --verify-only as a refusal (70).
+: UAMB-JSON-CASE ( n n n ptr u8 n -- )
+   {: erru:n rc:n want:n label:ptr labelu:n :}
+   label labelu T-LABEL rc want T=
+   erru label labelu UAMB-PACKET ;
+
+\ bin/hb --load compiles the source, and the checker binds a body's token
+\ through the engine's lookup (checker.f LIVE-BIND), not through the replay
+\ check.f's packet comes from. With no global of the tail the engine's own
+\ lookup refuses the token first (rc 94); a global defined under both usings
+\ binds, and the checker refuses the reference as ambiguous, naming both
+\ packages there too, at tier 0 and at tier 1.
+: UAMB-LOAD$ ( n -- ptr u8 n )
+   {: tier:n :}
+   SB-RESET
+   s" package CKT-UAMB-A public : CKT-UAMB-W ( n -- ) drop ; ;package" SB-APPEND
+   $0a SB-APPEND-C
+   s" package CKT-UAMB-B public : CKT-UAMB-W ( n -- ) drop ; ;package" SB-APPEND
+   $0a SB-APPEND-C
+   tier 0 <> IF s" 1 set-tier" SB-APPEND $0a SB-APPEND-C THEN
+   s" using CKT-UAMB-A using CKT-UAMB-B" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-UAMB-W ( n -- ) drop ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-UAMB-USE ( -- ) 1 CKT-UAMB-W ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;using ;using" SB-APPEND
+   SB$ ;
+
+: UAMB-LOAD-CASE ( n ptr u8 n -- )
+   {: tier:n label:ptr labelu:n :}
+   tier UAMB-LOAD$ HB-LOAD-SRC rot drop {: erru:n rc:n :}
+   label labelu T-LABEL rc 67 T=
+   label labelu T-LABEL
+   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE ;
+
+: TEST-USING-AMBIGUOUS ( -- )
+   SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
+   CHECK-ARGV-START UAMB-RUN 67 s" using-ambiguous: plain" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   UAMB-RUN 67 s" using-ambiguous: --json-errors" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --verify-only" CHECK-ARG+
+   UAMB-RUN 70 s" using-ambiguous: --verify-only" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --all-errors" CHECK-ARG+
+   UAMB-RUN {: erru:n rc:n :}
+   s" using-ambiguous: --all-errors" T-LABEL rc 67 T=
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" E-USING-AMBIGUOUS habu: bare 'CKT-UAMB-W' " CONTAINS? TTRUE
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   0 s" using-ambiguous: --load" UAMB-LOAD-CASE
+   1 s" using-ambiguous: --load at tier 1" UAMB-LOAD-CASE ;
+
 \ A source checked with the files it loads; a case list of its own keeps
 \ TEST-MAIN under the 8000-byte body limit.
 : REQUIRE-CASES ( -- )
@@ -5205,6 +5431,7 @@ variable LC-CANON-U
    s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN
    s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
    s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
+   s" check/deadline-option" [: TEST-DEADLINE-OPTION ;] CASE-RUN
    s" check/source-bytes-copy" [: TEST-SOURCE-BYTES-COPY ;] CASE-RUN
    s" check/file-path-copy" [: TEST-FILE-PATH-COPY ;] CASE-RUN
    s" check/source-list-idempotent" [: TEST-LIST-IDEMPOTENT ;] CASE-RUN
@@ -5267,12 +5494,17 @@ variable LC-CANON-U
    s" check/repeat-file" [: TEST-REPEAT-FILE ;] CASE-RUN
    s" check/repeat-list" [: TEST-REPEAT-LIST ;] CASE-RUN
    s" check/repeat-definer" [: TEST-REPEAT-DEFINER ;] CASE-RUN
+   s" check/prepass-view" [: TEST-PREPASS-VIEW ;] CASE-RUN
    s" check/oversize" [: TEST-OVERSIZE ;] CASE-RUN
    DECL-CASES
    REQUIRE-CASES
    s" check/statement-throw-json" [: TEST-STATEMENT-THROW-JSON ;] CASE-RUN
    s" check/statement-throw-prose" [: TEST-STATEMENT-THROW-PROSE ;] CASE-RUN
+   s" check/malformed-name" [: TEST-MALFORMED-NAME ;] CASE-RUN
+   s" check/malformed-name-all-errors" [: TEST-MALFORMED-NAME-ALL ;] CASE-RUN
+   s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
+   s" check/using-ambiguous" [: TEST-USING-AMBIGUOUS ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
    s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN

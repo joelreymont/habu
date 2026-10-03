@@ -291,8 +291,11 @@ STORAGE-CAPTURE-INSTALL
 \ ---- the stored type --------------------------------------------------------
 \ Every storage definer reads its type here, so a pointer chain, a family
 \ application and a spaced quotation or scheme reach the checker whole. The
-\ first token is read as parse-name reads one. When there is none, the span is
-\ empty, and the checker refuses that by name (CHECKER-STORAGE-TYPE-REFUSE).
+\ declaration ends with its line: a definer reads its name on its own line and
+\ the type's first token on the name's (STORAGE-LINE-TOKEN). With no name there
+\ the definer is refused at its own spelling (CHECKER-STORAGE-NAME-REFUSE). With
+\ no first token the span is empty, and the checker refuses that by name
+\ (CHECKER-STORAGE-TYPE-REFUSE).
 
 \ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
 \ that file loads after this one. Pointing it back at a token parse-name read
@@ -301,29 +304,36 @@ $36A0 constant STGT-INP-CELL
 : STORAGE-UNREAD ( ptr u8 -- )
    NULL-PTR - data-base STGT-INP-CELL + ! ;
 
+\ The next token, as parse-name reads one, when it stands on the cursor's line:
+\ the bytes the read skips hold no line feed (CHECKER-TYPE-SPAN-BREAK?). A token
+\ on a later line goes back to the input, and none is read.
+: STORAGE-LINE-TOKEN ( -- ptr u8 n )
+   data-base STGT-INP-CELL + @ {: at:n :}
+   parse-name {: a:ptr u:n :}
+   a NULL-PTR - at - {: gap:n :}
+   a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then
+   a u ;
+
 \ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). A token on a later line
-\ goes back to the input.
+\ it, and not past its line.
 : STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended if LBUF-FALSE exit then
-   STGT-A @ STGT-U @ + {: end:ptr :}
-   parse-name {: a:ptr u:n :}
+   STORAGE-LINE-TOKEN {: a:ptr u:n :}
    u 0= if LBUF-FALSE exit then
-   end a end - CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD LBUF-FALSE exit then
    a STGT-A !  u STGT-U !  LBUF-TRUE ;
 
 \ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
 \ or with its line.
 : STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
-   parse-name STGT-U !  STGT-A !
+   STORAGE-LINE-TOKEN STGT-U !  STGT-A !
    STGT-A @ STGT-START !
    0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
 : LAYOUT-BUFFER ( n -- ) {: count:n :}
-   parse-name {: name:ptr nameu:n :}
+   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   nameu 0= if s" LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
@@ -510,9 +520,9 @@ PRIM: LDEFER-GROW-QUOT PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 3 constant LDEFER-CTRL-CELLS   \ off-cell, cap-cell, cnt-cell
 
 : DEFER-LAYOUT-BUFFER ( -- )
-   parse-name {: name:ptr nameu:n :}
+   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   nameu 0= if s" DEFER-LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then              \ the name and its control-cell word
    name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then   \ guard the published NAME-BIND too
@@ -567,9 +577,9 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 : TYPED-BUFFER ( n -- ) {: count:n :}
-   parse-name {: name:ptr nameu:n :}
+   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   nameu 0= if s" TYPED-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
@@ -581,9 +591,9 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
 : TYPED-VARIABLE ( -- )
-   parse-name {: name:ptr nameu:n :}
+   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   nameu 0= if s" TYPED-VARIABLE" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
@@ -673,9 +683,9 @@ variable DBUF-W
    base LBUF-BYTES @ LBUF-ZERO ;
 
 : DYNAMIC-BUFFER ( -- )
-   parse-name {: name:ptr nameu:n :}
+   STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
+   nameu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
-   nameu 0= if E-LAYOUT-BUFFER throw then
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    name nameu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then

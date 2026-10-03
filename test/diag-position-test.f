@@ -6,11 +6,15 @@
 \ end exclusive; line and column are 1-based, the column counted in bytes, and
 \ LF ends a line. Each case writes a fixture, runs the checker on it, and
 \ asserts the four fields, the file label, and that the fixture's bytes in
-\ [byte_start, byte_end) are the packet's token: a body over two lines, a tab,
+\ [byte_start, byte_end) are the packet's token, or the name as written where
+\ the packet names its definition by the checker's fold: a body over two
+\ lines, a tab,
 \ runs of spaces, CR LF, comments, strings, multibyte UTF-8, a signature on its
 \ own line, a definition after others, every packet of an --all-errors run, a
 \ bare name a global and a used public share, called and as the target of `[']`
-\ and of `is`, and declaration packets: SUMTYPE, NEWTYPE with no arity (at its
+\ and of `is`, a public word whose private twin moves other cells and a
+\ definition whose inferred effect is not recorded, both at the definition's
+\ name, and declaration packets: SUMTYPE, NEWTYPE with no arity (at its
 \ family name), ENUM (a body token, and a close-stage fault at the family name)
 \ and STRUCTURE. The check composes the subject with the files it requires, so
 \ a packet in a required file names that file and locates there, after a file
@@ -38,7 +42,7 @@ package DIAG-POSITION-TEST
 $1000 constant CAP
 120000 constant TIMEOUT-MS
 70 constant REJECT-RC
-67 constant SHADOW-RC
+67 constant THROW-RC                  \ a load's uncaught throw
 
 create OUT CAP allot
 create ERR CAP allot
@@ -154,24 +158,35 @@ variable RC
    JSON-GET dup -1 = IF EXIT THEN
    GJA-INT ;
 
-\ Packet k of the last run names TOK in file PATH, whose bytes are TEXT, at
-\ LINE, COL and bytes [BS, BE), and those bytes of TEXT are TOK.
-: AT-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
-   {: k:n tok:ptr toku:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
+\ Packet k of the last run has the string WANT for KEY.
+: FIELD= ( n ptr u8 n ptr u8 n -- )
+   {: k:n key:ptr keyu:n want:ptr wantu:n :}
+   GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
+   k GJA-LINE$ JSON-PARSE key keyu GJA-REQ JSON-STRING$ want wantu T$= ;
+
+\ Packet k of the last run names file PATH, whose bytes are TEXT, at LINE, COL
+\ and bytes [BS, BE), and those bytes of TEXT are SPELL.
+: PLACED-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
+   {: k:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ JSON-PARSE
    {: root:n :}
-   root s" token" GJA-REQ JSON-STRING$ tok toku T$=
    root s" file" GJA-REQ JSON-STRING$ path pathu T$=
    root s" line" INT-FIELD line T=
    root s" column" INT-FIELD col T=
    root s" byte_start" INT-FIELD bs T=
    root s" byte_end" INT-FIELD be T=
    bs 0 >=  be bs >= and  be textu <= and IF
-      text bs + be bs - tok toku T$=
+      text bs + be bs - sp spu T$=
    ELSE
       T-FAIL
    THEN ;
+
+\ PLACED-IN, and the packet's token is the bytes it locates.
+: AT-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
+   {: k:n tok:ptr toku:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
+   k tok toku line col bs be path pathu text textu PLACED-IN
+   k s" token" tok toku FIELD= ;
 
 \ AT-IN for the fixture.
 : AT ( n ptr u8 n n n n n -- )
@@ -325,10 +340,10 @@ variable RC
    s" a bare name a global and a used public share" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
    s" shadow.f" FIXTURE!
-   s" " SHADOW-RC CHECK-EXIT
+   s" " THROW-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT
-   s" --all-errors" SHADOW-RC CHECK-EXIT
+   s" --all-errors" THROW-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT ;
 
@@ -337,7 +352,7 @@ variable RC
    s" that name as a ['] target" T-LABEL
    s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
    s" tick-shadow.f" FIXTURE!
-   s" " SHADOW-RC CHECK-EXIT
+   s" " THROW-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 8 91 96 AT ;
 
@@ -345,9 +360,79 @@ variable RC
    s" that name as an is target" T-LABEL
    s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
    s" is-shadow.f" FIXTURE!
-   s" " SHADOW-RC CHECK-EXIT
+   s" " THROW-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 13 100 105 AT ;
+
+\ The public F moves other cells than the private F, whose tail it shares: the
+\ refusal names the folded tail and is placed at the public definition's name.
+: SHADOWED-FIXTURE ( -- )
+   SB-RESET
+   s" package SAT-A" SB-APPEND LF+
+   s" : F ( n n -- n ) + ;" SB-APPEND LF+
+   s" public" SB-APPEND LF+ LF+
+   s" :   F ( n -- n )" SB-APPEND LF+
+   s"    1 + ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" shadowed.f" FIXTURE! ;
+
+\ Packet 0 is the refusal of the public F.
+: SHADOWED-AT ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   0 s" code" s" E-SHADOWED-ARITY" FIELD=
+   0 s" token" s" f" FIELD=
+   0 s" F" 5 5 47 48 path pathu FX$ PLACED-IN ;
+
+: TEST-SHADOWED-ARITY ( -- )
+   s" a public whose private twin moves other cells" T-LABEL
+   SHADOWED-FIXTURE
+   s" " THROW-RC CHECK-EXIT
+   FX-PATH$ SHADOWED-AT
+   s" --all-errors" THROW-RC CHECK-EXIT
+   FX-PATH$ SHADOWED-AT
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   FX-PATH$ CANON$ SHADOWED-AT ;
+
+\ WIDE's inferred effect has more type variables than a record holds: the
+\ checker certifies it and warns, at its name, that the effect is not recorded.
+: NOT-RECORDED-TEXT ( -- )
+   SB-RESET
+   s" defer V14 ( -- a b c d e g h i j k l m o p )" SB-APPEND LF+ LF+
+   s" :   WIDE" SB-APPEND LF+
+   s"    V14 V14 ;" SB-APPEND LF+ ;
+
+\ The last check's first line is the warning about WIDE, in the file at PATH
+\ and placed at its name, and no other line warns.
+: NOT-RECORDED ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
+   0 s" word" s" wide" FIELD=
+   0 s" WIDE" 3 5 50 54 path pathu FX$ PLACED-IN
+   1 begin dup GJA-LINE# @ < while
+      dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
+      1 +
+   repeat drop ;
+
+\ The check before the run writes the warning; the run, which loads what that
+\ check checked, does not repeat it, nor does a run that then fails.
+: TEST-NOT-RECORDED ( -- )
+   s" an inferred effect not recorded" T-LABEL
+   NOT-RECORDED-TEXT
+   s" not-recorded.f" FIXTURE!
+   s" " 0 CHECK-EXIT
+   FX-PATH$ NOT-RECORDED
+   s" --all-errors" 0 CHECK-EXIT
+   FX-PATH$ NOT-RECORDED
+   s" --verify-only" 0 CHECK-EXIT
+   FX-PATH$ CANON$ NOT-RECORDED
+   NOT-RECORDED-TEXT
+   s" -1 throw" SB-APPEND LF+
+   s" not-recorded-throw.f" FIXTURE!
+   s" " THROW-RC CHECK-EXIT
+   FX-PATH$ NOT-RECORDED
+   s" --all-errors" THROW-RC CHECK-EXIT
+   FX-PATH$ NOT-RECORDED ;
 
 : TEST-ALL-ERRORS ( -- )
    s" every packet of an --all-errors run" T-LABEL
@@ -493,6 +578,8 @@ variable RC
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW
+   TEST-SHADOWED-ARITY
+   TEST-NOT-RECORDED
    TEST-ALL-ERRORS
    TEST-COMPOSE-DEP
    TEST-COMPOSE-AFTER

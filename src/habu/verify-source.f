@@ -328,36 +328,38 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ control-flow DISPATCHER and pushes a frame for every token it recognises, so
 \ asking it would move the checker's state. These are its token list, plus the
 \ compile-time brackets a definer call (WRAP-TOKEN) or a loader (BODY-TOKEN-SEEN)
-\ must not hide behind.
+\ must not hide behind. Each matches case-folded, as the checker reads a token
+\ after TOKFOLD and the engine's keywords ignore case, so `EXIT` ends the line
+\ as `exit` does.
 : WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" CORE-STR=
-   a u s" else" CORE-STR= or
-   a u s" then" CORE-STR= or
-   a u s" case" CORE-STR= or
-   a u s" of" CORE-STR= or
-   a u s" endof" CORE-STR= or
-   a u s" endcase" CORE-STR= or ;
+   a u s" if" STR=CI
+   a u s" else" STR=CI or
+   a u s" then" STR=CI or
+   a u s" case" STR=CI or
+   a u s" of" STR=CI or
+   a u s" endof" STR=CI or
+   a u s" endcase" STR=CI or ;
 
 : WRAP-LOOP-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" begin" CORE-STR=
-   a u s" while" CORE-STR= or
-   a u s" repeat" CORE-STR= or
-   a u s" until" CORE-STR= or
-   a u s" again" CORE-STR= or
-   a u s" do" CORE-STR= or
-   a u s" ?do" CORE-STR= or
-   a u s" loop" CORE-STR= or
-   a u s" +loop" CORE-STR= or
-   a u s" leave" CORE-STR= or
-   a u s" exit" CORE-STR= or ;
+   a u s" begin" STR=CI
+   a u s" while" STR=CI or
+   a u s" repeat" STR=CI or
+   a u s" until" STR=CI or
+   a u s" again" STR=CI or
+   a u s" do" STR=CI or
+   a u s" ?do" STR=CI or
+   a u s" loop" STR=CI or
+   a u s" +loop" STR=CI or
+   a u s" leave" STR=CI or
+   a u s" exit" STR=CI or ;
 
 : WRAP-BRACKET-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [:" CORE-STR=
-   a u s" ;]" CORE-STR= or
-   a u s" [" CORE-STR= or
-   a u s" ]" CORE-STR= or
-   a u s" postpone" CORE-STR= or
-   a u s" recurse" CORE-STR= or ;
+   a u s" [:" STR=CI
+   a u s" ;]" STR=CI or
+   a u s" [" STR=CI or
+   a u s" ]" STR=CI or
+   a u s" postpone" STR=CI or
+   a u s" recurse" STR=CI or ;
 
 : WRAP-CTL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u WRAP-COND-TOK?
@@ -942,8 +944,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    NAME-TOKEN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    -1 SIG-RAW-MODE!
-   sig sigu DECL-SIGNATURE
-   0 SIG-RAW-MODE! ;
+   sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally ;
 
 \ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
 \ this pre-pass never read. The row is the checker's own certified one, so there
@@ -1214,41 +1215,55 @@ variable NOM-TAIL-U
       BODY-APPEND
    AGAIN ;
 
-\ Every storage definer's gate registration reads its stored type here, as its
+\ Every storage definer's gate registration reads its declaration here, as its
 \ definer does (src/core/layout-buffer.f STORAGE-PARSE-TYPE). A stored type may
 \ be `ptr* base`, a family application or a spaced quotation or scheme, so the
 \ type is a contiguous multi-token span from the scanner buffer, ended where the
-\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The first token is
-\ read raw, as parse-name reads it, so a `(` or `\` there is the type the
-\ definer refuses, not a comment (NAME-TOKEN reads a name the same way). When
-\ the source has no first token the span is empty, and the checker refuses that
-\ by name.
+\ checker ends one (CHECKER-TYPE-SPAN-STEP) or with its line. The declaration
+\ ends with its line: the name is read on the definer's own line and the type's
+\ first token on the name's, raw, as parse-name reads them, so a `(` or `\`
+\ there is the name or type the definer refuses, not a comment. With no name
+\ there the definer is refused at its own token; with no first token the span
+\ is empty, and the checker refuses that by name.
 PTR-VARIABLE STG-A
 variable STG-U
 PTR-VARIABLE STG-START
 
-\ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line (CHECKER-TYPE-SPAN-BREAK?). The next token is read
-\ as the definer's parse-name reads it, and only from the same line, so a token
-\ on a later line starts the next statement.
-: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
-   ended IF 0 0= 0= EXIT THEN
+\ The next token, as the definer's parse-name reads it, when it stands on the
+\ scanner's line: the bytes before it hold no line feed
+\ (CHECKER-TYPE-SPAN-BREAK?). A token on a later line starts the next
+\ statement, and none is read.
+: SCAN-LINE-TOKEN ( -- ptr u8 n )
    SCAN-I @ {: end:n :}
    SKIP-WS
-   SCAN-I @ SOURCE-U @ >= IF 0 0= 0= EXIT THEN
-   SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF 0 0= 0= EXIT THEN
-   NEXT-RAW STG-U !  STG-A !
+   SOURCE@ end +  SCAN-I @ end -  CHECKER-TYPE-SPAN-BREAK? IF SOURCE@ 0 EXIT THEN
+   NEXT-RAW ;
+
+\ Whether the spelling goes on past its last token: not when that token ended
+\ it, and not past its line.
+: SCAN-STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
+   ended IF 0 0= 0= EXIT THEN
+   SCAN-LINE-TOKEN {: a:ptr u:n :}
+   u 0= IF 0 0= 0= EXIT THEN
+   a STG-A !  u STG-U !
    0 0= ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
-   NEXT-RAW STG-U !  STG-A !
+   SCAN-LINE-TOKEN STG-U !  STG-A !
    STG-A @ STG-START !
    0 BEGIN STG-A @ STG-U @ CHECKER-TYPE-SPAN-STEP SCAN-STORAGE-MORE? 0= UNTIL drop
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
 
+\ The declared name. With none on the definer's line it is empty, and the
+\ definer's token is refused as its run refuses it.
+: SCAN-STORAGE-NAME ( -- ptr u8 n )
+   SCAN-LINE-TOKEN
+   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE THEN ;
+
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
@@ -1257,18 +1272,21 @@ PTR-VARIABLE STG-START
 \ and a type it cannot size goes unreported until the run. No count token: the
 \ count arrives at the bind.
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
@@ -1279,7 +1297,8 @@ PTR-VARIABLE STG-START
 \ src/habu/aot-decl.f's AOT-NAMES-RESERVE was, which took the stage2 certify pass
 \ with it. No count token: a dynamic buffer's extent is set at run time.
 : RECORD-DYNAMIC-BUFFER ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 
@@ -1344,20 +1363,16 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
    SOURCE-ROOT:RESOLVE drop COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:RESOLVE {: path:ptr pathu:n known:bool :}
-   known IF EXIT THEN
-   path pathu REQUIRE-STORE
-   path pathu COMPOSE-OPEN ;
+   SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( ptr u8 n -- )
-   SOURCE-ROOT:ENTRY-RESOLVE {: path:ptr pathu:n known:bool :}
-   known IF EXIT THEN
-   path pathu REQUIRE-STORE
-   path pathu COMPOSE-OPEN ;
+   SOURCE-ROOT:ENTRY-RESOLVE IF 2drop EXIT THEN
+   REQUIRE-STORE COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( ptr u8 n -- )
    SOURCE-ROOT:RESOLVE IF 2drop EXIT THEN
-   REQUIRE-STORE ;
+   REQUIRE-STORE 2drop ;
 
 : COMPOSE-STRING-PATH ( -- ptr u8 n )
    STR-LAST-U @ 0= IF E-DISC-DYNAMIC throw THEN
@@ -1721,7 +1736,7 @@ public
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
-      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE
+      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
    THEN
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-ROOT ;] catch {: rc:n :}

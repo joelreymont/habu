@@ -88,6 +88,38 @@ create ERR CAP allot
    s" DYNAMIC-BUFFER C2-NO-DYN-TYPE"
    70 s" in C2-NO-DYN-TYPE: no type for 'C2-NO-DYN-TYPE'" s" " REPORTED? TTRUE ;
 
+\ Every storage definer reads its name on its own line and the first token of
+\ its type on the name's. A name or type on the next line is missing there,
+\ refused by name at the definer or the name, and that line is the next
+\ statement's: the refusal is caught so the statement runs.
+: LINE-STORED ( -- )
+   s" a stored type on the next line is no type" T-LABEL
+   s\" TYPED-VARIABLE C2-NL-N\nn"
+   70 s" in C2-NL-N: no type for 'C2-NL-N'" s" " REPORTED? TTRUE
+   s\" ' TYPED-VARIABLE catch C2-NL-SLOT\n4501 . throw"
+   70 s" in C2-NL-SLOT: no type for 'C2-NL-SLOT'" s" 4501" REPORTED? TTRUE
+   s\" 4 ' TYPED-BUFFER catch C2-NL-SLOTS\nnip 4502 . throw"
+   70 s" in C2-NL-SLOTS: no type for 'C2-NL-SLOTS'" s" 4502" REPORTED? TTRUE
+   s\" ' DYNAMIC-BUFFER catch C2-NL-DYN\n4503 . throw"
+   70 s" in C2-NL-DYN: no type for 'C2-NL-DYN'" s" 4503" REPORTED? TTRUE
+   s\" 4 ' LAYOUT-BUFFER catch C2-NL-ROWS\nnip 4504 . throw"
+   70 s" in C2-NL-ROWS: no type for 'C2-NL-ROWS'" s" 4504" REPORTED? TTRUE
+   s\" ' DEFER-LAYOUT-BUFFER catch C2-NL-COLUMN\n4505 . throw"
+   70 s" in C2-NL-COLUMN: no type for 'C2-NL-COLUMN'" s" 4505" REPORTED? TTRUE
+   s" a storage name on the next line is no name" T-LABEL
+   s\" TYPED-VARIABLE\nC2-NL-NAMED n"
+   70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" " REPORTED? TTRUE
+   s\" ' TYPED-VARIABLE catch\n4511 . throw"
+   70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" 4511" REPORTED? TTRUE
+   s\" 4 ' TYPED-BUFFER catch\nnip 4512 . throw"
+   70 s" in TYPED-BUFFER: no name for 'TYPED-BUFFER'" s" 4512" REPORTED? TTRUE
+   s\" ' DYNAMIC-BUFFER catch\n4513 . throw"
+   70 s" in DYNAMIC-BUFFER: no name for 'DYNAMIC-BUFFER'" s" 4513" REPORTED? TTRUE
+   s\" 4 ' LAYOUT-BUFFER catch\nnip 4514 . throw"
+   70 s" in LAYOUT-BUFFER: no name for 'LAYOUT-BUFFER'" s" 4514" REPORTED? TTRUE
+   s\" ' DEFER-LAYOUT-BUFFER catch\n4515 . throw"
+   70 s" in DEFER-LAYOUT-BUFFER: no name for 'DEFER-LAYOUT-BUFFER'" s" 4515" REPORTED? TTRUE ;
+
 public
 
 : RUN ( -- )
@@ -138,6 +170,7 @@ public
    s" NEWTYPE c2-scope-holder 1 : C2-SCOPE-FAMILY ( c2-scope-holder<forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>> -- ) drop ;" 70 STATUS? TTRUE
    STORED
    LAYOUT-STORED
+   LINE-STORED
    s" an extra child view cannot leave its loan" T-LABEL
    s" : C2-CHILD-DIRECT ( read-view<p,q,u8> -- read-view<p,q,u8> ) [: dup ;] C2-MEM:WITH-READ ;" 70 STATUS? TTRUE
    s" a nested aggregate cannot hide a child view" T-LABEL

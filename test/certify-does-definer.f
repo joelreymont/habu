@@ -128,6 +128,10 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer behind a conditional records nothing" T-LABEL
    s" C10 ( -- ptr n ) CDD-COND" CDD-VERDICT UNRESOLVED T=
+   s\" : CDD-IFWU ( n -- ) dup 0= IF drop 1 THEN CDD-CD ;\n2 CDD-IFWU CDD-CONDU\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a definer behind an uppercase conditional records nothing" T-LABEL
+   s" C10U ( -- ptr n ) CDD-CONDU" CDD-VERDICT UNRESOLVED T=
    s\" : CDD-TWOW ( n n -- ) CDD-CD CDD-CD ;\n3 4 CDD-TWOW CDD-TWICE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" two definer calls in one body record nothing" T-LABEL

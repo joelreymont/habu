@@ -3,8 +3,9 @@
 This is the stable machine contract for Habu checker repair feedback. The
 implemented surface today is one JSON object per failed top-level definition from
 the native `tools/check.f` runner with `--json-errors --all-errors`, plus the
-records below for a refusal outside a definition. A repair packet is the normalized
-LLM prompt object built from those checker diagnostics.
+records below for a refusal in another shape, and a warning outside the
+contract. A repair packet is the normalized LLM prompt object built from those
+checker diagnostics.
 
 ## Checker Diagnostic JSON
 
@@ -14,7 +15,10 @@ lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
-span, an input, a refused checker record, or otherwise a definition.
+span, an input, a refused record, a using refusal, a warning, or otherwise a definition.
+`tools/diag-code.f` holds a row for every code whose record is not a
+definition's: its shape, the repair classes it names and the field a refused
+record adds. That check and `tools/repair-packet.f` both read it.
 
 Fields:
 
@@ -78,13 +82,15 @@ fabricate definition-only fields such as `word`, `declared_effect`,
 A storage declaration its definer refuses (`LAYOUT-BUFFER`,
 `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
 emits a storage-shaped object: code `E-BAD-STORAGE`, `verdict` `rejected`,
-`word` (the declared name as written), `token` (the refused token), `reason`,
-`file` and `suggestion`. The repair class follows the reason:
-`fix_storage_type` for an unknown, malformed or unstorable type,
-`fix_storage_name` for a name with more than one `:` or in a sealed package,
+`word` (the declared name as written, or the definer when no name stands on
+its line: as written under `tools/check.f`, in its canonical uppercase
+spelling under `bin/hb --load`), `token` (the refused token), `reason`, `file` and `suggestion`. The
+repair class follows the reason: `fix_storage_type` for an unknown, malformed
+or unstorable type or none on the name's line, `fix_storage_name` for no name
+on the definer's line or a name with more than one `:` or in a sealed package,
 and `fix_storage_count` for a literal count outside the extent, a count token
-that resolves to no `( -- n )` word, or no count. An
-unknown type names its own token, any other type refusal the whole stored type.
+that resolves to no `( -- n )` word, or no count. An unknown type names its own
+token, a missing one the name, any other type refusal the whole stored type.
 `tools/check.f` reads the declaration before the run, so there the object also
 carries the token's `line`, `column`, `byte_start` and `byte_end`; a run-time
 definer under `bin/hb --load` has no record of its token's place and carries
@@ -134,16 +140,95 @@ without `--json-errors` it is the line `E-ENGINE-PROVIDED <file>:1:1:
 <suggestion>`. The run exits 64. A list that also names a source the engine does
 not provide is checked.
 
-Two load-time refusals of a checker record emit a refused-record object: no
-definition encloses them, so they carry `schema_version`, `code`,
-`repair_class`, `verdict` `rejected`, `token` (the name the record would have
-described), `file` and `suggestion`, and no span, `throw_code` or
-definition-only field. Each code names its repair class:
-`E-TRUST-UNRESOLVED` / `fix_stale_trust_row` is a `trust` row naming no word
-where its record lands; `E-PKG-CONTEXT` / `use_storage_definer` is a checker
-storage registrar called from source outside the engine's verifier window.
-`tools/check.f` meets either only in its run stage, after every definition has
-checked, and exits 67 as the load's uncaught throw does.
+`tools/check.f` runs a checked program in a child, the run stage, with a
+deadline of 120 s, or the milliseconds `--deadline-ms N` gives, from 1 to
+2147483647. A run still going at its deadline is killed with every process it
+started, what it wrote is not replayed, and stderr gets the one line
+`check.f: <label>: the run passed its deadline of <N> ms`, prose in either mode.
+The label is `<stdin>`, `<source-list>`, or a named file as given, canonical
+under `--json-errors` as in its packets. The run exits 70. A program that runs
+longer is checked with a longer `--deadline-ms`.
+
+A refusal of a named checker record emits a refused-record object: `schema_version`, `code`, `repair_class`, `verdict` `rejected`, `token`,
+`file`, `suggestion` and the field its code adds. When the checked text
+locates its named token, all four source position fields are present; otherwise
+none are. It has no `throw_code` or definition-only field. The code names its repair class and that field:
+
+| `code` | `repair_class` | Added field | Refusal |
+| --- | --- | --- | --- |
+| `E-TRUST-UNRESOLVED` | `fix_stale_trust_row` | none | A `trust` row names no word where its record lands; `token` is the row's name. |
+| `E-PKG-CONTEXT` | `use_storage_definer` | none | A checker storage registrar was called from source, outside the engine's verifier window; `token` is the name it would have recorded. |
+| `E-BAD-QUALIFIED-RECORD` | `fix_qualified_name` | none | A checker record was asked for a malformed qualified name, which keys no word; `token` is that name. A call to such a name is refused in its definition as `E-BAD-QUALIFIED`, under the same class with a definition's fields. |
+| `E-BAD-STORED-SIGNATURE` | `fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or `fix_signature_syntax`, as for a definition's signature | `signature`, as written | A stored signature, a `trust` row's or a `TRUSTED:` definition's, does not parse; `token` is the name it is stored for. |
+| `E-SHADOWED-ARITY` | `match_shadowed_private_effect` | `package` | The package public `token` moves another number of cells than the private word of its package with the same tail. |
+
+`tools/check.f` meets the first two only in its run stage, after every
+definition has checked. The refusal throws its code past every handler, so the
+load ends on `hb: uncaught throw code <code>` and exits 67, as for any
+unhandled throw ([debugging.md](debugging.md)). The record for a malformed name
+throws `E-BAD-QUALIFIED` (7152), so nothing after it in its source is checked. A
+definition or declaration spelled that way (`defer P:Q:R ( -- )`) never reaches
+the record under `--load`: the engine refuses the name itself and exits 75.
+`tools/check.f`'s pre-pass asks the checker for that record and reports the
+statement that asked for it as one that threw. A record entry called at run
+time with such a name (`s" P:Q:R" CHECKER-DEFER`) ends the load on
+`hb: uncaught throw code 7152` and exit 67, and `tools/check.f` meets it in its
+run stage. A run that ends on
+the throw of `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED` exits 70
+from `tools/check.f`, as for a refusal; a run that ends on any other throw
+exits with the load's status. Only `--all-errors` renders
+`E-BAD-STORED-SIGNATURE`, counting it as a refusal (exit 70); the default mode
+stops there with exit 76 and the line
+`<token>: <signature>: checker: bad stored signature`. The named definition and using refusals below place their own token when the
+checked text locates it in the file; no statement-throw packet follows them.
+
+`W-EFFECT-NOT-RECORDED` is a warning, outside this contract: a definition with
+no declared signature certified, but its inferred effect has more than 23 type
+variables or binders, or a type the checker does not model, so no effect is
+recorded for it and a later call to it is refused as undefined. The definition
+loads and the run's status stands. The object carries `schema_version`, `code`,
+`word`, `file`, optional source positions and `reason`, and no `verdict`,
+`repair_class` or `suggestion`.
+
+Two packets name a definition, not a token of its body, and are placed at the
+definition's name as written: where the checked text locates in the labeled
+file, `line`, `column`, `byte_start` and `byte_end` follow `file`, with the
+meanings above. Elsewhere they carry `file` alone, since a definition the
+engine's own load captured keeps no source address for its name and one built
+by `evaluate` or generated has no bytes in the file.
+
+- `E-SHADOWED-ARITY`, repair class `match_shadowed_private_effect`, `verdict`
+  `rejected`: a package's public definition moves other cells than the private
+  word of that package whose tail it shares (forth.md **Packages**). It
+  carries `token`, the tail as the checker folds it, `package`, `file` and
+  `suggestion`, and the load stops there, rc 67.
+- `W-EFFECT-NOT-RECORDED`, with no `repair_class` or `verdict`: a definition
+  without a declared effect certified, but its inferred effect cannot be
+  recorded, so a later caller does not find it. It carries `word`, the name as
+  the checker folds it, `file` and `reason`, and the check goes on.
+  `tools/check.f` writes it once in every mode, from its check before the run:
+  the run loads what that check checked and writes no warning (`WARN-DIAGS`,
+  `src/core/render.f`), so a definition only the run builds, with `evaluate`,
+  gets none.
+
+The checker refuses a bare token in a definition that resolves in a used
+package and somewhere else as well, at the token, with a using object. Each code
+names its repair class: `E-USING-SHADOW-GLOBAL` / `disambiguate_using_shadow`
+is a token a global and a used package's public both export, and
+`E-USING-AMBIGUOUS` / `disambiguate_using_ambiguous` one the publics of more
+than one used package export. The object carries `schema_version`, `code`,
+`repair_class`, `verdict` `rejected`, `token` as written, `file`, the token's
+`line`, `column`, `byte_start` and `byte_end` when it locates in the file,
+`used_packages` and `suggestion`, and no `throw_code` or definition-only field.
+`used_packages` names each used package the token resolves in, folded, once
+each, in the order `using` searches them: one for the shadow, two or more for
+the ambiguity. Under `--all-errors` without `--json-errors` it is a line that
+begins with the code and names the token and each candidate, `PKG:TOK` for a
+package's. A refused definition ends the check: `tools/check.f` exits 67 as
+the load's uncaught throw does, and 70 under `--verify-only`; under
+`--all-errors` the refusal is the report, not an `E-STATEMENT-THROW` record.
+The engine refuses an ambiguous use at top level, and under `bin/hb --load` in
+a definition too, before the checker (`docs/forth.md`, Packages).
 
 ## Checking Without Running
 
@@ -170,6 +255,7 @@ process.
   engine), as `check.f`'s run stage does, and loads
   `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
   `tools/check-verify-core.f` was loaded from.
+- The child has the run stage's deadline, `--deadline-ms` included.
 
 | `CHECK:verdict` | Meaning | check.f exit |
 | --- | --- | --- |
@@ -208,30 +294,45 @@ before it in `CHECK:VERIFY-OUT$` and the stderr received in
 one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
 thirty files.
 
-The child, `tools/check-verify-child.f`, is run only by the operation:
+The child, `tools/check-verify-child.f`, is run only by this operation and by
+`CHECK:PREVERIFY-BYTES`, check.f's pre-pass:
 
 ```text
-ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT [DEP ...] < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < BYTES
+ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < BYTES
 ```
 
-SUBJECT is canonical and absolute, and each DEP is a file of the closure,
-canonical and absolute, in dependency order; a DEP the image holds is skipped,
-as `require` skips it. stdout carries the packets in verification order, each
+SUBJECT is canonical and absolute. The child follows the loader forms of
+BYTES and of the files they load; a file the image holds is skipped, as
+`require` skips it. stdout carries the packets in verification order, each
 written as the checker makes it, so a child that dies has passed on every
-packet made before; then one result line, `check-verify: verified`, `refused`
-or `held`. stderr carries prose, including `PATH: verification stopped by
-throw RC after N rejected definitions` for each file a throw stopped. The
-verdict is read from the result line after a clean exit, never from the exit
-status.
+packet made before; then one result line. The first form verifies with all
+errors and answers `check-verify: verified`, `refused` or `held`; stderr
+carries prose, including `PATH: verification stopped by throw RC after N
+rejected definitions` for each file a throw stopped. The second form stops at
+the first refused definition, as the load does, names the subject LABEL in its
+packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
+IN-SUBJECT FILE`: the code it stopped with, where the token it read last
+starts, 1 when that token is in BYTES, and the file it is in. The answer is
+read from the result line after a clean exit, never from the exit status.
+
+Because check.f's default pre-pass runs in this child, it resolves the
+engine's words and those the subject loads, the words its run has. A word only
+the checking process loaded, such as `lib/fs.f`'s `FILE-SIZE` under check.f or
+`lib/test.f`'s `T=` in a harness that checks in its own process, is
+`E-UNDEFINED` to it, and check.f reports it there in every mode. The pre-pass
+child has the run stage's deadline, `--deadline-ms` included; one that ends
+without its result line fails the check with 69, as `incomplete` fails
+`--verify-only`, with its closing line on stderr.
 
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
-from the first diagnostic, in the shape that diagnostic's record has: Schema 1
-has definition, declaration, storage, span, input and refused-record packet
-shapes.
+from the first refusal, in the shape that refusal's record has, and counts only
+refusals: a warning has no packet. Schema 1 has definition, declaration,
+storage, span, input, refused-record and using packet shapes.
 
 Definition packet fields:
 
@@ -288,7 +389,7 @@ Storage packets carry a storage record's evidence:
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
-| `word` | string | required | The declared name as written. |
+| `word` | string | required | The declared name as written; the definer when it has none (as written under `tools/check.f`, uppercase under `bin/hb --load`). |
 | `token` | string | required | The refused token. |
 | `reason` | string | required | Short refusal cause. |
 | `file` | string | required | Source label or path. |
@@ -340,20 +441,44 @@ answers it:
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Rebuild bin/hb to check this source; no code change answers this diagnostic.` |
 
-Refused-record packets carry a refused checker record's evidence, which has no
-place:
+Refused-record packets carry the object's evidence, including all four source
+position fields when its named token locates in the checked text:
 
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
-| `token` | string | required | The name the record would have described. |
+| `token` | string | required | The record's token, as its code describes it. |
+| `signature` or `package` | string | the field its code adds | Copied from the record. |
 | `file` | string | required | Source label or path. |
-| `code` | string | required | `E-TRUST-UNRESOLVED` or `E-PKG-CONTEXT`. |
-| `repair_class` | string | required | `fix_stale_trust_row` or `use_storage_definer`, the one the code names. |
+| `line`, `column`, `byte_start`, `byte_end` | integer | all four or none | Copied source positions when known. |
+| `code` | string | required | A refused-record code. |
+| `repair_class` | string | required | One its code names. |
 | `suggestion` | string | required | Checker repair hint. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
-| `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
+| `instruction` | string | required | `Fix the statement that names this token so it loads. Output only corrected Habu code.` |
+
+Using packets carry a using record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | The bare token as written. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | with a place | One-based source line. |
+| `column` | integer | with a place | One-based source column. |
+| `byte_start` | integer | with a place | Token start byte. |
+| `byte_end` | integer | with a place | Token end byte. |
+| `used_packages` | array of strings | required | Each used package the token resolves in. |
+| `code` | string | required | `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. |
+| `repair_class` | string | required | `disambiguate_using_shadow` or `disambiguate_using_ambiguous`, the one the code names. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code.` |
+
+The packet copies the record's four place fields when it has them and none when
+it has none.
 
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
@@ -392,8 +517,9 @@ Current checker classes:
   could drop it; keep the linear value on the stack and factor instead.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
-- `fix_qualified_name`: a call used a malformed qualified name with more than one
-  `:`; use a single `:` qualifier such as `PKG:WORD`.
+- `fix_qualified_name`: a call, or a record of a definition or declaration, used
+  a malformed qualified name with more than one `:`; use a single `:` qualifier
+  such as `PKG:WORD`.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
@@ -415,10 +541,11 @@ Current checker classes:
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `fix_storage_type`: a storage declaration (`LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`)
-  names an unknown or malformed type, or one its definer cannot store; declare
-  the type before the storage or store a type the definer admits.
-- `fix_storage_name`: a storage declaration's name has more than one `:` or lies
-  in a sealed package.
+  names an unknown or malformed type, one its definer cannot store, or no type
+  on the name's line; declare the type before the storage or store a type the
+  definer admits.
+- `fix_storage_name`: a storage declaration has no name on its definer's line,
+  or its name has more than one `:` or lies in a sealed package.
 - `fix_storage_count`: a storage declaration's literal count is outside the
   buffer's extent, its count token resolves to no `( -- n )` word, or the
   declaration has no count.
@@ -434,6 +561,15 @@ Current checker classes:
   that defines the word.
 - `use_storage_definer`: a checker storage registrar was called from source,
   outside the engine's verifier window; define the storage with its definer.
+- `disambiguate_using_shadow`: a bare token resolves to a global while a used
+  package's public exports it too; qualify the package word as `PKG:WORD`, or
+  rename the collision to reach the global.
+- `disambiguate_using_ambiguous`: a bare token resolves in the publics of more
+  than one used package; qualify the one meant as `PKG:WORD`, or rename the
+  collision.
+- `match_shadowed_private_effect`: a package public moves another number of
+  cells than the private word of its package that owns the same tail; give the
+  public definition the private word's effect, or rename one of the two.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -474,6 +610,9 @@ The checker `suggestion` field is stable short text derived only from
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
+| `disambiguate_using_shadow` | `A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier.` |
+| `disambiguate_using_ambiguous` | `Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision.` |
+| `match_shadowed_private_effect` | `A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

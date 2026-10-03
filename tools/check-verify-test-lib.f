@@ -583,6 +583,26 @@ variable CLI-OUT-U
    s" cli-truncated: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE ;
 
 
+\ --deadline-ms reaches the verifier's child, and the line names the deadline.
+: CLI-DEADLINE ( -- )
+   CLI-START s" --deadline-ms" ARG+ s" 1" ARG+ s" --verify-only" ARG+ s" dep.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-deadline: unavailable" T-LABEL rc 69 T=
+   s" cli-deadline: nothing on stderr" T-LABEL erru 0 T=
+   s" cli-deadline: the line names the deadline" T-LABEL
+   0 OUT CLI-OUT-U @ s" check.f: the verifier did not complete: deadline of 1 ms passed" CONTAINS? TTRUE ;
+
+\ The pre-pass runs in the same child, under the same deadline, and a check
+\ writes its line on stderr.
+: CLI-DEADLINE-PREPASS ( -- )
+   CLI-START s" --deadline-ms" ARG+ s" 1" ARG+ s" dep.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" cli-deadline-prepass: unavailable" T-LABEL rc 69 T=
+   s" cli-deadline-prepass: nothing on stdout" T-LABEL CLI-OUT-U @ 0 T=
+   s" cli-deadline-prepass: the line names the deadline" T-LABEL
+   0 ERR erru s" check.f: the verifier did not complete: deadline of 1 ms passed" CONTAINS? TTRUE ;
+
+
 \ These cases compare the real loader with both CHECK entry points. An ordered
 \ preload lets EARLY see a later file, loses the using inherited by USE, and
 \ verifies an included file only once. None has a top-level runtime action.
@@ -705,6 +725,8 @@ public
    s" cli-early-fails" [: CLI-EARLY-FAILS ;] RUN-CASE
    s" cli-path-capacity" [: CLI-PATH-CAPACITY ;] RUN-CASE
    s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
+   s" cli-deadline" [: CLI-DEADLINE ;] RUN-CASE
+   s" cli-deadline-prepass" [: CLI-DEADLINE-PREPASS ;] RUN-CASE
    s" load-order" [: LOAD-ORDER ;] RUN-CASE
    s" load-context" [: LOAD-CONTEXT ;] RUN-CASE
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE

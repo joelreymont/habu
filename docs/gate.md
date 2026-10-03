@@ -79,8 +79,11 @@ establishes only the behavior exercised; see [proofs.md](proofs.md).
 Failures print the suite label, exit outcome, and captured stdout and stderr.
 A row the pool killed at its deadline, or one whose own deadline ended it with
 an uncaught `E-PROC-TIMEOUT` (`GT-POOL-INNER-TIMEOUT?`, test/gate-pool.f),
-reads `kind=TIMEOUT-UNDER-LOAD` with the pool's saturation at that moment: still
-red, but a deadline missed on a loaded host rather than a defect.
+reads `kind=TIMEOUT-UNDER-LOAD` with the pool's saturation at that moment.
+Build and suite rows are held to a CPU budget (below), so the pool's deadline
+is only a hang guard: its red line ends with the CPU time the row had run of
+its budget, and a row that ran little of it had stopped running. A row the
+pool ended for its budget reads `kind=CPU-BUDGET`, which no load explains.
 The run removes its temporary root whether it is green or red — a red run used
 to keep the whole tree, and `/tmp` filled with one root per red run — so the
 printed tail and the truncation line's byte count are what a finished red run
@@ -222,17 +225,21 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles six keyed images, each once per run in a pool row of its
+- The gate settles seven keyed images, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`): the fixture writer
   and the cold host it emits (`test/fixture-writer.f`, `test/cold-engine.f`;
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
   `app-image-build`, `linker-build`), the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`) and the saved native
-  builder (`test/saved-builder.f`; `saved-builder-build`). A row needs an image
-  when its load closure holds the image's module: the files it loads and what
-  those import, or launch as a `.f` source through a path literal a known load
-  helper consumes (`test/load-refs.f`, the reader the entry guard uses).
+  (`test/whitebox-engine.f`; `whitebox-engine-build`), the saved native
+  builder (`test/saved-builder.f`; `saved-builder-build`) and the NBR package
+  unit exported from the tree (`test/native-unit-image.f`;
+  `native-unit-build`), a keyed file rather than an engine: a unit imports
+  only into a build of the tree and by the engine that exported it, so an
+  export and its import in one row would be two engine builds. A row needs an
+  image when its load closure holds the image's module: the files it loads and
+  what those import, or launch as a `.f` source through a path literal a known
+  load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
   Nothing is declared; a cold host needs the writer and the linker needs the
   saver image because their modules load those modules. A row whose images are
   not settled holds the registry until they are, while the rows before it keep
@@ -244,6 +251,52 @@ at its deadline.
   row was not granted — a child reached through a load the reader cannot see —
   dies with exit 69 naming the image instead of building it beside the build
   row. A row run on its own has no such variable and settles its own images.
+- A build row is bounded by its own work, not by wall time, because the rows
+  behind it wait on it and a saturated host stretches wall time. On an Apple
+  M2 Max (eight performance and four efficiency cores) the unsealed engine
+  build ran 77 s of CPU in 214 s at load average 93; beside 64 CPU-bound
+  processes, a gate run of one whitebox row ran 77 s of CPU in all while its
+  build row took 449 s. The pool reads the CPU time, user and system, of the
+  row's process and every live process descended from it, with what each
+  reaped (`lib/process-tree.f` `CPU-NS`), at most once a second, and ends the
+  row as `kind=CPU-BUDGET` once it has run the build's budget
+  (`test/keyed-image.f` `BUILD-CPU-MS`, 360 s; `test/gate-pool.f`
+  `GT-POOL-CPU-BUDGET!`). Its wall deadline is only a hang guard, sized for a
+  saturated pool: every builder's capture deadline is five times the budget
+  (`BUILD-TIMEOUT-MS`) and the row's a minute more, so a build within its
+  budget meets it only on less than a fifth of a core. A build that stopped
+  running gains no CPU time and still ends there, as
+  `kind=TIMEOUT-UNDER-LOAD`; its red line ends with the CPU time the row had
+  run of its budget (`cpu=<used>/<budget>ms`). CPU time measures work at the
+  speed of the cores a build is given, so run the gate at default priority: at
+  background priority, confined to the efficiency cores, the same build ran
+  351 s of CPU in 362 s and had not finished, and its row can meet the budget
+  there.
+- A suite row is bounded the same way (`test/suite-budget.f`): the pool ends
+  it as `kind=CPU-BUDGET` once its tree has run `CPU-MS`, 360 s of CPU, and
+  its deadline in the pool, `ROW-MS`, is a hang guard five times that and a
+  minute (`test/gate-stdlib-lib.f` `ROW-BUDGET!`). A long row gives each
+  process it starts `CHILD-MS`, five times the budget, as its deadline: the C2
+  acceptance rows (`test/c2-*-e2e.f` but `c2-init-accessor-e2e.f`, whose three
+  children run 4 s of CPU in all against 120 s each),
+  `test/native-build-entry.f` and the build-fixpoint rows
+  (`tools/build-fixpoint-test-lib.f` `BFT-TIMEOUT-MS`). Alone, the longest rows
+  run 61 to 113 s of CPU, c2-memory the most. Beside 64 CPU-bound processes,
+  at load averages up to 240, the gate's driver ran eleven of these rows (the
+  C2, build-fixpoint and native-build-entry rows) both ways. Bounded by wall
+  time, eight ended as `kind=TIMEOUT-UNDER-LOAD`: five C2 rows and
+  build-fixpoint-snapshot at the row's 360 s, native-build-entry and
+  build-fixpoint-fixtures at their children's 180 s and 120 s. Bounded by CPU
+  time, all eleven passed, c2-memory last at 1088 s, and they ran 699 s of CPU
+  there against 680 s alone. A row's CPU is measured outside the gate, user
+  plus system from `/usr/bin/time bin/hb --load <file>`, and stays under half
+  the budget (`test/gate-stdlib-cases.f`). A short child keeps a short deadline:
+  native-build's smoke run (`tools/native-build-core.f` `SMOKE-TIMEOUT-MS`,
+  10 s) and build-fixpoint's boot check of a candidate (`BF-BOOT-TIMEOUT-MS`,
+  30 s) each run about 20 ms of CPU, and on a freshly signed copy of the
+  engine each ended within 0.1 s beside those 64 processes, its signing
+  (`lib/codesign.f`, 10 s) within 0.25 s, so load does not reach those
+  deadlines.
 - A suite whose assertions depend on the compiler tier selects it itself.
   Only code compiled after `1 set-tier` belongs to the tier, so the line goes
   after the harness and tool requires (`lib/test.f`, the code-reading tools,

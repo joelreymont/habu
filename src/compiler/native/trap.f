@@ -17,8 +17,8 @@ private
 
 \ ---- the table ---------------------------------------------------------------
 \ The table has no reset: an ordinal is already compiled into published routines,
-\ so registering is idempotent instead.
-64 constant NAME-CAP                 \ the longest family name a row may hold
+\ so registering is idempotent instead. A row holds its name whole, however long
+\ the family or word it names; only the arena's total bounds the bytes.
 1024 constant ROWS-MAX               \ distinct families
 $8000 constant ARENA-CAP             \ 32 KB of names
 
@@ -65,7 +65,6 @@ variable FOUND
 \ Every ceiling is checked before anything moves, so a refusal leaves no trace.
 : ADD ( ptr u8 n n -- n ) {: a:ptr u:n kind:n :}
    u 0 <= if E-NTRAP-NAME throw then
-   u NAME-CAP > if E-NTRAP-NAME throw then
    ROWS @ ROWS-MAX >= if E-NTRAP-CAP throw then
    USED @ u + ARENA-CAP > if E-NTRAP-CAP throw then
    a  ARENA USED @ +  u BYTE-COPY
@@ -86,26 +85,27 @@ variable FOUND
 \ compiled MATCH and an interpreted one end the process saying the same thing.
 \ The trailing newline of those bytes is die's, written for every non-empty
 \ message (src/habu/habu1.f BDIE); the engine's inline trap carries its own.
-4 constant SFX-N                     \ " tag"
-9 constant NSFX-N                    \ " returned"
-8 NAME-CAP + SFX-N + constant TAG-MSG-CAP        \ "hb: bad " + name + " tag"
-4 NAME-CAP + NSFX-N + constant NORET-MSG-CAP     \ "hb: " + name + " returned"
-
-create MSG TAG-MSG-CAP NORET-MSG-CAP max allot
+\ The message is built in a byte row that grows to hold the row's whole name.
+\ Growing moves the row, so its span is taken after the last byte is written.
+DYNAMIC-BUFFER MSG u8
 
 : PUT$ ( ptr u8 n n -- n ) {: a:ptr u:n at:n :}
-   a MSG at + u BYTE-COPY
+   at u + MSG-RESERVE
+   a  at MSG  u BYTE-COPY
    at u + ;
 
-: TAG-MSG ( n -- n ) {: k:n :}
+: MSG$ ( n -- ptr u8 n ) {: u:n :}
+   0 MSG u ;
+
+: TAG-MSG ( n -- ptr u8 n ) {: k:n :}
    s" hb: bad " 0 PUT$ {: a:n :}
    k ROW$ a PUT$ {: b:n :}
-   S\" \x20tag" b PUT$ ;
+   S\" \x20tag" b PUT$ MSG$ ;
 
-: NORET-MSG ( n -- n ) {: k:n :}
+: NORET-MSG ( n -- ptr u8 n ) {: k:n :}
    s" hb: " 0 PUT$ {: a:n :}
    k ROW$ a PUT$ {: b:n :}
-   S\" \x20returned" b PUT$ ;
+   S\" \x20returned" b PUT$ MSG$ ;
 
 public
 
@@ -142,10 +142,10 @@ KIND-NORET constant NO-RET
    ROW-CK {: k:n :}
    k ROW-KIND {: kind:n :}
    kind KIND-TAG = if
-      MSG  k TAG-MSG  ENGINE-ERROR:BAD-TAG exit
+      k TAG-MSG  ENGINE-ERROR:BAD-TAG exit
    then
    kind KIND-NORET = if
-      MSG  k NORET-MSG  ENGINE-ERROR:CODE-CERT exit
+      k NORET-MSG  ENGINE-ERROR:CODE-CERT exit
    then
    s" hb: trap row of no kind" ENGINE-ERROR:CODE-CERT ;
 

@@ -10,7 +10,8 @@
 \   - TTY-RECOVERS: under SPAWN-TTY the child prints its prompt, refuses the same
 \     definition, evaluates `6 7 * . cr`, answers 42 and prompts again;
 \ and both drive the child through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
-\ outside the package, which used to be E-UNDEFINED.
+\ outside the package, which used to be E-UNDEFINED. TREE-ENDS holds TEARDOWN
+\ to what the target started: it used to end the target's pid alone.
 \
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
 \
@@ -28,6 +29,7 @@ require lib/pty-harness.f
 require lib/prelude.f
 require lib/aio.f
 require lib/test.f
+require lib/task.f                 \ TASK:SLEEP between probes of a sleeper's pid
 
 package PTY-TTY-SMOKE
 
@@ -35,6 +37,8 @@ using PTY-HARNESS
 
 $64 constant STEP-MS               \ one poll blocks at most this long
 $1388 constant EXIT-MS
+$1388 constant GONE-MS             \ a killed sleeper's reaping by init, on a loaded box
+$0A constant PROBE-MS              \ the pause between two probes of its pid
 
 : HB$ ( -- ptr u8 len )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN ;
@@ -245,6 +249,53 @@ $1388 constant EXIT-MS
    PROCESS-PTY:TEARDOWN
    s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
 
+\ ---- a supervised child's tree ends with it ---------------------------------
+\ The target starts a sleeper on its own terminal and prints 48879, then the
+\ sleeper's pid. TEARDOWN used to kill the target's pid alone, and the sleeper,
+\ leading a group of its own, ran out its 30 s under init (dot
+\ habu-kill-a-pty-1841a310). It ends with the target, and init reaps it.
+: SLEEPER$ ( -- ptr u8 n )
+   s\" PROC-ARGV-RESET s\" 30\" >LEN PROC-ARGV+ s\" /bin/sleep\" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N $BEEF . . cr" ;
+
+\ The number the target printed on the line after 48879, or -1 when there is
+\ none.
+: SLEEPER-PID ( -- n )
+   0 S\" 48879\r\n" FIND-FROM {: at:n :}
+   at 0 < if -1 exit then
+   at 7 + {: from:n :}
+   from S\" \r" FIND-FROM {: end:n :}
+   end 0 < if -1 exit then
+   BUF$ drop from + end from - STR>NUMBER? MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ Whether nobody has pid within ms: the null signal answers ESRCH. A pid at or
+\ below 0 names a group or every process, so it is never probed.
+: GONE-WITHIN? ( n n -- bool ) {: pid:n ms:n :}
+   pid 0 <= if false exit then
+   ms WAIT-OPEN
+   begin
+      pid 0 kill-errno ESRCH# negate = if true exit then
+      WAIT-LEFT 0= if false exit then
+      PROBE-MS >MS TASK:SLEEP
+   again ;
+
+: TREE-ENDS ( -- )
+   BUF-CLEAR
+   HB$ PROCESS-PTY:SPAWN-TTY
+   PROCESS-PTY:LAUNCH
+   ANYWHERE$ SETTLE
+   s" require lib/process-argv.f" TELL
+   s"  ok" SETTLE
+   SLEEPER$ TELL
+   s" 48879" PROMPT-AFTER!
+   SLEEPER-PID {: pid:n :}
+   pid 0 > TTRUE
+   PROCESS-PTY:TEARDOWN
+   pid GONE-MS GONE-WITHIN? TTRUE
+   s" PASS: teardown ends what the target started" type cr ;
+
 \ ---- the prompt barrier itself is under test --------------------------------
 \ The line editor redraws prompt and line on every keystroke, so the echo of the
 \ line just typed carries prompts of its own. This case reads the buffer the
@@ -274,7 +325,8 @@ $1388 constant EXIT-MS
    TTY-RECOVERS
    ECHO-PROMPT-REJECTED
    TTY-LAYOUT
-   TTY-STACK-RECOVERS ;
+   TTY-STACK-RECOVERS
+   TREE-ENDS ;
 
 public
 

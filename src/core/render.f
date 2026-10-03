@@ -936,6 +936,10 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    u 0 > IF
       a  a u +  JLOCATE IF JLOC-FIELDS THEN
    THEN ;
+\ The position fields of the checked definition's name token, where the
+\ scanner read it.
+: JNAME-FIELDS ( -- )
+   NMOFF @ TADDR NMU @ JTOKEN-FIELDS ;
 : NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
@@ -1135,7 +1139,9 @@ DIAG-PRINT-INSTALL
 
 \ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror
-\ REPAIR-CLASS's signature arm (same stable strings).
+\ REPAIR-CLASS's signature arm (same stable strings). The JSON is a refused
+\ record (docs/repair-diagnostics.md): the row's name is its token, and the
+\ signature as written the field its code adds.
 : BADSIG-CLASS ( -- ptr u8 n )
    SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
    SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
@@ -1152,8 +1158,8 @@ DIAG-PRINT-INSTALL
    s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
    s" repair_class" JKEY BADSIG-CLASS JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
-   s" word" JKEY na nu JSTR 44 EMIT1
-   s" declared_effect_source" JKEY sa su SIG-TRIM JSTR 44 EMIT1
+   s" token" JKEY na nu JSTR 44 EMIT1
+   s" signature" JKEY sa su SIG-TRIM JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    s" suggestion" JKEY BADSIG-SUGGEST JSTR
    125 EMIT1 ;                                            \ }
@@ -1219,11 +1225,15 @@ BADSIG-DIAG-INSTALL
    s" habu: in " DTXT  na nu DTXT
    s" : effect not recorded: " DTXT  wa wu DTXT ;
 
+\ A warning, outside the repair contract (docs/repair-diagnostics.md): the word
+\ loaded, so the JSON carries no verdict or repair class.
 : REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY s" W-EFFECT-NOT-RECORDED" JSTR 44 EMIT1
    s" word" JKEY na nu JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   JNAME-FIELDS
    s" reason" JKEY wa wu JSTR
    125 EMIT1 ;
 
@@ -1233,7 +1243,13 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
+\ The checker writes a warning, a packet with no verdict, while WARN-DIAGS is
+\ on. tools/check.f's run turns it off: the run loads what the check before it
+\ checked, and that check wrote the warnings with their files and positions.
+variable WARN-DIAGS   -1 WARN-DIAGS !
+
 : REC-REFUSE-DIAG ( ptr u8 n -- )
+   WARN-DIAGS @ 0= IF 2drop EXIT THEN
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
 
 \ The render is no longer thrown away. It was here only to detect unmodeled tags
@@ -1276,18 +1292,48 @@ REC-SIG-INSTALL
    USH-USYM @ USH-EFF
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
-: USHADOW-JSON ( -- )
+\ The used packages a bare token resolves in: the used-scan slots the checker's
+\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK, CHECKER-USED-SYM), in the
+\ order the using scan reads them, each package once however often it is used.
+: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
+   1 swap lshift CK-USED-MASK @ and 0 <> ;
+: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
+   dup CK-USE-SLOT swap CK-USE-LEN@ ;
+: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
+   {: slot:n :}
+   slot UPKG-MATCHED?
+   slot 0 ?DO
+      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
+   LOOP ;
+: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
+   {: xt :}
+   RES-TRUE
+   CK-USE-MAX 0 ?DO
+      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
+   LOOP drop ;
+\ The packet of a bare token refused at its reference under `using`, this
+\ refusal's and the ambiguity's below: the token where the file holds it and,
+\ as `used_packages`, each used package it resolves in. For the shadow that is
+\ one package: every slot that matched holds its one used public.
+: USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-USING-SHADOW-GLOBAL" JSTR 44 EMIT1
-   s" repair_class" JKEY s" disambiguate_using_shadow" JSTR 44 EMIT1
+   s" code" JKEY code codeu JSTR 44 EMIT1
+   s" repair_class" JKEY class classu JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
-   s" used_package" JKEY USH-PKG-A @ USH-PKG-U @ JSTR 44 EMIT1
-   s" suggestion" JKEY s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier." JSTR
+   s" used_packages" JKEY 91 EMIT1
+   [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSTR ;] UPKG-EACH
+   93 EMIT1 44 EMIT1
+   s" suggestion" JKEY sug sugu JSTR
    125 EMIT1 ;
+: USHADOW-JSON ( -- )
+   s" E-USING-SHADOW-GLOBAL" s" disambiguate_using_shadow"
+   s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
+   USING-JSON ;
 : USHADOW-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
@@ -1332,6 +1378,8 @@ REC-SIG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY SBA-TWIN @ SYM-NAME$ JSTR 44 EMIT1
    s" package" JKEY SBA-TWIN @ SYM-PKG$ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   JNAME-FIELDS
    s" suggestion" JKEY s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two." JSTR
    125 EMIT1 ;
 : SBARITY-DIAG ( -- )
@@ -1339,13 +1387,37 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Both shadow diagnostics ride ONE checker hook, selected by its argument
-\ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
-\ arity-shadow definition site), because every defer written before `: TRUST`
-\ takes a slot of the engine's pre-trust pending table (src/habu/layout.f
-\ PD-CAP).
+\ --- a bare token two used publics export (checker.f CHECKER-RESOLVE:RAISE).
+\ The twin of the using-shadow reference site above: there a global and one
+\ used public claim the token, here used publics of two packages do. The reject
+\ names each package the token resolves in (UPKG-EACH above), so the author
+\ can qualify the word meant.
+: UAMB-PROSE ( -- )
+   s" E-USING-AMBIGUOUS habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
+   s" ' is ambiguous under using: used publics " DTXT
+   [: 0= IF s" , " DTXT THEN
+      39 EMIT1  UPKG-NAME$ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1 ;] UPKG-EACH
+   s"  export the same name; qualify the one meant as PKG:" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
+   s" , or rename the collision" DTXT ;
+: UAMB-JSON ( -- )
+   s" E-USING-AMBIGUOUS" s" disambiguate_using_ambiguous"
+   s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
+   USING-JSON ;
+: UAMB-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ The shadow and ambiguity diagnostics ride ONE checker hook, selected by its
+\ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site,
+\ 1 = the arity-shadow definition site, 2 = a using ambiguity), because every
+\ defer written before `: TRUST` takes a slot of the engine's pre-trust pending
+\ table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
-   1 = IF SBARITY-DIAG ELSE USHADOW-DIAG THEN ;
+   {: sel:n :}
+   sel 1 = IF SBARITY-DIAG EXIT THEN
+   sel 2 = IF UAMB-DIAG EXIT THEN
+   USHADOW-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 
@@ -1402,23 +1474,54 @@ SHADOW-DIAG-INSTALL
    JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Both refused-record diagnostics ride ONE checker hook (checker.f
-\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record).
-: RECORD-DIAG ( n -- )
-   1 = IF REPLAY-ONLY-DIAG ELSE TSTALE-DIAG THEN ;
+
+\ --- a record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), on
+\ the same template, with the repair class and suggestion a call to such a name
+\ gets (E-BAD-QUALIFIED above). The record has a code of its own, in a refused
+\ record's shape, where the call's is a definition's (tools/diag-code.f); its
+\ refusal still throws E-BAD-QUALIFIED.
+: BADQUAL-PROSE ( -- )
+   s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+   s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
+   s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
+   s"  PKG:WORD" DTXT ;
+: BADQUAL-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-QUALIFIED-RECORD" JSTR 44 EMIT1
+   s" repair_class" JKEY s" fix_qualified_name" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY s" Use one ':' qualifier, e.g. PKG:WORD." JSTR
+   125 EMIT1 ;
+: BADQUAL-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF BADQUAL-JSON ELSE BADQUAL-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ The three refused-record diagnostics ride ONE checker hook (checker.f
+\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record, 2 = the
+\ malformed name).
+: RECORD-DIAG ( n -- ) {: which:n :}
+   which 1 = IF REPLAY-ONLY-DIAG EXIT THEN
+   which 2 = IF BADQUAL-DIAG EXIT THEN
+   TSTALE-DIAG ;
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
 
 \ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
 \ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
-\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason.
+\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason;
+\ with no name on its line the definer stands in for the word and the token.
 \ It is not a definition, so it carries no definition fields. A refusal the
 \ verifier located carries the token's place in its file; a run-time refusal,
 \ whose place nothing recorded, carries none.
 : STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
 : STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
 : STGR-NAME-WHY? ( -- f )
-   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or ;
+   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or
+   STGR-WHY @ STG-NO-NAME = or ;
 : STGR-COUNT-WHY? ( -- f )
    STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or
    STGR-WHY @ STG-COUNT-WORD = or ;
@@ -1432,6 +1535,7 @@ RECORD-DIAG-INSTALL
    STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    STGR-WHY @ STG-NO-TYPE = IF s" no type for" EXIT THEN
+   STGR-WHY @ STG-NO-NAME = IF s" no name for" EXIT THEN
    s" no count for" ;
 : STGR-CLASS$ ( -- ptr u8 n )
    STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN

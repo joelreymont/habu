@@ -98,11 +98,14 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 
 \ Best-effort reap used by both the abort path and teardown: neither may throw,
 \ because a throw would strand the linear teardown token and leak the slot. The
-\ kill result and wait status are intentionally discarded here (the process is
-\ already being retired), the same shape as a deinit cleanup.
+\ pid is killed with every process it started, which would otherwise hold its
+\ pipe or terminal open under init; lib/process.f PROC-KILL-TREE reports a walk
+\ that throws rather than throwing it. The wait status is intentionally
+\ discarded here (the process is already being retired), the same shape as a
+\ deinit cleanup.
 : IO-KILL-REAP ( pid -- ) {: p:pid :}
    p PID>N 0 <= if exit then
-   p PID>N SIGKILL kill-errno drop
+   p PROC-KILL-TREE
    p PID>N wait-status drop ;
 
 : IO-GO-CLOSE ( idx -- ) {: idx:idx :}

@@ -1,6 +1,7 @@
 \ A copied engine's physical pathname must not travel into an application image.
-\ The child loads app-image through the normal source loader before its first
-\ explicit ENGINE-ID request. Keep the saved image and logs as evidence.
+\ The child loads app-image and lib/engine-id.f through the normal source
+\ loader, caches the path through ENGINE-ID:PATH$ and saves. Keep the saved
+\ image and logs as evidence.
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -70,7 +71,7 @@ variable PATH-OFF
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    ENGINE$ >LEN SOURCE-ROOT:CWD$ >LEN
    \ Compare the live PATH$ length with the cell adjacent to its buffer.
-   S\" ENGINE-ID:PATH$ drop data-base - .\nENGINE-ID:PATH$ nip .\nENGINE-ID:PATH$ drop PATH-CAP 1+ 1 cells 1- + 1 cells negate and + @ .\n" >LEN
+   S\" require src/habu/app-image.f\nrequire lib/engine-id.f\nENGINE-ID:PATH$ drop data-base - .\nENGINE-ID:PATH$ nip .\nENGINE-ID:PATH$ drop PATH-CAP 1+ 1 cells 1- + 1 cells negate and + @ .\n" >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
    s" probe.out" s" probe.err" LOG-RESULT
@@ -86,15 +87,18 @@ variable PATH-OFF
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+ SAVED$ >LEN PROC-ARGV+
    ENGINE$ >LEN SOURCE-ROOT:CWD$ >LEN
-   S\" require src/habu/app-image.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   S\" require src/habu/app-image.f\nrequire lib/engine-id.f\nENGINE-ID:PATH$ 2drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT
    s" save.out" s" save.err" LOG-RESULT
    CHECK-RESULT
    SAVED$ EXECUTABLE? TTRUE ;
 
-\ PATH-OFF comes from PATH$ on an isolated copy of the same engine. A saved
-\ process reads that DATA span before requesting its own engine identity.
+\ PATH-OFF comes from PATH$ on an isolated copy of the same engine. Both
+\ children load app-image, then lib/engine-id.f, so its DATA sits at that
+\ offset in the saved image too. app-image comes first: code compiled before
+\ its tier switch lacks native provenance, and the save refuses it (exit 100).
+\ A saved process reads that span before requesting its own engine identity.
 : CAPTURE-SOURCE$ ( -- ptr u8 n )
    SB-RESET s" data-base " SB-APPEND
    PATH-OFF @ FMT:SB-U s"  + " SB-APPEND
