@@ -1552,9 +1552,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    LOGGED ;
 
 \ The public W moves other cells than the private W, whose tail it shares: the
-\ packet is at the public definition's name.
+\ packet is at the public definition's name. The refusal refuses W alone: the
+\ check goes on, and M's extra cell on line 7 is published beside it.
 : SHADOWS ( -- ptr u8 n )
-   s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n" ;
+   s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n: LSPT-M ( -- ) 1 ;\n" ;
 
 : SHADOWED-TURNS ( -- )
    INITIALIZE
@@ -1563,7 +1564,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR CAPABILITIES
    SHADOWS A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+ PUBLISHES ;
+   A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+
+   6 16 6 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 \ LSPT-WIDE's inferred effect has more type variables than a record holds: the
 \ check verifies it and warns at its name that the effect is not recorded.
@@ -1580,9 +1582,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
 
 \ U's bare LSPT-W resolves in both used packages: E-USING-AMBIGUOUS, at the
-\ token on line 10.
+\ token on line 10. The refusal refuses U alone: the check goes on, and M's
+\ extra cell on line 11 is published beside it.
 : TWO-USED ( -- ptr u8 n )
-   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n;using\n;using\n" ;
+   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
 : TWO-USED-TURNS ( -- )
    INITIALIZE
@@ -1591,7 +1594,40 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR CAPABILITIES
    TWO-USED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+ PUBLISHES ;
+   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
+   11 16 11 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
+
+\ U's bare LSPT-SW names the global and the used public both:
+\ E-USING-SHADOW-GLOBAL at the token on line 6, and M's extra cell on line 7.
+: GLOBAL-USED ( -- ptr u8 n )
+   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
+
+: GLOBAL-USED-TURNS ( -- )
+   INITIALIZE
+   A-PATH GLOBAL-USED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   GLOBAL-USED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
+   7 16 7 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
+
+\ The same refusals in does> clauses each refuse their definer alone:
+\ E-USING-SHADOW-GLOBAL at DS's bare LSPT-SW on line 12, E-USING-AMBIGUOUS at
+\ DM's bare LSPT-DV on line 13, and M's extra cell on line 14.
+: CLAUSE-USED ( -- ptr u8 n )
+   s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
+
+: CLAUSE-USED-TURNS ( -- )
+   INITIALIZE
+   A-PATH CLAUSE-USED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   CLAUSE-USED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 12 43 12 50 1 s" E-USING-SHADOW-GLOBAL" DIAG+
+   13 43 13 50 1 s" E-USING-AMBIGUOUS" DIAG+
+   14 16 14 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
@@ -1611,7 +1647,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
-   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK ;
+   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK
+   s" using-shadow" [: GLOBAL-USED-TURNS ;] TALK
+   s" using-clause" [: CLAUSE-USED-TURNS ;] TALK ;
 
 public
 

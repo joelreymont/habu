@@ -36,7 +36,8 @@
 \
 \    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
-\ RC is the code the composition stopped with, BYTE where the token the verifier
+\ RC is the code the composition stopped with, 70 for a definition the checker
+\ refused by the throw that rendered its packet, BYTE where the token the verifier
 \ read last starts, DUP-AT and DUP-LEN where the name it refused as a duplicate
 \ starts and its length, DUP-LEN 0 when it kept no name (VERIFY:DUPLICATE),
 \ IN-SUBJECT 1 when the stop is in BYTES and 0 when it is in a file they load,
@@ -187,9 +188,18 @@ create NL 1 allot
    OUT-FD NEWLINE ;
 
 
+70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
+
+\ A definition refused by the throw that rendered its packet (checker.f
+\ DEF-STOPPED) stops the pre-pass as one its verdict refuses does; any other
+\ stop keeps its code.
+: STOP-CODE ( n -- n )
+   dup DEF-STOPPED @ = if drop REFUSED-RC then ;
+
+
 : PREVERIFY ( -- )
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}
-   rc 0<> if rc STOP-RESULT exit then
+   rc 0<> if rc STOP-CODE STOP-RESULT exit then
    s" verified" RESULT ;
 
 public

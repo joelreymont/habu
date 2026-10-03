@@ -409,12 +409,13 @@ create PACKET-BUF FS-PATH-CAP allot
 
 \ A bare token that resolves in a used package and in another scope as well is
 \ refused at its reference, which the record places, with the used packages it
-\ resolves in: a global and a used public, or two used publics.
+\ resolves in: a global and a used public, or two used publics. It refuses the
+\ definition (rc 70).
 : TEST-USING ( -- )
    s" using-shadow" s" disambiguate_using_shadow"
    s" : DIAG-SW ( n -- ) drop ; package DIAG-SP public : DIAG-SW ( n -- ) drop ; ;package using DIAG-SP : DIAG-SU ( -- ) 1 DIAG-SW ; ;using" 70 CHILD-CASE
    s" using-ambiguous" s" disambiguate_using_ambiguous"
-   s" package DIAG-UA public : DIAG-UW ( n -- ) drop ; ;package package DIAG-UB public : DIAG-UW ( n -- ) drop ; ;package using DIAG-UA using DIAG-UB : DIAG-UU ( -- ) 1 DIAG-UW ; ;using ;using" 67 CHILD-CASE ;
+   s" package DIAG-UA public : DIAG-UW ( n -- ) drop ; ;package package DIAG-UB public : DIAG-UW ( n -- ) drop ; ;package using DIAG-UA using DIAG-UB : DIAG-UU ( -- ) 1 DIAG-UW ; ;using ;using" 70 CHILD-CASE ;
 
 \ A using record whose `used_packages` is no array is refused, not copied into
 \ the packet.

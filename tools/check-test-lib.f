@@ -5730,11 +5730,15 @@ variable LC-CANON-U
 
 \ A bare name two used packages both export is refused in a definition
 \ (E-USING-AMBIGUOUS, checker.f CHECKER-USED-SYM) with a diagnostic of its own,
-\ as a used public a global shadows is: every check.f path writes a packet
-\ naming the token where the file holds it and each package it resolves in, or
-\ under --all-errors the same as prose, and none reports a statement throw. The
-\ token has a line of its own, so its place is the token's, not the
-\ definition's.
+\ as a used public a global shadows is (E-USING-SHADOW-GLOBAL): every check.f
+\ path writes a packet naming the token where the file holds it and each
+\ package it resolves in, or under --all-errors the same as prose, and none
+\ reports a statement throw. The token has a line of its own, so its place is
+\ the token's, not the definition's. The refusal refuses its definition as an
+\ E-UNDEFINED does, and every path exits 70: plain check.f stops there, and
+\ where the check reports every refused definition, --verify-only and
+\ --all-errors, it goes on, the next definition calls the refused one by its
+\ declared effect and the last one's extra cell is reported too.
 : UAMB-LINES ( -- )
    s" package CKT-UAMB-A" REQ-LINE+
    s" public" REQ-LINE+
@@ -5750,22 +5754,53 @@ variable LC-CANON-U
    s"    1" REQ-LINE+
    s"    CKT-UAMB-W" REQ-LINE+
    s" ;" REQ-LINE+
+   s" : CKT-UAMB-CALL ( -- ) CKT-UAMB-USE ;" REQ-LINE+
+   s" : CKT-UAMB-EXTRA ( -- ) 1 ;" REQ-LINE+
    s" ;using" REQ-LINE+
    s" ;using" REQ-LINE+ ;
 
 : UAMB$ ( -- ptr u8 n )  s" ckt-uamb.f" REQ$ ;
 
+: USH-LINES ( -- )
+   s" : CKT-USH-W ( n -- ) drop ;" REQ-LINE+
+   s" package CKT-USH-P" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-USH-W ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-USH-P" REQ-LINE+
+   s" : CKT-USH-USE ( -- )" REQ-LINE+
+   s"    1" REQ-LINE+
+   s"    CKT-USH-W" REQ-LINE+
+   s" ;" REQ-LINE+
+   s" : CKT-USH-CALL ( -- ) CKT-USH-USE ;" REQ-LINE+
+   s" : CKT-USH-EXTRA ( -- ) 1 ;" REQ-LINE+
+   s" ;using" REQ-LINE+ ;
+
+: USH$ ( -- ptr u8 n )  s" ckt-ush.f" REQ$ ;
+
 \ tools/check.f run on the fixture as the command line runs it, after the
 \ options CHECK-ARG+ added: its stderr length and exit status.
-: UAMB-RUN ( -- n n )
-   UAMB$ CHECK-ARG+
+: REFUSAL-RUN ( ptr u8 n -- n n )
+   CHECK-ARG+
    CHECK-CAPTURE rot drop ;
 
 : UAMB-NUM ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: p:n key:ptr keyu:n want:ptr wantu:n label:ptr labelu:n :}
    label labelu T-LABEL p key keyu LC-NUMBER$ want wantu T$= ;
 
-\ The checker's packet, and no statement-throw record.
+\ What the run reports after the refused definition, named by EXTRA and CALL as
+\ the report spells them: the extra cell exactly when the check goes on (MORE),
+\ and never the caller, which checks against the refused definition's declared
+\ effect.
+: REFUSAL-REST ( n bool ptr u8 n ptr u8 n ptr u8 n -- )
+   {: erru:n more:bool extra:ptr extrau:n call:ptr callu:n label:ptr labelu:n :}
+   label labelu T-LABEL CAP-ERR erru extra extrau CONTAINS?
+   more IF TTRUE ELSE TFALSE THEN
+   label labelu T-LABEL CAP-ERR erru call callu CONTAINS? TFALSE
+   label labelu T-LABEL CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
+   label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+
+\ The checker's packet.
 : UAMB-PACKET ( n ptr u8 n -- )
    {: erru:n label:ptr labelu:n :}
    erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:n :}
@@ -5779,15 +5814,13 @@ variable LC-CANON-U
    p s" byte_start" s" 192" label labelu UAMB-NUM
    p s" byte_end" s" 202" label labelu UAMB-NUM
    label labelu T-LABEL
-   CAP-ERR erru s\" \"used_packages\":[\"ckt-uamb-a\",\"ckt-uamb-b\"]," CONTAINS? TTRUE
-   label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+   CAP-ERR erru s\" \"used_packages\":[\"ckt-uamb-a\",\"ckt-uamb-b\"]," CONTAINS? TTRUE ;
 
-\ A refused definition ends the check as the uncaught refusal does (67), and
-\ --verify-only as a refusal (70).
-: UAMB-JSON-CASE ( n n n ptr u8 n -- )
-   {: erru:n rc:n want:n label:ptr labelu:n :}
+: UAMB-JSON-CASE ( n n n bool ptr u8 n -- )
+   {: erru:n rc:n want:n more:bool label:ptr labelu:n :}
    label labelu T-LABEL rc want T=
-   erru label labelu UAMB-PACKET ;
+   erru label labelu UAMB-PACKET
+   erru more s" ckt-uamb-extra" s" ckt-uamb-call" label labelu REFUSAL-REST ;
 
 \ bin/hb --load compiles the source, and the checker binds a body's token
 \ through the engine's lookup (checker.f LIVE-BIND), not through the replay
@@ -5821,22 +5854,124 @@ variable LC-CANON-U
 
 : TEST-USING-AMBIGUOUS ( -- )
    SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
-   CHECK-ARGV-START UAMB-RUN 67 s" using-ambiguous: plain" UAMB-JSON-CASE
+   CHECK-ARGV-START UAMB$ REFUSAL-RUN 70 false s" using-ambiguous: plain" UAMB-JSON-CASE
    CHECK-ARGV-START s" --json-errors" CHECK-ARG+
-   UAMB-RUN 67 s" using-ambiguous: --json-errors" UAMB-JSON-CASE
+   UAMB$ REFUSAL-RUN 70 false s" using-ambiguous: --json-errors" UAMB-JSON-CASE
    CHECK-ARGV-START s" --verify-only" CHECK-ARG+
-   UAMB-RUN 70 s" using-ambiguous: --verify-only" UAMB-JSON-CASE
+   UAMB$ REFUSAL-RUN 70 true s" using-ambiguous: --verify-only" UAMB-JSON-CASE
    CHECK-ARGV-START s" --all-errors" CHECK-ARG+
-   UAMB-RUN {: erru:n rc:n :}
-   s" using-ambiguous: --all-errors" T-LABEL rc 67 T=
+   UAMB$ REFUSAL-RUN {: erru:n rc:n :}
+   s" using-ambiguous: --all-errors" T-LABEL rc 70 T=
    s" using-ambiguous: --all-errors" T-LABEL
    CAP-ERR erru s" E-USING-AMBIGUOUS habu: bare 'CKT-UAMB-W' " CONTAINS? TTRUE
    s" using-ambiguous: --all-errors" T-LABEL
    CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE
-   s" using-ambiguous: --all-errors" T-LABEL
-   CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   erru true s" in ckt-uamb-extra:" s" ckt-uamb-call" s" using-ambiguous: --all-errors" REFUSAL-REST
    0 s" using-ambiguous: --load" UAMB-LOAD-CASE
    1 s" using-ambiguous: --load at tier 1" UAMB-LOAD-CASE ;
+
+\ The shadow's packet: the token where the file holds it and the package it is
+\ used from.
+: USH-PACKET ( n ptr u8 n -- )
+   {: erru:n label:ptr labelu:n :}
+   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET {: p:n :}
+   label labelu T-LABEL p 0 >= TTRUE
+   label labelu T-LABEL p s" token" LC-STRING$ s" CKT-USH-W" T$=
+   p s" file" LC-STRING$ USH$ label labelu LC-EXPECT-FILE
+   p s" line" s" 9" label labelu UAMB-NUM
+   p s" column" s" 4" label labelu UAMB-NUM
+   label labelu T-LABEL
+   CAP-ERR erru s\" \"used_packages\":[\"ckt-ush-p\"]," CONTAINS? TTRUE ;
+
+: USH-CASE ( n n n bool ptr u8 n -- )
+   {: erru:n rc:n want:n more:bool label:ptr labelu:n :}
+   label labelu T-LABEL rc want T=
+   erru label labelu USH-PACKET
+   erru more s" ckt-ush-extra" s" ckt-ush-call" label labelu REFUSAL-REST ;
+
+: TEST-USING-SHADOW ( -- )
+   SB-RESET USH-LINES s" ckt-ush.f" REQ-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   USH$ REFUSAL-RUN 70 false s" using-shadow: --json-errors" USH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   USH$ REFUSAL-RUN 70 true s" using-shadow: --verify-only" USH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   USH$ REFUSAL-RUN 70 true s" using-shadow: --all-errors" USH-CASE ;
+
+\ A public its package's private word shadows at another width
+\ (E-SHADOWED-ARITY, checker.f SHADOW-ARITY-CK) refuses its definition as the
+\ using refusals above do; the caller names the public qualified.
+: SBA-LINES ( -- )
+   s" package CKT-SBA" REQ-LINE+
+   s" : CKT-SBA-W ( n n -- n ) + ;" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-SBA-W ( n -- n ) 1 + ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" : CKT-SBA-CALL ( n -- n ) CKT-SBA:CKT-SBA-W ;" REQ-LINE+
+   s" : CKT-SBA-EXTRA ( -- ) 1 ;" REQ-LINE+ ;
+
+: SBA$ ( -- ptr u8 n )  s" ckt-sba.f" REQ$ ;
+
+: SBA-CASE ( n n n bool ptr u8 n -- )
+   {: erru:n rc:n want:n more:bool label:ptr labelu:n :}
+   label labelu T-LABEL rc want T=
+   label labelu T-LABEL erru s" code" s" E-SHADOWED-ARITY" LC-PACKET 0 >= TTRUE
+   erru more s" ckt-sba-extra" s" ckt-sba-call" label labelu REFUSAL-REST ;
+
+: TEST-SHADOWED-ARITY ( -- )
+   SB-RESET SBA-LINES s" ckt-sba.f" REQ-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   SBA$ REFUSAL-RUN 70 false s" shadowed-arity: --json-errors" SBA-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   SBA$ REFUSAL-RUN 70 true s" shadowed-arity: --verify-only" SBA-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   SBA$ REFUSAL-RUN 70 true s" shadowed-arity: --all-errors" SBA-CASE ;
+
+\ The using refusals in does> clauses: a definer's clause is inside its
+\ definition, so each refuses its definer as one in a body does. Plain check.f
+\ stops at the first, the shadow; --verify-only and --all-errors go on to the
+\ ambiguity and the last definition's extra cell.
+: DUSE-LINES ( -- )
+   s" : CKT-DUSE-W ( n -- ) drop ;" REQ-LINE+
+   s" package CKT-DUSE-A" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-DUSE-W ( n -- ) drop ;" REQ-LINE+
+   s" : CKT-DUSE-V ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" package CKT-DUSE-B" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-DUSE-V ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-DUSE-A" REQ-LINE+
+   s" using CKT-DUSE-B" REQ-LINE+
+   s" : CKT-DUSE-SHADOW ( n -- ) create , does> ( -- ) @ CKT-DUSE-W ;" REQ-LINE+
+   s" : CKT-DUSE-AMB ( n -- ) create , does> ( -- ) @ CKT-DUSE-V ;" REQ-LINE+
+   s" : CKT-DUSE-EXTRA ( -- ) 1 ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" ;using" REQ-LINE+ ;
+
+: DUSE$ ( -- ptr u8 n )  s" ckt-duse.f" REQ$ ;
+
+: DUSE-CASE ( n n bool ptr u8 n -- )
+   {: erru:n rc:n more:bool label:ptr labelu:n :}
+   label labelu T-LABEL rc 70 T=
+   label labelu T-LABEL
+   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET 0 >= TTRUE
+   label labelu T-LABEL
+   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET 0 >=
+   more IF TTRUE ELSE TFALSE THEN
+   label labelu T-LABEL CAP-ERR erru s" ckt-duse-extra" CONTAINS?
+   more IF TTRUE ELSE TFALSE THEN
+   label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+
+: TEST-USING-CLAUSE ( -- )
+   SB-RESET DUSE-LINES s" ckt-duse.f" REQ-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   DUSE$ REFUSAL-RUN false s" using-clause: --json-errors" DUSE-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   DUSE$ REFUSAL-RUN true s" using-clause: --verify-only" DUSE-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   DUSE$ REFUSAL-RUN true s" using-clause: --all-errors" DUSE-CASE ;
 
 \ A source checked with the files it loads; a case list of its own keeps
 \ TEST-MAIN under the 8000-byte body limit.
@@ -6214,6 +6349,9 @@ variable LC-CANON-U
    s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/using-ambiguous" [: TEST-USING-AMBIGUOUS ;] CASE-RUN
+   s" check/using-shadow" [: TEST-USING-SHADOW ;] CASE-RUN
+   s" check/shadowed-arity" [: TEST-SHADOWED-ARITY ;] CASE-RUN
+   s" check/using-clause" [: TEST-USING-CLAUSE ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
    s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN
