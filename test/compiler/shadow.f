@@ -172,30 +172,33 @@ ndict@ REC-QUOT !
 : ADD-STAGE ( -- )
    0 X64KHIR:ARG  1 X64KHIR:ARG  HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT ;
 
-: SEALED-X64 ( [ -- ] -- )
+: SEALED-X64 ( [ NART:emission -- ] -- )
    {: use :}
    s" shadow-add" 2 1 [: ADD-STAGE ;] use X64KHIR:COMPILE ;
 
-: FOREIGN-USE ( -- )
+: FOREIGN-USE ( NART:emission -- )
+   {: e:NART:emission :}
    cp@ ndict@ {: cp0:n nd0:n :}
-   [: NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
+   e [: NPUB:PUBLISH-PENDING ;] catch
+   E-NPUB-TARGET T= drop
    cp@ cp0 - 0 T=
    ndict@ nd0 - 0 T= ;
 
-: UNCLAIMED-USE ( -- )
+: UNCLAIMED-USE ( NART:emission -- )
+   {: e:NART:emission :}
    NSHADOW:RECORDS NSHADOW:EMISSIONS {: recs:n ems:n :}
-   NSHADOW:TAKE
+   e NSHADOW:TAKE
    NSHADOW:ABANDON
    ndict@ NSHADOW:PUBLISH
-   [: 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   e 0 [: NSHADOW:TAKE-DOES ;] catch E-NSHADOW-ROW T= drop drop
    ndict@ NSHADOW:PUBLISH
-   [: 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   e 1 [: NSHADOW:TAKE-DOES ;] catch E-NSHADOW-ROW T= drop drop
    ndict@ NSHADOW:PUBLISH
    NSHADOW:RECORDS recs T=
    NSHADOW:EMISSIONS ems T= ;
 
-: WRONG-TARGET-USE ( -- )
-   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+: WRONG-TARGET-USE ( NART:emission -- )
+   [: NSHADOW:TAKE ;] catch E-NSHADOW-TARGET T= drop ;
 
 : FOREIGN-CASE ( -- )
    s" publication refuses an emission sealed for another machine before its window, and neither CP nor NDICT moves" T-LABEL
