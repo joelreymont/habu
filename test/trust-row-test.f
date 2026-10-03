@@ -1,4 +1,4 @@
-\ trust-row-test.f - what a bare `s" NAME" s" SIG" trust` row may assert
+\ trust-row-test.f - what a `s" NAME" s" SIG" trust` row may assert
 \ (dot habu-make-trust-refuse-cc8e19de).
 \
 \ A row is a CLAIM that a word exists, and it used to be believed without being
@@ -7,9 +7,9 @@
 \ call, and the damage surfaced two layers away at some later file's `using`, as
 \ E-USING-SHADOW-GLOBAL against a package public that legitimately owned the
 \ tail. src/core/checker.f TRUST-RESOLVES? now answers the claim from the
-\ ENGINE's wordlist the row's record lands in (the open section's, or the
-\ global one outside a package, read through `search-wl`) and refuses the row
-\ where it is written.
+\ ENGINE's wordlist the row's record lands in (the open section's, the
+\ global one outside a package, or PKG's public one for PKG:TAIL, read through
+\ `search-wl`) and refuses the row where it is written.
 \
 \ WHY EVERY CASE RUNS THROUGH INCLUDE-EVALUATE. The row has to be REJECTED AT
 \ THE ROW, which is a statement about WHEN the throw happens and not only that
@@ -164,15 +164,23 @@ s\" package TRWB public : TRWB-PUB ( -- n ) 9 ; s\q TRWB-PUB\q s\q -- n\q trust 
 \ global symbol that collided with a later `using`.
 s\" s\q TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 
-\ A QUALIFIED spelling is accepted, and this case exists to pin that as a STATED
-\ GAP rather than a silent one. `search-wl` answers per wordlist on the raw
-\ spelling and a closed package's publics live in none it can reach, so PKG:TAIL
-\ has no resolver in the boot prefix yet (dot habu-resolve-qualified-trust-2826761a).
-\ When that lands, this case changes verdict and says so.
+\ --- a qualified row ----------------------------------------------------------
+\ PKG:TAIL records its effect on PKG's public symbol, so PKG's public wordlist is
+\ the one that must hold TAIL, asked through the package's namespace row exactly
+\ as the engine's FIND resolves the spelling. The closed package's public is
+\ accepted.
 s\" s\q TRWB:TRWB-PUB\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
-\ ... including for a package that does not exist at all, which is the whole of
-\ what the gap costs today.
-s\" s\q TRW-NO-SUCH-PKG:TAIL\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH 0 TRUST-ROW:T=
+\ A package that does not exist, before a tail only the global wordlist holds:
+\ no package is no wordlist, never the global one.
+s\" s\q TRW-NO-SUCH-PKG:TRW-LIVE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+\ A real package that defines no such tail.
+s\" s\q TRWB:TRWB-NONE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+\ A real package's PRIVATE word: a qualified name never reaches a private
+\ wordlist, so the row names no word, as a missing tail does.
+s\" s\q TRWA:TRWA-PRIV\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
+\ A real package qualifying a GLOBAL's name: the global wordlist holds TRW-LIVE,
+\ TRWB's public one does not, and only the latter is asked.
+s\" s\q TRWB:TRW-LIVE\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE TRUST-ROW:T=
 
 \ --- at the row, not downstream ---------------------------------------------
 \ The verdict has to be the ROW's. Here the bad row is followed, in the same

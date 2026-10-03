@@ -17451,12 +17451,13 @@ package CHECKER-REG
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
-\ ---- what a bare `trust` row may assert -------------------------------------
+\ ---- what a `trust` row may assert ------------------------------------------
 \ A row is a CLAIM that a word exists, so the dictionary gets to answer it.
 \ Resolution is the ENGINE's and not the checker's tables: the wordlist the
-\ row's record lands in - the open section's, private or public, or the global
-\ wordlist outside a package (TRUST-RECORD-WL) - asked through `search-wl`,
-\ which hides internal rows (src/habu/habu1.f BSWL). Not the whole scope chain:
+\ row's record lands in - for a bare name the open section's, private or public,
+\ or the global wordlist outside a package (TRUST-RECORD-WL), for PKG:TAIL the
+\ package's public one (below) - asked through `search-wl`, which hides internal
+\ rows (src/habu/habu1.f BSWL). Not the whole scope chain:
 \ a global claimed from inside a package recorded its effect on a package
 \ symbol of the open section, which the engine never defined and which then
 \ bound every bare use there, so checked callers were certified against the row
@@ -17478,13 +17479,14 @@ package CHECKER-REG
 \ instead would be a second authority for one question and would still have to
 \ special-case every primitive axiom, which have no recorded effect to find.
 \
-\ A QUALIFIED SPELLING IS ACCEPTED, and that is a stated gap rather than an
-\ oversight (dot habu-resolve-qualified-trust-2826761a): the probe that hides
-\ internal rows, `search-wl`, matches a record's own name within one wordlist,
-\ and PKG:TAIL is not a record's name. It is also the narrower half of
-\ the hole: only a BARE top-level name mints the global checker symbol that
-\ surfaces two layers away as E-USING-SHADOW-GLOBAL, which is the failure this
-\ refusal exists to stop. A malformed token is asked as a bare one: the engine
+\ A QUALIFIED SPELLING lands on PKG's public symbol (CHECKER-RECORD-NAME), so
+\ PKG's public wordlist is the one asked, open or closed, and it is found the
+\ way the engine's FIND finds it (habu1.f EMIT-FIND, FIND-QTAILOK): a package's
+\ namespace row sits in DICT-WL:NAMESPACE, -1 (src/habu/layout.f, loaded after
+\ this file), and its code cell, which `search-wl` answers, is the package's
+\ public wid. No package answers 0, which must not reach CK-WL-CLAIMS? as the
+\ global wordlist. A private tail is in no public wordlist, so it is refused
+\ as a missing one is. A malformed token is asked as a bare one: the engine
 \ defines no word spelled that way, so no wordlist claims it and the row names no
 \ word. Where nothing is asked, CHECKER-RECORD-NAME refuses it as malformed.
 : TRUST-RECORD-WL ( -- n )
@@ -17493,10 +17495,16 @@ package CHECKER-REG
    mode CHECKER-PACKAGE-PUBLIC = IF data-base CK-PKG-PUB-OFF + @ EXIT THEN
    0 ;
 
+: TRUST-PUBLIC-CLAIMS? ( ptr u8 n ptr u8 n -- bool )
+   {: pa:ptr pu:n ta:ptr tu:n :}
+   pa pu -1 search-wl {: wid:n :}
+   wid 0= IF RES-FALSE EXIT THEN
+   ta tu wid CK-WL-CLAIMS? ;
+
 : TRUST-RESOLVES? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF RES-TRUE EXIT THEN
    CHECKER-PKG-MIRROR-AUTHORITY? IF RES-TRUE EXIT THEN
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ TRUST-PUBLIC-CLAIMS? EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
 : TRUST {: na:ptr nu:n sa:ptr su:n :}

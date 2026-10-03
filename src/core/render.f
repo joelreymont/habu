@@ -1475,7 +1475,8 @@ SHADOW-DIAG-INSTALL
 : TSTALE-PROSE ( -- )
    s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' names no word where its record lands: nothing in the open" DTXT
-   s"  section's wordlist, or the global wordlist outside a package, is" DTXT
+   s"  section's wordlist, the global wordlist outside a package, or PKG's" DTXT
+   s"  public wordlist for PKG:TAIL is" DTXT
    s"  spelled that way, so the effect would be recorded against a symbol" DTXT
    s"  the engine never defined. Delete the row, correct the name to the" DTXT
    s"  word it was meant to describe, or write it in the section that" DTXT
@@ -1488,7 +1489,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet." JSTR
+   s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JSTR
    125 EMIT1 ;
 : TSTALE-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !

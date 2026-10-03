@@ -374,7 +374,7 @@ variable GJA-DIRECT
    GJA-MAP-ROW IF exit THEN
    s" rebuild_engine" s" The engine provides this source; rebuild bin/hb to check a change to it."
    GJA-MAP-ROW IF exit THEN
-   s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet."
+   s" fix_stale_trust_row" s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word."
    GJA-MAP-ROW IF exit THEN
    s" use_storage_definer" s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar."
    GJA-MAP-ROW IF exit THEN
