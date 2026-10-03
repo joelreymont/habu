@@ -22,9 +22,9 @@ require src/habu/native-observer-cells.f
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ The two non-wordlist values a record's wordlist cell can carry. They are
 \ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
-\ same cell, and XREF-RETIRE below is the one writer that changes it after a
-\ record is already in that index - see the DICT-WL comment there for what the
-\ lookup does about it.
+\ same cell, and XREF-RETIRE below and the checker overlay's record-wid! are
+\ the two writers that change it after a record is already in that index - see
+\ the DICT-WL comment there for what the lookup does about it.
 DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
 DICT-WL:RETIRED constant XREF-RETIRED-WL
 

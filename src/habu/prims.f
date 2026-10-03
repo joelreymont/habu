@@ -770,6 +770,34 @@ ETRUSTED-ONLY!
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
+\ ---- the replay writers ------------------------------------------------------
+\ Only package CHECKER-OVERLAY's rows type these five. With no global row, a
+\ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
+\ one at tier 0 only: tier 1 has no row to build its call from. A refusal
+\ exits: 79 while a task is live and 83 for every other.
+\
+\ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
+\ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It
+\ refuses an open overlay and a pending definition.
+\ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
+\ entry traps, exit 76. It refuses no overlay, wid -1 or -2 and what the
+\ three record writers above refuse.
+\ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
+\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a
+\ namespace row and wid -1. A seeded primitive's record retires as the live
+\ `undefine` retires it.
+\ replay-close ( -- ): zero the records published since replay-open, put the
+\ saved state back and zero the band. It refuses no overlay, a pending
+\ definition, NDICT below the saved count or above the highest count
+\ replay-record and namespace-record reached, and CP or WIDN below the saved.
+\ replay-widn! ( n -- ): put WIDN back to a mark the owner read inside the
+\ overlay, once its rollback dropped what it made since. It refuses no overlay
+\ and a mark below the saved WIDN or above WIDN, unsigned.
+EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: SEAL-FRIEND    EPRIM;

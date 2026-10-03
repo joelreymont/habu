@@ -196,13 +196,14 @@ variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
 variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (defined in habu2.f EM-BODY-CAP-DIE; dot habu-name-the-per-56a594f3)
 \ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
-\ and the cannot-maintain loud exit (both bound in EMIT-HIDX). In a package so
-\ new names stay out of the global packaging debt, and in HIDX-EMIT rather than
-\ layout.f's HIDX because the engine bakes that one.
+\ the cannot-maintain loud exit and the re-key record-wid! BLs (all bound in
+\ EMIT-HIDX). In a package so new names stay out of the global packaging debt,
+\ and in HIDX-EMIT rather than layout.f's HIDX because the engine bakes that one.
 package HIDX-EMIT
 public
 variable LREBUILD
 variable LFULL
+variable LREKEY
 ;package
 variable LHIDXADD
 
@@ -3990,7 +3991,7 @@ private
 \     the scan exactly;
 \   - DICT-WL:RETIRED is not a wordlist. xref.f XREF-RETIRE stamps it onto rows
 \     that are ALREADY in the table under the wid they were published in, so
-\     those rows sit on another chain entirely and this key's chain is empty -
+\     such a row sits on another chain until a rebuild re-keys it onto this one -
 \     and retiring one name twice puts two rows under the key, which is the
 \     duplicate case the probe has no shape for. Both failures point the same
 \     way, so the probe is not consulted for that wid at all and the scan, which
@@ -4843,6 +4844,22 @@ package ENGINE-EMIT
 
 variable LHIDXBUILD
 
+\ Emit: the chain of record x3's key, its folded name XOR its wid cell: x6 =
+\ the chain's first slot, x8 = HIDX-SLOTS, the most slots one walk visits.
+\ Clobbers x2 x4 x5 x7 x15 x16.
+: C-HIDX-CHAIN ( -- )
+   LBL {: rinl:label :}
+   5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
+   2 5 40 LDR,
+   16 5 24 ADDI,
+   15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,
+   4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
+      16 5 24 LDR,
+   rinl LBL,
+   16 15 6 4 5 7 C-HIDX-HASH
+   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+   8 HIDX-SLOTS LIT64, ;
+
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
 \ empty slot or stale rolled-back slot and store index+1 (no dedupe pass).
@@ -4855,17 +4872,8 @@ variable LHIDXBUILD
 \ with nothing said (CG-25) - so reaching it now dies loudly instead
 \ (HIDX-EMIT:LFULL). Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label rinl:label :}
-   5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
-   2 5 40 LDR,
-   16 5 24 ADDI,
-   15 5 16 LDR,  15 15 DNAME-FLAG-BITS LSLI,  15 15 DNAME-FLAG-BITS LSRI,
-   4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
-      16 5 24 LDR,
-   rinl LBL,
-   16 15 6 4 5 7 C-HIDX-HASH
-   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-   8 HIDX-SLOTS LIT64,
+   LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label :}
+   C-HIDX-CHAIN
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
       4 iempty CBZ,
@@ -4877,6 +4885,20 @@ variable LHIDXBUILD
       4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
    iput LBL,
       4 3 1 ADDI,  4 17 0 STRW, ;
+
+\ Emit: branch to `held` when record x3's chain in table x14 holds x3 before
+\ its first empty slot, the stretch every probe for the record's key walks;
+\ else fall through. Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
+: C-HIDX-HELD? ( label -- ) {: held:label :}
+   LBL LBL {: hloop:label hnone:label :}
+   C-HIDX-CHAIN
+   hloop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
+      4 hnone CBZ,
+      4 4 1 SUBI,  4 3 CMP,  C-EQ held BCOND,
+      8 8 1 SUBI,  8 hnone CBZ,
+      6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  hloop B,
+   hnone LBL, ;
 
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
 \ live record with this definition's wordlist (DEF-WL-CELL) and folded name
@@ -4917,6 +4939,14 @@ variable LHIDXBUILD
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
+\ The frame LHIDXADD and HIDX-EMIT:LREKEY open: x30 and every register their
+\ walks, insert and load bound clobber. EMIT-HIDX's aret closes it.
+: HIDX-SAVE, ( -- )
+   SP SP 96 SUBI,
+   30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
+   6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
+   8 SP 88 STR, ;
+
 \ LHIDXADD: insert the just-published record (index NDICT-1), then compact the
 \ table in place the moment the claimed-slot count crosses HIDX:LOAD-MAX -
 \ which is how rollback churn's garbage (stale slots that NDICT regrowth
@@ -4929,20 +4959,25 @@ variable LHIDXBUILD
 \ raise keeps an authoritative table instead of silently dropping it.
 \ HIDX-EMIT:LFULL: the loud exit shared by every structurally-unreachable
 \ cannot-maintain state; nothing zeroes HIDXP-CELL any more.
+\ HIDX-EMIT:LREKEY (x3 = a record index): index that record under the wid its
+\ cell holds now, unless that key's chain already holds it, then apply
+\ LHIDXADD's load bound; register-transparent like LHIDXADD. record-wid!
+\ (habu2.f DEFWRITE:RECORD-WID) calls it after it rewrites a published record's
+\ wid, because a rebuild keys every record on its cell as it stands: a record
+\ retired across a rebuild sits on RETIRED's chain, not on the chain of the wid
+\ it gets back. x86-64 refuses record-wid! (kernel-x64.f), so it has no twin.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
       rret:label zloop:label zdone:label :}
-   LBL {: bhave:label :}
+   LBL LBL {: bhave:label ains:label :}
    S\" hb: dictionary index alloc failed\n" {: ma:ptr mu:n :}
    S\" hb: dictionary index exhausted\n" {: fa:ptr fu:n :}
    LHIDXADD LABEL@ LBL,
-      SP SP 96 SUBI,
-      30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
-      6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
-      8 SP 88 STR,
+      HIDX-SAVE,
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
+      ains LBL,
       C-HIDX-INS
       \ the load bound: compact before chains can approach a full wrap
       4 DATA HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
@@ -4952,6 +4987,11 @@ variable LHIDXBUILD
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
       8 SP 88 LDR,
       SP SP 96 ADDI,  RET,
+   HIDX-EMIT:LREKEY LABEL@ LBL,
+      HIDX-SAVE,
+      14 DATA HIDXP-CELL LDR,  14 aret CBZ,
+      aret C-HIDX-HELD?
+      ains B,
    LHIDXBUILD LABEL@ LBL,
       \ startup runs this by BL between source setup and the interpret
       \ loop, so it must be register-transparent: save everything it or
@@ -5351,10 +5391,12 @@ variable FIND-HMATCH
       \ That rests on ONE invariant: every record in [0,NDICT) is in the table.
       \ LHIDXBUILD indexes the whole dictionary once NDICT is final at startup,
       \ every publishing site increments NDICT and calls LHIDXADD in the same
-      \ breath, and no entry is ever removed - a truncated record's slot keeps
-      \ its stale index and is skipped, so no chain is ever cut. Slots therefore
-      \ only ever go empty -> occupied, and an insert takes the FIRST empty or
-      \ stale slot on its own chain, so nothing can hide behind an empty one.
+      \ breath, record-wid! indexes a record under each wid it writes
+      \ (HIDX-EMIT:LREKEY), and no entry is ever removed - a truncated
+      \ record's slot keeps its stale index and is skipped, so no chain is
+      \ ever cut. Slots therefore only ever go empty -> occupied, and an insert
+      \ takes the FIRST empty or stale slot on its own chain, so nothing can
+      \ hide behind an empty one.
       \ The two ways the invariant can lapse both keep the linear scan: no table
       \ (a failed insert cleared HIDXP-CELL, or ndict! raised NDICT over records
       \ the table never saw - see BNDSET), and a chain walked for every slot

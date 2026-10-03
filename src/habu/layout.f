@@ -204,19 +204,29 @@ REGION DICT-SIZE - constant BYTES
 3 constant FIRST-DYNAMIC-WID
 \ --- the wordlist cell's two non-wordlist values ---------------------------
 \ A record's wordlist cell is HALF THE HASH INDEX'S KEY (habu1.f C-HIDX-INS
-\ keys a slot on the folded name XOR this cell), and it is written once, at
-\ publication, BEFORE the record is inserted - which is what lets a probe with a
-\ caller's wid find the row or prove it absent.
+\ keys a slot on the folded name XOR this cell), so a record is on the chain
+\ of the wid its cell holds - which is what lets a probe with a caller's wid
+\ find the row or prove it absent. Publication writes the cell BEFORE the
+\ record is inserted, and a rebuild (HIDX-EMIT:LREBUILD) keys every record on
+\ its cell as it stands.
 \
 \ NAMESPACE keeps that rule: a package's own row carries it from birth, so the
 \ row is on this key's chain and LFIND's qualifier probe finds it there.
 \ RETIRED breaks it. src/habu/xref.f XREF-RETIRE stamps it on the cell of a
 \ record that is ALREADY in the table, so the row stays on the chain of the wid
-\ it was published under. Every lookup keyed on a REAL wid still agrees with a
-\ scan (the row's cell no longer matches, so both skip it), but a lookup keyed
-\ on RETIRED itself cannot be answered by the table at all - and retiring one
-\ name twice puts two rows under the key, which an insert-once table has no slot
-\ shape for. habu1.f BSWL therefore keeps its linear scan for exactly this wid.
+\ it was published under until a rebuild moves it to RETIRED's. Every lookup
+\ keyed on a REAL wid still agrees with a scan (the row's cell no longer
+\ matches, so both skip it), but a lookup keyed on RETIRED itself cannot be
+\ answered by the table at all - and retiring one name twice puts two rows
+\ under the key, which an insert-once table has no slot shape for. habu1.f
+\ BSWL therefore keeps its linear scan for exactly this wid.
+\
+\ The checker overlay's record-wid! (habu2.f DEFWRITE:RECORD-WID) retires a
+\ record and later writes back the wid the overlay logged. A rebuild in
+\ between (a publication crossing HIDX:LOAD-MAX, an ndict! raise) re-keys the
+\ retired row on RETIRED's chain, so the chain of the wid it gets back no
+\ longer holds it: record-wid! therefore indexes the record under each wid it
+\ writes (HIDX-EMIT:LREKEY), which keeps the rule above.
 \
 \ Both live in a package rather than beside the constants above because they are
 \ new: the surrounding global surface is this file's packaging debt (dot
@@ -2178,9 +2188,39 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
 
+\ The checker overlay's replay scope (habu2.f DEFWRITE:REPLAY-OPEN /
+\ REPLAY-CLOSE). replay-open saves the dictionary and scope cells here and sets
+\ LATCH; replay-record raises HW, the highest NDICT a replay record reached;
+\ replay-close checks the live state against these cells, restores them and
+\ zeroes the whole band, LATCH included; replay-widn! lowers WIDN no further
+\ than the saved one. The band is zero whenever no overlay is open, so a
+\ snapshot carries nothing new. It is a guarded band (data-bands.f), not
+\ scratch: replay-close and replay-widn! trust it as the state replay-open
+\ found, so a raw store that forged the saved NDICT, HW or WIDN would turn
+\ replay-close into a record eraser and either into a WIDN setter.
+\ USE-RPKG-SAVE is REPL-line state, not scope, and is not saved. Above $7FF8,
+\ so emitted code reaches it by LIT64 and ADD.
+package REPLAY-SCOPE
+public
+UNIT-COMPILE-CELL CELL + constant LATCH             \ 0: no overlay open
+LATCH CELL + constant HW
+HW CELL + constant NDICT
+NDICT CELL + constant CP
+CP CELL + constant WIDN
+WIDN CELL + constant CUR
+CUR CELL + constant PKG-PUB
+PKG-PUB CELL + constant PKG-PRI
+PKG-PRI CELL + constant PKG-PARENT
+PKG-PARENT CELL + constant PKG-REC
+PKG-REC CELL + constant USE-DEPTH
+USE-DEPTH CELL + constant USE-PKG-SAVE
+USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
+USE-WIDS USE-MAX cells + constant END
+;package
+
 \ Pending storage is private to the engine's capture/drain primitives. Its
 \ capacity may grow without moving any published engine slot or live map.
-UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
+REPLAY-SCOPE:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) --

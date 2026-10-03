@@ -266,6 +266,9 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
+The five replay writers (`replay-open`, `replay-close`, `replay-widn!`,
+`replay-record`, `record-wid!`) have no stage0 registration: no boot-prefix
+source calls one, and the recovery check passes without them.
 The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.

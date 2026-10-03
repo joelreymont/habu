@@ -3956,9 +3956,10 @@ public
 
 \ ---- the definition writers --------------------------------------------------
 \ The bodies of the nine rows src/habu/prims.f specifies under "the definition
-\ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
-\ EMIT-PRIMITIVE-SECTIONS. Each checks everything before it writes, and a
-\ refusal exits the process, so no reader ever sees a half-written row.
+\ writers" and of the five replay writers after them, registered with
+\ ENGINE-PRIMS:GLOBAL-INT-WID in EMIT-PRIMITIVE-SECTIONS. Each checks
+\ everything before it writes, and a refusal exits the process, so no reader
+\ ever sees a half-written row.
 \ FPRIM-WID frames x30 around each body.
 package DEFWRITE
 
@@ -4016,7 +4017,71 @@ package DEFWRITE
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
+\ x<r> = the replay scope band (src/habu/layout.f REPLAY-SCOPE). It lies above
+\ $7FF8, past a DATA-relative scaled immediate, so its base is computed.
+: BAND, ( n -- ) {: r:n :}
+   r REPLAY-SCOPE:LATCH LIT64,  r DATA r ADD, ;
+
+\ A band cell's offset from BAND,'s base.
+: BAND-OFF ( n -- n ) REPLAY-SCOPE:LATCH - ;
+
+\ While an overlay is open, raise its high-water mark to NDICT: the records the
+\ overlay published are [the saved NDICT, HW). Clobbers x8 and x14.
+: HW-RAISE, ( -- )
+   LBL {: keep:label :}
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 keep CBZ,
+   14 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 14 CMP,  C-LS keep BCOND,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   keep LBL, ;
+
+\ One scope cell, at off from x<base>, into band cell `cell` at x8 when save is
+\ true and back out of it when it is false. Clobbers x14.
+: SAVED, ( n n n bool -- ) {: base:n off:n cell:n save:bool :}
+   save if
+      14 base off LDR,  14 8 cell BAND-OFF STR,
+   else
+      14 8 cell BAND-OFF LDR,  14 base off STR,
+   then ;
+
+\ The scope replay-open saves and replay-close restores, beside NDICT and CP:
+\ WIDN, CURRENT, the open package's four cells and the using band's depth, the
+\ depth `package` saved and the used wids. USE-RPKG-SAVE is the REPL line's,
+\ not the scope's. x8 = the band. Clobbers x10 and x14.
+: SCOPE, ( bool -- ) {: save:bool :}
+   DATA WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
+   DATA CUR-CELL REPLAY-SCOPE:CUR save SAVED,
+   DATA PKG-PUB-CELL REPLAY-SCOPE:PKG-PUB save SAVED,
+   DATA PKG-PRI-CELL REPLAY-SCOPE:PKG-PRI save SAVED,
+   DATA PKG-PARENT-CELL REPLAY-SCOPE:PKG-PARENT save SAVED,
+   DATA PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
+   10 USE-BAND-OFF LIT64,  10 DATA 10 ADD,
+   10 USE-DEPTH-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-DEPTH save SAVED,
+   10 USE-PKG-SAVE-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
+   USE-MAX 0 ?do
+      10 USE-WIDS-OFF USE-BAND-OFF - i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
+   loop ;
+
+\ Zero the cells [x10, x11). Clobbers x10 and x15.
+: ZERO-SPAN, ( -- )
+   LBL LBL {: next:label done:label :}
+   15 0 MOVZ,
+   next LBL,  10 11 CMP,  C-CS done BCOND,
+      15 10 0 STR,  10 10 8 ADDI,  next B,
+   done LBL, ;
+
 public
+
+\ The entry of every replay record: executing one is an error the record has no
+\ code to report, so the trap reports it and exits 76.
+variable LREPLAYTRAP
+
+: EMIT-REPLAY-TRAP ( -- )
+   LBL  S\" hb: replay record executed\n"  {: msg:label ma mu :}
+   LREPLAYTRAP LABEL@ LBL,
+   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES, ;
 
 \ namespace-record ( ptr u8 n bool -- n )
 : NAMESPACE-RECORD ( -- )
@@ -4045,6 +4110,7 @@ public
    15 9 8 STR,  14 DATA WIDN-CELL STR,
    15 DICT-WL:NAMESPACE invert MOVN,  15 9 40 STR,
    PUBLISH,
+   HW-RAISE,                                          \ an overlay's row dies at replay-close
    9 NDICT 1 SUBI,  9 G-PUSH
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -4123,6 +4189,151 @@ public
    11 9 0 LDR,
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    1 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ ---- the checker overlay's replay writers ---------------------------------
+\ The five rows src/habu/prims.f types only for package CHECKER-OVERLAY.
+\ replay-open saves the scope into the REPLAY-SCOPE band and replay-close puts
+\ it back, so no caller hands the engine a state to restore; the one mark a
+\ caller hands, replay-widn!'s, the band bounds below. While the latch is
+\ set, replay-record and namespace-record raise HW as they publish. The owner
+\ publishes through nothing else, nothing while a definition is pending, and
+\ lowers NDICT only by its own rollback, so [the saved NDICT, HW) is the
+\ overlay's and a record above HW is another writer's.
+
+\ replay-open ( -- )
+: REPLAY-OPEN ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
+   bad NOT-PENDING,
+   NDICT 8 REPLAY-SCOPE:NDICT BAND-OFF STR,
+   CP 8 REPLAY-SCOPE:CP BAND-OFF STR,
+   0 0= SCOPE,
+   NDICT 8 REPLAY-SCOPE:HW BAND-OFF STR,
+   14 1 MOVZ,  14 8 REPLAY-SCOPE:LATCH BAND-OFF STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-record ( ptr u8 n n -- ) name, wid: a codeless record, whose entry
+\ is the trap. It needs no OPEN-WID: it can only trap, and replay-close
+\ removes it.
+: REPLAY-RECORD ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
+   bad REAL-WID,
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   bad NOT-PENDING,
+   bad DICT-ROOM,
+   bad NAME-SIZE,
+   bad FRESH,
+   3 2 0 ADDI,  10 0 0 ADDI,  12 1 0 ADDI,
+   9 NDICT REC-AT,
+   NAME-BANDS,
+   NAME-COPY
+   14 LREPLAYTRAP LABEL@ ADR,  14 9 0 STR,            \ [0] = the trap
+   14 0 MOVZ,  14 9 8 STR,
+   3 9 40 STR,
+   PUBLISH,
+   HW-RAISE,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
+\ and later gives it back the wid it logged, in reverse order. The wid cell is
+\ half the record's hash key, and a compaction between the two re-keys the
+\ retired record on RETIRED's chain, so after each store the record is indexed
+\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f DICT-WL).
+\ It refuses an index at or above NDICT, unsigned, a namespace row and the
+\ namespace wid. A seeded primitive's record is retired like any other: the
+\ live `undefine` retires it in place (src/habu/xref.f XREF-RETIRE-WL scans
+\ down to record 0), and a replay of that `undefine` has to as well.
+\ Between a restore and replay-close one wordlist can hold two live records of
+\ one name, the restored record and a replay record, and the hash probe and
+\ the wordlist scan may answer with different ones. The owner ends every such
+\ window before any lookup: OV-DONE's restore with replay-close, a frame
+\ rollback's with the ndict! that drops the replay record.
+: RECORD-WID ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   3 NDICT CMP,  C-CS bad BCOND,
+   9 3 REC-AT,
+   15 DICT-WL:NAMESPACE invert MOVN,
+   14 9 40 LDR,  14 15 CMP,  C-EQ bad BCOND,
+   13 15 CMP,  C-EQ bad BCOND,
+   REC-SPAN,
+   13 9 40 STR,
+   HIDX-EMIT:LREKEY LABEL@ BL,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-close ( -- ): every check comes before the first store. It refuses
+\ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
+\ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
+\ scope back and zeroes the band, the latch with it.
+\ The WIDN refusal is defensive: no unforged path reaches it. Every engine
+\ writer of WIDN but replay-widn! raises it (wordlist, package,
+\ namespace-record, namespace-private, a qualified definition's new wordlist,
+\ the AOT seed's window), replay-widn! lowers it no further than the saved
+\ WIDN, no recovery puts it back, the cold start sets it before any source
+\ runs, and a raw store to WIDN-CELL or to the band exits 83 after the seal. It
+\ keeps a WIDN the overlay did not leave from being restored over, as the NDICT
+\ and CP checks do.
+: REPLAY-CLOSE ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   bad NOT-PENDING,
+   4 8 REPLAY-SCOPE:NDICT BAND-OFF LDR,  NDICT 4 CMP,  C-CC bad BCOND,
+   5 8 REPLAY-SCOPE:HW BAND-OFF LDR,  NDICT 5 CMP,  C-HI bad BCOND,
+   6 8 REPLAY-SCOPE:CP BAND-OFF LDR,  CP 6 CMP,  C-CC bad BCOND,
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 DATA WIDN-CELL LDR,
+   15 14 CMP,  C-CC bad BCOND,
+   6 GUARD-CODE-WORD
+   NDICT 4 0 ADDI,  10 11 LASTC-TRIM,
+   CP 6 0 ADDI,
+   10 DREC MOVZ,  11 5 10 MUL,  10 4 10 MUL,
+   10 DBASE 10 ADD,  11 DBASE 11 ADD,                 \ records [x10, x11)
+   1 10 0 ADDI,  2 11 10 SUB,  PROT-EMIT:LSPAN LABEL@ BL,
+   ZERO-SPAN,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   8 BAND,
+   0 0<> SCOPE,
+   10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
+   ZERO-SPAN,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ replay-widn! ( n -- ): put WIDN back to N, a mark the owner read while the
+\ overlay was open, as a rollback inside the overlay drops what it made since
+\ the mark (src/core/checker.f CHECKER-OVERLAY ROLLBACK). The records ndict!
+\ drops held every wid at or above N, so none is handed out twice. It refuses
+\ no overlay, N below the saved WIDN, which would hand out again a wid from
+\ before the overlay, and N above WIDN, both compared unsigned. A mark is never
+\ below the saved WIDN, so replay-close's WIDN check keeps holding.
+: REPLAY-WIDN ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   13 G-POP                                           \ x13 = the mark
+   8 BAND,
+   14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
+   14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  13 14 CMP,  C-CC bad BCOND,
+   15 DATA WIDN-CELL LDR,  13 15 CMP,  C-HI bad BCOND,
+   13 DATA WIDN-CELL STR,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
@@ -12616,7 +12827,7 @@ package LABELS
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
-   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL WLFIND:LENTRY !
+   LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !  LBL WLFIND:LENTRY !
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
@@ -12653,7 +12864,7 @@ package LABELS
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDUSED-CORE !  LBL LSCOPEREC !
-   LBL INTERP-EMIT:LFINDSHADOW !
+   LBL INTERP-EMIT:LFINDSHADOW !  LBL DEFWRITE:LREPLAYTRAP !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL DEFER-DIAG:LDEFNOTOKEN !  LBL DEFER-DIAG:LDEFNOTFOUND !
    LBL DEFER-DIAG:LDEFNOTDEFER !  LBL DEFER-DIAG:LDEFNONAME !  LBL DEFER-DIAG:LDEFHINT !
@@ -13193,6 +13404,11 @@ package ENGINE-EMIT
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
@@ -13218,6 +13434,7 @@ package ENGINE-EMIT
    EMIT-FIND-USED
    INTERP-EMIT:FIND-SHADOW
    EMIT-SCOPE-REC
+   DEFWRITE:EMIT-REPLAY-TRAP
    EMIT-HIDX
    EMIT-DEF-OCC
    EMIT-DEF-OCC-OVERLAP
