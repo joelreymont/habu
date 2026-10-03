@@ -10,10 +10,10 @@ package UNIT-COMPILE
 
 private
 
-64 constant NAME-CAP
 70 constant UNIT-RC
 
-create NAME NAME-CAP allot
+\ The unit's package name: the caller's bytes, borrowed for the extent of WITH.
+PTR-VARIABLE NAME-A
 variable NAME-U
 TYPED-VARIABLE BODY-XT [ -- bool ]
 variable ACTIVE
@@ -35,6 +35,8 @@ TRUSTED: INPUT@ ( -- ptr u8 ) data-base INP-CELL + @ ;
 TRUSTED: INPUT! ( ptr u8 -- ) data-base INP-CELL + ! ;
 
 : TOKEN= ( ptr u8 n ptr u8 n -- bool ) STR= ;
+
+: NAME$ ( -- ptr u8 n ) NAME-A @ NAME-U @ ;
 
 \ Compare the resolved code entry, not the token spelling: an open package
 \ may shadow any ordinary dictionary word used by the allowed top-level forms.
@@ -66,7 +68,7 @@ TRUSTED: ORIGINAL-PROTECT? ( n -- bool ) ['] prot-wid-add = ;
 
 : PACKAGE-ENTRY ( ptr u8 n -- bool )
    STAGE @ PACKAGE-NAME <> if UNIT-RC throw then
-   NAME NAME-U @ TOKEN= 0= if UNIT-RC throw then
+   NAME$ TOKEN= 0= if UNIT-RC throw then
    BODY-XT @ execute {: skip:bool :}
    skip if IMPORTED else BODY then STAGE !
    skip ;
@@ -128,8 +130,8 @@ public
 : WITH ( ptr u8 n [ -- bool ] [ -- ] -- )
    {: a:ptr u:n body q :}
    ACTIVE @ 0<> REQUIRE-XT @ 0= or
-   u 0 <= or u NAME-CAP > or tier@ 1 <> or if UNIT-RC throw then
-   a NAME u BYTE-COPY u NAME-U !
+   u 0 <= or tier@ 1 <> or if UNIT-RC throw then
+   a NAME-A ! u NAME-U !
    body BODY-XT !
    PROLOGUE STAGE !
    1 ACTIVE !

@@ -6,6 +6,7 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/string.f
 require lib/test/subject.f
 require src/compiler/native/compiler.f
 require tools/native-unit-compile.f
@@ -76,6 +77,19 @@ variable SIDE-EFFECT
    s" nested.f"
       S\" package UCNT\npublic\n: VALUE ( -- n ) 44 ;\n;package\n0 NATIVE-UNIT-COMPILE-TEST:SIDE-EFFECT !\n" PUT ;
 
+\ The longest package name the checker admits, all `L`.
+CHECKER-PACKAGE-CAP 1- constant LONG-U
+create LONG-NAME LONG-U allot
+
+: LONG$ ( -- ptr u8 n ) LONG-NAME LONG-U ;
+
+: LONG-SOURCE ( -- )
+   LONG-U 0 ?do  [char] L LONG-NAME i + c!  loop
+   SB-RESET
+   s" package " SB-APPEND  LONG$ SB-APPEND
+   S\" \npublic\n: VALUE ( -- n ) 45 ;\n;package\n" SB-APPEND
+   s" long.f" SB$ PUT ;
+
 : ON-BODY ( -- bool ) 1 BODY-SEEN ! false ;
 : ON-SKIP ( -- bool ) 2 BODY-SEEN ! true ;
 : CONTINUE ( -- ) 1 CONTINUED +! ;
@@ -103,6 +117,7 @@ TRUSTED: BAD-HOOK ( [ -- ] -- n )
 : LOAD-THROW ( -- ) s" throw.f" included ;
 : LOAD-AFTER-THROW ( -- ) s" after-throw.f" included ;
 : LOAD-NESTED ( -- ) s" nested.f" included ;
+: LOAD-LONG ( -- ) s" long.f" included ;
 
 : GOOD ( -- ) s" UCX" [: ON-BODY ;] [: LOAD-GOOD ;] UNIT-COMPILE:WITH ;
 : SKIP ( -- ) s" UCX" [: ON-SKIP ;] [: LOAD-SKIP ;] UNIT-COMPILE:WITH ;
@@ -121,6 +136,7 @@ TRUSTED: BAD-HOOK ( [ -- ] -- n )
 : THROWN ( -- ) s" UCT" [: ON-THROW ;] [: LOAD-THROW ;] UNIT-COMPILE:WITH ;
 : AFTER-THROW ( -- ) s" UCAFT" [: ON-BODY ;] [: LOAD-AFTER-THROW ;] UNIT-COMPILE:WITH ;
 : NESTED ( -- ) s" UCNT" [: ON-NESTED ;] [: LOAD-NESTED ;] UNIT-COMPILE:WITH ;
+: LONG ( -- ) LONG$ [: ON-BODY ;] [: LOAD-LONG ;] UNIT-COMPILE:WITH ;
 
 : SIDE ( -- ) 1 SIDE-EFFECT ! ; immediate
 s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
@@ -164,7 +180,11 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    s" arbitrary callback throw releases hook for the next source" T-LABEL
    [: THROWN ;] catch E-STR-BOUNDS T=
    UNIT-COMPILE:BORROWED-CLEAR? TTRUE
-   AFTER-THROW ;
+   AFTER-THROW
+   s" a unit holds the longest package name the checker admits" T-LABEL
+   0 BODY-SEEN !
+   [: LONG ;] catch 0 T=
+   BODY-SEEN @ 1 T= ;
 
 : REFUSED ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT 1024 >LEN ERR 1024 >LEN 10000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
@@ -188,6 +208,7 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
    s" native-unit-compile-e2e" HB-TMP-MKDIR {: root:ptr u:n :}
    root ROOT u BYTE-COPY u ROOT-U !
    SOURCES
+   LONG-SOURCE
    ROOT$ [: RUN-CASES ;] SOURCE-ROOT:WITH
    HOOK-GATE
    s" native unit compile tree: " type ROOT$ type cr ;

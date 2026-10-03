@@ -281,7 +281,9 @@ variable RC     variable EXITED
 \ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
 \ program compiles them, its MATCH and its local, and stops. A refused long name
 \ is reported whole up to its newline, and a refused TRUSTED: one still finds
-\ its signature to retract, which leaves the refusal's own code uncaught.
+\ its signature to retract, which leaves the refusal's own code uncaught. A
+\ refusal at a 7900-byte body token names that token whole: a TRUSTED: body
+\ skips the checker, so its missing word reaches the elaborator.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -372,6 +374,15 @@ variable LN-LEN
    len LN-OPEN
    s" ncomp: cannot compile " LN+ NAME+ tail tu LN+ S\" \n" LN+ LN$ ;
 
+: TOKEN-MISSING$ ( n -- ptr u8 n )
+   1 swap TIER-OPEN
+   s" TRUSTED: LN-TOK ( -- n ) " LN+ NAME+ s"  ;" LN+ LN$ ;
+
+\ The line a refusal at that token prints, from the definition to the newline.
+: TOKEN-LINE$ ( n -- ptr u8 n )
+   LN-OPEN
+   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ S\" \n" LN+ LN$ ;
+
 : TEST-LONG-NAMES ( -- )
    s" a 65-byte name with a quotation runs on tier 0" T-LABEL
    0 65 QUOT$ RUN  s" 42" ASSERT-OK
@@ -428,7 +439,11 @@ variable LN-LEN
    s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
    1000 TRUSTED-MISSING$ RUN  UNCAUGHT-RC ASSERT-RC
    ERR$ s"  at LN-MISSING" 1000 REFUSED-LINE$ CONTAINS? TTRUE
-   ERR$ E-HIR-UNMODELED UNCAUGHT$ CONTAINS? TTRUE ;
+   ERR$ E-HIR-UNMODELED UNCAUGHT$ CONTAINS? TTRUE
+
+   s" a refusal at a 7900-byte body token names the token whole" T-LABEL
+   7900 TOKEN-MISSING$ RUN  UNCAUGHT-RC ASSERT-RC
+   ERR$ 7900 TOKEN-LINE$ CONTAINS? TTRUE ;
 
 \ ---- 2d. a refusal line names only its own token ------------------------------
 \ The elaborator names the token it refused at. A later definition refused
