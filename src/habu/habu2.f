@@ -8153,6 +8153,7 @@ ardone LBL,
       snorigin:label :}
    LBL LBL LBL LBL
    {: snform:label sngrid:label snpadcheck:label sndecoded:label :}
+   LBL LBL {: polclr:label poldone:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 CODE-OFF LIT64,  10 10 5 SUB,
@@ -8400,6 +8401,14 @@ ardone LBL,
    RELOC-EMIT:LXT LABEL@ BL,
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
+   \ The restored process owns a new source policy. The writer clears its
+   \ captured copy too; this also normalizes images written before that fix.
+   9 0 MOVZ,  9 DATA POLICY-NDICT-CELL STR,
+   10 POLICY-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   polclr LBL,  11 poldone CBZ,
+      9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  polclr B,
+   poldone LBL,
    snomag LBL, ;
 
 : EM-STARTUP-COLD-BASELINE ( -- )
