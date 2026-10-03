@@ -371,6 +371,24 @@ USING-TEST:URS-V @ 42 T=
 s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH E-REJECT T=
 s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 
+\ === a definition reusing an ambiguous used name ===
+\ A definition binds its own pending name first, so a global AW is admitted
+\ while UA and UC both export AW, at tier 0 and tier 1, and runs as itself. A
+\ reference to the bare AW stays ambiguous: a checked body is E-USING-AMBIGUOUS
+\ and a top-level token the engine's E-AMBIGUOUS. This section comes last
+\ because it defines a global AW, which the cases above need absent.
+package USING-TEST public variable UAD-V ;package
+s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
+USING-TEST:UAD-V @ 1 T=
+s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" undefine AW" UCE-CATCH 0 T=
+1 set-tier
+s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
+USING-TEST:UAD-V @ 2 T=
+s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+0 set-tier
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

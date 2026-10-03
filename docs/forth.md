@@ -1624,7 +1624,9 @@ the rule.
   `undefine dup  : dup ( n -- n ) 100 + ;`, `: T ( -- n ) 5 dup ;` leaves
   `105` at both tiers (test/undefine-binding.f), and `package P : DIE ( ptr u8
   n -- ) 3 die ;  : T ( -- n ) s" x" DIE 0 ;` is `E-DEAD-CODE`
-  (test/checker-dead-path-suite.f).
+  (test/checker-dead-path-suite.f). A definition binds its own pending name
+  first, so it may reuse a name two used packages export; references to the
+  bare name stay ambiguous (test/using-test.f).
 - **A name the engine holds no word for binds nowhere in compiled code.** The
   checker binds a token to the word the lookup finds, to the definition it
   recorded last and the engine has not yet published, or to a keyword it types
