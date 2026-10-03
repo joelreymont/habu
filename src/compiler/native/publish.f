@@ -140,13 +140,11 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
-5 constant DOES-SUFFIX-BYTES
-
 : PAD-INSTRUCTION ( n -- n )
    3 + -4 and ;
 
 : DOES-NAME-PAD ( n -- n )
-   XREF-REC XREF-NAME$ nip DOES-SUFFIX-BYTES + PAD-INSTRUCTION ;
+   XREF-REC XREF-NAME$ nip DOES-CLAUSE:SUFFIX$ nip + PAD-INSTRUCTION ;
 
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}

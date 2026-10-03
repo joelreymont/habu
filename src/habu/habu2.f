@@ -3439,6 +3439,9 @@ public
 \ counted by the one publish; every abandon path leaves both uncounted.
 package DOES-REC
 
+\ SUF-LEN and COPY-NAME's five byte stores spell src/core/checker.f
+\ DOES-CLAUSE:SUFFIX$, the suffix every Habu word loaded after the checker reads;
+\ this emitter runs before that word exists, so the two change together.
 5 constant SUF-LEN                                     \ ";does"
 
 public

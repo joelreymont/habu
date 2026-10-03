@@ -2197,11 +2197,9 @@ variable SITE-TRAP-CELL
 40 constant DR-REC                     \ the clause's record
 48 constant DR-FRAME
 
-: SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
-
 \ Store the suffix's bytes at rdi and step past them.
 : SUFFIX, ( -- )
-   SUFFIX$ {: a:ptr u:n :}
+   DOES-CLAUSE:SUFFIX$ {: a:ptr u:n :}
    u 0 ?do
       RAX a i + c@ IMM32,
       0 >R8 RDI i MEM-OFF ASM-SINK ENC-MOV8-MR
@@ -2224,7 +2222,7 @@ variable SITE-TRAP-CELL
    R11 DATA-REG PEND-CELL MOV-LOAD,                    \ the parent's record
    R11 RCX RAX NAME-LEN,
    R11 RDX RAX NAME-AT,
-   RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX DOES-CLAUSE:SUFFIX$ nip >IMM8 ASM-SINK ENC-ADD-RI8
    RCX RSP DR-NAME-LEN MOV-STORE,
    RDX RSP DR-NAME MOV-STORE,
    RAX RCX SLOT-UP,
@@ -2232,7 +2230,7 @@ variable SITE-TRAP-CELL
    RDI cp RAX 1 0 MEM-IDX ASM-SINK ENC-LEA  LOPEN-LBL CALL,
    RSI RSP DR-NAME MOV-LOAD,
    RDI cp ASM-SINK ENC-MOV-RR
-   RCX RSP DR-NAME-LEN MOV-LOAD,  RCX SUFFIX$ nip >IMM8 ASM-SINK ENC-SUB-RI8
+   RCX RSP DR-NAME-LEN MOV-LOAD,  RCX DOES-CLAUSE:SUFFIX$ nip >IMM8 ASM-SINK ENC-SUB-RI8
    COPY-BYTES,                                         \ the parent's name
    SUFFIX,
    RCX RSP DR-PAD MOV-LOAD,

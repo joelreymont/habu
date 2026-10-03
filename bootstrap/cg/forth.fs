@@ -4273,6 +4273,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ src/habu/habu2.f carries the same five words and the reasoning; the mirror
 \ keeps them because an engine recovered through Gforth builds the next one, and
 \ a dictionary without clause records makes that build refuse.
+\ DOES-SUF-LEN and the five byte stores below spell src/core/checker.f
+\ DOES-CLAUSE:SUFFIX$; the three change together.
 5 constant DOES-SUF-LEN                                \ ";does"
 
 \ x11 = the parent's pending record, x13 = the clause name's length, x14 = the

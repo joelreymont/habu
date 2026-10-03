@@ -20540,12 +20540,27 @@ package CHECKER-REG
 \ is, with the companion suffix (src/habu/habu2.f SUF-LEN). An uncheckable
 \ clause is rendered here too: CHECK leaves that verdict to its callers outside
 \ JSON, and the pre-pass renders nothing of its own for a clause.
-: DOES-SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+\
+\ DOES-CLAUSE:SUFFIX$ IS THE ONE SPELLING of that suffix for every Habu word
+\ that loads after this file: the cross-reference walk (src/habu/xref.f), the
+\ capture (src/habu/aot-capture.f), the native compiler's clause names
+\ (src/compiler/native/elaborate.f, publish.f) and the x86-64 kernel's record
+\ writer (src/habu/kernel-x64.f). A public package word, so the product engine
+\ ships it for kernel-x64.f, which loads at run time. The engine emitter
+\ (src/habu/habu2.f DOES-REC) and the Gforth seed (bootstrap/cg/forth.fs
+\ DOES-SUF-LEN) write the same bytes before any Habu word exists.
+package DOES-CLAUSE
+public
+: SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+;package
+\ The word is compiled before any checker exists, so this row is its effect for
+\ the checked bodies that call it.
+PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
    TKF NMB nu CCOPY
-   DOES-SUFFIX$ {: sa:ptr su:n :}
+   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
    sa NMB nu + su CCOPY
    NMB NMA !  nu su + NMU ! ;
 
@@ -20560,7 +20575,7 @@ package CHECKER-REG
 \ first: growing them afterwards would drop the refused token being reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
-   nu DOES-SUFFIX$ nip + TOKBUF-ENSURE
+   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba bu sa su CHECK-DOES-RUN
    DOES-EFF-CLEAR
    na nu DOES-REPORT ;

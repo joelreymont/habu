@@ -969,7 +969,6 @@ variable ACAP-BP
 \ needs its exact entry record. ACAP-GRAPH-NAME-DOES below retains that record
 \ after reachability is known, including a private definer reached through a
 \ public wrapper or EXPORT alias.
-5 constant ACAP-DOES-SUFFIX-LEN
 : ACAP-DOES-COMPANION? ( n -- bool ) {: k:n :}
    k 0= if false exit then
    k 1- {: parent-k:n :}
@@ -984,9 +983,10 @@ variable ACAP-BP
       first parent 8 + ACAP-W32@ CODE-SPAN:BYTES + > if false exit then
    parent-k ACAP-REC-NAME$ {: name:ptr len:n :}
    k ACAP-REC-NAME$ {: derived:ptr derived-len:n :}
-   derived-len len ACAP-DOES-SUFFIX-LEN + <> if false exit then
+   DOES-CLAUSE:SUFFIX$ {: suffix:ptr sufu:n :}
+   derived-len len sufu + <> if false exit then
    derived len name len CORE-STR=CI 0= if false exit then
-   derived len + ACAP-DOES-SUFFIX-LEN s" ;does" CORE-STR=CI ;
+   derived len + sufu suffix sufu CORE-STR=CI ;
 
 \ An unnamed but reachable body retains an 8-byte AOT-SPAN row (blob offset,
 \ raw code span). The application linker needs that extent when it copies and

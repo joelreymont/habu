@@ -3824,7 +3824,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    {: k:n :}
    0 QNAME-U !
    0 QSPELL QNAME+
-   FUN-KIND @ FUN-DOES-CLAUSE = if s" ;does" QNAME+ then
+   FUN-KIND @ FUN-DOES-CLAUSE = if DOES-CLAUSE:SUFFIX$ QNAME+ then
    s" [:" QNAME+
    k QNAME-DIGITS
    0 QNAME-BUF QNAME-U @ ;
@@ -3832,7 +3832,7 @@ variable QNAME-P                     \ the place value the digit loop is on
 : DOES-NAME ( -- ptr u8 n )
    0 QNAME-U !
    0 QSPELL QNAME+
-   s" ;does" QNAME+
+   DOES-CLAUSE:SUFFIX$ QNAME+
    0 QNAME-BUF QNAME-U @ ;
 
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
