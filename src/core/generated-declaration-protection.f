@@ -10,6 +10,14 @@
 package GENERATED-DECL-PROTECTION
 
 7169 constant E-PROTECTION-CAP
+\ One code for one condition: there is no room left to protect the constructor
+\ wordlists a declaration needs.  It went unexplained for a long time, so an
+\ exhausted registry printed the generic "declaration failed" against whatever
+\ family happened to declare next -- the maki competitive-evidence red was
+\ misattributed to an innocent enum for two days because of exactly that.  The
+\ reason names the registry, so the reader looks at capacity instead of at the
+\ declaration in front of them.
+s" the protected-wordlist registry is full" E-PROTECTION-CAP DECL-REJECT:EXPLAIN
 $FFFFFFFF constant WID-MAX
 4 constant CAP-INIT
 $0FFFFFFFFFFFFFFF constant CELL-CAP-MAX

@@ -58,10 +58,10 @@
 \ Reason selection.  A front end that detects the fault itself passes its own
 \ reason text with REJECT.  A fault raised deeper — by the family registry, the
 \ variant registry, the field record, or a transaction participant — arrives as
-\ a bare code, so REASON falls back to a text table keyed by that code.  An
-\ armed reason is honoured only when it was armed FOR the code that actually
-\ escaped; that is what stops a stale reason from being printed against an
-\ unrelated failure.
+\ a bare code, so REASON falls back to a text table keyed by that code, which
+\ each code's owner fills with EXPLAIN.  An armed reason is honoured only when
+\ it was armed FOR the code that actually escaped; that is what stops a stale
+\ reason from being printed against an unrelated failure.
 \
 \ Nesting.  STRUCTURE and ENUM are top-level, interpret-only declaration
 \ keywords and never nest: one declaration is open at a time, so the packet is a
@@ -76,12 +76,14 @@ using TYPE-DECL
 
 package DECL-REJECT
 
-\ --- spans.  Four short byte slots hold the packet text.  They are copies, not
+\ --- spans.  Four short byte slots hold the packet text, and one more per
+\ reason-table row holds that row's text.  They are copies, not
 \ borrowed spans: a declaration body spans several input lines, the engine
 \ refills its input buffer per line when the source is a stream, and the family
 \ name is read on the first line but rendered after a reject on a later one.  A
 \ borrowed span would render whatever bytes later occupied that buffer.
 4 constant SLOTS
+32 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
 96 constant SPAN-CAP        \ per-slot bytes; a longer span is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
@@ -91,8 +93,8 @@ package DECL-REJECT
 2 constant S-TOKEN          \ offending token ("" when the fault has no token)
 3 constant S-REASON         \ short reason text
 
-create SPAN-BUF  SLOTS SPAN-CAP * allot
-create SPAN-LEN  SLOTS cells allot
+create SPAN-BUF  SLOTS REASON-CAP + SPAN-CAP * allot
+create SPAN-LEN  SLOTS REASON-CAP + cells allot
 
 \ The one raw-memory boundary in this package.  A checked body cannot type the
 \ address arithmetic from a `create` region to a `ptr u8` span, exactly as
@@ -136,124 +138,37 @@ TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
 TRUSTED: MULTI? ( -- bool ) MULTI-ERR? ;
 TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 
-\ --- reject codes this package can be asked to explain.  Re-declared package-
-\ locally with the owning name in the comment, exactly as structure-decl.f and
-\ enum-decl.f re-declare theirs: the global pre-hook constants that own these
-\ values are removed by the type-DSL cutover and do not survive the checked
-\ engine's fixpoint self-rebuild.
-7101 constant C-CASE        \ type-family.f E-TFAM-CASE
-7102 constant C-DUP         \ type-family.f E-TFAM-DUP
-7107 constant C-SYNTAX      \ sumtype.f E-TDECL-SYNTAX
-7108 constant C-ARITY       \ sumtype.f E-TDECL-ARITY
-7109 constant C-PAYLOAD     \ sumtype.f E-TDECL-PAYLOAD
-7110 constant C-NAME        \ sumtype.f E-TDECL-NAME
-7116 constant C-POLICY      \ sumtype.f E-TDECL-POLICY
-7117 constant C-RECURSIVE   \ sumtype.f E-TDECL-RECURSIVE
-7118 constant C-CAP         \ sumtype.f E-TDECL-CAP
-7119 constant C-DERIVE      \ sumtype.f E-TDECL-DERIVE
-7148 constant C-PF-ID       \ type-family.f E-PF-ID
-7149 constant C-PF-TX       \ type-family.f E-PF-TX
-7150 constant C-PF-OWNER    \ type-family.f E-PF-OWNER
-7125 constant C-PF-NAME     \ type-family.f E-PF-NAME
-7126 constant C-PF-SCHEMA   \ type-family.f E-PF-SCHEMA
-7127 constant C-PF-LAYOUT   \ type-family.f E-PF-LAYOUT
-7128 constant C-PF-FLAGS    \ type-family.f E-PF-FLAGS
-7161 constant C-EVENT-TX    \ decl-event.f E-DEV-TX
-7162 constant C-EVENT-STATE \ decl-event.f E-DEV-STATE
-7163 constant C-DUP-POLICY  \ decl-event.f E-DEV-DUP-POLICY
-7164 constant C-DUP-DERIVE  \ decl-event.f E-DEV-DUP-DERIVE
-7170 constant C-SEALED      \ declaration-transaction.f E-REGISTRATION-SEALED
-7171 constant C-PART-DEPTH  \ declaration-transaction.f E-PARTICIPANT-DEPTH
-7172 constant C-FIELD-SCOPE \ decl-event.f E-DEV-FIELD-SCOPE
-7173 constant C-FAMILY-SCOPE \ decl-event.f E-DEV-FAMILY-SCOPE
-7174 constant C-DICT-TX     \ generated-declaration-dictionary.f E-DICTIONARY-TX
-7175 constant C-DICT-CAP    \ generated-declaration-dictionary.f E-DICTIONARY-CAP
-7176 constant C-CTOR-ARM    \ E-CTOR-ARM, below in this file
-7177 constant C-REPLAY-BUSY \ DECL-REPLAY:E-REPLAY-BUSY, below in this file
-7169 constant C-PROTECTION-CAP \ generated-declaration-protection.f E-PROTECTION-CAP
-7190 constant C-MAKE-FAM    \ structure-make.f E-SM-FAM
-7191 constant C-MAKE-EMPTY  \ structure-make.f E-SM-EMPTY
+\ --- the reason table: what a reject of a deeper owner's code reports when no
+\ front end armed a reason for it.  Row r is a code in REASON-CODES and its text
+\ in slot SLOTS + r.  Each code's owner explains it with EXPLAIN, reading its own
+\ constant by name, so a renumbered code keeps its text: the owners loaded
+\ before this file are explained at the end of this package, each later one
+\ beside its constants.  The table is a closed world, like the transaction's
+\ participant table: REASON-CAP is the number of codes the engine's owners
+\ explain, and EXPLAIN refuses a code past it, or one explained twice, by name.
+create REASON-CODES  REASON-CAP cells allot
+variable REASONS            \ rows explained so far
 
 0 constant NO-CODE          \ no reason is armed
 
 variable ARMED              \ the code the armed reason explains (NO-CODE = none)
 
-: FOUND ( -- bool ) 0 0= ;
-: MISSING ( -- bool ) 0 0= 0= ;
 : NOTHING$ ( -- ptr u8 n ) s" " ;
 : FALLBACK$ ( -- ptr u8 n ) s" declaration failed" ;
 
-\ --- reason table, grouped by the registry that raises each code.  Each group
-\ answers the text and a found flag, so an unmapped code stays distinguishable
-\ from a mapped one instead of silently reading as the default.
-: REASON-GRAMMAR ( n -- ptr u8 n bool ) {: code:n :}
-   code C-SYNTAX    = IF s" malformed declaration"        FOUND EXIT THEN
-   code C-ARITY     = IF s" arity must be a decimal, at most 23 parameters" FOUND EXIT THEN
-   code C-PAYLOAD   = IF s" unknown payload type"         FOUND EXIT THEN
-   code C-POLICY    = IF s" unknown layout policy"        FOUND EXIT THEN
-   code C-RECURSIVE = IF s" invalid layout policy for recursive sum" FOUND EXIT THEN
-   code C-CAP       = IF s" declaration too long"         FOUND EXIT THEN
-   \ 7119 reaching the table (rather than an armed front-end reason) means the
-   \ derive requirement failed later, in the constructor participant's payload
-   \ role and equality checks, not that the feature token was unknown.
-   code C-DERIVE    = IF s" a payload type or role has no derived equality" FOUND EXIT THEN
-   NOTHING$ MISSING ;
+: CODE-AT ( n -- n ) cells REASON-CODES + @ ;
 
-: REASON-NAME ( n -- ptr u8 n bool ) {: code:n :}
-   \ Both front ends arm "reserved name" at their own name gates, so 7110
-   \ reaching this table was raised by a deeper owner: the variant-name gate
-   \ (a reserved tail or a family-name collision) or the constructor collide
-   \ check (a variant spelled like a word the DERIVE clause generates). The text
-   \ has to be true of both.
-   code C-NAME = IF s" name is reserved or already taken" FOUND EXIT THEN
-   code C-CASE = IF s" name must be a lowercase tail"     FOUND EXIT THEN
-   code C-DUP  = IF s" duplicate name in this package"    FOUND EXIT THEN
-   NOTHING$ MISSING ;
-
-: REASON-FIELD ( n -- ptr u8 n bool ) {: code:n :}
-   code C-PF-ID     = IF s" invalid or uncommitted field id"         FOUND EXIT THEN
-   code C-PF-TX     = IF s" stale or out-of-order field transaction" FOUND EXIT THEN
-   code C-PF-OWNER  = IF s" invalid field owner family or variant"   FOUND EXIT THEN
-   code C-PF-NAME   = IF s" reserved field name"                     FOUND EXIT THEN
-   code C-PF-SCHEMA = IF s" malformed or owner-incompatible field schema" FOUND EXIT THEN
-   code C-PF-LAYOUT = IF s" invalid field layout metadata"           FOUND EXIT THEN
-   code C-PF-FLAGS  = IF s" undefined field flag bits"               FOUND EXIT THEN
-   NOTHING$ MISSING ;
-
-: REASON-TXN ( n -- ptr u8 n bool ) {: code:n :}
-   code C-EVENT-TX     = IF s" stale or out-of-order declaration event" FOUND EXIT THEN
-   code C-EVENT-STATE  = IF s" field publication broke field-id contiguity" FOUND EXIT THEN
-   code C-DUP-POLICY   = IF s" a second POLICY clause in one declaration" FOUND EXIT THEN
-   code C-DUP-DERIVE   = IF s" the same DERIVE feature twice in one declaration" FOUND EXIT THEN
-   code C-SEALED       = IF s" declaration registration is sealed"   FOUND EXIT THEN
-   code C-PART-DEPTH   = IF s" declaration participant depth mismatch" FOUND EXIT THEN
-   code C-FIELD-SCOPE  = IF s" field is outside this declaration"    FOUND EXIT THEN
-   code C-FAMILY-SCOPE = IF s" declaration does not own this family" FOUND EXIT THEN
-   code C-DICT-TX      = IF s" generated-name transaction is out of order" FOUND EXIT THEN
-   code C-DICT-CAP     = IF s" generated-name table is full"         FOUND EXIT THEN
-   code C-CTOR-ARM     = IF s" family cannot own generated constructors" FOUND EXIT THEN
-   code C-REPLAY-BUSY  = IF s" a replayed declaration is already open"   FOUND EXIT THEN
-   code C-MAKE-FAM     = IF s" family cannot own generated make/unmake" FOUND EXIT THEN
-   code C-MAKE-EMPTY   = IF s" a constructed family needs at least one field" FOUND EXIT THEN
-   NOTHING$ MISSING ;
-
-\ The protection owner raises one code for one condition: there is no room left to
-\ protect the constructor wordlists this declaration needs.  It went unmapped for a
-\ long time, so an exhausted registry printed the FALLBACK$ text against whatever
-\ family happened to declare next -- the maki competitive-evidence red was
-\ misattributed to an innocent enum for two days because of exactly that.  The
-\ reason names the registry, so the reader looks at capacity instead of at the
-\ declaration in front of them.
-: REASON-PROTECTION ( n -- ptr u8 n bool ) {: code:n :}
-   code C-PROTECTION-CAP = IF s" the protected-wordlist registry is full" FOUND EXIT THEN
-   NOTHING$ MISSING ;
+\ The row that explains a code, or REASONS when none does: an unexplained code
+\ stays distinguishable from an explained one instead of reading as the default.
+: REASON-ROW ( n -- n ) {: code:n :}
+   REASONS @ 0 ?do
+      i CODE-AT code = IF i unloop EXIT THEN
+   loop
+   REASONS @ ;
 
 : CODE-REASON ( n -- ptr u8 n ) {: code:n :}
-   code REASON-GRAMMAR    IF EXIT THEN 2drop
-   code REASON-NAME       IF EXIT THEN 2drop
-   code REASON-FIELD      IF EXIT THEN 2drop
-   code REASON-TXN        IF EXIT THEN 2drop
-   code REASON-PROTECTION IF EXIT THEN 2drop
+   code REASON-ROW {: row:n :}
+   row REASONS @ < IF SLOTS row + SLOT@ EXIT THEN
    FALLBACK$ ;
 
 \ An armed reason describes ONE code.  If a different code escaped, the arming
@@ -349,7 +264,53 @@ public
 : TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
 : REASON$ ( n -- ptr u8 n ) PICK-REASON ;
 
+7181 constant E-REASON-CAP  \ every reason-table row is taken: widen REASON-CAP
+7182 constant E-REASON-DUP  \ the code already has a reason
+
+\ EXPLAIN ( reason code -- ) : the text a reject of `code` reports when no front
+\ end armed a reason for it.  The code's owner calls it once, at load, reading
+\ its own constant (the reason table above).
+: EXPLAIN ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+   code REASON-ROW REASONS @ < IF E-REASON-DUP throw THEN
+   REASONS @ REASON-CAP < 0= IF E-REASON-CAP throw THEN
+   code REASONS @ cells REASON-CODES + !
+   a u SLOTS REASONS @ + SLOT!
+   1 REASONS +! ;
+
 private
+
+\ The codes of the owners loaded before this file: sumtype.f's grammar codes,
+\ type-family.f's name and field-record codes, and the transaction
+\ coordinator's.  A post-hook checked body cannot name the pre-hook constants
+\ on a from-source build, but a top-level read can.
+s" malformed declaration" E-TDECL-SYNTAX EXPLAIN
+s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY EXPLAIN
+s" unknown payload type" E-TDECL-PAYLOAD EXPLAIN
+s" unknown layout policy" E-TDECL-POLICY EXPLAIN
+s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE EXPLAIN
+s" declaration too long" E-TDECL-CAP EXPLAIN
+\ E-TDECL-DERIVE reaching the table (rather than an armed front-end reason)
+\ means the derive requirement failed later, in the constructor participant's
+\ payload role and equality checks, not that the feature token was unknown.
+s" a payload type or role has no derived equality" E-TDECL-DERIVE EXPLAIN
+\ Both front ends arm "reserved name" at their own name gates, so E-TDECL-NAME
+\ reaching the table was raised by a deeper owner: the variant-name gate (a
+\ reserved tail or a family-name collision) or the constructor collide check (a
+\ variant spelled like a word the DERIVE clause generates). The text has to be
+\ true of both.
+s" name is reserved or already taken" E-TDECL-NAME EXPLAIN
+s" name must be a lowercase tail" E-TFAM-CASE EXPLAIN
+s" duplicate name in this package" E-TFAM-DUP EXPLAIN
+s" invalid or uncommitted field id" E-PF-ID EXPLAIN
+s" stale or out-of-order field transaction" E-PF-TX EXPLAIN
+s" invalid field owner family or variant" E-PF-OWNER EXPLAIN
+s" reserved field name" E-PF-NAME EXPLAIN
+s" malformed or owner-incompatible field schema" E-PF-SCHEMA EXPLAIN
+s" invalid field layout metadata" E-PF-LAYOUT EXPLAIN
+s" undefined field flag bits" E-PF-FLAGS EXPLAIN
+s" declaration registration is sealed" DECLARATION-TRANSACTION:E-REGISTRATION-SEALED EXPLAIN
+s" declaration participant depth mismatch" DECLARATION-TRANSACTION:E-PARTICIPANT-DEPTH EXPLAIN
+
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -416,6 +377,7 @@ package DECL-REPLAY
 \ a replayed body is never evaluated, so it cannot re-enter a front end — but
 \ the guard makes that a proven property instead of an assumed one.
 7177 constant E-REPLAY-BUSY   \ a replayed declaration is already open
+s" a replayed declaration is already open" E-REPLAY-BUSY DECL-REJECT:EXPLAIN
 
 32 constant RP-SPACE
 9 constant RP-TAB
@@ -686,6 +648,7 @@ get-current prot-wid-add
 package GENERATED-DECL-CTOR
 
 7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants
+s" family cannot own generated constructors" E-CTOR-ARM DECL-REJECT:EXPLAIN
 
 5 constant PARTICIPANT
 -1 constant NO-FAMILY

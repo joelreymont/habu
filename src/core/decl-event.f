@@ -107,6 +107,13 @@ package DECL-EVENT
 7164 constant E-DEV-DUP-DERIVE  \ the same DERIVE feature recorded twice in one declaration
 7172 constant E-DEV-FIELD-SCOPE \ provisional field is outside the token's declaration/family
 7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
+\ What a declaration reject reports for each code (generated-declaration.f).
+s" stale or out-of-order declaration event" E-DEV-TX DECL-REJECT:EXPLAIN
+s" field publication broke field-id contiguity" E-DEV-STATE DECL-REJECT:EXPLAIN
+s" a second POLICY clause in one declaration" E-DEV-DUP-POLICY DECL-REJECT:EXPLAIN
+s" the same DERIVE feature twice in one declaration" E-DEV-DUP-DERIVE DECL-REJECT:EXPLAIN
+s" field is outside this declaration" E-DEV-FIELD-SCOPE DECL-REJECT:EXPLAIN
+s" declaration does not own this family" E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
 
 \ The shared malformed-arity code is sumtype.f's, read at load time: a post-hook
 \ checked body cannot name that pre-hook constant on a from-source build. The
