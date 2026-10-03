@@ -17,6 +17,7 @@ require lib/process-env.f
 require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
+require lib/tree-copy.f                \ the stale-seed sandbox's private tree
 require tools/build-fixpoint.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 require test/suite-budget.f            \ CHILD-MS, every step's hang guard
@@ -233,22 +234,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ The sandbox cases (tools/build-fixpoint-sandbox-test.f) plant a crash or a
 \ type error in its copy of src/arch/arm64/mnem.f; the watermark cases
 \ (tools/build-fixpoint-test.f) cut its copy of src/core/lower-cert-seal.f.
-: BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   BFT-STALE a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   BFT-CP-BUF JOIN-PATH BFT-CP-U !
-   BFT-CP-BUF BFT-CP-U @ ;
-
-: BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BFT-STALE-DST {: d:ptr du:n :}
-   d du SOURCE-ROOT:DIRNAME MAKE-DIRS
-   a u d du COPY-FILE-STREAM ;
-
-: BFT-STALE-COPY-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? if a u BFT-STALE-COPY-FILE then ;
-
-: BFT-STALE-COPY-TREE ( ptr u8 n -- )
-   [: BFT-STALE-COPY-ENTRY ;] WALK-FILES ;
-
 : BFT-STALE-PATHS! ( -- )
    s" habu-bft-stale" HB-TMP-MKDIR {: a:ptr u:n :}
    a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
@@ -280,7 +265,7 @@ variable IX
    a u EC:BUILD
    0 IX !
    begin IX @ EC:COUNT < while
-      IX @ EC:PATH$ BFT-STALE-COPY-ENTRY
+      IX @ EC:PATH$ BFT-STALE TREE-COPY:FILE
       IX @ 1+ IX !
    repeat ;
 
@@ -288,12 +273,12 @@ variable IX
    BFT-STALE-PATHS!
    BFT-ALLOC-BIG
    BFT-STALE-TMP MAKE-DIRS
-   s" src" BFT-STALE-COPY-TREE
-   s" lib" BFT-STALE-COPY-TREE
+   s" src" BFT-STALE TREE-COPY:TREE
+   s" lib" BFT-STALE TREE-COPY:TREE
    s" tools/build-fixpoint.f" COPY-CLOSURE
    ENTRY$ COPY-CLOSURE
-   s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
-   s" bin/hb" BFT-STALE-COPY-FILE
+   s" tools/build-fixpoint-main.f" BFT-STALE TREE-COPY:FILE
+   s" bin/hb" BFT-STALE TREE-COPY:FILE
    BFT-STALE-HB CHMOD-X ;
 
 : BFT-STALE-ARGV ( -- )

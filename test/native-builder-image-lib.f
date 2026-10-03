@@ -31,7 +31,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/time.f
 require test/saved-builder.f
-require test/tree-copy-lib.f
+require lib/tree-copy.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 

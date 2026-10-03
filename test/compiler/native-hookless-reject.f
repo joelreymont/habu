@@ -26,7 +26,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
 require src/habu/verify-source.f
-require test/tree-copy-lib.f
+require lib/tree-copy.f
 
 package HOOKLESS-REJECT-TEST
 private

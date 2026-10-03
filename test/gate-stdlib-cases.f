@@ -2106,6 +2106,10 @@ SUITE fs-list
    lib/fs-list-test.f
 ;SUITE
 
+SUITE tree-copy
+   lib/tree-copy-test.f
+;SUITE
+
 SUITE pty
    lib/pty-test.f
 ;SUITE

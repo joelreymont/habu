@@ -33,6 +33,7 @@ Planned module files:
 - `lib/fs.f`
 - `lib/fs-list.f`
 - `lib/fs-root.f`
+- `lib/tree-copy.f`
 - `lib/build-cache.f`
 - `lib/source.f`
 - `lib/object.f`
@@ -1459,6 +1460,16 @@ primitive and shares the record decoding with `WALK-FILES`. A listing is the
 call's own: each call maps its descriptor, cursor and dirent block and gives
 them back, the descriptor closed, however it ends, so tasks list at once and a
 quotation may list again inside `EACH`.
+
+`lib/tree-copy.f` (package `TREE-COPY`) makes private copies of checkout files
+for tools and tests that build or boot a tree without touching the checkout.
+`FILE` copies one checkout file and `TREE` every file under a checkout
+directory; each copy lands at its checkout-relative path under the given root,
+whether the file is named relative to the working directory or, as a source
+closure lists it, by its absolute path under it. A name that resolves outside
+the checkout is refused with `E-FS-PATH` before anything is written.
+`BUILD-SOURCES` copies `src/`, `lib/` and `tools/`, the sources
+`tools/native-build.f` builds from.
 
 `lib/pty.f` (package `PTY`) is the tree's one pseudoterminal-pair opener:
 `OPEN` unlocks `/dev/ptmx` — with `TIOCSPTLCK`/`TIOCGPTN` and `/dev/pts/<n>` on

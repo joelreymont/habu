@@ -131,6 +131,7 @@ require src/habu/hide.f
 require src/habu/prefix-rewind.f
 require lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
+require lib/tree-copy.f                  \ the candidate's copied boot tree
 
 package BUILD-FIXPOINT
 
@@ -1760,7 +1761,6 @@ variable BF-DRV-R
 
 create BF-BOOT-ROOT FS-PATH-CAP allot
 variable BF-BOOT-ROOT-U
-create BF-BOOT-PATH FS-PATH-CAP allot
 $100 constant BF-BOOT-OUT-CAP
 $1000 constant BF-BOOT-ERR-CAP
 30000 constant BF-BOOT-TIMEOUT-MS
@@ -1772,16 +1772,9 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 \ A real copied tree makes a captured build-directory path fail here, before
 \ the candidate can replace the working engine. Symlinks back to the original
 \ sources would conceal that mismatch through canonical path resolution.
-: BF-BOOT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? 0= if exit then
-   BF-BOOT-ROOT$ a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   BF-BOOT-PATH JOIN-PATH {: size:n :}
-   BF-BOOT-PATH size SOURCE-ROOT:DIRNAME MAKE-DIRS
-   a u BF-BOOT-PATH size COPY-FILE-STREAM ;
-
 : BF-BOOT-TREE ( -- )
-   s" src" [: BF-BOOT-COPY ;] WALK-FILES
-   s" lib" [: BF-BOOT-COPY ;] WALK-FILES ;
+   s" src" BF-BOOT-ROOT$ TREE-COPY:TREE
+   s" lib" BF-BOOT-ROOT$ TREE-COPY:TREE ;
 
 : BF-BOOT-PROGRAM$ ( -- ptr u8 n )
    \ Exercise provided quotation storage in the copied tree before the

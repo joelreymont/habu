@@ -49,6 +49,7 @@ require lib/process-env.f
 require lib/process-cwd.f
 require lib/test/spawn-report.f
 require lib/codesign.f
+require lib/tree-copy.f
 require tools/build-fixpoint.f
 
 package PRE-TRUST-DEFER-TEST
@@ -64,7 +65,6 @@ create ERR CAP allot
 create FILE-BUF FILE-CAP allot   variable FILE-U
 
 create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
-create DST-BUF  FS-PATH-CAP allot   variable DST-U
 create SUB-BUF  FS-PATH-CAP allot   variable SUB-U
 create HB-BUF   FS-PATH-CAP allot   variable HB-U
 
@@ -83,20 +83,6 @@ variable LAST-ERR-U
 
 : ROOT$ ( -- ptr u8 n )  ROOT-BUF ROOT-U @ ;
 
-\ ---- tree copy: replicate src/ into ROOT/src (parents + files) -----------------
-
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}          \ length of the dir prefix (0 = no slash)
-   u begin dup 0 > while 1- dup a + c@ [char] / = if 1+ exit then repeat drop 0 ;
-
-: COPY-ONE ( ptr u8 n -- ) {: a:ptr u:n :}            \ copy src-relative file a u into ROOT/a
-   ROOT$ a u DST-BUF JOIN-PATH DST-U !
-   DST-BUF DST-U @ {: d:ptr du:n :}
-   d du PARENT-U {: pu:n :}
-   pu 0 > if d pu MAKE-DIRS then
-   a u d du COPY-FILE-STREAM ;
-
-: COPY-ENTRY ( ptr u8 n -- )  2dup FILE? if COPY-ONE else 2drop then ;
-
 \ The sandbox has to hold everything the engine reads at boot, or the child dies
 \ naming a missing prefix file instead of reaching the refusal a case is about.
 \ Since dot habu-seed-the-stdlib-d8e3a757 that is no longer only src/: the cold
@@ -104,8 +90,8 @@ variable LAST-ERR-U
 \ rather than listing the prefix files, so a later prefix row inside either tree
 \ cannot silently leave this sandbox short.
 : COPY-SRC-TREE ( -- )
-   s" src" [: COPY-ENTRY ;] WALK-FILES
-   s" lib" [: COPY-ENTRY ;] WALK-FILES ;
+   s" src" ROOT$ TREE-COPY:TREE
+   s" lib" ROOT$ TREE-COPY:TREE ;
 
 : SUB$ ( ptr u8 n -- ptr u8 n )                       \ ROOT/<rel> absolute path
    ROOT$ 2swap SUB-BUF JOIN-PATH SUB-U ! SUB-BUF SUB-U @ ;
@@ -271,10 +257,10 @@ variable LAST-ERR-U
 \ the pristine copies afterwards (cases are sequential and independent), so the
 \ suite pays one tree copy and one cold engine build for all eight child boots.
 : RESTORE-FILES ( -- )
-   s" src/core/exec-vector.f" COPY-ONE
-   s" src/core/check-hook.f" COPY-ONE
-   s" src/core/checker.f" COPY-ONE
-   s" lib/string.f" COPY-ONE ;
+   s" src/core/exec-vector.f" ROOT$ TREE-COPY:FILE
+   s" src/core/check-hook.f" ROOT$ TREE-COPY:FILE
+   s" src/core/checker.f" ROOT$ TREE-COPY:FILE
+   s" lib/string.f" ROOT$ TREE-COPY:FILE ;
 
 : POSITIVE-CASE ( -- )
    APPEND-POS-DEFER
