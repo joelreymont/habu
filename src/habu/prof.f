@@ -704,18 +704,21 @@ public
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
-\ Attribute the interrupted pc FIRST (a dict word's counter, the deferred buffer,
-\ PROF-OTHER or PROF-FOREIGN), THEN bump PROF-TOT once and test the limit, so
-\ every delivered sample is counted: sum(word counters) + ARN-NEW + ARN-DEFER +
-\ ARN-SPILL + PROF-OTHER + PROF-FOREIGN == PROF-TOT exactly, including the sample
-\ that reaches the limit, and that identity is the report's header line. Below the limit we sigreturn;
+\ A tick that arrives while the clock is held or stopped counts nothing
+\ (prof-abi.f, PROF-ARMED). Attribute the interrupted pc FIRST (a dict word's
+\ counter, the deferred buffer, PROF-OTHER or PROF-FOREIGN), THEN bump PROF-TOT
+\ once and test the limit, so every sample the running clock delivers is counted:
+\ sum(word counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
+\ PROF-FOREIGN == PROF-TOT exactly, including the sample that reaches the limit,
+\ and that identity is the report's header line. Below the limit we sigreturn;
 \ at it we report + exit(99), but only from a validated sample; a foreign sample
 \ at the limit sigreturns and the next validated one reports.
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: pnew pother pdone pforeign psig pexit :}
-   C-PROF-MCTX>R21  C-PROF-PC>R9
    7 PROF-BAND-VA LIT64,
+   9 7 PROF-ARMED LDR,  9 ARMED-RUNS CMPI,  C-NE pexit BCOND,   \ a held or stopped clock counts nothing
+   C-PROF-MCTX>R21  C-PROF-PC>R9
    20 10 C-PROF-CTX-X>R  11 DATA-VA VA>N LIT64,  10 11 CMP,  C-NE pforeign BCOND,   \ context x20 must be DATA
    26 10 C-PROF-CTX-X>R  11 7 PROF-DBASE LDR,  10 11 CMP,  C-NE pforeign BCOND,   \ context x26 must be the recorded DBASE
    17 1 MOVZ,                                        \ x17 = 1: a Habu context, its count may report (x16 is the Darwin syscall number, never kept across a sys)
@@ -1083,10 +1086,12 @@ private
 
 \ prof-on runs as Habu code, where DBASE and NDICT are live: it records the base
 \ the handler will trust, clears one counter per current record, and builds the
-\ index the handler searches.
+\ index the handler searches. The handler counts nothing until the arm: a clock
+\ already running keeps ticking through the clears and the rebuild.
 : BPROF-ON ( -- )
    LBL LBL {: zl zd :}
    7 PROF-BAND-VA LIT64,
+   9 0 MOVZ,  9 7 PROF-ARMED STR,
    A G-POP  A 7 PROF-LIM STR,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
    DBASE 7 PROF-DBASE STR,
@@ -1104,10 +1109,10 @@ private
    C-PROF-SIGACTION
    C-PROF-SIGACTION-DONE
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,   \ the stack syscalls above own x0
+   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
-   C-PROF-TIMER-DONE
-   7 PROF-BAND-VA LIT64,  9 1 MOVZ,  9 7 PROF-ARMED STR, ;
+   C-PROF-TIMER-DONE ;
 
 \ Disarm the interval timer. Clobbers x0-x2 and x9.
 : C-PROF-TIMER-STOP ( -- )
@@ -1116,49 +1121,61 @@ private
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS,
    SP SP 32 ADDI, ;
 
-\ Re-arm it at the recorded interval. Clobbers x0-x2, x7 and x9-x11.
-: C-PROF-TIMER-START ( -- )
-   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
+\ Hold the clock for a walk or a clear: an armed clock goes to ARMED-HELD, so
+\ the handler counts nothing from here on, and then the timer stops. Clobbers
+\ x0-x2, x7 and x9.
+: C-PROF-CLOCK-HOLD ( -- )
+   LBL {: off :}
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
+   9 ARMED-HELD MOVZ,  9 7 PROF-ARMED STR,
+   off LBL,
+   C-PROF-TIMER-STOP ;
+
+\ Start a held clock again at the recorded interval; one prof-off stopped stays
+\ stopped. Clobbers x0-x2, x7 and x9-x11.
+: C-PROF-CLOCK-RESUME ( -- )
+   LBL {: off :}
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,  9 off CBZ,
+   9 ARMED-RUNS MOVZ,  9 7 PROF-ARMED STR,
+   0 7 PROF-ARENA LDR,
    C-PROF-TIMER-FRAME
    C-PROF-TIMER
-   C-PROF-TIMER-DONE ;
+   C-PROF-TIMER-DONE
+   off LBL, ;
 
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
 \ counter; a tick in between would leave the header's own identity - words +
 \ other + new + foreign == samples - false by one. The report also owns x20, so
 \ its own ticks read as a foreign context and land in a different bucket than
-\ the total they were counted in. So the clock stops for the walk and starts
+\ the total they were counted in. So the clock is held for the walk and starts
 \ again only when prof-off has not already stopped it; the phase loses at most
 \ one interval.
 : C-PROF-REPORT-CALL ( label -- ) {: rep:label :}
-   LBL {: stopped :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   C-PROF-TIMER-STOP
+   C-PROF-CLOCK-HOLD
    LPROFSYNC LABEL@ BL,
    rep BL,
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
-   9 stopped CBZ,
-   C-PROF-TIMER-START
-   stopped LBL,
+   C-PROF-CLOCK-RESUME
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ prof-off stops the clock and nothing else: the handler stays installed, the
 \ index and every counter stay exactly as the last sample left them, so the phase
 \ that was profiled can be reported afterwards - which is the whole point of
-\ having a stop word rather than the old dump-and-exit.
+\ having a stop word rather than the old dump-and-exit. PROF-ARMED goes to 0
+\ before the timer stops, so a tick that arrives after the stop counts nothing.
 : BPROF-OFF ( -- )
-   C-PROF-TIMER-STOP
-   7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR, ;
+   7 PROF-BAND-VA LIT64,  9 0 MOVZ,  9 7 PROF-ARMED STR,
+   C-PROF-TIMER-STOP ;
 
 \ prof-reset clears the counts and keeps the index, so a second phase can be
-\ measured without paying for the sort again. The clock stops for the clears,
-\ as it does for a report: PROF-TOT is cleared first and each bucket after it,
-\ so a tick in between would survive in PROF-TOT and not in its bucket, and the
-\ identity would be off by one. It starts again only when prof-off has not
+\ measured without paying for the sort again. The clock is held for the clears,
+\ as it is for a report: PROF-TOT is cleared first and each bucket after it, so
+\ a tick counted in between would survive in PROF-TOT and not in its bucket, and
+\ the identity would be off by one. It starts again only when prof-off has not
 \ stopped it.
 : BPROF-RESET ( -- )
-   LBL LBL LBL LBL {: zl zd noarena stopped :}
-   C-PROF-TIMER-STOP
+   LBL LBL LBL {: zl zd noarena :}
+   C-PROF-CLOCK-HOLD
    7 PROF-BAND-VA LIT64,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
    14 PROF-CNT-VA LIT64,  8 NDICT 0 ADDI,
@@ -1168,10 +1185,7 @@ private
    C-PROF-COUNTERS-CLEAR
    C-PROF-CALL-CLEAR
    noarena LBL,
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
-   9 stopped CBZ,
-   C-PROF-TIMER-START
-   stopped LBL, ;
+   C-PROF-CLOCK-RESUME ;
 
 : BPROF-REPORT ( -- )  LPROFDUMP LABEL@ C-PROF-REPORT-CALL ;
 
@@ -1180,17 +1194,13 @@ private
 \ prof-row ( n -- ): the row for dictionary record n, whatever its rank. The
 \ name lookup stays in the caller, where XREF already answers it.
 : BPROF-ROW ( -- )
-   LBL {: stopped :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 G-POP  6 SP 8 STR,
-   C-PROF-TIMER-STOP
+   C-PROF-CLOCK-HOLD
    LPROFSYNC LABEL@ BL,
    6 SP 8 LDR,
    LPROFROW LABEL@ BL,
-   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
-   9 stopped CBZ,
-   C-PROF-TIMER-START
-   stopped LBL,
+   C-PROF-CLOCK-RESUME
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:

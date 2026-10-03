@@ -26,7 +26,18 @@ public
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on
 40 constant PROF-STACK      \ the handler's alternate stack, mapped once per process
 48 constant PROF-ARENA      \ the profiler arena, mapped once per process
-56 constant PROF-ARMED      \ 1 while the clock runs: a report stops it and puts it back
+56 constant PROF-ARMED      \ the clock: ARMED-RUNS, ARMED-HELD, or 0 while stopped
+1  constant ARMED-RUNS      \ the timer runs and the handler counts each tick
+2  constant ARMED-HELD      \ a report, row or reset stopped the timer and starts it again
+\ STOPPING THE TIMER DOES NOT STOP THE TICKS. On Darwin a tick can arrive after
+\ setitimer has disarmed the timer and returned: under 48 busy loops on 12 cores
+\ PROF-TOT moved in the 200 us after prof-off returned in up to 5 of 1000 stops.
+\ A tick that lands while a reset clears or a reader sums the counters leaves
+\ the header's identity false by one. So the aarch64 handler counts a tick only
+\ at ARMED-RUNS, and every word that clears or reads the counters leaves
+\ ARMED-RUNS before it stops the timer. The x86-64 twin stores 0 and ARMED-RUNS
+\ and never holds: Linux delivers a raised tick before setitimer returns
+\ (docs/x86-64.md, the prof-off row).
 
 \ ---- the arena: the pc index the handler searches -----------------------------
 \ THE HANDLER NEVER WALKS THE DICTIONARY. It searches a pc-sorted live-range
