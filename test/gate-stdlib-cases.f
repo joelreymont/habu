@@ -2324,6 +2324,10 @@ SUITE deep-cwd
    test/deep-cwd-e2e.f
 ;SUITE
 
+SUITE include-refusal
+   test/include-refusal-e2e.f
+;SUITE
+
 SUITE room-left
    test/room-left-test.f
 ;SUITE

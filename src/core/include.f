@@ -7,6 +7,8 @@ PATH-CAP constant INCLUDE-PATH-CAP
 $100000 constant INCLUDE-BUF-CAP  \ checker.f crossed the old 512 KiB slot
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 $1 constant INCLUDE-PROBE-CAP
+\ A loader refusal's exit status, always after a line naming the refusal: an
+\ uncaught throw of a code below 256 ends the process with no word at all.
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 $37D8 constant INCLUDE-EVALERR-CELL
@@ -314,12 +316,21 @@ private
 
 : NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
+\ A source-root refusal: its reason, then the path it names, on one line. The
+\ reason is written first, so a path of any length a caller holds is named whole.
+: PATH-DIE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n path:ptr pathu:n :}
+   2 a u write drop
+   path pathu INCLUDE-IO-RC die ;
 
+\ The file system root always resolves through realpath; only a supplied canon
+\ (SOURCE-INPUT:USE) can answer that no directory above a path does.
 : EXISTING-PARENT ( -- n )
    JOIN-U @ begin
       JOIN-BUF swap PARENT-U
       dup JOIN-BUF swap TRY-CANON if exit then
-      dup 1 <= if drop INCLUDE-IO-RC throw then
+      dup 1 <= if
+         s" source root: no directory above the path resolves: " JOIN-BUF JOIN-U @ PATH-DIE
+      then
    again ;
 
 
@@ -386,19 +397,6 @@ private
    a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
 
 
-: ROOT-CANON ( ptr u8 n -- )
-   ABSOLUTE!
-   JOIN-U @ 2 + WORK-BYTES >= if E-PATH-RANGE throw then
-   47 JOIN-BUF JOIN-U @ + c!
-   46 JOIN-BUF JOIN-U @ 1+ + c!
-   JOIN-BUF JOIN-U @ 2 + TRY-CANON 0= if INCLUDE-IO-RC throw then ;
-
-\ A source-root refusal: its reason, then the path it names.
-: PATH-DIE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n path:ptr pathu:n :}
-   a WORK-BUF u BYTE-COPY
-   path WORK-BUF u + pathu BYTE-COPY
-   WORK-BUF u pathu + INCLUDE-IO-RC die ;
-
 \ Whether the n canonical bytes in CANON-BUF name a directory this process can
 \ search, which is all a root needs: the files below a directory resolve without
 \ read permission on it. macOS realpath answers a file's own path for
@@ -413,10 +411,24 @@ private
    0 ZBUF n 2 + + c!
    ZBUF 0 access 0= ;
 
+\ A root is a searchable directory, which ENGINE-DIR? decides on every platform
+\ and the canon of a path does not. Neither says why a path fails, so the
+\ refusal names the absolute spelling tried and what a missing, unsearchable or
+\ long directory and a file all are not.
+: ROOT-DIE ( -- )
+   s" source root: does not resolve to a searchable directory within PATH-CAP bytes: "
+   JOIN-BUF JOIN-U @ PATH-DIE ;
+
+: ROOT-CANON ( ptr u8 n -- )
+   ABSOLUTE!
+   JOIN-BUF JOIN-U @ TRY-CANON 0= if ROOT-DIE then
+   CANON-U @ ENGINE-DIR? 0= if ROOT-DIE then ;
+
 \ A fresh mapping holding n path bytes and the NUL after them.
 : MAP-COPY ( ptr u8 n -- ptr u8 )
    {: a:ptr u:n :}
-   u 1+ map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: fresh:ptr :}
+   u 1+ map-anon 0= 0= if drop s" source root: cannot map a path copy" INCLUDE-IO-RC die then
+   {: fresh:ptr :}
    a fresh u 1+ BYTE-COPY
    fresh ;
 
@@ -433,14 +445,16 @@ private
    {: fresh:ptr u:n old:ptr oldu:n rc:n :}
    -1 SCOPES +!
    old oldu CURRENT!
-   fresh u 1+ munmap {: release:n :}
-   rc 0= 0= if rc throw then
-   release 0 < if INCLUDE-IO-RC throw then ;
+   fresh u 1+ munmap 0 < if
+      s" source root: cannot release a root mapping" INCLUDE-IO-RC die
+   then
+   rc 0= 0= if rc throw then ;
 
 public
 
 \ Each scope owns a mapping sized to its root string. There is no additional
 \ root-count/depth limit, and a throw restores the caller before releasing it.
+\ A root that does not resolve to a searchable directory is refused by name.
 : WITH ( ptr u8 n [ -- ] -- ) {: q :}
    ROOT-ENTER {: fresh:ptr u:n old:ptr oldu:n :}
    q catch {: rc:n :}
@@ -471,7 +485,9 @@ private
 \ At the top level a current path is CD's mapping, or POPPATH's.
 : RELEASE-CURRENT ( -- )
    CURRENT-U @ 0 > if
-      CURRENT-PTR CURRENT-U @ 1+ munmap 0 < if INCLUDE-IO-RC throw then
+      CURRENT-PTR CURRENT-U @ 1+ munmap 0 < if
+         s" source root: cannot release the current path" INCLUDE-IO-RC die
+      then
    then
    NULL$ CURRENT! ;
 
@@ -552,7 +568,9 @@ public
 \ A captured image starts at the working directory, so it refuses a saved
 \ path as it refuses an open scope, and releases CD's.
 : RESET ( -- )
-   SCOPES @ 0= 0= if INCLUDE-IO-RC throw then
+   SCOPES @ 0= 0= if
+      s" source root: an image cannot be saved inside a root scope" INCLUDE-IO-RC die
+   then
    SLOT-N @ 0= 0= if
       s" PUSHPATH: an image cannot be saved with a path pushed" INCLUDE-IO-RC die
    then
@@ -631,7 +649,7 @@ private
 \ their DATA addresses, so appending never changes an existing live row borrow.
 : ENSURE-MAPPED ( n -- ) {: used:n :}
    MAPPED @ NULL-PTR <> if exit then
-   POOL-CAP map-anon 0= 0= if drop INCLUDE-IO-RC throw then
+   POOL-CAP map-anon 0= 0= if drop s" require: cannot map the path pool" INCLUDE-DIE then
    {: fresh:ptr :}
    used 0 > if FROZEN @ fresh used BYTE-COPY then
    fresh MAPPED ! ;
@@ -640,6 +658,10 @@ private
    bytes CELL mod {: rem:n :}
    rem 0= if bytes exit then
    bytes CELL rem - + ;
+
+: POOL-RELEASE ( -- )
+   MAPPED @ POOL-CAP munmap 0< if s" require: cannot release the path pool" INCLUDE-DIE then
+   NULL-PTR MAPPED ! ;
 
 public
 
@@ -672,8 +694,7 @@ public
    CLAMP ;
 
 \ Capture has one DATA allocation only when a new suffix survives. Its
-\ leading and trailing padding are zero, and a failed unmap rolls back exactly
-\ that one allot while the old owner is still published.
+\ leading and trailing padding are zero.
 : PERSIST ( -- )
    MAPPED @ NULL-PTR = if
       CLAMP
@@ -681,8 +702,7 @@ public
       exit
    then
    REQUIRE-N @ PREFIX-N @ <= if
-      MAPPED @ POOL-CAP munmap 0< if INCLUDE-IO-RC throw then
-      NULL-PTR MAPPED !
+      POOL-RELEASE
       CLAMP
       REQUIRE-N @ 0= if NULL-PTR FROZEN ! then
       exit
@@ -694,12 +714,8 @@ public
    total allot
    total 0 ?do 0 start i + c! loop
    MAPPED @ start pad + used BYTE-COPY
-   MAPPED @ POOL-CAP munmap 0< if
-      total negate allot
-      INCLUDE-IO-RC throw
-   then
+   POOL-RELEASE
    start pad + FROZEN !
-   NULL-PTR MAPPED !
    REQUIRE-N @ PREFIX-N ! ;
 
 ;package
@@ -880,18 +896,24 @@ private
    then
    CURRENT$ first CANDIDATE drop ;
 
-: ABS-OWNER ( ptr u8 n -- )
-   2dup CURRENT$ BELOW? if 2drop CURRENT$ OWNER! exit then
-   2dup CWD$ BELOW? if 2drop CWD$ OWNER! exit then
-   DIRNAME OWNER! ;
+\ The root a load of an absolute path opens: a root it lies below, else its
+\ directory. A missing file's directory need not be a root at all (missing, a
+\ file, unsearchable), so its load keeps the current root and INCLUDE-OPEN names
+\ the file, as ENTRY-RESOLVE does for an entry.
+: ABS-OWNER ( ptr u8 n bool -- )
+   {: a:ptr u:n exists:bool :}
+   a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
+   a u CWD$ BELOW? if CWD$ OWNER! exit then
+   exists 0= if CURRENT$ OWNER! exit then
+   a u DIRNAME OWNER! ;
 
 \ The file a require of REQUEST$ selects, with frozen rows counted from row
 \ `first`.
 : SELECT ( n -- ptr u8 n bool )
    {: first:n :}
    REQUEST-BUF c@ $2F = if
-      REQUEST$ CANONICAL drop
-      2dup ABS-OWNER
+      REQUEST$ CANONICAL {: exists:bool :}
+      2dup exists ABS-OWNER
       2dup REQUIRE-KNOWN? {: known:bool :}
       known 0= if
          ENGINE$ REQUEST$ first BOOT-CANDIDATE
@@ -991,10 +1013,7 @@ public
 $20 constant INCLUDE-DIAG-PREFIX-CAP
 INCLUDE-PATH-CAP INCLUDE-DIAG-PREFIX-CAP + constant INCLUDE-DIAG-CAP
 create INCLUDE-DIAG INCLUDE-DIAG-CAP allot
-create INCLUDE-LF 1 allot
 variable INCLUDE-DIAG-U
-
-$0A INCLUDE-LF 0 ZBYTE!
 
 : INCLUDE-DIAG-RESET ( -- )
    0 INCLUDE-DIAG-U ! ;
@@ -1043,7 +1062,6 @@ variable SCRIPT-NAMED-PEND
    INCLUDE-DIAG-RESET
    s" include: cannot open " INCLUDE-DIAG+
    INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-DIAG+
-   INCLUDE-LF 1 INCLUDE-DIAG+
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
 : INCLUDE-OPEN ( ptr u8 n -- )
@@ -1237,7 +1255,8 @@ PTR-VARIABLE TOP
    frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + ! ;
 
 : PUSH ( -- )
-   MAP-BYTES map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: frame:ptr :}
+   MAP-BYTES map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
+   {: frame:ptr :}
    TOP@ frame FR-PREV ptr-field !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
@@ -1247,13 +1266,13 @@ PTR-VARIABLE TOP
    1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION ;
 
-: POP ( -- n )
+: POP ( -- )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
    frame FR-PREV ptr-field @ TOP!
    -1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION
-   frame MAP-BYTES munmap ;
+   frame MAP-BYTES munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then ;
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
@@ -1321,9 +1340,8 @@ private
    PUSH
    [: LOAD-UNIT ;] catch {: rc:n :}
    INCLUDE-CLOSE
-   POP {: release:n :}
+   POP
    rc 0= 0= if rc throw then
-   release 0 < if INCLUDE-IO-RC throw then
    INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
 
 \ A verifier can traverse the loader's resolved file frames without invoking
@@ -1353,9 +1371,8 @@ private
    [: READ-FOR ;] catch {: rc:n :}
    drop
    INCLUDE-CLOSE
-   POP {: release:n :}
+   POP
    rc 0= 0= if rc throw then
-   release 0 < if INCLUDE-IO-RC throw then
    q ;
 
 : WITH-SUPPLIED-CURRENT ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
@@ -1364,9 +1381,8 @@ private
    [: COPY-FOR ;] catch {: rc:n :}
    2drop drop
    INCLUDE-CLOSE
-   POP {: release:n :}
+   POP
    rc 0= 0= if rc throw then
-   release 0 < if INCLUDE-IO-RC throw then
    a u q ;
 
 public
@@ -1574,7 +1590,6 @@ public
    INCLUDE-DIAG-RESET
    s" bundle: this engine does not provide " INCLUDE-DIAG+
    a u INCLUDE-DIAG+
-   INCLUDE-LF 1 INCLUDE-DIAG+
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
 \ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses

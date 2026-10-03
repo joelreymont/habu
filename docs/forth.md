@@ -302,7 +302,9 @@ public
   image cannot be saved with a path pushed. A file scopes a root with
   `SOURCE-ROOT:WITH`.
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )` scopes an explicit root, restoring
-  the caller's on return or throw; fixtures resolve against
+  the caller's on return or throw; a root that does not resolve to a
+  searchable directory, and an image save inside the scope, are refused by
+  name, exit 74. Fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
   keep each parent's source bytes alive until it returns, releasing them on
   return or throw; there is no fixed nesting count. Discovery, checker
