@@ -100,7 +100,7 @@ package PROGRAM-DIAGNOSTICS
       s" CHECKER-DECL-DEPTH0-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/enum-ctor-collide-bad.f"
       s" name is reserved or already taken" DIAGNOSTIC
-   s" test/deftype-dup-bad.f" 67
+   s" test/deftype-dup-bad.f" 70
       s" DEFTYPE-DUP-ARMED" s" duplicate family" NEGATIVE
    s" test/layout-buffer-forge.f" 70
       s" LAYOUT-BUFFER-FORGE-ARMED" s" E-UNDEFINED: LBUF-PEND!" NEGATIVE

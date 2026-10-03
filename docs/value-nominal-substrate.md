@@ -84,7 +84,7 @@ Package scoping (the deciding axis), `NOMINAL: SERIAL` in two packages:
 | two packages both declare `NOMINAL: SERIAL` | no collision (each distinct) |
 | CT-role comparison: two packages both `DEFTYPE SERIAL` | dies exit 70 |
 
-Fail-closed on hazards (`CHECKER-DEFFAMILY`, named throws, exit 67):
+Fail-closed on hazards (`CHECKER-DEFFAMILY`, named throws, exit 70):
 
 | probe | verdict |
 |---|---|

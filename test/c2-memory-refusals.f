@@ -91,7 +91,8 @@ public
    s" a caught shared callback cannot restore its mutable parent" T-LABEL
    s" : C2-MEM-READ-THROW ( read-view<p,l,u8> -- read-view<p,l,u8> ) 1 throw ; : C2-MEM-READ-LOAN-THROW ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-THROW ;] C2-MEM:WITH-READ ; : C2-MEM-READ-CATCH ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) [: C2-MEM-READ-LOAN-THROW ;] catch drop 0 C2-MEM:MUT-BYTE@ swap drop ;" STALE? TTRUE
    s" an ordinary declaration cannot invent unique scope and region binders" T-LABEL
-   s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 67 STATUS? TTRUE
+   \ The bad stored signature is rendered before its code is thrown, so it exits 70.
+   s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 STATUS? TTRUE
    s" a reopened memory package cannot call the raw allocator" T-LABEL
    s" package C2-MEM private : C2-MEM-RAW-ALLOC ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" 70 STATUS? TTRUE
    s" a reopened memory package cannot tick the raw allocator" T-LABEL

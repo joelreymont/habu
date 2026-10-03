@@ -10732,6 +10732,13 @@ public
    9 DATA TRUSTED-CELL STR,
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
+\ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
+\ as the catchable throw code delivered to an enclosing catch and as the
+\ fail-closed process exit code, so caught -> code 70 and uncaught -> rc70 are the
+\ same value (matches the top-level LRDIE exit and driver-io's "check reject 70").
+\ The uncaught-throw reporter below exits it for a refusal the checker rendered.
+70 constant RC-REJECT
+
 \ A throw whose nearest handler lies beyond one or more active evaluate boundaries
 \ lands here (BTHROW branch via EVALREC-CELL), x15 = throw code. Each escaped eval
 \ frame is rolled back — input cursor, dictionary top (CP/NDICT), data-stack base
@@ -10746,7 +10753,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL {: bounds:label :}
+   LBL LBL {: bounds:label unrefused:label :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -10832,9 +10839,12 @@ public
    \ other code would be kernel-masked to `code & 0xFF` - the fail-open class this
    \ closes (-2816 exited 0 SILENTLY, -2802 exited an aliased 14) - so it is instead
    \ reported as "hb: uncaught throw code <n>\n" on fd 2 (signed itoa mirrors
-   \ G-PRINT9) and exits the deterministic UNCAUGHT-RC. x15 keeps the code across
-   \ the message write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error
-   \ path relies on for x12). Never returns - no RET, keeps FPRIM-L throw leaf-safe.
+   \ G-PRINT9) and exits the deterministic UNCAUGHT-RC - or RC-REJECT when the code
+   \ is the refusal the checker last rendered (layout.f REFUSAL-CELL): that throw
+   \ was named on fd 2 before it was raised, and exits as every refusal does while
+   \ a catch still receives its own code. x15 keeps the code across the message
+   \ write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error path
+   \ relies on for x12). Never returns - no RET, keeps FPRIM-L throw leaf-safe.
    LEVLR LABEL@ LBL,  LUNCAUGHT LABEL@ LBL,
    9 15 0 ADDI,                                        \ restore code after the route's ioctl
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
@@ -10849,7 +10859,7 @@ public
    9 1 CMPI,    C-LT LUNCRPT LABEL@ BCOND,
    9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
    NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code) as before
-   LUNCRPT LABEL@ LBL,                                 \ out-of-range: report, then exit UNCAUGHT-RC
+   LUNCRPT LABEL@ LBL,                                 \ out-of-range: report, then exit UNCAUGHT-RC or RC-REJECT
    1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ write(2,"hb: uncaught throw code ",24)
    9 15 0 ADDI,                                        \ x9 = code for the itoa
    SP SP $20 SUBI,  12 SP $20 ADDI,
@@ -10868,7 +10878,12 @@ public
    LUNCDONE LABEL@ LBL,
    0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                                       \ write(2, digits, len)
-   0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   0 UNCAUGHT-RC MOVZ,
+   9 DATA REFUSAL-CELL LDR,  9 unrefused CBZ,          \ no refusal was rendered
+   9 15 CMP,  C-NE unrefused BCOND,                    \ one was, but not this code
+   0 RC-REJECT MOVZ,                                   \ the rendered refusal: exit as a refusal
+   unrefused LBL,
+   NR-EXIT-GROUP SYS,
    LEVCORRUPT LABEL@ LBL,                              \ eval-cross forged/corrupt handler frame: fail closed before any restore
    0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
@@ -10908,12 +10923,6 @@ public
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
-
-\ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
-\ as the catchable throw code delivered to an enclosing catch and as the
-\ fail-closed process exit code, so caught -> code 70 and uncaught -> rc70 are the
-\ same value (matches the top-level LRDIE exit and driver-io's "check reject 70").
-70 constant RC-REJECT
 
 \ Interpret-level reject diagnostics. LUNDEF: undefined token. LWIDE: a found
 \ word whose DNAME-WIDE dict flag is set (recorded effect carries a

@@ -26,14 +26,16 @@ create ERR CAP allot
 
 public
 
+\ A refused STRUCTURE exits 70: the checker renders the declaration's refusal
+\ before it throws the refusal's code.
 : RUN ( -- )
    T-RESET
    s" a region parameter cannot also be a value" T-LABEL
-   s" STRUCTURE c2vregfirst 4 FIELD value c FIELD view mut-view<a,b,c,d> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2vregfirst 4 FIELD value c FIELD view mut-view<a,b,c,d> ;STRUCTURE" 70 STATUS? TTRUE
    s" a region parameter cannot become a scope" T-LABEL
-   s" STRUCTURE c2vregscope 4 FIELD view mut-view<a,b,c,d> FIELD source read-view<a,c,u8> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2vregscope 4 FIELD view mut-view<a,b,c,d> FIELD source read-view<a,c,u8> ;STRUCTURE" 70 STATUS? TTRUE
    s" a raw pointer cannot hide an exclusive view" T-LABEL
-   s" STRUCTURE c2vptrmut 4 FIELD view ptr mut-view<a,b,c,d> ;STRUCTURE" 67 STATUS? TTRUE
+   s" STRUCTURE c2vptrmut 4 FIELD view ptr mut-view<a,b,c,d> ;STRUCTURE" 70 STATUS? TTRUE
    T-REPORT
    s" c2-view-record-mut: ok" type cr ;
 

@@ -709,12 +709,12 @@ variable WANT-RC
 
 \ The checker resolves a definition's bare names through the same usings, so
 \ it finds a used public that shadows a global tail only when `using` told it
-\ the package's name.
+\ the package's name. The refusal it renders exits 70, as every refusal does.
 : USING-SHADOW ( -- )
    GE-SRC-RESET
    s" using OI-PKG s~ : OI-SH ( -- n ) OI-SEVEN ;~ evaluate" QLINE
    s" oi-using-shadow.f" BOTH
-   67 s" using shadow" GE-EXPECT-RC
+   70 s" using shadow" GE-EXPECT-RC
    s" E-USING-SHADOW-GLOBAL" s" using shadow" GE-EXPECT-ERR-HAS ;
 
 \ The interpreter refuses the same tail by name, as a word and as a tick's

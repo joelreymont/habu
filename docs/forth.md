@@ -278,7 +278,7 @@ public
   definition's contract is read from that binding
   (`src/compiler/native/compiler.f` KEEP-ARITY asks `NDICT:SPELL-ARITY` with the
   bare name). A mismatch is refused where written, `E-SHADOWED-ARITY` (checker
-  7145, rc 67), naming the package, the tail and both widths; the native build's
+  7145, rc 70), naming the package, the tail and both widths; the native build's
   `-8303 E-NELAB-ARITY` stays as the backstop. The rule judges only a colon
   definition with a DECLARED signature; a public word made by a storage definer
   (`constant`, `variable`, `create`) is judged by its definer's row, so a
@@ -353,7 +353,7 @@ and always available, for a one-off call or to escape a collision.
   tails are ordinary verbs cannot be imported: `using TCP4` refuses at the first
   bare `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies)
   or rename the collision. The checker enforces this in every checked body (rc
-  67). The interpreter enforces it at top level and for `'`, by name
+  70). The interpreter enforces it at top level and for `'`, by name
   (`ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105, a throw inside `evaluate`);
   without it `using PS` then a top-level `SHW` ran the global. Only the bodies
   nothing certifies, `TRUSTED:` and `0 set-check` definitions, keep
@@ -995,7 +995,7 @@ by name with the count it saw and the ceiling, and none truncates.
   `tools/check.f` reports `E-BAD-DECLARATION` with the name as its token and
   the reason `name longer than 255 bytes`, rc 70; `--load` prints `habu: bad
   <kind> declaration '<family>': name longer than 255 bytes at '<name>'` and
-  exits 67. Shorten the name.
+  exits 70. Shorten the name.
 - **A package name: `CHECKER-PACKAGE-CAP` less one, 255 bytes**
   (`src/core/checker.f`). `package`, and `using` of a namespace a qualified
   definition made, throw `E-PACKAGE-NAME-CAP` (7154) out of the statement for a

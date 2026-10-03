@@ -1980,6 +1980,25 @@ variable LONG-J
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
 
+\ A refusal only the run reaches - text `evaluate` runs, which the pre-pass
+\ never reads - exits 70 as the pre-pass's refusal of the same text does. Its
+\ throw keeps its own code past every handler, and the load exits the refusal
+\ status for it because the checker rendered that refusal.
+: RUN-REFUSED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n code:ptr codeu:n :}
+   src srcu DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru code codeu CONTAINS? TTRUE ;
+
+: TEST-RUN-REFUSALS ( -- )
+   s\" s\" SUMTYPE ckrr 0 VARIANT same ;VARIANT VARIANT same ;VARIANT ;SUMTYPE\" evaluate"
+   s" E-BAD-DECLARATION" RUN-REFUSED
+   s\" package CKRR-USG public : CKRR-GW ( -- n ) 1 ; ;package : CKRR-GW ( n n -- n ) + ; s\" using CKRR-USG : CKRR-R1 ( -- n ) CKRR-GW ; ;using\" evaluate"
+   s" E-USING-SHADOW-GLOBAL" RUN-REFUSED
+   \ The row names a word, so the load parses its signature.
+   s\" : CKRR-SIG ( -- n ) 1 ; s\\\" s\\q CKRR-SIG\\q s\\q -- ckrr-no-such-type\\q trust\" evaluate"
+   s" E-BAD-STORED-SIGNATURE" RUN-REFUSED ;
+
 : TFAM-REDRIVE$ ( -- ptr u8 n )   \ good SUMTYPE + one real mismatch after it
    SB-RESET
    s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND
@@ -2821,8 +2840,9 @@ create BIG $2000 allot   variable BIG-U
    outu 0 T=
    erru 0 T= ;
 
+\ A refused declaration the checker rendered exits 70 from the load.
 : DEF-LOAD-REFUSED ( n n n -- )
-   67 T=
+   70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" bad newtype declaration" CONTAINS? TTRUE
    CAP-ERR erru s" reserved name" CONTAINS? TTRUE ;
@@ -2852,8 +2872,9 @@ create BIG $2000 allot   variable BIG-U
    NOM-SIDE$ NOM-CHECK-ADMITTED ;
 
 \ Each refusal names the declared tail: `declaration 'ptr': reserved name`.
+\ The load exits 70 for it, as check.f does, because the checker rendered it.
 : RESERVED-LOAD-REFUSED ( n n n ptr u8 n -- ) {: want:ptr wantu:n :}
-   67 T=
+   70 T=
    {: outu:n erru:n :}
    CAP-ERR erru want wantu CONTAINS? TTRUE ;
 
@@ -5540,6 +5561,7 @@ variable LC-CANON-U
    s" check/newtype-good" [: TEST-NEWTYPE-GOOD ;] CASE-RUN
    s" check/newtype-all-errors" [: TEST-NEWTYPE-ALL ;] CASE-RUN
    s" check/sumtype-bad" [: TEST-SUMTYPE-BAD ;] CASE-RUN
+   s" check/run-refusals" [: TEST-RUN-REFUSALS ;] CASE-RUN
    s" check/sumtype-all-redrive" [: SUM-REDRIVE-TEST ;] CASE-RUN
    s" check/nominal-all-redrive" [: NOM-REDRIVE-TEST ;] CASE-RUN
    s" check/nominal-all-clean" [: NOM-CLEAN-TEST ;] CASE-RUN

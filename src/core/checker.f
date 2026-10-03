@@ -1230,6 +1230,20 @@ CHECKER-PKG-LIVE-DEFAULT
    2 S\" hb: no authenticated package context for this definition\n" write drop
    CHECKER-REJECT-RC throw ;
 
+\ A refusal whose diagnostic was just rendered throws its own code, so an
+\ enclosing catch - a nested `evaluate`, the check tool, a test - receives the
+\ refusal by name. Uncaught, a code outside 1..255 reaches the engine's reporter
+\ (src/habu/habu2.f LUNCAUGHT), which exits UNCAUGHT-RC (67) for a throw nothing
+\ named. The code is published here first, so the reporter exits
+\ CHECKER-REJECT-RC for this one, the status of every refusal. The offset is
+\ src/habu/layout.f REFUSAL-CELL, spelled here as CHECKER-REG spells SOURCE-CELL
+\ because layout.f loads after this file.
+$27F8 constant CHECKER-REFUSAL-CELL
+
+: CHECKER-REFUSE ( n -- ) {: code:n :}
+   code data-base CHECKER-REFUSAL-CELL + !
+   code throw ;
+
 \ CHECKER-RESOLVE owns the scope questions. AUTHORITY, here, and WALK, the scope
 \ walk beside CHECKER-BIND, answer without refusing; RAISE raises a refusal WALK
 \ answered, and REFUSES? asks whether WALK would refuse. AUTHORITY's bool says
@@ -9038,7 +9052,7 @@ variable ASIG-MISS-K
    MULTI-ERR? src 0= and na nu USIG-BAD-FOREIGN? 0= and IF EXIT THEN
    sa su na nu BADSIG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
-   E-BAD-STORED-SIGNATURE throw ;
+   E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
 : USIG-ADD-AS ( ptr u8 n ptr u8 n bool bool -- )
    {: sa:ptr su:n na:ptr nu:n external:bool src:bool :}
@@ -10648,7 +10662,7 @@ RECORD-DIAG-DEFAULT
    a TSR-TOK-A !  u TSR-TOK-U !
    0 RECORD-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
-   E-TRUST-UNRESOLVED throw ;
+   E-TRUST-UNRESOLVED CHECKER-REFUSE ;
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
@@ -11093,7 +11107,7 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF
       a RPL-TOK-A !  u RPL-TOK-U !
       1 RECORD-DIAG-XT
-      E-PKG-CONTEXT throw
+      E-PKG-CONTEXT CHECKER-REFUSE
    THEN
    a u CHECKER-LBUF-NAME-OK? ;
 
@@ -11231,10 +11245,11 @@ public
 
 \ Raise a refusal the walk answered: the package-context refusal names itself on
 \ fd 2 and throws the reject rc, the using-shadow refusal renders the candidates
-\ CHECKER-USED-SHADOW captured, and the ambiguity throws bare.
+\ CHECKER-USED-SHADOW captured and refuses with its code, and the ambiguity
+\ throws bare.
 : RAISE ( n -- ) {: why:n :}
    why CHECKER-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
-   why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT THEN
+   why E-USING-SHADOW-GLOBAL = IF 0 SHADOW-DIAG-XT why CHECKER-REFUSE THEN
    why throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME here
@@ -12164,7 +12179,7 @@ variable DFER-POS
    sym 0= IF
       a TSR-TOK-A !  u TSR-TOK-U !
       2 RECORD-DIAG-XT
-      E-BAD-QUALIFIED throw
+      E-BAD-QUALIFIED CHECKER-REFUSE
    THEN
    sym CHECKER-REC-SYM !
    a u ;
@@ -12284,7 +12299,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    priv SBA-TWIN !
    nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
    1 SHADOW-DIAG-XT
-   E-SHADOWED-ARITY throw ;
+   E-SHADOWED-ARITY CHECKER-REFUSE ;
 
 \ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
 \ refused with the symbol pool's refusal before the constructor scan reads it.

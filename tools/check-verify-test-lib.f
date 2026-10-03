@@ -543,29 +543,30 @@ variable CLI-OUT-U
    FS-PATH-CAP 1+ 0 do 97 i GEN c! loop
    0 GEN FS-PATH-CAP 1+ ;
 
-
+\ A path argument longer than a path slot is a usage error, 64: apart from a
+\ refusal (70) and from an uncaught throw (67).
 : CLI-PATH-CAPACITY ( -- )
    LONG-PATH$ {: path:ptr pathu:n :}
    CLI-START s" --verify-only" ARG+ path pathu ARG+
    s" " CLI {: erru:n rc:n :}
-   s" cli-path-capacity: verify FILE status" T-LABEL rc 67 T=
+   s" cli-path-capacity: verify FILE status" T-LABEL rc 64 T=
    s" cli-path-capacity: verify FILE stderr" T-LABEL erru 0 T=
    s" cli-path-capacity: verify FILE explanation" T-LABEL
    0 OUT CLI-OUT-U @ s" check.f: source path exceeds capacity" CONTAINS? TTRUE
    CLI-START path pathu ARG+
    s" " CLI {: erru2:n rc2:n :}
-   s" cli-path-capacity: ordinary FILE status" T-LABEL rc2 67 T=
+   s" cli-path-capacity: ordinary FILE status" T-LABEL rc2 64 T=
    s" cli-path-capacity: ordinary FILE explanation" T-LABEL
    0 ERR erru2 s" check.f: source path exceeds capacity" CONTAINS? TTRUE
    CLI-START s" --verify-only" ARG+ s" --stdin-path" ARG+ path pathu ARG+
    s" : CVT-X ( -- ) ;" CLI {: erru3:n rc3:n :}
-   s" cli-path-capacity: verify stdin path status" T-LABEL rc3 67 T=
+   s" cli-path-capacity: verify stdin path status" T-LABEL rc3 64 T=
    s" cli-path-capacity: verify stdin path stderr" T-LABEL erru3 0 T=
    s" cli-path-capacity: verify stdin path explanation" T-LABEL
    0 OUT CLI-OUT-U @ s" check.f: source path exceeds capacity" CONTAINS? TTRUE
    CLI-START s" --stdin-path" ARG+ path pathu ARG+
    s" : CVT-X ( -- ) ;" CLI {: erru4:n rc4:n :}
-   s" cli-path-capacity: ordinary stdin path status" T-LABEL rc4 67 T=
+   s" cli-path-capacity: ordinary stdin path status" T-LABEL rc4 64 T=
    s" cli-path-capacity: ordinary stdin path explanation" T-LABEL
    0 ERR erru4 s" check.f: source path exceeds capacity" CONTAINS? TTRUE ;
 

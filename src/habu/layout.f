@@ -1270,10 +1270,21 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
 \ (word/tick classes; 0 for literal classes).
 $27F0 constant TOP-HOOK-CELL
-\ The ENGINE-HOOK band is the two hook cells above. $27F8, after it, is free:
-\ it held the retired engine snapshot hook.
+\ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
+\ REFUSAL-CELL: the code of the last refusal whose diagnostic the checker
+\ rendered before throwing it (src/core/checker.f CHECKER-REFUSE, which spells
+\ this offset because this file loads after it), 0 until one is. The uncaught
+\ top-level throw reporter (habu2.f LUNCAUGHT) exits RC-REJECT for a code equal
+\ to it, as every refusal exits, and UNCAUGHT-RC for any other. A catch that
+\ takes the throw leaves it set: src/core/include.f LOAD-CURRENT catches every
+\ throw of a loaded file and rethrows the same code, so a refusal reaches the
+\ reporter as that rethrow. A bare throw of the same code after a refusal of it
+\ was caught therefore exits RC-REJECT too. Not sealed, because the checker
+\ writes it after the seal; a snapshot carries none (snap-lib.f SND-ZERO-LIVE).
+\ $27F8 follows the ENGINE-HOOK band; it held the retired engine snapshot hook.
+$27F8 constant REFUSAL-CELL
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: the normal top-level exit

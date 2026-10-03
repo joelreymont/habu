@@ -140,8 +140,13 @@ An uncaught throw in a `--load` or spawned child exits by its code. A code from
 1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
 code prints `hb: uncaught throw code N` on stderr and exits 67: `-2504 throw`
 (`E-PROC-TRUNCATED`) exits 67 with that line, so read the `E-*` from the
-message, not from the status. A one-byte diagnostic and a clean exit means a raw
-engine capacity path (`exit_group`), not a throw.
+message, not from the status. A refusal the checker rendered before throwing its
+code - a bad declaration, a stale `trust` row, a used public shadowing a global -
+prints the same line after its diagnostic and exits 70, the status of every
+refusal; the engine keeps the code of the last refusal rendered
+(`src/habu/layout.f` `REFUSAL-CELL`), so only a throw of that code exits 70. A
+one-byte diagnostic and a clean exit means a raw engine capacity path
+(`exit_group`), not a throw.
 
 ## gdb/lldb — native stepping boundary
 Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.

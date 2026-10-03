@@ -356,10 +356,10 @@ at its deadline.
   forked child's `package X` is otherwise a nested-package reject, exit 75 —
   and never gate a CLI file that parses argv.
 - An uncaught throw in a child names its code on stderr and exits 67, unless
-  the code is 1 to 255; [debugging.md](debugging.md) has the exit rule. The
-  pool labels a row `TIMEOUT-UNDER-LOAD` when it exits 67 with its own report
-  of `E-PROC-TIMEOUT` (-2502) as the last stderr line (`test/gate-pool.f`
-  `GT-POOL-INNER-TIMEOUT?`).
+  the code is 1 to 255 or a refusal the checker rendered (70);
+  [debugging.md](debugging.md) has the exit rule. The pool labels a row
+  `TIMEOUT-UNDER-LOAD` when it exits 67 with its own report of `E-PROC-TIMEOUT`
+  (-2502) as the last stderr line (`test/gate-pool.f` `GT-POOL-INNER-TIMEOUT?`).
 - A deadline in a build child reaches the pool as a timeout through exit
   statuses, because a throw code cannot cross a process boundary.
   `tools/native-build.f` and `tools/build-fixpoint.f` exit 124

@@ -25,9 +25,11 @@ public
 
 : RUN ( -- )
    T-RESET
+   \ The STRUCTURE refusal is rendered before its code is thrown, so it exits 70;
+   \ the PRODUCT one below throws its code with nothing rendered and exits 67.
    s" an open-width field cannot derive initialized accessors" T-LABEL
    s" package C2IA STRUCTURE badwidth 1 DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
-      67 REFUSED? TTRUE
+      70 REFUSED? TTRUE
    s" invalid width reports the fixed-cell requirement" T-LABEL
    ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
    s" a product with an open-width field cannot derive init" T-LABEL

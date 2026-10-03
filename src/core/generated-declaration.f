@@ -130,6 +130,11 @@ TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
 \ all behave identically for a unified declaration.
 TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
 
+\ The rethrow of a reject DIAG rendered, as the checker raises every refusal it
+\ renders (checker.f CHECKER-REFUSE): the same code, which an uncaught load exits
+\ the refusal status for.
+TRUSTED: REFUSE ( n -- ) CHECKER-REFUSE ;
+
 \ Multi-error load state, the checker's own (checker.f). Under `--all-errors` a
 \ rejected definition is counted and the load continues instead of stopping at
 \ the first fault; the legacy definers' reporter TDECL-RUN has answered that way
@@ -227,9 +232,9 @@ public
    code ;
 
 \ GUARD ( body -- ) : run one declaration.  A reject is rendered through the
-\ shared declaration diagnostic and then rethrown with its exact code, so the
-\ transaction's rollback, the caller's error handling, and every pinned reject
-\ value are unchanged; only the missing message is added.
+\ shared declaration diagnostic and then rethrown with its exact code (REFUSE),
+\ so the transaction's rollback, the caller's error handling, and every pinned
+\ reject value are unchanged; only the missing message is added.
 \
 \ Under a multi-error load (`--all-errors`) the reject is counted and the load
 \ continues instead — the declaration is already rolled back by the time this
@@ -252,7 +257,7 @@ public
    rc 0= IF EXIT THEN
    rc RENDER
    MULTI? IF MULTI-COUNT+ EXIT THEN
-   rc throw ;
+   rc REFUSE ;
 
 \ Will a reject be swallowed rather than raised? The front ends ask this to
 \ decide whether they still owe the interpreter a resynchronized input stream.

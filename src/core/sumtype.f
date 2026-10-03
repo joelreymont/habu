@@ -143,7 +143,8 @@ private
 
 \ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
 \ any throw the registries roll back and the failure is reported; a multi-error
-\ load counts the reject and continues, otherwise the named code propagates.
+\ load counts the reject and continues, otherwise the named code propagates as
+\ the refusal the report rendered (checker.f CHECKER-REFUSE).
 : TDECL-RUN ( [ -- ] -- )
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
@@ -152,7 +153,7 @@ private
    TDECL-RESTORE
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
-   rc throw ;
+   rc CHECKER-REFUSE ;
 
 \ The declared name is read first by the body's name gate and by the report. A
 \ length no name has (CK-NAME-SPAN?) is recorded as no name, so the declaration

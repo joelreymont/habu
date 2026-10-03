@@ -70,15 +70,6 @@ $20000 constant CHK-ERR-CAP
 \ deadline is longer than CHK-DEADLINE-MAX.
 120000 constant CHK-DEADLINE-MS
 $7FFFFFFF constant CHK-DEADLINE-MAX
-67 constant CHK-E-CAPACITY
-\ A throw nothing handles ends a load: a code outside 1..255 is named on the
-\ last line of standard error, `hb: uncaught throw code N`, and exits
-\ UNCAUGHT-RC (docs/debugging.md). A checker record refused at the load throws
-\ its own code (docs/repair-diagnostics.md).
-UNCAUGHT-RC constant CHK-UNCAUGHT-RC
-E-TRUST-UNRESOLVED constant CHK-E-TRUST-ROW
-E-PKG-CONTEXT constant CHK-E-PKG-RECORD
-E-BAD-QUALIFIED constant CHK-E-QUALIFIED-RECORD
 
 0 constant CHK-SEL-NONE
 1 constant CHK-SEL-SOURCE
@@ -251,8 +242,9 @@ variable CHK-TFAM-NAME-I
    msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
 
+\ A path argument longer than its slot is a usage error.
 : CHK-PATH-TOO-BIG ( -- )
-   s" check.f: source path exceeds capacity" CHK-E-CAPACITY CHK-FAIL ;
+   s" check.f: source path exceeds capacity" CHK-E-USAGE CHK-FAIL ;
 
 : CHK-ARG$ ( n -- ptr u8 n )
    SCRIPT-ARGV$ ;
@@ -1744,31 +1736,12 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-ERR-U @ 0= if CHK-RUN-STATIC exit then
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
-\ Whether the run ended on an uncaught throw of code.
-: CHK-RUN-THREW? ( n -- bool ) {: code:n :}
-   SB-RESET
-   s" hb: uncaught throw code " SB-APPEND
-   code FMT:SB-INT
-   CHK-LF SB-APPEND-C
-   CHK-ERR-BUF CHK-ERR-U @ SB$ ENDS-WITH? ;
-
-\ check.f exits with its run's status, but a run that ends on a refused checker
-\ record's throw exits UNCAUGHT-RC as any unhandled throw does, and as check.f
-\ exits for an overlong path (CHK-E-CAPACITY). That run is refused, so it exits
-\ as a refusal.
-: CHK-RUN-STATUS ( n -- n ) {: rc:n :}
-   rc CHK-UNCAUGHT-RC <> if rc exit then
-   CHK-E-TRUST-ROW CHK-RUN-THREW? if CHK-E-CHECK exit then
-   CHK-E-PKG-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
-   CHK-E-QUALIFIED-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
-   rc ;
-
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
       exit
    then
-   CHK-RC @ CHK-RUN-STATUS CHK-CHILD-RC !
+   CHK-RC @ CHK-CHILD-RC !
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
       CHK-RUN-STATIC

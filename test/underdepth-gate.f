@@ -153,7 +153,7 @@ public
 
 package UDG-MINIMUM
 
-67 constant WIDE-RC                 \ the refusal's throw, uncaught (UNCAUGHT-RC)
+70 constant WIDE-RC                 \ rendered before its code is thrown (RC-REJECT)
 
 \ Declare a callback whose fixed input row contains exactly `width` physical
 \ cells. The encoded DNAME-MIN-IN byte accepts 255 and rejects 256: a wider

@@ -362,21 +362,26 @@ create PACKET-BUF FS-PATH-CAP allot
    name nameu EXPECT-GOLDEN ;
 
 \ The checker's pre-pass never reads a declaration that `evaluate` runs, so only
-\ the run refuses it, and its record has no place.
-: TEST-STORAGE-UNPLACED ( -- )
+\ the run refuses it, and its record has no place. Each exits 70, the refusal
+\ status: the storage declaration throws 70, and the family declaration throws
+\ its own code past every handler, which the load exits 70 for because the
+\ checker rendered that refusal.
+: TEST-UNPLACED ( -- )
    s" storage-unplaced" s" fix_storage_type"
-   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
+   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE
+   s" declaration-unplaced" s" fix_family_declaration"
+   s\" s\" SUMTYPE badsum 0 VARIANT samev ;VARIANT VARIANT samev ;VARIANT ;SUMTYPE\" evaluate" 70 CHILD-CASE ;
 
 \ A refused record names its token and no place. A trust row naming no word, a
 \ storage registrar called from source and a record entry called with a
-\ malformed name at run time each end the load on an uncaught throw (exit 67
-\ under `--load`), and check.f exits 70 for it, as for any refusal. A
-\ declaration's record for a malformed name is refused by the pre-pass, so the
-\ check meets it in process, before the statement its throw ends, and the
-\ packet is the record's. A stored signature that does not parse is counted by
-\ the multi-error pre-pass (rc 70). The two shadow refusals throw out of their
-\ definition (rc 70), so the statement that threw follows the record. The
-\ packet keeps the field each code adds.
+\ malformed name at run time each end the load on an uncaught throw of its own
+\ code, which the load exits 70 for because the checker rendered that refusal;
+\ check.f keeps the load's status. A declaration's record for a malformed name
+\ is refused by the pre-pass, so the check meets it in process, before the
+\ statement its throw ends, and the packet is the record's. A stored signature
+\ that does not parse is counted by the multi-error pre-pass (rc 70). The two
+\ shadow refusals throw out of their definition (rc 70), so the statement that
+\ threw follows the record. The packet keeps the field each code adds.
 : TEST-RECORDS ( -- )
    s" trust-row" s" fix_stale_trust_row"
    s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 70 CHILD-CASE
@@ -496,7 +501,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-DECL
    TEST-SPAN-KINDS
    TEST-STORAGE
-   TEST-STORAGE-UNPLACED
+   TEST-UNPLACED
    TEST-RECORDS
    TEST-WARNING
    TEST-TWO-DIAGS

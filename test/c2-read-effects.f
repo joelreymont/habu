@@ -74,7 +74,8 @@ public
    s" a checked word cannot mint an owner scope" T-LABEL
    s" : C2-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 70 REJECT TTRUE
    s" a trusted declaration cannot mint an owner scope" T-LABEL
-   s" TRUSTED: C2-TRUST-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 67 REJECT TTRUE
+   \ The bad stored signature is rendered before its code is thrown, so it exits 70.
+   s" TRUSTED: C2-TRUST-FORGE ( -- read-view<p,q,u8> ) 0 0 ;" 70 REJECT TTRUE
    s" a rigid allocation identity is not a scope" T-LABEL
    s" : C2-REGION ( read-view<fresh-region-a,fresh-region-a,u8> -- ) drop ;" 70 REJECT TTRUE
    s" raw storage cannot hold a scoped view" T-LABEL
@@ -104,7 +105,8 @@ public
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 REJECT TTRUE
    s" direct borrowed schemas wait for scoped storage" T-LABEL
-   s" SUMTYPE c2-schema 2 VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 67 REJECT TTRUE
+   \ A rendered declaration refusal exits 70; the CAST: refusal above renders none.
+   s" SUMTYPE c2-schema 2 VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 70 REJECT TTRUE
    s" legacy value records cannot declare a scoped field" T-LABEL
    s" VALUE-RECORD c2-vrec value read-view<p,q,u8> END-VALUE-RECORD" 70 REJECT TTRUE
    s" legacy value records cannot hide a scoped field in a sum" T-LABEL

@@ -153,25 +153,23 @@ definition-only field. The code names its repair class and that field:
 
 `tools/check.f` meets the first two only in its run stage, after every
 definition has checked. The refusal throws its code past every handler, so the
-load ends on `hb: uncaught throw code <code>` and exits 67, as for any
-unhandled throw ([debugging.md](debugging.md)). The record for a malformed name
-throws `E-BAD-QUALIFIED` (7152), so nothing after it in its source is checked: a
-load exits 67 after `hb: uncaught throw code 7152`, and `tools/check.f` reports
-the statement that asked for the record as one that threw. A run that ends on
-the throw of `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED` exits 70
-from `tools/check.f`, as for a refusal; a run that ends on any other throw
-exits with the load's status. `E-BAD-STORED-SIGNATURE` is rendered in every
-mode. Under `--all-errors` the source pre-pass counts it as a refusal and checks
-on (exit 70). Otherwise the load throws it (7156) where the signature is stored:
-met by the pre-pass, the `E-STATEMENT-THROW` span of the statement that threw
-follows the record and places it, nothing after that statement is checked, and
-the run exits 70; met only in the run stage, as in text that `evaluate` runs,
-the run ends on that throw with the load's status, 67, and without
-`--json-errors` its record is the line `habu: in <token>: bad stored signature
-'<signature>'`, with the reason after it for a row too deep or too wide to
-record. The two shadow refusals
-throw out of their definition (7141 and 7145), so the `E-STATEMENT-THROW` span
-of the statement that threw follows the record and places it; the run exits 70.
+load ends on `hb: uncaught throw code <code>`, and exits 70 as for any refusal
+the checker rendered ([debugging.md](debugging.md)). The record for a malformed
+name throws `E-BAD-QUALIFIED` (7152), so nothing after it in its source is
+checked: a load exits 70 after `hb: uncaught throw code 7152`, and
+`tools/check.f` reports the statement that asked for the record as one that
+threw. `E-BAD-STORED-SIGNATURE` is rendered in every mode. Under `--all-errors`
+the source pre-pass counts it as a refusal and checks on (exit 70). Otherwise
+the load throws it (7156) where the signature is stored: met by the pre-pass,
+the `E-STATEMENT-THROW` span of the statement that threw follows the record and
+places it, nothing after that statement is checked, and the run exits 70; met
+only in the run stage, as in text that `evaluate` runs, the load exits 70 on
+that throw as on the first two, and without `--json-errors` its record is the
+line `habu: in <token>: bad stored signature '<signature>'`, with the reason
+after it for a row too deep or too wide to record. The two shadow
+refusals throw out of their definition (7141 and 7145), so the
+`E-STATEMENT-THROW` span of the statement that threw follows the record and
+places it; the run exits 70. `tools/check.f` exits with its run's status.
 
 `W-EFFECT-NOT-RECORDED` is a warning, outside this contract: a definition with
 no declared signature certified, but its inferred effect has more than 23 type
@@ -218,8 +216,9 @@ for `engine-provided`, `held` and `incomplete`. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
-An argument that exceeds the source path capacity exits 67 and explains the
-limit on stdout. Ordinary checks explain it on stderr with the same status.
+An argument that exceeds the source path capacity is a usage error, exits 64 and
+explains the limit on stdout. Ordinary checks explain it on stderr with the same
+status.
 With `--verify-only`, a source list, a FILE beside `--stdin-path` and stdin
 without it are usage errors; so is `--stdin-path` given twice or without
 `--verify-only`.
