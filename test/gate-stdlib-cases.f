@@ -2731,6 +2731,10 @@ SUITE repl-open-definition
    test/repl-open-definition.f
 ;SUITE
 
+SUITE repl-literal-segment
+   test/repl-literal-segment.f
+;SUITE
+
 SUITE native-gate-diagnostics
    test/gate-diagnostics.f
 ;SUITE

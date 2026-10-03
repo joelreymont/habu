@@ -2,9 +2,12 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fmt.f
+require src/core/generated-declaration.f
 require src/compiler/native/compiler.f
 require src/compiler/native/string.f
 require src/habu/aot-arm.f
+require test/compiler/literal-segment.f
 
 \ Tier 1 below: one address per interned body, and code that does not grow with
 \ the string, are facts of the optimizing compiler's literal emission.
@@ -315,14 +318,91 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
    s" the chain's code does not grow with the string at all" T-LABEL
    s" NST-COST-LONG" CODE-LEN  s" NST-COST-SHORT" CODE-LEN T= ;
 
+\ ---- many long literals ---------------------------------------------------------
+\ Eighty definitions each push their own 7000-byte body: 560,000 bytes, more than
+\ one segment's arena holds, so the store opens another while the chain compiles.
+$2000 constant SRC-CAP               \ one definition around a 7000-byte body
+SRC-CAP BUFFER: SRC
+variable SRC-U
+variable LONG-N                      \ definitions compiled
+variable LONG-OK                     \ definitions that pushed their own body
+
+: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SRC-U @ u + SRC-CAP > if E-STR-CAPACITY throw then
+   a  SRC SRC-U @ +  u BYTE-COPY
+   u SRC-U +! ;
+
+: NUM+ ( n -- )
+   SB-RESET FMT:SB-U SB$ SRC+ ;
+
+\ Body k: the name of the definition that pushes it, then `z` up to 7000 bytes.
+: LONG-BODY+ ( n -- ) {: k:n :}
+   SRC-U @ {: at:n :}
+   s" NSL" SRC+  k NUM+
+   7000  SRC-U @ at -  -  0 ?do s" z" SRC+ loop ;
+
+\ The body LONG-ANSWERS expects, public only because its closed text reaches it
+\ qualified.
+public
+: LONG-BODY$ ( -- ptr u8 n )
+   SRC SRC-U @ ;
+private
+
+: LONG-DEF ( n -- ) {: k:n :}
+   0 SRC-U !
+   s" : NSL" SRC+  k NUM+  S\"  ( -- ptr u8 n ) s\q " SRC+
+   k LONG-BODY+  S\" \q ;" SRC+
+   SRC SRC-U @ evaluate-closed
+   1 LONG-N +! ;
+
+: LONG-DEFS ( -- )
+   80 0 ?do i LONG-DEF loop ;
+
+: LONG-ANSWERS ( n -- ) {: k:n :}
+   0 SRC-U !  k LONG-BODY+
+   SB-RESET s" NSL" SB-APPEND k FMT:SB-U s"  NSTRING-TEST:LONG-BODY$ STR=" SB-APPEND
+   SB$ TEST-EVAL:FLAG if 1 LONG-OK +! then ;
+
+: LONG-LITERALS-CASE ( -- )
+   s" eighty definitions of distinct 7000-byte bodies compile" T-LABEL
+   0 LONG-N !
+   [: LONG-DEFS ;] 0 TTHROWSQ
+   LONG-N @ 80 T=
+   s" and each pushes its own body, as tier 0 does" T-LABEL
+   0 LONG-OK !
+   LONG-N @ 0 ?do i LONG-ANSWERS loop
+   LONG-OK @ 80 T= ;
+
+\ ---- a segment opened inside work that is undone -------------------------------
+\ The store opens a segment at `here`, inside whatever is running. A rewind of
+\ that work - a failed evaluation, a rolled-back declaration, a failed REPL line
+\ (test/repl-literal-segment.f) - stops at the engine's DATA floor, so the
+\ segment and every address it answered outlive it.
+: EVAL-SEGMENT-CASE ( -- )
+   s" a segment opened inside a failed evaluation outlives its rewind" T-LABEL
+   [: s" LITERAL-SEGMENT:OPEN 77 throw" evaluate-closed ;] 77 TTHROWSQ
+   LITERAL-SEGMENT:SURVIVED? TTRUE ;
+
+: DECL-BODY ( -- )
+   [: LITERAL-SEGMENT:OPEN 77 throw ;] GENERATED-DECL:RUN ;
+
+: DECL-SEGMENT-CASE ( -- )
+   s" a segment opened in a rolled-back declaration outlives the rollback" T-LABEL
+   [: DECL-BODY ;] 77 TTHROWSQ
+   LITERAL-SEGMENT:SURVIVED? TTRUE ;
+
 \ ---- the store's ceiling ------------------------------------------------------
-\ THIS CASE RUNS LAST AND EXHAUSTS THE STORE, so nothing after it can intern.
-\ What it proves is that a body the store cannot take is refused by name: the
-\ addresses already answered are compiled into published routines, so handing the
-\ same address to different bytes is the one outcome that must be impossible.
-\ The loop is bounded by a number larger than either ceiling rather than by
-\ either ceiling itself, so it does not restate the constants it is testing.
+\ A pool grows by segments, so the count and the total size of its bodies are
+\ bounded by DATA alone. 20000 bodies of 64 bytes pass both of a segment's
+\ ceilings, its rows and its arena bytes, twice over. One body larger than a
+\ segment's arena is refused by name, before anything moves: the addresses
+\ already answered are compiled into published routines.
 create FILL-BUF 64 allot
+create FILL-AT 20000 cells allot
+variable FILL-N                      \ bodies interned, so a refusal reads none back
+variable FILLED
+variable BIG-U
+PTR-VARIABLE BIG-AT
 
 : FILL-BODY ( n -- ptr u8 n ) {: k:n :}
    8 0 ?do
@@ -331,14 +411,67 @@ create FILL-BUF 64 allot
    FILL-BUF 64 ;
 
 : FILL-ONE ( n -- ) {: k:n :}
-   k FILL-BODY NSTR:INTERN drop ;
+   k FILL-BODY NSTR:INTERN  k cells FILL-AT + !
+   1 FILL-N +! ;
 
 : FILL ( -- )
    20000 0 ?do i FILL-ONE loop ;
 
+: FILL-CHECK ( n -- ) {: k:n :}
+   k cells FILL-AT + @ N>BYTES 64  k FILL-BODY  STR= if 1 FILLED +! then ;
+
+: BIG! ( n -- ) {: u:n :}
+   here BIG-AT !  u allot  u BIG-U !
+   u 0 ?do 66 BIG-AT @ i + c! loop ;
+
+: BIG-INTERN ( -- )
+   BIG-AT @ BIG-U @ NSTR:INTERN drop ;
+
 : CAP-CASE ( -- )
-   s" a body the store cannot hold is refused by name" T-LABEL
-   [: FILL ;] E-NSTR-CAP TTHROWSQ ;
+   s" twenty thousand bodies past both of a segment's ceilings intern" T-LABEL
+   0 FILL-N !
+   [: FILL ;] 0 TTHROWSQ
+   s" and each reads back as its own bytes" T-LABEL
+   0 FILLED !
+   FILL-N @ 0 ?do i FILL-CHECK loop
+   FILLED @ 20000 T=
+   s" a body as large as a segment's arena interns" T-LABEL
+   $80000 BIG!
+   [: BIG-INTERN ;] 0 TTHROWSQ
+   s" one byte larger is refused by name and leaves no trace" T-LABEL
+   $80001 BIG!
+   NSTR:COUNT {: rows:n :}
+   here PTR>N {: at:n :}
+   [: BIG-INTERN ;] E-NSTR-CAP TTHROWSQ
+   NSTR:COUNT rows T=
+   here PTR>N at T= ;
+
+\ ---- a closed window's pool ----------------------------------------------------
+\ A stripped link copies into the window's pool each body it reaches in another
+\ pool, after the window's end is latched (src/habu/aot-window-latch.f
+\ AOT-DATA-SPAN; test/stripped-literal.f links through it). Closing a full pool
+\ opens one more segment for those copies, inside the window, and none after it:
+\ a segment opened past the window's end would leave its copies out of the image,
+\ so a body past the room the pool kept is refused by name.
+: OVERFLOW-INTERN ( -- )
+   FILL-BUF 1 NSTR:INTERN drop ;
+
+: CLOSE-CASE ( -- )
+   s" closing a full pool opens it one more segment" T-LABEL
+   NSTR:ACTIVE {: original:ptr :}
+   NSTR:WINDOW-OPEN
+   $80000 BIG!
+   BIG-INTERN
+   NSTR:WINDOW-CLOSE
+   NSTR:SEGMENTS 2 T=
+   s" which takes a whole arena" T-LABEL
+   [: BIG-INTERN ;] 0 TTHROWSQ
+   s" and a body past it is refused by name, opening nothing" T-LABEL
+   here PTR>N {: at:n :}
+   [: OVERFLOW-INTERN ;] E-NSTR-CAP TTHROWSQ
+   NSTR:SEGMENTS 2 T=
+   here PTR>N at T=
+   original NSTR:SWITCH ;
 
 public
 
@@ -354,7 +487,11 @@ public
    SEEDED-OWNER-CASE
    IMPORT-CASE
    BYTE-COST-CASE
+   LONG-LITERALS-CASE
+   EVAL-SEGMENT-CASE
+   DECL-SEGMENT-CASE
    CAP-CASE
+   CLOSE-CASE
    T-REPORT ;
 
 ;package

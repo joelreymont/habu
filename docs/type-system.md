@@ -534,7 +534,7 @@ pointer-bearing base: ~70 in `src/`, ~40 in `lib/`, ~25 in `tools/` and `test/`.
 | include frame, `include.f:695-724` | 0 `ptr u8`, +8 byte flag, +16 buffer | A×2 | T1 | no |
 | startup DATA, `env-base.f:6-24` | $3670 n, $3678 `ptr ptr u8`, $3680 `ptr ptr u8` | A×4 | T1 | engine DATA |
 | generated-decl frame row, `generated-declaration-dictionary.f:25-43` | 0 n, 1 n, 2 `ptr a` | A×1 | T2 | persisted head; DP nulled before capture |
-| NSTR pool owner, `compiler/native/string.f:22-37` | 0 `ptr u8`, 1 `ptr u8`, 2–4 n, $28 arrays | A×2, B×5 | T3 | yes — hand `ptr-cell-mark` |
+| NSTR segment owner, `compiler/native/string.f:29-88` | 0, 1, 5 n self-relative links; 2–4, 6 n; $38 arrays | B×8 | T3 | yes — in DATA; its links are offsets, so nothing is marked |
 | IR arena descriptor, `compiler/ir/arena.f:142-154` | 5 `ptr u8`; 0–4, 6, 7 n | A×1, B×31 | T3 | persisted head |
 | IR symbol index, `compiler/ir/symbol.f:306-316` | 2 `ptr u8`; 0, 1 n | A×1, B | T3 | no |
 | AOT dict record (48 B), `aot-closure.f:105-107,223` | 0 code `ptr u8`, 8 n, 16 n, 24 bytes, 40 wid | A×1, B×4 | T3 | AOT-captured |

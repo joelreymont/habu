@@ -1157,6 +1157,12 @@ by name with the count it saw and the ceiling, and none truncates.
   these sinks exits `$4F` before it writes, as do `evaluate` and
   `evaluate-closed` ([threads.md](threads.md)): the definers name their token
   on stderr, the rest print nothing.
+  Tier 1 keeps every string literal body and trap message in DATA too
+  (`src/compiler/native/string.f`): when the store's last segment cannot take
+  a body it opens another, 512 KB of bodies and 8192 rows, at `here`, so data
+  space is the only bound on their count and total size. A rewind of DATA - a
+  failed `evaluate` or REPL line - stops above the newest segment
+  (`DATA-FLOOR-CELL`), and equal bodies share an address within one segment.
 
 ## Constants
 
