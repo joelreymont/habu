@@ -225,25 +225,36 @@ variable CA-COMPOSE-LABEL-U
    LJW-KEY s" " LJW-STRING ;
 
 
-: CA-DUP-WORD$ ( -- ptr u8 n )
-   s" duplicate-definition" ;
+\ ---- a definition of a name its scope already held ---------------------------
+\ The scan refuses it at its name and keeps where the name starts and its length
+\ (src/habu/verify-source.f VERIFY:DUPLICATE), not the name: a required file's
+\ bytes are unmapped before the report. Its record reads the name out of the
+\ reporter's own read of the file the composition stopped in, as a statement
+\ throw's record reads its token, and names it and its place as --load does.
+\ The record is the placeholder `duplicate-definition` at line 1 for a name the
+\ definer generates instead of writing (a DYNAMIC-BUFFER's NAME-RESERVE or
+\ NAME-RELEASE, a DEFER-LAYOUT-BUFFER's NAME-BIND or NAME-GROW), which the
+\ checker's own guard refuses with nothing kept, and for a kept name that ends
+\ past that read, as when the file shrank after the scan.
 
-: CA-JSON-DUP ( -- )
+\ The word, its token index, and the line, column and byte where it starts.
+: CA-JSON-DUP ( ptr u8 n n n n n -- )
+   {: wa:ptr wu:n ti:n line:n col:n byte:n :}
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
    s" repair_class" LJW-KEY s" rename_duplicate" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" word" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
-   s" token" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
-   s" token_index" LJW-KEY 1 LJW-U LJW-COMMA
+   s" word" LJW-KEY wa wu LJW-STRING LJW-COMMA
+   s" token" LJW-KEY wa wu LJW-STRING LJW-COMMA
+   s" token_index" LJW-KEY ti LJW-U LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY 1 LJW-U LJW-COMMA
-   s" column" LJW-KEY 1 LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY 0 LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY CA-DUP-WORD$ nip LJW-U LJW-COMMA
-   s" definition_source" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY line LJW-U LJW-COMMA
+   s" column" LJW-KEY col LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY byte LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY byte wu + LJW-U LJW-COMMA
+   s" definition_source" LJW-KEY wa wu LJW-STRING LJW-COMMA
    s" declared_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
    s" declared_effect_source" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
    s" inferred_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
@@ -262,14 +273,34 @@ variable CA-COMPOSE-LABEL-U
    s" checker: duplicate definition in " LJW-RAW
    CA-FILE-A@ CA-FILE-U @ LJW-RAW ;
 
-\ Both renderings are built in the JSON writer's buffer.
-: CA-DUP-RECORD$ ( -- ptr u8 n )
-   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+\ The words the engine's wall writes under --load, for the name and its line.
+: CA-PROSE-DUP-AT ( ptr u8 n n -- ) {: na:ptr nu:n line:n :}
+   LJW-RESET
+   s" duplicate definition: " LJW-RAW
+   na nu LJW-RAW
+   s"  at " LJW-RAW
+   CA-FILE-A@ CA-FILE-U @ LJW-RAW
+   s" :" LJW-RAW line LJW-U ;
+
+: CA-DUP-AT ( n n -- ) {: at:n u:n :}
+   CA-SRC-A@ at BYTE-ORIGIN {: line:n col:n :}
+   CA-SRC-A@ at + {: na:ptr :}
+   CA-JSON? IF na u 0 line col at CA-JSON-DUP ELSE na u line CA-PROSE-DUP-AT THEN ;
+
+\ The record of the name the scan refused, which starts at the given byte and
+\ has the given length, 0 for no name kept (VERIFY:DUPLICATE). Both renderings
+\ are built in the JSON writer's buffer.
+: CA-DUP-RECORD$ ( n n -- ptr u8 n ) {: at:n u:n :}
+   u 0 > at u + CA-SRC-U @ <= and IF
+      at u CA-DUP-AT
+   ELSE
+      CA-JSON? IF s" duplicate-definition" 1 1 1 0 CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   THEN
    LJW$ ;
 
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
-   CA-DUP-RECORD$ CA-ERR-LN
+   VERIFY:DUPLICATE CA-DUP-RECORD$ CA-ERR-LN
    DUP-RC CA-RAW-FAILURE ! ;
 
 : CA-WORD-END ( n -- n )                \ the byte past the source word at byte n
@@ -683,10 +714,14 @@ public
    CA-THROW-RECORD$ ;
 
 \ The record line --all-errors writes for a duplicate definition, for a caller
-\ that had the checker run over the source it reports under the given label:
-\ in the mode JSON! selected, with no line feed.
-: DUP-RECORD$ ( ptr u8 n -- ptr u8 n )
-   CA-START
-   CA-DUP-RECORD$ ;
+\ that had the checker run over the given source under the given label: at the
+\ name the scan refused, which starts at the given byte and has the given
+\ length, 0 for no name kept (VERIFY:DUPLICATE), in the mode JSON! selected,
+\ with no line feed.
+: DUP-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: at:n u:n labela:ptr labelu:n srca:ptr srcu:n :}
+   labela labelu CA-START
+   srca srcu CA-SOURCE-BUF!
+   at u CA-DUP-RECORD$ ;
 
 ;package

@@ -34,12 +34,14 @@
 \ name it LABEL. SUBJECT is check.f's own copy of the text, which nothing holds.
 \ It answers
 \
-\    check-verify: verified | stopped RC BYTE IN-SUBJECT FILE
+\    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ RC is the code the composition stopped with, BYTE where the token the verifier
-\ read last starts, IN-SUBJECT 1 when that token is in BYTES and 0 when it is in
-\ a file they load, and FILE, the rest of the line, the name of the file it is
-\ in, LABEL for BYTES.
+\ read last starts, DUP-AT and DUP-LEN where the name it refused as a duplicate
+\ starts and its length, DUP-LEN 0 when it kept no name (VERIFY:DUPLICATE),
+\ IN-SUBJECT 1 when the stop is in BYTES and 0 when it is in a file they load,
+\ and FILE, the rest of the line, the name of the file it is in, LABEL for
+\ BYTES.
 \
 \ stderr is prose: for the first form, a line for each file whose verification
 \ a throw stopped, and whatever else the engine writes there, a `die`'s message
@@ -171,10 +173,15 @@ create NL 1 allot
 
 
 : STOP-RESULT ( n -- ) {: rc:n :}
+   VERIFY:DUPLICATE {: at:n u:n :}
    OUT-FD s" check-verify: stopped " WRITE
    OUT-FD rc FD-N
    OUT-FD s"  " WRITE
    OUT-FD VERIFY:TOKEN-BYTE@ FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD at FD-N
+   OUT-FD s"  " WRITE
+   OUT-FD u FD-N
    OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? if s"  1 " else s"  0 " then WRITE
    OUT-FD VERIFY:SOURCE-COMPOSE-STOPPED$ WRITE
    OUT-FD NEWLINE ;

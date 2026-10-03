@@ -9,16 +9,18 @@
 \ control entry it appends is later-wins, and one appended for the refused
 \ duplicate lacks the first word's source authority, so every later caller of
 \ the first word would fail E-CAP-TRUSTED (src/core/checker.f CHECK-REC-ADMIT).
-\ Each case redefines a certified word in scope - with a signature, without
-\ one, and as a refused body in multi-error mode - and then proves the first
-\ word kept its authority: a caller verified in scope certifies with nothing to
-\ say, and a caller compiled by this load certifies and runs.
+\ The verifier asks it sooner, once it has scanned the name (src/habu/
+\ verify-source.f REFUSE-DUPLICATE), so a duplicate's body goes unchecked even
+\ in multi-error mode, as the wall leaves it uncompiled. Each case redefines a
+\ certified word in scope - with a signature, without one, and with a body
+\ that would be refused, in multi-error mode - and then proves the first word
+\ kept its authority: a caller verified in scope certifies with nothing to say,
+\ and a caller compiled by this load certifies and runs.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
-\   src/habu/verify-source.f test/checker-dup-record.f
+\ Run: bin/hb --load lib/errors.f lib/test.f src/habu/verify-source.f
+\   test/checker-dup-record.f
 
 require lib/errors.f
-require lib/string.f
 require lib/test.f
 require src/habu/verify-source.f
 
@@ -90,7 +92,8 @@ CDR:DIAG$ nip 0 T=
 
 s" a refused body under a certified name is refused as a duplicate" T-LABEL
 s" : CDR-THREE ( -- n ) 1 2 ;" CDR:MULTI-QUIET CDR:DUP-RC T=
-CDR:DIAG$ s" cdr-three" CONTAINS? TTRUE
+s" the duplicate is refused at its name, its body unchecked" T-LABEL
+CDR:DIAG$ nip 0 T=
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-THREE-USE ( -- n ) CDR-THREE ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=

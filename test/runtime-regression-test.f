@@ -1522,11 +1522,50 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" hb: bad string literal" s" stdin refusal still names the cause" GE-EXPECT-ERR-HAS
    s"  at " s" stdin refusal claims no location" GE-EXPECT-ERR-LACKS ;
 
+\ A duplicate the dictionary cannot see. A program that runs a declaration's
+\ replay itself (the scanner's, src/habu/verify-source.f RECORD-PRODUCT:
+\ CHECKER-DEFPRODUCT, then GENERATED-DECL-CTOR:REPLAY-LEGACY) publishes the
+\ checked effect of every word the declaration generates and defines none of
+\ them, so the engine's wall passes a later definition of one and the checker
+\ refuses it. That refusal used to exit 78 with nothing on stderr; it now names
+\ the definition and its location as the wall does, at the line of its name,
+\ not of the closing `;` where the hook runs (src/core/check-hook.f DUP-RC,
+\ NAME-LINE).
+: GE-LOC-REPLAY-DUP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ta:ptr tu:n da:ptr du:n la:ptr lu:n :}
+   na nu ta tu GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   78 s" checker-only duplicate rc" GE-EXPECT-RC
+   da du s" checker-only duplicate names the definition" GE-EXPECT-ERR-HAS
+   la lu s" checker-only duplicate names its line" GE-EXPECT-ERR-HAS ;
+
+: GE-LOC-REPLAY-DUPS ( -- )
+   \ The second definition's name is on line 4 and its `;` on line 5.
+   s" hb-loc-dupprod.f"
+      S\" \\ replay\n: GELOCRP ( -- ) s\q gelocprod\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP\n: GELOCPROD:MAKE ( n -- n )\n   1 + ;\n"
+      s" duplicate definition: GELOCPROD:MAKE at " s" hb-loc-dupprod.f:4" GE-LOC-REPLAY-DUP
+   \ The same at tier 1, where ncomp compiles the definition through the hook.
+   s" hb-loc-dupprod1.f"
+      S\" 1 set-tier\n: GELOCRP1 ( -- ) s\q gelocprod1\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRP1\n: GELOCPROD1:MAKE ( n -- n )\n   1 + ;\n"
+      s" duplicate definition: GELOCPROD1:MAKE at " s" hb-loc-dupprod1.f:4" GE-LOC-REPLAY-DUP
+   \ A body that would also fail checking (`drop` leaves no n) is refused as the
+   \ duplicate first, the order the engine's wall uses.
+   s" hb-loc-dupbad.f"
+      S\" \\ replay\n: GELOCRB ( -- ) s\q gelocpbad\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRB\n: GELOCPBAD:MAKE ( n -- n )\n   drop ;\n"
+      s" duplicate definition: GELOCPBAD:MAKE at " s" hb-loc-dupbad.f:4" GE-LOC-REPLAY-DUP
+   \ A `variable` runs the hook with nothing pending, the colon definition's
+   \ opener still at GELOCRV's name on line 2: its name on line 5 is placed at
+   \ the cursor, just past it.
+   s" hb-loc-dupvar.f"
+      S\" \\ replay\n: GELOCRV ( -- ) s\q gelocpvar\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nGELOCRV\n\\ a variable, not a colon definition\nvariable GELOCPVAR:MAKE\n"
+      s" duplicate definition: GELOCPVAR:MAKE at " s" hb-loc-dupvar.f:5" GE-LOC-REPLAY-DUP ;
+
 : GE-REFUSAL-LOCATION ( -- )
    GE-LOC-BADSTR
    GE-LOC-NESTED
    GE-LOC-NO-FILE
-   s" PASS: load refusals name their file and line (file/nested/no-file)" type cr ;
+   GE-LOC-REPLAY-DUPS
+   s" PASS: load refusals name their file and line (file/nested/no-file/checker-only duplicate)" type cr ;
 
 \ Source that ends inside a construct it opened (dot habu-eof-inside-a-7a539941).
 \ A file whose last line was `: GEEND ( -- )` exited 0 at top level with GEEND

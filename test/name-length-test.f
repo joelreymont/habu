@@ -136,6 +136,7 @@ create BEFORE MARK-N cells allot
 
 \ ---- the cases a child runs -------------------------------------------------
 : RESOLVES ( -- ) MARKS! BAD$ CHECKER-RESOLVES? 0= VERDICT ;
+: CERT-DUP ( -- ) MARKS! BAD$ CHECKER-CERT-DUP? 0= VERDICT ;
 : DEAD ( -- ) MARKS! BAD$ CTL-DEAD? 0= VERDICT ;
 : QUERY ( -- ) MARKS! BAD$ EFFECT-QUERY 0= VERDICT ;
 : LBUF-NAME ( -- ) MARKS! BAD$ CHECKER-LBUF-NAME-OK? 0= VERDICT ;
@@ -254,6 +255,7 @@ variable LBL-U
 
 : TEST-QUERIES ( -- )
    s" RESOLVES" RETURNS
+   s" CERT-DUP" RETURNS
    s" DEAD" RETURNS
    s" QUERY" RETURNS
    s" LBUF-NAME" RETURNS

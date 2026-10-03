@@ -855,6 +855,7 @@ create DEFINER-SIG DEFINER-CAP DEFINER-SIG-SLOT * allot
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
 \ scanned: a created effect is recorded on the definition's own entry, so the
 \ recorders below ask the scope for that entry once the body has certified.
+\ RECORD-EXPORT pins the name it re-exports here for the quotation it catches.
 PTR-VARIABLE DEF-NAME-A
 variable DEF-NAME-U
 variable WRAP-DEFINERS                        \ definer calls in this body …
@@ -971,6 +972,30 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    sig sigu DECL-SIGNATURE ;
 
+\ ---- a definition of a name the scope already holds ---------------------------
+\ The checker's own guard (src/core/checker.f CHECKER-CERT-DUP?) refuses a colon
+\ definition, a cast, a typed storage definition and a re-export whose name its
+\ scope already holds, but a colon definition only once its body is checked, a
+\ storage definition once its type is read, and it keeps no place. Those rows
+\ ask the guard's question as soon as they have scanned the name, as the
+\ engine's wall and the check hook (src/core/check-hook.f) refuse it under
+\ --load, a name only the checker holds included, such as a constructor the
+\ PRODUCT replay publishes. The refusal keeps where the name starts and its
+\ length, not the name (tools/check-all-errors-core.f CA-DUP-RECORD$ says why).
+\ A definer the checker only trusts (variable, defer, TRUSTED:, ...) is left to
+\ the run, which names its duplicate as --load does, or first refuses an
+\ earlier definition whose text the engine cannot hold.
+variable DUPLICATE-AT
+variable DUPLICATE-U
+
+\ Refuse the definition named by the token just scanned, n bytes long.
+: DUPLICATE! ( n -- )
+   TOKEN-BYTE @ DUPLICATE-AT !  DUPLICATE-U !
+   E-DUP-DEFINITION throw ;
+
+: REFUSE-DUPLICATE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-CERT-DUP? IF u DUPLICATE! THEN ;
+
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ RAW-TRUST-NEXT: like TRUST-NEXT, but registers the created word's effect with
@@ -1048,6 +1073,7 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing cast name" 74 die THEN
+   name nameu REFUSE-DUPLICATE
    name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
 : UNDEFINE-WORD ( -- )
@@ -1304,6 +1330,7 @@ PTR-VARIABLE STG-START
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
+   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
@@ -1314,6 +1341,7 @@ PTR-VARIABLE STG-START
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
+   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
 
@@ -1321,12 +1349,14 @@ PTR-VARIABLE STG-START
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
+   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
+   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
@@ -1339,6 +1369,7 @@ PTR-VARIABLE STG-START
 : RECORD-DYNAMIC-BUFFER ( -- )
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
+   name nameu REFUSE-DUPLICATE
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
 
@@ -1370,10 +1401,17 @@ PTR-VARIABLE STG-START
 \ tail); at top level it is the hb-build --repl export directive, which the
 \ build strips via COMMENT-EXPORTS before engine load — replay consumes the
 \ name and records nothing, exactly like the engine never seeing the line.
+\ A re-export duplicates its tail in the current section. The checker asks that
+\ only once the name has resolved (src/core/checker.f EXPORT-RECORD), as --load
+\ does, so its refusal is caught here and kept at the name as written.
 : RECORD-EXPORT ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
-   CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   name DEF-NAME-A !  nameu DEF-NAME-U !
+   [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch {: rc:n :}
+   rc E-DUP-DEFINITION = IF nameu DUPLICATE! THEN
+   rc 0<> IF rc throw THEN ;
 
 \ The core resolver answers the canonical path and require-known state. A
 \ require publishes that path before descending, so recursive requires stop at
@@ -1682,6 +1720,7 @@ variable FFI-SIG-U
    NAME-TOKEN TOKEN-U !  TOKEN-A !
    TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
    DEF-NAME!
+   DEF-NAME-A @ DEF-NAME-U @ REFUSE-DUPLICATE
    WRAP-RESET
    BODY-LOAD-RESET
    LOCALS-RESET
@@ -1705,6 +1744,7 @@ variable FFI-SIG-U
 \ closed every scope it opened, and for the file's end at the latest.
 : VERIFY-SOURCE ( -- )
    SCAN-RESET
+   0 DUPLICATE-U !
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
@@ -1829,6 +1869,13 @@ public
 \ statement, where the statement stood.
 : TOKEN-BYTE@ ( -- n )
    TOKEN-BYTE @ ;
+
+\ The name of the definition the last scan refused because its scope already
+\ held it (REFUSE-DUPLICATE): the byte where it starts, at the same base as
+\ TOKEN-BYTE@, and its length, which is 0 when the scan refused no written
+\ name.
+: DUPLICATE ( -- n n )
+   DUPLICATE-AT @ DUPLICATE-U @ ;
 
 \ Verify one supplied source through loader composition at each top-level
 \ loader token. The registry suffix and the caller's checker scope survive both

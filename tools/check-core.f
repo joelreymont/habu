@@ -1652,11 +1652,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined
-\ the name again, and fails the run with the duplicate's status, as it fails the
-\ load.
+\ the name again and the name and line read from that file where the pre-pass
+\ refused it (PREVERIFY-DUPLICATE), and fails the run with the duplicate's
+\ status, as it fails the load.
 : CHK-PREVERIFY-DUP ( -- )
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   PREVERIFY-STOPPED$ CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
+   PREVERIFY-DUPLICATE PREVERIFY-STOPPED$ CHK-STOPPED-SOURCE
+   CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
 \ The pre-pass stopped with the given code: the record a throw or a duplicate
 \ leaves, then the failure.

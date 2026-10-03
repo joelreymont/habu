@@ -1835,7 +1835,8 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
-   CAP-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
+   CAP-ERR erru S\" \qword\q:\qCKT-DUP\q," CONTAINS? TTRUE
+   CAP-ERR erru S\" \qline\q:2,\qcolumn\q:3,\qbyte_start\q:33,\qbyte_end\q:40," CONTAINS? TTRUE ;
 
 \ A source list lints each file it names, so the finding names that file.
 : RESERVED-LIST-AT$ ( -- ptr u8 n )
@@ -3625,6 +3626,118 @@ create BIG $2000 allot   variable BIG-U
    outu erru rc s" ckt-get-bad" EXPECT-PREVERIFY-IN
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE ;
 
+\ A program that runs the scanner's PRODUCT replay itself (src/habu/
+\ verify-source.f RECORD-PRODUCT: CHECKER-DEFPRODUCT, then the constructors'
+\ effects) holds a checked `CKDREP:MAKE` with no word behind it. The scan
+\ cannot see that run, so the refusal of a later definition of the name comes
+\ from the run, and it must name the definition and where it is, as every other
+\ duplicate does: it used to exit 78 with nothing on stderr (src/core/
+\ check-hook.f DUP-RC).
+: PREPLAY-DUP$ ( -- ptr u8 n )
+   SB-RESET
+   S\" : CKT-PREPLAY ( -- ) s\q ckdrep\q s\q 0 FIELD x n\q CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;"
+   SB-APPEND $0a SB-APPEND-C
+   s" CKT-PREPLAY" SB-APPEND $0a SB-APPEND-C
+   s" : CKDREP:MAKE ( n -- n ) 1 + ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: TEST-PREPLAY-DUP ( -- )
+   PREPLAY-DUP$ DIRECT-STDIN
+   $4E T= {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" duplicate definition: CKDREP:MAKE at " CONTAINS? TTRUE ;
+
+\ An ordinary PRODUCT or SUMTYPE, then a definition of a name it generated. The
+\ scan replays the generated words, so the scan refuses the definition, and
+\ check.f must name it and where it is, as --load does, in every form: the
+\ record used to be a placeholder word at line 1.
+: GDUP-PROD-AS$ ( ptr u8 n -- ptr u8 n ) {: def:ptr defu:n :}
+   SB-RESET
+   s" PRODUCT ckdprod 0 FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
+   def defu SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: GDUP-PROD$ ( -- ptr u8 n )
+   s" : CKDPROD:MAKE ( n -- n ) 1 + ;" GDUP-PROD-AS$ ;
+
+: GDUP-SUM$ ( -- ptr u8 n )
+   SB-RESET
+   s" SUMTYPE ckdsum 0 VARIANT ckdone n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" : CKDSUM:CKDONE ( n -- n ) 1 + ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: EXPECT-GDUP-PROSE ( n n n ptr u8 n -- ) {: outu:n erru:n rc:n la:ptr lu:n :}
+   rc $4E T=
+   outu 0 T=
+   CAP-ERR erru la lu CONTAINS? TTRUE ;
+
+\ The packet names the definition and where its name starts, and it is the
+\ only line on stderr.
+: EXPECT-GDUP-JSON ( n n n ptr u8 n ptr u8 n -- )
+   {: outu:n erru:n rc:n wa:ptr wu:n pa:ptr pu:n :}
+   rc $4E T=
+   outu 0 T=
+   CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru wa wu CONTAINS? TTRUE
+   CAP-ERR erru pa pu CONTAINS? TTRUE
+   CAP-ERR erru 10 COUNT-CHAR 1 T= ;
+
+\ The source, then the prose line, the packet's word and its place, in the
+\ default mode, --json-errors, --all-errors and both.
+: EXPECT-GDUP-FORMS ( [ -- ptr u8 n ] ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src line:ptr lineu:n wa:ptr wu:n pa:ptr pu:n :}
+   src execute DIRECT-STDIN line lineu EXPECT-GDUP-PROSE
+   src execute DIRECT-JSON-STDIN wa wu pa pu EXPECT-GDUP-JSON
+   src execute DIRECT-ALL-STDIN line lineu EXPECT-GDUP-PROSE
+   src execute ALL-JSON-STDIN wa wu pa pu EXPECT-GDUP-JSON ;
+
+: GDUP-PROD-LINE$ ( -- ptr u8 n )
+   S\" duplicate definition: CKDPROD:MAKE at <stdin>:2\n" ;
+
+: GDUP-PROD-WORD$ ( -- ptr u8 n )
+   S\" \qword\q:\qCKDPROD:MAKE\q,\qtoken\q:\qCKDPROD:MAKE\q,\qtoken_index\q:0," ;
+
+: TEST-GDUP-PRODUCT ( -- )
+   [: GDUP-PROD$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:39,\qbyte_end\q:51,"
+   EXPECT-GDUP-FORMS ;
+
+: TEST-GDUP-SUMTYPE ( -- )
+   [: GDUP-SUM$ ;]
+   S\" duplicate definition: CKDSUM:CKDONE at <stdin>:2\n"
+   S\" \qword\q:\qCKDSUM:CKDONE\q,\qtoken\q:\qCKDSUM:CKDONE\q,\qtoken_index\q:0,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:3,\qbyte_start\q:54,\qbyte_end\q:67,"
+   EXPECT-GDUP-FORMS ;
+
+\ The same name taken by the other rows the scan refuses it at: a typed storage
+\ definer, a cast and a re-export. A private PRODUCT puts its constructor's tail
+\ in the current section, where a re-export of the same tail lands.
+: GDUP-EXPORT$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKDXP" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" : CKDPRIV-MAKE ( -- ) ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKDXQ" SB-APPEND $0a SB-APPEND-C
+   s" private" SB-APPEND $0a SB-APPEND-C
+   s" PRODUCT ckdpriv 0 FIELD x n ;PRODUCT" SB-APPEND $0a SB-APPEND-C
+   s" EXPORT CKDXP:CKDPRIV-MAKE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: TEST-GDUP-DEFINERS ( -- )
+   [: s" TYPED-VARIABLE CKDPROD:MAKE n" GDUP-PROD-AS$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:16,\qbyte_start\q:52,\qbyte_end\q:64,"
+   EXPECT-GDUP-FORMS
+   [: s" CAST: CKDPROD:MAKE ( n -- u8 )" GDUP-PROD-AS$ ;] GDUP-PROD-LINE$ GDUP-PROD-WORD$
+   S\" \qfile\q:\q<stdin>\q,\qline\q:2,\qcolumn\q:7,\qbyte_start\q:43,\qbyte_end\q:55,"
+   EXPECT-GDUP-FORMS
+   [: GDUP-EXPORT$ ;]
+   S\" duplicate definition: CKDXP:CKDPRIV-MAKE at <stdin>:8\n"
+   S\" \qword\q:\qCKDXP:CKDPRIV-MAKE\q,\qtoken\q:\qCKDXP:CKDPRIV-MAKE\q,\qtoken_index\q:0,"
+   S\" \qfile\q:\q<stdin>\q,\qline\q:8,\qcolumn\q:8,\qbyte_start\q:120,\qbyte_end\q:138,"
+   EXPECT-GDUP-FORMS ;
+
 \ ---- a loaded file is composed where its loader sits ------------------------
 \ The pre-pass verifies a source and the files it loads in the order the loader
 \ runs them (VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE): the text before a
@@ -4326,7 +4439,8 @@ variable REQ-U
    CHECK-ALL-ERRORS:DUP-RC T= {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
-   CAP-ERR erru s\" req-dup-dep.f\",\"line\":1,\"column\":1," CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"CKT-RQ-DU-X\"," CONTAINS? TTRUE
+   CAP-ERR erru s\" req-dup-dep.f\",\"line\":1,\"column\":3," CONTAINS? TTRUE
    CAP-ERR erru $0a COUNT-CHAR 1 T= ;
 
 : TEST-REQUIRE-DUPLICATE ( -- )
@@ -4335,13 +4449,15 @@ variable REQ-U
    s" req-dup.f" REQ-PLAIN-RUN EXPECT-ONE-DUPLICATE
    s" req-dup.f" REQ-ALL-RUN EXPECT-ONE-DUPLICATE ;
 
-\ In prose the duplicate's line names the file that defined the word again,
-\ as the JSON record does, in the default mode and under --all-errors.
+\ In prose the duplicate's line names the word and the file and line that
+\ defined it again, as the JSON record does and as --load does, in the default
+\ mode and under --all-errors.
 : REQ-DUP-PROSE$ ( -- ptr u8 n )
    s" req-dup-dep.f" REQ$ {: p:ptr pu:n :}
    SB-RESET
-   s" checker: duplicate definition in " SB-APPEND
+   s" duplicate definition: CKT-RQ-DU-X at " SB-APPEND
    p pu SB-APPEND
+   s" :1" SB-APPEND
    SB$ ;
 
 : EXPECT-DUP-PROSE ( n n n -- )
@@ -5492,7 +5608,11 @@ variable LC-CANON-U
    s" check/label-json-escape" [: LABEL-ESC-TEST ;] CASE-RUN
    s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
    s" check/declared-constructors" [: TEST-DECLARED-CONSTRUCTORS ;] CASE-RUN
-   s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN ;
+   s" check/derived-init-accessors" [: TEST-DERIVED-INIT-ACCESSORS ;] CASE-RUN
+   s" check/product-replay-duplicate" [: TEST-PREPLAY-DUP ;] CASE-RUN
+   s" check/product-generated-duplicate" [: TEST-GDUP-PRODUCT ;] CASE-RUN
+   s" check/sumtype-generated-duplicate" [: TEST-GDUP-SUMTYPE ;] CASE-RUN
+   s" check/generated-duplicate-definers" [: TEST-GDUP-DEFINERS ;] CASE-RUN ;
 
 \ --- a definer that writes its word as text: the generates: row --------------
 \ CKT-GMAKE builds `: NAME ( -- n ) OFF ;` and evaluates it, the shape of

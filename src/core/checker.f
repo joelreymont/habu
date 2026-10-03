@@ -9822,6 +9822,10 @@ PRIM: CHECKER-VERIFY-SOURCE!
 \ moment its file gained a package (dot habu-checker-defined-answers-1504bbde).
 PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ The duplicate guard's own question, asked before a definition is checked by
+\ the check hook (src/core/check-hook.f HOOK) and the source scan
+\ (src/habu/verify-source.f REFUSE-DUPLICATE).
+PRIM: CHECKER-CERT-DUP? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ CHECKER-SEALED-PKG? is the one Habu list of the sealed system packages, the
 \ declared mirror of the engine's RESTAB (src/habu/habu2.f). This file's guards
 \ read it, and so does src/habu/outer.f SEAL-GUARD, the Habu loop's copy of the
@@ -12232,6 +12236,8 @@ package CHECKER-REG
 \ The duplicate guard of a certifying record: does the scope the name would be
 \ recorded into already hold a live record for it? Asked without interning, so
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
+\ The check hook and the source scan ask it before a body is checked, so they
+\ refuse what the guard would and nothing more.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN

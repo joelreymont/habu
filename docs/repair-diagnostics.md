@@ -22,9 +22,11 @@ record adds. That check and `tools/repair-packet.f` both read it.
 
 Under `--all-errors`, and in `CHECK:VERIFY-BYTES` (below), every refused
 definition is reported, rejected or uncheckable alike, one with an undefined
-word included, and the check goes on at the next definition, unless recording
-the refused one throws, as a duplicate's or a malformed name's record does
-(below): then the check ends after reporting it. A later definition
+word included, and the check goes on at the next definition, unless the
+refused one is a duplicate, refused at its name before its body is checked, or
+recording it throws, as a malformed name's record does (below): then the check
+ends, `--all-errors` after writing its record, `CHECK:VERIFY-BYTES` with its
+stderr stop line (below) and no packet for it. A later definition
 sees a refused one by its declared signature when that parses: a use that fits
 it gets no record, one that does not gets that definition's own; a use of one
 whose signature does not parse is `E-UNDEFINED`. Without `--all-errors`
@@ -145,14 +147,22 @@ source discovery stops there. Without `--json-errors` a file gets
 `check.f: discovery rejected: unterminated string` and standard input the bare
 code on its own line.
 
-A second definition of a name in one wordlist, with or without
-`--all-errors`, emits a definition-shaped object with code
-`E-DUPLICATE-DEFINITION` and repair class `rename_duplicate`, whose `file` is
-the source that defined the name again. Its `word`, `token` and
-`definition_source` are the placeholder `duplicate-definition` at line 1,
-column 1, not the duplicate's own name and place. Nothing after it is checked,
-and the run exits 78 as the load does. Without `--json-errors` it is the line
-`checker: duplicate definition in <file>`.
+A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
+its wordlist already holds emits, with or without `--all-errors`, a
+definition-shaped object with code `E-DUPLICATE-DEFINITION` and repair class
+`rename_duplicate`, whose `file` is the source that defined the name again.
+Its `word`, `token` and `definition_source` are the name as written there,
+with `token_index` 0, and its `line`, `column`, `byte_start` and `byte_end`
+place that name. Nothing after it is checked, and the run exits 78 as the load
+does. Without `--json-errors` it is the line
+`duplicate definition: <name> at <file>:<line>`, the line `--load` writes. When
+the name taken is one a definer generates instead of writing, the `-RESERVE` or
+`-RELEASE` word of a `DYNAMIC-BUFFER` or the `-BIND` or `-GROW` word of a
+`DEFER-LAYOUT-BUFFER`, there is no written name to place: the record keeps the
+placeholder `duplicate-definition` at line 1, column 1, and the line
+`checker: duplicate definition in <file>`. A second definition by a definer the
+checker only trusts, such as `variable`, `create`, `defer` or `TRUSTED:`, is
+left to the run, which writes the `--load` line in every mode.
 
 `tools/check.f` refuses, before checking anything, a single file or a
 `--source-list` whose every input is a source the engine provides, since a run
@@ -335,8 +345,10 @@ carries prose, including `PATH: verification stopped by throw RC after N
 rejected definitions` for each file a throw stopped. The second form stops at
 the first refused definition, as the load does, names the subject LABEL in its
 packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
-IN-SUBJECT FILE`: the code it stopped with, where the token it read last
-starts, 1 when that token is in BYTES, and the file it is in. The answer is
+DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it
+read last starts, where the name it refused as a duplicate starts and its
+length (0 when it kept none), 1 when the stop is in BYTES, and the file it is
+in. The answer is
 read from the result line after a clean exit, never from the exit status.
 
 Because check.f's default pre-pass runs in this child, it resolves the

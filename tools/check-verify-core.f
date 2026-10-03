@@ -269,6 +269,8 @@ TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
 variable VFY-STOP-RC                    \ a stopped pre-pass: the code it stopped with,
 variable VFY-STOP-AT                    \ the byte of the token it read last,
+variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
+variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
 TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
 variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT
 variable VFY-STOP-U
@@ -375,24 +377,30 @@ variable VFY-STOP-U
    ;MATCH ;
 
 
-\ The rest of a stopped line, from AT to END in VFY-OUT: RC BYTE IN-SUBJECT
-\ FILE. VFY-STOPPED with them kept, or VFY-NONE for a line that does not read
-\ so; a stop is never code 0, and IN-SUBJECT is 1 or 0.
+\ The rest of a stopped line, from AT to END in VFY-OUT: RC BYTE DUP-AT DUP-LEN
+\ IN-SUBJECT FILE. VFY-STOPPED with them kept, or VFY-NONE for a line that does
+\ not read so; a stop is never code 0, and IN-SUBJECT is 1 or 0.
 : VFY-STOP-PARSE ( n n -- n ) {: at:n end:n :}
    at end VFY-FIELD-END {: e1:n :}
    at e1 VFY-FIELD-N {: rc:n rc-ok:bool :}
    e1 1+ end VFY-FIELD-END {: e2:n :}
    e1 1+ e2 VFY-FIELD-N {: byte:n byte-ok:bool :}
    e2 1+ end VFY-FIELD-END {: e3:n :}
-   e2 1+ e3 VFY-FIELD-N {: subj:n subj-ok:bool :}
-   rc-ok byte-ok and subj-ok and rc 0<> and
+   e2 1+ e3 VFY-FIELD-N {: name-at:n name-at-ok:bool :}
+   e3 1+ end VFY-FIELD-END {: e4:n :}
+   e3 1+ e4 VFY-FIELD-N {: name-u:n name-u-ok:bool :}
+   e4 1+ end VFY-FIELD-END {: e5:n :}
+   e4 1+ e5 VFY-FIELD-N {: subj:n subj-ok:bool :}
+   rc-ok byte-ok and name-at-ok and name-u-ok and subj-ok and rc 0<> and
    subj 0 = subj 1 = or and
-   e3 1+ end < and 0= if VFY-NONE exit then
+   e5 1+ end < and 0= if VFY-NONE exit then
    rc VFY-STOP-RC !
    byte VFY-STOP-AT !
+   name-at VFY-STOP-DUP-AT !
+   name-u VFY-STOP-DUP-U !
    subj 1 = VFY-STOP-SUBJ !
-   e3 1+ VFY-STOP-OFF !
-   end e3 1+ - VFY-STOP-U !
+   e5 1+ VFY-STOP-OFF !
+   end e5 1+ - VFY-STOP-U !
    VFY-STOPPED ;
 
 
@@ -503,10 +511,10 @@ public
 \ subject's loads, as the run does, never a word only this process loaded. It
 \ stops at the first definition the checker refuses, as the load does: ok 0 when
 \ nothing stopped it, else ok the code it stopped with, and PREVERIFY-AT,
-\ PREVERIFY-SUBJECT? and PREVERIFY-STOPPED$ say where. err is how a child ended
-\ that gave no answer. An empty PATH is E-FS-PATH; a failed spawn throws, and
-\ more child output than the capture holds is E-PROC-TRUNCATED, as for
-\ VERIFY-BYTES.
+\ PREVERIFY-DUPLICATE, PREVERIFY-SUBJECT? and PREVERIFY-STOPPED$ say where.
+\ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
+\ failed spawn throws, and more child output than the capture holds is
+\ E-PROC-TRUNCATED, as for VERIFY-BYTES.
 : PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,outcome> )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
    VFY-RESET
@@ -524,6 +532,12 @@ public
 \ LABEL for those bytes.
 : PREVERIFY-AT ( -- n )
    VFY-STOP-AT @ ;
+
+\ The name the last PREVERIFY-BYTES refused as a duplicate, in the same file:
+\ the byte where it starts and its length, 0 when it kept no name
+\ (VERIFY:DUPLICATE).
+: PREVERIFY-DUPLICATE ( -- n n )
+   VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ ;
 
 : PREVERIFY-SUBJECT? ( -- bool )
    VFY-STOP-SUBJ @ ;
