@@ -155,8 +155,8 @@ definition-only field. The code names its repair class and that field:
 definition has checked. The refusal throws its code past every handler, so the
 load ends on `hb: uncaught throw code <code>` and exits 67, as for any
 unhandled throw ([debugging.md](debugging.md)). The record for a malformed name
-throws `E-BAD-QUALIFIED` (7147), so nothing after it in its source is checked: a
-load exits 67 after `hb: uncaught throw code 7147`, and `tools/check.f` reports
+throws `E-BAD-QUALIFIED` (7152), so nothing after it in its source is checked: a
+load exits 67 after `hb: uncaught throw code 7152`, and `tools/check.f` reports
 the statement that asked for the record as one that threw. A run that ends on
 the throw of `E-TRUST-UNRESOLVED`, `E-PKG-CONTEXT` or `E-BAD-QUALIFIED` exits 70
 from `tools/check.f`, as for a refusal; a run that ends on any other throw

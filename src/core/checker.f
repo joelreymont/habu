@@ -10500,7 +10500,7 @@ package CHECKER-REG
 \ and the collision surfaced at some later file's `using` instead of at the row.
 7143 constant E-TRUST-UNRESOLVED
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
-7147 constant E-BAD-QUALIFIED
+7152 constant E-BAD-QUALIFIED
 PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
 \ ONE hook for the three refused-record diagnostics, selected by its argument,
 \ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale

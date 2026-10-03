@@ -3923,27 +3923,27 @@ variable REQ-U
 : TEST-MALFORMED-NAME ( -- )
    MALNAME$ DIRECT-STDIN 70 T= {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7147 at ';'" CONTAINS? TTRUE
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:1:23: throw 7152 at ';'" CONTAINS? TTRUE
    MALNAME$ DIRECT-JSON-STDIN 70 T= {: outu2:n erru2:n :}
    outu2 0 T=
    CAP-ERR erru2 s\" \"code\":\"E-BAD-QUALIFIED-RECORD\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"token\":\"ckt:mal:name\"" CONTAINS? TTRUE
    CAP-ERR erru2 s\" \"line\":1,\"column\":23," CONTAINS? TTRUE
-   CAP-ERR erru2 s\" \"throw_code\":7147" CONTAINS? TTRUE ;
+   CAP-ERR erru2 s\" \"throw_code\":7152" CONTAINS? TTRUE ;
 
 : TEST-MALFORMED-NAME-ALL ( -- )
    MALNAME-AFTER$ DIRECT-ALL-STDIN 70 T= {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" habu: in ckt-mal-bad: " CONTAINS? TTRUE
    CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:mal:def' refused" CONTAINS? TTRUE
-   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7147 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-STATEMENT-THROW <stdin>:2:7: throw 7152 at 'CKT:MAL:DEF'" CONTAINS? TTRUE ;
 
 \ The throw leaves a raw storage definer's signature (verify-source.f
 \ RAW-TRUST-NEXT) mid-parse; a later check in the same process must still read
 \ an ordinary signature's type variables as ordinary, not as raw cells.
 : TEST-MALFORMED-RAW ( -- )
    s" variable CKT:MAL:VAR" DIRECT-STDIN 70 T= {: outu:n erru:n :}
-   CAP-ERR erru s" throw 7147" CONTAINS? TTRUE
+   CAP-ERR erru s" throw 7152" CONTAINS? TTRUE
    s\" : CKT-MAL-KEEP ( a -- a ) ;\n: CKT-MAL-USE ( ptr u8 -- ptr u8 ) CKT-MAL-KEEP ;"
    DIRECT-STDIN 0 T= {: outu2:n erru2:n :}
    erru2 0 T= ;
