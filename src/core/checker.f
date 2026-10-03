@@ -20777,16 +20777,19 @@ package CHECKER-REG
 \ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
 \ is quiet, and counted in a multi-error load, rejected or uncheckable, under
 \ the name of the record the clause publishes - the definer's, folded as a
-\ definition's name is, with the companion suffix (src/habu/habu2.f SUF-LEN). An
-\ uncheckable clause is rendered here too: CHECK leaves that verdict to its
-\ callers outside JSON and a multi-error load, and the pre-pass renders nothing
-\ of its own for a clause.
-: DOES-SUFFIX$ ( -- ptr u8 n ) s" ;does" ;
+\ definition's name is, with the companion suffix below. An uncheckable clause
+\ is rendered here too: CHECK leaves that verdict to its callers outside JSON
+\ and a multi-error load, and the pre-pass renders nothing of its own for a
+\ clause.
+\
+\ The cold prefix compiles does-clause.f before the checker exists. Register
+\ its effect here, after PPRIM: is defined, for checked bodies that call it.
+PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
    TKF NMB nu CCOPY
-   DOES-SUFFIX$ {: sa:ptr su:n :}
+   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
    sa NMB nu + su CCOPY
    NMB NMA !  nu su + NMU ! ;
 
@@ -20801,7 +20804,7 @@ package CHECKER-REG
 \ first: growing them afterwards would drop the refused token being reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
-   nu DOES-SUFFIX$ nip + TOKBUF-ENSURE
+   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
    ba bu sa su CHECK-DOES-RUN
    DOES-EFF-CLEAR
    na nu DOES-REPORT ;

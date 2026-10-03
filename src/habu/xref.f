@@ -13,6 +13,7 @@
 \ engine already holds its words (E-DUPLICATE-DEFINITION).
 
 \ CODE-SPAN is loaded immediately before XREF by the cold prefix.
+require src/core/does-clause.f
 
 0 constant XREF-START-SLOT
 1 constant XREF-LEN-SLOT
@@ -487,7 +488,7 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    parent XREF-WORDLIST clause XREF-WORDLIST <> if XREF-FALSE exit then
    parent XREF-NAME$ {: name:ptr len:n :}
    clause XREF-NAME$ {: derived:ptr dlen:n :}
-   s" ;does" {: suffix:ptr sufu:n :}
+   DOES-CLAUSE:SUFFIX$ {: suffix:ptr sufu:n :}
    dlen len sufu + <> if XREF-FALSE exit then
    derived len name len XREF-STR=CI 0= if XREF-FALSE exit then
    derived len + sufu suffix sufu XREF-STR=CI 0= if XREF-FALSE exit then

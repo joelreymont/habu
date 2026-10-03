@@ -223,6 +223,7 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/habu/prims.f" included
+   s" src/core/does-clause.f" included
    s" src/core/checker.f" included
    s" src/core/engine-error-effects.f" included
    s" src/core/lower-cert-base.f" included

@@ -383,7 +383,7 @@ variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPDYNAMIC      variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
-variable LPPRIMS
+variable LPPRIMS       variable LPDOESCLAUSE
 variable LPLOWERCERTBASE
 variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
@@ -1055,6 +1055,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
       PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
       PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
       PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
+      PFX-COMMON LPDOESCLAUSE s" src/core/does-clause.f" row execute
       PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
       PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" row execute
       PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" row execute
@@ -3542,6 +3543,9 @@ public
 \ counted by the one publish; every abandon path leaves both uncounted.
 package DOES-REC
 
+\ SUF-LEN and COPY-NAME's five byte stores spell src/core/does-clause.f
+\ DOES-CLAUSE:SUFFIX$; this emitter runs before that word exists, so the two
+\ change together.
 5 constant SUF-LEN                                     \ ";does"
 
 public
@@ -12088,7 +12092,7 @@ package LABELS
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !

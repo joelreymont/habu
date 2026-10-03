@@ -12,7 +12,7 @@ require lib/fs.f
 require lib/process-cwd.f
 require lib/time.f
 require test/native-builder-image-lib.f
-require test/tree-copy-lib.f
+require lib/tree-copy.f
 
 package NATIVE-BUILDER-IMAGE-TEST
 

@@ -369,7 +369,6 @@ DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ Cold prefix and argv or stdin input share the read allowance. Baked source
 \ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f.
-\ Stage2 and maker readers each use SOURCE-ARENA-CAP for their input.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA

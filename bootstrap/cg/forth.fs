@@ -2684,7 +2684,7 @@ variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
-variable LPPRIMS
+variable LPPRIMS       variable LPDOESCLAUSE
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF
@@ -2980,6 +2980,7 @@ create ZBYTE 0 c,
       PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
       PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
       PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
+      PFX-COMMON LPDOESCLAUSE s" src/core/does-clause.f" row execute
       PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
       PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" row execute
       PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" row execute
@@ -4290,6 +4291,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ src/habu/habu2.f carries the same five words and the reasoning; the mirror
 \ keeps them because an engine recovered through Gforth builds the next one, and
 \ a dictionary without clause records makes that build refuse.
+\ DOES-SUF-LEN and the five byte stores below spell src/core/does-clause.f
+\ DOES-CLAUSE:SUFFIX$; the three change together.
 5 constant DOES-SUF-LEN                                \ ";does"
 
 \ x11 = the parent's pending record, x13 = the clause name's length, x14 = the
@@ -7995,7 +7998,7 @@ variable P2SK
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !  LBL LPX64TARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !

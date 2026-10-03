@@ -813,12 +813,13 @@
 \
 \ The producer that fills a source tape from the checker's own reader. Refusals
 \ another authority owns keep that authority's name - a tape that is full is
-\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these seven are
+\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these eight are
 \ the facts the producer alone can judge: whether a unit is open, whether the
 \ scan that reached it is the unit's own, whether the token it was handed
 \ really is the bytes at the offset it claims, whether the text the reader
-\ handed over fits the buffer the caller committed, and whether this stage can
-\ record the token at all.
+\ handed over fits the buffer the caller committed, whether this stage can
+\ record the token at all, and whether the `does>` split it was handed lies in
+\ the text it was handed.
 -8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
 -8401 constant E-NFEED-SCAN     \ a foreign scan or an unexpected defining-word segment reached the open unit
 -8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
@@ -826,6 +827,7 @@
 -8404 constant E-NFEED-KIND     \ a token class this stage has no tape kind for
 -8405 constant E-NFEED-LITERAL  \ an integer literal whose value this stage cannot read back
 -8406 constant E-NFEED-TEXT     \ a scan whose text is longer than the buffer the unit was opened with
+-8407 constant E-NFEED-CUT      \ the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree
 
 \ Native ARM64 spill lowering and frame slots: -8440..-8459
 \

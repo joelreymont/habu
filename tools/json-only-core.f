@@ -74,9 +74,16 @@ variable JSON-ONLY-BUF-ON
       1+
    repeat drop ;
 
+\ The two buffers are the caller's and cannot grow, so text that does not fit
+\ is refused whole by E-DIAG-CAPACITY, as the all-errors core refuses its
+\ report buffer, and the buffer keeps everything before it.
+: JSON-ONLY-BUF-ROOM ( n n ptr n -- )
+   {: need:n cap:n lenp:ptr :}
+   lenp @ need + cap > IF E-DIAG-CAPACITY throw THEN ;
+
 : JSON-ONLY-APPEND ( ptr u8 n ptr u8 n ptr n -- )
    {: a:ptr u:n dst:ptr cap:n lenp:ptr :}
-   lenp @ u + cap > IF s" json-only: output buffer full" JSON-ONLY-E-IO die THEN
+   u cap lenp JSON-ONLY-BUF-ROOM
    a dst lenp @ + u JSON-ONLY-BUF-COPY
    lenp @ u + lenp ! ;
 
@@ -101,6 +108,7 @@ variable JSON-ONLY-BUF-ON
 
 : JSON-ONLY-JSON-LINE ( -- )
    JSON-ONLY-BUF-ON @ IF
+      JSONL-LU @ 1+ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-BUF-ROOM
       JSONL-LA@ JSONL-LU @ JSON-ONLY-JSON-APPEND
       JSON-ONLY-LF$ JSON-ONLY-JSON-APPEND
       exit

@@ -68,7 +68,8 @@ HBB-LF HBB-LF-BUF c!
 \ into the AOT/object image, so a matched helper reaches its inline invalid-tag
 \ die. The entry/seed/mode axis is folded into all three
 \ cache layers (artifact key, source-index key, object bytes) so a preseeded run
-\ can never restore a stale normal-MAIN artifact.
+\ can never restore a stale normal-MAIN artifact. The maker's AOT closure holds
+\ an entry name of at most 64 bytes (src/habu/aot-closure.f ENTRY-NAME!).
 64 constant HBB-ENTRY-NAME-CAP
 2048 constant HBB-SEED-HEX-CAP
 create HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-CAP allot
@@ -254,9 +255,13 @@ variable HBB-MAKER-TIMEOUT-MS
 : HBB-SEED-HEX$ ( -- ptr u8 n )
    HBB-SEED-HEX-BUF HBB-SEED-HEX-U @ ;
 
+\ A name the maker cannot hold, empty or too long, is refused by name before
+\ anything is built.
 : HBB-PRESEED-ENTRY! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
-   u HBB-ENTRY-NAME-CAP > if E-BUILD-PATH throw then
+   u 0 <= if s" hb-build: --preseed-entry name empty" HBB-USAGE-RC die then
+   u HBB-ENTRY-NAME-CAP > if
+      s" hb-build: --preseed-entry name too long" HBB-USAGE-RC die
+   then
    a HBB-ENTRY-NAME-BUF u BYTE-COPY
    u HBB-ENTRY-NAME-U !
    -1 HBB-PRESEED ! ;

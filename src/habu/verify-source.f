@@ -985,7 +985,7 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
-      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" CORE-STR=  and IF
+      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
          REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
       ELSE
          SKIP-DEF-TOKEN
@@ -1576,7 +1576,7 @@ variable FILE-USE
       TOKEN-U @ 0= IF s" verify-source: unterminated definition" 74 die THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY -1 = IF VERIFY-WRAPPER THEN EXIT THEN
       LOCAL-TOKEN? 0= IF
-         TOKEN-A @ TOKEN-U @ s" does>" CORE-STR= IF VERIFY-DOES EXIT THEN
+         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES EXIT THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       THEN
       APPEND-BODY-TOKEN

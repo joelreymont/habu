@@ -3,7 +3,6 @@
 require lib/memory.f
 require tools/json.f
 require tools/gate-json-assert-core.f
-require tools/aot-call-report-lib.f
 require test/gate-common.f
 
 $FEEDFACF constant GB-MH-MAGIC64
@@ -115,11 +114,6 @@ variable GB-LC-OFF
 : GB-RUN-EXPECT ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu label:ptr labelu :}
    label labelu GB-RUN-OUT
    want wantu label labelu GE-EXPECT-OUT ;
-
-: GB-AOT-REPORT ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then
-   GB-OUT$ GB-REPORT-BUF GB-REPORT-CAP REPORT-JSON-BUFFER {: out:ptr outu:n :}
-   GB-REPORT$ out outu WRITE-ALL ;
 
 : GB-GJA ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    mode modeu s" json-one-schema" STR= if GB-REPORT$ GJA-JSON-ONE-SCHEMA exit then

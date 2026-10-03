@@ -644,20 +644,9 @@ private
 \ moment a caller reads it, so the cases below run a SECOND elaboration after a
 \ refusal and demand the first one's word be gone: gone when the second refusal
 \ names a different token, and gone when the second definition compiles and names
-\ nothing at all.
-
-\ `BAD ` followed by k copies of one letter: a body of exactly one token, whose
-\ spelling is as long as the case wants to make it.
-: LONG-TEXT ( n -- )
-   {: k:n :}
-   s" BAD " TEXT!
-   k 0 ?do s" a" TEXT+ loop ;
-
-\ That token's spelling, taken off the fixture's own text rather than written out
-\ a second time here: four bytes of `BAD ` and then the whole of the body.
-: BODY$ ( -- ptr u8 n )
-   TEXT$ {: a u:n :}
-   a 4 + u 4 - ;
+\ nothing at all. The record holds any token a definition's capture holds, which
+\ this fixture's text cannot reach; test/tier.f names a refused 7900-byte token
+\ through a real tier-1 compile.
 
 \ A body word the chain cannot compile - the other of the two constants above, so
 \ that the case which refuses both of them has two different answers to tell
@@ -686,29 +675,6 @@ private
 : LATE ( -- )
    BND [: LATE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ An unmodeled word spelled in exactly as many bytes as the record holds, and one
-\ spelled in one byte more. The lengths are asked of the elaborator rather than
-\ written down here, so the pair stays at the ceiling if the ceiling moves.
-: FITNAME-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   NELAB:REFUSED-CAP LONG-TEXT
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: FITNAME ( -- )
-   BND [: FITNAME-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: OVERNAME-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   NELAB:REFUSED-CAP 1+ LONG-TEXT
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: OVERNAME ( -- )
-   BND [: OVERNAME-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 \ A body that compiles. It measures nothing - the SQUARE case above already
 \ measures what this body becomes - because what it is here for is the state it
 \ leaves behind, and a fixture that answered a stackful of values would put that
@@ -729,12 +695,6 @@ private
 
 : LATE-THROWS ( -- )
    [: LATE ;] E-HIR-UNMODELED TTHROWSQ ;
-
-: FIT-THROWS ( -- )
-   [: FITNAME ;] E-HIR-UNMODELED TTHROWSQ ;
-
-: OVER-THROWS ( -- )
-   [: OVERNAME ;] E-HIR-UNMODELED TTHROWSQ ;
 
 : UNDER-THROWS ( -- )
    [: UNDER ;] E-NELAB-UNDER TTHROWSQ ;
@@ -798,16 +758,6 @@ private
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=
    NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
-
-: REFUSED-CEILING-CASE ( -- )
-   s" a spelling that fills the record is answered whole, and one byte more is answered as nothing" T-LABEL
-   BND [: drop FIT-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ BODY$ T$=
-   NELAB:REFUSED$ nip NELAB:REFUSED-CAP T=
-   BND [: drop OVER-THROWS ;] IR-CTX:WITH-CONTEXT
-   NELAB:REFUSED$ nip 0 T=
-   NELAB:REFUSED-ROW 1 T=
-   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TTRUE ;
 
 \ ---- where the literal memo may cross a block boundary and where it may not ---
 \ `LITMEMO dup 1 < if 1- then 1-`. The number one is written three times and the
@@ -2584,7 +2534,6 @@ public
    REFUSED-CLEARED-CASE
    REFUSED-NONE-CASE
    REFUSED-RESET-CASE
-   REFUSED-CEILING-CASE
    CTRL-TWIN-CASE
    WORD-TWIN-CASE
    LOOP-TWIN-CASE

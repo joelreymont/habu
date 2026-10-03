@@ -22,12 +22,12 @@
 \ had loaded) - the failure case 3 names from the other side.
 \
 \ THE BAKED SOURCE HAS ITS OWN ROOM. A cold engine copies its prefix and then
-\ its baked source into one boot arena, so the engine built here bakes the
-\ largest source its driver admits (src/habu/stage2.f READ-SRC refuses at
-\ SOURCE-ARENA-CAP): padded, the stage source plus the cold prefix exceed
-\ SOURCE-ARENA-CAP. While the arena was that fixed size, case 2 died
-\ `hb: source prefix buffer full`, exit 74, before its driver ran - the death
-\ the no-binary recovery chain met in hb-stdin-mk.
+\ its baked source into one boot arena, so the engine built here bakes a stage
+\ source padded one byte past SOURCE-ARENA-CAP, the allowance for what boot
+\ reads. While the arena was that fixed size, case 2 died `hb: source prefix
+\ buffer full`, exit 74, before its driver ran - the death the no-binary
+\ recovery chain met in hb-stdin-mk. While src/habu/stage2.f READ-SRC read into
+\ a buffer of that size, case 1 died `stage2: source exceeds buffer`, exit 74.
 \
 \ THE SEEDED ARM IS SOMEBODY ELSE'S. That the installed product opens no prefix
 \ source at all - the property that breaks if the two arms are confused the other
@@ -104,12 +104,12 @@ create CR-ERR CR-CAP allot
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CR-CAPTURE>N ;
 
 \ --build compiles an unpadded copy of the payload; the driver inside it then
-\ reads stage2-src, padded to one byte under its refusal, and bakes all of it.
+\ reads stage2-src, padded one byte past SOURCE-ARENA-CAP, and bakes all of it.
 TYPED-VARIABLE CR-PAD-A ptr u8
 
 : CR-PAD-STAGE-SOURCE ( -- )
    s" stage2-src" BF-A$ s" cr-payload-src" BF-B$ COPY-FILE-STREAM
-   SOURCE-ARENA-CAP 1 - s" stage2-src" BF-A$ FILE-SIZE - {: pad:n :}
+   SOURCE-ARENA-CAP 1 + s" stage2-src" BF-A$ FILE-SIZE - {: pad:n :}
    pad MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CR-PAD-A !
    pad 0 ?do 32 CR-PAD-A @ i + c! loop
    s" stage2-src" BF-A$ CR-PAD-A @ pad APPEND-FILE ;

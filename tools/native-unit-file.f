@@ -41,10 +41,12 @@ variable SECTION-OFF
    slot 0 < slot SECTION-COUNT >= or if BAD then
    slot ;
 
+\ A package name past the header's field is one this format cannot represent.
 : META-CK ( n ptr u8 n ptr u8 n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch ARCH-ARM64 <> if BAD then
-   nameu 1 < nameu NAME-CAP > or if BAD then
+   nameu 1 < if BAD then
+   nameu NAME-CAP > if E-NUNIT-PROFILE throw then
    keyu KEY-BYTES <> if BAD then ;
 
 : FIELD! ( n n -- )

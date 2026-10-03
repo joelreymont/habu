@@ -92,7 +92,11 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" a name the definer never created stays unresolvable" T-LABEL
    s" C4 ( -- ptr n ) CDD-TWO" CDD-VERDICT UNRESOLVED T=
    s" the definer itself keeps its own declared effect" T-LABEL
-   s" C5 ( n -- ) CDD-D" CDD-VERDICT ACCEPTED T= ;
+   s" C5 ( n -- ) CDD-D" CDD-VERDICT ACCEPTED T=
+   s\" : CDD-DU ( n -- ) create , DoEs> ( -- ptr n ) ;\n8 CDD-DU CDD-ONE-U\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" a mixed-case `DoEs>` opens the clause, as the engine reads it" T-LABEL
+   s" C1U ( -- ptr n ) CDD-ONE-U" CDD-VERDICT ACCEPTED T= ;
 
 \ ---- 2. a package definer, its straight-line wrapper, and both spellings ----
 \ `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE BUFFER-E ;` (lib/codegen.f) is the
@@ -260,6 +264,10 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" C35 ( -- ptr n ) CDD-TD-ONE" CDD-VERDICT ACCEPTED T=
    s" and is refused against a bare cell" T-LABEL
    s" C36 ( -- n ) CDD-TD-ONE" CDD-VERDICT REFUSED T=
+   s\" TRUSTED: CDD-TDU ( n -- ) create , DOES> ( -- ptr n ) ;\n5 CDD-TDU CDD-TDU-ONE\n"
+      VERIFY:SOURCE-BUF-IN-SCOPE
+   s" an uppercase `DOES>` declares a trusted definer's clause too" T-LABEL
+   s" C35U ( -- ptr n ) CDD-TDU-ONE" CDD-VERDICT ACCEPTED T=
    s\" : CDD-TDW ( n -- ) CDD-TD ;\n5 CDD-TDW CDD-TD-WRAPPED\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a checked wrapper of a read trusted definer creates the same" T-LABEL

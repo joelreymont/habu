@@ -298,10 +298,18 @@ create JOIN-SRC JOIN-WORK allot
    INCLUDE-DIAG$ nip 2 T=
    INCLUDE-DIAG-RESET ;
 
+: DIRNAMES ( -- )
+   s" a bare relative name's directory is the current directory" T-LABEL
+   s" stamp" DIRNAME s" ." T$=
+   s" a directory part, rooted or relative, is kept and / is its own parent" T-LABEL
+   s" out/stamp" DIRNAME s" out" T$=
+   s" /stamp" DIRNAME s" /" T$=
+   s" /" DIRNAME s" /" T$= ;
+
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS DEEP-EVALS
-   ENGINE-ALIASES JOIN-ROOM DIAG-ROOM
+   ENGINE-ALIASES JOIN-ROOM DIAG-ROOM DIRNAMES
    CLEANUP-RUN T-REPORT ;
 
 RUN

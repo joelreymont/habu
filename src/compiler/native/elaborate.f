@@ -14,6 +14,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/core/does-clause.f
 require src/core/quotation-storage.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
@@ -59,8 +60,10 @@ private
    TOK-OFF NDICT:MEM-CELLS ;
 
 \ ---- naming the token a refusal was about ------------------------------------
-\ One refused spelling's bytes, kept so a caller can name the token.
-128 constant RF-CAP                  \ bytes of one refused spelling the record holds
+\ One refused spelling's bytes, kept so a caller can name the token. A token is
+\ part of its definition's captured text, which BODYBUF-CAP bounds, so the record
+\ holds any token the engine admits.
+BODYBUF-CAP constant RF-CAP          \ bytes of one refused spelling the record holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable RF-AT                       \ the row of the admit in flight, or -1
@@ -3822,7 +3825,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    {: k:n :}
    0 QNAME-U !
    0 QSPELL QNAME+
-   FUN-KIND @ FUN-DOES-CLAUSE = if s" ;does" QNAME+ then
+   FUN-KIND @ FUN-DOES-CLAUSE = if DOES-CLAUSE:SUFFIX$ QNAME+ then
    s" [:" QNAME+
    k QNAME-DIGITS
    0 QNAME-BUF QNAME-U @ ;
@@ -3830,7 +3833,7 @@ variable QNAME-P                     \ the place value the digit loop is on
 : DOES-NAME ( -- ptr u8 n )
    0 QNAME-U !
    0 QSPELL QNAME+
-   s" ;does" QNAME+
+   DOES-CLAUSE:SUFFIX$ QNAME+
    0 QNAME-BUF QNAME-U @ ;
 
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
@@ -4231,9 +4234,6 @@ public
 : REFUSED$ ( -- ptr u8 n )
    RF-ROW @ 0 < if RF-BUF 0 exit then
    RF-BUF RF-U @ ;
-
-: REFUSED-CAP ( -- n )
-   RF-CAP ;
 
 : REFUSED-RESET ( -- )
    RF-RESET ;

@@ -1,5 +1,16 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
-\ Run: bin/hb --load tools/json-only-test.f (it requires what this file uses).
+\ Run: bin/hb --load tools/json-only-test.f
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/test/outcome.f
+require lib/process-argv.f
+require tools/cli-run.f
+require tools/json-only-core.f
 
 1024 constant JOT-BUF-CAP
 10000 constant JOT-TIMEOUT-MS
@@ -179,6 +190,35 @@ variable JOT-ERR-A
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 
+\ The buffers are the caller's and cannot grow, so a buffered filter refuses
+\ what does not fit by name. A line goes in with its line feed or not at all:
+\ the second line below fits the 15-byte JSON buffer only without its line
+\ feed, and the buffer keeps the first line whole.
+15 constant JOT-JSON-SHORT-CAP
+11 constant JOT-PROSE-SHORT-CAP
+
+: JOT-OBJ-A-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   JOT-OBJ-A JOT-LF
+   SB$ ;
+
+: JOT-JSON-SHORT ( -- )
+   JOT-OUT JOT-JSON-SHORT-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
+   JOT-MIXED-OUT$ JSON-ONLY-FILTER ;
+
+: JOT-PROSE-SHORT ( -- )
+   JOT-OUT JOT-BUF-CAP JOT-ERR JOT-PROSE-SHORT-CAP JSON-ONLY-BUFFERS!
+   JOT-PROSE$ JSON-ONLY-FILTER ;
+
+: JOT-FULL-CASE ( -- )
+   [: JOT-JSON-SHORT ;] E-DIAG-CAPACITY TTHROWSQ
+   JSON-ONLY-JSON$ JOT-OBJ-A-LINE$ T$=
+   JSON-ONLY-PROSE$ nip 0 T=
+   [: JOT-PROSE-SHORT ;] E-DIAG-CAPACITY TTHROWSQ
+   JSON-ONLY-JSON$ nip 0 T=
+   JSON-ONLY-PROSE$ nip 0 T=
+   JSON-ONLY-BUFFERS-OFF ;
+
 : JOT-NOARG ( -- )
    JOT-RUN-NOARG 64 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
@@ -192,6 +232,7 @@ variable JOT-ERR-A
    JOT-ARRAY-CASE
    JOT-PROSE-CASE
    JOT-ZERO-CASE
+   JOT-FULL-CASE
    JOT-NOARG
    CLEANUP-RUN
    JOT-ROOT EXISTS? TFALSE

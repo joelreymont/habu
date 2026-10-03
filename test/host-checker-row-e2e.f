@@ -35,7 +35,7 @@ require lib/fs-mutate.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
 require tools/chain-run.f
-require test/tree-copy-lib.f
+require lib/tree-copy.f
 
 package HOST-ROW-TEST
 

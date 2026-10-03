@@ -282,12 +282,14 @@ TRUSTED: SCAN-ID ( -- n )
    CHECKER-OWNER:TAPE-ARM ;
 
 \ A defining word is checked as two bodies, but remains one source and one tape.
-\ The engine supplies the exact byte split it recorded while consuming `does>`.
+\ The engine supplies the exact byte split it recorded while consuming `does>`,
+\ so a cut that is not just past a `does> ` in this source means the source and
+\ the pending definition disagree.
 : BEGIN-DOES-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n ptr u8 n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n src su:n cut:n :}
-   cut 6 < cut su > or if E-NFEED-SCAN throw then
-   src cut 6 - + 5 s" does>" STR=CI 0= if E-NFEED-SCAN throw then
-   src cut 1- + c@ 32 <> if E-NFEED-SCAN throw then
+   cut 6 < cut su > or if E-NFEED-CUT throw then
+   src cut 6 - + 5 s" does>" STR=CI 0= if E-NFEED-CUT throw then
+   src cut 1- + c@ 32 <> if E-NFEED-CUT throw then
    su cap > if E-NFEED-TEXT throw then
    c b tp txt cap OPEN
    src TXT@ su BYTE-COPY

@@ -11,6 +11,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/core/does-clause.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/abi.f
@@ -140,13 +141,11 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
-5 constant DOES-SUFFIX-BYTES
-
 : PAD-INSTRUCTION ( n -- n )
    3 + -4 and ;
 
 : DOES-NAME-PAD ( n -- n )
-   XREF-REC XREF-NAME$ nip DOES-SUFFIX-BYTES + PAD-INSTRUCTION ;
+   XREF-REC XREF-NAME$ nip DOES-CLAUSE:SUFFIX$ nip + PAD-INSTRUCTION ;
 
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
