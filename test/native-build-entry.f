@@ -13,6 +13,9 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/string.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NATIVE-BUILD-ENTRY-TEST
@@ -23,6 +26,23 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
+create FOREIGN-ROOT FS-PATH-CAP allot
+variable FOREIGN-ROOT-U
+create FOREIGN-OUT FS-PATH-CAP allot
+variable FOREIGN-OUT-U
+create CONTENT 64 allot
+
+: FOREIGN-OUT$ ( -- ptr u8 n ) FOREIGN-OUT FOREIGN-OUT-U @ ;
+
+: FOREIGN-OUT! ( ptr u8 n -- ) {: name:ptr size:n :}
+   FOREIGN-ROOT FOREIGN-ROOT-U @ name size FOREIGN-OUT JOIN-PATH
+      FOREIGN-OUT-U ! ;
+
+: FOREIGN-ROOT! ( -- )
+   s" HB_TMP" GETENV dup 0<> if 2dup MAKE-DIRS then 2drop
+   s" native-build-foreign" HB-TMP-MKDIR {: a:ptr u:n :}
+   a FOREIGN-ROOT u BYTE-COPY u FOREIGN-ROOT-U !
+   s" native-build foreign artifacts: " type a u type cr ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -86,17 +106,26 @@ variable RC
    S\" native-build: after the output path come only `whitebox`, then `--target <target>`\n" REFUSED ;
 
 : TARGET-UNKNOWN-CASE ( -- )
-   s" and refuses a target name that is not one of the three" T-LABEL
+   s" and refuses an unknown target profile" T-LABEL
    TARGET-ARGS
    s" linux-x86" ARG
    DRIVE
-   S\" native-build: --target is linux-aarch64, macos-aarch64 or linux-x86-64\n" REFUSED ;
+   S\" native-build: unknown --target profile\n" REFUSED ;
 
 \ A product carries its own machine's backend and no other, so the target on the
 \ other machine is the one this engine cannot emit for.
 : FOREIGN$ ( -- ptr u8 n )
    HB-TARGET-LINUX-X86-64? if s" linux-aarch64" exit then
    s" linux-x86-64" ;
+
+\ The profile resolves and has an architecture, but its native CORE ABI has
+\ no implementation. This refusal precedes backend and target-window work.
+: WINDOWS-CORE-CASE ( -- )
+   s" and refuses the declared Windows profile before native compilation" T-LABEL
+   TARGET-ARGS
+   s" aarch64-pc-windows-msvc" ARG
+   DRIVE
+   S\" native-build: the --target profile has no native CORE ABI\n" REFUSED ;
 
 : TARGET-UNLOADED-CASE ( -- )
    s" and refuses a target whose machine has no backend loaded here" T-LABEL
@@ -112,30 +141,103 @@ variable RC
 \ The whole window loads and is captured for the other machine; then the
 \ window's own compiler is the one a source-loaded writer would get
 \ (tools/native-build-core.f WRITER-MACHINE-CK), so the build stops there.
-\ Nothing is written: the refusal names the stop and the output path is under
-\ /dev/null, which no write can reach.
+\ The output path is writable, so an earlier filesystem refusal cannot satisfy
+\ the assertion and the other-machine build must leave it absent.
 : FOREIGN-WINDOW-CASE ( -- )
    s" and stops the other machine's window after its capture, before a writer loads" T-LABEL
+   s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
    FOREIGN-BACKEND$ ARG
    s" tools/native-build.f" ARG
    s" --" ARG
-   s" /dev/null/native-build-entry-test" ARG
+   FOREIGN-OUT$ ARG
    s" --target" ARG
    FOREIGN$ ARG
    DRIVE
-   S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED ;
+   S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
+   FOREIGN-OUT$ FILE? 0= TTRUE ;
+
+: ACTION-CASE ( -- )
+   s" nested build entries preserve an active action" T-LABEL
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   s" test/native-build-action-child.f" ARG
+   s" --" ARG
+   s" --import-unit" ARG
+   s" /tmp/habu-unused-unit" ARG
+   s" /tmp/habu-unused-output" ARG
+   DRIVE
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
+   RC @ 0 T=
+   OUT OUT-U @ s" native-build-action: ok" CONTAINS? TTRUE ;
+
+: ABI-TARGET$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" linux-aarch64" exit then
+   s" macos-aarch64" ;
+
+: FOREIGN-SEED ( ptr u8 n -- )
+   FOREIGN-OUT!
+   FOREIGN-OUT$ s" retained native output" WRITE-ALL ;
+
+: FOREIGN-RESULT ( -- )
+   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
+   RC @ 74 T=
+   ERR-U @ 0 T=
+   OUT OUT-U @ s" native-build: target process ABI or image format is not executable here" CONTAINS? TTRUE
+   OUT OUT-U @ s" native-build: uncaught throw code 74" CONTAINS? TTRUE
+   FOREIGN-OUT$ CONTENT 64 READ-ALL 22 T=
+   CONTENT 22 s" retained native output" T$= ;
+
+: FOREIGN-DEFAULT ( -- )
+   s" same-ISA foreign default writer reaches process ABI refusal" T-LABEL
+   s" default-hb" FOREIGN-SEED
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   s" tools/native-build.f" ARG
+   s" --" ARG
+   FOREIGN-OUT$ ARG
+   s" --target" ARG
+   ABI-TARGET$ ARG
+   DRIVE
+   FOREIGN-RESULT ;
+
+: FOREIGN-SUPPLIED ( -- )
+   s" same-ISA foreign supplied writer reaches process ABI refusal" T-LABEL
+   s" supplied-hb" FOREIGN-SEED
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   s" test/native-build-supplied-child.f" ARG
+   s" --" ARG
+   FOREIGN-OUT$ ARG
+   ABI-TARGET$ ARG
+   DRIVE
+   FOREIGN-RESULT ;
+
+: FOREIGN-ABI-CASE ( -- )
+   HB-TARGET-MACOS? HB-TARGET-LINUX? or 0= if
+      s" native-build foreign ABI: no supported same-ISA counterpart on this host" type cr
+      exit
+   then
+   FOREIGN-DEFAULT
+   FOREIGN-SUPPLIED ;
 
 : RUN ( -- )
    T-RESET
+   FOREIGN-ROOT!
    NO-OUTPUT-CASE
    BAD-CLASS-CASE
    TARGET-MISSING-CASE
    TARGET-UNKNOWN-CASE
+   WINDOWS-CORE-CASE
    TARGET-UNLOADED-CASE
    FOREIGN-WINDOW-CASE
+   ACTION-CASE
+   FOREIGN-ABI-CASE
    T-REPORT ;
 
 RUN

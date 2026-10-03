@@ -504,6 +504,10 @@ SUITE compiler-native-colon
 \ habu-bind-compiler-target-b3dfa307 is answered by, and a suite that answers a
 \ dot has to be reachable by name in the registry, not only inside a fork list -
 \ that missing row is what blocked the dot.
+SUITE compiler-target-resolve
+   test/compiler/target-resolve.f
+;SUITE
+
 SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE

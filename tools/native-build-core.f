@@ -401,9 +401,18 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 \ so it cannot load target sources that the foreign machine does not support.
 \ Other source-writer callers still check here before writing.
 \ NABI:BINDING, compiled with this file, answers for the building engine.
+: OUTPUT-LAUNCH-CK ( -- )
+   BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
+   action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
+      RTARGET:EXECUTABLE-HERE? if exit then
+   s" native-build: target process ABI or image format is not executable here" type cr
+   BUILD-RC throw ;
+
 : WRITER-MACHINE-CK ( -- )
-   TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ if exit then
-   s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die ;
+   TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= if
+      s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die
+   then
+   OUTPUT-LAUNCH-CK ;
 
 \ The reader's capture has its own bytes. Loading a writer may allocate and
 \ compile freely; none of those definitions or mutations enters that value.
@@ -594,6 +603,10 @@ variable NAMES-NI
 
 : DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: query bootstrap:bool writer :}
+   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop ENDOF
+      unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
+   ;MATCH
    CHECK-HOST-LAYOUT
    CHECKER-OWNER LOGICAL-RESET
    OPEN-AND-COMPILE
@@ -606,6 +619,7 @@ variable NAMES-NI
    CAPTURE
    query bootstrap writer EMIT-TEMP
    SIGN-TEMP
+   OUTPUT-LAUNCH-CK
    SMOKE
    PROMOTE
    WRITE-NAMES
@@ -618,7 +632,7 @@ variable NAMES-NI
 \ an unconditional exit_group, so `include tools/native-build.f` has no code
 \ path back to its caller. tools/build-profile.f prints the profiler's report
 \ after the build and is that driver.
-: RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+: RUN-READY-INNER ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: query bootstrap:bool writer :}
    CLEANUP-RESET
    0 TARGET-SOURCE-BOUND !
@@ -633,10 +647,31 @@ variable NAMES-NI
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
 
+TYPED-VARIABLE READY-QUERY [ n n -- n ]
+variable READY-BOOTSTRAP
+TYPED-VARIABLE READY-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
+variable READY-RC
+
+: READY-ACTION ( RTARGET:build-action -- )
+   drop
+   READY-QUERY @ READY-BOOTSTRAP @ 0<> READY-WRITER @
+      RUN-READY-INNER READY-RC ! ;
+
+: RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+   {: query bootstrap:bool writer :}
+   BUILD-TARGET:IDLE-CK
+   query READY-QUERY !
+   bootstrap READY-BOOTSTRAP !
+   writer READY-WRITER !
+   RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      [: READY-ACTION ;] BUILD-TARGET:WITH
+   READY-RC @ ;
+
 public
 
 : RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
    {: out:ptr outu:n query bootstrap:bool :}
+   BUILD-TARGET:IDLE-CK
    DEFAULT-SOURCE-POLICY
    out outu OUTPUT!
    query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;

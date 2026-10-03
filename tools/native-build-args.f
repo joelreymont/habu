@@ -73,10 +73,15 @@ variable CLASS-WANTED
    s" native-build: after the output path come only `whitebox`, then `--target <target>`" BUILD-RC die ;
 
 : TARGET-ARCH ( -- CTARGET:arch )
-   BUILD-TARGET:LINUX? if CTARGET-ARCH:AARCH64 exit then
-   BUILD-TARGET:MACOS? if CTARGET-ARCH:AARCH64 exit then
-   BUILD-TARGET:LINUX-X86-64? if CTARGET-ARCH:X86-64 exit then
-   E-CTGT-ABI throw ;
+   BUILD-TARGET:CURRENT RTARGET:ARCH@ ;
+
+: CORE-CK ( -- )
+   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop ENDOF
+      unsupported OF
+         s" native-build: the --target profile has no native CORE ABI" BUILD-RC die
+      ENDOF
+   ;MATCH ;
 
 : BACKEND-CK ( -- )
    TARGET-ARCH CTARGET:REGISTERED? if exit then
@@ -89,13 +94,14 @@ variable CLASS-WANTED
    SCRIPT-ARGC at 2 + <> if ARGS-REFUSE then
    at SCRIPT-ARGV$ TARGET-FLAG$ STR= 0= if ARGS-REFUSE then
    at 1+ SCRIPT-ARGV$ BUILD-TARGET:SELECT? 0= if
-      s" native-build: --target is linux-aarch64, macos-aarch64 or linux-x86-64" BUILD-RC die
+      s" native-build: unknown --target profile" BUILD-RC die
    then
-   BACKEND-CK ;
+   CORE-CK BACKEND-CK ;
 
 public
 
 : BUILD-ARGS! ( -- )
+   BUILD-TARGET:IDLE-CK
    SCRIPT-ARGC 1 < if
       s" native-build: one explicit output path is required, then an optional `whitebox`, then an optional `--target <target>`" BUILD-RC die
    then

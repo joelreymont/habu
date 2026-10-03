@@ -11,52 +11,19 @@
 \ arguments into d0/d1 and its answer back out, so nothing lives across a call.
 
 require lib/prelude.f
-require src/compiler/target.f
-require src/compiler/numeric-policy.f
-require src/compiler/binding.f
+require src/compiler/target/native-binding.f
 require src/compiler/native-effect.f
 require src/compiler/native/machine.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 
 package NABI
-
-private
-
-\ The ABI field records the HOST PLATFORM IDENTITY (docs/porting.md), so each
-\ supported target answers with its own convention. That a host has no native
-\ backend loaded is a different question, asked later when a compilation
-\ resolves the contract, and it is not this word's to answer.
-: TARGET-ABI ( -- CTARGET:abi )
-   HB-TARGET-LINUX? if CTARGET-ABI:AAPCS64-LINUX exit then
-   HB-TARGET-MACOS? if CTARGET-ABI:AAPCS64-DARWIN exit then
-   HB-TARGET-LINUX-X86-64? if CTARGET-ABI:SYSV-AMD64 exit then
-   E-CTGT-ABI throw ;
-
-\ The architecture that host's ABI runs on, read from the same predicates as
-\ TARGET-ABI so the two fields of the binding cannot name different hosts.
-: TARGET-ARCH ( -- CTARGET:arch )
-   HB-TARGET-LINUX? if CTARGET-ARCH:AARCH64 exit then
-   HB-TARGET-MACOS? if CTARGET-ARCH:AARCH64 exit then
-   HB-TARGET-LINUX-X86-64? if CTARGET-ARCH:X86-64 exit then
-   E-CTGT-ABI throw ;
-
 public
 
-\ The binding of the host this engine runs on: AAPCS64 on AArch64 Linux and
-\ Darwin, SysV on x86-64 Linux, where it is CBIND:SAME? as X64ABI:BINDING
-\ (src/arch/x86-64/abi.f). Overflow wraps, as add, sub and mul do on both
-\ machines; a trapping unit is refused by the selector. The host is read when
-\ this word runs, so it answers for the engine that calls it. The routine
-\ constructors below build AArch64 register sets; the x86-64 ones are the x86-64
-\ backend's, and this file does not load that backend.
+\ The native profile owner builds the process binding; this API keeps existing
+\ compiler callers stable while the constructors below remain AArch64-owned.
 : BINDING ( -- CBIND:binding )
-   TARGET-ARCH TARGET-ABI CTARGET-ENDIAN:LITTLE
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
+   RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
 
 \ `n` general registers starting at `base`. A set is a machine-free value, so a
 \ run that crosses the data-stack, link, platform or zero register builds here

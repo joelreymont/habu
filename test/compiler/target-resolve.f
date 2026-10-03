@@ -1,0 +1,113 @@
+\ Registered target-action acceptance. Each printed label and refusal is
+\ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
+require lib/test.f
+require src/compiler/target/model.f
+require tools/build-target.f
+require src/compiler/numeric-policy.f
+
+package TARGET-RESOLVE-TEST
+private
+
+: DARWIN ( -- RTARGET:resolved-target )
+   s" aarch64-apple-darwin" RTARGET:RESOLVE ;
+: LINUX ( -- RTARGET:resolved-target )
+   s" aarch64-unknown-linux-gnu" RTARGET:RESOLVE ;
+: X64 ( -- RTARGET:resolved-target )
+   s" x86_64-unknown-linux-gnu" RTARGET:RESOLVE ;
+: WINDOWS ( -- RTARGET:resolved-target )
+   s" aarch64-pc-windows-msvc" RTARGET:RESOLVE ;
+: WASM ( -- RTARGET:resolved-target )
+   s" wasm32-unknown-unknown" RTARGET:RESOLVE ;
+
+: T01 ( -- )
+   s" T01 aliases, defaults and unknown selection" T-LABEL
+   s" macos-aarch64" RTARGET:RESOLVE DARWIN RTARGET:SAME? TTRUE
+   s" linux-aarch64" RTARGET:RESOLVE LINUX RTARGET:SAME? TTRUE
+   s" linux-x86-64" RTARGET:RESOLVE X64 RTARGET:SAME? TTRUE
+   RTARGET:HOST-TARGET RTARGET:NO-EMITTERS RTARGET:HOST-TARGET RTARGET:PROFILE@
+      RTARGET:PRODUCT RTARGET:DEFAULT RTARGET:HOST-TARGET RTARGET:SAME? TTRUE
+   BUILD-TARGET:HOST!
+   s" no-such-target" BUILD-TARGET:SELECT? TFALSE
+   BUILD-TARGET:CURRENT RTARGET:HOST-TARGET RTARGET:SAME? TTRUE ;
+
+: T02 ( -- )
+   s" T02 Windows compiler bodies with C66x and Wasm emitters" T-LABEL
+   RTARGET:HOST WINDOWS
+   CTARGET-ARCH:C66X RTARGET:EMITTER
+   CTARGET-ARCH:WASM RTARGET:EMITTER RTARGET:EMITTER-WITH
+   WINDOWS RTARGET:PROFILE@ RTARGET:PRODUCT
+   RTARGET:FOR-COMPILER RTARGET:BODY-TARGET@ WINDOWS RTARGET:SAME? TTRUE ;
+
+: T03 ( -- )
+   s" T03 unsupported Windows CORE and unloaded Wasm backend" T-LABEL
+   WINDOWS RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop false ENDOF
+      unsupported OF true ENDOF
+   ;MATCH TTRUE
+   WASM RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop true ENDOF
+      unsupported OF false ENDOF
+   ;MATCH TTRUE
+   CTARGET-ARCH:WASM CTARGET:REGISTERED? TFALSE
+   WINDOWS WINDOWS RTARGET:LINK-COMPATIBLE? TFALSE ;
+
+: T04 ( -- )
+   s" T04 same ISA with different foreign ABI cannot link" T-LABEL
+   DARWIN LINUX RTARGET:LINK-COMPATIBLE? TFALSE
+   RTARGET:HOST WINDOWS RTARGET:EXECUTABLE-HERE? TFALSE ;
+
+: STRICT ( -- CNUM:numeric-policy )
+   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY ;
+: FAST ( -- CNUM:numeric-policy )
+   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:REASSOCIATE CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY ;
+
+: T05 ( -- )
+   s" T05 action digest differs while link profile stays compatible" T-LABEL
+   LINUX STRICT CNUM:DIGEST RTARGET:BUILD-IDENTITY
+   LINUX FAST CNUM:DIGEST RTARGET:BUILD-IDENTITY
+   RTARGET:SAME-BUILD-IDENTITY? TFALSE
+   LINUX CTARGET:F-SIMD RTARGET:WITH-FEATURES
+   LINUX RTARGET:LINK-COMPATIBLE? TTRUE ;
+
+: T06 ( -- )
+   s" T06 selected runtime limits combined semantic features" T-LABEL
+   LINUX LINUX CTARGET:F-SIMD RTARGET:WITH-FEATURES
+      RTARGET:RUNTIME-ADMISSIBLE? TFALSE
+   LINUX CTARGET:F-SIMD RTARGET:WITH-FEATURES
+   LINUX RTARGET:RUNTIME-ADMISSIBLE? TTRUE ;
+
+: MUTATE ( RTARGET:build-action -- )
+   drop s" linux-aarch64" BUILD-TARGET:SELECT? drop ;
+: THROWING ( RTARGET:build-action -- )
+   drop -3456 throw ;
+: CHECK-ACTION ( RTARGET:build-action -- )
+   drop BUILD-TARGET:CURRENT WINDOWS RTARGET:SAME? TTRUE
+   [: BUILD-TARGET:HOST! ;] RTARGET:E-ACTIVE TTHROWSQ
+   [: s" aarch64-pc-windows-msvc" BUILD-TARGET:SELECT? drop ;]
+      RTARGET:E-ACTIVE TTHROWSQ ;
+: ACTIVE-MUTATE ( -- )
+   RTARGET:HOST WINDOWS RTARGET:FOR-OUTPUT [: MUTATE ;] BUILD-TARGET:WITH ;
+: ACTIVE-THROW ( -- )
+   RTARGET:HOST WINDOWS RTARGET:FOR-OUTPUT [: THROWING ;] BUILD-TARGET:WITH ;
+: NOOP-ACTION ( RTARGET:build-action -- ) drop ;
+: T15 ( -- )
+   s" T15 action mutation refusal and restoration" T-LABEL
+   BUILD-TARGET:HOST!
+   RTARGET:HOST WINDOWS RTARGET:FOR-OUTPUT [: CHECK-ACTION ;] BUILD-TARGET:WITH
+   [: ACTIVE-MUTATE ;] RTARGET:E-ACTIVE TTHROWSQ
+   BUILD-TARGET:CURRENT RTARGET:HOST-TARGET RTARGET:SAME? TTRUE
+   [: ACTIVE-THROW ;] -3456 TTHROWSQ
+   BUILD-TARGET:CURRENT RTARGET:HOST-TARGET RTARGET:SAME? TTRUE
+   RTARGET:HOST LINUX RTARGET:FOR-OUTPUT [: NOOP-ACTION ;] BUILD-TARGET:WITH ;
+
+: ARTIFACT ( -- )
+   s" target-resolve profile=" type RTARGET:HOST-TARGET RTARGET:PROFILE$ type cr
+   s" target-resolve windows-core=unsupported" type cr
+   s" target-resolve wasm-backend=unloaded" type cr ;
+
+: RUN ( -- )
+   T-RESET T01 T02 T03 T04 T05 T06 T15 ARTIFACT T-REPORT ;
+RUN
+;package

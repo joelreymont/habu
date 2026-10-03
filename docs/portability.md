@@ -140,7 +140,7 @@ No binary backend-plugin ABI, LLVM/Emscripten dependency, TI self-hosting, trans
 
 ## 2. Build platform, compiler product and output target
 
-Master already separates the target a build makes from the engine that runs the build: `tools/build-target.f:1-17` holds the build target as one cell, starting as the engine's own target, while the engine's `HB-TARGET-*` predicates keep answering for the engine. A single build request that puts every role side by side does not say which action consumes which role. This design generalizes master's split into an action graph and two product descriptions.
+P1b resolves named profiles into fixed `RTARGET:resolved-target` values and captures the executing process profile before a native target window opens. `BUILD-TARGET:WITH` scopes a `build-action` around the common native build entry and restores pending selection on return or throw. Compiler product composition records enabled emitter families separately from the executable target; it does not assert backend availability. The action graph below describes later expansion beyond this bounded native build adapter.
 
 ```text
 ExecutionPlatform { os, arch, process_abi, environment_id }
@@ -273,6 +273,8 @@ A diagnostic includes the stage, unsatisfied requirement, responsible provider a
 ### 4.1 Four different questions
 
 `SameBuildIdentity` asks whether an action has identical declared inputs and code-generation policy. `LinkCompatible` asks whether two objects can coexist. `RuntimeAdmissible` asks whether an image fits a runtime/embedding's actual requirements and grants. `ExecutableHere` asks whether a runner can execute it.
+
+P1b exposes `RTARGET:SAME-BUILD-IDENTITY?` over a resolved target and the existing action-input digest, `LINK-COMPATIBLE?` over declared profile ABI/layout/runtime facts, `RUNTIME-ADMISSIBLE?` over selected semantic features, and `EXECUTABLE-HERE?` over the captured process ABI/image/runtime. Contribution, relocation and runner checks remain at their later owners.
 
 These must not be one digest equality test. Objects built with different optimization levels can link when their call/data contracts agree. Objects for the same ISA can still be incompatible because of foreign ABI, float ABI, pointer layout, TLS or internal Habu ABI. A CPU with more features can execute an object requiring fewer features; that does not authorize changing code-generation features during a supposedly reproducible build.
 

@@ -1,63 +1,59 @@
-\ build-target.f - the target a build is for, as one cell its seams read.
-\
-\ Which target a build makes and which target the engine making it runs on are
-\ two questions, because an ARM64 engine cross-builds x86-64. The engine's own
-\ HB-TARGET-* predicates (src/os/*/target.f) answer the second and stay the
-\ engine's; this cell answers the first. It starts as the engine's own target,
-\ so a build nobody pointed elsewhere is a host build, and
-\ tools/native-build-args.f points it elsewhere from `--target`.
-\
-\ ITS READERS are the seams that choose target sources on the building engine:
-\ tools/native-build-core.f NB-TARGET-CORE-FILES, which gives the build window
-\ its target.f and layout.f, and tools/build-fixpoint.f's stage-source
-\ appenders. Inside the window nothing reads it: the window's own target.f
-\ answers HB-TARGET-* there, so src/habu/native-runtime.f PROVIDE-TARGET and
-\ LOAD-REPL-TERM and src/compiler/native/compiler.f LOAD-PASSES follow the cell
-\ by construction rather than by a second read.
-\
-\ The names are the ones tools/hb-build-lib.f HBB-TARGET-ABI$ keys artifacts by.
-
-require lib/string.f
+\ Pending target selection and the one active native build action.
+require src/compiler/target/model.f
 
 package BUILD-TARGET
 private
 
-\ src/core/cell.f's CORE-LAYOUT-RC, the exit every unknown-target refusal uses.
-$4C constant UNKNOWN-RC
+TYPED-VARIABLE PENDING RTARGET:resolved-target
+TYPED-VARIABLE ACTION RTARGET:build-action
+variable ACTIVE
 
-0 constant LINUX-AARCH64
-1 constant MACOS-AARCH64
-2 constant LINUX-X86-64
+: REFUSE-ACTIVE ( -- )
+   ACTIVE @ 0<> if RTARGET:E-ACTIVE throw then ;
 
-variable CELL
-
-: LINUX-AARCH64$ ( -- ptr u8 n ) s" linux-aarch64" ;
-: MACOS-AARCH64$ ( -- ptr u8 n ) s" macos-aarch64" ;
-: LINUX-X86-64$ ( -- ptr u8 n ) s" linux-x86-64" ;
-
-\ The one read of the building engine's own predicates.
-: HOST ( -- n )
-   HB-TARGET-LINUX? if LINUX-AARCH64 exit then
-   HB-TARGET-MACOS? if MACOS-AARCH64 exit then
-   HB-TARGET-LINUX-X86-64? if LINUX-X86-64 exit then
-   s" build-target: unknown host target" UNKNOWN-RC die ;
+: END-ACTION ( -- )
+   0 ACTIVE ! ;
 
 public
 
-: LINUX? ( -- bool )         CELL @ LINUX-AARCH64 = ;
-: MACOS? ( -- bool )         CELL @ MACOS-AARCH64 = ;
-: LINUX-X86-64? ( -- bool )  CELL @ LINUX-X86-64 = ;
+: CURRENT ( -- RTARGET:resolved-target )
+   ACTIVE @ 0<> if ACTION @ RTARGET:BODY-TARGET@ exit then
+   PENDING @ ;
 
-\ Point the build at the engine's own target.
-: HOST! ( -- )   HOST CELL ! ;
+: LINUX? ( -- bool )
+   CURRENT RTARGET:PROFILE@ RTARGET-PROFILE--ID:AARCH64-UNKNOWN-LINUX-GNU
+   RTARGET-PROFILE--ID:EQ ;
 
-\ Point the build at the named target. A name that is not one of the three
-\ leaves the cell alone and answers false.
-: SELECT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u LINUX-AARCH64$ STR= if LINUX-AARCH64 CELL ! true exit then
-   a u MACOS-AARCH64$ STR= if MACOS-AARCH64 CELL ! true exit then
-   a u LINUX-X86-64$ STR= if LINUX-X86-64 CELL ! true exit then
-   false ;
+: MACOS? ( -- bool )
+   CURRENT RTARGET:PROFILE@ RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN
+   RTARGET-PROFILE--ID:EQ ;
+
+: LINUX-X86-64? ( -- bool )
+   CURRENT RTARGET:PROFILE@ RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU
+   RTARGET-PROFILE--ID:EQ ;
+
+: IDLE-CK ( -- ) REFUSE-ACTIVE ;
+
+: ACTION@ ( -- RTARGET:build-action )
+   ACTIVE @ 0= if RTARGET:E-UNSET throw then
+   ACTION @ ;
+
+: HOST! ( -- )
+   REFUSE-ACTIVE
+   RTARGET:HOST-TARGET PENDING ! ;
+
+: SELECT? ( ptr u8 n -- bool )
+   {: name:ptr size:n :}
+   REFUSE-ACTIVE
+   name size RTARGET:KNOWN? 0= if false exit then
+   name size RTARGET:RESOLVE PENDING ! true ;
+
+: WITH ( RTARGET:build-action [ RTARGET:build-action -- ] -- )
+   {: action:RTARGET:build-action body :}
+   REFUSE-ACTIVE
+   action ACTION !
+   1 ACTIVE !
+   action body [: END-ACTION ;] finally ;
 
 ;package
 

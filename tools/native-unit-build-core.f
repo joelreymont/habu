@@ -160,6 +160,7 @@ TRUSTED: SOURCE-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 [ -- ] -- ] -- ]
 public
 
 : RUN-UNIT ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+   BUILD-TARGET:IDLE-CK
    UNIT-ARGS! {: out-arg:n :}
    0 UNIT-SEEN !
    UNIT-PREFLIGHT
