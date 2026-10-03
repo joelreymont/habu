@@ -1169,7 +1169,44 @@ TYPED-VARIABLE SPLICE-LEN len
    s" tools/check.f --all-errors accepted a duplicate definition" CHECK-JSON-ALL
    s" habu-dup.err" WRITE-ERR
    s" code" s" E-DUPLICATE-DEFINITION" s" duplicate code" ERR-JSTR
-   s" habu-dup.err" s" duplicate contract" DIAG-CONTRACT ;
+   s" habu-dup.err" s" duplicate contract" DIAG-CONTRACT
+
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" TYPED-VARIABLE GDX-TYPED n" GE-SRC-LINE
+   s" TYPED-VARIABLE GDX-TYPED n" GE-SRC-LINE
+   s" tools/check.f accepted a duplicate typed variable" CHECK-JSON-ALL
+   s" token" s" GDX-TYPED" s" typed duplicate token" ERR-JSTR
+   s" repair_class" s" rename_duplicate" s" typed duplicate repair class" ERR-JSTR
+
+   \ A sealed package's existing tail is an invalid storage name before it is
+   \ a duplicate. The source pass must keep checking subsequent declarations.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 1 LAYOUT-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" DEFER-LAYOUT-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" 1 TYPED-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" TYPED-VARIABLE LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" DYNAMIC-BUFFER LOWER-CERT-HOOK:HOOK n" GE-SRC-LINE
+   s" : GDX-AFTER ( n -- n ) drop ;" GE-SRC-LINE
+   s" tools/check.f accepted sealed storage names" CHECK-JSON-ALL
+   s" habu-storage-name.err" WRITE-ERR
+   s" code" s" E-BAD-STORAGE" s" sealed storage name code" ERR-JSTR
+   s" repair_class" s" fix_storage_name" s" sealed storage name class" ERR-JSTR
+   s" reason" s" name in a sealed package" s" sealed storage reason" ERR-JSTR
+   s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":1,"
+      s" layout name refused before duplicate" ERR-JRAW
+   s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":2,"
+      s" deferred layout name refused before duplicate" ERR-JRAW
+   s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":3,"
+      s" typed buffer name refused before duplicate" ERR-JRAW
+   s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":4,"
+      s" typed variable name refused before duplicate" ERR-JRAW
+   s" reason" s\" \"name in a sealed package\",\"file\":\"<stdin>\",\"line\":5,"
+      s" dynamic buffer name refused before duplicate" ERR-JRAW
+   s" word" s" gdx-after" s" checker continued after sealed names" ERR-JSTR
+   s\" \"repair_class\":\"rename_duplicate\"" s" sealed storage names reported as duplicates" GE-EXPECT-ERR-LACKS
+   s" habu-storage-name.err" s" sealed storage name contract" DIAG-CONTRACT ;
 
 : ENGINE-PROVIDED ( -- )
    CHECK-START

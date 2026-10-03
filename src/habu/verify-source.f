@@ -1324,7 +1324,8 @@ PTR-VARIABLE STG-START
 \ definer's token is refused as its run refuses it.
 : SCAN-STORAGE-NAME ( -- ptr u8 n )
    SCAN-LINE-TOKEN
-   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE THEN ;
+   dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   2dup CHECKER-LBUF-NAME-OK? 0= IF 2drop SOURCE@ 0 THEN ;
 
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
