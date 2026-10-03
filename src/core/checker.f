@@ -935,6 +935,7 @@ package CHECKER-EFFECT-AUTHORITY
 variable ABI-DEPTH
 variable RECOVERY-FLOOR
 variable RECOVERY-USED
+variable SEALED
 defer PUBLISH-XT ( n bool -- )
 : DEFAULT ( -- ) [: 2drop ;] is PUBLISH-XT ;
 DEFAULT
@@ -956,6 +957,19 @@ public
 : RECOVERY-USED? ( -- bool ) RECOVERY-USED @ 0 <> ;
 : RECOVERY-USED! ( bool -- ) RECOVERY-USED ! ;
 : CERTIFIED? ( -- bool ) ENFORCED? RECOVERY-USED? 0= and ;
+
+\ THE GATE ON A ROW WITHOUT SOURCE AUTHORITY IS A SEAL STATE. Such a row - the
+\ one a build window or an unjudged scan records for an internal word - binds a
+\ checked call (CALL-AUTHORITY) only while this checker is unsealed, so a
+\ whitebox image, and a prefix before src/core/internal-mark.f runs, check a
+\ body that names an internal word against that word's row. The pass's sealed
+\ arm calls SEAL, so a product image, a cold boot and every image saved from
+\ either refuse that call. Sealing changes no row's authority: ENFORCED?,
+\ CERTIFIED? and EFFECT-EXTERNAL answer as they did. No word opens the gate. On
+\ a whitebox image a reopen of this package can write SEALED; on a product the
+\ reopen exits 84.
+: SEALED? ( -- bool ) SEALED @ 0 <> ;
+: SEAL ( -- ) 0 0= SEALED ! ;
 ;package
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -10266,6 +10280,12 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ that keeps interpreting after it stays sound: a following enum declaration and
 \ a following arithmetic body both certify), exactly as for REWIND.
 PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
+\ CHECKER-EFFECT-AUTHORITY SEAL closes the authority gate. Its caller is
+\ src/core/internal-mark.f's sealed arm, a checked body after the hook, which an
+\ engine that boots its prefix from source checks with axiom rows alone. The row
+\ grants nothing the gate guards: sealing again changes nothing, and no word
+\ opens the gate.
+PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The scope probe a non-defining caller asks before EFFECT-QUERY (top-row.f).
 PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
@@ -14906,8 +14926,10 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 \ while authority is unenforced or when it is an external declaration, and this
 \ run's recovery fact applies too. Any other row records only the word's ABI (a
 \ build window records one for every prefix word): the primitive rows behind it
-\ decide, and with none the call is refused by name as well. OWNED-TICK-REFUSED?
-\ asks the same of a tick.
+\ decide. With none, a sealed checker refuses the call by name as well, and an
+\ unsealed one (CHECKER-EFFECT-AUTHORITY:SEALED?) applies the row unless it is a
+\ failed declaration's, which serves only its own run (RECOVERY-ROW? above).
+\ OWNED-TICK-REFUSED? asks the same of a tick.
 0 constant CALL-REFUSED
 1 constant CALL-APPLIES
 2 constant CALL-RECOVERS
@@ -14918,8 +14940,10 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
    CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
    FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
-   sym PRIM-FIRST-IDX 0= IF CALL-REFUSED EXIT THEN
-   CALL-PRIMS ;
+   sym PRIM-FIRST-IDX 0 <> IF CALL-PRIMS EXIT THEN
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
+   CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
+   CALL-APPLIES ;
 
 \ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
 \ name), the name joins the lazy intake's queue (ASIG-MISS+), and a name a

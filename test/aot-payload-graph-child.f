@@ -276,7 +276,9 @@ s" PAYLOAD-ABI" EFFECT-QUERY -1 EQ
 EFFECT-DIN-CELLS 1 EQ EFFECT-DOUT-CELLS 1 EQ
 s" PAYLOAD-ABI" SOURCE-MIN -1 EQ
 s" PAYLOAD-ABI" CHECKER-RESOLVES? 0 EQ
-s" ROUND-ABI ( n -- n ) PAYLOAD-ABI" CHECK! 0 EQ
+\ The imported row carries no authority, and this window's checker is unsealed,
+\ so a checked call binds that row.
+s" ROUND-ABI ( n -- n ) PAYLOAD-ABI" CHECK! -1 EQ
 s" PAYLOAD-WIDE-USE" EFFECT-QUERY -1 EQ
 EFFECT-DIN-N 2 EQ EFFECT-DIN-CELLS 2 EQ
 s" PAYLOAD-NESTED-USE" EFFECT-QUERY -1 EQ
