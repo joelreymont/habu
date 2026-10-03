@@ -12,7 +12,8 @@
 \ A checked `[']` of it is admitted and refused exactly where such a call is. A
 \ primitive that TRUSTED: bodies outside its owner call keeps a global
 \ trusted-only row beside the private one, and the matrix measures that shape
-\ too.
+\ too. set-tier is the private-only seed primitive: package TIER (lib/tier.f)
+\ owns it, and TIER:SELECT is its public word.
 \
 \ TWO ENGINES ANSWER. The owner cases need the owner open, and the product seals
 \ every package it bakes - NPUB and FFI included - so they run in a child under
@@ -167,6 +168,22 @@ variable EXP-U
    s" t1 tick addrmap-set other package"  s" rejected" CASE+
    s" t1 addrmap-set trusted top level"   s" compiled" CASE+ ;
 
+\ A seed primitive with its owner's row alone: set-tier, owned by TIER. The
+\ owner's public TIER:SELECT compiles in every scope.
+: OWNER-T0-LINES ( -- )
+   s" t0 set-tier inside owner"           s" compiled" CASE+
+   s" t0 set-tier top level"              s" rejected" CASE+
+   s" t0 tier select top level"           s" compiled" CASE+
+   s" t0 set-tier other package"          s" rejected" CASE+
+   s" t0 tier select other package"       s" compiled" CASE+ ;
+
+: OWNER-T1-LINES ( -- )
+   s" t1 set-tier inside owner"           s" compiled" CASE+
+   s" t1 set-tier top level"              s" rejected" CASE+
+   s" t1 tier select top level"           s" compiled" CASE+
+   s" t1 set-tier other package"          s" rejected" CASE+
+   s" t1 tier select other package"       s" compiled" CASE+ ;
+
 : EXPECT$ ( -- ptr u8 n )
    0 EXP-U !
    AXIOM-LINES
@@ -177,6 +194,8 @@ variable EXP-U
    SHADOW-LINES
    DUAL-T0-LINES
    DUAL-T1-LINES
+   OWNER-T0-LINES
+   OWNER-T1-LINES
    S\" prim-owner: ok\nwindow: 0\n" EXP+
    EXP EXP-U @ ;
 
@@ -207,6 +226,10 @@ variable EXP-U
    ea eu s" E-UNDEFINED habu: in pos-tc2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tp2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tc2p1-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-st0-top: undefined word 'set-tier'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-st0-oth: undefined word 'set-tier'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-st1-top: undefined word 'set-tier'" ERR-HAS
+   ea eu s" E-UNDEFINED habu: in pos-st1-oth: undefined word 'set-tier'" ERR-HAS
    \ The shadowed global is still an internal engine word.
    ea eu s" hb: internal engine word: CORE-FOLD-C" ERR-HAS
    \ A dual row's global row keeps the named capability reject outside the owner.
@@ -248,12 +271,26 @@ variable EXP-U
    s" package POS-ALIAS public EXPORT FFI-PTR>CELL ;package : POS-SEALED-ALIAS ( ptr a -- n ) POS-ALIAS:FFI-PTR>CELL ;"
    s" E-CAP-TRUSTED habu: in pos-sealed-alias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
    s" package POS-ALIAS public EXPORT FFI-PTR>CELL ;package : POS-SEALED-TALIAS ( -- ) ['] POS-ALIAS:FFI-PTR>CELL drop ;"
-   s" E-CAP-TRUSTED habu: in pos-sealed-talias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED ;
+   s" E-CAP-TRUSTED habu: in pos-sealed-talias: 'POS-ALIAS:FFI-PTR>CELL' is a trust-boundary primitive; call it only from a TRUSTED: definition" SEALED
+   s" : POS-SEALED-ST ( n -- ) set-tier ;"
+   s" E-UNDEFINED habu: in pos-sealed-st: undefined word 'set-tier'" SEALED ;
+
+\ set-tier is a seed primitive, not a prefix word, so no ABI-only row stands in
+\ for its owner's: outside TIER the shipped answer is E-UNDEFINED, and the
+\ owner's public word is how a user's checked definition selects a tier.
+: TIER-SELECT-RUNS ( -- )
+   s" require lib/tier.f : POS-OPEN-TS ( n -- ) TIER:SELECT ; 1 POS-OPEN-TS tier@ ."
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUBJECT-MS >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   s" a checked caller of TIER:SELECT selects tier 1" T-LABEL
+   rc 0 T=
+   OUT outu LEN>N S\" 1\n" T$= ;
 
 public
 : RUN ( -- )
    T-RESET
    RUNNING-ENGINE
+   TIER-SELECT-RUNS
    [: PREPARE WINDOW ;] [: CLEANUP-RUN ;] finally
    T-REPORT ;
 ;package

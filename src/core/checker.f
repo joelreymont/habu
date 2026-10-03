@@ -1314,8 +1314,8 @@ variable VERIFY-FLOOR0
 \
 \ WHY NOT TEACH THE PASS THAT A TRUSTED-ONLY ROW IS UNKNOWN. Because trusted-only
 \ states a different restriction: CHECKED CODE may not call the word, and some
-\ rows carry it precisely so a top-level build driver still can — `set-tier`'s
-\ row says so in as many words below. The pass classifies colon records, so that
+\ rows carry it precisely so a top-level build driver still can — `set-check`'s
+\ row (src/habu/prims.f) is one. The pass classifies colon records, so that
 \ rule would also seal CHECK-DOES! (this file) and LOWER-CERT:BYTES
 \ (src/core/lower-cert-base.f) on a judgement neither row makes. The seal belongs
 \ where the intent is stated, at the definition; REG-PROTECT takes the record it

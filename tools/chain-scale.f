@@ -82,6 +82,7 @@ require lib/fmt.f
 require lib/float.f
 require lib/fmath.f
 require lib/argv.f
+require lib/tier.f
 
 -7703 constant E-SCALE-UNCOMPILED
 -7704 constant E-SCALE-EXCEEDED
@@ -140,9 +141,6 @@ variable BOUND-MILLI               \ ratchet bound; read only when one was given
 : REFUSE ( ptr u8 n n -- ) {: msg:ptr mu thrown :}
    msg mu EMIT-ERR
    thrown throw ;
-
-\ ---- selecting the tier -----------------------------------------------------
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- building one set, before the clock starts ------------------------------
 : SRC+ ( ptr u8 n -- ) {: a:ptr u :}
@@ -367,11 +365,11 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ SELECT-TIER
+   PRIOR-TIER @ TIER:SELECT
    NPROF:CLOSE ;
 
 : MEASURE-ALL ( -- )
-   1 SELECT-TIER
+   1 TIER:SELECT
    RUN-LINE
    RUN-FRAME
    REPORT

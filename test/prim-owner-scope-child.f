@@ -30,19 +30,24 @@
 \    compile at both tiers. Elsewhere the global row answers: a checked caller
 \    gets the named E-CAP-TRUSTED reject, and a TRUSTED: caller keeps the call
 \    window tier 1 builds from that row.
+\ 5. A SEED primitive whose only row is owner-private: set-tier, owned by
+\    package TIER (lib/tier.f). Its owner's checked callers compile at both
+\    tiers, every other scope misses the name, and the owner's public
+\    TIER:SELECT, which this file selects its tiers with, compiles everywhere.
 \
 \ Nothing here is EXECUTED: every compile case defines a word and throws the body
 \ away, and the shadowed global's token is refused before it runs.
 
+require lib/tier.f
+
 \ Compiling a candidate is the subject, so the compile boundary is unchecked on
-\ purpose: EV moves the live package the next case is measured in, and SELECT
-\ picks the compiler it is measured under. EVC reports the reject code instead
-\ of letting it exit the window. A refusal's throw puts the text's two cells
-\ back, so EVC evaluates a copy and drops them on either path: this file is a
-\ closed program and may leave nothing.
+\ purpose: EV moves the live package the next case is measured in, and
+\ TIER:SELECT picks the compiler it is measured under. EVC reports the reject
+\ code instead of letting it exit the window. A refusal's throw puts the text's
+\ two cells back, so EVC evaluates a copy and drops them on either path: this
+\ file is a closed program and may leave nothing.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 : EVC ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;
-TRUSTED: SELECT ( n -- ) set-tier ;
 
 package PRIM-OWNER-CHILD
 
@@ -96,7 +101,7 @@ $0A constant LF-C
 \ measurement of the same question. The first `package` of FFI and NPUB in this
 \ window creates it; each later one reopens it.
 : PRIVATE-T0-CASES ( -- )
-   0 SELECT
+   0 TIER:SELECT
    FFI-OPEN
    s" t0 ptr>cell inside owner"
    s" : POS-P2C0-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
@@ -119,7 +124,7 @@ $0A constant LF-C
 \ Tier 1 reads a callee's cell widths through the checker's scope, so the owner's
 \ row is the only one that can answer, and the call binds the sealed record.
 : PRIVATE-T1-CASES ( -- )
-   1 SELECT
+   1 TIER:SELECT
    FFI-OPEN
    s" t1 ptr>cell inside owner"
    s" : POS-P2C1-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
@@ -128,14 +133,14 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 ptr>cell top level"
    s" : POS-P2C1-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
-   0 SELECT ;
+   0 TIER:SELECT ;
 
 \ ---- ticks of private-only rows: where the call is admitted, and nowhere else --
 \ A checked `[']` of the name compiles where a checked call of it compiles, and
 \ elsewhere it gets the call's refusal of the name. Every owner block here
 \ reopens its package, which the cases above created.
 : TICK-T0-CASES ( -- )
-   0 SELECT
+   0 TIER:SELECT
    FFI-OPEN
    s" t0 tick ptr>cell inside owner"
    s" : POS-TP2C0-IN ( -- ) ['] FFI-PTR>CELL drop ;" EVAL
@@ -150,7 +155,7 @@ $0A constant LF-C
    PKG-CLOSE ;
 
 : TICK-T1-CASES ( -- )
-   1 SELECT
+   1 TIER:SELECT
    FFI-OPEN
    s" t1 tick cell>ptr inside owner"
    s" : POS-TC2P1-IN ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
@@ -161,7 +166,7 @@ $0A constant LF-C
    s" t1 tick cell>ptr other package"
    s" : POS-TC2P1-OTH ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
    PKG-CLOSE
-   0 SELECT ;
+   0 TIER:SELECT ;
 
 \ ---- a private row for the owner's own word -----------------------------------
 \ The global CORE-FOLD-C is still an internal engine word: its token refuses.
@@ -176,7 +181,7 @@ $0A constant LF-C
 \ global row is kept for: tier 1 builds their call window from it, and without
 \ it a TRUSTED: caller of addrmap-set outside NPUB is E-HIR-UNMODELED.
 : DUAL-T0-CASES ( -- )
-   0 SELECT
+   0 TIER:SELECT
    FFI-OPEN
    s" ffi call inside owner"
    s" : POS-FFI-IN ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
@@ -211,7 +216,7 @@ $0A constant LF-C
    s" TRUSTED: POS-AM0-TR ( n -- ) addrmap-set ;" EVAL ;
 
 : DUAL-T1-CASES ( -- )
-   1 SELECT
+   1 TIER:SELECT
    s" t1 ffi call trusted top level"
    s" TRUSTED: POS-FFI1-TR ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
    NPUB-OPEN
@@ -228,7 +233,48 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 addrmap-set trusted top level"
    s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
-   0 SELECT ;
+   0 TIER:SELECT ;
+
+\ ---- a seed primitive with its owner's row alone: set-tier in TIER ------------
+\ lib/tier.f, required above, already compiled TIER's own checked caller. A
+\ reopened TIER compiles another at both tiers; outside it set-tier is
+\ undefined, and TIER:SELECT is how any scope reaches it.
+: TIER-OPEN ( -- ) s" package TIER" EV ;
+
+: OWNER-T0-CASES ( -- )
+   0 TIER:SELECT
+   TIER-OPEN
+   s" t0 set-tier inside owner"
+   s" : POS-ST0-IN ( n -- ) set-tier ;" EVAL
+   PKG-CLOSE
+   s" t0 set-tier top level"
+   s" : POS-ST0-TOP ( n -- ) set-tier ;" EVAL
+   s" t0 tier select top level"
+   s" : POS-TS0-TOP ( n -- ) TIER:SELECT ;" EVAL
+   OTHER-OPEN
+   s" t0 set-tier other package"
+   s" : POS-ST0-OTH ( n -- ) set-tier ;" EVAL
+   s" t0 tier select other package"
+   s" : POS-TS0-OTH ( n -- ) TIER:SELECT ;" EVAL
+   PKG-CLOSE ;
+
+: OWNER-T1-CASES ( -- )
+   1 TIER:SELECT
+   TIER-OPEN
+   s" t1 set-tier inside owner"
+   s" : POS-ST1-IN ( n -- ) set-tier ;" EVAL
+   PKG-CLOSE
+   s" t1 set-tier top level"
+   s" : POS-ST1-TOP ( n -- ) set-tier ;" EVAL
+   s" t1 tier select top level"
+   s" : POS-TS1-TOP ( n -- ) TIER:SELECT ;" EVAL
+   OTHER-OPEN
+   s" t1 set-tier other package"
+   s" : POS-ST1-OTH ( n -- ) set-tier ;" EVAL
+   s" t1 tier select other package"
+   s" : POS-TS1-OTH ( n -- ) TIER:SELECT ;" EVAL
+   PKG-CLOSE
+   0 TIER:SELECT ;
 
 public
 
@@ -241,6 +287,8 @@ public
    SHADOW-CASES
    DUAL-T0-CASES
    DUAL-T1-CASES
+   OWNER-T0-CASES
+   OWNER-T1-CASES
    s" prim-owner: ok" type LF-C emit ;
 
 ;package

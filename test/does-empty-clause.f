@@ -32,16 +32,15 @@ require lib/test.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
+require lib/tier.f
 
 package DEC-TEST
 private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and the
-\ only way a test can watch a definition be refused. `set-tier` is refused inside
-\ a plain checked body for the same reason tools/tier-census.f wraps it.
+\ only way a test can watch a definition be refused.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 $D65F03C0 constant W-RET
 $FC000000 constant OPC-MASK
@@ -118,7 +117,7 @@ create DEC-BARE0 16 allot
    DEC-MCELL0 @ DEC-BARE0 = and
    DEC-BCELL0 @ DEC-BARE0 = and ;
 
-1 SELECT-TIER
+1 TIER:SELECT
 
 \ ---- tier 1: the optimizing compiler the engine's own build runs at ---------
 : DEC-EMPTY1 ( -- ) create 0 , does> ( -- ptr ptr a ) ;

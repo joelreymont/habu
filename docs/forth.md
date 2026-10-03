@@ -27,7 +27,9 @@ lives here; build, test and environment rules live in
   top-level row types by the owner-private row that reaches it, so the owner's
   checked callers compile at both tiers and an outside checked caller is
   refused by name. A checked `[']` of it, by its own name or an `EXPORT`
-  alias's, is admitted and refused exactly where that call is. Top-level source
+  alias's, is admitted and refused exactly where that call is. The seed
+  primitive `set-tier` is such a row alone: package `TIER` (`lib/tier.f`) owns
+  it and `TIER:SELECT` is how any other scope selects a tier. Top-level source
   is not checked: there `'` yields the xt and a call runs the primitive. An
   engine primitive (`src/habu/prims.f`) that a `TRUSTED:` body outside the
   owner calls keeps its global trusted-only row beside the private one, as

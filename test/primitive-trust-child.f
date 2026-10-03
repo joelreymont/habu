@@ -1,6 +1,7 @@
 \ The native-build handoff loads the current checker. Replaying the reset
 \ declaration supplies the same user effect a native owner transfer publishes;
 \ a JIT-hosted window need not have recorded that pre-hook declaration itself.
+\ The window loads lib/tier.f ahead of this file (test/primitive-trust.f ARGS).
 package PRIMITIVE-TRUST-TEST
 
 : ASSERT ( bool -- )
@@ -18,10 +19,9 @@ TRUSTED: USER-ROW ( -- n )
    dup 1- E-PTR ER.ACTIVE @ 0= if s" reset user effect is inactive" 76 die then ;
 
 \ These test boundaries compile the supplied declarations through the real
-\ evaluator; SELECT chooses the compiler used for those declarations.
+\ evaluator; TIER:SELECT chooses the compiler used for those declarations.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
-TRUSTED: SELECT ( n -- ) set-tier ;
 
 variable ROW0
 
@@ -29,16 +29,18 @@ variable ROW0
    s" PF-BAD-RESET ( -- ) CHECKER-RESET-SOURCE" CHECK-CANDIDATE! 0 =ASSERT ;
 
 : RUN-TIER ( n -- ) {: tier:n :}
-   tier SELECT
+   tier TIER:SELECT
    tier 0= if s" package PTRUST-JIT" else s" package PTRUST-NATIVE" then EV
    REFUSE-CANDIDATE
    \ This authorized caller still compiles from the retained user graph.
    \ Running reset itself would discard the checker under the remaining cases.
    s" TRUSTED: RESET-CALL ( -- ) CHECKER-RESET-SOURCE ;" EV
    s" ' RESET-CALL dup 4 + code-origin" EV-N tier =ASSERT
-   s" TRUSTED: TIER-SELECT ( n -- ) set-tier ; tier@ TIER-SELECT" EV
-   tier@ tier =ASSERT
-   s" : LOCAL-CALL ( n -- n ) {: set-tier:n :} set-tier ; 41 LOCAL-CALL" EV-N 41 =ASSERT
+   \ So does a TRUSTED: caller of a trusted-only seed primitive: tier 1 builds
+   \ its call window from the primitive's global row.
+   s" TRUSTED: CHECK-SELECT ( n -- ) set-check ; check@ CHECK-SELECT" EV
+   s" ' CHECK-SELECT dup 4 + code-origin" EV-N tier =ASSERT
+   s" : LOCAL-CALL ( n -- n ) {: set-check:n :} set-check ; 41 LOCAL-CALL" EV-N 41 =ASSERT
    \ A package word with the same spelling has its own symbol and effect.
    s" : CHECKER-RESET-SOURCE ( -- n ) 42 ;" EV
    s" PF-SHADOW ( -- n ) CHECKER-RESET-SOURCE" CHECK-CANDIDATE! -1 =ASSERT

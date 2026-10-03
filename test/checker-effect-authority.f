@@ -2,6 +2,7 @@
 \ Run directly on the product; native builds and graph fixtures cover handover.
 require lib/test.f
 require test/replay-scope.f
+require lib/tier.f
 
 package EFFECT-AUTHORITY-TEST
 
@@ -37,7 +38,6 @@ TRUSTED: DICT-MIN ( ptr u8 n -- n )
    0 xref-search-wl XREF-FLAGS DNAME-MIN-IN-MASK and ;
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
-TRUSTED: SELECT ( n -- ) set-tier ;
 
 : EXPLICIT-IN-ABI ( -- )
    s" n -- n" s" EAUTH-EXPLICIT" DECLARE ;
@@ -94,8 +94,8 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    s" EAUTH-PRIM-GOOD ( n -- n n ) dup" CHECK-CANDIDATE! -1 T=
    s" EAUTH-PRIM-BAD ( -- n ) dup" CHECK-CANDIDATE! 0 T=
    s" trusted-only PRIM policy still wins over a user row" T-LABEL
-   s" n --" s" set-tier" DECLARE
-   s" EAUTH-PRIM-TRUST ( -- ) 0 set-tier" CHECK-CANDIDATE! 0 T=
+   s" n --" s" set-check" DECLARE
+   s" EAUTH-PRIM-TRUST ( -- ) 0 set-check" CHECK-CANDIDATE! 0 T=
    SCOPE-
    s" the checker-state writers stay trusted-only in checked code" T-LABEL
    s" EAUTH-INT-MARK ( -- ) 0 int-mark" CHECK-CANDIDATE! 0 T=
@@ -164,7 +164,7 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    s" recovery mode keeps unrelated ABI-only and trusted-only calls closed" T-LABEL
    s" EAUTH-REC-RAW ( n -- n )" ABI -1 T=
    s" EAUTH-REC-RAW-CALL ( n -- n ) EAUTH-REC-RAW" JUDGE 0 T=
-   s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-tier" JUDGE 0 T=
+   s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-check" JUDGE 0 T=
    s" EAUTH-REC-RAW-CALL" RECOVERY-FACT
    s" EAUTH-REC-TRUST-CALL" RECOVERY-FACT
    MULTI- 3 T=
@@ -200,7 +200,7 @@ TRUSTED: SELECT ( n -- ) set-tier ;
 \ their publication latch nor their lowering certificate may certify the body.
 : RECOVERY-PUBLICATION ( -- )
    s" multi-error publication retains no executable certificate" T-LABEL
-   0 SELECT                         \ check-only replay publishes through the JIT hook
+   0 TIER:SELECT                    \ check-only replay publishes through the JIT hook
    MULTI+
    s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" EV
    s" EAUTH-REC-LIVE-BAD" RECOVERY-FACT
@@ -217,7 +217,7 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    MULTI- 1 T=
    s" EAUTH-REC-LIVE-CALL ( ptr n -- n ) EAUTH-REC-LIVE" CHECK-CANDIDATE! 0 T=
    s" EAUTH-REC-ALIAS-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE" CHECK-CANDIDATE! 0 T=
-   1 SELECT ;
+   1 TIER:SELECT ;
 
 \ The evaluator owns the real publication and redefinition rollback below.
 \ The saved check hook is restored even when a definition throws.
@@ -235,7 +235,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : LIVE-CASES ( -- )
    s" real pre-hook native publication preserves explicit declarations" T-LABEL
-   1 SELECT
+   1 TIER:SELECT
    UNCHECKED+
    [: PREHOOK-DECLARATIONS ;] catch
    UNCHECKED- 0 T=

@@ -116,6 +116,7 @@ require lib/fmt.f
 require lib/float.f
 require lib/fmath.f
 require lib/argv.f
+require lib/tier.f
 
 -7710 constant E-SCALING-UNCOMPILED
 -7711 constant E-SCALING-EXCEEDED
@@ -183,10 +184,6 @@ variable BOUND-R                   \ and this is it
 : REFUSE ( ptr u8 n n -- ) {: msg:ptr mu thrown :}
    msg mu EMIT-ERR
    thrown throw ;
-
-\ ---- selecting the tier -----------------------------------------------------
-
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 \ ---- building one set, before the clock starts ------------------------------
 
@@ -466,7 +463,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    0 NC-COUNT !
    0 SET-LIVE? !
    ['] COUNTING-COMPILE NCOMP:DISPATCH!
-   1 SELECT-TIER
+   1 TIER:SELECT
    A64RA:ALLOC-NS-OPEN ;
 
 \ TEARDOWN first: on the refusing paths a measured set is still standing, and
@@ -475,7 +472,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : PUT-BACK ( -- )
    TEARDOWN
    NCOMP:INSTALL
-   PRIOR-TIER @ SELECT-TIER
+   PRIOR-TIER @ TIER:SELECT
    A64RA:ALLOC-NS-CLOSE ;
 
 : MEASURE-ALL ( -- )

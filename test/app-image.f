@@ -140,7 +140,7 @@ variable PROBE-SOURCE-U
 
 : CHECK-BUILD-SCOPE ( -- )
    REFUSE$
-   S\" TRUSTED: REQUEST-JIT ( -- ) 0 set-tier ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
+   S\" require lib/tier.f\n: REQUEST-JIT ( -- ) 0 TIER:SELECT ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
    ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+

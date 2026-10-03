@@ -31,10 +31,11 @@
 \ `new`. The rows are therefore the engine's own baked compiler, checker and
 \ runtime, which is exactly the path under measurement.
 \
-\ WHY THIS FILE REQUIRES NOTHING. lib/string.f and lib/fmt.f are corpus
-\ entries; a tool that loaded them for its own output would have them in the
-\ dictionary before the corpus asked, and the profile would lose every word
-\ their compile reaches. The decimal writer below is the price of that.
+\ WHY THIS FILE REQUIRES ONLY lib/tier.f, the one word that selects the tier.
+\ lib/string.f and lib/fmt.f are corpus entries; a tool that loaded them for its
+\ own output would have them in the dictionary before the corpus asked, and the
+\ profile would lose every word their compile reaches. The decimal writer below
+\ is the price of that.
 \
 \ THE `-raw` MODES ARE THE CHECKER ABLATION. `0 set-check` clears the engine's
 \ check hook, so the same source goes down the same tokenize/lookup/emit/publish
@@ -47,6 +48,8 @@
 \ MEASURE ON A QUIET MACHINE and pin the run (`taskset -c 8`): this is wall
 \ clock, and the sample counts are only comparable between runs taken at a
 \ similar load average.
+
+require lib/tier.f
 
 package TIER0-PROF
 private
@@ -66,12 +69,11 @@ variable DEC-K
 create SRC SRC-CAP allot
 variable SRC-N
 
-\ ---- the two trust boundaries -----------------------------------------------
-\ `set-tier` and `set-check` are both refused inside a plain checked body. Each
-\ gets one row with nothing else in it, so the unchecked surface is the two
-\ primitives and not the measurement around them.
+\ ---- the trust boundary -----------------------------------------------------
+\ `set-check` is refused inside a plain checked body. It gets one row with
+\ nothing else in it, so the unchecked surface is the primitive and not the
+\ measurement around it.
 
-TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 TRUSTED: HOOK-OFF ( -- ) 0 set-check ;   \ the name may not fold to `set-check`: UNSAFE-TOK? is a case-folded spelling test
 
 \ ---- output -----------------------------------------------------------------
@@ -172,7 +174,7 @@ public
    1 script-argv$ ARG>N {: usec :}
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:ptr mu :}
-   0 SELECT-TIER
+   0 TIER:SELECT
    usec prof-rate
    mode mu s" corpus-raw" STR= mode mu s" trivial-raw" STR= or if HOOK-OFF then
    mode mu s" corpus" STR= mode mu s" corpus-raw" STR= or if

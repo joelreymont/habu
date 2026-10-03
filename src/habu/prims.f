@@ -629,11 +629,13 @@ EPRIM: set-preflight PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPRIM: set-top-check PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ Choosing the compiler is the same class of boundary as installing the hook and
-\ takes the same restriction. Its callers are build drivers, which already reach
-\ it from top level or from a TRUSTED: word, exactly as they reach set-check.
-EPRIM: set-tier      PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
+\ Choosing the compiler belongs to package TIER (lib/tier.f), and this row is
+\ that owner's alone: TIER:SELECT is the checked caller every other scope calls,
+\ a checked body outside TIER does not find the name, and a build driver's
+\ top-level `1 set-tier` runs unchecked. No TRUSTED: body outside TIER calls it,
+\ so no global row is kept for one (tier 1 builds such a caller's call window
+\ from a global row; addrmap-set keeps its row for that).
+EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: seed-ndict!    PE-N PE-IN EPRIM;

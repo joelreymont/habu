@@ -44,16 +44,15 @@
 \ about a second of compiling. The only files it shares with the benchmark
 \ targets are baked into the engine (lib/errors.f, lib/string.f, lib/memory.f,
 \ lib/adt/option.f), so no word under test is compiled before the selection.
+\ lib/tier.f, the selection itself, loads there too and shares nothing with them.
 require lib/time-cpu.f
+require lib/tier.f
 
 package TIER-SELECT
 private
 
 64 constant USAGE-RC                \ sysexits EX_USAGE
 48 constant ZERO-C
-
-\ `set-tier` is refused inside a plain checked body; one row, nothing else in it.
-TRUSTED: SET ( n -- ) set-tier ;
 
 public
 
@@ -68,7 +67,7 @@ public
    u 1 <> if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
    a c@ ZERO-C - {: t :}
    t 0 < t 1 > or if s" tier-bench: tier must be 0 or 1" USAGE-RC die then
-   t SET ;
+   t TIER:SELECT ;
 
 ;package
 

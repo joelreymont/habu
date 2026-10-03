@@ -13,6 +13,7 @@ require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
 require test/compiler/native-match-layout.f
+require lib/tier.f
 
 package NMX
 private
@@ -644,11 +645,11 @@ variable QUAD-RET
 
 \ These instruction assertions describe optimizing emission. Other cases keep
 \ the caller's tier, including when the suite is loaded directly from the REPL.
-TRUSTED: CAPTURE-NATIVE-EMISSION ( -- )
+: CAPTURE-NATIVE-EMISSION ( -- )
    tier@ {: prior:n :}
-   1 set-tier
+   1 TIER:SELECT
    ['] CAPTURE-EMISSION catch {: rc:n :}
-   prior set-tier
+   prior TIER:SELECT
    rc 0<> if rc throw then ;
 
 CAPTURE-NATIVE-EMISSION
