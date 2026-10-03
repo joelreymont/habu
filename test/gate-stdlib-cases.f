@@ -2180,6 +2180,12 @@ SUITE websocket-frame
    lib/net/ws-frame-test.f
 ;SUITE
 
+\ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
+\ TCP4; writes build/ws-transcript.txt and compares it whole.
+SUITE websocket
+   lib/net/ws-test.f
+;SUITE
+
 \ The process row is per task: a capturing task and a polling task at once.
 SUITE process-tasks
    lib/process-task-test.f
@@ -2288,6 +2294,10 @@ SUITE boot-row
 
 SUITE boot-relocation
    test/boot-relocation-e2e.f
+;SUITE
+
+SUITE source-root-exe
+   test/source-root-exe-test.f
 ;SUITE
 
 SUITE json

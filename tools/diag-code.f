@@ -14,9 +14,9 @@ public
 \ declaration and storage: a refused family or storage declaration.
 \ source-span: a refusal placed in the source outside any definition.
 \ input: an input refused whole. record: a refusal, mostly of a checker record,
-\ that names its token but not its place. warning: no refusal, since the
-\ definition loaded.
-ENUM shape definition declaration storage source-span input record warning ;ENUM
+\ that names its token and its place when known. warning: no refusal, since
+\ the definition loaded. using-refusal: a bare token with its used packages.
+ENUM shape definition declaration storage source-span input record warning using-refusal ;ENUM
 
 private
 
@@ -47,7 +47,9 @@ private
       s" fix_signature_type fix_bare_ptr_element fix_signature_arity fix_signature_syntax"
       s" signature" EXIT THEN
    c u s" E-USING-SHADOW-GLOBAL" STR= IF
-      construct shape record s" disambiguate_using_shadow" s" used_package" EXIT THEN
+      construct shape using-refusal s" disambiguate_using_shadow" s" " EXIT THEN
+   c u s" E-USING-AMBIGUOUS" STR= IF
+      construct shape using-refusal s" disambiguate_using_ambiguous" s" " EXIT THEN
    c u s" E-SHADOWED-ARITY" STR= IF
       construct shape record s" match_shadowed_private_effect" s" package" EXIT THEN
    c u s" W-EFFECT-NOT-RECORDED" STR= IF
@@ -90,6 +92,7 @@ public
       input OF STR-TRUE ENDOF
       record OF STR-TRUE ENDOF
       warning OF STR-FALSE ENDOF
+      using-refusal OF STR-TRUE ENDOF
    ;MATCH ;
 
 ;package

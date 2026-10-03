@@ -56,6 +56,7 @@ create OUT-BUF IO-CAP allot
 create ERR-BUF IO-CAP allot
 create SRC-BUF SRC-CAP allot
 create OUTSIDE ROOT-CAP allot
+create OUTSIDE-HB ROOT-CAP allot
 
 variable DUMP-U
 variable DUMP-I
@@ -63,6 +64,7 @@ variable OUT-U
 variable ERR-U
 variable SRC-U
 variable OUTSIDE-U
+variable OUTSIDE-HB-U
 variable RC-N
 variable EXITED?
 variable WALKED
@@ -70,8 +72,9 @@ variable WALKED
 : ERR$ ( -- ptr u8 n )     ERR-BUF ERR-U @ ;
 : SRC$ ( -- ptr u8 n )     SRC-BUF SRC-U @ ;
 : OUTSIDE$ ( -- ptr u8 n ) OUTSIDE OUTSIDE-U @ ;
+: OUTSIDE-HB$ ( -- ptr u8 n ) OUTSIDE-HB OUTSIDE-HB-U @ ;
 
-\ ---- one run of the engine under test: source on stdin, the caller's CWD -----
+\ ---- one run of an engine: source on stdin, the caller's CWD -----------------
 
 : STORE ( ptr u8 n ptr u8 n outcome -- )
    {: src:ptr srcu:n out:ptr outu:n oc :}
@@ -81,10 +84,10 @@ variable WALKED
      timeout OF src srcu out outu ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-INTO ( ptr u8 n ptr u8 n ptr u8 n -- n )
-   {: cwd:ptr cwdu:n src:ptr srcu:n out:ptr outcap:n :}
+: RUN-INTO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: exe:ptr exeu:n cwd:ptr cwdu:n src:ptr srcu:n out:ptr outcap:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN
+   exe exeu >LEN
    cwd cwdu >LEN
    src srcu >LEN
    out outcap >LEN
@@ -95,8 +98,15 @@ variable WALKED
    src srcu out outu LEN>N oc STORE
    outu LEN>N ;
 
+\ The engine under test in cwd.
 : RUN ( ptr u8 n ptr u8 n -- )
-   OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
+   {: cwd:ptr cwdu:n src:ptr srcu:n :}
+   ENGINE-CANDIDATE:PATH$ cwd cwdu src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
+
+\ Its copy in the directory outside any tree, run there.
+: RUN-OUTSIDE ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   OUTSIDE-HB$ OUTSIDE$ src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
 
 \ ---- the loader line the child is given --------------------------------------
 
@@ -127,7 +137,7 @@ variable WALKED
    S\" : BR-ROW ( n -- ) dup REQUIRE-SLOT swap REQUIRE-LEN@ type CR ; : BR-DUMP ( -- ) REQUIRE-BOOT-N @ . CR REQUIRE-BOOT-N @ 0 ?do i BR-ROW loop ; BR-DUMP\n" ;
 
 : DUMP-ROWS ( -- )
-   CWD$ DUMP-SRC$ DUMP-BUF DUMP-CAP RUN-INTO DUMP-U !
+   ENGINE-CANDIDATE:PATH$ CWD$ DUMP-SRC$ DUMP-BUF DUMP-CAP RUN-INTO DUMP-U !
    0 DUMP-I ! ;
 
 : EOL? ( n -- bool ) {: c:n :}
@@ -215,12 +225,21 @@ variable WALKED
 \ on this machine - /tmp/src pointed into an unrelated checkout, and the refusal
 \ below named that checkout instead of the CWD, because CANONICAL resolves an
 \ existing prefix physically and a symlink is an existing prefix.
+\
+\ The engine runs as a copy at <outside>/bin/hb. An engine started outside a
+\ tree takes the tree two levels above its executable as its root, and the
+\ candidate's is the gate tree, so its copy is what has no root at all.
 
 : PREP-OUTSIDE ( -- )
    CLEANUP-RESET
    s" habu-boot-row" HB-TMP-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
    a OUTSIDE u BYTE-COPY u OUTSIDE-U !
-   OUTSIDE$ CLEANUP-TREE+ ;
+   OUTSIDE$ CLEANUP-TREE+
+   OUTSIDE$ s" bin" OUTSIDE-HB JOIN-PATH {: binu:n :}
+   OUTSIDE-HB binu MAKE-DIR
+   OUTSIDE$ s" bin/hb" OUTSIDE-HB JOIN-PATH OUTSIDE-HB-U !
+   ENGINE-CANDIDATE:PATH$ OUTSIDE-HB$ COPY-FILE-STREAM
+   OUTSIDE-HB$ CHMOD-X ;
 
 : EXPECT-MISSING$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
@@ -240,7 +259,7 @@ variable WALKED
 : OUTSIDE-REFUSES ( -- )
    s" the probe module is a real file of this tree" T-LABEL
    PROBE$ EXISTS? TTRUE
-   OUTSIDE$ s" require" PROBE$ LOADER-SRC! SRC$ RUN
+   s" require" PROBE$ LOADER-SRC! SRC$ RUN-OUTSIDE
    s" a module the image lacks is refused outside a tree" T-LABEL
    EXITED? @ TTRUE
    s" the refusal is the loader's own open failure" T-LABEL
@@ -254,7 +273,7 @@ variable WALKED
    DUMP-REWIND
    s" the dump carries a first row" T-LABEL
    DUMP-LINE TTRUE {: a:ptr u:n :}
-   OUTSIDE$ s" require" a u LOADER-SRC! SRC$ RUN
+   s" require" a u LOADER-SRC! SRC$ RUN-OUTSIDE
    s" a boot row still answers outside a tree" T-LABEL
    EXITED? @ TTRUE
    s" requiring a boot row outside a tree exits clean" T-LABEL

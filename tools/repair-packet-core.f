@@ -283,9 +283,9 @@ variable RP-NODE
    count s" Rebuild bin/hb to check this source; no code change answers this diagnostic."
    RP-PACKET-END ;
 
-\ Only a refusal tools/check.f's pre-pass read carries the token's place, so the
-\ record has all four place fields or none.
-: RP-STORAGE-PLACE ( n -- ) {: root:n :}
+\ A record carries all four place fields, when its token locates in the file,
+\ or none.
+: RP-PLACE ( n -- ) {: root:n :}
    root s" line" JSON-GET -1 = if exit then
    JSONW-COMMA root s" line" RP-REQ-NUM-FIELD
    JSONW-COMMA root s" column" RP-REQ-NUM-FIELD
@@ -299,7 +299,7 @@ variable RP-NODE
    JSONW-COMMA root s" token" RP-REQ-STR-FIELD
    JSONW-COMMA root s" reason" RP-REQ-STR-FIELD
    JSONW-COMMA root s" file" RP-REQ-STR-FIELD
-   root RP-STORAGE-PLACE
+   root RP-PLACE
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
@@ -318,10 +318,27 @@ variable RP-NODE
    JSONW-COMMA root s" token" RP-REQ-STR-FIELD
    root RP-EVIDENCE
    JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   root RP-PLACE
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
    count s" Fix the statement that names this token so it loads. Output only corrected Habu code."
+   RP-PACKET-END ;
+
+: RP-USING-PACKET ( n n -- ptr u8 n )
+   {: root:n count:n :}
+   RP-PACKET-START
+   JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   root RP-PLACE
+   JSONW-COMMA s" used_packages" JSONW-KEY
+   root s" used_packages" RP-REQ
+   dup JSON-KIND J-ARR <> if s" repair-packet: used_packages is not array" RP-E-IO RP-FAIL then
+   JSON-EMIT
+   JSONW-COMMA root s" code" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
+   count s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code."
    RP-PACKET-END ;
 
 : RP-PACKET ( n n -- ptr u8 n ) {: root:n count:n :}
@@ -333,6 +350,7 @@ variable RP-NODE
       input OF root count RP-INPUT-PACKET ENDOF
       record OF root count RP-RECORD-PACKET ENDOF
       warning OF s" repair-packet: a warning has no packet" RP-E-IO RP-FAIL ENDOF
+      using-refusal OF root count RP-USING-PACKET ENDOF
    ;MATCH ;
 
 : RP-MAIN ( -- )

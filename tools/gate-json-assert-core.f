@@ -376,6 +376,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" match_shadowed_private_effect" s" A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two."
    GJA-SUGGEST-ROW IF exit THEN
+   s" disambiguate_using_ambiguous" s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
    GJA-SUGGEST-ROW IF exit THEN
    s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
@@ -475,11 +477,26 @@ variable GJA-DIRECT
    root s" line" GJA-REQ-INTF
    root s" column" GJA-REQ-INTF ;
 
-\ A refused checker record names the token it would have described, with the
-\ field its code adds, and has no place for that token.
+\ The used packages a token resolves in: a non-empty array of package names.
+: GJA-PACKAGES ( n -- ) {: arr:n :}
+   arr GJA-ARR-KIND
+   arr JSON-COUNT 0= IF s" empty used_packages" GJA-FAIL THEN
+   arr JSON-COUNT 0 ?DO arr i JSON-ARR@ GJA-NONEMPTY-STR LOOP ;
+
+\ A using refusal names the token, placed when it locates in the file, and
+\ each used package it resolves in, with no definition field or throw code.
+: GJA-USING-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF
+   root s" throw_code" GJA-NO-FIELD
+   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root GJA-DECL-POSITION
+   root s" used_packages" GJA-REQ GJA-PACKAGES ;
+
+\ A checker record refused at the load names the token it would have described,
+\ and no definition encloses it to place that token.
 : GJA-RECORD-FIELDS ( n -- ) {: root:n :}
    root GJA-NO-DEF
-   root GJA-NO-PLACE
+   root GJA-DECL-POSITION
    root s" throw_code" GJA-NO-FIELD
    root s" token" GJA-REQ GJA-NONEMPTY-STR
    root GJA-CODE$ DIAG-CODE:EVIDENCE {: key:ptr keyu:n :}
@@ -543,6 +560,11 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Fix the statement that names this token so it loads. Output only corrected Habu code." GJA-ASSERT-STR ;
 
+: GJA-REPAIR-USING ( n -- ) {: root:n :}
+   root GJA-USING-FIELDS
+   root s" instruction" GJA-REQ
+   s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 \ A storage declaration its definer refuses (src/core/render.f STGR-JSON) names
 \ the declared word, the refused token and the reason. Only a refusal the
 \ pre-pass read carries the token's place, so it has all four place fields or
@@ -572,6 +594,7 @@ variable GJA-DIRECT
       input OF root GJA-REPAIR-INPUT ENDOF
       record OF root GJA-REPAIR-RECORD ENDOF
       warning OF s" a warning has no repair packet" GJA-FAIL ENDOF
+      using-refusal OF root GJA-REPAIR-USING ENDOF
    ;MATCH ;
 
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
@@ -660,10 +683,18 @@ variable GJA-DIRECT
    root GJA-SCHEMA1
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" file" GJA-REQ GJA-NONEMPTY-STR
+   root GJA-DECL-POSITION
    root s" reason" GJA-REQ GJA-NONEMPTY-STR
    root s" verdict" GJA-NO-FIELD
    root s" repair_class" GJA-NO-FIELD
    root s" suggestion" GJA-NO-FIELD ;
+
+: GJA-DIAG-USING ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-USING-FIELDS
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" using verdict is not rejected" GJA-FAIL
+   THEN ;
 
 : GJA-DIAG-SHAPE ( n -- ) {: root:n :}
    root GJA-SHAPE MATCH DIAG-CODE:shape
@@ -674,6 +705,7 @@ variable GJA-DIRECT
       input OF root GJA-DIAG-INPUT ENDOF
       record OF root GJA-DIAG-RECORD ENDOF
       warning OF root GJA-DIAG-WARNING ENDOF
+      using-refusal OF root GJA-DIAG-USING ENDOF
    ;MATCH ;
 
 \ Each record in the shape its code names; a refusal also under a verdict and

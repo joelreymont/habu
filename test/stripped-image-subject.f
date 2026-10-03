@@ -5,6 +5,7 @@
 require lib/num-types.f
 require lib/memory.f
 require lib/aio.f
+require lib/engine-id.f
 require test/stripped-quotation-subject.f
 require test/stripped-sparse-data-subject.f
 require test/aot-image-class-subject.f

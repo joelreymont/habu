@@ -420,8 +420,7 @@ variable CA-COMPOSE-LABEL-U
    0 CA-RAW-FAILURE ! ;
 
 
-: CA-EMIT-CAPTURED ( n -- ) {: rc:n :}
-   CA-TRUE CA-FAILED !
+: CA-WRITE-CAPTURED ( -- )
    CA-JSON? IF
       CA-FILTER-JSON
       CA-JSON-FOUND @ 0= IF
@@ -429,7 +428,11 @@ variable CA-COMPOSE-LABEL-U
       THEN
    ELSE
       CA-ERR-A@ CA-ERR-LEN @ CA-ERR
-   THEN
+   THEN ;
+
+: CA-EMIT-CAPTURED ( n -- ) {: rc:n :}
+   CA-TRUE CA-FAILED !
+   CA-WRITE-CAPTURED
    rc 0 <> IF rc CA-RAW-FAILURE ! THEN ;
 
 \ ---- a statement that throws while it is checked ----------------------------
@@ -491,6 +494,7 @@ variable CA-COMPOSE-LABEL-U
 : REPORTED-THROW? ( n -- bool )
    {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
+   rc E-USING-AMBIGUOUS = or
    rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or ;
 
@@ -532,7 +536,8 @@ private
 \ not counted by MULTI-ERR-N, so continuing past them would let an
 \ all-uncheckable file read as clean.
 \ The session is the caller's (SESSION), so a source's rejects are the ones
-\ counted while it was checked.
+\ counted while it was checked. A source with none still gets what the checker
+\ wrote of it, its warnings.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
    MULTI-ERR-N @ {: before:n :}
@@ -540,7 +545,8 @@ private
    MULTI-ERR-N @ before - {: rejects:n :}
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc THREW? IF rc CA-HANDLE-THROW exit THEN
-   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED exit THEN
+   CA-WRITE-CAPTURED ;
 
 \ A duplicate or a statement's throw stops the composition in one of its files,
 \ the one VERIFY:SOURCE-COMPOSE-STOPPED$ names, and its record names that file
@@ -564,7 +570,8 @@ private
    MULTI-ERR-N @ before - {: rejects:n :}
    rc DUP-RC = IF 0 CA-EMIT-CAPTURED CA-COMPOSE-STOPPED CA-HANDLE-DUP exit THEN
    rc THREW? IF rc CA-HANDLE-COMPOSE-THROW exit THEN
-   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
+   rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED exit THEN
+   CA-WRITE-CAPTURED ;
 
 : CA-START ( ptr u8 n -- ) {: labela:ptr labelu:n :}
    labelu CA-FILE-U !

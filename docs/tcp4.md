@@ -3,9 +3,10 @@
 [`lib/net/tcp4.f`](../lib/net/tcp4.f) provides generic IPv4 stream socket I/O.
 The current implementation supports Habu on Linux and macOS AArch64. It
 contains no application protocol, framing, name resolution, or connection
-policy. Other operating systems are rejected before opening a socket. Every
-readiness wait runs on the AIO loop ([aio.md](aio.md)), so a program that asks
-one starts the loop with `AIO:START` first.
+policy. Other operating systems are rejected before opening a socket. The
+readiness questions (`PENDING?`, `READABLE?` and their `-WITHIN?` forms) run
+on the AIO loop ([aio.md](aio.md)), so a program that asks one starts the loop
+with `AIO:START` first.
 
 ## Values and operations
 
@@ -13,8 +14,10 @@ one starts the loop with `AIO:START` first.
 the nominal `TCP4:address`; for example, `$7F000001 TCP4:ADDRESS` represents
 `127.0.0.1`. Dotted-decimal and host-name parsing are not part of this module.
 `TCP4:PORT` validates `0..65535` and returns `TCP4:port`.
-`TRANSFER-BYTES` validates `0..0x7FFFF000` and returns `NUM:byte-len`;
-that ceiling is the most Linux moves in one transfer.
+`TRANSFER-BYTES` validates a non-negative length and returns `NUM:byte-len`.
+`READ`, `READ-EXACT` and `WRITE` refuse a span longer than `0x7FFFF000`, the
+most Linux moves in one transfer, and `SEND-SLICE` hands the OS at most that
+much of a longer span.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A listening socket and a connected stream are **different types**:
 `TCP4:listener` accepts, `TCP4:connection` carries bytes, and neither stands in
@@ -34,7 +37,11 @@ nominal conversion words are not validators.
 | `READABLE-WITHIN?` | Connection, deadline in milliseconds | `ready-result`, described below |
 | `READ` | Connection, writable byte span | `read-result`, described below |
 | `READ-EXACT` | Connection, writable byte span | `read-result`, described below |
+| `SEND-SLICE` | Connection, borrowed byte span | `slice-result`: `moved byte-len`, `empty` or `failed errno` |
 | `WRITE` | Connection, borrowed byte span | `status`: `ok` or `failed errno` |
+| `NODELAY!` | Connection, bool | `status`: `ok` or `failed errno` |
+| `UNREAD` | Connection | `queue-result`: `queued byte-len` or `failed errno` |
+| `UNSENT` | Connection | `queue-result`: `queued byte-len` or `failed errno` |
 | `SHUTDOWN` | Connection, direction | `status`: `ok` or `failed errno` |
 | `CLOSE` | Connection | `status`: `ok` or `failed errno` |
 | `CLOSE-LISTENER` | Listener | `status`: `ok` or `failed errno` |
@@ -42,11 +49,39 @@ nominal conversion words are not validators.
 | `LISTENER-FD` | Listener | `fd` |
 | `CONNECTION-FD` | Connection | `fd` |
 
-Byte spans are `ptr u8 NUM:byte-len`. Sockets are created blocking with
-close-on-exec set atomically, so `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT` and
-`WRITE` wait for the stream; `PENDING?` and `READABLE?` are the non-blocking
-questions to ask first, and their `-WITHIN?` forms wait a bounded time for the
-answer. Address zero binds every local IPv4 interface; port zero
+Byte spans are `ptr u8 NUM:byte-len`. Sockets are created with close-on-exec
+set atomically. `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT` and `WRITE` wait for
+the stream; `PENDING?` and `READABLE?` are the non-blocking questions to ask
+first, and their `-WITHIN?` forms wait a bounded time for the answer.
+
+Every connection this module makes is non-blocking before the caller has it:
+`ACCEPT`'s and `SOCKET`'s from the start, `CONNECT`'s once its blocking connect
+has answered. A listener stays blocking. No send or receive waits in the
+kernel: `READ` and `READ-EXACT` wait for data in poll(2) on the task's own
+thread, with no deadline, as a blocking receive would. `SEND-SLICE` sends once,
+waits at most `SEND-SLICE-MS` (100 ms) on the task's own thread for room, and
+sends once more, so a slice returns within `SEND-SLICE-MS` and two sends that
+never wait, whatever the peer does; `empty` says no byte found room. The bound
+covers the connections this module makes; `>CONNECTION` sets no flag, so a
+descriptor made elsewhere needs its owner to set `O_NONBLOCK`. `WRITE` loops
+over slices and pauses its task after every slice that leaves bytes to send,
+whether it moved some or none, so it still returns only when every byte is
+accepted, but a halt ends the task within one slice however slowly the peer
+reads. `NODELAY!` turns Nagle's algorithm off or on for a connection. The
+non-blocking path has not been run on Linux.
+
+`UNREAD` and `UNSENT` count a connection's two queues as the OS holds them,
+without moving a byte. `UNREAD` answers the bytes the peer has sent that this
+end has not read yet (`FIONREAD`); `UNSENT` answers the bytes this end has
+written that the connection still holds, unsent or sent and not yet
+acknowledged (Darwin's `SO_NWRITE`, Linux's `SIOCOUTQ`). On Linux a FIN that
+`SHUTDOWN` sent counts as one byte until it is acknowledged, because `SIOCOUTQ`
+subtracts sequence numbers. A byte leaves the writer's `UNSENT` only once the
+peer has it, so while the peer reads nothing the writer's `UNSENT` and the
+peer's `UNREAD` together hold every byte written, counted twice at most until
+its acknowledgement arrives. Neither count has been run on Linux.
+
+Address zero binds every local IPv4 interface; port zero
 requests an ephemeral port, obtainable with `LOCAL`. A failed `BIND` or
 `CONNECT` closes the newly created socket and retains the original failure's
 errno, so a `failed` result never leaks a descriptor.
@@ -129,11 +164,13 @@ Handle lifetime is a caller obligation, not a linear ownership proof.
 
 ## Foreign boundary and errors
 
-The API and control flow are checked Habu. Ten exact libc schemas reach the
-bounded FFI as `FUNCTION:` declarations, each stating the C function's own
-effect: `socket`, `bind`, `listen`, `accept4`, `connect`, `getsockname`, `recv`,
-`send`, `shutdown` and `close`; errno is package FFI's binding, shared by
-every consumer. Argument preparation and result normalization are checked
+The API and control flow are checked Habu. Fourteen exact libc schemas reach
+the bounded FFI as `FUNCTION:` declarations, each stating the C function's own
+effect: `socket`, `bind`, `listen`, `accept4` and Darwin's `accept`, `connect`,
+`getsockname`, `recv`, `send`, `setsockopt`, `getsockopt`, `ioctl`,
+`shutdown` and `close`; errno is package FFI's binding, shared by every
+consumer. `ioctl` is declared variadic past its request, which Darwin passes
+on the stack. Argument preparation and result normalization are checked
 helpers, and the module carries no `TRUSTED:` body at all. Writable extents are
 explicit. C `int` returns are
 normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
@@ -179,7 +216,7 @@ bin/hb --load lib/net/tcp4-test.f
 The suite holds both peers in one process: the main task binds an ephemeral
 loopback port, listens, starts a listener task that blocks in `ACCEPT`, then
 connects to it. It starts the AIO loop before its first case and stops it after
-its last. Its 115 assertions cover the echo round trip through `WRITE`,
+its last. Its assertions cover the echo round trip through `WRITE`,
 `READ-EXACT` and the peer endpoint `ACCEPT` reports, a server half-close read
 back as the end of stream, an idle listener and an idle stream answering `idle`
 before a waiting connection and a sent request answer `ready`, a partial `READ`,
@@ -204,6 +241,23 @@ the suite's first task — the base, the parked task, and the loop's one — so 
 wait costs no thread of its own, and the peer's later write is what answers that
 parked wait. A `READABLE-WITHIN?` with the loop stopped throws `E-AIO-STATE`
 rather than falling back to `poll(2)`.
+
+The non-blocking connections keep the blocking contracts: a `READ` waits out a
+peer that writes after 50 ms and then reads its half-close as the end of
+stream, and `WRITE` to a peer that stopped reading ends at a halt between
+slices, as does one to a reader that takes bytes every 10 ms, within
+`SEND-SLICE-MS` and the suite's 1000 ms slack of the halt. A slice to a peer
+that reads as it comes moves exactly the bytes that arrive; once both loopback
+buffers are full a slice answers `empty` after its wait; a reset connection's
+slices fail with `EPIPE` or `ECONNRESET`, and the full pipe's two counts, the
+writer's `UNSENT` and the peer's `UNREAD`, add up to every byte the slices
+moved, part of it still unsent. The peer's `UNREAD` is exactly the bytes
+waiting for it, less what a read takes; the writer's `UNSENT` empties once the
+peer acknowledges them; both answer `EBADF` on a closed connection. Against a
+reader that takes 16 KiB every 10 ms and answers each read, so the room it makes
+is acknowledged at once, each of up to eight slices of a 16 MiB flood, each
+handed at least 1 MiB, returns within `SEND-SLICE-MS` plus the suite's 1000 ms
+scheduler slack; the line `sipped slices, ms:` prints their durations.
 
 `E-PLATFORM`, `E-FFI-DLSYM` and `E-RESULT` have no case here: each needs a host
 this build does not run on, a process without libc, or a kernel returning a

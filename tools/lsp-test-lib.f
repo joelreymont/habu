@@ -102,14 +102,18 @@
 \ - one document's words seen by another's check ................ two-in-turn
 \ - a check that ended without a verdict publishing, or not saying how it
 \   ended ................................................. incomplete, held
-\ - a packet naming no file published, or not written to stderr
-\   .................................................... packet-without-file
+\ - a packet placed at the name of the definition it refuses, a public word
+\   whose private twin moves other cells, not published at that name
+\   ......................................................... shadowed-arity
+\ - a warning, which carries no verdict, published with a severity or not at
+\   the name of the definition whose effect it did not record .. not-recorded
 \
-\ Not proven here: a packet line that is not JSON, or that names its file by a
-\ relative path, goes to stderr like a packet naming none, but the checker
-\ writes neither - the verifier names every file by the canonical absolute
-\ path the closure gave it - so no conversation can make one. Nor can one make
-\ a check outlast LSP-CHECK's deadline or overflow the verifier's capture.
+\ Not proven here: a packet line that is not JSON, that names no file, or that
+\ names its file by a relative path, goes to stderr, but the checker writes
+\ none of them - every packet names its file, and the verifier names every
+\ file by the canonical absolute path the closure gave it - so no conversation
+\ can make one. Nor can one make a check outlast LSP-CHECK's deadline or
+\ overflow the verifier's capture.
 
 require lib/errors.f
 require lib/string.f
@@ -1173,20 +1177,39 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    v 0 >= if s\" \"version\":" EXP+ v INT$ EXP+ s" ," EXP+ then
    s\" \"diagnostics\":[" EXP+ ;
 
-\ The diagnostic the list holds next: the check's first packet, from line L1,
-\ character C1 to line L2, character C2, with this severity and code.
-: DIAG+ ( n n n n n ptr u8 n -- )
-   {: l1:n c1:n l2:n c2:n sev:n c:ptr cu:n :}
-   PACKET$ {: a:ptr u:n :}
+\ The diagnostic the list holds next, begun: its range, from line L1,
+\ character C1 to line L2, character C2.
+: RANGE+ ( n n n n -- )
+   {: l1:n c1:n l2:n c2:n :}
    EXP$ s" [" ENDS-WITH? 0= if s" ," EXP+ then
    s\" {\"range\":{\"start\":{\"line\":" EXP+ l1 INT$ EXP+
    s\" ,\"character\":" EXP+ c1 INT$ EXP+
    s\" },\"end\":{\"line\":" EXP+ l2 INT$ EXP+
    s\" ,\"character\":" EXP+ c2 INT$ EXP+
-   s\" }},\"severity\":" EXP+ sev INT$ EXP+
+   s\" }}" EXP+ ;
+
+\ The diagnostic ended: this code, then the check's first packet's message and
+\ data.
+: CODED+ ( ptr u8 n -- )
+   {: c:ptr cu:n :}
+   PACKET$ {: a:ptr u:n :}
    s\" ,\"code\":\"" EXP+ c cu EXP+
    s\" \",\"source\":\"habu\",\"message\":" EXP+ a u MESSAGE+
    s\" ,\"data\":" EXP+ a u EXP+ s" }" EXP+ ;
+
+\ The diagnostic the list holds next: the check's first packet, from line L1,
+\ character C1 to line L2, character C2, with this severity and code.
+: DIAG+ ( n n n n n ptr u8 n -- )
+   {: l1:n c1:n l2:n c2:n sev:n c:ptr cu:n :}
+   l1 c1 l2 c2 RANGE+
+   s\" ,\"severity\":" EXP+ sev INT$ EXP+
+   c cu CODED+ ;
+
+\ DIAG+ for a packet with no verdict, whose diagnostic has no severity.
+: UNRATED+ ( n n n n ptr u8 n -- )
+   {: l1:n c1:n l2:n c2:n c:ptr cu:n :}
+   l1 c1 l2 c2 RANGE+
+   c cu CODED+ ;
 
 \ The next frame is the publish expected.
 : PUBLISHES ( -- )
@@ -1489,20 +1512,47 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    HELD-PATH s" not checked: the verifier's image holds it" SAID
    LOGGED ;
 
-\ The checker's packet about a public word a private one shadows names no
-\ file: it goes to stderr, and A's list is empty.
+\ The public W moves other cells than the private W, whose tail it shares: the
+\ packet is at the public definition's name.
 : SHADOWS ( -- ptr u8 n )
    s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n" ;
 
-: NO-FILE-TURNS ( -- )
+: SHADOWED-TURNS ( -- )
    INITIALIZE
    A-PATH SHADOWS 1 OPENS
    SAY
    HEAR CAPABILITIES
    SHADOWS A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   s" lsp: " WANT+ PACKET$ WANT+ s\" \n" WANT+
-   A-PATH 1 EXPECT PUBLISHES ;
+   A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+ PUBLISHES ;
+
+\ LSPT-WIDE's inferred effect has more type variables than a record holds: the
+\ check verifies it and warns at its name that the effect is not recorded.
+: WIDENS ( -- ptr u8 n )
+   s\" defer LSPT-V14 ( -- a b c d e g h i j k l m o p )\n: LSPT-WIDE LSPT-V14 LSPT-V14 ;\n" ;
+
+: NOT-RECORDED-TURNS ( -- )
+   INITIALIZE
+   A-PATH WIDENS 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   WIDENS A-PATH CHECKS
+   A-PATH s" verified" COMPLETED
+   A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
+
+\ U's bare LSPT-W resolves in both used packages: E-USING-AMBIGUOUS, at the
+\ token on line 10.
+: TWO-USED ( -- ptr u8 n )
+   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n;using\n;using\n" ;
+
+: TWO-USED-TURNS ( -- )
+   INITIALIZE
+   A-PATH TWO-USED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TWO-USED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+ PUBLISHES ;
 
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: F-OPENED ;] TALK
@@ -1520,7 +1570,9 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" two-in-turn" [: TWO-TURNS ;] TALK
    s" incomplete" [: INCOMPLETE-TURNS ;] TALK
    s" held" [: HELD-TURNS ;] TALK
-   s" packet-without-file" [: NO-FILE-TURNS ;] TALK ;
+   s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
+   s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
+   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK ;
 
 public
 

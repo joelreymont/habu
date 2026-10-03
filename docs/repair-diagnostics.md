@@ -15,7 +15,7 @@ lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
-span, an input, a refused record, a warning, or otherwise a definition.
+span, an input, a refused record, a using refusal, a warning, or otherwise a definition.
 `tools/diag-code.f` holds a row for every code whose record is not a
 definition's: its shape, the repair classes it names and the field a refused
 record adds. That check and `tools/repair-packet.f` both read it.
@@ -180,16 +180,56 @@ from `tools/check.f`, as for a refusal; a run that ends on any other throw
 exits with the load's status. Only `--all-errors` renders
 `E-BAD-STORED-SIGNATURE`, counting it as a refusal (exit 70); the default mode
 stops there with exit 76 and the line
-`<token>: <signature>: checker: bad stored signature`. The two shadow refusals
-throw out of their definition (7141 and 7145), so the `E-STATEMENT-THROW` span
-of the statement that threw follows the record and places it; the run exits 70.
+`<token>: <signature>: checker: bad stored signature`. The named definition and using refusals below place their own token when the
+checked text locates it in the file; no statement-throw packet follows them.
 
 `W-EFFECT-NOT-RECORDED` is a warning, outside this contract: a definition with
 no declared signature certified, but its inferred effect has more than 23 type
 variables or binders, or a type the checker does not model, so no effect is
 recorded for it and a later call to it is refused as undefined. The definition
 loads and the run's status stands. The object carries `schema_version`, `code`,
-`word`, `file` and `reason`, and no `verdict`, `repair_class` or `suggestion`.
+`word`, `file`, optional source positions and `reason`, and no `verdict`,
+`repair_class` or `suggestion`.
+
+Two packets name a definition, not a token of its body, and are placed at the
+definition's name as written: where the checked text locates in the labeled
+file, `line`, `column`, `byte_start` and `byte_end` follow `file`, with the
+meanings above. Elsewhere they carry `file` alone, since a definition the
+engine's own load captured keeps no source address for its name and one built
+by `evaluate` or generated has no bytes in the file.
+
+- `E-SHADOWED-ARITY`, repair class `match_shadowed_private_effect`, `verdict`
+  `rejected`: a package's public definition moves other cells than the private
+  word of that package whose tail it shares (forth.md **Packages**). It
+  carries `token`, the tail as the checker folds it, `package`, `file` and
+  `suggestion`, and the load stops there, rc 67.
+- `W-EFFECT-NOT-RECORDED`, with no `repair_class` or `verdict`: a definition
+  without a declared effect certified, but its inferred effect cannot be
+  recorded, so a later caller does not find it. It carries `word`, the name as
+  the checker folds it, `file` and `reason`, and the check goes on.
+  `tools/check.f` writes it once in every mode, from its check before the run:
+  the run loads what that check checked and writes no warning (`WARN-DIAGS`,
+  `src/core/render.f`), so a definition only the run builds, with `evaluate`,
+  gets none.
+
+The checker refuses a bare token in a definition that resolves in a used
+package and somewhere else as well, at the token, with a using object. Each code
+names its repair class: `E-USING-SHADOW-GLOBAL` / `disambiguate_using_shadow`
+is a token a global and a used package's public both export, and
+`E-USING-AMBIGUOUS` / `disambiguate_using_ambiguous` one the publics of more
+than one used package export. The object carries `schema_version`, `code`,
+`repair_class`, `verdict` `rejected`, `token` as written, `file`, the token's
+`line`, `column`, `byte_start` and `byte_end` when it locates in the file,
+`used_packages` and `suggestion`, and no `throw_code` or definition-only field.
+`used_packages` names each used package the token resolves in, folded, once
+each, in the order `using` searches them: one for the shadow, two or more for
+the ambiguity. Under `--all-errors` without `--json-errors` it is a line that
+begins with the code and names the token and each candidate, `PKG:TOK` for a
+package's. A refused definition ends the check: `tools/check.f` exits 67 as
+the load's uncaught throw does, and 70 under `--verify-only`; under
+`--all-errors` the refusal is the report, not an `E-STATEMENT-THROW` record.
+The engine refuses an ambiguous use at top level, and under `bin/hb --load` in
+a definition too, before the checker (`docs/forth.md`, Packages).
 
 ## Checking Without Running
 
@@ -293,7 +333,7 @@ They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
 from the first refusal, in the shape that refusal's record has, and counts only
 refusals: a warning has no packet. Schema 1 has definition, declaration,
-storage, span, input and refused-record packet shapes.
+storage, span, input, refused-record and using packet shapes.
 
 Definition packet fields:
 
@@ -418,6 +458,28 @@ place:
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Fix the statement that names this token so it loads. Output only corrected Habu code.` |
 
+Using packets carry a using record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | The bare token as written. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | with a place | One-based source line. |
+| `column` | integer | with a place | One-based source column. |
+| `byte_start` | integer | with a place | Token start byte. |
+| `byte_end` | integer | with a place | Token end byte. |
+| `used_packages` | array of strings | required | Each used package the token resolves in. |
+| `code` | string | required | `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. |
+| `repair_class` | string | required | `disambiguate_using_shadow` or `disambiguate_using_ambiguous`, the one the code names. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code.` |
+
+The packet copies the record's four place fields when it has them and none when
+it has none.
+
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
 top-level array whose items each carry the fields above.
@@ -499,9 +561,12 @@ Current checker classes:
   that defines the word.
 - `use_storage_definer`: a checker storage registrar was called from source,
   outside the engine's verifier window; define the storage with its definer.
-- `disambiguate_using_shadow`: a bare name in a definition resolves to a global
-  while a package in use exports the same tail; qualify the package word as
-  `PKG:WORD`, or rename the collision.
+- `disambiguate_using_shadow`: a bare token resolves to a global while a used
+  package's public exports it too; qualify the package word as `PKG:WORD`, or
+  rename the collision to reach the global.
+- `disambiguate_using_ambiguous`: a bare token resolves in the publics of more
+  than one used package; qualify the one meant as `PKG:WORD`, or rename the
+  collision.
 - `match_shadowed_private_effect`: a package public moves another number of
   cells than the private word of its package that owns the same tail; give the
   public definition the private word's effect, or rename one of the two.
@@ -546,6 +611,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
 | `disambiguate_using_shadow` | `A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier.` |
+| `disambiguate_using_ambiguous` | `Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision.` |
 | `match_shadowed_private_effect` | `A private word of this package owns the same tail, and a bare tail binds the private word first, so the native compiler reads this definition's arity from it. Give the public definition the private word's effect, or rename one of the two.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
