@@ -1492,8 +1492,8 @@ the rule.
   existing hook instead (`SHADOW-DIAG-XT ( n -- )` carries two diagnostics), or
   place the defer after `: TRUST`.
 - **A pre-hook word needs an axiom row in a checked body on a from-source
-  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP` and
-  `E-PATH-RANGE`. A constant without a row can be read at top level into a
+  engine.** `src/core/cell-effects.f` supplies rows for `PATH-CAP`,
+  `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS`. A constant without a row can be read at top level into a
   file-owned constant (`REG-PROT-CAP constant MY-CAP`); `test/cold-naming-test.f`
   checks the refusal and the accepted forms.
 - **`MATCH` and the other compile keywords name words, not constants**, even
