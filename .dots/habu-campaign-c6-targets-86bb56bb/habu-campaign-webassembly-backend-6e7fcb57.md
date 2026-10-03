@@ -8,7 +8,6 @@ blocks:
   - habu-move-tender-s-b5dbc521
   - habu-add-rfc-6455-8aa83bda
   - habu-run-c-callbacks-2bd3c307
-  - habu-load-authored-src-4ef714a3
   - habu-move-tender-s-15e51af1
 ---
 
