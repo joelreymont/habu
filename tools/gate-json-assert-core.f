@@ -626,6 +626,7 @@ variable GJA-DIRECT
       declaration OF root GJA-REPAIR-DECL ENDOF
       storage OF root GJA-REPAIR-STORAGE ENDOF
       source-span OF root GJA-REPAIR-SPAN ENDOF
+      deferral OF s" a deferral has no repair packet" GJA-FAIL ENDOF
       input OF root GJA-REPAIR-INPUT ENDOF
       record OF root GJA-REPAIR-RECORD ENDOF
       warning OF s" a warning has no repair packet" GJA-FAIL ENDOF
@@ -700,6 +701,26 @@ variable GJA-DIRECT
       s" span verdict is not rejected" GJA-FAIL
    THEN ;
 
+\ A record's repair class is one its code names, with that class's suggestion.
+: GJA-DIAG-CLASS ( n -- ) {: root:n :}
+   root s" repair_class" GJA-REQ JSON-STRING$ {: class:ptr classu:n :}
+   root GJA-CODE$ class classu DIAG-CODE:ADMITS? 0= IF
+      s" repair class is not one its code names" GJA-FAIL
+   THEN
+   root class classu GJA-DIAG-CLASS-SUGGEST ;
+
+\ A deferral is no refusal: the source pre-pass left the stretch that opens at
+\ its token to the run. It is placed as a span is, under the verdict deferred
+\ and the repair class its code names.
+: GJA-DIAG-DEFERRAL ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-SPAN-FIELDS
+   root s" throw_code" GJA-NO-FIELD
+   root s" verdict" GJA-REQ s" deferred" GJA-STR= 0= IF
+      s" deferral verdict is not deferred" GJA-FAIL
+   THEN
+   root GJA-DIAG-CLASS ;
+
 : GJA-DIAG-INPUT ( n -- ) {: root:n :}
    root GJA-DIAG-HEAD
    root GJA-INPUT-FIELDS
@@ -737,6 +758,7 @@ variable GJA-DIRECT
       declaration OF root GJA-DIAG-DECL ENDOF
       storage OF root GJA-DIAG-STORAGE ENDOF
       source-span OF root GJA-DIAG-SPAN ENDOF
+      deferral OF root GJA-DIAG-DEFERRAL ENDOF
       input OF root GJA-DIAG-INPUT ENDOF
       record OF root GJA-DIAG-RECORD ENDOF
       warning OF root GJA-DIAG-WARNING ENDOF
@@ -749,11 +771,7 @@ variable GJA-DIRECT
    root GJA-DIAG-SHAPE
    root GJA-CODE$ DIAG-CODE:REFUSAL? 0= IF exit THEN
    root GJA-DIAG-VERDICT
-   root s" repair_class" GJA-REQ JSON-STRING$ {: class:ptr classu:n :}
-   root GJA-CODE$ class classu DIAG-CODE:ADMITS? 0= IF
-      s" repair class is not one its code names" GJA-FAIL
-   THEN
-   root class classu GJA-DIAG-CLASS-SUGGEST ;
+   root GJA-DIAG-CLASS ;
 
 : GJA-DIAG-CONTRACT ( ptr u8 n -- )
    GJA-READ GJA-SPLIT-LINES

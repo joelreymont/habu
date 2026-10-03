@@ -35,6 +35,29 @@
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
 \   the child runs on the working directory's bin/hb, or is that
 \   directory's tools/check-verify-child.f                                check-test: file-load-context
+\   a top-level token the load refuses as unresolvable verifies, is
+\   refused elsewhere than where it was read, or stops the scan           top-undefined
+\   an ambiguous or shadowed name at top level or after ' verifies       top-ambiguous, top-shadow, top-tick
+\   a name resolves before the statement that defines it                  top-order
+\   a number out of range, or a token only shaped like one, verifies      top-number
+\   a compile-only keyword resolves at top level                          top-keyword
+\   a qualified name the load refuses verifies, or is refused otherwise
+\   than a body refuses it                                                top-qualified
+\   a parsing word's operand is resolved, or the stretch after it is
+\   resolved, passed over in silence or answered verified                 top-deferred
+\   the tokens after a word that renders source are deferred, though it
+\   reads none of them, or a name its text may define, bare or
+\   qualified, is refused                                                 top-renders
+\   the operand or product of a word that defines a name it reads when it
+\   runs - its body calls create, or calls such a word - is refused       top-create
+\   a TRUSTED: word is taken to do other than the calls its body binds do,
+\   or than anything when one of them binds to nothing                    top-trusted
+\   kernel: is not taken as : is, or its refused body ends the scan       top-kernel
+\   an open package's own qualified name the engine finds in the global
+\   wordlist is refused, or that fallback reaches past the package        top-package-tail
+\   a name a deferred word may define is refused after its stretch        top-defer-word
+\   a deferred word followed only by comments is reported deferred        top-defer-comment
+\   a name the load accepts at top level is refused                       top-accepted
 \
 \ `measure` prints the time of one check of a one-definition subject and of
 \ tools/check-core.f, whose closure is over thirty files.
@@ -129,7 +152,7 @@ variable CLI-OUT-U
    0 FILE-BYTES size ;
 
 
-\ 0 verified, 1 refused, 2 engine-provided, 3 held, 4 incomplete.
+\ 0 verified, 1 refused, 2 engine-provided, 3 held, 4 incomplete, 5 deferred.
 : KIND ( CHECK:verdict -- n )
    MATCH CHECK:verdict
       verified OF 0 ENDOF
@@ -137,6 +160,7 @@ variable CLI-OUT-U
       engine-provided OF 2 ENDOF
       held OF 3 ENDOF
       incomplete OF {: status :} 4 ENDOF
+      deferred OF 5 ENDOF
    ;MATCH ;
 
 
@@ -161,6 +185,7 @@ variable CLI-OUT-U
       refused OF -3 ENDOF
       engine-provided OF -3 ENDOF
       held OF -3 ENDOF
+      deferred OF -3 ENDOF
    ;MATCH ;
 
 
@@ -783,6 +808,358 @@ variable CLI-OUT-U
    s" cli-duplicate-goes-on: and stops there" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
 
 
+\ ---- top-level tokens -------------------------------------------------------
+
+\ Each subject below is checked as top.f. What `bin/hb --load` does with the
+\ same text is in the comment above each case.
+
+\ How many packets LINES holds.
+: PACKETS ( ptr u8 n -- n )
+   JSONL-START
+   0 begin
+      JSONL-NEXT-OBJECT 0 >=
+   while
+      1+
+   repeat ;
+
+
+\ The packet at INDEX in LINES, counted from 0, or -1.
+: NTH-PACKET ( ptr u8 n n -- n )
+   {: lines:ptr linesu:n idx:n :}
+   lines linesu JSONL-START
+   idx 0 ?do JSONL-NEXT-OBJECT drop loop
+   JSONL-NEXT-OBJECT ;
+
+
+: TOP-CHECK ( ptr u8 n -- CHECK:verdict )
+   s" top.f" GUARD-MS CHECK-AS ;
+
+
+\ The packet for TOKEN: a record of CODE in the subject on LINE at COLUMN,
+\ with no definition's name. LABEL stays set for the caller's next assertion.
+: TOP-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: label:ptr labelu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   label labelu T-LABEL p s" code" STRING$ code codeu T$=
+   label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
+   label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
+   label labelu T-LABEL p s" column" NUMBER$ col colu T$=
+   label labelu T-LABEL p s" word" J-STR VALUE 0 < TTRUE
+   label labelu T-LABEL
+   p ;
+
+
+\ A refused check whose only packet is located at TOKEN.
+: REFUSED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
+   v 1 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   label labelu tok toku code codeu line lineu col colu TOP-PACKET
+   s" verdict" STRING$ s" rejected" T$= ;
+
+
+\ Loaded: E-UNDEFINED: NOSUCHWORD, exit 70. The scan goes on past the token:
+\ a refused definition after it is a second packet, in source order.
+: TOP-UNDEFINED ( -- )
+   s\" 1 NOSUCHWORD drop\n: CVT-AFTER ( -- n ) 1 ;\n" TOP-CHECK
+   s" top-undefined" s" NOSUCHWORD" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 3" REFUSED-AT
+   CHECK:VERIFY-OUT$ s" token" s" NOSUCHWORD" PACKET {: p:n :}
+   s" top-undefined: its first byte" T-LABEL p s" byte_start" NUMBER$ s" 2" T$=
+   s" top-undefined: past its last" T-LABEL p s" byte_end" NUMBER$ s" 12" T$=
+   s\" 1 NOSUCHWORD drop\n: CVT-SHORT ( -- n n ) 8 ;\n" TOP-CHECK
+   1 s" top-undefined: then a refused definition" EXPECT-KIND
+   s" top-undefined: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-undefined: the token's first" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ s" NOSUCHWORD" T$=
+   s" top-undefined: the definition's second" T-LABEL
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$= ;
+
+
+\ A using refusal refuses the token as it refuses a body's definition, and the
+\ scan goes on past it, as past a refused definition: a refused definition after
+\ it is a second packet, in source order, and no throw stopped the scan.
+: GOES-ON ( CHECK:verdict ptr u8 n ptr u8 n -- )
+   {: v label:ptr labelu:n tok:ptr toku:n :}
+   v 1 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ tok toku T$=
+   label labelu T-LABEL CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$=
+   label labelu T-LABEL CHECK:VERIFY-LOG$ s" verification stopped by throw" CONTAINS? TFALSE ;
+
+
+\ Two used packages export AW. Loaded: exit 94.
+: TOP-AMBIGUOUS ( -- )
+   s\" package CVT-UA public : AW ( -- n ) 1 ; ;package\npackage CVT-UC public : AW ( -- n ) 2 ; ;package\nusing CVT-UA using CVT-UC AW drop ;using ;using\n" TOP-CHECK
+   s" top-ambiguous" s" AW" s" E-USING-AMBIGUOUS" s" 3" s" 27" REFUSED-AT
+   s\" package CVT-UA public : AW ( -- n ) 1 ; ;package\npackage CVT-UC public : AW ( -- n ) 2 ; ;package\nusing CVT-UA using CVT-UC AW drop ;using ;using\n: CVT-SHORT ( -- n n ) 8 ;\n" TOP-CHECK
+   s" top-ambiguous: goes on" s" AW" GOES-ON ;
+
+
+\ A global CVT-MW and a used public of that name. Loaded: exit 105.
+: SHADOW$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET
+   s\" : CVT-MW ( -- n ) 1 ;\npackage CVT-USG public : CVT-MW ( -- n ) 2 ; ;package\nusing CVT-USG " SB-APPEND
+   SB-APPEND
+   s\" CVT-MW drop ;using\n" SB-APPEND
+   SB$ ;
+
+
+: TOP-SHADOW ( -- )
+   s" " SHADOW$ TOP-CHECK
+   s" top-shadow" s" CVT-MW" s" E-USING-SHADOW-GLOBAL" s" 3" s" 15" REFUSED-AT
+   s\" : CVT-MW ( -- n ) 1 ;\npackage CVT-USG public : CVT-MW ( -- n ) 2 ; ;package\nusing CVT-USG CVT-MW drop ;using\n: CVT-SHORT ( -- n n ) 8 ;\n" TOP-CHECK
+   s" top-shadow: goes on" s" CVT-MW" GOES-ON ;
+
+
+\ Loaded: E-UNDEFINED: NOSUCH, exit 70; the shadowed name, exit 105.
+: TOP-TICK ( -- )
+   s\" ' NOSUCH drop\n" TOP-CHECK
+   s" top-tick: undefined" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 3" REFUSED-AT
+   s" ' " SHADOW$ TOP-CHECK
+   s" top-tick: shadowed" s" CVT-MW" s" E-USING-SHADOW-GLOBAL" s" 3" s" 17" REFUSED-AT ;
+
+
+\ Loaded: E-UNDEFINED: CVT-FWD, exit 70.
+: TOP-ORDER ( -- )
+   s\" CVT-FWD drop\n: CVT-FWD ( -- n ) 1 ;\n" TOP-CHECK
+   s" top-order" s" CVT-FWD" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT ;
+
+
+\ Loaded: E-UNDEFINED for each, exit 70: the engine's reader refuses a decimal
+\ out of range, and the other two are no number.
+: TOP-NUMBER ( -- )
+   s\" 99999999999999999999 drop\n" TOP-CHECK
+   s" top-number: out of range" s" 99999999999999999999" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
+   s\" 1. drop\n" TOP-CHECK
+   s" top-number: a point and no digits" s" 1." s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
+   s\" $GG drop\n" TOP-CHECK
+   s" top-number: no hexadecimal digit" s" $GG" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT ;
+
+
+\ Loaded: E-UNDEFINED: if, exit 70.
+: TOP-KEYWORD ( -- )
+   s\" if\n" TOP-CHECK
+   s" top-keyword" s" if" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT ;
+
+
+\ Loaded: E-UNDEFINED for each, exit 70. A body refuses the malformed name, two
+\ qualifiers, as E-BAD-QUALIFIED, and the top level as E-BAD-QUALIFIED-TOP-LEVEL.
+: TOP-QUALIFIED ( -- )
+   s\" CVT-A:B:C drop\n" TOP-CHECK
+   s" top-qualified: malformed" s" CVT-A:B:C" s" E-BAD-QUALIFIED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
+   s\" CVT-NOPKG:CVT-W drop\n" TOP-CHECK
+   s" top-qualified: no such package" s" CVT-NOPKG:CVT-W" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
+   s\" package CVT-QP public : CVT-QW ( -- n ) 1 ; ;package\nCVT-QP:CVT-NOSUCH drop\n" TOP-CHECK
+   s" top-qualified: no such public" s" CVT-QP:CVT-NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" REFUSED-AT ;
+
+
+\ The tokens a word that parses its own input reads cannot be known without
+\ running it. Loaded, CVT-GRAB takes NOSUCH, and NOSUCH2 is E-UNDEFINED, exit
+\ 70; alone, the first two lines load. The stretch from CVT-GRAB to the next
+\ definition is deferred to the run where it starts, and a token after that
+\ definition is resolved again.
+: TOP-DEFERRED ( -- )
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
+   1 s" top-deferred: refused after the stretch" EXPECT-KIND
+   s" top-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-deferred: nothing names the operand" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET 0 < TTRUE
+   s" top-deferred: the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s" top-deferred: past the stretch" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 4" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" rejected" T$=
+   s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n" TOP-CHECK
+   5 s" top-deferred: alone, deferred" EXPECT-KIND
+   s" top-deferred: alone, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-deferred: alone, the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ Bytes the load accepts verify, with no packet.
+: LOADS-CLEAN ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n label:ptr labelu:n :}
+   src srcu TOP-CHECK 0 label labelu EXPECT-KIND
+   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+
+
+\ A word that renders source reads only the text it renders: loaded, `: R ( -- )
+\ s" char" evaluate-closed ; R X` stops at the rendered `char`, exit 74, as it
+\ does with no X. So the tokens after `evaluate` resolve as any others do, and
+\ only a name the text may define is the run's: its stretch opens at CVT-EV.
+\ The text may define a package too, so a qualified name is the run's as a bare
+\ one is, whether `evaluate` renders it or a word that reaches the loader under
+\ `catch` (test/using-test.f). Each subject loads, exit 0.
+: TOP-RENDERS ( -- )
+   s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate 1 drop\n" s" top-renders: tokens after it" LOADS-CLEAN
+   s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate CVT-EV drop\n" TOP-CHECK
+   5 s" top-renders: a product, deferred" EXPECT-KIND
+   s" top-renders: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-renders: at the product" s" CVT-EV" s" W-CHECK-DEFERRED" s" 1" s" 36" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" s\" package CVT-RP public : CVT-RW ( -- n ) 1 ; ;package\" evaluate\nCVT-RP:CVT-RW drop\n" TOP-CHECK
+   5 s" top-renders: a qualified product, deferred" EXPECT-KIND
+   s" top-renders: qualified, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-renders: at the qualified product" s" CVT-RP:CVT-RW" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" require lib/prelude.f\nTYPED-VARIABLE CVT-UA ptr u8   variable CVT-UU\n: CVT-UGO ( -- ) CVT-UA @ CVT-UU @ INCLUDE-EVALUATE ;\n: CVT-UCATCH ( ptr u8 n -- n ) CVT-UU ! CVT-UA ! [: CVT-UGO ;] catch ;\ns\" package CVT-UQ public : CVT-UR ( -- n ) 42 ; ;package\" CVT-UCATCH drop\nCVT-UQ:CVT-UR drop\n"
+   TOP-CHECK
+   5 s" top-renders: under catch, deferred" EXPECT-KIND
+   s" top-renders: under catch, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-renders: under catch, at the product" s" CVT-UQ:CVT-UR" s" W-CHECK-DEFERRED" s" 6" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A deferred stretch at TOKEN on LINE at COLUMN.
+: DEFERRED-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
+   label labelu tok toku s" W-CHECK-DEFERRED" line lineu col colu TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A word whose body calls `create` reads a name when it runs and defines it, and
+\ so does a word that calls such a word, though its own check is the run's
+\ (CVT-MK, whose CVT-RA:CVT-RSEVEN rendered text defines). Loaded, each subject
+\ makes CVT-Q or CVT-Y, exit 0. The stretch opens at the word, and a use of its
+\ product after the stretch is the run's too.
+: TOP-CREATE ( -- )
+   s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
+   5 s" top-create: deferred" EXPECT-KIND
+   s" top-create: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-create: the stretch" s" CVT-MKS" s" 2" s" 3" DEFERRED-AT
+   s" top-create: its product after it" s" CVT-Q" s" 5" s" 1" DEFERRED-AT
+   s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
+   TOP-CHECK
+   5 s" top-create: through a word the run checks" EXPECT-KIND
+   s" top-create: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
+
+
+\ A word a top-level `create` makes pushes its address when it runs: it reads
+\ and defines nothing, though `create` does both, and neither does a word whose
+\ calls reach only such words (lib/test.f T= reaches lib/string.f's
+\ STR-MIN-I64$ through FMT:.INT). Both come from the engine. Loaded, NOSUCH is
+\ E-UNDEFINED, exit 70.
+: TOP-DATA-WORD ( -- )
+   s\" require lib/string.f\nSTR-MAX-I64$ drop NOSUCH\n" TOP-CHECK
+   s" top-data-word: the word" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 19" REFUSED-AT
+   s\" require lib/test.f\n1 1 T= NOSUCH\n" TOP-CHECK
+   s" top-data-word: a word that calls it" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 8" REFUSED-AT ;
+
+
+\ A TRUSTED: body is asserted, never checked, but what it may do when it runs
+\ is what the calls it binds may do, as for a checked body. Loaded, CVT-EVW's
+\ text defines CVT-EVY, CVT-TP takes NOSUCH, and CVT-TU runs, exit 0. CVT-HID
+\ comes out of rendered text, so the call to it binds to nothing the checker
+\ holds and may do anything. CVT-TB's calls do neither: loaded, NOSUCH is
+\ E-UNDEFINED, exit 70.
+: TOP-TRUSTED ( -- )
+   s\" TRUSTED: CVT-EVW ( ptr u8 n -- ) evaluate ;\ns\" : CVT-EVY ( -- n ) 2 ;\" CVT-EVW\nCVT-EVY drop\n" TOP-CHECK
+   5 s" top-trusted: renders" EXPECT-KIND
+   s" top-trusted: renders, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: its product" s" CVT-EVY" s" 3" s" 1" DEFERRED-AT
+   s\" TRUSTED: CVT-TP ( -- ) parse-name 2drop ;\nCVT-TP NOSUCH\n" TOP-CHECK
+   5 s" top-trusted: parses" EXPECT-KIND
+   s" top-trusted: parses, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: its stretch" s" CVT-TP" s" 2" s" 1" DEFERRED-AT
+   s\" s\" : CVT-HID ( -- ) ;\" evaluate\nTRUSTED: CVT-TU ( -- ) CVT-HID ;\nCVT-TU 1 drop\n" TOP-CHECK
+   5 s" top-trusted: binds to nothing" EXPECT-KIND
+   s" top-trusted: binds to nothing, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: that stretch" s" CVT-TU" s" 3" s" 1" DEFERRED-AT
+   s\" TRUSTED: CVT-TB ( -- n ) 1 dup drop ;\nCVT-TB NOSUCH\n" TOP-CHECK
+   s" top-trusted: does neither" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 8" REFUSED-AT ;
+
+
+\ `kernel:` is the engine's synonym for `:`. Loaded, the first subject runs,
+\ exit 0. The second's body is refused, exit 70; checked, the scan goes on past
+\ it as past a `:` definition's, to refuse NOSUCH.
+: TOP-KERNEL ( -- )
+   s\" KERNEL: CVT-TKI ( n -- n ) 1+ ;\n8 CVT-TKI drop\n" s" top-kernel: a definition" LOADS-CLEAN
+   s\" KERNEL: CVT-KB ( -- n ) ;\nNOSUCH drop\n" TOP-CHECK
+   1 s" top-kernel: a refused body" EXPECT-KIND
+   s" top-kernel: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-kernel: the body's first" T-LABEL
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" word" STRING$ s" cvt-kb" T$=
+   s" top-kernel: then the token" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" rejected" T$= ;
+
+
+\ The engine's top-level find takes an open package's own qualified name that
+\ its public wordlist lacks to the global wordlist, for `'` too, and the word
+\ it finds there may define what a bare call to it would: a renderer's text
+\ (CVT-OFP:evaluate) or an unlearned create caller (CVT-OFP:CVT-OFMK) makes
+\ CVT-OFQ, so a later use of it is the run's. Loaded, the first subject and the
+\ last two run, exit 0; a tail no wordlist holds, or the name once the package
+\ is closed, is E-UNDEFINED, exit 70.
+: TOP-PACKAGE-TAIL ( -- )
+   s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\nCVT-OFP:CVT-OFG drop\n' CVT-OFP:CVT-OFG drop\n;package\n"
+   s" top-package-tail: in its package" LOADS-CLEAN
+   s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\nCVT-OFP:CVT-NOSUCH drop\n;package\n" TOP-CHECK
+   s" top-package-tail: no such tail" s" CVT-OFP:CVT-NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 4" s" 1" REFUSED-AT
+   s\" : CVT-OFG ( -- n ) 7 ;\npackage CVT-OFP\n: CVT-OFL ( -- n ) 1 ;\n;package\nCVT-OFP:CVT-OFG drop\n" TOP-CHECK
+   s" top-package-tail: closed" s" CVT-OFP:CVT-OFG" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT
+   s\" package CVT-OFP\ns\" : CVT-OFQ ( -- n ) 7 ;\" CVT-OFP:evaluate\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   5 s" top-package-tail: a renderer" EXPECT-KIND
+   s" top-package-tail: a renderer, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
+   s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
+   5 s" top-package-tail: a create caller" EXPECT-KIND
+   s" top-package-tail: a create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-package-tail: its stretch" s" CVT-OFP:CVT-OFMK" s" 3" s" 1" DEFERRED-AT
+   s" top-package-tail: its product after it" s" CVT-OFQ" s" 5" s" 1" DEFERRED-AT ;
+
+
+\ A deferred word may do anything when it runs, define the name it reads among
+\ them. Loaded, CVT-D runs CVT-MKC, which makes CVT-DQ, exit 0. The stretch
+\ opens at CVT-D, and a use of the name after the stretch is the run's too.
+: TOP-DEFER-WORD ( -- )
+   s\" defer CVT-D ( -- )\n: CVT-MKC ( -- ) create ;\n: CVT-SET ( -- ) ['] CVT-MKC is CVT-D ;\nCVT-SET\nCVT-D CVT-DQ\n: CVT-AFTER ( -- n ) 1 ;\nCVT-DQ drop\n"
+   TOP-CHECK
+   5 s" top-defer-word: deferred" EXPECT-KIND
+   s" top-defer-word: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-defer-word: the stretch" s" CVT-D" s" 5" s" 1" DEFERRED-AT
+   s" top-defer-word: the name after it" s" CVT-DQ" s" 7" s" 1" DEFERRED-AT ;
+
+
+\ A comment after a deferred word is no token the run reads, as the scan skips
+\ it, so it opens no stretch; `.(` is a word the run reads. Loaded, CVT-CD runs
+\ CVT-NOP, exit 0.
+: CVT-CD$ ( ptr u8 n -- ptr u8 n ) {: tail:ptr tailu:n :}
+   SB-RESET
+   s\" defer CVT-CD ( -- )\n: CVT-NOP ( -- ) ;\n: CVT-CSET ( -- ) ['] CVT-NOP is CVT-CD ;\nCVT-CSET\nCVT-CD " SB-APPEND
+   tail tailu SB-APPEND
+   s\" \n: CVT-AFTER ( -- n ) 1 ;\n" SB-APPEND
+   SB$ ;
+
+: TOP-DEFER-COMMENT ( -- )
+   s" \ a note" CVT-CD$ s" top-defer-comment: a line comment" LOADS-CLEAN
+   s" ( a note )" CVT-CD$ s" top-defer-comment: a comment in parentheses" LOADS-CLEAN
+   s" .( a note)" CVT-CD$ TOP-CHECK
+   5 s" top-defer-comment: a print, deferred" EXPECT-KIND
+   s" top-defer-comment: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-defer-comment: at the word" s" CVT-CD" s" 5" s" 1" DEFERRED-AT ;
+
+
+\ Each subject loads, exit 0.
+: TOP-ACCEPTED ( -- )
+   s\" variable CVT-V\n5 CVT-V !\n7 constant CVT-K\nCVT-K drop\ncreate CVT-B 16 allot\nCVT-B drop\n: CVT-DEF ( n -- ) create , does> ( -- n ) @ ;\n3 CVT-DEF CVT-W\nCVT-W drop\n"
+   s" top-accepted: created names" LOADS-CLEAN
+   s\" TYPED-VARIABLE CVT-TV n\nCVT-TV drop\n" s" top-accepted: a typed variable" LOADS-CLEAN
+   s\" require lib/string.f\n16 BUFFER: CVT-BF\nCVT-BF drop\n" s" top-accepted: a buffer" LOADS-CLEAN
+   s\" require lib/type/deftype.f\nDEFTYPE CVT-COLOR\n5 >CVT-COLOR drop\n"
+   s" top-accepted: a DEFTYPE conversion" LOADS-CLEAN
+   s\" require dep.f\nCVT-SEVEN drop\n" s" top-accepted: a required file's word" LOADS-CLEAN
+   s\" package CVT-PB\n: CVT-HIDDEN ( -- n ) 1 ;\nCVT-HIDDEN drop\n;package\n"
+   s" top-accepted: a private word in its package" LOADS-CLEAN
+   s\" package CVT-PU public\n: CVT-SHOWN ( -- n ) 1 ;\n;package\nusing CVT-PU CVT-SHOWN drop ;using\n"
+   s" top-accepted: a used public" LOADS-CLEAN
+   s\" char NOSUCH drop\n" s" top-accepted: char's operand" LOADS-CLEAN
+   s\" 1.5 drop $FF drop -3 drop 0 drop\n" s" top-accepted: numbers" LOADS-CLEAN
+   s\" : CVT-MIXED ( -- n ) 1 ;\ncvt-mixed drop\n" s" top-accepted: another case" LOADS-CLEAN
+   s\" package CVT-QA public : CVT-QW ( -- n ) 1 ; ;package\nCVT-QA:CVT-QW drop\n"
+   s" top-accepted: a qualified public" LOADS-CLEAN
+   s\" s\" a\" 2drop .\" x\" cr\n" s" top-accepted: strings" LOADS-CLEAN ;
+
+
 \ ---- the measurement -------------------------------------------------------
 
 : MS. ( -- )
@@ -843,6 +1220,24 @@ public
    s" duplicate-then-dies" [: DUPLICATE-THEN-DIES ;] RUN-CASE
    s" cli-duplicate" [: CLI-DUPLICATE ;] RUN-CASE
    s" cli-duplicate-goes-on" [: CLI-DUPLICATE-GOES-ON ;] RUN-CASE
+   s" top-undefined" [: TOP-UNDEFINED ;] RUN-CASE
+   s" top-ambiguous" [: TOP-AMBIGUOUS ;] RUN-CASE
+   s" top-shadow" [: TOP-SHADOW ;] RUN-CASE
+   s" top-tick" [: TOP-TICK ;] RUN-CASE
+   s" top-order" [: TOP-ORDER ;] RUN-CASE
+   s" top-number" [: TOP-NUMBER ;] RUN-CASE
+   s" top-keyword" [: TOP-KEYWORD ;] RUN-CASE
+   s" top-qualified" [: TOP-QUALIFIED ;] RUN-CASE
+   s" top-deferred" [: TOP-DEFERRED ;] RUN-CASE
+   s" top-renders" [: TOP-RENDERS ;] RUN-CASE
+   s" top-create" [: TOP-CREATE ;] RUN-CASE
+   s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
+   s" top-trusted" [: TOP-TRUSTED ;] RUN-CASE
+   s" top-kernel" [: TOP-KERNEL ;] RUN-CASE
+   s" top-package-tail" [: TOP-PACKAGE-TAIL ;] RUN-CASE
+   s" top-defer-word" [: TOP-DEFER-WORD ;] RUN-CASE
+   s" top-defer-comment" [: TOP-DEFER-COMMENT ;] RUN-CASE
+   s" top-accepted" [: TOP-ACCEPTED ;] RUN-CASE
    MEASURE
    ROOT$ REMOVE-TREE
    T-REPORT

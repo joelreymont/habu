@@ -230,12 +230,15 @@ public
 \ so nothing is verified, whatever the bytes hold. held: the verifier's own
 \ image holds PATH though the engine does not, so it cannot be verified there.
 \ incomplete: the child ended without a result line; status is how it ended.
+\ deferred: nothing is refused, but a stretch of top-level source was deferred to
+\ the run, so the tokens its W-CHECK-DEFERRED packet locates are not verified.
 ENUM verdict 0
    VARIANT verified ;VARIANT
    VARIANT refused ;VARIANT
    VARIANT engine-provided ;VARIANT
    VARIANT held ;VARIANT
    VARIANT incomplete FIELD status outcome ;VARIANT
+   VARIANT deferred ;VARIANT
 ;ENUM
 
 private
@@ -250,6 +253,7 @@ $0A constant VFY-LF
 2 constant VFY-REFUSED
 3 constant VFY-HELD
 4 constant VFY-STOPPED
+5 constant VFY-DEFERRED
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
@@ -416,6 +420,7 @@ variable VFY-STOP-U
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
+   a u s" check-verify: deferred" STR= if VFY-DEFERRED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
    VFY-PREPASS @ 0= if VFY-NONE exit then
    a u VFY-STOPPED$ STARTS-WITH? if at VFY-STOPPED$ nip + end VFY-STOP-PARSE exit then
@@ -531,6 +536,7 @@ variable VFY-STOP-U
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
       VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-DEFERRED = if CHECK-VERDICT:deferred exit then
       VFY-ANSWER @ VFY-HELD = if CHECK-VERDICT:held exit then
    then
    o CHECK-VERDICT:incomplete ;

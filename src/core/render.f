@@ -1359,20 +1359,27 @@ REC-SIG-INSTALL
    CK-USE-MAX 0 ?DO
       i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
    LOOP drop ;
-\ The packet of a bare token refused at its reference under `using`, this
-\ refusal's and the ambiguity's below: the token where the file holds it and,
-\ as `used_packages`, each used package it resolves in. For the shadow that is
-\ one package: every slot that matched holds its one used public.
-: USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+\ The head of a packet located at a token, USH-TOK-A/-U: its code, repair
+\ class and verdict, the token where the file holds it, the file, and the
+\ token's place there when it locates. The using refusals' packets below and a
+\ top-level token's (TOP-SPAN-JSON) open with it.
+: TOKEN-HEAD-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n class:ptr classu:n verd:ptr verdu:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
    s" code" JKEY code codeu JSTR 44 EMIT1
    s" repair_class" JKEY class classu JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" verdict" JKEY verd verdu JSTR 44 EMIT1
    s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
+   USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS ;
+\ The packet of a bare token refused at its reference under `using`, this
+\ refusal's and the ambiguity's below: the head above and, as `used_packages`,
+\ each used package the token resolves in. For the shadow that is one package:
+\ every slot that matched holds its one used public.
+: USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+   code codeu class classu s" rejected" TOKEN-HEAD-JSON
    s" used_packages" JKEY 91 EMIT1
    [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSTR ;] UPKG-EACH
    93 EMIT1 44 EMIT1
@@ -1456,15 +1463,61 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ The shadow and ambiguity diagnostics ride ONE checker hook, selected by its
-\ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site,
-\ 1 = the arity-shadow definition site, 2 = a using ambiguity), because every
-\ defer written before `: TRUST` takes a slot of the engine's pre-trust pending
-\ table (src/habu/layout.f PD-CAP).
+\ --- a top-level token the load refuses, or the stretch after one the source
+\ pre-pass deferred to the run (checker.f CHECKER-VERIFY-TOP and
+\ CHECKER-VERIFY-DEFERRED): records at the token, with no definition fields.
+\ A refusal is a span under a code of its own (tools/diag-code.f), with the
+\ repair class and suggestion a body's reference to the name gets (DCODE
+\ above); a deferral is no refusal, under W-CHECK-DEFERRED.
+: TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n k:ptr ku:n v:ptr vu:n g:ptr gu:n :}
+   c cu k ku v vu TOKEN-HEAD-JSON
+   s" suggestion" JKEY g gu JSTR
+   125 EMIT1 ;
+\ `CODE habu: FILE:LINE:COLUMN: TEXT 'TOKEN'`, the place when the token locates.
+: TOP-SPAN-PROSE ( ptr u8 n ptr u8 n -- )
+   {: c:ptr cu:n t:ptr tu:n :}
+   c cu DTXT  s"  habu: " DTXT
+   USH-TOK-A @  USH-TOK-A @ USH-TOK-U @ +  JLOCATE IF
+      DIAGFB DIAGFU @ DTXT  58 EMIT1  JLOC-L @ JNUM  58 EMIT1  JLOC-C @ JNUM  s" : " DTXT
+   THEN
+   t tu DTXT  s"  '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1 ;
+: TOP-UNDEF-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF
+      s" E-UNDEFINED-TOP-LEVEL" s" unknown_rejection" s" rejected"
+      s" Inspect the token, signature, and raw stack evidence." TOP-SPAN-JSON
+   ELSE s" E-UNDEFINED-TOP-LEVEL" s" undefined word" TOP-SPAN-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: TOP-BADQUAL-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF
+      s" E-BAD-QUALIFIED-TOP-LEVEL" s" fix_qualified_name" s" rejected"
+      s" Use one ':' qualifier, e.g. PKG:WORD." TOP-SPAN-JSON
+   ELSE s" E-BAD-QUALIFIED-TOP-LEVEL" s" malformed qualified name" TOP-SPAN-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ Only the verifier's child reports a deferred stretch, and it writes packets.
+: TOP-DEFERRED-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   s" W-CHECK-DEFERRED" s" rewrite_uncheckable" s" deferred"
+   s" Rewrite with modeled words or isolate an audited primitive." TOP-SPAN-JSON
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ The diagnostics a token locates ride ONE checker hook, selected by its
+\ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 =
+\ the arity-shadow definition site, 2 = a using ambiguity, 3 and 4 = a
+\ top-level token undefined or malformed, 5 = a deferred top-level stretch),
+\ because every defer written before `: TRUST` takes a slot of the engine's
+\ pre-trust pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
    {: sel:n :}
    sel 1 = IF SBARITY-DIAG EXIT THEN
    sel 2 = IF UAMB-DIAG EXIT THEN
+   sel 3 = IF TOP-UNDEF-DIAG EXIT THEN
+   sel 4 = IF TOP-BADQUAL-DIAG EXIT THEN
+   sel 5 = IF TOP-DEFERRED-DIAG EXIT THEN
    USHADOW-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL

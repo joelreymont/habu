@@ -113,7 +113,8 @@ variable RP-NODE
    then
    JSON-STRING$ ;
 
-\ A warning is no refusal: the packet neither counts it nor comes from it.
+\ A deferral or a warning is no refusal: the packet neither counts it nor comes
+\ from it.
 : RP-REFUSAL? ( n -- bool )
    RP-CODE$ DIAG-CODE:REFUSAL? ;
 
@@ -347,6 +348,7 @@ variable RP-NODE
       declaration OF root count RP-DECL-PACKET ENDOF
       storage OF root count RP-STORAGE-PACKET ENDOF
       source-span OF root count RP-SPAN-PACKET ENDOF
+      deferral OF s" repair-packet: a deferral has no packet" RP-E-IO RP-FAIL ENDOF
       input OF root count RP-INPUT-PACKET ENDOF
       record OF root count RP-RECORD-PACKET ENDOF
       warning OF s" repair-packet: a warning has no packet" RP-E-IO RP-FAIL ENDOF
