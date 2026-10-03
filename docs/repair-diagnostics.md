@@ -160,8 +160,8 @@ name, which keys no word. A call to such a name is refused under the same code
 and class in its definition, with the definition's fields. `tools/check.f`
 meets the first two only in its run stage, after every definition has checked,
 and exits 67 as the load's uncaught throw does. A record for a malformed name
-also throws 7147, so nothing after it in its source is checked: a load exits 67
-after `hb: uncaught throw code 7147`, and `tools/check.f` reports the statement
+also throws 7152, so nothing after it in its source is checked: a load exits 67
+after `hb: uncaught throw code 7152`, and `tools/check.f` reports the statement
 that asked for the record as one that threw.
 
 ## Checking Without Running
