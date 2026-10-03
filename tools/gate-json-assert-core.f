@@ -371,6 +371,10 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" use_storage_definer" s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar."
    GJA-SUGGEST-ROW IF exit THEN
+   s" disambiguate_using_shadow" s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" disambiguate_using_ambiguous" s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
    GJA-SUGGEST-ROW IF exit THEN
    s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."
@@ -487,6 +491,18 @@ variable GJA-DIRECT
 : GJA-RECORD? ( n -- bool )
    GJA-RECORD-CLASS nip nip ;
 
+\ A bare token refused at its reference under `using` (src/core/render.f
+\ USING-JSON) names its repair class by its code: a global and a used public
+\ claim it, or used publics of two packages do. The flag is false for a code
+\ that is not one.
+: GJA-USING-CLASS ( n -- ptr u8 n bool ) {: root:n :}
+   root s" E-USING-SHADOW-GLOBAL" GJA-CODE= IF s" disambiguate_using_shadow" GJA-TRUE exit THEN
+   root s" E-USING-AMBIGUOUS" GJA-CODE= IF s" disambiguate_using_ambiguous" GJA-TRUE exit THEN
+   s" " GJA-FALSE ;
+
+: GJA-USING? ( n -- bool )
+   GJA-USING-CLASS nip nip ;
+
 : GJA-SPAN-FIELDS ( n -- ) {: root:n :}
    root GJA-NO-DEF
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -502,6 +518,21 @@ variable GJA-DIRECT
    root s" byte_end" GJA-NO-FIELD
    root s" line" GJA-REQ-INTF
    root s" column" GJA-REQ-INTF ;
+
+\ The used packages a token resolves in: a non-empty array of package names.
+: GJA-PACKAGES ( n -- ) {: arr:n :}
+   arr GJA-ARR-KIND
+   arr JSON-COUNT 0= IF s" empty used_packages" GJA-FAIL THEN
+   arr JSON-COUNT 0 ?DO arr i JSON-ARR@ GJA-NONEMPTY-STR LOOP ;
+
+\ A using refusal names the token, placed when it locates in the file, and
+\ each used package it resolves in, with no definition field or throw code.
+: GJA-USING-FIELDS ( n -- ) {: root:n :}
+   root GJA-NO-DEF
+   root s" throw_code" GJA-NO-FIELD
+   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root GJA-DECL-POSITION
+   root s" used_packages" GJA-REQ GJA-PACKAGES ;
 
 \ A checker record refused at the load names the token it would have described,
 \ and no definition encloses it to place that token.
@@ -569,6 +600,11 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Fix the statement that records this token so it loads. Output only corrected Habu code." GJA-ASSERT-STR ;
 
+: GJA-REPAIR-USING ( n -- ) {: root:n :}
+   root GJA-USING-FIELDS
+   root s" instruction" GJA-REQ
+   s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 \ A storage declaration its definer refuses (src/core/render.f STGR-JSON) names
 \ the declared word, the refused token and the reason. Only a refusal the
 \ pre-pass read carries the token's place, so it has all four place fields or
@@ -595,6 +631,7 @@ variable GJA-DIRECT
    root GJA-SPAN? IF root GJA-REPAIR-SPAN exit THEN
    root GJA-INPUT? IF root GJA-REPAIR-INPUT exit THEN
    root GJA-RECORD? IF root GJA-REPAIR-RECORD exit THEN
+   root GJA-USING? IF root GJA-REPAIR-USING exit THEN
    root GJA-REPAIR-DEF ;
 
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
@@ -700,12 +737,23 @@ variable GJA-DIRECT
       s" record repair class is not the one its code names" GJA-FAIL
    THEN ;
 
+: GJA-DIAG-USING ( n -- ) {: root:n :}
+   root GJA-DIAG-HEAD
+   root GJA-USING-FIELDS
+   root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
+      s" using verdict is not rejected" GJA-FAIL
+   THEN
+   root s" repair_class" GJA-REQ root GJA-USING-CLASS drop GJA-STR= 0= IF
+      s" using repair class is not the one its code names" GJA-FAIL
+   THEN ;
+
 : GJA-DIAG-SHAPE ( n -- ) {: root:n :}
    root GJA-DECL? IF root GJA-DIAG-DECL exit THEN
    root GJA-STORAGE? IF root GJA-DIAG-STORAGE exit THEN
    root GJA-SPAN? IF root GJA-DIAG-SPAN exit THEN
    root GJA-INPUT? IF root GJA-DIAG-INPUT exit THEN
    root GJA-RECORD? IF root GJA-DIAG-RECORD exit THEN
+   root GJA-USING? IF root GJA-DIAG-USING exit THEN
    root GJA-DIAG-COMMON ;
 
 : GJA-DIAG-CONTRACT-ROW ( n -- )

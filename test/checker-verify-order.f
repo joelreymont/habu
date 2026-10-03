@@ -167,9 +167,10 @@ variable SRC-U
 \ driven from here: the only other refusal the walk answers is the
 \ package-context one, which these open scopes never reach, so what a third code
 \ would meet is pinned at the classifier the quiet form uses.
-\ The shadow probe makes the authoritative resolver print its own `bare 'CVR-F'
-\ is ambiguous under using` line on stderr, once: that line IS the refusal being
-\ measured, not a test failure. The quiet resolver prints nothing.
+\ Each probe makes the authoritative resolver print its own refusal on stderr,
+\ once - E-USING-AMBIGUOUS for `bare 'CVR-H'`, E-USING-SHADOW-GLOBAL for
+\ `bare 'CVR-F'`: those lines ARE the refusals being measured, not test
+\ failures. The quiet resolver prints nothing.
 TRUSTED: QUIET-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
 TRUSTED: ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
 TRUSTED: QUIET-DEFERS? ( n -- bool ) FQSYM-DEFERRED? ;

@@ -491,6 +491,7 @@ variable CA-COMPOSE-LABEL-U
 : REPORTED-THROW? ( n -- bool )
    {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
+   rc E-USING-AMBIGUOUS = or
    rc E-TRUST-UNRESOLVED = or
    rc E-SHADOWED-ARITY = or ;
 

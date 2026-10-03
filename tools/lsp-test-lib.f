@@ -1504,6 +1504,20 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" lsp: " WANT+ PACKET$ WANT+ s\" \n" WANT+
    A-PATH 1 EXPECT PUBLISHES ;
 
+\ U's bare LSPT-W resolves in both used packages: E-USING-AMBIGUOUS, at the
+\ token on line 10.
+: TWO-USED ( -- ptr u8 n )
+   s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n;using\n;using\n" ;
+
+: TWO-USED-TURNS ( -- )
+   INITIALIZE
+   A-PATH TWO-USED 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TWO-USED A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: F-OPENED ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -1520,7 +1534,8 @@ create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
    s" two-in-turn" [: TWO-TURNS ;] TALK
    s" incomplete" [: INCOMPLETE-TURNS ;] TALK
    s" held" [: HELD-TURNS ;] TALK
-   s" packet-without-file" [: NO-FILE-TURNS ;] TALK ;
+   s" packet-without-file" [: NO-FILE-TURNS ;] TALK
+   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK ;
 
 public
 

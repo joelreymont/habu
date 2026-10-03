@@ -10326,6 +10326,7 @@ variable DFER-END
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
+variable CK-USED-MASK                      \ bit i set when used-scan slot i matched, for the using diagnostics
 package CHECKER-USE
 public
 variable WHY                               \ E-USING-AMBIGUOUS when a second used public matched, else 0
@@ -10441,15 +10442,19 @@ package CHECKER-REG
 \ CHECKER-BIND raises it.
 \ A used public whose records all lie beyond the binding horizon was exported
 \ after this definition, and one with no live record (SYM-LIVE) is no export at
-\ all: neither is a candidate nor a cause of ambiguity.
+\ all: neither is a candidate nor a cause of ambiguity. Every slot that matched
+\ is marked in CK-USED-MASK, so a using refusal names each package the token
+\ resolves in.
 : CHECKER-USED-SYM ( ptr u8 n -- n )
    {: a:ptr u:n :}
    0 CK-USED-FOUND !
    -1 CK-USED-SLOT !
+   0 CK-USED-MASK !
    0 CHECKER-USE:WHY !
    CK-USE-SCAN-N 0 ?DO
       i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-LIVE ELSE drop 0 THEN
       dup 0 <> IF                                            ( -- sym )
+         1 i lshift CK-USED-MASK @ or CK-USED-MASK !
          CK-USED-FOUND @ 0= IF
             i CK-USED-SLOT !
             CK-USED-FOUND !
@@ -10509,9 +10514,11 @@ RECORD-DIAG-DEFAULT
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
-\ ONE hook for both shadow diagnostics, selected by its argument: 0 renders the
-\ using-shadow reference site below, 1 the arity-shadow definition site
-\ (SHADOW-ARITY-CK). One defer and not two because every `defer` written here,
+\ ONE hook for the shadow and ambiguity diagnostics, selected by its argument:
+\ 0 renders the using-shadow reference site below, 1 the arity-shadow
+\ definition site (SHADOW-ARITY-CK), 2 a bare token two used publics export
+\ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks). One defer and not
+\ three because every `defer` written here,
 \ before `: TRUST`, takes a slot of the engine's pre-trust pending table
 \ (src/habu/layout.f PD-CAP). test/pre-trust-defer.f exercises both
 \ an added defer and an overflow beyond the running engine's capacity.
@@ -10863,7 +10870,7 @@ variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where i
 \ The renderer is its own hook because none of the four installed before it can
 \ carry a declaration: DIAGXT renders a definition with definition fields,
 \ BADSIG-XT a stored signature row, TSTALE-DIAG-XT a trust row, and
-\ SHADOW-DIAG-XT selects between the two using-shadow sites.
+\ SHADOW-DIAG-XT selects among the two shadow sites and a using ambiguity.
 defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
 : STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
 STORAGE-DIAG-DEFAULT
@@ -11090,15 +11097,20 @@ public
 \ Raise a refusal the walk answered for a token the checked text spells `s su`:
 \ the package-context refusal names itself on fd 2 and throws the reject rc, the
 \ using-shadow refusal renders that spelling with the candidates
-\ CHECKER-USED-SHADOW captured, and the ambiguity throws bare. The walk may have
-\ asked about a fold the body walk keeps in scratch no source map covers; the
-\ spelling reads as written and locates in the file (render.f USHADOW-JSON).
+\ CHECKER-USED-SHADOW captured, and the ambiguity renders it with the used
+\ packages CHECKER-USED-SYM marked. The walk may have asked about a fold the
+\ body walk keeps in scratch no source map covers; the spelling reads as
+\ written and locates in the file (render.f USHADOW-JSON).
 : RAISE ( ptr u8 n n -- )
    {: s:ptr su:n why:n :}
    why CHECKER-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
    why E-USING-SHADOW-GLOBAL = IF
       s USH-TOK-A !  su USH-TOK-U !
       0 SHADOW-DIAG-XT
+   THEN
+   why E-USING-AMBIGUOUS = IF
+      s USH-TOK-A !  su USH-TOK-U !
+      2 SHADOW-DIAG-XT
    THEN
    why throw ;
 

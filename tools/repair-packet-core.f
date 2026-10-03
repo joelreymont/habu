@@ -158,6 +158,12 @@ variable RP-NODE
    root s" E-BAD-QUALIFIED" RP-CODE= if root s" word" JSON-GET -1 = exit then
    root s" E-PKG-CONTEXT" RP-CODE= ;
 
+\ A bare token refused at its reference under `using`: a global and a used
+\ public claim it, or used publics of two packages do.
+: RP-USING? ( n -- bool ) {: root:n :}
+   root s" E-USING-SHADOW-GLOBAL" RP-CODE= if 0 0= exit then
+   root s" E-USING-AMBIGUOUS" RP-CODE= ;
+
 : RP-REQ-STR ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-STR <> if
       drop
@@ -302,9 +308,9 @@ variable RP-NODE
    count s" Rebuild bin/hb to check this source; no code change answers this diagnostic."
    RP-PACKET-END ;
 
-\ Only a refusal tools/check.f's pre-pass read carries the token's place, so the
-\ record has all four place fields or none.
-: RP-STORAGE-PLACE ( n -- ) {: root:n :}
+\ A record carries all four place fields, when its token locates in the file,
+\ or none.
+: RP-PLACE ( n -- ) {: root:n :}
    root s" line" JSON-GET -1 = if exit then
    JSONW-COMMA root s" line" RP-REQ-NUM-FIELD
    JSONW-COMMA root s" column" RP-REQ-NUM-FIELD
@@ -318,7 +324,7 @@ variable RP-NODE
    JSONW-COMMA root s" token" RP-REQ-STR-FIELD
    JSONW-COMMA root s" reason" RP-REQ-STR-FIELD
    JSONW-COMMA root s" file" RP-REQ-STR-FIELD
-   root RP-STORAGE-PLACE
+   root RP-PLACE
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
@@ -336,12 +342,29 @@ variable RP-NODE
    count s" Fix the statement that records this token so it loads. Output only corrected Habu code."
    RP-PACKET-END ;
 
+: RP-USING-PACKET ( n n -- ptr u8 n )
+   {: root:n count:n :}
+   RP-PACKET-START
+   JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   root RP-PLACE
+   JSONW-COMMA s" used_packages" JSONW-KEY
+   root s" used_packages" RP-REQ
+   dup JSON-KIND J-ARR <> if s" repair-packet: used_packages is not array" RP-E-IO RP-FAIL then
+   JSON-EMIT
+   JSONW-COMMA root s" code" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
+   count s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code."
+   RP-PACKET-END ;
+
 : RP-PACKET ( n n -- ptr u8 n ) {: root:n count:n :}
    root RP-DECL? if root count RP-DECL-PACKET exit then
    root RP-STORAGE? if root count RP-STORAGE-PACKET exit then
    root RP-SPAN? if root count RP-SPAN-PACKET exit then
    root RP-INPUT? if root count RP-INPUT-PACKET exit then
    root RP-RECORD? if root count RP-RECORD-PACKET exit then
+   root RP-USING? if root count RP-USING-PACKET exit then
    root count RP-DEF-PACKET ;
 
 : RP-MAIN ( -- )

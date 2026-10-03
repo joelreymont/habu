@@ -229,6 +229,18 @@ TYPED-VARIABLE SPLICE-LEN len
      some OF IDX>N oldu new newu REC-SPLICE ENDOF
    ;MATCH ;
 
+\ Keep the record's first line. A refusal a definition throws out of check.f is
+\ followed on stderr by the engine's report of that throw, which is no record.
+: REC-LINE ( -- )
+   REC$ s\" \n" FIND-SUB MATCH option
+     none OF s" record has no line end" GE-FAIL ENDOF
+     some OF IDX>N 1+ REC-U ! ENDOF
+   ;MATCH ;
+
+: WRITE-REC ( ptr u8 n -- )
+   PATH!
+   PATH$ REC$ WRITE-ALL ;
+
 \ tools/gate-json-assert.f diag-contract refuses the record and says why. It
 \ runs in its own process, since a refusal ends the process.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n why:ptr whyu:n label:ptr labelu:n :}
@@ -515,6 +527,37 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"repair_class\":\"fix_qualified_name\"" s\" \"repair_class\":\"fix_stale_trust_row\"" REC-SWAP
    s" fix_qualified_name" GJA-SUGGEST-FOR s" fix_stale_trust_row" GJA-SUGGEST-FOR REC-SWAP
    s" habu-qual-class.err" s" record repair class is not the one its code names" s" malformed record under the trust row's class refused" REFUSED ;
+
+\ A bare token refused at its reference because it resolves in a used package
+\ and in another scope too (checker.f CHECKER-RESOLVE:RAISE): a global and a
+\ used public, or two used publics. Both records place the token and take the
+\ repair class their code names. The throw ends check.f, so the engine reports
+\ it after the record.
+: USING-RECORDS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-SW ( n -- ) drop ;" GE-SRC-LINE
+   s" package GDX-SP public : GDX-SW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" using GDX-SP : GDX-SU ( -- ) 1 GDX-SW ; ;using" GE-SRC-LINE
+   s" habu-json-shadow.f" s" tools/check.f --json-errors accepted a global a used public shadows" RECORD-CHECK
+   s" code" s" E-USING-SHADOW-GLOBAL" s" using shadow code" ERR-JSTR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-shadow.err" WRITE-REC
+   s" habu-json-shadow.err" s" using shadow contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GDX-UA public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" package GDX-UB public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
+   s" using GDX-UA using GDX-UB : GDX-UU ( -- ) 1 GDX-UW ; ;using ;using" GE-SRC-LINE
+   s" habu-json-ambiguous.f" s" tools/check.f --json-errors accepted a name two used packages export" RECORD-CHECK
+   s" code" s" E-USING-AMBIGUOUS" s" using ambiguity code" ERR-JSTR
+   s" token" s" GDX-UW" s" using ambiguity token" ERR-JSTR
+   GT-ERR$ REC! REC-LINE
+   s" habu-json-ambiguous.err" WRITE-REC
+   s" habu-json-ambiguous.err" s" using ambiguity contract" DIAG-CONTRACT
+   s\" \"repair_class\":\"disambiguate_using_ambiguous\"" s\" \"repair_class\":\"disambiguate_using_shadow\"" REC-SWAP
+   s" disambiguate_using_ambiguous" GJA-SUGGEST-FOR s" disambiguate_using_shadow" GJA-SUGGEST-FOR REC-SWAP
+   s" habu-using-class.err" s" using repair class is not the one its code names" s" ambiguity under the shadow's class refused" REFUSED ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET

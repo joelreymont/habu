@@ -379,6 +379,47 @@ create PACKET-BUF FS-PATH-CAP allot
    s\" : DIAG-RG ( -- n ) 7 ; s\" n\" s\" DIAG-RG\" CHECKER-DEFTYPED-VARIABLE" 67 CHILD-CASE
    s" malformed-record" s" fix_qualified_name" s" defer DIAG:MAL:NAME ( -- )" PACKET-CASE ;
 
+\ A bare token that resolves in a used package and in another scope as well is
+\ refused at its reference, which the record places, with the used packages it
+\ resolves in: a global and a used public, or two used publics.
+: TEST-USING ( -- )
+   s" using-shadow" s" disambiguate_using_shadow"
+   s" : DIAG-SW ( n -- ) drop ; package DIAG-SP public : DIAG-SW ( n -- ) drop ; ;package using DIAG-SP : DIAG-SU ( -- ) 1 DIAG-SW ; ;using" 67 CHILD-CASE
+   s" using-ambiguous" s" disambiguate_using_ambiguous"
+   s" package DIAG-UA public : DIAG-UW ( n -- ) drop ; ;package package DIAG-UB public : DIAG-UW ( n -- ) drop ; ;package using DIAG-UA using DIAG-UB : DIAG-UU ( -- ) 1 DIAG-UW ; ;using ;using" 67 CHILD-CASE ;
+
+\ A using record whose `used_packages` is no array is refused, not copied into
+\ the packet.
+: USING-STRING-DIAG$ ( -- ptr u8 n )
+   JSONW-RESET  JSONW-OBJECT-START
+   s" schema_version" 1 JNUM
+   JNEXT s" code" s" E-USING-AMBIGUOUS" JSTR
+   JNEXT s" repair_class" s" disambiguate_using_ambiguous" JSTR
+   JNEXT s" verdict" s" rejected" JSTR
+   JNEXT s" token" s" DIAG-UW" JSTR
+   JNEXT s" file" s" using-string" JSTR
+   JNEXT s" used_packages" s" diag-ua" JSTR
+   JNEXT s" suggestion" s" Qualify the one meant as PKG:WORD, or rename the collision." JSTR
+   JDONE ;
+
+: ARGV-REPAIR-DIAG ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   REPAIR-TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   DIAG-PATH >LEN PROC-ARGV+ ;
+
+: TEST-USING-STRING ( -- )
+   s" using-string" CASE-PATHS
+   s" using-string" LABEL!
+   DIAG-PATH USING-STRING-DIAG$ WRITE-ALL
+   ARGV-REPAIR-DIAG
+   HB-CAPTURE 74 REPAIR-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
+   s" using-string stdout" T-LABEL
+   outu 0 T=
+   s" using-string refusal" T-LABEL
+   ERR erru s" repair-packet: used_packages is not array" CONTAINS? TTRUE ;
+
 : TEST-TWO-DIAGS ( -- )
    s" two" CASE-PATHS
    SRC TWO-SOURCE$ WRITE-ALL
@@ -479,6 +520,8 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-STORAGE
    TEST-STORAGE-UNPLACED
    TEST-RECORDS
+   TEST-USING
+   TEST-USING-STRING
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE

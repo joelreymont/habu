@@ -1276,18 +1276,48 @@ REC-SIG-INSTALL
    USH-USYM @ USH-EFF
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
-: USHADOW-JSON ( -- )
+\ The used packages a bare token resolves in: the used-scan slots
+\ CHECKER-USED-SYM marked in CK-USED-MASK, in the order the using scan reads
+\ them, each package once however often it is used.
+: UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
+   1 swap lshift CK-USED-MASK @ and 0 <> ;
+: UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
+   dup CK-USE-SLOT swap CK-USE-LEN@ ;
+: UPKG-FIRST? ( n -- bool )               \ slot n matched and no earlier slot names its package
+   {: slot:n :}
+   slot UPKG-MATCHED?
+   slot 0 ?DO
+      i UPKG-MATCHED? IF  i UPKG-NAME$ slot UPKG-NAME$ CORE-STR= IF drop RES-FALSE THEN  THEN
+   LOOP ;
+: UPKG-EACH ( [ n bool -- ] -- )          \ XT on each package's slot, true the first time
+   {: xt :}
+   RES-TRUE
+   CK-USE-MAX 0 ?DO
+      i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
+   LOOP drop ;
+\ The packet of a bare token refused at its reference under `using`, this
+\ refusal's and the ambiguity's below: the token where the file holds it and,
+\ as `used_packages`, each used package it resolves in. For the shadow that is
+\ one package: every slot that matched holds its one used public.
+: USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    123 EMIT1
    s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY s" E-USING-SHADOW-GLOBAL" JSTR 44 EMIT1
-   s" repair_class" JKEY s" disambiguate_using_shadow" JSTR 44 EMIT1
+   s" code" JKEY code codeu JSTR 44 EMIT1
+   s" repair_class" JKEY class classu JSTR 44 EMIT1
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    USH-TOK-A @ USH-TOK-U @ JTOKEN-FIELDS
-   s" used_package" JKEY USH-PKG-A @ USH-PKG-U @ JSTR 44 EMIT1
-   s" suggestion" JKEY s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier." JSTR
+   s" used_packages" JKEY 91 EMIT1
+   [: 0= IF 44 EMIT1 THEN  UPKG-NAME$ JSTR ;] UPKG-EACH
+   93 EMIT1 44 EMIT1
+   s" suggestion" JKEY sug sugu JSTR
    125 EMIT1 ;
+: USHADOW-JSON ( -- )
+   s" E-USING-SHADOW-GLOBAL" s" disambiguate_using_shadow"
+   s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier."
+   USING-JSON ;
 : USHADOW-DIAG ( -- )
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
@@ -1339,13 +1369,37 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ Both shadow diagnostics ride ONE checker hook, selected by its argument
-\ (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 = the
-\ arity-shadow definition site), because every defer written before `: TRUST`
-\ takes a slot of the engine's pre-trust pending table (src/habu/layout.f
-\ PD-CAP).
+\ --- a bare token two used publics export (checker.f CHECKER-RESOLVE:RAISE).
+\ The twin of the using-shadow reference site above: there a global and one
+\ used public claim the token, here used publics of two packages do. The reject
+\ names each package the token resolves in (UPKG-EACH above), so the author
+\ can qualify the word meant.
+: UAMB-PROSE ( -- )
+   s" E-USING-AMBIGUOUS habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
+   s" ' is ambiguous under using: used publics " DTXT
+   [: 0= IF s" , " DTXT THEN
+      39 EMIT1  UPKG-NAME$ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1 ;] UPKG-EACH
+   s"  export the same name; qualify the one meant as PKG:" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
+   s" , or rename the collision" DTXT ;
+: UAMB-JSON ( -- )
+   s" E-USING-AMBIGUOUS" s" disambiguate_using_ambiguous"
+   s" Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision."
+   USING-JSON ;
+: UAMB-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+\ The shadow and ambiguity diagnostics ride ONE checker hook, selected by its
+\ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site,
+\ 1 = the arity-shadow definition site, 2 = a using ambiguity), because every
+\ defer written before `: TRUST` takes a slot of the engine's pre-trust pending
+\ table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
-   1 = IF SBARITY-DIAG ELSE USHADOW-DIAG THEN ;
+   {: sel:n :}
+   sel 1 = IF SBARITY-DIAG EXIT THEN
+   sel 2 = IF UAMB-DIAG EXIT THEN
+   USHADOW-DIAG ;
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 

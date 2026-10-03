@@ -366,6 +366,16 @@ and always available, for a one-off call or to escape a collision.
   wordlist is `E-USING-AMBIGUOUS`; the same package named twice is not
   ambiguous. `using` never silently changes an existing binding: it is the sole
   resolver of an otherwise-unresolved name, or a hard error.
+- In a definition `tools/check.f` refuses an ambiguous tail at the reference
+  site (checker 7144), naming each used package it resolves in
+  (`used_packages`, docs/repair-diagnostics.md; `ga:TOK`, `gb:TOK` in the line
+  `--all-errors` prints without `--json-errors`); qualify the one meant or
+  rename the collision. It exits 67, and 70 under `--verify-only`. The engine
+  refuses it earlier, before the checker: at top level, and in a definition
+  under `bin/hb --load`, it prints
+  `hb: ambiguous bare word resolves in multiple used packages: TOK at FILE:LINE`
+  and exits 94, and so does `tools/check.f` for a top-level use, in its run
+  stage.
 - A bare tail resolving to a GLOBAL while a used package ALSO exports it is
   `E-USING-SHADOW-GLOBAL` (checker 7141) at the reference site, naming both
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public

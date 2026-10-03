@@ -5189,6 +5189,84 @@ variable LC-CANON-U
    LC-SPELLING-CASE
    LC-STDIN-CASE ;
 
+\ A bare name two used packages both export is refused in a definition
+\ (E-USING-AMBIGUOUS, checker.f CHECKER-USED-SYM) with a diagnostic of its own,
+\ as a used public a global shadows is: every check.f path writes a packet
+\ naming the token where the file holds it and each package it resolves in, or
+\ under --all-errors the same as prose, and none reports a statement throw. The
+\ token has a line of its own, so its place is the token's, not the
+\ definition's.
+: UAMB-LINES ( -- )
+   s" package CKT-UAMB-A" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UAMB-W ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" package CKT-UAMB-B" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UAMB-W ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-UAMB-A" REQ-LINE+
+   s" using CKT-UAMB-B" REQ-LINE+
+   s" : CKT-UAMB-USE ( -- )" REQ-LINE+
+   s"    1" REQ-LINE+
+   s"    CKT-UAMB-W" REQ-LINE+
+   s" ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" ;using" REQ-LINE+ ;
+
+: UAMB$ ( -- ptr u8 n )  s" ckt-uamb.f" REQ$ ;
+
+\ tools/check.f run on the fixture as the command line runs it, after the
+\ options CHECK-ARG+ added: its stderr length and exit status.
+: UAMB-RUN ( -- n n )
+   UAMB$ CHECK-ARG+
+   CHECK-CAPTURE rot drop ;
+
+: UAMB-NUM ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: p:n key:ptr keyu:n want:ptr wantu:n label:ptr labelu:n :}
+   label labelu T-LABEL p key keyu LC-NUMBER$ want wantu T$= ;
+
+\ The checker's packet, and no statement-throw record.
+: UAMB-PACKET ( n ptr u8 n -- )
+   {: erru:n label:ptr labelu:n :}
+   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:n :}
+   label labelu T-LABEL p 0 >= TTRUE
+   label labelu T-LABEL
+   p s" repair_class" LC-STRING$ s" disambiguate_using_ambiguous" T$=
+   label labelu T-LABEL p s" token" LC-STRING$ s" CKT-UAMB-W" T$=
+   p s" file" LC-STRING$ UAMB$ label labelu LC-EXPECT-FILE
+   p s" line" s" 13" label labelu UAMB-NUM
+   p s" column" s" 4" label labelu UAMB-NUM
+   p s" byte_start" s" 192" label labelu UAMB-NUM
+   p s" byte_end" s" 202" label labelu UAMB-NUM
+   label labelu T-LABEL
+   CAP-ERR erru s\" \"used_packages\":[\"ckt-uamb-a\",\"ckt-uamb-b\"]," CONTAINS? TTRUE
+   label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+
+\ A refused definition ends the check as the uncaught refusal does (67), and
+\ --verify-only as a refusal (70).
+: UAMB-JSON-CASE ( n n n ptr u8 n -- )
+   {: erru:n rc:n want:n label:ptr labelu:n :}
+   label labelu T-LABEL rc want T=
+   erru label labelu UAMB-PACKET ;
+
+: TEST-USING-AMBIGUOUS ( -- )
+   SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
+   CHECK-ARGV-START UAMB-RUN 67 s" using-ambiguous: plain" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   UAMB-RUN 67 s" using-ambiguous: --json-errors" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --verify-only" CHECK-ARG+
+   UAMB-RUN 70 s" using-ambiguous: --verify-only" UAMB-JSON-CASE
+   CHECK-ARGV-START s" --all-errors" CHECK-ARG+
+   UAMB-RUN {: erru:n rc:n :}
+   s" using-ambiguous: --all-errors" T-LABEL rc 67 T=
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" E-USING-AMBIGUOUS habu: bare 'CKT-UAMB-W' " CONTAINS? TTRUE
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE
+   s" using-ambiguous: --all-errors" T-LABEL
+   CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
+
 \ A source checked with the files it loads; a case list of its own keeps
 \ TEST-MAIN under the 8000-byte body limit.
 : REQUIRE-CASES ( -- )
@@ -5366,6 +5444,7 @@ variable LC-CANON-U
    s" check/malformed-name-all-errors" [: TEST-MALFORMED-NAME-ALL ;] CASE-RUN
    s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
+   s" check/using-ambiguous" [: TEST-USING-AMBIGUOUS ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
    s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN

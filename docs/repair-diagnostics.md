@@ -14,9 +14,9 @@ lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
-span, an input, a refused checker record, or otherwise a definition.
-`E-BAD-QUALIFIED` names a refused checker record only without a `word`, and a
-definition with one.
+span, an input, a refused checker record, a using refusal, or otherwise a
+definition. `E-BAD-QUALIFIED` names a refused checker record only without a
+`word`, and a definition with one.
 
 Fields:
 
@@ -164,6 +164,25 @@ also throws 7152, so nothing after it in its source is checked: a load exits 67
 after `hb: uncaught throw code 7152`, and `tools/check.f` reports the statement
 that asked for the record as one that threw.
 
+The checker refuses a bare token in a definition that resolves in a used
+package and somewhere else as well, at the token, with a using object. Each code
+names its repair class: `E-USING-SHADOW-GLOBAL` / `disambiguate_using_shadow`
+is a token a global and a used package's public both export, and
+`E-USING-AMBIGUOUS` / `disambiguate_using_ambiguous` one the publics of more
+than one used package export. The object carries `schema_version`, `code`,
+`repair_class`, `verdict` `rejected`, `token` as written, `file`, the token's
+`line`, `column`, `byte_start` and `byte_end` when it locates in the file,
+`used_packages` and `suggestion`, and no `throw_code` or definition-only field.
+`used_packages` names each used package the token resolves in, folded, once
+each, in the order `using` searches them: one for the shadow, two or more for
+the ambiguity. Under `--all-errors` without `--json-errors` it is a line that
+begins with the code and names the token and each candidate, `PKG:TOK` for a
+package's. A refused definition ends the check: `tools/check.f` exits 67 as
+the load's uncaught throw does, and 70 under `--verify-only`; under
+`--all-errors` the refusal is the report, not an `E-STATEMENT-THROW` record.
+The engine refuses an ambiguous use at top level, and under `bin/hb --load` in
+a definition too, before the checker (`docs/forth.md`, Packages).
+
 ## Checking Without Running
 
 `tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
@@ -250,8 +269,8 @@ Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
 from the first diagnostic, in the shape that diagnostic's record has: Schema 1
-has definition, declaration, storage, span, input and refused-record packet
-shapes.
+has definition, declaration, storage, span, input, refused-record and using
+packet shapes.
 
 Definition packet fields:
 
@@ -375,6 +394,28 @@ place:
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
 | `instruction` | string | required | `Fix the statement that records this token so it loads. Output only corrected Habu code.` |
 
+Using packets carry a using record's evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `token` | string | required | The bare token as written. |
+| `file` | string | required | Source label or path. |
+| `line` | integer | with a place | One-based source line. |
+| `column` | integer | with a place | One-based source column. |
+| `byte_start` | integer | with a place | Token start byte. |
+| `byte_end` | integer | with a place | Token end byte. |
+| `used_packages` | array of strings | required | Each used package the token resolves in. |
+| `code` | string | required | `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. |
+| `repair_class` | string | required | `disambiguate_using_shadow` or `disambiguate_using_ambiguous`, the one the code names. |
+| `suggestion` | string | required | Checker repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | `Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code.` |
+
+The packet copies the record's four place fields when it has them and none when
+it has none.
+
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a
 top-level array whose items each carry the fields above.
@@ -456,6 +497,12 @@ Current checker classes:
   that defines the word.
 - `use_storage_definer`: a checker storage registrar was called from source,
   outside the engine's verifier window; define the storage with its definer.
+- `disambiguate_using_shadow`: a bare token resolves to a global while a used
+  package's public exports it too; qualify the package word as `PKG:WORD`, or
+  rename the collision to reach the global.
+- `disambiguate_using_ambiguous`: a bare token resolves in the publics of more
+  than one used package; qualify the one meant as `PKG:WORD`, or rename the
+  collision.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -496,6 +543,8 @@ The checker `suggestion` field is stable short text derived only from
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
 | `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
+| `disambiguate_using_shadow` | `A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier.` |
+| `disambiguate_using_ambiguous` | `Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 
