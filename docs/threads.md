@@ -625,6 +625,25 @@ JOBS QUEUE:DESTROY
   tasks before a build or a snapshot captures. An exposed task ends the capture
   too, and so does a callback slot with a thread inside; idle callback bindings
   are dropped ([ffi-callback.md](ffi-callback.md)).
+- fork copies only the thread that calls it. Process-wide state another task
+  is part way through - a spin lock it holds, a one-time setup it began - would
+  reach the child as it stood, with no thread there to finish it. A lock whose
+  holder unmaps a table before publishing the next cannot be reset, so
+  `PROC-FORK:RAW` forks holding the three the engine has - image lifecycle,
+  dynamic storage, the address-cell registrar - and both processes free them.
+  A fork made on a task holds the task-local address-cell lock, not the
+  registrar's, until dot bb84a527: `ADDRESS-CELLS` finds its lock through
+  `data-base`, which on a task is the task's own context. Every other owner's
+  reset is registered with `lib/fork-child.f`, and `RAW` runs every one in the
+  child before returning to it. `lib/pg.f` and `lib/serial.f` register their
+  own as they load. A module the engine provides or the AOT linker loads above
+  an application's window never requires `lib/fork-child.f`, since its
+  registration would land in that application's registry: `lib/task.f`,
+  `lib/fs-mutate.f` and `lib/process-tree.f` publish `TASK:CHILD-RESET`,
+  `CLEANUP-RESET` and `PROC-TREE:CHILD-RESET`, and `lib/process-fork.f`
+  registers them. Tasks themselves do not cross a fork: the child has no thread
+  for them, a facility one held stays held, and on Darwin every semaphore is a
+  Mach port the child does not hold.
 
 ## Tests
 

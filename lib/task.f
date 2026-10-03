@@ -245,6 +245,11 @@ variable SYMBOLS-READY
    TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM MUTEX-LOCK-XT !
    TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM MUTEX-UNLOCK-XT ! ;
 
+\ A forked child keeps SYMBOLS-READY as it finds it (CHILD-RESET below). It is
+\ 1 only while a first call is inside this word, and no task's thread exists
+\ until that call has set 2 - PTHREAD-CREATE-CALL comes through here first - so
+\ no other thread can fork while it is 1. Only PREPARE sets it back, and only
+\ once every task has ended; the addresses it vouches for are the child's too.
 : TASK-SYMBOLS ( -- )
    begin
       SYMBOLS-READY atomic@ 2 = if exit then
@@ -606,6 +611,15 @@ variable MAIN-PARK-READY
 \ Capturing a warm main task must leave the next process an uninitialised park.
 : MAIN-PARK-RESET ( -- )
    MAIN-PARK SEM-DESTROY
+   0 MAIN-PARK-READY atomic! ;
+
+\ A process just forked forgets the park and never destroys it: a park another
+\ task was making holds MAIN-PARK-READY at 1 with no thread left to finish it,
+\ and a made one is the parent's - on Darwin a Mach port name, which fork does
+\ not copy, so the child's first wake would throw E-TASK-THREAD. The child's
+\ first wake makes a park of its own.
+: MAIN-PARK-FORGET ( -- )
+   0 MAIN-PARK SEM-GUARD atomic!
    0 MAIN-PARK-READY atomic! ;
 
 : MAIN-PARK-CREATE ( -- )
@@ -1930,6 +1944,17 @@ TASK-MIN-STACK constant MIN-STACK
 \ never leaves the task.
 : AT-EXIT ( [ -- ] ptr n -- )
    TASK-AT-EXIT ;
+
+\ What a process just forked owes this runtime, before any code of its own.
+\ fork copies only the thread that called it: the exit-chain lock another task
+\ held stays held in the child with nobody to free it, and the main thread's
+\ park is the parent's (MAIN-PARK-FORGET). lib/process-fork.f registers this
+\ with lib/fork-child.f, which this file cannot require: a saved AOT linker
+\ holds this file beneath an application's capture window, where that
+\ registry's cells would belong to no claim (src/habu/aot-owned-cells.f).
+: CHILD-RESET ( -- )
+   TASK-EXIT-UNLOCK
+   MAIN-PARK-FORGET ;
 
 : #USER ( -- n )
    #USER ;
