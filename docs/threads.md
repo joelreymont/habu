@@ -19,11 +19,13 @@ region are shared read-only while tasks are live. Each task gets:
 - a private data stack;
 - a private data/user region used by `+USER` variables;
 - a pthread handle and return slot;
-- a stop flag honored by `PAUSE`.
+- a run status, which `TASK:HALT` marks halt-requested and `PAUSE` honors.
 
 Compilation and dictionary mutation are forbidden while any task is live.
 Compiler and dictionary mutation paths check `TASKS-LIVE-CELL` and exit with
-code `$4F`, printing the rejected token. What the ban protects is the code
+code `$4F`, printing the rejected token. The count is the main region's, where
+the compiler reads it, so a worker that activates or exposes a task counts there
+too. What the ban protects is the code
 band's W^X flip: a definition holds the band writable from its colon to the `;`
 flush, and the flip is aligned outward to the `PROT-PAGE-MAX` unit (`$10000`,
 `src/habu/layout.f`), so every word already compiled in the 64K unit that holds
@@ -66,7 +68,7 @@ TASK:PREPARE         ( ptr a -- )      \ allocate task stack/region without star
 TASK:ACTIVATE        ( n ptr a -- )    \ run xt in a pthread-backed task
 TASK:SELF            ( -- ptr a )
 TASK:SELF-N          ( -- n )
-TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested
+TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested, outside a callback
 TASK:SLEEP           ( ms -- )         \ park this task for a duration
 TASK:STOP            ( -- )            \ park this task until somebody WAKEs it
 TASK:WAKE            ( ptr a -- )      \ post that task's own wake-up
@@ -78,6 +80,14 @@ TASK:THROW@          ( ptr a -- n )    \ uncaught throw code, 0 if none
 TASK:RETURN          ( n -- )          \ the worker's answer, from inside the task
 TASK:JOIN            ( ptr a -- result<n,n> ) \ wait for the end, take the outcome
 TASK:AT-EXIT         ( [ -- ] ptr a -- )      \ add a cleanup run in the task when it ends
+
+TASK:EXPOSE          ( ptr a -- )      \ a prepared task becomes a callback context
+TASK:UNEXPOSE        ( ptr a -- )      \ refused while a thread is inside
+TASK:CONTEXT         ( ptr a -- n )    \ an exposed task's context
+TASK:SELF-CONTEXT    ( -- n )          \ the calling task's own context
+TASK:MAIN-BASE       ( -- ptr n )      \ the main region, from any task
+TASK:CONTEXT-BIND    ( n n -- )        \ context, slot: bind a callback slot
+TASK:CONTEXT-UNBIND  ( n -- )
 
 TASK:#USER           ( -- n )
 TASK:+USER           ( n n -- n )      \ define task-local user variable
@@ -102,10 +112,20 @@ TASK:GET-MESSAGE     ( -- n ptr a )    \ take this task's message and its sender
 TASK:MSG?            ( ptr a -- bool ) \ does that task hold an unread message
 ```
 
+The context words serve C callbacks ([ffi-callback.md](ffi-callback.md)). An
+exposed task runs no body. Its region is a context that a foreign thread enters
+through a bound callback slot, and it counts as live. `TASK:ACTIVATE` refuses
+it, and `TASK:KILL` unexposes it first.
+
 Use `TASK:KILL` for teardown of a task whose outcome nobody wants, and
 `TASK:JOIN` when the outcome matters: the join releases the task too. A task that
 loops must call `TASK:PAUSE` or block in a host call; `TASK:HALT` is cooperative
-and is observed by `TASK:PAUSE`.
+and is observed by `TASK:PAUSE`. Inside a C callback `TASK:PAUSE` only yields and
+keeps the request, because a task cannot end beneath C's frames: the task ends
+at its first `TASK:PAUSE` after C's call returns, so `TASK:KILL` of a task inside
+a callback waits for C ([ffi-callback.md](ffi-callback.md)). A body that waits
+for something only its killer would provide must read `TASK:HALTED?`, which
+is true from the request to the end of that run, its cleanups included.
 
 Both tolerate a task that ends under them, which is the ordinary case for this
 teardown: the body's own "I am finished" write happens before the task reaches
@@ -113,13 +133,13 @@ teardown: the body's own "I am finished" write happens before the task reaches
 `TASK:KILL` of a task that was activated always joins and releases it, whichever
 state it reaches first, and `TASK:HALT` of a task that has ended, was never
 activated or is only prepared is a no-op that leaves its state alone. Only
-`TASK:WAKE` refuses an ended task - a hint would sit in a record the next
-activation is not entitled to.
+`TASK:WAKE` refuses an ended task: no run would ever take the hint.
 
 The ending task release-publishes `DONE` and `TASK:DONE?` is an acquire load of
 it, so an owner that sees it true without joining sees every write the body made
-before it ended; `TASK:HALT`'s request and the worker's stop read are that same
-pair the other way round.
+before it ended. `TASK:HALT`'s request, a compare-and-swap of the run status,
+and `TASK:PAUSE`'s read of that status are the same pair the other way round,
+and a halt reaches exactly the run its swap saw.
 
 The surface tracks the SwiftForth multitasking words captured in
 `docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
@@ -156,18 +176,25 @@ wake-up is never evidence that the state the caller wants has arrived:
   `TASK:SELF-N` answers zero — so its STOP parks on one main record package
   `TASK` owns, and `TASK:WAKE` of the null TCB posts that record. A program with
   no tasks of its own can therefore wait on a loop too.
-- The park record is created with the task and destroyed with its memory, like
-  the mailbox and the done semaphore. A `TASK:WAKE` of a task that was never
+- The park record is created by the task's first `TASK:PREPARE` and lives as
+  long as its TCB in this process; only the capture sweep destroys it, so a
+  `TASK:WAKE` still in flight when the owner kills, joins or reactivates the task
+  never meets a destroyed park. A `TASK:WAKE` of a task that was never
   activated, one that is only prepared, and one that has ended are all
-  `E-TASK-STATE`: the count would sit in a record the task's next activation is
-  not entitled to.
+  `E-TASK-STATE`: no run would take the count. An exposed task is woken like a
+  running one, so a foreign thread's callback body that stops on its context
+  can be released.
 - A stopped task observes no `TASK:HALT`, exactly as a sleeping or a
   semaphore-blocked one does not. So `TASK:HALT` wakes its target itself: the
   task returns from its STOP, re-checks as above, and ends at its next
   `TASK:PAUSE`. **A STOP loop that must answer a halt calls `TASK:PAUSE` in that
-  loop**; one that never pauses is ended only by `TASK:KILL`'s join.
-- The count is not cleared by `TASK:ACTIVATE`: a task reactivated without being
-  released can see one stale hint, which the re-check above absorbs.
+  loop**, or reads `TASK:HALTED?` and returns. One that does neither is never
+  ended: the halt releases one STOP, the loop stops again, and `TASK:KILL` waits
+  for it forever.
+- Every run and every exposure opens with a count of zero: `TASK:ACTIVATE` and
+  `TASK:EXPOSE` drain the park, so a hint posted during one run or exposure is
+  not carried into the next. A `TASK:WAKE` still in flight as one opens lands in
+  it, the one stale hint the re-check above absorbs.
 
 [aio.md](aio.md) builds on this: `AIO:AWAIT` is exactly the loop above over one
 io_uring record, and the loop that drains the ring wakes each waiter by TCB.
@@ -226,7 +253,11 @@ read an outcome without deciding what to do about the failing arm.
   chain: the body returning, the body throwing, and a halted body leaving at
   `TASK:PAUSE`. It runs newest registration first; a quotation the task already
   holds is not registered a second time; and a registration belongs to the task
-  definition, so it also serves the task's next activation.
+  definition, so it also serves the task's next activation. A cleanup that calls
+  `TASK:PAUSE` only yields, even after a `TASK:HALT`: the task is already ending,
+  so the chain runs to its end, and `TASK:HALTED?` there says whether a halt was
+  requested. A cleanup that loops or stops must read it and return; one that
+  never does is never ended, and `TASK:KILL` waits for it forever.
 - A throw inside a cleanup never leaves the task and never ends the process: the
   first cleanup that throws becomes the task's error when the body left none, a
   later throwing cleanup is dropped, and one is dropped altogether when the body
@@ -266,7 +297,8 @@ read the source to find out. There are three:
 | `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
 | `lib/crypto/sha1.f` | caller-owned | no module state; a digest in progress is the caller's context span of `SHA1:CTX-BYTES` |
 | `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
-| `lib/task.f` | task-local | `$20` row: the sleep request and remainder timespecs |
+| `lib/task.f` | task-local / process-wide (the callback bindings) | `$20` row: the sleep request and remainder timespecs. The 16 callback binding rows belong to the process; each move of a row is one compare-and-swap ([ffi-callback.md](ffi-callback.md)) |
+| `lib/ffi-callback.f` | process-wide | the 16 callback slots, their dispatch table, fallbacks and fault codes are one set for the image. Declare every callback before a task starts; a slot admits one thread at a time |
 | `lib/process.f` | task-local | `$4A0` row: the NUL-path staging buffer, the three-slot pollfd array and the per-call capture slots (pids, descriptors, lengths, deadline, wait status). `PROC-REAP-ARM` is the one process-wide part: an installed policy, not per-call state |
 | `lib/process-command.f` | caller-owned (`CMD`) / process-wide (`PROC-CMD`) | `CMD:COMMAND NAME` declares one command context — a `PTR-U8-TABLE` holding the argv and envp vectors plus the address of its own byte region (path, cwd, argument and environment bytes, 128K stdin, 32K/32K captures) — and every `CMD` word takes that handle, so any number of tasks may each build and run their own command. `PROC-CMD`'s words are the same surface over one static context, so its callers share one command and are single-task. Neither writes the argv/env staging below |
 | `lib/process-argv.f`, `lib/process-env.f` | process-wide | the argv table and its byte buffer, the envp-sized environment table and buffer, and the inherited-default table are one set for the image: a task that prepares a spawn through them holds them until the spawn resets them. An owned `CMD` run passes its own vectors to the reset-free spawn cores and touches none of this |
@@ -574,8 +606,8 @@ JOBS QUEUE:DESTROY
   a queue buffers between any number of producers and consumers and carries none.
   Neither is a substitute for the other.
 - Every ending of a task - returned, threw, halted at `TASK:PAUSE` - runs the
-  registered cleanup in the task's own thread and then signals the join, in that
-  order. A task's outcome rows and its cleanup registration live in the TCB, which
+  registered cleanup in the task's own thread, drops the callback bindings naming
+  its region and then signals the join, in that order. A task's outcome rows and its cleanup registration live in the TCB, which
   outlives the thread's memory; its stacks, region, mailbox and done semaphore go
   with that memory when a join or a kill releases it.
 - A released TCB holds no address this process took: the thread handle, the
@@ -588,7 +620,9 @@ JOBS QUEUE:DESTROY
   the program declared: a prepared task is released and left EMPTY, and its next
   `TASK:ACTIVATE` prepares again, while a task still activated ends the capture
   with `task: activated task at capture` - no image carries a thread. Kill your
-  tasks before a build or a snapshot captures.
+  tasks before a build or a snapshot captures. An exposed task ends the capture
+  too, and so does a callback slot with a thread inside; idle callback bindings
+  are dropped ([ffi-callback.md](ffi-callback.md)).
 
 ## Tests
 
@@ -626,6 +660,12 @@ refused join and second answer, and a 50 ms `TASK:SLEEP` measured from the main
 task and from a worker - wall time against the requested duration and the
 sleeping task's own `RUSAGE_THREAD` CPU time against zero, so a sleep that spun
 would fail - beside the refused negative duration, a counting task that ticks
-inside a sleeper's 250 ms, and a `TASK:KILL` that waits one out.
+inside a sleeper's 250 ms, and a `TASK:KILL` that waits one out. It also covers
+the callback-context refusals (`TASK:EXPOSE`, `TASK:UNEXPOSE`, `TASK:CONTEXT`,
+`TASK:CONTEXT-BIND`), an exposed task at capture, a worker activating a
+worker, which counts on the main region, a bind racing an UNEXPOSE, and a hint
+posted while a task is exposed that must not reach its next run. Callbacks
+themselves are
+`lib/ffi-callback-test.f` ([ffi-callback.md](ffi-callback.md#tests)).
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

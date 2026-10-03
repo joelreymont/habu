@@ -208,6 +208,13 @@ private
 \ refused, so a stripped application could register a temp tree and never clean
 \ it - the very leak the vector exists to close.
 \
+\ THE CALLBACK BAND (src/habu/layout.f CB-XDS, CB-BAND-BYTES) is eight cells
+\ every region carries, each correct at zero: no published frame, a free owner,
+\ no marshal frame, and no slot table until lib/ffi-callback.f ENTRY and
+\ lib/task.f CONTEXT-BIND publish theirs in the running image. The FFI cores and
+\ the callback thunk reach the band x20-relative; the claim is for the source
+\ that spells it, lib/ffi-callback.f's `data-base CB-FRAME +`.
+\
 \ RBASE-CELL (src/habu/layout.f) is the live text CONTENT base - the address of
 \ the image's first instruction, which the engine's own entry stores at boot
 \ (src/habu/habu2.f EM-DATA-INIT) and the `rbase` primitive reads back. It is a
@@ -305,6 +312,7 @@ public
    [: FRESH ;] IMAGE-LIFECYCLE:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
    data-base EXIT-HOOK-CELL + FRESH
+   data-base CB-XDS + CB-BAND-BYTES FRESH-BYTES
    data-base RBASE-CELL + TEXT-BASE
    STR-MAX-I64$ STR-I64-DIGITS CARRIED
    STR-MIN-I64$ STR-I64-DIGITS CARRIED

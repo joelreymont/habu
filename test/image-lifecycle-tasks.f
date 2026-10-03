@@ -132,10 +132,11 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
    CLEANED @ 1 T=
    WORKER-B STATE@ TASK-ABI:EMPTY T= ;
 
-\ AFTER THE KILL THE TCB HOLDS NOTHING THIS PROCESS TOOK: the thread handle, the
-\ join's answer, and the data base, record count and code end PREPARE recorded
-\ are all zero, which is what lets a task that ran at load time be captured at
-\ all (lib/task.f TASK-RELEASE-MEM). The activated TCB is read first: the
+\ AFTER THE KILL THE TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which the
+\ capture sweep destroys (lib/task.f PARK-CREATE): the thread handle, the join's
+\ answer, and the data base, record count and code end PREPARE recorded are all
+\ zero, which is what lets a task that ran at load time be captured at all
+\ (lib/task.f TASK-RELEASE-MEM). The activated TCB is read first: the
 \ handle pthread_create stored and the data base PREPARE recorded are set, so
 \ the offsets reach the cells the kill clears, not a cell that was zero all
 \ along. Both are the main thread's own stores; the worker never writes them.

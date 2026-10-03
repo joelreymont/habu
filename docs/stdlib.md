@@ -19,6 +19,7 @@ Planned module files:
 - `lib/memory.f`
 - `lib/span.f`
 - `lib/ffi-abi.f`
+- `lib/ffi-callback.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
 - `lib/net/ws-frame.f`
@@ -301,7 +302,9 @@ are part of the local checked gate on macOS and Linux.
 Scratch storage is task-local DATA. Every pthread task owns its integer, float,
 stack, x0..x8 extent, stack-extent, and kernel-parameter tables. A task may pause
 after staging without another task corrupting the pending call. Calls still must
-not nest within one task. `FFI:KPARAM-VALUE+` stores a scalar in task-owned
+not nest within one task. The exception is a C callback's body, which may call C
+from inside the call C is running ([ffi-callback.md](ffi-callback.md)); the
+nested call shares this scratch with the outer one. `FFI:KPARAM-VALUE+` stores a scalar in task-owned
 storage until `FFI:KPARAM-RESET`; `FFI:KPARAM+` stores a caller-owned pointer.
 
 The checked call surface is the `FUNCTION:` declarer, and there is still no
