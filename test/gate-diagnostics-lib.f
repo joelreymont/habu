@@ -22,7 +22,9 @@ variable PATH-U
 variable PATH2-U
 variable LABEL-U
 
-$1000 constant REC-CAP
+\ A record is read whole from a child's stderr, so it holds what that capture
+\ holds: a record names its file, whose path grows with the row's scratch root.
+GT-ERR-CAP constant REC-CAP
 create REC-BUF REC-CAP allot
 variable REC-U
 create SPLICE-BUF REC-CAP allot
@@ -208,12 +210,17 @@ TYPED-VARIABLE SPLICE-LEN len
 : REC$ ( -- ptr u8 n )
    REC-BUF REC-U @ ;
 
+\ A record of u bytes fits its buffer, or the test fails by name.
+: REC-FITS ( n -- ) {: u:n :}
+   u REC-CAP > if s" record outgrows its buffer" GE-FAIL then ;
+
 : REC! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u REC-CAP > if E-STR-CAPACITY throw then
+   u REC-FITS
    a REC-BUF u BYTE-COPY
    u REC-U ! ;
 
 : REC-SPLICE ( n n ptr u8 n -- ) {: at:n oldu:n new:ptr newu:n :}
+   REC-U @ oldu - newu + REC-FITS
    SPLICE-LEN BUF-RESET
    REC-BUF at SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
    new newu SPLICE-BUF REC-CAP SPLICE-LEN BUF-APPEND
