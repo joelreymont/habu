@@ -419,16 +419,16 @@ variable DIGIT-AT
 
 \ ---- fail-closed exits ----------------------------------------------------------
 \ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
-\ text goes to descriptor 2 and no program code runs: the exit hook
-\ (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
+\ text and a newline go to descriptor 2 and no program code runs: the exit
+\ hook (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
 \ otherwise call it.
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u SAY
+   a u SAY  NL 1 SAY
    0 EXIT-HOOK-CELL CELL!
    s" " rc die ;
 
 \ A keyword that changes the dictionary or its scope while a task is live
-\ ends the process, the keyword its whole diagnostic (habu2.f
+\ ends the process, the keyword its whole diagnostic line (habu2.f
 \ C-TASK-LIVE-GUARD).
 : TASK-GUARD ( -- )
    TASKS-LIVE-CELL CELL@ 0= if exit then
@@ -765,11 +765,12 @@ TRUSTED: PUSH-CHAR ( -- )
 \ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
 \ token qualified by a sealed package ends the process, the token its whole
-\ diagnostic. The qualifier is the first colon when it is at neither edge, as
-\ FIND-SPLIT reads it, but a second colon does not spare the token. The sealed
-\ packages are the checker's list (src/core/checker.f CHECKER-SEALED-PKG?, the
-\ declared mirror of the engine's own), which folds case as the engine does.
-\ The exit is fail-closed, as C-SEAL-PACKAGE-FAIL's is.
+\ diagnostic line. The qualifier is the first colon when it is at neither
+\ edge, as FIND-SPLIT reads it, but a second colon does not spare the token.
+\ The sealed packages are the checker's list (src/core/checker.f
+\ CHECKER-SEALED-PKG?, the declared mirror of the engine's own), which folds
+\ case as the engine does. The exit is fail-closed, as C-SEAL-PACKAGE-FAIL's
+\ is.
 : SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    TOKEN$ {: a:ptr u:n :}

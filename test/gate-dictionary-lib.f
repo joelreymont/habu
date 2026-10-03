@@ -1414,14 +1414,14 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 s" hb: dictionary count out of range" SB$ GE-EVAL-FORK-BAD
+   74 S\" hb: dictionary count out of range\n" SB$ GE-EVAL-FORK-BAD
    GE-SRC-RESET
    s" 1 set-tier" GE-SRC-LINE
    s" : GD-NDICT-BAD ( -- ) " GE-SRC+
    lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
    s" GD-NDICT-BAD" GE-SRC-LINE
    SB-RESET s" optimized ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 s" hb: dictionary count out of range" SB$ GE-EVAL-FORK-BAD ;
+   74 S\" hb: dictionary count out of range\n" SB$ GE-EVAL-FORK-BAD ;
 
 : NDICT-LIVE-RESTORE ( -- )
    GE-HB-RESET

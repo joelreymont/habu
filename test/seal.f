@@ -502,7 +502,7 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 : SLV-ASSERT-PWID-OOR ( -- )
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   SLV-ERR$ s" hb: protected-WID id above the bound" CONTAINS? TTRUE ;
+   SLV-ERR$ S\" hb: protected-WID id above the bound\n" CONTAINS? TTRUE ;
 
 : SLV-PWID-CAP ( -- )
    s" 17 public ADT families succeed past the old 16 cap" T-LABEL

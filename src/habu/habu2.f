@@ -132,18 +132,26 @@ variable LIMGEND                                  \ the emitted image's end = th
 using IMGREF
 
 \ ---- source setup: baked LSRC or stdin ----
+\ A write of a literal's bytes takes its length from that literal (a -LEN word
+\ or `nip`), and a `c,` byte table's from `here TABLE -` after its last byte,
+\ never from a hand-counted byte count.
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSRCRDP   variable LSHBANG   variable LOPENERR   variable LOPENNL
+: OPENERR$ ( -- ptr u8 n )   s" hb: cannot open " ;   \ LOPENERR; the path and LOPENNL follow
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
-24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
+: UNCMSG$ ( -- ptr u8 n )   s" hb: uncaught throw code " ;   \ LUNCMSG
+: UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 variable LUNDEF   \ undefined-token reject; declared with its fellow diagnostics because C-BTICK, emitted long before the MAIN label block, branches to it
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
-33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
+: WIDEMSG$ ( -- ptr u8 n )   s" hb: interpret-mode layout value: " ;   \ LWIDEMSG
+: WIDEMSG-LEN ( -- n )   WIDEMSG$ nip ;
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
-26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
+: INTMSG$ ( -- ptr u8 n )   s" hb: internal engine word: " ;   \ LINTMSG
+: INTMSG-LEN ( -- n )   INTMSG$ nip ;
 variable LTRUSTTICK   variable LTRUSTTICKMSG
-23 constant TRUSTTICKMSG-LEN
+: TRUSTTICKMSG$ ( -- ptr u8 n )   s" hb: trusted-only tick: " ;   \ LTRUSTTICKMSG
+: TRUSTTICKMSG-LEN ( -- n )   TRUSTTICKMSG$ nip ;
 \ The design seal (layout.f POLICY-NDICT-CELL). LPOLICYREC is the one admission
 \ predicate over a found record and LPOLICY the one refusal every sealed site
 \ shares: a record the predicate refuses, a keyword outside the KWDATA design
@@ -154,32 +162,38 @@ variable LPOLICY   variable LPOLICYMSG   variable LPOLICYREC   variable LKWDESIG
 : POLICY-MSG$ ( -- ptr u8 n )   s" hb: not in vocabulary: " ;   \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location and the newline
 : POLICY-MSG-LEN ( -- n )       POLICY-MSG$ nip ;
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
-32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
+: MINMSG$ ( -- ptr u8 n )   s" hb: interpret stack underdepth: " ;   \ LMINMSG
+: MINMSG-LEN ( -- n )   MINMSG$ nip ;
 variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
-35 constant PREFMISSMSG-LEN   \ byte length of "hb: compile preflight hook missing\n"
+: PREFMISSMSG$ ( -- ptr u8 n )   S\" hb: compile preflight hook missing\n" ;   \ LPREFMISSMSG
+: PREFMISSMSG-LEN ( -- n )   PREFMISSMSG$ nip ;
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
-40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
+: ORPHANMSG$ ( -- ptr u8 n )   s" hb: control-flow closer without opener: " ;   \ LORPHANMSG
+: ORPHANMSG-LEN ( -- n )   ORPHANMSG$ nip ;
 variable LCFKIND   variable LCFKINDMSG   \ control-flow word whose open entry is another structure's (C-CF-AT, C-CF-NONE) + its message
-57 constant CFKINDMSG-LEN  \ byte length of "hb: control-flow word does not match the open structure: " (LCFKINDMSG)
+: CFKINDMSG$ ( -- ptr u8 n )   s" hb: control-flow word does not match the open structure: " ;   \ LCFKINDMSG
+: CFKINDMSG-LEN ( -- n )   CFKINDMSG$ nip ;
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 variable LLOCWIDE   variable LLOCWIDEMSG   \ local name wider than LOC-NAME-CAP reject (C-LBRACE-STORE-ONE) + its message
-30 constant LOCWIDEMSG-LEN   \ byte length of "hb: local name over 16 bytes: " (LLOCWIDEMSG)
+: LOCWIDEMSG$ ( -- ptr u8 n )   s" hb: local name over 16 bytes: " ;   \ LLOCWIDEMSG
+: LOCWIDEMSG-LEN ( -- n )   LOCWIDEMSG$ nip ;
 variable LLOCMANY   variable LLOCMANYMSG   \ more than LOC-RECS locals in one definition reject (C-LBRACE-STORE-ONE) + its message
-43 constant LOCMANYMSG-LEN   \ byte length of "hb: more than 64 locals in one definition: " (LLOCMANYMSG)
-35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
+: LOCMANYMSG$ ( -- ptr u8 n )   s" hb: more than 64 locals in one definition: " ;   \ LLOCMANYMSG
+: LOCMANYMSG-LEN ( -- n )   LOCMANYMSG$ nip ;
+: CFCAPMSG$ ( -- ptr u8 n )   s" hb: control-flow nesting too deep: " ;   \ LCFCAPMSG
+: CFCAPMSG-LEN ( -- n )   CFCAPMSG$ nip ;
 variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
-37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
+: CSTRMSG$ ( -- ptr u8 n )   s" hb: counted string too long (max 255)" ;   \ LCSTRMSG
+: CSTRMSG-LEN ( -- n )   CSTRMSG$ nip ;
 variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
-49 constant DEFKWMSG-LEN    \ byte length of the definition-name diagnostic (LDEFKWMSG)
+: DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;   \ LDEFKWMSG
+: DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
 \ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
 \ but an exit code costs the caller the whole measurement (LESSONS 2026-09-17):
 \ one line naming what filled up, the ceiling and the count is the fix, and
 \ lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
 \ LDIAGDEF writes the definition being compiled, so a tail below composes a
 \ line from message spans and those two.
-\ THESE MESSAGE SPANS STATE THEIR OWN LENGTH: the -LEN words read the literal
-\ instead of repeating a hand-counted byte count the way the constants above do.
-\ Both forms are in this file on purpose; a new message should derive its length.
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot habu-name-silent-engine-9b28ac13)
 variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
 variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
@@ -208,6 +222,10 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : SRCEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside definition: " ;
 : COMEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside a ( comment" ;
 : SRCCLOSE-MSG$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: " ;
+: UNSET-MSG$ ( -- ptr u8 n )     S\" hb: native compiler dispatch unset\n" ;
+: P2DOESW-MSG$ ( -- ptr u8 n )   s" hb: does>-split cannot lower layout width facts: " ;
+: P2NEST-MSG$ ( -- ptr u8 n )    s" hb: nested definition in pass 2: " ;
+: P2SLOT-MSG$ ( -- ptr u8 n )    s" hb: locals frame over 4096 cells: " ;
 
 : DPBADMSG-LEN ( -- n )      DPBAD-MSG$ nip ;
 : DPBAD-OF-LEN ( -- n )      DPBAD-OF$ nip ;
@@ -226,17 +244,25 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
-31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
-32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
-27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
-28 constant MVARMSG-LEN   \ byte length of "hb: match: unknown variant: " (EM-ADT-MATCH-VAR)
-24 constant MOFMSG-LEN    \ byte length of "hb: match: expected of: " (EM-ADT-MATCH-OF)
+: CONFMSG$ ( -- ptr u8 n )   s" hb: construct: unknown family: " ;   \ EM-COMPILE-ADT-MODE
+: CONFMSG-LEN ( -- n )   CONFMSG$ nip ;
+: CONVMSG$ ( -- ptr u8 n )   s" hb: construct: unknown variant: " ;   \ EM-COMPILE-ADT-MODE
+: CONVMSG-LEN ( -- n )   CONVMSG$ nip ;
+: MFAMMSG$ ( -- ptr u8 n )   s" hb: match: unknown family: " ;   \ EM-ADT-MATCH-FAM
+: MFAMMSG-LEN ( -- n )   MFAMMSG$ nip ;
+: MVARMSG$ ( -- ptr u8 n )   s" hb: match: unknown variant: " ;   \ EM-ADT-MATCH-VAR
+: MVARMSG-LEN ( -- n )   MVARMSG$ nip ;
+: MOFMSG$ ( -- ptr u8 n )   s" hb: match: expected of: " ;   \ EM-ADT-MATCH-OF
+: MOFMSG-LEN ( -- n )   MOFMSG$ nip ;
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
-24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
+: DICTFULL-MSG$ ( -- ptr u8 n )   s" hb: dictionary full at: " ;   \ LDICTFULL
+: CODEFULL-MSG$ ( -- ptr u8 n )   s" hb: code space full at: " ;   \ LCODEFULL
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
-29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
-40 constant SNAPVER-MSG-LEN   \ byte length of "hb: snapshot format version unsupported\n" (LSNAPVER)
-\ Snapshot relocation: the labels, the message lengths and the one instruction
+: SNAPBAD-MSG$ ( -- ptr u8 n )   S\" hb: snapshot trailer corrupt\n" ;   \ LSNAPBAD
+: SNAPBAD-MSG-LEN ( -- n )   SNAPBAD-MSG$ nip ;
+: SNAPVER-MSG$ ( -- ptr u8 n )   S\" hb: snapshot format version unsupported\n" ;   \ LSNAPVER
+: SNAPVER-MSG-LEN ( -- n )   SNAPVER-MSG$ nip ;
+\ Snapshot relocation: the labels, the messages and the one instruction
 \ constant its two relocation passes need. The band offsets and exit statuses of
 \ the same subsystem are src/habu/layout.f's package SNAP-RELOC. The engine bakes
 \ layout.f, and this file is compiled on a product engine - by the native
@@ -248,17 +274,23 @@ variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages 
 package RELOC-EMIT
 public
 variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
-31 constant CALLMSG-LEN   \ byte length of "hb: snapshot call map mismatch\n" (LCALLMSG)
+: CALLMSG$ ( -- ptr u8 n )   S\" hb: snapshot call map mismatch\n" ;
+: CALLMSG-LEN ( -- n )   CALLMSG$ nip ;
 variable LXTMSG     \ checked growth could not secure storage (XTCELL-RC)
-43 constant XTMSG-LEN
+: XTMSG$ ( -- ptr u8 n )   S\" hb: address-cell storage allocation failed\n" ;
+: XTMSG-LEN ( -- n )   XTMSG$ nip ;
 variable LXTHEADERMSG
-40 constant XTHEADERMSG-LEN
+: XTHEADERMSG$ ( -- ptr u8 n )   S\" hb: invalid address-cell storage header\n" ;
+: XTHEADERMSG-LEN ( -- n )   XTHEADERMSG$ nip ;
 variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
-34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
+: ADDRMSG$ ( -- ptr u8 n )   S\" hb: snapshot address map mismatch\n" ;
+: ADDRMSG-LEN ( -- n )   ADDRMSG$ nip ;
 variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA (XTBAND-RC)
-39 constant XTBANDMSG-LEN \ byte length of "hb: snapshot address cell out of range\n" (LXTBANDMSG)
+: XTBANDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell out of range\n" ;
+: XTBANDMSG-LEN ( -- n )   XTBANDMSG$ nip ;
 variable LXTKINDMSG \ one cell was declared as both an XT and a DATA pointer (XTKIND-RC)
-40 constant XTKINDMSG-LEN \ byte length of "hb: snapshot address cell kind mismatch\n" (LXTKINDMSG)
+: XTKINDMSG$ ( -- ptr u8 n )   S\" hb: snapshot address cell kind mismatch\n" ;
+: XTKINDMSG-LEN ( -- n )   XTKINDMSG$ nip ;
 variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
@@ -291,8 +323,8 @@ $25 constant BL-OP-HI
    CP MARK-SITE-AT ;
 
 : EMIT-FULL-MESSAGE ( -- )
-   LXTMSG LABEL@ LBL, S\" hb: address-cell storage allocation failed\n" BYTES,
-   LXTHEADERMSG LABEL@ LBL, S\" hb: invalid address-cell storage header\n" BYTES, ;
+   LXTMSG LABEL@ LBL, XTMSG$ BYTES,
+   LXTHEADERMSG LABEL@ LBL, XTHEADERMSG$ BYTES, ;
 
 ;package
 
@@ -369,24 +401,39 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
    LCEMITBL LABEL@ BL, ;
 
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
-30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow)
-23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
-22 constant BADSTR-MSG-LEN    \ byte length of "hb: bad string literal" (LBADSTR; unterminated or bad-escape string literal). NO newline: the LCOMPILEDIE tail appends ` at <path>:<line>` and the newline
+: SRCFULL-MSG$ ( -- ptr u8 n )   S\" hb: source prefix buffer full\n" ;   \ LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow
+: SRCFULL-MSG-LEN ( -- n )   SRCFULL-MSG$ nip ;
+: SRCREAD-MSG$ ( -- ptr u8 n )   S\" hb: cannot read source\n" ;   \ LSRCREAD; source read syscall error
+: SRCREAD-MSG-LEN ( -- n )   SRCREAD-MSG$ nip ;
+\ LBADSTR: an unterminated or bad-escape string literal. NO newline: the
+\ LCOMPILEDIE tail appends ` at <path>:<line>` and the newline.
+: BADSTR-MSG$ ( -- ptr u8 n )   s" hb: bad string literal" ;
+: BADSTR-MSG-LEN ( -- n )   BADSTR-MSG$ nip ;
 variable LATMSG               \ " at " — the refusal-location separator the LCOMPILEDIE tail writes before <path>:<line>
-4 constant ATMSG-LEN
+: ATMSG$ ( -- ptr u8 n )   s"  at " ;
+: ATMSG-LEN ( -- n )   ATMSG$ nip ;
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
-40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
-35 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject: " (LPROTAOT; EM-AOTWIDGATE appends the callee name + newline)
+: PROTPUB-MSG$ ( -- ptr u8 n )   s" hb: cannot publish into protected word: " ;   \ LPROTPUB; C-STORE-DEF-NAME appends the def name + newline
+: PROTPUB-MSG-LEN ( -- n )   PROTPUB-MSG$ nip ;
+: PROTAOT-MSG$ ( -- ptr u8 n )   s" hb: AOT protected-WID gate reject: " ;   \ LPROTAOT; EM-AOTWIDGATE appends the callee name + newline
+: PROTAOT-MSG-LEN ( -- n )   PROTAOT-MSG$ nip ;
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
-33 constant MMAPCODE-MSG-LEN   \ byte length of "hb: cannot map fixed code region\n" (LMMAPCODE)
-33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
+: MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;   \ LMMAPCODE
+: MMAPCODE-MSG-LEN ( -- n )   MMAPCODE-MSG$ nip ;
+: MMAPDATA-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed data region\n" ;   \ LMMAPDATA
+: MMAPDATA-MSG-LEN ( -- n )   MMAPDATA-MSG$ nip ;
 variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
-32 constant BLRANGE-MSG-LEN   \ byte length of "hb: code region out of BL range\n" (LBLRANGE)
+: BLRANGE-MSG$ ( -- ptr u8 n )   S\" hb: code region out of BL range\n" ;   \ LBLRANGE
+: BLRANGE-MSG-LEN ( -- n )   BLRANGE-MSG$ nip ;
 variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
 variable LADDSUBBIG   \ transfer immediate past the two-halves range: labeled rc-75 compile refusal
-36 constant ADDSUBBIG-MSG-LEN   \ byte length of "hb: transfer immediate out of range\n" (LADDSUBBIG)
+: ADDSUBBIG-MSG$ ( -- ptr u8 n )   S\" hb: transfer immediate out of range\n" ;   \ LADDSUBBIG
+: ADDSUBBIG-MSG-LEN ( -- n )   ADDSUBBIG-MSG$ nip ;
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
+: BADFLAG$ ( -- ptr u8 n )   s" hb: unknown flag: " ;   \ LBADFLAG
+: USAGE1$ ( -- ptr u8 n )    s" usage: bin/hb" ;   \ LUSAGE1; the flag names follow
+: USAGE2$ ( -- ptr u8 n )    s"  [file.f]  (source on stdin)" ;   \ LUSAGE2
 variable LPLINUXTARGET  variable LPMACOSTARGET  variable LPX64TARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
@@ -419,12 +466,17 @@ variable LPIMAGELIFE
 variable SRC-SFAIL
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
+here BPH-KW - constant BPH-LEN
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
+here BPS-KW - constant BPS-LEN
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
-\ "habu: local cannot be inside quotation\n" ($27 bytes)
+here BPW-KW - constant BPW-LEN
+\ "habu: local cannot be inside quotation\n"
 create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, $61 c, $6C c, $20 c, $63 c, $61 c, $6E c, $6E c, $6F c, $74 c, $20 c, $62 c, $65 c, $20 c, $69 c, $6E c, $73 c, $69 c, $64 c, $65 c, $20 c, $71 c, $75 c, $6F c, $74 c, $61 c, $74 c, $69 c, $6F c, $6E c, $0A c,
+here BADLOC-KW - constant BADLOC-LEN
 create ZBYTE 0 c,
 create NL-KW 10 c,   \ single newline for the open-failure diagnostic
+here NL-KW - constant NL-LEN
 
 \ ---- CLI flag table: one source of truth for the matcher and the usage line ----
 1 constant MODE-LOAD   2 constant MODE-SEP   3 constant MODE-FILE
@@ -434,8 +486,9 @@ create FLAGTAB-DATA                        \ record = len, mode, name-bytes; 0-l
    7 c, MODE-BUILD c, 45 c, 45 c, 98 c, 117 c, 105 c, 108 c, 100 c, \ "--build" -> MODE-BUILD
    2 c, MODE-SEP  c,  45 c, 45 c,                              \ "--"     -> MODE-SEP
    0 c,                                                        \ terminator
-22 constant FLAGTAB-LEN
+here FLAGTAB-DATA - constant FLAGTAB-LEN
 create ONESP 32 c,   \ one space, written between usage flag names
+here ONESP - constant ONESP-LEN
 
 : ZBYTES, ( ptr u8 n -- )
    BYTES, ZBYTE 1 BYTES, ;
@@ -466,7 +519,7 @@ package BP-CALLER
 public
 variable LBPLH
 create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 58 c, 10 c,   \ habu-bp-lr:\n
-12 constant BPL-LEN
+here BPL-KW - constant BPL-LEN
 
 : C-MCTX-LR>R9 ( -- )
    HB-TARGET-LINUX? IF 9 9 LINUX-MCTX-LR-OFF LDR, exit THEN
@@ -511,7 +564,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 
 : C-BP-PRINT-HIT ( -- )
    LBL {: empty:label :}
-   1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
+   1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 BPH-LEN MOVZ,  NR-WRITE SYS,
    9 SP 32 LDR,  LHEX LABEL@ BL,
    \ An empty interrupted stack has no top cell to print. Validate the saved
    \ cursor against the active allocation before either diagnostic reads it.
@@ -521,10 +574,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    empty LBL,
    1 BP-CALLER:LBPLH LABEL@ ADR,  0 2 MOVZ,  2 BP-CALLER:BPL-LEN MOVZ,  NR-WRITE SYS,
    9 SP 24 LDR,  BP-CALLER:C-MCTX-LR>R9  LHEX LABEL@ BL,
-   1 LBPSH LABEL@ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS, ;
+   1 LBPSH LABEL@ ADR,  0 2 MOVZ,  2 BPS-LEN MOVZ,  NR-WRITE SYS, ;
 
 : C-BP-WATCH-HEAD ( -- )
-   1 LBPWH LABEL@ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS,
+   1 LBPWH LABEL@ ADR,  0 2 MOVZ,  2 BPW-LEN MOVZ,  NR-WRITE SYS,
    6 DATA BPWN-CELL LDR,  7 DATA BPWBASE-CELL LDR,
    17 0 MOVZ, ;
 
@@ -644,32 +697,32 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    NR-SIGRETURN SYS,                                 \ sigreturn(uctx, infostyle, token)
    tno LBL,
    LCRASHH LABEL@ B,
-   LBPH LABEL@ LBL,  BPH-KW 9 BYTES,
+   LBPH LABEL@ LBL,  BPH-KW BPH-LEN BYTES,
    BP-CALLER:LBPLH LABEL@ LBL, BP-CALLER:BPL-KW BP-CALLER:BPL-LEN BYTES,
-   LBPSH LABEL@ LBL, BPS-KW 15 BYTES,
-   LBPWH LABEL@ LBL, BPW-KW 15 BYTES,
-   LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES,
-   LOPENERR LABEL@ LBL, s" hb: cannot open " BYTES,
-   LOPENNL LABEL@ LBL, NL-KW 1 BYTES,
-   LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
-   LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
-   LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
-   LTRUSTTICKMSG LABEL@ LBL, s" hb: trusted-only tick: " BYTES,
-   LPOLICYMSG LABEL@ LBL, POLICY-MSG$ BYTES,                             \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location + newline
-   LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
-   LPREFMISSMSG LABEL@ LBL, S\" hb: compile preflight hook missing\n" BYTES, \ PREFMISSMSG-LEN contiguous bytes
-   LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
-   LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
-   LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
-   LCFKINDMSG LABEL@ LBL, s" hb: control-flow word does not match the open structure: " BYTES,   \ CFKINDMSG-LEN bytes; LCFKIND appends the token + newline
-   LLOCWIDEMSG LABEL@ LBL, s" hb: local name over 16 bytes: " BYTES,             \ LOCWIDEMSG-LEN bytes; LLOCWIDE appends the declaration token + newline
-   LLOCMANYMSG LABEL@ LBL, s" hb: more than 64 locals in one definition: " BYTES, \ LOCMANYMSG-LEN bytes; LLOCMANY appends the declaration token + newline
-   LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
+   LBPSH LABEL@ LBL, BPS-KW BPS-LEN BYTES,
+   LBPWH LABEL@ LBL, BPW-KW BPW-LEN BYTES,
+   LBADLOC LABEL@ LBL, BADLOC-KW BADLOC-LEN BYTES,
+   LOPENERR LABEL@ LBL, OPENERR$ BYTES,
+   LOPENNL LABEL@ LBL, NL-KW NL-LEN BYTES,
+   LUNCMSG LABEL@ LBL, UNCMSG$ BYTES,                  \ LUNCAUGHT appends the signed code + newline
+   LWIDEMSG LABEL@ LBL, WIDEMSG$ BYTES,                \ LWIDE appends the token + newline
+   LINTMSG LABEL@ LBL, INTMSG$ BYTES,                  \ LINTERNAL appends the token + newline
+   LTRUSTTICKMSG LABEL@ LBL, TRUSTTICKMSG$ BYTES,
+   LPOLICYMSG LABEL@ LBL, POLICY-MSG$ BYTES,          \ LPOLICY appends the token; the LCOMPILEDIE tail appends the location + newline
+   LMINMSG LABEL@ LBL, MINMSG$ BYTES,                  \ LMININ appends the token + newline
+   LPREFMISSMSG LABEL@ LBL, PREFMISSMSG$ BYTES,
+   LDEFKWMSG LABEL@ LBL, DEFKWMSG$ BYTES,
+   LORPHANMSG LABEL@ LBL, ORPHANMSG$ BYTES,            \ LORPHAN appends the closer token + newline
+   LCFCAPMSG LABEL@ LBL, CFCAPMSG$ BYTES,              \ LCFCAP appends the opener token + newline
+   LCFKINDMSG LABEL@ LBL, CFKINDMSG$ BYTES,            \ LCFKIND appends the token + newline
+   LLOCWIDEMSG LABEL@ LBL, LOCWIDEMSG$ BYTES,          \ LLOCWIDE appends the declaration token + newline
+   LLOCMANYMSG LABEL@ LBL, LOCMANYMSG$ BYTES,          \ LLOCMANY appends the declaration token + newline
+   LCSTRMSG LABEL@ LBL, CSTRMSG$ BYTES,                \ LCSTR appends a newline (fixed label: names the constraint at a glance)
    LDPBADMSG LABEL@ LBL, DPBAD-MSG$ BYTES,                               \ LDPBAD appends the refused DP, " of ", the ceiling and " bytes" (DP-heap allot bound)
    LDPBADOF LABEL@ LBL, DPBAD-OF$ BYTES,
    LDPBADUNIT LABEL@ LBL, DPBAD-UNIT$ BYTES,
-   LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
-   LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
+   LDICTFULL LABEL@ LBL, DICTFULL-MSG$ BYTES,          \ capacity arms append the token + newline
+   LCODEFULL LABEL@ LBL, CODEFULL-MSG$ BYTES,
    LBCAPFULLMSG LABEL@ LBL, BCAPFULL-MSG$ BYTES,                         \ EM-BODY-CAP-DIE appends the ceiling, the unit, the definition, " needs ", the count, newline
    LBCAPUNIT LABEL@ LBL, BCAP-UNIT$ BYTES,
    LSNAPNESTMSG LABEL@ LBL, SNAPNEST-MSG$ BYTES,                         \ EM-SNAP-NEST-DIE composes the same line from JIT-SNAP:FRAMES
@@ -682,23 +735,23 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSRCENDMSG LABEL@ LBL, SRCEND-MSG$ BYTES,                             \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location
    LCOMENDMSG LABEL@ LBL, COMEND-MSG$ BYTES,                             \ LCOMPILEDIE appends the location of the `(`
    LSRCCLOSEMSG LABEL@ LBL, SRCCLOSE-MSG$ BYTES,                         \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location of the `;`
-   LSNAPBAD LABEL@ LBL, S\" hb: snapshot trailer corrupt\n" BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
-   LSNAPVER LABEL@ LBL, S\" hb: snapshot format version unsupported\n" BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
-   RELOC-EMIT:LCALLMSG LABEL@ LBL, S\" hb: snapshot call map mismatch\n" BYTES,     \ RELOC-EMIT:CALLMSG-LEN bytes incl. newline
+   LSNAPBAD LABEL@ LBL, SNAPBAD-MSG$ BYTES,
+   LSNAPVER LABEL@ LBL, SNAPVER-MSG$ BYTES,
+   RELOC-EMIT:LCALLMSG LABEL@ LBL, RELOC-EMIT:CALLMSG$ BYTES,
    RELOC-EMIT:EMIT-FULL-MESSAGE
-   RELOC-EMIT:LADDRMSG LABEL@ LBL, S\" hb: snapshot address map mismatch\n" BYTES,   \ RELOC-EMIT:ADDRMSG-LEN bytes incl. newline
-   RELOC-EMIT:LXTBANDMSG LABEL@ LBL, S\" hb: snapshot address cell out of range\n" BYTES,  \ RELOC-EMIT:XTBANDMSG-LEN bytes incl. newline
-   RELOC-EMIT:LXTKINDMSG LABEL@ LBL, S\" hb: snapshot address cell kind mismatch\n" BYTES,  \ RELOC-EMIT:XTKINDMSG-LEN bytes incl. newline
-   LSRCFULL LABEL@ LBL, S\" hb: source prefix buffer full\n" BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
-   LSRCREAD LABEL@ LBL, S\" hb: cannot read source\n" BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
-   LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,                                       \ BADSTR-MSG-LEN bytes, no newline (LCOMPILEDIE tail appends the location + newline)
-   LATMSG   LABEL@ LBL, s"  at " BYTES,                                                         \ ATMSG-LEN bytes
-   LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
-   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject: " BYTES,                          \ PROTAOT-MSG-LEN bytes; EM-AOTWIDGATE appends the callee name + newline
-   LMMAPCODE LABEL@ LBL, S\" hb: cannot map fixed code region\n" BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
-   LMMAPDATA LABEL@ LBL, S\" hb: cannot map fixed data region\n" BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
-   LBLRANGE LABEL@ LBL, S\" hb: code region out of BL range\n" BYTES,             \ BLRANGE-MSG-LEN bytes incl. newline
-   LADDSUBBIG LABEL@ LBL, S\" hb: transfer immediate out of range\n" BYTES, ;     \ ADDSUBBIG-MSG-LEN bytes incl. newline
+   RELOC-EMIT:LADDRMSG LABEL@ LBL, RELOC-EMIT:ADDRMSG$ BYTES,
+   RELOC-EMIT:LXTBANDMSG LABEL@ LBL, RELOC-EMIT:XTBANDMSG$ BYTES,
+   RELOC-EMIT:LXTKINDMSG LABEL@ LBL, RELOC-EMIT:XTKINDMSG$ BYTES,
+   LSRCFULL LABEL@ LBL, SRCFULL-MSG$ BYTES,
+   LSRCREAD LABEL@ LBL, SRCREAD-MSG$ BYTES,
+   LBADSTR  LABEL@ LBL, BADSTR-MSG$ BYTES,             \ no newline: the LCOMPILEDIE tail appends the location + newline
+   LATMSG   LABEL@ LBL, ATMSG$ BYTES,
+   LPROTPUB LABEL@ LBL, PROTPUB-MSG$ BYTES,            \ C-STORE-DEF-NAME appends the def name + newline
+   LPROTAOT LABEL@ LBL, PROTAOT-MSG$ BYTES,            \ EM-AOTWIDGATE appends the callee name + newline
+   LMMAPCODE LABEL@ LBL, MMAPCODE-MSG$ BYTES,
+   LMMAPDATA LABEL@ LBL, MMAPDATA-MSG$ BYTES,
+   LBLRANGE LABEL@ LBL, BLRANGE-MSG$ BYTES,
+   LADDSUBBIG LABEL@ LBL, ADDSUBBIG-MSG$ BYTES, ;
 
 \ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
 \ The single call-emit primitive for every statically known native call — dictionary words
@@ -845,14 +898,14 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
    sopenerr LBL,                                  \ x12 = NUL-terminated source path (untouched since open)
-   1 LOPENERR LABEL@ ADR,  0 2 MOVZ,  2 16 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: cannot open ",16)
+   1 LOPENERR LABEL@ ADR,  0 2 MOVZ,  2 OPENERR$ nip MOVZ,  NR-WRITE SYS,
    13 12 0 ADDI,                                  \ cursor := path
    sscan LBL,
       14 13 0 LDRB,  14 sscandone CBZ,             \ stop at the NUL terminator
       13 13 1 ADDI,  sscan B,
    sscandone LBL,
    2 13 12 SUB,  1 12 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,           \ write(2, path, len)
-   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,     \ write(2,"\n",1)
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,     \ "\n"
    0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ LSRCRDP: read one ENGINE PREFIX source file and drop the lines the interpreter
@@ -976,29 +1029,29 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSRCBADFLAG LABEL@ LBL,
    LBL LBL LBL LBL {: bscan:label bdone:label uloop:label udone:label :}
    21 12 0 ADDI,                                   \ x21 = offending arg
-   1 LBADFLAG LABEL@ ADR,  0 2 MOVZ,  2 18 MOVZ,  NR-WRITE SYS,   \ "hb: unknown flag: "
+   1 LBADFLAG LABEL@ ADR,  0 2 MOVZ,  2 BADFLAG$ nip MOVZ,  NR-WRITE SYS,
    22 21 0 ADDI,                                   \ x22 = strlen cursor
    bscan LBL,  14 22 0 LDRB,  14 bdone CBZ,  22 22 1 ADDI,  bscan B,
    bdone LBL,  2 22 21 SUB,  1 21 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,   \ write(2, arg, len)
-   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ "\n"
-   1 LUSAGE1 LABEL@ ADR,  0 2 MOVZ,  2 13 MOVZ,  NR-WRITE SYS,        \ "usage: bin/hb"
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,         \ "\n"
+   1 LUSAGE1 LABEL@ ADR,  0 2 MOVZ,  2 USAGE1$ nip MOVZ,  NR-WRITE SYS,
    22 LFLAGTAB LABEL@ ADR,                         \ x22 = table cursor
    uloop LBL,
       14 22 0 LDRB,  14 udone CBZ,                 \ len==0 terminator -> usage tail
-      1 LSPC LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ " "
+      1 LSPC LABEL@ ADR,  0 2 MOVZ,  2 ONESP-LEN MOVZ,  NR-WRITE SYS,         \ " "
       1 22 2 ADDI,  2 22 0 LDRB,  0 2 MOVZ,  NR-WRITE SYS,            \ write(2, name, len)
       14 22 0 LDRB,  22 22 14 ADD,  22 22 2 ADDI,  uloop B,           \ cursor += 2 + len
    udone LBL,
-   1 LUSAGE2 LABEL@ ADR,  0 2 MOVZ,  2 28 MOVZ,  NR-WRITE SYS,        \ " [file.f]  (source on stdin)"
-   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ "\n"
+   1 LUSAGE2 LABEL@ ADR,  0 2 MOVZ,  2 USAGE2$ nip MOVZ,  NR-WRITE SYS,
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,         \ "\n"
    0 64 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Flag byte table (read only via ADR) plus the reject message strings.
 : EMIT-FLAG-TABLE ( -- )
-   LBADFLAG LABEL@ LBL,  s" hb: unknown flag: " BYTES,
-   LUSAGE1 LABEL@ LBL,   s" usage: bin/hb" BYTES,
-   LUSAGE2 LABEL@ LBL,   s"  [file.f]  (source on stdin)" BYTES,
-   LSPC LABEL@ LBL,      ONESP 1 BYTES,
+   LBADFLAG LABEL@ LBL,  BADFLAG$ BYTES,
+   LUSAGE1 LABEL@ LBL,   USAGE1$ BYTES,
+   LUSAGE2 LABEL@ LBL,   USAGE2$ BYTES,
+   LSPC LABEL@ LBL,      ONESP ONESP-LEN BYTES,
    LFLAGTAB LABEL@ LBL,  FLAGTAB-DATA FLAGTAB-LEN BYTES, ;
 
 : EMIT-FLAGS ( -- )
@@ -2183,14 +2236,20 @@ create ESQ-KW  115 c, 92 c, 34 c,
 create ECQ-KW  99 c, 92 c, 34 c,
 create EDOTQ-KW 46 c, 92 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
+here BCHAR-KW - constant BCHAR-LEN
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 create QNL-KW 63 c, 10 c,
+here QNL-KW - constant QNL-LEN
 create OKS-KW 32 c, 111 c, 107 c, 10 c,
+here OKS-KW - constant OKS-LEN
 create BADTAG-SFX-KW 32 c, 116 c, 97 c, 103 c, 10 c,   \ " tag\n" for the MATCH bad-tag die
+here BADTAG-SFX-KW - constant BADTAG-SFX-LEN
 create TICK-KW   39 c,
+here TICK-KW - constant TICK-LEN
 create BTICK-KW  91 c, 39 c, 93 c,
+here BTICK-KW - constant BTICK-LEN
 create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
 \ DEFER-MAGIC is src/habu/layout.f's, beside the dispatch-cell offset it belongs
@@ -2200,19 +2259,20 @@ variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 \ The defer/is misuse diagnostics own one concern between them - telling the
 \ source what it got wrong with `defer` or `is` - so they live in their own
 \ package rather than joining the global emitter surface around them. The label
-\ cells are public because KWDATA:EMIT bakes
-\ their strings and the LABELS allocator mints their ids; each message's byte
-\ length is private, stated once beside the string it measures. The emitters
-\ that write them reopen this package further down, next to the defer rows.
+\ cells and the messages are public because KWDATA:EMIT bakes the strings and
+\ the LABELS allocator mints the ids; each write takes its length from the same
+\ literal. The emitters that write them reopen this package further down, next
+\ to the defer rows.
 package DEFER-DIAG
-34 constant NOTOKEN-LEN    \ byte length of "hb: is: missing target word after " (LDEFNOTOKEN)
-31 constant NOTFOUND-LEN   \ byte length of "hb: is: no deferred word named " (LDEFNOTFOUND)
-29 constant NOTDEFER-LEN   \ byte length of "hb: is: not a deferred word: " (LDEFNOTDEFER)
-30 constant NONAME-LEN     \ byte length of "hb: defer: missing name after " (LDEFNONAME)
-71 constant HINT-LEN       \ byte length of "hb: is: parsing words resolve outside using-imports; qualify the target" (LDEFHINT); no newline - the LCOMPILEDIE tail appends the location and it
 public
 variable LDEFNOTOKEN  variable LDEFNOTFOUND  variable LDEFNOTDEFER  variable LDEFNONAME
 variable LDEFHINT
+: NOTOKEN$ ( -- ptr u8 n )    s" hb: is: missing target word after " ;
+: NOTFOUND$ ( -- ptr u8 n )   s" hb: is: no deferred word named " ;
+: NOTDEFER$ ( -- ptr u8 n )   s" hb: is: not a deferred word: " ;
+: NONAME$ ( -- ptr u8 n )     s" hb: defer: missing name after " ;
+\ No newline: the LCOMPILEDIE tail appends the location and it.
+: HINT$ ( -- ptr u8 n )   s" hb: is: parsing words resolve outside using-imports; qualify the target" ;
 ;package
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 
@@ -2221,6 +2281,7 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variab
 package NCOMP-EMIT
 public
 variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
+: NEUTRAL$ ( -- ptr u8 n )   s" NEUTRAL-PARSE-IMM?" ;
 ;package
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
@@ -2228,6 +2289,20 @@ variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
+
+\ Keyword spellings a diagnostic writes: the row below that bakes each one and
+\ every write of it take the bytes and the length from the same literal.
+: KWCREATE$ ( -- ptr u8 n )     s" create" ;
+: KWCONST$ ( -- ptr u8 n )      s" constant" ;
+: KWCHAR$ ( -- ptr u8 n )       s" char" ;
+: KWDOES$ ( -- ptr u8 n )       s" does>" ;
+: KWTRUSTED$ ( -- ptr u8 n )    s" trusted:" ;
+: KWCHKDOES$ ( -- ptr u8 n )    s" check-does!" ;
+: KWDUPDEF$ ( -- ptr u8 n )     s" duplicate definition: " ;
+: RECWPUB$ ( -- ptr u8 n )      s" rec-wide-publish" ;
+: RECMIQ$ ( -- ptr u8 n )       s" rec-min-in@" ;
+: CHKEXPORT$ ( -- ptr u8 n )    s" checker-export" ;
+: BADTAG-PFX$ ( -- ptr u8 n )   s" hb: bad " ;
 
 \ Keyword string data section: the baked name table every LKW*/LCHK* label
 \ points into, plus the sealed reserved-name table it embeds.
@@ -2262,25 +2337,30 @@ public
 \ habu2.f concern: the keyword row below bakes the string, LASTC-TRUST:FIND-RAW
 \ uses it for diagnostics, and the LABELS allocator mints its id.
 variable LKWTRUSTRAW
+: TRUSTRAW$ ( -- ptr u8 n )   s" trust-raw" ;
 
 \ The same, for the baked `trust-decl` keyword string: which registrar the
 \ engine's publish tail reaches is a habu2.f concern too, DEF-TRUST:FIND
 \ uses it for diagnostics, and the row below bakes it.
 variable LKWTRUSTDECL
+: TRUSTDECL$ ( -- ptr u8 n )   s" trust-decl" ;
 
 \ The `cast:` declarer's three baked strings: the keyword the interpret dispatch
 \ matches, the checker registrar diagnostic spelling,
 \ and the one thing that can go wrong before the signature parser takes over.
 \ Same reasoning as the two above - the spellings are a habu2.f concern - and
-\ the length sits beside the string it measures, as DEFER-DIAG's do.
+\ each length is read off its string, as DEFER-DIAG's are.
 variable LKWCAST
 variable LKWDEFCAST
 variable LCASTNONAME
 variable LCOLONNONAME
 variable LKEYNONAME
-29 constant CASTNONAME-LEN       \ "hb: cast: missing name after "
-36 constant COLONNONAME-LEN      \ "hb: : missing definition name after "
-33 constant KEYNONAME-LEN        \ "hb: reader keyword needs a name: "
+: CASTNONAME$ ( -- ptr u8 n )    s" hb: cast: missing name after " ;
+: COLONNONAME$ ( -- ptr u8 n )   s" hb: : missing definition name after " ;
+: KEYNONAME$ ( -- ptr u8 n )     s" hb: reader keyword needs a name: " ;
+: CASTNONAME-LEN ( -- n )    CASTNONAME$ nip ;
+: COLONNONAME-LEN ( -- n )   COLONNONAME$ nip ;
+: KEYNONAME-LEN ( -- n )     KEYNONAME$ nip ;
 
 private
 
@@ -2310,37 +2390,37 @@ public
    LKWWHILE LABEL@ LBL,  s" while"  BYTES,    LKWREPEAT LABEL@ LBL, s" repeat" BYTES,
    LKWCASE LABEL@ LBL,   s" case"   BYTES,    LKWOF LABEL@ LBL,     s" of"     BYTES,
    LKWENDOF LABEL@ LBL,  s" endof"  BYTES,    LKWENDCASE LABEL@ LBL, s" endcase" BYTES,
-   LKWCREATE LABEL@ LBL, s" create" BYTES,    LKWVAR LABEL@ LBL,    s" variable" BYTES,
+   LKWCREATE LABEL@ LBL, KWCREATE$ BYTES,    LKWVAR LABEL@ LBL,    s" variable" BYTES,
    LKWCQ LABEL@ LBL,     CQ-KW 2 BYTES,
    LKWDOTQ LABEL@ LBL,   DOTQ-KW 2 BYTES,
    LKWESQ LABEL@ LBL,    ESQ-KW 3 BYTES,
    LKWECQ LABEL@ LBL,    ECQ-KW 3 BYTES,
    LKWEDOTQ LABEL@ LBL,  EDOTQ-KW 3 BYTES,
    LKWTYPE LABEL@ LBL,   s" type" BYTES,
-   LKWTICK LABEL@ LBL,   TICK-KW 1 BYTES,    LKWBTICK LABEL@ LBL,  BTICK-KW 3 BYTES,
-   LKWCONST LABEL@ LBL,  s" constant" BYTES,
-   LQNL LABEL@ LBL,  QNL-KW 2 BYTES,   LOKS LABEL@ LBL,  OKS-KW 4 BYTES,
+   LKWTICK LABEL@ LBL,   TICK-KW TICK-LEN BYTES,    LKWBTICK LABEL@ LBL,  BTICK-KW BTICK-LEN BYTES,
+   LKWCONST LABEL@ LBL,  KWCONST$ BYTES,
+   LQNL LABEL@ LBL,  QNL-KW QNL-LEN BYTES,   LOKS LABEL@ LBL,  OKS-KW OKS-LEN BYTES,
    LKWDO LABEL@ LBL,  s" do" BYTES,    LKWLOOP LABEL@ LBL,  s" loop" BYTES,    LKWI LABEL@ LBL,  s" i" BYTES,
    LKWTOR LABEL@ LBL,  s" >r" BYTES,   LKWRFROM LABEL@ LBL,  s" r>" BYTES,   LKWRFET LABEL@ LBL,  s" r@" BYTES,
    LKWEXIT LABEL@ LBL,  s" exit" BYTES,   LKWREC LABEL@ LBL,  s" recurse" BYTES,
    LKWQDO LABEL@ LBL,  s" ?do" BYTES,   LKWPLOOP LABEL@ LBL,  s" +loop" BYTES,   LKWJ LABEL@ LBL,  s" j" BYTES,
    LKWLEAVE LABEL@ LBL,  s" leave" BYTES,   LKWUNLOOP LABEL@ LBL,  s" unloop" BYTES,
-   LKWCHAR LABEL@ LBL,  s" char" BYTES,   LKWBCHAR LABEL@ LBL,  BCHAR-KW 6 BYTES,
+   LKWCHAR LABEL@ LBL,  KWCHAR$ BYTES,   LKWBCHAR LABEL@ LBL,  BCHAR-KW BCHAR-LEN BYTES,
    LKWIMM LABEL@ LBL,  s" immediate" BYTES,
-   LKWDOES LABEL@ LBL,  s" does>" BYTES,
-   LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
+   LKWDOES LABEL@ LBL,  KWDOES$ BYTES,
+   LKWTRUSTED LABEL@ LBL, KWTRUSTED$ BYTES,
    LKWCAST LABEL@ LBL, s" cast:" BYTES,
    LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
-   LCASTNONAME LABEL@ LBL, s" hb: cast: missing name after " BYTES,
-   LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
-   LKEYNONAME LABEL@ LBL, s" hb: reader keyword needs a name: " BYTES,
+   LCASTNONAME LABEL@ LBL, CASTNONAME$ BYTES,
+   LCOLONNONAME LABEL@ LBL, COLONNONAME$ BYTES,
+   LKEYNONAME LABEL@ LBL, KEYNONAME$ BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,
-   LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, s" hb: is: parsing words resolve outside using-imports; qualify the target" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, S\" hb: native compiler dispatch unset\n" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
-   LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
+   LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES,      LKWCHKDOES LABEL@ LBL, KWCHKDOES$ BYTES,
+   LKWDUPDEF LABEL@ LBL, KWDUPDEF$ BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, DEFER-DIAG:NOTOKEN$ BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, DEFER-DIAG:NOTFOUND$ BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, DEFER-DIAG:NOTDEFER$ BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, DEFER-DIAG:HINT$ BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, DEFER-DIAG:NONAME$ BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, RECWPUB$ BYTES,  LRECMIQ LABEL@ LBL, RECMIQ$ BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, UNSET-MSG$ BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, NCOMP-EMIT:NEUTRAL$ BYTES,  LP2DOESW LABEL@ LBL, P2DOESW-MSG$ BYTES,
+   LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, CHKEXPORT$ BYTES,
    LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
-   LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
+   LBADTAGPFX LABEL@ LBL, BADTAG-PFX$ BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW BADTAG-SFX-LEN BYTES,
    PFX-PATH-FILES
    PFX-CHAIN:TABLE ;
 
@@ -2701,13 +2781,29 @@ package LOOP-EMIT
    4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
+\ A fail-closed death that names the current token: the token on fd 2, the
+\ newline from LOPENNL, then exit rc. Nothing recovers it, not even inside
+\ evaluate, unlike C-DIE-TOKEN's LCOMPILEDIE tail. The token is the reader's
+\ bytes, so the newline is a second write.
+: C-EXIT-TOKEN ( n -- ) {: rc:n :}
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ The same death for a cause that is baked text: the label's len bytes on fd 2,
+\ the newline from LOPENNL, then exit rc. A missing engine word names its own
+\ lookup keyword (rc 70); a lowering transaction failure states it (rc 76).
+: C-EXIT-LABEL ( ptr n n n -- ) {: msg:ptr len:n rc:n :}
+   0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
 \ Native task guard and dictionary/checker lookup bridge operate on generated
 \ registers and dynamically found checker words.
 : C-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
+      $4F C-EXIT-TOKEN
    ok LBL, ;
 
 \ C-PUSH-DREC-NAME: push the definition's ORIGINAL qualified spelling for the
@@ -2818,9 +2914,7 @@ public
    LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF absent DECL-OWNER:TARGET
    ready B,
-   absent LBL,
-   0 2 MOVZ, 1 KWDATA:LKWTRUSTDECL LABEL@ ADR, 2 10 MOVZ, NR-WRITE SYS,
-   0 70 MOVZ, NR-EXIT-GROUP SYS,
+   absent LBL,  KWDATA:LKWTRUSTDECL KWDATA:TRUSTDECL$ nip 70 C-EXIT-LABEL
    ready LBL, ;
 
 \ Register the pending definition's declared signature: name from the body
@@ -2884,9 +2978,7 @@ package LASTC-TRUST
    LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
    ready B,
-   absent LBL,
-   0 2 MOVZ, 1 KWDATA:LKWTRUSTRAW LABEL@ ADR, 2 9 MOVZ, NR-WRITE SYS,
-   0 70 MOVZ, NR-EXIT-GROUP SYS,
+   absent LBL,  KWDATA:LKWTRUSTRAW KWDATA:TRUSTRAW$ nip 70 C-EXIT-LABEL
    ready LBL, ;
 
 public
@@ -2959,8 +3051,7 @@ public
    LBL {: ok:label :}
    name len C-FIND-GLOBAL?
    13 ok CBNZ,
-      0 2 MOVZ,  1 name LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      name len 70 C-EXIT-LABEL
    ok LBL, ;
 
 package NCOMP-EMIT
@@ -2969,7 +3060,7 @@ public
 \ Emit the shared missing-dispatch death. Both readers ask the same integrity
 \ question, so the diagnostic and exit code have one owner too.
 : UNSET ( -- )
-   0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 35 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 UNSET-MSG$ nip MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Load the optimizing compiler entry the AOT seed installed. A zero cell is a
@@ -3034,9 +3125,9 @@ public
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL LBL {: nohook:label nomark:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   LRECWPUB 16 C-FIND-GLOBAL
+   LRECWPUB RECWPUB$ nip C-FIND-GLOBAL
    C-CALL-X11-SAVED
-   LRECMIQ 11 C-FIND-GLOBAL
+   LRECMIQ RECMIQ$ nip C-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP                                            \ x10 = latched min-in cells (0 = none)
    10 nomark CBZ,
@@ -3049,15 +3140,14 @@ public
    nohook LBL, ;
 
 : C-DIE-DOES ( -- )                                   \ does>-body checker reject: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level
-   0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 KWDOES$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL {: found good :}
-   9 LKWCHKDOES LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,
+   9 LKWCHKDOES LABEL@ ADR,  10 KWCHKDOES$ nip MOVZ,  LFIND LABEL@ BL,
    13 found CBNZ,
-      0 2 MOVZ,  1 LKWCHKDOES LABEL@ ADR,  2 11 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      LKWCHKDOES KWCHKDOES$ nip 70 C-EXIT-LABEL
    found LBL,
    9 DATA BODYBUF-OFF ADDI,
    10 DATA DOESB-CELL LDR,
@@ -3447,27 +3537,25 @@ public
 \ unattributable. Emit the fixed label first, then the token + newline; the
 \ exit codes stay the deterministic contracts (dict full $4D=77, code space
 \ full $4C=76).
-: C-CAP-LABEL ( ptr n -- )
-   0 2 MOVZ,
-   LABEL@ 1 swap ADR,
-   2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
+: C-CAP-LABEL ( ptr n n -- ) {: msg:ptr len:n :}
+   0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS, ;
 
 : C-DIE-TOKEN ( n -- ) {: rc:n :}                  \ definer capacity die (dict full $4D / code full $4C): recoverable inside evaluate (rollback frees the aborted definition), fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-DIE-DICT-FULL ( -- )
-   LDICTFULL C-CAP-LABEL
+   LDICTFULL DICTFULL-MSG$ nip C-CAP-LABEL
    $4D C-DIE-TOKEN ;
 
 : C-DIE-CODE-FULL ( -- )
-   LCODEFULL C-CAP-LABEL
+   LCODEFULL CODEFULL-MSG$ nip C-CAP-LABEL
    $4C C-DIE-TOKEN ;
 
 \ The duplicate-definition label on fd 2. Each wall writes the refused name
 \ after it, then exits $4E through LCOMPILEDIE.
 : C-DUP-DEF-SAY ( -- )
-   0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS, ;
+   0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 KWDUPDEF$ nip MOVZ,  NR-WRITE SYS, ;
 
 \ ---- a record's name, stored once for every definer --------------------------
 \ `:`, `create`, `export`, `package` and a qualified definition store the token
@@ -4139,7 +4227,7 @@ public
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
    14 DICT-CAP LIT64,  NDICT 14 CMP,  C-LT room BCOND,
-      LDICTFULL C-CAP-LABEL
+      LDICTFULL DICTFULL-MSG$ nip C-CAP-LABEL
       $4D C-QUALIFY-FAIL
    room LBL, ;
 
@@ -4185,9 +4273,8 @@ public
 \ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
 \ resolve during the sealed self-hosting stage build and checker-boot recompile,
 \ where a checker word is neither reachably kept nor safely callable.
-: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
+: C-SEAL-PACKAGE-FAIL ( -- )   \ name the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
+   ENGINE-ERROR:SEAL-PACKAGE C-EXIT-TOKEN ;
 
 : C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit ENGINE-ERROR:SEAL-PACKAGE
    LBL LBL LBL LBL LBL {: tabloop:label cmploop:label matched:label tabnext:label done:label :}
@@ -4378,7 +4465,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    13 pgok CBZ,                                          \ not protected -> allow
       1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
-      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,                       \ + newline
+      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,                       \ + newline
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
@@ -4407,7 +4494,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    LTOK LABEL@ BL,
    LBL {: named:label :}
    0 named CBNZ,
-      LKWCREATE LABEL@ 6 C-DIE-KEYWORD-NAME
+      LKWCREATE LABEL@ KWCREATE$ nip C-DIE-KEYWORD-NAME
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
@@ -4427,7 +4514,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
-   LKWCREATE 6 C-DEFHOOK
+   LKWCREATE KWCREATE$ nip C-DEFHOOK
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -4454,7 +4541,7 @@ package INTERP-EMIT
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,  LTOK LABEL@ BL,
    LBL {: named:label :}
    0 named CBNZ,
-      LKWCONST LABEL@ 8 C-DIE-KEYWORD-NAME
+      LKWCONST LABEL@ KWCONST$ nip C-DIE-KEYWORD-NAME
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
@@ -4472,7 +4559,7 @@ package INTERP-EMIT
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
-   LKWCONST 8 C-DEFHOOK
+   LKWCONST KWCONST$ nip C-DEFHOOK
    LASTC-TRUST:PUBLISH-A ;
 
 ;package
@@ -4524,7 +4611,7 @@ package INTERP-EMIT
    ndok LBL,
    LTOK LABEL@ BL,
    0 named CBNZ,
-      LKWTRUSTED LABEL@ 8 C-DIE-KEYWORD-NAME
+      LKWTRUSTED LABEL@ KWTRUSTED$ nip C-DIE-KEYWORD-NAME
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP LABEL@ BL,
@@ -4699,13 +4786,13 @@ public
 \ its length and its exit code are one fact about that cause and are stated once,
 \ here, instead of being spelled out again at every site that can fail.
 : DIE-NO-NAME ( -- )                       \ `defer` with no following token
-   LDEFNONAME LABEL@ NONAME-LEN $4A DIE-MSG ;
+   LDEFNONAME LABEL@ NONAME$ nip $4A DIE-MSG ;
 
 : DIE-NO-TARGET ( -- )                     \ `is` with no following token
-   LDEFNOTOKEN LABEL@ NOTOKEN-LEN $4A DIE-MSG ;
+   LDEFNOTOKEN LABEL@ NOTOKEN$ nip $4A DIE-MSG ;
 
 : DIE-NOT-DEFER ( -- )                     \ `is` target exists but is not deferred
-   LDEFNOTDEFER LABEL@ NOTDEFER-LEN $4C DIE-MSG ;
+   LDEFNOTDEFER LABEL@ NOTDEFER$ nip $4C DIE-MSG ;
 
 \ `is` parses its target and resolves it through the engine's own lookup, which
 \ does not consult the packages a `using` imported - so a bare tail that only a
@@ -4717,9 +4804,9 @@ public
 \ it at the reference site with E-USING-SHADOW-GLOBAL (throw 7141), naming both
 \ candidates - which is why this dot's repair is the message and not a new rule.
 : DIE-NOT-FOUND ( -- )                     \ `is` target resolves to nothing
-   LDEFNOTFOUND LABEL@ NOTFOUND-LEN DIE-HEAD
-   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,   \ end the cause line; the hint is the located one
-   0 2 MOVZ,  1 LDEFHINT LABEL@ ADR,  2 HINT-LEN MOVZ,  NR-WRITE SYS,
+   LDEFNOTFOUND LABEL@ NOTFOUND$ nip DIE-HEAD
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,   \ end the cause line; the hint is the located one
+   0 2 MOVZ,  1 LDEFHINT LABEL@ ADR,  2 HINT$ nip MOVZ,  NR-WRITE SYS,
    0 $46 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 ;package
@@ -4793,7 +4880,7 @@ public
    SP SP 32 SUBI,  9 $2D657270203A6268 LIT64,  9 SP 0 STR,  9 $6564207473757274 LIT64,  9 SP 8 STR,  9 $6C62617420726566 LIT64,  9 SP 16 STR,  9 $203A6C6C75662065 LIT64,  9 SP 24 STR,
    0 2 MOVZ,  1 SP 0 ADDI,  2 32 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
@@ -5266,7 +5353,7 @@ variable LTOPHOOK
    LTOK LABEL@ BL,
    LBL {: named:label :}
    0 named CBNZ,
-      LKWCHAR LABEL@ 4 C-DIE-KEYWORD-NAME
+      LKWCHAR LABEL@ KWCHAR$ nip C-DIE-KEYWORD-NAME
    named LBL,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH
    TOP-EV-CHAR C-TOPHOOK-LIT ;
@@ -5275,7 +5362,7 @@ variable LTOPHOOK
    LTOK LABEL@ BL,
    LBL {: named:label :}
    0 named CBNZ,
-      LKWBCHAR LABEL@ 6 C-DIE-KEYWORD-NAME
+      LKWBCHAR LABEL@ BCHAR-LEN C-DIE-KEYWORD-NAME
    named LBL,
    LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
@@ -5332,7 +5419,7 @@ variable LTOPHOOK
    LBL LBL LBL LBL {: tk:label usedtry:label found:label named:label :}
    LTOK LABEL@ BL,
    0 named CBNZ,
-      LKWTICK LABEL@ 1 C-DIE-KEYWORD-NAME
+      LKWTICK LABEL@ TICK-LEN C-DIE-KEYWORD-NAME
    named LBL,
    C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
@@ -5374,7 +5461,7 @@ variable LTOPHOOK
    LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label :}
    LTOK LABEL@ BL,
    0 named CBNZ,
-      LKWBTICK LABEL@ 3 C-DIE-KEYWORD-NAME
+      LKWBTICK LABEL@ BTICK-LEN C-DIE-KEYWORD-NAME
    named LBL,
    C-QUALIFY-SEAL-GUARD                                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    LBCAP LABEL@ BL,
@@ -5408,28 +5495,28 @@ variable LTOPHOOK
 \ immutable LOWER-CERT artifact copied into the lowering transaction; pass 2
 \ never calls the checker or reads its mutable tables.
 variable LCERTBYTES  variable LP2CWAT  variable LP2CDESC
+: CERTBYTES$ ( -- ptr u8 n )   s" lower-cert:bytes" ;
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
 variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
 variable LKWAT2  variable LKWSTORE2
 variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable LP2RS
 variable LP2FETCH  variable LP2STORE  variable LP2VEXEC  variable LP2VEMIT
-variable LP2NEST
+variable LP2NEST  variable LP2SLOT
 package LOWER-TXN-CODE
 public
 variable BAD  variable MEM  variable FULL  variable DRIFT
 variable VDESC  variable DRIFT-FAIL
+: BAD$ ( -- ptr u8 n )     s" hb: malformed lowering certificate" ;
+: MEM$ ( -- ptr u8 n )     s" hb: lowering transaction memory failed" ;
+: FULL$ ( -- ptr u8 n )    s" hb: lowering transaction full" ;
+: DRIFT$ ( -- ptr u8 n )   s" hb: lowering certificate replay drift" ;
 4095 constant MAX-WIDTH
-
-: FAIL ( ptr n n -- ) {: msg:ptr len:n :}
-   0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
 ;package
 
 : EM-P2-SLOT-DIE ( -- )            \ frame slot beyond the scaled ldr/str range: fail closed
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 $4B MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 2 MOVZ,  1 LP2SLOT LABEL@ ADR,  2 P2SLOT-MSG$ nip MOVZ,  NR-WRITE SYS,
+   $4B C-EXIT-TOKEN ;
 
 : EM-P2-LOCAL-GUARD ( n label -- ) {: reg:n ok:label :}
    reg 64 CMPI,  C-CC ok BCOND,
@@ -5573,7 +5660,7 @@ variable VDESC  variable DRIFT-FAIL
 \ Locals helpers reject quotation-scoped declarations and emit local-reference loads;
 \ the control dispatcher executes data-driven emitter xts.
 : C-LBRACE-DIE ( -- )   \ B2: locals opener inside a quotation: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level
-   1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $26 MOVZ,  NR-WRITE SYS,   \ $26 = the message without BADLOC-KW's trailing newline (the LCOMPILEDIE tail ends the line)
+   1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 BADLOC-LEN 1- MOVZ,  NR-WRITE SYS,   \ the message without BADLOC-KW's trailing newline (the LCOMPILEDIE tail ends the line)
    0 $4B MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-LBRACE-GUARDS ( -- )
@@ -7861,7 +7948,7 @@ ardone LBL,
       6 winl CBZ,  1 5 24 LDR,                          \ EXT: [24] points at them
       winl LBL,
       0 2 MOVZ,  NR-WRITE SYS,
-      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,
+      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wbad LBL,
       1 wmsg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
@@ -8704,7 +8791,7 @@ public
    14 13 2 ANDI,  14 noimm CBZ,
    SP SP 16 SUBI,  11 SP 0 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
-   LNEUTRAL 18 C-FIND-GLOBAL
+   LNEUTRAL NEUTRAL$ nip C-FIND-GLOBAL
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -8849,7 +8936,7 @@ public
    kcolon LBL,
       LBL {: p2ok:label :}
       9 DATA P2-CELL LDR,  9 p2ok CBZ,
-         0 2 MOVZ,  1 LP2NEST LABEL@ ADR,  2 33 MOVZ,  NR-WRITE SYS,
+         0 2 MOVZ,  1 LP2NEST LABEL@ ADR,  2 P2NEST-MSG$ nip MOVZ,  NR-WRITE SYS,
          76 C-DIE-TOKEN
       p2ok LBL,
       C-TASK-LIVE-GUARD
@@ -9125,10 +9212,12 @@ public
 
 : C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
    LBL LBL LBL LBL LBL LBL {: mmiss:label hastok:label cscan:label cbad:label cmsg:label cok:label :}
+   s" hb: using: missing package name" {: ma:ptr mu:n :}
+   s" hb: using: package name must not contain ':': " {: ca:ptr cu:n :}
    LTOK LABEL@ BL,  0 hastok CBNZ,
-      0 2 MOVZ,  1 mmiss ADR,  2 31 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 mmiss ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 89 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 89 = ENGINE-ERROR:USING-NO-NAME
-   mmiss LBL,  s" hb: using: missing package name" BYTES,
+   mmiss LBL,  ma mu BYTES,
    hastok LBL,
    14 0 MOVZ,
    cscan LBL,
@@ -9136,9 +9225,9 @@ public
       15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ cbad BCOND,
       14 14 1 ADDI,  cscan B,
    cbad LBL,
-      0 2 MOVZ,  1 cmsg ADR,  2 46 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 cmsg ADR,  2 cu MOVZ,  NR-WRITE SYS,
       90 C-DIE-TOKEN                               \ 90 = ENGINE-ERROR:USING-BAD-NAME
-   cmsg LBL,  s" hb: using: package name must not contain ':': " BYTES,
+   cmsg LBL,  ca cu BYTES,
    cok LBL, ;
 
 : C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
@@ -9154,6 +9243,7 @@ public
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: loop:label miss:label hit:label notfound:label umsg:label done:label
       lscan:label plp:label pnx:label :}
+   s" hb: using: unknown package: " {: ua:ptr uu:n :}
    14 DATA HIDXP-CELL LDR,  14 lscan CBZ,          \ no table -> the scan answers
    16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
    16 15 3 4 5 7 C-HIDX-HASH                       \ x3 = folded-name hash
@@ -9178,18 +9268,19 @@ public
       hit LBL,  2 5 0 LDR,  done B,              \ x2 = record[0] = package public WID
       miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    notfound LBL,
-      0 2 MOVZ,  1 umsg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 umsg ADR,  2 uu MOVZ,  NR-WRITE SYS,
       91 C-DIE-TOKEN                               \ 91 = ENGINE-ERROR:USING-UNKNOWN
-   umsg LBL,  s" hb: using: unknown package: " BYTES,
+   umsg LBL,  ua uu BYTES,
    done LBL, ;
 
 : C-USING-PUSH ( -- )   \ x2 = public WID; push it onto the using stack (overflow -> die)
    LBL LBL LBL {: fmsg:label pushok:label nofloor:label :}
+   s" hb: using: too many concurrent usings: " {: fa:ptr fu:n :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
    14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
-      0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
       92 C-DIE-TOKEN                               \ 92 = ENGINE-ERROR:USING-OVERFLOW
-   fmsg LBL,  s" hb: using: too many concurrent usings: " BYTES,
+   fmsg LBL,  fa fu BYTES,
    pushok LBL,
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
       \ A buffer below its floor had a `;package` close a package opened before
@@ -9214,11 +9305,13 @@ public
    LBL LBL LBL LBL {: ok:label umsg:label own:label omsg:label :}
    LBL LBL {: mine:label fmsg:label :}
    s" hb: ;using would close a using opened outside the file" {: fm:ptr fu:n :}
+   s" hb: ;using without an open using" {: ua:ptr uu:n :}
+   s" hb: ;using would close a using opened outside the package" {: oa:ptr ou:n :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
    8 ok CBNZ,
-      0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 umsg ADR,  2 uu MOVZ,  NR-WRITE SYS,
       0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = ENGINE-ERROR:USING-UNBALANCED
-   umsg LBL,  s" hb: ;using without an open using" BYTES,
+   umsg LBL,  ua uu BYTES,
    ok LBL,
    \ In an open package the most recent using must be the package's own. One opened
    \ before `package` sits at or below the depth the package opened at, which
@@ -9227,9 +9320,9 @@ public
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  9 9 0 LDR,    \ x9 = depth at package open
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ reload depth (no cross-syscall live reg)
    8 9 CMP,  C-HI own BCOND,                                \ x8 (depth) above it -> opened in the package
-      0 2 MOVZ,  1 omsg ADR,  2 57 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 omsg ADR,  2 ou MOVZ,  NR-WRITE SYS,
       0 104 MOVZ,  LCOMPILEDIE LABEL@ B,              \ 104 = ENGINE-ERROR:USING-OUTER
-   omsg LBL,  s" hb: ;using would close a using opened outside the package" BYTES,
+   omsg LBL,  oa ou BYTES,
    own LBL,
    \ Nor may a buffer close a using its includer opened: one at or below the
    \ buffer's floor (layout.f EVAL-FRAME:USE-FLOOR) would come back open when the
@@ -9272,6 +9365,7 @@ public
       ninl:label ncmp:label nmatch:label unext:label udone:label amb:label ambmsg:label
       lscan:label kloop:label knext:label ploop:label pnext:label pinl:label
       pcmp:label pmatch:label :}
+   s" hb: ambiguous bare word resolves in multiple used packages: " {: aa:ptr au:n :}
    13 0 MOVZ,
    17 0 MOVZ,
    qscan LBL,
@@ -9374,10 +9468,10 @@ public
    RET,                                                            \ hit: x5 is the matched record, LFIND's own output shape
    ret LBL,  5 0 MOVZ,  RET,                                       \ every miss leaves x5 = 0, including the two that never wrote it
    amb LBL,
-      0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 ambmsg ADR,  2 au MOVZ,  NR-WRITE SYS,
       PROT-EMIT:LCLOSE LABEL@ BL,                             \ region -> RX (idempotent; a compile-path caller is RW here)
       94 C-DIE-TOKEN                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
-   ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
+   ambmsg LBL,  aa au BYTES, ;
 
 package INTERP-EMIT
 public
@@ -9410,7 +9504,7 @@ public
 ;package
 
 : C-CALL-CHECKER-EXPORT ( -- )
-   LCHKEXPORT 14 C-FIND-GLOBAL
+   LCHKEXPORT CHKEXPORT$ nip C-FIND-GLOBAL
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED ;
@@ -9443,7 +9537,7 @@ public
    LBL LBL LBL {: none:label room:label fresh:label :}
    6 SP 24 LDR,  6 none CBZ,
    14 DICT-CAP 1 - LIT64,  NDICT 14 CMP,  C-LT room BCOND,
-      LDICTFULL C-CAP-LABEL
+      LDICTFULL DICTFULL-MSG$ nip C-CAP-LABEL
       $4D C-QUALIFY-FAIL
    room LBL,
    6 0 1 14 DOES-REC:NAME-OF,
@@ -9473,7 +9567,7 @@ public
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,              \ [40] = the export's wordlist
    none B,
    full LBL,
-      LCODEFULL C-CAP-LABEL
+      LCODEFULL CODEFULL-MSG$ nip C-CAP-LABEL
       6 SP 24 LDR,  6 DOES-REC:NAME-SAY,
       0 $4C MOVZ,  LCOMPILEDIE LABEL@ B,
    none LBL, ;
@@ -9796,10 +9890,10 @@ public
 \ inside the record so its ADR stays record-relative and is relocated with the
 \ body when the closure copies it (no reference to engine message data that a
 \ stripped image does not carry).
-19 constant LVP-BADTAG-LEN   \ "hb: bad layout tag\n" (18-byte message + newline)
 : EMIT-P2-VALID-EXEC ( -- )
    LBL LBL LBL LBL LBL LBL {: outer:label guard:label active:label inactive:label invalid:label done:label :}
    LBL LBL {: badmsg:label end:label :}
+   S\" hb: bad layout tag\n" {: bada:ptr badu:n :}
    LP2VEXEC LABEL@ {: start:label :}
    s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
@@ -9836,11 +9930,11 @@ public
       outer B,
    invalid LBL,
    0 2 MOVZ,
-   1 badmsg ADR,  2 LVP-BADTAG-LEN MOVZ,  NR-WRITE SYS,            \ write(2,"hb: bad layout tag\n",19)
+   1 badmsg ADR,  2 badu MOVZ,  NR-WRITE SYS,                     \ write(2,"hb: bad layout tag\n")
    0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
    RET,
-   badmsg LBL,  S\" hb: bad layout tag\n" BYTES,                   \ inline data (msg+newline, contiguous): relocation-safe within the registered record
+   badmsg LBL,  bada badu BYTES,                                  \ inline data (msg+newline, contiguous): relocation-safe within the registered record
    end LBL, ;
 
 \ LP2VEMIT reads the current fetch descriptor from the frozen lowering
@@ -9921,7 +10015,7 @@ private
    found LBL,
       10 11 2 cells LDR,
       13 13 1 ADDI,  13 DATA TXN-WF-I-CELL STR,  11 1 MOVZ,  RET,   \ x11=1: found (layout-cap slice 4 xpad legs read the flag)
-   drift LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL ;
+   drift LBL,  LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL ;
 
 : EMIT-DESC-LOOKUP ( -- )
    LBL LBL LBL {: missing:label found:label drift:label :}
@@ -9945,7 +10039,7 @@ private
       13 13 3 LSLI,  11 10 13 ADD,
       12 12 3 LSLI,
       14 14 1 ADDI,  14 DATA TXN-FETCH-I-CELL STR,  RET,
-   drift LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL ;
+   drift LBL,  LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL ;
 
 public
 
@@ -9963,12 +10057,13 @@ public
 \ keyword/certificate-name bytes for the pass-2 dispatch (the shuffle-op and rs
 \ keyword names reuse the jit.f/loop-keyword labels).
 : EMIT-P2KW ( -- )
-   LCERTBYTES LABEL@ LBL, s" lower-cert:bytes" BYTES,
-   LP2NEST LABEL@ LBL, s" hb: nested definition in pass 2: " BYTES,
-   LOWER-TXN-CODE:BAD LABEL@ LBL, s" hb: malformed lowering certificate" BYTES,
-   LOWER-TXN-CODE:MEM LABEL@ LBL, s" hb: lowering transaction memory failed" BYTES,
-   LOWER-TXN-CODE:FULL LABEL@ LBL, s" hb: lowering transaction full" BYTES,
-   LOWER-TXN-CODE:DRIFT LABEL@ LBL, s" hb: lowering certificate replay drift" BYTES,
+   LCERTBYTES LABEL@ LBL, CERTBYTES$ BYTES,
+   LP2NEST LABEL@ LBL, P2NEST-MSG$ BYTES,
+   LP2SLOT LABEL@ LBL, P2SLOT-MSG$ BYTES,
+   LOWER-TXN-CODE:BAD LABEL@ LBL, LOWER-TXN-CODE:BAD$ BYTES,
+   LOWER-TXN-CODE:MEM LABEL@ LBL, LOWER-TXN-CODE:MEM$ BYTES,
+   LOWER-TXN-CODE:FULL LABEL@ LBL, LOWER-TXN-CODE:FULL$ BYTES,
+   LOWER-TXN-CODE:DRIFT LABEL@ LBL, LOWER-TXN-CODE:DRIFT$ BYTES,
    LKWTUCK3 LABEL@ LBL,   s" tuck" BYTES,   LKWROT3 LABEL@ LBL,   s" rot" BYTES,
    LKWMROT3 LABEL@ LBL,   s" -rot" BYTES,   LKW2DUP3 LABEL@ LBL,  s" 2dup" BYTES,
    LKW2DROP3 LABEL@ LBL,  s" 2drop" BYTES,  LKW2SWAP3 LABEL@ LBL, s" 2swap" BYTES,
@@ -10171,11 +10266,11 @@ private
       12 12 1 SUBI,  outer B,
    done LBL,
       15 16 CMP,  C-NE bad BCOND,  RET,
-   bad LBL,  LOWER-TXN-CODE:BAD 34 LOWER-TXN-CODE:FAIL ;
+   bad LBL,  LOWER-TXN-CODE:BAD LOWER-TXN-CODE:BAD$ nip 76 C-EXIT-LABEL ;
 
 : EMIT-DRIFT-FAIL ( -- )
    LOWER-TXN-CODE:DRIFT-FAIL LABEL@ LBL,
-   LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL ;
+   LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL ;
 
 : PROTECT ( n -- ) {: prot:n :}
    LBL {: ok:label :}
@@ -10183,7 +10278,7 @@ private
    1 DATA TXN-BLOB-CAP-CELL LDR,
    2 prot MOVZ,  NR-MPROTECT SYS,
    0 0 CMPI,  C-EQ ok BCOND,
-   LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+   LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    ok LBL, ;
 
 : MAP ( n -- ) {: cap:n :}
@@ -10195,17 +10290,17 @@ private
    13 DATA TXN-CERT-A-CELL LDR,  12 12 13 ORR,
    13 DATA TXN-CERT-U-CELL LDR,  12 12 13 ORR,
    12 clear CBZ,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    clear LBL,
    0 0 MOVZ,  1 cap 0 ADDI,  2 3 MOVZ,
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    13 C-CS CSET,  13 mapped CBZ,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    mapped LBL,
    0 ok CBNZ,
       1 cap 0 ADDI,  NR-MUNMAP SYS,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    ok LBL,
    0 DATA TXN-BLOB-A-CELL STR,
    cap DATA TXN-BLOB-CAP-CELL STR, ;
@@ -10216,14 +10311,14 @@ private
    1 DATA TXN-BLOB-CAP-CELL LDR,
    0 mapped CBNZ,
       1 empty CBZ,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    mapped LBL,
    1 ok CBNZ,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    ok LBL,
    NR-MUNMAP SYS,
    0 0 CMPI,  C-EQ empty BCOND,
-      LOWER-TXN-CODE:MEM 38 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:MEM LOWER-TXN-CODE:MEM$ nip 76 C-EXIT-LABEL
    empty LBL,
    0 0 MOVZ,
    0 DATA TXN-BLOB-A-CELL STR,
@@ -10406,7 +10501,7 @@ private
    bad VALIDATE-BINDS
    bad VALIDATE-FETCHES
    done B,
-   bad LBL,  LOWER-TXN-CODE:BAD 34 LOWER-TXN-CODE:FAIL
+   bad LBL,  LOWER-TXN-CODE:BAD LOWER-TXN-CODE:BAD$ nip 76 C-EXIT-LABEL
    done LBL, ;
 
 : ZERO-LIVE ( -- )
@@ -10423,7 +10518,7 @@ private
    12 11 header cells LDR,
    13 DATA state LDR,
    12 13 CMP,  C-EQ ok BCOND,
-      LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL
    ok LBL, ;
 
 public
@@ -10441,7 +10536,7 @@ public
 
 : FREEZE ( -- )
    LBL LBL LBL LBL {: skip:label copy:label room:label alloc:label :}
-   LCERTBYTES 16 C-FIND-GLOBAL
+   LCERTBYTES CERTBYTES$ nip C-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP                              \ x11=certificate, x10=bytes
    VALIDATE
@@ -10452,11 +10547,11 @@ public
    14 SOURCE-LEN
    15 14 9 ADDI,  15 15 $FFFFFFFFFFFFFFF8 ANDI,     \ aligned source bytes incl. `; `
    16 15 10 ADD,  16 15 CMP,  C-CS room BCOND,
-      LOWER-TXN-CODE:FULL 29 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:FULL LOWER-TXN-CODE:FULL$ nip 76 C-EXIT-LABEL
    room LBL,
    17 PROT-PAGE-MAX 1 - LIT64,  17 16 17 ADD,
    17 16 CMP,  C-CS alloc BCOND,
-      LOWER-TXN-CODE:FULL 29 LOWER-TXN-CODE:FAIL
+      LOWER-TXN-CODE:FULL LOWER-TXN-CODE:FULL$ nip 76 C-EXIT-LABEL
    alloc LBL,
    5 PROT-PAGE-MAX negate LIT64,  17 17 5 AND,
    SP SP 32 SUBI,
@@ -10562,9 +10657,8 @@ public
    LOWER-TXN:NEEDS?
    10 nowide CBZ,
    10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
-      0 2 MOVZ,  1 LP2DOESW LABEL@ ADR,  2 49 MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4B MOVZ,  NR-EXIT-GROUP SYS,
+      0 2 MOVZ,  1 LP2DOESW LABEL@ ADR,  2 P2DOESW-MSG$ nip MOVZ,  NR-WRITE SYS,
+      $4B C-EXIT-TOKEN
    p2ok LBL,
    EM-P2-START
    LMAIN LABEL@ B,
@@ -10906,7 +11000,7 @@ public
    10 SP 0 LDR,  11 10 3 LSLI,  LVPUSHC LABEL@ BL,
    11 8 MOVZ,  LVPUSHC LABEL@ BL,
    SP SP 16 ADDI,  done B,
-   missing LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL
+   missing LBL,  LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL
    done LBL, ;
 
 \ The checker records offset+1 so a first field has a positive certificate
@@ -10931,7 +11025,7 @@ public
    11 missing CBZ,
    11 10 0 ADDI,  LVPUSHC LABEL@ BL,
    done B,
-   missing LBL,  LOWER-TXN-CODE:DRIFT 37 LOWER-TXN-CODE:FAIL
+   missing LBL,  LOWER-TXN-CODE:DRIFT LOWER-TXN-CODE:DRIFT$ nip 76 C-EXIT-LABEL
    done LBL, ;
 
 
@@ -11047,6 +11141,7 @@ public
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL {: bounds:label owned:label scope:label :}
+   S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    LEVALREC LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                        \ region -> RX before any handler runs
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -11163,7 +11258,7 @@ public
    9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
    NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code) as before
    LUNCRPT LABEL@ LBL,                                 \ out-of-range: report, then exit UNCAUGHT-RC
-   1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ write(2,"hb: uncaught throw code ",24)
+   1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ "hb: uncaught throw code "
    9 15 0 ADDI,                                        \ x9 = code for the itoa
    SP SP $20 SUBI,  12 SP $20 ADDI,
    13 $A MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ trailing newline
@@ -11183,9 +11278,9 @@ public
    NR-WRITE SYS,                                       \ write(2, digits, len)
    0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
    LEVCORRUPT LABEL@ LBL,                              \ eval-cross forged/corrupt handler frame: fail closed before any restore
-   0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
-   LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES,
+   LEVCORRUPTMSG LABEL@ LBL,  ma mu BYTES,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 : EM-REPL-RECOVER ( -- )
@@ -11195,7 +11290,7 @@ public
    12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
@@ -11240,7 +11335,7 @@ public
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code
-   SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ LBL,                                     \ shared LUNDEF/LWIDE recovery tail (TFAM)
    9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
       \ Inside evaluate: the aborted nested :-compile unwinds as a catchable throw
@@ -11269,22 +11364,22 @@ public
    LWIDE LABEL@ LBL,                                   \ branch target: TKA/TKL still hold the token
    0 2 MOVZ,  1 LWIDEMSG LABEL@ ADR,  2 WIDEMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LINTERNAL LABEL@ LBL,                               \ branch target: TKA/TKL still hold the token (DNAME-INT reject)
    0 2 MOVZ,  1 LINTMSG LABEL@ ADR,  2 INTMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LTRUSTTICK LABEL@ LBL,
    0 2 MOVZ,  1 LTRUSTTICKMSG LABEL@ ADR,  2 TRUSTTICKMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LMININ LABEL@ LBL,                                  \ branch target: TKA/TKL still hold the token (DNAME-MIN-IN underdepth reject)
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LPREFMISS LABEL@ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG LABEL@ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -11292,27 +11387,27 @@ public
    LORPHAN LABEL@ LBL,                                 \ branch target from LCFPOP: closer with an empty control-flow stack (TKA/TKL hold the closer token)
    0 2 MOVZ,  1 LORPHANMSG LABEL@ ADR,  2 ORPHANMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LCFKIND LABEL@ LBL,                                \ branch target from C-CF-AT/C-CF-NONE: the open entry is another structure's (TKA/TKL hold the token)
    0 2 MOVZ,  1 LCFKINDMSG LABEL@ ADR,  2 CFKINDMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LCFCAP LABEL@ LBL,                                 \ branch target from LCFPUSH: opener at the control-flow stack depth cap (TKA/TKL hold the opener token)
    0 2 MOVZ,  1 LCFCAPMSG LABEL@ ADR,  2 CFCAPMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LLOCWIDE LABEL@ LBL,                               \ branch target from C-LBRACE-STORE-ONE: bare local name wider than LOC-NAME-CAP (TKA/TKL hold the declaration token); rejected definition, rc 70 like an undefined word
    0 2 MOVZ,  1 LLOCWIDEMSG LABEL@ ADR,  2 LOCWIDEMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LLOCMANY LABEL@ LBL,                               \ branch target from C-LBRACE-STORE-ONE: a LOC-RECS+1th local (TKA/TKL hold the declaration token); the same rejected-definition tail
    0 2 MOVZ,  1 LLOCMANYMSG LABEL@ ADR,  2 LOCMANYMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 
 \ Shared recoverable compile-error tail (dot habu-raw-exit-compile). The
@@ -11375,7 +11470,7 @@ public
       SP SP $20 ADDI,
       located B,
    noloc LBL,
-   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    located LBL,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
       PROT-EMIT:LCLOSE LABEL@ BL,                      \ region -> RX
@@ -11747,7 +11842,7 @@ public
       LMAIN LABEL@ B,
    nousrc LBL,
    LREPLROUTE LABEL@ BL,  9 LRBYE LABEL@ CBZ,
-   1 LOKS LABEL@ ADR,  2 4 MOVZ,  G-OUT
+   1 LOKS LABEL@ ADR,  2 OKS-LEN MOVZ,  G-OUT
    EM-REPL-READ
    LRBYE LABEL@ LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,     \ region -> RX: the source may end inside a definition (EMIT-EXITHOOK)
@@ -11772,7 +11867,7 @@ public
 : EM-INTERPRET-UNDERFLOW ( -- )
    LBL LBL {: uf0:label ufdie:label :}
    LUNDERFLOW LABEL@ LBL,
-   SP SP 16 SUBI,  9 $465245444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A574F4C LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   SP SP 16 SUBI,  9 $465245444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A574F4C LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 uf0 CBZ,
       \ Inside evaluate: mirror LDIAGRET — an immediate word can underflow
       \ mid-compile with the dict region RW, so restore RX before the unwind
@@ -11820,9 +11915,10 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 
 : C-ADT-OWNER ( n -- ) {: off:n :}
    LBL LBL {: msg:label ready:label :}
+   s" hb: declaration owner unavailable" {: ma:ptr mu:n :}
    off DECL-OWNER:FIND  11 ready CBNZ,
-   1 msg ADR,  2 33 MOVZ,  LADTDIE LABEL@ B,
-   msg LBL,  s" hb: declaration owner unavailable" BYTES,
+   1 msg ADR,  2 mu MOVZ,  LADTDIE LABEL@ B,
+   msg LBL,  ma mu BYTES,
    ready LBL, ;
 
 : EM-ADT-CON-FAM ( -- )                 \ CMM=1 leg: resolve family, arm state 2
@@ -11836,7 +11932,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    9 G-POP                              \ family id
    10 fok CBNZ,
       1 fmsg ADR,  2 CONFMSG-LEN MOVZ,  LADTDIE LABEL@ B,
-   fmsg LBL,  s" hb: construct: unknown family: " BYTES,
+   fmsg LBL,  CONFMSG$ BYTES,
    fok LBL,
    9 DATA CMFAM-CELL STR,
    12 2 MOVZ,  12 DATA CMM-CELL STR,
@@ -11869,7 +11965,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    13 G-POP                             \ tag
    10 vok CBNZ,
       1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  LADTDIE LABEL@ B,
-   vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
+   vmsg LBL,  CONVMSG$ BYTES,
    vok LBL,
    9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
       SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,      \ save declared pads + tag across the query
@@ -11905,18 +12001,19 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 \   (x28=CP), not the engine. Runs with the region RW. Clobbers x5-x16.
 : C-DIE-BAD-TAG ( -- )
    LBL LBL LBL LBL LBL LBL {: p1:label p2:label s1:label s2:label t1:label t2:label :}
+   BADTAG-PFX$ nip BADTAG-SFX-LEN + {: fixed:n :}     \ the message bytes around the family name
    SP SP $20 SUBI,  11 SP 0 STR,  12 SP 8 STR,        \ frame name addr/len (loops clobber x11)
    15 CP 0 ADDI,  15 SP 16 STR,                        \ B-over addr (patch target)
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ emit B placeholder
    16 CP 0 ADDI,  16 SP 24 STR,                        \ msg start addr
-   1 12 13 ADDI,  PROT-EMIT:RESERVE                 \ the whole message, copied at CP
-   11 LBADTAGPFX LABEL@ ADR,  9 8 MOVZ,                \ copy "hb: bad " (8)
+   1 12 fixed ADDI,  PROT-EMIT:RESERVE              \ the whole message, copied at CP
+   11 LBADTAGPFX LABEL@ ADR,  9 BADTAG-PFX$ nip MOVZ,  \ copy "hb: bad "
    p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
    p2 LBL,
    11 SP 0 LDR,  9 SP 8 LDR,                           \ copy family name
    s1 LBL,  9 s2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  s1 B,
    s2 LBL,
-   11 LBADTAGSFX LABEL@ ADR,  9 5 MOVZ,                \ copy " tag\n" (5)
+   11 LBADTAGSFX LABEL@ ADR,  9 BADTAG-SFX-LEN MOVZ,   \ copy " tag\n"
    t1 LBL,  9 t2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  t1 B,
    t2 LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,            \ align CP to 4
@@ -11926,7 +12023,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,
       7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,
       9 8 0 ADDI,  LCEMIT LABEL@ BL,
-   14 SP 8 LDR,  14 14 13 ADDI,                        \ x14 = 8 + name-len + 5 = name-len + 13
+   14 SP 8 LDR,  14 14 fixed ADDI,                     \ x14 = name-len + the fixed bytes
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
    SYS-EMIT-WRITE C-EMIT-STENCIL                       \ movz x_sys, #NR-WRITE
    SYS-EMIT-SVC C-EMIT-STENCIL                         \ svc
@@ -11969,7 +12066,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    9 G-POP                              \ family id
    10 fok CBNZ,
       1 fmsg ADR,  2 MFAMMSG-LEN MOVZ,  LADTDIE LABEL@ B,
-   fmsg LBL,  s" hb: match: unknown family: " BYTES,
+   fmsg LBL,  MFAMMSG$ BYTES,
    fok LBL,
    LMFRTOP LABEL@ BL,  9 15 0 STR,
    12 4 MOVZ,  12 DATA CMM-CELL STR,
@@ -11993,7 +12090,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    13 G-POP                             \ tag
    10 vok CBNZ,
       1 vmsg ADR,  2 MVARMSG-LEN MOVZ,  LADTDIE LABEL@ B,
-   vmsg LBL,  s" hb: match: unknown variant: " BYTES,
+   vmsg LBL,  MVARMSG$ BYTES,
    vok LBL,
    13 DATA CMTAG-CELL STR,
    12 DATA CMPADS-CELL STR,
@@ -12007,7 +12104,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    0 LKWOF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,
    0 eok CBNZ,
       1 emsg ADR,  2 MOFMSG-LEN MOVZ,  LADTDIE LABEL@ B,
-   emsg LBL,  s" hb: match: expected of: " BYTES,
+   emsg LBL,  MOFMSG$ BYTES,
    eok LBL,
    9 DATA P2-CELL LDR,  9 noxm CBZ,     \ layout-cap slice 4: pass-2 wide match arm adds extra pads to CMPADS
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
@@ -12348,7 +12445,7 @@ package LABELS
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !
    LBL LKWAT2 !  LBL LKWSTORE2 !
    LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS !
-   LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !  LBL LP2NEST !
+   LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !  LBL LP2NEST !  LBL LP2SLOT !
    LBL LOWER-TXN-CODE:BAD !  LBL LOWER-TXN-CODE:MEM !
    LBL LOWER-TXN-CODE:FULL !  LBL LOWER-TXN-CODE:DRIFT !
    LBL LOWER-TXN-CODE:VDESC !  LBL LOWER-TXN-CODE:DRIFT-FAIL ! ;

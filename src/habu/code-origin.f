@@ -16,6 +16,9 @@ public
 
 private
 
+\ The text both table-capacity exits write.
+: FULL$ ( -- ptr u8 n ) S\" hb: code-origin table capacity\n" ;
+
 \ dst must differ from ix. A row has three cells, not a power-of-two stride.
 : ROW, ( n n n -- ) {: dst:n ix:n base:n :}
    dst ix 1 LSLI,  dst dst ix ADD,  dst dst 3 LSLI,
@@ -164,9 +167,9 @@ private
    replace LBL,
       EDGES,  full MOVE,  PUT,  done B,
    full LBL,
-      0 2 MOVZ,  1 msg ADR,  2 31 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
       0 101 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: code-origin table capacity\n" BYTES,
+   msg LBL,  FULL$ BYTES,
    done LBL,  RESTORE,
    LSET-END LABEL@ LBL,
    s" engine-code-origin-set" LSET @ LSET-END @ ENGINE-PRIMS:HELPER-REGISTER ;
@@ -272,9 +275,9 @@ public
    3 TIER-PROV:N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
    5 TIER-PROV:SPANS LIT64,  4 5 CMP,  C-LS more BCOND,
    LBL {: msg:label :}
-   0 2 MOVZ,  1 msg ADR,  2 31 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 msg ADR,  2 FULL$ nip MOVZ,  NR-WRITE SYS,
    0 101 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL, S\" hb: code-origin table capacity\n" BYTES,
+   msg LBL, FULL$ BYTES,
    more LBL,
    5 0 MOVZ,  6 0 MOVZ,
    LBL {: loop:label :}

@@ -141,8 +141,8 @@ variable ROW-U
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
 
-\ Write the text on fd 2, with no newline, as the ARM64 rows do, and exit n.
-\ The text follows the exit, inside the record.
+\ Write the line on fd 2, its newline included, and exit n. The text follows
+\ the exit, inside the record.
 : STDERR-EXIT, ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    LBL {: msg:label :}
    msg u STDERR-WRITE,
@@ -650,13 +650,13 @@ variable FULL-CELL
    have LBL,
    REBUILD-LBL JMP,                                    \ its ret is this one's
    fail LBL,
-   s" hb: dictionary index alloc failed" INDEX-RC STDERR-EXIT, ;
+   S\" hb: dictionary index alloc failed\n" INDEX-RC STDERR-EXIT, ;
 
 \ HIDX-EMIT:LFULL's twin: the index cannot be kept, which is loud, never a quiet
 \ fall back to the scan.
 : FULL-HELPER, ( -- )
    FULL-LBL LBL,
-   s" hb: dictionary index exhausted" INDEX-RC STDERR-EXIT, ;
+   S\" hb: dictionary index exhausted\n" INDEX-RC STDERR-EXIT, ;
 
 : INDEX-HELPERS, ( -- )
    LBL FIND-CELL !  LBL BUILD-CELL !  LBL ADD-CELL !  LBL REBUILD-CELL !
@@ -1302,7 +1302,7 @@ private
 : MOV-STORE, ( r64 r64 n -- ) {: r:r64 base:r64 off:n :}
    r base off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-: CORRUPT$ ( -- ptr u8 n ) s" hb: catch frame corrupt" ;
+: CORRUPT$ ( -- ptr u8 n ) S\" hb: catch frame corrupt\n" ;
 
 \ Refuse only the empty typed quotation value at a public invocation boundary.
 : CALLABLE, ( -- )
@@ -2439,7 +2439,7 @@ private
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
    RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
-   bad LBL,  s" set-check: invalid checker xt" HOOK-BAD-RC STDERR-EXIT,
+   bad LBL,  S\" set-check: invalid checker xt\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
@@ -2450,13 +2450,13 @@ private
    RCX COMPILE-PREFLIGHT-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E empty JCC,
    RCX RAX ASM-SINK ENC-CMP-RR  C-E done JCC,
-   s" set-preflight: invalid or replaced hook" HOOK-BAD-RC STDERR-EXIT,
+   S\" set-preflight: invalid or replaced hook\n" HOOK-BAD-RC STDERR-EXIT,
    empty LBL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E invalid JCC,
    invalid WINDOW,
    RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
-   invalid LBL,  s" set-preflight: invalid hook" HOOK-BAD-RC STDERR-EXIT,
+   invalid LBL,  S\" set-preflight: invalid hook\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ set-top-check ( xt -- ): 0 uninstalls; any other xt must lie in the window.
@@ -2468,7 +2468,7 @@ private
    ok LBL,
    RAX TOP-HOOK-CELL CELL!,
    done JMP,
-   bad LBL,  s" set-top-check: invalid top-row hook xt" HOOK-BAD-RC STDERR-EXIT,
+   bad LBL,  S\" set-top-check: invalid top-row hook xt\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ The checker's hooks live in sealed DATA cells, so a direct store from the
@@ -2533,7 +2533,7 @@ private
    TASK-LIVE-GUARD,
    RAX 0 PEEK,
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
-   s" hb: dictionary count out of range" COUNT-RC STDERR-EXIT,
+   S\" hb: dictionary count out of range\n" COUNT-RC STDERR-EXIT,
    bounded LBL,
    RECORD-GUARD,
    RAX POP,
@@ -2697,7 +2697,7 @@ private
    RCX PD-COUNT ASM-SINK ENC-MOV-MR
    next JMP,
    absent LBL,
-   s" trust-decl" REGISTRAR-RC STDERR-EXIT,
+   S\" trust-decl\n" REGISTRAR-RC STDERR-EXIT,
    done LBL, ;
 
 : SEAL-ROWS, ( -- )
@@ -2736,7 +2736,7 @@ private
    RDI OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
    RDI OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
    RDI PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
-   s" hb: protected-WID id above the bound" ENGINE-ERROR:SEAL-PACKAGE STDERR-EXIT,
+   S\" hb: protected-WID id above the bound\n" ENGINE-ERROR:SEAL-PACKAGE STDERR-EXIT,
    bounded LBL,
    PROT-BITS,
    RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
@@ -2827,7 +2827,7 @@ private
    RAX TIER-OFF CELL!,
    done JMP,
    bad LBL,
-   s" set-tier: x86-64 runs tier 1 only" HOOK-BAD-RC STDERR-EXIT,
+   S\" set-tier: x86-64 runs tier 1 only\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 : SCOPE-ROWS, ( -- )

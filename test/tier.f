@@ -661,7 +661,7 @@ variable OR-U
    s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
    S\" require lib/executable-build.f\nTRUSTED: BS-BAD ( -- ) 0 set-tier ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
    0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
-   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" arbitrary throws preserve their code and the outer tier" T-LABEL
    S\" 1 set-tier require lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
@@ -673,7 +673,7 @@ variable OR-U
    \ the saved guard error after the lookups, preserving its rejection code.
    S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
    REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
-   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    s" raw stores cannot erase retained provenance" T-LABEL
    s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" raw stores cannot disable the executable scope" T-LABEL

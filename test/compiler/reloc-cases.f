@@ -62,10 +62,10 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    EMIT-FILE$ COMPILER-ID-SRC:SCAN-FILE
    s" BL-OP-HI" COMPILER-ID-SRC:CONST@ BLOP !
    s" BL-OP-HI" BLOP @ RELOC-VM:SYM+
-   s" CALLMSG-LEN" s" CALLMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" XTMSG-LEN" s" XTMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" ADDRMSG-LEN" s" ADDRMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" XTBANDMSG-LEN" s" XTBANDMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+   s" CALLMSG-LEN" s" CALLMSG$" COMPILER-ID-SRC:STR-LEN@ RELOC-VM:SYM+
+   s" XTMSG-LEN" s" XTMSG$" COMPILER-ID-SRC:STR-LEN@ RELOC-VM:SYM+
+   s" ADDRMSG-LEN" s" ADDRMSG$" COMPILER-ID-SRC:STR-LEN@ RELOC-VM:SYM+
+   s" XTBANDMSG-LEN" s" XTBANDMSG$" COMPILER-ID-SRC:STR-LEN@ RELOC-VM:SYM+ ;
 
 \ The carrier's SHAPE is declared in src/habu/address-carrier.f, because a capture
 \ running inside bin/hb has to recognise the same chain this emitter's relocation

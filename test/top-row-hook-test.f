@@ -271,7 +271,7 @@ create TRH-EMPTY 1 allot
 : TRH-ASSERT-INVALID ( -- )         \ fail-closed install: named rc-70 diagnostic
    TRH-EXITED @ TTRUE
    TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ s" set-top-check: invalid top-row hook xt" CONTAINS? TTRUE ;
+   TRH-ERR$ S\" set-top-check: invalid top-row hook xt\n" CONTAINS? TTRUE ;
 
 : TRH-ASSERT-OK ( -- )
    TRH-EXITED @ TTRUE
@@ -380,7 +380,7 @@ create TRH-EMPTY 1 allot
    TRH-PREFLIGHT-REPLACE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ s" set-preflight: invalid or replaced hook" CONTAINS? TTRUE
+   TRH-ERR$ S\" set-preflight: invalid or replaced hook\n" CONTAINS? TTRUE
    s" raw ! into COMPILE-PREFLIGHT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-PREFLIGHT-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE

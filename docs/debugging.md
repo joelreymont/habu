@@ -55,9 +55,9 @@ So do the refusals that `exit_group` without any tail: the boot source errors
 (`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones
 (`hb: unknown flag`, `hb: cannot open`), `hb: uncaught throw code N`,
 `hb: catch frame corrupt`, the snapshot, AOT, protected-WID, lowering,
-address-cell and mmap families, and `hb: repl line over`.
-For those the checker's own diagnostics (which carry `<path>:<line>` of their
-own) or a bisect are still the way in.
+address-cell and mmap families, and `hb: repl line over`. Each ends its line
+with a newline. For those the checker's own diagnostics (which carry
+`<path>:<line>` of their own) or a bisect are still the way in.
 
 ## `.s` — data-stack inspector (in the standalone)
 `forth.fs` defines a `.s` primitive: prints the whole data stack (base..top), one
