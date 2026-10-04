@@ -10,11 +10,10 @@
 \ the refusal sits between (`MIN-N -1 /` is `MIN-N`, an ordinary division is
 \ unchanged) are still what they were.
 \
-\ `mod` is asserted beside `/` because a compiled `mod` is a division and a
-\ multiply-subtract (src/compiler/native/elaborate.f EXPAND-MODULO): it inherits
-\ the refusal from the division's schema rather than carrying one of its own, so
-\ a lowering that refused only where the source spelled `/` passes the first case
-\ and fails the second.
+\ `mod` with an unknown or zero divisor is asserted beside `/` because its
+\ division and multiply-subtract (src/compiler/native/elaborate.f EXPAND-MODULO)
+\ inherits the refusal from the division's schema rather than carrying one of
+\ its own. Literal two uses a signed remainder sequence in the same expansion.
 \
 \ THE GUARD IS THREE INSTRUCTIONS: `cbnz` of the divisor over one instruction,
 \ `bl` to the engine's sealed (DIV-ZERO) helper - the routine the engine's own
@@ -222,7 +221,7 @@ variable IMAGE-U
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
    s" the stripped image catches its compiled zero divide by the code" T-LABEL
    T-LABEL$ GE-RC@ 0 T=
-   GT-OUT$ S\" -6400\n" T$=
+   GT-OUT$ S\" -6400\n-1\n0\n0\n1\n0\n0\n1\n-1\n-7\n0\n-2\n-1\n" T$=
    s" artifacts: " type GT-ROOT type cr ;
 
 public

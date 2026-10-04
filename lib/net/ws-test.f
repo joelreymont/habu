@@ -5,7 +5,8 @@
 \ Every frame the client sends or reads one at a time goes into a transcript as
 \ one line - direction, opcode (`+` when more fragments follow), length, and the
 \ payload in hex or, past 24 bytes, as the sum of its bytes. The push is one line
-\ of counts, and the burst logs none. The transcript is written to
+\ of counts, and the burst logs none. The Linux stalled-pong cases record their
+\ transport, mutex and close observations. The transcript is written to
 \ build/ws-transcript.txt, read back and compared whole with the one this file
 \ expects.
 \
@@ -58,6 +59,19 @@ package WS
 \ The connection the socket's slot writes to.
 : WS-TEST:LINK ( socket -- TCP4:connection )
    SOCKET>N >SLOT LINK @ ;
+
+\ Linux TASK:FACILITY stores its pthread_mutex_t after its eight-byte owner.
+\ The mutex's first int is glibc's private futex word.
+: WS-TEST:LOCK-FUTEX ( socket -- ptr u8 )
+   SOCKET>N >SLOT LOCK BYTE-VIEW 8 + ;
+
+\ Set by the write that first sees HTTP's stop flag. Read after STOP returns.
+: WS-TEST:CUT-AT ( socket -- n )
+   SOCKET>N >SLOT CUT-AT @ ;
+;package
+
+package TCP4
+: WS-TEST:FD ( connection -- n ) CONNECTION-FD ;
 ;package
 
 package WS-TEST
@@ -100,6 +114,24 @@ $1000 constant REST-BYTES         \ the rest, in one write far under a loopback 
 LEAD-BYTES REST-BYTES + constant REST-FRAME-BYTES
 $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's examples
 1000000 constant NS-PER-MS
+1 constant SOL-SOCKET
+7 constant SO-SNDBUF
+8 constant SO-RCVBUF
+6 constant IPPROTO-TCP
+10 constant TCP-WINDOW-CLAMP
+11 constant TCP-INFO
+25 constant TCP-NOTSENT-LOWAT
+98 constant ARM-FUTEX             \ Linux AArch64 __NR_futex
+202 constant X64-FUTEX            \ Linux x86-64 __NR_futex
+129 constant FUTEX-WAKE-PRIVATE  \ FUTEX_WAKE | FUTEX_PRIVATE_FLAG
+2048 constant PEER-RCVBUF
+2048 constant SERVER-SNDBUF
+4096 constant PEER-WINDOW
+1 constant SEND-LOWAT
+$90 constant TCPI-NOTSENT-OFF
+$E4 constant TCPI-SND-WND-OFF
+$E8 constant TCP-INFO-MIN
+$100 constant TCP-INFO-CAP
 13 constant CR
 10 constant LF
 32 constant SP
@@ -109,7 +141,51 @@ $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's ex
 -9983 constant E-REFUSED          \ a handshake refused on a route only good ones are sent to
 -9984 constant E-EXIT             \ the application exit hook that is meant to fail
 
+: LINUX? ( -- bool )
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ;
+
 CAST: BLEN>N ( NUM:byte-len -- n )
+
+\ These Linux observations and socket controls belong only to this fixture.
+\ The socket options fix the non-reading client's receive capacity and keep
+\ the sender's unsent queue above its buffer cap. FUTEX_WAKE acknowledges a
+\ real waiter on this glibc mutex; a spurious wake leaves pthread_mutex_lock
+\ waiting while the pong owns it.
+PROCESS-SYMBOLS
+FUNCTION: SET-OPT-CALL setsockopt ( n n n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: GET-OPT-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
+   3 TCP-INFO-CAP WRITES-BYTES
+   4 4 WRITES-BYTES
+;FUNCTION
+FUNCTION: FUTEX-WAKE-CALL syscall ( n ptr u8 n n -- n )
+   1 VARIADIC
+;FUNCTION
+
+TCP-INFO-CAP BUFFER: TCP-INFO-BUF
+4 BUFFER: OPT-LEN
+4 BUFFER: OPT-VAL
+
+: OPT-U32! ( TCP4:connection n n n -- )
+   {: conn:TCP4:connection level:n opt:n val:n :}
+   val OPT-VAL LE:U32!
+   conn WS-TEST:FD level opt OPT-VAL 4 SET-OPT-CALL 0 <> if E-SILENT throw then ;
+
+: OPT-U32@ ( TCP4:connection n n -- n )
+   {: conn:TCP4:connection level:n opt:n :}
+   4 OPT-LEN LE:U32!
+   conn WS-TEST:FD level opt TCP-INFO-BUF OPT-LEN GET-OPT-CALL
+   0 <> if E-SILENT throw then
+   OPT-LEN LE:U32@ 4 <> if E-SILENT throw then
+   TCP-INFO-BUF LE:U32@ ;
+
+: TCP-STATE ( TCP4:connection -- n n )
+   {: conn:TCP4:connection :}
+   TCP-INFO-CAP OPT-LEN LE:U32!
+   conn WS-TEST:FD IPPROTO-TCP TCP-INFO TCP-INFO-BUF OPT-LEN GET-OPT-CALL
+   0 <> if E-SILENT throw then
+   OPT-LEN LE:U32@ TCP-INFO-MIN < if E-SILENT throw then
+   TCP-INFO-BUF TCPI-NOTSENT-OFF + LE:U32@
+   TCP-INFO-BUF TCPI-SND-WND-OFF + LE:U32@ ;
 
 BUF-CAP SPAN-BUFFER: PATTERN
 BUF-CAP SPAN-BUFFER: CLIENT-TX
@@ -172,11 +248,18 @@ variable TOOK-BYTE                \ the one byte all of it was, or -1 when it wa
 variable VOLLEY-U
 variable PONGS                    \ pongs read whole of the ones the burst is owed
 variable LATE-AT                  \ pongs read when the timed handler was first seen to time out during the burst
+variable PEER-CAP                 \ Linux's actual fixed receive buffer size
 
 1 TYPED-BUFFER HELD WS:socket     \ the socket a case keeps for another task
 1 TYPED-BUFFER KEPT-REQUEST HTTP:request
 1 TYPED-BUFFER KEPT-RESPONSE HTTP:response
 1 TYPED-BUFFER PEER TCP4:connection  \ the connection a client task floods
+
+: WAKE-LOCK-WAITER ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-FUTEX else ARM-FUTEX then
+   0 HELD @ WS-TEST:LOCK-FUTEX FUTEX-WAKE-PRIVATE 1
+   FUTEX-WAKE-CALL dup 0 < if E-SILENT throw then ;
+
 TASK:SEMAPHORE PUSH-GO            \ the handler has a socket for the pushing task
 TASK:SEMAPHORE BLAST-GO           \ the client has asked both tasks to send at once
 TASK-STACK TASK:TASK PUSH-TASK
@@ -1503,6 +1586,43 @@ variable HEADLESS-AT
       failed OF drop 0 false ENDOF
    ;MATCH ;
 
+: PRELOAD-ACKED? ( -- bool )
+   0 HELD @ WS-TEST:LINK TCP4:UNSENT QUEUED-N {: pending:n counted:bool :}
+   counted pending 0= and ;
+
+: PRELOAD-ACKED-BY? ( -- bool )
+   mono-ns REACH-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      PRELOAD-ACKED? if true exit then
+      mono-ns deadline >= if false exit then
+      TASK:PAUSE
+   again ;
+
+\ Linux's fixed receive buffer is already overfull with unread bytes, and
+\ the peer advertises no room. The unsent queue exceeds a pong's payload.
+: LINUX-PONG-BACKED? ( -- bool )
+   0 HELD @ WS-TEST:LINK TCP-STATE {: unsent:n window:n :}
+   0 PEER @ TCP4:UNREAD QUEUED-N {: unread:n counted:bool :}
+   counted unread PEER-CAP @ > and
+   window 0= and unsent PING-LEN > and ;
+
+\ Lower the sender's actual buffer cap below its unsent queue, then check the
+\ same claim and empty send slice. An ACK for already transmitted data cannot
+\ reduce that unsent queue; a zero peer window and the low-water mark prevent
+\ any new send buffer until the peer reads. The reduced cap cannot make the
+\ last send buffer accept bytes that its last slice refused.
+: LINUX-PONG-CLAIM? ( n -- bool )
+   {: claim:n :}
+   LINUX-PONG-BACKED? 0= if false exit then
+   0 HELD @ WS-TEST:LINK {: link:TCP4:connection :}
+   link SOL-SOCKET SO-SNDBUF SERVER-SNDBUF OPT-U32!
+   link SOL-SOCKET SO-SNDBUF OPT-U32@ {: cap:n :}
+   link TCP-STATE {: unsent:n window:n :}
+   0 HELD @ {: sock:WS:socket :}
+   unsent cap > window 0= and
+   sock WS-TEST:STALLED? and
+   sock WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + = and ;
+
 \ The pong bytes between the worker and the flooding client, which reads none,
 \ and whether both queues were counted: those the server's connection holds
 \ unsent or unacknowledged, and those unread in the client's. A pong's bytes
@@ -1523,7 +1643,13 @@ variable HEADLESS-AT
    0 mono-ns                             \ the most pong bytes held yet, and when it grew
    begin {: most:n grew:n :}
       PONG-CLAIM {: claim:n :}
-      claim 0 <> if claim exit then
+      claim 0 <> if
+         LINUX? 0= if claim exit then
+         claim LINUX-PONG-CLAIM? if
+            s" < Linux pong: zero window, send queue over cap, unread peer" LOG-LINE
+            claim exit
+         then
+      then
       PONGS-HELD {: held:n counted:bool :}
       counted 0= if 0 exit then
       held most > if
@@ -1534,6 +1660,40 @@ variable HEADLESS-AT
       then
       POLL-MS >MS TASK:SLEEP
    again ;
+
+\ The Linux kernel returns one only after the sender was actually waiting on
+\ this pong's pthread mutex. Waking it is harmless while the pong owns the
+\ mutex: pthread_mutex_lock checks the word again and waits.
+: PONG-WAITER? ( n -- bool )
+   {: claim:n :}
+   begin
+      mono-ns claim - WS:STALL-MS NS-PER-MS * >= if false exit then
+      0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + <>
+      if false exit then
+      WAKE-LOCK-WAITER {: woken:n :}
+      woken 1 = if
+         mono-ns claim - WS:STALL-MS NS-PER-MS * <
+         0 HELD @ WS-TEST:CLAIM-DUE claim WS:STALL-MS NS-PER-MS * + = and
+         exit
+      then
+      woken 0 <> if E-SILENT throw then
+      TASK:PAUSE
+   again ;
+
+: LINUX-PONG-CONTROL ( TCP4:connection -- )
+   {: conn:TCP4:connection :}
+   LINUX? 0= if exit then
+   \ Complete and acknowledge an ordinary frame before shrinking the peer.
+   \ No old ACK can later free sender memory; the unread payload alone then
+   \ exceeds the fixed receive capacity until the peer reads or closes.
+   0 HELD @ PATTERN BIG SPAN:TAKE SPAN:$ WS:SEND-BINARY
+   s" the Linux preload was acknowledged before the peer shrank" T-LABEL
+   PRELOAD-ACKED-BY? dup TTRUE
+   if s" < Linux preload acknowledged before peer shrank" LOG-LINE then
+   conn SOL-SOCKET SO-RCVBUF PEER-RCVBUF OPT-U32!
+   conn IPPROTO-TCP TCP-WINDOW-CLAMP PEER-WINDOW OPT-U32!
+   conn SOL-SOCKET SO-RCVBUF OPT-U32@ PEER-CAP !
+   0 HELD @ WS-TEST:LINK IPPROTO-TCP TCP-NOTSENT-LOWAT SEND-LOWAT OPT-U32! ;
 
 \ A one-worker server whose handler keeps its socket and receives, and a client
 \ task that floods it with pings and reads nothing, until the pong the worker
@@ -1547,6 +1707,7 @@ variable HEADLESS-AT
    s" /stall" UPGRADE {: conn:TCP4:connection :}
    KEPT? TTRUE
    conn 0 PEER !
+   conn LINUX-PONG-CONTROL
    BURST-FILL
    mono-ns HEADLESS-AT !
    [: PINGER ;] PING-TASK TASK:ACTIVATE
@@ -1564,6 +1725,11 @@ variable HEADLESS-AT
 : STALLED-PONG ( n -- )
    {: claim:n :}
    [: HELD-SEND ;] SEND-TASK TASK:ACTIVATE
+   LINUX? if
+      s" the sender queued on the stalled pong's mutex" T-LABEL
+      claim PONG-WAITER? dup TTRUE
+      if s" < Linux sender waited on this pong's mutex" LOG-LINE then
+   then
    s" the socket fails under 1006 within the stall bound" T-LABEL
    claim HEARD-CLOSE? TTRUE
    LAST-CLOSE @ 1006 T=
@@ -1575,7 +1741,12 @@ variable HEADLESS-AT
    s" the send behind the stalled pong is refused" T-LABEL
    SEND-TASK mono-ns GRACE-MS NS-PER-MS * + ENDED-BY? {: ended:bool :}
    ended TTRUE
-   ended if SEND-TASK JOINED E-WS-CLOSED T= then ;
+   ended if
+      SEND-TASK JOINED E-WS-CLOSED T=
+      LINUX? if
+         s" < Linux pong closed 1006; sender returned E-WS-CLOSED" LOG-LINE
+      then
+   then ;
 
 \ A client task floods the socket with pings and never reads, so the pong the
 \ worker owes stalls (STALLED-PONG). The client floods on after the close, and
@@ -1797,6 +1968,16 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    PONG-STALLED {: conn:TCP4:connection claim:n :}
    s" the worker held in the pong ended itself" STOPS-IN-TIME
    claim 0 <> if
+      LINUX? if
+         s" the pong saw stop before its own stall deadline" T-LABEL
+         0 HELD @ WS-TEST:CUT-AT {: cut:n :}
+         cut 0 > cut claim WS:STALL-MS NS-PER-MS * + < and TTRUE
+         s" < Linux pong saw STOP before its stall deadline" LOG-LINE
+         s" and closed under the stop cut, before that deadline" T-LABEL
+         CLOSED-AT @ cut - HTTP:RELEASE-MS NS-PER-MS * >=
+         CLOSED-AT @ claim WS:STALL-MS NS-PER-MS * + < and TTRUE
+         s" < Linux stop closed this pong before its stall deadline" LOG-LINE
+      then
       s" the socket was lost under the pong" T-LABEL
       LAST-CLOSE @ 1006 T=
    then
@@ -2263,6 +2444,12 @@ variable SIPPED                   \ what it has taken
 
 : WANT-STALL ( -- )
    s" == a peer that stops reading" W
+   LINUX? if
+      s" < Linux preload acknowledged before peer shrank" W
+      s" < Linux pong: zero window, send queue over cap, unread peer" W
+      s" < Linux sender waited on this pong's mutex" W
+      s" < Linux pong closed 1006; sender returned E-WS-CLOSED" W
+   then
    s" == a goodbye behind a stalled push" W ;
 
 : WANT-STOPS ( -- )
@@ -2273,6 +2460,12 @@ variable SIPPED                   \ what it has taken
    s" == a stop while a close waits behind a stalled push" W
    s" > close 2 03e8" W
    s" == a stop while a pong is stalled" W
+   LINUX? if
+      s" < Linux preload acknowledged before peer shrank" W
+      s" < Linux pong: zero window, send queue over cap, unread peer" W
+      s" < Linux pong saw STOP before its stall deadline" W
+      s" < Linux stop closed this pong before its stall deadline" W
+   then
    s" == a stop whose close cannot be sent" W
    s" < text 3 637574" W
    s" < end of stream" W ;
