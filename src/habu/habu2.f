@@ -9,6 +9,7 @@ require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
 require src/habu/code-span.f
+require src/habu/native-observer-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -1207,14 +1208,6 @@ here BPL-KW - constant BPL-LEN
 : PFX-LOAD-DECL-FILES ( -- )
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
-: PFX-LOAD-CORE-FILES ( -- )
-   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-ROW PFX-FILES ;
-
-: PFX-LOAD-BASE-FILES ( -- )
-   PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
-
 \ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These files are the
 \ checked surface the tree already requires everywhere - lib/string.f alone has
 \ 548 requiring files, lib/errors.f 472 - so every program used to pay for its
@@ -1297,11 +1290,6 @@ here BPL-KW - constant BPL-LEN
    12 done CBNZ,
    PFX-LOAD-TOPROW
    done LBL, ;
-
-: PFX-LOAD-FILES ( -- )
-   PFX-LOAD-BASE-FILES
-   PFX-LOAD-SCRIPT-ARGV
-   PFX-LOAD-INTMARK ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
@@ -1668,6 +1656,20 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
+: PFX-LOAD-CORE-ROW ( n ptr n ptr u8 n -- )
+   {: kind var a u :}
+   kind var a u PFX-LOAD-ROW
+   \ include.f defines both source vectors; xref.f requires another source.
+   var LPINCLUDE = if EMIT-SOURCE-RESET-TOKEN then ;
+
+: PFX-LOAD-CORE-FILES ( -- )
+   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-CORE-ROW PFX-FILES ;
+
+: PFX-LOAD-BASE-FILES ( -- )
+   PFX-LOAD-CHECKER-FILES
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
+
 \ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
 \ LAST engine-prefix source token, after every engine file and the provide
 \ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
@@ -1836,7 +1838,6 @@ public
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
-   EMIT-SOURCE-RESET-TOKEN
    EMIT-REQUIRE-BOOT-OPEN-TOKEN
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
@@ -2357,6 +2358,9 @@ variable LKWDEFCAST
 variable LCASTNONAME
 variable LCOLONNONAME
 variable LKEYNONAME
+\ The `linear:` declarer's keyword. A missing name takes the shared reader
+\ keyword diagnostic, so its one string is the keyword itself.
+variable LKWLINEAR
 : CASTNONAME$ ( -- ptr u8 n )    s" hb: cast: missing name after " ;
 : COLONNONAME$ ( -- ptr u8 n )   s" hb: : missing definition name after " ;
 : KEYNONAME$ ( -- ptr u8 n )     s" hb: reader keyword needs a name: " ;
@@ -2412,6 +2416,7 @@ public
    LKWDOES LABEL@ LBL,  KWDOES$ BYTES,
    LKWTRUSTED LABEL@ LBL, KWTRUSTED$ BYTES,
    LKWCAST LABEL@ LBL, s" cast:" BYTES,
+   LKWLINEAR LABEL@ LBL, s" linear:" BYTES,
    LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
    LCASTNONAME LABEL@ LBL, CASTNONAME$ BYTES,
    LCOLONNONAME LABEL@ LBL, COLONNONAME$ BYTES,
@@ -2935,18 +2940,20 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ The cast declarer's registrar, same seam and same push sequence as REGISTER
-\ above, reaching `checker-defcast` instead of `trust-decl`. The two are one
-\ concern - what the engine hands the checker when a definer declares a
-\ signature - and differ only in what the checker is asked to do with the row:
-\ `trust-decl` records it, `checker-defcast` must first prove the declared
-\ retype legal (checker.f CAST-CERTIFY's refusals) and refuses by throwing,
-\ which is why C-CAST calls this BEFORE it counts the record into NDICT.
-: REGISTER-CAST ( -- )
+\ The identity declarers' registrar, same seam and same push sequence as
+\ REGISTER above, reaching the owner field at `off` instead of `trust-decl`:
+\ DECL-CAST-OFF for `cast:` (checker.f CHECKER-DEFCAST), DECL-LINEAR-OFF for
+\ `linear:` (CHECKER-LINEAR). They are one concern - what the engine hands the
+\ checker when a definer declares a signature - and differ only in what the
+\ checker is asked to do with the row: `trust-decl` records it, an identity
+\ registrar must first prove the declared row legal (CAST-CERTIFY's or
+\ LINEAR-CERTIFY's refusals) and refuses by throwing, which is why
+\ C-IDENTITY calls this BEFORE it counts the record into NDICT.
+: REGISTER-IDENTITY ( n -- ) {: off:n :}
    LBL {: done:label :}
-   NCOMP-DISPATCH:DECL-CAST-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
-   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:TARGET
-   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:SKIP-SAME
+   off TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+   off done DECL-OWNER:TARGET
+   off done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -4708,12 +4715,14 @@ package INTERP-EMIT
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ `cast: NAME ( in -- out )` — the checked retype declarer, and the reason it is
-\ a reader keyword and not a word: a word would have to read its own name and
-\ signature off the live input and drive them back through `evaluate`, which
-\ src/core/roles.f did and which no file loading before src/core/include.f can
-\ do (LESSONS 2026-08-19). As a keyword the whole form is read here, where the
-\ engine already has the token reader.
+\ `cast: NAME ( in -- out )`, the checked retype declarer, and
+\ `linear: NAME ( in -- out )`, a DEFLINEAR owner's mint or erase, are the
+\ identity declarers, and the reason each is a reader keyword and not a word: a
+\ word would have to read its own name and signature off the live input and
+\ drive them back through `evaluate`, which src/core/roles.f did and which no
+\ file loading before src/core/include.f can do (LESSONS 2026-08-19). As a
+\ keyword the whole form is read here, where the engine already has the token
+\ reader.
 \
 \ IT IS A DECLARATION, NOT A DEFINITION. There is no body to read and no `;` to
 \ wait for, so the form completes inside this handler: the interpret loop never
@@ -4726,10 +4735,12 @@ package INTERP-EMIT
 \ that fact, and an ordinary empty colon definition has no such stamp.
 \
 \ THE REGISTRAR RUNS BEFORE THE RECORD IS COUNTED. CHECKER-DEFCAST throws the
-\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype, and
-\ a refused cast must not leave a callable name behind, so NDICT is bumped only
-\ after the checker has accepted the row — the same order the colon publish tail
-\ uses (EM-COMPILE-PUBLISH-TRUSTED registers, then `publish`).
+\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype and
+\ CHECKER-LINEAR its own (E-LINEAR-PAYLOAD/OWNER/SCOPE) for an illegal mint or
+\ erase, and a refused declaration must not leave a callable name behind, so
+\ NDICT is bumped only after the checker has accepted the row — the same order
+\ the colon publish tail uses (EM-COMPILE-PUBLISH-TRUSTED registers, then
+\ `publish`).
 \
 \ AND EM-REC-WIDE-PUBLISH IS NOT OPTIONAL HERE. Registering the row latches the
 \ checker's record facts, and this tail is what POKES them into the record that
@@ -4747,7 +4758,46 @@ package INTERP-EMIT
 \ refusals over the same source text through verify-source), and the recovery
 \ engine, whose source list has no checker in it at all — an unguarded call
 \ there would exit 70 on the FIRST file tools/bootstrap.sh feeds it.
-: C-CAST ( -- )
+\
+\ The two keywords select their registrar (`off`) and missing-name diagnostic
+\ (`noname`); LINEAR: also guards its publication destination below.
+\ Qualification can allocate a package record inside C-QUALIFY-DEF. A LINEAR:
+\ row may never target that public wordlist, so ask its certifier before that
+\ allocation. The certifier retains payload/owner/scope refusal order; the
+\ no-hook boot path exits 70 without publishing anything.
+: C-LINEAR-QUALIFIED-GUARD ( -- )
+   LBL LBL LBL LBL LBL {: scan:label first:label tail:label qualified:label done:label :}
+   12 DATA TKL-CELL LDR,  13 0 MOVZ,
+   scan LBL,
+      13 12 CMP,  C-GE done BCOND,
+      11 DATA TKA-CELL LDR,  11 11 13 ADD,  11 11 0 LDRB,
+      11 $3A CMPI,  C-EQ first BCOND,
+      13 13 1 ADDI,  scan B,
+   first LBL,
+      13 done CBZ,
+      13 13 1 ADDI,  13 12 CMP,  C-GE done BCOND,
+   tail LBL,
+      11 DATA TKA-CELL LDR,  11 11 13 ADD,  11 11 0 LDRB,
+      11 $3A CMPI,  C-EQ done BCOND,
+      13 13 1 ADDI,  13 12 CMP,  C-LT tail BCOND,
+   qualified LBL,
+      PROT-EMIT:LCLOSE LABEL@ BL,  \ region -> RX before the checker registrar
+      NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-TRUST:REGISTER-IDENTITY
+      70 C-DIE-TOKEN
+   done LBL, ;
+
+public
+: C-IDENTITY-SHADOW ( -- )
+   LBL {: noshadow:label :}
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 0 MOVZ,  9 G-PUSH
+   9 4 MOVZ,  9 G-PUSH                    \ NCOMP:FIXED-CAST, compiled after this builder
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL, ;
+private
+
+: C-IDENTITY ( [ -- ] n -- ) {: noname off:n :}
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL {: cpok:label ndok:label named:label nohook:label :}
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
@@ -4758,12 +4808,13 @@ package INTERP-EMIT
       C-DIE-DICT-FULL
    ndok LBL,
    LTOK LABEL@ BL,  0 named CBNZ,
-      C-CAST-DIE-NO-NAME
+      noname execute
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP LABEL@ BL,                                  \ "NAME " — the spelling the registrar reads
    C-CLEAR-TRUSTED-STATE
    C-PARSE-REQUIRED-SIG                              \ malformed or missing sig dies named (rc 76)
+   off NCOMP-DISPATCH:DECL-LINEAR-OFF = IF C-LINEAR-QUALIFIED-GUARD THEN
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
@@ -4776,12 +4827,19 @@ package INTERP-EMIT
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-      DEF-TRUST:REGISTER-CAST
+      off DEF-TRUST:REGISTER-IDENTITY
    nohook LBL,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
+   C-IDENTITY-SHADOW
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+: C-CAST ( -- )
+   [: C-CAST-DIE-NO-NAME ;] NCOMP-DISPATCH:DECL-CAST-OFF C-IDENTITY ;
+
+: C-LINEAR ( -- )
+   [: KWDATA:LKWLINEAR LABEL@ 7 C-DIE-KEYWORD-NAME ;] NCOMP-DISPATCH:DECL-LINEAR-OFF C-IDENTITY ;
 
 ;package
 
@@ -4809,6 +4867,7 @@ public
    1 CODE-ORIGIN:CLOSE,
    EM-COMPILE-FLUSH-PEND
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   INTERP-EMIT:C-IDENTITY-SHADOW
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    done B,
@@ -5265,6 +5324,7 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
 \ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. The site guard is
 \ one load + CBZ, so the uninstalled path is today's dispatch unchanged.
 variable LTOPHOOK
+variable LCODEINV
 
 : C-TOPHOOK-LIT ( n -- ) {: class:n :}     \ literal event: flags 0
    LBL {: nohk:label :}
@@ -8592,6 +8652,9 @@ ardone LBL,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
+   9 DATA NATIVE-OBS-CELLS:OBSERVE STR,
+   9 DATA NATIVE-OBS-CELLS:PUBLISHED STR,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
    \ someone can find and change, next to the dispatch it selects.
@@ -8616,6 +8679,9 @@ ardone LBL,
    COMPILE-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
    TOP-HOOK-CELL RELOC-EMIT:MARK-CELL
    EXIT-HOOK-CELL RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:OBSERVE RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:PUBLISHED RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:INVALIDATE RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
    \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
@@ -9846,6 +9912,7 @@ package INTERP-EMIT
    s" export" KEEP? IF LMAIN LABEL@ LKWEXPORT 6 ['] C-EXPORT CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" cast:" KEEP? IF LMAIN LABEL@ KWDATA:LKWCAST 5 ['] C-CAST CF-ENTRY THEN
+   s" linear:" KEEP? IF LMAIN LABEL@ KWDATA:LKWLINEAR 7 ['] C-LINEAR CF-ENTRY THEN
    s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN LABEL@ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
@@ -11336,6 +11403,25 @@ public
 \ the close (it writes x0-x2).
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
+\ x10 is the absolute floor. Recovery calls this before replacing CP or DP;
+\ the installed owner removes every publication in the reclaimed suffix.
+\ A callback is total and leaves no value. Preserve the recovery registers it
+\ would otherwise clobber, including the throw code and active frame.
+: EM-CODE-INVALIDATE ( -- )
+   LBL {: done:label :}
+   LCODEINV LABEL@ LBL,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
+   10 CP CMP,  C-CS done BCOND,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
+   10 G-PUSH
+   9 BLR,
+   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 48 ADDI,
+   done LBL,  RET, ;
+
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
@@ -11390,10 +11476,11 @@ public
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
          12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
          scope B,
-      owned LBL,
-      CODE-ORIGIN:ABANDON,
-      CP 13 40 LDR,  NDICT 13 48 LDR,
-      12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
+   owned LBL,
+   CODE-ORIGIN:ABANDON,
+   10 13 40 LDR,  LCODEINV LABEL@ BL,
+   CP 13 40 LDR,  NDICT 13 48 LDR,
+   12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
@@ -11510,15 +11597,16 @@ public
    12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,                                  \ callback argument needs the recovered cursor
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
+   10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
    12 DATA RSAVDP-CELL LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,
-   9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EM-RESET-COMPILE-STATE
    \ roll the open-package scope back to this REPL line's boundary (RPKG snapshot),
    \ alongside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback above, and arm the checker resync.
@@ -12566,6 +12654,7 @@ package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
+   LBL LCODEINV !
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the
@@ -12577,6 +12666,7 @@ package ENGINE-EMIT
    LMAIN LABEL@ B,
    NCOMP-EMIT:EM-COMPILE
    COMPILE-EMIT:EM-COMPILE-LEGACY
+   EM-CODE-INVALIDATE
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
    EM-POLICY
@@ -12656,6 +12746,7 @@ package LABELS
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !  LBL KWDATA:LKEYNONAME !
+   LBL KWDATA:LKWLINEAR !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

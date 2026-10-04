@@ -337,13 +337,10 @@ public
 : CONTRACT@ ( IR-CTX:ctx -- CTARGET:contract )
    IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ ;
 
-\ A coherent foreign target can own HIR; producing a machine module for it is a
-\ different question, and it is the registry's. An architecture whose backend is
-\ not loaded in this image refuses there with E-CTGT-UNLOADED - the module that
-\ would answer is simply not here - and a loaded backend that does not serve this
-\ machine (a big-endian AArch64 core) refuses here. Refuse before allocating.
+\ A coherent foreign target can own HIR. This dialect's pure provider
+\ predicate declines it before allocating, even before full pass registration.
 : CHECK-TARGET ( IR-CTX:ctx -- )
-   CONTRACT@ CTARGET:LOWERS? 0= if E-IR-SCHEMA-TARGET throw then ;
+   CONTRACT@ CTARGET:VALIDATE A64BACK:SERVES? 0= if E-IR-SCHEMA-TARGET throw then ;
 
 : GPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;

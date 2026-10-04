@@ -198,6 +198,49 @@ variable RC     variable EXITED
    S\" ZN2 . cr\n" SB-APPEND
    SB$ ;
 
+\ A refused close must leave the load's vocabulary readable and reusable.
+\ The next real tier-1 definition checks both dialect prototypes through their
+\ interning counters; a successful retry then stands the flags down.
+: CLOSE-PREFIX ( -- )
+   SB-RESET
+   S\" require lib/task.f\n" SB-APPEND
+   S\" require src/compiler/session/lease.f\n" SB-APPEND
+   S\" 1 set-tier\n" SB-APPEND
+   S\" : ZC1 ( -- n ) 1 ;\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" package ZCLOSE\npublic\n" SB-APPEND ;
+
+: CLOSE-SUFFIX ( -- ptr u8 n )
+   S\" ;package\nZCLOSE:RUN\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = .\n" SB-APPEND
+   S\" HIR:MISSES-CLEAR A64IR:MISSES-CLEAR\n" SB-APPEND
+   S\" 1 set-tier\n: ZC2 ( -- n ) 2 ;\n0 set-tier\n" SB-APPEND
+   S\" HIR:MISSES . A64IR:MISSES .\n" SB-APPEND
+   S\" IR-CTX:SESSION-CLOSE\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? . HIR-WORD:SESSION-ROWS .\n" SB-APPEND
+   S\" ZC1 ZC2 + . cr\n" SB-APPEND
+   SB$ ;
+
+: TASK-CLOSE-SRC$ ( -- ptr u8 n )
+   CLOSE-PREFIX
+   S\" TASK:MIN-STACK TASK:TASK WORKER\n" SB-APPEND
+   S\" : ATTEMPT ( -- ) [: IR-CTX:SESSION-CLOSE ;] catch TASK:RETURN ;\n" SB-APPEND
+   S\" : JOIN-UNWRAP ( result<n,n> -- n n )\n" SB-APPEND
+   S\"    MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;\n" SB-APPEND
+   S\" : FLAG. ( bool -- ) if -1 else 0 then . ;\n" SB-APPEND
+   S\" : RUN ( -- ) ['] ATTEMPT WORKER TASK:ACTIVATE\n" SB-APPEND
+   S\"    WORKER TASK:JOIN JOIN-UNWRAP 0 = FLAG. NLEASE:E-TASK = FLAG. ;\n" SB-APPEND
+   CLOSE-SUFFIX ;
+
+: ROOT-CLOSE-SRC$ ( -- ptr u8 n )
+   CLOSE-PREFIX
+   S\" : ATTEMPT ( NLEASE:lease -- n )\n" SB-APPEND
+   S\"    drop [: IR-CTX:SESSION-CLOSE ;] catch ;\n" SB-APPEND
+   S\" : RUN ( -- ) [: ATTEMPT ;] NLEASE:WITH NLEASE:E-BUSY =\n" SB-APPEND
+   S\"    if -1 else 0 then . ;\n" SB-APPEND
+   CLOSE-SUFFIX ;
+
 : SESSION-CASES ( -- )
    s" thirty definitions in one load compile and run" T-LABEL
    MANY-SRC$ EXEC  s" 29" ASSERT-OK
@@ -226,7 +269,15 @@ variable RC     variable EXITED
    OUT$ S\" -1\n2\n" CONTAINS? TTRUE
 
    s" a definition compiled inside a context is refused, not served" T-LABEL
-   NESTED-SRC$ EXEC  S\" refused\n0\n5\n" ASSERT-OK ;
+   NESTED-SRC$ EXEC  S\" refused\n0\n5\n" ASSERT-OK
+
+   s" task close refusal keeps the native session readable and retryable" T-LABEL
+   TASK-CLOSE-SRC$ EXEC
+   S\" -1\n-1\n-1\n-1\n0\n0\n0\n0\n3\n" ASSERT-OK
+
+   s" foreign root close refusal keeps the native session readable and retryable" T-LABEL
+   ROOT-CLOSE-SRC$ EXEC
+   S\" -1\n-1\n-1\n0\n0\n0\n0\n3\n" ASSERT-OK ;
 
 public
 

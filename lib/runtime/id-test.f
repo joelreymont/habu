@@ -1,8 +1,9 @@
 \ id-test.f - Id128s, counters, handles and handle tables through the RT-ID and
-\ RT-HANDLE load path, with the typed routes each type refuses: from a number,
-\ back to a counter's earlier state and to a table or counter its maker did
-\ not answer. The private pointer mint that id.f's and handle.f's headers name
-\ passes the first.
+\ RT-HANDLE load path: handles built from numbers or wire bytes only when well
+\ formed, and the typed routes each type refuses: from a number, back to a
+\ counter's earlier state and to a table or counter its maker did not answer.
+\ The private pointer mint that id.f's and handle.f's headers name passes the
+\ first.
 \ Run: bin/hb --load lib/runtime/id-test.f
 
 require lib/errors.f
@@ -164,6 +165,19 @@ TYPED-VARIABLE C-Z RT-ID:counter
    [: WIRE 9 RT-HANDLE:BYTES>HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-LENGTH TTHROWSQ
    [: NULL-PTR 8 RT-HANDLE:BYTES>HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-LENGTH TTHROWSQ ;
 
+: NUMBER-FORMS ( -- )
+   s" a slot and a generation of zero are the null handle" T-LABEL
+   0 0 RT-HANDLE:HANDLE RT-HANDLE:NULL? TTRUE
+   1 1 RT-HANDLE:HANDLE RT-HANDLE:NULL? TFALSE
+   s" a slot or a generation alone zero is refused, as on the wire" T-LABEL
+   [: 0 1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-HALF-NULL TTHROWSQ
+   [: 1 0 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-HALF-NULL TTHROWSQ
+   s" and so is a slot or a generation outside 0 .. 2^32 - 1" T-LABEL
+   [: $100000000 1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ
+   [: 1 $100000000 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ
+   [: -1 1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ
+   [: 1 -1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ ;
+
 2 TYPED-BUFFER SLOTS-A n
 2 TYPED-BUFFER SLOTS-B n
 1 TYPED-BUFFER SLOTS-C n
@@ -244,7 +258,9 @@ TYPED-VARIABLE H-E RT-HANDLE:handle
    s" the null handle is foreign to every table" T-LABEL
    [: RT-HANDLE:NULL TABLE-A @ RT-HANDLE:INDEX drop ;] FOREIGN TTHROWSQ
    s" a slot of the table never issued is stale" T-LABEL
-   [: 13 1 >WIRE-HANDLE TABLE-B @ RT-HANDLE:INDEX drop ;] STALE TTHROWSQ ;
+   [: 13 1 >WIRE-HANDLE TABLE-B @ RT-HANDLE:INDEX drop ;] STALE TTHROWSQ
+   s" however well formed the numbers HANDLE built it from" T-LABEL
+   [: 13 1 RT-HANDLE:HANDLE TABLE-B @ RT-HANDLE:INDEX drop ;] STALE TTHROWSQ ;
 
 \ The generations a slot runs through are driven to its last by writing the
 \ free slot's cell, the caller's storage: generation 2^32 - 2 in its low half
@@ -259,6 +275,7 @@ $FFFFFFFE constant NEXT-TO-LAST
    TABLE-C @ RT-HANDLE:ISSUE H-E !
    s" a slot's last generation is 2^32 - 1" T-LABEL
    20 $FFFFFFFF >WIRE-HANDLE TABLE-C @ RT-HANDLE:INDEX 0 T=
+   20 $FFFFFFFF RT-HANDLE:HANDLE TABLE-C @ RT-HANDLE:INDEX 0 T=
    H-E @ TABLE-C @ RT-HANDLE:RELEASE
    s" releasing it retires the slot instead of wrapping" T-LABEL
    [: TABLE-C @ RT-HANDLE:ISSUE drop ;] RT-HANDLE:E-RT-HANDLE-FULL TTHROWSQ
@@ -297,7 +314,8 @@ $FFFFFFFE constant NEXT-TO-LAST
    s" slot 2^32 - 1 is a table's last slot" T-LABEL
    0 SLOTS-E 1 $FFFFFFFF 0 HEADER-E RT-HANDLE:OPEN TABLE-E !
    TABLE-E @ RT-HANDLE:ISSUE TABLE-E @ RT-HANDLE:INDEX 0 T=
-   $FFFFFFFF 1 >WIRE-HANDLE TABLE-E @ RT-HANDLE:INDEX 0 T= ;
+   $FFFFFFFF 1 >WIRE-HANDLE TABLE-E @ RT-HANDLE:INDEX 0 T=
+   $FFFFFFFF 1 RT-HANDLE:HANDLE TABLE-E @ RT-HANDLE:INDEX 0 T= ;
 
 \ TABLE-Z is never opened: it holds the zero token of its zeroed image.
 : UNOPENED ( -- )
@@ -396,6 +414,7 @@ CHILD-CAP BUFFER: CHILD-ERR
    CLOSED
    UNMADE
    WIRE-FORMS
+   NUMBER-FORMS
    ISSUE-AND-RELEASE
    REOPEN
    FOREIGN-HANDLES

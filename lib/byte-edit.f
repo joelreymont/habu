@@ -23,12 +23,16 @@ private
 6 cells constant STORAGE-LEN
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
-\ Representation leaves only; extent/lifetime ownership remains caller-owned.
+\ Representation leaf: a span's address as a number, used only by the range,
+\ alias and alignment checks; its extent and lifetime stay caller-owned.
 \ Retirement owner: cap:raw-pointer-lifetime. Tested by byte-edit-test.f.
 TRUSTED: ADDRESS ( ptr u8 -- n ) ;
-TRUSTED: MINT ( ptr n -- EDIT:editor ) ;
-TRUSTED: STATE ( EDIT:editor -- EDIT:editor ptr n ) dup ;
-TRUSTED: CONSUME ( EDIT:editor -- ) drop ;
+
+LINEAR: MINT ( ptr n -- EDIT:editor )
+LINEAR: ERASE ( EDIT:editor -- ptr n )
+
+: STATE ( EDIT:editor -- EDIT:editor ptr n )
+   ERASE dup MINT swap ;
 
 : REQUIRE-SPAN ( ptr u8 n -- )
    {: source:ptr size:n :}
@@ -94,7 +98,7 @@ public
    storage MINT ;
 
 : CLOSE ( EDIT:editor -- )
-   CONSUME ;
+   ERASE drop ;
 
 private
 : EDIT-CHECK ( ptr n n n ptr u8 n -- )

@@ -954,16 +954,16 @@ that storage and the borrowed source live and exclusive until `JR:CLOSE`, and
 does not reuse either as mutable reader backing while the token is live. `INIT`
 rejects null or misaligned storage, insufficient capacity, a negative source
 length, and a null source paired with a positive length before minting the
-token, using `JR:E-STORAGE`, `JR:E-CAPACITY`, and `JR:E-SOURCE`. The package is
-sealed after assembly so callers cannot reopen it to reach the private mint or
-projection leaves. The current type system cannot prove the backing extent,
-lifetime, or exclusivity from raw host storage; those promises remain the one
-audited private representation boundary owned by
-`habu-add-bounded-host-b40b048f`.
+token, using `JR:E-STORAGE`, `JR:E-CAPACITY`, and `JR:E-SOURCE`. The token's
+mint and erase are private `LINEAR:` rows, so the checker certifies that a
+reader comes only from `INIT` and ends only at `JR:CLOSE`; the package is sealed
+after assembly so callers cannot reopen it to reach them. The type system cannot
+prove the backing extent, lifetime, or exclusivity of raw host storage; those
+stay the caller's promise.
 
 ```forth
 JR:STORAGE-BYTES ( -- n )
-JR:INIT       ( ptr a n ptr u8 n -- JR:reader )
+JR:INIT       ( ptr n n ptr u8 n -- JR:reader )
 JR:CLOSE      ( JR:reader -- )
 JR:TOKEN      ( JR:reader -- JR:reader n )
 JR:SPAN$      ( JR:reader -- JR:reader ptr u8 n )
@@ -1015,15 +1015,15 @@ JSON-RPC:message          \ request id method params | notification method param
                           \ | success id value | failure id value | invalid code why id
 JSON-RPC:ID$      ( JSON-RPC:id -- ptr u8 n )
 JSON-RPC:NULL-ID  ( -- JSON-RPC:id )
-JSON-RPC:>MESSAGE ( ptr a n ptr u8 n -- JSON-RPC:message )
-JSON-RPC:METHOD?  ( ptr a n ptr u8 n ptr u8 n -- bool )
+JSON-RPC:>MESSAGE ( ptr n n ptr u8 n -- JSON-RPC:message )
+JSON-RPC:METHOD?  ( ptr n n ptr u8 n ptr u8 n -- bool )
 JSON-RPC:RESULT   ( ptr JSON-WRITE:writer JSON-RPC:id -- ptr JSON-WRITE:writer )
 JSON-RPC:ERROR    ( ptr JSON-WRITE:writer JSON-RPC:id n ptr u8 n -- ptr JSON-WRITE:writer )
 JSON-RPC:NOTIFY   ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
 JSON-RPC:END      ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
 ```
 
-`>MESSAGE` parses in the caller's JR storage (`ptr a n`, at least
+`>MESSAGE` parses in the caller's JR storage (`ptr n n`, at least
 `JR:STORAGE-BYTES`; less is `JR:E-CAPACITY`) and borrows the body: every part
 of a message is the body's own JSON text. An id is a number's digits, a string
 with its quotes and escapes, or `null`; a method keeps its quotes; params, a
@@ -1402,12 +1402,15 @@ vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 ## HTTP and HTTPS
 
 `lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
-`FUNCTION:` declarer on Linux AArch64/glibc. `INIT` answers a typed handle;
+`FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `INIT` answers a typed handle;
 `URL!`, `METHOD!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`
 and `FOLLOW!` configure the request; `PERFORM` fills a caller-owned span and
 answers the HTTP status with the body length, a truncation carrying the whole
-body's length, or the `CURLcode` that failed; `CLEANUP` frees the handle and its
-header list. TLS, redirects, compression and the system CA bundle come from
+body's length, or the `CURLcode` that failed. After `PERFORM` or `START`/`AWAIT`,
+`HEADERS` copies the final complete response header block into a caller-owned
+span, reporting the whole length when the span is short. `CLEANUP` frees the
+handle, request header list and retained response headers. TLS, redirects,
+compression and the system CA bundle come from
 libcurl, and `INIT` restricts the schemes to HTTP and HTTPS so a scraped URL
 cannot reach the filesystem. See [curl](curl.md) for the declarations, the
 callback-free body path and the failure codes. Authentication, retry policy and

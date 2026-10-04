@@ -1181,6 +1181,7 @@ CHECKER-OWNER-ABI:RAW-OFF constant DECL-RAW-OFF
 CHECKER-OWNER-ABI:EFFECT-OFF constant DECL-EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DECL-DEFER-OFF
 CHECKER-OWNER-ABI:CAST-OFF constant DECL-CAST-OFF
+CHECKER-OWNER-ABI:LINEAR-OFF constant DECL-LINEAR-OFF
 CHECKER-OWNER-ABI:USING-OFF constant DECL-USING-OFF
 CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
@@ -1521,6 +1522,8 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
 \ `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
+\ The three callback CODE cells follow at $2CF0..$2D00. Their separate module
+\ (native-observer-cells.f) also loads on an older baked host during a build.
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
@@ -1545,16 +1548,17 @@ $2CE8 constant DATA-FLOOR-CELL
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
 \ JIT-RET-CELL records the innermost Habu tier-0 token call while it
-\ waits for the engine compile loop to return. The cell follows the DATA
-\ floor in the header band; no captured image keeps a live stack address.
+\ waits for the engine compile loop to return. These cells follow the native
+\ observer callbacks and TASK-CHAIN-CELL in the header band; no captured
+\ image keeps a live stack address.
 package NCOMP-DISPATCH
 public
-$2CF0 constant JIT-RET-CELL
-$2CF8 constant FIXED-SHADOW-CELL
-$2D00 constant DOES-SHADOW-CELL
+$2D10 constant JIT-RET-CELL
+$2D18 constant FIXED-SHADOW-CELL
+$2D20 constant DOES-SHADOW-CELL
 2 constant FIXED-ADDR-KIND
 ;package
-$2D08 constant TASK-CHAIN-OFF-CELL
+$2D08 constant TASK-CHAIN-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

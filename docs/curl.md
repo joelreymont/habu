@@ -1,9 +1,8 @@
 # HTTPS client over libcurl
 
 [`lib/net/curl.f`](../lib/net/curl.f) binds libcurl's easy interface through the
-`FUNCTION:` declarer so Habu can speak HTTP and HTTPS. It is Habu on Linux
-AArch64 with glibc and `libcurl.so.4`; every other platform is rejected before a
-handle exists. VFX Forth takes the same route — bind libcurl rather than write a
+`FUNCTION:` declarer so Habu can speak HTTP and HTTPS on macOS ARM64 and Linux
+AArch64. VFX Forth takes the same route — bind libcurl rather than write a
 client and a TLS stack ([socket-models.md](socket-models.md)) — and TLS,
 redirects, proxies, compression and the system CA bundle come with it.
 
@@ -31,6 +30,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | `LOW-SPEED!` | Handle, bytes a second, seconds | `status` |
 | `FOLLOW!` | Handle, `bool` | `status` |
 | `PERFORM` | Handle, writable byte span | `fetch-result`, described below |
+| `HEADERS` | Handle, writable byte span | `header-result`, described below |
 | `CLEANUP` | Handle | |
 
 Every input span is borrowed for its own call: libcurl copies the URL, the
@@ -39,7 +39,7 @@ setter returns, so nothing has to stay alive until `PERFORM`.
 
 `INIT` runs `curl_global_init` once per process, turns off libcurl's use of
 signals (`CURLOPT_NOSIGNAL`), restricts the schemes to HTTP and HTTPS, and
-empties the handle's private slot. The restriction covers both the URL the
+installs a handle-owned private record. The restriction covers both the URL the
 caller sets and whatever a redirect names, so a `file://` or `ftp://` URL out of
 a scraped page cannot reach the filesystem or another service through a handle:
 it fails with `CURLE_UNSUPPORTED_PROTOCOL` (1) before anything is opened.
@@ -50,9 +50,9 @@ initialised flag, because a restored image is a different process.
 `METHOD!` sets the request verb. Without it libcurl sends `GET`, or `POST` once
 `BODY!` has been used; `METHOD!` overrides the verb and changes nothing else.
 
-`HEADER+` appends one line to the handle's header list. The list head lives in
-the handle's own `CURLOPT_PRIVATE` slot, so `CLEANUP` frees exactly the list that
-handle owns and no package-side table tracks it. An append that cannot allocate
+`HEADER+` appends one line to the handle's request header list. The list head
+lives in the handle's private record, so `CLEANUP` frees exactly the list that
+handle owns. An append that cannot allocate
 answers `failed` with `CURLE_OUT_OF_MEMORY` and leaves the previous list intact.
 
 `COOKIE-FILE!` names a Netscape or Set-Cookie format file read at request time
@@ -79,8 +79,9 @@ touched. A transfer ended by the stall test fails with
 It needs no callback into checked code ([ffi-callback.md](ffi-callback.md)):
 libcurl's default write callback is `fwrite`, so `CURLOPT_WRITEDATA` is given an
 `open_memstream` stream and `memcpy` moves the finished bytes into the caller's
-span. The stream and its buffer are released on every branch, and the handle
-never keeps a pointer to a closed stream.
+span. A second stream receives response headers through `CURLOPT_HEADERDATA`'s
+default `fwrite` path. Both streams close before any caller destination is
+written; the handle retains only the successful header buffer.
 
 The result requires an exhaustive match:
 
@@ -97,8 +98,46 @@ transport outcome, including `CURLE_OPERATION_TIMEDOUT` (28) when `TIMEOUT!`
 expires and `CURLE_COULDNT_CONNECT` (7) when nothing answers. An HTTP error
 status is NOT a failure: a 404 is a `response` carrying 404.
 
-`CLEANUP` destroys the handle and frees its header list; neither is ever left
-allocated. The handle is dead afterwards and must not be used again.
+### Response headers
+
+After a `response` or `truncated` from `PERFORM` or `AWAIT`, call
+`HEADERS ( handle ptr u8 len -- header-result )`. `complete len` copies the
+entire final response header block; `truncated len` copies the first capacity
+bytes and reports the whole block length. Capacity zero queries the length
+without writing. Exact capacity succeeds, no NUL terminator is added, and body
+truncation is independent of header truncation. A negative capacity throws
+`CURL:E-OPERAND`. The destination is borrowed only for this call; copied bytes
+survive handle reuse and `CLEANUP`. A caller can retry with a larger span
+without another request.
+
+The copy contains libcurl's presented status line, fields in their original
+order with duplicates and casing preserved, and the terminating blank line.
+It is the last complete HTTP status-headed block: an interim, redirect or proxy
+CONNECT block is superseded by the later response, while trailers after the
+blank line are excluded. With `FOLLOW!` disabled, the returned redirect is the
+final block. `HEADERS` does no header-field or freshness-policy parsing.
+libcurl delivers all of these lines to the header destination; status lines
+mark response boundaries ([HEADERFUNCTION](https://curl.se/libcurl/c/CURLOPT_HEADERFUNCTION.html),
+[FOLLOWLOCATION](https://curl.se/libcurl/c/CURLOPT_FOLLOWLOCATION.html),
+[CONNECT headers](https://curl.se/libcurl/c/CURLOPT_SUPPRESS_CONNECT_HEADERS.html)).
+
+The source remains available until the next validated transfer attempt on that
+handle or `CLEANUP`. Fresh, failed and cancelled transfers have no headers and
+throw `CURL:E-STATE`; so does a `START` not yet collected by `AWAIT`, even if
+libcurl already finished it. If successful capture lacks a complete final
+block, `HEADERS` throws `CURL:E-RESULT`. Both refusals leave the destination
+untouched. A later transfer failure invalidates the previous source. The
+handle-owned record holds the request list and the retained response, without
+an additional registry. `CURLOPT_HEADERDATA` uses ordinary `fwrite` when both
+callbacks are unset ([HEADERDATA](https://curl.se/libcurl/c/CURLOPT_HEADERDATA.html)).
+The header stream grows as the bytes arrive; the caller's capacity bounds only
+the copy. A transfer reports allocation failure as `CURLE_OUT_OF_MEMORY` (27)
+and a stream write or close failure as `CURLE_WRITE_ERROR` (23) unless an
+earlier libcurl error already explains the failure. No partial header capture
+is published as successful.
+
+`CLEANUP` destroys the handle, its request list and its retained response.
+The handle is dead afterwards and must not be used again.
 
 ## Many transfers on one task
 
@@ -148,8 +187,7 @@ From `START` until `AWAIT` answers, the handle and the span belong to the loop:
 no other task may touch either, and nothing outside the loop asks libcurl about
 the handle. That is why a waiter finds its own transfer by scanning the
 package's records for its handle rather than calling `curl_easy_getinfo` on a
-handle the loop may be driving — `CURLOPT_PRIVATE` already carries that handle's
-header list. A second `START` on a handle already in flight is `CURL:E-STATE`,
+handle the loop may be driving. A second `START` on a handle already in flight is `CURL:E-STATE`,
 and so are `AWAIT` and `CANCEL` on a handle with none, and an `AWAIT` from a
 task that did not start it.
 
@@ -194,7 +232,7 @@ parked, gives its tickets back, and `CURL:E-RESULT` is rethrown from
 
 ## Failures
 
-`CURL:E-PLATFORM` rejects a non-Linux target before anything is allocated.
+`CURL:E-PLATFORM` is reserved for an unsupported target.
 `CURL:E-STATE` rejects a handle that was never opened. A handle used after
 `CLEANUP` is a use-after-free the nominal type does not prevent: the value is
 still nonzero, so treat `CLEANUP` as the end of that handle's life.
@@ -217,12 +255,10 @@ integer in the same register, and a cell is what the nominal handle types wrap.
 Only a span Habu or the callee really reads or writes is declared `ptr u8`, which
 is what the bounded call guards.
 
-`curl_easy_setopt` and `curl_easy_getinfo` are variadic. On Linux AAPCS64 a
-variadic integer or pointer argument uses the same register as a fixed one, so
-one declaration per ARGUMENT SHAPE is exact, and the two shapes
-(`SETOPT-NUM ( n n n -- n )` and `SETOPT-SPAN ( n n ptr u8 -- n )`) share the
-symbol under different Habu names. `INIT`'s platform gate is what keeps that
-true: Apple's ARM64 variant passes variadic arguments on the stack instead.
+`curl_easy_setopt` and `curl_easy_getinfo` are variadic. Their declarations
+use `VARIADIC` for the platform's calling convention, including Apple's ARM64
+stack arguments. The numeric and span option shapes share the C symbol under
+different Habu names.
 
 Option numbers are written as curl.h writes them — the option type's base plus
 the option's own number — so each one is checkable against
@@ -255,6 +291,16 @@ that is refused with its bytes never reaching the buffer, and the refusals: a
 dead handle, a NUL inside a URL, a low-speed rate below zero and a window past
 the C long ceiling, against a handle that takes both the disabling pair and a
 real one.
+
+The same TCP4 peer serves exact duplicate response headers and `{}` on both
+transfer paths, an oversized redirect with conflicting fields, `100` and `103`
+before a chunked final response, and conflicting trailers. The cases cover
+exact, short and zero header capacities, sentinels, independent body/header
+truncation, disabled following, repeated copies, handle reuse and cleanup,
+uncollected `START`, timeout, cancellation and halted-owner refusal. With
+`HB_TMP` set, the suite writes and reads back
+`$HB_TMP/curl-headers-transcript.txt` as a deterministic result/header/body
+artifact.
 
 The loop's own cases follow, with `AIO:START` run first because a live task
 forbids compilation: a `START` before `LOOP-START` and a second `LOOP-START`

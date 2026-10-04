@@ -94,7 +94,9 @@ using A64ASM
 \ CODE relocation rows. $1E00000 clears the minimum 30,536,128 and that artifact.
 $2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT section budget
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
-$1000 constant ICODE-TAB-CELLS
+\ The identity shadow branches take the engine past 4096 labels during the
+\ native recovery build. The same table indexes pending fixups.
+$2000 constant ICODE-TAB-CELLS
 $5 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 72 constant ICODE-EXIT-RC

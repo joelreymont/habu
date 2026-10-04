@@ -1095,6 +1095,15 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
 \ $340000000 and `dbase@` at $1410000 - so the link holds the address itself.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
 
+\ The crash handler can inspect this immutable TCB chain after an instruction
+\ fetch faults in a task's guard. Publish the head cell in root DATA;
+\ task-local RBP is unavailable on that fault path. The fixed cell is declared
+\ as a DATA pointer so an image remaps it with the dictionary window.
+data-base TASK-CHAIN-CELL + ptr-cell-mark
+: TASK-CHAIN-PUBLISH ( -- )
+   TASK-CHAIN data-base TASK-CHAIN-CELL + 0 ptr-field ! ;
+TASK-CHAIN-PUBLISH
+
 : TASK-CHAIN@ ( -- ptr n )
    TASK-CHAIN @ ;
 

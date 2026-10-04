@@ -10,23 +10,27 @@
 \
 \ A handle is (slot u32, generation u32) in one cell, the slot in the low half,
 \ which is the wire's little-endian order. Null is both halves zero; a handle
-\ with only one of them zero is refused where one enters, at BYTES>HANDLE.
+\ with only one of them zero is refused where one enters, at HANDLE and
+\ BYTES>HANDLE.
 \
 \ BOUNDARY. Outside the package no typed route leads from a table to its
-\ header or slots, and none from a number to a handle or a table: their
-\ converters and the header's constructor are private, and a cast from a
-\ number to either is E-CAST-OWNER. Raw storage passes both: a private pointer
-\ mint (docs/forth.md, CAST:), such as any package's own
-\ `CAST: ( RT-HANDLE:table -- ptr n )`, reads and writes a header and, through
-\ it, the slots, and the public byte and cell views over a cell that holds a
-\ handle or a table (`T BYTE-VIEW CELL-VIEW !`) store any number there, a
-\ fabricated table included. The header and slot cells also stay the caller's
-\ buffers, which the package does not guard: writing them can reopen a header
-\ or rewind a slot and revive a released handle. Each table owns its header
-\ and slot cells exclusively: no two tables, and no table and counter, share a
-\ cell, and OPEN is never handed cells a live table or counter uses. What
-\ follows holds while only this package's words write a table's cells and
-\ each table's cells are its own.
+\ header or slots, and none from a number to a table: its converters and the
+\ header's constructor are private, and a cast from a number to a table or a
+\ handle is E-CAST-OWNER. Numbers become a handle only through HANDLE, and
+\ bytes only through BYTES>HANDLE. Construction establishes only that a
+\ handle is well formed; a table's INDEX, or a pool's lookup of its own
+\ handles, establishes that it was issued and is live. Raw storage passes the
+\ refusals above: a private pointer mint (docs/forth.md, CAST:), such as any
+\ package's own `CAST: ( RT-HANDLE:table -- ptr n )`, reads and writes a
+\ header and, through it, the slots, and the public byte and cell views over a
+\ cell that holds a handle or a table (`T BYTE-VIEW CELL-VIEW !`) store any
+\ number there, a fabricated table included. The header and slot cells also
+\ stay the caller's buffers, which the package does not guard: writing them
+\ can reopen a header or rewind a slot and revive a released handle. Each
+\ table owns its header and slot cells exclusively: no two tables, and no
+\ table and counter, share a cell, and OPEN is never handed cells a live table
+\ or counter uses. What follows holds while only this package's words write a
+\ table's cells and each table's cells are its own.
 \
 \ A handle names no table, so two tables over overlapping ranges of slots
 \ cannot tell their handles apart: the context opens one table per allocator
@@ -56,6 +60,7 @@ public
 -9515 constant E-RT-HANDLE-UNOPENED   \ ISSUE, INDEX or RELEASE of the zero table token, a table cell OPEN has not filled
 -9516 constant E-RT-HANDLE-RANGE      \ OPEN over null storage, or of a range that is empty, starts at slot 0, passes slot 2^32 - 1 or holds over 2^31 - 1 slots
 -9517 constant E-RT-HANDLE-OPEN       \ OPEN over a header that is already open
+-9518 constant E-RT-HANDLE-WIDE       \ HANDLE of a slot or a generation outside 0 .. 2^32 - 1
 
 DEFTYPE HANDLE
 undefine >HANDLE
@@ -130,6 +135,14 @@ public
 : NULL? ( handle -- bool )
    HANDLE>N 0= ;
 
+\ The handle of a slot at a generation, each within 0 .. 2^32 - 1 and both
+\ zero, the null handle, or neither.
+: HANDLE ( n n -- handle )
+   {: slot:n gen:n :}
+   slot gen or U32-MAX invert and 0<> if E-RT-HANDLE-WIDE throw then
+   slot 0= gen 0= xor if E-RT-HANDLE-HALF-NULL throw then
+   slot gen >SLOT-HANDLE ;
+
 \ The handle in eight little-endian bytes: the slot u32, then the generation.
 : BYTES>HANDLE ( ptr u8 n -- handle )
    {: a:ptr u:n :}
@@ -137,8 +150,7 @@ public
    a 0= if E-RT-HANDLE-LENGTH throw then
    0 HANDLE-BYTES 0 do 8 lshift a HANDLE-BYTES 1 - i - + c@ or loop
    {: v:n :}
-   v U32-MAX and 0= v 32 rshift 0= xor if E-RT-HANDLE-HALF-NULL throw then
-   v >HANDLE ;
+   v U32-MAX and v 32 rshift HANDLE ;
 
 \ Open a table over `count` slot cells numbered from `first`, its header the
 \ HEADER-CELLS zeroed cells at `hdr`. The last slot, first + count - 1, is

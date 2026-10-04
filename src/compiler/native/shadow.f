@@ -40,7 +40,8 @@ require lib/errors.f
 require src/core/bytes.f
 require src/compiler/target.f
 require src/compiler/binding.f
-require src/compiler/native/emission.f
+require src/compiler/session/emission.f
+require src/compiler/session/lease.f
 
 package NSHADOW
 private
@@ -69,6 +70,7 @@ DYNAMIC-BUFFER EM-PATCH-TGT n        \ later clause entry, or zero
 
 variable N-FUNS
 DYNAMIC-BUFFER FUN-OFF n             \ where a function starts
+DYNAMIC-BUFFER FUN-SOURCE n          \ matching function's published host entry, or zero
 variable N-CALLS
 DYNAMIC-BUFFER CALL-OFF n            \ where a call or leaving branch sits
 DYNAMIC-BUFFER CALL-KIND n           \ NEMIT:CALL or NEMIT:TAIL
@@ -106,44 +108,50 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 
 \ ---- taking a sealed emission -------------------------------------------------
 \ Only bytes of the machine the shadow's binding names are its routines.
-: TARGET-CK ( -- )
-   NEMIT:ARCH  SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:EQ
+: TARGET-CK ( NART:emission -- )
+   NART:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then ;
 
-: COPY-BYTES ( -- )
+: COPY-BYTES ( NART:emission -- )
+   {: e:NART:emission :}
    CODE-N @ {: at:n :}
-   NEMIT:SIZE {: size:n :}
+   e NART:SIZE {: size:n :}
    at size + CODE-BUF-RESERVE
-   NEMIT:BYTES  at CODE-BUF  size BYTE-COPY ;
+   e NART:BYTES at CODE-BUF size BYTE-COPY ;
 
-: COPY-FUNS ( -- )
+: COPY-FUNS ( NART:emission -- )
+   {: e:NART:emission :}
    N-FUNS @ {: k0:n :}
-   NEMIT:FUNCTIONS {: n:n :}
+   e NART:FUNCTIONS {: n:n :}
    k0 n + FUN-OFF-RESERVE
+   k0 n + FUN-SOURCE-RESERVE
    n 0 ?do
-      i NEMIT:FUNCTION-OFFSET@  k0 i + FUN-OFF !
+      e i NART:FUNCTION-OFFSET@ k0 i + FUN-OFF !
+      0 k0 i + FUN-SOURCE !
    loop ;
 
-: COPY-CALLS ( -- )
+: COPY-CALLS ( NART:emission -- )
+   {: e:NART:emission :}
    N-CALLS @ {: k0:n :}
-   NEMIT:CALL-SITES {: n:n :}
+   e NART:CALL-SITES {: n:n :}
    k0 n + CALL-OFF-RESERVE
    k0 n + CALL-KIND-RESERVE
    k0 n + CALL-TGT-RESERVE
    n 0 ?do
-      i NEMIT:CALL-SITE@    k0 i + CALL-OFF !
-      i NEMIT:CALL-KIND@    k0 i + CALL-KIND !
-      i NEMIT:CALL-TARGET@  k0 i + CALL-TGT !
+      e i NART:CALL-SITE@ k0 i + CALL-OFF !
+      e i NART:CALL-KIND@ k0 i + CALL-KIND !
+      e i NART:CALL-TARGET@ k0 i + CALL-TGT !
    loop ;
 
-: COPY-ADDRS ( -- )
+: COPY-ADDRS ( NART:emission -- )
+   {: e:NART:emission :}
    N-ADDRS @ {: k0:n :}
-   NEMIT:ADDR-SITES {: n:n :}
+   e NART:ADDR-SITES {: n:n :}
    k0 n + ADDR-OFF-RESERVE
    k0 n + ADDR-KIND-RESERVE
    n 0 ?do
-      i NEMIT:ADDR-SITE@       k0 i + ADDR-OFF !
-      i NEMIT:ADDR-SITE-KIND@  k0 i + ADDR-KIND !
+      e i NART:ADDR-SITE@ k0 i + ADDR-OFF !
+      e i NART:ADDR-SITE-KIND@ k0 i + ADDR-KIND !
    loop ;
 
 : EM-RESERVE ( n -- ) {: n:n :}
@@ -153,16 +161,17 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
    n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE ;
 
-: COPY-ROW ( -- )
+: COPY-ROW ( NART:emission -- )
+   {: a:NART:emission :}
    N-EMS @ {: e:n :}
    e 1+ EM-RESERVE
-   CODE-N @         e EM-AT !
-   NEMIT:SIZE       e EM-SIZE !
-   NEMIT:RET-BYTES  e EM-RET !
-   N-FUNS @   e EM-FUN0 !   NEMIT:FUNCTIONS   e EM-FUNS !
-   N-CALLS @  e EM-CALL0 !  NEMIT:CALL-SITES  e EM-CALLS !
-   N-ADDRS @  e EM-ADDR0 !  NEMIT:ADDR-SITES  e EM-ADDRS !
-   NEMIT:PATCH-SLOT e EM-PATCH !
+   CODE-N @ e EM-AT !
+   a NART:SIZE e EM-SIZE !
+   a NART:RET-BYTES e EM-RET !
+   N-FUNS @ e EM-FUN0 ! a NART:FUNCTIONS e EM-FUNS !
+   N-CALLS @ e EM-CALL0 ! a NART:CALL-SITES e EM-CALLS !
+   N-ADDRS @ e EM-ADDR0 ! a NART:ADDR-SITES e EM-ADDRS !
+   a NART:PATCH-SLOT e EM-PATCH !
    0 e EM-PATCH-TGT ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
@@ -173,15 +182,16 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 
 \ A copy taken over one no publication claimed simply replaces it: both lie
 \ past the counts.
-: COPY ( -- )
+: COPY ( NART:emission -- )
+   {: e:NART:emission :}
    OPEN-CK
-   TARGET-CK
+   e TARGET-CK
    0 PENDING !
-   COPY-BYTES
-   COPY-FUNS
-   COPY-CALLS
-   COPY-ADDRS
-   COPY-ROW
+   e COPY-BYTES
+   e COPY-FUNS
+   e COPY-CALLS
+   e COPY-ADDRS
+   e COPY-ROW
    REC-RESERVE ;
 
 \ ---- the counts -------------------------------------------------------------
@@ -196,7 +206,7 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    EM-CALL0-RELEASE  EM-CALLS-RELEASE
    EM-ADDR0-RELEASE  EM-ADDRS-RELEASE
    EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE
-   FUN-OFF-RELEASE
+   FUN-OFF-RELEASE  FUN-SOURCE-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE ;
@@ -222,13 +232,15 @@ public
 
 \ ---- opening and closing -----------------------------------------------------
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
+   NLEASE:IDLE-CK
    OPENED @ 0<> if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
    1 OPENED ! ;
 
-\ Nonthrowing, so an image capture can run it whether a shadow is open or not.
+\ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
+   NLEASE:IDLE-CK
    0 OPENED !
    CLEAR
    RELEASE-ROWS ;
@@ -242,7 +254,7 @@ public
 \ ---- what the driver and publication do --------------------------------------
 \ Copy the sealed emission of the definition being compiled, before the context
 \ its rows live in leaves.
-: TAKE ( -- )
+: TAKE ( NART:emission -- )
    COPY
    0 PEND-DOES !
    1 PENDING ! ;
@@ -250,7 +262,8 @@ public
 \ The same for a `does>` definer, whose clause is function `fun` of the
 \ emission: the companion record enters there, so it cannot be where the
 \ definer itself enters.
-: TAKE-DOES ( n -- ) {: fun:n :}
+: TAKE-DOES ( NART:emission n -- )
+   {: fun:n :}
    COPY
    N-EMS @ {: e:n :}
    fun  e EM-FUN0 @  e EM-FUNS @  SUB-ROW  FUN-OFF @ {: off:n :}
@@ -258,6 +271,20 @@ public
    off PEND-ENTRY !
    1 PEND-DOES !
    1 PENDING ! ;
+
+\ Pair the host emission's function entries with the pending shadow's entries
+\ before the host publisher commits either code or dictionary record. Both
+\ selectors retain the same frozen HIR function sequence, even when their
+\ instruction and block layouts differ. TAKE reserved the rows; this grows
+\ nothing, and a failed publication discards the pending pair with ABANDON.
+: SOURCE-FUNS ( NART:emission n -- )
+   {: a:NART:emission at:n :}
+   PENDING @ 0= if exit then
+   N-EMS @ {: e:n :}
+   a NART:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
+   e EM-FUNS @ 0 ?do
+      at a i NART:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
+   loop ;
 
 \ File the taken emission under the record publication has just committed, and
 \ a definer's companion under the next. Nonthrowing: publication runs it past
@@ -339,6 +366,18 @@ public
 
 : FUNCTION-OFFSET@ ( n n -- n )
    FUN-ROW FUN-OFF @ ;
+
+\ A quotation has no dictionary record. An exact published host function entry
+\ still identifies its HIR sibling in the shadow emission; no interior address
+\ or nearest routine span is accepted as an identity.
+: SOURCE-FUNCTION ( n -- n n ) {: xt:n :}
+   OPEN-CK
+   N-EMS @ 0 ?do
+      i EM-FUNS @ 0 ?do
+         j i FUN-ROW FUN-SOURCE @ xt = if j i unloop unloop exit then
+      loop
+   loop
+   -1 -1 ;
 
 : CALL-SITES ( n -- n )
    EM-CK {: e:n :}

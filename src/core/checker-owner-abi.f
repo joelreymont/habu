@@ -113,12 +113,16 @@ $2F0 constant VERIFY-RENDERS-OFF
 \ enforce the verdict but must not drop its reason (src/compiler/native/compiler.f
 \ CHECK-HOOKLESS).
 $2F8 constant CHECK-REPORT-OFF
+\ The `linear:` declarer's registrar (src/core/checker.f CHECKER-LINEAR): the
+\ owner of a DEFLINEAR type mints and erases its token, as `cast:` reaches
+\ CAST-OFF.
+$300 constant LINEAR-OFF
 \ The source pre-pass's questions: what the load does with a top-level token,
 \ the report of a stretch deferred to the run (src/habu/verify-source.f
 \ TOP-TOKEN), and what a TRUSTED: body's calls may do (SCAN-TRUSTED-BODY).
-$300 constant VERIFY-TOP-OFF
-$308 constant VERIFY-DEFERRED-OFF
-$310 constant VERIFY-REACH-OFF
+$308 constant VERIFY-TOP-OFF
+$310 constant VERIFY-DEFERRED-OFF
+$318 constant VERIFY-REACH-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

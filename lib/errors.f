@@ -332,7 +332,8 @@
 -6615 constant E-CTGT-BASE        \ the baseline instruction-set feature is absent
 -6616 constant E-CTGT-UNLOADED    \ no backend for the architecture is loaded in this image
 -6617 constant E-CTGT-REGISTERED  \ a second backend claims an architecture that already has a row
--6618 constant E-CTGT-ROW         \ the backend registry has no free row left
+-6618 constant E-CTGT-ROW         \ an unpublished descriptor row was requested
+-6619 constant E-CTGT-ID          \ a backend id must be positive
 
 \ Compiler numerical policy (package CNUM): -6620..-6629
 -6620 constant E-CNUM-CONTRACT    \ contraction is allowed under a bit-exact rewrite licence
@@ -1465,6 +1466,8 @@
 \ RUNTIME identities: -9500..-9509, minted by lib/runtime/id.f, which owns package RT-ID.
 
 \ RUNTIME handles: -9510..-9519, minted by lib/runtime/handle.f, which owns package RT-HANDLE.
+
+\ RUNTIME pools: -9520..-9529, minted by lib/runtime/pool.f, which owns package RT-POOL.
 
 \ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WPROF -9810..-9814, WCTL -9815..-9819.

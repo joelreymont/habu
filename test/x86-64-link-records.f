@@ -45,11 +45,11 @@
 \ forged rows: a site naming the package row, the same in a `does>` definer's
 \ routine, which the refusal names by the definer, a code cell whose xt row is
 \ gone, a code cell whose xt row names the package row, and a protected-wid row
-\ outside the window. Four the capture refuses
+\ outside the window. The capture refuses calls to tier-0 and retired words
 \ before any layout, because a reached shadow target must have a native
-\ routine: calls to tier-0 and retired words, and a code cell holding a
-\ quotation's entry. A live
-\ private native routine is linked without publishing a dictionary name.
+\ routine. A declared cell holding a quotation's entry instead links to its
+\ anonymous routine. A live private native routine is linked without
+\ publishing a dictionary name.
 \
 \ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
 \ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
@@ -108,7 +108,6 @@ variable IMAGE-PATH-U
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
    s" quot" MODE? if s" : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
-   s" farcell" MODE? if s" ' LEAF data-base $800000 + xt!" exit then
    s" " ;
 SHIFT$ evaluate
 ;package
@@ -626,21 +625,6 @@ variable RC
    RC @ 0 T=
    OUT OUT-U @ s" x86-64-link-records: private linked" CONTAINS? TTRUE ;
 
-: FAR-CELL-CASE ( -- )
-   s" a declared fixed DATA cell beyond the captured heap survives x64 placement" T-LABEL
-   s" farcell" RUN-CHILD
-   RC @ 0<> if SHOW-CHILD then
-   RC @ 0 T=
-   OUT OUT-U @ s" x86-64-link-records: distant cell linked" CONTAINS? TTRUE ;
-
-: FAR-CELL-LINKED ( -- )
-   X64LINK:DATA$ {: data:ptr size:n :}
-   size $800000 CELL + >= if
-      data $800000 + LE:U64@ W-LEAF IMG ENTRY =
-   else false then
-   0= if s" x86-64-link-records: distant cell was not preserved" 74 die then
-   s" x86-64-link-records: distant cell linked" type cr ;
-
 : STRIP-LINKED ( -- )
    USER-REC {: rec:n :}
    rec 0 < if s" x86-64-link-records: USER lost its dictionary row" 74 die then
@@ -689,10 +673,38 @@ variable RC
    s" unresolved" s" names STR=, which no x86-64 kernel body carries"
    s" x64link: a shadow site names a word the x86-64 kernel does not carry" REFUSED ;
 
+: QUOT-LINKED ( -- )
+   -1
+   AOT-SHADOW:XT-N @ 0 ?do
+      i 4 XT@ SITE-SHADOW-TAG and SITE-SHADOW-TAG = if drop i leave then
+   loop {: x:n :}
+   x 0 < if s" x86-64-link-records: quotation cell lost its shadow row" 74 die then
+   x 4 XT@ SITE-TARGET-MASK and {: r:n :}
+   r 0 SH@ AOT-SHADOW:ANON-REC and 0= if
+      s" x86-64-link-records: quotation cell points to a named row" 74 die
+   then
+   r X64LINK:NAMES-SPAN drop X64LINK:CODE-VA + {: entry:n :}
+   x 0 XT@ {: c:n :}
+   c X64LINK:CELL-XT entry <> if
+      s" x86-64-link-records: quotation cell points to another routine" 74 die
+   then
+   AOT-WINDOW:XTOFF-BUF@ c AOT-WINDOW:XTOFF-ROW * + LE:U32@ {: loc:n :}
+   loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
+      s" x86-64-link-records: quotation cell left its window" 74 die
+   then
+   X64LINK:DATA$ drop X64LINK:DATA-AT + loc AOT-WINDOW:XTOFF-LOC-MASK and +
+      LE:U64@ entry <> if
+      s" x86-64-link-records: image DATA lost the quotation entry" 74 die
+   then
+   s" x86-64-link-records: quotation cell linked" type cr ;
+
 : QUOT-CASE ( -- )
-   s" a declared code cell holding a quotation's entry is refused by the cell" T-LABEL
-   s" quot" s" which is window code no shipped record enters"
-   s" aot-capture: a shadowed code cell targets code no shipped record enters" REFUSED ;
+   s" a declared code cell holds its anonymous quotation entry in linked image DATA" T-LABEL
+   s" quot" RUN-CHILD
+   OUT OUT-U @ s" x86-64-link-records: quotation cell linked" CONTAINS? {: linked:bool :}
+   RC @ 0<> linked 0= or if SHOW-CHILD then
+   RC @ 0 T=
+   linked TTRUE ;
 
 : CELLNAME-CASE ( -- )
    s" a code cell holding the xt of a prefix word no kernel body carries is refused by its name" T-LABEL
@@ -733,7 +745,7 @@ variable RC
 \ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
    s" stray" MODE?  s" strip" MODE? or  s" callee" MODE? or  s" retired" MODE? or
-   s" wid" MODE? or  s" unresolved" MODE? or  s" quot" MODE? or  s" xtless" MODE? or
+   s" wid" MODE? or  s" unresolved" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
    s" pkgcell" MODE? or ;
 
@@ -756,8 +768,8 @@ public
    KERNEL
    X64LINK:LAYOUT
    s" strip" MODE? if STRIP-LINKED exit then
-   s" farcell" MODE? if FAR-CELL-LINKED exit then
    REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
+   s" quot" MODE? if QUOT-LINKED exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
    RECORDS-CASE
@@ -782,7 +794,6 @@ public
    SHIFT-CASE
    STRAY-CASE
    STRIP-CASE
-   FAR-CELL-CASE
    CALLEE-CASE
    RETIRED-CASE
    WID-FORGED-CASE

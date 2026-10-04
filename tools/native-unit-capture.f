@@ -1,10 +1,10 @@
 \ Capture one package's native code and publication sites while the retained
-\ compiler produces it. The observer copies NEMIT rows before their owner
+\ compiler produces it. The observer copies the owned emission rows before
 \ retires them; final code and records are read only after publication ends.
 
 require lib/errors.f
 require src/compiler/native/publish.f
-require src/compiler/native/emission.f
+require src/compiler/session/emission.f
 require src/compiler/native/string.f
 require src/habu/xref.f
 require src/habu/aot-arm.f
@@ -45,23 +45,24 @@ TRUSTED: CODE-BYTES ( n -- ptr u8 ) ;
    site row ADDR-CELLS * ADDR-ROW !
    kind row ADDR-CELLS * 1+ ADDR-ROW ! ;
 
-: OBSERVE ( n n n -- ) {: idx:n fn:n size:n :}
+: OBSERVE ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
    ACTIVE @ 0= if exit then
    fn CODE-START @ < if E-NUNIT-PROFILE throw then
-   NEMIT:CALL-SITES 0 ?do
+   e NART:CALL-SITES 0 ?do
       CALL-N @ {: row:n :}
       row 1+ CALL-CELLS * CALL-ROW-RESERVE
-      fn i NEMIT:CALL-SITE@ + CODE-START @ -
-      i NEMIT:CALL-KIND@
-      i NEMIT:CALL-TARGET@
+      fn e i NART:CALL-SITE@ + CODE-START @ -
+      e i NART:CALL-KIND@
+      e i NART:CALL-TARGET@
       row CALL!
       row 1+ CALL-N !
    loop
-   NEMIT:ADDR-SITES 0 ?do
+   e NART:ADDR-SITES 0 ?do
       ADDR-N @ {: row:n :}
       row 1+ ADDR-CELLS * ADDR-ROW-RESERVE
-      fn i NEMIT:ADDR-SITE@ + CODE-START @ -
-      i NEMIT:ADDR-SITE-KIND@
+      fn e i NART:ADDR-SITE@ + CODE-START @ -
+      e i NART:ADDR-SITE-KIND@
       row ADDR!
       row 1+ ADDR-N !
    loop ;

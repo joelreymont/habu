@@ -54,6 +54,7 @@ require lib/byte-buffer.f
 require lib/fs.f
 require lib/fs-mutate.f
 require src/compiler/native/backend.f
+require src/compiler/session/emission.f
 require src/arch/x86-64/passes.f
 require test/compiler/x64-emit-fixture.f
 require test/compiler/x64-chain-fixture.f
@@ -76,50 +77,50 @@ $0123456789ABCDEF constant TERMINAL-CELL
 private
 
 : ROWS-EMIT ( n n NBACK:linkage -- ) {: in:n out:n l:NBACK:linkage :}
-   CC in out l NBACK:DECLARE
-   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION in out l NBACK:DECLARE
+   X64CHAIN-TEST:SESSION BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   CC m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
-   CC m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;
+   X64CHAIN-TEST:SESSION m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;
 
 \ A routine that landed where it was placed keeps the fields its emission wrote.
 \ One that landed MOVED bytes further on has each of them written again from a
 \ row: a call or tail branch at its absolute target, a CODE literal moved.
-: LINK-ROWS ( n -- ) {: at:n :}
-   X64EMIT:CALL-SITES 0 ?do
-      at i X64EMIT:CALL-SITE@ +  i X64EMIT:CALL-TARGET@  X64HARNESS:LINK-CALL
+: LINK-ROWS ( NART:emission n -- ) {: e:NART:emission at:n :}
+   e NART:CALL-SITES 0 ?do
+      at e i NART:CALL-SITE@ + e i NART:CALL-TARGET@ X64HARNESS:LINK-CALL
    loop
-   X64EMIT:ADDR-SITES 0 ?do
-      i X64EMIT:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if
-         at i X64EMIT:ADDR-SITE@ +  MOVED @  X64HARNESS:LINK-CODE
+   e NART:ADDR-SITES 0 ?do
+      e i NART:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if
+         at e i NART:ADDR-SITE@ + MOVED @ X64HARNESS:LINK-CODE
       then
    loop ;
 
-: LINKED ( n -- ) {: at:n :}
-   MOVED @ 0<> if at LINK-ROWS then ;
+: LINKED ( NART:emission n -- ) {: e:NART:emission at:n :}
+   MOVED @ 0<> if e at LINK-ROWS then ;
 
 : ROWS-DONE ( -- )
-   CC NBACK:RETIRE
-   CC NBACK:RELEASE
    0 MOVED ! ;
 
 : ROWS, ( n n NBACK:linkage -- )
    ROWS-EMIT
+   X64CHAIN-TEST:SESSION NART:COPY {: e:NART:emission :}
    X64HARNESS:POSITION {: at:n :}
-   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
-   at LINKED
+   e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE
+   e at LINKED
    ROWS-DONE ;
 
 \ The quoting fixture answers the address of its second function, so the label
 \ its case expects is bound where the emission laid that function.
 : QUOTING-ROWS, ( -- )
    0 1 NBACK:L-NONE ROWS-EMIT
+   X64CHAIN-TEST:SESSION NART:COPY {: e:NART:emission :}
    X64HARNESS:POSITION {: at:n :}
-   X64EMIT:BYTES X64EMIT:SIZE  1 X64EMIT:FUNCTION-OFFSET@
+   e NART:BYTES e NART:SIZE e 1 NART:FUNCTION-OFFSET@
    X64HARNESS:APPEND-QUOTING
-   at LINKED
+   e at LINKED
    ROWS-DONE ;
 
 \ `: LEAF ( n -- ) TERMINAL-CELL CALLEE ;` where CALLEE ends the process: the
@@ -176,34 +177,53 @@ private
 : SUM-SHR-BODY ( IR-CTX:ctx -- )
    HIR-MOD HIR-OPCODE:RSHIFT BUILD-SUM-SHIFT 3 1 NBACK:L-NONE ROWS, ;
 : NOT-BODY ( IR-CTX:ctx -- )      HIR-MOD BUILD-NOT 1 1 NBACK:L-NONE ROWS, ;
-: RELATION-BODY ( IR-CTX:ctx -- )
-   HIR-MOD REL-OP @ BUILD-RELATION 2 1 NBACK:L-NONE ROWS, ;
-: RELATIONI-BODY ( IR-CTX:ctx -- )
-   HIR-MOD REL-OP @ BUILD-RELATIONI 2 1 NBACK:L-NONE ROWS, ;
+: RELATION-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op REL-OP ! c HIR-MOD REL-OP @ BUILD-RELATION 2 1 NBACK:L-NONE ROWS, ;
+: RELATIONI-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op REL-OP ! c HIR-MOD REL-OP @ BUILD-RELATIONI 2 1 NBACK:L-NONE ROWS, ;
 : MOVI-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-MOVI 1 1 NBACK:L-NONE ROWS, ;
 : DADDR-BODY ( IR-CTX:ctx -- )
    HIR-MOD BUILD-DADDRESSED 1 1 NBACK:L-NONE ROWS, ;
 : LOOP-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-LOOP 2 1 NBACK:L-NONE ROWS, ;
-: WORDCALL-BODY ( IR-CTX:ctx -- )
-   HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-CALLED ROWS, ;
+: WORDCALL-BODY ( n n IR-CTX:ctx -- )
+   {: callee:n moved:n c:IR-CTX:ctx :}
+   moved MOVED ! callee CALLEE !
+   c HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-CALLED ROWS, ;
 \ The same site in tail position: the routine leaves through its callee, whose
 \ return comes back to the case that called the routine.
-: TAILCALL-BODY ( IR-CTX:ctx -- )
-   HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-TAIL ROWS, ;
-: TERMINAL-BODY ( IR-CTX:ctx -- )
-   HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
-: QUOTER-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
-: FBIN-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FBIN 2 1 NBACK:L-NONE ROWS, ;
+: TAILCALL-BODY ( n n IR-CTX:ctx -- )
+   {: callee:n moved:n c:IR-CTX:ctx :}
+   moved MOVED ! callee CALLEE !
+   c HIR-MOD CALLEE @ BUILD-WORDCALLER 1 1 NBACK:L-TAIL ROWS, ;
+: TERMINAL-BODY ( n n IR-CTX:ctx -- )
+   {: callee:n moved:n c:IR-CTX:ctx :}
+   moved MOVED ! callee CALLEE !
+   c HIR-MOD CALLEE @ BUILD-TERMINAL 1 0 NORET ROWS, ;
+: QUOTER-BODY ( n IR-CTX:ctx -- )
+   {: moved:n c:IR-CTX:ctx :}
+   moved MOVED ! c HIR-MOD BUILD-QUOTER QUOTING-ROWS, ;
+: FBIN-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op F-OP ! c HIR-MOD BUILD-FBIN 2 1 NBACK:L-NONE ROWS, ;
 : FKEEP-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-FKEEP 2 1 NBACK:L-NONE ROWS, ;
-: FUN1-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FUN1 1 1 NBACK:L-NONE ROWS, ;
-: FCMP-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-FCMP 2 1 NBACK:L-NONE ROWS, ;
-: FCMP0-BODY ( IR-CTX:ctx -- )    HIR-MOD BUILD-FCMP0 1 1 NBACK:L-NONE ROWS, ;
+: FUN1-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op F-OP ! c HIR-MOD BUILD-FUN1 1 1 NBACK:L-NONE ROWS, ;
+: FCMP-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op F-OP ! c HIR-MOD BUILD-FCMP 2 1 NBACK:L-NONE ROWS, ;
+: FCMP0-BODY ( HIR:opcode IR-CTX:ctx -- )
+   {: op:HIR:opcode c:IR-CTX:ctx :}
+   op F-OP ! c HIR-MOD BUILD-FCMP0 1 1 NBACK:L-NONE ROWS, ;
 : INTREAL-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-INTREAL 1 1 NBACK:L-NONE ROWS, ;
 : REALINT-BODY ( IR-CTX:ctx -- )  HIR-MOD BUILD-REALINT 1 1 NBACK:L-NONE ROWS, ;
 : BITS-BODY ( IR-CTX:ctx -- )     HIR-MOD BUILD-BITS 1 1 NBACK:L-NONE ROWS, ;
 : FCONST-BODY ( IR-CTX:ctx -- )   HIR-MOD BUILD-FCONST 1 1 NBACK:L-NONE ROWS, ;
-: FCALL-BODY ( IR-CTX:ctx -- )
-   HIR-MOD CALLEE @ BUILD-FCALL 2 1 NBACK:L-CALLED ROWS, ;
+: FCALL-BODY ( n IR-CTX:ctx -- )
+   {: callee:n c:IR-CTX:ctx :}
+   callee CALLEE ! c HIR-MOD CALLEE @ BUILD-FCALL 2 1 NBACK:L-CALLED ROWS, ;
 
 \ A routine staged in the dialect has no source operation for the rows to
 \ select, so it is allocated, accepted and emitted the way the emitter's own
@@ -214,12 +234,15 @@ private
    X64EMIT:RETIRE ;
 
 \ Each cold side calls the callee its image carries in place of `throw`.
-: QUOTIENT-BODY ( IR-CTX:ctx -- )
-   0 W-CTX !  CALLEE @ BUILD-QUOTIENT 2 1 M-ROWS, ;
-: REMAINDER-BODY ( IR-CTX:ctx -- )
-   0 W-CTX !  CALLEE @ BUILD-REMAINDER 3 1 M-ROWS, ;
-: DIVZERO-BODY ( IR-CTX:ctx -- )
-   0 W-CTX !  CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
+: QUOTIENT-BODY ( n IR-CTX:ctx -- )
+   {: callee:n c:IR-CTX:ctx :}
+   callee CALLEE ! c 0 W-CTX ! CALLEE @ BUILD-QUOTIENT 2 1 M-ROWS, ;
+: REMAINDER-BODY ( n IR-CTX:ctx -- )
+   {: callee:n c:IR-CTX:ctx :}
+   callee CALLEE ! c 0 W-CTX ! CALLEE @ BUILD-REMAINDER 3 1 M-ROWS, ;
+: DIVZERO-BODY ( n IR-CTX:ctx -- )
+   {: callee:n c:IR-CTX:ctx :}
+   callee CALLEE ! c 0 W-CTX ! CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
 
 : M-SHIFT ( X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: o:X64IR:opcode x:IR-ID:ir-value-id n:IR-ID:ir-value-id :}
@@ -258,69 +281,71 @@ private
 \ and emitted at the image's next address.
 : TWO-COUNTS-BODY ( IR-CTX:ctx -- )
    0 W-CTX !
-   CC 3 1 NBACK:L-NONE NBACK:DECLARE
-   CC BUILD-TWO-COUNTS NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION 3 1 NBACK:L-NONE NBACK:DECLARE
+   X64CHAIN-TEST:SESSION BUILD-TWO-COUNTS NBACK:FIXPOINT {: m:IR-BUILD:module :}
    X64HARNESS:POSITION {: at:n :}
-   CC m at NBACK:EMIT
-   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   X64CHAIN-TEST:SESSION m at NBACK:EMIT
+   X64CHAIN-TEST:SESSION NART:COPY {: e:NART:emission :}
+   e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE
    ROWS-DONE ;
 
 \ A select shape of the fixture's, taking `in` cells.
 TYPED-VARIABLE SEL-SHAPE [ -- IR-BUILD:module ]
 variable SEL-IN
 
-: SEL-BODY ( IR-CTX:ctx -- )
-   0 W-CTX !  SEL-SHAPE @ execute  SEL-IN @ 1 M-ROWS, ;
+: SEL-BODY ( [ -- IR-BUILD:module ] n IR-CTX:ctx -- )
+   {: shape in:n c:IR-CTX:ctx :}
+   shape SEL-SHAPE ! in SEL-IN !
+   c 0 W-CTX ! SEL-SHAPE @ execute SEL-IN @ 1 M-ROWS, ;
 
 : SEL-ROUTINE ( [ -- IR-BUILD:module ] n -- )
-   SEL-IN !  SEL-SHAPE !  WBND [: SEL-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: SEL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 
 \ A refused definition ends the way src/compiler/native/compiler.f ends one:
 \ what the refusal left bound is released, then the emission retired.
 : ADDRESSED-REFUSED ( IR-CTX:ctx -- )
    HIR-MOD BUILD-ADDRESSED
    s" the rows refuse the addressed fixture: a data-stack contract has no cell for the memory order it takes as an argument" T-LABEL
-   [: 2 1 NBACK:L-NONE ROWS, ;] E-IR-VERIFY-OPTYPE TTHROWSQ
-   CC NBACK:RELEASE
-   CC NBACK:RETIRE ;
+   [: 2 1 NBACK:L-NONE ROWS, ;] E-IR-VERIFY-OPTYPE TTHROWSQ ;
 
 public
-: DIFF-ROUTINE ( -- )     WBND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SQUARE-ROUTINE ( -- )   WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT ;
-: CHAIN-ROUTINE ( -- )    WBND [: CHAIN-BODY ;] IR-CTX:WITH-CONTEXT ;
-: IMMS-ROUTINE ( -- )     WBND [: IMMS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SHIFTS-ROUTINE ( -- )   WBND [: SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SHL-ROUTINE ( -- )      WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SHR-ROUTINE ( -- )      WBND [: SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SHL-ADD-ROUTINE ( -- )  WBND [: SHL-ADD-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SHL-CROSS-ROUTINE ( -- ) WBND [: SHL-CROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SUM-SHL-ROUTINE ( -- )  WBND [: SUM-SHL-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SUM-SHR-ROUTINE ( -- )  WBND [: SUM-SHR-BODY ;] IR-CTX:WITH-CONTEXT ;
-: NOT-ROUTINE ( -- )      WBND [: NOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DIFF-ROUTINE ( -- )     [: DIFF-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SQUARE-ROUTINE ( -- )   [: SQUARE-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: CHAIN-ROUTINE ( -- )    [: CHAIN-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: IMMS-ROUTINE ( -- )     [: IMMS-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SHIFTS-ROUTINE ( -- )   [: SHIFTS-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SHL-ROUTINE ( -- )      [: SHL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SHR-ROUTINE ( -- )      [: SHR-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SHL-ADD-ROUTINE ( -- )  [: SHL-ADD-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SHL-CROSS-ROUTINE ( -- ) [: SHL-CROSS-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SUM-SHL-ROUTINE ( -- )  [: SUM-SHL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: SUM-SHR-ROUTINE ( -- )  [: SUM-SHR-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: NOT-ROUTINE ( -- )      [: NOT-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : RELATION-ROUTINE ( HIR:opcode -- )
-   REL-OP !  WBND [: RELATION-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: RELATION-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : RELATIONI-ROUTINE ( HIR:opcode -- )
-   REL-OP !  WBND [: RELATIONI-BODY ;] IR-CTX:WITH-CONTEXT ;
-: MOVI-ROUTINE ( -- )     WBND [: MOVI-BODY ;] IR-CTX:WITH-CONTEXT ;
-: DADDR-ROUTINE ( -- )    WBND [: DADDR-BODY ;] IR-CTX:WITH-CONTEXT ;
-: LOOP-ROUTINE ( -- )     WBND [: LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: RELATIONI-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: MOVI-ROUTINE ( -- )     [: MOVI-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: DADDR-ROUTINE ( -- )    [: DADDR-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: LOOP-ROUTINE ( -- )     [: LOOP-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 \ These take how far past its placement the routine lands as well.
 : WORDCALL-ROUTINE ( n n -- )
-   MOVED !  CALLEE !  WBND [: WORDCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: WORDCALL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : TAILCALL-ROUTINE ( n n -- )
-   MOVED !  CALLEE !  WBND [: TAILCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: TAILCALL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : TERMINAL-ROUTINE ( n n -- )
-   MOVED !  CALLEE !  WBND [: TERMINAL-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: TERMINAL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : QUOTER-ROUTINE ( n -- )
-   MOVED !  WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: QUOTER-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 
 : QUOTIENT-ROUTINE ( n -- )
-   CALLEE !  WBND [: QUOTIENT-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: QUOTIENT-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : REMAINDER-ROUTINE ( n -- )
-   CALLEE !  WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: REMAINDER-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : DIVZERO-ROUTINE ( n -- )
-   CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TWO-COUNTS-ROUTINE ( -- )  WBND [: TWO-COUNTS-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: DIVZERO-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: TWO-COUNTS-ROUTINE ( -- )
+   [: TWO-COUNTS-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 
 : CMPSEL-ROUTINE ( -- )      [: BUILD-CMPSEL ;] 3 SEL-ROUTINE ;
 : CMPSEL-FA-ROUTINE ( -- )   [: BUILD-CMPSEL-FA ;] 3 SEL-ROUTINE ;
@@ -332,24 +357,24 @@ public
 : SELZ-ZV-ROUTINE ( -- )     [: BUILD-SELZ-ZV ;] 2 SEL-ROUTINE ;
 : SELZ-SAME-ROUTINE ( -- )   [: BUILD-SELZ-SAME ;] 2 SEL-ROUTINE ;
 
-: ADDRESSED-REFUSAL ( -- ) WBND [: ADDRESSED-REFUSED ;] IR-CTX:WITH-CONTEXT ;
+: ADDRESSED-REFUSAL ( -- ) [: ADDRESSED-REFUSED ;] X64CHAIN-TEST:WITH-CASE ;
 
 \ The doubles: the source operation, where a fixture stages several, first.
 : FBIN-ROUTINE ( HIR:opcode -- )
-   F-OP !  WBND [: FBIN-BODY ;] IR-CTX:WITH-CONTEXT ;
-: FKEEP-ROUTINE ( -- )    WBND [: FKEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: FBIN-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: FKEEP-ROUTINE ( -- )    [: FKEEP-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : FUN1-ROUTINE ( HIR:opcode -- )
-   F-OP !  WBND [: FUN1-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: FUN1-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : FCMP-ROUTINE ( HIR:opcode -- )
-   F-OP !  WBND [: FCMP-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: FCMP-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : FCMP0-ROUTINE ( HIR:opcode -- )
-   F-OP !  WBND [: FCMP0-BODY ;] IR-CTX:WITH-CONTEXT ;
-: INTREAL-ROUTINE ( -- )  WBND [: INTREAL-BODY ;] IR-CTX:WITH-CONTEXT ;
-: REALINT-ROUTINE ( -- )  WBND [: REALINT-BODY ;] IR-CTX:WITH-CONTEXT ;
-: BITS-ROUTINE ( -- )     WBND [: BITS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: FCONST-ROUTINE ( -- )   WBND [: FCONST-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: FCMP0-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: INTREAL-ROUTINE ( -- )  [: INTREAL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: REALINT-ROUTINE ( -- )  [: REALINT-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: BITS-ROUTINE ( -- )     [: BITS-BODY ;] X64CHAIN-TEST:WITH-CASE ;
+: FCONST-ROUTINE ( -- )   [: FCONST-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 : FCALL-ROUTINE ( n -- )
-   CALLEE !  WBND [: FCALL-BODY ;] IR-CTX:WITH-CONTEXT ;
+   [: FCALL-BODY ;] X64CHAIN-TEST:WITH-CASE ;
 ;package
 
 \ The same trip for the fixtures the chain suite stages. Twelve values live at
@@ -362,16 +387,17 @@ variable CALLEE                      \ the entry the caller's site names
 
 : ROWS, ( n n NBACK:linkage -- )
    CHAIN-LINKED {: m:IR-BUILD:module :}
-   CC m X64HARNESS:POSITION NBACK:EMIT
-   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
-   CC NBACK:RETIRE
-   CC NBACK:RELEASE ;
+   NS m X64HARNESS:POSITION NBACK:EMIT
+   NS NART:COPY {: e:NART:emission :}
+   e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE ;
 
 : PRESS-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PRESSURE 1 1 NBACK:L-NONE ROWS, ;
 : PBRANCH-ROWS ( IR-CTX:ctx -- )  HIR-MOD BUILD-PBRANCH 2 1 NBACK:L-NONE ROWS, ;
 : PLOOP-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PLOOP 2 1 NBACK:L-NONE ROWS, ;
-: PCALLER-ROWS ( IR-CTX:ctx -- )
-   HIR-MOD CALLEE @ BUILD-PCALLER 1 1 NBACK:L-CALLED ROWS, ;
+: PCALLER-ROWS ( n IR-CTX:ctx -- )
+   {: callee:n c:IR-CTX:ctx :}
+   callee CALLEE !
+   c HIR-MOD CALLEE @ BUILD-PCALLER 1 1 NBACK:L-CALLED ROWS, ;
 
 \ `( a b c d e f g h i j -- n )` reading the ten in base two, `a 2* b + 2* c +
 \ ... 2* j +`, so a value lost or two exchanged answer wrongly. The entry loads
@@ -394,12 +420,12 @@ variable CALLEE                      \ the entry the caller's site names
 : ARGS-ROWS ( IR-CTX:ctx -- )     HIR-MOD BUILD-ARGS ARGS-N 1 NBACK:L-NONE ROWS, ;
 
 public
-: ARGS-ROUTINE ( -- )      WBND [: ARGS-ROWS ;] IR-CTX:WITH-CONTEXT ;
-: PRESSURE-ROUTINE ( -- )  WBND [: PRESS-ROWS ;] IR-CTX:WITH-CONTEXT ;
-: PBRANCH-ROUTINE ( -- )   WBND [: PBRANCH-ROWS ;] IR-CTX:WITH-CONTEXT ;
-: PLOOP-ROUTINE ( -- )     WBND [: PLOOP-ROWS ;] IR-CTX:WITH-CONTEXT ;
+: ARGS-ROUTINE ( -- )      [: ARGS-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
+: PRESSURE-ROUTINE ( -- )  [: PRESS-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
+: PBRANCH-ROUTINE ( -- )   [: PBRANCH-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
+: PLOOP-ROUTINE ( -- )     [: PLOOP-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 : PCALLER-ROUTINE ( n -- )
-   CALLEE !  WBND [: PCALLER-ROWS ;] IR-CTX:WITH-CONTEXT ;
+   [: PCALLER-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 ;package
 
 \ The signal case, staged in the harness's package because its checks are the

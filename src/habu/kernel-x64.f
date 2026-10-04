@@ -89,7 +89,7 @@ X64LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
 \ The code ceiling, as an offset into the region: the definition writers
 \ refuse a CP, or a long name's slots at CP, that reach it, as habu2.f bounds
 \ `:` at REGION - $4000 above DBASE.
-REGION $4000 - constant CODE-CEILING
+X64LAYOUT:CODE-CEILING constant CODE-CEILING
 
 private
 
@@ -4035,20 +4035,21 @@ variable HIR-OUT
 TYPED-VARIABLE HIR-STAGE [ -- ]
 
 \ The emission laid at the stream's end, its throws linked.
-: HIR-USE ( -- )
-   X64EMIT:ADDR-SITES 0<> if
+: HIR-USE ( NART:emission -- )
+   {: e:NART:emission :}
+   e NART:ADDR-SITES 0<> if
       s" x64kernel: " type ROW$ type s"  compiles to an address site" type cr
       s" x64kernel: a compiled row takes an address" REFUSE-RC die
    then
    X64CODE:ASM-LEN {: at:n :}
-   X64EMIT:BYTES X64EMIT:SIZE TEXT,
-   X64EMIT:CALL-SITES 0 ?do
-      i X64EMIT:CALL-KIND@ NEMIT:CALL <>
-      i X64EMIT:CALL-TARGET@ X64SEL:THROW-ENTRY <>  or if
+   e NART:BYTES e NART:SIZE TEXT,
+   e NART:CALL-SITES 0 ?do
+      e i NART:CALL-KIND@ NEMIT:CALL <>
+      e i NART:CALL-TARGET@ X64SEL:THROW-ENTRY <> or if
          s" x64kernel: " type ROW$ type s"  compiles to a call other than throw" type cr
          s" x64kernel: a compiled row calls out" REFUSE-RC die
       then
-      at i X64EMIT:CALL-SITE@ + CALL-REL32-OFF +  s" throw" ENTRY-LABEL  REL32-SITE
+      at e i NART:CALL-SITE@ + CALL-REL32-OFF + s" throw" ENTRY-LABEL REL32-SITE
    loop ;
 
 : HIR-BODY ( -- )

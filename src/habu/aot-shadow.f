@@ -55,6 +55,12 @@ DYNAMIC-BUFFER SH-NEXT n             \ capture record -> next alias + 1
 DYNAMIC-BUFFER SH-MARK n             \ NSHADOW row reached by x86 code
 DYNAMIC-BUFFER SH-WORK n             \ reached rows awaiting their site scan
 DYNAMIC-BUFFER SH-OUT n              \ NSHADOW row -> shadow record row, or -1
+DYNAMIC-BUFFER SH-EMROOT n           \ emission -> first published NSHADOW row
+variable SH-QN
+DYNAMIC-BUFFER SH-QXT n              \ exact host entry of an anonymous function
+DYNAMIC-BUFFER SH-QEM n              \ its owning shadow emission
+DYNAMIC-BUFFER SH-QFUN n             \ its HIR function ordinal
+DYNAMIC-BUFFER SH-QROW n             \ its assigned anonymous shadow row
 variable SH-WORK-N
 variable SH-OUT-N
 
@@ -137,11 +143,15 @@ variable SH-OUT-N
    NSHADOW:RECORDS SH-MARK-RESERVE
    NSHADOW:RECORDS SH-WORK-RESERVE
    NSHADOW:RECORDS SH-OUT-RESERVE
+   NSHADOW:EMISSIONS SH-EMROOT-RESERVE
    n 0 ?do -1 i SH-SOURCE !  0 i SH-HEAD ! loop
    ACAP-REC-ALL @ 0 ?do 0 i SH-NEXT ! loop
+   NSHADOW:EMISSIONS 0 ?do -1 i SH-EMROOT ! loop
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:RECORD@ {: idx:n :}
       idx SH-WINDOW? if i idx SH-SLOT SH-SOURCE ! then
+      i NSHADOW:EMISSION@ {: e:n :}
+      e SH-EMROOT @ 0< if i e SH-EMROOT ! then
       0 i SH-MARK !  -1 i SH-OUT !
    loop
    ACAP-W-R1 @ ACAP-W-R0 @ ?do
@@ -156,7 +166,7 @@ variable SH-OUT-N
          then
       then
    loop
-   0 SH-WORK-N !  0 SH-OUT-N ! ;
+   0 SH-WORK-N !  0 SH-OUT-N !  0 SH-QN ! ;
 
 \ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
@@ -185,6 +195,14 @@ variable SH-OUT-N
    head 0<> if head 1- SH-ROWS @ SITE-REC-TAG or exit then
    row SITE-SHADOW-TAG or ;
 
+: SH-QFIND ( n -- n ) {: xt:n :}
+   SH-QN @ 0 ?do i SH-QXT @ xt = if i unloop exit then loop
+   -1 ;
+
+: SH-QTARGET ( n -- n )
+   SH-QFIND dup 0 < if exit then
+   SH-QROW @ SITE-SHADOW-TAG or ;
+
 \ ---- what a host address names -------------------------------------------------
 \ A shipped window record's entry, by its shipped row, or a word of the engine's
 \ own prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
@@ -193,13 +211,10 @@ variable SH-OUT-N
    v ACAP-TGT>REC {: j:n :}
    j ACAP-W-R0 @ >= j ACAP-W-R1 @ < and if
       j SH-MAPPED dup -1 = if
-         drop
-         s" diagnostic source=" type j SH-SOURCE@ .INT
-         s"  head=" type j SH-HEAD@ .INT
-         s"  capture=" type j ACAP-DICT>CAP .INT cr
-         off j SH-UNSHIPPED
+         drop off j SH-UNSHIPPED
       then exit
    then
+   j 0 < if v SH-QTARGET dup 0 >= if exit then drop then
    v ACAP-TARGET-NAME? if ACAP-POOL-ADD SITE-NAME-TAG or exit then 2drop
    off v SH-UNNAMED ;
 
@@ -236,8 +251,27 @@ variable SH-OUT-N
    r SH-WORK-N @ SH-WORK !
    SH-WORK-N @ 1+ SH-WORK-N ! ;
 
+\ A quotation's function entry is not a dictionary record. Only the exact
+\ source address paired at publication can identify its x86 function; the
+\ owner emission is then a reach root, so all of its recorded sites are seen.
+: SH-QNEED ( n -- n ) {: xt:n :}
+   xt SH-QFIND dup 0 >= if exit then drop
+   xt NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
+   e 0 < if -1 exit then
+   e SH-EMROOT @ {: root:n :}
+   root 0 < if -1 exit then
+   SH-QN @ {: q:n :}
+   q 1+ SH-QXT-RESERVE  q 1+ SH-QEM-RESERVE
+   q 1+ SH-QFUN-RESERVE  q 1+ SH-QROW-RESERVE
+   xt q SH-QXT !  e q SH-QEM !  f q SH-QFUN !  -1 q SH-QROW !
+   q 1+ SH-QN !
+   root SH-MARK-ROW
+   q ;
+
 : SH-MARK-TARGET ( n -- ) {: v:n :}
-   v ACAP-TGT>REC SH-SOURCE@ SH-MARK-ROW ;
+   v ACAP-TGT>REC {: idx:n :}
+   idx 0 >= if idx SH-SOURCE@ SH-MARK-ROW exit then
+   v SH-QNEED drop ;
 
 \ The second target's edges are the shadow emitter's recorded rows, not the
 \ ARM instruction graph. A target can be live only on x86-64, or ARM can retain
@@ -289,9 +323,18 @@ variable SH-OUT-N
 
 \ Reserve each reached map row's place in publication order before copying any
 \ emission: a call can target a routine published later than its caller.
+: SH-QASSIGN ( n -- ) {: e:n :}
+   SH-QN @ 0 ?do
+      i SH-QEM @ e = if
+         SH-OUT-N @ i SH-QROW !
+         1 SH-OUT-N +!
+      then
+   loop ;
+
 : SH-ASSIGN ( -- )
    NSHADOW:RECORDS 0 ?do
       i SH-MARK @ 0<> if
+         i NSHADOW:EMISSION@ {: e:n :}
          SH-OUT-N @ i SH-OUT !
          i NSHADOW:RECORD@ SH-HEAD@ {: head:n :}
          head 0= if
@@ -302,6 +345,7 @@ variable SH-OUT-N
                1- SH-NEXT @
             repeat drop
          then
+         i e SH-EMROOT @ = if e SH-QASSIGN then
       then
    loop ;
 
@@ -370,6 +414,14 @@ CELL 2 * constant SH-TRAILER-BYTES
       idx SH-PREV !
    loop ;
 
+: SH-QCOPY ( n -- ) {: e:n :}
+   SH-QN @ 0 ?do
+      i SH-QEM @ e = if
+         AOT-SHADOW:RETIRED-REC
+         e i SH-QFUN @ NSHADOW:FUNCTION-OFFSET@ SH-REC+
+      then
+   loop ;
+
 : SH-WALK ( -- )
    -1 SH-E !
    NSHADOW:RECORDS 0 ?do
@@ -389,6 +441,7 @@ CELL 2 * constant SH-TRAILER-BYTES
                1- SH-NEXT @
             repeat drop
          then
+         i e SH-EMROOT @ = if e SH-QCOPY then
       then
    loop ;
 
@@ -404,7 +457,8 @@ CELL 2 * constant SH-TRAILER-BYTES
    meta AOT-WINDOW:XTOFF-VALUE-MASK and 0= if exit then
    row SH-CELL-OFF {: celloff:n :}
    row SH-CELL-V {: v:n :}
-   v ACAP-TGT>REC SH-MAPPED {: target:n :}
+   v ACAP-TGT>REC {: idx:n :}
+   idx 0 >= if idx SH-MAPPED else v SH-QTARGET then {: target:n :}
    target 0 < if celloff v SH-XT-REFUSE then
    target SITE-TARGET-MASK invert and SITE-REC-TAG = if
       target SITE-TARGET-MASK and

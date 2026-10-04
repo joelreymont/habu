@@ -53,11 +53,12 @@ FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 -1 constant XML-URI
 -2 constant XMLNS-URI
 
-\ The checked initializer validates storage; only linear ownership projection
-\ is asserted. Retirement owner: cap:raw-pointer-lifetime. See xml-test.f.
-TRUSTED: MINT ( ptr n -- XML:reader ) ;
-TRUSTED: STATE ( XML:reader -- XML:reader ptr n ) dup ;
-TRUSTED: CONSUME ( XML:reader -- ) drop ;
+\ A reader token is the caller's validated storage; only these rows cross it.
+LINEAR: MINT ( ptr n -- XML:reader )
+LINEAR: ERASE ( XML:reader -- ptr n )
+
+: STATE ( XML:reader -- XML:reader ptr n )
+   ERASE dup MINT swap ;
 
 : CAP-CHECK ( n -- )
    dup 0 < if E-CAPACITY throw then
@@ -227,7 +228,7 @@ public
    SOURCE-READER-ARGS SOURCE-READER ;
 
 : CLOSE ( XML:reader -- )
-   CONSUME ;
+   ERASE drop ;
 
 private
 : LIVE ( ptr n -- )

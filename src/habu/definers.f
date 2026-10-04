@@ -1,7 +1,7 @@
 \ definers.f - the definition heads of the interpret loop written in Habu:
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one; `cast:`, which declares and publishes at once, as C-CAST does;
+\ follows one; `cast:` and `linear:`, which declare and publish at once;
 \ `immediate`; and the definers `create`, `variable`, `constant` and `defer`,
 \ whose bodies NCOMP compiles as they are read. STEP (src/habu/interpret.f) asks
 \ COMPILING? after a comment and DEFINE? after the package keywords.
@@ -169,7 +169,7 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    S\" if else then {: :} s\q package public private ;package using ;using" ;
 
 : DEF-INTERPRET-KEYWORDS ( -- ptr u8 n )
-   S\" : kernel: trusted: cast: immediate create variable constant 2constant defer to export require include char ' ;match sumtype variant ;variant ;sumtype" ;
+   S\" : kernel: trusted: cast: linear: immediate create variable constant 2constant defer to export require include char ' ;match sumtype variant ;variant ;sumtype" ;
 
 : DEF-OP-KEYWORDS ( -- ptr u8 n )
    s" + - * and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
@@ -533,7 +533,7 @@ variable ENTRY-PEND
    DEF-STRING-TEXT
    true ;
 
-\ ---- `cast:` (habu2.f C-CAST) --------------------------------------------------
+\ ---- identity declarers (habu2.f C-IDENTITY) ----------------------------------
 \ `cast: NAME ( in -- out )` declares a checked retype: a record of kind
 \ DKIND:CAST whose code is the identity, published at once, with no body and
 \ no `;`. It refuses in the engine's order and with its text: a live task, the
@@ -550,19 +550,21 @@ variable ENTRY-PEND
    TOKEN if exit then
    s" hb: cast: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
 
+: LINEAR-NAME ( -- )
+   s" linear:" OPERAND ;
+
 \ The owner record stores raw execution tokens; these views state the two
 \ signatures called here.
 TRUSTED: DEF-AS-CAST ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
 TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
 
-\ The checker's cast operation gets the name and the signature: the active
-\ owner's, then the target owner's unless it is the same one (habu2.f
-\ DEF-TRUST:REGISTER-CAST, DECL-OWNER). Either may throw the cast's refusal.
-: CAST-REGISTER ( ptr u8 n -- ) {: sa:ptr su:n :}
+\ The certifying operation gets the name and signature: the active owner's,
+\ then the target owner's unless it is the same one (habu2.f DECL-OWNER).
+: IDENTITY-REGISTER ( ptr u8 n n -- ) {: sa:ptr su:n off:n :}
    HOOK-CELL CELL@ 0= if exit then
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-CAST-OFF PKG-OPERATION {: own:n :}
+   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION {: own:n :}
    own 0<> if DEF-CAPTURED-NAME sa su own DEF-AS-CAST execute then
-   NCOMP-DISPATCH:DECL-CAST-OFF PKG-TARGET {: target:n :}
+   off PKG-TARGET {: target:n :}
    target 0= if exit then
    target own = if exit then
    DEF-CAPTURED-NAME sa su target DEF-AS-CAST execute ;
@@ -577,7 +579,7 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
 \ The checker's facts for the record just counted (habu2.f
 \ EM-REC-WIDE-PUBLISH): rec-wide-publish marks it wide when its effect is,
 \ and the certified minimum input arity rec-min-in@ gives is stored unless 0.
-: CAST-FACTS ( -- )
+: IDENTITY-FACTS ( -- )
    HOOK-CELL CELL@ 0= if exit then
    s" rec-wide-publish" DEF-GLOBAL PKG-AS-ACTION execute
    s" rec-min-in@" DEF-GLOBAL DEF-AS-COUNT execute {: mi:n :}
@@ -596,9 +598,37 @@ TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
    DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
    s 1 + end s - 2 - {: sa:ptr su:n :}
    sa su DEF-TRUST-SIG
-   sa su CAST-REGISTER
+   sa su NCOMP-DISPATCH:DECL-CAST-OFF IDENTITY-REGISTER
    DEF-CAST
-   CAST-FACTS ;
+   IDENTITY-FACTS ;
+
+\ A qualified linear name is refused by the certifier before DEF-QUALIFY can
+\ create its namespace. A second colon is left to DEF-QUALIFY's syntax refusal.
+: LINEAR-QUALIFIED? ( -- bool )
+   TOKEN$ {: a:ptr u:n :}
+   a u 0 COLON-AT {: q:n :}
+   q 0 <= q 1+ u >= or if false exit then
+   a u q 1+ COLON-AT 0< ;
+
+: LINEAR-HEAD ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   LINEAR-NAME
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s end s - DEF-CAPTURE
+   s 1 + end s - 2 - {: sa:ptr su:n :}
+   LINEAR-QUALIFIED? if
+      sa su NCOMP-DISPATCH:DECL-LINEAR-OFF IDENTITY-REGISTER
+      TOKEN$ SAY RC-REJECT THROW-AT
+   then
+   DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
+   sa su DEF-TRUST-SIG
+   sa su NCOMP-DISPATCH:DECL-LINEAR-OFF IDENTITY-REGISTER
+   DEF-CAST
+   IDENTITY-FACTS ;
 
 \ ---- the definers (habu2.f EMIT-CREATE, INTERP-EMIT C-CREATE, C-VARIABLE, C-CONSTANT)
 \ A definer's word is whole when it is read. Its record opens with the stamp a
@@ -804,7 +834,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEF-CLOSE ;
 
 \ ---- the definition keywords --------------------------------------------------
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`,
+\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`, `linear:`,
 \ `immediate` and the definers are matched as LITERAL? matches its keywords.
 \ `immediate` marks the newest record, whatever it is, and refuses nothing, as
 \ the engine's does (habu2.f C-IMMEDIATE).
@@ -813,6 +843,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
    s" cast:" TOKEN-IS? if CAST-HEAD true exit then
+   s" linear:" TOKEN-IS? if LINEAR-HEAD true exit then
    s" immediate" TOKEN-IS? if DEF-IMM-MARK true exit then
    s" create" TOKEN-IS? if DEF-CREATE true exit then
    s" variable" TOKEN-IS? if DEF-VARIABLE true exit then

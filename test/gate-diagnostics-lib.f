@@ -404,7 +404,20 @@ TYPED-VARIABLE SPLICE-LEN len
    s" byte_start" s" 0" s" missing name byte_start" ERR-JRAW
    s" byte_end" s" 9" s" missing name byte_end" ERR-JRAW
    s" habu-missing-name.err" WRITE-ERR
-   s" habu-missing-name.err" s" missing name diagnostic contract" DIAG-CONTRACT ;
+   s" habu-missing-name.err" s" missing name diagnostic contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" LINEAR:" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted LINEAR: with no name" CHECK-JSON
+   s" code" s" E-MISSING-NAME" s" linear missing name code" ERR-JSTR
+   s" token" s" LINEAR:" s" linear missing name token" ERR-JSTR
+   s" repair_class" s" fix_missing_name" s" linear missing name repair class" ERR-JSTR
+   s" line" s" 1" s" linear missing name line" ERR-JRAW
+   s" column" s" 1" s" linear missing name column" ERR-JRAW
+   s" byte_start" s" 0" s" linear missing name byte_start" ERR-JRAW
+   s" byte_end" s" 7" s" linear missing name byte_end" ERR-JRAW
+   s" habu-linear-missing-name.err" WRITE-ERR
+   s" habu-linear-missing-name.err" s" linear missing name diagnostic contract" DIAG-CONTRACT ;
 
 \ A value-record field the registration refuses: the refusal is located at the
 \ field, carries the registration's message and keeps the diagnostic contract.

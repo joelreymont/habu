@@ -23,8 +23,8 @@
 \ emit-x64.f owns its byte sink, lays every block of the accepted module out in
 \ BYTES, resolves every displacement against the slot this row is handed, and
 \ seals a byte image with the lists of its call and address sites. The row then
-\ states that emission as NEMIT's rows, the only emission
-\ src/compiler/native/publish.f reads: the whole image with no trailing return,
+\ states that emission as NEMIT's rows; the driver copies those rows into NART
+\ before src/compiler/native/publish.f reads the whole image with no trailing return,
 \ because an x86-64 span is exact, the placement, where each function starts,
 \ and each site at its instruction's first byte. RETIRE gives the image, the
 \ placement and the rows back, and is nonthrowing because the driver calls it on
@@ -298,20 +298,16 @@ public
    OPEN-ROWS
    SEAL-ROWS ;
 
-\ The row this backend fills as it loads, stage by stage. src/arch/x86-64/
-\ backend.f has already claimed the registry row these are stored beside.
+\ Publish only after every callback is defined. The id names this provider,
+\ independent of target wire codes and its sorted runtime row.
 : INSTALL ( -- )
-   ARCH [: DECLARE ;] NBACK:DECLARE!
-   ARCH [: SELECT ;] NBACK:SELECT!
-   ARCH [: PRUNE ;] NBACK:PRUNE!
-   ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
-   ARCH [: EMIT ;] NBACK:EMIT!
-   ARCH [: EMIT-UNPLACED ;] NBACK:EMIT-UNPLACED!
-   ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: RETIRE ;] NBACK:RETIRE!
-   ARCH [: X64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
-   ARCH [: X64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
-   ARCH [: PREPARE ;] NBACK:PREPARE! ;
+   X64BACK:ID ARCH [: X64BACK:SERVES? ;] [: X64BACK:SERVES? ;]
+      CTARGET-BACKEND:MAKE
+   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: EMIT ;] [: EMIT-UNPLACED ;] [: RELEASE ;] [: RETIRE ;]
+   [: X64IR:PROTOTYPE ;] [: X64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
+      NBACK-PASS:MAKE
+   NBACK:REGISTER ;
 
 ;package
 

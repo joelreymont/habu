@@ -1,13 +1,13 @@
-\ emission.f - one sealed emission as publication reads it: bytes, function
-\ starts, call and address sites and the trailing return, in no machine's terms.
+\ emission.f - one sealed transient emission: bytes, function starts, call
+\ and address sites, and the trailing return, in no machine's terms.
 \
-\ WHAT IT IS FOR. src/compiler/native/publish.f copies a routine into the code
-\ region and records what a restore has to relocate. It needs the same facts of
-\ every backend, and none of them is an instruction: where each function starts,
-\ which sites call out or leave through a branch and where to, which sites carry
-\ an absolute address, and how long the trailing return is. A backend decodes its
-\ own instruction forms once, as its emission row seals, and states the answers
-\ here; publication reads these rows and decodes nothing.
+\ WHAT IT IS FOR. The driver copies these rows into an owned NART artifact before
+\ src/compiler/native/publish.f places a routine in the code region. It needs
+\ the same facts of every backend, and none of them is an instruction: where
+\ each function starts, which sites call out or leave through a branch and where
+\ they go, which sites carry an absolute address, and how long the trailing
+\ return is. A backend decodes its own instruction forms when sealing the row.
+\ Publication reads the artifact and decodes nothing.
 \
 \ EVERY OFFSET IS IN BYTES from the first byte of the emission and lies inside
 \ it; every target is an absolute address, measured from the placement.

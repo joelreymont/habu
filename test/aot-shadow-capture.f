@@ -132,6 +132,9 @@ private : MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
 : SHOW ( n -- ) . ;
 private : SECRET ( n -- n ) 1+ ; public
 : CALL-SECRET ( n -- n ) SECRET ;
+CAST: >CAP-IDX ( n -- idx )
+CAST: CAP-IDX>N ( idx -- n )
+: CAST-USER ( n -- n ) >CAP-IDX CAP-IDX>N 1+ ;
 0 set-tier
 
 defer HOOK ( n n -- n )
@@ -190,6 +193,9 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : W-TICK ( -- n ) s" TICK" SHIPPED ;
 : W-SHOW ( -- n ) s" SHOW" SHIPPED ;
 : W-CALL-SECRET ( -- n ) s" CALL-SECRET" SHIPPED ;
+: W-CAST-IN ( -- n ) s" >CAP-IDX" SHIPPED ;
+: W-CAST-OUT ( -- n ) s" CAP-IDX>N" SHIPPED ;
+: W-CAST-USER ( -- n ) s" CAST-USER" SHIPPED ;
 
 \ ---- the tables ---------------------------------------------------------------
 : REC-AT ( n n -- ptr u8 ) {: r:n f:n :}
@@ -257,7 +263,17 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    W-QUOT ROW-OF W-MADE ROW-OF 1+ T=
    W-TICK ROW-OF W-QUOT ROW-OF 1+ T=
    W-SHOW ROW-OF W-TICK ROW-OF 1+ T=
-   W-CALL-SECRET ROW-OF W-SHOW ROW-OF > TTRUE ;
+   W-CALL-SECRET ROW-OF W-SHOW ROW-OF > TTRUE
+   W-CAST-IN ROW-OF W-CALL-SECRET ROW-OF > TTRUE
+   W-CAST-OUT ROW-OF W-CAST-IN ROW-OF 1+ T=
+   W-CAST-USER ROW-OF W-CAST-OUT ROW-OF 1+ T= ;
+
+: CAST-CASE ( -- )
+   s" checked cast declarations have recorded x86 identity routines" T-LABEL
+   W-CAST-IN ROW-OF 0 >= TTRUE
+   W-CAST-OUT ROW-OF 0 >= TTRUE
+   W-CAST-IN LEN-OF 0 > TTRUE
+   W-CAST-OUT LEN-OF 0 > TTRUE ;
 
 : ANON-CASE ( -- )
    s" a live private callee has an x86 routine but no shipped dictionary name" T-LABEL
@@ -559,6 +575,7 @@ public
    NSHADOW:CLOSE
    T-RESET
    RECORDS-CASE
+   CAST-CASE
    ANON-CASE
    STRIP-CASE
    LIVE-RETIRED-CASE
