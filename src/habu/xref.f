@@ -573,7 +573,7 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
 
 : INVALIDATE ( n -- )
    {: floor:n :}
-   data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + @ dup 0<> if
+   data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + @ dup 0= 0= if
       INVALIDATE-XT {: q :} floor q execute
    else drop then
    data-base NATIVE-OBS-CELLS:INVALIDATE + @ dup 0= if drop exit then
