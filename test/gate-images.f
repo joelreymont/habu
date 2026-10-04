@@ -206,7 +206,9 @@ variable UNION
 \ A reference names its file from the tree root; a path that names no file is
 \ not an edge. A launch is followed only into a Forth source: a launched script
 \ or data file is not lexed.
-: REF ( ptr u8 n n bool -- ) {: a:ptr u:n line:n import:bool :}
+: REF ( ptr u8 n n n -- )
+   {: a:ptr u:n line:n kind:n :}
+   kind LOAD-REFS:LAUNCHES <> {: import:bool :}
    a u FILE? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop {: path:ptr pathu:n :}
    import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then

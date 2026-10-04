@@ -265,6 +265,11 @@ SUITE manifest-lint-fixtures
    tools/manifest-lint-test.f
 ;SUITE
 
+\ Fixture trees, then the HBR2 layers of this tree.
+SUITE package-dag-lint
+   tools/package-dag-lint-test.f
+;SUITE
+
 SUITE chain-plan
    tools/chain-plan-test.f
 ;SUITE
