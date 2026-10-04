@@ -353,14 +353,15 @@ public
   MAKI public` publishes `MAKI:RUN`; a bare `EXPORT HELPER` in the public
   section promotes the private `HELPER`. Refused: an undefined source, a private
   word behind a CLOSED package, a source qualified into a sealed system package,
-  a primitive and a duplicate tail in the target section. An exported `does>`
-  definer `MK` brings its clause along as `MK;does`, so a live `MK;does` in the
-  target section refuses it, rc 78 (test/does-clause-record.f). Re-exporting a
-  generated constructor under a second name is allowed; adding tails INTO a
-  generated constructor package is not. AOT tree-shake keeps one body; alias
-  rows roll back with checker scope frames. At TOP LEVEL `EXPORT name…` is the
-  hb-build `--repl` export directive: the build strips it and a plain load
-  consumes the name as a no-op.
+  a primitive, a duplicate tail in the target section and a failed
+  declaration's row outside its own diagnostic run (E-EXPORT-UNDEFINED). An
+  exported `does>` definer `MK` brings its clause along as `MK;does`, so a live
+  `MK;does` in the target section refuses it, rc 78 (test/does-clause-record.f).
+  Re-exporting a generated constructor under a second name is allowed; adding
+  tails INTO a generated constructor package is not. AOT tree-shake keeps one
+  body; alias rows roll back with checker scope frames. At TOP LEVEL `EXPORT
+  name…` is the hb-build `--repl` export directive: the build strips it and a
+  plain load consumes the name as a no-op.
 - Every package feature has native gate coverage: runtime lookup, checker
   certification, private isolation, public export, reopen, case-insensitive
   lookup and fail-closed misuse (`public`/`private`/`;package` outside a
