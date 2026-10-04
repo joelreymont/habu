@@ -32,6 +32,7 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
 require src/habu/layout.f
+require src/habu/address-cells.f
 
 package DOESREC-TEST
 private
@@ -111,16 +112,19 @@ variable MK-CP
 \ comparison is folded. DUP-DEF-RC is the engine's duplicate-definition code
 \ (habu2.f C-DUP-DEF-FAIL).
 $4E constant DUP-DEF-RC
-variable HELD-ND  variable HELD-CP
+variable HELD-ND  variable HELD-CP  variable HELD-DP  variable HELD-ADDR-N
 
 : HELD-MARK ( -- )
-   ndict@ HELD-ND !  cp@ HELD-CP ! ;
+   ndict@ HELD-ND !  cp@ HELD-CP !  data-base DP-CELL + @ HELD-DP !
+   ADDRESS-CELLS:LIVE-SPAN nip HELD-ADDR-N ! ;
 
 \ After the refusal: nothing published, and the holder still answers.
 : ?HELD ( ptr u8 n ptr u8 n -- ) {: d:ptr du:n h:ptr hu:n :}
    s" the refused definer publishes neither record and moves no code" T-LABEL
    ndict@ HELD-ND @ T=
    cp@ HELD-CP @ T=
+   data-base DP-CELL + @ HELD-DP @ T=
+   ADDRESS-CELLS:LIVE-SPAN nip HELD-ADDR-N @ T=
    d du GLOBAL-WID search-wl 0= TTRUE
    s" the word that holds the name still answers" T-LABEL
    h hu EV-N 111 T= ;

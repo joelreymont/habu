@@ -23,6 +23,7 @@
 require lib/prelude.f
 require lib/string.f
 require src/core/checker.f
+require src/core/does-clause.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
@@ -485,10 +486,34 @@ TRUSTED: DEF-RUN ( n -- )
    end INP-CELL ADDR!
    s 1 + end s - 2 - COPY-HERE DEF-CREATED-SIG ;
 
+\ The pending parent is record NDICT. Its clause will be published under the
+\ parent's name plus ;does in the same wordlist. Check the live records before
+\ the signature copy or split changes any state, including a folded-case hit.
+: DEF-DOES-NAME ( -- )
+   ndict@ XREF-REC {: parent:ptr :}
+   parent XREF-NAME$ {: stem:ptr stemu:n :}
+   parent XREF-WORDLIST {: wid:n :}
+   DOES-CLAUSE:SUFFIX$ {: suffix:ptr sufu:n :}
+   ndict@ 0 ?do
+      i XREF-REC {: row:ptr :}
+      row XREF-WORDLIST wid = if
+         row XREF-NAME$ {: name:ptr size:n :}
+         size stemu sufu + = if
+            name stemu stem stemu STR=CI
+            name stemu + sufu suffix sufu STR=CI and if
+               s" duplicate definition: " SAY
+               stem stemu SAY suffix sufu SAY
+               PKG-RC-DUPLICATE THROW-AT
+            then
+         then
+      then
+   loop ;
+
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
-   BODYLEN-CELL CELL@ DOESB-CELL CELL!
-   DEF-CREATED ;
+   DEF-DOES-NAME
+   DEF-CREATED
+   BODYLEN-CELL CELL@ DOESB-CELL CELL! ;
 
 \ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
 \ LFIND finds a word of that spelling that is not immediate, which the body
