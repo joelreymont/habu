@@ -17955,8 +17955,8 @@ variable IS-PEND-U                   \ and its length
 : OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
       sym CALL-AUTHORITY CALL-REFUSED = IF
-         TICK-PIN
-         -1 CAPREQ !  0 OK !  -1 FAILSET !
+         FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
+         0 OK !  -1 FAILSET !
          RES-TRUE EXIT
       THEN
       RES-FALSE EXIT

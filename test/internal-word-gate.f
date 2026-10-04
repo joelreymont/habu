@@ -1357,6 +1357,11 @@ create QNAME QNAME-CAP allot
    s" : IWGGPF ( -- ) drop ['] patch32 drop ;" SB-APPEND LF
    SB$ ;
 
+: GATE-ABI-FIRST-FAIL$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGAF ( -- ) drop ['] IWGGA drop ;" SB-APPEND LF
+   SB$ ;
+
 : GATE-VALID-TICKS$ ( -- ptr u8 n )
    GATE-RAW
    s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
@@ -1382,6 +1387,10 @@ create QNAME QNAME-CAP allot
    GATE-FIRST-FAIL$ RUN-SUBJECT
    s" habu: in iwggpf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
    ERR$ s" hook: non-certified definition: iwggpf at 'drop'" CONTAINS? TTRUE
+   s" an ABI-only tick keeps the preceding underflow reason" T-LABEL
+   GATE-ABI-FIRST-FAIL$ RUN-SUBJECT
+   s" habu: in iwgaf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TFALSE
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
