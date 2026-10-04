@@ -7,6 +7,9 @@ require src/arch/x86-64/passes.f
 
 1 set-tier
 
+variable NOBS-SCALAR
+TYPED-VARIABLE NOBS-ENTRY NCOMP:code-entry
+
 package NOBS-TEST
 private
 
@@ -30,22 +33,35 @@ variable ROW-N
 variable INVALIDATED
 variable LAST-STALE
 variable REPL-BEFORE
-OWNER-MAX TYPED-BUFFER OWNER-XT n
+variable CLEARED-OWNER
+OWNER-MAX TYPED-BUFFER OWNER-XT NCOMP:code-entry
 ROW-MAX TYPED-BUFFER ROW-OWNER n
 ROW-MAX TYPED-BUFFER ROW-ORD n
 ROW-MAX TYPED-BUFFER ROW-OFF n
 ROW-MAX TYPED-BUFFER ROW-MUL n
 ROW-MAX TYPED-BUFFER ROW-LIVE n
 
-CAST: CODE-SLOT ( ptr n -- ptr [ -- ] )
 CAST: HELD-RAW ( ptr IR-BUILD:module -- ptr n )
-
-: EMPTY ( -- ) ;
 
 \ All anchors are declared before compilation; publication writes only the
 \ already-declared CODE cell and preallocated scalar rows.
 : DECLARE-ANCHORS ( -- )
-   OWNER-MAX 0 ?do ['] EMPTY i OWNER-XT CODE-SLOT xt! loop ;
+   NOBS-ENTRY NCOMP:DECLARE-ENTRY
+   OWNER-MAX 0 ?do i OWNER-XT NCOMP:DECLARE-ENTRY loop ;
+
+: REFUSALS ( -- )
+   s" raw callback effect cannot install" T-LABEL
+   [: s" : NOBS-RAW-INSTALL ( [ n IR-CTX:ctx n n n -- ] -- ) NCOMP:PUBLISHED! ;" evaluate-closed ;]
+   70 TTHROWSQ
+   s" entry cannot enter scalar storage" T-LABEL
+   [: s" : NOBS-ENTRY-SCALAR ( NCOMP:code-entry -- ) NOBS-SCALAR ! ;" evaluate-closed ;]
+   70 TTHROWSQ
+   s" offset cannot enter code anchor" T-LABEL
+   [: s" : NOBS-OFF-ANCHOR ( n -- ) NOBS-ENTRY ! ;" evaluate-closed ;]
+   70 TTHROWSQ
+   s" opaque parent cannot execute" T-LABEL
+   [: s" : NOBS-ENTRY-EXEC ( NCOMP:code-entry -- ) execute ;" evaluate-closed ;]
+   70 TTHROWSQ ;
 
 : FUNCTION ( IR-BUILD:module n -- IR-ID:ir-fun-id )
    {: m:IR-BUILD:module k:n :}
@@ -93,13 +109,13 @@ CAST: HELD-RAW ( ptr IR-BUILD:module -- ptr n )
    count 0 ?do m i FUNCTION-MUL? if 1 else 0 then i P-MUL ! loop
    1 PENDING ! ;
 
-: PARENT@ ( n -- n )
+: PARENT@ ( n -- NCOMP:code-entry )
    OWNER-XT @ ;
 
 \ This callback has no allocator or failure path. ROW-N is advanced only after
 \ the final ordinal, so a partially filled association is never visible.
-: PUBLISHED ( n IR-CTX:ctx n n n -- )
-   {: idx:n c:IR-CTX:ctx parent:n ord:n off:n :}
+: PUBLISHED ( n IR-CTX:ctx NCOMP:code-entry n n -- )
+   {: idx:n c:IR-CTX:ctx parent:NCOMP:code-entry ord:n off:n :}
    PENDING @ 0= if exit then
    idx P-IDX @ <> c IR-CTX:SERIAL P-CTX @ <> or if
       s" native-observer: publication context mismatch" 76 die
@@ -123,15 +139,15 @@ CAST: HELD-RAW ( ptr IR-BUILD:module -- ptr n )
    {: floor:n :}
    1 INVALIDATED +!
    ROW-N @ 0 ?do
-      i ROW-OWNER @ PARENT@ floor >= if
+      i ROW-OWNER @ PARENT@ NCOMP:ENTRY>N floor >= if
          i ROW-ORD @ 0 > if
-            i ROW-OWNER @ PARENT@ i ROW-OFF @ + LAST-STALE !
+            i ROW-OWNER @ PARENT@ NCOMP:ENTRY>N i ROW-OFF @ + LAST-STALE !
          then
          0 i ROW-LIVE !
       then
    loop
    OWNER-N @ 0 ?do
-      i PARENT@ floor >= if 0 i OWNER-XT ! then
+      i PARENT@ NCOMP:ENTRY>N floor >= if i OWNER-XT NCOMP:CLEAR-ENTRY then
    loop
    0 PENDING ! ;
 
@@ -139,7 +155,7 @@ CAST: HELD-RAW ( ptr IR-BUILD:module -- ptr n )
    {: q:n :}
    ROW-N @ 0 ?do
       i ROW-LIVE @ 0<> i ROW-MUL @ 0= and if
-         i ROW-OWNER @ PARENT@ i ROW-OFF @ + q = if true unloop exit then
+         i ROW-OWNER @ PARENT@ NCOMP:ENTRY>N i ROW-OFF @ + q = if true unloop exit then
       then
    loop
    false ;
@@ -155,7 +171,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    s" observer saw parent and three quotation functions" T-LABEL
    P-N @ 4 T=
    ROW-N @ 4 T=
-   s" NOBS-TWO" XREF-FIND XREF-START 0 PARENT@ T=
+   s" NOBS-TWO" XREF-FIND XREF-START 0 PARENT@ NCOMP:ENTRY>N T=
    s" NOBS-TWO drop" EV-N ADMIT? TTRUE
    s" NOBS-TWO nip" EV-N ADMIT? TFALSE
    s" 41 NOBS-TWO drop execute" EV-N 42 T=
@@ -207,8 +223,10 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 : OUTER-CASE ( -- )
    s" a published child of a failed source is invalidated" T-LABEL
+   OWNER-N @ CLEARED-OWNER !
    [: FAIL-OUTER ;] 8181 TTHROWSQ
    INVALIDATED @ 0 > TTRUE
+   CLEARED-OWNER @ PARENT@ NCOMP:ENTRY>N 0 T=
    1 IGNORE !
    s" : NOBS-REUSE ( -- [ n -- n ] ) [: 9 + ;] ;" EV
    0 IGNORE !
@@ -233,7 +251,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    s" completed definer and does clause share one parent publication" T-LABEL
    OWNER-N @ owner 1+ T=
    ROW-N @ row 2 + T=
-   s" NOBS-DOES" XREF-FIND XREF-START owner PARENT@ T=
+   s" NOBS-DOES" XREF-FIND XREF-START owner PARENT@ NCOMP:ENTRY>N T=
    row ROW-ORD @ 0 T=
    row 1+ ROW-ORD @ 1 T=
    row 1+ ROW-OFF @ 0 > TTRUE
@@ -250,6 +268,7 @@ public
 : RUN ( -- )
    T-RESET
    DECLARE-ANCHORS
+   REFUSALS
    ['] OBSERVE NBACK:OBSERVE!
    ['] PUBLISHED NCOMP:PUBLISHED!
    ['] INVALIDATE CODE-RECLAIM:INVALIDATE!
@@ -257,7 +276,7 @@ public
    T-REPORT s" native-observer: ok" type cr ;
 
 : IMAGE-PREPARE ( -- )
-   s" native-observer-before: " type 0 PARENT@ . cr
+   s" native-observer-before: " type 0 PARENT@ NCOMP:ENTRY>N . cr
    0 0 HELD HELD-RAW !
    0 P-IDX ! 0 P-CTX ! 0 LAST-STALE ! ;
 
@@ -277,7 +296,9 @@ public
 : IMAGE-CHECK ( -- )
    T-RESET
    s" named parent anchor and function offsets survived image relocation" T-LABEL
-   s" native-observer-after: " type 0 PARENT@ . cr
+   s" native-observer-after: " type 0 PARENT@ NCOMP:ENTRY>N . cr
+   s" NOBS-TWO" XREF-FIND XREF-START 0 PARENT@ NCOMP:ENTRY>N T=
+   CLEARED-OWNER @ PARENT@ NCOMP:ENTRY>N 0 T=
    s" NOBS-TWO drop" EV-N ADMIT? TTRUE
    s" NOBS-TWO nip" EV-N ADMIT? TFALSE
    s" 41 NOBS-TWO drop execute" EV-N 42 T=
@@ -285,6 +306,8 @@ public
    s" : NOBS-IMAGE-LATE ( -- [ n -- n ] ) [: 2 + ;] ;" EV
    SEEN @ before > TTRUE
    s" NOBS-IMAGE-LATE" EV-N ADMIT? TTRUE
+   s" NOBS-IMAGE-LATE" XREF-FIND XREF-START
+   OWNER-N @ 1- PARENT@ NCOMP:ENTRY>N T=
    T-REPORT s" native-observer-image: ok" type cr ;
 ;package
 

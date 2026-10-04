@@ -72,9 +72,24 @@ execute
 
 package NCOMP
 
+public
+NEWTYPE code-entry 0
+
 private
 
-CAST: PUBLISHED-XT ( n -- [ n IR-CTX:ctx n n n -- ] )
+CAST: >ENTRY ( n -- code-entry )
+CAST: PUBLISHED-XT ( n -- [ n IR-CTX:ctx code-entry n n -- ] )
+
+public
+CAST: ENTRY>N ( code-entry -- n )
+
+: DECLARE-ENTRY ( ptr code-entry -- )
+   0 >ENTRY swap xt! ;
+
+: CLEAR-ENTRY ( ptr code-entry -- )
+   0 >ENTRY swap ! ;
+
+private
 
 \ ---- what a recording unit is opened with ------------------------------------
 \ The unit's text ceiling is the ENGINE's own body capture, which overflows with
@@ -136,7 +151,7 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
    {: idx:n :}
    data-base NATIVE-OBS-CELLS:PUBLISHED + @ dup 0= if drop exit then
    PUBLISHED-XT {: q :}
-   idx XREF-REC XREF-START {: parent:n :}
+   idx XREF-REC XREF-START >ENTRY {: parent:code-entry :}
    NEMIT:FUNCTIONS 0 ?do
       idx CC parent i i NEMIT:FUNCTION-OFFSET@ q execute
    loop ;
@@ -733,10 +748,8 @@ INSTALL-FORGET
 
 public
 
-\ XREF-START supplies the committed entry as a raw code address. A parent can
-\ have any effect, so the erased entry crosses this callback ABI as n; the
-\ owner's declared CODE cell records it for image relocation.
-: PUBLISHED! ( [ n IR-CTX:ctx n n n -- ] -- )
+\ The named parent's effect does not determine the publication callback's effect.
+: PUBLISHED! ( [ n IR-CTX:ctx code-entry n n -- ] -- )
    IDLE-CK
    data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
    data-base NATIVE-OBS-CELLS:PUBLISHED + xt! ;
