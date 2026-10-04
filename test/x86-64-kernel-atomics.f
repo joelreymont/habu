@@ -327,6 +327,29 @@ DICT-SIZE $80 + constant ENTRY-B
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
 
+\ A WID-0 record is a global definition. Rewind into its code span and
+\ inspect the process-local occurrence slot through the booted kernel.
+: RECLAIM-GLOBAL-CASE, ( -- )
+   s" global" 0 0 X64HARNESS:RECORD,
+   RAX ENGINE-GPR:X64-DBASE >R64 DICT-SIZE $40 + MEM-OFF ASM-SINK ENC-LEA
+   RAX ENGINE-GPR:X64-DBASE >R64 X64KERNEL:REC-CODE MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX $20 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX ENGINE-GPR:X64-DBASE >R64 REC-LEN MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX DATA-REG DEF-OCC:PTR-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX 1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RCX RAX 0 MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX RAX CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   X64HARNESS:REST,
+   RAX ENGINE-GPR:X64-DBASE >R64 DICT-SIZE $100 + MEM-OFF ASM-SINK ENC-LEA
+   ENGINE-GPR:X64-CP >R64 RAX ASM-SINK ENC-MOV-RR
+   DICT-SIZE $50 + X64HARNESS:PUSH-REGION,
+   s" cp!" X64HARNESS:CALL-ROW,
+   RAX DATA-REG DEF-OCC:PTR-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   0 G-PUSH  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED, ;
+
 \ The two clauses: record 3, past the pending record 2, twice. The short name,
 \ 8 bytes, fills a 16-byte code slot at CP; the long name, 22 bytes, lands on
 \ the next slot and fills two, and its pad lands in its third and fourth cells.
@@ -409,6 +432,7 @@ LONG-TAIL CELL + constant LONG-PAD
    [: PUBLISH-FILL-CASE, ;] s" hb-x64-kernel-publish-fill" TMP-PATH IMAGE
    [: SITES-CASE, ;] s" hb-x64-kernel-sites" TMP-PATH IMAGE
    [: RETARGET-CASE, ;] s" hb-x64-kernel-retarget" TMP-PATH IMAGE
+   [: RECLAIM-GLOBAL-CASE, ;] s" hb-x64-kernel-reclaim-global" TMP-PATH IMAGE
    [: DOES-CASE, ;] s" hb-x64-kernel-does" TMP-PATH IMAGE
    [: DOES-LONG-CASE, ;] s" hb-x64-kernel-does-long" TMP-PATH IMAGE
    [: DICT-SIZE 1+ 1 PUBLISH-ARMED, ;] s" hb-x64-kernel-publish-armed" TMP-PATH IMAGE

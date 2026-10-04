@@ -209,7 +209,7 @@ variable LRECLAIM
 \ The first product is emitted by the qualified predecessor, whose baked
 \ layout predates DEF-OCC. These are builder-side mirrors of layout.f's new
 \ process-local cell and refusal ABI; neither adds a captured DATA band.
-$2CE8 constant PTR-CELL
+$2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 -7231 constant E-STALE
 -7232 constant E-SELECT

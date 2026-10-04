@@ -1483,9 +1483,11 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
 \ Its pointer is cleared from snapshot scratch and restored from the receiving
 \ process across a snapshot DATA copy.
+\ $2CE8 is the literal store's DATA floor; $2CF0..$2D08 is reserved for
+\ private callback cells. This pointer begins at the next free cell.
 package DEF-OCC
 public
-$2CE8 constant PTR-CELL
+$2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 -7231 constant E-STALE
 -7232 constant E-SELECT

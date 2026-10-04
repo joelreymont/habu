@@ -14,6 +14,31 @@ CAST: REF-WORD ( n -- [ -- n ] )
 
 variable OLD-SLOT
 variable OLD-OCC
+variable FRAME-SLOT
+variable FRAME-OCC
+variable FRAME-CODE
+
+public
+: FRAME-RETARGET ( -- )
+   s" OCC-FRAME" XREF-FIND-INDEX {: idx:n :}
+   s" OCC-FRAME-TEMP" 0 RECORD {: target:ptr :}
+   target XREF-START FRAME-CODE !
+   target XREF-START target XREF-RAW-LEN idx RETARGET
+   s" OCC-FRAME" 0 RECORD DEF-OCC:SELECT
+   FRAME-OCC !  FRAME-SLOT ! ;
+private
+
+: FAILED-FRAME ( -- )
+   s" : OCC-FRAME-TEMP ( -- n ) 33 ; NDICT-RETARGET-TEST:FRAME-RETARGET 73 throw" EV ;
+
+: RECOVER-RETARGET ( -- )
+   s" : OCC-FRAME ( -- n ) 7 ;" EV
+   ndict@ {: count:n :}
+   cp@ {: code:n :}
+   ['] FAILED-FRAME 73 TTHROWS
+   ndict@ count T=
+   cp@ code T=
+   FRAME-SLOT @ FRAME-OCC @ DEF-OCC:RESOLVE drop ;
 
 1 set-tier
 
@@ -34,6 +59,11 @@ public
    alias-slot alias-occ REF-VALUE 11 T=
    s" OCC-OLD" 0 RECORD DEF-OCC:SELECT REF-VALUE 22 T=
    s" OCC-ALIAS" 0 RECORD DEF-OCC:SELECT REF-VALUE 11 T=
+   s" a surviving retarget cannot retain thrown code" T-LABEL
+   ['] RECOVER-RETARGET DEF-OCC:E-STALE TTHROWS
+   s" : OCC-FRAME-NEW ( -- n ) 44 ;" EV
+   s" OCC-FRAME-NEW" 0 RECORD XREF-START FRAME-CODE @ T=
+   s" OCC-FRAME-NEW" 0 RECORD DEF-OCC:SELECT REF-VALUE 44 T=
    T-REPORT ;
 
 ;package

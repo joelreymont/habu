@@ -9618,9 +9618,16 @@ public
 \ the export publishes into are refused here, before the checker hears of the
 \ export and before anything is written, with the codes the export's own slot
 \ and name are refused with.
+: C-DOES-OCC-ROOM ( -- )
+   LBL {: none:label :}
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
+   none LBL, ;
+
 : C-EXPORT-CLAUSE-ROOM ( -- )
    LBL LBL LBL {: none:label room:label fresh:label :}
    6 SP 24 LDR,  6 none CBZ,
+   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
    14 DICT-CAP 1 - LIT64,  NDICT 14 CMP,  C-LT room BCOND,
       LDICTFULL DICTFULL-MSG$ nip C-CAP-LABEL
       $4D C-QUALIFY-FAIL
@@ -10834,6 +10841,7 @@ public
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
    0 CODE-ORIGIN:CLOSE,
+   C-DOES-OCC-ROOM
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    DOES-REC:PUBLISH
@@ -11287,6 +11295,9 @@ public
          scope B,
       owned LBL,
       CODE-ORIGIN:ABANDON,
+      SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
+      9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
+      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
       CP 13 40 LDR,
       9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
       12 13 56 LDR,
@@ -11408,6 +11419,7 @@ public
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
+   9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
    9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
    12 DATA RSAVDP-CELL LDR,

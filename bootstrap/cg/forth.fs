@@ -295,7 +295,7 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
-$2CE8 constant OCC-PTR-CELL       \ this process's definition occurrence mapping
+$2D08 constant OCC-PTR-CELL       \ this process's definition occurrence mapping
 -7231 constant OCC-E-STALE
 -7232 constant OCC-E-SELECT
 -7234 constant OCC-E-EXHAUSTED
@@ -977,6 +977,10 @@ variable BAND-IX
 : BCPSET ( -- )      A G-POP  7 4 MOVZ,  A 7 GUARD-SPAN
    LOCC-RECLAIM @ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 : BNDSET ( -- )      A G-POP                                 \ ( n -- ) set NDICT
+   LBL {: bounded :}
+   7 DICT-CAP LIT64,  A 7 CMP,  C-LS bounded BCOND,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   bounded LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
    SP SP 16 SUBI,  30 SP 0 STR,
    LOCC-COUNT @ BL,
@@ -4706,6 +4710,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LOCC-APPEND @ BL,
    none LBL, ;
 
+: C-DOES-OCC-ROOM ( -- )
+   LBL {: none :}
+   9 DATA DOESB-CELL LDR,  9 none CBZ,
+   9 2 MOVZ,  LOCC-ROOM @ BL,
+   none LBL, ;
+
 : J-DOES ( -- )
    LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
@@ -7590,6 +7600,7 @@ variable P2SK
    ttrusted LBL,
    C-CALL-TRUST-PEND
    publish LBL,
+   C-DOES-OCC-ROOM
    LOCC-APPEND @ BL,
    EM-REC-WIDE-PUBLISH
    C-DOES-PUB
@@ -7609,6 +7620,7 @@ variable P2SK
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
    nohook LBL,
+      C-DOES-OCC-ROOM
       LOCC-APPEND @ BL,
       EM-REC-WIDE-PUBLISH
       C-DOES-PUB

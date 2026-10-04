@@ -1,5 +1,6 @@
 \ Publication must make each completed native record immediately searchable.
 require lib/test.f
+require src/habu/layout.f
 
 \ Tier 1 first: a native record is what the optimizing compiler publishes, so
 \ the index this file reads is only filled by it.
@@ -13,6 +14,34 @@ CAST: REF-WORD ( n -- [ -- n ] )
 : EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
 variable REF-SLOT
 variable REF-OCC
+TRUSTED: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ ;
+variable SAVED-COUNT
+
+: TRY-FULL-DOES ( -- n )
+   OCC-COUNTER @ SAVED-COUNT !
+   -2 OCC-COUNTER !
+   [: s" TRUSTED: NDP-FULL-MAKE ( n -- ) create , does> ( -- n ) @ ;" EV ;] catch
+   OCC-COUNTER @ -2 T=
+   SAVED-COUNT @ OCC-COUNTER ! ;
+
+: TRY-FULL-EXPORT ( -- n )
+   OCC-COUNTER @ SAVED-COUNT !
+   -2 OCC-COUNTER !
+   [: s" package NDP-FULL-EXPORT public EXPORT MK ;package" EV ;] catch
+   OCC-COUNTER @ -2 T=
+   SAVED-COUNT @ OCC-COUNTER ! ;
+
+: PAIR-EXHAUSTION ( -- )
+   s" package NDP-FULL-EXPORT : MK ( n -- ) create , does> ( -- n ) @ ; ;package" EV
+   ndict@ {: count:n :}
+   cp@ {: code:n :}
+   TRY-FULL-DOES DEF-OCC:E-EXHAUSTED T=
+   ndict@ count T=
+   cp@ code T=
+   s" NDP-FULL-MAKE" NDICT:SPELL-START 0 T=
+   TRY-FULL-EXPORT DEF-OCC:E-EXHAUSTED T=
+   ndict@ count T=
+   s" NDP-FULL-EXPORT:MK" NDICT:SPELL-START 0 T= ;
 
 : ORDINARY ( -- )
    ndict@ {: first:n :}
@@ -88,6 +117,7 @@ variable REF-OCC
    s" failed evaluation reuses the same record slot" T-LABEL ROLLBACK T-NEXT
    s" general ndict! restore still rebuilds the live index" T-LABEL RESTORE T-NEXT
    s" namespace and unpublished records refuse callable selection" T-LABEL REFUSALS T-NEXT
+   s" DOES and EXPORT refuse when only one occurrence remains" T-LABEL PAIR-EXHAUSTION T-NEXT
    T-REPORT ;
 
 ' RUN
