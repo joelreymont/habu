@@ -46,7 +46,8 @@ using PTY-HARNESS
 
 : RUN ( -- )
    T-RESET
-   2 0 do
+   \ x86-64 has only the native tier; ARM also runs the JIT tier.
+   2 HB-TARGET-LINUX-X86-64? if 1 else 0 then ?do
       s" defer FAILED ( -- n ) NOSUCH-WORD"
       s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
       s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"
