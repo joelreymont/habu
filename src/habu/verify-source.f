@@ -2016,9 +2016,10 @@ variable DEFER-SEEN                              \ and has reported one
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The saved
-\ source and token context belongs to the caller; declarations and learned
-\ definers belong to the entire composition. A file's packets locate in that
-\ file, and on return or throw the checker is armed with the caller's bytes
+\ source, token and open-stretch context belongs to the caller; declarations,
+\ learned definers and the fact that a stretch was reported belong to the
+\ entire composition. A file's packets locate in that file, and on return or
+\ throw the checker is armed with the caller's bytes
 \ again, or disarmed when the subject's scan ends, so no nested file's bytes,
 \ which its loader frame releases, stay armed.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
@@ -2027,10 +2028,13 @@ variable DEFER-SEEN                              \ and has reported one
    SOURCE-A @ SOURCE-U @ SCAN-I @
    BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
+   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-DEFER-I @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
-      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n oldpath:ptr oldpathu:n
+      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
+      olddefer:n olddefa:ptr olddefu:n olddefi:n oldrefused:ptr
+      oldpath:ptr oldpathu:n
       oldpkg:n olduse:n oldbase:n :}
    src srcu SOURCE!
    SOURCE-ARM
@@ -2046,6 +2050,8 @@ variable DEFER-SEEN                              \ and has reported one
    oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
+   olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
+   olddefu TOP-DEFER-U !  olddefi TOP-DEFER-I !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldpathu 0 > IF

@@ -9508,6 +9508,12 @@ variable PRM-FIRST
    off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
    sym ;
 
+\ A source `undefine` is stronger than a stale engine wordlist entry. The
+\ visible newest record decides, so a later declaration makes the name live.
+: SYM-DELETED? ( n -- bool )
+   USIG-NEWEST-VISIBLE dup 0= IF drop RES-FALSE EXIT THEN
+   1 - E-PTR ER.ACTIVE @ EFF-DELETED = ;
+
 \ A user effect may refine a primitive's call shape, but cannot grant its
 \ trusted-only capability. Query the resolved symbol, so a package shadow
 \ keeps its own policy. Only user-effect hits need this additional walk.
@@ -13599,9 +13605,11 @@ SYM-AXIOM-INSTALL
 \ the token, the global symbol under which the store keeps what it knows of
 \ that engine word, which no row makes bindable (`evaluate` has no effect row,
 \ and NORET-AXIOMS gives it CTL-RENDERS) - 0 when the store holds nothing for
-\ it - and true; 0 and false when the wordlist does not claim the token.
+\ it - and true; 0 and false when the wordlist does not claim the token or the
+\ source has explicitly retired it.
 : ENGINE-WORD-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
+   a u CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
    a u 0 CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
    a u CHECKER-GLOBAL-SYM? RES-TRUE ;
 
@@ -13631,8 +13639,24 @@ SYM-AXIOM-INSTALL
    mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg pkgu CORE-STR=CI 0=  or IF
       0 RES-FALSE EXIT
    THEN
-   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF RES-TRUE EXIT THEN drop
-   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM?  CHECKER-QTAIL$ 0 CK-WL-CLAIMS? ;
+   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
+      dup USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
+   THEN drop
+   CHECKER-QTAIL$ ENGINE-WORD-SYM ;
+
+\ A scanned declaration has a visible effect record even though this engine
+\ has not loaded the subject. An axiom alone can describe a compile keyword
+\ (`>r`, `r>`, `r@`) for bodies without giving interpret or tick a binding.
+: TOP-BOUND-SYM ( ptr u8 n n -- n bool )
+   {: a:ptr u:n sym:n :}
+   sym 0 <> IF
+      sym USIG-NEWEST-VISIBLE 0 <> IF sym RES-TRUE EXIT THEN
+      a u CHECKER-QUALIFIED? 0= IF
+         a u 0 CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
+      THEN
+   THEN
+   a u CHECKER-QUALIFIED? IF a u OPEN-TAIL-GLOBAL? EXIT THEN
+   a u ENGINE-WORD-SYM ;
 
 \ The word the load runs for a top-level token, as the engine's top-level find
 \ selects it: what the quiet walk binds, else, for a qualified token, the
@@ -13646,9 +13670,7 @@ SYM-AXIOM-INSTALL
 : CHECKER-TOP-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-QUIET-WALK IF RES-FALSE EXIT THEN
-   dup 0 <> IF RES-TRUE EXIT THEN drop
-   a u CHECKER-QUALIFIED? IF a u OPEN-TAIL-GLOBAL? EXIT THEN
-   a u ENGINE-WORD-SYM ;
+   a u rot TOP-BOUND-SYM ;
 
 \ The source pre-pass's question about a top-level token (src/habu/verify-source.f
 \ RENDERS-MARK?): may the word the load runs for it (CHECKER-TOP-SYM) define
@@ -13696,9 +13718,8 @@ SYM-AXIOM-INSTALL
    {: a:ptr u:n runs:bool :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
-   sym 0 <> IF sym runs TOP-RUNS EXIT THEN
    CHECKER-QBAD-TOK @ 0= IF
-      a u CHECKER-TOP-SYM IF runs TOP-RUNS EXIT THEN drop
+      a u sym TOP-BOUND-SYM IF runs TOP-RUNS EXIT THEN drop
       a u UNSEEN-COVERS? IF 3 EXIT THEN
    THEN
    a USH-TOK-A !  u USH-TOK-U !

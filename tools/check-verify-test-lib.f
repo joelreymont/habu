@@ -41,10 +41,12 @@
 \   a name resolves before the statement that defines it                  top-order
 \   a number out of range, or a token only shaped like one, verifies      top-number
 \   a compile-only keyword resolves at top level                          top-keyword
+\   a retired engine name or compiler-only axiom verifies as a top word    top-retired, top-axiom
 \   a qualified name the load refuses verifies, or is refused otherwise
 \   than a body refuses it                                                top-qualified
 \   a parsing word's operand is resolved, or the stretch after it is
 \   resolved, passed over in silence or answered verified                 top-deferred
+\   a dependency's deferred stretch hides a caller token, or is forgotten top-nested-deferred
 \   the tokens after a word that renders source are deferred, though it
 \   reads none of them, or a name its text may define, bare or
 \   qualified, is refused                                                 top-renders
@@ -919,6 +921,34 @@ variable CLI-OUT-U
    s" top-tick: shadowed" s" CVT-MW" s" E-USING-SHADOW-GLOBAL" s" 3" s" 17" REFUSED-AT ;
 
 
+\ The engine still has a dictionary entry after `undefine`, but its load
+\ refuses a bare call or tick, including an open package's global-tail retry.
+: TOP-RETIRED ( -- )
+   s\" undefine dup\n' dup drop\n" TOP-CHECK
+   s" top-retired: bare tick" s" dup" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 3" REFUSED-AT
+   s\" undefine dup\ndup\n" TOP-CHECK
+   s" top-retired: bare call" s" dup" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" REFUSED-AT
+   s\" undefine dup\npackage CVT-RT\n' CVT-RT:dup drop\n;package\n" TOP-CHECK
+   s" top-retired: open tail" s" CVT-RT:dup" s" E-UNDEFINED-TOP-LEVEL" s" 3" s" 3" REFUSED-AT
+   s\" undefine dup\n: dup ( n -- n n )\n   {: x:n :}\n   x x ;\n' dup drop\npackage CVT-RT\n' CVT-RT:dup drop\n;package\n"
+   TOP-CHECK
+   0 s" top-retired: redeclared word" EXPECT-KIND
+   s" top-retired: no packet after declaration" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+
+
+\ Return-stack keywords have checker axioms for compiled bodies but no
+\ interpret or tick binding. A declaration read from source still binds.
+: TOP-AXIOM ( -- )
+   s\" ' >r drop\n" TOP-CHECK
+   s" top-axiom: tick" s" >r" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 3" REFUSED-AT
+   s\" >r\n" TOP-CHECK
+   s" top-axiom: call" s" >r" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
+   s\" : CVT-SCANNED ( -- n ) 7 ;\n' CVT-SCANNED drop\nCVT-SCANNED drop\n"
+   TOP-CHECK
+   0 s" top-axiom: scanned declaration" EXPECT-KIND
+   s" top-axiom: no packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+
+
 \ Loaded: E-UNDEFINED: CVT-FWD, exit 70.
 : TOP-ORDER ( -- )
    s\" CVT-FWD drop\n: CVT-FWD ( -- n ) 1 ;\n" TOP-CHECK
@@ -973,6 +1003,26 @@ variable CLI-OUT-U
    s" top-deferred: alone, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-deferred: alone, the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
+
+
+\ A pending file load after a definition scans its own deferred stretch. Its
+\ warning contributes to the composed verdict, while the caller resumes with
+\ its own top-level state and refuses the malformed qualified token.
+: TOP-NESTED-DEFERRED ( -- )
+   s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" FIXTURE
+   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\nQ:R:S\n" TOP-CHECK
+   1 s" top-nested-deferred: refused" EXPECT-KIND
+   s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-nested-deferred: dependency warning" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET {: p:n :}
+   p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   s" top-nested-deferred: dependency path" T-LABEL
+   p s" file" STRING$ s" nested-dep.f" AT$ T$=
+   s" top-nested-deferred: caller refusal" s" Q:R:S" s" E-BAD-QUALIFIED-TOP-LEVEL" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" rejected" T$=
+   s\" : LOADDEP ( -- ) s\" nested-dep.f\" required ;\n7 drop\n" TOP-CHECK
+   5 s" top-nested-deferred: warning survives" EXPECT-KIND
+   s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
 
 
 \ Bytes the load accepts verify, with no packet.
@@ -1224,11 +1274,14 @@ public
    s" top-ambiguous" [: TOP-AMBIGUOUS ;] RUN-CASE
    s" top-shadow" [: TOP-SHADOW ;] RUN-CASE
    s" top-tick" [: TOP-TICK ;] RUN-CASE
+   s" top-retired" [: TOP-RETIRED ;] RUN-CASE
+   s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
    s" top-order" [: TOP-ORDER ;] RUN-CASE
    s" top-number" [: TOP-NUMBER ;] RUN-CASE
    s" top-keyword" [: TOP-KEYWORD ;] RUN-CASE
    s" top-qualified" [: TOP-QUALIFIED ;] RUN-CASE
    s" top-deferred" [: TOP-DEFERRED ;] RUN-CASE
+   s" top-nested-deferred" [: TOP-NESTED-DEFERRED ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
