@@ -1,5 +1,6 @@
 \ A recorded call keeps the checker-selected record and effect until the next scan.
 require lib/test.f
+require lib/process-fork.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
 
@@ -106,6 +107,83 @@ private
 TRUSTED: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 TRUSTED: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
+TRUSTED: REWIND ( -- ) CHECKER-BOUND:REWIND ;
+TRUSTED: EMPTY-STORE ( -- ) CHECKER-BOUND:EMPTY-STORE ;
+
+: JUDGED-RECORDED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" RESET-JUDGED-PROBE ( -- n ) EARLIER" CHECKER-OWNER:CHECK -1 T=
+   1 CHECKER-OWNER:CALL-BINDING nip 0 > TTRUE ;
+
+: UNJUDGED-RECORDED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" RESET-UNJUDGED-PROBE ( -- n ) 5 @ EARLIER"
+      CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   3 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE ;
+
+: RETIRED-JUDGED ( -- )
+   [: 1 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: RETIRED-UNJUDGED ( -- )
+   [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: COMMENT-CHILD ( -- )
+   T-RESET
+   CHECKER-OWNER:TAPE-ARM
+   s" COMMENT-PROBE ( -- n ) EARLIER ( open" CHECKER-OWNER:CHECK-UNJUDGED drop
+   [: 1 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM
+   T-REPORT
+   s" unfinished comment refused bindings" type cr ;
+
+: REWIND-JUDGED ( -- )
+   T-RESET
+   JUDGED-RECORDED
+   REWIND
+   RETIRED-JUDGED
+   T-REPORT
+   s" rewind retired judged binding" type cr ;
+
+: REWIND-UNJUDGED ( -- )
+   T-RESET
+   UNJUDGED-RECORDED
+   REWIND
+   RETIRED-UNJUDGED
+   T-REPORT
+   s" rewind retired unjudged binding" type cr ;
+
+: EMPTY-JUDGED ( -- )
+   T-RESET
+   JUDGED-RECORDED
+   EMPTY-STORE
+   RETIRED-JUDGED
+   T-REPORT
+   s" empty store retired judged binding" type cr ;
+
+: EMPTY-UNJUDGED ( -- )
+   T-RESET
+   UNJUDGED-RECORDED
+   EMPTY-STORE
+   RETIRED-UNJUDGED
+   T-REPORT
+   s" empty store retired unjudged binding" type cr ;
+
+: CHILD-RUN ( [ -- ] -- )
+   {: body :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= IF body execute s" " 0 die THEN
+   pid PROC-WAIT-STATUS 0 T= ;
+
+: RESET-BOUNDARIES ( -- )
+   [: REWIND-JUDGED ;] CHILD-RUN
+   [: REWIND-UNJUDGED ;] CHILD-RUN
+   [: EMPTY-JUDGED ;] CHILD-RUN
+   [: EMPTY-UNJUDGED ;] CHILD-RUN ;
+
+: UNCLOSED-COMMENT ( -- )
+   [: COMMENT-CHILD ;] CHILD-RUN ;
 
 : RETIRED ( -- )
    CHECKER-OWNER:TAPE-ARM
@@ -139,9 +217,11 @@ using NCB-RIGHT
    s" unsafe source calls bind before type refusal" T-LABEL UNSAFE-CALLS T-NEXT
    s" judged refusal cannot grant either window" T-LABEL REFUSED-JUDGED T-NEXT
    s" incomplete unjudged parses grant no binding" T-LABEL INCOMPLETE T-NEXT
+   s" unfinished body comment grants no binding" T-LABEL UNCLOSED-COMMENT T-NEXT
    s" repeated intrinsic calls have separate original sites" T-LABEL REPEATED-INTRINSIC T-NEXT
    s" caught binding throw grants no partial stream" T-LABEL THREW T-NEXT
    s" rollback retires unjudged bindings" T-LABEL RETIRED T-NEXT
+   s" prefix and store reset retire both binding windows" T-LABEL RESET-BOUNDARIES T-NEXT
    s" reset invalidates borrowed call rows" T-LABEL RESET-CASE T-NEXT
    s" reset retires unjudged bindings" T-LABEL RESET-RETIRED T-NEXT
    NFEED:OBSERVE

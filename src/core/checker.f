@@ -20297,6 +20297,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
        TI @ TBYTE@ 40 =  TI @ 1 + TBREAK?  and IF   \ '( ' (not '(CMP)') -> sig or comment
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
+         TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
          \ only the '( ... )' right after the name is the sig; once it is seen
          \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
          \ parity) and must not touch any signature state.
@@ -21247,6 +21248,7 @@ public
 : REWIND ( -- )
    RBF-BND-N @ 0= IF s" checker: no recorded prefix boundary" 76 die THEN
    RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
+   0 BWIN-VALID !  0 UWIN-VALID !
    REG-EXT-BND-RESTORE-XT
    RBF-BND-NAME RBF-BND-REC RBF.PKGU @ RBF-NAME-RESTORE
    RBF-BND-REC RBF-RESTORE-FROM ;
@@ -21263,6 +21265,7 @@ public
 \ in it.
 : EMPTY-STORE ( -- )
    RBF-DEPTH @ IF s" checker: store reset inside rollback scope" 76 die THEN
+   0 BWIN-VALID !  0 UWIN-VALID !
    0 USIGS-RESTORE-END ;
 
 ;package
