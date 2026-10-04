@@ -839,10 +839,9 @@ variable PADDED
    EXITED @ TTRUE  RC @ 0 T=  PARSE-OUT 0 T=
    TAIL-REFUSED-CASE ;
 
-\ The dense fixture allots 48 MiB past the engine's own heap, so it runs where
-\ DATA holds twice that. Linux's DATA window is 32 MiB (src/os/linux/layout.f):
-\ there the engine heap's zero cells save more than any dense heap that fits
-\ could cost, so no snapshot keeps its heap's bytes.
+\ The dense fixture allots 48 MiB past the engine's own heap where DATA
+\ holds twice that. The x86-64 fixed RX window cannot hold a full-engine raw
+\ heap large enough to outweigh its zero seed cells.
 : DENSE-MIB ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 96 then ;
 DENSE-MIB 1024 * 1024 * constant DENSE-DATA
 
@@ -966,9 +965,8 @@ variable STRAYS
    ACTIVE-SNAP$ EXISTS? TFALSE ;
 
 \ Tier 1 compiles a definition as one unit, so only its pending record is live
-\ when the immediate runs. Tier 0 also holds the innermost open quotation and
-\ parks each enclosing one; its code has no native provenance either, so the
-\ rc and the message show the quiescence check refuses before that one does.
+\ when the immediate runs. ARM tier 0 also holds the innermost open quotation
+\ and parks each enclosing one; x86-64 has only tier 1.
 : ACTIVE-CASE ( -- )
    QUIESCENT-SNAP$ s\" SNAP-WRITER-ACTIVE:SAVE\n" ACTIVE-BUILD
    s" a capture from the immediate with nothing open saves" T-LABEL
@@ -977,6 +975,7 @@ variable STRAYS
    QUIESCENT-SNAP$ EXISTS? TTRUE
    s" a capture with a definition open is refused" T-LABEL
    s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
+   HB-TARGET-LINUX-X86-64? if exit then
    s" a capture with a quotation open is refused" T-LABEL
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
    ACTIVE-REFUSED
@@ -1026,7 +1025,7 @@ variable STRAYS
    POISON-CASE
    HOLE-CASE
    TAIL-CASE
-   DATA-SIZE DENSE-DATA > if DENSE-CASE then
+   HB-TARGET-LINUX-X86-64? 0= DATA-SIZE DENSE-DATA > and if DENSE-CASE then
    CLOSE-FAIL-CASE
    OPEN-FAIL-CASE
    REPLACE-FAIL-CASE
