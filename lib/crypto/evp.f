@@ -146,6 +146,7 @@ FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ptr u8 n n -- i32 )
 ;FUNCTION
 FUNCTION: PKEY-FREE EVP_PKEY_free ( n -- ) ;FUNCTION
 FUNCTION: PKEY-IS-A EVP_PKEY_is_a ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PKEY-PROVIDER EVP_PKEY_get0_provider ( n -- n ) ;FUNCTION
 FUNCTION: PKEY-BITS EVP_PKEY_get_bits ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-SIZE EVP_PKEY_get_size ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 )
@@ -153,14 +154,31 @@ FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 )
 ;FUNCTION
 FUNCTION: PKEY-PUBLIC-CHECK EVP_PKEY_public_check ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PAIR-CHECK EVP_PKEY_pairwise_check ( n -- i32 ) ;FUNCTION
-FUNCTION: DECODER-NEW OSSL_DECODER_CTX_new_for_pkey ( ptr u8 ptr u8 ptr u8 ptr u8 n n ptr u8 -- n )
-   0 8 WRITES-BYTES
-;FUNCTION
-FUNCTION: DECODER-FROM-DATA OSSL_DECODER_from_data ( n ptr u8 ptr u8 -- i32 )
+FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( ptr u8 n -- n ) ;FUNCTION
+FUNCTION: BIO-FREE BIO_free ( n -- i32 ) ;FUNCTION
+FUNCTION: PEM-READ PEM_read_bio_ex ( n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 )
    1 8 WRITES-BYTES
    2 8 WRITES-BYTES
+   3 8 WRITES-BYTES
+   4 8 WRITES-BYTES
 ;FUNCTION
-FUNCTION: DECODER-FREE OSSL_DECODER_CTX_free ( n -- ) ;FUNCTION
+FUNCTION: CRYPTO-FREE CRYPTO_free ( n n n -- ) ;FUNCTION
+FUNCTION: CRYPTO-CLEAR-FREE CRYPTO_clear_free ( n n n n -- ) ;FUNCTION
+FUNCTION: P8-READ d2i_PKCS8_PRIV_KEY_INFO ( n ptr u8 n -- n )
+   1 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: P8-FREE PKCS8_PRIV_KEY_INFO_free ( n -- ) ;FUNCTION
+FUNCTION: P8-KEY PKCS8_pkey_get0 ( n ptr u8 ptr u8 n n -- i32 )
+   1 8 WRITES-BYTES
+   2 C-INT-BYTES WRITES-BYTES
+;FUNCTION
+FUNCTION: ASN1-OBJECT ASN1_get_object ( ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 )
+   0 8 WRITES-BYTES
+   1 8 WRITES-BYTES
+   2 C-INT-BYTES WRITES-BYTES
+   3 C-INT-BYTES WRITES-BYTES
+;FUNCTION
+FUNCTION: P8>KEY EVP_PKCS82PKEY_ex ( n n ptr u8 -- n ) ;FUNCTION
 FUNCTION: MD-CTX-NEW EVP_MD_CTX_new ( -- n ) ;FUNCTION
 FUNCTION: MD-CTX-FREE EVP_MD_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 )
@@ -171,6 +189,8 @@ FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ptr u8 ptr u8 n ptr u8 n n 
 ;FUNCTION
 FUNCTION: RSA-PADDING EVP_PKEY_CTX_set_rsa_padding ( n n -- i32 ) ;FUNCTION
 FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: ERROR-CLEAR ERR_clear_error ( -- ) ;FUNCTION
+FUNCTION: ERROR-GET ERR_get_error ( -- n ) ;FUNCTION
 FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 )
    2 8 WRITES-BYTES
 ;FUNCTION
@@ -349,8 +369,7 @@ TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
    cu TAG-BYTES MAX-SPAN WITHIN-RANGE
    ou cu TAG-BYTES - < if E-OPERAND throw then ;
 
-\ RS256's task record owns all opaque handles. The key-result cell doubles as
-\ the decoder's EVP_PKEY ** and remains live until the decoder is destroyed.
+\ RS256's task record owns all opaque handles and PEM's decoded private bytes.
 $00 constant RS-ACTIVE
 $08 constant RS-N
 $10 constant RS-E
@@ -359,21 +378,28 @@ $20 constant RS-PARAM
 $28 constant RS-IMPORT-CTX
 $30 constant RS-KEY
 $38 constant RS-CHECK-CTX
-$40 constant RS-DECODER
-$48 constant RS-MD-CTX
-$50 constant RS-DATA-PTR
-$58 constant RS-DATA-LEN
-$60 constant RS-DIGEST-CTX
-$68 constant RS-SIG-LEN
-$70 constant RS-RECORD-BYTES
+$40 constant RS-BIO
+$48 constant RS-PEM-LABEL
+$50 constant RS-PEM-HEADER
+$58 constant RS-DER
+$60 constant RS-DER-LEN
+$68 constant RS-P8
+$70 constant RS-INNER-PTR
+$78 constant RS-INNER-LEN
+$80 constant RS-ASN-LEN
+$88 constant RS-ASN-TAG
+$90 constant RS-ASN-CLASS
+$98 constant RS-MD-CTX
+$A0 constant RS-DIGEST-CTX
+$A8 constant RS-SIG-LEN
+$B0 constant RS-RECORD-BYTES
 TASK:#USER 7 + CELL-ALIGN and RS-RECORD-BYTES TASK:+USER RS-STORAGE drop
 
 create RSA-NAME 82 c, 83 c, 65 c, 0 c,
 create BN-NAME 110 c, 0 c,
 create BN-E-NAME 101 c, 0 c,
-create PEM-NAME 80 c, 69 c, 77 c, 0 c,
-create PKCS8-NAME 80 c, 114 c, 105 c, 118 c, 97 c, 116 c, 101 c,
-   75 c, 101 c, 121 c, 73 c, 110 c, 102 c, 111 c, 0 c,
+create PRIVATE-KEY-NAME 80 c, 82 c, 73 c, 86 c, 65 c, 84 c, 69 c,
+   32 c, 75 c, 69 c, 89 c, 0 c,
 create SHA256-NAME 83 c, 72 c, 65 c, 50 c, 53 c, 54 c, 0 c,
 create DEFAULT-PROPS 112 c, 114 c, 111 c, 118 c, 105 c, 100 c, 101 c,
    114 c, 61 c, 100 c, 101 c, 102 c, 97 c, 117 c, 108 c, 116 c, 0 c,
@@ -387,6 +413,17 @@ $87 constant PKEY-PAIR
 8 constant RSA-LARGE-EXP-BYTES
 $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
 
+\ OpenSSL 3's public err.h packs the library in bits 23..30 and the reason
+\ in bits 0..22. COMMON/FATAL mark operational errors within a library.
+\ https://github.com/openssl/openssl/blob/openssl-3.0/include/openssl/err.h.in
+23 constant ERR-LIB-SHIFT
+$FF constant ERR-LIB-MASK
+$7FFFFF constant ERR-REASON-MASK
+$C0000 constant ERR-REASON-FLAGS
+4 constant ERR-RSA-LIB
+57 constant ERR-PROV-LIB
+$80004 constant ERR-PROV-RSA-LIB
+
 : RS-SLOT ( n -- ptr n ) RS-STORAGE + ;
 : RS-BUF ( n -- ptr u8 ) RS-STORAGE BYTE-VIEW + ;
 : RS@ ( n -- n ) RS-SLOT @ ;
@@ -394,11 +431,15 @@ $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
 : RS-KEY@ ( -- n ) RS-KEY RS@ ;
 : RS-MD@ ( -- n ) RS-MD-CTX RS@ ;
 
+CAST: RS>BYTES ( n -- ptr u8 )
+
 \ Lookup of a destructor is lazy. Resolve every destructor while no resource
 \ exists, so an absent symbol cannot interrupt the finalizer.
 : RS-RESOLVE-FREES ( -- )
-   0 MD-CTX-FREE 0 DECODER-FREE 0 PKEY-CTX-FREE
-   0 PKEY-FREE 0 PARAM-FREE 0 PARAM-BLD-FREE 0 BN-FREE ;
+   0 MD-CTX-FREE 0 P8-FREE 0 BIO-FREE drop
+   0 0 0 CRYPTO-FREE 0 0 0 0 CRYPTO-CLEAR-FREE
+   0 PKEY-CTX-FREE 0 PKEY-FREE 0 PARAM-FREE
+   0 PARAM-BLD-FREE 0 BN-FREE ;
 
 : RS-OPEN ( -- )
    RS-ACTIVE RS@ 0 <> if E-OPERAND throw then
@@ -408,10 +449,14 @@ $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
 
 : RS-CLOSE ( -- )
    RS-MD-CTX RS@ MD-CTX-FREE
-   RS-DECODER RS@ DECODER-FREE
    RS-CHECK-CTX RS@ PKEY-CTX-FREE
-   RS-IMPORT-CTX RS@ PKEY-CTX-FREE
    RS-KEY@ PKEY-FREE
+   RS-P8 RS@ P8-FREE
+   RS-DER RS@ RS-DER-LEN RS@ 0 0 CRYPTO-CLEAR-FREE
+   RS-PEM-HEADER RS@ 0 0 CRYPTO-FREE
+   RS-PEM-LABEL RS@ 0 0 CRYPTO-FREE
+   RS-BIO RS@ BIO-FREE drop
+   RS-IMPORT-CTX RS@ PKEY-CTX-FREE
    RS-PARAM RS@ PARAM-FREE
    RS-BLD RS@ PARAM-BLD-FREE
    RS-E RS@ BN-FREE
@@ -517,15 +562,48 @@ $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
    loop
    E-KEY throw ;
 
+: RS-PEM-LABEL? ( ptr u8 -- bool )
+   {: label :}
+   11 0 ?do
+      label i + c@ PRIVATE-KEY-NAME i + c@ <> if false unloop exit then
+   loop
+   label 11 + c@ 0= ;
+
+\ d2i advances the caller's DER cursor. The OpenSSL 3.0 provider decoder
+\ imports a parsed PrivateKeyInfo without comparing that cursor to its end:
+\ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/encode_decode/decode_der2key.c
 : RS-PRIVATE-IMPORT ( ptr u8 n -- )
    {: pem u:n :}
-   RS-KEY RS-BUF PEM-NAME PKCS8-NAME RSA-NAME PKEY-PAIR 0 DEFAULT-PROPS
-   DECODER-NEW dup RS-DECODER RS! 0= if E-KEY throw then
-   pem FFI:>CELL RS-DATA-PTR RS!
-   u RS-DATA-LEN RS!
-   RS-DECODER RS@ RS-DATA-PTR RS-BUF RS-DATA-LEN RS-BUF
-   DECODER-FROM-DATA OSSL-OK <> if E-KEY throw then
-   RS-KEY@ 0= if E-KEY throw then ;
+   pem u BIO-FROM-DATA dup RS-BIO RS! 0= if E-KEY throw then
+   RS-BIO RS@ RS-PEM-LABEL RS-BUF RS-PEM-HEADER RS-BUF
+   RS-DER RS-BUF RS-DER-LEN RS-BUF 0 PEM-READ OSSL-OK <> if E-KEY throw then
+   RS-PEM-LABEL RS@ dup 0= if drop E-KEY throw then
+   RS>BYTES RS-PEM-LABEL? 0= if E-KEY throw then
+   RS-PEM-HEADER RS@ dup 0= if drop E-KEY throw then
+   RS>BYTES c@ 0 <> if E-KEY throw then
+   RS-DER RS@ 0= if E-KEY throw then
+   RS-DER-LEN RS@ {: du:n :}
+   du 1 < du MAX-SPAN > or if E-KEY throw then
+   RS-DER RS@ RS-INNER-PTR RS!
+   0 RS-INNER-PTR RS-BUF du P8-READ dup RS-P8 RS! 0= if E-KEY throw then
+   RS-INNER-PTR RS@ RS-DER RS@ du + <> if E-KEY throw then
+   0 RS-INNER-PTR RS-BUF RS-INNER-LEN RS-BUF 0 RS-P8 RS@ P8-KEY
+   OSSL-OK <> if E-KEY throw then
+   RS-INNER-PTR RS@ {: inner:n :}
+   inner 0= if E-KEY throw then
+   RS-INNER-LEN RS-BUF LE:S32@ {: iu:n :}
+   iu 1 < iu MAX-SPAN > or if E-KEY throw then
+   RS-INNER-PTR RS-BUF RS-ASN-LEN RS-BUF RS-ASN-TAG RS-BUF
+   RS-ASN-CLASS RS-BUF iu ASN1-OBJECT $20 <> if E-KEY throw then
+   RS-ASN-TAG RS-BUF LE:S32@ 16 <> if E-KEY throw then
+   RS-ASN-CLASS RS-BUF LE:S32@ 0 <> if E-KEY throw then
+   RS-ASN-LEN RS@ {: content:n :}
+   content 0 < content iu > or if E-KEY throw then
+   RS-INNER-PTR RS@ content + inner iu + <> if E-KEY throw then
+   RS-P8 RS@ 0 DEFAULT-PROPS P8>KEY dup RS-KEY RS! 0= if E-KEY throw then
+   \ EVP_PKCS82PKEY_ex can fall back to a legacy key; signing requires the
+   \ requested default-provider import, not that fallback.
+   RS-KEY@ PKEY-PROVIDER 0= if E-KEY throw then ;
 
 : RS-PRIVATE-PARAMS ( -- )
    RS-KEY@ BN-NAME RS-N RS-BUF PKEY-GET-BN OSSL-OK <> if E-KEY throw then
@@ -563,6 +641,39 @@ $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
       sign if E-SIGN else E-VERIFY then throw
    then ;
 
+: RS-ERROR-LIB ( n -- n ) ERR-LIB-SHIFT rshift ERR-LIB-MASK and ;
+
+: RS-ERROR-REASON ( n -- n ) ERR-REASON-MASK and ;
+
+: RS-RSA-REJECTION? ( n -- bool )
+   {: code:n :}
+   code RS-ERROR-LIB ERR-RSA-LIB =
+   code RS-ERROR-REASON dup 0 <> swap ERR-REASON-FLAGS and 0= and and ;
+
+: RS-PROV-RSA-ERROR? ( n -- bool )
+   {: code:n :}
+   code RS-ERROR-LIB ERR-PROV-LIB =
+   code RS-ERROR-REASON ERR-PROV-RSA-LIB = and ;
+
+\ For default-provider PKCS#1 v1.5 RSA, RSA_verify records RSA-specific
+\ signature rejection reasons, then rsa_verify appends ERR_R_RSA_LIB in PROV.
+\ A failed context copy, digest, provider state or allocation has no such
+\ complete chain. The one-shot EVP path can reach Final's context copy.
+\ https://github.com/openssl/openssl/blob/openssl-3.0.18/crypto/evp/m_sigver.c
+\ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/signature/rsa_sig.c
+\ https://github.com/openssl/openssl/blob/openssl-3.6.0/providers/implementations/signature/rsa_sig.c.in
+: RS-VERIFY-MISMATCH? ( -- bool )
+   ERROR-GET dup 0= if drop false exit then
+   begin
+      dup RS-RSA-REJECTION? 0= if drop ERROR-CLEAR false exit then
+      drop ERROR-GET
+      dup RS-PROV-RSA-ERROR? if
+         drop ERROR-GET dup 0= if drop true exit then
+         drop ERROR-CLEAR false exit
+      then
+      dup 0= if drop false exit then
+   again ;
+
 : RS-SIGN-WRITE ( ptr u8 n ptr u8 n -- n )
    {: out k:n msg mu:n :}
    FFI:RESET
@@ -580,10 +691,16 @@ $7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
    false RS-KEY-CHECK k <> if E-KEY throw then
    su k <> if false exit then
    false RS-DIGEST-INIT
+   \ Clear import/init errors just before this operation; only its own queue
+   \ entries may decide whether a zero return is a signature mismatch.
+   ERROR-CLEAR
    RS-MD@ sig su msg mu DIGEST-VERIFY
-   dup 1 = if drop true exit then
-   dup 0= if drop false exit then
-   drop E-VERIFY throw ;
+   dup 1 = if drop ERROR-CLEAR true exit then
+   dup 0= if
+      drop RS-VERIFY-MISMATCH? if false exit then
+      E-VERIFY throw
+   then
+   drop ERROR-CLEAR E-VERIFY throw ;
 
 : RS-SIGN-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: pem pu:n msg mu:n out cap:n :}

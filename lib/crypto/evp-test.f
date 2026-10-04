@@ -23,6 +23,10 @@ private
 
 CAST: >RSA-U8 ( n -- ptr u8 )
 
+VERSIONED-LIBRARY crypto 3
+FUNCTION: STALE-ERROR-NEW ERR_new ( -- ) ;FUNCTION
+FUNCTION: STALE-ERROR-SET ERR_set_error ( n n n -- ) ;FUNCTION
+
 $20 constant KEY-CAP
 $10 constant NONCE-CAP
 $40 constant AAD-CAP
@@ -661,6 +665,15 @@ variable RSA-ISSUE-N
    RSA-SECOND RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
    CRYPTO:RS256-VERIFY? ;
 
+: RSA-STALE-QUEUE ( -- )
+   s" prior OpenSSL errors do not change RS256 verification" T-LABEL
+   STALE-ERROR-NEW
+   4 $C0100 0 STALE-ERROR-SET
+   RSA-OTHER-KEY TFALSE
+   STALE-ERROR-NEW
+   4 $C0100 0 STALE-ERROR-SET
+   RFC-VERIFY TTRUE ;
+
 : RSA-VERIFY-BAD-EXP ( -- bool )
    RSA-N RSA-BYTES RSA-E 1 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
    CRYPTO:RS256-VERIFY? ;
@@ -723,6 +736,7 @@ variable RSA-ISSUE-N
 : RSA-SIGNATURE-CASES ( -- )
    s" mismatches are false after key validation" T-LABEL
    RSA-CONTROLS
+   RSA-STALE-QUEUE
    RSA-OTHER-KEY TFALSE
    RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-PSS RSA-BYTES
    CRYPTO:RS256-VERIFY? TFALSE
@@ -912,6 +926,28 @@ variable RSA-CASE-N
    RSA-CASE-PEM RSA-CASE-N @ JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
    CRYPTO:RS256-SIGN ;
 
+: RSA-CASE-TRAILING-DER ( -- )
+   RSA-CASE-PEM PEM-CAP INTO
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   s" 03k2+ZQwVK0JKSHuLFkuQ3UFAA==" PEM-LINE
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N ! ;
+
+: RSA-CASE-TRAILING-INNER ( -- )
+   RSA-CASE-TRAILING-DER
+   \ Increase the outer SEQUENCE and PKCS#8 OCTET STRING lengths by two;
+   \ the embedded RSA SEQUENCE still ends before the appended NULL object.
+   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" nip 1+ + {: head :}
+   [char] w head 5 + c!
+   [char] k head 34 + c! ;
+
+: RSA-CASE-TRAILING-SEQ ( -- )
+   RSA-CASE-TRAILING-INNER
+   \ The ASN.1 envelope is complete, but the RSA SEQUENCE has an extra item.
+   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" nip 1+ +
+   [char] l swap 39 + c! ;
+
 : RSA-CASE-EC ( -- )
    RSA-CASE-PEM PEM-CAP INTO
    s" -----BEGIN PRIVATE KEY-----" PEM-LINE
@@ -1064,6 +1100,21 @@ variable RSA-CASE-N
    RSA-CASE-ENCRYPTED
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-CASE-INCONSISTENT
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   s" one PKCS#8 PEM rejects trailing decoded DER" T-LABEL
+   RSA-CASE-TRAILING-DER
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   s" PKCS#8 rejects trailing DER inside its RSA private key" T-LABEL
+   RSA-CASE-TRAILING-INNER
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   s" RSA private key rejects an extra ASN.1 item" T-LABEL
+   RSA-CASE-TRAILING-SEQ
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   s" empty PEM payload is a key error" T-LABEL
+   RSA-CASE-PEM PEM-CAP INTO
+   s" -----BEGIN PRIVATE KEY-----" PEM-LINE
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N !
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-CASE-PEM PEM-CAP INTO
    RSA-PEM PEM-N @ ASCII,
