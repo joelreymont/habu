@@ -320,11 +320,27 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
 : BWM-RD64 ( n -- n )  dup 0 BWM-CODE:W32  swap 4 BWM-CODE:W32  32 lshift  or ;
 
+\ The native compiler can replace the engine's defer body with its own dispatch
+\ body. The dictionary records the code length on both paths; the two-cell
+\ trailer starts at that boundary.
+: BWM-DEFER-META ( n -- n )
+   {: xt:n :}
+   ndict@ 0 ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-START xt = if
+         xt rec XREF-LEN + {: meta:n :}
+         meta 0 BWM-CODE:W32 $46455201 =
+         meta 4 BWM-CODE:W32 $48424445 = and 0= if
+            s" bootstrap-wide-memory: malformed defer trailer" 1 die
+         then
+         meta unloop exit
+      then
+   loop
+   s" bootstrap-wide-memory: defer record missing" 1 die ;
+
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
-   xt 32 BWM-CODE:W32  $46455201 BWM=              \ eight instructions, including the three-word DATA carrier
-   xt 36 BWM-CODE:W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 40 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
+   xt BWM-DEFER-META 8 + BWM-RD64 BWM-RD64 BWM-FRESH ! \ the fresh dispatch cell's value: the unset target
    BWM-FRESH @ BWM-NONZERO                    \ fail closed before any is: never a null cell
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
@@ -349,9 +365,7 @@ defer BWM-CDEF ( -- n )
 
 : BWM-TEST-CDEFER ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
-   xt 32 BWM-CODE:W32  $46455201 BWM=              \ the same eight-instruction shared-DATA dispatch
-   xt 36 BWM-CODE:W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 40 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   xt BWM-DEFER-META 8 + BWM-RD64 BWM-RD64   \ the fresh dispatch cell's value
    BWM-FRESH @ BWM=                           \ = the same unset target the trusted defer held
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
