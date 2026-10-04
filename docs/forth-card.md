@@ -127,8 +127,8 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE`, rc 70 |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
-| a bare `using` import a global also names | `E-USING-SHADOW-GLOBAL`, rc 70 |
-| the same name at top level or after `'` | `ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105 |
+| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`, rc 70; at top level or after `'` `--load` exits 105 (`ENGINE-ERROR:USING-SHADOW-GLOBAL`) |
+| a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, rc 70, before anything runs |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | a word defined before the check hook, with no `PRIM:` row, in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP` |
 
@@ -190,11 +190,18 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `s>number?` | `STR>NUMBER?`, `lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 
+A top-level word that parses or is a `defer` leaves the tokens after it, up to
+the next statement the check reads, to the run: under `--verify-only` that
+stretch is `W-CHECK-DEFERRED` at the word and the verdict `deferred`, exit 0,
+unless something is refused.
+
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
 `CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
-word (§ 4) are checked before the run, `--verify-only` included.
+word (§ 4) are checked before the run, `--verify-only` included. At top level
+any other such name opens that stretch. The renderer reads none of the tokens
+after it, so they are checked.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`

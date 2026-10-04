@@ -122,6 +122,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -139,7 +140,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:CHECK-REPORT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-REACH-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -3394,9 +3395,10 @@ variable RCUR   variable RBROW
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
 variable THDMASK  variable THRMASK  variable THSET
-\ RENDSET: the body called a word that renders source (CTL-RENDERS). Sticky per
+\ INHSET: the CTL-INHERITED flags of the words the body called, a word that
+\ defines words no source text spells or reads the source after it. Sticky per
 \ body like UNSAFE: a call on any path is enough for the may-claim.
-variable RENDSET
+variable INHSET
 variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
@@ -9521,6 +9523,12 @@ variable PRM-FIRST
    off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
    sym ;
 
+\ A source `undefine` is stronger than a stale engine wordlist entry. The
+\ visible newest record decides, so a later declaration makes the name live.
+: SYM-DELETED? ( n -- bool )
+   USIG-NEWEST-VISIBLE dup 0= IF drop RES-FALSE EXIT THEN
+   1 - E-PTR ER.ACTIVE @ EFF-DELETED = ;
+
 \ A user effect may refine a primitive's call shape, but cannot grant its
 \ trusted-only capability. Query the resolved symbol, so a package shadow
 \ keeps its own policy. Only user-effect hits need this additional walk.
@@ -10707,24 +10715,28 @@ RECORD-DIAG-DEFAULT
    0 RECORD-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-TRUST-UNRESOLVED CHECKER-REFUSE ;
-PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token as written (valid while rendering)
+PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
-\ ONE hook for the shadow and ambiguity diagnostics, selected by its argument:
-\ 0 renders the using-shadow reference site below, 1 the arity-shadow
-\ definition site (SHADOW-ARITY-CK), 2 a bare token two used publics export
-\ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks). One defer and not
-\ three because every `defer` written here,
-\ before `: TRUST`, takes a slot of the engine's pre-trust pending table
-\ (src/habu/layout.f PD-CAP). test/pre-trust-defer.f exercises both
-\ an added defer and an overflow beyond the running engine's capacity.
-defer SHADOW-DIAG-XT ( n -- )               \ render.f installs both diagnostics behind one selector
+\ ONE hook for the diagnostics located at a token, selected by its argument: 0
+\ renders the using-shadow reference site below, 1 the arity-shadow definition
+\ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
+\ (CHECKER-RESOLVE:RAISE, the packages CK-USED-MASK marks), 3 a top-level token
+\ no scope defines and 4 one with a malformed qualifier (CHECKER-VERIFY-TOP), 5
+\ a top-level stretch deferred to the run (CHECKER-VERIFY-DEFERRED). One defer
+\ and not six because every `defer` written here, before `: TRUST`, takes a slot
+\ of the engine's pre-trust pending table (src/habu/layout.f PD-CAP).
+\ test/pre-trust-defer.f exercises both an added defer and an overflow beyond
+\ the running engine's capacity.
+defer SHADOW-DIAG-XT ( n -- )               \ render.f installs the diagnostics behind one selector
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
 
 \ A refusal of the definition being checked that leaves its body's or does>
 \ clause's walk by a throw, its packet rendered where it was found: a using
-\ refusal (CHECKER-RESOLVE:RAISE) or a shadowed arity (SHADOW-ARITY-CK). The
+\ refusal (CHECKER-RESOLVE:RAISE) or a shadowed arity (SHADOW-ARITY-CK). A
+\ using refusal leaves a top-level token's walk the same way, and refuses the
+\ token as it refuses a definition (CHECKER-VERIFY-TOP). The
 \ code is kept as it is raised, so the walk's entry (DEF-REFUSED) tells the
 \ definition's refusal from a throw nothing judged - an arena or capacity
 \ failure, a bug - which propagates. CHECKER-REFUSAL-CELL cannot tell them: it
@@ -10782,17 +10794,16 @@ variable DEF-REFUSAL
    a u wid search-wl 0 <> ;
 
 \ The used-publics leg of the replay's resolution (REPLAY-BIND below), reached
-\ only after every earlier scope missed. Before a used public may bind, the
-\ engine gets the deciding vote: a global claims the tail, which is the
-\ documented global-vs-used collision, rejected at the reference site exactly as
-\ when the global carries a signature.
-\ A global the store knows only beyond the binding horizon was defined after
-\ this definition, so the engine's live wordlist claiming the tail is not a
-\ collision this reference can see. A global the store has no record of keeps
-\ the engine's vote: that is the engine's own word, and its claim stands.
-: GLOBAL-BEYOND-HORIZON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop RES-FALSE EXIT THEN
-   SYM-VISIBLE 0= ;
+\ only after every earlier scope missed. A visible global binding claims the
+\ tail before a used public may bind.
+\ Source records decide retirement and the binding horizon before a stale
+\ verifier wordlist or a compiler-only axiom can claim a global name.
+: GLOBAL-BOUND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop 0 THEN {: sym:n :}
+   sym SYM-DELETED? IF RES-FALSE EXIT THEN
+   sym USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
+   sym USIG-NEWEST 0 <> IF RES-FALSE EXIT THEN
+   a u 0 CK-WL-CLAIMS? ;
 
 \ The leg answers the bound symbol and the refusal, 0 when there is none, as
 \ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
@@ -10800,9 +10811,7 @@ variable DEF-REFUSAL
    a u CHECKER-USED-SYM {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF 0 CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 0 EXIT THEN
-   a u GLOBAL-BEYOND-HORIZON? 0= IF
-      a u 0 CK-WL-CLAIMS? IF 0  a u 0 CHECKER-USED-SHADOW  EXIT THEN
-   THEN
+   a u GLOBAL-BOUND? IF 0  a u 0 CHECKER-USED-SHADOW EXIT THEN
    usym 0 ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
@@ -11052,7 +11061,7 @@ variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where i
 \ The renderer is its own hook because none of the four installed before it can
 \ carry a declaration: DIAGXT renders a definition with definition fields,
 \ BADSIG-XT a stored signature row, TSTALE-DIAG-XT a trust row, and
-\ SHADOW-DIAG-XT selects among the two shadow sites and a using ambiguity.
+\ SHADOW-DIAG-XT selects among the diagnostics a token locates.
 defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
 : STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
 STORAGE-DIAG-DEFAULT
@@ -11508,12 +11517,18 @@ package CHECKER-REG
 : FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
-: CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n )
+\ The quiet resolution with its deferred refusal kept: the symbol the walk
+\ binds, 0 when it binds nothing, and true when it deferred one of those two
+\ refusals (the symbol is 0 then): a name the load refuses, not one it lacks.
+: CHECKER-QUIET-WALK ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
-   why 0= IF sym EXIT THEN
+   why 0= IF sym RES-FALSE EXIT THEN
    why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
-   0 ;
+   0 RES-TRUE ;
+
+: CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n )
+   CHECKER-QUIET-WALK drop ;
 
 \ ---- words a rendering statement may have defined ----------------------------
 \ A top-level statement that calls a CTL-RENDERS word defines words from text the
@@ -11521,11 +11536,13 @@ package CHECKER-REG
 \ wordlist current at that moment (lib/ffi-abi.f CHECK-SCOPE asserts it for
 \ FUNCTION:). So the pre-pass has the checker mark that wordlist
 \ (CHECKER-VERIFY-RENDERS), and a body token that resolves nowhere defers its
-\ definition to the run (verdict 2) only when the lookup walked a marked
-\ wordlist: the statement's own section of its own package, read after the
-\ statement. The mark is a symbol whose name holds a space, which no token can
-\ spell; it carries no effect, and a scope's exit retires it with the scope's
-\ other symbols.
+\ definition to the run (verdict 2) only when a bare token's lookup walks a
+\ marked wordlist: the statement's own section of its own package, read after
+\ the statement. A qualified token is covered as a bare one is, since the text
+\ may define its package too, and by a mark in its package's public wordlist.
+\ The mark is a symbol whose name holds a space, which no token can spell; it
+\ carries no effect, and a scope's exit retires it with the scope's other
+\ symbols.
 \ THE LIMIT: a word the checker already holds resolves before any of this is
 \ asked, so a product shadowing it is judged against it, a refusal the load
 \ does not make. That is every engine word on an engine with no seeded pool,
@@ -11536,11 +11553,13 @@ package CHECKER-REG
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
-\ The chain CHECKER-FIND-ACTIVE-SYM walks: a qualified token its package's public
-\ wordlist; a bare one the open package's private and public wordlists, the
-\ global wordlist and the used publics.
+\ The chain CHECKER-FIND-ACTIVE-SYM walks for a bare token: the open package's
+\ private and public wordlists, the global wordlist and the used publics; for a
+\ qualified one its package's public wordlist first.
 : UNSEEN-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> EXIT THEN
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
+   THEN
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
@@ -12789,7 +12808,7 @@ $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 \ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
 \ define words at run time that no source text spells. The loader's audited
-\ evaluate boundary carries it by axiom (NORET-AXIOMS) and every checked body
+\ evaluate boundaries carry it by axiom (NORET-AXIOMS) and every checked body
 \ that calls a flagged word inherits it; the source pre-pass asks for it
 \ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
 $80 constant CTL-RENDERS
@@ -12813,9 +12832,10 @@ $80 constant CTL-RENDERS
 \ the owner handover, the unit import and a captured graph. `undefine` retires
 \ them with every other fact (CHECKER-UNDEFINE), a redefinition records none,
 \ and an export does not copy them (EXPORT-META-COPY).
-\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-15
-\ free, 16 the defer bit (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside
-\ the flag mask, 20-39 and 40-59 the intact masks (XFER-PACK).
+\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
+\ CTL-PARSES and 14 CTL-CREATES (below), 15 free, 16 the defer bit
+\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17-19 free outside the flag mask, 20-39
+\ and 40-59 the intact masks (XFER-PACK).
 8 constant CTL-INTRINSIC-SHIFT
 $1F00 constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -12832,7 +12852,20 @@ CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
-$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-RENDERS or
+\ CTL-PARSES means a call may read the source after it, so which tokens it takes
+\ cannot be known without running it. parse-name carries it by axiom and every
+\ checked body that calls a flagged word inherits it, as CTL-RENDERS is
+\ inherited; the source pre-pass defers the top-level stretch after such a word
+\ to the run (CHECKER-VERIFY-TOP).
+$2000 constant CTL-PARSES
+\ CTL-CREATES means a call may define the name it reads: `create` carries it by
+\ axiom, inherited alike. Unlike rendered text it defines exactly that name,
+\ which a definer the pre-pass learned names where it takes the statement
+\ (src/habu/verify-source.f RECORD-DEFINER?), so it marks only a statement no
+\ such definer takes (TOP-TOKEN, CHECKER-VERIFY-RENDERS).
+$4000 constant CTL-CREATES
+CTL-RENDERS CTL-PARSES or CTL-CREATES or constant CTL-INHERITED
+$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
 CTL-INTRINSIC-MASK or
    constant CTL-GRAPH-FLAGS
 \ $20000 not $10000: the entry carries two cells beyond (sym, flags) — the
@@ -13416,14 +13449,27 @@ REG-EXT-AOT-DEFAULTS
 \
 \ The loader's one evaluate boundary is recorded the same way, so the engine
 \ names its own boundary and no library definer: src/core/include.f
-\ INCLUDE-EVALUATE is the word that turns rendered text into definitions. The
-\ rows after it are the same authority for "is this the engine's word": the
-\ primitives the walk types by what they do, named by identity (CTL-CORE-OP,
-\ CTL-INTRINSIC above).
+\ INCLUDE-EVALUATE is the word that turns rendered text into definitions, and
+\ `evaluate` and `evaluate-closed` do so for a top-level statement. The words
+\ that read the source after a call are recorded alike: parse-name, and
+\ `create`, which also defines the name it reads (CTL-CREATES). A body takes
+\ `create` by its identity (DEFINER-TOK) and inherits its facts all the same
+\ (DO-TOK-BODY); the word `create` makes takes none (TRUST-RAW). No other word
+\ a body takes by its identity reads the source or defines a word: `variable`
+\ and `constant` are refused there, and the word `execute`, `catch` or
+\ `finally` runs is an execution token no walk binds. The rows after them are
+\ the same authority for "is this the engine's word": the primitives the walk
+\ types by what they do, named by identity (CTL-CORE-OP, CTL-INTRINSIC above);
+\ `create`'s one row carries both its identity and its facts, since the newest
+\ row of a symbol wins.
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
    s" INCLUDE-EVALUATE" CTL-RENDERS NORET-AXIOM
+   s" evaluate" CTL-RENDERS NORET-AXIOM
+   s" evaluate-closed" CTL-RENDERS NORET-AXIOM
+   s" parse-name" CTL-PARSES NORET-AXIOM
+   s" create" CTL-PARSES CTL-CREATES or INTRINSIC-CREATE INTRINSIC>CTL or NORET-AXIOM
    s" 0=" CTL-CORE-OP CTL-ZERO-TRUE or NORET-AXIOM
    s" <>" CTL-CORE-OP NORET-AXIOM
    s" dup" CTL-CORE-OP NORET-AXIOM
@@ -13454,7 +13500,6 @@ REG-EXT-AOT-DEFAULTS
    s" depth" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" .s" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" ptr-field" INTRINSIC-RAW-FIELD INTRINSIC>CTL NORET-AXIOM
-   s" create" INTRINSIC-CREATE INTRINSIC>CTL NORET-AXIOM
    s" variable" INTRINSIC-VARIABLE INTRINSIC>CTL NORET-AXIOM
    s" constant" INTRINSIC-CONSTANT INTRINSIC>CTL NORET-AXIOM ;
 
@@ -13575,11 +13620,184 @@ SYM-AXIOM-INSTALL
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
 
+\ The engine word a bare token names: when the engine's global wordlist claims
+\ the token, the global symbol under which the store keeps what it knows of
+\ that engine word, which no row makes bindable (`evaluate` has no effect row,
+\ and NORET-AXIOMS gives it CTL-RENDERS) - 0 when the store holds nothing for
+\ it - and true; 0 and false when the wordlist does not claim the token or the
+\ source has explicitly retired it.
+: ENGINE-WORD-SYM ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
+   a u CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
+   a u 0 CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
+   a u CHECKER-GLOBAL-SYM? RES-TRUE ;
+
+\ The word the load runs for a token the source pre-pass asks about: the symbol
+\ the quiet walk binds, else the engine word it names (ENGINE-WORD-SYM). True
+\ with either; 0 and false when nothing binds or claims the token. It is a
+\ body's lookup (CHECKER-VERIFY-REACH): the engine compiles a TRUSTED: body's
+\ call to a global a used public shadows as a call to the global, and the body
+\ loads, so the shadow the quiet walk defers falls back here; at top level the
+\ engine refuses that call, and CHECKER-TOP-SYM names no word for it.
+: CHECKER-RUN-SYM ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
+   a u CHECKER-FIND-QUIET-SYM dup 0 <> IF RES-TRUE EXIT THEN drop
+   a u ENGINE-WORD-SYM ;
+
+\ The engine's top-level find looks for the tail of PKG:TAIL in the global
+\ wordlist when PKG is the open package and its public wordlist lacks the tail
+\ (src/habu/habu1.f EMIT-FIND: from FIND-DONE, a miss in the open package's
+\ public wordlist retries wordlist 0 at FIND-TRYG); a body's walk refuses such
+\ a name. True with the tail's global symbol when that retry finds it: a word
+\ the source defined, or one the engine's global wordlist claims, whose symbol
+\ is 0 when the store holds nothing for it.
+: OPEN-TAIL-GLOBAL? ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? 0= IF 0 RES-FALSE EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg pkgu CORE-STR=CI 0=  or IF
+      0 RES-FALSE EXIT
+   THEN
+   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
+      dup USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
+   THEN drop
+   CHECKER-QTAIL$ ENGINE-WORD-SYM ;
+
+: TOP-PUBLIC-BIND? ( -- bool )
+   CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? {: pub:n :}
+   pub 0 <> IF
+      pub SYM-VISIBLE 0= IF RES-FALSE EXIT THEN
+      pub SYM-DELETED? IF RES-FALSE EXIT THEN
+   THEN
+   CHECKER-QPKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec @ dup 0= IF drop RES-FALSE EXIT THEN
+   CHECKER-QTAIL$ rot SCOPE-WL-PROBE NULL-PTR <> ;
+
+\ The body's walk keeps compiler axioms. At top level a shadow refusal only
+\ stands when a visible global binding actually claims the imported tail.
+: TOP-WALK ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why E-USING-SHADOW-GLOBAL = IF
+      a u GLOBAL-BOUND? 0= IF a u CHECKER-USED-BIND EXIT THEN
+   THEN
+   sym why ;
+
+\ A scanned declaration has a visible effect record even though this engine
+\ has not loaded the subject. A cold published package primitive may have no
+\ user record. An axiom alone can describe a compile keyword (`>r`, `r>`, `r@`)
+\ for bodies without giving interpret or tick a binding.
+: TOP-BOUND-SYM ( ptr u8 n n -- n bool )
+   {: a:ptr u:n sym:n :}
+   sym 0 <> IF
+      sym USIG-NEWEST-VISIBLE 0 <> IF sym RES-TRUE EXIT THEN
+      a u CHECKER-QUALIFIED? 0= IF
+         a u 0 CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
+      THEN
+   THEN
+   a u CHECKER-QUALIFIED? IF
+      TOP-PUBLIC-BIND? IF sym RES-TRUE EXIT THEN
+      a u OPEN-TAIL-GLOBAL? EXIT
+   THEN
+   a u ENGINE-WORD-SYM ;
+
+\ The word the load runs for a top-level token, as the engine's top-level find
+\ selects it: what the top-level walk binds, else, for a qualified token, the
+\ global tail the open package's own PKG:TAIL names (OPEN-TAIL-GLOBAL?), and
+\ for a bare one the engine word it names (ENGINE-WORD-SYM). True with any of
+\ them; 0 and false when nothing binds the token, and when `using` refuses it:
+\ the load runs no word for a shadowed or ambiguous name, so no engine word of
+\ that name stands in. The one selection serves what the token is
+\ (CHECKER-VERIFY-TOP) and what it may define (CHECKER-VERIFY-RENDERS), so a
+\ refused renderer defines nothing.
+: CHECKER-TOP-SYM ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
+   a u TOP-WALK {: sym:n why:n :}
+   why 0 <> IF
+      why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
+      0 RES-FALSE EXIT
+   THEN
+   a u sym TOP-BOUND-SYM ;
+
 \ The source pre-pass's question about a top-level token (src/habu/verify-source.f
-\ RENDERS-MARK?): does the word it names render source? When it does, the
-\ statement's wordlist is marked here, by the checker that owns the scope.
-: CHECKER-VERIFY-RENDERS ( n -- bool )
-   CTL-FLAGS-SYM CTL-RENDERS and 0 <> dup IF CHECKER-UNSEEN-MARK THEN ;
+\ RENDERS-MARK?): may the word the load runs for it (CHECKER-TOP-SYM) define
+\ words no source text spells, by one of the facts MASK names (CTL-RENDERS,
+\ CTL-CREATES)? A deferred word may: it runs whatever word was set, a renderer
+\ or a definer among them. When it may, the statement's wordlist is marked
+\ here, by the checker that owns the scope.
+: CHECKER-VERIFY-RENDERS ( ptr u8 n n -- bool )
+   {: a:ptr u:n mask:n :}
+   a u CHECKER-TOP-SYM drop {: sym:n :}
+   sym CTL-FLAGS-SYM mask and 0 <>  sym DFER-FIND-SYM or
+   dup IF CHECKER-UNSEEN-MARK THEN ;
+
+\ What running the word whose facts SYM holds does to the tokens after it; RUNS
+\ is false for a tick, which runs nothing. 2 when the word may read the source
+\ after it - it parses (CTL-PARSES) or it is deferred - so which tokens it takes
+\ is the run's to know, else -1. A word that renders source reads none of them:
+\ the text it hands the loader is the only source its parsing words see, so
+\ only what that text defines is the run's, and the mark answers for that
+\ (CHECKER-VERIFY-RENDERS, UNSEEN-COVERS?).
+: TOP-RUNS ( n bool -- n )
+   {: sym:n runs:bool :}
+   runs 0= IF -1 EXIT THEN
+   sym CTL-FLAGS-SYM CTL-PARSES and 0 <>  sym DFER-FIND-SYM or IF 2 EXIT THEN
+   -1 ;
+
+\ What the load does with a top-level token it runs, or ticks when RUNS is
+\ false (CHECKER-VERIFY-TOP below). The top-level walk corrects only a shadow
+\ refusal whose global has no binding; the body's keyword walk stays intact.
+\ The answer is -1 when it resolves, or 2 when it resolves to a word that may
+\ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
+\ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
+\ judge; and 0 when the load refuses it, undefined or a malformed qualified
+\ name, rendered as a span record at the token (E-UNDEFINED-TOP-LEVEL,
+\ E-BAD-QUALIFIED-TOP-LEVEL) and counted under --all-errors, else thrown as a
+\ definition's refusal is. A refusal the walk answers, a using shadow or
+\ ambiguity among them, is raised as a body's is: rendered at the token and
+\ thrown (CHECKER-RESOLVE:RAISE). A token the walk does not bind is the word
+\ the engine's top-level find selects (CHECKER-TOP-SYM): a bare token the store
+\ does not hold keeps the engine's vote on its global wordlist, the boot prefix
+\ in the verifier's child, where the colliding global need not be one the
+\ checker knows and the subject's words are never compiled; the engine word it
+\ names runs as its global symbol's facts say.
+: TOP-ANSWER ( ptr u8 n bool -- n )
+   {: a:ptr u:n runs:bool :}
+   a u TOP-WALK {: sym:n why:n :}
+   why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
+   CHECKER-QBAD-TOK @ 0= IF
+      a u sym TOP-BOUND-SYM IF runs TOP-RUNS EXIT THEN drop
+      a u UNSEEN-COVERS? IF 3 EXIT THEN
+   THEN
+   a USH-TOK-A !  u USH-TOK-U !
+   CHECKER-QBAD-TOK @ IF 4 ELSE 3 THEN SHADOW-DIAG-XT
+   MULTI-ERR? IF 1 MULTI-ERR-N +! 0 EXIT THEN
+   CHECKER-REJECT-RC throw ;
+
+\ The pre-pass's report of a top-level stretch it deferred to the run, located
+\ at the token that opened it.
+: CHECKER-VERIFY-DEFERRED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a USH-TOK-A !  u USH-TOK-U !
+   5 SHADOW-DIAG-XT ;
+
+\ The pre-pass's question about a token a TRUSTED: body calls, before its
+\ `does>` (src/habu/verify-source.f SCAN-TRUSTED-BODY). The body is asserted,
+\ never walked, but what running it may do is what its calls may do, as for a
+\ checked body (INHSET): a token the quiet walk binds, or that the engine's
+\ global wordlist claims (CHECKER-RUN-SYM), brings its symbol's CTL-INHERITED
+\ facts, and one bound nowhere may name any word, so it brings them all. They
+\ are added to the facts of NAME, the trusted word, whose entry is appended
+\ only when they grow.
+: CHECKER-VERIFY-REACH ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n na:ptr nu:n :}
+   a u CHECKER-RUN-SYM IF CTL-FLAGS-SYM CTL-INHERITED and
+   ELSE drop CTL-INHERITED THEN {: reach:n :}
+   na nu CHECKER-RECORD-SYM {: rec:n :}
+   rec CTL-WORD-SYM {: ctl:n :}
+   ctl XFER-FLAGS {: old:n :}
+   old reach or old = IF EXIT THEN
+   rec old reach or ctl XFER-DMASK ctl XFER-RMASK NORET-ADD-SYM ;
 
 \ Reference-scoped existence for source callers and load guards. A private or
 \ ABI-only row is not a callable source effect; EFFECT-QUERY still exposes ABI
@@ -15113,12 +15331,15 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
    0 CURSYM !
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
+   \ What the call may do at run time is its symbol's, read before an identity
+   \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
+   \ its axiom (NORET-AXIOMS).
+   TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
    id DEFINER-TOK IF EXIT THEN
    id INTRINSIC-CELL-FETCH = IF CELL-FETCH-TOK EXIT THEN
    id INTRINSIC-CELL-STORE = IF CELL-STORE-TOK EXIT THEN
    id INTRINSIC-RAW-FIELD = IF RAW-FIELD-TOK? IF EXIT THEN THEN
    TOK-SYM @ CURSYM !
-   CURSYM @ CTL-FLAGS-SYM CTL-RENDERS and 0 <> IF -1 RENDSET ! THEN
    CURSYM @ SCOPE-KIND-SYM dup 2 = IF SCOPE-CHILD-STEP EXIT THEN
    dup 3 = IF drop SCOPE-MUT-ROOT-STEP EXIT THEN
    dup 4 = IF SCOPE-CHILD-STEP EXIT THEN
@@ -17577,10 +17798,24 @@ package CHECKER-REG
 \ ends, including the throw that refuses a signature that does not parse.
 \
 \ Source cannot call it, for the reason TRUST-DECL is sealed: it asks nothing.
+\
+\ A CREATED WORD TAKES NO CTL-INHERITED FACT. When it runs it pushes its cell,
+\ or runs its definer's clause, whose reach it is not given. The facts come
+\ from the engine's record of an interpret-mode `create` or `variable` (habu2.f
+\ C-DEFHOOK), the word's name and the definer's keyword: the check hook walks
+\ it as a definition's text, where `create` is a call, and records `create`'s
+\ axiom on the word. A `:` definition that calls `create` does read and define
+\ when it runs, and its walk cannot be told apart from that record's; this
+\ publication is the created word's, so they are dropped here.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
-   na nu sa su [: RES-FALSE TRUST-USIG! ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally ;
+   na nu sa su [: RES-FALSE TRUST-USIG! ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   na nu CHECKER-RECORD-SYM? {: sym:n :}
+   sym CTL-FLAGS-SYM {: flags:n :}
+   flags CTL-INHERITED and 0 <> IF
+      sym flags CTL-INHERITED invert and sym CTL-MASKS-SYM NORET-ADD-SYM
+   THEN ;
 REG-PROTECT
 package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!
@@ -19811,7 +20046,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    NULL-PTR SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 XFACT !  0 DEADP !  0 DEADERR !  NULL-PTR DEADTA !  0 DEADTU !
-   0 THDMASK !  0 THRMASK !  0 THSET !  0 RENDSET !
+   0 THDMASK !  0 THRMASK !  0 THSET !  0 INHSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
@@ -20456,11 +20691,13 @@ variable CAST-PATH-N
       \ line that tagged it, while `undefine` zeroed it, so a redefinition
       \ carries none. CTL-RENDERS stays for the same reason: the evaluate
       \ boundary's is an axiom (NORET-AXIOMS) recorded before src/core/include.f
-      \ defines INCLUDE-EVALUATE, and no body derives it.
+      \ defines INCLUDE-EVALUATE, and no body derives it. CTL-PARSES and
+      \ CTL-CREATES need not: their axioms sit on primitives (`parse-name`,
+      \ `create`) no definition re-records, and a body derives them (INHSET).
       sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK CTL-RENDERS or and CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
-      RENDSET @ IF CTLNEW @ CTL-RENDERS or CTLNEW ! THEN
+      CTLNEW @ INHSET @ or CTLNEW !
       ZSUMMARY-EFFECT? IF
          ZSHAPE @ 1 = IF CTLNEW @ CTL-ZERO-TRUE or CTLNEW ! THEN
          ZSHAPE @ 3 = IF CTLNEW @ CTL-ZERO-FALSE or CTLNEW ! THEN
@@ -20488,11 +20725,11 @@ variable CAST-PATH-N
    THEN
    \ Deferred: the declaration is recorded with authority, so a later caller
    \ still binds to it and a duplicate is still refused, but no control claim
-   \ is made for a body the run measures; only CTL-RENDERS, a may-claim the walk
+   \ is made for a body the run measures; only CTL-INHERITED, a may-claim the walk
    \ saw directly. The last pass of a retried check records it.
    dup 2 =  NMU @ 0 >  and  CHECK-SIG? and  CK-AOT-RETRY-DUE @ 0= and IF
       NMA @ NMU @ CHECK-REC-ADMIT
-      NMA @ NMU @ RENDSET @ IF CTL-RENDERS ELSE 0 THEN NORET-ADD
+      NMA @ NMU @ INHSET @ NORET-ADD
       SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
    THEN
    \ A refusal in multi-error mode, rejected or uncheckable alike, once the last
@@ -21143,15 +21380,16 @@ PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
 : CHECK-DEF-BODY ( -- )      \ ( -- ) closure: check the stashed definition, stash the verdict
    CK-DEF-A @ CK-DEF-U @ CHECK-RETRY CK-DEF-VERDICT ! ;
 
-\ The code of the refusal of a definition that stopped a load by its throw
-\ (DEF-REFUSED), 0 before one does. It tells such a stop from a stop no
-\ definition's refusal raised - a top-level use, a refused row - for
+\ The code of the refusal of a definition, or of a top-level token, that stopped
+\ a load by its throw (DEF-REFUSED), 0 before one does. It tells such a stop
+\ from a stop no such refusal raised - a refused generates: or trust row - for
 \ tools/check-verify-child.f, whose pre-pass then stops as at any refused
 \ definition.
 variable DEF-STOPPED
 
-\ The rule shared by both walks a refusal of the definition leaves by a throw,
-\ a body's here and a does> clause's (CHECKER-SOURCE-DOES! below): the caught
+\ The rule shared by the walks a refusal of the definition leaves by a throw, a
+\ body's here, a does> clause's (CHECKER-SOURCE-DOES! below) and a top-level
+\ token's (CHECKER-VERIFY-TOP below): the caught
 \ code is rethrown unless it is that refusal in a multi-error load, and what the
 \ walk left set where it was refused is cleared. Outside a multi-error load the
 \ refusal stops the load, and DEF-STOPPED keeps it.
@@ -21511,6 +21749,26 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
    SRC-DOES-VERDICT @ na nu DOES-REPORT ;
+
+\ The pre-pass's question about a top-level token (src/habu/verify-source.f
+\ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by
+\ the throw that rendered its packet, as it leaves a definition's, and refuses
+\ the token by the same rule (DEF-REFUSED): in a multi-error load the token is
+\ counted and answers 0, as an undefined one does, and the scan goes on;
+\ outside one the refusal stops the load, and DEF-STOPPED keeps it.
+PTR-VARIABLE TOP-ASK-A   variable TOP-ASK-U   variable TOP-ASK-RUNS
+variable TOP-ASK-ANSWER
+
+: TOP-ASK-BODY ( -- )        \ ( -- ) closure: answer the stashed token, stash the answer
+   TOP-ASK-A @ TOP-ASK-U @ TOP-ASK-RUNS @ TOP-ANSWER TOP-ASK-ANSWER ! ;
+
+: CHECKER-VERIFY-TOP ( ptr u8 n bool -- n )
+   {: a:ptr u:n runs:bool :}
+   a TOP-ASK-A !  u TOP-ASK-U !  runs TOP-ASK-RUNS !
+   0 DEF-REFUSAL !
+   [: TOP-ASK-BODY ;] catch {: rc:n :}
+   rc 0 <> IF rc DEF-REFUSED  1 MULTI-ERR-N +!  0 EXIT THEN
+   TOP-ASK-ANSWER @ ;
 
 \ Native compilation scans the parent first to keep the observer tape in source
 \ order. Its accepted clause therefore arrives after the parent's effect record.
@@ -22885,6 +23143,9 @@ package CHECKER-REG
 ' CHECKER-NATIVE-DOES-BEGIN DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF + xt!
 ' CHECKER-NATIVE-DOES-COMMIT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF + xt!
 ' CHECKER-CHECK-REPORT DECLARATIONS CHECKER-OWNER-ABI:CHECK-REPORT-OFF + xt!
+' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
+' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
+' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

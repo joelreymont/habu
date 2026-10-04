@@ -1,11 +1,11 @@
-# Authenticated encryption and HMAC over libcrypto
+# Authenticated encryption, HMAC and RS256
 
 [`lib/crypto/evp.f`](../lib/crypto/evp.f) binds OpenSSL 3's libcrypto through
-the `FUNCTION:` declarer so Habu can seal bytes at rest and sign a short token.
-It is Habu on Linux AArch64 with glibc and `libcrypto.so.3`; every other target
-is rejected with `CRYPTO:E-PLATFORM` before anything is allocated. Habu already
-has SHA-256 in the engine — this package adds the two primitives SHA-256 alone
-cannot provide: an authenticated cipher and a keyed MAC.
+the `FUNCTION:` declarer so Habu can seal bytes at rest, compute a keyed MAC,
+and sign or verify RS256 messages. It loads `libcrypto.3.dylib` on macOS and
+`libcrypto.so.3` on Linux. Qualify each OS and architecture with a matching
+source/engine pair. Habu already has SHA-256 in the engine; this package adds
+authenticated encryption, keyed MACs and RSA signatures.
 
 The engine's own digest streams through a context the caller owns: a span of
 `SHA256-CTX-BYTES` bytes passed to `SHA256-BEGIN`, `SHA256-FEED` and
@@ -196,8 +196,8 @@ small for what the operation writes, and a sealed record shorter than one tag.
 and `CRYPTO:E-MAC` report a libcrypto step that refused, which on a working
 installation means the library or the environment is broken. `CRYPTO:E-TAG` is
 not thrown: it is the code `UNSEAL` hands back on the `failed` arm.
-`CRYPTO:E-PLATFORM` rejects a non-Linux target. A missing libcrypto symbol is
-package FFI's `E-FFI-DLSYM`, named where the first call stands.
+A missing libcrypto symbol is package FFI's `E-FFI-DLSYM`, named where the
+first call stands.
 
 The `EVP_CIPHER_CTX` every `SEAL` and `UNSEAL` allocates is freed on every path,
 including a throw: the context lives in a per-task slot and the operation runs

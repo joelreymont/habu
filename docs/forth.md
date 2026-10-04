@@ -427,12 +427,13 @@ and always available, for a one-off call or to escape a collision.
   on to report every later refusal. The same holds for the shadow below
   (checker 7141) and for `E-SHADOWED-ARITY` (`REFUSE-DEF`, `DEF-REFUSED` and
   `DEF-STOPPED`, `src/core/checker.f`), on which `bin/hb --load` ends, rc 70;
-  a refusal outside a definition keeps its own status. The engine
+  a refusal outside a definition keeps its own status under `bin/hb --load`,
+  and `tools/check.f` refuses the top-level token by the same rule, rc 70
+  (the top-level rule below). The engine
   refuses an ambiguous tail earlier, before the checker: at top level, and in a
   definition under `bin/hb --load`, it prints
   `hb: ambiguous bare word resolves in multiple used packages: TOK at FILE:LINE`
-  and exits 94, and so does `tools/check.f` for a top-level use, in its run
-  stage.
+  and exits 94.
 - A bare tail resolving to a GLOBAL while a used package ALSO exports it is
   `E-USING-SHADOW-GLOBAL` (checker 7141) at the reference site, naming both
   candidates (`global TOK`, `PKG:TOK`) with arities. So a package whose public
@@ -1609,8 +1610,9 @@ the rule.
   refused (discovery: unterminated string), `' :` was refused (a definition
   with no name), and `[char] ;` before a local `newtype` was refused (the
   nominal pass read the local as a declaration); now the first group is
-  refused for its `42`, `' :` as the load refuses it (`E-UNDEFINED: :`, an
-  undefined tick, rc 70) and the rest check as they load, and `create char`,
+  refused for its `42`, `' :` as the load refuses it, an undefined tick, rc
+  70 (`E-UNDEFINED-TOP-LEVEL` at the `:` before anything runs), and the rest
+  check as they load, and `create char`,
   which names a word that takes nothing, leaves the next line's `: 42` refused
   (`check/raw-operand`). In a body every stage looks a token up among the live
   locals first, byte for byte, as the loader (`EM-COMPILE-LOCAL` ahead of the
@@ -1636,7 +1638,9 @@ the rule.
   (`check/local-operand`). A dictionary word that parses, such as `require` or
   `SEE`, is not one of these: the word a spelling names depends on scope, and
   the tree defines words that take no operand under both spellings, so the
-  token after one is an ordinary token.
+  token after one is an ordinary token to these stages. The pre-pass's check
+  of top-level tokens resolves the word first and leaves the tokens after one
+  that parses to the run (the top-level rule below).
 - **A definer's name is read as the loader reads it, by every stage of
   `tools/check.f`.** The loader takes it with `parse-name`, so
   `package ( ;package` names the package `(`, `: \ ( -- n ) 1 ;` the word `\`
@@ -1689,17 +1693,18 @@ the rule.
   pre-pass cannot see; the run checks the uses the source does not declare.**
   `FUNCTION:`/`;FUNCTION`, `CMD:COMMAND` and `TASK:+USER` render a definition
   and hand it to the loader's evaluate boundary, so no source text spells the
-  product. The checker carries `CTL-RENDERS` on `INCLUDE-EVALUATE` by axiom and
-  on every checked body that calls a flagged word (`checker.f` `NORET-AXIOMS`,
-  `RENDSET`). When the pre-pass meets a top-level statement naming such a word
-  it marks the wordlist the statement runs in, which is where the loader
-  compiles the product; a later definition naming a word nothing resolves,
-  looked up through a marked wordlist, gets `CHECK` verdict 2: no diagnostic,
-  its declared signature recorded for its callers, its body left to the
-  `bin/hb --load` run that check.f performs next (`checker.f` `UNSEEN-MARK$`,
-  `UNSEEN-COVERS?`). A product the source declares resolves, so the pre-pass
-  checks its uses itself: `FUNCTION:`'s word against its declaration group and
-  the word a `generates:` row declares against the row (the next rule).
+  product. The checker carries `CTL-RENDERS` on `INCLUDE-EVALUATE`, `evaluate`
+  and `evaluate-closed` by axiom and on every checked body that calls a flagged
+  word (`checker.f` `NORET-AXIOMS`, `INHSET`). When the pre-pass meets a
+  top-level statement naming such a word it marks the wordlist the statement
+  runs in, which is where the loader compiles the product; a later definition
+  naming a word nothing resolves, looked up through a marked wordlist, gets
+  `CHECK` verdict 2: no diagnostic, its declared signature recorded for its
+  callers, its body left to the `bin/hb --load` run that check.f performs next
+  (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`). A product the source declares
+  resolves, so the pre-pass checks its uses itself: `FUNCTION:`'s word against
+  its declaration group and the word a `generates:` row declares against the
+  row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
   `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :87), `CTX0`
@@ -1714,21 +1719,25 @@ the rule.
   after its `FUNCTION:` rows, the require-order miss of `REC-STATE@` (:64) is
   now the run's to judge. A definer's created words keep its `does>` clause's
   declared effect when the clause or the definer's own body is deferred; the
-  run judges the deferred text (verify-source.f `VERIFY-DOES`). Four limits
-  remain. A `TRUSTED:` body is asserted, not walked, and an evaluate reached
-  through a `defer` or executed xt is not seen, so neither makes its caller a
-  renderer. A word the checker already holds resolves before any mark is
-  asked, so a product shadowing it is judged against that word, a refusal the
-  load does not make: every engine word on bin/hb, which carries no seeded
-  pool, and every row a seeded engine has taken. A product `BYTE-COPY` or
-  `BYTE-CHECK-N` used in `package P private` loads 0 and checks 70
-  (`E-INPUT-UNDERFLOW`). A straight-line wrapper around a definer is learned
-  only from a certified body (verify-source.f `VERIFY-WRAPPER`), so one whose
-  body is deferred creates words the pre-pass does not know outside the mark's
-  cover: with `CKR-SEVEN` a product of package `P`'s public section,
-  `: DEFR ( n -- ) create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN +
-  DEFR ;  5 MK Y  : V ( -- n ) Y ;` loads 0 and checks 70 (`E-UNDEFINED` `Y`
-  in `V`).
+  run judges the deferred text (verify-source.f `VERIFY-DOES`). A `TRUSTED:`
+  body is not checked, but the pre-pass binds its calls, so a trusted wrapper
+  of `evaluate` renders (the top-level rule below):
+  `TRUSTED: EVW ( -- ) s" : EVQ ( -- n ) 2 ;" evaluate ;  EVW  : V ( -- n )
+  EVQ ;` loads 0 and checked 70 (`E-UNDEFINED` `EVQ` in `V`) before, 0 now. A
+  straight-line wrapper around a definer is learned only from a certified body
+  (verify-source.f `VERIFY-WRAPPER`), but one whose body is deferred keeps the
+  flags of the calls it binds, and a statement no definer takes marks its
+  wordlist when its word reaches `create` (the top-level rule below): with
+  `CKR-SEVEN` a product of package `P`'s public section, `: DEFR ( n -- )
+  create , does> ( -- n ) @ ;  : MK ( n -- ) P:CKR-SEVEN + DEFR ;  5 MK Y  : V
+  ( -- n ) Y ;` loads 0 and checked 70 (`E-UNDEFINED` `Y` in `V`) before, 0
+  now. Two limits remain. An evaluate reached through a `defer` or an executed
+  xt is not seen, so it makes no caller a renderer (the top-level rule's first
+  limit). A word the checker already holds resolves before any mark is asked,
+  so a product shadowing it is judged against that word, a refusal the load
+  does not make: every engine word on bin/hb, which carries no seeded pool, and
+  every row a seeded engine has taken. A product `BYTE-COPY` or `BYTE-CHECK-N`
+  used in `package P private` loads 0 and checks 70 (`E-INPUT-UNDERFLOW`).
 - **A definer that writes its word as text states what it makes with
   `generates:`.** `+USER` (lib/task.f) and `COMMAND` (lib/process-command.f)
   build a colon definition and run it through `INCLUDE-EVALUATE`, so no `does>`
@@ -1769,6 +1778,94 @@ the rule.
   D's row with D's other facts, so a D defined again states what it makes
   afresh. `tools/check.f` certifies `lib/process-command.f` and
   `lib/process-task-test.f`.
+- **A top-level token is checked as the load would run it, and nothing runs.**
+  Under composition, in `tools/check.f`'s pre-pass, `--all-errors` and
+  `--verify-only`, a top-level token the source pre-pass does not read as part
+  of a statement (a definition, a loader, a declaration its table reads) is
+  one the load runs, and `'` ticks the next. The pre-pass asks the checker
+  about each in source order, over the declarations made before it
+  (`verify-source.f` `TOP-TOKEN`, `checker.f` `CHECKER-VERIFY-TOP`). A number
+  the engine's reader takes is no name: the pre-pass asks `num-parse`, the
+  routine the interpreter's number step runs, so `-3`, `$FF` and `1.5` load
+  and check, and `99999999999999999999`, `1.` and `$GG` are refused at both,
+  `E-UNDEFINED` by the load and `E-UNDEFINED-TOP-LEVEL` by the check. Any
+  other token takes the walk a body's token takes, folding ASCII case as the
+  store does: a qualified name resolves as there, a malformed one is
+  `E-BAD-QUALIFIED-TOP-LEVEL`, and a bare token `using` shadows or makes
+  ambiguous is refused at the token by a body's rule (`DEF-REFUSED`): every
+  `tools/check.f` path exits 70, the plain check stops there, and
+  `--all-errors` and `--verify-only` go on, where `--load` exits 105 for the
+  shadow and 94 for the ambiguity. One qualified name resolves as the
+  engine's top-level find resolves it, not as a body's walk: the open
+  package's own `PKG:tail`, when its public section lacks `tail`, names a
+  global `tail` (`checker.f` `OPEN-TAIL-GLOBAL?`). The word the token names,
+  so found, is also the one whose facts say what the statement may define
+  (the mark below): one selection, `CHECKER-TOP-SYM`, answers both. A word
+  the engine binds with no effect row, such as `evaluate`, is judged by what
+  the checker holds under its global name (`ENGINE-WORD-SYM`). Measured:
+  `package QP  s" : QPW ( -- n ) 7 ;" QP:evaluate  QPW drop  ;package` loads
+  0 and is `deferred` at `QPW` under `--verify-only`. A token `using`
+  refuses names no word, as the load runs none, so it defines nothing:
+  measured, under a `using` whose package exports its own `evaluate`,
+  `s" " evaluate  : QM ( -- ) ;  NOSUCH` loads 105 at `evaluate`, and
+  `--all-errors` and `--verify-only` refuse `evaluate` and then `NOSUCH`
+  (`E-UNDEFINED-TOP-LEVEL`). Compile-only words are no top-level
+  words: `if`, `;`, `does>`, `[char]`, `[']`, `[:`, `is` and `.(` alone load
+  70 `E-UNDEFINED`. Measured before: `1 NOSUCHWORD drop`, and `FOO drop`
+  before `: FOO ( -- n ) 1 ;`, were refused only by the run, and
+  `--verify-only` called them `verified`; now each is
+  `E-UNDEFINED-TOP-LEVEL` at the token, a span (`docs/repair-diagnostics.md`),
+  before anything runs.
+  A word that may read the source after it takes tokens no scan knows without
+  running it, and operands cross line ends, so a line is no boundary: one
+  whose body reaches `parse-name` or `create` (`CTL-PARSES`, by axiom and
+  inherited as `CTL-RENDERS` is), and a `defer`. A top-level statement no
+  definer arm takes also marks its wordlist, as a renderer does, when its word
+  reaches `create` (`CTL-CREATES`, alike) or is a `defer`, since either may
+  define the name it reads; a learned definer's statement does not, as its row
+  names the one word `create` makes. A word a top-level `create` or
+  `variable` makes only pushes its cell: it opens none, and a body that calls
+  it takes none of these flags from it (`checker.f` `TRUST-RAW`). Measured:
+  `require lib/test.f  1 1 T= NOSUCHX`, whose `T=` reaches lib/string.f's
+  `STR-MIN-I64$` through `FMT:.INT` (lib/fmt.f:104 `INT>NUM`), is
+  `E-UNDEFINED-TOP-LEVEL` at `NOSUCHX` under `--verify-only`, as its load
+  refuses it (rc 70), and after `: D ( n -- ) create , does> ( -- n ) @ ;
+  5 D X`, `: G ( -- n ) NOSUCH ;` is `E-UNDEFINED` at `NOSUCH` there, as its
+  load refuses it (rc 70).
+  A `TRUSTED:` body takes the flags of the calls the pre-pass binds in it, up
+  to its `does>` (`verify-source.f` `TRUSTED-CALL`), and every flag when one
+  is unbound; a body whose check is deferred keeps the flags of the calls it
+  binds. From such a word to the next statement the pre-pass reads nothing
+  is resolved; `--verify-only` reports the stretch once, at the word, as
+  `W-CHECK-DEFERRED` when it holds anything but blanks and comments, and
+  answers `deferred` when nothing is refused. A refused token leaves the rest
+  of its stretch unresolved and unreported, as the load stops there. A word that
+  renders source opens no stretch, as it reads only the text it renders: it
+  marks the wordlist (the rule above), and a later top-level name only that
+  text may define opens the stretch at the name. Measured:
+  `s" : EVX ( -- n ) 1 ;" evaluate  EVX drop` loads 0, checks 0, and is
+  `deferred` at `EVX` under `--verify-only`.
+  Three limits remain. A call through an execution token binds no callee, in
+  a checked body and a `TRUSTED:` one alike, so it gives its caller no facts:
+  `execute`, `catch` or `finally` of an xt, and a body's call to a `defer`,
+  such as `TDECL-EVAL-XT` (src/core/sumtype.f), the boundary through which
+  the engine's type, structure and layout definers evaluate. At top level
+  `TRUSTED: EVW ( -- ) s" : EVQ ( -- n ) 2 ;" evaluate ;  ' EVW execute  EVQ
+  drop` loads 0 and checks 70 (`E-UNDEFINED-TOP-LEVEL` `EVQ`). The tree holds 202
+  top-level `execute`, `catch` and `finally` in 42 files, 195 of them right
+  after a `'` that ticks the xt. The product of a plain `create` wrapper, one
+  with no `does>`, named in a body is deferred where the load refuses it:
+  `: MKS ( n -- ) create , ;  5 MKS Q  : USEQ ( -- n ) Q @ ;` loads 70
+  (`E-UNDEFINED` `Q` in `useq`) and is `deferred` at `MKS` under
+  `--verify-only`; the tree holds no such wrapper. The `does>` part of a
+  definer, checked or `TRUSTED:`, gives its products no facts, so the token
+  after a product whose clause parses is checked:
+  `: DEFP ( -- ) create does> ( -- ) drop parse-name 2drop ;  DEFP PP  PP
+  NOSUCH` loads 0 and checks 70 (`E-UNDEFINED-TOP-LEVEL` `NOSUCH`). Of the
+  tree's 56 `create … does>` definers (52 `:`, 4 `TRUSTED:`), one has a
+  `does>` part that reaches a parsing, rendering or defining word:
+  test/certify-does-definer.f:112 `CDD-RES-CD`, whose clause calls the
+  definer `CDD-RES-D`.
 - **A `TRUSTED:` body may answer a family value from loose cells; a checked body
   groups its own result.** The native elaborator takes the declared row as the
   grouping of the cells the body leaves (`elaborate.f` `TRUSTED-FRAME-RESHAPE`):

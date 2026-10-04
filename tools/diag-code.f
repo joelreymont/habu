@@ -13,10 +13,12 @@ public
 \ definition: a refused definition, the shape of every code without a row.
 \ declaration and storage: a refused family or storage declaration.
 \ source-span: a refusal placed in the source outside any definition.
-\ input: an input refused whole. record: a refusal, mostly of a checker record,
-\ that names its token and its place when known. warning: no refusal, since
-\ the definition loaded. using-refusal: a bare token with its used packages.
-ENUM shape definition declaration storage source-span input record warning using-refusal ;ENUM
+\ deferral: no refusal, a top-level stretch placed in the source that the
+\ source pre-pass leaves to the run. input: an input refused whole. record: a
+\ refusal, mostly of a checker record, that names its token and its place when
+\ known. warning: no refusal, since the definition loaded. using-refusal: a
+\ bare token with its used packages.
+ENUM shape definition declaration storage source-span deferral input record warning using-refusal ;ENUM
 
 private
 
@@ -36,6 +38,12 @@ private
       construct shape source-span s" close_string" s" " EXIT THEN
    c u s" E-MALFORMED-REGISTRY-ROW" STR= IF
       construct shape source-span s" close_primitive_row" s" " EXIT THEN
+   c u s" E-UNDEFINED-TOP-LEVEL" STR= IF
+      construct shape source-span s" unknown_rejection" s" " EXIT THEN
+   c u s" E-BAD-QUALIFIED-TOP-LEVEL" STR= IF
+      construct shape source-span s" fix_qualified_name" s" " EXIT THEN
+   c u s" W-CHECK-DEFERRED" STR= IF
+      construct shape deferral s" rewrite_uncheckable" s" " EXIT THEN
    c u s" E-GENERATES-ROW" STR= IF
       construct shape record
       s" fix_generates_row delete_generates_row fix_signature_syntax fix_signature_type fix_signature_arity fix_bare_ptr_element"
@@ -88,13 +96,15 @@ public
 : EVIDENCE ( ptr u8 n -- ptr u8 n )
    ROW 2swap 2drop rot drop ;
 
-\ Whether a record under CODE is a refusal, which a warning is not.
+\ Whether a record under CODE is a refusal, which a deferral and a warning are
+\ not.
 : REFUSAL? ( ptr u8 n -- bool )
    SHAPE MATCH shape
       definition OF STR-TRUE ENDOF
       declaration OF STR-TRUE ENDOF
       storage OF STR-TRUE ENDOF
       source-span OF STR-TRUE ENDOF
+      deferral OF STR-FALSE ENDOF
       input OF STR-TRUE ENDOF
       record OF STR-TRUE ENDOF
       warning OF STR-FALSE ENDOF

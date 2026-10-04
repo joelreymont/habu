@@ -53,6 +53,7 @@ PTR-VARIABLE STR-LAST-A
 variable STR-LAST-U
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
+PTR-VARIABLE TOP-REFUSED                 \ the top-level token refused last (TOP-RESOLVE)
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
 create BODY-BUF BODYBUF-CAP allot
@@ -233,12 +234,29 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    loop
    0 0= 0= ;
 
+\ A file whose first two bytes are `#!` names its interpreter on that line, and
+\ the loader reads the line as a comment (src/core/include.f SHEBANG-COMMENT):
+\ a token at the first byte of scanned bytes that start their file.
+: SHEBANG? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   BASE-BYTE @ 0<>  a SOURCE@ <>  or  u 2 <  or IF 0 0= 0= EXIT THEN
+   a c@ $23 =  a 1 + c@ $21 =  and ;
+
+\ The byte that ends the comment a token opens, as the loader reads it: the
+\ line's end after `\`, `)` after `(`; 0 for any other token.
+: COMMENT-END ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 1 <> IF 0 EXIT THEN
+   a c@ 92 = IF 10 EXIT THEN
+   a c@ 40 = IF 41 EXIT THEN
+   0 ;
+
 : NEXT ( -- ptr u8 n )
    BEGIN
       NEXT-RAW
       dup 0= IF EXIT THEN
-      2dup 1 = swap c@ 92 = and IF 2drop 10 SKIP-PAST ELSE
-      2dup 1 = swap c@ 40 = and IF 2drop 41 SKIP-PAST ELSE
+      2dup SHEBANG? IF 2drop 10 SKIP-PAST ELSE
+      2dup COMMENT-END dup 0<> IF nip nip SKIP-PAST ELSE drop
       SKIP-STRINGS @ 0= IF 2dup LOCAL? IF EXIT THEN THEN
       2dup PRINT-OPENER? IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
@@ -703,7 +721,8 @@ CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
 CAST: CREATES-ACTION ( n -- [ n -- n ] )
 CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
-CAST: RENDERS-ACTION ( n -- [ n -- bool ] )
+CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
+CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ The checked dispatchers name their offsets through layout.f's
 \ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
@@ -730,12 +749,27 @@ CAST: RENDERS-ACTION ( n -- [ n -- bool ] )
 : RECORD-CREATED ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RECORD-CREATED-OFF OWNER-XT CREATED-ACTION execute ;
 
-\ Does the symbol name a word that renders source when it runs (src/core/checker.f
-\ CTL-RENDERS)? When it does, the checker marks the wordlist the statement runs
-\ in, and a definition read after it that names a word nothing in scope defines
-\ is left to the run (CHECK's verdict 2) instead of refused E-UNDEFINED.
-: RENDERS-MARK? ( n -- bool )
+\ Does the token run a word that may define words no source text spells, by one
+\ of the facts MASK names (src/core/checker.f CTL-RENDERS, CTL-CREATES,
+\ CHECKER-VERIFY-RENDERS)? When it does, the checker marks the wordlist the
+\ statement runs in, and a definition or a top-level token read after it that
+\ names a word nothing in scope defines is left to the run (CHECK's verdict 2,
+\ or a stretch deferred at the token) instead of refused E-UNDEFINED.
+: RENDERS-MARK? ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
+
+\ The two masks it is asked with: a text renderer (RECORD-DEFINER?), and a text
+\ renderer or a word that calls `create` (TOP-TOKEN). They are bound at top
+\ level because the checker loads before the check hook, so a source boot has
+\ no checked row for its constants (test/cold-naming-test.f).
+CTL-RENDERS constant MARK-RENDERS
+CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
+
+\ A call in the body of the TRUSTED: word NAME: the checker adds what the word
+\ the token names may do when it runs to what NAME may do
+\ (src/core/checker.f CHECKER-VERIFY-REACH).
+: TRUSTED-REACH ( ptr u8 n ptr u8 n -- )
+   NCOMP-DISPATCH:DECL-VERIFY-REACH-OFF OWNER-XT REACH-ACTION execute ;
 
 \ ---- the definers this pre-pass learns from the sources it reads -------------
 \ A `create … does>` definition IS a definer, and the effect of every word it
@@ -758,12 +792,13 @@ CAST: RENDERS-ACTION ( n -- [ n -- bool ] )
 \ lib/queue.f` refused NG-BUFFER, created at lib/type/deftype.f:60.
 \ A third class is a definer whose product text the scan never reads because
 \ it is rendered and evaluated at load (FUNCTION:, COMMAND, +USER). The checker
-\ learns that it renders from its body (CTL-RENDERS), and RECORD-DEFINER? marks
-\ the statement's wordlist, leaving what the text defines to the run. What the
-\ source states is still read: a `generates:` row declares the word its definer
-\ makes from the next token (RECORD-GENERATES), and FUNCTION:'s declaration
-\ group is its word's effect (RECORD-FFI-FUNCTION), so those names are checked
-\ here and only the rest is left to the run.
+\ learns that it renders from its body (CTL-RENDERS), and RECORD-DEFINER?, or
+\ TOP-TOKEN for a statement no arm takes, marks the statement's wordlist,
+\ leaving what the text defines to the run. What the source states is still
+\ read: a `generates:` row declares the word its definer makes from the next
+\ token (RECORD-GENERATES), and FUNCTION:'s declaration group is its word's
+\ effect (RECORD-FFI-FUNCTION), so those names are checked here and only the
+\ rest is left to the run.
 \
 \ A ROW IS KEYED BY THE CHECKER'S SYMBOL ID for the definer's name, so every
 \ spelling that names the definer resolves through the scope chain the checker
@@ -1097,6 +1132,23 @@ DUPLICATE-INIT
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu TRUST-DEFER-SIGNATURE ;
 
+variable TRUSTED-DOES                         \ the trusted body's `does>` was read
+
+\ A token of the trusted body NAME before its `does>`, asked of the checker
+\ (TRUSTED-REACH) when it may call a word. A local, a group, a parsing keyword
+\ with its operand and a string call none, and SKIP-DEF-TOKEN takes them; nor
+\ do a number, a control word, a loop index, or `is` with the deferred word it
+\ sets.
+: TRUSTED-CALL ( ptr u8 n -- ) {: na:ptr nu:n :}
+   TRUSTED-DOES @ LOCAL-TOKEN? or IF EXIT THEN
+   TOKEN-A @ TOKEN-U @ {: a:ptr u:n :}
+   a u s" {:" CORE-STR=  a u BODY-PARSER? or  a u STRING-OPENER? or IF EXIT THEN
+   a u num-parse nip nip IF EXIT THEN
+   a u WRAP-CTL-TOK? IF EXIT THEN
+   a u s" i" STR=CI  a u s" j" STR=CI or  a u s" unloop" STR=CI or IF EXIT THEN
+   a u s" is" STR=CI IF OPERAND 2drop EXIT THEN
+   a u na nu TRUSTED-REACH ;
+
 \ A trusted body is ASSERTED, never verified - but its `does>` clause is a
 \ DECLARATION, and what it declares is the effect the load path gives every word
 \ the definer creates: habu2.f EM-COMPILE-PUBLISH-TRUSTED runs CHECK-DOES! at the
@@ -1111,16 +1163,21 @@ DUPLICATE-INIT
 \ A `does>` inside a string is no clause: the string opener leaves through
 \ SKIP-BODY-TOKEN below, which consumes its rest (the four trusted DOES-*
 \ bodies in src/compiler/native/checker-owner.f name fields as `s" does> …"`).
+\ What running the word may do is still what its calls may do, and the tokens
+\ before its `does>` run when it does (TRUSTED-CALL).
 : SCAN-TRUSTED-BODY ( ptr u8 n -- ) {: na:ptr nu:n :}
    BODY-LOAD-RESET
    LOCALS-RESET
+   0 TRUSTED-DOES !
    BEGIN
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
          REQUIRE-SIGNATURE na nu DEFINER-RECORD-AS
+         -1 TRUSTED-DOES !
       ELSE
+         na nu TRUSTED-CALL
          SKIP-DEF-TOKEN
       THEN
    AGAIN ;
@@ -1398,11 +1455,19 @@ PTR-VARIABLE STG-START
    THEN
    2drop SCAN-STORAGE-TYPE 2drop SOURCE@ 0 ;
 
+\ The load stops at a count token it refuses to resolve, refused there as a
+\ top-level token (TOP-RESOLVE), so the declaration after it is read but not
+\ judged: its count is refused once.
+: COUNT-REFUSED? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 0<>  a TOP-REFUSED @ =  and ;
+
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   count countu COUNT-REFUSED? IF EXIT THEN
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
 \ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
@@ -1420,6 +1485,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME {: name:ptr nameu:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   count countu COUNT-REFUSED? IF EXIT THEN
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
 
 : RECORD-TYPED-VARIABLE ( -- )
@@ -1763,14 +1829,14 @@ variable FFI-SIG-U
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ … then a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
    \ TASK:+USER): what it defines is text this scan never reads, so the checker
-   \ marks the statement's wordlist and leaves a later definition naming a word
-   \ nothing resolves to the run (src/core/checker.f CTL-RENDERS, UNSEEN-MARK$).
-   \ It marks whether or not an arm below then records the product a
-   \ `generates:` row declares (RECORD-GENERATES): that name resolves and is
-   \ checked against the row, and the mark covers what no row declares, such as
-   \ COMMAND's NAME#VEC and NAME#BUF.
-   a u FIND-SYM RENDERS-MARK?
-   {: renders:bool :}
+   \ marks the statement's wordlist and leaves a later definition or top-level
+   \ token naming a word nothing resolves to the run (src/core/checker.f
+   \ CTL-RENDERS, UNSEEN-MARK$). It marks whether or not an arm below then
+   \ records the product a `generates:` row declares (RECORD-GENERATES): that
+   \ name resolves and is checked against the row, and the mark covers what no
+   \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
+   \ takes is TOP-TOKEN's, which marks it again and resolves it.
+   a u MARK-RENDERS RENDERS-MARK? drop
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
@@ -1782,7 +1848,7 @@ variable FFI-SIG-U
    \ token resolves through the same FIND-SYM every other name does, so the
    \ qualified and the bare-under-`using` spelling reach the one row.
    a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
-   renders ;
+   0 0= 0= ;
 
 \ A refused definition's signature and body, to its `;`, skipped as a trusted
 \ body is, so nothing of it is checked or recorded.
@@ -1819,6 +1885,141 @@ variable FFI-SIG-U
       APPEND-BODY-TOKEN
    AGAIN ;
 
+\ ---- top-level tokens --------------------------------------------------------
+\ A token no arm of the scan acts on is one the load runs, and `'` ticks its
+\ operand. Under composition - the verifier's child, --all-errors and check.f's
+\ pre-pass - the checker answers what the load does with each
+\ (CHECKER-VERIFY-TOP): a number the engine's reader takes (num-parse) is done,
+\ and any other token resolves as the load resolves it, in source order, over
+\ the store this scan has filled; `char`'s operand is no name. None of it runs.
+\
+\ A word that may read the source after it - one that parses or is deferred -
+\ takes tokens no scan can know without running it, and a name a rendering
+\ statement may define is the run's to judge. From such a token to the next
+\ one the scan acts on - a definition, a loader, a definer of the table above,
+\ where the scan already takes a statement to start - the stretch is deferred
+\ to the run: nothing in it is resolved. A word that renders source opens no
+\ stretch: it reads only the text it renders. Anything but blanks and comments
+\ in a stretch is a token the run may read, so the verifier's child, which opts
+\ in (REPORT-DEFERRALS), has the stretch reported once, at the token that
+\ opened it (W-CHECK-DEFERRED, verdict deferred), and answers `deferred` when
+\ nothing is refused. A refusal opens a stretch too, unreported: the load stops
+\ at it, so the operands of a misspelt parsing word, or the rest of a
+\ declaration its definer misread, are not refused after it.
+CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
+: TOP-VERDICT ( ptr u8 n bool -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
+CAST: STRETCH-ACTION ( n -- [ ptr u8 n -- ] )
+: REPORT-STRETCH ( ptr u8 n -- )
+   NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
+
+variable TOP-DEFER                               \ a stretch is open
+PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
+variable TOP-DEFER-I                             \ where the run's reading starts in the source
+variable DEFER-REPORT                            \ the child reports stretches
+variable DEFER-SEEN                              \ and has reported one
+
+: TOP-CLOSE ( -- )
+   0 TOP-DEFER !  0 TOP-DEFER-U ! ;
+
+\ From the source offset I up to END: past the blanks, past the token there, as
+\ NEXT-RAW reads them, and past the byte CH, as SKIP-PAST reads it.
+: TOP-BLANKS ( n n -- n )
+   {: end:n :}
+   BEGIN dup end < IF SOURCE@ over + c@ 33 < ELSE 0 0= 0= THEN WHILE 1+ REPEAT ;
+
+: TOP-WORD ( n n -- n )
+   {: end:n :}
+   BEGIN dup end < IF SOURCE@ over + c@ 32 > ELSE 0 0= 0= THEN WHILE 1+ REPEAT ;
+
+: TOP-PAST ( n n n -- n )
+   {: end:n ch:n :}
+   BEGIN dup end < WHILE
+      SOURCE@ over + c@ ch = IF 1+ EXIT THEN
+      1+
+   REPEAT ;
+
+\ Past the comment the token at I opens, as NEXT skips it, and true; else I and
+\ false.
+: TOP-COMMENT ( n n -- n bool )
+   {: i:n end:n :}
+   i end TOP-WORD {: j:n :}
+   SOURCE@ i +  j i -  COMMENT-END {: ch:n :}
+   ch 0= IF i 0 0= 0= EXIT THEN
+   j end ch TOP-PAST 0 0= ;
+
+\ Does the run read a token from where the stretch's reading starts to END? A
+\ comment is none, as the scan skips it; a string or `.(` is one.
+: TOP-READ? ( n -- bool )
+   {: end:n :}
+   TOP-DEFER-I @
+   BEGIN
+      end TOP-BLANKS
+      dup end < WHILE
+      end TOP-COMMENT 0= IF drop 0 0= EXIT THEN
+   REPEAT
+   drop 0 0= 0= ;
+
+\ The open stretch's report, once the run would read a token of it before END.
+: TOP-DUE ( n -- )
+   {: end:n :}
+   TOP-DEFER-U @ 0= IF EXIT THEN
+   end TOP-READ? 0= IF EXIT THEN
+   DEFER-REPORT @ IF TOP-DEFER-A @ TOP-DEFER-U @ REPORT-STRETCH  -1 DEFER-SEEN ! THEN
+   0 TOP-DEFER-U ! ;
+
+\ The checker's answer for a token: a refusal or a deferral opens the stretch
+\ at it, the run's reading starting after it when it runs a word that may read
+\ on, and at it when the token itself is the run's.
+: TOP-RESOLVE ( ptr u8 n bool -- )
+   {: a:ptr u:n runs:bool :}
+   a u runs TOP-VERDICT {: v:n :}
+   v -1 = IF EXIT THEN
+   -1 TOP-DEFER !
+   v 0= IF a TOP-REFUSED ! EXIT THEN
+   a TOP-DEFER-A !  u TOP-DEFER-U !
+   a SOURCE@ -  v 2 = IF u + THEN  TOP-DEFER-I ! ;
+
+\ `'` and `char` take the next token. `'` resolves it as the load does; `char`'s
+\ is no name.
+: TOP-OPERAND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   OPERAND {: o:ptr ou:n :}
+   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
+   a u CHAR-KEYWORD? IF EXIT THEN
+   o ou 0 0= 0= TOP-RESOLVE ;
+
+\ Any other token: a number the engine's reader takes is done. A word that may
+\ define words this scan never reads when it runs - it renders source
+\ (`;FUNCTION`, CMD:COMMAND, TASK:+USER, `evaluate`), calls `create`, or is
+\ deferred - has the checker mark the statement's wordlist, with or without
+\ composition, and a name that resolves nowhere after it, in a definition or at
+\ top level, is left to the run (src/core/checker.f CTL-RENDERS, CTL-CREATES,
+\ UNSEEN-MARK$). Only here does a word that calls `create` mark: a definer arm
+\ that takes the statement (RECORD-DEFINER?) records the name it makes.
+: TOP-TOKEN ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u num-parse nip nip IF EXIT THEN
+   a u MARK-UNSEEN RENDERS-MARK? drop
+   COMPOSE-ON @ 0=  TOP-DEFER @ 0<>  or IF EXIT THEN
+   a u 0 0= TOP-RESOLVE ;
+
+\ A declaration a definer of the table above reads closes the stretch, unless
+\ the checker counted a refusal while it was read (MULTI-ERR-N, where refusals
+\ do not throw): then the stretch opens, unreported.
+: TOP-DEFINER? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   MULTI-ERR-N @ {: before:n :}
+   a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
+   TOP-CLOSE
+   MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
+   0 0= ;
+
+\ `kernel:` is the engine's synonym for `:` (src/habu/definers.f DEFINE?),
+\ matched case-folded as the engine's keywords are.
+: COLON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" :" CORE-STR=  a u s" kernel:" STR=CI or ;
+
 \ A parsing keyword and its operand are one value on the interpret stack, and
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
 \ hands the count reader `char`, which names the count's word. A load a
@@ -1828,19 +2029,22 @@ variable FFI-SIG-U
    SCAN-RESET
    0 DUPLICATE-U !
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ CHECKER-VERIFY-SOURCE!
-   NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !
+   NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
+   TOP-CLOSE
    BEGIN
       NEXT-SCAN dup 0 > WHILE
+      over SOURCE@ - TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
       2dup FILE-SCOPE-STEP
-      2dup TOP-PARSER? IF 2drop OPERAND 2drop ELSE
-      2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
-      2dup COMPOSE-TOP? IF 2drop ELSE
-      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN THEN THEN
+      2dup TOP-PARSER? IF TOP-OPERAND ELSE
+      2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
+      2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
+      2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
       FILE-NEUTRAL? IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
+   SOURCE-U @ TOP-DUE
    PEND-RELEASE ;
 
 \ The checker locates the packets it writes in the bytes being scanned, whose
@@ -1849,9 +2053,10 @@ variable FFI-SIG-U
    SOURCE@ SOURCE-U @ BASE-LINE @ BASE-COL @ BASE-BYTE @ DIAG-SOURCE! ;
 
 \ Nested files share the checker window but not the scanner cursor. The saved
-\ source and token context belongs to the caller; declarations and learned
-\ definers belong to the entire composition. A file's packets locate in that
-\ file, and on return or throw the checker is armed with the caller's bytes
+\ source, token and open-stretch context belongs to the caller; declarations,
+\ learned definers and the fact that a stretch was reported belong to the
+\ entire composition. A file's packets locate in that file, and on return or
+\ throw the checker is armed with the caller's bytes
 \ again, or disarmed when the subject's scan ends, so no nested file's bytes,
 \ which its loader frame releases, stay armed.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
@@ -1860,10 +2065,13 @@ variable FFI-SIG-U
    SOURCE-A @ SOURCE-U @ SCAN-I @
    BASE-LINE @ BASE-COL @ BASE-BYTE @
    TOP-PREV-A @ TOP-PREV-U @ TOP-CUR-A @ TOP-CUR-U @
+   TOP-DEFER @ TOP-DEFER-A @ TOP-DEFER-U @ TOP-DEFER-I @ TOP-REFUSED @
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
    FILE-PKG @ FILE-USE @ PEND-BASE @
    {: olda:ptr oldu:n oldi:n oldbl:n oldbc:n oldbb:n
-      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n oldpath:ptr oldpathu:n
+      oldprev:ptr oldprevu:n oldcur:ptr oldcuru:n
+      olddefer:n olddefa:ptr olddefu:n olddefi:n oldrefused:ptr
+      oldpath:ptr oldpathu:n
       oldpkg:n olduse:n oldbase:n :}
    src srcu SOURCE!
    SOURCE-ARM
@@ -1879,6 +2087,8 @@ variable FFI-SIG-U
    oldbl BASE-LINE !  oldbc BASE-COL !  oldbb BASE-BYTE !
    oldprev TOP-PREV-A !  oldprevu TOP-PREV-U !
    oldcur TOP-CUR-A !  oldcuru TOP-CUR-U !
+   olddefer TOP-DEFER !  olddefa TOP-DEFER-A !
+   olddefu TOP-DEFER-U !  olddefi TOP-DEFER-I !  oldrefused TOP-REFUSED !
    oldpath COMPOSE-CUR-PATH-A !  oldpathu COMPOSE-CUR-PATH-U !
    oldpkg FILE-PKG !  olduse FILE-USE !  oldbase PEND-BASE !
    oldpathu 0 > IF
@@ -1945,6 +2155,14 @@ variable CAND-VERDICT
    CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
 
 public
+
+\ The verifier's child has the deferred stretches of its composition reported
+\ (tools/check-verify-child.f); DEFERRED? says whether one was.
+: REPORT-DEFERRALS ( -- )
+   -1 DEFER-REPORT !  0 DEFER-SEEN ! ;
+
+: DEFERRED? ( -- bool )
+   DEFER-SEEN @ 0<> ;
 
 \ The byte where the token the scan read last starts, at the base the source
 \ was given, or that base before the scan reads one: after a throw out of a
