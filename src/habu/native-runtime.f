@@ -133,6 +133,7 @@ package NATIVE-RUNTIME
 ;package
 execute
 s" src/habu/repl.f" required
+s" src/habu/main.f" required
 s" src/core/top-row.f" required
 s" lib/c2-owner.f" required
 s" src/habu/interpret.f" required
@@ -168,6 +169,7 @@ TRUSTED: BIND-OWNER ( -- )
 : SEAL ( -- )
    NCOMP:INSTALL
    OUTER:INSTALL-EVALUATE
+   ENGINE-MAIN:INSTALL
    BIND-OWNER
    SEAL-CAPTURE ;
 

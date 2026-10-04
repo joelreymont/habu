@@ -23,8 +23,13 @@ public
    SCRIPT-ARGC 0 ?do i SCRIPT-ARGV ARGS i 1 + ptr-field ! loop
    ARGS SCRIPT-ARGC 1 + ;
 
+\ The argv probe itself is a closed --load unit, while RUN leaves root source's
+\ arbitrary stack effect in place for real process startup.
+TRUSTED: CLEAR-STACK ( -- )
+   depth 0 ?do drop loop ;
 
 ;package
 
 \ Outside any package, as at boot.
 MAIN-ARGV-CHILD:VECTOR ENGINE-MAIN:RUN
+MAIN-ARGV-CHILD:CLEAR-STACK

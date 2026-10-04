@@ -11,8 +11,9 @@
 \ `--` included, is the one program file, and the rest are its arguments.
 \ Past argv[1] only `--` is special: `--load a.f --x` loads a file named `--x`.
 \
-\ Every route builds one stream of source, as the assembly does, and it is
-\ interpreted once through the loaded-bytes seam SOURCE-ROOT:INCLUDE-INTERPRET.
+\ Every route builds one stream of source, as the assembly does. The root
+\ stream runs through the unrestricted outer interpreter; only the individual
+\ files named by script-required enter the loader's closed source boundary.
 \ `--load` writes a `s" <path>" script-required` row per file, so the registry
 \ loads each in its own include frame and skips a file the engine already
 \ holds. The program file, and the first file of `--build`, are read raw into
@@ -21,15 +22,17 @@
 \ as the engine measured does it (`--build a.f missing.f` prints a.f's output,
 \ then include's "cannot open").
 \
-\ The assembly runs this at boot and reads the process's argv. RUN takes the
-\ vector as an argument instead, so a test can hand it one it built; the boot
-\ and its routing of stdin and the REPL stay in the assembly for now.
+\ MAIN reads the process's argv and stdin. RUN takes a vector instead, so a
+\ test can hand it one it built.
 
 require lib/string.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/core/include.f
 require src/os/env-base.f
+require src/habu/interpret.f
+require src/habu/repl.f
+require lib/fmt.f
 
 package ENGINE-MAIN
 
@@ -160,10 +163,13 @@ variable USED
    fd close
    ARENA @ from + USED @ from - SHEBANG ;
 
+: START-STREAM ( -- )
+   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
+   0 USED ! ;
+
 \ The stream for files [first, end); raw says whether the first is read raw.
 : STREAM ( ptr ptr u8 n n bool -- ptr u8 n ) {: argv:ptr first:n end:n raw:bool :}
-   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
-   0 USED !
+   START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
       argv i ARG
@@ -174,6 +180,66 @@ variable USED
       then
    loop
    ARENA @ USED @ ;
+
+: STDIN ( -- ptr u8 n )
+   START-STREAM
+   begin 0 STEP until
+   ARENA @ USED @ SHEBANG
+   ARENA @ USED @ ;
+
+\ Root source can change the user's stack by any amount. The outer loop owns
+\ that effect; the checked caller cannot declare a fixed result row for it.
+TRUSTED: RUN-TEXT ( ptr u8 n -- )
+   OUTER:INTERPRET ;
+
+\ APP-ENTRY holds an executable token supplied by the image writer. Keep the
+\ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.
+TRUSTED: APP-ACTION ( n -- [ -- ] ) ;
+
+TRUSTED: APP-RUN ( -- )
+   data-base APP-ENTRY:XT-CELL + @ APP-ACTION execute ;
+
+: APP? ( -- bool )
+   data-base APP-ENTRY:XT-CELL + @ 0<> ;
+
+\ The x86 kernel calls this reporter with the throw code on the data stack.
+\ It has no machine-side exit hook; run and clear that hook before any report.
+TRUSTED: HOOK-ACTION ( n -- [ -- ] ) ;
+
+TRUSTED: EXIT-HOOK ( -- )
+   data-base EXIT-HOOK-CELL + {: slot:ptr :}
+   slot @ {: xt:n :}
+   0 slot !
+   xt 0<> if xt HOOK-ACTION execute then ;
+
+: THROW-REPORT ( n -- )
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   FMT:SB-INT
+   10 SB-APPEND-C
+   2 SB$ write drop ;
+
+: REPORT ( n -- )
+   {: code:n :}
+   EXIT-HOOK
+   code 1 >= code 255 <= and if NULL$ code die then
+   code THROW-REPORT
+   data-base REFUSAL-ABI:CODE-CELL + @ {: refusal:n :}
+   refusal 0<> code refusal = and if NULL$ 70 die then
+   NULL$ UNCAUGHT-RC die ;
+
+TRUSTED: UNCGH-PTR ( -- ptr [ n -- ] )
+   data-base UNCGH-CELL + ;
+
+: REPORT-ENABLE ( -- )
+   HB-TARGET-LINUX-X86-64? if [: REPORT ;] UNCGH-PTR xt! then ;
+
+: LIST? ( route -- bool )
+   MATCH route
+      load OF true ENDOF
+      build OF true ENDOF
+      plain OF false ENDOF
+   ;MATCH ;
 
 public
 
@@ -190,6 +256,41 @@ public
       build OF true ENDOF
       plain OF true ENDOF
    ;MATCH {: raw:bool :}
-   argv first end raw STREAM SOURCE-ROOT:INCLUDE-INTERPRET ;
+   argv first end raw STREAM RUN-TEXT ;
+
+private
+
+\ Unknown leading flags are checked before any stdin read. Explicit source
+\ lists never consume stdin, including when stdin is a pipe.
+: ROUTED ( -- )
+   APP? if
+      APP-RUN
+      TTY? if REPL-ENABLE OUTER:REPL else STDIN RUN-TEXT then
+      exit
+   then
+   ARGC 1 > if
+      1 ARGV$ ROUTE LIST? if
+         ARGV-BASE ARGC RUN exit
+      then
+   then
+   TTY? if
+      ARGC 1 > if ARGV-BASE ARGC RUN exit then
+      REPL-ENABLE OUTER:REPL exit
+   then
+   STDIN {: a:ptr u:n :}
+   u 0 > if a u RUN-TEXT exit then
+   ARGC 1 > if ARGV-BASE ARGC RUN else a u RUN-TEXT then ;
+
+public
+
+\ Normal completion follows die's deliberate exit path, which runs the hook.
+: MAIN ( -- )
+   REPORT-ENABLE
+   ROUTED
+   NULL$ 0 die ;
+
+\ The build window captures this xt in the fixed seeded startup cell.
+: INSTALL ( -- )
+   ['] MAIN data-base ENGINE-MAIN:XT-CELL + xt! ;
 
 ;package

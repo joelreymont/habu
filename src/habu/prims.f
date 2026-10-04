@@ -758,6 +758,11 @@ ETRUSTED-ONLY!
 \ catch's handler, return and loop stacks remain live for the caller.
 EPRIM: def-abort EPRIM;
 ETRUSTED-ONLY!
+\ stack-clear ( -- ): the REPL's caught-line boundary discards the user's
+\ arbitrary stack residue after a refusal. It leaves handler, return and loop
+\ state intact so the catching interpreter can continue.
+EPRIM: stack-clear EPRIM;
+ETRUSTED-ONLY!
 \ imm-mark ( -- ): set DNAME-IMM on the newest record, NDICT - 1, between two
 \ flips of its pages: the engine's `immediate` itself (habu2.f C-IMMEDIATE).
 \ Like that keyword and wide-mark, it refuses nothing.

@@ -37,6 +37,7 @@ create PATH-BUF FS-PATH-CAP allot
 : FIXTURES ( -- )
    S\" s\" A\" type cr\n" s" a.f" FIXTURE
    S\" s\" B\" type cr\n" s" b.f" FIXTURE
+   S\" 7 dup .\n" s" stack.f" FIXTURE
    S\" #!/usr/bin/env hb\ns\" SH\" type cr\n" s" sh.f" FIXTURE
    s" #!" s" bang.f" FIXTURE
    S\" #x\n" s" hash.f" FIXTURE
@@ -189,6 +190,9 @@ variable WANT-RC
 : PROGRAM-FILE ( -- )
    [: s" a.f" FIX GE-ARG+ s" b.f" FIX GE-ARG+ ;] s" program" BOTH
    S\" A\n" s" program" OUT
+   \ Root source may leave a value; evaluate-closed would reject this file.
+   [: s" stack.f" FIX GE-ARG+ ;] s" program leaves stack" BOTH
+   S\" 7\n" s" program leaves stack" OUT
    [: s" sh.f" FIX GE-ARG+ ;] s" program, a shebang" BOTH
    S\" SH\n" s" program, a shebang" OUT
    [: s" bang.f" FIX GE-ARG+ ;] s" program, only #!" BOTH

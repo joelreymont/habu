@@ -12,6 +12,7 @@ require src/habu/address-cells.f
 require src/habu/outer.f
 require src/habu/packages.f
 require src/habu/definers.f
+require src/habu/repl.f
 
 package OUTER
 
@@ -99,8 +100,11 @@ private
    REGALLOC-ABI:VRFREE-CELL CELL@ TOKVRF-CELL CELL!
    REGALLOC-ABI:FRFREE-CELL CELL@ TOKFRF-CELL CELL! ;
 
+: RUN-TOKENS ( -- )
+   begin TOKEN-MARK TOKEN while STEP repeat ;
+
 : RUN ( -- )
-   begin TOKEN-MARK TOKEN while STEP repeat
+   RUN-TOKENS
    DEF-SOURCE-END UNIT-END ;
 
 \ Run the buffer under catch, refusing at its end a definition it opened, and
@@ -205,12 +209,15 @@ TYPED-VARIABLE FRAME-ARG ptr u8
    EVALD-CELL CELL@ 1+ EVALD-CELL CELL! ;
 
 \ The buffer ran out: unlink the frame and give the includer its input back.
-: FRAME-LEAVE ( ptr u8 -- ) {: f:ptr :}
+: FRAME-UNLINK ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
    f FR-INP FR@ INP-CELL CELL!
    f FR-INE FR@ INE-CELL CELL!
-   f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
+   f EVAL-INB FR@ SRCLOC:INB-CELL CELL! ;
+
+: FRAME-LEAVE ( ptr u8 -- )
+   FRAME-UNLINK
    CLEAN-END ;
 
 \ x86 THROW restores its catch stack but returns with the Habu evaluation
@@ -233,11 +240,7 @@ TYPED-VARIABLE FRAME-ARG ptr u8
    TOKVRF-CELL CELL@ REGALLOC-ABI:VRFREE-CELL CELL!
    TOKFRF-CELL CELL@ REGALLOC-ABI:FRFREE-CELL CELL! ;
 
-: FRAME-RECOVER ( ptr u8 n -- ) {: f:ptr code:n :}
-   f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
-   f FR-INP FR@ INP-CELL CELL!
-   f FR-INE FR@ INE-CELL CELL!
-   f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
+: FRAME-RESTORE-SCOPE ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PKG + {: snap:ptr :}
    snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
    USE-MAX 0 ?do
@@ -245,7 +248,14 @@ TYPED-VARIABLE FRAME-ARG ptr u8
       i cells USE-WIDS-OFF + CELL!
    loop
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
-   snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER
+   snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
+
+: FRAME-RECOVER ( ptr u8 n -- ) {: f:ptr code:n :}
+   f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
+   f FR-INP FR@ INP-CELL CELL!
+   f FR-INE FR@ INE-CELL CELL!
+   f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
+   f FRAME-RESTORE-SCOPE
    f EVAL-PREV FR@ EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1- EVALD-CELL CELL!
    code EVALERR-CELL CELL! ;
@@ -253,7 +263,69 @@ TYPED-VARIABLE FRAME-ARG ptr u8
 : FRAME-FREE ( ptr u8 -- )
    EVAL-FRAME-SIZE munmap 0<> if E-MEM-UNMAP throw then ;
 
+\ The REPL has one source owner. A line uses a savepoint, but its successful
+\ stack, pending definition, package and usings remain for the next line.
+create REPL-QNL 63 c, 10 c,
+variable REPL-OK
+
+: REPL-READ ( -- ptr u8 n )
+   REPLH-PTR @ execute ;
+
+TRUSTED: REPL-STACK-CLEAR ( -- )
+   stack-clear ;
+
+: REPL-RECOVER ( ptr u8 n ptr n -- ) {: f:ptr prior:n found:ptr :}
+   f FRAME-ROLLBACK-CODE
+   f FR-INP FR@ INP-CELL CELL!
+   f FR-INE FR@ INE-CELL CELL!
+   f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
+   f FRAME-RESTORE-SCOPE
+   prior USE-FLOOR !
+   found REC !
+   0 EVALERR-CELL CELL! ;
+
+: REPL-LINE ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   depth FRAME-OPEN {: f:ptr :}
+   \ The session, not this line, owns a pending definition from an earlier
+   \ line. The JIT's source-close check must allow its `;`; a failed line
+   \ still abandons that definition through this savepoint's full rollback.
+   0 f EVAL-FRAME:PEND FR!
+   USE-FLOOR @ {: prior:n :}
+   REC @ {: found:ptr :}
+   a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
+   f FRAME-ARG !
+   [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
+   code 0= if
+      f FRAME-UNLINK
+   else
+      f NULL-PTR - EVAL-TOP-CELL CELL@ = if f FRAME-UNLINK then
+      f prior found REPL-RECOVER
+   then
+   f FRAME-FREE
+   code 0<> if
+      REPL-STACK-CLEAR
+      2 REPL-QNL 2 write drop
+      false exit
+   then
+   true ;
+
+: REPL-END ( -- )
+   [: DEF-SOURCE-END UNIT-END ;] catch {: code:n :}
+   code 0<> if NULL$ code die then ;
+
 public
+
+\ Read the hook anew for every line: genio may replace its reader during a
+\ session. Only EOF closes a pending definition or selected source unit.
+: REPL ( -- )
+   0 ENTRY-PEND !
+   true REPL-OK !
+   begin
+      REPL-OK @ if S\"  ok\n" type then
+      REPL-READ {: a:ptr u:n :}
+      a 0= if REPL-END exit then
+      a u REPL-LINE REPL-OK !
+   again ;
 
 \ Interpret the buffer as the engine's evaluate does (habu1.f B-EVAL), under the
 \ evaluate frame: a throw out of it is rolled back in LEVALREC, which pops the

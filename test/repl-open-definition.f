@@ -72,6 +72,60 @@ using PTY-HARNESS
    EXIT-CODE 74 T=
    s" hb: source ended inside definition: EOF-Y" IN-BUF? TTRUE ;
 
+\ A failed definition must unwind through the line savepoint, then accept a
+\ new definition. Tier 0 reaches the JIT diagnostic tail before the catch.
+: REJECT-CASE ( n -- )
+   {: tier:n :}
+   tier OPEN dup TTRUE if
+      BUF-CLEAR s" : REJECT-X ( -- ) NO-SUCH-WORD ;" SEND-LINE
+      s" E-UNDEFINED" WAIT-FOR TTRUE
+      s" E-UNDEFINED" s" habu> " WAIT-AFTER
+      {: resumed:bool :}
+      resumed TTRUE
+      resumed if
+         s" : AFTER-REJECT ( -- n ) 55 ;" STEP TTRUE
+         s" AFTER-REJECT ." STEP TTRUE
+         s" 55" IN-BUF? TTRUE
+         4 SEND-BYTE
+      then
+   then
+   EXIT-CODE 0 T= ;
+
+\ Once EOF ends the session, a throwing exit hook must be an uncaught exit,
+\ not a jump into the assembly reader's retired REPL savepoint.
+: HOOK-CASE ( -- )
+   0 OPEN dup TTRUE if
+      S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
+      s" TRUSTED: RV-ARM ( -- ) ['] RV-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
+      s" RV-ARM" STEP TTRUE
+      4 SEND-BYTE
+   then
+   EXIT-CODE 91 T=
+   s" HOOK" IN-BUF? TTRUE
+   s" hb: stack bounds exceeded" IN-BUF? TFALSE ;
+
+\ A using opened on one line remains active after an unrelated rejected line.
+: USING-CASE ( -- )
+   ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY
+   s" habu> " WAIT-FOR TTRUE
+   s" package REPL-PERSIST public : TWICE ( n -- n ) 2 * ; ;package" STEP TTRUE
+   s" using REPL-PERSIST" STEP TTRUE
+   s" 21 TWICE ." STEP TTRUE
+   s" 42" IN-BUF? TTRUE
+   s" 33" STEP TTRUE
+   s" ." STEP TTRUE
+   s" 33" IN-BUF? TTRUE
+   BUF-CLEAR s" 5 NO-SUCH-WORD" SEND-LINE
+   s" E-UNDEFINED: NO-SUCH-WORD" WAIT-FOR TTRUE
+   s" E-UNDEFINED: NO-SUCH-WORD" s" habu> " WAIT-AFTER TTRUE
+   s" depth ." STEP TTRUE
+   s" 0" IN-BUF? TTRUE
+   s" 22 TWICE ." STEP TTRUE
+   s" 44" IN-BUF? TTRUE
+   s" ;using" STEP TTRUE
+   4 SEND-BYTE
+   EXIT-CODE 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -79,7 +133,10 @@ public
    2 0 do
       i SPAN-CASE
       i EOF-CASE
+      i REJECT-CASE
    loop
+   USING-CASE
+   HOOK-CASE
    T-REPORT ;
 
 ;using

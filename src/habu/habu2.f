@@ -2102,6 +2102,7 @@ public
    skip LBL, ;
 
 : EMIT-SOURCE ( -- )
+   SEEDED-RUNTIME? if exit then
    C-SOURCE-LABELS
    EMIT-SOURCE-APPEND-SHARED
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
@@ -8690,10 +8691,21 @@ ardone LBL,
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
 : EM-APPLICATION-START ( -- )
+   SEEDED-RUNTIME? if exit then
    LBL {: done:label :}
    9 DATA APP-ENTRY:XT-CELL LDR,  9 done CBZ,
    9 BLR,
    done LBL, ;
+
+\ A complete capture has one Habu entry point. Its cell is populated when
+\ the runtime is sealed; an empty cell means the seed is incomplete.
+: EM-ENGINE-MAIN ( -- )
+   SEEDED-RUNTIME? 0= if exit then
+   LBL {: ready:label :}
+   9 DATA ENGINE-MAIN:XT-CELL LDR,  9 ready CBNZ,
+   0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   ready LBL,
+   9 BLR, ;
 
 : EM-STARTUP ( -- )
    LANCHOR LABEL@ LBL,
@@ -8718,6 +8730,7 @@ ardone LBL,
    EM-STARTUP-RUNTIME-STATE
    EM-SNAPSHOT-RX-FLUSH                 \ the region at rest before any application word executes
    EM-APPLICATION-START
+   EM-ENGINE-MAIN
    EMIT-SOURCE ;
 
 \ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
@@ -12462,6 +12475,9 @@ public
    PROT-EMIT:LCLOSE LABEL@ BL,
    EM-ABORT-COMPILE-STATE ;
 
+: STACK-CLEAR ( -- )
+   XDS DATA S0-CELL LDR, ;
+
 \ jit-open ( -- ): the compile state EM-INTERPRET-COLON and C-TRUSTED reset
 \ for a new body, then NCOMP-EMIT:TIER-COLON-DISPATCH's entry slot. The guard
 \ throws before the window opens, and the window closes again after the link
@@ -13180,6 +13196,7 @@ package ENGINE-EMIT
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" jit-open" ['] DEFWRITE:JIT-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
