@@ -327,6 +327,22 @@ variable SH-NATIVE-READY
       SH-WORK-N @ SH-WORK @ SH-SCAN
    repeat ;
 
+\ A does> companion is the next record of the same emission and enters its
+\ clause past the parent's entry. The parent's reach scan already covered that
+\ whole emission, but native capture has not named the private companion yet.
+\ Mark its row before CAPTURE-NATIVE asks which source records remain live.
+: SH-NATIVE-DOES ( -- )
+   NSHADOW:RECORDS {: count:n :}
+   count 1 <= if exit then
+   count 1 ?do
+      i NSHADOW:ENTRY@ 0 >  i 1- SH-MARK @ 0<> and if
+         i NSHADOW:RECORD@ i 1- NSHADOW:RECORD@ 1+ =
+         i NSHADOW:EMISSION@ i 1- NSHADOW:EMISSION@ = and if
+            1 i SH-MARK !
+         then
+      then
+   loop ;
+
 \ Native capture asks for reach before names and checker facts are finalized.
 \ Seed only named candidates, close the x86 graph once, and answer the later
 \ capture-row liveness query from its exact source-record mapping.
@@ -506,6 +522,7 @@ public
    SH-NUMBER
    SH-INDEX
    SH-REACH
+   SH-NATIVE-DOES
    SH-NATIVE-LIVE-MAP
    1 SH-NATIVE-READY ! ;
 

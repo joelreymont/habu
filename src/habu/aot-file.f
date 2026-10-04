@@ -180,6 +180,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 15 constant VERSION  \ anonymous shadow routines have tagged references
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
+3 constant TARGET-LINUX-X86-64
 
 136 constant HDR-BYTES
 0 constant O-MAGIC
@@ -286,8 +287,9 @@ variable CUR
 
 : TARGET-ID ( -- n )
    HB-TARGET-MACOS? if TARGET-MACOS exit then
-   HB-TARGET-LINUX? 0= if s" aot-file: unknown target" DIE then
-   TARGET-LINUX ;
+   HB-TARGET-LINUX? if TARGET-LINUX exit then
+   HB-TARGET-LINUX-X86-64? if TARGET-LINUX-X86-64 exit then
+   s" aot-file: unknown target" DIE ;
 
 : ROW-OFF@ ( n -- n ) ROW-BYTES * TBL + U64@ ;
 : ROW-LEN@ ( n -- n ) ROW-BYTES * TBL + 8 + U64@ ;
