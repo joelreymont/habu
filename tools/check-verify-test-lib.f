@@ -37,8 +37,8 @@
 \   a closure that cannot be followed reads as verified, or is no packet at
 \   the form that stops it                          missing-dependency, loader-form
 \   a closure wider than a fixed table is refused                         wide-closure
-\   output past the capture loses the packets received before it, or
-\   puts prose on --verify-only's stderr                                  truncated, cli-truncated
+\   output past 4 MiB is cut short, or puts prose on --verify-only's
+\   stderr                                              whole-output, cli-whole-output
 \   --verify-only drops stdin's closure, names the subject otherwise
 \   than the operation, or writes prose on stderr                         cli-file, cli-stdin
 \   --stdin-path or --verify-only is taken where it means nothing         cli-usage
@@ -101,11 +101,10 @@ package CHECK-VERIFY-TEST
 \ What a child of this test may write on either stream: check.f's packets from
 \ a full capture of the verifier's output fit.
 $800000 constant CAP
-\ CHECK's capture of the verifier child's stdout, and room for one packet.
-$400000 constant OUT-CAPTURE
-$1000 constant PACKET-ROOM
+\ What the verifier child's stdout once held at most: CHECK's fixed capture.
+$400000 constant OLD-CAPTURE
 \ big.f's definitions, each a packet of some 500 bytes: more in all than
-\ OUT-CAPTURE.
+\ OLD-CAPTURE.
 10000 constant BIG-DEFS
 
 create ROOT FS-PATH-CAP allot
@@ -233,6 +232,12 @@ variable CLI-OUT-U
    while
       drop
    repeat ;
+
+
+\ How many JSON objects LINES holds.
+: OBJECTS ( ptr u8 n -- n )
+   JSONL-START 0
+   begin JSONL-NEXT-OBJECT 0 >= while 1+ repeat ;
 
 
 \ Every line is a JSON object: the strict reader refuses a line that is not
@@ -634,17 +639,16 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" wide-closure: verified" EXPECT-KIND ;
 
 
-: CHECK-BIG ( -- )
-   BIG$SRC s" big.f" GUARD-MS CHECK-AS KIND drop ;
-
-\ More packets than the capture holds: the throw, with every complete packet
-\ received before it.
-: TRUNCATED ( -- )
-   [: CHECK-BIG ;] E-PROC-TRUNCATED TTHROWSQ
+\ More packets than OLD-CAPTURE held: every one, each complete, the last
+\ definition's among them.
+: WHOLE-OUTPUT ( -- )
+   BIG$SRC s" big.f" GUARD-MS CHECK-AS 1 s" whole-output: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ {: out:ptr outu:n :}
-   s" truncated: the packets fill the capture" T-LABEL
-   outu OUT-CAPTURE PACKET-ROOM - > TTRUE
-   s" truncated: each complete" T-LABEL out outu ALL-JSON? TTRUE ;
+   s" whole-output: past the old capture" T-LABEL outu OLD-CAPTURE > TTRUE
+   s" whole-output: each complete" T-LABEL out outu ALL-JSON? TTRUE
+   s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
+   s" whole-output: the last" T-LABEL
+   out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE ;
 
 
 \ ---- the command line ------------------------------------------------------
@@ -812,12 +816,12 @@ $180000 constant LARGE-STDIN-LEN
    0 ERR erru4 s" check.f: source path exceeds capacity" CONTAINS? TTRUE ;
 
 
-: CLI-TRUNCATED ( -- )
+: CLI-WHOLE-OUTPUT ( -- )
    CLI-START s" --verify-only" ARG+ s" big.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
-   s" cli-truncated: unavailable" T-LABEL rc 69 T=
-   s" cli-truncated: the packets on stderr" T-LABEL erru OUT-CAPTURE PACKET-ROOM - > TTRUE
-   s" cli-truncated: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE ;
+   s" cli-whole-output: refused" T-LABEL rc 70 T=
+   s" cli-whole-output: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE
+   s" cli-whole-output: every packet on stderr" T-LABEL 0 ERR erru OBJECTS BIG-DEFS T= ;
 
 
 \ --deadline-ms reaches the verifier's child, and the line names the deadline.
@@ -1618,14 +1622,14 @@ public
    s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
    s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
    s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
-   s" truncated" [: TRUNCATED ;] RUN-CASE
+   s" whole-output" [: WHOLE-OUTPUT ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE
    s" cli-early-fails" [: CLI-EARLY-FAILS ;] RUN-CASE
    s" cli-large-stdin" [: CLI-LARGE-STDIN ;] RUN-CASE
    s" cli-path-capacity" [: CLI-PATH-CAPACITY ;] RUN-CASE
-   s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
+   s" cli-whole-output" [: CLI-WHOLE-OUTPUT ;] RUN-CASE
    s" cli-deadline" [: CLI-DEADLINE ;] RUN-CASE
    s" cli-deadline-prepass" [: CLI-DEADLINE-PREPASS ;] RUN-CASE
    s" load-order" [: LOAD-ORDER ;] RUN-CASE

@@ -545,6 +545,22 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
+\ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME with the child's stdout in storage that
+\ grows to what it writes: SINK makes room and answers the first byte
+\ (lib/process.f, a capture whose stdout grows). The stdout length answered is
+\ what the child wrote.
+: RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
+   {: path:ptr pathu in:ptr inu sink err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   inu PROC-CAPTURE-CHECK-STDIN
+   errcap PROC-CAPTURE-CHECK-CAP
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME ;
+
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
    LEN>N STR:LENGTH PROC-PATH-SLASH STR:INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF

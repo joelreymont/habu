@@ -519,7 +519,6 @@ ENUM verdict 0
 
 private
 
-$400000 constant VFY-OUT-CAP            \ the child's stdout: packets, then its result line
 $40000 constant VFY-ERR-CAP             \ the child's stderr
 $0A constant VFY-LF
 
@@ -683,18 +682,23 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    false CHK-ENGINE-REFUSED ! ;
 
 
+\ VFY-OUT holding at least N bytes: its first.
+: VFY-OUT-ROOM ( n -- ptr u8 )
+   VFY-OUT-RESERVE 0 VFY-OUT ;
+
+
 \ The child's run on the subject's bytes, CHK-BYTES-A and CHK-BYTES-U: its
-\ stdout into VFY-OUT and its stderr into VFY-LOG, their lengths and its end
-\ left where PROC-CAPTURE-OUTCOME@ reads them. The end is read there, so the
-\ one returned here is dropped through the conversion that reads a deadline as
-\ a status rather than throwing it.
+\ stdout into VFY-OUT, which grows to what the child writes, and its stderr
+\ into VFY-LOG, their lengths and its end left where PROC-CAPTURE-OUTCOME@
+\ reads them. The end is read there, so the one returned here is dropped
+\ through the conversion that reads a deadline as a status rather than
+\ throwing it.
 : VFY-CAPTURE ( -- )
    VFY-ARGV
-   VFY-OUT-CAP VFY-OUT-RESERVE
    VFY-ERR-CAP VFY-LOG-RESERVE
    CHK-ENGINE$ >LEN CHK-BYTES-A @ CHK-BYTES-U @ >LEN
-   0 VFY-OUT VFY-OUT-CAP >LEN 0 VFY-LOG VFY-ERR-CAP >LEN
-   VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   [: VFY-OUT-ROOM ;] 0 VFY-LOG VFY-ERR-CAP >LEN
+   VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
 
 
@@ -881,7 +885,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    then ;
 
 
-\ How the child ended. More output than the capture holds kills it, and its
+\ How the child ended. More stderr than the capture holds kills it, and its
 \ E-PROC-TRUNCATED is thrown on once what was captured is kept.
 : VFY-RUN ( -- outcome )
    [: VFY-CAPTURE ;] catch {: rc:n :}
@@ -936,11 +940,10 @@ public
 \ the walk cannot follow refuses it with the walk's packet in VERIFY-OUT$.
 \ Either way VERIFY-LOG$ is the walk's status line. An empty PATH is
 \ E-FS-PATH; an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed
-\ spawn throws as well. More child output than the capture holds, 4 MiB of
-\ stdout or 256 KiB of stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding
-\ every complete packet received before it. A file of the closure that a stop
-\ or a duplicate definition is in and can no longer be read throws as reading
-\ it does.
+\ spawn throws as well. stdout is kept whole; more than 256 KiB of the child's
+\ stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
+\ received before it. A file of the closure that a stop or a duplicate
+\ definition is in and can no longer be read throws as reading it does.
 : VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n deadline :}
    VFY-RESET
@@ -962,7 +965,7 @@ public
 \ nothing stopped it, else ok the code it stopped with, and VERIFY-STOP-AT,
 \ PREVERIFY-DUPLICATE, VERIFY-STOP-SUBJECT? and VERIFY-STOPPED$ say where.
 \ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
-\ failed spawn throws, and more child output than the capture holds is
+\ failed spawn throws, and more child stderr than the capture holds is
 \ E-PROC-TRUNCATED, as for VERIFY-BYTES.
 : PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,outcome> )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
