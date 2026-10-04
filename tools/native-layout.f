@@ -14,6 +14,7 @@ create SLOTS
    COMPILE-PREFLIGHT-CELL ,             0 ,
    TOP-HOOK-CELL ,                      0 ,
    EXIT-HOOK-CELL ,                     0 ,
+   UNCGH-CELL ,                         0 ,
    NATIVE-OBS-CELLS:OBSERVE ,           0 ,
    NATIVE-OBS-CELLS:PUBLISHED ,         0 ,
    NATIVE-OBS-CELLS:INVALIDATE ,        0 ,
