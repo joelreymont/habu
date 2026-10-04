@@ -1480,10 +1480,24 @@ $2CD0 constant FLOORREC-CELL
 \ FLOORREC-CELL in the free header band.
 $2CD8 constant CLOSED-FREE-CELL
 $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
-\ Past the literal store's reserved $2CE8 cell, $2CF0..$2D08 holds the three
-\ callback CODE cells
-\ declared in native-observer-cells.f. Its separate module also loads on an
-\ older baked host while a new product is built.
+\ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
+\ for none. The literal store (src/compiler/native/string.f PUBLISH) opens a
+\ segment at `here` inside whatever is running and raises the floor to the
+\ segment's end, so the segment and every address it answered outlive a failed
+\ evaluation and a failed REPL line (habu2.f EM-EVAL-THROW-RECOVER,
+\ EM-REPL-RECOVER) and a rolled-back generated declaration
+\ (src/core/generated-declaration-dictionary.f DICTIONARY-DP!): each puts DP at
+\ the higher of its saved value and the floor. An offset rather than an
+\ address, so nothing relocates it: a snapshot carries it with the rest of
+\ DATA, and a native or stripped image starts at 0, which no rewind reaches,
+\ because every DP it saves is above the `here` it boots with. It sits past
+\ CODE-END-CELL in the $2800..$3000 free header band, beyond the $2C40..$2CD0
+\ run held for the package publication cells - swept for a claimant across src
+\ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
+\ `DATA <off> LDR` form, and below DATA-START.
+$2CE8 constant DATA-FLOOR-CELL
+\ The three callback CODE cells follow at $2CF0..$2D08. Their separate module
+\ (native-observer-cells.f) also loads on an older baked host during a build.
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above

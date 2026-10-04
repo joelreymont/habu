@@ -46,7 +46,11 @@ variable FRAME-CAP CAP-INIT FRAME-CAP !
 : ROW.DP ( ptr a -- ptr ptr a ) ROW.DP-OFF CELL / ptr-field ;
 
 TRUSTED: FRAME-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
-TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
+\ A literal segment opened inside the transaction outlives its rollback: DP stops
+\ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL).
+TRUSTED: DICTIONARY-DP! ( ptr a -- )
+   data-base DATA-FLOOR-CELL + @ data-base + max
+   data-base DP-CELL + ! ;
 
 : CHECK-DEPTH ( n -- )
    dup 0 <= IF drop E-DICTIONARY-TX throw THEN

@@ -155,11 +155,22 @@ linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which al
 land above the span. A module the application has already loaded is shared in the
 harmless direction: the linker uses the application's copy, at build time only.
 
-The literal pool opens before the window, whose first byte is the pool's body
-arena. Literal bytes belong to the application; the owner and row tables used
-by the compiler to intern and relocate them do not. `NSTR:SOURCE-ROWS` exposes
-those tables to the engine build driver, not to a stripped runtime. Persisting
-one of its table pointers refuses at link time and names the retaining cell.
+The literal pool opens before the window, whose first byte is the body arena of
+the pool's first segment. Literal bytes belong to the application. The first
+segment's owner and row tables precede the restored span; persisting a pointer
+to those tables is refused at link time and names the retaining cell. Later
+segments travel inside the span with their tables.
+A pool grows by segments of 512 KB and 8192 bodies (`src/compiler/native/string.f`):
+when the last one cannot take a body, the store opens the next at `here` and
+raises the DATA floor past it, so no rewind of DATA frees a segment, and equal
+bodies share one address within a segment. A single body larger than a segment
+is refused, `E-NSTR-CAP`. A segment opened while the application loads lies
+inside the span, tables and all. The link copies into the pool each literal it
+reaches in another pool, so latching the span closes the pool first
+(`NSTR:WINDOW-CLOSE`): its last segment keeps room for every body outside it,
+up to a whole segment's, opening a fresh one inside the span when it has less,
+and the pool opens no segment afterwards. A link that copies in more than that
+room is refused, `E-NSTR-CAP`.
 The pool is the application's only while the application loads: latching the
 span hands the maker back the pool it compiled into before, so nothing the
 maker compiles afterwards (`tools/aot-build.f`, the linker) adds a byte to the

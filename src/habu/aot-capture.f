@@ -910,9 +910,8 @@ variable ACAP-BP
 \ NSTR:IMPORT-ROWS - tools/native-build-core.f TARGET-IMPORTER reaches it by name
 \ through the shipped dictionary, because the alternatives are a public wrapper,
 \ which test/compiler/native-string.f forbids outright, or a fixed engine cell.
-\ That file's own comment named this dot as the one that has to carry the entry,
-\ before this dot ran. The drift guard is the build's own refusal, "native-build:
-\ literal importer missing", the moment the entry stops matching.
+\ The drift guard is the build's own refusal, "native-build: literal importer
+\ missing", the moment the entry stops matching.
 \ DEFER-UNSET - habu2.f C-DEFER-FIND-UNSET resolves this global by name whenever
 \ source declares a new defer. The compiler embeds the lookup string in its own
 \ code, outside the capture's named-site tables; without this record even

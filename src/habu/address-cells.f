@@ -190,6 +190,18 @@ private
 
 public
 
+\ Runs a fork with the registrar held; PROC-FORK:RAW is its caller. The
+\ registrar unmaps its old rows and index before it publishes their
+\ replacements, and commits an index slot before its counts (habu2.f
+\ EMIT-MARK), so a child forked while another task was inside it could neither
+\ wait for that task nor carry on where it stopped. Held, nobody is inside it
+\ when the process is copied, and parent and child each free their own copy.
+\ The lock is found through data-base, a task's own context on a task, so a
+\ fork made on a task holds the task-local address-cell lock, not the
+\ registrar's, until dot bb84a527.
+: ACROSS-FORK ( [ -- n ] -- n )
+   WITH-LOCK ;
+
 \ Native-build owns the explicit lifetime cut through its retired source heap.
 \ Preserve registration order and invalidate even when the count is unchanged.
 : KEEP-BELOW ( n -- )

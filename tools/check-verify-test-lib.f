@@ -18,14 +18,19 @@
 \   an engine-provided path is verified because of its bytes              engine-provided
 \   the verifier's own source is verified in the image that holds it      held
 \   a child that ends without a result reads as a verdict                 no-result, deadline
-\   a child that dies drops the packets it made before, a dependency's
-\   or the subject's                                                      died-after-packet
+\   a child that dies drops the packets it made before                    no-result
+\   a statement the source leaves open is no refusal, or is not placed
+\   at its opener in its file                                             open-stop
+\   a stop drops the packets made before it, or names another file than
+\   the one it is in, a dependency's or the subject's                     stop-after-packet
 \   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
 \   a duplicate is no packet, or not the record --all-errors writes; the
 \   scan stops at it; --all-errors goes past it               cli-duplicate,
 \                                    cli-duplicate-goes-on, duplicate-in-dependency
 \   a name the definer generates is no packet                             duplicate-made
 \   a child that dies after a duplicate drops its record                  duplicate-then-dies
+\   a complete answer followed by a failed process exit leaks framing or
+\   invents a duplicate, or loses two identical real duplicates   unclean-answer
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
@@ -213,7 +218,7 @@ variable CLI-OUT-U
 : BAD-DEP$SRC ( -- ptr u8 n )
    s\" : CVT-EIGHT ( -- n ) 8 ;\n: CVT-BROKEN ( -- n n ) 8 ;\n" ;
 
-\ A refused definition, then one left open, where the verifier dies.
+\ A refused definition, then one left open, where the verifier stops.
 : OPEN-DEP$SRC ( -- ptr u8 n )
    s\" : CVT-BAD-DEP ( -- n n ) 8 ;\n: CVT-OPEN-DEP ( -- n ) 1\n" ;
 
@@ -281,6 +286,10 @@ variable CLI-OUT-U
 
 : DUP-LATE$SRC ( -- ptr u8 n )
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: LATE ( n -- n ) drop ;\n" ;
+
+\ A refused definition, then a `generates:` row with no definer name.
+: BARE-GENERATES$SRC ( -- ptr u8 n )
+   s\" : CVT-BAD-GEN ( -- n n ) 8 ;\ngenerates:\n" ;
 
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
@@ -396,13 +405,36 @@ variable CLI-OUT-U
    3 s" held: the verifier's own source" EXPECT-KIND ;
 
 
-\ An open definition makes the verifier die: no result line, its exit and its words.
-: NO-RESULT ( -- )
+\ Where the second line of the given text starts.
+: LINE-TWO ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ 10 <> else false then while 1+ repeat 1+ ;
+
+
+\ An open definition stops the verifier at its opener (7155, a code private to
+\ src/habu/verify-source.f): a refusal with no packet that says where.
+: OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
+   v 1 s" open-stop: refused" EXPECT-KIND
+   s" open-stop: the code" T-LABEL CHECK:VERIFY-STOP 7155 T=
+   s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
+   s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
+   s" open-stop: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+
+
+\ The verifier dies after it refused a definition: no result line, its exit and
+\ its words, and the packet it made first is kept. The input is the
+\ pre-verifier's generates: reader die (src/habu/verify-source.f
+\ RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it into a refusal and
+\ re-points this case.
+: NO-RESULT ( -- )
+   BARE-GENERATES$SRC s" bare-generates.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
    s" no-result: the child's exit" T-LABEL v STATUS 74 T=
    s" no-result: the child's words" T-LABEL
-   CHECK:VERIFY-LOG$ s" unterminated definition" CONTAINS? TTRUE ;
+   CHECK:VERIFY-LOG$ s" missing generates: definer name" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-gen" PACKET {: p:n :}
+   s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
 : DEADLINE ( -- )
@@ -411,19 +443,28 @@ variable CLI-OUT-U
    s" deadline: timed out" T-LABEL v STATUS -2 T= ;
 
 
-\ The verifier dies at an open definition after it refused one: the packet it
-\ made first is kept, a dependency's and then the subject's.
-: DIED-AFTER-PACKET ( -- )
+\ The verifier stops at an open definition after it refused one: the packet it
+\ made first is kept, and the stop is at the opener in the file it is in, a
+\ dependency's and then the subject's.
+: STOP-AFTER-PACKET ( -- )
    s\" require open-dep.f\n: CVT-OPEN-USE ( -- n ) 1 ;\n" s" open-use.f" GUARD-MS CHECK-AS {: v :}
-   v 4 s" died-after-packet: incomplete" EXPECT-KIND
-   s" died-after-packet: the verifier's exit" T-LABEL v STATUS 74 T=
+   v 1 s" stop-after-packet: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:n :}
-   s" died-after-packet: the dependency's packet" T-LABEL
+   s" stop-after-packet: the dependency's packet" T-LABEL
    p s" file" STRING$ s" open-dep.f" AT$ T$=
-   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" s" open-own.f" GUARD-MS CHECK-AS {: w :}
-   w 4 s" died-after-packet: the subject's, incomplete" EXPECT-KIND
+   s" stop-after-packet: in the dependency" T-LABEL
+   CHECK:VERIFY-STOP-SUBJECT? TFALSE
+   CHECK:VERIFY-STOPPED$ s" open-dep.f" AT$ T$=
+   s" stop-after-packet: at its opener" T-LABEL
+   CHECK:VERIFY-STOP-AT OPEN-DEP$SRC LINE-TWO T=
+   s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" {: own:ptr ownu:n :}
+   own ownu s" open-own.f" GUARD-MS CHECK-AS {: w :}
+   w 1 s" stop-after-packet: the subject's, refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:n :}
-   s" died-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$= ;
+   s" stop-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$=
+   s" stop-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" stop-after-packet: at the subject's opener" T-LABEL
+   CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
 
 
 : MISSING-DEPENDENCY ( -- )
@@ -731,14 +772,97 @@ variable CLI-OUT-U
    CHECK:VERIFY-LOG$ s" verification stopped by throw 78" CONTAINS? TTRUE ;
 
 
-\ The verifier dies at an open definition right after a duplicate: no result
-\ line ends its output, and the duplicate's record is kept.
-: DUPLICATE-THEN-DIES ( -- )
+\ An open definition after a duplicate stops at its opener, with the duplicate's
+\ record still before the result.
+: DUPLICATE-THEN-STOPS ( -- )
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n" s" dup-open.f" GUARD-MS CHECK-AS {: v :}
-   v 4 s" duplicate-then-dies: incomplete" EXPECT-KIND
-   s" duplicate-then-dies: the verifier's exit" T-LABEL v STATUS 74 T=
+   v 1 s" duplicate-then-stops: refused" EXPECT-KIND
+   s" duplicate-then-stops: the open definition" T-LABEL CHECK:VERIFY-STOP 7155 T=
+   s" duplicate-then-stops: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" duplicate-then-stops: the subject path" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
    CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
-   s" duplicate-then-dies: the duplicate's record" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
+   s" duplicate-then-stops: the duplicate's record" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
+
+
+\ This executable Habu fixture forwards the real verifier child's complete
+\ output, then fails its own process. Its shebang makes it an engine candidate
+\ while leaving the verifier and its packet writer on the normal load path.
+: UNCLEAN-FIXTURE ( -- )
+   0 GEN-U !
+   s" #!" GEN+ ENGINE-CANDIDATE:PATH$ GEN+ s\"  --load\n" GEN+
+   S\" require lib/process.f\nrequire lib/process-argv.f\nrequire lib/process-env.f\nrequire lib/engine-id.f\nrequire lib/string.f\npackage CVT-UNCLEAN\nDYNAMIC-BUFFER SRC u8\nDYNAMIC-BUFFER OUT u8\nDYNAMIC-BUFFER ERR u8\nvariable SRC-U\n" GEN+
+   S\" : ARGS ( -- )\n   PROC-ARGV-ENV-RESET\n   s\" --load\" >LEN PROC-ARGV+\n   s\" tools/check-verify-child.f\" >LEN PROC-ARGV+\n   s\" --\" >LEN PROC-ARGV+\n   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop\n   PROC-ENV-INHERIT-MISSING ;\n" GEN+
+   S\" : INPUT ( -- )\n   0 SRC-U !\n   begin SRC-U @ 4096 < while\n      0 SRC-U @ SRC 4096 SRC-U @ - read\n      dup 0< if s\" read failed\" 74 die then\n      dup 0= if drop exit then\n      SRC-U +!\n   repeat ;\n" GEN+
+   S\" : FIRST-LINE ( n -- n ) {: u:n :}\n   u 0 ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n: SECOND-LINE ( n -- n ) {: u:n :}\n   u u FIRST-LINE ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if outu LEN>N FIRST-LINE else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if outu LEN>N SECOND-LINE else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
+   s" unclean.f" 0 GEN GEN-U @ FIXTURE
+   s" unclean.f" AT$ CHMOD-X ;
+
+
+: UNCLEAN-ANSWER ( -- )
+   UNCLEAN-FIXTURE
+   s" HABU_UNDER_TEST" >LEN s" unclean.f" AT$ >LEN PROC-ENV-DEFAULT+
+   DEP$SRC s" unclean-verified.f" GUARD-MS CHECK-AS {: verified :}
+   verified 4 s" unclean-answer: verified frame is incomplete" EXPECT-KIND
+   s" unclean-answer: verified process exit" T-LABEL verified STATUS 79 T=
+   s" unclean-answer: verified frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   BAD-DEP$SRC s" unclean-refused.f" GUARD-MS CHECK-AS {: refused :}
+   refused 4 s" unclean-answer: refused frame is incomplete" EXPECT-KIND
+   s" unclean-answer: refused packet remains" T-LABEL
+   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET 0 >= TTRUE
+   s" unclean-answer: refused frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
+   s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
+   GUARD-MS >MS CHECK:VERIFY-BYTES {: held :}
+   held 4 s" unclean-answer: held frame is incomplete" EXPECT-KIND
+   s" unclean-answer: held frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s\" : CVT-OPEN ( -- n ) 1\n\\" s" unclean-open.f" GUARD-MS CHECK-AS {: stopped :}
+   stopped 4 s" unclean-answer: stopped frame is incomplete" EXPECT-KIND
+   s" unclean-answer: stopped 7155 is not a duplicate" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n\\"
+   s" unclean-dup-open.f" GUARD-MS CHECK-AS {: dup-open :}
+   dup-open 4 s" unclean-answer: duplicate and stop are incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   s" unclean-answer: genuine duplicate before 7155" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: terminal 7155 adds no packet" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   MADE$SRC s" unclean-made.f" GUARD-MS CHECK-AS {: dup-stop :}
+   dup-stop 4 s" unclean-answer: duplicate stop is incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   s" unclean-answer: genuine duplicate before stop 78" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: terminal 78 adds no packet" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   DUP$SRC s" unclean-first-dup.f" GUARD-MS CHECK-AS {: first-dup :}
+   first-dup 4 s" unclean-answer: packet before death is incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   s" unclean-answer: sole code-78 packet survives" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: sole code-78 packet is last" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   s\" include order-dep.f\ninclude order-dep.f\ninclude order-dep.f\n"
+   s" unclean-two-dups.f" GUARD-MS CHECK-AS {: two-dups :}
+   two-dups 4 s" unclean-answer: two real duplicates are incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ {: packets:ptr packetu:n :}
+   packets packetu 10 0 SPLIT-NEXT {: first:ptr firstu:n next:n found:bool :}
+   s" unclean-answer: first duplicate has a line" T-LABEL found TTRUE
+   s" unclean-answer: duplicate records are byte-identical" T-LABEL
+   first firstu packets packetu 10 next SPLIT-NEXT 2drop STR= TTRUE
+   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   s" unclean-answer: first identical duplicate survives" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: second identical duplicate survives" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: only two duplicate packets" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   s" unclean-pre.f" AT$ SUBJ SUBJ-U COPY!
+   DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   MATCH result
+      ok OF drop false ENDOF
+      err OF MATCH outcome
+         exited OF 79 = ENDOF
+         signaled OF drop false ENDOF
+         timeout OF false ENDOF
+      ;MATCH ENDOF
+   ;MATCH
+   s" unclean-answer: preverify remains incomplete" T-LABEL TTRUE
+   s" unclean-answer: preverify stop is framing" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   PROC-ENV-DEFAULT-RESET ;
 
 
 \ --verify-only writes, byte for byte, the record --all-errors writes, and no
@@ -819,9 +943,10 @@ public
    s" failing-dependency" [: FAILING-DEPENDENCY ;] RUN-CASE
    s" engine-provided" [: ENGINE-PROVIDED ;] RUN-CASE
    s" held" [: HELD ;] RUN-CASE
+   s" open-stop" [: OPEN-STOP ;] RUN-CASE
    s" no-result" [: NO-RESULT ;] RUN-CASE
    s" deadline" [: DEADLINE ;] RUN-CASE
-   s" died-after-packet" [: DIED-AFTER-PACKET ;] RUN-CASE
+   s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
    s" truncated" [: TRUNCATED ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE
@@ -840,7 +965,8 @@ public
    s" duplicate-after-packet" [: DUPLICATE-AFTER-PACKET ;] RUN-CASE
    s" duplicate-in-dependency" [: DUPLICATE-IN-DEPENDENCY ;] RUN-CASE
    s" duplicate-made" [: DUPLICATE-MADE ;] RUN-CASE
-   s" duplicate-then-dies" [: DUPLICATE-THEN-DIES ;] RUN-CASE
+   s" duplicate-then-stops" [: DUPLICATE-THEN-STOPS ;] RUN-CASE
+   s" unclean-answer" [: UNCLEAN-ANSWER ;] RUN-CASE
    s" cli-duplicate" [: CLI-DUPLICATE ;] RUN-CASE
    s" cli-duplicate-goes-on" [: CLI-DUPLICATE-GOES-ON ;] RUN-CASE
    MEASURE

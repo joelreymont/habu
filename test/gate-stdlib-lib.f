@@ -185,12 +185,13 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 \ capture-file names are already on stdout, so the cleanup takes nothing the
 \ reader still needs. It runs BEFORE the red die, which ends the process - a
 \ red gate used to leave its whole pool root, and a run per red is how /tmp
-\ filled with habu-native-suite trees.
+\ filled with habu-native-suite trees. A cleanup that throws is named
+\ (GT-POOL-CLEANUP), so the run still ends on its red report.
 : SUITE-FINISH ( n -- ) {: rc:n :}
    s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
    GT-POOL-RED-REPORT
-   GT-CLEANUP
+   GT-POOL-CLEANUP
    GT-POOL-SIGNAL-CHECK
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
    GT-POOL-RED# 0 > if s" test pool failed" 1 die then ;

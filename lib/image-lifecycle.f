@@ -52,6 +52,14 @@ public
 : COUNT ( -- n )
    LOCK N @ PERSISTENT-N @ + UNLOCK ;
 
+\ Runs a fork with the lock held; PROC-FORK:RAW is its caller. A registration
+\ may grow HOOKS, which unmaps the old table before it publishes the new one, so
+\ a child forked while another task was inside could neither wait for that task
+\ nor carry on where it stopped. Held, nobody is inside when the process is
+\ copied, and parent and child each free their own copy.
+: ACROSS-FORK ( [ -- n ] -- n )
+   LOCK [: UNLOCK ;] finally ;
+
 private
 
 

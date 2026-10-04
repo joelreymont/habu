@@ -7476,6 +7476,13 @@ public
    13 8 ADDRESS-CELLS:INDEX-COUNT STR,
    13 4 0 STR, ;
 
+\ Raise register rd to DATA plus the DATA floor when it is lower, through the
+\ scratch register rt: a rewind of DATA puts DP no lower than the end of the last
+\ segment the literal store published (layout.f DATA-FLOOR-CELL).
+: FLOOR-CLAMP, ( n n -- ) {: rd:n rt:n :}
+   rt DATA DATA-FLOOR-CELL LDR,  rt DATA rt ADD,
+   rd rt CMP,  rd rd rt C-HI CSEL, ;
+
 \ x12 = absolute DP cut. Preserve x0..x17 for both recovery callers.
 : EMIT-ROLLBACK ( -- )
    LBL {: addrfull:label :}
@@ -11351,7 +11358,7 @@ public
    CODE-ORIGIN:ABANDON,
    10 13 40 LDR,  LCODEINV LABEL@ BL,
    CP 13 40 LDR,  NDICT 13 48 LDR,
-      12 13 56 LDR,
+   12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
@@ -11474,7 +11481,7 @@ public
    10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
-   12 DATA RSAVDP-CELL LDR,
+   12 DATA RSAVDP-CELL LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,

@@ -539,24 +539,50 @@ private
    s" check.f: " CHK-ERR
    CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
 
-\ Discovery stops at a string the file never closes without saying where. Under
-\ --json-errors the lexer reports the defect where it stands, in the file that
-\ ended the walk (CHK-DISC-ID), by the record --all-errors writes for it, and
-\ the check fails as a refusal. An end the lexer does not see, such as a `{:`
-\ group left open, keeps discovery's line.
-: CHK-DISC-LEX-ACT ( -- )
-   CHK-DISC-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
-
-: CHK-DISC-LEX ( -- )
+\ The --all-errors core writes its records to standard error in the run's mode.
+: CHK-ALL-STREAM ( -- )
    2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
+   CHK-JSON @ CHECK-ALL-ERRORS:JSON! ;
+
+\ The pre-pass or discovery stops in one file of the composition: the subject,
+\ by its label, or any other file, by its canonical path. Its bytes are the
+\ subject's, or the file's own, read into CHK-SRC-BUF, where the nominal pass's
+\ records read a definition's source.
+: CHK-STOP-BYTES ( ptr u8 n bool -- ptr u8 n )
+   {: a:ptr u:n subj:bool :}
+   subj if CHK-SOURCE-BYTES exit then
+   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+
+\ What stopped the pre-pass or discovery with the given code, at the given byte
+\ of the given bytes of the file the label names, by the record --all-errors
+\ writes for it. An open string or row, and a reader whose token the lexer
+\ reads into another one, are the lexer's record for the file; any other throw,
+\ and a defect the lexer does not see, the record of a statement that throws,
+\ at the token that starts at that byte.
+: CHK-THREW-RECORD ( n n ptr u8 n ptr u8 n -- )
+   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n :}
+   rc CHECK-ALL-ERRORS:LEX-STOP? rc VERIFY:E-MISSING-NAME = or if
+      CHK-ALL-STREAM
+      label labelu src srcu CHECK-ALL-ERRORS:LEX-BUF
+   then
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   [: CHK-DISC-LEX-ACT ;] catch {: rc:n :}
-   rc 0 <> if rc CHK-THROW then ;
+   rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN ;
+
+\ Discovery stops at a string or a locals group a file never closes, at its
+\ opener in the file that ended the walk (CHK-DISC-ID), and is reported there:
+\ a string by the lexer's record, and an end the lexer does not see, such as a
+\ `{:` group left open, by the record of a statement that throws discovery's
+\ code. The check fails as a refusal.
+: CHK-DISC-STOPPED ( -- )
+   CHK-DISC-ID @ CHK-DEP$ {: path:ptr pathu:n :}
+   E-DISC-UNTERM DISCOVER:OPENER-AT path pathu
+   path pathu LINT-FALSE CHK-STOP-BYTES CHK-THREW-RECORD
+   CHK-E-CHECK CHK-THROW ;
 
 \ The command line reports a closure it cannot follow as it always has.
 : CHK-EXPAND-REPORT ( n -- ) {: rc:n :}
    rc 0= if exit then
-   rc E-DISC-UNTERM = if CHK-JSON @ if CHK-DISC-LEX then then
+   rc E-DISC-UNTERM = if CHK-DISC-STOPPED then
    rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
    rc CHK-E-NOINPUT = if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
    rc throw ;
@@ -1296,9 +1322,9 @@ variable CHK-PKG-NAME-I
 
 \ A raw operand is data, never a definer: `' :` starts no definition. A
 \ definition ends where the expansion walker ends it, so `[char] ;` in a body
-\ does not end it here either. `undefine` takes its name as a definer does, so
-\ a missing one is refused here, at `undefine`, before the pre-verifier, which
-\ dies on it with no location (src/habu/verify-source.f UNDEFINE-WORD).
+\ does not end it here either. `undefine` takes its name as a definer does: the
+\ name is skipped, so `undefine deftype` registers nothing, and a missing one is
+\ refused here, at `undefine`.
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k LINT-LEX:OPERAND? if k 1+ exit then
    k CHK-DEF-OPENER? if k 1+ CHK-WALK-DEF exit then
@@ -1611,13 +1637,51 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    repeat drop
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
+\ The token of the source LINT-LEX read last that starts at the given byte, or
+\ -1 when none does.
+: CHK-TOKEN-AT ( n -- n )
+   {: at:n :}
+   0 begin dup LINT-LEX:COUNT < while
+      dup LINT-LEX:BYTE@ at = if exit then
+      1+
+   repeat drop -1 ;
+
+\ The pre-pass stopped at a definer or a parsing word with nothing after it, at
+\ the given byte of the given bytes of the file the label names. The nominal
+\ pass refuses that only for the definers it lists in the subject, so the
+\ refusal is its record, at that token of the file's lex, and the check fails
+\ as a refusal. This returns only when the lex has no token there.
+: CHK-STOP-NONAME ( n ptr u8 n ptr u8 n -- )
+   {: at:n label:ptr labelu:n src:ptr srcu:n :}
+   src srcu LINT-LEX:SOURCE
+   at CHK-TOKEN-AT {: k:n :}
+   k 0< if exit then
+   label labelu CHK-LABEL!
+   k CHK-NONAME-FAIL
+   CHK-E-CHECK CHK-THROW ;
+
+: CHK-RUN-ALL-COMPOSE ( -- )
+   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
+
+\ The composition hands up a reader with nothing after it; with no token of
+\ the lex there it is the statement's throw record.
+: CHK-ALL-NONAME ( -- )
+   VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
+   2dup VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? CHK-STOP-BYTES
+   {: at:n label:ptr labelu:n src:ptr srcu:n :}
+   at label labelu src srcu CHK-STOP-NONAME
+   VERIFY:E-MISSING-NAME at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
+   CHK-ERR-LN
+   CHK-E-CHECK CHK-THROW ;
+
 \ The report goes to standard error as the core makes it: every record of every
 \ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
-   2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
+   CHK-ALL-STREAM
    CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
-   CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
+   [: CHK-RUN-ALL-COMPOSE ;] catch {: rc:n :}
+   rc VERIFY:E-MISSING-NAME = if CHK-ALL-NONAME then
+   rc 0 <> if rc CHK-THROW then ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )
    CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
@@ -1637,21 +1701,23 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE-LIST-REPORT
    rc CHK-THROW ;
 
-\ The pre-pass stops in one file of the composition, the one
-\ PREVERIFY-STOPPED$ names: the subject by its label, any other file by its
-\ canonical path. Its bytes are the subject's, or the file's own.
+\ The bytes of the file the verifier stopped in, the one VERIFY-STOPPED$ names.
+\ --verify-only holds the subject's in CHK-SRC-BUF.
 : CHK-STOPPED-SOURCE ( -- ptr u8 n )
-   PREVERIFY-SUBJECT? if CHK-SOURCE-BYTES exit then
-   PREVERIFY-STOPPED$ CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+   VERIFY-STOP-SUBJECT? CHK-VERIFY @ and if CHK-SRC-BUF CHK-SRC-U @ exit then
+   VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
 
-\ A statement that threw while it was checked is reported where it stood, by
-\ the record --all-errors writes in the run's mode, and the check fails with a
-\ refusal's status, which this answers.
-: CHK-PREVERIFY-THREW ( n -- n ) {: rc:n :}
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   rc PREVERIFY-AT PREVERIFY-STOPPED$ CHK-STOPPED-SOURCE
-   CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN
-   CHK-E-CHECK ;
+\ The verifier stopped with the given code. A reader with no name is the
+\ nominal pass's record where it stands, and the check fails as a refusal. A
+\ statement that threw is reported by CHK-THREW-RECORD, which fails the check
+\ as a refusal when the record is the lexer's; any other stop returns.
+: CHK-STOP-RECORD ( n -- ) {: rc:n :}
+   rc VERIFY:E-MISSING-NAME = if
+      VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-STOP-NONAME
+   then
+   rc CHECK-ALL-ERRORS:THREW? if
+      rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-THREW-RECORD
+   then ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined
@@ -1660,13 +1726,15 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ status, as it fails the load.
 : CHK-PREVERIFY-DUP ( -- )
    CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   PREVERIFY-DUPLICATE PREVERIFY-STOPPED$ CHK-STOPPED-SOURCE
+   PREVERIFY-DUPLICATE VERIFY-STOPPED$ CHK-STOPPED-SOURCE
    CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
-\ The pre-pass stopped with the given code: the record a throw or a duplicate
-\ leaves, then the failure.
+\ The pre-pass stopped with the given code: the record of its defect, or of a
+\ duplicate, then the failure, with a refusal's status for a statement that
+\ threw.
 : CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
-   rc CHECK-ALL-ERRORS:THREW? if rc CHK-PREVERIFY-THREW CHK-PREVERIFY-FAIL then
+   rc CHK-STOP-RECORD
+   rc CHECK-ALL-ERRORS:THREW? if CHK-E-CHECK CHK-PREVERIFY-FAIL then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
    rc CHK-PREVERIFY-FAIL ;
 
@@ -1845,11 +1913,17 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-OUT ;
 
+\ A stop is reported after the packets the verifier made before it, by the
+\ record of its defect, in JSON as every --verify-only packet is.
+: CHK-VERIFY-STOPPED ( -- )
+   LINT-TRUE CHK-JSON !
+   VERIFY-STOP CHK-STOP-RECORD ;
+
 : CHK-VERIFY-REPORT ( verdict -- )
    CHK-VERIFY-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF CHK-E-CHECK CHK-THROW ENDOF
+      refused OF CHK-VERIFY-STOPPED CHK-E-CHECK CHK-THROW ENDOF
       engine-provided OF
          s" check.f: the engine provides the source; it is not verified" CHK-OUT-LN
          CHK-E-USAGE CHK-THROW

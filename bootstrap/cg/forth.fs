@@ -295,6 +295,7 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2CE8 constant DATA-FLOOR-CELL    \ published literal segments; mirrors src/habu/layout.f
 $2CF0 constant NBACK-OBSERVE-CELL
 $2CF8 constant NCOMP-PUBLISHED-CELL
 $2D00 constant CODE-INVALIDATE-CELL
@@ -7898,7 +7899,10 @@ variable P2SK
    NDICT DATA RSAVND-CELL LDR,
    \ Native REPL and evaluate recovery share the address-row filter before
    \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
-   9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
+   9 DATA RSAVDP-CELL LDR,
+   10 DATA DATA-FLOOR-CELL LDR,  10 DATA 10 ADD,
+   9 10 CMP,  9 9 10 C-HI CSEL,
+   9 DATA DP-CELL STR,
    EMIT-RESET-COMPILE-STATE
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B,
@@ -7936,7 +7940,10 @@ variable P2SK
       \ Native recovery filters address declarations before this DP rewind.
       \ The seed owns no such rows: addr-cells-abi is zero, xt! only stores,
       \ and ptr-cell-mark only consumes its address (EMIT-MEMORY-PRIMS).
-      12 13 56 LDR,  12 DATA DP-CELL STR,
+      12 13 56 LDR,
+      10 DATA DATA-FLOOR-CELL LDR,  10 DATA 10 ADD,
+      12 10 CMP,  12 12 10 C-HI CSEL,
+      12 DATA DP-CELL STR,
       9 DATA EVALD-CELL LDR,  9 9 1 SUBI,
       10 13 EVAL-PKG ADDI,
       12 10 PKGSNAP-CUR LDR,     12 DATA CUR-CELL STR,
