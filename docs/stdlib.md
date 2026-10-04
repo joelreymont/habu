@@ -1068,82 +1068,50 @@ parse/escape/edit/readback round trips.
 
 ## Map
 
-`lib/map.f` provides a fixed-capacity open-addressed string-key map.
-The source-backed surface uses caller-owned `ptr a` cell storage. Capacities and
-stored counts are `count`, slot indexes are `idx`, slot field offsets are `off`,
-and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
-capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
-
-Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
-`occupied`) with generated constructors `SLOT--STATE:EMPTY`,
-`SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
-consumer through `MATCH slot-state` or the `MAP-*?` predicates. The nominal
-getter/setter API prevents checked callers from laundering state through `n`.
-The caller still owns raw map storage and `MAP-SLOT-FIELD` intentionally exposes
-its representation. `MAP-SLOT-STATE@` is therefore a validating decoder: raw
-tags 0/1/2 become constructors and every other tag throws `ENGINE-ERROR:BAD-TAG`.
-
-The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
-no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
-generated constructors `MAP--LOC:FULL`, `MAP--LOC:FREE`, and `MAP--LOC:FOUND`.
-The carried `idx` payload replaces the old `-1` index placeholder, and every
-consumer dispatches through exhaustive `MATCH map-loc`.
-
-The published words expose checked storage layout plus lookup/update helpers:
+`lib/map.f` (package `MAP`) provides a fixed-capacity open-addressed string-key
+map over caller-owned `ptr a` cell storage. Capacities and stored counts are
+`count` and key lengths are `len`; key strings use `ptr u8 len`.
+`MAP:CELL-COUNT` returns the cell count to allocate for a capacity, and
+`MAP:INIT` initializes that storage.
 
 ```forth
-MAP-CHECK-CAP       ( count -- )
-MAP-CHECK-LEN       ( len -- )
-MAP-CELLS           ( count -- count )
-MAP-EMPTY?          ( slot-state -- bool )
-MAP-DELETED?        ( slot-state -- bool )
-MAP-OCCUPIED?       ( slot-state -- bool )
-MAP-CAP@            ( ptr a -- count )
-MAP-CAP!            ( count ptr a -- )
-MAP-CHECK-HANDLE    ( ptr a count -- )
-MAP-COUNT@          ( ptr a -- count )
-MAP-DELETED@        ( ptr a -- count )
-MAP-COUNT!          ( count ptr a -- )
-MAP-DELETED!        ( count ptr a -- )
-MAP-SLOTS           ( ptr a -- ptr a )
-MAP-CHECK-INDEX     ( ptr a idx -- )
-MAP-SLOT            ( ptr a idx -- ptr a )
-MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
-MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
-MAP-SLOT-HASH@      ( ptr a idx -- n )
-MAP-SLOT-HASH!      ( n ptr a idx -- )
-MAP-SLOT-KEY-A@     ( ptr a idx -- ptr u8 )
-MAP-SLOT-KEY-A!     ( ptr u8 ptr a idx -- )
-MAP-SLOT-KEY-U@     ( ptr a idx -- len )
-MAP-SLOT-KEY-U!     ( len ptr a idx -- )
-MAP-SLOT-VALUE@     ( ptr a idx -- a )
-MAP-SLOT-VALUE!     ( a ptr a idx -- )
-MAP-SLOT-CLEAR      ( ptr a idx -- )
-MAP-CLEAR           ( ptr a -- )
-MAP-INIT            ( ptr a count -- )
-MAP-HASH            ( ptr u8 len -- n )
-MAP-INDEX           ( n count -- idx )
-MAP-PROBE           ( n count count -- idx )
-MAP-SLOT-MATCH?     ( ptr a idx n ptr u8 len -- bool )
-MAP-REMEMBER-FREE   ( n idx -- n )
-MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n map-loc )
-MAP-LOCATE          ( ptr a count ptr u8 len -- map-loc n )
-MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
-MAP-HAS?    ( ptr a count ptr u8 len -- bool )
-MAP-GET     ( ptr a count ptr u8 len -- option<n> )
-MAP-SET     ( n ptr a count ptr u8 len -- )
-MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
+MAP:CELL-COUNT ( count -- count )
+MAP:INIT       ( ptr a count -- )
+MAP:CLEAR      ( ptr a -- )
+MAP:CAP@       ( ptr a -- count )
+MAP:COUNT@     ( ptr a -- count )
+MAP:HAS?       ( ptr n count ptr u8 len -- bool )
+MAP:GET        ( ptr n count ptr u8 len -- option<n> )
+MAP:SET        ( n ptr n count ptr u8 len -- )
+MAP:EACH       ( ptr n count [ ptr u8 len n -- ] -- )
 ```
 
-`MAP-GET` returns `SOME` with the stored value when the key is present, else
-`NONE`. `MAP-SET` inserts or replaces one numeric value. An insert stores the
+`MAP:GET` returns `SOME` with the stored value when the key is present, else
+`NONE`. `MAP:SET` inserts or replaces one numeric value. An insert stores the
 caller's key pointer and length, not a copy of the bytes, and a replacement
 keeps the first key's pointer, so the caller must keep those key bytes alive
 and unchanged for as long as the entry exists: every lookup compares against
-them and `MAP-EACH` passes them to its quotation. Capacity, malformed
-storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
-`E-MAP-FULL`.
+them and `MAP:EACH` passes them to its quotation. `MAP:EACH` visits occupied
+entries in ascending storage-slot order. Capacity, malformed storage, and
+full-table states throw named errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`;
+the capacity passed to a lookup or update must be the one the storage was
+initialized with.
+
+The header and slot layout, the hash, the probe sequence and the locate step
+are package-private; `lib/map-test.f` reopens `package MAP` to test them. Two
+families are public because only a public family has generated constructors,
+and the private words are their only producers and consumers:
+
+- `MAP:slot-state` (`empty`, `deleted`, `occupied`), constructed as
+  `MAP-SLOT--STATE:EMPTY`, `MAP-SLOT--STATE:DELETED` and
+  `MAP-SLOT--STATE:OCCUPIED`, is the per-slot lifecycle state. The slot reader
+  is a validating decoder: raw tags 0/1/2 become constructors and every other
+  tag throws `ENGINE-ERROR:BAD-TAG`, and the nominal getter and setter keep
+  checked code from laundering a state through `n`.
+- `MAP:loc` is the lookup verdict: `full` (table exhausted, no payload),
+  `free idx` (insertion slot) and `found idx` (hit slot), constructed as
+  `MAP-LOC:FULL`, `MAP-LOC:FREE` and `MAP-LOC:FOUND`. Every consumer dispatches
+  through exhaustive `MATCH`.
 
 ## Memory
 
