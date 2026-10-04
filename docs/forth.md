@@ -52,8 +52,8 @@ lives here; build, test and environment rules live in
     `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
     stores an address in V that a checked `( -- n )` word then reads as `n`.
     Only the text's definitions are certified, each against its own signature.
-- Existing TRUST forms are legacy awaiting removal, tracked in [minimal PRIM
-  migration](../.dots/habu-trusted-dies-prim-4fd12d60/habu-finish-minimal-prim-c00c6a93.md);
+- Existing TRUST forms are legacy awaiting removal, tracked in [Campaign
+  C2](../.dots/habu-campaign-c2-mem-c3d7662b/habu-campaign-c2-mem-c3d7662b.md);
   mentions below describe legacy syntax only.
 
 ## Naming
@@ -336,7 +336,7 @@ public
   definition's contract is read from that binding
   (`src/compiler/native/compiler.f` KEEP-ARITY asks `NDICT:SPELL-ARITY` with the
   bare name). A mismatch is refused where written, `E-SHADOWED-ARITY` (checker
-  7145, rc 67), naming the package, the tail and both widths, its packet placed
+  7145, rc 70), naming the package, the tail and both widths, its packet placed
   at the public definition's name; the native build's
   `-8303 E-NELAB-ARITY` stays as the backstop. The rule judges only a colon
   definition with a DECLARED signature; a public word made by a storage definer
@@ -428,7 +428,7 @@ and always available, for a one-off call or to escape a collision.
   tails are ordinary verbs cannot be imported: `using TCP4` refuses at the first
   bare `READ`, `WRITE` or `CLOSE`. Qualify the package word (always certifies)
   or rename the collision. The checker enforces this in every checked body (rc
-  67). The interpreter enforces it at top level and for `'`, by name
+  70). The interpreter enforces it at top level and for `'`, by name
   (`ENGINE-ERROR:USING-SHADOW-GLOBAL`, rc 105, a throw inside `evaluate`);
   without it `using PS` then a top-level `SHW` ran the global. Only the bodies
   nothing certifies, `TRUSTED:` and `0 set-check` definitions, keep
@@ -1100,6 +1100,48 @@ by name with the count it saw and the ceiling, and none truncates.
   (`src/habu/layout.f`), the JIT's per-level `leave` chain and `?do` entry-test
   records. Past it: `hb: control-flow nesting too deep: do` (or `?do`), rc 70.
   Factor the inner loops into their own words.
+- **A family, variant or field name: `TF-NAME-MAX`, 255 bytes**
+  (`src/core/type-family.f`), the longest package name, so every constructor
+  and member spelling derived from it fits. `SUMTYPE`, `PRODUCT`, `NEWTYPE`,
+  `STRUCTURE` and `ENUM` refuse a longer one with `E-TDECL-CAP` (7118):
+  `tools/check.f` reports `E-BAD-DECLARATION` with the name as its token and
+  the reason `name longer than 255 bytes`, rc 70; `--load` prints `habu: bad
+  <kind> declaration '<family>': name longer than 255 bytes at '<name>'` and
+  exits 70. Shorten the name.
+- **A package name: `CHECKER-PACKAGE-CAP` less one, 255 bytes**
+  (`src/core/checker.f`). `package`, and `using` of a namespace a qualified
+  definition made, throw `E-PACKAGE-NAME-CAP` (7154) out of the statement for a
+  longer one: `tools/check.f` reports `E-STATEMENT-THROW` with that throw code
+  at the name, rc 70; `--load` exits 67 with `hb: uncaught throw code 7154`. A
+  type qualified by a longer name names no package, `E-UNKNOWN-SIGNATURE-TYPE`.
+  Shorten the name.
+- **A definition's effect: `EFFECT-DEPTH-MAX`, 4096 levels deep**
+  (`src/core/checker.f`): a row of 4096 cells, where a cell's type adds the
+  levels it nests, so a returned quotation's row counts from the cell that
+  holds it. Recording an effect and instantiating it for a caller recurse once
+  a level, and half the walk's depth budget and of the 8192-cell data stack is
+  left for what the stacks already hold. Past it the definition is
+  uncheckable: `E-UNCHECKABLE` with the reason `effect too deep to record
+  (depth <depth>, at most 4096)`, rc 70 from `tools/check.f` and from `--load`,
+  which adds `hook: non-certified definition: <name>`. A `trust` row that deep
+  is refused as a bad one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`,
+  with the same reason, as `tools/check.f` refuses a `defer` or `TRUSTED:` row
+  that deep; `--load` stops such a definer first at its 8000-byte text (`hb:
+  definition body text full`, rc 71). Keep bulk values in a buffer, not on the
+  stack.
+- **A definition's input row: `EFFECT-MIN-IN-MAX`, 255 cells**
+  (`src/core/checker.f`), the most a call must provide that a published
+  word's record holds, in eight bits. Declared or inferred, a wider input row
+  makes the definition uncheckable: `E-UNCHECKABLE` with the reason `input row
+  too wide to record (<cells> cells, at most 255)`, rc 70 from `tools/check.f`
+  and from `--load`. A `RECURSE` in a body declared that wide is refused for
+  the same reason, and `tools/check.f` refuses rather than defers a body
+  calling a word only the run defines. Nothing is recorded for it, so callers
+  find no effect; under `--all-errors` a refused definition with such a
+  declaration keeps no record of it either. A stored signature that wide, a
+  `trust` row's, a `TRUSTED:` definition's or a `defer`'s, is refused as a bad
+  one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`, with the same
+  reason. Pass bulk values in a buffer, not on the stack.
 - **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,080 bytes on
   linux-aarch64 (`src/os/linux/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is
   per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/`defer` and the
@@ -1636,7 +1678,7 @@ the rule.
   the word a `generates:` row declares against the row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :75), `CTX0`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :77), `CTX0`
   (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the
@@ -1794,8 +1836,8 @@ the rule.
 - **A `DEFTYPE` a defining word hands out sits in the public section.** A
   `does>` body is checked code and may publish a nominal handle directly, but
   the child's stored signature names the type, and a private one does not
-  resolve for a reader: the definition is refused as it is made (`checker: bad
-  stored signature`), even when only the package uses the converters.
+  resolve for a reader: the definition is refused as it is made
+  (`E-BAD-STORED-SIGNATURE`), even when only the package uses the converters.
 - **A nominal error needs its own result family.** Constructing `RESULT:OK` in
   the ok-only path leaves the err variable of `result<a,b>` free, and a free
   variable unifies with a structural type but not with a nominal ENUM or

@@ -125,7 +125,7 @@ variable T-LABEL-U
 
 : T-REPORT ( -- )
    T-FAIL# @ 0= if s" test: ok" type cr exit then
-   T-FAIL# @ . s" test: failures" type cr
+   s" test: " type T-FAIL# @ FMT:.INT s"  failure(s)" type cr
    s" test: failures" T-EX-FAIL die ;
 
 \ A deadline is no verdict on the code under test (lib/test/outcome.f): a

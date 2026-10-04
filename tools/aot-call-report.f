@@ -3,4 +3,4 @@
 
 require tools/aot-call-report-lib.f
 
-REPORT-MAIN
+AOT-CALL-REPORT:REPORT-MAIN

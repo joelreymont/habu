@@ -31,7 +31,7 @@ require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
 require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
 
-\ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
+\ Checker axioms. Retirement: habu-campaign-c2-mem-c3d7662b.
 \ CHECK! certifies snippets so the fail-closed source hook compiles checked.
 \ TYPE-RESERVED? is the DEFLINEAR and VALUE-RECORD name rule.
 \ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
@@ -71,15 +71,6 @@ $20000 constant CHK-ERR-CAP
 \ deadline is longer than CHK-DEADLINE-MAX.
 120000 constant CHK-DEADLINE-MS
 $7FFFFFFF constant CHK-DEADLINE-MAX
-67 constant CHK-E-CAPACITY
-\ A throw nothing handles ends a load: a code outside 1..255 is named on the
-\ last line of standard error, `hb: uncaught throw code N`, and exits
-\ UNCAUGHT-RC (docs/debugging.md). A checker record refused at the load throws
-\ its own code (docs/repair-diagnostics.md).
-UNCAUGHT-RC constant CHK-UNCAUGHT-RC
-E-TRUST-UNRESOLVED constant CHK-E-TRUST-ROW
-E-PKG-CONTEXT constant CHK-E-PKG-RECORD
-E-BAD-QUALIFIED constant CHK-E-QUALIFIED-RECORD
 
 0 constant CHK-SEL-NONE
 1 constant CHK-SEL-SOURCE
@@ -242,8 +233,9 @@ variable CHK-TFAM-NAME-I
    msg u CHK-EXPLAIN-LN
    code CHK-THROW ;
 
+\ A path argument longer than its slot is a usage error.
 : CHK-PATH-TOO-BIG ( -- )
-   s" check.f: source path exceeds capacity" CHK-E-CAPACITY CHK-FAIL ;
+   s" check.f: source path exceeds capacity" CHK-E-USAGE CHK-FAIL ;
 
 : CHK-ARG$ ( n -- ptr u8 n )
    SCRIPT-ARGV$ ;
@@ -1275,9 +1267,20 @@ variable CHK-EXP-ROWS
 \ state (RBF.PKGMODE/PKGU). Boundary: the name is the token parse-name takes
 \ after `package`, and CHK-DEFINER? refuses a missing one, while
 \ native-loader misuse (nesting, public outside a package, ':' in a name)
-\ stays fail-closed through preverify and the child run.
+\ stays fail-closed through preverify and the child run. A package the checker
+\ refuses to open, such as a name longer than its 255-byte package row, gives
+\ the scan no scope to register into, so the scan of the file stops there: the
+\ preverify meets the same statement, stops at it too and reports the throw
+\ where it stands (E-STATEMENT-THROW).
+variable CHK-PKG-NAME-I
+
+: CHK-PKG-OPEN ( -- )
+   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-PACKAGE ;
+
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
-   k 1+ LINT-LEX:TOKEN CHECKER-PACKAGE
+   k 1+ CHK-PKG-NAME-I !
+   [: CHK-PKG-OPEN ;] catch {: rc:n :}
+   rc 0 <> IF LINT-LEX:COUNT EXIT THEN
    k 2 + ;
 
 : CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
@@ -1757,31 +1760,12 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    2 >FD 2 >FD JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
-\ Whether the run ended on an uncaught throw of code.
-: CHK-RUN-THREW? ( n -- bool ) {: code:n :}
-   SB-RESET
-   s" hb: uncaught throw code " SB-APPEND
-   code FMT:SB-INT
-   CHK-LF SB-APPEND-C
-   CHK-ERR-BUF CHK-ERR-U @ SB$ ENDS-WITH? ;
-
-\ check.f exits with its run's status, but a run that ends on a refused checker
-\ record's throw exits UNCAUGHT-RC as any unhandled throw does, and as check.f
-\ exits for an overlong path (CHK-E-CAPACITY). That run is refused, so it exits
-\ as a refusal.
-: CHK-RUN-STATUS ( n -- n ) {: rc:n :}
-   rc CHK-UNCAUGHT-RC <> if rc exit then
-   CHK-E-TRUST-ROW CHK-RUN-THREW? if CHK-E-CHECK exit then
-   CHK-E-PKG-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
-   CHK-E-QUALIFIED-RECORD CHK-RUN-THREW? if CHK-E-CHECK exit then
-   rc ;
-
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
       exit
    then
-   CHK-RC @ CHK-RUN-STATUS {: rc:n :}
+   CHK-RC @ {: rc:n :}
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
       CHK-RUN-JSON-ONLY

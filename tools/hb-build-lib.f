@@ -155,12 +155,33 @@ variable HBB-MAKER-TIMEOUT-MS
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
 
-\ -o is replaced through a sibling with a longer name, which has room only
-\ beside a path of at most SIBLING-PATH-MAX bytes (lib/fs-mutate.f), so the CLI
-\ refuses a longer one by name, before it builds anything.
+\ The source path is held in FS-PATH-CAP bytes, so the CLI refuses a longer
+\ one by name, before it builds anything.
+: HBB-SRC-ARG! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u FS-PATH-CAP > if s" hb-build: source path too long" HBB-USAGE-RC die then
+   a u HBB-SRC! ;
+
+\ -o is replaced by renaming over it a sibling made in its directory, named
+\ its last name plus a suffix (lib/fs-mutate.f REPLACE-STAGED). Before it
+\ builds anything the CLI refuses by name an -o with no room for that sibling,
+\ longer than SIBLING-PATH-MAX bytes or with a last name empty or longer than
+\ SIBLING-NAME-MAX, one in a directory that is not there, and one that is a
+\ directory, which a rename cannot replace. An -o with no directory part goes
+\ in the working directory.
 : HBB-OUT-ARG! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u SIBLING-PATH-MAX > if s" hb-build: output path too long" HBB-USAGE-RC die then
+   a u BASENAME nip {: nameu:n :}
+   nameu 0= if s" hb-build: output path has no file name" HBB-USAGE-RC die then
+   nameu SIBLING-NAME-MAX > if
+      s" hb-build: output file name too long" HBB-USAGE-RC die
+   then
+   u nameu - {: diru:n :}
+   diru 0 > if
+      a diru DIR? 0= if s" hb-build: no such output directory" HBB-USAGE-RC die then
+   then
+   a u DIR? if s" hb-build: output path is a directory" HBB-USAGE-RC die then
    a u HBB-OUT! ;
 
 : HBB-SRC$ ( -- ptr u8 n )
@@ -331,7 +352,7 @@ variable HBB-MAKER-TIMEOUT-MS
    0 HBB-I !
    HBB-PARSE-OPTIONS
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then
-   HBB-I @ HBB-ARG$ HBB-SRC!
+   HBB-I @ HBB-ARG$ HBB-SRC-ARG!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
    HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
    HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
@@ -625,6 +646,30 @@ HBB-INSTALL-CHILD-LINT
 \ Every file hb-build writes at -o is written to its sibling and renamed over
 \ -o only once it is whole and executable (lib/fs-mutate.f REPLACE-STAGED), so
 \ a failed install, restore or object write leaves -o as it was and no sibling.
+\ HBB-FILLING is set only while the fill runs, so HBB-REPLACE-OUT tells the
+\ fill's own failure (its source, the bytes it writes) from the replace's: a
+\ sibling the host will not make beside -o, or a rename it refuses, is an
+\ output hb-build cannot replace, and the CLI names it (HBB-CLI-MAKER-CODE).
+defer HBB-FILL ( ptr u8 n -- )
+variable HBB-FILLING
+
+: HBB-FILL-RUN ( ptr u8 n -- )
+   -1 HBB-FILLING !
+   HBB-FILL
+   0 HBB-FILLING ! ;
+
+: HBB-REPLACE-RUN ( -- )
+   HBB-OUT$ [: HBB-FILL-RUN ;] REPLACE-STAGED ;
+
+: HBB-REPLACE-OUT ( [ ptr u8 n -- ] -- )
+   is HBB-FILL
+   0 HBB-FILLING !
+   [: HBB-REPLACE-RUN ;] catch {: rc:n :}
+   rc 0= if exit then
+   HBB-FILLING @ if rc throw then
+   rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
+   rc throw ;
+
 \ The engine the child wrote under HB_TMP may be on another filesystem; it is
 \ copied.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
@@ -634,7 +679,7 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   HBB-OUT$ [: HBB-INSTALL-FILL ;] REPLACE-STAGED
+   [: HBB-INSTALL-FILL ;] HBB-REPLACE-OUT
    HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
@@ -750,7 +795,7 @@ HBB-INSTALL-CHILD-LINT
    tmp tmpu CHMOD-X ;
 
 : HBB-RESTORE-OUT ( -- )
-   HBB-OUT$ [: HBB-RESTORE-FILL ;] REPLACE-STAGED ;
+   [: HBB-RESTORE-FILL ;] HBB-REPLACE-OUT ;
 
 \ An artifact found in the cache is dated as used (lib/build-cache.f), and one a
 \ prune took after the check is built again. So is one a prune takes after USED
@@ -815,7 +860,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-WRITE-OBJECT ( -- )
    OBJIMG:RESET
    OBJIMG:ADD
-   HBB-OUT$ [: HBB-OBJECT-FILL ;] REPLACE-STAGED
+   [: HBB-OBJECT-FILL ;] HBB-REPLACE-OUT
    -1 HBB-OBJECT-HIT ! ;
 
 : HBB-OBJECT-HIT? ( -- bool )
@@ -973,6 +1018,10 @@ HBB-INSTALL-CHILD-LINT
    rc E-PROC-TIMEOUT = if
       HBB-CLEANUP
       HBB-UNCAUGHT-RC HBB-EXIT
+   then
+   rc E-BUILD-INSTALL = if
+      HBB-CLEANUP
+      s" hb-build: cannot replace output" HBB-BUILD-RC die
    then
    rc throw ;
 

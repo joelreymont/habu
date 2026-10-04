@@ -95,6 +95,20 @@ variable LIT-ACC
    k s" constant" TOK-IS-CI? 0= if false exit then
    k 1+ a u TOK-IS? ;
 
+\ The bytes an `S\"` payload stands for: `\n` is one, and any other escape is a
+\ spelling this reader does not model.
+: ESC-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 LIT-ACC !
+   0
+   begin dup u < while
+      a over + c@ $5C = if
+         1+ dup u >= if E-CID-CONST throw then
+         a over + c@ $6E <> if E-CID-CONST throw then
+      then
+      1+  LIT-ACC @ 1+ LIT-ACC !
+   repeat
+   drop LIT-ACC @ ;
+
 public
 
 \ ---- reading a source --------------------------------------------------------
@@ -140,6 +154,26 @@ public
    FOUND @ 1 < if E-CID-CONST throw then
    FOUND @ 1- WORD-TOK? 0= if E-CID-CONST throw then
    FOUND @ 1- LINT-LEX:TOKEN LIT@ ;
+
+\ The byte length of the string a `: NAME ( -- ptr u8 n ) s" ..." ;` row
+\ returns, or its `S\"` form, read from the literal's payload.
+: STR-LEN@ ( ptr u8 n -- n )
+   BODY-SPAN {: b:n e:n :}
+   -1 FOUND !
+   0 HITS !
+   e b ?do
+      i WORD-TOK? if
+         HITS @ 1+ HITS !
+         i FOUND !
+      then
+   loop
+   HITS @ 1 <> if E-CID-CONST throw then
+   FOUND @ LINT-LEX:TOKEN {: ta:ptr tu:n :}
+   FOUND @ LINT-LEX:CONTENT {: pa:ptr pu:n :}
+   ta c@ $20 or $73 <> if E-CID-CONST throw then   \ s" or S\", never c" or ."
+   ta tu LINT-ESC-STRING-OPENER? if pa pu ESC-LEN exit then
+   ta tu LINT-NORMAL-STRING-OPENER? 0= if E-CID-CONST throw then
+   pu ;
 
 \ ---- raw token access --------------------------------------------------------
 \ The relocation interpreter shares the lexer's token stream.

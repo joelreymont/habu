@@ -31,6 +31,7 @@ require lib/content-key.f
 require lib/engine-candidate.f
 require test/image-grant.f
 require test/keyed-image.f
+require test/suite-budget.f              \ CHILD-MS, the build's hang guard
 
 package NATIVE-UNIT-IMAGE
 
@@ -142,7 +143,7 @@ variable RESOLVED?
 : BUILD-RUN ( -- )
    BUILD-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN KEYED-IMAGE:BUILD-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

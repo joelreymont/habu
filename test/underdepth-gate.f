@@ -153,10 +153,11 @@ public
 
 package UDG-MINIMUM
 
-76 constant CAPACITY-RC             \ checker representation capacity reject
+70 constant WIDE-RC                 \ rendered before its code is thrown (RC-REJECT)
 
 \ Declare a callback whose fixed input row contains exactly `width` physical
-\ cells. The encoded DNAME-MIN-IN byte accepts 255 and rejects 256.
+\ cells. The encoded DNAME-MIN-IN byte accepts 255 and rejects 256: a wider
+\ declared row is a stored signature no record can hold, refused by its width.
 : MIN-SIG$ ( n -- ptr u8 n ) {: width:n :}
    SB-RESET
    s" defer MINIMUM-PROBE ( " SB-APPEND
@@ -167,10 +168,11 @@ package UDG-MINIMUM
    s" -- )" UDG-LINE
    SB$ ;
 
-: ASSERT-CAPACITY ( -- )
+: ASSERT-WIDE ( -- )
    UDG-EXITED @ TTRUE
-   UDG-RC @ CAPACITY-RC T=
-   UDG-ERR$ s" checker: min-in exceeds record field" CONTAINS? TTRUE ;
+   UDG-RC @ WIDE-RC T=
+   UDG-ERR$ s" habu: in minimum-probe: bad stored signature" CONTAINS? TTRUE
+   UDG-ERR$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE ;
 
 public
 
@@ -185,7 +187,7 @@ public
    s" MINIMUM-PROBE" UDG-ASSERT-UNDERDEPTH
    s" 256-cell physical minimum rejects deterministically" T-LABEL
    256 MIN-SIG$ UDG-EXEC:SUBJECT
-   ASSERT-CAPACITY ;
+   ASSERT-WIDE ;
 
 ;package
 

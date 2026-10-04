@@ -651,7 +651,7 @@ s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;M
 variable XPAD-D0                                              \ data-stack depth snapshot taken before the build
 : XPAD-MARK ( -- ) depth XPAD-D0 ! ;                         \ checked: snapshot the baseline depth
 : XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;                    \ checked: cells the build added to the stack
-\ Retirement owner: habu-fail-closed-on-0ab1e401.
+\ Retirement owner: habu-trusted-dies-prim-4fd12d60.
 TRUSTED: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n )          \ trusted leaf: drop the measured layout value, keep the count
    >r 2drop 2drop drop r> ;
 : XPAD-WTHREE-W ( -- n )                                     \ native cell footprint of the certified clxg<clx2> wthree bundle
@@ -693,7 +693,7 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 \ OUTPUT-annotated wide XPG:MAKE certifies. UNMAKE has NO such escape: its stored effect is fixed
 \ at one cell per open parameter, and no arg-aware lane instantiates it wide, so `XPG:UNMAKE` on
 \ a concrete `xpg<xpginr>` rejects at the widened field slot — an independent generic-wide UNMAKE
-\ checker gap tracked by dot habu-instantiate-wide-generic-075aced1. Hence the trusted leaf
+\ checker gap owned by campaign habu-campaign-c3-the-a2477c89. Hence the trusted leaf
 \ TWX-XPG-CHECK reads the cells directly.
 s" STRUCTURE xpginr 0 FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
 s" STRUCTURE xpg 1 FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
@@ -702,7 +702,7 @@ s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \
 s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
 package XPAD-TAGLESS
 : XPGW-MK ( xpginr n -- xpg<xpginr> ) XPG:MAKE ;              \ compiled generated STRUCTURE constructor at the wide instantiation
-\ Retirement owner: habu-instantiate-wide-generic-075aced1.
+\ Retirement owner: habu-trusted-dies-prim-4fd12d60.
 TRUSTED: TWX-XPG-CHECK ( xpg<xpginr> -- )                    \ trusted leaf: read the wide bundle's cells top->bottom (z, b, a) and assert their values in declaration order
    3 T= 2 T= 1 T= ;
 : XPGW-RT ( -- )                                             \ build the certified wide bundle and verify its content + exact width

@@ -1,7 +1,4 @@
 \ env-base.f - shared startup argv/envp access over captured DATA cells.
-\ Trusted rows expose the fixed startup cells, raw C-string/vector operations
-\ and bounded temporary-path scratch.
-\ Retirement: habu-raw-self-path-4514ffd3.
 
 PTR-VARIABLE ENV-DATA-PTR
 data-base ENV-DATA-PTR !

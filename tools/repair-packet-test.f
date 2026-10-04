@@ -369,20 +369,25 @@ create PACKET-BUF FS-PATH-CAP allot
    DIAG-PATH GJA-DIAG-CONTRACT ;
 
 \ The checker's pre-pass never reads a declaration that `evaluate` runs, so only
-\ the run refuses it, and its record has no place.
-: TEST-STORAGE-UNPLACED ( -- )
+\ the run refuses it, and its record has no place. Each exits 70, the refusal
+\ status: the storage declaration throws 70, and the family declaration throws
+\ its own code past every handler, which the load exits 70 for because the
+\ checker rendered that refusal.
+: TEST-UNPLACED ( -- )
    s" storage-unplaced" s" fix_storage_type"
-   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE ;
+   s\" s\" 4 TYPED-BUFFER DIAG-STG no-such-type\" evaluate" 70 CHILD-CASE
+   s" declaration-unplaced" s" fix_family_declaration"
+   s\" s\" SUMTYPE badsum 0 VARIANT samev ;VARIANT VARIANT samev ;VARIANT ;SUMTYPE\" evaluate" 70 CHILD-CASE ;
 
 \ A refused record names its token and any known position. A trust row, a
 \ storage registrar called from source and a record entry called with a
-\ malformed name at run time each end the load on an uncaught throw (exit 67
-\ under `--load`), and check.f exits 70 for it, as for any refusal. A
-\ declaration's record for a malformed name is refused by the pre-pass, so the
-\ check meets it in process, before the statement its throw ends, and the
-\ packet is the record's. A stored signature that does not parse is counted by
-\ the multi-error pre-pass (rc 70). The arity-shadow refusal ends its checked
-\ definition (rc 67); its packet keeps the named token, package and position.
+\ malformed name at run time each end the load on an uncaught throw of its own
+\ code, which the load exits 70 for because the checker rendered that refusal;
+\ check.f keeps the load's status. A declaration's malformed name is refused
+\ by the pre-pass before its statement runs. A stored signature that does not
+\ parse is counted by the multi-error pre-pass (rc 70). The named definition
+\ and using refusals place their own token when the checked text locates it;
+\ no statement-throw packet follows them. The packet keeps each code's field.
 : TEST-RECORDS ( -- )
    s" trust-row" s" fix_stale_trust_row"
    s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 70 CHILD-CASE
@@ -394,7 +399,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" stored-signature" s" fix_signature_type"
    s\" s\" DIAG-SIG\" s\" -- diag-no-such-type\" trust" 70 CHILD-CASE
    s" shadowed-arity" s" match_shadowed_private_effect"
-   s" package DIAG-SBA : DIAG-TWIN ( n n -- n ) + ; public : DIAG-TWIN ( n -- n ) 1 + ; ;package" 67 CHILD-CASE ;
+   s" package DIAG-SBA : DIAG-TWIN ( n n -- n ) + ; public : DIAG-TWIN ( n -- n ) 1 + ; ;package" 70 CHILD-CASE ;
 
 \ A warning is no refusal: the packet comes from the refusal after it, of the
 \ call it leaves undefined, and counts that one alone.
@@ -407,7 +412,7 @@ create PACKET-BUF FS-PATH-CAP allot
 \ resolves in: a global and a used public, or two used publics.
 : TEST-USING ( -- )
    s" using-shadow" s" disambiguate_using_shadow"
-   s" : DIAG-SW ( n -- ) drop ; package DIAG-SP public : DIAG-SW ( n -- ) drop ; ;package using DIAG-SP : DIAG-SU ( -- ) 1 DIAG-SW ; ;using" 67 CHILD-CASE
+   s" : DIAG-SW ( n -- ) drop ; package DIAG-SP public : DIAG-SW ( n -- ) drop ; ;package using DIAG-SP : DIAG-SU ( -- ) 1 DIAG-SW ; ;using" 70 CHILD-CASE
    s" using-ambiguous" s" disambiguate_using_ambiguous"
    s" package DIAG-UA public : DIAG-UW ( n -- ) drop ; ;package package DIAG-UB public : DIAG-UW ( n -- ) drop ; ;package using DIAG-UA using DIAG-UB : DIAG-UU ( -- ) 1 DIAG-UW ; ;using ;using" 67 CHILD-CASE ;
 
@@ -541,7 +546,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-DECL
    TEST-SPAN-KINDS
    TEST-STORAGE
-   TEST-STORAGE-UNPLACED
+   TEST-UNPLACED
    TEST-GENERATES
    TEST-RECORDS
    TEST-WARNING

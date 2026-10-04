@@ -8,6 +8,7 @@ require lib/string.f
 require lib/memory.f
 require lib/argv.f
 require test/checker-assert.f
+require lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 \ White-box test: reopen the module's package so the fixtures reach argv's
 \ private path buffer/capacity (ARGV-PATH-BUF, ARGV-PATH-CAP) and call the public
@@ -20,7 +21,7 @@ variable TEST-FAIL
 : ASSERT ( f -- )
    TEST-N @ 1 + TEST-N !
    0= if
-      s" argv-test: assertion " type TEST-N @ . s"  failed" type cr
+      s" argv-test: assertion " type TEST-N @ FMT:.INT s"  failed" type cr
       TEST-FAIL @ 1 + TEST-FAIL !
    then ;
 
@@ -351,7 +352,7 @@ create MSG-TEXT ARGV-MSG-CAP allot
 
 : REPORT ( -- )
    TEST-FAIL @ 0 = if
-      s" argv-test: ok (" type TEST-N @ . s"  assertions)" type cr
+      s" argv-test: ok (" type TEST-N @ FMT:.INT s"  assertions)" type cr
    else
       s" argv-test: failures" 1 die
    then ;

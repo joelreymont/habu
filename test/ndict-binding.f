@@ -48,7 +48,7 @@ package NDICT-BINDING-TEST
 using NDICT
 
 \ Test-only record identity and retired-wordlist inspection. No raw record is
-\ exported. Retirement: habu-attr-and-remove-2b13e978.
+\ exported. Retirement: habu-trusted-dies-prim-4fd12d60.
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 

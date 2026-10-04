@@ -1,7 +1,11 @@
 \ aot-call-report-lib.f - report patched AOT call stencils in a binary.
 \ Load before tools/aot-call-report.f or tools/aot-call-report-test.f.
+\ The gates load it in process, so it refuses misuse by a named throw its
+\ caller reports; only REPORT-MAIN, the CLI boundary, ends the process.
 
 require lib/errors.f
+
+package AOT-CALL-REPORT
 
 $D503201F constant NOP-INSTR
 $FC000000 constant BL-MASK
@@ -14,6 +18,7 @@ $94000000 constant BL-OP
 $4000 constant ACR-READ-CAP
 ACR-READ-CAP ACR-CARRY-CAP + constant ACR-BUF-CAP
 PATH-CAP 1 + constant REPORT-PATH-CAP
+\ A cell has at most 19 decimal digits, so JSON-NUM fills JSON-NUM-BUF unchecked.
 32 constant JSON-NUM-CAP
 
 9 constant ACR-C-TAB
@@ -82,8 +87,12 @@ variable JSON-NUM-N
       1+
    repeat drop ;
 
+\ A negative length, or one the path buffer cannot hold with its NUL, is a bad
+\ path, refused as lib/fs.f refuses one, by E-FS-PATH. The length is compared
+\ with the capacity, never added to, so no length wraps into range.
 : REPORT-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 1+ REPORT-PATH-CAP > if s" aot-call-report: path too long" 74 die then
+   u 0 < if E-FS-PATH throw then
+   u REPORT-PATH-CAP >= if E-FS-PATH throw then
    a REPORT-PATH u REPORT-COPY-BYTES
    0 REPORT-PATH u + c!
    u REPORT-PATH-U ! ;
@@ -94,9 +103,11 @@ variable JSON-NUM-N
 : REPORT-PATH0 ( -- ptr u8 )
    REPORT-PATH ;
 
+\ A null output buffer or a negative capacity is refused as the JSON writer
+\ refuses one, by E-JW-OUTPUT.
 : REPORT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
-   a 0= if s" aot-call-report: output buffer missing" 74 die then
-   cap 0 < if s" aot-call-report: output buffer capacity invalid" 74 die then
+   a 0= if E-JW-OUTPUT throw then
+   cap 0 < if E-JW-OUTPUT throw then
    a REPORT-OUT-A!
    cap REPORT-OUT-CAP !
    0 REPORT-OUT-U ! ;
@@ -158,15 +169,16 @@ variable JSON-NUM-N
    JSON-STRING
    ACR-C-COLON OUT-C ;
 
+\ Every number in the report is a count or an offset: a negative one is refused
+\ as the unsigned formatters refuse it, by E-FMT-DOMAIN.
 : JSON-NUM ( n -- ) {: n:n :}
-   n 0 < if s" aot-call-report: negative json number" 74 die then
+   n 0 < if E-FMT-DOMAIN throw then
    n JSON-NUM-V !
    0 JSON-NUM-N !
    JSON-NUM-V @ 0= if ACR-C-ZERO OUT-C exit then
    begin JSON-NUM-V @ 0 > while
       JSON-NUM-V @ 10 mod ACR-C-ZERO +  JSON-NUM-BUF JSON-NUM-N @ + c!
       JSON-NUM-N @ 1+ JSON-NUM-N !
-      JSON-NUM-N @ JSON-NUM-CAP > if s" aot-call-report: number buffer full" 74 die then
       JSON-NUM-V @ 10 / JSON-NUM-V !
    repeat
    begin JSON-NUM-N @ 0 > while
@@ -246,7 +258,7 @@ variable JSON-NUM-N
 
 : OPEN-INPUT ( -- n )
    REPORT-PATH0 0 0 open
-   dup 0 < if s" aot-call-report: cannot open input" 74 die then ;
+   dup 0 < if E-FS-OPEN throw then ;
 
 : ACR-SCAN-RESET ( -- )
    0 ACR-FILE-OFF !
@@ -256,7 +268,7 @@ variable JSON-NUM-N
 
 : ACR-SCAN-ONE-READ ( -- bool )
    ACR-FD @  ACR-BUF ACR-CARRY @ +  ACR-READ-CAP read ACR-GOT !
-   ACR-GOT @ 0 < if s" aot-call-report: read failed" 74 die then
+   ACR-GOT @ 0 < if E-FS-IO throw then
    ACR-GOT @ 0= if REPORT-FALSE exit then
    ACR-FILE-OFF @ ACR-CARRY @ - ACR-BASE !
    ACR-CARRY @ ACR-GOT @ + ACR-LEN !
@@ -328,8 +340,38 @@ variable JSON-NUM-N
 : USAGE ( -- )
    s" usage: tools/aot-call-report.f binary" 64 die ;
 
-: REPORT-MAIN ( -- )
-   SCRIPT-ARGC 1 <> if USAGE then
+\ The CLI ends a refused report with exit 74 and the refusal in words. Any
+\ other code is a defect no command line can cause, and goes on to the engine.
+: REPORT-REFUSED ( n -- )
+   {: code:n :}
+   code E-FS-PATH = if s" aot-call-report: path too long" 74 die then
+   code E-FS-OPEN = if s" aot-call-report: cannot open input" 74 die then
+   code E-FS-IO = if s" aot-call-report: read failed" 74 die then
+   code throw ;
+
+: REPORT-RUN ( -- )
    0 SCRIPT-ARGV$ REPORT-FILE!
    REPORT-BUFFER-OFF
    REPORT-JSON ;
+
+: REPORT-MAIN ( -- )
+   SCRIPT-ARGC 1 <> if USAGE then
+   [: REPORT-RUN ;] catch
+   dup 0= if drop exit then
+   REPORT-REFUSED ;
+
+\ What the CLI, the AOT gates and the focused test call; the rest stays private.
+public
+EXPORT REPORT-PATH-CAP
+EXPORT REPORT-BYTES
+EXPORT REPORT-STENCILS
+EXPORT REPORT-BLS
+EXPORT REPORT-FILE!
+EXPORT REPORT-BUFFER!
+EXPORT REPORT-OUT$
+EXPORT JSON-NUM
+EXPORT BL?
+EXPORT REPORT-COUNT
+EXPORT REPORT-JSON-BUFFER
+EXPORT REPORT-MAIN
+;package

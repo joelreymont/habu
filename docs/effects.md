@@ -69,7 +69,9 @@ top-level `--`, then `Dout = R`, `Rout = S`, and then refuses the definition:
 nothing may follow the output side, so the trailing `-- S a` is a syntax reject
 at that token (`fix_signature_syntax`, exit 70). Writing the top-level shape
 inside a quotation is refused the same way: `[ R a | S -- R | S a ]` is a hard
-syntax reject (`checker: bad stored signature`, exit 76).
+syntax reject (`fix_signature_syntax`), at the `|` in a definition (exit 70) and
+as `E-BAD-STORED-SIGNATURE` in a stored signature such as a `trust` row's, whose
+uncaught throw ends the load (exit 70).
 
 ### Rows, variables, and lexing
 
@@ -219,7 +221,7 @@ from outside.
 The name is fail-closed: it cannot reuse a built-in type, a role, an atom prefix,
 a one-letter type variable, or `ptr`, which a signature reads as the pointer
 constructor. `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject in every scope
-with `bad newtype declaration '…': reserved name` (throw 7110, exit 67). A
+with `bad newtype declaration '…': reserved name` (throw 7110, exit 70). A
 family the declaring scope already has is `duplicate family` (throw 7102); a
 package may shadow a global or another package's family, so `DEFTYPE SIDE` in a
 package names its own `side` beside `IR-SCHEMA:side`. `tools/check.f` reports

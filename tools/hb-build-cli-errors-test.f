@@ -1,8 +1,10 @@
 \ hb-build-cli-errors-test.f - checked fixture for tools/hb-build-lib.f: the
 \ errors the hb-build CLI reports - a cache root that is a file, as JSON and as
-\ text, an -o too long to replace, a preseeded entry name empty or too long
-\ for the maker - and a MAIN whose effect breaks the application contract,
-\ refused by the app-build child and passed through by the CLI.
+\ text, a source path too long to hold, an -o too long to replace, in no
+\ directory, naming a directory or no file, with a last name too long for its
+\ sibling, or in a directory it cannot write, a preseeded entry name empty or
+\ too long for the maker - and a MAIN whose effect breaks the application
+\ contract, refused by the app-build child and passed through by the CLI.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-cli-errors-test.f
 
@@ -81,7 +83,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
 
 FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
 
-\ An -o of u bytes under the scratch root, its last name all `o`.
+\ A path of u bytes under the scratch root, its last name all `o`.
 : HBT-LONG-OUT$ ( n -- ptr u8 n )
    {: u:n :}
    HBT-ROOT {: root:ptr rootu:n :}
@@ -90,24 +92,102 @@ FS-PATH-CAP 1+ BUFFER: HBT-LONG-OUT-BUF
    u rootu 1+ ?do [char] o HBT-LONG-OUT-BUF i + c! loop
    HBT-LONG-OUT-BUF u ;
 
+\ An -o under the scratch root whose last name is u bytes.
+: HBT-LONG-NAME$ ( n -- ptr u8 n )
+   HBT-ROOT nip 1+ + HBT-LONG-OUT$ ;
+
+\ A name joined under a directory, in the same buffer.
+: HBT-JOINED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   HBT-LONG-OUT-BUF JOIN-PATH HBT-LONG-OUT-BUF swap ;
+
+\ The CLI's refusal of a source and an -o by name, before it builds anything:
+\ the usage exit, the message on stderr and nothing on stdout.
+: HBT-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n out:ptr outu:n want:ptr wantu:n :}
+   HBT-ARGV-BASE
+   src srcu >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   out outu >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: ou:n erru:n rc:n :}
+   rc HBB-USAGE-RC T=
+   ou 0 T=
+   HBT-ERR erru want wantu T$= ;
+
 \ -o is replaced through a sibling with a longer name (lib/fs-mutate.f
-\ SIBLING-PATH-MAX), so the CLI refuses an -o with no room for one by name
-\ before it builds anything: the usage exit, the message on stderr and nothing
-\ on stdout. One byte past FS-PATH-CAP is the same refusal.
+\ SIBLING-PATH-MAX), so the CLI refuses an -o with no room for one by name.
+\ One byte past FS-PATH-CAP is the same refusal.
 : HBT-OUT-TOO-LONG ( n -- )
    {: u:n :}
-   HBT-ARGV-BASE
-   HBT-AOT-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   u HBT-LONG-OUT$ >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   rc HBB-USAGE-RC T=
-   outu 0 T=
-   HBT-ERR erru S\" hb-build: output path too long\n" T$= ;
+   HBT-AOT-SRC u HBT-LONG-OUT$ S\" hb-build: output path too long\n" HBT-REFUSED ;
 
 : CLI-OUT-TOO-LONG ( -- )
    SIBLING-PATH-MAX 1+ HBT-OUT-TOO-LONG
    FS-PATH-CAP 1+ HBT-OUT-TOO-LONG ;
+
+\ The source path is held in a buffer of FS-PATH-CAP bytes, so the CLI refuses
+\ a longer one by name.
+: CLI-SRC-TOO-LONG ( -- )
+   FS-PATH-CAP 1+ HBT-LONG-OUT$ HBT-AOT-OUT
+   S\" hb-build: source path too long\n" HBT-REFUSED ;
+
+\ The sibling is made in -o's directory, so the CLI refuses an -o whose
+\ directory is missing, or is a file, by name rather than after a whole build.
+: CLI-OUT-NO-DIR ( -- )
+   HBT-AOT-SRC HBT-ROOT s" no-dir/aot" HBT-JOINED$
+   S\" hb-build: no such output directory\n" HBT-REFUSED
+   HBT-AOT-SRC HBT-AOT-SRC s" aot" HBT-JOINED$
+   S\" hb-build: no such output directory\n" HBT-REFUSED ;
+
+\ -o is renamed over, so the CLI refuses by name one that is a directory or
+\ names no file in one.
+: CLI-OUT-NOT-FILE ( -- )
+   HBT-AOT-SRC HBT-ROOT
+   S\" hb-build: output path is a directory\n" HBT-REFUSED
+   HBT-AOT-SRC HBT-ROOT s" " HBT-JOINED$
+   S\" hb-build: output path has no file name\n" HBT-REFUSED ;
+
+\ The sibling's name is -o's last name plus a suffix that depends on the seed
+\ it draws, and the host refuses a name past FS-MUT-NAME-MAX bytes, so the CLI
+\ refuses by name a last name with no room for the longest suffix
+\ (lib/fs-mutate.f SIBLING-NAME-MAX).
+: HBT-NAME-TOO-LONG ( n -- )
+   {: u:n :}
+   HBT-AOT-SRC u HBT-LONG-NAME$
+   S\" hb-build: output file name too long\n" HBT-REFUSED ;
+
+: CLI-OUT-NAME-TOO-LONG ( -- )
+   SIBLING-NAME-MAX 1+ HBT-NAME-TOO-LONG ;
+
+\ A last name of exactly SIBLING-NAME-MAX bytes is built and installed.
+: CLI-OUT-NAME-MAX ( -- )
+   HBT-ARGV-BASE
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   SIBLING-NAME-MAX HBT-LONG-NAME$ {: out:ptr outu:n :}
+   out outu >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD 0 T= 2drop
+   out outu FILE? TTRUE ;
+
+$16D constant HBT-MODE-READ-ONLY            \ 0555: listable, not writable
+
+: HBT-RO-DIR$ ( -- ptr u8 n )
+   HBT-ROOT s" ro" HBT-JOINED$ ;
+
+\ An -o in a directory the user cannot write passes every check the CLI can
+\ make up front; the host refuses the sibling only at install, after the
+\ build, and the CLI names that with its IO exit and nothing on stdout.
+: CLI-OUT-READ-ONLY ( -- )
+   HBT-RO-DIR$ MAKE-DIR
+   HBT-RO-DIR$ HBT-MODE-READ-ONLY CHMOD-MODE
+   HBT-ARGV-BASE
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-ROOT s" ro/aot" HBT-JOINED$ >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   HBT-RO-DIR$ FS-MUT-MODE-DIR CHMOD-MODE
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru S\" hb-build: cannot replace output\n" T$= ;
 
 HBB-ENTRY-NAME-CAP 1+ constant HBT-LONG-ENTRY-U
 HBT-LONG-ENTRY-U BUFFER: HBT-LONG-ENTRY-BUF
@@ -183,6 +263,12 @@ public
    HBT-PREPARE
    CLI-PATH-ERROR
    CLI-OUT-TOO-LONG
+   CLI-SRC-TOO-LONG
+   CLI-OUT-NO-DIR
+   CLI-OUT-NOT-FILE
+   CLI-OUT-NAME-TOO-LONG
+   CLI-OUT-NAME-MAX
+   CLI-OUT-READ-ONLY
    CLI-PRESEED-EMPTY
    CLI-PRESEED-TOO-LONG
    HBT-BAD-MAIN-EFFECTS

@@ -17,7 +17,7 @@ public
 package NDICT-RECORD-TEST
 
 \ Test-only access to the internal primitive; no record leaves this package.
-\ Retirement: habu-attr-and-remove-2b13e978.
+\ Retirement: habu-trusted-dies-prim-4fd12d60.
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 

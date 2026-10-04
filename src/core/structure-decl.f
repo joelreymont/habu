@@ -64,6 +64,7 @@ TYPE-DECL:E-TDECL-PAYLOAD constant E-PAYLOAD  \ unresolved / unknown field type
 TYPE-DECL:E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 TYPE-DECL:E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
 TYPE-DECL:E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
+TYPE-DECL:E-TDECL-CAP constant E-CAP          \ a family or field name longer than NAME-MAX
 E-TFAM-CASE constant E-CASE                   \ family name is not a lowercase canonical tail
 E-TFAM-DUP constant E-DUP                     \ duplicate family or field tail, raised by TFAM-DECL /
                                               \ the field-event path; named here only so a
@@ -72,6 +73,10 @@ E-TFAM-DUP constant E-DUP                     \ duplicate family or field tail, 
 110 constant ASCII-N
 102 constant ASCII-F
 114 constant ASCII-R
+
+\ The longest family or field name, which every spelling derived from it has
+\ room for (src/core/type-family.f TF-NAME-MAX, read here at top level).
+TF-NAME-MAX constant NAME-MAX
 
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
@@ -106,6 +111,7 @@ TRUSTED: QUOT-SCH ( [ -- ptr u8 n ] [ ptr u8 n -- n ] [ ptr u8 n n -- ] -- n )
 TRUSTED: QUOT-ROLLBACK ( -- ) TYPE-DECL:QUOT-ROLLBACK ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
+TRUSTED: NAME-LONG$ ( -- ptr u8 n ) TF-NAME-LONG$ ;
 TRUSTED: FAMILY-RESERVED? ( ptr u8 n -- bool ) TYPE-NAME:FAMILY-RESERVED? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
@@ -202,8 +208,11 @@ SD-RESET
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    FAMILY-RESERVED? ;
 
+: NAME-LONG? ( ptr u8 n -- bool ) nip NAME-MAX > ;
+
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup NAME-LONG? IF 2drop NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    2dup CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
@@ -471,6 +480,7 @@ SD-QUOT-INSTALL
    SD-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
+   na nu NAME-LONG? IF NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
    SD-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD

@@ -11,8 +11,8 @@ require lib/adt/option.f                      \ option<n> finders (switchover: l
 \ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.
 \ Lint tools load this first so shared helpers fail closed under
 \ LINT-CHECK-HOOK. CHECK! (engine checker entrypoint) is modeled as a
-\ primitive axiom so the hook definition itself compiles checked
-\ (axiom owner: habu-primitive-effect-axiom-1119f176).
+\ primitive axiom so the hook definition itself compiles checked.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : LINT-CHECK-HOOK ( ptr u8 n -- n )

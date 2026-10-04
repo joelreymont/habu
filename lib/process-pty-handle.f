@@ -50,7 +50,7 @@ create SLOT-OWNER SLOT-CAP cells allot
 \ every one of them with 7137 E-CAST-LINEAR (measured), and rightly so — minting
 \ or erasing a use-once token through a zero-instruction retype is exactly the
 \ unsoundness the rule exists to stop. The checker cannot refine or erase these
-\ use-once roles yet; retirement owner: habu-recover-checked-pty-04fcb611.
+\ use-once roles yet. Retirement owner: habu-mint-and-erase-72e83e7a.
 TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
 TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
 TRUSTED: N>RESERVATION ( n -- process-pty-reservation ) ;

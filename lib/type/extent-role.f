@@ -32,10 +32,7 @@
 \ so it needs no package of its own.
 \
 \ WHAT IS NOT HERE. The reverse direction - a plain n INTO an extent's index
-\ space - stays per-extent and TRUSTED in maki/extent.f (`>#M ( n -- ix<extm> )`),
-\ because its runtime range guard is not yet expressible as a checked body. Dot
-\ habu-extent-bound-loop-a70a49b3 tracks the author-time binding that would
-\ retire it.
+\ space - needs a runtime range guard that is not expressible as a checked body.
 
 \ IX>N ( ix<e> -- n ) : project any extent index back to a plain cell. Generic
 \ over the extent, so one word serves every extent, and the direction is always

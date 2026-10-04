@@ -151,10 +151,10 @@ TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
 \ The offending token RENDER hands the writer, which locates a token by its
 \ pointer: the span it was copied from when that lies in text a driver armed
 \ for locating packets (checker.f DIAG>SRC), so the packet carries its file
-\ position; else the copy, which has none.  Those borrowed bytes are intact: an
+\ position; else the copy, which has none. Those borrowed bytes are intact: an
 \ armed text stays put while its declaration runs, as DECL-REPLAY borrows the
-\ caller's buffers.  A span in an input buffer the engine refills per line lies
-\ in no armed text, so its stale bytes are never read.  The borrowed span is
+\ caller's buffers. A span in an input buffer the engine refills per line lies
+\ in no armed text, so its stale bytes are never read. The borrowed span is
 \ whole: SPAN-CAP and its marker bound only the copy, so a located token renders
 \ in full and names the same bytes as its byte range.
 TRUSTED: TOKEN-SPAN@ ( -- ptr u8 n )
@@ -162,6 +162,10 @@ TRUSTED: TOKEN-SPAN@ ( -- ptr u8 n )
    {: a:ptr u:n :}
    a DIAG>SRC nip IF a u EXIT THEN
    S-TOKEN SLOT@ ;
+
+\ Rethrow a reject DIAG rendered with its own code. The checker publishes
+\ rendered refusals before throwing, so an uncaught load exits as a refusal.
+TRUSTED: REFUSE ( n -- ) CHECKER-REFUSE ;
 
 \ Multi-error load state, the checker's own (checker.f). Under `--all-errors` a
 \ rejected definition is counted and the load continues instead of stopping at
@@ -262,9 +266,9 @@ public
    code ;
 
 \ GUARD ( body -- ) : run one declaration.  A reject is rendered through the
-\ shared declaration diagnostic and then rethrown with its exact code, so the
-\ transaction's rollback, the caller's error handling, and every pinned reject
-\ value are unchanged; only the missing message is added.
+\ shared declaration diagnostic and then rethrown with its exact code (REFUSE),
+\ so the transaction's rollback, the caller's error handling, and every pinned
+\ reject value are unchanged; only the missing message is added.
 \
 \ Under a multi-error load (`--all-errors`) the reject is counted and the load
 \ continues instead — the declaration is already rolled back by the time this
@@ -293,7 +297,7 @@ public
    rc RENDER
    FORGET-SRC
    MULTI? IF MULTI-COUNT+ EXIT THEN
-   rc throw ;
+   rc REFUSE ;
 
 \ Will a reject be swallowed rather than raised? The front ends ask this to
 \ decide whether they still owe the interpreter a resynchronized input stream.

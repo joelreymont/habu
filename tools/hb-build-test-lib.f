@@ -4,8 +4,8 @@
 \ groups it owns:
 \   tools/hb-build-test.f                     CLI REPL build and report, cache
 \                                             keys, rejected inputs, image size
-\   tools/hb-build-cli-errors-test.f          cache path error, -o too long,
-\                                             MAIN effects
+\   tools/hb-build-cli-errors-test.f          cache path error, refused paths
+\                                             and entry names, MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
 \   tools/hb-build-timeout-env-test.f         deadline override validation
 \   tools/hb-build-timeout-json-test.f        empty override, JSON refusal

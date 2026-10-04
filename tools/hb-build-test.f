@@ -108,7 +108,7 @@ variable HBT-INST-FILES
 
 \ The install stages the engine in a sibling of -o and renames it over -o
 \ (HBB-INSTALL-OUT). A directory at -o lets the sibling be filled and made
-\ executable, then refuses the rename: the build throws E-FS-IO, -o is still
+\ executable, then refuses the rename: the build throws E-BUILD-INSTALL, -o is still
 \ the directory, and no file is left in the directory that holds it.
 : HBT-INST-DIR ( -- ptr u8 n )
    HBT-INST-DIR-BUF HBT-INST-DIR-U @ ;
@@ -130,7 +130,7 @@ variable HBT-INST-FILES
    HBT-INST-DIR MAKE-DIR
    HBT-INST-OUT MAKE-DIR
    HBT-REPL-SRC HBT-INST-OUT HBT-HBB-PREPARE-REPL
-   [: HBB-BUILD ;] E-FS-IO TTHROWSQ
+   [: HBB-BUILD ;] E-BUILD-INSTALL TTHROWSQ
    HBB-GOT-NAME$ BF-REMOVE-TMP
    BF-TMP-RESET
    HBT-INST-OUT DIR? TTRUE

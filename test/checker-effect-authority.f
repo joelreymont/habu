@@ -16,7 +16,7 @@ TRUSTED: ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
 TRUSTED: ABI-SCOPE ( [ -- ] -- n ) CHECKER-EFFECT-AUTHORITY:SCAN ;
 TRUSTED: DECLARE ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
 TRUSTED: ABI-ROW ( ptr u8 n ptr u8 n -- )
-   CHECKER-RECORD-NAME RES-FALSE USIG-ADD-AS ;
+   CHECKER-RECORD-NAME RES-FALSE RES-FALSE USIG-ADD-AS ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 \ The scan, PRIM, rollback and recovery cases record rows only the checker holds

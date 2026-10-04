@@ -12,7 +12,7 @@
 \ The table stores DATA pointers, so it is declared storage and needs no trust
 \ row of its own (dot habu-refuse-a-ptr-5ad2734e); its helpers refine one fixed
 \ DATA cell and print its raw address.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-sweep-trusted-out-41e973ce.
 BPW-MAX TYPED-BUFFER BPW-TAB ptr n
 variable BPW-IDX
 variable BPW-LAST

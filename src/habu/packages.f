@@ -138,7 +138,7 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 
 \ Once the engine is sealed, a sealed package's name ends the process, and so
 \ does a package whose public wordlist is protected: the token is the whole
-\ diagnostic (habu2.f C-PACKAGE-SEAL-GUARD).
+\ diagnostic line (habu2.f C-PACKAGE-SEAL-GUARD).
 : PKG-SEALED? ( -- bool )
    TOKEN$ CHECKER-SEALED-PKG? if true exit then
    PKG-ROW {: row:ptr :}
@@ -293,8 +293,7 @@ variable USE-FLOOR
    SEAL-NDICT@ 0= if exit then
    wid PROTECTED? 0= if exit then
    s" hb: cannot publish into protected word: " SAY
-   TOKEN$ SAY
-   NL 1 ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
+   TOKEN$ ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ The source is the record the operand names as the engine's LFIND resolves it
 \ (FIND-SCOPE), never a used public's. It must not be internal: an alias would

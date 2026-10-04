@@ -104,7 +104,7 @@ private
 
 : ROWS, ( n n NBACK:linkage -- )
    ROWS-EMIT
-   CC NART:COPY {: e:NART:emission :}
+   X64CHAIN-TEST:SESSION NART:COPY {: e:NART:emission :}
    X64HARNESS:POSITION {: at:n :}
    e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE
    e at LINKED
@@ -114,7 +114,7 @@ private
 \ its case expects is bound where the emission laid that function.
 : QUOTING-ROWS, ( -- )
    0 1 NBACK:L-NONE ROWS-EMIT
-   CC NART:COPY {: e:NART:emission :}
+   X64CHAIN-TEST:SESSION NART:COPY {: e:NART:emission :}
    X64HARNESS:POSITION {: at:n :}
    e NART:BYTES e NART:SIZE e 1 NART:FUNCTION-OFFSET@
    X64HARNESS:APPEND-QUOTING
@@ -339,7 +339,7 @@ variable CALLEE                      \ the entry the caller's site names
 : ROWS, ( n n NBACK:linkage -- )
    CHAIN-LINKED {: m:IR-BUILD:module :}
    NS m X64HARNESS:POSITION NBACK:EMIT
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE ;
 
 : PRESS-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PRESSURE 1 1 NBACK:L-NONE ROWS, ;

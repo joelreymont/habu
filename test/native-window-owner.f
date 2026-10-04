@@ -19,6 +19,10 @@
 \ (TIER1-CASE below): compiling the window's core prefix through the optimizing
 \ chain is nearly all of a case's cost, so the fixtures share one.
 \
+\ Every child takes the long row's child deadline (test/suite-budget.f): the
+\ tier-1 window runs about 24 s of CPU, and the bound is there to catch a hang,
+\ not to time a build.
+\
 \ Run: bin/hb --load test/native-window-owner.f
 
 require lib/test.f
@@ -27,6 +31,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require test/whitebox-child.f
+require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
 package NW-OWNER-TEST
 
@@ -34,8 +39,6 @@ $4000 constant IO-CAP
 
 create OUT IO-CAP allot
 create ERR IO-CAP allot
-
-180000 constant DEADLINE-MS   \ the child checks the whole core prefix
 
 \ Every child here reopens the engine's native build window, which the sealed
 \ product refuses: `hb: internal engine word: DECLARATIONS`, exit 70. So they
@@ -58,7 +61,8 @@ create ERR IO-CAP allot
 
 : WINDOW-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
    fx fxu ARGS!
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
+   SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=
@@ -79,15 +83,9 @@ create ERR IO-CAP allot
 \ printed `habu: in install: at 'set-preflight'` for check-hook.f's own INSTALL --
 \ measured on the engine before the fix, with the same `window: 0` on stdout. Any
 \ byte here means a scan nobody judges reached a renderer again.
-\
-\ Its own deadline: the window's whole core prefix through the optimizing chain is
-\ minutes, not seconds (measured 2m11s on a loaded box against the 3-minute bound
-\ the tier-0 cases share). The bound is here to catch a hang, not to time a build.
-600000 constant TIER1-DEADLINE-MS
-
 : WINDOW-RESULT ( ptr u8 n -- ) {: want:ptr wantu:n :}
    WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
-   TIER1-DEADLINE-MS >MS
+   SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then
    rc 0 T=

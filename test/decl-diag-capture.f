@@ -24,7 +24,7 @@ create BUF CAP allot
 \ Raw-memory boundary: a `create` region is not a typed `ptr u8` span inside a
 \ checked body, the same boundary structure-decl.f's PEND! / PEND@ document.
 \ CAPTURE-OFF restores prose mode; CAPTURED$ returns the production buffer.
-\ Retirement owner for all three: habu-checker-certify-unified-5d56fe73.
+\ Retirement owner for all three: habu-trusted-dies-prim-4fd12d60.
 \ Everything else in this module is ordinary checked Habu.
 TRUSTED: CAPTURE-ON ( n -- )              \ json? -> route declaration diagnostics into BUF
    DIAG-JSON!

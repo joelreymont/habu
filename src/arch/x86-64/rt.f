@@ -168,7 +168,7 @@ private
 
 CELL 1- constant CELL-MASK
 2 constant STDERR
-: BOUNDS$ ( -- ptr u8 n ) s" hb: stack bounds exceeded" ;
+: BOUNDS$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded\n" ;
 
 public
 

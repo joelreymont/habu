@@ -130,23 +130,23 @@ variable LINES-SERVED
    MEM@ GENIO:INPUT! ;
 
 \ ---- the engine's own text reaches a device ---------------------------------
-\ `emit`, `type` and `.` are engine primitives writing through the funnel in
+\ `emit`, `type`, `.` and `f.` are engine primitives writing through the funnel in
 \ src/habu/rt.f, not GENIO words. If the device captures what they produce, the
-\ funnel dispatched; if it does not, the bytes went to the process terminal and
-\ this assertion sees an empty buffer.
+\ funnel dispatched; otherwise the captured text is missing those bytes.
 
 : ENGINE-TEXT ( -- )
    65 emit
    s" bc" type
-   42 . ;
+   42 .
+   -2.25 f. ;
 
 : T-ENGINE-ROUTE ( -- )
-   s" emit, type and . reach the current output device" T-LABEL
+   s" emit, type, . and f. reach the current output device" T-LABEL
    MEM-RESET
    TO-MEMORY
    ENGINE-TEXT
    TO-TERMINAL
-   MEM-OUT$ s\" Abc42\n" T$=
+   MEM-OUT$ s\" Abc42\n-2.250000\n" T$=
    s" the operation was handed its own state cell" T-LABEL
    MEM-STATE-SEEN @ MEM-MARK T= ;
 
@@ -370,7 +370,7 @@ variable BAD-DEV
    MEM@ MEM@ [: ENGINE-TEXT ;] GENIO:WITH-IO
    GENIO:OUTPUT@ GENIO:DEVICE>N 0 T=
    s" and the quotation's output went to the device" T-LABEL
-   MEM-OUT$ s\" Abc42\n" T$=
+   MEM-OUT$ s\" Abc42\n-2.250000\n" T$=
    s" WITH-IO restores them on a throw, and the throw survives" T-LABEL
    [: WITH-IO-THROWS ;] GENIO:E-OPERAND TTHROWSQ
    s" the caller's output device is the terminal again" T-LABEL

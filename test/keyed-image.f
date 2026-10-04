@@ -45,16 +45,11 @@
 \ granted it, which the gate's own build rows settled before the row started
 \ (test/image-grant.f, test/gate-images.f); ENSURE asks before it looks.
 \
-\ BOUNDED BY ITS OWN WORK. A gate's build row is ended once its processes have
-\ run BUILD-CPU-MS of CPU time, user and system, whatever the load
-\ (test/gate-pool.f GT-POOL-CPU-BUDGET!). The builder's own capture deadline,
-\ BUILD-TIMEOUT-MS, is then only a hang guard: a build that stopped running
-\ gains no CPU time, so wall time alone ends it. The guard is five times the
-\ budget, so a build within its budget reaches it only on less than a fifth of
-\ a core. Every family's builder is held to these two, test/whitebox-engine.f's,
-\ test/cold-engine.f's and test/native-unit-image.f's as well. The longest
-\ build, the unsealed engine's, runs 77 s of CPU; docs/gate.md has the
-\ measurements behind both numbers.
+\ BOUNDED BY ITS OWN WORK. A gate's build row is held to the gate rows' CPU
+\ budget, whatever the load, and the builder's own capture deadline,
+\ SUITE-BUDGET:CHILD-MS, is then only a hang guard (test/suite-budget.f). Every
+\ family's builder is held to the same two, test/whitebox-engine.f's,
+\ test/cold-engine.f's and test/native-unit-image.f's as well.
 \
 \ An image is handed out in place: its callers only execute it, and it writes
 \ nothing but the paths they name, so no caller can clobber the shared bytes.
@@ -70,15 +65,9 @@ require lib/build-cache.f
 require lib/content-key.f
 require tools/event-closure-lib.f
 require test/image-grant.f
+require test/suite-budget.f              \ CHILD-MS, the builder's hang guard
 
 package KEYED-IMAGE
-
-public
-
-\ A build's CPU budget and its builder's hang guard (BOUNDED BY ITS OWN WORK,
-\ above).
-360000 constant BUILD-CPU-MS
-BUILD-CPU-MS 5 * constant BUILD-TIMEOUT-MS
 
 private
 
@@ -178,7 +167,7 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    s" --" >LEN PROC-ARGV+
    TMP$ ARGS-XT @ execute
    ENGINE$ >LEN PROGRAM$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
+   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N type

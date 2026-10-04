@@ -70,8 +70,10 @@ private
 \ buffer sees it.
 7900 constant WIDE-N
 
-\ Six values of a type whose name is EFFECT-N bytes pass the same 16 KiB.
-3000 constant EFFECT-N
+\ Values of a 12-parameter family whose name and arguments are each EFFECT-N
+\ bytes, the longest a declared name may be: one renders in about 3.3 KB, so
+\ six pass the same 16 KiB.
+TFAM:TF-NAME-MAX constant EFFECT-N
 
 \ Either source above is built here; TEXT-CAP holds the longer.
 WIDE-N 32 + constant TEXT-CAP
@@ -102,14 +104,25 @@ public
    TEXT TEXT-U @ ;
 
 \ USE declares no effect, so the checker records the one it infers through the
-\ renderer: six values of a type whose name is EFFECT-N bytes.
-: EFFECT$ ( -- ptr u8 n )
+\ renderer: the given count of the family values MK leaves.
+: EFFECT$ ( n -- ptr u8 n )
+   {: k:n :}
    0 TEXT-U !
    s" NEWTYPE " TEXT+
+   EFFECT-N 98 TEXT-RUN
+   s\"  0\nNEWTYPE " TEXT+
    EFFECT-N 97 TEXT-RUN
-   s\"  0\nTRUSTED: MK ( -- " TEXT+
+   s\"  12\nTRUSTED: MK ( -- " TEXT+
    EFFECT-N 97 TEXT-RUN
-   s\"  ) 0 ;\n: USE MK MK MK MK MK MK ;\n" TEXT+
+   s" <" TEXT+
+   EFFECT-N 98 TEXT-RUN
+   11 0 ?do
+      s" ," TEXT+
+      EFFECT-N 98 TEXT-RUN
+   loop
+   s\" > ) 0 ;\n: USE" TEXT+
+   k 0 ?do s"  MK" TEXT+ loop
+   s\"  ;\n" TEXT+
    TEXT TEXT-U @ ;
 
 ;package
@@ -157,8 +170,12 @@ DBC-ONE$ DBC:VERIFY 0 T=
 DBC:DIAG$ nip DBC-RECORD T=
 DBC:DIAG$ DBC-LAST 10 T=
 
+s" an effect within the render buffer is recorded" T-LABEL
+1 DBC:EFFECT$ DBC:VERIFY 0 T=
+DBC:DIAG$ nip 0 T=
+
 s" an effect past the render buffer is refused and the next record renders whole" T-LABEL
-DBC:EFFECT$ DBC:VERIFY E-DIAG-CAPACITY T=
+6 DBC:EFFECT$ DBC:VERIFY E-DIAG-CAPACITY T=
 DBC:DIAG$ nip 0 T=
 DBC-ONE$ DBC:VERIFY 0 T=
 DBC:DIAG$ nip DBC-RECORD T=

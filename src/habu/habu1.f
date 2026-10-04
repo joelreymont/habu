@@ -3,8 +3,8 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and ENGINE-EMIT:FORTH follow in part 2 (habu2.f).
-\ Trusted rows expose the builder-mode cell and the data-driven raw-code emitter.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ A trusted row exposes the builder-mode cell.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
@@ -1330,11 +1330,12 @@ variable SZA-I
 \ dropped for the rest of the process (CG-25).
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
    LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
+   S\" hb: dictionary count out of range\n" {: ma:ptr mu:n :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
    14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: dictionary count out of range" BYTES,
+   msg LBL,  ma mu BYTES,
    bounded LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
@@ -2959,10 +2960,11 @@ public
 \ quotation call may branch to that address, even beneath a catch handler.
 : BCALLABLE ( -- )
    LBL LBL {: live:label msg:label :}
+   S\" hb: unset quotation\n" {: ma:ptr mu:n :}
    9 live CBNZ,
-   0 2 MOVZ,  1 msg ADR,  2 20 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CALLABLE-ABI MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  S\" hb: unset quotation\n" BYTES,
+   msg LBL,  ma mu BYTES,
    live LBL, ;
 
 : BEXEC ( -- )
@@ -3048,6 +3050,7 @@ public
 \ before.
 : BTHROW ( -- )
    LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !  LBL THROW-CORRUPT-MSG !
+   S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    A G-POP  15 9 0 ADDI,                               \ x15 = code
    12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ, \ inside evaluate → LEVALREC cleans frames first
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
@@ -3087,9 +3090,9 @@ public
    NR-EXIT-GROUP SYS,
    THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, \ else deterministic uncaught-throw rc
    THROW-CORRUPT LABEL@ LBL,                             \ forged/corrupt handler frame: fail closed before any restore
-   0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
-   THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
+   THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
 
 \ GUARDED-EXTENT? ( x14 = base, x11 = capacity ): prove the caller handed over a
 \ stack that STACK:GUARDED mapped, not a buffer. There is no per-push bounds
@@ -3376,6 +3379,7 @@ public
 \ — not a well-formed pointer that already lands inside live code.
 : BSETCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
+   S\" set-check: invalid checker xt\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = candidate xt
    9 ok CBZ,                             \ 0 -> checking off, install as-is
       9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
@@ -3386,9 +3390,9 @@ public
       A DATA COMPILE-PREFLIGHT-CELL STR,
       done B,
    bad LBL,
-      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" set-check: invalid checker xt" BYTES,
+   msg LBL,  ma mu BYTES,
    done LBL, ;
 
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
@@ -3410,10 +3414,11 @@ public
 \ run its cleanup after an include/evaluate/immediate abort.
 : EXECUTABLE-JIT-REFUSE ( -- )
    LBL LBL {: msg:label done:label :}
-   0 2 MOVZ,  1 msg ADR,  2 44 MOVZ,  NR-WRITE SYS,
+   S\" hb: executable build requires native tier 1\n" {: ma:ptr mu:n :}
+   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
    9 70 MOVZ,  9 G-PUSH  BTHROW
    done B,
-   msg LBL,  S\" hb: executable build requires native tier 1\n" BYTES,
+   msg LBL,  ma mu BYTES,
    done LBL, ;
 
 : EXECUTABLE-JIT-GUARD ( -- )
@@ -3446,6 +3451,7 @@ public
 
 : BSETTIER ( -- )
    LBL LBL LBL LBL {: bad:label done:label msg:label native:label :}
+   S\" set-tier: tier must be 0 or 1\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = requested tier
    9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
    9 native CBNZ,  EXECUTABLE-JIT-GUARD
@@ -3453,9 +3459,9 @@ public
       A DATA NCOMP-DISPATCH:TIER-CELL STR,
       done B,
    bad LBL,
-      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" set-tier: tier must be 0 or 1" BYTES,
+   msg LBL,  ma mu BYTES,
    done LBL, ;
 
 \ tier@ ( -- n ): the live tier, for a driver that wants to assert its own
@@ -3470,6 +3476,8 @@ public
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}
+   S\" set-preflight: invalid or replaced hook\n" {: ma:ptr mu:n :}
+   S\" set-preflight: invalid hook\n" {: ia:ptr iu:n :}
    A G-POP
    10 DATA COMPILE-PREFLIGHT-CELL LDR,
    10 empty CBZ,
@@ -3482,14 +3490,14 @@ public
    A DATA COMPILE-PREFLIGHT-CELL STR,
    done B,
    bad LBL,
-      1 msg ADR,  2 39 MOVZ,  emit B,
+      1 msg ADR,  2 mu MOVZ,  emit B,
    invalid LBL,
-      1 invalid-msg ADR,  2 27 MOVZ,
+      1 invalid-msg ADR,  2 iu MOVZ,
    emit LBL,
       0 2 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" set-preflight: invalid or replaced hook" BYTES,
-   invalid-msg LBL,  s" set-preflight: invalid hook" BYTES,
+   msg LBL,  ma mu BYTES,
+   invalid-msg LBL,  ia iu BYTES,
    done LBL, ;
 
 \ set-top-check ( xt -- ): install the top-row token hook (dot
@@ -3502,6 +3510,7 @@ public
 \ post-seal writer — mirroring how BSETCHECK updates the sealed HOOK-CELL.
 : BSETTOPCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
+   S\" set-top-check: invalid top-row hook xt\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = candidate xt
    9 ok CBZ,                             \ 0 -> hook off, install as-is
       9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
@@ -3510,9 +3519,9 @@ public
       A DATA TOP-HOOK-CELL STR,
       done B,
    bad LBL,
-      0 2 MOVZ,  1 msg ADR,  2 38 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" set-top-check: invalid top-row hook xt" BYTES,
+   msg LBL,  ma mu BYTES,
    done LBL, ;
 
 \ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
@@ -3548,7 +3557,7 @@ package ENGINE-EMIT
          SP SP 32 SUBI,  9 $72646E75203A6268 LIT64,  9 SP 0 STR,  9 $72702064656E6961 LIT64,  9 SP 8 STR,  9 $2074737572742D65 LIT64,  9 SP 16 STR,  9 $00203A7265666564 LIT64,  9 SP 24 STR,
          0 2 MOVZ,  1 SP 0 ADDI,  2 31 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,       \ "hb: undrained pre-trust defer: "
          0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,   \ the defer name
-         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,   \ newline (LQNL is habu2.f-only)
+         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,   \ newline (LOPENNL is habu2.f-only)
          13 13 1 ADDI,  pdloop B,
       pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
    pdok LBL,
@@ -3639,13 +3648,14 @@ private
 \ append-and-publish-count sequence had; concurrent adders were never supported.
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: ok:label done:label msg:label :}
+   S\" hb: protected-WID id above the bound\n" {: ma:ptr mu:n :}
    9 G-POP
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
    15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID id above the bound" BYTES,   \ 36 bytes; data reached only via ADR
+      msg LBL,  ma mu BYTES,                            \ data reached only via ADR
    ok LBL,
    DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
    16 15 LDAR,
@@ -4188,8 +4198,8 @@ package ENGINE-EMIT
    15 15 63 LSRI,  15 FD-SIGN LABEL@ CBZ,
      13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,         \ '-'
    FD-SIGN LABEL@ LBL,
-   0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
-   NR-WRITE SYS,
+   1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
+   G-OUT
    SP SP 48 ADDI, ;
 
 : EMIT-FP-PRIMS ( -- )
@@ -4387,9 +4397,9 @@ package ENGINE-EMIT
 \ at or below CP declares the single word at CP rather than a negative length.
 \
 \ PROT-EMIT:LCF ( -- ) declares the whole control-flow band, register-transparently, so
-\ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry. Dot
-\ habu-move-the-control-c7de6246 moves that stack out of the protected region;
-\ when it lands, this body and PROT:CF go with it and the band disappears.
+\ LCFPUSH/LCFPOP can call it without disturbing the emitter state they carry.
+\ Moving that stack out of the protected region retires this body and PROT:CF
+\ with the band. Retirement: habu-campaign-c1-finish-1f129a00.
 \
 \ PROT-EMIT:LCLOSE ( -- ) flips every open band back and clears its record. With
 \ nothing open it is a no-op, which is what the several defensive "region -> RX,
@@ -4747,6 +4757,8 @@ variable LHIDXBUILD
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
       rret:label zloop:label zdone:label :}
    LBL {: bhave:label :}
+   S\" hb: dictionary index alloc failed\n" {: ma:ptr mu:n :}
+   S\" hb: dictionary index exhausted\n" {: fa:ptr fu:n :}
    LHIDXADD LABEL@ LBL,
       SP SP 96 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
@@ -4786,9 +4798,9 @@ variable LHIDXBUILD
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
       SP SP 160 ADDI,  RET,
       bfail LBL,                                     \ dict hash-index mmap failed: label fd 2 before exit 74
-         0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: dictionary index alloc failed",33)
+         0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
          0 74 MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: dictionary index alloc failed" BYTES,
+      msg LBL,  ma mu BYTES,
    HIDX-EMIT:LREBUILD LABEL@ LBL,
       \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
       \ mid-primitive with caller state live.
@@ -4818,9 +4830,9 @@ variable LHIDXBUILD
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
    HIDX-EMIT:LFULL LABEL@ LBL,                        \ cannot maintain the index: loud, never a quiet downgrade
-      0 2 MOVZ,  1 fmsg ADR,  2 30 MOVZ,  NR-WRITE SYS,     \ write(2,"hb: dictionary index exhausted",30)
+      0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
-   fmsg LBL,  s" hb: dictionary index exhausted" BYTES, ;
+   fmsg LBL,  fa fu BYTES, ;
 
 variable FIND-LINEAR
 variable FIND-HLOOP

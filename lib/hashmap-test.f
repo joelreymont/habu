@@ -4,6 +4,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/hashmap.f
+require lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 8 constant HMT-CAP
 create HMT-K HMT-CAP cells allot
@@ -75,7 +76,7 @@ variable HMP-I
 \ A bound keeps both sides: a label alone leaves a failure with no measurement.
 : HMP-UNDER-BOUND ( n -- ) {: total:n :}
    total HMP-LIMIT >= if
-      s" assert: probes " type total .  s" limit " type HMP-LIMIT .
+      s" assert: probes " type total FMT:.INT s"  limit " type HMP-LIMIT FMT:.INT cr
    then
    total HMP-LIMIT < TTRUE ;
 

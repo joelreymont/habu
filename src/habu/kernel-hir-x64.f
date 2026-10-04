@@ -167,7 +167,7 @@ variable TOK?                           \ nonzero once the function has a token
    s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    s m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
    s m NBACK:EMIT-UNPLACED
-   c NART:COPY use execute ;
+   s NART:COPY use execute ;
 
 : CLEAN ( -- )
    W-SESSION @ NBACK:RELEASE

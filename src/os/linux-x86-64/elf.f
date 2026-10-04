@@ -21,7 +21,7 @@
 \ is the guard that refuses a bare one and closes before this file ends. The
 \ require below opens a package, and packages do not nest, so this file loads
 \ at top level.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/target-layout.f
 

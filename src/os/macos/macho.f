@@ -4,7 +4,7 @@
 \ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
 \ The self-rebuild gate proves deterministic output. Code comes from icode's CODE.
 \ Snapshot extras name the staged DATA_CONST/fixups tail and its derived byte size.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ Retirement: habu-campaign-c2-mem-c3d7662b.
 \ Mach-O constants
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64

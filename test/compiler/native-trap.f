@@ -2,6 +2,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fmt.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
@@ -139,8 +140,8 @@ create TXT
    CC BB v IR-BUILD:ADD-OPERAND
    CC BB IR-BUILD:END-OP drop ;
 
-: TRAP-VALUES ( n -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
-   NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+: TRAP-VALUES ( ptr u8 n -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
+   NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
    a u NSTR:INTERN HIR:ADDR-DATA KINDOP
    u CONSTOP rc CONSTOP ;
 
@@ -151,7 +152,7 @@ create TXT
    CC BB rc IR-BUILD:ADD-OPERAND ;
 
 \ The terminator carries the diagnostic address, length and code; no successor.
-: TRAP1 ( n -- )
+: TRAP1 ( ptr u8 n -- )
    TRAP-VALUES
    HIR-OPCODE:TRAP CLOSE-ST CLOSE-LN OPEN-OP
    TRAP-OPERANDS
@@ -159,9 +160,9 @@ create TXT
 
 \ The same with a successor named, which the closed operation model has to refuse
 \ because the schema declares none.
-: TRAP-SUCC ( n n -- )
-   {: ord:n t:n :}
-   ord TRAP-VALUES
+: TRAP-SUCC ( ptr u8 n n -- )
+   {: f:ptr fu:n t:n :}
+   f fu TRAP-VALUES
    HIR-OPCODE:TRAP CLOSE-ST CLOSE-LN OPEN-OP
    TRAP-OPERANDS
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
@@ -172,33 +173,33 @@ create TXT
 \ traps. This is the shape the compiler refused before hir.trap existed - a routine
 \ with a second terminator that names no successor - and the whole point of the
 \ exit-block rule is that it now goes through.
-: BUILD-MIXED-NAMED ( ptr u8 n n -- )
-   {: p u:n ord:n :}
+: BUILD-MIXED-NAMED ( ptr u8 n ptr u8 n -- )
+   {: p u:n f:ptr fu:n :}
    p u 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
    a DOUBLED RET1
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    CLOSE-FUN ;
 
-: BUILD-MIXED ( n -- )
-   {: ord:n :}
-   s" TRP" ord BUILD-MIXED-NAMED ;
+: BUILD-MIXED ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   s" TRP" f fu BUILD-MIXED-NAMED ;
 
 \ THE SAME TWO ARMS THE OTHER WAY ROUND, which is the shape that says the fix is
 \ a rule and not an ordering. The compiler walks blocks in module order, so here the
 \ TRAP is selected first and the RETURN second: whatever the trap block leaves
 \ behind is what the return block would inherit if anything were inherited across
 \ that boundary. Both orders have to go through, and they are the same routine.
-: BUILD-SWAPPED ( n -- )
-   {: ord:n :}
+: BUILD-SWAPPED ( ptr u8 n -- )
+   {: f:ptr fu:n :}
    s" TRW" 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    BLOCK+
    a DOUBLED RET1
    CLOSE-FUN ;
@@ -206,26 +207,26 @@ create TXT
 \ Every path traps: the routine has NO block that hands its caller anything, and
 \ it still has to allocate, accept and emit. This is the dead-path lane's
 \ foundation and the fixture that pins the shape.
-: BUILD-ALL-DEAD ( n -- )
-   {: ord:n :}
+: BUILD-ALL-DEAD ( ptr u8 n -- )
+   {: f:ptr fu:n :}
    s" TRD" 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    CLOSE-FUN ;
 
 \ The smallest routine that never returns: one block, one terminator, and it is
 \ the trap. It is the shape the forge below publishes and calls, and the shape
 \ the emitted bytes are read off, because its LAST instruction is the branch with
 \ nothing after it to account for.
-: BUILD-TRAP-ONLY ( ptr u8 n n -- )
-   {: p u:n ord:n :}
+: BUILD-TRAP-ONLY ( ptr u8 n ptr u8 n -- )
+   {: p u:n f:ptr fu:n :}
    p u 1 1 OPEN-FUN
    ARG+ drop
-   ord TRAP1
+   f fu TRAP1
    CLOSE-FUN ;
 
 \ A routine of no arguments and no results whose two arms both trap. It is here
@@ -235,25 +236,25 @@ create TXT
 \ and the routine pays ONE adjustment instead of two. A survey that did not count
 \ trap sites would pick the other place and emit the other number, which is what
 \ the case below measures.
-: BUILD-DEAD-VOID ( n -- )
-   {: ord:n :}
+: BUILD-DEAD-VOID ( ptr u8 n -- )
+   {: f:ptr fu:n :}
    s" TRV" 0 0 OPEN-FUN
    0 CONSTOP 1 2 BRZ2
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    BLOCK+
-   ord TRAP1
+   f fu TRAP1
    CLOSE-FUN ;
 
-: BUILD-TRAP-SUCC ( n -- )
-   {: ord:n :}
+: BUILD-TRAP-SUCC ( ptr u8 n -- )
+   {: f:ptr fu:n :}
    s" TRS" 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
    a DOUBLED RET1
    BLOCK+
-   ord 1 TRAP-SUCC
+   f fu 1 TRAP-SUCC
    CLOSE-FUN ;
 
 \ ---- running the production pipeline -----------------------------------------
@@ -268,7 +269,7 @@ create TXT
 
 : RUN-MIXED-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" mfam" NTRAP:FAMILY BUILD-MIXED
+   s" mfam" BUILD-MIXED
    PLACE
    CC BB 0 4 1 1 NFIX:RUN-HABU ;
 
@@ -277,7 +278,7 @@ create TXT
 
 : RUN-SWAP-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" wfam" NTRAP:FAMILY BUILD-SWAPPED
+   s" wfam" BUILD-SWAPPED
    PLACE
    CC BB 0 4 1 1 NFIX:RUN-HABU ;
 
@@ -286,7 +287,7 @@ create TXT
 
 : RUN-DEAD-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" dfam" NTRAP:FAMILY BUILD-ALL-DEAD
+   s" dfam" BUILD-ALL-DEAD
    PLACE
    CC BB 0 4 1 1 NFIX:RUN-HABU ;
 
@@ -295,7 +296,7 @@ create TXT
 
 : RUN-VOID-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" vfam" NTRAP:FAMILY BUILD-DEAD-VOID
+   s" vfam" BUILD-DEAD-VOID
    PLACE
    CC BB 0 4 0 0 NFIX:RUN-HABU ;
 
@@ -473,16 +474,14 @@ variable T-SECOND
 
 : TWO-TRAPS-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" onefam" NTRAP:FAMILY {: k:n :}
-   s" TRA" k BUILD-TRAP-ONLY
+   s" TRA" s" onefam" BUILD-TRAP-ONLY
    PLACE
    CC BB 0 4 1 1 NFIX:RUN-HABU
    LAST-TARGET T-FIRST ! ;
 
 : TWO-TRAPS-SECOND-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" twofam" NTRAP:FAMILY {: k:n :}
-   s" TRB" k BUILD-TRAP-ONLY
+   s" TRB" s" twofam" BUILD-TRAP-ONLY
    NPUB:NEXT-SLOT SECOND-SKEW + A64EMIT:PLACE-AT
    CC BB 0 4 1 1 NFIX:RUN-HABU
    LAST-TARGET T-SECOND ! ;
@@ -493,7 +492,7 @@ variable T-SECOND
 
 : RUN-SUCC-BODY ( IR-CTX:ctx -- )
    HIR-MOD
-   s" sfam" NTRAP:FAMILY BUILD-TRAP-SUCC ;
+   s" sfam" BUILD-TRAP-SUCC ;
 
 : RUN-SUCC ( -- )
    NFIX:BINDING [: RUN-SUCC-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -534,7 +533,7 @@ variable CHILD-RC
 : CHILD-ERR$ ( -- ptr u8 n )
    ERR-BUF CHILD-ERR-N @ ;
 
-\ ---- the other kind of row, and the other exit -------------------------------
+\ ---- the other message, and the other exit -----------------------------------
 \ A callee's name is as long as the definition capture lets it be, past every
 \ fixed buffer the message was once built in.
 1000 constant LONG-N
@@ -544,38 +543,23 @@ LONG-N BUFFER: LONG-BUF
    LONG-N 0 ?do 121 LONG-BUF i + c! loop
    LONG-BUF LONG-N ;
 
-\ A trap site the ELABORATOR builds after a call that does not come back carries
-\ a row of the second kind, and reaching it would mean the certificate the caller
-\ was compiled against was false. It says so in its own words and with its own
-\ status - the diagnostic of a scrutinee whose tag matched no arm would be a lie
-\ about a word that returned - so the two are proved to differ in BOTH, in a
-\ process that dies of it.
+\ A trap site the ELABORATOR builds after a call that does not come back says,
+\ if it is ever reached, that the certificate the caller was compiled against
+\ was false. It says so in its own words and with its own status - the
+\ diagnostic of a scrutinee whose tag matched no arm would be a lie about a word
+\ that returned - so the two are proved to differ in BOTH, in a process that
+\ dies of it.
 : NORET-CASE ( -- )
-   s" the two kinds are two rows even under one name" T-LABEL
-   s" ntrapz" NTRAP:FAMILY {: f:n :}
-   s" ntrapz" NTRAP:NO-RETURN {: d:n :}
-   f d T<>
-   f NTRAP:KIND@ NTRAP:TAG T=
-   d NTRAP:KIND@ NTRAP:NO-RET T=
-   f NTRAP:NAME$ s" ntrapz" T$=
-   d NTRAP:NAME$ s" ntrapz" T$=
-
-   s" and each kind is idempotent under its own name" T-LABEL
-   f  s" ntrapz" NTRAP:FAMILY  T=
-   d  s" ntrapz" NTRAP:NO-RETURN  T=
-
-   s" a long callee name is held whole, and so is its message" T-LABEL
-   LONG-NAME$ NTRAP:NO-RETURN {: g:n :}
-   g NTRAP:NAME$ LONG-NAME$ T$=
-   g NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+   s" a long callee name's message holds it whole" T-LABEL
+   LONG-NAME$ NTRAP:RETURNED {: a:ptr u:n rc:n :}
    rc ENGINE-ERROR:CODE-CERT T=
    u LONG-N 13 + T=
    a 4 s" hb: " T$=
    a 4 + LONG-N LONG-NAME$ T$=
    a u + 9 - 9 s"  returned" T$=
 
-   s" an empty name is refused for either kind" T-LABEL
-   [: s" " NTRAP:NO-RETURN drop ;] E-NTRAP-NAME TTHROWSQ
+   s" an empty callee name is refused too" T-LABEL
+   [: s" " NTRAP:RETURNED drop drop drop ;] E-NTRAP-NAME TTHROWSQ
 
    s" the no-return exit is ENGINE-ERROR:CODE-CERT, not the bad-tag one" T-LABEL
    s" test/compiler/native-trap-noret.f" CHILD-RUN
@@ -591,6 +575,69 @@ LONG-N BUFFER: LONG-BUF
    s" a global source replacement of throw or die still returns" T-LABEL
    s" test/compiler/native-terminal-rebind.f" CHILD-RUN
    CHILD-RC @ 0 T= ;
+
+\ ---- callers of many and long-named words that never return ------------------
+\ Behind each call to a word that never returns, a tier-1 caller compiles a trap
+\ whose message names the callee whole. No table holds those names, so tier 1
+\ compiles what tier 0 runs and each caller answers what tier 0 answers; only
+\ the literal store the messages share with source strings bounds them
+\ (src/compiler/native/string.f). The sizes pass what a fixed table of the names
+\ would hold: five callees named in 7000 bytes each are 35 KB of names, past
+\ 32 KB, and 1100 named in a few bytes are past 1024 names.
+$2000 constant SRC-CAP               \ one definition around a 7000-byte name
+SRC-CAP BUFFER: SRC
+variable SRC-U
+variable ANSWERS                     \ callers that answered what tier 0 answers
+
+: SRC+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   SRC-U @ u + SRC-CAP > if E-STR-CAPACITY throw then
+   a  SRC SRC-U @ +  u BYTE-COPY
+   u SRC-U +! ;
+
+: SRC$ ( -- ptr u8 n )
+   SRC SRC-U @ ;
+
+: NUM+ ( n -- )
+   SB-RESET FMT:SB-U SB$ SRC+ ;
+
+\ Callee k's name: a stem and k, then `x` up to `len` bytes.
+: CALLEE+ ( n n -- )
+   {: k:n len:n :}
+   SRC-U @ {: at:n :}
+   s" NTN" SRC+  k NUM+
+   len  SRC-U @ at -  -  0 ?do s" x" SRC+ loop ;
+
+\ Callee k never returns, and its caller calls it only on 0.
+: NORET-PAIR ( n n -- )
+   {: k:n len:n :}
+   0 SRC-U !
+   s" : " SRC+  k len CALLEE+  S\"  ( -- ) s\q died\q 3 die ;" SRC+
+   SRC$ evaluate-closed
+   0 SRC-U !
+   s" : NTK" SRC+  k NUM+  s"  ( n -- n ) dup 0= if " SRC+  k len CALLEE+
+   s"  then 1 + ;" SRC+
+   SRC$ evaluate-closed
+   0 SRC-U !
+   s" 5 NTK" SRC+  k NUM+
+   SRC$ TEST-EVAL:N  6 = if 1 ANSWERS +! then ;
+
+: NORET-PAIRS ( n n n -- )
+   {: first:n count:n len:n :}
+   count 0 ?do  first i + len NORET-PAIR  loop ;
+
+: NORET-ANY-CASE ( -- )
+   s" five callers of callees named in 7000 bytes each compile" T-LABEL
+   0 ANSWERS !
+   [: 0 5 7000 NORET-PAIRS ;] 0 TTHROWSQ
+   s" and each answers what tier 0 answers" T-LABEL
+   ANSWERS @ 5 T=
+
+   s" 1100 callers of as many short-named callees compile" T-LABEL
+   0 ANSWERS !
+   [: 5 1100 0 NORET-PAIRS ;] 0 TTHROWSQ
+   s" and each answers what tier 0 answers" T-LABEL
+   ANSWERS @ 1100 T= ;
 
 public
 : DIE-PRIMITIVE ( -- ) s" terminal die" 71 die ;
@@ -775,25 +822,14 @@ public
 : RUN ( -- )
    T-RESET
 
-   \ ---- the family table ----
-   s" a family name answers a stable ordinal, and the same name the same one"
-   T-LABEL
-   s" alpha" NTRAP:FAMILY {: x:n :}
-   s" beta"  NTRAP:FAMILY {: y:n :}
-   x  s" alpha" NTRAP:FAMILY  T=
-   y  s" beta"  NTRAP:FAMILY  T=
-   x y T<>
-
-   s" the ordinal reads back as the name it was made from" T-LABEL
-   x NTRAP:NAME$ s" alpha" T$=
-   y NTRAP:NAME$ s" beta"  T$=
-
-   s" an ordinal no row holds is refused rather than named" T-LABEL
-   [: NTRAP:COUNT NTRAP:NAME$ drop drop ;] E-NTRAP-ORD TTHROWSQ
-   [: -1 NTRAP:NAME$ drop drop ;] E-NTRAP-ORD TTHROWSQ
+   \ ---- the message a mismatch carries ----
+   s" a family's message says its tag matched no arm and exits BAD-TAG" T-LABEL
+   s" alpha" NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
+   a u s" hb: bad alpha tag" T$=
+   rc ENGINE-ERROR:BAD-TAG T=
 
    s" an empty name is refused, since no message could name it" T-LABEL
-   [: s" " NTRAP:FAMILY drop ;] E-NTRAP-NAME TTHROWSQ
+   [: s" " NTRAP:BAD-TAG drop drop drop ;] E-NTRAP-NAME TTHROWSQ
 
    \ ---- the terminator through the production pipeline ----
    s" a routine that returns AND traps goes through production" T-LABEL
@@ -821,6 +857,9 @@ public
    COLD-DISPATCH-CASE
    PRIMITIVE-THROW-CASE
    PRIMITIVE-DIE-CASE
+
+   \ ---- callers of many and long-named words that never return ----
+   NORET-ANY-CASE
 
    \ ---- and the whole of it, in a process that dies ----
    NORET-CASE

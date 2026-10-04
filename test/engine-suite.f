@@ -414,8 +414,6 @@ TFOLD 9 T=
    2dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Direct CHECK! assertion cannot certify its own recursive checker call.
-\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 : T-CHECK-PASSES ( ptr u8 n -- )
    2dup T-LABEL
    CHECK! -1 T= ;
@@ -760,9 +758,9 @@ public
 : TAIL ( -- n ) 0 ;
 ;package
 s" double-colon token rejects" T-LABEL
-s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 0 T=
 s" trailing-second-colon token rejects" T-LABEL
-s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 1 T=
+s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 0 T=
 s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
@@ -771,7 +769,7 @@ s" COK-QUAL-ONE ( -- n ) TQ:TAIL" CHECK-QUIET-CANDIDATE! -1 T=
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
-s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 1 T=
+s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 0 T=
 0 0= 0= ES-JSON-DIAGS!
 s" qualified diag code" T-LABEL
 DIAG-BUFFER$ s" E-BAD-QUALIFIED" T-HAS? -1 T=
@@ -2212,8 +2210,7 @@ s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 \ Unchecked span: the churn rolls ndict/cp back by hand WITHOUT rolling the
 \ checker registries, so checked evaluate would re-register ES-HIDX-CHURNED
 \ once per cycle against a dictionary that forgot it - the raw-dictionary churn
-\ is the mechanism under test. Queued owner: habu-seal-set-check-b3676b33
-\ migrates test set-check spans behind the friend latch.
+\ is the mechanism under test. Retirement: habu-campaign-c2-mem-c3d7662b.
 0 set-check
 package ES-HIDX
 

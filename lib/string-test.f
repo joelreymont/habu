@@ -6,6 +6,7 @@ require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/test/guard-page.f
 require test/checker-assert.f
+require lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 64 constant STR-TEST-BUF-LEN
 1 constant STR-TEST-EX-FAIL
@@ -33,7 +34,7 @@ variable STR-TEST-BUF2-LEN
 : STR-ASSERT ( bool -- )
    STR-TEST-N @ 1+ STR-TEST-N !
    0= if
-      s" string-test: assertion " type STR-TEST-N @ . s"  failed" type cr
+      s" string-test: assertion " type STR-TEST-N @ FMT:.INT s"  failed" type cr
       STR-TEST-FAIL @ 1+ STR-TEST-FAIL !
    then ;
 
@@ -557,7 +558,7 @@ STR-TEST-TYPED
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then
-   STR-TEST-FAIL @ . s" string-test: failures" type cr
+   s" string-test: " type STR-TEST-FAIL @ FMT:.INT s"  failure(s)" type cr
    s" string-test: failures" STR-TEST-EX-FAIL die ;
 
 STR-TEST-REPORT
