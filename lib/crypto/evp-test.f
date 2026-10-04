@@ -1200,6 +1200,28 @@ variable RSA-CASE-N
    RSA-CASE-SIGN RSA-BYTES T=
    RSA-OUT RSA-BYTES RSA-SIG RSA-BYTES T$= ;
 
+: RSA-PRIVATE-ADJACENT ( bool -- )
+   {: crlf:bool :}
+   RSA-CASE-PEM PEM-CAP INTO
+   32 BYTE, 9 BYTE,
+   PEM-N @ 0 ?do
+      RSA-PEM i + c@ 10 = if
+         i PEM-N @ 1- = if 9 BYTE, 32 BYTE, then
+         crlf if 13 BYTE, then
+      then
+      RSA-PEM i + c@ BYTE,
+   loop
+   FILLED RSA-CASE-N !
+   $A5 RSA-OUT RSA-BYTES + c!
+   RSA-CASE-SIGN RSA-BYTES T=
+   RSA-OUT RSA-BYTES RSA-SIG RSA-BYTES T$=
+   RSA-OUT RSA-BYTES + c@ $A5 T= ;
+
+: RSA-PRIVATE-MARKER-SPACE ( -- )
+   s" spaces and tabs adjacent to PEM markers with LF and CRLF" T-LABEL
+   false RSA-PRIVATE-ADJACENT
+   true RSA-PRIVATE-ADJACENT ;
+
 
 \ An independently generated 2049-bit RSA key gives a 257-byte signature.
 create RSA-ODD-N 257 allot
@@ -1351,6 +1373,7 @@ create RSA-LARGE-E 9 allot
    RSA-ODD-WIDTH
    RSA-PRIVATE-REFUSALS
    RSA-PRIVATE-CRLF
+   RSA-PRIVATE-MARKER-SPACE
    RSA-CONCURRENT
    RSA-KEY-REFUSALS
    RSA-SIGNATURE-CASES

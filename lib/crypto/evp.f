@@ -588,11 +588,12 @@ CAST: RS>BYTES ( n -- ptr u8 )
    pem u at s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
       at s" -----END PRIVATE KEY-----" nip + {: tail:n :}
       pem u tail RS-SKIP-SPACE u <> if E-KEY throw then
-      at true exit
+      tail true exit
    then
    pem u at RS-PEM-B64-LINE false ;
 
-: RS-PEM-SHAPE ( ptr u8 n -- )
+\ Check the full caller span, then pass only its original armor bytes to OpenSSL.
+: RS-PEM-SHAPE ( ptr u8 n -- ptr u8 n )
    {: pem u:n :}
    pem u 0 RS-SKIP-SPACE {: start:n :}
    pem u start s" -----BEGIN PRIVATE KEY-----" RS-MATCH-AT? 0= if E-KEY throw then
@@ -604,7 +605,7 @@ CAST: RS>BYTES ( n -- ptr u8 )
    lf 1+
    begin dup u < while
       pem u rot RS-PEM-LINE
-      if drop exit then
+      if pem start + swap start - exit then
    repeat
    E-KEY throw ;
 
@@ -840,7 +841,7 @@ public
    out cap msg mu RS-OVERLAP? if E-OPERAND throw then
    pem pu RS-PEM-SHAPE
    RS-OPEN
-   pem pu msg mu out cap
+   msg mu out cap
    [: RS-SIGN-RUN ;] [: RS-CLOSE ;] finally ;
 
 ;package
