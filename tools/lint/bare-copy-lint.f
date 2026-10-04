@@ -84,7 +84,10 @@ variable ROOT-U
 : REL$ ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}
    ROOT-U @ {: ru:n :}
    pa pu ROOT$ LINT-PREFIX? if
-      pu ru > if pa ru + c@ [char] / = if pa ru + 1+ pu ru - 1- exit then then
+      pu ru > if
+         ROOT$ FS-JOIN-SEPARATED? if pa ru + pu ru - exit then
+         pa ru + c@ [char] / = if pa ru + 1+ pu ru - 1- exit then
+      then
    then
    pa pu ;
 
@@ -176,7 +179,13 @@ variable ROOT-U
 
 \ ---- the tree -----------------------------------------------------------------
 \ lib/fs.f's walk already skips .git, .jj, .jj-ws and .dots, so a sibling
-\ workspace is never read. Only `.f` sources are scanned.
+\ workspace is never read. The repository's build directory is skipped before
+\ stat or descent; its generated trees can disappear while the lint runs.
+: WALK-PATH? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
+   pa pu ROOT$ LINT-STR= if LINT-TRUE exit then
+   pa pu REL$ s" build" LINT-STR= LINT-NOT ;
+
+\ Only `.f` sources outside that generated directory are scanned.
 : WALK-ONE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu s" .f" HAS-EXT? LINT-NOT if exit then
    pa pu LINT-FILE ;
@@ -198,7 +207,7 @@ variable ROOT-U
 : CENSUS ( -- )
    RESET
    ROOT!
-   ROOT$ [: WALK-ONE ;] WALK-FILES
+   ROOT$ [: WALK-PATH? ;] [: WALK-ONE ;] WALK-FILES-IF
    REPORT ;
 
 CENSUS
