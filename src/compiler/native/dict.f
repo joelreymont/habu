@@ -103,7 +103,7 @@ public
 \ it may not be compiled as an ordinary number. The stamp is the definer's own.
 0 constant FIXED-NONE                \ nothing a mention of this name folds to
 1 constant FIXED-VAL                 \ `constant`: the body pushes a decided number
-2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
+NCOMP-DISPATCH:FIXED-ADDR-KIND constant FIXED-ADDR \ `create`/`variable`: the body pushes a DATA address
 
 \ ---- one walk answers both the record and its start --------------------------
 \ The engine returned the record and its start together. Readers retain that

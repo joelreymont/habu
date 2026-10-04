@@ -121,6 +121,7 @@ variable PLACE-AT-N
 variable MEAS                           \ nonzero while an operation is being measured
 variable MCUR                           \ the measuring pass's byte cursor
 variable PATCH-RET                      \ does> patch slot in the routine's return
+variable PATCH-AT                       \ its emitted byte offset
 variable N-BLK                          \ blocks in the function being laid out
 variable N-LAID                         \ ...and how many of them the order holds
 variable B-BASE                         \ where this function's blocks start in the module
@@ -976,7 +977,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ A created word's one-byte ret needs space for the later does> branch.
 \ A zero-displacement jump falls through to ret until does-patch aims it.
 : PUT-RET ( ptr a -- ) {: s:ptr :}
-   PATCH-RET @ 0<> if 0 >REL s ENC-JMP-REL32 then
+   PATCH-RET @ 0<> if MEAS @ 0= if CUR PATCH-AT ! then  0 >REL s ENC-JMP-REL32 then
    s ENC-RET ;
 
 \ ---- the dispatch ------------------------------------------------------------
@@ -1433,6 +1434,7 @@ public
    ST-EMPTY ST !
    0 N-SITES !
    0 N-CALLS !
+   -1 PATCH-AT !
    0 MEAS !
    m BND-MODULE-CK
    c TARGET-CK
@@ -1457,6 +1459,7 @@ public
 : RETIRE ( -- )
    ST-EMPTY ST !
    0 PATCH-RET !
+   -1 PATCH-AT !
    PLACE-NO PLACE-MODE !
    0 PLACE-AT-N !
    0 N-SITES !
@@ -1484,6 +1487,9 @@ public
 
 : SIZE ( -- n )
    SEAL-CK EM-LEN ;
+
+: PATCH-SLOT ( -- n )
+   SEAL-CK PATCH-AT @ ;
 
 : BYTES ( -- ptr u8 )
    SEAL-CK EM-SINK BUF:SPAN$ drop ;

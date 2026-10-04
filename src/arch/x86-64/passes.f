@@ -227,7 +227,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    loop ;
 
 : OPEN-ROWS ( -- )
-   X64EMIT:BYTES X64EMIT:SIZE 0 ARCH NEMIT:OPEN ;
+   X64EMIT:BYTES X64EMIT:SIZE 0 ARCH NEMIT:OPEN
+   X64EMIT:PATCH-SLOT dup -1 <> if NEMIT:PATCH-SLOT! else drop then ;
 
 : SEAL-ROWS ( -- )
    FUNCTION-ROWS

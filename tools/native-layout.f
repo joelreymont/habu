@@ -13,6 +13,8 @@ create SLOTS
    TOP-HOOK-CELL ,                      0 ,
    EXIT-HOOK-CELL ,                     0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
+   NCOMP-DISPATCH:FIXED-SHADOW-CELL ,    0 ,
+   NCOMP-DISPATCH:DOES-SHADOW-CELL ,     0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    APP-ENTRY:XT-CELL ,                  0 ,

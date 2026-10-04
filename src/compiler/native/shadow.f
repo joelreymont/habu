@@ -64,6 +64,8 @@ DYNAMIC-BUFFER EM-CALL0 n            \ its first call row
 DYNAMIC-BUFFER EM-CALLS n
 DYNAMIC-BUFFER EM-ADDR0 n            \ its first address row
 DYNAMIC-BUFFER EM-ADDRS n
+DYNAMIC-BUFFER EM-PATCH n            \ created-word does> jump, or -1
+DYNAMIC-BUFFER EM-PATCH-TGT n        \ later clause entry, or zero
 
 variable N-FUNS
 DYNAMIC-BUFFER FUN-OFF n             \ where a function starts
@@ -148,7 +150,8 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    n EM-AT-RESERVE  n EM-SIZE-RESERVE  n EM-RET-RESERVE
    n EM-FUN0-RESERVE  n EM-FUNS-RESERVE
    n EM-CALL0-RESERVE  n EM-CALLS-RESERVE
-   n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE ;
+   n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
+   n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE ;
 
 : COPY-ROW ( -- )
    N-EMS @ {: e:n :}
@@ -158,7 +161,9 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    NEMIT:RET-BYTES  e EM-RET !
    N-FUNS @   e EM-FUN0 !   NEMIT:FUNCTIONS   e EM-FUNS !
    N-CALLS @  e EM-CALL0 !  NEMIT:CALL-SITES  e EM-CALLS !
-   N-ADDRS @  e EM-ADDR0 !  NEMIT:ADDR-SITES  e EM-ADDRS ! ;
+   N-ADDRS @  e EM-ADDR0 !  NEMIT:ADDR-SITES  e EM-ADDRS !
+   NEMIT:PATCH-SLOT e EM-PATCH !
+   0 e EM-PATCH-TGT ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
 \ has committed the engine's own routine, grows nothing and refuses nothing.
@@ -190,6 +195,7 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    EM-FUN0-RELEASE  EM-FUNS-RELEASE
    EM-CALL0-RELEASE  EM-CALLS-RELEASE
    EM-ADDR0-RELEASE  EM-ADDRS-RELEASE
+   EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE
    FUN-OFF-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
@@ -275,6 +281,22 @@ public
    e 1+ N-EMS !
    0 PENDING ! ;
 
+\ The host's does> primitive patches its created ARM body after CREATE has
+\ published. Its x86 body already holds a five-byte jump slot. Record the
+\ clause's ARM entry as that slot's relocation target; the capture resolves it
+\ through the clause companion's shadow row, just like any other tail site.
+: PATCH-DOES ( n n -- ) {: idx:n target:n :}
+   OPENED @ 0= if exit then
+   N-RECS @ 0 ?do
+      i REC-IDX @ idx = if
+         i REC-EM @ {: e:n :}
+         e EM-PATCH @ 0 < if E-NSHADOW-ROW throw then
+         target e EM-PATCH-TGT !
+         unloop exit
+      then
+   loop
+   E-NSHADOW-ROW throw ;
+
 \ Drop a taken emission no publication claimed. Nonthrowing: the driver runs it
 \ as every definition ends, on the refusing path and the accepting one alike.
 : ABANDON ( -- )
@@ -319,16 +341,31 @@ public
    FUN-ROW FUN-OFF @ ;
 
 : CALL-SITES ( n -- n )
-   EM-CK EM-CALLS @ ;
+   EM-CK {: e:n :}
+   e EM-CALLS @
+   e EM-PATCH-TGT @ 0<> if 1+ then ;
+
+: PATCH-CALL? ( n n -- bool ) {: e:n k:n :}
+   e EM-PATCH-TGT @ 0<>
+   k e EM-CALLS @ = and ;
 
 : CALL-SITE@ ( n n -- n )
-   CALL-ROW CALL-OFF @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if e EM-PATCH @ exit then
+   e k CALL-ROW CALL-OFF @ ;
 
 : CALL-KIND@ ( n n -- n )
-   CALL-ROW CALL-KIND @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if NEMIT:TAIL exit then
+   e k CALL-ROW CALL-KIND @ ;
 
 : CALL-TARGET@ ( n n -- n )
-   CALL-ROW CALL-TGT @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if e EM-PATCH-TGT @ exit then
+   e k CALL-ROW CALL-TGT @ ;
 
 : ADDR-SITES ( n -- n )
    EM-CK EM-ADDRS @ ;

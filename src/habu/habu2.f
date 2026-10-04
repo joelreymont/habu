@@ -3504,6 +3504,13 @@ public
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    declared LBL,
+   LBL {: noshadow:label :}
+   11 DATA NCOMP-DISPATCH:DOES-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 DATA LASTC-CELL LDR,  9 9 DBASE SUB,
+   10 DREC MOVZ,  9 9 10 UDIV,  9 G-PUSH
+   9 SP 8 LDR,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:DOES-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       LASTC-TRUST:PUBLISH
       \ A second does> may replace an existing clause. Its new effect replaces
@@ -4535,6 +4542,13 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
+   LBL {: noshadow:label :}
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 DATA DP-CELL LDR,  9 G-PUSH
+   9 NCOMP-DISPATCH:FIXED-ADDR-KIND MOVZ,  9 G-PUSH
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE KWCREATE$ nip C-DEFHOOK
    nokind LBL,
@@ -4990,6 +5004,13 @@ public
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
+   LBL {: noshadow:label :}
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 DATA DEFER-XT-CELL LDR,  9 G-PUSH
+   9 3 MOVZ,  9 G-PUSH                    \ NCOMP:FIXED-DEFER, compiled after this builder
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL,
    LBL LBL {: ready pdone :}
    C-PRETRUST-READY?  13 ready CBNZ,
       NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE

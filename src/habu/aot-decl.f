@@ -17,12 +17,8 @@
 \
 \ WHO LOADS IT. It is a common engine-prefix source, immediately before habu2.f
 \ in both builders (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), where its requires of src/arch/arm64/icode.f and
-\ src/habu/layout.f are no-ops: icode.f precedes it as a provided file in both,
-\ and layout.f is a provided file in bootstrap.sh and an engine boot row
-\ (src/habu/native-runtime.f) in the fixpoint build. In a booted bin/hb
-\ the icode.f require loads the section budget AOT-SECTION-CAP, which the engine
-\ does not keep.
+\ BF-APPEND-COMMON), where layout.f is already provided. The aggregate section
+\ budget lives with the format so an x86-64 writer needs no ARM64 code layer.
 \
 \ THE PUBLIC TAILS KEEP THEIR `AOT-` PREFIX, and that is recorded debt rather
 \ than a pattern: docs/forth.md § Packages calls a prefix-style public surface
@@ -33,11 +29,12 @@
 \ test/aot-wid-build.f (20 of those inside GENERATED program text, which no
 \ source-level rename sees), plus a per-tail collision check against the global
 \ wordlist — layout.f already publishes a global MAX.
-require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/address-carrier.f
 require src/habu/code-span.f
 require src/habu/cell-grid.f
+
+$1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 
 package AOT-BUF
 public
@@ -117,6 +114,7 @@ $FFFFFFFF constant SITE-COUNT-MASK
 \ just wrote (NDICT - LAOTNREC), never from a build-time count.
 $80000000 constant SITE-NAME-TAG
 $40000000 constant SITE-REC-TAG
+$C0000000 constant SITE-SHADOW-TAG
 $3FFFFFFF constant SITE-TARGET-MASK
 $FFFFFFFE constant WID-QUAL
 
@@ -427,14 +425,15 @@ variable N
 \ its own emission. A record is named by its SHIPPED ROW, its row in the record
 \ table the artifact carries: that table holds only the records the capture
 \ ships, so past a stripped private word a window index names the wrong one. A
-\ RECORD row is (shipped row, emission start in CODE, emission bytes, entry offset
-\ in it): a `does>` definer and its companion are two rows over one emission, the
-\ companion entering where the clause function starts. A SITE row is (byte
-\ offset in CODE, kind, target); a target is a shipped record, SITE-REC-TAG beside
-\ its shipped row, or a word of the engine's own prefix, SITE-NAME-TAG beside its
-\ name's pool offset (a qualified name when its package is not global), the two
-\ forms AOT-BUF's image site rows use. An XT row is (address-cell row, shipped
-\ row): an address cell whose CODE target is a shipped record's entry, keyed by
+\ RECORD row is (shipped row or ANON-REC plus the capture record index, emission
+\ start in CODE, emission bytes,
+\ entry offset in it): a `does>` definer and its companion are two rows over one
+\ emission, the companion entering where the clause function starts. A SITE row
+\ is (byte offset in CODE, kind, target); a target is a shipped record tagged
+\ SITE-REC-TAG, an anonymous shadow row tagged SITE-SHADOW-TAG, or a word of the
+\ engine's own prefix tagged SITE-NAME-TAG. An XT row is (address-cell row,
+\ shipped row or SITE-SHADOW-TAG plus anonymous shadow row): an address cell
+\ whose CODE target is a shadow routine's entry, keyed by
 \ the record and not by the ARM64 blob offset the address-cell row itself
 \ carries.
 package AOT-SHADOW
@@ -456,8 +455,11 @@ public
 16 constant REC-ROW
 12 constant SITE-ROW
 8 constant XT-ROW
+$80000000 constant ANON-REC
+$FFFFFFFF constant RETIRED-REC
 \ An emission is code the window's own region held, so the blob's bound is its
-\ bound; one record row per shipped record; a site is a call or a ten-byte MOVABS,
+\ bound; reached routines and shipped aliases share the record-table bound;
+\ a site is a call or a ten-byte MOVABS,
 \ so a byte can start at most one in five; one XT row per address-cell row.
 AOT-BUF:AOT-BLOB-CAP constant CODE-CAP
 AOT-BUF:AOT-REC-MAX constant REC-MAX
@@ -466,12 +468,13 @@ AOT-WINDOW:XTOFF-MAX constant XT-MAX
 
 \ The site kinds. CALL and TAIL hold a rel32 to their target, CODE a MOVABS of
 \ the target's entry, DATA a MOVABS of a window DATA offset, FUN a MOVABS of a
-\ function's offset in the site's own emission.
+\ function's offset in the site's own emission, DCELL a defer trailer cell.
 1 constant CALL
 2 constant TAIL
 3 constant DATA
 4 constant CODE
 5 constant FUN
+6 constant DCELL
 
 variable REC-N
 variable CODE-LEN
@@ -699,13 +702,14 @@ public
 
 package AOT-SECTION
 using AOT-BUF
+72 constant BUDGET-RC
 public
 
 : ROOM? ( n n -- bool ) {: used:n bytes:n :}
    used 0 < used AOT-SECTION-CAP > or bytes 0 < or if 0 0 <> exit then
    bytes AOT-SECTION-CAP used - <= ;
 
-: REFUSE ( -- ) s" aot: encoded sections exceed their byte budget" ICODE-EXIT-RC die ;
+: REFUSE ( -- ) s" aot: encoded sections exceed their byte budget" BUDGET-RC die ;
 
 : +RAW ( n n -- n )
    2dup ROOM? 0= if REFUSE then + ;

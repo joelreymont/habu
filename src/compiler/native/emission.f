@@ -39,6 +39,7 @@ ST-EMPTY ST !
 PTR-VARIABLE CODE-AT                 \ the emission's first byte
 variable CODE-N                      \ and how many bytes it is
 variable RET-N                       \ how many of them are the trailing return
+variable PATCH-AT                    \ x86 created-word does> jump, or -1
 variable HAS-PLACE                   \ whether the emission was measured from a placement
 variable PLACE-N                     \ and which
 TYPED-VARIABLE ARCH-AT CTARGET:arch  \ the machine the bytes are for
@@ -82,6 +83,9 @@ public
 \ Zero when the emission ends in no return, so its whole span is its record.
 : RET-BYTES ( -- n )
    SEAL-CK RET-N @ ;
+
+: PATCH-SLOT ( -- n )
+   SEAL-CK PATCH-AT @ ;
 
 : ARCH ( -- CTARGET:arch )
    SEAL-CK ARCH-AT @ ;
@@ -127,6 +131,7 @@ public
    ST-EMPTY ST !
    NULL-PTR CODE-AT !
    0 CODE-N !  0 RET-N !
+   -1 PATCH-AT !
    0 HAS-PLACE !  0 PLACE-N !
    0 N-FUNS !  0 N-CALLS !  0 N-ADDRS ! ;
 
@@ -136,12 +141,18 @@ public
    size 1 < if E-NEMIT-ROW throw then
    ret 0 <  ret size > or if E-NEMIT-ROW throw then
    p CODE-AT !  size CODE-N !  ret RET-N !
+   -1 PATCH-AT !
    a ARCH-AT !
    ST-OPEN ST ! ;
 
 : PLACE ( n -- ) {: at:n :}
    OPEN-CK
    at PLACE-N !  1 HAS-PLACE ! ;
+
+: PATCH-SLOT! ( n -- ) {: off:n :}
+   OPEN-CK off OFFSET-CK drop
+   PATCH-AT @ -1 <> if E-NEMIT-ROW throw then
+   off PATCH-AT ! ;
 
 : FUNCTION+ ( n -- ) {: off:n :}
    OPEN-CK off OFFSET-CK drop

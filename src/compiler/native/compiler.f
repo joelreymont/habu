@@ -127,6 +127,8 @@ private
 
 variable M-FIXED                     \ the pending definer's body kind
 variable M-FIXED-VAL                 \ its value or dispatch cell
+variable M-FIXED-REC                 \ published record for a seeded created child, or -1
+variable M-SHADOW-ONLY               \ the engine already published its own body
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -572,6 +574,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 $20 constant NAME-END
 
 : FIXED-NAME$ ( -- ptr u8 n )
+   M-FIXED-REC @ 0 >= if M-FIXED-REC @ XREF-REC XREF-NAME$ exit then
    M-FIXED @ FIXED-DEFER = if
       data-base BODYBUF-OFF + BYTE-VIEW
       data-base BODYLEN-CELL + @ {: b:ptr len:n :}
@@ -603,13 +606,37 @@ $20 constant NAME-END
    EMITTED
    M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
 
-: FIXED-WORK ( -- )
+: FIXED-MODULE ( -- )
    CC HIR-MOD 0 M-BLD !
    FIXED-TAPE
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   M-FIXED @ FIXED-DEFER = if p r DEFER-WORK exit then
    0 M-IN ! 1 M-OUT !
-   CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop
+   CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop ;
+
+: FIXED-SHADOW-WORK ( -- )
+   M-FIXED @ FIXED-DEFER = if
+      CC HIR-MOD 0 M-BLD !
+      FIXED-TAPE
+      MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+      KEEP-TAPE-NAME
+      0 M-IN ! 0 M-OUT !
+      CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
+   else
+      FIXED-MODULE
+   then
+   CC M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
+   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   hm SHADOWED
+   hm IR-BUILD:RETIRE
+   M-FIXED-REC @ NSHADOW:PUBLISH ;
+
+: FIXED-WORK ( -- )
+   M-FIXED @ FIXED-DEFER = if
+      CC HIR-MOD 0 M-BLD !
+      FIXED-TAPE
+      MODEL DEFER-WORK exit
+   then
+   FIXED-MODULE
    EMITTED
    NPUB:PUBLISH-RAW ;
 
@@ -624,7 +651,8 @@ $20 constant NAME-END
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
-   [: M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
+   [: M-SHADOW-ONLY @ if FIXED-SHADOW-WORK exit then
+      M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
@@ -775,6 +803,8 @@ INSTALL-FORGET
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
    NDICT:FIXED-NONE M-FIXED !
+   -1 M-FIXED-REC !
+   0 M-SHADOW-ONLY !
    0 NAME-U !
    NELAB:REFUSED-RESET ;
 
@@ -792,6 +822,27 @@ public
    kind M-FIXED ! val M-FIXED-VAL !
    RUN ;
 
+\ LCREATE has already published its ARM body and closed its write window.
+\ Compile the same fixed one-row HIR for the open target shadow, then attach
+\ that emission to the created record. No second ARM publication occurs.
+: SHADOW-FIXED ( n n n -- ) {: val:n kind:n idx:n :}
+   NSHADOW:OPEN? 0= if exit then
+   IDLE-CK
+   kind NDICT:FIXED-ADDR <> kind NDICT:FIXED-VAL <> and
+   kind FIXED-DEFER <> and if E-NCOMP-STATE throw then
+   idx 0 < idx ndict@ >= or if E-NCOMP-STATE throw then
+   idx M-FIXED-REC !
+   val M-FIXED-VAL !  kind M-FIXED !
+   0 M-DOES !  -1 M-DOES-FUN !
+   1 M-SHADOW-ONLY !  1 M-OPEN !  0 M-RC !
+   [: IN-CONTEXT ;] catch {: rc:n :}
+   0 M-SHADOW-ONLY !  0 M-OPEN !
+   rc 0<> if rc throw then
+   M-RC @ 0<> if M-RC @ throw then ;
+
+: SHADOW-DOES ( n n -- )
+   NSHADOW:PATCH-DOES ;
+
 \ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
 \ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
 \ with its wrapper and gives it back with INSTALL.
@@ -801,7 +852,9 @@ public
 \ The fixed engine header lies outside a partial compiler capture. Reinstall
 \ its dispatch after the captured words have been relocated at fresh boot.
 : INSTALL ( -- )
-   ['] COMPILE DISPATCH! ;
+   ['] COMPILE DISPATCH!
+   ['] SHADOW-FIXED data-base NCOMP-DISPATCH:FIXED-SHADOW-CELL + xt!
+   ['] SHADOW-DOES data-base NCOMP-DISPATCH:DOES-SHADOW-CELL + xt! ;
 
 \ A whole-image capture closes the session through IMAGE-LIFECYCLE:PREPARE.
 \ A chain window captures this entry directly, so close a live session here too.

@@ -1550,7 +1550,11 @@ $48A0 constant POLICY-BITS-OFF
 package NCOMP-DISPATCH
 public
 $2CF0 constant JIT-RET-CELL
+$2CF8 constant FIXED-SHADOW-CELL
+$2D00 constant DOES-SHADOW-CELL
+2 constant FIXED-ADDR-KIND
 ;package
+$2D08 constant TASK-CHAIN-OFF-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

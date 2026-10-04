@@ -101,6 +101,12 @@
 \ refuses a shadow on either side: the merged engine is the ARM64 seed, and no
 \ shadow coordinate is rebased.
 \
+\ VERSION 15 lets x86 routines reached through a stripped or retired word
+\ travel without publishing that word's dictionary name. A shadow record now
+\ carries an anonymous source key, and a site or code-cell row can target that
+\ shadow record directly. The reader checks those tags and refuses version 14
+\ before it can interpret the same bytes as shipped record indices.
+\
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
 \ so nothing is re-encoded on the way through; the type registry is one opaque
@@ -161,7 +167,6 @@
 \ tools/build-fixpoint.f inlines icode.f, fdio.f, aot-decl.f and aot-ident.f as
 \ modules ahead of this file, while layout.f is a boot row of the host
 \ (src/habu/native-runtime.f).
-require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/fdio.f
 require src/habu/aot-decl.f
@@ -172,7 +177,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-14 constant VERSION  \ the capture carries a second target's routines
+15 constant VERSION  \ anonymous shadow routines have tagged references
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -844,29 +849,56 @@ variable NAME-BOUNDARY-LEN
 \ an address-cell row, in order, whose target is window code. Every record index
 \ names a window record, so it is below the artifact's own record count.
 variable SH-PREV
+variable SH-PREV-AT
+variable SH-PREV-END
+DYNAMIC-BUFFER SH-SEEN u8
+
+: SH-ANON? ( n -- bool ) AOT-SHADOW:ANON-REC and 0<> ;
+
+: ?SH-ANON-KEY ( n -- ) {: k:n :}
+   k AOT-SHADOW:RETIRED-REC = if exit then
+   k SITE-TARGET-MASK invert and AOT-SHADOW:ANON-REC <> if
+      s" aot-file: anonymous shadow source has an invalid tag" DIE then
+   k SITE-TARGET-MASK and AOT-REC-MAX >= if
+      s" aot-file: anonymous shadow source exceeds capture record bound" DIE then ;
 
 : ?SH-RECS ( -- )
    S-SHCODE ROW-LEN@ {: clen:n :}
    S-RECS SEC-ROWS {: recs:n :}
-   -1 SH-PREV !
+   recs SH-SEEN-RESERVE
+   recs 0 ?do 0 i SH-SEEN c! loop
+   -1 SH-PREV !  -1 SH-PREV-AT !  0 SH-PREV-END !
    S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / 0 ?do
       S-SHRECS SEC-AT i AOT-SHADOW:REC-ROW * + {: r:ptr :}
       r U32@ {: k:n :}
       r 4 + U32@ {: at:n :}
       r 8 + U32@ {: len:n :}
       r 12 + U32@ {: entry:n :}
-      k SH-PREV @ <=  k recs >= or if
-         s" aot-file: the shadow records are not one ascending row per window record" DIE then
+      k SH-ANON? if
+         k ?SH-ANON-KEY
+      else
+         k recs >= if s" aot-file: a shadow record names no shipped record" DIE then
+         k SH-SEEN c@ 0<> if s" aot-file: duplicate shipped shadow record" DIE then
+         1 k SH-SEEN c!
+      then
       len 0=  at len + clen > or  entry len >= or if
          s" aot-file: a shadow record's routine lies outside the shadow code" DIE then
-      k SH-PREV !
-   loop ;
+      at SH-PREV-AT @ < if
+         s" aot-file: shadow emissions are not in publication order" DIE then
+      at SH-PREV-AT @ = at len + SH-PREV-END @ <> and if
+         s" aot-file: shared shadow emission has unequal spans" DIE then
+      at SH-PREV-AT @ <>  at SH-PREV-END @ < and if
+         s" aot-file: a shadow record's routine overlaps the one before it" DIE then
+      at SH-PREV-AT !  at len + SH-PREV-END !
+   loop
+   SH-SEEN-RELEASE ;
 
 \ A site's instruction width, or 0 for a kind this format does not name.
 : SH-WIDTH ( n -- n ) {: kind:n :}
    kind AOT-SHADOW:CALL = kind AOT-SHADOW:TAIL = or if 5 exit then
    kind AOT-SHADOW:DATA =  kind AOT-SHADOW:CODE = or  kind AOT-SHADOW:FUN = or if
       ADDRESS-CARRIER:MOVABS-BYTES exit then
+   kind AOT-SHADOW:DCELL = if CELL exit then
    0 ;
 
 : ?SH-TARGET ( n n -- ) {: t:n recs:n :}
@@ -874,6 +906,11 @@ variable SH-PREV
    t SITE-TARGET-MASK invert and {: tag:n :}
    tag SITE-NAME-TAG = if v 1+ ?NAMED-TARGET exit then
    tag SITE-REC-TAG = v recs < and if exit then
+   tag SITE-SHADOW-TAG = if
+      v S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / < if
+         S-SHRECS SEC-AT v AOT-SHADOW:REC-ROW * + U32@ SH-ANON? if exit then
+      then
+   then
    s" aot-file: a shadow site names neither a window record nor a pool entry" DIE ;
 
 : ?SH-SITES ( -- )
@@ -887,8 +924,8 @@ variable SH-PREV
       kind SH-WIDTH {: w:n :}
       w 0= if s" aot-file: a shadow site has a kind this format does not carry" DIE then
       at w + clen > if s" aot-file: a shadow site reaches past the shadow code" DIE then
-      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or if
-         t 0<> if s" aot-file: a shadow DATA or function site names a target" DIE then
+      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or  kind AOT-SHADOW:DCELL = or if
+         t 0<> if s" aot-file: a shadow DATA, function or trailer site names a target" DIE then
       else t recs ?SH-TARGET then
    loop ;
 
@@ -902,7 +939,11 @@ variable SH-PREV
       r 4 + U32@ {: k:n :}
       row SH-PREV @ <=  row rows >= or if
          s" aot-file: the shadow code cells are not ascending address-cell rows" DIE then
-      k recs >= if s" aot-file: a shadow code cell names no window record" DIE then
+      k SITE-TARGET-MASK invert and SITE-SHADOW-TAG = if
+         k recs ?SH-TARGET
+      else
+         k recs >= if s" aot-file: a shadow code cell names no window record" DIE then
+      then
       XTOFF-BUF@ row XTOFF-ROW * + 4 + U32@ {: meta:n :}
       meta XTOFF-KIND-MASK and 0<>  meta XTOFF-VALUE-MASK and 0= or if
          s" aot-file: a shadow code cell names an address cell that holds no window code" DIE then

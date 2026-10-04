@@ -2143,110 +2143,6 @@ variable ACAP-SWEEP-B1
    \ private: the DATA row is part of the captured ABI.
    ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
 
-\ --- the shadow reach ---------------------------------------------------------
-\ A SECOND TARGET'S ROUTINE TRAVELS BY REAL REACHABILITY. A shadowed record the
-\ capture ships no row for, stripped or retired, keeps its routine only while
-\ live code reaches it (src/habu/aot-shadow.f SH-STRIP), and the reach above
-\ cannot say so: the capture files no row for a retired (`undefine`d) record
-\ (ACAP-ADD-REC), so no record owns its body, which is a gap the payload keeps
-\ and the gap sweep scans as a root, live or not, marking what it calls too.
-\ This reach walks the same code from the same roots - the records
-\ ACAP-GRAPH-ROOTS names, the declared code cells and every gap but a retired
-\ body - through ordinary and retired bodies alike, follows an edge only out of
-\ a body it has reached, and marks only nodes of its own, so ARM64 retention
-\ and the payload stay as the reach above leaves them.
-\ A node is a capture record, or a retired window record numbered ACAP-REC-ALL
-\ plus its window offset. Reached code reaches the record that owns it
-\ (ACAP-GOWNER) and the retired record over it, the lowest whose span covers it
-\ as a shared entry names the lowest record (ACAP-TGT>REC); so a name sharing
-\ another's body, an EXPORT alias, reaches that body's record, stripped or
-\ retired. A reached node's code is reached word by word, and so are its edges
-\ and, unless its last word ends it, the word after it. A retired id is a
-\ window offset plus one, 0 for none.
-DYNAMIC-BUFFER ACAP-RWORD n          \ blob word -> retired id over it
-DYNAMIC-BUFFER ACAP-SMARK n          \ node -> 1 once reached
-DYNAMIC-BUFFER ACAP-SWORK n          \ the nodes reached and not yet scanned
-variable ACAP-SWORK-N
-
-\ Where retired window record idx's code lies in the blob; empty when its code
-\ is not the window's.
-: ACAP-RETIRED-SPAN ( n -- n n ) {: idx:n :}
-   idx AOT-REC AOT-RXT AOT-CODE-B0 @ - {: start:n :}
-   start idx AOT-REC AOT-RBYTES + {: end:n :}
-   start 0 >=  end AOT-BLOB-LEN @ <=  and if start end else 0 0 then ;
-
-: ACAP-SHADOW-INDEX ( -- )
-   AOT-BLOB-LEN @ 4 / {: words:n :}
-   ACAP-REC-ALL @ ACAP-W-R1 @ + ACAP-W-R0 @ - {: nodes:n :}
-   words ACAP-RWORD-RESERVE  nodes ACAP-SMARK-RESERVE  nodes ACAP-SWORK-RESERVE
-   words 0 ?do 0 i ACAP-RWORD ! loop
-   nodes 0 ?do 0 i ACAP-SMARK ! loop
-   0 ACAP-SWORK-N !
-   ACAP-W-R1 @ ACAP-W-R0 @ ?do
-      i ACAP-DICT>CAP 0 < if
-         i ACAP-W-R0 @ - 1+ {: id:n :}
-         i ACAP-RETIRED-SPAN {: start:n end:n :}
-         end 4 / start 4 / ?do
-            i ACAP-RWORD @ 0= if id i ACAP-RWORD ! then
-         loop
-      then
-   loop ;
-
-: ACAP-SHADOW-NODE ( n -- ) {: v:n :}
-   v ACAP-SMARK @ 0<> if exit then
-   1 v ACAP-SMARK !
-   v ACAP-SWORK-N @ ACAP-SWORK !
-   ACAP-SWORK-N @ 1+ ACAP-SWORK-N ! ;
-
-\ Code at blob offset off is reached.
-: ACAP-SHADOW-OFF ( n -- ) {: off:n :}
-   off 0<  off AOT-BLOB-LEN @ >=  or if exit then
-   off 4 / ACAP-GOWNER @ {: owner:n :}
-   owner 0<> if owner 1- ACAP-SHADOW-NODE then
-   off 4 / ACAP-RWORD @ {: id:n :}
-   id 0<> if ACAP-REC-ALL @ id + 1- ACAP-SHADOW-NODE then ;
-
-: ACAP-SHADOW-SCAN ( n -- ) {: v:n :}
-   v ACAP-REC-ALL @ < if
-      v ACAP-GRAPH-START  v ACAP-GRAPH-END
-   else
-      v ACAP-REC-ALL @ - ACAP-W-R0 @ + ACAP-RETIRED-SPAN
-   then {: from:n to:n :}
-   from to >= if exit then
-   from begin dup to < while
-      dup ACAP-SHADOW-OFF
-      dup ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
-      4 +
-   repeat drop
-   to 4 - ACAP-GRAPH-ENDS? 0= if to ACAP-SHADOW-OFF then ;
-
-\ A gap word no retired record covers is a root, as the gap sweep has it.
-: ACAP-SHADOW-GAP ( n -- ) {: at:n :}
-   at ACAP-GSITE@ 3 = if exit then
-   at 4 / ACAP-GOWNER @ 0<>  at 4 / ACAP-RWORD @ 0<>  or if exit then
-   at ACAP-GRAPH-EDGES ACAP-SHADOW-OFF ACAP-SHADOW-OFF
-   at ACAP-GRAPH-ENDS? 0= if at 4 + ACAP-SHADOW-OFF then ;
-
-\ After the sweeps above and before the blob is compacted: it reads their
-\ owners and sites, and the code they read.
-: ACAP-SHADOW-REACH ( -- )
-   ACAP-SHADOW-INDEX
-   ACAP-REC-ALL @ 0 ?do
-      i ACAP-NAMED-BIT @ 0<>  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
-   loop
-   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-SHADOW-OFF loop
-   AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-SHADOW-GAP loop
-   begin ACAP-SWORK-N @ 0 > while
-      ACAP-SWORK-N @ 1- ACAP-SWORK-N !
-      ACAP-SWORK-N @ ACAP-SWORK @ ACAP-SHADOW-SCAN
-   repeat ;
-
-\ Whether the shadow reach reached window record idx, a captured or a retired one.
-: ACAP-SHADOW-LIVE? ( n -- bool ) {: idx:n :}
-   idx ACAP-DICT>CAP {: k:n :}
-   k 0 < if idx ACAP-W-R0 @ - ACAP-REC-ALL @ + else k then
-   ACAP-SMARK @ 0<> ;
-
 \ A named alias and a direct call through a public wrapper can retain a private
 \ definer's code while stripping its own name. The reach graph marks the entire
 \ defining span in either case. Its clause shares those bytes, though the graph
@@ -2794,7 +2690,6 @@ public
    ACAP-GRAPH-SWEEP  -1 ACAP-GRAPH-READY !
    ACAP-GRAPH-SWEEP-GAPS
    ACAP-GRAPH-SWEEP
-   ACAP-SHADOW-REACH
    ACAP-GRAPH-NAME-DOES                         \ the names that ship are final here
    bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
    d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied
