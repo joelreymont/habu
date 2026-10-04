@@ -118,6 +118,18 @@ variable STAGED-LEN
    ALL-TEXT SPAN:$ drop t
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" T$= ;
 
+: URL-ALPHABET ( -- )
+   s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+   OUT BASE64:DECODE-URL {: k:n :}
+   s" the URL alphabet decodes to its 48 bytes" T-LABEL
+   k ALPHABET-BYTES T=
+   k OUT$ HEX$
+   s" 00108310518720928b30d38f41149351559761969b71d79f8218a39259a7a29aabb2dbafc31cb3d35db7e39ebbf3dfbf"
+   T$=
+   k OUT$ ALL-TEXT BASE64:ENCODE-URL {: t:n :}
+   ALL-TEXT SPAN:$ drop t
+   s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" T$= ;
+
 \ Every byte value, through both words and back.
 : ROUND-TRIP ( -- )
    256 0 do i $FF and ALL i SPAN:U8! loop
@@ -178,6 +190,9 @@ variable STAGED-LEN
    CANARY OUT-2 SPAN:FILL
    [: s" Zm9v" OUT-2 BASE64:DECODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
    OUT-2 0 SPAN:U8@ CANARY T=
+   [: s" fo" OUT-2 BASE64:ENCODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
+   OUT-2 0 SPAN:U8@ CANARY T=
+   OUT-2 1 SPAN:U8@ CANARY T=
    s" f" OUT-2 BASE64:ENCODE-URL 2 T=
    s" fo" OUT-3 BASE64:ENCODE-URL 3 T=
    s" foo" OUT-4 BASE64:ENCODE-URL 4 T=
@@ -272,7 +287,7 @@ public
 : RUN ( -- )
    T-RESET
    VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE
-   URL-VECTORS PKCE URL-REFUSALS URL-CAPACITY ;
+   URL-VECTORS URL-ALPHABET PKCE URL-REFUSALS URL-CAPACITY ;
 
 ;package
 

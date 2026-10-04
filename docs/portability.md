@@ -262,7 +262,7 @@ A structurally coherent target may be unsupported by the installed backend. Thes
 
 ### 3.4 Capability intersection
 
-Do not replace the four-row backend registry (`BACKEND-ROWS`, `src/compiler/target.f:428`) with a large collection of optimistic booleans. Resolution asks stage-specific implementations about the exact tuple:
+Do not replace the four-row backend registry (`BACKEND-ROWS`, `src/compiler/target.f:441`) with a large collection of optimistic booleans. Resolution asks stage-specific implementations about the exact tuple:
 
 ```text
 (machine, layout, HabuAbi, foreignABI, runtime, imageKind, options)
@@ -587,7 +587,7 @@ A single-worker browser profile does not promise threads. Native thread support 
 
 An immutable `BackendDescriptor` identifies implementation code, accepted machine families/states, supported representations and stage factories. A `BackendSession` contains its mutable state. Registration publishes a complete validated descriptor once; it must not expose a row before its mandatory function tables are installed.
 
-Replace the four-row ceiling (`BACKEND-ROWS`, `src/compiler/target.f:428`) with a manifest-derived capacity or checked storage sized to the loaded descriptors. This change is P2; Wasm alone fits in the existing rows and does not need it. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
+Replace the four-row ceiling (`BACKEND-ROWS`, `src/compiler/target.f:441`) with a manifest-derived capacity or checked storage sized to the loaded descriptors. This change is P2; Wasm alone fits in the existing rows and does not need it. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
 
 The old A32 and Thumb2 target variants may map to one ARM32 provider with different instruction-state configurations. Do not renumber old target wire codes to achieve that. A new backend may require extending the centrally owned target vocabulary and validators; the goal is one owner for that extension, not a false promise of adding arbitrary architectures without any schema change.
 

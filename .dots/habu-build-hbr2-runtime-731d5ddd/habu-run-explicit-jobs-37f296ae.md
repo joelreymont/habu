@@ -1,0 +1,9 @@
+---
+title: Run explicit jobs under step budgets
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-04T05:10:11.385359+03:00"
+---
+
+Problem: HBR2 §4.1 runs all long work as explicit job state machines with a JobHeader (Id, Scope, ScopeGeneration, Kind, Phase, Status, SnapshotLease?, Cursor, WorkRemainingEstimate, CancelRequested, OwnedInputs, OwnedPartialOutput) and a StepResult (Yield, Wait(RequestId), Done(OwnedResult), Failed(Error)); a step budget counts declared primitive units and is checked before each unit; G1 requires that long jobs yield (§27.3). Acceptance: in package RT-JOB, a job is named by the `rt-job` DEFTYPE of RT-JOB (§7.1); job kinds sit in a closed registered table of step words; a job advances only through STEP with a budget, checks credit before every bounded unit against the unit constants of RT-COST (lib/runtime/cost.f, new, also read by UI-ADMIT), and yields when credit runs out; cancellation moves the job to a cleanup phase that yields while it releases many children; output is adopted only while the owner scope generation from habu-open-close-and-89a77063 still matches (§2.3, Job output row), otherwise it is discarded and its owned values released; the reclamation job kind drives RECLAIM-STEP from habu-pool-and-reclaim-a0f574a7. Files: lib/runtime/job.f (new, package RT-JOB; mints E-RT-JOB-FIRST/LAST -9570..-9579 in its owning file), lib/runtime/cost.f (new, package RT-COST), lib/errors.f (one comment line), test/browser/job-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/job-test.f: a 1,000,000-unit job finishes over many steps, none over its budget; cancelling a job that owns 10,000 children releases them across several cleanup steps; the output of a job whose scope closed is discarded and released; bin/hb --load test/run.f. Depends: habu-open-close-and-89a77063, habu-pool-and-reclaim-a0f574a7. Ownership: lib/runtime/job.f, lib/runtime/cost.f. Lane: tim. Claim: unassigned.

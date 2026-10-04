@@ -48,7 +48,7 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 Observed on master 67a66d28. None of these files changed between the previous
 audit's tree (64bdd426) and 67a66d28.
 
-* `src/compiler/target.f` owns an immutable architecture/ABI/endian/address-width/features contract (`:52-103`, `:326-333`), stable wire codes and digest (`:153-185`, `:374-387`) and the backend registry of four rows (`BACKEND-ROWS`, `:428`), filled by `src/arch/arm64/backend.f` and `src/arch/x86-64/backend.f`. It separates a coherent description from a loaded implementation (`E-CTGT-UNLOADED`, `:467-477`). `wasm` is not an architecture (`:52-59`).
+* `src/compiler/target.f` owns an immutable architecture/ABI/endian/address-width/features contract (`:52-103`, `:326-333`), stable wire codes and digest (`:153-185`, `:374-387`) and the backend registry of four rows (`BACKEND-ROWS`, `:441`), filled by `src/arch/arm64/backend.f` and `src/arch/x86-64/backend.f`. It separates a coherent description from a loaded implementation (`E-CTGT-UNLOADED`, `:467-477`). `wasm` is not an architecture (`:52-59`).
 * `src/compiler/native/backend.f` (`NBACK`) dispatches declaration, selection, emission and lifecycle through the target row (`:97-107`, `:187-234`). `NBACK:FREEZE` freezes the definition's HIR module and folds its loops before any selector runs, so a shadow target selects from the very module the engine's selector did (`:27-35`, `:159-185`). `EMIT` still takes a numeric code location; its sibling `EMIT-UNPLACED` writes a routine measured from no slot (`:36-40`).
 * `src/compiler/native/compiler.f` (`NCOMP`) consumes checker-observed source tape and publishes a pending definition only after the compilation chain succeeds (`:15-16`, `:515-527`). `LOAD-PASSES` loads the ARM64 or x86-64 passes by target and refuses any other with `E-CTGT-ABI` (`:18-24`, `:54-71`). NCOMP also compiles every definition for an open shadow binding (`:26-33`, `:482-506`).
 * `src/compiler/native/elaborate.f` holds compile-time cell vectors with grouping for wide values; stack renaming and the admitted return-stack operations move value identities rather than implementing a runtime stack; quotation bodies become functions (`:4-13`). Native `does>` and the `?do` entry rule (ae15d38a) are newer than the first audit.
@@ -146,9 +146,9 @@ Habu source + permitted compile-time environment
   -> existing elaborator
   -> frozen HIR with target-symbolic addresses
   -> Wasm legalization and call/effect lowering
-  -> WCFG: typed Wasm-level control-flow graph
-  -> WSTRUCT: typed structured control
-  -> local assignment and conservative stack scheduling
+  -> WSTRUCT: typed Wasm-level control-flow graph (the first slice's one
+     dialect; a separate WCFG legalisation dialect when a pass needs it)
+  -> structuring, local assignment and conservative stack scheduling at encoding
   -> sealed Wasm function/module plans
   -> Habu binary encoder
   -> independent validation
@@ -817,11 +817,20 @@ through the xt -> record index and refusing an unresolved one by name, and the
 Wasm linker assigns final indices and writes the module. The `TargetRef` of
 [portability.md](portability.md) §7.2 replaces this route later.
 
+A Wasm emission's bytes begin with a function table the encoder writes and
+`src/habu/link-wasm.f` reads: the count, then per function its body offset,
+size, inputs, outputs and frame variant. `NEMIT`'s function rows name the
+bodies. The call field is the five bytes after the `call` opcode, and the
+address field is the ten after `i64.const`. The capture's Wasm reader is
+`src/arch/wasm/capture.f`, which reads `NSHADOW`'s public readers into
+`AOT-SHADOW`'s tables (`src/habu/aot-decl.f`), because the native reader's
+MOVABS carrier cannot rewrite an LEB.
+
 ### 17.2 Verify HIR before lowering
 
 `NBACK:FREEZE` freezes with `IR-BUILD:FREEZE-INTERIM` (`src/compiler/native/backend.f:184`),
 which skips the schema, dominance, terminator, single-definition,
-successor-argument and span checks (`src/compiler/ir/build.f:1476-1494`). Native
+successor-argument and span checks (`src/compiler/ir/build.f:1470-1498`). Native
 code is safe because the emitted machine module is verified whole; a Wasm
 module has no such machine module. The Wasm selector therefore reads the folded
 interim HIR, builds a WSTRUCT dialect module with its own schema, and freezes
@@ -829,13 +838,29 @@ it with the full `IR-BUILD:FREEZE` (`src/compiler/ir/build.f:1465`) before
 encoding. The binary validator (§10.3) checks the bytes, not the SSA and
 dominance facts.
 
+WSTRUCT is a control-flow graph. It has blocks with typed i32, i64 and f64
+arguments, Wasm instructions as operations, and `br`, `brz`, `return`,
+`unreachable`, `call` and `call_indirect`. It has no block, loop or if
+operation: the substrate records a region count
+(`src/compiler/ir/schema.f:324`), but `IR-BUILD` has no region builder. The
+full FREEZE therefore checks dominance, single definition and successor
+arguments meaningfully. The encoder (`src/arch/wasm/encode.f` with
+`structure.f`) derives dominators, loops and the control tree from the frozen
+graph, refuses an irreducible one by name, and assigns label depths as it
+writes.
+
 ### 17.3 NaN canonicalisation
 
-Wasm's f64 arithmetic may answer a NaN of either sign. After f64 add, sub, mul,
-div and sqrt, the selector clears the sign when the result is a NaN and no
-operand was one, as `X64SEL` does on SSE (`docs/x86-64.md:2361-2365`). Made
-NaNs are then `$7FF8000000000000` and a quiet NaN operand passes through,
-matching every native target (`src/compiler/native/hir-word.f:1269-1272`).
+Wasm leaves a NaN result's sign nondeterministic, and a non-canonical NaN
+operand can come out as any arithmetic NaN (the `nans_N` rule), so clearing
+the sign does not meet the rule. After f64 add, sub, mul, div and sqrt, the
+selector answers without a branch: the left operand when it is a NaN, else the
+right when it is, else `$7FF8000000000000` when the result is a NaN, else the
+result (`f64.ne x x` and `select`). Made NaNs are then `$7FF8000000000000`, and
+a quiet NaN operand passes through unchanged, the left of two
+(`src/compiler/native/hir-word.f:1261-1266`). A signalling NaN operand is
+outside the rule and passes through unquieted. fneg, fabs, the comparisons and
+the conversions add nothing; `f>s` is exactly `i64.trunc_sat_f64_s`.
 
 ### 17.4 Lowering algorithm
 
@@ -845,13 +870,24 @@ For reducible CFGs, use dominators, natural loop membership and a verified regio
 
 The compiler must account for irreducible control that later transformations can create. The initial profile can explicitly refuse it with a source/IR diagnostic; the complete profile includes a checked dispatcher-loop lowering for the affected region, not every function. This is a release capability, not silent fallback to native execution or an unverified structure heuristic.
 
-Self-tail recursion lowers to a loop. Mutually recursive tail-call SCCs use an explicit checked trampoline/call frame or a separately admitted Wasm tail-call profile. `call; return` is not bounded-space tail recursion. Unknown dynamic calls carry the necessary checked effect and exceptional edges.
+The first slice lowers every tail call, self calls included, as call then return, and its admission matrix says so: not bounded-space. The self-tail loop, the trampoline and the Wasm tail-call feature are later profiles. `call; return` is not bounded-space tail recursion. Unknown dynamic calls carry the necessary checked effect and exceptional edges.
+
+At every call and wordcall, the live row the HIR operation carries through is stored to the context stack and reloaded afterwards, as the native data-stack boundary stores it (`src/compiler/native/select-x64.f:685-693`). Arguments and results are typed lanes (§7.1), so `depth` and `.s` answer as they do natively.
 
 ### 17.5 Memory and constants
 
 Logical pointers lower to canonical memory offsets, checked before narrowing. Reserve null/control/runtime/stack/static/heap regions under one target layout. The null reservation is not a Wasm guard page: address zero can otherwise be in bounds. Pointer operations enforce the language's intended null rule.
 
 Wasm memory growth failure follows an explicit allocator error path. View lifetime across host calls is specified by HBR2, not guessed from a fixed initial buffer. The memory page count must be widened before converting it to bytes. Numeric i64 values do not require memory64, and JavaScript i64 interchange uses BigInt rather than Number (§6). [WW2]
+
+P6 pins this layout:
+- null [0,$10000);
+- ctx [$10000,$11000);
+- output region [$11000,$21000);
+- data stack [$21000,$31000);
+- static DATA from $31000.
+
+The memory minimum equals its maximum, since the slice has no allocator. A failed pointer check records the fault in ctx and traps (§8.2).
 
 ### 17.6 Acceptance
 
@@ -860,6 +896,14 @@ validates in an independent engine and passes W01-W07 and N01-N06 of
 [portability.md](portability.md) §25, including the NaN print rows and the
 three `?do` rows, with differential rows against native output (W31, W32).
 Hand-authored fixtures alone are not a backend gate.
+
+The oracles: wasm-tools validates with exactly the profile's features, and
+node (V8) and bun (JavaScriptCore) run `test/wasm/run.mjs`. Together they form
+the `wasm` device check ([bootstrap.md](bootstrap.md)), not the ordinary gate.
+The module exports memory, run, throw-code, out-base and out-len and imports
+nothing; HBR2's imports are P7's. The driver, `tools/wasm-build.f`, loads
+`src/arch/wasm/backend.f` and `passes.f`; `NCOMP`'s `LOAD-PASSES` loads native
+passes only.
 
 ## Sources
 

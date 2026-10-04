@@ -1,0 +1,9 @@
+---
+title: Structure reducible control, refuse irreducible
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-04T05:10:07.627544+03:00"
+---
+
+Problem: a frozen WSTRUCT module is a CFG (wstruct dot); Wasm needs typed block, loop and if with label depths (wasm-backend.md §5.3, §17.4). Reducible graphs lower by dominators, natural loops and a verified region tree; edge arguments are parallel copies whose cycles go through temporaries; irreducible control is refused with a source diagnostic (W02); Forth loop arithmetic stays the frontend's (portability.md §6.3, docs/forth.md:939-955). Acceptance: package WCTL in src/arch/wasm/structure.f, over a frozen WSTRUCT module: dominators, loop headers and reducibility per function; a control tree with nominal label ids; label depth of every br/brz at linearisation; the parallel-copy schedule for each edge's block arguments, with temporaries for cycles; an irreducible graph refused by name with the function and the block's span; nothing re-derives DO/?DO/+LOOP arithmetic. W01: a swap-cycle edge and nested loops and ifs give the right copies and depths (structural rows; executed under the rows dot). W02: a hand-built WSTRUCT module with two entries into one cycle is refused with the diagnostic. Files: src/arch/wasm/structure.f (new), test/wasm/structure.f (new), test/gate-stdlib-cases.f (SUITE wasm-structure). Verify: bin/hb --load test/wasm/structure.f. Depends: habu-define-the-wstruct-ea69b69e. Rule: the backend loads at run time on the sealed product engine and uses public words only (portability.md:348); no edit to any sealed package (CTARGET, CBIND, HIR, NBACK, NELAB, NCOMP, NEMIT, NSHADOW, IR-*) after habu-add-the-wasm-4c32353e. Ownership: src/arch/wasm/structure.f, test/wasm/structure.f. Lane: tim. Claim: unassigned.
