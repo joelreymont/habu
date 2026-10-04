@@ -2,9 +2,10 @@
 \ module can load against a baked host whose layout.f predates these offsets.
 package NATIVE-OBS-CELLS
 public
-\ Census: $2CE8..$3000 is unused after CODE-END-CELL and JIT-QUOT:END;
+\ $2CE8 is reserved for the literal store's DATA-FLOOR-CELL. The callback
+\ run $2CF0..$2D08 follows it, after CODE-END-CELL and JIT-QUOT:END;
 \ src/habu/data-claims.f proves each cell disjoint at native build time.
-$2CE8 constant OBSERVE
-$2CF0 constant PUBLISHED
-$2CF8 constant INVALIDATE
+$2CF0 constant OBSERVE
+$2CF8 constant PUBLISHED
+$2D00 constant INVALIDATE
 ;package

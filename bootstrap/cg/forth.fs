@@ -295,9 +295,9 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
-$2CE8 constant NBACK-OBSERVE-CELL
-$2CF0 constant NCOMP-PUBLISHED-CELL
-$2CF8 constant CODE-INVALIDATE-CELL
+$2CF0 constant NBACK-OBSERVE-CELL
+$2CF8 constant NCOMP-PUBLISHED-CELL
+$2D00 constant CODE-INVALIDATE-CELL
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
