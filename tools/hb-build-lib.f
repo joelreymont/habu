@@ -516,6 +516,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" tools/object-image-arm.f" HBB-KEY-FILE+
+   s" src/habu/aot-link-arm.f" HBB-KEY-FILE+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
@@ -525,6 +526,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-KEY-MACOS-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:macos-aarch64" CONTENT-KEY:TEXT+
    s" tools/object-image-arm.f" HBB-KEY-FILE+
+   s" src/habu/aot-link-arm.f" HBB-KEY-FILE+
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
@@ -585,6 +587,7 @@ HBB-INSTALL-CHILD-LINT
    s" src/habu/cell-grid.f" HBB-KEY-FILE+
    s" src/habu/aot-window-latch.f" HBB-KEY-FILE+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
+   s" src/habu/aot-common.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
