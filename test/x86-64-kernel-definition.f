@@ -24,7 +24,8 @@
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
 \   length cell 0, TSIG, TCSIG, DOESB and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL and the provenance window open at CP, which an inline name leaves.
+\   the passed tier even when TIER-CELL differs, and the provenance window open
+\   at CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP, the entry and
 \   the open window move 32 bytes, the pad over poisoned cells is 0 and
 \   code-origin answers 1 for the name's slots.
@@ -114,9 +115,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    a u X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
    s" alias-record" X64HARNESS:CALL-ROW, ;
 
-: DEF-OPEN, ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
+: DEF-OPEN-TIER, ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
+   tier X64HARNESS:PUSH,
    s" def-open" X64HARNESS:CALL-ROW, ;
+
+: DEF-OPEN, ( ptr u8 n n n -- ) 1 DEF-OPEN-TIER, ;
 
 : SCOPE, ( n n -- ) {: row:n parent:n :}
    row X64HARNESS:PUSH,  parent X64HARNESS:PUSH,
@@ -272,7 +276,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
@@ -422,7 +426,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : TIER-0-CLOSE, ( -- )
    0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 0 DEF-OPEN-TIER,
    s" def-close" X64HARNESS:CALL-ROW, ;
 
 : DEF-OPEN-PROT, ( -- )
