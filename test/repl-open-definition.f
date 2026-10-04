@@ -9,6 +9,9 @@ require lib/engine-candidate.f
 package REPL-OPEN-DEF-TEST
 using PTY-HARNESS
 
+: FIRST-TIER ( -- n )
+   HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
+
 \ Only the prompt after an answer shows the child reading raw again, so a step
 \ waits for that one and ^D goes only after a step that saw it
 \ (lib/pty-harness.f WAIT-AFTER).
@@ -94,7 +97,7 @@ using PTY-HARNESS
 \ Once EOF ends the session, a throwing exit hook must be an uncaught exit,
 \ not a jump into the assembly reader's retired REPL savepoint.
 : HOOK-CASE ( -- )
-   0 OPEN dup TTRUE if
+   FIRST-TIER OPEN dup TTRUE if
       S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
       s" TRUSTED: RV-ARM ( -- ) ['] RV-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
       s" RV-ARM" STEP TTRUE
@@ -130,7 +133,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   2 0 do
+   2 FIRST-TIER ?do
       i SPAN-CASE
       i EOF-CASE
       i REJECT-CASE

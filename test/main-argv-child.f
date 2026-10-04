@@ -26,7 +26,7 @@ public
 \ The argv probe itself is a closed --load unit, while RUN leaves root source's
 \ arbitrary stack effect in place for real process startup.
 TRUSTED: CLEAR-STACK ( -- )
-   depth 0 ?do drop loop ;
+   stack-clear ;
 
 ;package
 
