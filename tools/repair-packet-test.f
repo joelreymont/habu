@@ -336,23 +336,23 @@ create PACKET-BUF FS-PATH-CAP allot
 : TEST-STORAGE ( -- )
    s" storage" s" fix_storage_type" s" 4 TYPED-BUFFER DIAG-STG no-such-type" PACKET-CASE ;
 
-: ARGV-CHECK-SOURCE ( -- )
+: ARGV-CHECK-SOURCE ( ptr u8 n -- ) {: mode:ptr modeu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    CHECK-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   s" --all-errors" >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
    SRC >LEN PROC-ARGV+ ;
 
-\ A source tools/check.f refuses, checked by the CLI in a child: the run exits
-\ rc, and the packet comes from the first refusal it writes.
-: CHILD-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: name:ptr nameu:n class:ptr classu:n src:ptr srcu:n rc:n :}
+\ A source tools/check.f refuses, checked by the CLI in a child under MODE: the
+\ run exits rc, and the packet comes from the first refusal it writes.
+: MODE-CASE ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: name:ptr nameu:n class:ptr classu:n src:ptr srcu:n rc:n mode:ptr modeu:n :}
    name nameu CASE-PATHS
    name nameu LABEL!
    src srcu WRITE-SOURCE
-   ARGV-CHECK-SOURCE
+   mode modeu ARGV-CHECK-SOURCE
    HB-CAPTURE rc CHECK-TOOL$ EXPECT-EXIT {: outu:n erru:n :}
    name nameu T-LABEL
    outu 0 T=
@@ -360,6 +360,9 @@ create PACKET-BUF FS-PATH-CAP allot
    MAKE-PACKET
    class classu ASSERT-PACKET
    name nameu EXPECT-GOLDEN ;
+
+: CHILD-CASE ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   s" --all-errors" MODE-CASE ;
 
 \ A pre-read row has a source position; one evaluated at run time has none.
 : TEST-GENERATES ( -- )
@@ -406,6 +409,14 @@ create PACKET-BUF FS-PATH-CAP allot
 : TEST-WARNING ( -- )
    s" warning" s" unknown_rejection"
    s" : DIAG-WIDE drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ; : DIAG-WIDE-CALL ( -- ) DIAG-WIDE ;" 70 CHILD-CASE ;
+
+\ A deferral is no refusal either: under --verify-only the stretch a parsing
+\ word leaves to the run comes first, and the packet comes from the refused
+\ definition after it and counts that one alone.
+: TEST-DEFERRAL ( -- )
+   s" deferral" s" unknown_rejection"
+   s" : DIAG-SKIP ( -- ) parse-name 2drop ; DIAG-SKIP DIAG-SKIPPED : DIAG-DBAD ( -- ) DIAG-NO-SUCH ;"
+   70 s" --verify-only" MODE-CASE ;
 
 \ A bare token that resolves in a used package and in another scope as well is
 \ refused at its reference, which the record places, with the used packages it
@@ -551,6 +562,7 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-GENERATES
    TEST-RECORDS
    TEST-WARNING
+   TEST-DEFERRAL
    TEST-USING
    TEST-USING-STRING
    TEST-TWO-DIAGS

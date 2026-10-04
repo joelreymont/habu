@@ -1238,7 +1238,8 @@ variable LONG-J
 \ CKR-SEVEN. A definition naming such a product is left to the run, which
 \ certifies it, but only after the rendering statement and only in the wordlist
 \ that statement ran in; anything else unknown is still refused by the
-\ pre-pass. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
+\ pre-pass. The text may define a package, so a qualified name there is left to
+\ the run as a bare one is. The fixtures require lib/ffi-abi.f for `FUNCTION:` and lib/task.f
 \ for TASK:+USER, the renderer lib/crypto/evp.f uses. The pre-pass checks
 \ FUNCTION:'s word against its declaration group and a TASK:+USER slot
 \ against the `generates:` row lib/task.f states; CMD:COMMAND's row declares
@@ -1282,6 +1283,9 @@ variable LONG-J
 
 : RENDER-TASK-BARE$ ( -- ptr u8 n )
    s" private" s" ;package : CKR-SLOT-P ( -- ptr n ) CKR-SLOT ;" CKR-TASK-PKG$ ;
+
+: RENDER-QUALIFIED$ ( -- ptr u8 n )
+   s\" s\" package CKR-QP public : CKR-QW ( -- n ) 7 ; ;package\" evaluate : CKR-QU ( -- n ) CKR-QP:CKR-QW ;" ;
 
 : RENDER-MISUSE$ ( -- ptr u8 n )
    s" : CKR-BAD ( -- ) CKR-SEVEN ;" CKR-AFTER$ ;
@@ -1352,6 +1356,7 @@ variable LONG-J
    RENDER-TASK-OUTSIDE$ DIRECT-STDIN s" CKR-T:CKR-SLOT" EXPECT-PREVERIFY-UNDEFINED
    RENDER-TASK-BARE$ DIRECT-STDIN s" CKR-SLOT" EXPECT-PREVERIFY-UNDEFINED
    RENDER-PUBLIC$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-QUALIFIED$ DIRECT-STDIN EXPECT-ACCEPTED
    RENDER-USE$ DIRECT-ALL-STDIN EXPECT-ACCEPTED
    RENDER-MISUSE$ DIRECT-STDIN s" hook: non-certified definition" EXPECT-RUN-REFUSED
    RENDER-MISUSE$ DIRECT-JSON-STDIN s" E-MISMATCH" EXPECT-RUN-REFUSED
@@ -1469,6 +1474,27 @@ variable LONG-J
    CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
    CAP-ERR erru s\" \"reason\":\"count resolves to no ( -- n ) word\"" CONTAINS? TTRUE ;
 
+\ A count the load refuses to resolve is refused as the load refuses it, at the
+\ token, once, before the definer reads it; a shadowed one ends the check as a
+\ body's shadowed word does.
+: LBUF-UNDEFINED ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   src srcu DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-UNDEFINED-TOP-LEVEL\",\"repair_class\":\"unknown_rejection\",\"verdict\":\"rejected\",\"token\":\"CKLB-NOPE\"" CONTAINS? TTRUE
+   src srcu s" --all-errors" CLI-FLAG-STDIN 70 T=
+   {: outa:n erra:n :}
+   outa 0 T=
+   CAP-ERR erra s" undefined word 'CKLB-NOPE'" CONTAINS? TTRUE
+   CAP-ERR erra s" count resolves" CONTAINS? TFALSE ;
+
+: LBUF-SHADOWED ( ptr u8 n -- )
+   DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-USING-SHADOW-GLOBAL\",\"repair_class\":\"disambiguate_using_shadow\",\"verdict\":\"rejected\",\"token\":\"CKLB-CAP\"" CONTAINS? TTRUE ;
+
 : TEST-LAYOUT-BUFFER-COUNT ( -- )
    s" package CKLB-B 8 constant CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-Q public 8 constant CAP ;package package CKLB-QU CKLB-Q:CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
@@ -1476,12 +1502,12 @@ variable LONG-J
    s" package CKLB-H HIR:OPCODES TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-W : CAP ( -- n ) 4 ; CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-L SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 constant CAP CAP LAYOUT-BUFFER BUF cklb<n> ;package" LBUF-ACCEPT
-   s" package CKLB-U CKLB-NOPE TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
+   s" package CKLB-U CKLB-NOPE TYPED-BUFFER ROWS n ;package" LBUF-UNDEFINED
    s" package CKLB-V variable CAP CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
    s" package CKLB-T : CAP ( -- bool ) 0 0= ; CAP TYPED-BUFFER ROWS n ;package" LBUF-REFUSE
    s" package CKLB-I : CAP ( n -- n ) 2 * ; 4 CAP TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
    s" package CKLB-E 2 3 * TYPED-BUFFER ROWS n ;package" LBUF-ACCEPT
-   s" 8 constant CKLB-CAP package CKLB-S public 4 constant CKLB-CAP ;package using CKLB-S CKLB-CAP TYPED-BUFFER CKLB-ROWS n ;using" LBUF-REFUSE
+   s" 8 constant CKLB-CAP package CKLB-S public 4 constant CKLB-CAP ;package using CKLB-S CKLB-CAP TYPED-BUFFER CKLB-ROWS n ;using" LBUF-SHADOWED
    \ A zero count passes pre-verification; the run's load refuses it.
    s" package CKLB-Z 0 constant CAP CAP TYPED-BUFFER ROWS n ;package" DIRECT-STDIN 67 T=
    {: outu:n erru:n :}
@@ -1719,7 +1745,7 @@ variable LONG-J
    $20 SB-APPEND-C  $09 SB-APPEND-C  $5c SB-APPEND-C
    s"  : POISON-LINE ( n -- n ) dup ;" SB-APPEND
    $0d SB-APPEND-C  $0a SB-APPEND-C
-   s" ( : POISON-PAREN ( n -- n ) dup ;" SB-APPEND
+   s" ( : POISON-PAREN dup ;" SB-APPEND
    $0d SB-APPEND-C  $0a SB-APPEND-C
    s" body )" SB-APPEND  $0d SB-APPEND-C  $0a SB-APPEND-C
    s" s" SB-APPEND  $22 SB-APPEND-C
@@ -1788,7 +1814,7 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s\" \"word\":\"ckt-origin-scan\"" CONTAINS? TTRUE
-   CAP-ERR erru s\" \"line\":8,\"column\":30,\"byte_start\":219,\"byte_end\":222" CONTAINS? TTRUE ;
+   CAP-ERR erru s\" \"line\":8,\"column\":30,\"byte_start\":208,\"byte_end\":211" CONTAINS? TTRUE ;
 
 : TEST-ORIGIN-BASE ( -- )
    CAP-ERR BUF-CAP DIAG-BUFFER!
@@ -3241,13 +3267,15 @@ create BIG $2000 allot   variable BIG-U
    HB-LOAD-SRC NOM-LOAD-ADMITTED
    BAD$ PATH-RUN EXPECT-ACCEPTED ;
 
+\ The load refuses a tick of `:` as an undefined word, never as a missing name;
+\ the check refuses it the same way, at the token, before anything runs.
 : RAW-TICK-KEYWORD ( -- )
    s" ' :" HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" E-UNDEFINED: :" CONTAINS? TTRUE
    BAD$ PATH-RUN 70 T=
    {: outu2:n erru2:n :}
-   CAP-ERR erru2 s" E-UNDEFINED: :" CONTAINS? TTRUE
+   CAP-ERR erru2 s\" \"code\":\"E-UNDEFINED-TOP-LEVEL\",\"repair_class\":\"unknown_rejection\",\"verdict\":\"rejected\",\"token\":\":\"" CONTAINS? TTRUE
    CAP-ERR erru2 s" missing name" CONTAINS? TFALSE ;
 
 : RAW-TICK-LOAD-REFUSED ( n n n -- )
@@ -4321,7 +4349,7 @@ variable REQ-U
 : EXPECT-SHEBANG-LATER ( n n n -- ) {: outu:n erru:n rc:n :}
    rc 70 T=
    outu 0 T=
-   CAP-ERR erru s" E-UNDEFINED: #!/usr/bin/env" CONTAINS? TTRUE ;
+   CAP-ERR erru s\" \"code\":\"E-UNDEFINED-TOP-LEVEL\",\"repair_class\":\"unknown_rejection\",\"verdict\":\"rejected\",\"token\":\"#!/usr/bin/env\"" CONTAINS? TTRUE ;
 
 : TEST-SHEBANG-CLEAN ( -- )
    SHEBANG-FILES
@@ -5930,7 +5958,7 @@ variable LC-CANON-U
 \ The using refusals in does> clauses: a definer's clause is inside its
 \ definition, so each refuses its definer as one in a body does. Plain check.f
 \ stops at the first, the shadow; --verify-only and --all-errors go on to the
-\ ambiguity and the last definition's extra cell.
+\ ambiguity and the last definition's extra cell (USING-PATH-CASE).
 : DUSE-LINES ( -- )
    s" : CKT-DUSE-W ( n -- ) drop ;" REQ-LINE+
    s" package CKT-DUSE-A" REQ-LINE+
@@ -5952,26 +5980,113 @@ variable LC-CANON-U
 
 : DUSE$ ( -- ptr u8 n )  s" ckt-duse.f" REQ$ ;
 
-: DUSE-CASE ( n n bool ptr u8 n -- )
-   {: erru:n rc:n more:bool label:ptr labelu:n :}
+\ A run that refuses a using shadow first and a using ambiguity after it, then
+\ a definition named EXTRA by its extra cell: it exits 70 with the shadow's
+\ packet, and with the ambiguity's and the extra cell exactly when the check
+\ goes on (MORE), never with a statement throw.
+: USING-PATH-CASE ( n n bool ptr u8 n ptr u8 n -- )
+   {: erru:n rc:n more:bool extra:ptr extrau:n label:ptr labelu:n :}
    label labelu T-LABEL rc 70 T=
    label labelu T-LABEL
    erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET 0 >= TTRUE
    label labelu T-LABEL
    erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET 0 >=
    more IF TTRUE ELSE TFALSE THEN
-   label labelu T-LABEL CAP-ERR erru s" ckt-duse-extra" CONTAINS?
+   label labelu T-LABEL CAP-ERR erru extra extrau CONTAINS?
    more IF TTRUE ELSE TFALSE THEN
    label labelu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE ;
 
 : TEST-USING-CLAUSE ( -- )
    SB-RESET DUSE-LINES s" ckt-duse.f" REQ-WRITE
    CHECK-ARGV-START s" --json-errors" CHECK-ARG+
-   DUSE$ REFUSAL-RUN false s" using-clause: --json-errors" DUSE-CASE
+   DUSE$ REFUSAL-RUN false s" ckt-duse-extra" s" using-clause: --json-errors" USING-PATH-CASE
    CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
-   DUSE$ REFUSAL-RUN true s" using-clause: --verify-only" DUSE-CASE
+   DUSE$ REFUSAL-RUN true s" ckt-duse-extra" s" using-clause: --verify-only" USING-PATH-CASE
    CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
-   DUSE$ REFUSAL-RUN true s" using-clause: --all-errors" DUSE-CASE ;
+   DUSE$ REFUSAL-RUN true s" ckt-duse-extra" s" using-clause: --all-errors" USING-PATH-CASE ;
+
+\ The using refusals of top-level tokens: each refuses at its token as one in a
+\ body refuses its definition, by the same rule (USING-PATH-CASE). Loaded, the
+\ shadow exits 105 and the ambiguity 94.
+: UTOP-LINES ( -- )
+   s" : CKT-UTOP-W ( n -- ) drop ;" REQ-LINE+
+   s" package CKT-UTOP-A" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UTOP-W ( n -- ) drop ;" REQ-LINE+
+   s" : CKT-UTOP-V ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" package CKT-UTOP-B" REQ-LINE+
+   s" public" REQ-LINE+
+   s" : CKT-UTOP-V ( n -- ) drop ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" using CKT-UTOP-A" REQ-LINE+
+   s" using CKT-UTOP-B" REQ-LINE+
+   s" 1 CKT-UTOP-W" REQ-LINE+
+   s" : CKT-UTOP-MID ( -- ) ;" REQ-LINE+
+   s" 1 CKT-UTOP-V" REQ-LINE+
+   s" : CKT-UTOP-EXTRA ( -- ) 1 ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" ;using" REQ-LINE+ ;
+
+: UTOP$ ( -- ptr u8 n )  s" ckt-utop.f" REQ$ ;
+
+: TEST-USING-TOP-LEVEL ( -- )
+   SB-RESET UTOP-LINES s" ckt-utop.f" REQ-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   UTOP$ REFUSAL-RUN false s" ckt-utop-extra" s" using-top-level: --json-errors" USING-PATH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   UTOP$ REFUSAL-RUN true s" ckt-utop-extra" s" using-top-level: --verify-only" USING-PATH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   UTOP$ REFUSAL-RUN true s" ckt-utop-extra" s" using-top-level: --all-errors" USING-PATH-CASE ;
+
+\ A renderer `using` refuses at top level runs no word, so it defines none:
+\ past a structural boundary the check refuses an undefined top-level name,
+\ and a later body's (RENDERER-PATH-CASE). Loaded, `using` refuses the call
+\ and neither `evaluate` runs: the shadow exits 105, the ambiguity (TWO) 94.
+: UREN-WRITE ( bool ptr u8 n -- )
+   {: two:bool name:ptr nameu:n :}
+   SB-RESET
+   s" package CKT-UREN-A public : evaluate ( ptr u8 n -- ) 2drop ; ;package" REQ-LINE+
+   s" package CKT-UREN-B public : evaluate ( ptr u8 n -- ) 2drop ; ;package" REQ-LINE+
+   s" using CKT-UREN-A" REQ-LINE+
+   two IF s" using CKT-UREN-B" REQ-LINE+ THEN
+   s\" s\" \" evaluate" REQ-LINE+
+   s" : CKT-UREN-MID ( -- ) ;" REQ-LINE+
+   s" CKT-UREN-NOSUCH" REQ-LINE+
+   s" : CKT-UREN-AFTER ( -- ) CKT-UREN-NOBODY ;" REQ-LINE+
+   two IF s" ;using" REQ-LINE+ THEN
+   s" ;using" REQ-LINE+
+   name nameu REQ-WRITE ;
+
+\ A run that refuses `evaluate` by the using refusal WHY: it exits 70 and goes
+\ on to refuse the undefined top-level name and the later body's undefined
+\ name, deferring neither.
+: RENDERER-PATH-CASE ( n n ptr u8 n ptr u8 n -- )
+   {: erru:n rc:n why:ptr whyu:n label:ptr labelu:n :}
+   label labelu T-LABEL rc 70 T=
+   label labelu T-LABEL
+   erru s" code" why whyu LC-PACKET s" token" LC-STRING$ s" evaluate" T$=
+   label labelu T-LABEL
+   erru s" code" s" E-UNDEFINED-TOP-LEVEL" LC-PACKET s" token" LC-STRING$ s" CKT-UREN-NOSUCH" T$=
+   label labelu T-LABEL
+   erru s" code" s" E-UNDEFINED" LC-PACKET s" token" LC-STRING$ s" CKT-UREN-NOBODY" T$=
+   label labelu T-LABEL CAP-ERR erru s" W-CHECK-DEFERRED" CONTAINS? TFALSE ;
+
+: TEST-USING-RENDERER ( -- )
+   false s" ckt-uren-shadow.f" UREN-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   s" ckt-uren-shadow.f" REQ$ REFUSAL-RUN s" E-USING-SHADOW-GLOBAL"
+   s" using-renderer: shadow, --verify-only" RENDERER-PATH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   s" ckt-uren-shadow.f" REQ$ REFUSAL-RUN s" E-USING-SHADOW-GLOBAL"
+   s" using-renderer: shadow, --all-errors" RENDERER-PATH-CASE
+   true s" ckt-uren-amb.f" UREN-WRITE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   s" ckt-uren-amb.f" REQ$ REFUSAL-RUN s" E-USING-AMBIGUOUS"
+   s" using-renderer: ambiguity, --verify-only" RENDERER-PATH-CASE
+   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   s" ckt-uren-amb.f" REQ$ REFUSAL-RUN s" E-USING-AMBIGUOUS"
+   s" using-renderer: ambiguity, --all-errors" RENDERER-PATH-CASE ;
 
 \ A source checked with the files it loads; a case list of its own keeps
 \ TEST-MAIN under the 8000-byte body limit.
@@ -6352,6 +6467,8 @@ variable LC-CANON-U
    s" check/using-shadow" [: TEST-USING-SHADOW ;] CASE-RUN
    s" check/shadowed-arity" [: TEST-SHADOWED-ARITY ;] CASE-RUN
    s" check/using-clause" [: TEST-USING-CLAUSE ;] CASE-RUN
+   s" check/using-top-level" [: TEST-USING-TOP-LEVEL ;] CASE-RUN
+   s" check/using-renderer" [: TEST-USING-RENDERER ;] CASE-RUN
    s" check/shebang-clean" [: TEST-SHEBANG-CLEAN ;] CASE-RUN
    s" check/shebang-at-line" [: TEST-SHEBANG-AT-LINE ;] CASE-RUN
    s" check/shebang-later" [: TEST-SHEBANG-LATER ;] CASE-RUN

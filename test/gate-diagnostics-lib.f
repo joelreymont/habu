@@ -1208,6 +1208,49 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"uncheckable\"" REC-SWAP
    s" habu-row-verdict.err" s" span verdict is not rejected" s" uncheckable open row refused" REFUSED ;
 
+\ A top-level token the load refuses is a span at the token, under a code of its
+\ own and the repair class a body's reference to it gets; a stretch the source
+\ pre-pass defers to the run is a deferral, no refusal, whose verdict is
+\ deferred, which --verify-only answers with exit 0. Either under the other's
+\ verdict is refused. --verify-only runs as a child for RECORD-CHECK's reason: the
+\ verifier's child is captured by its own process.
+: TOP-LEVEL-RECORDS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 1 GDX-TOP-NOSUCH drop" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted an undefined top-level word" CHECK-JSON-ALL
+   s" habu-top-undef.err" WRITE-ERR
+   s" code" s" E-UNDEFINED-TOP-LEVEL" s" top-level undefined code" ERR-JSTR
+   s" habu-top-undef.err" s" top-level undefined contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"verdict\":\"rejected\"" s\" \"verdict\":\"deferred\"" REC-SWAP
+   s" habu-top-undef-verdict.err" s" span verdict is not rejected" s" deferred undefined top-level word refused" REFUSED
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" GDX:MAL:TOP drop" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted a malformed qualified name at top level" CHECK-JSON-ALL
+   s" habu-top-qual.err" WRITE-ERR
+   s" code" s" E-BAD-QUALIFIED-TOP-LEVEL" s" top-level malformed name code" ERR-JSTR
+   s" habu-top-qual.err" s" top-level malformed name contract" DIAG-CONTRACT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-GRAB ( -- ) parse-name 2drop ;" GE-SRC-LINE
+   s" GDX-GRAB x" GE-SRC-LINE
+   s" habu-top-deferred.f" WRITE-SRC
+   s" --load" ARG+
+   s" tools/check.f" ARG+
+   s" --" ARG+
+   s" --verify-only" ARG+
+   s" habu-top-deferred.f" PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" tools/check.f --verify-only did not answer a deferred stretch with exit 0" GE-EXPECT-OK
+   s" code" s" W-CHECK-DEFERRED" s" deferred stretch code" ERR-JSTR
+   s" habu-top-deferred.err" WRITE-ERR
+   s" habu-top-deferred.err" s" deferred stretch contract" DIAG-CONTRACT
+   GT-ERR$ REC!
+   s\" \"verdict\":\"deferred\"" s\" \"verdict\":\"rejected\"" REC-SWAP
+   s" habu-top-deferred-verdict.err" s" deferral verdict is not deferred" s" rejected deferred stretch refused" REFUSED ;
+
 \ A refused `generates:` row is outside any definition, and its class
 \ says which of the row's claims failed: a name that names no word, a definer
 \ that already states what it makes, or an effect that does not parse, under
