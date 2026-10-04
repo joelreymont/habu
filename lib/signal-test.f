@@ -46,6 +46,12 @@ private
    HB-TARGET-MACOS? if 2 exit then
    E-PROC-HOST throw ;
 
+\ glibc supplies the x86-64 restorer when it installs a sigaction, including
+\ the default disposition restored by RELEASE. It is part of the observed
+\ action flags, while ARM Linux and macOS leave this bit clear.
+: EXPECT-FLAGS ( n -- n )
+   HB-TARGET-LINUX-X86-64? if $04000000 or then ;
+
 \ One buffer of the larger record ($98 on glibc/aarch64, $10 on macOS) serves
 \ both, exactly as the library's does, so only the offset above needs an arm.
 $98 constant SA-BUF-BYTES
@@ -247,7 +253,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    OLD-HANDLER STUB@ T=
 
    s" ... with SA_RESTART, so a blocked read or write resumes" T-LABEL
-   OLD-FLAGS SA-RESTART T=
+   OLD-FLAGS SA-RESTART EXPECT-FLAGS T=
 
    s" a signal number below the range sigaction installs is refused" T-LABEL
    [: SIG-BELOW SIGNAL:CATCH ;] E-SIGNAL-NUMBER TTHROWSQ
@@ -449,7 +455,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    OLD-HANDLER SIG-DFL T=
 
    s" ... and took the stub's flags off with it" T-LABEL
-   OLD-FLAGS SA-NO-FLAGS T=
+   OLD-FLAGS SA-NO-FLAGS EXPECT-FLAGS T=
 
    SIGNAL:SIGUSR2 RE-DEFAULT
 
