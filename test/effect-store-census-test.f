@@ -66,8 +66,6 @@ variable #CASE
       T-FAIL s" assert: expected anything but " type want FMT:.INT cr
    then ;
 
-TRUSTED: CT-EVAL ( ptr u8 n -- ) evaluate ;
-
 variable MK   variable TC
 
 \ BALANCED ( -- ) : the identity that makes every other number readable.
@@ -92,12 +90,12 @@ BALANCED
 \ window 2: repeats only — headers, no nodes
 \ ---------------------------------------------------------------------------
 \ seed the shapes OUTSIDE the window, so the window itself can only repeat them
-s" : CTSEED ( n n -- n ) drop ;" CT-EVAL
+s" : CTSEED ( n n -- n ) drop ;" evaluate-closed
 
 EFF-CENSUS:MARK MK !
-s" : CTR1 ( n n -- n ) drop ;" CT-EVAL
-s" : CTR2 ( n n -- n ) drop ;" CT-EVAL
-s" : CTR3 ( n n -- n ) drop ;" CT-EVAL
+s" : CTR1 ( n n -- n ) drop ;" evaluate-closed
+s" : CTR2 ( n n -- n ) drop ;" evaluate-closed
+s" : CTR3 ( n n -- n ) drop ;" evaluate-closed
 MK @ EFF-CENSUS:RUN
 EFF-CENSUS:RECORDS 0 T<>                       \ the window is not empty
 EFF-CENSUS:NODES 0 T=                          \ ... and holds no node of its own
@@ -110,15 +108,15 @@ BALANCED
 \ ---------------------------------------------------------------------------
 \ window 3: a fresh shape, and a rejected definition
 \ ---------------------------------------------------------------------------
-TRUSTED: CT-BAD-DEF ( -- ) s" : CTBAD ( n -- n ) drop ;" evaluate ;
+: CT-BAD-DEF ( -- ) s" : CTBAD ( n -- n ) drop ;" evaluate-closed ;
 
 \ A family nothing else names: its EN-PARAM node carries name bytes the store has
 \ never held, so the window is guaranteed to hold nodes of its own. An ordinary
 \ scalar row would not be — the boot store already carries every short chain of
 \ `n`, which is how this window first came out with zero nodes.
 EFF-CENSUS:MARK MK !
-s" enum ctfresh alpha beta ;enum" CT-EVAL
-s" : CTF1 ( ctfresh -- ) drop ;" CT-EVAL
+s" enum ctfresh alpha beta ;enum" evaluate-closed
+s" : CTF1 ( ctfresh -- ) drop ;" evaluate-closed
 ' CT-BAD-DEF catch TC !
 MK @ EFF-CENSUS:RUN
 TC @ 0 T<>                                     \ the bad definition really was rejected
@@ -187,26 +185,26 @@ TRUSTED: CT-SWEEP ( -- ) [: CTS-POLICY? ;] CHECKER-SWEEP:RUN ;
 variable RECS0   variable KEYLESS0   variable WINDOW0   variable DEAD0
 variable ZEROED
 
-s" enum ctswept ctsw-on ctsw-off ;enum" CT-EVAL
-s" : CTS-KEEP ( n -- n ) 1 + ;" CT-EVAL
+s" enum ctswept ctsw-on ctsw-off ;enum" evaluate-closed
+s" : CTS-KEEP ( n -- n ) 1 + ;" evaluate-closed
 EFF-CENSUS:MARK MK !
-s" : CTS-DROPQT ( [ ptr ctswept -- ] -- ) drop ;" CT-EVAL
+s" : CTS-DROPQT ( [ ptr ctswept -- ] -- ) drop ;" evaluate-closed
 MK @ EFF-CENSUS:RUN
 EFF-CENSUS:NODES 0 T<>                         \ the quotation is fresh
 EFF-CENSUS:MARK MK !
-s" : CTS-KEEPQT ( [ ptr ctswept -- ] -- ) drop ;" CT-EVAL
+s" : CTS-KEEPQT ( [ ptr ctswept -- ] -- ) drop ;" evaluate-closed
 MK @ EFF-CENSUS:RUN
 EFF-CENSUS:RECORDS 1 T=                        \ ... and CTS-KEEPQT's content and nodes
 EFF-CENSUS:CONTENTS 0 T=                       \ are the ones in CTS-DROPQT's span
 EFF-CENSUS:NODES 0 T=
-s" : CTS-DROPMK ( n -- ) create , does> ( -- n ) @ ;" CT-EVAL
-s" : CTS-KEEPWD ( n -- ) CTS-DROPMK ;" CT-EVAL
-s" 7 CTS-KEEPWD CTS-MADE1" CT-EVAL
+s" : CTS-DROPMK ( n -- ) create , does> ( -- n ) @ ;" evaluate-closed
+s" : CTS-KEEPWD ( n -- ) CTS-DROPMK ;" evaluate-closed
+s" 7 CTS-KEEPWD CTS-MADE1" evaluate-closed
 EFF-CENSUS:MARK MK !
-s" : CTS-DROP1 ( n -- n ) 2 + ;" CT-EVAL
-s" : CTS-DROP2 ( n n -- n ) + ;" CT-EVAL
-s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" CT-EVAL
-s" : CTS-DROPMK2 ( n -- ) create , does> ( -- n ) @ ;" CT-EVAL
+s" : CTS-DROP1 ( n -- n ) 2 + ;" evaluate-closed
+s" : CTS-DROP2 ( n n -- n ) + ;" evaluate-closed
+s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" evaluate-closed
+s" : CTS-DROPMK2 ( n -- ) create , does> ( -- n ) @ ;" evaluate-closed
 MK @ EFF-CENSUS:RUN
 EFF-CENSUS:NODES 0 T<>                         \ the dropped words own a node
 EFF-CENSUS:UNKEYED 1 T=                        \ CTS-DROPMK2's created effect names nothing
@@ -233,12 +231,12 @@ EFF-CENSUS:BELOW-WINDOW 0 T=                   \ ... and no row reaches an older
 EFF-CENSUS:DEAD-BYTES ZEROED @ T=              \ what they reached is all the sweep zeroed
 s" effect-store-census swept zeroed-bytes " type ZEROED @ . cr
 VERDICTS                                       \ every kept word answers as it did
-s" 8 CTS-KEEPWD CTS-MADE2" CT-EVAL             \ ... and the wrapper still creates
+s" 8 CTS-KEEPWD CTS-MADE2" evaluate-closed      \ ... and the wrapper still creates
 s" CTV ( -- n ) CTS-MADE2" CHECK-QUIET-CANDIDATE! -1 T=
 s" CTV ( -- n n ) CTS-MADE2" CHECK-QUIET-CANDIDATE! 0 T=
 s" CTV ( n -- n ) CTS-DROP1" CHECK-QUIET-CANDIDATE! 1 T=   \ a retired word resolves to nothing
-s" undefine CTS-DROP3" CT-EVAL                \ ... and its name certifies afresh, on
-s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" CT-EVAL     \ the row the sweep zeroed
+s" undefine CTS-DROP3" evaluate-closed          \ ... and its name certifies afresh, on
+s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" evaluate-closed     \ the row the sweep zeroed
 s" CTV ( ctswept ctswept -- ) CTS-DROP3" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------

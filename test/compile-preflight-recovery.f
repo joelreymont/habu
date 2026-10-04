@@ -13,7 +13,7 @@ package CPR-EVAL
 PTR-VARIABLE SOURCE
 variable LENGTH
 
-TRUSTED: ACT ( -- ) SOURCE @ LENGTH @ evaluate ;
+: ACT ( -- ) SOURCE @ LENGTH @ evaluate-closed ;
 
 public
 : RUN ( ptr u8 n -- n )

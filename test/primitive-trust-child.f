@@ -18,10 +18,13 @@ TRUSTED: USER-ROW ( -- n )
    dup 0= if s" reset has no user effect" 76 die then
    dup 1- E-PTR ER.ACTIVE @ 0= if s" reset user effect is inactive" 76 die then ;
 
-\ These test boundaries compile the supplied declarations through the real
-\ evaluator; TIER:SELECT chooses the compiler used for those declarations.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
+\ The cases compile their declarations through evaluate-closed; TIER:SELECT
+\ chooses the compiler used for them. A closed text leaves nothing, so one that
+\ computes a value stores it in RESULT, qualified: the texts run inside the
+\ package each tier opens, where this package's private words are out of scope.
+public
+variable RESULT
+private
 
 variable ROW0
 
@@ -30,22 +33,32 @@ variable ROW0
 
 : RUN-TIER ( n -- ) {: tier:n :}
    tier TIER:SELECT
-   tier 0= if s" package PTRUST-JIT" else s" package PTRUST-NATIVE" then EV
+   tier 0= if s" package PTRUST-JIT" else s" package PTRUST-NATIVE" then
+   evaluate-closed
    REFUSE-CANDIDATE
    \ This authorized caller still compiles from the retained user graph.
    \ Running reset itself would discard the checker under the remaining cases.
-   s" TRUSTED: RESET-CALL ( -- ) CHECKER-RESET-SOURCE ;" EV
-   s" ' RESET-CALL dup 4 + code-origin" EV-N tier =ASSERT
+   s" TRUSTED: RESET-CALL ( -- ) CHECKER-RESET-SOURCE ;" evaluate-closed
+   s" ' RESET-CALL dup 4 + code-origin PRIMITIVE-TRUST-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ tier =ASSERT
    \ So does a TRUSTED: caller of a trusted-only seed primitive: tier 1 builds
    \ its call window from the primitive's global row.
-   s" TRUSTED: CHECK-SELECT ( n -- ) set-check ; check@ CHECK-SELECT" EV
-   s" ' CHECK-SELECT dup 4 + code-origin" EV-N tier =ASSERT
-   s" : LOCAL-CALL ( n -- n ) {: set-check:n :} set-check ; 41 LOCAL-CALL" EV-N 41 =ASSERT
+   s" TRUSTED: CHECK-SELECT ( n -- ) set-check ; check@ CHECK-SELECT"
+      evaluate-closed
+   s" ' CHECK-SELECT dup 4 + code-origin PRIMITIVE-TRUST-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ tier =ASSERT
+   s" : LOCAL-CALL ( n -- n ) {: set-check:n :} set-check ; 41 LOCAL-CALL PRIMITIVE-TRUST-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ 41 =ASSERT
    \ A package word with the same spelling has its own symbol and effect.
-   s" : CHECKER-RESET-SOURCE ( -- n ) 42 ;" EV
+   s" : CHECKER-RESET-SOURCE ( -- n ) 42 ;" evaluate-closed
    s" PF-SHADOW ( -- n ) CHECKER-RESET-SOURCE" CHECK-CANDIDATE! -1 =ASSERT
-   s" : SHADOW-CALL ( -- n ) CHECKER-RESET-SOURCE ; SHADOW-CALL" EV-N 42 =ASSERT
-   s" ;package" EV ;
+   s" : SHADOW-CALL ( -- n ) CHECKER-RESET-SOURCE ; SHADOW-CALL PRIMITIVE-TRUST-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ 42 =ASSERT
+   s" ;package" evaluate-closed ;
 
 public
 : RUN ( -- )

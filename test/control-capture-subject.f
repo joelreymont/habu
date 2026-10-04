@@ -30,7 +30,7 @@ TRUSTED: REWIND ( -- ) CHECKER-BOUND:REWIND ;
 TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
-TRUSTED: BAD-DEF ( -- ) s" : CC-FAILED ( n -- n ) drop ;" evaluate ;
+: BAD-DEF ( -- ) s" : CC-FAILED ( n -- n ) drop ;" evaluate-closed ;
 TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
 \ The arm loses a value. Only a call known to end the path can certify it.

@@ -3,6 +3,8 @@
 
 1 set-tier
 require lib/executable-build.f
+require lib/string.f
+require lib/fmt.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -24,9 +26,20 @@ create KEY-BUF 64 allot
       S\" package SVAFTER\npublic\n: VALUE ( -- n ) 123 ;\n;package\n"
       WRITE-ALL ;
 
+variable RESULT
+
 public
 
-TRUSTED: VALUE ( -- n ) s" SVTEST:VALUE" evaluate ;
+\ NATIVE-BUILD calls VALUE after the logical reset, where the text resolves in
+\ the target window's dictionary and no host name exists. The reset keeps
+\ RESULT's storage, so the text stores through its address as an integer.
+: VALUE ( -- n )
+   SB-RESET
+   s" SVTEST:VALUE " SB-APPEND
+   RESULT BYTE-VIEW NULL-PTR BYTE-VIEW - FMT:SB-INT
+   s"  !" SB-APPEND
+   SB$ evaluate-closed
+   RESULT @ ;
 
 : PREPARE ( -- )
    T-RESET
