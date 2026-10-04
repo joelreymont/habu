@@ -5,6 +5,7 @@
 
 require lib/prelude.f
 require src/compiler/target/model.f
+require src/compiler/native/fetch-check.f
 require src/habu/xref.f
 require src/habu/native-observer-cells.f
 require src/habu/native-host-cells.f
