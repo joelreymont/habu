@@ -30,6 +30,7 @@ require src/core/cell.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
+require src/habu/task-abi.f
 require src/habu/snapshot-format.f
 require src/habu/snap-decode-x64.f
 require src/arch/x86-64/asm.f
@@ -396,9 +397,8 @@ private
 11 constant SIGSEGV
 $10 constant SI-ADDR                    \ siginfo_t._sifields._sigfault.si_addr
 134 constant CRASH-RC
-\ The code region's base less the text base, and Habu's own code's length.
+\ The code region's base less the text base.
 REGION-OFF X64LAYOUT:CODE-OFF - constant REGION-FROM-TEXT
-REGION-FROM-TEXT REGION + constant HABU-SPAN
 
 \ Where the handler keeps the signal, the siginfo, the ucontext, the text base
 \ and the code region's base.
@@ -477,22 +477,12 @@ $F constant NIBBLE
    next LBL, ;
 
 \ A data access through the page below an owned stack can resume at the
-\ kernel's underdepth throw entry. An instruction fetch in that page has RIP
-\ there too, outside both executable intervals, and remains a bounds failure.
+\ kernel's underdepth throw entry. GUARDS, admits the saved RIP as owned code
+\ before this routine reads the saved DATA descriptor.
 : DATA-RECOVER, ( -- )
-   LBL LBL LBL LBL LBL {: next:label owned:label check:label resume:label done:label :}
+   LBL LBL LBL {: next:label resume:label done:label :}
    RCX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RCX RCX ASM-SINK ENC-TEST-RR  C-E next JCC,
-   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX TEXT-REG ASM-SINK ENC-CMP-RR  C-B check JCC,
-   RCX RDI CODE-END-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RCX ASM-SINK ENC-CMP-RR  C-B owned JCC,
-   check LBL,
-   RCX REGION-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
-   RAX RCX ASM-SINK ENC-CMP-RR  C-B next JCC,
-   RCX REGION-REG REGION MEM-OFF ASM-SINK ENC-LEA
-   RAX RCX ASM-SINK ENC-CMP-RR  C-AE next JCC,
-   owned LBL,
    RAX RDI STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E next JCC,
    RAX STACK-ABI:PAGE-BYTES 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE next JCC,
@@ -506,26 +496,120 @@ $F constant NIBBLE
    ASM-SINK ENC-RET
    done LBL, ;
 
-\ Classify a SIGSEGV or SIGBUS from Habu's own code by the three VM stacks,
-\ crash.f's order; any other signal or address goes on to `dump`.
-: GUARDS, ( label -- ) {: dump:label :}
-   LBL LBL LBL LBL {: fault:label dhit:label rhit:label lhit:label :}
-   SIG-REG SIGSEGV >IMM8 ASM-SINK ENC-CMP-RI8  C-E fault JCC,
-   SIG-REG SIGBUS >IMM8 ASM-SINK ENC-CMP-RI8  C-NE dump JCC,
-   fault LBL,
-   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX TEXT-REG ASM-SINK ENC-SUB-RR
-   RAX HABU-SPAN >IMM32 ASM-SINK ENC-CMP-RI32  C-AE dump JCC,
-   RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
-   DATA-RECOVER,
+\ Classify a context's three guarded VM stacks in crash.f's order.
+: STACK-GUARDS, ( label label label -- ) {: dhit:label rhit:label lhit:label :}
    [: RAX RDI STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
    STACK-ABI:BASE-CELL dhit GUARD-CASE,
    [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
    STACK-ABI:RETURN-BASE-CELL rhit GUARD-CASE,
    [: RAX STACK-ABI:LOOP-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
-   STACK-ABI:LOOP-BASE-CELL lhit GUARD-CASE,
+   STACK-ABI:LOOP-BASE-CELL lhit GUARD-CASE, ;
+
+\ A task's REGION can be released while the signal handler is inspecting its
+\ persistent TCB. process_vm_readv copies only the four stack descriptor
+\ cells; a partial copy leaves no descriptor to classify. The two iovec arrays,
+\ their four result cells and the next-chain pointer live in this handler's
+\ machine stack frame. No task-region address is dereferenced in the handler.
+$40 constant TASK-REMOTE-AT
+$80 constant TASK-COPY-AT
+$A0 constant TASK-NEXT-AT
+$B0 constant TASK-FRAME-BYTES
+STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
+
+: TASK-IOV, ( n n -- ) {: index:n off:n :}
+   RAX RSP TASK-COPY-AT index cells + MEM-OFF ASM-SINK ENC-LEA
+   RAX RSP index 16 * MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX CELL IMM,
+   RAX RSP index 16 * CELL + MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX R9 off MEM-OFF ASM-SINK ENC-LEA
+   RAX RSP TASK-REMOTE-AT index 16 * + MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX CELL IMM,
+   RAX RSP TASK-REMOTE-AT index 16 * + CELL + MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+: TASK-GUARDS, ( label label label -- ) {: dhit:label rhit:label lhit:label :}
+   [: RAX RDI CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
+   0 dhit GUARD-CASE,
+   [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
+   2 cells rhit GUARD-CASE,
+   [: RAX STACK-ABI:LOOP-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
+   3 cells lhit GUARD-CASE, ;
+
+: TASK-CHAIN-GUARDS, ( label label label label -- )
+   {: dump:label dhit:label rhit:label lhit:label :}
+   LBL LBL LBL {: loop:label next:label done:label :}
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX RDI TASK-CHAIN-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E dump JCC,
+   RCX RAX ASM-SINK ENC-MOV-RR  RCX RDI ASM-SINK ENC-SUB-RR
+   RCX CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE dump JCC,
+   RCX X64LAYOUT:DATA-SIZE CELL - >IMM32 ASM-SINK ENC-CMP-RI32
+      C-A dump JCC,
+   R8 RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RBP RSI ASM-SINK ENC-MOV-RR
+   RSP TASK-FRAME-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   R8 RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-MR
+   loop LBL,
+   R8 RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX R8 ASM-SINK ENC-MOV-RR  RAX RDI ASM-SINK ENC-SUB-RR
+   RAX X64LAYOUT:DATA-SIZE TASK-ABI:TCB-BYTES CELL + - >IMM32
+      ASM-SINK ENC-CMP-RI32  C-A done JCC,
+   R8 CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE done JCC,
+   RAX R8 TASK-ABI:TCB-BYTES MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-MR
+   R9 R8 TASK-ABI:REGION-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R8 TASK-ABI:REGION-U-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX TASK-REGION-MIN >IMM32 ASM-SINK ENC-CMP-RI32  C-B next JCC,
+   0 STACK-ABI:BASE-CELL TASK-IOV,
+   1 STACK-ABI:CAP-CELL TASK-IOV,
+   2 STACK-ABI:RETURN-BASE-CELL TASK-IOV,
+   3 STACK-ABI:LOOP-BASE-CELL TASK-IOV,
+   NR-GETPID SYS,
+   RDI RAX ASM-SINK ENC-MOV-RR
+   RSI RSP ASM-SINK ENC-MOV-RR
+   RDX 4 IMM,
+   R10 RSP TASK-REMOTE-AT MEM-OFF ASM-SINK ENC-LEA
+   R8 4 IMM,  R9 ZERO-REG,
+   NR-PROCESS-VM-READV SYS,
+   RAX 4 cells >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   RDI RSP TASK-COPY-AT MEM-OFF ASM-SINK ENC-LEA
+   RSI RBP ASM-SINK ENC-MOV-RR
+   dhit rhit lhit TASK-GUARDS,
+   next LBL,  loop JMP,
+   done LBL,
+   RSP TASK-FRAME-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   dump JMP, ;
+
+\ Saved RBP is a DATA descriptor only when the saved instruction was Habu
+\ code. An instruction fetch in a guard has RIP outside every code interval,
+\ so inspect the fixed root DATA directly there and never dereference RBP.
+: GUARDS, ( label -- ) {: dump:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+      {: fault:label region:label owned:label foreign:label dhit:label rhit:label lhit:label :}
+   SIG-REG SIGSEGV >IMM8 ASM-SINK ENC-CMP-RI8  C-E fault JCC,
+   SIG-REG SIGBUS >IMM8 ASM-SINK ENC-CMP-RI8  C-NE dump JCC,
+   fault LBL,
+   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX TEXT-REG ASM-SINK ENC-CMP-RR  C-B region JCC,
+   RCX RDI CODE-END-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B owned JCC,
+   region LBL,
+   RCX REGION-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B foreign JCC,
+   RCX REGION-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE foreign JCC,
+   owned LBL,
+   RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+   DATA-RECOVER,
+   dhit rhit lhit STACK-GUARDS,
    dump JMP,
+   foreign LBL,
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   dhit rhit lhit STACK-GUARDS,
+   dump dhit rhit lhit TASK-CHAIN-GUARDS,
    dhit DATA-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
    rhit RETURN-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
    lhit LOOP-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL, ;
