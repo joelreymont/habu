@@ -5274,7 +5274,7 @@ variable LCODEINV
    nohk LBL, ;
 
 \ The required construction scope installs a distinct callback. x5 is the
-\ record selected by LFIND (zero for an already-bound immediate); x11 is the
+\ record selected by LFIND (zero for an already-bound code entry); x11 is the
 \ entry actually about to run. The callback decides the full closure first.
 : C-HOST-SELECT ( -- )
    LBL {: ordinary:label :}
@@ -8791,7 +8791,7 @@ ardone LBL,
 
 : C-CALL-COMPILE-IMMEDIATE ( -- )
    LBL {: callimm:label :}
-   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,  5 SP 24 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
    15 0 MOVZ,  16 3 MOVZ,  C-UNIT-HOOK
    9 DATA HOOK-CELL LDR,  9 callimm CBZ,
@@ -8804,7 +8804,7 @@ ardone LBL,
    9 SP 16 LDR,  9 BLR,
    callimm LBL,
    11 SP 8 LDR,
-   5 0 MOVZ,  C-HOST-SELECT
+   5 SP 24 LDR,  C-HOST-SELECT
    11 BLR,
    \ No reopen: the immediate may have ended the head. A head that goes on
    \ reopens the window at its next tier 0 token (EM-COMPILE-LEGACY).
@@ -8898,14 +8898,14 @@ public
    LPOLICYREC LABEL@ BL,
    gated LBL,
    14 13 2 ANDI,  14 noimm CBZ,
-   SP SP 16 SUBI,  11 SP 0 STR,
+   SP SP 16 SUBI,  11 SP 0 STR,  5 SP 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
    LNEUTRAL NEUTRAL$ nip C-FIND-GLOBAL
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    9 G-POP  9 notneutral CBZ,
-   11 SP 0 LDR,  SP SP 16 ADDI,
+   11 SP 0 LDR,  5 SP 8 LDR,  SP SP 16 ADDI,
    C-CALL-COMPILE-IMMEDIATE
    notneutral LBL,
    SP SP 16 ADDI,
@@ -11223,7 +11223,7 @@ public
    14 5 16 LDR,  14 14 50 LSRI,  14 14 3 ANDI,
    14 3 CMPI,  C-EQ LMAIN LABEL@ BCOND,
    prepare LBL,
-   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  5 SP 24 STR,
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
@@ -11241,7 +11241,7 @@ public
    EM-P2-INIT-DESC
    EM-P2-FIELD-DESC
    LVSPILL LABEL@ BL,
-   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  SP SP 32 ADDI,
+   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  5 SP 24 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
       \ Pass 2 never runs an immediate: pass 1 ran it once on the real input
       \ and the capture pass 2 lowers holds what it compiled (LBCAP; a

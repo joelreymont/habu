@@ -280,11 +280,11 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ return closes the one an engine head opened. The engine finds
 \ NEUTRAL-PARSE-IMM? by name as it asks, and exits 70 naming it when no checker
 \ is loaded; this file binds it as it loads, after the engine's checker.
-: DEF-IMMEDIATE ( -- n bool )
+: DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? 0= if 0 false exit then
-   rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
-   rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
+   rec XREF-FOUND? 0= if NULL-PTR false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
+   rec TOKEN$ NEUTRAL-PARSE-IMM? ;
 
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
@@ -297,10 +297,12 @@ TRUSTED: DEF-PREFLIGHT ( -- )
    data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
    COMPILE-PREFLIGHT-CELL CELL@ execute ;
 
-\ The xt waits on the return stack while the preflight runs, and the stack's
-\ floor holds after the word, as after a word the loop runs.
-TRUSTED: DEF-RUN ( n -- )
-   NHOST:ADMIT-ENTRY >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+\ Keep the original occurrence across preflight, then select its host body.
+\ A preflight that retires it cannot substitute a reused dictionary slot.
+TRUSTED: DEF-RUN ( ptr n -- )
+   DEF-OCC:SELECT {: slot:n occurrence:n :}
+   DEF-PREFLIGHT
+   slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then
