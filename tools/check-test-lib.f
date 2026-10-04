@@ -48,7 +48,6 @@ private
 7141 constant SHADOW-RC
 
 $4000 constant BUF-CAP
-$100001 constant OVERCAP-SOURCE-LEN
 128 constant LIST-ENTRY-CAP
 
 \ What the child cases here prove is the standalone command line: the exit status
@@ -2163,30 +2162,6 @@ variable LONG-J
    CAP-ERR erru s" habu: in CKT-CBAD: bad stored signature 'ptr -- ckt-cbox'"
    CONTAINS? TTRUE ;
 
-: OVERCAP-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
-   {: cap:n src:ptr extent:NUM:alloc-byte-len :}
-   src cap s" <stdin>" SOURCE ;
-
-: OVERCAP-SOURCE-THROW ( -- )
-   OVERCAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
-   [: OVERCAP-SOURCE-BODY ;] MEM:WITH-BYTES ;
-
-: OVERCAP-FILE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
-   {: cap:n src:ptr extent:NUM:alloc-byte-len :}
-   DIRECT$ src cap WRITE-ALL ;
-
-: TEST-OVERCAP-SOURCE ( -- )
-   RESET
-   [: OVERCAP-SOURCE-THROW ;] catch 66 T=
-   RESET
-   OVERCAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
-   [: OVERCAP-FILE-BODY ;] MEM:WITH-BYTES
-   DIRECT$ PATH-RUN 66 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE
-   RESET ;
-
 : OVERCAP-PATH-BODY ( n ptr u8 NUM:alloc-byte-len -- )
    {: cap:n path:ptr extent:NUM:alloc-byte-len :}
    path cap FILE ;
@@ -2210,16 +2185,14 @@ variable LONG-J
    [: OVERCAP-LABEL ;] E-FS-CAPACITY TTHROWSQ
    RESET ;
 
-\ ---- every source the read accepts reaches a verdict --------------------------
-\ Each pass after the read takes the source whole, so a source half the read's
-\ cap passes, through a file and through standard input. The largest source
-\ the read accepts cannot fit the run file the engine loads once the prefix and
-\ the origin marks join it, so it is refused before the run, by name. Each
-\ child gets a scratch root of its own as HB_TMP, and however it ends - a
-\ verdict, a refusal or a die - it must leave that root empty.
+\ ---- a source of any size reaches a verdict ----------------------------------
+\ Every buffer that holds the source grows to it, so a source past a megabyte
+\ passes through a file, through standard input and through SOURCE, and the
+\ engine loads the run file that holds it behind the prefix, with the origin
+\ marks. Each child gets a scratch root of its own as HB_TMP, and however it
+\ ends - a verdict, a refusal or a die - it must leave that root empty.
 
-OVERCAP-SOURCE-LEN 1 - constant CAP-SOURCE-LEN
-CAP-SOURCE-LEN 2 / constant MID-SOURCE-LEN
+$180000 constant BIG-SOURCE-LEN
 
 create SCRATCH-PATH FS-PATH-CAP allot
 create SIZED-PATH FS-PATH-CAP allot
@@ -2280,7 +2253,7 @@ variable SIZED-U
    CAPTURE>N ;
 
 \ Blank lines, then a definition and its call on the last line, so the origin
-\ pass marks a definition past the end of any buffer smaller than the read's.
+\ pass marks a definition at the end of the source.
 : SIZED-DEF$ ( -- ptr u8 n )
    s" : CKT-SIZED ( -- ) ; CKT-SIZED" ;
 
@@ -2294,30 +2267,19 @@ variable SIZED-U
    erru 0 T=
    SCRATCH-EMPTY ;
 
-: EXPECT-OVERCAP ( n n n -- ) {: outu:n erru:n rc:n :}
-   rc 66 T=
-   CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE
-   SCRATCH-EMPTY ;
-
-: MID-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+: BIG-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
    {: u:n src:ptr extent:NUM:alloc-byte-len :}
    src u SIZED-FILL
    src u SCRATCH-FILE-RUN EXPECT-PASS
-   src u SCRATCH-STDIN-RUN EXPECT-PASS ;
+   src u SCRATCH-STDIN-RUN EXPECT-PASS
+   RESET
+   src u s" big-source.f" SOURCE
+   RUN 0 T=
+   RESET ;
 
-: CAP-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
-   {: u:n src:ptr extent:NUM:alloc-byte-len :}
-   src u SIZED-FILL
-   src u SCRATCH-FILE-RUN EXPECT-OVERCAP
-   src u SCRATCH-STDIN-RUN EXPECT-OVERCAP ;
-
-: TEST-MID-SOURCE ( -- )
-   MID-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
-   [: MID-SOURCE-BODY ;] MEM:WITH-BYTES ;
-
-: TEST-CAP-SOURCE ( -- )
-   CAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
-   [: CAP-SOURCE-BODY ;] MEM:WITH-BYTES ;
+: TEST-BIG-SOURCE ( -- )
+   BIG-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
+   [: BIG-SOURCE-BODY ;] MEM:WITH-BYTES ;
 
 \ ---- a run's output past its capture is refused by name ----------------------
 \ check.f captures what the run writes in order to replay it, 32768 bytes of
@@ -2497,17 +2459,17 @@ REFUSAL-N REFUSAL-LINE-LEN * constant REFUSAL-SOURCE-LEN
    CAP-ERR erru s" E-BAD-QUALIFIED-RECORD habu: record for 'ckt:uq:b' refused" CONTAINS? TTRUE ;
 
 \ ---- a report past the scratch -----------------------------------------------
-\ --all-errors renders every refusal into a scratch of INCLUDE-BUF-CAP bytes and
-\ streams each record to standard error. Each JSON record here is over 400
-\ bytes, so three thousand refusals pass the scratch: the run reports the
-\ records that fit, each whole, then the next one's refusal as an
-\ E-STATEMENT-THROW record whose throw_code is E-DIAG-CAPACITY (-2901), and
-\ exits 70. A full scratch must neither end the process nor lose the records
-\ before it. The capture holds twice the scratch.
+\ --all-errors renders every refusal into a scratch of
+\ CHECK-ALL-ERRORS:SCRATCH-CAP bytes and streams each record to standard
+\ error. Each JSON record here is over 400 bytes, so three thousand refusals
+\ pass the scratch: the run reports the records that fit, each whole, then the
+\ next one's refusal as an E-STATEMENT-THROW record whose throw_code is
+\ E-DIAG-CAPACITY (-2901), and exits 70. A full scratch must neither end the
+\ process nor lose the records before it. The capture holds twice the scratch.
 
 3000 constant FULL-REFUSAL-N
 FULL-REFUSAL-N REFUSAL-LINE-LEN * constant FULL-SOURCE-LEN
-INCLUDE-BUF-CAP 2 * constant FULL-ERR-CAP
+CHECK-ALL-ERRORS:SCRATCH-CAP 2 * constant FULL-ERR-CAP
 
 \ Where the last line of a report ending in a line feed starts.
 : LAST-LINE-AT ( ptr u8 n -- n )
@@ -6825,10 +6787,8 @@ variable LC-CANON-U
    s" check/sum-noend-all" [: SUM-NOEND-ALL ;] CASE-RUN
    s" check/tfam-noarity-all" [: TFAM-NOARITY-ALL ;] CASE-RUN
    s" check/cast-badsig-all-errors" [: CAST-BADSIG-ALL ;] CASE-RUN
-   s" check/overcap-source" [: TEST-OVERCAP-SOURCE ;] CASE-RUN
    s" check/selection-capacity" [: TEST-SELECTION-CAPACITY ;] CASE-RUN
-   s" check/mid-source" [: TEST-MID-SOURCE ;] CASE-RUN
-   s" check/cap-source" [: TEST-CAP-SOURCE ;] CASE-RUN
+   s" check/big-source" [: TEST-BIG-SOURCE ;] CASE-RUN
    s" check/run-output-cap" [: TEST-RUN-OUTPUT-CAP ;] CASE-RUN
    s" check/die-scratch" [: TEST-DIE-SCRATCH ;] CASE-RUN
    s" check/long-name" [: TEST-LONG-NAME ;] CASE-RUN

@@ -307,7 +307,10 @@ public
   name, exit 74. Fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
   keep each parent's source bytes alive until it returns, releasing them on
-  return or throw; there is no fixed nesting count. Discovery, checker
+  return or throw; there is no fixed nesting count. Each load reads its file
+  into a frame sized to that file, so there is no fixed file size either: only
+  a failed mapping refuses a file, exit 74. Discovery's record of the loads a
+  file makes grows the same way, with no fixed count. Discovery, checker
   dependency collection and content closures use the same canonical paths and
   owner roots.
 - The engine marks its baked prefix files `provided` before user source runs, so

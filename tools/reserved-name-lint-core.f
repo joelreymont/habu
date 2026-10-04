@@ -11,6 +11,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
+require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -373,16 +374,27 @@ private
       RNL-I @ 1+ RNL-I !
    repeat ;
 
-: RNL-ALLOC-NEED ( n -- n ) {: n :}
-   n 0 <= if 1 exit then
-   n ;
+\ Room for n bytes of the source being read, in a region of the read's own: a
+\ larger region takes the bytes the last one holds, and the last is released
+\ when this read made it. A region is made only for more than the read holds,
+\ so it is never empty.
+: RNL-SRC-ROOM ( n -- ptr u8 ) {: need:n :}
+   need RNL-SRC-CAP @ > if
+      RNL-SRC-A@ RNL-SRC-CAP @ {: old:ptr oldcap:n :}
+      need MEM-ALLOC-64K-SPAN RNL-SRC-CAP ! {: fresh:ptr :}
+      old fresh oldcap BYTE-COPY
+      oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
+      fresh RNL-SRC-A!
+   then
+   RNL-SRC-A@ ;
 
-: RNL-ALLOC-SOURCE ( n -- )
-   RNL-ALLOC-NEED MEM-ALLOC-64K-SPAN RNL-SRC-CAP ! RNL-SRC-A! ;
-
+\ Each read takes a region of its own, so the bytes an earlier read left stay
+\ where they are. The file is read to its end however it grows while it is
+\ read: its size, whose refusal (E-FS-STAT) stays a missing or irregular
+\ file's, is only the first room (lib/source.f READ-WHOLE-SAMPLED).
 : RNL-LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu FILE-SIZE RNL-ALLOC-SOURCE
-   path pathu RNL-SRC-A@ RNL-SRC-CAP @ READ-ALL RNL-SRC-U ! ;
+   0 RNL-SRC-CAP !
+   path pathu  path pathu FILE-SIZE  [: RNL-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED RNL-SRC-U ! ;
 
 public
 

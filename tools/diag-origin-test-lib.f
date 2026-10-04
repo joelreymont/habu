@@ -161,13 +161,12 @@ create DGT-ERR DGT-BUF-CAP allot
    s" tools/check.f" DGT-RUN-OK {: outu:n :}
    DGT-OUT outu s" 8" DGT-LINE$ T$= ;
 
-\ The CLI reads a source as large as tools/check.f reads, $100000 bytes, and
-\ marks the definition at its end; a byte more is refused, naming the file.
-\ The allocation holds the source, then the capture of its output.
-$100000 constant DGT-CAP-LEN
-DGT-CAP-LEN 1+ constant DGT-OVERCAP-LEN
-DGT-CAP-LEN DGT-BUF-CAP + constant DGT-SIZED-OUT-CAP
-DGT-OVERCAP-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
+\ The CLI reads a source of any size: one of $180000 bytes, past a megabyte,
+\ marks the definition at its end. The allocation holds the source, then the
+\ capture of its output.
+$180000 constant DGT-BIG-LEN
+DGT-BIG-LEN DGT-BUF-CAP + constant DGT-SIZED-OUT-CAP
+DGT-BIG-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
 
 : DGT-SIZED-DEF$ ( -- ptr u8 n )
    s" : DGT-SIZED ( -- ) ;" ;
@@ -189,20 +188,13 @@ DGT-OVERCAP-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
    DGT-IN src u WRITE-ALL
    out s" tools/diag-origin.f" out DGT-SIZED-OUT-CAP DGT-RUN ;
 
-: DGT-CAP-CASE ( ptr u8 ptr u8 -- ) {: src:ptr out:ptr :}
-   src DGT-CAP-LEN out DGT-SIZED-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}
-   out outu src DGT-CAP-LEN DGT-SIZED-DEF$ nip - STARTS-WITH? TTRUE
+: DGT-SIZED-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   {: src:ptr extent:NUM:alloc-byte-len :}
+   src DGT-BIG-LEN + {: out:ptr :}
+   src DGT-BIG-LEN out DGT-SIZED-RUN 0 DGT-EXPECT-EXIT {: outu:n erru:n :}
+   out outu src DGT-BIG-LEN DGT-SIZED-DEF$ nip - STARTS-WITH? TTRUE
    out outu DGT-MARKED-DEF$ ENDS-WITH? TTRUE
    DGT-ERR erru DGT-EMPTY$ T$= ;
-
-: DGT-OVERCAP-CASE ( ptr u8 ptr u8 -- ) {: src:ptr out:ptr :}
-   src DGT-OVERCAP-LEN out DGT-SIZED-RUN 1 DGT-EXPECT-EXIT {: outu:n erru:n :}
-   DGT-ERR erru s" file exceeds buffer" CONTAINS? TTRUE ;
-
-: DGT-SIZED-BODY ( ptr u8 NUM:alloc-byte-len -- ) {: a:ptr extent:NUM:alloc-byte-len :}
-   a DGT-OVERCAP-LEN + {: out:ptr :}
-   a out DGT-CAP-CASE
-   a out DGT-OVERCAP-CASE ;
 
 : DGT-TEST-SIZED ( -- )
    DGT-SIZED-ALLOC MEM:BYTES-ALLOC-LEN [: DGT-SIZED-BODY ;] MEM:WITH-BYTES ;

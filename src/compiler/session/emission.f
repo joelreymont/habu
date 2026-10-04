@@ -48,7 +48,7 @@ TRUSTED: ARTIFACT-PTR ( ptr u8 -- ptr artifact ) ;
 5 constant H-CALLS
 6 constant H-ADDRS
 7 constant HDR-CELLS
-3 constant CALL-CELLS
+5 constant CALL-CELLS
 2 constant ADDR-CELLS
 
 : RECORD@ ( NART:emission -- artifact )
@@ -88,6 +88,8 @@ TRUSTED: ARTIFACT-PTR ( ptr u8 -- ptr artifact ) ;
       c a i NEMIT:CALL-SITE@ CELL,
       c a i NEMIT:CALL-KIND@ CELL,
       c a i NEMIT:CALL-TARGET@ CELL,
+      c a i NEMIT:CALL-IMPL@ CELL,
+      c a i NEMIT:CALL-LOC@ CELL,
    loop
    NEMIT:ADDR-SITES 0 ?do
       c a i NEMIT:ADDR-SITE@ CELL,
@@ -178,6 +180,8 @@ public
 : CALL-SITE@ ( NART:emission n -- n ) 0 CALL@ ;
 : CALL-KIND@ ( NART:emission n -- n ) 1 CALL@ ;
 : CALL-TARGET@ ( NART:emission n -- n ) 2 CALL@ ;
+: CALL-IMPL@ ( NART:emission n -- n ) 3 CALL@ ;
+: CALL-LOC@ ( NART:emission n -- n ) 4 CALL@ ;
 
 : ADDR-SITES ( NART:emission -- n )
    READER H-ADDRS IR-ARENA:RD@ ;

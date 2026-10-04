@@ -49,6 +49,8 @@ variable N-CALLS
 DYNAMIC-BUFFER CALL-OFF-BUF n        \ where a call or leaving branch sits
 DYNAMIC-BUFFER CALL-KIND-BUF n       \ CALL or TAIL
 DYNAMIC-BUFFER CALL-TGT-BUF n        \ the absolute address it goes to
+DYNAMIC-BUFFER CALL-IMPL-BUF n       \ published implementation id at emission
+DYNAMIC-BUFFER CALL-LOC-BUF n        \ retained definition-body offset
 variable N-ADDRS
 DYNAMIC-BUFFER ADDR-OFF-BUF n        \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND-BUF n       \ which kind of address it carries
@@ -112,6 +114,12 @@ public
 : CALL-TARGET@ ( n -- n )
    SEAL-CK N-CALLS @ ROW-CK CALL-TGT-BUF @ ;
 
+: CALL-IMPL@ ( n -- n )
+   SEAL-CK N-CALLS @ ROW-CK CALL-IMPL-BUF @ ;
+
+: CALL-LOC@ ( n -- n )
+   SEAL-CK N-CALLS @ ROW-CK CALL-LOC-BUF @ ;
+
 : ADDR-SITES ( -- n )
    SEAL-CK N-ADDRS @ ;
 
@@ -150,16 +158,21 @@ public
    off k FUN-OFF-BUF !
    k 1+ N-FUNS ! ;
 
-: CALL-SITE+ ( n n n -- ) {: off:n kind:n target:n :}
+: CALL-SITE+ ( n n n n n -- )
+   {: off:n kind:n target:n impl:n loc:n :}
    OPEN-CK off OFFSET-CK drop
    kind CALL <>  kind TAIL <> and if E-NEMIT-ROW throw then
    N-CALLS @ {: k:n :}
    k 1+ CALL-OFF-BUF-RESERVE
    k 1+ CALL-KIND-BUF-RESERVE
    k 1+ CALL-TGT-BUF-RESERVE
+   k 1+ CALL-IMPL-BUF-RESERVE
+   k 1+ CALL-LOC-BUF-RESERVE
    off k CALL-OFF-BUF !
    kind k CALL-KIND-BUF !
    target k CALL-TGT-BUF !
+   impl k CALL-IMPL-BUF !
+   loc k CALL-LOC-BUF !
    k 1+ N-CALLS ! ;
 
 : ADDR-SITE+ ( n n -- ) {: off:n kind:n :}

@@ -3,14 +3,12 @@
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
+require lib/fs.f
 require lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-\ The CLI reads a source as large as tools/check.f reads (CHK-SRC-CAP): what
-\ the engine loads from one file.
-INCLUDE-BUF-CAP constant DO-FILE-CAP
 32 constant DO-NUM-CAP
 
 1 constant DO-WORD
@@ -28,7 +26,7 @@ INCLUDE-BUF-CAP constant DO-FILE-CAP
 create DO-NUM-BUF DO-NUM-CAP allot
 create DO-ONE 1 allot
 
-TYPED-VARIABLE DO-FILE-A ptr u8
+DYNAMIC-BUFFER DO-FILE u8   \ the CLI's source, read whole
 TYPED-VARIABLE DO-SRC-A ptr u8
 variable DO-SRC-U
 variable DO-X
@@ -54,7 +52,7 @@ variable DO-ORIG-POS
 variable DO-RUN-X             \ first word of the current run, -1 for none (DO-STEP)
 TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
-variable DO-OUT-CAP
+TYPED-VARIABLE DO-OUT-ROOM [ n -- ptr u8 ]   \ the caller's growing buffer
 variable DO-OUT-BUF?
 
 : DO-TRUE ( -- bool )
@@ -62,21 +60,6 @@ variable DO-OUT-BUF?
 
 : DO-FALSE ( -- bool )
    DO-TRUE 0= ;
-
-: DO-FILE-A@ ( -- ptr u8 )
-   DO-FILE-A @ ;
-
-: DO-FILE-A! ( ptr u8 -- )
-   DO-FILE-A ! ;
-
-: DO-ALLOC-FILE-BUF ( -- )
-   DO-FILE-A @ 0= if
-      DO-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop DO-FILE-A!
-   then ;
-
-: DO-FILE-BUF ( -- ptr u8 )
-   DO-ALLOC-FILE-BUF
-   DO-FILE-A@ ;
 
 : DO-SRC-A@ ( -- ptr u8 )
    DO-SRC-A @ ;
@@ -105,7 +88,7 @@ variable DO-OUT-BUF?
 
 : DO-BUF-ROOM ( n -- ) {: u :}
    u 0 < if s" diag-origin: negative output" 74 DO-FAIL then
-   DO-OUT-U @ u + DO-OUT-CAP @ > if E-FS-CAPACITY throw then ;
+   DO-OUT-U @ u + DO-OUT-ROOM @ execute DO-OUT-A! ;
 
 : DO-BUF-OUT ( ptr u8 n -- ) {: a:ptr u :}
    u DO-BUF-ROOM
@@ -332,9 +315,8 @@ variable DO-OUT-BUF?
    DO-FALSE DO-OUT-BUF? !
    0 DO-OUT-U ! ;
 
-: DO-OUT-BUF! ( ptr u8 len -- ) {: out:ptr cap :}
-   out DO-OUT-A!
-   cap LEN>N DO-OUT-CAP !
+: DO-OUT-BUF! ( [ n -- ptr u8 ] -- )
+   DO-OUT-ROOM !
    0 DO-OUT-U !
    DO-TRUE DO-OUT-BUF? ! ;
 
@@ -364,18 +346,49 @@ variable DO-OUT-BUF?
    begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;
 
+: DO-FILE-ROOM ( n -- ptr u8 )
+   DO-FILE-RESERVE 0 DO-FILE ;
+
+\ Stack-preserving under `catch`: the path rides through and the byte count
+\ comes back where a zero went in.
+: DO-READ ( ptr u8 n n -- ptr u8 n n )
+   drop 2dup [: DO-FILE-ROOM ;] SOURCE:READ-WHOLE-FILE ;
+
+\ A source the CLI cannot read ends the run naming it: a path the file system
+\ refuses, or a failed open or read (lib/source.f READ-WHOLE-FILE). Any other
+\ code, such as the buffer's own allocation, is not about the file.
+: DO-READ-FAIL? ( n -- bool )
+   {: rc:n :}
+   rc E-FS-PATH = rc E-FS-PATH-UNSAFE = or rc E-FS-OPEN = or rc E-FS-IO = or ;
+
+: DO-READ-FAIL ( ptr u8 n -- )
+   2 s" diag-origin: cannot read file: " DO-WRITE 1 die ;
+
 \ The engine's own rewrite comments a leading `#!` line, so the scan and the
 \ marked copy read it as the engine does (src/core/include.f SHEBANG-COMMENT).
+\ The source is read whole however it grows while it is read (lib/source.f
+\ READ-WHOLE-FILE), and its bytes are taken after the read, which may move the
+\ buffer.
 : DIAG-ORIGIN ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
    DO-OUT-FD!
-   DO-FILE-BUF DO-FILE-CAP READ-FILE {: a:ptr u:n :}
+   path pathu 0 [: DO-READ ;] catch
+   {: rc:n :}
+   rc 0= if
+      nip nip
+   else
+      rc DO-READ-FAIL? if path pathu DO-READ-FAIL then
+      rc throw
+   then
+   0 DO-FILE {: u:n a:ptr :}
    a u SOURCE-ROOT:SHEBANG-COMMENT
    a u DO-MARK ;
 
 \ The marked copy of source bytes the caller already holds, into the caller's
-\ buffer. Every bound is the caller's: the source is whatever it read, and a
-\ copy that outgrows the buffer is E-FS-CAPACITY for the caller to report.
-: DIAG-ORIGIN-SOURCE>BUF ( ptr u8 n ptr u8 len -- len ) {: src:ptr u out:ptr cap :}
-   out cap DO-OUT-BUF!
+\ buffer, which grows to the copy: before each write, room answers where the
+\ copy starts once it holds n bytes, so the buffer may move between writes.
+\ The answer is the copy's length.
+: DIAG-ORIGIN-SOURCE>BUF ( ptr u8 n [ n -- ptr u8 ] -- n ) {: src:ptr u room :}
+   room DO-OUT-BUF!
    src u DO-MARK
-   DO-OUT-U @ >LEN ;
+   DO-OUT-U @ ;
