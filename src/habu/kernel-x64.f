@@ -4431,11 +4431,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
    WINDOW-CLOSE, ;
 
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid: record NDICT with
-\ the source's [0] and [8] and exactly its DNAME-IMM, DNAME-WIDE and
-\ DNAME-MIN-IN bits. A namespace, retired or DNAME-INT source is refused: an
+\ the source's [0] and [8] and its DNAME-IMM, DNAME-WIDE, DNAME-MIN-IN
+\ and immutable DKIND:VAL bits. A namespace, retired or DNAME-INT source is refused: an
 \ alias without the bit would run an internal body from the interpret loop.
 : ALIAS-RECORD-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: prot:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-WID POP-TO,  DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -4462,6 +4462,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-RM
    RAX RDI REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   RAX R8 REC-FLAGS MOV-LOAD,
+   RCX DKIND:MASK IMM64,  RAX RCX ASM-SINK ENC-AND-RR
+   RCX DKIND:VAL IMM64,  RAX RCX ASM-SINK ENC-CMP-RR  C-NE notval JCC,
+      RCX RDI REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   notval X64CODE:LBL,
    RAX RSP DW-WID MOV-LOAD,  RAX RDI REC-WID MOV-STORE,
    PUBLISH-RECORD,
    FRAME-CLOSE,

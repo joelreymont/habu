@@ -4067,7 +4067,7 @@ public
 
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
-   LBL LBL LBL {: bad prot done :}
+   LBL LBL LBL LBL {: bad prot notval done :}
    B-TASK-LIVE-GUARD
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
@@ -4090,9 +4090,13 @@ public
    5 4 REC-AT,
    14 5 0 LDR,  14 9 0 STR,                           \ [0] = the source's entry
    14 5 8 LDR,  14 9 8 STR,                           \ [8] = its recorded length
-   14 5 16 LDR,
-   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or LIT64,  14 14 15 AND,
-   15 9 16 LDR,  15 15 14 ORR,  15 9 16 STR,          \ its IMM, WIDE and MIN-IN bits
+   16 5 16 LDR,
+   15 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or LIT64,  14 16 15 AND,
+   15 DKIND:MASK LIT64,  16 16 15 AND,
+   15 DKIND:VAL LIT64,  16 15 CMP,  C-NE notval BCOND,
+      14 14 15 ORR,                                    \ only an immutable value keeps its fixed kind
+   notval LBL,
+   15 9 16 LDR,  15 15 14 ORR,  15 9 16 STR,          \ its IMM, WIDE, MIN-IN and fixed-value bits
    3 9 40 STR,
    PUBLISH,
    done B,
@@ -9846,8 +9850,8 @@ public
 \ names at CP.
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL LBL LBL LBL LBL
-   {: active:label dnamed:label named:label found:label counted:label done:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: active:label dnamed:label named:label found:label counted:label done:label notval:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       LTOK LABEL@ BL,  0 dnamed CBNZ,
          $4A C-PACKAGE-FAIL
@@ -9864,8 +9868,13 @@ public
       0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT source: TKA/TKL still hold the operand; nothing pushed or published
-   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   SP SP 48 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
    DOES-REC:CLAUSE-OF  6 SP 24 STR,                     \ x5 = LFIND's record; [24] = its clause or 0
+   14 0 MOVZ,  14 SP 32 STR,
+   14 5 16 LDR,  16 DKIND:MASK LIT64,  14 14 16 AND,
+   16 DKIND:VAL LIT64,  14 16 CMP,  C-NE notval BCOND,
+      16 SP 32 STR,                                      \ only immutable constant bodies keep their fixed-value kind
+   notval LBL,
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -9888,6 +9897,7 @@ public
    16 14 2 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit1 -> DNAME-IMM
    16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
+   16 SP 32 LDR,  15 15 16 ORR,                          \ constant alias still pushes the same fixed value
    15 9 16 STR,
    C-EXPORT-CLAUSE-RECORD
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
@@ -9895,7 +9905,7 @@ public
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
    counted LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,
-   SP SP 32 ADDI,
+   SP SP 48 ADDI,
    done LBL, ;
 
 \ Interpret-state dispatch assembly: the keyword/number/find emitters and the

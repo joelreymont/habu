@@ -16,8 +16,8 @@
 \   then gives it a private wid.
 \ - hb-x64-kernel-alias-record, after the seal and with the wid's neighbour in
 \   its bitmap cell protected, aliases a long-named source: the alias carries
-\   the source's code and length cells and exactly its IMM, WIDE and MIN-IN
-\   bits, neither its VAL nor its EXT bit, and xref-search-wl finds it.
+\   the source's code and length cells and its IMM, WIDE, MIN-IN and immutable
+\   VAL bits, but not its EXT bit, and xref-search-wl finds it.
 \ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
 \   the four package cells from that row, then clears them with `-1 0`.
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
@@ -239,7 +239,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    s" Al" 0 ALIAS-WID ALIAS,
    1 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    -1 1 REC-AUX X64HARNESS:EXPECT-RECORD,
-   s" Al" nip COPIED or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   s" Al" nip SOURCE-FLAGS or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    ALIAS-WID 1 X64KERNEL:REC-WID X64HARNESS:EXPECT-RECORD,
    1 CLOSED,
    s" aL" ALIAS-WID XREF,  1 X64HARNESS:EXPECT-ROW, ;
