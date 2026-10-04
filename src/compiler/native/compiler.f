@@ -493,7 +493,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    SHS m0 NBACK:PRUNE {: m:IR-BUILD:module :}
    SHS m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    SHS ready NBACK:EMIT-UNPLACED
-   SH NART:COPY SHADOW-TAKE ;
+   SHS NART:COPY SHADOW-TAKE ;
 
 \ Each row gives back what it holds inside its own context, so the context
 \ leaves the ordinary way, takes its builders and arenas with it, and leaves
@@ -530,7 +530,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    s m0 NBACK:PRUNE {: m:IR-BUILD:module :}
    s m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    s ready NPUB:NEXT-SLOT NBACK:EMIT
-   CC NART:COPY ;
+   s NART:COPY ;
 
 : HOST-CLEAN ( -- )
    SS NBACK:RELEASE

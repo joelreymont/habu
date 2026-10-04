@@ -567,7 +567,7 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    2 1 CHAIN {: m:IR-BUILD:module :}
    NS m EMIT-SLOT NBACK:EMIT
    m SCAN {: blocks:n :}
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    e NART:SIZE {: sz:n :}
    e NART:BYTES e NART:SIZE DIFF-IMAGE? {: same:bool :}
    NS NBACK:RETIRE
@@ -584,7 +584,7 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
    NS m EMIT-SLOT NBACK:EMIT
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    NS NBACK:RETIRE
    e NART:BYTES e NART:SIZE DIFF-IMAGE? {: same:bool :}
    e NART:RET-BYTES {: ret:n :}
@@ -616,7 +616,7 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    BUILD-PRESSURE
    1 1 CHAIN {: m:IR-BUILD:module :}
    NS m EMIT-SLOT NBACK:EMIT
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    \ mc: subq $32, %rsp
    e s" 4881ec20000000" HEAD=HEX? {: head:bool :}
    \ mc: addq $32, %rsp
@@ -631,7 +631,7 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    CHAIN-LINKED {: m:IR-BUILD:module :}
    m SCAN drop
    NS m EMIT-SLOT NBACK:EMIT
-   N-RESERVE @ CC NART:COPY ;
+   N-RESERVE @ NS NART:COPY ;
 
 : FRAMED-EMIT ( n n NBACK:linkage -- n bool )
    FRAMED NART:PLACED? ;
@@ -664,7 +664,7 @@ $400 constant CALLEE-ENTRY           \ the entry the caller's site names
    HIR-MOD BUILD-QUOTER
    0 1 CHAIN {: m:IR-BUILD:module :}
    NS m EMIT-SLOT NBACK:EMIT
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    e W-ART !
    [: BAD-OFFSET ;] E-NEMIT-ROW TTHROWSQ
    e 0 NART:FUNCTION-OFFSET@ e 1 NART:FUNCTION-OFFSET@
@@ -687,7 +687,7 @@ $100000000 constant FAR-ENTRY
    HIR-MOD FAR-ENTRY BUILD-PCALLER
    1 1 NBACK:L-CALLED CHAIN-LINKED 0 W-MOD !
    [: FAR-EMIT ;] E-X64EMIT-REACH TTHROWSQ
-   [: CC NART:COPY NART:RELEASE ;] E-NEMIT-STATE TTHROWSQ ;
+   [: NS NART:COPY NART:RELEASE ;] E-NEMIT-STATE TTHROWSQ ;
 
 public
 

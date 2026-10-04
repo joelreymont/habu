@@ -12,7 +12,7 @@ private
    HIR-MOD BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
    NS m X64HARNESS:POSITION NBACK:EMIT
-   CC NART:COPY {: e:NART:emission :}
+   NS NART:COPY {: e:NART:emission :}
    e NART:BYTES e NART:SIZE X64HARNESS:APPEND-ROUTINE ;
 public
 : PEER-ROUTINE ( -- ) [: PEER-BODY ;] WITH-CASE ;

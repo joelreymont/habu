@@ -5,6 +5,7 @@ require src/core/bytes.f
 require src/compiler/binding.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
+require src/compiler/session/backend.f
 require src/compiler/native/emission.f
 
 package NART
@@ -93,9 +94,10 @@ private
 
 public
 
-\ The caller copies before RETIRE; allocation and partial rows die with c.
-: COPY ( IR-CTX:ctx -- NART:emission )
-   {: c:IR-CTX:ctx :}
+\ The active work session selects the owner before RETIRE; allocation and
+\ partial rows die with that context.
+: COPY ( NSESSION:session -- NART:emission )
+   NSESSION:RESOLVE drop {: c:IR-CTX:ctx :}
    c IR-CTX:BINDING@ {: binding:CBIND:binding :}
    binding CBIND:TARGET@ CTARGET:ARCH@ NEMIT:ARCH CTARGET-ARCH:EQ 0=
    if E-NEMIT-STATE throw then
