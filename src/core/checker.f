@@ -935,6 +935,7 @@ package CHECKER-EFFECT-AUTHORITY
 variable ABI-DEPTH
 variable RECOVERY-FLOOR
 variable RECOVERY-USED
+variable SEALED
 defer PUBLISH-XT ( n bool -- )
 : DEFAULT ( -- ) [: 2drop ;] is PUBLISH-XT ;
 DEFAULT
@@ -956,6 +957,19 @@ public
 : RECOVERY-USED? ( -- bool ) RECOVERY-USED @ 0 <> ;
 : RECOVERY-USED! ( bool -- ) RECOVERY-USED ! ;
 : CERTIFIED? ( -- bool ) ENFORCED? RECOVERY-USED? 0= and ;
+
+\ THE GATE ON A ROW WITHOUT SOURCE AUTHORITY IS A SEAL STATE. Such a row - the
+\ one a build window or an unjudged scan records for an internal word - binds a
+\ checked call (CALL-AUTHORITY) only while this checker is unsealed, so a
+\ whitebox image, and a prefix before src/core/internal-mark.f runs, check a
+\ body that names an internal word against that word's row. The pass's sealed
+\ arm calls SEAL, so a product image, a cold boot and every image saved from
+\ either refuse that call. Sealing changes no row's authority: ENFORCED?,
+\ CERTIFIED? and EFFECT-EXTERNAL answer as they did. No word opens the gate. On
+\ a whitebox image a reopen of this package can write SEALED; on a product the
+\ reopen exits 84.
+: SEALED? ( -- bool ) SEALED @ 0 <> ;
+: SEAL ( -- ) 0 0= SEALED ! ;
 ;package
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -10395,6 +10409,12 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ that keeps interpreting after it stays sound: a following enum declaration and
 \ a following arithmetic body both certify), exactly as for REWIND.
 PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
+\ CHECKER-EFFECT-AUTHORITY SEAL closes the authority gate. Its caller is
+\ src/core/internal-mark.f's sealed arm, a checked body after the hook, which an
+\ engine that boots its prefix from source checks with axiom rows alone. The row
+\ grants nothing the gate guards: sealing again changes nothing, and no word
+\ opens the gate.
+PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The scope probe a non-defining caller asks before EFFECT-QUERY (top-row.f).
 PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
@@ -13953,6 +13973,11 @@ variable UNSAFE-SYM-N
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
    FEP @ RECOVERY-ROW? {: recovery:bool :}
+   \ A failed declaration's row is uncertified outside its own run, and no copy
+   \ can carry that: a copy is a new record, so tagged in a later run it would
+   \ be that run's recovery fact, and untagged it is an ordinary row an unsealed
+   \ checker binds.
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF E-EXPORT-UNDEFINED throw THEN
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
@@ -15055,8 +15080,10 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 \ while authority is unenforced or when it is an external declaration, and this
 \ run's recovery fact applies too. Any other row records only the word's ABI (a
 \ build window records one for every prefix word): the primitive rows behind it
-\ decide, and with none the call is refused by name as well. OWNED-TICK-REFUSED?
-\ asks the same of a tick.
+\ decide. With none, a sealed checker refuses the call by name as well, and an
+\ unsealed one (CHECKER-EFFECT-AUTHORITY:SEALED?) applies the row unless it is a
+\ failed declaration's, which serves only its own run (RECOVERY-ROW? above).
+\ OWNED-TICK-REFUSED? asks the same of a tick.
 0 constant CALL-REFUSED
 1 constant CALL-APPLIES
 2 constant CALL-RECOVERS
@@ -15067,8 +15094,10 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
    CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
    FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
-   sym PRIM-FIRST-IDX 0= IF CALL-REFUSED EXIT THEN
-   CALL-PRIMS ;
+   sym PRIM-FIRST-IDX 0 <> IF CALL-PRIMS EXIT THEN
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
+   CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
+   CALL-APPLIES ;
 
 \ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
 \ name), the name joins the lazy intake's queue (ASIG-MISS+), and a name a
@@ -17920,27 +17949,26 @@ variable IS-PEND-U                   \ and its length
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ A CHECKED TICK OF A PACKAGE'S PRIVATE PRIMITIVE IS ADMITTED EXACTLY WHERE A
-\ CHECKED CALL OF IT IS. The seal classifies the global record such a row
-\ reaches by that row (EFFECT-OWNED-MIN-IN) instead of marking it DNAME-INT, so
-\ the engine's tick gates admit the record in every scope and this is the one
-\ that decides. Inside the owner the private row binds the name and the tick
-\ goes on. Anywhere else the tick gets the call's refusal of what the name binds
-\ there: nothing (E-UNDEFINED), or a row CALL-AUTHORITY refuses (E-CAP-TRUSTED,
-\ as for the ABI-only row a product build records for a prefix word). An EXPORT
-\ alias is the same code under its source's tail with its source's row, so the
-\ owner row is asked of the tail: `['] P:FFI-PTR>CELL` for a package P that
-\ exported it is refused as its call is. Asked once FEP holds the symbol's row,
-\ if it has one.
+\ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY, NOT ITS INPUT STACK. The row
+\ gives the tick its quotation signature below, but an ABI-only row cannot
+\ authorize that quotation any more than it can authorize a direct call. The
+\ seal keeps a global record reached by an owner-private primitive row visible
+\ in every scope. Inside the owner its private row binds and CALL-AUTHORITY
+\ admits the tick. Outside, a bound ABI row refuses E-CAP-TRUSTED, including an
+\ EXPORT alias; with no row, only an owner-private primitive target needs the
+\ named E-UNDEFINED refusal here. EXPORT-TAIL$ finds that owner's source tail.
 : OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
-      sym CALL-AUTHORITY CALL-REFUSED <> IF RES-FALSE EXIT THEN
-   ELSE
-      sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
+      sym CALL-AUTHORITY CALL-REFUSED = IF
+         FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
+         0 OK !  -1 FAILSET !
+         RES-TRUE EXIT
+      THEN
+      RES-FALSE EXIT
    THEN
+   sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
    TKF TKFU @ EXPORT-TAIL$ PE-OWNER-ROW 0 < IF RES-FALSE EXIT THEN
    TICK-PIN
-   FEP-HIT? IF -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
    TKF TKFU @ CALL-UNDEFINED
    PE-N BTICK-PUSH
    RES-TRUE ;
@@ -17950,7 +17978,10 @@ variable IS-PEND-U                   \ and its length
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
-   sym PRIM-TRUSTED-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
+   sym PRIM-TRUSTED-SYM? IF
+      FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
+      0 OK !  -1 FAILSET !  EXIT
+   THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
    sym OWNED-TICK-REFUSED? IF EXIT THEN
@@ -18909,6 +18940,11 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    ASIG-GRAPH-UNIT-OFF @ dup 0= IF drop sym USIG-NEWEST THEN
    dup 0= IF drop ASIG-GRAPH-DIE THEN
    1- {: src:n :}
+   \ A failed declaration's row serves only its own run. The wire has no
+   \ recovery state and the import seeds every row it reads.
+   src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
+      s" checker: a failed declaration's row is not portable" 76 die
+   THEN
    ASIG-GRAPH-MAP-ROOM
    ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
    ASIG-GRAPH-GEN !
@@ -21682,6 +21718,11 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 : TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- )
    {: pool:ptr rec:ptr name:ptr packed:n :}
    rec 0= if exit then
+   \ A failed declaration's row serves only its own run, and the copy below
+   \ records every row it imports as an active one, a source grant.
+   rec EW.ACTIVE @ EFF-RECOVERY = if
+      s" checker: a failed declaration's row does not transfer" 76 die
+   then
    name TRANSFER-SYMBOL {: sym:n :}
    \ Cold loading resets retained user effects and reconstructs this prefix.
    \ Target-checked rows win; the remaining retained rows are concrete boundary

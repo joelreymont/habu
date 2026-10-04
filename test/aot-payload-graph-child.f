@@ -218,9 +218,16 @@ TRUSTED: CORRUPT-SOURCE ( -- )
       rec E-DIN@ E-PTR EN.C @ 2 EQ
       1 rec E-DIN@ E-PTR EN.C ! 0 rec E-CONTENT EC.MINI !
       s" graph corruption applied: producer-scalar-zero" type cr
+   THEN
+   \ A failed declaration's row serves only its own diagnostic run: the
+   \ capture refuses it, so no import restores it as a seeded row.
+   s" recovery" MODE? IF
+      MULTI-ERR-BEGIN
+      s" : PAYLOAD-RECOVERY ( n -- n ) drop ;" evaluate
+      MULTI-ERR-END 1 EQ
+      s" graph corruption applied: recovery" type cr
    THEN ;
 TRUSTED: INSTALL ( -- )
-   CORRUPT-SOURCE
    WINDOW-CLOSE
    R0 @ D0 @ PRELUDE-MARK
    PAYLOAD-CAPTURE
@@ -268,6 +275,10 @@ GRAPH-ROUNDTRIP:DECLARE-WIDE
 GRAPH-ROUNDTRIP:ABI-BEGIN
 : PAYLOAD-ABI ( n -- n ) ;
 GRAPH-ROUNDTRIP:ABI-END
+\ Outside GRAPH-ROUNDTRIP, whose wordlist predates the window: the capture takes
+\ a record only from the global wordlist or one the window created
+\ (aot-capture.f ACAP-WID-IN?).
+GRAPH-ROUNDTRIP:CORRUPT-SOURCE
 
 package GRAPH-ROUNDTRIP
 INSTALL
@@ -276,7 +287,9 @@ s" PAYLOAD-ABI" EFFECT-QUERY -1 EQ
 EFFECT-DIN-CELLS 1 EQ EFFECT-DOUT-CELLS 1 EQ
 s" PAYLOAD-ABI" SOURCE-MIN -1 EQ
 s" PAYLOAD-ABI" CHECKER-RESOLVES? 0 EQ
-s" ROUND-ABI ( n -- n ) PAYLOAD-ABI" CHECK! 0 EQ
+\ The imported row carries no authority, and this window's checker is unsealed,
+\ so a checked call binds that row.
+s" ROUND-ABI ( n -- n ) PAYLOAD-ABI" CHECK! -1 EQ
 s" PAYLOAD-WIDE-USE" EFFECT-QUERY -1 EQ
 EFFECT-DIN-N 2 EQ EFFECT-DIN-CELLS 2 EQ
 s" PAYLOAD-NESTED-USE" EFFECT-QUERY -1 EQ

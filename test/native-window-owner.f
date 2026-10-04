@@ -26,6 +26,7 @@
 \ Run: bin/hb --load test/native-window-owner.f
 
 require lib/test.f
+require lib/string.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
@@ -154,12 +155,29 @@ create ERR IO-CAP allot
    BINDINGS-CASE
    TIER1-CASE ;
 
+\ ---- a recovery row at the handover -----------------------------------------
+\ A refused definition's row is a fact of the run that refused it, and the
+\ transfer re-records every row it imports as an active one. So it refuses this
+\ one by name before recreating anything (src/core/checker.f TRANSFER-ROW);
+\ carried, the row became active in the window and the window ended `window: 0`.
+\ The child's --recovery-row mode leaves that row in the retained checker just
+\ before the transfer.
+: RECOVERY-CASE ( -- )
+   s" test/native-window-cast-ok.f" ARGS!
+   s" --recovery-row" ARG+
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   rc 76 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
+   rc 76 T=
+   ERR erru LEN>N s" checker: a failed declaration's row does not transfer"
+   CONTAINS? TTRUE ;
+
 \ Public so the driver below runs it with the package closed.
 public
 
 : RUN ( -- )
    T-RESET
-   [: OWNER-CASES ;] [: CLEANUP-RUN ;] finally
+   [: OWNER-CASES RECOVERY-CASE ;] [: CLEANUP-RUN ;] finally
    T-REPORT
    s" native-window-owner: ok" type cr ;
 

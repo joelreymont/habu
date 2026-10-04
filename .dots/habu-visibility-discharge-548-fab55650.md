@@ -76,3 +76,7 @@ B9a-c after step 1; B9d after step 2; B7 after step 3. Per site: delete the shim
 - Seal c550102f: its mark runs at the driver's PREPARE-TARGET and stands down on the whitebox verdict IMK-PASS writes; SEAL stays in IMK-PASS's sealed arm (the seal's plan shows IMK-PASS runs before the compiler and REPL packages exist, and cold hosts never capture).
 Risks: tier-0 scans change `0 set-check` behaviour (run those suites); from-source engines answer E-CAP-TRUSTED instead of E-UNDEFINED for sealed pre-hook names with rows (bootstrap check-only; grep check suites for E-UNDEFINED pins); declared rows bind only in unsealed images; boot-time cost (measure).
 Not run: a full native build (window inferred from the tier-1 child probe).
+
+## Qualified B8 step 1
+
+The integrated open-image authority gate, failed-row export/copy/transfer refusals and checked-tick correction are qualified on `cf7d6dc3`: full native 600/600, rc 0; official generations 2–5 have identical engines and names. Independent Fable and Astra feature reviews and the final first-failure Astra follow-up pass. Evidence is under `~/.cache/tmp/b8af/` and `dave-tick-abi-review-result.txt`. The product remains sealed; unsealed images use the actual recorded row, and failed declaration rows are confined to their own run. This completes step 1; tier-0 recording and subsequent sweeps remain open.
