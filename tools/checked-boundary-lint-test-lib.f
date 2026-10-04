@@ -466,7 +466,7 @@ create LF-BYTE 10 c,
    OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE ;
 
 \ The public FILE wrapper propagates a scan failure and remains reusable.
-: TEST-MAP-THROW ( -- )
+: TEST-SCAN-THROW ( -- )
    CHECKED-BOUNDARY-LINT:RESET
    OUT 1 LINT-OUT-BUFFER!
    LINT-FALSE CHECKED-BOUNDARY-LINT:STRICT!
@@ -479,8 +479,8 @@ create LF-BYTE 10 c,
 ;package
 
 \ The lifecycle probes run inside the provider package so they can observe
-\ mapped spans before MEM:WITH-BYTES releases the allocation. They add no
-\ public test bridge or production hook.
+\ the scan's source storage and the spans into it. They add no public test
+\ bridge or production hook.
 package CHECKED-BOUNDARY-LINT
 
 private
@@ -514,7 +514,7 @@ variable TP-EMPTY-U
 
 : TP-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-cbl-map" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-cbl-read" HB-TMP-MKDIR {: a:ptr u:n :}
    a u TP-ROOT-BUF TP-ROOT-U TP-COPY!
    TP-ROOT CLEANUP-TREE+
    TP-ROOT s" good.f" TP-GOOD-BUF JOIN-PATH TP-GOOD-U !
@@ -529,38 +529,31 @@ variable TP-EMPTY-U
    {: path:ptr pathu:n :}
    path UB-FILE-A! pathu UB-FILE-U ! ;
 
-: TP-MAP-OK-ACT ( n ptr u8 NUM:alloc-byte-len -- )
-   UB-MAPPED-FILE
-   UB-MAPPED-SPANS-CLEAR? TTRUE ;
+\ After a scan, returned or thrown, no span points into the source storage and
+\ the storage is released: with nothing reserved its accessor refuses index 0.
+: TP-SRC-RELEASED ( -- )
+   UB-SRC-SPANS-CLEAR? TTRUE
+   [: 0 UB-SRC-MEM drop ;] E-LAYOUT-BOUNDS TTHROWSQ ;
 
-: TP-MAP-OK-TEST ( -- )
+: TP-READ-OK-TEST ( -- )
    RESET
    LINT-FALSE STRICT!
-   TP-GOOD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
-   bytes bytes MEM:BYTES-ALLOC-LEN
-   [: TP-MAP-OK-ACT ;] MEM:WITH-BYTES
-   UB-MAPPED-SPANS-CLEAR? TTRUE
+   TP-GOOD TP-FILE!
+   [: UB-FILE-ACT ;] catch 0 T=
+   TP-SRC-RELEASED
    RESET ;
 
-\ Run this cleanup inside the mapping callback, before WITH-BYTES releases it.
-: TP-MAP-THROW-CLEANUP ( -- )
-   LINT-OUT-BUFFER-OFF
-   UB-MAPPED-SPANS-CLEAR? TTRUE ;
-
-: TP-MAP-THROW-ACT ( n ptr u8 NUM:alloc-byte-len -- )
+\ The report overflows a one-byte output, so the scan throws.
+: TP-READ-THROW-RUN ( -- )
    TP-OUT 1 LINT-OUT-BUFFER!
-   [: UB-MAPPED-FILE ;] [: TP-MAP-THROW-CLEANUP ;] finally ;
+   [: UB-FILE-ACT ;] [: LINT-OUT-BUFFER-OFF ;] finally ;
 
-: TP-MAP-THROW-RUN ( -- )
-   TP-BAD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
-   bytes bytes MEM:BYTES-ALLOC-LEN
-   [: TP-MAP-THROW-ACT ;] MEM:WITH-BYTES ;
-
-: TP-MAP-THROW-TEST ( -- )
+: TP-READ-THROW-TEST ( -- )
    RESET
    LINT-FALSE STRICT!
-   [: TP-MAP-THROW-RUN ;] E-STR-CAPACITY TTHROWSQ
-   UB-MAPPED-SPANS-CLEAR? TTRUE
+   TP-BAD TP-FILE!
+   [: TP-READ-THROW-RUN ;] E-STR-CAPACITY TTHROWSQ
+   TP-SRC-RELEASED
    RESET ;
 
 : TP-ZERO-TEST ( -- )
@@ -577,8 +570,8 @@ variable TP-EMPTY-U
    T-RESET
    TP-PREPARE
    TP-ZERO-TEST
-   TP-MAP-OK-TEST
-   TP-MAP-THROW-TEST
+   TP-READ-OK-TEST
+   TP-READ-THROW-TEST
    CLEANUP-RUN
    TP-ROOT EXISTS? TFALSE
    T-REPORT ;
@@ -595,7 +588,7 @@ public
    T-RESET
    PREPARE
    TEST-CURRENT
-   TEST-MAP-THROW
+   TEST-SCAN-THROW
    TEST-GOOD
    TEST-LARGE
    TEST-BAD

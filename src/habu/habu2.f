@@ -1935,9 +1935,9 @@ public
 \ consults the registry it writes.
 \
 \ The other two argv modes stay raw. `--build` receives ONE statically certified
-\ payload, assembled and hashed as a single stream and far past INCLUDE-BUF-CAP;
-\ plain `hb prog.f` receives the program itself, not a dependency. x16 carries
-\ which mode we are in, set on each of the three exits of C-SOURCE-FILE-PREFIX
+\ payload, assembled and hashed as a single stream; plain `hb prog.f` receives
+\ the program itself, not a dependency. x16 carries which mode we are in, set
+\ on each of the three exits of C-SOURCE-FILE-PREFIX
 \ right after that mode's cold-prefix call - the same entry-mode-bit shape
 \ LCOLDPFX/LCOLDPFXB already use for their own seal decision. The only other
 \ write to x16 in the startup path is inside the cold prefix itself, which

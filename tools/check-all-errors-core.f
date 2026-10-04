@@ -5,6 +5,7 @@ require lib/string.f
 require lib/memory.f
 require lib/vector.f
 require lib/fs.f
+require lib/source.f
 require lib/process.f
 require lib/process-argv.f
 require tools/lint/text.f
@@ -29,6 +30,13 @@ public
 \ because this core both raises it and classifies it, so a caller comparing its
 \ own run against the same value must read it from here.
 $4E constant DUP-RC
+
+\ The scratch a caller gives BUFFERS! or STREAM!. The checker renders a whole
+\ pass's diagnostics into it and src/core/render.f cannot grow a caller's
+\ buffer, so a pass whose diagnostics outgrow it reports those that fit, each
+\ whole, then E-DIAG-CAPACITY (tools/check-test-lib.f, "a report past the
+\ scratch"). A JSON record is a few hundred bytes: this holds thousands.
+$100000 constant SCRATCH-CAP
 
 private
 
@@ -568,12 +576,26 @@ private
    0 CA-EMIT-CAPTURED
    CA-THROW-RECORD$ CA-ERR-LN ;
 
-: CA-ALLOC-SOURCE ( n -- )
-   MEM-ALLOC-64K-SPAN CA-SRC-CAP ! CA-SRC-A! ;
+\ Room for n bytes of the source being read, in a region of the read's own: a
+\ larger region takes the bytes the last one holds, and the last is released
+\ when this read made it.
+: CA-SRC-ROOM ( n -- ptr u8 ) {: need:n :}
+   need CA-SRC-CAP @ > if
+      CA-SRC-A@ CA-SRC-CAP @ {: old:ptr oldcap:n :}
+      need MEM-ALLOC-64K-SPAN CA-SRC-CAP ! {: fresh:ptr :}
+      old fresh oldcap BYTE-COPY
+      oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then
+      fresh CA-SRC-A!
+   then
+   CA-SRC-A@ ;
 
+\ Each read takes a region of its own, so the bytes an earlier read or the
+\ caller left (CA-SOURCE-BUF!) stay where they are. The file is read to its end
+\ however it grows while it is read: its size, whose refusal (E-FS-STAT) stays
+\ a missing or irregular file's, is only the first room.
 : CA-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pu:n :}
-   path pu FILE-SIZE CA-ALLOC-SOURCE
-   path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
+   0 CA-SRC-CAP !
+   path pu  path pu FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
 
 : CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CA-SRC-CAP !

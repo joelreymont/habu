@@ -125,13 +125,10 @@ pre-scan (a conditionally-opened package is invisible).
 ### 0.7 Sizing
 
 `tools/check.f` require-closure = 26 files, ≤42 loader tokens (upper bound,
-including non-loader string literals). `EVENT-MAX=$100` (256),
-`EVENT-POOL-CAP=$8000` (32 KiB),
-`EVENT-FIELDS=6` (`src/core/include.f:192-194`). Per-file event counts are tiny;
-the pool is `EVENTS-RESET` per `DISCOVER:RUN`, so 256 is ample **per file**. The
-whole tree is 597 `.f`/`.fs` files, so a *global* accumulation across a full-tree
-gate would exceed 256 — relevant only if the design accumulates one event log
-across an entire source list rather than per file (see §4).
+including non-loader string literals). The event records and their path pool
+have no fixed count: each grows to what the walk records (`src/core/include.f`
+`EVENT-GROWN`), and `EVENTS-RESET` empties both per `DISCOVER:RUN`, so one event
+log may cover a file or a whole source list (see §4).
 
 ---
 
@@ -295,10 +292,8 @@ documented boundary + dot.
 rewrite `SD-WALK`/`SD-STEP`/`SD-COLON` in `tools/source-discovery.f` to scan bodies
 and emit the static state model; one shared producer then fixes `EC:BUILD`,
 hb-build keys, and public-signatures at once (single closure source, as the
-cross-consumer note demands). `EVENT-MAX=256`/32 KiB pool is adequate per file
-(§0.7); a global cross-file accumulation for D4 should scan per original file
-(reset between files) to stay inside the cap, or raise `EVENT-MAX` if a single
-file ever exceeds it (none does today). Migration for `EC:BUILD` consumers is
+cross-consumer note demands). The event log grows with the walk (§0.7), so a
+global cross-file accumulation for D4 meets no event cap. Migration for `EC:BUILD` consumers is
 transparent — they keep calling `EC:BUILD`/`EC:COUNT`; only the underlying walker
 changes.
 
@@ -350,8 +345,7 @@ where dataflow is truly dynamic.
    (`CHK-MATERIALIZE-LIST`, 532-545) for the all-errors path: iterate
    `CHK-DEP-ORDER` and run all-errors on each **original** file, replaying prior
    source-list entries as support first (new cross-file support entry in
-   `tools/check-all-errors-core.f`, alongside `CA-SUPPORT-BEFORE`). Reset the event
-   log per original file to stay inside `EVENT-MAX`.
+   `tools/check-all-errors-core.f`, alongside `CA-SUPPORT-BEFORE`).
 5. **Dynamic manifest.** Fail-closed rejection + checked manifest sidecar for the
    dynamic tail (`src/habu/driver-io.f:11-14`); track any
    file kept out of event-closure consumers as a documented boundary + dot.

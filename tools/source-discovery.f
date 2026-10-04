@@ -80,13 +80,20 @@ variable SD-SCOPES
 : SD-BUF ( -- ptr u8 )
    SD-A @ ;
 
-\ Reuse the largest source allocation. No scanner pointer survives a read:
-\ install the new scratch span before releasing the old one, without copying.
-: SD-BUF-ENSURE ( n -- ) {: need:n :}
+\ Room for n bytes of the source being read, reusing the largest allocation.
+\ The read fills it as it grows (lib/source.f READ-WHOLE-SAMPLED), so a larger
+\ span takes the bytes the old one holds and is installed before the old one is
+\ released. No scanner pointer survives a read.
+: SD-ROOM ( n -- ptr u8 ) {: need:n :}
    SD-STORAGE @ {: old :}
-   need old SPAN:LEN <= if exit then
-   need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SD-STORAGE !
-   old SPAN:LEN 0 > if old MEM:FREE-SPAN then ;
+   need old SPAN:LEN > if
+      need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
+      old SPAN:$ {: a:ptr u:n :}
+      a fresh SPAN:$ drop u BYTE-COPY
+      fresh SD-STORAGE !
+      u 0 > if old MEM:FREE-SPAN then
+   then
+   SD-STORAGE @ SPAN:$ drop ;
 
 : SD-BYTE ( n -- u8 )   SD-BUF + c@ ;
 : SD-AT? ( n -- bool )  SD-U @ < ;
@@ -334,11 +341,12 @@ variable SD-SCOPES
       off len SD-STEP
    again ;
 
+\ The entry is read to its end however it grows while it is read: its size,
+\ whose refusal (E-FS-STAT) stays a missing or irregular entry's, is only the
+\ first room.
 : SD-READ-ENTRY ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu FILE-SIZE 1 max SD-BUF-ENSURE
-   SD-STORAGE @ SPAN:$ {: a:ptr cap:n :}
-   pa pu a cap READ-ALL SD-U !
-   a SD-A ! ;
+   pa pu  pa pu FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
+   SD-STORAGE @ SPAN:$ drop SD-A ! ;
 
 : SD-KIND-NAME ( n -- ptr u8 n ) {: kind:n :}
    kind EV-INCLUDED = if s" included" exit then

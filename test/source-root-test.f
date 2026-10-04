@@ -264,6 +264,49 @@ private
    DEEP-GOOD
    VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED ;
 
+\ A file past the frame the loader once mapped for every file (a header and
+\ 1 MiB) loads through require and include, and resumes after the small file
+\ it includes midway: each frame holds its own file's bytes, sized to them.
+$1000 constant LARGE-CHUNK
+192 constant LARGE-HALF                  \ chunks each side of the include: 1.5 MiB
+create CHUNK LARGE-CHUNK allot
+
+\ Byte n of a chunk: 64-byte comment lines, a backslash, a space, x's, newline.
+: LARGE-BYTE ( n -- n )
+   64 mod
+   {: col:n :}
+   col 0= if $5c exit then
+   col 1 = if $20 exit then
+   col 63 = if $0a exit then
+   $78 ;
+
+: LARGE-CHUNKS+ ( n -- )
+   {: count:n :}
+   count 0 ?do TARGET TARGET-U @ CHUNK LARGE-CHUNK APPEND-FILE loop ;
+
+: LARGE-MAKE ( -- )
+   s" large" A-PATH MAKE-DIRS
+   LARGE-CHUNK 0 ?do i LARGE-BYTE CHUNK i + c! loop
+   s" large/small.f" A-PATH s" 1 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   s" large/big.f" A-PATH TARGET TARGET-U COPY!
+   TARGET TARGET-U @ CHUNK LARGE-CHUNK WRITE-ALL
+   LARGE-HALF 1- LARGE-CHUNKS+
+   TARGET TARGET-U @ S\" include large/small.f\n" APPEND-FILE
+   LARGE-HALF LARGE-CHUNKS+
+   TARGET TARGET-U @ S\" 10 SOURCE-ROOT-TEST:BUMP\n" APPEND-FILE
+   s" large/outer.f" A-PATH
+      S\" require large/big.f\nrequire large/big.f\ninclude large/big.f\n100 SOURCE-ROOT-TEST:BUMP\n"
+      WRITE-ALL ;
+
+\ require loads big.f once (its small.f and its tail: 11), the second require
+\ skips it, include loads it again (11), and outer.f's own tail adds 100.
+: LARGE-LOADS ( -- )
+   s" a file past 1 MiB loads through require and include around a small one" T-LABEL
+   LARGE-MAKE
+   0 LOADED !
+   A$ [: s" large/outer.f" included ;] WITH
+   LOADED @ 122 T= RESTORED ;
+
 \ JOIN takes its root length from the caller, and INCLUDE-DIAG+ is an engine
 \ word any source can call. Both measure the length against the room left, so
 \ one near the maximum cell cannot wrap the sum back under the capacity and a
@@ -308,7 +351,7 @@ create JOIN-SRC JOIN-WORK allot
 
 : RUN ( -- )
    T-RESET PREP
-   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS DEEP-EVALS
+   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS LARGE-LOADS DEEP-EVALS
    ENGINE-ALIASES JOIN-ROOM DIAG-ROOM DIRNAMES
    CLEANUP-RUN T-REPORT ;
 
