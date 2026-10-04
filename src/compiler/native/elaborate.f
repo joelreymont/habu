@@ -760,8 +760,8 @@ variable LIT-N
    {: ix:n val:n :}
    ix val HIR:ADDR-NONE EMIT-KIND-LIT ;
 
-\ A value id from this block's literal memo proves its producer and kind.
-\ Renames such as dup retain that id; a join starts a new memo.
+\ The live literal memo identifies a scalar's exact producer and kind.
+\ Retained entries dominate this use; stack aliases preserve the value id.
 : SCALAR-LIT? ( IR-ID:ir-value-id n -- bool )
    {: id:IR-ID:ir-value-id val:n :}
    HIR:ADDR-NONE val LIT-FIND {: j:n :}
