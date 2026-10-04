@@ -67,6 +67,17 @@ DYNAMIC-BUFFER SOURCE-TYPE-READY n
 DYNAMIC-BUFFER SOURCE-TYPES n
 variable SOURCE-TYPE-N
 
+\ Emission reads the producer's source facts after the optional frozen-HIR
+\ observer. Keep the completed facts independent of that callback's writes.
+variable FACT-REASON
+variable FACT-LOC
+variable FACT-FUNS
+DYNAMIC-BUFFER FACT-IN n
+DYNAMIC-BUFFER FACT-OUT n
+DYNAMIC-BUFFER FACT-TYPE-FIRST n
+DYNAMIC-BUFFER FACT-TYPE-READY n
+DYNAMIC-BUFFER FACT-TYPES n
+
 variable OWNER-INSTALLED
 variable PRIOR-INVALIDATE
 CAST: AS-INVALIDATE ( n -- [ n n -- ] )
@@ -280,7 +291,8 @@ public
    if UNCHECKED else SAFE then SOURCE-REASON !
    0 SOURCE-LOC !
    0 SOURCE-FUNS !
-   0 SOURCE-TYPE-N ! ;
+   0 SOURCE-TYPE-N !
+   0 FACT-FUNS ! ;
 
 : SOURCE-REFUSE ( n n -- )
    {: reason:n loc:n :}
@@ -289,12 +301,13 @@ public
    loc SOURCE-LOC ! ;
 
 : SOURCE-REASON@ ( -- n n )
-   SOURCE-REASON @ SOURCE-LOC @ ;
+   FACT-REASON @ FACT-LOC @ ;
 
 : SOURCE-ABANDON ( -- )
    UNKNOWN SOURCE-REASON !
    0 SOURCE-LOC !
-   0 SOURCE-FUNS ! ;
+   0 SOURCE-FUNS !
+   0 FACT-FUNS ! ;
 
 : SOURCE-ARITY+ ( n n -- )
    {: din:n dout:n :}
@@ -311,8 +324,8 @@ public
 
 : SOURCE-ARITY@ ( n -- n n )
    {: ordinal:n :}
-   ordinal SOURCE-FUNS @ >= if -1 -1 exit then
-   ordinal SOURCE-IN @ ordinal SOURCE-OUT @ ;
+   ordinal FACT-FUNS @ >= if -1 -1 exit then
+   ordinal FACT-IN @ ordinal FACT-OUT @ ;
 
 : SOURCE-CONTRACT-START ( -- )
    SOURCE-FUNS @ 1- {: ordinal:n :}
@@ -339,23 +352,44 @@ public
 : SOURCE-CONTRACT-DONE ( -- )
    1 SOURCE-FUNS @ 1- SOURCE-TYPE-READY ! ;
 
+\ The declaration's source facts are complete before NBACK:OBSERVE runs.
+\ TAKE reads this copy after emission; observers retain their veto/throw path.
+: SOURCE-FREEZE ( -- )
+   SOURCE-FUNS @ {: funs:n :}
+   SOURCE-TYPE-N @ {: types:n :}
+   funs FACT-IN-RESERVE
+   funs FACT-OUT-RESERVE
+   funs FACT-TYPE-FIRST-RESERVE
+   funs FACT-TYPE-READY-RESERVE
+   types FACT-TYPES-RESERVE
+   funs 0 ?do
+      i SOURCE-IN @ i FACT-IN !
+      i SOURCE-OUT @ i FACT-OUT !
+      i SOURCE-TYPE-FIRST @ i FACT-TYPE-FIRST !
+      i SOURCE-TYPE-READY @ i FACT-TYPE-READY !
+   loop
+   types 0 ?do i SOURCE-TYPES @ i FACT-TYPES ! loop
+   SOURCE-REASON @ FACT-REASON !
+   SOURCE-LOC @ FACT-LOC !
+   funs FACT-FUNS ! ;
+
 private
 
 : SOURCE-CONTRACT? ( n -- bool )
-   dup SOURCE-FUNS @ >= if drop false exit then
-   SOURCE-TYPE-READY @ 0<> ;
+   dup FACT-FUNS @ >= if drop false exit then
+   FACT-TYPE-READY @ 0<> ;
 
 : SOURCE-CONTRACT-COPY ( n n -- )
    {: ordinal:n id:n :}
    ordinal SOURCE-CONTRACT? 0= if exit then
    id ROW {: row:n :}
-   ordinal SOURCE-IN @ row IMPL-IN @ <>
-   ordinal SOURCE-OUT @ row IMPL-OUT @ <> or if E-STATE throw then
+   ordinal FACT-IN @ row IMPL-IN @ <>
+   ordinal FACT-OUT @ row IMPL-OUT @ <> or if E-STATE throw then
    row IMPL-IN @ row IMPL-OUT @ + {: count:n :}
    IMPL-TYPE-N @ count + IMPL-TYPES-RESERVE
    IMPL-TYPE-N @ row IMPL-TYPE-FIRST !
    count 0 ?do
-      ordinal SOURCE-TYPE-FIRST @ i + SOURCE-TYPES @
+      ordinal FACT-TYPE-FIRST @ i + FACT-TYPES @
          IMPL-TYPE-N @ i + IMPL-TYPES !
    loop
    IMPL-TYPE-N @ count + IMPL-TYPE-N ! ;
@@ -365,7 +399,6 @@ private
    a ROW {: x:n :}
    b ROW {: y:n :}
    x IMPL-TYPE-FIRST @ 0< y IMPL-TYPE-FIRST @ 0< or if false exit then
-   x IMPL-CONTRACT @ y IMPL-CONTRACT @ CTARGET:SAME? 0= if false exit then
    x IMPL-IN @ y IMPL-IN @ <> x IMPL-OUT @ y IMPL-OUT @ <> or if false exit then
    x IMPL-IN @ x IMPL-OUT @ + 0 ?do
       x IMPL-TYPE-FIRST @ i + IMPL-TYPES @

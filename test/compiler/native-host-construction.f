@@ -20,6 +20,8 @@ create FILE-HASH SHA256-FILE-CTX-BYTES allot
 PTR-VARIABLE TEST-NAME
 variable TEST-NAME-U
 variable OBSERVED
+variable EARLY-ARMED
+variable EARLY-OBSERVED
 variable OLD-SLOT
 variable OLD-OCC
 
@@ -60,8 +62,27 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    1 OBSERVED +! ;
 
+: OBSERVE-EARLY ( n IR-CTX:ctx IR-BUILD:module -- )
+   2drop drop
+   EARLY-ARMED @ 0= if exit then
+   EARLY-OBSERVED @ 0= if
+      NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   else
+      NHOST:SOURCE-CONTRACT-START
+      NHOST:SOURCE-CONTRACT-DONE
+   then
+   1 EARLY-OBSERVED +! ;
+
 : CUSTOM-SOURCE ( -- )
    s" test/compiler/native-host-custom.f" LOAD-SOURCE ;
+
+: EARLY-SOURCE ( -- )
+   1 EARLY-ARMED !
+   s" test/compiler/native-host-early.f" LOAD-SOURCE
+   0 EARLY-ARMED ! ;
+
+: FOREIGN-SOURCE ( -- )
+   s" test/compiler/native-host-foreign.f" LOAD-SOURCE ;
 
 : INITIALIZER-SOURCE ( -- )
    s" test/compiler/native-host-initializer.f" LOAD-SOURCE ;
@@ -117,6 +138,12 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" custom publication retains its owned host row" T-LABEL
    s" NATIVE-HOST-CUSTOM:ANSWER" SELECTED-N 42 T=
    OBSERVED @ 1 T=
+   s" early frozen-HIR observer cannot change producer facts" T-LABEL
+   EARLY-OBSERVED @ 2 T=
+   s" NATIVE-HOST-EARLY:ANSWER" SELECTED-N 43 T=
+   s" NATIVE-HOST-SOURCE:PATCH-TARGET" HANDLE
+   s" NATIVE-HOST-EARLY:CONTRACT" HANDLE NHOST:ASSOCIATE
+   s" NATIVE-HOST-SOURCE:PATCH-TARGET" SELECTED-N 44 T=
    s" source casts, stores and pointer views refuse before entry" T-LABEL
    s" NATIVE-HOST-SOURCE:BEFORE-BAD" REFUSES
    s" NATIVE-HOST-SOURCE:NESTED-STORE" REFUSES
@@ -154,6 +181,8 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    0 OBSERVED !
    s" test/compiler/native-host-source.f" LOAD-SOURCE
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
+   ['] OBSERVE-EARLY NBACK:OBSERVE!
+   EARLY-SOURCE
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
    s" distinct checked output constructors cannot attach" T-LABEL
@@ -173,6 +202,15 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    T-REPORT ;
 
 : CHECK-CONSTRUCTION ( -- )
+   s" foreign target body associates with retained host implementation" T-LABEL
+   s" NATIVE-HOST-FOREIGN:TARGET" VALUE-N 99 T=
+   s" NATIVE-HOST-FOREIGN:TARGET" HANDLE
+   s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
+   s" NATIVE-HOST-FOREIGN:TARGET" SELECTED-N 42 T=
+   s" foreign body cannot serve as a host implementation" T-LABEL
+   s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
+   s" NATIVE-HOST-FOREIGN:TARGET" HANDLE NHOST:ASSOCIATE
+   s" NATIVE-HOST-SOURCE:TARGET99" REFUSES
    s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T=
    T-REPORT
    \ The artifact carries the fresh target loader's real recorded closure.
@@ -220,6 +258,7 @@ public
 : RUN-HOST-CONSTRUCTION ( -- )
    FOREIGN-TARGET? 0= if 76 throw then
    ['] BIND-CONSTRUCTION ['] CHECK-CONSTRUCTION ['] SOURCE-NOOP SOURCE-POLICY!
+   ['] FOREIGN-SOURCE SOURCE-TAIL!
    0 SCRIPT-ARGV$ OUTPUT!
    ['] ORIGIN false ['] CAPTURE-WRITER RUN-READY-RC BUILD-RC T=
    PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
