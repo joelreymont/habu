@@ -109,6 +109,34 @@ variable SDT-SRC-U
    1 EVENT-STATE@ EV-STATE-FRESH T=
    save-n REQUIRE-N ! ;
 
+\ An entry with more direct dependencies than 256: discovery records an event
+\ for each require, in order, with its own path. Line k requires sd-wXY.f,
+\ where XY spells k in two letters, so line 256 requires sd-wjw.f.
+: SDT-WIDE-LINE$ ( -- ptr u8 n )  S\" require sd-waa.f\n" ;
+17 constant SDT-WIDE-LINE                \ the bytes of SDT-WIDE-LINE$
+257 constant SDT-WIDE-N
+create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
+
+: SDT-WIDE-LINE! ( n -- )
+   {: k:n :}
+   k SDT-WIDE-LINE * SDT-WIDE + {: at:ptr :}
+   SDT-WIDE-LINE$ {: l:ptr lu:n :}
+   l at lu BYTE-COPY
+   k 26 / $61 + at 12 + c!
+   k 26 mod $61 + at 13 + c! ;
+
+: SDT-TEST-WIDE ( -- )
+   REQUIRE-N @ {: save-n:n :}
+   SDT-WIDE-N 0 ?do i SDT-WIDE-LINE! loop
+   s" wide.f" SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT SDT-WIDE-N T=
+   256 EVENT-KIND@ EV-REQUIRED T=
+   256 EVENT-STATE@ EV-STATE-FRESH T=
+   256 EVENT-PATH@ s" sd-wjw.f" SDT-PATH T$=
+   0 EVENT-PATH@ s" sd-waa.f" SDT-PATH T$=
+   save-n REQUIRE-N ! ;
+
 : SDT-TEST-EMIT ( -- )
    s" emit.f" S\" require sd-x.f\ns\" sd-y.f\" provided\n" SDT-WRITE-ENTRY
    SDT-DISCOVER
@@ -369,6 +397,7 @@ variable SDT-SRC-U
    SDT-TEST-MIXED
    SDT-TEST-SPELLING
    SDT-TEST-FRESH
+   SDT-TEST-WIDE
    SDT-TEST-EMIT
    SDT-TEST-SHADOW
    SDT-TEST-UNDEFINE

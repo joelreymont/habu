@@ -4,6 +4,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
+require lib/source.f
 require tools/lint/json-writer.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
 
@@ -31,8 +32,8 @@ variable UB-FILE-U
 TYPED-VARIABLE UB-LABEL-A ptr u8
 variable UB-LABEL-U
 TYPED-VARIABLE UB-SRC-A ptr u8
+DYNAMIC-BUFFER UB-SRC-MEM u8   \ the file being scanned, read whole; released after its scan
 variable UB-SRC-U
-variable UB-SRC-CAP
 variable UB-I
 variable UB-LINE
 variable UB-COL
@@ -462,8 +463,8 @@ private
    UB-FALSE UB-TRUSTED !
    UB-FALSE UB-IN-DEF ! ;
 
-: UB-CLEAR-MAPPED-SPANS ( -- )
-   NULL$ drop UB-SRC-A!   0 UB-SRC-U !  0 UB-SRC-CAP !
+: UB-CLEAR-SRC-SPANS ( -- )
+   NULL$ drop UB-SRC-A!   0 UB-SRC-U !
    NULL$ drop UB-TOK-A!   0 UB-TOK-U !
    NULL$ drop UB-PREV-A!  0 UB-PREV-U !
    NULL$ drop UB-PREV2-A! 0 UB-PREV2-U ! ;
@@ -471,12 +472,11 @@ private
 : UB-CLEAR-SPANS ( -- )
    NULL$ drop UB-FILE-A! 0 UB-FILE-U !
    NULL$ drop UB-LABEL-A! 0 UB-LABEL-U !
-   UB-CLEAR-MAPPED-SPANS ;
+   UB-CLEAR-SRC-SPANS ;
 
-: UB-MAPPED-SPANS-CLEAR? ( -- bool )
+: UB-SRC-SPANS-CLEAR? ( -- bool )
    UB-SRC-A@ NULL$ drop =
    UB-SRC-U @ 0= and
-   UB-SRC-CAP @ 0= and
    UB-TOK-A@ NULL$ drop = and
    UB-TOK-U @ 0= and
    UB-PREV-A@ NULL$ drop = and
@@ -487,10 +487,10 @@ private
 : UB-SPANS-CLEAR? ( -- bool )
    UB-FILE-A@ NULL$ drop =
    UB-FILE-U @ 0= and
-   UB-MAPPED-SPANS-CLEAR? and ;
+   UB-SRC-SPANS-CLEAR? and ;
 
-: UB-REQUIRE-MAPPED-CLEAR ( -- )
-   UB-MAPPED-SPANS-CLEAR? 0= if E-BUF-STATE throw then ;
+: UB-REQUIRE-SRC-CLEAR ( -- )
+   UB-SRC-SPANS-CLEAR? 0= if E-BUF-STATE throw then ;
 
 : UB-REQUIRE-IDLE ( -- )
    UB-SPANS-CLEAR? 0= if E-BUF-STATE throw then ;
@@ -521,28 +521,26 @@ private
       UB-SAVE-PREV
    repeat ;
 
-: UB-MAPPED-SCAN ( -- )
-   UB-FILE$ UB-SRC-A@ UB-SRC-CAP @ READ-ALL {: used:n :}
-   used UB-SRC-U !
+: UB-SRC-ROOM ( n -- ptr u8 )
+   UB-SRC-MEM-RESERVE 0 UB-SRC-MEM ;
+
+\ The file is read to its end however it grows while it is read: its size,
+\ whose refusal (E-FS-STAT) stays a missing or irregular file's, is only the
+\ first room (lib/source.f READ-WHOLE-SAMPLED). The scan takes the bytes after
+\ the read, which may move the storage.
+: UB-READ-SCAN ( -- )
+   UB-FILE$  UB-FILE$ FILE-SIZE  [: UB-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED UB-SRC-U !
+   0 UB-SRC-MEM UB-SRC-A!
    UB-SCAN ;
 
-: UB-MAPPED-FILE ( n ptr u8 NUM:alloc-byte-len -- )
-   {: size:n src:ptr extent:NUM:alloc-byte-len :}
-   src UB-SRC-A!
-   size UB-SRC-CAP !
-   [: UB-MAPPED-SCAN ;] catch {: rc:n :}
-   UB-CLEAR-MAPPED-SPANS
-   rc 0 <> if rc throw then ;
-
+\ The storage lives for one file's scan: the spans into it are cleared, then it
+\ is released, on return or throw.
 : UB-FILE-ACT ( -- )
-   UB-FILE$ FILE-SIZE {: bytes:n :}
-   bytes 0= if
-      UB-NUM UB-SRC-A!
-      UB-SCAN
-      exit
-   then
-   bytes bytes MEM:BYTES-ALLOC-LEN [: UB-MAPPED-FILE ;] MEM:WITH-BYTES
-   UB-REQUIRE-MAPPED-CLEAR ;
+   [: UB-READ-SCAN ;] catch {: rc:n :}
+   UB-CLEAR-SRC-SPANS
+   UB-SRC-MEM-RELEASE
+   rc 0 <> if rc throw then
+   UB-REQUIRE-SRC-CLEAR ;
 
 public
 

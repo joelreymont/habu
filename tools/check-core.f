@@ -54,13 +54,6 @@ using SOURCE-ROOT
 LOWER-CERT-HOOK:INSTALL
 ' CHK-CHECK-HOOK set-check
 
-\ A source is at most what the engine loads from one file; tools/diag-origin.f
-\ reads to the same bound.
-INCLUDE-BUF-CAP constant CHK-SRC-CAP
-\ The run file is the subject behind a prefix, with an origin mark on each
-\ definition, and the run loads it with `--load`: it holds what the engine
-\ loads from one file.
-INCLUDE-BUF-CAP constant CHK-RUN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
@@ -97,13 +90,19 @@ create CHK-ONE 1 allot
 \ The lazily allocated byte buffers hold addresses, so each is a declared
 \ pointer cell: a raw `variable` would launder the address through a cell of
 \ unknown type.
-TYPED-VARIABLE CHK-SRC-BUF-A ptr u8
-TYPED-VARIABLE CHK-RUN-BUF-A ptr u8
 TYPED-VARIABLE CHK-OUT-BUF-A ptr u8
 TYPED-VARIABLE CHK-ERR-BUF-A ptr u8
 TYPED-VARIABLE CHK-MAP-BUF-A ptr u8
-TYPED-VARIABLE CHK-EXP-BUF-A ptr u8
-TYPED-VARIABLE CHK-SEL-SRC-BUF-A ptr u8
+TYPED-VARIABLE CHK-SCRATCH-BUF-A ptr u8
+
+\ A buffer that holds a source, or text built from one, grows to what it
+\ holds: the engine loads a source file of any size (src/core/include.f), so
+\ the check refuses none for its size. The run file is the subject behind a
+\ prefix, with an origin mark on each definition.
+DYNAMIC-BUFFER CHK-SRC-MEM u8
+DYNAMIC-BUFFER CHK-RUN-MEM u8
+DYNAMIC-BUFFER CHK-EXP-MEM u8
+DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
 
 variable CHK-ARG-I
 variable CHK-POS-N
@@ -160,13 +159,34 @@ variable CHK-TFAM-NAME-I
 : CHK-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
+\ A ROOM word makes room for n bytes and answers its buffer and that room, at
+\ least one byte so the answer is always an address. Growth may move the
+\ buffer, so a caller takes its address after the room it needs.
+: CHK-SRC-ROOM ( n -- ptr u8 n )
+   1 max dup CHK-SRC-MEM-RESERVE 0 CHK-SRC-MEM swap ;
+
 : CHK-SRC-BUF ( -- ptr u8 )
-   CHK-SRC-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-SRC-BUF-A ! then
-   CHK-SRC-BUF-A @ ;
+   1 CHK-SRC-ROOM drop ;
+
+\ Reads the file at a path into CHK-SRC whole, however it grows while it is
+\ read (lib/source.f READ-WHOLE-FILE). The buffer may move as it grows, so a
+\ caller takes CHK-SRC-BUF after the read.
+: CHK-SRC-READ ( ptr u8 n -- n )
+   [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
+
+: CHK-RUN-ROOM ( n -- ptr u8 n )
+   1 max dup CHK-RUN-MEM-RESERVE 0 CHK-RUN-MEM swap ;
 
 : CHK-RUN-BUF ( -- ptr u8 )
-   CHK-RUN-BUF-A @ 0= if CHK-RUN-CAP CHK-ALLOC-BUF CHK-RUN-BUF-A ! then
-   CHK-RUN-BUF-A @ ;
+   1 CHK-RUN-ROOM drop ;
+
+\ The scratch where the all-errors core renders a pass's diagnostics has that
+\ core's bound (tools/check-all-errors-core.f SCRATCH-CAP).
+: CHK-SCRATCH-BUF ( -- ptr u8 )
+   CHK-SCRATCH-BUF-A @ 0= if
+      CHECK-ALL-ERRORS:SCRATCH-CAP CHK-ALLOC-BUF CHK-SCRATCH-BUF-A !
+   then
+   CHK-SCRATCH-BUF-A @ ;
 
 : CHK-OUT-BUF ( -- ptr u8 )
    CHK-OUT-BUF-A @ 0= if CHK-OUT-CAP CHK-ALLOC-BUF CHK-OUT-BUF-A ! then
@@ -180,15 +200,17 @@ variable CHK-TFAM-NAME-I
    CHK-MAP-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-MAP-BUF-A ! then
    CHK-MAP-BUF-A @ ;
 
+: CHK-EXP-ROOM ( n -- ptr u8 n )
+   1 max dup CHK-EXP-MEM-RESERVE 0 CHK-EXP-MEM swap ;
+
 : CHK-EXP-BUF ( -- ptr u8 )
-   CHK-EXP-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-EXP-BUF-A ! then
-   CHK-EXP-BUF-A @ ;
+   1 CHK-EXP-ROOM drop ;
+
+: CHK-SEL-SRC-ROOM ( n -- ptr u8 n )
+   1 max dup CHK-SEL-SRC-MEM-RESERVE 0 CHK-SEL-SRC-MEM swap ;
 
 : CHK-SEL-SRC-BUF ( -- ptr u8 )
-   CHK-SEL-SRC-BUF-A @ 0= if
-      CHK-SRC-CAP CHK-ALLOC-BUF CHK-SEL-SRC-BUF-A !
-   then
-   CHK-SEL-SRC-BUF-A @ ;
+   1 CHK-SEL-SRC-ROOM drop ;
 
 : CHK-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
    u 0= if exit then
@@ -515,7 +537,7 @@ private
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
 : CHK-SOURCE-BYTES ( -- ptr u8 n )
-   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-CAP READ-ALL
+   CHK-SRC-PATH CHK-SRC-READ
    CHK-SRC-BUF swap ;
 
 : CHK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -541,7 +563,7 @@ private
 
 \ The --all-errors core writes its records to standard error in the run's mode.
 : CHK-ALL-STREAM ( -- )
-   2 >FD CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS:STREAM!
+   2 >FD CHK-SCRATCH-BUF CHECK-ALL-ERRORS:SCRATCH-CAP CHECK-ALL-ERRORS:STREAM!
    CHK-JSON @ CHECK-ALL-ERRORS:JSON! ;
 
 \ The pre-pass or discovery stops in one file of the composition: the subject,
@@ -551,7 +573,7 @@ private
 : CHK-STOP-BYTES ( ptr u8 n bool -- ptr u8 n )
    {: a:ptr u:n subj:bool :}
    subj if CHK-SOURCE-BYTES exit then
-   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-BUF swap ;
+   a u CHK-SRC-READ CHK-SRC-BUF swap ;
 
 \ What stopped the pre-pass or discovery with the given code, at the given byte
 \ of the given bytes of the file the label names, by the record --all-errors
@@ -597,19 +619,24 @@ private
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
-: CHK-EXP-APP ( ptr u8 n -- )
-   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
+: CHK-EXP-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u >LEN
+   CHK-EXP-OUT-U @ LEN>N u + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
 
 : CHK-EXP-C ( n -- )
-   CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
+   CHK-EXP-OUT-U @ LEN>N 1+ CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
+
+: CHK-EXP-QPATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u >LEN
+   CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
+   CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
 : CHK-APPEND-REQUIRED ( ptr u8 n -- ) {: path:ptr pathu:n :}
    \ Boot-owned dependencies are recorded portably relative to the current
    \ tree.  Materializing their canonical absolute spelling makes the child
    \ miss its boot row and reload a family such as option; paths outside the
    \ tree remain absolute and retain their distinct application identity.
-   path pathu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
-   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
+   path pathu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
    s" required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
@@ -622,27 +649,21 @@ private
 \ text: the child's own JSON diagnostics for a file it loads by path carry the
 \ engine's coordinates, which count from each definition's name.
 : CHK-APPEND-ENTRY ( ptr u8 n -- )
-   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
+   CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
    s" script-required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
 
+\ Standard input holds a source of any size, read to its end into CHK-SRC
+\ (lib/source.f READ-WHOLE-FD), with no size to start from.
+: CHK-READ-STDIN ( -- n )
+   0 0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
+
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
-   CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U !
+   CHK-READ-STDIN CHK-SRC-U !
    CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
-
-: CHK-SOURCE-TOO-BIG ( -- )
-   s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
-
-\ A capacity fault while the tool builds the file the run loads is the clean
-\ NOINPUT diagnostic, not an uncaught E-FS-CAPACITY.
-: CHK-CAPPED ( [ -- ] -- ) {: q :}
-   q catch {: rc:n :}
-   rc 0= if exit then
-   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
-   rc throw ;
 
 \ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
 \ quote, backslash, CR, LF or NUL, and the file system refuses a NUL in a path.
@@ -702,10 +723,6 @@ private
 : CHK-CHECK-LABEL ( -- )
    CHK-LABEL SOURCE-QPATH-CHECK ;
 
-\ The bound is checked on the file itself: discovery sizes its own scratch to
-\ the source, so a source over CHK-SRC-CAP no longer refuses there, and the
-\ later read into the source buffer sits outside CHK-MATERIALIZE's catch.
-\
 \ A JSON packet names the file by the canonical absolute path its closure entry
 \ holds, the spelling every dependency's packets carry, so one run names each
 \ file one way and a client can map it to a URI. Prose keeps the path as given.
@@ -714,7 +731,6 @@ private
 : CHK-MATERIALIZE-FILE ( -- )
    0 CHK-POS$ CHK-LABEL!
    CHK-CHECK-INPUTS
-   CHK-LABEL FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    CHK-EXPAND-RESET
    0 CHK-EXP-OUT-U !
    CHK-LABEL CHK-ENTRY-ID {: id:n :}
@@ -725,7 +741,9 @@ private
    CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE-SOURCE ( -- )
-   CHK-SEL-SRC-BUF CHK-SRC-BUF CHK-SEL-SRC-U @ BYTE-COPY
+   CHK-SEL-SRC-U @ CHK-SRC-ROOM drop
+   {: dst:ptr :}
+   CHK-SEL-SRC-BUF dst CHK-SEL-SRC-U @ BYTE-COPY
    CHK-SEL-SRC-U @ CHK-SRC-U !
    CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
    CHK-CHECK-LABEL
@@ -755,9 +773,10 @@ public
 : SOURCE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
-   srcu CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    labelu FS-PATH-CAP > if E-FS-CAPACITY throw then
-   src CHK-SEL-SRC-BUF srcu BYTE-COPY
+   srcu CHK-SEL-SRC-ROOM drop
+   {: dst:ptr :}
+   src dst srcu BYTE-COPY
    label CHK-SEL-LABEL-BUF labelu BYTE-COPY
    srcu CHK-SEL-SRC-U !
    labelu CHK-SEL-LABEL-U !
@@ -775,20 +794,17 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
-\ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
-\ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
-\ layer (dot habu-tfam-13-c2-checkcore-cap). E-FS-PATH-UNSAFE is a path or
-\ label the run cannot quote (a named file's canonical spelling or a listed
-\ one as CHK-APPEND-REQUIRED spells it, in its loader line; the label, in the
-\ run stage's DIAG-FILE!) or a path holding a NUL, which the file system
-\ refuses to look up. The materializers judge each spelling after the existence
-\ check, so a missing path is still NOINPUT, and before discovery or any later
-\ stage reads the source, so the answer does not depend on what it holds.
+\ E-FS-PATH-UNSAFE is a path or label the run cannot quote (a named file's
+\ canonical spelling or a listed one as CHK-APPEND-REQUIRED spells it, in its
+\ loader line; the label, in the run stage's DIAG-FILE!) or a path holding a
+\ NUL, which the file system refuses to look up. The materializers judge each
+\ spelling after the existence check, so a missing path is still NOINPUT, and
+\ before discovery or any later stage reads the source, so the answer does not
+\ depend on what it holds.
 : CHK-MATERIALIZE ( -- )
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
    rc E-FS-PATH-UNSAFE = if CHK-PATH-UNSAFE then
    rc throw ;
 
@@ -1004,23 +1020,20 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ The rows of CHK-EXP-BUF, two cells each: the text offset a run starts at and
 \ the source offset the lexer read it from, which CHK-EXP$ hands to the checker
 \ (src/core/checker.f DIAG-MAP!) so a declaration packet locates its token in
-\ the file. A run takes at least one byte and each later run a separator too,
-\ so CHK-SRC-CAP + 2 cells hold every row the buffer can have.
-TYPED-VARIABLE CHK-EXP-ROW-A ptr n
+\ the file. The rows grow with the text, so their address is taken after the
+\ last row is stored.
+DYNAMIC-BUFFER CHK-EXP-ROW-MEM n
 variable CHK-EXP-ROWS
 
 : CHK-EXP-ROW ( -- ptr n )
-   CHK-EXP-ROW-A @ 0= if
-      CHK-SRC-CAP 2 + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS CHK-EXP-ROW-A !
-   then
-   CHK-EXP-ROW-A @ ;
+   1 CHK-EXP-ROW-MEM-RESERVE 0 CHK-EXP-ROW-MEM ;
 
 : CHK-VREC-RESET ( -- )
    0 CHK-EXP-U !
    0 CHK-EXP-ROWS ! ;
 
 : CHK-VREC-ROOM ( n -- )
-   CHK-EXP-U @ + CHK-SRC-CAP > IF E-FS-CAPACITY throw THEN ;
+   CHK-EXP-U @ + CHK-EXP-ROOM 2drop ;
 
 : CHK-VREC-C ( n -- ) {: c:n :}
    1 CHK-VREC-ROOM
@@ -1033,9 +1046,11 @@ variable CHK-EXP-ROWS
    CHK-EXP-U @ u + CHK-EXP-U ! ;
 
 : CHK-VREC-ROW! ( n -- )        \ the next run, read from source offset n
-   CHK-EXP-ROW {: src:n rows:ptr :}
-   CHK-EXP-U @  CHK-EXP-ROWS @ 2 * cells rows + !
-   src  CHK-EXP-ROWS @ 2 * 1 + cells rows + !
+   {: src:n :}
+   CHK-EXP-ROWS @ 2 * {: at:n :}
+   at 2 + CHK-EXP-ROW-MEM-RESERVE
+   CHK-EXP-U @  at CHK-EXP-ROW-MEM !
+   src  at 1 + CHK-EXP-ROW-MEM !
    CHK-EXP-ROWS @ 1 + CHK-EXP-ROWS ! ;
 
 : CHK-VREC-TOKEN+ ( ptr u8 n n -- )   \ a token and its source offset
@@ -1361,8 +1376,7 @@ variable CHK-PKG-NAME-I
 \ The file is lexed whole and every declaration in it registered, in its own
 \ name, so each report names the file it reads.
 : CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
+   path pathu CHK-SRC-READ CHK-NOM-U !
    CHK-SRC-BUF CHK-NOM-U @ 1 1 0 DIAG-SOURCE!
    CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
    0 CHK-NOM-I !
@@ -1417,12 +1431,12 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    0 CHK-RUN-U ! ;
 
 : CHK-RUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHK-RUN-U @ u + CHK-RUN-CAP > if E-FS-CAPACITY throw then
+   CHK-RUN-U @ u + CHK-RUN-ROOM 2drop
    a CHK-RUN-BUF CHK-RUN-U @ + u BYTE-COPY
    CHK-RUN-U @ u + CHK-RUN-U ! ;
 
 : CHK-RUN-C ( n -- ) {: c:n :}
-   CHK-RUN-U @ 1+ CHK-RUN-CAP > if E-FS-CAPACITY throw then
+   CHK-RUN-U @ 1+ CHK-RUN-ROOM 2drop
    c CHK-RUN-BUF CHK-RUN-U @ + c!
    CHK-RUN-U @ 1+ CHK-RUN-U ! ;
 
@@ -1434,8 +1448,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN+
    CHK-LF CHK-RUN-C ;
 
-: CHK-RUN-QPATH+ ( ptr u8 n -- )
-   >LEN CHK-RUN-BUF CHK-RUN-CAP >LEN CHK-RUN-U SOURCE-APPEND-QPATH ;
+: CHK-RUN-QPATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u >LEN
+   CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
+   CHK-RUN-U SOURCE-APPEND-QPATH ;
 
 : CHK-ERR-NONNEG ( n -- )
    dup 0 < if drop s" <negative>" CHK-ERR exit then
@@ -1463,17 +1479,16 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    s" ' CHECK-F-HOOK set-check" CHK-RUN-SP ;
 
 \ The origin pass appends the marked copy of the source file at the given path
-\ to the run buffer, reading it through check.f's own buffer and cap, as the
+\ to the run buffer, reading it whole through check.f's own buffer, as the
 \ nominal pass does. The engine comments a leading `#!` line only at the start
 \ of a file it reads, so the pass comments the source's own first, with the
 \ engine's rewrite: the scan then reads that line as a comment, and the marked
 \ copy carries the rewrite the run needs.
 : CHK-RUN-ORIGIN+ ( ptr u8 n -- )
-   CHK-SRC-BUF CHK-SRC-CAP READ-ALL {: len:n :}
+   CHK-SRC-READ {: len:n :}
    CHK-SRC-BUF len SOURCE-ROOT:SHEBANG-COMMENT
-   CHK-SRC-BUF len
-   CHK-RUN-BUF CHK-RUN-U @ +  CHK-RUN-CAP CHK-RUN-U @ - >LEN
-   DIAG-ORIGIN-SOURCE>BUF LEN>N CHK-RUN-U @ + CHK-RUN-U ! ;
+   CHK-SRC-BUF len [: CHK-RUN-U @ + CHK-RUN-ROOM drop CHK-RUN-U @ + ;]
+   DIAG-ORIGIN-SOURCE>BUF CHK-RUN-U @ + CHK-RUN-U ! ;
 
 \ A named file runs as the command line runs it, loaded by its canonical path
 \ (CHK-APPEND-ENTRY): its own relative requires resolve against its directory,
@@ -1503,11 +1518,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-HOOK-ON
    CHK-SOURCE CHK-RUN-ORIGIN+ ;
 
-\ A source the read admits can still outgrow the run file once the prefix and
-\ the origin marks join it; it is refused here, before the run.
 : CHK-BUILD-RUN ( -- )
    CHK-RUN-RESET
-   [: CHK-BUILD-ACT ;] CHK-CAPPED ;
+   CHK-BUILD-ACT ;
 
 : CHK-LOAD-RESET ( -- )
    PROC-ARGV-ENV-RESET
@@ -1884,19 +1897,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
    a u FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   a u FILE-SIZE CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
-   a u CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-SRC-U !
+   a u CHK-SRC-READ CHK-SRC-U !
    a u ;
-
-: CHK-VERIFY-STDIN-ACT ( -- )
-   CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U ! ;
 
 \ stdin's path need not exist.
 : CHK-VERIFY-STDIN ( -- ptr u8 n )
    CHK-STDIN-PATH-U @ 0= if CHK-USAGE then
-   [: CHK-VERIFY-STDIN-ACT ;] catch {: rc:n :}
-   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
-   rc 0<> if rc throw then
+   CHK-READ-STDIN CHK-SRC-U !
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.

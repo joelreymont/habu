@@ -42,22 +42,38 @@ variable IE-SAVE-N
    DISCOVERY-OFF
    IE-SAVE-N @ REQUIRE-N ! ;
 
-\ EVENT-COPY-PATH is an engine word any source can call, so it measures a path
-\ against the room left in the pool: a length near the maximum cell would wrap
-\ the sum back under EVENT-POOL-CAP, and a negative one would slip under it. The
-\ refusal ends the process, so the refused cases run in a forked child.
+\ The pool grows with the paths it holds: a megabyte of them keeps each at the
+\ offset it was given. EVENT-COPY-PATH is an engine word any source can call,
+\ so a negative length, or one so long that its sum with the fill wraps, is
+\ refused; the refusal ends the process, so those cases run in a forked child.
 $1000 constant IE-CHUNK
+$100 constant IE-CHUNKS                  \ a megabyte of paths
 $400 constant IE-CAPTURE-CAP
 10000 constant IE-TIMEOUT-MS
 create IE-SRC IE-CHUNK allot
 create IE-OUT IE-CAPTURE-CAP allot
 create IE-ERR IE-CAPTURE-CAP allot
 
+\ Path k of the fill is IE-CHUNK copies of byte k.
+: IE-CHUNK-FILL ( n -- )
+   {: k:n :}
+   IE-CHUNK 0 ?do k IE-SRC i + c! loop ;
+
 : IE-POOL-FILL ( -- )
    EVENTS-RESET
-   EVENT-POOL-CAP IE-CHUNK / 0 ?do IE-SRC IE-CHUNK EVENT-COPY-PATH 2drop loop
-   IE-SRC EVENT-POOL-CAP IE-CHUNK mod EVENT-COPY-PATH 2drop ;
-: IE-POOL-OVER ( -- ) IE-POOL-FILL IE-SRC 1 EVENT-COPY-PATH 2drop ;
+   IE-CHUNKS 0 ?do
+      i IE-CHUNK-FILL
+      IE-SRC IE-CHUNK EVENT-COPY-PATH IE-CHUNK T= i IE-CHUNK * T=
+   loop ;
+
+\ The first and last byte of each path that are not its own.
+: IE-POOL-MISSES ( -- n )
+   0
+   IE-CHUNKS 0 ?do
+      i IE-CHUNK * EVENT-POOL-AT c@ i $ff and <> if 1 + then
+      i 1 + IE-CHUNK * 1 - EVENT-POOL-AT c@ i $ff and <> if 1 + then
+   loop ;
+
 : IE-POOL-NEG ( -- )
    EVENTS-RESET IE-SRC 1 EVENT-COPY-PATH 2drop IE-SRC -1 EVENT-COPY-PATH 2drop ;
 : IE-POOL-MAX ( -- )
@@ -73,10 +89,10 @@ create IE-ERR IE-CAPTURE-CAP allot
    IE-ERR erru LEN>N S\" events: pool overflow\n" T$= ;
 
 : IE-TEST-POOL-ROOM ( -- )
-   s" a path that fills the event pool exactly" T-LABEL
-   IE-POOL-FILL IE-SRC 0 EVENT-COPY-PATH drop EVENT-POOL-CAP T=
-   s" a path one past the pool, -1 and the maximum cell are refused" T-LABEL
-   s" IE-POOL-OVER" IE-DIES
+   s" a megabyte of paths keeps each at its offset" T-LABEL
+   IE-POOL-FILL
+   IE-POOL-MISSES 0 T=
+   s" -1 and the maximum cell are refused" T-LABEL
    s" IE-POOL-NEG" IE-DIES
    s" IE-POOL-MAX" IE-DIES
    EVENTS-RESET ;
