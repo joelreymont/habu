@@ -1572,8 +1572,8 @@ private
 : TARGET-REFUSE-CASES ( -- )
    s" registering the dialect twice into one module is refused" T-LABEL
    [: TWICE ;] E-IR-SCHEMA-DUP TTHROWSQ
-   s" registering against a GPU target refuses: no GPU backend is loaded" T-LABEL
-   [: PTX-REG ;] E-CTGT-UNLOADED TTHROWSQ ;
+   s" registering against a GPU target refuses the dialect capability" T-LABEL
+   [: PTX-REG ;] E-IR-SCHEMA-TARGET TTHROWSQ ;
 
 \ ---- groups ------------------------------------------------------------------
 \ A refused fixture leaves its context abandoned, and an abandoned context gives

@@ -49,6 +49,7 @@ variable BAD-NDICT                   \ the record count before it was tried
 variable BAD-MOVED                   \ and how far trying it moved the count
 variable BAD-RECS                    \ what the refusing shadow had filed
 variable BAD-EMS
+TYPED-VARIABLE USE-ART NART:emission
 
 : OPEN-X64 ( -- )
    X64ABI:BINDING NSHADOW:OPEN ;
@@ -172,30 +173,38 @@ ndict@ REC-QUOT !
 : ADD-STAGE ( -- )
    0 X64KHIR:ARG  1 X64KHIR:ARG  HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT ;
 
-: SEALED-X64 ( [ -- ] -- )
+: SEALED-X64 ( [ NART:emission -- ] -- )
    {: use :}
    s" shadow-add" 2 1 [: ADD-STAGE ;] use X64KHIR:COMPILE ;
 
-: FOREIGN-USE ( -- )
+: FOREIGN-USE ( NART:emission -- )
+   USE-ART !
    cp@ ndict@ {: cp0:n nd0:n :}
-   [: NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
+   [: USE-ART @ NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
    cp@ cp0 - 0 T=
    ndict@ nd0 - 0 T= ;
 
-: UNCLAIMED-USE ( -- )
+: UNCLAIMED-USE ( NART:emission -- )
+   {: e:NART:emission :}
+   e USE-ART !
    NSHADOW:RECORDS NSHADOW:EMISSIONS {: recs:n ems:n :}
-   NSHADOW:TAKE
+   e NSHADOW:TAKE
    NSHADOW:ABANDON
    ndict@ NSHADOW:PUBLISH
-   [: 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: USE-ART @ 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
-   [: 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
+   [: USE-ART @ 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
    NSHADOW:RECORDS recs T=
    NSHADOW:EMISSIONS ems T= ;
 
-: WRONG-TARGET-USE ( -- )
-   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+: WRONG-TARGET-USE ( NART:emission -- )
+   USE-ART !
+   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+
+: CLOSED-USE ( NART:emission -- )
+   USE-ART !
+   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
 
 : FOREIGN-CASE ( -- )
    s" publication refuses an emission sealed for another machine before its window, and neither CP nor NDICT moves" T-LABEL
@@ -274,7 +283,7 @@ NSHADOW:CLOSE
    NSHADOW:OPEN? TFALSE
    [: NSHADOW:RECORDS drop ;] E-NSHADOW-STATE TTHROWSQ
    [: NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ drop ;] E-NSHADOW-STATE TTHROWSQ
-   [: NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ
+   [: CLOSED-USE ;] SEALED-X64
    OPEN-X64
    NSHADOW:OPEN? TTRUE
    NSHADOW:RECORDS 0 T=

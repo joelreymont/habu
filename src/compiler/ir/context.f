@@ -764,8 +764,10 @@ public
 \ so an idle session costs one header mapping and whatever its owner built once.
 \
 \ WHAT THE OWNER HOLDS GOES OUT WITH THE SESSION. An owner that keeps a flag
-\ saying its session-lived state is readable installs its stand-down through
-\ SESSION-STAND-DOWN!, and SESSION-CLOSE runs that before the row is retired -
+\ saying its session-lived state is readable installs its admission and
+\ stand-down through SESSION-STAND-DOWN!, and SESSION-CLOSE runs the admission
+\ before either the owner or the row is changed. The stand-down runs before
+\ retirement -
 \ so no reader can be handed such a flag over storage that is already gone, and
 \ no ordering between a capture's entry points decides it.
 \
@@ -821,8 +823,11 @@ SESSION-FORGET
 \ SESSION-CLOSE therefore runs the owner's stand-down itself, before the row is
 \ retired, so a capture's close and the owner's own close are one action.
 \
-\ ONE VECTOR, INSTALLED ONCE, for the reason RETIRE-CHILDREN! gives above: a
-\ second install would silently stop the first one from running.
+\ ONE OWNER PAIR, INSTALLED ONCE, for the reason RETIRE-CHILDREN! gives above:
+\ a second install would silently stop the first one from running. Admission
+\ refuses while another root or task owns the compiler; only a successful
+\ admission lets stand-down and retirement begin.
+defer SESSION-ADMISSION ( -- )
 defer SESSION-STAND-DOWN ( -- )
 
 variable STAND-SET
@@ -831,12 +836,13 @@ variable STAND-SET
 : KEEP-STANDING ( -- ) ;
 
 : STAND-RESET ( -- )
+   [: KEEP-STANDING ;] is SESSION-ADMISSION
    [: KEEP-STANDING ;] is SESSION-STAND-DOWN ;
 STAND-RESET
 
-\ The row goes back whatever the stand-down did, so an owner that throws cannot
-\ leave a live row over storage this close is about to release; the first error
-\ is the one the caller is told.
+\ Once admitted, the row goes back whatever the stand-down did, so an owner
+\ that throws cannot leave a live row over storage this close is about to
+\ release; the first error is the one the caller is told.
 : SESSION-END ( -- )
    [: SESSION-STAND-DOWN ;] catch {: rc:n :}
    SESSION-RETIRE
@@ -844,13 +850,13 @@ STAND-RESET
 
 public
 
-\ Install the stand-down a session's owner runs when the session closes. Takes
-\ the word itself, so the owner keeps it private and nothing else can stand
-\ another package's state down.
-: SESSION-STAND-DOWN! ( [ -- ] -- )
+\ Install the admission and stand-down a session's owner runs when it closes.
+\ The owner keeps both words private, so nothing else can stand its state down.
+: SESSION-STAND-DOWN! ( [ -- ] [ -- ] -- )
    STAND-SET @ 0<> if E-IR-CTX-STATE throw then
    1 STAND-SET !
-   is SESSION-STAND-DOWN ;
+   is SESSION-STAND-DOWN
+   is SESSION-ADMISSION ;
 
 : SESSION-LIVE? ( -- bool )
    SESSION-SLOT @ 0 < 0= ;
@@ -861,6 +867,7 @@ public
 : SESSION-CLOSE ( -- )
    SESSION-CK
    SESSION-DEEPEST-CK
+   SESSION-ADMISSION
    SESSION-END ;
 
 private

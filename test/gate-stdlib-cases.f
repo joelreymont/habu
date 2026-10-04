@@ -548,11 +548,15 @@ SUITE wasm-numeric-aot
    test/wasm/numeric.f
 ;SUITE
 
-\ The backend registry: src/compiler/target.f's rows and the registration in
-\ src/arch/arm64/backend.f, which is the acceptance suite for
+\ The backend registry: src/compiler/target.f's rows and complete registration
+\ in src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
 SUITE compiler-target-registry
    test/compiler/target-registry.f
+;SUITE
+
+SUITE compiler-session
+   test/compiler/session.f
 ;SUITE
 
 SUITE compiler-arm32-asm

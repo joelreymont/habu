@@ -18,19 +18,18 @@
 \ the corpus and this machine has no prune pass, so the row answers the module
 \ it was given, and one case pins that by identity. EVERY ROW OF THIS BACKEND IS
 \ NOW FILLED: the placed case runs the driver's whole order - declare, select,
-\ prune, fixpoint, emit at a named slot, retire - and reads the sealed image back
-\ off the emitter, which is what says the x86-64 chain is reachable end to end
+\ prune, fixpoint, emit at a named slot, retire - and reads the sealed image from
+\ its owned artifact, which says the x86-64 chain is reachable end to end
 \ from src/compiler/native/compiler.f.
 \
-\ WHAT PUBLICATION IS HANDED. The emit row also states the sealed emission as
-\ NEMIT's rows, the only emission src/compiler/native/publish.f reads, and the
-\ retire row clears them; the row cases read the image, the function starts and
-\ both kinds of site back off NEMIT alone. Nothing commits here: the publisher
-\ writes through this engine's own rows, which take whole ARM64 words, so the
-\ x86-64 commit is the x86-64 engine's.
+\ WHAT PUBLICATION IS HANDED. The emit row states a sealed emission that the
+\ context copies to NART before the backend retires. The row cases read the
+\ image, the function starts and both kinds of site from that copy. Nothing
+\ commits here: the publisher writes through this engine's own rows, which take
+\ whole ARM64 words, so the x86-64 commit is the x86-64 engine's.
 \
-\ ONE FIXTURE PER CONTEXT, and each case gives the passes it bound back through
-\ the release row before its context leaves: a context that dies holding them
+\ ONE FIXTURE PER CONTEXT, and scoped session work releases and retires the
+\ passes on return or throw: a context that dies holding them
 \ gives its registry slots back only when a live enclosing one leaves normally
 \ (src/compiler/ir/context.f, the note on stale handles).
 
@@ -42,6 +41,8 @@ require src/compiler/ir/build.f
 require src/compiler/native/backend.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
+require src/compiler/session/backend.f
+require src/compiler/session/emission.f
 require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
 require src/compiler/native/x64ir.f
@@ -85,10 +86,42 @@ create TXT
 1 TYPED-BUFFER W-CTX IR-CTX:ctx
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
 1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
+TYPED-VARIABLE W-SESSION NSESSION:session
+TYPED-VARIABLE W-ART NART:emission
 
 : CC ( -- IR-CTX:ctx )               0 W-CTX @ ;
 : BB ( -- IR-BUILD:builder )         0 W-BLD @ ;
 : SS ( -- IR-ID:ir-source-id )       0 W-SRC @ ;
+: NS ( -- NSESSION:session )         W-SESSION @ ;
+
+: BAD-OFFSET ( -- )
+   W-ART @ 2 NART:FUNCTION-OFFSET@ drop ;
+
+: PUBLISH-FOREIGN ( -- )
+   W-ART @ NPUB:PUBLISH-PENDING ;
+
+: CLEAN-WORK ( -- )
+   NS NBACK:RELEASE
+   NS NBACK:RETIRE ;
+
+: CASE-WORK ( R IR-CTX:ctx [ R IR-CTX:ctx -- S ] NSESSION:session -- S )
+   W-SESSION !
+   [: CLEAN-WORK ;] finally ;
+
+: CASE-CONTEXT ( R NLEASE:lease [ R IR-CTX:ctx -- S ] IR-CTX:ctx -- S )
+   {: l:NLEASE:lease body c:IR-CTX:ctx :}
+   c body c l NSESSION:NEW [: CASE-WORK ;] NSESSION:WITH-WORK ;
+
+: CASE-LEASE ( R [ R IR-CTX:ctx -- S ] NLEASE:lease -- S )
+   {: l:NLEASE:lease :}
+   l swap WBND [: CASE-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
+
+public
+: SESSION ( -- NSESSION:session ) NS ;
+
+: WITH-CASE ( R [ R IR-CTX:ctx -- S ] -- S )
+   [: CASE-LEASE ;] NLEASE:WITH ;
+private
 
 : SPN ( n n -- IR-SOURCE:span )
    {: st:n ln:n :}
@@ -357,17 +390,16 @@ create TXT
    CLOSE-FUN ;
 
 \ ---- driving the chain -------------------------------------------------------
-\ The driver's own order up to the emit row this backend leaves unfilled:
-\ declare what the definition takes and leaves, select, prune, and lower to a
-\ fixpoint. src/compiler/native/compiler.f runs exactly these words.
+\ The driver's order before emission: declare what the definition takes and
+\ leaves, select, prune, and lower to a fixpoint.
 : CHAIN-LINKED ( n n NBACK:linkage -- IR-BUILD:module )
    {: in:n out:n l:NBACK:linkage :}
-   CC in out l NBACK:DECLARE
-   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   NS in out l NBACK:DECLARE
+   NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   CC m1 NBACK:FIXPOINT ;
+   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   NS m1 NBACK:FIXPOINT ;
 
 : CHAIN ( n n -- IR-BUILD:module )
    NBACK:L-NONE CHAIN-LINKED ;
@@ -468,7 +500,6 @@ variable FRAME-BYTES                 \ the size the reserve carries
    1 1 CHAIN {: m:IR-BUILD:module :}
    m 1 1 ACCEPTED {: ok:bool :}
    m SCAN {: blocks:n :}
-   CC NBACK:RELEASE
    N-STORE @  N-LOAD @  SLOT-A @  SLOT-TOP @  N-RESERVE @  FRAME-BYTES @
    blocks  ok ;
 
@@ -477,30 +508,28 @@ variable FRAME-BYTES                 \ the size the reserve carries
 : PRUNE-BODY ( IR-CTX:ctx -- n n n bool )
    HIR-MOD
    BUILD-DIFF
-   CC 2 1 NBACK:L-NONE NBACK:DECLARE
-   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   NS 2 1 NBACK:L-NONE NBACK:DECLARE
+   NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:FMODULE  m1 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}
    m1 SCAN drop
-   CC NBACK:RELEASE
    N-STORE @  N-LOAD @  N-RESERVE @  same ;
 
 : UNCHANGED-BODY ( IR-CTX:ctx -- n n n n bool bool )
    HIR-MOD
    BUILD-DIFF
-   CC 2 1 NBACK:L-NONE NBACK:DECLARE
-   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+   NS 2 1 NBACK:L-NONE NBACK:DECLARE
+   NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   CC m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   CC m1 NBACK:FIXPOINT {: m2:IR-BUILD:module :}
+   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   NS m1 NBACK:FIXPOINT {: m2:IR-BUILD:module :}
    m0 IR-BUILD:FMODULE  m2 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}
    m2 2 1 ACCEPTED {: ok:bool :}
    m2 SCAN drop
    A64RA:PLAN-N {: plan:n :}
-   CC NBACK:RELEASE
    N-STORE @  N-LOAD @  N-RESERVE @  plan  same  ok ;
 
 \ ---- the two rows that finish a definition -----------------------------------
@@ -531,44 +560,39 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 : DIFF-IMAGE? ( ptr u8 n -- bool )
    s" 4981ec10000000498b0424498b4c24084829c8498904244981c408000000c3" SPAN=HEX? ;
 
-\ The driver's last two calls in the order src/compiler/native/compiler.f makes
-\ them: emit at the slot the publisher named, then retire inside the dying
-\ context. Retire runs there on the accepting path AND on the refusing one, so
-\ it is called twice here: the second has nothing left to give back and is
-\ nonetheless harmless.
+\ Retire is idempotent: this case calls it before the scoped cleanup does.
 : PLACED-BODY ( IR-CTX:ctx -- n n bool bool )
    HIR-MOD
    BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
-   X64EMIT:SIZE {: sz:n :}
-   X64EMIT:BLOCKS {: blocks:n :}
-   X64EMIT:BYTES X64EMIT:SIZE DIFF-IMAGE? {: same:bool :}
-   CC NBACK:RETIRE
-   CC NBACK:RETIRE
+   NS m EMIT-SLOT NBACK:EMIT
+   m SCAN {: blocks:n :}
+   NS NART:COPY {: e:NART:emission :}
+   e NART:SIZE {: sz:n :}
+   e NART:BYTES e NART:SIZE DIFF-IMAGE? {: same:bool :}
+   NS NBACK:RETIRE
    X64EMIT:SEALED? 0= {: gone:bool :}
-   CC NBACK:RELEASE
    sz blocks same gone ;
 
 \ ---- the rows publication reads ------------------------------------------------
-\ src/compiler/native/publish.f reads NEMIT and never this emitter, so the emit
-\ row states the sealed emission there: the image the emitter sealed, no
+\ The owned artifact states the image the emitter sealed, no
 \ trailing return because the span is exact, and the slot it was measured from.
-\ The retire row clears the rows on the accepting path too, so the publisher,
-\ asked after it, refuses before it moves the code pointer or the dictionary.
+\ Owned rows remain readable after backend retirement. This foreign artifact
+\ still refuses publication into the host before moving CP or the dictionary.
 : ROWS-BODY ( IR-CTX:ctx -- bool n n n n )
    HIR-MOD
    BUILD-DIFF
    2 1 CHAIN {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
-   NEMIT:BYTES NEMIT:SIZE DIFF-IMAGE? {: same:bool :}
-   NEMIT:RET-BYTES {: ret:n :}
-   NEMIT:PLACEMENT {: at:n :}
-   CC NBACK:RETIRE
+   NS m EMIT-SLOT NBACK:EMIT
+   NS NART:COPY {: e:NART:emission :}
+   NS NBACK:RETIRE
+   e NART:BYTES e NART:SIZE DIFF-IMAGE? {: same:bool :}
+   e NART:RET-BYTES {: ret:n :}
+   e NART:PLACEMENT {: at:n :}
    cp@ {: cp0:n :}
    ndict@ {: nd0:n :}
-   [: NPUB:PUBLISH-PENDING ;] E-NEMIT-STATE TTHROWSQ
-   CC NBACK:RELEASE
+   e W-ART !
+   [: PUBLISH-FOREIGN ;] catch E-NPUB-TARGET T=
    same ret at  cp@ cp0 -  ndict@ nd0 - ;
 
 \ ---- the spilling modules through the emit row -------------------------------
@@ -578,44 +602,39 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 \ and the emitter lays the entry first and the return block last. 32 is the
 \ frame the first case reads off the reserve. What these bytes do when they run
 \ is test/x86-64-peer-routines.f's question.
-: HEAD=HEX? ( ptr u8 n -- bool )
-   {: ea:ptr eu:n :}
-   X64EMIT:BYTES  eu 2 /  ea eu SPAN=HEX? ;
+: HEAD=HEX? ( NART:emission ptr u8 n -- bool )
+   {: e:NART:emission ea:ptr eu:n :}
+   e NART:BYTES eu 2 / ea eu SPAN=HEX? ;
 
-: TAIL=HEX? ( ptr u8 n -- bool )
-   {: ea:ptr eu:n :}
+: TAIL=HEX? ( NART:emission ptr u8 n -- bool )
+   {: e:NART:emission ea:ptr eu:n :}
    eu 2 / {: k:n :}
-   X64EMIT:BYTES X64EMIT:SIZE k - +  k  ea eu SPAN=HEX? ;
+   e NART:BYTES e NART:SIZE k - + k ea eu SPAN=HEX? ;
 
 : PRESSURE-EMIT-BODY ( IR-CTX:ctx -- bool bool )
    HIR-MOD
    BUILD-PRESSURE
    1 1 CHAIN {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
+   NS m EMIT-SLOT NBACK:EMIT
+   NS NART:COPY {: e:NART:emission :}
    \ mc: subq $32, %rsp
-   s" 4881ec20000000" HEAD=HEX? {: head:bool :}
+   e s" 4881ec20000000" HEAD=HEX? {: head:bool :}
    \ mc: addq $32, %rsp
    \ mc: retq
-   s" 4881c420000000c3" TAIL=HEX? {: tail:bool :}
-   CC NBACK:RETIRE
-   CC NBACK:RELEASE
+   e s" 4881c420000000c3" TAIL=HEX? {: tail:bool :}
    head tail ;
 
 \ A shape through every row, emit included: how many reserves the entry block of
 \ the lowered module holds, and whether the emission was sealed. The emission
-\ stands until FINISH, so a case can read its rows first.
-: FRAMED ( n n NBACK:linkage -- n bool )
+\ is copied before scoped cleanup so a case can read its rows first.
+: FRAMED ( n n NBACK:linkage -- n NART:emission )
    CHAIN-LINKED {: m:IR-BUILD:module :}
    m SCAN drop
-   CC m EMIT-SLOT NBACK:EMIT
-   N-RESERVE @ X64EMIT:SEALED? ;
-
-: FINISH ( -- )
-   CC NBACK:RETIRE
-   CC NBACK:RELEASE ;
+   NS m EMIT-SLOT NBACK:EMIT
+   N-RESERVE @ NS NART:COPY ;
 
 : FRAMED-EMIT ( n n NBACK:linkage -- n bool )
-   FRAMED FINISH ;
+   FRAMED NART:PLACED? ;
 
 $400 constant CALLEE-ENTRY           \ the entry the caller's site names
 
@@ -628,14 +647,15 @@ $400 constant CALLEE-ENTRY           \ the entry the caller's site names
 \ The call as publication reads it: one site, a call that comes back, to the
 \ callee's entry, filed where the `call` itself starts - the e8 its rel32
 \ follows.
-: CALL-ROW ( -- n n n n )
-   NEMIT:CALL-SITES  0 NEMIT:CALL-KIND@  0 NEMIT:CALL-TARGET@
-   NEMIT:BYTES 0 NEMIT:CALL-SITE@ + c@ ;
+: CALL-ROW ( NART:emission -- n n n n )
+   {: e:NART:emission :}
+   e NART:CALL-SITES e 0 NART:CALL-KIND@ e 0 NART:CALL-TARGET@
+   e NART:BYTES e 0 NART:CALL-SITE@ + c@ ;
 
 : PCALLER-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD CALLEE-ENTRY BUILD-PCALLER 1 1 NBACK:L-CALLED FRAMED
-   {: r:n sealed:bool :}
-   CALL-ROW FINISH r sealed ;
+   {: r:n e:NART:emission :}
+   e CALL-ROW r e NART:PLACED? ;
 
 \ A function's address as publication reads it: a row for each of the two
 \ functions and none past them, and one site of the code kind at the
@@ -643,12 +663,13 @@ $400 constant CALLEE-ENTRY           \ the entry the caller's site names
 : QUOTER-BODY ( IR-CTX:ctx -- n n n n n n )
    HIR-MOD BUILD-QUOTER
    0 1 CHAIN {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
-   [: 2 NEMIT:FUNCTION-OFFSET@ drop ;] E-NEMIT-ROW TTHROWSQ
-   0 NEMIT:FUNCTION-OFFSET@  1 NEMIT:FUNCTION-OFFSET@
-   NEMIT:ADDR-SITES  0 NEMIT:ADDR-SITE@  0 NEMIT:ADDR-SITE-KIND@
-   NEMIT:CALL-SITES
-   FINISH ;
+   NS m EMIT-SLOT NBACK:EMIT
+   NS NART:COPY {: e:NART:emission :}
+   e W-ART !
+   [: BAD-OFFSET ;] E-NEMIT-ROW TTHROWSQ
+   e 0 NART:FUNCTION-OFFSET@ e 1 NART:FUNCTION-OFFSET@
+   e NART:ADDR-SITES e 0 NART:ADDR-SITE@ e 0 NART:ADDR-SITE-KIND@
+   e NART:CALL-SITES ;
 
 \ ---- a callee no rel32 reaches ------------------------------------------------
 \ Four gigabytes from the slot, so the writer refuses the call's field inside
@@ -660,14 +681,13 @@ $100000000 constant FAR-ENTRY
 1 TYPED-BUFFER W-MOD IR-BUILD:module
 
 : FAR-EMIT ( -- )
-   CC 0 W-MOD @ EMIT-SLOT NBACK:EMIT ;
+   NS 0 W-MOD @ EMIT-SLOT NBACK:EMIT ;
 
 : FAR-BODY ( IR-CTX:ctx -- )
    HIR-MOD FAR-ENTRY BUILD-PCALLER
    1 1 NBACK:L-CALLED CHAIN-LINKED 0 W-MOD !
    [: FAR-EMIT ;] E-X64EMIT-REACH TTHROWSQ
-   [: NEMIT:SIZE drop ;] E-NEMIT-STATE TTHROWSQ
-   FINISH ;
+   [: NS NART:COPY NART:RELEASE ;] E-NEMIT-STATE TTHROWSQ ;
 
 public
 
@@ -675,45 +695,45 @@ public
    T-RESET
 
    s" twelve live values do not fit nine registers: the fixpoint lowers the plan into this dialect's own stores and loads over two turns, eight of each, and the validator accepts the module that comes out" T-LABEL
-   WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PRESSURE-BODY ;] WITH-CASE
    TTRUE 1 T= 32 T= 1 T= 24 T= 8 T= 8 T= 8 T=
 
    s" prune is a pass-through on this machine: the row answers the very module selection wrote, by identity, and threads no store, load or reserve into it" T-LABEL
-   WBND [: PRUNE-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PRUNE-BODY ;] WITH-CASE
    TTRUE 0 T= 0 T= 0 T=
 
    s" a routine that fits comes back from the fixpoint as the very module selection wrote: nothing was lowered because the allocator sealed an empty plan" T-LABEL
-   WBND [: UNCHANGED-BODY ;] IR-CTX:WITH-CONTEXT
+   [: UNCHANGED-BODY ;] WITH-CASE
    TTRUE TTRUE 0 T= 0 T= 0 T= 0 T=
 
    s" the last two rows: the chain's module is placed at the slot the driver names and comes back sealed as the bytes x64-emit.f pins for it, and retiring gives the emission back twice over" T-LABEL
-   WBND [: PLACED-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PLACED-BODY ;] WITH-CASE
    TTRUE TTRUE 1 T= 31 T=
 
    s" the emit row hands publication the sealed emission - the same image, no trailing return because the span is exact, the slot it was measured from - and retiring clears it, so the publisher asked next refuses and moves neither CP nor NDICT" T-LABEL
-   WBND [: ROWS-BODY ;] IR-CTX:WITH-CONTEXT
+   [: ROWS-BODY ;] WITH-CASE
    0 T= 0 T= EMIT-SLOT T= 0 T= TTRUE
 
    s" the spilling module through the emit row: its first instruction takes the 32-byte frame on rsp and the one before its return gives it back" T-LABEL
-   WBND [: PRESSURE-EMIT-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PRESSURE-EMIT-BODY ;] WITH-CASE
    TTRUE TTRUE
 
    s" the pressure held across a branch lowers into one frame, reserved where the routine enters, and is emitted" T-LABEL
-   WBND [: PBRANCH-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PBRANCH-BODY ;] WITH-CASE
    TTRUE 1 T=
 
    s" the pressure held around a loop lowers into one frame, reserved where the routine enters, and is emitted" T-LABEL
-   WBND [: PLOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PLOOP-BODY ;] WITH-CASE
    TTRUE 1 T=
 
    s" the pressure on both sides of a call lowers into one frame held across it, and is emitted" T-LABEL
-   WBND [: PCALLER-BODY ;] IR-CTX:WITH-CONTEXT
+   [: PCALLER-BODY ;] WITH-CASE
    TTRUE 1 T=
    s" its call is the row publication reads: one site, a call that comes back, to the callee's entry, at the e8 its rel32 follows" T-LABEL
    $E8 T= CALLEE-ENTRY T= NEMIT:CALL T= 1 T=
 
    s" a function's address as publication reads it: a row for each of the two functions and none past them, one site of the code kind at the literal that loads the second's, and no call" T-LABEL
-   WBND [: QUOTER-BODY ;] IR-CTX:WITH-CONTEXT
+   [: QUOTER-BODY ;] WITH-CASE
    0 T=                                  \ no call row
    X64IR:ADDR-CODE T=                    \ the site is a code address
    0 T=                                  \ at byte zero, the `mov r64, imm64` itself
@@ -722,9 +742,8 @@ public
    0 T=                                  \ and the first where the emission does
 
    s" a callee four gigabytes from the slot is refused inside the emit row, before any row publication reads is stated" T-LABEL
-   WBND [: FAR-BODY ;] IR-CTX:WITH-CONTEXT
+   [: FAR-BODY ;] WITH-CASE
 
    T-REPORT ;
 
 ;package
-
