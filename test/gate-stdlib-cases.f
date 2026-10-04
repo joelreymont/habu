@@ -242,6 +242,10 @@ SUITE os-memory
    lib/os-memory-test.f
 ;SUITE
 
+SUITE memory-guarded-failure
+   test/memory-guarded-failure.f
+;SUITE
+
 SUITE shadow-lint
    tools/lint/shadow-lint.f
    tools/lint/shadow-lint-test.f

@@ -124,6 +124,9 @@ TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
    span lo span - MEM-UNMAP-SLIVER
    hi span span-bytes + hi - MEM-UNMAP-SLIVER
    base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
+      \ The reserve still owns [lo, hi) when the fixed writable remap fails.
+      \ Report a refusing cleanup rather than losing that mapping too.
+      lo cap STACK-ABI:PAGE-BYTES 2 * + MEM-UNMAP-SLIVER
       E-MEM-MAP throw
    then
    base MEM-MAPPED>PTR cap ;
