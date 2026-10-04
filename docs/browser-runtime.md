@@ -45,6 +45,13 @@ table maps HBR2's packages to Habu's.
 
 **Habu decisions (2026-10-04).** Names: HBR2's `RT:`/`SNAPSHOT:` words live in `RT-ROOTS`; `UI:` keeps the §7.2 builder; other packages are `RT-*` and `UI-*` (table above). Port: `RT-SCOPE:SUBMIT` and `WAKE` are `defer` words the embedding binds once; `DELIVER` and `TIME!` are its inputs; `submit-result` is §24.5's eight results, defined once. Memory: pools grow by 64 KiB chunks from lib/memory.f to §26.1 ceilings; slot IDs are handles; a refused growth is RecoverableOOM. RootSet: a stamp header and six slots indexed by `rt-store` (§3.2's list); component state lives in `session` keyed (instance, schema key). Queries: key-range scans with a declared field-equality filter; query revision is the store slot's revision. Mutation: handlers return Actions; every write is a registered command's PROJECT. Admission: `UI-ADMIT` reads frozen HIR through NFROZEN in the engine's post-freeze observer cell and enforces at registration; admitted packages compile at tier 1; fuel is the Wasm path's. Cost: 1 per HIR op, callee cost + 1, bound × body, ⌈bytes/4096⌉; `RT-COST` holds the units. G1 package: Workspace, AssemblyTree, PartEditor, MaterialChooser, ConstraintPanel; trace to Apply's command. Guards: one recorded removal proof per guard, no mutation harness. Cycles: the package-DAG lint; compile units follow package-build §4.5. Tokens: `DEFTYPE` with retired public converters and private `CAST:`; linears are `DEFLINEAR` with one private `TRUSTED:` mint each. Errors: each package mints its decade in its owning file (RUNTIME -9500.., UI -9650..); lib/errors.f carries one comment line per package. Deferred without a G0-G4 caller: compaction, JOIN/RACE/BOUNDED-MAP, semantics records, Boolean/OptionIds bindings, secondary indexes.
 
+Counters (a lead decision of 2026-10-04 on the oracle's recommendation): the
+never-reused ComponentInstanceId and PlacementId counters are each an opaque
+`DEFTYPE` reference to private state in cells the scope owns exclusively, not a
+linear token. Copying a reference aliases its state, so no typed route rewinds a
+counter; the epoch's scope holds both across host calls; `CLOSE` marks a counter
+closed for every alias and never resets it.
+
 Oracles (§28.3): Habu does not hold the independent Python codec. The
 wire's independent oracle is the golden vectors of
 habu-pin-hbr2-wire-0b340032 (`lib/browser/hbr-v2-registry.json`,
