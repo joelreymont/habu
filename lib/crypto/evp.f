@@ -655,15 +655,20 @@ CAST: RS>BYTES ( n -- ptr u8 )
    code RS-ERROR-LIB ERR-PROV-LIB =
    code RS-ERROR-REASON ERR-PROV-RSA-LIB = and ;
 
-\ For default-provider PKCS#1 v1.5 RSA, RSA_verify records RSA-specific
-\ signature rejection reasons, then rsa_verify appends ERR_R_RSA_LIB in PROV.
-\ A failed context copy, digest, provider state or allocation has no such
-\ complete chain. The one-shot EVP path can reach Final's context copy.
+\ For default-provider PKCS#1 v1.5 RSA, rsa_verify appends ERR_R_RSA_LIB in
+\ PROV when RSA_verify returns zero. A valid padding block with empty payload
+\ returns zero without an RSA error; other signature refusals carry RSA
+\ reasons first. Empty or unrelated queues remain operational failures.
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/crypto/evp/m_sigver.c
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/signature/rsa_sig.c
 \ https://github.com/openssl/openssl/blob/openssl-3.6.0/providers/implementations/signature/rsa_sig.c.in
+\ https://github.com/openssl/openssl/blob/openssl-3.6.0/crypto/rsa/rsa_sign.c
 : RS-VERIFY-MISMATCH? ( -- bool )
    ERROR-GET dup 0= if drop false exit then
+   dup RS-PROV-RSA-ERROR? if
+      drop ERROR-GET dup 0= if drop true exit then
+      drop ERROR-CLEAR false exit
+   then
    begin
       dup RS-RSA-REJECTION? 0= if drop ERROR-CLEAR false exit then
       drop ERROR-GET
