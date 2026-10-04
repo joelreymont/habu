@@ -231,11 +231,12 @@ create GREG-SLOTS
 
 public
 
-\ The kernel closes this forward literal after its primitive has registered.
+\ START, emits an absent marker; the completed kernel fills that same cell
+\ with the audited primitive ordinal plus one.
 : SCALAR-ROW, ( n -- )
    SCALAR-ROW-VALUE !
-   SCALAR-ROW-LABEL @ >LABEL LBL,
-   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES, ;
+   SCALAR-ROW-VALUE BYTE-VIEW
+   CODE SCALAR-ROW-LABEL @ >LABEL LABEL-AT + CELL BYTE-COPY ;
 
 \ The flag that enters a handler with the signal number in rdi, the siginfo in
 \ rsi and the ucontext in rdx, and has the kernel fill the siginfo.
@@ -493,6 +494,9 @@ public
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
+   SCALAR-ROW-LABEL @ >LABEL LBL,
+   0 SCALAR-ROW-VALUE !
+   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES,
    booted LBL, ;
 
 ;using   \ X64LAYOUT
