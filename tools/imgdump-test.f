@@ -16,7 +16,7 @@ package IMAGE-DUMP-TEST
 
 $4000 constant IDT-CAP
 60000 constant IDT-TIMEOUT-MS       \ includes checked compilation of imgdump
-\ FIND-DICT's longest-run scan over a real multi-MB baked engine (IDT-TEST-BAKED-PC)
+\ FIND-DICT's counted scan over a real multi-MB baked engine (IDT-TEST-BAKED-PC)
 \ does far more work than a scan of the tiny synthetic images above, on top of
 \ the same checked compilation; give it its own, larger budget.
 240000 constant IDT-SELF-TIMEOUT-MS
@@ -27,7 +27,9 @@ $4000 constant IDT-CAP
 \ colliding with it.
 128 constant IDT-HDR-BYTES
 3 constant IDT-ET-DYN               \ e_type: ET_DYN, a PIE image
+62 constant IDT-EM-X86-64
 IDT-HDR-BYTES DREC + constant IDT-IMG-BYTES
+$4020 constant IDT-X64-IMG-BYTES
 
 \ The decoy fixture (IDT-WRITE-DECOY-IMG) puts a second, refused record ahead
 \ of the real one. Its name length field declares far more bytes than the
@@ -41,7 +43,7 @@ IDT-IMG-BYTES DREC + IDT-DECOY-TAIL-BYTES + constant IDT-DECOY-IMG-BYTES
 
 create IDT-OUT IDT-CAP allot
 create IDT-ERR IDT-CAP allot
-create IDT-IMG IDT-DECOY-IMG-BYTES allot
+create IDT-IMG IDT-X64-IMG-BYTES allot
 create IDT-PRN-BUF 3 allot
 create IDT-ROOT FS-PATH-CAP allot
 create IDT-A FS-PATH-CAP allot
@@ -51,6 +53,13 @@ create IDT-DIFF FS-PATH-CAP allot
 create IDT-PIE FS-PATH-CAP allot
 create IDT-NONELF FS-PATH-CAP allot
 create IDT-DECOY FS-PATH-CAP allot
+create IDT-COUNT-DECOY FS-PATH-CAP allot
+create IDT-X64 FS-PATH-CAP allot
+create IDT-X64-TRUNC FS-PATH-CAP allot
+create IDT-X64-NAME FS-PATH-CAP allot
+create IDT-X64-SNAP FS-PATH-CAP allot
+create IDT-X64-GRID FS-PATH-CAP allot
+create IDT-X64-BAD-HEAP FS-PATH-CAP allot
 
 variable IDT-ROOT-U
 variable IDT-A-U
@@ -60,6 +69,13 @@ variable IDT-DIFF-U
 variable IDT-PIE-U
 variable IDT-NONELF-U
 variable IDT-DECOY-U
+variable IDT-COUNT-DECOY-U
+variable IDT-X64-U
+variable IDT-X64-TRUNC-U
+variable IDT-X64-NAME-U
+variable IDT-X64-SNAP-U
+variable IDT-X64-GRID-U
+variable IDT-X64-BAD-HEAP-U
 
 : IDT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -89,6 +105,22 @@ variable IDT-DECOY-U
 : IDT-DECOY$ ( -- ptr u8 n )
    IDT-DECOY IDT-DECOY-U @ ;
 
+: IDT-COUNT-DECOY$ ( -- ptr u8 n )
+   IDT-COUNT-DECOY IDT-COUNT-DECOY-U @ ;
+
+: IDT-X64$ ( -- ptr u8 n )
+   IDT-X64 IDT-X64-U @ ;
+: IDT-X64-TRUNC$ ( -- ptr u8 n )
+   IDT-X64-TRUNC IDT-X64-TRUNC-U @ ;
+: IDT-X64-NAME$ ( -- ptr u8 n )
+   IDT-X64-NAME IDT-X64-NAME-U @ ;
+: IDT-X64-SNAP$ ( -- ptr u8 n )
+   IDT-X64-SNAP IDT-X64-SNAP-U @ ;
+: IDT-X64-GRID$ ( -- ptr u8 n )
+   IDT-X64-GRID IDT-X64-GRID-U @ ;
+: IDT-X64-BAD-HEAP$ ( -- ptr u8 n )
+   IDT-X64-BAD-HEAP IDT-X64-BAD-HEAP-U @ ;
+
 : IDT-ZERO ( n -- ) {: bytes :}
    bytes 0 ?do
       0 IDT-IMG i + c!
@@ -106,6 +138,7 @@ variable IDT-DECOY-U
 \ The one dict record every single-record fixture below carries, DREC bytes
 \ past the fake header.
 : IDT-WRITE-RECORD ( ptr u8 n n n n -- ) {: path:ptr pathu start len ch :}
+   1 IDT-IMG IDT-HDR-BYTES 8 - + !
    IDT-HDR-BYTES start len 1 ch IDT-REC-AT
    path pathu IDT-IMG IDT-IMG-BYTES WRITE-ALL ;
 
@@ -149,7 +182,95 @@ variable IDT-DECOY-U
    IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
    IDT-HDR-BYTES $100 $0c IDT-DECOY-NAME-LEN IDT-DECOY-NAME-C IDT-REC-AT
    IDT-HDR-BYTES DREC + $100 $0c 1 65 IDT-REC-AT
+   1 IDT-IMG IDT-HDR-BYTES DREC + 8 - + !
    path pathu IDT-IMG IDT-DECOY-IMG-BYTES WRITE-ALL ;
+
+\ A longer, plausible run is not a seed table unless the preceding count cell
+\ names its length. The final row is the only counted run in this image.
+: IDT-WRITE-COUNT-DECOY-IMG ( ptr u8 n -- ) {: path:ptr pathu :}
+   IDT-X64-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   IDT-HDR-BYTES $100 $0c 1 66 IDT-REC-AT
+   IDT-HDR-BYTES DREC + $110 $0c 1 67 IDT-REC-AT
+   IDT-HDR-BYTES 2 DREC * + $120 $0c 1 65 IDT-REC-AT
+   IDT-HDR-BYTES 3 DREC * + $130 $0c 1 68 IDT-REC-AT
+   1 IDT-IMG IDT-HDR-BYTES 2 DREC * + 8 - + !
+   path pathu IDT-IMG IDT-HDR-BYTES 4 DREC * + WRITE-ALL ;
+
+\ A linked x86 image keeps its live records at a fixed region VA, independently
+\ of their file offset; out-of-line names use that VA and code lengths are raw
+\ CODE-SPAN fields. The PT_LOADs are the only VA-to-file map.
+: IDT-X64-PHDR ( n n n n n n -- )
+   {: idx:n off:n va:n files:n mem:n flags:n :}
+   IMAGE-DUMP:ELF-EHDR-BYTES idx 56 * + {: p:n :}
+   1 IDT-IMG p + !
+   flags IDT-IMG p 4 + + !
+   off IDT-IMG p 8 + + !
+   va IDT-IMG p 16 + + !
+   va IDT-IMG p 24 + + !
+   files IDT-IMG p 32 + + !
+   mem IDT-IMG p 40 + + !
+   $1000 IDT-IMG p 48 + + ! ;
+
+: IDT-WRITE-X64-IMG ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   IDT-X64-IMG-BYTES IDT-ZERO
+   IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
+   IDT-EM-X86-64 IDT-IMG IMAGE-DUMP:ELF-MACHINE-OFF + c!
+   $40 IDT-IMG $20 + !
+   $40 IDT-IMG $34 + !
+   56 IDT-IMG $36 + !
+   4 IDT-IMG $38 + !
+   0 0 $400000 $2000 $2000 5 IDT-X64-PHDR
+   1 $2000 $402000 $20 $20 6 IDT-X64-PHDR
+   2 $3000 $1400000 $100 $2000000 6 IDT-X64-PHDR
+   3 $4000 $340000000 $20 $2000000 6 IDT-X64-PHDR
+   $401100 IDT-IMG $3000 + !
+   $0c CODE-SPAN:EXACT IDT-IMG $3008 + !
+   DNAME-EXT 1 or IDT-IMG $3010 + !
+   $1400080 IDT-IMG $3018 + !
+   88 IDT-IMG $3080 + c!
+   path pathu IDT-IMG IDT-X64-IMG-BYTES WRITE-ALL ;
+
+DYNAMIC-BUFFER IDT-SNAP u8
+$340000 DATA-START + constant IDT-SNAP-BYTES
+
+: IDT-SNAP@ ( -- ptr u8 ) 0 IDT-SNAP ;
+: IDT-SNAP! ( n n -- ) {: value:n off:n :}
+   value IDT-SNAP@ off + CELL-VIEW ! ;
+
+: IDT-WRITE-X64-SNAP ( -- )
+   IDT-SNAP-BYTES IDT-SNAP-RESERVE
+   IDT-SNAP-BYTES 0 ?do 0 IDT-SNAP@ i + c! loop
+   IDT-X64-SNAP$ IDT-WRITE-X64-IMG
+   $20000 IDT-IMG $60 + !  $20000 IDT-IMG $68 + !
+   $20000 IDT-IMG $80 + !  $420000 IDT-IMG $88 + !
+   $420000 IDT-IMG $90 + !
+   $30000 IDT-IMG $B8 + !  DICT-SIZE IDT-IMG $D0 + !
+   $340000 IDT-IMG $F0 + !  DATA-START IDT-IMG $108 + !
+   IDT-IMG IDT-SNAP@ $2000 BYTE-COPY
+   IDT-IMG $3000 + IDT-SNAP@ $30000 + $100 BYTE-COPY
+   $7000 $FFF0 IDT-SNAP!
+   $3145544953343658 $FFF8 IDT-SNAP!
+   99 $10000 IDT-SNAP!
+   SNAP-MAGIC $1FFD0 IDT-SNAP!
+   SNAPSHOT-FORMAT:HEAP-RAW $1FFD8 IDT-SNAP!
+   1 $1FFE0 IDT-SNAP!
+   DICT-SIZE $1FFE8 IDT-SNAP!
+   DATA-START $FFD0 + $1FFF0 IDT-SNAP!
+   SNAPSHOT-FORMAT:VERSION $1FFF8 IDT-SNAP!
+   DATA-VA DATA-START + 8 + $340000 IDT-SNAP!
+   42 $340010 IDT-SNAP!
+   IDT-X64-SNAP$ IDT-SNAP@ IDT-SNAP-BYTES WRITE-ALL
+   1 $10000 IDT-SNAP!
+   64 $10008 IDT-SNAP!
+   1 IDT-SNAP@ $10010 + c!
+   1 IDT-SNAP@ $10011 + c!
+   99 IDT-SNAP@ $10051 + c!
+   SNAPSHOT-FORMAT:HEAP-GRID $1FFD8 IDT-SNAP!
+   IDT-X64-GRID$ IDT-SNAP@ IDT-SNAP-BYTES WRITE-ALL
+   2 $1FFD8 IDT-SNAP!
+   IDT-X64-BAD-HEAP$ IDT-SNAP@ IDT-SNAP-BYTES WRITE-ALL
+   IDT-SNAP-RELEASE ;
 
 : IDT-PREPARE ( -- )
    CLEANUP-RESET
@@ -162,13 +283,32 @@ variable IDT-DECOY-U
    IDT-ROOT$ s" pie.img" IDT-PIE JOIN-PATH IDT-PIE-U !
    IDT-ROOT$ s" nonelf.img" IDT-NONELF JOIN-PATH IDT-NONELF-U !
    IDT-ROOT$ s" decoy.img" IDT-DECOY JOIN-PATH IDT-DECOY-U !
+   IDT-ROOT$ s" count-decoy.img" IDT-COUNT-DECOY JOIN-PATH IDT-COUNT-DECOY-U !
+   IDT-ROOT$ s" x64.img" IDT-X64 JOIN-PATH IDT-X64-U !
+   IDT-ROOT$ s" x64-trunc.img" IDT-X64-TRUNC JOIN-PATH IDT-X64-TRUNC-U !
+   IDT-ROOT$ s" x64-name.img" IDT-X64-NAME JOIN-PATH IDT-X64-NAME-U !
+   IDT-ROOT$ s" x64-snap.img" IDT-X64-SNAP JOIN-PATH IDT-X64-SNAP-U !
+   IDT-ROOT$ s" x64-grid.img" IDT-X64-GRID JOIN-PATH IDT-X64-GRID-U !
+   IDT-ROOT$ s" x64-bad-heap.img" IDT-X64-BAD-HEAP JOIN-PATH IDT-X64-BAD-HEAP-U !
    IDT-A$ $100 $0c 65 IDT-WRITE-IMG
    IDT-SAME$ $100 $0c 65 IDT-WRITE-IMG
    IDT-SHIFT$ $120 $0c 65 IDT-WRITE-IMG
    IDT-DIFF$ $100 $10 66 IDT-WRITE-IMG
    IDT-PIE$ $100 $0c 65 IDT-WRITE-PIE-IMG
    IDT-NONELF$ $100 $0c 65 IDT-WRITE-NON-ELF-IMG
-   IDT-DECOY$ IDT-WRITE-DECOY-IMG ;
+   IDT-DECOY$ IDT-WRITE-DECOY-IMG
+   IDT-COUNT-DECOY$ IDT-WRITE-COUNT-DECOY-IMG
+   IDT-X64$ IDT-WRITE-X64-IMG
+   1 IDT-IMG $D0 + !
+   1 IDT-IMG $3010 + !
+   88 IDT-IMG $3018 + c!
+   IDT-X64-TRUNC$ IDT-IMG IDT-X64-IMG-BYTES WRITE-ALL
+   IDT-X64-NAME$ IDT-WRITE-X64-IMG
+   $81 IDT-IMG $D0 + !
+   DNAME-EXT 2 or IDT-IMG $3010 + !
+   89 IDT-IMG $3081 + c!
+   IDT-X64-NAME$ IDT-IMG IDT-X64-IMG-BYTES WRITE-ALL
+   IDT-WRITE-X64-SNAP ;
 
 : IDT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -196,6 +336,22 @@ variable IDT-DECOY-U
    a au IDT-ARG+
    b bu IDT-ARG+
    s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
+
+: IDT-RUN-3 ( ptr u8 n ptr u8 n ptr u8 n -- n n n )
+   {: a:ptr au b:ptr bu c:ptr cu :}
+   IDT-ARGV-BASE
+   a au IDT-ARG+  b bu IDT-ARG+  c cu IDT-ARG+
+   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
+
+: IDT-RUN-ENGINE ( ptr u8 n -- n n n ) {: path:ptr pathu:n :}
+   PROC-ARGV-RESET
+   s" --load" IDT-ARG+
+   s" tools/engine-size.f" IDT-ARG+
+   s" --" IDT-ARG+
+   path pathu IDT-ARG+
+   s" bin/hb" >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-RUN-PC ( ptr u8 n -- n n n ) {: a:ptr u:n :}
@@ -345,6 +501,7 @@ DYNAMIC-BUFFER IDT-SELF u8
    IDT-IMG-BYTES IDT-ZERO
    IMAGE-DUMP:ELF-ET-EXEC IDT-WRITE-ELF-HDR
    $100000000 IDT-IMG IMAGE-DUMP:ELF-ENTRY-OFF + !
+   1 IDT-IMG IDT-HDR-BYTES 8 - + !
    IDT-HDR-BYTES 17 6 1 78 IDT-REC-AT
    XREF-NAMESPACE-WL IDT-IMG IDT-HDR-BYTES + 40 + !
    IDT-A$ IDT-IMG IDT-IMG-BYTES WRITE-ALL
@@ -353,6 +510,7 @@ DYNAMIC-BUFFER IDT-SELF u8
    erru 0 T=
    IDT-OUT outu S\" N $11 $17\n" T$=
    \ Zero roles remain valid records in the same run as a following word.
+   2 IDT-IMG IDT-HDR-BYTES 8 - + !
    IDT-HDR-BYTES 0 0 1 78 IDT-REC-AT
    IDT-HDR-BYTES DREC + $100 $0c 1 65 IDT-REC-AT
    IDT-A$ IDT-IMG IDT-IMG-BYTES DREC + WRITE-ALL
@@ -418,12 +576,59 @@ DYNAMIC-BUFFER IDT-SELF u8
    erru 0 T=
    IDT-OUT outu S\" A $100 $c\n" T$= ;
 
+: IDT-TEST-COUNTED ( -- )
+   s" imgdump uses the counted seed dictionary" T-LABEL
+   IDT-COUNT-DECOY$ IDT-RUN-1 0 T=
+   {: outu erru :}
+   erru 0 T=
+   IDT-OUT outu S\" A $120 $c\n" T$= ;
+
+: IDT-TEST-X64 ( -- )
+   s" imgdump reads linked x86 records through PT_LOAD" T-LABEL
+   IDT-X64$ IDT-RUN-1 0 T=
+   {: outu erru :}
+   erru 0 T=
+   IDT-OUT outu S\" X $401100 $c\n" T$=
+   s" imgdump refuses a dictionary record beyond its PT_LOAD file extent" T-LABEL
+   IDT-X64-TRUNC$ IDT-RUN-1 74 T= 2drop
+   s" imgdump refuses an external name crossing the PT_LOAD file extent" T-LABEL
+   IDT-X64-NAME$ IDT-RUN-1 74 T= 2drop ;
+
+: IDT-TEST-X64-SNAP ( -- )
+   s" imgdump reads x86 snapshot header and split DATA stream" T-LABEL
+   s" --snap" IDT-X64-SNAP$ IDT-RUN-2 0 T=
+   {: outu erru :}
+   erru 0 T= outu 0 > TTRUE
+   s" --data" IDT-X64-SNAP$ s" 16" IDT-RUN-3 0 T=
+   {: outu2 erru2 :}
+   erru2 0 T= IDT-OUT outu2 S\" 42\n" T$=
+   SB-RESET DATA-START FMT:SB-U
+   s" --data" IDT-X64-SNAP$ SB$ IDT-RUN-3 0 T=
+   {: outu3 erru3 :}
+   erru3 0 T= IDT-OUT outu3 S\" 99\n" T$=
+   s" x86 --data spans the fixed prefix and serialized heap" T-LABEL
+   SB-RESET DATA-START 4 - FMT:SB-U
+   s" --data" IDT-X64-SNAP$ SB$ IDT-RUN-3 0 T=
+   {: crossu crosse :}
+   crosse 0 T= IDT-OUT crossu S\" 425201762304\n" T$=
+   s" engine-size counts raw heap separately from zero snapshot pad" T-LABEL
+   IDT-X64-SNAP$ IDT-RUN-ENGINE 0 T= 2drop
+   s" engine-size decodes x86 snapshot heap grid" T-LABEL
+   IDT-X64-GRID$ IDT-RUN-ENGINE 0 T= 2drop
+   s" engine-size rejects an unsupported x86 heap form" T-LABEL
+   IDT-X64-BAD-HEAP$ IDT-RUN-ENGINE 74 T= 2drop
+   s" imgdump rejects a malformed x86 snapshot trailer" T-LABEL
+   s" --snap" IDT-X64-BAD-HEAP$ IDT-RUN-2 74 T= 2drop ;
+
 : IDT-MAIN ( -- )
    T-RESET
    IDT-PREPARE
    IDT-TEST-PRN
    IDT-TEST-PRN-BOUND
    IDT-TEST-DECOY
+   IDT-TEST-COUNTED
+   IDT-TEST-X64
+   IDT-TEST-X64-SNAP
    IDT-TEST-DUMP
    IDT-TEST-IDENTICAL
    IDT-TEST-SHIFT

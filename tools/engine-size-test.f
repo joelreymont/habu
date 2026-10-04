@@ -7,6 +7,80 @@ require tools/image-size-lib.f
 package IMAGE-SIZE
 private
 
+$4020 constant EST-X64-BYTES
+create EST-X64-BUF EST-X64-BYTES allot
+create EST-X64-PATH FS-PATH-CAP allot
+variable EST-X64-PATH-U
+
+: EST-X64-PHDR ( n n n n n n -- )
+   {: idx:n off:n va:n files:n mem:n flags:n :}
+   64 idx 56 * + {: p:n :}
+   1 EST-X64-BUF p + !
+   flags EST-X64-BUF p 4 + + !
+   off EST-X64-BUF p 8 + + !
+   va EST-X64-BUF p 16 + + !
+   va EST-X64-BUF p 24 + + !
+   files EST-X64-BUF p 32 + + !
+   mem EST-X64-BUF p 40 + + !
+   $1000 EST-X64-BUF p 48 + + ! ;
+
+: EST-X64-IMAGE ( -- )
+   EST-X64-BYTES 0 ?do 0 EST-X64-BUF i + c! loop
+   $464C457F EST-X64-BUF !
+   2 EST-X64-BUF 4 + c!
+   2 EST-X64-BUF 16 + c!
+   62 EST-X64-BUF 18 + c!
+   64 EST-X64-BUF 32 + !
+   64 EST-X64-BUF 52 + !
+   56 EST-X64-BUF 54 + !
+   4 EST-X64-BUF 56 + !
+   0 0 $400000 $2000 $2000 5 EST-X64-PHDR
+   1 $2000 $402000 $20 $20 6 EST-X64-PHDR
+   2 0 $1400000 0 $2000000 6 EST-X64-PHDR
+   3 $4000 $340000000 $20 $2000000 6 EST-X64-PHDR
+   $90 EST-X64-BUF $1000 + c!
+   1 EST-X64-BUF $1800 + !
+   0 EST-X64-BUF $1804 + !
+   1 EST-X64-BUF $1808 + c!
+   $800 EST-X64-BUF $1FF0 + !
+   1 EST-X64-BUF $1FF4 + !
+   $3145544953343658 EST-X64-BUF $1FF8 + !
+   1 EST-X64-BUF $4000 + c!
+   2 EST-X64-BUF $401F + c! ;
+
+: EST-X64-SEGMENTS ( -- )
+   s" x86 fixed DATA PT_LOAD has its own file-backed row" T-LABEL
+   CLEANUP-RESET
+   s" habu-engine-size-x64" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   EST-X64-IMAGE
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF EST-X64-BYTES WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ MEASURE
+   CLASS$ s" stripped" T$=
+   TOTAL-BYTES EST-X64-BYTES T=
+   CODE-BYTES $800 T=
+   NAME-BYTES 0 T=
+   DATA-WRITTEN 2 T=
+   DATA-ZERO 30 T=
+   PAD-BYTES $1FE0 T=
+   OTHER-BYTES $1820 T=
+   CLEANUP-RUN ;
+
+: EST-U64! ( n n -- ) {: value:n off:n :}
+   value IMG@ off + CELL-VIEW ! ;
+
+: EST-COUNTED-SEED ( -- )
+   s" seed count bounds records before adjacent plausible data" T-LABEL
+   $1100 IMG-RESERVE  $1100 ILEN !  $1100 ETEXT-N !
+   $1100 0 ?do 0 IMG@ i + c! loop
+   1 $FF8 EST-U64!
+   1 $1000 EST-U64!  4 $1008 EST-U64!
+   1 $1010 EST-U64!  65 IMG@ $1018 + c!
+   5 $1030 EST-U64!  8 $1038 EST-U64!
+   1 $1040 EST-U64!  66 IMG@ $1048 + c!
+   $1000 COUNTED-RUN 1 T= ;
+
 : EST-SUM ( -- )
    TOTAL-BYTES ILEN @ T=
    CODE-BYTES NAME-BYTES + DATA-WRITTEN + DATA-ZERO + PAD-BYTES + OTHER-BYTES +
@@ -183,6 +257,8 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 
 : EST-MAIN ( -- )
    T-RESET
+   EST-COUNTED-SEED
+   EST-X64-SEGMENTS
    EST-DATA-CARRIER
    EST-WID-FORM
    EST-TILING

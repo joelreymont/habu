@@ -38,6 +38,7 @@ create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
 variable TOFF  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
+variable X64-IMAGE
 variable RUNV  variable BESTO  variable BESTN
 \ No-trailer only: the base added to a raw dict-record xt field. A snapshot's
 \ xt fields are already canonical/absolute (SNAP-CORE?, PTR>OFF); a baked
@@ -54,6 +55,26 @@ TYPED-VARIABLE CMP-BAD-P ptr u8
 variable CMP-BAD-IDX  variable CMP-BAD-U  variable CMP-BAD-L
 variable PCV
 variable NUM-I  variable NUM-ACC  variable NUM-DIG
+
+\ Elf64_Ehdr and Elf64_Phdr fields. Read the machine from the image in hand;
+\ the inspector's own build target says nothing about that file.
+public
+$00 constant ELF-MAG-OFF
+$464C457F constant ELF-MAG
+$04 constant ELF-CLASS-OFF
+2 constant ELF-CLASS-64
+$10 constant ELF-TYPE-OFF
+2 constant ELF-ET-EXEC
+$12 constant ELF-MACHINE-OFF
+183 constant ELF-EM-AARCH64
+62 constant ELF-EM-X86-64
+$18 constant ELF-ENTRY-OFF
+$20 constant ELF-PHOFF-OFF
+$36 constant ELF-PHENTSIZE-OFF
+$38 constant ELF-PHNUM-OFF
+$40 constant ELF-EHDR-BYTES
+56 constant ELF-PHDR-BYTES
+private
 
 DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ptr u8   \ one dictionary name start per row
 create A-NAME-U DICT-CAP cells allot
@@ -136,6 +157,48 @@ private
    p 5 + c@ 40 lshift or
    p 6 + c@ 48 lshift or
    p 7 + c@ 56 lshift or ;
+
+: ELF-PHDRS? ( -- bool )
+   IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
+   ELF-PHOFF-OFF I@ {: at:n :}
+   ELF-PHENTSIZE-OFF I@ $FFFF and ELF-PHDR-BYTES <> if IMG-FALSE exit then
+   ELF-PHNUM-OFF I@ $FFFF and {: count:n :}
+   at ELF-EHDR-BYTES < at IL @ > or if IMG-FALSE exit then
+   count 0 > count IL @ at - ELF-PHDR-BYTES / <= and ;
+
+: ELF-PHDR ( n -- n )
+   ELF-PHOFF-OFF I@ swap ELF-PHDR-BYTES * + ;
+
+\ A file-backed VA is found through a PT_LOAD, including the x86 dictionary
+\ region and DATA segments whose VAs are far from the ordinary ELF text.
+: ELF-VA-SPAN>OFF ( n n -- n ) {: va:n len:n :}
+   len 1 < if -1 exit then
+   ELF-PHDRS? 0= if -1 exit then
+   ELF-PHNUM-OFF I@ $FFFF and 0 ?do
+      i ELF-PHDR {: p:n :}
+      p I@ $FFFFFFFF and 1 = if
+         p 8 + I@ {: off:n :}
+         p 16 + I@ {: base:n :}
+         p 32 + I@ {: size:n :}
+         p 40 + I@ {: mem:n :}
+         off 0 < base 0 < or size 0 < or mem size < or
+         off IL @ > or size IL @ off - > or if -1 unloop exit then
+         va base >= if
+            va base - {: delta:n :}
+            delta size < len size delta - <= and if off delta + unloop exit then
+         then
+      then
+   loop -1 ;
+
+: ELF-VA>OFF ( n -- n ) 1 ELF-VA-SPAN>OFF ;
+
+: X64-REG-PHDR ( -- n )
+   ELF-PHDRS? 0= if -1 exit then
+   0 ELF-PHDR 16 + I@ REGION-OFF + {: va:n :}
+   ELF-PHNUM-OFF I@ $FFFF and 0 ?do
+      i ELF-PHDR {: p:n :}
+      p I@ $FFFFFFFF and 1 = p 16 + I@ va = and if p unloop exit then
+   loop -1 ;
 : E-E {: o :} ( n -- n )
    o 8 + I@ ;
 : E-F {: o :} ( n -- n )
@@ -159,6 +222,7 @@ private
 \ answer the same span here; XREF-CODE-BYTES is the live counterpart.
 : E-CODE-END {: o :} ( n -- n )                     \ code records only
    HAS-SNAP @ if o E-S o E-E CODE-SPAN:BYTES + exit then
+   X64-IMAGE @ if o E-S o E-E CODE-SPAN:BYTES + exit then
    XTBASE @ o E-E + ;
 
 : E-CODE-BYTES {: o :} ( n -- n )
@@ -207,6 +271,18 @@ private
 
 : SNAP? {: o :} ( n -- bool )
    o SNAP-CORE? 0= if IMG-FALSE exit then
+   X64-IMAGE @ if
+      o SNAP-TRL-DATALEN + I@ DATA-START < if IMG-FALSE exit then
+      o o SNAP-TRL-DATALEN + I@ DATA-START - - {: end:n :}
+      end CODE-OFF < end PROT-PAGE-MAX mod 0<> or if IMG-FALSE exit then
+      end 8 - I@ $3145544953343658 <> if IMG-FALSE exit then
+      X64-REG-PHDR {: p:n :}
+      p 0 < if IMG-FALSE exit then
+      p 32 + I@ o SNAP-TRL-REGLEN + I@ < if IMG-FALSE exit then
+      p 16 + I@ ELF-VA>OFF 0 < if IMG-FALSE exit then
+      DATA-VA DATA-START ELF-VA-SPAN>OFF 0 < if IMG-FALSE exit then
+      0 0= exit
+   then
    o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
    0 0= ;
 
@@ -216,7 +292,14 @@ private
    MACHO @ if MACHO-READ:TEXT-END else 96 I@ then
       SNAP-TRL-BYTES - {: off:n :}
    off 0 < if IMG-FALSE exit then
-   off SNAP? 0= if IMG-FALSE exit then
+   off SNAP? 0= if
+      off IL @ 8 - <= if
+         off I@ SNAP-MAGIC = if
+            s" imgdump: malformed snapshot trailer" 74 die
+         then
+      then
+      IMG-FALSE exit
+   then
    off TOFF !
    0 0= ;
 : LOAD-SNAPSHOT ( -- )
@@ -225,9 +308,32 @@ private
    TOFF @ SNAP-TRL-NDICT + I@ TNDICT !
    TOFF @ SNAP-TRL-REGLEN + I@ TREG !
    TOFF @ SNAP-TRL-DATALEN + I@ TDATA !
-   TOFF @ TDATA @ - TOFF @ SNAP-REGION-STORED - ROFF ! ;
+   X64-IMAGE @ if
+      X64-REG-PHDR 16 + I@ ELF-VA>OFF ROFF !
+   else
+      TOFF @ TDATA @ - TOFF @ SNAP-REGION-STORED - ROFF !
+   then ;
+
+: X64-PTR-SPAN>OFF ( n n -- n ) {: p:n len:n :}
+   len 1 max {: size:n :}
+   HAS-SNAP @ if
+      p RBASE-VA >= p RBASE-VA TREG @ + < and if
+         p RBASE-VA - {: off:n :}
+         size TREG @ off - <= if ROFF @ off + exit then
+         -1 exit
+      then
+      TOFF @ TDATA @ DATA-START - - CODE-OFF - {: textlen:n :}
+      p 0 >= p textlen < and if
+         size textlen p - <= if p CODE-OFF + exit then
+         -1 exit
+      then
+   then
+   p size ELF-VA-SPAN>OFF ;
 
 : PTR>OFF {: p :} ( n -- n )
+   X64-IMAGE @ if
+      p 1 X64-PTR-SPAN>OFF exit
+   then
    HAS-SNAP @ 0= if -1 exit then
    p RBASE-VA >=  p RBASE-VA TREG @ + < and if
       p RBASE-VA - {: off:n :}
@@ -241,7 +347,11 @@ private
    p 0 >=  p ROFF @ CODE-OFF - < and if p CODE-OFF + exit then
    -1 ;
 : E-NAME-OFF {: o :} ( n -- n )
-   o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
+   o E-F DNAME-EXT and 0= if o 24 + exit then
+   o 24 + I@ {: name:n :}
+   X64-IMAGE @ if name o E-L X64-PTR-SPAN>OFF exit then
+   HAS-SNAP @ 0= X64-IMAGE @ 0= and if CODE-OFF name + exit then
+   name PTR>OFF ;
 : E-NAME {: o :} ( n -- ptr u8 )
    o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
@@ -268,28 +378,43 @@ private
    dup o E-L + IL @ > if drop 0 0= 0= exit then
    IB@ +  o E-L PRN? ;
 
-\ The SCAN still needs a name. An image with no snapshot trailer has no header
-\ saying where its dictionary is, so FIND-DICT looks for the longest run of
-\ plausible records - and a printable name is most of what makes a record
-\ plausible. A run may CONTAIN stripped rows, which is why RUN# counts with
-\ ENT? above, but it has to be ANCHORED on a named one or a region of
-\ span-shaped numbers could pass for a dictionary.
+\ The ARM seed table has no direct file header: its preceding count cell
+\ bounds the exact run, and a printable name anchors the candidate. The x86
+\ table lives in its fixed REGION PT_LOAD and is bounded by that segment.
 : ENT-NAMED? ( n -- bool ) {: o :}
    o ENT? 0= if IMG-FALSE exit then
    o E-L 1 >= ;
 
-: RUN# {: o :} ( n -- n )
+: RUN#-TO {: o limit :} ( n n -- n )
    0 RUNV !
-   o begin dup IL @ DREC - <= while
+   o begin dup limit DREC - <= while
       dup ENT? 0= if drop RUNV @ exit then
       RUNV @ 1 + RUNV !  DREC +
    repeat drop
    RUNV @ ;
+
+: COUNTED-RUN ( n -- n ) {: at:n :}
+   at 8 < if 0 exit then
+   at 8 - I@ {: count:n :}
+   count 0= count DICT-CAP > or if 0 exit then
+   count IL @ at - DREC / > if 0 exit then
+   at at count DREC * + RUN#-TO count = if count else 0 then ;
+
+: FIND-X64-DICT ( -- )
+   X64-REG-PHDR {: p:n :}
+   p 0 < if s" imgdump: no x86 dictionary LOAD" 74 die then
+   p 16 + I@ ELF-VA>OFF {: off:n :}
+   off 0 < if s" imgdump: no file-backed x86 dictionary" 74 die then
+   off off p 32 + I@ DICT-SIZE min + RUN#-TO {: count:n :}
+   count 0= if s" imgdump: no dict found" 74 die then
+   off BESTO !  count BESTN ! ;
+
 : FIND-DICT ( -- )
+   X64-IMAGE @ if FIND-X64-DICT exit then
    0 BESTO !  0 BESTN !
    0 begin dup IL @ DREC - <= while
       dup ENT-NAMED? if
-         dup RUN# RUNV !
+         dup COUNTED-RUN RUNV !
          RUNV @ BESTN @ > if dup BESTO ! RUNV @ BESTN ! then
       then
       4 +
@@ -329,29 +454,9 @@ private
    s" imgdump: pc not found" 74 die ;
 
 \ ---- no-trailer xt base ----
-\ Elf64_Ehdr fields. The header of the image in hand is the only evidence of
-\ its class; this tool's own build target is not a property of that file.
-\ Public so tools/imgdump-test.f's synthetic no-trailer fixtures can build a
-\ header that satisfies (or deliberately fails) this same check.
-public
-$00 constant ELF-MAG-OFF
-$464C457F constant ELF-MAG    \ e_ident[0..4) = 7f 45 4c 46, little-endian
-$04 constant ELF-CLASS-OFF
-2  constant ELF-CLASS-64      \ EI_CLASS: ELFCLASS64
-$10 constant ELF-TYPE-OFF
-2  constant ELF-ET-EXEC       \ e_type: ET_EXEC, a fixed-base (non-PIE) image
-$12 constant ELF-MACHINE-OFF
-\ e_machine: EM_AARCH64. The entry-point-is-XREG-RBASE rule below is the ARM64
-\ startup's, so this stays the only machine admitted; an x86_64 image is refused
-\ by name until that startup exists (dot habu-cross-build-the-d25a959d).
-183 constant ELF-EM-AARCH64
-$18 constant ELF-ENTRY-OFF    \ e_entry: XREG-RBASE for a fixed-base image (see below)
-$40 constant ELF-EHDR-BYTES
-private
-
 \ Without a snapshot trailer, the only part of the dictionary imgdump can
 \ locate offline is the boot-seeded table src/habu/habu2.f EM-SEED-DICT reads
-\ from the baked LDICT blob (found by FIND-DICT's longest-run scan): every
+\ from the baked LDICT blob (found by FIND-DICT's counted scan): every
 \ other word is JIT-compiled into a region the kernel places at boot and is
 \ unrecoverable from a static file. EM-SEED-DICT rebases each seed record's
 \ xt by XREG-RBASE, a register loaded by `ADR x20, LANCHOR` at the image's
@@ -361,24 +466,35 @@ private
 \ A PIE image's load base is chosen by the loader at exec time and is not in
 \ the file at all, and a file that is not this kind of ELF has no such field to
 \ read, so refuse rather than guess one.
+\ On x86, the fixed REGION PT_LOAD carries absolute xt fields and no
+\ entry-point base is added; the statements above describe the ARM seed path.
 : ELF-FIXED-BASE? ( -- bool )
    IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
    ELF-MAG-OFF I@ $FFFFFFFF and ELF-MAG <> if IMG-FALSE exit then
    ELF-CLASS-OFF I@ $FF and ELF-CLASS-64 <> if IMG-FALSE exit then
-   ELF-MACHINE-OFF I@ $FFFF and ELF-EM-AARCH64 <> if IMG-FALSE exit then
+   ELF-MACHINE-OFF I@ $FFFF and {: machine:n :}
+   machine ELF-EM-AARCH64 <> machine ELF-EM-X86-64 <> and if IMG-FALSE exit then
    ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC = ;
+
+: ELF-X64? ( -- bool )
+   ELF-FIXED-BASE? if ELF-MACHINE-OFF I@ $FFFF and ELF-EM-X86-64 = else false then ;
 
 : NO-SNAP-XTBASE ( -- n )
    \ Mach-O reports the section's preferred virtual addresses. Runtime PCs
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO-READ:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: no snapshot trailer and image is not a fixed-base arm64 ELF executable; refusing to guess the dictionary base" 74 die
+      s" imgdump: no snapshot trailer and image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" 74 die
    then
+   X64-IMAGE @ if 0 exit then
    ELF-ENTRY-OFF I@ ;
 
+: PREP-SNAP ( -- )
+   ELF-X64? X64-IMAGE !
+   LOAD-SNAPSHOT ;
+
 : PREP-IMG ( -- )
-   LOAD-SNAPSHOT
+   PREP-SNAP
    HAS-SNAP @ 0= if NO-SNAP-XTBASE XTBASE !  FIND-DICT then ;
 
 : A-NAME-P! ( ptr u8 n -- ) A-NAME-P-SLOT ! ;
@@ -561,19 +677,34 @@ private
    repeat drop
    s" imgdump: word not found" 74 die ;
 
+: X64-DATA-BYTE ( n -- n ) {: off:n :}
+   off DATA-START < if
+      DATA-VA off + ELF-VA>OFF
+   else
+      TOFF @ TDATA @ DATA-START - - off DATA-START - +
+   then
+   dup 0 < if s" imgdump: data byte is not file-backed" 74 die then
+   IB@ + c@ ;
+
+: X64-DATA-CELL ( n -- n ) {: off:n :}
+   0 8 0 ?do
+      off i + X64-DATA-BYTE i 8 * lshift or
+   loop ;
+
 : DATA-IMG ( -- )
-   1 SCRIPT-ARGV$ READ-IMG-PATH LOAD-SNAPSHOT
+   1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
    HAS-SNAP @ 0= if s" imgdump: no snapshot" 74 die then
    2 SCRIPT-ARGV$ IMG>NUMBER? MATCH option
      none OF IMG-USAGE ENDOF
      some OF ENDOF
    ;MATCH {: off:n :}
    off 0 < off 8 + TDATA @ > or if s" imgdump: data offset out of range" 74 die then
+   X64-IMAGE @ if off X64-DATA-CELL . exit then
    TOFF @ TDATA @ - off + I@ . ;
 
 \ Print snapshot dictionary and payload sizes.
 : SNAP-INFO ( -- )
-   1 SCRIPT-ARGV$ READ-IMG-PATH LOAD-SNAPSHOT
+   1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
    s" ndict " type TNDICT @ . cr
    s" region " type TREG @ h. cr

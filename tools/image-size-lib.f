@@ -67,6 +67,12 @@
 \ larger than the file.
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
+\
+\ x86 ELF images put the dictionary REGION and fixed DATA prefix in separate
+\ PT_LOADs. Their snapshot heap follows immutable RX text; a text-site footer
+\ marks executable code, and the trailer recovers the donor text boundary.
+\ The x86 path measures those physical segments and validates raw/grid heap
+\ framing. The ARM AOT and reachability walkers below retain their ARM scope.
 
 require lib/fmt.f
 require lib/fs.f
@@ -179,10 +185,8 @@ $04 constant ELF-CLASS-OFF
 $10 constant ELF-TYPE-OFF
 2 constant ELF-ET-EXEC
 $12 constant ELF-MACHINE-OFF
-\ The size map reads an ARM64 engine: BAKED-ELF? admits that machine and no
-\ other, so an x86_64 image is refused by name rather than measured with the
-\ wrong startup in mind (dot habu-cross-build-the-d25a959d).
 183 constant ELF-EM-AARCH64
+62 constant ELF-EM-X86-64
 $20 constant ELF-PHOFF-OFF
 $34 constant ELF-EHSIZE-OFF
 $36 constant ELF-PHENTSIZE-OFF
@@ -197,10 +201,13 @@ $40 constant ELF-EHDR-BYTES
    ILEN @ ELF-EHDR-BYTES < if false exit then
    ELF-MAG-OFF U32@ ELF-MAG <> if false exit then
    ELF-CLASS-OFF U8@ ELF-CLASS-64 <> if false exit then
-   ELF-MACHINE-OFF U16@ ELF-EM-AARCH64 <> if false exit then
+   ELF-MACHINE-OFF U16@ dup ELF-EM-AARCH64 <> swap ELF-EM-X86-64 <> and if
+      false exit
+   then
    ELF-TYPE-OFF U16@ ELF-ET-EXEC = ;
 
 variable MACHO
+variable X64
 
 : TEXT-SIZE ( -- n )
    MACHO @ if MACHO-READ:TEXT-END else 96 U64@ then ;
@@ -226,6 +233,71 @@ variable ETEXT-N
 : RW-OFF ( -- n ) PHDR2 8 + U64@ ;
 : RW-BYTES ( -- n ) PHDR2 32 + U64@ ;
 
+: ELF-PHDR ( n -- n ) ELF-EHDR-BYTES swap ELF-PHDR-BYTES * + ;
+: ELF-LOAD-VA ( n -- n ) {: va:n :}
+   ELF-PHNUM-OFF U16@ 0 ?do
+      i ELF-PHDR {: at:n :}
+      at U32@ 1 = at 16 + U64@ va = and if at unloop exit then
+   loop
+   s" image-size: missing fixed x86 LOAD segment" RC die ;
+
+: ELF-VA>OFF ( n -- n ) {: va:n :}
+   ELF-PHNUM-OFF U16@ 0 ?do
+      i ELF-PHDR {: at:n :}
+      at U32@ 1 = if
+         at 16 + U64@ {: base:n :}
+         at 32 + U64@ {: size:n :}
+         va base >= va base - size < and if
+            at 8 + U64@ va base - + dup 1 ?RANGE
+            unloop exit
+         then
+      then
+   loop
+   s" image-size: address is not file-backed by an x86 LOAD segment" RC die ;
+
+variable X64-REG-PH
+variable X64-DATA-PH
+
+: X64-REG-OFF ( -- n ) X64-REG-PH @ 8 + U64@ ;
+: X64-REG-BYTES ( -- n ) X64-REG-PH @ 32 + U64@ ;
+: X64-DATA-OFF ( -- n ) X64-DATA-PH @ 8 + U64@ ;
+: X64-DATA-BYTES ( -- n ) X64-DATA-PH @ 32 + U64@ ;
+
+: CHECK-X64-SEGMENTS ( -- )
+   0 ELF-PHDR {: textph:n :}
+   1 ELF-PHDR {: rwph:n :}
+   textph U32@ 1 = textph 8 + U64@ 0= and
+   textph 4 + U32@ 5 = and
+   rwph U32@ 1 = and rwph 4 + U32@ 6 = and
+   rwph 16 + U64@ textph 16 + U64@ TEXT-SIZE + = and
+   0= if s" image-size: invalid x86 text or RW LOAD segment" RC die then
+   rwph 40 + U64@ RW-BYTES < if E-ES-WALK throw then
+   textph 16 + U64@ REGION-OFF + ELF-LOAD-VA X64-REG-PH !
+   DATA-VA ELF-LOAD-VA X64-DATA-PH !
+   X64-REG-PH @ 4 + U32@ 6 =
+   X64-DATA-PH @ 4 + U32@ 6 = and
+   X64-REG-PH @ 40 + U64@ REGION = and
+   X64-DATA-PH @ 40 + U64@ DATA-SIZE = and
+   0= if s" image-size: invalid x86 fixed LOAD segment" RC die then
+   RW-OFF TEXT-SIZE <> if E-ES-WALK throw then
+   TEXT-SIZE RW-BYTES + {: rw-end:n :}
+   rw-end ILEN @ > if E-ES-WALK throw then
+   X64-REG-BYTES 0 > if
+      X64-REG-OFF rw-end < if E-ES-WALK throw then
+      X64-REG-OFF X64-REG-BYTES ?RANGE
+      X64-DATA-OFF X64-REG-OFF X64-REG-BYTES + < if E-ES-WALK throw then
+   else
+      X64-DATA-OFF rw-end < if E-ES-WALK throw then
+   then
+   X64-DATA-OFF X64-DATA-BYTES ?RANGE
+   X64-DATA-OFF X64-DATA-BYTES + ILEN @ <> if
+      s" image-size: x86 file length does not end at fixed DATA" RC die
+   then
+   X64-REG-BYTES 0 > if
+      X64-REG-PH @ 16 + U64@ ELF-VA>OFF X64-REG-OFF <> if E-ES-WALK throw then
+   then
+   DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then ;
+
 : CHECK-SEGMENTS ( -- )
    ELF-EHSIZE-OFF U16@ ELF-EHDR-BYTES <>
    ELF-PHENTSIZE-OFF U16@ ELF-PHDR-BYTES <> or if E-ES-WALK throw then
@@ -241,6 +313,7 @@ variable ETEXT-N
    then
    ELF-EHDR-BYTES U32@ 1 <>
    ELF-EHDR-BYTES 8 + U64@ 0<> or if E-ES-WALK throw then
+   X64 @ if CHECK-X64-SEGMENTS exit then
    TEXT-SIZE RW-BYTES + ILEN @ <> if
       s" image-size: file length is not its two segments" RC die
    then ;
@@ -308,8 +381,7 @@ variable ETEXT-N
 \ the primitives whose name does not fit a record, then LNCOUNT (the primitive
 \ count, one cell), then LDICT (that many 48-byte records). It is the LAST thing
 \ in the engine's code half, so the AOT payload starts after it.
-\ The run is found the way tools/imgdump.f finds it -- the longest run of
-\ plausible records -- and then PROVED by the count cell in front of it.
+\ The preceding count cell bounds the exact run validated by both readers.
 DREC constant PREC
 variable PDICT                                    \ file offset of the first record
 variable PDICT-N                                  \ records in the seeded table
@@ -346,21 +418,18 @@ variable PNAME-BYTES                              \ padded long-name bytes befor
    r PREC-NAME 2dup IN-IMAGE? 0= if 2drop false exit then
    PRINTABLE? ;
 
-: PREC-RUN ( n -- n ) {: r:n :}
-   0 begin
-      r over PREC * + PREC-OK? while
-      1+
-   repeat ;
-
 \ A run is only the seeded table when the cell in front of it says so: the count
 \ cell is the emitter's own statement of the record count, so an accidental run
 \ of record-shaped bytes inside the payload cannot be mistaken for the table.
 : COUNTED-RUN ( n -- n ) {: at:n :}
    at 8 < if 0 exit then
-   at PREC-RUN {: run:n :}
-   run 0= if 0 exit then
-   at 8 - U64@ run <> if 0 exit then
-   run ;
+   at 8 - U64@ {: count:n :}
+   count 1 < count DICT-CAP > or if 0 exit then
+   at count PREC * IN-IMAGE? 0= if 0 exit then
+   count 0 ?do
+      at i PREC * + PREC-OK? 0= if 0 unloop exit then
+   loop
+   count ;
 
 \ Answers PDICT-N 0 when the image has no such table, which is how an image
 \ class is told apart: a stripped application carries no seeded dictionary at
@@ -2727,7 +2796,165 @@ $D37EF54A constant XTC-LSL2
    ETEXT-END PRIM-DICT-SCAN
    PDICT-N @ 0 > ;
 
+variable X64-TEXT-END
+variable X64-CODE-END
+variable X64-DICT-N
+
+$3145544953343658 constant X64-SITES-MAGIC
+
+: X64-FOOTER ( -- )
+   X64-TEXT-END @ X64-CODE-END !
+   X64-TEXT-END @ CODE-OFF 16 + < if exit then
+   X64-TEXT-END @ 8 - U64@ X64-SITES-MAGIC <> if
+      SNAPSHOT-CLASS? if
+         s" image-size: x86 snapshot donor text has no site footer" RC die
+      then
+      exit
+   then
+   X64-TEXT-END @ 16 - {: footer:n :}
+   footer U32@ CODE-OFF + {: start:n :}
+   footer 4 + U32@ {: count:n :}
+   start CODE-OFF >= start footer 4 - <= and
+      s" image-size: x86 site footer starts outside text" ?TRL
+   start U32@ count =
+      s" image-size: x86 site count does not match footer" ?TRL
+   count footer start - 4 - 5 / <=
+      s" image-size: x86 site rows overrun footer" ?TRL
+   count 0 ?do
+      start 4 + i 5 * + {: row:n :}
+      row U32@ CODE-OFF + {: field:n :}
+      row 4 + U8@ {: kind:n :}
+      kind 2 <=
+         s" image-size: x86 site kind is invalid" ?TRL
+      kind 0= if 1 else kind 1 = if 4 else 8 then then {: width:n :}
+      field CODE-OFF >= field start width - <= and
+         s" image-size: x86 site field is outside code" ?TRL
+   loop
+   start 4 + count 5 * + {: pad:n :}
+   pad footer pad - ZEROS footer pad - =
+      s" image-size: x86 site footer padding is not zero" ?TRL
+   start X64-CODE-END ! ;
+
+: X64-TRAILER ( -- )
+   TRAILER-OFF {: trl:n :}
+   trl TRL-OFF !
+   trl SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION =
+      s" image-size: x86 snapshot format version mismatch" ?TRL
+   trl SNAP-TRL-NDICT + U64@ {: count:n :}
+   trl SNAP-TRL-REGLEN + U64@ {: region:n :}
+   trl SNAP-TRL-DATALEN + U64@ {: data:n :}
+   count NDICT-N !  region REG-LEN !  data DAT-LEN !
+   count 0 >= count DICT-CAP <= and
+      s" image-size: x86 snapshot dictionary count is outside the region" ?TRL
+   region DICT-SIZE >= region REGION <= and
+      s" image-size: x86 snapshot region extent is invalid" ?TRL
+   data DATA-START >= data DATA-SIZE <= and
+      s" image-size: x86 snapshot DATA extent is invalid" ?TRL
+   X64-REG-BYTES region >= X64-DATA-BYTES DATA-START >= and
+      s" image-size: x86 snapshot has no fixed dictionary segment" ?TRL
+   trl data DATA-START - - {: end:n :}
+   end CODE-OFF >= end PROT-PAGE-MAX mod 0= and
+      s" image-size: x86 snapshot has no aligned donor text boundary" ?TRL
+   end X64-TEXT-END !
+   end DAT-HEAP !
+   X64-DATA-OFF U64@ {: absolute:n :}
+   absolute DATA-VA DATA-START + >=
+   absolute DATA-VA DATA-SIZE + <= and
+      s" image-size: x86 snapshot DATA extent is outside the heap" ?TRL
+   absolute DATA-VA - DAT-VIRT !
+   trl SNAPSHOT-FORMAT:HEAP-FIELD + U64@ DAT-FORM !
+   DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
+      READ-HEAP-GRID
+   else
+      DAT-FORM @ SNAPSHOT-FORMAT:HEAP-RAW =
+         s" image-size: x86 snapshot heap form is neither raw nor grid" ?TRL
+      end DAT-VIRT @ DATA-START - + DAT-PAD !
+   then
+   DAT-PAD @ trl <= trl DAT-PAD @ - PROT-PAGE-MAX < and
+      s" image-size: x86 snapshot heap framing or padding is invalid" ?TRL
+   DAT-PAD @ trl DAT-PAD @ - ZEROS trl DAT-PAD @ - =
+      s" image-size: x86 snapshot padding is not zero" ?TRL ;
+
+: X64-DICT-COUNT ( -- n )
+   X64-REG-BYTES DICT-SIZE < if 0 exit then
+   CFSTK-OFF DREC / 0 ?do
+      X64-REG-OFF i DREC * + {: at:n :}
+      at U64@ 0= at 8 + U64@ 0= and at 16 + U64@ 0= and if
+         i unloop exit
+      then
+   loop
+   CFSTK-OFF DREC / ;
+
+: X64-CLASSIFY ( -- )
+   TEXT-SIZE X64-TEXT-END !
+   0 BAND-CODE !  0 BAND-NAMES !  0 BAND-FREE !  0 DOWN-N !
+   0 BLOB-OFF !  0 BLOB-LEN !  0 BLOB-AT !  0 BLOB-STOP !
+   SNAPSHOT? if
+      X64-TRAILER
+      construct image-class snapshot CLASS!
+   else
+      X64-REG-BYTES 0= if
+         construct image-class stripped CLASS!
+      else
+         X64-REG-BYTES DICT-SIZE < if
+            s" image-size: x86 dictionary LOAD is incomplete" RC die
+         then
+         construct image-class engine CLASS!
+      then
+   then
+   X64-FOOTER
+   X64-DICT-COUNT X64-DICT-N !
+   X64-REG-BYTES DICT-SIZE >= if
+      X64-REG-OFF DICT-SIZE + BLOB-OFF !
+      X64-REG-BYTES DICT-SIZE - dup BLOB-LEN ! BAND-CODE !
+      X64-DICT-N @ DREC * dup BAND-NAMES !
+      DICT-SIZE swap - BAND-FREE !
+   then
+   X64-DATA-OFF BLOB-AT !
+   X64-DATA-OFF X64-DATA-BYTES + BLOB-STOP ! ;
+
+: X64-GAP ( n n -- ) {: at:n len:n :}
+   at len ZEROS len <> if
+      s" image-size: x86 segment gap is not zero padding" RC die
+   then
+   s" elf/segment-pad" at len SPAN B-PAD ROW ;
+
+: X64-BUDGET ( -- )
+   -1 ZCOL !  BUDGET-BEGIN
+   s" elf/header-page" 0 CODE-OFF SPAN B-OTHER ROW
+   s" image/text" CODE-OFF X64-CODE-END @ CODE-OFF - SPAN B-CODE ROW
+   s" image/text-sites" X64-CODE-END @ X64-TEXT-END @ X64-CODE-END @ -
+      SPAN B-OTHER ROW
+   SNAPSHOT-CLASS? if
+      DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
+         s" snapshot/heap-frame" DAT-HEAP @ SNAPSHOT-FORMAT:GRID-FRAME SPAN B-DATA ROW
+         s" snapshot/heap-map" HEAP-MAP @ HEAP-G @ PMAP-BYTES SPAN B-DATA ROW
+         s" snapshot/heap-groups" HEAP-MAP @ HEAP-G @ PMAP-BYTES + HEAP-S @ SPAN B-DATA ROW
+         s" snapshot/heap-values" HEAP-VALS @ HEAP-VLEN @ SPAN B-DATA ROW
+      else
+         s" snapshot/heap" DAT-HEAP @ DAT-VIRT @ DATA-START - SPAN B-DATA ROW
+      then
+      s" snapshot/heap-pad" DAT-PAD @ TRL-OFF @ DAT-PAD @ - SPAN B-PAD ROW
+      s" snapshot/trailer" TRAILER-OFF SNAP-TRL-BYTES SPAN B-OTHER ROW
+   then
+   s" elf/rw-segment" TEXT-SIZE RW-BYTES SPAN B-OTHER ROW
+   X64-REG-BYTES 0 > if
+      TEXT-SIZE RW-BYTES + X64-REG-OFF over - X64-GAP
+      s" region/dictionary-records" X64-REG-OFF X64-DICT-N @ DREC * SPAN B-NAMES ROW
+      s" region/state" X64-REG-OFF X64-DICT-N @ DREC * +
+         DICT-SIZE X64-DICT-N @ DREC * - SPAN B-OTHER ROW
+      s" region/code" X64-REG-OFF DICT-SIZE +
+         X64-REG-BYTES DICT-SIZE - SPAN B-CODE ROW
+      X64-REG-OFF X64-REG-BYTES +
+   else
+      TEXT-SIZE RW-BYTES +
+   then
+   X64-DATA-OFF over - X64-GAP
+   s" data/fixed-load" X64-DATA-OFF X64-DATA-BYTES SPAN B-DATA ROW
+   SUMS?  TOTAL-ROW ;
+
 : CLASSIFY ( -- )
+   X64 @ if X64-CLASSIFY exit then
    TEXT-SIZE ETEXT-N !
    ATTRIB-RESET
    SNAPSHOT? if
@@ -2755,6 +2982,7 @@ $D37EF54A constant XTC-LSL2
    ;MATCH ;
 
 : TABLE ( -- )
+   X64 @ if X64-BUDGET exit then
    CLASS-PTR @ MATCH image-class
       engine OF BUDGET ENDOF
       snapshot OF SNAP-BUDGET ENDOF
@@ -2802,14 +3030,16 @@ public
 : MEASURE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu READ-IMAGE
    IMG@ ILEN @ MACHO-READ:MAGIC? MACHO !
+   0 X64 !
    MACHO @ if
       IMG@ ILEN @ MACHO-READ:OPEN
    else
-      BAKED-ELF? 0= if s" image-size: not an ARM64 Habu executable" RC die then
+      BAKED-ELF? 0= if s" image-size: not a supported Habu ELF executable" RC die then
+      ELF-MACHINE-OFF U16@ ELF-EM-X86-64 = X64 !
       CHECK-SEGMENTS
    then
    CLASSIFY
-   WALK
+   X64 @ 0= if WALK then
    path pathu IMAGE-NAMES:LOAD
    -1 QUIET !  TABLE  0 QUIET ! ;
 
@@ -2840,7 +3070,7 @@ public
 \ The same rows again, printed this time, with the class's own notes under them.
 : REPORT ( -- )
    TABLE
-   NOTES ;
+   X64 @ 0= if NOTES then ;
 
 \ The summary line, in the one place that owns its wording. `other` is what no
 \ class claimed, so the six terms and it add up to the file's own length.
