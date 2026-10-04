@@ -30,17 +30,20 @@ variable CU-SAVED-CAP
 : CU-RAISE ( -- ) 27 throw ;
 : CU-RAISE-CLOSED ( -- ) [: CU-RAISE ;] CU-RUN ;
 
-\ Deliberately dishonest trusted callbacks exercise the runtime boundary that
-\ the effect checker cannot model: a leftover cell and a cursor below the floor.
-TRUSTED: CU-ONE ( -- ) 11 ;
+\ Dynamic source in these trusted callbacks leaves a real stack effect beyond
+\ their declared rows, exercising the runtime residue and floor checks.
+TRUSTED: CU-ONE ( -- ) s" 11" evaluate ;
 : CU-ONE-CLOSED ( -- ) [: CU-ONE ;] CU-RUN ;
-TRUSTED: CU-TAKE ( -- ) drop ;
+TRUSTED: CU-TAKE ( -- ) s" drop" evaluate ;
 : CU-TAKE-CLOSED ( -- ) [: CU-TAKE ;] CU-RUN ;
 
-\ The loop consumes its bounds before pushing. At return the stack cursor is
-\ exactly the mapped top; the primitive must compare before pushing a code.
-TRUSTED: CU-FILL ( -- )
-   CU-CAP 8 / 0 ?do 1 loop ;
+\ The private cast hides CU-PUSH's one-cell effect from the caller. The loop
+\ consumes its bounds before pushing; at return the cursor is exactly the
+\ mapped top, so source-unit-run must compare before pushing a throw code.
+: CU-PUSH ( -- n ) 1 ;
+CAST: CU-AS-ACTION ( [ -- n ] -- [ -- ] )
+: CU-FILL ( -- )
+   CU-CAP 8 / 0 ?do ['] CU-PUSH CU-AS-ACTION execute loop ;
 : CU-FILL-CLOSED ( -- ) [: CU-FILL ;] CU-RUN ;
 
 : CU-CLEAN ( -- )
