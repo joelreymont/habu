@@ -16,7 +16,7 @@ IOP: IOP-MUL   IOP: IOP-SDIV  IOP: IOP-UDIV
 IOP: IOP-AND   IOP: IOP-ORR   IOP: IOP-EOR
 IOP: IOP-LSLI  IOP: IOP-LSRI  IOP: IOP-ASRI
 IOP: IOP-LSLV  IOP: IOP-LSRV  IOP: IOP-ASRV
-IOP: IOP-CMP   IOP: IOP-CMPI  IOP: IOP-CSET
+IOP: IOP-CMP   IOP: IOP-CMPI  IOP: IOP-CSET  IOP: IOP-CSEL
 IOP: IOP-B     IOP: IOP-BL    IOP: IOP-BCOND IOP: IOP-CBZ   IOP: IOP-CBNZ
 IOP: IOP-BR    IOP: IOP-BLR   IOP: IOP-RET   IOP: IOP-ADR
 IOP: IOP-LDR   IOP: IOP-STR   IOP: IOP-LDRB  IOP: IOP-STRB
@@ -189,6 +189,8 @@ s" cg: bad logical immediate" exception constant E-BADLIMM
 : CMPI, ( rn imm12 -- )    0 0 IOP-CMPI IC, ;
 
 : CSET, ( rd cond -- )     0 0 IOP-CSET IC, ;
+
+: CSEL, ( rd rn rm cond -- ) IOP-CSEL IC, ;
 
 : B,    ( lbl -- )         0 0 0 IOP-B IC, ;
 
