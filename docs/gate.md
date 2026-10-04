@@ -75,6 +75,27 @@ check for codegen, self-hosting or capture changes that can alter successive
 engine output; see [bootstrap.md](bootstrap.md#generation-chain-check). The
 Gforth recovery checks below are also separate from this registry.
 
+The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
+`set-tier: x86-64 runs tier 1 only`. The registry includes
+`test/gate-arm-cases.f` only on an ARM host. Its seven whole rows require
+the ARM host or its JIT:
+
+- `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
+  use the ARM source window and observe x86-64 as a second target. On an x86-64
+  host the resident shadow map is different (29 records instead of the six
+  expected by `compiler-shadow`).
+- `engine-stack-jit`: its direct return and loop-cell assertions inspect the
+  ARM JIT stack model. On x86-64 those cell mutations return normally instead
+  of raising the expected bounds refusal.
+- `engine-stack-debugger`, `debugger-resume`: the ARM BRK debugger fixtures
+  select tier 0; the x86-64 engine refuses that selection.
+- `addrmap-call`: it decodes four-byte AArch64 `BL` instructions and reads the
+  JIT address-map bitmap, after selecting tier 0.
+
+Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
+remain registered on x86-64. Their eligible tier-1 cases must run; a fixture
+may guard an individual ARM-only premise after measuring the native refusal.
+
 The gate runs executable checks without an external theorem prover. Passing it
 establishes only the behavior exercised; see [proofs.md](proofs.md).
 

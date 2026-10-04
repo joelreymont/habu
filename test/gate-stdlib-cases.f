@@ -634,12 +634,15 @@ SUITE compiler-x64-chain
    test/compiler/x64-chain.f
 ;SUITE
 
-\ A second target beside the engine's own: the driver compiles each definition
-\ through the x86-64 rows in a nested context while an NSHADOW is open, and the
-\ map src/compiler/native/shadow.f keeps is read back from this host.
-SUITE compiler-shadow
-   test/compiler/shadow.f
-;SUITE
+\ Only these seven whole rows require the ARM host or its tier-0 JIT. The
+\ x86-64 product refuses that tier; mixed tier/compiler rows remain below.
+package STDLIB-GATE
+private
+: ARM-ROWS ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" test/gate-arm-cases.f" included ;
+ARM-ROWS
+;package
 
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
@@ -1750,16 +1753,6 @@ SUITE x86-64-kernel-callback
    test/x86-64-kernel-callback.f
 ;SUITE
 
-\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
-\ and links it: the records, the routines with every site resolved, the rebased
-\ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
-\ children measure the layout host-independent and refuse, by name, what it
-\ cannot place or link. hb-x64-link-index, for the peer to run, stages the
-\ writer's index where the kernel's own find reads it; it exits 0.
-SUITE x86-64-link-records
-   test/x86-64-link-records.f
-;SUITE
-
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
 \ booted harness: each image's child faults with fd 2 on a pipe, and its parent
 \ checks the dump or the guard page's line and the exit status.
@@ -2036,13 +2029,6 @@ SUITE aot-capture-compact
    test/aot-capture-compact.f
 ;SUITE
 
-\ A capture taken with an x86-64 shadow open carries the shadow's records,
-\ routines, sites and record-keyed code cells through the artifact's round trip;
-\ READ refuses forged shadow rows by name and MERGE refuses a shadow.
-SUITE aot-shadow-capture
-   test/aot-shadow-capture.f
-;SUITE
-
 SUITE data-address-codec
    test/data-address-codec.f
    tools/snap-heap-owner-test.f
@@ -2184,14 +2170,6 @@ SUITE engine-stack-lifecycle
 
 SUITE stack-guard
    test/stack-guard.f
-;SUITE
-
-SUITE engine-stack-jit
-   test/engine-stack-jit.f
-;SUITE
-
-SUITE engine-stack-debugger
-   test/engine-stack-debugger.f
 ;SUITE
 
 SUITE combinators
@@ -2525,10 +2503,6 @@ WHITEBOX-SUITE engine
    test/engine-suite.f
 ;SUITE
 
-SUITE debugger-resume
-   test/debugger-resume.f
-;SUITE
-
 SUITE engine-runtime-regressions
    test/runtime-regression-test.f
 ;SUITE
@@ -2662,10 +2636,6 @@ SUITE code-window
 
 SUITE addrmap-set
    test/addrmap-set.f
-;SUITE
-
-SUITE addrmap-call
-   test/addrmap-call.f
 ;SUITE
 
 SUITE sites
