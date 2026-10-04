@@ -277,7 +277,11 @@ create ERR IO-CAP allot
    PROC-OUTCOME>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the token the interpreter was running" T-LABEL
-   ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      ERR erru s" hb: top-row: execute: xt target underflows the interpret stack" CONTAINS? TTRUE
+   else
+      ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
+   then
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 
