@@ -29,6 +29,8 @@ ALL-CHARS SPAN-BUFFER: ALL-TEXT
 2 SPAN-BUFFER: OUT-2
 SHA1:CTX-BYTES SPAN-BUFFER: CTX
 SHA1:DIGEST-BYTES SPAN-BUFFER: DG
+SHA256-CTX-BYTES BUFFER: URL-CTX
+32 SPAN-BUFFER: URL-DG
 variable STAGED-LEN
 
 : OUT$ ( n -- ptr u8 n )
@@ -47,6 +49,45 @@ variable STAGED-LEN
 : BOTH ( ptr u8 n ptr u8 n -- ) {: a u:n b v:n :}
    a u b v ENCODES
    b v a u DECODES ;
+
+: URL-ENCODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+   a u OUT BASE64:ENCODE-URL {: k:n :}
+   want wu T-LABEL
+   k OUT$ want wu T$= ;
+
+: URL-DECODES ( ptr u8 n ptr u8 n -- ) {: a u:n want wu:n :}
+   a u OUT BASE64:DECODE-URL {: k:n :}
+   a u T-LABEL
+   k OUT$ want wu T$= ;
+
+: URL-BOTH ( ptr u8 n ptr u8 n -- ) {: a u:n b v:n :}
+   a u b v URL-ENCODES
+   b v a u URL-DECODES ;
+
+\ RFC 4648's tail shapes without padding, and RFC 7636 Appendix A's -/_ case.
+: URL-VECTORS ( -- )
+   0 OUT$ 0 OUT$ URL-BOTH
+   s" f" s" Zg" URL-BOTH
+   s" fo" s" Zm8" URL-BOTH
+   s" foo" s" Zm9v" URL-BOTH
+   s" foob" s" Zm9vYg" URL-BOTH
+   s" fooba" s" Zm9vYmE" URL-BOTH
+   s" foobar" s" Zm9vYmFy" URL-BOTH
+   3 ALL 0 SPAN:U8!
+   236 ALL 1 SPAN:U8!
+   255 ALL 2 SPAN:U8!
+   224 ALL 3 SPAN:U8!
+   193 ALL 4 SPAN:U8!
+   ALL SPAN:$ drop 5 s" A-z_4ME" URL-BOTH ;
+
+\ RFC 7636 Appendix B: encode the SHA-256 of the ASCII verifier, then decode
+\ the published challenge back to those digest bytes.
+: PKCE ( -- )
+   URL-CTX s" dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      URL-DG SPAN:$ drop SHA256-IN
+   URL-DG SPAN:$ s" E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" URL-ENCODES
+   s" E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+      URL-DG SPAN:$ URL-DECODES ;
 
 \ RFC 4648 section 10.
 : VECTORS ( -- )
@@ -99,6 +140,60 @@ variable STAGED-LEN
    a u STAGE
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
+
+: URL-REFUSES ( ptr u8 n n -- ) {: a u:n code:n :}
+   a u STAGE
+   a u T-LABEL
+   [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;
+
+: URL-REFUSALS ( -- )
+   s" Z" E-BASE64-LENGTH URL-REFUSES
+   s" Zm9vZ" E-BASE64-LENGTH URL-REFUSES
+   s" Zg=" E-BASE64-PAD URL-REFUSES
+   s" Zg==" E-BASE64-PAD URL-REFUSES
+   s" Zm+v" E-BASE64-CHAR URL-REFUSES
+   s" Zm/v" E-BASE64-CHAR URL-REFUSES
+   s" Zm9 " E-BASE64-CHAR URL-REFUSES
+   s" Zh" E-BASE64-PAD URL-REFUSES
+   s" Zm9" E-BASE64-PAD URL-REFUSES
+   s" Zm9v" STAGE $80 STAGED 2 SPAN:U8!
+   s" URL rejects a byte above ASCII" T-LABEL
+   [: STAGED$ OUT BASE64:DECODE-URL drop ;] E-BASE64-CHAR TTHROWSQ ;
+
+: URL-CAPACITY ( -- )
+   CANARY OUT SPAN:FILL
+   s" Zm9vZg!" STAGE
+   s" URL rejects a bad last group after a good one" T-LABEL
+   [: STAGED$ OUT BASE64:DECODE-URL drop ;] E-BASE64-CHAR TTHROWSQ
+   s" URL refusal leaves the output untouched" T-LABEL
+   OUT 0 SPAN:U8@ CANARY T=
+   OUT 3 SPAN:U8@ CANARY T=
+   s" Zm9vZh" STAGE
+   [: STAGED$ OUT BASE64:DECODE-URL drop ;] E-BASE64-PAD TTHROWSQ
+   OUT 0 SPAN:U8@ CANARY T=
+   OUT 3 SPAN:U8@ CANARY T=
+   CANARY OUT-3 SPAN:FILL
+   [: s" foo" OUT-3 BASE64:ENCODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
+   OUT-3 0 SPAN:U8@ CANARY T=
+   CANARY OUT-2 SPAN:FILL
+   [: s" Zm9v" OUT-2 BASE64:DECODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
+   OUT-2 0 SPAN:U8@ CANARY T=
+   s" f" OUT-2 BASE64:ENCODE-URL 2 T=
+   s" fo" OUT-3 BASE64:ENCODE-URL 3 T=
+   s" foo" OUT-4 BASE64:ENCODE-URL 4 T=
+   s" Zg" OUT-2 BASE64:DECODE-URL 1 T=
+   s" Zm8" OUT-2 BASE64:DECODE-URL 2 T=
+   s" Zm9v" OUT-3 BASE64:DECODE-URL 3 T=
+   [: 0 OUT$ drop -1 OUT BASE64:ENCODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ drop -1 OUT BASE64:DECODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ drop MEM-MAX-N negate 1- OUT BASE64:DECODE-URL drop ;]
+      E-SPAN-LENGTH TTHROWSQ
+   [: 7 [char] A GUARD-PAGE:TAIL 8 OUT-3 BASE64:DECODE-URL drop ;]
+      E-SPAN-CAPACITY TTHROWSQ
+   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and OUT-3
+      BASE64:DECODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
+   [: 0 OUT$ drop MEM-MAX-N 2 - OUT BASE64:ENCODE-URL drop ;]
+      E-SPAN-CAPACITY TTHROWSQ ;
 
 : LENGTHS ( -- )
    s" Z" E-BASE64-LENGTH REFUSES
@@ -176,7 +271,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE ;
+   VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE
+   URL-VECTORS PKCE URL-REFUSALS URL-CAPACITY ;
 
 ;package
 

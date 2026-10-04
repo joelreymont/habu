@@ -781,13 +781,14 @@ and this counts as one per byte. A negative length is `E-STR-BOUNDS`.
 
 ## Base64
 
-`lib/base64.f` owns package `BASE64`: RFC 4648 base64 in the standard alphabet
-with `=` padding. Both words write into a caller's span and answer the count
-they wrote.
+`lib/base64.f` owns package `BASE64`: standard padded base64 and unpadded
+base64url. All four words write into a caller's span and answer the byte count.
 
 ```forth
 BASE64:ENCODE ( ptr u8 n SPAN:span<u8> -- n )
 BASE64:DECODE ( ptr u8 n SPAN:span<u8> -- n )
+BASE64:ENCODE-URL ( ptr u8 n SPAN:span<u8> -- n )
+BASE64:DECODE-URL ( ptr u8 n SPAN:span<u8> -- n )
 ```
 
 `ENCODE` writes four characters for every three bytes, the last group padded.
@@ -795,15 +796,24 @@ BASE64:DECODE ( ptr u8 n SPAN:span<u8> -- n )
 encoding: a byte outside the alphabet is `E-BASE64-CHAR`, a `=` anywhere but
 the end of the last group or a spare bit left set below its last byte is
 `E-BASE64-PAD`, and a length that is not a multiple of four is
-`E-BASE64-LENGTH`. There is no whitespace, line wrapping or URL-safe alphabet.
+`E-BASE64-LENGTH`.
+`ENCODE-URL` uses `-` and `_` in place of `+` and `/` and omits all `=`.
+`DECODE-URL` accepts only that alphabet without padding; it rejects a
+modulo-four length of one with `E-BASE64-LENGTH`, `=` or nonzero unused bits
+with `E-BASE64-PAD`, and other invalid bytes with `E-BASE64-CHAR`.
+Neither format admits whitespace or line wrapping.
 A span too small for the result throws `E-SPAN-CAPACITY` and a negative input
-length `E-SPAN-LENGTH`. `DECODE` checks the whole input before it writes, so a
-refusal leaves the span as it was. The RFC 6455 handshake is the first caller:
+length `E-SPAN-LENGTH`. Both decoders check the whole input before writing, so
+a refusal leaves the span as it was. The RFC 6455 handshake is the first caller:
 a `Sec-WebSocket-Key` decodes to sixteen bytes, and `Sec-WebSocket-Accept` is
 the encoding of a `SHA1:digest`. `lib/base64-test.f` runs RFC 4648's section 10
 vectors, decodes the whole alphabet against `base64 -d`, round-trips every byte
 value, asserts each refusal, and derives RFC 6455's
-`s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`.
+`s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. Its URL cases include the PKCE S256 challenge
+from [RFC 7636 Appendix B](https://www.rfc-editor.org/rfc/rfc7636.html#appendix-B).
+The URL alphabet is in [RFC 4648 section 5](https://www.rfc-editor.org/rfc/rfc4648.html#section-5),
+and its canonical spare-bit rule is in
+[section 3.5](https://www.rfc-editor.org/rfc/rfc4648.html#section-3.5).
 
 ## File URIs
 
