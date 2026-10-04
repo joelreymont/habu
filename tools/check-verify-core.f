@@ -23,7 +23,9 @@
 \
 \ VERIFY-OUT$ is the checker's schema-1 packets, one JSON object per line: the
 \ subject's name PATH's canonical absolute path and count positions in the
-\ bytes; a dependency's name the dependency and count in its file. VERIFY-LOG$
+\ bytes; a dependency's name the dependency and count in its file. A duplicate
+\ definition, which the checker writes no packet for, is the record
+\ --all-errors writes for it (CHECK-ALL-ERRORS:DUP-RECORD$). VERIFY-LOG$
 \ is the prose: why a closure could not be discovered, and the child's stderr.
 \ Both hold until the next call.
 \
@@ -32,8 +34,7 @@
 \ packets carry the label check.f reports the subject by.
 \
 \ The require closure, discovered for the command line's named files as well,
-\ is kept here, so a caller of the operation loads neither the lints nor the
-\ all-errors core.
+\ is kept here, so a caller of the operation loads none of check.f's lints.
 
 require lib/errors.f
 require lib/string.f
@@ -46,6 +47,7 @@ require lib/process-env.f
 require lib/engine-candidate.f
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
+require tools/check-all-errors-core.f
 
 package CHECK
 using SOURCE-ROOT
@@ -251,6 +253,9 @@ $0A constant VFY-LF
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
+DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate's stopped line its record
+DYNAMIC-BUFFER VFY-DEP u8               \ a duplicate's file, not the subject
+variable VFY-REC-U
 variable VFY-OUT-U
 variable VFY-LOG-U
 variable VFY-ANSWER
@@ -405,12 +410,14 @@ variable VFY-STOP-U
 
 
 \ The answer the result line from AT to END in VFY-OUT gives, its line feed
-\ excluded.
+\ excluded. A stopped line answers only the pre-pass: in the first form it is a
+\ duplicate's, among the packets.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
+   VFY-PREPASS @ 0= if VFY-NONE exit then
    a u VFY-STOPPED$ STARTS-WITH? if at VFY-STOPPED$ nip + end VFY-STOP-PARSE exit then
    VFY-NONE ;
 
@@ -436,6 +443,67 @@ variable VFY-STOP-U
    at VFY-OUT-U ! ;
 
 
+\ The file the last stopped line read names, in VFY-OUT.
+: VFY-STOP-FILE$ ( -- ptr u8 n )
+   VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
+
+
+\ That file's bytes: the subject's, or the file's own.
+: VFY-STOP-SOURCE ( -- ptr u8 n )
+   VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
+   VFY-STOP-FILE$ FILE-SIZE 1 max
+   {: cap:n :}
+   cap VFY-DEP-RESERVE
+   VFY-STOP-FILE$ 0 VFY-DEP cap READ-ALL
+   {: u:n :}
+   0 VFY-DEP u ;
+
+
+: VFY-REC+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   VFY-REC-U @ u + VFY-REC-RESERVE
+   a VFY-REC-U @ VFY-REC u BYTE-COPY
+   VFY-REC-U @ u + VFY-REC-U ! ;
+
+
+\ Where the line of VFY-OUT that starts at AT ends: at its line feed.
+: VFY-LINE-END ( n -- n )
+   begin
+      dup VFY-OUT-U @ < if dup VFY-OUT c@ VFY-LF <> else false then
+   while 1+ repeat ;
+
+
+\ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate's stopped line
+\ as the record --all-errors writes for it: where the next line starts.
+: VFY-REC-LINE ( n -- n )
+   {: at:n :}
+   at VFY-LINE-END
+   {: end:n :}
+   at VFY-OUT end at - VFY-STOPPED$ STARTS-WITH?
+   if at VFY-STOPPED$ nip + end VFY-STOP-PARSE VFY-STOPPED = else false then
+   if
+      true CHECK-ALL-ERRORS:JSON!
+      VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
+      CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
+   else
+      at VFY-OUT end at - VFY-REC+
+   then
+   s\" \n" VFY-REC+
+   end 1+ ;
+
+
+\ The packets VFY-OUT holds, each stopped line the first form writes among them
+\ for a duplicate made its record.
+: VFY-DUP-RECORDS ( -- )
+   VFY-OUT-U @ 0= if exit then
+   0 VFY-REC-U !
+   0 begin dup VFY-OUT-U @ < while VFY-REC-LINE repeat drop
+   VFY-REC-U @ VFY-OUT-RESERVE
+   0 VFY-REC 0 VFY-OUT VFY-REC-U @ BYTE-COPY
+   VFY-REC-U @ VFY-OUT-U ! ;
+
+
 \ How the child ended. More output than the capture holds kills it, and its
 \ E-PROC-TRUNCATED is thrown on once what was captured is kept.
 : VFY-RUN ( -- outcome )
@@ -444,6 +512,7 @@ variable VFY-STOP-U
    PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
    erru LEN>N VFY-LOG-U !
    outu LEN>N VFY-TAKE
+   VFY-DUP-RECORDS
    rc 0<> if rc throw then
    o ;
 
@@ -494,7 +563,8 @@ public
 \ lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn throws as well.
 \ More child output than the capture holds, 4 MiB of stdout or 256 KiB of
 \ stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
-\ received before it.
+\ received before it. A file of the closure that defined a name again and can
+\ no longer be read throws as reading it does.
 : VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- verdict )
    {: src:ptr srcu:n path:ptr pathu:n deadline :}
    VFY-RESET
@@ -543,7 +613,7 @@ public
    VFY-STOP-SUBJ @ ;
 
 : PREVERIFY-STOPPED$ ( -- ptr u8 n )
-   VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
+   VFY-STOP-FILE$ ;
 
 ;using
 ;package

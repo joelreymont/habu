@@ -109,6 +109,9 @@
 \   ......................................................... shadowed-arity
 \ - a warning, which carries no verdict, published with a severity or not at
 \   the name of the definition whose effect it did not record .. not-recorded
+\ - a duplicate definition, of the document's own word or of one a file it
+\   requires defines, not published at the name defined again
+\   ......................................... duplicate, duplicate-of-required
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -1593,6 +1596,33 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+ PUBLISHES ;
 
+\ DA defined twice: the packet at the second DA, line 1, characters 2-4.
+: TEXT-DUP ( -- ptr u8 n )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
+
+: DUPLICATE-TURNS ( -- )
+   INITIALIZE
+   A-PATH TEXT-DUP 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DUP A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 1 2 1 4 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
+
+\ The document defines again the word the file it requires defines: the packet
+\ is the document's, at its LSPT-DD, line 1, characters 2-9.
+: DD-DEP ( -- ptr u8 n )  s" dd-dep.f" FIXTURE ;
+: TEXT-DD ( -- ptr u8 n )  s\" require dd-dep.f\n: LSPT-DD ( -- n ) 2 ;\n" ;
+
+: DUP-REQUIRED-TURNS ( -- )
+   DD-DEP s\" : LSPT-DD ( -- n ) 1 ;\n" WRITE-ALL
+   INITIALIZE
+   A-PATH TEXT-DD 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TEXT-DD A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -1611,7 +1641,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
-   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK ;
+   s" using-ambiguous" [: TWO-USED-TURNS ;] TALK
+   s" duplicate" [: DUPLICATE-TURNS ;] TALK
+   s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK ;
 
 public
 
