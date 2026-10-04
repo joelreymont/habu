@@ -58,10 +58,8 @@ public
    S\" \x20returned" b PUT$ MSG$  ENGINE-ERROR:CODE-CERT ;
 
 \ ---- the routine every trap site branches to ----------------------------------
-\ Trap messages are resolved while compiling. The target needs only the engine
-\ primitive, including while the source runtime itself is being rebuilt.
-: ROUTINE$ ( -- ptr u8 n )
-   s" die" ;
+\ Trap sites enter the engine primitive even if source scope shadows its name.
+TRUSTED: ROUTINE ( -- n ) ['] die ;
 
 private
 get-current prot-wid-add

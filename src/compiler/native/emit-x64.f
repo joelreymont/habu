@@ -120,6 +120,7 @@ variable PLACE-AT-N
 
 variable MEAS                           \ nonzero while an operation is being measured
 variable MCUR                           \ the measuring pass's byte cursor
+variable PATCH-RET                      \ does> patch slot in the routine's return
 variable N-BLK                          \ blocks in the function being laid out
 variable N-LAID                         \ ...and how many of them the order holds
 variable B-BASE                         \ where this function's blocks start in the module
@@ -972,6 +973,12 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    MEAS @ 0= if CUR X64IR:ADDR-CODE SITE+ then
    id 0 RES-R64  id FUN-ADDR >IMM64  s ENC-MOV-RI64 ;
 
+\ A created word's one-byte ret needs space for the later does> branch.
+\ A zero-displacement jump falls through to ret until does-patch aims it.
+: PUT-RET ( ptr a -- ) {: s:ptr :}
+   PATCH-RET @ 0<> if 0 >REL s ENC-JMP-REL32 then
+   s ENC-RET ;
+
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arm is the
@@ -1008,7 +1015,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       brz      OF id home s PUT-BRZ ENDOF
       cmpbr    OF id home s PUT-CMPBR ENDOF
       cmpbri   OF id home s PUT-CMPBRI ENDOF
-      ret      OF s ENC-RET ENDOF
+      ret      OF s PUT-RET ENDOF
       reserve  OF id s PUT-RESERVE ENDOF
       release  OF id s PUT-RELEASE ENDOF
       store    OF id s PUT-STORE ENDOF
@@ -1411,6 +1418,9 @@ public
    at PLACE-AT-N !
    PLACE-YES PLACE-MODE ! ;
 
+: PATCH-SLOT! ( bool -- )
+   if 1 else 0 then PATCH-RET ! ;
+
 \ ---- the pass ----------------------------------------------------------------
 \ The shape is a question about the module alone and is asked first; the
 \ acceptance is about the assignment and is asked next; the order and the layout
@@ -1446,6 +1456,7 @@ public
 \ displacement and write a zero where a branch or a call belongs.
 : RETIRE ( -- )
    ST-EMPTY ST !
+   0 PATCH-RET !
    PLACE-NO PLACE-MODE !
    0 PLACE-AT-N !
    0 N-SITES !

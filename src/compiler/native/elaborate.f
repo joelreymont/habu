@@ -3188,11 +3188,16 @@ here CELL 1- and CELL swap - CELL 1- and allot
    PATH-DEAD PATH-END ! ;
 
 
+\ Generated primitive calls bind their engine entries, regardless of a
+\ compiled source's package scope. Library calls still resolve by package.
+TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
+TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
+TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
+TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
+
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
-   s" type" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-HIR-UNMODELED throw then
    ix EMIT-STRING
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 
 : DO-STRING ( n -- ) {: ix:n :}
@@ -3272,12 +3277,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
    a u NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
-   s" xt!" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
    ix cell HIR:ADDR-DATA EMIT-KIND-LIT
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
 : DO-EXEC ( IR-ARENA:arena n -- )
@@ -3792,6 +3795,8 @@ variable FUN-KIND
 0 constant FUN-COLON
 1 constant FUN-DOES-PARENT
 2 constant FUN-DOES-CLAUSE
+3 constant FUN-FIXED
+4 constant FUN-DEFER
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -4043,7 +4048,6 @@ variable DOES-AT
 variable DOES-FUN
 PTR-VARIABLE DOES-SIG
 variable DOES-SIG-U
-variable DOES-PATCH
 \ True when the clause between `does>` and `;` holds no token at all. Such a
 \ clause runs after the created word has pushed its data address and does
 \ nothing to it, so `does-patch` is given a zero entry and publishes the
@@ -4051,6 +4055,8 @@ variable DOES-PATCH
 \ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
 \ the tape because this compiler never reaches that path.
 variable DOES-EMPTY
+variable FIXED-VAL
+variable FIXED-KIND
 
 public
 
@@ -4074,7 +4080,7 @@ public
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !
    0 TAIL-ENTRY !
    0 DOES-EMPTY !
-   0 DOES-PATCH ! ;
+   0 FIXED-VAL ! ;
 
 private
 
@@ -4112,11 +4118,23 @@ private
    STAGE-DOES-ENTRY
    DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
-   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
-   1 CALL-NEED ! ;
+   1 CALL-NEED !
+   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
+: STAGE-FIXED ( -- )
+   0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
+
+\ The defer body preserves its caller's stack while execute calls the target.
+: STAGE-DEFER ( -- )
+   0 EMIT-MEM
+   0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
+   0 HIR-OPCODE:LOAD EMIT-OPCODE
+   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 : BEFORE-RETURN ( -- )
-   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
+   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
+   FUN-KIND @ FUN-DEFER = if STAGE-DEFER exit then
+   FUN-KIND @ FUN-FIXED = if STAGE-FIXED then ;
 
 : SCAN-FUN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
@@ -4128,7 +4146,9 @@ private
    r lo hi DEFER-SCAN
    p r lo hi RESOLVE-SCAN
    r lo hi MEM-SCAN
-   r lo hi CROSS-SCAN ;
+   FUN-KIND @ FUN-DOES-PARENT = if 1 TOK-NEED ! then
+   r lo hi CROSS-SCAN
+   FUN-KIND @ FUN-DEFER = if 1 CALL-NEED ! then ;
 
 : OPEN-FUN-BODY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
@@ -4205,7 +4225,6 @@ public
    din dout ARITY-CK
    c b v UNIT {: n:n :}
    at 1 < at n >= or if E-NELAB-SHAPE throw then
-   s" does-patch" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DOES-PATCH !
    at DOES-AT !  sig DOES-SIG !  sigu DOES-SIG-U !
    0 DOES-EMPTY !
    at 1+ n >= if 1 DOES-EMPTY ! then
@@ -4219,6 +4238,32 @@ public
    c b v p r at 1+ n din dout BUILD-FUN drop
    1 CALL-NEED !  0 TAIL-NEED !
    f ;
+
+\ A fixed definer body pushes its stamped cell and returns.
+: FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena val:n kind:n :}
+   RF-RESET
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   val FIXED-VAL !  kind FIXED-KIND !
+   FUN-FIXED FUN-KIND !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 0 1 BUILD-FUN ;
+
+\ The target held by a defer's dispatch cell meets the caller's stack.
+: DEFER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena cell:n :}
+   RF-RESET
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   cell FIXED-VAL !
+   FUN-DEFER FUN-KIND !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 0 0 BUILD-FUN ;
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;

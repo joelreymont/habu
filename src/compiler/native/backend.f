@@ -70,6 +70,7 @@ $1 constant BIT-DEAD       \ control never comes back
 $2 constant BIT-CALLED     \ a call site reaches it
 $4 constant BIT-TAIL       \ tail-called from inside the emitted region
 $8 constant BIT-BACK       \ it calls back out
+$10 constant BIT-PATCH     \ its return is the slot does> patches
 
 : MK ( n -- NBACK:linkage )    NBACK-LINKAGE:MAKE ;
 : BITS ( NBACK:linkage -- n )  NBACK-LINKAGE:UNMAKE ;
@@ -81,6 +82,7 @@ public
 : L-CALLED ( -- NBACK:linkage )  BIT-CALLED MK ;
 : L-TAIL ( -- NBACK:linkage )    BIT-TAIL MK ;
 : L-BACK ( -- NBACK:linkage )    BIT-BACK MK ;
+: L-PATCH ( -- NBACK:linkage )   BIT-PATCH MK ;
 
 : WITH ( NBACK:linkage NBACK:linkage -- NBACK:linkage )
    BITS swap BITS or MK ;

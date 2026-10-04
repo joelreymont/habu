@@ -108,10 +108,13 @@ TRUSTED: APPEND-PENDING ( n -- )
    TAIL-RELOC-CK
    fn ;
 
-: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+: PLACE ( n n -- ) {: fn:n size:n :}
    NEMIT:BYTES fn size CODE-WINDOW
    fn RELOC-CALLS
-   fn RELOC-ADDRS
+   fn RELOC-ADDRS ;
+
+: COMMIT ( n n n -- ) {: idx:n fn:n size:n :}
+   fn size PLACE
    fn  size RECORDED-LEN  idx PUBLISH-REC ;
 
 : PENDING-IDX ( -- n )
@@ -163,15 +166,46 @@ TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
 
-public
-
-: PUBLISH-PENDING ( -- )
+\ Publish an untyped definer body without consuming checker facts.
+: PUBLISH-CODE ( -- n )
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx fn size UNIT-NOTIFY
    idx fn size COMMIT
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   idx PENDING-FACTS ;
+   idx ;
+
+\ A defer record's span ends at the trailer just past its code slot.
+2 cells constant TRAILER-BYTES
+create TRAILER TRAILER-BYTES allot
+
+: TRAILER-PLACE ( n n -- ) {: cell:n slot:n :}
+   DEFER-MAGIC TRAILER !
+   cell TRAILER CELL + !
+   TRAILER slot TRAILER-BYTES CODE-WINDOW ;
+
+: HOOKED? ( -- bool )
+   data-base HOOK-CELL + @ 0<> ;
+
+public
+
+: PUBLISH-PENDING ( -- )
+   PUBLISH-CODE PENDING-FACTS ;
+
+: PUBLISH-RAW ( -- )
+   PUBLISH-CODE drop ;
+
+: PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
+   fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
+   idx fn size UNIT-NOTIFY
+   fn size PLACE
+   cp@ {: slot:n :}
+   fn  slot fn - CODE-SPAN:EXACT  idx PUBLISH-REC
+   cell slot TRAILER-PLACE
+   idx NSHADOW:PUBLISH
+   idx APPEND-PENDING
+   HOOKED? if idx PENDING-FACTS then ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}

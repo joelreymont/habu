@@ -608,7 +608,7 @@ TRUSTED: CODE-WORD@ ( n -- n )
    CODE-BASE @ k INSN-BYTES * + k CODE-WORD@ NBR:BL-TARGET t = ;
 
 : TRAP-BRANCHES ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: t:n :}
+   NTRAP:ROUTINE {: t:n :}
    0
    CODE-INSNS 0 ?do
       i t TRAP-BR? if 1+ then

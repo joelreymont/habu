@@ -809,12 +809,8 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id mask EMIT-WORD-CALL ;
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The trap registry resolves diagnostics at compile time; only die is needed in
-\ the target dictionary.
-: TRAP-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
+\ The trap registry resolves diagnostics at compile time. Trap sites enter
+\ the engine's die through NTRAP:ROUTINE.
 
 : EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id give:n entry:n :}
@@ -833,7 +829,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    TRAP-CELLS 0 ?do
       id  id i OPERAND  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
    loop
-   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  TRAP-ENTRY  EMIT-TRAP-BR ;
+   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  NTRAP:ROUTINE  EMIT-TRAP-BR ;
 
 : EMIT-TERMINAL ( IR-ID:ir-op-id n -- ) {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-TRAP throw then
@@ -1225,17 +1221,11 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ ---- selecting the division --------------------------------------------------
 \ A zero divisor is a CALLER error, so the divide's cold side hands the code to
 \ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
-\ does. The entry is asked for here, where the dictionary is readable, and
-\ carried to the emitter as the operation's own attribute; the name E-X64SEL-TRAP
-\ names is the routine a compiled refusal branches to missing from the target
-\ dictionary, which is the same refusal the ARM64 selector makes. Public, so a
-\ writer that links a compiled routine itself knows the call the divide makes
-\ (src/habu/kernel-x64.f PRIM-HIR).
+\ does. Its engine entry is ticked here regardless of source scope and carried
+\ to the emitter as the operation's attribute. A writer that links a compiled
+\ routine also reads this entry (src/habu/kernel-x64.f PRIM-HIR).
 public
-: THROW-ENTRY ( -- n )
-   s" throw" NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
+TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
 
 private
 

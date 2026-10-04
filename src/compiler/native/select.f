@@ -2593,12 +2593,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The trap registry resolves diagnostics at compile time; only die is needed
-\ in the target dictionary, even during the first source-prefix definitions.
-: TRAP-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-A64SEL-TRAP throw then
-   e ;
+\ The trap registry resolves diagnostics at compile time. Trap sites enter
+\ the engine's die through NTRAP:ROUTINE.
 
 \ Under the trap form's own key and not the one a tail branch carries.
 : EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
@@ -2751,7 +2747,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF id mask EMIT-CALL ENDOF
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
-      trap   OF id 0 TRAP-ENTRY 0 EMIT-TRAP ENDOF
+      trap   OF id 0 NTRAP:ROUTINE 0 EMIT-TRAP ENDOF
       terminal OF id mask EMIT-TERMINAL ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF

@@ -121,6 +121,13 @@ variable M-DOES-GIN                  \ where the clause's argument row's values 
 variable M-DOES-GOUT                 \ where the clause's result row's values end
 variable M-DOES-FUN                  \ hidden clause function ordinal
 
+public
+3 constant FIXED-DEFER               \ a defer dispatch body, not an NDICT fixed kind
+private
+
+variable M-FIXED                     \ the pending definer's body kind
+variable M-FIXED-VAL                 \ its value or dispatch cell
+
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
@@ -457,10 +464,18 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : NO-RETURN? ( -- bool )
    NAME$ NDICT:SPELL-DEAD? ;
 
+: LEAF? ( -- bool )
+   M-FIXED @ NDICT:FIXED-VAL =  M-FIXED @ NDICT:FIXED-ADDR =  or ;
+
+: FIXED-LINKAGE ( -- NBACK:linkage )
+   NBACK:L-NONE
+   M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
+
 \ How control reaches and leaves this definition's routine. The backend composes
 \ its own machine contract from this and from what the definition takes and
 \ leaves; which registers or frame that means is the backend's answer.
 : LINKAGE ( -- NBACK:linkage )
+   LEAF? if FIXED-LINKAGE exit then
    NBACK:L-NONE
    NO-RETURN? if NBACK:L-DEAD NBACK:WITH then
    NELAB:CALLED? if NBACK:L-CALLED NBACK:WITH then
@@ -551,6 +566,53 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    PUBLISH-IT
    0 M-DOES-FRAME ! ;
 
+\ Fixed definers have no body text or checker scan. A one-row tape gives the
+\ HIR function its source and symbol; the definer publishes its effect later.
+\ Defer uses the captured qualified name so deadness resolves to its own word.
+$20 constant NAME-END
+
+: FIXED-NAME$ ( -- ptr u8 n )
+   M-FIXED @ FIXED-DEFER = if
+      data-base BODYBUF-OFF + BYTE-VIEW
+      data-base BODYLEN-CELL + @ {: b:ptr len:n :}
+      0 begin
+         dup len < if b over + c@ dup NAME-END <> swap 0<> and else false then
+      while 1+ repeat
+      {: u:n :}
+      b u exit
+   then
+   PENDING-NAME$ ;
+
+: FIXED-TAPE ( -- )
+   FIXED-NAME$ {: a:ptr u:n :}
+   u TEXT-CAP > if E-NCOMP-TEXT throw then
+   a TXT u BYTE-COPY
+   CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
+   CC BB TXT u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CC BB tp
+   BB sid 0 u IR-BUILD:ADD-SPAN sym NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
+   NTAPE:PUSH-INTO drop
+   tp NTAPE:SEAL 0 M-TAPE ! ;
+
+: DEFER-WORK ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   KEEP-TAPE-NAME
+   0 M-IN ! 0 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
+   EMITTED
+   M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
+
+: FIXED-WORK ( -- )
+   CC HIR-MOD 0 M-BLD !
+   FIXED-TAPE
+   MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   M-FIXED @ FIXED-DEFER = if p r DEFER-WORK exit then
+   0 M-IN ! 1 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop
+   EMITTED
+   NPUB:PUBLISH-RAW ;
+
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
@@ -562,7 +624,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
-   [: WORK ;] catch M-RC !
+   [: M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
@@ -712,6 +774,7 @@ INSTALL-FORGET
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
+   NDICT:FIXED-NONE M-FIXED !
    0 NAME-U !
    NELAB:REFUSED-RESET ;
 
@@ -721,6 +784,13 @@ public
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
+
+: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+   kind NDICT:FIXED-VAL <> kind NDICT:FIXED-ADDR <> and
+   kind FIXED-DEFER <> and if E-NCOMP-STATE throw then
+   TXT 0 STAGE
+   kind M-FIXED ! val M-FIXED-VAL !
+   RUN ;
 
 \ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
 \ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
@@ -733,13 +803,12 @@ public
 : INSTALL ( -- )
    ['] COMPILE DISPATCH! ;
 
-\ The session is already gone by the time this runs, and it took what NCOMP held
-\ in it with it: IMAGE-LIFECYCLE:PREPARE closed the session, and SESSION-FORGET
-\ above is the stand-down that close ran, before the interner the dialects were
-\ reading was unmapped. So there is nothing session-shaped left to clear here,
-\ and no order between the two entry points to get right.
+\ A whole-image capture closes the session through IMAGE-LIFECYCLE:PREPARE.
+\ A chain window captures this entry directly, so close a live session here too.
+\ SESSION-FORGET clears its readers before the interner is unmapped.
 : CAPTURE-PREPARE ( -- )
    IDLE-CK
+   IR-CTX:SESSION-LIVE? if IR-CTX:SESSION-CLOSE then
    NFETCH:RELEASE
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
