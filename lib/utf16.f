@@ -5,6 +5,12 @@
 \ (lib/utf8-scalar.f): a scalar below U+10000 is one unit, and one at or above
 \ it is two, a surrogate pair.
 \
+\ OFFSET goes back: the byte where a unit index starts, reading the span the
+\ same way. Index 0 is byte 0, an index at or past the span's units is its
+\ length, and an index inside a surrogate pair names no byte, so it rounds to
+\ the byte after that scalar. It is the exact inverse of UNITS only at scalar
+\ boundaries.
+\
 \ Invalid UTF-8 counts as UTF8:NEXT reads it: every byte it answers as
 \ `raw-byte` is one unit, the width of the U+FFFD that stands for that byte.
 \ That is one replacement per byte. Unicode's maximal-subpart practice (chapter
@@ -12,7 +18,8 @@
 \ except a truncated sequence that starts well - E2 82 then an `A`, or F0 9F 98
 \ at the end of the span - which it counts as one unit and this counts as one
 \ per byte. A span that ends inside a scalar is such a truncation. A negative
-\ length is E-STR-BOUNDS, as UTF8:NEXT refuses one.
+\ length, or a negative unit index, is E-STR-BOUNDS, as UTF8:NEXT refuses a
+\ negative length.
 \
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
@@ -43,5 +50,15 @@ public
    u 0 < if E-STR-BOUNDS throw then
    0 0 begin dup u < while a u STEP repeat
    drop ;
+
+\ The byte where unit UNIT starts: steps whole scalars until UNIT units are
+\ behind, so a unit inside a pair ends after the pair, and the span's end
+\ stops an index past it.
+: OFFSET ( ptr u8 n n -- n )
+   {: a:ptr u:n unit:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   unit 0 < if E-STR-BOUNDS throw then
+   0 0 begin over unit < over u < and while a u STEP repeat
+   nip ;
 
 ;package

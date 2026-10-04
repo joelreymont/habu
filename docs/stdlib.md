@@ -779,6 +779,20 @@ every ill-formed byte except a truncated sequence that starts well (`E2 82`
 then an `A`, or `F0 9F 98` at the end of the span), which it counts as one unit
 and this counts as one per byte. A negative length is `E-STR-BOUNDS`.
 
+`UTF16:OFFSET` goes back: the byte where a unit index starts, which turns an
+LSP position's character into a byte offset on its line.
+
+```forth
+UTF16:OFFSET ( ptr u8 n n -- n )
+```
+
+It reads the span as `UNITS` does, each `raw-byte` one byte and one unit. Index
+0 is byte 0, an empty span is byte 0 at any index, and an index at or past the
+span's units is its length. An index inside a surrogate pair names no byte and
+rounds to the byte after that scalar, so `OFFSET` inverts `UNITS` exactly only
+at scalar boundaries. A negative length or index is `E-STR-BOUNDS`, on an empty
+span too.
+
 ## Base64
 
 `lib/base64.f` owns package `BASE64`: standard padded base64 and unpadded
