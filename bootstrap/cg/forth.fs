@@ -3136,14 +3136,6 @@ create ZBYTE 0 c,
 : PFX-LOAD-DECL-FILES ( -- )
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
-: PFX-LOAD-CORE-FILES ( -- )
-   PFX-CORE PFX-SEAL or ['] PFX-LOAD-ROW PFX-FILES ;
-
-: PFX-LOAD-BASE-FILES ( -- )
-   PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
-
 \ The boot stdlib (habu2.f PFX-LOAD-STDLIB-FILES). src/core/dynamic-storage.f is
 \ the row that forced this group in: src/core/layout-buffer.f DBUF-SOURCE generates
 \ calls to DYNAMIC-STORAGE:RESERVE/:RELEASE, and stage2-src declares one
@@ -3208,10 +3200,6 @@ create ZBYTE 0 c,
    12 done CBNZ,
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
-
-: PFX-LOAD-FILES ( -- )
-   PFX-LOAD-BASE-FILES
-   PFX-LOAD-SCRIPT-ARGV ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
@@ -3379,7 +3367,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
-\ The caller activates source input after the complete loader text has run.
+\ include.f finishes defining the loader before a later prefix row can `require`.
 : EMIT-SOURCE-RESET-TOKEN ( -- )
    LBL {: done :}
    12 DATA SNAP-CELL LDR,
@@ -3387,6 +3375,20 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    s" SOURCE-INPUT:RESET" bounds ?do i c@ C-SOURCE-APPEND-CHAR loop
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
+
+: PFX-LOAD-CORE-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
+   kind var a u PFX-LOAD-ROW
+   \ xref.f requires native-observer-cells.f in the same prefix pass.
+   \ Bind include.f's source vectors before that first require executes.
+   var LPINCLUDE = if EMIT-SOURCE-RESET-TOKEN then ;
+
+: PFX-LOAD-CORE-FILES ( -- )
+   PFX-CORE PFX-SEAL or ['] PFX-LOAD-CORE-ROW PFX-FILES ;
+
+: PFX-LOAD-BASE-FILES ( -- )
+   PFX-LOAD-CHECKER-FILES
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
 
 \ Mirror of src/habu/habu2.f EMIT-REQUIRE-FREEZE-TOKEN: once the provide rows
 \ are in, `REQUIRE-BOOT-FREEZE` pins include.f's engine surface, so a later
@@ -3484,14 +3486,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ Native pairs the block with PFX-PROVIDE-STDLIB-FILES so a `require` inside one of
 \ those files does not re-read a file this table already loaded. A provide row is
 \ the source text `s" path" provided`, and src/core/include.f canonicalizes that
-\ path through CWD-INIT, which the Linux seed answers through its own realpath
-\ (see BREALPATH); PFX-PROVIDE-STDLIB-FILES carries the seed's own two lib rows.
-\ The macOS seed still cannot answer CWD-INIT, and its programs must not require.
+\ path through CWD-INIT and the target's BREALPATH. PFX-PROVIDE-STDLIB-FILES
+\ carries the seed's own two lib rows. Both targets need SOURCE-INPUT:RESET
+\ before their first require.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
-   EMIT-SOURCE-RESET-TOKEN
    \ habu2.f EMIT-HOST-LOAD-PREFIX opens the registry here, between the base
    \ files and the provide rows; its stdlib block loads inside the same window
    \ (PFX-LOAD-STDLIB-COLD, after the rows). This seed loads that block from
