@@ -223,6 +223,52 @@ variable FUN-B0                        \ the function's first block, module-loca
    f NFROZEN:BLOCK-COUNT 0 ?do  f i NFROZEN:BLOCK-AT w execute  loop
    SB$ ;
 
+\ An operation as NAME+ spells it, `+offset` after an access, and its
+\ destinations.
+: AT-OP+ ( IR-ID:ir-op-id -- )
+   {: o:IR-ID:ir-op-id :}
+   o NAME+
+   o s" wstruct.offset" KEY-AT {: at:n :}
+   at 0 >= if  s" +" SB-APPEND  o at NFROZEN:ATTR-INT-AT FMT:SB-U  then
+   o SUCCS+
+   s"  " SB-APPEND ;
+
+\ A block as BLOCK+ writes it, every operation by AT-OP+ and none in a run:
+\ `0: i32.wrap_i64 i64.load8_u+0 i32.const=0 return | `.
+: AT-BLOCK+ ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk NFROZEN:ARG-COUNT FMT:SB-U  s" : " SB-APPEND
+   bk NFROZEN:OP-COUNT 0 ?do  bk i NFROZEN:OP-AT AT-OP+  loop
+   s" | " SB-APPEND ;
+
+\ What defines a value: `arg` for a block's argument, else its operation as
+\ NAME+ spells it, then in parentheses what defines each of that operation's
+\ operands, down to constants and block arguments: `i64.eqz(i64.or(..))`.
+: DEF+ ( IR-ID:ir-value-id -- )
+   {: v:IR-ID:ir-value-id :}
+   v NFROZEN:VALUE-FROM-OP? 0= if  s" arg" SB-APPEND  exit  then
+   v NFROZEN:DEF-OP {: o:IR-ID:ir-op-id :}
+   o NAME+
+   o NFROZEN:OPERANDS-OF 0= if exit then
+   s" (" SB-APPEND
+   o NFROZEN:OPERANDS-OF 0 ?do
+      i 0<> if s" ," SB-APPEND then
+      o i NFROZEN:OPERAND-AT RECURSE
+   loop
+   s" )" SB-APPEND ;
+
+\ Operation k of function zero's block j: what defines each operand, by commas.
+: USES$ ( IR-BUILD:module n n -- ptr u8 n )
+   {: m:IR-BUILD:module j:n k:n :}
+   m NFROZEN:VIEWS!
+   NFROZEN:MKEY 0 IR-ID:PACK-FUN  j NFROZEN:BLOCK-AT  k NFROZEN:OP-AT {: o:IR-ID:ir-op-id :}
+   SB-RESET
+   o NFROZEN:OPERANDS-OF 0 ?do
+      i 0<> if s" ," SB-APPEND then
+      o i NFROZEN:OPERAND-AT DEF+
+   loop
+   SB$ ;
+
 \ ---- the rows -------------------------------------------------------------------
 2048 constant GOT-CAP
 GOT-CAP BUFFER: GOT
@@ -284,6 +330,10 @@ TYPED-VARIABLE READER [ IR-CTX:ctx -- ]   \ what a row reads off its module
 : Z-INT ( IR-ID:ir-symbol-id n -- )
    {: k:IR-ID:ir-symbol-id v:n :}
    ZC ZB k  ZC ZB v IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR ;
+
+: Z-USE ( IR-ID:ir-value-id -- )
+   {: v:IR-ID:ir-value-id :}
+   ZC ZB v IR-BUILD:ADD-OPERAND ;
 
 \ A function of in cells to out cells, in the Wasm convention the elaborator
 \ gives a definition under this binding, opened on its entry block.
