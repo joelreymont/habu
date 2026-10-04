@@ -554,6 +554,19 @@ SUITE wasm-leb
    test/wasm/leb.f
 ;SUITE
 
+\ The Wasm backend's dialect, src/arch/wasm/wstruct.f: its closed vocabulary,
+\ a module frozen through WSTRUCT:FREEZE, the substrate's refusals and the
+\ signature check.
+SUITE wasm-wstruct
+   test/wasm/wstruct.f
+;SUITE
+
+\ The Wasm feature profile, src/arch/wasm/profile.f: V1's features, layout and
+\ ceilings, profile identity, and the install-once rule.
+SUITE wasm-profile
+   test/wasm/profile.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
