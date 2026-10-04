@@ -1,11 +1,13 @@
 \ type-family-rollback-suite.f — transactional rollback-frame behavior suite for
-\ the checker's depth-safe candidate/scope rollback (PLAN.md item 3). Run BY THE
-\ ENGINE over stdin, exactly like test/type-family-suite.f (rollback + registry
-\ words resolve only at top-level interpret, never inside a checked ':' body):
-\     bin/hb < test/type-family-rollback-suite.f
+\ the checker's depth-safe candidate/scope rollback (PLAN.md item 3). A
+\ WHITEBOX-SUITE row, like test/type-family-suite.f: the rollback and registry
+\ words are checker internals, which the unsealed engine binds by their recorded
+\ rows at top level and in a checked ':' body alike. The gate runs it on that
+\ engine, which test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/type-family-rollback-suite.f
 \ Every rollback op (CHECKER-SCOPE-START/DONE, CHECK-CANDIDATE-START/DONE) is a
-\ top-level interpret line so the checker-internal state stays in scope. A failure
-\ prints F<index> + detail; REPORT exits 1 on any fail.
+\ top-level interpret line. A failure prints F<index> + detail; REPORT exits 1 on
+\ any fail.
 
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
@@ -37,38 +39,20 @@ variable #CASE
 
 \ scratch cells (all rollback query values are stashed before compare).
 variable FOUNDF
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named shims; a shim stays TRUSTED: only
-\ where the name it forwards to is engine-internal and a checked body cannot
-\ resolve it.
-TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
-TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
+\ Checker-internal words are probed by name at top level. A probe that composes
+\ them is checked: on the whitebox engine a body naming an internal word binds
+\ that word's recorded row.
 \ The defer flag is a fact of the checker's symbol-keyed store, and the names
 \ section 5 defers (CHECKER-DEFER, CHECKER-USIG-ADD) have no engine record, so
 \ compiled code binds nothing to them: the probe asks the store's own key.
-TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
-TRUSTED: TWX-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
-TRUSTED: TWX-USIG-ADD ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
-TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;
-TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
-TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
-TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
+: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
 : TWX-LAY-N@ ( -- n ) LAY-N@ ;
-TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 
-\ The constructor-symbol half of the registry rewind, and the cells the case
-\ below carries its ids in. Package-owned because they are new module words.
+\ The cells the constructor-symbol case below carries its ids in.
+\ Package-owned because they are new module words.
 package RB-SVX
 public
 variable SYM   variable FAM   variable VID   variable GOT
-TRUSTED: CTOR-SYM! ( n n -- ) SUMV-CTOR-SYM! ;
-TRUSTED: FROM-CTOR-SYM ( n -- n bool ) SUMV-FROM-CTOR-SYM ;
-TRUSTED: RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
 ;package
 
 package RB-FIELD
@@ -87,8 +71,8 @@ variable A-TFAM   variable A-SYMN   variable B-TFAM  variable B-SYMN
 variable PFTX     variable PFSCH   variable PFOWN
 
 \ clean TFAM/SCHEMA slate (SYM/USIG/DFER/package remain live checker state).
-TWX-TFAM-RESET
-TWX-SCHEMA-RESET
+TFAM-RESET
+SCHEMA-RESET
 
 \ ---------------------------------------------------------------------------
 \ 1. GENERIC candidate rollback: mutate EVERY registry class inside a candidate,
@@ -96,9 +80,9 @@ TWX-SCHEMA-RESET
 \    same-name re-add succeeds cleanly (string pool + counters rewound).
 \ ---------------------------------------------------------------------------
 \ seed one pre-existing family so restore is to a nonzero baseline (not just 0).
-s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL
-s" base" 0 0 0 0 TWX-SUMV-ADD drop
-0 TWX-SCHEMA-PARAM drop
+s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TFAM-DECL
+s" base" 0 0 0 0 SUMV-ADD drop
+0 SCHEMA-PARAM drop
 
 TFAM-N@       P-TFAM !
 SUMV-N@       P-SUMV !
@@ -109,22 +93,22 @@ SCHEMA-ROOT-N@ P-SCHR !
 TF-STR-U@    P-STRU !
 TF-PK-N@     P-PKN !
 
-TWX-CAND-START
-   s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TWX-TFAM-DECL
-   s" cand" 0 0 0 0 TWX-SUMV-ADD drop
+CHECK-CANDIDATE-START
+   s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TFAM-DECL
+   s" cand" 0 0 0 0 SUMV-ADD drop
    \ a product field + layout keyed on the just-added candidate family.
-   s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! PFOWN !
-   0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
+   s" rbc" s" cand" TFAM-FIND-IN FOUNDF ! PFOWN !
+   0 SCHEMA-PARAM SCHEMA-ROOT+ PFSCH !
    RB-FIELD:OPEN PFTX !
    PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @
       0 1 0 CELL CELL PF-FLAGS-NONE RB-FIELD:ADD PFTX !
    PFTX @ RB-FIELD:CLOSE
-   FOUNDF @ TL-BOXED 8 8 8 TWX-LAY-ADD drop
-   1 TWX-SCHEMA-CON drop   2 TWX-SCHEMA-PARAM drop
-   0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ drop
+   FOUNDF @ TL-BOXED 8 8 8 LAY-ADD drop
+   1 SCHEMA-CON drop   2 SCHEMA-PARAM drop
+   0 SCHEMA-PARAM SCHEMA-ROOT+ drop
    \ found INSIDE the candidate.
-   s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-0 TWX-CAND-DONE drop
+   s" rbc" s" cand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+0 CHECK-CANDIDATE-DONE drop
 
 \ every counter restored to the pre-candidate baseline.
 TFAM-N@        P-TFAM @ T=
@@ -136,15 +120,15 @@ SCHEMA-ROOT-N@ P-SCHR @ T=
 TF-STR-U@     P-STRU @ T=
 TF-PK-N@      P-PKN @ T=
 \ the candidate family cannot be found post-rollback.
-s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+s" rbc" s" cand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 \ re-adding the exact same (package,tail) after rollback succeeds (no leaked dup).
-s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT ' TWX-TFAM-DECL catch  TC !  drop
+s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT ' TFAM-DECL catch  TC !  drop
 TC @ 0 T=
 \ and the seeded baseline family is untouched.
-s" rbpre" s" base" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+s" rbpre" s" base" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 \ reset the extra re-added family so later baselines stay clean.
-TWX-TFAM-RESET TWX-SCHEMA-RESET
-s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop
+TFAM-RESET SCHEMA-RESET
+s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TFAM-DECL drop
 
 \ ---------------------------------------------------------------------------
 \ 2. SCOPE rollback (rejecting scoped load path): CHECKER-SCOPE-START/DONE roll
@@ -152,13 +136,13 @@ s" rbpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop
 \ ---------------------------------------------------------------------------
 TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !
 CHECKER-SCOPE-START
-   s" rbs" CHECKER-PACKAGE-PUBLIC s" scoped" 0 TK-ENUM TWX-TFAM-DECL
-   s" scoped" 0 0 0 0 TWX-SUMV-ADD drop
-   s" rbs" s" scoped" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+   s" rbs" CHECKER-PACKAGE-PUBLIC s" scoped" 0 TK-ENUM TFAM-DECL
+   s" scoped" 0 0 0 0 SUMV-ADD drop
+   s" rbs" s" scoped" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 CHECKER-SCOPE-DONE
 TFAM-N@ P-TFAM @ T=
 SUMV-N@ P-SUMV @ T=
-s" rbs" s" scoped" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+s" rbs" s" scoped" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 3. DEPTH >=3 nesting + parent-frame survival. Mix scope / candidate / scope;
@@ -167,43 +151,43 @@ s" rbs" s" scoped" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 \ ---------------------------------------------------------------------------
 TFAM-N@ P-TFAM !   SYM-N @ P-SYMN !
 CHECKER-SCOPE-START                                    \ frame A (scope)
-   s" rbn" CHECKER-PACKAGE-PUBLIC s" a" 0 TK-ENUM TWX-TFAM-DECL drop
-   s" -- n" s" RBN-A-SYM" TWX-USIG-ADD
+   s" rbn" CHECKER-PACKAGE-PUBLIC s" a" 0 TK-ENUM TFAM-DECL drop
+   s" -- n" s" RBN-A-SYM" CHECKER-USIG-ADD
    TFAM-N@ A-TFAM !   SYM-N @ A-SYMN !                 \ state after A's mutations
-   TWX-CAND-START                               \ frame B (candidate)
-      s" rbn" CHECKER-PACKAGE-PUBLIC s" b" 0 TK-ENUM TWX-TFAM-DECL drop
-      s" -- n" s" RBN-B-SYM" TWX-USIG-ADD
+   CHECK-CANDIDATE-START                        \ frame B (candidate)
+      s" rbn" CHECKER-PACKAGE-PUBLIC s" b" 0 TK-ENUM TFAM-DECL drop
+      s" -- n" s" RBN-B-SYM" CHECKER-USIG-ADD
       TFAM-N@ B-TFAM !   SYM-N @ B-SYMN !              \ state after B's mutations
-      TWX-CAND-START                            \ frame C (candidate, depth 3)
-         s" rbn" CHECKER-PACKAGE-PUBLIC s" c" 0 TK-ENUM TWX-TFAM-DECL drop
-         s" -- n" s" RBN-C-SYM" TWX-USIG-ADD
-         s" rbn" s" c" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-      0 TWX-CAND-DONE drop                      \ pop C -> parent B survives
+      CHECK-CANDIDATE-START                     \ frame C (candidate, depth 3)
+         s" rbn" CHECKER-PACKAGE-PUBLIC s" c" 0 TK-ENUM TFAM-DECL drop
+         s" -- n" s" RBN-C-SYM" CHECKER-USIG-ADD
+         s" rbn" s" c" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+      0 CHECK-CANDIDATE-DONE drop               \ pop C -> parent B survives
       TFAM-N@ B-TFAM @ T=                              \ B's family count intact
       SYM-N @ B-SYMN @ T=                              \ B's symbols intact
-      s" rbn" s" c" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=     \ C's family gone
-      s" rbn" s" b" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=    \ B's family present
-   0 TWX-CAND-DONE drop                         \ pop B -> parent A survives
+      s" rbn" s" c" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=         \ C's family gone
+      s" rbn" s" b" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=        \ B's family present
+   0 CHECK-CANDIDATE-DONE drop                  \ pop B -> parent A survives
    TFAM-N@ A-TFAM @ T=                                 \ A's family count intact (not B's)
    SYM-N @ A-SYMN @ T=                                 \ A's symbols intact (not B's)
-   s" rbn" s" b" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=       \ B's family gone
-   s" rbn" s" a" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=      \ A's family present
+   s" rbn" s" b" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=           \ B's family gone
+   s" rbn" s" a" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=          \ A's family present
 CHECKER-SCOPE-DONE                                     \ pop A -> back to P0
 TFAM-N@ P-TFAM @ T=                                    \ all nested families gone
 SYM-N @ P-SYMN @ T=                                    \ all nested symbols gone
-s" rbn" s" a" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+s" rbn" s" a" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 4. PACKAGE mode/name restore across a candidate that opens a different package
 \    and flips visibility.
 \ ---------------------------------------------------------------------------
 s" outer" CHECKER-PACKAGE                              \ MODE=PRIVATE name="outer"
-TWX-CAND-START
+CHECK-CANDIDATE-START
    s" inner" CHECKER-PACKAGE                           \ MODE=PRIVATE name="inner"
    CHECKER-PUBLIC                                      \ MODE=PUBLIC
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC T=
    CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ s" inner" T$=
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PRIVATE T=
 CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ s" outer" T$=
 \ a scope layered on top restores likewise.
@@ -223,19 +207,19 @@ CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE T=
 \    registers one (TRUST-DECL) before CHECKER-DEFER: a name with no record
 \    binds no word (SYM-LIVE), so no defer is found under it.
 \ ---------------------------------------------------------------------------
-s" -- n" s" RBD-KEEP" TWX-USIG-ADD
+s" -- n" s" RBD-KEEP" CHECKER-USIG-ADD
 s" RBD-KEEP" CHECKER-DEFER                             \ top-level defer that survives
 s" RBD-KEEP" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
 \ pre-existing symbol, NOT deferred yet -> caches a "false" answer.
-s" -- n" s" RBD-SURV" TWX-USIG-ADD
+s" -- n" s" RBD-SURV" CHECKER-USIG-ADD
 s" RBD-SURV" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
-TWX-CAND-START
-   s" -- n" s" RBD-CAND" TWX-USIG-ADD
+CHECK-CANDIDATE-START
+   s" -- n" s" RBD-CAND" CHECKER-USIG-ADD
    s" RBD-CAND" CHECKER-DEFER                          \ defer a NEW name
    s" RBD-SURV" CHECKER-DEFER                          \ defer an EXISTING symbol
    s" RBD-CAND" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
    s" RBD-SURV" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 \ new-name defer fully retired.
 s" RBD-CAND" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 \ surviving symbol's defer rolled back AND its cache is not stale-true.
@@ -248,44 +232,44 @@ s" RBD-KEEP" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
 \    candidate, prove it is found via the live index inside, then prove the index
 \    entry is retired post-rollback and a same-name re-add resolves cleanly.
 \ ---------------------------------------------------------------------------
-s" -- n" s" RBX-SEED" TWX-USIG-ADD                 \ build/validate the SYM index
-s" RBX-SEED" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" -- n" s" RBX-SEED" CHECKER-USIG-ADD             \ build/validate the SYM index
+s" RBX-SEED" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 SYM-N @ P-SYMN !   SYM-STR-U @ P-SYMU !
-TWX-CAND-START
-   s" -- n" s" RBX-CAND" TWX-USIG-ADD
-   s" RBX-CAND" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=   \ found via live index
-0 TWX-CAND-DONE drop
+CHECK-CANDIDATE-START
+   s" -- n" s" RBX-CAND" CHECKER-USIG-ADD
+   s" RBX-CAND" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=  \ found via live index
+0 CHECK-CANDIDATE-DONE drop
 SYM-N @ P-SYMN @ T=                                    \ counter rewound
 SYM-STR-U @ P-SYMU @ T=                                \ sym string pool rewound
-s" RBX-CAND" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=  \ index entry retired
+s" RBX-CAND" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=  \ index entry retired
 \ re-add the same name after rollback: resolves to the fresh entry, no ghost row.
-s" -- n" s" RBX-CAND" TWX-USIG-ADD
-s" RBX-CAND" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" -- n" s" RBX-CAND" CHECKER-USIG-ADD
+s" RBX-CAND" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
-\ 7. THROW-SAFE candidate: a REAL throw (E-TFAM-DUP) between TWX-CAND-START
+\ 7. THROW-SAFE candidate: a REAL throw (E-TFAM-DUP) between CHECK-CANDIDATE-START
 \    and DONE must still pop the frame and roll back the candidate's earlier
 \    successful mutations. This is exactly the discipline CHECK-CANDIDATE! now
 \    follows — body under catch, DONE unconditional, re-throw the caught code.
 \    Without it the frame leaks (depth stuck) and rejected rows survive, so the
 \    next probe runs on corrupted state (cases 1-6 never threw between START/DONE).
 \ ---------------------------------------------------------------------------
-s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM TWX-TFAM-DECL drop   \ pre-seed the dup target
+s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM TFAM-DECL drop       \ pre-seed the dup target
 RBF-DEPTH @ P-DEPTH !
 TFAM-N@ P-TFAM !
-TWX-CAND-START
-   s" rbt" CHECKER-PACKAGE-PUBLIC s" tcand" 0 TK-ENUM TWX-TFAM-DECL drop \ succeeds inside the candidate
-   s" rbt" s" tcand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=      \ present before the throw
-   s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM ' TWX-TFAM-DECL catch
+CHECK-CANDIDATE-START
+   s" rbt" CHECKER-PACKAGE-PUBLIC s" tcand" 0 TK-ENUM TFAM-DECL drop \ succeeds inside the candidate
+   s" rbt" s" tcand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=          \ present before the throw
+   s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM ' TFAM-DECL catch
       TC ! 2drop 2drop 2drop drop                                    \ real throw, caught
-0 TWX-CAND-DONE drop                                          \ pop the frame unconditionally
+0 CHECK-CANDIDATE-DONE drop                                   \ pop the frame unconditionally
 TC @ E-TFAM-DUP T=                                                   \ the throw really fired
 RBF-DEPTH @ P-DEPTH @ T=                                             \ frame popped: depth balanced
 TFAM-N@ P-TFAM @ T=                                                  \ candidate mutation rolled back
-s" rbt" s" tcand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=          \ tcand gone
-s" rbt" s" dupbase" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=       \ pre-seed intact
+s" rbt" s" tcand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=              \ tcand gone
+s" rbt" s" dupbase" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=           \ pre-seed intact
 \ direct CHECK-CANDIDATE! regression: the no-throw path returns its verdict and
-\ balances the frame depth (top-level stdin interpret yields 1 = uncheckable).
+\ balances the frame depth (at top level it yields 1 = uncheckable).
 RBF-DEPTH @ P-DEPTH !
 s" : RBT-OK ( -- n ) 0 ;" CHECK-CANDIDATE! FOUNDF !  FOUNDF @ 1 T=
 RBF-DEPTH @ P-DEPTH @ T=
@@ -298,19 +282,19 @@ RBF-DEPTH @ P-DEPTH @ T=
 \    past the committed high-water, so it is read through a raw shim (the public
 \    TYPE-FIELD accessors reject it with E-PF-ID).
 \ ---------------------------------------------------------------------------
-TRUSTED: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
-TWX-TFAM-RESET TWX-SCHEMA-RESET
-s" fdpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop   \ nonzero baseline
+: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
+TFAM-RESET SCHEMA-RESET
+s" fdpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TFAM-DECL drop       \ nonzero baseline
 TYPE-FIELD:COUNT P-PF !
-TWX-CAND-START
-   s" fdc" CHECKER-PACKAGE-PRIVATE s" prod" 2 TK-PRODUCT TWX-TFAM-DECL PFOWN !
-   0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
+CHECK-CANDIDATE-START
+   s" fdc" CHECKER-PACKAGE-PRIVATE s" prod" 2 TK-PRODUCT TFAM-DECL PFOWN !
+   0 SCHEMA-PARAM SCHEMA-ROOT+ PFSCH !
    RB-FIELD:OPEN PFTX !
    PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @ 6 1 6 cells CELL CELL PF-FLAGS-NONE RB-FIELD:ADD PFTX !
    PFTX @ RB-FIELD:CLOSE
    TYPE-FIELD:COUNT P-PF @ 1 + T=       \ the field row committed inside the candidate
    P-PF @ 5 TWX-PF-RAW@ 6 T=            \ SLOT field (cell 5) written = 6 while committed
-0 TWX-CAND-DONE drop                    \ reject -> TFAM-ROLLBACK-RESTORE scrubs the PF row
+0 CHECK-CANDIDATE-DONE drop             \ reject -> TFAM-ROLLBACK-RESTORE scrubs the PF row
 TYPE-FIELD:COUNT P-PF @ T=              \ committed high-water restored
 P-PF @ 0 TWX-PF-RAW@ 0 T=              \ FAM scrubbed in the retired row
 P-PF @ 5 TWX-PF-RAW@ 0 T=              \ SLOT scrubbed
@@ -333,17 +317,17 @@ P-PF @ 10 TWX-PF-RAW@ 0 T=             \ FLAGS scrubbed
 \ where a correct one does. What only the correct one does is forget the symbol.
 \ ---------------------------------------------------------------------------
 TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !
-s" RBSVX-MAKE" RB-SVX:RECORD-SYM RB-SVX:SYM !
-TWX-CAND-START
-   s" rbsvx" CHECKER-PACKAGE-PUBLIC s" holder" 0 TK-SUM TWX-TFAM-DECL RB-SVX:FAM !
-   RB-SVX:FAM @ s" only" 0 0 0 0 TWX-SUMV-ADD RB-SVX:VID !
-   RB-SVX:VID @ RB-SVX:SYM @ RB-SVX:CTOR-SYM!
-   RB-SVX:SYM @ RB-SVX:FROM-CTOR-SYM FOUNDF ! RB-SVX:GOT !
+s" RBSVX-MAKE" CHECKER-RECORD-SYM RB-SVX:SYM !
+CHECK-CANDIDATE-START
+   s" rbsvx" CHECKER-PACKAGE-PUBLIC s" holder" 0 TK-SUM TFAM-DECL RB-SVX:FAM !
+   RB-SVX:FAM @ s" only" 0 0 0 0 SUMV-ADD RB-SVX:VID !
+   RB-SVX:VID @ RB-SVX:SYM @ SUMV-CTOR-SYM!
+   RB-SVX:SYM @ SUMV-FROM-CTOR-SYM FOUNDF ! RB-SVX:GOT !
    FOUNDF @ -1 T=                                    \ the symbol resolves inside
    RB-SVX:GOT @ RB-SVX:VID @ T=                                \ ... to the variant that owns it
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 SUMV-N@ P-SUMV @ T=                                  \ the variant row is gone
-RB-SVX:SYM @ RB-SVX:FROM-CTOR-SYM FOUNDF ! drop
+RB-SVX:SYM @ SUMV-FROM-CTOR-SYM FOUNDF ! drop
 FOUNDF @ 0 T=                                        \ and so is the head that named it
 
 \ ---------------------------------------------------------------------------

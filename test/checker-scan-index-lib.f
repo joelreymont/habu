@@ -2,15 +2,14 @@
 \ rows, test/checker-scan-index-suite.f and
 \ test/checker-scan-index-rollback-suite.f.
 \
-\ It holds definitions only and runs no case: the assertion words, the named
-\ TRUSTED: shims that reach the checker's stores, their indexes and the walks
+\ It holds definitions only and runs no case: the assertion words, the checked
+\ words that reach the checker's stores, their indexes and the walks
 \ that specify them, and the differential that compares every index against
 \ its walk. The suite's header says what is under test. Each row requires this
 \ file and reopens `package SCANIDX-TEST` to run its cases.
 
 \ Every definition here is a fixture helper, so they live in the rows' own
-\ package. The cases still run as top-level interpret lines inside it: the
-\ checker's rollback and registry operations resolve only at top level, and the
+\ package. The cases still run as top-level interpret lines inside it, and the
 \ open package is where the definitions those cases make land — which is why
 \ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
 \ than as globals.
@@ -40,64 +39,41 @@ variable #CASE
    if -1 else 0 then 0 T= ;
 
 \ ---------------------------------------------------------------------------
-\ whitebox shims. The stores, their indexes, and the walks that specify them
-\ are checker-internal colon words; each is reached through one named boundary.
+\ whitebox reach. The stores, their indexes, and the walks that specify them
+\ are checker-internal colon words, named directly: on the unsealed engine a
+\ checked body binds their recorded rows. The SCX- words read or combine them.
 \ ---------------------------------------------------------------------------
 : SCX-SYM-N ( -- n ) SYM-N @ ;
-TRUSTED: SCX-SYM-CAP ( -- n ) SYM-CAP ;
-TRUSTED: SCX-ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
 \ The din cell count of the newest record the store keeps under the name's own
 \ symbol, -1 for none. The suites are about the symbol-keyed index, so this asks
 \ the store's key rather than a binding: a name only CHECKER-USIG-ADD recorded
 \ has no engine record, and compiled code binds nothing to it.
-TRUSTED: SCX-SIG-MIN-IN ( ptr u8 n -- n )
+: SCX-SIG-MIN-IN ( ptr u8 n -- n )
    CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM IF FEP @ E-MINI@ ELSE -1 THEN ;
-TRUSTED: SCX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;
 
-TRUSTED: SCX-USIG-NEWEST ( n -- n ) USIG-NEWEST ;
-TRUSTED: SCX-USIG-NEWEST-LINEAR ( n -- n ) USIG-NEWEST-LINEAR ;
-TRUSTED: SCX-NORET-NEWEST ( n -- n ) NORET-NEWEST ;
-TRUSTED: SCX-NORET-NEWEST-LINEAR ( n -- n ) NORET-NEWEST-LINEAR ;
-
-TRUSTED: SCX-SVX@ ( n -- n ) SVX-ENSURE SVX@ ;
-TRUSTED: SCX-SUMV-CTOR-FIRST-LINEAR ( n -- n ) SUMV-CTOR-FIRST-LINEAR ;
-TRUSTED: SCX-SUMV-FROM-CTOR ( n -- n bool ) SUMV-FROM-CTOR-SYM ;
-TRUSTED: SCX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
-TRUSTED: SCX-SUMV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-TRUSTED: SCX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
-TRUSTED: SCX-SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) SUMV-FIND-LINEAR ;
+: SCX-SVX@ ( n -- n ) SVX-ENSURE SVX@ ;
 
 : SCX-TFAM-N ( -- n ) TFAM-N@ ;
-TRUSTED: SCX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
 : SCX-TFAM-NAME$ ( n -- ptr u8 n ) TFAM-NAME$ ;
-TRUSTED: SCX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-TRUSTED: SCX-TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN-LINEAR ;
-TRUSTED: SCX-TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) TFAM-FIND-PUBLIC ;
-TRUSTED: SCX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: SCX-TFX-SLOTS ( -- n ) TFX-SLOTS ;
 : SCX-TFX-SLOTS-INIT ( -- n ) TFX-SLOTS-INIT ;
 
 \ The span cells are pinned to what they hold, so the store is checked rather
-\ than asserted (test/typed-storage-structural-test.f §1). SCX-SYM-INTERN stays
-\ trusted for SYM-INTERN, not for these cells.
+\ than asserted (test/typed-storage-structural-test.f §1).
 TYPED-VARIABLE SCX-NA ptr u8
 TYPED-VARIABLE SCX-NU n
 : SCX-NAME! ( ptr u8 n -- ) SCX-NU ! SCX-NA ! ;
-TRUSTED: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
+: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 
 \ the two scans the dot names, read directly: SCAN-USIGS-SYM leaves its answer
 \ in FEP/FMEND and NORET-SCAN-SYM in NORET-CTL, and the memoizing entry points
 \ above them can hide a wrong answer behind a cache hit.
-TRUSTED: SCX-SCAN-USIG ( n -- ) SCAN-USIGS-SYM ;
-TRUSTED: SCX-FEP-HIT? ( -- bool ) FEP-HIT? ;
-TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
+: SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
 : SCX-FMEND ( -- n ) FMEND @ ;
 create SCX-WIRE EFF-WIRE allot
-TRUSTED: SCX-WIRE-NEXT ( n -- n )
+: SCX-WIRE-NEXT ( n -- n )
    USIG-NEWEST 1- E-PTR SCX-WIRE E-WIRE-COPY
    SCX-WIRE EW.NEXT @ ;
-TRUSTED: SCX-SCAN-NORET ( n -- ) NORET-SCAN-SYM ;
-TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits
+: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word's flag bits
 
 \ Each index carries the store end it was last made exact at. A rollback that
 \ repaired the index in place leaves that mark at or below the store's new end;
@@ -112,9 +88,9 @@ TRUSTED: SCX-NORET-FLAGS ( -- n ) NORET-CTL @ XFER-FLAGS ;   \ the control word'
 : SCX-NORET-END ( -- n ) NORET-END @ ;
 : SCX-NRX-HI ( -- n ) NRX-HI @ ;
 : SCX-SUMV-N ( -- n ) SUMV-N@ ;
-TRUSTED: SCX-SVX-HI ( -- n ) SVX-HI @ ;
-TRUSTED: SCX-TFX-HI ( -- n ) TFX-HI @ ;
-TRUSTED: SCX-VNX-HI ( -- n ) VNX-HI @ ;
+: SCX-SVX-HI ( -- n ) SVX-HI @ ;
+: SCX-TFX-HI ( -- n ) TFX-HI @ ;
+: SCX-VNX-HI ( -- n ) VNX-HI @ ;
 
 : SCX-MARKS-EXACT ( -- )
    SCX-USX-HI SCX-UEND > TFALSE
@@ -122,12 +98,6 @@ TRUSTED: SCX-VNX-HI ( -- n ) VNX-HI @ ;
    SCX-SVX-HI SCX-SUMV-N > TFALSE
    SCX-TFX-HI SCX-TFAM-N > TFALSE
    SCX-VNX-HI SCX-SUMV-N > TFALSE ;
-
-TRUSTED: SCX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
-TRUSTED: SCX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-TRUSTED: SCX-USIG-ADD ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
-TRUSTED: SCX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: SCX-SUMV-CTOR-SYM! ( n n -- ) SUMV-CTOR-SYM! ;
 
 variable TC                    \ last caught throw code
 variable NMIS                  \ differential mismatches in the current section
@@ -152,10 +122,10 @@ variable REF-NEXT              \ ... and the link it reads
 
 : SCX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
 : SCX-EFF-REC ( -- n ) EFF-REC ;
-TRUSTED: SCX-REC-SYM ( n -- n ) E-PTR ER.SYM @ ;
-TRUSTED: SCX-REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
+: SCX-REC-SYM ( n -- n ) E-PTR ER.SYM @ ;
+: SCX-REC-NEXT ( n -- n ) E-PTR E-NEXT@ ;
 : SCX-NORET-ENTRY ( -- n ) NORET-ENTRY ;
-TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
+: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
 
 : SCX-REF-CLEAR ( -- )
    SCX-SYM-N SCX-REF-RESERVE
@@ -204,7 +174,7 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    0 NMIS !
    1 IX !
    BEGIN IX @ SCX-SYM-N < WHILE
-      IX @ SCX-USIG-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
+      IX @ USIG-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
       IX @ 1 + IX !
    REPEAT
    NMIS @ ;
@@ -214,7 +184,7 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    0 NMIS !
    1 IX !
    BEGIN IX @ SCX-SYM-N < WHILE
-      IX @ SCX-NORET-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
+      IX @ NORET-NEWEST  IX @ SCX-REF @ <> IF 1 NMIS +! THEN
       IX @ 1 + IX !
    REPEAT
    NMIS @ ;
@@ -223,7 +193,7 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    0 NMIS !
    1 IX !
    BEGIN IX @ SCX-SYM-N < WHILE
-      IX @ SCX-SVX@  IX @ SCX-SUMV-CTOR-FIRST-LINEAR <> IF 1 NMIS +! THEN
+      IX @ SCX-SVX@  IX @ SUMV-CTOR-FIRST-LINEAR <> IF 1 NMIS +! THEN
       IX @ 1 + IX !
    REPEAT
    NMIS @ ;
@@ -235,8 +205,8 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    0 NMIS !
    0 IX !
    BEGIN IX @ SCX-TFAM-N < WHILE
-      IX @ SCX-TFAM-PKG$ IX @ SCX-TFAM-NAME$ SCX-TFAM-FIND-IN {: gid:n gf:bool :}
-      IX @ SCX-TFAM-PKG$ IX @ SCX-TFAM-NAME$ SCX-TFAM-FIND-IN-LINEAR {: wid:n wf:bool :}
+      IX @ TFAM-PKG$ IX @ SCX-TFAM-NAME$ TFAM-FIND-IN {: gid:n gf:bool :}
+      IX @ TFAM-PKG$ IX @ SCX-TFAM-NAME$ TFAM-FIND-IN-LINEAR {: wid:n wf:bool :}
       gid wid <> IF 1 NMIS +! THEN
       gf IF wf 0= IF 1 NMIS +! THEN ELSE wf IF 1 NMIS +! THEN THEN
       IX @ 1 + IX !
@@ -249,8 +219,8 @@ TRUSTED: SCX-NORET-SYM ( n -- n ) NORET-CELL NORET.SYM @ ;
    0 NMIS !
    0 IX !
    BEGIN IX @ SCX-SUMV-N < WHILE
-      IX @ SCX-SUMV-FAM@ IX @ SCX-SUMV-NAME$ SCX-SUMV-FIND {: gid:n gf:bool :}
-      IX @ SCX-SUMV-FAM@ IX @ SCX-SUMV-NAME$ SCX-SUMV-FIND-LINEAR {: wid:n wf:bool :}
+      IX @ SUMV-FAM@ IX @ SUMV-NAME$ SUMV-FIND {: gid:n gf:bool :}
+      IX @ SUMV-FAM@ IX @ SUMV-NAME$ SUMV-FIND-LINEAR {: wid:n wf:bool :}
       gid wid <> IF 1 NMIS +! THEN
       gf IF wf 0= IF 1 NMIS +! THEN ELSE wf IF 1 NMIS +! THEN THEN
       IX @ 1 + IX !

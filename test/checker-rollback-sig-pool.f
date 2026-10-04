@@ -33,9 +33,7 @@ variable STR-U
 
 \ Whitebox payload-owner operations; the test deliberately controls the live
 \ capture window and reads its private serialized spans.
-TRUSTED: ARM ( -- ) CHECKER-PAYLOAD-ARM ;
-
-TRUSTED: FREEZE ( -- )
+: FREEZE ( -- )
    CHECKER-PAYLOAD-FREEZE
    CHECKER-PAYLOAD-SPANS STR-U ! STRINGS ! ROW-U ! ROWS ! ;
 
@@ -68,7 +66,7 @@ TRUSTED: FREEZE ( -- )
    REPEAT drop true ;
 
 \ A known checked word with row zero is exactly the capture audit's refusal.
-TRUSTED: LOOKUP ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: LOOKUP ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    s" " false a u CHECKER-PAYLOAD-LOOKUP ;
 
 : ROW-NAMES? ( ptr u8 n ptr u8 n -- bool ) {: qa:ptr qu:n wa:ptr wu:n :}
@@ -84,7 +82,7 @@ TRUSTED: LOOKUP ( ptr u8 n -- n bool ) {: a:ptr u:n :}
 
 \ Inspect the actual serialized graph, using its owner's field definitions.
 \ This fixture's rows contain only n values and an implicit untouched tail.
-TRUSTED: N-ROW? ( ptr u8 n n -- bool ) {: graph:ptr off:n count:n :}
+: N-ROW? ( ptr u8 n n -- bool ) {: graph:ptr off:n count:n :}
    graph off + {: node:ptr :}
    count 0= if node EN.TAG @ EN-ROW = exit then
    node EN.TAG @ EN-PUSH <> node EN.C @ 2 <> or if false exit then
@@ -93,7 +91,7 @@ TRUSTED: N-ROW? ( ptr u8 n n -- bool ) {: graph:ptr off:n count:n :}
    graph kind EN.A @ + kind EN.B @ s" n" CORE-STR= 0= if false exit then
    graph node EN.B @ count 1- RECURSE ;
 
-TRUSTED: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
+: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
    graph EW.ACTIVE @ ASIG-GRAPH-MAGIC <> if false exit then
    graph EW.MINI @ in <> if false exit then
    graph EW.HASR @ 0<> if false exit then
@@ -114,7 +112,7 @@ TRUSTED: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
 \ ---- case one: the popped scope's rows may not answer for anybody ------------
 
 : STALE-ROW-CASE ( -- )
-   ARM
+   CHECKER-PAYLOAD-ARM
    CHECKER-CANDIDATE-SCOPE-START
    s" RBSIG-GHOST-A ( -- )" CERT
    s" RBSIG-GHOST-B ( -- )" CERT
@@ -162,7 +160,7 @@ TRUSTED: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
 : AUDIT-CASE ( -- )
    CHECKER-ASIG-DISARM
    s" RBSIG-BEFORE ( -- )" CERT
-   ARM
+   CHECKER-PAYLOAD-ARM
    s" a known word outside the live window lacks membership" T-LABEL
    s" RBSIG-BEFORE" MEMBER? TFALSE
    s" RBSIG-BEFORE" MISSING? TTRUE
@@ -191,7 +189,7 @@ TRUSTED: GRAPH-EFFECT? ( ptr u8 n n -- bool ) {: graph:ptr in:n out:n :}
 \ belongs to a surviving symbol; retiring from zero would lose that coverage.
 
 : KEEP-CASE ( -- )
-   ARM
+   CHECKER-PAYLOAD-ARM
    s" RBSIG-KEEP ( -- n ) 0" CERT
    s" the live word is covered before any scope opens" T-LABEL
    s" RBSIG-KEEP" MEMBER? TTRUE

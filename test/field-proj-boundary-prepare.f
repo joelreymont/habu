@@ -5,7 +5,7 @@ public
 
 TRUSTED: DECLARATION ( -- )
    s" FIELD-PROJ!" s" ptr u8 n n n --" TRUST-DECL
-   \ The existing suite's other two trusted forwards need their real pre-hook
+   \ field-proj-lib.f's checked calls to these two need their real pre-hook
    \ signatures for native call lowering in this JIT-hosted source window.
    s" FIELD-PROJ-CLEAR" s" --" TRUST-DECL
    s" TFAM:TFAM-FIND-IN" s" ptr u8 n ptr u8 n -- n bool" TRUST-DECL
