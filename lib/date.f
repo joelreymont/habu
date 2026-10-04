@@ -132,7 +132,6 @@ public
 
 : N ( ptr u8 n n -- option<n> )
    {: a:ptr pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
-   len 0 <= IF 0 OPTION:SOME exit THEN
    0 len 0 ?do
       a pos + i + c@ dup DIGIT? 0= IF drop drop unloop OPTION:NONE exit THEN
       DATE-ZERO - swap DATE-BASE * +
@@ -166,7 +165,6 @@ public
 
 : WIDTH! ( n n ptr u8 n -- )
    {: n:n width:n dst:ptr pos:n :}
-   width 0 <= IF exit THEN
    n width 0 ?do
       dup DATE-BASE mod DATE-ZERO +  dst pos + width 1- i - + c!
       DATE-BASE /
