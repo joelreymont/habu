@@ -548,6 +548,12 @@ SUITE wasm-numeric-aot
    test/wasm/numeric.f
 ;SUITE
 
+\ WLEB, the Wasm backend's LEB128: the shortest and padded forms at their
+\ edges, the call and address fields rewritten in place, and each refusal.
+SUITE wasm-leb
+   test/wasm/leb.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.

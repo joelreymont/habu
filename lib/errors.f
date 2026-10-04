@@ -519,7 +519,7 @@
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
 \   -8680..-8689  native shadow emission (package NSHADOW)
 \   -8420..-8439, -8488..-8499, -8520..-8599, -8673..-8679, -8690..-8699,
-\   -8800..-8829, -8880..-8999
+\   -8800..-8829, -8900..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
@@ -1458,3 +1458,5 @@
 -9412 constant E-WS-SOCKET        \ RECEIVE through a handle that is not the calling worker's own live socket
 -9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
+
+\ Wasm back end: -9800..-9829, minted in src/arch/wasm/; WLEB owns -9800..-9804.
