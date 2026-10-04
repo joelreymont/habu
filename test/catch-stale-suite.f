@@ -1,7 +1,9 @@
 \ catch-stale-suite.f - the cells a caught throw leaves stale
 \ (dot habu-preserve-exceptional-stack-89902bde).
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/checker-assert.f
-\   test/catch-stale-suite.f
+\ A WHITEBOX-SUITE row: CTL-MASKS is a checker internal, which the unsealed
+\ engine binds by its recorded row. The gate runs it on that engine, which
+\ test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/catch-stale-suite.f
 \
 \ `catch` restores the DEPTH of both stacks and never their CONTENTS, so a cell
 \ in the caught quotation's window - its declared fixed input prefix - is only
@@ -110,15 +112,6 @@ create CS-RETURN-NEW 1 allot
 : SWAP-CODES ( a a -- a a ) swap ;
 : ORDINARY-ZERO ( -- n ) 0 ;
 : ANY-ZERO? ( n -- bool ) drop true ;
-
-\ Checker-internal readers probed at top level go through named trusted shims
-\ (the type-export-suite boundary): CTL-MASKS is the store's own answer for a
-\ word, XFER-PACK the one cell those facts travel in.
-TRUSTED: CS-CTL-MASKS ( ptr u8 n -- n n ) CTL-MASKS ;
-TRUSTED: CS-XPACK ( n n n -- n ) XFER-PACK ;
-TRUSTED: CS-XFLAGS ( n -- n ) XFER-FLAGS ;
-TRUSTED: CS-XDMASK ( n -- n ) XFER-DMASK ;
-TRUSTED: CS-XRMASK ( n -- n ) XFER-RMASK ;
 
 \ ---- the refusal shape: a candidate with JSON diagnostics captured ----------
 create CS-DBUF 8192 allot
@@ -386,30 +379,30 @@ variable CS-CHILD-ERR-U
 \ declared - a bit above it would speak for a cell that does not exist - so each
 \ row names the whole recorded word.
 : CS-SECTION-RECORDED ( -- )
-   s" WMAYBE" CS-CTL-MASKS drop 1 T=              \ one declared input, left alone
-   s" WMAYBE2" CS-CTL-MASKS drop 1 T=
-   s" WBOOM" CS-CTL-MASKS drop 0 T=
-   s" WPARTLY" CS-CTL-MASKS drop 0 T=
-   s" WBIND" CS-CTL-MASKS drop 0 T=
-   s" WSWAPT" CS-CTL-MASKS drop 0 T=              \ two inputs, the throw path swapped them
-   s" WKEEPTOP" CS-CTL-MASKS drop 1 T=            \ top kept, the cell below it not
-   s" WRSWAP" CS-CTL-MASKS 0 T= 0 T=              \ the return cell was moved, and so was the data one
+   s" WMAYBE" CTL-MASKS drop 1 T=                 \ one declared input, left alone
+   s" WMAYBE2" CTL-MASKS drop 1 T=
+   s" WBOOM" CTL-MASKS drop 0 T=
+   s" WPARTLY" CTL-MASKS drop 0 T=
+   s" WBIND" CTL-MASKS drop 0 T=
+   s" WSWAPT" CTL-MASKS drop 0 T=                 \ two inputs, the throw path swapped them
+   s" WKEEPTOP" CTL-MASKS drop 1 T=               \ top kept, the cell below it not
+   s" WRSWAP" CTL-MASKS 0 T= 0 T=                 \ the return cell was moved, and so was the data one
    \ a word with no throw edge at all records nothing: its call takes no edge
-   s" WKEEP" CS-CTL-MASKS 0 T= 0 T= ;
+   s" WKEEP" CTL-MASKS 0 T= 0 T= ;
 
 \ The one cell a symbol's control facts travel in (the owner-ABI handover and
 \ the captured signature graph): the flags keep the low bits and the masks ride
 \ above them, 20 bits each, so a mask wider than that arrives truncated - which
 \ is the conservative direction.
 : CS-SECTION-XFER ( -- )
-   $1000A $ABCDE $12345 CS-XPACK {: packed:n :}
-   packed CS-XFLAGS $1000A T=
-   packed CS-XDMASK $ABCDE T=
-   packed CS-XRMASK $12345 T=
-   $2 $FFFFFFFFFFFF $FFFFFFFFFFFF CS-XPACK {: wide:n :}
-   wide CS-XFLAGS $2 T=
-   wide CS-XDMASK $FFFFF T=
-   wide CS-XRMASK $FFFFF T= ;
+   $1000A $ABCDE $12345 XFER-PACK {: packed:n :}
+   packed XFER-FLAGS $1000A T=
+   packed XFER-DMASK $ABCDE T=
+   packed XFER-RMASK $12345 T=
+   $2 $FFFFFFFFFFFF $FFFFFFFFFFFF XFER-PACK {: wide:n :}
+   wide XFER-FLAGS $2 T=
+   wide XFER-DMASK $FFFFF T=
+   wide XFER-RMASK $FFFFF T= ;
 
 \ ---- what the rule still admits ---------------------------------------------
 : CS-SECTION-ADMITS ( -- )

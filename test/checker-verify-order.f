@@ -171,10 +171,6 @@ variable SRC-U
 \ once - E-USING-AMBIGUOUS for `bare 'CVR-H'`, E-USING-SHADOW-GLOBAL for
 \ `bare 'CVR-F'`: those lines ARE the refusals being measured, not test
 \ failures. The quiet resolver prints nothing.
-TRUSTED: QUIET-SYM ( ptr u8 n -- n ) CHECKER-FIND-QUIET-SYM ;
-TRUSTED: ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
-TRUSTED: QUIET-DEFERS? ( n -- bool ) FQSYM-DEFERRED? ;
-
 variable AMBIG-QUIET    variable AMBIG-ACTIVE
 variable SHADOW-QUIET   variable SHADOW-ACTIVE
 
@@ -185,22 +181,22 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    SHADOW-ACTIVE @ 7141 T=
    SHADOW-QUIET @ 0 T=
    s" and defers those two codes only" T-LABEL
-   7144 QUIET-DEFERS? TTRUE
-   7141 QUIET-DEFERS? TTRUE
-   7121 QUIET-DEFERS? TFALSE
-   70 QUIET-DEFERS? TFALSE ;
+   7144 FQSYM-DEFERRED? TTRUE
+   7141 FQSYM-DEFERRED? TTRUE
+   7121 FQSYM-DEFERRED? TFALSE
+   70 FQSYM-DEFERRED? TFALSE ;
 
 public
 
 \ Asked with CVR-V and CVR-W both used: the tail both export.
 : PROBE-AMBIGUOUS ( -- )
-   s" CVR-H" QUIET-SYM AMBIG-QUIET !
-   [: s" CVR-H" ACTIVE-SYM drop ;] catch AMBIG-ACTIVE ! ;
+   s" CVR-H" CHECKER-FIND-QUIET-SYM AMBIG-QUIET !
+   [: s" CVR-H" CHECKER-FIND-ACTIVE-SYM drop ;] catch AMBIG-ACTIVE ! ;
 
 \ Asked with CVR-U used: the tail it exports beside the global of that name.
 : PROBE-SHADOW ( -- )
-   s" CVR-F" QUIET-SYM SHADOW-QUIET !
-   [: s" CVR-F" ACTIVE-SYM drop ;] catch SHADOW-ACTIVE ! ;
+   s" CVR-F" CHECKER-FIND-QUIET-SYM SHADOW-QUIET !
+   [: s" CVR-F" CHECKER-FIND-ACTIVE-SYM drop ;] catch SHADOW-ACTIVE ! ;
 
 : RUN ( -- )
    LOADED-CASE

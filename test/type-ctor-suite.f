@@ -1,6 +1,9 @@
 \ type-ctor-suite.f — generated-constructor suite (PLAN item 8, docs
-\ /type-families.md §12). Run BY THE ENGINE over stdin, like the type-decl
-\ suite:  bin/hb < test/type-ctor-suite.f
+\ /type-families.md §12). A WHITEBOX-SUITE row, like the type-decl suite: the
+\ record queries are checker internals, which the unsealed engine binds by their
+\ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
+\ builds, and tools/bootstrap.sh runs it on the recovery chain's hb-stdin:
+\     <unsealed engine> --load test/type-ctor-suite.f
 \ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant
 \ in its derived constructor package (RESULT:OK shape): payload cells stay,
 \ M-p zero pads and the tag push on top, certified against the declared
@@ -54,17 +57,16 @@ TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 
 variable TCF   variable TCOK
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named shims; a shim stays TRUSTED: only
-\ where the name it forwards to is engine-internal and a checked body cannot
-\ resolve it.
+\ words probed at top level go through named shims; a shim stays TRUSTED: where
+\ the name it forwards to is engine-internal. tools/bootstrap.sh also runs this
+\ file on the recovery engine hb-stdin, whose from-source prefix records no row
+\ for such a word: there a top-level call is `hb: internal engine word` and a
+\ checked body naming it is E-UNDEFINED.
 TRUSTED: TWX-CHECKER-RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
-TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
-TRUSTED: TWX-NEW ( -- ) NEW ;
 TRUSTED: TWX-SUMV-CTOR-SYM@ ( n -- n ) SUMV-CTOR-SYM@ ;
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
-TRUSTED: TWX-SYMS ( -- ptr a ) SYMS ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
 
@@ -618,7 +620,7 @@ SUMTYPE clxg 1
   VARIANT wtwo a a ;VARIANT
   VARIANT wthree n n n ;VARIANT
 ;SUMTYPE
-private   \ clx2/clxg stay public (constructed/matched by qualified name); every probe, helper, and the trusted drop leaf are private members of XPAD-ASYM
+private   \ clx2/clxg stay public (constructed/matched by qualified name); every probe, helper, and the drop leaf are private members of XPAD-ASYM
 \ clxg<clx2> (a = width 2): W = 1 + max(wtwo=4, wthree=3) = 5. wtwo extra = -1, wthree = +1.
 s" CLXP ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo" CHECK-QUIET-CANDIDATE! 0 T=            \ width contradiction never certifies, even as a candidate probe
 s" : CLXG-BADTWO ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo ;" TCE-CATCH 70 T=            \ negative-extra construct fails closed
@@ -644,16 +646,13 @@ s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;M
 \ (pass-1 declared-width lowering emits 4 cells, pass-2 WF-XPAD-FLAG adds the one
 \ extra pad). Any wrong pass-2 magnitude (4 or 6) flips this assert. It MUST build
 \ through the checked-compiled CLXG-THREE — an unchecked in-word `construct` skips
-\ pass-2 and reads 4. Everything here is checked except TWX-XPAD-DROP-BUNDLE, whose
-\ only job is to drop the measured multi-cell layout value — the one operation the
-\ checker cannot express — with a straight-line 2drop 2drop drop over the certified
-\ width; its declared ( clxg<clx2> n -- n ) effect keeps the whole call site checked.
+\ pass-2 and reads 4. Everything here is checked: TWX-XPAD-DROP-BUNDLE drops the
+\ measured layout value as the one value its ( clxg<clx2> n -- n ) effect names,
+\ so the drop takes the certified width.
 variable XPAD-D0                                              \ data-stack depth snapshot taken before the build
 : XPAD-MARK ( -- ) depth XPAD-D0 ! ;                         \ checked: snapshot the baseline depth
 : XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;                    \ checked: cells the build added to the stack
-\ Retirement owner: habu-trusted-dies-prim-4fd12d60.
-TRUSTED: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n )          \ trusted leaf: drop the measured layout value, keep the count
-   >r 2drop 2drop drop r> ;
+: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n ) nip ;           \ drop the measured layout value, keep the count
 : XPAD-WTHREE-W ( -- n )                                     \ native cell footprint of the certified clxg<clx2> wthree bundle
    XPAD-MARK 1 2 3 CLXG-THREE XPAD-DELTA TWX-XPAD-DROP-BUNDLE ;
 XPAD-WTHREE-W 5 T=

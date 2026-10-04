@@ -18,7 +18,7 @@ variable PREV
 \ Fails closed on an unresolvable name for the same reason as
 \ test/layout-valid-guard-base.f's LVG-FAMID: dropping the found flag would seed
 \ the nesting chain with family 0.
-TRUSTED: LVGD-FAMID ( ptr u8 n -- n )
+: LVGD-FAMID ( ptr u8 n -- n )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE
    0= IF drop s" layout-valid-growth: family does not resolve" 1 die THEN ;
 
@@ -37,7 +37,7 @@ create NAME 11 allot
    idx 36 mod DIGIT NAME 10 + c!
    NAME 11 ;
 
-TRUSTED: BUILD ( -- )
+: BUILD ( -- )
    0 begin dup 40 < while
       dup NAME$ {: name:ptr nameu:n :}
       TFAM-ACTIVE-PKG$ CHECKER-PACKAGE-PUBLIC name nameu 0 TK-SUM

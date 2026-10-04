@@ -50,30 +50,25 @@ variable #CASE
 
 \ --- the registry reflection surface. Every one is a read; none mutates.
 \ Each forwards to a sealed pre-hook registry word, the same idiom the declaration
-\ suites use for their own reflection helpers; the ones still TRUSTED: forward to
-\ an engine-internal name a checked body cannot resolve.
-TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
+\ suites use for their own reflection helpers; a read with no helper here names
+\ the registry word itself, whose recorded row the unsealed engine binds.
+: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : F-KIND ( n -- n ) TFAM-KIND@ ;
 : F-ARITY ( n -- n ) TFAM-ARITY@ ;
 : F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
-TRUSTED: F-POLICY ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 \ compared as raw registry flag values, not used as conditions, so these
 \ answer the stored cell rather than a bool.
-TRUSTED: F-EQ ( n -- n ) TFAM-DERIVE-EQ? ;
-TRUSTED: F-HASH ( n -- n ) TFAM-DERIVE-HASH? ;
+CAST: FLAG-CELL ( bool -- n )
+: F-EQ ( n -- n ) TFAM-DERIVE-EQ? FLAG-CELL ;
+: F-HASH ( n -- n ) TFAM-DERIVE-HASH? FLAG-CELL ;
 : F-VSTART ( n -- n ) TFAM-VAR-START@ ;
 : F-VCOUNT ( n -- n ) TFAM-VAR-COUNT@ ;
-TRUSTED: F-FCOUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 : V-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 : V-TAG ( n -- n ) SUMV-TAG@ ;
 : V-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
-TRUSTED: V-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 : R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
 : R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
-TRUSTED: R-NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
-TRUSTED: R-SLOT ( n -- n ) PF-SLOT@ ;
-TRUSTED: R-CELLS ( n -- n ) PF-CELLS@ ;
-TRUSTED: R-CON-N? ( n -- bool )
+: R-CON-N? ( n -- bool )
    PF-SCH@ SCHEMA-ROOT@ dup SCHEMA-CON? IF SCHEMA-A@ CC-N = EXIT THEN
    drop false ;
 : R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
@@ -126,9 +121,9 @@ private
       bf bv i ROW-AT {: bi:n :}
       ai 0 >= T-TRUE
       bi 0 >= T-TRUE
-      ai R-NAME$ bi R-NAME$ CORE-STR= T-TRUE
-      ai R-SLOT  bi R-SLOT  T=
-      ai R-CELLS bi R-CELLS T=
+      ai PF-NAME$ bi PF-NAME$ CORE-STR= T-TRUE
+      ai PF-SLOT@  bi PF-SLOT@  T=
+      ai PF-CELLS@ bi PF-CELLS@ T=
    LOOP ;
 
 : SAME-VARIANTS ( n n -- ) {: af:n bf:n :}
@@ -150,8 +145,8 @@ private
       b V-PKG$ nip 0 > T-TRUE
       a V-PKG$ nip 0 > T-TRUE
       \ Both paths register the checked constructor effects.
-      a V-SYM 0 <> T-TRUE
-      b V-SYM 0 <> T-TRUE
+      a SUMV-CTOR-SYM@ 0 <> T-TRUE
+      b SUMV-CTOR-SYM@ 0 <> T-TRUE
       af a bf b SAME-FIELDS
    LOOP ;
 
@@ -161,8 +156,8 @@ private
    {: row:n found:bool :}
    found T-TRUE
    found IF
-      row R-SLOT slot T=
-      row R-CELLS 1 T=
+      row PF-SLOT@ slot T=
+      row PF-CELLS@ 1 T=
       row R-CON-N? T-TRUE
    THEN ;
 
@@ -176,10 +171,10 @@ public
    af F-KIND   bf F-KIND   T=
    af F-ARITY  bf F-ARITY  T=
    af F-WIDTH  bf F-WIDTH  T=
-   af F-POLICY bf F-POLICY T=
+   af TFAM-LAYOUT-POLICY@ bf TFAM-LAYOUT-POLICY@ T=
    af F-EQ     bf F-EQ     T=
    af F-HASH   bf F-HASH   T=
-   af F-FCOUNT bf F-FCOUNT T=
+   af TFAM-FLD-COUNT@ bf TFAM-FLD-COUNT@ T=
    af TYPE-FIELD:NO-VARIANT bf TYPE-FIELD:NO-VARIANT SAME-FIELDS
    af bf SAME-VARIANTS ;
 
@@ -196,7 +191,7 @@ public
    ndict@ before T= ;
 
 : VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
-: FCOUNT ( ptr u8 n -- n ) FAMID F-FCOUNT ;
+: FCOUNT ( ptr u8 n -- n ) FAMID TFAM-FLD-COUNT@ ;
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
@@ -250,7 +245,7 @@ variable SB-I   variable SB-J
 : VSTRY ( ptr u8 n -- n ) [: 2dup VS-RUN ;] catch {: rc:n :} 2drop rc ;
 
 \ The over-cap declaration must leave NO family behind, not a short one.
-TRUSTED: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
+: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
 : CAP-FAMILY-ABSENT ( -- )
    s" capb:big" FAM-FIND 0= T-TRUE drop ;
 

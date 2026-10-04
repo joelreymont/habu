@@ -1,11 +1,14 @@
 \ type-family-suite.f — behavior suite for the package-scoped TFAM/SUMV/product/
-\ layout/SCHEMA registries (src/core/type-family.f, src/core/type-schema.f). Run
-\ BY THE ENGINE over stdin (registry words resolve only at top-level interpret,
-\ never inside a checked ':' body), like test/engine-suite.f:
-\     bin/hb < test/type-family-suite.f
+\ layout/SCHEMA registries (src/core/type-family.f, src/core/type-schema.f). A
+\ WHITEBOX-SUITE row: the registry words are checker internals, which the
+\ unsealed engine binds by their recorded rows at top level and in a checked ':'
+\ body alike. The gate runs it on that engine, which test/whitebox-engine.f
+\ builds:
+\     <unsealed engine> --load test/type-family-suite.f
 \ The harness words below are ordinary checked definitions (public words only);
-\ every registry op is a top-level interpret line so the checker-internal words
-\ stay in scope. A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ every registry op is a top-level interpret line, naming the internal word or a
+\ checked probe of it. A failure prints F<index> + detail; REPORT exits 1 on any
+\ fail.
 
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 
@@ -59,21 +62,10 @@ variable NA     variable R1     variable L0     variable NQ
 variable NPTR   variable WBX
 variable NQDIN   variable NQDOUT  variable NQRIN   variable NQROUT
 variable NQEMP   variable NQMUL variable NQST
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named shims; a shim stays TRUSTED: only
-\ where the name it forwards to is engine-internal and a checked body cannot
-\ resolve it.
+\ Checker-internal words are probed at top level, by name or through a probe
+\ below. The probes are checked: on the whitebox engine a body naming an
+\ internal word binds that word's recorded row.
 : TWX-CHECKER-CAPTURE-PREPARE ( -- ) CHECKER-CAPTURE-PREPARE ;
-TRUSTED: TWX-FRESH ( -- n ) FRESH ;
-TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
-TRUSTED: TWX-LAY-ALIGN@ ( n -- n ) LAY-ALIGN@ ;
-TRUSTED: TWX-LAY-FAM@ ( n -- n ) LAY-FAM@ ;
-TRUSTED: TWX-LAY-FIND ( n -- n bool ) LAY-FIND ;
-TRUSTED: TWX-LAY-POLICY@ ( n -- n ) LAY-POLICY@ ;
-TRUSTED: TWX-LAY-SIZE@ ( n -- n ) LAY-SIZE@ ;
-TRUSTED: TWX-LAY-TAGW@ ( n -- n ) LAY-TAGW@ ;
-TRUSTED: TWX-PACKED-DESC ( n -- n n n ) PACKED-DESC ;
-TRUSTED: TWX-PACKED-NARROW ( n -- n ) PACKED-NARROW ;
 
 package TF-FIELD
 public
@@ -84,48 +76,9 @@ public
 : ROLLBACK ( n -- ) TYPE-FIELD-OWNER:ROLLBACK ;
 ;package
 
-TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
-TRUSTED: TWX-SCHEMA-APP? ( n -- bool ) SCHEMA-APP? ;
-TRUSTED: TWX-SCHEMA-C@ ( n -- n ) SCHEMA-C@ ;
-TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: TWX-SCHEMA-CON? ( n -- bool ) SCHEMA-CON? ;
-TRUSTED: TWX-SCHEMA-NEW ( n n n n -- n ) SCHEMA-NEW ;
-TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: TWX-SCHEMA-PARAM? ( n -- bool ) SCHEMA-PARAM? ;
-TRUSTED: TWX-SCHEMA-PTR ( n -- n ) SCHEMA-PTR ;
-TRUSTED: TWX-SCHEMA-PTR? ( n -- bool ) SCHEMA-PTR? ;
-TRUSTED: TWX-SCHEMA-QUOT ( n n n n n -- n ) SCHEMA-QUOT ;
-TRUSTED: TWX-SCHEMA-QUOT-DIN@ ( n -- n ) SCHEMA-QUOT-DIN@ ;
-TRUSTED: TWX-SCHEMA-QUOT-DOUT@ ( n -- n ) SCHEMA-QUOT-DOUT@ ;
-TRUSTED: TWX-SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-QUOT-HASR@ ;
-TRUSTED: TWX-SCHEMA-QUOT-RIN@ ( n -- n ) SCHEMA-QUOT-RIN@ ;
-TRUSTED: TWX-SCHEMA-QUOT-ROUT@ ( n -- n ) SCHEMA-QUOT-ROUT@ ;
-TRUSTED: TWX-SCHEMA-QUOT? ( n -- bool ) SCHEMA-QUOT? ;
-TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
-TRUSTED: TWX-SCHEMA-ROW? ( n -- bool ) SCHEMA-ROW? ;
-TRUSTED: TWX-SCHEMA-ROW-START@ ( n -- n ) SCHEMA-ROW-START@ ;
-TRUSTED: TWX-SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-ROW-COUNT@ ;
-TRUSTED: TWX-SCHEMA-ROW-ELEM@ ( n n -- n ) SCHEMA-ROW-ELEM@ ;
-TRUSTED: TWX-SCHEMA-ROW-OK? ( n -- bool ) SCHEMA-ROW-OK? ;
-TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
-TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: TWX-SCHEMA-SNAPSHOT-PERSIST ( -- ) SCHEMA-SNAPSHOT-PERSIST ;
-TRUSTED: TWX-SCHEMA-TAG@ ( n -- n ) SCHEMA-TAG@ ;
-TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
-TRUSTED: TWX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
-TRUSTED: TWX-SUMV-PAY-FIELD ( n n -- n bool ) SUMV-PAY-FIELD ;
 : TWX-SUMV-PAY-N ( n -- n ) SUMV-PAY-N ;
-TRUSTED: TWX-SUMV-PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 : TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
-TRUSTED: TWX-TF-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: TWX-TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-PKG$ ;
-TRUSTED: TWX-TF-HIDDEN? ( ptr u8 n -- bool ) TF-HIDDEN? ;
-TRUSTED: TWX-TF-INTERN ( ptr u8 n -- n ) TF-INTERN ;
-TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
 : TDP-INDEX>CHAR ( n n -- ) {: index:n char:n :}
    index TFAM-DECL-PARAM>CHAR T-TRUE char T= ;
 : TDP-CHAR>INDEX ( n n -- ) {: index:n char:n :}
@@ -133,48 +86,30 @@ TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
 : TDP-PAIR ( n n -- ) {: index:n char:n :}
    index char TDP-INDEX>CHAR
    index char TDP-CHAR>INDEX ;
-TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-TF-REC@ ( n -- ptr n ) TF-REC@ ;
 : TF-GROW-FAMILY ( n -- ) {: idx:n :}
    idx 26 / [char] a + TF-GROW-NAME c!
    idx 26 mod [char] a + TF-GROW-NAME 1+ c!
-   s" pkgrowth" CHECKER-PACKAGE-PUBLIC TF-GROW-NAME 2 0 TK-CELL TWX-TFAM-DECL drop ;
+   s" pkgrowth" CHECKER-PACKAGE-PUBLIC TF-GROW-NAME 2 0 TK-CELL TFAM-DECL drop ;
 : TF-GROW-THROUGH-CAP ( -- )
    0 begin
-      dup 676 < FID @ TWX-TF-REC@ TF-GROW-BASE @ = and
+      dup 676 < FID @ TF-REC@ TF-GROW-BASE @ = and
    while
       dup TF-GROW-FAMILY 1+
    repeat drop ;
-TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-TRUSTED: TWX-TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) TFAM-FIND-PUBLIC ;
-TRUSTED: TWX-TFAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
-TRUSTED: TWX-TFAM-LAYOUT! ( n n -- ) TFAM-LAYOUT! ;
-TRUSTED: TWX-TFAM-LAYOUT-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
-TRUSTED: TWX-TFAM-PK! ( n n n -- ) TFAM-PK! ;
-TRUSTED: TWX-TFAM-PK@ ( n n -- n ) TFAM-PK@ ;
-TRUSTED: TWX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
-TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
-TRUSTED: TWX-TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE ;
-TRUSTED: TWX-TFAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
 : TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
-TRUSTED: TWX-TFAM-SNAPSHOT-PERSIST ( -- ) TFAM-SNAPSHOT-PERSIST ;
-TRUSTED: TWX-TFAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
 : TWX-TFL-CON-FAM? ( ptr u8 n -- n bool ) TFL-CON-FAM? ;
-TRUSTED: TWX-TFL-CON? ( ptr u8 n ptr u8 n -- n n bool ) TFL-CON? ;
-TRUSTED: TWX-TFL-CVAR? ( ptr u8 n n -- n n bool ) TFL-CVAR? ;
 : TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
 : TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
 : TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
 \ layout-cap slice 1: build resolved T-PARAM terms directly (bypassing the sig
 \ parser, which rejects a layout arg in a cell param) to unit-test arg-aware width.
-TRUSTED: TWX-T-WIDTH ( n -- n ) T-WIDTH ;
-TRUSTED: TWX-MK-NULLARY ( n -- n ) {: fam:n :}       \ 0-arg term of family fam
+: TWX-MK-NULLARY ( n -- n ) {: fam:n :}       \ 0-arg term of family fam
    PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
-TRUSTED: TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
+: TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
    PARAM-SCR-N @ {: base:n :}
    arg PARAM-SCR+
    base fam TFAM-NAME$ fam MK-PARAM ;
-: TWX-FAMILY-WIDTH ( n -- n ) TWX-MK-NULLARY TWX-T-WIDTH ;
+: TWX-FAMILY-WIDTH ( n -- n ) TWX-MK-NULLARY T-WIDTH ;
 
 
 \ Declaration parameters use one reserved-safe positional alphabet.  These
@@ -214,130 +149,130 @@ $72 TFAM-DECL-CHAR>PARAM nip 0 T=   \ r is real
 $41 TFAM-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
 $30 TFAM-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
 \ clean slate (nothing declares families during prefix load, but be explicit).
-TWX-TFAM-RESET
-TWX-SCHEMA-RESET
+TFAM-RESET
+SCHEMA-RESET
 
-\ F4 (dot habu-tfam-nested-param-09fa2004): TWX-TFAM-RESET must de-register the
+\ F4 (dot habu-tfam-nested-param-09fa2004): TFAM-RESET must de-register the
 \ internal `field` family, else its reserved id (normally 15 — the 16th family)
 \ dangles and a later family that lands on id 15 is misclassified as a record
 \ field. After reset FIELD-FAM is -1; declaring 16 fresh families puts the 16th
 \ on id 15, yet field stays de-registered, so no misclassification is possible.
 FIELD-FAM @ -1 T=
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a0" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a1" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a2" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a3" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a4" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a5" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a6" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a7" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a8" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a9" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" aa" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ab" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ac" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ad" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ae" 1 TK-CELL TWX-TFAM-DECL drop
-s" pkgf4" CHECKER-PACKAGE-PUBLIC s" af" 1 TK-CELL TWX-TFAM-DECL VOK !
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a0" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a1" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a2" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a3" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a4" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a5" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a6" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a7" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a8" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a9" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" aa" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ab" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ac" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ad" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ae" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" af" 1 TK-CELL TFAM-DECL VOK !
 VOK @ 15 T=              \ the 16th fresh family occupies the field family's normal id
 FIELD-FAM @ -1 T=        \ yet field stays de-registered — id 15 is not a field param
-TWX-TFAM-RESET               \ restore the clean slate for the rest of the suite
-TWX-SCHEMA-RESET
+TFAM-RESET                   \ restore the clean slate for the rest of the suite
+SCHEMA-RESET
 
 \ ---------------------------------------------------------------------------
 \ 1. Families used by lookup, scope, growth and rollback checks.
 \ ---------------------------------------------------------------------------
-s" pkga" CHECKER-PACKAGE-PRIVATE s" opt"  1 TK-SUM     TWX-TFAM-DECL FID !
-s" pkgb" CHECKER-PACKAGE-PUBLIC  s" res"  2 TK-SUM     TWX-TFAM-DECL PID !
-s" pkga" CHECKER-PACKAGE-PRIVATE s" res"  0 TK-ENUM    TWX-TFAM-DECL AID !
-s" pkgc" CHECKER-PACKAGE-PUBLIC  s" pt"   0 TK-PRODUCT TWX-TFAM-DECL PTID !
-s" pkgc" CHECKER-PACKAGE-PUBLIC  s" cl"   0 TK-CELL    TWX-TFAM-DECL CLID !
+s" pkga" CHECKER-PACKAGE-PRIVATE s" opt"  1 TK-SUM     TFAM-DECL FID !
+s" pkgb" CHECKER-PACKAGE-PUBLIC  s" res"  2 TK-SUM     TFAM-DECL PID !
+s" pkga" CHECKER-PACKAGE-PRIVATE s" res"  0 TK-ENUM    TFAM-DECL AID !
+s" pkgc" CHECKER-PACKAGE-PUBLIC  s" pt"   0 TK-PRODUCT TFAM-DECL PTID !
+s" pkgc" CHECKER-PACKAGE-PUBLIC  s" cl"   0 TK-CELL    TFAM-DECL CLID !
 
 \ ---------------------------------------------------------------------------
 \ 2. qualified (exact-package) vs unqualified (active-scope) lookup.
 \ ---------------------------------------------------------------------------
-s" pkga" s" opt"  TWX-TFAM-FIND-IN FOUNDF !  FID @ T=  FOUNDF @ -1 T=
-s" pkga" s" nope" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
-s" pkga" s" opt"  TWX-TFAM-RESOLVE FOUNDF !  FID @ T=  FOUNDF @ -1 T=
+s" pkga" s" opt"  TFAM-FIND-IN FOUNDF !  FID @ T=  FOUNDF @ -1 T=
+s" pkga" s" nope" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+s" pkga" s" opt"  TFAM-RESOLVE FOUNDF !  FID @ T=  FOUNDF @ -1 T=
 \ pkgc has no 'res' of its own, so resolve reaches pkgb's PUBLIC res (not pkga's
 \ private res) — own-package-first + public-elsewhere.
-s" pkgc" s" res"  TWX-TFAM-RESOLVE FOUNDF !  PID @ T=  FOUNDF @ -1 T=
+s" pkgc" s" res"  TFAM-RESOLVE FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
 \ 3. public / private isolation.
 \ ---------------------------------------------------------------------------
-s" pkgb" s" opt" TWX-TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
-s" res" TWX-TFAM-FIND-PUBLIC FOUNDF !  PID @ T=  FOUNDF @ -1 T=
-s" opt" TWX-TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ 0 T=
+s" pkgb" s" opt" TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
+s" res" TFAM-FIND-PUBLIC FOUNDF !  PID @ T=  FOUNDF @ -1 T=
+s" opt" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 4. same tail across different packages -> distinct ids, both findable.
 \ ---------------------------------------------------------------------------
 AID @ PID @ = 0 T=
-s" pkga" s" res" TWX-TFAM-FIND-IN FOUNDF !  AID @ T=  FOUNDF @ -1 T=
-s" pkgb" s" res" TWX-TFAM-FIND-IN FOUNDF !  PID @ T=  FOUNDF @ -1 T=
+s" pkga" s" res" TFAM-FIND-IN FOUNDF !  AID @ T=  FOUNDF @ -1 T=
+s" pkgb" s" res" TFAM-FIND-IN FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 AID @ TFAM-ARITY@ 0 T=    PID @ TFAM-ARITY@ 2 T=
 
 \ ---------------------------------------------------------------------------
 \ 5. duplicate rejection within a package (throws E-TFAM-DUP).
 \    stack before catch: pkg-a pkg-u vis name-a name-u arity kind  (7 cells)
 \ ---------------------------------------------------------------------------
-s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM ' TWX-TFAM-DECL catch
+s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM ' TFAM-DECL catch
    TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 6. uppercase / mixed-case rejection at the declaration boundary.
 \ ---------------------------------------------------------------------------
-s" result"  TWX-TF-CANON? -1 T=
-s" opt-2"   TWX-TF-CANON? -1 T=
-s" a-b-c"   TWX-TF-CANON? -1 T=       \ internal single hyphens are fine
-s" Result"  TWX-TF-CANON? 0 T=
-s" reSult"  TWX-TF-CANON? 0 T=
-s" RESULT"  TWX-TF-CANON? 0 T=
-s" 123"     TWX-TF-CANON? 0 T=
-s" @x"      TWX-TF-CANON? 0 T=
+s" result"  TF-CANON? -1 T=
+s" opt-2"   TF-CANON? -1 T=
+s" a-b-c"   TF-CANON? -1 T=           \ internal single hyphens are fine
+s" Result"  TF-CANON? 0 T=
+s" reSult"  TF-CANON? 0 T=
+s" RESULT"  TF-CANON? 0 T=
+s" 123"     TF-CANON? 0 T=
+s" @x"      TF-CANON? 0 T=
 \ internal-only single hyphens: leading / trailing / doubled '-' reject
 \ (item 8's '-'->'--' constructor-package escaping depends on this canon).
-s" -a"      TWX-TF-CANON? 0 T=
-s" a-"      TWX-TF-CANON? 0 T=
-s" a--b"    TWX-TF-CANON? 0 T=
-s" -"       TWX-TF-CANON? 0 T=
-s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM ' TWX-TFAM-DECL catch
+s" -a"      TF-CANON? 0 T=
+s" a-"      TF-CANON? 0 T=
+s" a--b"    TF-CANON? 0 T=
+s" -"       TF-CANON? 0 T=
+s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM ' TFAM-DECL catch
    TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
-s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TWX-TFAM-DECL catch
+s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
    TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
 
 \ ---------------------------------------------------------------------------
 \ 7. no hidden-field ('@name') lookup from public signatures.
 \ ---------------------------------------------------------------------------
-s" @opt.slot0" TWX-TF-HIDDEN? -1 T=
-s" @res.tag"   TWX-TF-HIDDEN? -1 T=       \ item-7 tag row shape is hidden too
-s" opt"        TWX-TF-HIDDEN? 0 T=
-s" pkga" s" @opt.slot0" TWX-TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
-s" pkgb" s" @res.tag"   TWX-TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
+s" @opt.slot0" TF-HIDDEN? -1 T=
+s" @res.tag"   TF-HIDDEN? -1 T=           \ item-7 tag row shape is hidden too
+s" opt"        TF-HIDDEN? 0 T=
+s" pkga" s" @opt.slot0" TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
+s" pkgb" s" @res.tag"   TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 
 \ Distinct values retained across the growth and snapshot checks below.
-FID @ 3 TWX-TFAM-SLOTS!
-FID @ 0 PK-TYPE TWX-TFAM-PK!
+FID @ 3 TFAM-SLOTS!
+FID @ 0 PK-TYPE TFAM-PK!
 
 \ ---------------------------------------------------------------------------
 \ 9. SCHEMA nodes: valid builders, malformed rejection, root pool + growth.
 \    SCH nodes seed cap 4, roots seed cap 4 -> add >4 of each to force a grow.
 \ ---------------------------------------------------------------------------
-0 TWX-SCHEMA-PARAM NP !    NP @ TWX-SCHEMA-TAG@ SCH-PARAM T=   NP @ TWX-SCHEMA-A@ 0 T=
-1 TWX-SCHEMA-CON   NC !    NC @ TWX-SCHEMA-TAG@ SCH-CON T=     NC @ TWX-SCHEMA-A@ 1 T=
-FID @ 0 1 TWX-SCHEMA-APP NA !   NA @ TWX-SCHEMA-TAG@ SCH-APP T=   NA @ TWX-SCHEMA-C@ 1 T=
-NP @ TWX-SCHEMA-PARAM? -1 T=    NC @ TWX-SCHEMA-CON? -1 T=       NA @ TWX-SCHEMA-APP? -1 T=
-1 TWX-SCHEMA-PARAM drop   2 TWX-SCHEMA-CON drop   3 TWX-SCHEMA-PARAM drop   \ >4 nodes -> SCH grew
+0 SCHEMA-PARAM NP !    NP @ SCHEMA-TAG@ SCH-PARAM T=   NP @ SCHEMA-A@ 0 T=
+1 SCHEMA-CON   NC !    NC @ SCHEMA-TAG@ SCH-CON T=     NC @ SCHEMA-A@ 1 T=
+FID @ 0 1 SCHEMA-APP NA !   NA @ SCHEMA-TAG@ SCH-APP T=   NA @ SCHEMA-C@ 1 T=
+NP @ SCHEMA-PARAM? -1 T=    NC @ SCHEMA-CON? -1 T=       NA @ SCHEMA-APP? -1 T=
+1 SCHEMA-PARAM drop   2 SCHEMA-CON drop   3 SCHEMA-PARAM drop               \ >4 nodes -> SCH grew
 SCHEMA-N@ 7 T=                                          \ ids 1..6 created (nil is 0)
 \ malformed tag rejected (tag a b c = 4 cells before catch)
-999 0 0 0 ' TWX-SCHEMA-NEW catch   TC ! 2drop 2drop  TC @ E-SCHEMA-BAD T=
+999 0 0 0 ' SCHEMA-NEW catch   TC ! 2drop 2drop  TC @ E-SCHEMA-BAD T=
 \ malformed paramref (negative index) rejected (1 cell before catch)
--1 ' TWX-SCHEMA-PARAM catch   TC ! drop  TC @ E-SCHEMA-BAD T=
+-1 ' SCHEMA-PARAM catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 \ root pool: 5 roots > seed cap 4 -> SCH-ROOT grew
-NP @ TWX-SCHEMA-ROOT+ R1 !   R1 @ TWX-SCHEMA-ROOT@ NP @ T=
-NC @ TWX-SCHEMA-ROOT+ drop   NA @ TWX-SCHEMA-ROOT+ drop
-NP @ TWX-SCHEMA-ROOT+ drop   NC @ TWX-SCHEMA-ROOT+ drop
+NP @ SCHEMA-ROOT+ R1 !   R1 @ SCHEMA-ROOT@ NP @ T=
+NC @ SCHEMA-ROOT+ drop   NA @ SCHEMA-ROOT+ drop
+NP @ SCHEMA-ROOT+ drop   NC @ SCHEMA-ROOT+ drop
 SCHEMA-ROOT-N@ 5 T=
 
 \ SC-QUOT quotation payload node (dot habu-sc-quot-full-db4d0518): each effect side
@@ -345,60 +280,60 @@ SCHEMA-ROOT-N@ 5 T=
 \ single-element rows (din=[NP] dout=[NC] rin=[NA] rout=[NP]), then a quot; verify the
 \ side roots are SCH-ROW nodes with the expected elements, an empty side, a multi-type
 \ side, hasr normalization, and malformed-side rejection.
-NP @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQDIN !
-NC @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQDOUT !
-NA @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQRIN !
-NP @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQROUT !
-NQDIN @ TWX-SCHEMA-TAG@ SCH-ROW T=   NQDIN @ TWX-SCHEMA-ROW? -1 T=
-NQDIN @ TWX-SCHEMA-ROW-COUNT@ 1 T=   NQDIN @ TWX-SCHEMA-ROW-OK? -1 T=
-NQDIN @ NQDOUT @ NQRIN @ NQROUT @ -1 TWX-SCHEMA-QUOT NQ !
-NQ @ TWX-SCHEMA-TAG@ SCH-QUOT T=   NQ @ TWX-SCHEMA-QUOT? -1 T=
-NQ @ TWX-SCHEMA-PARAM? 0 T=        NQ @ TWX-SCHEMA-C@ SCH-QUOT-ROWS T=
-NQ @ TWX-SCHEMA-QUOT-HASR@ -1 T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  NQDIN @ T=   NQ @ TWX-SCHEMA-QUOT-DOUT@ NQDOUT @ T=
-NQ @ TWX-SCHEMA-QUOT-RIN@  NQRIN @ T=   NQ @ TWX-SCHEMA-QUOT-ROUT@ NQROUT @ T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
-NQ @ TWX-SCHEMA-QUOT-DOUT@ 0 TWX-SCHEMA-ROW-ELEM@ NC @ T=
-NQ @ TWX-SCHEMA-QUOT-RIN@  0 TWX-SCHEMA-ROW-ELEM@ NA @ T=
-NQ @ TWX-SCHEMA-QUOT-ROUT@ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
+NP @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDIN !
+NC @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDOUT !
+NA @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQRIN !
+NP @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQROUT !
+NQDIN @ SCHEMA-TAG@ SCH-ROW T=   NQDIN @ SCHEMA-ROW? -1 T=
+NQDIN @ SCHEMA-ROW-COUNT@ 1 T=   NQDIN @ SCHEMA-ROW-OK? -1 T=
+NQDIN @ NQDOUT @ NQRIN @ NQROUT @ -1 SCHEMA-QUOT NQ !
+NQ @ SCHEMA-TAG@ SCH-QUOT T=   NQ @ SCHEMA-QUOT? -1 T=
+NQ @ SCHEMA-PARAM? 0 T=        NQ @ SCHEMA-C@ SCH-QUOT-ROWS T=
+NQ @ SCHEMA-QUOT-HASR@ -1 T=
+NQ @ SCHEMA-QUOT-DIN@  NQDIN @ T=   NQ @ SCHEMA-QUOT-DOUT@ NQDOUT @ T=
+NQ @ SCHEMA-QUOT-RIN@  NQRIN @ T=   NQ @ SCHEMA-QUOT-ROUT@ NQROUT @ T=
+NQ @ SCHEMA-QUOT-DIN@  0 SCHEMA-ROW-ELEM@ NP @ T=
+NQ @ SCHEMA-QUOT-DOUT@ 0 SCHEMA-ROW-ELEM@ NC @ T=
+NQ @ SCHEMA-QUOT-RIN@  0 SCHEMA-ROW-ELEM@ NA @ T=
+NQ @ SCHEMA-QUOT-ROUT@ 0 SCHEMA-ROW-ELEM@ NP @ T=
 \ empty side (count 0) is a legal SCH-ROW; hasr normalizes to 0 through SCH-FLAG.
-SCHEMA-ROOT-N@ 0 TWX-SCHEMA-ROW NQEMP !
-NQEMP @ TWX-SCHEMA-ROW? -1 T=   NQEMP @ TWX-SCHEMA-ROW-COUNT@ 0 T=
-NQEMP @ NQEMP @ NQEMP @ NQEMP @ 0 TWX-SCHEMA-QUOT TWX-SCHEMA-QUOT-HASR@ 0 T=
+SCHEMA-ROOT-N@ 0 SCHEMA-ROW NQEMP !
+NQEMP @ SCHEMA-ROW? -1 T=   NQEMP @ SCHEMA-ROW-COUNT@ 0 T=
+NQEMP @ NQEMP @ NQEMP @ NQEMP @ 0 SCHEMA-QUOT SCHEMA-QUOT-HASR@ 0 T=
 \ multi-type side: din=[NP,NC], read both elements back in order.
-NP @ TWX-SCHEMA-ROOT+ NC @ TWX-SCHEMA-ROOT+ drop 2 TWX-SCHEMA-ROW NQMUL !
-NQMUL @ TWX-SCHEMA-ROW-COUNT@ 2 T=
-NQMUL @ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=   NQMUL @ 1 TWX-SCHEMA-ROW-ELEM@ NC @ T=
+NP @ SCHEMA-ROOT+ NC @ SCHEMA-ROOT+ drop 2 SCHEMA-ROW NQMUL !
+NQMUL @ SCHEMA-ROW-COUNT@ 2 T=
+NQMUL @ 0 SCHEMA-ROW-ELEM@ NP @ T=   NQMUL @ 1 SCHEMA-ROW-ELEM@ NC @ T=
 \ malformed side = not a live SCH-ROW node: a bare type node, nil (0), or oob rejected.
-NQDIN @ NQDOUT @ NQRIN @ NP @    -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
-NQDIN @ NQDOUT @ NQRIN @ 0       -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
-NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQDIN @ NQDOUT @ NQRIN @ NP @    -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQDIN @ NQDOUT @ NQRIN @ 0       -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
 
 \ SC-PTR pointer payload node (PLAN item 6, docs §8 SC-PTR): child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
-NC @ TWX-SCHEMA-PTR NPTR !
-NPTR @ TWX-SCHEMA-TAG@ SCH-PTR T=   NPTR @ TWX-SCHEMA-PTR? -1 T=
-NPTR @ TWX-SCHEMA-CON? 0 T=         NPTR @ TWX-SCHEMA-A@ NC @ T=
-NPTR @ TWX-SCHEMA-PTR TWX-SCHEMA-A@ NPTR @ T=       \ ptr ptr X nests
-NC @ TWX-SCHEMA-PTR? 0 T=
+NC @ SCHEMA-PTR NPTR !
+NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? -1 T=
+NPTR @ SCHEMA-CON? 0 T=         NPTR @ SCHEMA-A@ NC @ T=
+NPTR @ SCHEMA-PTR SCHEMA-A@ NPTR @ T=               \ ptr ptr X nests
+NC @ SCHEMA-PTR? 0 T=
 \ malformed child = nil node (0) / out-of-range node rejected (1 cell before catch)
-0 ' TWX-SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
-99999 ' TWX-SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
+0 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
+99999 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 
 \ ---------------------------------------------------------------------------
 \ 10. SUMV variants: add, per-family key, dup rejection, cross-family reuse.
-\    TWX-SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )
+\    SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )
 \ ---------------------------------------------------------------------------
-FID @ s" ok"  0 0 0 0 TWX-SUMV-ADD VOK !    VOK @ TWX-SUMV-FAM@ FID @ T=   VOK @ TWX-SUMV-TAG@ 0 T=
-FID @ s" err" 1 0 0 1 TWX-SUMV-ADD VERR !   VERR @ SUMV-NAME$ s" err" T$=   VERR @ TWX-SUMV-PAYCELLS@ 1 T=
-PID @ s" ok"  0 0 0 0 TWX-SUMV-ADD drop     \ same 'ok' tail under a different family is fine
-PID @ s" err" 1 0 0 0 TWX-SUMV-ADD drop
-AID @ s" red"   0 0 0 0 TWX-SUMV-ADD drop
-AID @ s" green" 1 0 0 0 TWX-SUMV-ADD drop   \ 6 variants > seed cap 4 -> SUMV grew
-FID @ s" ok" TWX-SUMV-FIND FOUNDF !  VOK @ T=  FOUNDF @ -1 T=
-PID @ s" ok" TWX-SUMV-FIND FOUNDF ! drop  FOUNDF @ -1 T=
-FID @ s" none" TWX-SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
-FID @ s" ok" 0 0 0 0 ' TWX-SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
+FID @ s" ok"  0 0 0 0 SUMV-ADD VOK !    VOK @ SUMV-FAM@ FID @ T=   VOK @ TWX-SUMV-TAG@ 0 T=
+FID @ s" err" 1 0 0 1 SUMV-ADD VERR !   VERR @ SUMV-NAME$ s" err" T$=   VERR @ TWX-SUMV-PAYCELLS@ 1 T=
+PID @ s" ok"  0 0 0 0 SUMV-ADD drop         \ same 'ok' tail under a different family is fine
+PID @ s" err" 1 0 0 0 SUMV-ADD drop
+AID @ s" red"   0 0 0 0 SUMV-ADD drop
+AID @ s" green" 1 0 0 0 SUMV-ADD drop       \ 6 variants > seed cap 4 -> SUMV grew
+FID @ s" ok" SUMV-FIND FOUNDF !  VOK @ T=  FOUNDF @ -1 T=
+PID @ s" ok" SUMV-FIND FOUNDF ! drop  FOUNDF @ -1 T=
+FID @ s" none" SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
+FID @ s" ok" 0 0 0 0 ' SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
@@ -473,37 +408,37 @@ PFIN @ TYPE-FIELD:BYTES@ CELL T=   PFIN @ TYPE-FIELD:ALIGN@ CELL T=
 variable UFAM   variable UEMPTY   variable UNAMED   variable UBASE
 variable USCH0  variable USCH1   variable MFAM     variable MRAW
 variable MNAMED variable MBASE
-CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ USCH0 !
-CC-BOOL TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ USCH1 !
-s" pkgu" CHECKER-PACKAGE-PUBLIC s" uenum" 0 TK-SUM TWX-TFAM-DECL UFAM !
-UFAM @ s" empty" 0 0 0 0 TWX-SUMV-ADD UEMPTY !
-UFAM @ s" named" 1 0 0 0 TWX-SUMV-ADD UNAMED !
-UFAM @ UEMPTY @ 2 TWX-TFAM-VAR-RANGE!
-UFAM @ 2 TWX-TFAM-SLOTS!
+CC-N SCHEMA-CON SCHEMA-ROOT+ USCH0 !
+CC-BOOL SCHEMA-CON SCHEMA-ROOT+ USCH1 !
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" uenum" 0 TK-SUM TFAM-DECL UFAM !
+UFAM @ s" empty" 0 0 0 0 SUMV-ADD UEMPTY !
+UFAM @ s" named" 1 0 0 0 SUMV-ADD UNAMED !
+UFAM @ UEMPTY @ 2 TFAM-VAR-RANGE!
+UFAM @ 2 TFAM-SLOTS!
 TYPE-FIELD:COUNT UBASE !
 TF-FIELD:OPEN PFTX !
 PFTX @ UFAM @ UNAMED @ s" first" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ UFAM @ UNAMED @ s" second" USCH1 @ 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:CLOSE
-UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
+UFAM @ UBASE @ 2 TFAM-FLD-RANGE!
 UEMPTY @ TWX-SUMV-PAY-N 0 T=
 UNAMED @ TWX-SUMV-PAY-N 2 T=
 UEMPTY @ TWX-SUMV-PAYCELLS@ 0 T=
 UNAMED @ TWX-SUMV-PAYCELLS@ 2 T=
 UFAM @ TWX-FAMILY-WIDTH 3 T=
-UNAMED @ 0 TWX-SUMV-PAY-ROOT USCH0 @ T=
-UNAMED @ 1 TWX-SUMV-PAY-ROOT USCH1 @ T=
-UNAMED @ 0 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+UNAMED @ 0 SUMV-PAY-ROOT USCH0 @ T=
+UNAMED @ 1 SUMV-PAY-ROOT USCH1 @ T=
+UNAMED @ 0 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" first" T$=
-UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+UNAMED @ 1 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
-UNAMED @ 2 ' TWX-SUMV-PAY-ROOT catch TC ! 2drop  TC @ E-TFAM-PAYLOAD T=
+UNAMED @ 2 ' SUMV-PAY-ROOT catch TC ! 2drop  TC @ E-TFAM-PAYLOAD T=
 \ A nonempty field count selects named representation. Corrupt bounds reject;
 \ they never make the same family fall back to its legacy SUMV storage.
-UFAM @ TYPE-FIELD:COUNT 1 + 1 TWX-TFAM-FLD-RANGE!
+UFAM @ TYPE-FIELD:COUNT 1 + 1 TFAM-FLD-RANGE!
 UNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
 UFAM @ ' TWX-FAMILY-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
-UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
+UFAM @ UBASE @ 2 TFAM-FLD-RANGE!
 UNAMED @ TWX-SUMV-PAY-N 2 T=
 UFAM @ TWX-FAMILY-WIDTH 3 T=
 
@@ -513,7 +448,7 @@ PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 2 1 2 cells CELL CELL PF-FLAGS-NO
    TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:ROLLBACK
 UNAMED @ TWX-SUMV-PAY-N 2 T=
-UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+UNAMED @ 1 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 \ The rollback leaves no row behind under its owner either: the same owner takes
 \ the same name and layout again, and a second one is still a duplicate.
@@ -528,16 +463,16 @@ UNAMED @ TWX-SUMV-PAY-N 2 T=
 
 \ If any variant carries a legacy positional schema while the family publishes
 \ named rows, both variants fail at the family-level representation boundary.
-s" pkgu" CHECKER-PACKAGE-PUBLIC s" umixed" 0 TK-SUM TWX-TFAM-DECL MFAM !
-MFAM @ s" raw" 0 USCH0 @ 1 1 TWX-SUMV-ADD MRAW !
-MFAM @ s" named" 1 0 0 0 TWX-SUMV-ADD MNAMED !
-MFAM @ MRAW @ 2 TWX-TFAM-VAR-RANGE!
-MFAM @ 1 TWX-TFAM-SLOTS!
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" umixed" 0 TK-SUM TFAM-DECL MFAM !
+MFAM @ s" raw" 0 USCH0 @ 1 1 SUMV-ADD MRAW !
+MFAM @ s" named" 1 0 0 0 SUMV-ADD MNAMED !
+MFAM @ MRAW @ 2 TFAM-VAR-RANGE!
+MFAM @ 1 TFAM-SLOTS!
 TYPE-FIELD:COUNT MBASE !
 TF-FIELD:OPEN PFTX !
 PFTX @ MFAM @ MNAMED @ s" value" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:CLOSE
-MFAM @ MBASE @ 1 TWX-TFAM-FLD-RANGE!
+MFAM @ MBASE @ 1 TFAM-FLD-RANGE!
 MRAW @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
 MNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
 MFAM @ ' TWX-FAMILY-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
@@ -545,13 +480,13 @@ MFAM @ ' TWX-FAMILY-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
 \ Interleaved rows still sum per variant. A layout argument forces recursive
 \ width queries while the outer variant accumulators are live.
 variable IFAM variable IV0 variable IV1 variable IBASE variable ISCH
-0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ ISCH !
-s" pkgu" CHECKER-PACKAGE-PUBLIC s" interleaved" 1 TK-SUM TWX-TFAM-DECL IFAM !
-IFAM @ 0 PK-CELL TWX-TFAM-PK!
-IFAM @ s" twice" 0 0 0 0 TWX-SUMV-ADD IV0 !
-IFAM @ s" once" 1 0 0 0 TWX-SUMV-ADD IV1 !
-IFAM @ IV0 @ 2 TWX-TFAM-VAR-RANGE!
-IFAM @ 2 TWX-TFAM-SLOTS!
+0 SCHEMA-PARAM SCHEMA-ROOT+ ISCH !
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" interleaved" 1 TK-SUM TFAM-DECL IFAM !
+IFAM @ 0 PK-CELL TFAM-PK!
+IFAM @ s" twice" 0 0 0 0 SUMV-ADD IV0 !
+IFAM @ s" once" 1 0 0 0 SUMV-ADD IV1 !
+IFAM @ IV0 @ 2 TFAM-VAR-RANGE!
+IFAM @ 2 TFAM-SLOTS!
 TYPE-FIELD:COUNT IBASE !
 TF-FIELD:OPEN PFTX !
 PFTX @ IFAM @ IV0 @ s" a" ISCH @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
@@ -559,26 +494,26 @@ PFTX @ IFAM @ IV1 @ s" b" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFT
 PFTX @ IFAM @ IV0 @ s" c" ISCH @ 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ IFAM @ IV1 @ s" d" ISCH @ 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:CLOSE
-IFAM @ IBASE @ 4 TWX-TFAM-FLD-RANGE!
+IFAM @ IBASE @ 4 TFAM-FLD-RANGE!
 IV0 @ TWX-SUMV-PAYCELLS@ 2 T= IV1 @ TWX-SUMV-PAYCELLS@ 2 T=
-UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY TWX-T-WIDTH 7 T=
+UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY T-WIDTH 7 T=
 \ Ownership includes the family's declared variant slice, not just SV.FAM.
-IFAM @ IV1 @ 1 TWX-TFAM-VAR-RANGE!
+IFAM @ IV1 @ 1 TFAM-VAR-RANGE!
 IV0 @ ' TWX-SUMV-PAY-N catch TC ! drop TC @ E-TFAM-PAYLOAD T=
-IFAM @ IV0 @ 2 TWX-TFAM-VAR-RANGE!
-UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY TWX-T-WIDTH 7 T=
+IFAM @ IV0 @ 2 TFAM-VAR-RANGE!
+UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY T-WIDTH 7 T=
 \ Refuse inside a nested width query, then recover on the same instantiated
 \ term after restoring the inner metadata.
 variable ITERM
 UFAM @ TWX-MK-NULLARY IFAM @ TWX-MK-UNARY ITERM !
-UFAM @ TYPE-FIELD:COUNT 1 + 1 TWX-TFAM-FLD-RANGE!
-ITERM @ ' TWX-T-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
-UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
-ITERM @ TWX-T-WIDTH 7 T=
+UFAM @ TYPE-FIELD:COUNT 1 + 1 TFAM-FLD-RANGE!
+ITERM @ ' T-WIDTH catch TC ! drop TC @ E-TFAM-PAYLOAD T=
+UFAM @ UBASE @ 2 TFAM-FLD-RANGE!
+ITERM @ T-WIDTH 7 T=
 
 \ Recursive schema validation: owner param bounds, concrete liveness, malformed
 \ PTR/QUOT shapes, APP family/arity/root/kind/visibility, and a valid APP.
-0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFBAD !
+0 SCHEMA-PARAM SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-param" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
@@ -586,47 +521,47 @@ TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 \ PARAM width is defined only for cell-kinded owner parameters. Layout/type
 \ parameters remain fail-closed until field-width instantiation exists.
-0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFBAD !
+0 SCHEMA-PARAM SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ FID @ VOK @ s" type-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
-FID @ 0 PK-LAYOUT TWX-TFAM-PK!
+FID @ 0 PK-LAYOUT TFAM-PK!
 TF-FIELD:OPEN PFTX !
 PFTX @ FID @ VOK @ s" layout-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
-FID @ 0 PK-CELL TWX-TFAM-PK!
+FID @ 0 PK-CELL TFAM-PK!
 TF-FIELD:OPEN PFTX !
 PFTX @ FID @ VOK @ s" cell-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
    TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:ROLLBACK
-FID @ 0 PK-TYPE TWX-TFAM-PK!
+FID @ 0 PK-TYPE TFAM-PK!
 
 \ Concrete-type liveness (backed by the now internal-marked checker word
 \ CT-LIVE?, dot habu-internalize-field-liveness): a field whose schema is a
 \ SCHEMA-CON over a LIVE concrete type validates and adds; a SCHEMA-CON over a
 \ dead concrete-type code (99999) is rejected E-PF-SCHEMA. Removing the global
 \ CT-LIVE? axiom must leave both outcomes unchanged.
-1 TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFBAD !
+1 SCHEMA-CON SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" live-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    TF-FIELD:ADD PFTX !
 PFTX @ TF-FIELD:ROLLBACK
 
-99999 TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFBAD !
+99999 SCHEMA-CON SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-SCH-PTR SCHEMA-N@ 0 0 TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+SCH-PTR SCHEMA-N@ 0 0 SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-ptr" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-SCH-QUOT 2 0 SCH-QUOT-ROWS TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+SCH-QUOT 2 0 SCH-QUOT-ROWS SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
@@ -635,47 +570,47 @@ TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 \ a SC-QUOT with a valid hasr but sides that are live nodes yet NOT SCH-ROW nodes:
 \ PF-QUOT-ROW-OK? rejects each non-row side, so ADD reports E-PF-SCHEMA.
 SCHEMA-ROOT-N@ NQST !
-NP @ TWX-SCHEMA-ROOT+ drop   NC @ TWX-SCHEMA-ROOT+ drop
-NA @ TWX-SCHEMA-ROOT+ drop   NP @ TWX-SCHEMA-ROOT+ drop
-SCH-QUOT -1 NQST @ SCH-QUOT-ROWS TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+NP @ SCHEMA-ROOT+ drop   NC @ SCHEMA-ROOT+ drop
+NA @ SCHEMA-ROOT+ drop   NP @ SCHEMA-ROOT+ drop
+SCH-QUOT -1 NQST @ SCH-QUOT-ROWS SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" nonrow-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-99999 0 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+99999 0 0 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" dead-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-PID @ 0 1 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+PID @ 0 1 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" arity-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-PID @ SCHEMA-ROOT-N@ 2 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+PID @ SCHEMA-ROOT-N@ 2 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" range-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-FID @ 1 1 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+FID @ 1 1 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" private-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
-CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFARG !
-CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ drop
-PID @ PFARG @ 2 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFAPP !
-PID @ 0 PK-LAYOUT TWX-TFAM-PK!
+CC-N SCHEMA-CON SCHEMA-ROOT+ PFARG !
+CC-N SCHEMA-CON SCHEMA-ROOT+ drop
+PID @ PFARG @ 2 SCHEMA-APP SCHEMA-ROOT+ PFAPP !
+PID @ 0 PK-LAYOUT TFAM-PK!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" kind-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
-PID @ 0 PK-CELL TWX-TFAM-PK!
+PID @ 0 PK-CELL TFAM-PK!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" valid-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    TF-FIELD:ADD PFTX !
@@ -683,13 +618,13 @@ PFTX @ TF-FIELD:ROLLBACK
 
 \ A zero-arity APP has no argument-root range, so its only canonical start is
 \ zero. The canonical form remains accepted.
-CLID @ 1 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+CLID @ 1 0 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" zero-app-start" PFBAD @
    20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
-CLID @ 0 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFAPP !
+CLID @ 0 0 SCHEMA-APP SCHEMA-ROOT+ PFAPP !
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" zero-app" PFAPP @
    20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
@@ -697,36 +632,36 @@ PFTX @ TF-FIELD:ROLLBACK
 
 \ STACK and PACKED accept only the canonical cell mapping. Other policies
 \ reject otherwise-valid rows until their field ABI validators exist.
-PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
+PTID @ TL-STACK-CELL-TAG TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
-PTID @ TL-PACKED-TAG TWX-TFAM-LAYOUT!
+PTID @ TL-PACKED-TAG TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" packed-bad" 1 20 1 20 cells 2 cells CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
-PTID @ TL-NICHE TWX-TFAM-LAYOUT!
+PTID @ TL-NICHE TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" niche-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
-PTID @ TL-BOXED TWX-TFAM-LAYOUT!
+PTID @ TL-BOXED TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" boxed-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
-PTID @ TL-CUSTOM TWX-TFAM-LAYOUT!
+PTID @ TL-CUSTOM TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" custom-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TF-FIELD:ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
-PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
+PTID @ TL-STACK-CELL-TAG TFAM-LAYOUT!
 
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" flag-bad" 1 20 1 20 cells CELL CELL 1
@@ -766,20 +701,20 @@ PFIN @ TF-FIELD:ROLLBACK  PFOUT @ TF-FIELD:ROLLBACK
 
 \ ---------------------------------------------------------------------------
 \ 12. layout records: one per family, keyed by family; dup rejection.
-\    TWX-LAY-ADD ( fam policy size align tagw -- id )
+\    LAY-ADD ( fam policy size align tagw -- id )
 \ ---------------------------------------------------------------------------
-FID  @ TL-STACK-CELL-TAG 16 8 8 TWX-LAY-ADD L0 !   L0 @ TWX-LAY-FAM@ FID @ T=   L0 @ TWX-LAY-SIZE@ 16 T=
-PID  @ TL-PACKED-TAG     24 8 4 TWX-LAY-ADD drop
-AID  @ TL-STACK-CELL-TAG  8 8 8 TWX-LAY-ADD drop
-PTID @ TL-BOXED           8 8 8 TWX-LAY-ADD drop
-CLID @ TL-CUSTOM          8 8 8 TWX-LAY-ADD drop    \ 5 layouts > seed cap 4 -> LAY grew
-FID @ TWX-LAY-FIND FOUNDF !  L0 @ T=  FOUNDF @ -1 T=
-CLID @ TWX-LAY-FIND FOUNDF !  TWX-LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
-FID @ TL-STACK-CELL-TAG 8 8 8 ' TWX-LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
+FID  @ TL-STACK-CELL-TAG 16 8 8 LAY-ADD L0 !   L0 @ LAY-FAM@ FID @ T=   L0 @ LAY-SIZE@ 16 T=
+PID  @ TL-PACKED-TAG     24 8 4 LAY-ADD drop
+AID  @ TL-STACK-CELL-TAG  8 8 8 LAY-ADD drop
+PTID @ TL-BOXED           8 8 8 LAY-ADD drop
+CLID @ TL-CUSTOM          8 8 8 LAY-ADD drop        \ 5 layouts > seed cap 4 -> LAY grew
+FID @ LAY-FIND FOUNDF !  L0 @ T=  FOUNDF @ -1 T=
+CLID @ LAY-FIND FOUNDF !  LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
+FID @ TL-STACK-CELL-TAG 8 8 8 ' LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 12b. constructor package-name derivation (PLAN Package Shape, docs §12; item 8).
-\    TWX-TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ctor-a ctor-u ): uppercase the
+\    TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ctor-a ctor-u ): uppercase the
 \    package segment and family tail, escape a literal '-' inside the segment as
 \    '--', join package-then-tail with a single '-'; when the escaped spelling
 \    exceeds the 32-byte readability cap (TF-CTOR-NAME-LIMIT; raised from 16 by
@@ -789,18 +724,18 @@ FID @ TL-STACK-CELL-TAG 8 8 8 ' TWX-LAY-ADD catch   TC ! 2drop 2drop drop  TC @ 
 \ ---------------------------------------------------------------------------
 variable CPA   variable CPU   variable CQA   variable CQU
 \ top level: bare uppercased tail, no separator.
-s" " s" result" TWX-TF-CTOR-PKG$ s" RESULT" T$=
+s" " s" result" TF-CTOR-PKG$ s" RESULT" T$=
 \ in-package: PKG-TAIL.
-s" pkg" s" result" TWX-TF-CTOR-PKG$ s" PKG-RESULT" T$=
-s" opt" s" some"   TWX-TF-CTOR-PKG$ s" OPT-SOME" T$=
+s" pkg" s" result" TF-CTOR-PKG$ s" PKG-RESULT" T$=
+s" opt" s" some"   TF-CTOR-PKG$ s" OPT-SOME" T$=
 \ digits pass through unchanged.
-s" v2" s" ok"      TWX-TF-CTOR-PKG$ s" V2-OK" T$=
+s" v2" s" ok"      TF-CTOR-PKG$ s" V2-OK" T$=
 \ injectivity across the hyphen boundary: every joined segment (package AND
 \ tail) escapes '-' as '--', so all three hyphen splits stay distinct:
 \   a-b + c  ->  A--B-C      a + b-c  ->  A-B--C      "" + a-b-c -> A--B--C
-s" a-b" s" c"      TWX-TF-CTOR-PKG$ s" A--B-C" T$=
-s" a"   s" b-c"    TWX-TF-CTOR-PKG$ s" A-B--C" T$=
-s" "    s" a-b-c"  TWX-TF-CTOR-PKG$ s" A--B--C" T$=
+s" a-b" s" c"      TF-CTOR-PKG$ s" A--B-C" T$=
+s" a"   s" b-c"    TF-CTOR-PKG$ s" A-B--C" T$=
+s" "    s" a-b-c"  TF-CTOR-PKG$ s" A--B--C" T$=
 
 \ Readable band 16 < len <= 32 (raised from 16 by dot
 \ habu-raise-or-alias-5d2a6b70): the escaped form is injective at every length
@@ -808,17 +743,17 @@ s" "    s" a-b-c"  TWX-TF-CTOR-PKG$ s" A--B--C" T$=
 \ spelling up to 32 bytes keeps its READABLE form -- the real EVID/POLICY
 \ presence-slot ctor packages (EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22)
 \ are now constructable by name. These three folded to opaque SHA before the raise:
-s" verylongpackagename" s" result" TWX-TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULT" T$=   \ 26
-s" " s" verylongfamilyname" TWX-TF-CTOR-PKG$ s" VERYLONGFAMILYNAME" T$=                    \ 18
+s" verylongpackagename" s" result" TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULT" T$=       \ 26
+s" " s" verylongfamilyname" TF-CTOR-PKG$ s" VERYLONGFAMILYNAME" T$=                        \ 18
 \ exactly 32 bytes stays readable (the boundary is len <= 32):
-s" abcdefghijklmno" s" pqrstuvwxyzabcde" TWX-TF-CTOR-PKG$ s" ABCDEFGHIJKLMNO-PQRSTUVWXYZABCDE" T$=  \ 15+1+16
+s" abcdefghijklmno" s" pqrstuvwxyzabcde" TF-CTOR-PKG$ s" ABCDEFGHIJKLMNO-PQRSTUVWXYZABCDE" T$=      \ 15+1+16
 
 \ SHA-256 fallback fires only PAST 32 bytes now. escaped
 \ `VERYLONGPACKAGENAME-RESULTRESULTR` is 33 bytes > 32, so the derived name is
 \ `T` + 16 hex + `-RESULTRESULTR` = 31 bytes (the hash covers only the package
 \ segment list; the tail is appended raw). Structure asserted here; the exact
 \ hash goldens (determinism + injectivity + algorithm pin) follow.
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ CPU ! CPA !
+s" verylongpackagename" s" resultresultr" TF-CTOR-PKG$ CPU ! CPA !
 CPU @ 31 T=
 CPA @ 1 s" T" T$=                           \ prefix marker
 CPA @ 17 + 1 s" -" T$=                      \ separator after the 16-hex hash
@@ -832,77 +767,77 @@ CPA @ 18 + 13 s" RESULTRESULTR" T$=         \ uppercase family tail suffix (appe
       1+
    repeat drop 0 0= ;
 CPA @ 1 + HEX16? -1 T=
-\ TWX-TF-CTOR-PKG$ returns a pointer into the shared derivation buffer, so intern a
+\ TF-CTOR-PKG$ returns a pointer into the shared derivation buffer, so intern a
 \ stable copy of the first result before deriving again.
 variable CPOFF
-CPA @ CPU @ TWX-TF-INTERN CPOFF !
+CPA @ CPU @ TF-INTERN CPOFF !
 \ injectivity: a different long package hashes to a different name (the hash
 \ region separates inputs that share length and tail).
-s" verylongpackagenamx" s" resultresultr" TWX-TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TWX-TF-OFF$  TSNE   \ NOT equal to the first long name
+s" verylongpackagenamx" s" resultresultr" TF-CTOR-PKG$ CQU ! CQA !
+CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  TSNE       \ NOT equal to the first long name
 \ exact golden pins the pinned algorithm byte-for-byte (hash covers the package
 \ segment list only, so the longer tail keeps the verylongpackagename golden):
 \ SHA-256(0x13 "verylongpackagename") = 92a8624462e75ea4... (independent impl).
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ s" T92a8624462e75ea4-RESULTRESULTR" T$=
+s" verylongpackagename" s" resultresultr" TF-CTOR-PKG$ s" T92a8624462e75ea4-RESULTRESULTR" T$=
 \ a long family tail with an empty package: fallback hashes the empty segment
 \ list, tail still appended (33-byte top-level tail > 32).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ CQU ! CQA !
+s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TF-CTOR-PKG$ CQU ! CQA !
 CQU @ 51 T=                                 \ T(1)+16 hex+ -(1)+33-byte tail
 CQA @ 1 s" T" T$=
 CQA @ 1 + HEX16? -1 T=
 CQA @ 18 + 33 s" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
 \ empty segment list golden: SHA-256("") = e3b0c44298fc1c14... (FIPS-180 constant).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ s" Te3b0c44298fc1c14-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
+s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TF-CTOR-PKG$ s" Te3b0c44298fc1c14-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
 
 \ ---------------------------------------------------------------------------
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove
 \    family id 0 survives every relocation.
 \ ---------------------------------------------------------------------------
 FID @ TF-REC@ TF-GROW-BASE !
-s" pkgd" CHECKER-PACKAGE-PUBLIC s" tree"  1 TK-SUM     TWX-TFAM-DECL drop
-s" pkgd" CHECKER-PACKAGE-PUBLIC s" list"  1 TK-SUM     TWX-TFAM-DECL drop
-s" pkgd" CHECKER-PACKAGE-PUBLIC s" maybe" 1 TK-SUM     TWX-TFAM-DECL drop
-s" pkge" CHECKER-PACKAGE-PUBLIC s" pair"  2 TK-PRODUCT TWX-TFAM-DECL drop
+s" pkgd" CHECKER-PACKAGE-PUBLIC s" tree"  1 TK-SUM     TFAM-DECL drop
+s" pkgd" CHECKER-PACKAGE-PUBLIC s" list"  1 TK-SUM     TFAM-DECL drop
+s" pkgd" CHECKER-PACKAGE-PUBLIC s" maybe" 1 TK-SUM     TFAM-DECL drop
+s" pkge" CHECKER-PACKAGE-PUBLIC s" pair"  2 TK-PRODUCT TFAM-DECL drop
 TFAM-N@ 12 T=                      \ includes the three unified-payload fixtures
 TF-GROW-THROUGH-CAP
 FID @ TF-REC@ TF-GROW-BASE @ = 0 T=   \ the record arena moved
 FID @ TFAM-NAME$ s" opt" T$=
-FID @ TWX-TFAM-PKG$  s" pkga" T$=
+FID @ TFAM-PKG$  s" pkga" T$=
 FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
-FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
-s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+FID @ 0 TFAM-PK@ PK-TYPE T=
+s" pkgd" s" tree" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-CAPTURE-PREPARE
 \    invokes and prove every store reads back identically after the bake.
 \ ---------------------------------------------------------------------------
-TWX-TFAM-SNAPSHOT-PERSIST
-TWX-SCHEMA-SNAPSHOT-PERSIST
+TFAM-SNAPSHOT-PERSIST
+SCHEMA-SNAPSHOT-PERSIST
 FID @ TFAM-NAME$ s" opt" T$=
 FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
-FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
+FID @ 0 TFAM-PK@ PK-TYPE T=
 FID @ TWX-TFAM-SLOTS@ 3 T=
-s" pkgb" s" res" TWX-TFAM-FIND-IN FOUNDF ! PID @ T= FOUNDF @ -1 T=
-FID @ s" ok" TWX-SUMV-FIND FOUNDF ! VOK @ T= FOUNDF @ -1 T=
+s" pkgb" s" res" TFAM-FIND-IN FOUNDF ! PID @ T= FOUNDF @ -1 T=
+FID @ s" ok" SUMV-FIND FOUNDF ! VOK @ T= FOUNDF @ -1 T=
 PTID @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND FOUNDF ! FX @ T= FOUNDF @ -1 T=
-FID @ TWX-LAY-FIND FOUNDF ! TWX-LAY-SIZE@ 16 T= FOUNDF @ -1 T=
-R1 @ TWX-SCHEMA-ROOT@ TWX-SCHEMA-TAG@ SCH-PARAM T=
-NA @ TWX-SCHEMA-TAG@ SCH-APP T=
+FID @ LAY-FIND FOUNDF ! LAY-SIZE@ 16 T= FOUNDF @ -1 T=
+R1 @ SCHEMA-ROOT@ SCHEMA-TAG@ SCH-PARAM T=
+NA @ SCHEMA-TAG@ SCH-APP T=
 \ SC-QUOT node (NQ, built in section 9: din=[NP] dout=[NC] rin=[NA] rout=[NP] hasr=-1)
 \ survives the bake: tag, side SCH-ROW roots, their elements, and hasr all read back
 \ from the persisted node arena + root pool (destruction review finding 3).
-NQ @ TWX-SCHEMA-TAG@ SCH-QUOT T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  NQDIN @ T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
-NQ @ TWX-SCHEMA-QUOT-ROUT@ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
-NQ @ TWX-SCHEMA-QUOT-HASR@ -1 T=
+NQ @ SCHEMA-TAG@ SCH-QUOT T=
+NQ @ SCHEMA-QUOT-DIN@  NQDIN @ T=
+NQ @ SCHEMA-QUOT-DIN@  0 SCHEMA-ROW-ELEM@ NP @ T=
+NQ @ SCHEMA-QUOT-ROUT@ 0 SCHEMA-ROW-ELEM@ NP @ T=
+NQ @ SCHEMA-QUOT-HASR@ -1 T=
 \ The committed named-field view survives snapshot persistence byte-for-byte.
 UEMPTY @ TWX-SUMV-PAY-N 0 T=
 UNAMED @ TWX-SUMV-PAY-N 2 T=
-UNAMED @ 0 TWX-SUMV-PAY-ROOT USCH0 @ T=
-UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+UNAMED @ 0 SUMV-PAY-ROOT USCH0 @ T=
+UNAMED @ 1 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 
 \ ---------------------------------------------------------------------------
@@ -911,21 +846,21 @@ FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 \    qualified (exact-package) access resolves both distinctly. (dot 2a)
 \ ---------------------------------------------------------------------------
 variable AX  variable AY
-s" pkgx" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TWX-TFAM-DECL AX !
-s" pkgy" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TWX-TFAM-DECL AY !
+s" pkgx" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AX !
+s" pkgy" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AY !
 \ unqualified resolve from a third package: two publics tie -> throw
-s" pkgz" s" amb" ' TWX-TFAM-RESOLVE catch  TC ! 2drop 2drop  TC @ E-TFAM-AMBIG T=
+s" pkgz" s" amb" ' TFAM-RESOLVE catch  TC ! 2drop 2drop  TC @ E-TFAM-AMBIG T=
 \ bare cross-package public lookup throws on the same tie
-s" amb" ' TWX-TFAM-FIND-PUBLIC catch  TC ! 2drop  TC @ E-TFAM-AMBIG T=
+s" amb" ' TFAM-FIND-PUBLIC catch  TC ! 2drop  TC @ E-TFAM-AMBIG T=
 \ own-package family wins without ambiguity (each resolves to its own amb)
-s" pkgx" s" amb" TWX-TFAM-RESOLVE FOUNDF !  AX @ T=  FOUNDF @ -1 T=
-s" pkgy" s" amb" TWX-TFAM-RESOLVE FOUNDF !  AY @ T=  FOUNDF @ -1 T=
+s" pkgx" s" amb" TFAM-RESOLVE FOUNDF !  AX @ T=  FOUNDF @ -1 T=
+s" pkgy" s" amb" TFAM-RESOLVE FOUNDF !  AY @ T=  FOUNDF @ -1 T=
 \ qualified (exact-package) access still resolves both distinctly, no throw
-s" pkgx" s" amb" TWX-TFAM-FIND-IN FOUNDF !  AX @ T=  FOUNDF @ -1 T=
-s" pkgy" s" amb" TWX-TFAM-FIND-IN FOUNDF !  AY @ T=  FOUNDF @ -1 T=
+s" pkgx" s" amb" TFAM-FIND-IN FOUNDF !  AX @ T=  FOUNDF @ -1 T=
+s" pkgy" s" amb" TFAM-FIND-IN FOUNDF !  AY @ T=  FOUNDF @ -1 T=
 \ a single public tail (no tie) still resolves cleanly through FIND-PUBLIC
-s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TWX-TFAM-DECL drop
-s" solo" TWX-TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
+s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TFAM-DECL drop
+s" solo" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
 \ 16. A global family and package-owned families may share a tail. Resolution
@@ -933,34 +868,34 @@ s" solo" TWX-TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 \     The exact rows keep their independent arities through snapshot persist.
 \ ---------------------------------------------------------------------------
 variable GSPAN  variable MSPAN  variable MLOCAL  variable OPUBLIC
-s" "      CHECKER-PACKAGE-PUBLIC  s" span" 3 TK-CELL TWX-TFAM-DECL GSPAN !
-s" mem"   CHECKER-PACKAGE-PUBLIC  s" span" 6 TK-CELL TWX-TFAM-DECL MSPAN !
-s" mem"   CHECKER-PACKAGE-PRIVATE s" tier" 1 TK-CELL TWX-TFAM-DECL MLOCAL !
-s" other" CHECKER-PACKAGE-PUBLIC  s" tier" 2 TK-CELL TWX-TFAM-DECL OPUBLIC !
+s" "      CHECKER-PACKAGE-PUBLIC  s" span" 3 TK-CELL TFAM-DECL GSPAN !
+s" mem"   CHECKER-PACKAGE-PUBLIC  s" span" 6 TK-CELL TFAM-DECL MSPAN !
+s" mem"   CHECKER-PACKAGE-PRIVATE s" tier" 1 TK-CELL TFAM-DECL MLOCAL !
+s" other" CHECKER-PACKAGE-PUBLIC  s" tier" 2 TK-CELL TFAM-DECL OPUBLIC !
 
 \ Exact owner wins, including its private row.
-s" mem" s" span" TWX-TFAM-RESOLVE FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
-s" mem" s" tier" TWX-TFAM-RESOLVE FOUNDF ! MLOCAL @ T= FOUNDF @ -1 T=
+s" mem" s" span" TFAM-RESOLVE FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" tier" TFAM-RESOLVE FOUNDF ! MLOCAL @ T= FOUNDF @ -1 T=
 \ Global is the lexical row at top level and in packages without an own row.
-s" "      s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
-s" caller" s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" "      s" span" TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" span" TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
 \ With no own or global row, the unique package-public family is the fallback.
-s" caller" s" tier" TWX-TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
-s" tier" TWX-TFAM-FIND-PUBLIC FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+s" caller" s" tier" TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+s" tier" TFAM-FIND-PUBLIC FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
 \ Exact identities and arities never alias.
-s" " s" span" TWX-TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
-s" mem" s" span" TWX-TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+s" " s" span" TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" span" TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
 GSPAN @ MSPAN @ <> -1 T=
 GSPAN @ TFAM-ARITY@ 3 T=
 MSPAN @ TFAM-ARITY@ 6 T=
 MLOCAL @ TFAM-ARITY@ 1 T=
 OPUBLIC @ TFAM-ARITY@ 2 T=
 
-TWX-TFAM-SNAPSHOT-PERSIST
-s" " s" span" TWX-TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
-s" mem" s" span" TWX-TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
-s" caller" s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
-s" caller" s" tier" TWX-TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+TFAM-SNAPSHOT-PERSIST
+s" " s" span" TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" span" TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" span" TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" tier" TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
 GSPAN @ TFAM-ARITY@ 3 T=
 MSPAN @ TFAM-ARITY@ 6 T=
 
@@ -977,17 +912,17 @@ SUMTYPE lres 0
   VARIANT lerr n n ;VARIANT
   VARIANT lnil     ;VARIANT
 ;SUMTYPE
-s" " s" lres" TWX-TFAM-FIND-IN FOUNDF !  LID !  FOUNDF @ -1 T=
+s" " s" lres" TFAM-FIND-IN FOUNDF !  LID !  FOUNDF @ -1 T=
 \ construct one-shot -> ( tag pads ok ); pads = M-p with M = 2 (widest payload)
-s" lres" s" lok"  TWX-TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
-s" lres" s" lerr" TWX-TFL-CON? FOUNDF !  0 T=  1 T=  FOUNDF @ -1 T=
-s" lres" s" lnil" TWX-TFL-CON? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
+s" lres" s" lok"  TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
+s" lres" s" lerr" TFL-CON? FOUNDF !  0 T=  1 T=  FOUNDF @ -1 T=
+s" lres" s" lnil" TFL-CON? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
 \ raw engine tokens fold: uppercase spellings agree with the declaration
-s" LRES" s" LOK" TWX-TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
+s" LRES" s" LOK" TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
 \ misses fail pure (no throw, no diagnostic): unknown family/variant, cell kind
-s" nosuch" s" lok" TWX-TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
-s" lres" s" nope"  TWX-TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
-s" span" s" lok"   TWX-TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" nosuch" s" lok" TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" lres" s" nope"  TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" span" s" lok"   TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 \ owner-only construct scope: pkgx's public solo does NOT construct from here
 s" solo" TWX-TFL-CON-FAM? FOUNDF ! drop  FOUNDF @ 0 T=
 \ match resolution is signature scope: own ("" top level), unique public,
@@ -1003,27 +938,27 @@ LVID @ TWX-SUMV-TAG@ 1 T=
 LID @ LVID @ TWX-TFL-VPADS 0 T=
 s" zzz" LID @ TWX-TFL-VAR? FOUNDF ! drop  FOUNDF @ 0 T=
 \ variant one-shot for a resolved fam (the engine's state-2 bridge call)
-s" lnil" LID @ TWX-TFL-CVAR? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
-s" nope" LID @ TWX-TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" lnil" LID @ TFL-CVAR? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
+s" nope" LID @ TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 s" TFL-SURFACE" type cr
 
 \ ---------------------------------------------------------------------------
-\ packed ABI descriptor (docs §22.2, policy TL-PACKED-TAG). TWX-PACKED-NARROW picks
-\ the smallest byte tag width holding a K-variant tag; TWX-PACKED-DESC composes
+\ packed ABI descriptor (docs §22.2, policy TL-PACKED-TAG). PACKED-NARROW picks
+\ the smallest byte tag width holding a K-variant tag; PACKED-DESC composes
 \ ( size align tagw ) with cell payloads (align CELL) and the narrowed tag placed
 \ last, SIZE the aligned record stride. Computed for ANY family regardless of its
 \ declared policy (the accept-flip that populates LAY on POLICY packed-tag is a
 \ later sub-slice); private families (package pkpk) keep the protected-WID seal
 \ cap untouched (dot habu-seal-protwid-cap-6f1c9d2b).
 \ ---------------------------------------------------------------------------
-0 TWX-PACKED-NARROW 0 T=
-1 TWX-PACKED-NARROW 1 T=
-256 TWX-PACKED-NARROW 1 T=
-257 TWX-PACKED-NARROW 2 T=
-65536 TWX-PACKED-NARROW 2 T=
-65537 TWX-PACKED-NARROW 4 T=
-1 32 lshift TWX-PACKED-NARROW 4 T=
-1 32 lshift 1 + TWX-PACKED-NARROW 8 T=
+0 PACKED-NARROW 0 T=
+1 PACKED-NARROW 1 T=
+256 PACKED-NARROW 1 T=
+257 PACKED-NARROW 2 T=
+65536 PACKED-NARROW 2 T=
+65537 PACKED-NARROW 4 T=
+1 32 lshift PACKED-NARROW 4 T=
+1 32 lshift 1 + PACKED-NARROW 8 T=
 variable PSZ  variable PAL  variable PTW  variable PKI
 package pkpk
 ENUM pkpke red green blue ;ENUM
@@ -1031,22 +966,22 @@ SUMTYPE pkpks 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 PRODUCT pkpkp 0 FIELD x n FIELD y n ;PRODUCT
 ;package
 \ enum (3 variants, no payload): tag-only u8 -> size 1 align 1 tagw 1
-s" pkpk" s" pkpke" TWX-TFAM-FIND-IN drop PKI !
-PKI @ TWX-PACKED-DESC PTW ! PAL ! PSZ !
+s" pkpk" s" pkpke" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 1 T=   PAL @ 1 T=   PTW @ 1 T=
 \ sum (2 variants, M=1 cell): tag u8 after one cell -> align_up(8+1,8)=16, align 8, tagw 1
-s" pkpk" s" pkpks" TWX-TFAM-FIND-IN drop PKI !
-PKI @ TWX-PACKED-DESC PTW ! PAL ! PSZ !
+s" pkpk" s" pkpks" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 16 T=  PAL @ 8 T=   PTW @ 1 T=
 \ product (2 cell fields, no tag): align_up(16,8)=16, align 8, tagw 0
-s" pkpk" s" pkpkp" TWX-TFAM-FIND-IN drop PKI !
-PKI @ TWX-PACKED-DESC PTW ! PAL ! PSZ !
+s" pkpk" s" pkpkp" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ packed-tag ACCEPT (item 16 sub-slice 2, docs §22.0/§22.2). `POLICY packed-tag`
 \ declares: the family row carries TL-PACKED-TAG and the close bakes the
-\ TWX-PACKED-DESC memory descriptor into the LAY registry. packed is a MEMORY-ABI
+\ PACKED-DESC memory descriptor into the LAY registry. packed is a MEMORY-ABI
 \ descriptor ONLY: the stack representation is IDENTICAL to stack-cell-tag, so a
 \ packed family and its stack-cell-tag twin construct, MATCH, and transport
 \ (dup/drop via nip) exactly alike — pinned differentially below. Private
@@ -1066,30 +1001,30 @@ ENUM pkace POLICY packed-tag red green blue ;ENUM
 PRODUCT pkacr 0 POLICY packed-tag FIELD x n FIELD y n ;PRODUCT
 
 \ policy readback + stack-width identity with the stack-cell-tag twin
-s" pkac" s" pkacp" TWX-TFAM-FIND-IN drop PQA !
-s" pkac" s" pkacs" TWX-TFAM-FIND-IN drop PQB !
-PQA @ TWX-TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
-PQB @ TWX-TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
+s" pkac" s" pkacp" TFAM-FIND-IN drop PQA !
+s" pkac" s" pkacs" TFAM-FIND-IN drop PQB !
+PQA @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+PQB @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
 PQA @ TFAM-WIDTH@ PQB @ TFAM-WIDTH@ T=
-\ the close baked one LAY row for the packed family; values == TWX-PACKED-DESC
-PQA @ TWX-LAY-FIND PQF ! PQL !
+\ the close baked one LAY row for the packed family; values == PACKED-DESC
+PQA @ LAY-FIND PQF ! PQL !
 PQF @ -1 T=
-PQL @ TWX-LAY-POLICY@ TL-PACKED-TAG T=
-PQA @ TWX-PACKED-DESC PTW ! PAL ! PSZ !
-PQL @ TWX-LAY-SIZE@ PSZ @ T=   PQL @ TWX-LAY-ALIGN@ PAL @ T=   PQL @ TWX-LAY-TAGW@ PTW @ T=
+PQL @ LAY-POLICY@ TL-PACKED-TAG T=
+PQA @ PACKED-DESC PTW ! PAL ! PSZ !
+PQL @ LAY-SIZE@ PSZ @ T=   PQL @ LAY-ALIGN@ PAL @ T=   PQL @ LAY-TAGW@ PTW @ T=
 \ the stack-cell-tag twin bakes NO row
-PQB @ TWX-LAY-FIND PQF ! drop
+PQB @ LAY-FIND PQF ! drop
 PQF @ 0 T=
 \ packed enum + product descriptors baked at close
-s" pkac" s" pkace" TWX-TFAM-FIND-IN drop PQA !
-PQA @ TWX-TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
-PQA @ TWX-LAY-FIND PQF ! PQL !
+s" pkac" s" pkace" TFAM-FIND-IN drop PQA !
+PQA @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+PQA @ LAY-FIND PQF ! PQL !
 PQF @ -1 T=
-PQL @ TWX-LAY-SIZE@ 1 T=   PQL @ TWX-LAY-ALIGN@ 1 T=   PQL @ TWX-LAY-TAGW@ 1 T=
-s" pkac" s" pkacr" TWX-TFAM-FIND-IN drop PQA !
-PQA @ TWX-LAY-FIND PQF ! PQL !
+PQL @ LAY-SIZE@ 1 T=   PQL @ LAY-ALIGN@ 1 T=   PQL @ LAY-TAGW@ 1 T=
+s" pkac" s" pkacr" TFAM-FIND-IN drop PQA !
+PQA @ LAY-FIND PQF ! PQL !
 PQF @ -1 T=
-PQL @ TWX-LAY-SIZE@ 16 T=  PQL @ TWX-LAY-ALIGN@ 8 T=   PQL @ TWX-LAY-TAGW@ 0 T=
+PQL @ LAY-SIZE@ 16 T=  PQL @ LAY-ALIGN@ 8 T=   PQL @ LAY-TAGW@ 0 T=
 
 \ differential stack-shape identity: the same construct -> dup -> MATCH-the-copy
 \ -> nip-the-original round trip on the packed family and on its twin.
@@ -1110,20 +1045,20 @@ PQL @ TWX-LAY-SIZE@ 16 T=  PQL @ TWX-LAY-ALIGN@ 8 T=   PQL @ TWX-LAY-TAGW@ 0 T=
 \ boxed / niche-null stack width = 1 (docs §18 WIDTH(boxed)=1, §22.3 niche one
 \ cell). No declaration accepts boxed/niche yet (both reject at the POLICY
 \ clause), so this shared W=1 metadata is exercised through the direct
-\ TWX-TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit tests.
+\ TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit tests.
 \ A multi-slot SUM (default width slots+1) collapses to 1 under boxed and under
 \ niche, but keeps its cell width under stack-cell-tag AND packed (packed is a
 \ MEMORY-ABI descriptor only, §22.2) — the regression guard that the branch
 \ fires for boxed/niche alone.
 \ ---------------------------------------------------------------------------
-s" pkgw" CHECKER-PACKAGE-PRIVATE s" wbx" 1 TK-SUM TWX-TFAM-DECL WBX !
-WBX @ 2 TWX-TFAM-SLOTS!                                       \ 2 payload slots
-WBX @ TWX-TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=            \ default policy
+s" pkgw" CHECKER-PACKAGE-PRIVATE s" wbx" 1 TK-SUM TFAM-DECL WBX !
+WBX @ 2 TFAM-SLOTS!                                           \ 2 payload slots
+WBX @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=                \ default policy
 WBX @ TFAM-WIDTH@ 3 T=                                        \ slots + tag
-WBX @ TL-BOXED       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
-WBX @ TL-NICHE       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
-WBX @ TL-PACKED-TAG  TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ packed keeps cell width
-WBX @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ restored
+WBX @ TL-BOXED       TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
+WBX @ TL-NICHE       TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
+WBX @ TL-PACKED-TAG  TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ packed keeps cell width
+WBX @ TL-STACK-CELL-TAG TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ restored
 
 \ ---------------------------------------------------------------------------
 \ arg-aware INSTANTIATED width (layout-cap slice 1, docs §18). T-WIDTH walks a
@@ -1141,21 +1076,21 @@ ENUM pkiw1 red green ;ENUM                                         \ layout, wid
 PRODUCT pkiw3 0 FIELD a n FIELD b n FIELD c n ;PRODUCT             \ layout, width 3 (three cells)
 SUMTYPE pkiwo 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE  \ option-like, arity 1
 ;package
-s" pkiw" s" pkiw1" TWX-TFAM-FIND-IN drop IWP1 !
-s" pkiw" s" pkiw3" TWX-TFAM-FIND-IN drop IWP3 !
-s" pkiw" s" pkiwo" TWX-TFAM-FIND-IN drop IWOPT !
+s" pkiw" s" pkiw1" TFAM-FIND-IN drop IWP1 !
+s" pkiw" s" pkiw3" TFAM-FIND-IN drop IWP3 !
+s" pkiw" s" pkiwo" TFAM-FIND-IN drop IWOPT !
 \ declared (params-as-cells) widths — the family-only baseline
 IWP1 @ TFAM-WIDTH@ 1 T=                          \ enum: tag only
 IWP3 @ TFAM-WIDTH@ 3 T=                           \ product: three cells
 IWOPT @ TFAM-WIDTH@ 2 T=                          \ sum: max(none=0, some=1-as-cell) + tag
 \ arg-aware width == T-WIDTH of the built terms
-IWP1 @ TWX-MK-NULLARY TWX-T-WIDTH 1 T=            \ enum term self-check
-IWP3 @ TWX-MK-NULLARY TWX-T-WIDTH 3 T=            \ product term self-check
+IWP1 @ TWX-MK-NULLARY T-WIDTH 1 T=                \ enum term self-check
+IWP3 @ TWX-MK-NULLARY T-WIDTH 3 T=                \ product term self-check
 \ behaviour-preserving: a width-1 layout arg reproduces the declared sum width
-IWP1 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY TWX-T-WIDTH 2 T=       \ opt<enum1> == declared 2
+IWP1 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY T-WIDTH 2 T=           \ opt<enum1> == declared 2
 \ the groundwork proof: a width-3 layout arg widens the sum payload (declared width 2 was degenerate)
 IWP3 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY IWT !
-IWT @ TWX-T-WIDTH 4 T=                            \ opt<pt3>: max(0, width(pt3)=3) + tag = 4
+IWT @ T-WIDTH 4 T=                                \ opt<pt3>: max(0, width(pt3)=3) + tag = 4
 IWOPT @ TFAM-WIDTH@ 2 T=                          \ family-only width unchanged (still 2) — arg-aware differs
 
 \ ---------------------------------------------------------------------------
@@ -1209,7 +1144,7 @@ TYPE-FIELD:COUNT PROVID !  ' PRB-FAM catch TC ! TC @ E-PF-ID T=
 \ still commits cleanly, proving the frame was never discarded.
 TYPE-FIELD:COUNT RCNT !
 TF-FIELD:OPEN RTOK !
-' TWX-TFAM-RESET catch TC ! TC @ E-PF-TX T=
+' TFAM-RESET catch TC ! TC @ E-PF-TX T=
 PTID @ TFAM-ARITY@ 0 T=              \ registry NOT wiped: PTID is still a valid family
 TYPE-FIELD:COUNT RCNT @ T=           \ committed high-water unchanged
 RTOK @ TF-FIELD:CLOSE                 \ frame intact: the token still matches the live top frame
@@ -1221,7 +1156,7 @@ TYPE-FIELD:COUNT RCNT @ T=           \ empty commit publishes nothing
 \ token no longer matches the top frame and committing it rejects E-PF-TX.
 TF-FIELD:OPEN STOK !
 STOK @ TF-FIELD:CLOSE
-TWX-TFAM-RESET
+TFAM-RESET
 TF-FIELD:OPEN NTOK !
 NTOK @ STOK @ > -1 T=                \ token generation did not rewind across reset
 NTOK @ STOK @ = 0 T=                 \ so a completed token can never be reissued
@@ -1235,14 +1170,13 @@ NTOK @ TF-FIELD:ROLLBACK
 \ never enter reflection or snapshot/fixpoint identity. Raw shims read/write PF
 \ records directly (bypassing the committed-id bound) to observe retired slots.
 \ ---------------------------------------------------------------------------
-TRUSTED: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
-TRUSTED: TWX-PF-RAW! ( n n n -- ) {: v:n id:n off:n :} v id PF-REC * PF-BASE + off cells + ! ;
-TRUSTED: TWX-PF-CAP  ( -- n ) PF-CAP ;
+: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
+: TWX-PF-RAW! ( n n n -- ) {: v:n id:n off:n :} v id PF-REC * PF-BASE + off cells + ! ;
 variable RBPID   variable RBCN   variable RBIDX
 
 \ fresh product with two committed fields (case 20's stale-token check wiped the
 \ registry, so start from a clean slate).
-s" pkr" CHECKER-PACKAGE-PUBLIC s" prod" 0 TK-PRODUCT TWX-TFAM-DECL RBPID !
+s" pkr" CHECKER-PACKAGE-PUBLIC s" prod" 0 TK-PRODUCT TFAM-DECL RBPID !
 TF-FIELD:OPEN PFTX !
 PFTX @ RBPID @ PF-NO-VARIANT s" f0" 1 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
 PFTX @ RBPID @ PF-NO-VARIANT s" f1" 1 1 1 CELL CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
@@ -1262,10 +1196,10 @@ RBIDX @ 10 TWX-PF-RAW@ 0 T=         \ FLAGS scrubbed
 \ tail slot, persist, and prove it bakes as canonical zero while committed rows
 \ survive the bake (AOT restore fidelity).
 TYPE-FIELD:COUNT RBCN !
-TWX-PF-CAP RBCN @ > -1 T=           \ there is unused tail capacity to fill
+PF-CAP RBCN @ > -1 T=               \ there is unused tail capacity to fill
 $5eed RBCN @ 3 TWX-PF-RAW!
 RBCN @ 3 TWX-PF-RAW@ $5eed T=       \ planted garbage in the unused tail
-TWX-TFAM-SNAPSHOT-PERSIST
+TFAM-SNAPSHOT-PERSIST
 RBCN @ 3 TWX-PF-RAW@ 0 T=           \ persist scrubbed the unused capacity to zero
 RBPID @ TYPE-FIELD:NO-VARIANT s" f0" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
 RBPID @ TYPE-FIELD:NO-VARIANT s" f1" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
@@ -1275,52 +1209,42 @@ RBPID @ TYPE-FIELD:NO-VARIANT s" f1" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T
 \ families in the global or active package scope. An unrelated package does not
 \ reserve the same tail.
 \ ---------------------------------------------------------------------------
-s" " CHECKER-PACKAGE-PUBLIC s" global-variant" 0 TK-ENUM TWX-TFAM-DECL drop
-s" variant-name-test" CHECKER-PACKAGE-PUBLIC s" local-variant" 0 TK-ENUM TWX-TFAM-DECL drop
-s" other-variant-test" CHECKER-PACKAGE-PUBLIC s" foreign-variant" 0 TK-ENUM TWX-TFAM-DECL drop
+s" " CHECKER-PACKAGE-PUBLIC s" global-variant" 0 TK-ENUM TFAM-DECL drop
+s" variant-name-test" CHECKER-PACKAGE-PUBLIC s" local-variant" 0 TK-ENUM TFAM-DECL drop
+s" other-variant-test" CHECKER-PACKAGE-PUBLIC s" foreign-variant" 0 TK-ENUM TFAM-DECL drop
 
 package variant-name-test
 
-\ The variant-name gate is a package public with no checker-known effect, so the
-\ seal-time pass marks it internal under its qualified spelling too (dot
-\ habu-pkg-publics-escape-41532ee7) and the probes below reach it through a
-\ shim, like every checker-internal global this suite probes. It is the shape
-\ production already uses: src/core/decl-event.f reaches the same gate through
-\ TRUSTED: DEV-NAME-VARIANT-REQUIRE. It lives inside this package rather than
-\ beside the TWX- globals so it owns its own name; the block's visibility is
-\ left exactly as the fixture had it.
-TRUSTED: VREQ ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
-
 VALUE-RECORD variant-record payload n END-VALUE-RECORD
 
-s" " ' VREQ catch TC ! 2drop
+s" " ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7107 T=
-s" Bad" ' VREQ catch TC ! 2drop
+s" Bad" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7101 T=
-s" n" ' VREQ catch TC ! 2drop
+s" n" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" q" ' VREQ catch TC ! 2drop
+s" q" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" variant-record" ' VREQ catch TC ! 2drop
+s" variant-record" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" field" ' VREQ catch TC ! 2drop
+s" field" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" bool" ' VREQ catch TC ! 2drop
+s" bool" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" space-x" ' VREQ catch TC ! 2drop
+s" space-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" fresh-mask-x" ' VREQ catch TC ! 2drop
+s" fresh-mask-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" if" ' VREQ catch TC ! 2drop
+s" if" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" variant" ' VREQ catch TC ! 2drop
+s" variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" global-variant" ' VREQ catch TC ! 2drop
+s" global-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" local-variant" ' VREQ catch TC ! 2drop
+s" local-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
 TC @ 7110 T=
-s" foreign-variant" VREQ
-s" ready" VREQ
+s" foreign-variant" TYPE-NAME:VARIANT-REQUIRE
+s" ready" TYPE-NAME:VARIANT-REQUIRE
 
 ;package
 

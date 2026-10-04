@@ -49,23 +49,23 @@ SCX-DIFF-ALL
 \ 3a. a rejected candidate frame: a signature added inside it is visible there
 \     and gone after, and the same name then takes a DIFFERENT effect cleanly.
 s" SCXR" SCX-SIG-MIN-IN -1 T=
-SCX-CAND-START
-   s" n n -- n" s" SCXR" SCX-USIG-ADD
+CHECK-CANDIDATE-START
+   s" n n -- n" s" SCXR" CHECKER-USIG-ADD
    s" SCXR" SCX-SIG-MIN-IN 2 T=                      \ visible inside the candidate
-0 SCX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" SCXR" SCX-SIG-MIN-IN -1 T=                        \ retired with the frame
-s" n -- n" s" SCXR" SCX-USIG-ADD
+s" n -- n" s" SCXR" CHECKER-USIG-ADD
 s" SCXR" SCX-SIG-MIN-IN 1 T=                         \ the new effect answers
 SCX-DIFF-ALL
 
 \ 3b. the same shape through the real load path: a definition the checker
 \     REJECTS rolls its scope back, and the name then takes a different effect
 \     that its callers are held to.
-TRUSTED: SCX-BADDEF ( -- ) s" : SCXB ( n -- n ) drop ;" evaluate ;
-TRUSTED: SCX-GOODDEF ( -- ) s" : SCXB ( n -- ) drop ;" evaluate ;
-TRUSTED: SCX-GOODUSE ( -- ) s" : SCXBU ( n -- ) SCXB ;" evaluate ;
-TRUSTED: SCX-BADUSE ( -- ) s" : SCXBU2 ( n -- n ) SCXB ;" evaluate ;
+: SCX-BADDEF ( -- ) s" : SCXB ( n -- n ) drop ;" evaluate-closed ;
+: SCX-GOODDEF ( -- ) s" : SCXB ( n -- ) drop ;" evaluate-closed ;
+: SCX-GOODUSE ( -- ) s" : SCXBU ( n -- ) SCXB ;" evaluate-closed ;
+: SCX-BADUSE ( -- ) s" : SCXBU2 ( n -- n ) SCXB ;" evaluate-closed ;
 
 ' SCX-BADDEF catch TC !   TC @ 0 <> TTRUE            \ rejected: the body drops its output
 s" SCXB" SCX-SIG-MIN-IN -1 T=                        \ ... and left no record behind
@@ -80,24 +80,24 @@ SCX-DIFF-ALL
 \     Its variant leaves no tail chain either (VNX-RETIRE).
 variable CAND-FAM                                    \ the candidate family's id
 s" scxctor" SCX-NAME! SCX-SYM-INTERN IX !
-IX @ SCX-SUMV-FROM-CTOR TFALSE drop
-s" scxrb" s" cand" SCX-TFAM-FIND-IN TFALSE drop
-SCX-CAND-START
-   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT SCX-TFAM-DECL CAND-FAM !
-   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand2" 2 TK-PRODUCT SCX-TFAM-DECL drop
-   s" scxrb" s" cand" SCX-TFAM-FIND-IN TTRUE drop
-   CAND-FAM @ s" cand" 0 0 0 0 SCX-SUMV-ADD IX @ SCX-SUMV-CTOR-SYM!
-   CAND-FAM @ s" cand" SCX-SUMV-FIND TTRUE drop
-   IX @ SCX-SUMV-FROM-CTOR TTRUE drop
-0 SCX-CAND-DONE drop
+IX @ SUMV-FROM-CTOR-SYM TFALSE drop
+s" scxrb" s" cand" TFAM-FIND-IN TFALSE drop
+CHECK-CANDIDATE-START
+   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TFAM-DECL CAND-FAM !
+   s" scxrb" CHECKER-PACKAGE-PRIVATE s" cand2" 2 TK-PRODUCT TFAM-DECL drop
+   s" scxrb" s" cand" TFAM-FIND-IN TTRUE drop
+   CAND-FAM @ s" cand" 0 0 0 0 SUMV-ADD IX @ SUMV-CTOR-SYM!
+   CAND-FAM @ s" cand" SUMV-FIND TTRUE drop
+   IX @ SUMV-FROM-CTOR-SYM TTRUE drop
+0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
-s" scxrb" s" cand" SCX-TFAM-FIND-IN TFALSE drop
-s" scxrb" s" cand2" SCX-TFAM-FIND-IN TFALSE drop
-CAND-FAM @ s" cand" SCX-SUMV-FIND TFALSE drop
-IX @ SCX-SUMV-FROM-CTOR TFALSE drop
-s" scxrb" CHECKER-PACKAGE-PUBLIC s" cand" 0 TK-CELL ' SCX-TFAM-DECL catch TC ! drop
+s" scxrb" s" cand" TFAM-FIND-IN TFALSE drop
+s" scxrb" s" cand2" TFAM-FIND-IN TFALSE drop
+CAND-FAM @ s" cand" SUMV-FIND TFALSE drop
+IX @ SUMV-FROM-CTOR-SYM TFALSE drop
+s" scxrb" CHECKER-PACKAGE-PUBLIC s" cand" 0 TK-CELL ' TFAM-DECL catch TC ! drop
 TC @ 0 T=
-s" scxrb" s" cand" SCX-TFAM-FIND-IN TTRUE drop
+s" scxrb" s" cand" TFAM-FIND-IN TTRUE drop
 SCX-MARKS-EXACT
 SCX-DIFF-ALL
 
@@ -143,15 +143,15 @@ variable SCX-RC
    SCX-RC @ 76 T=
    SCX-ERR$ s" checker: store record symbol outside index range" CONTAINS? TTRUE ;
 
-s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP USX-LINK ; SCXCAP" SCX-REFUSED
-s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP NRX-LINK ; SCXCAP" SCX-REFUSED
+s" : SCXCAP ( -- ) 0 SYM-CAP USX-LINK ; SCXCAP" SCX-REFUSED
+s" : SCXCAP ( -- ) 0 SYM-CAP NRX-LINK ; SCXCAP" SCX-REFUSED
 
 \ id 0 is the symbol table's own "no symbol", not a key: the control store has
 \ no early return for it, so its linking word is where that shows.
-s" TRUSTED: SCXCAP ( -- ) 0 0 NRX-LINK ; SCXCAP" SCX-REFUSED
+s" : SCXCAP ( -- ) 0 0 NRX-LINK ; SCXCAP" SCX-REFUSED
 
 \ and a key one below the cap is inside the mapping, so it does NOT refuse
-s" TRUSTED: SCXOK ( -- ) 0 SYM-CAP 1 - NRX-LINK ; SCXOK" SCX-CHILD
+s" : SCXOK ( -- ) 0 SYM-CAP 1 - NRX-LINK ; SCXOK" SCX-CHILD
 SCX-RC @ 0 T=
 
 s" checker-scan-index-rollback-suite: failures" REPORT
