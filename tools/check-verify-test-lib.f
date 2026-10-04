@@ -30,7 +30,7 @@
 \   a name the definer generates is no packet                             duplicate-made
 \   a child that dies after a duplicate drops its record                  duplicate-then-dies
 \   a complete answer followed by a failed process exit leaks framing or
-\   invents a duplicate                                           unclean-answer
+\   invents a duplicate, or loses two identical real duplicates   unclean-answer
 \   a closure that cannot be followed reads as verified                   missing-dependency
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
@@ -793,7 +793,7 @@ variable CLI-OUT-U
    S\" require lib/process.f\nrequire lib/process-argv.f\nrequire lib/process-env.f\nrequire lib/engine-id.f\nrequire lib/string.f\npackage CVT-UNCLEAN\nDYNAMIC-BUFFER SRC u8\nDYNAMIC-BUFFER OUT u8\nDYNAMIC-BUFFER ERR u8\nvariable SRC-U\n" GEN+
    S\" : ARGS ( -- )\n   PROC-ARGV-ENV-RESET\n   s\" --load\" >LEN PROC-ARGV+\n   s\" tools/check-verify-child.f\" >LEN PROC-ARGV+\n   s\" --\" >LEN PROC-ARGV+\n   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop\n   PROC-ENV-INHERIT-MISSING ;\n" GEN+
    S\" : INPUT ( -- )\n   0 SRC-U !\n   begin SRC-U @ 4096 < while\n      0 SRC-U @ SRC 4096 SRC-U @ - read\n      dup 0< if s\" read failed\" 74 die then\n      dup 0= if drop exit then\n      SRC-U +!\n   repeat ;\n" GEN+
-   S\" : FIRST-LINE ( n -- n ) {: u:n :}\n   u 0 ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   0 SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if outu LEN>N FIRST-LINE else outu LEN>N then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
+   S\" : FIRST-LINE ( n -- n ) {: u:n :}\n   u 0 ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n: SECOND-LINE ( n -- n ) {: u:n :}\n   u u FIRST-LINE ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if outu LEN>N FIRST-LINE else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if outu LEN>N SECOND-LINE else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
    s" unclean.f" 0 GEN GEN-U @ FIXTURE
    s" unclean.f" AT$ CHMOD-X ;
 
@@ -836,6 +836,20 @@ variable CLI-OUT-U
    s" unclean-answer: sole code-78 packet survives" T-LABEL
    JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: sole code-78 packet is last" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   s\" include order-dep.f\ninclude order-dep.f\ninclude order-dep.f\n"
+   s" unclean-two-dups.f" GUARD-MS CHECK-AS {: two-dups :}
+   two-dups 4 s" unclean-answer: two real duplicates are incomplete" EXPECT-KIND
+   CHECK:VERIFY-OUT$ {: packets:ptr packetu:n :}
+   packets packetu 10 0 SPLIT-NEXT {: first:ptr firstu:n next:n found:bool :}
+   s" unclean-answer: first duplicate has a line" T-LABEL found TTRUE
+   s" unclean-answer: duplicate records are byte-identical" T-LABEL
+   first firstu packets packetu 10 next SPLIT-NEXT 2drop STR= TTRUE
+   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   s" unclean-answer: first identical duplicate survives" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: second identical duplicate survives" T-LABEL
+   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: only two duplicate packets" T-LABEL JSONL-NEXT-OBJECT -1 T=
    s" unclean-pre.f" AT$ SUBJ SUBJ-U COPY!
    DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
    MATCH result

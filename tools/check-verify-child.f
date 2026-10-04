@@ -22,11 +22,12 @@
 \ written as the checker makes it, so a child that dies has passed on every
 \ packet made before; then one result line. The first form verifies with all
 \ errors, going past a duplicate definition as past any refused definition,
-\ and writes for each duplicate, which the checker writes no packet for, the
-\ second form's stopped line among the packets, code 78. It answers
+\ and writes for each duplicate, which the checker writes no packet for, a
+\ diagnostic line among the packets. It answers
 \
 \    check-verify: verified | refused | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
+\    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
@@ -129,11 +130,9 @@ create NL 1 allot
    0 SUBJECT SUBJECT-U @ 0 SCRIPT-ARGV$ VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
 
-\ The stopped line, given the duplicate's place and length, its file, whether
-\ that is the subject's bytes, and the code.
-: STOP-LINE ( n n ptr u8 n bool n -- )
+\ Fields shared by a duplicate diagnostic and a terminal stop.
+: STOP-FIELDS ( n n ptr u8 n bool n -- )
    {: at:n u:n file:ptr fileu:n subj:bool rc:n :}
-   OUT-FD s" check-verify: stopped " WRITE
    OUT-FD rc FD-N
    OUT-FD s"  " WRITE
    OUT-FD VERIFY:TOKEN-BYTE@ FD-N
@@ -148,13 +147,15 @@ create NL 1 allot
 
 : STOP-RESULT ( n -- )
    {: rc:n :}
+   OUT-FD s" check-verify: stopped " WRITE
    VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
-   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? rc STOP-LINE ;
+   VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? rc STOP-FIELDS ;
 
 
 \ A duplicate the first form goes past, which the checker writes no packet for.
 : DUPLICATE-LINE ( n n ptr u8 n bool -- )
-   E-DUP-DEFINITION STOP-LINE ;
+   OUT-FD s" check-verify: duplicate " WRITE
+   E-DUP-DEFINITION STOP-FIELDS ;
 
 
 \ One multi-error window covers the complete load composition, and goes past
@@ -170,7 +171,10 @@ create NL 1 allot
    rejects 0<> if -1 FAILED ! then
    rc STOP !
    rc 0= if exit then
-   rc E-DUP-DEFINITION = if rc STOP-RESULT then
+   rc E-DUP-DEFINITION = if
+      VERIFY:DUPLICATE VERIFY:SOURCE-COMPOSE-STOPPED$
+      VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? DUPLICATE-LINE
+   then
    VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
 
 

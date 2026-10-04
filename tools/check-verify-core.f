@@ -253,7 +253,7 @@ $0A constant VFY-LF
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
-DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate's stopped line its record
+DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate line its record
 DYNAMIC-BUFFER VFY-DEP u8               \ a duplicate's file, not the subject
 DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplicate records
 variable VFY-REC-U
@@ -380,6 +380,9 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
 : VFY-STOPPED$ ( -- ptr u8 n )
    s" check-verify: stopped " ;
 
+: VFY-DUPLICATE$ ( -- ptr u8 n )
+   s" check-verify: duplicate " ;
+
 
 \ Where the field of VFY-OUT that starts at AT ends: at its space, or at END.
 : VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
@@ -396,9 +399,9 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    ;MATCH ;
 
 
-\ The rest of a stopped line, from AT to END in VFY-OUT: RC BYTE DUP-AT DUP-LEN
-\ IN-SUBJECT FILE. VFY-STOPPED with them kept, or VFY-NONE for a line that does
-\ not read so; a stop is never code 0, and IN-SUBJECT is 1 or 0.
+\ The fields after a stop or duplicate tag: RC BYTE DUP-AT DUP-LEN IN-SUBJECT
+\ FILE. VFY-STOPPED with them kept, or VFY-NONE for an invalid line; a stop is
+\ never code 0, and IN-SUBJECT is 1 or 0.
 : VFY-STOP-PARSE ( n n -- n ) {: at:n end:n :}
    at end VFY-FIELD-END {: e1:n :}
    at e1 VFY-FIELD-N {: rc:n rc-ok:bool :}
@@ -434,7 +437,7 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
 
 
 \ The answer the final line from AT to END in VFY-OUT gives, its line feed
-\ excluded. A stopped line can also be a duplicate packet before that line.
+\ excluded. Diagnostic duplicates have a different tag.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
@@ -452,30 +455,17 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    repeat ;
 
 
-\ A final code-78 stop repeats the duplicate line immediately before it.
-\ A child that dies after writing only the duplicate has no result line yet.
-: VFY-REPEATED-STOP? ( n n -- bool ) {: at:n end:n :}
-   at 0= if false exit then
-   at 1- VFY-LINE-START {: prev:n :}
-   at prev - 1- end at - 1- <> if false exit then
-   prev VFY-OUT at prev - 1- at VFY-OUT end at - 1- STR= ;
-
-
 \ Keep the complete lines of the child's OUTU bytes of stdout: the packets, and
 \ the answer of a result line that ends them. The rest of a line the deadline or
 \ the capture cut is dropped.
-: VFY-TAKE ( n bool -- )
-   {: outu:n clean:bool :}
+: VFY-TAKE ( n -- )
+   {: outu:n :}
    outu VFY-LINE-START {: end:n :}
    end VFY-OUT-U !
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
    at end 1- VFY-ANSWER-AT VFY-ANSWER !
    VFY-ANSWER @ VFY-NONE = if exit then
-   VFY-ANSWER @ VFY-STOPPED = VFY-STOP-RC @ E-DUP-DEFINITION = and
-   clean 0= and VFY-PREPASS @ 0= and if
-      at end VFY-REPEATED-STOP? 0= if VFY-NONE VFY-ANSWER ! exit then
-   then
    at VFY-OUT-U ! ;
 
 
@@ -510,14 +500,14 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    while 1+ repeat ;
 
 
-\ The line of VFY-OUT that starts at AT, to VFY-REC, a code-78 stopped line
+\ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate line
 \ as the record --all-errors writes for it: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
-   at VFY-OUT end at - VFY-STOPPED$ STARTS-WITH?
-   if at VFY-STOPPED$ nip + end VFY-STOP-PARSE else VFY-NONE then
+   at VFY-OUT end at - VFY-DUPLICATE$ STARTS-WITH?
+   if at VFY-DUPLICATE$ nip + end VFY-STOP-PARSE else VFY-NONE then
    VFY-STOPPED = if
       VFY-STOP-RC @ E-DUP-DEFINITION = if
          true CHECK-ALL-ERRORS:JSON!
@@ -532,7 +522,7 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    end 1+ ;
 
 
-\ The packets VFY-OUT holds, each stopped line the first form writes among them
+\ The packets VFY-OUT holds, each duplicate line the first form writes among them
 \ for a duplicate made its record.
 : VFY-DUP-RECORDS ( -- )
    VFY-PREPASS @ if exit then
@@ -568,7 +558,7 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
    PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
    erru LEN>N VFY-LOG-U !
-   outu LEN>N o VFY-CLEAN-EXIT? rc 0= and VFY-TAKE
+   outu LEN>N VFY-TAKE
    VFY-DUP-RECORDS
    rc 0<> if rc throw then
    o ;
