@@ -68,6 +68,7 @@
 \ -origin-full publishes into a full table and exits 101 with its fd-2 text.
 \ The host checks each image's ELF header; running them is the peer's.
 require src/habu/snapshot-format.f
+require src/habu/address-cells.f
 require src/habu/code-origin-x64.f
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
@@ -532,15 +533,81 @@ REGION SLOT-BYTES - constant TOP-SLOT
 
 : SEAL, ( -- ) FRIEND-ARENA-LEN FRIEND-LATCH-CELL X64HARNESS:CELL!, ;
 
+: ADDRESS-HEADER, ( n -- ) {: cap:n :}
+   0 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:CELL!,
+   ADDRESS-CELLS:MAGIC SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MAGIC-FIELD + X64HARNESS:CELL!,
+   ADDRESS-CELLS:BOOT-OFF SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:BASE-FIELD + X64HARNESS:CELL!,
+   cap SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + X64HARNESS:CELL!,
+   0 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:CELL!, ;
+
 \ With the latch sealed, xt! stores into a scratch cell and ptr-cell-mark
 \ admits one.
 : BUILD-XT-STORE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
+   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
    SEAL,
    CELL-VALUE X64HARNESS:PUSH,  0 X64HARNESS:PUSH-SCRATCH,  s" xt!" ROW
    CELL-VALUE 0 X64HARNESS:EXPECT-SCRATCH,
+   1 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
+   X64HARNESS:SCRATCH-OFF ADDRESS-CELLS:BOOT-OFF X64HARNESS:EXPECT-CELL,
    CELL X64HARNESS:PUSH-SCRATCH,  s" ptr-cell-mark" ROW
+   2 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
+   X64HARNESS:SCRATCH-OFF CELL + SNAP-RELOC:XTCELL-DATA-TAG or
+   ADDRESS-CELLS:BOOT-OFF CELL + X64HARNESS:EXPECT-CELL,
+   CELL X64HARNESS:PUSH-SCRATCH,  s" ptr-cell-mark" ROW
+   2 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-ADDR-GROW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   2 ADDRESS-HEADER,
+   0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   CELL X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   2 cells X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   3 cells X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   4 cells X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   5 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
+   1 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + X64HARNESS:EXPECT-CELL,
+   8 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + X64HARNESS:EXPECT-CELL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ A task installs its private context in rbp while declaring a cell in the
+\ shared image DATA. The marker must find the one shared header and lock.
+: BUILD-ADDR-TASK ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
+   0 X64HARNESS:PUSH-SCRATCH,
+   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-PUSH
+   X64ASM:RAX X64ASM:RBP X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF
+      X64CODE:ASM-SINK X64ASM:ENC-LEA
+   X64ASM:RBP X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   s" ptr-cell-mark" ROW
+   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP
+   1 SNAP-RELOC:XTCELL-N-CELL X64HARNESS:EXPECT-CELL,
+   X64HARNESS:SCRATCH-OFF SNAP-RELOC:XTCELL-DATA-TAG or
+      ADDRESS-CELLS:BOOT-OFF X64HARNESS:EXPECT-CELL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-ADDR-KIND ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
+   0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
+   CELL-VALUE X64HARNESS:PUSH, 0 X64HARNESS:PUSH-SCRATCH, s" xt!" ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-ADDR-BAND ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
+   X64LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-ADDR-HEADER ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ With the latch sealed, the row aimed at the band cell TIER-PROV:N-CELL exits
@@ -553,11 +620,24 @@ REGION SLOT-BYTES - constant TOP-SLOT
    store if s" xt!" ROW else s" ptr-cell-mark" ROW then
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+: BUILD-BAND-TASK ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
+   SEAL,
+   TIER-PROV:N-CELL X64HARNESS:PUSH-DATA,
+   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-PUSH
+   X64ASM:RAX X64ASM:RBP X64HARNESS:SCRATCH-OFF X64ASM:MEM-OFF
+      X64CODE:ASM-SINK X64ASM:ENC-LEA
+   X64ASM:RBP X64ASM:RAX X64CODE:ASM-SINK X64ASM:ENC-MOV-RR
+   s" ptr-cell-mark" ROW
+   X64ASM:RBP X64CODE:ASM-SINK X64ASM:ENC-POP
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 \ ---- the compiler tier and the build scope -----------------------------------
 \ The constant rows, code-origin's unknown answer and tier 1.
 : BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
-   s" addr-cells-abi" ROW  0 X64HARNESS:EXPECT-POP,
+   s" addr-cells-abi" ROW  ADDRESS-CELLS:ABI-VERSION X64HARNESS:EXPECT-POP,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
    0 X64HARNESS:PUSH-SCRATCH,  CELL X64HARNESS:PUSH,  s" code-origin" ROW
    -1 X64HARNESS:EXPECT-POP,
@@ -744,8 +824,14 @@ public
    s" hb-x64-kernel-prot-wid-bound" TMP-PATH BUILD-PROT-WID-BOUND
    s" hb-x64-kernel-wide-mark" TMP-PATH BUILD-WIDE-MARK
    s" hb-x64-kernel-xt-store" TMP-PATH BUILD-XT-STORE
+   s" hb-x64-kernel-addr-grow" TMP-PATH BUILD-ADDR-GROW
+   s" hb-x64-kernel-addr-task" TMP-PATH BUILD-ADDR-TASK
+   s" hb-x64-kernel-addr-kind" TMP-PATH BUILD-ADDR-KIND
+   s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
+   s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
    true s" hb-x64-kernel-xt-store-armed" TMP-PATH BUILD-BAND-CELL
    false s" hb-x64-kernel-mark-armed" TMP-PATH BUILD-BAND-CELL
+   s" hb-x64-kernel-mark-task-armed" TMP-PATH BUILD-BAND-TASK
    s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
    s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
    s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO

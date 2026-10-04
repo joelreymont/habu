@@ -23,6 +23,7 @@
 \ boot-x64.f and kernel-x64.f load the x86-64 seam globally, so they come
 \ before the peer harness, which would otherwise load it into its own private
 \ wordlist.
+require src/os/linux-x86-64/elf.f
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
@@ -48,31 +49,33 @@ variable BOOT-END-CELL
 
 public
 
+: SCRATCH-OFF ( -- n ) BOOT-SCRATCH-OFF ;
+
 \ Begin an image: the boot, then the kernel with fresh labels and a fresh
 \ registry, since labels die with the stream the last image linked and
 \ registry rows do not.
 : BOOT-OPEN, ( bool -- ) {: negative:bool :}
    ASM-RESET
-   LBL EXIT-CELL !  LBL ENTRY-CELL !  LBL BOOT-END-CELL !
+   X64CODE:LBL EXIT-CELL !  X64CODE:LBL ENTRY-CELL !  X64CODE:LBL BOOT-END-CELL !
    FIRST-CASE CASE-NEXT !
    negative if FIRST-CASE else 0 then WRONG-AT !
    X64KERNEL:FLOORREC-NEW BOOT-END-LBL X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
-   LBL {: text:label :}  text LBL,
+   X64CODE:LBL {: text:label :}  text X64CODE:LBL,
    X64KERNEL:KERNEL,
-   ENTRY-LBL LBL,
+   ENTRY-LBL X64CODE:LBL,
    text ENTRY-LBL X64PROV:TEXT-NATIVE, ;
 
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
 
 \ Push a string's address and length. Its bytes sit in the text behind a jump.
 : PUSH-TEXT, ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBL LBL {: text:label past:label :}
+   X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
-   text LBL,
+   text X64CODE:LBL,
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
-   past LBL,
+   past X64CODE:LBL,
    RAX text MOVABS,  0 G-PUSH
    u PUSH, ;
 
@@ -115,7 +118,7 @@ public
 : BOOT-CLOSE, ( ptr u8 n -- )
    RDI ZERO-REG,
    EXIT,
-   BOOT-END-LBL LBL,
+   BOOT-END-LBL X64CODE:LBL,
    WRITE ;
 
 private
@@ -137,11 +140,11 @@ private
 
 \ The address of a name's bytes, which sit in the text behind a jump.
 : NAME-TEXT, ( ptr u8 n -- label ) {: a:ptr u:n :}
-   LBL LBL {: text:label past:label :}
+   X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
-   text LBL,
+   text X64CODE:LBL,
    a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
-   past LBL,
+   past X64CODE:LBL,
    text ;
 
 public
@@ -218,12 +221,12 @@ public
 \ Emit a routine behind a jump, its body what the quotation emits and then
 \ `ret`, and answer its entry label.
 : ROUTINE, ( [ -- ] -- label )
-   LBL LBL {: entry:label past:label :}
+   X64CODE:LBL X64CODE:LBL {: entry:label past:label :}
    past JMP,
-   entry LBL,
+   entry X64CODE:LBL,
    execute
    ASM-SINK ENC-RET
-   past LBL,
+   past X64CODE:LBL,
    entry ;
 
 ;using
@@ -316,14 +319,14 @@ public
 \ from its first check of either kind, so this check, staged before any
 \ numbered one, expects one less, as EXPECT-RCX, does.
 : CHECK-RCX, ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBL {: ok:label :}
+   X64CODE:LBL {: ok:label :}
    WRONG-AT @ CASE-NEXT @ = if
       RCX 1 >IMM32 ASM-SINK ENC-SUB-RI32
       0 WRONG-AT !
    then
    RAX RCX ASM-SINK ENC-CMP-RR  C-E ok JCC,
    a u PUSH-TEXT,  FIRST-CASE PUSH,  s" die" CALL-ROW,
-   ok LBL, ;
+   ok X64CODE:LBL, ;
 
 ;using
 ;using
