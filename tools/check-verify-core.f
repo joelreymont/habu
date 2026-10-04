@@ -423,8 +423,8 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    VFY-STOPPED ;
 
 
-\ A result line is authoritative only after a clean child exit. Otherwise a
-\ final complete stopped line may be a duplicate packet before the child died.
+\ A result line grants a verdict only after a clean child exit. A complete
+\ result line is still framing, even when the process ends uncleanly.
 : VFY-CLEAN-EXIT? ( outcome -- bool )
    MATCH outcome
       exited OF 0= ENDOF
@@ -433,10 +433,9 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    ;MATCH ;
 
 
-\ The answer the result line from AT to END in VFY-OUT gives, its line feed
-\ excluded. A stopped line can also be a duplicate packet in the first form.
-: VFY-ANSWER-AT ( n n bool -- n ) {: at:n end:n clean:bool :}
-   clean 0= if VFY-NONE exit then
+\ The answer the final line from AT to END in VFY-OUT gives, its line feed
+\ excluded. A stopped line can also be a duplicate packet before that line.
+: VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
@@ -453,6 +452,15 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    repeat ;
 
 
+\ A final code-78 stop repeats the duplicate line immediately before it.
+\ A child that dies after writing only the duplicate has no result line yet.
+: VFY-REPEATED-STOP? ( n n -- bool ) {: at:n end:n :}
+   at 0= if false exit then
+   at 1- VFY-LINE-START {: prev:n :}
+   at prev - 1- end at - 1- <> if false exit then
+   prev VFY-OUT at prev - 1- at VFY-OUT end at - 1- STR= ;
+
+
 \ Keep the complete lines of the child's OUTU bytes of stdout: the packets, and
 \ the answer of a result line that ends them. The rest of a line the deadline or
 \ the capture cut is dropped.
@@ -462,8 +470,12 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    end VFY-OUT-U !
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
-   at end 1- clean VFY-ANSWER-AT VFY-ANSWER !
+   at end 1- VFY-ANSWER-AT VFY-ANSWER !
    VFY-ANSWER @ VFY-NONE = if exit then
+   VFY-ANSWER @ VFY-STOPPED = VFY-STOP-RC @ E-DUP-DEFINITION = and
+   clean 0= and VFY-PREPASS @ 0= and if
+      at end VFY-REPEATED-STOP? 0= if VFY-NONE VFY-ANSWER ! exit then
+   then
    at VFY-OUT-U ! ;
 
 
@@ -498,22 +510,25 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    while 1+ repeat ;
 
 
-\ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate's stopped line
+\ The line of VFY-OUT that starts at AT, to VFY-REC, a code-78 stopped line
 \ as the record --all-errors writes for it: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
    at VFY-OUT end at - VFY-STOPPED$ STARTS-WITH?
-   if at VFY-STOPPED$ nip + end VFY-STOP-PARSE VFY-STOPPED = else false then
-   if
-      true CHECK-ALL-ERRORS:JSON!
-      VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
-      CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
+   if at VFY-STOPPED$ nip + end VFY-STOP-PARSE else VFY-NONE then
+   VFY-STOPPED = if
+      VFY-STOP-RC @ E-DUP-DEFINITION = if
+         true CHECK-ALL-ERRORS:JSON!
+         VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
+         CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
+         s\" \n" VFY-REC+
+      then
    else
       at VFY-OUT end at - VFY-REC+
+      s\" \n" VFY-REC+
    then
-   s\" \n" VFY-REC+
    end 1+ ;
 
 
