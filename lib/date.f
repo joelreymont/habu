@@ -10,8 +10,7 @@
 \ DATE:LEAP-YEAR? / DATE:MONTH-DAYS / DATE:VALID-YMD? / DATE:DIGIT? / DATE:N /
 \ DATE:WIDTH! expose the calendar predicates and the field parse/format
 \ primitives. DATE:LEN / DATE:TIME-LEN / DATE:SECONDS-DAY are the buffer-size and
-\ seconds-per-day constants callers need. Every other calendar constant and the
-\ scratch variables (DATE-Y, DATE-M, ...) are package-private.
+\ seconds-per-day constants callers need. Other calendar constants are private.
 
 require lib/errors.f
 require lib/adt/option.f                      \ option<n> for DATE-N (switchover wave A)
@@ -79,19 +78,6 @@ public
 86400 constant SECONDS-DAY
 private
 
-variable DATE-Y
-variable DATE-M
-variable DATE-D
-variable DATE-REM
-variable DATE-Z
-variable DATE-ERA
-variable DATE-DOE
-variable DATE-YOE
-variable DATE-DOY
-variable DATE-MP
-variable DATE-I
-variable DATE-RUN
-
 public
 
 : DIGIT? ( n -- bool )
@@ -124,88 +110,93 @@ public
    0 0= ;
 
 : YMD>DAYS ( n n n -- n ) {: y:n m:n d:n :}
-   y DATE-Y !
-   m DATE-FEB <= IF DATE-Y @ 1- DATE-Y ! THEN
-   DATE-Y @ DATE-ERA-YEARS / DATE-ERA !
-   DATE-Y @ DATE-ERA @ DATE-ERA-YEARS * - DATE-YOE !
-   m DATE-FEB > IF m DATE-MAR-BIAS - ELSE m DATE-JAN-FEB-BIAS + THEN DATE-MP !
-   DATE-MP-SCALE DATE-MP @ * DATE-MP-BIAS + DATE-MP-DIVISOR / d + 1 - DATE-DOY !
-   DATE-YOE @ DATE-DAYS-YEAR *  DATE-YOE @ DATE-LEAP-YEARS / +  DATE-YOE @ DATE-CENTURY-YEARS / -  DATE-DOY @ + DATE-DOE !
-   DATE-ERA @ DATE-DAYS-ERA * DATE-DOE @ + DATE-UNIX-EPOCH-DAY - ;
+   m DATE-FEB <= IF y 1- ELSE y THEN {: yy:n :}
+   yy DATE-ERA-YEARS / {: era:n :}
+   yy era DATE-ERA-YEARS * - {: yoe:n :}
+   m DATE-FEB > IF m DATE-MAR-BIAS - ELSE m DATE-JAN-FEB-BIAS + THEN {: mp:n :}
+   DATE-MP-SCALE mp * DATE-MP-BIAS + DATE-MP-DIVISOR / d + 1 - {: doy:n :}
+   yoe DATE-DAYS-YEAR *  yoe DATE-LEAP-YEARS / +  yoe DATE-CENTURY-YEARS / -  doy + {: doe:n :}
+   era DATE-DAYS-ERA * doe + DATE-UNIX-EPOCH-DAY - ;
 
 : DAYS>YMD ( n -- n n n ) {: days:n :}
-   days DATE-UNIX-EPOCH-DAY + DATE-Z !
-   DATE-Z @ DATE-DAYS-ERA / DATE-ERA !
-   DATE-Z @ DATE-ERA @ DATE-DAYS-ERA * - DATE-DOE !
-   DATE-DOE @  DATE-DOE @ DATE-YOE-LEAP-CORR / -  DATE-DOE @ DATE-YOE-CENTURY-CORR / +  DATE-DOE @ DATE-LAST-DAY-ERA / -  DATE-DAYS-YEAR / DATE-YOE !
-   DATE-YOE @ DATE-ERA @ DATE-ERA-YEARS * + DATE-Y !
-   DATE-DOE @  DATE-DAYS-YEAR DATE-YOE @ *  DATE-YOE @ DATE-LEAP-YEARS / +  DATE-YOE @ DATE-CENTURY-YEARS / -  - DATE-DOY !
-   DATE-MP-DIVISOR DATE-DOY @ * DATE-MP-BIAS + DATE-MP-SCALE / DATE-MP !
-   DATE-DOY @  DATE-MP-SCALE DATE-MP @ * DATE-MP-BIAS + DATE-MP-DIVISOR /  - 1 + DATE-D !
-   DATE-MP @ DATE-MP-LIMIT < IF DATE-MP @ DATE-MAR-BIAS + ELSE DATE-MP @ DATE-JAN-FEB-BIAS - THEN DATE-M !
-   DATE-M @ DATE-FEB <= IF DATE-Y @ 1+ DATE-Y ! THEN
-   DATE-Y @ DATE-M @ DATE-D @ ;
+   days DATE-UNIX-EPOCH-DAY + {: z:n :}
+   z DATE-DAYS-ERA / {: era:n :}
+   z era DATE-DAYS-ERA * - {: doe:n :}
+   doe  doe DATE-YOE-LEAP-CORR / -  doe DATE-YOE-CENTURY-CORR / +  doe DATE-LAST-DAY-ERA / -  DATE-DAYS-YEAR / {: yoe:n :}
+   yoe era DATE-ERA-YEARS * + {: y:n :}
+   doe  DATE-DAYS-YEAR yoe *  yoe DATE-LEAP-YEARS / +  yoe DATE-CENTURY-YEARS / -  - {: doy:n :}
+   DATE-MP-DIVISOR doy * DATE-MP-BIAS + DATE-MP-SCALE / {: mp:n :}
+   doy  DATE-MP-SCALE mp * DATE-MP-BIAS + DATE-MP-DIVISOR /  - 1 + {: d:n :}
+   mp DATE-MP-LIMIT < IF mp DATE-MAR-BIAS + ELSE mp DATE-JAN-FEB-BIAS - THEN {: m:n :}
+   m DATE-FEB <= IF y 1+ ELSE y THEN m d ;
 
-: N ( ptr u8 n n -- option<n> ) {: a:ptr pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
-   0 DATE-I !
-   0
-   begin DATE-I @ len < while
-      a pos + DATE-I @ + c@ dup DIGIT? 0= IF drop drop OPTION:NONE exit THEN
+: N ( ptr u8 n n -- option<n> )
+   {: a:ptr pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
+   len 0 <= IF 0 OPTION:SOME exit THEN
+   0 len 0 ?do
+      a pos + i + c@ dup DIGIT? 0= IF drop drop unloop OPTION:NONE exit THEN
       DATE-ZERO - swap DATE-BASE * +
-      DATE-I @ 1+ DATE-I !
-   repeat OPTION:SOME ;
+   loop OPTION:SOME ;
 
-: PARSE-YMD ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
+: PARSE-YMD ( ptr u8 n -- option<n> )
+   {: a:ptr u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
    u LEN <> IF OPTION:NONE exit THEN
    a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
    a DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
    a 0 DATE-YEAR-LEN N MATCH option
-     none OF OPTION:NONE exit ENDOF
-     some OF DATE-Y ! ENDOF
-   ;MATCH
-   a DATE-YEAR-DASH 1+ DATE-PART-LEN N MATCH option
-     none OF OPTION:NONE exit ENDOF
-     some OF DATE-M ! ENDOF
-   ;MATCH
-   a DATE-MONTH-DASH 1+ DATE-PART-LEN N MATCH option
-     none OF OPTION:NONE exit ENDOF
-     some OF DATE-D ! ENDOF
-   ;MATCH
-   DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF OPTION:NONE exit THEN
-   DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS OPTION:SOME ;
+     none OF OPTION:NONE ENDOF
+     some OF
+        {: y:n :}
+        a DATE-YEAR-DASH 1+ DATE-PART-LEN N MATCH option
+          none OF OPTION:NONE ENDOF
+          some OF
+             {: m:n :}
+             a DATE-MONTH-DASH 1+ DATE-PART-LEN N MATCH option
+               none OF OPTION:NONE ENDOF
+               some OF
+                  {: d:n :}
+                  y m d VALID-YMD? IF y m d YMD>DAYS OPTION:SOME
+                  ELSE OPTION:NONE THEN
+               ENDOF
+             ;MATCH
+          ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
 
-: WIDTH! ( n n ptr u8 n -- ) {: n:n width:n dst:ptr pos:n :}
-   n DATE-RUN !
-   width 1- DATE-I !
-   begin DATE-I @ 0 >= while
-      DATE-RUN @ DATE-BASE mod DATE-ZERO +  dst pos + DATE-I @ + c!
-      DATE-RUN @ DATE-BASE / DATE-RUN !
-      DATE-I @ 1- DATE-I !
-   repeat ;
+: WIDTH! ( n n ptr u8 n -- )
+   {: n:n width:n dst:ptr pos:n :}
+   width 0 <= IF exit THEN
+   n width 0 ?do
+      dup DATE-BASE mod DATE-ZERO +  dst pos + width 1- i - + c!
+      DATE-BASE /
+   loop drop ;
 
-: FORMAT-YMD ( n ptr u8 n -- ptr u8 n ) {: days:n dst:ptr cap:n :}
+: FORMAT-YMD ( n ptr u8 n -- ptr u8 n )
+   {: days:n dst:ptr cap:n :}
    cap LEN < IF E-TIME-CAPACITY throw THEN
-   days DAYS>YMD DATE-D ! DATE-M ! DATE-Y !
-   DATE-Y @ DATE-YEAR-LEN dst 0 WIDTH!
+   days DAYS>YMD {: y:n m:n d:n :}
+   y DATE-YEAR-LEN dst 0 WIDTH!
    DATE-DASH dst DATE-YEAR-DASH + c!
-   DATE-M @ DATE-PART-LEN dst DATE-YEAR-DASH 1+ WIDTH!
+   m DATE-PART-LEN dst DATE-YEAR-DASH 1+ WIDTH!
    DATE-DASH dst DATE-MONTH-DASH + c!
-   DATE-D @ DATE-PART-LEN dst DATE-MONTH-DASH 1+ WIDTH!
+   d DATE-PART-LEN dst DATE-MONTH-DASH 1+ WIDTH!
    dst LEN ;
 
-: FORMAT-EPOCH-UTC ( n ptr u8 n -- ptr u8 n ) {: seconds:n dst:ptr cap:n :}
+: FORMAT-EPOCH-UTC ( n ptr u8 n -- ptr u8 n )
+   {: seconds:n dst:ptr cap:n :}
    cap TIME-LEN < IF E-TIME-CAPACITY throw THEN
    seconds 0 < IF E-TIME-RANGE throw THEN
    seconds SECONDS-DAY / dst cap FORMAT-YMD 2drop
-   seconds SECONDS-DAY mod DATE-REM !
+   seconds SECONDS-DAY mod {: rem:n :}
    DATE-T-CHAR dst DATE-T-POS + c!
-   DATE-REM @ DATE-SECONDS-HOUR / DATE-PART-LEN dst DATE-HOUR-POS WIDTH!
-   DATE-REM @ DATE-SECONDS-HOUR mod DATE-REM !
+   rem DATE-SECONDS-HOUR / DATE-PART-LEN dst DATE-HOUR-POS WIDTH!
+   rem DATE-SECONDS-HOUR mod {: minute-rem:n :}
    DATE-COLON dst DATE-HOUR-COLON + c!
-   DATE-REM @ DATE-SECONDS-MINUTE / DATE-PART-LEN dst DATE-MINUTE-POS WIDTH!
-   DATE-REM @ DATE-SECONDS-MINUTE mod DATE-REM !
+   minute-rem DATE-SECONDS-MINUTE / DATE-PART-LEN dst DATE-MINUTE-POS WIDTH!
+   minute-rem DATE-SECONDS-MINUTE mod {: second:n :}
    DATE-COLON dst DATE-MINUTE-COLON + c!
-   DATE-REM @ DATE-PART-LEN dst DATE-SECOND-POS WIDTH!
+   second DATE-PART-LEN dst DATE-SECOND-POS WIDTH!
    DATE-Z-CHAR dst DATE-Z-POS + c!
    dst TIME-LEN ;
 
