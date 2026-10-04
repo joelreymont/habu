@@ -18,6 +18,8 @@
 \   name/sig  - a 49-byte qualified name and a 65-byte effect exceed their slot
 \               caps -> exact table-full diagnostic, original token, exit 72.
 \               The name case runs through evaluate; this remains a hard exit.
+\   linear    - a qualified declaration before the registrar exists exits 70;
+\               one after it exists reaches the payload refusal, exit 67.
 \   undrained - the WHOLE bare-token drain region (between the PTD-REGRESSION-BLANK
 \               sentinels) is blanked, so DRAIN-PRETRUST is never called and the
 \               prefix's own real pre-trust defers stay captured-but-undrained.
@@ -255,7 +257,7 @@ variable LAST-ERR-U
 
 \ The tree is copied ONCE; each case patches at most three files and restores
 \ the pristine copies afterwards (cases are sequential and independent), so the
-\ suite pays one tree copy and one cold engine build for all eight child boots.
+\ suite pays one tree copy and one cold engine build for all child boots.
 : RESTORE-FILES ( -- )
    s" src/core/exec-vector.f" ROOT$ TREE-COPY:FILE
    s" src/core/check-hook.f" ROOT$ TREE-COPY:FILE
@@ -296,6 +298,24 @@ variable LAST-ERR-U
    s" pre-trust effect overflow exits 72" SPAWN-RC 72 CHILD-RC
    s" effect overflow preserves the diagnostic and defer token" T-LABEL
    s" PTDX-SIG" SLOT-FULL-ERR
+   RESTORE-FILES ;
+
+: LINEAR-NO-HOOK-CASE ( -- )
+   s" src/core/exec-vector.f" SUB$
+   S\" \nLINEAR: NO-HOOK:GUARD ( n -- n )\n" APPEND-FILE
+   s" a checker-less qualified LINEAR name exits 70" SPAWN-RC 70 CHILD-RC
+   s" the fallback names the qualified token" T-LABEL
+   ERR$ s" NO-HOOK:GUARD" CONTAINS? TTRUE
+   RESTORE-FILES ;
+
+\ The end of checker.f precedes the hook but has a compiled registrar. Its
+\ payload refusal exercises a call into newly compiled checker code.
+: LINEAR-CHECKER-UNIT-CASE ( -- )
+   s" src/core/checker.f" SUB$
+   S\" \nLINEAR: PRE-HOOK:BAD-PAYLOAD ( n -- n )\n" APPEND-FILE
+   s" a pre-hook qualified LINEAR name reaches its payload refusal" SPAWN-RC 67 CHILD-RC
+   s" the payload refusal retains the certifier's throw" T-LABEL
+   ERR$ s" uncaught throw code 7195" CONTAINS? TTRUE
    RESTORE-FILES ;
 
 \ Blank the bare DRAIN-PRETRUST token outright so the drain never runs. No
@@ -370,6 +390,8 @@ public
    OVERFLOW-CASE
    NAME-OVERFLOW-CASE
    SIG-OVERFLOW-CASE
+   LINEAR-NO-HOOK-CASE
+   LINEAR-CHECKER-UNIT-CASE
    UNDRAINED-CHECKED-CASE
    HOOK-BLANK-CONTROL-CASE
    EARLY-SEAL-CONTROL-CASE

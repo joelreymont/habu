@@ -4728,7 +4728,7 @@ package INTERP-EMIT
 \ Qualification can allocate a package record inside C-QUALIFY-DEF. A LINEAR:
 \ row may never target that public wordlist, so ask its certifier before that
 \ allocation. The certifier retains payload/owner/scope refusal order; the
-\ no-hook boot path refuses the same scope without publishing anything.
+\ no-hook boot path exits 70 without publishing anything.
 : C-LINEAR-QUALIFIED-GUARD ( -- )
    LBL LBL LBL LBL LBL {: scan:label first:label tail:label qualified:label done:label :}
    12 DATA TKL-CELL LDR,  13 0 MOVZ,
@@ -4745,8 +4745,9 @@ package INTERP-EMIT
       11 $3A CMPI,  C-EQ done BCOND,
       13 13 1 ADDI,  13 12 CMP,  C-LT tail BCOND,
    qualified LBL,
+      PROT-EMIT:LCLOSE LABEL@ BL,  \ region -> RX before the checker registrar
       NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-TRUST:REGISTER-IDENTITY
-      7197 C-DIE-TOKEN
+      70 C-DIE-TOKEN
    done LBL, ;
 
 : C-IDENTITY ( [ -- ] n -- ) {: noname off:n :}
