@@ -1718,10 +1718,11 @@ create GE-END-AT 16 allot
 
 \ def-open leaves a definition open as `:` does, located at the word that ran
 \ it, on line 2, with its body on line 3 and a blank line after it. GEENDOPEN
-\ starts the capture the refusal names, as `:` does.
+\ starts the capture the refusal names, as `:` does. Tier 0 also opens the JIT
+\ head before the following body token, as the real colon definer does.
 : GE-END-DEFOPEN ( -- )
    GE-SRC-RESET
-   s" TRUSTED: GEENDOPEN ( ptr u8 n -- ) {: a:ptr u:n :} 0 data-base BODYLEN-CELL + ! a u get-current 0 def-open a u body-append ;" GE-SRC-LINE
+   s" TRUSTED: GEENDOPEN ( ptr u8 n -- ) {: a:ptr u:n :} 0 data-base BODYLEN-CELL + ! a u get-current 0 tier@ def-open a u body-append tier@ 0= if jit-open then ;" GE-SRC-LINE
    S\" s\" GEEND\" GEENDOPEN" GE-SRC-LINE
    s" 1 drop" GE-SRC-LINE
    GE-SRC-LF

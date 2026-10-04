@@ -67,7 +67,8 @@ TRUSTED: EW-NS ( ptr u8 n bool -- n ) namespace-record ;
 TRUSTED: EW-PRIVATE ( n -- ) namespace-private ;
 TRUSTED: EW-ALIAS ( ptr u8 n n n -- ) alias-record ;
 TRUSTED: EW-SCOPE ( n n -- ) package-scope! ;
-TRUSTED: EW-OPEN ( ptr u8 n n n -- ) def-open ;
+TRUSTED: EW-OPEN ( ptr u8 n n n -- ) tier@ def-open ;
+TRUSTED: EW-OPEN-RAW ( ptr u8 n n n n -- ) def-open ;
 TRUSTED: EW-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: EW-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: EW-CSIG ( ptr u8 n -- ) created-sig! ;
@@ -100,23 +101,23 @@ TRUSTED: EW-INT ( -- n ) s" namespace-record" 0 xref-search-wl dbase@ - DREC / ;
 \ compiles the body tokens that follow and publishes at `;`.
 TRUSTED: EW-COLON ( ptr u8 n -- ) {: a:ptr u:n :}
    0 data-base BODYLEN-CELL + !                        \ the caller starts the capture, as `:` does
-   a u get-current 0 def-open
+   a u get-current 0 tier@ def-open
    a u body-append
    EW-SIG$ body-append
    EW-SIG$ swap 1+ swap 2 - trust-sig! ;
 
 \ A second writer while a definition is pending: its record is slot NDICT.
 TRUSTED: EW-OPEN-TWICE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-SECOND" get-current 0 def-open ;
+   s" EW-FIRST" get-current 0 tier@ def-open  EW-AT  s" EW-SECOND" get-current 0 tier@ def-open ;
 TRUSTED: EW-OPEN-NS ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  s" EW-NSP" 0 0= namespace-record drop ;
+   s" EW-FIRST" get-current 0 tier@ def-open  EW-AT  s" EW-NSP" 0 0= namespace-record drop ;
 TRUSTED: EW-OPEN-ALIAS ( -- )
-   ndict@ 1-  s" EW-FIRST" get-current 0 def-open
+   ndict@ 1-  s" EW-FIRST" get-current 0 tier@ def-open
    EW-AT  s" EW-ALP" rot get-current alias-record ;
 
 \ def-close on the definition just opened, at the tier the caller set.
 TRUSTED: EW-OPEN-CLOSE ( -- )
-   s" EW-FIRST" get-current 0 def-open  EW-AT  def-close ;
+   s" EW-FIRST" get-current 0 tier@ def-open  EW-AT  def-close ;
 
 private
 
@@ -125,7 +126,7 @@ private
    s" namespace-private" s" EWX ( n -- ) namespace-private" INTERNAL
    s" alias-record" s" EWX ( ptr u8 n n n -- ) alias-record" INTERNAL
    s" package-scope!" s" EWX ( n n -- ) package-scope!" INTERNAL
-   s" def-open" s" EWX ( ptr u8 n n n -- ) def-open" INTERNAL
+   s" def-open" s" EWX ( ptr u8 n n n n -- ) def-open" INTERNAL
    s" body-append" s" EWX ( ptr u8 n -- ) body-append" INTERNAL
    s" trust-sig!" s" EWX ( ptr u8 n -- ) trust-sig!" INTERNAL
    s" created-sig!" s" EWX ( ptr u8 n -- ) created-sig!" INTERNAL
@@ -218,6 +219,8 @@ private
    s" : S ( -- ) ; ndict@ 1- 0 EW-AT EW-SCOPE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name NSQ false EW-NS 0 EW-AT EW-SCOPE" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name DW get-current 1 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current 0 2 EW-AT EW-OPEN-RAW" ENGINE-ERROR:SEAL-VIOLATION REFUSES
+   s" parse-name DW get-current DKIND:VAL 0 EW-AT EW-OPEN-RAW" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name DW -1 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name DW -2 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-VIOLATION REFUSES
    s" parse-name DW OWNER-API-PUB-WID 0 EW-AT EW-OPEN" ENGINE-ERROR:SEAL-PACKAGE REFUSES
