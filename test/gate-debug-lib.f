@@ -177,8 +177,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ Words defined INSIDE the profiled phase: every one of them is compiled after
 \ prof-on built the index, so the handler can only keep the raw pc and the report
 \ has to rebuild and replay to name them. BUSY calls LEAF and then loops, so once
-\ LEAF has returned the interrupted x30 points back inside BUSY - which is the one
-\ construction that deterministically leaves a deferred sample with no caller.
+\ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
+\ which leaves a deferred sample with no caller. Intel's machine return stack
+\ instead identifies OUTER as BUSY's caller for this same execution.
 \ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
 \ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
@@ -210,9 +211,17 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GT-OUT$ s" new" GDB-FIELD  GT-OUT$ GDB-SAMPLES 100 / > if
       s" more than one percent of samples stayed unnamed after the sync" GE-FAIL
    then
-   s" (unknown)" s" profiler dropped the samples whose caller it cannot establish" GE-EXPECT-OUT-HAS
+   HB-TARGET-LINUX-X86-64? if
+      s" GDBLATE:OUTER" s" profiler did not name the Intel caller" GE-EXPECT-OUT-HAS
+   else
+      s" (unknown)" s" profiler dropped the samples whose caller it cannot establish" GE-EXPECT-OUT-HAS
+   then
    s" PASS: a word compiled after prof-on is named by the report, not bucketed" type cr
-   s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr ;
+   HB-TARGET-LINUX-X86-64? if
+      s" PASS: Intel profiler identifies the late word's caller" type cr
+   else
+      s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr
+   then ;
 
 : GDB-PROF-RATE-RUN ( ptr u8 n -- )   \ run GDB-BUSY under one prof-on line
    {: arm:ptr armu:n :}
