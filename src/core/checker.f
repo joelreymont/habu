@@ -11308,6 +11308,16 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
    vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM? EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
 
+\ The identity a recording symbol was interned with: its package (empty for a
+\ global), the tail it was recorded under and its visibility (SYM-GLOBAL,
+\ SYM-PRIVATE or SYM-PUBLIC). The verifier shows the package with each
+\ definition it reports, and finds an export's own record under the recorded
+\ tail (src/habu/verify-source.f EXPORT-DEFINED). The spans are the symbol
+\ pool's, borrowed until the next intern can grow it.
+: CHECKER-SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
+   {: sym:n :}
+   sym SYM-PKG$ sym SYM-NAME$ sym SYM-ROW SYM.VIS @ ;
+
 \ The definition's own record: the newest record its name would be recorded
 \ under, when that record is a source record. A tombstone means the name is
 \ being defined afresh and a seeded record is the engine's word, not this
@@ -23922,6 +23932,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
+' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
 ' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!

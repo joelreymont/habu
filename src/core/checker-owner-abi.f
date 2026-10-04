@@ -125,7 +125,11 @@ $300 constant LINEAR-OFF
 $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
-\ $320 is reserved for the verifier's symbol-identity callback.
+\ A recording symbol's own identity (src/core/checker.f CHECKER-SYM-IDENTITY):
+\ its package, which a consumer of the verifier shows with a definition; the
+\ tail it was recorded under, the verifier's key for an export's own record;
+\ and its visibility.
+$320 constant VERIFY-SYM-IDENTITY-OFF
 \ The returned span is borrowed from this checker instance. Every field is one
 \ cell; EFFECT is an offset plus one in its effect store, not a durable ID.
 $328 constant CALL-BINDING-OFF
