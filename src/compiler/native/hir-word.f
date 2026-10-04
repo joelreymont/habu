@@ -878,17 +878,46 @@ private
 
 : BOUND@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
 
+: OVERLAY-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id SYM-OWNER-CK
+   id IR-ID:SYMBOL-LOCAL r swap FIND 0 >= ;
+
+: SESSION-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r HC-LINK LCELL@ LINK-CLONE <> if false exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW 0 >= ;
+
+: SITE-PRIM! ( IR-ARENA:arena IR-ID:ir-symbol-id bool -- )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id seeded:bool :}
+   r HC-LINK LCELL@ LINK-CLONE <> if exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW {: sl:n :}
+   sl 0 < if exit then
+   seeded if 1 else 0 then sl cells CHK-BND + !
+   r HC-SERIAL LCELL@ sl cells CHK-GEN + ! ;
+
 public
 
-\ A stamped fixed value is entered through the recorded entry; an ordinary
-\ dictionary call takes that same entry and the scan's selected effect.
+: OVERLAY? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   OVERLAY-MODELS? ;
+
+\ Every ordinary source token arrives here, including a repeated word or one
+\ already in the session vocabulary. Cache the original seeded decision before
+\ any model is read. Fixed values and calls use the recorded entry and effect.
 : RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id ix:n :}
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
-   row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
+   row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ {: source-kind:n :}
+   row CHECKER-OWNER-ABI:BOUND-CTL BOUND@
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0<>
+   source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or {: seeded:bool :}
+   r id seeded SITE-PRIM!
+   r id OVERLAY-MODELS? if true exit then
+   seeded if r id SESSION-MODELS? if true exit then then
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
    row CHECKER-OWNER-ABI:BOUND-SYM BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-ENTRY BOUND@ {: entry:n :}
    entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
@@ -963,6 +992,8 @@ create GATE-BUF GATE-CAP allot
    sl GATED? 0= if true exit then
    r HC-SERIAL LCELL@ {: gen:n :}
    sl CHK-GEN@ gen = if sl CHK-BND@ 0<> exit then
+   \ Direct table readers have no source site. The compiler fills this cache
+   \ from each source decision before it reads an ordinary call's model.
    sl ROW-SPELL INTRINSIC-BOUND? {: bound:bool :}
    bound if 1 else 0 then sl CHK-BND!
    gen sl CHK-GEN!

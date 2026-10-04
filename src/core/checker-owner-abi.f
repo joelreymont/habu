@@ -147,6 +147,8 @@ $328 constant UNJUDGED-BINDING-OFF
 14 constant BOUND-OUT
 15 constant BOUND-GLUE
 16 constant BOUND-CELLS
+\ The source resolver marked the selected record as the seeded primitive.
+$20000 constant BOUND-SEEDED
 1 constant BOUND-DICT
 2 constant BOUND-INTRINSIC
 3 constant BOUND-PENDING

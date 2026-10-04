@@ -11405,6 +11405,8 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 PTR-VARIABLE BIND-REC
 variable BIND-PEND-IX
 variable BIND-PEND-OFF
+variable BIND-SEEDED
+1 constant BIND-SCOPE-SEEDED
 
 \ THE BINDERS ANSWER THEIR REFUSALS RATHER THAN RAISING THEM: each leaves
 \ ( sym why ), where why is 0 or the code of the refusal it reached -
@@ -11423,6 +11425,7 @@ variable BIND-PEND-OFF
 \ it, and neither the pending row nor the lookup reads it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
+   0 BIND-SEEDED !
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
       CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
@@ -11441,6 +11444,7 @@ variable BIND-PEND-OFF
       pending 0 EXIT
    THEN
    a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   flags BIND-SCOPE-SEEDED and BIND-SEEDED !
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
@@ -12020,10 +12024,12 @@ variable TOK-DEAD
 PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 PTR-VARIABLE TOK-REC
 variable TOK-PEND-IX   variable TOK-PEND-OFF
+variable TOK-SEEDED
 variable BWIN-HIT
 PTR-VARIABLE TOK-ABI-EFF
 variable TOK-ABI-DONE
 variable BWIN-UNJUDGED
+variable PARSE-COMPLETE
 
 16 constant BWIN-INIT
 $7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
@@ -12120,7 +12126,8 @@ variable BGLUE-I
    THEN
    TOK-PEND-IX @ i CHECKER-OWNER-ABI:BOUND-PEND-IX BWIN-AT !
    TOK-PEND-OFF @ i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
-   TOK-CTL @ i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
+   TOK-CTL @ TOK-SEEDED @ IF CHECKER-OWNER-ABI:BOUND-SEEDED or THEN
+      i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
    eff NULL-PTR = IF RES-FALSE ELSE
       eff E-RIN@ 0= eff E-ROUT@ 0= and IF RES-TRUE ELSE
          eff E-RIN@ eff E-ROUT@ EFF-RET-NEUTRAL?
@@ -15412,13 +15419,14 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    TOK-DONE @ IF EXIT THEN
    -1 TOK-DONE !
    0 TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
-   NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !
+   NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !  0 TOK-SEEDED !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
    BIND-PEND-OFF @ TOK-PEND-OFF !
+   BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
@@ -17441,7 +17449,7 @@ variable SKI  variable SKF
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
       SKI @ TBYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
    REPEAT
-   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
+   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
 \ escape validation mirrors the engine decoder (C-ESC-DECODE-BASIC/C-ESC-HEX-X9,
 \ habu2.f): \" \q \\ \a \b \e \l \f \n \r \t \v \z and \xHH / \XHH only.
@@ -17506,7 +17514,7 @@ variable SKI  variable SKF
          SKIP-ESC-BYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
       THEN
    REPEAT
-   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
+   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
 \ ---- the payload a string literal carried --------------------------------------
 \ WHY THE READER HAS TO RECORD IT. The reader consumes a string literal as an
@@ -17614,7 +17622,7 @@ variable CPAY-ON
       TI @ 1 + TI !
    REPEAT
    TI @ CPAY-B !  0 CPAY-U !
-   TI @ TBLEN @ >= IF 0 OK ! exit THEN
+   TI @ TBLEN @ >= IF 0 OK ! 0 PARSE-COMPLETE ! exit THEN
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 > ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT
@@ -18264,7 +18272,7 @@ variable IS-PEND-U                   \ and its length
    rest DCUR ! ;
 
 : IS-TARGET-TOK? ( -- bool )
-   IS-NEXT-TOKEN 0= IF 2drop RES-FALSE EXIT THEN
+   IS-NEXT-TOKEN 0= IF 2drop 0 PARSE-COMPLETE ! RES-FALSE EXIT THEN
    TOKFOLD drop
    IS-PEND-ARM
    RES-TRUE ;
@@ -20786,6 +20794,7 @@ variable CAST-PATH-N
 
 : CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
+   -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
@@ -21150,7 +21159,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ Primitive symbols survive, but user overrides of their effects, control
 \ flags, defer flags and capture signatures belong to the discarded source.
 : CHECKER-RESET-SOURCE ( -- )
-   0 BWIN-VALID !
+   0 BWIN-VALID !  0 UWIN-VALID !
    USIGS-USER-OFF @ USIGS-RESTORE-END
    NORET-PRIM-END NORET-RESTORE-END
    0 DFER-END ! DFER-TERM
@@ -21179,7 +21188,7 @@ package CHECKER-REG
 \ inside either action can therefore never leave a latch behind that disables
 \ product-field validation for every later pop.
 : RBF-POP-WITH ( [ -- ] -- )
-   0 BWIN-VALID !
+   0 BWIN-VALID !  0 UWIN-VALID !
    execute                 \ registry restore for the frame this pop retires
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
@@ -21557,6 +21566,7 @@ variable DEF-STOPPED
    0 LAYOUT-XPORT !  0 BIND-HORIZON ! ;
 
 : CHECK-DEF-THREW ( n -- )
+   0 PARSE-COMPLETE !
    DEF-REFUSED
    0 RESCAN !  0 CK-AOT-RETRY-ARMED !  0 CK-AOT-RETRY-DUE !
    MULTI-REFUSED
@@ -21606,7 +21616,7 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
    rc 0 <> IF rc throw THEN
    CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
    CONM @ 0= and  MM @ 0= and  MF-DEPTH @ 0= and
-   FIELD-LOAN-PENDING @ 0= and UWIN-VALID !
+   FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
    UNJ-VERDICT @ ;
 
 \ What that scan did not print, for a caller that will not enforce the verdict

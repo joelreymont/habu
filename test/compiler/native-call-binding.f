@@ -3,6 +3,16 @@ require lib/test.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
 
+package NCB-LEFT
+public
+: CLASH ( -- n ) 1 ;
+;package
+
+package NCB-RIGHT
+public
+: CLASH ( -- n ) 2 ;
+;package
+
 package NATIVE-CALL-BINDING-TEST
 private
 
@@ -62,21 +72,82 @@ private
    [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
    CHECKER-OWNER:TAPE-DISARM ;
 
+: INCOMPLETE ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) EARLIER is" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   [: 1 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   s" PROBE ( -- n ) EARLIER [']" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   [: 1 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   S\" PROBE ( -- n ) EARLIER s\q open" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   [: 1 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: REPEATED-INTRINSIC ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" REPEAT-PROBE ( n -- n n n ) dup dup" CHECKER-OWNER:CHECK -1 T=
+   1 CHECKER-OWNER:CALL-BINDING {: first:ptr n1:n :}
+   2 CHECKER-OWNER:CALL-BINDING {: second:ptr n2:n :}
+   n1 CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   n2 CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   first CHECKER-OWNER-ABI:BOUND-ENTRY FIELD@
+      s" dup" XREF-FIND XREF-START T=
+   second CHECKER-OWNER-ABI:BOUND-ENTRY FIELD@
+      s" dup" XREF-FIND XREF-START T=
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: THREW ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   MULTI-ERR-BEGIN
+   s" THROW-PROBE ( -- n ) EARLIER CLASH" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   [: 1 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   MULTI-ERR-END 0 > TTRUE
+   CHECKER-OWNER:TAPE-DISARM ;
+
+TRUSTED: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
+TRUSTED: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
+TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
+
+: RETIRED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   SCOPE+
+   s" PROBE ( -- n ) 5 @ EARLIER" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   3 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
+   SCOPE-
+   [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: RESET-RETIRED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) 5 @ EARLIER" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   3 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
+   RESET-SOURCE
+   [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
 : RESET-CASE ( -- )
    CHECKER-OWNER:TAPE-ARM
    [: 1 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
    CHECKER-OWNER:TAPE-DISARM ;
 
 public
+using NCB-LEFT
+using NCB-RIGHT
 : RUN ( -- )
    T-RESET
    s" resolved call witness" T-LABEL BOUND T-NEXT
    s" completed unjudged source retains suffix calls" T-LABEL UNJUDGED T-NEXT
    s" unsafe source calls bind before type refusal" T-LABEL UNSAFE-CALLS T-NEXT
    s" judged refusal cannot grant either window" T-LABEL REFUSED-JUDGED T-NEXT
+   s" incomplete unjudged parses grant no binding" T-LABEL INCOMPLETE T-NEXT
+   s" repeated intrinsic calls have separate original sites" T-LABEL REPEATED-INTRINSIC T-NEXT
+   s" caught binding throw grants no partial stream" T-LABEL THREW T-NEXT
+   s" rollback retires unjudged bindings" T-LABEL RETIRED T-NEXT
    s" reset invalidates borrowed call rows" T-LABEL RESET-CASE T-NEXT
+   s" reset retires unjudged bindings" T-LABEL RESET-RETIRED T-NEXT
    NFEED:OBSERVE
    T-REPORT ;
 
 RUN
+;using
+;using
 ;package
