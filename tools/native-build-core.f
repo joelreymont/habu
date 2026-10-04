@@ -722,6 +722,7 @@ variable NAMES-NI
       supported OF drop ENDOF
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
+   FOREIGN? 0= if OUTPUT-LAUNCH-CK then
    CHECK-HOST-LAYOUT
    X64-TARGET? if HOLD-X64 then
    CHECKER-OWNER LOGICAL-RESET
