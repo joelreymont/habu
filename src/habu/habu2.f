@@ -12987,8 +12987,8 @@ variable CUR
 
 \ Build sequencing: the section emitters join the emitter package habu1.f opens
 \ for EMIT-PRIMS, EMIT-PROTWID and EMIT-DICT, which they call bare, and FORTH is
-\ this package's one public word -- what src/habu/build.f, src/habu/stdin.f and
-\ ENGINE-BUILD:BUILD below all call.
+\ this package's one public word, called by src/habu/stdin.f and
+\ ENGINE-BUILD:BUILD below.
 package ENGINE-EMIT
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )

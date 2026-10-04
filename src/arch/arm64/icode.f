@@ -23,10 +23,9 @@ using A64ASM
 \ out of reach` before any word is written. ADR-HI below is that field's
 \ exclusive bound, so it is exactly this part's allowance.
 \
-\ THE BAKED-SOURCE PART IS BOUNDED AT EMISSION. The stage and maker drivers
-\ bake the source they read, and src/habu/stage2.f READ-SRC and
-\ src/habu/maker-source.f READ (the source src/habu/build.f bakes) hold the
-\ whole source, so a part that outgrows the window is refused by CODE-CAP-WORDS
+\ THE BAKED-SOURCE PART IS BOUNDED AT EMISSION. The stage driver bakes the
+\ whole source read by src/habu/stage2.f READ-SRC, so a part that outgrows
+\ the window is refused by CODE-CAP-WORDS
 \ at emission. The boot arena maps IBUFSZ plus the baked source's own length.
 \
 \ THE AOT PAYLOAD HAS ONE AGGREGATE BUDGET. It is emitted last
