@@ -169,7 +169,8 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
 \ ---- the engine's one output funnel (docs/genio.md) --------------------------
 \ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
-\ `.` and `u.` (G-PRINT9/G-PRINTU9 below), `emit`/`cr`/`space` (G-EMITC),
+\ `.`, `u.` and `f.` (G-PRINT9/G-PRINTU9 below, habu1.f BFDOT),
+\ `emit`/`cr`/`space` (G-EMITC),
 \ `type` (habu1.f BTYPE), interpreted `."` and `.\"` (habu2.f C-IDOTQ/C-EIDOTQ)
 \ and the REPL's ok prompt (habu2.f EM-COMPILE-EXIT). DIAGNOSTICS DO NOT:
 \ crash.f, `die`, the E-* reports and the REPL's error line write to fd 2
@@ -179,7 +180,7 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 \ THE TERMINAL PATH PAYS ONE LOAD AND ONE COMPARE. G-OUT emits the device test
 \ inline and keeps write(1) where it was; only a non-zero device index leaves
 \ for LGENIOOUT, and only that branch frames the call. x0 is the scratch because
-\ every one of the seven sites was about to load the descriptor into it anyway,
+\ every caller was about to load the descriptor into it anyway,
 \ so no site has to say which of its registers are live.
 \
 \ CALLERS PASS x1 = span address, x2 = span length, exactly as the syscall did.

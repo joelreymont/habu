@@ -3613,7 +3613,7 @@ private
    RCX ZERO-REG,
    x x ASM-SINK ENC-UCOMISD-RR  C-P RAX RCX ASM-SINK ENC-CMOVCC ;
 
-\ The twin of habu1.f BFDOT: one write on fd 1, never the output device, of `-`
+\ The twin of habu1.f BFDOT: one write through the output device of `-`
 \ when bit 63 is set, the decimal of I = fcvtzs(|x|), `.`, the six low digits,
 \ zero-padded, of fcvtzs((|x| - I) * 1e6) and a newline. |x| clears bit 63, so
 \ an infinity prints MAX-N and MAX-N's six low digits, and a NaN 0.000000
@@ -3644,7 +3644,7 @@ private
    [char] - CHAR,
    pos LBL,
    RDX RSP FDOT-BYTES MEM-OFF ASM-SINK ENC-LEA  RDX RSI ASM-SINK ENC-SUB-RR
-   RDI 1 IMM32,  NR-WRITE SYS,
+   G-OUT
    RSP FDOT-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 : ARITH-ROWS, ( -- )
