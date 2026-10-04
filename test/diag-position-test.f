@@ -345,7 +345,7 @@ variable RC
    s" " THROW-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT
-   s" --all-errors" THROW-RC CHECK-EXIT
+   s" --all-errors" REJECT-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT ;
 
@@ -390,7 +390,7 @@ variable RC
    SHADOWED-FIXTURE
    s" " THROW-RC CHECK-EXIT
    FX-PATH$ SHADOWED-AT
-   s" --all-errors" THROW-RC CHECK-EXIT
+   s" --all-errors" REJECT-RC CHECK-EXIT
    FX-PATH$ SHADOWED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
