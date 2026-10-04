@@ -168,8 +168,15 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 : DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
    S\" if else then {: :} s\q package public private ;package using ;using" ;
 
+\ The interpret dispatch rows, plus kernel: and ;match, which the ARM row walk
+\ compares inside their constructs. Ordinary words such as require and include
+\ may be published by a package even though a definition cannot take their
+\ names at this checked head boundary.
 : DEF-INTERPRET-KEYWORDS ( -- ptr u8 n )
-   S\" : kernel: trusted: cast: linear: immediate create variable constant 2constant defer to export require include char ' ;match sumtype variant ;variant ;sumtype" ;
+   S\" kernel: trusted: cast: linear: immediate create variable constant defer export char ' ;match" ;
+
+: DEF-NAME-ONLY-KEYWORDS ( -- ptr u8 n )
+   s" : 2constant to require include sumtype variant ;variant ;sumtype" ;
 
 : DEF-OP-KEYWORDS ( -- ptr u8 n )
    s" + - * and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
@@ -201,6 +208,10 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    a u DEF-INTERPRET-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
+
+: DEF-NAME-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u DEF-ROW-KEYWORD? if true exit then
+   a u DEF-NAME-ONLY-KEYWORDS DEF-IN-TABLE? ;
 
 \ The x86-64 policy writer asks this captured interpreter once per package,
 \ before setting its admission bit. Use the same dispatch-row table that guards
@@ -234,7 +245,7 @@ private
 : DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
-      a u DEF-ROW-KEYWORD? if a u DEF-POLICY-REFUSE then
+      a u DEF-NAME-KEYWORD? if a u DEF-POLICY-REFUSE then
       exit
    then
    a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then ;
