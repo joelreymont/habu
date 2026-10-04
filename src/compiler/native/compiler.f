@@ -134,6 +134,7 @@ variable M-RC                        \ the code the run inside the context reach
 variable M-PUBLISHED-START           \ committed parent's index for notification
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
+variable M-TRUST-STORED              \ the trusted row was registered for retraction
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
@@ -354,7 +355,10 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then
-   TRUSTED? if NAME$ TRUST-SIG$ REGISTER-TRUST then ;
+   TRUSTED? if
+      NAME$ TRUST-SIG$ REGISTER-TRUST
+      -1 M-TRUST-STORED !
+   then ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -374,7 +378,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
+   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
+      M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
+         CHECKER-OWNER:MULTI-ERROR? if E-NCOMP-REPORTED throw then
+      then
+      E-NCOMP-VERDICT throw
+   then then
    before ;
 
 \ ---- which word the source published -----------------------------------------
@@ -834,8 +843,8 @@ INSTALL-FORGET
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ A refusal after a certified, sealed scan owns the checker signature it just
-\ recorded. Before then the checker either published no signature or already
-\ rolled its own failed scan back.
+\ recorded. A trusted signature is retractable only after registration returned;
+\ a malformed one was refused before the checker stored its truncation mark.
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
@@ -845,6 +854,7 @@ INSTALL-FORGET
       exit
    then
    TRUSTED? if
+      M-TRUST-STORED @ 0= if exit then
       NAME-U @ 0= if exit then
       NAME$ CHECKER-OWNER:USIG-TRUNCATE
       exit
@@ -881,6 +891,7 @@ INSTALL-FORGET
       entry-rc throw
    then
    M-RC @ {: rc:n :}
+   rc E-NCOMP-REPORTED = if rc throw then
    rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
@@ -892,6 +903,7 @@ INSTALL-FORGET
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
    -1 M-UNJUDGED !
+   0 M-TRUST-STORED !
    0 M-DOES-FRAME !
    DOES-BYTE@ M-DOES !
    DOES-SIG-FIELD @ M-DOES-SIG !

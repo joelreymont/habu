@@ -123,6 +123,7 @@ $300 constant LINEAR-OFF
 $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
+$320 constant MULTI-ERROR-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

@@ -134,6 +134,7 @@ package PROGRAM-DIAGNOSTICS
 
 : DIAGNOSTICS ( -- )
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC

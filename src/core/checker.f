@@ -124,6 +124,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -141,7 +142,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-REACH-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:MULTI-ERROR-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -23311,6 +23312,7 @@ package CHECKER-REG
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
+' MULTI-ERR? DECLARATIONS CHECKER-OWNER-ABI:MULTI-ERROR-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero

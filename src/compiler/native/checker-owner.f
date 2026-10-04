@@ -147,6 +147,14 @@ public
    dup 0= if drop SOURCE-REPORT exit then
    AS-ACTION execute ;
 
+\ The source owner that counted a refusal decides whether compilation may
+\ continue to the next definition. A captured compiler never asks a stale
+\ checker instance by name.
+TRUSTED: MULTI-ERROR? ( -- bool )
+   NCOMP-DISPATCH:DECL-MULTI-ERROR-OFF s" multi-error mode" FIELD
+   dup 0= if drop MULTI-ERR? exit then
+   AS-BOOL execute ;
+
 : TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then

@@ -577,7 +577,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
    DEF-SOURCE-CLOSE
-   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE
+   [: data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
+   {: rc:n :}
+   rc E-NCOMP-REPORTED = if DEF-ABORT true exit then
+   rc 0<> if rc throw then
    DEF-CLOSE
    true ;
 
