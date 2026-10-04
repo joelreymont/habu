@@ -46,6 +46,16 @@ variable IMAGE-U
    S\" APP 1\npass\nPIPE\n" s" app return" GE-EXPECT-OUT
    S\" HOOK\n" s" app return" GE-EXPECT-ERR ;
 
+\ A saved full engine must retain CREATE's runtime writer when a defining
+\ word is compiled and invoked after restore, with its source name operand.
+: CREATED-CASE ( -- )
+   s" pass"
+   S\" 1 set-tier\n: MAKE ( n -- ) create , does> ( -- n ) @ ;\n33 MAKE CREATED\nCREATED . cr\n"
+   RUN-APP
+   s" app restored create" GE-EXPECT-OK
+   S\" APP 1\npass\n33\n\n" s" app restored create" GE-EXPECT-OUT
+   S\" HOOK\n" s" app restored create" GE-EXPECT-ERR ;
+
 : BATCH-ERROR ( -- )
    s" pass" S\" NO-SUCH-WORD\n" RUN-APP
    70 s" app batch error" GE-EXPECT-RC
@@ -66,7 +76,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   PREPARE BUILD RETURN-CASE BATCH-ERROR THROW-CASE
+   PREPARE BUILD RETURN-CASE CREATED-CASE BATCH-ERROR THROW-CASE
    GT-CLEANUP
    T-REPORT ;
 
