@@ -17974,8 +17974,8 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-SYM {: sym:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
-      TICK-PIN
-      -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
+      FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
+      0 OK !  -1 FAILSET !  EXIT
    THEN
    FEP-CLEAR
    sym CHECKER-FIND-USIG-SYM drop
