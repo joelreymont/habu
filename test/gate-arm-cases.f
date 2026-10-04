@@ -38,3 +38,9 @@ SUITE debugger-resume
 SUITE addrmap-call
    test/addrmap-call.f
 ;SUITE
+
+\ Its unchecked candidate and false-reject oracle require tier 0: the
+\ harness selects tier 0 before defining or running any generated case.
+WHITEBOX-SUITE prop
+   test/prop-test.f
+;SUITE

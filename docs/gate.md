@@ -77,8 +77,8 @@ Gforth recovery checks below are also separate from this registry.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its seven whole rows require
-the ARM host or its JIT:
+`test/gate-arm-cases.f` only on an ARM host. Its eight whole rows require
+the ARM host, its JIT, or tier 0:
 
 - `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
   use the ARM source window and observe x86-64 as a second target. On an x86-64
@@ -91,6 +91,9 @@ the ARM host or its JIT:
   select tier 0; the x86-64 engine refuses that selection.
 - `addrmap-call`: it decodes four-byte AArch64 `BL` instructions and reads the
   JIT address-map bitmap, after selecting tier 0.
+- `prop`: its candidate compilation, untyped measurement, and false-reject
+  oracle require the unchecked tier 0; the harness selects that tier before
+  running any generated case.
 
 Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
 remain registered on x86-64. Their eligible tier-1 cases must run; a fixture

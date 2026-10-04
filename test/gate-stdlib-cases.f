@@ -210,10 +210,6 @@ SUITE field-proj-boundary
    test/field-proj-boundary.f
 ;SUITE
 
-WHITEBOX-SUITE prop
-   test/prop-test.f
-;SUITE
-
 WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
