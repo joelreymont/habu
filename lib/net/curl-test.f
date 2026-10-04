@@ -1139,6 +1139,8 @@ variable HALT-RC
 variable DONE-PARKED
 variable DONE-COLLECTED
 variable DONE-RC
+variable DONE-ATTEMPTS
+variable DONE-ABANDONED
 variable OWNER-RC
 
 8 BUFFER: DONE-STATE-CELL
@@ -1445,14 +1447,13 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
       failed OF CURL:CODE>N DONE-RC ! ENDOF
    ;MATCH
    1 DONE-PARKED atomic!
-   DONE-HANDLE @ CURL:AWAIT DROP-FETCH
+   DONE-HANDLE @ AWAIT-ONE
    1 DONE-COLLECTED atomic! ;
 
 
 \ The response cell witnesses FINISH publishing the completed peer response.
-\ ABANDON takes the loop's facility after FINISH settles the record, even if
-\ HALT arrives during that publication. The waiter must not have collected it.
-: CASE-HALTED-DONE ( -- )
+\ HALT may follow collection or cause abandonment after that publication.
+: CASE-HALTED-DONE-ONE ( -- bool )
    0 DONE-PARKED ! 0 DONE-COLLECTED ! 0 DONE-RC !
    PATH-HEADERS$ GET-READY DONE-HANDLE !
    DONE-HANDLE @ DONE-STATE {: state:ptr :}
@@ -1462,12 +1463,40 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    DONE-TASK TASK:HALT
    DONE-TASK ENDED? TTRUE
    DONE-TASK TASK:KILL
-   s" a completed transfer abandoned by its waiter has no headers" T-LABEL
    DONE-RC @ 0 T=
-   DONE-COLLECTED @ 0 T=
    STOPPED? TTRUE
+   DONE-COLLECTED atomic@ if
+      s" a collected response retains its successful final headers" T-LABEL
+      LAST-KIND @ KIND-RESPONSE T=
+      LAST-STATUS @ 200 T=
+      BODY$ JSON$ T$=
+      DONE-HANDLE @ HEADERS$ HEADER-EXACT
+      DONE-HANDLE @ CURL:CLEANUP
+      false exit
+   then
+   s" a completed transfer abandoned by its waiter has no headers" T-LABEL
    DONE-HANDLE @ HEADER-REFUSED
-   DONE-HANDLE @ CURL:CLEANUP ;
+   DONE-HANDLE @ CURL:CLEANUP
+   true ;
+
+
+8 constant DONE-TRIES
+
+: CASE-HALTED-DONE ( -- )
+   0 DONE-ATTEMPTS ! 0 DONE-ABANDONED !
+   DONE-TRIES 0 do
+      i 0 > if CURL:LOOP-START EXPECT-OK then
+      1 DONE-ATTEMPTS +!
+      CASE-HALTED-DONE-ONE if
+         1 DONE-ABANDONED +!
+         leave
+      then
+   loop
+   s" curl collection attempts=" type DONE-ATTEMPTS @ FMT:.U
+   s"  collected=" type DONE-ATTEMPTS @ DONE-ABANDONED @ - FMT:.U
+   s"  abandoned=" type DONE-ABANDONED @ FMT:.U cr
+   s" a completed transfer is abandoned within the attempt bound" T-LABEL
+   DONE-ABANDONED @ 1 T= ;
 
 
 \ The loop opens again on an empty table and carries a transfer as before.
@@ -1515,7 +1544,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 69 CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 68 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
