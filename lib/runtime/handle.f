@@ -17,7 +17,9 @@
 \ header or slots, and none from a number to a table: its converters and the
 \ header's constructor are private, and a cast from a number to a table or a
 \ handle is E-CAST-OWNER. Numbers become a handle only through HANDLE, and
-\ bytes only through BYTES>HANDLE. Construction establishes only that a
+\ bytes only through BYTES>HANDLE. SLOT and GENERATION read a handle's halves
+\ back as numbers and grant no authority: a handle rebuilt from them passes a
+\ lookup only if its table issued it. Construction establishes only that a
 \ handle is well formed; a table's INDEX, or a pool's lookup of its own
 \ handles, establishes that it was issued and is live. Raw storage passes the
 \ refusals above: a private pointer mint (docs/forth.md, CAST:), such as any
@@ -109,12 +111,6 @@ $100000000 constant LIVE
    {: slot:n gen:n :}
    gen 32 lshift slot or >HANDLE ;
 
-: SLOT# ( handle -- n )
-   HANDLE>N U32-MAX and ;
-
-: GEN# ( handle -- n )
-   HANDLE>N 32 rshift ;
-
 : CELL-GEN ( n -- n )
    U32-MAX and ;
 
@@ -134,6 +130,14 @@ public
 
 : NULL? ( handle -- bool )
    HANDLE>N 0= ;
+
+\ The handle's slot, 0 for null.
+: SLOT ( handle -- n )
+   HANDLE>N U32-MAX and ;
+
+\ The handle's generation, 0 for null.
+: GENERATION ( handle -- n )
+   HANDLE>N 32 rshift ;
 
 \ The handle of a slot at a generation, each within 0 .. 2^32 - 1 and both
 \ zero, the null handle, or neither.
@@ -170,12 +174,12 @@ public
 : INDEX ( handle table -- n )
    {: h:handle t:table :}
    t HEADER-OF @ HEADER-UNMAKE {: slots:ptr first:n cap:n used:n head:n :}
-   h SLOT# first - {: i:n :}
+   h SLOT first - {: i:n :}
    i 0 < i cap >= or if E-RT-HANDLE-FOREIGN throw then
    i used >= if E-RT-HANDLE-STALE throw then
    slots i CELL-AT @ {: s:n :}
    s LIVE and 0= if E-RT-HANDLE-STALE throw then
-   s CELL-GEN h GEN# <> if E-RT-HANDLE-STALE throw then
+   s CELL-GEN h GENERATION <> if E-RT-HANDLE-STALE throw then
    i ;
 
 \ A free slot's next generation, else a never-issued slot's first one.
@@ -203,7 +207,7 @@ public
    h t INDEX {: i:n :}
    t HEADER-OF {: hd:ptr :}
    hd HEADER-SLOTS @ i CELL-AT {: p:ptr :}
-   h GEN# {: g:n :}
+   h GENERATION {: g:n :}
    g LAST-GEN = if g p ! exit then
    hd HEADER-HEAD @ LINK-SHIFT lshift g or p !
    i 1 + hd HEADER-HEAD ! ;

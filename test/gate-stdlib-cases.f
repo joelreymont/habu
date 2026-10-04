@@ -1424,6 +1424,10 @@ SUITE runtime-pool
    lib/runtime/pool-test.f
 ;SUITE
 
+SUITE runtime-scope
+   test/browser/scope-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE

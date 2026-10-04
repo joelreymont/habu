@@ -160,7 +160,12 @@ CAST: >HEAD ( ptr u8 -- ptr head )
 CAST: >SCHEMA ( n -- schema )
 CAST: SCHEMA>N ( schema -- n )
 CAST: KIND>N ( kind -- n )
-CAST: HANDLE>BITS ( RT-HANDLE:handle -- n )
+
+\ A handle's slot in the low 32 bits and its generation in the high 32, read
+\ through RT-HANDLE's public words.
+: HANDLE>BITS ( RT-HANDLE:handle -- n )
+   {: h:RT-HANDLE:handle :}
+   h RT-HANDLE:GENERATION 32 lshift h RT-HANDLE:SLOT or ;
 
 1 constant OPEN
 2 constant SHUT
