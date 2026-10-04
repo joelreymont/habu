@@ -81,11 +81,17 @@ variable OWNER-RESULT
    MKSTEMP-FN @ 0 T= CLOSE-FD-FN @ 0 T= ;
 
 
-\ Harmless native fixture: ignore x0 and return one so LIBRARY-CLOSE fails.
+\ Harmless native fixture: ignore the argument and return one so
+\ LIBRARY-CLOSE fails. The two patch32 cells encode the target's machine code.
 TRUSTED: LIFECYCLE-FAIL-CLOSE ( -- n )
    cp@ {: fn:n :}
-   $D2800020 fn patch32
-   $D65F03C0 fn 4 + patch32
+   HB-TARGET-LINUX-X86-64? if
+      $000001B8 fn patch32       \ mov eax, 1
+      $9090C300 fn 4 + patch32   \ ret; nop; nop
+   else
+      $D2800020 fn patch32       \ mov x0, 1
+      $D65F03C0 fn 4 + patch32   \ ret
+   then
    fn ;
 
 
