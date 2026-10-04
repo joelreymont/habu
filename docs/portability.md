@@ -56,7 +56,7 @@ contract that closes it.
 
 Browser Runtime v2 (HBR2) replaces the old browser runtime and protocol v1. Its
 main body and its generated registry are normative; it is a specification and
-reference model, not a qualified browser implementation. [B2 §§0–1, 24–28]
+reference model, not a qualified browser implementation. [B2 §§0–1, 24–28](browser-runtime.md#0-reading-and-precedence)
 
 ### 0.1 Precedence
 
@@ -290,7 +290,7 @@ Keep existing CTARGET wire meanings and native digests readable under their exis
 
 Every target contribution carries `CompatibilityRequirements` with machine family/state, endian, address/layout ABI, Habu ABI, foreign-call contracts actually used, relocation schema, runtime interfaces actually referenced, and required features. The linker checks these per object, unions compatible requirements, and rejects conflicts. A backend's encoding support is not a promise that every ABI named by the architecture works.
 
-A runtime requirement is an interface/version constraint; a release pin is an exact content identity. Ordinary Habu linking can accept a compatible replacement runtime implementation, while a reproducible release pins the exact implementation. HBR2 is stricter at the protocol boundary: its selected canonical registry digest and feature schemas must match the release. A label containing “v2” alone is insufficient. [B2 §24.1]
+A runtime requirement is an interface/version constraint; a release pin is an exact content identity. Ordinary Habu linking can accept a compatible replacement runtime implementation, while a reproducible release pins the exact implementation. HBR2 is stricter at the protocol boundary: its selected canonical registry digest and feature schemas must match the release. A label containing “v2” alone is insufficient. [B2 §24.1](browser-runtime.md#241-new-protocol-identity)
 
 ### 4.4 Existing feature repairs
 
@@ -1333,7 +1333,7 @@ Mutation testing should deliberately alter ABI identity, type indices, relocatio
 
 Keep `Specified`, `ReferenceModelChecked`, `GeneratedByHabu`, `ExecutedOnTarget`, and `QualifiedConfiguration` distinct. Store evidence receipts with source/compiler/artifact hashes and tool/environment identities.
 
-HBR2 reports its own reference-model results. Those are inherited evidence about its supplied specimens, not tests this design reran. Likewise, the worked-example checks done while writing this design do not establish a Habu implementation or real browser execution. [B2 §§0, 28]
+HBR2 reports its own reference-model results. Those are inherited evidence about its supplied specimens, not tests this design reran. Likewise, the worked-example checks done while writing this design do not establish a Habu implementation or real browser execution. [B2 §§0, 28](browser-runtime.md#0-reading-and-precedence)
 
 ## 26. File-by-file integration map
 
@@ -1502,7 +1502,7 @@ design.
 | Label | Document | Status |
 |---|---|---|
 | [B1] | [wasm-backend.md](wasm-backend.md), the Wasm backend design, first written against aed8416b | In Habu, reconciled with this page |
-| [B2] | Habu Browser Runtime, consolidated design, revision 2 (HBR2), 2 October 2026 | Lands as docs/browser-runtime.md with habu-build-hbr2-runtime-731d5ddd. HBR2 reports the digest of its registry, `hbr-v2-registry.json`, as `a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599`; Habu generates the registry from its tables and cannot reproduce that digest ([wasm-backend.md](wasm-backend.md) §12.1) |
+| [B2] | Habu Browser Runtime, consolidated design, revision 2 (HBR2), 2 October 2026 | It is [docs/browser-runtime.md](browser-runtime.md). HBR2 reports the digest of its registry, `hbr-v2-registry.json`, as `a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599`; Habu generates the registry from its tables and cannot reproduce that digest ([wasm-backend.md](wasm-backend.md) §12.1) |
 | [P1] | [package-build.md](package-build.md), the package incremental-build design, baseline 37b2c1b7 | In Habu, reviewed only at its interface with this page; its full review is habu-review-and-schedule-dbdba551 |
 | [WN] | A Windows/COM design | Does not exist; open future work |
 
