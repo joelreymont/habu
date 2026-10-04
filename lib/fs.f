@@ -8,7 +8,8 @@
 \ buffers READ-ALL and WRITE-ALL take are CALLER-OWNED, and so is the WALK:
 \ WALK-FILES-IN takes the caller's context, a span of FS-WALK-BYTES holding the
 \ whole per-depth state, so any number of tasks walk at once by holding one
-\ each. WALK-FILES is the one-context form over the static FS-WALK-CTX0 and is
+\ each. WALK-FILES-IF-IN also takes a path predicate before stat or descent.
+\ WALK-FILES and WALK-FILES-IF use the static FS-WALK-CTX0 and are
 \ therefore SINGLE-TASK, as is REMOVE-TREE (lib/fs-mutate.f), which stands on
 \ the same context; a task that walks or removes a tree beside another one
 \ takes WALK-FILES-IN / REMOVE-TREE-IN with a context of its own. See
@@ -659,8 +660,10 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ The callback is executed straight off the stack: it needs no cell, and its
 \ throw needs no catch here because FS-WALK-FINISH closes this context's
 \ descriptors for every way out of FS-WALK-RUN.
-: FS-WALK-PATH ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ) {: ctx:ptr a:ptr u q :}
+: FS-WALK-PATH ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
+   {: ctx:ptr a:ptr u allow q :}
    a u FS-SKIP-DIR? if exit then
+   a u allow execute 0= if exit then
    a u FILE? if a u q execute exit then
    a u DIR? 0= if E-FS-STAT throw then
    ctx a u FS-OPEN-WALK-DIR
@@ -670,7 +673,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
          ctx FS-LOAD-ENTRY FS-DIRENT-NAME 2dup FS-SKIP-ENTRY? if
             2drop
          else
-            ctx a u FS-DESCEND-PATH q recurse
+            ctx a u FS-DESCEND-PATH allow q recurse
             ctx FS-ASCEND-PATH
          then
          ctx FS-ADVANCE-ENTRY
@@ -681,21 +684,29 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ A quotation-typed LOCAL cannot be caught - `{: a u q :} a u q catch` is
 \ "non-certified definition ... at 'catch'" - so the walk travels on the stack
 \ into this preserving word and the literal quotation below catches THAT.
-: FS-WALK-RUN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ptr u8 ptr u8 n [ ptr u8 n -- ] )
-   {: ctx:ptr a:ptr u q :}
-   ctx a u q FS-WALK-PATH
-   ctx a u q ;
+: FS-WALK-RUN ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] )
+   {: ctx:ptr a:ptr u allow q :}
+   ctx a u allow q FS-WALK-PATH
+   ctx a u allow q ;
 
-: WALK-FILES-IN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ) {: ctx:ptr a:ptr u q :}
+: WALK-FILES-IF-IN ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
+   {: ctx:ptr a:ptr u allow q :}
    ctx FS-WALK-ACTIVE@ 0<> if E-FS-WALK-ACTIVE throw then
    ctx FS-FDS-RESET
    0 ctx FS-WALK-DEPTH!
    ctx a u FS-WALK-ROOT!
    1 ctx FS-WALK-ACTIVE!
-   ctx  ctx FS-CUR-PATH u SPAN:TAKE SPAN:$  q  [: FS-WALK-RUN ;] catch {: code:n :}
-   drop 2drop drop
+   ctx  ctx FS-CUR-PATH u SPAN:TAKE SPAN:$  allow q  [: FS-WALK-RUN ;] catch {: code:n :}
+   drop drop 2drop drop
    ctx FS-WALK-FINISH
    code 0<> if code throw then ;
+
+: WALK-FILES-IN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ) {: ctx:ptr a:ptr u q :}
+   ctx a u [: 2drop true ;] q WALK-FILES-IF-IN ;
+
+: WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
+   {: a:ptr u allow q :}
+   FS-WALK-CTX0 a u allow q WALK-FILES-IF-IN ;
 
 : WALK-FILES ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
    FS-WALK-CTX0 a u q WALK-FILES-IN ;
