@@ -132,6 +132,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : INTS-SEEN? ( -- bool )
    4 SEEN-INTS @ 40 =
    5 SEEN-INTS @ 50 = and
+   HB-TARGET-LINUX-X86-64? if exit then
    6 SEEN-INTS @ 60 = and
    7 SEEN-INTS @ 70 = and ;
 
@@ -142,9 +143,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    1 SEEN-INTS @ -2 = s" i32 is sign-extended from the low half" FACT
    2 SEEN-INTS @ $FFFFFFFD = s" u32 is the low half" FACT
    3 SEEN-INTS @ $5A = s" ptr u8 is the address C passed" FACT
-   INTS-SEEN? s" x4..x7 arrive in order" FACT
-   FLOATS-SEEN? s" d0..d7 arrive in order" FACT
-   MARSHAL-RESULT FLOAT-BITS $4020000000000000 = s" an r result returns in d0" FACT
+   INTS-SEEN? s" integer argument registers arrive in order" FACT
+   FLOATS-SEEN? s" float argument registers arrive in order" FACT
+   MARSHAL-RESULT FLOAT-BITS $4020000000000000 = s" an r result returns in the float result register" FACT
    MARSHAL FAULT@ 0= s" and nothing faulted" FACT
    MARSHAL UNBIND
    9 UNSET TASK:SELF-CONTEXT ENTRY CALL1 7 = s" a body never stored answers the fallback" FACT
@@ -343,8 +344,12 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" CALLBACK: CBT-X6 ( n -- n ) 0.5 FFALLBACK ;CALLBACK" INCLUDE-EVALUATE ;
 : DECL-VOID-FALLBACK ( -- )
    s" CALLBACK: CBT-X7 ( n -- ) 0 FALLBACK ;CALLBACK" INCLUDE-EVALUATE ;
-: DECL-NINE-INTS ( -- )
-   s" CALLBACK: CBT-X8 ( n n n n n n n n n -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+: DECL-TOO-MANY-INTS ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" CALLBACK: CBT-X8 ( n n n n n n n -- ) ;CALLBACK" INCLUDE-EVALUATE
+   else
+      s" CALLBACK: CBT-X8 ( n n n n n n n n n -- ) ;CALLBACK" INCLUDE-EVALUATE
+   then ;
 : DECL-NINE-FLOATS ( -- )
    s" CALLBACK: CBT-X9 ( r r r r r r r r r -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 : DECL-STRAY-CLOSE ( -- )
@@ -365,7 +370,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    [: DECL-NO-FALLBACK ;] catch E-FFI-SYNTAX = s" a value result with no fallback: E-FFI-SYNTAX" FACT
    [: DECL-WRONG-FALLBACK ;] catch E-FFI-SYNTAX = s" FFALLBACK for an integer result: E-FFI-SYNTAX" FACT
    [: DECL-VOID-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with no result: E-FFI-SYNTAX" FACT
-   [: DECL-NINE-INTS ;] catch E-FFI-ARITY = s" an integer argument past the registers: E-FFI-ARITY" FACT
+   [: DECL-TOO-MANY-INTS ;] catch E-FFI-ARITY = s" an integer argument past the registers: E-FFI-ARITY" FACT
    [: DECL-NINE-FLOATS ;] catch E-FFI-ARITY = s" a ninth float argument: E-FFI-ARITY" FACT
    [: DECL-STRAY-CLOSE ;] catch E-FFI-SYNTAX = s" ;CALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-STRAY-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
@@ -474,9 +479,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ok   i32 is sign-extended from the low half" W
    s" ok   u32 is the low half" W
    s" ok   ptr u8 is the address C passed" W
-   s" ok   x4..x7 arrive in order" W
-   s" ok   d0..d7 arrive in order" W
-   s" ok   an r result returns in d0" W
+   s" ok   integer argument registers arrive in order" W
+   s" ok   float argument registers arrive in order" W
+   s" ok   an r result returns in the float result register" W
    s" ok   and nothing faulted" W
    s" ok   a body never stored answers the fallback" W
    s" ok   and faults E-FFI-CALLBACK-STATE" W
