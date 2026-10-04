@@ -176,10 +176,12 @@ create DIAGS IO-CAP allot
    s" recovery mode keeps unrelated ABI-only and trusted-only calls closed" T-LABEL
    s" EAUTH-REC-RAW ( n -- n )" ABI -1 T=
    s" EAUTH-REC-RAW-CALL ( n -- n ) EAUTH-REC-RAW" JUDGE 0 T=
+   s" EAUTH-REC-RAW-TICK ( -- [ n -- n ] ) ['] EAUTH-REC-RAW" JUDGE 0 T=
    s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-check" JUDGE 0 T=
    s" EAUTH-REC-RAW-CALL" RECOVERY-FACT
+   s" EAUTH-REC-RAW-TICK" RECOVERY-FACT
    s" EAUTH-REC-TRUST-CALL" RECOVERY-FACT
-   MULTI- 3 T=
+   MULTI- 4 T=
 
    s" later collection runs cannot borrow old recovery declarations" T-LABEL
    MULTI+
@@ -283,6 +285,7 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" an unsealed checker binds an internal word's recorded row" T-LABEL
    SEALED? TFALSE
    ['] OPEN-X catch 0 T=
+   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" EV
    s" EAUTH-OPEN-X" SOURCE-MIN 0 T=
    s" EAUTH-OPEN-X" CHECKER-RESOLVES? TTRUE
    s" and checks the body against that row" T-LABEL

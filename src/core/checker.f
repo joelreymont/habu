@@ -17934,27 +17934,26 @@ variable IS-PEND-U                   \ and its length
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ A CHECKED TICK OF A PACKAGE'S PRIVATE PRIMITIVE IS ADMITTED EXACTLY WHERE A
-\ CHECKED CALL OF IT IS. The seal classifies the global record such a row
-\ reaches by that row (EFFECT-OWNED-MIN-IN) instead of marking it DNAME-INT, so
-\ the engine's tick gates admit the record in every scope and this is the one
-\ that decides. Inside the owner the private row binds the name and the tick
-\ goes on. Anywhere else the tick gets the call's refusal of what the name binds
-\ there: nothing (E-UNDEFINED), or a row CALL-AUTHORITY refuses (E-CAP-TRUSTED,
-\ as for the ABI-only row a product build records for a prefix word). An EXPORT
-\ alias is the same code under its source's tail with its source's row, so the
-\ owner row is asked of the tail: `['] P:FFI-PTR>CELL` for a package P that
-\ exported it is refused as its call is. Asked once FEP holds the symbol's row,
-\ if it has one.
+\ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY, NOT ITS INPUT STACK. The row
+\ gives the tick its quotation signature below, but an ABI-only row cannot
+\ authorize that quotation any more than it can authorize a direct call. The
+\ seal keeps a global record reached by an owner-private primitive row visible
+\ in every scope. Inside the owner its private row binds and CALL-AUTHORITY
+\ admits the tick. Outside, a bound ABI row refuses E-CAP-TRUSTED, including an
+\ EXPORT alias; with no row, only an owner-private primitive target needs the
+\ named E-UNDEFINED refusal here. EXPORT-TAIL$ finds that owner's source tail.
 : OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
-      sym CALL-AUTHORITY CALL-REFUSED <> IF RES-FALSE EXIT THEN
-   ELSE
-      sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
+      sym CALL-AUTHORITY CALL-REFUSED = IF
+         TICK-PIN
+         -1 CAPREQ !  0 OK !  -1 FAILSET !
+         RES-TRUE EXIT
+      THEN
+      RES-FALSE EXIT
    THEN
+   sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
    TKF TKFU @ EXPORT-TAIL$ PE-OWNER-ROW 0 < IF RES-FALSE EXIT THEN
    TICK-PIN
-   FEP-HIT? IF -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
    TKF TKFU @ CALL-UNDEFINED
    PE-N BTICK-PUSH
    RES-TRUE ;

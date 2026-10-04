@@ -1322,20 +1322,49 @@ create QNAME QNAME-CAP allot
 \ the product the call is refused by name. An image whose seal skipped that call
 \ certifies the caller, as the whitebox engine does. ----
 
-: GATE-ABI$ ( -- ptr u8 n )      \ a checked call of a hook-less word's ABI row
+: GATE-RAW ( -- )
    SB-RESET
    s" 1 set-tier" SB-APPEND LF
    s" check@ constant IWG-HOOK" SB-APPEND LF
    s" 0 set-check" SB-APPEND LF
    s" : IWGGA ( n -- n ) ;" SB-APPEND LF
-   s" IWG-HOOK set-check" SB-APPEND LF
+   s" IWG-HOOK set-check" SB-APPEND LF ;
+
+: GATE-ABI$ ( -- ptr u8 n )      \ a checked call of a hook-less word's ABI row
+   GATE-RAW
    s" : IWGGB ( n -- n ) IWGGA ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-TICK$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGT ( -- [ n -- n ] ) ['] IWGGA ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-TICK-EXEC$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGE ( n -- n ) ['] IWGGA execute ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-VALID-TICKS$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
+   s" : IWGGQ ( -- [ n -- n ] ) ['] IWGGC ;" SB-APPEND LF
+   s" : IWGGI ( -- ) ['] 1+ drop ;" SB-APPEND LF
+   s" ' IWGGA drop" SB-APPEND LF
    SB$ ;
 
 : AUTHORITY-GATE-CASES ( -- )
    s" the sealed checker refuses a checked call of an ABI-only row" T-LABEL
    GATE-ABI$ RUN-SUBJECT
-   s" E-CAP-TRUSTED habu: in iwggb: 'IWGGA'" ASSERT-DIAG ;
+   s" E-CAP-TRUSTED habu: in iwggb: 'IWGGA'" ASSERT-DIAG
+   s" a checked tick of that row refuses at the quoted word" T-LABEL
+   GATE-TICK$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwggt: 'IWGGA'" ASSERT-DIAG
+   s" execute cannot launder the same checked tick" T-LABEL
+   GATE-TICK-EXEC$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwgge: 'IWGGA'" ASSERT-DIAG
+   s" checked quotations and ordinary ticks remain available" T-LABEL
+   GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
