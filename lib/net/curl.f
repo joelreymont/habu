@@ -678,6 +678,13 @@ CAST: TICKET>N ( AIO:ticket -- n )
    STATE-FREE idx REC-STATE! ;
 
 
+\ An abandoned owner never collected the response, even if FINISH already
+\ closed both streams and published it before the halt reached AWAIT.
+: ABANDON-RELEASE ( n -- ) {: idx:n :}
+   idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
+   idx REC-RELEASE ;
+
+
 : TABLE-CLEAR ( -- )
    MAX-TRANSFERS 0 ?do i REC-RELEASE loop ;
 
@@ -818,7 +825,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    0 idx REC R.STREAM !
    0 idx REC R.HSTREAM !
    idx REC-STATE@ STATE-ABANDONED = if
-      source RELEASE headers RELEASE idx REC-RELEASE CURLM-OK exit
+      source RELEASE headers RELEASE idx ABANDON-RELEASE CURLM-OK exit
    then
    rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
       {: outcome:n :}
@@ -851,7 +858,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : ABANDON-RUN ( n -- n ) {: idx:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
    idx STREAM-DROP drop
-   idx REC-RELEASE
+   idx ABANDON-RELEASE
    CURLM-OK ;
 
 
@@ -1127,7 +1134,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
    st STATE-FREE = st STATE-DONE = or st STATE-CLAIMING = or if exit then
    idx REMOVE-ONE drop
    idx STREAM-DROP drop
-   st STATE-ABANDONED = if idx REC-RELEASE exit then
+   st STATE-ABANDONED = if idx ABANDON-RELEASE exit then
    idx CURLE-ABORTED FAILED-STORE
    idx SETTLE ;
 

@@ -16,6 +16,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process-env.f
 require lib/ffi-abi.f
+require lib/le.f
 require lib/image-lifecycle.f
 require lib/task.f
 require test/host-threads.f
@@ -28,6 +29,15 @@ package CURL-TEST
 private
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+CAST: STATE>CELL ( n -- ptr n )
+
+VERSIONED-LIBRARY curl 4
+FUNCTION: PRIVATE-GET curl_easy_getinfo ( n n ptr u8 -- i32 )
+   2 VARIADIC
+   2 $08 WRITES-BYTES
+;FUNCTION
+
+$100015 constant INFO-PRIVATE
 
 $7F000001 constant LOOPBACK
 $40 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
@@ -729,7 +739,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : HEADER-TRANSCRIPT ( -- )
    s" HB_TMP" GETENV {: root:ptr rootu:n :}
-   rootu 0 > TTRUE
+   rootu 0= if exit then
    root rootu s" curl-headers-transcript.txt" TRANSCRIPT-PATH JOIN-PATH
       {: pathu:n :}
    SB-RESET
@@ -1126,16 +1136,23 @@ TEST-ALIGN8
 variable DURING-THREADS
 variable HALT-PARKED
 variable HALT-RC
+variable DONE-PARKED
+variable DONE-COLLECTED
+variable DONE-RC
 variable OWNER-RC
+
+8 BUFFER: DONE-STATE-CELL
 
 MANY-N TYPED-BUFFER MANY-HANDLES CURL:handle
 TYPED-VARIABLE COLD-HANDLE CURL:handle
 TYPED-VARIABLE EXTRA-HANDLE CURL:handle
 TYPED-VARIABLE OWNER-HANDLE CURL:handle
 TYPED-VARIABLE HALT-HANDLE CURL:handle
+TYPED-VARIABLE DONE-HANDLE CURL:handle
 
 TASK:MIN-STACK TASK:TASK OWNER-TASK
 TASK:MIN-STACK TASK:TASK HALT-TASK
+TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
 : REACHED? ( ptr n n -- bool ) {: cell:ptr want:n :}
@@ -1402,6 +1419,57 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
+\ Read the handle's existing libcurl private slot before START transfers it to
+\ the loop. Its response-valid cell becomes nonzero only when FINISH publishes
+\ the completed peer response; reading it does not call libcurl on a busy handle.
+: DONE-STATE ( CURL:handle -- ptr n ) {: subject:CURL:handle :}
+   subject CURL:HANDLE>N INFO-PRIVATE DONE-STATE-CELL PRIVATE-GET 0 T=
+   DONE-STATE-CELL LE:U64@ STATE>CELL ;
+
+
+: DONE-PUBLISHED? ( ptr n -- bool ) $18 + atomic@ 0<> ;
+
+
+: WAIT-PUBLISHED ( ptr n -- ) {: state:ptr :}
+   mono-ns WAIT-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      state DONE-PUBLISHED? if exit then
+      mono-ns deadline > if E-PROC-TIMEOUT throw then
+   again ;
+
+
+: DONE-WORK ( -- )
+   DONE-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF CURL:CODE>N DONE-RC ! ENDOF
+   ;MATCH
+   1 DONE-PARKED atomic!
+   DONE-HANDLE @ CURL:AWAIT DROP-FETCH
+   1 DONE-COLLECTED atomic! ;
+
+
+\ The response cell witnesses FINISH publishing the completed peer response.
+\ ABANDON takes the loop's facility after FINISH settles the record, even if
+\ HALT arrives during that publication. The waiter must not have collected it.
+: CASE-HALTED-DONE ( -- )
+   0 DONE-PARKED ! 0 DONE-COLLECTED ! 0 DONE-RC !
+   PATH-HEADERS$ GET-READY DONE-HANDLE !
+   DONE-HANDLE @ DONE-STATE {: state:ptr :}
+   ['] DONE-WORK DONE-TASK TASK:ACTIVATE
+   DONE-PARKED 1 REACHED? TTRUE
+   state WAIT-PUBLISHED
+   DONE-TASK TASK:HALT
+   DONE-TASK ENDED? TTRUE
+   DONE-TASK TASK:KILL
+   s" a completed transfer abandoned by its waiter has no headers" T-LABEL
+   DONE-RC @ 0 T=
+   DONE-COLLECTED @ 0 T=
+   STOPPED? TTRUE
+   DONE-HANDLE @ HEADER-REFUSED
+   DONE-HANDLE @ CURL:CLEANUP ;
+
+
 \ The loop opens again on an empty table and carries a transfer as before.
 : CASE-RESTART ( -- )
    CURL:LOOP-START EXPECT-OK
@@ -1436,6 +1504,8 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    CASE-CANCEL
    CASE-OWNER
    CASE-HALTED
+   CURL:LOOP-START EXPECT-OK
+   CASE-HALTED-DONE
    CASE-RESTART ;
 
 
@@ -1445,7 +1515,7 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 68 CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 69 CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
