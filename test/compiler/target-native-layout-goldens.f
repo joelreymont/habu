@@ -31,8 +31,9 @@ create GOLDEN
    $3640 , 0 ,   \ REPLH-CELL
    $37E8 , 1 ,   \ BPWBASE-CELL
    $560 ,  0 ,   \ LASTC-CELL
+   $230 ,  0 ,   \ CREATEP-CELL
 
-20 constant ROWS
+21 constant ROWS
 
 public
 
