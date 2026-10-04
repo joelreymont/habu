@@ -101,7 +101,7 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    ALIVE-R @ >FD FD>N WAIT-BYTE 1 read 0 T=       \ block until the child has exited (EOF)
    ALIVE-R @ >FD CLOSE-OK
    cpid PID>N proc-watch-open {: wfd:n :}
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       wfd 0 >= TTRUE                               \ Linux pidfd_open opens on the surviving zombie
       wfd 0 >= if wfd close then
    else

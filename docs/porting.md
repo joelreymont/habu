@@ -14,7 +14,10 @@ Each target owns these files under `src/os/<target>/`:
 
 - `target.f` — target predicates used by source selection:
   `HB-TARGET-<NAME>?` for each supported target and `HB-TARGET-KNOWN?` for the
-  closed target set.
+  closed target set. `HB-TARGET-LINUX-KERNEL?` names facts common to the two
+  Linux ABIs, such as signal numbers, ioctl requests and socket flags. A record
+  layout or calling convention that differs by architecture still selects the
+  exact target.
 - `layout.f` — executable/data virtual addresses and image layout constants.
 - `sys.f` — raw syscall numbers and `SYS, ( n -- )`.
 - `repl-term.f` — terminal ioctl, raw-mode, and termios offsets for baked REPLs.

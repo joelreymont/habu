@@ -101,8 +101,7 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 9 constant SIGKILL
 : SIGSTOP ( -- n )
    HB-TARGET-MACOS? if 17 exit then
-   HB-TARGET-LINUX? if 19 exit then
-   HB-TARGET-LINUX-X86-64? if 19 exit then
+   HB-TARGET-LINUX-KERNEL? if 19 exit then
    E-PROC-HOST throw ;
 
 : MEMBER ( n -- n ) {: i:n :}
@@ -429,7 +428,7 @@ variable CUR                        \ the read position in STAT
 
 : SCAN ( -- )
    HB-TARGET-MACOS? if SCAN-MACOS exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if SCAN-LINUX exit then
+   HB-TARGET-LINUX-KERNEL? if SCAN-LINUX exit then
    E-PROC-HOST throw ;
 
 \ TRUE when the pass added nobody and found every member settled.
@@ -562,7 +561,7 @@ FUNCTION: SYSCTL sysctl ( ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 )
 
 : CATCHES-HOST? ( n n -- bool ) {: pid:n sig:n :}
    HB-TARGET-MACOS? if pid sig CATCHES-MACOS? exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if pid sig CATCHES-LINUX? exit then
+   HB-TARGET-LINUX-KERNEL? if pid sig CATCHES-LINUX? exit then
    E-PROC-HOST throw ;
 
 \ ---- the CPU time a tree has run ----------------------------------------------
@@ -694,7 +693,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
    0 MEMBER-N !
    pid JOIN
    HB-TARGET-MACOS? if CPU-MACOS exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if CPU-LINUX exit then
+   HB-TARGET-LINUX-KERNEL? if CPU-LINUX exit then
    E-PROC-HOST throw ;
 
 public

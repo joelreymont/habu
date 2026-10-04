@@ -80,14 +80,14 @@ $FF constant PROC-WAIT-EXIT-MASK
 \ silently drops a bit the host does not know, so the wrong constant arms
 \ nothing at all and the descriptor stays blocking.
 : O-NONBLOCK ( -- n )
-   HB-TARGET-LINUX? if $800 exit then
+   HB-TARGET-LINUX-KERNEL? if $800 exit then
    HB-TARGET-MACOS? if 4 exit then
    E-PROC-HOST throw ;
 
 \ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
 \ both Linux targets, 67 on macOS.
 : F-DUPFD-CLOEXEC ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 1030 exit then
+   HB-TARGET-LINUX-KERNEL? if 1030 exit then
    HB-TARGET-MACOS? if 67 exit then
    E-PROC-HOST throw ;
 

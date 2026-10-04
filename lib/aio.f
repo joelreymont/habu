@@ -154,8 +154,14 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 4 constant EV-WRITABLE              \ POLLOUT
 
 4 constant ERR-INTR                 \ EINTR
-: ERR-TIME ( -- n ) HB-TARGET-MACOS? if 101 else $3E then ;               \ ETIME 62
-: ERR-CANCELED ( -- n ) HB-TARGET-MACOS? if 89 else $7D then ;           \ ECANCELED 125
+: ERR-TIME ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $3E exit then
+   HB-TARGET-MACOS? if 101 exit then
+   E-PROC-HOST throw ;                   \ ETIME 62 on Linux.
+: ERR-CANCELED ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $7D exit then
+   HB-TARGET-MACOS? if 89 exit then
+   E-PROC-HOST throw ;                   \ ECANCELED 125 on Linux.
 
 1000 constant MS-PER-S
 1000000 constant NS-PER-MS
@@ -1168,6 +1174,8 @@ public
 package AIO-LOAD
 public
 TRUSTED: HOST ( -- )
-   HB-TARGET-MACOS? if s" lib/aio-macos.f" required then ;
+   HB-TARGET-LINUX-KERNEL? if exit then
+   HB-TARGET-MACOS? if s" lib/aio-macos.f" required exit then
+   E-PROC-HOST throw ;
 ;package
 AIO-LOAD:HOST

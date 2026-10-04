@@ -49,7 +49,7 @@ $7FFFFFFF constant MAX-SPAN               \ every length this package passes is 
 
 \ libcrypto's EVP cipher interface and its one-shot HMAC. EVP_CIPHER_CTX*,
 \ EVP_CIPHER* and EVP_MD* are OPAQUE here - nothing in this package dereferences
-\ one - so they are declared `n`: AAPCS64 passes a pointer and an integer in the
+\ one - so they are declared `n`: both host ABIs pass a pointer and an integer in the
 \ same register. Only a span Habu or the callee really reads or writes is `ptr u8`.
 \
 \ Three symbols carry two argument SHAPES each, under different Habu names.

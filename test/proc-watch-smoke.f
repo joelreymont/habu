@@ -145,7 +145,9 @@ variable GO-R    variable GO-W     \ go-pipe: parent write, child blocks on read
    cpid WATCH {: wa:fd :}
    RELEASE
    wa READY-MS WATCH-READY? TTRUE
-   HB-TARGET-LINUX? if cpid DEAD-WATCH-LINUX else cpid DEAD-WATCH-MACOS then
+   HB-TARGET-LINUX-KERNEL? if cpid DEAD-WATCH-LINUX else
+      HB-TARGET-MACOS? if cpid DEAD-WATCH-MACOS else E-PROC-HOST throw then
+   then
    wa CLOSE-OK
    cpid PROC-WAIT-STATUS 0 T= ;
 

@@ -1,4 +1,4 @@
-\ Linux and Darwin AArch64 IPv4 datagrams through exact, bounded libc bindings.
+\ Linux and Darwin IPv4 datagrams through exact, bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
 \ each task holds its own, and the datagram spans the transfer words take are
@@ -57,7 +57,10 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $FFE3 constant MAX-PAYLOAD
-: SOCKET-FLAGS ( -- n ) HB-TARGET-MACOS? if 2 else $80802 then ;       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
+: SOCKET-FLAGS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $80802 exit then
+   HB-TARGET-MACOS? if 2 exit then
+   E-PLATFORM throw ;                    \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
@@ -115,9 +118,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
    port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
-   HB-TARGET-MACOS? if
+   HB-TARGET-LINUX-KERNEL? if
+      2 SOCKADDR c!
+   else HB-TARGET-MACOS? if
       SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
-   else 2 SOCKADDR c! then
+   else E-PLATFORM throw then then
    port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
@@ -128,14 +133,16 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : ENDPOINT@ ( -- address port )
    ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   HB-TARGET-MACOS? if
+   HB-TARGET-LINUX-KERNEL? if
+      SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or
+   else HB-TARGET-MACOS? if
       SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
-   else SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or then
+   else E-PLATFORM throw then then
    if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
-\ The exact Linux AArch64 libc schemas. RTLD_DEFAULT borrows process symbols;
+\ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols;
 \ the native executable already needs libc.so.6, so no library reference is
 \ acquired or retained here. Each declaration states the C function's own effect
 \ and the extent of every buffer the callee writes, which is what the bounded
@@ -166,7 +173,9 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 
 : SOCKET-RAW ( -- n )
    2 SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
-   fd 0 < HB-TARGET-MACOS? 0= or if fd exit then
+   HB-TARGET-LINUX-KERNEL? if fd exit then
+   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
+   fd 0 < if fd exit then
    \ Fresh sockets have no status flags to preserve. Darwin uses O_NONBLOCK=4.
    fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
    fd 4 4 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
@@ -205,6 +214,7 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 : RECEIVE-RAW ( socket ptr u8 NUM:byte-len -- n errno )
    {: socket:socket bytes capacity:NUM:byte-len :}
    HB-TARGET-MACOS? if socket bytes capacity DARWIN-RECEIVE exit then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    socket SOCKET>N bytes capacity BLEN>N MSG-TRUNC
    SOCKADDR ADDRLEN RECEIVE-CALL LAST-ERROR ;
 
@@ -223,7 +233,10 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
 
 
 : RETRY? ( errno -- bool )
-   ERRNO>N dup 4 = swap HB-TARGET-MACOS? if 35 else 11 then = or ;
+   ERRNO>N dup 4 = swap
+   HB-TARGET-LINUX-KERNEL? if 11 else
+      HB-TARGET-MACOS? if 35 else E-PLATFORM throw then
+   then = or ;
 
 
 : RECEIVED ( n NUM:byte-len -- receive-result ) {: actual:n capacity:NUM:byte-len :}

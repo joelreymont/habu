@@ -85,7 +85,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
 \ negative when it refuses.
 : ENGINE-SELF-PATH ( -- n )
    HB-TARGET-MACOS? if getpid EID-PATH EID-PATH-CAP SELF-PATH exit then
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX-KERNEL? if
       EID-PROC-EXE EID-PATH EID-PATH-CAP readlink exit
    then
    0 ;
@@ -106,7 +106,7 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    EID-PATH EID-PATH-U @ ;
 
 : OPEN-RUNNING ( -- n )
-   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+   HB-TARGET-LINUX-KERNEL? if
       EID-PROC-EXE open-rd exit
    then
    HB-TARGET-MACOS? if

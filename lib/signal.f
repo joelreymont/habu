@@ -15,10 +15,10 @@
 \ task; the four-byte staging span WAIT and TAKE read into is a TASK:+USER row,
 \ so two tasks reading the read end never share it. See docs/signal.md.
 \
-\ HOSTS. Linux and macOS, on aarch64. The signal numbers, SA_RESTART and the
+\ HOSTS. Linux and macOS. The signal numbers, SA_RESTART and the
 \ struct sigaction layout all differ between the two and are selected here the
 \ way lib/process.f O-NONBLOCK, lib/fs.f and lib/process-pty-io.f select theirs.
-\ A third target reaches no arm and INIT refuses it with E-PROC-HOST rather than
+\ An unknown target reaches no arm and INIT refuses it with E-PROC-HOST rather than
 \ installing the stub for whatever signal the Linux numbers happen to name
 \ there. Both arms run: process-signals (lib/signal-test.f) passes on Linux and
 \ macOS, and on macOS the check-signal, gate-signal and pg suites catch and
@@ -50,18 +50,18 @@ SUMTYPE signal-result 0
 15 constant SIGTERM
 
 : SIGUSR1 ( -- n )
-   HB-TARGET-LINUX? if 10 exit then
+   HB-TARGET-LINUX-KERNEL? if 10 exit then
    HB-TARGET-MACOS? if 30 exit then
    E-PROC-HOST throw ;
 
 : SIGUSR2 ( -- n )
-   HB-TARGET-LINUX? if 12 exit then
+   HB-TARGET-LINUX-KERNEL? if 12 exit then
    HB-TARGET-MACOS? if 31 exit then
    E-PROC-HOST throw ;
 
 private
 
-\ struct sigaction is not one record. glibc on aarch64 lays out sa_handler at 0,
+\ struct sigaction is not one record. glibc on both Linux ABIs lays out sa_handler at 0,
 \ a 128-byte mask at 8, sa_flags at $88 and sa_restorer at $90, $98 bytes in
 \ all; macOS lays out the handler at 0, a four-byte mask at 8 and sa_flags at
 \ $0C, $10 bytes in all. Only the handler and the flags are ever spelled, so the
@@ -77,14 +77,16 @@ $0C constant SA-MACOS-FLAGS-OFF
 SA-LINUX-BYTES SA-MACOS-BYTES max constant SA-BUF-BYTES
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? if SA-LINUX-FLAGS-OFF exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      SA-LINUX-FLAGS-OFF exit
+   then
    HB-TARGET-MACOS? if SA-MACOS-FLAGS-OFF exit then
    E-PROC-HOST throw ;
 
 \ The same flag, spelled differently: a Linux $10000000 installed on macOS is
 \ SA_SIGINFO|SA_NOCLDWAIT|SA_NODEFER and not SA_RESTART at all.
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX? if $10000000 exit then
+   HB-TARGET-LINUX-KERNEL? if $10000000 exit then
    HB-TARGET-MACOS? if 2 exit then
    E-PROC-HOST throw ;
 
@@ -309,7 +311,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ else's, and installing the stub for whatever 10 means there is exactly the
 \ silent mis-install the arms exist to prevent.
 : NEED-HOST ( -- )
-   HB-TARGET-LINUX? if exit then
+   HB-TARGET-LINUX-KERNEL? if exit then
    HB-TARGET-MACOS? if exit then
    E-PROC-HOST throw ;
 

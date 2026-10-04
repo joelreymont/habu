@@ -1,4 +1,4 @@
-\ Linux and Darwin AArch64 IPv4 stream sockets through exact, bounded libc bindings.
+\ Linux and Darwin IPv4 stream sockets through exact, bounded libc bindings.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $20 TASK:+USER row, so
 \ each task holds its own sockaddr, socklen, socket option int and pollfd, and
@@ -117,11 +117,20 @@ $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
 $1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
-: SOCKET-FLAGS ( -- n ) HB-TARGET-MACOS? if 1 else $80001 then ;       \ SOCK_STREAM | SOCK_CLOEXEC.
+: SOCKET-FLAGS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $80001 exit then
+   HB-TARGET-MACOS? if 1 exit then
+   E-PLATFORM throw ;                    \ SOCK_STREAM | SOCK_CLOEXEC.
 $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepted connection.
-: MSG-NOSIGNAL ( -- n ) HB-TARGET-MACOS? if $80000 else $4000 then ;        \ A write to a closed peer fails; it never signals.
+: MSG-NOSIGNAL ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $4000 exit then
+   HB-TARGET-MACOS? if $80000 exit then
+   E-PLATFORM throw ;                    \ A write to a closed peer never signals.
 4 constant F-SETFL
-: O-NONBLOCK ( -- n ) HB-TARGET-MACOS? if 4 else $800 then ;               \ Linux's SOCK_NONBLOCK is the same bit.
+: O-NONBLOCK ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $800 exit then
+   HB-TARGET-MACOS? if 4 exit then
+   E-PLATFORM throw ;                    \ Linux's SOCK_NONBLOCK is the same bit.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
 $01 constant POLLIN                \ a receive will not block, on both.
 $04 constant POLLOUT               \ a send will not block, on both.
@@ -129,10 +138,16 @@ $04 constant POLLOUT               \ a send will not block, on both.
 $7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 1000000 constant NS-PER-MS
 4 constant EINTR
-: EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;               \ EWOULDBLOCK on both.
+: EAGAIN ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 11 exit then
+   HB-TARGET-MACOS? if 35 exit then
+   E-PLATFORM throw ;                    \ EWOULDBLOCK on both.
 6 constant IPPROTO-TCP
 1 constant TCP-NODELAY
-: FIONREAD ( -- n ) HB-TARGET-MACOS? if $4004667F else $541B then ;     \ bytes received and not yet read, on both.
+: FIONREAD ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $541B exit then
+   HB-TARGET-MACOS? if $4004667F exit then
+   E-PLATFORM throw ;                    \ bytes received and not yet read.
 $5411 constant SIOCOUTQ            \ Linux: bytes written and not yet acknowledged.
 $FFFF constant DARWIN-SOL-SOCKET
 $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option rather than an ioctl.
@@ -205,9 +220,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
    port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
-   HB-TARGET-MACOS? if
+   HB-TARGET-LINUX-KERNEL? if
+      2 SOCKADDR c!
+   else HB-TARGET-MACOS? if
       SOCKADDR-BYTES SOCKADDR c! 2 SOCKADDR 1+ c!
-   else 2 SOCKADDR c! then
+   else E-PLATFORM throw then then
    port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
@@ -218,9 +235,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : ENDPOINT@ ( -- address port )
    ADDRLEN LE:U32@ SOCKADDR-BYTES <> if E-RESULT throw then
-   HB-TARGET-MACOS? if
+   HB-TARGET-LINUX-KERNEL? if
+      SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or
+   else HB-TARGET-MACOS? if
       SOCKADDR c@ SOCKADDR-BYTES <> SOCKADDR 1+ c@ 2 <> or
-   else SOCKADDR c@ 2 <> SOCKADDR 1+ c@ 0 <> or then
+   else E-PLATFORM throw then then
    if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
@@ -296,7 +315,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 
 
 : OWN-SOCKET ( n -- n ) {: fd:n :}
-   fd 0 < HB-TARGET-MACOS? 0= or if fd exit then
+   HB-TARGET-LINUX-KERNEL? if fd exit then
+   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
+   fd 0 < if fd exit then
    fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
    fd ;
 
@@ -324,7 +345,10 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
 \ Linux's accept4 makes the connection close-on-exec and non-blocking as it
 \ accepts it; Darwin's accept takes no flags, so the connection gets both after.
 : ACCEPT-RAW ( n -- n ) {: fd:n :}
-   HB-TARGET-MACOS? 0= if fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL exit then
+   HB-TARGET-LINUX-KERNEL? if
+      fd SOCKADDR ADDRLEN ACCEPT-FLAGS ACCEPT-CALL exit
+   then
+   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
    fd SOCKADDR ADDRLEN DARWIN-ACCEPT OWN-SOCKET
    dup 0 < if exit then NONBLOCK ;
 
@@ -674,6 +698,7 @@ public
       4 ADDRLEN LE:U32!
       fd DARWIN-SOL-SOCKET SO-NWRITE OPTION ADDRLEN OPTION-GET-CALL QUEUED exit
    then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    fd SIOCOUTQ OPTION QUEUE-CALL QUEUED ;
 
 

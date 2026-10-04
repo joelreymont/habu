@@ -386,7 +386,7 @@ FUNCTION: OPEN-CALL open ( ptr u8 n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : OPEN-FLAGS ( -- n )
-   HB-TARGET-LINUX? if $C1 exit then
+   HB-TARGET-LINUX-KERNEL? if $C1 exit then
    HB-TARGET-MACOS? if $A01 exit then
    E-FS-OPEN throw ;
 

@@ -1,4 +1,4 @@
-\ AArch64 HTTPS client over libcurl's easy interface.
+\ HTTPS client over libcurl's easy interface.
 \
 \ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the three
 \ foreign out-parameter cells are one $18 TASK:+USER row, so each task reads
@@ -98,8 +98,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
 
 
 \ libcurl's easy interface. CURL*, curl_slist* and FILE* are OPAQUE here -
-\ nothing in this package dereferences one - so they are declared `n`: AAPCS64
-\ passes a pointer and an integer in the same register, and a cell is what the
+\ nothing in this package dereferences one - so they are declared `n`: both host
+\ ABIs pass a pointer and an integer in the same register, and a cell is what the
 \ nominal handle types wrap. Only a span Habu or the callee really reads or
 \ writes is declared `ptr u8`.
 \

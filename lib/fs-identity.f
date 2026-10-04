@@ -20,7 +20,9 @@ FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
 ;FUNCTION
 
 : SYMBOL ( ptr u8 -- n )
-   HB-TARGET-MACOS? if -2 else 0 then swap DLSYM
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 else
+      HB-TARGET-MACOS? if -2 else E-FS-STAT throw then
+   then swap DLSYM
    dup 0= if E-FS-STAT throw then ;
 
 
@@ -28,14 +30,18 @@ FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
 
 
 : ERRNO-SYMBOL ( -- n )
-   HB-TARGET-MACOS? if s\" __error\z" else s\" __errno_location\z" then drop SYMBOL ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s\" __errno_location\z" else
+      HB-TARGET-MACOS? if s\" __error\z" else E-FS-STAT throw then
+   then drop SYMBOL ;
 
 
 : UNSIGNED-INT ( ptr u8 -- n )
    dup FS-U16@ swap 2 + FS-U16@ 16 lshift or ;
 
 : DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}
-   HB-TARGET-MACOS? if buffer UNSIGNED-INT else buffer FS-U64@ then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer FS-U64@ else
+      HB-TARGET-MACOS? if buffer UNSIGNED-INT else E-FS-STAT throw then
+   then
    buffer INODE-OFFSET + FS-U64@ ;
 
 : FD-IDENTITY ( fd ptr u8 -- n n ) {: file buffer :}

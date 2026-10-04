@@ -27,22 +27,22 @@ private
 \ wrong arm in the library still fails here. Both arms run, on Linux and macOS
 \ hosts; a third target is refused by name.
 : EXPECT-SIGUSR1 ( -- n )
-   HB-TARGET-LINUX? if 10 exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 10 exit then
    HB-TARGET-MACOS? if 30 exit then
    E-PROC-HOST throw ;
 
 : EXPECT-SIGUSR2 ( -- n )
-   HB-TARGET-LINUX? if 12 exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 12 exit then
    HB-TARGET-MACOS? if 31 exit then
    E-PROC-HOST throw ;
 
 : SA-FLAGS-OFF ( -- n )
-   HB-TARGET-LINUX? if $88 exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $88 exit then
    HB-TARGET-MACOS? if $0C exit then
    E-PROC-HOST throw ;
 
 : SA-RESTART ( -- n )
-   HB-TARGET-LINUX? if $10000000 exit then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if $10000000 exit then
    HB-TARGET-MACOS? if 2 exit then
    E-PROC-HOST throw ;
 

@@ -55,10 +55,22 @@ E-SERIAL-RESULT constant E-RESULT
 
 private
 
-: TERM-BYTES ( -- n ) HB-TARGET-MACOS? if 72 else $2C then ;
-: OPEN-FLAGS ( -- n ) HB-TARGET-MACOS? if $1020006 else $80902 then ; \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
-: GET-TERM ( -- n ) HB-TARGET-MACOS? if $40487413 else $802C542A then ; \ TIOCGETA / TCGETS2.
-: SET-TERM ( -- n ) HB-TARGET-MACOS? if $80487414 else $402C542B then ; \ TIOCSETA / TCSETS2, no queue flush.
+: TERM-BYTES ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $2C exit then
+   HB-TARGET-MACOS? if 72 exit then
+   E-PLATFORM throw ;
+: OPEN-FLAGS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $80902 exit then
+   HB-TARGET-MACOS? if $1020006 exit then
+   E-PLATFORM throw ;                    \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
+: GET-TERM ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $802C542A exit then
+   HB-TARGET-MACOS? if $40487413 exit then
+   E-PLATFORM throw ;                    \ TIOCGETA / TCGETS2.
+: SET-TERM ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $402C542B exit then
+   HB-TARGET-MACOS? if $80487414 exit then
+   E-PLATFORM throw ;                    \ TIOCSETA / TCSETS2, no queue flush.
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
@@ -136,7 +148,10 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ RTLD_DEFAULT borrows process symbols; the native executable already needs
 \ libc on either target. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR HB-TARGET-MACOS? if -2 else 0 then SYMBOL-NAME FFI:DLSYM
+   SYMBOL-NAME FFI:CSTR
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if 0 else
+      HB-TARGET-MACOS? if -2 else E-PLATFORM throw then
+   then SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
 
 
@@ -144,7 +159,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
    s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
    s" close" SYMBOL FN-CLOSE !
-   HB-TARGET-MACOS? if s" __error" else s" __errno_location" then SYMBOL FN-ERRNO ! ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" __errno_location" else
+      HB-TARGET-MACOS? if s" __error" else E-PLATFORM throw then
+   then SYMBOL FN-ERRNO ! ;
 
 
 : INIT ( -- )
@@ -190,14 +207,20 @@ TRUSTED: OPEN-CALL ( -- n )
 TRUSTED: GET-CALL ( -- n )
    HB-TARGET-MACOS? if
       FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-      1 FN-IOCTL @ ffi-call-abi-bounded
-   else FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded then ;
+      1 FN-IOCTL @ ffi-call-abi-bounded exit
+   then
+   HB-TARGET-LINUX-KERNEL? if
+      FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded exit
+   then
+   E-PLATFORM throw ;
 
 
 : GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! GET-TERM 1 FFI:VALUE!
-   HB-TARGET-MACOS? if target TERM-BYTES 0 FFI:STACK-WRITABLE!
-   else target TERM-BYTES 2 FFI:WRITABLE! then
+   HB-TARGET-MACOS? if target TERM-BYTES 0 FFI:STACK-WRITABLE! else
+      HB-TARGET-LINUX-KERNEL? if target TERM-BYTES 2 FFI:WRITABLE!
+      else E-PLATFORM throw then
+   then
    GET-CALL C-INT ;
 
 
@@ -207,8 +230,10 @@ TRUSTED: GET-CALL ( -- n )
 
 : SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! SET-TERM 1 FFI:VALUE!
-   HB-TARGET-MACOS? if source 0 FFI:STACK-READABLE!
-   else source 2 FFI:READABLE! then
+   HB-TARGET-MACOS? if source 0 FFI:STACK-READABLE! else
+      HB-TARGET-LINUX-KERNEL? if source 2 FFI:READABLE!
+      else E-PLATFORM throw then
+   then
    SET-CALL C-INT ;
 
 
@@ -267,6 +292,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 : RAW! ( baud -- ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW! exit then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    \ Preserve HUPCL; all other framing and flow settings are explicit.
    TERM-BYTES 0 do SAVED i + c@ TERM i + c! loop
    0 TERM LE32! 0 TERM $04 + LE32! 0 TERM $0C + LE32!
@@ -277,6 +303,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 : RAW? ( baud -- bool ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW? exit then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    TERM LE32@ 0= TERM $04 + LE32@ 0= and TERM $0C + LE32@ 0= and
    TERM $08 + LE32@ BAUD-MASK invert and $400 invert and $8B0 = and
    TERM $10 + c@ 0= and
@@ -286,7 +313,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 
 : CONFIGURE ( handle baud -- open-result ) {: handle:handle baud:baud :}
    handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:failed exit then
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:unsupported exit then
    then
    baud RAW!
@@ -309,7 +336,11 @@ TRUSTED: CLOSE-CALL ( -- n )
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
-: RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap HB-TARGET-MACOS? if 35 else 11 then = or ;
+: RETRY? ( errno -- bool )
+   ERRNO>N dup 4 = swap
+   HB-TARGET-LINUX-KERNEL? if 11 else
+      HB-TARGET-MACOS? if 35 else E-PLATFORM throw then
+   then = or ;
 
 
 \ Positive event bits, zero for the deadline, or a negative errno. One POLL
