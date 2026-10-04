@@ -1,27 +1,21 @@
 \ tier.f - the two compiler tiers, and the state that must not survive a
 \ definition.
 \
-\ The engine carries two compilers. Tier 0 is the legacy JIT reached through
-\ LCOMPILE; tier 1 is the IR pipeline reached through NCOMP-DISPATCH:XT-CELL.
-\ `set-tier` ( n -- ) selects between them and `tier@` reads the selection back.
-\ Tier 0 is the cold default, so every `--load` and the REPL run the JIT; the
-\ paths that construct an executable select tier 1 before evaluating anything.
+\ ARM carries the legacy JIT at tier 0 and the IR compiler at tier 1. Intel
+\ runs only tier 1. `set-tier` selects an available compiler and `tier@` reads
+\ it back. ARM starts at tier 0; Intel starts at tier 1.
 \
 \ WHAT THIS SUITE CLAIMS, AND WHY EACH PART IS NOT ALREADY CLAIMED ELSEWHERE.
 \
-\   1. Both tiers compile and run a checked definition, and both REJECT a wrong
-\      stack effect. A tier is a choice of compiler, not a choice of whether the
-\      checker runs: a tier that compiled an unchecked body would be a hole in
-\      the type system reachable with one token. The rejection is asserted on
-\      both, with the same exit code, because that is the property that makes
-\      the selection safe rather than the diagnostic text, which differs (tier 1
-\      adds its own `ncomp:` line).
+\   1. Every available tier compiles and runs a checked definition and rejects
+\      a wrong stack effect. A tier is a choice of compiler, not a choice of
+\      whether the checker runs. ARM tests both tiers; Intel tests tier 1 and
+\      the explicit refusal of tier 0.
 \
-\   2. `set-tier` refuses everything but 0 and 1. A tier is not a truthy flag.
-\      Folding 2 or -1 onto a tier would silently pick a compiler the caller did
-\      not ask for, which is exactly the class of bug the cell exists to prevent.
+\   2. `set-tier` refuses everything but the available tiers. A tier is not a
+\      truthy flag: 2 and -1 cannot silently pick a compiler.
 \
-\   3. Tier 0's BEGIN-snapshot depth DIES WITH THE DEFINITION. This is the
+\   3. On ARM, tier 0's BEGIN-snapshot depth DIES WITH THE DEFINITION. This is the
 \      regression that pays for the file. jit.f pushes a snapshot frame at each
 \      BEGIN and pops it at the back edge; a definition that FAILS between the
 \      two - an undefined word in the body, say - never reaches its back edge,
@@ -74,6 +68,8 @@ create OUT CAP allot
 create ERR CAP allot
 variable OUT-U  variable ERR-U
 variable RC     variable EXITED
+
+: LEGACY? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
@@ -138,11 +134,14 @@ variable RC     variable EXITED
 
 \ ---- 1. both tiers compile, run and check ------------------------------------
 : TEST-BOTH-TIERS ( -- )
-   s" tier 0 is the cold default" T-LABEL
-   s" tier@ . cr" RUN  s" 0" ASSERT-OK
+   s" the default is an available compiler" T-LABEL
+   s" tier@ . cr" RUN
+   LEGACY? if s" 0" else s" 1" then ASSERT-OK
 
-   s" tier 0 compiles and runs a checked definition" T-LABEL
-   s" : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
+   LEGACY? if
+      s" tier 0 compiles and runs a checked definition" T-LABEL
+      s" : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
+   then
 
    s" tier 1 compiles and runs a checked definition" T-LABEL
    s" 1 set-tier : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
@@ -150,16 +149,24 @@ variable RC     variable EXITED
    s" set-tier is read back by tier@" T-LABEL
    s" 1 set-tier tier@ . cr" RUN  s" 1" ASSERT-OK
 
-   s" tier 0 rejects a wrong stack effect" T-LABEL
-   s" : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED
+   LEGACY? if
+      s" tier 0 rejects a wrong stack effect" T-LABEL
+      s" : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED
+   then
 
    s" tier 1 rejects a wrong stack effect" T-LABEL
    s" 1 set-tier : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED ;
 
 \ ---- 2. set-tier admits 0 and 1 and nothing else -----------------------------
 : TEST-SELECTION ( -- )
-   s" set-tier 0 is accepted" T-LABEL
-   s" 0 set-tier tier@ . cr" RUN  s" 0" ASSERT-OK
+   LEGACY? if
+      s" set-tier 0 is accepted" T-LABEL
+      s" 0 set-tier tier@ . cr" RUN  s" 0" ASSERT-OK
+   else
+      s" Intel refuses its unavailable JIT tier" T-LABEL
+      s" 0 set-tier" RUN REJECT-RC ASSERT-RC
+      ERR$ s" tier 1 only" CONTAINS? TTRUE
+   then
 
    s" set-tier 2 is refused" T-LABEL
    s" 2 set-tier" RUN  REJECT-RC ASSERT-RC
@@ -178,17 +185,25 @@ variable RC     variable EXITED
 \ TIER:SELECT, and a plain checked body that names set-tier itself does not find
 \ it: the selection stays one deliberate, named call.
 : TEST-CHECKER-ROWS ( -- )
-   s" tier@ is callable from a checked body on tier 0" T-LABEL
-   s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
+   LEGACY? if
+      s" tier@ is callable from a checked body on tier 0" T-LABEL
+      s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
+   then
 
    s" tier@ is callable from a checked body on tier 1" T-LABEL
    s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
 
-   s" TIER:SELECT selects from a checked body on tier 0" T-LABEL
-   s" require lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   LEGACY? if
+      s" TIER:SELECT selects from a checked body on tier 0" T-LABEL
+      s" require lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   then
 
    s" TIER:SELECT selects from a checked body on tier 1" T-LABEL
-   s" 1 set-tier require lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+   LEGACY? if
+      s" 1 set-tier require lib/tier.f : ST ( n -- ) TIER:SELECT ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+   else
+      s" 1 set-tier require lib/tier.f : ST ( n -- ) TIER:SELECT ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+   then
 
    s" set-tier is undefined in a plain checked body" T-LABEL
    s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
@@ -229,23 +244,29 @@ variable RC     variable EXITED
 \ checked body naming either primitive is refused AND the diagnostic names the
 \ primitive, and the bare name stays unreachable at top level.
 : TEST-MARK-ROWS ( -- )
-   s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
-   s" TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
+   LEGACY? if
+      s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+      s" TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
+   then
 
    s" int-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
    s" 1 set-tier TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
 
-   s" min-in-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
-   s" TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
+   LEGACY? if
+      s" min-in-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+      s" TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
+   then
 
    s" min-in-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
    s" 1 set-tier TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
 
-   s" int-mark is refused in a plain checked body on tier 0" T-LABEL
-   s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
-   \ Tier 0 reports the hidden name; tier 1 reports the trust boundary below.
-   ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
-   ERR$ s" int-mark" CONTAINS? TTRUE
+   LEGACY? if
+      s" int-mark is refused in a plain checked body on tier 0" T-LABEL
+      s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
+      \ Tier 0 reports the hidden name; tier 1 reports the trust boundary below.
+      ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+      ERR$ s" int-mark" CONTAINS? TTRUE
+   then
 
    s" int-mark is refused in a plain checked body on tier 1" T-LABEL
    s" 1 set-tier : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
@@ -253,7 +274,11 @@ variable RC     variable EXITED
 
    s" min-in-mark is refused in a plain checked body" T-LABEL
    s" : BADM ( n n -- ) min-in-mark ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+   LEGACY? if
+      ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+   else
+      ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+   then
    ERR$ s" min-in-mark" CONTAINS? TTRUE
 
    \ The row records an effect; it does not open the name. Both records still
@@ -390,51 +415,71 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" ncomp: cannot compile LN-TOK at " LN+ NAME+ S\" \n" LN+ LN$ ;
 
 : TEST-LONG-NAMES ( -- )
-   s" a 65-byte name with a quotation runs on tier 0" T-LABEL
-   0 65 QUOT$ RUN  s" 42" ASSERT-OK
+   LEGACY? if
+      s" a 65-byte name with a quotation runs on tier 0" T-LABEL
+      0 65 QUOT$ RUN  s" 42" ASSERT-OK
+   then
    s" a 65-byte name with a quotation runs on tier 1" T-LABEL
    1 65 QUOT$ RUN  s" 42" ASSERT-OK
-   s" a 1000-byte name with a quotation runs on tier 0" T-LABEL
-   0 1000 QUOT$ RUN  s" 42" ASSERT-OK
+   LEGACY? if
+      s" a 1000-byte name with a quotation runs on tier 0" T-LABEL
+      0 1000 QUOT$ RUN  s" 42" ASSERT-OK
+   then
    s" a 1000-byte name with a quotation runs on tier 1" T-LABEL
    1 1000 QUOT$ RUN  s" 42" ASSERT-OK
-   s" a 7900-byte name with a quotation runs on tier 0" T-LABEL
-   0 7900 QUOT$ RUN  s" 42" ASSERT-OK
+   LEGACY? if
+      s" a 7900-byte name with a quotation runs on tier 0" T-LABEL
+      0 7900 QUOT$ RUN  s" 42" ASSERT-OK
+   then
    s" a 7900-byte name with a quotation runs on tier 1" T-LABEL
    1 7900 QUOT$ RUN  s" 42" ASSERT-OK
 
-   s" a 7900-byte does> definer runs on tier 0" T-LABEL
-   0 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
+   LEGACY? if
+      s" a 7900-byte does> definer runs on tier 0" T-LABEL
+      0 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
+   then
    s" a 7900-byte does> definer runs on tier 1" T-LABEL
    1 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
 
-   s" a 7900-byte TRUSTED: name runs on tier 0" T-LABEL
-   0 7900 TRUST$ RUN  s" 7" ASSERT-OK
+   LEGACY? if
+      s" a 7900-byte TRUSTED: name runs on tier 0" T-LABEL
+      0 7900 TRUST$ RUN  s" 7" ASSERT-OK
+   then
    s" a 7900-byte TRUSTED: name runs on tier 1" T-LABEL
    1 7900 TRUST$ RUN  s" 7" ASSERT-OK
 
-   s" a caller of a 7900-byte name runs on tier 0" T-LABEL
-   0 7900 CALL$ RUN  s" 6" ASSERT-OK
+   LEGACY? if
+      s" a caller of a 7900-byte name runs on tier 0" T-LABEL
+      0 7900 CALL$ RUN  s" 6" ASSERT-OK
+   then
    s" a caller of a 7900-byte name runs on tier 1" T-LABEL
    1 7900 CALL$ RUN  s" 6" ASSERT-OK
 
-   s" a caller of a 7900-byte word that never returns runs on tier 0" T-LABEL
-   0 7900 NORET$ RUN  s" 6" ASSERT-OK
+   LEGACY? if
+      s" a caller of a 7900-byte word that never returns runs on tier 0" T-LABEL
+      0 7900 NORET$ RUN  s" 6" ASSERT-OK
+   then
    s" a caller of a 7900-byte word that never returns runs on tier 1" T-LABEL
    1 7900 NORET$ RUN  s" 6" ASSERT-OK
 
-   s" a 1000-byte pending name calls its prior word on tier 0" T-LABEL
-   0 1000 PRIOR$ RUN  s" 50" ASSERT-OK
+   LEGACY? if
+      s" a 1000-byte pending name calls its prior word on tier 0" T-LABEL
+      0 1000 PRIOR$ RUN  s" 50" ASSERT-OK
+   then
    s" a 1000-byte pending name calls its prior word on tier 1" T-LABEL
    1 1000 PRIOR$ RUN  s" 50" ASSERT-OK
 
-   s" the longest ENUM variant constructs and matches on tier 0" T-LABEL
-   0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
+   LEGACY? if
+      s" the longest ENUM variant constructs and matches on tier 0" T-LABEL
+      0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
+   then
    s" the longest ENUM variant constructs and matches on tier 1" T-LABEL
    1 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
 
-   s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
-   0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
+   LEGACY? if
+      s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
+      0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
+   then
    s" the longest ENUM family, its MATCH and its local compile on tier 1" T-LABEL
    1 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
 
@@ -464,24 +509,23 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 : TEST-TIER0-CONSTRUCTS ( -- )
-   s" tier 0 compiles a quotation" T-LABEL
-   s" : Q ( -- n ) [: 7 ;] execute ; Q . cr" RUN  s" 7" ASSERT-OK
+   LEGACY? if
+      s" tier 0 compiles a quotation" T-LABEL
+      s" : Q ( -- n ) [: 7 ;] execute ; Q . cr" RUN  s" 7" ASSERT-OK
 
-   s" tier 0 compiles BEGIN / UNTIL" T-LABEL
-   s" : B1 ( -- n ) 0 begin 1 + dup 5 >= until ; B1 . cr" RUN  s" 5" ASSERT-OK
+      s" tier 0 compiles BEGIN / UNTIL" T-LABEL
+      s" : B1 ( -- n ) 0 begin 1 + dup 5 >= until ; B1 . cr" RUN  s" 5" ASSERT-OK
 
-   s" tier 0 compiles BEGIN / WHILE / REPEAT" T-LABEL
-   s" : B2 ( -- n ) 0 begin dup 5 < while 1 + repeat ; B2 . cr" RUN  s" 5" ASSERT-OK
+      s" tier 0 compiles BEGIN / WHILE / REPEAT" T-LABEL
+      s" : B2 ( -- n ) 0 begin dup 5 < while 1 + repeat ; B2 . cr" RUN  s" 5" ASSERT-OK
 
-   s" tier 0 compiles DO / LOOP" T-LABEL
-   s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK
+      s" tier 0 compiles DO / LOOP" T-LABEL
+      s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK
 
-   \ A local bound inside the loop body allocates and releases its frame on
-   \ every iteration while the loop's own values are live. The JIT's frame
-   \ sequences must not touch pooled registers: the count below read back the
-   \ frame's byte size, 16, in place of 3.
-   s" tier 0 keeps loop values across a local bound in the body" T-LABEL
-   s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
+      \ The JIT's frame sequences must not touch pooled loop registers.
+      s" tier 0 keeps loop values across a local bound in the body" T-LABEL
+      s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
+   then
 
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
@@ -507,17 +551,19 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 \ A quotation is compiled inline, so these share one frame stack with their
 \ enclosing definition and must still balance.
 : TEST-NESTED-QUOTATIONS ( -- )
-   s" a quotation inside BEGIN keeps its frames" T-LABEL
-   s" : N1 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N1 . cr"
-   RUN  s" 5" ASSERT-OK
+   LEGACY? if
+      s" a quotation inside BEGIN keeps its frames" T-LABEL
+      s" : N1 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N1 . cr"
+      RUN  s" 5" ASSERT-OK
 
-   s" a BEGIN inside a quotation keeps its frames" T-LABEL
-   s" : N2 ( -- n ) [: 0 begin 1 + dup 4 >= until ;] execute ; N2 . cr"
-   RUN  s" 4" ASSERT-OK
+      s" a BEGIN inside a quotation keeps its frames" T-LABEL
+      s" : N2 ( -- n ) [: 0 begin 1 + dup 4 >= until ;] execute ; N2 . cr"
+      RUN  s" 4" ASSERT-OK
 
-   s" BEGIN inside a quotation inside BEGIN keeps its frames" T-LABEL
-   s" : N3 ( -- n ) 0 begin [: 0 begin 1 + dup 2 >= until ;] execute + dup 6 >= until ; N3 . cr"
-   RUN  s" 6" ASSERT-OK
+      s" BEGIN inside a quotation inside BEGIN keeps its frames" T-LABEL
+      s" : N3 ( -- n ) 0 begin [: 0 begin 1 + dup 2 >= until ;] execute + dup 6 >= until ; N3 . cr"
+      RUN  s" 6" ASSERT-OK
+   then
 
    s" the same nesting compiles on tier 1" T-LABEL
    s" 1 set-tier : N4 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N4 . cr"
@@ -551,11 +597,13 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 \ AFTER printing a correct rejection. These run as real processes because the
 \ in-process fork does not reach that boundary.
 : TEST-EVAL-RECOVERY ( -- )
-   s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
-   S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+   LEGACY? if
+      s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
+      S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
 
-   s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
-   S\" s\q : RVU ( -- ) MISSINGW ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+      s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
+      S\" s\q : RVU ( -- ) MISSINGW ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+   then
 
    s" tier 1 recovers from the same rejection" T-LABEL
    S\" 1 set-tier s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC
@@ -570,7 +618,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    EXEC  s" 7" ASSERT-OK
 
    s" the quotation form still recovers" T-LABEL
-   S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
+   S\" PTR-VARIABLE EV-A variable EV-U\nTRUSTED: EV-RUN ( -- ) EV-A @ EV-U @ evaluate ;\n: EV ( ptr u8 n -- n ) EV-U ! EV-A ! [: EV-RUN ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
    EXEC  s" 70" ASSERT-OK ;
 
 : TEST-ORIGIN ( -- )
@@ -579,38 +627,54 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" absent and empty coverage remain unknown" T-LABEL
    s" 0 4 code-origin .  0 0 code-origin . ' dup -1 code-origin ." EXEC
    0 ASSERT-RC OUT$ S\" -1\n-1\n-1\n" STR= TTRUE
-   s" changing the next tier cannot relabel a retained JIT definition" T-LABEL
-   s" 0 set-tier : OR-J ( -- n ) 42 ; ' OR-J dup 4 + code-origin .  1 set-tier ' OR-J dup 4 + code-origin .  OR-J . " EXEC
-   0 ASSERT-RC OUT$ S\" 0\n0\n42\n" STR= TTRUE
+   LEGACY? if
+      s" changing the next tier cannot relabel a retained JIT definition" T-LABEL
+      s" 0 set-tier : OR-J ( -- n ) 42 ; ' OR-J dup 4 + code-origin .  1 set-tier ' OR-J dup 4 + code-origin .  OR-J . " EXEC
+      0 ASSERT-RC OUT$ S\" 0\n0\n42\n" STR= TTRUE
+   then
    s" native definition publication supplies positive origin" T-LABEL
-   s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  0 set-tier ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+   LEGACY? if
+      s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  0 set-tier ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+   else
+      s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+   then
    0 ASSERT-RC OUT$ S\" 1\n1\n43\n" STR= TTRUE
    s" stored quotations keep their enclosing definition's origin" T-LABEL
-   s" 0 set-tier : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  1 set-tier : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
-   0 ASSERT-RC OUT$ S\" 0\n1\n" STR= TTRUE
-   s" a native CREATE stub cannot relabel its retained JIT does body" T-LABEL
-   s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
-   0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
-   s" a tier change inside an immediate affects only the next definition" T-LABEL
-   S\" 0 set-tier require lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
-   0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
-   s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
-   S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
-   0 ASSERT-RC OUT$ S\" 0\n48\n" STR= TTRUE ;
+   LEGACY? if
+      s" 0 set-tier : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  1 set-tier : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
+      0 ASSERT-RC OUT$ S\" 0\n1\n" STR= TTRUE
+      s" a native CREATE stub cannot relabel its retained JIT does body" T-LABEL
+      s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
+      0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
+      s" a tier change inside an immediate affects only the next definition" T-LABEL
+      S\" 0 set-tier require lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+      0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
+      s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
+      S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
+      0 ASSERT-RC OUT$ S\" 0\n48\n" STR= TTRUE
+   else
+      s" : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
+      0 ASSERT-RC OUT$ S\" 1\n1\n" STR= TTRUE
+   then ;
 
 : TEST-ORIGIN-OVERWRITE ( -- )
    s" a generic instruction patch invalidates native provenance" T-LABEL
    S\" 1 set-tier : OR-PATCHED ( -- n ) 56 ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\n' OR-PATCHED dup 4 + code-origin . ' OR-PATCHED OR-PATCH ' OR-PATCHED dup 4 + code-origin .\n" EXEC
    0 ASSERT-RC OUT$ S\" 1\n-1\n" STR= TTRUE
    s" exported aliases retain the target body's origin" T-LABEL
-   s" 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
-   0 ASSERT-RC OUT$ S\" 0\n0\n51\n" STR= TTRUE
-   s" an interior native overwrite retains both JIT edges and merges an adjacent native body" T-LABEL
-   S\" 0 set-tier variable OL variable OH variable ON variable OE variable OC\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\ncp@ OL ! : OLD ( -- ) 1 emit 2 emit 3 emit 4 emit 5 emit 6 emit 7 emit 8 emit ; cp@ OH ! OR-COUNT OC !\nOL @ 16 + dup ON ! cp! 1 set-tier : NEW1 ( -- n ) 52 ; : NEW2 ( -- n ) 53 ; cp@ OE !\nOL @ dup 4 + code-origin . ON @ OE @ code-origin . OH @ 4 - OH @ code-origin . OL @ OH @ code-origin . OR-COUNT OC @ - . NEW1 . NEW2 .\n" EXEC
-   0 ASSERT-RC OUT$ S\" 0\n1\n0\n-1\n2\n52\n53\n" STR= TTRUE
-   s" a full native overwrite removes the JIT provenance it actually replaces" T-LABEL
-   s" 0 set-tier variable OL cp@ OL ! : OLD ( -- n ) 1 ; OL @ cp! 1 set-tier : NEW-WITH-A-LONG-EXTERNAL-NAME ( -- n ) 54 ; OL @ cp@ code-origin . NEW-WITH-A-LONG-EXTERNAL-NAME ." EXEC
-   0 ASSERT-RC OUT$ S\" 1\n54\n" STR= TTRUE ;
+   LEGACY? if
+      s" 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
+      0 ASSERT-RC OUT$ S\" 0\n0\n51\n" STR= TTRUE
+      s" an interior native overwrite retains both JIT edges and merges an adjacent native body" T-LABEL
+      S\" 0 set-tier variable OL variable OH variable ON variable OE variable OC\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\ncp@ OL ! : OLD ( -- ) 1 emit 2 emit 3 emit 4 emit 5 emit 6 emit 7 emit 8 emit ; cp@ OH ! OR-COUNT OC !\nOL @ 16 + dup ON ! cp! 1 set-tier : NEW1 ( -- n ) 52 ; : NEW2 ( -- n ) 53 ; cp@ OE !\nOL @ dup 4 + code-origin . ON @ OE @ code-origin . OH @ 4 - OH @ code-origin . OL @ OH @ code-origin . OR-COUNT OC @ - . NEW1 . NEW2 .\n" EXEC
+      0 ASSERT-RC OUT$ S\" 0\n1\n0\n-1\n2\n52\n53\n" STR= TTRUE
+      s" a full native overwrite removes the JIT provenance it actually replaces" T-LABEL
+      s" 0 set-tier variable OL cp@ OL ! : OLD ( -- n ) 1 ; OL @ cp! 1 set-tier : NEW-WITH-A-LONG-EXTERNAL-NAME ( -- n ) 54 ; OL @ cp@ code-origin . NEW-WITH-A-LONG-EXTERNAL-NAME ." EXEC
+      0 ASSERT-RC OUT$ S\" 1\n54\n" STR= TTRUE
+   else
+      s" 1 set-tier package OA public : V ( -- n ) 51 ; ;package package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
+      0 ASSERT-RC OUT$ S\" 1\n1\n51\n" STR= TTRUE
+   then ;
 
 \ Generate actual alternating engine/JIT publications up to the physical cap.
 \ No forged count or row store can make this pass without exercising insertion.
@@ -658,28 +722,35 @@ variable OR-U
    OR-PATH$ REMOVE-FILE ;
 
 : TEST-BUILD-SCOPE ( -- )
-   s" build scope selects native and restores default JIT through nested scopes" T-LABEL
+   s" build scope restores the incoming tier through nested scopes" T-LABEL
    S\" require lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
-   0 ASSERT-RC OUT$ S\" 1\n1\n0\n" STR= TTRUE
+   0 ASSERT-RC OUT$
+   LEGACY? if S\" 1\n1\n0\n" else S\" 1\n1\n1\n" then STR= TTRUE
    s" build scope preserves higher-order inputs and outputs" T-LABEL
    S\" require lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
-   0 ASSERT-RC OUT$ S\" 49\n49\n0\n" STR= TTRUE
-   s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
-   S\" require lib/executable-build.f\nrequire lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
-   0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
-   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
+   0 ASSERT-RC OUT$
+   LEGACY? if S\" 49\n49\n0\n" else S\" 49\n49\n1\n" then STR= TTRUE
+   LEGACY? if
+      s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
+      S\" require lib/executable-build.f\nrequire lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
+      0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
+      ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
+   then
    s" arbitrary throws preserve their code and the outer tier" T-LABEL
    S\" 1 set-tier require lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
    s" evaluated source publishes native code inside the scope" T-LABEL
    S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
-   0 ASSERT-RC OUT$ S\" 1\n61\n0\n" STR= TTRUE
-   s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
-   \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
-   \ the saved guard error after the lookups, preserving its rejection code.
-   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
-   REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
-   ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
+   0 ASSERT-RC OUT$
+   LEGACY? if S\" 1\n61\n0\n" else S\" 1\n61\n1\n" then STR= TTRUE
+   LEGACY? if
+      s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
+      \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
+      \ the saved guard error after the lookups, preserving its rejection code.
+      S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
+      REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
+      ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
+   then
    s" raw stores cannot erase retained provenance" T-LABEL
    s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" raw stores cannot disable the executable scope" T-LABEL
@@ -695,7 +766,7 @@ public
    TEST-SELECTION
    TEST-ORIGIN
    TEST-ORIGIN-OVERWRITE
-   TEST-ORIGIN-CAPACITY
+   LEGACY? if TEST-ORIGIN-CAPACITY then
    TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL
@@ -703,9 +774,9 @@ public
    TEST-LONG-NAMES
    TEST-REFUSAL-TOKEN
    TEST-TIER0-CONSTRUCTS
-   TEST-SNAPSHOT-OWNERSHIP
+   LEGACY? if TEST-SNAPSHOT-OWNERSHIP then
    TEST-NESTED-QUOTATIONS
-   TEST-NESTING-BOUND
+   LEGACY? if TEST-NESTING-BOUND then
    TEST-EVAL-RECOVERY
    T-REPORT
    s" tier: ok" type cr ;
