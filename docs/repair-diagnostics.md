@@ -253,7 +253,7 @@ by `evaluate` or generated has no bytes in the file.
   `rejected`: a package's public definition moves other cells than the private
   word of that package whose tail it shares (forth.md **Packages**). It
   carries `token`, the tail as the checker folds it, `package`, `file` and
-  `suggestion`, and the load stops there, rc 70.
+  `suggestion`, and refuses its definition as the using refusals below do.
 - `W-EFFECT-NOT-RECORDED`, with no `repair_class` or `verdict`: a definition
   without a declared effect certified, but its inferred effect cannot be
   recorded, so a later caller does not find it. It carries `word`, the name as
@@ -276,13 +276,16 @@ than one used package export. The object carries `schema_version`, `code`,
 each, in the order `using` searches them: one for the shadow, two or more for
 the ambiguity. Under `--all-errors` without `--json-errors` it is a line that
 begins with the code and names the token and each candidate, `PKG:TOK` for a
-package's. A refused definition ends the check: `tools/check.f` exits 70
-for `E-USING-SHADOW-GLOBAL` and 67 for `E-USING-AMBIGUOUS`, matching the
-load's status in each case; `--verify-only` exits 70 for either refusal.
-Under `--all-errors` the refusal is the report, without an
-`E-STATEMENT-THROW` record.
-The engine refuses an ambiguous use at top level, and under `bin/hb --load` in
-a definition too, before the checker (`docs/forth.md`, Packages).
+package's. The refusal refuses its definition, a definer when the token is in
+its `does>` clause, as an `E-UNDEFINED` does, and `tools/check.f` exits 70.
+Without `--all-errors` or `--verify-only` the check stops there. Under either,
+which report every refused definition, the definition keeps its declared effect
+for later callers and the check goes on and reports every later refusal; the
+refusal is its definition's report, not an `E-STATEMENT-THROW` record or a
+`verification stopped by throw` line. `bin/hb --load` stops at the shadow, rc
+70, as at `E-SHADOWED-ARITY`. The engine refuses an ambiguous use earlier,
+before the checker, at top level and under `bin/hb --load` in a definition
+too, and exits 94 (`docs/forth.md`, Packages).
 
 ## Checking Without Running
 

@@ -342,7 +342,7 @@ variable RC
    s" a bare name a global and a used public share" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
    s" shadow.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " REJECT-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 4 87 92 AT
    s" --all-errors" REJECT-RC CHECK-EXIT
@@ -354,7 +354,7 @@ variable RC
    s" that name as a ['] target" T-LABEL
    s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
    s" tick-shadow.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " REJECT-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 8 91 96 AT ;
 
@@ -362,7 +362,7 @@ variable RC
    s" that name as an is target" T-LABEL
    s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
    s" is-shadow.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " REJECT-RC CHECK-EXIT
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 8 13 100 105 AT ;
 
@@ -388,7 +388,7 @@ variable RC
 : TEST-SHADOWED-ARITY ( -- )
    s" a public whose private twin moves other cells" T-LABEL
    SHADOWED-FIXTURE
-   s" " THROW-RC CHECK-EXIT
+   s" " REJECT-RC CHECK-EXIT
    FX-PATH$ SHADOWED-AT
    s" --all-errors" REJECT-RC CHECK-EXIT
    FX-PATH$ SHADOWED-AT
