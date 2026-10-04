@@ -316,10 +316,36 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    DIAG-BUFFER$ s\" \"code\":\"E-CAP-TRUSTED\"" CONTAINS? TTRUE
    false DIAG-JSON!  DIAG-BUFFER-OFF ;
 
+\ ---- copies of a failed declaration's row ------------------------------------------
+\ A failed declaration's row serves only its own run, and so does every copy:
+\ after that run, and inside a later one, EXPORT refuses the row as uncertified,
+\ so no alias exists for the open gate to bind and a caller names nothing (1).
+\ The run's own export keeps the recovery fact (RECOVERY-PUBLICATION). Tier 1
+\ cannot compile a failed definition, so the case publishes at tier 0 and
+\ restores the caller's tier.
+: COPY-CASES ( -- )
+   s" a failed declaration's row is not exported after its run" T-LABEL
+   tier@ {: saved:n :}
+   0 TIER:SELECT
+   MULTI+
+   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" EV
+   MULTI- 1 T=
+   s" EAUTH-COPY-BAD" RECOVERY-FACT
+   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   E-EXPORT-UNDEFINED T=
+   s" EAUTH-COPY-CALL ( n -- n ) EAUTH-COPY:EAUTH-COPY-BAD" CHECK-CANDIDATE! 1 T=
+   s" nor inside a later run" T-LABEL
+   MULTI+
+   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   E-EXPORT-UNDEFINED T=
+   MULTI- 0 T=
+   saved TIER:SELECT ;
+
 : RUN ( -- )
    T-RESET
    OPEN-LIVE-CASES
    REPLAY+ OPEN-REPLAY-CASES REPLAY-
+   COPY-CASES
    SEALED-CASES
    REPLAY+
    SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES

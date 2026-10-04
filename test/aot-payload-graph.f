@@ -149,7 +149,8 @@ variable IMAGE-U
    s" scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
    s" wide-width" s" checker: captured row width disagrees with its type" CASE-RUN
    s" logical-width" s" checker: captured row width disagrees with its type" CASE-RUN
-   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN ;
+   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
+   s" recovery" s" checker: a failed declaration's row is not portable" CASE-RUN ;
 
 : RUN ( -- )
    T-RESET

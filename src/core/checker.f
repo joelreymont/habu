@@ -13824,6 +13824,11 @@ variable UNSAFE-SYM-N
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
    FEP @ RECOVERY-ROW? {: recovery:bool :}
+   \ A failed declaration's row is uncertified outside its own run, and no copy
+   \ can carry that: a copy is a new record, so tagged in a later run it would
+   \ be that run's recovery fact, and untagged it is an ordinary row an unsealed
+   \ checker binds.
+   FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF E-EXPORT-UNDEFINED throw THEN
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
@@ -18755,6 +18760,11 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
    ASIG-GRAPH-UNIT-OFF @ dup 0= IF drop sym USIG-NEWEST THEN
    dup 0= IF drop ASIG-GRAPH-DIE THEN
    1- {: src:n :}
+   \ A failed declaration's row serves only its own run. The wire has no
+   \ recovery state and the import seeds every row it reads.
+   src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
+      s" checker: a failed declaration's row is not portable" 76 die
+   THEN
    ASIG-GRAPH-MAP-ROOM
    ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
    ASIG-GRAPH-GEN !

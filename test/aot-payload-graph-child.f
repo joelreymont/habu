@@ -218,9 +218,16 @@ TRUSTED: CORRUPT-SOURCE ( -- )
       rec E-DIN@ E-PTR EN.C @ 2 EQ
       1 rec E-DIN@ E-PTR EN.C ! 0 rec E-CONTENT EC.MINI !
       s" graph corruption applied: producer-scalar-zero" type cr
+   THEN
+   \ A failed declaration's row serves only its own diagnostic run: the
+   \ capture refuses it, so no import restores it as a seeded row.
+   s" recovery" MODE? IF
+      MULTI-ERR-BEGIN
+      s" : PAYLOAD-RECOVERY ( n -- n ) drop ;" evaluate
+      MULTI-ERR-END 1 EQ
+      s" graph corruption applied: recovery" type cr
    THEN ;
 TRUSTED: INSTALL ( -- )
-   CORRUPT-SOURCE
    WINDOW-CLOSE
    R0 @ D0 @ PRELUDE-MARK
    PAYLOAD-CAPTURE
@@ -268,6 +275,9 @@ GRAPH-ROUNDTRIP:DECLARE-WIDE
 GRAPH-ROUNDTRIP:ABI-BEGIN
 : PAYLOAD-ABI ( n -- n ) ;
 GRAPH-ROUNDTRIP:ABI-END
+\ Outside GRAPH-ROUNDTRIP, whose wordlist predates the window: the capture takes
+\ a record only from a wordlist the window created.
+GRAPH-ROUNDTRIP:CORRUPT-SOURCE
 
 package GRAPH-ROUNDTRIP
 INSTALL
