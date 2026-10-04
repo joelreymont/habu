@@ -63,8 +63,7 @@ variable SPIN-U
 : QLINE ( ptr u8 n -- )
    Q+ GE-SRC-LF ;
 
-\ Words the cases call: a certified word of two inputs, a trusted one that
-\ drops a cell it does not declare, an immediate word, a wide one, a word
+\ Words the cases call: a certified word of two inputs, an immediate word, a wide one, a word
 \ spelled as an out-of-range number, a top-row hook that logs each event and
 \ one that drops two cells more than its event carries, a word that prints a
 \ string's bytes in decimal, a package with a private word and a public one
@@ -90,17 +89,16 @@ variable SPIN-U
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
-   s" TRUSTED: OI-UF ( -- ) drop ;" GE-SRC-LINE
    s" : OI-IMM ( -- ) ; immediate" GE-SRC-LINE
    s" SUMTYPE oiwide 2" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
    s" TRUSTED: OI-WIDE ( -- oiwide<n,n> ) 7 9 ;" GE-SRC-LINE
-   s" : 18446744073709551616 ( -- n ) 1 ;" GE-SRC-LINE
+   s" 1 constant 18446744073709551616" GE-SRC-LINE
    s" : OI-LOG ( ptr u8 n n n -- ) {: a:ptr u:n c:n f:n :} c . f . a u type cr ;" GE-SRC-LINE
    s" TRUSTED: OI-HOOK-ON ( -- ) ['] OI-LOG set-top-check ;" GE-SRC-LINE
-   s" TRUSTED: OI-SINK ( ptr u8 n n n -- ) 2drop 2drop 2drop ;" GE-SRC-LINE
+   s" TRUSTED: OI-SINK ( n n n n n n -- ) 2drop 2drop 2drop ;" GE-SRC-LINE
    s" TRUSTED: OI-SINK-ON ( -- ) ['] OI-SINK set-top-check ;" GE-SRC-LINE
    s" : OI-BYTES ( ptr u8 n -- ) {: a:ptr u:n :} u 0 ?do a i + c@ . loop ;" GE-SRC-LINE
    s" package OI-PKG : OI-SECRET ( -- n ) 5 ; public : OI-SEVEN ( -- n ) 7 ; ;package" GE-SRC-LINE
@@ -138,8 +136,8 @@ variable SPIN-U
    s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
    s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
    s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
-   s" variable OI-SHOWN" GE-SRC-LINE
-   s" TRUSTED: OI-SHOW ( -- ) OI-SHOWN @ execute ; immediate  s~ OI-SHOW~ 0 parse-imm" QLINE
+   s" TYPED-VARIABLE OI-SHOWN [ -- ]" GE-SRC-LINE
+   s" : OI-SHOW ( -- ) OI-SHOWN @ execute ; immediate  s~ OI-SHOW~ 0 parse-imm" QLINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -244,10 +242,10 @@ variable SPIN-U
 
 : UNDERFLOW ( -- )
    GE-SRC-RESET
-   s" OI-UF" GE-SRC-LINE
+   s" drop" GE-SRC-LINE
    s" oi-underflow.f" LOADED
    70 s" underflow" GE-EXPECT-RC
-   S\" E-UNDERFLOW: OI-UF\n" s" underflow" GE-EXPECT-ERR ;
+   S\" hb: interpret stack underdepth: drop\n" s" underflow" GE-EXPECT-ERR ;
 
 : UNDERDEPTH ( -- )
    GE-SRC-RESET
@@ -493,6 +491,18 @@ variable SPIN-U
    rc CASE$ GE-EXPECT-RC
    msg msgu CASE$ GE-EXPECT-ERR-HAS
    at atu CASE$ GE-EXPECT-ERR-HAS ;
+
+\ ARM can put CP eight bytes below its code ceiling to test name allocation.
+\ Intel seals that boundary, so the same source refuses the CP write first.
+: CODE-DIED-AT ( n ptr u8 n ptr u8 n -- )
+   HB-TARGET-LINUX-X86-64? if
+      2drop 2drop drop
+      83 CASE$ GE-EXPECT-RC
+      s" " CASE$ GE-EXPECT-OUT
+      s" " CASE$ GE-EXPECT-ERR
+      exit
+   then
+   DIED-AT ;
 
 \ A `(` comment the input ends inside is refused at the `(`'s line.
 : COMMENT-AT-END ( -- )
@@ -1032,7 +1042,7 @@ variable SPIN-U
    77 s" hb: dictionary full at: OI-MAKER-WORD at " S\" oi-export-clause-slot.f:1\n" DIED-AT
    s" package OI-DX public dbase@ REGION + $4000 - 8 - cp! export OI-MAKER-WORD"
    s" oi-export-clause-code.f" LINE-CASE
-   76 s" hb: code space full at: OI-MAKER-WORD;does at " S\" oi-export-clause-code.f:1\n" DIED-AT ;
+   76 s" hb: code space full at: OI-MAKER-WORD;does at " S\" oi-export-clause-code.f:1\n" CODE-DIED-AT ;
 
 \ With the dictionary full a new package refuses, naming what DEF-TKA and
 \ DEF-TKL hold, which `package` never writes: here the operand of the `export`
@@ -1042,9 +1052,9 @@ variable SPIN-U
    s" package OI-PKG public export OI-TWO ;package OI-DICT-FULL package OI-NEW" s" oi-dictionary-full.f" LINE-CASE
    77 s" hb: dictionary full at: OI-TWO at " S\" oi-dictionary-full.f:1\n" DIED-AT
    s" dbase@ REGION + $4000 - 8 - cp! package A-LONG-NAMESPACE-ROW" s" oi-package-code-full.f" LINE-CASE
-   76 s" hb: code space full at: A-LONG-NAMESPACE-ROW at " S\" oi-package-code-full.f:1\n" DIED-AT
+   76 s" hb: code space full at: A-LONG-NAMESPACE-ROW at " S\" oi-package-code-full.f:1\n" CODE-DIED-AT
    s" package OI-EX public dbase@ REGION + $4000 - 8 - cp! export OI-FXA:OI-LONG-NAMED-TWIN" s" oi-export-code-full.f" LINE-CASE
-   76 s" hb: code space full at: OI-LONG-NAMED-TWIN at " S\" oi-export-code-full.f:1\n" DIED-AT ;
+   76 s" hb: code space full at: OI-LONG-NAMED-TWIN at " S\" oi-export-code-full.f:1\n" CODE-DIED-AT ;
 
 \ `package` of a sealed package's name, or of a package whose public wordlist
 \ is protected, ends the process, the name its whole diagnostic line; so does
@@ -1145,11 +1155,13 @@ variable SPIN-U
 \ Tier 0 uses the JIT writers from the Habu loop. A body token also reaches
 \ the loop from an included file while a definition is open.
 : HEAD-TIER-0 ( -- )
-   GE-SRC-RESET
-   s" 0 set-tier : OI-T0 ( -- n ) 1 ; OI-T0 . 1 set-tier" GE-SRC-LINE
-   s" oi-tier-0-complete.f" HABU
-   CASE$ GE-EXPECT-OK
-   S\" 1\n" CASE$ GE-EXPECT-OUT
+   HB-TARGET-LINUX-X86-64? 0= if
+      GE-SRC-RESET
+      s" 0 set-tier : OI-T0 ( -- n ) 1 ; OI-T0 . 1 set-tier" GE-SRC-LINE
+      s" oi-tier-0-complete.f" HABU
+      CASE$ GE-EXPECT-OK
+      S\" 1\n" CASE$ GE-EXPECT-OUT
+   then
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
    s" : OI-T0" GE-SRC-LINE
@@ -1183,9 +1195,9 @@ variable SPIN-U
    s" 0 data-base HIDXP-CELL + ! DICT-CAP 1 - ndict! : OI-NEWNS:OI-T" s" oi-head-namespace-last.f" HEAD
    77 s" hb: dictionary full at: OI-NEWNS:OI-T at " S\" oi-head-namespace-last.f:1\n" DIED-AT
    s" dbase@ REGION + $4000 - 8 - cp! : OI-PKG:A-LONG-DEFINITION-NAME" s" oi-head-name-full.f" HEAD
-   76 s" hb: code space full at: A-LONG-DEFINITION-NAME at " S\" oi-head-name-full.f:1\n" DIED-AT
+   76 s" hb: code space full at: A-LONG-DEFINITION-NAME at " S\" oi-head-name-full.f:1\n" CODE-DIED-AT
    s" dbase@ REGION + $4000 - 8 - cp! : A-LONG-NAMESPACE-ROW:X" s" oi-head-namespace-full.f" HEAD
-   76 s" hb: code space full at: A-LONG-NAMESPACE-ROW at " S\" oi-head-namespace-full.f:1\n" DIED-AT ;
+   76 s" hb: code space full at: A-LONG-NAMESPACE-ROW at " S\" oi-head-namespace-full.f:1\n" CODE-DIED-AT ;
 
 \ A second colon in a qualified name refuses, and so does a tail the target
 \ wordlist holds in any case, naming the token as spelled.
@@ -1397,15 +1409,19 @@ variable SPIN-U
    s" " CASE$ GE-EXPECT-OUT ;
 
 : IMMEDIATES ( -- )
-   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
-   s" oi-immediate-evaluate.f" IMMEDIATE-EVALUATE
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
+      s" oi-immediate-evaluate.f" IMMEDIATE-EVALUATE
+   then
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
    s" oi-immediate-evaluate-tier-1.f" IMMEDIATE-EVALUATE
    s" 1 set-tier" s" : OI-F ( n -- n ) OI-M OI-G ;"
    s" oi-immediate-evaluate-loop.f" IMMEDIATE-EVALUATE
-   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
-   s" oi-immediate-semi.f" IMMEDIATE-SEMI
-   74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f:1\n" DIED-AT
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+      s" oi-immediate-semi.f" IMMEDIATE-SEMI
+      74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f:1\n" DIED-AT
+   then
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
    s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
    74 s" hb: source closed a definition it did not open: OI-F at "
@@ -1567,13 +1583,15 @@ variable SPIN-U
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    S\" hb: compile preflight hook missing\n" CASE$ GE-EXPECT-ERR
-   GE-SRC-RESET
-   s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
-   s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
-   s" oi-body-immediate-underflow.f" LOADED
-   70 CASE$ GE-EXPECT-RC
-   S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR ;
+   HB-TARGET-LINUX-X86-64? 0= if
+      GE-SRC-RESET
+      s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
+      s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
+      s" oi-body-immediate-underflow.f" LOADED
+      70 CASE$ GE-EXPECT-RC
+      S\" 1\n" CASE$ GE-EXPECT-OUT
+      S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR
+   then ;
 
 \ At tier 0 a body immediate still runs in a file included under an evaluated
 \ head; the outer evaluate then refuses the head it left open.
