@@ -3,10 +3,8 @@ require lib/test.f
 
 package ENUM-CTOR-COLLIDE-BAD
 
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-
 : ECOL:RED ( -- n ) 37 ;
-: DECLARE ( -- ) s" ENUM-DECL:ED-RUN ecol green red ;ENUM" EV ;
+: DECLARE ( -- ) s" ENUM-DECL:ED-RUN ecol green red ;ENUM" evaluate-closed ;
 
 public
 

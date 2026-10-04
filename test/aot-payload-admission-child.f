@@ -15,9 +15,6 @@ public
 
 package PAYLOAD-ADMISSION-TEST
 
-\ The fixed programs below contain declarations only and leave no stack values.
-TRUSTED: DEFINITIONS ( ptr u8 n -- ) evaluate ;
-
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 
 \ The window's four coordinates, latched by hand because this fixture closes a
@@ -34,11 +31,11 @@ TRUSTED: DEFINITIONS ( ptr u8 n -- ) evaluate ;
 
 : MEMO-REUSE ( -- )
    PRIME-NEXT
-   s" package PAYLOAD-FIRST public : ANCHOR ( -- ) ; ;package" DEFINITIONS
+   s" package PAYLOAD-FIRST public : ANCHOR ( -- ) ; ;package" evaluate-closed
    END-BOUNDS
    s" PAYLOAD-FIRST" s" ANCHOR" AOT-CAPTURE:ACAP-MEMBER? TRUE!
    PRIME-NEXT
-   s" package PAYLOAD-SECOND public : ANCHOR ( -- ) ; ;package" DEFINITIONS
+   s" package PAYLOAD-SECOND public : ANCHOR ( -- ) ; ;package" evaluate-closed
    END-BOUNDS
    s" PAYLOAD-SECOND" s" ANCHOR" AOT-CAPTURE:ACAP-MEMBER? TRUE!
    s" PAYLOAD-FIRST" s" ANCHOR" AOT-CAPTURE:ACAP-MEMBER? 0= TRUE!
@@ -59,7 +56,7 @@ public
    \ The retained compatibility host need not carry a new payload owner to test
    \ this earlier admission: every altered band must refuse before owner reads.
    AOT-ARM:WINDOW-OPEN-PERSISTENT
-   s" variable PAYLOAD-CELL : PAYLOAD-WORD ( n -- n ) 1+ ;" DEFINITIONS
+   s" variable PAYLOAD-CELL : PAYLOAD-WORD ( n -- n ) 1+ ;" evaluate-closed
    END-BOUNDS
    AOT-ARM:WINDOW$ AOT-CAPTURE:ACAP-PAYLOAD-BAND? TRUE!
    mode 7 = if s" payload matching band: ok" type cr exit then

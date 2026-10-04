@@ -219,8 +219,6 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ nothing, and a refused clause must leave nothing at all. The refusal row makes
 \ the engine print its own `does> at <file>:1` line on stderr before it throws:
 \ that line IS the refusal being measured, not a test failure.
-TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
-
 : CDD-SECTION-RESIDENT ( -- )
    s\" 8 CDD-RES-D CDD-RES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer's created word certifies as the clause effect" T-LABEL
@@ -262,8 +260,8 @@ TRUSTED: CDD-EVAL ( ptr u8 n -- ) evaluate ;
    s" source order: the definition after a definer creates nothing" T-LABEL
    s" C22 ( -- ptr n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T=
    s" a clause its body contradicts is refused" T-LABEL
-   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" CDD-EVAL ;] 70 TTHROWSQ
-   s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" CDD-EVAL
+   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;] 70 TTHROWSQ
+   s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed
    s\" 6 CDD-RES-AFTER CDD-AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" and leaves nothing for the next definition to inherit" T-LABEL
    s" C23 ( -- ptr n ) CDD-AFTER-MADE" CDD-VERDICT UNRESOLVED T= ;
@@ -479,14 +477,14 @@ E-GENERATES-ROW constant E-GEN-ROW
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
-   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" a row on a definer whose clause states its word is refused" T-LABEL
-   [: s\" generates: CDD-RES-D ( -- ptr n )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
-   s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ptr n )\n" CDD-EVAL
+   [: s\" generates: CDD-RES-D ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   s\" : CDD-G2 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-G2 ( -- ptr n )\n" evaluate-closed
    s" a second row on one definer is refused" T-LABEL
-   [: s\" generates: CDD-G2 ( -- ptr n )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ
+   [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect the checker cannot parse is refused" T-LABEL
-   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" CDD-EVAL ;] E-GEN-ROW TTHROWSQ ;
+   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
 
 : MAIN ( -- )
    T-RESET

@@ -4,10 +4,9 @@ require lib/test.f
 
 package QUOT-ROLLBACK-TEST
 
-\ TRY runs DECL on a copy of the string because a throw restores the depth catch
+\ TRY evaluates a copy of the string because a throw restores the depth catch
 \ began with, and it drops both copies so a refusal leaves only its code.
-TRUSTED: DECL ( ptr u8 n -- ) evaluate ;
-: TRY ( ptr u8 n -- n ) [: 2dup DECL ;] catch {: rc:n :} 2drop rc ;
+: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;
 
 : RUN ( -- )
    T-RESET

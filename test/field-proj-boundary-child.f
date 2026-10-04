@@ -14,8 +14,13 @@ variable LENGTH
 
 \ Source evaluation is the tested public load boundary; retain no dynamic
 \ stack results across catch, so both its success and failure are balanced.
-TRUSTED: LOAD-SOURCE ( -- ) SOURCE @ LENGTH @ evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
+: LOAD-SOURCE ( -- ) SOURCE @ LENGTH @ evaluate-closed ;
+
+\ A closed text leaves nothing, so one that computes a value stores it in
+\ RESULT, qualified: the texts run outside this package's private scope.
+public
+variable RESULT
+private
 
 : TRY ( ptr u8 n -- n )
    LENGTH ! SOURCE ! [: LOAD-SOURCE ;] catch ;
@@ -68,13 +73,17 @@ public
    41 LOCAL-SHADOW 41 =ASSERT
    s" package FIELD-SHADOW : FIELD-PROJ! ( -- n ) 42 ;" TRY 0 =ASSERT
    s" FP-SHADOW ( -- n ) FIELD-PROJ!" CHECK-CANDIDATE! -1 =ASSERT
-   s" : CALL ( -- n ) FIELD-PROJ! ; CALL" EV-N 42 =ASSERT
+   s" : CALL ( -- n ) FIELD-PROJ! ; CALL FIELD-BOUNDARY-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ 42 =ASSERT
    s" ;package" TRY 0 =ASSERT
    s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-CANDIDATE! 0 =ASSERT
 
    \ The trusted forwarder really used this tier, and the earlier projections
    \ remain callable after all refusals.
-   s" ' FIELD-PROJ-LIB:FP-ARM dup 4 + code-origin" EV-N tier@ =ASSERT
+   s" ' FIELD-PROJ-LIB:FP-ARM dup 4 + code-origin FIELD-BOUNDARY-TEST:RESULT !"
+      evaluate-closed
+   RESULT @ tier@ =ASSERT
    0 FP-GETA 10 =ASSERT
    1 FP-GETB 40 =ASSERT
    0 FPG-GET 42 =ASSERT
