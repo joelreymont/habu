@@ -1148,6 +1148,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
       engine-provided OF ENDOF
       held OF ENDOF
       incomplete OF PROC-OUTCOME>RC drop ENDOF
+      deferred OF ENDOF
    ;MATCH ;
 
 \ The check's packet AT bytes into its output: the line from there, empty
@@ -1681,6 +1682,25 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
+\ A top-level word no scope defines, at bytes 2-12; then the line after a word
+\ that parses its own input, deferred to the run where the word stands.
+: UNDEFINED-AT-TOP ( -- ptr u8 n )  s\" 1 NOSUCHWORD drop\n" ;
+: DEFERRED-AT-TOP ( -- ptr u8 n )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
+
+: TOP-LEVEL-TURNS ( -- )
+   INITIALIZE
+   A-PATH UNDEFINED-AT-TOP 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   UNDEFINED-AT-TOP A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 0 2 0 12 1 s" E-UNDEFINED-TOP-LEVEL" DIAG+ PUBLISHES
+   A-PATH DEFERRED-AT-TOP 2 CHANGES
+   SAY
+   DEFERRED-AT-TOP A-PATH CHECKS
+   A-PATH s" deferred" COMPLETED
+   A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -1704,7 +1724,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" using-shadow" [: GLOBAL-USED-TURNS ;] TALK
    s" using-clause" [: CLAUSE-USED-TURNS ;] TALK
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
-   s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK ;
+   s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
+   s" top-level" [: TOP-LEVEL-TURNS ;] TALK ;
 
 public
 

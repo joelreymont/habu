@@ -3,8 +3,8 @@
 This is the stable machine contract for Habu checker repair feedback. The
 implemented surface today is one JSON object per failed top-level definition from
 the native `tools/check.f` runner with `--json-errors --all-errors`, plus the
-records below for a refusal in another shape, and a warning outside the
-contract. A repair packet is the normalized LLM prompt object built from those
+records below for a refusal in another shape, a deferral, and a warning outside
+the contract. A repair packet is the normalized LLM prompt object built from those
 checker diagnostics.
 
 ## Checker Diagnostic JSON
@@ -15,7 +15,8 @@ lines even when the checker rejects the input.
 The native gate enforces the required field set with `tools/gate-json-assert.f
 diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`,
 each record in the shape its `code` names: a declaration, a storage refusal, a
-span, an input, a refused record, a using refusal, a warning, or otherwise a definition.
+span, a deferral, an input, a refused record, a using refusal, a warning, or
+otherwise a definition.
 `tools/diag-code.f` holds a row for every code whose record is not a
 definition's: its shape, the repair classes it names and the field a refused
 record adds. That check and `tools/repair-packet.f` both read it.
@@ -42,7 +43,7 @@ Fields:
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
 | `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LOCAL-NAME-TOO-LONG`, `E-TOO-MANY-LOCALS`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, `E-INPUT-UNDERFLOW`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
-| `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
+| `verdict` | string | required | `rejected` or `uncheckable`, or `deferred` on a deferral; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
 | `token` | string | required | Token that anchored the diagnostic. |
 | `dead_owner` | string | dead-code only | Terminating token (`throw`, `die`, `exit`, `leave`, `again`, or a no-return word) that made the later token unreachable. |
@@ -128,7 +129,7 @@ continues past it under `--all-errors`, counting it as a refusal.
 
 A span record locates a refusal that is not a definition's. It carries `schema_version`, `code`, `repair_class`, `verdict`
 `rejected`, the `token` with its `file`, `line`, `column`, `byte_start` and
-`byte_end`, and `suggestion`, and no definition fields. There are four:
+`byte_end`, and `suggestion`, and no definition fields. There are six:
 
 - `E-STATEMENT-THROW`, repair class `unknown_rejection`: a top-level statement
   threw while the checker checked it, with or without `--all-errors`, such as a
@@ -160,6 +161,19 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   past it, counting it as a refusal. A row in text that `evaluate` runs is
   refused by the run alone, which has no record of its token's place, so that
   record carries none.
+- `E-UNDEFINED-TOP-LEVEL`, repair class `unknown_rejection`, and
+  `E-BAD-QUALIFIED-TOP-LEVEL`, repair class `fix_qualified_name`: a top-level
+  token the load runs or ticks resolves nowhere, or is a malformed qualified
+  name, where a body's reference to it is `E-UNDEFINED` or `E-BAD-QUALIFIED`
+  under the same class. The source pre-pass asks the checker in source order,
+  over the declarations before the token (`src/habu/verify-source.f`
+  `TOP-TOKEN`, `checker.f` `CHECKER-VERIFY-TOP`); a number the engine's reader
+  takes is no name. The refusal ends the check, as a definition's does, except
+  under `--all-errors` and `--verify-only`, which count it and go on at the
+  next statement the pre-pass reads. Without `--json-errors`, `--all-errors`
+  writes the line `E-UNDEFINED-TOP-LEVEL habu: <file>:<line>:<column>:
+  undefined word '<token>'`, or `E-BAD-QUALIFIED-TOP-LEVEL` with `malformed
+  qualified name`.
 - `E-UNTERMINATED-STRING`, repair class `close_string`: a string literal opened
   at `token` does not close in the checked source.
 - `E-MALFORMED-REGISTRY-ROW`, repair class `close_primitive_row`: a `PRIM:` or
@@ -175,6 +189,19 @@ close`, or `primitive-axiom row` in place of `string literal`. Under
 `--verify-only` a string or group discovery stops at keeps the closure's
 `discovery rejected: unterminated string or locals group` line among the
 prose and adds its record.
+
+A deferral record locates a stretch of top-level source the source pre-pass
+left to the run, and is no refusal: code `W-CHECK-DEFERRED`, repair class
+`rewrite_uncheckable`, `verdict` `deferred`, the `token` with its `file`,
+`line`, `column`, `byte_start` and `byte_end`, and `suggestion`, with no
+`throw_code` or definition fields. The token runs a word that may read the
+source after it (it parses or is deferred), or names a word only a rendering
+statement before it may define, so the tokens from it to the next statement the
+pre-pass reads are the run's to know, and none of them is verified. A word that
+renders source opens no stretch: it reads only the text it renders. Only
+`--verify-only` reports it, once per such stretch that holds anything but
+blanks and comments; see Checking Without Running for the file's verdict. It counts as no
+refusal and has no repair packet.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -275,8 +302,9 @@ by `evaluate` or generated has no bytes in the file.
   `src/core/render.f`), so a definition only the run builds, with `evaluate`,
   gets none.
 
-The checker refuses a bare token in a definition that resolves in a used
-package and somewhere else as well, at the token, with a using object. Each code
+The checker refuses a bare token in a definition or at top level that resolves
+in a used package and somewhere else as well, at the token, with a using
+object. Each code
 names its repair class: `E-USING-SHADOW-GLOBAL` / `disambiguate_using_shadow`
 is a token a global and a used package's public both export, and
 `E-USING-AMBIGUOUS` / `disambiguate_using_ambiguous` one the publics of more
@@ -297,13 +325,18 @@ refusal is its definition's report, not an `E-STATEMENT-THROW` record or a
 `verification stopped by throw` line. `bin/hb --load` stops at the shadow, rc
 70, as at `E-SHADOWED-ARITY`. The engine refuses an ambiguous use earlier,
 before the checker, at top level and under `bin/hb --load` in a definition
-too, and exits 94 (`docs/forth.md`, Packages).
+too, and exits 94 (`docs/forth.md`, Packages). A top-level token's refusal
+refuses the token by the same rule: `tools/check.f` exits 70 on every path and
+stops there or goes on as above, where `bin/hb --load` exits 105 at the shadow
+(`ENGINE-ERROR:USING-SHADOW-GLOBAL`) and 94 at the ambiguity. The refused
+token runs no word, so one naming a renderer such as `evaluate` leaves no
+later name to the run (`W-CHECK-DEFERRED`).
 
 ## Checking Without Running
 
 `tools/check.f --verify-only FILE` reports what `bin/hb --load FILE` would
-refuse of FILE's definitions and runs none of FILE or its closure: no lint, no
-run stage. `--verify-only --stdin-path PATH` checks stdin's bytes as the file
+refuse of FILE's definitions and top-level tokens and runs none of FILE or its
+closure: no lint, no run stage. `--verify-only --stdin-path PATH` checks stdin's bytes as the file
 at PATH, which need not exist. Both call `CHECK:VERIFY-BYTES`
 (`tools/check-verify-core.f`), the operation a language server calls in its own
 process.
@@ -333,13 +366,26 @@ process.
 | `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
 | `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
 | `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
+| `deferred` | Nothing is refused, but the source pre-pass left a stretch of top-level source in the closure or the subject to the run: a `W-CHECK-DEFERRED` packet locates each such stretch, and its tokens are not verified. | 0 |
+
+Any refusal makes the verdict `refused`, deferred stretches or not: the load
+fails at the refusal whatever the run would make of a stretch. Without one, a
+deferred stretch makes it `deferred`, which exits 0 because the load may accept
+the stretch, and whose packets and closing line keep a caller from reading
+that 0 as `verified`; the language server publishes those packets at
+Information severity. Only this child reports a stretch: check.f's default
+mode runs the program after its pre-pass, so the run judges what the pre-pass
+left to it. The verdict concerns top-level source: a definition the checker
+leaves to the run, one naming a word only a rendering statement may define
+(`docs/forth.md`), is not reported and does not make the file `deferred`.
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
-for `engine-provided`, `held` and `incomplete`. A verification that stopped,
-at a word with no name after it, a string or primitive-axiom row its file
-never closes, a statement that threw, or where discovery stopped, adds the
-record the other modes write for it, at that place, after the packets made
+for `engine-provided`, `held`, `incomplete` and `deferred`, for which it is
+`check.f: a stretch deferred to the run is not verified`. A verification that
+stopped, at a word with no name after it, a string or primitive-axiom row its
+file never closes, a statement that threw, or where discovery stopped, adds
+the record the other modes write for it, at that place, after the packets made
 before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
@@ -391,12 +437,13 @@ written as the checker makes it, so a child that dies has passed on every
 packet made before; then one result line. The first form verifies with all
 errors, going past a duplicate definition; for each it writes the second
 form's stopped line, code 78, among the packets, which the operation replaces
-by the duplicate's record. It answers `check-verify: verified`, `refused` or
-`held`, or the second form's `stopped` line for a throw that ended it; stderr
+by the duplicate's record. It answers `check-verify: verified`, `refused`,
+`deferred` or `held`, or the second form's `stopped` line for a throw that
+ended it; stderr
 carries prose, including `PATH: verification stopped by throw RC after N
 rejected definitions` for each file a throw stopped. The second form stops at
-the first refused definition, as the load does, names the subject LABEL in its
-packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
+the first refused definition or top-level token, as the load does, names the
+subject LABEL in its packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
 DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it
 stopped at starts (the one it read last, or the opener of the statement it was
 in), where the name it refused as a duplicate starts and its length (0 when it
@@ -408,7 +455,8 @@ Because check.f's default pre-pass runs in this child, it resolves the
 engine's words and those the subject loads, the words its run has. A word only
 the checking process loaded, such as `lib/fs.f`'s `FILE-SIZE` under check.f or
 `lib/test.f`'s `T=` in a harness that checks in its own process, is
-`E-UNDEFINED` to it, and check.f reports it there in every mode. The pre-pass
+`E-UNDEFINED` to it, `E-UNDEFINED-TOP-LEVEL` at top level, and check.f reports
+it there in every mode. The pre-pass
 child has the run stage's deadline, `--deadline-ms` included; one that ends
 without its result line fails the check with 69, as `incomplete` fails
 `--verify-only`, with its closing line on stderr.
@@ -419,7 +467,7 @@ Repair packets are the LLM-facing object passed back after a checker rejection.
 They preserve the evidence present in the source diagnostic without inventing
 fields that its shape cannot supply. `tools/repair-packet.f` builds one packet
 from the first refusal, in the shape that refusal's record has, and counts only
-refusals: a warning has no packet. Schema 1 has definition, declaration,
+refusals: a deferral or a warning has no packet. Schema 1 has definition, declaration,
 storage, span, input, refused-record and using packet shapes.
 
 Definition packet fields:
@@ -506,7 +554,7 @@ Span packets carry a span record's evidence:
 | `column` | integer | required | One-based source column. |
 | `byte_start` | integer | required | Token start byte. |
 | `byte_end` | integer | required | Token end byte. |
-| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING` or `E-MALFORMED-REGISTRY-ROW`. |
+| `code` | string | required | `E-STATEMENT-THROW`, `E-UNTERMINATED-STRING`, `E-MALFORMED-REGISTRY-ROW`, `E-UNDEFINED-TOP-LEVEL` or `E-BAD-QUALIFIED-TOP-LEVEL`. |
 | `throw_code` | integer or null | required | The code a statement threw; null for any other span. |
 | `repair_class` | string | required | Stable repair bucket. |
 | `suggestion` | string | required | Checker repair hint. |
