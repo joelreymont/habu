@@ -90,7 +90,9 @@ public
 
 \ Open the shadow the window's x86-64 routines are filed in: the build host's
 \ compiler lowers each definition the window loads for x86-64 as well.
-: OPEN-SHADOW ( -- ) X64ABI:BINDING NSHADOW:OPEN ;
+: OPEN-SHADOW ( bool -- )
+   if X64ABI:BINDING NSHADOW:OPEN-NATIVE
+   else X64ABI:BINDING NSHADOW:OPEN then ;
 
 \ Link the capture and write its image at path, translating its fixed slots
 \ from the host's table (tools/native-layout.f).

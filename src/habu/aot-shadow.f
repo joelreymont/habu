@@ -61,8 +61,10 @@ DYNAMIC-BUFFER SH-QXT n              \ exact host entry of an anonymous function
 DYNAMIC-BUFFER SH-QEM n              \ its owning shadow emission
 DYNAMIC-BUFFER SH-QFUN n             \ its HIR function ordinal
 DYNAMIC-BUFFER SH-QROW n             \ its assigned anonymous shadow row
+DYNAMIC-BUFFER SH-LIVE n             \ capture row retained by native x86 reach
 variable SH-WORK-N
 variable SH-OUT-N
+variable SH-NATIVE-READY
 
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
@@ -133,27 +135,9 @@ variable SH-OUT-N
    idx SH-WINDOW? 0= if 0 exit then
    idx SH-SLOT SH-HEAD @ ;
 
-\ The lowest dictionary record for an xt is the capture's target identity.
-\ A later EXPORT alias can ship that same entry after the source was retired
-\ or stripped, so attach its shipped row to the source's shadow map row.
-: SH-INDEX ( -- )
-   ACAP-W-R1 @ ACAP-W-R0 @ - {: n:n :}
-   n SH-SOURCE-RESERVE  n SH-HEAD-RESERVE
-   ACAP-REC-ALL @ SH-NEXT-RESERVE
-   NSHADOW:RECORDS SH-MARK-RESERVE
-   NSHADOW:RECORDS SH-WORK-RESERVE
-   NSHADOW:RECORDS SH-OUT-RESERVE
-   NSHADOW:EMISSIONS SH-EMROOT-RESERVE
-   n 0 ?do -1 i SH-SOURCE !  0 i SH-HEAD ! loop
+: SH-REHEAD ( -- )
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do 0 i SH-SLOT SH-HEAD ! loop
    ACAP-REC-ALL @ 0 ?do 0 i SH-NEXT ! loop
-   NSHADOW:EMISSIONS 0 ?do -1 i SH-EMROOT ! loop
-   NSHADOW:RECORDS 0 ?do
-      i NSHADOW:RECORD@ {: idx:n :}
-      idx SH-WINDOW? if i idx SH-SLOT SH-SOURCE ! then
-      i NSHADOW:EMISSION@ {: e:n :}
-      e SH-EMROOT @ 0< if i e SH-EMROOT ! then
-      0 i SH-MARK !  -1 i SH-OUT !
-   loop
    ACAP-W-R1 @ ACAP-W-R0 @ ?do
       i ACAP-DICT>CAP {: k:n :}
       k 0 >= if
@@ -165,7 +149,29 @@ variable SH-OUT-N
             then
          then
       then
+   loop ;
+
+\ The lowest dictionary record for an xt is the capture's target identity.
+\ A later EXPORT alias can ship that same entry after the source was retired
+\ or stripped, so attach its shipped row to the source's shadow map row.
+: SH-INDEX ( -- )
+   ACAP-W-R1 @ ACAP-W-R0 @ - {: n:n :}
+   n SH-SOURCE-RESERVE  n SH-HEAD-RESERVE
+   ACAP-REC-ALL @ SH-NEXT-RESERVE
+   NSHADOW:RECORDS SH-MARK-RESERVE
+   NSHADOW:RECORDS SH-WORK-RESERVE
+   NSHADOW:RECORDS SH-OUT-RESERVE
+   NSHADOW:EMISSIONS SH-EMROOT-RESERVE
+   n 0 ?do -1 i SH-SOURCE ! loop
+   NSHADOW:EMISSIONS 0 ?do -1 i SH-EMROOT ! loop
+   NSHADOW:RECORDS 0 ?do
+      i NSHADOW:RECORD@ {: idx:n :}
+      idx SH-WINDOW? if i idx SH-SLOT SH-SOURCE ! then
+      i NSHADOW:EMISSION@ {: e:n :}
+      e SH-EMROOT @ 0< if i e SH-EMROOT ! then
+      0 i SH-MARK !  -1 i SH-OUT !
    loop
+   SH-REHEAD
    0 SH-WORK-N !  0 SH-OUT-N !  0 SH-QN ! ;
 
 \ ---- rows ---------------------------------------------------------------------
@@ -321,6 +327,25 @@ variable SH-OUT-N
       SH-WORK-N @ SH-WORK @ SH-SCAN
    repeat ;
 
+\ Native capture asks for reach before names and checker facts are finalized.
+\ Seed only named candidates, close the x86 graph once, and answer the later
+\ capture-row liveness query from its exact source-record mapping.
+: SH-PRE-NAMED ( -- )
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
+   loop ;
+
+: SH-NATIVE-LIVE-MAP ( -- )
+   ACAP-REC-ALL @ SH-LIVE-RESERVE
+   ACAP-REC-ALL @ 0 ?do 0 i SH-LIVE ! loop
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i ACAP-DICT>CAP {: k:n :}
+      k 0 >= i AOT-REC AOT-RWID -1 <> and if
+         i AOT-REC AOT-RXT ACAP-TGT>REC SH-SOURCE@ {: row:n :}
+         row 0 >= if row SH-MARK @ k SH-LIVE ! then
+      then
+   loop ;
+
 \ Reserve each reached map row's place in publication order before copying any
 \ emission: a call can target a routine published later than its caller.
 : SH-QASSIGN ( n -- ) {: e:n :}
@@ -470,18 +495,40 @@ CELL 2 * constant SH-TRAILER-BYTES
 
 public
 
+\ The native x86 collector shares the ordinary shadow graph. Its first pass
+\ runs before CAPTURE-NATIVE settles names; the final v15 writer reuses these
+\ marks after the collector has added any live `;does` companion names.
+: SHADOW-PRE-REACH ( -- )
+   0 SH-NATIVE-READY !
+   NSHADOW:NATIVE? 0= if E-NSHADOW-STATE throw then
+   SH-ORDER
+   SH-PRE-NAMED
+   SH-NUMBER
+   SH-INDEX
+   SH-REACH
+   SH-NATIVE-LIVE-MAP
+   1 SH-NATIVE-READY ! ;
+
+: SHADOW-LIVE? ( n -- bool ) {: k:n :}
+   SH-NATIVE-READY @ 0= if E-NSHADOW-STATE throw then
+   k 0 < k ACAP-REC-ALL @ >= or if E-NSHADOW-ROW throw then
+   k SH-LIVE @ 0<> ;
+
 \ Fill the shadow tables from an open shadow's map, after CAPTURE and against the
 \ dictionary it captured.
 : SHADOW-CAPTURE ( -- )
    ACAP-TIDX-ND @ ndict@ <> if
       s" aot-capture: the shadow is read only right after the capture it belongs to" 74 die
    then
+   SH-NATIVE-READY @ {: prepared:bool :}
+   0 SH-NATIVE-READY !
    AOT-SHADOW:RESET
    NSHADOW:OPEN? 0= if exit then
-   SH-ORDER
-   SH-NUMBER
-   SH-INDEX
-   SH-REACH
+   prepared if
+      SH-NUMBER SH-REHEAD
+   else
+      SH-ORDER SH-NUMBER SH-INDEX SH-REACH
+   then
    SH-ASSIGN
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;

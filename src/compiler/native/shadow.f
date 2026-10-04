@@ -37,16 +37,22 @@
 
 require lib/prelude.f
 require lib/errors.f
+require lib/le.f
 require src/core/bytes.f
+require src/habu/address-carrier.f
 require src/compiler/target.f
 require src/compiler/binding.f
+require src/compiler/native/hir.f
 require src/compiler/session/emission.f
 require src/compiler/session/lease.f
 
 package NSHADOW
 private
 
+TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
+
 variable OPENED                      \ a shadow is open
+variable NATIVE                      \ its source already emitted for this binding
 TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
 
 \ ---- the emissions -----------------------------------------------------------
@@ -109,6 +115,12 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 \ ---- taking a sealed emission -------------------------------------------------
 \ Only bytes of the machine the shadow's binding names are its routines.
 : TARGET-CK ( NART:emission -- )
+   NATIVE @ 0<> if
+      dup NART:PLACED? 0= if E-NSHADOW-TARGET throw then
+      NART:BINDING SH-BIND @ CBIND:SAME?
+      0= if E-NSHADOW-TARGET throw then
+      exit
+   then
    NART:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then ;
 
@@ -118,6 +130,48 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    e NART:SIZE {: size:n :}
    at size + CODE-BUF-RESERVE
    e NART:BYTES at CODE-BUF size BYTE-COPY ;
+
+\ A native emission is already placed. Keep its exact recorded rows, while
+\ returning only their carried fields to the unplaced form the shadow linker
+\ consumes. Internal relative calls need no row and retain their displacement.
+5 constant REL32-BYTES
+1 constant REL32-FIELD
+$E8 constant CALL-OP
+$E9 constant TAIL-OP
+
+: NATIVE-CALLS ( NART:emission -- ) {: a:NART:emission :}
+   a NART:CALL-SITES 0 ?do
+      a i NART:CALL-SITE@ {: off:n :}
+      off 0 < off REL32-BYTES + a NART:SIZE > or if E-NSHADOW-ROW throw then
+      a i NART:CALL-KIND@ {: kind:n :}
+      kind NEMIT:CALL = if CALL-OP else
+         kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
+      then {: opcode:n :}
+      CODE-N @ off + CODE-BUF {: p:ptr :}
+      p c@ opcode <> if E-NSHADOW-ROW throw then
+      0 p REL32-FIELD + LE:U32!
+   loop ;
+
+: NATIVE-FUN-OFF ( NART:emission n -- n ) {: a:NART:emission v:n :}
+   a NART:PLACEMENT {: at:n :}
+   a NART:FUNCTIONS 0 ?do
+      a i NART:FUNCTION-OFFSET@ {: off:n :}
+      at off + v = if off unloop exit then
+   loop
+   -1 ;
+
+: NATIVE-ADDRS ( NART:emission -- ) {: a:NART:emission :}
+   a NART:ADDR-SITES 0 ?do
+      a i NART:ADDR-SITE@ {: off:n :}
+      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + a NART:SIZE > or
+         if E-NSHADOW-ROW throw then
+      CODE-N @ off + CODE-BUF {: p:ptr :}
+      p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
+      a i NART:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+         a p ADDRESS-CARRIER:MOVABSV NATIVE-FUN-OFF {: fun:n :}
+         fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
+      then
+   loop ;
 
 : COPY-FUNS ( NART:emission -- )
    {: e:NART:emission :}
@@ -188,6 +242,7 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    e TARGET-CK
    0 PENDING !
    e COPY-BYTES
+   NATIVE @ 0<> if e NATIVE-CALLS e NATIVE-ADDRS then
    e COPY-FUNS
    e COPY-CALLS
    e COPY-ADDRS
@@ -236,17 +291,26 @@ public
    OPENED @ 0<> if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
+   0 NATIVE !
    1 OPENED ! ;
+
+: OPEN-NATIVE ( CBIND:binding -- )
+   OPEN
+   1 NATIVE ! ;
 
 \ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
    NLEASE:IDLE-CK
    0 OPENED !
+   0 NATIVE !
    CLEAR
    RELEASE-ROWS ;
 
 : OPEN? ( -- bool )
    OPENED @ 0<> ;
+
+: NATIVE? ( -- bool )
+   OPEN? NATIVE @ 0<> and ;
 
 : BINDING ( -- CBIND:binding )
    OPEN-CK SH-BIND @ ;
@@ -270,6 +334,31 @@ public
    off 0 <= if E-NSHADOW-ROW throw then
    off PEND-ENTRY !
    1 PEND-DOES !
+   1 PENDING ! ;
+
+\ The x86 def-cast writer publishes a raw one-byte RET identity body. It has
+\ no NART because the kernel writes it directly, so that writer reports the
+\ exact published entry and span through its fixed-shadow callback.
+: TAKE-CAST ( n n -- ) {: at:n size:n :}
+   OPEN-CK
+   NATIVE @ 0= if E-NSHADOW-STATE throw then
+   size 1 <> if E-NSHADOW-ROW throw then
+   at ENTRY-BYTES c@ $C3 <> if E-NSHADOW-ROW throw then
+   0 PENDING !
+   N-EMS @ {: e:n :}
+   e 1+ EM-RESERVE
+   CODE-N @ e EM-AT !
+   size e EM-SIZE !  size e EM-RET !
+   N-FUNS @ e EM-FUN0 !  1 e EM-FUNS !
+   N-CALLS @ e EM-CALL0 !  0 e EM-CALLS !
+   N-ADDRS @ e EM-ADDR0 !  0 e EM-ADDRS !
+   -1 e EM-PATCH !  0 e EM-PATCH-TGT !
+   CODE-N @ size + CODE-BUF-RESERVE
+   at ENTRY-BYTES CODE-N @ CODE-BUF size BYTE-COPY
+   N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
+   0 N-FUNS @ FUN-OFF !  at N-FUNS @ FUN-SOURCE !
+   REC-RESERVE
+   0 PEND-DOES !
    1 PENDING ! ;
 
 \ Pair the host emission's function entries with the pending shadow's entries

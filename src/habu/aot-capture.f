@@ -1,6 +1,8 @@
 \ aot-capture.f — host-only AOT-REPL capture (metabuild build step).
+\ CAPTURE-NATIVE shares the window, names and DATA work with the ARM capture,
+\ but takes x86 code reach from the native compiler's recorded routine graph.
 \
-\ Scans the metabuild host's freshly-compiled words for inter-word call sites
+\ The ARM path scans the metabuild host's freshly-compiled words for inter-word call sites
 \ (one direct `BL imm26` each, habu2.f LCEMITBL), reverse-looks-up each callee's
 \ dict NAME, and builds the four AOT buffers (src/habu/aot-decl.f) that EMIT-AOT-SEED bakes
 \ into bin/hb: a code blob, N dict records (xt/end blob-relative, inline name),
@@ -1016,6 +1018,7 @@ variable ACAP-GOLDLEN
 variable ACAP-GNEWLEN
 variable ACAP-GACC
 variable ACAP-GRAPH-READY
+variable ACAP-NATIVE-MODE
 
 : ACAP-GRAPH-START ( n -- n ) ACAP-REC-DST ACAP-W32@ ;
 : ACAP-GRAPH-END ( n -- n ) {: k:n :}
@@ -2157,6 +2160,22 @@ variable ACAP-SWEEP-B1
       then
    loop ;
 
+\ A native x86 capture keeps the source window's byte offsets unchanged. Its
+\ recorded routine graph answers which source records remain live; no AArch64
+\ instruction word or four-byte code map participates in this decision.
+: ACAP-NATIVE-ROOTS ( [ n -- bool ] -- ) {: live :}
+   ACAP-REC-ALL @ ACAP-GMARK-RESERVE
+   ACAP-REC-ALL @ 0 ?do
+      i live execute if 1 else 0 then i ACAP-GMARK !
+      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
+   loop
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-DOES-COMPANION? if
+         i 1- ACAP-GMARK @ 0<> if 1 i ACAP-NAMED-BIT ! then
+      then
+   loop
+   -1 ACAP-GRAPH-READY ! ;
+
 : ACAP-GRAPH-REMAP-XTOFF ( -- )
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i ACAP-XTMETA@ {: meta:n :}
@@ -2340,9 +2359,15 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ nothing else. ---
 public
 
-\ Translate a live window code address to its compacted payload coordinate.
-: CODE-OFFSET ( n -- n )
-   ACAP-W-B0 @ - ACAP-GRAPH-MAP@ ;
+\ Translate a live window code address to its payload coordinate. Native x86
+\ keeps the copied window intact, so its coordinate is the source byte offset.
+: CODE-OFFSET ( n -- n ) {: address:n :}
+   address ACAP-W-B0 @ - {: off:n :}
+   ACAP-NATIVE-MODE @ if
+      off 0< off AOT-BLOB-LEN @ >= or if -1 exit then
+      off exit
+   then
+   off ACAP-GRAPH-MAP@ ;
 
 \ The provenance query covers the entire source window, including removed
 \ bodies. The byte copy owns a separate, exact output extent after compaction.
@@ -2515,6 +2540,7 @@ private
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
    AOT-WINDOW:WINDOW-RESET
+   0 ACAP-NATIVE-MODE !  0 ACAP-GOLDLEN !  0 ACAP-GNEWLEN !
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !  0 ACAP-GRAPH-READY !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c!
    AOT-SHADOW:RESET ;                           \ src/habu/aot-shadow.f fills it after CAPTURE
@@ -2661,7 +2687,7 @@ public
    rstart AOT-ARM:R0 @ = and rend AOT-ARM:R1 @ = and
    d0 AOT-ARM:D0 @ = and d1 AOT-ARM:D1 @ = and ;
 
-: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+: ACAP-START ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-PAYLOAD-BAND? 0= if
       s" aot-capture: capture bounds differ from frozen payload window" 74 die then
    bstart rstart rend d0 ACAP-BAND!
@@ -2673,7 +2699,19 @@ public
    rend rstart - ACAP-REC-OF-RESERVE
    rend rstart ?do i bstart ACAP-ADD-REC  i rstart - ACAP-REC-OF ! loop
    AOT-REC-N @ ACAP-REC-ALL !
-   ACAP-AUDIT-WIDS
+   ACAP-AUDIT-WIDS ;
+
+: ACAP-FINISH ( -- )
+   0 AOT-CODE-B0 !                              \ the payload and merge contract use canonical zero
+   ACAP-NORMALIZE-DSITES
+   ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
+   ACAP-PROVE-RECS                              \ fail-closed inverse proof
+   ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
+   ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
+   AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
+
+: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart bend rstart rend d0 d1 ACAP-START
    ACAP-GRAPH-SITES
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
@@ -2698,13 +2736,27 @@ public
    ACAP-GRAPH-PATCH
    ACAP-GRAPH-REMAP
    ACAP-GRAPH-REMAP-XTOFF
-   0 AOT-CODE-B0 !                              \ the payload and merge contract use canonical zero
-   ACAP-NORMALIZE-DSITES
-   ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
-   ACAP-PROVE-RECS                              \ fail-closed inverse proof
-   ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
-   ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
-   AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
+   ACAP-FINISH ;
+
+\ The native compiler supplies reach from its published x86 routine map. The
+\ callback runs after declared address cells are classified, so both shipped
+\ records and code cells can root that graph. The live query takes a capture
+\ record index, not a dictionary index; the recorder owns that translation.
+\ Main code bytes remain at their copied offsets for the x86 shadow linker.
+: CAPTURE-NATIVE ( n n n n n n [ -- ] [ n -- bool ] -- )
+   {: bstart:n bend:n rstart:n rend:n d0:n d1:n prepare live :}
+   bstart bend rstart rend d0 d1 ACAP-START
+   -1 ACAP-NATIVE-MODE !
+   AOT-BLOB-LEN @ dup ACAP-GOLDLEN ! ACAP-GNEWLEN !
+   d0 AOT-DATA-D0 !
+   d1 d0 - AOT-DATA-SIZE !
+   bstart bend d0 d1 ACAP-RELEASE-DYNAMIC
+   bstart bend d0 d1 ACAP-BAKE-DATA
+   prepare execute
+   live ACAP-NATIVE-ROOTS
+   bstart bend ACAP-CHECKER-STRIP
+   d0 ACAP-COPY-DATA
+   ACAP-FINISH ;
 
 private
 

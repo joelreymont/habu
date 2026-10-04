@@ -4024,6 +4024,7 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
 
 \ Publish a cast's identity slot at CP and the pending record that names it.
 : DEF-CAST-BODY ( -- )
+   X64CODE:LBL {: noshadow:label :}
    TASK-LIVE-GUARD,
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
@@ -4044,6 +4045,13 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    CP-REG CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
    1 X64PROV:CLOSE,
    PUBLISH-RECORD,
+   R11 NCOMP-DISPATCH:FIXED-SHADOW-CELL CELL@,
+   R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,
+   RAX ZERO-REG,  RAX PUSH,
+   RAX 4 IMM32,  RAX PUSH,                 \ NCOMP:FIXED-CAST
+   RAX NDICT-REG ASM-SINK ENC-MOV-RR  RAX ASM-SINK ENC-DEC  RAX PUSH,
+   R11 ASM-SINK ENC-CALL-REG
+   noshadow X64CODE:LBL,
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
@@ -4178,7 +4186,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
 \ clear for the checker's tail to set again, and CRSIG clears.
 : DOES-PATCH-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: patch:label write:label declared:label nocr:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: patch:label write:label declared:label nocr:label noshadow:label :}
    RCX POP,  RCX CRSIG-U-CELL CELL!,
    RCX POP,  RCX CRSIG-A-CELL CELL!,
    RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
@@ -4216,6 +4225,14 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
    WINDOW-CLOSE,
    declared X64CODE:LBL,
+   R11 NCOMP-DISPATCH:DOES-SHADOW-CELL CELL@,
+   R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,
+   RAX LASTC-CELL CELL@,  RAX DBASE-REG ASM-SINK ENC-SUB-RR
+   RDX ZERO-REG,  RCX DREC IMM32,  RCX ASM-SINK ENC-DIV
+   RAX PUSH,
+   RAX RSP DP-ENTRY MOV-LOAD,  RAX PUSH,
+   R11 ASM-SINK ENC-CALL-REG
+   noshadow X64CODE:LBL,
    RAX CRSIG-U-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E nocr JCC,
    RAW-PUBLISH,

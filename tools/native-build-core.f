@@ -347,7 +347,13 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : CAPTURE ( -- )
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   NSHADOW:NATIVE? if
+      AOT-ARM:WINDOW$
+      ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
+      AOT-CAPTURE:CAPTURE-NATIVE
+   else
+      AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   then
    AOT-CAPTURE:SHADOW-CAPTURE
    NSHADOW:CLOSE
    CHECK-FIXED-ROWS ;
@@ -434,7 +440,7 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
       s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die
    then ;
 
-TRUSTED: OPENER-XT ( n -- [ -- ] ) ;
+TRUSTED: OPENER-XT ( n -- [ bool -- ] ) ;
 TRUSTED: NAME-SPAN-XT ( n -- [ n -- n n ] ) ;
 TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
 TYPED-VARIABLE HELD-NAME-SPAN [ n -- n n ]
@@ -445,9 +451,20 @@ TYPED-VARIABLE HELD-NAME-SPAN [ n -- n n ]
    then
    XREF-START ;
 
+\ The retained host binding and the selected output action are both fixed
+\ before the target window replaces the compiler dispatch. Only an executable
+\ same-binding build can reuse its placed native emission.
+: NATIVE-X64? ( -- bool )
+   BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
+   action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
+      RTARGET:EXECUTABLE-HERE?
+   NABI:BINDING action RTARGET:BODY-TARGET@ RTARGET:NATIVE-BINDING
+      CBIND:SAME? and ;
+
 : HOLD-X64 ( -- )
    s" NATIVE-EMIT:WRITE" HELD-XT WRITER-XT HELD-WRITER !
    s" X64LINK:NAMES-SPAN" HELD-XT NAME-SPAN-XT HELD-NAME-SPAN !
+   NATIVE-X64?
    s" NATIVE-EMIT:OPEN-SHADOW" HELD-XT OPENER-XT execute ;
 
 \ The reader's capture has its own bytes. Loading a writer may allocate and

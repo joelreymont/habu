@@ -560,6 +560,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : SHADOWED ( IR-BUILD:module -- )
    {: hm:IR-BUILD:module :}
    NSHADOW:OPEN? 0= if exit then
+   NSHADOW:NATIVE? if exit then
    hm 0 M-HM !
    NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -600,7 +601,9 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
    ndict@ CC hm NBACK:OBSERVE
    hm SHADOWED
-   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
+   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK {: e:NART:emission :}
+   NSHADOW:NATIVE? if e SHADOW-TAKE then
+   e ;
 
 : PUBLISH-IT ( NART:emission -- )
    M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
@@ -923,6 +926,13 @@ private
    kind NDICT:FIXED-ADDR <> kind NDICT:FIXED-VAL <> and
    kind FIXED-DEFER <> and kind FIXED-CAST <> and if E-NCOMP-STATE throw then
    idx 0 < idx ndict@ >= or if E-NCOMP-STATE throw then
+   NSHADOW:NATIVE? if
+      kind FIXED-CAST <> val 0<> or if E-NCOMP-STATE throw then
+      idx XREF-REC {: rec:ptr :}
+      rec XREF-START rec XREF-CODE-BYTES NSHADOW:TAKE-CAST
+      idx NSHADOW:PUBLISH
+      exit
+   then
    idx M-FIXED-REC !
    val M-FIXED-VAL !  kind M-FIXED !
    0 M-DOES !  -1 M-DOES-FUN !
