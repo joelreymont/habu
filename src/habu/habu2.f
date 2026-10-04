@@ -1208,14 +1208,6 @@ here BPL-KW - constant BPL-LEN
 : PFX-LOAD-DECL-FILES ( -- )
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
-: PFX-LOAD-CORE-FILES ( -- )
-   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-ROW PFX-FILES ;
-
-: PFX-LOAD-BASE-FILES ( -- )
-   PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
-
 \ The boot stdlib (dot habu-seed-the-stdlib-d8e3a757). These files are the
 \ checked surface the tree already requires everywhere - lib/string.f alone has
 \ 548 requiring files, lib/errors.f 472 - so every program used to pay for its
@@ -1298,11 +1290,6 @@ here BPL-KW - constant BPL-LEN
    12 done CBNZ,
    PFX-LOAD-TOPROW
    done LBL, ;
-
-: PFX-LOAD-FILES ( -- )
-   PFX-LOAD-BASE-FILES
-   PFX-LOAD-SCRIPT-ARGV
-   PFX-LOAD-INTMARK ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
@@ -1669,6 +1656,20 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
+: PFX-LOAD-CORE-ROW ( n ptr n ptr u8 n -- )
+   {: kind var a u :}
+   kind var a u PFX-LOAD-ROW
+   \ include.f defines both source vectors; xref.f requires another source.
+   var LPINCLUDE = if EMIT-SOURCE-RESET-TOKEN then ;
+
+: PFX-LOAD-CORE-FILES ( -- )
+   PFX-CORE PFX-DYNAMIC or ['] PFX-LOAD-CORE-ROW PFX-FILES ;
+
+: PFX-LOAD-BASE-FILES ( -- )
+   PFX-LOAD-CHECKER-FILES
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
+
 \ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
 \ LAST engine-prefix source token, after every engine file and the provide
 \ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
@@ -1837,7 +1838,6 @@ public
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
-   EMIT-SOURCE-RESET-TOKEN
    EMIT-REQUIRE-BOOT-OPEN-TOKEN
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
