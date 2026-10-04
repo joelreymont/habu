@@ -619,8 +619,10 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
     definition with that signature is: the bad-stored-signature diagnostic,
     then the compile-reject rc 70. The first fault names the class, so
     `( ptr -- box )` is this reject, not `E-CAST-FAM`.
-  - Each side is one term (`E-CAST-ARITY`, 7129); a layout value wider than a
-    cell is one term per cell.
+  - Each side is one term over the same stack tail (`E-CAST-ARITY`, 7129);
+    a layout value wider than a cell is one term per cell. The emitted identity
+    preserves the tail, so `( R n -- R u8 )` is valid and `( R n -- S u8 )`
+    is refused.
   - A scope or region variable, a quantifier-bound variable, a scope, or a
     read view, mutable view or loan field anywhere in either term would erase
     or introduce a scope dependency (`E-CAST-SCOPE`, 7151).
@@ -667,7 +669,11 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   - The current package declared the linear type (`E-LINEAR-OWNER`, 7196).
     `DEFLINEAR` records the package it runs in, and one declared at top level
     has no owner, so nothing mints it.
-  - The row is in that package's private section (`E-LINEAR-SCOPE`, 7197).
+  - The row has an unqualified name in that package's private section
+    (`E-LINEAR-SCOPE`, 7197). A qualified name would publish into a public
+    wordlist even while the declaring package is private.
+  - The input and output stack tails agree (`E-CAST-ARITY`, 7129), because
+    the emitted identity changes only its explicit payload or token cell.
 
   After `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok --
   ptr n )`, the owner's checked words compose the two, `: PEEK ( PKG:tok --
@@ -1862,7 +1868,9 @@ the rule.
   package's private section.** `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok
   -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7197);
   in another package, at top level, or for a `DEFLINEAR` declared at top level
-  they are `E-LINEAR-OWNER` (7196); and `( PKG:tok -- PKG:tok )`, `( n -- n )`,
+  they are `E-LINEAR-OWNER` (7196); a qualified name is `E-LINEAR-SCOPE` even
+  there; distinct stack tails are `E-CAST-ARITY` (7129); and
+  `( PKG:tok -- PKG:tok )`, `( n -- n )`,
   `( ptr a -- PKG:tok )` or `( [ -- ] -- PKG:tok )` is `E-LINEAR-PAYLOAD`
   (7195), in the source pre-pass and tools/check.f as well. `linear:` in a
   checked body is refused and a private row is `E-UNDEFINED` outside its

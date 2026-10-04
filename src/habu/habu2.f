@@ -4723,8 +4723,32 @@ package INTERP-EMIT
 \ engine, whose source list has no checker in it at all — an unguarded call
 \ there would exit 70 on the FIRST file tools/bootstrap.sh feeds it.
 \
-\ The two keywords differ only in the declaration owner field their registrar
-\ reaches (`off`) and in what they print when no name follows (`noname`).
+\ The two keywords select their registrar (`off`) and missing-name diagnostic
+\ (`noname`); LINEAR: also guards its publication destination below.
+\ Qualification can allocate a package record inside C-QUALIFY-DEF. A LINEAR:
+\ row may never target that public wordlist, so ask its certifier before that
+\ allocation. The certifier retains payload/owner/scope refusal order; the
+\ no-hook boot path refuses the same scope without publishing anything.
+: C-LINEAR-QUALIFIED-GUARD ( -- )
+   LBL LBL LBL LBL LBL {: scan:label first:label tail:label qualified:label done:label :}
+   12 DATA TKL-CELL LDR,  13 0 MOVZ,
+   scan LBL,
+      13 12 CMP,  C-GE done BCOND,
+      11 DATA TKA-CELL LDR,  11 11 13 ADD,  11 11 0 LDRB,
+      11 $3A CMPI,  C-EQ first BCOND,
+      13 13 1 ADDI,  scan B,
+   first LBL,
+      13 done CBZ,
+      13 13 1 ADDI,  13 12 CMP,  C-GE done BCOND,
+   tail LBL,
+      11 DATA TKA-CELL LDR,  11 11 13 ADD,  11 11 0 LDRB,
+      11 $3A CMPI,  C-EQ done BCOND,
+      13 13 1 ADDI,  13 12 CMP,  C-LT tail BCOND,
+   qualified LBL,
+      NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-TRUST:REGISTER-IDENTITY
+      7197 C-DIE-TOKEN
+   done LBL, ;
+
 : C-IDENTITY ( [ -- ] n -- ) {: noname off:n :}
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL {: cpok:label ndok:label named:label nohook:label :}
@@ -4742,6 +4766,7 @@ package INTERP-EMIT
    LBCAP LABEL@ BL,                                  \ "NAME " — the spelling the registrar reads
    C-CLEAR-TRUSTED-STATE
    C-PARSE-REQUIRED-SIG                              \ malformed or missing sig dies named (rc 76)
+   off NCOMP-DISPATCH:DECL-LINEAR-OFF = IF C-LINEAR-QUALIFIED-GUARD THEN
    C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,

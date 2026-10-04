@@ -11,8 +11,10 @@
 \                       non-linear constructor or a pointer chain ending at one
 \   - E-LINEAR-OWNER  : the current package did not declare the linear type; a
 \                       top-level DEFLINEAR has no owner, so nothing mints it
-\   - E-LINEAR-SCOPE  : the row is outside its owner's private section
-\   - E-CAST-ARITY, E-CAST-FAM: the shapes `cast:` refuses, by the same check
+\   - E-LINEAR-SCOPE  : the row is outside its owner's private section or its
+\                       qualified name would publish into a public wordlist
+\   - E-CAST-ARITY, E-CAST-FAM: the shapes `cast:` refuses, including different
+\                       row tails beneath the operand of an identity
 \ `cast:` still carries no linear type (E-CAST-LINEAR), in the owner too. Every
 \ front end runs: the engine's keyword evaluated as source, the source pre-pass,
 \ tools/check.f on written fixtures, and an application image saved after its
@@ -70,8 +72,20 @@ get-current WID !
 s" the owner's private section declares a mint and an erase" T-LABEL
 s" LINEAR: MINT ( ptr n -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
 s" LINEAR: ERASE ( LIN-OWN:tok -- ptr n )" LIN-RUN:DECL 0 T=
+s" LINEAR: MINT-ROW ( R n -- R LIN-OWN:tok )" LIN-RUN:DECL 0 T=
+s" LINEAR: ERASE-ROW ( R LIN-OWN:tok -- R n )" LIN-RUN:DECL 0 T=
+s" : ROW-ROUND ( n n -- n n ) MINT-ROW ERASE-ROW ;" LIN-RUN:DECL 0 T=
+variable ROW-LOW  variable ROW-HIGH
+s" 7 42 ROW-ROUND ROW-HIGH ! ROW-LOW !" LIN-RUN:DECL 0 T=
+ROW-LOW @ 7 T=  ROW-HIGH @ 42 T=
+s" LINEAR: Q-MINT ( R n -- S LIN-OWN:tok )" LIN-RUN:DECL E-CAST-ARITY T=
+s" LINEAR: LIN-OWN:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL E-LINEAR-SCOPE T=
+s" LINEAR: LIN-NO-PACKAGE:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL E-LINEAR-SCOPE T=
+s" LINEAR: LIN-OWN:BAD-PAYLOAD ( n -- n )" LIN-RUN:DECL E-LINEAR-PAYLOAD T=
+s" LINEAR: LIN-OWN:BAD-OWNER ( n -- LIN-OTHER:tok )" LIN-RUN:DECL E-LINEAR-OWNER T=
 s" MINT" ABSENT? TFALSE
 s" ERASE" ABSENT? TFALSE
+s" Q-MINT" ABSENT? TTRUE
 s" checked words in the owner mint, erase and conserve the token" T-LABEL
 s" : PEEK ( LIN-OWN:tok -- LIN-OWN:tok n ) ERASE dup @ swap MINT swap ;" LIN-RUN:DECL 0 T=
 s" LV1 ( LIN-OWN:tok -- ) ERASE drop"                CHECK-QUIET-CANDIDATE! -1 T=
@@ -113,6 +127,11 @@ s" : LOOK ( LIN-OWN:tok -- LIN-OWN:tok n ) PEEK ;" LIN-RUN:DECL 0 T=
 s" : TAKE ( LIN-OWN:tok -- ptr n ) ERASE ;"        LIN-RUN:DECL 0 T=
 ;package
 s" LIN-OWN:LS1" XREF-FIND XREF-FOUND? TFALSE
+s" LIN-OWN:PUBLIC-MINT" XREF-FIND XREF-FOUND? TFALSE
+s" LIN-NO-PACKAGE:PUBLIC-MINT" XREF-FIND XREF-FOUND? TFALSE
+s" LIN-OWN:BAD-PAYLOAD" XREF-FIND XREF-FOUND? TFALSE
+s" LIN-OWN:BAD-OWNER" XREF-FIND XREF-FOUND? TFALSE
+s" cast: BAD-TAIL ( R n -- S n )" LIN-RUN:DECL E-CAST-ARITY T=
 
 \ ---- no other scope mints or erases --------------------------------------------
 s" another package neither mints nor erases the owner's type" T-LABEL
@@ -158,6 +177,17 @@ public
 : NO-TOKEN ( -- )
    s" package LV-E public DEFLINEAR LV-E:tok ;package package LV-E LINEAR: ZM ( n -- n ) ;package"
    VERIFY:SOURCE-BUF ;
+: QUALIFIED ( -- )
+   s" package LV-F public DEFLINEAR LV-F:tok ;package package LV-F LINEAR: LV-F:QM ( n -- LV-F:tok ) ;package"
+   VERIFY:SOURCE-BUF ;
+: DISTINCT-TAILS ( -- )
+   s" package LV-G public DEFLINEAR LV-G:tok ;package package LV-G LINEAR: TM ( R n -- S LV-G:tok ) ;package"
+   VERIFY:SOURCE-BUF ;
+: SAME-TAIL ( -- )
+   s" package LV-H public DEFLINEAR LV-H:tok ;package package LV-H LINEAR: TM ( R n -- R LV-H:tok ) ;package"
+   VERIFY:SOURCE-BUF ;
+: CAST-TAIL ( -- )
+   s" cast: LV-BAD-TAIL ( R n -- S n )" VERIFY:SOURCE-BUF ;
 ;package
 s" the pre-pass certifies a row in the owner and its checked caller" T-LABEL
 ' LIN-VRF:OWNED catch 0 T=
@@ -165,6 +195,10 @@ s" and refuses a public row, a foreign owner and a row with no token" T-LABEL
 ' LIN-VRF:IN-PUBLIC catch E-LINEAR-SCOPE T=
 ' LIN-VRF:FOREIGN catch E-LINEAR-OWNER T=
 ' LIN-VRF:NO-TOKEN catch E-LINEAR-PAYLOAD T=
+' LIN-VRF:QUALIFIED catch E-LINEAR-SCOPE T=
+' LIN-VRF:DISTINCT-TAILS catch E-CAST-ARITY T=
+' LIN-VRF:SAME-TAIL catch 0 T=
+' LIN-VRF:CAST-TAIL catch E-CAST-ARITY T=
 
 \ ---- what the engine itself refuses at top level --------------------------------
 \ The reader exits after these diagnostics, so each runs in a child.
@@ -267,6 +301,14 @@ variable PROG-U
    0 PROG-U !
    S\" package LIN-FB\npublic\nDEFLINEAR LIN-FB:tok\nLINEAR: MINT ( n -- LIN-FB:tok )\n;package\n" PROG+ ;
 
+: QUAL-FIXTURE ( -- )
+   0 PROG-U !
+   S\" package LIN-FQ\npublic\nDEFLINEAR LIN-FQ:tok\n;package\npackage LIN-FQ\nLINEAR: LIN-FQ:MINT ( n -- LIN-FQ:tok )\n;package\n" PROG+ ;
+
+: TAIL-FIXTURE ( -- )
+   0 PROG-U !
+   S\" package LIN-FT\npublic\nDEFLINEAR LIN-FT:tok\n;package\npackage LIN-FT\nLINEAR: MINT ( R n -- S LIN-FT:tok )\n;package\n" PROG+ ;
+
 \ Push the type table past its 256-row boot store (src/core/checker.f
 \ CT-CAP-INIT) before the owner declares, so the owner's row lives only in the
 \ grown store that an image save must persist.
@@ -309,6 +351,14 @@ variable PROG-U
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
    ERR$ s" throw 7197 at 'MINT'" CONTAINS? TTRUE
+   s" and refuses a qualified public destination" T-LABEL
+   QUAL-FIXTURE s" lin-qual.f" CHECK
+   RC @ 70 T=
+   ERR$ s" throw 7197 at 'LIN-FQ:MINT'" CONTAINS? TTRUE
+   s" and refuses an identity whose stack tails differ" T-LABEL
+   TAIL-FIXTURE s" lin-tail.f" CHECK
+   RC @ 70 T=
+   ERR$ s" throw 7129 at 'MINT'" CONTAINS? TTRUE
    s" an application image keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=

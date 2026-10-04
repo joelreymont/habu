@@ -272,10 +272,13 @@ another package's family is `E-CAST-OWNER` outside that package.
 In checked code a `DEFLINEAR` token is minted and erased the same way, by the
 package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE
 ( PKG:tok -- ptr n )` in its private section. Under `public` that is
-`E-LINEAR-SCOPE`, in any other package or for a top-level `DEFLINEAR`
+`E-LINEAR-SCOPE`, as is a qualified `LINEAR:` name in the private section;
+in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
 pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
-(`E-CAST-LINEAR`).
+(`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
+operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
+are `E-CAST-ARITY`.
 
 forth.md: **Structures And Enums**; the rule is `docs/effects.md` "Raw storage
 never holds an address".

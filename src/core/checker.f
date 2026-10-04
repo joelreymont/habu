@@ -13911,7 +13911,7 @@ variable UNSAFE-SYM-N
 \ CAST: legality rejects (dot habu-checked-cast-primitive). A cast declares a
 \ retype between two single-cell machine types; the gate below refuses anything
 \ wider than that class (7121-7128 = layout-buffer/type-family blocks).
-7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
+7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
 7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
@@ -21298,7 +21298,8 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
 \ syntax or a bare `ptr`, is refused as a definition with that signature is, by
 \ its bad-signature diagnostic and CHECKER-REJECT-RC. A row that parsed is one
-\ term in and one term out, else E-CAST-ARITY.
+\ term in and one term out over the same resolved tail, else E-CAST-ARITY:
+\ neither declarer's emitted identity changes cells below that term.
 : IDENTITY-SIG ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF E-CAST-ARITY throw THEN
    NEW
@@ -21308,7 +21309,9 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    SGBAD @ IF sa su na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
-   SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN ;
+   SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGIN @ R-RES P>REST R-RES
+   SGOUT @ R-RES P>REST R-RES <> IF E-CAST-ARITY throw THEN ;
 
 \ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
 \ ( in -- out )`, and CHECKER-LINEAR the half of `linear: NAME ( in -- out )`.
@@ -21329,6 +21332,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 : CHECKER-LINEAR ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su IDENTITY-SIG
    LINEAR-CERTIFY
+   na nu CHECKER-QUALIFIED? IF E-LINEAR-SCOPE throw THEN
    sa su na nu CHECKER-USIG-CERT-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
