@@ -26,6 +26,9 @@
 \    hb-x64-kernel-task-negative  21  the thread case, expecting a wrong answer
 \                                     from pthread_create, which it checks
 \                                     before the join
+\    hb-x64-kernel-task-alt-refused
+\                                 78  task-entry refuses a zero-sized signal
+\                                     stack before entering its runner
 \
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
@@ -46,6 +49,7 @@ ARGS 8 CELL * + constant THREAD
 THREAD CELL + constant ANSWER
 ANSWER CELL + constant STACK
 STACK $100 + constant REGION
+REGION STACK-ABI:PAGE-BYTES + constant ALTSTACK
 
 \ Where the body records what it starts with, as offsets into its region.
 0 constant SAW-R13
@@ -96,6 +100,8 @@ $B0B0B0B0B0 constant CALLER-RBX
    body TASK-ABI:XT-OFF DESC-FIELD X64HARNESS:LABEL-CELL!,
    STACK TASK-ABI:STACK-OFF DESC-FIELD X64HARNESS:DATA-ADDR!,
    REGION TASK-ABI:REGION-OFF DESC-FIELD X64HARNESS:DATA-ADDR!,
+   ALTSTACK TASK-ABI:ALTSTACK-OFF DESC-FIELD X64HARNESS:DATA-ADDR!,
+   STACK-ABI:PAGE-BYTES TASK-ABI:ALTSTACK-U-OFF DESC-FIELD X64HARNESS:CELL!,
    DBASE-MARK TASK-ABI:DBASE-OFF DESC-FIELD X64HARNESS:CELL!,
    NDICT-MARK TASK-ABI:NDICT-OFF DESC-FIELD X64HARNESS:CELL!,
    CP-MARK TASK-ABI:CP-OFF DESC-FIELD X64HARNESS:CELL!,
@@ -172,6 +178,11 @@ $B0B0B0B0B0 constant CALLER-RBX
    0 REGION SAW-RBX + X64HARNESS:EXPECT-CELL,
    TASK-ABI:HALT-REQ REGION SAW-STATUS + X64HARNESS:EXPECT-CELL, ;
 
+: ALT-REFUSED-CASE ( -- )
+   BODY DESCRIBE,
+   0 TASK-ABI:ALTSTACK-U-OFF DESC-FIELD X64HARNESS:CELL!,
+   ENTER,  0 WANT ;
+
 \ An image: the case, then the stack checks every case ends with.
 : BUILD ( [ -- ] bool ptr u8 n -- ) {: negative:bool path:ptr pathu:n :}
    negative X64HARNESS:BOOT-OPEN,
@@ -189,6 +200,7 @@ public
    [: CALL-CASE ;] false s" hb-x64-kernel-task-call" TMP-PATH BUILD
    [: BODY-CASE ;] false s" hb-x64-kernel-task-body" TMP-PATH BUILD
    [: THREAD-CASE ;] true s" hb-x64-kernel-task-negative" TMP-PATH BUILD
+   [: ALT-REFUSED-CASE ;] false s" hb-x64-kernel-task-alt-refused" TMP-PATH BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 

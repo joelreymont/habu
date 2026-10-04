@@ -4069,12 +4069,35 @@ private
    CP-REG ASM-SINK ENC-POP  NDICT-REG ASM-SINK ENC-POP  DBASE-REG ASM-SINK ENC-POP
    DSP ASM-SINK ENC-POP  DATA-REG ASM-SINK ENC-POP  INTERP-REG ASM-SINK ENC-POP ;
 
+\ Register the TCB-owned guarded signal stack on this OS thread before its
+\ runner can fault or arm the profiler. Linux stack_t is three cells; the
+\ descriptor stays in r8 across the syscall so the VM can enter afterward.
+: TASK-ALTSTACK, ( -- )
+   X64CODE:LBL {: installed:label :}
+   R8 RDI ASM-SINK ENC-MOV-RR
+   RSP 24 >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX R8 TASK-ABI:ALTSTACK-OFF MOV-LOAD,
+   RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,
+   RAX RSP CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX R8 TASK-ABI:ALTSTACK-U-OFF MOV-LOAD,
+   RAX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,
+   NR-SIGALTSTACK SYS,
+   RSP RSP 24 MEM-OFF ASM-SINK ENC-LEA
+   C-AE installed JCC,
+   S\" hb: task-entry: cannot install the handler stack\n"
+   78 STDERR-EXIT,
+   installed X64CODE:LBL,
+   RDI R8 ASM-SINK ENC-MOV-RR ;
+
 \ The entry. The xt is called as execute calls one, and the body keeps rbp, so
 \ the TCB is read back through the region. The six pushes leave rsp 8 off the
 \ 16-byte alignment at that call, which Habu code does not need: SYSV-CALL,
 \ aligns rsp itself before any C call.
 : TASK-ENTRY, ( -- )
    SAVE-VM,
+   TASK-ALTSTACK,
    DATA-REG RDI TASK-ABI:REGION-OFF MOV-LOAD,
    DSP RDI TASK-ABI:STACK-OFF MOV-LOAD,
    DBASE-REG RDI TASK-ABI:DBASE-OFF MOV-LOAD,

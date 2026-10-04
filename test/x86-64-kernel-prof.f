@@ -33,10 +33,10 @@
 \                                    250 then prof-on arm the timer at 250 us
 \                                    and prof-off disarms it
 \    hb-x64-kernel-prof-negative 21  the same, expecting B's spin to fail
-\    hb-x64-kernel-prof-refused  78  prof-rate maps the arena, RLIMIT_AS 0,
-\                                    then prof-on cannot map the handler
-\                                    stack: `hb: prof-on: cannot map the
-\                                    handler stack` on fd 2
+\    hb-x64-kernel-prof-shared-stack
+\                                 0  prof-rate maps the arena, RLIMIT_AS 0,
+\                                    then prof-on/off works using the runtime
+\                                    signal stack, without mapping another
 \    hb-x64-kernel-prof-report    0  prof-report, prof-json and prof-row with
 \                                    no arena; prof-on, prof-off, prof-reset
 \                                    and state S, then prof-report, B's
@@ -424,9 +424,9 @@ C-IX XREF-REC XREF-START constant C-START
    s" prof-reset" ROW  RESET-CHECK,
    RATE-CHECK, ;
 
-\ The arena comes from prof-rate before the limit, so the first mapping
-\ prof-on asks for is the handler's stack.
-: REFUSED-CASE ( -- )
+\ The arena comes from prof-rate before the limit. With no address space left
+\ for mmap, prof-on can only succeed by using the thread's runtime altstack.
+: SHARED-STACK-CASE ( -- )
    RATE N,  s" prof-rate" ROW
    RSP 2 CELL * SUBI,
    RAX ZERO-REG,  RAX RSP MEM-AT STORE,  RAX RSP CELL MEM-OFF STORE,
@@ -434,7 +434,8 @@ C-IX XREF-REC XREF-START constant C-START
    RSI RSP COPY,
    NR-SETRLIMIT SYS,
    RSP 2 CELL * ADDI,
-   0 N,  s" prof-on" ROW ;
+   0 N,  s" prof-on" ROW
+   s" prof-off" ROW ;
 
 \ ---- the host's own bytes --------------------------------------------------------
 TEXTS TEXT-CAP * BUFFER: TEXT-BYTES
@@ -820,7 +821,7 @@ public
    X64HARNESS:INIT
    [: SAMPLES-CASE ;] false s" hb-x64-kernel-prof" TMP-PATH BUILD
    [: SAMPLES-CASE ;] true s" hb-x64-kernel-prof-negative" TMP-PATH BUILD
-   [: REFUSED-CASE ;] false s" hb-x64-kernel-prof-refused" TMP-PATH BUILD
+   [: SHARED-STACK-CASE ;] false s" hb-x64-kernel-prof-shared-stack" TMP-PATH BUILD
    [: REPORT-CASE ;] false s" hb-x64-kernel-prof-report" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
    [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD

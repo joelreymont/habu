@@ -60,6 +60,11 @@ $130 constant RESULT-SET-OFF
 $138 constant JOINER-OFF
 $140 constant EXIT-SLOT-OFF
 $148 constant DONE-OFF
-$170 constant TCB-BYTES
+\ The worker's alternate signal stack is a guarded mapping owned by the TCB.
+\ TASK-ENTRY registers it before the runner; the joiner releases it after the
+\ OS thread has ended. Keep these fields after the existing descriptor ABI.
+$170 constant ALTSTACK-OFF
+$178 constant ALTSTACK-U-OFF
+$180 constant TCB-BYTES
 
 ;package

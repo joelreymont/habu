@@ -10,7 +10,8 @@
 \ every target. prof.f's header gives the design this keeps: the handler takes
 \ nothing from the live registers, attributes only a context whose DATA and
 \ DBASE registers hold what the band records, searches the index prof-on
-\ builds instead of the dictionary, and runs on its own alternate stack. What
+\ builds instead of the dictionary, and runs on the thread's runtime alternate
+\ stack, shared with the crash handler. What
 \ differs is the frame. x86-64 has no link register, so the walk starts at the
 \ interrupted rsp, whose first cell is a leaf's return address, and searches
 \ each code cell one byte back, inside the call that pushed it.
@@ -66,12 +67,6 @@ BAND-VA PROF-STATE-BYTES + constant CNT-VA      \ one counter per record
 16 constant IT-VALUE-SEC
 24 constant IT-VALUE-USEC
 32 constant ITIMER-BYTES
-\ stack_t: the base, the flags (an int and its padding), the size.
-0 constant SS-SP
-8 constant SS-FLAGS
-16 constant SS-SIZE
-24 constant SS-BYTES
-
 \ The labels, made by HELPERS, in the stream it emits them into.
 variable HANDLER-CELL
 variable RESTORER-CELL
@@ -1030,27 +1025,6 @@ private
    RCX BAND-VA IMM,  RAX RCX PROF-ARENA MEM-OFF STORE,
    have LBL, ;
 
-\ The handler's alternate stack: mapped on the first prof-on of the process,
-\ kept in the band and registered with sigaltstack by every prof-on before the
-\ install, so the SA_ONSTACK handler never runs on the interrupted program's
-\ stack: the twin of prof.f C-PROF-ALTSTACK. A refused registration would
-\ leave the handler there, so it is named and fatal too.
-: ALTSTACK, ( -- )
-   LBL LBL {: have:label ok:label :}
-   RAX BAND-VA IMM,  RAX RAX PROF-STACK MEM-OFF LOAD,  RAX TEST,  C-NE have JCC,
-   PROF-STACK-BYTES PROFMMAPMSG$ MAP,
-   RCX BAND-VA IMM,  RAX RCX PROF-STACK MEM-OFF STORE,
-   have LBL,                                                     \ rax = the stack
-   RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
-   RAX RSP SS-SP MEM-OFF STORE,
-   RCX ZERO-REG,  RCX RSP SS-FLAGS MEM-OFF STORE,
-   RCX PROF-STACK-BYTES IMM32,  RCX RSP SS-SIZE MEM-OFF STORE,
-   RDI RSP COPY,  RSI ZERO-REG,  NR-SIGALTSTACK SYS,
-   RSP RSP SS-BYTES MEM-OFF LEA,                                 \ the frame back, CF kept
-   C-AE ok JCC,
-   PROFSTKMSG$ REFUSED,
-   ok LBL, ;
-
 \ setitimer(ITIMER_REAL) with the interval and the first expiry both rax
 \ seconds and rdx microseconds; CF is set when the kernel refused it. Clobbers
 \ rax rcx rdx rsi rdi r11.
@@ -1139,8 +1113,8 @@ public
 \ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code, where
 \ r13 and r14 are live: it stores the limit, records the DBASE the handler
 \ trusts, clears the band's counts, maps the arena and builds the index, clears
-\ the phase's counts and edges, registers the alternate stack, installs the
-\ handler for SIGALRM and arms the clock.
+\ the phase's counts and edges, installs the SA_ONSTACK handler for SIGALRM on
+\ the thread's already registered runtime signal stack, and arms the clock.
 : ON-BODY ( -- )
    RAX R64>N G-POP  RCX BAND-VA IMM,  RAX RCX PROF-LIM MEM-OFF STORE,
    DBASE-REG RCX PROF-DBASE MEM-OFF STORE,
@@ -1148,7 +1122,6 @@ public
    ARENA-MAP,
    ARENA>RSI,  INDEX,
    COUNTS-CLEAR,
-   ALTSTACK,
    SIGALRM LINUX-SA-PROF-FLAGS HANDLER-LBL RESTORER-LBL X64BOOT:SIGACTION,
    ARENA>RSI,  TIMER-START,
    RCX BAND-VA IMM,  RAX 1 IMM32,  RAX RCX PROF-ARMED MEM-OFF STORE, ;

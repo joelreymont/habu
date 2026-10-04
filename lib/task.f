@@ -91,6 +91,8 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.JOINER
    CELL +FIELD TCB.EXIT-SLOT
    TASK-SEMAPHORE-BYTES +FIELD TCB.DONE
+   PTR-FIELD: TCB.ALTSTACK
+   CELL +FIELD TCB.ALTSTACK-U
 END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
@@ -122,7 +124,9 @@ END-STRUCTURE
    origin TCB.RESULT-SET origin TASK-ABI:RESULT-SET-OFF TASK-TCB-OFFSET
    origin TCB.JOINER origin TASK-ABI:JOINER-OFF TASK-TCB-OFFSET
    origin TCB.EXIT-SLOT origin TASK-ABI:EXIT-SLOT-OFF TASK-TCB-OFFSET
-   origin TCB.DONE origin TASK-ABI:DONE-OFF TASK-TCB-OFFSET ;
+   origin TCB.DONE origin TASK-ABI:DONE-OFF TASK-TCB-OFFSET
+   origin TCB.ALTSTACK origin TASK-ABI:ALTSTACK-OFF TASK-TCB-OFFSET
+   origin TCB.ALTSTACK-U origin TASK-ABI:ALTSTACK-U-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -1040,7 +1044,7 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives
 \ every release until the capture sweep (PARK-CREATE). The mailbox and the done
-\ semaphore are destroyed, the four mappings go back to the system, and the
+\ semaphore are destroyed, the five mappings go back to the system, and the
 \ five cells cleared last are what the run itself acquired: the pthread_t
 \ pthread_create stored, the value the join wrote, and PREPARE's record
 \ of this process's data base, record count and code end. An image restores none
@@ -1068,6 +1072,11 @@ create MOVES CB-POOL TASK-ZERO-CELLS,
       tcb TCB.LSTACK @ tcb TCB.LSTACK-U @ MEM-RELEASE-GUARDED
       TASK-NULL tcb TCB.LSTACK !
       0 tcb TCB.LSTACK-U !
+   then
+   tcb TCB.ALTSTACK-U @ 0 <> if
+      tcb TCB.ALTSTACK @ tcb TCB.ALTSTACK-U @ MEM-RELEASE-GUARDED
+      TASK-NULL tcb TCB.ALTSTACK !
+      0 tcb TCB.ALTSTACK-U !
    then
    tcb TCB.REGION-U @ 0 <> if
       tcb TCB.REGION @ tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
@@ -1240,13 +1249,13 @@ variable SWEEP-ARMED
 : TASK-STACK-BYTES ( n -- n ) {: want:n :}
    want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
 
-: PREPARE ( ptr n -- ) {: tcb:ptr :}
-   TASK-ARM-SWEEP
-   tcb TASK-CONSTRUCTED? if exit then
-   tcb TCB.SIZE @ TASK-CHECK-SIZE
+: TASK-PREPARE-RESOURCES ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.SIZE @ TASK-STACK-BYTES MEM-ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
    STACK-ABI:RETURN-BYTES MEM-ALLOC-GUARDED tcb TCB.RSTACK-U ! tcb TCB.RSTACK !
    STACK-ABI:LOOP-BYTES MEM-ALLOC-GUARDED tcb TCB.LSTACK-U ! tcb TCB.LSTACK !
+   HB-TARGET-LINUX-X86-64? if
+      STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED tcb TCB.ALTSTACK-U ! tcb TCB.ALTSTACK !
+   then
    TASK-REGION-BYTES 8 / >COUNT MEM-ALLOC-CELLS
    TASK-REGION-BYTES tcb TCB.REGION-U !
    tcb TCB.REGION !
@@ -1263,6 +1272,20 @@ variable SWEEP-ARMED
    tcb PARK-CREATE
    tcb DONE-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
+
+\ Every resource above records its owner as soon as it succeeds. A later mmap
+\ or semaphore refusal leaves the task EMPTY, so the capture sweep cannot own
+\ the partial record; release it here before propagating the original error.
+: PREPARE ( ptr n -- ) {: tcb:ptr :}
+   TASK-ARM-SWEEP
+   tcb TASK-CONSTRUCTED? if exit then
+   tcb TCB.SIZE @ TASK-CHECK-SIZE
+   tcb [: dup TASK-PREPARE-RESOURCES ;] catch {: rc:n :}
+   drop
+   rc 0<> if
+      tcb TASK-RELEASE-MEM
+      rc throw
+   then ;
 
 \ This is a foreign C entry address with TASK-ABI's fixed argument contract.
 TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
@@ -1325,7 +1348,8 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    TASK-LIVE+
    tcb TASK-PTHREAD-CREATE-RC dup 0 <> if
       TASK-LIVE-
-      TASK-CONSTRUCTED tcb TASK-STATE!
+      tcb TASK-RELEASE-MEM
+      TASK-EMPTY tcb TASK-STATE!
       E-TASK-THREAD throw
    then
    drop ;

@@ -902,9 +902,10 @@ a shared library, resolve to nothing and stay hex.
   self-build runs end to end and needs no sample-limit workaround. A `prof-on`
   limit still reports and exits 99 at that many samples, so give a whole
   self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
-- The handler runs on an alternate stack registered for the thread that called
-  `prof-on`; a tick delivered to a `lib/task.f` thread runs on that thread's own
-  stack.
+- The handler runs on the receiving thread's alternate signal stack. On x86-64,
+  boot registers the main thread's stack and `lib/task.f` registers each worker's
+  before its runner starts; a tick delivered to a worker uses that worker's
+  stack. On ARM, `prof-on` registers the stack.
 - When the `n`-th sample is foreign the report waits for the next Habu sample, so
   a program that exits or stays blocked in a foreign call from that point on
   never reports; call `prof-report` yourself in that case.

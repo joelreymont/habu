@@ -1348,6 +1348,14 @@ SUITE tasking-threads
    lib/task-test.f
 ;SUITE
 
+SUITE task-signal-altstack
+   test/task-signal-altstack.f
+;SUITE
+
+SUITE task-prepare-failure
+   test/task-prepare-failure.f
+;SUITE
+
 \ Readiness, timers and cancellation on io_uring, over pipes only.
 SUITE aio-uring
    lib/aio-test.f
