@@ -47,17 +47,20 @@ require lib/fd-io.f
 require lib/fs.f
 require lib/source.f
 require lib/uri.f
-require lib/utf16.f
 require lib/content-length.f
 require lib/json-read.f
 require lib/json-write.f
 require lib/json-rpc.f
 require tools/lsp-docs.f
+require tools/lsp-line.f
+require tools/lsp-text.f
 
 package LSP-DIAG
 using JSON-WRITE
 using JSON-RPC
 using LSP-DOCS
+using LSP-LINE
+using LSP-TEXT
 
 private
 
@@ -66,7 +69,7 @@ private
 1 constant ERROR-SEVERITY                \ LSP DiagnosticSeverity.Error
 3 constant INFORMATION-SEVERITY          \ LSP DiagnosticSeverity.Information
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for every read of a packet
+create JR-ST JR:STORAGE-BYTES allot      \ JR storage for screening a packet line
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
 create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
 TYPED-VARIABLE W JSON-WRITE:writer
@@ -83,12 +86,7 @@ variable PKTS-U
 variable SELF                            \ the slot whose lists are published
 TYPED-VARIABLE LIST-A ptr u8             \ the file the list being written is for,
 variable LIST-U
-TYPED-VARIABLE TEXT-A ptr u8             \ the text its positions count in,
-variable TEXT-U
 variable ITEMS                           \ and the diagnostics in it so far
-variable CUR-AT                          \ the cursor in that text: its offset,
-variable CUR-LINE                        \ the line the offset is on,
-variable CUR-START                       \ and where that line starts
 
 : NEW$ ( -- ptr u8 n )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
 : FILE$ ( -- ptr u8 n )  FILE-BUF FILE-U @ ;
@@ -97,30 +95,6 @@ variable CUR-START                       \ and where that line starts
 : ERR ( ptr u8 n -- )
    {: a:ptr u:n :}
    2 >FD a u FD-IO:WRITE-FULL ;
-
-\ ---- lines ---------------------------------------------------------------------
-
-\ The line of the text at offset O, without its LF, and the offset after it.
-: LINE ( ptr u8 n n -- ptr u8 n n )
-   {: a:ptr u:n o:n :}
-   a o + u o - LF INDEX-OF MATCH option
-      none OF a o + u o - u ENDOF
-      some OF IDX>N dup >r a o + swap o r> + 1+ ENDOF
-   ;MATCH ;
-
-\ Hands each line of the text to Q.
-: EACH-LINE ( ptr u8 n [ ptr u8 n -- ] -- )
-   {: a:ptr u:n q :}
-   0 begin dup u < while
-      a u rot LINE >r q execute r>
-   repeat drop ;
-
-\ Whether the LF-ended lines of the text hold this one.
-: HAS-LINE? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr u:n k:ptr ku:n :}
-   0 begin dup u < while
-      a u rot LINE >r k ku STR= if r> drop true exit then r>
-   repeat drop false ;
 
 \ ---- packets -------------------------------------------------------------------
 
@@ -153,60 +127,19 @@ variable CUR-START                       \ and where that line starts
    FILE-U @ 0 > if FILE-BUF c@ SLASH = exit then
    false ;
 
-\ The raw text of a top-level member of a packet line and its JR token kind,
-\ or -1 when the line has no such member: a string's text between its quotes,
-\ escapes and all, or a number's digits. The line is one a SCREENED passed.
-: MEMBER ( ptr u8 n ptr u8 n -- ptr u8 n n )
-   {: a:ptr u:n k:ptr ku:n :}
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
-   JR:NEXT drop
-   k ku JR:FIND-KEY 0= if JR:CLOSE NULL$ -1 exit then
-   JR:TOKEN >r JR:SPAN$ rot JR:CLOSE r> ;
-
-: STRING-MEMBER ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   MEMBER JR:T-STR = ;
-
-\ A member that is an integer a cell holds; any other is as good as absent.
-: INT-MEMBER ( ptr u8 n ptr u8 n -- n bool )
-   MEMBER JR:T-INT <> if 2drop 0 false exit then
-   STR>NUMBER? MATCH option
-      none OF 0 false ENDOF
-      some OF true ENDOF
-   ;MATCH ;
-
 \ ---- positions -----------------------------------------------------------------
 
-: CUR-RESET ( -- )
-   0 CUR-AT !
-   0 CUR-LINE !
-   0 CUR-START ! ;
-
-\ The cursor at offset O of the text. Moving forward reads only the bytes
-\ between; moving back within the line keeps the line; further back starts over.
-: CUR-TO ( n -- )
-   {: o:n :}
-   o CUR-START @ < if CUR-RESET then
-   CUR-AT @ begin dup o < while
-      TEXT-A @ over + c@ LF = if 1 CUR-LINE +! dup 1+ CUR-START ! then
-      1+
-   repeat drop
-   o CUR-AT ! ;
-
-\ An offset held to the text.
-: BOUNDED ( n -- n )  0 max TEXT-U @ min ;
-
 : POSITION ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
-   {: o:n :}
-   o CUR-TO
+   LINE-CHARACTER {: ln:n ch:n :}
    OBJECT-START
-   s" line" CUR-LINE @ FIELD-U COMMA
-   s" character" TEXT-A @ CUR-START @ + o CUR-START @ - UTF16:UNITS FIELD-U
+   s" line" ln FIELD-U COMMA
+   s" character" ch FIELD-U
    OBJECT-END ;
 
 : RANGE ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
    {: a:ptr u:n :}
-   a u s" byte_start" INT-MEMBER 0= if drop 0 then BOUNDED {: from:n :}
-   a u s" byte_end" INT-MEMBER 0= if drop from then BOUNDED from max {: to:n :}
+   a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
+   a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
    s" range" KEY OBJECT-START
    s" start" KEY from POSITION COMMA
    s" end" KEY to POSITION
@@ -301,11 +234,10 @@ variable CUR-START                       \ and where that line starts
    W a u DIAGNOSTIC drop
    1 ITEMS +! ;
 
-\ The list for the file in LIST-A, its positions counted in the text in
-\ TEXT-A, published at the URI.
+\ The list for the file in LIST-A, its positions counted in the text TEXT!
+\ named, published at the URI.
 : LIST ( ptr u8 n option<n> -- )
    OPENING drop
-   CUR-RESET
    0 ITEMS !
    PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
    W CLOSING ;
@@ -317,23 +249,19 @@ variable CUR-START                       \ and where that line starts
 
 \ ---- the files besides the document ---------------------------------------------
 
-\ Whether an open document's path, as the word given answers it for its slot,
-\ is this one.
-: OPEN-AS? ( ptr u8 n [ n -- ptr u8 n ] -- bool )
-   {: f:ptr fu:n path :}
-   DOC-SLOTS 0 ?do
-      i DOC-LIVE? if
-         i path execute f fu STR= if true unloop exit then
-      then
-   loop
-   false ;
+\ Whether the slot is there.
+: SLOT? ( option<n> -- bool )
+   MATCH option
+      some OF drop true ENDOF
+      none OF false ENDOF
+   ;MATCH ;
 
 \ Whether an open document is the file the checker names by this path.
-: HELD-OPEN? ( ptr u8 n -- bool )  [: DOC-CANON$ ;] OPEN-AS? ;
+: HELD-OPEN? ( ptr u8 n -- bool )  DOC-HOLDING SLOT? ;
 
 \ Whether an open document's own list is at this path's file URI: the client
 \ opened it by this path.
-: SHOWN? ( ptr u8 n -- bool )  [: DOC-PATH$ ;] OPEN-AS? ;
+: SHOWN? ( ptr u8 n -- bool )  DOC-OPENED-AS SLOT? ;
 
 \ Whether another open document's last check published a list for this path;
 \ each such document waits for a check again.
@@ -355,9 +283,10 @@ variable CUR-START                       \ and where that line starts
 : SLURP ( -- )
    LIST-A @ LIST-U @  LIST-A @ LIST-U @ FILE-SIZE  [: DEP-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DEP-U ! ;
 
-\ The text of the file in LIST-A, read from disk into TEXT-A, taken after the
-\ read, which may move it. A file that cannot be read says so on stderr and
-\ counts as empty; it may have been refused before any storage held it.
+\ The text of the file in LIST-A, read from disk and taken after the read,
+\ which may move it; positions count in it. A file that cannot be read says so
+\ on stderr and counts as empty; it may have been refused before any storage
+\ held it.
 : READ-LISTED ( -- )
    [: SLURP ;] catch {: code:n :}
    code 0<> if
@@ -365,11 +294,10 @@ variable CUR-START                       \ and where that line starts
       s" lsp: " ERR LIST-A @ LIST-U @ ERR
       SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
       SB$ ERR
-      NULL$ TEXT-U ! TEXT-A !
+      NULL$ TEXT!
       exit
    then
-   0 DEP-TEXT TEXT-A !
-   DEP-U @ TEXT-U ! ;
+   0 DEP-TEXT DEP-U @ TEXT! ;
 
 \ Appends the path, LF-ended, to the files published; answers that copy, which
 \ outlives FILE-BUF.
@@ -420,7 +348,7 @@ public
    slot SELF !
    NEW-B BUF:CLEAR
    slot DOC-CANON$ LIST-U ! LIST-A !
-   slot DOC-TEXT$ TEXT-U ! TEXT-A !
+   slot DOC-TEXT$ TEXT!
    slot DOC-URI$ slot DOC-VERSION@ OPTION:SOME LIST
    p pu [: DEP ;] EACH-LINE
    slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE
@@ -435,6 +363,8 @@ public
    slot DOC-URI$ OPTION:NONE OPENING CLOSING
    slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE ;
 
+;using
+;using
 ;using
 ;using
 ;using
