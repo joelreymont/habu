@@ -11,14 +11,10 @@ package EFFECT-AUTHORITY-TEST
 
 \ These are inspection and declaration boundaries over the actual source owner.
 : JUDGE ( ptr u8 n -- n ) CHECK! ;
-TRUSTED: ABI ( ptr u8 n -- n ) CHECK-UNJUDGED! ;
-TRUSTED: ABI-MIN ( ptr u8 n -- n ) SIG-MIN-IN ;
-TRUSTED: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
+: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 : MIN-LATCH ( -- n ) REC-MIN-IN@ ;
-TRUSTED: ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
-TRUSTED: ABI-SCOPE ( [ -- ] -- n ) CHECKER-EFFECT-AUTHORITY:SCAN ;
-TRUSTED: DECLARE ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
-TRUSTED: ABI-ROW ( ptr u8 n ptr u8 n -- )
+: ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
+: ABI-ROW ( ptr u8 n ptr u8 n -- )
    CHECKER-RECORD-NAME RES-FALSE RES-FALSE USIG-ADD-AS ;
 : SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 : SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
@@ -32,15 +28,12 @@ TRUSTED: ABI-ROW ( ptr u8 n ptr u8 n -- )
 : REPLAY- ( -- ) REPLAY-SCOPE:CLOSE ;
 : MULTI+ ( -- ) MULTI-ERR-BEGIN ;
 : MULTI- ( -- n ) MULTI-ERR-END ;
-TRUSTED: ROW-STATE ( ptr u8 n -- n )
+: ROW-STATE ( ptr u8 n -- n )
    CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? if FEP @ ER.ACTIVE @ else -1 then ;
-TRUSTED: RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
 TRUSTED: CERT-SIZE ( -- n ) LOWER-CERT:BYTES nip ;
 TRUSTED: DICT-MIN ( ptr u8 n -- n )
    0 xref-search-wl XREF-FLAGS DNAME-MIN-IN-MASK and ;
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ The gate's state, named by checked bodies: the open gate binds SEALED?'s
 \ recorded row, and SEAL carries a primitive row.
 : SEALED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:SEALED? ;
@@ -52,12 +45,12 @@ $1000 constant IO-CAP
 create DIAGS IO-CAP allot
 
 : EXPLICIT-IN-ABI ( -- )
-   s" n -- n" s" EAUTH-EXPLICIT" DECLARE ;
+   s" n -- n" s" EAUTH-EXPLICIT" CHECKER-USIG-ADD ;
 
 : THROW-IN-ABI ( -- ) 7329 throw ;
 
 : ABI-DUPLICATE ( -- )
-   s" EAUTH-JUDGED ( n -- n )" ABI drop ;
+   s" EAUTH-JUDGED ( n -- n )" CHECK-UNJUDGED! drop ;
 
 : SCAN-CASES ( -- )
    s" a judged effect grants its own minimum" T-LABEL
@@ -66,22 +59,22 @@ create DIAGS IO-CAP allot
    s" EAUTH-JUDGED" SOURCE-MIN 1 T=
    s" EAUTH-JUDGED" CHECKER-RESOLVES? TTRUE
    s" a successful native scan records shape without authority" T-LABEL
-   s" EAUTH-ABI ( n -- n )" ABI -1 T=
+   s" EAUTH-ABI ( n -- n )" CHECK-UNJUDGED! -1 T=
    MIN-LATCH 0 T=
-   s" EAUTH-ABI" ABI-MIN 1 T=
+   s" EAUTH-ABI" SIG-MIN-IN 1 T=
    s" EAUTH-ABI" SOURCE-MIN -1 T=
    s" EAUTH-ABI" CHECKER-RESOLVES? TFALSE
    s" EAUTH-ABI-CALL ( n -- n ) EAUTH-ABI" CHECK-CANDIDATE! 0 T=
-   s" EAUTH-ABI-USES ( n -- n ) EAUTH-ABI" ABI -1 T=
+   s" EAUTH-ABI-USES ( n -- n ) EAUTH-ABI" CHECK-UNJUDGED! -1 T=
    s" EAUTH-ABI-USES" SOURCE-MIN -1 T=
    s" explicit declarations grant authority inside the ABI scope" T-LABEL
-   [: EXPLICIT-IN-ABI ;] ABI-SCOPE 0 T=
+   [: EXPLICIT-IN-ABI ;] CHECKER-EFFECT-AUTHORITY:SCAN 0 T=
    ENFORCED? TTRUE
    s" EAUTH-EXPLICIT" SOURCE-MIN 1 T=
    s" EAUTH-EXPLICIT" CHECKER-RESOLVES? TTRUE
    s" EAUTH-EXPLICIT-CALL ( n -- n ) EAUTH-EXPLICIT" CHECK-CANDIDATE! -1 T=
    s" an ABI-scope throw restores enforcement" T-LABEL
-   [: THROW-IN-ABI ;] ABI-SCOPE 7329 T=
+   [: THROW-IN-ABI ;] CHECKER-EFFECT-AUTHORITY:SCAN 7329 T=
    ENFORCED? TTRUE
    SCOPE+
    [: ABI-DUPLICATE ;] catch 78 T=
@@ -94,19 +87,19 @@ create DIAGS IO-CAP allot
    MULTI+
    s" EAUTH-MULTI-BAD ( n -- n ) drop" JUDGE 0 T=
    MULTI- 1 T=
-   s" EAUTH-MULTI-BAD" ABI-MIN 1 T=
+   s" EAUTH-MULTI-BAD" SIG-MIN-IN 1 T=
    s" EAUTH-MULTI-BAD" SOURCE-MIN -1 T= ;
 
 : PRIM-CASES ( -- )
    s" PRIM authority uses the PRIM effect, not the unjudged user's shape" T-LABEL
    SCOPE+
    s" -- n" s" dup" ABI-ROW
-   s" dup" ABI-MIN 0 T=
+   s" dup" SIG-MIN-IN 0 T=
    s" dup" SOURCE-MIN 1 T=
    s" EAUTH-PRIM-GOOD ( n -- n n ) dup" CHECK-CANDIDATE! -1 T=
    s" EAUTH-PRIM-BAD ( -- n ) dup" CHECK-CANDIDATE! 0 T=
    s" trusted-only PRIM policy still wins over a user row" T-LABEL
-   s" n --" s" set-check" DECLARE
+   s" n --" s" set-check" CHECKER-USIG-ADD
    s" EAUTH-PRIM-TRUST ( -- ) 0 set-check" CHECK-CANDIDATE! 0 T=
    SCOPE-
    s" the checker-state writers stay trusted-only in checked code" T-LABEL
@@ -118,18 +111,18 @@ create DIAGS IO-CAP allot
    s" EAUTH-ROLL ( n -- n )" JUDGE -1 T=
    SCOPE+
    s" n n -- n" s" EAUTH-ROLL" ABI-ROW
-   s" EAUTH-ROLL" ABI-MIN 2 T=
+   s" EAUTH-ROLL" SIG-MIN-IN 2 T=
    s" EAUTH-ROLL" SOURCE-MIN -1 T=
    SCOPE-
    s" EAUTH-ROLL" SOURCE-MIN 1 T=
    s" regrowth cannot retain a retired grant" T-LABEL
    SCOPE+
-   s" -- n" s" EAUTH-REUSED" DECLARE
+   s" -- n" s" EAUTH-REUSED" CHECKER-USIG-ADD
    s" EAUTH-REUSED" SOURCE-MIN 0 T=
    SCOPE-
    s" n -- n" s" EAUTH-REUSED" ABI-ROW
    s" EAUTH-REUSED" SOURCE-MIN -1 T=
-   s" n -- n" s" EAUTH-REUSED" DECLARE
+   s" n -- n" s" EAUTH-REUSED" CHECKER-USIG-ADD
    s" EAUTH-REUSED" SOURCE-MIN 1 T= ;
 
 : RECOVERY-FACT ( ptr u8 n -- )
@@ -138,8 +131,8 @@ create DIAGS IO-CAP allot
    CHECKER-RESOLVES? TFALSE ;
 
 : NESTED-ABI ( -- )
-   s" EAUTH-NESTED-ABI ( n -- n )" ABI -1 T=
-   s" n -- n" s" EAUTH-REC-EXPLICIT" DECLARE
+   s" EAUTH-NESTED-ABI ( n -- n )" CHECK-UNJUDGED! -1 T=
+   s" n -- n" s" EAUTH-REC-EXPLICIT" CHECKER-USIG-ADD
    7329 throw ;
 
 : RECOVERY-CASES ( -- )
@@ -162,11 +155,11 @@ create DIAGS IO-CAP allot
    s" EAUTH-REC-INFER" RECOVERY-FACT
 
    s" nested candidates and thrown ABI scans restore the enclosing taint" T-LABEL
-   RECOVERY? TTRUE
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TTRUE
    s" EAUTH-REC-CAND ( n -- n )" CHECK-CANDIDATE! -1 T=
-   RECOVERY? TTRUE
-   [: NESTED-ABI ;] ABI-SCOPE 7329 T=
-   RECOVERY? TTRUE
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TTRUE
+   [: NESTED-ABI ;] CHECKER-EFFECT-AUTHORITY:SCAN 7329 T=
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TTRUE
    ENFORCED? TTRUE
    s" EAUTH-NESTED-ABI" ROW-STATE 1 T=
    s" EAUTH-NESTED-ABI" SOURCE-MIN -1 T=
@@ -174,7 +167,7 @@ create DIAGS IO-CAP allot
    s" EAUTH-REC-EXPLICIT" SOURCE-MIN 1 T=
 
    s" recovery mode keeps unrelated ABI-only and trusted-only calls closed" T-LABEL
-   s" EAUTH-REC-RAW ( n -- n )" ABI -1 T=
+   s" EAUTH-REC-RAW ( n -- n )" CHECK-UNJUDGED! -1 T=
    s" EAUTH-REC-RAW-CALL ( n -- n ) EAUTH-REC-RAW" JUDGE 0 T=
    s" EAUTH-REC-RAW-TICK ( -- [ n -- n ] ) ['] EAUTH-REC-RAW" JUDGE 0 T=
    s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-check" JUDGE 0 T=
@@ -190,18 +183,18 @@ create DIAGS IO-CAP allot
    MULTI- 2 T=
    s" independent checks do not inherit earlier analysis taint" T-LABEL
    s" EAUTH-REC-GOOD ( n -- n ) 1+" JUDGE -1 T=
-   RECOVERY? TFALSE
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? TFALSE
    s" EAUTH-REC-GOOD" SOURCE-MIN 1 T=
 
    s" rollback below a run floor admits only the regrown current rows" T-LABEL
    SCOPE+
-   s" n -- n" s" EAUTH-REC-REMOVED" DECLARE
+   s" n -- n" s" EAUTH-REC-REMOVED" CHECKER-USIG-ADD
    MULTI+ SCOPE-
    s" EAUTH-REC-REGROW ( n -- n ) drop" JUDGE 0 T=
    s" EAUTH-REC-REGROW-CALL ( n -- n ) EAUTH-REC-REGROW" JUDGE -1 T=
    s" EAUTH-REC-REGROW-CALL" RECOVERY-FACT
    SCOPE+
-   s" n -- n" s" EAUTH-REC-REGROW" DECLARE
+   s" n -- n" s" EAUTH-REC-REGROW" CHECKER-USIG-ADD
    s" EAUTH-REC-REGROW" ROW-STATE 1 T=
    s" EAUTH-REC-REGROW" SOURCE-MIN 1 T=
    SCOPE-
@@ -216,16 +209,16 @@ create DIAGS IO-CAP allot
    s" multi-error publication retains no executable certificate" T-LABEL
    0 TIER:SELECT                    \ check-only replay publishes through the JIT hook
    MULTI+
-   s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" EV
+   s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" evaluate-closed
    s" EAUTH-REC-LIVE-BAD" RECOVERY-FACT
    s" EAUTH-REC-LIVE-BAD" DICT-MIN 0 T=
-   s" : EAUTH-REC-LIVE ( ptr n -- n ) @ EAUTH-REC-LIVE-BAD ;" EV
+   s" : EAUTH-REC-LIVE ( ptr n -- n ) @ EAUTH-REC-LIVE-BAD ;" evaluate-closed
    s" EAUTH-REC-LIVE" RECOVERY-FACT
    s" EAUTH-REC-LIVE" DICT-MIN 0 T=
    CERT-SIZE LOWER-CERT:HEADER-CELLS cells T=
-   s" package EAUTH-REC-ALIAS public EXPORT EAUTH-REC-LIVE ;package" EV
+   s" package EAUTH-REC-ALIAS public EXPORT EAUTH-REC-LIVE ;package" evaluate-closed
    s" EAUTH-REC-ALIAS:EAUTH-REC-LIVE" RECOVERY-FACT
-   s" : EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE ;" EV
+   s" : EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE ;" evaluate-closed
    s" EAUTH-REC-EXPORT-CALL" RECOVERY-FACT
    s" EAUTH-REC-EXPORT-CALL" DICT-MIN 0 T=
    MULTI- 1 T=
@@ -240,12 +233,12 @@ TRUSTED: UNCHECKED+ ( -- ) check@ SAVED-HOOK ! 0 set-check ;
 TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : PREHOOK-DECLARATIONS ( -- )
-   s" : EAUTH-RAW ( n -- n ) ;" EV
-   s" TRUSTED: EAUTH-TRUSTED ( n -- n ) ;" EV
-   s" defer EAUTH-DEFER ( n -- n )" EV ;
+   s" : EAUTH-RAW ( n -- n ) ;" evaluate-closed
+   s" TRUSTED: EAUTH-TRUSTED ( n -- n ) ;" evaluate-closed
+   s" defer EAUTH-DEFER ( n -- n )" evaluate-closed ;
 
 : BAD-REDEFINITION ( -- )
-   s" : EAUTH-LIVE ( n -- n ) drop ;" EV ;
+   s" : EAUTH-LIVE ( n -- n ) drop ;" evaluate-closed ;
 
 : LIVE-CASES ( -- )
    s" real pre-hook native publication preserves explicit declarations" T-LABEL
@@ -253,25 +246,26 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    UNCHECKED+
    [: PREHOOK-DECLARATIONS ;] catch
    UNCHECKED- 0 T=
-   s" EAUTH-RAW" ABI-MIN 1 T=
+   s" EAUTH-RAW" SIG-MIN-IN 1 T=
    s" EAUTH-RAW" SOURCE-MIN -1 T=
    s" EAUTH-TRUSTED" SOURCE-MIN 1 T=
    s" EAUTH-DEFER" SOURCE-MIN 1 T=
-   s" package EAUTH-SHADOW private : EAUTH-RAW ( n -- n ) ; public EXPORT EAUTH-RAW ;package" EV
+   s" package EAUTH-SHADOW private : EAUTH-RAW ( n -- n ) ; public EXPORT EAUTH-RAW ;package"
+   evaluate-closed
    s" EAUTH-SHADOW:EAUTH-RAW" SOURCE-MIN 1 T=
    s" EAUTH-RAW" SOURCE-MIN -1 T=
-   s" package EAUTH-ALIAS public EXPORT EAUTH-RAW ;package" EV
-   s" EAUTH-ALIAS:EAUTH-RAW" ABI-MIN 1 T=
+   s" package EAUTH-ALIAS public EXPORT EAUTH-RAW ;package" evaluate-closed
+   s" EAUTH-ALIAS:EAUTH-RAW" SIG-MIN-IN 1 T=
    s" EAUTH-ALIAS:EAUTH-RAW" SOURCE-MIN -1 T=
    s" EAUTH-ALIAS-CALL ( n -- n ) EAUTH-ALIAS:EAUTH-RAW" CHECK-CANDIDATE! 0 T=
-   s" : EAUTH-LIVE ( n -- n ) ;" EV
-   s" 17 EAUTH-LIVE" EV-N 17 T=
-   s" undefine EAUTH-LIVE" EV
+   s" : EAUTH-LIVE ( n -- n ) ;" evaluate-closed
+   s" 17 EAUTH-LIVE" TEST-EVAL:N 17 T=
+   s" undefine EAUTH-LIVE" evaluate-closed
    [: BAD-REDEFINITION ;] catch 70 T=
    s" EAUTH-LIVE" SOURCE-MIN -1 T=
-   s" : EAUTH-LIVE ( n -- n ) ;" EV
+   s" : EAUTH-LIVE ( n -- n ) ;" evaluate-closed
    s" EAUTH-LIVE" SOURCE-MIN 1 T=
-   s" 23 EAUTH-LIVE" EV-N 23 T= ;
+   s" 23 EAUTH-LIVE" TEST-EVAL:N 23 T= ;
 
 \ ---- the open gate -------------------------------------------------------------
 \ FRESH is a pre-hook checker word: the build recorded its row without source
@@ -279,13 +273,13 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 \ that row and checks the caller's body against it, and the row gains nothing.
 \ What the gate does not open stays shut: PRIM-CASES runs unsealed too, and a
 \ failed declaration's row serves only its own run.
-: OPEN-X ( -- ) s" : EAUTH-OPEN-X ( -- n ) FRESH ;" EV ;
+: OPEN-X ( -- ) s" : EAUTH-OPEN-X ( -- n ) FRESH ;" evaluate-closed ;
 
 : OPEN-LIVE-CASES ( -- )
    s" an unsealed checker binds an internal word's recorded row" T-LABEL
    SEALED? TFALSE
    ['] OPEN-X catch 0 T=
-   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" EV
+   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" evaluate-closed
    s" EAUTH-OPEN-X" SOURCE-MIN 0 T=
    s" EAUTH-OPEN-X" CHECKER-RESOLVES? TTRUE
    s" and checks the body against that row" T-LABEL
@@ -331,15 +325,15 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    tier@ {: saved:n :}
    0 TIER:SELECT
    MULTI+
-   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" EV
+   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" evaluate-closed
    MULTI- 1 T=
    s" EAUTH-COPY-BAD" RECOVERY-FACT
-   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" evaluate-closed ;] catch
    E-EXPORT-UNDEFINED T=
    s" EAUTH-COPY-CALL ( n -- n ) EAUTH-COPY:EAUTH-COPY-BAD" CHECK-CANDIDATE! 1 T=
    s" nor inside a later run" T-LABEL
    MULTI+
-   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" evaluate-closed ;] catch
    E-EXPORT-UNDEFINED T=
    MULTI- 0 T=
    saved TIER:SELECT ;

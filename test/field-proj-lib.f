@@ -21,17 +21,17 @@ PRODUCT fpg 1
 
 package FIELD-PROJ-LIB
 using TFAM
-private
+public
 
 \ --- sealed friend boundary (dot habu-hb-crash-bare-c5be6634 idiom): the
 \ field-projection window is armed only by the generative crossing, so its arming
-\ word is a pre-hook internal that the seal marks non-executable. A whitebox test
-\ reaches it through a named TRUSTED forwarder, exactly as structure-make-suite.f
-\ forwards to SUMV-ADD / TFAM-DECL and type-layout-lower forwards to TFAM-FIND-IN.
-TRUSTED: TWX-FAM ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
-
-public
-
+\ word is a pre-hook internal that the seal marks non-executable, and a
+\ trusted-only primitive (src/core/checker.f FIELD-PROJ!). This file reaches it
+\ through the TRUSTED forwarder FP-ARM, which test/field-proj-suite.f and
+\ test/field-proj-boundary-child.f call. FAM-ID calls the family lookup
+\ TFAM-FIND-IN itself, checked against its recorded row: the unsealed engine
+\ binds it, and test/field-proj-boundary-prepare.f declares it in the boundary
+\ child's window.
 TRUSTED: FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
 : FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
 
@@ -40,7 +40,7 @@ TRUSTED: FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
    fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if
       s" field-proj-lib: field not found" 76 die then ;
 : FAM-ID ( ptr u8 n -- n ) {: na:ptr nu:n :}   \ top-level family name -> id
-   s" " na nu TWX-FAM 0= if s" field-proj-lib: family not found" 76 die then ;
+   s" " na nu TFAM-FIND-IN 0= if s" field-proj-lib: family not found" 76 die then ;
 
 variable FID-A
 variable FID-V

@@ -1,10 +1,11 @@
 \ decl-event-suite.f — behavior + rollback suite for the shared declaration
 \ syntax-event transaction (src/core/decl-event.f, package DECL-EVENT; dot
-\ habu-type-declarations-shared-14ab0e48). Run BY THE ENGINE over stdin, exactly
-\ like test/type-family-rollback-suite.f (the transaction, registry, and checker
-\ frame words resolve only at top-level interpret, never inside a checked ':'
-\ body):
-\     bin/hb < test/decl-event-suite.f
+\ habu-type-declarations-shared-14ab0e48). A WHITEBOX-SUITE row, like
+\ test/type-family-rollback-suite.f: the transaction, registry and checker frame
+\ words are engine internals, which the unsealed engine binds by their recorded
+\ rows at top level and in a checked ':' body alike. The gate runs it on that
+\ engine, which test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/decl-event-suite.f
 \ Proves: atomic publication + event reflection; malformed and nested streams roll
 \ back EVERY watermark (event arena, field ordinal, variant ordinal, current
 \ variant, field-record cursor, and — via the enclosing checker candidate frame —
@@ -37,16 +38,6 @@ variable #CASE
    #CASE @ 1 + #CASE !
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): sealed pre-hook registry /
-\ checker-frame colon words probed at top level go through named trusted shims.
-TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
-TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
-TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
-TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-
 \ scratch cells.
 variable TOK   variable ITOK          \ live + inner transaction tokens
 variable SCHROOT                       \ a param-0 schema root shared by every field
@@ -58,16 +49,16 @@ variable P-SCHR   variable P-STRU   variable P-DEV
 \ per-case family ids (all arity 2 so a param-0 field schema is legal).
 variable FP1   variable FE2   variable FD3   variable FS7   variable FV7   variable FN8
 
-TWX-TFAM-RESET
-TWX-SCHEMA-RESET
+TFAM-RESET
+SCHEMA-RESET
 DECL-EVENT:RESET
-s" de" CHECKER-PACKAGE-PUBLIC s" p1" 2 TK-PRODUCT TWX-TFAM-DECL FP1 !
-s" de" CHECKER-PACKAGE-PUBLIC s" e2" 2 TK-SUM     TWX-TFAM-DECL FE2 !
-s" de" CHECKER-PACKAGE-PUBLIC s" d3" 2 TK-PRODUCT TWX-TFAM-DECL FD3 !
-s" de" CHECKER-PACKAGE-PUBLIC s" s7" 2 TK-PRODUCT TWX-TFAM-DECL FS7 !
-s" de" CHECKER-PACKAGE-PUBLIC s" v7" 2 TK-SUM     TWX-TFAM-DECL FV7 !
-s" de" CHECKER-PACKAGE-PUBLIC s" n8" 2 TK-PRODUCT TWX-TFAM-DECL FN8 !
-0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ SCHROOT !
+s" de" CHECKER-PACKAGE-PUBLIC s" p1" 2 TK-PRODUCT TFAM-DECL FP1 !
+s" de" CHECKER-PACKAGE-PUBLIC s" e2" 2 TK-SUM     TFAM-DECL FE2 !
+s" de" CHECKER-PACKAGE-PUBLIC s" d3" 2 TK-PRODUCT TFAM-DECL FD3 !
+s" de" CHECKER-PACKAGE-PUBLIC s" s7" 2 TK-PRODUCT TFAM-DECL FS7 !
+s" de" CHECKER-PACKAGE-PUBLIC s" v7" 2 TK-SUM     TFAM-DECL FV7 !
+s" de" CHECKER-PACKAGE-PUBLIC s" n8" 2 TK-PRODUCT TFAM-DECL FN8 !
+0 SCHEMA-PARAM SCHEMA-ROOT+ SCHROOT !
 
 \ ---------------------------------------------------------------------------
 \ 1. Atomic publication + event reflection. A product declaration with a header
@@ -105,14 +96,14 @@ TC @ 7161 T=                                            \ CURRENT is coordinator
 TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !   TYPE-FIELD:COUNT P-PF !
 SCHEMA-N@ P-SCHN !   SCHEMA-ROOT-N@ P-SCHR !   TF-STR-U@ P-STRU !
 DECL-EVENT:COUNT P-DEV !
-TWX-CAND-START
+CHECK-CANDIDATE-START
    DECL-EVENT:OPEN TOK !
    TOK @ FE2 @ DECL-EVENT:DECL TOK !
    TOK @ FE2 @ s" valid-a" DECL-EVENT:VARIANT TOK !    \ registers a variant (SUMV-ADD)
    DECL-EVENT:CURRENT-VARIANT SUMV-N@ 1 - T=           \ selector is the just-added variant id
    TOK @ FE2 @ s" y" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
    TOK @ DECL-EVENT:ROLLBACK                            \ retire events + field rows + selector
-0 TWX-CAND-DONE drop                                    \ retire the variant + any schema
+0 CHECK-CANDIDATE-DONE drop                             \ retire the variant + any schema
 TFAM-N@ P-TFAM @ T=
 SUMV-N@ P-SUMV @ T=                                     \ variant retired
 TYPE-FIELD:COUNT P-PF @ T=                              \ field row retired
@@ -128,14 +119,14 @@ DECL-EVENT:CURRENT-VARIANT DECL-EVENT:NO-VARIANT T=     \ selector restored
 \    not a second gate here; the rejected declaration leaves no committed field.
 \ ---------------------------------------------------------------------------
 TYPE-FIELD:COUNT P-PF !
-TWX-CAND-START
+CHECK-CANDIDATE-START
    DECL-EVENT:OPEN TOK !
    TOK @ FD3 @ DECL-EVENT:DECL TOK !
    TOK @ FD3 @ s" dup" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
    TOK @ FD3 @ s" dup" SCHROOT @ 1 1 CELL CELL CELL 0 ' DECL-EVENT:FIELD catch
       TC ! 2drop 2drop 2drop 2drop 2drop drop            \ restore the 11 inputs catch pushed back
    TOK @ DECL-EVENT:ROLLBACK
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 TC @ 7102 T=                                            \ E-TFAM-DUP surfaced from the field record
 TYPE-FIELD:COUNT P-PF @ T=                              \ both provisional rows retired
 
@@ -275,7 +266,7 @@ TEST-STANDALONE-PREFLIGHT
    TOK @ FV7 @ IDA @ PAYLOAD-N drop ;
 
 : TEST-OWNER-BEFORE-DECL ( -- )
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK !
    OPEN ITOK !
    ITOK @ FV7 @ DECL ITOK !
@@ -293,7 +284,7 @@ TEST-STANDALONE-PREFLIGHT
    [: TEST-INNER-PAYLOAD ;] catch TC !
    TC @ E-DEV-FIELD-SCOPE T=
    TOK @ ROLLBACK
-   0 TWX-CAND-DONE drop ;
+   0 CHECK-CANDIDATE-DONE drop ;
 
 TEST-OWNER-BEFORE-DECL
 
@@ -394,9 +385,9 @@ TEST-SNAPSHOT-FAILURE
 \ nor any registry; rollback then restores the complete pre-transaction state.
 \ A family owned only by another package remains a legal variant name.
 \ ---------------------------------------------------------------------------
-s" " CHECKER-PACKAGE-PUBLIC s" raw-global" 0 TK-ENUM TWX-TFAM-DECL drop
-s" decl-event" CHECKER-PACKAGE-PUBLIC s" raw-local" 0 TK-ENUM TWX-TFAM-DECL drop
-s" other-event-test" CHECKER-PACKAGE-PUBLIC s" raw-foreign" 0 TK-ENUM TWX-TFAM-DECL drop
+s" " CHECKER-PACKAGE-PUBLIC s" raw-global" 0 TK-ENUM TFAM-DECL drop
+s" decl-event" CHECKER-PACKAGE-PUBLIC s" raw-local" 0 TK-ENUM TFAM-DECL drop
+s" other-event-test" CHECKER-PACKAGE-PUBLIC s" raw-foreign" 0 TK-ENUM TFAM-DECL drop
 VALUE-RECORD event-record payload n END-VALUE-RECORD
 
 TYPED-VARIABLE VN-A ptr u8   variable VN-U
@@ -488,7 +479,7 @@ variable VN-FOWNER
 : VN-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a VN-A !  u VN-U !
    VN-SAVE-REG  VN-SAVE-OUT
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK !
    TOK @ FV7 @ DECL TOK !
    VN-SAVE-IN
@@ -496,13 +487,13 @@ variable VN-FOWNER
    TC @ want T=
    VN-CHECK-IN  VN-CHECK-OPEN-REG
    TOK @ ROLLBACK
-   0 TWX-CAND-DONE drop
+   0 CHECK-CANDIDATE-DONE drop
    VN-CHECK-OUT  VN-CHECK-REG ;
 
 : VN-ACCEPT ( ptr u8 n -- ) {: a:ptr u:n :}
    a VN-A !  u VN-U !
    VN-SAVE-REG  VN-SAVE-OUT
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK !
    TOK @ FV7 @ DECL TOK !
    [: VN-CALL ;] catch TC !
@@ -511,7 +502,7 @@ variable VN-FOWNER
    DEV-VAR-ORD @ 1 T=
    DEV-CUR-VAR @ DECL-EVENT:NO-VARIANT <> T-TRUE
    TOK @ ROLLBACK
-   0 TWX-CAND-DONE drop
+   0 CHECK-CANDIDATE-DONE drop
    VN-CHECK-OUT  VN-CHECK-REG ;
 
 s" " 7107 VN-REJECT
@@ -629,18 +620,18 @@ variable WF-PK      variable WF-LAY
 
 : WF-START ( -- )
    RESET
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK !
    TOK @ FV7 @ DECL TOK ! ;
 
 : WF-START-UNBOUND ( -- )
    RESET
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK ! ;
 
 : WF-FINISH ( -- )
    TOK @ ROLLBACK
-   0 TWX-CAND-DONE drop
+   0 CHECK-CANDIDATE-DONE drop
    DEPTH 0 T=
    CURRENT-VARIANT NO-VARIANT T= ;
 
@@ -748,14 +739,14 @@ variable HF-BASE-PF
 : HF-OPEN ( -- )
    TYPE-FIELD:COUNT HF-BASE-PF !
    RESET
-   TWX-CAND-START
+   CHECK-CANDIDATE-START
    OPEN TOK !
    TOK @ FV7 @ DECL TOK !
    TOK @ FV7 @ s" hf-variant" VARIANT TOK !
    CURRENT-VARIANT VAR-E !
    TOK @ FV7 @ s" hf-first" SCHROOT @
       0 1 0 CELL CELL 0 FIELD TOK !
-   1 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ HF-SCH !
+   1 SCHEMA-PARAM SCHEMA-ROOT+ HF-SCH !
    TOK @ FV7 @ s" hf-second" HF-SCH @
       1 1 CELL CELL CELL 0 FIELD TOK !
    TOK @ FV7 @ END-VARIANT TOK !
@@ -771,7 +762,7 @@ variable HF-BASE-PF
 
 : HF-CLOSE ( -- )
    TOK @ ROLLBACK
-   0 TWX-CAND-DONE drop
+   0 CHECK-CANDIDATE-DONE drop
    DEV-N @ 0 T=             DEV-PUB-N @ 0 T=
    DEV-FLD-ORD @ 0 T=       DEV-VAR-ORD @ 0 T=
    DEV-CUR-VAR @ DEV-NO-VARIANT T=
@@ -930,7 +921,7 @@ HF-CLOSE
 \ Section 19 owns one family of its own so its field slots never collide with a
 \ row an earlier section committed.
 variable FR9
-s" de" CHECKER-PACKAGE-PUBLIC s" r9" 2 TK-PRODUCT TWX-TFAM-DECL FR9 !
+s" de" CHECKER-PACKAGE-PUBLIC s" r9" 2 TK-PRODUCT TFAM-DECL FR9 !
 
 $100000 constant RT-STALE       \ added to a live token to name one never minted
 -7195 constant RT-BODY-CODE     \ a declaration body's own, unrelated failure
@@ -994,7 +985,7 @@ variable RT-SAVED-FLD
 
 \ 19a. Two leaked descendants are retired last-in first-out and the target
 \      frame's own marks are the ones left standing.
-TWX-CAND-START
+CHECK-CANDIDATE-START
 RT-MARK
 s" rt-base" RT-BASE-FRAME
 s" rt-d1" 1 RT-DESCEND drop
@@ -1003,13 +994,13 @@ DEV-TX-DEPTH @ RT-EDEPTH @ 3 + T=
 TYPE-FIELD:TX-DEPTH RT-FDEPTH @ 3 + T=
 RT-RETIRE
 RT-RESTORED
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 
 \ 19b. Every way of presenting a bad token pair rejects BEFORE the first mutation
 \      and leaves the leaked frames exactly as they were: a dead event token (the
 \      index lookup here), a live pair from two different frames (the pair
 \      cross-check here), and a dead field token (the owner's own cleanup vector).
-TWX-CAND-START
+CHECK-CANDIDATE-START
 s" rt-guard" RT-BASE-FRAME
 s" rt-g1" 1 RT-DESCEND drop
 RT-MARK
@@ -1036,11 +1027,11 @@ RT-RESYNC-FLD
 RT-RESTORED
 RT-RETIRE
 DEV-TX-DEPTH @ RT-EDEPTH @ 2 - T=
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 
 \ 19c. Retiring a COMMITTED frame puts every published mark back, including the
 \      committed field high-water the outer commit advanced.
-TWX-CAND-START
+CHECK-CANDIDATE-START
 RT-MARK
 s" rt-commit" RT-BASE-FRAME
 RT-TOK @ PREPARE
@@ -1049,11 +1040,11 @@ DEV-PUB-N @ RT-PUB @ 2 + T=
 TYPE-FIELD:COUNT P-PF @ 1 + T=
 RT-RETIRE
 RT-RESTORED
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 
 \ 19d. A nested frame that succeeds on its own is still provisional: retiring the
 \      outer frame through the same path puts BOTH frames' marks back.
-TWX-CAND-START
+CHECK-CANDIDATE-START
 RT-MARK
 s" rt-outer" RT-BASE-FRAME
 s" rt-inner" 1 RT-DESCEND PUBLISH
@@ -1062,7 +1053,7 @@ TYPE-FIELD:TX-DEPTH RT-FDEPTH @ 1 + T=
 DEV-PUB-N @ RT-PUB @ T=
 RT-RETIRE
 RT-RESTORED
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 
 \ 19e. The production coordinator. A body that leaks one nested frame is now
 \      rejected in PREPARE, cleaned up in ROLLBACK, and leaves no poison; a body

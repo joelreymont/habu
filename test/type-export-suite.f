@@ -1,8 +1,11 @@
 \ type-export-suite.f — checker-level EXPORT alias suite (CHECKER-EXPORT, dot
-\ habu-compiler-pkg-re-688212c1). Run BY THE ENGINE over stdin, exactly like
-\ test/type-family-rollback-suite.f. Direct checker operations execute inside
-\ real engine package blocks so package authority comes from the live package:
-\     bin/hb < test/type-export-suite.f
+\ habu-compiler-pkg-re-688212c1). A WHITEBOX-SUITE row, like
+\ test/type-family-rollback-suite.f: CHECKER-EXPORT and the record queries are
+\ checker internals, which the unsealed engine binds by their recorded rows. The
+\ gate runs it on that engine, which test/whitebox-engine.f builds. Direct
+\ checker operations execute inside real engine package blocks so package
+\ authority comes from the live package:
+\     <unsealed engine> --load test/type-export-suite.f
 \ Covers: cross-package alias fidelity (one scheme, two names, source
 \ untouched), private->public promotion, defer + control-flag copy, quotation
 \ scheme fidelity, the CHECKER-EXPORT rejects the engine keyword's native walls
@@ -33,19 +36,16 @@ require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path
 
 variable FOUNDF   variable TC
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named trusted shims.
+\ The probes below are checked: on the whitebox engine a body naming a
+\ checker-internal word binds that word's recorded row.
 \
 \ An alias CHECKER-EXPORT records is a fact of the checker's store: the
 \ operation publishes no engine record, so compiled code cannot call one. The
 \ probes therefore read the alias's own record (CHECKER-RECORD-SYM?), and a
 \ checked caller of an alias asks the certify path (VERIFY:CANDIDATE-IN-SCOPE),
 \ where the static scanner's aliases bind.
-TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
-TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
-TRUSTED: TWX-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
-TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CHECKER-RECORD-SYM? CTL-FLAGS-SYM ;
+: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-RECORD-SYM? DFER-FIND-SYM ;
+: TWX-CTL-FLAGS ( ptr u8 n -- n ) CHECKER-RECORD-SYM? CTL-FLAGS-SYM ;
 
 
 
@@ -64,8 +64,8 @@ public
 s" xps:XP-INC" CHECKER-EXPORT
 ;package
 
-s" xpd:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
-s" xps:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xpd:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xps:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU1 ( n -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" XPU2 ( n -- n ) xps:XP-INC" CHECK! -1 T=
 s" XPU3 ( -- n ) xpd:XP-INC" VERIFY:CANDIDATE-IN-SCOPE 0 T=
@@ -82,7 +82,7 @@ package XPP
 public
 s" XP-HID" CHECKER-EXPORT
 ;package
-s" xpp:XP-HID" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xpp:XP-HID" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -178,19 +178,19 @@ CHECKER-SCOPE-START
    package XRB
    public
    s" xps:XP-INC" CHECKER-EXPORT
-   s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+   s" xrb:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
    ;package
 CHECKER-SCOPE-DONE
 SYM-N @ P-SYMN @ T=
 SYM-STR-U @ P-SYMU @ T=
-s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
+s" xrb:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 7. candidate rollback: alias effect, defer flag, and control flags all
 \    retire; the frame depth balances.
 \ ---------------------------------------------------------------------------
 RBF-DEPTH @ P-DEPTH !
-TWX-CAND-START
+CHECK-CANDIDATE-START
    package XRB2
    public
    s" xpf:XP-DEF" CHECKER-EXPORT
@@ -199,9 +199,9 @@ TWX-CAND-START
    s" xrb2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
    s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW and CTL-THROW T=
    ;package
-0 TWX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 RBF-DEPTH @ P-DEPTH @ T=
-s" xrb2:XP-DEF" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
+s" xrb2:XP-DEF" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-DEF" TWX-CTL-FLAGS 0 T=
 s" xrb2:XP-THR" TWX-CTL-FLAGS 0 T=

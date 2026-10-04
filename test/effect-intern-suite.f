@@ -1,10 +1,14 @@
 \ effect-intern-suite.f — the checker's effect-store node interner.
 \
-\ Run by the engine, like test/checker-scan-index-suite.f: every case is a
-\ top-level interpret line, because the store and its interner are checker
-\ internals that resolve only there, reached through named TRUSTED: shims.
+\ A WHITEBOX-SUITE row, like test/checker-scan-index-suite.f: every case is a
+\ top-level interpret line. The store and its interner are checker internals the
+\ unsealed engine binds by their recorded rows, named directly or by the shims
+\ below. The gate runs it on that engine, which test/whitebox-engine.f builds:
 \
-\     bin/hb --load test/effect-intern-suite.f
+\     <unsealed engine> --load test/effect-intern-suite.f
+\
+\ Standalone under bin/hb it exits 70 with E-UNDEFINED: E-PTR (docs/gate.md
+\ "How a suite runs").
 \
 \ WHAT IS UNDER TEST. E-COPY* used to write a fresh node for every term of every
 \ recorded signature, so the store held 115,948 nodes carrying 1,593 distinct
@@ -70,21 +74,19 @@ variable #CASE
 
 \ ---------------------------------------------------------------------------
 \ whitebox shims. The store, its interner and the layout they share are
-\ checker-internal colon words; each is reached through one named boundary.
+\ checker-internal colon words; each read the cases repeat has one name here.
 \ ---------------------------------------------------------------------------
-TRUSTED: EIX-EVAL ( ptr u8 n -- ) evaluate ;
 : EIX-UEND ( -- n ) UEND @ ;
-TRUSTED: EIX-NEXT ( n -- n ) E-PTR E-NEXT@ ;
+: EIX-NEXT ( n -- n ) E-PTR E-NEXT@ ;
 : EIX-REC-BYTES ( -- n ) EFF-REC ;
-TRUSTED: EIX-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
 \ the two row offsets of a NAME's active record, and -1 when the checker knows
 \ no effect for it. This is the identity the whole suite is written against: two
 \ words share a row exactly when these answer the same offset.
-TRUSTED: EIX-DIN ( ptr u8 n -- n )
+: EIX-DIN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ E-DIN@ ;
-TRUSTED: EIX-DOUT ( ptr u8 n -- n )
+: EIX-DOUT ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ E-DOUT@ ;
 
@@ -92,10 +94,7 @@ TRUSTED: EIX-DOUT ( ptr u8 n -- n )
 \ made exact at, and each entry's node offset.
 : EIX-N ( -- n ) UIX-N @ ;
 : EIX-HI ( -- n ) UIX-HI @ ;
-TRUSTED: EIX-ENTRY ( n -- n ) UIX-E-OFF UIX-E @ ;
-\ E-KEY-N answers 0 for anything that is not a node this file writes, so it is
-\ also the cheapest "is there still a node here" question, asked of the owner.
-TRUSTED: EIX-KEY-N ( n -- n ) E-KEY-N ;
+: EIX-ENTRY ( n -- n ) UIX-E-OFF UIX-E @ ;
 : EIX-TRUNCATE-FROM ( ptr u8 n -- ) CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 variable TC                     \ last caught throw code
@@ -113,13 +112,14 @@ variable IX
    REPEAT drop ;
 
 \ TABLE-LIVE ( -- ) : no entry names a byte at or above the store's end, and
-\ every entry still names a node. Section 4's invariant, checked wherever the
-\ store has just rewound.
+\ every entry still names a node: E-KEY-N answers 0 for anything that is not a
+\ node this file writes. Section 4's invariant, checked wherever the store has
+\ just rewound.
 : TABLE-LIVE ( -- )
    EIX-HI EIX-UEND > TFALSE
    0 BEGIN dup EIX-N < WHILE
       dup EIX-ENTRY EIX-UEND < TTRUE
-      dup EIX-ENTRY EIX-KEY-N 0 T<>
+      dup EIX-ENTRY E-KEY-N 0 T<>
       1 +
    REPEAT drop ;
 
@@ -127,19 +127,19 @@ variable IX
 \ 1. IDENTICAL MEANS SHARED
 \ ---------------------------------------------------------------------------
 
-s" : EIXA ( n n -- n ) drop ;" EIX-EVAL
-s" : EIXB ( n n -- n ) drop ;" EIX-EVAL
+s" : EIXA ( n n -- n ) drop ;" evaluate
+s" : EIXB ( n n -- n ) drop ;" evaluate
 s" EIXA" EIX-DIN 0 T<>                         \ the comparison below is not vacuous
 s" EIXA" EIX-DIN  s" EIXB" EIX-DIN T=          \ ... and the two words share one din row
 s" EIXA" EIX-DOUT s" EIXB" EIX-DOUT T=
-s" EIXA" EIX-MIN-IN 2 T=                       \ each still answers for itself
-s" EIXB" EIX-MIN-IN 2 T=
+s" EIXA" SIG-MIN-IN 2 T=                       \ each still answers for itself
+s" EIXB" SIG-MIN-IN 2 T=
 
 \ The saving, measured: a third word with a signature the store already holds
 \ costs its record headers and nothing else. A byte over that is a node the
 \ interner failed to recognise.
 EIX-UEND M0 !
-s" : EIXC ( n n -- n ) drop ;" EIX-EVAL
+s" : EIXC ( n n -- n ) drop ;" evaluate
 EIX-UEND M0 @ -  M0 @ RECS-SINCE EIX-REC-BYTES *  T=
 s" EIXC" EIX-DIN s" EIXA" EIX-DIN T=
 
@@ -149,8 +149,8 @@ s" EIXC" EIX-DIN s" EIXA" EIX-DIN T=
 \ arity is written here, some word in the engine's own prefix already has it, and
 \ this case failed inside the gate pool for exactly that reason.
 EIX-UEND M0 !
-s" enum eixfresh alpha beta ;enum" EIX-EVAL
-s" : EIXD ( eixfresh -- ) drop ;" EIX-EVAL
+s" enum eixfresh alpha beta ;enum" evaluate
+s" : EIXD ( eixfresh -- ) drop ;" evaluate
 EIX-UEND M0 @ -  M0 @ RECS-SINCE EIX-REC-BYTES *  > TTRUE
 
 \ ---------------------------------------------------------------------------
@@ -160,40 +160,40 @@ EIX-UEND M0 @ -  M0 @ RECS-SINCE EIX-REC-BYTES *  > TTRUE
 \ ---------------------------------------------------------------------------
 
 \ EN-CON payload: two one-term rows of different concrete types
-s" : EIXCON1 ( n -- ) drop ;" EIX-EVAL
-s" : EIXCON2 ( bool -- ) drop ;" EIX-EVAL
+s" : EIXCON1 ( n -- ) drop ;" evaluate
+s" : EIXCON2 ( bool -- ) drop ;" evaluate
 s" EIXCON1" EIX-DIN  s" EIXCON2" EIX-DIN  T<>
 
 \ EN-VAR id: identical tags, identical arity, the variables in a different order
-s" : EIXVAR1 ( a b -- a b ) ;" EIX-EVAL
-s" : EIXVAR2 ( a b -- b a ) swap ;" EIX-EVAL
+s" : EIXVAR1 ( a b -- a b ) ;" evaluate
+s" : EIXVAR2 ( a b -- b a ) swap ;" evaluate
 s" EIXVAR1" EIX-DIN  s" EIXVAR2" EIX-DIN  T=       \ same din, by construction
 s" EIXVAR1" EIX-DOUT s" EIXVAR2" EIX-DOUT T<>      \ ... and a different dout
 
 \ EN-PTR wrapping: a pointer term against the bare term it points at
-s" : EIXPTR1 ( ptr n -- ) drop ;" EIX-EVAL
-s" : EIXPTR2 ( n -- ) drop ;" EIX-EVAL
+s" : EIXPTR1 ( ptr n -- ) drop ;" evaluate
+s" : EIXPTR2 ( n -- ) drop ;" evaluate
 s" EIXPTR1" EIX-DIN  s" EIXPTR2" EIX-DIN  T<>
 
 \ EN-PUSH chain: the same term, one more of it
-s" : EIXPUSH1 ( n -- ) drop ;" EIX-EVAL
-s" : EIXPUSH2 ( n n -- ) drop drop ;" EIX-EVAL
+s" : EIXPUSH1 ( n -- ) drop ;" evaluate
+s" : EIXPUSH2 ( n n -- ) drop drop ;" evaluate
 s" EIXPUSH1" EIX-DIN  s" EIXPUSH2" EIX-DIN  T<>
 
 \ EN-QUOT rows: quotation arguments differing in their own din, then their dout
-s" : EIXQ1 ( [ -- ] -- ) drop ;" EIX-EVAL
-s" : EIXQ2 ( [ n -- ] -- ) drop ;" EIX-EVAL
-s" : EIXQ3 ( [ -- n ] -- ) drop ;" EIX-EVAL
+s" : EIXQ1 ( [ -- ] -- ) drop ;" evaluate
+s" : EIXQ2 ( [ n -- ] -- ) drop ;" evaluate
+s" : EIXQ3 ( [ -- n ] -- ) drop ;" evaluate
 s" EIXQ1" EIX-DIN  s" EIXQ2" EIX-DIN  T<>
 s" EIXQ1" EIX-DIN  s" EIXQ3" EIX-DIN  T<>
 s" EIXQ2" EIX-DIN  s" EIXQ3" EIX-DIN  T<>
 
 \ EN-PARAM: the family's own name, and then its argument, are both key
-s" enum eixcol red green blue ;enum" EIX-EVAL
-s" : EIXP1 ( eixcol -- ) drop ;" EIX-EVAL
-s" : EIXP2 ( n -- ) drop ;" EIX-EVAL
+s" enum eixcol red green blue ;enum" evaluate
+s" : EIXP1 ( eixcol -- ) drop ;" evaluate
+s" : EIXP2 ( n -- ) drop ;" evaluate
 s" EIXP1" EIX-DIN  s" EIXP2" EIX-DIN  T<>
-s" : EIXP3 ( eixcol -- ) drop ;" EIX-EVAL
+s" : EIXP3 ( eixcol -- ) drop ;" evaluate
 s" EIXP1" EIX-DIN  s" EIXP3" EIX-DIN  T=           \ ... and the same family shares again
 
 \ ---------------------------------------------------------------------------
@@ -201,19 +201,19 @@ s" EIXP1" EIX-DIN  s" EIXP3" EIX-DIN  T=           \ ... and the same family sha
 \ ---------------------------------------------------------------------------
 
 \ deleting one sharer leaves the others answering
-s" : EIXS1 ( n n -- n ) drop ;" EIX-EVAL
-s" : EIXS2 ( n n -- n ) drop ;" EIX-EVAL
+s" : EIXS1 ( n n -- n ) drop ;" evaluate
+s" : EIXS2 ( n n -- n ) drop ;" evaluate
 s" EIXS1" EIX-DIN s" EIXS2" EIX-DIN T=
-s" undefine EIXS1" EIX-EVAL
-s" EIXS1" EIX-MIN-IN -1 T=                         \ gone
-s" EIXS2" EIX-MIN-IN 2 T=                          \ the sharer is untouched
+s" undefine EIXS1" evaluate
+s" EIXS1" SIG-MIN-IN -1 T=                         \ gone
+s" EIXS2" SIG-MIN-IN 2 T=                          \ the sharer is untouched
 s" EIXS2" EIX-DIN 0 T<>
-s" : EIXS3 ( n n -- n ) EIXS2 ;" EIX-EVAL          \ ... and still certifies a caller
-s" EIXS3" EIX-MIN-IN 2 T=
+s" : EIXS3 ( n n -- n ) EIXS2 ;" evaluate          \ ... and still certifies a caller
+s" EIXS3" SIG-MIN-IN 2 T=
 
 \ redefining one sharer with a different signature moves only that word
-s" undefine EIXS2 : EIXS2 ( n -- n ) ;" EIX-EVAL
-s" EIXS2" EIX-MIN-IN 1 T=
+s" undefine EIXS2 : EIXS2 ( n -- n ) ;" evaluate
+s" EIXS2" SIG-MIN-IN 1 T=
 s" EIXS2" EIX-DIN  s" EIXS3" EIX-DIN  T<>
 
 \ ---------------------------------------------------------------------------
@@ -225,9 +225,9 @@ TABLE-LIVE                                         \ ... after everything above
 \ a truncation back to a marker word discards every record above it, and with
 \ them every node those records wrote. The entries that named them have to go at
 \ the same seam, and the mark has to come down with the store.
-s" : EIXMARK ( -- ) ;" EIX-EVAL
-s" enum eixtrunc red green ;enum" EIX-EVAL         \ again fresh, so nodes really die
-s" : EIXT1 ( eixtrunc -- ) drop ;" EIX-EVAL
+s" : EIXMARK ( -- ) ;" evaluate
+s" enum eixtrunc red green ;enum" evaluate         \ again fresh, so nodes really die
+s" : EIXT1 ( eixtrunc -- ) drop ;" evaluate
 s" EIXT1" EIX-DIN IX !
 IX @ 0 T<>
 EIX-UEND M0 !
@@ -238,13 +238,13 @@ TABLE-LIVE
 \ and the next definition's row is a LIVE node below the store's end, not an
 \ offset the truncation left behind: a table that kept its discarded entries
 \ answers with one of them, and the store then writes a different node over it.
-s" : EIXT2 ( n n n n n -- ) drop drop drop drop drop ;" EIX-EVAL
+s" : EIXT2 ( n n n n n -- ) drop drop drop drop drop ;" evaluate
 s" EIXT2" EIX-DIN EIX-UEND < TTRUE
-s" EIXT2" EIX-DIN EIX-KEY-N 0 T<>
+s" EIXT2" EIX-DIN E-KEY-N 0 T<>
 TABLE-LIVE
 
 \ a rolled-back candidate leaves neither store nor table behind it
-TRUSTED: EIX-BAD-DEF ( -- ) s" : EIXBAD ( n -- n ) drop ;" evaluate ;
+: EIX-BAD-DEF ( -- ) s" : EIXBAD ( n -- n ) drop ;" evaluate-closed ;
 EIX-UEND M0 !
 ' EIX-BAD-DEF catch TC !
 TC @ 0 T<>                                         \ the definition really was rejected
@@ -253,8 +253,8 @@ EIX-HI EIX-UEND > TFALSE
 TABLE-LIVE
 
 \ the store still answers correctly afterwards
-s" EIXA" EIX-MIN-IN 2 T=
-s" EIXT2" EIX-MIN-IN 5 T=
+s" EIXA" SIG-MIN-IN 2 T=
+s" EIXT2" SIG-MIN-IN 5 T=
 
 \ A REWIND NO SEAM PERFORMED. The store can move under the table without
 \ USIGS-RESTORE-END ever being called: E-INTERN's hit path assigns UEND itself
@@ -270,16 +270,16 @@ s" EIXT2" EIX-MIN-IN 5 T=
 \ path never runs and only E-REC-START's sync is left to see the rewind. Read as
 \ the MARK rather than as an answer - a table that is merely rebuilt later
 \ answers correctly too, and that is exactly what this must tell apart.
-TRUSTED: EIX-RAW-REWIND ( n -- ) UEND ! UTERM! ;
+: EIX-RAW-REWIND ( n -- ) UEND ! UTERM! ;
 
-s" : EIXOLD ( n -- ) drop ;" EIX-EVAL
+s" : EIXOLD ( n -- ) drop ;" evaluate
 EIX-UEND M0 !
-s" enum eixrw one two ;enum" EIX-EVAL              \ a family nothing else names
-s" : EIXRW ( eixrw -- ) drop ;" EIX-EVAL           \ ... so its nodes are new
+s" enum eixrw one two ;enum" evaluate              \ a family nothing else names
+s" : EIXRW ( eixrw -- ) drop ;" evaluate           \ ... so its nodes are new
 EIX-UEND M0 @ > TTRUE
 M0 @ EIX-RAW-REWIND
 EIX-HI EIX-UEND > TTRUE                            \ the mark is stale, deliberately
-s" undefine EIXOLD" EIX-EVAL                       \ one record, not one node
+s" undefine EIXOLD" evaluate                       \ one record, not one node
 EIX-HI EIX-UEND > TFALSE                           \ the append seam noticed
 TABLE-LIVE
 
@@ -292,9 +292,11 @@ TABLE-LIVE
 \ and must not lose them when the store moves underneath it.
 
 : EIX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
-TRUSTED: EIX-BASE ( -- n ) USIGS ;
-TRUSTED: EIX-STAMPED? ( -- bool ) USIGS UIX-BASE@ = ;
-TRUSTED: EIX-FORCE-GROW ( -- ) USIGS-CAP-U @ 1 + USIGS-ENSURE ;
+\ The store's base as an integer, by the address-to-integer distance: a raw
+\ cell (B0 below) holds a number, never an address.
+: EIX-BASE ( -- n ) USIGS NULL-PTR BYTE-VIEW - ;
+: EIX-STAMPED? ( -- bool ) USIGS UIX-BASE@ = ;
+: EIX-FORCE-GROW ( -- ) USIGS-CAP-U @ 1 + USIGS-ENSURE ;
 
 variable B0                     \ store base before a forced relocation
 variable N0                     \ entry count before it
@@ -305,7 +307,7 @@ variable N0                     \ entry count before it
 \ repeats it must ANSWER WITH THOSE NODES. With no index for the baked store the
 \ table was empty at boot, this row was a second copy of them sitting above the
 \ user offset, and the whole-store census answered 1,717 nodes for 1,690 shapes.
-s" : EIXBOOT ( n n -- n ) drop ;" EIX-EVAL
+s" : EIXBOOT ( n n -- n ) drop ;" evaluate
 s" EIXBOOT" EIX-DIN 0 T<>                          \ the comparison is not vacuous
 s" EIXBOOT" EIX-DIN EIX-USER-OFF < TTRUE           \ ... and the row is the prefix's own node
 s" EIXBOOT" EIX-DOUT EIX-USER-OFF < TTRUE
@@ -316,8 +318,8 @@ s" EIXBOOT" EIX-DOUT EIX-USER-OFF < TTRUE
 \ read a new base as a store it never indexed. The shape below is interned BEFORE
 \ the move and repeated after it: a table that threw itself away writes a second
 \ copy of the row and answers with a different offset.
-s" enum eixreloc one two ;enum" EIX-EVAL           \ a family nothing else names
-s" : EIXR1 ( eixreloc -- ) drop ;" EIX-EVAL
+s" enum eixreloc one two ;enum" evaluate           \ a family nothing else names
+s" : EIXR1 ( eixreloc -- ) drop ;" evaluate
 s" EIXR1" EIX-DIN IX !
 IX @ 0 T<>
 EIX-BASE B0 !
@@ -326,7 +328,7 @@ EIX-FORCE-GROW
 EIX-BASE B0 @ T<>                                  \ the store really did move
 EIX-STAMPED? TTRUE                                 \ ... carrying the index's stamp with it
 EIX-N N0 @ T=                                      \ ... and forgetting no entry
-s" : EIXR2 ( eixreloc -- ) drop ;" EIX-EVAL
+s" : EIXR2 ( eixreloc -- ) drop ;" evaluate
 s" EIXR2" EIX-DIN IX @ T=                          \ the same node, across the move
 EIX-N N0 @ < TFALSE                                \ the append seam forgot nothing either
 TABLE-LIVE
@@ -351,17 +353,17 @@ TABLE-LIVE
 : EIX-RAW-UEND! ( n -- ) UEND ! ;           \ lower UEND alone: no terminator, so the
                                                    \ records above it stay readable
 
-s" : EIXCUT ( -- ) ;" EIX-EVAL
+s" : EIXCUT ( -- ) ;" evaluate
 EIX-UEND M0 !
-s" enum eixcut1 one two ;enum" EIX-EVAL            \ families nothing else names, so the
-s" : EIXC1 ( eixcut1 -- ) drop ;" EIX-EVAL         \ nodes above the cut are certainly new
-s" enum eixcut2 red green ;enum" EIX-EVAL
-s" : EIXC2 ( eixcut2 -- ) drop ;" EIX-EVAL
+s" enum eixcut1 one two ;enum" evaluate            \ families nothing else names, so the
+s" : EIXC1 ( eixcut1 -- ) drop ;" evaluate         \ nodes above the cut are certainly new
+s" enum eixcut2 red green ;enum" evaluate
+s" : EIXC2 ( eixcut2 -- ) drop ;" evaluate
 s" EIXC1" EIX-DIN M0 @ > TTRUE                     \ the rows really are above the cut
 s" EIXC2" EIX-DIN M0 @ > TTRUE
 M0 @ EIX-RAW-UEND!                                 \ the store rewinds; the records above it
                                                    \ keep their chain and their nodes
-s" undefine EIXCUT" EIX-EVAL                       \ one record, not one node
+s" undefine EIXCUT" evaluate                       \ one record, not one node
 TABLE-LIVE                                         \ no entry may name the dead region
 \ THE PER-SYMBOL INDEX HAS THE SAME BLIND SPOT, and this is the half that bites:
 \ USX-BUILD walked the same chain by the same terminator, so after the cut it
@@ -377,11 +379,11 @@ TABLE-LIVE                                         \ no entry may name the dead 
 \ now, which is exactly why the guard has to be a claim about the STORE.
 s" EIXC1" EIX-DIN -1 T=
 s" EIXC2" EIX-DIN -1 T=
-s" : EIXC3 ( eixcut1 -- ) drop ;" EIX-EVAL         \ the shape that lived above the cut, again
+s" : EIXC3 ( eixcut1 -- ) drop ;" evaluate         \ the shape that lived above the cut, again
 s" EIXC3" EIX-DIN EIX-UEND < TTRUE                 \ answered with a live node...
-s" EIXC3" EIX-DIN EIX-KEY-N 0 T<>                  \ ... that is still a node
+s" EIXC3" EIX-DIN E-KEY-N 0 T<>                    \ ... that is still a node
 TABLE-LIVE
-s" EIXC3" EIX-MIN-IN 1 T=                          \ and the store still answers for it
+s" EIXC3" SIG-MIN-IN 1 T=                          \ and the store still answers for it
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

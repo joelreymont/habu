@@ -1,7 +1,7 @@
 \ effect-read-api-test.f - checker effect-read export API + negative regression
 \ (dot habu-expose-checker-effect-95e853eb).
 \
-\ Proves a cold-prefix file (this one, loaded by bin/hb) resolves the checker's
+\ Proves a cold-prefix file (this one, on the unsealed engine) resolves the checker's
 \ minimal effect-read export API and reads a certified word's din/dout arity +
 \ per-position family class. The API (src/core/checker.f) is:
 \   EFFECT-QUERY   ( ptr u8 n -- bool )   resolve NAME's active effect into query state
@@ -21,11 +21,13 @@
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
-\ Only EFFECT-QUERY's implementation is trusted; the readers are checked. Every entry
-\ is name-stripped past the seal, so it is uncallable from checked code and from bare
-\ interpret. Prefix consumers reach these words as compiled calls from a trusted
-\ boundary. This test does the same through exact-signature ERA-WHITEBOX adapters;
-\ the assertions themselves remain checked. Fixtures and queries are GLOBAL because
+\ Only EFFECT-QUERY's implementation is trusted; the readers are checked.
+\ EFFECT-DIN-FAM and EFFECT-DOUT-FAM are engine-internal: the sealed engine strips
+\ their names (E-UNDEFINED from checked code and bare interpret), so prefix
+\ consumers reach them as compiled calls from a trusted boundary. This test runs on
+\ the unsealed engine, which binds an internal reader's recorded row, so its checked
+\ assertions call the readers by name or through the exact-signature ERA-WHITEBOX
+\ adapters below. Fixtures and queries are GLOBAL because
 \ EFFECT-QUERY resolves a NAME against the active package context, and at top level
 \ no package is active.
 \
@@ -35,7 +37,9 @@
 \ family assertions additionally pin the ABI values: a changed family projection or
 \ arity flips a T= and fails the run.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/effect-read-api-test.f
+\ A WHITEBOX-SUITE row. The gate runs it on the unsealed engine, which
+\ test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/effect-read-api-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -145,18 +149,16 @@ public
 ;package
 
 \ The effect-read API reads raw effect-store state, so - like the top-row hook - each
-\ protected reader is reached through one syntax-simple adapter. This keeps the
-\ internal names protected while all test assertions remain checked. An adapter is
-\ TRUSTED: only where the name it reads is engine-internal and a checked body cannot
-\ resolve it.
+\ protected reader is reached through one syntax-simple adapter or, for
+\ EFFECT-DIN-FAM, EFFECT-DOUT-FAM and SIG-MIN-IN, called by name: the unsealed
+\ engine binds an internal reader's recorded row, so every test assertion remains
+\ checked.
 package ERA-WHITEBOX
 public
 
 : QUERY ( ptr u8 n -- bool ) EFFECT-QUERY ;
 : DIN-N ( -- n ) EFFECT-DIN-N ;
 : DOUT-N ( -- n ) EFFECT-DOUT-N ;
-TRUSTED: DIN-FAM ( n -- n ) EFFECT-DIN-FAM ;
-TRUSTED: DOUT-FAM ( n -- n ) EFFECT-DOUT-FAM ;
 : DIN-CELLS ( -- n ) EFFECT-DIN-CELLS ;
 : DOUT-CELLS ( -- n ) EFFECT-DOUT-CELLS ;
 : DIN-SLOT ( n -- n ) EFFECT-DIN-SLOT ;
@@ -167,7 +169,6 @@ TRUSTED: DOUT-FAM ( n -- n ) EFFECT-DOUT-FAM ;
 : QUOT-SIMPLE? ( -- bool ) EFFECT-QUOT-SIMPLE? ;
 : RET-NEUTRAL? ( -- bool ) EFFECT-RET-NEUTRAL? ;
 : CATCH-CELLS ( n -- n n ) EFFECT-CATCH-CELLS ;
-TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
 ;package
 
@@ -175,41 +176,41 @@ TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
    s" a net-scalar word: din 1 scalar, dout 2 scalars" T-LABEL
    s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T=  1 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T= ;
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   0 EFFECT-DOUT-FAM ERA-SCALAR T=  1 EFFECT-DOUT-FAM ERA-SCALAR T= ;
 
 : ERA-POLYMORPHIC ( -- )
    s" a row-polymorphic var word: din/dout families are gray" T-LABEL
    s" ERA-G" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
+   0 EFFECT-DIN-FAM ERA-GRAY T=
+   0 EFFECT-DOUT-FAM ERA-GRAY T= ;
 
 : ERA-POINTER-ROW ( -- )
    s" a pointer+scalar consumer: din0 scalar (top), din1 pointer" T-LABEL
    s" ERA-P" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 2 T=            ERA-WHITEBOX:DOUT-N 1 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
-   1 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T= ;
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   1 EFFECT-DIN-FAM ERA-POINTER T=
+   0 EFFECT-DOUT-FAM ERA-SCALAR T= ;
 
 : ERA-PRIM-ROW ( -- )
    s" prim type ( ptr u8 n -- ): pure consumer, din1 pointer, dout empty" T-LABEL
    s" type" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DOUT-N 0 T=
-   1 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
+   1 EFFECT-DIN-FAM ERA-POINTER T=
    s" @ ( ptr a -- a ): din0 pointer, dout1 gray" T-LABEL
    s" @" ERA-WHITEBOX:QUERY TTRUE
-   0 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
+   0 EFFECT-DIN-FAM ERA-POINTER T=
+   0 EFFECT-DOUT-FAM ERA-GRAY T= ;
 
 : ERA-EDGES ( -- )
    s" an unknown word does not resolve" T-LABEL
    s" ZZ-NO-SUCH-WORD" ERA-WHITEBOX:QUERY TFALSE
    s" an out-of-range din index reads gray" T-LABEL
    s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
-   5 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
-   9 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
+   5 EFFECT-DIN-FAM ERA-GRAY T=
+   9 EFFECT-DOUT-FAM ERA-GRAY T= ;
 
 \ ---- the widths, which are a different number from the counts -----------------
 \ EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS answer a row's width in STACK CELLS, the
@@ -233,7 +234,7 @@ private
 
    s" and a GRAY row is sized too, which the family enum could not do" T-LABEL
    s" ERA-G" ERA-WHITEBOX:QUERY TTRUE
-   0 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   0 EFFECT-DIN-FAM ERA-GRAY T=
    ERA-WHITEBOX:DIN-CELLS 1 T=        ERA-WHITEBOX:DOUT-CELLS 2 T=
 
    s" a pointer row: ptr u8 n is two terms and two cells" T-LABEL
@@ -256,12 +257,12 @@ private
    s" a bundled signature and a two-variable one agree on counts and families" T-LABEL
    s" ERA-FIX:BUNDLE" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
-   1 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=   2 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
    s" ERA-FIX:TWOVAR" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
-   1 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=   2 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   0 EFFECT-DIN-FAM ERA-SCALAR T=
+   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
 
    s" and the slots separate them: the bundle's two cells carry their positions" T-LABEL
    s" ERA-FIX:BUNDLE" ERA-WHITEBOX:QUERY TTRUE
@@ -311,7 +312,7 @@ variable ERA-AGREE   variable ERA-DIFF
 : ERA-ONE ( ptr u8 n -- )
    {: a u:n :}
    a u ERA-WHITEBOX:QUERY 0= if exit then
-   a u ERA-WHITEBOX:MIN-IN {: mini:n :}
+   a u SIG-MIN-IN {: mini:n :}
    ERA-WHITEBOX:DIN-CELLS mini = if ERA-AGREE @ 1+ ERA-AGREE ! exit then
    ERA-DIFF @ 1+ ERA-DIFF ! ;
 
@@ -356,9 +357,9 @@ private
 \ of each of them, so "they agree" is measured rather than asserted once.
 : OUTER ( -- )
    ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
-   0 ERA-WHITEBOX:DIN-FAM ERA-XT T=
-   1 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
-   2 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T= ;
+   0 EFFECT-DIN-FAM ERA-XT T=
+   1 EFFECT-DIN-FAM ERA-SCALAR T=
+   2 EFFECT-DIN-FAM ERA-SCALAR T= ;
 
 : PAIR ( -- )
    s" two quotation-taking words agree on every number the older readers give" T-LABEL
@@ -404,7 +405,7 @@ private
    s" a word that hands its caller a body carries the quotation on the OUT side" T-LABEL
    s" ERA-FIX:QGIVE" ERA-WHITEBOX:QUERY TTRUE
    ERA-WHITEBOX:DIN-N 0 T=            ERA-WHITEBOX:DOUT-N 1 T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-XT T=
+   0 EFFECT-DOUT-FAM ERA-XT T=
    0 ERA-WHITEBOX:DOUT-QUOT TTRUE
    ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DOUT-N 1 T=
    ERA-WHITEBOX:DIN-CELLS 3 T=        ERA-WHITEBOX:DOUT-CELLS 1 T= ;
@@ -423,7 +424,7 @@ private
    ERA-WHITEBOX:DIN-N 3 T=
    ERA-WHITEBOX:QUOT-UP TTRUE
    ERA-WHITEBOX:DIN-N 0 T=            ERA-WHITEBOX:DOUT-N 1 T=
-   0 ERA-WHITEBOX:DOUT-FAM ERA-XT T=
+   0 EFFECT-DOUT-FAM ERA-XT T=
 
    s" a second descent while one is open is refused, and changes nothing" T-LABEL
    s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE

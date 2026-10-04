@@ -1,9 +1,8 @@
 \ structure-make-suite.f — behavior + rollback suite for the STRUCTURE
 \ constructor generator (src/core/structure-make.f, package STRUCTURE-MAKE; dot
-\ habu-structure-generate-make-872a6e75). Run BY THE ENGINE over stdin, exactly
-\ like test/decl-event-suite.f (the transaction, registry, and generation words
-\ resolve only at top-level interpret, never inside a checked ':' body):
-\     bin/hb < test/structure-make-suite.f
+\ habu-structure-generate-make-872a6e75). A WHITEBOX-SUITE row: the
+\ transaction, registry, and generation words are engine-internal, so they
+\ resolve on the whitebox engine and never on the product.
 \
 \ The field-kind and role/arity matrix of the generator runs from real STRUCTURE
 \ syntax in test/structure-decl-suite.f (sections 10-11) and
@@ -36,26 +35,7 @@ variable #CASE
       T-FAIL s" assert: expected " type want FMT:.INT s"  got " type got FMT:.INT cr
    then ;
 
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): sealed pre-hook registry /
-\ checker-frame colon words probed at top level go through named shims; a shim
-\ stays TRUSTED: only where the name it forwards to is engine-internal and a
-\ checked body cannot resolve it.
-TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
-TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
-TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: TWX-TFAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: TWX-TFAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
-TRUSTED: TWX-TFAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
-
 1 constant CON-N       \ CC-N  (cell)
-
-\ CHECKER-PACKAGE-PUBLIC / TK-* are top-level-interpret-only checker words; bind
-\ their values to plain constants so the checked declaration helpers can use them.
-CHECKER-PACKAGE-PUBLIC constant PUBVIS
-TK-PRODUCT constant KPROD
 
 \ scratch.
 variable TOK       \ live decl-event transaction token
@@ -75,7 +55,7 @@ variable FEN variable FEM variable FRB
 \ will, then hand the published family id to the generator.
 \ ---------------------------------------------------------------------------
 : S-DECL ( ptr u8 n n -- n ) {: ta:ptr tu:n ar:n :}   \ public product family in package "sm"
-   s" sm" PUBVIS ta tu ar KPROD TWX-TFAM-DECL ;
+   s" sm" CHECKER-PACKAGE-PUBLIC ta tu ar TK-PRODUCT TFAM-DECL ;
 
 : S-OPEN ( n -- ) {: fam:n :}   \ open a decl-event declaration for fam
    TYPE-FIELD:COUNT BASE !  0 NF !  0 SLOTC !
@@ -88,8 +68,8 @@ variable FEN variable FEM variable FRB
    NF @ 1 + NF ! ;
 
 : S-BIND ( n -- ) {: fam:n :}   \ record layout width and field range while rows remain provisional
-   fam BASE @ NF @ TWX-TFAM-FLD-RANGE!
-   fam NF @ TWX-TFAM-SLOTS! ;
+   fam BASE @ NF @ TFAM-FLD-RANGE!
+   fam NF @ TFAM-SLOTS! ;
 
 : S-GENERATE ( n -- ) {: fam:n :}
    fam S-BIND
@@ -97,22 +77,22 @@ variable FEN variable FEM variable FRB
    TOK @ DECL-EVENT:PUBLISH ;
 
 \ schema-root builder (each field needs its own root).
-: SR-CELL  ( -- n ) CON-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ ;
+: SR-CELL  ( -- n ) CON-N SCHEMA-CON SCHEMA-ROOT+ ;
 
 \ ---------------------------------------------------------------------------
 \ clean slate + a public arity-0 enum `ne` (width 1): the non-product family
 \ section 1 hands the generator. Declared through the raw registry seam (it is a
 \ dependency, not the structure under test): two variants, no payload.
 \ ---------------------------------------------------------------------------
-TWX-TFAM-RESET
-TWX-SCHEMA-RESET
+TFAM-RESET
+SCHEMA-RESET
 DECL-EVENT:RESET
-s" sm" CHECKER-PACKAGE-PUBLIC s" ne" 0 TK-ENUM TWX-TFAM-DECL NE !
+s" sm" CHECKER-PACKAGE-PUBLIC s" ne" 0 TK-ENUM TFAM-DECL NE !
 SUMV-N@ NEVS !
-NE @ s" red"  0 0 0 0 TWX-SUMV-ADD drop
-NE @ s" blue" 1 0 0 0 TWX-SUMV-ADD drop
-NE @ NEVS @ 2 TWX-TFAM-VAR-RANGE!
-NE @ 0 TWX-TFAM-SLOTS!
+NE @ s" red"  0 0 0 0 SUMV-ADD drop
+NE @ s" blue" 1 0 0 0 SUMV-ADD drop
+NE @ NEVS @ 2 TFAM-VAR-RANGE!
+NE @ 0 TFAM-SLOTS!
 
 \ ---------------------------------------------------------------------------
 \ 1. Non-product / non-live family rejects (E-SM-FAM 7190), before any write.
@@ -141,8 +121,8 @@ DECL-EVENT:OPEN TOK !
 TOK @ FRB @ DECL-EVENT:DECL TOK !
 TOK @ FRB @ s" x" SR-CELL 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
 TOK @ DECL-EVENT:ROLLBACK                               \ retire the field: its id stays uncommitted
-FRB @ BASE @ 1 TWX-TFAM-FLD-RANGE!                      \ front-end field range points at the retired id
-FRB @ 1 TWX-TFAM-SLOTS!
+FRB @ BASE @ 1 TFAM-FLD-RANGE!                          \ front-end field range points at the retired id
+FRB @ 1 TFAM-SLOTS!
 SUMV-N@ SUMV0 !   SCHEMA-ROOT-N@ SCHR0 !   TYPE-FIELD:COUNT PF0 !   TF-STR-U@ STRU0 !
 TOK @ FRB @ ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop
 TC @ 7161 T=                                            \ stale event token cannot authorize a provisional read

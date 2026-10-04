@@ -1,9 +1,10 @@
 \ structure-decl-suite.f — behavior + rollback suite for the STRUCTURE typed
 \ declaration front end (src/core/structure-decl.f, package STRUCTURE-DECL; dot
-\ habu-structure-parse-typed-c5a01e1f). Run BY THE ENGINE over stdin, exactly
-\ like test/decl-event-suite.f (the definer parses the live input stream and
-\ mutates the type registry, so it resolves only at top-level interpret):
-\     bin/hb < test/structure-decl-suite.f
+\ habu-structure-parse-typed-c5a01e1f). A WHITEBOX-SUITE row, like
+\ test/decl-event-suite.f: the registry probes are engine internals, which the
+\ unsealed engine binds by their recorded rows. The gate runs it on that engine,
+\ which test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/structure-decl-suite.f
 \ Proves: POLICY and DERIVE reach both the event stream and the family
 \ record; every reject anchor (E-TDECL-* family + the field record's own name
 \ gate) fires at the offending token; a mid-declaration reject leaves every
@@ -44,16 +45,14 @@ variable #CASE
    #CASE @ 1 + #CASE !
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
-\ --- boundary shims: the STRUCTURE opener, evaluate, and the sealed pre-hook
-\ registry / schema reflection words are reached at top level through named
-\ forwarders, TRUSTED: only where the name is engine-internal and a checked body
-\ cannot resolve it (the same idiom test/decl-event-suite.f uses). TRY and RP-TRY
-\ run their word on copies of the inputs, because a throw restores the depth
-\ catch began with, and drop both so a refusal leaves only its code.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
-TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
-TRUSTED: FAM-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
+\ --- boundary shims: a declaration given as a text runs through
+\ evaluate-closed, at top level or under TRY's catch. The registry / schema
+\ reflection words are engine-internal; on the whitebox engine this suite runs
+\ on, a checked body binds their rows. TRY and RP-TRY run their word on copies
+\ of the inputs, because a throw restores the depth catch began with, and drop
+\ both so a refusal leaves only its code.
+: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;   \ closed text under catch -> throw code
+: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
 : FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
 : FAM-SLOTS@ ( n -- n ) TFAM-WIDTH@ ;
@@ -63,13 +62,13 @@ TRUSTED: FAM-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 \ field and event transactions have returned to their prior watermarks.
 variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
 variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
-TRUSTED: REG-MARK ( -- )
+: REG-MARK ( -- )
    TFAM-N @ RB-TFAM !  TF-STR-U @ RB-STR !  TF-PK-N @ RB-PK !
    SUMV-N @ RB-SUMV !  LAY-N @ RB-LAY !  SCH-N @ RB-SCH !  SCH-ROOT-N @ RB-ROOT !
    PF-N @ RB-PFN !  PF-COMMIT-N @ RB-PFC ! ;
-TRUSTED: TFAMN@ ( -- n ) TFAM-N @ ;
-TRUSTED: SCHN@ ( -- n ) SCH-N @ ;
-TRUSTED: SUMVN@ ( -- n ) SUMV-N @ ;
+: TFAMN@ ( -- n ) TFAM-N @ ;
+: SCHN@ ( -- n ) SCH-N @ ;
+: SUMVN@ ( -- n ) SUMV-N @ ;
 
 variable FID   variable B   variable PFB   variable DEVB
 variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
@@ -78,8 +77,8 @@ variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
 \ 4. POLICY reaches both the family record and the event stream.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" STRUCTURE ppk 0 POLICY packed-tag FIELD x n ;STRUCTURE" EV
-s" ppk" FAMID FAM-POLICY@ PACKED# T=                  \ family layout policy is packed-tag
+s" STRUCTURE ppk 0 POLICY packed-tag FIELD x n ;STRUCTURE" evaluate-closed
+s" ppk" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
 
@@ -88,7 +87,7 @@ s" ppk" FAMID FAM-POLICY@ PACKED# T=                  \ family layout policy is 
 \    on one clause are accepted, each recorded once.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE" EV
+s" STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE" evaluate-closed
 s" der" FAMID FAM-EQ? T-TRUE                          \ eq derived
 s" der" FAMID FAM-HASH? T-TRUE                        \ hash derived
 2 DECL-EVENT:DERIVE? T-TRUE                           \ two DERIVE events after DECL + ARITY
@@ -141,7 +140,7 @@ s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=
 \ ---------------------------------------------------------------------------
 \ 8. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
 \ ---------------------------------------------------------------------------
-s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" EV
+s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" evaluate-closed
 s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 
 \ ---------------------------------------------------------------------------
@@ -151,7 +150,7 @@ s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 \     is a bit-identical physical no-op that preserves declaration order.
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
-s" STRUCTURE tri 0 FIELD a n FIELD b n FIELD c n ;STRUCTURE" EV
+s" STRUCTURE tri 0 FIELD a n FIELD b n FIELD c n ;STRUCTURE" evaluate-closed
 SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
 : TRIRT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE ;      \ callable sealed ctor words
 11 22 33 TRIRT 33 T= 22 T= 11 T=                      \ declaration order + values round-trip bit-identically
@@ -163,17 +162,17 @@ SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant
 \     and a byte field, and at a concrete instantiation (parameter a = n) the
 \     round-trip certifies with its declaration-order field types.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE abc 1 FIELD p a FIELD k n FIELD c char ;STRUCTURE" EV
+s" STRUCTURE abc 1 FIELD p a FIELD k n FIELD c char ;STRUCTURE" evaluate-closed
 s" ABCRT ( n n char -- n n char ) ABC:MAKE ABC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ a generic-only structure round-trips its parameter at a concrete instantiation.
-s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" EV
+s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" evaluate-closed
 : GPRT ( n -- n ) GP:MAKE GP:UNMAKE ;
 42 GPRT 42 T=
 
 \ The post-hook STRUCTURE parser consumes the shared declaration alphabet.  A
 \ maximum-arity declaration accepts g and z while f/n/r stay scalar fields; the
 \ exact inverse table is tested once in type-family-suite.f.
-s" STRUCTURE sdmap 23 FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e FIELD p05 g FIELD flag f FIELD integer n FIELD real r FIELD last z ;STRUCTURE" EV
+s" STRUCTURE sdmap 23 FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e FIELD p05 g FIELD flag f FIELD integer n FIELD real r FIELD last z ;STRUCTURE" evaluate-closed
 s" SDMAPRT ( n n n n n n bool n r char -- n n n n n n bool n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -186,7 +185,7 @@ SUMVN@ SV0 !
 s" STRUCTURE badf 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=   \ duplicate field rejects
 SUMVN@ SV0 @ T=                                       \ no ctor words from a rejected declaration
 SUMVN@ SV0 !
-s" STRUCTURE opaque 0 ;STRUCTURE" EV                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
+s" STRUCTURE opaque 0 ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
 SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
 
 \ ---------------------------------------------------------------------------
@@ -454,11 +453,8 @@ public
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 : SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 : CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
-TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 : FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 : FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
-TRUSTED: FAM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
-TRUSTED: FAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
 : DICT-RECS ( -- n ) ndict@ ;
 
 variable RP-DICT
@@ -475,8 +471,8 @@ s" rpsd" s" 0 FIELD one n FIELD two n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
 struct-replay-test:DICT-SAME
 
 s" rpsd" FAMID FID !
-FID @ struct-replay-test:FAM-PRODUCT? -1 T=
-FID @ struct-replay-test:FAM-FLD-COUNT 2 T=
+FID @ TFAM-PRODUCT? -1 T=
+FID @ TFAM-FLD-COUNT@ 2 T=
 FID @ FAM-SLOTS@ 2 T=
 FID @ struct-replay-test:FAM-VAR-COUNT 2 T=          \ make + unmake rows registered
 FID @ struct-replay-test:FAM-VAR-START SV0 !
@@ -487,8 +483,8 @@ SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= T-TRUE
 \ Checked calls resolve, while DICT-SAME above proves no runtime word appeared.
 \ They resolve on the certify path, where the replay recorded them: compiled
 \ code holds no record of RPSD:MAKE to bind.
-SV0 @ struct-replay-test:CTOR-SYM 0 <> T-TRUE
-SV0 @ 1 + struct-replay-test:CTOR-SYM 0 <> T-TRUE
+SV0 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
+SV0 @ 1 + SUMV-CTOR-SYM@ 0 <> T-TRUE
 s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
@@ -500,7 +496,7 @@ REPLAY-SCOPE:OPEN
 s" rpsdh" s" 0 POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
 struct-replay-test:RP-TRY 0 T=
 s" rpsdh" FAMID FID !
-FID @ FAM-POLICY@ PACKED# T=
+FID @ TFAM-LAYOUT-POLICY@ PACKED# T=
 FID @ FAM-EQ? -1 T=
 REPLAY-SCOPE:CLOSE
 
@@ -508,7 +504,7 @@ REPLAY-SCOPE:CLOSE
 \ is the exact shape that was broken: obligation.f declares `STRUCTURE evidence`
 \ and then names `evidence` as a payload type further down the same file.
 s" rpsdpay" s" 0 FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
-s" rpsdpay" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
+s" rpsdpay" FAMID TFAM-FLD-COUNT@ 1 T=
 
 \ A malformed replayed STRUCTURE reports through the same renderer as a live one.
 DECL-DIAG:PROSE
@@ -534,7 +530,7 @@ DECL-DIAG:PROSE
 s" rpsddangle" s" 0 FIELD" struct-replay-test:RP-TRY 7107 T=
 DECL-DIAG:OFF
 s" STRUCTURE-DECL:SD-RUN rpsdafter 0 FIELD one n ;STRUCTURE" TRY 0 T=
-s" rpsdafter" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
+s" rpsdafter" FAMID TFAM-FLD-COUNT@ 1 T=
 
 \ ---------------------------------------------------------------------------
 \ Control words are reserved in both name positions this front end gates.
@@ -580,7 +576,7 @@ DECL-DIAG:HAS? -1 T=
 \ an ordinary name and still declares, in both positions.
 DECL-DIAG:PROSE
 s" STRUCTURE iffy 0 FIELD looping n FIELD thence n ;STRUCTURE" TRY 0 T=
-s" iffy" FAMID struct-replay-test:FAM-FLD-COUNT 2 T=
+s" iffy" FAMID TFAM-FLD-COUNT@ 2 T=
 DECL-DIAG:SILENT? -1 T=
 DECL-DIAG:OFF
 
@@ -602,26 +598,25 @@ DECL-DIAG:OFF
 \ the walk keeps recursing at every extra level of nesting. test/type-linear-suite.f
 \ pins what the checker then does with such a value on a row.
 \
-\ The linear owner and the registry reader are owned by package SDLIN. Production
-\ writes the owner that way too (maki/infer/weight-store.f owns
+\ The linear owner is owned by package SDLIN. Production writes
+\ the owner that way too (maki/infer/weight-store.f owns
 \ `WSTORE:resident`), so naming it as a field type also exercises the qualified
 \ spelling the resolver meets in real source.
 \ ---------------------------------------------------------------------------
 package SDLIN
 public
 DEFLINEAR SDLIN:tok                                   \ the linear owner these fixtures nest
-TRUSTED: LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;   \ owns one, directly or through a field
 ;package
 
 \ depth 1, legal before this change: a field naming the linear con itself.
 s" STRUCTURE sdlbox 0 FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TRY 0 T=
-s" sdlbox" FAMID SDLIN:LINEAR? T-TRUE
+s" sdlbox" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 s" sdlbox" FAMID FAM-SLOTS@ 2 T=
 
 \ depth 2, the shape this dot unblocks: a field naming that linear family.
 TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter 0 FIELD inner sdlbox FIELD z n ;STRUCTURE" TRY 0 T=
-s" sdlouter" FAMID SDLIN:LINEAR? T-TRUE                 \ linear by containment
+s" sdlouter" FAMID TFAM-CONCRETE-LINEAR? T-TRUE         \ linear by containment
 s" sdlouter" FAMID FAM-SLOTS@ 3 T=                    \ the nested bundle keeps its own two cells
 B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= T-TRUE
 B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
@@ -629,24 +624,24 @@ B @ 1 + TYPE-FIELD:SLOT@ 2 T=                         \ z sits after it
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep 0 FIELD d sdlouter ;STRUCTURE" TRY 0 T=
-s" sdldeep" FAMID SDLIN:LINEAR? T-TRUE
+s" sdldeep" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 \ a sum reached through a product counts the same way.
 s" ENUM sdlsum 0 VARIANT hold FIELD m sdlbox ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" sdlsum" FAMID SDLIN:LINEAR? T-TRUE
+s" sdlsum" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 s" STRUCTURE sdlviasum 0 FIELD e sdlsum ;STRUCTURE" TRY 0 T=
-s" sdlviasum" FAMID SDLIN:LINEAR? T-TRUE
+s" sdlviasum" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 \ the control: a chain with no linear value anywhere stays non-linear, so the
 \ walk is answering about the chain and not about nesting as such.
 s" STRUCTURE sdlplain 0 FIELD v n ;STRUCTURE" TRY 0 T=
 s" STRUCTURE sdlplainer 0 FIELD inner sdlplain ;STRUCTURE" TRY 0 T=
-s" sdlplainer" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlplainer" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ wrong role: the same word in the FIELD NAME position is a name, never a type,
 \ so it neither resolves nor makes the structure linear.
 s" STRUCTURE sdlrole 0 FIELD sdlbox n ;STRUCTURE" TRY 0 T=
-s" sdlrole" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlrole" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ reordering: naming a family before it is declared is still an unknown type,
 \ so acceptance comes from resolution and not from the spelling alone.
@@ -694,7 +689,7 @@ DECL-DIAG:OFF
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" STRUCTURE sdlowns 0 FIELD m sdlbox ;STRUCTURE" TRY 0 T=
-s" sdlowns" FAMID SDLIN:LINEAR? T-TRUE
+s" sdlowns" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr 0 FIELD p ptr sdlbox ;STRUCTURE" TRY 7109 T=
@@ -737,19 +732,19 @@ DECL-DIAG:HAS? -1 T=
 \ cell, and leaves the structure non-linear — so the rejects above answer the
 \ POINTEE's linearity and not the word `ptr`.
 s" STRUCTURE sdlptrok 0 FIELD p ptr sdlplain FIELD k n ;STRUCTURE" TRY 0 T=
-s" sdlptrok" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrok" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" sdlptrok" FAMID FAM-SLOTS@ 2 T=                    \ the pointer is one cell, k is the other
 s" STRUCTURE sdlptrok2 0 FIELD p ptr ptr sdlplain ;STRUCTURE" TRY 0 T=
-s" sdlptrok2" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrok2" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" STRUCTURE sdlptrn 0 FIELD p ptr n ;STRUCTURE" TRY 0 T=
-s" sdlptrn" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrn" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
 \ Neither resolves, neither is refused, and neither makes the structure linear.
 s" STRUCTURE sdlptrrole 0 FIELD ptr n ;STRUCTURE" TRY 0 T=
-s" sdlptrrole" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrrole" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" STRUCTURE sdlptrrole2 0 FIELD sdlbox n ;STRUCTURE" TRY 0 T=
-s" sdlptrrole2" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ hostile comments. A declaration body has NO comment syntax: its reader takes
 \ plain tokens, so `(` and `\` are ordinary tokens in a type or clause position
