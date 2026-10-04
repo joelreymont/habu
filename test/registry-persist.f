@@ -7,26 +7,22 @@ create BUFFER $20 allot
 PTR-VARIABLE STORE
 
 \ Private access to the checker-owned persistence seam.
-TRUSTED: DATA-SPAN? ( ptr u8 n -- bool ) REG-DATA-SPAN? ;
-TRUSTED: PERSIST ( n n -- n bool ) STORE -rot REG-PERSIST-MOVE ;
-TRUSTED: ALLOC ( n -- ptr u8 ) ARENA-ALLOC ;
+: PERSIST ( n n -- n bool ) STORE -rot REG-PERSIST-MOVE ;
 : RELEASE ( ptr u8 n -- n ) munmap ;
-TRUSTED: EFFECTS ( -- ptr u8 n ) USIGS USIGS-SNAPSHOT-SIZE ;
-TRUSTED: PERSIST-EFFECTS ( -- ) USIGS-SNAPSHOT-PERSIST ;
-TRUSTED: GROW-EFFECTS ( -- ) USIGS-CAP-U @ 1+ USIGS-ENSURE ;
-TRUSTED: CONTROLS ( -- ptr u8 n ) NORETS NORET-END @ CELL + ;
-TRUSTED: PERSIST-CONTROLS ( -- ) NORET-SNAPSHOT-PERSIST ;
-TRUSTED: GROW-CONTROLS ( -- ) NORET-CAP-U @ 1+ NORET-ENSURE ;
+: EFFECTS ( -- ptr u8 n ) USIGS USIGS-SNAPSHOT-SIZE ;
+: GROW-EFFECTS ( -- ) USIGS-CAP-U @ 1+ USIGS-ENSURE ;
+: CONTROLS ( -- ptr u8 n ) NORETS NORET-END @ CELL + ;
+: GROW-CONTROLS ( -- ) NORET-CAP-U @ 1+ NORET-ENSURE ;
 
 
 : SPANS ( -- )
    s" a DATA allocation includes its complete capacity" T-LABEL
-   BUFFER $20 DATA-SPAN? TTRUE
-   here 0 DATA-SPAN? TTRUE
-   here 1 DATA-SPAN? TFALSE
-   BUFFER -1 DATA-SPAN? TFALSE
-   BUFFER $7FFFFFFFFFFFFFFF DATA-SPAN? TFALSE
-   data-base 1- 1 DATA-SPAN? TFALSE ;
+   BUFFER $20 REG-DATA-SPAN? TTRUE
+   here 0 REG-DATA-SPAN? TTRUE
+   here 1 REG-DATA-SPAN? TFALSE
+   BUFFER -1 REG-DATA-SPAN? TFALSE
+   BUFFER $7FFFFFFFFFFFFFFF REG-DATA-SPAN? TFALSE
+   data-base 1- 1 REG-DATA-SPAN? TFALSE ;
 
 
 : RETAIN ( -- )
@@ -38,11 +34,11 @@ TRUSTED: GROW-CONTROLS ( -- ) NORET-CAP-U @ 1+ NORET-ENSURE ;
 
 
 : GROW ( -- )
-   $1000 ALLOC {: old:ptr :}
+   $1000 ARENA-ALLOC {: old:ptr :}
    old STORE !
    $12345678 old CELL-VIEW !
    $AB old $1F + c!
-   old $1000 DATA-SPAN? TFALSE
+   old $1000 REG-DATA-SPAN? TFALSE
    here {: start:ptr :}
    $20 $1000 PERSIST TTRUE start old - T=
    STORE @ start = TTRUE
@@ -59,44 +55,44 @@ TRUSTED: GROW-CONTROLS ( -- ) NORET-CAP-U @ 1+ NORET-ENSURE ;
 : EFFECT-CAPTURES ( -- )
    s" unchanged effect capture reuses DATA; runtime growth remains complete" T-LABEL
    EFFECTS {: old:ptr used:n :}
-   PERSIST-EFFECTS
+   USIGS-SNAPSHOT-PERSIST
    EFFECTS {: saved:ptr size:n :}
    old used saved size CORE-STR= TTRUE
    here {: end:ptr :}
-   PERSIST-EFFECTS
+   USIGS-SNAPSHOT-PERSIST
    EFFECTS used T= saved = TTRUE
    here end = TTRUE
    GROW-EFFECTS
    EFFECTS {: grown:ptr grown-size:n :}
    grown saved <> TTRUE
    saved size grown grown-size CORE-STR= TTRUE
-   PERSIST-EFFECTS
+   USIGS-SNAPSHOT-PERSIST
    EFFECTS {: final:ptr final-size:n :}
    grown grown-size final final-size CORE-STR= TTRUE
    here {: final-end:ptr :}
-   PERSIST-EFFECTS
+   USIGS-SNAPSHOT-PERSIST
    EFFECTS used T= final = TTRUE
    here final-end = TTRUE ;
 
 : CONTROL-CAPTURES ( -- )
    s" unchanged control capture reuses DATA; runtime growth remains complete" T-LABEL
    CONTROLS {: old:ptr used:n :}
-   PERSIST-CONTROLS
+   NORET-SNAPSHOT-PERSIST
    CONTROLS {: saved:ptr size:n :}
    old used saved size CORE-STR= TTRUE
    here {: end:ptr :}
-   PERSIST-CONTROLS
+   NORET-SNAPSHOT-PERSIST
    CONTROLS used T= saved = TTRUE
    here end = TTRUE
    GROW-CONTROLS
    CONTROLS {: grown:ptr grown-size:n :}
    grown saved <> TTRUE
    saved size grown grown-size CORE-STR= TTRUE
-   PERSIST-CONTROLS
+   NORET-SNAPSHOT-PERSIST
    CONTROLS {: final:ptr final-size:n :}
    grown grown-size final final-size CORE-STR= TTRUE
    here {: final-end:ptr :}
-   PERSIST-CONTROLS
+   NORET-SNAPSHOT-PERSIST
    CONTROLS used T= final = TTRUE
    here final-end = TTRUE ;
 

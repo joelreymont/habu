@@ -1,9 +1,10 @@
 \ enum-decl-suite.f — behavior + rollback suite for the ENUM typed declaration
 \ front end (src/core/enum-decl.f, package ENUM-DECL, reached as ENUM-DECL:ED-RUN;
-\ dot habu-enum-parse-full-39c0dc1b). Run BY THE ENGINE over stdin, exactly like
-\ test/structure-decl-suite.f (the front end parses the live input stream and
-\ mutates the type registry, so it resolves only at top-level interpret):
-\     bin/hb < test/enum-decl-suite.f
+\ dot habu-enum-parse-full-39c0dc1b). A WHITEBOX-SUITE row, like
+\ test/structure-decl-suite.f: the registry probes are engine internals, which
+\ the unsealed engine binds by their recorded rows. The gate runs it on that
+\ engine, which test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/enum-decl-suite.f
 \ Proves: full and compact declarations generate typed constructors; POLICY
 \ and DERIVE headers are accepted before compact variants and reach both the
 \ family record and the event stream; the shared
@@ -51,35 +52,29 @@ variable #CASE
    #CASE @ 1 + #CASE !
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
-\ --- boundary shims: the ENUM-DECL:ED-RUN entry, evaluate, and the sealed
-\ pre-hook registry / schema reflection words are reached at top level through
-\ named forwarders (the same idiom test/structure-decl-suite.f uses).
+\ --- boundary shims: the ENUM-DECL:ED-RUN entry, evaluate, and some of the
+\ sealed pre-hook registry / schema reflection words are reached at top level
+\ through named forwarders (the same idiom test/structure-decl-suite.f uses).
 \
 \ TRUSTED: ONLY WHERE THE ROW SAYS SO. This suite is a WHITEBOX-SUITE, so it
-\ runs on an engine whose seal never ran and the registry cells it reads have
-\ their ordinary checker effects: TFAMN@, SCHN@, SUMVN@ and the two save/restore
-\ blocks are plain checked definitions. What still needs a trusted body is what
-\ needed one on any engine - `evaluate`, and the TFAM / SUMV / SCHEMA accessors
-\ whose rows are trust-boundary primitives, which refuse a checked caller by
-\ name (E-CAP-TRUSTED) rather than by visibility. The `catch` adapters are
-\ checked: each runs its word on copies of the inputs, because a throw restores
-\ the depth catch began with, and drops both so a refusal leaves only its code.
+\ runs on an engine whose seal never ran, where a checked body binds the real row
+\ of each registry cell and TFAM / SUMV / SCHEMA / LAY accessor it names: TFAMN@,
+\ SCHN@, SUMVN@ and the two save/restore blocks are plain checked definitions,
+\ and the cases call the accessors themselves. What still needs a trusted body is
+\ what needs one on any engine - `evaluate`, a trust-boundary primitive a checked
+\ body refuses (E-UNSAFE). The `catch` adapters are checked: each runs its word
+\ on copies of the inputs, because a throw restores the depth catch began with,
+\ and drops both so a refusal leaves only its code.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 : TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
-TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
-TRUSTED: F-ENUM? ( n -- bool ) TFAM-ENUM? ;
-TRUSTED: F-SUM? ( n -- bool ) TFAM-SUM? ;
+: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : F-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 : F-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
-TRUSTED: F-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 : F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
-TRUSTED: F-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 : F-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
 : F-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
 : SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 : SV-TAG@ ( n -- n ) SUMV-TAG@ ;
-TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 : PACKED# ( -- n ) TL-PACKED-TAG ;
 : CCN# ( -- n ) CC-N ;
 
@@ -121,13 +116,13 @@ package ENUM-DECL
    s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-CELLS 0 T=" EV
 
    s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-N 1 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ CCN# T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" EV
    s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
    s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-CELLS 1 T=" EV
 
    s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-N 2 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ CCN# T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ PFB @ T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ PFB @ T=" EV
    s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
    s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-WIDTH@ 2 T=" EV
    s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-CELLS 3 T=" EV
@@ -180,7 +175,7 @@ s" ENUM-DECL:ED-RUN color red green blue ;ENUM" EV
 TFAMN@ FID !
 s" ENUM-DECL:ED-RUN boxe 1 VARIANT hold FIELD v a ;VARIANT ;ENUM" EV
 TFAMN@ FID @ 1 + T=                                   \ family registered (param resolved, no rollback)
-s" boxe" FAMID F-FLD-COUNT 1 T=                       \ the parameter field committed
+s" boxe" FAMID TFAM-FLD-COUNT@ 1 T=                   \ the parameter field committed
 
 \ ---------------------------------------------------------------------------
 \ 4b. The full ENUM parser consumes the shared declaration alphabet.  A
@@ -188,7 +183,7 @@ s" boxe" FAMID F-FLD-COUNT 1 T=                       \ the parameter field comm
 \     the exact inverse table is tested once in type-family-suite.f.
 \ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
-s" emap" FAMID F-FLD-COUNT 10 T=                      \ every mapped/scalar field committed
+s" emap" FAMID TFAM-FLD-COUNT@ 10 T=                  \ every mapped/scalar field committed
 
 \ ---------------------------------------------------------------------------
 \ 4c. The production ENUM parser exposes only the current transaction's ordered
@@ -254,8 +249,8 @@ DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VA
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" EV
-s" compact-policy" FAMID F-ENUM? T-TRUE
-s" compact-policy" FAMID F-POLICY@ PACKED# T=
+s" compact-policy" FAMID TFAM-ENUM? T-TRUE
+s" compact-policy" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-policy" FAMID F-VAR-COUNT 1 T=
 DECL-EVENT:COUNT 4 T=                                 \ DECL, POLICY, VARIANT, VARIANT-END
 0 DECL-EVENT:DECL? T-TRUE
@@ -265,7 +260,7 @@ DECL-EVENT:COUNT 4 T=                                 \ DECL, POLICY, VARIANT, V
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-derive-a DERIVE eq hash alpha ;ENUM" EV
-s" compact-derive-a" FAMID F-ENUM? T-TRUE
+s" compact-derive-a" FAMID TFAM-ENUM? T-TRUE
 s" compact-derive-a" FAMID F-EQ? T-TRUE
 s" compact-derive-a" FAMID F-HASH? T-TRUE
 DECL-EVENT:COUNT 5 T=                                 \ DECL, DERIVE x2, VARIANT, VARIANT-END
@@ -290,8 +285,8 @@ DECL-EVENT:COUNT 5 T=                                 \ distinct clauses retain 
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-both-a POLICY packed-tag DERIVE eq hash alpha beta ;ENUM" EV
-s" compact-both-a" FAMID F-ENUM? T-TRUE
-s" compact-both-a" FAMID F-POLICY@ PACKED# T=
+s" compact-both-a" FAMID TFAM-ENUM? T-TRUE
+s" compact-both-a" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-a" FAMID F-EQ? T-TRUE
 s" compact-both-a" FAMID F-HASH? T-TRUE
 s" compact-both-a" FAMID F-VAR-COUNT 2 T=
@@ -303,8 +298,8 @@ DECL-EVENT:COUNT 8 T=                                 \ both headers, then two v
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-both-b DERIVE hash eq POLICY packed-tag alpha ;ENUM" EV
-s" compact-both-b" FAMID F-ENUM? T-TRUE
-s" compact-both-b" FAMID F-POLICY@ PACKED# T=
+s" compact-both-b" FAMID TFAM-ENUM? T-TRUE
+s" compact-both-b" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-b" FAMID F-EQ? T-TRUE
 s" compact-both-b" FAMID F-HASH? T-TRUE
 DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one variant pair
@@ -318,7 +313,7 @@ DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one v
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
-s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is packed-tag
+s" opt" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
 
@@ -536,8 +531,7 @@ variable CT-I   variable CT-N
 variable CT-DICT   variable CT-CP   variable CT-FAM
 
 : CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
-TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
-TRUSTED: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
+: PENDING ( -- n ) CTOR-PEND-COUNT @ ;
 : DICT-RECS ( -- n ) ndict@ ;
 : DICT-CODE ( -- n ) cp@ ;
 : ARM-RC ( n -- n ) [: dup GENERATED-DECL-CTOR:ARM ;] catch {: rc:n :} drop rc ;
@@ -665,7 +659,7 @@ s" ENUM-DECL:ED-RUN privctor 0 VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
 s" privctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
 s" privctor" FAMID F-VAR-COUNT 1 T=                   \ the variant really is there
 s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-PKG$ nip 0 T=  \ but carries no constructor package
-s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 T=       \ and no constructor symbol
+s" privctor" FAMID F-VAR-START SUMV-CTOR-SYM@ 0 T=                \ and no constructor symbol
 ;package
 
 \ 20f. A generation failure rolls the WHOLE declaration back. Both anchors fail
@@ -721,7 +715,7 @@ s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \      visibility gate: msgctor still OWNS? its constructors, and its published
 \      words survive the refused transaction untouched.
 s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE     \ still an owning kind
-s" msgctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 <> T-TRUE   \ and already generated
+s" msgctor" FAMID F-VAR-START SUMV-CTOR-SYM@ 0 <> T-TRUE            \ and already generated
 s" msgctor" FAMID enum-ctor-test:CT-FAM !
 enum-ctor-test:ARM-IN-TX-RC 7176 T=                   \ named reject, inside a real transaction
 GENERATED-DECL:DEPTH 0 T=                             \ which rolled back and left no frame
@@ -747,36 +741,30 @@ s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
 package enum-layout-test
 public
 
-TRUSTED: L-ROW? ( n -- n bool ) LAY-FIND ;        \ family -> layout row id, found?
-TRUSTED: L-POLICY ( n -- n ) LAY-POLICY@ ;
-TRUSTED: L-SIZE ( n -- n ) LAY-SIZE@ ;
-TRUSTED: L-ALIGN ( n -- n ) LAY-ALIGN@ ;
-TRUSTED: L-TAGW ( n -- n ) LAY-TAGW@ ;
-
 : PARITY ( n n -- )                  \ two families bake field-identical descriptors
    {: a:n b:n :}
-   a L-ROW? {: la:n fa:bool :}
-   b L-ROW? {: lb:n fb:bool :}
+   a LAY-FIND {: la:n fa:bool :}
+   b LAY-FIND {: lb:n fb:bool :}
    fa T-TRUE   fb T-TRUE
    fa 0= fb 0= or IF EXIT THEN       \ a missing row already failed; do not read a bogus id
-   la L-POLICY lb L-POLICY T=
-   la L-SIZE   lb L-SIZE   T=
-   la L-ALIGN  lb L-ALIGN  T=
-   la L-TAGW   lb L-TAGW   T= ;
+   la LAY-POLICY@ lb LAY-POLICY@ T=
+   la LAY-SIZE@   lb LAY-SIZE@   T=
+   la LAY-ALIGN@  lb LAY-ALIGN@  T=
+   la LAY-TAGW@   lb LAY-TAGW@   T= ;
 
 : SHAPE ( n n n n -- )               \ family + expected record size, alignment, tag width
    {: fam:n size:n align:n tagw:n :}
-   fam L-ROW? {: lid:n found:bool :}
+   fam LAY-FIND {: lid:n found:bool :}
    found T-TRUE
    found 0= IF EXIT THEN
-   lid L-POLICY PACKED# T=
-   lid L-SIZE  size  T=
-   lid L-ALIGN align T=
-   lid L-TAGW  tagw  T= ;
+   lid LAY-POLICY@ PACKED# T=
+   lid LAY-SIZE@  size  T=
+   lid LAY-ALIGN@ align T=
+   lid LAY-TAGW@  tagw  T= ;
 
 : NO-ROW ( n -- )                    \ the default policy bakes nothing
    {: fam:n :}
-   fam L-ROW? drop 0= T-TRUE ;
+   fam LAY-FIND drop 0= T-TRUE ;
 
 private
 
@@ -1136,7 +1124,7 @@ s" rpcompact" s" red green blue ;ENUM" enum-replay-test:RP-TRY 0 T=
 enum-ctor-test:DICT-SAME
 
 s" rpcompact" FAMID FID !
-FID @ F-ENUM? -1 T=                       \ compact mode still picks TK-ENUM
+FID @ TFAM-ENUM? -1 T=                    \ compact mode still picks TK-ENUM
 FID @ F-VAR-COUNT 3 T=
 FID @ F-WIDTH 1 T=
 FID @ F-VAR-START VS0 !
@@ -1154,8 +1142,8 @@ VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 \ The dictionary stayed unchanged above, but checked constructor calls resolve
 \ on the certify path, where the replay recorded them: compiled code holds no
 \ record of RPCOMPACT:RED to bind.
-VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
-VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+VS0 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
+VS0 @ 2 + SUMV-CTOR-SYM@ 0 <> T-TRUE
 s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
@@ -1165,15 +1153,15 @@ s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 s" rpfull" s" 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rpfull" FAMID FID !
-FID @ F-SUM? -1 T=                        \ full mode still picks TK-SUM
+FID @ TFAM-SUM? -1 T=                     \ full mode still picks TK-SUM
 FID @ F-VAR-COUNT 2 T=
-FID @ F-FLD-COUNT 2 T=
+FID @ TFAM-FLD-COUNT@ 2 T=
 FID @ F-VAR-START VS0 !
 VS0 @ SV-NAME$ s" quit" CORE-STR= T-TRUE
 VS0 @ 1 + SV-NAME$ s" move" CORE-STR= T-TRUE
 FID @ VS0 @ enum-ctor-test:PAY-ROWS 0 T=
 FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS 2 T=
-VS0 @ 1 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+VS0 @ 1 + SUMV-CTOR-SYM@ 0 <> T-TRUE
 
 \ 23c. Header clauses replay: POLICY and DERIVE reach the same family record.
 \      Derived EQ calls the TAG row the replay recorded just before it, a row the
@@ -1184,7 +1172,7 @@ REPLAY-SCOPE:OPEN
 s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rppol" FAMID FID !
-FID @ F-POLICY@ PACKED# T=
+FID @ TFAM-LAYOUT-POLICY@ PACKED# T=
 FID @ F-EQ? -1 T=
 FID @ F-HASH? -1 T=
 REPLAY-SCOPE:CLOSE
@@ -1247,14 +1235,14 @@ enum-replay-test:RP-TRY 0 T=
 
 s" rp-live-test:shape" FAMID FID !
 s" rp-copy-test:shape" FAMID VID !
-FID @ F-SUM?      VID @ F-SUM?      T=
-FID @ F-ENUM?     VID @ F-ENUM?     T=
-FID @ F-VAR-COUNT VID @ F-VAR-COUNT T=
-FID @ F-FLD-COUNT VID @ F-FLD-COUNT T=
-FID @ F-WIDTH     VID @ F-WIDTH     T=
-FID @ F-POLICY@   VID @ F-POLICY@   T=
-FID @ F-EQ?       VID @ F-EQ?       T=
-FID @ F-HASH?     VID @ F-HASH?     T=
+FID @ TFAM-SUM?           VID @ TFAM-SUM?           T=
+FID @ TFAM-ENUM?          VID @ TFAM-ENUM?          T=
+FID @ F-VAR-COUNT         VID @ F-VAR-COUNT         T=
+FID @ TFAM-FLD-COUNT@     VID @ TFAM-FLD-COUNT@     T=
+FID @ F-WIDTH             VID @ F-WIDTH             T=
+FID @ TFAM-LAYOUT-POLICY@ VID @ TFAM-LAYOUT-POLICY@ T=
+FID @ F-EQ?               VID @ F-EQ?               T=
+FID @ F-HASH?             VID @ F-HASH?             T=
 FID @ F-VAR-START VS0 !
 VID @ F-VAR-START enum-replay-test:VS1 !
 VS0 @ SV-NAME$ enum-replay-test:VS1 @ SV-NAME$ CORE-STR= T-TRUE
@@ -1264,8 +1252,8 @@ VS0 @ 1 + SV-TAG@ enum-replay-test:VS1 @ 1 + SV-TAG@ T=
 FID @ VS0 @ enum-ctor-test:PAY-ROWS  VID @ enum-replay-test:VS1 @ enum-ctor-test:PAY-ROWS  T=
 FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS VID @ enum-replay-test:VS1 @ 1 + enum-ctor-test:PAY-ROWS T=
 \ Both registries carry their own constructor symbols.
-VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
-enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+VS0 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
+enum-replay-test:VS1 @ SUMV-CTOR-SYM@ 0 <> T-TRUE
 
 \ ---------------------------------------------------------------------------
 \ 24. Control words are reserved in every declaration name position, and the list
@@ -1371,7 +1359,7 @@ DECL-DIAG:OFF
 s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" EV
 s" iffy" FAMID F-VAR-COUNT 4 T=
 s" ENUM-DECL:ED-RUN doing 0 VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" EV
-s" doing" FAMID F-FLD-COUNT 2 T=
+s" doing" FAMID TFAM-FLD-COUNT@ 2 T=
 
 ;package
 
@@ -1426,7 +1414,7 @@ BUILD
 SRC$ TRY 0 T=
 s" longenum" FAMID FID !
 FID @ F-VAR-COUNT LONG-N T=            \ every variant arrived
-FID @ F-ENUM? -1 T=
+FID @ TFAM-ENUM? -1 T=
 FID @ F-VAR-START VS0 !
 VS0 @ SV-NAME$ s" v000" CORE-STR= T-TRUE
 VS0 @ SV-TAG@ 0 T=
@@ -1453,47 +1441,46 @@ VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
 \ pin the registry side; test/type-linear-suite.f pins what the checker does with
 \ such a value on a row, including what a MATCH arm may do with the payload.
 \
-\ The linear owner and the registry reader are owned by package EDLIN. Production
-\ writes the owner that way too (maki/infer/weight-store.f owns
+\ The linear owner is owned by package EDLIN. Production writes
+\ the owner that way too (maki/infer/weight-store.f owns
 \ `WSTORE:resident`), so naming it as a payload type also exercises the qualified
 \ spelling the resolver meets in real source.
 \ ---------------------------------------------------------------------------
 package EDLIN
 public
 DEFLINEAR EDLIN:tok                                   \ the linear owner these fixtures nest
-TRUSTED: LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;   \ owns one, directly or through a payload
 ;package
 
 \ depth 1, legal before this change: a payload naming the linear con itself.
 s" ENUM edlone 0 VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" edlone" FAMID EDLIN:LINEAR? T-TRUE
+s" edlone" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 \ depth 2, the shape this dot unblocks: a payload naming a linear family. This is
 \ the frozen load-result shape, with a stand-in for gpt2-model.
 s" STRUCTURE edlmodel 0 FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TRY 0 T=
-s" edlmodel" FAMID EDLIN:LINEAR? T-TRUE
+s" edlmodel" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 s" ENUM edl-load-result 0 VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
-s" edl-load-result" FAMID EDLIN:LINEAR? T-TRUE                    \ linear by containment
+s" edl-load-result" FAMID TFAM-CONCRETE-LINEAR? T-TRUE            \ linear by containment
 s" edl-load-result" FAMID F-VAR-COUNT 2 T=
-s" edl-load-result" FAMID F-FLD-COUNT 2 T=                    \ one named payload per variant
+s" edl-load-result" FAMID TFAM-FLD-COUNT@ 2 T=                \ one named payload per variant
 s" edl-load-result" FAMID F-WIDTH 3 T=                        \ tag cell + the widest payload (two cells)
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE edl-via-load 0 FIELD result edl-load-result ;STRUCTURE" TRY 0 T=
-s" edl-via-load" FAMID EDLIN:LINEAR? T-TRUE
+s" edl-via-load" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 s" ENUM edlnest 0 VARIANT loaded FIELD result edl-via-load ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
-s" edlnest" FAMID EDLIN:LINEAR? T-TRUE
+s" edlnest" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 \ the control: a chain with no linear value anywhere stays non-linear, so the
 \ walk is answering about the chain and not about nesting as such.
 s" STRUCTURE edlplain 0 FIELD v n ;STRUCTURE" TRY 0 T=
 s" ENUM edlctl 0 VARIANT hold FIELD m edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" edlctl" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlctl" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ wrong role: the same word in the FIELD NAME position is a name, never a type,
 \ so it neither resolves nor makes the enum linear.
 s" ENUM edlrole 0 VARIANT hold FIELD edlmodel n ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" edlrole" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlrole" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ reordering: naming a family before it is declared is still an unknown type,
 \ so acceptance comes from resolution and not from the spelling alone.
@@ -1538,7 +1525,7 @@ DECL-DIAG:OFF
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" ENUM edlowns 0 VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" edlowns" FAMID EDLIN:LINEAR? T-TRUE
+s" edlowns" FAMID TFAM-CONCRETE-LINEAR? T-TRUE
 
 DECL-DIAG:PROSE
 s" ENUM edlptr 0 VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 7109 T=
@@ -1577,19 +1564,19 @@ DECL-DIAG:HAS? -1 T=
 \ enum non-linear — so the rejects above answer the POINTEE's linearity and not
 \ the word `ptr`.
 s" ENUM edlptrok 0 VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
-s" edlptrok" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrok" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" edlptrok" FAMID F-WIDTH 2 T=                       \ tag cell + the one-cell pointer payload
 s" ENUM edlptrok2 0 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TRY 0 T=
-s" edlptrok2" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrok2" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" ENUM edlptrn 0 VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TRY 0 T=
-s" edlptrn" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrn" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
 \ Neither resolves, neither is refused, and neither makes the enum linear.
 s" ENUM edlptrrole 0 VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TRY 0 T=
-s" edlptrrole" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrrole" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 s" ENUM edlptrrole2 0 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TRY 0 T=
-s" edlptrrole2" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= T-TRUE
 
 \ hostile comments. A variant block has NO comment syntax: its reader takes plain
 \ tokens, so `(` and `\` are ordinary tokens in a type or clause position and the
