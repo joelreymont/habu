@@ -29,7 +29,7 @@ TRUSTED: SLOT-XT ( n -- [ n -- ptr u8 ] ) ;
 TRUSTED: LEN-XT ( n -- [ n -- n ] ) ;
 CAST: CODE-BYTES ( n -- ptr u8 )
 
-: REWRITE-FIRST ( n -- )
+TRUSTED: REWRITE-FIRST ( n -- )
    {: entry:n :}
    entry CODE-BYTES LE:U32@ entry patch32 ;
 

@@ -11331,20 +11331,10 @@ public
 \ A callback is total and leaves no value. Preserve the recovery registers it
 \ would otherwise clobber, including the throw code and active frame.
 : EM-CODE-INVALIDATE ( -- )
-   LBL LBL {: host:label done:label :}
+   LBL {: done:label :}
    LCODEINV LABEL@ LBL,
    10 CP CMP,  C-CS done BCOND,
-   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 host CBZ,
-   SP SP 48 SUBI,
-   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
-   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
-   10 G-PUSH
-   9 BLR,
-   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
-   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
-   SP SP 48 ADDI,
-   host LBL,
-   9 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE LDR,  9 done CBZ,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
    SP SP 48 SUBI,
    30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
    14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,

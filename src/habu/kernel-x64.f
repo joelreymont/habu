@@ -2065,10 +2065,23 @@ variable SITE-TRAP-CELL
 \ on the target, never on a band another bracket may hold open. A generic
 \ instruction write carries no optimizer proof, so the four bytes lose their
 \ native evidence before the write can publish.
+: HOST-INVALIDATE, ( -- )
+   LBL {: done:label :}
+   RDI RSI ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   RAX NATIVE-OBS-CELLS:HOST-INVALIDATE CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
+   RDI PUSH,  RSI PUSH,
+   RAX ASM-SINK ENC-CALL-REG
+   RSI ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
+   done LBL, ;
+
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
    RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
    X64PROV:INVALIDATE,
+   RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
+   HOST-INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
    R9 R64>N >R32 R8 MEM-AT ASM-SINK ENC-MOV32-MR
@@ -2624,15 +2637,9 @@ private
 
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
-   LBL LBL LBL LBL LBL {: scan:label next:label full:label done:label no-host:label :}
-   RDI CP-REG ASM-SINK ENC-CMP-RR  C-AE no-host JCC,
-   RAX NATIVE-OBS-CELLS:HOST-INVALIDATE CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E no-host JCC,
-   RDI ASM-SINK ENC-PUSH
-   RDI PUSH,
-   RAX ASM-SINK ENC-CALL-REG
-   RDI ASM-SINK ENC-POP
-   no-host LBL,
+   LBL LBL LBL LBL {: scan:label next:label full:label done:label :}
+   RSI CP-REG ASM-SINK ENC-MOV-RR
+   HOST-INVALIDATE,
    RCX ZERO-REG,
    scan LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,

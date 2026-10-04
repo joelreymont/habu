@@ -2628,6 +2628,21 @@ public
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
+\ x9/x10 bound the changed bytes. The mandatory owner retires facts before
+\ an instruction write or CP rewind can expose replacement code.
+: HOST-INVALIDATE, ( -- )
+   LBL {: done:label :}
+   9 10 CMP,  C-CS done BCOND,
+   12 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE LDR,  12 done CBZ,
+   SP SP 64 SUBI,
+   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
+   9 G-PUSH  10 G-PUSH  12 BLR,
+   15 SP 48 LDR,  14 SP 40 LDR,  13 SP 32 LDR,
+   11 SP 24 LDR,  10 SP 16 LDR,  9 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 64 ADDI,
+   done LBL, ;
+
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
@@ -2636,6 +2651,7 @@ public
    \ A generic instruction write carries no optimizer proof, even if its old
    \ bytes belonged to a native body. Invalidate before the write can publish.
    9 SP 8 LDR,  10 9 4 ADDI,  9 10 CODE-ORIGIN:INVALIDATE,
+   9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
    \ THE FLIP IS STATELESS, keyed on the target word, not on the bracket state a
    \ compile is holding. A patch names the address it rewrites outright and its
    \ target does not move between the two flips, which is exactly LPROTREC's
@@ -3187,6 +3203,7 @@ public
 : EMIT-DEF-OCC-RECLAIM ( -- )
    LBL LBL LBL LBL {: loop:label next:label full:label done:label :}
    EM-DEF-OCC:LRECLAIM LABEL@ LBL,
+   10 CP 0 ADDI,  HOST-INVALIDATE,
    10 0 MOVZ,
    loop LBL,
       10 NDICT CMP,  C-CS done BCOND,

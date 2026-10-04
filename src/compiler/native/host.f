@@ -69,7 +69,7 @@ variable SOURCE-TYPE-N
 
 variable OWNER-INSTALLED
 variable PRIOR-INVALIDATE
-CAST: AS-INVALIDATE ( n -- [ n -- ] )
+CAST: AS-INVALIDATE ( n -- [ n n -- ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
 
 variable WORK-N
@@ -207,14 +207,17 @@ public
 \ A restored process has no retained implementation facts. Its callback cell
 \ is cleared with the other process-owned cells; the next source compilation
 \ starts a fresh owner without reading the saved image's old dynamic buffers.
-: INVALIDATE ( n -- )
-   {: floor:n :}
-   PRIOR-INVALIDATE @ dup 0<> if AS-INVALIDATE floor swap execute else drop then
+: INVALIDATE ( n n -- )
+   {: first:n end:n :}
+   first end >= if exit then
+   PRIOR-INVALIDATE @ dup 0<> if AS-INVALIDATE first end rot execute else drop then
    IMPL-N @ 0 ?do
-      i IMPL-ENTRY @ i IMPL-LEN @ + floor > if 0 i IMPL-LIVE ! then
+      i IMPL-ENTRY @ end <
+      i IMPL-ENTRY @ i IMPL-LEN @ + first > and if 0 i IMPL-LIVE ! then
    loop
    ASSOC-N @ 0 ?do
-      i ASSOC-ENTRY @ i ASSOC-LEN @ + floor > if 0 i ASSOC-LIVE ! then
+      i ASSOC-ENTRY @ end <
+      i ASSOC-ENTRY @ i ASSOC-LEN @ + first > and if 0 i ASSOC-LIVE ! then
    loop ;
 
 \ The boot publishes the registry ordinal of the one scalar body whose
