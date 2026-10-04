@@ -1136,7 +1136,14 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 
 : TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-AT  id LIVE-AFTER? if  id  id 0 OPERAND  EMIT-COPY exit then
+   \ An argument shares its register with incoming edge destinations. A later
+   \ backedge destination can overlap this result even after the argument's
+   \ own last use. Keep the destructive operand outside that edge class; the
+   \ allocator can coalesce the copy when the whole class permits it.
+   id 0 OPERAND-AT {: v:IR-ID:ir-value-id :}
+   v VALUE-FROM-OP? 0=  v id LIVE-AFTER? or if
+      id  id 0 OPERAND  EMIT-COPY exit
+   then
    id 0 OPERAND ;
 
 : TIED-BINARY ( IR-ID:ir-op-id X64IR:opcode -- IR-ID:ir-value-id )
