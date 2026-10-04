@@ -592,6 +592,13 @@ SUITE wasm-encode
    test/wasm/encode.f
 ;SUITE
 
+\ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
+\ sign operations, the comparisons and conversions, and W05, f>s refused in a
+\ fork whose profile lacks saturating-float-to-int.
+SUITE wasm-select-f64
+   test/wasm/select-f64.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.

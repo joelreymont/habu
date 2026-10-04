@@ -47,6 +47,22 @@
 \ sub and mul may-trap, which wrapping i64 arithmetic cannot reproduce, so it is
 \ refused.
 \
+\ THE FLOATS. A real is an f64 value, which bitsreal and realbits, the
+\ elaborator's crossings to and from cells, reinterpret. Habu's NaN rule binds
+\ Wasm (section 17.3): after add, sub, mul, div and sqrt the selector answers,
+\ without a branch, the left operand when it is a NaN, else the right when it
+\ is, else $7FF8000000000000 when the result is, else the result. Each test is
+\ an f64.ne of a value with itself and each answer a select, which moves bits
+\ and makes none, so a made NaN is $7FF8000000000000 and a quiet NaN operand
+\ passes through unchanged, the left of two; a signalling one passes unquieted,
+\ outside the rule. neg and abs are sign-bit operations and add nothing. A
+\ comparison answers the integer mask, f0< and f0= against +0.0. s>f is
+\ f64.convert_i64_s, nearest with ties to even, and f>s i64.trunc_sat_f64_s,
+\ which truncates, saturates and answers 0 for a NaN as src/compiler/native/
+\ hir-word.f DEF-FLOAT defines realint; only a profile admitting
+\ saturating-float-to-int has it, and under any other f>s is refused (W05).
+\ Each operation is selected alone, so no multiply and add contract.
+\
 \ THE BLOCKS. HIR blocks keep their order and arguments; a function opens with a
 \ prologue block that takes the signature's arguments and branches into HIR's
 \ entry block, and ends with one block that propagates a status. A call, a
@@ -89,7 +105,7 @@ require src/arch/wasm/wstruct.f
 \ WSEL's codes, -9820..-9824, in the Wasm backend's block -9800..-9829.
 -9820 constant E-WSEL-FIRST
 -9824 constant E-WSEL-LAST
--9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower; ADMISSION names the sibling that will
+-9820 constant E-WSEL-REFUSED \ an HIR operation this selector does not lower: one ADMISSION leaves to a sibling, or realint under a profile without saturating-float-to-int
 -9821 constant E-WSEL-DECLARE \ a selection no DECLARE preceded, a definition whose arity is not the one declared, or a return whose operands are not its function's output cells
 -9822 constant E-WSEL-SOURCE  \ a module that is not HIR of the version this selector reads
 -9823 constant E-WSEL-TRAP    \ a may-trap operation whose rule cannot raise the trap: add, sub or mul of a unit whose overflow traps
@@ -101,14 +117,14 @@ public
 \ ---- the admission matrix ---------------------------------------------------
 \ Every HIR opcode is selected here or belongs to the sibling that selects it,
 \ and selection refuses the latter by E-WSEL-REFUSED: `memory` is the checked
-\ loads and stores, `float` the f64 operations, `dynamic` the quotation
-\ descriptor. `unbounded-tail` is selected as well, as a call, so one in tail
-\ position is a call then a return: tail recursion is not bounded space.
+\ loads and stores, `dynamic` the quotation descriptor. `unbounded-tail` is
+\ selected as well, as a call, so one in tail position is a call then a return:
+\ tail recursion is not bounded space. realint is selected under a profile that
+\ admits saturating-float-to-int and refused by E-WSEL-REFUSED under any other.
 ENUM admission
    selected
    unbounded-tail
    memory
-   float
    dynamic
 ;ENUM
 
@@ -143,23 +159,23 @@ ENUM admission
       quot     OF WSEL-ADMISSION:DYNAMIC ENDOF
       return   OF WSEL-ADMISSION:SELECTED ENDOF
       trap     OF WSEL-ADMISSION:SELECTED ENDOF
-      fconst   OF WSEL-ADMISSION:FLOAT ENDOF
-      fadd     OF WSEL-ADMISSION:FLOAT ENDOF
-      fsub     OF WSEL-ADMISSION:FLOAT ENDOF
-      fmul     OF WSEL-ADMISSION:FLOAT ENDOF
-      fdiv     OF WSEL-ADMISSION:FLOAT ENDOF
-      fneg     OF WSEL-ADMISSION:FLOAT ENDOF
-      fabs     OF WSEL-ADMISSION:FLOAT ENDOF
-      fsqrt    OF WSEL-ADMISSION:FLOAT ENDOF
-      flt      OF WSEL-ADMISSION:FLOAT ENDOF
-      fgt      OF WSEL-ADMISSION:FLOAT ENDOF
-      feq      OF WSEL-ADMISSION:FLOAT ENDOF
-      fltz     OF WSEL-ADMISSION:FLOAT ENDOF
-      feqz     OF WSEL-ADMISSION:FLOAT ENDOF
-      intreal  OF WSEL-ADMISSION:FLOAT ENDOF
-      realint  OF WSEL-ADMISSION:FLOAT ENDOF
-      bitsreal OF WSEL-ADMISSION:FLOAT ENDOF
-      realbits OF WSEL-ADMISSION:FLOAT ENDOF
+      fconst   OF WSEL-ADMISSION:SELECTED ENDOF
+      fadd     OF WSEL-ADMISSION:SELECTED ENDOF
+      fsub     OF WSEL-ADMISSION:SELECTED ENDOF
+      fmul     OF WSEL-ADMISSION:SELECTED ENDOF
+      fdiv     OF WSEL-ADMISSION:SELECTED ENDOF
+      fneg     OF WSEL-ADMISSION:SELECTED ENDOF
+      fabs     OF WSEL-ADMISSION:SELECTED ENDOF
+      fsqrt    OF WSEL-ADMISSION:SELECTED ENDOF
+      flt      OF WSEL-ADMISSION:SELECTED ENDOF
+      fgt      OF WSEL-ADMISSION:SELECTED ENDOF
+      feq      OF WSEL-ADMISSION:SELECTED ENDOF
+      fltz     OF WSEL-ADMISSION:SELECTED ENDOF
+      feqz     OF WSEL-ADMISSION:SELECTED ENDOF
+      intreal  OF WSEL-ADMISSION:SELECTED ENDOF
+      realint  OF WSEL-ADMISSION:SELECTED ENDOF
+      bitsreal OF WSEL-ADMISSION:SELECTED ENDOF
+      realbits OF WSEL-ADMISSION:SELECTED ENDOF
       terminal OF WSEL-ADMISSION:SELECTED ENDOF
    ;MATCH ;
 
@@ -312,6 +328,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ ---- staging one WSTRUCT operation --------------------------------------------
 : I32 ( -- IR-ID:ir-type-id )        CTX BLD WSTRUCT:I32-TYPE ;
 : I64 ( -- IR-ID:ir-type-id )        CTX BLD WSTRUCT:I64-TYPE ;
+: F64 ( -- IR-ID:ir-type-id )        CTX BLD WSTRUCT:F64-TYPE ;
 : MEM ( -- IR-ID:ir-type-id )        CTX BLD WSTRUCT:MEM-TYPE ;
 
 : OPEN ( WSTRUCT:opcode -- )
@@ -374,6 +391,13 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    WSTRUCT-OPCODE:I32-CONST OPEN
    CTX BLD WSTRUCT:KEY-VALUE v INT-ATTR
    I32 CLOSE1 ;
+
+\ The double whose IEEE 754 bits are n.
+: KF64 ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   WSTRUCT-OPCODE:F64-CONST OPEN
+   CTX BLD WSTRUCT:KEY-VALUE v INT-ATTR
+   F64 CLOSE1 ;
 
 : OP1 ( IR-ID:ir-value-id WSTRUCT:opcode IR-ID:ir-type-id -- IR-ID:ir-value-id )
    {: a:IR-ID:ir-value-id o:WSTRUCT:opcode t:IR-ID:ir-type-id :}
@@ -569,13 +593,17 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    id 0 OPND  id 1 OPND  o I64 OP2
    id 0 NFROZEN:RESULT-AT swap BIND ;
 
-\ The observable flag is all ones: 0 - extend_u(p).
-: SEL-COMPARE ( IR-ID:ir-op-id WSTRUCT:opcode -- )
-   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode :}
-   id 0 OPND  id 1 OPND  o I32 OP2 {: p:IR-ID:ir-value-id :}
+\ The i32 predicate p as the observable flag, all ones: 0 - extend_u(p).
+: FLAG ( IR-ID:ir-op-id IR-ID:ir-value-id -- )
+   {: id:IR-ID:ir-op-id p:IR-ID:ir-value-id :}
    p WSTRUCT-OPCODE:I64-EXTEND-I32-U I64 OP1 {: e:IR-ID:ir-value-id :}
    0 N64  e  WSTRUCT-OPCODE:I64-SUB I64 OP2
    id 0 NFROZEN:RESULT-AT swap BIND ;
+
+\ Two cells' or two doubles' predicate, the left operand first.
+: SEL-COMPARE ( IR-ID:ir-op-id WSTRUCT:opcode -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode :}
+   id  id 0 OPND  id 1 OPND  o I32 OP2  FLAG ;
 
 : SEL-INVERT ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -612,6 +640,69 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 \ HIR's first token: the one the prologue leaves.
 : SEL-MEM ( IR-ID:ir-op-id -- )
    0 NFROZEN:RESULT-AT TOK BIND ;
+
+\ ---- the float rules ---------------------------------------------------------
+\ The NaN every operation that makes one answers.
+$7FF8000000000000 constant NAN-MADE
+
+\ HIR's value is the double's own bits, which f64.const carries as they are.
+: SEL-FCONST ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-VAL @ ATTR KF64
+   id 0 NFROZEN:RESULT-AT swap BIND ;
+
+\ One operand to one result of type t: a sign operation, a conversion or a
+\ reinterpretation, none of which adds anything.
+: SEL-UNARY ( IR-ID:ir-op-id WSTRUCT:opcode IR-ID:ir-type-id -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode t:IR-ID:ir-type-id :}
+   id 0 OPND o t OP1
+   id 0 NFROZEN:RESULT-AT swap BIND ;
+
+\ The double against +0.0, whose bits are zero: -0.0 equals it and is not below
+\ it, as natively.
+: SEL-COMPARE0 ( IR-ID:ir-op-id WSTRUCT:opcode -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode :}
+   id  id 0 OPND  0 KF64  o I32 OP2  FLAG ;
+
+\ x when the double c is a NaN, else y: c's f64.ne with itself is the select's
+\ condition, and a select moves bits and makes none.
+: IF-NAN ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: c:IR-ID:ir-value-id x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   c c WSTRUCT-OPCODE:F64-NE I32 OP2 {: p:IR-ID:ir-value-id :}
+   WSTRUCT-OPCODE:F64-SELECT OPEN  x USE  y USE  p USE  F64 CLOSE1 ;
+
+\ The rule's two halves: an answer r that is a NaN becomes NAN-MADE, whatever
+\ sign and payload Wasm gave it, and an operand a that is a NaN takes the
+\ place of the answer v so far.
+: CANON ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: r:IR-ID:ir-value-id :}
+   r  NAN-MADE KF64  r  IF-NAN ;
+
+: PASS ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: a:IR-ID:ir-value-id v:IR-ID:ir-value-id :}
+   a  a  v  IF-NAN ;
+
+\ The right operand passes first and the left over it, so of two NaNs the
+\ left is the answer.
+: SEL-FARITH ( IR-ID:ir-op-id WSTRUCT:opcode -- )
+   {: id:IR-ID:ir-op-id o:WSTRUCT:opcode :}
+   id 0 OPND {: a:IR-ID:ir-value-id :}
+   id 1 OPND {: b:IR-ID:ir-value-id :}
+   a  b  a b o F64 OP2 CANON  PASS  PASS
+   id 0 NFROZEN:RESULT-AT swap BIND ;
+
+: SEL-FSQRT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPND {: a:IR-ID:ir-value-id :}
+   a  a WSTRUCT-OPCODE:F64-SQRT F64 OP1 CANON  PASS
+   id 0 NFROZEN:RESULT-AT swap BIND ;
+
+\ i64.trunc_sat_f64_s is f>s exactly, and only a profile that admits
+\ saturating-float-to-int has it (W05).
+: SEL-REALINT ( IR-ID:ir-op-id -- )
+   WPROF-FEATURE:SATURATING-FLOAT-TO-INT WPROF:ADMITS?
+   0= if E-WSEL-REFUSED throw then
+   WSTRUCT-OPCODE:I64-TRUNC-SAT-F64-S I64 SEL-UNARY ;
 
 \ ---- control -----------------------------------------------------------------
 : SEL-BR ( IR-ID:ir-op-id -- )
@@ -781,23 +872,23 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
       quot     OF REFUSE ENDOF
       return   OF id SEL-RETURN ENDOF
       trap     OF id SEL-TRAP ENDOF
-      fconst   OF REFUSE ENDOF
-      fadd     OF REFUSE ENDOF
-      fsub     OF REFUSE ENDOF
-      fmul     OF REFUSE ENDOF
-      fdiv     OF REFUSE ENDOF
-      fneg     OF REFUSE ENDOF
-      fabs     OF REFUSE ENDOF
-      fsqrt    OF REFUSE ENDOF
-      flt      OF REFUSE ENDOF
-      fgt      OF REFUSE ENDOF
-      feq      OF REFUSE ENDOF
-      fltz     OF REFUSE ENDOF
-      feqz     OF REFUSE ENDOF
-      intreal  OF REFUSE ENDOF
-      realint  OF REFUSE ENDOF
-      bitsreal OF REFUSE ENDOF
-      realbits OF REFUSE ENDOF
+      fconst   OF id SEL-FCONST ENDOF
+      fadd     OF id WSTRUCT-OPCODE:F64-ADD SEL-FARITH ENDOF
+      fsub     OF id WSTRUCT-OPCODE:F64-SUB SEL-FARITH ENDOF
+      fmul     OF id WSTRUCT-OPCODE:F64-MUL SEL-FARITH ENDOF
+      fdiv     OF id WSTRUCT-OPCODE:F64-DIV SEL-FARITH ENDOF
+      fneg     OF id WSTRUCT-OPCODE:F64-NEG F64 SEL-UNARY ENDOF
+      fabs     OF id WSTRUCT-OPCODE:F64-ABS F64 SEL-UNARY ENDOF
+      fsqrt    OF id SEL-FSQRT ENDOF
+      flt      OF id WSTRUCT-OPCODE:F64-LT SEL-COMPARE ENDOF
+      fgt      OF id WSTRUCT-OPCODE:F64-GT SEL-COMPARE ENDOF
+      feq      OF id WSTRUCT-OPCODE:F64-EQ SEL-COMPARE ENDOF
+      fltz     OF id WSTRUCT-OPCODE:F64-LT SEL-COMPARE0 ENDOF
+      feqz     OF id WSTRUCT-OPCODE:F64-EQ SEL-COMPARE0 ENDOF
+      intreal  OF id WSTRUCT-OPCODE:F64-CONVERT-I64-S F64 SEL-UNARY ENDOF
+      realint  OF id SEL-REALINT ENDOF
+      bitsreal OF id WSTRUCT-OPCODE:F64-REINTERPRET-I64 F64 SEL-UNARY ENDOF
+      realbits OF id WSTRUCT-OPCODE:I64-REINTERPRET-F64 I64 SEL-UNARY ENDOF
       terminal OF id SEL-TERMINAL ENDOF
    ;MATCH ;
 
@@ -805,7 +896,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 : ARG-TYPE ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: v:IR-ID:ir-value-id :}
    v TOKEN? if MEM exit then
-   v REAL? if CTX BLD WSTRUCT:F64-TYPE exit then
+   v REAL? if F64 exit then
    I64 ;
 
 \ The token current at the block's start: its own argument, the prologue's for
