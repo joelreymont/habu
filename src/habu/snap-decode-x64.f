@@ -43,14 +43,14 @@ private
 \ A bad branch first restores this emitter's small kernel-stack frame.
 public
 : DECODE, ( label -- ) {: bad:label :}
-   LBL LBL LBL LBL LBL LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: fail:label done:label raw:label grid:label pad:label padloop:label :}
-   LBL LBL LBL LBL LBL LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: maploop:label mapbits:label mapnext:label mapdone:label mapclean:label lastok:label :}
-   LBL LBL LBL LBL LBL LBL LBL LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: grouploop:label groupnext:label present:label byteloop:label bitloop:label
       bitnext:label groupdone:label absent:label :}
-   LBL LBL LBL LBL LBL LBL LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: vloop:label vend:label vclean:label full:label tail:label tailloop:label putdone:label :}
    RSP 48 SUBI,
    R8 R9 CMP,  C-A fail JCC,
@@ -63,7 +63,7 @@ public
    fail JMP,
 
    \ Raw bytes are exactly [DATA-START, DP); the remaining RX bytes are pad.
-   raw LBL,
+   raw X64CODE:LBL,
    RAX R10 MOV,  RDI HEAP-VA LIT,  RAX RDI SUB,
    RCX R9 MOV,  RCX R8 SUB,
    RAX RCX CMP,  C-A fail JCC,
@@ -72,7 +72,7 @@ public
    pad JMP,
 
    \ Grid framing: G groups, S bitmap bytes, ceil(G/8) presence bytes.
-   grid LBL,
+   grid X64CODE:LBL,
    RAX R9 MOV,  RAX R8 SUB,
    RAX SNAPSHOT-FORMAT:GRID-FRAME CMPI,  C-B fail JCC,
    R15 R8 0 LD,  RDX R8 8 LD,
@@ -88,33 +88,33 @@ public
 
    \ Count all present groups and refuse bits above G and a missing final group.
    RBX R13 MOV,  RAX ZERO,
-   maploop LBL,
+   maploop X64CODE:LBL,
       RBX R14 CMP,  C-AE mapdone JCC,
       R11 RBX 0 LB,  RBX 1 ADDI,
       RCX 8 LIT,
-   mapbits LBL,
+   mapbits X64CODE:LBL,
       R8 R11 MOV,  R8 1 ANDI,
       R8 R8 TEST,  C-E mapnext JCC,
       RAX SINK ENC-INC
-   mapnext LBL,
+   mapnext X64CODE:LBL,
       R11 1 SHR,
       RCX SINK ENC-DEC
       C-NE mapbits JCC,
       maploop JMP,
-   mapdone LBL,
+   mapdone X64CODE:LBL,
    RAX RSP 40 ST,
    RCX R15 MOV,  RCX 7 ANDI,
    RCX RCX TEST,  C-E mapclean JCC,
       R11 R14 -1 LB,  R11 SINK ENC-SHR-CL
       R11 R11 TEST,  C-NE fail JCC,
-   mapclean LBL,
+   mapclean X64CODE:LBL,
    R15 R15 TEST,  C-E lastok JCC,
       RAX R15 MOV,  RAX 1 SUBI,  RAX 3 SHR,  RAX R13 ADD,
       R11 RAX 0 LB,
       RCX R15 MOV,  RCX 1 SUBI,  RCX 7 ANDI,
       R11 SINK ENC-SHR-CL
       R11 1 ANDI,  R11 R11 TEST,  C-E fail JCC,
-   lastok LBL,
+   lastok X64CODE:LBL,
    RAX RSP 40 LD,
    RAX 6 SHL,  RAX RDX CMP,  C-NE fail JCC,
    RAX R9 MOV,  RAX R14 SUB,
@@ -124,7 +124,7 @@ public
    R15 ZERO,  R15 RSP 16 ST,
 
    \ Each present group has 64 bitmap bytes. Its set bits name nonzero cells.
-   grouploop LBL,
+   grouploop X64CODE:LBL,
       R15 RSP 16 LD,
       RAX RSP 0 LD,
       R15 RAX CMP,  C-AE groupdone JCC,
@@ -134,19 +134,19 @@ public
       RCX R15 MOV,  RCX 7 ANDI,
       R11 SINK ENC-SHR-CL
       R11 1 ANDI,  R11 R11 TEST,  C-E absent JCC,
-   present LBL,
+   present X64CODE:LBL,
       R14 RDI MOV,
       RAX ZERO,  RAX RSP 32 ST,
       RAX CELL-GRID:GROUP-BYTES LIT,  RAX RSP 24 ST,
-   byteloop LBL,
+   byteloop X64CODE:LBL,
       R11 RDX 0 LB,  RDX 1 ADDI,
       RAX RSP 32 LD,  RAX R11 OR,  RAX RSP 32 ST,
       RBX 8 LIT,
-   bitloop LBL,
+   bitloop X64CODE:LBL,
       RAX R11 MOV,  RAX 1 ANDI,  RAX RAX TEST,
       C-E bitnext JCC,
       RAX ZERO,  RCX ZERO,
-   vloop LBL,
+   vloop X64CODE:LBL,
       RSI R9 CMP,  C-AE fail JCC,
       R13 RSI 0 LB,  RSI 1 ADDI,
       R8 R13 MOV,  R8 $7F ANDI,  R8 SINK ENC-SHL-CL
@@ -155,11 +155,11 @@ public
       C-E vend JCC,
       RCX 7 ADDI,  RCX 63 CMPI,  C-A fail JCC,
       vloop JMP,
-   vend LBL,
+   vend X64CODE:LBL,
       R13 R13 TEST,  C-E fail JCC,
       RCX 63 CMPI,  C-NE vclean JCC,
       R13 1 CMPI,  C-A fail JCC,
-   vclean LBL,
+   vclean X64CODE:LBL,
       R8 R14 MOV,  R8 CELL-GRID:CELL-BYTES ADDI,
       R8 R10 CMP,  C-BE full JCC,
       R14 R10 CMP,  C-AE fail JCC,
@@ -168,39 +168,39 @@ public
       R8 RAX MOV,  R8 SINK ENC-SHR-CL
       R8 R8 TEST,  C-NE fail JCC,
       RCX R13 MOV,  R13 R14 MOV,
-   tailloop LBL,
+   tailloop X64CODE:LBL,
       RAX R13 0 SB,
       R13 1 ADDI,  RAX 8 SHR,
       RCX SINK ENC-DEC
       C-NE tailloop JCC,
       putdone JMP,
-   full LBL,
+   full X64CODE:LBL,
       RAX R14 0 ST,
-   putdone LBL,
-   bitnext LBL,
+   putdone X64CODE:LBL,
+   bitnext X64CODE:LBL,
       R11 1 SHR,  R14 CELL-GRID:CELL-BYTES ADDI,
       RBX SINK ENC-DEC
       C-NE bitloop JCC,
       RAX RSP 24 LD,  RAX SINK ENC-DEC  RAX RSP 24 ST,
       RAX RAX TEST,  C-NE byteloop JCC,
       RAX RSP 32 LD,  RAX RAX TEST,  C-E fail JCC,
-   absent LBL,
+   absent X64CODE:LBL,
       RDI CELL-GRID:GROUP-SPAN ADDI,
-   groupnext LBL,
+   groupnext X64CODE:LBL,
       RAX RSP 16 LD,  RAX 1 ADDI,  RAX RSP 16 ST,
       grouploop JMP,
-   groupdone LBL,
+   groupdone X64CODE:LBL,
 
    \ Both forms finish with fewer than one page of zero bytes before trailer.
-   pad LBL,
+   pad X64CODE:LBL,
    RAX R9 MOV,  RAX RSI SUB,
    RAX PROT-PAGE-MAX CMPI,  C-AE fail JCC,
-   padloop LBL,
+   padloop X64CODE:LBL,
       RSI R9 CMP,  C-AE done JCC,
       RAX RSI 0 LB,  RAX RAX TEST,  C-NE fail JCC,
       RSI 1 ADDI,  padloop JMP,
-   fail LBL,  RSP 48 ADDI,  bad JMP,
-   done LBL,  RSP 48 ADDI, ;
+   fail X64CODE:LBL,  RSP 48 ADDI,  bad JMP,
+   done X64CODE:LBL,  RSP 48 ADDI, ;
 
 ;using
 ;using
