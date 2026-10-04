@@ -4559,6 +4559,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RSP DW-ARG MOV-LOAD,  RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    R8 PEND-CELL CELL!,
+   RAX TKA-CELL CELL@,  RAX PENDTKA-CELL CELL!,  \ keep the name token for source-end location
    RAX RSP DW-ARG MOV-LOAD,                           \ a body that pushes a cell is the slot `does>` patches
    RAX RAX ASM-SINK ENC-TEST-RR  C-E nolast JCC,
    RCX DKIND:CAST IMM64,
