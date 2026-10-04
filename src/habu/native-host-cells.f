@@ -1,4 +1,4 @@
-\ Native host construction dispatch, separate from replaceable observation.
+\ Native host construction dispatch and current producer fact query.
 package NATIVE-HOST-CELLS
 public
 $2D20 constant SELECT
