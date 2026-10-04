@@ -1,0 +1,9 @@
+---
+title: Track requests to one terminal outcome
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-04T05:10:11.411673+03:00"
+---
+
+Problem: HBR2 §5.2 gives each request exactly one terminal outcome, serializes cancel and complete races at the owner and drains late results, so a lost consumer never strands a host object; TIMEOUT owns its child and ends it in the root clock domain; §4.4 reserves a terminal-result slot before a request is accepted. Acceptance: in package RT-REQUEST, request records (Id, scope and generation, authority, operation type, immutable arguments, deadline, result schema) with the states New, Submitted, Pending, Terminal, Draining, Released; a request reserves its terminal slot before submission, so live requests are bounded and a terminal always has room (§4.4); one terminal outcome reaches the observer, and later results are drained and their handles released; cancel and complete races are serialized at the owner; TIMEOUT detaches at expiry in RT-SCOPE's root-domain time, and on resume after a suspension expired requests end Timeout (§4.5); cancellation never walks every child in one call; failures carry their ErrorClass and full i64 code. Durable-operation discovery after a TIMEOUT belongs to SYNC (habu-add-a-srv-845f35e8). Files: lib/runtime/request.f (new, package RT-REQUEST; mints E-RT-REQUEST-FIRST/LAST -9600..-9609 in its owning file), lib/errors.f (one comment line), test/browser/request-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/request-test.f: cancel-then-complete and complete-then-cancel each give one outcome and release the late handle; a scripted rejection, a completion racing a cancellation and a timeout across a recorded suspension each reach the submitter exactly once, the timeout firing on resume; bin/hb --load test/run.f. Depends: habu-open-close-and-89a77063, habu-run-explicit-jobs-37f296ae. Ownership: lib/runtime/request.f. Lane: tim. Claim: unassigned.

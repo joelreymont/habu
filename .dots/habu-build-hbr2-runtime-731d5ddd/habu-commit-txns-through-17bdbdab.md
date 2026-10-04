@@ -1,0 +1,9 @@
+---
+title: Commit transactions through the RootSet
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-04T05:10:11.456734+03:00"
+---
+
+Problem: HBR2 §3.3 defines a transaction as Open, Validating, Ready, then Published or Aborting and Aborted, with readsets of entity and field revisions, private candidate pages, metadata reserved before publication and effects queued exactly once under a CommitId; §3.4 requires that a failed allocation at any clone, split or publication step leaves the old root reachable. Acceptance: in package RT-TXN, a linear transaction over a base lease from habu-publish-rootsets-and-e43b4749; the candidate is a DEFLINEAR; reads record entity and field revisions; writes go to builder-private pages through habu-build-the-persistent-e2154c78; changed-key, operation and effect metadata are reserved before publication; publication transfers ownership of the new roots and enqueues effect descriptions once under the CommitId, executed only after publication and never during pure replay; when the RootSet has moved since the base, the baseline restarts the transaction and never splices an old candidate over a new root; abort destroys candidate ownership; quotas are checked before cloning and a refusal is RecoverableOOM; no lease is evicted to make room. Files: lib/runtime/txn.f (new, package RT-TXN; mints E-RT-TXN-FIRST/LAST -9560..-9569 in its owning file), lib/errors.f (one comment line), test/browser/txn-test.f (new), test/gate-stdlib-cases.f. Verify: bin/hb --load test/browser/txn-test.f: allocation failure injected at every site of a multi-split commit leaves the old root reachable and no effect queued; a transaction whose base moved restarts and the final root holds both writers' writes; an effect runs once after publication and never in replay; bin/hb --load test/run.f. Depends: habu-publish-rootsets-and-e43b4749. Ownership: lib/runtime/txn.f. Lane: tim. Claim: unassigned.
