@@ -54,6 +54,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ The three failures the boot names, one label each per image.
 variable STACK-BAD
+variable ALT-BAD
 variable REGION-BAD
 variable DATA-BAD
 variable SNAP-END
@@ -90,8 +91,7 @@ variable SNAP-END
 \ first PAGE-BYTES boundary at least one page in, so at least one inaccessible
 \ page lies below the base and one above base + cap, and a push past the
 \ capacity faults.
-: MAP-STACK, ( n r64 -- ) {: cap:n dst:r64 :}
-   STACK-BAD @ >LABEL {: bad:label :}
+: MAP-STACK, ( n r64 label -- ) {: cap:n dst:r64 bad:label :}
    RDI ZERO-REG,
    cap STACK-ABI:PAGE-BYTES 3 * +  PROT-NONE  MAP-ANON-PRIVATE MMAP,
    C-B bad JCC,
@@ -238,8 +238,10 @@ variable SNAP-END
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.
 : FRAME-STACKS, ( -- )
-   STACK-ABI:RETURN-BYTES RAX MAP-STACK,  RAX STACK-ABI:RETURN-BASE-CELL CELL!
-   STACK-ABI:LOOP-BYTES RAX MAP-STACK,  RAX STACK-ABI:LOOP-BASE-CELL CELL! ;
+   STACK-ABI:RETURN-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
+   RAX STACK-ABI:RETURN-BASE-CELL CELL!
+   STACK-ABI:LOOP-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
+   RAX STACK-ABI:LOOP-BASE-CELL CELL! ;
 
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside
@@ -312,6 +314,25 @@ $20 constant SA-BYTES
 \ build a handler's frame for an action without it and kills the process with
 \ SIGSEGV instead.
 $04000000 constant SA-RESTORER
+$08000000 constant SA-ONSTACK
+
+0 constant SS-SP
+8 constant SS-FLAGS
+16 constant SS-SIZE
+24 constant SS-BYTES
+
+\ A machine CALL can exhaust its own stack before the VM return-stack guard.
+\ The crash handler needs a different stack for the kernel's signal frame.
+: CRASH-ALTSTACK, ( -- )
+   STACK-ABI:PAGE-BYTES RAX ALT-BAD @ >LABEL MAP-STACK,
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP SS-SP MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX ZERO-REG,  RCX RSP SS-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX STACK-ABI:PAGE-BYTES IMM,
+   RCX RSP SS-SIZE MEM-OFF ASM-SINK ENC-MOV-MR
+   RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  NR-SIGALTSTACK SYS,
+   RSP RSP SS-BYTES MEM-OFF ASM-SINK ENC-LEA
+   C-B ALT-BAD @ >LABEL JCC, ;
 
 \ struct sigcontext's slot for each register, by register number: rax rcx rdx
 \ rbx rsp rbp rsi rdi, then r8-r15. The kernel lays the slots out r8-r15, rdi,
@@ -661,25 +682,27 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
 \ the restorer at the other. Unchecked, as crash.f's install is: a refused
 \ install leaves that signal's default action.
 : INSTALL-CRASH, ( label label -- ) {: at:label rest:label :}
-   SIGILL SA-SIGINFO at rest SIGACTION,
-   SIGTRAP SA-SIGINFO at rest SIGACTION,
-   SIGBUS SA-SIGINFO at rest SIGACTION,
-   SIGFPE SA-SIGINFO at rest SIGACTION,
-   SIGSEGV SA-SIGINFO at rest SIGACTION, ;
+   SIGILL SA-SIGINFO SA-ONSTACK or at rest SIGACTION,
+   SIGTRAP SA-SIGINFO SA-ONSTACK or at rest SIGACTION,
+   SIGBUS SA-SIGINFO SA-ONSTACK or at rest SIGACTION,
+   SIGFPE SA-SIGINFO SA-ONSTACK or at rest SIGACTION,
+   SIGSEGV SA-SIGINFO SA-ONSTACK or at rest SIGACTION, ;
 
 \ Shared open and close of both startup paths.
 : OPEN, ( -- )
-   LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !
+   LBL STACK-BAD !  LBL ALT-BAD !  LBL REGION-BAD !  LBL DATA-BAD !
    RBASE-REG TEXT-BASE,
-   STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK, ;
+   STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
 
 : SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
    stub PUBLISH-STUB,
    FRAME-STACKS,
+   CRASH-ALTSTACK,
    crash rest INSTALL-CRASH, ;
 
 : CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
+   ALT-BAD @ >LABEL S\" hb: cannot install crash handler stack\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
