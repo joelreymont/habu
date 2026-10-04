@@ -2098,6 +2098,148 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX PUSH,
    RSP 24 >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ num-parse reads exactly the ARM reader's spelling: optional minus and hex
+\ prefix, then digits; decimal alone admits a dot with at least one fraction
+\ digit. The frame holds fraction, scale and dot state. Overflow is latched
+\ while the rest of the token is scanned, so a complete over-bound spelling
+\ returns the same failed triple as a syntax miss.
+: NUM-PARSE, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL
+   {: no-sign:label no-hex:label scan:label dot:label
+      letter:label upper:label digit:label frac:label
+      hex:label step:label overflow:label finish:label
+      integer:label positive:label failed:label done:label
+      sign-done:label radix-done:label neg-done:label
+      frac-over:label frac-next:label hex-step:label :}
+   RSI POP,  RDI POP,
+   RSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
+   R8 ZERO-REG,  R9 10 IMM32,  R10 1 IMM32,
+   R11 ZERO-REG,  RCX ZERO-REG,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-LE failed JCC,
+   RAX RDI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RAX [char] - >IMM8 ASM-SINK ENC-CMP-RI8  C-NE no-sign JCC,
+   R10 -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8
+   no-sign X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-AE failed JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX [char] $ >IMM8 ASM-SINK ENC-CMP-RI8  C-NE no-hex JCC,
+   R9 16 IMM32,
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8
+   no-hex X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-AE failed JCC,
+   RDX ZERO-REG,  RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-MR
+   scan X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-AE finish JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX [char] . >IMM8 ASM-SINK ENC-CMP-RI8  C-E dot JCC,
+   RAX [char] 0 >IMM8 ASM-SINK ENC-CMP-RI8  C-B failed JCC,
+   RAX [char] 9 >IMM8 ASM-SINK ENC-CMP-RI8  C-A letter JCC,
+   RAX [char] 0 >IMM8 ASM-SINK ENC-SUB-RI8  digit JMP,
+   letter X64CODE:LBL,
+   R9 16 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE failed JCC,
+   RAX [char] a >IMM8 ASM-SINK ENC-CMP-RI8  C-B upper JCC,
+   RAX [char] f >IMM8 ASM-SINK ENC-CMP-RI8  C-A failed JCC,
+   RAX [char] a 10 - >IMM8 ASM-SINK ENC-SUB-RI8  digit JMP,
+   upper X64CODE:LBL,
+   RAX [char] A >IMM8 ASM-SINK ENC-CMP-RI8  C-B failed JCC,
+   RAX [char] F >IMM8 ASM-SINK ENC-CMP-RI8  C-A failed JCC,
+   RAX [char] A 10 - >IMM8 ASM-SINK ENC-SUB-RI8
+   digit X64CODE:LBL,
+   RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE frac JCC,
+   R9 16 >IMM8 ASM-SINK ENC-CMP-RI8  C-E hex JCC,
+   RDX 1844674407370955161 IMM64,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-A overflow JCC,
+   C-NE step JCC,
+   RAX 5 >IMM8 ASM-SINK ENC-CMP-RI8  C-A overflow JCC,
+   step X64CODE:LBL,
+   R8 R8 10 >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 RAX ASM-SINK ENC-ADD-RR
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8  scan JMP,
+   hex X64CODE:LBL,
+   RDX $0FFFFFFFFFFFFFFF IMM64,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-A overflow JCC,
+   hex-step X64CODE:LBL,
+   R8 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R8 RAX ASM-SINK ENC-ADD-RR
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8  scan JMP,
+   overflow X64CODE:LBL,
+   R11 -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   R9 16 >IMM8 ASM-SINK ENC-CMP-RI8  C-E hex-step JCC,
+   step JMP,
+   dot X64CODE:LBL,
+   R9 10 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE failed JCC,
+   RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE failed JCC,
+   RDX 1 IMM32,  RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-MR
+   RDX ZERO-REG,  RDX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   RDX 1 IMM32,  RDX RSP CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8  scan JMP,
+   frac X64CODE:LBL,
+   RDX 2 IMM32,  RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-MR
+   RDX RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R9 $0CCCCCCCCCCCCCCC IMM64,
+   RDX R9 ASM-SINK ENC-CMP-RR  C-A frac-over JCC,
+   R11 R11 ASM-SINK ENC-TEST-RR  C-NE frac-next JCC,
+   RDX RSP MEM-AT ASM-SINK ENC-MOV-RM
+   RDX RDX 10 >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDX RAX ASM-SINK ENC-ADD-RR
+   RDX RSP MEM-AT ASM-SINK ENC-MOV-MR
+   RDX RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RDX 10 >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDX RSP CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   frac-next X64CODE:LBL,
+   RCX 1 >IMM8 ASM-SINK ENC-ADD-RI8  scan JMP,
+   frac-over X64CODE:LBL,
+   R11 -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   frac-next JMP,
+   finish X64CODE:LBL,
+   R11 R11 ASM-SINK ENC-TEST-RR  C-NE failed JCC,
+   RDX RSP 2 CELL * MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E integer JCC,
+   RDX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E failed JCC,
+   RDX $7FFFFFFFFFFFFFFF IMM64,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-A failed JCC,
+   XMM0 R8 ASM-SINK ENC-CVTSI2SD-RR
+   RAX RSP MEM-AT ASM-SINK ENC-MOV-RM
+   XMM1 RAX ASM-SINK ENC-CVTSI2SD-RR
+   RAX RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   XMM2 RAX ASM-SINK ENC-CVTSI2SD-RR
+   XMM1 XMM2 ASM-SINK ENC-DIVSD-RR
+   XMM0 XMM1 ASM-SINK ENC-ADDSD-RR
+   R8 XMM0 ASM-SINK ENC-MOVQ-RX
+   R10 R10 ASM-SINK ENC-TEST-RR  C-GE positive JCC,
+   RDX $8000000000000000 IMM64,
+   R8 RDX ASM-SINK ENC-XOR-RR
+   positive X64CODE:LBL,
+   RSP 3 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   R8 PUSH,  RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX PUSH,  RAX PUSH,  done JMP,
+   integer X64CODE:LBL,
+   R9 16 >IMM8 ASM-SINK ENC-CMP-RI8  C-E radix-done JCC,
+   RDX $7FFFFFFFFFFFFFFF IMM64,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-GE sign-done JCC,
+   RDX $8000000000000000 IMM64,
+   sign-done X64CODE:LBL,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-A failed JCC,
+   radix-done X64CODE:LBL,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-GE neg-done JCC,
+   R8 ASM-SINK ENC-NEG
+   neg-done X64CODE:LBL,
+   RSP 3 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   R8 PUSH,  RAX ZERO-REG,  RAX PUSH,
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32  RAX PUSH,  done JMP,
+   failed X64CODE:LBL,
+   RSP 3 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH,
+   done X64CODE:LBL, ;
+
 public
 
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
@@ -2135,7 +2277,7 @@ public
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    s" create" REFUSE
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
-   s" num-parse" REFUSE
+   s" num-parse" [: NUM-PARSE, ;] PRIM
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
