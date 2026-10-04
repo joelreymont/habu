@@ -36,7 +36,7 @@ variable UNIT-ARMED
 : CODE-WINDOW ( ptr u8 n n -- )
    code-publish ;
 
-: RELOC-EXTERNAL ( n -- )
+: RECORD-BRANCH ( n -- )
    callmap-set ;
 
 : RELOC-ADDR ( n -- )
@@ -83,13 +83,21 @@ TRUSTED: APPEND-PENDING ( n -- )
       then
    loop ;
 
+\ The ARM call map needs only calls out of REGION. A stripped x86 image packs
+\ reachable bodies at new addresses, so every recorded E8 call or E9 tail
+\ branch must move with it, including calls between REGION words.
 : RELOC-CALLS ( NART:emission n -- )
    {: e:NART:emission fn:n :}
+   e NART:ARCH CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ {: x64:bool :}
    e NART:CALL-SITES 0 ?do
-      e i NART:CALL-KIND@ NEMIT:CALL = if
-         e i NART:CALL-TARGET@ EXTERNAL? if
-            fn e i NART:CALL-SITE@ + RELOC-EXTERNAL
-         then
+      e i NART:CALL-KIND@ {: kind:n :}
+      x64 if
+         kind NEMIT:CALL = kind NEMIT:TAIL = or
+      else
+         kind NEMIT:CALL =
+         e i NART:CALL-TARGET@ EXTERNAL? and
+      then if
+         fn e i NART:CALL-SITE@ + RECORD-BRANCH
       then
    loop ;
 
