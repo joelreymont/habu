@@ -825,4 +825,11 @@ public
    rc 0= if REPORT-CLASS then
    s" " rc EXIT-RC die ;
 
+\ A saved builder uses the same target writer as a source build. DRIVE binds
+\ the x86 writer before the target window, while an ARM image has its C2
+\ writer already loaded, so the dispatch also preserves RUN-IMAGE's clearing
+\ of the saved APP-ENTRY before emitting the next product.
+: RUN-IMAGE-DEFAULT ( [ n n -- n ] bool -- )
+   ['] SOURCE-WRITER-DISPATCH RUN-IMAGE ;
+
 ;package

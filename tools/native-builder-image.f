@@ -2,7 +2,15 @@
 1 set-tier
 require src/habu/app-image.f
 require tools/native-build-core.f
-require tools/native-emit.f
+
+package NATIVE-BUILDER-IMAGE
+: LOAD-ARM-WRITER ( -- )
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if
+      s" tools/native-emit.f" required
+   then ;
+' LOAD-ARM-WRITER
+;package
+execute
 
 package NATIVE-BUILDER-IMAGE
 private
@@ -10,7 +18,7 @@ private
 : ORIGIN ( n n -- n ) code-origin ;
 
 : ENTER ( -- )
-   ['] ORIGIN false ['] NATIVE-EMIT:WRITE-C2 NATIVE-BUILD:RUN-IMAGE ;
+   ['] ORIGIN false NATIVE-BUILD:RUN-IMAGE-DEFAULT ;
 
 ' ENTER
 ;package
