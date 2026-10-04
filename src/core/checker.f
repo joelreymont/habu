@@ -10448,6 +10448,10 @@ PPRIM: PRIM-SPEC K-PRIM PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-PKG-PRIVATE PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-ELAB PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-UNROWED PE-N PE-OUT PPRIM;
+\ The builder's scalar marker checks the public n -- n atom sequence.
+PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
 \ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
 \ its MARK half deliberately not: src/habu/prefix-rewind.f TO-CORE is the one
 \ consumer and it only ever rewinds, so nothing outside this file can move the
