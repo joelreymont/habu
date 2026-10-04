@@ -2686,7 +2686,7 @@ The harness's refusals are one stderr line each and exit code 107:
 `hb: policy: package <name> publishes keyword <word>` (a public word spelled
 like a keyword row). A token outside the vocabulary is the engine's
 `hb: not in vocabulary: <token> at <path>:<line>`, exit code 107, at both
-tiers. AArch64 only: the x86-64 kernel refuses both words with rc 76.
+tiers. Both native kernels enforce the same admission and seal.
 
 An admitted package guarantees that every public word terminates on every input
 (a throw counts), that a parsing word consumes a bounded number of tokens, that

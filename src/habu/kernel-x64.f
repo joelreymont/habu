@@ -2650,15 +2650,17 @@ variable SITE-TRAP-CELL
    SEAL-TRAP-LBL X64CODE:LBL,  ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
    SITE-TRAP-LBL X64CODE:LBL,  SNAP-RELOC:SITE-RC EXIT-GROUP, ;
 
-\ Return the protected-WID bitmap cell and bit for rdi. The two engine WIDs
-\ are protected without a bit. Both the native-unit publisher and definition
-\ writers use this single sealed-wordlist decision.
-: PROT-BITS, ( -- )
+\ Over the bounded wid in rdi: rsi = the selected bitmap's containing cell,
+\ rdx = its bit. It clobbers rcx; shl takes the wid's low six bits.
+: WID-BITS, ( n -- ) {: off:n :}
    RSI RDI ASM-SINK ENC-MOV-RR
    RSI 6 >IMM8 ASM-SINK ENC-SHR-RI8
-   RSI DATA-REG RSI CELL PROT-BITS-OFF MEM-IDX ASM-SINK ENC-LEA
+   RSI DATA-REG RSI CELL off MEM-IDX ASM-SINK ENC-LEA
    RCX RDI ASM-SINK ENC-MOV-RR
    RDX 1 IMM32,  RDX ASM-SINK ENC-SHL-CL ;
+
+: PROT-BITS, ( -- ) PROT-BITS-OFF WID-BITS, ;
+: POLICY-BITS, ( -- ) POLICY-BITS-OFF WID-BITS, ;
 
 \ With the seal set, branch when rdx names a protected wordlist.
 \ A wid beyond the bitmap bound has no bit, as on ARM64.
@@ -3494,9 +3496,71 @@ private
 
 : WIDE-MARK-BODY ( -- ) DNAME-WIDE NEWEST-MARK, ;
 
-\ policy-admit and policy-seal refuse: the design seal is read by habu2.f's
-\ token loops (LPOLICYREC, LKWCMP), which this kernel does not have, so a seal
-\ stored here would confine nothing.
+\ The design seal is enforced by the captured OUTER interpreter. Admission
+\ checks the same package row ARM64 reads, asks OUTER's one dispatch-keyword
+\ table for a collision, and publishes the bit only after both checks pass.
+: POLICY-OPEN, ( -- )
+   X64CODE:LBL {: open:label :}
+   RAX POLICY-NDICT-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
+   S\" hb: policy: sealed\n" ENGINE-ERROR:POLICY STDERR-EXIT,
+   open X64CODE:LBL, ;
+
+: POLICY-ADMIT-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: found:label bounded:label checked:label ready:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: nopkg:label pkg:label keyword:label nl:label :}
+   POLICY-OPEN,
+   RSI POP,  RDI POP,                                \ length, name
+   RDX DICT-WL:NAMESPACE IMM64,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
+      R9 RDI ASM-SINK ENC-MOV-RR  R10 RSI ASM-SINK ENC-MOV-RR
+      nopkg s" hb: policy: no package " nip STDERR-WRITE,
+      RDI STDERR IMM32,  RSI R9 ASM-SINK ENC-MOV-RR
+      RDX R10 ASM-SINK ENC-MOV-RR  NR-WRITE SYS,
+      nl 1 STDERR-WRITE,
+      ENGINE-ERROR:POLICY EXIT-GROUP,
+      nopkg X64CODE:LBL,  s" hb: policy: no package " TEXT,
+      nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
+   found X64CODE:LBL,
+   RAX RAX REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
+      S\" hb: policy: package wid above the bound\n" ENGINE-ERROR:POLICY STDERR-EXIT,
+   bounded X64CODE:LBL,
+   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH
+   RAX PUSH,                                         \ callback (wid -- name len hit)
+   RCX POLICY-ABI:KEYWORD-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE ready JCC,
+      S\" hb: policy: keyword check unavailable\n" REFUSE-RC STDERR-EXIT,
+   ready X64CODE:LBL,
+   RCX ASM-SINK ENC-CALL-REG
+   RAX POP,  RDX POP,  RSI POP,                     \ hit, length, keyword
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E checked JCC,
+      R9 RSI ASM-SINK ENC-MOV-RR  R10 RDX ASM-SINK ENC-MOV-RR
+      pkg s" hb: policy: package " nip STDERR-WRITE,
+      RDI STDERR IMM32,  RSI RSP 16 MEM-OFF ASM-SINK ENC-MOV-RM
+      RDX RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM  NR-WRITE SYS,
+      keyword s"  publishes keyword " nip STDERR-WRITE,
+      RDI STDERR IMM32,  RSI R9 ASM-SINK ENC-MOV-RR
+      RDX R10 ASM-SINK ENC-MOV-RR  NR-WRITE SYS,
+      nl 1 STDERR-WRITE,
+      ENGINE-ERROR:POLICY EXIT-GROUP,
+      pkg X64CODE:LBL,  s" hb: policy: package " TEXT,
+      keyword X64CODE:LBL,  s"  publishes keyword " TEXT,
+   checked X64CODE:LBL,
+   RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
+   POLICY-BITS,
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
+   RAX RDX ASM-SINK ENC-OR-RR
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-MR
+   RSP 24 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+: POLICY-SEAL-BODY ( -- )
+   POLICY-OPEN,
+   NDICT-REG POLICY-NDICT-CELL CELL!, ;
+
 : WORDLIST-ROWS, ( -- )
    s" wordlist" [:
       RAX WIDN-CELL CELL@,  RAX PUSH,
@@ -3505,8 +3569,8 @@ private
    s" set-current" [: RAX POP,  RAX CUR-CELL CELL!, ;] PRIM
    s" prot-wid-add" [: PROT-WID-ADD-BODY ;] PRIM
    s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
-   s" policy-admit" REFUSE
-   s" policy-seal" REFUSE
+   s" policy-admit" [: POLICY-ADMIT-BODY ;] PRIM
+   s" policy-seal" [: POLICY-SEAL-BODY ;] PRIM
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
 \ ---- persisted cells, the tier and the build scope ---------------------------

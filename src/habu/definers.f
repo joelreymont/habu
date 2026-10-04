@@ -202,6 +202,26 @@ TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
    a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
    a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
 
+\ The x86-64 policy writer asks this captured interpreter once per package,
+\ before setting its admission bit. Use the same dispatch-row table that guards
+\ names in a sealed definition, including pass-2 rows.
+public
+: POLICY-KEYWORD ( n -- ptr u8 n bool ) {: wid:n :}
+   ndict@ 0 ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-WORDLIST wid = if
+         rec XREF-NAME$ {: a:ptr u:n :}
+         a u DEF-DESIGN-KEYWORD? a u DEF-ROW-KEYWORD? or if
+            a u true unloop exit
+         then
+      then
+   loop
+   s" " false ;
+
+: INSTALL-POLICY ( -- )
+   ['] POLICY-KEYWORD data-base POLICY-ABI:KEYWORD-CELL + xt! ;
+private
+
 : DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" hb: compile keyword cannot be a definition name: " SAY
    a u SAY RC-REJECT THROW-AT ;

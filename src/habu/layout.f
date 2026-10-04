@@ -1124,6 +1124,14 @@ public
 $3810 constant EVALUATE-CELL
 ;package
 
+\ The x86-64 policy writer calls the checked interpreter's dispatch-keyword
+\ predicate before admitting a package. CHECKER-REG:SEAL installs that callback;
+\ its fixed code cell is captured and restored with the other engine callbacks.
+package POLICY-ABI
+public
+$3818 constant KEYWORD-CELL
+;package
+
 $1D8 constant SSCR-CELL
 $1E0 constant GTOD-SCRATCH
 $200 constant VSP-CELL

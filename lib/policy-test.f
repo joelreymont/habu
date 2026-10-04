@@ -247,6 +247,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" " ENGINE-ERROR:POLICY s" hb: policy: no package NOPE" s" " RUNS
    s" allow-keyword-package" HARNESS!
    s" " ENGINE-ERROR:POLICY s" hb: policy: package PKW publishes keyword DUP" s" " RUNS
+   s" allow-design-keyword-package" HARNESS!
+   s" " ENGINE-ERROR:POLICY s" hb: policy: package PSYNTAX publishes keyword package" s" " RUNS
    s" allow-p2-package" HARNESS!
    s" " ENGINE-ERROR:POLICY s" hb: policy: package PTUCK publishes keyword TUCK" s" " RUNS
    s" allow-catch" HARNESS!

@@ -140,7 +140,10 @@ The admitted public words are the design's whole reach.
 The seal is a DATA header watermark (`src/habu/layout.f`
 `POLICY-NDICT-CELL`) and an admission bitmap (`POLICY-BITS-OFF`): the dictionary
 size at the seal, and the admitted wordlist ids. `policy-admit` and `policy-seal`
-(`src/habu/habu1.f`) write the live policy. Image capture clears both in its
+(`src/habu/habu1.f`, `src/habu/kernel-x64.f`) write the live policy. The x86-64
+writer asks the captured `OUTER:POLICY-KEYWORD` callback, installed in the fixed
+`POLICY-ABI:KEYWORD-CELL`, to detect dispatch-row collisions before it sets a
+package's bit. Image capture clears the watermark and bitmap in its
 DATA copy, and warm restore clears both before the fresh process reads source.
 The captured interpreter checks top-level tokens in
 `src/habu/interpret.f` (`POLICY-PRE`) and found records in

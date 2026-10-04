@@ -25,13 +25,14 @@ create GOLDEN
    $360 ,  1 ,   \ NCOMP-DISPATCH:DECL-CELL
    $368 ,  1 ,   \ NCOMP-DISPATCH:TARGET-DECL-CELL
    $3810 , 0 ,   \ PROVIDED-XT:EVALUATE-CELL
+   $3818 , 0 ,   \ POLICY-ABI:KEYWORD-CELL
    $3808 , 0 ,   \ ENGINE-MAIN:XT-CELL
    $43A0 , 0 ,   \ APP-ENTRY:XT-CELL
    $3640 , 0 ,   \ REPLH-CELL
    $37E8 , 1 ,   \ BPWBASE-CELL
    $560 ,  0 ,   \ LASTC-CELL
 
-19 constant ROWS
+20 constant ROWS
 
 public
 

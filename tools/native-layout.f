@@ -24,6 +24,7 @@ create SLOTS
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    PROVIDED-XT:EVALUATE-CELL ,          0 ,
+   POLICY-ABI:KEYWORD-CELL ,            0 ,
    ENGINE-MAIN:XT-CELL ,                0 ,
    APP-ENTRY:XT-CELL ,                  0 ,
    REPLH-CELL ,                         0 ,
