@@ -33,7 +33,8 @@ $7F000001 constant LOOPBACK
 $40 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
 $2000 constant BODY-CAP
 $1000 constant REQ-CAP
-$400 constant RES-CAP
+$1000 constant RES-CAP
+$1000 constant HEADER-CAP
 $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
 $1000 constant READY-TRIES              \ TASK:PAUSE turns before the listener is late
@@ -60,6 +61,10 @@ create JAR-BUF FS-PATH-CAP allot
 create BODY-BUF BODY-CAP allot
 create REQ-BUF REQ-CAP allot
 create RES-BUF RES-CAP allot
+create HEADER-BUF HEADER-CAP allot
+create HEADER-SAVED HEADER-CAP allot
+create TRANSCRIPT-PATH FS-PATH-CAP allot
+create TRANSCRIPT-BUF HEADER-CAP allot
 create JAR-TEXT-BUF RES-CAP allot
 create NUM-BUF NUM-CAP allot
 create DRIBBLE-BUF DRIBBLE-U allot
@@ -91,6 +96,10 @@ variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
 variable LAST-KIND                      \ 0 response, 1 truncated, 2 failed
+variable HEADER-LEN
+variable HEADER-KIND
+variable TRANSCRIPT-U
+TYPED-VARIABLE HEADER-HANDLE CURL:handle
 
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
@@ -109,6 +118,17 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-COOKIE$ ( -- ptr u8 n ) s" /cookie" ;
 : PATH-STALL$ ( -- ptr u8 n ) s" /stall" ;
 : PATH-DRIBBLE$ ( -- ptr u8 n ) s" /dribble" ;
+: PATH-HEADERS$ ( -- ptr u8 n ) s" /headers" ;
+: PATH-HEADERS-B$ ( -- ptr u8 n ) s" /headers-b" ;
+: PATH-REDIRECT$ ( -- ptr u8 n ) s" /redirect" ;
+: PATH-INTERIM$ ( -- ptr u8 n ) s" /interim" ;
+: JSON$ ( -- ptr u8 n ) s" {}" ;
+: HEADERS$ ( -- ptr u8 n )
+   S\" HTTP/1.0 200 OK\r\nCache-Control: max-age=60\r\nExpires: Wed, 21 Oct 2030 07:28:00 GMT\r\nAge: 7\r\nRetry-After: 9\r\nX-Duplicate: first\r\nX-Duplicate: second\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
+: HEADERS-B$ ( -- ptr u8 n )
+   S\" HTTP/1.0 200 OK\r\nX-Generation: two\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
+: INTERIM-FINAL$ ( -- ptr u8 n )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Cache-Control\r\nConnection: close\r\n\r\n" ;
 : DRIBBLE$ ( -- ptr u8 n ) DRIBBLE-BUF DRIBBLE-U ;
 
 
@@ -394,6 +414,37 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn SEND-RESPONSE ;
 
 
+: SERVE-HEADERS ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET HEADERS$ RES+ JSON$ RES+
+   conn SEND-RESPONSE ;
+
+
+: SERVE-HEADERS-B ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET HEADERS-B$ RES+ JSON$ RES+
+   conn SEND-RESPONSE ;
+
+
+: REDIRECT-RESPONSE ( -- )
+   RES-RESET
+   S\" HTTP/1.0 302 Found\r\nLocation: /headers\r\nCache-Control: no-store\r\nExpires: Thu, 01 Jan 1970 00:00:00 GMT\r\nX-Oversized: " RES+
+   600 0 do $78 RES-C+ loop
+   CRLF+
+   s" Content-Length: 0" RES+ CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+ ;
+
+
+: SERVE-REDIRECT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   REDIRECT-RESPONSE conn SEND-RESPONSE ;
+
+
+: SERVE-INTERIM ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   S\" HTTP/1.1 100 Continue\r\nX-Interim: one\r\n\r\nHTTP/1.1 103 Early Hints\r\nCache-Control: no-store\r\n\r\n" RES+
+   INTERIM-FINAL$ RES+
+   S\" 2\r\n{}\r\n0\r\nCache-Control: private\r\nX-Trailer: excluded\r\n\r\n" RES+
+   conn SEND-RESPONSE ;
+
+
 : SERVE-UNIMPLEMENTED ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" 501 Not Implemented" s" not implemented" RESPOND
    conn SEND-RESPONSE ;
@@ -404,6 +455,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
    PATH-DRIBBLE$ PATH-IS? if conn SERVE-DRIBBLE exit then
+   PATH-HEADERS$ PATH-IS? if conn SERVE-HEADERS exit then
+   PATH-HEADERS-B$ PATH-IS? if conn SERVE-HEADERS-B exit then
+   PATH-REDIRECT$ PATH-IS? if conn SERVE-REDIRECT exit then
+   PATH-INTERIM$ PATH-IS? if conn SERVE-INTERIM exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
    conn SERVE-MISSING ;
@@ -627,6 +682,69 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    true ;
 
 
+: HEADER-FILL ( -- )
+   HEADER-CAP 0 do FILL-BYTE HEADER-BUF i + c! loop ;
+
+
+: HEADER-UNTOUCHED? ( -- bool )
+   HEADER-CAP 0 do HEADER-BUF i + c@ FILL-BYTE <> if false unloop exit then loop
+   true ;
+
+
+: HEADER-COPY ( CURL:handle n -- ) {: subject:CURL:handle capacity:n :}
+   HEADER-FILL
+   subject HEADER-BUF capacity >LEN CURL:HEADERS
+   MATCH CURL:header-result
+      complete OF LEN>N HEADER-LEN ! 0 HEADER-KIND ! ENDOF
+      truncated OF LEN>N HEADER-LEN ! 1 HEADER-KIND ! ENDOF
+   ;MATCH ;
+
+
+: HEADER-EXACT ( CURL:handle ptr u8 n -- )
+   {: subject:CURL:handle want:ptr u:n :}
+   subject u HEADER-COPY
+   HEADER-KIND @ 0 T=
+   HEADER-LEN @ u T=
+   HEADER-BUF u want u T$=
+   HEADER-BUF u + c@ FILL-BYTE T= ;
+
+
+: HEADER-REFUSED ( CURL:handle -- ) {: subject:CURL:handle :}
+   subject HEADER-HANDLE !
+   HEADER-FILL
+   s" unavailable response headers leave the destination untouched" T-LABEL
+   [: HEADER-HANDLE @ HEADER-BUF HEADER-CAP >LEN CURL:HEADERS drop ;]
+      CURL:E-STATE TTHROWSQ
+   HEADER-UNTOUCHED? TTRUE ;
+
+
+: HEADER-BAD-CAP ( CURL:handle -- ) {: subject:CURL:handle :}
+   subject HEADER-HANDLE !
+   HEADER-FILL
+   s" a negative header capacity is refused before the destination is touched" T-LABEL
+   [: HEADER-HANDLE @ HEADER-BUF -1 >LEN CURL:HEADERS drop ;]
+      CURL:E-OPERAND TTHROWSQ
+   HEADER-UNTOUCHED? TTRUE ;
+
+
+: HEADER-TRANSCRIPT ( -- )
+   s" HB_TMP" GETENV {: root:ptr rootu:n :}
+   rootu 0 > TTRUE
+   root rootu s" curl-headers-transcript.txt" TRANSCRIPT-PATH JOIN-PATH
+      {: pathu:n :}
+   SB-RESET
+   S\" result=response status=200 body-len=2\nheaders:\n" SB-APPEND
+   HEADER-BUF HEADER-LEN @ SB-APPEND
+   S\" body:{}\n" SB-APPEND
+   SB$ {: transcript:ptr u:n :}
+   transcript TRANSCRIPT-BUF u BYTE-COPY
+   u TRANSCRIPT-U !
+   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-U @ WRITE-ALL
+   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF HEADER-CAP READ-ALL
+      TRANSCRIPT-U @ T=
+   TRANSCRIPT-BUF TRANSCRIPT-U @ SB$ T$= ;
+
+
 : TEXT-AT? ( ptr u8 n ptr u8 n n -- bool )
    {: text:ptr u:n needle:ptr needleu:n at:n :}
    at needleu + u > if false exit then
@@ -757,9 +875,89 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    BODY-BUF 3 s" hel" T$= ;
 
 
+: TEST-RESPONSE-HEADERS ( -- )
+   PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
+   subject HEADER-REFUSED
+   subject BODY-CAP >LEN FETCH
+   s" PERFORM retains the exact status-headed block and duplicate fields" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ JSON$ T$=
+   subject HEADER-BAD-CAP
+   subject HEADERS$ HEADER-EXACT
+   HEADER-TRANSCRIPT
+   subject 0 HEADER-COPY
+   HEADER-KIND @ 1 T=
+   HEADER-LEN @ HEADERS$ nip T=
+   HEADER-UNTOUCHED? TTRUE
+   subject HEADER-LEN @ 1- HEADER-COPY
+   HEADER-KIND @ 1 T=
+   HEADER-LEN @ HEADERS$ nip T=
+   HEADER-BUF HEADER-LEN @ 1- + c@ FILL-BYTE T=
+   subject HEADERS$ HEADER-EXACT
+   HEADER-BUF HEADER-SAVED HEADER-LEN @ BYTE-COPY
+   subject FILE-URL$ CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 1 T=
+   subject HEADER-REFUSED
+   subject CURL:CLEANUP
+   HEADER-SAVED HEADER-LEN @ HEADERS$ T$= ;
+
+
+: TEST-HEADER-TRUNCATIONS ( -- )
+   PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
+   subject 1 >LEN FETCH
+   s" body and header truncation report independent whole lengths" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-LEN @ 2 T=
+   subject 1 HEADER-COPY
+   HEADER-KIND @ 1 T=
+   HEADER-LEN @ HEADERS$ nip T=
+   HEADER-BUF c@ $48 T=
+   HEADER-BUF 1+ c@ FILL-BYTE T=
+   subject HEADERS$ HEADER-EXACT
+   subject CURL:CLEANUP
+   PATH-HEADERS$ GET-READY {: second:CURL:handle :}
+   second 1 >LEN FETCH
+   LAST-KIND @ KIND-TRUNCATED T=
+   second HEADERS$ HEADER-EXACT
+   second CURL:CLEANUP ;
+
+
+: TEST-HEADER-REDIRECT ( -- )
+   PATH-REDIRECT$ GET-READY {: subject:CURL:handle :}
+   subject true CURL:FOLLOW! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   s" FOLLOW selects only the final block past an oversized redirect" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ JSON$ T$=
+   subject HEADERS$ HEADER-EXACT
+   subject CURL:CLEANUP
+   PATH-REDIRECT$ GET-READY {: direct:CURL:handle :}
+   direct BODY-CAP >LEN FETCH
+   LAST-STATUS @ 302 T=
+   direct 0 HEADER-COPY
+   HEADER-LEN @ 600 > TTRUE
+   direct HEADER-CAP HEADER-COPY
+   HEADER-KIND @ 0 T=
+   HEADER-BUF HEADER-LEN @ S\" HTTP/1.0 302 Found\r\nLocation: /headers\r\nCache-Control: no-store\r\n" 0 TEXT-AT? TTRUE
+   direct CURL:CLEANUP ;
+
+
+: TEST-HEADER-INTERIM ( -- )
+   PATH-INTERIM$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   s" 100 and 103 are superseded; chunked trailers do not extend the block" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ JSON$ T$=
+   subject INTERIM-FINAL$ HEADER-EXACT
+   subject CURL:CLEANUP ;
+
+
 : TEST-TIMEOUT ( -- )
    STALL-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
+   subject HEADER-REFUSED
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -848,6 +1046,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : TEST-NO-URL ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
+   subject HEADER-REFUSED
    subject CURL:CLEANUP
    s" a handle with no URL fails and carries the curl code" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1035,6 +1234,41 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    BODY-BUF 3 s" hel" T$= ;
 
 
+: CASE-HEADER-REUSE ( -- )
+   PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   subject HEADERS$ HEADER-EXACT
+   HEADER-BUF HEADER-SAVED HEADER-LEN @ BYTE-COPY
+   subject PATH-HEADERS-B$ URL-FOR CURL:URL! EXPECT-OK
+   subject BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   subject HEADER-REFUSED
+   subject AWAIT-ONE
+   s" AWAIT publishes replacement headers only after collection" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   BODY$ JSON$ T$=
+   subject HEADERS-B$ HEADER-EXACT
+   subject PATH-HEADERS$ URL-FOR CURL:URL! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject HEADERS$ HEADER-EXACT
+   subject CURL:CLEANUP
+   HEADER-SAVED HEADER-LEN @ HEADERS$ T$= ;
+
+
+: CASE-HEADER-INDEPENDENT ( -- )
+   PATH-HEADERS$ GET-READY {: one:CURL:handle :}
+   PATH-HEADERS-B$ GET-READY {: two:CURL:handle :}
+   one BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   two BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   two AWAIT-ONE
+   two HEADERS-B$ HEADER-EXACT
+   one HEADER-REFUSED
+   one AWAIT-ONE
+   one HEADERS$ HEADER-EXACT
+   two HEADERS-B$ HEADER-EXACT
+   one CURL:CLEANUP
+   two CURL:CLEANUP ;
+
+
 : MANY-SPAN ( n -- ptr u8 ) {: idx:n :}
    MANY-BUF idx MANY-CAP * + ;
 
@@ -1080,6 +1314,7 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
    bad AWAIT-ONE
+   bad HEADER-REFUSED
    bad CURL:CLEANUP
    s" a stalled transfer ends as CURLE_OPERATION_TIMEDOUT and alone" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1091,13 +1326,17 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 \ in flight when it is cancelled - the hit count is what says its request
 \ arrived - and nothing but the cancel can end it inside the ten-second ceiling.
 : CASE-CANCEL ( -- )
+   PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   subject HEADERS$ HEADER-EXACT
+   subject PATH-STALL$ URL-FOR CURL:URL! EXPECT-OK
    SERVER-HITS atomic@ {: before:n :}
-   PATH-STALL$ GET-READY {: subject:CURL:handle :}
    RESULT-RESET
    subject BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
    before WAIT-HIT
    subject CURL:CANCEL
    subject AWAIT-ONE
+   subject HEADER-REFUSED
    subject CURL:CLEANUP
    s" a cancelled transfer in flight ends as CURLE_ABORTED_BY_CALLBACK" T-LABEL
    LAST-KIND @ KIND-FAILED T=
@@ -1143,10 +1382,13 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 \ loop gives that record back, which is what lets the loop stop afterwards. The
 \ halt waits for the request to arrive, so the transfer is really in flight.
 : CASE-HALTED ( -- )
-   SERVER-HITS atomic@ {: before:n :}
    0 HALT-PARKED !
    0 HALT-RC !
-   PATH-STALL$ GET-READY HALT-HANDLE !
+   PATH-HEADERS$ GET-READY HALT-HANDLE !
+   HALT-HANDLE @ BODY-CAP >LEN FETCH
+   HALT-HANDLE @ HEADERS$ HEADER-EXACT
+   HALT-HANDLE @ PATH-STALL$ URL-FOR CURL:URL! EXPECT-OK
+   SERVER-HITS atomic@ {: before:n :}
    ['] HALT-WORK HALT-TASK TASK:ACTIVATE
    HALT-PARKED 1 REACHED? TTRUE
    before WAIT-HIT
@@ -1156,6 +1398,7 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    s" a submitter halted in AWAIT ends and the loop stops after it" T-LABEL
    HALT-RC @ 0 T=
    STOPPED? TTRUE
+   HALT-HANDLE @ HEADER-REFUSED
    HALT-HANDLE @ CURL:CLEANUP ;
 
 
@@ -1186,6 +1429,8 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    [: CURL:LOOP-START EXPECT-OK ;] CURL:E-STATE TTHROWSQ
    PARITY-WHOLE
    PARITY-TRUNCATED
+   CASE-HEADER-REUSE
+   CASE-HEADER-INDEPENDENT
    CASE-MANY
    CASE-STALLED
    CASE-CANCEL
@@ -1200,7 +1445,7 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 54 CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 68 CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -1264,6 +1509,10 @@ public
    TEST-METHOD
    TEST-COOKIES
    TEST-TRUNCATED
+   TEST-RESPONSE-HEADERS
+   TEST-HEADER-TRUNCATIONS
+   TEST-HEADER-REDIRECT
+   TEST-HEADER-INTERIM
    TEST-TIMEOUT
    TEST-LOW-SPEED
    TEST-NO-URL
