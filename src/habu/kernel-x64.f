@@ -208,7 +208,7 @@ public
 \ EPREFIX-PROVIDED!), registered with its dispatch cell n (layout.f
 \ PROVIDED-XT): the twin of habu1.f FPRIM-PROVIDED. In a seeded build the
 \ record is a stub that jumps through the cell; otherwise it is the body given.
-: PROVIDED ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
+: PROVIDED-ROW ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
    a u q ARGS
    ROW$ KEEP? 0= if exit then
    cell ROW-CELL !
@@ -2335,7 +2335,7 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED
+   PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED-ROW
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
