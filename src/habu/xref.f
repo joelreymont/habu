@@ -626,7 +626,7 @@ variable FLOOR-A
 
 public
 
-7183 constant E-INSTALL
+7230 constant E-INSTALL
 
 \ A source library installs its single code owner while compilation is idle.
 \ The fixed CODE cell is declared at cold boot and relocates in saved images.
