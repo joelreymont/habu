@@ -1467,5 +1467,7 @@
 
 \ RUNTIME handles: -9510..-9519, minted by lib/runtime/handle.f, which owns package RT-HANDLE.
 
+\ RUNTIME pools: -9520..-9529, minted by lib/runtime/pool.f, which owns package RT-POOL.
+
 \ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WPROF -9810..-9814, WCTL -9815..-9819.

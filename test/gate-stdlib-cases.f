@@ -1402,6 +1402,10 @@ SUITE runtime-id
    lib/runtime/id-test.f
 ;SUITE
 
+SUITE runtime-pool
+   lib/runtime/pool-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
