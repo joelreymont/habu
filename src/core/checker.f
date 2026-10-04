@@ -116,6 +116,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
    0 , 0 , 0 ,
    0 ,
    0 ,
@@ -124,6 +125,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -141,7 +143,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:LINEAR-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -9380,7 +9382,9 @@ variable LMI
       LMI @ 1 + LMI !
    REPEAT ;
 
+PTR-VARIABLE TOK-EFF
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
+   h TOK-EFF !
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    SCOPE-N @ {: scope-start:n :}
@@ -11398,6 +11402,10 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    sym USIG-NEWEST 0 <> IF 0 EXIT THEN
    sym ;
 
+PTR-VARIABLE BIND-REC
+variable BIND-PEND-IX
+variable BIND-PEND-OFF
+
 \ THE BINDERS ANSWER THEIR REFUSALS RATHER THAN RAISING THEM: each leaves
 \ ( sym why ), where why is 0 or the code of the refusal it reached -
 \ CHECKER-REJECT-RC when no authority names a package context for a bare token,
@@ -11414,13 +11422,24 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 \ length no name has) binds nothing in either binder: the engine never binds
 \ it, and neither the pending row nor the lookup reads it.
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
       CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
       2drop drop
    THEN
    a u CK-PENDING-SYM {: pending:n :}
-   pending 0 <> IF pending 0 EXIT THEN
+   pending 0 <> IF
+      ndict@ BIND-PEND-IX !  pending USIG-NEWEST BIND-PEND-OFF !
+      \ The checker may still call this declaration pending after the engine
+      \ has published its callable record. Retain that original source record
+      \ beside the pending checker view; a later name query could bind another.
+      a u scope-find {: held:ptr used:ptr used2:ptr flags:n :}
+      held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
+         held CK-REC-WID 0= 0= used 0= or IF held BIND-REC ! THEN
+      THEN
+      pending 0 EXIT
+   THEN
    a u scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
@@ -11429,6 +11448,7 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
       a u CK-AXIOM-SYM 0 EXIT
    THEN
    a u rec CK-REC-BIND {: sym:n :}
+   rec BIND-REC !
    rec CK-REC-WID 0= IF                               \ a used public exporting the bound global's tail
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       used 0= 0= IF
@@ -11688,11 +11708,15 @@ package CHECKER-REG
    FEP-CLEAR
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
 
-: FIND-SIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SIG
+: FIND-SIG-SYM ( n -- bool ) {: sym:n :}
+   FEP-CLEAR
+   sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF RES-TRUE EXIT THEN
-   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
+   sym PRIM-FIRST-SYM
    dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
+
+: FIND-SIG ( ptr u8 n -- bool )
+   CHECKER-FIND-ACTIVE-SYM FIND-SIG-SYM ;
 
 \ ABI query: din cell count for the active effect, including an unjudged scan.
 \ Source authority is a separate question, answered by EFFECT-EXTERNAL-MIN-IN.
@@ -11991,6 +12015,146 @@ variable REC-IX                      \ the ordinal the next reported token takes
 variable FIELD-LOAN-ORD
 variable FIELD-LOAN-OFF
 variable FIELD-LOAN-PENDING
+variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
+variable TOK-DEAD
+PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
+PTR-VARIABLE TOK-REC
+variable TOK-PEND-IX   variable TOK-PEND-OFF
+variable BWIN-HIT
+PTR-VARIABLE TOK-ABI-EFF
+variable TOK-ABI-DONE
+variable BWIN-UNJUDGED
+
+16 constant BWIN-INIT
+$7FFFFFFFFFFFFFFF CHECKER-OWNER-ABI:BOUND-CELLS cells / constant BWIN-MAX
+PTR-VARIABLE BWIN-P
+variable BWIN-N   variable BWIN-CAP   variable BWIN-VALID   variable UWIN-VALID
+variable BGLUE-MASK
+variable BGLUE-I
+
+: BIND-EFF-GLUE ( ptr u8 -- n ) {: h:ptr :}
+   h E-DOUT@ {: row:n :}
+   row EFF-ROW-N {: terms:n :}
+   row EFF-ROW-CELLS {: width:n :}
+   width 0 < width 64 > or IF -1 EXIT THEN
+   width 0= IF 0 EXIT THEN
+   terms width <> IF
+      terms 1 <> IF -1 EXIT THEN
+      width 64 = IF -2 ELSE 1 width lshift 1 - 1 invert and THEN EXIT
+   THEN
+   0 BGLUE-MASK !  0 BGLUE-I !
+   BEGIN BGLUE-I @ terms < WHILE
+      row BGLUE-I @ EFF-ROW-SLOT {: slot:n :}
+      slot 2 < IF 1 BGLUE-I +! ELSE
+         BGLUE-I @ slot + width > IF -1 EXIT THEN
+         slot 1 - 0 ?DO
+            BGLUE-MASK @ 1 width 1 - BGLUE-I @ - i - lshift or BGLUE-MASK !
+         LOOP
+         slot BGLUE-I +!
+      THEN
+   REPEAT
+   BGLUE-MASK @ ;
+
+: BWIN-AT ( n n -- ptr n )
+   {: i:n f:n :}
+   BWIN-P @ BYTE-VIEW i CHECKER-OWNER-ABI:BOUND-CELLS * f + cells + CELL-VIEW ;
+
+: BWIN-RESET ( -- )
+   0 BWIN-N !  0 BWIN-VALID !  0 UWIN-VALID !  0 BWIN-HIT ! ;
+
+: BWIN-RELEASE ( -- )
+   BWIN-CAP @ 0= 0= IF
+      BWIN-P @ BWIN-CAP @ CHECKER-OWNER-ABI:BOUND-CELLS * cells munmap 0= 0= IF
+         s" checker: call binding munmap failed" 76 die
+      THEN
+   THEN
+   NULL-PTR BWIN-P !  0 BWIN-CAP !  BWIN-RESET ;
+
+: BWIN-ENSURE ( -- )
+   BWIN-N @ BWIN-CAP @ < IF EXIT THEN
+   BWIN-N @ BWIN-MAX >= IF s" checker: call binding capacity overflow" 76 die THEN
+   BWIN-N @ 1+ BWIN-INIT max
+   BWIN-CAP @ BWIN-MAX 2 / <= IF BWIN-CAP @ 2 * max THEN
+   {: cap:n :}
+   BWIN-P @ BWIN-N @ CHECKER-OWNER-ABI:BOUND-CELLS * cells
+   cap CHECKER-OWNER-ABI:BOUND-CELLS * cells ARENA-BYTES-GROW {: next:ptr :}
+   BWIN-CAP @ 0= 0= IF
+      BWIN-P @ BWIN-CAP @ CHECKER-OWNER-ABI:BOUND-CELLS * cells munmap 0= 0= IF
+         s" checker: call binding munmap failed" 76 die
+      THEN
+   THEN
+   next BWIN-P !  cap BWIN-CAP ! ;
+
+: BWIN-COMMIT ( -- )
+   REC-ON @ 0= BWIN-HIT @ 0= or IF EXIT THEN
+   BWIN-UNJUDGED @ 0= TOK-EFF @ NULL-PTR = and TOK-SYM @ 0= 0= and IF
+      TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-EFF ! THEN
+   THEN
+   0 BWIN-HIT !
+   BWIN-UNJUDGED @ IF TOK-ABI-EFF ELSE TOK-EFF THEN @ {: eff:ptr :}
+   BWIN-ENSURE
+   BWIN-N @ {: i:n :}
+   REC-IX @ i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT !
+   TOK-REC @ NULL-PTR <> IF
+      CHECKER-OWNER-ABI:BOUND-DICT i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
+   ELSE TOK-PEND-OFF @ 0= 0= IF
+      CHECKER-OWNER-ABI:BOUND-PENDING i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
+   ELSE
+      CHECKER-OWNER-ABI:BOUND-INTRINSIC i CHECKER-OWNER-ABI:BOUND-KIND BWIN-AT !
+   THEN THEN
+   TOK-SYM @ i CHECKER-OWNER-ABI:BOUND-SYM BWIN-AT !
+   eff NULL-PTR = IF 0 ELSE eff E-OFF 1+ THEN
+      i CHECKER-OWNER-ABI:BOUND-EFFECT BWIN-AT !
+   TOK-REC @ NULL-PTR = IF
+      0 i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
+      0 i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
+   ELSE
+      TOK-REC @ BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ -
+         DICT-WORDLIST-SLOT 1+ cells /
+         i CHECKER-OWNER-ABI:BOUND-RECORD BWIN-AT !
+      TOK-REC @ CK-REC-WID i CHECKER-OWNER-ABI:BOUND-WID BWIN-AT !
+      TOK-REC @ @ i CHECKER-OWNER-ABI:BOUND-ENTRY BWIN-AT !
+      TOK-REC @ 2 cells + @ i CHECKER-OWNER-ABI:BOUND-FLAGS BWIN-AT !
+   THEN
+   TOK-PEND-IX @ i CHECKER-OWNER-ABI:BOUND-PEND-IX BWIN-AT !
+   TOK-PEND-OFF @ i CHECKER-OWNER-ABI:BOUND-PEND-OFF BWIN-AT !
+   TOK-CTL @ i CHECKER-OWNER-ABI:BOUND-CTL BWIN-AT !
+   eff NULL-PTR = IF RES-FALSE ELSE
+      eff E-RIN@ 0= eff E-ROUT@ 0= and IF RES-TRUE ELSE
+         eff E-RIN@ eff E-ROUT@ EFF-RET-NEUTRAL?
+      THEN
+   THEN IF 1 ELSE 0 THEN i CHECKER-OWNER-ABI:BOUND-NEUTRAL BWIN-AT !
+   TOK-DEAD @ i CHECKER-OWNER-ABI:BOUND-DEAD BWIN-AT !
+   eff NULL-PTR = IF
+      -1 i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-OUT BWIN-AT !
+      -1 i CHECKER-OWNER-ABI:BOUND-GLUE BWIN-AT !
+   ELSE
+      eff E-DIN@ EFF-ROW-CELLS i CHECKER-OWNER-ABI:BOUND-IN BWIN-AT !
+      eff E-DOUT@ EFF-ROW-CELLS i CHECKER-OWNER-ABI:BOUND-OUT BWIN-AT !
+      eff BIND-EFF-GLUE i CHECKER-OWNER-ABI:BOUND-GLUE BWIN-AT !
+   THEN
+   i 1+ BWIN-N ! ;
+
+: REC-BINDING-ROW ( n -- ptr u8 n ) {: ord:n :}
+   ord 0< ord REC-IX @ >= or IF
+      CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   BWIN-N @ 0 ?DO
+      i CHECKER-OWNER-ABI:BOUND-ORD BWIN-AT @ ord = IF
+         i 0 BWIN-AT BYTE-VIEW CHECKER-OWNER-ABI:BOUND-CELLS cells UNLOOP EXIT
+      THEN
+   LOOP
+   NULL-PTR 0 ;
+
+: REC-CALL-BINDING ( n -- ptr u8 n )
+   BWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   REC-BINDING-ROW ;
+
+: REC-UNJUDGED-BINDING ( n -- ptr u8 n )
+   UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
+   REC-BINDING-ROW ;
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
    REC-ON @ 0= IF EXIT THEN
@@ -12273,7 +12437,7 @@ variable MWIN-VAL                    \ and this is it
 \ whole purpose is to be asked then.
 : REC-RESET ( -- )
    0 REC-IX !  -1 REC-ON !
-   CWIN-RESET  MWIN-RESET ;
+   CWIN-RESET  MWIN-RESET  BWIN-RESET ;
 
 : REC-OFF ( -- )
    0 REC-ON ! ;
@@ -12281,11 +12445,11 @@ variable MWIN-VAL                    \ and this is it
 : REC-RELEASE ( -- )
    REC-OFF
    0 REC-IX !
-   MWIN-RESET  CWIN-RELEASE ;
+   MWIN-RESET  CWIN-RELEASE  BWIN-RELEASE ;
 
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
-   CWIN-COMMIT  MWIN-COMMIT ;
+   CWIN-COMMIT  MWIN-COMMIT  BWIN-COMMIT ;
 
 \ What the catch on tape token `ix` instantiated: the cells its caught body takes,
 \ and the cells it leaves. CELLS-NONE twice for a token no catch was recorded on.
@@ -15237,9 +15401,6 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 \ the first ask for the token DO-TOK1 is reading, and read by every later reader
 \ of that token. TOK-SPELL-A and TOK-SPELL-U hold that token as DO-TOK1 read
 \ it, in the checked text.
-variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
-PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
-
 \ A literal is claimed before any scope is asked, as the engine claims it
 \ (LITERAL-TOK? below, habu2.f EM-COMPILE-LITERAL), so its shape is never
 \ resolved as a name. A qualified token keeps its symbol but no identity: both
@@ -15250,11 +15411,28 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 : BIND-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    TOK-DONE @ IF EXIT THEN
    -1 TOK-DONE !
-   0 TOK-SYM !  0 TOK-CTL !
+   0 TOK-SYM !  0 TOK-CTL !  0 TOK-DEAD !
+   NULL-PTR TOK-REC !  0 TOK-PEND-IX !  0 TOK-PEND-OFF !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
+   NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND TOK-SYM !
+   BIND-REC @ TOK-REC !
+   BIND-PEND-IX @ TOK-PEND-IX !
+   BIND-PEND-OFF @ TOK-PEND-OFF !
+   TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
+
+\ Once a token's role is a source call, keep its original resolution even when
+\ a later type step refuses. The declared ABI is selected by that symbol,
+\ before judgment or publication can change the active name.
+: BIND-SOURCE-CALL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BIND-TOK
+   TOK-SYM @ 0= IF EXIT THEN
+   -1 BWIN-HIT !
+   BWIN-UNJUDGED @ 0= TOK-ABI-DONE @ 0= 0= or IF EXIT THEN
+   -1 TOK-ABI-DONE !
+   TOK-SYM @ FIND-SIG-SYM IF FEP @ TOK-ABI-EFF ! THEN ;
 
 \ The INTRINSIC id (CTL-INTRINSIC) of the engine word the token binds, 0 for
 \ any other word.
@@ -15299,6 +15477,7 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
    0 CURSYM !
    a u LITERAL-TOK? IF EXIT THEN
    a u TOK-INTRINSIC {: id:n :}
+   a u BIND-SOURCE-CALL
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
    \ its axiom (NORET-AXIOMS).
@@ -15323,6 +15502,7 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
    CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
+   FEP-HIT? IF FEP @ TOK-EFF ! THEN
    CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
@@ -18356,6 +18536,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ recorded effect.
 : SPELLED-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TOK-INTRINSIC {: id:n :}
+   a u BIND-SOURCE-CALL
    id INTRINSIC-QDUP = IF QDUP-STEP RES-TRUE EXIT THEN
    LAYOUT-XPORT @ IF a u WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    id INTRINSIC-HIDE-ROW = IF HIDROW-STEP? EXIT THEN   \ depth/.s fail closed over hidden cells
@@ -18380,7 +18561,9 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    BIND-HORIZON ! ;
 
 : DO-TOK1 {: a u :}
-   0 CALL-HIT !  0 TOK-DONE !  a TOK-SPELL-A !  u TOK-SPELL-U !
+   0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
+   NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
+   a TOK-SPELL-A !  u TOK-SPELL-U !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -18399,7 +18582,9 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
-   TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
+   TKF TKFU @ UNSAFE-TOK? IF
+      BWIN-UNJUDGED @ IF TKF TKFU @ BIND-SOURCE-CALL THEN
+      REJECT-UNSAFE ELSE
    a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
@@ -20965,6 +21150,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ Primitive symbols survive, but user overrides of their effects, control
 \ flags, defer flags and capture signatures belong to the discarded source.
 : CHECKER-RESET-SOURCE ( -- )
+   0 BWIN-VALID !
    USIGS-USER-OFF @ USIGS-RESTORE-END
    NORET-PRIM-END NORET-RESTORE-END
    0 DFER-END ! DFER-TERM
@@ -20993,6 +21179,7 @@ package CHECKER-REG
 \ inside either action can therefore never leave a latch behind that disables
 \ product-field validation for every later pop.
 : RBF-POP-WITH ( [ -- ] -- )
+   0 BWIN-VALID !
    execute                 \ registry restore for the frame this pop retires
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
@@ -21253,6 +21440,7 @@ variable CK-RETRY-TOKS
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
    REC-IX @ {: ix0:n :}
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
+   REC-ON @ IF BWIN-N @ ELSE 0 THEN {: bw0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -21265,7 +21453,7 @@ variable CK-RETRY-TOKS
          s" checker: a held diagnostic had no seeded signature to take after all" 76 die
       THEN
       -1 RESCAN !
-      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! MWIN-RESET THEN
+      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! bw0 BWIN-N ! MWIN-RESET THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
    REPEAT
@@ -21375,14 +21563,17 @@ variable DEF-STOPPED
    0 CK-DEF-VERDICT ! ;
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 BWIN-VALID !  0 UWIN-VALID !
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
    rc 0 <> IF rc CHECK-DEF-THREW THEN
    CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
-   CHECKER-TAPE:ARMED @ IF a u verdict CHECKER-TAPE:DONE THEN
+   CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
+   recording IF a u verdict CHECKER-TAPE:DONE THEN
    a u verdict CHECKER-CERT:PRODUCE
+   verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
 
 \ ---- the scan whose verdict nobody enforces ----------------------------------
@@ -21407,10 +21598,15 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
    a UNJ-A !  u UNJ-U !
+   -1 BWIN-UNJUDGED !
    1 DIAG-QUIET +!
    [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
    -1 DIAG-QUIET +!
+   0 BWIN-UNJUDGED !
    rc 0 <> IF rc throw THEN
+   CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
+   CONM @ 0= and  MM @ 0= and  MF-DEPTH @ 0= and
+   FIELD-LOAN-PENDING @ 0= and UWIN-VALID !
    UNJ-VERDICT @ ;
 
 \ What that scan did not print, for a caller that will not enforce the verdict
@@ -23089,6 +23285,8 @@ package CHECKER-REG
 ' CHECK-DOES-DOUT-SLOT              DECLARATIONS DOES-OUT-SLOT-OFF + xt!
 ' CHECKER-USIGS-TRUNCATE-FROM-RAW   DECLARATIONS USIG-TRUNCATE-OFF + xt!
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
+' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
+' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
 ' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!

@@ -121,6 +121,35 @@ $308 constant VERIFY-DEFERRED-OFF
 $310 constant VERIFY-REACH-OFF
 \ The declaring owner mints and erases LINEAR: tokens through this registrar.
 $318 constant LINEAR-OFF
+\ The returned span is borrowed from this checker instance. Every field is one
+\ cell; EFFECT is an offset plus one in its effect store, not a durable ID.
+$320 constant CALL-BINDING-OFF
+\ A completed explicitly unjudged scan exposes original resolution and the
+\ declared ABI, without granting a checked call or body verdict.
+$328 constant UNJUDGED-BINDING-OFF
+\ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
+\ this constants-only ABI before it can load the new error word.
+-8575 constant BINDING-RC
+0 constant BOUND-ORD
+1 constant BOUND-KIND
+2 constant BOUND-SYM
+3 constant BOUND-EFFECT
+4 constant BOUND-RECORD
+5 constant BOUND-WID
+6 constant BOUND-ENTRY
+7 constant BOUND-FLAGS
+8 constant BOUND-PEND-IX
+9 constant BOUND-PEND-OFF
+10 constant BOUND-CTL
+11 constant BOUND-NEUTRAL
+12 constant BOUND-DEAD
+13 constant BOUND-IN
+14 constant BOUND-OUT
+15 constant BOUND-GLUE
+16 constant BOUND-CELLS
+1 constant BOUND-DICT
+2 constant BOUND-INTRINSIC
+3 constant BOUND-PENDING
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

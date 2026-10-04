@@ -2141,8 +2141,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? if exit then
-   CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-   CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+   CTX BLD p r sy ix HIR-WORD:RESOLVE-SITE drop ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}

@@ -1,0 +1,82 @@
+\ A recorded call keeps the checker-selected record and effect until the next scan.
+require lib/test.f
+require src/compiler/native/checker-owner.f
+require src/compiler/native/feed.f
+
+package NATIVE-CALL-BINDING-TEST
+private
+
+: NO-SCAN ( ptr u8 n -- ) 2drop ;
+: NO-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
+: NO-DONE ( ptr u8 n n -- ) 2drop drop ;
+
+public
+: EARLIER ( -- n ) 41 ;
+private
+
+: FIELD@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
+
+: BOUND ( -- )
+   1 [: NO-SCAN ;] [: NO-TOKEN ;] [: NO-DONE ;] CHECKER-OWNER:TAPE-INSTALL
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) EARLIER" CHECKER-OWNER:CHECK -1 T=
+   0 CHECKER-OWNER:CALL-BINDING {: p:ptr bytes:n :}
+   bytes 0 T=
+   1 CHECKER-OWNER:CALL-BINDING {: row:ptr size:n :}
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   row CHECKER-OWNER-ABI:BOUND-KIND FIELD@ CHECKER-OWNER-ABI:BOUND-DICT T=
+   row CHECKER-OWNER-ABI:BOUND-SYM FIELD@ 0 > TTRUE
+   row CHECKER-OWNER-ABI:BOUND-EFFECT FIELD@ 0 > TTRUE
+   row CHECKER-OWNER-ABI:BOUND-ENTRY FIELD@
+      s" NATIVE-CALL-BINDING-TEST:EARLIER" XREF-FIND XREF-START T=
+   row CHECKER-OWNER-ABI:BOUND-RECORD FIELD@ XREF-REC
+      s" NATIVE-CALL-BINDING-TEST:EARLIER" XREF-FIND = TTRUE
+   [: 2 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: UNJUDGED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) 5 @ EARLIER" CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   3 CHECKER-OWNER:UNJUDGED-BINDING {: row:ptr size:n :}
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells T=
+   row CHECKER-OWNER-ABI:BOUND-KIND FIELD@ CHECKER-OWNER-ABI:BOUND-DICT T=
+   row CHECKER-OWNER-ABI:BOUND-ENTRY FIELD@
+      s" NATIVE-CALL-BINDING-TEST:EARLIER" XREF-FIND XREF-START T=
+   row CHECKER-OWNER-ABI:BOUND-EFFECT FIELD@ 0 > TTRUE
+   [: 3 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: UNSAFE-CALLS ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) 0 set-check 0 set-preflight EARLIER"
+      CHECKER-OWNER:CHECK-UNJUDGED -1 <> TTRUE
+   2 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
+   4 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
+   5 CHECKER-OWNER:UNJUDGED-BINDING nip 0 > TTRUE
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: REFUSED-JUDGED ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   s" PROBE ( -- n ) 5 @ EARLIER" CHECKER-OWNER:CHECK -1 <> TTRUE
+   [: 3 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   [: 3 CHECKER-OWNER:UNJUDGED-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+: RESET-CASE ( -- )
+   CHECKER-OWNER:TAPE-ARM
+   [: 1 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
+   CHECKER-OWNER:TAPE-DISARM ;
+
+public
+: RUN ( -- )
+   T-RESET
+   s" resolved call witness" T-LABEL BOUND T-NEXT
+   s" completed unjudged source retains suffix calls" T-LABEL UNJUDGED T-NEXT
+   s" unsafe source calls bind before type refusal" T-LABEL UNSAFE-CALLS T-NEXT
+   s" judged refusal cannot grant either window" T-LABEL REFUSED-JUDGED T-NEXT
+   s" reset invalidates borrowed call rows" T-LABEL RESET-CASE T-NEXT
+   NFEED:OBSERVE
+   T-REPORT ;
+
+RUN
+;package

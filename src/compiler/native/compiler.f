@@ -299,9 +299,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
+   TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
-   hook 0= if a u CHECK-HOOKLESS -1 exit then
+   hook 0= if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECK-HOOKLESS -1 exit then
+   0 CHECKER-OWNER:BIND-REGIME!
    a u hook AS-HOOK execute ;
 
 : CHECK-SOURCE ( -- n )
@@ -780,6 +783,7 @@ INSTALL-FORGET
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
    IDLE-CK
+   0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    KEEP-PRIOR

@@ -1037,6 +1037,10 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
+SUITE compiler-native-call-binding
+   test/compiler/native-call-binding.f
+;SUITE
+
 SUITE compiler-native-word-binding-aot
    lib/test.f
    test/compiler/aot-mode.f
