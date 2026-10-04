@@ -78,12 +78,9 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
       s" address cell capacity diagnostic" GE-FAIL then ;
 
-: NEGATIVES ( -- )
-   s" test/address-cell-kind-bad.f" 99
-      s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
-   ADDRESS-CAP
-   s" test/xt-cell-band-bad.f" 98
-      s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
+\ These five fixtures open an AOT-ARM window and assert its boundary
+\ diagnostics; x86-64 has a different resident source window.
+: AOT-ARM-NEGATIVES ( -- )
    s" test/aot-address-cell-lower-straddle-bad.f" 74
       s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
    s" test/aot-address-cell-upper-straddle-bad.f" 74
@@ -93,7 +90,15 @@ package PROGRAM-DIAGNOSTICS
    s" test/aot-address-cell-off-grid-bad.f" 74
       s" AOT-XTCELL-OFF-GRID-ARMED" s" aot-capture: a declared DATA cell is not on the window cell grid" NEGATIVE-DIAG
    s" test/aot-window-base-off-grid-bad.f" 74
-      s" AOT-WINDOW-BASE-OFF-GRID-ARMED" s" aot-capture: the captured DATA window base is not cell-aligned" NEGATIVE
+      s" AOT-WINDOW-BASE-OFF-GRID-ARMED" s" aot-capture: the captured DATA window base is not cell-aligned" NEGATIVE ;
+
+: NEGATIVES ( -- )
+   s" test/address-cell-kind-bad.f" 99
+      s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
+   ADDRESS-CAP
+   s" test/xt-cell-band-bad.f" 98
+      s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
+   HB-TARGET-LINUX-X86-64? 0= if AOT-ARM-NEGATIVES then
    s" test/checker-decl-nested-bad.f" 76
       s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/checker-decl-depth0-bad.f" 76
