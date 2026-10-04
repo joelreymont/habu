@@ -548,8 +548,8 @@ SUITE wasm-numeric-aot
    test/wasm/numeric.f
 ;SUITE
 
-\ The backend registry: src/compiler/target.f's rows and complete registration
-\ in src/arch/arm64/passes.f, which is the acceptance suite for
+\ The backend registry: complete rows in src/compiler/native/backend.f,
+\ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
 SUITE compiler-target-registry
    test/compiler/target-registry.f
@@ -568,7 +568,7 @@ SUITE compiler-x86-64-asm
 ;SUITE
 
 \ The x86-64 machine dialect and the backend row it loads with:
-\ src/compiler/native/x64ir.f and src/arch/x86-64/backend.f.
+\ src/compiler/native/x64ir.f and src/arch/x86-64/passes.f.
 SUITE compiler-x64ir
    test/compiler/x64ir.f
 ;SUITE

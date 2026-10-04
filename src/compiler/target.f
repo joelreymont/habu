@@ -44,7 +44,6 @@
 require lib/prelude.f
 require lib/errors.f
 require src/compiler/digest.f
-require src/compiler/native/fetch-check.f
 
 package CTARGET
 public

@@ -63,11 +63,11 @@ variable CLASS-WANTED
 \ image for another machine is a second emission this engine makes as it
 \ compiles (docs/x86-64.md "Build and bootstrap"), and a target is only
 \ buildable when this engine has a backend for its machine: the target
-\ architecture's row must be registered here (src/compiler/target.f
-\ REGISTERED?, the one answer to whether a backend is loaded). This entry does
+\ architecture's row must be registered here (NBACK:REGISTERED? in
+\ src/compiler/native/backend.f). This entry does
 \ not load one. An ARM64 product carries only its own,
 \ so `--target linux-x86-64` is refused until the caller has loaded the x86-64
-\ backend module ahead of tools/native-build.f.
+\ passes module ahead of tools/native-build.f.
 : TARGET-FLAG$ ( -- ptr u8 n ) s" --target" ;
 
 : ARGS-REFUSE ( -- )

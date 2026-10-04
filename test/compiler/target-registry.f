@@ -41,7 +41,6 @@ variable SAW
 
 : FAKE-PASS ( [ n n NBACK:linkage -- ] -- NBACK:pass )
    {: decl :}
-   NBACK-MODE:EXCLUSIVE-SESSION
    decl [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-REWRITE ;]
    [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;]
    [: NO-PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE ;
@@ -122,13 +121,15 @@ public
    BIG NBACK:LOWERS? TFALSE
    10 CTARGET:ID NBACK:ID-ROW ID-AT 10 T=
    20 CTARGET:ID NBACK:ID-ROW ID-AT 20 T=
-   CTARGET-ARCH:AARCH64 NBACK:MODE@
-      NBACK-MODE:EXCLUSIVE-SESSION NBACK-MODE:EQ TTRUE
    [: NO-GPU ;] E-CTGT-UNLOADED TTHROWSQ
    s" no installer callback or writable registry pointer is public" T-LABEL
    s" BAD-INSTALL ( CTARGET:backend -- ) [: drop ;] CTARGET:REGISTER"
       CHECK-QUIET-CANDIDATE! 1 T=
-   s" BAD-ROW ( n -- ptr NBACK:pass ) NBACK:PASS-ROW"
+   s" BAD-PASS-PTR ( n -- ptr NBACK:pass ) NBACK:PASS-PTR"
+      CHECK-QUIET-CANDIDATE! 1 T=
+   s" BAD-ROWS ( n -- ) NBACK:ROWS drop"
+      CHECK-QUIET-CANDIDATE! 1 T=
+   s" BAD-PUBLISH ( CTARGET:backend NBACK:pass NLEASE:lease -- ) NBACK:PUBLISH"
       CHECK-QUIET-CANDIDATE! 1 T=
    s" incomplete or wrongly typed registration cannot publish" T-LABEL
    s" BAD-REG ( CTARGET:backend -- ) [: drop ;] NBACK:REGISTER"
@@ -156,8 +157,6 @@ public
    CTARGET-ARCH:AARCH64 NBACK:ROW CTARGET-ARCH:PTX NBACK:ROW <> TTRUE
    GPU NBACK:LOWERS? TTRUE
    GPU NBACK:EMITS? TFALSE
-   CTARGET-ARCH:PTX NBACK:MODE@
-      NBACK-MODE:EXCLUSIVE-SESSION NBACK-MODE:EQ TTRUE
    GPU-DECLARE SAW @ 100 T=
    s" rejected duplicate id and architecture leave existing providers usable" T-LABEL
    [: DUP-ID ;] E-CTGT-REGISTERED TTHROWSQ

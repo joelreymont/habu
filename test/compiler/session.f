@@ -197,8 +197,8 @@ TASK:MIN-STACK TASK:TASK WORKER
    SAVED @ NSESSION:NEW [: COMPILED-RETAINED ;] NSESSION:WITH-WORK ;
 
 : FORGE-REFUSAL ( -- )
-   s" FORGED ( CBIND:binding ptr u8 IR-ARENA:view -- NART:emission ) NART-EMISSION:MAKE"
-      CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" FORGED ( IR-ARENA:view -- NART:emission ) NART-KEY:MAKE NART-EMISSION:MAKE"
+      CHECK-QUIET-CANDIDATE! 1 T= ;
 
 : ARTIFACT= ( NART:emission NART:emission -- )
    {: a:NART:emission b:NART:emission :}

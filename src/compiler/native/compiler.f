@@ -587,8 +587,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
-   NSHADOW:ABANDON
-   NLOOP:BOUND? if NLOOP:RELEASE then ;
+   NSHADOW:ABANDON ;
 
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}

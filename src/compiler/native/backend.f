@@ -57,12 +57,7 @@ public
    probe BITS {: want:n :}
    set BITS want and want = ;
 
-ENUM mode DERIVE eq
-   exclusive-session
-;ENUM
-
 STRUCTURE pass 0 DERIVE addr
-   FIELD mode mode
    FIELD declare [ n n NBACK:linkage -- ]
    FIELD select [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
    FIELD prune [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
@@ -193,9 +188,6 @@ public
 : EMITS? ( CTARGET:contract -- bool )
    CTARGET:VALIDATE dup CTARGET:ARCH@ ROW DESCRIPTOR@ BACK-EMIT execute ;
 
-: MODE@ ( CTARGET:arch -- NBACK:mode )
-   ROW PASS-PTR NBACK-PASS:MODE @ ;
-
 ;package
 
 \ Session identity stays stable as rows move; work resolves the current row.
@@ -258,9 +250,6 @@ public
 package NBACK
 private
 
-\ The machine this compilation is for, resolved to its backend's row. The
-\ contract is revalidated on the way, so a stage is dispatched only for a
-\ declarable target.
 \ ---- the module every selector reads ----------------------------------------
 : HIR-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    {: c:IR-CTX:ctx :}

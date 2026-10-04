@@ -26,7 +26,6 @@ private
 STRUCTURE artifact 0 DERIVE addr
    FIELD binding CBIND:binding
    FIELD code ptr u8
-   FIELD rows IR-ARENA:view
 ;STRUCTURE
 
 \ The side span belongs to the same context as its frozen arena. The arena
@@ -54,9 +53,7 @@ TRUSTED: ARTIFACT-PTR ( ptr u8 -- ptr artifact ) ;
    VIEW IR-ARENA:OPEN IR-ARENA:SIDE-FIELD @ ARTIFACT-PTR @ ;
 
 : READER ( NART:emission -- IR-ARENA:reader )
-   RECORD@ ARTIFACT-UNMAKE
-   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
-   rows IR-ARENA:OPEN ;
+   VIEW IR-ARENA:OPEN ;
 
 : CELL, ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
@@ -133,7 +130,7 @@ public
    c rows ROWS,
    c ARTIFACT-BYTES IR-CTX:SCRATCH-TAKE drop {: data:ptr :}
    rows IR-ARENA:FREEZE {: view:IR-ARENA:view :}
-   binding bytes view ARTIFACT-MAKE data ARTIFACT-PTR !
+   binding bytes ARTIFACT-MAKE data ARTIFACT-PTR !
    data view IR-ARENA:OPEN IR-ARENA:SIDE-FIELD !
    view EMISSION ;
 
@@ -142,12 +139,12 @@ public
 
 : BYTES ( NART:emission -- ptr u8 )
    RECORD@ ARTIFACT-UNMAKE
-   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
+   {: binding:CBIND:binding code:ptr :}
    code ;
 
 : BINDING ( NART:emission -- CBIND:binding )
    RECORD@ ARTIFACT-UNMAKE
-   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
+   {: binding:CBIND:binding code:ptr :}
    binding ;
 
 : ARCH ( NART:emission -- CTARGET:arch )
