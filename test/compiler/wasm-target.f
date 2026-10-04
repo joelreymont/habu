@@ -4,6 +4,7 @@ require src/compiler/native/hir.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/abi.f
 require src/compiler/native/backend.f
+require src/compiler/session/backend.f
 require test/compiler/native-source-fixture.f
 
 package WASM-TARGET-TEST
@@ -11,6 +12,7 @@ private
 
 variable SELECTED
 variable EMITTED
+TYPED-VARIABLE W-SESSION NSESSION:session
 
 : POLICY ( -- CNUM:numeric-policy )
    CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
@@ -177,8 +179,27 @@ variable EMITTED
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
    c b v p r 2 1 NELAB:COLON drop
-   c b NBACK:FREEZE {: m:IR-BUILD:module :}
-   c c m NBACK:SELECT 0 NBACK:EMIT ;
+   W-SESSION @ b NBACK:FREEZE {: m:IR-BUILD:module :}
+   W-SESSION @ m NBACK:SELECT {: selected:IR-BUILD:module :}
+   W-SESSION @ selected 0 NBACK:EMIT ;
+
+: FLOAT-CLEAN ( -- )
+   W-SESSION @ NBACK:RELEASE
+   W-SESSION @ NBACK:RETIRE ;
+
+: FLOAT-WORK ( IR-CTX:ctx NSESSION:session -- )
+   W-SESSION !
+   [: FLOAT-SOURCE ;] [: FLOAT-CLEAN ;] finally ;
+
+: FLOAT-CONTEXT ( NLEASE:lease IR-CTX:ctx -- )
+   {: l:NLEASE:lease c:IR-CTX:ctx :}
+   c c l NSESSION:NEW [: FLOAT-WORK ;] NSESSION:WITH-WORK ;
+
+: FLOAT-LEASE ( NLEASE:lease -- )
+   BINDING [: FLOAT-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
+
+: FLOAT-REFUSAL ( -- )
+   [: FLOAT-LEASE ;] NLEASE:WITH ;
 
 : WRONG-CONVENTIONS ( -- )
    BINDING [: WASM-IMPORT ;] IR-CTX:WITH-CONTEXT
@@ -225,8 +246,7 @@ public
    s" a sealed product builds and freezes scalar floating HIR and quoted source" T-LABEL
     BINDING [: OBSERVE ;] IR-CTX:WITH-CONTEXT
     s" source-registered backend reads folded floating HIR and declines emission" T-LABEL
-    [: BINDING [: FLOAT-SOURCE ;] IR-CTX:WITH-CONTEXT ;]
-       catch E-CTGT-UNLOADED T=
+    [: FLOAT-REFUSAL ;] catch E-CTGT-UNLOADED T=
     SELECTED @ 1 T=
     EMITTED @ 1 T=
    WRONG-CONVENTIONS
