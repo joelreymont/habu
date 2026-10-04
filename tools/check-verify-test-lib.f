@@ -943,6 +943,23 @@ variable CLI-OUT-U
    s" top-retired: no packet after declaration" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 
+\ A published prefix primitive can leave a dictionary entry behind after
+\ `undefine`. Its qualified spelling must not bind for a call or a tick.
+: TOP-RETIRED-PUBLIC ( -- )
+   s" retired-public-call.f"
+   s\" undefine CHECKER-OWNER-ABI:HEADER-BYTES\nCHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
+   s" retired-public-tick.f"
+   s\" undefine CHECKER-OWNER-ABI:HEADER-BYTES\n' CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
+   s" retired-public-call.f" AT$ {: call:ptr callu:n :}
+   s" top-retired-public: call load" T-LABEL call callu NATIVE-RC 70 T=
+   s" top-retired-public: call verify" T-LABEL call callu true false CHECK-RC 70 T=
+   s" top-retired-public: call check" T-LABEL call callu false false CHECK-RC 70 T=
+   s" retired-public-tick.f" AT$ {: tick:ptr ticku:n :}
+   s" top-retired-public: tick load" T-LABEL tick ticku NATIVE-RC 70 T=
+   s" top-retired-public: tick verify" T-LABEL tick ticku true false CHECK-RC 70 T=
+   s" top-retired-public: tick check" T-LABEL tick ticku false false CHECK-RC 70 T= ;
+
+
 \ Return-stack keywords have checker axioms for compiled bodies but no
 \ interpret or tick binding. A declaration read from source still binds.
 : TOP-AXIOM ( -- )
@@ -1323,6 +1340,7 @@ public
    s" top-shadow" [: TOP-SHADOW ;] RUN-CASE
    s" top-tick" [: TOP-TICK ;] RUN-CASE
    s" top-retired" [: TOP-RETIRED ;] RUN-CASE
+   s" top-retired-public" [: TOP-RETIRED-PUBLIC ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
    s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
    s" top-retired-import" [: TOP-RETIRED-IMPORT ;] RUN-CASE
