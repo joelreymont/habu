@@ -1312,6 +1312,88 @@ create QNAME QNAME-CAP allot
    s" TDECL-RUN" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TDECL-RUN" ASSERT-DIAG ;
 
+\ --- the checker's authority gate (dot habu-visibility-discharge-548-fab55650).
+\ A word compiled at tier 1 with the check hook off keeps the row the native
+\ publication records for it: its ABI and no source authority (at tier 0 no row
+\ is recorded and its caller is E-UNDEFINED). An unsealed checker binds a
+\ checked call to such a row - test/checker-effect-authority.f, a
+\ WHITEBOX-SUITE, pins that - and the seal pass closes the gate
+\ (src/core/internal-mark.f IMK-SEAL calls CHECKER-EFFECT-AUTHORITY:SEAL), so on
+\ the product the call is refused by name. An image whose seal skipped that call
+\ certifies the caller, as the whitebox engine does. ----
+
+: GATE-RAW ( -- )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" check@ constant IWG-HOOK" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" : IWGGA ( n -- n ) ;" SB-APPEND LF
+   s" IWG-HOOK set-check" SB-APPEND LF ;
+
+: GATE-ABI$ ( -- ptr u8 n )      \ a checked call of a hook-less word's ABI row
+   GATE-RAW
+   s" : IWGGB ( n -- n ) IWGGA ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-TICK$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGT ( -- [ n -- n ] ) ['] IWGGA ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-TICK-EXEC$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGE ( n -- n ) ['] IWGGA execute ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-TRUSTED-TICK$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGP ( -- ) ['] patch32 drop ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-FIRST-FAIL$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-ABI-FIRST-FAIL$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGAF ( -- ) drop ['] IWGGA drop ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-VALID-TICKS$ ( -- ptr u8 n )
+   GATE-RAW
+   s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
+   s" : IWGGQ ( -- [ n -- n ] ) ['] IWGGC ;" SB-APPEND LF
+   s" : IWGGI ( -- ) ['] 1+ drop ;" SB-APPEND LF
+   s" ' IWGGA drop" SB-APPEND LF
+   SB$ ;
+
+: AUTHORITY-GATE-CASES ( -- )
+   s" the sealed checker refuses a checked call of an ABI-only row" T-LABEL
+   GATE-ABI$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwggb: 'IWGGA'" ASSERT-DIAG
+   s" a checked tick of that row refuses at the quoted word" T-LABEL
+   GATE-TICK$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwggt: 'IWGGA'" ASSERT-DIAG
+   s" execute cannot launder the same checked tick" T-LABEL
+   GATE-TICK-EXEC$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwgge: 'IWGGA'" ASSERT-DIAG
+   s" a checked primitive tick refuses at its target without call inputs" T-LABEL
+   GATE-TRUSTED-TICK$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwggp: 'patch32'" ASSERT-DIAG
+   s" a preceding underflow keeps its reason and drop site across a tick" T-LABEL
+   GATE-FIRST-FAIL$ RUN-SUBJECT
+   s" habu: in iwggpf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
+   ERR$ s" hook: non-certified definition: iwggpf at 'drop'" CONTAINS? TTRUE
+   s" an ABI-only tick keeps the preceding underflow reason" T-LABEL
+   GATE-ABI-FIRST-FAIL$ RUN-SUBJECT
+   s" habu: in iwgaf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TFALSE
+   s" checked quotations and ordinary ticks remain available" T-LABEL
+   GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
+
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
@@ -1374,6 +1456,7 @@ create QNAME QNAME-CAP allot
    BUILD-CHAIN-CALLEE-CASES
    RECOVERY-RESET-CASES
    TYPE-DECL-SEAL-CASES
+   AUTHORITY-GATE-CASES
    NEG-SHAPES
    SEED-RESET-CASES
    NULL-PTR-CELL-CASES
