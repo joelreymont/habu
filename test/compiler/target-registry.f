@@ -6,6 +6,7 @@ require src/compiler/numeric-policy.f
 require src/compiler/binding.f
 require src/compiler/ir/context.f
 require src/compiler/native/backend.f
+require src/compiler/session/backend.f
 require src/arch/arm64/passes.f
 
 package CTREG-TEST
@@ -59,8 +60,29 @@ variable SAW
 : POLICY ( -- CNUM:numeric-policy )
    CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY ;
-: DECLARE-BODY ( IR-CTX:ctx -- ) 2 3 NBACK:L-CALLED NBACK:DECLARE ;
-: GPU-DECLARE ( -- ) GPU POLICY CBIND:BIND [: DECLARE-BODY ;] IR-CTX:WITH-CONTEXT ;
+TYPED-VARIABLE W-SESSION NSESSION:session
+
+: DECLARE-STAGES ( -- )
+   W-SESSION @ 2 3 NBACK:L-CALLED NBACK:DECLARE ;
+
+: DECLARE-CLEAN ( -- )
+   W-SESSION @ NBACK:RELEASE
+   W-SESSION @ NBACK:RETIRE ;
+
+: DECLARE-WORK ( NSESSION:session -- )
+   W-SESSION !
+   [: DECLARE-STAGES ;] [: DECLARE-CLEAN ;] finally ;
+
+: DECLARE-CONTEXT ( NLEASE:lease IR-CTX:ctx -- )
+   {: l:NLEASE:lease c:IR-CTX:ctx :}
+   c l NSESSION:NEW [: DECLARE-WORK ;] NSESSION:WITH-WORK ;
+
+: DECLARE-LEASE ( NLEASE:lease -- )
+   0 SAW !
+   GPU POLICY CBIND:BIND [: DECLARE-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
+
+: GPU-DECLARE ( -- )
+   [: DECLARE-LEASE ;] NLEASE:WITH ;
 
 : ID-AT ( n -- n )
    CTARGET:BACKEND@ CTARGET-BACKEND:UNMAKE 2drop drop CTARGET:ID-CODE ;
@@ -107,7 +129,7 @@ public
    GPU CTARGET:EMITS? TFALSE
    CTARGET-ARCH:PTX NBACK:MODE@
       NBACK-MODE:EXCLUSIVE-SESSION NBACK-MODE:EQ TTRUE
-   0 SAW ! GPU-DECLARE SAW @ 1 T=
+   GPU-DECLARE SAW @ 1 T=
    s" rejected duplicate id and architecture leave existing providers usable" T-LABEL
    [: DUP-ID ;] E-CTGT-REGISTERED TTHROWSQ
    [: DUP-ARCH ;] E-CTGT-REGISTERED TTHROWSQ
@@ -115,7 +137,7 @@ public
    CTARGET:COUNT 6 T=
    HOST CTARGET:LOWERS? TTRUE
    GPU CTARGET:LOWERS? TTRUE
-   0 SAW ! GPU-DECLARE SAW @ 1 T=
+   GPU-DECLARE SAW @ 1 T=
    T-REPORT ;
 ;package
 CTREG-TEST:RUN

@@ -9,21 +9,20 @@ private
 
 TYPED-VARIABLE DEAD-ART NART:emission
 TYPED-VARIABLE DEAD-CTX IR-CTX:ctx
+TYPED-VARIABLE W-LEASE NLEASE:lease
 
 : OWN-CALL ( IR-CTX:ctx -- NART:emission )
    HIR-MOD
    CALLEE-ENTRY BUILD-PCALLER
    1 1 NBACK:L-CALLED CHAIN-LINKED {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
-   CC NART:COPY
-   FINISH ;
+   NS m EMIT-SLOT NBACK:EMIT
+   CC NART:COPY ;
 
 : OWN-QUOT ( IR-CTX:ctx -- NART:emission )
    HIR-MOD BUILD-QUOTER
    0 1 CHAIN {: m:IR-BUILD:module :}
-   CC m EMIT-SLOT NBACK:EMIT
-   CC NART:COPY
-   FINISH ;
+   NS m EMIT-SLOT NBACK:EMIT
+   CC NART:COPY ;
 
 : ART-DIGEST ( NART:emission -- CDIGEST:digest )
    {: e:NART:emission :}
@@ -52,16 +51,19 @@ TYPED-VARIABLE DEAD-CTX IR-CTX:ctx
    e 0 NART:ADDR-SITE-KIND@ X64IR:ADDR-CODE T=
    e 0 NART:ADDR-SITE@ e NART:SIZE < TTRUE ;
 
-: CHILD-FAIL ( IR-CTX:ctx -- )
+: CHILD-FAR ( IR-CTX:ctx -- )
+   HIR-MOD FAR-ENTRY BUILD-PCALLER
+   1 1 NBACK:L-CALLED CHAIN-LINKED 0 W-MOD !
+   FAR-EMIT ;
+
+: CHILD-CONTEXT ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DEAD-CTX !
-   c OWN-QUOT DEAD-ART !
-   c HIR-MOD FAR-ENTRY BUILD-PCALLER
-   1 1 NBACK:L-CALLED CHAIN-LINKED 0 W-MOD !
-   [: FAR-EMIT ;] [: FINISH ;] finally ;
+   W-LEASE @ [: OWN-QUOT ;] c CASE-CONTEXT DEAD-ART !
+   W-LEASE @ [: CHILD-FAR ;] c CASE-CONTEXT ;
 
 : FAIL-CHILD ( -- )
-   WBND [: CHILD-FAIL ;] IR-CTX:WITH-CONTEXT ;
+   WBND [: CHILD-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
 
 : DEAD-SIZE ( -- )
    DEAD-ART @ NART:SIZE drop ;
@@ -69,11 +71,11 @@ TYPED-VARIABLE DEAD-CTX IR-CTX:ctx
 : DEAD-BYTES ( -- )
    DEAD-ART @ NART:BYTES drop ;
 
-: OWNED-BODY ( IR-CTX:ctx -- )
+: OWNED-CONTEXT ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c OWN-CALL {: first:NART:emission :}
+   W-LEASE @ [: OWN-CALL ;] c CASE-CONTEXT {: first:NART:emission :}
    first ART-DIGEST {: digest:CDIGEST:digest :}
-   c OWN-QUOT {: quot:NART:emission :}
+   W-LEASE @ [: OWN-QUOT ;] c CASE-CONTEXT {: quot:NART:emission :}
    quot QUOT-ART
    first CALL-ART
    first ART-DIGEST digest CDIGEST-DIGEST:EQ TTRUE
@@ -83,19 +85,24 @@ TYPED-VARIABLE DEAD-CTX IR-CTX:ctx
    [: DEAD-BYTES ;] E-IR-ARENA-STALE TTHROWSQ
    first CALL-ART
    quot QUOT-ART
-   c OWN-CALL ART-DIGEST digest CDIGEST-DIGEST:EQ TTRUE
+   W-LEASE @ [: OWN-CALL ;] c CASE-CONTEXT ART-DIGEST
+      digest CDIGEST-DIGEST:EQ TTRUE
    s" emission-owned.bin" TMP-PATH first NART:BYTES first NART:SIZE WRITE-ALL
    first DEAD-ART !
    first NART:RELEASE
    [: DEAD-SIZE ;] E-IR-ARENA-STALE TTHROWSQ
    [: DEAD-BYTES ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+: OWNED-LEASE ( NLEASE:lease -- )
+   W-LEASE !
+   WBND [: OWNED-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
+
 public
 
 : RUN-OWNED ( -- )
    T-RESET
    s" retained emission survives overwrite, retirement and a failed child" T-LABEL
-   WBND [: OWNED-BODY ;] IR-CTX:WITH-CONTEXT
+   [: OWNED-LEASE ;] NLEASE:WITH
    T-REPORT ;
 
 ;package
