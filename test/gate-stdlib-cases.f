@@ -580,6 +580,14 @@ SUITE wasm-select-f64
    test/wasm/select-f64.f
 ;SUITE
 
+\ The Wasm backend registered at run time, src/arch/wasm/backend.f and
+\ passes.f: real source compiled through an open Wasm shadow, one emission per
+\ record whose rows match its bytes, refusals that leave NEMIT empty, and the
+\ engine's own routine unchanged.
+SUITE wasm-backend
+   test/wasm/backend.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
