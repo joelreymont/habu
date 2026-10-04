@@ -1391,6 +1391,10 @@ SUITE json-rpc
    lib/json-rpc-test.f
 ;SUITE
 
+SUITE runtime-id
+   lib/runtime/id-test.f
+;SUITE
+
 SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
