@@ -2387,6 +2387,10 @@ SUITE include-refusal
    test/include-refusal-e2e.f
 ;SUITE
 
+SUITE whole-source-read
+   test/whole-source-read-test.f
+;SUITE
+
 SUITE room-left
    test/room-left-test.f
 ;SUITE

@@ -623,15 +623,29 @@ variable CLI-OUT-U
    s" cli-early-fails: missing file rc" T-LABEL rc 66 T=
    s" cli-early-fails: missing file stderr empty" T-LABEL erru 0 T=
    s" cli-early-fails: missing file explanation" T-LABEL
-   0 OUT CLI-OUT-U @ s" check.f: no such source" CONTAINS? TTRUE
-   $100001 GEN-RESERVE
-   $100001 0 do 32 i GEN c! loop
-   CLI-START s" --verify-only" ARG+ s" --stdin-path" ARG+ s" new.f" AT$ ARG+
-   0 GEN $100001 CLI {: erru2:n rc2:n :}
-   s" cli-early-fails: oversized stdin rc" T-LABEL rc2 66 T=
-   s" cli-early-fails: oversized stdin stderr empty" T-LABEL erru2 0 T=
-   s" cli-early-fails: oversized stdin explanation" T-LABEL
-   0 OUT CLI-OUT-U @ s" check.f: source exceeds capacity" CONTAINS? TTRUE ;
+   0 OUT CLI-OUT-U @ s" check.f: no such source" CONTAINS? TTRUE ;
+
+\ The verifier reads standard input whole, however large: the definition that
+\ ends a source of $180000 bytes, past a megabyte, is checked there.
+$180000 constant LARGE-STDIN-LEN
+
+: LARGE-STDIN-DEF$ ( -- ptr u8 n )
+   s" : CVT-BIG ( -- n ) ;" ;
+
+: CLI-LARGE-STDIN ( -- )
+   LARGE-STDIN-LEN GEN-RESERVE
+   LARGE-STDIN-DEF$ {: d:ptr du:n :}
+   LARGE-STDIN-LEN du - {: fill:n :}
+   fill 0 ?do $0a i GEN c! loop
+   d fill GEN du BYTE-COPY
+   CLI-START s" --json-errors" ARG+ s" --verify-only" ARG+
+   s" --stdin-path" ARG+ s" new.f" AT$ ARG+
+   0 GEN LARGE-STDIN-LEN CLI {: erru:n rc:n :}
+   s" cli-large-stdin: refused at its end" T-LABEL rc 70 T=
+   s" cli-large-stdin: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE
+   0 ERR erru s" code" s" E-MISMATCH" PACKET {: p:n :}
+   s" cli-large-stdin: named by the path" T-LABEL
+   p s" file" STRING$ s" new.f" AT$ T$= ;
 
 
 : LONG-PATH$ ( -- ptr u8 n )
@@ -1445,6 +1459,7 @@ public
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE
    s" cli-early-fails" [: CLI-EARLY-FAILS ;] RUN-CASE
+   s" cli-large-stdin" [: CLI-LARGE-STDIN ;] RUN-CASE
    s" cli-path-capacity" [: CLI-PATH-CAPACITY ;] RUN-CASE
    s" cli-truncated" [: CLI-TRUNCATED ;] RUN-CASE
    s" cli-deadline" [: CLI-DEADLINE ;] RUN-CASE

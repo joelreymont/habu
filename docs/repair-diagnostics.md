@@ -388,8 +388,11 @@ file never closes, a statement that threw, or where discovery stopped, adds
 the record the other modes write for it, at that place, after the packets made
 before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
-prose and a closing line. Usage errors (64), a missing FILE and an oversized
-source (66) keep their exit codes and explain the failure on stdout.
+prose and a closing line. Usage errors (64) and a missing FILE (66) keep their
+exit codes and explain the failure on stdout. A source of any size is checked:
+check.f reads a file to its end, its size only the first room, and holds the
+source, and the text it builds from it, in buffers that grow to what they hold;
+the engine loads it in a frame sized to the file.
 An argument that exceeds the source path capacity is a usage error, exits 64
 and explains the limit on stdout. Ordinary checks explain it on stderr with the
 same status. An engine `HABU_UNDER_TEST` names that is not an executable exits

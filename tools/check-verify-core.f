@@ -41,6 +41,7 @@ require lib/string.f
 require lib/memory.f
 require lib/adt/result.f
 require lib/fs.f
+require lib/source.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -479,13 +480,17 @@ TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
    VFY-STOP-OFF @ VFY-OUT VFY-STOP-U @ ;
 
 
-\ That file's bytes: the subject's, or the file's own.
+: VFY-DEP-ROOM ( n -- ptr u8 )
+   VFY-DEP-RESERVE 0 VFY-DEP ;
+
+\ That file's bytes: the subject's, or the file's own, read to its end however
+\ it grows while it is read. Its size, whose refusal (E-FS-STAT) stays a missing
+\ or irregular file's, is only the first room (lib/source.f
+\ READ-WHOLE-SAMPLED), and the bytes are taken after the read, which may move
+\ the storage.
 : VFY-STOP-SOURCE ( -- ptr u8 n )
    VFY-STOP-SUBJ @ if CHK-BYTES-A @ CHK-BYTES-U @ exit then
-   VFY-STOP-FILE$ FILE-SIZE 1 max
-   {: cap:n :}
-   cap VFY-DEP-RESERVE
-   VFY-STOP-FILE$ 0 VFY-DEP cap READ-ALL
+   VFY-STOP-FILE$  VFY-STOP-FILE$ FILE-SIZE  [: VFY-DEP-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
    {: u:n :}
    0 VFY-DEP u ;
 

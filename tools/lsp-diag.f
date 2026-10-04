@@ -45,6 +45,7 @@ require lib/byte-buffer.f
 require lib/adt/option.f
 require lib/fd-io.f
 require lib/fs.f
+require lib/source.f
 require lib/uri.f
 require lib/utf16.f
 require lib/content-length.f
@@ -345,22 +346,27 @@ variable CUR-START                       \ and where that line starts
       then
    loop ;
 
-: SLURP ( -- )
-   LIST-A @ LIST-U @ FILE-SIZE {: n:n :}
-   n 1 max DEP-TEXT-RESERVE
-   LIST-A @ LIST-U @ 0 DEP-TEXT n READ-ALL DEP-U ! ;
+: DEP-ROOM ( n -- ptr u8 )
+   DEP-TEXT-RESERVE 0 DEP-TEXT ;
 
-\ The text of the file in LIST-A, read from disk into TEXT-A. A file that
-\ cannot be read says so on stderr and counts as empty.
+\ The file in LIST-A is read to its end however it grows while it is read: its
+\ size, whose refusal (E-FS-STAT) stays a missing file's, is only the first
+\ room (lib/source.f READ-WHOLE-SAMPLED).
+: SLURP ( -- )
+   LIST-A @ LIST-U @  LIST-A @ LIST-U @ FILE-SIZE  [: DEP-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DEP-U ! ;
+
+\ The text of the file in LIST-A, read from disk into TEXT-A, taken after the
+\ read, which may move it. A file that cannot be read says so on stderr and
+\ counts as empty; it may have been refused before any storage held it.
 : READ-LISTED ( -- )
-   0 DEP-U !
    [: SLURP ;] catch {: code:n :}
    code 0<> if
       code E-FS-LAST >= code E-FS-FIRST <= and 0= if code throw then
-      0 DEP-U !
       s" lsp: " ERR LIST-A @ LIST-U @ ERR
       SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
       SB$ ERR
+      NULL$ TEXT-U ! TEXT-A !
+      exit
    then
    0 DEP-TEXT TEXT-A !
    DEP-U @ TEXT-U ! ;
