@@ -105,7 +105,9 @@ package CERTIFY-DOES-DEFINER
 \ bend, so these three are wrappers of nothing at all.
 : CDD-RES-IFW ( n -- ) dup 0= if drop 1 then CDD-RES-D ;
 : CDD-RES-TWOW ( n n -- ) CDD-RES-D CDD-RES-D ;
-: CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] drop ;
+\ The native compiler needs a typed consumer for a quotation it never calls.
+: CDD-DROP-Q ( [ -- ] -- ) drop ;
+: CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] CDD-DROP-Q ;
 
 \ A resident definer whose CLAUSE calls a definer: its own clause is what it
 \ creates, and the clause walk leaves nothing for the next record.
@@ -267,7 +269,8 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" source order: the definition after a definer creates nothing" T-LABEL
    s" C22 ( -- ptr n ) CDD-SO-MADE" CDD-VERDICT UNRESOLVED T=
    s" a clause its body contradicts is refused" T-LABEL
-   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;] 70 TTHROWSQ
+   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
+      tier@ 0= if 70 else E-NCOMP-VERDICT then TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed
    s\" 6 CDD-RES-AFTER CDD-AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" and leaves nothing for the next definition to inherit" T-LABEL
