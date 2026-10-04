@@ -1146,7 +1146,7 @@ DUPLICATE-INIT
 \ erase this pre-pass accepts is exactly one the engine accepts.
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing linear name" 74 die THEN
+   nameu 0= IF E-MISSING-NAME throw THEN
    name nameu REQUIRE-SIGNATURE CHECKER-LINEAR ;
 
 : UNDEFINE-WORD ( -- )
