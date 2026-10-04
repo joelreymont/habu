@@ -1417,9 +1417,9 @@
 \ Base64 (package BASE64): -9350..-9359.
 -9350 constant E-BASE64-FIRST
 -9359 constant E-BASE64-LAST
--9350 constant E-BASE64-CHAR      \ a byte outside the standard alphabet and its '=' padding
--9351 constant E-BASE64-PAD       \ '=' before the last one or two places, or pad bits left set
--9352 constant E-BASE64-LENGTH    \ an encoded length that is not a multiple of four
+-9350 constant E-BASE64-CHAR      \ a byte outside the selected alphabet
+-9351 constant E-BASE64-PAD       \ misplaced/forbidden '=', or nonzero unused bits
+-9352 constant E-BASE64-LENGTH    \ padded length not divisible by four, or URL remainder one
 
 \ Private C2 owner-frame runtime. These are the only two codes it mints.
 -9360 constant E-C2-CAPACITY       \ this task has no owner frame left
