@@ -276,7 +276,8 @@ GRAPH-ROUNDTRIP:ABI-BEGIN
 : PAYLOAD-ABI ( n -- n ) ;
 GRAPH-ROUNDTRIP:ABI-END
 \ Outside GRAPH-ROUNDTRIP, whose wordlist predates the window: the capture takes
-\ a record only from a wordlist the window created.
+\ a record only from the global wordlist or one the window created
+\ (aot-capture.f ACAP-WID-IN?).
 GRAPH-ROUNDTRIP:CORRUPT-SOURCE
 
 package GRAPH-ROUNDTRIP
