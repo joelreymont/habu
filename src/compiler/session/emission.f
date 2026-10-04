@@ -9,15 +9,35 @@ require src/compiler/session/backend.f
 require src/compiler/native/emission.f
 
 package NART
-public
+private
 
-STRUCTURE emission 0
-   FIELD binding CBIND:binding
-   FIELD bytes ptr u8
+STRUCTURE key 0
    FIELD rows IR-ARENA:view
 ;STRUCTURE
 
+public
+
+STRUCTURE emission 0
+   FIELD key key
+;STRUCTURE
+
 private
+
+STRUCTURE artifact 0 DERIVE addr
+   FIELD binding CBIND:binding
+   FIELD code ptr u8
+   FIELD rows IR-ARENA:view
+;STRUCTURE
+
+\ The side span belongs to the same context as its frozen arena. The arena
+\ validates the handle before this one typed projection of the span is used.
+TRUSTED: ARTIFACT-PTR ( ptr u8 -- ptr artifact ) ;
+
+: VIEW ( NART:emission -- IR-ARENA:view )
+   NART-EMISSION:UNMAKE KEY-UNMAKE ;
+
+: EMISSION ( IR-ARENA:view -- NART:emission )
+   KEY-MAKE NART-EMISSION:MAKE ;
 
 0 constant H-SIZE
 1 constant H-RET
@@ -30,9 +50,12 @@ private
 3 constant CALL-CELLS
 2 constant ADDR-CELLS
 
+: RECORD@ ( NART:emission -- artifact )
+   VIEW IR-ARENA:OPEN IR-ARENA:SIDE-FIELD @ ARTIFACT-PTR @ ;
+
 : READER ( NART:emission -- IR-ARENA:reader )
-   NART-EMISSION:UNMAKE
-   {: binding:CBIND:binding bytes:ptr rows:IR-ARENA:view :}
+   RECORD@ ARTIFACT-UNMAKE
+   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
    rows IR-ARENA:OPEN ;
 
 : CELL, ( IR-CTX:ctx IR-ARENA:arena n -- )
@@ -108,20 +131,24 @@ public
    NEMIT:BYTES bytes size BYTE-COPY
    c rows HEADER,
    c rows ROWS,
-   binding bytes rows IR-ARENA:FREEZE NART-EMISSION:MAKE ;
+   c ARTIFACT-BYTES IR-CTX:SCRATCH-TAKE drop {: data:ptr :}
+   rows IR-ARENA:FREEZE {: view:IR-ARENA:view :}
+   binding bytes view ARTIFACT-MAKE data ARTIFACT-PTR !
+   data view IR-ARENA:OPEN IR-ARENA:SIDE-FIELD !
+   view EMISSION ;
 
 : SIZE ( NART:emission -- n )
    READER H-SIZE IR-ARENA:RD@ ;
 
 : BYTES ( NART:emission -- ptr u8 )
-   NART-EMISSION:UNMAKE
-   {: binding:CBIND:binding bytes:ptr rows:IR-ARENA:view :}
-   rows IR-ARENA:SIZE drop bytes ;
+   RECORD@ ARTIFACT-UNMAKE
+   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
+   code ;
 
 : BINDING ( NART:emission -- CBIND:binding )
-   NART-EMISSION:UNMAKE
-   {: binding:CBIND:binding bytes:ptr rows:IR-ARENA:view :}
-   rows IR-ARENA:SIZE drop binding ;
+   RECORD@ ARTIFACT-UNMAKE
+   {: binding:CBIND:binding code:ptr rows:IR-ARENA:view :}
+   binding ;
 
 : ARCH ( NART:emission -- CTARGET:arch )
    BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
@@ -160,8 +187,6 @@ public
 : ADDR-SITE-KIND@ ( NART:emission n -- n ) 1 ADDR@ ;
 
 : RELEASE ( NART:emission -- )
-   NART-EMISSION:UNMAKE
-   {: binding:CBIND:binding bytes:ptr rows:IR-ARENA:view :}
-   rows IR-ARENA:RETIRE ;
+   VIEW IR-ARENA:RETIRE ;
 
 ;package

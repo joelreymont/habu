@@ -180,6 +180,26 @@ TASK:MIN-STACK TASK:TASK WORKER
 : RETAIN-HIR ( IR-CTX:ctx -- )
    SAVED @ NSESSION:NEW [: PARENT-FREEZE ;] NSESSION:WITH-WORK ;
 
+: EMIT-RETAINED ( NSESSION:session -- NART:emission )
+   dup LIVE !
+   {: s:NSESSION:session :}
+   s 1 2 NBACK:L-CALLED NBACK:DECLARE
+   s PARENT-HIR @ NBACK:SELECT {: m0:IR-BUILD:module :}
+   s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
+   s m1 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   s ready SLOT @ NBACK:EMIT
+   s NART:COPY ;
+
+: COMPILED-RETAINED ( NSESSION:session -- NART:emission )
+   [: EMIT-RETAINED ;] [: BACKEND-CLOSE ;] finally ;
+
+: COPY-RETAINED ( IR-CTX:ctx -- NART:emission )
+   SAVED @ NSESSION:NEW [: COMPILED-RETAINED ;] NSESSION:WITH-WORK ;
+
+: FORGE-REFUSAL ( -- )
+   s" FORGED ( CBIND:binding ptr u8 IR-ARENA:view -- NART:emission ) NART-EMISSION:MAKE"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : ARTIFACT= ( NART:emission NART:emission -- )
    {: a:NART:emission b:NART:emission :}
    a NART:BYTES a NART:SIZE b NART:BYTES b NART:SIZE T$=
@@ -245,7 +265,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    0 FAR !
    CHILD-CTX @ IR-CTX:LIVE? TFALSE
    [: STALE-ARTIFACT ;] E-IR-ARENA-STALE TTHROWSQ
-   PARENT-HIR @ IR-BUILD:FKEY drop
+   c COPY-RETAINED first ARTIFACT=
    c COPY-PROOF first ARTIFACT=
    s" compiler-session-a64.bin" TMP-PATH first NART:BYTES first NART:SIZE WRITE-ALL
    first CHILD-ART !
@@ -287,7 +307,10 @@ public
    [: PROVIDER-ROOT ;] NLEASE:WITH
 
    s" AArch64, x86-64 and AArch64 retain exact bytes and rows after a failed child" T-LABEL
-   [: CROSS-ROOT ;] NLEASE:WITH ;
+   [: CROSS-ROOT ;] NLEASE:WITH
+
+   s" checked callers cannot assemble an emission from independent fields" T-LABEL
+   FORGE-REFUSAL ;
 
 ;package
 
