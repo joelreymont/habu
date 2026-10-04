@@ -1351,6 +1351,12 @@ create QNAME QNAME-CAP allot
    s" : IWGGP ( -- ) ['] patch32 drop ;" SB-APPEND LF
    SB$ ;
 
+: GATE-FIRST-FAIL$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" SB-APPEND LF
+   SB$ ;
+
 : GATE-VALID-TICKS$ ( -- ptr u8 n )
    GATE-RAW
    s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
@@ -1372,6 +1378,10 @@ create QNAME QNAME-CAP allot
    s" a checked primitive tick refuses at its target without call inputs" T-LABEL
    GATE-TRUSTED-TICK$ RUN-SUBJECT
    s" E-CAP-TRUSTED habu: in iwggp: 'patch32'" ASSERT-DIAG
+   s" a preceding underflow keeps its reason and drop site across a tick" T-LABEL
+   GATE-FIRST-FAIL$ RUN-SUBJECT
+   s" habu: in iwggpf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
+   ERR$ s" hook: non-certified definition: iwggpf at 'drop'" CONTAINS? TTRUE
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
