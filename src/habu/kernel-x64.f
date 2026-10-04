@@ -119,6 +119,7 @@ variable DPBAD-CELL
 variable LCLOSE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
+variable SCOPE-KIND-CELL
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
@@ -126,6 +127,7 @@ variable SCOPE-SEED-END-CELL
 : LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
 : SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
 : SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
+: SCOPE-KIND-LBL ( -- label ) SCOPE-KIND-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -2342,7 +2344,7 @@ public
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
-   s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
+   s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
 \ ---- atomics and publication rows --------------------------------------------
 private
@@ -5258,6 +5260,29 @@ public
    loop
    false ;
 
+\ The linker supplies the seven translated entries after it has placed the
+\ captured routines. Comparing code identities also classifies aliases, while
+\ a same-spelled word in another package has no scoped authority.
+: SCOPE-KIND-TEST, ( n n -- ) {: xt:n kind:n :}
+   xt 0= if exit then
+   X64CODE:LBL {: next:label :}
+   RDX xt IMM64,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-NE next JCC,
+   RAX kind IMM32,  ASM-SINK ENC-RET
+   next X64CODE:LBL, ;
+
+: SCOPE-KIND-HELPER, ( n n n n n n n -- )
+   {: read:n mut:n loan:n init:n records:n record:n field:n :}
+   SCOPE-KIND-LBL X64CODE:LBL,
+   records 6 SCOPE-KIND-TEST,
+   record 7 SCOPE-KIND-TEST,
+   field 8 SCOPE-KIND-TEST,
+   init 5 SCOPE-KIND-TEST,
+   mut 3 SCOPE-KIND-TEST,
+   loan 4 SCOPE-KIND-TEST,
+   read 2 SCOPE-KIND-TEST,
+   RAX ZERO-REG,  ASM-SINK ENC-RET ;
+
 \ The whole kernel: the helpers, then every section, then the specification's
 \ other half. ENGINE-PRIMS:COMPLETE dies 76 naming the first row of
 \ src/habu/prims.f that KEEP? keeps and no section registered, as habu2.f
@@ -5268,6 +5293,7 @@ public
    X64CODE:LBL LCLOSE-CELL !
    X64CODE:LBL SCOPE-SEED-CELL !
    X64CODE:LBL SCOPE-SEED-END-CELL !
+   X64CODE:LBL SCOPE-KIND-CELL !
    s" (SCOPE-SEED)" SCOPE-SEED-LBL LABEL>N SCOPE-SEED-END-LBL LABEL>N
    ENGINE-PRIMS:HELPER-REGISTER
    SYSCALLS,

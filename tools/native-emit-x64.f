@@ -37,6 +37,7 @@ require src/habu/kernel-x64.f
 require src/habu/code-origin-x64.f
 require src/habu/link-x64.f
 require src/habu/aot-decl.f
+require src/habu/aot-runtime.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-owned.f
@@ -55,7 +56,7 @@ variable TEXT-CODE-END
       s" native-emit: the window carries no x86-64 routines; NATIVE-EMIT:OPEN-SHADOW opens their shadow before the window loads" REFUSE-RC die
    then ;
 
-: STREAM, ( -- )
+: STREAM, ( bool -- ) {: scoped:bool :}
    X64CODE:ASM-RESET
    X64CODE:LBL X64CODE:LBL {: start:label text:label :}
    start X64CODE:JMP,
@@ -65,6 +66,8 @@ variable TEXT-CODE-END
    text X64CODE:LBL,
    X64KERNEL:KERNEL,
    X64LINK:LAYOUT
+   scoped if X64LINK:C2-ENTRIES else 0 0 0 0 0 0 0 then
+   X64KERNEL:SCOPE-KIND-HELPER,
    start X64CODE:LBL,
    X64LINK:RECORDS X64LINK:CP-VA X64KERNEL:FLOORREC-LBL
       [: X64KERNEL:HIDX-BUILD, ;] X64BOOT:SNAP-START,
@@ -86,6 +89,19 @@ variable TEXT-CODE-END
    X64IMAGE:WRITE-FD
    fd close ;
 
+: WRITE-CORE ( AOT-OWNED:capture ptr n n ptr u8 n bool -- )
+   {: host:ptr count:n path:ptr size:n scoped:bool :}
+   AOT-FILE:IMPORT
+   scoped if AOT-RUNTIME:COMPLETE? 0= if
+      s" native-emit: C2 entries require complete runtime" REFUSE-RC die
+   then then
+   host count NATIVE-LAYOUT:TRANSLATE-ROWS
+   ?SHADOW
+   X64CODE:ASM-SINK X64CODE:CODE-CAP-BYTES BUF:N>BLEN BUF:INIT
+   scoped STREAM,
+   path size FILE!
+   X64CODE:ASM-SINK BUF:DISPOSE ;
+
 public
 
 \ Open the shadow the window's x86-64 routines are filed in: the build host's
@@ -94,16 +110,12 @@ public
    if X64ABI:BINDING NSHADOW:OPEN-NATIVE
    else X64ABI:BINDING NSHADOW:OPEN then ;
 
-\ Link the capture and write its image at path, translating its fixed slots
-\ from the host's table (tools/native-layout.f).
+\ Ordinary captured fragments grant no C2 scope authority.
 : WRITE ( AOT-OWNED:capture ptr n n ptr u8 n -- )
-   {: host:ptr count:n path:ptr size:n :}
-   AOT-FILE:IMPORT
-   host count NATIVE-LAYOUT:TRANSLATE-ROWS
-   ?SHADOW
-   X64CODE:ASM-SINK X64CODE:CODE-CAP-BYTES BUF:N>BLEN BUF:INIT
-   STREAM,
-   path size FILE!
-   X64CODE:ASM-SINK BUF:DISPOSE ;
+   false WRITE-CORE ;
+
+\ The complete native runtime grants scope only to its seven fixed entries.
+: WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- )
+   true WRITE-CORE ;
 
 ;package

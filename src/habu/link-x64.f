@@ -825,6 +825,58 @@ public
    LINK-SITES
    DATA-BAND ;
 
+\ The scoped C2 writer entries are identified by their captured public wid
+\ and member name, then by the exact x86-64 code entry the linker assigned.
+\ The runtime compares these code identities, so an alias keeps the kind and
+\ an unrelated package with the same tail cannot acquire it.
+: C2-PUB-WID ( -- n )
+   AOT-REC-N @ 0 ?do
+      i PKG? if
+         i CREC-NAME$ s" C2-MEM" CORE-STR=CI if
+            i 0 CREC@ dup 0= if
+               s" x64link: C2-MEM public wordlist missing" REFUSE
+            then
+            unloop exit
+         then
+      then
+   loop
+   s" x64link: C2-MEM namespace missing" REFUSE ;
+
+: C2-ENTRY ( n ptr u8 n -- n ) {: wid:n name:ptr size:n :}
+   AOT-REC-N @ 0 ?do
+      i PKG? 0= if
+         i 16 CREC@ wid = if
+            i CREC-NAME$ name size CORE-STR=CI if
+               PRIMS i + 0 REC@ {: xt:n :}
+               xt CODE-VA < xt CP-VA >= or if
+                  s" x64link: C2 scope entry outside linked code" REFUSE
+               then
+               xt unloop exit
+            then
+         then
+      then
+   loop
+   s" x64link: C2-MEM scoped entry missing" REFUSE ;
+
+: C2-ENTRIES ( -- n n n n n n n )
+   C2-PUB-WID {: wid:n :}
+   wid s" WITH-READ" C2-ENTRY {: read:n :}
+   wid s" WITH-MUT" C2-ENTRY {: mut:n :}
+   wid s" WITH-MUT-LOAN" C2-ENTRY {: loan:n :}
+   wid s" WITH-INIT" C2-ENTRY {: init:n :}
+   wid s" WITH-RECORDS" C2-ENTRY {: records:n :}
+   wid s" WITH-RECORD" C2-ENTRY {: record:n :}
+   wid s" WITH-FIELD" C2-ENTRY {: field:n :}
+   read mut = read loan = or mut loan = or
+   read init = or mut init = or loan init = or
+   read records = or mut records = or loan records = or init records = or
+   read record = or mut record = or loan record = or init record = or records record = or
+   read field = or mut field = or loan field = or init field = or
+   records field = or record field = or if
+      s" x64link: duplicate C2 scope entry" REFUSE
+   then
+   read mut loan init records record field ;
+
 \ The image xt address-cell row n's cell holds when it holds code: the entry of
 \ the shipped record its xt row names, or of the kernel body it names; -1 for a
 \ cell that holds DATA or nothing. LAYOUT refused a code cell neither resolves.
