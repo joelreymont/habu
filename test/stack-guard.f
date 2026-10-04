@@ -44,16 +44,23 @@ create LIT-SRC LIT-SRC-CAP allot
 \ declared effect inside a BEGIN...AGAIN loop, whose unconditional back edge
 \ makes the fall-through to `;` unreachable -- a bare tail call (`1 recurse ;`,
 \ no AGAIN) is rejected at 'recurse' for exactly that residual. Verified
-\ against the checker on the current engine. Each of the three named stacks
-\ overflows the same way: a plain push, a return-stack push, and a DO frame
-\ opened without ever reaching LOOP to close it.
+\ against the checker on the current engine. The legacy compiler stores return
+\ and DO frames in the guarded VM stacks. Native compilation keeps these values
+\ in HIR instead; on the tier-1-only Intel engine, Y and Z exhaust the machine
+\ call stack and must still produce a crash dump on its alternate signal stack.
+: MACHINE-OVERFLOW ( ptr u8 n -- )
+   CHILD-RC 134 T=
+   ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
+
 : OVERFLOW-NAMES ( -- )
    s" unbounded data-stack recursion overflows (data)" T-LABEL
    s" : X ( n -- ) begin dup recurse again ; 0 X" REFUSED-DATA
    s" unbounded return-stack recursion overflows (return)" T-LABEL
-   s" : Y ( -- ) 1 >r recurse r> drop ; Y" REFUSED-RETURN
+   s" : Y ( -- ) 1 >r recurse r> drop ; Y"
+   HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-RETURN then
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
-   s" : Z ( -- ) 1 0 do recurse loop ; Z" REFUSED-LOOP ;
+   s" : Z ( -- ) 1 0 do recurse loop ; Z"
+   HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
 
 \ GUARDED-EXTENT? (src/habu/habu1.f) emits its clauses in a fixed order: base
 \ non-zero, capacity non-zero, base PAGE-BYTES aligned, capacity PAGE-BYTES
