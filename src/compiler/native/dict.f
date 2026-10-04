@@ -425,8 +425,11 @@ public
 \ ---- and how many cells one memory access moves ------------------------------
 \ Keyed by the token's OFFSET into the checked text, the same key the engine's
 \ own pass 2 reads. Absent is one cell, which is the checker's own answer.
+: OPERAND-CELLS ( n n -- n )
+   CHECKER-OWNER:WIDTH-AT ;
+
 : MEM-CELLS ( n -- n )
-   0 CHECKER-OWNER:WIDTH-AT ;
+   0 OPERAND-CELLS ;
 
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.

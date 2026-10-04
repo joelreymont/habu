@@ -107,6 +107,17 @@ TLPX-2TOR 5 T= 1 T= 7 T=
 : TLPX-2RAT ( -- n n n n n n ) TLP-MK2 5 2>r 2r@ {: c cs:n :}
    2r> {: r s:n :} c TLP-UN2 cs r TLP-UN2 s ;
 TLPX-2RAT 5 T= 1 T= 7 T= 5 T= 1 T= 7 T=
+: TLPX-RBRANCH ( n -- n n n ) TLP-MK2 >r 0 > if 5 else 6 then r> TLP-UN2 ;
+1 TLPX-RBRANCH 1 T= 7 T= 5 T=
+0 TLPX-RBRANCH 1 T= 7 T= 6 T=
+: TLPX-R2BRANCH ( n -- n n n n n n n )
+   TLP-MK2 TLP-MK4 2>r 0 > if 5 else 6 then
+   2r> {: r m :} r TLP-UN2 m TLP-UN4 ;
+1 TLPX-R2BRANCH 1 T= 93 T= 92 T= 91 T= 1 T= 7 T= 5 T=
+0 TLPX-R2BRANCH 1 T= 93 T= 92 T= 91 T= 1 T= 7 T= 6 T=
+: TLPX-RCALLEE ( n -- n ) dup 2 * + ;
+: TLPX-RCALL ( -- n n n ) TLP-MK2 >r 5 TLPX-RCALLEE r> TLP-UN2 ;
+TLPX-RCALL 1 T= 7 T= 15 T=
 : TLPX-MIX-DUP ( -- n n n n n n n n ) TLP-MK4 dup {: a b :} a TLP-UN4 b TLP-UN4 ;
 TLPX-MIX-DUP 1 T= 93 T= 92 T= 91 T= 1 T= 93 T= 92 T= 91 T=
 : TLPX-MIX-SWAP ( -- n n n n n ) TLP-MK4 5 swap {: s:n m :} s m TLP-UN4 ;

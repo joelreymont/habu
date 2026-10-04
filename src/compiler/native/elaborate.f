@@ -125,6 +125,7 @@ create VQSAV VMAX cells allot        \ and for the entries a call hands over and
 \ Measured: the tree's deepest return-stack nest is ten.
 16 constant RMAX                     \ measured: the tree's deepest nest is ten
 variable RN                          \ how many values the return vector holds
+variable RGLUE                       \ bit i joins return cells i and i-1
 RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
 create RQ RMAX cells allot
 
@@ -132,6 +133,7 @@ create RQ RMAX cells allot
    0 VN !
    0 RN !
    0 VGLUE !
+   0 RGLUE !
    VMAX 0 ?do  VQ-NONE i cells VQ + !  loop ;
 
 : VPUSH ( IR-ID:ir-value-id -- )
@@ -231,12 +233,25 @@ variable OUT-GLUE
    dup 0 < over RN @ >= or if E-NELAB-UNDER throw then
    cells RQ + @ ;
 
-: RPUSH ( IR-ID:ir-value-id n -- )
-   {: val:IR-ID:ir-value-id q:n :}
+: RGLUE-BIT? ( n -- bool ) {: i:n :}
+   i 0 < i RN @ >= or if E-NELAB-UNDER throw then
+   RGLUE @  1 i lshift  and 0<> ;
+
+: RSTACK-CK ( n -- ) {: base:n :}
+   base 0 <= if exit then
+   base RGLUE-BIT? if E-NELAB-BUNDLE throw then ;
+
+: RPUSH ( IR-ID:ir-value-id n bool -- )
+   {: val:IR-ID:ir-value-id q:n joined:bool :}
    RN @ RMAX >= if E-NELAB-CAP throw then
    val RN @ RSTK !
    q RN @ cells RQ + !
+   RGLUE @  1 RN @ lshift invert and  RGLUE !
+   joined if RGLUE @  1 RN @ lshift or  RGLUE ! then
    RN @ 1+ RN ! ;
+
+: V-RPUSH ( n -- ) {: i:n :}
+   i VAT  i VQ@  i VGLUE-BIT?  RPUSH ;
 
 : RDROP ( n -- )
    {: k:n :}
@@ -247,7 +262,8 @@ variable OUT-GLUE
 \ moving them, because a seam has to leave the return row as it found it.
 : R-VPUSH ( n -- ) {: i:n :}
    i RAT VPUSH
-   i RQ@ VN @ 1- VQ! ;
+   i RQ@ VN @ 1- VQ!
+   i RGLUE-BIT? if VGLUE @  1 VN @ 1- lshift or  VGLUE ! then ;
 
 : R-SPILL ( -- )
    RN @ 0 ?do i R-VPUSH loop ;
@@ -256,7 +272,8 @@ variable OUT-GLUE
    {: k:n :}
    VN @ k < if E-NELAB-UNDER throw then
    0 RN !
-   k 0 ?do  VN @ k - i + dup VAT swap VQ@ RPUSH  loop
+   0 RGLUE !
+   k 0 ?do  VN @ k - i + V-RPUSH  loop
    k VDROP ;
 
 \ ---- compile-time stack renames ----------------------------------------------
@@ -334,17 +351,17 @@ variable VRW-N                       \ values still to find
 \ ---- the return-stack transfers ----------------------------------------------
 \ The checker has already proved the return row at every join and loop edge, so
 \ the depth is a compile-time number.
-: RSTACK-CK ( n -- )
+: VSTACK-CK ( n -- )
    {: base:n :}
-   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then ;
+   base VRUN-DOWN? if E-NELAB-BUNDLE throw then ;
 
 : TO-R ( n -- )
    {: cells:n :}
    cells VN @ > if E-NELAB-UNDER throw then
    VN @ cells - {: base:n :}
-   base RSTACK-CK
+   base VSTACK-CK
    RN @ cells + RMAX > if E-NELAB-CAP throw then
-   cells 0 ?do  base i + dup VAT swap VQ@ RPUSH  loop
+   cells 0 ?do  base i + V-RPUSH  loop
    cells VDROP ;
 
 : FROM-R ( n -- )
@@ -352,6 +369,7 @@ variable VRW-N                       \ values still to find
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
+   base RSTACK-CK
    cells 0 ?do  base i + R-VPUSH  loop
    cells RDROP ;
 
@@ -362,11 +380,16 @@ variable VRW-N                       \ values still to find
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
+   base RSTACK-CK
    cells 0 ?do  base i + R-VPUSH  loop ;
 
-: RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
-   r sym HIR-WORD:RSTACK-CELLS@ {: cells:n :}
+: RSTACK-CELLS ( n n -- n ) {: ix:n operands:n :}
+   VW ix TOK-OFF {: off:n :}
+   0  operands 0 ?do off i NDICT:OPERAND-CELLS + loop ;
+
+: RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id n -- )
+   {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id ix:n :}
+   ix  r sym HIR-WORD:RSTACK-CELLS@ RSTACK-CELLS {: cells:n :}
    r sym HIR-WORD:RSTACK@
    MATCH HIR:rmove
       to-r    OF cells TO-R ENDOF
@@ -3731,7 +3754,7 @@ variable IX                          \ the body token the walk stands on
       callable     OF r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r  ix WSYM  RENAME ENDOF
-      rstack       OF r  ix WSYM  RSTACK-STEP ENDOF
+      rstack       OF r  ix WSYM  ix RSTACK-STEP ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
       close-locals OF ix DO-CLOSE-LOCALS ENDOF
       unmodeled    OF E-HIR-UNMODELED throw ENDOF
