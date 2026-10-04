@@ -567,6 +567,13 @@ SUITE wasm-profile
    test/wasm/profile.f
 ;SUITE
 
+\ WCTL, the Wasm backend's structured control, src/arch/wasm/structure.f: W01's
+\ copies and label depths over nested loops and ifs, and W02's refusal of a
+\ cycle entered at two blocks.
+SUITE wasm-structure
+   test/wasm/structure.f
+;SUITE
+
 \ The backend registry: src/compiler/target.f's rows and the registration in
 \ src/arch/arm64/backend.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
