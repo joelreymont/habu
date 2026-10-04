@@ -3472,7 +3472,8 @@ public
 
 : EMIT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
-   {: nocr:label slot:label declared:label patch:label write:label flush:label have:label :}
+   {: nocr:label slot:label declared:label write:label flush:label
+      have:label before:label :}
    LDOESPATCH LABEL@ LBL,
    have EMIT-NONE
    have LBL,
@@ -3482,10 +3483,16 @@ public
    14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
    14 slot CBZ,  13 13 4 SUBI,
    slot LBL,  12 12 13 ADD,                              \ final RET/B slot from either representation
-   10 patch CBNZ,
-   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-EQ declared BCOND,
-   patch LBL,
    12 SP 16 STR,
+   9 12 0 ADDI,
+   10 before CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-NE before BCOND,
+   9 0 MOVZ,
+   before LBL,
+   9 SP 24 STR,
+   10 11 0 ADDI,  EM-DEF-OCC:LBEFORE LABEL@ BL,
+   10 SP 8 LDR,  9 SP 24 LDR,
+   9 declared CBZ,
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,             \ code band -> RW
    10 SP 8 LDR,  12 SP 16 LDR,  11 DATA LASTC-CELL LDR,
    1 11 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the created record, whose kind stamp clears below
@@ -3514,6 +3521,7 @@ public
       EM-REC-WIDE-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
+   9 SP 24 LDR,  10 DATA LASTC-CELL LDR,  EM-DEF-OCC:LAFTER LABEL@ BL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 ;package
@@ -3922,7 +3930,7 @@ public
 : PUBLISH ( -- )
    LBL {: none:label :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    none LBL, ;
 
 ;package
@@ -3994,7 +4002,7 @@ package DEFWRITE
 
 \ Count record NDICT, index it and close the band.
 : PUBLISH, ( -- )
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
 public
@@ -4413,7 +4421,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       14 DATA DEF-WL-CELL LDR,  14 9 0 STR,
       15 0 MOVZ,  15 9 8 STR,
       15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
@@ -4511,7 +4519,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
@@ -4557,7 +4565,7 @@ package INTERP-EMIT
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    10 9 16 LDR,  10 10 DKIND:VAL ORRI,  10 9 16 STR,      \ this record's body pushes a decided number
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST KWCONST$ nip C-DEFHOOK
@@ -4745,7 +4753,7 @@ package INTERP-EMIT
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       DEF-TRUST:REGISTER-CAST
    nohook LBL,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
@@ -4935,7 +4943,7 @@ public
    9 DATA PEND-CELL LDR,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
    C-DEFER-META-WRITE
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
@@ -6297,7 +6305,7 @@ public
       pkg-wid LBL,
       6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1, not a wid
       next LBL,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
       12 12 1 ADDI,  rloop B,
    rdone LBL,
    17 SP 40 LDR, 17 done CBZ,
@@ -8376,13 +8384,14 @@ ardone LBL,
    \ where it was not (tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
    \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
    \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
-   SP SP 48 SUBI,
+   SP SP 64 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
    0 SP 16 STR,
    13 DATA AOT-CELLS:SPAN-TABLE-CELL LDR,  13 SP 24 STR,
    13 DATA AOT-CELLS:SPAN-N-CELL LDR,      13 SP 32 STR,
    13 DATA AOT-CELLS:SPAN-BASE-CELL LDR,   13 SP 40 STR,
+   13 DATA EM-DEF-OCC:PTR-CELL LDR,       13 SP 48 STR,
    \ Restore live rows and code to their original runtime offsets. The gap is
    \ cleared explicitly because cold AOT seeding has touched dictionary pages.
    0 DBASE 0 ADDI,  1 21 0 ADDI,  5 DREC MOVZ,  2 15 5 MUL,
@@ -8442,10 +8451,11 @@ ardone LBL,
    13 SP 24 LDR,  13 DATA AOT-CELLS:SPAN-TABLE-CELL STR,
    13 SP 32 LDR,  13 DATA AOT-CELLS:SPAN-N-CELL STR,
    13 SP 40 LDR,  13 DATA AOT-CELLS:SPAN-BASE-CELL STR,
+   13 SP 48 LDR,  13 DATA EM-DEF-OCC:PTR-CELL STR,
    0 SP 16 LDR,
-   SP SP 48 ADDI,
+   SP SP 64 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
-   NDICT 15 0 ADDI,
+   9 15 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
    CP DBASE 6 ADD,
    8 DBASE 0 ADDI,
    \ region pass FIRST: the RBASE-VA sentinel -> live region base (DBASE). Running it
@@ -8638,6 +8648,7 @@ ardone LBL,
    EM-SEED-DICT
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
+   EM-DEF-OCC:LINIT LABEL@ BL,
    EM-FRAME-STACKS
    EM-STARTUP-COLD-BASELINE
    SEEDED-RUNTIME? if
@@ -9075,7 +9086,7 @@ public
    12 11 1 ADDI,
    11 9 0 STR,  12 9 8 STR,
    15 0 MOVN,  15 9 40 STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 
 \ The record this writes is one the SCAN found: `package NAME` reopening an
@@ -9716,9 +9727,9 @@ public
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
    15 9 16 STR,
    C-EXPORT-CLAUSE-RECORD
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    6 SP 24 LDR,  6 counted CBZ,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,          \ the clause, counted with its definer
    counted LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,
    SP SP 32 ADDI,
@@ -10823,7 +10834,7 @@ public
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
    0 CODE-ORIGIN:CLOSE,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    DOES-REC:PUBLISH
    finish LBL,
@@ -11276,7 +11287,8 @@ public
          scope B,
       owned LBL,
       CODE-ORIGIN:ABANDON,
-      CP 13 40 LDR,  NDICT 13 48 LDR,
+      CP 13 40 LDR,
+      9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
       12 13 56 LDR,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
@@ -11397,7 +11409,7 @@ public
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
    CP DATA RSAVCP-CELL LDR,
-   NDICT DATA RSAVND-CELL LDR,
+   9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
    12 DATA RSAVDP-CELL LDR,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
    12 DATA DP-CELL STR,
@@ -12434,6 +12446,10 @@ package LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL WLFIND:LENTRY !
+   LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
+   LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
+   LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
+   LBL EM-DEF-OCC:LRECLAIM !
    LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LXT !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !
    LBL RELOC-EMIT:LINDEXRELEASE !
    LBL RELOC-EMIT:LROLLBACK !
@@ -13031,6 +13047,9 @@ package ENGINE-EMIT
    INTERP-EMIT:FIND-SHADOW
    EMIT-SCOPE-REC
    EMIT-HIDX
+   EMIT-DEF-OCC
+   EMIT-DEF-OCC-OVERLAP
+   EMIT-DEF-OCC-RECLAIM
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME
    EMIT-NUM

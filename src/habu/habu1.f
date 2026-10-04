@@ -193,6 +193,28 @@ variable LREBUILD
 variable LFULL
 ;package
 variable LHIDXADD
+
+package EM-DEF-OCC
+public
+variable LCOUNT
+variable LAPPEND
+variable LRESET
+variable LROOM
+variable LISSUE
+variable LINIT
+variable LBEFORE
+variable LAFTER
+variable LMATCH
+variable LRECLAIM
+\ The first product is emitted by the qualified predecessor, whose baked
+\ layout predates DEF-OCC. These are builder-side mirrors of layout.f's new
+\ process-local cell and refusal ABI; neither adds a captured DATA band.
+$2CE8 constant PTR-CELL
+DICT-CAP 1+ cells constant STATE-BYTES
+-7231 constant E-STALE
+-7232 constant E-SELECT
+-7234 constant E-EXHAUSTED
+;package
 \ The one-wordlist search shared by the `search-wl` primitive and the AOT seed's
 \ call-site pass; packaged for the same reason HIDX is.
 package WLFIND
@@ -1301,7 +1323,8 @@ variable SZA-I
 \ like the raw-store guards — not via the incidental word-creation bounds check.
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
-: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD
+   EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
 \ does> patches that record (habu2.f DOESPATCH). A record at or above NDICT is
 \ retired, and the next definition reuses its slot, so every motion that lowers
@@ -1342,14 +1365,16 @@ variable SZA-I
    A 14 CMP,  C-CS floor-ok BCOND,
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    floor-ok LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
    A NDICT CMP,  C-LE keep BCOND,
-      NDICT A 0 ADDI,                     \ raise first: the rebuild reads the new NDICT
+      EM-DEF-OCC:LCOUNT LABEL@ BL,          \ issue before the raised count is visible
       HIDX-EMIT:LREBUILD LABEL@ BL,
       done B,
    keep LBL,
-   NDICT A 0 ADDI,
+   EM-DEF-OCC:LCOUNT LABEL@ BL,
    A B LASTC-TRIM,
-   done LBL, ;
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ Append the completed native pending record at the caller's expected index.
 \ NPUB proves the emission and record shape; this sink owns the live count and
@@ -1357,21 +1382,26 @@ variable SZA-I
 \ DOES> publishes its parent and then its one prepared companion. No other row
 \ is eligible, and the ordinary ndict! restore/rebuild contract stays intact.
 : BNDAPPEND ( -- ) B-TASK-LIVE-GUARD  A G-POP                  \ ( expected-index -- )
-   LBL LBL LBL LBL {: owner:label floor-ok:label bad:label done:label :}
+   LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
    14 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  14 1 CMPI,  C-NE bad BCOND,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA PEND-CELL LDR,  14 bad CBZ,
-   14 B CMP,  C-EQ owner BCOND,
+   14 B CMP,  C-EQ parent BCOND,
    14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
    14 DATA DOESB-CELL LDR,  14 0 CMPI,  C-LE bad BCOND,
+   owner B,
+   parent LBL,
+   14 DATA DOESB-CELL LDR,  14 0 CMPI,  C-LE owner BCOND,
+   9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
+   9 NDICT 0 ADDI,
    owner LBL,
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CC bad BCOND,
    floor-ok LBL,
    7 DREC MOVZ,  B 7 PROT-GUARD:CALL
-   NDICT NDICT 1 ADDI,
+   EM-DEF-OCC:LAPPEND LABEL@ BL,
    LHIDXADD LABEL@ BL,
    done B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
@@ -1389,7 +1419,7 @@ variable SZA-I
    bad LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    lower LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
-   NDICT A 0 ADDI,
+   EM-DEF-OCC:LCOUNT LABEL@ BL,
    HIDX-EMIT:LREBUILD LABEL@ BL,
    A B LASTC-TRIM,
    9 0 MOVZ,  9 DATA SEAL-NDICT-CELL STR, ;
@@ -2767,6 +2797,7 @@ public
    CP SP 32 STR,
    14 DICT-CAP LIT64,  14 14 NDICT SUB,
    9 14 CMP,  C-HI bad BCOND,       \ unsigned comparison rejects negative count
+   EM-DEF-OCC:LROOM LABEL@ BL,
    14 DREC MOVZ,  14 9 14 MUL,  14 SP 48 STR,
    12 DREC MOVZ,  12 NDICT 12 MUL,  12 DBASE 12 ADD,  12 SP 40 STR,
    \ A sealed image cannot acquire a record in an already protected wordlist.
@@ -2805,7 +2836,7 @@ public
    15 SP 0 LDR,
    iloop LBL,
       15 idone CBZ,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+      EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
       15 15 1 SUBI,  iloop B,
    idone LBL,
    SP SP 64 ADDI,  done B,
@@ -2906,7 +2937,7 @@ public
 \ length it then reads belongs to that start. Writing START first would leave a
 \ window in which callers reach the new code with the old routine's length.
 : BXREFRETARGET ( -- )
-   LBL LBL {: live:label bad:label :}
+   LBL LBL LBL LBL {: checked:label pending:label done:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
    \ A record index names a row of the live dictionary, or the ONE pending row a
    \ publication is preparing, or it names nothing. The index arrives from a
@@ -2933,14 +2964,26 @@ public
    14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
    14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
    14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ bad BCOND, \ exact spans cannot be empty
-   live B,
+   checked B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
-   live LBL,
+   checked LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+   9 NDICT CMP,  C-EQ pending BCOND,
+   9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
+   9 SP 8 LDR,
+   14 DATA EM-DEF-OCC:PTR-CELL LDR,
+   15 9 3 LSLI,  14 14 15 ADD,
+   15 0 MOVZ,  15 14 8 STR,
+   pending LBL,
    14 DREC MOVZ,  9 9 14 MUL,  9 DBASE 9 ADD,   \ x9 = &record[idx]
    2 3 MOVZ,  LPROTREC LABEL@ BL,               \ the record's two pages -> RW
    10 9 8 STR,                                   \ length first
    11 9 STLR,                                    \ then release-publish the address
-   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+   2 5 MOVZ,  LPROTREC LABEL@ BL,
+   9 SP 8 LDR,  9 NDICT CMP,  C-EQ done BCOND,
+   EM-DEF-OCC:LISSUE LABEL@ BL,
+   done LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI, ;
 
 ;package
 
@@ -3093,6 +3136,67 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+
+\ Selection takes the exact record a resolver has already borrowed. Validate
+\ its region, stride and published bound before consulting the owner mapping.
+: BDEFSELECT ( -- )
+   LBL LBL {: bad:label done:label :}
+   9 G-POP
+   9 DBASE CMP,  C-CC bad BCOND,
+   10 9 DBASE SUB,  11 DREC MOVZ,
+   12 10 11 UDIV,  13 12 11 MUL,
+   10 13 CMP,  C-NE bad BCOND,
+   12 NDICT CMP,  C-CS bad BCOND,
+   14 DATA EM-DEF-OCC:PTR-CELL LDR,
+   13 12 3 LSLI,  13 14 13 ADD,  13 13 8 LDR,
+   13 bad CBZ,
+   12 G-PUSH  13 G-PUSH  done B,
+   bad LBL,
+   9 EM-DEF-OCC:E-SELECT LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
+\ A slot is a locator only. Equality with a nonzero issued occurrence is
+\ checked before any byte of its record is read.
+: BDEFRESOLVE ( -- )
+   LBL LBL {: stale:label done:label :}
+   10 G-POP  9 G-POP
+   10 stale CBZ,
+   9 NDICT CMP,  C-CS stale BCOND,
+   11 DATA EM-DEF-OCC:PTR-CELL LDR,
+   12 9 3 LSLI,  12 11 12 ADD,  12 12 8 LDR,
+   12 10 CMP,  C-NE stale BCOND,
+   11 DREC MOVZ,  9 9 11 MUL,  9 DBASE 9 ADD,
+   9 G-PUSH  done B,
+   stale LBL,
+   9 EM-DEF-OCC:E-STALE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
+\ A permitted CP rewind can release the tail of a still published code span.
+\ Retire each affected slot before those bytes are reusable. Namespace rows
+\ contain WIDs in their first two cells and have no code span.
+: EMIT-DEF-OCC-RECLAIM ( -- )
+   LBL LBL LBL LBL {: loop:label next:label full:label done:label :}
+   EM-DEF-OCC:LRECLAIM LABEL@ LBL,
+   10 0 MOVZ,
+   loop LBL,
+      10 NDICT CMP,  C-CS done BCOND,
+      11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
+      12 11 40 LDR,  13 DICT-WL:NAMESPACE invert MOVN,
+      12 13 CMP,  C-EQ next BCOND,
+      13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
+      14 11 8 LDR,
+      15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
+      12 CODE-SPAN:FULL LIT64,  12 14 12 AND,
+      12 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
+      full LBL,
+      15 13 15 ADD,
+      15 9 CMP,  C-LS next BCOND,
+      12 DATA EM-DEF-OCC:PTR-CELL LDR,
+      14 10 3 LSLI,  12 12 14 ADD,
+      14 0 MOVZ,  14 12 8 STR,
+   next LBL,
+      10 10 1 ADDI,  loop B,
+   done LBL,  RET, ;
 
 \ GUARDED-EXTENT? ( x14 = base, x11 = capacity ): prove the caller handed over a
 \ stack that STACK:GUARDED mapped, not a buffer. There is no per-push bounds
@@ -4038,9 +4142,11 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM
+   s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" seed-ndict!" ['] BSEEDNDICTSET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
@@ -4833,6 +4939,181 @@ variable LHIDXBUILD
       0 2 MOVZ,  1 fmsg ADR,  2 fu MOVZ,  NR-WRITE SYS,
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
    fmsg LBL,  fa fu BYTES, ;
+
+\ A dictionary slot's occurrence is owned by one anonymous mapping. The first
+\ cell is the last issued number; the remaining DICT-CAP cells are indexed by
+\ slot. None of these cells are in the rewindable DATA heap or captured image.
+: DEF-OCC-EXHAUSTED, ( -- )
+   9 EM-DEF-OCC:E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
+
+\ x9 = number about to be issued. Preserve every touched caller register.
+: EMIT-DEF-OCC ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: room-ok:label lower:label raise:label loop:label raised:label
+      done:label clear-loop:label reset:label :}
+   LBL LBL LBL {: reset-loop:label init-bad:label init-msg:label :}
+   S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
+   EM-DEF-OCC:LROOM LABEL@ LBL,
+      SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+      10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      12 0 MOVN,  12 12 11 SUB,
+      9 12 CMP,  C-LS room-ok BCOND,
+      SP SP 32 ADDI,  DEF-OCC-EXHAUSTED,
+      room-ok LBL,
+      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+      SP SP 32 ADDI,  RET,
+   EM-DEF-OCC:LISSUE LABEL@ LBL,
+      SP SP 48 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
+      9 1 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
+      9 SP 8 LDR,  10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      11 11 1 ADDI,  11 10 0 STR,
+      12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
+      SP SP 48 ADDI,  RET,
+   EM-DEF-OCC:LCOUNT LABEL@ LBL,
+      SP SP 64 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
+      10 NDICT 0 ADDI,
+      9 10 CMP,  C-LT lower BCOND,  C-GT raise BCOND,
+       done B,
+       raise LBL,
+          12 9 10 SUB,
+          9 12 0 ADDI,  EM-DEF-OCC:LROOM LABEL@ BL,
+         9 SP 8 LDR,  10 NDICT 0 ADDI,
+         11 DATA EM-DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
+      loop LBL,
+         10 9 CMP,  C-CS raised BCOND,
+         13 13 1 ADDI,
+         12 10 3 LSLI,  12 11 12 ADD,  13 12 8 STR,
+         10 10 1 ADDI,  loop B,
+      raised LBL,
+         13 11 0 STR,
+         done B,
+      lower LBL,
+         11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
+      clear-loop LBL,
+         10 NDICT CMP,  C-CS done BCOND,
+         12 10 3 LSLI,  12 11 12 ADD,
+         13 0 MOVZ,  13 12 8 STR,
+         10 10 1 ADDI,  clear-loop B,
+      done LBL,
+      NDICT 9 0 ADDI,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
+      SP SP 64 ADDI,  RET,
+   EM-DEF-OCC:LAPPEND LABEL@ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,  9 SP 8 STR,
+      9 NDICT 1 ADDI,  EM-DEF-OCC:LCOUNT LABEL@ BL,
+      30 SP 0 LDR,  9 SP 8 LDR,  SP SP 16 ADDI,  RET,
+   EM-DEF-OCC:LRESET LABEL@ LBL,
+      SP SP 64 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
+      EM-DEF-OCC:LROOM LABEL@ BL,                         \ refuse exhaustion before clearing a live reference
+      10 DATA EM-DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
+      reset-loop LBL,
+         12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
+         12 11 3 LSLI,  12 10 12 ADD,
+         13 0 MOVZ,  13 12 8 STR,
+         11 11 1 ADDI,  reset-loop B,
+      reset LBL,
+      NDICT 0 MOVZ,
+      EM-DEF-OCC:LCOUNT LABEL@ BL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
+      SP SP 64 ADDI,  RET,
+   \ Fresh process installation. Seed records already occupy [0,NDICT).
+   EM-DEF-OCC:LINIT LABEL@ LBL,
+      SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,  15 SP 24 STR,
+      0 0 MOVZ,  1 EM-DEF-OCC:STATE-BYTES LIT64,  2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+      NR-MMAP SYS,  C-CS init-bad BCOND,
+      0 DATA EM-DEF-OCC:PTR-CELL STR,
+      9 NDICT 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
+      30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
+      SP SP 32 ADDI,  RET,
+   init-bad LBL,
+      0 2 MOVZ,  1 init-msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+   init-msg LBL,  ma mu BYTES, ;
+
+\ x9 names the four-byte patch (zero for an effect-only change); x10 names the
+\ created record. Every record covering changed bytes is replaced separately.
+: EMIT-DEF-OCC-OVERLAP ( -- )
+   LBL LBL LBL LBL LBL LBL {: hit:label miss:label raw:label
+      count-loop:label count-next:label counted:label :}
+   LBL LBL LBL LBL LBL LBL {: clear-loop:label clear-next:label cleared:label
+      issue-loop:label issue-next:label issued:label :}
+   EM-DEF-OCC:LMATCH LABEL@ LBL,
+      12 0 MOVZ,
+      11 10 CMP,  C-EQ hit BCOND,
+      9 miss CBZ,
+      15 11 40 LDR,  16 DICT-WL:NAMESPACE invert MOVN,
+      15 16 CMP,  C-EQ miss BCOND,
+      15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
+      16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
+      12 CODE-SPAN:FULL LIT64,  16 16 12 AND,
+      16 raw CBNZ,  17 17 CODE-SPAN:INSN-BYTES ADDI,
+   raw LBL,
+      15 15 17 ADD,  15 9 CMP,  C-LS miss BCOND,
+   hit LBL,
+      12 1 MOVZ,  RET,
+   miss LBL,
+      12 0 MOVZ,  RET,
+   EM-DEF-OCC:LBEFORE LABEL@ LBL,
+      SP SP 80 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
+      16 SP 64 STR,  17 SP 72 STR,
+      13 0 MOVZ,  14 0 MOVZ,
+   count-loop LBL,
+      13 NDICT CMP,  C-CS counted BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      EM-DEF-OCC:LMATCH LABEL@ BL,
+      12 count-next CBZ,
+      14 14 1 ADDI,
+   count-next LBL,
+      13 13 1 ADDI,  count-loop B,
+   counted LBL,
+      9 14 0 ADDI,  EM-DEF-OCC:LROOM LABEL@ BL,
+      9 SP 8 LDR,  13 0 MOVZ,
+   clear-loop LBL,
+      13 NDICT CMP,  C-CS cleared BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      EM-DEF-OCC:LMATCH LABEL@ BL,
+      12 clear-next CBZ,
+      15 DATA EM-DEF-OCC:PTR-CELL LDR,
+      16 13 3 LSLI,  15 15 16 ADD,
+      16 0 MOVZ,  16 15 8 STR,
+   clear-next LBL,
+      13 13 1 ADDI,  clear-loop B,
+   cleared LBL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
+      16 SP 64 LDR,  17 SP 72 LDR,
+      SP SP 80 ADDI,  RET,
+   EM-DEF-OCC:LAFTER LABEL@ LBL,
+      SP SP 80 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
+      16 SP 64 STR,  17 SP 72 STR,
+      13 0 MOVZ,
+   issue-loop LBL,
+      13 NDICT CMP,  C-CS issued BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      EM-DEF-OCC:LMATCH LABEL@ BL,
+      12 issue-next CBZ,
+      9 13 0 ADDI,  EM-DEF-OCC:LISSUE LABEL@ BL,
+      9 SP 8 LDR,
+   issue-next LBL,
+      13 13 1 ADDI,  issue-loop B,
+   issued LBL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
+      16 SP 64 LDR,  17 SP 72 LDR,
+      SP SP 80 ADDI,  RET, ;
 
 variable FIND-LINEAR
 variable FIND-HLOOP

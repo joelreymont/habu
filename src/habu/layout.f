@@ -1479,6 +1479,19 @@ $2CD0 constant FLOORREC-CELL
 \ FLOORREC-CELL in the free header band.
 $2CD8 constant CLOSED-FREE-CELL
 $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
+\ This cell holds this process's dictionary occurrence allocation, not an image
+\ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
+\ Its pointer is cleared from snapshot scratch and restored from the receiving
+\ process across a snapshot DATA copy.
+package DEF-OCC
+public
+$2CE8 constant PTR-CELL
+DICT-CAP 1+ cells constant STATE-BYTES
+-7231 constant E-STALE
+-7232 constant E-SELECT
+-7233 constant E-NONCALLABLE
+-7234 constant E-EXHAUSTED
+;package
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above

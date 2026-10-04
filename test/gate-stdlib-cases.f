@@ -1070,6 +1070,10 @@ SUITE compiler-native-dictionary-publish
    test/compiler/native-dictionary-publish.f
 ;SUITE
 
+WHITEBOX-SUITE compiler-native-dictionary-retarget
+   test/compiler/native-dictionary-retarget.f
+;SUITE
+
 SUITE compiler-code-span
    test/compiler/code-span.f
 ;SUITE

@@ -42,8 +42,13 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    s" CR-F1" FORGET-DEFS-FROM ;
 
 variable A-CP
+variable ALIAS-SLOT
+variable ALIAS-OCC
 
 : ALIAS-CASE ( -- )
+   s" CRECL-SUBJ:CR-LOW" REC DEF-OCC:SELECT {: original-slot:n original-occ:n :}
+   s" CRECL-ALIAS:CR-LOW" REC DEF-OCC:SELECT {: alias-slot:n alias-occ:n :}
+   original-occ alias-occ T<>
    s" the alias record names the earlier routine" T-LABEL
    s" CRECL-ALIAS:CR-LOW" REC-START  s" CRECL-SUBJ:CR-LOW" REC-START  T=
 
@@ -57,6 +62,10 @@ variable A-CP
    s" forgetting the alias retires only its record" T-LABEL
    s" CRECL-ALIAS:CR-LOW" DEFINED? TFALSE
    cp@ A-CP @ T=
+   alias-slot ALIAS-SLOT !  alias-occ ALIAS-OCC !
+   [: ALIAS-SLOT @ ALIAS-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   original-slot original-occ DEF-OCC:CALLABLE {: old-entry:n :}
+   s" CRECL-SUBJ:CR-LOW" REC-START old-entry T=
 
    FILL
    s" both surviving records keep their code" T-LABEL

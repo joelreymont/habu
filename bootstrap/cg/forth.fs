@@ -295,6 +295,11 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2CE8 constant OCC-PTR-CELL       \ this process's definition occurrence mapping
+-7231 constant OCC-E-STALE
+-7232 constant OCC-E-SELECT
+-7234 constant OCC-E-EXHAUSTED
+DICT-CAP 1+ cells constant OCC-BYTES
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
@@ -628,6 +633,10 @@ variable LSRCENDMSG
 : FLOORMSG$ ( -- a u ) s" hb: interpret stack underdepth: " ;   \ LFLOORREC's line: the token and a newline follow
 variable LEVALREC
 variable LTHROWDISPATCH
+variable LOCC-COUNT  variable LOCC-APPEND  variable LOCC-RESET
+variable LOCC-ROOM   variable LOCC-ISSUE   variable LOCC-INIT
+variable LOCC-BEFORE variable LOCC-AFTER  variable LOCC-MATCH
+variable LOCC-RECLAIM
 35 constant PREFMISSMSG-LEN
 variable LDEFKWGUARD variable LDEFKWFAIL variable LDEFKWMSG
 49 constant DEFKWMSG-LEN
@@ -965,10 +974,13 @@ variable BAND-IX
 \ value landing in either sealed band fails closed at the sink. Legit FORGET
 \ marks are DBASE/CP-region addresses, never a DATA-region band, so the
 \ latch-gated guard leaves them intact.
-: BCPSET ( -- )      A G-POP  7 4 MOVZ,  A 7 GUARD-SPAN  CP A 0 ADDI, ;   \ ( addr -- ) set CP
+: BCPSET ( -- )      A G-POP  7 4 MOVZ,  A 7 GUARD-SPAN
+   LOCC-RECLAIM @ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 : BNDSET ( -- )      A G-POP                                 \ ( n -- ) set NDICT
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
-   NDICT A 0 ADDI, ;
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LOCC-COUNT @ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ The recovery engine has no native pending owner. Its JIT publication stays
 \ local; the native-only append boundary must refuse if it is reached here.
@@ -1603,6 +1615,239 @@ HB-TARGET-LINUX? [IF]
    \ forged/corrupt handler frame: seed hard-exits (mirrors native BTHROW THROW-CORRUPT)
    lcorrupt LBL,  s" hb: catch frame corrupt" ENGINE-ERROR:CATCH-STACK C-EXIT-DIAG ;
 
+\ Definition occurrences are process-local owner state, outside captured DATA.
+: BDEFSELECT ( -- )
+   LBL LBL {: bad done :}
+   9 G-POP
+   9 DBASE CMP,  C-CC bad BCOND,
+   10 9 DBASE SUB,  11 DREC MOVZ,
+   12 10 11 UDIV,  13 12 11 MUL,
+   10 13 CMP,  C-NE bad BCOND,
+   12 NDICT CMP,  C-CS bad BCOND,
+   14 DATA OCC-PTR-CELL LDR,
+   13 12 3 LSLI,  13 14 13 ADD,  13 13 8 LDR,
+   13 bad CBZ,
+   12 G-PUSH  13 G-PUSH  done B,
+   bad LBL,
+   9 OCC-E-SELECT LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
+\ A slot is a locator only. Equality with a nonzero issued occurrence is
+\ checked before any byte of its record is read.
+: BDEFRESOLVE ( -- )
+   LBL LBL {: stale done :}
+   10 G-POP  9 G-POP
+   10 stale CBZ,
+   9 NDICT CMP,  C-CS stale BCOND,
+   11 DATA OCC-PTR-CELL LDR,
+   12 9 3 LSLI,  12 11 12 ADD,  12 12 8 LDR,
+   12 10 CMP,  C-NE stale BCOND,
+   11 DREC MOVZ,  9 9 11 MUL,  9 DBASE 9 ADD,
+   9 G-PUSH  done B,
+   stale LBL,
+   9 OCC-E-STALE LIT64,  9 G-PUSH  BTHROW
+   done LBL, ;
+
+\ A permitted CP rewind can release the tail of a still published code span.
+\ Retire each affected slot before those bytes are reusable. Namespace rows
+\ contain WIDs in their first two cells and have no code span.
+: EMIT-OCC-RECLAIM ( -- )
+   LBL LBL LBL LBL {: loop next full done :}
+   LOCC-RECLAIM @ LBL,
+   10 0 MOVZ,
+   loop LBL,
+      10 NDICT CMP,  C-CS done BCOND,
+      11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
+      12 11 40 LDR,  13 0 MOVN,
+      12 13 CMP,  C-EQ next BCOND,
+      13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
+      14 11 8 LDR,
+      15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
+      12 CODE-SPAN:FULL LIT64,  12 14 12 AND,
+      12 full CBNZ,  15 15 4 ADDI,
+      full LBL,
+      15 13 15 ADD,
+      15 9 CMP,  C-LS next BCOND,
+      12 DATA OCC-PTR-CELL LDR,
+      14 10 3 LSLI,  12 12 14 ADD,
+      14 0 MOVZ,  14 12 8 STR,
+   next LBL,
+      10 10 1 ADDI,  loop B,
+   done LBL,  RET, ;
+
+
+: DEF-OCC-EXHAUSTED, ( -- )
+   9 OCC-E-EXHAUSTED LIT64,  9 G-PUSH  BTHROW ;
+
+\ x9 = number about to be issued. Preserve every touched caller register.
+: EMIT-OCC ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: room-ok lower raise loop raised
+      done clear-loop reset :}
+   LBL LBL LBL {: reset-loop init-bad init-msg :}
+   S\" hb: definition occurrence alloc failed\n" {: ma mu :}
+   LOCC-ROOM @ LBL,
+      SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+      10 DATA OCC-PTR-CELL LDR,  11 10 0 LDR,
+      12 0 MOVN,  12 12 11 SUB,
+      9 12 CMP,  C-LS room-ok BCOND,
+      SP SP 32 ADDI,  DEF-OCC-EXHAUSTED,
+      room-ok LBL,
+      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+      SP SP 32 ADDI,  RET,
+   LOCC-ISSUE @ LBL,
+      SP SP 48 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
+      9 1 MOVZ,  LOCC-ROOM @ BL,
+      9 SP 8 LDR,  10 DATA OCC-PTR-CELL LDR,  11 10 0 LDR,
+      11 11 1 ADDI,  11 10 0 STR,
+      12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
+      SP SP 48 ADDI,  RET,
+   LOCC-COUNT @ LBL,
+      SP SP 64 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
+      10 NDICT 0 ADDI,
+      9 10 CMP,  C-LT lower BCOND,  C-GT raise BCOND,
+      done B,
+      raise LBL,
+         12 9 10 SUB,  9 12 0 ADDI,  LOCC-ROOM @ BL,
+         9 SP 8 LDR,  10 NDICT 0 ADDI,
+         11 DATA OCC-PTR-CELL LDR,  13 11 0 LDR,
+      loop LBL,
+         10 9 CMP,  C-CS raised BCOND,
+         13 13 1 ADDI,
+         12 10 3 LSLI,  12 11 12 ADD,  13 12 8 STR,
+         10 10 1 ADDI,  loop B,
+      raised LBL,
+         13 11 0 STR,
+         done B,
+      lower LBL,
+         11 DATA OCC-PTR-CELL LDR,  10 9 0 ADDI,
+      clear-loop LBL,
+         10 NDICT CMP,  C-CS done BCOND,
+         12 10 3 LSLI,  12 11 12 ADD,
+         13 0 MOVZ,  13 12 8 STR,
+         10 10 1 ADDI,  clear-loop B,
+      done LBL,
+      NDICT 9 0 ADDI,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
+      SP SP 64 ADDI,  RET,
+   LOCC-APPEND @ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,  9 SP 8 STR,
+      9 NDICT 1 ADDI,  LOCC-COUNT @ BL,
+      30 SP 0 LDR,  9 SP 8 LDR,  SP SP 16 ADDI,  RET,
+   LOCC-RESET @ LBL,
+      SP SP 64 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
+      LOCC-ROOM @ BL,                         \ refuse exhaustion before clearing a live reference
+      10 DATA OCC-PTR-CELL LDR,  11 0 MOVZ,
+      reset-loop LBL,
+         12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
+         12 11 3 LSLI,  12 10 12 ADD,
+         13 0 MOVZ,  13 12 8 STR,
+         11 11 1 ADDI,  reset-loop B,
+      reset LBL,
+      NDICT 0 MOVZ,
+      LOCC-COUNT @ BL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
+      SP SP 64 ADDI,  RET,
+   \ Fresh process installation. Seed records already occupy [0,NDICT).
+   LOCC-INIT @ LBL,
+      SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,  15 SP 24 STR,
+      0 0 MOVZ,  1 OCC-BYTES LIT64,  2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+      NR-MMAP SYS,  C-CS init-bad BCOND,
+      0 DATA OCC-PTR-CELL STR,
+      9 NDICT 0 ADDI,  LOCC-RESET @ BL,
+      30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
+      SP SP 32 ADDI,  RET,
+   init-bad LBL,
+      0 2 MOVZ,  1 init-msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+   init-msg LBL,  ma mu BYTES, ;
+
+\ x9 names the four-byte patch (zero for an effect-only change); x10 names the
+\ created record. Every record covering changed bytes is replaced separately.
+: EMIT-OCC-OVERLAP ( -- )
+   LBL LBL LBL LBL LBL LBL {: hit miss raw
+      count-loop count-next counted :}
+   LBL LBL LBL LBL LBL LBL {: clear-loop clear-next cleared
+      issue-loop issue-next issued :}
+   LOCC-MATCH @ LBL,
+      12 0 MOVZ,
+      11 10 CMP,  C-EQ hit BCOND,
+      9 miss CBZ,
+      15 11 40 LDR,  16 0 MOVN,
+      15 16 CMP,  C-EQ miss BCOND,
+      15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
+      16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
+      12 CODE-SPAN:FULL LIT64,  16 16 12 AND,
+      16 raw CBNZ,  17 17 4 ADDI,
+   raw LBL,
+      15 15 17 ADD,  15 9 CMP,  C-LS miss BCOND,
+   hit LBL,
+      12 1 MOVZ,  RET,
+   miss LBL,
+      12 0 MOVZ,  RET,
+   LOCC-BEFORE @ LBL,
+      SP SP 80 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
+      16 SP 64 STR,  17 SP 72 STR,
+      13 0 MOVZ,  14 0 MOVZ,
+   count-loop LBL,
+      13 NDICT CMP,  C-CS counted BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      LOCC-MATCH @ BL,
+      12 count-next CBZ,
+      14 14 1 ADDI,
+   count-next LBL,
+      13 13 1 ADDI,  count-loop B,
+   counted LBL,
+      9 14 0 ADDI,  LOCC-ROOM @ BL,
+      9 SP 8 LDR,  13 0 MOVZ,
+   clear-loop LBL,
+      13 NDICT CMP,  C-CS cleared BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      LOCC-MATCH @ BL,
+      12 clear-next CBZ,
+      15 DATA OCC-PTR-CELL LDR,
+      16 13 3 LSLI,  15 15 16 ADD,
+      16 0 MOVZ,  16 15 8 STR,
+   clear-next LBL,
+      13 13 1 ADDI,  clear-loop B,
+   cleared LBL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
+      16 SP 64 LDR,  17 SP 72 LDR,
+      SP SP 80 ADDI,  RET,
+   LOCC-AFTER @ LBL,
+      SP SP 80 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
+      16 SP 64 STR,  17 SP 72 STR,
+      13 0 MOVZ,
+   issue-loop LBL,
+      13 NDICT CMP,  C-CS issued BCOND,
+      11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
+      LOCC-MATCH @ BL,
+      12 issue-next CBZ,
+      9 13 0 ADDI,  LOCC-ISSUE @ BL,
+      9 SP 8 LDR,
+   issue-next LBL,
+      13 13 1 ADDI,  issue-loop B,
+   issued LBL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
+      16 SP 64 LDR,  17 SP 72 LDR,
+      SP SP 80 ADDI,  RET, ;
+
+
 \ GUARDED-EXTENT? ( fail -- ): prove the caller handed over a stack that
 \ STACK-GUARD:EMIT-MAP mapped, not a buffer. There is no per-push bounds check
 \ any more -- the capacity is enforced by the inaccessible page above the
@@ -2072,12 +2317,14 @@ HB-TARGET-LINUX? [IF]
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM-L
    \ The product engine's seed rewind (habu1.f BSEEDNDICTSET) has no floor to
    \ cross here, so stage0 answers the same name with its plain lowering: one
    \ boot-hide prologue then serves stage0 and the sealed native stages alike.
    s" seed-ndict!" ['] BNDSET FPRIM-L
    s" ndict-append" ['] BNDAPPEND FPRIM-L
+   s" def-occ-select" ['] BDEFSELECT FPRIM-L
+   s" def-occ-resolve" ['] BDEFRESOLVE FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
@@ -4456,7 +4703,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-DOES-PUB ( -- )
    LBL {: none :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
-   NDICT NDICT 1 ADDI,
+   LOCC-APPEND @ BL,
    none LBL, ;
 
 : J-DOES ( -- )
@@ -4570,7 +4817,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ x10 = 0 is an empty clause: keep an existing RET or restore it over the
 \ earlier clause's branch, then publish the replacement effect.
 : EMIT-DOESPATCH ( -- )
-   LBL LBL LBL LBL LBL {: nocr slot declared patch write :}
+   LBL LBL LBL LBL LBL {: nocr slot declared write before :}
    LDOESPATCH @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
    11 DATA LASTC-CELL LDR,                               \ created slot
@@ -4578,10 +4825,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
    14 slot CBZ,  13 13 4 SUBI,
    slot LBL,  12 12 13 ADD,
-   10 patch CBNZ,
-   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-EQ declared BCOND,
-   patch LBL,
    12 SP 16 STR,
+   9 12 0 ADDI,
+   10 before CBNZ,
+   14 12 0 LDRW,  5 W-RET LIT64,  14 5 CMP,  C-NE before BCOND,
+   9 0 MOVZ,
+   before LBL,
+   9 SP 24 STR,
+   10 11 0 ADDI,  LOCC-BEFORE @ BL,
+   10 SP 8 LDR,  9 SP 24 LDR,
+   9 declared CBZ,
    2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
    10 SP 8 LDR,  12 SP 16 LDR,
    14 W-RET LIT64,  10 write CBZ,
@@ -4604,6 +4857,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       EM-REC-WIDE-PUBLISH                               \ a wide clause effect marks the created record (mirror of habu2.f DOESPATCH:EMIT)
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
+   9 SP 24 LDR,  10 DATA LASTC-CELL LDR,  LOCC-AFTER @ BL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
@@ -4725,7 +4979,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       14 9 0 STR,
       15 0 MOVZ,  15 9 8 STR,
       15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,
+      LOCC-APPEND @ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,
       12 DATA DEF-TKL-CELL LDR,
@@ -4780,7 +5034,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
-   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
+   LOCC-APPEND @ BL,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                 \ region -> RX + flush
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
@@ -4811,7 +5065,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 W-RET LIT64,  LCEMIT @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
-   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
+   LOCC-APPEND @ BL,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
    LKWCONST 8 C-DEFHOOK
    C-PUBLISH-A ;
@@ -5022,7 +5276,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       14 12 1 ADDI,  14 DATA WIDN-CELL STR,
       11 5 0 STR,  12 5 8 STR,
       14 0 MOVN,  14 5 40 STR,
-      NDICT NDICT 1 ADDI,
+      LOCC-APPEND @ BL,
    done LBL, ;
 
 : C-PACKAGE ( -- )
@@ -6013,9 +6267,10 @@ variable CFSK2
    \ survives the copy in XDS, a pinned register; these two have no register,
    \ so they ride the machine stack across it and are republished beside XDS
    \ below.
-   SP SP 16 SUBI,
+   SP SP 32 SUBI,
    13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
    13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
+   13 DATA OCC-PTR-CELL LDR,  13 SP 16 STR,
    8 12 7 SUB,  8 8 6 SUB,
    EMIT-SNAPSHOT-COPY-CODE
    EMIT-SNAPSHOT-COPY-DATA
@@ -6024,9 +6279,10 @@ variable CFSK2
    5 STACK-ABI:BOOT-BYTES LIT64, 5 DATA STACK-ABI:CAP-CELL STR,
    13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
    13 SP 8 LDR,  13 DATA STACK-ABI:LOOP-BASE-CELL STR,
-   SP SP 16 ADDI,
+   13 SP 16 LDR,  13 DATA OCC-PTR-CELL STR,
+   SP SP 32 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
-   NDICT 15 0 ADDI,
+   9 15 0 ADDI,  LOCC-RESET @ BL,
    CP DBASE 6 ADD,
    EMIT-SNAPSHOT-REBASE-DICT
    EMIT-SNAPSHOT-REBASE-CALLS
@@ -6082,6 +6338,7 @@ variable CFSK2
    EMIT-SEED-DICT
    EMIT-MMAP-DATA-REGION
    EMIT-DATA-INIT
+   LOCC-INIT @ BL,
    EMIT-FRAME-STACKS
    EMIT-SNAPSHOT-RESTORE
    EMIT-STARTUP-RUNTIME-STATE ;
@@ -6233,7 +6490,7 @@ variable CFSK2
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,                \ no checker in this engine: publish, register nothing
       C-CALL-DEFCAST
    nohook LBL,
-   NDICT NDICT 1 ADDI,
+   LOCC-APPEND @ BL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
@@ -6377,7 +6634,7 @@ variable CFSK2
    9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,
    10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,              \ exact code span before the metadata trailer
    C-DEFER-META-WRITE
-   NDICT NDICT 1 ADDI,
+   LOCC-APPEND @ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,             \ region -> RX + flush
    LBL LBL {: ready pdone :}
@@ -7333,7 +7590,7 @@ variable P2SK
    ttrusted LBL,
    C-CALL-TRUST-PEND
    publish LBL,
-   NDICT NDICT 1 ADDI,
+   LOCC-APPEND @ BL,
    EM-REC-WIDE-PUBLISH
    C-DOES-PUB
    [ also LOWER-TXN ] FINISH [ previous ]
@@ -7352,7 +7609,7 @@ variable P2SK
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
    nohook LBL,
-      NDICT NDICT 1 ADDI,
+      LOCC-APPEND @ BL,
       EM-REC-WIDE-PUBLISH
       C-DOES-PUB
    rejected LBL,
@@ -7872,7 +8129,7 @@ variable P2SK
    12 DATA STACK-ABI:REPL-CAP-CELL LDR, 12 DATA STACK-ABI:CAP-CELL STR,
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
    CP DATA RSAVCP-CELL LDR,
-   NDICT DATA RSAVND-CELL LDR,
+   9 DATA RSAVND-CELL LDR,  LOCC-COUNT @ BL,
    \ Native REPL and evaluate recovery share the address-row filter before
    \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
@@ -7900,7 +8157,7 @@ variable P2SK
       12 13 STACK-ABI:EVAL-CAP LDR, 12 DATA STACK-ABI:CAP-CELL STR,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
-      CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      CP 13 40 LDR,  9 13 48 LDR,  LOCC-COUNT @ BL,  XDS 13 32 LDR,
       10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,          \ a closed frame's stack: back to the pool
       9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
       9 13 24 LDR,                                            \ and its caller's extent, B-EVAL-CLOSED's frame
@@ -8063,6 +8320,10 @@ variable P2SK
    LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LSCOPEREC !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LDIVZERO !
+   LBL LOCC-COUNT !  LBL LOCC-APPEND !  LBL LOCC-RESET !
+   LBL LOCC-ROOM !  LBL LOCC-ISSUE !  LBL LOCC-INIT !
+   LBL LOCC-BEFORE !  LBL LOCC-AFTER !  LBL LOCC-MATCH !
+   LBL LOCC-RECLAIM !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
    LBL LDEFKWGUARD !  LBL LDEFKWFAIL ! ;
@@ -8191,6 +8452,9 @@ variable P2SK
    EMIT-FIND
    EMIT-FIND-USED
    EMIT-SCOPE-REC
+   EMIT-OCC
+   EMIT-OCC-OVERLAP
+   EMIT-OCC-RECLAIM
    EMIT-NUM ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )

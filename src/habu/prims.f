@@ -652,6 +652,11 @@ EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
+EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ exact resolved dictionary record
+EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
+ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
+ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ ---- the definition writers --------------------------------------------------
 \ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
 \ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
