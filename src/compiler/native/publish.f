@@ -18,6 +18,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/session/emission.f
 require src/compiler/native/shadow.f
+require src/compiler/native/host-publish.f
 require src/habu/code-span.f
 
 package NPUB
@@ -121,6 +122,20 @@ TRUSTED: APPEND-PENDING ( n -- )
    e fn RELOC-ADDRS
    fn e size RECORDED-LEN idx PUBLISH-REC ;
 
+TYPED-VARIABLE HELD-E NART:emission
+variable HELD-IDX
+variable HELD-FN
+variable HELD-SIZE
+
+: COMMIT-HELD ( -- )
+   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
+
+: COMMIT-OWNED ( NART:emission n n n -- )
+   HELD-SIZE ! HELD-FN ! HELD-IDX ! HELD-E !
+   [: COMMIT-HELD ;] catch {: rc:n :}
+   rc 0<> if NHOST:ABANDON-TAKEN rc throw then
+   NHOST:PUBLISH-TAKEN ;
+
 : PENDING-IDX ( -- n )
    ndict@ ;
 
@@ -179,7 +194,8 @@ public
    {: e:NART:emission :}
    e PENDING-PROVE {: idx:n fn:n size:n :}
    e idx fn size UNIT-NOTIFY
-   e idx fn size COMMIT
+   e fn NHOST:TAKE
+   e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
    idx PENDING-FACTS ;
@@ -188,7 +204,8 @@ public
    {: e:NART:emission fun:n :}
    e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    e idx fn size UNIT-NOTIFY
-   e idx fn size COMMIT
+   e fn NHOST:TAKE
+   e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + e size off - RECORDED-LEN DOES-RECORD
    idx APPEND-PENDING

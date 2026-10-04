@@ -300,7 +300,7 @@ TRUSTED: DEF-PREFLIGHT ( -- )
 \ The xt waits on the return stack while the preflight runs, and the stack's
 \ floor holds after the word, as after a word the loop runs.
 TRUSTED: DEF-RUN ( n -- )
-   >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+   NHOST:ADMIT-ENTRY >r DEF-PREFLIGHT r> execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then

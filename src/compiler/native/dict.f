@@ -14,6 +14,7 @@ require lib/errors.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
+require src/compiler/native/host.f
 
 package NDICT
 
@@ -138,7 +139,7 @@ public
    start 0= if E-NDICT-NAME throw then
    rec REC-FIXED FIXED-NONE = if E-NDICT-KIND throw then
    depth FX-BASE !
-   start RUN-WORD
+   rec NHOST:SELECT-REC RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
 : FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
@@ -149,7 +150,7 @@ public
    entry 0< entry 0= or if E-NDICT-NAME throw then
    kind FIXED-VAL <> kind FIXED-ADDR <> and if E-NDICT-KIND throw then
    depth FX-BASE !
-   entry RUN-WORD
+   entry NHOST:ADMIT-ENTRY RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
 \ ---- and how many cells a call to it moves --------------------------------

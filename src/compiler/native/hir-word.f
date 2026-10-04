@@ -63,7 +63,7 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
 3 constant OFF-IN                    \ rename: the number of values consumed; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
-5 constant OFF-GLUE                  \ callable: which of the callee's result cells belong to a multi-cell value; otherwise zero
+5 constant OFF-GLUE                  \ callable result glue; rename host semantic class
 6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
 7 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
@@ -772,6 +772,12 @@ variable STG-MODE
 MODE-NONE STG-MODE !
 variable STG-IN
 variable STG-N
+variable STG-HOST
+public
+0 constant HOST-SCALAR
+1 constant HOST-VIEW
+2 constant HOST-CAST
+private
 create STG-PICK PICK-MAX cells allot
 
 : STG-OPEN-CK ( -- )
@@ -811,7 +817,7 @@ create STG-PICK PICK-MAX cells allot
    loop
    c r w
    HIR-MEANING:RENAME MEAN-CODE
-   st STG-IN @ STG-N @ UNUSED UNUSED
+   st STG-IN @ STG-N @ STG-HOST @ UNUSED
    ROW-ADD ;
 
 \ The same declaration for a module still being built. The stage is consumed
@@ -833,7 +839,8 @@ public
    in 0 < in INPUT-MAX > or if E-HIR-PICK throw then
    MODE-OPEN STG-MODE !
    in STG-IN !
-   0 STG-N ! ;
+   0 STG-N !
+   HOST-SCALAR STG-HOST ! ;
 
 \ Put one of the consumed values back, named by its depth in the consumed
 \ window with zero being the top. Picks are listed bottom first.
@@ -866,6 +873,7 @@ public
       id:IR-ID:ir-symbol-id :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-CAST STG-HOST !
    STG-TAKE
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
@@ -1168,6 +1176,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-IN RC@ ;
+
+: HOST-RENAME@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-GLUE RC@ ;
 
 \ How many values it puts back.
 : PICKS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
@@ -1542,12 +1555,14 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-VIEW STG-HOST !
    c b p r c b s" cell-view" MODEL-SYM BDECLARE-RENAME ;
 
 : DEF-BYTE-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
    0 ADD-PICK
+   HOST-VIEW STG-HOST !
    c b p r c b s" byte-view" MODEL-SYM BDECLARE-RENAME ;
 
 \ Six rows over three actions and two widths; the widths are declared because

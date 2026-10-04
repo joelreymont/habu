@@ -10,6 +10,7 @@ require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
 require src/habu/code-span.f
 require src/habu/native-observer-cells.f
+require src/habu/native-host-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -5272,6 +5273,19 @@ variable LCODEINV
    11 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL, ;
 
+\ The required construction scope installs a distinct callback. x5 is the
+\ record selected by LFIND (zero for an already-bound immediate); x11 is the
+\ entry actually about to run. The callback decides the full closure first.
+: C-HOST-SELECT ( -- )
+   LBL {: ordinary:label :}
+   9 DATA NATIVE-HOST-CELLS:SELECT LDR,  9 ordinary CBZ,
+   SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,
+   5 G-PUSH  11 G-PUSH
+   9 BLR,
+   11 G-POP
+   13 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   ordinary LBL, ;
+
 \ LTOPHOOK: shared top-row event trampoline, BL-called from the guarded event
 \ sites. Entry: x15 = class, x16 = flags, hook known installed. Pushes
 \ ( token-a token-u class flags ) and BLRs the hook word — the hook consumes
@@ -8572,6 +8586,8 @@ ardone LBL,
    9 DATA NATIVE-OBS-CELLS:OBSERVE STR,
    9 DATA NATIVE-OBS-CELLS:PUBLISHED STR,
    9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
+   9 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE STR,
+   9 DATA NATIVE-HOST-CELLS:SELECT STR,
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
    \ someone can find and change, next to the dispatch it selects.
@@ -8599,6 +8615,8 @@ ardone LBL,
    NATIVE-OBS-CELLS:OBSERVE RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:PUBLISHED RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:INVALIDATE RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:HOST-INVALIDATE RELOC-EMIT:MARK-CELL
+   NATIVE-HOST-CELLS:SELECT RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
    \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
@@ -8782,7 +8800,9 @@ ardone LBL,
    9 DATA TRUSTED-CELL LDR,  9 G-PUSH
    9 SP 16 LDR,  9 BLR,
    callimm LBL,
-   11 SP 8 LDR,  11 BLR,
+   11 SP 8 LDR,
+   5 0 MOVZ,  C-HOST-SELECT
+   11 BLR,
    \ No reopen: the immediate may have ended the head. A head that goes on
    \ reopens the window at its next tier 0 token (EM-COMPILE-LEGACY).
    30 SP 0 LDR,  SP SP 32 ADDI,
@@ -9857,6 +9877,7 @@ private
    LPOLICYREC LABEL@ BL,                               \ the design seal, ahead of every other gate: a record outside the vocabulary is refused as one (x5 = the record LFIND resolved)
    LFINDSHADOW LABEL@ BL,                              \ a global a used public also exports refuses (105)
    found LBL,
+   SP SP 16 SUBI,  5 SP 0 STR,                         \ retain LFIND's exact record across the guards
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
    C-SCOPE-ENTRY-GUARD                                 \ a checked scope entry has no raw callback admission at the prompt
@@ -9865,6 +9886,8 @@ private
       9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
+   5 SP 0 LDR,  C-HOST-SELECT
+   SP SP 16 ADDI,
    15 11 0 ADDI,  16 4 MOVZ,  C-UNIT-HOOK
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
    11 BLR,  LMAIN LABEL@ B,
@@ -11305,10 +11328,20 @@ public
 \ A callback is total and leaves no value. Preserve the recovery registers it
 \ would otherwise clobber, including the throw code and active frame.
 : EM-CODE-INVALIDATE ( -- )
-   LBL {: done:label :}
+   LBL LBL {: host:label done:label :}
    LCODEINV LABEL@ LBL,
-   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
    10 CP CMP,  C-CS done BCOND,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 host CBZ,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
+   10 G-PUSH
+   9 BLR,
+   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 48 ADDI,
+   host LBL,
+   9 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE LDR,  9 done CBZ,
    SP SP 48 SUBI,
    30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
    14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
