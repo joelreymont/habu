@@ -28,6 +28,16 @@ variable ARTIFACT-U
       s" native host construction: ARM64 fixture" type cr exit
    then
    s" HB_TMP" GETENV dup 0<> if 2dup MAKE-DIRS then 2drop
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG
+   s" test/compiler/native-host-immediate-occurrence.f" ARG
+   ENGINE-CANDIDATE:PATH$ >LEN
+   OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+      {: immoutu:len immerru:len immrc:n :}
+   immrc 0<> if OUT immoutu LEN>N type ERR immerru LEN>N type then
+   immrc 0 T=
    s" native-host-construction" HB-TMP-MKDIR {: root:ptr size:n :}
    root size s" foreign-output" OUTPUT JOIN-PATH OUTPUT-U !
    root size s" construction.aot" ARTIFACT JOIN-PATH ARTIFACT-U !

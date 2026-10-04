@@ -180,6 +180,7 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    T-RESET
    0 OBSERVED !
    s" test/compiler/native-host-source.f" LOAD-SOURCE
+   s" NATIVE-HOST-SOURCE:TARGET-IMM" 0 parse-imm
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
    ['] OBSERVE-EARLY NBACK:OBSERVE!
    EARLY-SOURCE
