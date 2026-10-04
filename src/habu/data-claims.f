@@ -354,6 +354,7 @@ create TAB
    SNAP-CELL                      ,  1 cells ,
    NULL-PTR-CELL-OFF              ,  1 cells ,
    ENGINE-MAIN:XT-CELL            ,  1 cells ,
+   ENGINE-MAIN:REPORT-CELL        ,  1 cells ,
    PROVIDED-XT:EVALUATE-CELL      ,  1 cells ,
    POLICY-ABI:KEYWORD-CELL         ,  1 cells ,
    $3A00                          ,  $288 ,

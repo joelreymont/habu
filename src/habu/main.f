@@ -228,11 +228,8 @@ TRUSTED: EXIT-HOOK ( -- )
    refusal 0<> code refusal = and if NULL$ 70 die then
    NULL$ UNCAUGHT-RC die ;
 
-TRUSTED: UNCGH-PTR ( -- ptr [ n -- ] )
-   data-base UNCGH-CELL + ;
-
-: REPORT-ENABLE ( -- )
-   HB-TARGET-LINUX-X86-64? if [: REPORT ;] UNCGH-PTR xt! then ;
+TRUSTED: REPORT-PTR ( -- ptr [ n -- ] )
+   data-base ENGINE-MAIN:REPORT-CELL + ;
 
 : LIST? ( route -- bool )
    MATCH route
@@ -289,12 +286,14 @@ public
 
 \ Normal completion follows die's deliberate exit path, which runs the hook.
 : MAIN ( -- )
-   REPORT-ENABLE
    ROUTED
    NULL$ 0 die ;
 
-\ The build window captures this xt in the fixed seeded startup cell.
+\ The x86 linker copies the captured reporter from its fixed code cell into
+\ protected UNCGH-CELL before it publishes the image. ARM boot installs its
+\ assembly uncaught reporter separately.
 : INSTALL ( -- )
+   HB-TARGET-LINUX-X86-64? if ['] REPORT REPORT-PTR xt! then
    ['] MAIN data-base ENGINE-MAIN:XT-CELL + xt! ;
 
 ;package

@@ -15,6 +15,7 @@ create GOLDEN
    $27E8 , 0 ,   \ COMPILE-PREFLIGHT-CELL
    $27F0 , 0 ,   \ TOP-HOOK-CELL
    $2818 , 0 ,   \ EXIT-HOOK-CELL
+   $40C0 , 0 ,   \ UNCGH-CELL
    $2CF0 , 0 ,   \ NBACK-OBSERVE-CELL
    $2CF8 , 0 ,   \ NCOMP-PUBLISHED-CELL
    $2D00 , 0 ,   \ CODE-INVALIDATE-CELL
@@ -27,13 +28,14 @@ create GOLDEN
    $3810 , 0 ,   \ PROVIDED-XT:EVALUATE-CELL
    $3818 , 0 ,   \ POLICY-ABI:KEYWORD-CELL
    $3808 , 0 ,   \ ENGINE-MAIN:XT-CELL
+   $3820 , 0 ,   \ ENGINE-MAIN:REPORT-CELL
    $43A0 , 0 ,   \ APP-ENTRY:XT-CELL
    $3640 , 0 ,   \ REPLH-CELL
    $37E8 , 1 ,   \ BPWBASE-CELL
    $560 ,  0 ,   \ LASTC-CELL
    $230 ,  0 ,   \ CREATEP-CELL
 
-21 constant ROWS
+23 constant ROWS
 
 public
 

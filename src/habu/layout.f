@@ -1104,6 +1104,10 @@ $3800 constant NULL-PTR-CELL-OFF
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
+\ The captured x86 reporter is written here while the ARM build host is
+\ sealed. The linker publishes its translated XT in protected UNCGH-CELL.
+\ $3820 follows POLICY-ABI:KEYWORD-CELL and is outside PROT-REG.
+$3820 constant REPORT-CELL
 ;package
 
 \ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row the captured
