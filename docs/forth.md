@@ -1868,8 +1868,9 @@ the rule.
   package's private section.** `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok
   -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7197);
   in another package, at top level, or for a `DEFLINEAR` declared at top level
-  they are `E-LINEAR-OWNER` (7196); a qualified name is `E-LINEAR-SCOPE` even
-  there; distinct stack tails are `E-CAST-ARITY` (7129); and
+  they are `E-LINEAR-OWNER` (7196); in the owner's private section, a qualified
+  name is `E-LINEAR-SCOPE` after payload and owner checks; distinct stack tails
+  are `E-CAST-ARITY` (7129); and
   `( PKG:tok -- PKG:tok )`, `( n -- n )`,
   `( ptr a -- PKG:tok )` or `( [ -- ] -- PKG:tok )` is `E-LINEAR-PAYLOAD`
   (7195), in the source pre-pass and tools/check.f as well. `linear:` in a
