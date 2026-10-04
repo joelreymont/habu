@@ -49,6 +49,8 @@ require src/compiler/ir/context.f
 require src/compiler/ir/build.f
 require src/compiler/native/hir.f
 require src/compiler/native/loop.f
+require src/habu/layout.f
+require src/habu/native-observer-cells.f
 
 package NBACK
 public
@@ -63,6 +65,24 @@ public
 STRUCTURE linkage 0
    FIELD bits n
 ;STRUCTURE
+
+private
+
+CAST: OBSERVER-XT ( n -- [ n IR-CTX:ctx IR-BUILD:module -- ] )
+
+public
+
+\ The module is borrowed only for this call. Install a named callback while no
+\ source definition is open; the fixed CODE cell is relocated with an image.
+: OBSERVE! ( [ n IR-CTX:ctx IR-BUILD:module -- ] -- )
+   data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
+   data-base NATIVE-OBS-CELLS:OBSERVE + xt! ;
+
+: OBSERVE ( n IR-CTX:ctx IR-BUILD:module -- )
+   {: idx:n c:IR-CTX:ctx m:IR-BUILD:module :}
+   data-base NATIVE-OBS-CELLS:OBSERVE + @ dup 0= if drop exit then
+   OBSERVER-XT {: q :}
+   idx c m q execute ;
 
 private
 

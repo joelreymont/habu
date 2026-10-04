@@ -74,6 +74,8 @@ package NCOMP
 
 private
 
+CAST: PUBLISHED-XT ( n -- [ n IR-CTX:ctx n n n -- ] )
+
 \ ---- what a recording unit is opened with ------------------------------------
 \ The unit's text ceiling is the ENGINE's own body capture, which overflows with
 \ an exit rather than a throw. The capture is at least three bytes shorter than
@@ -126,6 +128,18 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
 : SH ( -- IR-CTX:ctx )           0 M-SH @ ;
 : MKEY ( -- IR-ID:ir-module-key ) BB IR-BUILD:MODULE-KEY ;
+
+\ The callable address is the actual committed parent's entry plus this
+\ ordinal's sealed emission offset. The callback fills storage reserved while
+\ the HIR was borrowed; it must neither allocate nor throw.
+: PUBLISHED-ROWS ( n -- )
+   {: idx:n :}
+   data-base NATIVE-OBS-CELLS:PUBLISHED + @ dup 0= if drop exit then
+   PUBLISHED-XT {: q :}
+   idx XREF-REC XREF-START {: parent:n :}
+   NEMIT:FUNCTIONS 0 ?do
+      idx CC parent i i NEMIT:FUNCTION-OFFSET@ q execute
+   loop ;
 
 : SRC$ ( -- ptr u8 n )
    M-SRC @ M-SRC-U @ ;
@@ -513,6 +527,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : EMITTED ( -- )
    CC M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
    CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
+   ndict@ CC hm NBACK:OBSERVE
    hm SHADOWED
    CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
@@ -549,6 +564,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r ELABORATE
    EMITTED
    PUBLISH-IT
+   before PUBLISHED-ROWS
    0 M-DOES-FRAME ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
@@ -716,6 +732,14 @@ INSTALL-FORGET
    NELAB:REFUSED-RESET ;
 
 public
+
+\ XREF-START supplies the committed entry as a raw code address. A parent can
+\ have any effect, so the erased entry crosses this callback ABI as n; the
+\ owner's declared CODE cell records it for image relocation.
+: PUBLISHED! ( [ n IR-CTX:ctx n n n -- ] -- )
+   IDLE-CK
+   data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
+   data-base NATIVE-OBS-CELLS:PUBLISHED + xt! ;
 
 \ The engine has already parsed this definition and built its pending record.
 \ Compile the captured body directly.

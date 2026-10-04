@@ -674,6 +674,10 @@ SUITE compiler-native-quot
    test/compiler/native-quot.f
 ;SUITE
 
+SUITE compiler-native-observer
+   test/compiler/native-observer.f
+;SUITE
+
 SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE

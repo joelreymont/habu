@@ -3,6 +3,7 @@ require src/habu/layout.f
 require src/habu/regalloc-abi.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
+require src/habu/native-observer-cells.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
 \ WHY IT EXISTS. lib/task.f handed out TASK:+USER rows from $41C8 bounded by
@@ -156,6 +157,9 @@ variable NAMES-U
    s" FLOORREC-CELL" NAME,
    s" CLOSED-FREE-CELL" NAME,
    s" CODE-END-CELL" NAME,
+   s" NATIVE-OBS-CELLS:OBSERVE" NAME,
+   s" NATIVE-OBS-CELLS:PUBLISHED" NAME,
+   s" NATIVE-OBS-CELLS:INVALIDATE" NAME,
    s" LOCNAMES" NAME,
    s" VRTAB" NAME,
    s" VRITAB" NAME,
@@ -305,6 +309,9 @@ create TAB
    FLOORREC-CELL                  ,  1 cells ,
    CLOSED-FREE-CELL               ,  1 cells ,
    CODE-END-CELL                  ,  1 cells ,
+   NATIVE-OBS-CELLS:OBSERVE       ,  1 cells ,
+   NATIVE-OBS-CELLS:PUBLISHED     ,  1 cells ,
+   NATIVE-OBS-CELLS:INVALIDATE    ,  1 cells ,
    LOCNAMES                       ,  LOC-RECS LOC-REC * ,
    REGALLOC-ABI:VRTAB-OFF         ,  REGALLOC-ABI:VRTAB-BYTES ,
    REGALLOC-ABI:VRITAB-OFF        ,  REGALLOC-ABI:VRTAB-BYTES ,

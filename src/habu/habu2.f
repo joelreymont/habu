@@ -9,6 +9,7 @@ require src/habu/address-carrier.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f
 require src/habu/code-span.f
+require src/habu/native-observer-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -5193,6 +5194,7 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
 \ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. The site guard is
 \ one load + CBZ, so the uninstalled path is today's dispatch unchanged.
 variable LTOPHOOK
+variable LCODEINV
 
 : C-TOPHOOK-LIT ( n -- ) {: class:n :}     \ literal event: flags 0
    LBL {: nohk:label :}
@@ -8505,6 +8507,9 @@ ardone LBL,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
+   9 DATA NATIVE-OBS-CELLS:OBSERVE STR,
+   9 DATA NATIVE-OBS-CELLS:PUBLISHED STR,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
    \ someone can find and change, next to the dispatch it selects.
@@ -8529,6 +8534,9 @@ ardone LBL,
    COMPILE-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
    TOP-HOOK-CELL RELOC-EMIT:MARK-CELL
    EXIT-HOOK-CELL RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:OBSERVE RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:PUBLISHED RELOC-EMIT:MARK-CELL
+   NATIVE-OBS-CELLS:INVALIDATE RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
    \ LASTC holds the record the last `create`, `variable` or `constant` wrote,
@@ -11220,6 +11228,25 @@ public
 \ the close (it writes x0-x2).
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
+\ x10 is the absolute floor. Recovery calls this before replacing CP or DP;
+\ the installed owner removes every publication in the reclaimed suffix.
+\ A callback is total and leaves no value. Preserve the recovery registers it
+\ would otherwise clobber, including the throw code and active frame.
+: EM-CODE-INVALIDATE ( -- )
+   LBL {: done:label :}
+   LCODEINV LABEL@ LBL,
+   9 DATA NATIVE-OBS-CELLS:INVALIDATE LDR,  9 done CBZ,
+   10 CP CMP,  C-CS done BCOND,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
+   10 G-PUSH
+   9 BLR,
+   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 48 ADDI,
+   done LBL,  RET, ;
+
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
@@ -11274,9 +11301,10 @@ public
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
          12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
          scope B,
-      owned LBL,
-      CODE-ORIGIN:ABANDON,
-      CP 13 40 LDR,  NDICT 13 48 LDR,
+   owned LBL,
+   CODE-ORIGIN:ABANDON,
+   10 13 40 LDR,  LCODEINV LABEL@ BL,
+   CP 13 40 LDR,  NDICT 13 48 LDR,
       12 13 56 LDR,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
       12 DATA DP-CELL STR,
@@ -11396,6 +11424,7 @@ public
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
+   10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
    12 DATA RSAVDP-CELL LDR,
@@ -12370,6 +12399,7 @@ package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
+   LBL LCODEINV !
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the
@@ -12381,6 +12411,7 @@ package ENGINE-EMIT
    LMAIN LABEL@ B,
    NCOMP-EMIT:EM-COMPILE
    COMPILE-EMIT:EM-COMPILE-LEGACY
+   EM-CODE-INVALIDATE
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
    EM-POLICY

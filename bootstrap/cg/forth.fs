@@ -295,6 +295,9 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2CE8 constant NBACK-OBSERVE-CELL
+$2CF0 constant NCOMP-PUBLISHED-CELL
+$2CF8 constant CODE-INVALIDATE-CELL
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
@@ -621,6 +624,7 @@ variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
+variable LCODEINV
 variable LPREFMISS  variable LPREFMISSMSG
 variable LFLOORREC  variable LFLOORMSG
 variable LSRCENDMSG
@@ -7863,6 +7867,21 @@ variable P2SK
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR, ;
 
+: EMIT-CODE-INVALIDATE ( -- )
+   LCODEINV @ LBL,
+   LBL {: done :}
+   9 DATA CODE-INVALIDATE-CELL LDR,  9 done CBZ,
+   10 CP CMP,  C-CS done BCOND,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
+   10 G-PUSH
+   9 BLR,
+   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 48 ADDI,
+   done LBL,  RET, ;
+
 : EMIT-REPL-RECOVER ( -- )
    LRREC @ LBL,
    LBL {: bad :}
@@ -7871,6 +7890,7 @@ variable P2SK
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR, 12 DATA STACK-ABI:CAP-CELL STR,
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+   10 DATA RSAVCP-CELL LDR,  LCODEINV @ BL,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
    \ Native REPL and evaluate recovery share the address-row filter before
@@ -7900,6 +7920,7 @@ variable P2SK
       12 13 STACK-ABI:EVAL-CAP LDR, 12 DATA STACK-ABI:CAP-CELL STR,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
+      10 13 40 LDR,  LCODEINV @ BL,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,          \ a closed frame's stack: back to the pool
       9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
@@ -8052,6 +8073,7 @@ variable P2SK
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
 	   EMIT-FLOORREC
+	   EMIT-CODE-INVALIDATE
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT
       LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
@@ -8070,6 +8092,7 @@ variable P2SK
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LCODEINV !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LFLOORREC !  LBL LFLOORMSG !  LBL LSRCENDMSG !
    LBL LEVALREC !
