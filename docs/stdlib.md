@@ -1418,7 +1418,10 @@ JWK modulus and exponent spans, then exact message and signature spans, and
 returns a boolean for signature validity. `RS256-SIGN` takes an unencrypted
 PKCS#8 `PRIVATE KEY` PEM span, an exact message span, and a caller-owned output
 span; it returns the signature byte count. Both use SHA-256 and RSA PKCS#1 v1.5
-padding with the OpenSSL default provider. RSA keys must be 2048–16384 bits;
+padding with the OpenSSL default provider. PEM permits surrounding whitespace
+and LF or CRLF line endings; each payload line is 4–252 Base64 characters in
+whole quartets, with padding only at the end before a standalone footer.
+RSA keys must be 2048–16384 bits;
 `RS256-MAX-BYTES` is 2048 for output allocation. A wrong signature is false;
 bad keys throw `E-KEY`, verification failures `E-VERIFY`, signing failures
 `E-SIGN`, and invalid lengths, output capacity or overlap `E-OPERAND`. Output

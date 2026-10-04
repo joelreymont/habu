@@ -544,6 +544,54 @@ CAST: RS>BYTES ( n -- ptr u8 )
    wu u at - > if false exit then
    source at + wu want wu STR= ;
 
+: RS-PEM-LF ( ptr u8 n n -- n )
+   {: pem u:n at:n :}
+   u at ?do
+      pem i + c@ 10 = if i unloop exit then
+   loop
+   E-KEY throw ;
+
+: RS-PEM-B64? ( n -- bool )
+   {: c:n :}
+   c [char] A >= c [char] Z <= and
+   c [char] a >= c [char] z <= and or
+   c [char] 0 >= c [char] 9 <= and or
+   c [char] + = or c [char] / = or ;
+
+\ OpenSSL ONLY_B64 discards a line's suffix at its first invalid byte.
+\ Its 254-byte line read also needs room for CRLF. Validate complete raw
+\ lines before the decoder can hide any payload.
+: RS-PEM-B64-LINE ( ptr u8 n n -- n )
+   {: pem u:n at:n :}
+   pem u at RS-PEM-LF {: lf:n :}
+   lf at - dup 0= if E-KEY throw then
+   pem lf 1- + c@ 13 = if 1- then {: count:n :}
+   count 4 < count 252 > or count 4 mod 0<> or if E-KEY throw then
+   false
+   count 0 ?do
+      pem at i + + c@ {: c:n :}
+      c [char] = = if
+         i count 2 - < if E-KEY throw then
+         drop true
+      else
+         c RS-PEM-B64? 0= if E-KEY throw then
+         dup if E-KEY throw then
+      then
+   loop
+   if
+      pem u lf 1+ s" -----END PRIVATE KEY-----" RS-MATCH-AT? 0= if E-KEY throw then
+   then
+   lf 1+ ;
+
+: RS-PEM-LINE ( ptr u8 n n -- n bool )
+   {: pem u:n at:n :}
+   pem u at s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
+      at s" -----END PRIVATE KEY-----" nip + {: tail:n :}
+      pem u tail RS-SKIP-SPACE u <> if E-KEY throw then
+      at true exit
+   then
+   pem u at RS-PEM-B64-LINE false ;
+
 : RS-PEM-SHAPE ( ptr u8 n -- )
    {: pem u:n :}
    pem u 0 RS-SKIP-SPACE {: start:n :}
@@ -553,13 +601,11 @@ CAST: RS>BYTES ( n -- ptr u8 )
    pem header + c@ 13 = if header 1+ else header then {: lf:n :}
    lf u >= if E-KEY throw then
    pem lf + c@ 10 <> if E-KEY throw then
-   u lf 1+ ?do
-      pem u i s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
-         i s" -----END PRIVATE KEY-----" nip + {: tail:n :}
-         pem u tail RS-SKIP-SPACE u <> if E-KEY throw then
-         unloop exit
-      then
-   loop
+   lf 1+
+   begin dup u < while
+      pem u rot RS-PEM-LINE
+      if drop exit then
+   repeat
    E-KEY throw ;
 
 : RS-PEM-LABEL? ( ptr u8 -- bool )

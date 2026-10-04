@@ -961,6 +961,29 @@ variable RSA-CASE-N
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
 
+: RSA-CASE-INLINE-HIDDEN-DER ( -- )
+   RSA-CASE-PEM PEM-CAP INTO
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=-BQAFAAUA" PEM-LINE
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N ! ;
+
+: RSA-CASE-AFTER-PAD ( -- )
+   RSA-CASE-PEM PEM-CAP INTO
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1- ASCII,
+   s" BQAFAAUA" PEM-LINE
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N ! ;
+
+: RSA-CASE-INLINE-FOOTER ( -- )
+   RSA-CASE-PEM PEM-CAP INTO
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" ASCII,
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N ! ;
+
 : RSA-CASE-TRAILING-INNER ( -- )
    RSA-CASE-TRAILING-DER
    \ Increase the outer SEQUENCE and PKCS#8 OCTET STRING lengths by two;
@@ -1136,6 +1159,16 @@ variable RSA-CASE-N
    $A5 RSA-OUT c!
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-OUT c@ $A5 T=
+   s" inline hyphen cannot hide appended DER from PEM validation" T-LABEL
+   RSA-CASE-INLINE-HIDDEN-DER
+   $A5 RSA-OUT c!
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-OUT c@ $A5 T=
+   s" base64 after padding and inline footer refuse" T-LABEL
+   RSA-CASE-AFTER-PAD
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-CASE-INLINE-FOOTER
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    s" PKCS#8 rejects trailing DER inside its RSA private key" T-LABEL
    RSA-CASE-TRAILING-INNER
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
