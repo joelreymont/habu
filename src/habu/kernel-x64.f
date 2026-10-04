@@ -1999,6 +1999,105 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RCX PUSH,
    RSP SCOPE-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ parse-name follows the shared source cursor. Whitespace is every byte at
+\ or below space; on exhaustion the previous token cells remain untouched.
+: PARSE-NAME-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: skip:label scan:label found:label none:label done:label finish:label :}
+   RAX DATA-REG INP-CELL MOV-LOAD,
+   RDX DATA-REG INE-CELL MOV-LOAD,
+   skip X64CODE:LBL,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-GE none JCC,
+   RCX RAX MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RCX 32 >IMM8 ASM-SINK ENC-CMP-RI8  C-A found JCC,
+   RAX ASM-SINK ENC-INC  skip JMP,
+   found X64CODE:LBL,
+   RSI RAX ASM-SINK ENC-MOV-RR
+   RSI DATA-REG TKA-CELL MOV-STORE,
+   scan X64CODE:LBL,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-GE done JCC,
+   RCX RAX MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RCX 32 >IMM8 ASM-SINK ENC-CMP-RI8  C-BE done JCC,
+   RAX ASM-SINK ENC-INC  scan JMP,
+   done X64CODE:LBL,
+   RAX DATA-REG INP-CELL MOV-STORE,
+   RCX RAX ASM-SINK ENC-MOV-RR
+   RCX RSI ASM-SINK ENC-SUB-RR
+   RCX DATA-REG TKL-CELL MOV-STORE,
+   RSI PUSH,  RCX PUSH,
+   finish JMP,
+   none X64CODE:LBL,
+   RAX DATA-REG INP-CELL MOV-STORE,
+   RAX PUSH,
+   RAX ZERO-REG,  RAX PUSH,
+   finish X64CODE:LBL, ;
+
+\ tok-imm? asks the primary scope only: a used public does not make a token
+\ immediate to a checked body. FIND-LBL supplies the same folded-name record
+\ lookup as scope-find; the immediate flag is its DNAME-IMM bit folded to 2.
+: TOK-IMM-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: scan:label colon:label bare:label qual-scan:label qual-find:label
+      pub:label global:label result:label miss:label done:label :}
+   RSI POP,  RDI POP,
+   RSP 24 >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI RSP 0 MOV-STORE,  RSI RSP 8 MOV-STORE,
+   RCX ZERO-REG,
+   scan X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-GE bare JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX $3A >IMM8 ASM-SINK ENC-CMP-RI8  C-E colon JCC,
+   RCX ASM-SINK ENC-INC  scan JMP,
+   colon X64CODE:LBL,
+   RCX RSP 16 MOV-STORE,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   R8 RCX 1 MEM-OFF ASM-SINK ENC-LEA
+   R8 RSI ASM-SINK ENC-CMP-RR  C-GE bare JCC,
+   qual-scan X64CODE:LBL,
+   R8 RSI ASM-SINK ENC-CMP-RR  C-GE qual-find JCC,
+   RAX RDI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX $3A >IMM8 ASM-SINK ENC-CMP-RI8  C-E miss JCC,
+   R8 ASM-SINK ENC-INC  qual-scan JMP,
+   qual-find X64CODE:LBL,
+   RSI RCX ASM-SINK ENC-MOV-RR
+   RDX DICT-WL:NAMESPACE IMM64,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E miss JCC,
+   RDX RAX REC-CODE MOV-LOAD,
+   RCX RSP 16 MOV-LOAD,
+   RDI RSP 0 MOV-LOAD,
+   RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
+   RSI RSP 8 MOV-LOAD,
+   RSI RCX ASM-SINK ENC-SUB-RR
+   RSI ASM-SINK ENC-DEC
+   FIND-LBL CALL,
+   result JMP,
+   bare X64CODE:LBL,
+   RDI RSP 0 MOV-LOAD,  RSI RSP 8 MOV-LOAD,
+   RDX DATA-REG PKG-PRI-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E pub JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
+   pub X64CODE:LBL,
+   RDX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E global JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
+   global X64CODE:LBL,
+   RDX ZERO-REG,  FIND-LBL CALL,
+   result X64CODE:LBL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E miss JCC,
+   RAX RAX REC-FLAGS MOV-LOAD,
+   RAX 59 >IMM8 ASM-SINK ENC-SHR-RI8
+   RAX 2 >IMM8 ASM-SINK ENC-AND-RI8
+   done JMP,
+   miss X64CODE:LBL,
+   RAX ZERO-REG,
+   done X64CODE:LBL,
+   RAX PUSH,
+   RSP 24 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 public
 
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
@@ -2035,9 +2134,9 @@ public
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    s" create" REFUSE
-   s" parse-name" REFUSE
+   s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" REFUSE
-   s" tok-imm?" REFUSE
+   s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
 
