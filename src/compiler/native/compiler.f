@@ -659,12 +659,19 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    HIR:PROTOTYPE-CLEAR
    l NBACK:FORGET ;
 
+\ A refused close must leave the prototype flags and their context untouched.
+\ During a failed session start the compiler's own root is still live; after
+\ compilation, no root may be held by another caller.
+: SESSION-ADMIT ( -- )
+   M-LEASE @ NLEASE:LIVE? if M-LEASE @ NLEASE:QUIET exit then
+   NLEASE:IDLE-CK ;
+
 : SESSION-FORGET ( -- )
    M-LEASE @ NLEASE:LIVE? if M-LEASE @ FORGET-OWNED exit then
    [: FORGET-OWNED ;] NLEASE:WITH ;
 
 : INSTALL-FORGET ( -- )
-   [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
+   [: SESSION-ADMIT ;] [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
 INSTALL-FORGET
 
 \ A vocabulary that fails to build takes the session with it, so the next
