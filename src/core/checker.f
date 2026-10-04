@@ -13355,6 +13355,10 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
+   \ Closed definitions and candidate scopes leave host dictionary record counts
+   \ in these inactive fields. A captured engine begins with neither pending.
+   0 CK-CLOSED-SYM !  0 CK-CLOSED-IX !  0 CK-CLOSED-OFF !
+   0 CK-PEND-FLOOR !  0 CK-PEND-IX !
    SG-ROWS-RESET
    REC-RELEASE
    CHECKER-ASIG-DISARM
