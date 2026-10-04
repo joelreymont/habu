@@ -28,7 +28,9 @@
 \ a zero divisor. Each cold side calls a callee its image carries in place of
 \ `throw`: a stand-in in the zero-divisor image, a ud2 pad no case reaches in
 \ the others. Each routine is allocated, accepted and emitted at the image's own
-\ address directly (M-ROWS,).
+\ address directly (M-ROWS,). The two-counts routine is staged too, but its
+\ allocation plans something, so it is declared and goes through the driver's
+\ fixpoint and emit rows like a selected routine.
 \
 \ The select routines are staged and emitted the same way, since nothing selects
 \ `x64.cmpsel` or `x64.selz` yet: one per aliasing case, each an IR identity -
@@ -219,6 +221,50 @@ private
 : DIVZERO-BODY ( IR-CTX:ctx -- )
    0 W-CTX !  CALLEE @ BUILD-DIVZERO 0 1 M-ROWS, ;
 
+: M-SHIFT ( X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:X64IR:opcode x:IR-ID:ir-value-id n:IR-ID:ir-value-id :}
+   o M-OPEN
+   x M-OPERAND+
+   n M-OPERAND+
+   M-RESULT+
+   M-CLOSE-VALUE ;
+
+\ `( v a b -- n )` answering `v a lshift b rshift`, both counts loaded before
+\ either shift: test/compiler/x64-regalloc.f TWO-COUNTS behind the data-stack
+\ boundary, its second shift a right one so that counts given in the wrong order
+\ answer wrongly. Each count is fixed to rcx at its shift and b is live where
+\ the first shift reads a there, so neither keeps rcx from its load to its shift
+\ (regalloc.f MB-PIN), and the fixpoint lowers each into a count of its own in
+\ front of its shift. The spill pass is bound to the builder the routine is
+\ staged in, as selection binds it to the one it writes.
+: BUILD-TWO-COUNTS ( -- IR-BUILD:module )
+   M-MOD
+   M-BIND-MACHINE
+   CC MB  CC MB X64IR:LOWERING  [: X64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
+   TERNARY-SIGN M-FUN
+   24 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 M-DLOAD {: v:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 8 M-DLOAD {: a:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 16 M-DLOAD {: b:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   X64IR-OPCODE:SHL v a M-SHIFT {: s:IR-ID:ir-value-id :}
+   X64IR-OPCODE:SHR s b M-SHIFT {: x:IR-ID:ir-value-id :}
+   x t3 0 M-DSTORE {: t4:IR-ID:ir-value-id :}
+   t4 8 M-DPUBLISH
+   M-RET0
+   M-CLOSE ;
+
+\ A routine staged in the dialect whose allocation plans something takes the
+\ driver's rows from the fixpoint on: declared, lowered until its plan is empty,
+\ and emitted at the image's next address.
+: TWO-COUNTS-BODY ( IR-CTX:ctx -- )
+   0 W-CTX !
+   CC 3 1 NBACK:L-NONE NBACK:DECLARE
+   CC BUILD-TWO-COUNTS NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   X64HARNESS:POSITION {: at:n :}
+   CC m at NBACK:EMIT
+   X64EMIT:BYTES X64EMIT:SIZE X64HARNESS:APPEND-ROUTINE
+   ROWS-DONE ;
+
 \ A select shape of the fixture's, taking `in` cells.
 TYPED-VARIABLE SEL-SHAPE [ -- IR-BUILD:module ]
 variable SEL-IN
@@ -274,6 +320,7 @@ public
    CALLEE !  WBND [: REMAINDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DIVZERO-ROUTINE ( n -- )
    CALLEE !  WBND [: DIVZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TWO-COUNTS-ROUTINE ( -- )  WBND [: TWO-COUNTS-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : CMPSEL-ROUTINE ( -- )      [: BUILD-CMPSEL ;] 3 SEL-ROUTINE ;
 : CMPSEL-FA-ROUTINE ( -- )   [: BUILD-CMPSEL-FA ;] 3 SEL-ROUTINE ;
@@ -326,7 +373,28 @@ variable CALLEE                      \ the entry the caller's site names
 : PCALLER-ROWS ( IR-CTX:ctx -- )
    HIR-MOD CALLEE @ BUILD-PCALLER 1 1 NBACK:L-CALLED ROWS, ;
 
+\ `( a b c d e f g h i j -- n )` reading the ten in base two, `a 2* b + 2* c +
+\ ... 2* j +`, so a value lost or two exchanged answer wrongly. The entry loads
+\ every argument in one run (select-x64.f OPEN-DARGS): ten loads for nine
+\ registers, so the allocator divides the run, storing a value to the frame right
+\ after its own load (regalloc.f MB-DIVIDE).
+10 constant ARGS-N
+
+: BUILD-ARGS ( -- )
+   ARGS-N 1 OPEN-FUN
+   ARGS-N 0 ?do ARG+ i ARGV ! loop
+   0 ARGV @
+   ARGS-N 1 ?do
+      HIR-OPCODE:ADD swap dup BINOP
+      HIR-OPCODE:ADD swap i ARGV @ BINOP
+   loop
+   RET1
+   CLOSE-FUN ;
+
+: ARGS-ROWS ( IR-CTX:ctx -- )     HIR-MOD BUILD-ARGS ARGS-N 1 NBACK:L-NONE ROWS, ;
+
 public
+: ARGS-ROUTINE ( -- )      WBND [: ARGS-ROWS ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE-ROUTINE ( -- )  WBND [: PRESS-ROWS ;] IR-CTX:WITH-CONTEXT ;
 : PBRANCH-ROUTINE ( -- )   WBND [: PBRANCH-ROWS ;] IR-CTX:WITH-CONTEXT ;
 : PLOOP-ROUTINE ( -- )     WBND [: PLOOP-ROWS ;] IR-CTX:WITH-CONTEXT ;
@@ -785,6 +853,16 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    CLOSE, ENTRY, X64CHAIN-TEST:PRESSURE-ROUTINE
    s" pressure" false WRITE-IMAGE ;
 
+\ Ten arguments read in base two, one more than the registers the entry's run of
+\ loads can hold. A third case of ten staged cells would not fit before the
+\ harness's ROUTINE-OFF.
+: ARGS-IMAGE ( -- )
+   false OPEN,
+   1 2 3 4 5 6 7 8 9 10 2036 CASE10,
+   10 9 8 7 6 5 4 3 2 1 9217 CASE10,
+   CLOSE, ENTRY, X64CHAIN-TEST:ARGS-ROUTINE
+   s" args" false WRITE-IMAGE ;
+
 \ `24 a *` where `b` is zero and `24 a * b +` where it is not: what was put away
 \ before the branch comes back on both arms.
 : PBRANCH-IMAGE ( -- )
@@ -885,6 +963,17 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    ALIGN, ENTRY,
    callee X64EMIT-TEST:DIVZERO-ROUTINE
    s" divzero" false WRITE-IMAGE ;
+
+\ `v a lshift b rshift` with two counts that cannot keep rcx: a count lost to
+\ the other, or the two taken in the wrong order, answers wrongly here.
+: TWO-COUNTS-IMAGE ( -- )
+   false OPEN,
+   $FF 4 8 $F CASE3,
+   $FF 8 4 $FF0 CASE3,
+   1 63 63 1 CASE3,
+   -1 1 60 15 CASE3,
+   CLOSE, ENTRY, X64EMIT-TEST:TWO-COUNTS-ROUTINE
+   s" two-counts" false WRITE-IMAGE ;
 
 \ ---- the selects ---------------------------------------------------------------
 \ Each aliasing case of the two selects is its own routine, the IR identity
@@ -1234,6 +1323,7 @@ public
    LOOP-IMAGE
    SITE-IMAGES
    PRESSURE-IMAGE
+   ARGS-IMAGE
    PBRANCH-IMAGE
    PLOOP-IMAGE
    PCALLER-IMAGE
@@ -1242,6 +1332,7 @@ public
    DIVNEG-IMAGE
    REMAINDER-IMAGE
    DIVZERO-IMAGE
+   TWO-COUNTS-IMAGE
    SELECT-IMAGES
    FLOAT-IMAGES
    SB-RESET DIR$ SB-APPEND s" /manifest" SB-APPEND SB$ TMP-PATH

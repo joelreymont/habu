@@ -148,6 +148,7 @@ variable BND-LANES                   \ address-carrier instructions, 1 or more
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-REMAT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
@@ -828,6 +829,10 @@ DYNAMIC-BUFFER FR-STORE-BUF n
 \ is stored from.
 DYNAMIC-BUFFER CL-DEF-BUF n
 : CL-DEF ( -- ptr n ) 0 CL-DEF-BUF ;
+DYNAMIC-BUFFER CL-ANCH-BUF n
+: CL-ANCH ( -- ptr n ) 0 CL-ANCH-BUF ;
+DYNAMIC-BUFFER EVICTED-ROOTS n
+variable N-EVICTED
 DYNAMIC-BUFFER CL-SIZE-BUF n
 : CL-SIZE ( -- ptr n ) 0 CL-SIZE-BUF ;
 DYNAMIC-BUFFER CL-KEEP-BUF n
@@ -910,6 +915,8 @@ variable N-PINS
    VMAX 2 * TRAIL-OLD-BUF-RESERVE
    OMAX BMAX + TRAIL-AT-BUF-RESERVE
    VMAX CL-DEF-BUF-RESERVE
+   VMAX CL-ANCH-BUF-RESERVE
+   VMAX EVICTED-ROOTS-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
    VMAX CL-KEEP-BUF-RESERVE
    VMAX CL-FIX-BUF-RESERVE
@@ -1224,8 +1231,9 @@ variable N-PINS
 \ What keeps the pinned register free for it is the forbid every class that
 \ crosses or reads the operation carries (MB-FIXED-BITS), and every class whose
 \ hull spans the pinned class's opening (MB-FORBID-PINS). What this pass does
-\ NOT do is insert a copy for a value that cannot be pre-coloured; the selector
-\ is what keeps two values that both demand one register apart.
+\ NOT do is insert a copy for a value that cannot be pre-coloured: a pinned class
+\ that cannot keep its register goes to the frame (MB-PIN), and the selector's
+\ copies are what let such a value move to another register instead.
 : MB-FIX-REG-CK ( n -- )
    {: r:n :}
    r 0 < r F-GPR RF-SIZE >= or if E-A64RA-FIXED throw then
@@ -1431,7 +1439,12 @@ variable N-PINS
    r cells CL-SLOT + @ NOSLOT <> if true exit then
    r cells CL-REMAT + @ 0<> ;
 
+: MB-FRAMED? ( n n -- bool )
+   {: r:n fl:n :}
+   r CL-EVICTED?  r UF-FIND r = and  r FILE-AT fl = and ;
+
 : MB-KIND-CLEAR ( -- )
+   0 N-EVICTED !
    OMAX BMAX + FILES-N * 0 ?do
       0 i FR-LOAD-BUF !
       0 i FR-STORE-BUF !
@@ -1440,6 +1453,7 @@ variable N-PINS
       NOSLOT i cells CL-SLOT + !
       0 i cells CL-REMAT + !
       NOPOS i cells CL-DEF + !
+      NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
       NOBODY i cells CL-FIX + !
@@ -1488,18 +1502,30 @@ variable N-PINS
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  OP-AT ;
 
+\ A class whose one value a turn of the fixpoint reloaded in front of its read:
+\ the operation defining it names a frame slot, which among the operations that
+\ define a register only a reload does. Putting it away would store it and
+\ reload it in front of that same read - the same class, put away again each
+\ turn - so it is never the class put away: another goes, or the fit refuses.
+: MB-RELOAD? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r cells CL-SIZE + @ 1 <> if false exit then
+   r cells CL-LO + @ {: p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP  0 BND-SLOT @ ATTR-INT-OF  NOATTR <> ;
+
 : MB-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
-   nip {: r:n :}
+   {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r KEEP? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   true ;
+   f r MB-RELOAD? 0= ;
 
 : MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
-   nip {: r:n :}
+   {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   true ;
+   f r MB-RELOAD? 0= ;
 
 \ Each class has a sorted slice of operand positions. A missing use answers
 \ this function's end, as did the forward walk through its operations.
@@ -1552,7 +1578,9 @@ variable N-PINS
    r from 0 max MB-USE-FROM ;
 
 \ Address carriers and data-stack load runs stay contiguous. Store their
-\ results after the run; other definitions can be stored immediately.
+\ results after the run; other definitions can be stored immediately. A load
+\ run is kept whole only while the registers can hold it (MB-DIVIDE); an
+\ address carrier always is.
 : MB-ANCHOR ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
@@ -1593,8 +1621,12 @@ variable N-PINS
 : FR-IX ( n n -- n )                 {: p:n fl:n :} p FILES-N * fl + ;
 : FR-LOAD@ ( n n -- n )              FR-IX FR-LOAD-BUF @ ;
 : FR-STORE@ ( n n -- n )             FR-IX FR-STORE-BUF @ ;
-: FR-LOAD+ ( n n -- )                over REFIT-LOWER  FR-IX FR-LOAD-BUF 1 swap +! ;
-: FR-STORE+ ( n n -- )               over REFIT-LOWER  FR-IX FR-STORE-BUF 1 swap +! ;
+: FR-LOAD-ADJ ( n n n -- )
+   {: p:n fl:n step:n :}
+   p REFIT-LOWER  step p fl FR-IX FR-LOAD-BUF +! ;
+: FR-STORE-ADJ ( n n n -- )
+   {: p:n fl:n step:n :}
+   p REFIT-LOWER  step p fl FR-IX FR-STORE-BUF +! ;
 
 \ Added once, when the class goes to the frame. Its store needs a register where
 \ an operation first writes it and on to the anchor the store waits for; a
@@ -1602,18 +1634,18 @@ variable N-PINS
 \ that reads the class in a register (MB-REG-READS?), just before which the
 \ reload stands. Each position counts the class once: the class's use slice is
 \ sorted, so an operation that reads it twice is two adjacent entries.
-: MB-FRAME-COST+ ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id r:n :}
+: MB-FRAME-COST ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id r:n step:n :}
    r FILE-AT {: fl:n :}
    r cells CL-DEF + @ {: d:n :}
-   f d MB-ANCH-POS  d 1+ max {: across:n :}
-   across d ?do i fl FR-STORE+ loop
-   across d 1+ ?do i fl FR-LOAD+ loop
+   r cells CL-ANCH + @  d 1+ max {: across:n :}
+   across d ?do i fl step FR-STORE-ADJ loop
+   across d 1+ ?do i fl step FR-LOAD-ADJ loop
    NOPOS
    r 1+ cells CL-USE-START + @  r cells CL-USE-START + @ ?do
       i cells USE-POS + @ {: u:n :}
       u over <>  u d >  u across <  and 0=  and if
-         f r u MB-REG-READS? if u fl FR-LOAD+ then
+         f r u MB-REG-READS? if u fl step FR-LOAD-ADJ then
       then
       drop u
    loop
@@ -1770,13 +1802,29 @@ variable N-PINS
    r CLS-AT C-TOKEN = if false exit then
    r CL-EVICTED? 0= ;
 
-\ A class the contract pins arrives in exactly that register, and three things
-\ make that impossible rather than merely awkward.
-: MB-PIN ( n n -- )
-   {: r:n want:n :}
+\ A pinned class takes exactly its register where it opens, and two things make
+\ that impossible: a register outside the set the routine may write, and one
+\ another class still holds there, which MB-FORBID-PINS exists to prevent.
+\
+\ A REGISTER THE CLASS CANNOT KEEP OVER ITS WHOLE HULL IS NO REFUSAL. A call or
+\ a form under the class destroys it, or another pin of it opens inside the hull
+\ (MB-FORBID): the class goes to the frame like one the pool cannot hold
+\ (MB-SHORT-ROOT!), and the lowering turn gives each pinned operation a value of
+\ its own - stored in front of the operation after the one that writes it, or
+\ reloaded in front of the one that reads it - which nothing crosses. On x86-64
+\ `/ {: k:n :} 1 RD-I ! k` holds the quotient idiv leaves in rax over the call
+\ `!` makes, and `{: a:n b:n :} NOP a b lshift` coalesces the count's copy
+\ fixed to rcx into b, which lives over the call to NOP. A contract's argument
+\ (KEEP?) is still refused: it arrives in its register before any operation
+\ runs, so there is no operation to store it after.
+: MB-PIN ( n n n -- )
+   {: r:n want:n pos:n :}
    r FILE-AT {: fl:n :}
    fl want POOL-HAS? 0= if E-A64RA-FIXED throw then
-   r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
+   r MB-FORBID want FORBIDDEN? if
+      r KEEP? if E-A64RA-FIXED throw then
+      pos fl r MB-SHORT-ROOT! exit
+   then
    fl want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
    r want TAKE ;
 
@@ -1795,7 +1843,7 @@ variable N-PINS
    {: f:IR-ID:ir-fun-id r:n pos:n :}
    r pos MB-DUE? 0= if exit then
    r cells CL-FIX + @ {: fix:n :}
-   fix NOBODY <> if r fix MB-PIN exit then
+   fix NOBODY <> if r fix pos MB-PIN exit then
    r MB-FORBID {: forbid:n :}
    f r forbid MB-WANTED {: w:n :}
    w 0 >= if r w TAKE exit then
@@ -1983,9 +2031,60 @@ variable N-PINS
 : MB-EVICT1 ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id r:n :}
    f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
+   \ A carried class can open before its defining operation in a backward CFG.
    r cells CL-LO + @ REFIT-LOWER
-   f r MB-FRAME-COST+ ;
+   r cells CL-DEF + @ {: d:n :}
+   f d MB-ANCH-POS  r cells CL-ANCH + !
+   r N-EVICTED @ EVICTED-ROOTS !
+   N-EVICTED @ 1+ N-EVICTED !
+   f r 1 MB-FRAME-COST ;
 
+\ ---- dividing a load run the registers cannot hold ---------------------------
+\ A class a data-stack load defines is stored after the whole run (MB-ANCHOR),
+\ so it costs a register from its load to the run's end: MB-FRAME-COST counts it at
+\ every position in between. A run longer than the registers can hold - an
+\ x86-64 entry reading ten arguments with a pool of nine - could never be served
+\ that way, however many classes went to the frame. Storing the class right
+\ after its own load divides the run there and gives the register back at once.
+: MB-ACROSS? ( n n -- bool )
+   {: r:n p:n :}
+   p r cells CL-DEF + @ >  p r cells CL-ANCH + @ < and ;
+
+: MB-RUN-HELD? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   r p MB-ACROSS? 0= if false exit then
+   f  r cells CL-DEF + @  POS-OP DLOAD? ;
+
+: MB-DIVIDE ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id r:n :}
+   f r -1 MB-FRAME-COST
+   r cells CL-DEF + @ 1+  r cells CL-ANCH + !
+   f r 1 MB-FRAME-COST ;
+
+\ The class of this file that waits in a register for its run's end past this
+\ position, loaded earliest, so one division frees the longest stretch.
+: MB-RUN-HOLDER ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
+   NOBODY
+   N-EVICTED @ 0 ?do
+      i EVICTED-ROOTS @ {: r:n :}
+      r fl MB-FRAMED? if
+         f r p MB-RUN-HELD? if
+            dup NOBODY = if
+               drop r
+            else
+               r cells CL-DEF + @  over cells CL-DEF + @  < if drop r then
+            then
+         then
+      then
+   loop ;
+
+\ The incoming class goes first, because a class a call or a form forbids every
+\ register is served by nothing else - unless it is a reload, which would come
+\ back the same (MB-RELOAD?). Any other shortage is answered first by a
+\ division, which adds no store or reload, where putting a held class away adds
+\ both: a victim from a load run is divided in the next turn, since the end of
+\ its run would not give its register back here.
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
    SHORT-ROOT @ {: incoming:n :}
@@ -1994,6 +2093,8 @@ variable N-PINS
          f incoming MB-EVICT1 exit
       then
    then
+   f p fl MB-RUN-HOLDER {: h:n :}
+   h NOBODY <> if f h MB-DIVIDE exit then
    f  f p fl MB-VICTIM  MB-EVICT1 ;
 
 
@@ -2086,11 +2187,23 @@ variable N-PINS
       then
    loop ;
 
+\ Whether the load at this position defines a class the fit divided out of its
+\ run (MB-DIVIDE).
+: MB-DIVIDED? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id pos:n :}
+   false
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT UF-FIND {: r:n :}
+      r cells CL-DEF + @ pos =  r cells CL-ANCH + @ pos 1+ =  and
+      if drop true leave then
+   loop ;
+
 \ Bucket producers once by the same anchors as MB-ANCHOR. Walking backwards
 \ finds each data-load run's end once and prepends producers in their original
-\ order; anchors themselves need not be monotonic.
-: MB-PLAN-ANCHOR1 ( n IR-ID:ir-block-id n -- n )
-   {: load-end:n bk:IR-ID:ir-block-id d:n :}
+\ order; anchors themselves need not be monotonic. A load the fit divided its
+\ run at is stored right after itself, as the fit counted it.
+: MB-PLAN-ANCHOR1 ( n IR-ID:ir-block-id n n -- n )
+   {: load-end:n bk:IR-ID:ir-block-id b:n d:n :}
    bk OP-COUNT {: n:n :}
    bk d OP-AT {: id:IR-ID:ir-op-id :}
    id DLOAD? {: dload:bool :}
@@ -2098,7 +2211,11 @@ variable N-PINS
    half 0 >= if
       d BND-LANES @ + half - n min
    else
-      dload if load-end else d 1+ then
+      dload if
+         id  b d OP-POS  MB-DIVIDED? if d 1+ else load-end then
+      else
+         d 1+
+      then
    then {: at:n :}
    \ Only later in-block anchors can receive stores; the tail is checked below.
    at d > at n < and if
@@ -2107,18 +2224,18 @@ variable N-PINS
    then
    dload if load-end else d then ;
 
-: MB-PLAN-ANCHORS ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: MB-PLAN-ANCHORS ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id b:n :}
    bk OP-COUNT {: n:n :}
    n 0 ?do NOPOS i cells ANCH-HEAD + ! loop
    n
-   n 0 ?do bk n i - 1- MB-PLAN-ANCHOR1 loop
+   n 0 ?do bk b n i - 1- MB-PLAN-ANCHOR1 loop
    drop ;
 
 : MB-PLAN-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk MB-PLAN-ANCHORS
+   bk b MB-PLAN-ANCHORS
    bk OP-COUNT 0 ?do
       i cells ANCH-HEAD + @
       begin dup NOPOS <> while
@@ -2448,9 +2565,9 @@ public
 \ the tables holding a machine no allocation can reach: the mode stays unbound
 \ and WALK refuses before it reads them.
 \
-\ STAND names the data-stack pointer checked by regalloc-verify.f; slot names
-\ the dialect's frame slot. This pass makes no decision from either field.
-\ A value is unmade whole, so both are bound and left.
+\ STAND names the data-stack pointer checked by regalloc-verify.f; this pass
+\ makes no decision from it, and a value is unmade whole, so it is bound and
+\ left. SLOT names the dialect's frame slot, which marks a reload (MB-RELOAD?).
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2485,6 +2602,7 @@ public
    fpr 0 BND-FPR !
    mem 0 BND-MEM !
    frame 0 BND-FRAME !
+   slot 0 BND-SLOT !
    dslot  DK-SLOT BND-DKEY !
    dbytes DK-BYTES BND-DKEY !
    dback  DK-BACK BND-DKEY !

@@ -1574,7 +1574,7 @@ create VD-VCUR VDSLOTS cells allot
 create VD-DCUR VDSLOTS cells allot
 create VD-VMEET VDSLOTS cells allot
 create VD-DMEET VDSLOTS cells allot
-variable VD-EL                       \ argument loads the entry sequence really built
+variable VD-EL                       \ the entry's span through its last argument load
 variable VD-ES                       \ result stores the exit sequence really built
 variable VD-P                        \ the position one of the scans below stands at
 variable VD-J                        \ the declared place one of them stands at
@@ -1974,6 +1974,15 @@ DKEEP-HOOK-DEFAULT
    id DCELL? 0= if false exit then
    id STORES? 0= ;
 
+\ A load run the registers cannot hold is divided by storing a value to the frame
+\ right after its own load (regalloc.f MB-DIVIDE). Such a store takes no cell, so
+\ it may stand between two loads of one run.
+: VDSPILL? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id SLOT-OF NOSLOT = if false exit then
+   id STORES? ;
+
 : VDSTORE? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -2011,11 +2020,15 @@ DKEEP-HOOK-DEFAULT
    0 VD-J !
    0 VD-EL !
    begin
-      VD-P @ eb OP-COUNT < if eb VD-P @ VDLOAD? else false then
+      VD-P @ eb OP-COUNT < if
+         eb VD-P @ VDLOAD?  eb VD-P @ VDSPILL?  or
+      else false then
    while
-      args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
+      eb VD-P @ VDLOAD? if
+         args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
+         VD-P @ PRO-N - VD-EL !
+      then
       VD-P @ 1+ VD-P !
-      VD-EL @ 1+ VD-EL !
    repeat ;
 
 \ The exit's stores may have register or frame operations between them. The
@@ -2119,23 +2132,35 @@ DKEEP-HOOK-DEFAULT
       drop i 1+
    loop ;
 
+\ The loads that take a call's results back may have frame or register operations
+\ between them, as the stores in front of it may: a divided run stores a value
+\ right after its own load (regalloc.f MB-DIVIDE), and a later turn may reload a
+\ value and store it again inside the run. None of them touches the callee's
+\ cells. The span ends at the last load.
 : DLOAD-RUN ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    -1 VD-PREV !
    0
    n at - 0 ?do
-      bk at i + VDLOAD? 0= if leave then
-      bk at i + VDSLOT-AT VD-S !
-      VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
-      VD-S @ VD-PREV !
-      drop i 1+
+      at i + {: pos:n :}
+      bk pos VDLOAD? if
+         bk pos VDSLOT-AT VD-S !
+         VD-S @ VD-PREV @ <= if E-A64RAV-CALL throw then
+         VD-S @ VD-PREV !
+         drop i 1+
+      else
+         bk pos OP-AT {: id:IR-ID:ir-op-id :}
+         id DSTACK-TOUCH?  id SUCCS-OF 0<>  or if leave then
+      then
    loop ;
 
 : VDRUN-BOUND ( IR-ID:ir-block-id n n n -- )
-   {: bk:IR-ID:ir-block-id at:n k:n limit:n :}
-   k 0 ?do
-      bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
+   {: bk:IR-ID:ir-block-id at:n span:n limit:n :}
+   span 0 ?do
+      bk at i + VDLOAD? if
+         bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
+      then
    loop ;
 
 : VDSTORE-BOUND ( IR-ID:ir-block-id n n n -- )

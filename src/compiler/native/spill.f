@@ -140,7 +140,8 @@ DYNAMIC-BUFFER F-ORDER-SET-BUF n
 DYNAMIC-BUFFER F-NEED-BUF n
 : F-NEED ( -- ptr n ) 0 F-NEED-BUF ;
 
-\ One flag per VALUE of the module: a frame access of the old module reads it.
+\ One flag per VALUE of the module: an order value a frame access of the old
+\ module reads, directly or through the edges that forward it (F-READS!).
 \ Module-wide, because value identities are.
 DYNAMIC-BUFFER F-READ-BUF n
 : F-READ ( -- ptr n ) 0 F-READ-BUF ;
@@ -601,53 +602,61 @@ create NAMEBUF NAME-CAP allot
 
 -1 constant NO-FRAME-ARG
 
-\ Every operand of every frame access of the module, read once: the values a
-\ frame access consumes directly. Asking a value instead walked every operation
-\ of the module again, once per block argument of every block.
+: F-READ? ( IR-ID:ir-value-id -- bool )
+   VSLOT cells F-READ + @ 0<> ;
+
+: F-READ! ( IR-ID:ir-value-id -- )
+   VSLOT cells F-READ + 1 swap ! ;
+
+\ One walk of the module's one-successor terminators: an order value forwarded
+\ into an argument a frame access reads is read by it as well. True when it
+\ found one more. Descending, because the selector emits a block before the
+\ blocks it branches to and the reading runs back along the edges, so a walk
+\ carries it the length of a straight-line region (F-NEED-PASS).
+: F-FORWARD ( -- bool )
+   false
+   TOTAL-OPS 0 ?do
+      MKEY  TOTAL-OPS 1- i -  IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+      id SUCCS-OF 1 = if
+         id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+         id OPERANDS-OF  sb ARG-COUNT  min  0 ?do
+            id i OPERAND-AT {: v:IR-ID:ir-value-id :}
+            sb i ARG-AT F-READ?  v F-READ? 0=  and if
+               v F-READ!  drop true
+            then
+         loop
+      then
+   loop ;
+
+\ The order values of the module a frame access reads, found once: those it
+\ consumes directly, then every one a one-successor edge forwards into an
+\ argument already found. The forwarding edge need not leave the argument's own
+\ block: a value is read in every block it dominates, so a lane can enter a
+\ block that branches two ways and be forwarded by the br of a block that block
+\ dominates. Asking a value instead walked every operation of the module again,
+\ once per block argument of every block.
 : F-READS! ( -- )
    VMAX 0 ?do 0 i cells F-READ + ! loop
    TOTAL-OPS 0 ?do
       MKEY i IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
       id FRAME-TOUCH? if
          id OPERANDS-OF 0 ?do
-            1 id i OPERAND-AT VSLOT cells F-READ + !
+            id i OPERAND-AT {: v:IR-ID:ir-value-id :}
+            v MEM-VALUE? if v F-READ! then
          loop
       then
-   loop ;
+   loop
+   begin F-FORWARD 0= until ;
 
-\ An argument may dominate a frame access after a conditional edge without
-\ being forwarded as another block argument. Value identities are module-wide,
-\ so this asks the module-wide map of direct frame consumers.
-: DIRECT-FRAME-ARG? ( IR-ID:ir-value-id -- bool )
-   {: a:IR-ID:ir-value-id :}
-   a MEM-VALUE? 0= if false exit then
-   a VSLOT cells F-READ + @ 0<> ;
-
-: FRAME-ARG-PATH? ( IR-ID:ir-block-id IR-ID:ir-value-id n -- bool )
-   {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id fuel:n :}
-   a DIRECT-FRAME-ARG? if true exit then
-   fuel 0= if false exit then
-   bk TERM-AT {: id:IR-ID:ir-op-id :}
-   id SUCCS-OF 1 <> if false exit then
-   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
-   false
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT a SAME-VALUE?  i sb ARG-COUNT < and if
-         sb sb i ARG-AT fuel 1- recurse or
-      then
-   loop ;
-
-: FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
-   BMAX FRAME-ARG-PATH? ;
-
-\ A prior lowering's frame lane is identified by a frame consumer or by the
-\ terminator that forwards it, never by its position among unrelated arguments.
+\ A prior lowering's frame lane is the argument a frame access reads, directly
+\ or through the edges that forward it (F-READS!), never found by its position
+\ among unrelated arguments.
 : FRAME-LANE ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    NO-FRAME-ARG
    bk ARG-COUNT 0 ?do
       bk i ARG-AT {: a:IR-ID:ir-value-id :}
-      bk a FRAME-ARG? if
+      a F-READ? if
          a IR-ID:VALUE-LOCAL {: x:n :}
          dup NO-FRAME-ARG <> over x <> and if E-A64SPILL-SHAPE throw then
          drop x

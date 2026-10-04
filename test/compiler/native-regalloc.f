@@ -2311,6 +2311,31 @@ using A64RA
 : SECOND-SPILLS ( -- )
    WBND [: SECOND-SPILLS-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ The layout scans block 1 before block 2, though control enters block 2 and
+\ passes its value back to block 1. An eviction must restart at the carried
+\ class's opening, or the stale holder from the prior fit makes it refuse.
+: BUILD-BACKWARD-SPILL ( -- )
+   s" BACKWARD-SPILL" 0 1 OPEN-FUN
+   2 M-BR0
+   M-BLOCK+
+   ARG+ {: x:IR-ID:ir-value-id :}
+   10 M-CONST {: a:IR-ID:ir-value-id :}
+   20 M-CONST {: b:IR-ID:ir-value-id :}
+   a b M-ADD x M-ADD M-RET
+   M-BLOCK+
+   30 M-CONST 1 M-BR1
+   CLOSE-FUN ;
+
+: BACKWARD-SPILL-BODY ( IR-CTX:ctx -- )
+   A64-MOD SPILL-BIND
+   BUILD-BACKWARD-SPILL
+   2 0 LOWERED drop
+   LOWER-TURNS @ 0 > TTRUE ;
+
+: BACKWARD-SPILL-CASE ( -- )
+   s" a backward block argument survives a spill and its lowered allocation is accepted" T-LABEL
+   WBND [: BACKWARD-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : TWO-FUNS-CASE ( -- )
    s" a module of two functions allocates both of them on one number line" T-LABEL
    WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT
@@ -3945,6 +3970,48 @@ using A64RA
    WBND [: ACROSS-CLOBBERED-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= ;
 
+\ The same call over an argument the contract declares in x0. A value fixed to a
+\ register a call destroys goes to the frame, stored behind the operation that
+\ makes it (regalloc.f MB-PIN); the argument arrives before any operation runs,
+\ so there is none to store it behind, and the allocation is refused.
+: BUILD-ARG-ACROSS ( -- )
+   s" ARGACROSS" 1 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   A64M:SP-ALIGN M-RESERVE {: f0:IR-ID:ir-value-id :}
+   f0 A64IR-OPCODE:LINKSAVE M-LINK {: f1:IR-ID:ir-value-id :}
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 0 0 M-CALL {: t1:IR-ID:ir-value-id :}
+   t1 0 M-DPUBLISH
+   f1 A64IR-OPCODE:LINKLOAD M-LINK {: f2:IR-ID:ir-value-id :}
+   f2 A64M:SP-ALIGN M-RELEASE
+   a a M-ADD M-RET
+   CLOSE-FUN ;
+
+\ The argument arrives in x0 and the sum leaves in x1, which the pool gives up,
+\ so the only thing wrong with x0 is the call.
+: ARG-ACROSS-DECL ( -- NEFF:routine )
+   NEFF-CONV:REGISTER 0 SQ 1 SQ
+   SMALL-ALLOC-N POOL-N  1 SQ NEFF:SEQ-SET  NEFF:GPR-WITHOUT
+   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
+   NEFF-NZCV:UNTOUCHED NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
+   NEFF:T-CALL A64M:SP-ALIGN 0 A64M:MACHINE NEFF:ROUTINE ;
+
+: ARG-ACROSS-BODY ( IR-CTX:ctx -- )
+   A64-MOD-SMALL
+   BUILD-ARG-ACROSS
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m ARG-ACROSS-DECL A64RA:ALLOCATE ;
+
+: ARG-ACROSS ( -- )         WBND [: ARG-ACROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: ARG-ACROSS-CASE ( -- )
+   s" a declared argument live across a call that destroys its register is refused: it arrives before any operation, so nothing can store it to the frame" T-LABEL
+   [: ARG-ACROSS ;] E-A64RA-FIXED TTHROWSQ ;
+
+\ Its own group: a refusing body abandons a context, and the live-arena registry
+\ gives those slots back only when the enclosing context leaves.
+: GROUP-ARG-ACROSS ( IR-CTX:ctx -- )  drop ARG-ACROSS-CASE ;
+
 \ A refusing case above leaves its binding standing - the pass refuses a second
 \ binding rather than taking one - so these cases clear it first, the way every
 \ other group that follows one does.
@@ -3985,6 +4052,7 @@ public
    WIDE-CASE
    PLAIN-CASE
    TWO-FUNS-CASE
+   BACKWARD-SPILL-CASE
    TWO-FILES-CASE
    FSPILL-PLAN-CASE
    FSPILL-LOWER-CASE
@@ -4041,6 +4109,7 @@ public
    WBND [: GROUP-MB-CARRIED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB-ACCEPT ;] IR-CTX:WITH-CONTEXT
    SMALL-FILE-CASES
+   WBND [: GROUP-ARG-ACROSS ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package
