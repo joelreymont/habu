@@ -374,29 +374,11 @@ CELL 4 * constant DIAG-BYTES
 : DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
 : DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
+: DPBAD-AT$ ( -- ptr u8 n ) s"  at " ;
+: DPBAD-COLON$ ( -- ptr u8 n ) s" :" ;
 
 \ The status a refused DP exits with: habu2.f LDPBAD's.
 76 constant DPBAD-RC
-
-\ LDPBAD ( rdi = the refused DP ): the twin of habu2.f LDPBAD. It writes
-\ `hb: data space out of range: DP <dp> of <ceiling> bytes` on fd 2, both
-\ numbers offsets from DATA, and exits DPBAD-RC. On ARM64 it continues into
-\ LCOMPILEDIE, whose throw inside `evaluate` this engine has no interpreter
-\ to catch yet (CONTROL,), so the refusal is always the top level's exit.
-\ r8 carries the DP across the writes: a syscall preserves it.
-: DPBAD-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: head:label of:label unit:label :}
-   DPBAD-LBL X64CODE:LBL,
-   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
-   head DPBAD-HEAD$ nip STDERR-WRITE,
-   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
-   of DPBAD-OF$ nip STDERR-WRITE,
-   RAX DP-CEILING IMM32,  DIAG-U,
-   unit DPBAD-UNIT$ nip 1+ STDERR-WRITE,
-   DPBAD-RC EXIT-GROUP,
-   head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
-   of X64CODE:LBL,  DPBAD-OF$ TEXT,
-   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
 
 \ (GENIO-OUT) ( rdi = device index, rsi = span, rdx = length ): the output
 \ funnel's device arm at X64RT's LGENIOOUT, the twin of habu2.f
@@ -725,14 +707,6 @@ public
 : HIDX-BUILD, ( -- ) BUILD-LBL CALL, ;
 : HIDX-ADD, ( -- ) ADD-LBL CALL, ;
 : HIDX-REBUILD, ( -- ) REBUILD-LBL CALL, ;
-
-\ Emit the helpers, making their labels in this stream first: every section
-\ that calls one follows.
-: HELPERS, ( -- )
-   X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
-   X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
-   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS ;
 
 \ Each section's rows are tabled in docs/x86-64.md under the heading of its
 \ name.
@@ -1516,6 +1490,61 @@ private
    UNCAUGHT,
    corrupt X64CODE:LBL,
    CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
+
+\ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then the source
+\ location from LCOMPILEDIE and a newline. An active catch receives code 76
+\ through the kernel's normal RX-restoring unwind; at top level it exits 76.
+\ The location is emitted here so an invalid DP never calls a Habu word.
+: DPBAD-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: head:label of:label unit:label at:label colon:label nl:label scan:label next:label line:label :}
+   X64CODE:LBL X64CODE:LBL {: no-path:label top:label :}
+   DPBAD-LBL X64CODE:LBL,
+   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
+   head DPBAD-HEAD$ nip STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
+   of DPBAD-OF$ nip STDERR-WRITE,
+   RAX DP-CEILING IMM32,  DIAG-U,
+   unit DPBAD-UNIT$ nip STDERR-WRITE,
+   RAX DATA-REG SRCLOC:PATHLEN-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E no-path JCC,
+   at DPBAD-AT$ nip STDERR-WRITE,
+   RSI DATA-REG SRCLOC:PATH-CELL MOV-LOAD,
+   RDX DATA-REG SRCLOC:PATHLEN-CELL MOV-LOAD,
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   R9 DATA-REG SRCLOC:INB-CELL MOV-LOAD,
+   R10 DATA-REG INP-CELL MOV-LOAD,
+   R8 1 IMM32,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E line JCC,
+   scan X64CODE:LBL,
+   R9 R10 ASM-SINK ENC-CMP-RR  C-AE line JCC,
+   RAX R9 MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RAX STR-LF >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   R8 ASM-SINK ENC-INC
+   next X64CODE:LBL,  R9 ASM-SINK ENC-INC  scan JMP,
+   line X64CODE:LBL,
+   colon DPBAD-COLON$ nip STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
+   no-path X64CODE:LBL,
+   nl 1 STDERR-WRITE,
+   RDX DATA-REG HND-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E top JCC,
+   RAX DPBAD-RC IMM32,  THROW,
+   top X64CODE:LBL,  DPBAD-RC EXIT-GROUP,
+   head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
+   of X64CODE:LBL,  DPBAD-OF$ TEXT,
+   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT,
+   at X64CODE:LBL,  DPBAD-AT$ TEXT,
+   colon X64CODE:LBL,  DPBAD-COLON$ TEXT,
+   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
+
+\ Make helper labels before the sections that branch to them.
+: HELPERS, ( -- )
+   X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
+   X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
+   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
+   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS ;
 
 \ finally ( xt xt -- ): run the body under CAUGHT, and then the cleanup outside
 \ it, so the cleanup's throw supersedes the body's; then rethrow the body's
@@ -5289,8 +5318,8 @@ public
 \ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, so a row this kernel
 \ does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )
-   HELPERS,
    X64CODE:LBL LCLOSE-CELL !
+   HELPERS,
    X64CODE:LBL SCOPE-SEED-CELL !
    X64CODE:LBL SCOPE-SEED-END-CELL !
    X64CODE:LBL SCOPE-KIND-CELL !
