@@ -43,10 +43,9 @@ TRUSTED: TRANSFER-COUNTS ( -- n n )
       else drop then
    loop ;
 
-\ evaluate is the public define/undefine boundary; its dynamic effect is known
-\ only for the source strings supplied by these cases.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
+\ The cases define and undefine through evaluate-closed, the public boundary. A
+\ closed text leaves nothing, so one that computes a value stores it in RESULT.
+variable RESULT
 
 variable MARK0
 variable MARK1
@@ -113,9 +112,9 @@ variable KEY
 : ORDINARY-LIFETIME ( -- )
    END@ MARK0 !
    5000 0 do
-      s" : DH-ORDINARY ( n -- n ) 1+ ;" EV
-      s" 41 DH-ORDINARY" EV-N 42 =ASSERT
-      s" undefine DH-ORDINARY" EV
+      s" : DH-ORDINARY ( n -- n ) 1+ ;" evaluate-closed
+      s" 41 DH-ORDINARY RESULT !" evaluate-closed RESULT @ 42 =ASSERT
+      s" undefine DH-ORDINARY" evaluate-closed
    loop
    END@ MARK0 @ =ASSERT
    s" DH-ORDINARY" MIN-IN -1 =ASSERT
@@ -123,21 +122,23 @@ variable KEY
 
 : DEFER-LIFETIME ( -- )
    END@ MARK0 !
-   s" defer DH-HOOK ( n -- n )" EV
+   s" defer DH-HOOK ( n -- n )" evaluate-closed
    END@ MARK0 @ ROW-BYTES + =ASSERT
    s" DH-HOOK" ACTIVE KEY !
    KEY @ STATE@ ASSERT
    s" DH-HOOK" MIN-IN 1 =ASSERT
-   s" : DH-INSTALL ( -- ) [: 1+ ;] is DH-HOOK ; DH-INSTALL" EV
-   s" : DH-CALL ( n -- n ) DH-HOOK ; 41 DH-CALL" EV-N 42 =ASSERT
+   s" : DH-INSTALL ( -- ) [: 1+ ;] is DH-HOOK ; DH-INSTALL" evaluate-closed
+   s" : DH-CALL ( n -- n ) DH-HOOK ; 41 DH-CALL RESULT !" evaluate-closed
+   RESULT @ 42 =ASSERT
    s" DH-BAD ( -- ) [: 0 0= ;] is DH-HOOK" CHECK-CANDIDATE! 0 =ASSERT
-   s" undefine DH-CALL undefine DH-INSTALL undefine DH-HOOK" EV
+   s" undefine DH-CALL undefine DH-INSTALL undefine DH-HOOK" evaluate-closed
    END@ MARK0 @ ROW-BYTES 2 * + =ASSERT
    KEY @ STATE@ 0= ASSERT
-   s" : DH-HOOK ( n n -- n ) + ; 20 22 DH-HOOK" EV-N 42 =ASSERT
+   s" : DH-HOOK ( n n -- n ) + ; 20 22 DH-HOOK RESULT !" evaluate-closed
+   RESULT @ 42 =ASSERT
    s" DH-HOOK" MIN-IN 2 =ASSERT
    s" DH-BAD-PLAIN ( -- ) [: + ;] is DH-HOOK" CHECK-CANDIDATE! 0 =ASSERT
-   s" undefine DH-HOOK" EV
+   s" undefine DH-HOOK" evaluate-closed
    END@ MARK0 @ ROW-BYTES 2 * + =ASSERT
    TERM? ASSERT ;
 

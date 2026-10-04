@@ -43,29 +43,26 @@ public
 
 \ Evaluation composes the case's source; its emitted definitions still use the
 \ live checker and optimizing compiler.
-TRUSTED: DEFINE-SOURCE ( ptr u8 n -- ) evaluate ;
-
-
 : PRELUDE ( -- )
    s" private" MODE? if
-      s" package DYNAMIC-STORAGE public export REG-BYTES ;package" DEFINE-SOURCE then
+      s" package DYNAMIC-STORAGE public export REG-BYTES ;package" evaluate-closed then
    s" prelude" MODE? if
-      s" package LITERAL-PRELUDE public : OUTSIDE-ONLY ( n -- n ) 7 + ; ;package" DEFINE-SOURCE then ;
+      s" package LITERAL-PRELUDE public : OUTSIDE-ONLY ( n -- n ) 7 + ; ;package" evaluate-closed then ;
 
 
 : DEFINE-WINDOW ( -- )
    s" global" MODE? s" nonentry" MODE? or if
-      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] ASCII-UPPER ; ;package" DEFINE-SOURCE exit then
+      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] ASCII-UPPER ; ;package" evaluate-closed exit then
    s" public" MODE? if
-      s" package LITERAL-WINDOW public : HOLDER ( -- [ -- n ] ) ['] PREFIX-MARK:REQ ; ;package" DEFINE-SOURCE exit then
+      s" package LITERAL-WINDOW public : HOLDER ( -- [ -- n ] ) ['] PREFIX-MARK:REQ ; ;package" evaluate-closed exit then
    s" private" MODE? if
-      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] DYNAMIC-STORAGE:REG-BYTES ; ;package" DEFINE-SOURCE exit then
+      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] DYNAMIC-STORAGE:REG-BYTES ; ;package" evaluate-closed exit then
    s" public-collision" MODE? if
-      s" : REQ ( -- n ) 9001 ; package LITERAL-WINDOW public : HOLDER ( -- [ -- n ] ) ['] PREFIX-MARK:REQ ; ;package" DEFINE-SOURCE exit then
+      s" : REQ ( -- n ) 9001 ; package LITERAL-WINDOW public : HOLDER ( -- [ -- n ] ) ['] PREFIX-MARK:REQ ; ;package" evaluate-closed exit then
    s" shadow" MODE? if
-      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] ASCII-UPPER ; ;package undefine ASCII-UPPER : ASCII-UPPER ( n -- n ) drop 9001 ;" DEFINE-SOURCE exit then
+      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] ASCII-UPPER ; ;package undefine ASCII-UPPER : ASCII-UPPER ( n -- n ) drop 9001 ;" evaluate-closed exit then
    s" prelude" MODE? if
-      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] LITERAL-PRELUDE:OUTSIDE-ONLY ; ;package" DEFINE-SOURCE exit then
+      s" package LITERAL-WINDOW public : HOLDER ( -- [ n -- n ] ) ['] LITERAL-PRELUDE:OUTSIDE-ONLY ; ;package" evaluate-closed exit then
    s" prefix-literal: unknown mode" 64 die ;
 ;package
 
