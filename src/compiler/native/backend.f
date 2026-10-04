@@ -90,11 +90,28 @@ TYPED-VARIABLE PENDING pass
       CTARGET:COUNT i - 1- P-ROWS @ CTARGET:COUNT i - P-ROWS !
    loop ;
 
+\ Whole-record stores leave callback cells undeclared; growth also moves old rows.
+: REGISTER-XTS ( -- )
+   CTARGET:COUNT 1+ 0 ?do
+      i P-ROWS NBACK-PASS:DECLARE dup @ swap xt!
+      i P-ROWS NBACK-PASS:SELECT dup @ swap xt!
+      i P-ROWS NBACK-PASS:PRUNE dup @ swap xt!
+      i P-ROWS NBACK-PASS:FIXPOINT dup @ swap xt!
+      i P-ROWS NBACK-PASS:EMIT dup @ swap xt!
+      i P-ROWS NBACK-PASS:UNPLACED dup @ swap xt!
+      i P-ROWS NBACK-PASS:RELEASE dup @ swap xt!
+      i P-ROWS NBACK-PASS:RETIRE dup @ swap xt!
+      i P-ROWS NBACK-PASS:PROTOTYPE dup @ swap xt!
+      i P-ROWS NBACK-PASS:FORGET dup @ swap xt!
+      i P-ROWS NBACK-PASS:PREPARE dup @ swap xt!
+   loop ;
+
 : INSTALL-AT ( n -- )
    {: at:n :}
    CTARGET:COUNT 1+ P-ROWS-GROW
    at SHIFT
-   PENDING @ at P-ROWS ! ;
+   PENDING @ at P-ROWS !
+   REGISTER-XTS ;
 
 \ The machine this compilation is for, resolved to its backend's row. The
 \ contract is revalidated on the way, so a stage is dispatched only for a

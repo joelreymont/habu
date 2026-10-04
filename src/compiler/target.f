@@ -422,7 +422,7 @@ STRUCTURE backend-id 0 DERIVE eq
    FIELD code n
 ;STRUCTURE
 
-STRUCTURE backend 0
+STRUCTURE backend 0 DERIVE addr
    FIELD id backend-id
    FIELD arch arch
    FIELD lower [ CTARGET:contract -- bool ]
@@ -481,6 +481,13 @@ variable B-N
       B-N @ i - 1- B-ROWS @ B-N @ i - B-ROWS !
    loop ;
 
+\ Whole-record stores leave callback cells undeclared; growth also moves old rows.
+: REGISTER-XTS ( -- )
+   B-N @ 1+ 0 ?do
+      i B-ROWS CTARGET-BACKEND:LOWER dup @ swap xt!
+      i B-ROWS CTARGET-BACKEND:EMIT dup @ swap xt!
+   loop ;
+
 public
 
 : COUNT ( -- n ) B-N @ ;
@@ -514,6 +521,7 @@ public
    at install execute
    at SHIFT
    d at B-ROWS !
+   REGISTER-XTS
    B-N @ 1+ B-N ! ;
 
 \ Can the loaded backend for this contract's architecture lower for it? Emit for
