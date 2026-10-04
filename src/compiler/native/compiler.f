@@ -36,6 +36,7 @@ require lib/prelude.f
 require lib/errors.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
+require src/compiler/native/host.f
 require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
@@ -299,9 +300,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
+   TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
-   hook 0= if a u CHECK-HOOKLESS -1 exit then
+   hook 0= if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECK-HOOKLESS -1 exit then
+   0 CHECKER-OWNER:BIND-REGIME!
    a u hook AS-HOOK execute ;
 
 : CHECK-SOURCE ( -- n )
@@ -448,13 +452,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: ix:n :}
    CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
 
-\ The entry that key calls. It takes and answers a plain number so `catch` can
-\ run it: a symbol handle cannot cross `catch` (docs/forth.md, "A quotation
-\ sees no locals and must be stack-preserving under catch").
-: TOKEN-TARGET ( n -- n )
-   TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
-   CC BB sy HIR-WORD:FIX-SPELL NDICT:CALL-TARGET ;
-
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
 \ target and therefore keeps its separate elaborator rule.
@@ -462,22 +459,25 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
-   \ A local can have the same spelling as a public word in more than one
-   \ used package. This pass runs before NELAB has built its local table, so
-   \ an ambiguous token cannot be identified as a local here. Ambiguity proves
-   \ that the token is not a prior binding; preserve that result and leave the
-   \ normal elaborator to resolve the local first.
-   ix [: TOKEN-TARGET ;] catch {: target rc:n :}
-   rc E-USING-AMBIGUOUS = if exit then
-   rc 0<> if rc throw then
-   target PRIOR-ENTRY @ <> if exit then
+   \ Structural operands and locals have no source call decision here.
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size 0= if exit then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if exit then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @
+      PRIOR-ENTRY @ <> if exit then
    ix TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if exit then
+   r sy HIR-WORD:OVERLAY? if exit then
    \ Structural operands can have the same spelling as the definition's bare
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
    \ discard operands, while a genuine word use reaches the ordinary refusal.
    PRIOR-CALLABLE @ 0= if exit then
-   PRIOR-CAST @ if CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit then
+   PRIOR-CAST @ if
+      NHOST:CAST TAPE MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START
+         NHOST:SOURCE-REFUSE
+      CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit
+   then
    CC BB r sy
    PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
    HIR-WORD:DECLARE-BOUND-CALLABLE ;
@@ -599,6 +599,42 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    then
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop ;
 
+: HOST-DECL? ( -- bool )
+   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
+   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
+   CHECKER-OWNER:DIN-N M-IN @ <>
+   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
+   CHECKER-OWNER:DIN-CELLS M-IN @ <>
+   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
+   M-IN @ 0 ?do
+      i CHECKER-OWNER:DIN-SLOT 0<>
+      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
+   loop
+   M-OUT @ 0 ?do
+      i CHECKER-OWNER:DOUT-SLOT 0<>
+      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
+   loop
+   true ;
+
+: HOST-ROOT-CONTRACT ( -- )
+   HOST-DECL? 0= if exit then
+   NHOST:SOURCE-CONTRACT-START
+   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
+   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
+   NHOST:SOURCE-CONTRACT-DONE ;
+
+: HOST-ARITIES ( -- )
+   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
+   HOST-ROOT-CONTRACT
+   BB IR-BUILD:FUNS 1 ?do
+      M-DOES @ 0<> i M-DOES-FUN @ = and if
+         M-DOES-IN @ M-DOES-OUT @
+      else
+         i NELAB:QUOT-ARITY
+      then
+      NHOST:SOURCE-ARITY+
+   loop ;
+
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
 : WORK ( -- )
@@ -611,6 +647,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
+   HOST-ARITIES
    EMITTED dup M-EMISSION !
    PUBLISH-IT
    0 M-DOES-FRAME !
@@ -620,7 +657,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
-   NSHADOW:ABANDON ;
+   NSHADOW:ABANDON
+   NHOST:SOURCE-ABANDON ;
 
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -780,10 +818,12 @@ INSTALL-FORGET
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
    IDLE-CK
+   0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
+   TRUSTED? CERTIFYING? 0= or NHOST:SOURCE-BEGIN
    0 M-VERDICT !
    -1 M-UNJUDGED !
    0 M-DOES-FRAME !
@@ -846,6 +886,7 @@ public
    \ The registry releases buffers immediately before DATA copy, so each loaded
    \ backend gives up its pass reservations here and sizes them again on use.
    NBACK:PREPARE
+   NHOST:CAPTURE-PREPARE
    CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE

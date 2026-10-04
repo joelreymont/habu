@@ -26,6 +26,7 @@ require src/compiler/ir/source.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/host.f
 require src/compiler/native/string.f
 require src/compiler/native/fetch.f
 require src/compiler/native/frozen.f
@@ -55,6 +56,10 @@ private
 : TOK-OFF ( IR-ARENA:view n -- n )
    {: v:IR-ARENA:view ix:n :}
    v MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START ;
+
+: HOST-REFUSE ( n n -- )
+   {: reason:n ix:n :}
+   reason VW ix TOK-OFF NHOST:SOURCE-REFUSE ;
 
 : TOK-CELLS ( IR-ARENA:view n -- n )
    TOK-OFF NDICT:MEM-CELLS ;
@@ -2138,9 +2143,23 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
       r hi i DSCAN-STEP
    loop ;
 
-\ ---- the names the dialect does not model, before anything reads the model ----
-\ A name the dialect does not model is resolved through dict.f at the point it
-\ is used, in the order the engine resolves the body that wrote it.
+\ ---- source decisions before model lookup -----------------------------------
+\ Control syntax has no dictionary call. The forms that execute an existing
+\ word still require the same site decision as an ordinary call.
+: STRUCTURAL-MODEL? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:EXEC HIR-CTRL:EQ
+   k HIR-CTRL:CATCH HIR-CTRL:EQ or
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ or
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
+   k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
+
 : RESOLVE-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
@@ -2148,9 +2167,19 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if exit then
-   CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-   CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+   ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
+   bytes 0= if
+      r sy STRUCTURAL-MODEL? if exit then
+      CHECKER-OWNER-ABI:BINDING-RC throw
+   then
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells = if
+      bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+         CHECKER-OWNER-ABI:BOUND-DICT = if
+         bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @
+            DKIND:MASK and DKIND:CAST = if NHOST:CAST ix HOST-REFUSE then
+      then
+   then
+   CTX BLD p r sy ix HIR-WORD:RESOLVE-SITE drop ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
@@ -3711,6 +3740,96 @@ here CELL 1- and CELL swap - CELL 1- and allot
       eval         OF ix DO-EVAL ENDOF
    ;MATCH ;
 
+\ This decision is made while a source token still has its bound definer and
+\ semantic model. Stores, pointer expansion and indirect calls may disappear
+\ behind ordinary arithmetic or a guarded direct call after this point.
+: HOST-SCALAR-OP? ( HIR:opcode -- bool )
+   {: k:HIR:opcode :}
+   k HIR-OPCODE:ADD HIR-OPCODE:EQ
+   k HIR-OPCODE:SUB HIR-OPCODE:EQ or
+   k HIR-OPCODE:MUL HIR-OPCODE:EQ or
+   k HIR-OPCODE:LT HIR-OPCODE:EQ or
+   k HIR-OPCODE:LE HIR-OPCODE:EQ or
+   k HIR-OPCODE:GT HIR-OPCODE:EQ or
+   k HIR-OPCODE:GE HIR-OPCODE:EQ or
+   k HIR-OPCODE:EQUAL HIR-OPCODE:EQ or
+   k HIR-OPCODE:NE HIR-OPCODE:EQ or
+   k HIR-OPCODE:AND HIR-OPCODE:EQ or
+   k HIR-OPCODE:OR HIR-OPCODE:EQ or
+   k HIR-OPCODE:XOR HIR-OPCODE:EQ or
+   k HIR-OPCODE:LSHIFT HIR-OPCODE:EQ or
+   k HIR-OPCODE:RSHIFT HIR-OPCODE:EQ or
+   k HIR-OPCODE:INVERT HIR-OPCODE:EQ or ;
+
+: HOST-MEM-OP? ( HIR:opcode -- bool )
+   {: k:HIR:opcode :}
+   k HIR-OPCODE:LOAD HIR-OPCODE:EQ
+   k HIR-OPCODE:STORE HIR-OPCODE:EQ or
+   k HIR-OPCODE:BLOAD HIR-OPCODE:EQ or
+   k HIR-OPCODE:BSTORE HIR-OPCODE:EQ or ;
+
+: HOST-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
+   k HOST-SCALAR-OP? if exit then
+   k HOST-MEM-OP? if NHOST:MEMORY ix HOST-REFUSE exit then
+   NHOST:UNKNOWN ix HOST-REFUSE ;
+
+: HOST-CONST-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:CONST-OPCODE@ {: k:HIR:opcode :}
+   k HIR-OPCODE:ADD HIR-OPCODE:EQ
+   r sy HIR-WORD:CONST-VALUE@ HIR:CELL-BYTES = and if
+      NHOST:MEMORY ix HOST-REFUSE exit
+   then
+   k HOST-SCALAR-OP? 0= if NHOST:UNKNOWN ix HOST-REFUSE then ;
+
+: HOST-EXPAND ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:EXPAND@
+   MATCH HIR:expand
+      cell-index OF NHOST:MEMORY ix HOST-REFUSE ENDOF
+      modulo     OF NHOST:UNKNOWN ix HOST-REFUSE ENDOF
+      maximum    OF ENDOF
+   ;MATCH ;
+
+: HOST-CONTROL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:BIND-DEFER HIR-CTRL:EQ
+   k HIR-CTRL:EXEC HIR-CTRL:EQ or
+   k HIR-CTRL:CATCH HIR-CTRL:EQ or
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ or
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
+   k HIR-CTRL:EVAL HIR-CTRL:EQ or
+   k HIR-CTRL:TICK HIR-CTRL:EQ or
+   k HIR-CTRL:OPEN-QUOT HIR-CTRL:EQ or if
+      NHOST:INDIRECT ix HOST-REFUSE
+   then ;
+
+: HOST-SOURCE ( IR-ARENA:arena n HIR:meaning -- )
+   {: r:IR-ARENA:arena ix:n m:HIR:meaning :}
+   m HIR-MEANING:RENAME HIR-MEANING:EQ if
+      r ix WSYM HIR-WORD:HOST-RENAME@ {: kind:n :}
+      kind HIR-WORD:HOST-VIEW = if NHOST:MEMORY ix HOST-REFUSE then
+      kind HIR-WORD:HOST-CAST = if NHOST:CAST ix HOST-REFUSE then
+      exit
+   then
+   m HIR-MEANING:OP HIR-MEANING:EQ if r ix HOST-OP exit then
+   m HIR-MEANING:CONST-OP HIR-MEANING:EQ if r ix HOST-CONST-OP exit then
+   m HIR-MEANING:EXPANSION HIR-MEANING:EQ if r ix HOST-EXPAND exit then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ if r ix HOST-CONTROL exit then
+   m HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ if
+      NHOST:MEMORY ix HOST-REFUSE exit
+   then
+   m HIR-MEANING:FIXED HIR-MEANING:EQ if
+      NHOST:UNKNOWN ix HOST-REFUSE exit
+   then
+   m HIR-MEANING:REAL-LITERAL HIR-MEANING:EQ if
+      NHOST:UNKNOWN ix HOST-REFUSE exit
+   then ;
+
 \ ---- the walk ----------------------------------------------------------------
 variable IX                          \ the body token the walk stands on
 
@@ -3736,7 +3855,9 @@ variable IX                          \ the body token the walk stands on
    PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
-   r ix ADMIT-AT
+   r ix ADMIT-AT {: meaning:HIR:meaning :}
+   r ix meaning HOST-SOURCE
+   meaning
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
@@ -4242,6 +4363,15 @@ public
 
 : DOES-FUNCTION ( -- n )
    DOES-FUN @ ;
+
+: QUOT-ARITY ( n -- n n )
+   {: ordinal:n :}
+   QN @ 0 ?do
+      i QFUN@ ordinal = if
+         i QIN@ i QOUT@ unloop exit
+      then
+   loop
+   -1 -1 ;
 
 \ ---- what the last elaboration refused ---------------------------------------
 

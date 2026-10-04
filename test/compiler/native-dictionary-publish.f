@@ -1,5 +1,6 @@
 \ Publication must make each completed native record immediately searchable.
 require lib/test.f
+require src/habu/layout.f
 
 \ Tier 1 first: a native record is what the optimizing compiler publishes, so
 \ the index this file reads is only filled by it.
@@ -8,7 +9,39 @@ require lib/test.f
 package NDICT-PUBLISH-TEST
 
 TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
+CAST: REF-WORD ( n -- [ -- n ] )
+: REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
 : EV ( ptr u8 n -- ) INCLUDE-EVALUATE ;
+variable REF-SLOT
+variable REF-OCC
+TRUSTED: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ ;
+variable SAVED-COUNT
+
+: TRY-FULL-DOES ( -- n )
+   OCC-COUNTER @ SAVED-COUNT !
+   -2 OCC-COUNTER !
+   [: s" TRUSTED: NDP-FULL-MAKE ( n -- ) create , does> ( -- n ) @ ;" EV ;] catch
+   OCC-COUNTER @ -2 T=
+   SAVED-COUNT @ OCC-COUNTER ! ;
+
+: TRY-FULL-EXPORT ( -- n )
+   OCC-COUNTER @ SAVED-COUNT !
+   -2 OCC-COUNTER !
+   [: s" package NDP-FULL-EXPORT public EXPORT MK ;package" EV ;] catch
+   OCC-COUNTER @ -2 T=
+   SAVED-COUNT @ OCC-COUNTER ! ;
+
+: PAIR-EXHAUSTION ( -- )
+   s" package NDP-FULL-EXPORT : MK ( n -- ) create , does> ( -- n ) @ ; ;package" EV
+   ndict@ {: count:n :}
+   cp@ {: code:n :}
+   TRY-FULL-DOES DEF-OCC:E-EXHAUSTED T=
+   ndict@ count T=
+   cp@ code T=
+   s" NDP-FULL-MAKE" NDICT:SPELL-START 0 T=
+   TRY-FULL-EXPORT DEF-OCC:E-EXHAUSTED T=
+   ndict@ count T=
+   s" NDP-FULL-EXPORT:MK" NDICT:SPELL-START 0 T= ;
 
 : ORDINARY ( -- )
    ndict@ {: first:n :}
@@ -49,12 +82,32 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 : RESTORE ( -- )
    ndict@ {: first:n :}
-   s" : NDP-RESTORED ( -- n ) 19 ;" EV
+   s" TRUSTED: NDP-RESTORED-MAKE ( n -- ) create , does> ( -- n ) @ ; 19 NDP-RESTORED-MAKE NDP-RESTORED" EV
+   s" NDP-RESTORED-MAKE" 0 RECORD DEF-OCC:SELECT {: parent-slot:n parent-occ:n :}
+   s" NDP-RESTORED-MAKE;does" 0 RECORD DEF-OCC:SELECT {: clause-slot:n clause-occ:n :}
+   s" NDP-RESTORED" 0 RECORD DEF-OCC:SELECT {: item-slot:n item-occ:n :}
    first ndict!
    s" NDP-RESTORED" NDICT:SPELL-START 0 T=
-   first 1+ ndict!
-   s" NDP-RESTORED" 0 RECORD first XREF-REC = TTRUE
+   first 3 + ndict!
+   s" NDP-RESTORED-MAKE" 0 RECORD parent-slot XREF-REC = TTRUE
+   s" NDP-RESTORED-MAKE;does" 0 RECORD clause-slot XREF-REC = TTRUE
+   s" NDP-RESTORED" 0 RECORD item-slot XREF-REC = TTRUE
+   parent-slot REF-SLOT !  parent-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   clause-slot REF-SLOT !  clause-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   item-slot REF-SLOT !  item-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
+   s" NDP-RESTORED" 0 RECORD DEF-OCC:SELECT REF-VALUE 19 T=
    s" NDP-RESTORED 19 T=" EV ;
+
+: REFUSALS ( -- )
+   s" package NDP-NS ;package" EV
+   s" NDP-NS" XREF-NAMESPACE-WL RECORD DEF-OCC:SELECT {: ns-slot:n ns-occ:n :}
+   ns-slot REF-SLOT !  ns-occ REF-OCC !
+   [: REF-SLOT @ REF-OCC @ DEF-OCC:CALLABLE drop ;] DEF-OCC:E-NONCALLABLE TTHROWSQ
+   [: ndict@ XREF-REC DEF-OCC:SELECT 2drop ;] DEF-OCC:E-SELECT TTHROWSQ
+   [: ndict@ 1 DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ ;
 
 : RUN ( -- )
    T-RESET
@@ -63,6 +116,8 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
    s" qualified visibility, collision chains and retirement survive append" T-LABEL SCOPED-COLLISIONS T-NEXT
    s" failed evaluation reuses the same record slot" T-LABEL ROLLBACK T-NEXT
    s" general ndict! restore still rebuilds the live index" T-LABEL RESTORE T-NEXT
+   s" namespace and unpublished records refuse callable selection" T-LABEL REFUSALS T-NEXT
+   s" DOES and EXPORT refuse when only one occurrence remains" T-LABEL PAIR-EXHAUSTION T-NEXT
    T-REPORT ;
 
 ' RUN

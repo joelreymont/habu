@@ -14,6 +14,7 @@ require lib/errors.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
+require src/compiler/native/host.f
 
 package NDICT
 
@@ -138,10 +139,19 @@ public
    start 0= if E-NDICT-NAME throw then
    rec REC-FIXED FIXED-NONE = if E-NDICT-KIND throw then
    depth FX-BASE !
-   start RUN-WORD
+   rec NHOST:SELECT-REC RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
 : FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
+
+\ Enter the exact fixed implementation the scan selected. The caller checked
+\ its captured definer stamp; no spelling is resolved again here.
+: BOUND-VALUE ( n n -- n ) {: entry:n kind:n :}
+   entry 0< entry 0= or if E-NDICT-NAME throw then
+   kind FIXED-VAL <> kind FIXED-ADDR <> and if E-NDICT-KIND throw then
+   depth FX-BASE !
+   entry NHOST:ADMIT-ENTRY RUN-WORD
+   depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of

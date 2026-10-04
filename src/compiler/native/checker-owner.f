@@ -20,11 +20,14 @@ package CHECKER-OWNER
 
 \ Set by this module's load, cleared before the compiler is captured.
 variable SOURCE-LOADED   -1 SOURCE-LOADED !
+variable BIND-UNJUDGED
 
 \ A retained prefix may carry these pre-hook words without native call models.
 \ Bind their actual execution tokens with their existing callable contracts.
 defer SOURCE-UNJUDGED ( ptr u8 n -- n )
 defer SOURCE-CALL-CELLS ( n -- n n )
+defer SOURCE-CALL-BINDING ( n -- ptr u8 n )
+defer SOURCE-UNJUDGED-BINDING ( n -- ptr u8 n )
 defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
 defer SOURCE-QUOT-IN ( n n -- n n )
@@ -51,6 +54,7 @@ CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
 CAST: AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
+CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
 CAST: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] )
@@ -83,6 +87,8 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 : BIND-SOURCE-CALLS ( -- )
    NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" source unjudged scan" SOURCE-FIELD AS-CHECK is SOURCE-UNJUDGED
    NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-CELLS
+   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" SOURCE-FIELD AS-BINDING is SOURCE-CALL-BINDING
+   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" SOURCE-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
    NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-GLUE
    NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" SOURCE-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
    NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
@@ -239,6 +245,21 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop SOURCE-CALL-CELLS exit then
    AS-CELLS execute ;
 
+: CALL-BINDING ( n -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" resolved call binding" FIELD
+   dup 0= if drop SOURCE-CALL-BINDING exit then
+   AS-BINDING execute ;
+
+: UNJUDGED-BINDING ( n -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" unjudged source binding" FIELD
+   dup 0= if drop SOURCE-UNJUDGED-BINDING exit then
+   AS-BINDING execute ;
+
+: BIND-REGIME! ( n -- ) BIND-UNJUDGED ! ;
+
+: SOURCE-BINDING ( n -- ptr u8 n )
+   BIND-UNJUDGED @ 0<> if UNJUDGED-BINDING else CALL-BINDING then ;
+
 : INIT-LAYOUT ( n -- n n n )
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" init layout" FIELD
    dup 0= if drop SOURCE-INIT-LAYOUT exit then
@@ -322,6 +343,21 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-EFFECT-DOUT-SLOT-OFF s" dout slot" FIELD
    dup 0= if drop EFFECT-DOUT-SLOT exit then
    AS-SLOT execute ;
+
+: DIN-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DIN-CON-OFF s" din constructor" FIELD
+   dup 0= if drop EFFECT-DIN-CON exit then
+   AS-SLOT execute ;
+
+: DOUT-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DOUT-CON-OFF s" dout constructor" FIELD
+   dup 0= if drop EFFECT-DOUT-CON exit then
+   AS-SLOT execute ;
+
+: STACK-STABLE? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-STACK-STABLE-OFF s" stable stack rows" FIELD
+   dup 0= if drop EFFECT-STACK-STABLE? exit then
+   AS-BOOL execute ;
 
 : DIN-QUOT ( n -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD

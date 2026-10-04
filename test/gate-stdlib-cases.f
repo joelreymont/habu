@@ -452,6 +452,10 @@ WHITEBOX-SUITE compiler-native-tape-owner
    test/compiler/native-tape-owner.f
 ;SUITE
 
+WHITEBOX-SUITE compiler-native-host-construction
+   test/compiler/native-host-construction-e2e.f
+;SUITE
+
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
@@ -1069,6 +1073,10 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
+SUITE compiler-native-call-binding
+   test/compiler/native-call-binding.f
+;SUITE
+
 SUITE compiler-native-word-binding-aot
    lib/test.f
    test/compiler/aot-mode.f
@@ -1108,6 +1116,10 @@ SUITE compiler-native-dictionary-append
 
 SUITE compiler-native-dictionary-publish
    test/compiler/native-dictionary-publish.f
+;SUITE
+
+WHITEBOX-SUITE compiler-native-dictionary-retarget
+   test/compiler/native-dictionary-retarget.f
 ;SUITE
 
 SUITE compiler-code-span

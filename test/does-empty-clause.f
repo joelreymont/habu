@@ -124,6 +124,20 @@ create DEC-BARE0 16 allot
 : DEC-MARK1  ( -- ) create here ptr-cell-mark 0 , does> ( -- ptr ptr a ) ;
 : DEC-BODY1  ( -- ) create 0 , does> ( -- ptr ptr a ) 0 ptr-field ;
 
+variable REPLACED-SLOT
+variable REPLACED-OCC
+variable ALIAS-SLOT
+variable ALIAS-OCC
+TRUSTED: CAPTURE-CREATED ( -- )
+   s" DEC-TEST:DEC-REPLACED" XREF-FIND DEF-OCC:SELECT
+   REPLACED-OCC !  REPLACED-SLOT !
+   s" DEC-TEST:DEC-REPLACED" XREF-FIND-INDEX
+   s" DEC-REPLACED-ALIAS" rot get-current alias-record
+   s" DEC-TEST:DEC-REPLACED-ALIAS" XREF-FIND DEF-OCC:SELECT
+   ALIAS-OCC !  ALIAS-SLOT ! ;
+: DEC-REPLACE1 ( -- ) create 7 , CAPTURE-CREATED does> ( -- n ) @ ;
+DEC-REPLACE1 DEC-REPLACED
+
 DEC-EMPTY1 DEC-CELL1
 DEC-MARK1  DEC-MCELL1
 DEC-BODY1  DEC-BCELL1
@@ -165,6 +179,17 @@ create DEC-BARE1 16 allot
 
    s" the declared effect survives the elision" T-LABEL
    DEC-REFUSED? TTRUE
+
+   s" a does patch replaces the created record's occurrence" T-LABEL
+   [: REPLACED-SLOT @ REPLACED-OCC @ DEF-OCC:RESOLVE drop ;]
+      DEF-OCC:E-STALE TTHROWSQ
+   [: ALIAS-SLOT @ ALIAS-OCC @ DEF-OCC:RESOLVE drop ;]
+      DEF-OCC:E-STALE TTHROWSQ
+   s" DEC-TEST:DEC-REPLACED" XREF-FIND DEF-OCC:SELECT DEF-OCC:CALLABLE
+   s" DEC-TEST:DEC-REPLACED" XREF-FIND XREF-START T=
+   s" DEC-TEST:DEC-REPLACED-ALIAS" XREF-FIND DEF-OCC:SELECT DEF-OCC:CALLABLE
+   s" DEC-TEST:DEC-REPLACED-ALIAS" XREF-FIND XREF-START T=
+   DEC-REPLACED 7 T=
 
    T-REPORT
    s" does-empty-clause: ok" type cr ;

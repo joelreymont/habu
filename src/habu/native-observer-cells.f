@@ -8,4 +8,5 @@ public
 $2CF0 constant OBSERVE
 $2CF8 constant PUBLISHED
 $2D00 constant INVALIDATE
+$2D10 constant HOST-INVALIDATE
 ;package

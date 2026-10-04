@@ -664,18 +664,33 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
    BND [: CALLABLE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE CALLEE-OUT T= CALLEE-IN T= CALLEE-ENTRY T= ;
 
+: NO-BIND-SCAN ( ptr u8 n -- ) 2drop ;
+: NO-BIND-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
+: NO-BIND-DONE ( ptr u8 n n -- ) 2drop drop ;
+
 : TERMINAL-MODEL-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CHECKER-OWNER:TAPE-DISARM
+   1 [: NO-BIND-SCAN ;] [: NO-BIND-TOKEN ;] [: NO-BIND-DONE ;]
+      CHECKER-OWNER:TAPE-INSTALL
+   CHECKER-OWNER:TAPE-ARM
    c b s" throw" HIR-WORD:KEY-SPELL {: th:IR-ID:ir-symbol-id :}
-   c b p r th HIR-WORD:RESOLVE-CALLABLE TTRUE
+   s" HIR-THROW-SCAN ( -- ) 1 throw" CHECKER-OWNER:CHECK-UNJUDGED drop
+   -1 CHECKER-OWNER:BIND-REGIME!
+   c b p r th 2 HIR-WORD:RESOLVE-SITE TTRUE
    r th HIR-WORD:CALLEE-DEAD? TTRUE
    r th HIR-WORD:TERMINAL? TTRUE
+   CHECKER-OWNER:TAPE-DISARM
+   CHECKER-OWNER:TAPE-ARM
    c b s" die" HIR-WORD:KEY-SPELL {: di:IR-ID:ir-symbol-id :}
-   c b p r di HIR-WORD:RESOLVE-CALLABLE TTRUE
+   s" HIR-DIE-SCAN ( -- ) 1 die" CHECKER-OWNER:CHECK-UNJUDGED drop
+   c b p r di 2 HIR-WORD:RESOLVE-SITE TTRUE
    r di HIR-WORD:TERMINAL? TTRUE
+   0 CHECKER-OWNER:BIND-REGIME!
+   CHECKER-OWNER:TAPE-DISARM
    c b s" STATED-DEAD" HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
    c b r sy CALLEE-ENTRY 0 0 NDICT:GLUE-NONE true HIR-WORD:DECLARE-BOUND-CALLABLE
    r sy HIR-WORD:CALLEE-DEAD? TTRUE

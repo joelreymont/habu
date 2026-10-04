@@ -12,6 +12,7 @@
 
 require lib/test.f
 require lib/string.f
+require lib/process-argv.f
 require tools/chain-run.f
 require test/whitebox-engine.f
 require test/native-unit-lib.f
@@ -26,12 +27,23 @@ package NATIVE-UNIT-TEST
    OUT$ s" native-build: NBR unit hit" CONTAINS? TTRUE
    cold coldu s" hb-import" AT CHAIN-RUN:SAME-FILES? TTRUE ;
 
+: IMPORT-OCCURRENCE ( -- )
+   s" imported NBR record has a callable local occurrence" T-LABEL
+   PROC-ARGV-RESET
+   s" hb-import" AT >LEN
+   s\" package NUNIT-PROBE\nCAST: OCC-XT ( n -- [ n -- bool ] )\n$94000000 s\q NBR:BL?\q XREF-FIND DEF-OCC:SELECT DEF-OCC:CALLABLE OCC-XT execute .\n;package\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN 60000 >MS
+   RUN-ARGV-STDIN-CAPTURE CAPTURE-RESULT
+   SUCCESS
+   OUT$ s" -1" CONTAINS? TTRUE ;
+
 public
 
 : MAIN ( -- )
    T-RESET
    s" native-unit-e2e" SETUP
    IMPORT-PARITY
+   IMPORT-OCCURRENCE
    T-REPORT
    s" native unit tree: " type ROOT$ type cr ;
 

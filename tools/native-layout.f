@@ -2,6 +2,7 @@
 \ This module loads once against the host layout and again in the target writer.
 require src/habu/layout.f
 require src/habu/native-observer-cells.f
+require src/habu/native-host-cells.f
 
 package NATIVE-LAYOUT
 private
@@ -23,6 +24,8 @@ create SLOTS
    REPLH-CELL ,                         0 ,
    BPWBASE-CELL ,                       1 ,
    LASTC-CELL ,                         0 ,
+   NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,
+   NATIVE-HOST-CELLS:SELECT ,           0 ,
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;
