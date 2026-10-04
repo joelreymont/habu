@@ -286,20 +286,14 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" SCOPE" s" CHECKER-RESYNC" PRIVATE-FOUND? TFALSE
    s" verifier package scope cell is not addressable" T-LABEL
    s" CHECKER-VERIFY-PKG-DEPTH" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier package snapshot name is not addressable" T-LABEL
-   s" VPKG-NAME" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier package snapshot length is not addressable" T-LABEL
-   s" VPKG-U" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier package snapshot mode is not addressable" T-LABEL
-   s" VPKG-MODE" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier package snapshot save is not addressable" T-LABEL
-   s" VPKG-SAVE" XREF-FIND XREF-FOUND? TFALSE
-   s" verifier package snapshot restore is not addressable" T-LABEL
-   s" VPKG-RESTORE" XREF-FIND XREF-FOUND? TFALSE
    s" family package hook is not addressable" T-LABEL
    s" TFAM-PKG-XT" XREF-FIND XREF-FOUND? TFALSE
    s" family package wrapper is not addressable" T-LABEL
    s" TFAM-PKG$*" XREF-FIND XREF-FOUND? TFALSE
+   s" does> clause hook is not addressable" T-LABEL
+   s" DOES-COMPANION?-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" checker overlay entry is not addressable" T-LABEL
+   s" CHECKER-OVERLAY:OPEN-SCOPE" XREF-FIND XREF-FOUND? TFALSE
    s" sealed private package cannot reopen" T-LABEL
    S\" package IR-ID\nprivate\n: FORGE ( n -- IR-ID:ir-module-key ) MINT-KEY ;\n;package"
       s" IR-ID" SEAL-CASE

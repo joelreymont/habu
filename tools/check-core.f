@@ -1693,11 +1693,14 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHECK-ALL-ERRORS:DUP-RECORD$ CHK-ERR-LN ;
 
 \ The pre-pass stopped with the given code: the record of its defect, or of a
-\ duplicate, then the failure, with a refusal's status for a statement that
-\ threw.
+\ duplicate, then the failure. A statement that threw and a refusal the checker
+\ reported itself both fail with a refusal's status, so --json-errors writes
+\ the refusal's packet and nothing else.
 : CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
    rc CHK-STOP-RECORD
-   rc CHECK-ALL-ERRORS:THREW? if CHK-E-CHECK CHK-PREVERIFY-FAIL then
+   rc CHECK-ALL-ERRORS:THREW?  rc CHECK-ALL-ERRORS:REPORTED-THROW? or if
+      CHK-E-CHECK CHK-PREVERIFY-FAIL
+   then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then
    rc CHK-PREVERIFY-FAIL ;
 

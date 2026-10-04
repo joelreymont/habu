@@ -51,8 +51,7 @@ $000C000000000000 constant DKIND:CAST
 \ native checker/seal pass (src/habu/layout.f, dot
 \ habu-habu-certified-words-84e84eaf). The seed's min-in-mark writes the same
 \ band. CAST: stamps kind 3 in bits 50-51. Name reads therefore clear the
-\ DNAME-FLAG-BITS, matching the production dictionary, whose registry stamps
-\ DNAME-OWNED (bit 49) where the seed stamps none, and its capture format.
+\ DNAME-FLAG-BITS, matching the production dictionary and its capture format.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -61,7 +60,12 @@ $2000000000000000 constant DNAME-EXT
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
 $8000000000000000 constant DNAME-INT
+\ DNAME-OWNED (bit 49): MIRROR of src/habu/layout.f. An internal primitive its
+\ owner's rows type: EMIT-COMPILE-CALL admits a checked call to it, as habu2.f
+\ C-COMPILE-CALL-GUARD does, and everything DNAME-INT closes stays closed.
+$0002000000000000 constant DNAME-OWNED
 -1 constant PRIM-INT-WID  \ build-side marker: emitted as global with DNAME-INT
+-2 constant PRIM-OWNED-WID  \ build-side marker: global with DNAME-INT and DNAME-OWNED
 65536   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..65535 end exactly at CFSTK. Past imm16, so the comparison sites below load it with LIT64.
 $300000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
@@ -2400,10 +2404,32 @@ HB-TARGET-LINUX? [IF]
    s" tok-imm?" ['] BTOKIMM FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM ;
 
+\ src/core/checker.f, which every seed-built image compiles at boot, calls the
+\ seven rows src/habu/prims.f registers for package CHECKER-OVERLAY, so the seed
+\ registers them owned and EMIT-COMPILE-CALL admits those checked calls. No
+\ seed-built image opens the overlay: stage0 only compiles stage2, and the
+\ recovery gates replay nothing (docs/bootstrap.md). Each body says so on fd 2
+\ and exits 76, as src/habu/kernel-x64.f REFUSE-BODY does for its absent rows.
+: NOOVERLAY$ ( -- addr u ) s\" hb: stage0 has no checker overlay\n" ;
+: B-NO-OVERLAY ( -- )
+   LBL {: msg :}
+   0 2 MOVZ,  1 msg ADR,  2 NOOVERLAY$ nip MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  NOOVERLAY$ BYTES, ;
+
+: EMIT-OVERLAY-PRIMS ( -- )
+   s" namespace-record" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" package-scope!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" replay-open" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" replay-close" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" replay-widn!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" replay-record" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID
+   s" record-wid!" ['] B-NO-OVERLAY PRIM-OWNED-WID FPRIM-WID ;
+
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
-   EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS  EMIT-CHECKER-PRIMS ;
+   EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS  EMIT-CHECKER-PRIMS  EMIT-OVERLAY-PRIMS ;
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
@@ -2916,14 +2942,14 @@ HB-TARGET-LINUX? [IF]
       i PRIM-ROW {: row :}
       row @ DLBL,                                         \ +0  start byte-offset
       row cell+ @ DLBL,                                   \ +8  end   byte-offset
-      row 4 cells + @ PRIM-INT-WID = if
-         row 2 cells + @ DNAME-INT or DCQ,              \ +16 internal primitive
-      else
+      row 4 cells + @ case
+         PRIM-INT-WID of row 2 cells + @ DNAME-INT or DCQ, endof   \ +16 internal primitive
+         PRIM-OWNED-WID of row 2 cells + @ DNAME-INT or DNAME-OWNED or DCQ, endof
          row 2 cells + @ DCQ,                           \ +16 name length
-      then
+      endcase
       row PRIM-NAME$ BYTES,                               \ +24 name (padded to 4)
       DNAME-INL row 2 cells + @ 3 + -4 and - ?dup if PRIM-NAME-PAD swap BYTES, then
-      row 4 cells + @ dup PRIM-INT-WID = if drop 0 then DCQ, \ +40 searchable wid; dispatch checks the flag
+      row 4 cells + @ dup 0< if drop 0 then DCQ,         \ +40 searchable wid; dispatch checks the flags
    loop ;
 
 \ ---- literal emitters: scalars vs relocatable addresses (mirrors src/habu/habu2.f) --
@@ -7943,7 +7969,10 @@ variable P2SK
    LBL LBL {: usedtry found :}
    13 usedtry CBZ,                                \ open-scope + global miss -> try the used publics
    found LBL,
+   \ MIRROR of habu2.f C-COMPILE-CALL-GUARD: a DNAME-INT call needs the TRUSTED:
+   \ cell armed unless the record (x5, from LFIND or LFINDUSED) is DNAME-OWNED.
    14 13 16 ANDI,  14 allowed CBZ,
+      14 5 16 LDR,  14 14 DNAME-OWNED ANDI,  14 allowed CBNZ,
       14 DATA TRUSTED-CELL LDR,  14 lundef CBZ,
    allowed LBL,
    14 13 2 ANDI,  14 notimm CBZ,

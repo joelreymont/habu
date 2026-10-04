@@ -4120,6 +4120,7 @@ variable LREPLAYTRAP
 : NAMESPACE-PRIVATE ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
@@ -4137,6 +4138,7 @@ variable LREPLAYTRAP
 : ALIAS-RECORD ( -- )
    LBL LBL LBL {: bad prot done :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
    prot OPEN-WID,
@@ -4201,7 +4203,11 @@ variable LREPLAYTRAP
 \ set, replay-record and namespace-record raise HW as they publish. The owner
 \ publishes through nothing else, nothing while a definition is pending, and
 \ lowers NDICT only by its own rollback, so [the saved NDICT, HW) is the
-\ overlay's and a record above HW is another writer's.
+\ overlay's and a record above HW is another writer's. Every other record or
+\ wid writer dies while the latch is set (habu1.f OVERLAY-EMIT:GUARD,), so a
+\ definition pends in an open overlay only through a raw store to PEND-CELL,
+\ which reaches the pending-definition refusals below, as a raw ndict! reaches
+\ the HW one (test/engine-writers.f EW-PEND).
 
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
@@ -4258,8 +4264,9 @@ variable LREPLAYTRAP
 \ Between a restore and replay-close one wordlist can hold two live records of
 \ one name, the restored record and a replay record, and the hash probe and
 \ the wordlist scan may answer with different ones. The owner ends every such
-\ window before any lookup: OV-DONE's restore with replay-close, a frame
-\ rollback's with the ndict! that drops the replay record.
+\ window before any lookup (src/core/checker.f CHECKER-OVERLAY): CLOSE's
+\ restore with replay-close, a frame ROLLBACK's with the ndict! that drops
+\ the replay record.
 : RECORD-WID ( -- )
    LBL LBL {: bad done :}
    B-TASK-LIVE-GUARD
@@ -4342,6 +4349,7 @@ variable LREPLAYTRAP
 : DEF-OPEN ( -- )
    LBL LBL LBL {: bad prot done :}
    B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    bad REAL-WID,
@@ -4573,6 +4581,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done qopen qwalled :}
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
@@ -9358,6 +9367,7 @@ public
    15 17 2 ADDI,  15 DATA WIDN-CELL STR, ;
 
 : C-PACKAGE-NEW-RECORD ( -- )
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-CAP
    C-PACKAGE-ALLOC-WIDS
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -9377,6 +9387,7 @@ public
 : C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
    LBL {: havepri:label :}
    12 havepri CBNZ,
+      OVERLAY-EMIT:GUARD,
       C-PACKAGE-NEW-PRIVATE-WID
       1 5 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
       12 5 8 STR,
@@ -9982,6 +9993,7 @@ public
    LTOK LABEL@ BL,  0 named CBNZ,
       $4A C-PACKAGE-FAIL
    named LBL,
+   OVERLAY-EMIT:GUARD,
    C-QUALIFY-SEAL-GUARD
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish), and the recovery rolls the package scope back with the dictionary (PKGSNAP), so a string that also opened the package leaves it closed.
@@ -11948,6 +11960,7 @@ public
 \ x2-x15); x0-x2 and x9-x14 are scratch, as in the LUNCAUGHT reporter.
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
+   LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic, newline NOT written)
    15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
    9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
@@ -12024,7 +12037,18 @@ public
    0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+   0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   \ A writer of a record or a wid ran while a checker overlay was open
+   \ (habu1.f OVERLAY-EMIT:GUARD,), before it wrote anything. TKA/TKL hold the
+   \ token it was given: the definition's name, the package's, the EXPORT
+   \ operand, or the word that ran `wordlist` or a writer primitive. The code is
+   \ a literal so the host that emits this need not carry the new constant
+   \ (docs/bootstrap.md, a name a pre-window build file calls).
+   OVERLAY-EMIT:LDIE LABEL@ LBL,
+   0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 108 MOVZ,  LCOMPILEDIE LABEL@ B,                     \ 108 = ENGINE-ERROR:OVERLAY-OPEN
+   omsg LBL,  oma omu BYTES, ;
 
 \ The design seal (layout.f POLICY-NDICT-CELL and POLICY-BITS-OFF, written by
 \ habu1.f BPOLICYADMIT and BPOLICYSEAL). A sealed process confines the source it
@@ -12890,6 +12914,7 @@ package LABELS
    LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
    LBL LDPBAD !  LBL LDPBADMSG !  LBL LDPBADOF !  LBL LDPBADUNIT !
+   LBL OVERLAY-EMIT:LDIE !
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !

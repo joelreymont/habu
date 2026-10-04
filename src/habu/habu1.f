@@ -1329,6 +1329,33 @@ variable SZA-I
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+\ WHILE A CHECKER OVERLAY IS OPEN THE ENGINE DEFINES NOTHING (layout.f
+\ REPLAY-SCOPE). replay-close puts NDICT, CP and WIDN back where replay-open
+\ found them, and a rollback inside the overlay puts them back to its frame's
+\ marks (src/core/checker.f CHECKER-OVERLAY ROLLBACK, replay-widn! for WIDN),
+\ so between open and close only the overlay's own writers,
+\ namespace-record and replay-record, may grow them: a record another writer
+\ appended would be dropped with the overlay's, and a wid it took handed out
+\ again. Every other writer runs GUARD, before it writes anything: LQUALIFYDEF
+\ (each named definer, both tiers), `package` making a row or a missing
+\ private wid, EXPORT, `wordlist`, and the writer primitives def-open,
+\ alias-record, namespace-private and native-unit-publish. ndict-append needs
+\ none: it publishes the pending record, which replay-open refuses and no head
+\ opens while the latch is set. The append itself (LHIDXADD) is too late: at
+\ `;` it follows the check hook, the trust registration, the code-origin row
+\ and pass 2, none of which replay-close restores. The refusal names the token
+\ and throws ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE). The latch is
+\ the one flag the Habu loop's twin reads (outer.f OVERLAY-GUARD). Clobbers x9.
+package OVERLAY-EMIT
+public
+variable LDIE
+: GUARD, ( -- )
+   LBL {: ok:label :}
+   9 REPLAY-SCOPE:LATCH LIT64,  9 DATA 9 ADD,  9 9 0 LDR,  9 ok CBZ,
+      LDIE LABEL@ B,
+   ok LBL, ;
+;package
+
 \ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
 \ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both guard
 \ the address or full span each sink redirects a write to, so a post-seal value
@@ -2817,6 +2844,7 @@ public
 \ The code and record bands open together and close together; no dictionary
 \ name becomes live until both copies and the instruction-cache flush finish.
 : BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
+   OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
    {: bad:label widloop:label widdone:label cloop:label cdone:label rloop:label :}
@@ -3492,6 +3520,7 @@ public
    exit-code LBL, ;
 
 : BWORDLIST ( -- )
+   OVERLAY-EMIT:GUARD,
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
 : BGETCUR ( -- )

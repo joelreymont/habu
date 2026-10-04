@@ -437,9 +437,9 @@ variable RC
    FX-PATH$ NOT-RECORDED ;
 
 \ A refused `generates:` row is the verifier's own packet, at the row's name
-\ past a comment line and a run of spaces: the check exits as the engine's
-\ uncaught throw does and adds no statement-throw record, and --all-errors and
-\ --verify-only count the refusal and go on.
+\ past a comment line and a run of spaces: the check fails as for any refusal,
+\ that packet alone on standard error and no statement-throw record, and
+\ --all-errors and --verify-only count the refusal and go on.
 : TEST-GENERATES ( -- )
    s" a generates: row naming no word" T-LABEL
    SB-RESET
@@ -448,7 +448,8 @@ variable RC
    92 SB-APPEND-C s"  a row for a word nothing defines" SB-APPEND LF+
    s" generates:  NOWHERE ( -- n )" SB-APPEND LF+
    s" generates.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " CHECK
+   GJA-LINE# @ 1 T=
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" NOWHERE" 4 13 73 80 AT
    s" --all-errors" CHECK
@@ -470,7 +471,8 @@ variable RC
    s" generates: SHADE ( -- n )" SB-APPEND LF+
    s" ;using" SB-APPEND LF+
    s" generates-shadow.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " CHECK
+   GJA-LINE# @ 1 T=
    ERR$ s" E-STATEMENT-THROW" CONTAINS? TFALSE
    0 s" SHADE" 7 12 79 84 AT ;
 
@@ -732,19 +734,25 @@ variable RC
    s" replaced-same-tail.f" FIXTURE!
    s" x" s" X" 3 10 39 40 2 STORED-AT ;
 
-\ RECORD-PLACED for E-BAD-QUALIFIED-RECORD in each check of the fixture: plain,
-\ --all-errors and --verify-only each give the record, then its statement's throw.
+\ RECORD-PLACED for the record CODE refuses in each check of the fixture: plain,
+\ --all-errors and --verify-only each give COUNT packets, that refusal first.
+: RECORD-AT ( ptr u8 n ptr u8 n ptr u8 n n n n n n -- )
+   {: code:ptr codeu:n tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n :}
+   s" " CHECK
+   GJA-LINE# @ count T=
+   0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   s" --all-errors" CHECK
+   GJA-LINE# @ count T=
+   0 code codeu tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
+   s" --verify-only" CHECK
+   GJA-LINE# @ count T=
+   0 code codeu tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
+
+\ RECORD-AT for E-BAD-QUALIFIED-RECORD: each check gives the record, then its
+\ statement's throw.
 : MALFORMED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
-   s" " CHECK
-   GJA-LINE# @ 2 T=
-   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
-   s" --all-errors" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ RECORD-PLACED
-   s" --verify-only" CHECK
-   GJA-LINE# @ 2 T=
-   0 s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be FX-PATH$ CANON$ RECORD-PLACED ;
+   s" E-BAD-QUALIFIED-RECORD" tok toku sp spu line col bs be 2 RECORD-AT ;
 
 \ A colon definition CHECK rejects, here for the undefined NOPE: the plain check
 \ stops at that refusal, and --all-errors and --verify-only follow it with the
@@ -763,8 +771,11 @@ variable RC
 
 \ A record asked for a malformed qualified name is refused at the name its
 \ declaration reads, whether the record is keyed by that name's fold (a `defer`,
-\ a `variable`, a `trust` row), by the name as read (`undefine`) or by the name
-\ CHECK copied (a colon definition, certified, rejected or deferred to the run).
+\ a `variable`), by the name as read (`undefine`) or by the name CHECK copied (a
+\ colon definition, certified, rejected or deferred to the run). A `trust` row
+\ asks the engine for its word before any record, as the load does, and a
+\ malformed name names none: each check refuses the row as stale at that name,
+\ its packet alone.
 : TEST-MALFORMED-RECORD ( -- )
    s" a malformed defer" T-LABEL
    s" defer DIAG:MAL:NAME ( -- )" s" malformed-defer.f" LINE-FIXTURE
@@ -777,7 +788,7 @@ variable RC
    s" : R ( -- ) ;" SB-APPEND LF+
    s\" s\" P:Q:R\" s\" --\" trust" SB-APPEND LF+
    s" malformed-trust.f" FIXTURE!
-   s" p:q:r" s" P:Q:R" 2 4 16 21 MALFORMED-AT
+   s" E-TRUST-UNRESOLVED" s" P:Q:R" s" P:Q:R" 2 4 16 21 1 RECORD-AT
    s" a malformed undefine" T-LABEL
    SB-RESET
    s" : R ( -- ) ;" SB-APPEND LF+

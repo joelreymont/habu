@@ -1107,6 +1107,10 @@ SUITE reopen-binding-aot
    test/reopen-binding.f
 ;SUITE
 
+SUITE replay-binding
+   test/replay-binding.f
+;SUITE
+
 SUITE undefine-binding
    test/undefine-binding.f
 ;SUITE

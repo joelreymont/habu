@@ -123,6 +123,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ edge leaves the whole token a bare name: `:a:b` is bare), and a second colon
 \ after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
+   OVERLAY-GUARD
    SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!

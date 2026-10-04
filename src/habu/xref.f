@@ -497,6 +497,11 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    entry first <= if XREF-FALSE exit then
    entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
 
+\ The checker overlay retires a replayed `undefine`'s clause by this same test
+\ (src/core/checker.f CHECKER-OVERLAY RETIRE1).
+: DOES-COMPANION-INSTALL ( -- ) [: XREF-DOES-COMPANION? ;] is DOES-COMPANION?-XT ;
+DOES-COMPANION-INSTALL
+
 \ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
 \ in the package wordlist. Retire from that resolved record identity; the
 \ original spelling remains the checker-side symbol identity below.
@@ -752,6 +757,8 @@ undefine USE-SLOT-BOOT
 undefine CWIN-STATE
 undefine CALL-FREEZE-XT
 undefine CALL-FREEZE-INSTALL
+undefine DOES-COMPANION?-XT
+undefine DOES-COMPANION-INSTALL
 undefine CHECKER-PKG-LIVE-DEFAULT
 undefine CHECKER-PKG-BOOT-LIVE
 undefine CHECKER-PKG-MIRROR
@@ -759,11 +766,6 @@ undefine CHECKER-PKG-CONTEXT
 undefine CHECKER-RESOLVE:AUTHORITY
 undefine CHECKER-PKG-CONTEXT-REJECT
 undefine CHECKER-VERIFY-PKG-DEPTH
-undefine VPKG-NAME
-undefine VPKG-U
-undefine VPKG-MODE
-undefine VPKG-SAVE
-undefine VPKG-RESTORE
 undefine TFAM-PKG-XT
 undefine TFAM-PKG$*
 package PKG-AUTH
@@ -784,7 +786,35 @@ get-current prot-wid-add
 \ The declaration owner holds CHECKER-RESYNC's entry by its xt, which keeps the
 \ name through the seal where SLOT and SLOTS lose theirs: the product still
 \ resolves SCOPE in the package's private wordlist. Retire it so the owner is
-\ the only way in.
+\ the only way in. MIRROR is public for the checker overlay's direct calls,
+\ compiled above; retire it too.
 package CHECKER-RESYNC
 undefine SCOPE
+public
+undefine MIRROR
+;package
+
+\ The checker overlay's public words are the checker's own calls, compiled
+\ above in src/core/checker.f. Retire their names so no source reaches the
+\ engine's replay writers through them.
+package CHECKER-OVERLAY
+public
+undefine OPEN-SCOPE
+undefine CLOSE-SCOPE
+undefine MARKS
+undefine ROLLBACK
+undefine HIDE
+undefine UNHIDE
+undefine SCOPE-BYTES
+undefine SAVE-SCOPE
+undefine RESTORE-SCOPE
+undefine FILE-DONE
+undefine PUBLISH
+undefine REPLAYED?
+undefine OPEN-PACKAGE
+undefine SECTION
+undefine CLOSE-PACKAGE
+undefine OPEN-USING
+undefine CLOSE-USING
+undefine RETIRE
 ;package

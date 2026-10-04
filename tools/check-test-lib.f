@@ -44,9 +44,6 @@ package CHECK-TEST
 using CHECK
 private
 
-7153 constant GENR-RC
-7141 constant SHADOW-RC
-
 $4000 constant BUF-CAP
 128 constant LIST-ENTRY-CAP
 
@@ -4937,6 +4934,44 @@ variable SS-NEST-U
    SB-RESET USING-AT-LINES SB$ s" ckt-using-at.f" SOURCE
    [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
 
+\ A colon in a `using` or `package` name is refused by the check, at the
+\ statement the load refuses: the replay throws there as the live statement
+\ does inside evaluate. `using` throws the engine's own code
+\ (ENGINE-ERROR:USING-BAD-NAME, 90); `package` throws the checker's
+\ E-PKG-CONTEXT (7136), since the engine's code for it is private to
+\ packages.f. A qualified name through such a `using` is never reached: the
+\ `using` before it is refused, not the name (E-BAD-QUALIFIED).
+: COLON-REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: f:ptr fu:n at:ptr atu:n code:ptr codeu:n :}
+   f fu REQ-WRITE
+   f fu ST-JSON-RUN {: outu:n erru:n rc:n :}
+   f fu T-LABEL rc 70 T=
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   CAP-ERR erru code codeu CONTAINS? TTRUE
+   CAP-ERR erru at atu CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-QUALIFIED" CONTAINS? TFALSE ;
+
+: TEST-NAME-COLON ( -- )
+   SB-RESET
+   s" : CKT-NC-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" using CKT-NC-A:B" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" nc-using.f" s\" nc-using.f\",\"line\":2,\"column\":7,"
+   s\" \"throw_code\":90," COLON-REFUSED
+   SB-RESET
+   s" : CKT-NC-ONE ( -- n ) 1 ;" REQ-LINE+
+   s" package CKT-NC-A:B" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" nc-package.f" s\" nc-package.f\",\"line\":2,\"column\":9,"
+   s\" \"throw_code\":7136," COLON-REFUSED
+   SB-RESET
+   s" using CKT-NC-A:B" REQ-LINE+
+   s" : CKT-NC-TWO ( -- n ) CKT-NC-A:B:CKT-NC-X ;" REQ-LINE+
+   s" ;using" REQ-LINE+
+   s" nc-qualified.f" s\" nc-qualified.f\",\"line\":1,\"column\":7,"
+   s\" \"throw_code\":90," COLON-REFUSED ;
+
 \ A source whose first line starts with `#!` is a script: the engine reads that
 \ line as a comment in a file it runs or loads. check.f checks such a subject as
 \ the engine loads it - clean in prose, under --json-errors, from standard input
@@ -7118,16 +7153,18 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
 \ A row the preverify cannot keep is refused under its own code, saying why. The
-\ code arrives raw, as TEST-DECL-OVER-CAP's does; the command line exits 67.
+\ checker reports that refusal itself, and a reported refusal is a refusal: the
+\ check fails with 70, the packet keeps the row's code, and under --json-errors
+\ standard error holds that packet and nothing else (TEST-GENR-BADSIG-JSON).
 : GENR-REFUSED ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n why:ptr whyu:n :}
    GENR-PRELUDE
    src srcu SB-APPEND
-   SB$ DIRECT-STDIN GENR-RC T=
+   SB$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
-   CAP-ERR erru s" E-GENERATES-ROW" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"code\":\"E-GENERATES-ROW\"" CONTAINS? TTRUE
    CAP-ERR erru why whyu CONTAINS? TTRUE ;
 
 : TEST-GENR-ON-DOES ( -- )
@@ -7143,13 +7180,13 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" Use a known stack-signature type" GENR-REFUSED ;
 
 \ A row whose effect does not parse carries the signature refusal's own class.
+\ The command line fails as for any refusal, its standard error one JSON packet.
 : TEST-GENR-BADSIG-JSON ( -- )
    GENR-PRELUDE
    s\" generates: CKT-GMAKE ( -- i32 )\n" SB-APPEND
-   SB$ DIRECT-JSON-STDIN GENR-RC T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CAP-ERR erru s" E-GENERATES-ROW" CONTAINS? TTRUE
+   SB$ s" --json-errors" CLI-FLAG-STDIN REFUSED-LINE {: erru:n :}
+   CAP-ERR c@ $7B T=
+   CAP-ERR erru s\" \"code\":\"E-GENERATES-ROW\"" CONTAINS? TTRUE
    CAP-ERR erru s\" \"repair_class\":\"fix_signature_type\"" CONTAINS? TTRUE ;
 
 \ Under --all-errors a refused row is one finding among the file's others.
@@ -7187,17 +7224,18 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
 \ A definer name the used scopes refuse is refused by the preverify as a use of
-\ it is, with that refusal's own code and repair class: here a used public
-\ shadows a global, which the load refuses as E-USING-SHADOW-GLOBAL.
+\ it is, with that refusal's own code and repair class, and fails as a refusal:
+\ here a used public shadows a global, which the load refuses as
+\ E-USING-SHADOW-GLOBAL.
 : TEST-GENR-SHADOW ( -- )
    SB-RESET
    s\" : CKT-GW ( n -- ) drop ;\npackage CKT-GP\npublic\n: CKT-GW ( n -- ) drop parse-name 2drop ;\n;package\n" SB-APPEND
    s\" using CKT-GP\ngenerates: CKT-GW ( -- n )\n;using\n" SB-APPEND
-   SB$ DIRECT-STDIN SHADOW-RC T=
+   SB$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" preverify failed" CONTAINS? TTRUE
-   CAP-ERR erru s" E-USING-SHADOW-GLOBAL" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"code\":\"E-USING-SHADOW-GLOBAL\"" CONTAINS? TTRUE
    CAP-ERR erru s" disambiguate_using_shadow" CONTAINS? TTRUE ;
 
 \ Every mode reads a row as the load does, so each takes the row the load takes
@@ -7347,6 +7385,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/malformed-call-all-errors" [: TEST-MALFORMED-CALL-ALL ;] CASE-RUN
    s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
+   s" check/name-colon" [: TEST-NAME-COLON ;] CASE-RUN
    s" check/using-ambiguous" [: TEST-USING-AMBIGUOUS ;] CASE-RUN
    s" check/using-shadow" [: TEST-USING-SHADOW ;] CASE-RUN
    s" check/shadowed-arity" [: TEST-SHADOWED-ARITY ;] CASE-RUN

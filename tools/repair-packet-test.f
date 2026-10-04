@@ -382,15 +382,17 @@ create PACKET-BUF FS-PATH-CAP allot
    s" declaration-unplaced" s" fix_family_declaration"
    s\" s\" SUMTYPE badsum 0 VARIANT samev ;VARIANT VARIANT samev ;VARIANT ;SUMTYPE\" evaluate" 70 CHILD-CASE ;
 
-\ A refused record names its token and any known position. A trust row, a
+\ A refused record names its token and any known position. A trust row naming
+\ no word is refused by the pre-pass, as the load refuses it, at its name. A
 \ storage registrar called from source and a record entry called with a
 \ malformed name at run time each end the load on an uncaught throw of its own
 \ code, which the load exits 70 for because the checker rendered that refusal;
 \ check.f keeps the load's status. A declaration's malformed name is refused
 \ by the pre-pass before its statement runs. A stored signature that does not
-\ parse is counted by the multi-error pre-pass (rc 70). The named definition
-\ and using refusals place their own token when the checked text locates it;
-\ no statement-throw packet follows them. The packet keeps each code's field.
+\ parse, on a trust row naming a word the source defined, is counted by the
+\ multi-error pre-pass (rc 70). The named definition and using refusals place
+\ their own token when the checked text locates it; no statement-throw packet
+\ follows them. The packet keeps each code's field.
 : TEST-RECORDS ( -- )
    s" trust-row" s" fix_stale_trust_row"
    s\" s\" DIAG-NO-SUCH-WORD\" s\" -- n\" trust" 70 CHILD-CASE
@@ -400,7 +402,7 @@ create PACKET-BUF FS-PATH-CAP allot
    s" malformed-run-record" s" fix_qualified_name"
    s\" s\" DIAG:MAL:RUN\" CHECKER-DEFER" 70 CHILD-CASE
    s" stored-signature" s" fix_signature_type"
-   s\" s\" DIAG-SIG\" s\" -- diag-no-such-type\" trust" 70 CHILD-CASE
+   s\" : DIAG-SIG ( -- n ) 1 ; s\" DIAG-SIG\" s\" -- diag-no-such-type\" trust" 70 CHILD-CASE
    s" shadowed-arity" s" match_shadowed_private_effect"
    s" package DIAG-SBA : DIAG-TWIN ( n n -- n ) + ; public : DIAG-TWIN ( n -- n ) 1 + ; ;package" 70 CHILD-CASE ;
 

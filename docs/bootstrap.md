@@ -266,29 +266,31 @@ registers nothing for `ptr-cell-mark`, and a static seed image with no loader
 slot cannot reach libc for `realpath`. Nothing in the native gate notices the
 omission, because the native gate never builds a stage0; the periodic check
 below is what catches it, as the stage0 build dying on the bare token name.
-The five replay writers (`replay-open`, `replay-close`, `replay-widn!`,
-`replay-record`, `record-wid!`) have no stage0 registration: no boot-prefix
-source calls one, and the recovery check passes without them.
+`src/core/checker.f`, which a seed-built image compiles at boot, calls the
+seven rows package `CHECKER-OVERLAY` owns: `namespace-record`,
+`package-scope!` and the five replay writers (`replay-open`, `replay-close`,
+`replay-widn!`, `replay-record`, `record-wid!`). Stage0 registers them owned
+(`EMIT-OVERLAY-PRIMS`) with one body that prints
+`hb: stage0 has no checker overlay` and exits 76, as `src/habu/kernel-x64.f`
+`REFUSE-BODY` does for its absent rows: a seed-built image never opens the
+overlay, and the recovery check passes with those bodies. Without the rows its
+first gate, `test/bootstrap-engine-stack.fs`, dies 70 naming
+`namespace-record`.
 The stage0 `J-QUOT` keeps one quotation open at a time, where the engine's
 tier 0 nests to `JIT-QUOT:LEVELS`: a boot-prefix source keeps `[:` one level
 deep until the seed mirrors those frames, or the stage0 build exits 75.
 
-The stage0 generator does not carry `DNAME-OWNED` (`src/habu/layout.f`). Its
-`EMIT-DICT` stamps a `PRIM-INT-WID` primitive with `DNAME-INT` alone, and its
-`EMIT-COMPILE-CALL` guard sends a `DNAME-INT` call outside a `TRUSTED:` body to
-`EMIT-UNDEF` (undefined word, rc 70) without testing the owned bit that the
-engine's guards (`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`,
-`src/compiler/native/dict.f` `NDICT:INT-CALL?`, which `CALL-BINDING` and
-`src/compiler/native/hir-word.f` `RESOLVE-SITE` ask) admit. Recovery passes
-because no source the seed compiles makes a checked call to an owned
-primitive: of the three owned primitives (the `src/habu/prims.f` `EPPRIM:` rows
-registered `GLOBAL-INT-WID`: `source-unit-run`, `namespace-record`,
-`package-scope!`) the seed registers only `source-unit-run`, so a
-seed-compiled call to either other is undefined whatever its bit, and every
-caller of `source-unit-run` is a `test/` file that runs on a product engine.
-Seed-compiled source that adds such a checked call needs the seed twins
-first: a `PRIM-OWNED` marker beside `PRIM-INT-WID` that `EMIT-DICT` stamps as
-`DNAME-OWNED`, and the owned-bit test in the guard.
+The stage0 generator mirrors `DNAME-OWNED` (`src/habu/layout.f`): `EMIT-DICT`
+stamps a `PRIM-OWNED-WID` primitive `DNAME-INT|DNAME-OWNED` and a
+`PRIM-INT-WID` primitive `DNAME-INT` alone, and the `EMIT-COMPILE-CALL` guard
+admits a checked call to an owned record, as the engine's guards
+(`src/habu/habu2.f` `C-COMPILE-CALL-GUARD`, `src/compiler/native/dict.f`
+`NDICT:INT-CALL?`, which `CALL-BINDING` and `src/compiler/native/hir-word.f`
+`RESOLVE-SITE` ask) do; any other `DNAME-INT` call outside a `TRUSTED:` body
+still goes to `EMIT-UNDEF` (undefined word, rc 70). The seed registers
+`source-unit-run`, owned on the engine (`src/habu/prims.f` `EPPRIM:`), as
+`PRIM-INT-WID`: every caller of it is a `test/` file that runs on a product
+engine.
 
 A DATA cell or band the stage0 generator places gets a row in
 `bootstrap/cg/data-claims.fs`. So does a cell that src/ code reads at a fixed

@@ -27,7 +27,8 @@
 \             name, slot, and cell width; the pair fixture checks its concrete
 \             field schemas separately because root ids are allocation indices
 \ Both paths register constructor symbols and checked effects. Replay emits no
-\ code or runtime dictionary entries; VS-LOAD checks that distinction directly.
+\ code or runtime dictionary entries; VS-LOAD and VS-DONE check that distinction
+\ directly.
 \
 \ IN-SCOPE, deliberately: VERIFY:SOURCE-BUF wraps its run in a candidate scope
 \ that rolls every registration back, which is right for validating a candidate
@@ -190,6 +191,21 @@ public
    src u VERIFY:SOURCE-BUF-IN-SCOPE
    ndict@ before T= ;
 
+\ VS-OPEN ( source -- ) / VS-DONE ( -- ) : the same load inside a neutral pair,
+\ for a source whose names the candidates after it ask for. They bind while
+\ the pair is open: the checker overlay holds them there as codeless records,
+\ which go with the pair (src/core/checker.f CHECKER-OVERLAY). So the
+\ dictionary count is checked across the pair, and the pair finalizes: the
+\ registrations stay for the comparisons after it.
+variable PAIR-BEFORE
+: VS-OPEN ( ptr u8 n -- ) {: src:ptr u:n :}
+   ndict@ PAIR-BEFORE !
+   CHECKER-SCOPE-START-NEUTRAL
+   src u VERIFY:SOURCE-BUF-IN-SCOPE ;
+: VS-DONE ( -- )
+   CHECKER-SCOPE-FINALIZE
+   ndict@ PAIR-BEFORE @ T= ;
+
 : VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
 : FCOUNT ( ptr u8 n -- n ) FAMID TFAM-FLD-COUNT@ ;
 
@@ -273,7 +289,11 @@ STRUCTURE pair 0
 ;package
 
 s" package sdrep public STRUCTURE pair 0 FIELD lo n FIELD hi n ;STRUCTURE ;package"
-VSPARITY:VS-LOAD
+VSPARITY:VS-OPEN
+s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
+s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+VSPARITY:VS-DONE
 
 s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
 s" sdlive:pair" VSPARITY:PAIR-FIELDS
@@ -290,24 +310,23 @@ ENUM colour red green blue ;ENUM
 ;package
 
 s" package edrep public ENUM colour red green blue ;ENUM ;package"
-VSPARITY:VS-LOAD
-
-s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
-
-\ Checked uses must work immediately after replay, including parametric
-\ payloads and product make/unmake. No runtime word is evaluated here. The
-\ replay compiles nothing, so the names it registers are facts of the certify
-\ path, and every candidate below asks that path (VERIFY:CANDIDATE-IN-SCOPE):
-\ compiled code holds no record of them.
-s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
-VSPARITY:VS-LOAD
+VSPARITY:VS-OPEN
 s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
-s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+VSPARITY:VS-DONE
+
+s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
+
+\ Checked uses work immediately after replay, in the replay itself and, for
+\ the sdrep and edrep candidates above, in the pair it ran in, including
+\ parametric payloads and product make/unmake. No runtime word is evaluated
+\ here. The replay compiles nothing, so the names it registers are facts of
+\ the certify path, and every candidate asks that path
+\ (VERIFY:CANDIDATE-IN-SCOPE): compiled code holds no record of them.
+s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
+VSPARITY:VS-LOAD
 
 \ ---------------------------------------------------------------------------
 \ 3. A STRUCTURE named as a later declaration's payload type. Without a
@@ -393,12 +412,12 @@ DECL-DIAG:OFF
 \    The replay renders the SAME plan the live path evaluates and stops after
 \    its first reading: each row is armed and checked, so the accessor's effect
 \    is registered under its own name, and no row reaches the evaluator, so no
-\    dictionary word appears (VS-LOAD's ndict@ assertion covers that here).
+\    dictionary word appears (VS-DONE's ndict@ assertion covers that here).
 \    The effects are the real ones, not placeholders: the wrong-typed uses below
 \    are refused exactly as they are after a live declaration.
 \ ---------------------------------------------------------------------------
 s" package adrep public STRUCTURE rec 0 DERIVE addr FIELD a n FIELD b n ;STRUCTURE : ADR-USE ( ptr rec -- ptr n ) ADREP-REC:A ; : ADR-SPAN ( -- n ) ADREP-REC:BYTES ADREP-REC:CELLS + ; ;package"
-VSPARITY:VS-LOAD
+VSPARITY:VS-OPEN
 
 s" ADR-A ( ptr adrep:rec -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 s" ADR-B ( ptr adrep:rec -- ptr n ) ADREP-REC:B" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
@@ -410,6 +429,7 @@ s" ADR-CELLS ( -- n ) ADREP-REC:CELLS" VERIFY:CANDIDATE-IN-SCOPE -1 VSPARITY:T=
 s" ADR-SELF ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 s" ADR-NOARG ( -- ptr n ) ADREP-REC:A" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
 s" ADR-AT-WRONG ( ptr adrep:rec -- ptr adrep:rec ) ADREP-REC:AT" VERIFY:CANDIDATE-IN-SCOPE 0 VSPARITY:T=
+VSPARITY:VS-DONE
 
 \ The private spelling. A private product publishes FAMILY-MEMBER into its
 \ declaring package's private wordlist, so the only place the names resolve is

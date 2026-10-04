@@ -24,12 +24,6 @@ CAST: ARM-ACTION ( n -- [ n n n -- ] )
 CAST: OFF-ACTION ( n -- [ -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
 
-PTR-VARIABLE ASK-A   variable ASK-U   variable ASK-ROW
-: ASK ( -- )
-   ASK-A @ ASK-U @ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF 0 ASK-ROW ! EXIT THEN
-   sym USIG-NEWEST ASK-ROW ! ;
-
 public
 
 : ARM ( n n n -- )
@@ -44,37 +38,37 @@ public
 100 constant AT-START
 110 constant AT-END
 
-\ Replay TEXT with the location armed, as the verifier arms a registrar call.
-: ARMED-REPLAY ( ptr u8 n -- )
-   {: a:ptr u:n :}
+\ Replay TEXT with the location armed, as the verifier arms a registrar call,
+\ and run QUERIES in the replay's own scope once it is through
+\ (VERIFY:SOURCE-BUF-THEN-IN-SCOPE). A replay compiles nothing: a name it
+\ declares binds only while its scope is open, so the queries read the rows
+\ there, as the verifier reads uses and locations during its own check.
+: ARMED-REPLAY ( ptr u8 n [ -- ] -- )
+   {: a:ptr u:n queries :}
    VISIT AT-START AT-END ARM
-   a u VERIFY:SOURCE-BUF-IN-SCOPE
+   a u queries VERIFY:SOURCE-BUF-THEN-IN-SCOPE
    DISARM ;
 
-\ A replay compiles nothing, so the engine's dictionary holds none of these
-\ names: they bind inside the verifier's package scope, over the checker's own
-\ records, as src/habu/verify-source.f RUN-IN-SCOPE binds them.
-: IN-SCOPE ( [ -- ] -- )
-   NCOMP-DISPATCH:DECL-VERIFY-START-OFF SLOT OFF-ACTION execute
-   catch
-   NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF SLOT OFF-ACTION execute
-   dup 0= IF drop EXIT THEN
-   throw ;
-
-\ NAME's newest row, offset+1; 0 when the name or its row is missing.
+\ NAME's newest row, offset+1; 0 when the name or its row is missing. Ask it
+\ where the replay that declared NAME binds it: in that replay's queries, or
+\ in a neutral checker scope the replay ran in.
 : ROW ( ptr u8 n -- n )
-   ASK-U !  ASK-A !
-   [: ASK ;] IN-SCOPE
-   ASK-ROW @ ;
+   CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   sym USIG-NEWEST ;
+
+\ The row, offset+1, is there and has no location.
+: ROW-UNLOCATED ( n -- )
+   {: rec1:n :}
+   rec1 0 T<>
+   rec1 CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
+   found TFALSE ;
 
 \ NAME has a row, and the row has no location.
 : UNLOCATED ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u T-LABEL
-   a u ROW {: rec1:n :}
-   rec1 0 T<>
-   rec1 CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   found TFALSE ;
+   a u ROW ROW-UNLOCATED ;
 
 \ NAME has a row, and the row carries the armed location.
 : LOCATED ( ptr u8 n -- )

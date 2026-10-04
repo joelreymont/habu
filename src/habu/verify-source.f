@@ -2682,10 +2682,11 @@ COMPOSE-INIT
    dup 0= IF drop exit THEN
    throw ;
 
-\ One action inside the verifier's package scope: the owner's start puts the
-\ checker under mirror authority, so every check the action runs binds a name
-\ over the checker's own records (src/core/checker.f REPLAY-BIND), and the done
-\ restores the caller's scope on the clean and the throwing path alike.
+\ One action inside the verifier's package scope: the owner's start opens the
+\ checker's engine overlay (src/core/checker.f CHECKER-OVERLAY), so every name
+\ the action replays binds through the engine dictionary, and the done closes
+\ the overlay and restores the caller's scope on the clean and the throwing
+\ path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !
@@ -2729,6 +2730,13 @@ variable CAND-VERDICT
 
 : CANDIDATE-BODY ( -- )
    CAND-A @ CAND-U @ CHECK-QUIET-CANDIDATE! CAND-VERDICT ! ;
+
+\ The action SOURCE-BUF-THEN-IN-SCOPE runs once its scan is through.
+TYPED-VARIABLE THEN-ACTION [ -- ]
+
+: VERIFY-THEN ( -- )
+   VERIFY-ARMED
+   THEN-ACTION @ execute ;
 
 public
 
@@ -2797,6 +2805,18 @@ public
 : SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
    SOURCE!
    RUN ;
+
+\ Verify one supplied source, then run ACTION in the same scope. A name the
+\ source declares binds through the record the checker's overlay publishes for
+\ it (src/core/checker.f CHECKER-OVERLAY), which this scope's close takes back
+\ unless a neutral checker scope around it holds the overlay open, so a caller
+\ that reads what the scan recorded by name reads it here, as the scan's own
+\ checks do. No second verifier scope opens inside this one (E-PKG-CONTEXT). A
+\ scan that throws runs no action.
+: SOURCE-BUF-THEN-IN-SCOPE ( ptr u8 n [ -- ] -- )
+   THEN-ACTION !
+   SOURCE!
+   [: VERIFY-THEN ;] RUN-IN-SCOPE ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
 \ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!

@@ -151,6 +151,7 @@ variable VALUE                     \ the number the first one carried
    s" CK-USE-FLOOR-OFF"    USE-PKG-SAVE-CELL ?MIRROR
    s" CK-USE-WIDS-OFF"     USE-WIDS-OFF      ?MIRROR
    s" CK-DEF-PEND-OFF"     PEND-CELL         ?MIRROR
+   s" CK-WIDN-OFF"         WIDN-CELL         ?MIRROR
    s" CK-BODYBUF-CAP"      BODYBUF-CAP       ?MIRROR
    s" CK-INP-OFF"          INP-CELL          ?MIRROR
    s" CK-INE-OFF"          INE-CELL          ?MIRROR

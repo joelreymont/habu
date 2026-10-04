@@ -250,9 +250,10 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   (`fix_signature_type`, `fix_bare_ptr_element`, `fix_signature_arity` or
   `fix_signature_syntax`) when the effect does not parse. A load refuses the
   row with `hb: uncaught throw code 7153` and exits 67. `tools/check.f` reads
-  the row before the run, so its record carries the token's place, and exits
-  67 likewise (70 under `--verify-only`) or, under `--all-errors`, continues
-  past it, counting it as a refusal. A row in text that `evaluate` runs is
+  the row before the run, so its record carries the token's place, and fails
+  as for any refusal, exit 70 with the record alone on stderr under
+  `--json-errors`, or, under `--all-errors`, continues past it, counting it as
+  a refusal. A row in text that `evaluate` runs is
   refused by the run alone, which has no record of its token's place, so that
   record carries none.
 - `E-UNDEFINED-TOP-LEVEL`, repair class `unknown_rejection`, and

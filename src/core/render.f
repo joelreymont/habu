@@ -1339,7 +1339,7 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 REC-SIG-INSTALL
 
 \ --- global-vs-used-public shadow diagnostic (dot habu-err-on-global-e62f806c).
-\ CHECKER-USED-SHADOW captured the ambiguous bare token and the two colliding
+\ CK-SHADOW-CAPTURE captured the ambiguous bare token and the two colliding
 \ candidates (global and used public); this renders the reference-site reject
 \ naming both with their effect arity so the author knows to qualify (PKG:WORD)
 \ or rename the collision. The sym effects read through the read-only USIGS
@@ -1547,7 +1547,8 @@ SHADOW-DIAG-INSTALL
 
 \ --- a `trust` row naming a word the engine resolves to nothing. Rendered on
 \ the same template as the shadow diagnostic above, and beside it on purpose:
-\ this is the refusal that stops a stale row from becoming that one.
+\ this is the refusal that stops a stale row from becoming that one. Its
+\ position is the row's name (checker.f TRUST) when that lies in checked text.
 : TSTALE-PROSE ( -- )
    s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' names no word where its record lands: nothing in the open" DTXT
@@ -1565,6 +1566,7 @@ SHADOW-DIAG-INSTALL
    s" verdict" JKEY s" rejected" JSTR 44 EMIT1
    s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   TSR-TOK-A @ TSR-TOK-U @ JTOKEN-FIELDS
    s" suggestion" JKEY s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JSTR
    125 EMIT1 ;
 : TSTALE-DIAG ( -- )

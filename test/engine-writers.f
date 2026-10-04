@@ -19,7 +19,10 @@
 \ (a setup store the seal refused would also exit 83) and that the row was
 \ reached; the empty rest proves the row wrote nothing on either stream and
 \ nothing after it ran. Each row checks everything before its first store
-\ (src/habu/habu2.f, package DEFWRITE).
+\ (src/habu/habu2.f, package DEFWRITE). One refusal dies instead: while a
+\ checker overlay is open every record or wordlist writer but the overlay's own
+\ names its token on fd 2 and ends the child with ENGINE-ERROR:OVERLAY-OPEN
+\ (REPLAY-DIES).
 \
 \ Run: bin/hb --load test/engine-writers.f
 require lib/string.f
@@ -109,6 +112,10 @@ TRUSTED: EW-CLOSE ( -- ) def-close ;
 : EW-AT ( -- ) EW-MARK$ type ;
 
 TRUSTED: EW-LIVE ( -- ) 1 data-base TASKS-LIVE-CELL + ! ;
+\ A definition pending, as `:` leaves one until `;`: checked code reaches the
+\ cell with a raw store, so this is the one way a definition pends while an
+\ overlay is open.
+: EW-PEND ( -- ) 1 data-base PEND-CELL + ! ;
 TRUSTED: EW-BODYLEN! ( n -- ) data-base BODYLEN-CELL + ! ;
 
 \ NDICT at DICT-CAP. The raise would rebuild the name index over every zeroed
@@ -350,6 +357,12 @@ private
 : REPLAY-REFUSES ( ptr u8 n n -- ) {: row:ptr rowu:n rc:n :}
    row rowu  row rowu REPLAY$  rc REFUSES-AS ;
 
+\ A writer that runs while the overlay is open: the status
+\ ENGINE-ERROR:OVERLAY-OPEN and its text on fd 2, which names the token being
+\ run, the word that called the writer.
+: REPLAY-DIES ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n want:ptr wantu:n :}
+   row rowu  row rowu REPLAY$  want wantu ENGINE-ERROR:OVERLAY-OPEN DIES-AS ;
+
 \ The prompt refuses a replay writer by name, and a replay record is codeless:
 \ executing one traps.
 : REPLAY-TRAPS ( -- )
@@ -417,8 +430,10 @@ private
    s" EWR-OPEN EW-LIVE EW-AT EWR-CLOSE" TASK-LIVE REPLAY-REFUSES ;
 
 \ replay-open refuses an open overlay and a pending definition; replay-record
-\ refuses no overlay, a namespace or retired wid and what every record writer
-\ refuses (RECORD-REFUSALS).
+\ refuses no overlay, a namespace or retired wid, a pending definition and
+\ what every record writer refuses (RECORD-REFUSALS). While the overlay is open
+\ def-open, alias-record and namespace-private die by name, as every definer
+\ head does, so a definition pends then only through EW-PEND's raw store.
 : REPLAY-OPEN-RECORD ( -- )
    s" EWR-OPEN EW-AT EWR-OPEN" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" : EWP ( -- ) parse-name get-current 0 EW-OPEN EW-AT EWR-OPEN ; EWP DW" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
@@ -430,12 +445,20 @@ private
    s" EWR-OPEN EW-CEILING 8 - cp! parse-name A-LONG-REPLAY-RECORD-NAME get-current EW-AT EWR-REC" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EWR-OPEN parse-name RX get-current EWR-REC parse-name rx get-current EW-AT EWR-REC" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EWR-OPEN EW-DICT-FULL parse-name RX get-current EW-AT EWR-REC" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
-   s" : EWP ( -- ) EWR-OPEN parse-name get-current 0 EW-OPEN EW-AT parse-name get-current EWR-REC ; EWP DW RX" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES ;
+   s" : EWF ( ptr u8 n n -- ) EW-PEND EWR-REC ; EWR-OPEN parse-name RX get-current EW-AT EWF" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" EWR-OPEN parse-name DW get-current 0 EW-OPEN"
+      s" hb: definition while a checker replay is open: EW-OPEN" REPLAY-DIES
+   s" : S ( -- ) ; EWR-OPEN parse-name AL ndict@ 1- get-current EW-ALIAS"
+      s" hb: definition while a checker replay is open: EW-ALIAS" REPLAY-DIES
+   s" parse-name NSQ false EW-NS EWR-OPEN EW-PRIVATE"
+      s" hb: definition while a checker replay is open: EW-PRIVATE" REPLAY-DIES ;
 
 \ record-wid! refuses no overlay, an index at or past NDICT (unsigned), a
-\ namespace row and the namespace wid; replay-close refuses no overlay, a
-\ pending definition, a record published by another writer, NDICT below the
-\ mark and CP below it.
+\ namespace row and the namespace wid; replay-close refuses no overlay, NDICT
+\ above the overlay's last record (another writer's: with every appending
+\ writer dying while the overlay is open, only a raw ndict! gets there), a
+\ pending definition (EW-PEND's raw store), NDICT below the mark and CP below
+\ it.
 : REPLAY-WID-CLOSE ( -- )
    s" : S ( -- ) ; -2 ndict@ 1- EW-AT EWR-WID" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EWR-OPEN -2 ndict@ EW-AT EWR-WID" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
@@ -443,8 +466,8 @@ private
    s" EWR-OPEN parse-name NSW true EW-NS -2 swap EW-AT EWR-WID" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" : S ( -- ) ; ndict@ 1- EWR-OPEN -1 swap EW-AT EWR-WID" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
-   s" : EWP ( -- ) EWR-OPEN parse-name get-current 0 EW-OPEN EW-AT EWR-CLOSE ; EWP DW" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
-   s" EWR-OPEN : S ( -- ) ; EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" EWR-OPEN ndict@ 1+ ndict! EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
+   s" : EWF ( -- ) EW-PEND EWR-CLOSE ; EWR-OPEN EW-AT EWF" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" : S ( -- ) ; EWR-OPEN ndict@ 1- ndict! EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES
    s" EWR-OPEN cp@ 4 - cp! EW-AT EWR-CLOSE" ENGINE-ERROR:SEAL-VIOLATION REPLAY-REFUSES ;
 

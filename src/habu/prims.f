@@ -695,7 +695,11 @@ ETRUSTED-ONLY!                       \ CODE-RECLAIM's permitted CP rewind
 \ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
 \ is live (the four dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text.
+\ caller checks first and prints the engine's own text. One refusal is a
+\ compile die instead: while a checker overlay is open (layout.f REPLAY-SCOPE)
+\ `namespace-private`, `alias-record` and `def-open`, like `native-unit-publish`
+\ above, name the token and die ENGINE-ERROR:OVERLAY-OPEN, which `evaluate`
+\ delivers as a throw (habu1.f OVERLAY-EMIT:GUARD,).
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
