@@ -7,10 +7,10 @@ require lib/ffi-abi.f
 create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot
 
-\ Local stubs, instruction bytes, and call targets are fixed. Caller data pointers
-\ are constrained by each exact FFI schema and its registered READABLE/WRITABLE
-\ extents. Retirement owner: habu-sweep-trusted-out-f872acb0.
+\ Local stubs use the target C ABI; each call still fixes the same scalar and
+\ exact pointer extent. Retirement owner: habu-sweep-trusted-out-f872acb0.
 TRUSTED: FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if $C3378948 fn patch32 fn exit then
    $F9000001 fn patch32
    $D65F03C0 fn $4 + patch32
    fn ;
@@ -22,6 +22,13 @@ TRUSTED: FFI-T-STORE ( ptr a n -- n ) {: out:ptr value:n :}
 
 \ Fixed two-parameter kernel stub.
 TRUSTED: FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $48078B48 fn       patch32
+      $8B48008B fn $4 +  patch32
+      $0348084F fn $8 +  patch32
+      $9090C301 fn $C + patch32
+      fn exit
+   then
    $F9400009 fn       patch32
    $F940040A fn $4 +  patch32
    $F9400129 fn $8 +  patch32
@@ -30,24 +37,37 @@ TRUSTED: FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
    $D65F03C0 fn $14 + patch32
    fn ;
 
-\ Fixed x8-store stub.
+\ AAPCS64's x8 output, or the first SysV integer argument.
 TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if $C3378948 fn patch32 fn exit then
    $F9000100 fn patch32
    $D65F03C0 fn $4 + patch32
    fn ;
 
 \ Fixed stack-argument store stub.
 TRUSTED: FFI-T-STACK-STORE ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $24448B48 fn       patch32
+      $38894808 fn $4 +  patch32
+      $909090C3 fn $8 +  patch32
+      fn exit
+   then
    $F94003E9 fn patch32
    $F9000120 fn $4 + patch32
    $D65F03C0 fn $8 + patch32
    fn ;
 
-\ Exact mixed-ABI call fixes x8 as an eight-byte output.
+\ Exact mixed-ABI call fixes an eight-byte output in the target's first pointer
+\ channel: x8 on AAPCS64, rdi on SysV.
 TRUSTED: FFI-T-X8-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:RESET
-   42 0 FFI:VALUE!
-   out 8 FFI:X8-WRITABLE!
+   HB-TARGET-LINUX-X86-64? if
+      out 8 0 FFI:WRITABLE!
+      42 1 FFI:VALUE!
+   else
+      42 0 FFI:VALUE!
+      out 8 FFI:X8-WRITABLE!
+   then
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-X8-STORE ffi-call-abi-bounded ;
 
