@@ -491,6 +491,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    [: s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" JIT-EVALUATE
       s" JITDUMP-SMOKE" JIT-FIND JD ;] GE-CAPTURE-ACTION
    s" jitdump direct core" GE-EXPECT-OK
+   s" mov" s" jitdump decodes a real move" GE-EXPECT-OUT-HAS
    s" ret" s" jitdump direct core output" GE-EXPECT-OUT-HAS
    s" PASS: jitdump direct core" type cr ;
 

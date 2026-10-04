@@ -233,7 +233,7 @@ TLEAVE 4 T=
 \ only to test it: ldur x9,[x19,#-8]; cmp x9,x16; cset x9,eq; cbz x9,next; drop.
 \ It now branches straight off the compare flags:
 \   ldur x9,[x19,#-8]; cmp x9,x16; b.ne next; sub x19,#8 (drop scrutinee on match)
-\ Byte-exact per-arm hex (measured via tools/jitdump.f xt->RET walk):
+\ Byte-exact per-arm hex (measured within the recorded code span):
 \   before arm: F85F8269 EB10013F 9A9F17E9 B4000009 D1002273  (cset+cbz, 5 words)
 \   after  arm: F85F8269 EB10013F 54000001 D1002273           (b.ne,     4 words)
 \ (B4000009/54000001 shown with imm=0; the real placeholder carries the imm19
