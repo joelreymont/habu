@@ -781,6 +781,66 @@ $90909090 constant PATCH-WORD
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ Exercise the booted kernel's reader through its public primitive. Rejected
+\ tokens must discard any partial value and clear both flags.
+: NUM-CASE, ( ptr u8 n n n n -- )
+   {: a:ptr u:n value:n float:n ok:n :}
+   a u X64HARNESS:PUSH-TEXT,
+   s" num-parse" X64HARNESS:CALL-ROW,
+   ok X64HARNESS:EXPECT-POP,
+   float X64HARNESS:EXPECT-POP,
+   value X64HARNESS:EXPECT-POP, ;
+
+\ The harness reserves statuses 21..30 for a case; each spelling needs three
+\ checks, and stack balance takes two more. Two spellings fit per image.
+: NUM-CARD, ( n -- ) {: card:n :}
+   card 0 = if
+      s" 0" 0 0 -1 NUM-CASE,  s" -0" 0 0 -1 NUM-CASE, exit then
+   card 1 = if
+      s" 9223372036854775807" $7FFFFFFFFFFFFFFF 0 -1 NUM-CASE,
+      s" -9223372036854775808" $8000000000000000 0 -1 NUM-CASE, exit then
+   card 2 = if
+      s" 9223372036854775808" 0 0 0 NUM-CASE,
+      s" -9223372036854775809" 0 0 0 NUM-CASE, exit then
+   card 3 = if
+      s" $FFFFFFFFFFFFFFFF" -1 0 -1 NUM-CASE,
+      s" -$8000000000000000" $8000000000000000 0 -1 NUM-CASE, exit then
+   card 4 = if
+      s" $10000000000000000" 0 0 0 NUM-CASE,
+      s" 18446744073709551616" 0 0 0 NUM-CASE, exit then
+   card 5 = if
+      s" 12a" 0 0 0 NUM-CASE,  s" 1.2.3" 0 0 0 NUM-CASE, exit then
+   card 6 = if
+      s" 1." 0 0 0 NUM-CASE,  s" -$" 0 0 0 NUM-CASE, exit then
+   card 7 = if
+      s" +1" 0 0 0 NUM-CASE,  s" $aBcDeF" $ABCDEF 0 -1 NUM-CASE, exit then
+   card 8 = if
+      s" .5" $3FE0000000000000 -1 -1 NUM-CASE,
+      s" -.5" $BFE0000000000000 -1 -1 NUM-CASE, exit then
+   card 9 = if
+      s" 1.5" $3FF8000000000000 -1 -1 NUM-CASE,
+      s" -0.0" $8000000000000000 -1 -1 NUM-CASE, exit then
+   card 10 = if
+      s" 0.000000000000000000" 0 -1 -1 NUM-CASE,
+      s" 0.0000000000000000000" 0 0 0 NUM-CASE, exit then
+   card 11 = if
+      s" 9223372036854775808.0" 0 0 0 NUM-CASE,
+      s" 99999999999999999999." 0 0 0 NUM-CASE, exit then
+   card 12 = if
+      s" 0.1" $3FB999999999999A -1 -1 NUM-CASE,
+      s" 123.456" $405EDD2F1A9FBE77 -1 -1 NUM-CASE, exit then
+   card 13 = if
+      s" 9223372036854775807.5" $43E0000000000000 -1 -1 NUM-CASE,
+      s" -9223372036854775808.5" 0 0 0 NUM-CASE, exit then
+   s" x64k-engine: invalid numeric card" 1 die ;
+
+: BUILD-NUM ( n ptr u8 n -- ) {: card:n path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   card NUM-CARD,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 public
 
 : RUN ( -- )
@@ -839,6 +899,20 @@ public
    s" hb-x64-kernel-origin-patch" TMP-PATH BUILD-ORIGIN-PATCH
    s" hb-x64-kernel-origin-fill" TMP-PATH BUILD-ORIGIN-FILL
    s" hb-x64-kernel-origin-full" TMP-PATH BUILD-ORIGIN-FULL
+   0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
+   1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
+   2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM
+   3 s" hb-x64-kernel-number-03" TMP-PATH BUILD-NUM
+   4 s" hb-x64-kernel-number-04" TMP-PATH BUILD-NUM
+   5 s" hb-x64-kernel-number-05" TMP-PATH BUILD-NUM
+   6 s" hb-x64-kernel-number-06" TMP-PATH BUILD-NUM
+   7 s" hb-x64-kernel-number-07" TMP-PATH BUILD-NUM
+   8 s" hb-x64-kernel-number-08" TMP-PATH BUILD-NUM
+   9 s" hb-x64-kernel-number-09" TMP-PATH BUILD-NUM
+   10 s" hb-x64-kernel-number-10" TMP-PATH BUILD-NUM
+   11 s" hb-x64-kernel-number-11" TMP-PATH BUILD-NUM
+   12 s" hb-x64-kernel-number-12" TMP-PATH BUILD-NUM
+   13 s" hb-x64-kernel-number-13" TMP-PATH BUILD-NUM
    s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
    X64HARNESS:DISPOSE
    T-REPORT ;
