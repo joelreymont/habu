@@ -3,11 +3,12 @@
 \
 \ RUN checks a document's text as the file its URI names, in that file's load
 \ context, through CHECK:VERIFY-BYTES (tools/check-verify-core.f), which runs
-\ none of it. A check that completed - the verdict verified or refused, or the
-\ engine providing the file, which leaves nothing to verify - hands its packets
-\ to LSP-DIAG:PUBLISH. One that did not - the verifier's image holding the
-\ file, the verifier ending without a verdict, or a throw - publishes nothing,
-\ so the client keeps the last list it was sent, and one stderr line says why:
+\ none of it. A check that completed - the verdict verified, refused or
+\ deferred, or the engine providing the file, which leaves nothing to verify -
+\ hands its packets to LSP-DIAG:PUBLISH. One that did not - the verifier's
+\ image holding the file, the verifier ending without a verdict, or a throw -
+\ publishes nothing, so the client keeps the last list it was sent, and one
+\ stderr line says why:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -92,6 +93,7 @@ variable PUBLISHABLE                     \ whether its check completed
       engine-provided OF s" engine-provided" COMPLETED ENDOF
       held OF HEAD s" not checked: the verifier's image holds it" ERR NEWLINE RELAY ENDOF
       incomplete OF UNFINISHED ENDOF
+      deferred OF s" deferred" COMPLETED ENDOF
    ;MATCH ;
 
 public
