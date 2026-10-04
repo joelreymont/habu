@@ -336,9 +336,10 @@ public
   definition's contract is read from that binding
   (`src/compiler/native/compiler.f` KEEP-ARITY asks `NDICT:SPELL-ARITY` with the
   bare name). A mismatch is refused where written, `E-SHADOWED-ARITY` (checker
-  7145, rc 70), naming the package, the tail and both widths, its packet placed
-  at the public definition's name; the native build's
-  `-8303 E-NELAB-ARITY` stays as the backstop. The rule judges only a colon
+  7145, rc 70; `tools/check.f` refuses the definition as for a using refusal
+  below), naming the package, the tail and both widths, its packet placed at
+  the public definition's name; the native build's `-8303 E-NELAB-ARITY` stays
+  as the backstop. The rule judges only a colon
   definition with a DECLARED signature; a public word made by a storage definer
   (`constant`, `variable`, `create`) is judged by its definer's row, so a
   private and a public `SHARED` constant in one package stay legal. Same cells
@@ -416,9 +417,16 @@ and always available, for a one-off call or to escape a collision.
   site (checker 7144), naming each used package it resolves in
   (`used_packages`, docs/repair-diagnostics.md; `ga:TOK`, `gb:TOK` in the line
   `--all-errors` prints without `--json-errors`); qualify the one meant or
-  rename the collision. It exits 67, and 70 under `--verify-only`. The engine
-  refuses it earlier, before the checker: at top level, and in a definition
-  under `bin/hb --load`, it prints
+  rename the collision. It refuses that definition, a definer when the tail
+  is in its `does>` clause, as an `E-UNDEFINED` does and exits 70: plainly
+  the check stops there, and under `--all-errors` or `--verify-only` the
+  definition keeps its declared effect for later callers and the check goes
+  on to report every later refusal. The same holds for the shadow below
+  (checker 7141) and for `E-SHADOWED-ARITY` (`REFUSE-DEF`, `DEF-REFUSED` and
+  `DEF-STOPPED`, `src/core/checker.f`), on which `bin/hb --load` ends, rc 70;
+  a refusal outside a definition keeps its own status. The engine
+  refuses an ambiguous tail earlier, before the checker: at top level, and in a
+  definition under `bin/hb --load`, it prints
   `hb: ambiguous bare word resolves in multiple used packages: TOK at FILE:LINE`
   and exits 94, and so does `tools/check.f` for a top-level use, in its run
   stage.

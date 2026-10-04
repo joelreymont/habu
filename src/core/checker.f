@@ -10736,6 +10736,16 @@ defer SHADOW-DIAG-XT ( n -- )               \ render.f installs both diagnostics
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
 
+\ A refusal of the definition being checked that leaves its body's or does>
+\ clause's walk by a throw, its packet rendered where it was found: a using
+\ refusal (CHECKER-RESOLVE:RAISE) or a shadowed arity (SHADOW-ARITY-CK). The
+\ code is kept as it is raised, so the walk's entry (DEF-REFUSED) tells the
+\ definition's refusal from a throw nothing judged - an arena or capacity
+\ failure, a bug - which propagates. CHECKER-REFUSAL-CELL cannot tell them: it
+\ outlives the walk and holds refusals that are not the definition's.
+variable DEF-REFUSAL
+: REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
+
 \ A bare tail bound to the global gsym while the used public in slot ix also
 \ exports it: capture both candidates for the diagnostic and answer the
 \ refusal, E-USING-SHADOW-GLOBAL. CHECKER-RESOLVE:RAISE renders the captured
@@ -11456,13 +11466,13 @@ public
    why E-USING-SHADOW-GLOBAL = IF
       s USH-TOK-A !  su USH-TOK-U !
       0 SHADOW-DIAG-XT
-      why CHECKER-REFUSE
+      why REFUSE-DEF CHECKER-REFUSE
    THEN
    why E-USING-AMBIGUOUS = IF
       s USH-TOK-A !  su USH-TOK-U !
       2 SHADOW-DIAG-XT
    THEN
-   why throw ;
+   why REFUSE-DEF throw ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME here
 \ be refused? EFFECT-QUERY resolves through CHECKER-FIND-ACTIVE-SYM, so it
@@ -12518,7 +12528,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    priv SBA-TWIN !
    nin SBA-NIN !  nout SBA-NOUT !  pin SBA-PIN !  pout SBA-POUT !
    1 SHADOW-DIAG-XT
-   E-SHADOWED-ARITY CHECKER-REFUSE ;
+   E-SHADOWED-ARITY REFUSE-DEF CHECKER-REFUSE ;
 
 \ CHECKER-DEFCAST hands this a name source gave it, so a length no name has is
 \ refused with the symbol pool's refusal before the constructor scan reads it.
@@ -20387,6 +20397,20 @@ variable CAST-PATH-N
    a u CHECK-REC-ADMIT
    CHECK-SIG? IF SGIN @ SGOUT @ a u SHADOW-ARITY-CK THEN ;
 
+\ A definition refused in a multi-error load: counted, so the run exits
+\ nonzero, and its declared signature kept as source authority, so a later
+\ caller checks against it, unless that signature is bad or too big to record.
+\ A failed body makes no control claims; the hook publishes it all the same.
+: MULTI-REFUSED ( -- )
+   1 MULTI-ERR-N +!
+   CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF
+      NMA @ NMU @ CHECK-REC-ADMIT
+      NMA @ NMU @ 0 NORET-ADD
+      SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS
+      RECOVERY-RECORD
+      NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
+   THEN ;
+
 : CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
    a u CHECK-RESET
@@ -20490,14 +20514,7 @@ variable CAST-PATH-N
    \ A refusal in multi-error mode, rejected or uncheckable alike, once the last
    \ pass of a retried check has judged it:
    dup 0 =  over 1 = or  MULTI-ERR? and  NMU @ 0 > and  CK-AOT-RETRY-DUE @ 0= and IF
-      1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      CHECK-SIG? SGBAD @ 0= and UNFIT @ 0= and IF       \ retain analysis facts without
-         NMA @ NMU @ CHECK-REC-ADMIT
-         NMA @ NMU @ 0 NORET-ADD                       \ no control claims from a failed body
-         SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
-         RECOVERY-RECORD
-         NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!      \ the hook publishes it all the same
-      THEN                                              \ unless the sig is bad or too big to record
+      MULTI-REFUSED
    THEN ;
 
 \ ---------------------------------------------------------------------------
@@ -21130,9 +21147,48 @@ PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
    rc 0 <> IF rc throw THEN
    QCAND-VERDICT @ ;
 
+\ A refusal of the definition (REFUSE-DEF) leaves CHECK by a throw. On the
+\ ordinary load path the throw stops the load. In a multi-error load it refuses
+\ the definition, as a rejected verdict does: the walk and its retries end at
+\ the refusal, the record step runs as CHECK runs it for a refusal (outside
+\ transport mode, asking the store and not the walk), and the load goes on to
+\ the next definition. The packet is the definition's diagnostic; nothing else
+\ renders.
+PTR-VARIABLE CK-DEF-A   variable CK-DEF-U   variable CK-DEF-VERDICT
+
+: CHECK-DEF-BODY ( -- )      \ ( -- ) closure: check the stashed definition, stash the verdict
+   CK-DEF-A @ CK-DEF-U @ CHECK-RETRY CK-DEF-VERDICT ! ;
+
+\ The code of the refusal of a definition that stopped a load by its throw
+\ (DEF-REFUSED), 0 before one does. It tells such a stop from a stop no
+\ definition's refusal raised - a top-level use, a refused row - for
+\ tools/check-verify-child.f, whose pre-pass then stops as at any refused
+\ definition.
+variable DEF-STOPPED
+
+\ The rule shared by both walks a refusal of the definition leaves by a throw,
+\ a body's here and a does> clause's (CHECKER-SOURCE-DOES! below): the caught
+\ code is rethrown unless it is that refusal in a multi-error load, and what the
+\ walk left set where it was refused is cleared. Outside a multi-error load the
+\ refusal stops the load, and DEF-STOPPED keeps it.
+: DEF-REFUSED ( n -- )
+   {: rc:n :}
+   rc DEF-REFUSAL @ <> IF rc throw THEN
+   MULTI-ERR? 0= IF rc DEF-STOPPED ! rc throw THEN
+   0 LAYOUT-XPORT !  0 BIND-HORIZON ! ;
+
+: CHECK-DEF-THREW ( n -- )
+   DEF-REFUSED
+   0 RESCAN !  0 CK-AOT-RETRY-ARMED !  0 CK-AOT-RETRY-DUE !
+   MULTI-REFUSED
+   0 CK-DEF-VERDICT ! ;
+
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 VSIG !
-   a u CHECK-RETRY {: verdict:n :}
+   a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
+   [: CHECK-DEF-BODY ;] catch {: rc:n :}
+   rc 0 <> IF rc CHECK-DEF-THREW THEN
+   CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ IF a u verdict CHECKER-TAPE:DONE THEN
    a u verdict CHECKER-CERT:PRODUCE
@@ -21472,14 +21528,35 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
    v ;
 
+\ A clause is inside its definer's definition, so a refusal of the definition
+\ (REFUSE-DEF) that leaves the clause's walk by a throw is, in a multi-error
+\ load, a refused clause like one its verdict refuses (DEF-REFUSED): what the
+\ walk armed dies, as at CHECK-DOES-RUN's end, and it is counted. Its packet,
+\ rendered where the refusal was found, is its diagnostic.
+PTR-VARIABLE SRC-DOES-BA   variable SRC-DOES-BU
+PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
+
+: SRC-DOES-BODY ( -- )       \ ( -- ) closure: check the stashed clause, stash the verdict
+   SRC-DOES-BA @ SRC-DOES-BU @ SRC-DOES-SA @ SRC-DOES-SU @ CHECK-DOES-RUN
+   SRC-DOES-VERDICT ! ;
+
+: SRC-DOES-THREW ( n -- n )
+   DEF-REFUSED
+   WRAP-CLEAR
+   1 MULTI-ERR-N +!
+   0 ;
+
 \ The name is written after the scan, so the token buffers are sized for it
 \ first: growing them afterwards would drop the refused token being reported.
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
-   ba bu sa su CHECK-DOES-RUN
+   ba SRC-DOES-BA !  bu SRC-DOES-BU !  sa SRC-DOES-SA !  su SRC-DOES-SU !
+   0 DEF-REFUSAL !
+   [: SRC-DOES-BODY ;] catch {: rc:n :}
    DOES-EFF-CLEAR
-   na nu DOES-REPORT ;
+   rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
+   SRC-DOES-VERDICT @ na nu DOES-REPORT ;
 
 \ Native compilation scans the parent first to keep the observer tape in source
 \ order. Its accepted clause therefore arrives after the parent's effect record.
