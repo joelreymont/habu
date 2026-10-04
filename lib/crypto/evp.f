@@ -25,6 +25,9 @@ E-CRYPTO-TAG constant E-TAG
 E-CRYPTO-RANDOM constant E-RANDOM
 E-CRYPTO-MAC constant E-MAC
 E-CRYPTO-PLATFORM constant E-PLATFORM
+E-CRYPTO-KEY constant E-KEY
+E-CRYPTO-VERIFY constant E-VERIFY
+E-CRYPTO-SIGN constant E-SIGN
 
 \ The sizes a caller allocates against. SEAL wants KEY-BYTES and NONCE-BYTES
 \ exactly and writes TAG-BYTES past the ciphertext; HMAC-SHA256 writes MAC-BYTES.
@@ -33,6 +36,7 @@ $0C constant NONCE-BYTES                  \ GCM's 96-bit IV, the only length thi
 $10 constant TAG-BYTES                    \ the GCM tag SEAL appends and UNSEAL verifies
 $20 constant MAC-BYTES                    \ HMAC-SHA-256
 $14 constant MAC1-BYTES                   \ HMAC-SHA-1
+$800 constant RS256-MAX-BYTES             \ RSA 16384-bit signature
 
 private
 
@@ -120,6 +124,64 @@ FUNCTION: HMAC1-CALL HMAC ( n ptr u8 n ptr u8 n ptr u8 ptr u8 -- n )
    5 MAC1-BYTES WRITES-BYTES               \ SHA-1's 20-byte digest
    6 C-INT-BYTES WRITES-BYTES
 ;FUNCTION
+
+\ RS256 uses provider-owned opaque keys and parameters. No OpenSSL struct is
+\ laid out in Habu; only pointer and size_t result cells are writable spans.
+FUNCTION: BN-FROM-BYTES BN_bin2bn ( ptr u8 n n -- n ) ;FUNCTION
+FUNCTION: BN-FREE BN_free ( n -- ) ;FUNCTION
+FUNCTION: BN-BITS BN_num_bits ( n -- i32 ) ;FUNCTION
+FUNCTION: BN-COMPARE BN_ucmp ( n n -- i32 ) ;FUNCTION
+FUNCTION: BN-BIT? BN_is_bit_set ( n n -- i32 ) ;FUNCTION
+FUNCTION: PARAM-BLD-NEW OSSL_PARAM_BLD_new ( -- n ) ;FUNCTION
+FUNCTION: PARAM-BLD-FREE OSSL_PARAM_BLD_free ( n -- ) ;FUNCTION
+FUNCTION: PARAM-PUSH-BN OSSL_PARAM_BLD_push_BN ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: PARAM-FROM-BLD OSSL_PARAM_BLD_to_param ( n -- n ) ;FUNCTION
+FUNCTION: PARAM-FREE OSSL_PARAM_free ( n -- ) ;FUNCTION
+FUNCTION: PKEY-CTX-FROM-NAME EVP_PKEY_CTX_new_from_name ( n ptr u8 ptr u8 -- n ) ;FUNCTION
+FUNCTION: PKEY-CTX-FROM-KEY EVP_PKEY_CTX_new_from_pkey ( n n ptr u8 -- n ) ;FUNCTION
+FUNCTION: PKEY-CTX-FREE EVP_PKEY_CTX_free ( n -- ) ;FUNCTION
+FUNCTION: PKEY-FROMDATA-INIT EVP_PKEY_fromdata_init ( n -- i32 ) ;FUNCTION
+FUNCTION: PKEY-FROMDATA EVP_PKEY_fromdata ( n ptr u8 n n -- i32 )
+   1 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: PKEY-FREE EVP_PKEY_free ( n -- ) ;FUNCTION
+FUNCTION: PKEY-IS-A EVP_PKEY_is_a ( n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: PKEY-BITS EVP_PKEY_get_bits ( n -- i32 ) ;FUNCTION
+FUNCTION: PKEY-SIZE EVP_PKEY_get_size ( n -- i32 ) ;FUNCTION
+FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ptr u8 ptr u8 -- i32 )
+   2 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: PKEY-PUBLIC-CHECK EVP_PKEY_public_check ( n -- i32 ) ;FUNCTION
+FUNCTION: PKEY-PAIR-CHECK EVP_PKEY_pairwise_check ( n -- i32 ) ;FUNCTION
+FUNCTION: DECODER-NEW OSSL_DECODER_CTX_new_for_pkey ( ptr u8 ptr u8 ptr u8 ptr u8 n n ptr u8 -- n )
+   0 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: DECODER-FROM-DATA OSSL_DECODER_from_data ( n ptr u8 ptr u8 -- i32 )
+   1 8 WRITES-BYTES
+   2 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: DECODER-FREE OSSL_DECODER_CTX_free ( n -- ) ;FUNCTION
+FUNCTION: MD-CTX-NEW EVP_MD_CTX_new ( -- n ) ;FUNCTION
+FUNCTION: MD-CTX-FREE EVP_MD_CTX_free ( n -- ) ;FUNCTION
+FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 )
+   1 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ptr u8 ptr u8 n ptr u8 n n -- i32 )
+   1 8 WRITES-BYTES
+;FUNCTION
+FUNCTION: RSA-PADDING EVP_PKEY_CTX_set_rsa_padding ( n n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ptr u8 ptr u8 n -- i32 )
+   2 8 WRITES-BYTES
+;FUNCTION
+
+\ The length returned by the size query is the exact writable extent of the
+\ second EVP_DigestSign call. FUNCTION: cannot relate an out-cell to that span.
+: RS-LIBRARY ( -- n )
+   HB-TARGET-MACOS? if s" libcrypto.3.dylib" else s" libcrypto.so.3" then
+   FFI:LIBRARY-PATH ;
+RS-LIBRARY constant RS-LIB
+s" EVP_DigestSign" RS-LIB 5 FFI:DECLARE constant SIGN-ROW
 
 
 \ Foreign out-parameter storage, per task like FFI's own argument staging: two
@@ -287,6 +349,258 @@ TASK:#USER 7 + CELL-ALIGN and STORAGE-BYTES TASK:+USER EVP-STORAGE drop
    cu TAG-BYTES MAX-SPAN WITHIN-RANGE
    ou cu TAG-BYTES - < if E-OPERAND throw then ;
 
+\ RS256's task record owns all opaque handles. The key-result cell doubles as
+\ the decoder's EVP_PKEY ** and remains live until the decoder is destroyed.
+$00 constant RS-ACTIVE
+$08 constant RS-N
+$10 constant RS-E
+$18 constant RS-BLD
+$20 constant RS-PARAM
+$28 constant RS-IMPORT-CTX
+$30 constant RS-KEY
+$38 constant RS-CHECK-CTX
+$40 constant RS-DECODER
+$48 constant RS-MD-CTX
+$50 constant RS-DATA-PTR
+$58 constant RS-DATA-LEN
+$60 constant RS-DIGEST-CTX
+$68 constant RS-SIG-LEN
+$70 constant RS-RECORD-BYTES
+TASK:#USER 7 + CELL-ALIGN and RS-RECORD-BYTES TASK:+USER RS-STORAGE drop
+
+create RSA-NAME 82 c, 83 c, 65 c, 0 c,
+create BN-NAME 110 c, 0 c,
+create BN-E-NAME 101 c, 0 c,
+create PEM-NAME 80 c, 69 c, 77 c, 0 c,
+create PKCS8-NAME 80 c, 114 c, 105 c, 118 c, 97 c, 116 c, 101 c,
+   75 c, 101 c, 121 c, 73 c, 110 c, 102 c, 111 c, 0 c,
+create SHA256-NAME 83 c, 72 c, 65 c, 50 c, 53 c, 54 c, 0 c,
+create DEFAULT-PROPS 112 c, 114 c, 111 c, 118 c, 105 c, 100 c, 101 c,
+   114 c, 61 c, 100 c, 101 c, 102 c, 97 c, 117 c, 108 c, 116 c, 0 c,
+
+$86 constant PKEY-PUBLIC
+$87 constant PKEY-PAIR
+1 constant PKCS1-PADDING
+2048 constant RSA-MIN-BITS
+16384 constant RSA-MAX-BITS
+3072 constant RSA-EXP-LIMIT-BITS
+8 constant RSA-LARGE-EXP-BYTES
+$7FFFFFFFFFFFFFFF constant RS-MAX-ADDRESS
+
+: RS-SLOT ( n -- ptr n ) RS-STORAGE + ;
+: RS-BUF ( n -- ptr u8 ) RS-STORAGE BYTE-VIEW + ;
+: RS@ ( n -- n ) RS-SLOT @ ;
+: RS! ( n n -- ) RS-SLOT ! ;
+: RS-KEY@ ( -- n ) RS-KEY RS@ ;
+: RS-MD@ ( -- n ) RS-MD-CTX RS@ ;
+
+\ Lookup of a destructor is lazy. Resolve every destructor while no resource
+\ exists, so an absent symbol cannot interrupt the finalizer.
+: RS-RESOLVE-FREES ( -- )
+   0 MD-CTX-FREE 0 DECODER-FREE 0 PKEY-CTX-FREE
+   0 PKEY-FREE 0 PARAM-FREE 0 PARAM-BLD-FREE 0 BN-FREE ;
+
+: RS-OPEN ( -- )
+   RS-ACTIVE RS@ 0 <> if E-OPERAND throw then
+   RS-RESOLVE-FREES
+   RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop
+   1 RS-ACTIVE RS! ;
+
+: RS-CLOSE ( -- )
+   RS-MD-CTX RS@ MD-CTX-FREE
+   RS-DECODER RS@ DECODER-FREE
+   RS-CHECK-CTX RS@ PKEY-CTX-FREE
+   RS-IMPORT-CTX RS@ PKEY-CTX-FREE
+   RS-KEY@ PKEY-FREE
+   RS-PARAM RS@ PARAM-FREE
+   RS-BLD RS@ PARAM-BLD-FREE
+   RS-E RS@ BN-FREE
+   RS-N RS@ BN-FREE
+   RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop ;
+
+: RS-SPAN ( ptr u8 n -- )
+   {: source u:n :}
+   u SPAN-LEN
+   source FFI:>CELL {: start:n :}
+   start 0 < if E-OPERAND throw then
+   u 0 > start 0= and if E-OPERAND throw then
+   u RS-MAX-ADDRESS start - > if E-OPERAND throw then ;
+
+: RS-OVERLAP? ( ptr u8 n ptr u8 n -- bool )
+   {: a au:n b bu:n :}
+   au 0= bu 0= or if false exit then
+   a FFI:>CELL b FFI:>CELL bu + <
+   b FFI:>CELL a FFI:>CELL au + < and ;
+
+: RS-JWK-INT ( ptr u8 n -- )
+   {: bytes u:n :}
+   u 0= if E-KEY throw then
+   bytes c@ 0= if E-KEY throw then ;
+
+: RS-JWK-CHECK ( ptr u8 n ptr u8 n -- )
+   {: modulus nu:n exponent eu:n :}
+   modulus nu RS-JWK-INT
+   exponent eu RS-JWK-INT
+   nu RS256-MAX-BYTES > if E-KEY throw then
+   modulus nu 1- + c@ 1 and 0= if E-KEY throw then
+   exponent eu 1- + c@ 1 and 0= if E-KEY throw then
+   eu 1 = if exponent c@ 3 < if E-KEY throw then then ;
+
+: RS-PUBLIC-IMPORT ( ptr u8 n ptr u8 n -- n )
+   {: modulus nu:n exponent eu:n :}
+   modulus nu 0 BN-FROM-BYTES dup RS-N RS! 0= if E-KEY throw then
+   exponent eu 0 BN-FROM-BYTES dup RS-E RS! 0= if E-KEY throw then
+   RS-N RS@ BN-BITS {: bits:n :}
+   bits RSA-MIN-BITS < bits RSA-MAX-BITS > or if E-KEY throw then
+   bits RSA-EXP-LIMIT-BITS > eu RSA-LARGE-EXP-BYTES > and if E-KEY throw then
+   RS-E RS@ RS-N RS@ BN-COMPARE 0 >= if E-KEY throw then
+   PARAM-BLD-NEW dup RS-BLD RS! 0= if E-KEY throw then
+   RS-BLD RS@ BN-NAME RS-N RS@ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
+   RS-BLD RS@ BN-E-NAME RS-E RS@ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
+   RS-BLD RS@ PARAM-FROM-BLD dup RS-PARAM RS! 0= if E-KEY throw then
+   0 RSA-NAME DEFAULT-PROPS PKEY-CTX-FROM-NAME
+   dup RS-IMPORT-CTX RS! 0= if E-KEY throw then
+   RS-IMPORT-CTX RS@ PKEY-FROMDATA-INIT OSSL-OK <> if E-KEY throw then
+   RS-IMPORT-CTX RS@ RS-KEY RS-BUF PKEY-PUBLIC RS-PARAM RS@
+   PKEY-FROMDATA OSSL-OK <> if E-KEY throw then
+   RS-KEY@ 0= if E-KEY throw then
+   bits 7 + 8 / ;
+
+: RS-KEY-CHECK ( bool -- n )
+   {: pair:bool :}
+   RS-KEY@ RSA-NAME PKEY-IS-A OSSL-OK <> if E-KEY throw then
+   RS-KEY@ PKEY-BITS {: bits:n :}
+   bits RSA-MIN-BITS < bits RSA-MAX-BITS > or if E-KEY throw then
+   bits 7 + 8 / {: k:n :}
+   RS-KEY@ PKEY-SIZE k <> if E-KEY throw then
+   0 RS-KEY@ DEFAULT-PROPS PKEY-CTX-FROM-KEY
+   dup RS-CHECK-CTX RS! 0= if E-KEY throw then
+   RS-CHECK-CTX RS@ PKEY-PUBLIC-CHECK OSSL-OK <> if E-KEY throw then
+   pair if RS-CHECK-CTX RS@ PKEY-PAIR-CHECK OSSL-OK <> if E-KEY throw then then
+   k ;
+
+\ Whitespace is allowed around one PEM object. The exact label excludes
+\ encrypted and legacy key formats before the decoder sees them.
+: RS-WHITESPACE? ( n -- bool )
+   {: c:n :}
+   c 32 = c 9 = or c 10 = or c 13 = or ;
+
+: RS-SKIP-SPACE ( ptr u8 n n -- n )
+   {: source u:n at:n :}
+   at
+   begin dup u < while
+      source over + c@ RS-WHITESPACE? 0= if exit then
+      1+
+   repeat ;
+
+: RS-MATCH-AT? ( ptr u8 n n ptr u8 n -- bool )
+   {: source u:n at:n want wu:n :}
+   at 0 < if false exit then
+   wu u at - > if false exit then
+   source at + wu want wu STR= ;
+
+: RS-PEM-SHAPE ( ptr u8 n -- )
+   {: pem u:n :}
+   pem u 0 RS-SKIP-SPACE {: start:n :}
+   pem u start s" -----BEGIN PRIVATE KEY-----" RS-MATCH-AT? 0= if E-KEY throw then
+   start s" -----BEGIN PRIVATE KEY-----" nip + {: header:n :}
+   header u >= if E-KEY throw then
+   pem header + c@ 13 = if header 1+ else header then {: lf:n :}
+   lf u >= if E-KEY throw then
+   pem lf + c@ 10 <> if E-KEY throw then
+   u lf 1+ ?do
+      pem u i s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
+         i s" -----END PRIVATE KEY-----" nip + {: tail:n :}
+         pem u tail RS-SKIP-SPACE u <> if E-KEY throw then
+         unloop exit
+      then
+   loop
+   E-KEY throw ;
+
+: RS-PRIVATE-IMPORT ( ptr u8 n -- )
+   {: pem u:n :}
+   RS-KEY RS-BUF PEM-NAME PKCS8-NAME RSA-NAME PKEY-PAIR 0 DEFAULT-PROPS
+   DECODER-NEW dup RS-DECODER RS! 0= if E-KEY throw then
+   pem FFI:>CELL RS-DATA-PTR RS!
+   u RS-DATA-LEN RS!
+   RS-DECODER RS@ RS-DATA-PTR RS-BUF RS-DATA-LEN RS-BUF
+   DECODER-FROM-DATA OSSL-OK <> if E-KEY throw then
+   RS-KEY@ 0= if E-KEY throw then ;
+
+: RS-PRIVATE-PARAMS ( -- )
+   RS-KEY@ BN-NAME RS-N RS-BUF PKEY-GET-BN OSSL-OK <> if E-KEY throw then
+   RS-N RS@ 0= if E-KEY throw then
+   RS-KEY@ BN-E-NAME RS-E RS-BUF PKEY-GET-BN OSSL-OK <> if E-KEY throw then
+   RS-E RS@ 0= if E-KEY throw then
+   RS-N RS@ BN-BITS {: bits:n :}
+   bits RSA-MIN-BITS < bits RSA-MAX-BITS > or if E-KEY throw then
+   RS-N RS@ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
+   RS-E RS@ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
+   RS-E RS@ BN-BITS 2 < if E-KEY throw then
+   bits RSA-EXP-LIMIT-BITS > if
+      RS-E RS@ BN-BITS RSA-LARGE-EXP-BYTES 8 * > if E-KEY throw then
+   then
+   RS-E RS@ RS-N RS@ BN-COMPARE 0 >= if E-KEY throw then ;
+
+: RS-DIGEST-INIT ( bool -- )
+   {: sign:bool :}
+   0 RS-DIGEST-CTX RS-BUF LE:U64!
+   MD-CTX-NEW dup RS-MD-CTX RS! 0= if
+      sign if E-SIGN else E-VERIFY then throw
+   then
+   sign if
+      RS-MD@ RS-DIGEST-CTX RS-BUF SHA256-NAME 0 DEFAULT-PROPS RS-KEY@ 0
+      DIGEST-SIGN-INIT
+   else
+      RS-MD@ RS-DIGEST-CTX RS-BUF SHA256-NAME 0 DEFAULT-PROPS RS-KEY@ 0
+      DIGEST-VERIFY-INIT
+   then
+   OSSL-OK <> if sign if E-SIGN else E-VERIFY then throw then
+   RS-DIGEST-CTX RS@ dup 0= if
+      drop sign if E-SIGN else E-VERIFY then throw
+   then
+   PKCS1-PADDING RSA-PADDING OSSL-OK <> if
+      sign if E-SIGN else E-VERIFY then throw
+   then ;
+
+: RS-SIGN-WRITE ( ptr u8 n ptr u8 n -- n )
+   {: out k:n msg mu:n :}
+   FFI:RESET
+   RS-MD@ 0 FFI:VALUE!
+   out k 1 FFI:WRITABLE!
+   RS-SIG-LEN RS-BUF 8 2 FFI:WRITABLE!
+   msg 3 FFI:READABLE!
+   mu 4 FFI:VALUE!
+   SIGN-ROW FFI:CALL $FFFFFFFF and
+   dup $80000000 and 0 <> if $FFFFFFFF00000000 or then ;
+
+: RS-VERIFY-RUN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
+   modulus nu exponent eu RS-PUBLIC-IMPORT {: k:n :}
+   false RS-KEY-CHECK k <> if E-KEY throw then
+   su k <> if false exit then
+   false RS-DIGEST-INIT
+   RS-MD@ sig su msg mu DIGEST-VERIFY
+   dup 1 = if drop true exit then
+   dup 0= if drop false exit then
+   drop E-VERIFY throw ;
+
+: RS-SIGN-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: pem pu:n msg mu:n out cap:n :}
+   pem pu RS-PRIVATE-IMPORT
+   RS-PRIVATE-PARAMS
+   true RS-KEY-CHECK {: k:n :}
+   true RS-DIGEST-INIT
+   0 RS-SIG-LEN RS-BUF LE:U64!
+   RS-MD@ 0 RS-SIG-LEN RS-BUF msg mu DIGEST-SIGN-SIZE OSSL-OK <>
+   if E-SIGN throw then
+   RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
+   cap k < if E-OPERAND throw then
+   k RS-SIG-LEN RS-BUF LE:U64!
+   out k msg mu RS-SIGN-WRITE OSSL-OK <> if E-SIGN throw then
+   RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
+   k ;
+
 public
 
 \ Fill the span with cryptographically strong bytes. An empty span is a caller
@@ -336,5 +650,28 @@ public
    ou MAC1-BYTES < if E-OPERAND throw then
    SHA-1 key ku msg mu out MAC-LEN-BUF HMAC1-CALL 0= if E-MAC throw then
    MAC-LEN@ MAC1-BYTES <> if E-MAC throw then ;
+
+\ Verify PKCS#1 v1.5 SHA-256 over exact message bytes. JWK integers are
+\ canonical unsigned big-endian byte strings. A wrong signature is false.
+: RS256-VERIFY? ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
+   modulus nu RS-SPAN exponent eu RS-SPAN
+   msg mu RS-SPAN sig su RS-SPAN
+   modulus nu exponent eu RS-JWK-CHECK
+   RS-OPEN
+   modulus nu exponent eu msg mu sig su
+   [: RS-VERIFY-RUN ;] [: RS-CLOSE ;] finally ;
+
+\ Sign with one unencrypted PKCS#8 RSA PRIVATE KEY PEM. The caller owns the
+\ output; on success exactly the modulus width is written and returned.
+: RS256-SIGN ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: pem pu:n msg mu:n out cap:n :}
+   pem pu RS-SPAN msg mu RS-SPAN out cap RS-SPAN
+   out cap pem pu RS-OVERLAP? if E-OPERAND throw then
+   out cap msg mu RS-OVERLAP? if E-OPERAND throw then
+   pem pu RS-PEM-SHAPE
+   RS-OPEN
+   pem pu msg mu out cap
+   [: RS-SIGN-RUN ;] [: RS-CLOSE ;] finally ;
 
 ;package

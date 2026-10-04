@@ -1403,19 +1403,36 @@ cannot reach the filesystem. See [curl](curl.md) for the declarations, the
 callback-free body path and the failure codes. Authentication, retry policy and
 payload formats belong above this module.
 
-## Authenticated encryption and HMAC
+## Authenticated encryption, HMAC and RS256
 
 `lib/crypto/evp.f` owns the `CRYPTO` package, OpenSSL 3's libcrypto through the
-`FUNCTION:` declarer on Linux AArch64/glibc. `RANDOM-BYTES` fills a span from the
+`FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `RANDOM-BYTES` fills a span from the
 system generator; `SEAL` and `UNSEAL` are AES-256-GCM with the 16-byte tag
 appended to the ciphertext and the associated data authenticated in place;
 `HMAC-SHA256` and `HMAC-SHA1` are one-shot keyed digests writing `MAC-BYTES`
 (32) and `MAC1-BYTES` (20), respectively. `UNSEAL` answers a typed outcome, and
 a record whose tag does not authenticate answers `failed` with the output span
 cleared, never a partial plaintext. Every `EVP_CIPHER_CTX` is freed on every
-path including a throw. See [crypto](crypto.md) for the vocabulary, a
-sealed-record example and the declarations. Key derivation, rotation, storage
-format and nonce sequencing belong above this module.
+path including a throw. `RS256-VERIFY?` takes canonical unsigned big-endian
+JWK modulus and exponent spans, then exact message and signature spans, and
+returns a boolean for signature validity. `RS256-SIGN` takes an unencrypted
+PKCS#8 `PRIVATE KEY` PEM span, an exact message span, and a caller-owned output
+span; it returns the signature byte count. Both use SHA-256 and RSA PKCS#1 v1.5
+padding with the OpenSSL default provider. RSA keys must be 2048–16384 bits;
+`RS256-MAX-BYTES` is 2048 for output allocation. A wrong signature is false;
+bad keys throw `E-KEY`, verification failures `E-VERIFY`, signing failures
+`E-SIGN`, and invalid lengths, output capacity or overlap `E-OPERAND`. Output
+capacity must hold the exact key width; a successful call writes only that
+width. Inputs are borrowed until return. JWS serialization, key selection,
+rotation and nonce sequencing belong above this module. See [crypto](crypto.md)
+for the other vocabulary and a sealed-record example. The RS256 contract uses
+[RFC 7518 §3.3](https://www.rfc-editor.org/rfc/rfc7518.html#section-3.3),
+[JWK integer encoding](https://www.rfc-editor.org/rfc/rfc7518.html#section-6.3.1),
+and OpenSSL's [decoder](https://docs.openssl.org/3.0/man3/OSSL_DECODER_CTX_new_for_pkey/),
+[parameter builder](https://docs.openssl.org/3.0/man3/OSSL_PARAM_BLD/),
+[key validation](https://docs.openssl.org/3.0/man3/EVP_PKEY_check/),
+[digest verification](https://docs.openssl.org/3.0/man3/EVP_DigestVerifyInit/), and
+[digest signing](https://docs.openssl.org/3.0/man3/EVP_DigestSignInit/) contracts.
 
 ## SHA-1
 
