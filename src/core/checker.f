@@ -17611,7 +17611,8 @@ DRAIN-PRETRUST
 
 \ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
 : REJECT-UNSAFE ( -- )
-   -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
+   FAILSET @ 0= IF -1 UNSAFE ! THEN
+   0 OK !  -1 FAILSET ! ;
 
 \ A live local's DECLARED SPELLING, scanned without LOC-REF?'s side effects (that
 \ word also pushes the reference or latches a quotation reject). The caller hands
