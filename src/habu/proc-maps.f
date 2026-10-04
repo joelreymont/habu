@@ -240,10 +240,18 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    MACH-INFO MACH-PROT-OFF + LE:U32@
    MACH-INFO MACH-MAX-PROT-OFF + LE:U32@ or 0<> ;
 
+\ ROW+ can mmap an adjacent page and extend the last Mach region mid-walk.
+\ A reply containing the old end contributes only its unseen suffix.
+: MACH-ROW-LO ( n n n -- n ) {: cursor:n lo:n hi:n :}
+   hi lo <= IF s" proc-maps: Mach region has no ascending extent" FAIL-RC die THEN
+   hi cursor <= IF s" proc-maps: Mach region does not advance" FAIL-RC die THEN
+   lo cursor max ;
+
 : MACOS-RELOAD ( -- )
    MACH-SELF {: task:n :}
    0 MACH-ADDR LE:U64!  0 MACH-DEPTH LE:U32!
    BEGIN
+      MACH-ADDR LE:U64@ {: cursor:n :}
       MACH-INFO-COUNT MACH-COUNT LE:U32!
       task MACH-ADDR MACH-SIZE MACH-DEPTH MACH-INFO MACH-COUNT MACH-REGION
       {: code:n :}
@@ -256,7 +264,8 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
       ELSE
          MACH-ADDR LE:U64@ {: lo:n :}
          lo MACH-SIZE LE:U64@ + {: hi:n :}
-         MACH-ACCESSIBLE? IF lo hi 0 0 ROW+ THEN
+         cursor lo hi MACH-ROW-LO {: row-lo:n :}
+         MACH-ACCESSIBLE? IF row-lo hi 0 0 ROW+ THEN
          hi MACH-ADDR LE:U64!
       THEN
    AGAIN ;
