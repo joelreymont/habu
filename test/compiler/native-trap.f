@@ -613,11 +613,11 @@ variable ANSWERS                     \ callers that answered what tier 0 answers
    {: k:n len:n :}
    0 SRC-U !
    s" : " SRC+  k len CALLEE+  S\"  ( -- ) s\q died\q 3 die ;" SRC+
-   SRC$ EV
+   SRC$ evaluate-closed
    0 SRC-U !
    s" : NTK" SRC+  k NUM+  s"  ( n -- n ) dup 0= if " SRC+  k len CALLEE+
    s"  then 1 + ;" SRC+
-   SRC$ EV
+   SRC$ evaluate-closed
    0 SRC-U !
    s" 5 NTK" SRC+  k NUM+
    SRC$ TEST-EVAL:N  6 = if 1 ANSWERS +! then ;
