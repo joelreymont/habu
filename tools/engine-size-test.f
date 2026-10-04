@@ -109,11 +109,13 @@ variable EST-X64-PATH-U
    \ above exercise both containers, including all Mach-O load-command spans.
    MACHO @ if exit then
    s" header metadata includes the final RELA addend, including its zero bytes" T-LABEL
-   PHDR-END 288 T= ELF-META-END 488 T=
+   PHDR-END X64 @ if 400 else 288 then T=
+   ELF-META-END X64 @ if 600 else 488 then T=
    \ Alter the last metadata byte in this private copy. Its declared extent
    \ remains the same for both values; only the zero count may change.
-   1 IMG@ 487 + c! ELF-META-END 488 T=
-   0 IMG@ 487 + c! ELF-META-END 488 T=
+   ELF-META-END 1- {: last:n :}
+   1 IMG@ last + c! ELF-META-END last 1+ T=
+   0 IMG@ last + c! ELF-META-END last 1+ T=
    s" dynamic metadata lengths cannot wrap or run into the code page" T-LABEL
    [: $4001B8 $7FFFFFFFFFFFFFFF META-VA-END drop ;] E-ES-WALK TTHROWSQ
    [: $4001B8 CODE-OFF META-VA-END drop ;] E-ES-WALK TTHROWSQ ;
@@ -122,6 +124,9 @@ variable EST-X64-PATH-U
    s" bin/hb" MEASURE
    CLASS$ s" engine" T$=
    EST-SUM
+   \ The payload rows below are the ARM packed AOT trailer. Intel records
+   \ text sites in its ELF footer and dictionary rows in a fixed PT_LOAD.
+   X64 @ if exit then
    \ First walk the payload without a sidecar, even if the donor has one.
    SIGNAME-LEN @ 0 > if SIG0 @ 8 - else AOT-END @ then {: at:n :}
    at ETEXT-N !
@@ -189,6 +194,8 @@ variable EST-X64-PATH-U
 
 : EST-SPAN-REACH ( -- )
    s" bin/hb" MEASURE
+   \ The reachability sweep decodes AArch64 calls in the packed AOT blob.
+   X64 @ if exit then
    BUILD-CODE-INDEX
    SPAN-N @ 0 > TTRUE
    REACH-RESET ROOTS-SURFACE ROOTS-CAPTURE ROOTS-ENTRY SWEEP
@@ -209,6 +216,8 @@ variable EST-MAP-U
 
 : EST-SPAN-SIDECAR ( -- )
    s" bin/hb" MEASURE
+   \ This synthetic span row uses the ARM packed AOT code index.
+   X64 @ if exit then
    BUILD-CODE-INDEX
    CLEANUP-RESET
    s" habu-image-size" HB-TMP-MKDIR {: root:ptr rootu:n :}
@@ -243,6 +252,8 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 
 : EST-WID-FORM ( -- )
    s" bin/hb" MEASURE
+   \ This is the ARM packed AOT wid table; Intel keeps live dictionary rows.
+   X64 @ if exit then
    WID-W0 @ 1 T=
    0 EST-WID-BAD !  0 EST-WID-SEEN !
    NRECS 0 ?do
