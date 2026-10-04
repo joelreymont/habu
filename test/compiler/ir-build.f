@@ -621,28 +621,35 @@ create VW-BUF VW-CAP allot
    s" opening a block outside a function rejects" T-LABEL
    [: SG-BLOCK ;] E-IR-BUILD-STAGE TTHROWSQ ;
 
-\ ---- abort ends a builder, and the registry it ends is this file's -----------
-\ Building and abandoning TSLOTS modules in one context is TSLOTS times
-\ seventeen arenas, far more than any one module needs and far more than the
-\ deleted arena registry could have held at once: they are records in the
-\ context's region and cost it nothing but bytes. The last builder is the one
-\ past the BUILDER registry's own capacity, which is a named refusal of its own
-\ and is what this case pins.
+\ ---- abort returns a slot without keeping its old handle readable -----------
+\ The arenas belong to the context, while an aborted builder cannot be used
+\ again. Repeating the cycle past the registry width must keep working.
 : AB-CYCLE ( IR-CTX:ctx -- IR-CTX:ctx )
    dup MK IR-BUILD:ABORT ;
 
-: AB-RELEASE-BODY ( IR-CTX:ctx -- n n )
+: AB-RELEASE-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
-   TSLOTS 0 ?do
+   TSLOTS 1+ 0 ?do
       c AB-CYCLE drop
    loop
-   TSLOTS TTABLES *
-   c [: AB-CYCLE ;] catch nip ;
+   TSLOTS 1+ TTABLES * ;
 
 : AB-RELEASE-CASE ( -- )
-   s" sixteen builders abort in one context and the seventeenth is named" T-LABEL
+   s" aborted builders do not exhaust one context's registry" T-LABEL
    BND [: AB-RELEASE-BODY ;] IR-CTX:WITH-CONTEXT
-   E-IR-BUILD-SLOTS T= TSLOTS TTABLES * T= ;
+   TSLOTS 1+ TTABLES * T= ;
+
+: LIVE-SLOTS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   TSLOTS 0 ?do c MK drop loop
+   c MK drop ;
+
+: LIVE-SLOTS ( -- )
+   BND [: LIVE-SLOTS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LIVE-SLOTS-CASE ( -- )
+   s" sixteen live builders fill the registry" T-LABEL
+   [: LIVE-SLOTS ;] E-IR-BUILD-SLOTS TTHROWSQ ;
 
 \ ---- a builder that runs out part-way leaves nothing behind -------------------
 \ A module's seventeen tables are made in order and a constructor can refuse
@@ -698,10 +705,9 @@ create VW-BUF VW-CAP allot
    c MK {: b:IR-BUILD:builder :}
    c b IR-BUILD:FREEZE IR-BUILD:RETIRE ;
 
-\ Eight cycles, which is under the BUILDER registry's own capacity: a retire
-\ does not refill a builder slot - a retired slot records that it was retired,
-\ exactly as an aborted one does - so the count has to stay inside it.
-8 constant RT-CYCLES
+\ Retiring a module invalidates its readers and returns its registry slot.
+\ The pass chain may need more intermediate modules than registry slots.
+24 constant RT-CYCLES
 
 : RT-RELEASE-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
@@ -715,9 +721,9 @@ create VW-BUF VW-CAP allot
    T-LABEL
    BND [: RT-RELEASE-BODY ;] IR-CTX:WITH-CONTEXT
    RT-CYCLES TTABLES * T=
-   s" and the cycles stay inside the builder registry, which retire does not refill"
+   s" the pass chain exceeds the registry width"
    T-LABEL
-   RT-CYCLES TSLOTS < TTRUE ;
+   RT-CYCLES TSLOTS > TTRUE ;
 
 \ A retired module answers with its OWN name. This is what makes retiring the
 \ wrong module a loud failure instead of a plausible answer: the next reader of
@@ -1608,6 +1614,7 @@ public
    BND [: HARNESS-LIVE-REFUSE-F ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
+   LIVE-SLOTS-CASE
    PART-CASE
    CF-CEILING-CASE
    CF-CASE

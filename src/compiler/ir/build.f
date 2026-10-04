@@ -112,7 +112,7 @@ CAST: MINT-M ( n -- IR-BUILD:module )
 CAST: M>N ( IR-BUILD:module -- n )
 
 \ ---- capacities and slot states ----------------------------------------------
-16 constant SLOT-MAX                 \ live + frozen + aborted registry slots
+16 constant SLOT-MAX                 \ simultaneous live and frozen modules
 $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 1 constant ST-LIVE
 2 constant ST-FROZEN
@@ -629,6 +629,13 @@ private
    -1
    SLOT-MAX 0 ?do
       i BGEN@ 0= if drop i leave then
+   loop
+   dup 0 >= if exit then
+   drop -1
+   SLOT-MAX 0 ?do
+      i BSTATE@ dup ST-ABORTED = swap ST-RETIRED = or if
+         drop i leave
+      then
    loop
    dup 0 < if E-IR-BUILD-SLOTS throw then ;
 
