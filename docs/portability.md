@@ -325,6 +325,24 @@ Immutable opcode schemas and read-only backend descriptions can be shared. Pass 
 
 Source-language globals used by compile-time helpers belong to a host execution realm associated with the session. They are not made thread-safe merely by moving compiler buffers. Initially serialize execution within a realm; parallelize independent builds in isolated processes. Later in-process parallelism requires audited isolation for the complete callable closure, not only the backend.
 
+The native provider adapter uses the existing `IR-CTX` as its storage owner.
+`NLEASE:WITH` acquires the exclusive legacy compiler realm before shared setup;
+nested entry and entry from a running task refuse before changing it.
+`NSESSION:NEW` binds that lease, a context and the provider's stable ID.
+`NSESSION:WITH-WORK` admits one provider work interval at a time. Frozen HIR and
+owned emissions can survive between intervals while their context remains live.
+The backend registry grows with loaded descriptors and orders them by stable ID;
+a runtime row number is not a provider identity.
+
+An `NART:emission` owns copied bytes and function, call and address rows in its
+context. Backend retirement cannot invalidate that copy. Publication and shadow
+capture consume the explicit artifact; releasing it or closing its context makes
+its readers refuse. This adapter serializes legacy providers; it does not qualify
+parallel compilation or foreign code execution. The registered
+`test/compiler/session.f` exercises A64 → x64 → A64, different numeric policies,
+nested admission, task refusal and failure after child scratch allocation, and
+writes the retained A64 artifact.
+
 ### 5.2 Handle ownership and lifecycle
 
 Use nominal handles for `Session`, `Target`, `ContributionBuilder`, `CheckedModule`, `Emission`, `PreparedPublication`, and `CodeLease`. Their lifetimes are:

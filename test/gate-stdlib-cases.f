@@ -532,6 +532,10 @@ SUITE compiler-target-registry
    test/compiler/target-registry.f
 ;SUITE
 
+SUITE compiler-session
+   test/compiler/session.f
+;SUITE
+
 SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
 ;SUITE
