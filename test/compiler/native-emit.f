@@ -1337,8 +1337,8 @@ $1000 constant BUMP-ADDR
    [: EXTRA-OPCODE ;] E-A64EMIT-OPCODE TTHROWSQ ;
 
 : TARGET-REFUSE-CASES ( -- )
-   s" emitting under a context bound to an architecture with no backend refuses there" T-LABEL
-   [: WRONG-TARGET ;] E-CTGT-UNLOADED TTHROWSQ
+   s" emitting under a context bound to a foreign architecture refuses" T-LABEL
+   [: WRONG-TARGET ;] E-A64EMIT-TARGET TTHROWSQ
    s" emitting under a context this backend does not serve is this stage's refusal" T-LABEL
    [: UNSERVED-TARGET ;] E-A64EMIT-TARGET TTHROWSQ ;
 

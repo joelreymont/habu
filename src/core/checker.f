@@ -9,6 +9,7 @@ CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
 CHECKER-OWNER-ABI:EFFECT-OFF constant EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DEFER-OFF
 CHECKER-OWNER-ABI:CAST-OFF constant CAST-OFF
+CHECKER-OWNER-ABI:LINEAR-OFF constant LINEAR-OFF
 CHECKER-OWNER-ABI:USING-OFF constant USING-OFF
 CHECKER-OWNER-ABI:PACKAGE-OFF constant PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
@@ -122,6 +123,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -139,7 +141,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:CHECK-REPORT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:LINEAR-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -2056,14 +2058,22 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 \ with `here`, whose pointer is PE-PTR-A-RAW, and raw storage refuses to carry a
 \ pointer (dot habu-refuse-a-ptr-5ad2734e). VREC's node strings have always been
 \ interned this way (VREC-COPY-STR/VREC-I-STR).
+\
+\ THE OWNER COLUMN is the package that declared a DEFLINEAR type, interned the
+\ same way: `linear:` mints and erases only in that package (LINEAR-CERTIFY).
+\ CT-SET clears it, so every other row, and a linear type declared at top level
+\ or installed from an AOT graph, has none.
 create CT-NAME-A-BOOT CT-CAP-INIT cells allot
 create CT-NAME-U-BOOT CT-CAP-INIT cells allot
 create CT-CLASS-BOOT CT-CAP-INIT cells allot
 create CT-WIDTH-BOOT CT-CAP-INIT cells allot
 create CT-SIGN-BOOT CT-CAP-INIT cells allot
+create CT-PKG-A-BOOT CT-CAP-INIT cells allot
+create CT-PKG-U-BOOT CT-CAP-INIT cells allot
 create CT-STR-BOOT CT-STR-INIT allot
 PERSISTED-PTR-VARIABLE CT-NAME-A-P   PERSISTED-PTR-VARIABLE CT-NAME-U-P   PERSISTED-PTR-VARIABLE CT-CLASS-P
 PERSISTED-PTR-VARIABLE CT-WIDTH-P    PERSISTED-PTR-VARIABLE CT-SIGN-P     PERSISTED-PTR-VARIABLE CT-STR-P
+PERSISTED-PTR-VARIABLE CT-PKG-A-P    PERSISTED-PTR-VARIABLE CT-PKG-U-P
 variable CTN
 variable CT-STR-U
 variable CT-I
@@ -2073,13 +2083,16 @@ PTR-VARIABLE CT-DST
 : CT-ARENA-BOOT ( -- )          \ point every CT store at its boot buffer
    CT-NAME-A-BOOT CT-NAME-A-P !   CT-NAME-U-BOOT CT-NAME-U-P !
    CT-CLASS-BOOT CT-CLASS-P !     CT-WIDTH-BOOT CT-WIDTH-P !
-   CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P ! ;
+   CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P !
+   CT-PKG-A-BOOT CT-PKG-A-P !     CT-PKG-U-BOOT CT-PKG-U-P ! ;
 CT-ARENA-BOOT
 : CT-NAME-A ( -- ptr n ) CT-NAME-A-P @ ;
 : CT-NAME-U ( -- ptr n ) CT-NAME-U-P @ ;
 : CT-CLASS ( -- ptr n ) CT-CLASS-P @ ;
 : CT-WIDTH ( -- ptr n ) CT-WIDTH-P @ ;
 : CT-SIGN ( -- ptr n ) CT-SIGN-P @ ;
+: CT-PKG-A ( -- ptr n ) CT-PKG-A-P @ ;
+: CT-PKG-U ( -- ptr n ) CT-PKG-U-P @ ;
 : CT-STR ( -- ptr u8 ) CT-STR-P @ ;
 
 1 CTN !
@@ -2102,6 +2115,7 @@ CT-ARENA-BOOT
    CT-NAME-A-P ob nb REG-GROW1   CT-NAME-U-P ob nb REG-GROW1
    CT-CLASS-P ob nb REG-GROW1    CT-WIDTH-P ob nb REG-GROW1
    CT-SIGN-P ob nb REG-GROW1
+   CT-PKG-A-P ob nb REG-GROW1    CT-PKG-U-P ob nb REG-GROW1
    nc CT-CAP-V ! ;
 
 : CT-ENSURE ( n -- ) {: need:n :}   \ ensure record cap can index code `need`
@@ -2152,6 +2166,8 @@ CT-ARENA-BOOT
    class code cells CT-CLASS + !
    width code cells CT-WIDTH + !
    sign code cells CT-SIGN + !
+   0 code cells CT-PKG-A + !
+   0 code cells CT-PKG-U + !
    code CT-ADVANCE ;
 
 : CT-INIT ( -- )
@@ -2209,6 +2225,16 @@ CT-INIT
 : CT-NAME$ ( n -- ptr u8 n )
    dup CT-NAME-PTR
    swap cells CT-NAME-U + @ ;
+
+\ The package that declared code `n`, empty when none did (the owner column).
+: CT-PKG$ ( n -- ptr u8 n ) {: code:n :}
+   code cells CT-PKG-A + @ CT-STR swap +
+   code cells CT-PKG-U + @ ;
+
+: CT-PKG! ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+   a u CT-COPY {: off:n len:n :}
+   off code cells CT-PKG-A + !
+   len code cells CT-PKG-U + ! ;
 
 : CT-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n code:n :}
    code CT-NAME$ a u CORE-STR= ;
@@ -5387,9 +5413,15 @@ PTR-VARIABLE PKA  variable PKU  variable PKHAVE       \ one-token push-back
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
 
-: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A new linear type `a u` declared by package `pa pu` ("" for none). The owner is
+\ the caller's to name: a declaration records the package declaring it, while an
+\ imported graph (CK-GRAPH-CON-INSTALL) records none, since whatever package is
+\ being checked when the graph arrives did not declare the type.
+: CT-ADD-LINEAR ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
+   CTN @ {: code:n :}
+   a u code CT-LINEAR 64 CS-NONE CT-SET
+   pa pu code CT-PKG!
    LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
@@ -10279,6 +10311,10 @@ PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
 \ The seal's own question, asked only by src/core/internal-mark.f's pass.
 PPRIM: ENGINE-INTERNAL EFFECT-OWNED-MIN-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
+\ The `linear:` registrar for the source pre-pass (src/habu/verify-source.f
+\ LINEAR-DECLARATION); the engine reaches it through LINEAR-OFF. It certifies
+\ against the live package and section, so a reopened VERIFY gains nothing.
+PPRIM: VERIFY CHECKER-LINEAR PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
 
 PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
@@ -13139,6 +13175,8 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    CT-CLASS-P ab REG-PERSIST-BUF drop
    CT-WIDTH-P ab REG-PERSIST-BUF drop
    CT-SIGN-P ab REG-PERSIST-BUF drop
+   CT-PKG-A-P ab REG-PERSIST-BUF drop
+   CT-PKG-U-P ab REG-PERSIST-BUF drop
    CT-STR-P CT-STR-U @ CT-STR-CAP-V @ REG-PERSIST-MOVE nip IF
       CT-STR-U @ CT-STR-CAP-V !
    THEN ;
@@ -13321,6 +13359,8 @@ REG-EXT-AOT-DEFAULTS
    FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
    0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N !
    CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO   \ name offsets, so zero retires a row
+   CT-PKG-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO    \ ... and its owner
+   CT-PKG-U CTN @ CT-CAP-V @ ARENA-CELLS-ZERO
    VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
    SYM-CAP-V @ SYM-N @ ?do
       0 i SYM-PKG-A-FIELD !
@@ -13472,7 +13512,7 @@ NORET-END @ constant NORET-PRIM-END
    name nameu CHECKER-RECORD-SYM 0 0 0 0 NORET-APPEND ;
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
-   CT-ADD-LINEAR ;
+   CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR ;
 
 variable NORET-FMEND
 
@@ -13759,6 +13799,7 @@ variable CURSYM
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" linear:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-defcast" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" generates:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-generates" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -13901,7 +13942,7 @@ variable UNSAFE-SYM-N
 \ CAST: legality rejects (dot habu-checked-cast-primitive). A cast declares a
 \ retype between two single-cell machine types; the gate below refuses anything
 \ wider than that class (7121-7128 = layout-buffer/type-family blocks).
-7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
+7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
 7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
@@ -13912,6 +13953,11 @@ variable UNSAFE-SYM-N
 \ rejects); the mint rule took the next free code.
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 7151 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
+\ `linear:` rejects (dot habu-mint-and-erase): the arity and unknown-type shapes
+\ are the cast block's own E-CAST-ARITY and E-CAST-FAM.
+7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
+7196 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
+7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
@@ -19579,7 +19625,7 @@ ASIG-GRAPH-CHECK-INSTALL
 
 : CK-GRAPH-CON-INSTALL ( ptr u8 -- ) {: node:ptr :}
    node EN.A @ CK-GRAPH-PTR node EN.B @ {: name:ptr len:n :}
-   name len CT-FIND 0= IF name len CT-ADD-LINEAR THEN ;
+   name len CT-FIND 0= IF name len s" " CT-ADD-LINEAR THEN ;
 
 : CK-GRAPH-NODE-REBASE ( n n -- ) {: off:n base:n :}
    off base + E-PTR {: node:ptr :}
@@ -20299,23 +20345,12 @@ variable CAST-PATH-N
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
-\ CAST-CERTIFY ( sig$ name$ -- ) : the legality gate, in refusal order. Every
-\ clause reads the parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the
-\ named reject; a cast that survives every clause is legal and its declared row
-\ is registered by the caller. Nothing here observes a body.
-\
-\ A signature that did not parse is refused before anything reads its row: the
-\ walks below instantiate a layout's members over its arguments, and a bad row
-\ could not be registered. Its first fault names the class. A family unknown or
-\ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
-\ syntax or a bare `ptr`, is refused as a definition with that signature is, by
-\ its bad-signature diagnostic and CHECKER-REJECT-RC.
-: CAST-CERTIFY ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
-   SGBAD @ IF sa su na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
-   SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
-   SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
-   SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+\ CAST-CERTIFY : the legality gate, in refusal order, over a declaration
+\ IDENTITY-SIG has parsed into one input and one output term. Every clause reads
+\ the parsed rows (SGIN/SGOUT) and throws the named reject; a cast that survives
+\ every clause is legal and its declared row is registered by the caller.
+\ Nothing here observes a body.
+: CAST-CERTIFY ( -- )
    SGIN @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
    SGOUT @ CAST-ROW-TERM SCOPED-TYPE? IF E-CAST-SCOPE throw THEN
    SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
@@ -20334,6 +20369,30 @@ variable CAST-PATH-N
    \ ownership or forges a foreign family is named by that stronger reject.
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN ;
+
+\ LINEAR-PAYLOAD? : what a `linear:` row carries beside its token, a non-linear
+\ con or a pointer chain ending at one. A type variable, a family, a quotation
+\ or an atom is refused: the token stands for one payload of a declared type.
+: LINEAR-PAYLOAD? ( n -- bool )
+   T-RES BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+   dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
+   PAY CT-LINEAR? 0= ;
+
+\ LINEAR-CERTIFY : the `linear:` legality gate, in refusal order, over the one
+\ input and one output term IDENTITY-SIG left. One side is the token, a linear
+\ con, and the other its payload, so the row mints a token from its payload or
+\ erases one back into it. The package that declared the token's type alone
+\ may say so (a type declared at top level has no owner, so nothing mints it),
+\ and only in its private section, so no other scope mints or erases.
+: LINEAR-CERTIFY ( -- )
+   SGIN @ CAST-ROW-TERM {: in:n :}
+   SGOUT @ CAST-ROW-TERM {: out:n :}
+   in LIN-CON? IF in out ELSE out in THEN {: tok:n pay:n :}
+   tok LIN-CON? 0= pay LINEAR-PAYLOAD? 0= or IF E-LINEAR-PAYLOAD throw THEN
+   tok T-RES PAY CT-PKG$ {: pa:ptr pu:n :}
+   pu 0= IF E-LINEAR-OWNER throw THEN
+   pa pu CHECKER-AUTH-PACKAGE$ CORE-STR=CI 0= IF E-LINEAR-OWNER throw THEN
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-LINEAR-SCOPE throw THEN ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their
@@ -21319,33 +21378,63 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
       2drop  SGOUT !  SGIN !
    THEN ;
 
-\ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
-\ ( in -- out )`. Both front ends land here — the engine's reader keyword through
-\ its publish path (habu2.f DEF-TRUST:REGISTER-CAST) and the source pre-pass
-\ through verify-source's TRUSTED: boundary — so one set of refusals runs on one
-\ set of parsed rows whichever front end read the declaration.
+\ IDENTITY-SIG ( name$ effect$ -- ) : parse the declared row of `cast:` or
+\ `linear:` and refuse what neither declarer accepts, before its own gate reads
+\ the row.
 \
 \ PARSE-SIG-RAW/RAW-SIG! is CHECK-DOES!'s own move, for the same reason: it is
 \ how this file parses a declared effect OUTSIDE a definition and lands
-\ SGIN/SGOUT/SGHASR, which is exactly what CAST-CERTIFY reads. Family tails
+\ SGIN/SGOUT/SGHASR, which is exactly what the two gates read. Family tails
 \ resolve through SIG-SCOPE$, which is off outside the AOT intake and therefore
 \ reads the engine's real open namespace — the same scope CAST-OWNER? asks
 \ about. An unresolvable family name lands in SGBAD and is named by E-CAST-FAM,
 \ so a mistyped type cannot mint a row.
 \
-\ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws out
-\ of here before CHECKER-USIG-CERT-ADD, and the engine calls this BEFORE it counts
-\ the record into NDICT, so a rejected cast leaves no name behind in either the
-\ checker's tables or the dictionary.
-: CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+\ A signature that did not parse is refused before anything reads its row: the
+\ cast walks instantiate a layout's members over its arguments, and a bad row
+\ could not be registered. Its first fault names the class. A family unknown or
+\ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
+\ syntax or a bare `ptr`, is refused as a definition with that signature is, by
+\ its bad-signature diagnostic and CHECKER-REJECT-RC. A row that parsed is one
+\ term in and one term out over the same resolved tail, else E-CAST-ARITY:
+\ neither declarer's emitted identity changes cells below that term.
+: IDENTITY-SIG ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF E-CAST-ARITY throw THEN
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW RAW-SIG!
-   sa su na nu CAST-CERTIFY
+   SGBAD-UNKNOWN? SGBAD-ARITY? or IF E-CAST-FAM throw THEN
+   SGBAD @ IF sa su na nu BADSIG-XT  CHECKER-REJECT-RC throw THEN
+   SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
+   SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGIN @ R-RES P>REST R-RES
+   SGOUT @ R-RES P>REST R-RES <> IF E-CAST-ARITY throw THEN ;
+
+\ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
+\ ( in -- out )`, and CHECKER-LINEAR the half of `linear: NAME ( in -- out )`.
+\ Both front ends land here — the engine's reader keyword through its publish
+\ path (habu2.f DEF-TRUST:REGISTER-IDENTITY) and the source pre-pass through
+\ verify-source — so one set of refusals runs on one set of parsed rows
+\ whichever front end read the declaration.
+\
+\ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws out
+\ of here before CHECKER-USIG-CERT-ADD, and the engine calls this BEFORE it counts
+\ the record into NDICT, so a rejected declaration leaves no name behind in
+\ either the checker's tables or the dictionary.
+: CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su IDENTITY-SIG
+   CAST-CERTIFY
+   sa su na nu CHECKER-USIG-CERT-ADD ;
+
+: CHECKER-LINEAR ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su IDENTITY-SIG
+   LINEAR-CERTIFY
+   na nu CHECKER-QUALIFIED? IF E-LINEAR-SCOPE throw THEN
    sa su na nu CHECKER-USIG-CERT-ADD ;
 package CHECKER-REG
 ' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
+' CHECKER-LINEAR DECLARATIONS LINEAR-OFF + xt!
 ;package
 
 

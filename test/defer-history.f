@@ -36,6 +36,7 @@ create ERR IO-CAP allot
    s" src/habu/stack-abi.f" >LEN PROC-ARGV+
    s" src/habu/layout.f" >LEN PROC-ARGV+
    s" src/os/env-base.f" >LEN PROC-ARGV+
+   s" src/core/include.f" >LEN PROC-ARGV+
    s" src/habu/code-span.f" >LEN PROC-ARGV+
    s" src/habu/xref.f" >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV! ;

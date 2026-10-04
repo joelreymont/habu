@@ -1016,6 +1016,7 @@ variable TR-HERE
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
 variable TR-CT-NAP variable TR-CT-NUP variable TR-CT-CLP variable TR-CT-WDP
 variable TR-CT-SGP variable TR-CT-STP variable TR-CTCODE variable TR-CT-LC
+variable TR-CT-PAP variable TR-CT-PUP
 variable TR-CT-STRLC
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): registry-growth probes
 \ call internal checker colon words through one named trusted boundary.
@@ -1023,6 +1024,7 @@ TRUSTED: TR-CT-WHITEBOX ( -- )
    CTN @ TR-CTN !  CT-STR-U @ TR-CTU !  CT-CAP-V @ TR-CTC !  CT-STR-CAP-V @ TR-CTSC !
    CT-NAME-A-P @ TR-CT-NAP !  CT-NAME-U-P @ TR-CT-NUP !  CT-CLASS-P @ TR-CT-CLP !
    CT-WIDTH-P @ TR-CT-WDP !  CT-SIGN-P @ TR-CT-SGP !  CT-STR-P @ TR-CT-STP !
+   CT-PKG-A-P @ TR-CT-PAP !  CT-PKG-U-P @ TR-CT-PUP !
    CTN @ TR-CTCODE !
    s" CTGROWPROBE" CTN @ CT-ROLE 64 CS-NONE CT-SET
    CTN @ dup CT-CAP-V !  TR-CT-LC !      \ next CT-SET crosses the record cap
@@ -1045,7 +1047,8 @@ TRUSTED: TR-CT-WHITEBOX ( -- )
    s" CTGROWPROBE" CT-FIND TR-CTCODE @ T=
    TR-CTN @ CTN !  TR-CTU @ CT-STR-U !  TR-CTC @ CT-CAP-V !  TR-CTSC @ CT-STR-CAP-V !
    TR-CT-NAP @ CT-NAME-A-P !  TR-CT-NUP @ CT-NAME-U-P !  TR-CT-CLP @ CT-CLASS-P !
-   TR-CT-WDP @ CT-WIDTH-P !  TR-CT-SGP @ CT-SIGN-P !  TR-CT-STP @ CT-STR-P ! ;
+   TR-CT-WDP @ CT-WIDTH-P !  TR-CT-SGP @ CT-SIGN-P !  TR-CT-STP @ CT-STR-P !
+   TR-CT-PAP @ CT-PKG-A-P !  TR-CT-PUP @ CT-PKG-U-P ! ;
 LOWER-CERT-HOOK:INSTALL
 TR-CT-WHITEBOX
 \ ---- VREC registry: records, nodes, fields, string pool ----

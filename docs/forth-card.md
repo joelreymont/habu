@@ -269,6 +269,17 @@ A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint, and one whose field holds
 another package's family is `E-CAST-OWNER` outside that package.
 
+In checked code a `DEFLINEAR` token is minted and erased the same way, by the
+package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE
+( PKG:tok -- ptr n )` in its private section. Under `public` that is
+`E-LINEAR-SCOPE`, as is a qualified `LINEAR:` name in the private section;
+in any other package or for a top-level `DEFLINEAR`
+`E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
+pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
+(`E-CAST-LINEAR`). Both identity declarers preserve the stack below their
+operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
+are `E-CAST-ARITY`.
+
 forth.md: **Structures And Enums**; the rule is `docs/effects.md` "Raw storage
 never holds an address".
 
@@ -363,7 +374,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
 | Importing … with `using` | ambiguity, scope end, the 16 limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `CAST:` |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `CAST:`, `LINEAR:` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
 | Stack comments | the token list, `DEFTYPE`, `DEFLINEAR` |

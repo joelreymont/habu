@@ -37,6 +37,7 @@ require src/compiler/ir/type.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
+require src/compiler/native/backend.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/structure.f
 
@@ -57,9 +58,21 @@ private
 \ Wasm contract and emits none.
 : ALWAYS ( CTARGET:contract -- bool ) drop true ;
 : NEVER ( CTARGET:contract -- bool ) drop false ;
+: NO-REWRITE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) nip ;
+: NO-EMIT ( IR-CTX:ctx IR-BUILD:module n -- ) 2drop drop ;
+: NO-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- ) E-CTGT-UNLOADED throw ;
+: NO-STAGE ( -- ) ;
+: NO-PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
+   2drop 2drop ;
+: NO-DECLARE ( n n NBACK:linkage -- ) 2drop drop ;
 
 : REGISTER-WASM ( -- )
-   CTARGET-ARCH:WASM [: ALWAYS ;] [: NEVER ;] CTARGET:REGISTER ;
+   71 CTARGET:ID CTARGET-ARCH:WASM [: ALWAYS ;] [: NEVER ;]
+   CTARGET-BACKEND:MAKE
+   [: NO-DECLARE ;] [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-REWRITE ;]
+   [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;]
+   [: NO-PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE
+   NBACK:REGISTER ;
 
 \ ---- module rigging ----------------------------------------------------------
 : BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )

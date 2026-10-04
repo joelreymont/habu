@@ -1158,6 +1158,7 @@ CHECKER-OWNER-ABI:RAW-OFF constant DECL-RAW-OFF
 CHECKER-OWNER-ABI:EFFECT-OFF constant DECL-EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DECL-DEFER-OFF
 CHECKER-OWNER-ABI:CAST-OFF constant DECL-CAST-OFF
+CHECKER-OWNER-ABI:LINEAR-OFF constant DECL-LINEAR-OFF
 CHECKER-OWNER-ABI:USING-OFF constant DECL-USING-OFF
 CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
@@ -1495,6 +1496,8 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
 \ `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
+\ The three callback CODE cells follow at $2CF0..$2D08. Their separate module
+\ (native-observer-cells.f) also loads on an older baked host during a build.
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above

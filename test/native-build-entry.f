@@ -135,8 +135,8 @@ create CONTENT 64 allot
    S\" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f\n" REFUSED ;
 
 : FOREIGN-BACKEND$ ( -- ptr u8 n )
-   HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/backend.f" exit then
-   s" src/arch/x86-64/backend.f" ;
+   HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/passes.f" exit then
+   s" src/arch/x86-64/passes.f" ;
 
 \ The whole window loads and is captured for the other machine; then the
 \ window's own compiler is the one a source-loaded writer would get

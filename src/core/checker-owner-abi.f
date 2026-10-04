@@ -113,6 +113,10 @@ $2F0 constant VERIFY-RENDERS-OFF
 \ enforce the verdict but must not drop its reason (src/compiler/native/compiler.f
 \ CHECK-HOOKLESS).
 $2F8 constant CHECK-REPORT-OFF
+\ The `linear:` declarer's registrar (src/core/checker.f CHECKER-LINEAR): the
+\ owner of a DEFLINEAR type mints and erases its token, as `cast:` reaches
+\ CAST-OFF.
+$300 constant LINEAR-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

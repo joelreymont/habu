@@ -1,6 +1,7 @@
 \ The fixed address-bearing engine slots that a native build may carry.
 \ This module loads once against the host layout and again in the target writer.
 require src/habu/layout.f
+require src/habu/native-observer-cells.f
 
 package NATIVE-LAYOUT
 private
@@ -12,6 +13,9 @@ create SLOTS
    COMPILE-PREFLIGHT-CELL ,             0 ,
    TOP-HOOK-CELL ,                      0 ,
    EXIT-HOOK-CELL ,                     0 ,
+   NATIVE-OBS-CELLS:OBSERVE ,           0 ,
+   NATIVE-OBS-CELLS:PUBLISHED ,         0 ,
+   NATIVE-OBS-CELLS:INVALIDATE ,        0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,

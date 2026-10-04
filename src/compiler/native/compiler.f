@@ -44,6 +44,8 @@ require src/compiler/native/backend.f
 require src/compiler/native/publish.f
 require src/compiler/native/shadow.f
 require src/compiler/native/prof.f
+require src/compiler/session/lease.f
+require src/compiler/session/emission.f
 
 package NCOMP
 private
@@ -72,6 +74,23 @@ execute
 
 package NCOMP
 
+public
+NEWTYPE code-entry 0
+
+private
+
+CAST: >ENTRY ( n -- code-entry )
+CAST: PUBLISHED-XT ( n -- [ n IR-CTX:ctx code-entry n n -- ] )
+
+public
+CAST: ENTRY>N ( code-entry -- n )
+
+: DECLARE-ENTRY ( ptr code-entry -- )
+   0 >ENTRY swap xt! ;
+
+: CLEAR-ENTRY ( ptr code-entry -- )
+   0 >ENTRY swap ! ;
+
 private
 
 \ ---- what a recording unit is opened with ------------------------------------
@@ -92,6 +111,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-TAPE IR-ARENA:view
 1 TYPED-BUFFER M-HM IR-BUILD:module   \ the frozen module every selector reads
 1 TYPED-BUFFER M-SH IR-CTX:ctx        \ the shadow's context, nested in CC
+TYPED-VARIABLE M-LEASE NLEASE:lease
+TYPED-VARIABLE M-SESSION NSESSION:session
+TYPED-VARIABLE SH-SESSION NSESSION:session
+TYPED-VARIABLE M-EMISSION NART:emission
 
 \ Everything the run needs, parked: a quotation cannot read the enclosing word's
 \ locals and the whole run is one quotation.
@@ -108,6 +131,7 @@ variable PRIOR-CAST
 variable PRIOR-CALLABLE
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
+variable M-PUBLISHED-START           \ committed parent's index for notification
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
@@ -125,7 +149,21 @@ variable M-DOES-FUN                  \ hidden clause function ordinal
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
 : SH ( -- IR-CTX:ctx )           0 M-SH @ ;
+: SS ( -- NSESSION:session ) M-SESSION @ ;
+: SHS ( -- NSESSION:session ) SH-SESSION @ ;
 : MKEY ( -- IR-ID:ir-module-key ) BB IR-BUILD:MODULE-KEY ;
+
+\ The callable address is the actual committed parent's entry plus this
+\ ordinal's sealed emission offset. The callback fills storage reserved while
+\ the HIR was borrowed; it must neither allocate nor throw.
+: PUBLISHED-ROWS ( n NART:emission -- )
+   {: idx:n e:NART:emission :}
+   data-base NATIVE-OBS-CELLS:PUBLISHED + @ dup 0= if drop exit then
+   PUBLISHED-XT {: q :}
+   idx XREF-REC XREF-START >ENTRY {: parent:code-entry :}
+   e NART:FUNCTIONS 0 ?do
+      idx CC parent i e i NART:FUNCTION-OFFSET@ q execute
+   loop ;
 
 : SRC$ ( -- ptr u8 n )
    M-SRC @ M-SRC-U @ ;
@@ -473,29 +511,33 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ A `does>` clause is the companion record's entry in the shadow's routine as it
 \ is in the engine's own, so the copy is taken the way publication will take
 \ the engine's.
-: SHADOW-TAKE ( -- )
+: SHADOW-TAKE ( NART:emission -- )
    M-DOES @ 0<> if M-DOES-FUN @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
 \ The engine's own stages in the engine's own order, each the row the shadow's
 \ binding resolves to, ending in the emission measured from no slot.
 : SHADOW-WORK ( -- )
-   SH M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
-   SH 0 M-HM @ NBACK:SELECT {: m0:IR-BUILD:module :}
-   SH m0 NBACK:PRUNE {: m:IR-BUILD:module :}
-   SH m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
-   SH ready NBACK:EMIT-UNPLACED
-   SHADOW-TAKE ;
+   SHS M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
+   SHS 0 M-HM @ NBACK:SELECT {: m0:IR-BUILD:module :}
+   SHS m0 NBACK:PRUNE {: m:IR-BUILD:module :}
+   SHS m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   SHS ready NBACK:EMIT-UNPLACED
+   SHS NART:COPY SHADOW-TAKE ;
 
 \ Each row gives back what it holds inside its own context, so the context
 \ leaves the ordinary way, takes its builders and arenas with it, and leaves
 \ NEMIT empty for the engine's own emission.
+: SHADOW-CLEAN ( -- )
+   SHS NBACK:RELEASE
+   SHS NBACK:RETIRE ;
+
+: SHADOW-IN ( NSESSION:session -- )
+   dup SH-SESSION ! NSESSION:RESOLVE drop 0 M-SH !
+   [: SHADOW-WORK ;] [: SHADOW-CLEAN ;] finally ;
+
 : SHADOW-BODY ( IR-CTX:ctx -- )
-   0 M-SH !
-   [: SHADOW-WORK ;] catch {: rc:n :}
-   rc 0<> if SH NBACK:RELEASE then
-   SH NBACK:RETIRE
-   rc 0<> if rc throw then ;
+   M-LEASE @ NSESSION:NEW [: SHADOW-IN ;] NSESSION:WITH-WORK ;
 
 : SHADOWED ( IR-BUILD:module -- )
    {: hm:IR-BUILD:module :}
@@ -510,17 +552,39 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ own target contract resolves to, so this file names no backend and an
 \ architecture with no backend loaded is refused at the declaration. An open
 \ shadow's chain runs first, from the same frozen module.
-: EMITTED ( -- )
-   CC M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
-   CC BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   hm SHADOWED
-   CC hm NBACK:SELECT {: m0:IR-BUILD:module :}
+: HOST-CHAIN ( IR-BUILD:module NSESSION:session -- NART:emission )
+   {: hm:IR-BUILD:module s:NSESSION:session :}
+   s M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
+   s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   CC m0 NBACK:PRUNE {: m:IR-BUILD:module :}
-   CC m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
-   CC ready NPUB:NEXT-SLOT NBACK:EMIT ;
+   s m0 NBACK:PRUNE {: m:IR-BUILD:module :}
+   s m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   s ready NPUB:NEXT-SLOT NBACK:EMIT
+   s NART:COPY ;
 
-: PUBLISH-IT ( -- )
+: HOST-CLEAN ( -- )
+   SS NBACK:RELEASE
+   SS NBACK:RETIRE ;
+
+: HOST-WORK ( IR-BUILD:module NSESSION:session -- NART:emission )
+   [: HOST-CHAIN ;] [: HOST-CLEAN ;] finally ;
+
+: FREEZE-CLEAN ( -- )
+   NLOOP:BOUND? if NLOOP:RELEASE then ;
+
+: FREEZE-CHAIN ( NSESSION:session -- IR-BUILD:module )
+   BB NBACK:FREEZE ;
+
+: FROZEN ( NSESSION:session -- IR-BUILD:module )
+   [: FREEZE-CHAIN ;] [: FREEZE-CLEAN ;] finally ;
+
+: EMITTED ( -- NART:emission )
+   SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
+   ndict@ CC hm NBACK:OBSERVE
+   hm SHADOWED
+   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
+
+: PUBLISH-IT ( NART:emission -- )
    M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
    NPUB:PUBLISH-PENDING ;
 
@@ -547,22 +611,27 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
-   EMITTED
+   EMITTED dup M-EMISSION !
    PUBLISH-IT
-   0 M-DOES-FRAME ! ;
+   0 M-DOES-FRAME !
+   before M-PUBLISHED-START ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
-   NSHADOW:ABANDON
-   M-RC @ 0<> if CC NBACK:RELEASE then
-   CC NBACK:RETIRE ;
+   NSHADOW:ABANDON ;
 
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
+   c M-LEASE @ NSESSION:NEW M-SESSION !
    [: WORK ;] catch M-RC !
+   M-RC @ 0= if
+      [: M-PUBLISHED-START @ M-EMISSION @ PUBLISHED-ROWS ;] catch 0<> if
+         s" ncomp: publication callback threw" 76 die
+      then
+   then
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
@@ -606,7 +675,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    SC k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
    SC a r k HIR:PROTOTYPE
-   SC a r k NBACK:PROTOTYPE
+   SC a r k M-LEASE @ NBACK:PROTOTYPE
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    SC HIR:NEW-BUILDER {: mb:IR-BUILD:builder :}
@@ -619,13 +688,26 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ when the session does - through IR-CTX:SESSION-CLOSE, which runs this before it
 \ retires the row. Nothing else clears them, so no ordering between a capture's
 \ entry points can leave a reader holding a flag over an arena that is gone.
-: SESSION-FORGET ( -- )
+: FORGET-OWNED ( NLEASE:lease -- )
+   {: l:NLEASE:lease :}
+   l NLEASE:QUIET
    HIR-WORD:SESSION-MODEL-CLEAR
    HIR:PROTOTYPE-CLEAR
-   NBACK:FORGET ;
+   l NBACK:FORGET ;
+
+\ A refused close must leave the prototype flags and their context untouched.
+\ During a failed session start the compiler's own root is still live; after
+\ compilation, no root may be held by another caller.
+: SESSION-ADMIT ( -- )
+   M-LEASE @ NLEASE:LIVE? if M-LEASE @ NLEASE:QUIET exit then
+   NLEASE:IDLE-CK ;
+
+: SESSION-FORGET ( -- )
+   M-LEASE @ NLEASE:LIVE? if M-LEASE @ FORGET-OWNED exit then
+   [: FORGET-OWNED ;] NLEASE:WITH ;
 
 : INSTALL-FORGET ( -- )
-   [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
+   [: SESSION-ADMIT ;] [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
 INSTALL-FORGET
 
 \ A vocabulary that fails to build takes the session with it, so the next
@@ -715,12 +797,24 @@ INSTALL-FORGET
    0 NAME-U !
    NELAB:REFUSED-RESET ;
 
+private
+
+: LEASED ( ptr u8 n NLEASE:lease -- )
+   M-LEASE !
+   STAGE RUN ;
+
 public
+
+\ The named parent's effect does not determine the publication callback's effect.
+: PUBLISHED! ( [ n IR-CTX:ctx code-entry n n -- ] -- )
+   IDLE-CK
+   data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
+   data-base NATIVE-OBS-CELLS:PUBLISHED + xt! ;
 
 \ The engine has already parsed this definition and built its pending record.
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
-   STAGE RUN ;
+   [: LEASED ;] NLEASE:WITH ;
 
 \ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
 \ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
@@ -739,6 +833,7 @@ public
 \ reading was unmapped. So there is nothing session-shaped left to clear here,
 \ and no order between the two entry points to get right.
 : CAPTURE-PREPARE ( -- )
+   NLEASE:IDLE-CK
    IDLE-CK
    NFETCH:RELEASE
    NULL-PTR NAME-A !  0 NAME-U !

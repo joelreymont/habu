@@ -574,11 +574,15 @@ SUITE wasm-structure
    test/wasm/structure.f
 ;SUITE
 
-\ The backend registry: src/compiler/target.f's rows and the registration in
-\ src/arch/arm64/backend.f, which is the acceptance suite for
+\ The backend registry: complete rows in src/compiler/native/backend.f,
+\ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
 SUITE compiler-target-registry
    test/compiler/target-registry.f
+;SUITE
+
+SUITE compiler-session
+   test/compiler/session.f
 ;SUITE
 
 SUITE compiler-arm32-asm
@@ -589,7 +593,7 @@ SUITE compiler-x86-64-asm
    test/compiler/x86-64-asm.f
 ;SUITE
 
-\ The x86-64 machine dialect and the backend row it loads with:
+\ The x86-64 machine dialect and the capability predicate it loads with:
 \ src/compiler/native/x64ir.f and src/arch/x86-64/backend.f.
 SUITE compiler-x64ir
    test/compiler/x64ir.f
@@ -698,6 +702,10 @@ SUITE compiler-native-div-refusal
 
 SUITE compiler-native-quot
    test/compiler/native-quot.f
+;SUITE
+
+SUITE compiler-native-observer
+   test/compiler/native-observer.f
 ;SUITE
 
 SUITE compiler-native-defer
@@ -2441,6 +2449,10 @@ SUITE pointer-view
 
 SUITE cast
    test/cast-suite.f
+;SUITE
+
+SUITE linear
+   test/linear-suite.f
 ;SUITE
 
 WHITEBOX-SUITE decl-event

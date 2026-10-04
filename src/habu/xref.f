@@ -11,6 +11,7 @@
 \ `undefine`, which the checker's source pass dispatches itself
 \ (E-RESERVED-DEFINITION, as for src/core/include.f's loader words), and every
 \ engine already holds its words (E-DUPLICATE-DEFINITION).
+require src/habu/native-observer-cells.f
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
 
@@ -554,6 +555,14 @@ package CODE-RECLAIM
 
 private
 
+CAST: INVALIDATE-XT ( n -- [ n -- ] )
+
+: INVALIDATE ( n -- )
+   {: floor:n :}
+   data-base NATIVE-OBS-CELLS:INVALIDATE + @ dup 0= if drop exit then
+   INVALIDATE-XT {: q :}
+   floor q execute ;
+
 \ The raw engine primitive edits relocation metadata. Its CODE-RECLAIM row
 \ (src/habu/prims.f) admits this checked word, which TRUNCATE calls with its
 \ proved [start,start+len) span; no other checked caller reaches it.
@@ -617,6 +626,14 @@ variable FLOOR-A
 
 public
 
+7230 constant E-INSTALL
+
+\ A source library installs its single code owner while compilation is idle.
+\ The fixed CODE cell is declared at cold boot and relocates in saved images.
+: INVALIDATE! ( [ n -- ] -- )
+   data-base PEND-CELL + @ 0= 0= if E-INSTALL throw then
+   data-base NATIVE-OBS-CELLS:INVALIDATE + xt! ;
+
 \ A floor above the free code slot. There is nothing above the slot to reclaim,
 \ so a caller asking for one is not truncating - it is moving the pointer the
 \ other way with a notice nobody can act on, which is the one shape that would
@@ -657,6 +674,7 @@ public
    floor cp@ > if E-FLOOR throw then
    ndict@ LIVE-SCAN
    floor LIVE-HI @ <= if E-LIVE throw then
+   floor INVALIDATE
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
 

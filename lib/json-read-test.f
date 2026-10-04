@@ -642,7 +642,7 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-CANARY JRT-STATE-B-AFTER @ T= ;
 
 : JRT-TEST-SEALED ( -- )
-   s" package JR : FORGE ( ptr a -- JR:reader ) MINT-READER ; ;package"
+   s" package JR : FORGE ( ptr n -- JR:reader ) MINT-READER ; ;package"
    {: src:ptr srcu:n :}
    src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
@@ -650,10 +650,9 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    oc ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
-   s" JRT-BAD-PREMINT ( ptr a -- ptr n n ) JR:STORAGE>PREMINT" JRT-REJECTED
-   s" JRT-BAD-MINT ( ptr a -- JR:reader ) JR:MINT-READER" JRT-REJECTED
-   s" JRT-BAD-PRIVATE-STATE ( JR:reader -- JR:reader ptr n ptr u8 ) JR:READER>STATE" JRT-REJECTED
-   s" JRT-BAD-CONSUME ( JR:reader -- ) JR:CONSUME-READER" JRT-REJECTED
+   s" JRT-BAD-MINT ( ptr n -- JR:reader ) JR:MINT-READER" JRT-REJECTED
+   s" JRT-BAD-ERASE ( JR:reader -- ptr n ) JR:ERASE-READER" JRT-REJECTED
+   s" JRT-BAD-PRIVATE-STATE ( JR:reader -- JR:reader ptr n ) JR:READER>STATE" JRT-REJECTED
    s" JRT-BAD-CELLS ( JR:reader -- JR:reader ptr n ) JR:READER>CELLS" JRT-REJECTED ;
 
 : JRT-TEST-OWNERSHIP ( -- )
@@ -682,9 +681,9 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    s" linear reader cannot be discarded" T-LABEL
    s" JRT-BAD-DROP ( JR:reader -- ) drop" JRT-REJECTED
    s" raw storage cannot construct a reader" T-LABEL
-   s" JRT-BAD-RAW ( ptr a -- JR:reader ) JR:MINT-READER" JRT-REJECTED
+   s" JRT-BAD-RAW ( ptr n -- JR:reader ) JR:MINT-READER" JRT-REJECTED
    s" reader representation cannot be projected" T-LABEL
-   s" JRT-BAD-PROJECT ( JR:reader -- JR:reader ptr n ptr u8 ) JR:READER>STATE" JRT-REJECTED
+   s" JRT-BAD-PROJECT ( JR:reader -- JR:reader ptr n ) JR:READER>STATE" JRT-REJECTED
    s" reader state cannot be rehomed" T-LABEL
    s" JRT-BAD-REHOME ( JR:reader ptr n ptr u8 -- JR:reader ) 2>r JR-READER:UNMAKE 2drop 2r> JR-READER:MAKE" JRT-REJECTED
    s" reader cannot be closed twice" T-LABEL
