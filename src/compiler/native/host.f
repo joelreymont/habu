@@ -65,7 +65,7 @@ DYNAMIC-BUFFER SEEN n
 DYNAMIC-BUFFER PARENT n
 DYNAMIC-BUFFER VIA n
 
-variable REQUIRED
+variable HOST-REQUIRED
 TYPED-VARIABLE EXECUTION RTARGET:execution-platform
 
 : ROW ( n -- n )
@@ -337,7 +337,7 @@ public
    ;MATCH
    id ROW IMPL-ENTRY @ ;
 
-: REQUIRED? ( -- bool ) REQUIRED @ 0<> ;
+: REQUIRED? ( -- bool ) HOST-REQUIRED @ 0<> ;
 
 : SELECT-REC ( ptr n -- n )
    {: rec:ptr :}
@@ -364,11 +364,11 @@ public
 
 : WITH-REQUIRED ( RTARGET:execution-platform [ -- ] -- )
    {: platform:RTARGET:execution-platform q :}
-   REQUIRED @ {: prior:n :}
+   HOST-REQUIRED @ {: prior:n :}
    EXECUTION @ {: previous:RTARGET:execution-platform :}
    data-base NATIVE-HOST-CELLS:SELECT + @ {: callback:n :}
    platform EXECUTION !
-   1 REQUIRED !
+   1 HOST-REQUIRED !
    ['] SELECT-CALL data-base NATIVE-HOST-CELLS:SELECT + xt!
    q catch {: rc:n :}
    callback 0<> if
@@ -377,7 +377,7 @@ public
       0 data-base NATIVE-HOST-CELLS:SELECT + !
    then
    previous EXECUTION !
-   prior REQUIRED !
+   prior HOST-REQUIRED !
    rc 0<> if rc throw then ;
 
 ;package
