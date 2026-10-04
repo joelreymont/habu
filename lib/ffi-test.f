@@ -9,6 +9,7 @@ require lib/string.f               \ SB / CONTAINS? - the child's stderr is matc
 require lib/fmt.f                  \ the code the child prints is rendered from its name
 require lib/process.f
 require lib/process-argv.f         \ the full-table case needs a child engine
+require lib/le.f                   \ the spilled %n out-parameter is a C int
 require lib/engine-candidate.f
 require lib/test/outcome.f
 require lib/test/guard-page.f      \ a path whose bytes end where memory does
@@ -353,13 +354,20 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Fixed raw stubs: FFI-T-SUM10 reads x0-x7 plus two stack integers;
-\ FFI-T-FSUM3 reads d0-d2; FFI-T-FADD-X0 mixes x0/d0;
-\ FFI-T-FADD-FSTACK mixes d0/stack slot 0; FFI-T-X8-STORE writes sret x8.
-\ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's
-\ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
-\ the stable free code slot (a top-level cp@ patch would clobber the line buffer).
+\ Raw stubs use the host C ABI: SUM10 adds every integer register and stack
+\ argument, FSUM3 adds three float registers, FADD-X0 mixes an integer and a
+\ float, FADD-FSTACK reads a float spill, and X8-STORE writes the output cell.
+\ On AAPCS64 the last uses x8; on SysV it uses the first integer argument.
+\ Built inside words so cp@ is the stable free code slot.
 TRUSTED: FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $48F88948 fn       patch32  $0148F001 fn $04 + patch32
+      $C80148D0 fn $08 + patch32  $4CC0014C fn $0C + patch32
+      $0348C801 fn $10 + patch32  $48082444 fn $14 + patch32
+      $10244403 fn $18 + patch32  $24440348 fn $1C + patch32
+      $44034818 fn $20 + patch32  $90C32024 fn $24 + patch32
+      fn exit
+   then
    $8B010000 fn       patch32  $8B020000 fn $4 +  patch32  $8B030000 fn $8 +  patch32
    $8B040000 fn $C +  patch32  $8B050000 fn $10 + patch32  $8B060000 fn $14 + patch32
    $8B070000 fn $18 + patch32
@@ -368,18 +376,31 @@ TRUSTED: FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
    $D65F03C0 fn $2C + patch32  fn ;
 
 TRUSTED: FFI-T-FSUM3 ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $C1580FF2 fn patch32  $C2580FF2 fn $04 + patch32
+      $909090C3 fn $08 + patch32  fn exit
+   then
    $1E612800 fn      patch32  $1E622800 fn $4 + patch32
    $D65F03C0 fn $8 + patch32  fn ;
 
 TRUSTED: FFI-T-FADD-X0 ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $2A0F48F2 fn patch32  $580FF2CF fn $04 + patch32
+      $9090C3C1 fn $08 + patch32  fn exit
+   then
    $9E620008 fn       patch32  $1E682800 fn $4 + patch32
    $D65F03C0 fn $8 +  patch32  fn ;
 
 TRUSTED: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if
+      $4C100FF2 fn patch32  $0FF20824 fn $04 + patch32
+      $90C3C158 fn $08 + patch32  fn exit
+   then
    $F94003E9 fn       patch32  $9E670128 fn $4 + patch32
    $1E682800 fn $8 +  patch32  $D65F03C0 fn $C + patch32  fn ;
 
 TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
+   HB-TARGET-LINUX-X86-64? if $C3378948 fn patch32 fn exit then
    $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
 
 \ Exact ten-integer binding covers x0-x7 and two stack-spilled cells.
@@ -416,13 +437,19 @@ TRUSTED: FFI-T-FADD-FSTACK-CALL ( -- r )
 \ Exact sret binding fixes x8 to an eight-byte output.
 TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:RESET
+   HB-TARGET-LINUX-X86-64? if
+      out 8 0 FFI:WRITABLE!
+      42 1 FFI:VALUE!
+      FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+      0 FFI-T-X8-STORE ffi-call-abi-bounded exit
+   then
    42 0 FFI:VALUE!
    out 8 FFI:X8-WRITABLE!
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-X8-STORE ffi-call-abi-bounded ;
 
 \ The libm square root: a float argument and a float result, so the declaration
-\ rides the AAPCS64 call. The library is chosen at load time because the two
+\ rides the ABI call. The library is chosen at load time because the two
 \ targets keep it in different files, which is what the runtime-string form of
 \ LIBRARY is for.
 : FFI-T-SELECT-MATH ( -- )
@@ -441,10 +468,55 @@ FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
    3 VARIADIC
    0 1 WRITES-ARG
 ;FUNCTION
+FUNCTION: FFI-T-PRINTF-INTS snprintf ( ptr u8 n ptr u8 n n n n n n n n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+FUNCTION: FFI-T-PRINTF-MIXED snprintf ( ptr u8 n ptr u8 n n n n r n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+   6 4 WRITES-BYTES
+;FUNCTION
 64 BUFFER: FFI-T-PRINT-BUF
+4 BUFFER: FFI-T-COUNT
 : FFI-T-VARARGS ( -- )
    FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
-   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$= ;
+   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld %ld\z" drop
+      1 2 3 4 5 6 7 8 FFI-T-PRINTF-INTS
+   FFI-T-PRINT-BUF swap s" 1 2 3 4 5 6 7 8" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %.1f %ld\z" drop
+      11 22 33 44 5.5 66 FFI-T-PRINTF-MIXED
+   FFI-T-PRINT-BUF swap s" 11 22 33 44 5.5 66" T$=
+   0 FFI-T-COUNT LE:U32!
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld%n\z" drop
+      11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
+   FFI-T-PRINT-BUF swap s" 11 22 33" T$=
+   FFI-T-COUNT LE:U32@ 8 T= ;
+
+\ SysV's ninth float spills after eight XMM registers. The declaration is
+\ target-conditional because the AAPCS64 planner deliberately keeps its
+\ existing eight-float limit.
+: FFI-T-F9-FORMAT ( -- ptr u8 )
+   s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
+: FFI-T-F9-WANT ( -- ptr u8 n )
+   s" 1 2 3 4 5 6 7 8 9" ;
+: FFI-T-X86-FLOAT-SPILL ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if exit then
+   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC 0 1 WRITES-ARG ;FUNCTION"
+      INCLUDE-EVALUATE
+   FFI-T-SRC CODEGEN:RESET
+   s" : FFI-T-F9-CHECK ( -- ) FFI-T-PRINT-BUF 64 FFI-T-F9-FORMAT"
+      FFI-T-SRC+
+   s"  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 FFI-T-PRINTF-F9"
+      FFI-T-SRC+
+   s"  FFI-T-PRINT-BUF swap FFI-T-F9-WANT T$= ; FFI-T-F9-CHECK"
+      FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
 \ A library selected by base name and soname version: libz.so.1 here and
 \ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
@@ -599,7 +671,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   HB-TARGET-LINUX-X86-64? if
+      [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
+   else
+      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   then
    [: FFI-T-BAD-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-NO-FIXED ;] E-FFI-SYNTAX TTHROWSQ
    s" a library selection is scoped to the scope that states it" T-LABEL
@@ -652,6 +728,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    s" a declaration through the versioned form resolves its symbol" T-LABEL
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
+   FFI-T-X86-FLOAT-SPILL
 
    FFI-T-TABLE-FULL
    FFI-T-LIBRARY-SHARED

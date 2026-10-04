@@ -291,9 +291,7 @@ nonblocking. Accepted sockets are blocking and close-on-exec.
   serves the poll inline before the linked timer is armed: measured 200 of 200
   each way on the running kernel and pinned by the zero-timeout questions of
   `lib/net/tcp4-test.f` and `lib/net/udp4-test.f`, not guaranteed by the floor.
-- aarch64 only so far. `syscall` is a variadic C function, and on aarch64 a
-  variadic call passes integer arguments in the ordinary registers, so the two
-  declarations above are exact. **On x86-64 the caller of a variadic function
-  must set `al` to the number of vector registers used** - zero here - so the
-  x86-64 FFI has to zero `al` before the two declarations can be trusted on
-  that target. That seam is not open in this module.
+- `syscall` is a variadic C function. Both Linux ABIs pass these integer
+  arguments in ordinary registers, and the x86-64 FFI sets `al` on every call
+  to the allowed vector-register count. The declarations need no `VARIADIC`
+  clause: that clause selects stack placement on macOS.

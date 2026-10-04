@@ -272,10 +272,8 @@ $40 constant DIAG-CAP
 DIAG-CAP CODEGEN:BUFFER DIAG
 
 \ ---- the two system calls ----------------------------------------------------
-\ Both go through libc's `syscall`, which on aarch64 passes its variadic
-\ arguments in the ordinary integer registers. On x86-64 `syscall` is a true
-\ variadic function and its caller must zero al, which is why that seam is not
-\ open here (docs/aio.md).
+\ Both go through libc's `syscall`. Linux passes these integer arguments in
+\ ordinary registers, and the x86-64 FFI sets al for every foreign call.
 PROCESS-SYMBOLS
 
 FUNCTION: URING-SETUP-CALL syscall ( n n ptr u8 -- n )
