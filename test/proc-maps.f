@@ -2,7 +2,46 @@
 \ temporarily protected against access. Neither classification uses addresses.
 require lib/test.f
 require lib/memory.f
+require lib/os-memory.f
 require src/habu/proc-maps.f
+
+\ Extending a region after the first Mach query makes the second reply start
+\ before its cursor. Exercise that kernel response and the mapped lookup.
+package PROC-MAPS
+private
+
+: TEST-ADDR ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+
+: TEST-MACH-QUERY ( n -- n n )
+   MACH-ADDR LE:U64!
+   0 MACH-DEPTH LE:U32!
+   MACH-INFO-COUNT MACH-COUNT LE:U32!
+   MACH-SELF MACH-ADDR MACH-SIZE MACH-DEPTH MACH-INFO MACH-COUNT MACH-REGION 0 T=
+   MACH-INFO MACH-SUBMAP-OFF + LE:U32@ 0 T=
+   MACH-ADDR LE:U64@ dup MACH-SIZE LE:U64@ + ;
+
+public
+
+: TEST-MACH-EXTENSION ( -- )
+   OS-MEMORY:PAGE-SIZE {: page:n :}
+   MEM-64K page + MEM-ALLOC-BYTES {: span:ptr spanlen:n :}
+   span MEM-64K + {: edge:ptr :}
+   edge page munmap 0 T=
+   span TEST-ADDR TEST-MACH-QUERY {: first-lo:n first-hi:n :}
+   first-hi edge TEST-ADDR T=
+   edge TEST-ADDR page MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED
+      MEM-ANON-FD MEM-OFF-ZERO mmap edge TEST-ADDR T=
+   edge TEST-ADDR TEST-MACH-QUERY {: lo:n hi:n :}
+   lo first-lo T=
+   hi edge page + TEST-ADDR T=
+   edge TEST-ADDR lo hi MACH-ROW-LO edge TEST-ADDR T=
+   RELOAD
+   span TEST-ADDR MAPPED? TTRUE
+   edge TEST-ADDR MAPPED? TTRUE
+   edge page 1- + TEST-ADDR MAPPED? TTRUE
+   span spanlen munmap 0 T= ;
+
+;package
 
 package PROC-MAPS-TEST
 
@@ -36,7 +75,10 @@ FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 
 : RUN ( -- )
    T-RESET
-   HB-TARGET-MACOS? if MACOS-REGIONS then
+   HB-TARGET-MACOS? if
+      PROC-MAPS:TEST-MACH-EXTENSION
+      MACOS-REGIONS
+   then
    T-REPORT ;
 
 RUN
