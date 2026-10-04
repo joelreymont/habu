@@ -1355,6 +1355,9 @@
 -9274 constant E-CRYPTO-RANDOM     \ the random generator reported failure
 -9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
 -9276 constant E-CRYPTO-PLATFORM   \ this module is qualified on Linux only, and refuses a foreign target before it binds
+-9277 constant E-CRYPTO-KEY        \ RS256 key encoding, import or validation refusal
+-9278 constant E-CRYPTO-VERIFY     \ RS256 verification setup or operation failure
+-9279 constant E-CRYPTO-SIGN       \ RS256 signing setup or generation failure
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl, minted by
 \ lib/pg.f, which owns package PG. -9240..-9249 is tools/image-size-lib.f.
