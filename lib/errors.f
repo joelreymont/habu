@@ -1064,7 +1064,7 @@
 -8633 constant E-A64PRUNE-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8634 constant E-A64PRUNE-CAP    \ more values in one function than the rewriter's value map holds
 -8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word is a plain multiply, so emitting one would encode a different operation
--8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
+-8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB), or one a stripped link copies into its window's closed pool past the room that pool kept (src/compiler/native/string.f WINDOW-CLOSE): a pool opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
 -8638 constant E-A64PRUNE-PLAN  \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The prune band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above
 
@@ -1467,4 +1467,4 @@
 \ RUNTIME handles: -9510..-9519, minted by lib/runtime/handle.f, which owns package RT-HANDLE.
 
 \ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
-\ -9805..-9809, WPROF -9810..-9814.
+\ -9805..-9809, WPROF -9810..-9814, WCTL -9815..-9819.

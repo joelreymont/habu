@@ -68,17 +68,14 @@
 \ the tables and the builder exactly as they were, and the caller may fix the
 \ module and freeze again.
 \
-\ WHAT FREEZE DOES NOT CHECK YET. Design section 6.5 also lists the structural
-\ verification of a whole module - dominance, use-before-def across blocks,
-\ derived predecessor and successor tables, attribute canonicalisation, span
-\ validity against registered source. That verifier is its own owner with its
-\ own error block (-8080..-8079's neighbour, package IR-VERIFY, dot
-\ habu-verify-frozen-compiler-224d78ad); it is not silently skipped here and it
-\ is not duplicated here. When it lands it becomes one more refusal arm of
-\ FREEZE, in front of the arena freezing, and nothing else about this file
-\ changes. The per-record structural rules are already enforced where the record
-\ is appended: IR-OP:END-OP, IR-FUN:END-FUN and IR-FUN:END-BLOCK each validate
-\ their record whole against the schema, the windows and the ceilings.
+\ THE WHOLE-MODULE CHECKS ARE IR-VERIFY'S. Design section 6.5's structural
+\ verification of a whole module is package IR-VERIFY (src/compiler/ir/verify.f),
+\ its own owner with its own error block (-8080..-8099). FREEZE calls it through
+\ VERIFY-CK as its last refusal arm, in front of the arena freezing, and
+\ duplicates none of its checks; FREEZE-INTERIM only derives its edge table. The
+\ per-record structural rules are enforced where the record is appended:
+\ IR-OP:END-OP, IR-FUN:END-FUN and IR-FUN:END-BLOCK each validate their record
+\ whole against the schema, the windows and the ceilings.
 \
 \ CAPACITY. An arena is a record and a span in the owning context's scratch
 \ region, so how many modules may be live together is bounded by that region and

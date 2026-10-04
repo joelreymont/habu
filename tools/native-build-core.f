@@ -91,12 +91,13 @@ TRUSTED: RESET-XT ( n -- [ -- ] ) ;
 TRUSTED: IMPORT-XT ( n -- [ ptr u8 -- ] ) ;
 
 \ The retained host's literal rows come from the package that owns them, which
-\ publishes them while it is open (src/compiler/native/string.f SOURCE-SPAN,
-\ SOURCE-ROWS). This driver used to find ARENA, ARENA-CAP, R-OFF and R-LEN by
-\ name in NSTR's PRIVATE wordlist, through the namespace record, after the
-\ package had closed - four private names a shipped engine had to keep alive
-\ for one caller. A call needs none of them.
-: LITERAL-SOURCE-ROWS ( -- ptr u8 n ptr n ptr n )
+\ publishes them while it is open, one segment of the active pool at a time
+\ (src/compiler/native/string.f SEGMENTS, SOURCE-SPAN, SOURCE-ROWS). This driver
+\ used to find ARENA, ARENA-CAP, R-OFF and R-LEN by name in NSTR's PRIVATE
+\ wordlist, through the namespace record, after the package had closed - four
+\ private names a shipped engine had to keep alive for one caller. A call needs
+\ none of them.
+: LITERAL-SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n )
    NSTR:SOURCE-ROWS ;
 
 TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
@@ -104,7 +105,7 @@ TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
 : LITERAL-SPAN-REFUSE ( -- )
    s" native-build: source literal arena outside capture" BUILD-RC die ;
 
-: CHECK-LITERAL-SPAN ( -- )
+: CHECK-LITERAL-SPAN ( n -- )
    NSTR:SOURCE-SPAN {: arena:ptr size:n :}
    arena LITERAL-ADDRESS {: start:n :}
    start AOT-ARM:D0 @ < start AOT-ARM:D1 @ > or if LITERAL-SPAN-REFUSE then
@@ -286,7 +287,7 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
 \ this file was compiled, and the alternatives are a public wrapper - a
 \ well-typed way for any source to invoke literal ownership import, which
 \ test/compiler/native-string.f forbids - or a fixed engine cell for the token.
-\ It is the keep-set entry habu-ship-no-dictionary-2fee2dea has to carry.
+\ The capture keeps its name for this lookup: src/habu/aot-capture.f ACAP-KEEP?.
 : TARGET-IMPORTER ( -- n )
    s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if
@@ -303,10 +304,13 @@ TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
 CAST: SEAL-XT ( n -- [ n -- ] )
 TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
+\ Every segment's arena is checked before the target imports any of them.
 : TRANSFER-LITERALS ( -- )
-   CHECK-LITERAL-SPAN
-   LITERAL-SOURCE-ROWS
-   TARGET-IMPORTER LITERAL-IMPORT-XT execute ;
+   NSTR:SEGMENTS 0 ?do i CHECK-LITERAL-SPAN loop
+   TARGET-IMPORTER {: importer:n :}
+   NSTR:SEGMENTS 0 ?do
+      i LITERAL-SOURCE-ROWS importer LITERAL-IMPORT-XT execute
+   loop ;
 
 \ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
 \ protected bits it sets (src/core/checker-surface.f KEEP?).

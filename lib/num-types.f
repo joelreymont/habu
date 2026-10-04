@@ -34,7 +34,7 @@
 \ can throw the named code at its own boundary. `numeric-result<a>` is a layout
 \ value, so it is constructed and MATCHed only inside compiled words. A
 \ polymorphic eliminator (`numeric-result<a> -- n`) is not yet expressible
-\ (whole-bundle MATCH, dot habu-typestate-result-drop-5ae048a7), so a consumer
+\ (whole-bundle MATCH, dot habu-eliminate-a-parameterised-7ce778f8), so a consumer
 \ MATCHes the concrete instantiation it holds; lib/num-types-test.f does
 \ exactly that per role.
 \
@@ -48,17 +48,19 @@
 \ AS-ALLOC-CELL-COUNT additionally returns `overflow` for a count above
 \ MAX-CELL-N / CELL-BYTES, before any allocation primitive is reachable.
 \
-\ UNSEALED (B5.1, B5.5 slice 1): these canonical roles and validators already
-\ reach production through lib/num-arithmetic.f, including lib/memory.f and
-\ inference consumers. NUM remains reopenable while its constituent files
-\ are assembled, so its private mints are not yet unforgeable. lib/num.f
-\ (dot habu-seal-cad-num-36dbeec6) will close that namespace authority; the
-\ closed B5.2 arithmetic is lib/num-arithmetic.f (dot
+\ SEALED (B5.1, B5.5 slice 1): these canonical roles and validators reach
+\ production through lib/num-arithmetic.f, including lib/memory.f and inference
+\ consumers. This file opens NUM and lib/num-arithmetic.f reopens it; both are
+\ baked into the engine prefix, and the native build seals every package it
+\ bakes (src/core/internal-mark.f SEAL-PACKAGES), so on the product engine a
+\ later `package NUM` exits 84 and NUM:MINT-BYTE-LEN is undefined: the private
+\ mints are unforgeable. The closed B5.2 arithmetic is lib/num-arithmetic.f (dot
 \ habu-implement-cad-num-cb413b2a).
-\ Independently of how the mints are declared, a raw cell read back out of
-\ storage can still stand in for the `n` a validator accepts until the TVK-RAW
-\ checker capability (dot habu-nominal-storage-raw-a3430ef2) lands; the mints
-\ themselves no longer assert anything the checker has not certified.
+\ Independently of the mints, raw storage cannot forge a role: a `variable`,
+\ `create` or `constant` cell is TVK-RAW (src/core/checker.f), which refuses an
+\ arity-zero family in both directions, so a role is stored as itself only
+\ through a typed definer (TYPED-VARIABLE, a TYPED-BUFFER element, a STRUCTURE
+\ field).
 \
 \ No `require`: the type-declaration grammar (package/NEWTYPE/ENUM/
 \ CAST:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). NUM must

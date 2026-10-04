@@ -21,34 +21,43 @@
 \ primitives.
 
 require lib/errors.f
+require lib/task.f                       \ TASK:CHILD-RESET, registered below
+require lib/image-lifecycle.f            \ the three locks RAW holds while it forks
+require src/core/dynamic-storage.f
+require src/habu/address-cells.f
 require lib/process.f
-require lib/fs-mutate.f                  \ the fs cleanup table a forked child must not inherit; see ENTER-CHILD
-require lib/process-tree.f               \ the walk lock a forked child must not inherit; see ENTER-CHILD
+require lib/fs-mutate.f                  \ CLEANUP-RESET, registered below
+require lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
+require lib/fork-child.f                 \ the resets RAW runs in the child
 
 package PROC-FORK
 
 private
 
-\ Everything a new process entered through RAW owes itself, run on the child's
-\ very first instruction after the fork and before any caller code.
+\ The child resets whose owners cannot register them themselves. RAW is the one
+\ fork, and it is in this file, so registering them here registers them in
+\ every program that can fork. lib/task.f is engine-provided, beneath every
+\ capture window, where lib/fork-child.f's cells would belong to no claim.
+\ lib/fs-mutate.f and lib/process-tree.f belong to the AOT linker's lib closure
+\ (src/habu/app-image-core.f), which loads above an application's window while
+\ it is linked: a reset either one registered as it loaded would land in the
+\ application's registry with code and cells the image does not carry
+\ (tools/hb-build-stripped-test.f HBT-STRIPPED-FORK).
 \
-\ lib/fs-mutate.f's cleanup table is process-owned state: its entries name paths
-\ THIS process created and promised to remove, and CLEANUP-RUN deletes every
-\ entry in it. A child inherits a copy of that table, but not the ownership it
+\ The fs cleanup table is process-owned state: its entries name paths THIS
+\ process created and promised to remove, and CLEANUP-RUN deletes every entry
+\ in it. A child inherits a copy of that table, but not the ownership it
 \ records - those paths still belong to the live parent - so running an
-\ inherited entry deletes somebody else's files. Emptying the table here leaves
-\ the child cleaning up exactly what the child registers, which is the only
-\ thing it owns. (Measured before this reset: a gate pool member that ran its
-\ own cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the
-\ whole capture root out from under its live siblings.)
-\
-\ lib/process-tree.f's WALKING is held by whichever task walks, and fork copies
-\ only the thread that forked: a walk another task was in has no thread in the
-\ child to end it, and the child's first walk or query would wait for it for
-\ ever (lib/process-tree-fork-test.f).
-: ENTER-CHILD ( -- )
-   CLEANUP-RESET
-   PROC-TREE:CHILD-RESET ;
+\ inherited entry deletes somebody else's files. Emptied, the table leaves the
+\ child cleaning up exactly what the child registers, which is the only thing
+\ it owns. (Measured before this reset: a gate pool member that ran its own
+\ cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the whole
+\ capture root out from under its live siblings.)
+: REGISTER-RESETS ( -- )
+   [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
+   [: CLEANUP-RESET ;] FORK-CHILD:REGISTER
+   [: PROC-TREE:CHILD-RESET ;] FORK-CHILD:REGISTER ;
+REGISTER-RESETS
 
 public
 
@@ -56,16 +65,39 @@ public
 \ RLIMIT_NPROC counts every process of the user and never refuses root, so no
 \ limit can refuse a reaper's fork alone - after FORK-REAPER's first fork or a
 \ capture's spawn - without racing the rest of the host. lib/process-fork-test.f
-\ and test/gate-pool-test.f install their refusals here.
+\ and test/gate-pool-test.f install their refusals here. RAW calls it holding
+\ the three registry locks of FORK-HELD below, so a replacement registers no
+\ image-lifecycle hook, reserves or releases no dynamic buffer and stores no
+\ quotation: each takes one of those locks, and its own thread holds it.
 defer FORK-CALL ( -- n )
 
 : FORK-CALL-DEFAULT ( -- )
    [: fork ;] is FORK-CALL ;
 FORK-CALL-DEFAULT
 
+private
+
+\ The fork, made with the engine's three registry locks held. Each guards a
+\ table that is unmapped and republished over several stores, so no reset in
+\ the child could tell where a task it interrupted had stopped; held here,
+\ nobody is inside one when the process is copied. Outermost first, the order
+\ they nest in: a lifecycle registration takes the other two inside its own,
+\ and neither of those takes another. Only ACROSS-FORK runs a caller's word
+\ under one of them - IMAGE-LIFECYCLE:PREPARE runs its hooks unlocked - so the
+\ thread forking here holds none of them already. A fork made on a task holds
+\ the task-local address-cell lock, not the registrar's, until dot bb84a527
+\ (ADDRESS-CELLS:ACROSS-FORK).
+: FORK-HELD ( -- n )
+   [: [: [: FORK-CALL ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;]
+   IMAGE-LIFECYCLE:ACROSS-FORK ;
+
+public
+
+\ The child runs every reset lib/fork-child.f holds on its first instruction
+\ after the fork, before RAW returns to its caller.
 : RAW ( -- pid )
-   FORK-CALL >PID {: pid:pid :}
-   pid PID>N 0= if ENTER-CHILD then
+   FORK-HELD >PID {: pid:pid :}
+   pid PID>N 0= if FORK-CHILD:RESET then
    pid ;
 
 : CHECKED ( -- pid )

@@ -731,10 +731,10 @@ public
 \ Frees the walk storage in a process just forked. fork copies only the thread
 \ that called it, so a WALKING another task held stays held in the child with
 \ nothing there to release it, and the child's first walk or query would wait
-\ for ever. No walk or query forks, so the walk this ends is never the
-\ child's own. PROC-FORK:RAW runs it on the child's first instruction
-\ (lib/process-fork.f ENTER-CHILD); anywhere else it would let a second walk
-\ in beside a running one.
+\ for ever (lib/fork-child-test.f). No walk or query forks, so the walk this
+\ ends is never the child's own. lib/process-fork.f registers it with
+\ lib/fork-child.f, which runs it in the child alone; anywhere else it would
+\ let a second walk in beside a running one.
 : CHILD-RESET ( -- )
    WALK-RELEASE ;
 

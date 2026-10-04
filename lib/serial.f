@@ -21,6 +21,7 @@ require lib/task.f
 require lib/image-lifecycle.f
 require lib/memory.f
 require lib/aio.f
+require lib/fork-child.f
 
 package SERIAL
 public
@@ -154,6 +155,15 @@ CAST: BLEN>N ( NUM:byte-len -- n )
          2 READY atomic! exit
       then TASK:PAUSE
    again ;
+
+\ A process just forked starts over a setup another task had begun
+\ (lib/fork-child.f): fork copies only the thread that called it, so a READY
+\ that task held at 1 stays 1 in the child with no thread to finish the setup,
+\ and the child's first INIT would wait for ever. A finished setup is the
+\ child's as well: the symbols are the same addresses there.
+: REGISTER-CHILD-RESET ( -- )
+   [: 1 0 READY atomic-cas drop ;] FORK-CHILD:REGISTER ;
+REGISTER-CHILD-RESET
 
 
 \ libc calls use separate pointer directions and target-specific termios

@@ -2200,10 +2200,28 @@ workers and other copy-on-write process boundaries where the already-loaded
 dictionary must be reused. The child must exit or die after its worker body;
 returning into the parent's control path is a bug. Parent code reaps the child
 with `PROC-WAIT-RC` or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative
-target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`. The child
-starts without what it cannot own: an empty fs cleanup table, since the paths
-in the parent's are still the parent's, and `lib/process-tree.f`'s walk lock
-free, since the task that held it was not copied.
+target code; `PROC-FORK:CHECKED` converts that to `E-PROC-SPAWN`.
+
+fork copies only the calling thread, so state another task was part way
+through reaches the child with nobody to finish it. `RAW` forks holding the
+engine's three registry locks - image lifecycle, dynamic storage and the
+address-cell registrar, whose holders unmap a table before publishing the
+next - and both processes then free them, so no table is copied half
+replaced. A fork made on a task holds the task-local address-cell lock, not
+the registrar's, until dot bb84a527: `ADDRESS-CELLS` finds its lock through
+`data-base`, which on a task is the task's own context. Before `RAW` returns
+in the child, it runs every reset registered with `lib/fork-child.f`
+(`FORK-CHILD:REGISTER`): `lib/process-fork.f` registers those of the task
+runtime, the fs cleanup table and the process-tree walk lock, whose modules
+the engine provides or the AOT linker loads and so never require
+`lib/fork-child.f`, and `lib/pg.f` and `lib/serial.f` register their own as
+they load. The fs cleanup table empties, since the paths in the parent's are
+still the parent's; the walk lock of `lib/process-tree.f`, the task runtime's
+exit-chain lock and `lib/pg.f`'s configuration lock are freed, since a task
+that held one was not copied; a serial setup another task had begun starts
+over; and the main thread's park is forgotten, since on Darwin it is a Mach
+port the child does not have. Tasks themselves do not cross: a
+`TASK:FACILITY` or semaphore another task held stays as it was.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via

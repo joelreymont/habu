@@ -11,10 +11,9 @@ require lib/content-key.f
 \ STR:SPLIT-NEXT states a line as a NUM:byte-len length and a NUM:byte-off
 \ cursor, and both have to be read out here: the public obj:line structure carries
 \ a raw `n` that MAGIC-LINE and PARSE-LINE consume as a span, and the LOAD-OFF
-\ cursor cell holds a raw offset, because `!` takes ( a ptr a ) and a type
-\ variable does not bind an arity-zero family - a NUM role cannot be stored
-\ as itself until dot habu-nominal-storage-raw-a3430ef2 lands. Two checked casts
-\ at this file's scope, so NUM is not reopened.
+\ cursor is a raw `variable`, whose TVK-RAW cell refuses an arity-zero family,
+\ so it holds the raw offset. Two checked casts at this file's scope, so NUM is
+\ not reopened.
 CAST: OBJ-BL>N ( NUM:byte-len -- n )
 CAST: OBJ-BO>N ( NUM:byte-off -- n )
 

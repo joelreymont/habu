@@ -579,12 +579,12 @@ LONG-N BUFFER: LONG-BUF
 \ ---- callers of many and long-named words that never return ------------------
 \ Behind each call to a word that never returns, a tier-1 caller compiles a trap
 \ whose message names the callee whole. No table holds those names, so tier 1
-\ compiles what tier 0 runs and each caller answers what tier 0 answers; only
-\ the literal store the messages share with source strings bounds them
-\ (src/compiler/native/string.f). The sizes pass what a fixed table of the names
-\ would hold: five callees named in 7000 bytes each are 35 KB of names, past
-\ 32 KB, and 1100 named in a few bytes are past 1024 names.
-$2000 constant SRC-CAP               \ one definition around a 7000-byte name
+\ compiles what tier 0 runs and each caller answers what tier 0 answers; the
+\ messages share the literal store with source strings, and it grows by segments
+\ (src/compiler/native/string.f). The sizes pass what a fixed store would hold:
+\ eighty messages naming callees in 6995 bytes each are 560,640 bytes, past one
+\ segment's 512 KB arena, and 1100 callees named in a few bytes pass 1024 names.
+$2000 constant SRC-CAP               \ one definition around a 6995-byte name
 SRC-CAP BUFFER: SRC
 variable SRC-U
 variable ANSWERS                     \ callers that answered what tier 0 answers
@@ -627,15 +627,15 @@ variable ANSWERS                     \ callers that answered what tier 0 answers
    count 0 ?do  first i + len NORET-PAIR  loop ;
 
 : NORET-ANY-CASE ( -- )
-   s" five callers of callees named in 7000 bytes each compile" T-LABEL
+   s" eighty callers of callees named in 6995 bytes each compile" T-LABEL
    0 ANSWERS !
-   [: 0 5 7000 NORET-PAIRS ;] 0 TTHROWSQ
+   [: 0 80 6995 NORET-PAIRS ;] 0 TTHROWSQ
    s" and each answers what tier 0 answers" T-LABEL
-   ANSWERS @ 5 T=
+   ANSWERS @ 80 T=
 
    s" 1100 callers of as many short-named callees compile" T-LABEL
    0 ANSWERS !
-   [: 5 1100 0 NORET-PAIRS ;] 0 TTHROWSQ
+   [: 80 1100 0 NORET-PAIRS ;] 0 TTHROWSQ
    s" and each answers what tier 0 answers" T-LABEL
    ANSWERS @ 1100 T= ;
 

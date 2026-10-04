@@ -165,7 +165,7 @@ variable CHK-EXPAND-TOP
    rc E-DISC-DYNAMIC = if s" discovery rejected: dynamic (non-literal) loader path" exit then
    rc E-DISC-OPENER = if s" discovery rejected: unsupported string opener before a loader word" exit then
    rc E-DISC-RETIRE = if s" discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" exit then
-   rc E-DISC-UNTERM = if s" discovery rejected: unterminated string" exit then
+   rc E-DISC-UNTERM = if s" discovery rejected: unterminated string or locals group" exit then
    s" discovery rejected: capacity exceeded" ;
 
 : CHK-DISCOVER-ACT ( -- )
@@ -253,8 +253,9 @@ $0A constant VFY-LF
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8               \ VERIFY-LOG$
-DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate's stopped line its record
+DYNAMIC-BUFFER VFY-REC u8               \ VFY-OUT, each duplicate line its record
 DYNAMIC-BUFFER VFY-DEP u8               \ a duplicate's file, not the subject
+DYNAMIC-BUFFER VFY-STOP-PATH u8         \ preserve the final stop across duplicate records
 variable VFY-REC-U
 variable VFY-OUT-U
 variable VFY-LOG-U
@@ -272,13 +273,14 @@ SOURCE-ROOT:CURRENT$ s" tools/check-verify-child.f" VFY-CHILD JOIN-PATH VFY-CHIL
 TYPED-VARIABLE VFY-PREPASS bool         \ the child runs check.f's pre-pass ...
 TYPED-VARIABLE VFY-LABEL-A ptr u8       \ ... naming the subject by this label
 variable VFY-LABEL-U
-variable VFY-STOP-RC                    \ a stopped pre-pass: the code it stopped with,
+variable VFY-STOP-RC                    \ a stopped child: its code, 0 for none,
 variable VFY-STOP-AT                    \ the byte of the token it read last,
 variable VFY-STOP-DUP-AT                \ where the name it refused as a duplicate
 variable VFY-STOP-DUP-U                 \ starts and its length, 0 for none,
 TYPED-VARIABLE VFY-STOP-SUBJ bool       \ whether that is in the subject's bytes,
-variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT
+variable VFY-STOP-OFF                   \ and the file it is in, in VFY-OUT,
 variable VFY-STOP-U
+TYPED-VARIABLE VFY-STOP-DISC bool       \ or the one discovery stopped in
 
 
 : VFY-CHILD$ ( -- ptr u8 n )
@@ -300,6 +302,8 @@ variable VFY-STOP-U
    0 VFY-OUT-U !
    0 VFY-LOG-U !
    VFY-NONE VFY-ANSWER !
+   0 VFY-STOP-RC !
+   false VFY-STOP-DISC !
    false VFY-PREPASS ! ;
 
 
@@ -338,6 +342,16 @@ variable VFY-STOP-U
    rc CHK-DISC-MSG$ VFY-LOG-LN ;
 
 
+\ Discovery that ended the walk at a string or a locals group a file never
+\ closes stops the verification at its opener, in the file CHK-DISC-ID names.
+: VFY-DISC-STOP ( n -- ) {: rc:n :}
+   rc E-DISC-UNTERM <> if exit then
+   rc VFY-STOP-RC !
+   DISCOVER:OPENER-AT VFY-STOP-AT !
+   CHK-DISC-ID @ CHK-BYTES-ID @ = VFY-STOP-SUBJ !
+   true VFY-STOP-DISC ! ;
+
+
 : VFY-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" CHK-ARG+
@@ -366,6 +380,9 @@ variable VFY-STOP-U
 : VFY-STOPPED$ ( -- ptr u8 n )
    s" check-verify: stopped " ;
 
+: VFY-DUPLICATE$ ( -- ptr u8 n )
+   s" check-verify: duplicate " ;
+
 
 \ Where the field of VFY-OUT that starts at AT ends: at its space, or at END.
 : VFY-FIELD-END ( n n -- n ) {: at:n end:n :}
@@ -382,9 +399,9 @@ variable VFY-STOP-U
    ;MATCH ;
 
 
-\ The rest of a stopped line, from AT to END in VFY-OUT: RC BYTE DUP-AT DUP-LEN
-\ IN-SUBJECT FILE. VFY-STOPPED with them kept, or VFY-NONE for a line that does
-\ not read so; a stop is never code 0, and IN-SUBJECT is 1 or 0.
+\ The fields after a stop or duplicate tag: RC BYTE DUP-AT DUP-LEN IN-SUBJECT
+\ FILE. VFY-STOPPED with them kept, or VFY-NONE for an invalid line; a stop is
+\ never code 0, and IN-SUBJECT is 1 or 0.
 : VFY-STOP-PARSE ( n n -- n ) {: at:n end:n :}
    at end VFY-FIELD-END {: e1:n :}
    at e1 VFY-FIELD-N {: rc:n rc-ok:bool :}
@@ -409,15 +426,23 @@ variable VFY-STOP-U
    VFY-STOPPED ;
 
 
-\ The answer the result line from AT to END in VFY-OUT gives, its line feed
-\ excluded. A stopped line answers only the pre-pass: in the first form it is a
-\ duplicate's, among the packets.
+\ A result line grants a verdict only after a clean child exit. A complete
+\ result line is still framing, even when the process ends uncleanly.
+: VFY-CLEAN-EXIT? ( outcome -- bool )
+   MATCH outcome
+      exited OF 0= ENDOF
+      signaled OF drop false ENDOF
+      timeout OF false ENDOF
+   ;MATCH ;
+
+
+\ The answer the final line from AT to END in VFY-OUT gives, its line feed
+\ excluded. Diagnostic duplicates have a different tag.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:ptr u:n :}
    a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
    a u s" check-verify: refused" STR= if VFY-REFUSED exit then
    a u s" check-verify: held" STR= if VFY-HELD exit then
-   VFY-PREPASS @ 0= if VFY-NONE exit then
    a u VFY-STOPPED$ STARTS-WITH? if at VFY-STOPPED$ nip + end VFY-STOP-PARSE exit then
    VFY-NONE ;
 
@@ -434,7 +459,8 @@ variable VFY-STOP-U
 \ the answer of a result line that ends them. The rest of a line the deadline or
 \ the capture cut is dropped.
 : VFY-TAKE ( n -- )
-   VFY-LINE-START {: end:n :}
+   {: outu:n :}
+   outu VFY-LINE-START {: end:n :}
    end VFY-OUT-U !
    end 0= if exit then
    end 1- VFY-LINE-START {: at:n :}
@@ -474,34 +500,55 @@ variable VFY-STOP-U
    while 1+ repeat ;
 
 
-\ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate's stopped line
+\ The line of VFY-OUT that starts at AT, to VFY-REC, a duplicate line
 \ as the record --all-errors writes for it: where the next line starts.
 : VFY-REC-LINE ( n -- n )
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
-   at VFY-OUT end at - VFY-STOPPED$ STARTS-WITH?
-   if at VFY-STOPPED$ nip + end VFY-STOP-PARSE VFY-STOPPED = else false then
-   if
-      true CHECK-ALL-ERRORS:JSON!
-      VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
-      CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
+   at VFY-OUT end at - VFY-DUPLICATE$ STARTS-WITH?
+   if at VFY-DUPLICATE$ nip + end VFY-STOP-PARSE else VFY-NONE then
+   VFY-STOPPED = if
+      VFY-STOP-RC @ E-DUP-DEFINITION = if
+         true CHECK-ALL-ERRORS:JSON!
+         VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ VFY-STOP-FILE$ VFY-STOP-SOURCE
+         CHECK-ALL-ERRORS:DUP-RECORD$ VFY-REC+
+         s\" \n" VFY-REC+
+      then
    else
       at VFY-OUT end at - VFY-REC+
+      s\" \n" VFY-REC+
    then
-   s\" \n" VFY-REC+
    end 1+ ;
 
 
-\ The packets VFY-OUT holds, each stopped line the first form writes among them
+\ The packets VFY-OUT holds, each duplicate line the first form writes among them
 \ for a duplicate made its record.
 : VFY-DUP-RECORDS ( -- )
+   VFY-PREPASS @ if exit then
    VFY-OUT-U @ 0= if exit then
+   VFY-ANSWER @ VFY-STOPPED =
+   VFY-STOP-RC @ VFY-STOP-AT @ VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @
+   VFY-STOP-SUBJ @ VFY-STOP-U @
+   {: stopped:bool rc:n byte:n at:n u:n subj:bool fileu:n :}
+   stopped if
+      fileu VFY-STOP-PATH-RESERVE
+      VFY-STOP-FILE$ drop 0 VFY-STOP-PATH fileu BYTE-COPY
+   then
    0 VFY-REC-U !
    0 begin dup VFY-OUT-U @ < while VFY-REC-LINE repeat drop
-   VFY-REC-U @ VFY-OUT-RESERVE
+   stopped if VFY-REC-U @ fileu + else VFY-REC-U @ then VFY-OUT-RESERVE
    0 VFY-REC 0 VFY-OUT VFY-REC-U @ BYTE-COPY
-   VFY-REC-U @ VFY-OUT-U ! ;
+   VFY-REC-U @ VFY-OUT-U !
+   stopped if
+      rc VFY-STOP-RC !  byte VFY-STOP-AT !
+      at VFY-STOP-DUP-AT !  u VFY-STOP-DUP-U !
+      subj VFY-STOP-SUBJ !  fileu VFY-STOP-U !
+      VFY-OUT-U @ VFY-STOP-OFF !
+      0 VFY-STOP-PATH VFY-STOP-OFF @ VFY-OUT fileu BYTE-COPY
+   else
+      0 VFY-STOP-RC !
+   then ;
 
 
 \ How the child ended. More output than the capture holds kills it, and its
@@ -517,20 +564,13 @@ variable VFY-STOP-U
    o ;
 
 
-: VFY-CLEAN-EXIT? ( outcome -- bool )
-   MATCH outcome
-      exited OF 0= ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH ;
-
-
 \ The child's answer once it has given one of the first form's and exited
-\ clean; any other end is incomplete.
+\ clean, a stop refused; any other end is incomplete.
 : VFY-VERDICT ( outcome -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
       VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-STOPPED = if CHECK-VERDICT:refused exit then
       VFY-ANSWER @ VFY-HELD = if CHECK-VERDICT:held exit then
    then
    o CHECK-VERDICT:incomplete ;
@@ -558,9 +598,12 @@ public
    VFY-LOG-U @ 0= if NULL$ exit then
    0 VFY-LOG VFY-LOG-U @ ;
 
-\ Check the bytes as the file at PATH, the child given DEADLINE. An empty PATH
-\ is E-FS-PATH; a closure over CHK-DEP-MAX files, an engine
-\ lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn throws as well.
+\ Check the bytes as the file at PATH, the child given DEADLINE. A throw that
+\ ends the verification refuses it, as does a string or a locals group a file
+\ of the closure never closes, and VERIFY-STOP and the words after it say with
+\ what and where. An empty PATH is E-FS-PATH; a closure over CHK-DEP-MAX
+\ files, an engine lib/engine-candidate.f refuses (E-FS-OPEN) or a failed spawn
+\ throws as well.
 \ More child output than the capture holds, 4 MiB of stdout or 256 KiB of
 \ stderr, is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every complete packet
 \ received before it. A file of the closure that defined a name again and can
@@ -571,7 +614,7 @@ public
    path pathu VFY-PATH!
    VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
    src srcu VFY-CLOSURE {: rc:n :}
-   rc 0<> if rc VFY-CLOSURE-LOG CHECK-VERDICT:refused exit then
+   rc 0<> if rc VFY-CLOSURE-LOG rc VFY-DISC-STOP CHECK-VERDICT:refused exit then
    deadline VFY-DEADLINE !
    VFY-RUN VFY-VERDICT ;
 
@@ -580,8 +623,8 @@ public
 \ VERIFY-BYTES verifies on, so the pre-pass resolves the engine's words and the
 \ subject's loads, as the run does, never a word only this process loaded. It
 \ stops at the first definition the checker refuses, as the load does: ok 0 when
-\ nothing stopped it, else ok the code it stopped with, and PREVERIFY-AT,
-\ PREVERIFY-DUPLICATE, PREVERIFY-SUBJECT? and PREVERIFY-STOPPED$ say where.
+\ nothing stopped it, else ok the code it stopped with, and VERIFY-STOP-AT,
+\ PREVERIFY-DUPLICATE, VERIFY-STOP-SUBJECT? and VERIFY-STOPPED$ say where.
 \ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
 \ failed spawn throws, and more child output than the capture holds is
 \ E-PROC-TRUNCATED, as for VERIFY-BYTES.
@@ -597,10 +640,16 @@ public
    deadline VFY-DEADLINE !
    VFY-RUN VFY-PREVERDICT ;
 
-\ Where the last PREVERIFY-BYTES stopped: the byte where the token it read last
-\ starts, whether that is in the bytes it was given, and the file it is in, the
-\ LABEL for those bytes.
-: PREVERIFY-AT ( -- n )
+\ The code a throw stopped the last VERIFY-BYTES or PREVERIFY-BYTES with,
+\ E-DISC-UNTERM for discovery's stop at a string or group, 0 when none did.
+: VERIFY-STOP ( -- n )
+   VFY-STOP-RC @ ;
+
+\ Where it stopped: the byte where the token it stopped at starts, the one the
+\ verifier read last or the opener of the statement it was in, whether that is
+\ in the bytes it was given, and the file it is in, PATH's canonical spelling or
+\ the LABEL for those bytes.
+: VERIFY-STOP-AT ( -- n )
    VFY-STOP-AT @ ;
 
 \ The name the last PREVERIFY-BYTES refused as a duplicate, in the same file:
@@ -609,10 +658,11 @@ public
 : PREVERIFY-DUPLICATE ( -- n n )
    VFY-STOP-DUP-AT @ VFY-STOP-DUP-U @ ;
 
-: PREVERIFY-SUBJECT? ( -- bool )
+: VERIFY-STOP-SUBJECT? ( -- bool )
    VFY-STOP-SUBJ @ ;
 
-: PREVERIFY-STOPPED$ ( -- ptr u8 n )
+: VERIFY-STOPPED$ ( -- ptr u8 n )
+   VFY-STOP-DISC @ if CHK-DISC-ID @ CHK-DEP$ exit then
    VFY-STOP-FILE$ ;
 
 ;using

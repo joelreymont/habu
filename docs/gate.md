@@ -108,16 +108,23 @@ spawn count (3 digits for this suite; the bound allows 4). At
 those maxima it adds 348 bytes, and 1023 less 348 is 675. Measured on a host
 with a 14-digit `<ns>` and a 5-digit `<pid>`, where it adds at most 333: a
 685-byte root fit every row, and at 700 bytes that row was refused past
-`PATH_MAX`.
+`PATH_MAX`. The runner checks only its own paths: `GT-START`
+(`lib/test/runner.f`) refuses, once and by name before it makes anything, an
+`HB_TMP` that leaves its root no room for a `GT-NAME-MAX` name within
+`FS-PATH-CAP`, but a row's own deeper paths, like that one, only this bound
+keeps.
 
 The pool makes one scratch directory per spawned child and hands it to the
 child as `HB_TMP`, then removes it when that slot retires — exited, signaled or
 timed out. A child the pool kills cannot clean up after itself; the parent
 does, and whatever the child (or its own children) put under `HB_TMP` goes with
-the directory. An `HB_TMP` row the caller put in the child's environment itself
-— a value other than the pool process's own, which `PROC-ENV-INHERIT-MISSING`
-copies — is the caller's scratch to own and reap: the pool leaves the row and
-gives that slot no directory.
+the directory. A directory that will not go, such as a tree deeper than
+`FS-PATH-CAP` that `REMOVE-TREE` refuses, is named with its row, path and code;
+that row is red and the pool goes on, and the run's final cleanup names the
+same refusal before the red exit. An `HB_TMP` row the caller put in the
+child's environment itself — a value other than the pool process's own, which
+`PROC-ENV-INHERIT-MISSING` copies — is the caller's scratch to own and reap:
+the pool leaves the row and gives that slot no directory.
 
 A keyed image's build (below) works in a directory of the build cache instead,
 beside the keyed path, so its publish is one rename within the cache

@@ -178,6 +178,15 @@ public
    0 cb CAP !
    UNLOCK ;
 
+\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A growth
+\ unmaps the old registry before it publishes the new one, and a membership
+\ change is several stores, so a child forked while another task was inside
+\ could neither wait for that task nor carry on where it stopped. Held, nobody
+\ is inside when the process is copied, and parent and child each free their
+\ own copy.
+: ACROSS-FORK ( [ -- n ] -- n )
+   LOCK [: UNLOCK ;] finally ;
+
 : REGISTERED-N ( -- n ) REG-U @ ;
 : DIRTY-N ( -- n ) REG-U @ ;
 

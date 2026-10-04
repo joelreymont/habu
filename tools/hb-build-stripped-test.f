@@ -1,7 +1,7 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
-\ stripped image may own and reach - library state and the claimed engine
-\ cells - and what it is refused: an entry the link cannot find, as the CLI
-\ reports it, an engine cell nothing claims and a run-time pointer-cell mark.
+\ stripped image may own and reach - library state, a fork and the claimed
+\ engine cells - and what it is refused: an entry the link cannot find, as the
+\ CLI reports it, an engine cell nothing claims and a run-time pointer-cell mark.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
@@ -124,6 +124,41 @@ package HB-BUILD-CLI
    rcn 0 T=
    errn 0 T=
    HBT-RUN-OUT outn HBT-LIB-EXPECTED$ T$= ;
+
+\ A program that holds lib/fork-child.f's registry and nothing else the engine
+\ does not provide, so every other module of the AOT linker's lib closure
+\ (src/habu/app-image-core.f) loads above its window when it is linked - as
+\ lib/fs-mutate.f and lib/process-tree.f do above a lib/pg.f or lib/serial.f
+\ program's.
+: HBT-REGISTRY-SRC$ ( -- ptr u8 n )
+   S\" require lib/fork-child.f\n: MAIN ( -- ) ;\n" ;
+
+\ A STRIPPED IMAGE FORKS, and its child runs the resets lib/fork-child.f holds:
+\ test/stripped-fork-subject.f's child has a park of its own only after
+\ TASK:CHILD-RESET, on Darwin, where the parent's is a Mach port the child
+\ does not hold. The registry sits in the application's window and the
+\ linker's lib closure loads above it, so a module of that closure that
+\ registered a reset as it loaded would put code and cells the image does not
+\ carry into the application's registry; HBT-REGISTRY-SRC$'s link refuses
+\ any such registration. Measured while lib/fs-mutate.f and lib/process-tree.f
+\ registered their own: `aot: address refers to data outside the restored span
+\ caller=CLEANUP-RESET target=FS-MUT-CLEANUP-N`. lib/process.f is a module of
+\ that closure the engine does not bake, so the forking program builds on the
+\ engine.
+: HBT-STRIPPED-FORK ( -- )
+   HBT-AOT-OUT HBT-REMOVE-FILE?
+   s" test/stripped-fork-subject.f" HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn S\" child=ok\n" T$=
+   HBT-AOT-SRC HBT-REGISTRY-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   HBT-RUN-AOT
+   HBT-AOT-OUT HBT-REMOVE-FILE? ;
 
 \ The expected output of HBT-CELLS-SRC$, BUILT AND NOT SPELLED: the second line is
 \ this process's own HOME, which is exactly what PROC-ENV-INHERIT-MISSING hands
@@ -253,6 +288,7 @@ public
    PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
+   HBT-STRIPPED-FORK
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-NO-ENTRY
    HBT-STRIPPED-UNOWNED-CELL

@@ -32,6 +32,7 @@ require lib/type/deftype.f
 require lib/task.f
 require lib/aio.f
 require lib/image-lifecycle.f
+require lib/fork-child.f
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl. Minted here,
 \ beside the package its codes belong to (docs/forth-card.md § 6).
@@ -637,6 +638,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 : CONFIG-LOCK ( -- ) begin 0 1 CONFIG-MUTEX atomic-cas 0= until ;
 : CONFIG-UNLOCK ( -- ) 0 CONFIG-MUTEX atomic! ;
+
+\ A process just forked frees the lock before anything else (lib/fork-child.f):
+\ fork copies only the thread that called it, so a CONFIGURE another task was in
+\ leaves the child's copy held with nobody to free it, and the child's own
+\ CONFIGURE would wait for ever (lib/pg-fork-test.f).
+: REGISTER-CHILD-RESET ( -- )
+   [: CONFIG-UNLOCK ;] FORK-CHILD:REGISTER ;
+REGISTER-CHILD-RESET
 
 
 \ ---- slot lifecycle -------------------------------------------------------

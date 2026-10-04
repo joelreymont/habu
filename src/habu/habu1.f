@@ -4865,10 +4865,10 @@ variable FIND-HMATCH
 \ match because its rule is the LAST matching row, so it parks the match in x17
 \ - a register untouched by that loop - and FIND-FOUND puts it back in x5.
 \
-\ ONE MODEL IS STILL A REGISTER BEHIND, ON PURPOSE. tools/lint/clobber-lint.f
-\ lists Lfind's and Lfindused's returns as x11/x12/x13 and Laotwidgate's
-\ preserved set as x11; each should gain x5. Dot
-\ habu-clobber-lint-cannot-305ed456 owns that correction. The stale rows cost
+\ ONE MODEL IS STILL A REGISTER BEHIND, ON PURPOSE. tools/lint/clobber-lint-core.f
+\ lists Lfind's and Lfindused's returns as x11/x12/x13 (RETURNS-MASK) and
+\ Laotwidgate's preserved set as x11 (PRESERVE-MASK); each should gain x5. Dot
+\ habu-model-lfind-s-c98db257 owns that correction. The stale rows cost
 \ nothing today - no routine reads x5 after an
 \ LFIND call site, so nothing is poisoned that should not be - and the direction
 \ of the staleness is a false RED, never a false green.

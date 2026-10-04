@@ -65,6 +65,7 @@ variable SD-PATH-OVF
 variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
+variable SD-OPENER                       \ where the last string or group opener starts
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -310,9 +311,9 @@ variable SD-SCOPES
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
-   off len SD-TOK$ s" {:" STR= if SD-LOCAL-GROUP exit then
+   off len SD-TOK$ s" {:" STR= if off SD-OPENER ! SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
-   opener 0= 0= if len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
+   opener 0= 0= if off SD-OPENER ! len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
    off len SD-TOK$ s" :" STR= if SD-LOCALS-RESET SD-CHECK-NAME exit then
@@ -419,6 +420,11 @@ public
 
 : RUN ( ptr u8 n -- )
    ENTRY-RESOLVE drop RESOLVED-ROOT$ RUN-IN ;
+
+\ Where the string or locals group a walk ended at with E-DISC-UNTERM opens:
+\ the byte of its opener in the file that ended the walk.
+: OPENER-AT ( -- n )
+   SD-OPENER @ ;
 
 : EMIT ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    0 >LEN SD-EMIT-LEN !

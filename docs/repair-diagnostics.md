@@ -137,7 +137,16 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `throw_code` it raised. The checker does not continue past that statement in
   its source, and the run exits 70 as for a refusal. Without
   `--json-errors` it is the line `E-STATEMENT-THROW <file>:<line>:<column>:
-  throw <throw_code> at '<token>'`.
+  throw <throw_code> at '<token>'`. The pre-verifier stops the same way at the
+  opener of a statement the source ends inside or that lacks a part it must
+  have: a definition, its signature or a locals group never closed (7155), a
+  definer's signature missing or never closed (7157), `TRUST` without the name
+  and signature strings before it (7158), and an `ENUM`, `STRUCTURE`,
+  `BEGIN-STRUCTURE`, `PRODUCT` or `VALUE-RECORD` never ended
+  (`TYPE-DECL:E-TDECL-SYNTAX`, 7107; the nominal pass refuses one in a file it
+  reads first). A table of its own that is full stops it at the token it read
+  last (7194). Source discovery's stop at a `{:` group a file never closes is
+  this record at the `{:`, with `throw_code` `E-DISC-UNTERM` (-4103).
 - `E-GENERATES-ROW`: a `generates: D ( effect )` row the checker refused, its
   `token` D. Its repair class names the claim that failed: `fix_generates_row`
   when D names no word where the row stands, `delete_generates_row` when D
@@ -157,12 +166,15 @@ A span record locates a refusal that is not a definition's. It carries `schema_v
   `PPRIM:` primitive-axiom row opened at `token` does not close.
 
 The lexer cannot read past either defect, so it is reported in place of
-checking that source. `--all-errors` reports both classes for a file or
-standard input; `tools/check.f` also reports an open string in a file in its
-default mode, in the file that holds it (a required file included), since
-source discovery stops there. Without `--json-errors` a file gets
-`check.f: discovery rejected: unterminated string` and standard input the bare
-code on its own line.
+checking that source, in the file that holds it (a required file included):
+source discovery stops at an open string in a file, and the pre-verifier at
+either defect where it reads one (`VERIFY:E-UNTERMINATED-STRING`,
+`VERIFY:E-MALFORMED-REGISTRY-ROW`). Without `--json-errors` it is the line
+`<code> <file>:<line>:<column>: string literal opened at '<token>' does not
+close`, or `primitive-axiom row` in place of `string literal`. Under
+`--verify-only` a string or group discovery stops at keeps the closure's
+`discovery rejected: unterminated string or locals group` line among the
+prose and adds its record.
 
 A definition by `:`, `CAST:`, `EXPORT` or a typed storage definer of a name
 its wordlist already holds emits, with or without `--all-errors`, a
@@ -324,7 +336,11 @@ process.
 
 Under `--verify-only` check.f writes the packets on stderr, as schema-1 JSON
 with or without `--json-errors`, and its prose on stdout, with a closing line
-for `engine-provided`, `held` and `incomplete`. Child output beyond the
+for `engine-provided`, `held` and `incomplete`. A verification that stopped,
+at a word with no name after it, a string or primitive-axiom row its file
+never closes, a statement that threw, or where discovery stopped, adds the
+record the other modes write for it, at that place, after the packets made
+before it. Child output beyond the
 operation's capture exits 69 with the complete packets received before it, the
 prose and a closing line. Usage errors (64), a missing FILE and an oversized
 source (66) keep their exit codes and explain the failure on stdout.
@@ -344,7 +360,13 @@ deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
 `CHECK:VERIFY-LOG$` the prose, until the next call. A duplicate definition,
 for which the checker writes no packet, is the record `--all-errors` writes
 for it (`CHECK-ALL-ERRORS:DUP-RECORD$`), placed in the bytes or in the file of
-the closure that defined the name again. An empty PATH throws
+the closure that defined the name again. A throw that ended the verification
+refuses it: `CHECK:VERIFY-STOP` is its code, 0 for none, and
+`CHECK:VERIFY-STOP-AT`, `CHECK:VERIFY-STOP-SUBJECT?` and
+`CHECK:VERIFY-STOPPED$` say where, as for `CHECK:PREVERIFY-BYTES`. Discovery's
+stop at a string or a `{:` group a file of the closure never closes refuses it
+too, with `E-DISC-UNTERM` at the opener in that file. An empty
+PATH throws
 `E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
 Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
 the child and throws `E-PROC-TRUNCATED`, with every complete packet received
@@ -370,15 +392,16 @@ packet made before; then one result line. The first form verifies with all
 errors, going past a duplicate definition; for each it writes the second
 form's stopped line, code 78, among the packets, which the operation replaces
 by the duplicate's record. It answers `check-verify: verified`, `refused` or
-`held`; stderr
+`held`, or the second form's `stopped` line for a throw that ended it; stderr
 carries prose, including `PATH: verification stopped by throw RC after N
 rejected definitions` for each file a throw stopped. The second form stops at
 the first refused definition, as the load does, names the subject LABEL in its
 packets and answers `check-verify: verified` or `check-verify: stopped RC BYTE
 DUP-AT DUP-LEN IN-SUBJECT FILE`: the code it stopped with, where the token it
-read last starts, where the name it refused as a duplicate starts and its
-length (0 when it kept none), 1 when the stop is in BYTES, and the file it is
-in. The answer is
+stopped at starts (the one it read last, or the opener of the statement it was
+in), where the name it refused as a duplicate starts and its length (0 when it
+kept none), 1 when the stop is in BYTES, and the file it is in, SUBJECT or
+LABEL for BYTES. The answer is
 read from the result line after a clean exit, never from the exit status.
 
 Because check.f's default pre-pass runs in this child, it resolves the
@@ -602,9 +625,10 @@ Current checker classes:
   row's count and the limit. Keep bulk values in a buffer.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
-- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `NEWTYPE` and the
-  rest) ended the source with no name after it (`E-MISSING-NAME`); the packet
-  is located at the definer.
+- `fix_missing_name`: a definer (`:`, `DEFTYPE`, `package`, `create`, a
+  learned `create … does>` definer and the rest) or a parsing word (`char`,
+  `'`, a field word) ended the source with no name after it
+  (`E-MISSING-NAME`); the packet is located at that word.
 - `fix_record_field`: a `VALUE-RECORD` field had a bad or duplicate name or a
   missing or unknown type, or the record had no field (`E-BAD-RECORD-FIELD`);
   `reason` carries the registration's refusal and the packet is located at the
@@ -684,7 +708,7 @@ table it is derived only from `repair_class`. It does not replace the raw
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |
 | `rebuild_engine` | `The engine provides this source; rebuild bin/hb to check a change to it.` |
-| `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, or the global wordlist outside a package. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word; a qualified PKG:TAIL name is not checked yet.` |
+| `fix_stale_trust_row` | `This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word.` |
 | `use_storage_definer` | `A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar.` |
 | `disambiguate_using_shadow` | `A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier.` |
 | `disambiguate_using_ambiguous` | `Used publics of more than one package share this name. Qualify the one meant as PKG:WORD, or rename the collision.` |

@@ -1,0 +1,9 @@
+---
+title: Refuse a truncated macOS launch path
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-10-03T18:24:55.401545+03:00"
+---
+
+Review 493 of a3a23f35 (eidlinux), measured on its g1: lib/engine-id.f:116-120 LAUNCH-PATH$ trusts _NSGetExecutablePath's rc 0, and :162-164 EXEC-PATH$ returns it when REPORTED-PATH is empty. With the engine at a 1254-byte path (cwd 648 bytes, exe by a 605-byte relative path): proc_pidpath returns 0 at buffer 1025 and 4096, PATH$ and KEY$ throw E-ENGINE-PATH (-3800) as they should, but EXEC-PATH$ returns 1023 bytes: the absolute path cut at PATH_MAX-1 (dyld composes it in a PATH_MAX buffer, so rc is 0). Downstream SOURCE-ROOT:CANONICAL fails and ENGINE-ROOT$ falls back to CWD, but the contract at :158-161 (an empty span where no source answers) is broken: a truncated pathname is a public result. Same class as 4c384bf5 on the other arm; 5b4e68f7 covers only the sandbox fallback. Fix in LAUNCH-PATH$: refuse ZLEN >= PATH-CAP 1 - (a 1023-byte answer is indistinguishable from a truncated one). Acceptance, a DEEP case beside REFUSED in test/boot-relocation-e2e.f (SUITE boot-relocation, test/gate-stdlib-cases.f:2246), macOS arm: MAKE-DIRS <ROOT$>/deep/<200xd>/<200xd>/<200xd> = MID; with PROC-CMD CWD! MID run /bin/mkdir -p <seg>/<seg>/<seg> and /bin/cp <ENGINE$> <seg>/<seg>/<seg>/hb; run exe <seg>/<seg>/<seg>/hb (relative), CWD! MID, --load <ROOT$>/entry-deep.f asserting PATH$ and KEY$ catch E-ENGINE-PATH and EXEC-PATH$ is empty; fails today on the EXEC-PATH$ assert. Constraints: child cwd <= PATH-CAP (the engine exits 74 silently at a 1252-byte cwd); FS-PATH-CAP bounds MAKE-DIRS/COPY-FILE-STREAM, so the deep tail is made by child processes. Probes: ~/.cache/tmp/kestrel-r4-rev493/. Files: lib/engine-id.f (baked), test/boot-relocation-e2e.f.

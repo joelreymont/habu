@@ -745,6 +745,149 @@ variable GPT-RF-VIC-PID
    GPT-CT-EXPECT
    GT-CLEANUP ;
 
+\ A SCRATCH THAT WILL NOT GO FAILS ITS ROW, NOT THE POOL (gate-pool.f
+\ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its HB_TMP deeper
+\ than FS-PATH-CAP, which REMOVE-TREE refuses with E-FS-CAPACITY. The refusal
+\ is named with the row, the path and the code, the row is red, and the pool
+\ goes on to the next row; the run's own cleanup meets the same tree under the
+\ root and is named too, before the red report's exit. The case runs in a
+\ child (mode deep-scratch-case), so that exit is the child's.
+\
+\ The tree is made from short paths: round r makes dir/<r c's>/<segment> and
+\ moves round r-1's top inside it, so the tree deepens by a round while no
+\ call names more than a round's bytes. Each round adds at least
+\ GPT-DS-SEG + 3 bytes, so GPT-DS-ROUNDS of them pass FS-PATH-CAP below any
+\ directory.
+120 constant GPT-DS-SEG
+FS-PATH-CAP GPT-DS-SEG 3 + / 1+ constant GPT-DS-ROUNDS
+
+create GPT-DS-SEG-BUF GPT-DS-SEG allot
+create GPT-DS-NAME-BUF GPT-DS-ROUNDS allot
+create GPT-DS-TOP FS-PATH-CAP allot      \ dir/<round's name>
+create GPT-DS-MID FS-PATH-CAP allot      \ dir/<round's name>/<segment>
+create GPT-DS-IN FS-PATH-CAP allot       \ the previous round's top, moved in
+create GPT-DS-PREV FS-PATH-CAP allot     \ the previous round's top, in dir
+
+: GPT-DS-SEG$ ( -- ptr u8 n )
+   GPT-DS-SEG 0 ?do 100 GPT-DS-SEG-BUF i + c! loop
+   GPT-DS-SEG-BUF GPT-DS-SEG ;
+
+\ Round r's name: r bytes of c.
+: GPT-DS-NAME$ ( n -- ptr u8 n ) {: r:n :}
+   r 0 ?do 99 GPT-DS-NAME-BUF i + c! loop
+   GPT-DS-NAME-BUF r ;
+
+\ dir/<round r's name> into dst.
+: GPT-DS-TOP-PATH ( ptr u8 n n ptr u8 -- n ) {: dir:ptr diru:n r:n dst:ptr :}
+   dir diru r GPT-DS-NAME$ dst JOIN-PATH ;
+
+\ dir/<round r's name>/<segment> into GPT-DS-MID.
+: GPT-DS-MID-PATH ( ptr u8 n n -- n ) {: dir:ptr diru:n r:n :}
+   dir diru r GPT-DS-TOP GPT-DS-TOP-PATH {: topu:n :}
+   GPT-DS-TOP topu GPT-DS-SEG$ GPT-DS-MID JOIN-PATH ;
+
+\ Round r's move, r above 1: where round r-1's top is in dir, and where it
+\ goes inside round r's segment.
+: GPT-DS-MOVE ( ptr u8 n n -- ptr u8 n ptr u8 n ) {: dir:ptr diru:n r:n :}
+   dir diru r GPT-DS-MID-PATH {: midu:n :}
+   GPT-DS-MID midu r 1- GPT-DS-IN GPT-DS-TOP-PATH {: inu:n :}
+   dir diru r 1- GPT-DS-PREV GPT-DS-TOP-PATH {: prevu:n :}
+   GPT-DS-PREV prevu GPT-DS-IN inu ;
+
+: GPT-DS-ROUND ( ptr u8 n n -- ) {: dir:ptr diru:n r:n :}
+   dir diru r GPT-DS-MID-PATH {: midu:n :}
+   GPT-DS-MID midu MAKE-DIRS
+   r 1 > if dir diru r GPT-DS-MOVE RENAME-FILE then ;
+
+: GPT-DS-UNROUND ( ptr u8 n n -- )
+   GPT-DS-MOVE {: from:ptr fromu:n to:ptr tou:n :}
+   to tou from fromu RENAME-FILE ;
+
+: GPT-DS-MAKE ( ptr u8 n -- ) {: dir:ptr diru:n :}
+   GPT-DS-ROUNDS 1+ 1 ?do dir diru i GPT-DS-ROUND loop ;
+
+\ The rounds undone from the last, so every directory is shallow again.
+: GPT-DS-UNDO ( ptr u8 n -- ) {: dir:ptr diru:n :}
+   2 GPT-DS-ROUNDS ?do dir diru i GPT-DS-UNROUND -1 +loop ;
+
+: GPT-DS-CASE ( -- )
+   s" gate-pool-deep-scratch" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" /usr/bin/true" s" deep scratch row" GPT-TIMEOUT-MS GT-POOL-START
+   0 >IDX GT-POOL-TMP$ GPT-DS-MAKE
+   s" deep slot: " type 0 >IDX GT-POOL-TMP$ type cr
+   s" deep root: " type GT-ROOT type cr
+   s" deep scratch sibling" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN ;
+
+\ The text after needle in the child's stdout, to the end of its line; empty
+\ when no line has it.
+: GPT-LINE-AFTER$ ( n ptr u8 n -- ptr u8 n ) {: outu:n needle:ptr nu:n :}
+   GPT-OUT outu needle nu FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: at:n :}
+   at 0 < if GPT-OUT 0 exit then
+   GPT-OUT at nu + BYTE+ outu at nu + - {: rest:ptr restu:n :}
+   rest restu STR-LF INDEX-OF MATCH option
+      none OF restu ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: lineu:n :}
+   rest lineu ;
+
+\ text followed by E-FS-CAPACITY, the code REMOVE-TREE refuses the tree with.
+: GPT-DS-CODE$ ( ptr u8 n -- ptr u8 n ) {: text:ptr textu:n :}
+   SB-RESET
+   text textu SB-APPEND
+   E-FS-CAPACITY FMT:SB-INT
+   SB$ ;
+
+: GPT-DS-SCRATCH-LINE$ ( ptr u8 n -- ptr u8 n ) {: slot:ptr slotu:n :}
+   SB-RESET
+   s" test pool: scratch " SB-APPEND slot slotu SB-APPEND
+   s"  of deep scratch row not removed, throw " SB-APPEND
+   E-FS-CAPACITY FMT:SB-INT
+   SB$ ;
+
+: GPT-DS-EXPECT ( n ptr u8 n -- ) {: outu:n slot:ptr slotu:n :}
+   s" deep scratch: the refusal names the row, its scratch and the code" T-LABEL
+   GPT-OUT outu slot slotu GPT-DS-SCRATCH-LINE$ CONTAINS? TTRUE
+   s" deep scratch: the row is red for it" T-LABEL
+   GPT-OUT outu s" FAIL: deep scratch row" CONTAINS? TTRUE
+   GPT-OUT outu s"  scratch=" GPT-DS-CODE$ CONTAINS? TTRUE
+   GPT-OUT outu s" red tests: 1" CONTAINS? TTRUE
+   s" deep scratch: the pool went on to the next row" T-LABEL
+   GPT-OUT outu s" PASS: deep scratch sibling" CONTAINS? TTRUE
+   s" deep scratch: the run's cleanup refusal is named" T-LABEL
+   GPT-OUT outu s" test pool: cleanup threw " GPT-DS-CODE$ CONTAINS? TTRUE ;
+
+\ The case's tree goes the way it came, a round at a time, then the child's
+\ root with it.
+: GPT-DS-CLEAN ( ptr u8 n ptr u8 n -- ) {: slot:ptr slotu:n root:ptr rootu:n :}
+   slot slotu GPT-DS-UNDO
+   root rootu REMOVE-TREE
+   s" deep scratch: the case's tree is gone" T-LABEL
+   root rootu EXISTS? TFALSE ;
+
+: GPT-DS-REPORT ( -- )
+   s" deep-scratch-case" GPT-MODE-CAPTURE {: outu:n erru:n code:n :}
+   s" deep scratch: the run ends on the red report's exit" T-LABEL
+   code 1 T=
+   GPT-ERR erru s" test pool failed" CONTAINS? TTRUE
+   s" deep scratch: the cleanup refusal is reported once" T-LABEL
+   GPT-ERR erru s" cleanup at exit threw" CONTAINS? TFALSE
+   outu s" deep slot: " GPT-LINE-AFTER$ {: slot:ptr slotu:n :}
+   outu s" deep root: " GPT-LINE-AFTER$ {: root:ptr rootu:n :}
+   s" deep scratch: the child named its slot and its root" T-LABEL
+   slotu 0 > rootu 0 > and TTRUE
+   slotu 0 > rootu 0 > and if
+      outu slot slotu GPT-DS-EXPECT
+      slot slotu root rootu GPT-DS-CLEAN
+   then ;
+
 \ A SUITE-LESS POOL USER REAPS ITS OWN ROOT (GT-POOL-FALLBACK-REMOVE).
 \ A pool user with no GT-START - test/nf-path-test.f run standalone is the one
 \ in the tree - captures into GT-POOL-FALLBACK-ROOT$, a directory the process
@@ -954,6 +1097,7 @@ variable GPT-FR-U
 
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
+   s" deep-scratch-case" GPT-MODE? if GPT-DS-CASE exit then
    T-RESET
    0 GPT-COW !
    s" gate-pool-test" GT-START
@@ -973,6 +1117,7 @@ variable GPT-FR-U
    GPT-REAPER-REFUSED-CASE
    GPT-REAPER-FORK-CASE
    GPT-CHILD-TMP-CASE
+   GPT-DS-REPORT
    GPT-FR-CASE
    GPT-UNCAUGHT-CASE
    GPT-INNER-TIMEOUT-CASE
