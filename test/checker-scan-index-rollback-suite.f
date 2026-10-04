@@ -62,10 +62,10 @@ SCX-DIFF-ALL
 \ 3b. the same shape through the real load path: a definition the checker
 \     REJECTS rolls its scope back, and the name then takes a different effect
 \     that its callers are held to.
-TRUSTED: SCX-BADDEF ( -- ) s" : SCXB ( n -- n ) drop ;" evaluate ;
-TRUSTED: SCX-GOODDEF ( -- ) s" : SCXB ( n -- ) drop ;" evaluate ;
-TRUSTED: SCX-GOODUSE ( -- ) s" : SCXBU ( n -- ) SCXB ;" evaluate ;
-TRUSTED: SCX-BADUSE ( -- ) s" : SCXBU2 ( n -- n ) SCXB ;" evaluate ;
+: SCX-BADDEF ( -- ) s" : SCXB ( n -- n ) drop ;" evaluate-closed ;
+: SCX-GOODDEF ( -- ) s" : SCXB ( n -- ) drop ;" evaluate-closed ;
+: SCX-GOODUSE ( -- ) s" : SCXBU ( n -- ) SCXB ;" evaluate-closed ;
+: SCX-BADUSE ( -- ) s" : SCXBU2 ( n -- n ) SCXB ;" evaluate-closed ;
 
 ' SCX-BADDEF catch TC !   TC @ 0 <> TTRUE            \ rejected: the body drops its output
 s" SCXB" SCX-SIG-MIN-IN -1 T=                        \ ... and left no record behind

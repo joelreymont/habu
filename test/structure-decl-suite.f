@@ -45,14 +45,13 @@ variable #CASE
    #CASE @ 1 + #CASE !
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
-\ --- boundary shims: the STRUCTURE opener is reached through EV, TRUSTED:
-\ because `evaluate` is a trust-boundary primitive a checked body refuses
-\ (E-UNSAFE). The registry / schema reflection words are engine-internal; on the
-\ whitebox engine this suite runs on, a checked body binds their rows. TRY and
-\ RP-TRY run their word on copies of the inputs, because a throw restores the
-\ depth catch began with, and drop both so a refusal leaves only its code.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
+\ --- boundary shims: a declaration given as a text runs through
+\ evaluate-closed, at top level or under TRY's catch. The registry / schema
+\ reflection words are engine-internal; on the whitebox engine this suite runs
+\ on, a checked body binds their rows. TRY and RP-TRY run their word on copies
+\ of the inputs, because a throw restores the depth catch began with, and drop
+\ both so a refusal leaves only its code.
+: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;   \ closed text under catch -> throw code
 : FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
 : FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
@@ -78,7 +77,7 @@ variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
 \ 4. POLICY reaches both the family record and the event stream.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" STRUCTURE ppk 0 POLICY packed-tag FIELD x n ;STRUCTURE" EV
+s" STRUCTURE ppk 0 POLICY packed-tag FIELD x n ;STRUCTURE" evaluate-closed
 s" ppk" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
@@ -88,7 +87,7 @@ s" ppk" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is 
 \    on one clause are accepted, each recorded once.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE" EV
+s" STRUCTURE der 0 DERIVE eq hash FIELD x n ;STRUCTURE" evaluate-closed
 s" der" FAMID FAM-EQ? T-TRUE                          \ eq derived
 s" der" FAMID FAM-HASH? T-TRUE                        \ hash derived
 2 DECL-EVENT:DERIVE? T-TRUE                           \ two DERIVE events after DECL + ARITY
@@ -141,7 +140,7 @@ s" STRUCTURE ptr 0 FIELD x n ;STRUCTURE" TRY 7110 T=
 \ ---------------------------------------------------------------------------
 \ 8. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
 \ ---------------------------------------------------------------------------
-s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" EV
+s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" evaluate-closed
 s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 
 \ ---------------------------------------------------------------------------
@@ -151,7 +150,7 @@ s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 \     is a bit-identical physical no-op that preserves declaration order.
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
-s" STRUCTURE tri 0 FIELD a n FIELD b n FIELD c n ;STRUCTURE" EV
+s" STRUCTURE tri 0 FIELD a n FIELD b n FIELD c n ;STRUCTURE" evaluate-closed
 SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
 : TRIRT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE ;      \ callable sealed ctor words
 11 22 33 TRIRT 33 T= 22 T= 11 T=                      \ declaration order + values round-trip bit-identically
@@ -163,17 +162,17 @@ SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant
 \     and a byte field, and at a concrete instantiation (parameter a = n) the
 \     round-trip certifies with its declaration-order field types.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE abc 1 FIELD p a FIELD k n FIELD c char ;STRUCTURE" EV
+s" STRUCTURE abc 1 FIELD p a FIELD k n FIELD c char ;STRUCTURE" evaluate-closed
 s" ABCRT ( n n char -- n n char ) ABC:MAKE ABC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ a generic-only structure round-trips its parameter at a concrete instantiation.
-s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" EV
+s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" evaluate-closed
 : GPRT ( n -- n ) GP:MAKE GP:UNMAKE ;
 42 GPRT 42 T=
 
 \ The post-hook STRUCTURE parser consumes the shared declaration alphabet.  A
 \ maximum-arity declaration accepts g and z while f/n/r stay scalar fields; the
 \ exact inverse table is tested once in type-family-suite.f.
-s" STRUCTURE sdmap 23 FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e FIELD p05 g FIELD flag f FIELD integer n FIELD real r FIELD last z ;STRUCTURE" EV
+s" STRUCTURE sdmap 23 FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e FIELD p05 g FIELD flag f FIELD integer n FIELD real r FIELD last z ;STRUCTURE" evaluate-closed
 s" SDMAPRT ( n n n n n n bool n r char -- n n n n n n bool n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -186,7 +185,7 @@ SUMVN@ SV0 !
 s" STRUCTURE badf 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=   \ duplicate field rejects
 SUMVN@ SV0 @ T=                                       \ no ctor words from a rejected declaration
 SUMVN@ SV0 !
-s" STRUCTURE opaque 0 ;STRUCTURE" EV                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
+s" STRUCTURE opaque 0 ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
 SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
 
 \ ---------------------------------------------------------------------------

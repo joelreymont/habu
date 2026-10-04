@@ -60,11 +60,11 @@ package SCANIDX-TEST
 
 \ 1a. effect records: newest wins, and a deletion is an absence rather than a
 \     fall-back to the record it shadows.
-TRUSTED: SCX-DEF1 ( -- ) s" : SCXA ( n -- n ) ;" evaluate ;
-TRUSTED: SCX-UNDEF ( -- ) s" undefine SCXA" evaluate ;
-TRUSTED: SCX-DEF2 ( -- ) s" : SCXA ( n n -- n ) drop ;" evaluate ;
-TRUSTED: SCX-DEF3 ( -- ) s" undefine SCXA : SCXA ( n n n -- n ) drop drop ;" evaluate ;
-TRUSTED: SCX-DEF4 ( -- ) s" : SCXA ( n n n -- n ) drop drop ;" evaluate ;
+: SCX-DEF1 ( -- ) s" : SCXA ( n -- n ) ;" evaluate-closed ;
+: SCX-UNDEF ( -- ) s" undefine SCXA" evaluate-closed ;
+: SCX-DEF2 ( -- ) s" : SCXA ( n n -- n ) drop ;" evaluate-closed ;
+: SCX-DEF3 ( -- ) s" undefine SCXA : SCXA ( n n n -- n ) drop drop ;" evaluate-closed ;
+: SCX-DEF4 ( -- ) s" : SCXA ( n n n -- n ) drop drop ;" evaluate-closed ;
 
 s" SCXA" SCX-SIG-MIN-IN -1 T=                  \ nothing recorded yet
 ' SCX-DEF1 catch TC !   TC @ 0 T=
@@ -105,8 +105,8 @@ FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=
 
 \ 1b. control flags: later wins, and a redefinition clears the stale metadata.
-TRUSTED: SCX-CTLDEF ( -- ) s" : SCXT ( n -- n ) 7101 throw ;" evaluate ;
-TRUSTED: SCX-CTLREDEF ( -- ) s" undefine SCXT : SCXT ( n -- n ) ;" evaluate ;
+: SCX-CTLDEF ( -- ) s" : SCXT ( n -- n ) 7101 throw ;" evaluate-closed ;
+: SCX-CTLREDEF ( -- ) s" undefine SCXT : SCXT ( n -- n ) ;" evaluate-closed ;
 
 s" SCXT" CTL-FLAGS 0 T=
 ' SCX-CTLDEF catch TC !   TC @ 0 T=
@@ -157,8 +157,8 @@ TC @ E-TFAM-AMBIG T=
 
 \ 1d. constructor symbols: a generated constructor resolves to its variant, and
 \     an ordinary word symbol resolves to nothing.
-TRUSTED: SCX-SUMDECL ( -- )
-   s" SUMTYPE scxsum 0 VARIANT scxva n ;VARIANT VARIANT scxvb ;VARIANT ;SUMTYPE" evaluate ;
+: SCX-SUMDECL ( -- )
+   s" SUMTYPE scxsum 0 VARIANT scxva n ;VARIANT VARIANT scxvb ;VARIANT ;SUMTYPE" evaluate-closed ;
 ' SCX-SUMDECL catch TC !  TC @ 0 T=
 s" SCXA" CHECKER-FIND-ACTIVE-SYM SUMV-FROM-CTOR-SYM TFALSE drop
 

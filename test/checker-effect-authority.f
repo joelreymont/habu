@@ -34,8 +34,6 @@ package EFFECT-AUTHORITY-TEST
 TRUSTED: CERT-SIZE ( -- n ) LOWER-CERT:BYTES nip ;
 TRUSTED: DICT-MIN ( ptr u8 n -- n )
    0 xref-search-wl XREF-FLAGS DNAME-MIN-IN-MASK and ;
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ The gate's state, named by checked bodies: the open gate binds SEALED?'s
 \ recorded row, and SEAL carries a primitive row.
 : SEALED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:SEALED? ;
@@ -211,16 +209,16 @@ create DIAGS IO-CAP allot
    s" multi-error publication retains no executable certificate" T-LABEL
    0 TIER:SELECT                    \ check-only replay publishes through the JIT hook
    MULTI+
-   s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" EV
+   s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" evaluate-closed
    s" EAUTH-REC-LIVE-BAD" RECOVERY-FACT
    s" EAUTH-REC-LIVE-BAD" DICT-MIN 0 T=
-   s" : EAUTH-REC-LIVE ( ptr n -- n ) @ EAUTH-REC-LIVE-BAD ;" EV
+   s" : EAUTH-REC-LIVE ( ptr n -- n ) @ EAUTH-REC-LIVE-BAD ;" evaluate-closed
    s" EAUTH-REC-LIVE" RECOVERY-FACT
    s" EAUTH-REC-LIVE" DICT-MIN 0 T=
    CERT-SIZE LOWER-CERT:HEADER-CELLS cells T=
-   s" package EAUTH-REC-ALIAS public EXPORT EAUTH-REC-LIVE ;package" EV
+   s" package EAUTH-REC-ALIAS public EXPORT EAUTH-REC-LIVE ;package" evaluate-closed
    s" EAUTH-REC-ALIAS:EAUTH-REC-LIVE" RECOVERY-FACT
-   s" : EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE ;" EV
+   s" : EAUTH-REC-EXPORT-CALL ( ptr n -- n ) EAUTH-REC-ALIAS:EAUTH-REC-LIVE ;" evaluate-closed
    s" EAUTH-REC-EXPORT-CALL" RECOVERY-FACT
    s" EAUTH-REC-EXPORT-CALL" DICT-MIN 0 T=
    MULTI- 1 T=
@@ -235,12 +233,12 @@ TRUSTED: UNCHECKED+ ( -- ) check@ SAVED-HOOK ! 0 set-check ;
 TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : PREHOOK-DECLARATIONS ( -- )
-   s" : EAUTH-RAW ( n -- n ) ;" EV
-   s" TRUSTED: EAUTH-TRUSTED ( n -- n ) ;" EV
-   s" defer EAUTH-DEFER ( n -- n )" EV ;
+   s" : EAUTH-RAW ( n -- n ) ;" evaluate-closed
+   s" TRUSTED: EAUTH-TRUSTED ( n -- n ) ;" evaluate-closed
+   s" defer EAUTH-DEFER ( n -- n )" evaluate-closed ;
 
 : BAD-REDEFINITION ( -- )
-   s" : EAUTH-LIVE ( n -- n ) drop ;" EV ;
+   s" : EAUTH-LIVE ( n -- n ) drop ;" evaluate-closed ;
 
 : LIVE-CASES ( -- )
    s" real pre-hook native publication preserves explicit declarations" T-LABEL
@@ -252,21 +250,22 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" EAUTH-RAW" SOURCE-MIN -1 T=
    s" EAUTH-TRUSTED" SOURCE-MIN 1 T=
    s" EAUTH-DEFER" SOURCE-MIN 1 T=
-   s" package EAUTH-SHADOW private : EAUTH-RAW ( n -- n ) ; public EXPORT EAUTH-RAW ;package" EV
+   s" package EAUTH-SHADOW private : EAUTH-RAW ( n -- n ) ; public EXPORT EAUTH-RAW ;package"
+   evaluate-closed
    s" EAUTH-SHADOW:EAUTH-RAW" SOURCE-MIN 1 T=
    s" EAUTH-RAW" SOURCE-MIN -1 T=
-   s" package EAUTH-ALIAS public EXPORT EAUTH-RAW ;package" EV
+   s" package EAUTH-ALIAS public EXPORT EAUTH-RAW ;package" evaluate-closed
    s" EAUTH-ALIAS:EAUTH-RAW" SIG-MIN-IN 1 T=
    s" EAUTH-ALIAS:EAUTH-RAW" SOURCE-MIN -1 T=
    s" EAUTH-ALIAS-CALL ( n -- n ) EAUTH-ALIAS:EAUTH-RAW" CHECK-CANDIDATE! 0 T=
-   s" : EAUTH-LIVE ( n -- n ) ;" EV
-   s" 17 EAUTH-LIVE" EV-N 17 T=
-   s" undefine EAUTH-LIVE" EV
+   s" : EAUTH-LIVE ( n -- n ) ;" evaluate-closed
+   s" 17 EAUTH-LIVE" TEST-EVAL:N 17 T=
+   s" undefine EAUTH-LIVE" evaluate-closed
    [: BAD-REDEFINITION ;] catch 70 T=
    s" EAUTH-LIVE" SOURCE-MIN -1 T=
-   s" : EAUTH-LIVE ( n -- n ) ;" EV
+   s" : EAUTH-LIVE ( n -- n ) ;" evaluate-closed
    s" EAUTH-LIVE" SOURCE-MIN 1 T=
-   s" 23 EAUTH-LIVE" EV-N 23 T= ;
+   s" 23 EAUTH-LIVE" TEST-EVAL:N 23 T= ;
 
 \ ---- the open gate -------------------------------------------------------------
 \ FRESH is a pre-hook checker word: the build recorded its row without source
@@ -274,13 +273,13 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 \ that row and checks the caller's body against it, and the row gains nothing.
 \ What the gate does not open stays shut: PRIM-CASES runs unsealed too, and a
 \ failed declaration's row serves only its own run.
-: OPEN-X ( -- ) s" : EAUTH-OPEN-X ( -- n ) FRESH ;" EV ;
+: OPEN-X ( -- ) s" : EAUTH-OPEN-X ( -- n ) FRESH ;" evaluate-closed ;
 
 : OPEN-LIVE-CASES ( -- )
    s" an unsealed checker binds an internal word's recorded row" T-LABEL
    SEALED? TFALSE
    ['] OPEN-X catch 0 T=
-   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" EV
+   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" evaluate-closed
    s" EAUTH-OPEN-X" SOURCE-MIN 0 T=
    s" EAUTH-OPEN-X" CHECKER-RESOLVES? TTRUE
    s" and checks the body against that row" T-LABEL
@@ -326,15 +325,15 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    tier@ {: saved:n :}
    0 TIER:SELECT
    MULTI+
-   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" EV
+   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" evaluate-closed
    MULTI- 1 T=
    s" EAUTH-COPY-BAD" RECOVERY-FACT
-   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" evaluate-closed ;] catch
    E-EXPORT-UNDEFINED T=
    s" EAUTH-COPY-CALL ( n -- n ) EAUTH-COPY:EAUTH-COPY-BAD" CHECK-CANDIDATE! 1 T=
    s" nor inside a later run" T-LABEL
    MULTI+
-   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" evaluate-closed ;] catch
    E-EXPORT-UNDEFINED T=
    MULTI- 0 T=
    saved TIER:SELECT ;

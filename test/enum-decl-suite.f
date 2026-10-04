@@ -52,21 +52,20 @@ variable #CASE
    #CASE @ 1 + #CASE !
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
-\ --- boundary shims: the ENUM-DECL:ED-RUN entry, evaluate, and some of the
-\ sealed pre-hook registry / schema reflection words are reached at top level
-\ through named forwarders (the same idiom test/structure-decl-suite.f uses).
+\ --- boundary shims: the ENUM-DECL:ED-RUN entry is named in texts run by
+\ evaluate-closed, at top level or under TRY's catch, and some of the sealed
+\ pre-hook registry / schema reflection words are reached through named
+\ forwarders (the same idiom test/structure-decl-suite.f uses).
 \
-\ TRUSTED: ONLY WHERE THE ROW SAYS SO. This suite is a WHITEBOX-SUITE, so it
-\ runs on an engine whose seal never ran, where a checked body binds the real row
-\ of each registry cell and TFAM / SUMV / SCHEMA / LAY accessor it names: TFAMN@,
-\ SCHN@, SUMVN@ and the two save/restore blocks are plain checked definitions,
-\ and the cases call the accessors themselves. What still needs a trusted body is
-\ what needs one on any engine - `evaluate`, a trust-boundary primitive a checked
-\ body refuses (E-UNSAFE). The `catch` adapters are checked: each runs its word
-\ on copies of the inputs, because a throw restores the depth catch began with,
-\ and drops both so a refusal leaves only its code.
-TRUSTED: EV ( ptr u8 n -- ) evaluate ;
-: TRY ( ptr u8 n -- n ) [: 2dup EV ;] catch {: rc:n :} 2drop rc ;   \ evaluate under catch -> throw code
+\ NO TRUSTED: BODY. This suite is a WHITEBOX-SUITE, so it runs on an engine
+\ whose seal never ran, where a checked body binds the real row of each registry
+\ cell and TFAM / SUMV / SCHEMA / LAY accessor it names: TFAMN@, SCHN@, SUMVN@
+\ and the two save/restore blocks are plain checked definitions, and the cases
+\ call the accessors themselves. A checked body evaluates a text with
+\ evaluate-closed (plain `evaluate` there is E-UNSAFE). The `catch` adapters are
+\ checked: each runs its word on copies of the inputs, because a throw restores
+\ the depth catch began with, and drops both so a refusal leaves only its code.
+: TRY ( ptr u8 n -- n ) [: 2dup evaluate-closed ;] catch {: rc:n :} 2drop rc ;   \ closed text under catch -> throw code
 : FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 : F-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 : F-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
@@ -109,35 +108,35 @@ package ENUM-DECL
    VBASE @ 2 + VID !
    TOK @ RC !
 
-   s" ENUM-DECL:ED-RUN epnested 0 VARIANT foreign FIELD nested n ;VARIANT ;ENUM" EV
+   s" ENUM-DECL:ED-RUN epnested 0 VARIANT foreign FIELD nested n ;VARIANT ;ENUM" evaluate-closed
    VBASE @ NODE !
 
-   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-N 0 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-CELLS 0 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-N 0 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-CELLS 0 T=" evaluate-closed
 
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-N 1 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-CELLS 1 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-N 1 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-CELLS 1 T=" evaluate-closed
 
-   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-N 2 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ PFB @ T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-WIDTH@ 2 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-CELLS 3 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-N 2 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CCN# T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ PFB @ T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-WIDTH@ 2 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-CELLS 3 T=" evaluate-closed
 
-   s" DECL-EVENT:CURRENT PFB @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7173 T=" EV
-   s" DECL-EVENT:CURRENT FID @ -1 ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 0 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ -1 ' DECL-EVENT:PAYLOAD-WIDTH@ catch B ! drop drop drop drop B @ 7172 T=" EV
-   s" DECL-EVENT:CURRENT FID @ VID @ 2 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" EV
-   s" DECL-EVENT:CURRENT FID @ NODE @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
+   s" DECL-EVENT:CURRENT PFB @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7173 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ -1 ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 0 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ -1 ' DECL-EVENT:PAYLOAD-WIDTH@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 2 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ NODE @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
 
    DECL-EVENT:OPEN NODE !
    NODE @ FID @ DECL-EVENT:DECL NODE !
-   s" RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7161 T=" EV
-   s" NODE @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
+   s" RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7161 T=" evaluate-closed
+   s" NODE @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
    NODE @ DECL-EVENT:ROLLBACK ;
 
 : TEST-PAYLOAD-BODY ( -- )
@@ -166,14 +165,14 @@ package ENUM-DECL
 ;package
 
 \ A declared family name is reserved in the variant-name rejects below.
-s" ENUM-DECL:ED-RUN color red green blue ;ENUM" EV
+s" ENUM-DECL:ED-RUN color red green blue ;ENUM" evaluate-closed
 
 \ ---------------------------------------------------------------------------
 \ 4. A full declaration with arity resolves a positional-parameter field: FIELD v
 \    a is parameter 0 within arity 1, so the field commits (no unresolved reject).
 \ ---------------------------------------------------------------------------
 TFAMN@ FID !
-s" ENUM-DECL:ED-RUN boxe 1 VARIANT hold FIELD v a ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN boxe 1 VARIANT hold FIELD v a ;VARIANT ;ENUM" evaluate-closed
 TFAMN@ FID @ 1 + T=                                   \ family registered (param resolved, no rollback)
 s" boxe" FAMID TFAM-FLD-COUNT@ 1 T=                   \ the parameter field committed
 
@@ -182,7 +181,7 @@ s" boxe" FAMID TFAM-FLD-COUNT@ 1 T=                   \ the parameter field comm
 \     maximum-arity declaration accepts g and z while f/n/r remain concrete;
 \     the exact inverse table is tested once in type-family-suite.f.
 \ ---------------------------------------------------------------------------
-s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" evaluate-closed
 s" emap" FAMID TFAM-FLD-COUNT@ 10 T=                  \ every mapped/scalar field committed
 
 \ ---------------------------------------------------------------------------
@@ -190,7 +189,7 @@ s" emap" FAMID TFAM-FLD-COUNT@ 10 T=                  \ every mapped/scalar fiel
 \     payload view before publication.  An empty variant, a scalar field, and
 \     two ordered fields of widths one and two cover every public query.
 \ ---------------------------------------------------------------------------
-s" STRUCTURE epwide 0 FIELD left n FIELD right n ;STRUCTURE" EV
+s" STRUCTURE epwide 0 FIELD left n FIELD right n ;STRUCTURE" evaluate-closed
 s" epwide" FAMID PFB !
 
 package ENUM-DECL
@@ -218,7 +217,7 @@ B @ 7161 T=                                            \ rolled-back token is st
 \    with no arity header (compact is implicitly arity zero).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN evtc ea eb ;ENUM" EV
+s" ENUM-DECL:ED-RUN evtc ea eb ;ENUM" evaluate-closed
 DECL-EVENT:COUNT 5 T=                                 \ DECL + (VARIANT + VARIANT-END) x 2
 0 DECL-EVENT:DECL? T-TRUE
 1 DECL-EVENT:VARIANT? T-TRUE
@@ -231,7 +230,7 @@ DECL-EVENT:COUNT 5 T=                                 \ DECL + (VARIANT + VARIAN
 \    with the shared field event carrying the open variant as its selector.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN evtf 0 VARIANT quit ;VARIANT VARIANT move FIELD mx n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN evtf 0 VARIANT quit ;VARIANT VARIANT move FIELD mx n ;VARIANT ;ENUM" evaluate-closed
 DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VARIANT-END, VARIANT, FIELD, VARIANT-END
 0 DECL-EVENT:DECL? T-TRUE
 1 DECL-EVENT:ARITY? T-TRUE
@@ -248,7 +247,7 @@ DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VA
 \    full mode, remain TK-ENUM, and may precede variants in either header order.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" evaluate-closed
 s" compact-policy" FAMID TFAM-ENUM? T-TRUE
 s" compact-policy" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-policy" FAMID F-VAR-COUNT 1 T=
@@ -259,7 +258,7 @@ DECL-EVENT:COUNT 4 T=                                 \ DECL, POLICY, VARIANT, V
 3 DECL-EVENT:VARIANT-END? T-TRUE
 
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-derive-a DERIVE eq hash alpha ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-derive-a DERIVE eq hash alpha ;ENUM" evaluate-closed
 s" compact-derive-a" FAMID TFAM-ENUM? T-TRUE
 s" compact-derive-a" FAMID F-EQ? T-TRUE
 s" compact-derive-a" FAMID F-HASH? T-TRUE
@@ -269,14 +268,14 @@ DECL-EVENT:COUNT 5 T=                                 \ DECL, DERIVE x2, VARIANT
 3 DECL-EVENT:VARIANT? T-TRUE
 
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-derive-b DERIVE hash eq alpha ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-derive-b DERIVE hash eq alpha ;ENUM" evaluate-closed
 s" compact-derive-b" FAMID F-EQ? T-TRUE
 s" compact-derive-b" FAMID F-HASH? T-TRUE
 1 DECL-EVENT:DERIVE? T-TRUE
 2 DECL-EVENT:DERIVE? T-TRUE
 
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-derive-split DERIVE eq DERIVE hash alpha ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-derive-split DERIVE eq DERIVE hash alpha ;ENUM" evaluate-closed
 s" compact-derive-split" FAMID F-EQ? T-TRUE
 s" compact-derive-split" FAMID F-HASH? T-TRUE
 DECL-EVENT:COUNT 5 T=                                 \ distinct clauses retain one event per feature
@@ -284,7 +283,7 @@ DECL-EVENT:COUNT 5 T=                                 \ distinct clauses retain 
 2 DECL-EVENT:DERIVE? T-TRUE
 
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-both-a POLICY packed-tag DERIVE eq hash alpha beta ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-both-a POLICY packed-tag DERIVE eq hash alpha beta ;ENUM" evaluate-closed
 s" compact-both-a" FAMID TFAM-ENUM? T-TRUE
 s" compact-both-a" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-a" FAMID F-EQ? T-TRUE
@@ -297,7 +296,7 @@ DECL-EVENT:COUNT 8 T=                                 \ both headers, then two v
 4 DECL-EVENT:VARIANT? T-TRUE
 
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN compact-both-b DERIVE hash eq POLICY packed-tag alpha ;ENUM" EV
+s" ENUM-DECL:ED-RUN compact-both-b DERIVE hash eq POLICY packed-tag alpha ;ENUM" evaluate-closed
 s" compact-both-b" FAMID TFAM-ENUM? T-TRUE
 s" compact-both-b" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-b" FAMID F-EQ? T-TRUE
@@ -312,7 +311,7 @@ DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one v
 \ 8. POLICY reaches both the family record and the event stream (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" opt" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
@@ -322,7 +321,7 @@ s" opt" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is 
 \    one clause are accepted, each recorded once (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN der 0 DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN der 0 DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" der" FAMID F-EQ? T-TRUE                            \ eq derived
 s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 2 DECL-EVENT:DERIVE? T-TRUE                           \ two DERIVE events after DECL + ARITY
@@ -379,7 +378,7 @@ s" ENUM-DECL:ED-RUN epg 6 VARIANT alpha FIELD x h ;VARIANT ;ENUM" TRY 7109 T=   
 \ ---------------------------------------------------------------------------
 \ 13. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
 \ ---------------------------------------------------------------------------
-s" ENUM-DECL:ED-RUN twice red ;ENUM" EV
+s" ENUM-DECL:ED-RUN twice red ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TRY 7102 T=
 
 \ ---------------------------------------------------------------------------
@@ -400,22 +399,22 @@ s" ENUM-DECL:ED-RUN twice red ;ENUM" TRY 7102 T=
 package enum-identity-test
 REG-MARK
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" EV
+s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" evaluate-closed
 DECL-EVENT:IDENTITY RC !                              \ RC holds identity A
 REG-RESTORE                                           \ retire family + variants; fresh registry
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN idc ia ib ic id ;ENUM" EV
+s" ENUM-DECL:ED-RUN idc ia ib ic id ;ENUM" evaluate-closed
 DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
 REG-RESTORE
 
 \ Adding a named payload field also changes the identity.
 REG-MARK
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" evaluate-closed
 DECL-EVENT:IDENTITY RC !
 REG-RESTORE
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" evaluate-closed
 DECL-EVENT:IDENTITY RC @ <> T-TRUE
 REG-RESTORE
 ;package
@@ -429,13 +428,13 @@ REG-RESTORE
 \ another package does not.
 \ ---------------------------------------------------------------------------
 package other-enum-name-test
-s" ENUM-DECL:ED-RUN foreign-variant member ;ENUM" EV
+s" ENUM-DECL:ED-RUN foreign-variant member ;ENUM" evaluate-closed
 ;package
 
 package enum-name-test
 
 VALUE-RECORD enum-record payload n END-VALUE-RECORD
-s" ENUM-DECL:ED-RUN local-variant member ;ENUM" EV
+s" ENUM-DECL:ED-RUN local-variant member ;ENUM" evaluate-closed
 
 public
 
@@ -498,9 +497,9 @@ s" ENUM-DECL:ED-RUN reject-full 0 VARIANT space-x ;VARIANT ;ENUM" 7110 REJECT-SA
 s" ENUM-DECL:ED-RUN reject-full 0 VARIANT color ;VARIANT ;ENUM" 7110 REJECT-SAME
 s" ENUM-DECL:ED-RUN reject-full 0 VARIANT local-variant ;VARIANT ;ENUM" 7110 REJECT-SAME
 
-s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" EV
+s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" evaluate-closed
 s" allowed-compact" FAMID F-VAR-COUNT 1 T=
-s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" evaluate-closed
 s" allowed-full" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
 \ A package may shadow a global family, but not `ptr`: an effect in this
@@ -588,7 +587,7 @@ private
 \      Generation moves the native dictionary, which is what the dictionary
 \      participant's savepoint has to be able to undo.
 enum-ctor-test:DICT-MARK
-s" ENUM-DECL:ED-RUN msgctor 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN msgctor 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" evaluate-closed
 enum-ctor-test:DICT-MOVED
 
 s" msgctor" FAMID FID !
@@ -613,7 +612,7 @@ s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 \      TYPE-FIELD rows, which is exactly what ORDER 820 gives it, so a payload
 \      family that derives publishes its constructors AND its derived tag and
 \      equality words from one pass.
-s" ENUM-DECL:ED-RUN dctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN dctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" evaluate-closed
 s" D1 ( n -- dctor ) DCTOR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
@@ -623,8 +622,8 @@ s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 \      declared through `ENUM` and through ED-RUN produce the same derived
 \      constructor package spelling, the same declaration-order tags, and
 \      constructors that certify and reject identically.
-s" ENUM lgpar red green blue ;ENUM" EV
-s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" EV
+s" ENUM lgpar red green blue ;ENUM" evaluate-closed
+s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" evaluate-closed
 s" lgpar" FAMID F-VAR-START B !
 s" fepar" FAMID F-VAR-START VID !
 B @ enum-ctor-test:CTOR-PKG$ s" LGPAR" CORE-STR= T-TRUE
@@ -644,7 +643,7 @@ s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 \      participant with an unowned family is refused at the boundary rather than
 \      three phases later, and arming outside a declaration transaction is
 \      refused too.
-s" PRODUCT prodctor 0 FIELD a n FIELD b n ;PRODUCT" EV
+s" PRODUCT prodctor 0 FIELD a n FIELD b n ;PRODUCT" evaluate-closed
 s" prodctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
 s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" prodctor" FAMID enum-ctor-test:ARM-RC 7176 T=      \ wrong kind, and no open transaction
@@ -655,7 +654,7 @@ s" msgctor" FAMID enum-ctor-test:ARM-RC 7176 T=       \ right kind, but depth 0
 \      gate refuses it, so no constructor package is derived onto the variant
 \      rows and no constructor symbol is recorded for them.
 package enum-ctor-private
-s" ENUM-DECL:ED-RUN privctor 0 VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN privctor 0 VARIANT alpha FIELD a n ;VARIANT ;ENUM" evaluate-closed
 s" privctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
 s" privctor" FAMID F-VAR-COUNT 1 T=                   \ the variant really is there
 s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-PKG$ nip 0 T=  \ but carries no constructor package
@@ -689,7 +688,7 @@ ROLLCOLL:TAKEN 37 T=
 \ Rollback also removes protection of the generated package and leaves the
 \ namespace available for a corrected declaration using the same family name.
 undefine ROLLCOLL:TAKEN
-s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" EV
+s" ENUM-DECL:ED-RUN rollcoll fresh taken ;ENUM" evaluate-closed
 s" RC-VALID ( -- rollcoll ) ROLLCOLL:FRESH" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ PRODUCT make/unmake uses the pending constructor authority queue. A collision
@@ -703,7 +702,7 @@ s" rollp" FAMID 0 T=
 s" RP-MAKE ( n -- n ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
 ROLLP:UNMAKE 41 T=
 undefine ROLLP:UNMAKE
-s" STRUCTURE rollp 0 FIELD value n ;STRUCTURE" EV
+s" STRUCTURE rollp 0 FIELD value n ;STRUCTURE" evaluate-closed
 s" RP-VALID ( n -- rollp ) ROLLP:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 20g. Arming a family whose constructors are already live is refused by name.
@@ -771,13 +770,13 @@ private
 \ 21a. Compact mode, both paths: three payloadless variants under packed-tag.
 \      Tag-only, so the record is one byte, byte-aligned, with a one-byte tag.
 ENUM lay-legacy POLICY packed-tag lgred lggrn lgblu ;ENUM
-s" ENUM-DECL:ED-RUN lay-unified POLICY packed-tag unred ungrn unblu ;ENUM" EV
+s" ENUM-DECL:ED-RUN lay-unified POLICY packed-tag unred ungrn unblu ;ENUM" evaluate-closed
 s" lay-legacy" FAMID s" lay-unified" FAMID enum-layout-test:PARITY
 s" lay-unified" FAMID 1 1 1 enum-layout-test:SHAPE
 
 \ 21b. The default policy (stack-cell-tag) bakes no row on either path.
 ENUM lay-legacy-def dfred ;ENUM
-s" ENUM-DECL:ED-RUN lay-unified-def dfblu ;ENUM" EV
+s" ENUM-DECL:ED-RUN lay-unified-def dfblu ;ENUM" evaluate-closed
 s" lay-legacy-def" FAMID enum-layout-test:NO-ROW
 s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 
@@ -787,7 +786,7 @@ s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 \      one-cell payload, the same packed policy. This pairing keeps working
 \      after the global ENUM token moves to the front end.
 SUMTYPE lay-legacy-pay 0 POLICY packed-tag VARIANT lpnone ;VARIANT VARIANT lpone n ;VARIANT ;SUMTYPE
-s" ENUM-DECL:ED-RUN lay-unified-pay 0 POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN lay-unified-pay 0 POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" evaluate-closed
 s" lay-legacy-pay" FAMID s" lay-unified-pay" FAMID enum-layout-test:PARITY
 s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 tag byte, cell-aligned
 
@@ -1225,7 +1224,7 @@ s" ENUM-DECL:ED-RUN rpafterbusy 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
 \      reflected field is compared; both register checked constructor effects.
 package rp-live-test
 public
-s" ENUM-DECL:ED-RUN shape 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN shape 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" evaluate-closed
 ;package
 package rp-copy-test
 public
@@ -1356,9 +1355,9 @@ DECL-DIAG:OFF
 \ 24e. The match is on the WHOLE token. A name that starts with, ends with, or
 \      contains a control word is an ordinary name and still declares — in every
 \      one of the three positions.
-s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" EV
+s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" evaluate-closed
 s" iffy" FAMID F-VAR-COUNT 4 T=
-s" ENUM-DECL:ED-RUN doing 0 VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN doing 0 VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" evaluate-closed
 s" doing" FAMID TFAM-FLD-COUNT@ 2 T=
 
 ;package

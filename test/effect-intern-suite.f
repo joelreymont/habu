@@ -1,11 +1,14 @@
 \ effect-intern-suite.f — the checker's effect-store node interner.
 \
-\ Run by the engine, like test/checker-scan-index-suite.f: every case is a
+\ A WHITEBOX-SUITE row, like test/checker-scan-index-suite.f: every case is a
 \ top-level interpret line. The store and its interner are checker internals the
 \ unsealed engine binds by their recorded rows, named directly or by the shims
-\ below.
+\ below. The gate runs it on that engine, which test/whitebox-engine.f builds:
 \
-\     bin/hb --load test/effect-intern-suite.f
+\     <unsealed engine> --load test/effect-intern-suite.f
+\
+\ Standalone under bin/hb it exits 70 with E-UNDEFINED: E-PTR (docs/gate.md
+\ "How a suite runs").
 \
 \ WHAT IS UNDER TEST. E-COPY* used to write a fresh node for every term of every
 \ recorded signature, so the store held 115,948 nodes carrying 1,593 distinct
@@ -241,7 +244,7 @@ s" EIXT2" EIX-DIN E-KEY-N 0 T<>
 TABLE-LIVE
 
 \ a rolled-back candidate leaves neither store nor table behind it
-TRUSTED: EIX-BAD-DEF ( -- ) s" : EIXBAD ( n -- n ) drop ;" evaluate ;
+: EIX-BAD-DEF ( -- ) s" : EIXBAD ( n -- n ) drop ;" evaluate-closed ;
 EIX-UEND M0 !
 ' EIX-BAD-DEF catch TC !
 TC @ 0 T<>                                         \ the definition really was rejected
