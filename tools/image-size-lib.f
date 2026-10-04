@@ -263,6 +263,16 @@ variable X64-DATA-PH
 : X64-DATA-OFF ( -- n ) X64-DATA-PH @ 8 + U64@ ;
 : X64-DATA-BYTES ( -- n ) X64-DATA-PH @ 32 + U64@ ;
 
+: X64-LAST-END ( -- n )
+   X64-REG-BYTES 0 > if X64-REG-OFF X64-REG-BYTES +
+   else TEXT-SIZE RW-BYTES + then ;
+
+: X64-PAGE-END ( n -- n )
+   {: at:n :}
+   X64-DATA-PH @ 48 + U64@ {: page:n :}
+   page $1000 < page 1- page and 0<> or if E-ES-WALK throw then
+   at page 1- + page 1- invert and ;
+
 : CHECK-X64-SEGMENTS ( -- )
    0 ELF-PHDR {: textph:n :}
    1 ELF-PHDR {: rwph:n :}
@@ -279,24 +289,29 @@ variable X64-DATA-PH
    X64-REG-PH @ 40 + U64@ REGION = and
    X64-DATA-PH @ 40 + U64@ DATA-SIZE = and
    0= if s" image-size: invalid x86 fixed LOAD segment" RC die then
+   X64-REG-BYTES 0 < X64-DATA-BYTES 0 < or if E-ES-WALK throw then
    RW-OFF TEXT-SIZE <> if E-ES-WALK throw then
    TEXT-SIZE RW-BYTES + {: rw-end:n :}
    rw-end ILEN @ > if E-ES-WALK throw then
    X64-REG-BYTES 0 > if
       X64-REG-OFF rw-end < if E-ES-WALK throw then
       X64-REG-OFF X64-REG-BYTES ?RANGE
-      X64-DATA-OFF X64-REG-OFF X64-REG-BYTES + < if E-ES-WALK throw then
-   else
-      X64-DATA-OFF rw-end < if E-ES-WALK throw then
    then
-   X64-DATA-OFF X64-DATA-BYTES ?RANGE
-   X64-DATA-OFF X64-DATA-BYTES + ILEN @ <> if
-      s" image-size: x86 file length does not end at fixed DATA" RC die
+   X64-DATA-BYTES 0 > if
+      X64-DATA-OFF X64-LAST-END < if E-ES-WALK throw then
+      X64-DATA-OFF X64-DATA-BYTES ?RANGE
+      X64-DATA-OFF X64-DATA-BYTES + ILEN @ <> if
+         s" image-size: x86 file length does not end at fixed DATA" RC die
+      then
+      DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then
+   else
+      X64-LAST-END X64-PAGE-END ILEN @ <> if
+         s" image-size: x86 empty DATA has wrong page padding" RC die
+      then
    then
    X64-REG-BYTES 0 > if
       X64-REG-PH @ 16 + U64@ ELF-VA>OFF X64-REG-OFF <> if E-ES-WALK throw then
-   then
-   DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then ;
+   then ;
 
 : CHECK-SEGMENTS ( -- )
    ELF-EHSIZE-OFF U16@ ELF-EHDR-BYTES <>
@@ -2949,8 +2964,12 @@ $3145544953343658 constant X64-SITES-MAGIC
    else
       TEXT-SIZE RW-BYTES +
    then
-   X64-DATA-OFF over - X64-GAP
-   s" data/fixed-load" X64-DATA-OFF X64-DATA-BYTES SPAN B-DATA ROW
+   X64-DATA-BYTES 0 > if
+      X64-DATA-OFF over - X64-GAP
+      s" data/fixed-load" X64-DATA-OFF X64-DATA-BYTES SPAN B-DATA ROW
+   else
+      ILEN @ over - X64-GAP
+   then
    SUMS?  TOTAL-ROW ;
 
 : CLASSIFY ( -- )
