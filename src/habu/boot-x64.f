@@ -2,8 +2,9 @@
 \ `_start`, the twin of src/habu/habu2.f EM-STARTUP up to its first run-time
 \ state: it maps the guarded VM stacks and initializes the code and DATA regions,
 \ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
-\ ARM64 boot fills, publishes the signal stub it carries out of line and
-\ installs the crash handler, then falls through into whatever the stream emits
+\ ARM64 boot fills, publishes the signal stub it carries out of line, registers
+\ a separate crash signal stack and installs the crash handler, then falls
+\ through into whatever the stream emits
 \ next. docs/x86-64.md "Kernel inventory" lists each register and cell beside
 \ its ARM64 twin.
 \
@@ -52,7 +53,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 2 constant STDERR
 16 constant CODE-SLOT
 
-\ The three failures the boot names, one label each per image.
+\ The four failures the boot names, one label each per image.
 variable STACK-BAD
 variable ALT-BAD
 variable REGION-BAD
