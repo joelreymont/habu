@@ -3,6 +3,8 @@ require lib/prelude.f
 require lib/errors.f
 require src/core/bytes.f
 require src/compiler/binding.f
+require src/compiler/digest.f
+require src/compiler/target.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
 require src/compiler/native/backend.f

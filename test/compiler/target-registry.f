@@ -123,8 +123,6 @@ public
    20 CTARGET:ID NBACK:ID-ROW ID-AT 20 T=
    [: NO-GPU ;] E-CTGT-UNLOADED TTHROWSQ
    s" no installer callback or writable registry pointer is public" T-LABEL
-   s" BAD-INSTALL ( CTARGET:backend -- ) [: drop ;] CTARGET:REGISTER"
-      CHECK-QUIET-CANDIDATE! 1 T=
    s" BAD-PASS-PTR ( n -- ptr NBACK:pass ) NBACK:PASS-PTR"
       CHECK-QUIET-CANDIDATE! 1 T=
    s" BAD-ROWS ( n -- ) NBACK:ROWS drop"

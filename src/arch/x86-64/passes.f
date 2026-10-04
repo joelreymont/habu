@@ -23,8 +23,8 @@
 \ emit-x64.f owns its byte sink, lays every block of the accepted module out in
 \ BYTES, resolves every displacement against the slot this row is handed, and
 \ seals a byte image with the lists of its call and address sites. The row then
-\ states that emission as NEMIT's rows, the only emission
-\ src/compiler/native/publish.f reads: the whole image with no trailing return,
+\ states that emission as NEMIT's rows; the driver copies those rows into NART
+\ before src/compiler/native/publish.f reads the whole image with no trailing return,
 \ because an x86-64 span is exact, the placement, where each function starts,
 \ and each site at its instruction's first byte. RETIRE gives the image, the
 \ placement and the rows back, and is nonthrowing because the driver calls it on
