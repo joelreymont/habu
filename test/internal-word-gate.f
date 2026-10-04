@@ -1345,6 +1345,12 @@ create QNAME QNAME-CAP allot
    s" : IWGGE ( n -- n ) ['] IWGGA execute ;" SB-APPEND LF
    SB$ ;
 
+: GATE-TRUSTED-TICK$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGP ( -- ) ['] patch32 drop ;" SB-APPEND LF
+   SB$ ;
+
 : GATE-VALID-TICKS$ ( -- ptr u8 n )
    GATE-RAW
    s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
@@ -1363,6 +1369,9 @@ create QNAME QNAME-CAP allot
    s" execute cannot launder the same checked tick" T-LABEL
    GATE-TICK-EXEC$ RUN-SUBJECT
    s" E-CAP-TRUSTED habu: in iwgge: 'IWGGA'" ASSERT-DIAG
+   s" a checked primitive tick refuses at its target without call inputs" T-LABEL
+   GATE-TRUSTED-TICK$ RUN-SUBJECT
+   s" E-CAP-TRUSTED habu: in iwggp: 'patch32'" ASSERT-DIAG
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
