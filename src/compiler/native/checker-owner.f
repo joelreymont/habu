@@ -344,6 +344,21 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    dup 0= if drop EFFECT-DOUT-SLOT exit then
    AS-SLOT execute ;
 
+: DIN-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DIN-CON-OFF s" din constructor" FIELD
+   dup 0= if drop EFFECT-DIN-CON exit then
+   AS-SLOT execute ;
+
+: DOUT-CON ( n -- n )
+   NCOMP-DISPATCH:DECL-EFFECT-DOUT-CON-OFF s" dout constructor" FIELD
+   dup 0= if drop EFFECT-DOUT-CON exit then
+   AS-SLOT execute ;
+
+: STACK-STABLE? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-STACK-STABLE-OFF s" stable stack rows" FIELD
+   dup 0= if drop EFFECT-STACK-STABLE? exit then
+   AS-BOOL execute ;
+
 : DIN-QUOT ( n -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD
    dup 0= if drop EFFECT-DIN-QUOT exit then

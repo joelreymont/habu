@@ -36,6 +36,7 @@ require lib/prelude.f
 require lib/errors.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
+require src/compiler/native/host.f
 require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
@@ -472,7 +473,11 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
    \ discard operands, while a genuine word use reaches the ordinary refusal.
    PRIOR-CALLABLE @ 0= if exit then
-   PRIOR-CAST @ if CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit then
+   PRIOR-CAST @ if
+      NHOST:CAST TAPE MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START
+         NHOST:SOURCE-REFUSE
+      CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit
+   then
    CC BB r sy
    PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
    HIR-WORD:DECLARE-BOUND-CALLABLE ;
@@ -594,6 +599,42 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    then
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop ;
 
+: HOST-DECL? ( -- bool )
+   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
+   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
+   CHECKER-OWNER:DIN-N M-IN @ <>
+   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
+   CHECKER-OWNER:DIN-CELLS M-IN @ <>
+   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
+   M-IN @ 0 ?do
+      i CHECKER-OWNER:DIN-SLOT 0<>
+      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
+   loop
+   M-OUT @ 0 ?do
+      i CHECKER-OWNER:DOUT-SLOT 0<>
+      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
+   loop
+   true ;
+
+: HOST-ROOT-CONTRACT ( -- )
+   HOST-DECL? 0= if exit then
+   NHOST:SOURCE-CONTRACT-START
+   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
+   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
+   NHOST:SOURCE-CONTRACT-DONE ;
+
+: HOST-ARITIES ( -- )
+   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
+   HOST-ROOT-CONTRACT
+   BB IR-BUILD:FUNS 1 ?do
+      M-DOES @ 0<> i M-DOES-FUN @ = and if
+         M-DOES-IN @ M-DOES-OUT @
+      else
+         i NELAB:QUOT-ARITY
+      then
+      NHOST:SOURCE-ARITY+
+   loop ;
+
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
 : WORK ( -- )
@@ -606,6 +647,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r BIND-PRIOR
    NAME$ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
+   HOST-ARITIES
    EMITTED dup M-EMISSION !
    PUBLISH-IT
    0 M-DOES-FRAME !
@@ -615,7 +657,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
    NFETCH:RELEASE
-   NSHADOW:ABANDON ;
+   NSHADOW:ABANDON
+   NHOST:SOURCE-ABANDON ;
 
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -780,6 +823,7 @@ INSTALL-FORGET
    sa M-SRC ! su M-SRC-U !
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
+   TRUSTED? CERTIFYING? 0= or NHOST:SOURCE-BEGIN
    0 M-VERDICT !
    -1 M-UNJUDGED !
    0 M-DOES-FRAME !
@@ -842,6 +886,7 @@ public
    \ The registry releases buffers immediately before DATA copy, so each loaded
    \ backend gives up its pass reservations here and sizes them again on use.
    NBACK:PREPARE
+   NHOST:CAPTURE-PREPARE
    CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE

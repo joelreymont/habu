@@ -103,6 +103,16 @@ variable FPL  variable FPE
    FP-REG drop
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
+\ BABS is an LR-preserving straight-line scalar body. Its emitter owns the
+\ statement that the finished span has no helper or terminal call edge.
+: FPRIM-L-SCALAR ( ptr u8 n [ -- ] -- )
+   FP-ARGS
+   FP-KEEP? 0= IF EXIT THEN
+   LBL FPL !  LBL FPE !
+   FP-REG {: row:n :}
+   FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL,
+   row ENGINE-PRIMS:MARK-SCALAR ;
+
 variable FP-WID
 
 : FPRIM-WID ( ptr u8 n [ -- ] n -- )
@@ -115,7 +125,7 @@ variable FP-WID
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
 \ shared label ids (forward refs)
-variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
+variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 \ The number EMIT-DICT actually bakes into LNCOUNT, kept so a later emitter can
@@ -4069,7 +4079,7 @@ public
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
-   s" abs"  ['] BABS  FPRIM-L   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
+   s" abs"  ['] BABS  FPRIM-L-SCALAR   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
 
 : EMIT-COMPARE-PRIMS ( -- )
    s" ="    ['] B=    FPRIM-L   s" <>"   ['] B<>   FPRIM-L   s" <"    ['] B<    FPRIM-L
@@ -5514,6 +5524,7 @@ create NAME-PADDING 0 , 0 ,
          -1 >LABEL over NAME-LABEL!
       THEN
       1 + REPEAT drop
+   LHOSTROW LABEL@ LBL,  ENGINE-PRIMS:SCALAR-ROW@ DCQ,
    LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT dup SEEDED-PRIM-N !  DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE

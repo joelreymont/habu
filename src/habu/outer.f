@@ -492,7 +492,7 @@ TYPED-VARIABLE REC ptr n
 \ The xt waits on the return stack while the hook runs.
 TRUSTED: RUN-WORD ( -- )
    LOOKUP GATE
-   REC @ XREF-START >r
+   REC @ NHOST:SELECT-REC >r
    TOP-EV-WORD WORD-FLAGS HOOK
    r> execute-floor FLOORED ;
 

@@ -1227,6 +1227,9 @@ CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF constant DECL-EFFECT-DIN-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF constant DECL-EFFECT-DOUT-CELLS-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF constant DECL-EFFECT-DIN-SLOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant DECL-EFFECT-DOUT-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-CON-OFF constant DECL-EFFECT-DIN-CON-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-CON-OFF constant DECL-EFFECT-DOUT-CON-OFF
+CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF constant DECL-EFFECT-STACK-STABLE-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant DECL-EFFECT-DIN-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant DECL-EFFECT-DOUT-QUOT-OFF
 CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant DECL-EFFECT-QUOT-UP-OFF
@@ -1501,14 +1504,14 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
 \ `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
-\ The three callback CODE cells follow at $2CF0..$2D08. Their separate module
+\ The callback CODE cells follow at $2CF0..$2D18. Their separate module
 \ (native-observer-cells.f) also loads on an older baked host during a build.
 \ This cell holds this process's dictionary occurrence allocation, not an image
 \ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
 \ Its pointer is cleared from snapshot scratch and restored from the receiving
 \ process across a snapshot DATA copy.
-\ $2CE8 is the literal store's DATA floor; $2CF0..$2D08 is reserved for
-\ private callback cells. This pointer begins at the next free cell.
+\ $2CE8 is the literal store's DATA floor; the host owner claims $2D10
+\ separately from the replaceable observer callbacks.
 package DEF-OCC
 public
 $2D08 constant PTR-CELL
