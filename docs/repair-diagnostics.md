@@ -22,11 +22,14 @@ record adds. That check and `tools/repair-packet.f` both read it.
 
 Under `--all-errors`, and in `CHECK:VERIFY-BYTES` (below), every refused
 definition is reported, rejected or uncheckable alike, one with an undefined
-word included, and the check goes on at the next definition, unless the
-refused one is a duplicate, refused at its name before its body is checked, or
-recording it throws, as a malformed name's record does (below): then the check
-ends, `--all-errors` after writing its record, `CHECK:VERIFY-BYTES` with its
-stderr stop line (below) and no packet for it. A later definition
+word included, and the check goes on at the next definition. A duplicate,
+refused at its name before its body is checked, is reported by its record
+(below) in both, and `CHECK:VERIFY-BYTES` goes on past it, skipping the
+definition; `--all-errors` ends at it, as the load does. Both end at a
+duplicate of a name a definer generates, after its record, and when recording
+a refused definition throws, as a malformed name's record does (below):
+`--all-errors` after writing its record, `CHECK:VERIFY-BYTES` with its stderr
+stop line (below) and no packet for it. A later definition
 sees a refused one by its declared signature when that parses: a use that fits
 it gets no record, one that does not gets that definition's own; a use of one
 whose signature does not parse is `E-UNDEFINED`. Without `--all-errors`
@@ -168,7 +171,8 @@ definition-shaped object with code `E-DUPLICATE-DEFINITION` and repair class
 Its `word`, `token` and `definition_source` are the name as written there,
 with `token_index` 0, and its `line`, `column`, `byte_start` and `byte_end`
 place that name. Nothing after it is checked, and the run exits 78 as the load
-does. Without `--json-errors` it is the line
+does; under `--verify-only` the check goes on past it and exits 70, as for any
+refused definition. Without `--json-errors` it is the line
 `duplicate definition: <name> at <file>:<line>`, the line `--load` writes. When
 the name taken is one a definer generates instead of writing, the `-RESERVE` or
 `-RELEASE` word of a `DYNAMIC-BUFFER` or the `-BIND` or `-GROW` word of a
@@ -334,7 +338,10 @@ without it are usage errors; so is `--stdin-path` given twice or without
 `CHECK:VERIFY-BYTES ( ptr u8 n ptr u8 n ms -- CHECK:verdict )` takes the bytes,
 PATH, a relative one read from the working directory, and the child's
 deadline. `CHECK:VERIFY-OUT$` holds the packets, one JSON object per line, and
-`CHECK:VERIFY-LOG$` the prose, until the next call. An empty PATH throws
+`CHECK:VERIFY-LOG$` the prose, until the next call. A duplicate definition,
+for which the checker writes no packet, is the record `--all-errors` writes
+for it (`CHECK-ALL-ERRORS:DUP-RECORD$`), placed in the bytes or in the file of
+the closure that defined the name again. An empty PATH throws
 `E-FS-PATH`; a closure of more than 128 files and a failed spawn throw as well.
 Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
 the child and throws `E-PROC-TRUNCATED`, with every complete packet received
@@ -357,7 +364,10 @@ BYTES and of the files they load; a file the image holds is skipped, as
 `require` skips it. stdout carries the packets in verification order, each
 written as the checker makes it, so a child that dies has passed on every
 packet made before; then one result line. The first form verifies with all
-errors and answers `check-verify: verified`, `refused` or `held`; stderr
+errors, going past a duplicate definition; for each it writes the second
+form's stopped line, code 78, among the packets, which the operation replaces
+by the duplicate's record. It answers `check-verify: verified`, `refused` or
+`held`; stderr
 carries prose, including `PATH: verification stopped by throw RC after N
 rejected definitions` for each file a throw stopped. The second form stops at
 the first refused definition, as the load does, names the subject LABEL in its
