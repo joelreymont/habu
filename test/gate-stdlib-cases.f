@@ -585,6 +585,13 @@ SUITE wasm-select
    test/wasm/select.f
 ;SUITE
 
+\ WENC, the Wasm backend's encoder, src/arch/wasm/encode.f: byte-exact bodies
+\ for a straight line, an if/else, nested loops, calls and address literals,
+\ the emission's header, call and address sites, and each refusal.
+SUITE wasm-encode
+   test/wasm/encode.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
