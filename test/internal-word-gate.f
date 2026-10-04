@@ -112,6 +112,18 @@ create EMPTY 1 allot            \ zero-length stdin
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u STORE! ;
 
+: RUN-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
+   CHILD src u WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --json-errors" >LEN PROC-ARGV+
+   CHILD >LEN PROC-ARGV+
+   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   src u STORE! ;
+
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : RUN-STDIN ( ptr u8 n -- )
    IN!
@@ -1359,6 +1371,22 @@ create QNAME QNAME-CAP allot
    s" : IWGAF ( -- ) drop ['] IWGGA drop ;" SB-APPEND LF
    SB$ ;
 
+: GATE-UNSAFE-FIRST-FAIL$ ( -- ptr u8 n )
+   SB-RESET
+   s" : IWGUF ( -- ) drop ['] evaluate drop ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-UNSAFE-TICK$ ( -- ptr u8 n )
+   SB-RESET
+   s" : IWGUT ( -- ) ['] evaluate drop ;" SB-APPEND LF
+   SB$ ;
+
+: GATE-SET-CHECK-FIRST-FAIL$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGUSF ( -- ) drop ['] set-check drop ;" SB-APPEND LF
+   SB$ ;
+
 : GATE-VALID-TICKS$ ( -- ptr u8 n )
    GATE-RAW
    s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
@@ -1388,6 +1416,21 @@ create QNAME QNAME-CAP allot
    GATE-ABI-FIRST-FAIL$ RUN-SUBJECT
    s" habu: in iwgaf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
    ERR$ s" E-CAP-TRUSTED" CONTAINS? TFALSE
+   s" an unsafe tick keeps the first underflow code and drop span in JSON" T-LABEL
+   GATE-UNSAFE-FIRST-FAIL$ RUN-CHECK
+   EXITED @ TTRUE  RC @ REJECT-RC T=
+   ERR$ s\" \"code\":\"E-INPUT-UNDERFLOW\"" CONTAINS? TTRUE
+   ERR$ s\" \"token\":\"drop\"" CONTAINS? TTRUE
+   ERR$ s\" \"byte_start\":15,\"byte_end\":19" CONTAINS? TTRUE
+   s" a standalone unsafe tick keeps its own refusal and tick span" T-LABEL
+   GATE-UNSAFE-TICK$ RUN-CHECK
+   EXITED @ TTRUE  RC @ REJECT-RC T=
+   ERR$ s\" \"code\":\"E-UNSAFE\"" CONTAINS? TTRUE
+   ERR$ s\" \"token\":\"[']\"" CONTAINS? TTRUE
+   ERR$ s\" \"byte_start\":15,\"byte_end\":18" CONTAINS? TTRUE
+   s" a later set-check tick keeps the first underflow reason" T-LABEL
+   GATE-SET-CHECK-FIRST-FAIL$ RUN-SUBJECT
+   s" habu: in iwgusf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
 
