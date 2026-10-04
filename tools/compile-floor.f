@@ -7,10 +7,11 @@
 \ One machine-readable line, every number in microseconds per definition (one
 \ line in the output, wrapped here):
 \
-\     floor: trivial-t1 <us> three-op-t1 <us> trivial-t0 <us> compiled <n>
-\            least-trivial-t1 <us> least-three-op-t1 <us> least-trivial-t0 <us>
-\
-\ The first three are each set's mean over every round, and the least- fields
+\     floor: trivial-t1 <us> three-op-t1 <us> [trivial-t0 <us>] compiled <n>
+\            least-trivial-t1 <us> least-three-op-t1 <us> [least-trivial-t0 <us>]
+\ 
+\ The tier-0 fields appear only on ARM; x86-64 has no tier-0 compiler. The
+\ present sets report their mean over every round, and the least- fields
 \ each set's cheapest single definition in any round; compiled counts the
 \ definitions the tier-1 compiler took. The ratchet below judges the
 \ trivial-t1 mean, and the target is 500 us (0.5 ms) of it: a program pays for
@@ -25,10 +26,10 @@
 \ `evaluate-closed` inside its own window of this thread's CPU time
 \ (TIME:THREAD-CPU-NS, lib/time-cpu.f). Every source string is built BEFORE
 \ the first window opens, so what a window holds is compile time and not string
-\ building. The tier-0 line compiles the trivial body a third time under its
-\ own names (`Vn`), so the contrast never redefines the set it contrasts with.
-\ A round compiles the three sets in that order, each torn down before the next
-\ is built, and a run is five rounds.
+\ building. On ARM the tier-0 line compiles the trivial body a third time under
+\ its own names (`Vn`), so the contrast never redefines the set it contrasts
+\ with. A round compiles the available sets in that order, each torn down
+\ before the next is built, and a run is five rounds.
 \
 \ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair and `1 +`
 \ carries one, so the two lines together price the fold. They used to price a
@@ -42,16 +43,17 @@
 \ number as the optimizing compiler's - which is the one mistake that makes
 \ this whole file lie. A wrapper on NCOMP-DISPATCH:XT-CELL counts every
 \ dispatch into NCOMP:COMPILE. Each tier-1 set must contribute exactly 100 and
-\ the tier-0 set exactly 0, or the tool refuses with E-FLOOR-UNCOMPILED
+\ the ARM tier-0 set exactly 0, or the tool refuses with E-FLOOR-UNCOMPILED
 \ instead of printing a number.
 \
-\ AND WHY THE BORROW IS SCOPED. The dispatch cell, the tier and 300 dictionary
-\ entries are the engine's, not this tool's. All three are taken inside MAIN,
+\ AND WHY THE BORROW IS SCOPED. The dispatch cell, the tier and 200 or 300
+\ measurement dictionary entries are the engine's, not this tool's. They are
+\ taken inside MAIN,
 \ after the argument is parsed, and all three are given back through
 \ `finally` - so they are returned on the refusing path exactly as on the
 \ reporting one. Installing the wrapper at file load instead would count every
-\ definition the loading process made afterwards on tier 1; leaving tier 0
-\ selected would hand the caller a different compiler than it had; and leaving
+\ definition the loading process made afterwards on tier 1; leaving the wrong
+\ tier selected would hand the caller a different compiler than it had; and leaving
 \ the measurement names behind would make the second MAIN in a process die of
 \ `duplicate definition: T1`. A process may load this file, read the line, and
 \ carry on unchanged; the in-process controls in
@@ -260,11 +262,15 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SB-RESET
    s" floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
    s"  three-op-t1 " SB-APPEND       THREE-T1 MEAN-US FMT:SB-U
-   s"  trivial-t0 " SB-APPEND        TRIV-T0 MEAN-US FMT:SB-U
+   HB-TARGET-LINUX-X86-64? 0= if
+      s"  trivial-t0 " SB-APPEND     TRIV-T0 MEAN-US FMT:SB-U
+   then
    s"  compiled " SB-APPEND          NC-COUNT @ FMT:SB-U
    s"  least-trivial-t1 " SB-APPEND  TRIV-T1 LEAST-US FMT:SB-U
    s"  least-three-op-t1 " SB-APPEND THREE-T1 LEAST-US FMT:SB-U
-   s"  least-trivial-t0 " SB-APPEND  TRIV-T0 LEAST-US FMT:SB-U
+   HB-TARGET-LINUX-X86-64? 0= if
+      s"  least-trivial-t0 " SB-APPEND TRIV-T0 LEAST-US FMT:SB-U
+   then
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
@@ -312,7 +318,10 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : MEASURE-ALL ( -- )
    RESET-SETS
-   ROUNDS 0 ?do RUN-TIER1 RUN-TIER0 loop
+   ROUNDS 0 ?do
+      RUN-TIER1
+      HB-TARGET-LINUX-X86-64? 0= if RUN-TIER0 then
+   loop
    REPORT
    RATCHET ;
 

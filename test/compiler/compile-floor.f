@@ -25,9 +25,9 @@
 \ borrow is only observable from inside the process that lent it - so they call
 \ COMPILE-FLOOR:MAIN here and read the cell and the tier back afterwards.
 \
-\ BOTH CONTROLS RUN FROM TIER 1, and that is the whole point of them. The tool
-\ measures its tier-0 contrast last, so a MAIN that restored nothing at all
-\ would still leave a tier-0 caller on tier 0 and pass a tier-0 control. Only a
+\ BOTH CONTROLS RUN FROM TIER 1, and that is the whole point of them. On ARM
+\ the tool measures its tier-0 contrast last, so a MAIN that restored nothing
+\ would leave a tier-0 caller on tier 0 and pass a tier-0 control. Only a
 \ caller that was on tier 1 can tell "put back" from "happened to match".
 
 require lib/errors.f
@@ -95,7 +95,11 @@ variable RC     variable EXITED
    EXITED @ TTRUE
    OUT$ s" floor: trivial-t1 " CONTAINS? TTRUE
    OUT$ s" three-op-t1 " CONTAINS? TTRUE
-   OUT$ s" trivial-t0 " CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      OUT$ s" trivial-t0 " CONTAINS? TFALSE
+   else
+      OUT$ s" trivial-t0 " CONTAINS? TTRUE
+   then
    OUT$ s" compiled 1000 " CONTAINS? TTRUE ;
 
 : TEST-REPORTS ( -- )
@@ -133,6 +137,7 @@ variable RC     variable EXITED
 
 variable ORIG-XT
 variable PRIOR-TIER
+variable ENTRY-TIER
 
 \ This file never INSTALLS a dispatch; it only reads the cell to see whether the
 \ tool put the original back, and `=` has no row over quotation terms. So the
@@ -191,13 +196,14 @@ private
 public
 
 : RUN-ALL ( -- )
+   tier@ ENTRY-TIER !
    T-RESET
    TEST-REPORTS
    TEST-RATCHET-REFUSES
    TEST-RATCHET-PASSES
    TEST-RESTORES-AFTER-SUCCESS
    TEST-RESTORES-AFTER-REFUSAL
-   0 TIER:SELECT
+   ENTRY-TIER @ TIER:SELECT
    ARGV:USE-SCRIPT
    T-REPORT
    s" compile-floor: ok" type cr ;

@@ -1,4 +1,4 @@
-\ compile-floor-gate.f - checked performance budgets for the two compiler tiers.
+\ compile-floor-gate.f - checked performance budgets for available compiler tiers.
 \
 \ The child tools do the measurement; this gate only parses their machine-readable
 \ lines and compares each number with a named budget. Both tools time in this
@@ -25,7 +25,7 @@
 \ average 16-111 beside 36 busy loops, with the tools' earlier single floor
 \ round and three bench rounds, and the current tools beside seven copies of
 \ themselves and a native build at load average 143-172 (96 floor runs, 32
-\ bench runs per tier). Each constant carries the range of its judged number
+\ bench runs per tier). Each ARM constant carries the range of its judged number
 \ over all of them. TOLERANCE: every budget is about 1.5x its maximum and
 \ below twice its minimum, so a doubled compile or corpus cost is red (proved
 \ with scratch copies of both tools doing twice the work per window). The
@@ -33,6 +33,9 @@
 \ a standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the
 \ numbers on a green engine. Lower a budget when a floor dot lands and the new
 \ maximum is known.
+\ The x86-64 arithmetic and branch budgets use five standalone tier-1 corpus
+\ runs on that native engine; their least ranges are recorded beside the two
+\ constants. The other tier-1 limits already cover those native measurements.
 
 require lib/errors.f
 require lib/string.f
@@ -58,6 +61,8 @@ private
 5400 constant T0-LINES-BUDGET       \ 3225..3596
 1300 constant T1-ARITH-BUDGET       \ 849..866
 2300 constant T1-BRANCH-BUDGET      \ 1412..1475
+3000 constant X64-T1-ARITH-BUDGET   \ x86-64 leasts: 1918..1958
+7100 constant X64-T1-BRANCH-BUDGET  \ x86-64 leasts: 4524..4682
 38 constant T1-SEARCH-BUDGET        \ 24..25
 1600 constant T1-FOLD-BUDGET        \ 1007..1017
 320 constant T1-MOVE-BUDGET         \ 211..211
@@ -185,10 +190,12 @@ variable PARSE-POS
 : CHECK-FLOOR ( -- )
    OUT$ s" least-trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-BUDGET CHECK-LIMIT
    OUT$ s" least-three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-BUDGET CHECK-LIMIT
-   OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT
    OUT$ s" floor: trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-MEAN-CEILING CHECK-LIMIT
    OUT$ s"  three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-MEAN-CEILING CHECK-LIMIT
-   OUT$ s"  trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-MEAN-CEILING CHECK-LIMIT ;
+   HB-TARGET-LINUX-X86-64? 0= if
+      OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT
+      OUT$ s"  trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-MEAN-CEILING CHECK-LIMIT
+   then ;
 
 \ The least of a B line's rounds: every number on it but the last, the median.
 : LEAST-RUN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n label:ptr labelu:n :}
@@ -225,8 +232,13 @@ variable PARSE-POS
       OUT$ s" B move " T0-MOVE-BUDGET CHECK-BENCH
       OUT$ s" B lines " T0-LINES-BUDGET CHECK-BENCH
    else
-      OUT$ s" B arith " T1-ARITH-BUDGET CHECK-BENCH
-      OUT$ s" B branch " T1-BRANCH-BUDGET CHECK-BENCH
+      HB-TARGET-LINUX-X86-64? if
+         OUT$ s" B arith " X64-T1-ARITH-BUDGET CHECK-BENCH
+         OUT$ s" B branch " X64-T1-BRANCH-BUDGET CHECK-BENCH
+      else
+         OUT$ s" B arith " T1-ARITH-BUDGET CHECK-BENCH
+         OUT$ s" B branch " T1-BRANCH-BUDGET CHECK-BENCH
+      then
       OUT$ s" B search " T1-SEARCH-BUDGET CHECK-BENCH
       OUT$ s" B fold " T1-FOLD-BUDGET CHECK-BENCH
       OUT$ s" B move " T1-MOVE-BUDGET CHECK-BENCH
@@ -237,10 +249,12 @@ public
 
 : MAIN ( -- )
    T-RESET
-   s" compile floor: both tiers stay within the measured budget" T-LABEL
+   s" compile floor: available tier stays within the measured budget" T-LABEL
    RUN-FLOOR-CASE
-   s" tier-0 corpus: every benchmark stays within its budget" T-LABEL
-   0 RUN-BENCH-CASE
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" tier-0 corpus: every benchmark stays within its budget" T-LABEL
+      0 RUN-BENCH-CASE
+   then
    s" tier-1 corpus: every benchmark stays within its budget" T-LABEL
    1 RUN-BENCH-CASE
    T-REPORT ;
