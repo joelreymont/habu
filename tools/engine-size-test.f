@@ -67,6 +67,31 @@ variable EST-X64-PATH-U
    OTHER-BYTES $1820 T=
    CLEANUP-RUN ;
 
+: EST-X64-EMPTY ( -- )
+   s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
+   CLEANUP-RESET
+   s" habu-engine-size-x64-empty" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   EST-X64-IMAGE
+   0 EST-X64-BUF $F0 + !
+   0 EST-X64-BUF $108 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ MEASURE
+   CLASS$ s" stripped" T$=
+   TOTAL-BYTES $3000 T=
+   DATA-WRITTEN 0 T=
+   PAD-BYTES $FE0 T=
+   s" a negative fixed LOAD size is not an empty segment" T-LABEL
+   -1 EST-X64-BUF $108 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
+   0 EST-X64-BUF $108 + !
+   -1 EST-X64-BUF $D0 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
+   CLEANUP-RUN ;
+
 : EST-U64! ( n n -- ) {: value:n off:n :}
    value IMG@ off + CELL-VIEW ! ;
 
@@ -270,6 +295,7 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
    T-RESET
    EST-COUNTED-SEED
    EST-X64-SEGMENTS
+   EST-X64-EMPTY
    EST-DATA-CARRIER
    EST-WID-FORM
    EST-TILING
