@@ -225,8 +225,10 @@ TYPED-VARIABLE FRAME-ARG ptr u8
 \ The top link is the ownership test: exactly one path performs the rollback.
 : FRAME-ROLLBACK-CODE ( ptr u8 -- ) {: f:ptr :}
    DEF-ABORT
-   f FR-NDICT FR@ ndict!
-   f FR-CP FR@ CODE-RECLAIM:TRUNCATE
+   \ A buffer may start a task and throw without allocating a definition.
+   \ Only changed cursors need their guarded mutation sinks during recovery.
+   f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
+   f FR-CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max {: cut:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
