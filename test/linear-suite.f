@@ -308,7 +308,7 @@ variable PROG-U
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
-   ERR$ s" throw 7155 at 'MINT'" CONTAINS? TTRUE
+   ERR$ s" throw 7197 at 'MINT'" CONTAINS? TTRUE
    s" an application image keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=
@@ -316,7 +316,7 @@ variable PROG-U
    s" so the reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
-   ERR$ s" hb: uncaught throw code 7154" CONTAINS? TTRUE
+   ERR$ s" hb: uncaught throw code 7196" CONTAINS? TTRUE
    RC @ 67 T=
    CLEANUP-RUN ;
 

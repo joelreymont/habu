@@ -13785,11 +13785,10 @@ variable UNSAFE-SYM-N
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 7151 constant E-CAST-SCOPE    \ a cast would erase or introduce a scope dependency
 \ `linear:` rejects (dot habu-mint-and-erase): the arity and unknown-type shapes
-\ are the cast block's own E-CAST-ARITY and E-CAST-FAM. 7152 is E-BAD-QUALIFIED
-\ and 7153 E-GENERATES-ROW, so the payload reject took the next free code.
-7156 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
-7154 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
-7155 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
+\ are the cast block's own E-CAST-ARITY and E-CAST-FAM.
+7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
+7196 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
+7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.

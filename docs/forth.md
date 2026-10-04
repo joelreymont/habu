@@ -662,12 +662,12 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   a cast is first (`E-CAST-FAM`, the bad-signature reject, `E-CAST-ARITY`),
   then by its own rule (`src/core/checker.f` `LINEAR-CERTIFY`):
   - One side is a linear type and the other its payload, a non-linear con or a
-    pointer chain ending at one (`E-LINEAR-PAYLOAD`, 7156): two tokens, no
+    pointer chain ending at one (`E-LINEAR-PAYLOAD`, 7195): two tokens, no
     token, a type variable, a family, a quotation or an atom is refused.
-  - The current package declared the linear type (`E-LINEAR-OWNER`, 7154).
+  - The current package declared the linear type (`E-LINEAR-OWNER`, 7196).
     `DEFLINEAR` records the package it runs in, and one declared at top level
     has no owner, so nothing mints it.
-  - The row is in that package's private section (`E-LINEAR-SCOPE`, 7155).
+  - The row is in that package's private section (`E-LINEAR-SCOPE`, 7197).
 
   After `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok --
   ptr n )`, the owner's checked words compose the two, `: PEEK ( PKG:tok --
@@ -1818,11 +1818,11 @@ the rule.
   refusals.
 - **Checked code mints and erases a linear token only in its declaring
   package's private section.** `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok
-  -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7155);
+  -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7197);
   in another package, at top level, or for a `DEFLINEAR` declared at top level
-  they are `E-LINEAR-OWNER` (7154); and `( PKG:tok -- PKG:tok )`, `( n -- n )`,
+  they are `E-LINEAR-OWNER` (7196); and `( PKG:tok -- PKG:tok )`, `( n -- n )`,
   `( ptr a -- PKG:tok )` or `( [ -- ] -- PKG:tok )` is `E-LINEAR-PAYLOAD`
-  (7156), in the source pre-pass and tools/check.f as well. `linear:` in a
+  (7195), in the source pre-pass and tools/check.f as well. `linear:` in a
   checked body is refused and a private row is `E-UNDEFINED` outside its
   package, so a checked caller gets a token only from the owner's public
   words; a `TRUSTED:` effect naming the token is asserted, not checked.
