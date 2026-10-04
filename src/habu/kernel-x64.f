@@ -895,18 +895,19 @@ public
 \ Call the C function at r11 under the SysV ABI: the register arguments
 \ already in rdi rsi rdx rcx r8 r9 and xmm0..7, and the r10 cells at rax (a
 \ count >= 0) as its stack arguments; the answer is in rax or xmm0. The entry
-\ rsp waits on the data stack, whose pointer r12 is callee-saved, as habu1.f
-\ BFFI-CALL-N-CORE keeps the frame sp in x20: every callee-saved register here
-\ is a VM register. The function waits in the machine-stack cell below the
-\ entry rsp while r11 carries the copy. rsp drops by the cells and aligns down
-\ to 16, the cells land from [rsp] up, and al is set to n, the caller's bound
+\ rsp waits in rbx, which is saved on the machine stack. The function waits
+\ in the machine-stack cell below saved rbx while r11 carries the copy. rsp
+\ drops by the cells and aligns down to 16, the cells land from [rsp] up, and
+\ al is set to n, the caller's bound
 \ on its vector arguments, which a variadic callee reads to decide whether it
 \ saves xmm0..7; after the call rsp is the entry rsp again. The VM registers
 \ survive by the callee-saved rule; rax rcx rdx rsi rdi, r8-r11 and the XMM
-\ registers do not.
+\ registers do not. No private cell occupies the published Habu data stack
+\ while C calls back.
 : SYSV-CALL, ( n -- ) {: vecs:n :}
    X64CODE:LBL X64CODE:LBL {: copy:label called:label :}
-   RSP PUSH,
+   RBX ASM-SINK ENC-PUSH
+   RBX RSP ASM-SINK ENC-MOV-RR
    R11 ASM-SINK ENC-PUSH
    R11 R10 ASM-SINK ENC-MOV-RR  R11 3 >IMM8 ASM-SINK ENC-SHL-RI8
    RSP R11 ASM-SINK ENC-SUB-RR
@@ -918,11 +919,11 @@ public
    R11 RSP R10 CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
    C-NE copy JCC,
    called X64CODE:LBL,
-   R11 DSP CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the entry rsp
-   R11 R11 CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the function below it
+   R11 RBX CELL negate MEM-OFF ASM-SINK ENC-MOV-RM      \ the function below saved rbx
    RAX vecs IMM32,
    R11 ASM-SINK ENC-CALL-REG
-   RSP POP, ;
+   RSP RBX ASM-SINK ENC-MOV-RR
+   RBX ASM-SINK ENC-POP ;
 
 \ Call the C function at rax with its integer register arguments only:
 \ SYSV-CALL,'s zero-cell case, with no vector arguments.

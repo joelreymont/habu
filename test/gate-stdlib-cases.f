@@ -1726,6 +1726,10 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
+SUITE x86-64-kernel-callback
+   test/x86-64-kernel-callback.f
+;SUITE
+
 \ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
 \ and links it: the records, the routines with every site resolved, the rebased
 \ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
