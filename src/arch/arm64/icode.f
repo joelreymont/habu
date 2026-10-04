@@ -92,8 +92,7 @@ using A64ASM
 \ The AOT suite died `aot-file: encoded sections exceed their byte budget` on an
 \ artifact of 30,565,099 bytes - a full-band blob and its 20,001 DATA and 20,001
 \ CODE relocation rows. $1E00000 clears the minimum 30,536,128 and that artifact.
-$1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
+$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT section budget
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1000 constant ICODE-TAB-CELLS
 $5 constant ICODE-TAB-COUNT

@@ -27,5 +27,7 @@ DATA-VA constant DATA-VA
 DATA-SIZE constant DATA-SIZE
 CODE-OFF constant CODE-OFF
 IMAGE-TEXT-SIZE-OFF constant IMAGE-TEXT-SIZE-OFF
+\ Leave the final $4000 of the code region for the runtime's protected tail.
+REGION $4000 - constant CODE-CEILING
 LINUX-DLSYM-SLOT-OFF constant LINUX-DLSYM-SLOT-OFF
 ;package

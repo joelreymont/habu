@@ -940,7 +940,6 @@ package BUILD-FIXPOINT
       exit
    then
    BUILD-TARGET:LINUX-X86-64? if
-      out outu s" src/os/linux-x86-64/target-layout.f" BF-APPEND-MODULE
       out outu s" src/os/linux-x86-64/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux-x86-64/sign.f" BF-APPEND-SOURCE
       exit
@@ -1106,18 +1105,35 @@ package BUILD-FIXPOINT
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
    out outu s" lib/prelude.f" BF-APPEND-MODULE
+   \ The x86 ELF loads image-bytes under X64CODE's names. Stage its seam before
+   \ the host's ARM code layer claims the same bare assembler names.
+   BUILD-TARGET:LINUX-X86-64? if
+      out outu s" src/os/linux-x86-64/target-layout.f" BF-APPEND-MODULE
+      out outu s" src/arch/x86-64/asm.f" BF-APPEND-MODULE
+      out outu s" src/arch/x86-64/icode.f" BF-APPEND-MODULE
+      out outu s" src/arch/x86-64/rt.f" BF-APPEND-MODULE
+      out outu BF-APPEND-TARGET-SYS
+      out outu s" using X64CODE" BF-APPEND-LINE
+      out outu s" src/os/image-bytes.f" BF-APPEND-MODULE
+      out outu s" ;using" BF-APPEND-LINE
+      out outu BF-APPEND-TARGET-IMAGE
+      out outu BF-APPEND-TARGET-PROC-WATCH
+      out outu BF-APPEND-TARGET-PROC-CONTROL
+   then
    out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
    out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-TARGET-SYS
+   BUILD-TARGET:LINUX-X86-64? 0= if out outu BF-APPEND-TARGET-SYS then
    out outu BF-APPEND-SCRIPT-ARGV
    out outu s" src/habu/treeshake.f" BF-APPEND-MODULE   \ primitive-registry.f requires it
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-IMAGE-BYTES
-   out outu BF-APPEND-TARGET-IMAGE
-   out outu BF-APPEND-TARGET-PROC-WATCH
-   out outu BF-APPEND-TARGET-PROC-CONTROL
+   BUILD-TARGET:LINUX-X86-64? 0= if
+      out outu BF-APPEND-IMAGE-BYTES
+      out outu BF-APPEND-TARGET-IMAGE
+      out outu BF-APPEND-TARGET-PROC-WATCH
+      out outu BF-APPEND-TARGET-PROC-CONTROL
+   then
    out outu BF-APPEND-HABU1
    out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE

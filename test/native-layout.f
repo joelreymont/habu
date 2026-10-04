@@ -39,18 +39,21 @@ create HOST-BUF ROWS 2 * cells allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-: REFUSES ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: REFUSES-OUT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n want:ptr wantu:n :}
    src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
-   outu LEN>N 0 T=
+   OUT outu LEN>N want wantu T$=
    ERR erru LEN>N S\" native-build: incompatible fixed engine layout\n" T$= ;
+
+: REFUSES ( ptr u8 n -- ) s" " REFUSES-OUT ;
 
 : REFUSED-LAYOUTS ( -- )
    s" package NATIVE-LAYOUT-TEST RESET HOST ROWS 1- DATA-START NATIVE-LAYOUT:CHECK ;package" REFUSES
    s" package NATIVE-LAYOUT-TEST RESET 1 HOST cell+ ! HOST ROWS DATA-START NATIVE-LAYOUT:CHECK ;package" REFUSES
    s" package NATIVE-LAYOUT-TEST RESET COMPILE-PREFLIGHT-CELL HOST ! HOST ROWS DATA-START NATIVE-LAYOUT:CHECK ;package" REFUSES
    s" package NATIVE-LAYOUT-TEST RESET DATA-START HOST ! HOST ROWS DATA-START NATIVE-LAYOUT:CHECK ;package" REFUSES
-   s" package NATIVE-LAYOUT-TEST RESET HOST ROWS 1 false NATIVE-LAYOUT:TRANSLATE drop ;package" REFUSES
+   s" package NATIVE-LAYOUT-TEST RESET HOST ROWS 1 false NATIVE-LAYOUT:TRANSLATE drop ;package"
+      S\" native-build: unknown fixed cell offset 1\n" REFUSES-OUT
    s" package NATIVE-LAYOUT-TEST RESET HOST ROWS HOOK-CELL true NATIVE-LAYOUT:TRANSLATE drop ;package" REFUSES ;
 
 public

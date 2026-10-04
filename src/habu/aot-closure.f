@@ -6,6 +6,8 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/address-carrier.f
 require src/habu/address-cells.f
+require src/habu/sites.f
+require src/habu/text-sites-x64.f
 require src/habu/code-span.f
 \ The span cells and HERE-N come from the lib-free latch file, which the build
 \ driver loads on its own and much earlier - before the application's require.
@@ -48,22 +50,64 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 : AOT-W32@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
 
-\ The map declares address sites, so an ordinary numeric literal with the same
-\ bits is never relocated. Engine-text records are outside this region map.
-: ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
-   p AOT-DBASE@ BYTE-VIEW - {: off:n :}
-   off DICT-SIZE < off REGION >= or if false exit then
-   data-base ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
-   off 2 rshift 7 and rshift 1 and 0<> ;
+\ --- RECORDED ADDRESS SITES. A compiler records the first byte of every address
+\ literal it emits, and src/habu/sites.f is the one reader of that record, so an
+\ ordinary numeric literal with the same bits is never relocated. Only the live
+\ code region, region offsets DICT-SIZE up to REGION, carries recorded sites: an
+\ engine-text record lies outside it and yields none. A walk's per-site word runs
+\ inside the quotation SITES:EACH-IN-SPAN executes, which cannot read the
+\ walker's locals, so each walk keeps its span's end and its question in cells.
+: SITE-OFF ( ptr u8 -- n ) {: p:ptr :}
+   p AOT-DBASE@ BYTE-VIEW - ;
+: SITE-PTR ( n -- ptr u8 ) {: off:n :}
+   AOT-DBASE@ BYTE-VIEW off + ;
 
-\ The shared grammar admits the compact DATA and full absolute carriers.
-: ADDRESS-CHAIN? ( ptr u8 ptr u8 -- bool ) {: p:ptr e:ptr :}
-   p e CHAIN-SIZE 0<> ;
+\ Each recorded site whose first byte lies in [p, e), as its region offset and
+\ kind, in ascending order.
+: EACH-SITE ( ptr u8 ptr u8 [ n n -- ] -- ) {: p:ptr e:ptr q :}
+   p SITE-OFF DICT-SIZE max {: lo:n :}
+   e SITE-OFF REGION min {: hi:n :}
+   lo hi >= if exit then
+   lo hi lo - q SITES:EACH-IN-SPAN ;
+
+TYPED-VARIABLE MEMBER-Q [ ptr u8 n -- ]
+: MEMBER-REGION-SITE ( n n -- ) {: off:n kind:n :}
+   off SITE-PTR
+   kind SNAP-RELOC:SITE-CALL = if 1+ else 2 + then
+   kind MEMBER-Q @ execute ;
+
+\ A closure member's recorded sites, whether it came from live JIT REGION or
+\ from the immutable engine text. Text kinds 3/4/5 are rel8/rel32/abs64;
+\ REGION kinds 1/2 are call/address. Both yield the original field pointer.
+: EACH-MEMBER-SITE ( ptr u8 ptr u8 [ ptr u8 n -- ] -- )
+   {: p:ptr e:ptr q :}
+   p AOT-DBASE@ BYTE-VIEW >=
+   e AOT-DBASE@ BYTE-VIEW REGION + <= and if
+      q MEMBER-Q !
+      p e [: MEMBER-REGION-SITE ;] EACH-SITE exit
+   then
+   HB-TARGET-LINUX-X86-64? if p e q X64TEXT:EACH-IN-SPAN then ;
+
+\ The address literal at a site, as its size in bytes and the value it carries,
+\ never read past e; size 0 for a truncated or malformed literal. One arm per
+\ target spelling: AArch64 moves the address in halves, a compact DATA chain or
+\ a full four-half one; x86-64 moves it whole with one `mov r64, imm64`.
+: CHAIN-LITERAL ( ptr u8 ptr u8 -- n n ) {: p:ptr e:ptr :}
+   p e CHAIN-SIZE {: size:n :}
+   size 0= if 0 0 exit then
+   size  p size CHAIN-VALUE ;
+: MOVABS-LITERAL ( ptr u8 ptr u8 -- n n ) {: p:ptr e:ptr :}
+   e p - MOVABS-BYTES < if 0 0 exit then
+   p MOVABS-SITE? 0= if 0 0 exit then
+   MOVABS-BYTES  p MOVABSV ;
+: SITE-LITERAL ( ptr u8 ptr u8 -- n n ) {: p:ptr e:ptr :}
+   HB-TARGET-LINUX-X86-64? if p e MOVABS-LITERAL exit then
+   p e CHAIN-LITERAL ;
 
 : ADDRESS-VALUE ( ptr u8 ptr u8 -- n ) {: p:ptr e:ptr :}
-   p e CHAIN-SIZE {: size:n :}
+   p e SITE-LITERAL {: size:n v:n :}
    size 0= if s" aot: malformed recorded address chain" 74 die then
-   p size CHAIN-VALUE ;
+   v ;
 
 : DATA-ADDRESS? ( n -- bool ) {: v:n :}
    \ The outer mapping has the same stable one-past address as a captured span.
@@ -525,7 +569,9 @@ variable REC-SX  variable REC-ROW  variable REC-PROBE
 \ (including the explicit full-span bit), never a nearest-address heuristic.
 \ Namespace records hold wordlist IDs in those fields, not code spans.
 : ADDRESS-OWNER ( n -- ptr n ) {: t:n :}
-   t 3 and 0<> if XREF-NULL exit then
+   HB-TARGET-LINUX-X86-64? 0= if
+      t 3 and 0<> if XREF-NULL exit then
+   then
    ndict@ 0 ?do
       i REC REC-WID@ -1 <> if
          i REC @ t = if i REC unloop exit then
@@ -715,20 +761,33 @@ variable NB-IX
 : DATA-CELL? ( n -- bool ) {: v:n :}
    v DATA-VA VA>N >= v 8 + DATA-VA VA>N DATA-SIZE + <= and ;
 
+\ ONE RECORD'S ADDRESS LITERALS, asked about one value: the walk below hands
+\ each recorded site in the record's span to a per-site word, which reads the
+\ literal there up to the record's end - a literal the span cuts short is no
+\ answer - and keeps its answer in a cell of its own.
+PTR-VARIABLE RW-END  variable RW-V
+: REC-WALK ( ptr n n [ n n -- ] -- ) {: r:ptr v:n q :}
+   r REC-CODE-PTR@ {: p:ptr :}
+   p r REC-BYTES + RW-END !  v RW-V !
+   p RW-END @ q EACH-SITE ;
+\ The literal a yielded site starts, size 0 for a call site or a malformed one.
+: RW-LITERAL ( n n -- n n ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if 0 0 exit then
+   off SITE-PTR RW-END @ SITE-LITERAL ;
+
 \ Does this record's code spell out that DATA address? `variable`, `create` and
 \ `defer` each compile a recorded address chain for their own body, so the site is
 \ the structural link from a persistent cell back to the word that owns it. A cell
 \ reached by arithmetic from some other body has no site of its own and stays
 \ unnamed rather than being attributed to the nearest word below it.
+variable CS-HIT
+: CELL-SITE ( n n -- )
+   RW-LITERAL {: size:n w:n :}
+   size 0<> w RW-V @ = and if 1 CS-HIT ! then ;
 : REC-CELL-SITE? ( ptr n n -- bool ) {: r:ptr v:n :}
-   r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
-      p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + p r REC-BYTES + ADDRESS-VALUE v = if true unloop exit then
-         then
-      then
-   loop false ;
+   0 CS-HIT !
+   r v [: CELL-SITE ;] REC-WALK
+   CS-HIT @ 0<> ;
 
 \ Namespace records hold wordlist IDs where a word record holds its code span.
 : DATA-CELL-OWNER ( n -- ptr n ) {: v:n :}
@@ -746,17 +805,14 @@ variable NB-IX
 \ is which data the value is interior to - so the value domain is checked before
 \ the distance.
 variable CB-AT
+: CELL-BELOW ( n n -- )
+   RW-LITERAL {: size:n w:n :}
+   size 0= if exit then
+   w DATA-ADDRESS?  w RW-V @ <= and  w CB-AT @ > and if w CB-AT ! then ;
 : REC-CELL-BELOW ( ptr n n -- n ) {: r:ptr v:n :}
    -1 CB-AT !
-   r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
-      p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + p r REC-BYTES + ADDRESS-VALUE {: w:n :}
-            w DATA-ADDRESS?  w v <= and  w CB-AT @ > and if w CB-AT ! then
-         then
-      then
-   loop CB-AT @ ;
+   r v [: CELL-BELOW ;] REC-WALK
+   CB-AT @ ;
 
 \ ... and the record that gets nearest, with the address it spells. The span
 \ refusal names an unspelled target `NAME+off` from this pair, for the same
@@ -1126,10 +1182,10 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    loop
    10 AE1 s" " 74 die ;
 
+\ The address literal at a recorded site of the member being scanned.
 : SCAN-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
-   p ADDRESS-SITE? 0= if exit then
-   p e ADDRESS-CHAIN? 0= if caller p e REFUSE-ADDRESS-SITE then
-   p e ADDRESS-VALUE {: v:n :}
+   p e SITE-LITERAL {: size:n v:n :}
+   size 0= if caller p e REFUSE-ADDRESS-SITE then
    v DATA-ADDRESS? if
       caller p v DATA-TARGET drop exit
    then
@@ -1155,9 +1211,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 \ it by name. A target that resolves to a declaration-only record is neither: it
 \ is never a member, because the relocation pass drops the call (AOT-DECLARATION?
 \ above).
-: SCAN-DIRECT ( ptr n ptr u8 ptr u8 ptr u8 -- ) {: caller:ptr p:ptr mstart:ptr mend:ptr :}
-   p AOT-W32@ dup DIRECT? 0= if drop exit then
-   p swap TARGET {: t:ptr :}
+: SCAN-TARGET ( ptr n ptr u8 ptr u8 ptr u8 -- ) {: caller:ptr t:ptr mstart:ptr mend:ptr :}
    t mstart >= t mend < and if exit then
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? if
@@ -1167,13 +1221,54 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    t SPAN-AT-ENTRY {: k:n :}
    k 0 >= if k ADD-SPAN-CLO then ;
 
-: SCAN-MEMBER {: i:n :} ( n -- )
-   i CLO-AT SP2 !  i CLO-AT i CLO-BYTES + SEND !
-   BEGIN SP2 @ SEND @ < WHILE
-      i CLO-REC@ SP2 @ SEND @ SCAN-ADDRESS
-      i CLO-REC@ SP2 @ i CLO-AT SEND @ SCAN-DIRECT
+: SCAN-DIRECT ( ptr n ptr u8 ptr u8 ptr u8 -- ) {: caller:ptr p:ptr mstart:ptr mend:ptr :}
+   p AOT-W32@ dup DIRECT? 0= if drop exit then
+   p swap TARGET caller swap mstart mend SCAN-TARGET ;
+
+: SIGNED32 ( n -- n )
+   dup $80000000 and 0<> if $100000000 - then ;
+: SIGNED8 ( n -- n )
+   dup $80 and 0<> if 256 - then ;
+
+variable SM-I
+
+\ x86 sites point at their displacement or immediate field. The site table
+\ states their widths; no instruction-byte walk is needed for inline data.
+: SCAN-X64-SITE ( ptr u8 n -- ) {: field:ptr kind:n :}
+   kind SNAP-RELOC:SITE-ADDR = kind 5 = or if
+      SM-I @ CLO-REC@ field 2 - SEND @ SCAN-ADDRESS exit
+   then
+   kind SNAP-RELOC:SITE-CALL = kind 4 = or if
+      field LE:U32@ SIGNED32 field 4 + + {: target:ptr :}
+      SM-I @ CLO-REC@ target SM-I @ CLO-AT SEND @ SCAN-TARGET exit
+   then
+   kind 3 = if
+      field c@ SIGNED8 field 1+ + {: target:ptr :}
+      SM-I @ CLO-REC@ target SM-I @ CLO-AT SEND @ SCAN-TARGET exit
+   then
+   s" aot: unknown x86 text site kind" 74 die ;
+
+\ A member is scanned word by word for direct branches and at each recorded
+\ address site for its literal, in ascending order with a site's literal before
+\ its word's branch. SM-I names the member to the per-site word.
+: SCAN-DIRECT-TO ( ptr u8 -- ) {: p:ptr :}
+   BEGIN SP2 @ p < WHILE
+      SM-I @ CLO-REC@ SP2 @ SM-I @ CLO-AT SEND @ SCAN-DIRECT
       SP2 @ 4 + SP2 !
    REPEAT ;
+: MEMBER-SITE ( n n -- ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if exit then
+   off SITE-PTR {: p:ptr :}
+   p SCAN-DIRECT-TO
+   SM-I @ CLO-REC@ p SEND @ SCAN-ADDRESS ;
+: SCAN-MEMBER {: i:n :} ( n -- )
+   i SM-I !
+   i CLO-AT SP2 !  i CLO-AT i CLO-BYTES + SEND !
+   HB-TARGET-LINUX-X86-64? if
+      i CLO-AT SEND @ [: SCAN-X64-SITE ;] EACH-MEMBER-SITE exit
+   then
+   i CLO-AT SEND @ [: MEMBER-SITE ;] EACH-SITE
+   SEND @ SCAN-DIRECT-TO ;
 variable WI
 : NO-ENTRY-DIE ( -- )
    s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
@@ -1210,11 +1305,11 @@ variable WI
 \ by its quotations' functions, laid out in order (src/compiler/native/emit.f
 \ FUNCTION-OFFSET@), and one record covers all of them - so an anonymous body
 \ ends where the next function begins, and the last one ends with the record.
-\ THE NEXT FUNCTION IS FOUND BY THE ADDRESS MAP: the compiler records every
-\ literal it decides IS a code address (src/habu/layout.f ADDRMAP-OFF, the
-\ quotation entry a `[: ;]` pushes among them), so the next entry above this one
-\ is the smallest recorded chain value above it inside this record. Nothing here
-\ decides what a body looks like by decoding bytes.
+\ THE NEXT FUNCTION IS FOUND BY THE RECORDED SITES: the compiler records every
+\ literal it decides IS a code address (src/habu/sites.f, the quotation entry a
+\ `[: ;]` pushes among them), so the next entry above this one is the smallest
+\ recorded literal value above it inside this record. Nothing here decides what
+\ a body looks like by decoding bytes.
 \ UNDER TIER 1 NO CHAIN MARKS A FUNCTION BOUNDARY - a quotation reference is an
 \ ADR, not a movz/movk chain - so a body runs to its record's end and carries
 \ every function above it. Measured on a word installing two quotations at load
@@ -1222,17 +1317,13 @@ variable WI
 \ 32-byte member in a 116-byte record, holding its own 16-byte function and the
 \ second quotation's 16 bytes as well.
 variable BODY-END
+: BODY-SITE ( n n -- )
+   RW-LITERAL {: size:n w:n :}
+   size 0= if exit then
+   w RW-V @ > w BODY-END @ < and if w BODY-END ! then ;
 : BODY-END-SCAN ( ptr n n -- ) {: r:ptr v:n :}
    r REC-END-N BODY-END !
-   r REC-CODE-PTR@ {: p:ptr :}
-   r REC-BYTES DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
-      p i 4 * + ADDRESS-SITE? if
-         p i 4 * +  p r REC-BYTES + ADDRESS-CHAIN? if
-            p i 4 * + p r REC-BYTES + ADDRESS-VALUE
-            dup v > over BODY-END @ < and if BODY-END ! else drop then
-         then
-      then
-   loop ;
+   r v [: BODY-SITE ;] REC-WALK ;
 
 \ The anonymous body at v, as a member in its own right. The word that DEFINED it
 \ is not pulled in with it: a `[: ... ;] is X` initializer runs at load time and

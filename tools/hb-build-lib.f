@@ -529,10 +529,13 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 
-\ The x86-64 seam's process primitives are emitters, so a change to either one
-\ changes the engine this key names.
+\ The x86-64 seam's assembler, code stream, runtime, and process emitters all
+\ change the engine this key names.
 : HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
+   s" src/arch/x86-64/asm.f" HBB-KEY-FILE+
+   s" src/arch/x86-64/icode.f" HBB-KEY-FILE+
+   s" src/arch/x86-64/rt.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/target.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/layout.f" HBB-KEY-FILE+
    s" src/os/linux-x86-64/target-layout.f" HBB-KEY-FILE+

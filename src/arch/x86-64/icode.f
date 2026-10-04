@@ -42,6 +42,8 @@ require lib/errors.f
 require lib/byte-buffer.f
 require src/core/roles.f
 require src/arch/x86-64/asm.f
+require src/os/linux-x86-64/target-layout.f
+require src/habu/layout.f
 
 package X64CODE
 using X64ASM
@@ -222,6 +224,34 @@ public
    ?KNOWN LBL-AT @ {: at:n :}
    at UNBOUND = if s" x64code: unresolved label" REFUSE then
    at ;
+
+\ The full engine keeps the assembler's exact text sites after ASM-LINK
+\ forgets its temporary labels. A u32 count and five-byte rows start at the
+\ returned code end; the page-aligned footer repeats that offset and count and
+\ ends with "X64SITE1". A restored snapshot can find this immutable footer
+\ behind its appended heap without scanning instruction bytes.
+$3145544953343658 constant TEXT-SITE-MAGIC
+
+: U32, ( n -- ) {: v:n :}
+   4 0 ?do v i 8 * rshift $FF and SINK BUF:APPEND-BYTE loop ;
+: U64, ( n -- ) {: v:n :}
+   8 0 ?do v i 8 * rshift $FF and SINK BUF:APPEND-BYTE loop ;
+
+: TEXT-SITES, ( -- n )
+   ASM-LEN {: code-end:n :}
+   NSITE @ {: count:n :}
+   count U32,
+   count 0 ?do
+      i SITE-END code-end > if s" x64code: text site past code" REFUSE then
+      i SITE-AT @ U32,
+      i SITE-KIND @ SINK BUF:APPEND-BYTE
+   loop
+   X64LAYOUT:CODE-OFF ASM-LEN + 16 + PROT-PAGE-MAX 1- +
+   PROT-PAGE-MAX 1- invert and X64LAYOUT:CODE-OFF - {: end:n :}
+   end CODE-CAP-BYTES > if s" x64code: text sites exceed code window" REFUSE then
+   end 16 - ASM-LEN - 0 ?do 0 SINK BUF:APPEND-BYTE loop
+   code-end U32,  count U32,  TEXT-SITE-MAGIC U64,
+   code-end ;
 
 \ Patch every site of the stream for code whose byte 0 loads at base, after
 \ checking all of them, then forget the stream's labels and sites.

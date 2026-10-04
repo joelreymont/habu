@@ -16,9 +16,8 @@
 \   CODE-SLOT of the region's code band and filled to the next slot with int3,
 \   as code-publish fills. A `does>` companion enters its definer's emission at
 \   the clause. The long names lie ahead of the routines, zero-filled to a slot.
-\   A code record the shadow has no routine for (a variable, a created word, a
-\   defer, a tier-0 word) is refused, not built: the kernel's create and
-\   does-patch refuse, so no x86-64 routine shape for a created word exists yet.
+\   The target compiler emits fixed and definer bodies into the shadow too.
+\   A shipped code record with no routine is refused by name.
 \ - THE SITES. Each site of the shadow is linked in CODE$ after its routine is
 \   copied: a CALL or TAIL rel32 to its target's entry, a CODE MOVABS of that
 \   entry, a DATA MOVABS of the window's DATA where DATA-AT lands it, a FUN
@@ -73,8 +72,8 @@ require src/habu/layout.f
 require src/habu/code-span.f
 require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f
-require src/arch/arm64/icode.f
 require src/habu/aot-decl.f
+require src/habu/address-cells.f
 
 package X64LINK
 using AOT-BUF
@@ -97,8 +96,13 @@ $100000001B3 constant FNV-PRIME
 
 DYNAMIC-BUFFER DICT-STORAGE n
 DYNAMIC-BUFFER CODE-STORAGE n
+DYNAMIC-BUFFER REGION-STORAGE n
 DYNAMIC-BUFFER INDEX-STORAGE n
 DYNAMIC-BUFFER PLACE-STORAGE n         \ shadow record row -> its code band offset
+DYNAMIC-BUFFER REC-ROUTINE n           \ shipped record row -> shadow routine row
+DYNAMIC-BUFFER DATA-STORAGE n
+variable DATA-END
+DYNAMIC-BUFFER REG-STORAGE n
 PROT-BITS-BYTES BUFFER: BITS
 variable PRIM-N
 variable REC-TOTAL
@@ -109,6 +113,14 @@ variable CUR                           \ the shadow row a walk of the records is
 variable PREV                          \ the emission a walk of the rows copied last
 variable LO
 variable HI
+variable VAL-AT
+variable REG-N
+variable REG-ROOT
+variable REG-ROWS
+variable REG-CHILD
+variable REG-HI
+variable REG-OUT
+variable CELL-CAP
 
 : REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
 : SLOT-UP ( n -- n ) X64KERNEL:CODE-SLOT 1- + X64KERNEL:CODE-SLOT negate and ;
@@ -181,21 +193,27 @@ variable HI
    w WID-REL-BASE - FIRST-DYNAMIC-WID + ;
 
 \ ---- the checks, before any byte --------------------------------------------------
-\ The shadow's rows ascend by record, one per routine (src/habu/aot-file.f
-\ ?SH-RECS), so one walk beside the shipped rows pairs each code record with its
-\ routine and finds a routine on a package row or past the last row.
+\ A named record owns one routine. Anonymous routines can interleave in the
+\ shadow's source order, so retain the named row lookup separately from code
+\ placement, which follows the shadow's original emission order.
 : ?ROUTINES ( -- )
-   0 CUR !
-   AOT-REC-N @ 0 ?do
-      CUR @ AOT-SHADOW:REC-N @ < if CUR @ SH-REC i = else false then {: on:bool :}
-      i PKG? if
-         on if CUR @ STRAY-ROUTINE then
-      else
-         on 0= if i NO-ROUTINE then
-         1 CUR +!
+   AOT-REC-N @ 1 max REC-ROUTINE-RESERVE
+   AOT-REC-N @ 0 ?do -1 i REC-ROUTINE ! loop
+   AOT-SHADOW:REC-N @ 0 ?do
+      i SH-REC {: k:n :}
+      k AOT-SHADOW:ANON-REC and 0= if
+         k AOT-REC-N @ >= if i STRAY-ROUTINE then
+         k PKG? if i STRAY-ROUTINE then
+         k REC-ROUTINE @ 0 >= if
+            s" x64link: two routines for one record" REFUSE then
+         i k REC-ROUTINE !
       then
    loop
-   CUR @ AOT-SHADOW:REC-N @ < if CUR @ STRAY-ROUTINE then ;
+   AOT-REC-N @ 0 ?do
+      i PKG? 0= if i REC-ROUTINE @ 0 < if i NO-ROUTINE then then
+   loop ;
+
+: ROUTINE-OF ( n -- n ) REC-ROUTINE @ ;
 
 : ?WIDS ( -- )
    AOT-REC-N @ 0 ?do
@@ -247,13 +265,14 @@ public
 : REGION-VA ( -- n ) ELF-REGION-VA ;
 : REC-VA ( n -- n ) DREC * REGION-VA + ;
 : CODE-VA ( -- n ) REGION-VA DICT-SIZE + ;
+: CP-VA ( -- n ) CODE-VA CODE-END @ + ;
 : DICT$ ( -- ptr u8 n ) 0 DICT-STORAGE BYTE-VIEW RECORDS DREC * ;
 : CODE$ ( -- ptr u8 n ) 0 CODE-STORAGE BYTE-VIEW CODE-END @ ;
 : BITS$ ( -- ptr u8 n ) BITS PROT-BITS-BYTES ;
 : INDEX$ ( -- ptr u8 n ) 0 INDEX-STORAGE BYTE-VIEW HIDX-BYTES ;
 : INDEX-OFF ( -- n ) DATA-START ;
 : INDEX-VA ( -- n ) X64LAYOUT:DATA-VA VA>N INDEX-OFF + ;
-: HEAP-FLOOR ( -- n ) INDEX-OFF HIDX-BYTES + ;
+: INDEX-END ( -- n ) INDEX-OFF HIDX-BYTES + ;
 : CLAIMS ( -- n ) RECORDS ;
 
 \ The code band offset where shadow code byte n landed.
@@ -265,7 +284,19 @@ public
 \ capture base's own 8-residue, as habu2.f EM-AOT-RELOC-DATA moves the seed's DP,
 \ so every captured cell keeps its alignment. The window spans AOT-DATA-SIZE
 \ bytes from it.
-: DATA-AT ( -- n ) HEAP-FLOOR  AOT-DATA-D0 @ HEAP-FLOOR - 7 and + ;
+: CELL-BASE ( -- n )
+   CELL-CAP @ ADDRESS-CELLS:BOOT-CAP > if INDEX-END
+      else ADDRESS-CELLS:BOOT-OFF then ;
+: CELL-END ( -- n )
+   CELL-CAP @ ADDRESS-CELLS:BOOT-CAP > if INDEX-END CELL-CAP @ cells +
+      else INDEX-END then ;
+: DATA-AT ( -- n ) CELL-END dup AOT-DATA-D0 @ rot - 7 and + ;
+: HEAP-FLOOR ( -- n ) DATA-AT AOT-DATA-SIZE @ + ;
+: CELL-AT ( n -- n ) {: c:n :}
+   AOT-WINDOW:XTOFF-BUF@ c AOT-WINDOW:XTOFF-ROW * + LE:U32@ {: loc:n :}
+   loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if loc exit then
+   DATA-AT loc AOT-WINDOW:XTOFF-LOC-MASK and + ;
+: DATA$ ( -- ptr u8 n ) 0 DATA-STORAGE BYTE-VIEW DATA-END @ ;
 
 \ ---- reading a laid-out record ----------------------------------------------------
 : REC ( n -- ptr u8 ) {: k:n :} 0 DICT-STORAGE BYTE-VIEW k DREC * + ;
@@ -308,6 +339,30 @@ private
 : FILL ( ptr u8 n n n -- ) {: band:ptr lo:n hi:n byte:n :}
    hi lo ?do byte band i + c! loop ;
 
+public
+
+: REGION$ ( -- ptr u8 n )
+   DICT-SIZE CODE-END @ + {: len:n :}
+   len CELL / 1+ REGION-STORAGE-RESERVE
+   0 REGION-STORAGE BYTE-VIEW {: out:ptr :}
+   out 0 len 0 FILL
+   DICT$ {: recs:ptr rec-len:n :}
+   recs out rec-len BYTE-COPY
+   CODE$ {: code:ptr code-len:n :}
+   code out DICT-SIZE + code-len BYTE-COPY
+   out len ;
+
+private
+
+\ An emission may include a defer trailer after its routine. The next distinct
+\ record start, or the shadow's end, bounds the bytes copied into its slot.
+: EXTENT ( n -- n ) {: r:n :}
+   AOT-SHADOW:CODE-LEN @
+   AOT-SHADOW:REC-N @ r 1+ ?do
+      i SH-AT r SH-AT <> if drop i SH-AT leave then
+   loop
+   r SH-AT - ;
+
 \ Each row's code band offset, laying nothing: the names' span to a slot, then
 \ each emission once from a slot, a row over the emission before it at its offset.
 : PLACE-ALL ( -- )
@@ -320,7 +375,7 @@ private
       else
          i SH-AT PREV !
          dup i PLACE-STORAGE !
-         i SH-LEN + SLOT-UP
+         i EXTENT + SLOT-UP
       then
    loop
    CODE-END ! ;
@@ -329,8 +384,8 @@ private
 : COPY-ROUTINE ( n -- ) {: r:n :}
    0 CODE-STORAGE BYTE-VIEW {: band:ptr :}
    r PLACE-STORAGE @ {: at:n :}
-   AOT-SHADOW:CODE-BUF@ r SH-AT +  band at +  r SH-LEN BYTE-COPY
-   band  at r SH-LEN +  dup SLOT-UP  INT3 FILL ;
+   AOT-SHADOW:CODE-BUF@ r SH-AT +  band at +  r EXTENT BYTE-COPY
+   band  at r EXTENT +  dup SLOT-UP  INT3 FILL ;
 
 \ The names' span zero-filled to a slot, then each emission once.
 : ROUTINES ( -- )
@@ -384,12 +439,11 @@ private
    DICT-WL:NAMESPACE rec X64KERNEL:REC-WID + LE:U64! ;
 
 : WINDOW-RECS ( -- )
-   0 CUR !
    AOT-REC-N @ 0 ?do
       PRIMS i + REC {: rec:ptr :}
       i FLAGS rec 16 + LE:U64!
       i CREC-NAME$ i EXT? rec NAME!
-      i PKG? if i rec PKG-REC! else i CUR @ rec CODE-REC!  1 CUR +! then
+      i PKG? if i rec PKG-REC! else i i ROUTINE-OF rec CODE-REC! then
    loop ;
 
 : PROTECT ( -- )
@@ -426,20 +480,17 @@ private
    -1 ;
 
 : BODY-VA ( n -- n ) ENGINE-PRIMS:FIRST-LABEL X64CODE:LABEL-AT TEXT-VA + ;
-
-\ The shadow row that files shipped row k's routine, or -1: the rows' records
-\ ascend (src/habu/aot-file.f ?SH-RECS).
-: ROUTINE-OF ( n -- n ) {: k:n :}
-   0 LO !  AOT-SHADOW:REC-N @ HI !
-   begin LO @ HI @ < while
-      LO @ HI @ + 2 / {: mid:n :}
-      mid SH-REC k < if mid 1+ LO ! else mid HI ! then
-   repeat
-   LO @ AOT-SHADOW:REC-N @ < if LO @ SH-REC k = if LO @ exit then then
-   -1 ;
+: SHADOW-VA ( n -- n ) {: r:n :}
+   CODE-VA r PLACE-STORAGE @ + r SH-ENTRY + ;
 
 : SITE. ( n -- ) {: s:n :}
-   s" x64link: the shadow routine of " type s SITE-AT ROW-AT SH-REC CREC-NAME$ type
+   s SITE-AT ROW-AT {: r:n :}
+   s" x64link: the shadow routine of " type
+   r SH-REC AOT-SHADOW:ANON-REC and 0<> if
+      s" anonymous row " type r .INT
+   else
+      r SH-REC CREC-NAME$ type
+   then
    s"  at code byte " type s SITE-AT .INT ;
 
 : UNCARRIED ( n -- ) {: s:n :}
@@ -461,6 +512,9 @@ private
 \ entry, or a kernel body by name.
 : TARGET-VA ( n -- n ) {: s:n :}
    s 8 SITE@ {: t:n :}
+   t SITE-SHADOW-TAG and SITE-SHADOW-TAG = if
+      t SITE-TARGET-MASK and SHADOW-VA exit
+   then
    t SITE-NAME-TAG and 0<> if
       s SITE-NAME$ KERNEL-BODY {: p:n :}
       p 0 < if s UNCARRIED then
@@ -468,10 +522,16 @@ private
    then
    t SITE-TARGET-MASK and ROUTINE-OF {: r:n :}
    r 0 < if s ROUTINELESS then
-   CODE-VA r PLACE-STORAGE @ + r SH-ENTRY + ;
+   r SHADOW-VA ;
 
 \ What the capture left in a MOVABS site's immediate.
-: CAPTURED ( n -- n ) SITE-AT AOT-SHADOW:CODE-BUF@ + X64ASM:MOV-RI64-IMM-OFF + LE:U64@ ;
+: FIELD-OFF ( n -- n ) {: kind:n :}
+   kind REL32? if X64ASM:CALL-REL32-OFF exit then
+   kind AOT-SHADOW:DCELL = if 0 exit then
+   X64ASM:MOV-RI64-IMM-OFF ;
+
+: CAPTURED ( n -- n ) {: s:n :}
+   AOT-SHADOW:CODE-BUF@ s SITE-AT + s SITE-KIND FIELD-OFF + LE:U64@ ;
 
 \ The field a site's instruction carries in the image: a call's or branch's
 \ displacement from its end, or a MOVABS's address. The reader admits five kinds
@@ -481,7 +541,7 @@ private
    s SITE-KIND {: kind:n :}
    kind REL32? if s TARGET-VA  CODE-VA s SITE-AT PLACED + REL32-END +  - exit then
    kind AOT-SHADOW:CODE = if s TARGET-VA exit then
-   kind AOT-SHADOW:DATA = if
+   kind AOT-SHADOW:DATA =  kind AOT-SHADOW:DCELL = or if
       X64LAYOUT:DATA-VA VA>N DATA-AT +  s CAPTURED AOT-DATA-D0 @ -  + exit
    then
    CODE-VA s SITE-AT ROW-AT PLACE-STORAGE @ +  s CAPTURED + ;
@@ -498,12 +558,67 @@ private
    0 CODE-STORAGE BYTE-VIEW {: band:ptr :}
    AOT-SHADOW:SITE-N @ 0 ?do
       i SITE-VALUE {: v:n :}
-      band i SITE-AT PLACED + {: at:ptr :}
-      i SITE-KIND REL32? if
-         v at X64ASM:CALL-REL32-OFF + LE:U32!
-      else
-         v at X64ASM:MOV-RI64-IMM-OFF + LE:U64!
+      band i SITE-AT PLACED +  i SITE-KIND FIELD-OFF + {: at:ptr :}
+      i SITE-KIND REL32? if v at LE:U32! else v at LE:U64! then
+   loop ;
+
+\ The same small sort publishes both persistent registries. A key is the
+\ placed byte offset shifted left by eight for SITES, or by one for cells;
+\ its low bits hold the kind. Capture rows need not arrive in placement order.
+: REG-KEY ( n -- n ) REG-STORAGE @ ;
+: REG-SWAP ( n n -- ) {: a:n b:n :}
+   a REG-KEY {: value:n :}
+   b REG-KEY a REG-STORAGE !  value b REG-STORAGE ! ;
+: REG-SIFT ( n n -- ) {: root:n rows:n :}
+   root REG-ROOT !  rows REG-ROWS !
+   begin REG-ROOT @ 2 * 1+ REG-ROWS @ < while
+      REG-ROOT @ 2 * 1+ REG-CHILD !
+      REG-CHILD @ 1+ REG-ROWS @ < if
+         REG-CHILD @ REG-KEY REG-CHILD @ 1+ REG-KEY < if
+            REG-CHILD @ 1+ REG-CHILD ! then then
+      REG-ROOT @ REG-KEY REG-CHILD @ REG-KEY < 0= if exit then
+      REG-ROOT @ REG-CHILD @ REG-SWAP
+      REG-CHILD @ REG-ROOT !
+   repeat ;
+: REG-SORT ( -- )
+   REG-N @ 2 / 1- REG-HI !
+   begin REG-HI @ 0 >= while
+      REG-HI @ REG-N @ REG-SIFT  REG-HI @ 1- REG-HI ! repeat
+   REG-N @ 1- REG-HI !
+   begin REG-HI @ 0 > while
+      0 REG-HI @ REG-SWAP
+      0 REG-HI @ REG-SIFT
+      REG-HI @ 1- REG-HI ! repeat ;
+: REG-ADD ( n -- ) {: value:n :}
+   REG-N @ 1+ REG-STORAGE-RESERVE
+   value REG-N @ REG-STORAGE !
+   1 REG-N +! ;
+: REG-CLEAR ( -- ) 0 REG-N ! ;
+: DATA-CELL! ( n n -- ) {: v:n off:n :}
+   v 0 DATA-STORAGE BYTE-VIEW off + LE:U64! ;
+
+: SITE-REGISTRY ( -- )
+   REG-CLEAR
+   AOT-SHADOW:SITE-N @ 0 ?do
+      i SITE-KIND AOT-SHADOW:DCELL <> if
+         i SITE-KIND REL32? if SNAP-RELOC:SITE-CALL
+            else SNAP-RELOC:SITE-ADDR then {: kind:n :}
+         DICT-SIZE i SITE-AT PLACED + {: off:n :}
+         off REGION >= if s" x64link: placed site outside REGION" REFUSE then
+         off 8 lshift kind or REG-ADD
       then
+   loop
+   REG-N @ SNAP-RELOC:SITE-CAP > if s" x64link: too many placed sites" REFUSE then
+   REG-SORT
+   REG-N @ SNAP-RELOC:SITE-N-CELL DATA-CELL!
+   REG-N @ 0 ?do
+      i REG-KEY {: key:n :}
+      i 0 > if
+         i 1- REG-KEY 8 rshift key 8 rshift = if
+            s" x64link: duplicate placed site" REFUSE then then
+      SNAP-RELOC:SITE-ROWS-OFF i SNAP-RELOC:SITE-ROW-BYTES * + {: at:n :}
+      key 8 rshift 0 DATA-STORAGE BYTE-VIEW at + LE:U32!
+      key $FF and 0 DATA-STORAGE BYTE-VIEW at SNAP-RELOC:SITE-KIND-OFF + + c!
    loop ;
 
 \ ---- the code cells --------------------------------------------------------------
@@ -518,6 +633,11 @@ private
 : CELL-NAME$ ( n -- ptr u8 n ) CELL-META AOT-WINDOW:XTOFF-VALUE-MASK and 1- POOL-NAME$ ;
 : XT@ ( n n -- n ) {: x:n f:n :}
    AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + f + LE:U32@ ;
+: XT-TARGET-VA ( n -- n ) {: target:n :}
+   target SITE-SHADOW-TAG and SITE-SHADOW-TAG = if
+      target SITE-TARGET-MASK and SHADOW-VA exit
+   then
+   PRIMS target + 0 REC@ ;
 
 : NO-XT ( n -- ) {: c:n :}
    s" x64link: address-cell row " type c .INT
@@ -542,11 +662,128 @@ private
       i CODE-CELL? if
          CUR @ AOT-SHADOW:XT-N @ < if CUR @ 0 XT@ i = else false then
          0= if i NO-XT then
-         CUR @ 4 XT@ ROUTINE-OF 0 < if i CUR @ 4 XT@ CELL-ROUTINELESS then
+         CUR @ 4 XT@ {: target:n :}
+         target SITE-SHADOW-TAG and SITE-SHADOW-TAG <> if
+            target ROUTINE-OF 0 < if i target CELL-ROUTINELESS then
+         then
          1 CUR +!
       then
       i NAMED-CELL? if i CELL-NAME$ KERNEL-BODY 0 < if i CELL-UNCARRIED then then
    loop ;
+
+\ The captured DATA follows the index and must stay below the kernel's heap
+\ ceiling. This is the write-time twin of the ARM64 boot relocation bound.
+: ?DATA ( -- )
+   HEAP-FLOOR X64KERNEL:DP-CEILING > if
+      s" x64link: the window DATA does not fit under the DP ceiling" REFUSE
+   then
+   HEAP-FLOOR DATA-END !
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i CELL-AT {: off:n :}
+      off 0 < off X64LAYOUT:DATA-SIZE CELL - > or if
+         s" x64link: address cell outside DATA" REFUSE then
+      off CELL + DATA-END @ max DATA-END !
+   loop ;
+
+: DATA-BYTES! ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
+   a 0 DATA-STORAGE BYTE-VIEW off + u BYTE-COPY ;
+
+: WINDOW-CELLS ( -- )
+   0 VAL-AT !
+   AOT-WINDOW:BM-LEN @ AOT-WINDOW:CELL-BITS * 0 ?do
+      AOT-WINDOW:BM-BUF@ i AOT-WINDOW:CELL-BITS / + c@
+      i AOT-WINDOW:CELL-BITS mod rshift 1 and 0<> if
+         AOT-WINDOW:VAL-BUF@ VAL-AT @ +  AOT-WINDOW:VAL-LEN @ VAL-AT @ -
+         AOT-WINDOW:CELL-V@ {: v:n w:n :}
+         v DATA-AT i AOT-WINDOW:CELL-BYTES * + DATA-CELL!
+         VAL-AT @ w + VAL-AT !
+      then
+   loop ;
+
+: CELL-DECL ( n bool -- ) {: off:n data?:bool :}
+   off 0 < off X64LAYOUT:DATA-SIZE CELL - > or if
+      s" x64link: address cell outside DATA" REFUSE then
+   off 1 lshift  data? if 1 or then REG-ADD ;
+
+: CELL-ROW! ( n -- ) {: key:n :}
+   key 1 rshift  key 1 and 0<> if SNAP-RELOC:XTCELL-DATA-TAG or then
+   REG-OUT @ cells CELL-BASE + DATA-CELL!
+   1 REG-OUT +! ;
+
+: FIXED-CELLS ( -- )
+   HOOK-CELL false CELL-DECL
+   COMPILE-PREFLIGHT-CELL false CELL-DECL
+   TOP-HOOK-CELL false CELL-DECL
+   EXIT-HOOK-CELL false CELL-DECL
+   NCOMP-DISPATCH:XT-CELL false CELL-DECL
+   NCOMP-DISPATCH:FIXED-SHADOW-CELL false CELL-DECL
+   NCOMP-DISPATCH:DOES-SHADOW-CELL false CELL-DECL
+   APP-ENTRY:XT-CELL false CELL-DECL
+   LASTC-CELL false CELL-DECL
+   ENGINE-MAIN:XT-CELL false CELL-DECL
+   PROVIDED-XT:EVALUATE-CELL false CELL-DECL
+   NCOMP-DISPATCH:DECL-CELL true CELL-DECL
+   NCOMP-DISPATCH:TARGET-DECL-CELL true CELL-DECL ;
+
+\ Reserve a DATA backing for the largest possible deduplicated declaration
+\ set before relocating the captured window. The ordinary small set stays in
+\ the fixed boot rows; a larger set lives directly after the name index.
+: CELL-PLAN ( -- )
+   REG-CLEAR FIXED-CELLS
+   REG-N @ AOT-WINDOW:XTOFF-N @ + CELL-CAP ! ;
+
+: CELL-REGISTRY ( -- )
+   REG-CLEAR FIXED-CELLS
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i CELL-AT
+      i CELL-META AOT-WINDOW:XTOFF-DATA-TAG and 0<> CELL-DECL
+   loop
+   REG-SORT
+   0 REG-OUT !
+   REG-N @ 0 ?do
+      i REG-KEY {: key:n :}
+      i 0 > if
+         i 1- REG-KEY 1 rshift key 1 rshift = if
+            i 1- REG-KEY key <> if
+               s" x64link: address cell has two kinds" REFUSE then
+         else key CELL-ROW! then
+      else key CELL-ROW! then
+   loop
+   REG-OUT @ SNAP-RELOC:XTCELL-N-CELL DATA-CELL!
+   ADDRESS-CELLS:MAGIC SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MAGIC-FIELD + DATA-CELL!
+   CELL-BASE SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:BASE-FIELD + DATA-CELL!
+   CELL-CAP @ ADDRESS-CELLS:BOOT-CAP max
+      SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:CAP-FIELD + DATA-CELL!
+   0 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:MODE-FIELD + DATA-CELL! ;
+
+: ROW-VALUE ( n -- n ) {: c:n :}
+   c CODE-CELL? if CUR @ 4 XT@ XT-TARGET-VA  1 CUR +! exit then
+   c NAMED-CELL? if c CELL-NAME$ KERNEL-BODY BODY-VA exit then
+   c CELL-META AOT-WINDOW:XTOFF-VALUE-MASK and {: v:n :}
+   v 0= if 0 exit then
+   X64LAYOUT:DATA-VA VA>N DATA-AT + v + 1- ;
+
+: DATA-BAND ( -- )
+   DATA-END @ CELL 1- + CELL / {: ncells:n :}
+   ncells 1 max DATA-STORAGE-RESERVE
+   ncells 0 ?do 0 i DATA-STORAGE ! loop
+   X64LAYOUT:DATA-VA VA>N HEAP-FLOOR + DP-CELL DATA-CELL!
+   HEAP-FLOOR BOOT-LAYOUT:HEAP-START-CELL DATA-CELL!
+   WIDN WIDN-CELL DATA-CELL!
+   T0 AOT-CELLS:T0-CELL DATA-CELL!
+   INDEX-VA HIDXP-CELL DATA-CELL!
+   CLAIMS HIDX:CLAIMS DATA-CELL!
+   BITS$ PROT-BITS-OFF DATA-BYTES!
+   INDEX$ INDEX-OFF DATA-BYTES!
+   WINDOW-CELLS
+   0 CUR !
+   AOT-WINDOW:XTOFF-N @ 0 ?do i ROW-VALUE i CELL-AT DATA-CELL! loop
+   CELL-REGISTRY
+   SITE-REGISTRY
+   DICT-SIZE TIER-PROV:TABLE-OFF DATA-CELL!
+   DICT-SIZE CODE-END @ + TIER-PROV:TABLE-OFF CELL + DATA-CELL!
+   1 TIER-PROV:TABLE-OFF 2 cells + DATA-CELL!
+   1 TIER-PROV:N-CELL DATA-CELL! ;
 
 public
 
@@ -562,6 +799,8 @@ public
    0 NAME-AT !
    PLACE-ALL
    ?FITS
+   CELL-PLAN
+   ?DATA
    ?SITES
    ?CELLS
    RESERVE
@@ -570,7 +809,8 @@ public
    WINDOW-RECS
    PROTECT
    INDEX
-   LINK-SITES ;
+   LINK-SITES
+   DATA-BAND ;
 
 \ The image xt address-cell row n's cell holds when it holds code: the entry of
 \ the shipped record its xt row names, or of the kernel body it names; -1 for a
@@ -579,9 +819,17 @@ public
    c NAMED-CELL? if c CELL-NAME$ KERNEL-BODY BODY-VA exit then
    c CODE-CELL? 0= if -1 exit then
    AOT-SHADOW:XT-N @ 0 ?do
-      i 0 XT@ c = if PRIMS i 4 XT@ + 0 REC@ unloop exit then
+      i 0 XT@ c = if i 4 XT@ XT-TARGET-VA unloop exit then
    loop
    -1 ;
+
+\ The .names sidecar uses offsets within the linked REGION code band, the
+\ same coordinate its reader uses for a code blob. Anonymous captured routines
+\ have no dictionary row, but retain their shadow row and can still be named
+\ by the build-side sidecar.
+: NAMES-SPAN ( n -- n n ) {: r:n :}
+   r PLACE-STORAGE @ r SH-ENTRY +
+   r SH-LEN r SH-ENTRY - CODE-SPAN:EXACT ;
 
 ;using   \ X64LAYOUT
 ;using

@@ -121,26 +121,12 @@ private
 : REAL-RECORD-CODE-OFF ( -- n ) C2-WID s" WITH-RECORD" PACKAGE-CODE-OFF ;
 : REAL-FIELD-CODE-OFF ( -- n ) C2-WID s" WITH-FIELD" PACKAGE-CODE-OFF ;
 
-: TRANSLATE-FIXED ( ptr n n -- ) {: host:ptr count:n :}
-   NATIVE-LAYOUT:CURRENT DATA-START NATIVE-LAYOUT:CHECK
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW {: row:ptr :}
-      row @ {: pair:n :}
-      \ Each row is a 32-bit location followed by 32-bit typed target metadata.
-      pair $FFFFFFFF and {: loc:n :}
-      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
-         host count loc pair 32 rshift AOT-WINDOW:XTOFF-DATA-TAG and 0<>
-         NATIVE-LAYOUT:TRANSLATE
-         pair $FFFFFFFF00000000 and or row !
-      then
-   loop ;
-
 public
 
 : WRITE ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
    dup AOT-OWNED:ORIGIN@ {: origin:n :}
    AOT-FILE:IMPORT
-   host count TRANSLATE-FIXED
+   host count NATIVE-LAYOUT:TRANSLATE-ROWS
    0 0= STDIN? !
    NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
    SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
@@ -158,7 +144,7 @@ public
    REAL-RECORDS-CODE-OFF {: records:n :}
    REAL-RECORD-CODE-OFF {: record:n :}
    REAL-FIELD-CODE-OFF {: field:n :}
-   host count TRANSLATE-FIXED
+   host count NATIVE-LAYOUT:TRANSLATE-ROWS
    0 0= STDIN? !
    NULL$ origin read mut loan init records record field ENGINE-EMIT:FORTH-C2-ORIGIN
    s" hb" path size DRV-EMIT-IMAGE ;

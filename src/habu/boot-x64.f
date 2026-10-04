@@ -1,6 +1,6 @@
 \ boot-x64.f - the x86-64 engine's process entry, package X64BOOT. START, emits
 \ `_start`, the twin of src/habu/habu2.f EM-STARTUP up to its first run-time
-\ state: it maps the guarded VM stacks, the code region and the DATA region,
+\ state: it maps the guarded VM stacks and initializes the code and DATA regions,
 \ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
 \ ARM64 boot fills, publishes the signal stub it carries out of line and
 \ installs the crash handler, then falls through into whatever the stream emits
@@ -30,6 +30,8 @@ require src/core/cell.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
+require src/habu/snapshot-format.f
+require src/habu/snap-decode-x64.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/sys.f
@@ -42,15 +44,18 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
+5 constant PROT-RX                  \ PROT_READ|PROT_EXEC
 \ The rc every boot mapping failure exits with: STACK-GUARD's MAP-FAIL-RC
 \ (src/habu/rt.f) and habu2.f's two fixed-region mappings.
 78 constant MAP-FAIL-RC
 2 constant STDERR
+16 constant CODE-SLOT
 
 \ The three failures the boot names, one label each per image.
 variable STACK-BAD
 variable REGION-BAD
 variable DATA-BAD
+variable SNAP-END
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -119,10 +124,103 @@ variable DATA-BAD
    RDI X64LAYOUT:DATA-VA VA>N IMM,
    X64LAYOUT:DATA-SIZE DATA-BAD @ >LABEL MAP-FIXED, ;
 
+\ A linked image carries its region and DATA in PT_LOADs. The records begin
+\ at r13 and the code pointer and record count are known at write time.
+: LINKED-REGION, ( n n -- ) {: records:n cp:n :}
+   DBASE-REG RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   ENGINE-GPR:X64-CP >R64 cp IMM,
+   ENGINE-GPR:X64-NDICT >R64 records IMM,
+   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
+   NR-MPROTECT SYS,
+   C-B REGION-BAD @ >LABEL JCC, ;
+
+\ The snapshot's REGION and DATA are already mapped at their fixed VAs.
+\ Its trailer supplies the exact live dictionary count and code pointer.
+: SNAP-REGION, ( -- )
+   DBASE-REG RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   ENGINE-GPR:X64-NDICT >R64 R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
+   ENGINE-GPR:X64-CP >R64 DBASE-REG ASM-SINK ENC-MOV-RR
+   ENGINE-GPR:X64-CP >R64 RCX ASM-SINK ENC-ADD-RR
+   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
+   NR-MPROTECT SYS,
+   C-B REGION-BAD @ >LABEL JCC, ;
+
+\ Reject a malformed appended frame before the decoder reads any RX payload.
+\ R8 is the immutable cold text end and R9 points to the final 48-byte
+\ trailer; R10/R11 are the exact heap extent and wire form for the decoder.
+: SNAP-FRAME, ( label label -- ) {: bad:label badver:label :}
+   LBL LBL LBL {: framed:label legacy:label versioned:label :}
+   R8 SNAP-END @ >LABEL MOVABS,
+   RCX RBASE-REG $60 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R8 ASM-SINK ENC-MOV-RR  RAX RBASE-REG ASM-SINK ENC-SUB-RR
+   RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX SNAP-TRL-LEGACY-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX SNAP-TRL-BYTES SNAP-TRL-LEGACY-BYTES - >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B legacy JCC,
+   R9 RBASE-REG SNAP-TRL-BYTES X64LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
+   R9 RCX ASM-SINK ENC-ADD-RR
+   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RDX SNAP-MAGIC IMM,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-E versioned JCC,
+   legacy LBL,
+   R9 RBASE-REG SNAP-TRL-LEGACY-BYTES X64LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
+   R9 RCX ASM-SINK ENC-ADD-RR
+   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RDX SNAP-MAGIC IMM,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-E badver JCC,
+   bad JMP,
+   versioned LBL,
+   RAX R9 SNAP-TRL-VERSION MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX SNAPSHOT-FORMAT:VERSION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE badver JCC,
+   R11 R9 SNAPSHOT-FORMAT:HEAP-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
+   R11 SNAPSHOT-FORMAT:HEAP-GRID >IMM8 ASM-SINK ENC-CMP-RI8  C-E framed JCC,
+   R11 SNAPSHOT-FORMAT:HEAP-RAW >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   framed LBL,
+   RAX R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RAX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DICT-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
+   RAX X64LAYOUT:CODE-CEILING >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RAX CODE-SLOT 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
+   \ ELF64's fifth/sixth headers must carry exactly the saved fixed spans.
+   RCX RBASE-REG $130 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $140 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $148 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX REGION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RCX RBASE-REG $168 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX X64LAYOUT:DATA-VA VA>N IMM,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $178 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RCX RBASE-REG $180 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX X64LAYOUT:DATA-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RAX R9 SNAP-TRL-DATALEN MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
+   RAX X64LAYOUT:DATA-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RCX R9 ASM-SINK ENC-MOV-RR  RCX R8 ASM-SINK ENC-SUB-RR
+   RAX DATA-START >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   R10 RAX DP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX X64LAYOUT:DATA-VA VA>N DATA-START + IMM,
+   R10 RCX ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RCX X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - + IMM,
+   R10 RCX ASM-SINK ENC-CMP-RR  C-A bad JCC,
+   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-MR ;
+
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
 \ the data stack's extent, the argument vector ([rsp] = argc, argv at rsp + 8,
 \ envp past argv's null) and the heap floor with the DP that starts at it.
-: DATA-INIT, ( -- )
+: DATA-INIT, ( bool -- ) {: heap:bool :}
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
    DSTACK-REG STACK-ABI:BASE-CELL CELL!
@@ -130,8 +228,11 @@ variable DATA-BAD
    RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RAX ARGC-CELL CELL!
    RCX RSP CELL MEM-OFF ASM-SINK ENC-LEA  RCX ARGV-CELL CELL!
    RCX RCX RAX CELL CELL MEM-IDX ASM-SINK ENC-LEA  RCX ENVP-CELL CELL!
-   RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
-   RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL! ;
+   heap if
+      RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
+      RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
+   then
+   RAX 1 IMM,  RAX NCOMP-DISPATCH:TIER-CELL CELL! ;
 
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.
@@ -192,6 +293,9 @@ variable DATA-BAD
 : PUBLISH-STUB, ( label -- ) {: stub:label :}
    RAX stub MOVABS,  RAX SIGNAL-ABI:STUB-CELL CELL!
    RAX FD-WORD-VA IMM,  RAX SIGNAL-ABI:FD-PTR-CELL CELL! ;
+
+: PUBLISH-FLOOR, ( label -- )
+   RAX swap MOVABS,  RAX FLOORREC-CELL CELL! ;
 
 \ The kernel's own struct sigaction on x86-64, which is not glibc's: the
 \ handler, the flags, the restorer, then the blocked mask, SIGSET-BYTES wide,
@@ -372,6 +476,36 @@ $F constant NIBBLE
    RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-CMP-RI32  C-B hit JCC,
    next LBL, ;
 
+\ A data access through the page below an owned stack can resume at the
+\ kernel's underdepth throw entry. An instruction fetch in that page has RIP
+\ there too, outside both executable intervals, and remains a bounds failure.
+: DATA-RECOVER, ( -- )
+   LBL LBL LBL LBL LBL {: next:label owned:label check:label resume:label done:label :}
+   RCX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E next JCC,
+   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX TEXT-REG ASM-SINK ENC-CMP-RR  C-B check JCC,
+   RCX RDI CODE-END-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B owned JCC,
+   check LBL,
+   RCX REGION-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B next JCC,
+   RCX REGION-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE next JCC,
+   owned LBL,
+   RAX RDI STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E next JCC,
+   RAX STACK-ABI:PAGE-BYTES 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE next JCC,
+   RCX RSI ASM-SINK ENC-MOV-RR  RCX RAX ASM-SINK ENC-SUB-RR
+   RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-CMP-RI32  C-B resume JCC,
+   next LBL,  done JMP,
+   resume LBL,
+   RAX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET
+   done LBL, ;
+
 \ Classify a SIGSEGV or SIGBUS from Habu's own code by the three VM stacks,
 \ crash.f's order; any other signal or address goes on to `dump`.
 : GUARDS, ( label -- ) {: dump:label :}
@@ -384,6 +518,7 @@ $F constant NIBBLE
    RAX HABU-SPAN >IMM32 ASM-SINK ENC-CMP-RI32  C-AE dump JCC,
    RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
    RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
+   DATA-RECOVER,
    [: RAX RDI STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
    STACK-ABI:BASE-CELL dhit GUARD-CASE,
    [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
@@ -430,6 +565,7 @@ $F constant NIBBLE
    INFO-REG RSI ASM-SINK ENC-MOV-RR
    UC-REG RDX ASM-SINK ENC-MOV-RR
    TEXT-REG TEXT-BASE,
+   REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
    dump GUARDS,
    dump LBL,
    head hex DUMP,
@@ -447,30 +583,107 @@ $F constant NIBBLE
    SIGFPE SA-SIGINFO at rest SIGACTION,
    SIGSEGV SA-SIGINFO at rest SIGACTION, ;
 
-public
-
-\ Emit `_start`. The ELF entry is the text's byte 0, so it begins the stream.
-\ The crash handler goes in once the stacks it classifies are published; it,
-\ its restorer and the signal stub sit behind the jump with the failures.
-: START, ( -- )
+\ Shared open and close of both startup paths.
+: OPEN, ( -- )
    LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !
-   LBL LBL LBL LBL {: booted:label crash:label rest:label stub:label :}
    RBASE-REG TEXT-BASE,
-   STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK,
-   CODE-REGION,
-   DATA-REGION,
-   DATA-INIT,
+   STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK, ;
+
+: SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
    stub PUBLISH-STUB,
    FRAME-STACKS,
-   crash rest INSTALL-CRASH,
-   booted JMP,
+   crash rest INSTALL-CRASH, ;
+
+: CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
-   REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
-   DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
    booted LBL, ;
+
+public
+
+\ The caller binds this after the immutable text-site footer.
+: TEXT-END, ( -- ) SNAP-END @ >LABEL LBL, ;
+
+: START, ( label label -- ) {: floor:label code-end:label :}
+   LBL LBL LBL LBL {: booted:label crash:label rest:label stub:label :}
+   OPEN,
+   CODE-REGION,
+   DATA-REGION,
+   true DATA-INIT,
+   floor PUBLISH-FLOOR,
+   RAX code-end MOVABS,  RAX CODE-END-CELL CELL!
+   crash rest stub SETTLE,
+   booted JMP,
+   REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
+   DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+: LINKED-START, ( n n -- ) {: records:n cp:n :}
+   LBL LBL LBL LBL {: booted:label crash:label rest:label stub:label :}
+   OPEN,
+   records cp LINKED-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   crash rest stub SETTLE,
+   booted JMP,
+   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+\ Full-engine entry accepts either its cold RX extent or an appended snapshot
+\ frame. The snapshot's REGION and DATA prefixes are already loaded at their
+\ fixed addresses; only the heap needs materialization before ENGINE-MAIN.
+: SNAP-START, ( n n label [ -- ] -- ) {: records:n cp:n floor:label hidx :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: booted:label crash:label rest:label stub:label
+      cold:label ready:label bad:label badver:label :}
+   LBL SNAP-END !
+   OPEN,
+   RAX RBASE-REG $60 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX REGION-OFF >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
+   RCX SNAP-END @ >LABEL MOVABS,
+   RCX RBASE-REG ASM-SINK ENC-SUB-RR
+   RCX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E cold JCC,
+   C-B bad JCC,
+   bad badver SNAP-FRAME,
+   bad X64SNAP:DECODE,
+   SNAP-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   hidx execute
+   ready JMP,
+   cold LBL,
+   records cp LINKED-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   ready LBL,
+   floor PUBLISH-FLOOR,
+   crash rest stub SETTLE,
+   booted JMP,
+   bad S\" hb: malformed snapshot\n" 79 FAIL,
+   badver S\" hb: unsupported snapshot version\n" 80 FAIL,
+   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+\ APP-ENTRY is a saved application's entry; otherwise run ENGINE-MAIN. A word
+\ that returns exits successfully, while an image with neither entry is broken.
+: ENTRY, ( -- )
+   LBL LBL LBL {: go:label none:label exit:label :}
+   RAX RBASE-REG APP-ENTRY:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE go JCC,
+   RAX RBASE-REG ENGINE-MAIN:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E none JCC,
+   go LBL,
+   RAX ASM-SINK ENC-CALL-REG
+   RAX RBASE-REG EXIT-HOOK-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E exit JCC,
+   RCX ZERO-REG,  RCX EXIT-HOOK-CELL CELL!
+   RAX ASM-SINK ENC-CALL-REG
+   exit LBL,
+   RDI ZERO-REG,  NR-EXIT-GROUP SYS,
+   none S\" hb: no entry\n" ENGINE-ERROR:AOT-SEED FAIL, ;
 
 ;using   \ X64LAYOUT
 ;using

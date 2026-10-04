@@ -46,10 +46,10 @@
 \ routine, which the refusal names by the definer, a code cell whose xt row is
 \ gone, a code cell whose xt row names the package row, and a protected-wid row
 \ outside the window. Four the capture refuses
-\ before any layout, because the shadow keys every routine, target and code cell
-\ by the record row the capture ships: a live private word whose routine no
-\ shipped record carries, a shadow call to a private word the capture strips
-\ and one to a retired word, and a code cell holding a quotation's entry.
+\ before any layout, because a reached shadow target must have a native
+\ routine: calls to tier-0 and retired words, and a code cell holding a
+\ quotation's entry. A live
+\ private native routine is linked without publishing a dictionary name.
 \
 \ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
 \ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
@@ -74,12 +74,33 @@ public
 : MODE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
    false ;
+variable IMAGE-MODE
+1024 constant IMAGE-CAP
+create IMAGE-PATH IMAGE-CAP allot
+variable IMAGE-PATH-U
+: IMAGE-PATH$ ( -- ptr u8 n ) IMAGE-PATH IMAGE-PATH-U @ ;
+: SAVE-IMAGE ( -- )
+   s" image" MODE?  s" stripimage" MODE? or 0= if exit then
+   SCRIPT-ARGC 2 <> if s" x86-64-link-records: image path required" 64 die then
+   1 SCRIPT-ARGV$ {: path:ptr size:n :}
+   size IMAGE-CAP > if s" x86-64-link-records: image path too long" 64 die then
+   path IMAGE-PATH size BYTE-COPY
+   size IMAGE-PATH-U !
+   1 IMAGE-MODE ! ;
 \ The determinism child puts a record, a wordlist and a DATA cell ahead of it all.
 : SHIFT$ ( -- ptr u8 n )
    s" shift" MODE? if s" variable SHIFT-CELL wordlist drop" exit then
    s" " ;
 \ What a refusal child adds to the window.
 : EXTRA$ ( -- ptr u8 n )
+   s" stripimage" MODE? if
+      s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ; : IMAGE-ENTRY ( -- ) 6 USER 19 = if 42 . else 99 . then ; : IMAGE-ENTRY! ( -- ) ['] IMAGE-ENTRY data-base APP-ENTRY:XT-CELL + xt! ; IMAGE-ENTRY!"
+      exit
+   then
+   s" image" MODE? if
+      s" : IMAGE-ENTRY ( -- ) 42 . ; : IMAGE-ENTRY! ( -- ) ['] IMAGE-ENTRY data-base APP-ENTRY:XT-CELL + xt! ; IMAGE-ENTRY!"
+      exit
+   then
    s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
    s" strip" MODE? if s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
    s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
@@ -87,17 +108,23 @@ public
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
    s" quot" MODE? if s" : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
+   s" farcell" MODE? if s" ' LEAF data-base $800000 + xt!" exit then
    s" " ;
 SHIFT$ evaluate
 ;package
 
+\ The image mode exercises the complete source writer. It must load before
+\ the ARM64 code layer used by the capture fixture.
+require tools/native-emit-x64.f
 require test/x86-64-boot-harness.f
+require lib/fs-mutate.f
 require lib/le.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
+require src/habu/address-cells.f
 require src/habu/aot-capture.f
 require src/habu/aot-shadow.f
 require src/compiler/native/string.f
@@ -110,12 +137,15 @@ require src/core/sha256.f
 require lib/process.f
 require lib/process-argv.f
 
+X64LT:SAVE-IMAGE
+
 \ A binding is a multi-cell value, which only a compiled body may hold.
 package X64LT
 public
 : OPEN-X64 ( -- ) X64ABI:BINDING NSHADOW:OPEN ;
 ;package
 X64LT:OPEN-X64
+DATA-START ADDRESS-CELLS:KEEP-BELOW
 AOT-ARM:WINDOW-OPEN
 NSTR:WINDOW-OPEN
 
@@ -158,6 +188,11 @@ using AOT-BUF
 : IMG ( n -- n ) X64LINK:PRIMS + ;
 : RF@ ( n n -- n ) {: k:n f:n :} X64LINK:DICT$ drop k DREC * + f + LE:U64@ ;
 : NAME$ ( n -- ptr u8 n ) X64LINK:REC-NAME$ ;
+: USER-REC ( -- n )
+   -1
+   X64LINK:RECORDS 0 ?do
+      i NAME$ s" USER" STR= if drop i leave then
+   loop ;
 : BAND ( n -- ptr u8 ) {: va:n :} X64LINK:CODE$ drop va X64LINK:CODE-VA - + ;
 : SH@ ( n n -- n ) {: r:n f:n :}
    AOT-SHADOW:REC-BUF@ r AOT-SHADOW:REC-ROW * + f + LE:U32@ ;
@@ -399,7 +434,8 @@ using AOT-BUF
    a data-base BYTE-VIEW - DATA-VA VA>N + AOT-ARM:D0 @ - {: off:n :}
    X64LAYOUT:DATA-VA VA>N X64LINK:DATA-AT + {: base:n :}
    va IMM@ base off + T=
-   X64LINK:DATA-AT X64LINK:HEAP-FLOOR >= TTRUE
+   X64LINK:DATA-AT X64LINK:INDEX-END >= TTRUE
+   X64LINK:HEAP-FLOOR X64LINK:DATA-AT >= TTRUE
    X64LINK:DATA-AT AOT-ARM:D0 @ - 7 and 0 T= ;
 
 : CELL-CASE ( -- )
@@ -418,6 +454,48 @@ using AOT-BUF
    loop {: n:n :}
    n 0 >= TTRUE
    n X64LINK:CELL-XT s" negate" KENTRY T= ;
+
+\ A linked image must retain declarations for a later AOT capture of its own
+\ REGION. A patched instruction with no SITES row cannot contribute a closure;
+\ a resolved xt whose cell lost its declaration cannot be recaptured safely.
+: HAS-IMAGE-SITE? ( ptr u8 n n -- bool ) {: data:ptr off:n kind:n :}
+   data SNAP-RELOC:SITE-N-CELL + LE:U64@ {: count:n :}
+   count SNAP-RELOC:SITE-CAP > if 0 0<> exit then
+   count 0 ?do
+      data SNAP-RELOC:SITE-ROWS-OFF + i SNAP-RELOC:SITE-ROW-BYTES * + {: row:ptr :}
+      row LE:U32@ off =  row SNAP-RELOC:SITE-KIND-OFF + c@ kind = and if
+         0 0= unloop exit
+      then
+   loop
+   0 0<> ;
+
+: HAS-IMAGE-CELL? ( ptr u8 n -- bool ) {: data:ptr off:n :}
+   data SNAP-RELOC:XTCELL-N-CELL + LE:U64@ {: count:n :}
+   count ADDRESS-CELLS:BOOT-CAP > if 0 0<> exit then
+   count 0 ?do
+      data ADDRESS-CELLS:BOOT-OFF + i cells + LE:U64@
+         SNAP-RELOC:XTCELL-OFF-MASK and off = if 0 0= unloop exit then
+   loop
+   0 0<> ;
+
+: REGISTRY-CASE ( -- )
+   s" linked call, address and xt declarations survive in image DATA" T-LABEL
+   X64LINK:DATA$ {: data:ptr size:n :}
+   size ADDRESS-CELLS:BOOT-OFF > TTRUE
+   data SNAP-RELOC:SITE-N-CELL + LE:U64@ 0 > TTRUE
+   data SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:MAGIC-FIELD + LE:U64@
+      ADDRESS-CELLS:MAGIC T=
+   W-CALLER AOT-SHADOW:CALL SITE-IN SITE-VA X64LINK:REGION-VA -
+      SNAP-RELOC:SITE-CALL data -rot HAS-IMAGE-SITE? TTRUE
+   W-TICK AOT-SHADOW:CODE SITE-IN SITE-VA X64LINK:REGION-VA -
+      SNAP-RELOC:SITE-ADDR data -rot HAS-IMAGE-SITE? TTRUE
+   data APP-ENTRY:XT-CELL HAS-IMAGE-CELL? TTRUE ;
+
+: NAMES-CASE ( -- )
+   s" a sidecar span names the placed x64 routine rather than the host blob" T-LABEL
+   W-LEAF ROW-OF X64LINK:NAMES-SPAN {: off:n raw:n :}
+   off W-LEAF IMG ENTRY X64LINK:CODE-VA - T=
+   raw W-LEAF IMG 8 RF@ T= ;
 
 \ ---- the index, read by the kernel ---------------------------------------------
 \ The stream KERNEL opened becomes an image: the writer's records at the region
@@ -537,17 +615,59 @@ variable RC
    said TTRUE ;
 
 : STRAY-CASE ( -- )
-   s" a call to a window word with no x86-64 routine, a tier-0 word, is refused by the callee's name" T-LABEL
-   s" stray" s" window record BARE has no x86-64 routine"
-   s" x64link: a code record the capture's shadow carries no routine for" REFUSED ;
+   s" a call to a tier-0 word with no x86-64 routine is refused by the callee's name" T-LABEL
+   s" stray" s" names window record BARE"
+   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
 : STRIP-CASE ( -- )
-   s" a capture that strips a live private word no shipped record carries refuses its routine by name" T-LABEL
-   s" strip" s" routine of HELPER is live"
-   s" aot-capture: a live shadow routine no shipped record carries" REFUSED ;
+   s" a live private routine links without exposing its dictionary name" T-LABEL
+   s" strip" RUN-CHILD
+   RC @ 0<> if SHOW-CHILD then
+   RC @ 0 T=
+   OUT OUT-U @ s" x86-64-link-records: private linked" CONTAINS? TTRUE ;
+
+: FAR-CELL-CASE ( -- )
+   s" a declared fixed DATA cell beyond the captured heap survives x64 placement" T-LABEL
+   s" farcell" RUN-CHILD
+   RC @ 0<> if SHOW-CHILD then
+   RC @ 0 T=
+   OUT OUT-U @ s" x86-64-link-records: distant cell linked" CONTAINS? TTRUE ;
+
+: FAR-CELL-LINKED ( -- )
+   X64LINK:DATA$ {: data:ptr size:n :}
+   size $800000 CELL + >= if
+      data $800000 + LE:U64@ W-LEAF IMG ENTRY =
+   else false then
+   0= if s" x86-64-link-records: distant cell was not preserved" 74 die then
+   s" x86-64-link-records: distant cell linked" type cr ;
+
+: STRIP-LINKED ( -- )
+   USER-REC {: rec:n :}
+   rec 0 < if s" x86-64-link-records: USER lost its dictionary row" 74 die then
+   rec X64LINK:PRIMS - {: shipped:n :}
+   shipped ROW-OF {: named:n :}
+   named 0 < if s" x86-64-link-records: USER lost its routine" 74 die then
+   named X64LINK:NAMES-SPAN drop X64LINK:CODE-VA +
+      rec ENTRY <> if
+      s" x86-64-link-records: USER dictionary entry names another routine" 74 die
+   then
+   -1
+   AOT-SHADOW:REC-N @ 0 ?do
+      i 0 SH@ AOT-SHADOW:ANON-REC and 0<> if drop i leave then
+   loop {: anon:n :}
+   anon 0 < if s" x86-64-link-records: private routine was lost" 74 die then
+   shipped AOT-SHADOW:CALL SITE-IN {: site:n :}
+   site 0 < if s" x86-64-link-records: private call was lost" 74 die then
+   site SITE-VA {: va:n :}
+   va BYTE@ $E8 <> if s" x86-64-link-records: private call changed form" 74 die then
+   anon X64LINK:NAMES-SPAN drop X64LINK:CODE-VA +
+      va LANDS <> if
+      s" x86-64-link-records: private call names another routine" 74 die
+   then
+   s" x86-64-link-records: private linked" type cr ;
 
 : CALLEE-CASE ( -- )
-   s" a shadow call to a window word the capture strips is refused by the callee's name" T-LABEL
+   s" a shadow call without a native routine is refused by the callee's name" T-LABEL
    s" callee" s" names window record LOW"
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
@@ -619,6 +739,11 @@ variable RC
 
 public
 
+: IMAGE-CASE ( -- )
+   AOT-FILE:OWN dup NATIVE-LAYOUT:CURRENT IMAGE-PATH$ NATIVE-EMIT:WRITE
+   AOT-OWNED:CLOSE
+   IMAGE-PATH$ CHMOD-X ;
+
 : RUN ( -- )
    CAPTURE
    NSHADOW:CLOSE
@@ -627,8 +752,11 @@ public
    s" pkgsite" MODE? if W-CALLER AOT-SHADOW:CALL SITE-IN FORGE-SITE then
    s" doessite" MODE? if W-CONST AOT-SHADOW:CALL SITE-IN FORGE-SITE then
    s" pkgcell" MODE? if FORGE-XT then
+   IMAGE-MODE @ 0<> if IMAGE-CASE exit then
    KERNEL
    X64LINK:LAYOUT
+   s" strip" MODE? if STRIP-LINKED exit then
+   s" farcell" MODE? if FAR-CELL-LINKED exit then
    REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
@@ -648,10 +776,13 @@ public
    CLAUSE-CASE
    DATA-CASE
    CELL-CASE
+   REGISTRY-CASE
+   NAMES-CASE
    INDEX-IMAGE
    SHIFT-CASE
    STRAY-CASE
    STRIP-CASE
+   FAR-CELL-CASE
    CALLEE-CASE
    RETIRED-CASE
    WID-FORGED-CASE

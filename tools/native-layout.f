@@ -1,6 +1,7 @@
 \ The fixed address-bearing engine slots that a native build may carry.
 \ This module loads once against the host layout and again in the target writer.
 require src/habu/layout.f
+require src/habu/aot-decl.f
 
 package NATIVE-LAYOUT
 private
@@ -17,6 +18,8 @@ create SLOTS
    NCOMP-DISPATCH:DOES-SHADOW-CELL ,     0 ,
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
+   PROVIDED-XT:EVALUATE-CELL ,          0 ,
+   ENGINE-MAIN:XT-CELL ,                0 ,
    APP-ENTRY:XT-CELL ,                  0 ,
    REPLH-CELL ,                         0 ,
    BPWBASE-CELL ,                       1 ,
@@ -58,6 +61,19 @@ public
          SLOTS i OFFSET unloop exit
       then
    loop
+   s" native-build: unknown fixed cell offset " type off .
    REFUSE ;
+
+: TRANSLATE-ROWS ( ptr n n -- ) {: host:ptr count:n :}
+   CURRENT DATA-START CHECK
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW {: row:ptr :}
+      row @ {: pair:n :}
+      pair $FFFFFFFF and {: loc:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
+         host count loc pair 32 rshift AOT-WINDOW:XTOFF-DATA-TAG and 0<>
+         TRANSLATE pair $FFFFFFFF00000000 and or row !
+      then
+   loop ;
 
 ;package

@@ -167,18 +167,23 @@ ELF-FIXED-CHECK
 : ELF-DYNAMIC-PHDR, ( -- )
    PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ dup 8 ELF-PHDR, ;
 
-\ A fixed segment the file carries no bytes of: memsz zeroed read-write bytes
-\ at va, where the boot maps the same span MAP_FIXED (src/habu/boot-x64.f
-\ CODE-REGION, and DATA-REGION,). p_offset 0 is congruent to every va here
-\ modulo the alignment, as the kernel requires.
-: ELF-FIXED-PHDR, ( n n -- ) {: va:n memsz:n :}
-   PT-LOAD PF-RW 0 va 0 memsz PROT-PAGE-MAX ELF-PHDR, ;
+\ A linked image carries leading region and DATA bytes; a bare image has
+\ zero-filled fixed segments which its boot maps itself.
+variable ELF-REGION-BYTES
+variable ELF-DATA-BYTES
+
+: ELF-REGION-AT ( -- n ) ELF-TEXT-SIZE @ ELF-RW-SZ + ELF-PAGE-UP ;
+: ELF-DATA-AT ( -- n ) ELF-REGION-AT ELF-REGION-BYTES @ + ELF-PAGE-UP ;
+
+: ELF-FIXED-PHDR, ( n n n n -- ) {: off:n va:n filesz:n memsz:n :}
+   filesz 0= if 0 else off then {: at:n :}
+   PT-LOAD PF-RW at va filesz memsz PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-REGION-PHDR, ( -- )
-   ELF-REGION-VA REGION ELF-FIXED-PHDR, ;
+   ELF-REGION-AT ELF-REGION-VA ELF-REGION-BYTES @ REGION ELF-FIXED-PHDR, ;
 
 : ELF-DATA-PHDR, ( -- )
-   X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE ELF-FIXED-PHDR, ;
+   ELF-DATA-AT X64LAYOUT:DATA-VA ELF-DATA-BYTES @ X64LAYOUT:DATA-SIZE ELF-FIXED-PHDR, ;
 
 \ The loadable segments ascend by address: text, RW tail, region, DATA.
 : ELF-PHDRS, ( -- )
@@ -258,6 +263,23 @@ ELF-FIXED-CHECK
    ELF-DYNAMIC,
    ELF-GOT, ;
 
+\ A caller-owned text span can be larger than the assembler's CODE buffer.
+\ Build only its fixed header and dynamic tail here; the caller streams the
+\ text and page padding between them at the offsets the same header computes.
+: ELF-HEADER-FOR ( n -- )
+   CODELEN !  M-RESET
+   TEXTSZ ELF-TEXT-SIZE !
+   ELF-HDR,
+   ELF-PHDRS,
+   ELF-RX-META,
+   M-HERE MLEN! ;
+
+: ELF-RW-TAIL ( -- )
+   M-RESET
+   ELF-DYNAMIC,
+   ELF-GOT,
+   M-HERE MLEN! ;
+
 : SNAP-EXTRA-PTR ( -- ptr u8 )
    MBUF X64LAYOUT:CODE-OFF + ;
 s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
@@ -265,17 +287,21 @@ s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
 $C0 constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
-: BUILD-ELF ( -- )
-   ASM-CODELEN!  M-RESET
+: ELF-BUILD-SPAN ( ptr u8 n -- ) {: text:ptr bytes:n :}
+   bytes CODELEN !  M-RESET
    CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
    ELF-RX-META,
-   CODE CODELEN @ M-LEN M-BYTES-LEN
+   text bytes M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    ELF-TEXT-SIZE @ ELF-RW-AT,
    M-HERE MLEN! ;
+
+: BUILD-ELF ( -- )
+   ASM-CODELEN!
+   CODE CODELEN @ ELF-BUILD-SPAN ;
 
 : BUILD-IMAGE ( asm -- img )
    ASM-DROP
