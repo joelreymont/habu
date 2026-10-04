@@ -4211,10 +4211,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
-\ MIRROR of src/habu/habu2.f DEF-TRUST:FIND-CAST / REGISTER-CAST. Same seam and
-\ same push sequence as the two above, reaching `checker-defcast` — which proves
-\ the declared retype legal before it records the row, and throws the named
-\ refusal when it is not.
+\ MIRROR of src/habu/habu2.f DEF-TRUST:REGISTER-IDENTITY for `cast:`. Same
+\ seam and same push sequence as the two above, reaching `checker-defcast` —
+\ which proves the declared retype legal before it records the row, and throws
+\ the named refusal when it is not.
 : C-FIND-DEFCAST ( -- )  LBL {: ok :}
    9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,
    13 ok CBNZ,

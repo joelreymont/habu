@@ -21,10 +21,12 @@ CAST: >ENCODING ( n -- encoding )
 5 cells constant SRC-BOM-LEN
 6 cells constant SRC-STORAGE-LEN
 
-\ Only ownership projection is unchecked; all spans are caller-owned.
-TRUSTED: SRC-MINT ( ptr n -- XML:source ) ;
-TRUSTED: SRC-STATE ( XML:source -- XML:source ptr n ) dup ;
-TRUSTED: SRC-CONSUME ( XML:source -- ) drop ;
+\ The token carries the caller-owned header; every span stays caller-owned.
+LINEAR: SRC-MINT ( ptr n -- XML:source )
+LINEAR: SRC-ERASE ( XML:source -- ptr n )
+
+: SRC-STATE ( XML:source -- XML:source ptr n )
+   SRC-ERASE dup SRC-MINT swap ;
 
 : SRC-ORIGINAL$ ( ptr n -- ptr u8 n )
    {: state :}
@@ -183,7 +185,7 @@ public
    storage SRC-MINT ;
 
 : SOURCE-CLOSE ( XML:source -- )
-   SRC-CONSUME ;
+   SRC-ERASE drop ;
 
 : SOURCE-ORIGINAL$ ( XML:source -- XML:source ptr u8 n )
    SRC-STATE SRC-ORIGINAL$ ;

@@ -68,7 +68,7 @@ ENUM message 0
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
 \ Whether a method's JSON text, as >MESSAGE gives it, names this method.
-: METHOD? ( ptr a n ptr u8 n ptr u8 n -- bool )
+: METHOD? ( ptr n n ptr u8 n ptr u8 n -- bool )
    {: st:ptr cap:n m:ptr mu:n name:ptr nu:n :}
    st cap m mu INIT
    NEXT drop
@@ -238,7 +238,7 @@ STRUCTURE envelope 0
 \ Reads the body once - its root, every member of a root object, then its end,
 \ which NEXT answers or refuses with E-JR-TRAILING - and sorts it in place of
 \ the message given. Text that is not JSON throws JR's code first.
-: READ-BODY ( message ptr a n ptr u8 n -- message ptr a n ptr u8 n )
+: READ-BODY ( message ptr n n ptr u8 n -- message ptr n n ptr u8 n )
    {: prior st:ptr cap:n body:ptr len:n :}
    st cap body len INIT
    NEXT {: root:n :}
@@ -254,7 +254,7 @@ STRUCTURE envelope 0
 public
 
 \ One message body, sorted. The storage is JR's, at least JR:STORAGE-BYTES.
-: >MESSAGE ( ptr a n ptr u8 n -- message )
+: >MESSAGE ( ptr n n ptr u8 n -- message )
    {: st:ptr cap:n body:ptr len:n :}
    NOT-JSON st cap body len [: READ-BODY ;] catch {: code:n :}
    2drop 2drop {: m :}

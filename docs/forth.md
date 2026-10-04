@@ -619,8 +619,10 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
     definition with that signature is: the bad-stored-signature diagnostic,
     then the compile-reject rc 70. The first fault names the class, so
     `( ptr -- box )` is this reject, not `E-CAST-FAM`.
-  - Each side is one term (`E-CAST-ARITY`, 7129); a layout value wider than a
-    cell is one term per cell.
+  - Each side is one term over the same stack tail (`E-CAST-ARITY`, 7129);
+    a layout value wider than a cell is one term per cell. The emitted identity
+    preserves the tail, so `( R n -- R u8 )` is valid and `( R n -- S u8 )`
+    is refused.
   - A scope or region variable, a quantifier-bound variable, a scope, or a
     read view, mutable view or loan field anywhere in either term would erase
     or introduce a scope dependency (`E-CAST-SCOPE`, 7151).
@@ -655,6 +657,31 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
   need neither the owner nor a private section: store the projected identity
   and resolve it back through the owner's public words.
+- `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
+  `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
+  `CAST:`, an identity at its call sites, and the one checked way to make a
+  token from a payload or erase one back into it. It is parsed and refused as
+  a cast is first (`E-CAST-FAM`, the bad-signature reject, `E-CAST-ARITY`),
+  then by its own rule (`src/core/checker.f` `LINEAR-CERTIFY`):
+  - One side is a linear type and the other its payload, a non-linear con or a
+    pointer chain ending at one (`E-LINEAR-PAYLOAD`, 7195): two tokens, no
+    token, a type variable, a family, a quotation or an atom is refused.
+  - The current package declared the linear type (`E-LINEAR-OWNER`, 7196).
+    `DEFLINEAR` records the package it runs in, and one declared at top level
+    has no owner, so nothing mints it.
+  - The row has an unqualified name in that package's private section
+    (`E-LINEAR-SCOPE`, 7197). A qualified name would publish into a public
+    wordlist even while the declaring package is private.
+  - The input and output stack tails agree (`E-CAST-ARITY`, 7129), because
+    the emitted identity changes only its explicit payload or token cell.
+
+  After `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok --
+  ptr n )`, the owner's checked words compose the two, `: PEEK ( PKG:tok --
+  PKG:tok n ) ERASE dup @ swap MINT swap ;`, and its public words hand the
+  token out and take it back; a caller holds it under the linear rules.
+  `CAST:` still refuses a linear term, in the owner too (`E-CAST-LINEAR`).
+  test/linear-suite.f runs the engine, the source pre-pass, tools/check.f and
+  a reopened application image.
 - Type, field and variant names are lowercase; generated and project words are
   uppercase.
 - **Raw storage never holds an address.** A `variable`, `create` or `constant`
@@ -884,7 +911,10 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
 - **`DEFLINEAR` for owner and lifetime tokens.** A linear token is nominal and
   noncopyable: `dup`/`over`/`2dup`, `drop`, `@`, `!` and by-value record
   duplication reject when they would duplicate, discard, load or store it; only
-  words whose effect names the linear type create or consume it.
+  words whose effect names the linear type create or consume it, and in checked
+  code only the declaring package's private `LINEAR:` rows make one from a
+  payload or erase one (**Structures And Enums**); a `TRUSTED:` word whose
+  effect names the type is asserted, not checked.
 - **Raw role casts are not validators.** `>LEN`, `>IDX`, `>COUNT`, `>OFF`,
   `>ASM`, `>IMG`, `>SNAP` are trusted identity boundaries; libraries expose
   checked constructors and role helpers so swaps fail under `CHECK!`.
@@ -919,13 +949,14 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   with its own inputs, calls and `exit`, and the enclosing body resumes after
   its `;]`; at most 32 are open at once (**Engine limits ordinary source
   reaches**).
-- **A handle over caller-owned storage is a public `STRUCTURE` plus a
-  `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller**, a checked `ptr PKG:type`.
-  No `TRUSTED:` mint, state and consume leaves: `CAST:` refuses a linear
-  operand, behind a pointer or in a quotation row too (7137 `E-CAST-LINEAR`),
-  so a linear token over caller storage is not expressible; trade the type-level
-  lifetime for a runtime refusal off the definer's zero image
-  (`lib/json-write.f`).
+- **A handle over caller-owned storage is a linear token its package mints
+  and erases, or a checked `ptr PKG:type`.** The token is a `DEFLINEAR` type
+  with `LINEAR:` rows in the owner's private section (**Structures And
+  Enums**), never a `TRUSTED:` mint, state and consume trio: `CAST:` refuses a
+  linear operand, behind a pointer or in a quotation row too (7137
+  `E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
+  `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
+  refusal off the definer's zero image (`lib/json-write.f`).
 - **Structural integers widen, roles do not.** `u8 -> u16 -> u32 -> n/cell/i64`
   widens implicitly when lossless; narrowing and same-width sign changes need an
   explicit conversion; nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`,
@@ -1835,6 +1866,20 @@ the rule.
   another package's family is `E-CAST-OWNER` outside that family's package.
   test/cast-suite.f runs the round trips; test/cast-negative-suite.f pins the
   refusals.
+- **Checked code mints and erases a linear token only in its declaring
+  package's private section.** `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE ( PKG:tok
+  -- ptr n )` certify there. Under `public` they are `E-LINEAR-SCOPE` (7197);
+  in another package, at top level, or for a `DEFLINEAR` declared at top level
+  they are `E-LINEAR-OWNER` (7196); in the owner's private section, a qualified
+  name is `E-LINEAR-SCOPE` after payload and owner checks; distinct stack tails
+  are `E-CAST-ARITY` (7129); and
+  `( PKG:tok -- PKG:tok )`, `( n -- n )`,
+  `( ptr a -- PKG:tok )` or `( [ -- ] -- PKG:tok )` is `E-LINEAR-PAYLOAD`
+  (7195), in the source pre-pass and tools/check.f as well. `linear:` in a
+  checked body is refused and a private row is `E-UNDEFINED` outside its
+  package, so a checked caller gets a token only from the owner's public
+  words; a `TRUSTED:` effect naming the token is asserted, not checked.
+  test/linear-suite.f pins each refusal.
 - **A `DEFTYPE` a defining word hands out sits in the public section.** A
   `does>` body is checked code and may publish a nominal handle directly, but
   the child's stored signature names the type, and a private one does not
