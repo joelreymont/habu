@@ -13,8 +13,8 @@
 \
 \ Every case here therefore reads STRUCTURE and not text: the record at the
 \ parent's index PLUS ONE, the bytes of its name, its wordlist, the two spans'
-\ shared end, and the instruction actually planted at the created word's RET -
-\ decoded, so the opcode and the target are both checked.
+\ shared end, and the instruction actually planted in the created word's return
+\ slot - decoded, so the opcode and the target are both checked.
 \
 \ THE NAME IS STILL A NAME. A wordlist holds at most one live row per folded
 \ name (src/habu/habu1.f WLFIND), and the clause is a row of its parent's
@@ -33,6 +33,7 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require src/habu/layout.f
 require src/habu/address-cells.f
+require src/habu/sites.f
 
 package DOESREC-TEST
 private
@@ -54,6 +55,12 @@ $14000000 constant OPC-B
 $94000000 constant OPC-BL
 $3FFFFFF constant IMM26
 $2000000 constant IMM26-SIGN
+$E9 constant X64-JMP
+$E8 constant X64-CALL
+$C3 constant X64-RET
+6 constant X64-PATCH-BYTES
+5 constant X64-JMP-BYTES
+$80000000 constant X64-DISP-SIGN
 5 constant SUF-LEN
 0 constant GLOBAL-WID
 
@@ -70,6 +77,22 @@ variable WANT-U
    a W32@ IMM26 and  IMM26-SIGN xor IMM26-SIGN -  2 lshift  a + ;
 
 : OPC ( n -- n ) W32@ OPC-MASK and ;
+
+\ A64 replaces the created word's RET with B. x64 keeps a final RET after a
+\ five-byte relative jump, whose signed displacement starts at slot+1.
+: PATCH-AT ( n -- n )
+   HB-TARGET-LINUX-X86-64? if X64-PATCH-BYTES - then ;
+
+: PATCH-OP ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PATCH-AT N>U8 c@ else OPC then ;
+
+: PATCH-TARGET ( n -- n ) {: end:n :}
+   HB-TARGET-LINUX-X86-64? if
+      end PATCH-AT {: at:n :}
+      at 1+ W32@ X64-DISP-SIGN xor X64-DISP-SIGN -
+      at X64-JMP-BYTES + + exit
+   then
+   end TGT ;
 
 : IDX ( ptr u8 n -- n ) XREF-FIND-INDEX ;
 : START ( n -- n ) XREF-REC XREF-START ;
@@ -209,16 +232,22 @@ create ERR IO-CAP allot
    s" the clause record's name is stored out of line" T-LABEL
    a u CLAUSE XREF-REC XREF-EXT? TTRUE ;
 
-\ THE CASE THIS FILE EXISTS FOR: the instruction LDOESPATCH planted at the
-\ created word's RET is a B - never a BL, which would corrupt x30 - and its
-\ target is the clause record's entry.
+\ THE CASE THIS FILE EXISTS FOR: the created word jumps, without linking, to
+\ the clause record's entry. A64 plants B at RET; x64 patches jmp rel32 before
+\ the final RET.
 : ?BRANCH ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n ca:ptr cu:n :}
-   s" the created word's RET holds a branch, not a call" T-LABEL
-   ca cu IDX END OPC  OPC-B  T=
+   s" the created word's return slot holds a branch, not a call" T-LABEL
+   ca cu IDX END PATCH-OP
+   HB-TARGET-LINUX-X86-64? if X64-JMP else OPC-B then T=
    s" ... and it is not a branch-with-link" T-LABEL
-   ca cu IDX END OPC  OPC-BL <>  TTRUE
+   ca cu IDX END PATCH-OP
+   HB-TARGET-LINUX-X86-64? if X64-CALL else OPC-BL then <> TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      s" ... and its return remains after the jump" T-LABEL
+      ca cu IDX END 1- N>U8 c@ X64-RET T=
+   then
    s" ... and it lands on the clause record's entry" T-LABEL
-   ca cu IDX END TGT  da du CLAUSE START  T= ;
+   ca cu IDX END PATCH-TARGET  da du CLAUSE START  T= ;
 
 : ?FINDABLE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u WANT!
@@ -228,15 +257,24 @@ create ERR IO-CAP allot
 : PAD4 ( n -- n )
    3 + -4 and ;
 
+: PAD16 ( n -- n )
+   15 + -16 and ;
+
+: NAME-START ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PAD16 else 4 + then ;
+
+: NAME-PAD ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PAD16 else PAD4 then ;
+
 : ?NAME-PAD ( -- )
    s" DR-MK" CLAUSE NAME$ {: a:ptr u:n :}
    s" the appended clause name starts past both recorded spans" T-LABEL
-   a U8>N  s" DR-MK" IDX END 4 +  T=
-   a U8>N  s" DR-MK" CLAUSE END 4 +  T=
+   a U8>N  s" DR-MK" IDX END NAME-START  T=
+   a U8>N  s" DR-MK" CLAUSE END NAME-START  T=
    s" its padded name is the only code-space tail after the emission" T-LABEL
-   a U8>N u PAD4 + MK-CP @ T=
+   a U8>N u NAME-PAD + MK-CP @ T=
    s" and the bytes outside the name are deterministic zero padding" T-LABEL
-   u PAD4 u ?do a i + c@ 0 T= loop ;
+   u NAME-PAD u ?do a i + c@ 0 T= loop ;
 
 variable FAIL-RESTORE-CP
 variable FAIL-CP
@@ -244,17 +282,22 @@ variable FAIL-ND
 variable FORGET-CP
 variable FORGET-ND
 variable FORGET-NAME-A
+variable SITE-GOT
 
-: MAP-BIT@ ( n n -- n ) {: base:n at:n :}
-   at dbase@ - {: off:n :}
-   data-base base + off 5 rshift + c@
-   off 2 rshift 7 and rshift 1 and ;
+: SITE-COUNT ( n n -- )
+   2drop 1 SITE-GOT +! ;
+
+: NAME-SITES ( n -- n )
+   0 SITE-GOT !
+   dbase@ - 8 ['] SITE-COUNT SITES:EACH-IN-SPAN
+   SITE-GOT @ ;
 
 : CODE-CEILING ( -- n )
    dbase@ REGION + $4000 - ;
 
 : DR-MK-SIZE ( -- n )
-   s" DR-MK" IDX LEN 4 + ;
+   s" DR-MK" IDX LEN
+   HB-TARGET-LINUX-X86-64? if PAD16 else 4 + then ;
 
 \ Leave exactly enough room for the emitted module, but not for its permanent
 \ clause-name pad. The publisher must refuse before either durable pointer moves.
@@ -281,6 +324,8 @@ variable FORGET-NAME-A
    ndict@ FORGET-ND @ 3 + T=
    s" DR-FORGET-MK;does" IDX NAME$ drop U8>N dup FORGET-NAME-A !
    dup MARK-CALL 4 + MARK-ADDR
+   s" both declared sites start inside the appended name" T-LABEL
+   FORGET-NAME-A @ NAME-SITES 2 T=
    s" DR-FORGET-MK" FORGET-DEFS-FROM
    s" forgetting the parent reclaims its whole module and both later records" T-LABEL
    ndict@ FORGET-ND @ T=
@@ -289,8 +334,7 @@ variable FORGET-NAME-A
    s" DR-FORGET-MK;does" GLOBAL-WID search-wl 0= TTRUE
    s" DR-FORGET-CELL" GLOBAL-WID search-wl 0= TTRUE
    s" the reclaim clears call and address records from the appended name" T-LABEL
-   SNAP-RELOC:CALLMAP-OFF FORGET-NAME-A @ MAP-BIT@ 0 T=
-   SNAP-RELOC:ADDRMAP-OFF FORGET-NAME-A @ 4 + MAP-BIT@ 0 T=
+   FORGET-NAME-A @ NAME-SITES 0 T=
    s" its name and checker signature are reusable after reclamation" T-LABEL
    s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
    s" 4 DR-FORGET-MK DR-FORGET-CELL" EV-N 5 T=
@@ -412,8 +456,8 @@ public
 \ Loading the chain is not selecting it: tier 0, the legacy JIT `:` compiler, is
 \ what every `--load` and the REPL run (src/habu/layout.f NCOMP-DISPATCH:TIER-CELL),
 \ and its J-DOES writes the clause name BEFORE the clause body, inside the parent's
-\ span. The layout measured below is the native publication's - habu2.f
-\ DOES-REC:NATIVE-PRIM appends the permanent name past both spans - so this file
+\ span. Native publication appends the permanent name past both spans, with
+\ the running target's code alignment, so this file
 \ selects tier 1 the way an executable build does, ahead of the definitions.
 \ The one tier-0 case runs first.
 DOESREC-TEST:RUN-JIT
