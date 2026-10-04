@@ -106,6 +106,7 @@ $1000 constant CODE-CAP
 10 constant F-MIN-IN
 
 1 constant FL-TRUSTED-ONLY
+2 constant FL-PREFIX-PROVIDED
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -254,6 +255,17 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
+\ The just-written row is one the captured runtime provides. Its record stays in
+\ every build; in a seeded build its body jumps through the row's dispatch cell
+\ (src/habu/layout.f PROVIDED-XT), which the captured runtime fills, and a
+\ build with no captured runtime keeps the backend body. The backend registers
+\ the cell with the body (src/habu/primitive-registry.f DISPATCH!), and the
+\ gate refuses a marked row registered without one, or a seeded build whose
+\ captured runtime leaves the cell empty.
+: EPREFIX-PROVIDED! ( -- )
+   ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;
+
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
 \ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
@@ -292,6 +304,9 @@ public
 
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
+
+: PREFIX-PROVIDED? ( n -- bool )
+   F-FLAGS ROW-FIELD @ FL-PREFIX-PROVIDED and 0 <> ;
 
 \ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
@@ -656,15 +671,15 @@ ETRUSTED-ONLY!                       \ explicit trusted reset boundary
 EPRIM: ndict-append   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ native pending-record publication
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `does>` and `;` change is sealed state after
-\ the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG, TCSIG, PKG-*), BODYBUF,
-\ DEF-TIER-CELL, the TIER-PROV band and the records behind the PROT window.
-\ These nine rows are how an interpreter written in Habu writes it. Each is
-\ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so only a
-\ TRUSTED: body reaches one. A refusal exits and never throws: 79 while a task
-\ is live (the four dictionary rows), 84 for a protected wid after
-\ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
-\ caller checks first and prints the engine's own text.
+\ What `package`, `export`, `:`, `does>`, `;`, `immediate` and `cast:` change
+\ is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL, TSIG,
+\ TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the records
+\ behind the PROT window. These eleven rows are how an interpreter written in
+\ Habu writes it. Each is registered with ENGINE-PRIMS:GLOBAL-INT-WID on both
+\ targets, so only a TRUSTED: body reaches one. A refusal exits and never
+\ throws: 79 while a task is live (the five dictionary rows), 84 for a
+\ protected wid after the seal (`alias-record`, `def-open`) and 83 for every
+\ other refusal. A caller checks first and prints the engine's own text.
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -701,14 +716,20 @@ ETRUSTED-ONLY!
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
-\ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR or
-\ DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that record; TSIG,
-\ TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
-\ TIER-PROV open cell takes CP. It refuses another kind, wid -1 or -2 and CP
-\ at or past the code ceiling. At tier 0 it opens the record only: the JIT's
-\ own head (its frame and resets) is not this row's.
-EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier: write record NDICT
+\ unpublished, [0] CP after the name, [8] 0, the kind (0, DKIND:VAL,
+\ DKIND:ADDR or DKIND:CAST) in [16] and the wid in [40]; PEND-CELL is that
+\ record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR, the record
+\ `does-patch` reads; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
+\ takes the tier, the close that ends the record (0 the JIT's `;` through
+\ jit-token; 1 def-close, def-cast or ndict-append) and the provenance its
+\ body gets, whatever TIER-CELL holds; and the TIER-PROV open cell takes CP.
+\ It refuses another kind, a tier other than 0 or 1, tier 0 with a nonzero
+\ kind, whose body NCOMP compiles at either tier, tier 0 on x86-64, which has
+\ no JIT, wid -1 or -2 and CP at or past the code ceiling. At tier 0 it opens
+\ the record only: the JIT's own head (its frame and resets) is not this
+\ row's.
+EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ body-append ( ptr u8 n -- ): append the bytes and one space to BODYBUF
 \ through the capture routine `:` uses. It refuses BODYLEN + u + 1 past
@@ -731,6 +752,47 @@ ETRUSTED-ONLY!
 \ no definition is pending and when the pending one is not the native tier's
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
+ETRUSTED-ONLY!
+\ def-abort ( -- ): close an abandoned definition's writable code region,
+\ provenance window and compile-only state after a caught source error. The
+\ catch's handler, return and loop stacks remain live for the caller.
+EPRIM: def-abort EPRIM;
+ETRUSTED-ONLY!
+\ imm-mark ( -- ): set DNAME-IMM on the newest record, NDICT - 1, between two
+\ flips of its pages: the engine's `immediate` itself (habu2.f C-IMMEDIATE).
+\ Like that keyword and wide-mark, it refuses nothing.
+EPRIM: imm-mark EPRIM;
+ETRUSTED-ONLY!
+\ def-cast ( -- ): publish the declaration def-open opened with kind
+\ DKIND:CAST as the engine's `cast:` publishes one: the identity body at CP,
+\ the record's code length, the TIER-PROV window closed native, origin 1 over
+\ [open, CP), NDICT counted and indexed, and the state def-open set cleared:
+\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses a live
+\ task, nothing pending, a pending record other than NDICT, a kind other than
+\ DKIND:CAST and a `does>` split, whose flush would write record NDICT + 1.
+EPRIM: def-cast EPRIM;
+ETRUSTED-ONLY!
+\ ---- the tier-0 rows ----------------------------------------------------------
+\ At tier 0 the engine's `:` head and body loop compile each token as it is
+\ read, with the JIT (habu2.f EM-INTERPRET-COLON, LCOMPILE). These two rows are
+\ how an interpret loop written in Habu runs it. Like the definition writers
+\ each is registered with ENGINE-PRIMS:GLOBAL-INT-WID, so only a TRUSTED: body
+\ reaches one, and x86-64, which has no tier 0, refuses both. Each exits 83
+\ when no definition is pending or the pending one is not tier 0's
+\ (DEF-TIER-CELL other than 0).
+\ jit-open ( -- ): after def-open and the signature, the JIT half of the head:
+\ the per-definition compile state resets, the pass-2 watermarks take DP and
+\ BODYLEN, FRAME-CELL takes CP and the link save is the body's first word. It
+\ throws 70 inside an executable build, as the engine's head does, and
+\ refuses a definition whose code has begun (CP past the record's entry).
+EPRIM: jit-open EPRIM;
+ETRUSTED-ONLY!
+\ jit-token ( -- ): the token in TKA/TKL through the JIT, which reads on from
+\ the input as the token needs, and back when the JIT would read the next
+\ one. `;` publishes and ends the definition through it, pass 2 included. A
+\ throw out of the JIT comes out of the row with the code window closed. It
+\ refuses a definition jit-open has not begun (CP at the record's entry).
+EPRIM: jit-token EPRIM;
 ETRUSTED-ONLY!
 EPRIM: SEAL-CAPTURE   EPRIM;
 EPRIM: seal-captured? PE-F PE-OUT EPRIM;
@@ -862,6 +924,7 @@ ELAB: catch
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!
+EPREFIX-PROVIDED!                    \ seeded: src/habu/interpret.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
 ELAB: ?dup
 1 EMIN-IN!
 ELAB: 2>r

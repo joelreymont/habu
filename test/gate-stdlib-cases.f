@@ -22,6 +22,10 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
+SUITE prefix-provided-unfilled
+   test/prefix-provided-unfilled.f
+;SUITE
+
 \ The positive hb-build AOT checks are two rows of about 28 s each that share no
 \ state and need no keyed image, so they start at once, beside the image build
 \ rows, and add their work to the slots the whitebox hold below leaves idle.

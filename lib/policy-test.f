@@ -139,7 +139,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ sealed `{:` declares, so it matches them before any lookup, as tier 0 does.
 : LOCALS ( -- )
    TIER0 s" local-name" 0 s" " S\" 42\n" RUNS
-   TIER1 s" local-name" 0 s" " S\" 42\n" RUNS ;
+   TIER1 s" local-name" 0 s" " S\" 42\n" RUNS
+   TIER1 s" locals-many" 0 s" " S\" 0\n64\n" RUNS ;
 
 \ The seal removes words; it does not change what an admitted program does, what
 \ the checker refuses, how a throw ends the process, or the refusal of a source
@@ -259,11 +260,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" far" s" hb: not in vocabulary: PBIG:FAR at test/policy/far.f:2" REFUSES ;
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in
-\ Habu, which reads no seal: a sealed load is read by the engine's loop all the
-\ same (src/core/include.f LOAD-BYTES), so it runs and refuses as it does there.
+\ Habu. The final count proves the sealed load reaches that loop.
 : SEAM ( -- )
    s" allow-outer" HARNESS!
-   s" ok" 0 s" " OK-OUT$ RUNS
+   s" ok" 0 s" " S\" 42\n5\n5\n42\n0\n1\n" RUNS
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" REFUSES ;
 
 public

@@ -3936,10 +3936,12 @@ public
    9 DATA TRUSTED-CELL STR, ;
 
 \ ---- the definition writers --------------------------------------------------
-\ The bodies of the nine rows src/habu/prims.f specifies under "the definition
-\ writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
-\ EMIT-PRIMITIVE-SECTIONS. Each checks everything before it writes, and a
-\ refusal exits the process, so no reader ever sees a half-written row.
+\ The bodies of the eleven rows src/habu/prims.f specifies under "the
+\ definition writers", registered with ENGINE-PRIMS:GLOBAL-INT-WID in
+\ EMIT-PRIMITIVE-SECTIONS: imm-mark's is the engine's `immediate`
+\ (C-IMMEDIATE), def-cast's follows C-CAST, and the rest follow here. Each
+\ checks everything before it writes, and a refusal exits the process, so no
+\ reader ever sees a half-written row.
 \ FPRIM-WID frames x30 around each body.
 package DEFWRITE
 
@@ -4108,12 +4110,18 @@ public
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ def-open ( ptr u8 n n n -- ) name, wid, kind
+\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier. The tier waits on the
+\ machine stack for its store: of the registers WLFIND keeps, the name, the wid
+\ and the kind hold x0-x2 and x13.
 : DEF-OPEN ( -- )
-   LBL LBL LBL {: bad prot done :}
+   LBL LBL LBL LBL LBL {: bad prot done nolast ncomp :}
    B-TASK-LIVE-GUARD
-   4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
+   5 G-POP  4 G-POP  2 G-POP  1 G-POP  0 G-POP        \ x5 = the tier, x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK invert LIT64,  14 4 14 AND,  14 bad CBNZ,
+   5 1 CMPI,  C-HI bad BCOND,                         \ a tier other than 0 or 1, unsigned
+   5 ncomp CBNZ,  4 bad CBNZ,                         \ NCOMP compiles every body but kind 0's
+   ncomp LBL,
+   SP SP 16 SUBI,  5 SP 0 STR,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
@@ -4131,11 +4139,15 @@ public
    14 9 16 LDR,  14 14 4 ORR,  14 9 16 STR,           \ the kind beside the length
    3 9 40 STR,
    9 DATA PEND-CELL STR,  14 DATA TKA-CELL LDR,  14 DATA PENDTKA-CELL STR,
+   14 SP 0 LDR,  SP SP 16 ADDI,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   4 nolast CBZ,                                      \ a body that pushes a cell is the slot `does>` patches
+   14 DKIND:CAST LIT64,  4 14 CMP,  C-EQ nolast BCOND,
+   9 DATA LASTC-CELL STR,
+   nolast LBL,
    14 0 MOVZ,
    14 DATA TSIG-A-CELL STR,   14 DATA TSIG-U-CELL STR,
    14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,
    14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
-   14 DATA NCOMP-DISPATCH:TIER-CELL LDR,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    CODE-ORIGIN:OPEN,
    PROT-EMIT:LCLOSE LABEL@ BL,
    done B,
@@ -4192,6 +4204,14 @@ public
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
+
+\ A cast's code, the identity: its entry slot at CP, then an empty body, so
+\ the slot becomes a nop before the ret. `cast:` (INTERP-EMIT:C-CAST) and the
+\ def-cast row (DEF-CAST) emit it alike.
+: CAST-BODY ( -- )
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
+   EM-COMPILE-RET ;                                  \ empty body: the slot becomes a nop
 
 ;package
 
@@ -4736,9 +4756,7 @@ package INTERP-EMIT
    C-STORE-DEF-NAME
    10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,
-   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
-   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
-   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
+   DEFWRITE:CAST-BODY
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
@@ -4749,6 +4767,38 @@ package INTERP-EMIT
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+;package
+
+\ def-cast ( -- ): the definition writer that publishes a cast declaration
+\ def-open opened. It sits here, not with the other DEFWRITE rows, because it
+\ emits C-CAST's code and flush. Past its checks it is C-CAST's publish less
+\ the registrar and the facts, which its caller runs around it
+\ (src/habu/definers.f): the code band opens and the record is declared, the
+\ identity follows at CP, which def-open stored as the entry and as the
+\ provenance window's start, so origin 1 over the window is C-CAST's native
+\ range, and the flush stores the code length.
+package DEFWRITE
+public
+
+: DEF-CAST ( -- )
+   LBL LBL {: bad done :}
+   B-TASK-LIVE-GUARD
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 NDICT REC-AT,  9 10 CMP,  C-NE bad BCOND,         \ the pending record is slot NDICT
+   14 9 16 LDR,  14 14 DKIND:MASK ANDI,
+   15 DKIND:CAST LIT64,  14 15 CMP,  C-NE bad BCOND,    \ opened as a cast
+   14 DATA DOESB-CELL LDR,  14 bad CBNZ,                \ the flush would write record NDICT + 1
+   NAME-BANDS,
+   CAST-BODY
+   1 CODE-ORIGIN:CLOSE,
+   EM-COMPILE-FLUSH-PEND
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
 
 ;package
 
@@ -5458,8 +5508,14 @@ variable LTOPHOOK
 \ with that gate here, `: NAMED ( -- point angle side ) ['] BODY ['] CLEAN
 \ finally ;` (test/compiler/native-finally.f, BODY produces a PRODUCT) died
 \ "hb: interpret-mode layout value: BODY", rc 70 - a certified program refused.
+\ A TRUSTED: body skips C-TICK's trusted-only query: it may use a trusted-only
+\ primitive (prims.f ETRUSTED-ONLY!), the checker never walks its tick, and
+\ NCOMP's tick asks nothing, so tier 1 took `TRUSTED: X ( -- n ) ['] does-patch ;`
+\ where this path refused it. The native compiler's generated-call entries are
+\ such bodies, compiled here when a source-only host captures the compiler
+\ (test/outer-interpret.f TICK-TRUSTED-BODY).
 : C-BTICK ( -- )
-   LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label :}
+   LBL LBL LBL LBL LBL {: bk:label usedtry:label found:label named:label asserted:label :}
    LTOK LABEL@ BL,
    0 named CBNZ,
       LKWBTICK LABEL@ BTICK-LEN C-DIE-KEYWORD-NAME
@@ -5471,6 +5527,7 @@ variable LTOPHOOK
    found LBL,
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT: C-TICK's gate, at the only other place a name becomes an address
    C-SCOPE-ENTRY-GUARD
+   9 DATA TRUSTED-CELL LDR,  9 asserted CBNZ,            \ a TRUSTED: body asks no trusted-only query
    SP SP 48 SUBI,
    5 SP 0 STR,  11 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
@@ -5480,6 +5537,7 @@ variable LTOPHOOK
    5 SP 0 LDR,  11 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,
    17 SP 32 LDR,  SP SP 48 ADDI,
    17 LTRUSTTICK LABEL@ CBNZ,
+   asserted LBL,
    C-CODE-ADDR
    bk B,
    usedtry LBL,
@@ -8899,7 +8957,7 @@ public
    absent LBL, ;
 
 : EM-COMMENT ( -- )
-   LBL LBL LBL LBL {: notcom skln skpar notcompile :}
+   LBL LBL LBL LBL LBL {: notcom skln skpar notcompile jitret :}
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
       \ The depth floor: a token that left the stack below the active base is
@@ -8917,6 +8975,10 @@ public
       9 DATA VSP-CELL LDR,  9 DATA TOKVSP-CELL STR,
       9 DATA VRFREE-CELL LDR,  9 DATA TOKVRF-CELL STR,
       9 DATA FRFREE-CELL LDR,  9 DATA TOKFRF-CELL STR,
+      \ The token a `jit-token` call handed to LCOMPILE is done: return to the
+      \ row instead of reading the next one (DEFWRITE:JIT-TOKEN,
+      \ NCOMP-DISPATCH:JIT-RET-CELL).
+      9 DATA NCOMP-DISPATCH:JIT-RET-CELL LDR,  10 SP 0 ADDI,  9 10 CMP,  C-EQ jitret BCOND,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
@@ -8926,6 +8988,11 @@ public
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 41 CMPI,  C-NE skpar BCOND,  LMAIN LABEL@ B,
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
+      \ The row's caller is compiled code, so the window the token may have
+      \ opened closes first; then the frame LJITRUN pushed returns.
+      jitret LBL,
+         PROT-EMIT:LCLOSE LABEL@ BL,
+         30 SP 0 LDR,  SP SP 16 ADDI,  RET,
       notcom LBL,
       C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
@@ -11171,11 +11238,14 @@ public
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined in this body
       found B, ;                                       \ resolved via a used package: rejoin the normal compile path
 
-: EM-RESET-COMPILE-STATE ( -- )
+\ Abort only definition-owned compile state. A Habu catch that survived the
+\ native THROW still owns its handler and return/loop stacks; clearing those
+\ here would discard the handler that is about to receive the error.
+: EM-ABORT-COMPILE-STATE ( -- )
    CODE-ORIGIN:ABANDON,
    9 0 MOVZ,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
@@ -11190,6 +11260,11 @@ public
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR,
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
+
+: EM-RESET-COMPILE-STATE ( -- )
+   EM-ABORT-COMPILE-STATE
+   9 0 MOVZ,
+   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR, ;
 
 \ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
 \ as the catchable throw code delivered to an enclosing catch and as the
@@ -11424,6 +11499,7 @@ public
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    DATA RPKG:WIDS 10 9 ENGINE-EMIT:USE-WIDS-RESTORE,              \ and the line-start used publics, which the resync names
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
+   9 0 MOVZ,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,                \ SP goes back past every jit-token frame
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
@@ -12370,6 +12446,82 @@ public
 
 ;package
 
+\ ---- the tier-0 rows ----------------------------------------------------------
+\ The bodies of jit-open and jit-token (src/habu/prims.f, "the tier-0 rows"):
+\ the JIT half of the `:` head, and one body token through LCOMPILE above, for
+\ an interpret loop written in Habu. FPRIM-WID frames x30 around each, as
+\ around the definition writers, and REFUSE-AT is theirs.
+package DEFWRITE
+
+public
+
+\ A caught Habu source abandons an owned definition without disturbing the
+\ catch frame that returned its code. Close the JIT page before any Habu
+\ rollback runs, and mark the open provenance region unknown.
+: DEF-ABORT ( -- )
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   EM-ABORT-COMPILE-STATE ;
+
+\ jit-open ( -- ): the compile state EM-INTERPRET-COLON and C-TRUSTED reset
+\ for a new body, then NCOMP-EMIT:TIER-COLON-DISPATCH's entry slot. The guard
+\ throws before the window opens, and the window closes again after the link
+\ save: the caller is compiled code. Code already begun, CP past the record's
+\ entry, is refused with the rest.
+: JIT-OPEN ( -- )
+   LBL LBL {: bad done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 9 0 LDR,  CP 10 CMP,  C-NE bad BCOND,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 bad CBNZ,
+   EXECUTABLE-JIT-GUARD
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
+   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
+   12 DATA VSP-CELL STR,
+   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+   12 DATA QPATCH-CELL STR,
+   12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ the entry slot, no call seen yet
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,             \ str x30,[sp,#-16]!
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   done B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+\ jit-token ( -- ): the token in TKA/TKL through LCOMPILE, as EM-COMMENT hands
+\ tier 0 a body token. The run pushes its return and puts that SP in
+\ NCOMP-DISPATCH:JIT-RET-CELL, and the LMAIN top LCOMPILE ends at returns
+\ through it (EM-COMMENT). The run is caught: a throw puts the outer call's
+\ NCOMP-DISPATCH:JIT-RET-CELL back, closes the window and is thrown on. A
+\ definition jit-open has not begun, CP at the record's entry, is refused with
+\ the rest.
+: JIT-TOKEN ( -- )
+   LBL LBL LBL {: bad run done :}
+   9 DATA PEND-CELL LDR,  9 bad CBZ,
+   10 9 0 LDR,  CP 10 CMP,  C-EQ bad BCOND,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 bad CBNZ,
+   9 DATA NCOMP-DISPATCH:JIT-RET-CELL LDR,  SP SP 16 SUBI,  9 SP 0 STR,
+   9 run ADR,  9 G-PUSH
+   BCATCH
+   9 SP 0 LDR,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,  SP SP 16 ADDI,
+   9 G-POP  9 done CBZ,
+      9 G-PUSH
+      PROT-EMIT:LCLOSE LABEL@ BL,
+      BTHROW
+      done B,
+   run LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      9 SP 0 ADDI,  9 DATA NCOMP-DISPATCH:JIT-RET-CELL STR,
+      LCOMPILE LABEL@ B,
+   bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
+   done LBL, ;
+
+;package
+
 \ The main-loop emitter entry belongs to the emitter package habu1.f opens for
 \ the primitive sections: its caller EMIT-CODE-SECTIONS resolves it bare in the
 \ reopened block below.
@@ -12413,7 +12565,8 @@ PTR-VARIABLE SRCA
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  CODE-ORIGIN:LABELS  ENGINE-PRIMS:RESET  0 CF-DEF-GUARD ! ;
+   ASM-INIT  CODE-ORIGIN:LABELS  ENGINE-PRIMS:RESET  SEEDED-RUNTIME? ENGINE-PRIMS:SEEDED!
+   0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
 \ one public entry that reserves every label a build uses.
@@ -12998,6 +13151,20 @@ variable CUR
 \ ENGINE-BUILD:BUILD below.
 package ENGINE-EMIT
 
+\ Whether the captured runtime fills the DATA cell a prefix-provided row's
+\ seeded stub jumps through (src/habu/primitive-registry.f COMPLETE): the
+\ capture carries a fixed address row at the cell whose target is code the
+\ window placed (src/habu/aot-decl.f AOT-WINDOW: kind 00, a nonzero target).
+: PROVIDED-FILLED? ( n -- bool ) {: cell:n :}
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ {: pair:n :}
+      pair 32 rshift {: meta:n :}
+      pair $FFFFFFFF and cell =
+      meta AOT-WINDOW:XTOFF-KIND-MASK and 0= and
+      meta AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and if unloop true exit then
+   loop
+   false ;
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    CODE-ORIGIN:EMIT-HELPERS
    EMIT-PRIMS
@@ -13012,6 +13179,11 @@ package ENGINE-EMIT
    s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" jit-open" ['] DEFWRITE:JIT-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" jit-token" ['] DEFWRITE:JIT-TOKEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
@@ -13023,7 +13195,7 @@ package ENGINE-EMIT
    s" snapshot-format" ['] RELOC-EMIT:BSNAPSHOTFORMAT FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
-   ENGINE-PRIMS:COMPLETE
+   [: PROVIDED-FILLED? ;] ENGINE-PRIMS:COMPLETE
    EMIT-CEMIT
    EMIT-CEMITBL
    EMIT-ADDSUB-IMM

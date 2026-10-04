@@ -76,11 +76,16 @@ create PRIM-LEN PMAX cells allot   variable PN#
    a u ;
 
 \ ---- extract prim names: s" NAME" ['] X FPRIM[-L] -> NAME (habu1.f tokenized) ----
+\ A registering word is bare (FPRIM, FPRIM-L) or package-qualified
+\ (ENGINE-EMIT:FPRIM-PROVIDED).
+: FPRIM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" FPRIM" LINT-PREFIX?  a u s" :FPRIM" LINT-CONTAINS? or ;
+
 variable SI
 : SCAN-PRIMS  ( -- )
    0 PN# !  0 PEND !  3 SI !
    begin SI @ TN# @ < while
-      SI @ TOK s" FPRIM" LINT-PREFIX?  SI @ 2 - TOK s" [']" LINT-STR= and IF
+      SI @ TOK FPRIM-TOK?  SI @ 2 - TOK s" [']" LINT-STR= and IF
          SI @ 3 - TOK TRIMQ ADD-PRIM THEN
       SI @ 1+ SI !
    repeat ;

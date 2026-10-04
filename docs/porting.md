@@ -84,8 +84,11 @@ reference implementation that answers for it, and nothing machine-specific.
 stated once. `src/habu/primitive-registry.f` holds both gates:
 `ENGINE-PRIMS:SPEC-CHECK`, called from each body's registration, refuses a
 machine body whose name has no row, and `ENGINE-PRIMS:COMPLETE`, called after
-the last body, refuses a `KEEP?`-kept row that no body answered. A new backend
-adds bodies under the row names and declares no effects of its own. Rows of kind
+the last body, refuses a `KEEP?`-kept row that no body answered. A
+`EPREFIX-PROVIDED!` row keeps its dictionary record; a seeded backend jumps
+through its registered DATA cell, and the gate refuses an empty cell. A cold
+build keeps the backend body. A new backend adds bodies under the row names
+and declares no effects of its own. Rows of kind
 `ELAB` (the checker computes the effect at the call site) and `UNROWED` (no
 declaration anywhere) name the primitives that deliberately have no row.
 

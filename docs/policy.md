@@ -6,8 +6,7 @@ the packages that source may call, admits them by name, seals, and then loads
 the source. From the seal on the engine refuses every token outside the
 vocabulary, at the token, before anything it names can run.
 
-AArch64 only. The x86-64 kernel registers both engine words as refusals,
-because its token loops do not read the seal.
+The captured Habu interpreter applies the seal on AArch64 and x86-64.
 
 ## Use
 
@@ -133,9 +132,6 @@ harness's responsibility, and the argument above assumes all of it.
 - No admitted word stores to an address its caller supplies.
 - No admitted word changes what the design can name: none calls `set-current`
   or `prot-wid-add`, or `evaluate` or `included` on data its caller supplies.
-  Nor does one hand such data to the interpret loop written in Habu
-  (`src/habu/interpret.f` `OUTER:INTERPRET`): it reads no seal, so the data
-  would run unsealed.
 
 The admitted public words are the design's whole reach.
 
@@ -146,14 +142,14 @@ The seal is a DATA header watermark (`src/habu/layout.f`
 size at the seal, and the admitted wordlist ids. `policy-admit` and `policy-seal`
 (`src/habu/habu1.f`) write the live policy. Image capture clears both in its
 DATA copy, and warm restore clears both before the fresh process reads source.
-The readers are the sites where a
-source token is read (`src/habu/habu2.f`): `LPOLICYREC` for a found record,
-`LKWCMP` for a matched keyword, `LUNDEF` for a miss, `CAPTURE-IMMEDIATE`'s
-predicate for every tier-1 body token, and `EMIT-QUALIFY-DEF` for a definition
-name. The name wall and `policy-admit` share `LROWWALK`, a spelling test per
-keyword row generated from the rows' own registrars, so a new row is covered
-when it is added. The native compiler never reads the seal: it binds only names
-the capture already admitted.
+The captured interpreter checks top-level tokens in
+`src/habu/interpret.f` (`POLICY-PRE`) and found records in
+`src/habu/outer.f` (`POLICY-CHECK-REC`). Its definition writer checks every
+body token and definition name in `src/habu/definers.f` (`BODY-POLICY` and
+`DEF-WALL`). The cold AArch64 interpreter checks tokens in
+`src/habu/habu2.f` (`LPOLICYREC`, `LKWCMP`, `LUNDEF`, `CAPTURE-IMMEDIATE` and
+`EMIT-QUALIFY-DEF`). The native compiler binds only names that the source
+reader admitted.
 
 `lib/policy-test.f` loads each case under `test/policy/` sealed at both tiers
 and writes `build/policy-run.txt`, one line per child.

@@ -505,7 +505,12 @@ $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-$43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
+\ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. habu1.f
+\ EVAL-ENTER (`evaluate-closed`, and `evaluate` with no captured runtime)
+\ pushes its frame on the native stack; the Habu `evaluate`
+\ (src/habu/interpret.f OUTER:EVAL-FRAMED) writes the same fields into a
+\ mapping of its own. EVAL-PREV links each to the frame it nests in.
+$43C0 constant EVAL-TOP-CELL
 STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
@@ -1092,13 +1097,31 @@ $3800 constant NULL-PTR-CELL-OFF
 \ ENGINE-MAIN:XT-CELL is the DATA cell a seeded boot calls the engine's MAIN
 \ through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell from
 \ APP-ENTRY:XT-CELL because that one also switches the argv and stdin
-\ conventions to a saved application's. Nothing reads it yet; the boots that do
-\ are the ARM64 and x86-64 seeded-boot tasks. It takes the next cell of the run
-\ NULL-PTR-CELL-OFF ends, swept for a claimant up to the FFI buffers at $3A00 the
-\ way that cell was, and a fresh DATA mapping reads it zero, the unset value.
+\ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
+\ MAIN there; ARM64 and x86-64 seeded boots read it. It takes the next cell of
+\ the run NULL-PTR-CELL-OFF ends, swept for a claimant up to the FFI buffers at
+\ $3A00 the way that cell was, and a fresh DATA mapping reads it zero until set.
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
+;package
+
+\ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row the captured
+\ runtime provides (EPREFIX-PROVIDED!). In a seeded build the row keeps its
+\ record and name, and its body is a stub that jumps through the cell (habu1.f
+\ ENGINE-EMIT:FPRIM-PROVIDED); a seeded `evaluate-closed` jumps through
+\ EVALUATE-CELL as well (habu1.f B-EVAL-CLOSED). The captured runtime stores
+\ its word there with `xt!`
+\ (src/habu/interpret.f OUTER:INSTALL-EVALUATE, which native-runtime.f
+\ CHECKER-REG:SEAL runs), so the capture carries the cell as a fixed address
+\ row (tools/native-layout.f) and the seed restores it on every boot (habu2.f
+\ AOT-WINDOW:RESTORE-ADDRESS-CELLS). A build with no captured runtime keeps the
+\ assembly body as the record and never reads the cell. EVALUATE-CELL is the
+\ next cell of the run ENGINE-MAIN:XT-CELL extends, swept for a claimant up to
+\ the FFI buffers at $3A00 the way that cell was.
+package PROVIDED-XT
+public
+$3810 constant EVALUATE-CELL
 ;package
 
 $1D8 constant SSCR-CELL
@@ -1518,6 +1541,13 @@ $2CE8 constant DATA-FLOOR-CELL
 \ starts zero, and a restored image has both the watermark and bitmap cleared.
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
+\ JIT-RET-CELL records the innermost Habu tier-0 token call while it
+\ waits for the engine compile loop to return. The cell follows the DATA
+\ floor in the header band; no captured image keeps a live stack address.
+package NCOMP-DISPATCH
+public
+$2CF0 constant JIT-RET-CELL
+;package
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
@@ -1750,7 +1780,8 @@ FS-MUT-ABI:START constant END
 \ `defer NAME ( E )` declared in src/core/checker.f BEFORE `: TRUST`
 \ (checker.f:7685) cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which
 \ LFIND `trust`/`checker-defer` (undefined until 5208/7687) and die exit 70. When
-\ they are absent C-DEFER instead COPIES the defer's qualified name + effect
+\ they are absent C-DEFER, and the Habu loop's `defer` (src/habu/definers.f
+\ PD-HOLD), instead COPY the defer's qualified name + effect
 \ signature into a slot of this fixed table; DRAIN-PRETRUST (called once in
 \ checker.f right after `: TRUST`) replays both registrations for every slot.
 \ Populated and drained entirely inside the checker.f prefix load, so the table is
@@ -1777,11 +1808,11 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
 
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
-\ Evaluator entry snapshots package/search state in its native stack frame.
+\ Evaluator entry snapshots package/search state in its evaluate frame.
 \ Clean exit restores the using depth to the buffer's floor
 \ (EVAL-FRAME:USE-FLOOR); throw recovery restores the entry depth (PKGSNAP-USE),
 \ the used-public wids (EVAL-FRAME:USE-WIDS) and the package scope.
-\ Package/search snapshots are fields of each native-stack evaluator frame.
+\ Package/search snapshots are fields of each evaluate frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
@@ -2121,8 +2152,9 @@ TABLE-OFF SPANS SPAN-BYTES * + constant END
 \ disarms it on return or throw; snapshots are taken only with no unit active.
 TIER-PROV:END constant UNIT-COMPILE-CELL
 
-\ Pending storage is private to the engine's capture/drain primitives. Its
-\ capacity may grow without moving any published engine slot or live map.
+\ Pending storage is private to the pre-trust capture (habu2.f C-PD-CAPTURE,
+\ definers.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without moving
+\ any published engine slot or live map.
 UNIT-COMPILE-CELL CELL + constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 PD-TABLE-END constant DATA-START

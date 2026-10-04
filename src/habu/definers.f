@@ -1,27 +1,32 @@
 \ definers.f - the definition heads of the interpret loop written in Habu:
 \ `:`, `kernel:` and `trusted:`, as the engine's EM-INTERPRET-COLON and
 \ C-TRUSTED (habu2.f) open a definition, and the capture of the body that
-\ follows one. STEP (src/habu/interpret.f) asks COMPILING? after a comment and
-\ DEFINE? after the package keywords.
+\ follows one; `cast:`, which declares and publishes at once, as C-CAST does;
+\ `immediate`; and the definers `create`, `variable`, `constant` and `defer`,
+\ whose bodies NCOMP compiles as they are read. STEP (src/habu/interpret.f) asks
+\ COMPILING? after a comment and DEFINE? after the package keywords.
 \
 \ A head opens record NDICT through def-open, unpublished, and the definition
 \ stays pending: each body token is captured into BODYBUF, as the engine's
 \ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
 \ is read, `does>` splits the body and takes the signature of the words it
 \ creates, and `;` compiles the body whole and ends the definition through
-\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
-\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
+\ def-close. That is tier 1. Tier 0 compiles each token as it is read, with
+\ the engine's JIT: the head ends through jit-open and each body token, `;`
+\ among them, goes to jit-token.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
 \ refusal the engine reports is made here first. Unlike the engine's head,
-\ this one leaves no PROT window open: def-open closes its own.
+\ this one leaves no PROT window open: def-open and jit-open close their own.
 
 require lib/prelude.f
+require lib/string.f
 require src/core/checker.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require src/compiler/native/compiler.f
 require src/habu/outer.f
 require src/habu/packages.f
 
@@ -29,25 +34,36 @@ package OUTER
 
 private
 
-76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
+76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
+72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
 \ ---- the definition writers, each a TRUSTED: boundary ------------------------
-TRUSTED: DEF-OPEN ( ptr u8 n n n -- ) def-open ;
+TRUSTED: DEF-OPEN ( ptr u8 n n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
 TRUSTED: DEF-CLOSE ( -- ) def-close ;
+TRUSTED: DEF-ABORT ( -- ) def-abort ;
+TRUSTED: DEF-IMM-MARK ( -- ) imm-mark ;
+TRUSTED: DEF-CAST ( -- ) def-cast ;
+TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
+TRUSTED: DEF-JIT-OPEN ( -- ) jit-open ;
+TRUSTED: DEF-JIT-TOKEN ( -- ) jit-token ;
 
 \ ---- tier 0 ------------------------------------------------------------------
-\ The engine's tier 0 compiles each body token as it reads it, with its JIT,
-\ which this loop cannot call yet (habu-hook-tier-0-96e33c29): a head or a body
-\ token at tier 0 refuses, naming the token, where the engine's head makes its
-\ first refusal.
-: DEF-TIER-0 ( -- )
-   s" hb: tier 0 is not in the Habu loop: " SAY
-   DEF-RC-TIER-0 PKG-FAIL ;
+\ Nothing of this loop's is on the stack when jit-token runs: what the token
+\ leaves there is the program's, as after a word the loop runs.
+: DEF-TIER-0? ( -- bool )
+   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= ;
+
+\ A `:` while the JIT's pass 2 reads a body again refuses first, naming the
+\ token, as the engine's head does; `trusted:` is never refused for it.
+: DEF-P2-NEST ( -- )
+   P2-CELL CELL@ 0= if exit then
+   s" hb: nested definition in pass 2: " SAY
+   DEF-RC-P2-NEST PKG-FAIL ;
 
 \ ---- the body capture (habu1.f EMIT-BCAP, habu2.f EM-BODY-CAP-DIE) ------------
 \ The capture's first token, the definition's name, which a head seeds: the
@@ -115,6 +131,13 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    a q PKG-CODE-ROOM
    a q false PKG-NS-RECORD XREF-REC XREF-PKG-PUBLIC ;
 
+\ A selected unit owns its definitions: a name with a colon anywhere in it,
+\ at an edge too, refuses before the qualifier could send it to another
+\ package (habu2.f C-UNIT-DEF-NAME-GUARD).
+: DEF-UNIT-GUARD ( -- )
+   UNIT? 0= if exit then
+   TOKEN$ 0 COLON-AT 0 >= if UNIT-REFUSE then ;
+
 \ The tail the record is named and the wordlist it goes into. DEF-TKA and
 \ DEF-TKL take the name token, which the refusals after them name, as TKA and
 \ TKL still do: the engine moves those to the tail and back, and this head
@@ -123,6 +146,7 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 \ edge leaves the whole token a bare name: `:a:b` is bare), and a second colon
 \ after it refuses.
 : DEF-QUALIFY ( -- ptr u8 n n )
+   DEF-UNIT-GUARD
    SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
@@ -138,12 +162,26 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 : DEF-KEYWORDS ( -- ptr u8 n )
    S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
+\ A design may define none of the engine's dispatch-row names. The twelve
+\ admitted syntax rows keep the ordinary reserved-name error; every other
+\ row is outside the vocabulary before dictionary duplicate checks run.
+: DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
+   S\" if else then {: :} s\q package public private ;package using ;using" ;
+
+: DEF-INTERPRET-KEYWORDS ( -- ptr u8 n )
+   S\" : kernel: trusted: cast: immediate create variable constant 2constant defer to export require include char ' ;match sumtype variant ;variant ;sumtype" ;
+
+: DEF-OP-KEYWORDS ( -- ptr u8 n )
+   s" + - * and or xor lshift rshift dup drop swap over nip = <> < > <= >= 1+ 1- 0= 0< negate invert f+ f- f* f/" ;
+
+: DEF-P2-KEYWORDS ( -- ptr u8 n )
+   s" tuck rot -rot 2dup 2drop 2swap 2over 2>r 2r> 2r@ @ !" ;
+
 \ The index past the keyword that starts at s in the table.
 : DEF-KEYWORD-END ( ptr u8 n n -- n ) {: t:ptr tu:n s:n :}
    s begin dup tu < if t over + c@ BLANK <> else false then while 1+ repeat ;
 
-: DEF-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   DEF-KEYWORDS {: t:ptr tu:n :}
+: DEF-IN-TABLE? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n t:ptr tu:n :}
    0 begin dup tu < while
       {: s:n :}
       t tu s DEF-KEYWORD-END {: e:n :}
@@ -152,11 +190,34 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    repeat
    drop false ;
 
-\ Matched as the engine matches its keywords, with only the tail's A-Z folded.
-: DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DEF-KEYWORD? 0= if exit then
+: DEF-KEYWORD? ( ptr u8 n -- bool )
+   DEF-KEYWORDS DEF-IN-TABLE? ;
+
+: DEF-DESIGN-KEYWORD? ( ptr u8 n -- bool )
+   DEF-DESIGN-KEYWORDS DEF-IN-TABLE? ;
+
+: DEF-ROW-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u DEF-KEYWORD? if true exit then
+   a u DEF-INTERPRET-KEYWORDS DEF-IN-TABLE? if true exit then
+   a u DEF-OP-KEYWORDS DEF-IN-TABLE? if true exit then
+   a u DEF-P2-KEYWORDS DEF-IN-TABLE? ;
+
+: DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" hb: compile keyword cannot be a definition name: " SAY
    a u SAY RC-REJECT THROW-AT ;
+
+: DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" hb: not in vocabulary: " SAY
+   a u SAY ENGINE-ERROR:POLICY THROW-AT ;
+
+\ Matched as the engine matches its keywords, with only the tail's A-Z folded.
+: DEF-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
+   POLICY-NDICT-CELL CELL@ 0<> if
+      a u DEF-DESIGN-KEYWORD? if a u DEF-KEYWORD-REFUSE then
+      a u DEF-ROW-KEYWORD? if a u DEF-POLICY-REFUSE then
+      exit
+   then
+   a u DEF-KEYWORD? if a u DEF-KEYWORD-REFUSE then ;
 
 \ ---- the signature (habu2.f C-SIG-START, C-SIG-END, C-SIG-CAPTURE-TSIG) -------
 \ A signature starts at the first byte past the blanks when that byte is `(`,
@@ -216,9 +277,11 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
 
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open
-\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
-\ refusals name the token, but the wall and the code room name the tail.
-: DEF-RECORD ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME), then opens
+\ the record with its kind and the tier whose close ends it: the live tier for
+\ a colon body, 1 for a body NCOMP compiles as it is read. The refusals name
+\ the token, but the wall and the code room name the tail.
+: DEF-RECORD ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid WL-PROBE XREF-FOUND? if
@@ -226,24 +289,27 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid 0 DEF-OPEN ;
+   a u wid kind tier DEF-OPEN ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
+\ The record's tier then picks the compiler: tier 0's JIT opens the body.
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   trusted 0= if DEF-P2-NEST then
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
    0 BODYLEN-CELL CELL!
    TOKEN$ DEF-CAPTURE
-   DEF-QUALIFY DEF-RECORD
+   DEF-QUALIFY 0 tier@ DEF-RECORD
+   0 LOCN-CELL CELL!  0 LOCF-CELL CELL!
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
    else
       DEF-MAYBE-SIG
    then
+   DEF-TIER-0? if DEF-JIT-OPEN exit then
    DEF-DISPATCH ;
 
 \ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
@@ -270,6 +336,65 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
+\ A sealed body admits a local before looking up a dictionary word. Tier 0's
+\ JIT fills LOCNAMES while compiling `{:`; tier 1 captures the same declaration
+\ here, then the native compiler reads it from BODYBUF at `;`.
+: BODY-LOCAL? ( -- bool )
+   TOKEN$ {: a:ptr u:n :}
+   LOCN-CELL CELL@ 0 ?do
+      data-base LOCNAMES + i LOC-REC * + BYTE-VIEW {: row:ptr :}
+      row CELL-VIEW @ u = if
+         a u row 8 + u STR= if true unloop exit then
+      then
+   loop
+   false ;
+
+: BODY-LOCAL-ONE ( -- )
+   TOKEN$ {: a:ptr u:n :}
+   LOCN-CELL CELL@ {: idx:n :}
+   idx LOC-RECS >= if
+      s" hb: more than 64 locals in one definition: " SAY
+      TOKEN$ SAY RC-REJECT THROW-AT
+   then
+   a u 0 COLON-AT {: colon:n :}
+   colon 0 < if u else colon then {: len:n :}
+   len LOC-NAME-CAP > if
+      s" hb: local name over 16 bytes: " SAY
+      TOKEN$ SAY RC-REJECT THROW-AT
+   then
+   data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
+   len row CELL-VIEW !
+   a row 8 + len BYTE-COPY
+   idx 1+ LOCN-CELL CELL! ;
+
+: BODY-LOCAL-GROUP ( -- )
+   begin TOKEN while
+      TOKEN$ DEF-CAPTURE
+      s" :}" TOKEN-IS? if exit then
+      BODY-LOCAL-ONE
+   repeat ;
+
+\ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
+\ `;` is handled before the capture at both tiers; a tier-0 JIT call sees it
+\ here first. A miss reaches the five design body keywords only after local,
+\ dictionary and numeric lookup, as the native capture does.
+: BODY-POLICY ( -- )
+   POLICY-NDICT-CELL CELL@ 0= if exit then
+   BODY-LOCAL? if exit then
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
+   TOKEN$ FIND {: used:ptr :}
+   used XREF-FOUND? if used POLICY-CHECK-REC exit then
+   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
+   num if exit then
+   s" ;" TOKEN-IS? if exit then
+   s" if" TOKEN-IS? if exit then
+   s" else" TOKEN-IS? if exit then
+   s" then" TOKEN-IS? if exit then
+   S\" s\q" TOKEN-IS? if exit then
+   s" {:" TOKEN-IS? if exit then
+   POLICY-REFUSE ;
+
 \ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
 \ A captured token LFIND resolves to an immediate word runs now when the
 \ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
@@ -284,23 +409,32 @@ TRUSTED: DEF-CLOSE ( -- ) def-close ;
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if 0 false exit then
+   rec POLICY-CHECK-REC
    rec XREF-START  TOKEN$ NEUTRAL-PARSE-IMM? ;
+
+\ The engine's cells hold the preflight's and the compiler entry's xts raw;
+\ these views state their effects: the checker's (src/core/check-hook.f
+\ PREFLIGHT) and NCOMP:COMPILE's.
+TRUSTED: DEF-AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] ) ;
+TRUSTED: DEF-AS-COMPILER ( n -- [ ptr u8 n -- ] ) ;
 
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
 \ C-CALL-COMPILE-IMMEDIATE, LPREFMISS).
-TRUSTED: DEF-PREFLIGHT ( -- )
+: DEF-PREFLIGHT ( -- )
    HOOK-CELL CELL@ 0= if exit then
-   COMPILE-PREFLIGHT-CELL CELL@ 0= if
+   COMPILE-PREFLIGHT-CELL CELL@ {: xt:n :}
+   xt 0= if
       S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
    then
-   data-base BODYBUF-OFF + BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@
-   COMPILE-PREFLIGHT-CELL CELL@ execute ;
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
+   xt DEF-AS-PREFLIGHT execute ;
 
-\ The xt waits on the return stack while the preflight runs, and the stack's
-\ floor holds after the word, as after a word the loop runs.
+\ The xt waits on the return stack while the unit hook and the preflight run,
+\ and the stack's floor holds after the word, as after a word the loop runs.
 TRUSTED: DEF-RUN ( n -- )
-   >r DEF-PREFLIGHT r> execute-floor FLOORED ;
+   >r 0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
+   DEF-PREFLIGHT r> execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then
@@ -370,8 +504,8 @@ variable ENTRY-PEND
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close closes the provenance window native and clears what
 \ def-open set.
-TRUSTED: DEF-COMPILE ( ptr u8 n -- )
-   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ execute ;
+: DEF-COMPILE ( ptr u8 n -- )
+   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ DEF-AS-COMPILER execute ;
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
@@ -382,26 +516,308 @@ TRUSTED: DEF-COMPILE ( ptr u8 n -- )
 
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
-\ immediate, splits the body at `does>`, or takes a string keyword's text
-\ (NCOMP-EMIT:EM-COMPILE).
+\ tier 0's JIT compiles it, or tier 1 ends it at `;`, or captures the token,
+\ runs it if it is a neutral immediate, splits the body at `does>`, or takes a
+\ string keyword's text (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   DEF-TIER-0? if BODY-POLICY DEF-JIT-TOKEN true exit then
    DEF-SEMI? if true exit then
+   BODY-POLICY
    TOKEN$ DEF-CAPTURE
+   POLICY-NDICT-CELL CELL@ 0<> if
+      s" {:" TOKEN-IS? if BODY-LOCAL-GROUP true exit then
+   then
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
    true ;
 
+\ ---- `cast:` (habu2.f C-CAST) --------------------------------------------------
+\ `cast: NAME ( in -- out )` declares a checked retype: a record of kind
+\ DKIND:CAST whose code is the identity, published at once, with no body and
+\ no `;`. It refuses in the engine's order and with its text: a live task, the
+\ room, the name, then the signature, which must be there, opened and closed,
+\ and is read before the qualifier. With a check hook the checker proves the
+\ retype legal (checker.f CAST-CERTIFY) before def-cast counts the record, so
+\ a refused cast leaves none counted. The engine emits the code before it
+\ asks; its refusal inside evaluate rolls the code back, which this loop
+\ cannot do yet, so here the code waits for the checker.
+
+\ With the input at its end the token cells still hold the keyword, which the
+\ refusal names (C-CAST-DIE-NO-NAME).
+: CAST-NAME ( -- )
+   TOKEN if exit then
+   s" hb: cast: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
+
+\ The owner record stores raw execution tokens; these views state the two
+\ signatures called here.
+TRUSTED: DEF-AS-CAST ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
+TRUSTED: DEF-AS-COUNT ( n -- [ -- n ] ) ;
+
+\ The checker's cast operation gets the name and the signature: the active
+\ owner's, then the target owner's unless it is the same one (habu2.f
+\ DEF-TRUST:REGISTER-CAST, DECL-OWNER). Either may throw the cast's refusal.
+: CAST-REGISTER ( ptr u8 n -- ) {: sa:ptr su:n :}
+   HOOK-CELL CELL@ 0= if exit then
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-CAST-OFF PKG-OPERATION {: own:n :}
+   own 0<> if DEF-CAPTURED-NAME sa su own DEF-AS-CAST execute then
+   NCOMP-DISPATCH:DECL-CAST-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   target own = if exit then
+   DEF-CAPTURED-NAME sa su target DEF-AS-CAST execute ;
+
+\ A checker word the engine finds by name in the global wordlist as it asks;
+\ with none the process ends naming it (habu2.f C-FIND-GLOBAL).
+: DEF-GLOBAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u 0 WL-PROBE {: rec:ptr :}
+   rec XREF-FOUND? 0= if a u RC-REJECT FAIL-CLOSED then
+   rec XREF-START ;
+
+\ The checker's facts for the record just counted (habu2.f
+\ EM-REC-WIDE-PUBLISH): rec-wide-publish marks it wide when its effect is,
+\ and the certified minimum input arity rec-min-in@ gives is stored unless 0.
+: CAST-FACTS ( -- )
+   HOOK-CELL CELL@ 0= if exit then
+   s" rec-wide-publish" DEF-GLOBAL PKG-AS-ACTION execute
+   s" rec-min-in@" DEF-GLOBAL DEF-AS-COUNT execute {: mi:n :}
+   mi 0= if exit then
+   ndict@ 1- mi DEF-MIN-IN ;
+
+: CAST-HEAD ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   CAST-NAME
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s end s - DEF-CAPTURE
+   DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
+   s 1 + end s - 2 - {: sa:ptr su:n :}
+   sa su DEF-TRUST-SIG
+   sa su CAST-REGISTER
+   DEF-CAST
+   CAST-FACTS ;
+
+\ ---- the definers (habu2.f EMIT-CREATE, INTERP-EMIT C-CREATE, C-VARIABLE, C-CONSTANT)
+\ A definer's word is whole when it is read. Its record opens with the stamp a
+\ mention of the word folds to, DKIND:ADDR for a DATA address or DKIND:VAL for
+\ a decided number, which also makes it the record `does-patch` reads (LASTC)
+\ and NCOMP's at either tier, as the engine's definers are native at both;
+\ NCOMP compiles and publishes the body that pushes that cell, and def-close
+\ ends the definition. The engine's check hook then reads the name and the
+\ keyword, and the word's effect is registered as raw storage: `-- ptr a` for
+\ `create` and `variable`, `-- a` for `constant`, never a checked effect,
+\ which could not state it (habu2.f LASTC-TRUST).
+
+\ The head refuses while a task is live, then needs a name, naming kw as the
+\ engine bakes it: `variable` is the engine's `create` with a cell allotted
+\ after it. The capture is seeded with the name for the hook.
+: DEF-FIXED-HEAD ( ptr u8 n -- ) {: kw:ptr u:n :}
+   TASK-GUARD
+   kw u OPERAND
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE ;
+
+\ The owner record holds raw execution tokens; these views state the two
+\ signatures called here: the check hook's, and that of a registrar taking a
+\ name and a signature, trust-raw's and trust-decl's.
+TRUSTED: DEF-AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
+TRUSTED: DEF-AS-NAME-SIG ( n -- [ ptr u8 n ptr u8 n -- ] ) ;
+
+\ The keyword joins the capture, and an armed check hook reads it, its verdict
+\ dropped (habu2.f C-DEFHOOK).
+: DEF-HOOK ( ptr u8 n -- )
+   DEF-CAPTURE
+   HOOK-CELL CELL@ {: xt:n :}
+   xt 0= if exit then
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ xt DEF-AS-HOOK execute drop ;
+
+\ The active checker's trust-raw; without one, with the check hook armed, the
+\ target checker's, and with neither the process ends naming it, as a word
+\ published unsealed would be (habu2.f LASTC-TRUST:FIND-ACTIVE, FIND-RAW). 0:
+\ no checker is armed and nothing is registered.
+: DEF-RAW-FIRST ( n -- n ) {: own:n :}
+   own 0<> if own exit then
+   HOOK-CELL CELL@ 0= if 0 exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if s" trust-raw" RC-REJECT FAIL-CLOSED then
+   target ;
+
+\ The name the capture holds and the raw signature sig, to the first
+\ registrar, then to the target checker's unless the active owner's field
+\ holds the same operation (LASTC-TRUST:FIND-TARGET, DECL-OWNER:SKIP-SAME).
+: DEF-RAW ( ptr u8 n -- ) {: sig:ptr su:n :}
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
+   own DEF-RAW-FIRST {: first:n :}
+   first 0= if exit then
+   DEF-CAPTURED-NAME sig su first DEF-AS-NAME-SIG execute
+   NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
+   NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
+   target 0= if exit then
+   target own = if exit then
+   DEF-CAPTURED-NAME sig su target DEF-AS-NAME-SIG execute ;
+
+\ The DATA address a created word's body pushes, as the number NCOMP takes.
+TRUSTED: DEF-HERE ( -- n ) here ;
+
+\ `create` rounds the data field up to a cell, as the engine's create does,
+\ before the body takes its address.
+: DEF-CREATE ( -- )
+   s" create" DEF-FIXED-HEAD
+   DEF-QUALIFY DKIND:ADDR 1 DEF-RECORD
+   align
+   DEF-HERE NDICT:FIXED-ADDR NCOMP:COMPILE-FIXED
+   DEF-CLOSE
+   s" create" DEF-HOOK
+   s" -- ptr a" DEF-RAW ;
+
+: DEF-VARIABLE ( -- )
+   DEF-CREATE
+   1 cells allot ;
+
+\ `constant` takes the program's top cell after its record opens, where the
+\ engine's pops it. With none the engine reads below its stack and faults
+\ (rc 102); this loop names the underflow, as after a word.
+variable DEF-VALUE
+
+: DEF-CONSTANT ( -- )
+   s" constant" DEF-FIXED-HEAD
+   DEF-QUALIFY DKIND:VAL 1 DEF-RECORD
+   depth 0= if s" E-UNDERFLOW: " REFUSE then
+   [: DEF-VALUE ! ;] TAKE-N
+   DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
+   DEF-CLOSE
+   s" constant" DEF-HOOK
+   s" -- a" DEF-RAW ;
+
+\ ---- `defer` (habu2.f C-DEFER) ------------------------------------------------
+\ `defer NAME ( in -- out )` declares a word that calls the execution token in
+\ its dispatch cell, an aligned DATA cell that starts with `defer-unset`'s and
+\ that `is` in a body re-points. It refuses in the engine's order and with its
+\ text: a live task, the room, the name, then the signature, which must be
+\ there, opened and closed, then `defer-unset`, whose cell is allotted before
+\ the qualifier, as the engine's is. The checker gets the effect before NCOMP
+\ compiles the body, which asks it whether the defer returns; NPUB lays the
+\ trailer after the routine and def-close ends the definition. The engine
+\ registers after it publishes, which nothing observes: trust-decl never
+\ consults the dictionary (habu2.f DEF-TRUST).
+
+\ With the input at its end the token cells still hold the keyword, which the
+\ refusal names (DEFER-DIAG:DIE-NO-NAME, rc $4A).
+: DEFER-NAME ( -- )
+   TOKEN if exit then
+   s" hb: defer: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
+
+\ `defer-unset`'s execution token, found as LFIND finds it; with none the
+\ refusal is the bare name token (C-DEFER-FIND-UNSET, rc $46).
+: DEFER-UNSET-XT ( -- n )
+   s" defer-unset" FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if TOKEN$ SAY RC-REJECT THROW-AT then
+   rec XREF-START ;
+
+\ The cell holds an execution token, so xt! declares it one, as the engine's
+\ C-DEFER-CELL marks it: a snapshot moves it with the code region.
+TRUSTED: DEF-XT! ( n n -- ) xt! ;
+
+: DEFER-CELL ( -- n )
+   DEFER-UNSET-XT {: xt:n :}
+   align
+   DEF-HERE {: cell:n :}
+   1 cells allot
+   xt cell DEF-XT!
+   cell ;
+
+\ ---- the pre-trust hold (habu2.f C-PRETRUST-READY?, C-PD-CAPTURE) ------------
+\ A target owner without both trust-decl and checker-defer cannot register a
+\ defer yet: a build's src/core/checker.f declares defers before `: TRUST`, and
+\ the build reads it through this loop. The defer's name and signature wait in
+\ the next pending slot (src/habu/layout.f PD-*) until checker.f's
+\ DRAIN-PRETRUST replays both registrations to the target owner.
+\ With both owner cells zero the engine's loop still holds the defer, while
+\ NCOMP below refuses it ("ncomp: cannot compile"): no checker knows its
+\ effect. No build reaches that state: native-runtime.f BIND-OWNER sets both
+\ cells at boot, and checker.f CHECKER-RESET-SOURCE zeroes only the target's.
+: DEFER-READY? ( -- bool )
+   NCOMP-DISPATCH:DECL-EFFECT-OFF PKG-TARGET 0<>
+   NCOMP-DISPATCH:DECL-DEFER-OFF PKG-TARGET 0<> and ;
+
+\ A full table, or a name or signature past its slot field, ends the process
+\ naming the defer.
+: PD-FULL ( -- )
+   s" hb: pre-trust defer table full: " SAY TOKEN$ SAY
+   NL 1 DEF-RC-PD-FULL FAIL-CLOSED ;
+
+\ The u bytes at a into the slot field at DATA offset off, their count into
+\ the cell at lenoff.
+: PD-PUT ( ptr u8 n n n n -- ) {: a:ptr u:n cap:n lenoff:n off:n :}
+   u cap > if PD-FULL then
+   u lenoff CELL!
+   a data-base off + BYTE-VIEW u BYTE-COPY ;
+
+: PD-HOLD ( ptr u8 n -- ) {: sig:ptr su:n :}
+   PD-TABLE-OFF CELL@ {: count:n :}
+   count PD-CAP >= if PD-FULL then
+   PD-TABLE-OFF PD-SLOTS-REL + count PD-SLOT * + {: slot:n :}
+   DEF-CAPTURED-NAME PD-NAME-CAP slot PD-NLEN-OFF + slot PD-NAME-OFF + PD-PUT
+   sig su PD-SIG-CAP slot PD-SLEN-OFF + slot PD-SIG-OFF + PD-PUT
+   count 1 + PD-TABLE-OFF CELL! ;
+
+\ The active owner's operation at off, then the target owner's, 0 when the
+\ active owner's field holds the same one (DECL-OWNER:FIND, SKIP-SAME).
+: DEF-OWNERS ( n -- n n ) {: off:n :}
+   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION {: own:n :}
+   off PKG-TARGET {: target:n :}
+   own  target own = if 0 else target then ;
+
+\ The name the capture holds and signature sig to each trust-decl
+\ (DEF-TRUST:REGISTER), then the name to each checker-defer
+\ (C-CALL-CHECKER-DEFER). Before the target owner is ready only the active
+\ owner's two are called, and the pending slot holds the defer for the
+\ target's.
+: DEFER-REGISTER ( ptr u8 n -- ) {: sig:ptr su:n :}
+   DEFER-READY? {: ready:bool :}
+   NCOMP-DISPATCH:DECL-EFFECT-OFF DEF-OWNERS {: own:n target:n :}
+   own 0<> if DEF-CAPTURED-NAME sig su own DEF-AS-NAME-SIG execute then
+   ready target 0<> and if DEF-CAPTURED-NAME sig su target DEF-AS-NAME-SIG execute then
+   NCOMP-DISPATCH:DECL-DEFER-OFF DEF-OWNERS {: down:n dtarget:n :}
+   down 0<> if DEF-CAPTURED-NAME down PKG-AS-NAME-ACTION execute then
+   ready dtarget 0<> and if DEF-CAPTURED-NAME dtarget PKG-AS-NAME-ACTION execute then
+   ready 0= if sig su PD-HOLD then ;
+
+: DEF-DEFER ( -- )
+   TASK-GUARD
+   DEF-ROOM
+   DEFER-NAME
+   0 BODYLEN-CELL CELL!
+   TOKEN$ DEF-CAPTURE
+   false DEF-SIG-SPAN {: s:ptr end:ptr :}
+   end INP-CELL ADDR!
+   s end s - DEF-CAPTURE
+   DEFER-CELL {: cell:n :}
+   DEF-QUALIFY 0 1 DEF-RECORD
+   s 1 + end s - 2 - {: sa:ptr su:n :}
+   sa su DEF-TRUST-SIG
+   sa su DEFER-REGISTER
+   cell NCOMP:FIXED-DEFER NCOMP:COMPILE-FIXED
+   DEF-CLOSE ;
+
 \ ---- the definition keywords --------------------------------------------------
-\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:` is
-\ matched as LITERAL? matches its keywords.
+\ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`, `cast:`,
+\ `immediate` and the definers are matched as LITERAL? matches its keywords.
+\ `immediate` marks the newest record, whatever it is, and refuses nothing, as
+\ the engine's does (habu2.f C-IMMEDIATE).
 : DEFINE? ( -- bool )
    s" :" TOKEN-IS? if false DEF-HEAD true exit then
    s" kernel:" TOKEN-IS? if false DEF-HEAD true exit then
    s" trusted:" TOKEN-IS? if true DEF-HEAD true exit then
+   s" cast:" TOKEN-IS? if CAST-HEAD true exit then
+   s" immediate" TOKEN-IS? if DEF-IMM-MARK true exit then
+   s" create" TOKEN-IS? if DEF-CREATE true exit then
+   s" variable" TOKEN-IS? if DEF-VARIABLE true exit then
+   s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
+   s" defer" TOKEN-IS? if DEF-DEFER true exit then
    false ;
 
 ;package

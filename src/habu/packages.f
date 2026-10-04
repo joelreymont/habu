@@ -167,11 +167,13 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    TOKEN$ true PKG-NS-RECORD ;
 
 \ The package opens on its private wordlist. The using depth it opens at is
-\ the one `;package` restores.
+\ the one `;package` restores. The name goes to the unit hook first, whose
+\ nonzero answer skips the rest of the input instead (habu2.f C-PACKAGE).
 : PKG-PACKAGE ( -- )
    TASK-GUARD
    PKG-PUB-CELL CELL@ 0<> if PKG-RC-CONTEXT PKG-FAIL then
    PKG-NAME
+   0 UNIT-EV-PACKAGE UNIT-EVENT 0<> if INE-CELL CELL@ INP-CELL CELL! exit then
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}

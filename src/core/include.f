@@ -18,9 +18,6 @@ $37D8 constant INCLUDE-EVALERR-CELL
 \ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
-\ The design seal's watermark (lib/policy.f), spelled here the same way and
-\ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
-$4898 constant INCLUDE-POLICY-NDICT-CELL
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
 create REQUIRE-LENS REQUIRE-MAX cells allot
@@ -1310,18 +1307,11 @@ public
 \ The loop a loaded file's bytes go through, inside the closed boundary:
 \ INCLUDE-EVAL-BIND below binds INCLUDE-EVALUATE, and test/outer-loop-on.f binds
 \ the loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, under
-\ evaluate-closed for the files loaded after it. A file loaded under the design
-\ seal does not go through it (LOAD-BYTES).
+\ evaluate-closed for the files loaded after it. The Habu loop checks the
+\ design seal at each token, so sealed files use the same binding.
 defer INCLUDE-INTERPRET ( ptr u8 n -- )
 
 private
-
-\ The design seal is read where the engine's loop reads a token, and the loop
-\ written in Habu reads it nowhere, so a file loaded once the seal is set is read
-\ by the engine's loop whatever INCLUDE-INTERPRET holds. `0 <>`, not `0<>`: the
-\ prefix loads lib/prelude.f, which defines `0<>`, after this file.
-: POLICY-SEALED? ( -- bool )
-   data-base INCLUDE-POLICY-NDICT-CELL + @ 0 <> ;
 
 : LOAD-BYTES ( -- )
    INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$
@@ -1329,7 +1319,7 @@ private
    u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
    a SOURCE <> if a SOURCE u BYTE-COPY then
    SOURCE u SHEBANG-COMMENT
-   SOURCE u POLICY-SEALED? if INCLUDE-EVALUATE else INCLUDE-INTERPRET then ;
+   SOURCE u INCLUDE-INTERPRET ;
 
 : LOAD-UNIT ( -- )
    TOP@ {: frame:ptr :}

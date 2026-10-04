@@ -114,6 +114,29 @@ variable FP-WID
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
+\ A row the captured runtime provides (src/habu/prims.f EPREFIX-PROVIDED!),
+\ registered with its dispatch cell (layout.f PROVIDED-XT). With no captured
+\ runtime the record is the assembly body, as FPRIM-L emits it. In a seeded
+\ build the record is a stub that jumps through the cell and keeps x30, so the
+\ word the captured runtime stores there returns straight to the caller. The
+\ cell comes first so the row keeps the `s" NAME" ['] X FPRIM` shape
+\ tools/lint/shadow-lint.f SCAN-PRIMS reads prim names from.
+package ENGINE-EMIT
+public
+: FPRIM-PROVIDED ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
+   a u q FP-ARGS
+   FP-KEEP? 0= IF EXIT THEN
+   LBL FPL !  LBL FPE !
+   cell FP-REG ENGINE-PRIMS:DISPATCH!
+   FPL LABEL@ LBL,
+   ENGINE-PRIMS:SEEDED? IF
+      16 DATA cell LDR,  16 BR,
+   ELSE
+      FP-EMIT  RET,
+   THEN
+   FPE LABEL@ LBL, ;
+;package
+
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
@@ -3158,31 +3181,17 @@ public
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
-\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program on a
-\ data stack of its own. Once the string is popped, the caller's extent and
-\ cursor wait in this word's frame and the text takes a PAGE-BYTES guarded
-\ stack from the pool CLOSED-FREE-CELL heads; an empty pool maps one with
-\ STACK-GUARD:EMIT-MAP, inline because a primitive names no label. So `depth`
-\ starts at 0, every floor the interpreter enforces refuses a token that would
-\ reach under it, as rc 70 through LEVALREC, and the cell under the floor is
-\ that stack's low guard page, never a caller's cell. The evaluate frame
-\ EVAL-ENTER pushes records the stack (EVAL-SEG) and returns to `back`. A
-\ nested evaluate, run-in-stack or catch inside the text therefore restores to
-\ that stack, and a throw out of the text unwinds to the caller's handler,
-\ which restores its own extent and abandons this frame, while LEVALREC gives
-\ the stack back to the pool and puts back the caller's extent this frame
-\ holds: base, capacity and cursor at [0], [8] and [16], the text's stack at
-\ [24] (habu2.f EM-EVAL-THROW-RECOVER). A text that ends inside a definition
-\ it opened is refused that way from its end, rc 74, as every buffer is
-\ (habu2.f C-DEF-SOURCE-END). The clean return gives the stack back here, and
-\ the text must have left nothing: residue is dropped and refused by name with
-\ STACK-ABI:E-EVAL-RESIDUE (lib/errors.f owns the code), BTHROW inlined as in
-\ BRUNSTACK above.
+\ evaluate-closed runs text on a guarded stack from CLOSED-FREE-CELL. Its
+\ caller's extent and cursor wait in this frame. A cold build enters the
+\ engine's evaluate frame, which owns the stack on a throw. A seeded build
+\ catches the Habu evaluate provider here, so this frame returns the stack to
+\ the pool on both paths before it restores the caller and rethrows. A clean
+\ text must leave no cells; its residue is E-EVAL-RESIDUE.
 : B-EVAL-CLOSED ( -- )
-   LBL LBL LBL LBL {: have:label take:label back:label done:label :}
+   LBL LBL LBL LBL LBL {: have:label take:label back:label done:label error:label :}
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP 32 SUBI,
+   SP SP 48 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
    XDS SP 16 STR,
@@ -3198,17 +3207,26 @@ public
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
-   30 back ADR,
-   EVAL-ENTER
+   ENGINE-PRIMS:SEEDED? IF
+      9 G-PUSH  10 G-PUSH
+      11 DATA PROVIDED-XT:EVALUATE-CELL LDR,  11 G-PUSH  BCATCH
+      11 G-POP  11 SP 32 STR,
+   ELSE
+      11 0 MOVZ,  11 SP 32 STR,
+      30 back ADR,
+      EVAL-ENTER
+   THEN
    back LBL,
    11 SP 24 LDR,                                     \ the text's stack, back to the pool
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
-   SP SP 32 ADDI,
+   9 SP 32 LDR,  SP SP 48 ADDI,
+   9 error CBNZ,
    13 11 CMP,  C-EQ done BCOND,
-   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
+   error LBL,  9 G-PUSH  BTHROW
    done LBL, ;
 
 \ source-unit-run ( xt -- ): close one whole callback at the caller's cursor.
@@ -4011,7 +4029,7 @@ public
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L
+   PROVIDED-XT:EVALUATE-CELL s" evaluate" ['] B-EVAL ENGINE-EMIT:FPRIM-PROVIDED
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
    s" source-unit-run" ['] B-SOURCE-UNIT-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
 

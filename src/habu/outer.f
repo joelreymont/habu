@@ -214,8 +214,9 @@ public
 \ src/habu/packages.f for the package keywords (`package`, `public`, `private`,
 \ `;package`, `using`, `;using` and `export`), and with src/habu/definers.f for
 \ the definition heads (`:`, `kernel:` and `trusted:`) and the body one opens,
-\ with the immediates the body runs, its `does>` and the `;` that ends it.
-\ The engine's other keywords (`create`, `immediate`, ...) are not read yet: a
+\ with the immediates the body runs, its `does>` and the `;` that ends it, and
+\ for `cast:` and `immediate`.
+\ The engine's other keywords (`create`, `variable`, ...) are not read yet: a
 \ body captures them as it captures any token, and elsewhere they are not
 \ dictionary words, so they refuse as undefined.
 \
@@ -404,6 +405,17 @@ variable DIGIT-AT
 : FLOORED ( bool -- )
    if s" E-UNDERFLOW: " REFUSE then ;
 
+\ The program's cells lie on the data stack below this loop's own, and a body
+\ the native compiler builds leaves exactly its row's count of cells
+\ (elaborate.f EMIT-RETURN), so a literal reaches the program, and a cell
+\ leaves it, only inside execute-floor: what the xt pushes or takes there is
+\ the program's, and these rows state none of it. Each states the xt's effect,
+\ which gives the compiler the call's convention.
+TRUSTED: GIVE-N ( [ -- n ] -- ) execute-floor FLOORED ;
+TRUSTED: GIVE-STR ( [ -- ptr u8 n ] -- ) execute-floor FLOORED ;
+TRUSTED: GIVE-CSTR ( [ -- ptr u8 ] -- ) execute-floor FLOORED ;
+TRUSTED: TAKE-N ( [ n -- ] -- ) execute-floor FLOORED ;
+
 \ ---- the top-row hook (habu2.f LTOPHOOK) ------------------------------------------
 \ With a hook installed (set-top-check) it gets ( token class flags ) for each
 \ number after the push and for each word, past its gates, before it runs. The
@@ -415,9 +427,50 @@ variable DIGIT-AT
 : HOOK@ ( -- n )
    TOP-HOOK-CELL CELL@ ;
 
-TRUSTED: HOOK ( n n -- )
+\ The cell holds the hook's xt raw; this view states its effect, the event's
+\ (layout.f TOP-HOOK-CELL). The event runs inside execute-floor, which catches
+\ a hook that takes more than the event, so its class and flags wait in cells:
+\ a quotation reaches no local.
+TRUSTED: HOOK-ACTION ( n -- [ ptr u8 n n n -- ] ) ;
+TRUSTED: RUN-EVENT ( [ -- ] -- ) execute-floor FLOORED ;
+variable EV-CLASS
+variable EV-FLAGS
+
+: HOOK ( n n -- )
    HOOK@ 0= if 2drop exit then
-   TOKEN$ 2swap HOOK@ execute-floor FLOORED ;
+   EV-FLAGS ! EV-CLASS !
+   [: TOKEN$ EV-CLASS @ EV-FLAGS @ HOOK@ HOOK-ACTION execute ;] RUN-EVENT ;
+
+\ ---- the unit hook (habu2.f C-UNIT-HOOK) -----------------------------------------
+\ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
+\ runs (tools/native-unit-compile.f GUARD). The guard gets the token, a class
+\ and one of these events, and only a package name's answer is read: a
+\ nonzero one skips the rest of the input. A token outside a body is classed
+\ 0 for a word, 1 for an integer and 2 for a float; a word about to run is
+\ classed by its xt; the other events are classed 0.
+0 constant UNIT-EV-TOKEN         \ a token outside a body, past a comment
+2 constant UNIT-EV-PACKAGE       \ the name `package` has read
+3 constant UNIT-EV-IMMEDIATE     \ a body immediate about to run
+4 constant UNIT-EV-WORD          \ a word about to run, past its gates
+5 constant UNIT-EV-END           \ the end of the source
+
+: UNIT? ( -- bool )
+   UNIT-COMPILE-CELL CELL@ 0<> ;
+
+TRUSTED: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] ) ;
+
+\ The guard's answer, 0 with none armed. The token cells are put back after
+\ the guard returns, whatever it parsed.
+: UNIT-EVENT ( n n -- n ) {: class:n event:n :}
+   UNIT? 0= if 0 exit then
+   TKA-CELL CELL@ TKL-CELL CELL@ {: a:n u:n :}
+   TOKEN$ class event UNIT-COMPILE-CELL CELL@ UNIT-GUARD execute
+   a TKA-CELL CELL!  u TKL-CELL CELL! ;
+
+\ A unit's misuse names the token, then the engine's compile-die tail
+\ (habu2.f C-DIE-TOKEN with 70).
+: UNIT-REFUSE ( -- )
+   TOKEN$ SAY RC-REJECT THROW-AT ;
 
 \ ---- numbers ------------------------------------------------------------------------
 variable VALUE
@@ -431,7 +484,31 @@ variable VALUE
    num ;
 
 \ ---- words --------------------------------------------------------------------------
+\ The record of the word the step looked up. INTERPRET (interpret.f) puts back
+\ what it held when the buffer began, so no record outlives the buffer that
+\ looked it up: a stripped image would hold it as an undeclared dictionary
+\ pointer.
 TYPED-VARIABLE REC ptr n
+
+\ A sealed source may name a record it defined after the seal or a callable
+\ public record in an admitted wordlist (habu2.f LPOLICYREC).
+: POLICY-REFUSE ( -- )
+   s" hb: not in vocabulary: " SAY
+   TOKEN$ SAY ENGINE-ERROR:POLICY THROW-AT ;
+
+: POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
+   POLICY-NDICT-CELL CELL@ {: seal:n :}
+   seal 0= if exit then
+   rec XREF-FOUND? 0= if POLICY-REFUSE then
+   rec XREF-NULL - seal XREF-REC-ADDR < if
+      rec XREF-WORDLIST {: wid:n :}
+      wid 0 < wid PROT-WID-MAX >= or if POLICY-REFUSE then
+      wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
+      wid 63 and rshift 1 and 0= if POLICY-REFUSE then
+   then
+   rec XREF-FLAGS DNAME-INT and 0<> if POLICY-REFUSE then
+   rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
+   rec XREF-START 0= if POLICY-REFUSE then ;
 
 \ A global hit is asked of the used publics as well, as habu2.f
 \ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses
@@ -439,6 +516,7 @@ TYPED-VARIABLE REC ptr n
 \ record whether or not LFIND bound the token.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
+   REC @ POLICY-CHECK-REC
    REC @ XREF-FOUND? 0= if exit then
    REC @ XREF-WORDLIST 0<> if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
@@ -489,12 +567,18 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ The xt waits on the return stack while the hook runs.
-TRUSTED: RUN-WORD ( -- )
-   LOOKUP GATE
-   REC @ XREF-START >r
-   TOP-EV-WORD WORD-FLAGS HOOK
+\ The unit hook, then the top-row hook, before the word runs. The flags and
+\ the xt are read before either hook runs and wait on the return stack while
+\ they run.
+TRUSTED: RUN-FOUND ( -- )
+   GATE
+   WORD-FLAGS >r  REC @ XREF-START >r
+   r@ UNIT-EV-WORD UNIT-EVENT drop
+   r> r> swap >r  TOP-EV-WORD swap HOOK
    r> execute-floor FLOORED ;
+
+: RUN-WORD ( -- )
+   LOOKUP RUN-FOUND ;
 
 \ ---- keywords (habu2.f CF-ENTRY, LKWCMP) --------------------------------------------
 \ A keyword is matched before the token is read as a number or a word, and it
@@ -664,20 +748,20 @@ TRUSTED: RUN-WORD ( -- )
 \ A literal a program keeps is pushed, then the hook sees it with the keyword
 \ as its token. `."` types its text straight from the input and allots
 \ nothing; `.\"` keeps its decoded bytes, as the engine's C-EIDOTQ does.
-TRUSTED: PUSH-STR ( -- )
-   KEEP TOP-EV-STR 0 HOOK ;
+: PUSH-STR ( -- )
+   ['] KEEP GIVE-STR TOP-EV-STR 0 HOOK ;
 
-TRUSTED: PUSH-CSTR ( -- )
-   COUNTED TOP-EV-CSTR 0 HOOK ;
+: PUSH-CSTR ( -- )
+   ['] COUNTED GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-STR ( -- )
    TEXT type ;
 
-TRUSTED: PUSH-ESC-STR ( -- )
-   ESC-KEEP TOP-EV-STR 0 HOOK ;
+: PUSH-ESC-STR ( -- )
+   ['] ESC-KEEP GIVE-STR TOP-EV-STR 0 HOOK ;
 
-TRUSTED: PUSH-ESC-CSTR ( -- )
-   ESC-COUNTED TOP-EV-CSTR 0 HOOK ;
+: PUSH-ESC-CSTR ( -- )
+   ['] ESC-COUNTED GIVE-CSTR TOP-EV-CSTR 0 HOOK ;
 
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
@@ -690,8 +774,8 @@ TRUSTED: PUSH-ESC-CSTR ( -- )
    TOKEN$ drop c@ ;
 
 \ The hook sees the operand as the token.
-TRUSTED: PUSH-CHAR ( -- )
-   FIRST-BYTE TOP-EV-CHAR 0 HOOK ;
+: PUSH-CHAR ( -- )
+   ['] FIRST-BYTE GIVE-N TOP-EV-CHAR 0 HOOK ;
 
 \ ---- tick (habu2.f C-TICK) ---------------------------------------------------------------
 \ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
@@ -744,8 +828,8 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
 \ The hook sees the operand as the token and the record's flags.
-TRUSTED: PUSH-XT ( -- )
-   TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;
+: PUSH-XT ( -- )
+   TICKED [: REC @ XREF-START ;] GIVE-N TOP-EV-TICK WORD-FLAGS HOOK ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its
