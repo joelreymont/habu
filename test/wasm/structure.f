@@ -168,9 +168,13 @@ private
    c b u USE
    c b t END1 ;
 
+\ A cell-wide constant, which states its address kind: a number, not an address.
 : I64-1 ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:n :}
-   c b WSTRUCT-OPCODE:I64-CONST  c b I64  v K ;
+   c b WSTRUCT-OPCODE:I64-CONST OPEN
+   c b  c b WSTRUCT:KEY-VALUE  c b v IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   c b  c b WSTRUCT:KEY-ADDR  c b WSTRUCT:ADDR-NONE WSTRUCT:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   c b  c b I64  END1 ;
 
 : EQZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ID:ir-value-id :}

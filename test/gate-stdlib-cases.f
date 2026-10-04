@@ -579,6 +579,12 @@ SUITE wasm-structure
    test/wasm/structure.f
 ;SUITE
 
+\ The Wasm selector, src/arch/wasm/select.f: definitions compiled through
+\ NBACK and selected to frozen WSTRUCT, calls, status and the integer rows.
+SUITE wasm-select
+   test/wasm/select.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
