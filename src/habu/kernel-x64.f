@@ -117,11 +117,15 @@ variable REC-CELL
 variable LIVE-CELL
 variable DPBAD-CELL
 variable LCLOSE-CELL
+variable SCOPE-SEED-CELL
+variable SCOPE-SEED-END-CELL
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
 : LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
+: SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
+: SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -1884,6 +1888,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 32 constant SF-USED2
 40 constant SF-COLON
 48 constant SF-INDEX
+56 constant SF-QUAL-PUB
 
 \ scope-find ( ptr u8 n -- bound used used2 flags ). A qualified name searches
 \ the namespace record's public wid. Bare names search the open private/public
@@ -1930,6 +1935,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E primary-done JCC,
    RDX RAX REC-CODE MOV-LOAD,
+   RDX RSP SF-QUAL-PUB MOV-STORE,
    RCX RSP SF-COLON MOV-LOAD,
    RDI RSP SF-TOKEN MOV-LOAD,
    RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
@@ -1937,6 +1943,18 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RSI RCX ASM-SINK ENC-SUB-RR
    RSI ASM-SINK ENC-DEC
    FIND-LBL CALL,
+   RAX RSP SF-BOUND MOV-STORE,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE primary-done JCC,
+   RDX RSP SF-QUAL-PUB MOV-LOAD,
+   RCX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RCX ASM-SINK ENC-CMP-RR  C-NE primary-done JCC,
+   RCX RSP SF-COLON MOV-LOAD,
+   RDI RSP SF-TOKEN MOV-LOAD,
+   RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
+   RSI RSP SF-LEN MOV-LOAD,
+   RSI RCX ASM-SINK ENC-SUB-RR
+   RSI ASM-SINK ENC-DEC
+   RDX ZERO-REG,  FIND-LBL CALL,
    RAX RSP SF-BOUND MOV-STORE,
    primary-done JMP,
    qual-bad X64CODE:LBL,
@@ -1997,7 +2015,8 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX RAX ASM-SINK ENC-TEST-RR  C-E seed-skip JCC,
    RDX RAX ASM-SINK ENC-MOV-RR
    RDX DBASE-REG ASM-SINK ENC-SUB-RR
-   RDX ENGINE-PRIMS:COUNT DREC * >IMM32 ASM-SINK ENC-CMP-RI32  C-AE seed-skip JCC,
+   SCOPE-SEED-LBL CALL,
+   RDX R8 ASM-SINK ENC-CMP-RR  C-AE seed-skip JCC,
    RCX 1 >IMM8 ASM-SINK ENC-OR-RI8
    seed-skip X64CODE:LBL,
    RAX PUSH,
@@ -2048,7 +2067,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    {: scan:label colon:label bare:label qual-scan:label qual-find:label
       pub:label global:label result:label miss:label done:label :}
    RSI POP,  RDI POP,
-   RSP 24 >IMM8 ASM-SINK ENC-SUB-RI8
+   RSP 32 >IMM8 ASM-SINK ENC-SUB-RI8
    RDI RSP 0 MOV-STORE,  RSI RSP 8 MOV-STORE,
    RCX ZERO-REG,
    scan X64CODE:LBL,
@@ -2072,6 +2091,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E miss JCC,
    RDX RAX REC-CODE MOV-LOAD,
+   RDX RSP 24 MOV-STORE,
    RCX RSP 16 MOV-LOAD,
    RDI RSP 0 MOV-LOAD,
    RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
@@ -2079,6 +2099,17 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RSI RCX ASM-SINK ENC-SUB-RR
    RSI ASM-SINK ENC-DEC
    FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
+   RDX RSP 24 MOV-LOAD,
+   RCX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RCX ASM-SINK ENC-CMP-RR  C-NE miss JCC,
+   RCX RSP 16 MOV-LOAD,
+   RDI RSP 0 MOV-LOAD,
+   RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
+   RSI RSP 8 MOV-LOAD,
+   RSI RCX ASM-SINK ENC-SUB-RR
+   RSI ASM-SINK ENC-DEC
+   RDX ZERO-REG,  FIND-LBL CALL,
    result JMP,
    bare X64CODE:LBL,
    RDI RSP 0 MOV-LOAD,  RSI RSP 8 MOV-LOAD,
@@ -2103,7 +2134,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX ZERO-REG,
    done X64CODE:LBL,
    RAX PUSH,
-   RSP 24 >IMM8 ASM-SINK ENC-ADD-RI8 ;
+   RSP 32 >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ num-parse reads exactly the ARM reader's spelling: optional minus and hex
 \ prefix, then digits; decimal alone admits a dot with at least one fraction
@@ -5006,6 +5037,10 @@ public
 : KERNEL, ( -- )
    HELPERS,
    X64CODE:LBL LCLOSE-CELL !
+   X64CODE:LBL SCOPE-SEED-CELL !
+   X64CODE:LBL SCOPE-SEED-END-CELL !
+   s" (SCOPE-SEED)" SCOPE-SEED-LBL LABEL>N SCOPE-SEED-END-LBL LABEL>N
+   ENGINE-PRIMS:HELPER-REGISTER
    SYSCALLS,
    CONTROL,
    ATOMICS,
@@ -5017,6 +5052,10 @@ public
    DEFINITION,
    PURE,
    PROFILER,
+   SCOPE-SEED-LBL X64CODE:LBL,
+   R8 ENGINE-PRIMS:COUNT DREC * IMM32,
+   ASM-SINK ENC-RET
+   SCOPE-SEED-END-LBL X64CODE:LBL,
    [: PROVIDED-FILLED? ;] ENGINE-PRIMS:COMPLETE ;
 
 ;using   \ X64LAYOUT

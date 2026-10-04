@@ -4,6 +4,8 @@ require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
 
 package X64K-SCOPE-TEST
+using X64ASM
+using X64CODE
 using X64LAYOUT
 
 : ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
@@ -64,8 +66,26 @@ using X64LAYOUT
       9 9 USE,
       s" OnlyUsed" SCOPE,  9 9 -1 1 ANSWER,
    then
+   kind 9 = if
+      7 PKG-PUB-CELL X64HARNESS:CELL!,  8 PKG-PRI-CELL X64HARNESS:CELL!,
+      s" Pkg:Both" SCOPE,  5 -1 -1 1 ANSWER,
+   then
+   kind 10 = if s" Pkg:Both" SCOPE,  -1 -1 -1 0 ANSWER, then
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED, ;
+
+\ A real primitive registered after CONTROL still owns a seeded record. Put
+\ the registry's last row at its actual seed ordinal, not in the low fixture
+\ range where the old partial count happened to work.
+: BUILD-LATE ( -- )
+   false X64HARNESS:BOOT-OPEN,
+   ENGINE-PRIMS:COUNT 1- {: row:n :}
+   ENGINE-GPR:X64-NDICT >R64 row >IMM64 ASM-SINK ENC-MOV-RI64
+   row ENGINE-PRIMS:NAME$ row ENGINE-PRIMS:HELPER-WID 0 X64HARNESS:RECORD,
+   row ENGINE-PRIMS:NAME$ SCOPE,  row -1 -1 1 ANSWER,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-scope-late-seed" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD ( bool n ptr u8 n -- ) {: indexed:bool kind:n path:ptr u:n :}
    false X64HARNESS:BOOT-OPEN,
@@ -86,6 +106,8 @@ using X64LAYOUT
    false 6 s" hb-x64-scope-ambiguous-scan" TMP-PATH BUILD
    false 7 s" hb-x64-scope-bad-qual-scan" TMP-PATH BUILD
    false 8 s" hb-x64-scope-duplicate-used-scan" TMP-PATH BUILD
+   false 9 s" hb-x64-scope-open-qual-scan" TMP-PATH BUILD
+   false 10 s" hb-x64-scope-closed-qual-scan" TMP-PATH BUILD
    true 0 s" hb-x64-scope-global-index" TMP-PATH BUILD
    true 1 s" hb-x64-scope-private-index" TMP-PATH BUILD
    true 2 s" hb-x64-scope-public-index" TMP-PATH BUILD
@@ -95,10 +117,15 @@ using X64LAYOUT
    true 6 s" hb-x64-scope-ambiguous-index" TMP-PATH BUILD
    true 7 s" hb-x64-scope-bad-qual-index" TMP-PATH BUILD
    true 8 s" hb-x64-scope-duplicate-used-index" TMP-PATH BUILD
+   true 9 s" hb-x64-scope-open-qual-index" TMP-PATH BUILD
+   true 10 s" hb-x64-scope-closed-qual-index" TMP-PATH BUILD
+   BUILD-LATE
    X64HARNESS:DISPOSE
    T-REPORT ;
 
 RUN
 
+;using
+;using
 ;using
 ;package
