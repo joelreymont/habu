@@ -447,6 +447,10 @@ WHITEBOX-SUITE compiler-native-tape-owner
    test/compiler/native-tape-owner.f
 ;SUITE
 
+WHITEBOX-SUITE compiler-native-host-construction
+   test/compiler/native-host-construction-e2e.f
+;SUITE
+
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE

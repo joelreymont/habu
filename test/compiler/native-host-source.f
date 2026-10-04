@@ -25,7 +25,9 @@ CAST: >BYTES ( n -- ptr u8 )
 TRUSTED: BAD-TRUST ( -- n ) 8 ;
 
 defer LATE ( -- n )
-[: 7 ;] is LATE
+: LATE-BODY ( -- n ) 7 ;
+: SET-LATE ( -- ) ['] LATE-BODY is LATE ;
+SET-LATE
 : BAD-DEFER ( -- n ) LATE ;
 
 public

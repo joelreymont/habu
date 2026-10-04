@@ -121,12 +121,19 @@ TYPED-VARIABLE EXECUTION RTARGET:execution-platform
    reason FOREIGN = if s" foreign call" exit then
    s" missing implementation facts" ;
 
+: REPORT-ENTRY ( n -- )
+   ROW IMPL-ENTRY @ s"  implementation " type . ;
+
+: REPORT-REASON ( n n -- )
+   {: reason:n loc:n :}
+   s" host construction: " type reason REASON$ type
+   s"  body offset " type loc . cr ;
+
 : PATH ( n -- )
    {: id:n :}
    id
    begin dup 0<> while
-      dup ROW {: row:n :}
-      s"  implementation " type row IMPL-ENTRY @ .
+      dup REPORT-ENTRY
       dup VIA @ dup 0<> if
          1- {: edge:n :}
          s"  call site " type edge EDGE-SITE @ .
@@ -138,19 +145,25 @@ TYPED-VARIABLE EXECUTION RTARGET:execution-platform
 
 : REFUSE ( n n n -- )
    {: id:n reason:n loc:n :}
-   s" host construction: " type reason REASON$ type
-   s"  body offset " type loc . cr
+   reason loc REPORT-REASON
+   id 0<> if id REPORT-ENTRY cr then
+   E-UNSAFE throw ;
+
+\ Only closure checks have initialized traversal parents and call sites.
+: WALK-REFUSE ( n n n -- )
+   {: id:n reason:n loc:n :}
+   reason loc REPORT-REASON
    id PATH
    E-UNSAFE throw ;
 
 : CHECK-IMPL ( n CTARGET:contract -- )
    {: id:n execution:CTARGET:contract :}
    id ROW {: row:n :}
-   row IMPL-LIVE @ 0= if id UNKNOWN 0 REFUSE then
-   row IMPL-CONTRACT @ execution CTARGET:SAME? 0= if id UNKNOWN 0 REFUSE then
-   row IMPL-TYPE-FIRST @ 0< if id UNKNOWN 0 REFUSE then
+   row IMPL-LIVE @ 0= if id UNKNOWN 0 WALK-REFUSE then
+   row IMPL-CONTRACT @ execution CTARGET:SAME? 0= if id UNKNOWN 0 WALK-REFUSE then
+   row IMPL-TYPE-FIRST @ 0< if id UNKNOWN 0 WALK-REFUSE then
    row IMPL-REASON @ {: reason:n :}
-   reason SAFE <> if id reason row IMPL-LOC @ REFUSE then ;
+   reason SAFE <> if id reason row IMPL-LOC @ WALK-REFUSE then ;
 
 : PUSH ( n -- )
    {: id:n :}
@@ -166,7 +179,7 @@ TYPED-VARIABLE EXECUTION RTARGET:execution-platform
 : FOLLOW ( n n -- )
    {: from:n edge:n :}
    edge EDGE-TO @ {: to:n :}
-   to 1 < to IMPL-N @ > or if from UNKNOWN edge EDGE-LOC @ REFUSE then
+   to 1 < to IMPL-N @ > or if from UNKNOWN edge EDGE-LOC @ WALK-REFUSE then
    to SEEN @ 0<> if exit then
    from to PARENT !
    edge 1+ to VIA !

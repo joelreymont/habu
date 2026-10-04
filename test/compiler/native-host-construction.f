@@ -24,6 +24,12 @@ variable OLD-SLOT
 variable OLD-OCC
 
 TRUSTED: RUN-N ( n -- [ -- n ] ) ;
+TRUSTED: PATH-XT ( n -- [ ptr u8 n -- ] ) ;
+TRUSTED: SLOT-XT ( n -- [ n -- ptr u8 ] ) ;
+TRUSTED: LEN-XT ( n -- [ n -- n ] ) ;
+
+: LOAD-SOURCE ( ptr u8 n -- )
+   s" script-required" OPEN-TARGET-XT PATH-XT execute ;
 
 : HANDLE ( ptr u8 n -- n n )
    XREF-FIND DEF-OCC:SELECT ;
@@ -49,20 +55,22 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    1 OBSERVED +! ;
 
 : CUSTOM-SOURCE ( -- )
-   s" test/compiler/native-host-custom.f" included ;
+   s" test/compiler/native-host-custom.f" LOAD-SOURCE ;
 
 : INITIALIZER-SOURCE ( -- )
-   s" test/compiler/native-host-initializer.f" included ;
+   s" test/compiler/native-host-initializer.f" LOAD-SOURCE ;
 
 : STALE-SELECT ( -- )
    OLD-SLOT @ OLD-OCC @ BUILD-TARGET:ACTION@ RTARGET:EXECUTION@
    NHOST:SELECT-ENTRY drop ;
 
 : RECLAIM-CASE ( -- )
-   s" test/compiler/native-host-reclaim.f" included
+   s" test/compiler/native-host-reclaim.f" LOAD-SOURCE
    s" NATIVE-HOST-RECLAIM:OLD" HANDLE OLD-OCC ! OLD-SLOT !
    s" NATIVE-HOST-RECLAIM:OLD" SELECTED-N 11 T=
-   s" NATIVE-HOST-RECLAIM:MARK" FORGET-DEFS-FROM
+   \ The mark belongs to the fresh target checker, like the loaded source.
+   s" NATIVE-HOST-RECLAIM:MARK"
+      s" FORGET-DEFS-FROM" OPEN-TARGET-XT PATH-XT execute
    [: STALE-SELECT ;] DEF-OCC:E-STALE TTHROWSQ
    s" package NATIVE-HOST-RECLAIM public : NEW ( -- n ) 12 ; ;package"
       evaluate-closed
@@ -116,13 +124,13 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    DEFAULT-SOURCE-BIND
    T-RESET
    0 OBSERVED !
-   s" test/compiler/native-host-source.f" included
+   s" test/compiler/native-host-source.f" LOAD-SOURCE
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
    s" distinct checked output constructors cannot attach" T-LABEL
    [: CONTRACT-MISMATCH ;] NHOST:E-UNSAFE TTHROWSQ
-   s" test/compiler/native-host-redefine.f" included
+   s" test/compiler/native-host-redefine.f" LOAD-SOURCE
    SOURCE-CHECKS
    BUILD-TARGET:ACTION@ RTARGET:EXECUTION@
       ['] INITIALIZER-SOURCE NHOST:WITH-REQUIRED
@@ -131,7 +139,14 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
 
 : CHECK-CONSTRUCTION ( -- )
    s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T=
-   T-REPORT ;
+   T-REPORT
+   \ The artifact carries the fresh target loader's real recorded closure.
+   AOT-IDENT:RESET
+   s" REQUIRE-REG:COUNT" OPEN-TARGET-XT RUN-N execute 0 ?do
+      i s" REQUIRE-SLOT" OPEN-TARGET-XT SLOT-XT execute
+      i s" REQUIRE-LEN@" OPEN-TARGET-XT LEN-XT execute
+      AOT-IDENT:PATH+
+   loop ;
 
 : CAPTURE-WRITER ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    {: owned:AOT-OWNED:capture host:ptr count:n path:ptr size:n :}
@@ -145,13 +160,14 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
 
 : ARTIFACT-NAME? ( n ptr u8 n -- bool )
    {: row:n name:ptr size:n :}
-   AOT-NAMES-BUF@ AOT-REC-BUF@ AOT-REC-MAX 48 * +
+   AOT-BUF:AOT-NAMES-BUF@ AOT-BUF:AOT-REC-BUF@
+      AOT-BUF:AOT-REC-MAX 48 * +
       row AOT-CREC-ROW * + 8 + LE:U32@ + {: e:ptr :}
    e 1+ e c@ name size CORE-STR= ;
 
 : ONE42-COUNT ( -- n )
    0
-   AOT-REC-N @ 0 ?do
+   AOT-BUF:AOT-REC-N @ 0 ?do
       i s" ONE42" ARTIFACT-NAME? if 1+ then
    loop ;
 

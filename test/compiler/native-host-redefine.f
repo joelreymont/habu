@@ -1,3 +1,6 @@
+require src/habu/code-span.f
+require src/habu/xref.f
+
 package NATIVE-HOST-ALIAS
 public
 EXPORT NATIVE-HOST-SOURCE:HOST42
