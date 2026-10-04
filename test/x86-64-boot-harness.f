@@ -39,8 +39,10 @@ using X64RT
 \ allocates.
 DATA-START $10000 + constant BOOT-SCRATCH-OFF
 variable ENTRY-CELL
+variable BOOT-END-CELL
 
 : ENTRY-LBL ( -- label ) ENTRY-CELL @ >LABEL ;
+: BOOT-END-LBL ( -- label ) BOOT-END-CELL @ >LABEL ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 
@@ -51,10 +53,10 @@ public
 \ registry rows do not.
 : BOOT-OPEN, ( bool -- ) {: negative:bool :}
    ASM-RESET
-   LBL EXIT-CELL !  LBL ENTRY-CELL !
+   LBL EXIT-CELL !  LBL ENTRY-CELL !  LBL BOOT-END-CELL !
    FIRST-CASE CASE-NEXT !
    negative if FIRST-CASE else 0 then WRONG-AT !
-   X64BOOT:START,
+   X64KERNEL:FLOORREC-NEW BOOT-END-LBL X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
    LBL {: text:label :}  text LBL,
@@ -112,7 +114,9 @@ public
 \ End an image: exit 0 when every check held, then write it.
 : BOOT-CLOSE, ( ptr u8 n -- )
    RDI ZERO-REG,
-   WRITE-ELF ;
+   EXIT,
+   BOOT-END-LBL LBL,
+   WRITE ;
 
 private
 

@@ -21,6 +21,14 @@
 \    hb-x64-kernel-source-unit        0  a clean callback, residue, a nested
 \                                        throw and an exactly full stack return
 \                                        restore the caller's stack and extent
+\    hb-x64-kernel-eval-closed        0  clean, residue, throw and a real low
+\                                        guard fault return the segment to a pool
+\    hb-x64-kernel-throw-close        0  a throw out of an open code window
+\                                        closes the band before catch resumes
+\    hb-x64-kernel-floorrec           0  the data-floor recovery entry empties
+\                                        the faulting stack and throws 70
+\    hb-x64-kernel-stack-clear        0  the trusted recovery row empties only
+\                                        the current data stack
 \    hb-x64-kernel-unset-<row>       86  execute, catch, finally cleanup and
 \                                        run-in-stack refuse a zero quotation
 \                                        with `hb: unset quotation` on fd 2
@@ -57,6 +65,7 @@ using X64RT
 \ A STACK-ABI:PAGE-BYTES aligned extent inside DATA: run-in-stack refuses it for
 \ the one clause no alignment passes.
 STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
+DATA-START $10000 + constant CLOSED-SCRATCH
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -175,6 +184,35 @@ STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
 : CLOSED-OF ( label -- label ) {: cb:label :}
    ROUTINE  cb PUSH-XT,  s" source-unit-run" ROW,  ;ROUTINE ;
 
+: EVAL-CLEAN ( n -- label ) {: off:n :}
+   ROUTINE
+   RAX DATA-REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DATA-REG CLOSED-SCRATCH off + MEM-OFF ASM-SINK ENC-MOV-MR
+   0 G-POP  0 G-POP
+   ;ROUTINE ;
+
+: EVAL-RESIDUE ( -- label )
+   ROUTINE  0 G-POP  0 G-POP  99 PUSH,  ;ROUTINE ;
+
+: EVAL-THROW ( -- label )
+   ROUTINE  0 G-POP  0 G-POP  29 PUSH,  s" throw" ROW,  ;ROUTINE ;
+
+: EVAL-FLOOR ( -- label )
+   ROUTINE  0 G-POP  0 G-POP  s" execute" ROW,  ;ROUTINE ;
+
+: CLOSED-TEXT ( -- label )
+   ROUTINE  s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,  ;ROUTINE ;
+
+: THROW-WINDOW ( -- label )
+   ROUTINE
+   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   X64KERNEL:WINDOW-OPEN,
+   31 PUSH,  s" throw" ROW,
+   ;ROUTINE ;
+
+: FLOOR-THROW ( -- label )
+   ROUTINE  99 PUSH,  X64KERNEL:FLOORREC-LBL JMP,  ;ROUTINE ;
+
 \ Set the cursor to the physical top and write its final slot before return.
 \ The enclosing source-unit-run must detect this without attempting a push.
 : FILLS-EXTENT ( -- label )
@@ -216,6 +254,70 @@ STACK-ABI:PAGE-BYTES 2 * constant INSIDE-OFF
    s" 1 2 +" X64HARNESS:PUSH-TEXT,
    2 X64HARNESS:EXPECT-DEPTH,
    s" evaluate" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-EVAL-CLOSED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   0 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   11 PUSH,  s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
+   11 EXPECT-POP,  0 X64HARNESS:EXPECT-DEPTH,
+   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
+   RAX DATA-REG CLOSED-SCRATCH MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR
+   LBL {: reused:label :}  C-E reused JCC,
+   RDI WRONG-RC IMM,  NR-EXIT-GROUP SYS,
+   reused LBL,
+   EVAL-RESIDUE PROVIDED-XT:EVALUATE-CELL XT!,
+   CLOSED-TEXT PUSH-XT,  s" catch" ROW,
+   STACK-ABI:E-EVAL-RESIDUE EXPECT-POP,
+   EVAL-THROW PROVIDED-XT:EVALUATE-CELL XT!,
+   CLOSED-TEXT PUSH-XT,  s" catch" ROW,
+   29 EXPECT-POP,
+   EVAL-FLOOR PROVIDED-XT:EVALUATE-CELL XT!,
+   CLOSED-TEXT PUSH-XT,  s" catch" ROW,
+   70 EXPECT-POP,
+   8 EVAL-CLEAN PROVIDED-XT:EVALUATE-CELL XT!,
+   s" ok" X64HARNESS:PUSH-TEXT,  s" evaluate-closed" ROW,
+   RAX DATA-REG CLOSED-SCRATCH MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX DATA-REG CLOSED-SCRATCH CELL + MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR
+   LBL {: reused-again:label :}  C-E reused-again JCC,
+   RDI WRONG-RC IMM,  NR-EXIT-GROUP SYS,
+   reused-again LBL,
+   0 X64HARNESS:EXPECT-DEPTH,
+   0 HND-CELL EXPECT-CELL,
+   STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-THROW-CLOSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   X64HARNESS:REST,
+   5 PUSH,  THROW-WINDOW PUSH-XT,  s" catch" ROW,
+   31 EXPECT-POP,  5 EXPECT-POP,
+   X64HARNESS:PUSH-BANDS,  0 EXPECT-POP,
+   DICT-SIZE X64HARNESS:PROBE,  X64HARNESS:FAULTED EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-FLOORREC ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   5 PUSH,  FLOOR-THROW PUSH-XT,  s" catch" ROW,
+   70 EXPECT-POP,  5 EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+: BUILD-STACK-CLEAR ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   5 PUSH,  6 PUSH,  s" stack-clear" ROW,
+   0 X64HARNESS:EXPECT-DEPTH,
+   9 PUSH,  9 EXPECT-POP,
+   STACK-ABI:BOOT-BYTES STACK-ABI:CAP-CELL EXPECT-CELL,
+   X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-EXECUTE ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -364,6 +466,10 @@ public
    s" hb-x64-kernel-finally" TMP-PATH BUILD-FINALLY
    s" hb-x64-kernel-run-in-stack" TMP-PATH BUILD-RUN-IN-STACK
    s" hb-x64-kernel-source-unit" TMP-PATH BUILD-SOURCE-UNIT
+   s" hb-x64-kernel-eval-closed" TMP-PATH BUILD-EVAL-CLOSED
+   s" hb-x64-kernel-throw-close" TMP-PATH BUILD-THROW-CLOSE
+   s" hb-x64-kernel-floorrec" TMP-PATH BUILD-FLOORREC
+   s" hb-x64-kernel-stack-clear" TMP-PATH BUILD-STACK-CLEAR
    s" hb-x64-kernel-unguarded" TMP-PATH BUILD-UNGUARDED
    s" hb-x64-kernel-unset-execute" TMP-PATH BUILD-UNSET-EXEC
    s" hb-x64-kernel-unset-catch" TMP-PATH BUILD-UNSET-CATCH

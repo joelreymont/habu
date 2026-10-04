@@ -31,7 +31,9 @@ require src/core/util.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
+require src/habu/regalloc-abi.f
 require src/habu/primitive-registry.f
+require src/habu/aot-decl.f
 require src/habu/data-claims.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
@@ -60,6 +62,13 @@ public
 \ time and a REFUSE row's at run time. It is the rc habu1.f
 \ ENGINE-EMIT:TARGET-UNKNOWN dies with when a target has no body at all.
 76 constant REFUSE-RC
+
+variable FLOORREC-ENTRY
+variable FLOORREC-PENDING
+: FLOORREC-LBL ( -- label ) FLOORREC-ENTRY @ >LABEL ;
+: FLOORREC-NEW ( -- label )
+   LBL dup LABEL>N FLOORREC-ENTRY !
+   true FLOORREC-PENDING ! ;
 
 \ The highest DP, as an offset from DATA, that the heap rows admit: the top of
 \ the target's DATA less the profiler's counter band, as habu1.f DP-CHECK
@@ -105,10 +114,12 @@ variable SPAN-CELL
 variable REC-CELL
 variable LIVE-CELL
 variable DPBAD-CELL
+variable LCLOSE-CELL
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
+: LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -174,6 +185,33 @@ public
    ARGS
    ROW$ KEEP? 0= if exit then
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
+
+private
+
+variable ROW-CELL
+
+\ Jump through the row's dispatch cell, leaving the caller's return address on
+\ the machine stack for the word the cell holds.
+: DISPATCH-BODY ( -- )
+   RAX DATA-REG ROW-CELL @ MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX ASM-SINK ENC-JMP-REG ;
+
+public
+
+\ PRIM for a row the captured runtime provides (src/habu/prims.f
+\ EPREFIX-PROVIDED!), registered with its dispatch cell n (layout.f
+\ PROVIDED-XT): the twin of habu1.f FPRIM-PROVIDED. In a seeded build the
+\ record is a stub that jumps through the cell; otherwise it is the body given.
+: PROVIDED ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
+   a u q ARGS
+   ROW$ KEEP? 0= if exit then
+   cell ROW-CELL !
+   ENGINE-PRIMS:SEEDED? if
+      [: DISPATCH-BODY ;] is BODY  false RECORD
+   else
+      true RECORD
+   then
+   cell swap ENGINE-PRIMS:DISPATCH! ;
 
 \ A row the x86-64 kernel does not carry: its body writes `hb: <name> is not
 \ in the x86-64 kernel` on fd 2 and exits REFUSE-RC.
@@ -1453,6 +1491,9 @@ private
 \ exits ENGINE-ERROR:CATCH-STACK. The text follows the exit.
 : THROW, ( -- )
    LBL LBL {: none:label corrupt:label :}
+   RAX ASM-SINK ENC-PUSH
+   LCLOSE-LBL CALL,
+   RAX ASM-SINK ENC-POP
    RDX DATA-REG HND-CELL MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E none JCC,
    corrupt FRAME-OK,
@@ -1695,6 +1736,106 @@ private
    THROW,
    done LBL, ;
 
+\ A closed evaluator's catch lives on the caller's stack. Its called arm finds
+\ the owned segment and source in the machine frame above that catch; a throw
+\ resumes after CAUGHT, with the frame still available for pooling.
+0 constant CLOSED-A
+8 constant CLOSED-U
+16 constant CLOSED-DSP
+24 constant CLOSED-BASE
+32 constant CLOSED-CAP
+40 constant CLOSED-SEG
+48 constant CLOSED-INNER-DSP
+56 constant CLOSED-CODE
+64 constant CLOSED-BYTES
+STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
+
+: CLOSED-ARM, ( -- )
+   RDX RSP CLOSED-ARM-OFF CLOSED-SEG + MOV-LOAD,
+   RDX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RCX STACK-ABI:PAGE-BYTES IMM32,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   DSP RDX ASM-SINK ENC-MOV-RR
+   RAX RSP CLOSED-ARM-OFF CLOSED-A + MOV-LOAD,  RAX PUSH,
+   RAX RSP CLOSED-ARM-OFF CLOSED-U + MOV-LOAD,  RAX PUSH,
+   RAX DATA-REG PROVIDED-XT:EVALUATE-CELL MOV-LOAD,
+   CALLABLE,
+   RAX ASM-SINK ENC-CALL-REG
+   DSP RSP CLOSED-ARM-OFF CLOSED-INNER-DSP + MOV-STORE,
+   ASM-SINK ENC-RET ;
+
+\ The idle stack's first cell links the pool. Mapping follows boot-x64's
+\ guarded allocation: an inaccessible page lies on each side of the aligned
+\ 64 KiB data extent. The source and caller descriptor wait in a machine frame
+\ across mmap and across the guarded call.
+: EVAL-CLOSED, ( -- )
+   LBL LBL LBL LBL LBL
+   {: have:label take:label map-fail:label pool:label done:label :}
+   LBL {: arm:label :}
+   TASK-LIVE-GUARD,
+   RSP CLOSED-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX POP,  RAX RSP CLOSED-U MOV-STORE,
+   RAX POP,  RAX RSP CLOSED-A MOV-STORE,
+   DSP RSP CLOSED-DSP MOV-STORE,
+   RAX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
+   RAX RSP CLOSED-BASE MOV-STORE,
+   RAX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,
+   RAX RSP CLOSED-CAP MOV-STORE,
+   RAX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE have JCC,
+   RDI ZERO-REG,
+   RSI STACK-ABI:PAGE-BYTES 4 * IMM32,
+   RDX 0 IMM32,
+   R10 MAP-ANON-PRIVATE IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B map-fail JCC,
+   RDI RAX STACK-ABI:PAGE-BYTES 2 * 1- MEM-OFF ASM-SINK ENC-LEA
+   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI STACK-ABI:PAGE-BYTES IMM32,
+   RDX PROT-RW IMM32,
+   R10 MAP-ANON-PRIVATE-FIXED IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,
+   RAX RDI ASM-SINK ENC-CMP-RR  C-NE map-fail JCC,
+   take JMP,
+   have LBL,
+   RCX RAX 0 MOV-LOAD,
+   RCX DATA-REG CLOSED-FREE-CELL MOV-STORE,
+   take LBL,
+   RAX RSP CLOSED-SEG MOV-STORE,
+   RAX arm MOVABS,  RAX PUSH,
+   CAUGHT,
+   RAX RSP CLOSED-CODE MOV-STORE,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE pool JCC,
+   RDX RSP CLOSED-INNER-DSP MOV-LOAD,
+   RCX RSP CLOSED-SEG MOV-LOAD,
+   RDX RCX ASM-SINK ENC-CMP-RR  C-E pool JCC,
+   RAX STACK-ABI:E-EVAL-RESIDUE >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX RSP CLOSED-CODE MOV-STORE,
+   C-A pool JCC,
+   RAX 70 IMM32,
+   RAX RSP CLOSED-CODE MOV-STORE,
+   pool LBL,
+   RCX RSP CLOSED-BASE MOV-LOAD,
+   RCX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RCX RSP CLOSED-CAP MOV-LOAD,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
+   DSP RSP CLOSED-DSP MOV-LOAD,
+   RDX RSP CLOSED-SEG MOV-LOAD,
+   RCX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
+   RCX RDX 0 MOV-STORE,
+   RDX DATA-REG CLOSED-FREE-CELL MOV-STORE,
+   RAX RSP CLOSED-CODE MOV-LOAD,
+   RSP CLOSED-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   THROW,
+   done JMP,
+   map-fail LBL,
+   S\" hb: cannot map guarded VM stack\n" 78 STDERR-EXIT,
+   arm LBL,
+   CLOSED-ARM,
+   done LBL, ;
+
 \ die ( ptr u8 n n -- ): the message and LF on fd 2 when its length is
 \ positive, then the exit hook, then the exit. The rc waits on the machine
 \ stack, and the LF is a cell pushed there for its write. The hook's cell is
@@ -1720,12 +1861,22 @@ private
 
 public
 
-\ The interpreter-bound rows jump into habu2.f's interpreter on ARM64, which
-\ the x86-64 engine never has. Lane I provides each in Habu; until then each
-\ row refuses, and the registration is what ENGINE-PRIMS:COMPLETE needs
-\ meanwhile.
-\ unit-compile-run arms the unit hook that interpreter calls, so it refuses too.
+\ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
+\ entry is installed by that evaluator; evaluate-closed gives it a guarded
+\ stack. Rows still tied to ARM's interpreter refuse until supplied in Habu.
 : CONTROL, ( -- )
+   FLOORREC-PENDING @ if
+      false FLOORREC-PENDING !
+   else
+      LBL FLOORREC-ENTRY !
+   then
+   LBL {: after-floor:label :}
+   after-floor JMP,
+   FLOORREC-LBL LBL,
+   DSP DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
+   RAX 70 IMM32,
+   THROW,
+   after-floor LBL,
    s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
    s" 2>r" [: 2>R, ;] PRIM
@@ -1741,8 +1892,8 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" evaluate" REFUSE
-   s" evaluate-closed" REFUSE
+   PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED
+   s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    s" create" REFUSE
    s" parse-name" REFUSE
    s" num-parse" REFUSE
@@ -1820,14 +1971,12 @@ $CC constant INT3                      \ the byte code-publish fills a slot's ga
 \ The helpers' labels, made by PUBLICATION, in the stream it emits them into.
 variable LSPAN-CELL
 variable LOPEN-CELL
-variable LCLOSE-CELL
 variable ADD-SITE-CELL
 variable DROP-SITES-CELL
 variable SEAL-TRAP-CELL
 variable SITE-TRAP-CELL
 : LSPAN-LBL ( -- label ) LSPAN-CELL @ >LABEL ;
 : LOPEN-LBL ( -- label ) LOPEN-CELL @ >LABEL ;
-: LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
 : ADD-SITE-LBL ( -- label ) ADD-SITE-CELL @ >LABEL ;
 : DROP-SITES-LBL ( -- label ) DROP-SITES-CELL @ >LABEL ;
 : SEAL-TRAP-LBL ( -- label ) SEAL-TRAP-CELL @ >LABEL ;
@@ -2288,9 +2437,9 @@ public
 : WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
 
 \ The window and site helpers, made in this stream, and then the rows.
-\ native-unit-publish and does-patch refuse until their bodies land.
+\ native-unit-publish refuses until its body lands.
 : PUBLICATION, ( -- )
-   LBL LSPAN-CELL !  LBL LOPEN-CELL !  LBL LCLOSE-CELL !
+   LBL LSPAN-CELL !  LBL LOPEN-CELL !
    LBL ADD-SITE-CELL !  LBL DROP-SITES-CELL !
    LBL SEAL-TRAP-CELL !  LBL SITE-TRAP-CELL !
    LSPAN-HELPER,  LOPEN-HELPER,  LCLOSE-HELPER,
@@ -2304,7 +2453,6 @@ public
    s" xref-retarget" [: RETARGET, ;] PRIM
    s" int-mark" [: INT-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" does-patch" REFUSE
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 
 \ ---- engine-state rows -------------------------------------------------------
@@ -2524,13 +2672,24 @@ private
    ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
    ok LBL, ;
 
+\ Once a count lowers, a create record at or beyond its new end is retired.
+\ The next definition may reuse that address, so does-patch must forget it.
+: LASTC-TRIM, ( -- )
+   LBL {: live:label :}
+   RDX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDX DBASE-REG ASM-SINK ENC-ADD-RR
+   RCX LASTC-CELL CELL@,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-B live JCC,
+   RCX ZERO-REG,  RCX LASTC-CELL CELL!,
+   live LBL, ;
+
 \ ndict! ( n -- ): a count past DICT-CAP, unsigned, writes `hb: dictionary
 \ count out of range` and exits COUNT-RC; one below the seal floor exits
 \ SEAL-VIOLATION. A lowered count keeps the index, whose probe skips a record
 \ at or past the count; a raised one re-exposes records whose slots a later
 \ insert may have reused, so the index is rebuilt over the raised count.
 : NDICT-SET-BODY ( -- )
-   LBL LBL {: bounded:label done:label :}
+   LBL LBL LBL {: bounded:label lower:label done:label :}
    TASK-LIVE-GUARD,
    RAX 0 PEEK,
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
@@ -2541,8 +2700,12 @@ private
    FLOOR-GUARD,
    RAX NDICT-REG ASM-SINK ENC-CMP-RR
    NDICT-REG RAX ASM-SINK ENC-MOV-RR                   \ mov keeps the flags
-   C-LE done JCC,
+   C-L lower JCC,
+   C-E done JCC,
    HIDX-REBUILD,
+   done JMP,
+   lower LBL,
+   LASTC-TRIM,
    done LBL, ;
 
 \ seed-ndict! ( n -- ): lower the count below the live one, rebuild the index
@@ -2559,6 +2722,7 @@ private
    lower LBL,
    RECORD-GUARD,
    NDICT-REG POP,
+   LASTC-TRIM,
    HIDX-REBUILD,
    RAX ZERO-REG,  RAX SEAL-NDICT-CELL CELL!, ;
 
@@ -2756,16 +2920,16 @@ private
    C-L RAX RCX ASM-SINK ENC-CMOVCC
    RAX PUSH, ;
 
-\ wide-mark ( -- ): set DNAME-WIDE on the newest record, r14 - 1, between two
-\ flips of its pages, read/write and then back to read/execute, as habu1.f
-\ BWIDEMARK brackets its store with LPROTREC.
-: WIDE-MARK-BODY ( -- )
+\ Or bits into the newest record's flags between writable page flips.
+: NEWEST-MARK, ( n -- ) {: bits:n :}
    R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
    R8 PROT-RW PROT-REC,
-   RAX DNAME-WIDE IMM64,
+   RAX bits IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
+
+: WIDE-MARK-BODY ( -- ) DNAME-WIDE NEWEST-MARK, ;
 
 \ policy-admit and policy-seal refuse: the design seal is read by habu2.f's
 \ token loops (LPOLICYREC, LKWCMP), which this kernel does not have, so a seal
@@ -3318,11 +3482,11 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
-\ takes TIER-CELL and the provenance window opens at that CP. At tier 0 it
-\ opens the record only.
+\ PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR;
+\ TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL takes TIER-CELL and the
+\ provenance window opens at that CP. At tier 0 it opens the record only.
 : DEF-OPEN-BODY ( -- )
-   LBL LBL {: prot:label done:label :}
+   LBL LBL LBL {: prot:label done:label nolast:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -3344,6 +3508,12 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RSP DW-ARG MOV-LOAD,  RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    R8 PEND-CELL CELL!,
+   RAX RSP DW-ARG MOV-LOAD,                           \ a body that pushes a cell is the slot `does>` patches
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E nolast JCC,
+   RCX DKIND:CAST IMM64,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E nolast JCC,
+   R8 LASTC-CELL CELL!,
+   nolast LBL,
    RAX ZERO-REG,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
@@ -3413,6 +3583,245 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
+\ A caught compiler failure leaves its handler, return and loop state to the
+\ catch frame. Only definition-local state is abandoned before its cursors
+\ are lowered, and the code window closes before Habu recovery executes.
+: DEF-ABORT-BODY ( -- )
+   WINDOW-CLOSE,
+   -1 X64PROV:CLOSE,
+   RAX ZERO-REG,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX LVD-CELL CELL!,  RAX VSP-CELL CELL!,
+   RAX QPATCH-CELL CELL!,  RAX FRAME-CELL CELL!,  RAX QFRAME-CELL CELL!,
+   RAX JIT-SNAP:SP-CELL CELL!,  RAX JIT-QUOT:SP-CELL CELL!,
+   RAX LOCN-CELL CELL!,  RAX BODYLEN-CELL CELL!,  RAX EXITH-CELL CELL!,
+   RAX PEND-CELL CELL!,  RAX CMM-CELL CELL!,
+   RAX CMFRD-CELL CELL!,  RAX CMBK-CELL CELL!,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX 8191 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX REGALLOC-ABI:VRFREE-CELL CELL!, ;
+
+\ Trusted recovery drops a rejected REPL line's stack without looping through
+\ dynamic depth, which the native compiler cannot certify as a fixed effect.
+: STACK-CLEAR-BODY ( -- )
+   DSP DATA-REG STACK-ABI:BASE-CELL MOV-LOAD, ;
+
+: IMM-MARK-BODY ( -- ) DNAME-IMM NEWEST-MARK, ;
+
+$C3 constant RET-OP
+INT3 $0101010101010101 * constant INT3-CELL
+INT3-CELL $FF invert and RET-OP or constant CAST-CELL
+
+\ Publish a cast's identity slot at CP and the pending record that names it.
+: DEF-CAST-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RDX PEND-CELL CELL@,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   NDICT-REG RECORD-AT,
+   RDX R8 ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
+   RCX R8 REC-FLAGS MOV-LOAD,
+   RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
+   RAX DKIND:CAST IMM64,  RCX RAX ASM-SINK ENC-CMP-RR  C-NE SEAL-TRAP-LBL JCC,
+   RAX DOESB-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   RDI CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   WINDOW-OPEN,
+   RDI PEND-CELL CELL@,  RSI DREC IMM32,  WINDOW-SPAN,
+   RAX CAST-CELL IMM64,  RAX CP-REG 0 MOV-STORE,
+   RAX INT3-CELL IMM64,  RAX CP-REG CELL MOV-STORE,
+   R8 PEND-CELL CELL@,
+   RAX 1 CODE-SPAN:EXACT IMM64,  RAX R8 REC-CODE CELL + MOV-STORE,
+   CP-REG CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   1 X64PROV:CLOSE,
+   PUBLISH-RECORD,
+   RAX ZERO-REG,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
+   RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX PEND-CELL CELL!, ;
+
+\ ---- does-patch -----------------------------------------------------------------
+\ A created word's routine ends `jmp rel32; ret`, its last six bytes
+\ (src/compiler/native/emit-x64.f PUT-RET): the jump falls through to the
+\ return while its displacement is 0, and does-patch aims it at a clause,
+\ where ARM64 rewrites the routine's final RET word (habu2.f LDOESPATCH). The
+\ slot is found by its position in the record's exact span. The clause lies in
+\ the code region or the kernel's text, as every routine a linked call reaches
+\ does, so its displacement fits rel32.
+
+$E9 constant JMP-REL32                 \ the slot's jump
+CALL-REL32-OFF 4 + constant JMP-BYTES  \ the jump, to its displacement's end
+JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
+
+\ does-patch's frame.
+0 constant DP-ENTRY                    \ the clause's entry, 0 for the bare body
+8 constant DP-SLOT                     \ the created routine's `jmp rel32`
+16 constant DP-XT                      \ the registrar being called
+32 constant DP-FRAME
+
+\ Push the name the body capture starts with: its bytes up to the first space
+\ or NUL, or all BODYLEN of them. The twin of habu2.f C-PUSH-DREC-NAME.
+\ Clobbers rax rcx rdx rsi.
+: PUSH-DREC-NAME, ( -- )
+   LBL LBL {: scan:label done:label :}
+   RSI DATA-REG BODYBUF-OFF MEM-OFF ASM-SINK ENC-LEA
+   RCX ZERO-REG,
+   RDX BODYLEN-CELL CELL@,
+   scan LBL,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-GE done JCC,
+   RAX RSI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX STR-SPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RCX ASM-SINK ENC-INC
+   scan JMP,
+   done LBL,
+   RSI PUSH,  RCX PUSH, ;
+
+\ Call the registrar in rax with the captured name and CRSIG, the effect the
+\ clause declared. A registrar keeps no scratch register.
+: RAW-CALL, ( -- )
+   RAX RSP DP-XT MOV-STORE,
+   PUSH-DREC-NAME,
+   RAX CRSIG-A-CELL CELL@,  RAX PUSH,
+   RAX CRSIG-U-CELL CELL@,  RAX PUSH,
+   RAX RSP DP-XT MOV-LOAD,
+   RAX ASM-SINK ENC-CALL-REG ;
+
+\ The twin of habu2.f LASTC-TRUST:PUBLISH: the active checker's trust-raw;
+\ without one, with the check hook armed, the target checker's, or the process
+\ ends naming it; then the target checker's too unless the active one holds
+\ the same operation. With neither a checker nor the hook nothing registers.
+: RAW-PUBLISH, ( -- )
+   LBL LBL LBL LBL LBL
+   {: inactive:label ready:label other:label absent:label done:label :}
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E inactive JCC,
+   RAX RAX NCOMP-DISPATCH:DECL-RAW-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE ready JCC,
+   inactive LBL,
+   RCX HOOK-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-TARGET,
+   ready LBL,
+   RAW-CALL,
+   RCX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-RAW-OFF done DECL-TARGET,
+   RCX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E other JCC,
+   RCX RCX NCOMP-DISPATCH:DECL-RAW-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E done JCC,
+   other LBL,
+   RAW-CALL,
+   done JMP,
+   absent LBL,
+   s" trust-raw" REGISTRAR-RC STDERR-EXIT,
+   done LBL, ;
+
+\ rax = the active checker's operation at offset n of its record; with no
+\ record or no operation the process ends naming it.
+: OWNER-OP, ( n ptr u8 n -- ) {: off:n a:ptr u:n :}
+   LBL LBL {: absent:label found:label :}
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   RAX RAX off MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
+   absent LBL,
+   a u REGISTRAR-RC STDERR-EXIT,
+   found LBL, ;
+
+\ With the check hook armed, the checker's tail for the record a definition
+\ published (habu2.f EM-REC-WIDE-PUBLISH): its rec-wide-publish, then its
+\ rec-min-in@, whose nonzero answer lands in the DNAME-MIN-IN bits of record
+\ NDICT-1 between two flips, as min-in-mark stores it. ARM64 finds the two by
+\ name; this kernel reads them from the active checker's record, and a missing
+\ one ends the process naming it, as a missing word does there.
+: WIDE-PUBLISH, ( -- )
+   LBL {: done:label :}
+   RAX HOOK-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF s" rec-wide-publish" OWNER-OP,
+   RAX ASM-SINK ENC-CALL-REG
+   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF s" rec-min-in@" OWNER-OP,
+   RAX ASM-SINK ENC-CALL-REG
+   R9 POP,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   R8 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 DBASE-REG R8 1 DREC negate MEM-IDX ASM-SINK ENC-LEA
+   R8 PROT-RW PROT-REC,
+   R9 MIN-IN-SHIFT >IMM8 ASM-SINK ENC-SHL-RI8
+   RAX DNAME-MIN-IN-MASK IMM64,
+   R9 RAX ASM-SINK ENC-AND-RR
+   R9 R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC,
+   done LBL, ;
+
+\ does-patch ( n ptr u8 n -- ) clause entry, created signature: the twin of
+\ habu2.f DOESPATCH:PRIM and LDOESPATCH over the record LASTC-CELL names. Its
+\ routine must end in the slot, E9 at slot and C3 at slot+5, else the row
+\ exits 83 before it writes. Between the record's and the displacement's
+\ windows the displacement becomes the entry less the slot's end, and the
+\ record's DKIND clears: the body is a clause now, not a push. Entry 0 writes
+\ displacement 0, the bare body, and leaves the kind as it is; with the
+\ displacement already 0 it writes nothing. A signature then registers as
+\ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
+\ clear for the checker's tail to set again, and CRSIG clears.
+: DOES-PATCH-BODY ( -- )
+   LBL LBL LBL LBL {: patch:label write:label declared:label nocr:label :}
+   RCX POP,  RCX CRSIG-U-CELL CELL!,
+   RCX POP,  RCX CRSIG-A-CELL CELL!,
+   RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   DP-ENTRY POP-TO,
+   R8 LASTC-CELL CELL@,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RDX R8 REC-CODE CELL + MOV-LOAD,
+   RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
+   RDX R8 REC-CODE MEM-OFF ASM-SINK ENC-ADD-RM
+   RDX RDX PATCH-SLOT negate MEM-OFF ASM-SINK ENC-LEA
+   RAX RDX MEM-AT ASM-SINK ENC-MOVZX-8-RM
+   RAX JMP-REL32 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE SEAL-TRAP-LBL JCC,
+   RAX RDX JMP-BYTES MEM-OFF ASM-SINK ENC-MOVZX-8-RM
+   RAX RET-OP >IMM32 ASM-SINK ENC-CMP-RI32  C-NE SEAL-TRAP-LBL JCC,
+   RDX RSP DP-SLOT MOV-STORE,
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE patch JCC,
+   0 >R32 RDX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E declared JCC,
+   patch LBL,
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+   RDI RSP DP-SLOT MOV-LOAD,  RDI CALL-REL32-OFF >IMM8 ASM-SINK ENC-ADD-RI8
+   RSI 4 IMM32,  WINDOW-SPAN,
+   RCX RSP DP-SLOT MOV-LOAD,
+   RDX ZERO-REG,
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E write JCC,
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX RCX ASM-SINK ENC-SUB-RR
+   RDX JMP-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   R8 LASTC-CELL CELL@,
+   RSI DKIND:MASK invert IMM64,
+   RSI R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   write LBL,
+   2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
+   WINDOW-CLOSE,
+   declared LBL,
+   RAX CRSIG-U-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E nocr JCC,
+   RAW-PUBLISH,
+   R8 LASTC-CELL CELL@,
+   R8 PROT-RW PROT-REC,
+   RAX DNAME-WIDE DNAME-MIN-IN-MASK or invert IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   R8 PROT-RX PROT-REC,
+   WIDE-PUBLISH,
+   RAX ZERO-REG,  RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
+   nocr LBL,
+   RSP DP-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 public
 
 : DEFINITION, ( -- )
@@ -3424,7 +3833,14 @@ public
    s" body-append" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-abort" [: DEF-ABORT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" jit-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" jit-token" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ ---- pure rows ---------------------------------------------------------------
 \ The arithmetic, comparison, shuffle, memory and float rows. Every row but
@@ -3761,6 +4177,17 @@ public
    s" prof-json" [: X64PROF:JSON-BODY ;] PRIM
    s" prof-row" [: X64PROF:ROW-BODY ;] PRIM ;
 
+\ A seeded provider needs a non-null code xt at its dispatch cell.
+: PROVIDED-FILLED? ( n -- bool ) {: cell:n :}
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ {: pair:n :}
+      pair 32 rshift {: meta:n :}
+      pair $FFFFFFFF and cell =
+      meta AOT-WINDOW:XTOFF-KIND-MASK and 0= and
+      meta AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and if unloop true exit then
+   loop
+   false ;
+
 \ The whole kernel: the helpers, then every section, then the specification's
 \ other half. ENGINE-PRIMS:COMPLETE dies 76 naming the first row of
 \ src/habu/prims.f that KEEP? keeps and no section registered, as habu2.f
@@ -3768,6 +4195,7 @@ public
 \ does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )
    HELPERS,
+   LBL LCLOSE-CELL !
    SYSCALLS,
    CONTROL,
    ATOMICS,
@@ -3779,7 +4207,7 @@ public
    DEFINITION,
    PURE,
    PROFILER,
-   ENGINE-PRIMS:COMPLETE ;
+   [: PROVIDED-FILLED? ;] ENGINE-PRIMS:COMPLETE ;
 
 ;using   \ X64LAYOUT
 ;using

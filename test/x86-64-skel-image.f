@@ -6,6 +6,8 @@
 \ user area from ARGC-CELL, so `hb-x64-skel a b` exits 3. hb-x64-skel-negative
 \ pushes one cell more, onto the guard page, and the crash handler the boot
 \ installs writes `hb: stack bounds exceeded (data)` on fd 2 and exits 102. The
+\ underflow image reads below an empty data stack; the boot's floor recovery
+\ resets its cursor and exits 70 (it has no catch handler).
 \ host checks each image's ELF header; running them is the peer's.
 \
 \ boot-x64.f loads the x86-64 seam, so it comes before the harness, which would
@@ -40,15 +42,28 @@ using X64RT
 
 : BUILD ( n ptr u8 n -- ) {: pushes:n path:ptr pathu:n :}
    ASM-RESET
-   X64BOOT:START,
-   pushes FILL,
-   STACK-ABI:RETURN-BASE-CELL TOUCH-CELL,
-   STACK-ABI:LOOP-BASE-CELL TOUCH-CELL,
-   DP-CELL TOUCH-CELL,
-   ENGINE-GPR:X64-DBASE REG TOUCH,
-   ENGINE-GPR:X64-CP REG TOUCH,
-   RDI ENGINE-GPR:X64-RBASE REG ARGC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   LBL LBL {: floor:label code-end:label :}
+   floor code-end X64BOOT:START,
+   pushes -1 = if
+      0 G-POP
+      RDI 99 >IMM32 ASM-SINK ENC-MOV-RI32
+      NR-EXIT-GROUP SYS,
+   else
+      pushes FILL,
+      STACK-ABI:RETURN-BASE-CELL TOUCH-CELL,
+      STACK-ABI:LOOP-BASE-CELL TOUCH-CELL,
+      DP-CELL TOUCH-CELL,
+      ENGINE-GPR:X64-DBASE REG TOUCH,
+      ENGINE-GPR:X64-CP REG TOUCH,
+      RDI ENGINE-GPR:X64-RBASE REG ARGC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+      NR-EXIT-GROUP SYS,
+   then
+   floor LBL,
+   ENGINE-GPR:X64-DSTACK REG
+   ENGINE-GPR:X64-RBASE REG STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDI 70 >IMM32 ASM-SINK ENC-MOV-RI32
    NR-EXIT-GROUP SYS,
+   code-end LBL,
    path pathu X64HARNESS:WRITE ;
 
 public
@@ -59,6 +74,7 @@ public
    X64HARNESS:INIT
    full s" hb-x64-skel" TMP-PATH BUILD
    full 1+ s" hb-x64-skel-negative" TMP-PATH BUILD
+   -1 s" hb-x64-skel-underflow" TMP-PATH BUILD
    X64HARNESS:DISPOSE
    T-REPORT ;
 

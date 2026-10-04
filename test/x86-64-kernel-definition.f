@@ -36,6 +36,10 @@
 \ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
 \   and whose CP moved: the provenance window closed with code-origin 1 over
 \   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
+\ - hb-x64-kernel-def-abort closes a failed definition's window with unknown
+\   provenance and clears its pending signature and body state.
+\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
+\   loop depths while clearing compile mode.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
@@ -335,6 +339,36 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
+\ A failed definition closes its code window and compile state while leaving
+\ the enclosing catch's handler, return depth and loop depth intact.
+: DEF-ABORT-CASE, ( -- )
+   TIER-1-OPEN,
+   14 LOCN-CELL X64HARNESS:CELL!,
+   15 BODYLEN-CELL X64HARNESS:CELL!,
+   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   X64KERNEL:WINDOW-OPEN,
+   s" def-abort" X64HARNESS:CALL-ROW,
+   DICT-SIZE DICT-SIZE 32 + ORIGIN,  -1 X64HARNESS:EXPECT-POP,
+   PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
+   0 CLOSED,
+   0 TIER-PROV:OPEN-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 PEND-CELL X64HARNESS:EXPECT-CELL,
+   0 LOCN-CELL X64HARNESS:EXPECT-CELL,
+   0 BODYLEN-CELL X64HARNESS:EXPECT-CELL, ;
+
+: DEF-ABORT-SCOPE-CASE, ( -- )
+   TIER-1-OPEN,
+   11 HND-CELL X64HARNESS:CELL!,
+   12 RSP-CELL X64HARNESS:CELL!,
+   13 LOOPSP-CELL X64HARNESS:CELL!,
+   16 CMM-CELL X64HARNESS:CELL!,
+   s" def-abort" X64HARNESS:CALL-ROW,
+   0 CMM-CELL X64HARNESS:EXPECT-CELL,
+   11 HND-CELL X64HARNESS:EXPECT-CELL,
+   12 RSP-CELL X64HARNESS:EXPECT-CELL,
+   13 LOOPSP-CELL X64HARNESS:EXPECT-CELL, ;
+
 \ ---- the refusals -------------------------------------------------------------
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
@@ -418,6 +452,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: TRUST-SIG-CASE, ;] false s" hb-x64-kernel-trust-sig" TMP-PATH IMAGE
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
+   [: DEF-ABORT-CASE, ;] false s" hb-x64-kernel-def-abort" TMP-PATH IMAGE
+   [: DEF-ABORT-SCOPE-CASE, ;] false s" hb-x64-kernel-def-abort-scope" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )
