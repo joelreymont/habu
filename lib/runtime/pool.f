@@ -25,7 +25,10 @@
 \ number and the slot's generation, and no word answers its address: a payload
 \ cell is read and written by handle and index, a child's handle through REF@
 \ and REF!. Each pool numbers its slots from just past the pool before it, the
-\ first from 1, so no two pools issue one handle.
+\ first from 1, so no two pools issue one handle. FREEZE makes an object
+\ read-only: CELL! and REF! refuse it from then until RECLAIM-STEP returns its
+\ slot, whose next generation starts writable. A frozen object is still read,
+\ retained and released.
 \
 \ RESERVE checks the pool's quota, then takes a free slot, a slot of a mapped
 \ chunk never issued, or one of a chunk it maps now. When the quota, the class
@@ -63,8 +66,13 @@
 \ set of pools owns its cells exclusively: no two sets, and no set and a table
 \ or counter, share a cell, and INIT is never handed cells that others use. A
 \ handle names no set of pools, so two sets cannot tell their handles apart:
-\ the runtime context holds one. What follows holds while only this package's
-\ words write a set of pools' cells and each set's cells are its own.
+\ the runtime context holds one. Nor is a handle a capability: RT-HANDLE:HANDLE
+\ makes one of any slot and generation, the halves of another package's token
+\ cast to a number included, so whoever holds the pools reaches each live
+\ object through these words. A frozen one they refuse to write, however its
+\ handle was made: only a private pointer mint writes it. What follows holds
+\ while only this package's words write a set of pools' cells and each set's
+\ cells are its own.
 
 require lib/errors.f
 require lib/memory.f
@@ -83,11 +91,11 @@ public
 -9522 constant E-RT-POOL-SHUT       \ a word given pools SHUTDOWN has closed
 -9523 constant E-RT-POOL-SCHEMA     \ the zero schema token, or SCHEMA with every schema taken
 -9524 constant E-RT-POOL-EMERGENCY  \ RESERVE of an emergency schema, or RESERVE-EMERGENCY of another
--9525 constant E-RT-POOL-DEAD       \ RETAIN, RELEASE, REF! or CELL! of an object released for good, or REF@ or CELL@ of one while its enumerator is not running
+-9525 constant E-RT-POOL-DEAD       \ RETAIN, RELEASE, FREEZE, REF! or CELL! of an object released for good, or REF@ or CELL@ of one while its enumerator is not running
 -9526 constant E-RT-POOL-OVERFLOW   \ RETAIN of an object held 2^64 - 1 times
 -9527 constant E-RT-POOL-CELL       \ a payload cell index outside the object's payload
--9528 constant E-RT-POOL-BUDGET     \ RECLAIM-STEP with a budget below 1
--9529 constant E-RT-POOL-QUOTA      \ QUOTA! below zero or above the pool's class ceiling
+-9528 constant E-RT-POOL-RANGE      \ RECLAIM-STEP with a budget below 1, or QUOTA! below zero or above the pool's class ceiling
+-9529 constant E-RT-POOL-FROZEN     \ CELL! or REF! of an object FREEZE has frozen
 
 DEFTYPE POOLS
 undefine >POOLS
@@ -140,10 +148,12 @@ STRUCTURE pool 0 DERIVE addr
    FIELD quota n
 ;STRUCTURE
 
-\ stamp: the slot's last generation in bits 0-31, and LIVE while that
-\ generation's object is held or queued; count: the object's reference count,
-\ 0 once it is released for good; schema: its schema's number; link: the bits
-\ of the next object on the queue, or the index + 1 of the next free slot.
+\ stamp: the slot's last generation in bits 0-31, LIVE while that
+\ generation's object is held or queued, and FROZEN once FREEZE has frozen
+\ it, until CLAIM or RETURN-SLOT writes a fresh stamp; count: the object's
+\ reference count, 0 once it is released for good; schema: its schema's
+\ number; link: the bits of the next object on the queue, or the index + 1 of
+\ the next free slot.
 STRUCTURE head 0 DERIVE addr
    FIELD stamp n
    FIELD count n
@@ -172,6 +182,7 @@ CAST: KIND>N ( kind -- n )
 $FFFFFFFF constant U32-MAX
 U32-MAX constant LAST-GEN
 $100000000 constant LIVE
+$200000000 constant FROZEN
 -1 constant LAST-COUNT             \ 2^64 - 1
 
 RT--POOL-KIND:emergency KIND>N constant EMERGENCY#
@@ -502,6 +513,14 @@ private
    sl >HEAD HEAD-COUNT @ 0= if E-RT-POOL-DEAD throw then
    sl k ;
 
+\ The slot and pool of an object held at least once that FREEZE has not
+\ frozen.
+: WRITABLE ( n ptr n -- ptr u8 n )
+   {: v:n cs:ptr :}
+   v cs HELD {: sl:ptr k:n :}
+   sl >HEAD HEAD-STAMP @ FROZEN and 0<> if E-RT-POOL-FROZEN throw then
+   sl k ;
+
 \ The slot and pool of an object held at least once, or of the one whose
 \ enumerator RECLAIM-STEP is running.
 : READABLE ( n ptr n -- ptr u8 n )
@@ -543,7 +562,7 @@ public
 : CELL! ( n RT-HANDLE:handle n pools -- )
    {: v:n h j:n p:pools :}
    p OPEN-CELLS {: cs:ptr :}
-   h HANDLE>BITS cs HELD {: sl:ptr k:n :}
+   h HANDLE>BITS cs WRITABLE {: sl:ptr k:n :}
    v sl k j PAYLOAD ! ;
 
 \ The child in a payload cell REF! filled, or the null handle.
@@ -559,7 +578,7 @@ public
 : REF! ( RT-HANDLE:handle RT-HANDLE:handle n pools -- )
    {: c h j:n p:pools :}
    p OPEN-CELLS {: cs:ptr :}
-   h HANDLE>BITS cs HELD {: sl:ptr k:n :}
+   h HANDLE>BITS cs WRITABLE {: sl:ptr k:n :}
    sl k j PAYLOAD {: at:ptr :}
    at @ {: old:n :}
    c HANDLE>BITS {: new:n :}
@@ -567,6 +586,15 @@ public
    new 0<> if c p RETAIN then
    new at !
    old 0<> if old cs DROP-REF then ;
+
+\ Freeze the object: CELL! and REF! refuse it from now until RECLAIM-STEP
+\ returns its slot. An object frozen already stays so.
+: FREEZE ( RT-HANDLE:handle pools -- )
+   {: h p:pools :}
+   p OPEN-CELLS {: cs:ptr :}
+   h HANDLE>BITS cs HELD {: sl:ptr k:n :}
+   sl >HEAD {: hd:ptr :}
+   hd HEAD-STAMP @ FROZEN or hd HEAD-STAMP ! ;
 
 private
 
@@ -632,7 +660,7 @@ public
 : RECLAIM-STEP ( n pools -- n )
    {: budget:n p:pools :}
    p OPEN-CELLS {: cs:ptr :}
-   budget 1 < if E-RT-POOL-BUDGET throw then
+   budget 1 < if E-RT-POOL-RANGE throw then
    0 begin
       dup budget < while
       cs DYING? 0= if exit then
@@ -648,7 +676,7 @@ public
    {: q:n k:kind p:pools :}
    p OPEN-CELLS {: cs:ptr :}
    k KIND>N {: kn:n :}
-   q 0 < q kn CEILING > or if E-RT-POOL-QUOTA throw then
+   q 0 < q kn CEILING > or if E-RT-POOL-RANGE throw then
    q kn cs POOL-OF POOL-QUOTA ! ;
 
 \ The bytes the pool charges: a slot's for each object it holds, however many

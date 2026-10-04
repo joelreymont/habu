@@ -1469,6 +1469,8 @@
 
 \ RUNTIME pools: -9520..-9529, minted by lib/runtime/pool.f, which owns package RT-POOL.
 
+\ RUNTIME records: -9530..-9539, minted by lib/runtime/record.f, which owns package RT-RECORD.
+
 \ RUNTIME scopes: -9590..-9599, minted by lib/runtime/scope.f, which owns package RT-SCOPE.
 
 \ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
