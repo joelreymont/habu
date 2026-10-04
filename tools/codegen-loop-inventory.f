@@ -10,7 +10,7 @@
 \ did for the multiply-add, and a pattern whose count here is zero is reported as
 \ a measured zero instead of being written.
 \
-\ WHAT A LOOP IS HERE. A back edge, and nothing else. The elaborator gives a
+\ WHAT A LOOP IS HERE. A back edge, and nothing else. On ARM the elaborator gives a
 \ loop a header block that control reaches twice, and
 \ src/compiler/native/emit.f lays the blocks out so that the header falls into
 \ the body, the exit stub sinks below the latch, and the branch that survives is
@@ -21,15 +21,18 @@
 \ the opposite reason - it recognises a TAIL branch by the target being OUTSIDE
 \ the record, and its header says in as many words that a loop's back edge is an
 \ unconditional branch too.
+\ Intel uses the same cycle proof over decoded instruction boundaries. Its
+\ variable-width branches are read by X64DIS:STEP; calls fall through, while
+\ returns and unconditional escapes end the path.
 \
-\ AND WHY THE DISPLACEMENT IS NOT DECODED HERE. src/compiler/native/branch.f is
+\ AND WHY THE ARM DISPLACEMENT IS NOT DECODED HERE. src/compiler/native/branch.f is
 \ the one reader of that arithmetic and exists because there were three copies of
 \ it. It answers an ADDRESS from an address and an instruction word, so this file
 \ works in a coordinate system whose origin is the routine's first instruction:
 \ index k sits at byte 4k, NBR:B-TARGET answers 4(k+d), and dividing by the
 \ instruction size gives the target INDEX. The arithmetic is still branch.f's.
 \
-\ THE TWO PATTERNS COUNTED, AND WHY THESE TWO.
+\ THE TWO ARM PATTERNS COUNTED, AND WHY THESE TWO.
 \
 \   A MOVE-WIDE INSIDE A LOOP BODY. `movz`/`movk` build a literal into a
 \   register and read NO register at all, so an occurrence inside a loop body is
@@ -63,6 +66,8 @@ require lib/errors.f
 require lib/string.f
 require src/arch/arm64/asm.f
 require src/compiler/native/branch.f
+require src/arch/x86-64/disasm.f
+require src/habu/code-bytes.f
 require tools/codegen-tail-probe.f
 require tools/codegen-combine-inventory.f
 
@@ -71,6 +76,50 @@ package NLOOPINV
 private
 
 NBR:INSN-BYTES constant INSN-BYTES
+
+\ The cycle walker has one mark per decoded instruction. Intel instructions have
+\ variable widths, so their exact byte starts and flow facts are recorded once
+\ before the existing reachability walk uses instruction indices.
+4096 constant SPAN-MAX
+create X-OFF SPAN-MAX cells allot
+create X-FLOW SPAN-MAX cells allot
+create X-TARGET SPAN-MAX cells allot
+variable X-N
+variable X-LEN
+variable X-CURSOR
+
+: X-OFF@ ( n -- n ) cells X-OFF + @ ;
+: X-FLOW@ ( n -- n ) cells X-FLOW + @ ;
+: X-TARGET@ ( n -- n ) cells X-TARGET + @ ;
+
+: X-INDEX ( n -- n ) {: off:n :}
+   X-N @ 0 ?do
+      i X-OFF@ off = if i unloop exit then
+   loop -1 ;
+
+: X-TARGET-IX ( n -- n ) {: k:n :}
+   k X-TARGET@ {: off:n :}
+   off 0 < off X-LEN @ >= or if -1 exit then
+   off X-INDEX dup 0 < if E-CODEGEN-PROBE-EXTENT throw then ;
+
+: X-ROW! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-PROBE-SUBJECT throw then
+   {: rec:ptr :}
+   rec XREF-START rec XREF-CODE-BYTES CODE-BYTES:AT
+   {: code:ptr bytes:n :}
+   bytes 0 <= if E-CODEGEN-PROBE-EXTENT throw then
+   bytes X-LEN ! 0 X-N ! 0 X-CURSOR !
+   begin X-CURSOR @ bytes < while
+      X-N @ SPAN-MAX >= if E-CODEGEN-PROBE-EXTENT throw then
+      X-N @ {: k:n :}
+      X-CURSOR @ k cells X-OFF + !
+      code X-CURSOR @ + bytes X-CURSOR @ - X-CURSOR @ X64DIS:STEP
+      {: size:n flow:n target:n :}
+      flow k cells X-FLOW + !
+      target k cells X-TARGET + !
+      X-CURSOR @ size + X-CURSOR !
+      k 1+ X-N !
+   repeat ;
 
 \ The move-wide forms' fields. The immediate is sixteen bits and the shift is the
 \ two-bit `hw` that says which quarter of the register it lands in; both are put
@@ -129,6 +178,7 @@ private
 \ that file's, so a routine's instructions have one reader here.
 
 : INSNS ( -- n )
+   HB-TARGET-LINUX-X86-64? if X-N @ exit then
    NCOMBINV:INSNS ;
 
 : INSN@ ( n -- n ) {: k:n :}
@@ -162,15 +212,14 @@ private
 \ THE WALK IS CONSERVATIVE IN THE DIRECTION THAT REFUSES. A fall-through is a
 \ successor unless the instruction is an unconditional branch or a return; a
 \ branch of any of the four forms adds its target when the target is inside the
-\ span. An instruction this file cannot classify contributes its fall-through
-\ only, so an unrecognised control transfer can lose a path and make a real loop
-\ look unreachable - it declines a candidate, never invents one.
+\ span. An ARM instruction this file cannot classify contributes fall-through
+\ only and may decline a real loop. Intel refuses unknown or truncated opcodes
+\ while making its instruction map, before any zero-loop result is possible.
 
 \ The largest routine this walk will follow. The corpus's biggest chain
 \ compilation is 41 instructions and the engine's biggest is a few hundred, so
 \ this is room to spare rather than a bound anybody is near; a span past it is
 \ declined by name below instead of overrunning the mark.
-4096 constant SPAN-MAX
 create REACHED SPAN-MAX allot
 create CANREACH SPAN-MAX allot
 
@@ -194,12 +243,21 @@ create CANREACH SPAN-MAX allot
 
 \ Whether this instruction lets control fall into the next one.
 : FALLS? ( n -- bool ) {: w:n :}
-   w NBR:B? if false exit then
-   w NBR:RET? if false exit then
+   HB-TARGET-LINUX-X86-64? if
+      w X-FLOW@ dup X64DIS:FLOW-JUMP = over X64DIS:FLOW-END = or
+      swap X64DIS:FLOW-INDIRECT = or 0= exit
+   then
+   w INSN@ dup NBR:B? if drop false exit then
+   NBR:RET? if false exit then
    true ;
 
 \ The branch target of any form that has one, as an index, or -1.
 : TARGET-IX ( n -- n ) {: k:n :}
+   HB-TARGET-LINUX-X86-64? if
+      k X-FLOW@ dup X64DIS:FLOW-COND = swap X64DIS:FLOW-JUMP = or if
+         k X-TARGET-IX exit
+      then -1 exit
+   then
    k INSN@ {: w:n :}
    w NBR:B? if k B-TARGET-IX exit then
    w NBR:COND? if k INSN-BYTES * w NBR:COND-TARGET INSN-BYTES / exit then
@@ -213,7 +271,7 @@ create CANREACH SPAN-MAX allot
    false
    hi 1+ lo ?do
       i REACHED? if
-         i INSN@ FALLS? i 1+ hi <= and if
+         i FALLS? i 1+ hi <= and if
             i 1+ REACHED? 0= if i 1+ REACH! drop true then
          then
          i TARGET-IX {: t:n :}
@@ -253,7 +311,7 @@ create CANREACH SPAN-MAX allot
    false
    hi 1+ lo ?do
       i CANREACH? 0= if
-         i INSN@ FALLS? i 1+ hi <= and if
+         i FALLS? i 1+ hi <= and if
             i 1+ CANREACH? if i CANREACH! drop true then
          then
          i TARGET-IX {: t:n :}
@@ -295,8 +353,14 @@ create CANREACH SPAN-MAX allot
 \ target can arrive back at the branch. CODEGEN-CORPUS:BYTE-FIND's -1 literal
 \ chain is declined by that test and not by its opcode.
 : BACK-EDGE? ( n -- bool ) {: k:n :}
-   k INSN@ {: w:n :}
-   w NBR:B? w NBR:COND? or 0= if false exit then
+   HB-TARGET-LINUX-X86-64? if
+      k X-FLOW@ dup X64DIS:FLOW-JUMP = swap X64DIS:FLOW-COND = or 0= if
+         false exit
+      then
+   else
+      k INSN@ {: w:n :}
+      w NBR:B? w NBR:COND? or 0= if false exit then
+   then
    k TARGET-IX {: t:n :}
    t 0 < if false exit then
    t k > if false exit then
@@ -352,6 +416,9 @@ private
 
 \ ---- what a body holds --------------------------------------------------------
 
+: ARM-SHAPE ( -- )
+   HB-TARGET-LINUX-X86-64? if E-CTGT-ABI throw then ;
+
 \ Whether any instruction of the span writes this register. Every word's low five
 \ bits are read as a destination, which over-counts writes - a store's are the
 \ value it stores and a branch's are displacement bits - and therefore only ever
@@ -396,6 +463,7 @@ public
 \ The move-wide instructions inside it: literal halves rebuilt every turn, each
 \ one loop-invariant by construction because it reads no register at all.
 : BODY-CONSTS ( n -- n ) {: k:n :}
+   ARM-SHAPE
    k LOOP-LO {: lo:n :}
    lo 0 < if 0 exit then
    k LOOP-HI {: hi:n :}
@@ -428,6 +496,7 @@ public
 \ keeps them visible instead of letting a later reader assume the column went to
 \ zero because the work is finished.
 : BODY-FOLDABLE ( n -- n ) {: k:n :}
+   ARM-SHAPE
    k LOOP-LO {: lo:n :}
    lo 0 < if 0 exit then
    k LOOP-HI {: hi:n :}
@@ -446,6 +515,7 @@ public
 \ body holds neither a store nor a call - so nothing inside the loop can reach
 \ the cell being read and the address is the same every turn.
 : BODY-INV-LOADS ( n -- n ) {: k:n :}
+   ARM-SHAPE
    k LOOP-LO {: lo:n :}
    lo 0 < if 0 exit then
    k LOOP-HI {: hi:n :}
@@ -491,6 +561,7 @@ public
 \ The subject, set through the walk's own owner so both inventories name a
 \ routine the same way.
 : ROW! ( ptr u8 n -- )
+   HB-TARGET-LINUX-X86-64? if X-ROW! exit then
    NCOMBINV:ROW! ;
 
 ;package

@@ -124,6 +124,12 @@ public
    len 0 ?do cell @ 3 + cell ! loop
    cell @ ;
 
+\ The literal contains conditional-jump, short-jump, near-jump and return
+\ opcode bytes. None is an instruction boundary in the loop body.
+: NLPT-BRANCH-BYTES ( ptr n n -- n ) {: cell:ptr len:n :}
+   len 0 ?do cell @ $C3E9EB70 xor cell ! loop
+   cell @ ;
+
 \ A read AND a write in one body, with an accumulator beside them. This is the
 \ row the WRITE rule holds up on its own: both addresses are the same cell every
 \ turn, so the read would move if the address were the only question - and moving
@@ -396,6 +402,14 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-STORE 100 T=
    0 NLPT-FIXTURE:NLPT-CELL@ 100 T= ;
 
+: BRANCH-BYTES-CASE ( -- )
+   s" immediate branch bytes are not control-flow edges" T-LABEL
+   s" NLPT-FIXTURE:NLPT-BRANCH-BYTES" KEPT
+   0 NLPT-FIXTURE:NLPT-AT !
+   NLPT-FIXTURE:NLPT-AT 3 NLPT-FIXTURE:NLPT-BRANCH-BYTES
+   $C3E9EB70 T=
+   0 NLPT-FIXTURE:NLPT-CELL@ $C3E9EB70 T= ;
+
 : CALL-CASE ( -- )
    s" a loop with a call in it keeps its loop" T-LABEL
    s" NLPT-FIXTURE:NLPT-CALL" KEPT
@@ -509,6 +523,7 @@ public
    VARLOAD-CASE
    RW-CASE
    STORE-CASE
+   BRANCH-BYTES-CASE
    CALL-CASE
    TWO-CASE
    THREE-CASE

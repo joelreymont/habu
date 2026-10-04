@@ -11,6 +11,13 @@ public
 -9441 constant E-UNKNOWN
 -9442 constant E-LENGTH
 
+0 constant FLOW-NEXT
+1 constant FLOW-COND
+2 constant FLOW-JUMP
+3 constant FLOW-CALL
+4 constant FLOW-END
+5 constant FLOW-INDIRECT
+
 private
 
 TYPED-VARIABLE DA ptr u8
@@ -18,9 +25,22 @@ variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP
+variable DPRINT  variable DDELTA
+
+: OUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   DPRINT @ if a u type then ;
+
+: CHAR-OUT ( n -- ) {: c:n :}
+   DPRINT @ if c emit then ;
+
+: GAP ( -- )
+   DPRINT @ if space then ;
+
+: INT-OUT ( n -- ) {: n:n :}
+   DPRINT @ if n FMT:.INT then ;
 
 : HEX-DIGIT ( n -- )
-   dup 10 < if [char] 0 + else 10 - [char] a + then emit ;
+   dup 10 < if [char] 0 + else 10 - [char] a + then CHAR-OUT ;
 
 : HEX-FIXED ( n -- ) {: v:n :}
    16 0 ?do v 60 i 4 * - rshift $F and HEX-DIGIT loop ;
@@ -30,10 +50,11 @@ variable DSCALE  variable DDISP  variable DRIP
    dup 16 >= if dup 4 rshift RECURSE then
    $F and HEX-DIGIT ;
 
-: HEX. ( n -- ) s" 0x" type HEX-N ;
+: HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
 : REFUSE ( n ptr u8 n -- ) {: code:n msg:ptr u:n :}
-   s" x64dis: " type msg u type s"  at " type
+   1 DPRINT !
+   s" x64dis: " OUT msg u OUT s"  at " OUT
    DPC @ DI @ + HEX. cr code throw ;
 
 : TRUNC ( -- ) E-TRUNCATED s" truncated instruction" REFUSE ;
@@ -159,38 +180,38 @@ variable DSCALE  variable DDISP  variable DRIP
    dup 4 >= swap 7 <= and D-HASREX @ 0= and if UNKNOWN then ;
 
 : REG. ( n n -- ) {: reg:n width:n :}
-   width 64 = if reg R64$ type exit then
-   width 32 = if reg R32$ type exit then
-   width 16 = if reg R16$ type exit then
+   width 64 = if reg R64$ OUT exit then
+   width 32 = if reg R32$ OUT exit then
+   width 16 = if reg R16$ OUT exit then
    reg BYTE-REG-CHECK
-   reg R8$ type ;
+   reg R8$ OUT ;
 
-: XMM. ( n -- ) s" xmm" type FMT:.INT ;
+: XMM. ( n -- ) s" xmm" OUT INT-OUT ;
 
 : MEM. ( -- )
-   [char] [ emit
-   DRIP @ if s" rip" type else
+   [char] [ CHAR-OUT
+   DRIP @ if s" rip" OUT else
       DBASE @ 0 >= if DBASE @ 64 REG. then
    then
    DINDEX @ 0 >= if
-      DBASE @ 0 >= DRIP @ 0<> or if [char] + emit then
+      DBASE @ 0 >= DRIP @ 0<> or if [char] + CHAR-OUT then
       DINDEX @ 64 REG.
-      DSCALE @ 1 <> if [char] * emit DSCALE @ FMT:.INT then
+      DSCALE @ 1 <> if [char] * CHAR-OUT DSCALE @ INT-OUT then
    then
    DDISP @ dup 0<> DBASE @ 0 < DINDEX @ 0 < and DRIP @ 0= and or if
-      dup 0 < if [char] - emit negate else
-         DBASE @ 0 >= DRIP @ 0<> or DINDEX @ 0 >= or if [char] + emit then
+      dup 0 < if [char] - CHAR-OUT negate else
+         DBASE @ 0 >= DRIP @ 0<> or DINDEX @ 0 >= or if [char] + CHAR-OUT then
       then
-      FMT:.INT
+      INT-OUT
    else drop then
-   [char] ] emit ;
+   [char] ] CHAR-OUT ;
 
 : MEM-WIDTH. ( n -- )
    case
-      8 of s" byte ptr " type endof
-     16 of s" word ptr " type endof
-     32 of s" dword ptr " type endof
-     64 of s" qword ptr " type endof
+      8 of s" byte ptr " OUT endof
+     16 of s" word ptr " OUT endof
+     32 of s" dword ptr " OUT endof
+     64 of s" qword ptr " OUT endof
       UNKNOWN
    endcase ;
 
@@ -200,9 +221,11 @@ variable DSCALE  variable DDISP  variable DRIP
 : XRM. ( -- )
    DMOD @ 3 = if DRM @ XMM. else MEM. then ;
 
-: SEP ( -- ) s" , " type ;
+: SEP ( -- ) s" , " OUT ;
 
-: PRINT-REL ( n -- ) DPC @ DI @ + + HEX. ;
+: PRINT-REL ( n -- ) {: delta:n :}
+   delta DDELTA !
+   DPC @ DI @ + delta + HEX. ;
 
 : INT-PREFIX ( -- )
    DPFX @ 0= DPFX @ $66 = or DLOCK @ 0= and 0= if UNKNOWN then ;
@@ -269,13 +292,13 @@ variable DSCALE  variable DDISP  variable DRIP
 : IMM. ( n -- ) HEX. ;
 
 : SIMM. ( n -- )
-   dup 0 < if [char] - emit negate then IMM. ;
+   dup 0 < if [char] - CHAR-OUT negate then IMM. ;
 
 : REG-RM ( ptr u8 n n -- ) {: name:ptr u:n width:n :}
-   name u type space DREG @ width REG. SEP width RM. ;
+   name u OUT GAP DREG @ width REG. SEP width RM. ;
 
 : RM-REG ( ptr u8 n n -- ) {: name:ptr u:n width:n :}
-   name u type space width RM. SEP DREG @ width REG. ;
+   name u OUT GAP width RM. SEP DREG @ width REG. ;
 
 : ALU-REG ( -- )
    INT-PREFIX MODRM
@@ -286,7 +309,7 @@ variable DSCALE  variable DDISP  variable DRIP
    INT-PREFIX MODRM
    DREG @ ALU$ {: name:ptr u:n :}
    DOP @ $83 = if S8 else WIDTH 16 = if S16 else S32 then then {: value:n :}
-   name u type space WIDTH RM. SEP value SIMM. ;
+   name u OUT GAP WIDTH RM. SEP value SIMM. ;
 
 : MOVE ( -- )
    INT-PREFIX MODRM
@@ -302,43 +325,43 @@ variable DSCALE  variable DDISP  variable DRIP
    INT-PREFIX MODRM
    DREG @ 0<> if UNKNOWN then
    WIDTH 16 = if 2 IMM else 4 IMM then {: value:n :}
-   s" mov" type space WIDTH RM. SEP
+   s" mov" OUT GAP WIDTH RM. SEP
    WIDTH 64 = if value 32 SIGNED SIMM. else value IMM. then ;
 
 : MOVE-B8 ( -- )
    INT-PREFIX
    DOP @ $B8 - REX-B + {: reg:n :}
    WIDTH 64 = if 8 else WIDTH 16 = if 2 else 4 then then IMM {: value:n :}
-   s" mov" type space reg WIDTH REG. SEP value IMM. ;
+   s" mov" OUT GAP reg WIDTH REG. SEP value IMM. ;
 
 : BRANCH ( -- )
    PLAIN-PREFIX
    DOP @ $E8 = if S32 s" call" else
    DOP @ $E9 = if S32 s" jmp" else S8 s" jmp" then then
    {: delta:n name:ptr u:n :}
-   name u type space delta PRINT-REL ;
+   name u OUT GAP delta PRINT-REL ;
 
 : COND-BRANCH ( -- )
    PLAIN-PREFIX
    DOP @ $100 and 0<> if S32 else S8 then {: delta:n :}
-   DOP @ $F and JCC$ type space delta PRINT-REL ;
+   DOP @ $F and JCC$ OUT GAP delta PRINT-REL ;
 
 : ALU? ( -- bool )
    DOP @ $40 < DOP @ 7 and dup 1 = swap 3 = or and ;
 
 : DECODE-ONE ( -- bool )
-   DOP @ $C3 = if PLAIN-PREFIX s" ret" type true exit then
+   DOP @ $C3 = if PLAIN-PREFIX s" ret" OUT true exit then
    DOP @ $90 = if
       DLOCK @ 0<> if UNKNOWN then
       DREX @ 7 and 0<> if UNKNOWN then
-      DPFX @ $F3 = if s" pause" type else
-         DPFX @ 0<> if UNKNOWN then s" nop" type then true exit then
+      DPFX @ $F3 = if s" pause" OUT else
+         DPFX @ 0<> if UNKNOWN then s" nop" OUT then true exit then
    DOP @ $99 = if
       INT-PREFIX REX-W? if s" cqo" else
-         DPFX @ $66 = if s" cwd" else s" cdq" then then type true exit then
+         DPFX @ $66 = if s" cwd" else s" cdq" then then OUT true exit then
    DOP @ $50 >= DOP @ $5F <= and if
       PLAIN-PREFIX
-      DOP @ $58 < if s" push " else s" pop " then type
+      DOP @ $58 < if s" push " else s" pop " then OUT
       DOP @ 7 and REX-B + 64 REG. true exit then
    DOP @ $B8 >= DOP @ $BF <= and if MOVE-B8 true exit then
    DOP @ $E8 = DOP @ $E9 = or DOP @ $EB = or if BRANCH true exit then
@@ -354,33 +377,33 @@ variable DSCALE  variable DDISP  variable DRIP
    DOP @ $87 = if INT-PREFIX MODRM s" xchg" WIDTH RM-REG true exit then
    DOP @ $8D = if
       INT-PREFIX MODRM DMOD @ 3 = if UNKNOWN then
-      s" lea" type space DREG @ WIDTH REG. SEP MEM. true exit then
+      s" lea" OUT GAP DREG @ WIDTH REG. SEP MEM. true exit then
    DOP @ $63 = if
       INT-PREFIX MODRM REX-W? 0= if UNKNOWN then
-      s" movsxd" type space DREG @ 64 REG. SEP 32 RM. true exit then
+      s" movsxd" OUT GAP DREG @ 64 REG. SEP 32 RM. true exit then
    DOP @ $69 = DOP @ $6B = or if
       INT-PREFIX MODRM
       DOP @ $69 = if WIDTH 16 = if S16 else S32 then else S8 then {: value:n :}
-      s" imul" type space DREG @ WIDTH REG. SEP WIDTH RM. SEP value SIMM.
+      s" imul" OUT GAP DREG @ WIDTH REG. SEP WIDTH RM. SEP value SIMM.
       true exit then
    false ;
 
 : SHIFT-GROUP ( -- )
    INT-PREFIX MODRM
-   DREG @ SHIFT$ type space WIDTH RM. SEP
-   DOP @ $C1 = if NEXT IMM. else s" cl" type then ;
+   DREG @ SHIFT$ OUT GAP WIDTH RM. SEP
+   DOP @ $C1 = if NEXT IMM. else s" cl" OUT then ;
 
 : F7-GROUP ( -- )
    INT-PREFIX MODRM
    DREG @ 0 = if
       WIDTH 16 = if 2 else 4 then IMM {: value:n :}
-      s" test" type space WIDTH RM. SEP value IMM. exit then
+      s" test" OUT GAP WIDTH RM. SEP value IMM. exit then
    DREG @ case
       2 of s" not" endof 3 of s" neg" endof
       4 of s" mul" endof 5 of s" imul" endof
       6 of s" div" endof 7 of s" idiv" endof
       UNKNOWN
-   endcase type space WIDTH RM. ;
+   endcase OUT GAP WIDTH RM. ;
 
 : FF-GROUP ( -- )
    INT-PREFIX MODRM
@@ -388,7 +411,7 @@ variable DSCALE  variable DDISP  variable DRIP
       0 of s" inc" endof 1 of s" dec" endof
       2 of s" call" endof 4 of s" jmp" endof
       UNKNOWN
-   endcase type space
+   endcase OUT GAP
    DREG @ 2 = DREG @ 4 = or if 64 else WIDTH then RM. ;
 
 : SIMPLE-GROUP ( -- bool )
@@ -401,10 +424,10 @@ variable DSCALE  variable DDISP  variable DRIP
    DPFX @ want <> DLOCK @ 0<> or if UNKNOWN then ;
 
 : SSE-REG-RM ( ptr u8 n -- ) {: name:ptr u:n :}
-   MODRM name u type space DREG @ XMM. SEP XRM. ;
+   MODRM name u OUT GAP DREG @ XMM. SEP XRM. ;
 
 : SSE-RM-REG ( ptr u8 n -- ) {: name:ptr u:n :}
-   MODRM name u type space XRM. SEP DREG @ XMM. ;
+   MODRM name u OUT GAP XRM. SEP DREG @ XMM. ;
 
 : SSE-SCALAR ( -- bool )
    DOP @ $110 = if $F2 SSE-PREFIX s" movsd" SSE-REG-RM true exit then
@@ -419,23 +442,23 @@ variable DSCALE  variable DDISP  variable DRIP
    DOP @ $12E = if $66 SSE-PREFIX s" ucomisd" SSE-REG-RM true exit then
    DOP @ $1C2 = if
       $F2 SSE-PREFIX MODRM NEXT {: pred:n :}
-      s" cmpsd" type space DREG @ XMM. SEP XRM. SEP pred IMM.
+      s" cmpsd" OUT GAP DREG @ XMM. SEP XRM. SEP pred IMM.
       true exit then
    false ;
 
 : SSE-CONVERT ( -- bool )
    DOP @ $12A = if
       $F2 SSE-PREFIX REX-W? 0= if UNKNOWN then MODRM
-      s" cvtsi2sd" type space DREG @ XMM. SEP 64 RM. true exit then
+      s" cvtsi2sd" OUT GAP DREG @ XMM. SEP 64 RM. true exit then
    DOP @ $12C = if
       $F2 SSE-PREFIX REX-W? 0= if UNKNOWN then MODRM
-      s" cvttsd2si" type space DREG @ 64 REG. SEP XRM. true exit then
+      s" cvttsd2si" OUT GAP DREG @ 64 REG. SEP XRM. true exit then
    DOP @ $16E = if
       $66 SSE-PREFIX REX-W? 0= if UNKNOWN then MODRM
-      s" movq" type space DREG @ XMM. SEP 64 RM. true exit then
+      s" movq" OUT GAP DREG @ XMM. SEP 64 RM. true exit then
    DOP @ $17E = if
       $66 SSE-PREFIX REX-W? 0= if UNKNOWN then MODRM
-      s" movq" type space 64 RM. SEP DREG @ XMM. true exit then
+      s" movq" OUT GAP 64 RM. SEP DREG @ XMM. true exit then
    false ;
 
 : SSE-OTHER ( -- bool )
@@ -446,20 +469,20 @@ variable DSCALE  variable DDISP  variable DRIP
    DOP @ $11E = DPFX @ $F3 = and if
       DLOCK @ 0<> if UNKNOWN then
       MODRM DREG @ 7 <> DRM @ 2 <> or DMOD @ 3 <> or if UNKNOWN then
-      s" endbr64" type true exit then
+      s" endbr64" OUT true exit then
    false ;
 
 : TWO-CONTROL ( -- bool )
-   DOP @ $105 = if PLAIN-PREFIX s" syscall" type true exit then
-   DOP @ $10B = if PLAIN-PREFIX s" ud2" type true exit then
+   DOP @ $105 = if PLAIN-PREFIX s" syscall" OUT true exit then
+   DOP @ $10B = if PLAIN-PREFIX s" ud2" OUT true exit then
    DOP @ $1AE = if
       PLAIN-PREFIX MODRM DREG @ 6 <> DRM @ 0 <> or DMOD @ 3 <> or if UNKNOWN then
-      s" mfence" type true exit then
+      s" mfence" OUT true exit then
    DOP @ $180 >= DOP @ $18F <= and if COND-BRANCH true exit then
    DOP @ $190 >= DOP @ $19F <= and if
       INT-PREFIX MODRM DREG @ 0<> if UNKNOWN then
       DMOD @ 3 = if DRM @ BYTE-REG-CHECK then
-      DOP @ $F and SET$ type space 8 RM. true exit then
+      DOP @ $F and SET$ OUT GAP 8 RM. true exit then
    DOP @ $140 >= DOP @ $14F <= and if
       INT-PREFIX MODRM DOP @ $F and CMOV$ WIDTH REG-RM true exit then
    false ;
@@ -468,7 +491,7 @@ variable DSCALE  variable DDISP  variable DRIP
    DOP @ $1B6 = DOP @ $1B7 = or DOP @ $1BE = or DOP @ $1BF = or if
       INT-PREFIX MODRM
       DOP @ $1B6 = DOP @ $1B7 = or if s" movzx" else s" movsx" then
-      type space DREG @ WIDTH REG. SEP
+      OUT GAP DREG @ WIDTH REG. SEP
       DOP @ 1 and 0<> if 16 else 8 then RM.
       true exit then
    DOP @ $1AF = if INT-PREFIX MODRM s" imul" WIDTH REG-RM true exit then
@@ -477,7 +500,7 @@ variable DSCALE  variable DDISP  variable DRIP
       DPFX @ 0<> if UNKNOWN then
       MODRM
       DMOD @ 3 = if UNKNOWN then
-      s" lock " type
+      s" lock " OUT
       DOP @ $1C1 = if s" xadd" else s" cmpxchg" then
       WIDTH RM-REG true exit then
    false ;
@@ -490,17 +513,45 @@ variable DSCALE  variable DDISP  variable DRIP
    TWO-INT if true exit then
    false ;
 
+private
+
+: DECODE ( ptr u8 n n -- ) {: a:ptr u:n pc:n :}
+   a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK !
+   0 DDELTA !
+   u 0 <= if TRUNC then
+   PREFIXES OPCODE
+   DECODE-ONE if exit then
+   DECODE-GROUP if exit then
+   SIMPLE-GROUP if exit then
+   DECODE-TWO if exit then
+   UNKNOWN ;
+
+: FLOW ( -- n )
+   DOP @ $70 >= DOP @ $7F <= and if FLOW-COND exit then
+   DOP @ $180 >= DOP @ $18F <= and if FLOW-COND exit then
+   DOP @ $E9 = DOP @ $EB = or if FLOW-JUMP exit then
+   DOP @ $E8 = if FLOW-CALL exit then
+   DOP @ $C3 = DOP @ $10B = or if FLOW-END exit then
+   DOP @ $FF = if
+      DREG @ 4 = if FLOW-INDIRECT exit then
+      DREG @ 2 = if FLOW-CALL exit then
+   then
+   FLOW-NEXT ;
+
 public
 
 \ Prints one real instruction and returns its consumed byte count (1..15).
-: DIS1 ( ptr u8 n n -- n ) {: a:ptr u:n pc:n :}
-   a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK !
-   u 0 <= if TRUNC then
-   PREFIXES OPCODE
-   DECODE-ONE if DI @ exit then
-   DECODE-GROUP if DI @ exit then
-   SIMPLE-GROUP if DI @ exit then
-   DECODE-TWO if DI @ exit then
-   UNKNOWN ;
+: DIS1 ( ptr u8 n n -- n )
+   1 DPRINT ! DECODE DI @ ;
+
+\ Decode once without presentation. A direct target is in the caller's PC
+\ coordinate system; all other flows return zero for the target.
+: STEP ( ptr u8 n n -- n n n )
+   0 DPRINT ! DECODE
+   FLOW {: kind:n :}
+   DI @ kind
+   kind FLOW-COND = kind FLOW-JUMP = or kind FLOW-CALL = or if
+      DOP @ $FF = if 0 else DPC @ DI @ + DDELTA @ + then
+   else 0 then ;
 
 ;package
