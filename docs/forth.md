@@ -972,10 +972,13 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
   refusal off the definer's zero image (`lib/json-write.f`).
-- **Structural integers widen, roles do not.** `u8 -> u16 -> u32 -> n/cell/i64`
-  widens implicitly when lossless; narrowing and same-width sign changes need an
-  explicit conversion; nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`,
-  `img`, `snap`, …) never widen to each other or to bare integers.
+- **Concrete integers widen, roles do not.** `u8 -> u16 -> u32 -> cell/i64`
+  widens implicitly when lossless; concrete narrowing and same-width sign
+  changes need an explicit conversion. Generic `n` accepts structural integer
+  stack cells in either direction: an `n` input can pass to a `u32` parameter,
+  while an `i64` input cannot. This generic rule does not relax pointer
+  pointees. Nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`, `img`,
+  `snap`, …) never widen to each other or to bare integers.
 - **Pointer-valued cells use cell-indexed `ptr-field`**: `ptr-field` builds a
   `ptr ptr x` field whose index is a cell slot, not a byte offset, so `@`/`!`
   keep nested pointer types; never multiply by cell size. Raw byte offsets need
