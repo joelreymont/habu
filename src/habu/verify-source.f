@@ -6,6 +6,7 @@
 
 require lib/errors.f
 require src/core/checker-owner-guard.f
+require lib/string.f
 require src/habu/layout.f
 
 package VERIFY
@@ -350,8 +351,13 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
-: MAYBE-SIGNATURE ( -- )
-   E-VS-UNTERMINATED-DEFINITION SCAN-SIG IF BODY-APPEND ELSE 2drop THEN ;
+\ A signature that opens here is appended to the body; what it declares,
+\ inside the parentheses, is answered, empty for none.
+: MAYBE-SIGNATURE ( -- ptr u8 n )
+   E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
+   2dup BODY-APPEND
+   {: sig:ptr sigu:n :}
+   sig 1 +  sigu 2 - ;
 
 \ The effect inside the parentheses.
 : REQUIRE-SIGNATURE ( -- ptr u8 n )
@@ -726,11 +732,13 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.
 CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
+CAST: IDENTITY-ACTION ( n -- [ n -- ptr u8 n ptr u8 n n ] )
 CAST: CREATES-ACTION ( n -- [ n -- n ] )
 CAST: CREATED-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: DOES-ACTION ( n -- [ ptr u8 n ptr u8 n ptr u8 n -- n ] )
 CAST: RENDERS-ACTION ( n -- [ ptr u8 n n -- bool ] )
 CAST: REACH-ACTION ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: DECL-ACTION ( n -- [ ptr u8 n ptr u8 n -- bool ] )
 
 \ The checked dispatchers name their offsets through layout.f's
 \ NCOMP-DISPATCH:DECL-VERIFY-* mirrors. CHECKER-OWNER-ABI loads before the
@@ -975,12 +983,15 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ] )
 \ RECORD-EXPORT pins the name it re-exports here for the quotation it catches.
 PTR-VARIABLE DEF-NAME-A
 variable DEF-NAME-U
+variable DEF-NAME-BYTE                        \ where the name starts
+PTR-VARIABLE DEF-SIG-A                        \ its signature, inside the parens
+variable DEF-SIG-U
 variable WRAP-DEFINERS                        \ definer calls in this body …
 variable WRAP-CTL                             \ … and whether the line ever bent
 variable WRAP-ROW                             \ the definer row the last call names
 
 : DEF-NAME! ( -- )
-   TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A ! ;
+   TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A !  TOKEN-BYTE @ DEF-NAME-BYTE ! ;
 
 : WRAP-RESET ( -- )
    0 WRAP-DEFINERS !  0 WRAP-CTL !  0 WRAP-ROW ! ;
@@ -1053,14 +1064,19 @@ variable WRAP-ROW                             \ the definer row the last call na
 \ process and cannot be asked to prove otherwise. A bare `s" NAME" s" SIG" trust`
 \ row is the opposite - it asserts an effect for a word it CLAIMS already exists,
 \ which is a claim the dictionary can answer and now does.
-TRUSTED: DECL-SIGNATURE ( ptr u8 n ptr u8 n -- )
-   TRUST-DECL ;
+\ DECL-SIGNATURE asks the declaration owner's registrar (src/core/checker.f
+\ TRUST-DECL?), which registers the row as TRUST-DECL does and answers whether
+\ it retained it. A name its scope already holds keeps that record either way,
+\ so only this answer tells a redeclaration the registrar retained from one it
+\ refused.
+: DECL-SIGNATURE ( ptr u8 n ptr u8 n -- bool )
+   NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
 
 TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
 \ The cast declarer's registrar, on the same boundary and for the same reason as
-\ DECL-SIGNATURE above: UNSAFE-TOK? rejects `checker-defcast` inside a checked
+\ TRUST-SIGNATURE above: UNSAFE-TOK? rejects `checker-defcast` inside a checked
 \ body, so the one place allowed to name it is a declared boundary word. The
 \ refusals it runs are the engine's own (checker.f CAST-CERTIFY), so a cast this
 \ pre-pass accepts is exactly a cast the engine accepts.
@@ -1074,14 +1090,14 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
    CHECKER-GENERATES ;
 
-: CAST-TRUST ( -- )
+: CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
-: RECORD-CAST-IN ( ptr u8 n ptr u8 n -- )
+: RECORD-CAST-IN ( ptr u8 n ptr u8 n -- bool )
    DTC-BUILD-IN
    CAST-TRUST ;
 
-: RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- )
+: RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- bool )
    DTC-BUILD-OUT
    CAST-TRUST ;
 
@@ -1121,7 +1137,58 @@ public
 \ refused definition, skips the definition and goes on.
 defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 
+\ What a reported definition is, as the path that declared it knows it: a word
+\ that runs code (`:`, `TRUSTED:`, `defer`, a cast, a field, `FUNCTION:`), a
+\ constant (`constant`, a structure's size), storage whose word answers its
+\ address (`variable`, `create`, a buffer, a word a definer creates when it
+\ runs), or a re-export, which is what the word it names is.
+0 constant DEF-WORD
+1 constant DEF-CONSTANT
+2 constant DEF-STORAGE
+3 constant DEF-EXPORT
+
+\ A definition the scan retained, once its registrar returned and its name's
+\ recording scope holds a live record: its kind, the statement token that
+\ declared it (`:`, `constant`, a definer's name); its name as the source
+\ writes it, or a name the definer generates as spelled; the symbol the
+\ checker recorded it under; its declared effect, empty for none;
+\ where the token that declared it starts and ends in the file FILE$
+\ names; and its class, one of the four above. The strings are borrowed: a
+\ word installed here consumes them before it returns.
+defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
+
+\ The file being scanned, named as its packets name it.
+: FILE$ ( -- ptr u8 n )
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ COMPOSE-DIAG$ ;
+
+\ A file the scan starts, named as FILE$ names it: each time the scan starts
+\ one, the subject first, before anything in it is reported. The string is
+\ borrowed: a word installed here consumes it before it returns.
+defer ON-FILE ( ptr u8 n -- )
+
+\ The identity the checker recorded a symbol under: its package (empty for a
+\ global), the tail it was recorded under and its visibility (SYM-GLOBAL,
+\ SYM-PRIVATE or SYM-PUBLIC). The spans are the checker's symbol pool's,
+\ borrowed until its next intern: copy them before anything else runs.
+: SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
+   NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
+
 private
+
+: DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
+   drop 2drop 2drop drop 2drop 2drop ;
+
+: DEFINITION-INIT ( -- )
+   ['] DEFINITION-NONE is ON-DEFINITION ;
+
+DEFINITION-INIT
+
+: FILE-NONE ( ptr u8 n -- )  2drop ;
+
+: FILE-INIT ( -- )
+   ['] FILE-NONE is ON-FILE ;
+
+FILE-INIT
 
 : DUPLICATE-STOP ( n n ptr u8 n bool -- )
    drop 2drop
@@ -1146,6 +1213,31 @@ DUPLICATE-INIT
    {: a:ptr u:n :}
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
 
+\ The symbol the name's recording scope holds a live record under, 0 for none.
+\ Where a guard refused a live record before the registrar ran, one there now
+\ is the record that registrar retained: certified, deferred or kept with a
+\ refused body (src/core/checker.f CHECK). A declaration DECL-SIGNATURE
+\ registers has no guard: the record found for its name is that declaration's
+\ only when DECL-SIGNATURE answered true, so its callers ask only then.
+: RETAINED-SYM ( ptr u8 n -- n )
+   {: name:ptr nameu:n :}
+   name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
+   name nameu RECORD-SYM? ;
+
+\ Report the definition the name names, of the class given, declared by the
+\ token from byte at to byte end, when its registrar retained a record.
+: DEFINED ( ptr u8 n ptr u8 n ptr u8 n n n n -- )
+   {: kind:ptr kindu:n name:ptr nameu:n eff:ptr effu:n at:n end:n class:n :}
+   name nameu RETAINED-SYM
+   {: sym:n :}
+   sym 0= IF EXIT THEN
+   kind kindu name nameu sym eff effu TRIM at end class ON-DEFINITION ;
+
+\ The same, for the name the statement token declares, written from byte at.
+: DEFINED-HERE ( ptr u8 n ptr u8 n n n -- )
+   {: name:ptr nameu:n eff:ptr effu:n at:n class:n :}
+   TOP-CUR-A @ TOP-CUR-U @ name nameu eff effu at at nameu + class DEFINED ;
+
 : SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ RAW-TRUST-NEXT: registers the given effect for the word the next token names,
@@ -1153,12 +1245,17 @@ DUPLICATE-INIT
 \ Used for the raw storage definers create/variable/constant/PTR-VARIABLE and
 \ PERSISTED-PTR-VARIABLE so a
 \ fetch from their raw cell yields a RAW value that cannot launder into a nominal
-\ atom or family (habu-nominal-storage-raw, VALUE side).
-: RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+\ atom or family (habu-nominal-storage-raw, VALUE side). The class is the
+\ definer's: DEF-CONSTANT for `constant`, DEF-STORAGE for the rest.
+: RAW-TRUST-NEXT ( ptr u8 n n -- )
+   {: sig:ptr sigu:n class:n :}
    NAME-TOKEN
    dup 0= IF E-MISSING-NAME throw THEN
+   TOKEN-BYTE @
+   {: name:ptr nameu:n at:n :}
    -1 SIG-RAW-MODE!
-   sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally ;
+   name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! ;] finally
+   IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
 \ CREATED-TRUST-NEXT?: RAW-TRUST-NEXT's twin for a definer the checker knows and
 \ this pre-pass never read. The row is the checker's own certified one, so there
@@ -1166,21 +1263,29 @@ DUPLICATE-INIT
 \ the same shape - the created word is the NEXT token - and the same answer.
 \ THE TOKEN IS TESTED BEFORE THE NAME IS TAKEN: NAME-TOKEN consumes a token, and
 \ a token that is not a definer must leave the scan exactly where it was.
-: CREATED-TRUST-NEXT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: CREATED-TRUST-NEXT? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
    a u FIND-SYM {: dsym:n :}
    dsym CREATES-SYM? 0= IF 0 0= 0= EXIT THEN
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu dsym RECORD-CREATED ;
+   TOKEN-BYTE @ {: at:n :}
+   name nameu dsym RECORD-CREATED 0= IF 0 0= 0= EXIT THEN
+   name nameu s" " at DEF-STORAGE DEFINED-HERE
+   0 0= ;
 
-: TRUST-DEFER-SIGNATURE ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
-   name nameu CHECKER-DEFER ;
+: TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
+   {: name:ptr nameu:n at:n :}
+   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu sig sigu DECL-SIGNATURE
+   {: kept:bool :}
+   name nameu CHECKER-DEFER
+   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu TRUST-DEFER-SIGNATURE ;
+   name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
 variable TRUSTED-DOES                         \ the trusted body's `does>` was read
 
@@ -1235,7 +1340,10 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
+   TOKEN-BYTE @ {: at:n :}
+   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu sig sigu DECL-SIGNATURE
+   IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
    name nameu SCAN-TRUSTED-BODY ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
@@ -1245,8 +1353,11 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : CAST-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
-   name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
+   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu sig sigu DEFCAST-SIGNATURE
+   name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
 \ A `linear:` row has the same shape and is certified by the engine's own
 \ registrar, which package VERIFY calls through its private row, so a mint or
@@ -1254,7 +1365,10 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : LINEAR-DECLARATION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu REQUIRE-SIGNATURE CHECKER-LINEAR ;
+   TOKEN-BYTE @ {: at:n :}
+   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu sig sigu CHECKER-LINEAR
+   name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -1311,13 +1425,22 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    REPEAT drop
    0 NOM-TAIL u ;
 
+\ The cast CAST-TRUST just declared, by the DEFTYPE name from byte at, u long.
+: CAST-DEFINED ( bool n n -- )
+   {: kept:bool at:n u:n :}
+   kept 0= IF EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ DTC-NAME$ DTC-SIG$ at at u + DEF-WORD DEFINED ;
+
 : RECORD-DEFTYPE ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
    name nameu tail tailu RECORD-CAST-IN
-   name nameu tail tailu RECORD-CAST-OUT ;
+   at nameu CAST-DEFINED
+   name nameu tail tailu RECORD-CAST-OUT
+   at nameu CAST-DEFINED ;
 
 : RECORD-DEFLINEAR ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
@@ -1520,35 +1643,39 @@ PTR-VARIABLE STG-START
 
 : RECORD-LAYOUT-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
+   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ DEFER-LAYOUT-BUFFER publishes its accessor and NAME-BIND and NAME-GROW from
 \ one line, so a later definition calling one is E-UNDEFINED without this row,
 \ and a type it cannot size goes unreported until the run. No count token: the
 \ count arrives at the bind.
 : RECORD-DEFER-LAYOUT-BUFFER ( -- )
-   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER ;
+   type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 : RECORD-TYPED-BUFFER ( -- )
    TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
-   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
+   type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 : RECORD-TYPED-VARIABLE ( -- )
-   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
+   type typeu name nameu CHECKER-DEFTYPED-VARIABLE
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ DYNAMIC-BUFFER (src/core/layout-buffer.f) publishes THREE words from one line -
 \ the accessor, NAME-RESERVE and NAME-RELEASE - so the whole triple is registered
@@ -1557,10 +1684,11 @@ PTR-VARIABLE STG-START
 \ src/habu/aot-decl.f's AOT-NAMES-RESERVE was, which took the stage2 certify pass
 \ with it. No count token: a dynamic buffer's extent is set at run time.
 : RECORD-DYNAMIC-BUFFER ( -- )
-   SCAN-STORAGE-NAME {: name:ptr nameu:n :}
+   SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
+   type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
+   name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
 \ The source byte body byte at was read from, in the newest run BODY-ROW!
 \ started at or before it.
@@ -1617,14 +1745,25 @@ PTR-VARIABLE STG-START
 \ A re-export duplicates its tail in the current section. The checker asks that
 \ only once the name has resolved (src/core/checker.f EXPORT-RECORD), as --load
 \ does, so its refusal is caught here and kept at the name as written.
+\ The record an export made is the open section's, under the tail the checker
+\ recorded the re-exported name under; the token that declared it is that
+\ name as written, from byte at.
+: EXPORT-DEFINED ( ptr u8 n n -- )
+   {: name:ptr nameu:n at:n :}
+   name nameu RECORD-SYM? SYM-IDENTITY drop 2swap 2drop RETAINED-SYM
+   {: sym:n :}
+   sym 0= IF EXIT THEN
+   TOP-CUR-A @ TOP-CUR-U @ name nameu sym s" " at at nameu + DEF-EXPORT ON-DEFINITION ;
+
 : RECORD-EXPORT ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch {: rc:n :}
    rc E-DUP-DEFINITION = IF nameu DUPLICATE! EXIT THEN
-   rc 0<> IF rc throw THEN ;
+   rc 0<> IF rc throw THEN
+   name nameu at EXPORT-DEFINED ;
 
 \ The core resolver answers the canonical path and require-known state. A
 \ require publishes that path before descending, so recursive requires stop at
@@ -1761,20 +1900,24 @@ variable FILE-USE
 : STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
    s" +FIELD" STR=CI ;
 
-: TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
+: TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- bool )
    DECL-SIGNATURE ;
 
-: RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   NAME-TOKEN {: name:ptr nameu:n :}
+\ A field, declared by its definer's token kind and named by the next token.
+: RECORD-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
+   {: kind:ptr kindu:n sig:ptr sigu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu sig sigu TRUST-STRUCTURE-FIELD ;
+   name nameu sig sigu TRUST-STRUCTURE-FIELD
+   IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
 
 \ Record the size word (`-- n`) then each field accessor with its runtime effect
 \ so BEGIN-STRUCTURE layouts self-certify their field uses.
 : RECORD-STRUCTURE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu s" -- n" DECL-SIGNATURE
+   IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN
    BEGIN
       NEXT-SCAN
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
@@ -1783,9 +1926,9 @@ variable FILE-USE
       \ cell record may hold a byte pointer. `ptr ptr a` tied the two together,
       \ so a record read as cells forced every pointer field to point at cells —
       \ the `ptr-field` primitive itself is `( ptr a n -- ptr ptr b )`.
-      2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr b" RECORD-STRUCTURE-FIELD ELSE
-      2dup STRUCTURE-CFIELD? IF 2drop s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
-      2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-PTR-FIELD? IF s" ptr a -- ptr ptr b" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CFIELD? IF s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CELL-FIELD? IF s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
       2drop
       THEN THEN THEN
    AGAIN ;
@@ -1849,11 +1992,13 @@ variable FFI-SIG-U
    AGAIN ;
 
 : RECORD-FFI-FUNCTION ( -- )
-   NEXT-SCAN
-   {: name:ptr nameu:n :}
+   NEXT-SCAN TOKEN-BYTE @
+   {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
-   name nameu FFI-SIGNATURE DECL-SIGNATURE ;
+   FFI-SIGNATURE {: sig:ptr sigu:n :}
+   name nameu sig sigu DECL-SIGNATURE
+   IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
@@ -1884,20 +2029,20 @@ variable FFI-SIG-U
    \ value never lands there (DNAME-WIDE dispatch gate). Any layout USE of the
    \ constant fails closed downstream; parity locked by check-all-errors-test
    \ const-layout-narrow.
-   a u s" constant" STR=CI IF s" -- a" RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" create" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    \ The declared-pointee forms: the clause names the pointee, so the effect has
    \ no type variable and the raw registration seals nothing. Same word, same row
    \ as the native path publishes through `trust-raw`.
-   a u s" PTR-U8-TABLE" STR=CI IF s" -- ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" PERSISTED-PTR-U8-TABLE-VARIABLE" STR=CI IF s" -- ptr ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PTR-U8-TABLE" STR=CI IF s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PERSISTED-PTR-U8-TABLE-VARIABLE" STR=CI IF s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    \ The reserved-offset cell: the offset token precedes the name, as the table
    \ count does, so the created word is still the NEXT token and the row is the
    \ definer's declared clause.
-   a u s" RESERVED-PTR-U8-CELL" STR=CI IF s" -- ptr ptr u8" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" RESERVED-PTR-U8-CELL" STR=CI IF s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
@@ -1925,13 +2070,18 @@ variable FFI-SIG-U
    \ token, as it is for `constant` above - the definer's own arguments precede
    \ it - and the effect is the clause's or the row's, registered with the same
    \ raw seal the storage definers use.
-   a u DEFINER-EFFECT dup 0<> IF RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
+   a u DEFINER-EFFECT dup 0<> IF DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN 2drop
    \ … and last of all, a definer this pre-pass never read: one compiled in the
    \ checking process itself, whose clause the checker certified and kept. The
    \ token resolves through the same FIND-SYM every other name does, so the
    \ qualified and the bare-under-`using` spelling reach the one row.
    a u CREATED-TRUST-NEXT? IF 0 0= EXIT THEN
    0 0= 0= ;
+
+\ The colon definition just scanned, once its body was judged.
+: COLON-DEFINED ( -- )
+   TOP-CUR-A @ TOP-CUR-U @  DEF-NAME-A @ DEF-NAME-U @  DEF-SIG-A @ DEF-SIG-U @
+   DEF-NAME-BYTE @ dup DEF-NAME-U @ + DEF-WORD DEFINED ;
 
 \ A refused definition's signature and body, to its `;`, skipped as a trusted
 \ body is, so nothing of it is checked or recorded.
@@ -1956,13 +2106,15 @@ variable FFI-SIG-U
    BODY-LOAD-RESET
    LOCALS-RESET
    TOKEN-A @ TOKEN-U @ BODY-APPEND
-   MAYBE-SIGNATURE
+   MAYBE-SIGNATURE DEF-SIG-U !  DEF-SIG-A !
    BEGIN
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
-      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN EXIT THEN
+      TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+         VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN COLON-DEFINED EXIT
+      THEN
       LOCAL-TOKEN? 0= IF
-         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES EXIT THEN
+         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES COLON-DEFINED EXIT THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       THEN
       APPEND-BODY-TOKEN
@@ -2139,7 +2291,8 @@ variable TOP-DEFER-I                             \ where the run's reading start
 \ entire composition. A file's packets locate in that file, and on return or
 \ throw the checker is armed with the caller's bytes
 \ again, or disarmed when the subject's scan ends, so no nested file's bytes,
-\ which its loader frame releases, stay armed.
+\ which its loader frame releases, stay armed. The scan of each file starts
+\ with ON-FILE.
 : COMPOSE-FILE-SCAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n path:ptr pathu:n :}
    path pathu COMPOSE-DIAG$ {: diag:ptr diagu:n :}
@@ -2158,7 +2311,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
    SOURCE-ARM
    path COMPOSE-CUR-PATH-A !  pathu COMPOSE-CUR-PATH-U !
    diag diagu DIAG-FILE!
-   [: VERIFY-SOURCE ;] catch {: rc:n :}
+   [: FILE$ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
    rc 0<> COMPOSE-STOP-U @ 0= and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
