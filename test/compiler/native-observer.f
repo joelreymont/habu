@@ -3,6 +3,9 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-env.f
+require lib/fs-mutate.f
+require lib/pty-harness.f
 require lib/engine-candidate.f
 require src/compiler/native/compiler.f
 require src/core/generated-declaration.f
@@ -13,6 +16,7 @@ require src/arch/x86-64/passes.f
 
 variable NOBS-SCALAR
 TYPED-VARIABLE NOBS-ENTRY NCOMP:code-entry
+TYPED-VARIABLE NOBS-NESTED [ n -- n ]
 
 package NOBS-TEST
 private
@@ -42,6 +46,10 @@ variable INVALIDATED
 variable LAST-STALE
 variable REPL-BEFORE
 variable CLEARED-OWNER
+variable IMAGE-PARENT
+variable IMAGE-OBSERVE
+variable IMAGE-PUBLISHED
+variable IMAGE-INVALIDATE
 OWNER-MAX TYPED-BUFFER OWNER-XT NCOMP:code-entry
 ROW-MAX TYPED-BUFFER ROW-OWNER n
 ROW-MAX TYPED-BUFFER ROW-ORD n
@@ -50,6 +58,9 @@ ROW-MAX TYPED-BUFFER ROW-MUL n
 ROW-MAX TYPED-BUFFER ROW-LIVE n
 
 CAST: HELD-RAW ( ptr IR-BUILD:module -- ptr n )
+CAST: XT>N ( [ n -- n ] -- n )
+
+: NESTED-XT ( -- [ n -- n ] ) NOBS-NESTED @ ;
 
 \ All anchors are declared before compilation; publication writes only the
 \ already-declared CODE cell and preallocated scalar rows.
@@ -172,7 +183,7 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 : SOURCE-QUOTES ( -- )
-   s" : NOBS-TWO ( -- [ n -- n ] [ n -- n ] ) [: [: 1 + ;] execute ;] [: 3 * ;] ;" EV ;
+   s" : NOBS-TWO ( -- [ n -- n ] [ n -- n ] ) [: [: 1 + ;] dup NOBS-NESTED ! execute ;] [: 3 * ;] ;" EV ;
 
 : EXACT-CASE ( -- )
    SOURCE-QUOTES
@@ -180,9 +191,13 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    P-N @ 4 T=
    ROW-N @ 4 T=
    s" NOBS-TWO" XREF-FIND XREF-START 0 PARENT@ NCOMP:ENTRY>N T=
+   s" NOBS-TWO drop" EV-N 0 PARENT@ NCOMP:ENTRY>N 1 ROW-OFF @ + T=
+   s" NOBS-TWO nip" EV-N 0 PARENT@ NCOMP:ENTRY>N 3 ROW-OFF @ + T=
    s" NOBS-TWO drop" EV-N ADMIT? TTRUE
    s" NOBS-TWO nip" EV-N ADMIT? TFALSE
    s" 41 NOBS-TWO drop execute" EV-N 42 T=
+   NESTED-XT XT>N 0 PARENT@ NCOMP:ENTRY>N 2 ROW-OFF @ + T=
+   NESTED-XT XT>N ADMIT? TTRUE
    s" 14 NOBS-TWO nip execute" EV-N 42 T=
    s" retired frozen HIR reader refuses" T-LABEL
    [: 0 HELD @ IR-BUILD:FFUN-ROWS IR-FUN:FFUNS drop ;] catch 0<> TTRUE ;
@@ -280,6 +295,15 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    PUB-ERR erru LEN>N s" ncomp: publication callback threw" CONTAINS? TTRUE
    PUB-ERR erru LEN>N s" ncomp: cannot compile" CONTAINS? TFALSE ;
 
+: TIER0-CASE ( -- )
+   SEEN @ {: before:n :}
+   s" 0 set-tier" EV
+   s" : NOBS-T0 ( -- n ) 73 ;" EV
+   s" tier 0 defines without observing" T-LABEL
+   SEEN @ before T=
+   s" NOBS-T0" EV-N 73 T=
+   s" 1 set-tier" EV ;
+
 public
 
 : NESTED-CHILD ( -- )
@@ -288,7 +312,7 @@ public
 : REPL-CHILD ( -- )
    s" : NOBS-REPL-CHILD ( -- [ n -- n ] ) [: 9 + ;] ;" EV ;
 
-: RUN ( -- )
+: BASE-RUN ( -- )
    T-RESET
    DECLARE-ANCHORS
    REFUSALS
@@ -297,10 +321,15 @@ public
    ['] INVALIDATE CODE-RECLAIM:INVALIDATE!
    EXACT-CASE RETRY-CASE LATE-CASE OUTER-CASE GENERATED-CASE DOES-CASE
    PUBLISH-THROW-CASE
+   ARGC 1 > if TIER0-CASE then
    T-REPORT s" native-observer: ok" type cr ;
 
 : IMAGE-PREPARE ( -- )
-   s" native-observer-before: " type 0 PARENT@ NCOMP:ENTRY>N . cr
+   0 PARENT@ NCOMP:ENTRY>N dup IMAGE-PARENT !
+   s" native-observer-before: " type . cr
+   data-base NATIVE-OBS-CELLS:OBSERVE + @ IMAGE-OBSERVE !
+   data-base NATIVE-OBS-CELLS:PUBLISHED + @ IMAGE-PUBLISHED !
+   data-base NATIVE-OBS-CELLS:INVALIDATE + @ IMAGE-INVALIDATE !
    0 0 HELD HELD-RAW !
    0 P-IDX ! 0 P-CTX ! 0 LAST-STALE ! ;
 
@@ -315,16 +344,24 @@ public
    0 IGNORE !
    s" NOBS-REPL-REUSE" EV-N LAST-STALE @ T=
    s" NOBS-REPL-REUSE" EV-N ADMIT? TFALSE
+   s" 41 NOBS-REPL-REUSE execute" EV-N 50 T=
    T-REPORT s" native-observer-repl: ok" type cr ;
 
 : IMAGE-CHECK ( -- )
    T-RESET
+   s" 1 set-tier" EV
    s" named parent anchor and function offsets survived image relocation" T-LABEL
-   s" native-observer-after: " type 0 PARENT@ NCOMP:ENTRY>N . cr
+   0 PARENT@ NCOMP:ENTRY>N dup IMAGE-PARENT @ T<>
+   s" native-observer-after: " type . cr
+   data-base NATIVE-OBS-CELLS:OBSERVE + @ IMAGE-OBSERVE @ T<>
+   data-base NATIVE-OBS-CELLS:PUBLISHED + @ IMAGE-PUBLISHED @ T<>
+   data-base NATIVE-OBS-CELLS:INVALIDATE + @ IMAGE-INVALIDATE @ T<>
    s" NOBS-TWO" XREF-FIND XREF-START 0 PARENT@ NCOMP:ENTRY>N T=
    CLEARED-OWNER @ PARENT@ NCOMP:ENTRY>N 0 T=
    s" NOBS-TWO drop" EV-N ADMIT? TTRUE
+   s" NOBS-TWO nip" EV-N 0 PARENT@ NCOMP:ENTRY>N 3 ROW-OFF @ + T=
    s" NOBS-TWO nip" EV-N ADMIT? TFALSE
+   NESTED-XT XT>N 0 PARENT@ NCOMP:ENTRY>N 2 ROW-OFF @ + T=
    s" 41 NOBS-TWO drop execute" EV-N 42 T=
    SEEN @ {: before:n :}
    s" : NOBS-IMAGE-LATE ( -- [ n -- n ] ) [: 2 + ;] ;" EV
@@ -333,6 +370,83 @@ public
    s" NOBS-IMAGE-LATE" XREF-FIND XREF-START
    OWNER-N @ 1- PARENT@ NCOMP:ENTRY>N T=
    T-REPORT s" native-observer-image: ok" type cr ;
+
+$4000 constant CHILD-CAP
+create CHILD-OUT CHILD-CAP allot
+create CHILD-ERR CHILD-CAP allot
+create IMAGE-ROOT FS-PATH-CAP allot
+create IMAGE-PATH FS-PATH-CAP allot
+variable IMAGE-ROOT-U
+variable IMAGE-PATH-U
+
+: IMAGE-ROOT$ ( -- ptr u8 n ) IMAGE-ROOT IMAGE-ROOT-U @ ;
+: IMAGE-PATH$ ( -- ptr u8 n ) IMAGE-PATH IMAGE-PATH-U @ ;
+
+: IMAGE-PATH-PREPARE ( -- )
+   s" native-observer-image" HB-TMP-MKDIR {: path:ptr size:n :}
+   path IMAGE-ROOT size BYTE-COPY size IMAGE-ROOT-U !
+   IMAGE-ROOT$ CLEANUP-TREE+
+   IMAGE-ROOT$ s" saved-hb" IMAGE-PATH JOIN-PATH IMAGE-PATH-U ! ;
+
+: IMAGE-BUILD ( -- )
+   PROC-ARGV-ENV-RESET
+   s" HABU_NOBS_IMAGE" >LEN IMAGE-PATH$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN
+   S\" require src/habu/app-image.f\nrequire test/compiler/native-observer.f\nNOBS-TEST:IMAGE-PREPARE\n0 set-tier\ns\q HABU_NOBS_IMAGE\q GETENV APP-IMAGE:SAVE\n" >LEN
+   CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN 180000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   ENGINE-CANDIDATE:PATH$ CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   CHILD-OUT outu LEN>N s" native-observer-before: " CONTAINS? TTRUE
+   CHILD-OUT outu LEN>N type
+   IMAGE-PATH$ EXECUTABLE? TTRUE ;
+
+: IMAGE-RUN ( -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   IMAGE-PATH$ >LEN
+   S\" NOBS-TEST:IMAGE-CHECK\n" >LEN
+   CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN 10000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   IMAGE-PATH$ CHILD-OUT outu LEN>N CHILD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   CHILD-OUT outu LEN>N s" native-observer-image: ok" CONTAINS? TTRUE
+   CHILD-OUT outu LEN>N type ;
+
+: IMAGE-CASE ( -- )
+   CLEANUP-RESET
+   IMAGE-PATH-PREPARE
+   [: IMAGE-BUILD IMAGE-RUN ;] [: CLEANUP-RUN ;] finally ;
+
+: REPL-STEP ( ptr u8 n -- )
+   PTY-HARNESS:BUF-CLEAR PTY-HARNESS:SEND-LINE
+   s"  ok" PTY-HARNESS:WAIT-FOR TTRUE
+   s"  ok" s" habu> " PTY-HARNESS:WAIT-AFTER TTRUE ;
+
+: REPL-CASE ( -- )
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:SPAWN-ON-PTY
+   s" habu> " PTY-HARNESS:WAIT-FOR TTRUE
+   s" require test/compiler/native-observer.f" REPL-STEP
+   s" NOBS-TEST:REPL-PREPARE" REPL-STEP
+   PTY-HARNESS:BUF-CLEAR
+   s" NOBS-TEST:REPL-CHILD 8183 throw" PTY-HARNESS:SEND-LINE
+   s" NOBS-TEST:REPL-CHILD 8183 throw" s" habu> "
+   PTY-HARNESS:WAIT-AFTER TTRUE
+   s"  ok" PTY-HARNESS:IN-BUF? TFALSE
+   s" NOBS-TEST:REPL-CHECK" REPL-STEP
+   s" native-observer-repl: ok" PTY-HARNESS:IN-BUF? TTRUE
+   4 PTY-HARNESS:SEND-BYTE
+   PTY-HARNESS:REAP {: oc :}
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   PTY-HARNESS:CLOSE-MASTER ;
+
+: RUN ( -- )
+   BASE-RUN
+   ARGC 1 > if
+      T-RESET
+      IMAGE-CASE REPL-CASE
+      T-REPORT
+      s" native-observer-repl: ok" type cr
+      s" native-observer-children: ok" type cr
+   then ;
 ;package
 
 NOBS-TEST:RUN

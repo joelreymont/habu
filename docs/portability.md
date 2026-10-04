@@ -345,6 +345,16 @@ parallel compilation or foreign code execution. The registered
 nested admission, task refusal and failure after child scratch allocation, and
 writes the retained A64 artifact.
 
+At native tier 1, `NBACK:OBSERVE!` installs a callback that receives frozen HIR
+before emission. Its first argument is the pending dictionary record's index,
+which `NCOMP:PUBLISHED!` receives again for the published entry. The frozen
+module is borrowed only during that callback. Published function ordinal `k`
+names emission function `k`:
+ordinal 0 is the definition, followed by its quotations and any `does>` clause.
+A `does>` definer and clause share one parent entry, with separate ordinals.
+`CODE-RECLAIM:INVALIDATE!` runs before the engine rewinds CP and NDICT during
+recovery, and after dictionary rollback when `TRUNCATE` reclaims code.
+
 ### 5.2 Handle ownership and lifecycle
 
 Use nominal handles for `Session`, `Target`, `ContributionBuilder`, `CheckedModule`, `Emission`, `PreparedPublication`, and `CodeLease`. Their lifetimes are:
