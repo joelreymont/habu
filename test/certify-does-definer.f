@@ -29,9 +29,15 @@
 \
 \ WHAT IS DELIBERATELY NOT LEARNED. A definer call the body reaches only
 \ conditionally, twice, or inside a quotation says nothing about what the
-\ enclosing word creates, so nothing is recorded and the created word stays
-\ unresolvable. Those negatives are section 3, and they are what keeps the
-\ wrapper rule from being a prefix match on "calls something that creates".
+\ enclosing word creates, so nothing is recorded and the created word is never
+\ accepted. Those negatives are section 3 and the last three rows of section 5,
+\ and they are what keeps the wrapper rule from being a prefix match on "calls
+\ something that creates". Such a word still calls `create`, so a top-level
+\ statement that runs it marks the wordlist it runs in: the word it creates, and
+\ every later name nothing in that wordlist resolves, is left to the run
+\ (DEFERRED, src/core/checker.f UNSEEN-COVERS?) rather than UNRESOLVED. MAIN
+\ runs the latch and TRUSTED sections, which pin names no definer created as
+\ UNRESOLVED, before section 3 marks this file's wordlist.
 
 require lib/errors.f
 require lib/string.f
@@ -117,6 +123,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 -1 constant ACCEPTED
 0 constant REFUSED
 1 constant UNRESOLVED
+2 constant DEFERRED            \ a mark leaves the name to the run
 
 \ Two authorities, asked apart. A row the scanner learned is a fact of the
 \ certify path: the scan compiles nothing, so the engine holds no record of the
@@ -173,19 +180,19 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s\" : CDD-CD ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer behind a conditional records nothing" T-LABEL
-   s" C10 ( -- ptr n ) CDD-COND" CDD-VERDICT UNRESOLVED T=
+   s" C10 ( -- ptr n ) CDD-COND" CDD-VERDICT DEFERRED T=
    s\" : CDD-IFWU ( n -- ) dup 0= IF drop 1 THEN CDD-CD ;\n2 CDD-IFWU CDD-CONDU\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer behind an uppercase conditional records nothing" T-LABEL
-   s" C10U ( -- ptr n ) CDD-CONDU" CDD-VERDICT UNRESOLVED T=
+   s" C10U ( -- ptr n ) CDD-CONDU" CDD-VERDICT DEFERRED T=
    s\" : CDD-TWOW ( n n -- ) CDD-CD CDD-CD ;\n3 4 CDD-TWOW CDD-TWICE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" two definer calls in one body record nothing" T-LABEL
-   s" C11 ( -- ptr n ) CDD-TWICE" CDD-VERDICT UNRESOLVED T=
+   s" C11 ( -- ptr n ) CDD-TWICE" CDD-VERDICT DEFERRED T=
    s\" : CDD-QW ( n -- ) drop [: 5 CDD-CD ;] drop ;\n6 CDD-QW CDD-QUOT\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a definer inside a quotation records nothing" T-LABEL
-   s" C12 ( -- ptr n ) CDD-QUOT" CDD-VERDICT UNRESOLVED T= ;
+   s" C12 ( -- ptr n ) CDD-QUOT" CDD-VERDICT DEFERRED T= ;
 
 \ ---- 4. the learned row is the row the engine publishes ---------------------
 \ The same definition, compiled and run by the engine: CDD-LIVE-ONE's effect
@@ -243,13 +250,13 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" C20 ( -- ptr n ) CDD-RES-WMADE" CDD-VERDICT ACCEPTED T=
    s\" 2 CDD-RES-IFW CDD-RES-CONDMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer behind a conditional records nothing" T-LABEL
-   s" C25 ( -- ptr n ) CDD-RES-CONDMADE" CDD-VERDICT UNRESOLVED T=
+   s" C25 ( -- ptr n ) CDD-RES-CONDMADE" CDD-VERDICT DEFERRED T=
    s\" 3 4 CDD-RES-TWOW CDD-RES-TWICEMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" two resident definer calls in one body record nothing" T-LABEL
-   s" C26 ( -- ptr n ) CDD-RES-TWICEMADE" CDD-VERDICT UNRESOLVED T=
+   s" C26 ( -- ptr n ) CDD-RES-TWICEMADE" CDD-VERDICT DEFERRED T=
    s\" 6 CDD-RES-QW CDD-RES-QUOTMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident definer inside a quotation records nothing" T-LABEL
-   s" C27 ( -- ptr n ) CDD-RES-QUOTMADE" CDD-VERDICT UNRESOLVED T= ;
+   s" C27 ( -- ptr n ) CDD-RES-QUOTMADE" CDD-VERDICT DEFERRED T= ;
 
 : CDD-SECTION-LATCH ( -- )
    s\" 5 CDD-RES-P CDD-PL-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
@@ -490,13 +497,13 @@ E-GENERATES-ROW constant E-GEN-ROW
    T-RESET
    CDD-SECTION-DEFINER
    CDD-SECTION-WRAPPER
-   CDD-SECTION-NOT-A-WRAPPER
-   CDD-SECTION-LIVE
-   CDD-SECTION-RESIDENT
    CDD-SECTION-LATCH
    CDD-SECTION-WRAP-LATCH
    CDD-SECTION-TRUSTED
    CDD-SECTION-TRUSTED-LIVE
+   CDD-SECTION-NOT-A-WRAPPER
+   CDD-SECTION-LIVE
+   CDD-SECTION-RESIDENT
    CDD-SECTION-SCOPES
    CDD-SECTION-GENERATES
    CDD-SECTION-GENERATES-LIVE

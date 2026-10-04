@@ -1933,6 +1933,9 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
          CHK-E-UNAVAILABLE CHK-THROW
       ENDOF
       incomplete OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
+      deferred OF
+         s" check.f: a stretch deferred to the run is not verified" CHK-OUT-LN
+      ENDOF
    ;MATCH ;
 
 : CHK-VERIFY-ACT ( -- )

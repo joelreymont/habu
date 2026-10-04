@@ -25,10 +25,13 @@
 \ and writes for each duplicate, which the checker writes no packet for, a
 \ diagnostic line among the packets. It answers
 \
-\    check-verify: verified | refused | held
+\    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
+\ deferred: nothing is refused, but a stretch of top-level source was deferred
+\ to the run, and a W-CHECK-DEFERRED packet locates each such stretch
+\ (src/habu/verify-source.f TOP-TOKEN): those tokens are not verified.
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
 \ cannot be verified here. The parent answers engine-provided itself. stopped
@@ -41,13 +44,13 @@
 \
 \    check-verify: verified | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
-\ RC is the code the composition stopped with, 70 for a definition the checker
-\ refused by the throw that rendered its packet, BYTE where the token the verifier
-\ read last starts, DUP-AT and DUP-LEN where the name it refused as a duplicate
-\ starts and its length, DUP-LEN 0 when it kept no name (VERIFY:DUPLICATE),
-\ IN-SUBJECT 1 when the stop is in BYTES and 0 when it is in a file they load,
-\ and FILE, the rest of the line, the name of the file it is in: for BYTES,
-\ SUBJECT in the first form and LABEL in the second.
+\ RC is the code the composition stopped with, 70 for a definition or top-level
+\ token the checker refused by the throw that rendered its packet, BYTE where
+\ the token the verifier read last starts, DUP-AT and DUP-LEN where the name it
+\ refused as a duplicate starts and its length, DUP-LEN 0 when it kept no name
+\ (VERIFY:DUPLICATE), IN-SUBJECT 1 when the stop is in BYTES and 0 when it is
+\ in a file they load, and FILE, the rest of the line, the name of the file it
+\ is in: for BYTES, SUBJECT in the first form and LABEL in the second.
 \
 \ stderr is prose: for the first form, a line for each file whose verification
 \ a throw stopped, and whatever else the engine writes there, a `die`'s message
@@ -202,6 +205,7 @@ create NL 1 allot
 : VERIFY-CLOSURE ( -- )
    0 FAILED !
    0 STOP !
+   VERIFY:REPORT-DEFERRALS
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if
       ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
@@ -209,6 +213,7 @@ create NL 1 allot
    then
    STOP @ 0<> if STOP @ STOP-RESULT exit then
    FAILED @ 0<> if s" refused" RESULT exit then
+   VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;
 
 
@@ -219,9 +224,9 @@ create NL 1 allot
 
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
-\ A definition refused by the throw that rendered its packet (checker.f
-\ DEF-STOPPED) stops the pre-pass as one its verdict refuses does; any other
-\ stop keeps its code.
+\ A definition or top-level token refused by the throw that rendered its packet
+\ (checker.f DEF-STOPPED) stops the pre-pass as a definition its verdict refuses
+\ does; any other stop keeps its code.
 : STOP-CODE ( n -- n )
    dup DEF-STOPPED @ = if drop REFUSED-RC then ;
 

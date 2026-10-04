@@ -117,6 +117,12 @@ $2F8 constant CHECK-REPORT-OFF
 \ owner of a DEFLINEAR type mints and erases its token, as `cast:` reaches
 \ CAST-OFF.
 $300 constant LINEAR-OFF
+\ The source pre-pass's questions: what the load does with a top-level token,
+\ the report of a stretch deferred to the run (src/habu/verify-source.f
+\ TOP-TOKEN), and what a TRUSTED: body's calls may do (SCAN-TRUSTED-BODY).
+$308 constant VERIFY-TOP-OFF
+$310 constant VERIFY-DEFERRED-OFF
+$318 constant VERIFY-REACH-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay
