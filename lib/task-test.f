@@ -1474,14 +1474,11 @@ variable ENTRY-RACE-PENDING
 
 \ ---- the release/acquire pair on the status cell ------------------------------
 \
-\ THE DETERMINISTIC PIN. A task ends by publishing DONE, and the publication has
-\ to be a store-release or an owner that only polls TASK:DONE? has no edge to the
-\ body's writes. The store is emitted by the engine (src/habu/habu1.f
-\ BTASK-ENTRY), so the fact is in the entry's instructions and this case reads
-\ them: from the address `task-entry` answers to the first RET, decoding the two
-\ words that can stand at the DONE site. Reading the code is what makes it a pin
-\ - a release that turned back into a plain store fails here every run, while the
-\ visibility case below can only fail when the hardware reorders.
+\ THE DETERMINISTIC PIN. A task ends by publishing DONE with release ordering
+\ or an owner that only polls TASK:DONE? has no edge to the body's writes. ARM
+\ emits STLR and x86-64 emits a memory XCHG, whose implicit lock supplies the
+\ ordering. The entry's bytes pin that choice; the visibility case below can
+\ only fail when the hardware reorders.
 \
 \ A64 encodings, both with Rn in bits 9:5 and Rt in bits 4:0:
 \   STLR Xt,[Xn]         1100 1000 1001 1111 1111 11nn nnnt tttt   (no offset)
@@ -1493,9 +1490,16 @@ $F9000000 TASK-ABI:STATUS-OFF 8 / 10 lshift or 9 5 lshift or 10 or
    constant W-STR-DONE-PLAIN                               \ STR x10,[x9,#STATUS-OFF]
 $D65F03C0 constant W-RET
 
+\ x86-64 encodings at TASK-ABI:STATUS-OFF ($50): XCHG [rcx+$50],rax is the
+\ release publication; MOV [rcx+$50],rax is its plain-store regression.
+$50418748 constant W-XCHG-DONE
+$50418948 constant W-MOV-DONE-PLAIN
+$C3 constant B-RET
+
 \ The entry is 57 instruction words. The cap is the "this is not the entry"
 \ bound, not a measurement: a walk that runs past it read the wrong address.
 128 constant ENTRY-WORD-CAP
+512 constant ENTRY-BYTE-CAP
 
 \ A foreign C entry address, the way lib/task.f takes it for pthread_create.
 TRUSTED: TASK-ENTRY-ADDR ( -- n ) task-entry ;
@@ -1504,12 +1508,14 @@ TRUSTED: TASK-ENTRY-ADDR ( -- n ) task-entry ;
    a XREF-N>U8 {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
+: ENTRY-B8@ ( n -- n ) XREF-N>U8 c@ ;
+
 variable ENTRY-STLR-ANY               \ release stores of any shape
 variable ENTRY-STLR-DONE              \ STLR x10,[x11] - the DONE publication
 variable ENTRY-STR-PLAIN              \ the plain store it replaced
 variable ENTRY-WORDS
 
-: ENTRY-SCAN ( -- )
+: ENTRY-SCAN-ARM ( -- )
    0 ENTRY-STLR-ANY !  0 ENTRY-STLR-DONE !  0 ENTRY-STR-PLAIN !  0 ENTRY-WORDS !
    TASK-ENTRY-ADDR {: base:n :}
    ENTRY-WORD-CAP 0 do
@@ -1522,8 +1528,8 @@ variable ENTRY-WORDS
    loop
    s" task-test: no RET within the pthread entry's bound" 76 die ;
 
-: TASK-TEST-ENTRY-RELEASE ( -- )
-   ENTRY-SCAN
+: TASK-TEST-ENTRY-RELEASE-ARM ( -- )
+   ENTRY-SCAN-ARM
    s" the pthread entry publishes DONE with STLR x10,[x11]" T-LABEL
    ENTRY-STLR-DONE @ 1 T=
    s" ... and that release is the entry's only one" T-LABEL
@@ -1532,6 +1538,34 @@ variable ENTRY-WORDS
    ENTRY-STR-PLAIN @ 0 T=
    s" ... all of it inside the entry's bounded span" T-LABEL
    ENTRY-WORDS @ ENTRY-WORD-CAP < TTRUE ;
+
+variable ENTRY-XCHG-DONE
+variable ENTRY-MOV-PLAIN
+variable ENTRY-BYTES
+
+: ENTRY-SCAN-X64 ( -- )
+   0 ENTRY-XCHG-DONE !  0 ENTRY-MOV-PLAIN !  0 ENTRY-BYTES !
+   TASK-ENTRY-ADDR {: base:n :}
+   ENTRY-BYTE-CAP 3 - 0 do
+      base i + ENTRY-W32@ dup W-XCHG-DONE = if 1 ENTRY-XCHG-DONE +! then
+      W-MOV-DONE-PLAIN = if 1 ENTRY-MOV-PLAIN +! then
+      i 1+ ENTRY-BYTES !
+      base i + ENTRY-B8@ B-RET = if unloop exit then
+   loop
+   s" task-test: no RET within the pthread entry's bound" 76 die ;
+
+: TASK-TEST-ENTRY-RELEASE-X64 ( -- )
+   ENTRY-SCAN-X64
+   s" the pthread entry publishes DONE with locked XCHG" T-LABEL
+   ENTRY-XCHG-DONE @ 1 T=
+   s" ... and no plain MOV puts DONE in the status cell" T-LABEL
+   ENTRY-MOV-PLAIN @ 0 T=
+   s" ... all of it inside the entry's bounded span" T-LABEL
+   ENTRY-BYTES @ ENTRY-BYTE-CAP < TTRUE ;
+
+: TASK-TEST-ENTRY-RELEASE ( -- )
+   HB-TARGET-LINUX-X86-64? if TASK-TEST-ENTRY-RELEASE-X64 exit then
+   TASK-TEST-ENTRY-RELEASE-ARM ;
 
 TASK:MIN-STACK TASK:TASK DONE-PUB-TASK
 
