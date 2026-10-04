@@ -142,9 +142,11 @@ public
 
 : RETVAR  ( n | R -- n | R ) ;                      \ a clause that moves nothing: neutral
 
-: RETPUSH ( n | -- | n ) >r ;                       \ leaves a cell on the caller's return stack
+\ These effects are queried, never called. Native lowering keeps return values
+\ inside a body at compile time and rejects a callee that changes its return row.
+defer RETPUSH ( n | -- | n )                         \ would leave a cell on the caller's return stack
 
-: RETPOP  ( | n -- n | ) r> ;                       \ takes one off it
+defer RETPOP  ( | n -- n | )                         \ would take one off it
 
 ;package
 
