@@ -405,7 +405,7 @@ create DEFAULT-PROPS 112 c, 114 c, 111 c, 118 c, 105 c, 100 c, 101 c,
    114 c, 61 c, 100 c, 101 c, 102 c, 97 c, 117 c, 108 c, 116 c, 0 c,
 
 $86 constant PKEY-PUBLIC
-$87 constant PKEY-PAIR
+4 constant PEM-FLAG-ONLY-B64              \ OpenSSL pem.h
 1 constant PKCS1-PADDING
 2048 constant RSA-MIN-BITS
 16384 constant RSA-MAX-BITS
@@ -576,7 +576,8 @@ CAST: RS>BYTES ( n -- ptr u8 )
    {: pem u:n :}
    pem u BIO-FROM-DATA dup RS-BIO RS! 0= if E-KEY throw then
    RS-BIO RS@ RS-PEM-LABEL RS-BUF RS-PEM-HEADER RS-BUF
-   RS-DER RS-BUF RS-DER-LEN RS-BUF 0 PEM-READ OSSL-OK <> if E-KEY throw then
+   RS-DER RS-BUF RS-DER-LEN RS-BUF PEM-FLAG-ONLY-B64 PEM-READ
+   OSSL-OK <> if E-KEY throw then
    RS-PEM-LABEL RS@ dup 0= if drop E-KEY throw then
    RS>BYTES RS-PEM-LABEL? 0= if E-KEY throw then
    RS-PEM-HEADER RS@ dup 0= if drop E-KEY throw then

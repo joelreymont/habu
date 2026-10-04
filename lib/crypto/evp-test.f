@@ -953,6 +953,14 @@ variable RSA-CASE-N
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
 
+: RSA-CASE-HIDDEN-DER ( -- )
+   RSA-CASE-PEM PEM-CAP INTO
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1- ASCII,
+   s" -" PEM-LINE
+   s" BQAFAAUA" PEM-LINE
+   s" -----END PRIVATE KEY-----" PEM-LINE
+   FILLED RSA-CASE-N ! ;
+
 : RSA-CASE-TRAILING-INNER ( -- )
    RSA-CASE-TRAILING-DER
    \ Increase the outer SEQUENCE and PKCS#8 OCTET STRING lengths by two;
@@ -1123,6 +1131,11 @@ variable RSA-CASE-N
    s" one PKCS#8 PEM rejects trailing decoded DER" T-LABEL
    RSA-CASE-TRAILING-DER
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   s" PKCS#8 PEM rejects material behind a hyphen EOF" T-LABEL
+   RSA-CASE-HIDDEN-DER
+   $A5 RSA-OUT c!
+   [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
+   RSA-OUT c@ $A5 T=
    s" PKCS#8 rejects trailing DER inside its RSA private key" T-LABEL
    RSA-CASE-TRAILING-INNER
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ

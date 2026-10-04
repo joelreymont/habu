@@ -1428,7 +1428,9 @@ rotation and nonce sequencing belong above this module. See [crypto](crypto.md)
 for the other vocabulary and a sealed-record example. The RS256 contract uses
 [RFC 7518 §3.3](https://www.rfc-editor.org/rfc/rfc7518.html#section-3.3),
 [JWK integer encoding](https://www.rfc-editor.org/rfc/rfc7518.html#section-6.3.1),
-and OpenSSL's [decoder](https://docs.openssl.org/3.0/man3/OSSL_DECODER_CTX_new_for_pkey/),
+and OpenSSL's [PEM_read_bio_ex](https://docs.openssl.org/3.0/man3/PEM_read_bio_ex/),
+[d2i_PKCS8_PRIV_KEY_INFO](https://docs.openssl.org/3.0/man3/d2i_X509/),
+[EVP_PKCS82PKEY_ex](https://docs.openssl.org/3.0/man3/EVP_PKEY2PKCS8/),
 [parameter builder](https://docs.openssl.org/3.0/man3/OSSL_PARAM_BLD/),
 [key validation](https://docs.openssl.org/3.0/man3/EVP_PKEY_check/),
 [digest verification](https://docs.openssl.org/3.0/man3/EVP_DigestVerifyInit/), and
