@@ -525,8 +525,8 @@ SUITE compiler-wasm-target
    test/compiler/wasm-target.f
 ;SUITE
 
-\ The backend registry: src/compiler/target.f's rows and the registration in
-\ src/arch/arm64/backend.f, which is the acceptance suite for
+\ The backend registry: src/compiler/target.f's rows and complete registration
+\ in src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
 SUITE compiler-target-registry
    test/compiler/target-registry.f
