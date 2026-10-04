@@ -1,10 +1,10 @@
 \ checker-scan-index-suite.f — the checker's symbol-keyed store indexes.
 \
 \ A WHITEBOX-SUITE row, like test/type-family-rollback-suite.f: every case is a
-\ top-level interpret line, because the stores and their indexes are checker
-\ internals that resolve only there, reached through named TRUSTED: shims. The
-\ gate runs it in its unsealed whitebox engine; standalone under bin/hb it
-\ exits 70 (docs/gate.md "How a suite runs").
+\ top-level interpret line, and the stores and their indexes are checker
+\ internals the unsealed engine binds by their recorded rows, named directly or
+\ through checked words. The gate runs it in its unsealed whitebox engine;
+\ standalone under bin/hb it exits 70 (docs/gate.md "How a suite runs").
 \
 \ WHAT IS UNDER TEST. Each lookup below stopped walking its store and started
 \ asking an index (dot habu-the-checker-s-8c4e7273 for all but SUMV-FIND):
@@ -80,12 +80,12 @@ s" SCXA" SCX-SIG-MIN-IN 3 T=                   \ four records deep, still the ne
 \ the same symbol, read straight off the index, off the walk that specifies it,
 \ and off the scan that consumes it — the entry point above caches, so a wrong
 \ scan can hide behind a hit.
-s" SCXA" SCX-ACTIVE-SYM IX !
+s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ 0 <> TTRUE
-IX @ SCX-USIG-NEWEST 1- 0 > TTRUE              \ the record is at a nonzero offset
-IX @ SCX-USIG-NEWEST  IX @ SCX-USIG-NEWEST-LINEAR T=
-IX @ SCX-SCAN-USIG
-SCX-FEP-HIT? TTRUE
+IX @ USIG-NEWEST 1- 0 > TTRUE                  \ the record is at a nonzero offset
+IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
+IX @ SCAN-USIGS-SYM
+FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=                              \ the scan reports the newest record's arity
 SCX-FMEND REC-END @ T=                        \ absolute completed end, not a span
 IX @ SCX-WIRE-NEXT REC-END @ T=               \ owner wire preserves that same end
@@ -94,66 +94,65 @@ IX @ SCX-WIRE-NEXT REC-END @ T=               \ owner wire preserves that same e
 \ rather than the live one it shadows.
 ' SCX-UNDEF catch TC !  TC @ 0 T=
 SCX-UEND REC-END !
-IX @ SCX-SCAN-USIG
-SCX-FEP-HIT? TFALSE
+IX @ SCAN-USIGS-SYM
+FEP-HIT? TFALSE
 SCX-FMEND REC-END @ T=                         \ deletion still depends on its completed end
 IX @ SCX-WIRE-NEXT REC-END @ T=
 s" SCXA" SCX-SIG-MIN-IN -1 T=
 ' SCX-DEF4 catch TC !   TC @ 0 T=
-IX @ SCX-SCAN-USIG
-SCX-FEP-HIT? TTRUE
+IX @ SCAN-USIGS-SYM
+FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=
 
 \ 1b. control flags: later wins, and a redefinition clears the stale metadata.
 TRUSTED: SCX-CTLDEF ( -- ) s" : SCXT ( n -- n ) 7101 throw ;" evaluate ;
 TRUSTED: SCX-CTLREDEF ( -- ) s" undefine SCXT : SCXT ( n -- n ) ;" evaluate ;
 
-s" SCXT" SCX-CTL-FLAGS 0 T=
+s" SCXT" CTL-FLAGS 0 T=
 ' SCX-CTLDEF catch TC !   TC @ 0 T=
-s" SCXT" SCX-CTL-FLAGS CTL-THROW and CTL-THROW T=    \ the throw edge is recorded
+s" SCXT" CTL-FLAGS CTL-THROW and CTL-THROW T=        \ the throw edge is recorded
 ' SCX-CTLREDEF catch TC !  TC @ 0 T=
-s" SCXT" SCX-CTL-FLAGS CTL-THROW and 0 T=            \ ... and the redefinition clears it
+s" SCXT" CTL-FLAGS CTL-THROW and 0 T=                \ ... and the redefinition clears it
 
-s" SCXT" SCX-ACTIVE-SYM IX !
-IX @ SCX-NORET-NEWEST 0 <> TTRUE               \ the differential below is not vacuous
-IX @ SCX-NORET-NEWEST  IX @ SCX-NORET-NEWEST-LINEAR T=
-IX @ SCX-SCAN-NORET
+s" SCXT" CHECKER-FIND-ACTIVE-SYM IX !
+IX @ NORET-NEWEST 0 <> TTRUE                   \ the differential below is not vacuous
+IX @ NORET-NEWEST  IX @ NORET-NEWEST-LINEAR T=
+IX @ NORET-SCAN-SYM
 SCX-NORET-FLAGS CTL-THROW and 0 T=              \ the scan reports the LATEST entry's flags
 
 \ 1e. an entry the store cannot key. CHECKER-RECORD-SYM answers 0 for a token it
 \     cannot resolve, and a NORETS entry keyed 0 is indistinguishable from the
 \     store's own terminator — it would hide every entry appended after it from
 \     every reader. Nothing is recorded for it instead.
-TRUSTED: SCX-RECSYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
-TRUSTED: SCX-CTLADD-BAD ( -- ) s" a:b:c" CTL-DEAD NORET-ADD ;
-TRUSTED: SCX-CTLADD-DEAD ( -- ) s" SCXT" CTL-DEAD NORET-ADD ;
-TRUSTED: SCX-CTLADD-CLEAR ( -- ) s" SCXT" 0 NORET-ADD ;
+: SCX-CTLADD-BAD ( -- ) s" a:b:c" CTL-DEAD NORET-ADD ;
+: SCX-CTLADD-DEAD ( -- ) s" SCXT" CTL-DEAD NORET-ADD ;
+: SCX-CTLADD-CLEAR ( -- ) s" SCXT" 0 NORET-ADD ;
 
-s" a:b:c" SCX-RECSYM 0 T=                            \ the token really is unkeyable
+s" a:b:c" CHECKER-RECORD-SYM 0 T=                    \ the token really is unkeyable
 ' SCX-CTLADD-BAD catch TC !  TC @ 0 T=
 ' SCX-CTLADD-DEAD catch TC !  TC @ 0 T=              \ an entry appended AFTER it
-s" SCXT" SCX-CTL-FLAGS CTL-DEAD and CTL-DEAD T=      \ ... is still visible
-s" SCXT" SCX-ACTIVE-SYM IX !
-IX @ SCX-NORET-NEWEST  IX @ SCX-NORET-NEWEST-LINEAR T=
+s" SCXT" CTL-FLAGS CTL-DEAD and CTL-DEAD T=          \ ... is still visible
+s" SCXT" CHECKER-FIND-ACTIVE-SYM IX !
+IX @ NORET-NEWEST  IX @ NORET-NEWEST-LINEAR T=
 ' SCX-CTLADD-CLEAR catch TC !  TC @ 0 T=
-s" SCXT" SCX-CTL-FLAGS CTL-DEAD and 0 T=
+s" SCXT" CTL-FLAGS CTL-DEAD and 0 T=
 
 \ 1c. family rows: a package row and a global row may share a tail, and each
 \     exact (package, tail) resolves to its own row.
-s" " CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL SCX-TFAM-DECL IX !
-s" scxpk" CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL SCX-TFAM-DECL
+s" " CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL TFAM-DECL IX !
+s" scxpk" CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL TFAM-DECL
 IX @ <> TTRUE                                        \ two distinct rows, one tail
-s" " s" scxfam" SCX-TFAM-FIND-IN TTRUE IX @ T=
-s" scxpk" s" scxfam" SCX-TFAM-FIND-IN TTRUE IX @ <> TTRUE
-s" scxpk" s" nosuchtail" SCX-TFAM-FIND-IN TFALSE drop
+s" " s" scxfam" TFAM-FIND-IN TTRUE IX @ T=
+s" scxpk" s" scxfam" TFAM-FIND-IN TTRUE IX @ <> TTRUE
+s" scxpk" s" nosuchtail" TFAM-FIND-IN TFALSE drop
 \ the global row is lexical and never enters the public fallback set, so the
 \ package row is the sole public answer for this tail.
-s" scxfam" SCX-TFAM-FIND-PUBLIC TTRUE IX @ <> TTRUE
+s" scxfam" TFAM-FIND-PUBLIC TTRUE IX @ <> TTRUE
 
 \ a second package exporting the same tail makes the unqualified answer
 \ genuinely ambiguous, and the index must reproduce the refusal, not pick one.
-s" scxpk2" CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL SCX-TFAM-DECL drop
-s" scxfam" ' SCX-TFAM-FIND-PUBLIC catch TC ! 2drop
+s" scxpk2" CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL TFAM-DECL drop
+s" scxfam" ' TFAM-FIND-PUBLIC catch TC ! 2drop
 TC @ E-TFAM-AMBIG T=
 
 \ 1d. constructor symbols: a generated constructor resolves to its variant, and
@@ -161,7 +160,7 @@ TC @ E-TFAM-AMBIG T=
 TRUSTED: SCX-SUMDECL ( -- )
    s" SUMTYPE scxsum 0 VARIANT scxva n ;VARIANT VARIANT scxvb ;VARIANT ;SUMTYPE" evaluate ;
 ' SCX-SUMDECL catch TC !  TC @ 0 T=
-s" SCXA" SCX-ACTIVE-SYM SCX-SUMV-FROM-CTOR TFALSE drop
+s" SCXA" CHECKER-FIND-ACTIVE-SYM SUMV-FROM-CTOR-SYM TFALSE drop
 
 \ ---------------------------------------------------------------------------
 \ 2. DIFFERENTIAL. For every symbol the image has interned and every family and
@@ -184,33 +183,33 @@ SCX-DIFF-ALL
 \     The symbol survives the rollback, so its head cannot simply be dropped —
 \     it has to revert to the record the frame did not touch.
 s" SCXA" SCX-SIG-MIN-IN 3 T=
-SCX-CAND-START
-   s" n n n n -- n" s" SCXA" SCX-USIG-ADD            \ TWO records for the one symbol, so
-   s" n n n n n -- n" s" SCXA" SCX-USIG-ADD          \ the repair has to reach past both
+CHECK-CANDIDATE-START
+   s" n n n n -- n" s" SCXA" CHECKER-USIG-ADD        \ TWO records for the one symbol, so
+   s" n n n n n -- n" s" SCXA" CHECKER-USIG-ADD      \ the repair has to reach past both
    s" SCXA" SCX-SIG-MIN-IN 5 T=
-0 SCX-CAND-DONE drop
+0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
-s" SCXA" SCX-ACTIVE-SYM IX !
-IX @ SCX-USIG-NEWEST  IX @ SCX-USIG-NEWEST-LINEAR T=
-IX @ SCX-SCAN-USIG
-SCX-FEP-HIT? TTRUE
+s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
+IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
+IX @ SCAN-USIGS-SYM
+FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=                                    \ the record below the frame answers
 s" SCXA" SCX-SIG-MIN-IN 3 T=
 SCX-DIFF-ALL
 
 \ 3e. the same for the control store: a flag entry added for an existing symbol
 \     inside a rejected frame reverts to the entry below it, in place.
-s" SCXT" SCX-CTL-FLAGS CTL-DEAD and 0 T=
-SCX-CAND-START
+s" SCXT" CTL-FLAGS CTL-DEAD and 0 T=
+CHECK-CANDIDATE-START
    ' SCX-CTLADD-DEAD catch TC !  TC @ 0 T=
    ' SCX-CTLADD-DEAD catch TC !  TC @ 0 T=           \ two entries, one symbol
-   s" SCXT" SCX-CTL-FLAGS CTL-DEAD and CTL-DEAD T=
-0 SCX-CAND-DONE drop
+   s" SCXT" CTL-FLAGS CTL-DEAD and CTL-DEAD T=
+0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
-s" SCXT" SCX-ACTIVE-SYM IX !
-IX @ SCX-SCAN-NORET
+s" SCXT" CHECKER-FIND-ACTIVE-SYM IX !
+IX @ NORET-SCAN-SYM
 SCX-NORET-FLAGS CTL-DEAD and 0 T=                     \ the entry below the frame answers
-s" SCXT" SCX-CTL-FLAGS CTL-DEAD and 0 T=
+s" SCXT" CTL-FLAGS CTL-DEAD and 0 T=
 SCX-DIFF-ALL
 
 \ ---------------------------------------------------------------------------
@@ -223,7 +222,7 @@ SCX-DIFF-ALL
 
 \ the boot image already declares far more than TFX-SLOTS-INIT families, so the
 \ bucket array has already been resized and rehashed at least once
-SCX-TFX-SLOTS SCX-TFX-SLOTS-INIT > TTRUE
+TFX-SLOTS SCX-TFX-SLOTS-INIT > TTRUE
 SCX-DIFF-TFAM 0 T=
 
 \ force the symbol table past its current capacity, which drops the mapping and
@@ -250,22 +249,22 @@ SCX-DIFF-TFAM 0 T=
 
 PTR-VARIABLE RETIRED-SYMS
 variable RETIRED-SYMS-U
-TRUSTED: SCX-SYM-STORAGE ( -- ptr u8 n ) SYMS-P @ SYM-CAP SYM-REC * ;
+: SCX-SYM-STORAGE ( -- ptr u8 n ) SYMS-P @ SYM-CAP SYM-REC * ;
 : SCX-ZERO? ( ptr u8 n -- bool ) {: base:ptr size:n :}
    size 0 ?do base i + c@ 0<> if false unloop exit then loop true ;
 
 SCX-SYM-STORAGE RETIRED-SYMS-U ! RETIRED-SYMS !
 RETIRED-SYMS @ RETIRED-SYMS-U @ SCX-ZERO? TFALSE
-SCX-SYM-CAP IX !
+SYM-CAP IX !
 IX @ 1 + SCX-FILL-SYMS
-SCX-SYM-CAP IX @ > TTRUE                       \ the symbol table really did grow
+SYM-CAP IX @ > TTRUE                           \ the symbol table really did grow
 RETIRED-SYMS @ RETIRED-SYMS-U @ SCX-ZERO? TTRUE  \ no dead pointers enter a capture
 SCX-DIFF-ALL                                   \ ... and every index answers at the new cap
 
 \ the answers pinned in section 1 survive the rebuild
 s" SCXA" SCX-SIG-MIN-IN 3 T=
-s" SCXT" SCX-CTL-FLAGS CTL-THROW and 0 T=
-s" scxpk" s" scxfam" SCX-TFAM-FIND-IN TTRUE drop
+s" SCXT" CTL-FLAGS CTL-THROW and 0 T=
+s" scxpk" s" scxfam" TFAM-FIND-IN TTRUE drop
 
 s" checker-scan-index-suite: failures" REPORT
 
