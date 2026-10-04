@@ -129,6 +129,11 @@ $320 constant CALL-BINDING-OFF
 \ A completed explicitly unjudged scan exposes original resolution and the
 \ declared ABI, without granting a checked call or body verdict.
 $328 constant UNJUDGED-BINDING-OFF
+\ Concrete one-cell constructors and unchanged stack tails for the native
+\ implementation owner's checked call contract. Zero means no concrete term.
+$330 constant EFFECT-DIN-CON-OFF
+$338 constant EFFECT-DOUT-CON-OFF
+$340 constant EFFECT-STACK-STABLE-OFF
 \ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC

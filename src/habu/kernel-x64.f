@@ -32,6 +32,7 @@ require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
+require src/habu/boot-x64.f
 require src/habu/data-claims.f
 require src/habu/data-bands.f
 require src/habu/snapshot-format.f
@@ -2623,7 +2624,15 @@ private
 
 \ A successful code rewind retires any published span that reaches its floor.
 : DEF-CODE-RECLAIM-BODY ( -- )
-   LBL LBL LBL LBL {: scan:label next:label full:label done:label :}
+   LBL LBL LBL LBL LBL {: scan:label next:label full:label done:label no-host:label :}
+   RDI CP-REG ASM-SINK ENC-CMP-RR  C-AE no-host JCC,
+   RAX NATIVE-OBS-CELLS:HOST-INVALIDATE CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E no-host JCC,
+   RDI ASM-SINK ENC-PUSH
+   RDI PUSH,
+   RAX ASM-SINK ENC-CALL-REG
+   RDI ASM-SINK ENC-POP
+   no-host LBL,
    RCX ZERO-REG,
    scan LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
@@ -3616,6 +3625,17 @@ TYPED-VARIABLE HIR-STAGE [ -- ]
 : HIR-BODY ( -- )
    ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @ [: HIR-USE ;] X64KHIR:COMPILE ;
 
+: HIR-USE-SCALAR ( NART:emission -- )
+   {: e:NART:emission :}
+   e NART:CALL-SITES 0<> if
+      s" x64kernel: scalar body has a call edge" REFUSE-RC die
+   then
+   e HIR-USE ;
+
+: HIR-BODY-SCALAR ( -- )
+   ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @
+      [: HIR-USE-SCALAR ;] X64KHIR:COMPILE ;
+
 public
 
 \ Register the body the x86-64 chain compiles from the function the stager
@@ -3626,6 +3646,12 @@ public
    [: HIR-BODY ;] ARGS
    ROW$ KEEP? 0= if exit then
    false RECORD drop ;
+
+: SCALAR-HIR ( ptr u8 n n n [ -- ] -- )
+   HIR-STAGE !  HIR-OUT !  HIR-IN !
+   [: HIR-BODY-SCALAR ;] ARGS
+   ROW$ KEEP? 0= if exit then
+   false RECORD ENGINE-PRIMS:MARK-SCALAR ;
 
 private
 
@@ -3800,7 +3826,7 @@ private
    s" /" 2 1 [: HIR-OPCODE:DIV BIN ;] PRIM-HIR
    s" mod" 2 1 [: MOD-HIR ;] PRIM-HIR
    s" /mod" 2 2 [: DIVMOD-HIR ;] PRIM-HIR
-   s" abs" 1 1 [: ABS-HIR ;] PRIM-HIR
+   s" abs" 1 1 [: ABS-HIR ;] SCALAR-HIR
    s" min" 2 1 [: HIR-OPCODE:LT PICK-HIR ;] PRIM-HIR
    s" max" 2 1 [: HIR-OPCODE:GT PICK-HIR ;] PRIM-HIR ;
 
@@ -3925,7 +3951,8 @@ public
    DEFINITION,
    PURE,
    PROFILER,
-   ENGINE-PRIMS:COMPLETE ;
+   ENGINE-PRIMS:COMPLETE
+   ENGINE-PRIMS:SCALAR-ROW@ X64BOOT:SCALAR-ROW, ;
 
 ;using   \ X64LAYOUT
 ;using

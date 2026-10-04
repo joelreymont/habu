@@ -599,8 +599,33 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    then
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop ;
 
+: HOST-DECL? ( -- bool )
+   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
+   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
+   CHECKER-OWNER:DIN-N M-IN @ <>
+   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
+   CHECKER-OWNER:DIN-CELLS M-IN @ <>
+   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
+   M-IN @ 0 ?do
+      i CHECKER-OWNER:DIN-SLOT 0<>
+      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
+   loop
+   M-OUT @ 0 ?do
+      i CHECKER-OWNER:DOUT-SLOT 0<>
+      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
+   loop
+   true ;
+
+: HOST-ROOT-CONTRACT ( -- )
+   HOST-DECL? 0= if exit then
+   NHOST:SOURCE-CONTRACT-START
+   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
+   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
+   NHOST:SOURCE-CONTRACT-DONE ;
+
 : HOST-ARITIES ( -- )
    M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
+   HOST-ROOT-CONTRACT
    BB IR-BUILD:FUNS 1 ?do
       M-DOES @ 0<> i M-DOES-FUN @ = and if
          M-DOES-IN @ M-DOES-OUT @
@@ -861,6 +886,7 @@ public
    \ The registry releases buffers immediately before DATA copy, so each loaded
    \ backend gives up its pass reservations here and sizes them again on use.
    NBACK:PREPARE
+   NHOST:CAPTURE-PREPARE
    CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE

@@ -127,11 +127,21 @@ variable HELD-IDX
 variable HELD-FN
 variable HELD-SIZE
 
+: UNIT-NOTIFY ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
+
 : COMMIT-HELD ( -- )
    HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
+: NOTIFY-HELD ( -- )
+   HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY ;
+
 : COMMIT-OWNED ( NART:emission n n n -- )
    HELD-SIZE ! HELD-FN ! HELD-IDX ! HELD-E !
+   HELD-E @ HELD-FN @ NHOST:TAKE
+   [: NOTIFY-HELD ;] catch {: notify-rc:n :}
+   notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
    [: COMMIT-HELD ;] catch {: rc:n :}
    rc 0<> if NHOST:ABANDON-TAKEN rc throw then
    NHOST:PUBLISH-TAKEN ;
@@ -161,10 +171,6 @@ variable HELD-SIZE
    e size VALIDATE-EMISSION {: fn:n :}
    idx fn size ;
 
-: UNIT-NOTIFY ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
-   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
-
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
 \ Keep the boundary at the native publisher that consumes it for this record.
 TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
@@ -193,8 +199,6 @@ public
 : PUBLISH-PENDING ( NART:emission -- )
    {: e:NART:emission :}
    e PENDING-PROVE {: idx:n fn:n size:n :}
-   e idx fn size UNIT-NOTIFY
-   e fn NHOST:TAKE
    e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
@@ -203,8 +207,6 @@ public
 : PUBLISH-PENDING-DOES ( NART:emission n -- )
    {: e:NART:emission fun:n :}
    e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
-   e idx fn size UNIT-NOTIFY
-   e fn NHOST:TAKE
    e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + e size off - RECORDED-LEN DOES-RECORD

@@ -1,11 +1,12 @@
-\ Run in a matching whitebox engine with two paths after --: the intended
+\ Run in a matching ARM64 whitebox engine with two paths after --: the intended
 \ foreign output and a retained AOT artifact. The source policy runs before
-\ native-runtime.f, then the supplied writer preserves the capture before the
-\ ordinary foreign-writer refusal.
+\ native-runtime.f; the supplied writer saves the capture before the normal
+\ cross-OS launch refusal returns from native-build.
 
 1 set-tier
 require lib/test.f
 require lib/le.f
+require lib/engine-id.f
 require tools/native-build-core.f
 require src/habu/aot-file.f
 require src/compiler/native/host.f
@@ -15,6 +16,7 @@ package NATIVE-BUILD
 private
 
 create PRODUCT-KEY 32 allot
+create FILE-HASH SHA256-FILE-CTX-BYTES allot
 PTR-VARIABLE TEST-NAME
 variable TEST-NAME-U
 variable OBSERVED
@@ -42,7 +44,9 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    [: SELECT-STORED ;] NHOST:E-UNSAFE TTHROWSQ ;
 
 : OBSERVE ( NART:emission n n n -- )
-   2drop 2drop 1 OBSERVED +! ;
+   2drop 2drop
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   1 OBSERVED +! ;
 
 : CUSTOM-SOURCE ( -- )
    s" test/compiler/native-host-custom.f" included ;
@@ -65,7 +69,13 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    [: STALE-SELECT ;] DEF-OCC:E-STALE TTHROWSQ
    s" NATIVE-HOST-RECLAIM:NEW" SELECTED-N 12 T= ;
 
+: CONTRACT-MISMATCH ( -- )
+   s" NATIVE-HOST-SOURCE:BOOL-TARGET" HANDLE
+   s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE ;
+
 : SOURCE-CHECKS ( -- )
+   s" ordinary native execution retains target 99" T-LABEL
+   s" NATIVE-HOST-SOURCE:TARGET99" VALUE-N 99 T=
    s" selected host helper and native abs yield 42" T-LABEL
    s" NATIVE-HOST-SOURCE:TARGET99" SELECTED-N 42 T=
    s" NATIVE-HOST-SOURCE:LARGE-SCALAR" SELECTED-N
@@ -78,6 +88,7 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    s" NATIVE-HOST-SOURCE:NESTED-STORE" REFUSES
    s" NATIVE-HOST-SOURCE:CAST-BODY" REFUSES
    s" NATIVE-HOST-SOURCE:COMMA-BODY" REFUSES
+   s" NATIVE-HOST-SOURCE:BYTE-BODY" REFUSES
    s" NATIVE-HOST-SOURCE:POINTER-BODY" REFUSES
    s" NATIVE-HOST-SOURCE:WRITES@" VALUE-N 0 T=
    s" unknown native and division cold throw lack contracts" T-LABEL
@@ -109,6 +120,8 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    ['] OBSERVE ['] CUSTOM-SOURCE NPUB:WITH-UNIT
    s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
+   s" distinct checked output constructors cannot attach" T-LABEL
+   [: CONTRACT-MISMATCH ;] NHOST:E-UNSAFE TTHROWSQ
    s" test/compiler/native-host-redefine.f" included
    SOURCE-CHECKS
    BUILD-TARGET:ACTION@ RTARGET:EXECUTION@
@@ -117,11 +130,14 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
    T-REPORT ;
 
 : CHECK-CONSTRUCTION ( -- )
-   s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T= ;
+   s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T=
+   T-REPORT ;
 
 : CAPTURE-WRITER ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    {: owned:AOT-OWNED:capture host:ptr count:n path:ptr size:n :}
    owned dup AOT-FILE:IMPORT
+   FILE-HASH ENGINE-ID:PATH$ PRODUCT-KEY SHA256-FILE-IN
+      0<> if BUILD-RC throw then
    PRODUCT-KEY 1 SCRIPT-ARGV$ AOT-FILE:WRITE
    host count path size SOURCE-WRITER-DISPATCH ;
 
@@ -139,10 +155,19 @@ TRUSTED: RUN-N ( n -- [ -- n ] ) ;
       i s" ONE42" ARTIFACT-NAME? if 1+ then
    loop ;
 
+: FOREIGN-TARGET? ( -- bool )
+   HB-TARGET-MACOS? if
+      s" aarch64-unknown-linux-gnu" BUILD-TARGET:SELECT? exit
+   then
+   HB-TARGET-LINUX? if
+      s" aarch64-apple-darwin" BUILD-TARGET:SELECT? exit
+   then
+   false ;
+
 public
 
 : RUN-HOST-CONSTRUCTION ( -- )
-   s" aarch64-unknown-linux-gnu" BUILD-TARGET:SELECT? 0= if 76 throw then
+   FOREIGN-TARGET? 0= if 76 throw then
    ['] BIND-CONSTRUCTION ['] CHECK-CONSTRUCTION ['] SOURCE-NOOP SOURCE-POLICY!
    0 SCRIPT-ARGV$ OUTPUT!
    ['] ORIGIN false ['] CAPTURE-WRITER RUN-READY-RC BUILD-RC T=

@@ -10,6 +10,7 @@ private
 
 variable TAKEN-BASE
 variable TAKEN-EDGES
+variable TAKEN-TYPES
 variable TAKEN-FUNS
 TYPED-VARIABLE TAKEN-EMISSION NART:emission
 variable TAKEN-AT
@@ -56,7 +57,9 @@ variable TAKEN-AT
    {: ordinal:n :}
    SOURCE-REASON@ {: reason:n loc:n :}
    ordinal SOURCE-ARITY@ {: din:n dout:n :}
-   din 0 < dout 0 < or if -1 -1 UNKNOWN 0 exit then
+   din 0 < dout 0 < or ordinal SOURCE-CONTRACT? 0= or if
+      din dout UNKNOWN 0 exit
+   then
    din dout reason loc ;
 
 : TAKE-ONE ( NART:emission n n -- )
@@ -65,6 +68,7 @@ variable TAKEN-AT
    e ordinal FUN-END off - {: len:n :}
    at off + len e NART:BINDING CBIND:TARGET@ ordinal FACTS
       PREPARE {: id:n :}
+   ordinal id SOURCE-CONTRACT-COPY
    id TAKEN-BASE @ ordinal + 1+ <> if E-STATE throw then
    e at ordinal id TAKE-EDGES ;
 
@@ -79,15 +83,17 @@ public
    TAKEN-FUNS @ 0= if exit then
    TAKEN-BASE @ IMPL-N !
    TAKEN-EDGES @ EDGE-N !
+   TAKEN-TYPES @ IMPL-TYPE-N !
    0 TAKEN-FUNS ! ;
 
-\ The observer has run, and no code window has opened. Every reserve and row
-\ copy that may throw happens here. An incomplete take is abandoned on refusal.
+\ No code window has opened. Every reserve and row copy that may throw happens
+\ before the optional observer runs. An incomplete take is abandoned on refusal.
 : TAKE ( NART:emission n -- )
    {: e:NART:emission at:n :}
    TAKEN-FUNS @ 0<> if E-STATE throw then
    IMPL-N @ TAKEN-BASE !
    EDGE-N @ TAKEN-EDGES !
+   IMPL-TYPE-N @ TAKEN-TYPES !
    e NART:FUNCTIONS dup 0 <= if E-STATE throw then TAKEN-FUNS !
    e TAKEN-EMISSION !
    at TAKEN-AT !
@@ -97,7 +103,7 @@ public
 \ PREPARE wrote all cells; the code publisher only flips liveness now.
 : PUBLISH-TAKEN ( -- )
    TAKEN-FUNS @ 0 ?do
-      TAKEN-BASE @ i + 1+ PUBLISH
+      1 TAKEN-BASE @ i + IMPL-LIVE !
    loop
    0 TAKEN-FUNS ! ;
 

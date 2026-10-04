@@ -126,6 +126,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 ,
    0 ,
+   0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -143,7 +144,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -11948,6 +11949,13 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 : EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
 : EFFECT-DOUT-SLOT ( n -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
 
+: EFF-ROW-CON ( n n -- n )
+   EFF-ROW-TERM dup 0= if exit then
+   dup EFF-TAG@ EN-CON = if EFF-A@ else drop 0 then ;
+
+: EFFECT-DIN-CON ( n -- n ) EFFQ-DIN @ EFF-ROW-CON ;
+: EFFECT-DOUT-CON ( n -- n ) EFFQ-DOUT @ EFF-ROW-CON ;
+
 \ ---- the quotation descent ----------------------------------------------------
 \ Move the latch onto the rows of the quotation a term IS, so that every reader
 \ above then answers about the quotation instead of the word that mentions it.
@@ -12034,6 +12042,15 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-OK @ 0= if 0 0= 0= exit then
    EFFQ-RIN @ 0=  EFFQ-ROUT @ 0=  and if 0 0= exit then
    EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-NEUTRAL? ;
+
+: EFFECT-STACK-STABLE? ( -- bool )
+   EFFQ-OK @ 0= if 0 0= 0= exit then
+   EFFECT-RET-NEUTRAL? 0= if 0 0= 0= exit then
+   EFFQ-DIN @ EFF-ROW-TAIL {: a:n :}
+   EFFQ-DOUT @ EFF-ROW-TAIL {: b:n :}
+   a 0= b 0= or if 0 0= 0= exit then
+   a EFF-TAG@ EN-ROW = b EFF-TAG@ EN-ROW = and 0= if 0 0= 0= exit then
+   a EFF-A@ b EFF-A@ = ;
 
 \ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
 \ ROUTINE? Three clauses, and none of them is decoration.
@@ -23430,6 +23447,9 @@ package CHECKER-REG
 ' EFFECT-DOUT-CELLS                 DECLARATIONS EFFECT-DOUT-CELLS-OFF + xt!
 ' EFFECT-DIN-SLOT                   DECLARATIONS EFFECT-DIN-SLOT-OFF + xt!
 ' EFFECT-DOUT-SLOT                  DECLARATIONS EFFECT-DOUT-SLOT-OFF + xt!
+' EFFECT-DIN-CON                    DECLARATIONS CHECKER-OWNER-ABI:EFFECT-DIN-CON-OFF + xt!
+' EFFECT-DOUT-CON                   DECLARATIONS CHECKER-OWNER-ABI:EFFECT-DOUT-CON-OFF + xt!
+' EFFECT-STACK-STABLE?              DECLARATIONS CHECKER-OWNER-ABI:EFFECT-STACK-STABLE-OFF + xt!
 ' EFFECT-DIN-QUOT                   DECLARATIONS EFFECT-DIN-QUOT-OFF + xt!
 ' EFFECT-DOUT-QUOT                  DECLARATIONS EFFECT-DOUT-QUOT-OFF + xt!
 ' EFFECT-QUOT-UP                    DECLARATIONS EFFECT-QUOT-UP-OFF + xt!
