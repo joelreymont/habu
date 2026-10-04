@@ -5,7 +5,7 @@ require src/core/bytes.f
 require src/compiler/binding.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
-require src/compiler/session/backend.f
+require src/compiler/native/backend.f
 require src/compiler/native/emission.f
 
 package NART

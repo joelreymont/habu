@@ -1,9 +1,7 @@
 \ backend.f - complete native pass descriptors and dispatch.
 \
-\ Each published CTARGET descriptor has one pass record at the same sorted
-\ runtime row. Registration reserves both persistent tables and fills the pass
-\ row before CTARGET publishes its count. The mode records the current legacy
-\ provider's exclusive-session constraint for the session driver.
+\ Each published row contains its CTARGET descriptor and complete native pass.
+\ Registration publishes the row count only after storing both together.
 \
 \ Definition stages resolve the context's binding. Lifecycle stages visit
 \ every published provider; FREEZE folds shared HIR before any selector runs.
@@ -18,7 +16,7 @@ require src/compiler/ir/context.f
 require src/compiler/ir/build.f
 require src/compiler/native/hir.f
 require src/compiler/native/loop.f
-require src/compiler/session/backend.f
+require src/compiler/session/lease.f
 
 package NBACK
 public
@@ -80,38 +78,185 @@ STRUCTURE pass 0 DERIVE addr
 
 private
 
-DEFER-LAYOUT-BUFFER P-ROWS pass
-TYPED-VARIABLE PENDING pass
-1 P-ROWS-BIND
+STRUCTURE row 0 DERIVE addr
+   FIELD descriptor CTARGET:backend
+   FIELD implementation pass
+;STRUCTURE
+
+DEFER-LAYOUT-BUFFER ROWS row
+variable ROW-N
+1 ROWS-BIND
+
+: BACK-ID ( CTARGET:backend -- CTARGET:backend-id )
+   CTARGET-BACKEND:UNMAKE 2drop drop ;
+
+: BACK-ARCH ( CTARGET:backend -- CTARGET:arch )
+   CTARGET-BACKEND:UNMAKE 2drop nip ;
+
+: BACK-LOWER ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
+   CTARGET-BACKEND:UNMAKE {: id:CTARGET:backend-id a:CTARGET:arch lo em :} lo ;
+
+: BACK-EMIT ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
+   CTARGET-BACKEND:UNMAKE {: id:CTARGET:backend-id a:CTARGET:arch lo em :} em ;
+
+: DESCRIPTOR@ ( n -- CTARGET:backend )
+   ROWS ROW-DESCRIPTOR @ ;
+
+: PASS-PTR ( n -- ptr NBACK:pass )
+   ROWS ROW-IMPLEMENTATION ;
+
+: FIND-ROW ( CTARGET:arch -- n )
+   {: a:CTARGET:arch :}
+   ROW-N @ 0 ?do
+      a i DESCRIPTOR@ BACK-ARCH CTARGET-ARCH:EQ if i unloop exit then
+   loop
+   -1 ;
+
+: ID-CLAIMED? ( CTARGET:backend-id -- bool )
+   {: id:CTARGET:backend-id :}
+   ROW-N @ 0 ?do
+      id i DESCRIPTOR@ BACK-ID CTARGET-BACKEND--ID:EQ if true unloop exit then
+   loop
+   false ;
+
+: INSERT-AT ( CTARGET:backend-id -- n )
+   CTARGET:ID-CODE {: code:n :}
+   ROW-N @ 0 ?do
+      code i DESCRIPTOR@ BACK-ID CTARGET:ID-CODE < if i unloop exit then
+   loop
+   ROW-N @ ;
 
 : SHIFT ( n -- )
    {: at:n :}
-   CTARGET:COUNT at - 0 ?do
-      CTARGET:COUNT i - 1- P-ROWS @ CTARGET:COUNT i - P-ROWS !
+   ROW-N @ at - 0 ?do
+      ROW-N @ i - 1- ROWS @ ROW-N @ i - ROWS !
    loop ;
 
-\ Whole-record stores leave callback cells undeclared; growth also moves old rows.
+\ Whole-row stores leave callback cells undeclared; growth moves old rows.
 : REGISTER-XTS ( -- )
-   CTARGET:COUNT 1+ 0 ?do
-      i P-ROWS NBACK-PASS:DECLARE dup @ swap xt!
-      i P-ROWS NBACK-PASS:SELECT dup @ swap xt!
-      i P-ROWS NBACK-PASS:PRUNE dup @ swap xt!
-      i P-ROWS NBACK-PASS:FIXPOINT dup @ swap xt!
-      i P-ROWS NBACK-PASS:EMIT dup @ swap xt!
-      i P-ROWS NBACK-PASS:UNPLACED dup @ swap xt!
-      i P-ROWS NBACK-PASS:RELEASE dup @ swap xt!
-      i P-ROWS NBACK-PASS:RETIRE dup @ swap xt!
-      i P-ROWS NBACK-PASS:PROTOTYPE dup @ swap xt!
-      i P-ROWS NBACK-PASS:FORGET dup @ swap xt!
-      i P-ROWS NBACK-PASS:PREPARE dup @ swap xt!
+   ROW-N @ 1+ 0 ?do
+      i ROWS ROW-DESCRIPTOR CTARGET-BACKEND:LOWER dup @ swap xt!
+      i ROWS ROW-DESCRIPTOR CTARGET-BACKEND:EMIT dup @ swap xt!
+      i PASS-PTR NBACK-PASS:DECLARE dup @ swap xt!
+      i PASS-PTR NBACK-PASS:SELECT dup @ swap xt!
+      i PASS-PTR NBACK-PASS:PRUNE dup @ swap xt!
+      i PASS-PTR NBACK-PASS:FIXPOINT dup @ swap xt!
+      i PASS-PTR NBACK-PASS:EMIT dup @ swap xt!
+      i PASS-PTR NBACK-PASS:UNPLACED dup @ swap xt!
+      i PASS-PTR NBACK-PASS:RELEASE dup @ swap xt!
+      i PASS-PTR NBACK-PASS:RETIRE dup @ swap xt!
+      i PASS-PTR NBACK-PASS:PROTOTYPE dup @ swap xt!
+      i PASS-PTR NBACK-PASS:FORGET dup @ swap xt!
+      i PASS-PTR NBACK-PASS:PREPARE dup @ swap xt!
    loop ;
 
-: INSTALL-AT ( n -- )
-   {: at:n :}
-   CTARGET:COUNT 1+ P-ROWS-GROW
+\ NLEASE:WITH keeps admission through validation, movement and publication.
+: PUBLISH ( CTARGET:backend NBACK:pass NLEASE:lease -- )
+   drop
+   {: d:CTARGET:backend p:pass :}
+   d BACK-ID CTARGET:ID-CODE 0 <= if E-CTGT-ID throw then
+   d BACK-ID ID-CLAIMED? if E-CTGT-REGISTERED throw then
+   d BACK-ARCH FIND-ROW 0 >= if E-CTGT-REGISTERED throw then
+   d BACK-ID INSERT-AT {: at:n :}
+   ROW-N @ 1+ ROWS-GROW
    at SHIFT
-   PENDING @ at P-ROWS !
-   REGISTER-XTS ;
+   d p ROW-MAKE at ROWS !
+   REGISTER-XTS
+   ROW-N @ 1+ ROW-N ! ;
+
+public
+
+: COUNT ( -- n ) ROW-N @ ;
+
+: BACKEND@ ( n -- CTARGET:backend )
+   dup 0 < over ROW-N @ >= or if E-CTGT-ROW throw then
+   DESCRIPTOR@ ;
+
+: REGISTERED? ( CTARGET:arch -- bool ) FIND-ROW 0 >= ;
+
+: ROW ( CTARGET:arch -- n )
+   FIND-ROW dup 0 < if E-CTGT-UNLOADED throw then ;
+
+: ID-ROW ( CTARGET:backend-id -- n )
+   {: id:CTARGET:backend-id :}
+   ROW-N @ 0 ?do
+      id i DESCRIPTOR@ BACK-ID CTARGET-BACKEND--ID:EQ if i unloop exit then
+   loop
+   E-CTGT-UNLOADED throw ;
+
+: REGISTER ( CTARGET:backend NBACK:pass -- )
+   [: PUBLISH ;] NLEASE:WITH ;
+
+: LOWERS? ( CTARGET:contract -- bool )
+   CTARGET:VALIDATE dup CTARGET:ARCH@ ROW DESCRIPTOR@ BACK-LOWER execute ;
+
+: EMITS? ( CTARGET:contract -- bool )
+   CTARGET:VALIDATE dup CTARGET:ARCH@ ROW DESCRIPTOR@ BACK-EMIT execute ;
+
+: MODE@ ( CTARGET:arch -- NBACK:mode )
+   ROW PASS-PTR NBACK-PASS:MODE @ ;
+
+;package
+
+\ Session identity stays stable as rows move; work resolves the current row.
+package NSESSION
+public
+
+STRUCTURE session 0
+   FIELD ctx IR-CTX:ctx
+   FIELD provider CTARGET:backend-id
+   FIELD lease NLEASE:lease
+;STRUCTURE
+
+private
+
+variable WORK-OWNER
+
+: CTX ( NSESSION:session -- IR-CTX:ctx )
+   NSESSION-SESSION:UNMAKE 2drop ;
+
+: LEASE ( NSESSION:session -- NLEASE:lease )
+   NSESSION-SESSION:UNMAKE {: c:IR-CTX:ctx id:CTARGET:backend-id l:NLEASE:lease :}
+   l ;
+
+: CLEAR ( -- )
+   0 WORK-OWNER ! ;
+
+: ENTER ( R NSESSION:session [ R NSESSION:session -- S ] -- S )
+   {: body :}
+   dup CTX IR-CTX:SERIAL WORK-OWNER !
+   body [: CLEAR ;] finally ;
+
+public
+
+: NEW ( IR-CTX:ctx NLEASE:lease -- NSESSION:session )
+   {: c:IR-CTX:ctx l:NLEASE:lease :}
+   l NLEASE:CHECK
+   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ NBACK:ROW NBACK:BACKEND@
+   CTARGET-BACKEND:UNMAKE {: id:CTARGET:backend-id arch:CTARGET:arch lower emit :}
+   c id l NSESSION-SESSION:MAKE ;
+
+: RESOLVE ( NSESSION:session -- IR-CTX:ctx n )
+   NSESSION-SESSION:UNMAKE {: c:IR-CTX:ctx id:CTARGET:backend-id l:NLEASE:lease :}
+   l NLEASE:WORK-CK
+   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ {: arch:CTARGET:arch :}
+   c IR-CTX:SERIAL WORK-OWNER @ <> if NLEASE:E-STATE throw then
+   id NBACK:ID-ROW {: row:n :}
+   row NBACK:BACKEND@ CTARGET-BACKEND:UNMAKE
+   {: found:CTARGET:backend-id target:CTARGET:arch lower emit :}
+   arch target CTARGET-ARCH:EQ 0= if NLEASE:E-STATE throw then
+   c row ;
+
+: WITH-WORK ( R NSESSION:session [ R NSESSION:session -- S ] -- S )
+   {: body :}
+   dup CTX IR-CTX:BINDING@ drop
+   dup LEASE {: l:NLEASE:lease :}
+   body l [: ENTER ;] NLEASE:WORK ;
+
+;package
+
+package NBACK
+private
 
 \ The machine this compilation is for, resolved to its backend's row. The
 \ contract is revalidated on the way, so a stage is dispatched only for a
@@ -156,69 +301,59 @@ public
 : DECLARE ( NSESSION:session n n NBACK:linkage -- )
    {: s:NSESSION:session in:n out:n l:linkage :}
    s NSESSION:RESOLVE nip {: row:n :}
-   in out l row P-ROWS NBACK-PASS:DECLARE @ execute ;
+   in out l row PASS-PTR NBACK-PASS:DECLARE @ execute ;
 
 : SELECT ( NSESSION:session IR-BUILD:module -- IR-BUILD:module )
    {: s:NSESSION:session m:IR-BUILD:module :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m row P-ROWS NBACK-PASS:SELECT @ execute ;
+   c m row PASS-PTR NBACK-PASS:SELECT @ execute ;
 
 : PRUNE ( NSESSION:session IR-BUILD:module -- IR-BUILD:module )
    {: s:NSESSION:session m:IR-BUILD:module :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m row P-ROWS NBACK-PASS:PRUNE @ execute ;
+   c m row PASS-PTR NBACK-PASS:PRUNE @ execute ;
 
 : FIXPOINT ( NSESSION:session IR-BUILD:module -- IR-BUILD:module )
    {: s:NSESSION:session m:IR-BUILD:module :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m row P-ROWS NBACK-PASS:FIXPOINT @ execute ;
+   c m row PASS-PTR NBACK-PASS:FIXPOINT @ execute ;
 
 \ The slot is the code region's answer, so the backend is never asked where the
 \ routine goes.
 : EMIT ( NSESSION:session IR-BUILD:module n -- )
    {: s:NSESSION:session m:IR-BUILD:module at:n :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m at row P-ROWS NBACK-PASS:EMIT @ execute ;
+   c m at row PASS-PTR NBACK-PASS:EMIT @ execute ;
 
 : EMIT-UNPLACED ( NSESSION:session IR-BUILD:module -- )
    {: s:NSESSION:session m:IR-BUILD:module :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m row P-ROWS NBACK-PASS:UNPLACED @ execute ;
+   c m row PASS-PTR NBACK-PASS:UNPLACED @ execute ;
 
 : RELEASE ( NSESSION:session -- )
    NSESSION:RESOLVE nip {: row:n :}
    NLOOP:BOUND? if NLOOP:RELEASE then
-   row P-ROWS NBACK-PASS:RELEASE @ execute ;
+   row PASS-PTR NBACK-PASS:RELEASE @ execute ;
 
 : RETIRE ( NSESSION:session -- )
-   NSESSION:RESOLVE nip P-ROWS NBACK-PASS:RETIRE @ execute ;
+   NSESSION:RESOLVE nip PASS-PTR NBACK-PASS:RETIRE @ execute ;
 
 \ ---- what every loaded backend holds -----------------------------------------
 : PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key NLEASE:lease -- )
    {: l:NLEASE:lease :}
    l NLEASE:QUIET
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key :}
-   CTARGET:COUNT 0 ?do
-      c a r k  i P-ROWS NBACK-PASS:PROTOTYPE @ execute
+   COUNT 0 ?do
+      c a r k  i PASS-PTR NBACK-PASS:PROTOTYPE @ execute
    loop ;
 
 : FORGET ( NLEASE:lease -- )
    NLEASE:QUIET
-   CTARGET:COUNT 0 ?do i P-ROWS NBACK-PASS:FORGET @ execute loop ;
+   COUNT 0 ?do i PASS-PTR NBACK-PASS:FORGET @ execute loop ;
 
 : PREPARE ( -- )
    NLEASE:IDLE-CK
    NLOOP:RESET-SCRATCH
-   CTARGET:COUNT 0 ?do i P-ROWS NBACK-PASS:PREPARE @ execute loop ;
-
-\ The whole pass record is installed before CTARGET publishes the provider.
-: REGISTER ( CTARGET:backend NBACK:pass -- )
-   {: d:CTARGET:backend p:pass :}
-   NLEASE:IDLE-CK
-   p PENDING !
-   d [: INSTALL-AT ;] CTARGET:REGISTER ;
-
-: MODE@ ( CTARGET:arch -- NBACK:mode )
-   CTARGET:ROW P-ROWS NBACK-PASS:MODE @ ;
+   COUNT 0 ?do i PASS-PTR NBACK-PASS:PREPARE @ execute loop ;
 
 ;package

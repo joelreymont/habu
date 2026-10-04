@@ -30,7 +30,6 @@ require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
 require src/compiler/session/emission.f
 require src/compiler/session/lease.f
-require src/compiler/session/backend.f
 
 package X64KHIR
 private

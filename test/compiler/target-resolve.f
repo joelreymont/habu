@@ -2,6 +2,7 @@
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
 require lib/test.f
 require src/compiler/target/model.f
+require src/compiler/native/backend.f
 require tools/build-target.f
 require src/compiler/numeric-policy.f
 
@@ -48,7 +49,7 @@ private
       supported OF drop true ENDOF
       unsupported OF false ENDOF
    ;MATCH TTRUE
-   CTARGET-ARCH:WASM CTARGET:REGISTERED? TFALSE
+   CTARGET-ARCH:WASM NBACK:REGISTERED? TFALSE
    WINDOWS WINDOWS RTARGET:LINK-COMPATIBLE? TFALSE ;
 
 : T04 ( -- )

@@ -29,6 +29,7 @@
 
 require lib/test.f
 require src/compiler/ir/symbol.f
+require src/compiler/native/backend.f
 require src/compiler/native/x64ir.f
 require src/arch/x86-64/machine.f
 require src/compiler/native-effect.f
@@ -83,10 +84,10 @@ private
 \ pure capability predicate still answers for the machine it builds for.
 : REGISTRY-CASE ( -- )
    s" loading the dialect does not publish incomplete native passes" T-LABEL
-   CTARGET-ARCH:X86-64 CTARGET:REGISTERED? TFALSE
+   CTARGET-ARCH:X86-64 NBACK:REGISTERED? TFALSE
    CTR X64BACK:SERVES? TTRUE
    s" an architecture with no backend loaded is refused by the registry" T-LABEL
-   [: PCTR CTARGET:LOWERS? drop ;] E-CTGT-UNLOADED TTHROWSQ ;
+   [: PCTR NBACK:LOWERS? drop ;] E-CTGT-UNLOADED TTHROWSQ ;
 
 \ ---- the closed opcode vocabulary --------------------------------------------
 : OPCODE-NTH-LOW ( -- )   -1 X64IR:NTH drop ;

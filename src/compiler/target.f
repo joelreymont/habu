@@ -45,7 +45,6 @@ require lib/prelude.f
 require lib/errors.f
 require src/compiler/digest.f
 require src/compiler/native/fetch-check.f
-require src/compiler/session/lease.f
 
 package CTARGET
 public
@@ -401,20 +400,8 @@ public
 : DIGEST ( CTARGET:contract -- CDIGEST:digest )
    ENCODE CDIGEST:COMPUTE ;
 
-\ ---- the backend registry ----------------------------------------------------
-\ WHAT THIS ANSWERS. A contract says what machine a compilation is for. It does
-\ not say that this image can produce code for that machine - the header above
-\ says why those are different questions - and the answer belongs to whoever can
-\ produce the instructions. A backend is therefore a MODULE: it registers a row
-\ when it loads, and there is no list of backends anywhere for a new one to be
-\ added to. An image that never loads src/arch/arm64/ has no aarch64 row, and
-\ asking either stage about an aarch64 contract refuses with E-CTGT-UNLOADED
-\ rather than compiling with a backend that is not there. That is what lets a
-\ binary carry only the backend its own sources require.
-\
-\ The descriptor gives the implementation a stable id, separate from the
-\ architecture's wire code and the row that sorted insertion may move. Native
-\ passes install at the insertion row before this registry publishes the count.
+\ A backend descriptor states identity and capabilities. The native registry
+\ owns publication of the descriptor together with its implementation pass.
 
 public
 
@@ -435,106 +422,5 @@ STRUCTURE backend 0 DERIVE addr
 
 : ID-CODE ( CTARGET:backend-id -- n )
    CTARGET-BACKEND--ID:UNMAKE ;
-
-private
-
-DEFER-LAYOUT-BUFFER B-ROWS backend
-variable B-N
-1 B-ROWS-BIND
-
-: BACK-ID ( CTARGET:backend -- CTARGET:backend-id )
-   CTARGET-BACKEND:UNMAKE 2drop drop ;
-
-: BACK-ARCH ( CTARGET:backend -- CTARGET:arch )
-   CTARGET-BACKEND:UNMAKE 2drop nip ;
-
-: BACK-LOWER ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
-   CTARGET-BACKEND:UNMAKE {: id:backend-id a:arch lo em :} lo ;
-
-: BACK-EMIT ( CTARGET:backend -- [ CTARGET:contract -- bool ] )
-   CTARGET-BACKEND:UNMAKE {: id:backend-id a:arch lo em :} em ;
-
-: FIND-ROW ( CTARGET:arch -- n )
-   {: a:arch :}
-   B-N @ 0 ?do
-      a i B-ROWS @ BACK-ARCH CTARGET-ARCH:EQ if i unloop exit then
-   loop
-   -1 ;
-
-: ID-CLAIMED? ( CTARGET:backend-id -- bool )
-   {: id:backend-id :}
-   B-N @ 0 ?do
-      id i B-ROWS @ BACK-ID CTARGET-BACKEND--ID:EQ if true unloop exit then
-   loop
-   false ;
-
-: INSERT-AT ( CTARGET:backend-id -- n )
-   ID-CODE {: code:n :}
-   B-N @ 0 ?do
-      code i B-ROWS @ BACK-ID ID-CODE < if i unloop exit then
-   loop
-   B-N @ ;
-
-: SHIFT ( n -- )
-   {: at:n :}
-   B-N @ at - 0 ?do
-      B-N @ i - 1- B-ROWS @ B-N @ i - B-ROWS !
-   loop ;
-
-\ Whole-record stores leave callback cells undeclared; growth also moves old rows.
-: REGISTER-XTS ( -- )
-   B-N @ 1+ 0 ?do
-      i B-ROWS CTARGET-BACKEND:LOWER dup @ swap xt!
-      i B-ROWS CTARGET-BACKEND:EMIT dup @ swap xt!
-   loop ;
-
-public
-
-: COUNT ( -- n ) B-N @ ;
-
-: BACKEND@ ( n -- CTARGET:backend )
-   dup 0 < over B-N @ >= or if E-CTGT-ROW throw then
-   B-ROWS @ ;
-
-: REGISTERED? ( CTARGET:arch -- bool ) FIND-ROW 0 >= ;
-
-: ROW ( CTARGET:arch -- n )
-   FIND-ROW dup 0 < if E-CTGT-UNLOADED throw then ;
-
-: ID-ROW ( CTARGET:backend-id -- n )
-   {: id:backend-id :}
-   B-N @ 0 ?do
-      id i B-ROWS @ BACK-ID CTARGET-BACKEND--ID:EQ if i unloop exit then
-   loop
-   E-CTGT-UNLOADED throw ;
-
-\ The installer reserves and installs its parallel pass row at the insertion
-\ position. The descriptor and visible count move only after it returns.
-: REGISTER ( CTARGET:backend [ n -- ] -- )
-   {: d:backend install :}
-   NLEASE:IDLE-CK
-   d BACK-ID ID-CODE 0 <= if E-CTGT-ID throw then
-   d BACK-ID ID-CLAIMED? if E-CTGT-REGISTERED throw then
-   d BACK-ARCH REGISTERED? if E-CTGT-REGISTERED throw then
-   d BACK-ID INSERT-AT {: at:n :}
-   B-N @ 1+ B-ROWS-GROW
-   at install execute
-   at SHIFT
-   d at B-ROWS !
-   REGISTER-XTS
-   B-N @ 1+ B-N ! ;
-
-\ Can the loaded backend for this contract's architecture lower for it? Emit for
-\ it? The contract is revalidated here for the reason the header gives, so the
-\ backend's own predicate is asked about a declarable machine. An architecture
-\ with no backend refuses; one with a backend gets that backend's answer, so
-\ "no code for this machine in this image" and "this backend does not serve this
-\ machine" stay different answers with different owners.
-: LOWERS? ( CTARGET:contract -- bool )
-   VALIDATE dup ARCH@ ROW B-ROWS @ BACK-LOWER execute ;
-
-: EMITS? ( CTARGET:contract -- bool )
-   VALIDATE dup ARCH@ ROW B-ROWS @ BACK-EMIT execute ;
-
 
 ;package

@@ -14,6 +14,7 @@ require lib/string.f
 require lib/errors.f
 require src/os/script-argv.f
 require src/compiler/target.f
+require src/compiler/native/backend.f
 require tools/build-target.f
 
 package NATIVE-BUILD
@@ -84,7 +85,7 @@ variable CLASS-WANTED
    ;MATCH ;
 
 : BACKEND-CK ( -- )
-   TARGET-ARCH CTARGET:REGISTERED? if exit then
+   TARGET-ARCH NBACK:REGISTERED? if exit then
    s" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f" BUILD-RC die ;
 
 \ The argument after `--target` names the target; anything after that is refused.

@@ -46,7 +46,6 @@ require src/compiler/native/shadow.f
 require src/compiler/native/prof.f
 require src/compiler/session/lease.f
 require src/compiler/session/emission.f
-require src/compiler/session/backend.f
 
 package NCOMP
 private

@@ -41,7 +41,6 @@ require src/compiler/ir/build.f
 require src/compiler/native/backend.f
 require src/compiler/native/emission.f
 require src/compiler/native/publish.f
-require src/compiler/session/backend.f
 require src/compiler/session/emission.f
 require src/compiler/native/frozen.f
 require src/compiler/native/hir.f
