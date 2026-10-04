@@ -1,10 +1,9 @@
 \ AArch64 HTTPS client over libcurl's easy interface.
 \
-\ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the three
-\ foreign out-parameter cells are one $18 TASK:+USER row, so each task reads
-\ back its own info, buffer and length, and the request and response spans are
-\ caller-owned. The one-time global init flags (GLOBAL-DONE,
-\ GLOBAL-REGISTERED) are PROCESS-WIDE, which is what curl_global_init requires.
+\ STORAGE CLASS. TASK-LOCAL for call staging: five foreign out-parameter cells
+\ are one $28 TASK:+USER row. The caller owns destination spans; each handle
+\ owns its request list and captured response. The one-time global init flags
+\ (GLOBAL-DONE, GLOBAL-REGISTERED) are PROCESS-WIDE, as curl_global_init requires.
 \ So is the multiplexed transfer table at the end of this file: one loop task
 \ owns the multi handle and the records, and a record is claimed atomically by
 \ whichever task starts a transfer. See docs/threads.md.
@@ -41,6 +40,11 @@ SUMTYPE fetch-result 0
    VARIANT failed code ;VARIANT
 ;SUMTYPE
 
+SUMTYPE header-result 0
+   VARIANT complete len ;VARIANT
+   VARIANT truncated len ;VARIANT
+;SUMTYPE
+
 E-CURL-OPERAND constant E-OPERAND
 E-CURL-PLATFORM constant E-PLATFORM
 E-CURL-STATE constant E-STATE
@@ -57,6 +61,7 @@ $100000 constant INFO-STRING              \ CURLINFO_STRING
 $200000 constant INFO-LONG                \ CURLINFO_LONG
 
 OPT-OBJECT 1 + constant OPT-WRITE-DATA    \ CURLOPT_WRITEDATA
+OPT-OBJECT 29 + constant OPT-HEADER-DATA  \ CURLOPT_HEADERDATA
 OPT-OBJECT 2 + constant OPT-URL           \ CURLOPT_URL
 OPT-OBJECT 23 + constant OPT-HTTP-HEADER  \ CURLOPT_HTTPHEADER
 OPT-OBJECT 31 + constant OPT-COOKIE-FILE  \ CURLOPT_COOKIEFILE
@@ -79,6 +84,7 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 0 constant CURLE-OK
 2 constant CURLE-FAILED-INIT
 27 constant CURLE-OUT-OF-MEMORY
+23 constant CURLE-WRITE-ERROR
 
 1 constant PROTO-HTTP                     \ CURLPROTO_HTTP
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
@@ -91,10 +97,12 @@ $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 $08 constant CELL-BYTES
 
 \ Foreign out-parameter cells, per task like FFI's own argument staging.
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $18 TASK:+USER IO-STORAGE drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
 : INFO-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
 : BUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $08 + ;
 : LEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
+: HBUF-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
+: HLEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $20 + ;
 
 
 \ libcurl's easy interface. CURL*, curl_slist* and FILE* are OPAQUE here -
@@ -156,15 +164,16 @@ FUNCTION: MULTI-TIMEOUT curl_multi_timeout ( n ptr u8 -- i32 )
 
 \ The process's own libc. Habu cannot hand libcurl a callback into checked code,
 \ and none is needed: libcurl's default write callback is fwrite, so
-\ CURLOPT_WRITEDATA takes an open_memstream stream and memcpy moves the finished
-\ bytes into the caller's span. strndup/strlen/free build the NUL-terminated
-\ copies libcurl's string options read.
+\ CURLOPT_WRITEDATA and CURLOPT_HEADERDATA each take an open_memstream stream.
+\ memcpy moves finished bytes into caller spans. strndup/strlen/free build the
+\ NUL-terminated copies libcurl's string options read.
 PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
 FUNCTION: DUP-TEXT strndup ( ptr u8 n -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
+FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
 
 FUNCTION: MEMSTREAM open_memstream ( ptr u8 ptr u8 -- n )
    0 $08 WRITES-BYTES                     \ char **bufp
@@ -227,32 +236,67 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    SET-TEXT-RAW CODE>STATUS ;
 
 
-\ The handle's own private slot holds the header list, so CLEANUP frees exactly
-\ the list that handle owns and no package-side table has to track it.
-: HEADERS-CELL ( n -- n ) {: easy:n :}
+\ The private slot owns one record: request list, captured response pointer,
+\ response length and success flag. The record lasts exactly as long as CURL*.
+CAST: STATE>BYTES ( n -- ptr u8 )
+0 constant S.LIST
+8 constant S.RESPONSE
+16 constant S.LENGTH
+24 constant S.VALID
+4 constant STATE-CELLS
+
+: STATE-GET ( n -- n ) {: easy:n :}
    INFO-CELL CELL-CLEAR
    easy INFO-PRIVATE INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
-   INFO-CELL LE:U64@ ;
+   INFO-CELL LE:U64@ dup 0= if E-STATE throw then ;
+
+: STATE-FIELD ( n n -- ptr u8 ) {: state:n offset:n :}
+   state STATE>BYTES offset + ;
+
+: STATE-LIST@ ( n -- n ) S.LIST STATE-FIELD LE:U64@ ;
+: STATE-RESP@ ( n -- n ) S.RESPONSE STATE-FIELD LE:U64@ ;
+: STATE-LEN@ ( n -- n ) S.LENGTH STATE-FIELD LE:U64@ ;
+: STATE-VALID@ ( n -- n ) S.VALID STATE-FIELD LE:U64@ ;
+
+: STATE-CLEAR-RESPONSE ( n -- ) {: state:n :}
+   state STATE-RESP@ dup 0 <> if RELEASE else drop then
+   0 state S.RESPONSE STATE-FIELD LE:U64!
+   0 state S.LENGTH STATE-FIELD LE:U64!
+   0 state S.VALID STATE-FIELD LE:U64! ;
+
+: STATE-PUBLISH ( n n n -- ) {: easy:n source:n u:n :}
+   easy STATE-GET {: state:n :}
+   state STATE-CLEAR-RESPONSE
+   source state S.RESPONSE STATE-FIELD LE:U64!
+   u state S.LENGTH STATE-FIELD LE:U64!
+   1 state S.VALID STATE-FIELD LE:U64! ;
+
+: STATE-DESTROY ( n -- ) {: state:n :}
+   state STATE-CLEAR-RESPONSE
+   state STATE-LIST@ dup 0 <> if SLIST-FREE else drop then
+   state RELEASE ;
 
 
 \ A list this call created and could not publish is freed here; an appended-to
 \ list is already the head the private slot holds, so it stays owned either way.
-: HEADER-STORE ( n n n -- status ) {: easy:n old:n list:n :}
-   easy OPT-PRIVATE list SETOPT-NUM dup CURLE-OK <> if
+: HEADER-STORE ( n n n n -- status ) {: easy:n state:n old:n list:n :}
+   easy OPT-HTTP-HEADER list SETOPT-NUM dup CURLE-OK <> if
       old 0= if list SLIST-FREE then
       CODE>STATUS exit
    then drop
-   easy OPT-HTTP-HEADER list SETOPT-NUM CODE>STATUS ;
+   list state S.LIST STATE-FIELD LE:U64!
+   CURL-STATUS:ok ;
 
 
 : HEADER-APPEND ( n ptr u8 n -- status ) {: easy:n text u:n :}
    text u TEXT-DUP dup 0= if drop OUT-OF-MEMORY exit then
    {: line:n :}
-   easy HEADERS-CELL {: old:n :}
+   easy STATE-GET {: state:n :}
+   state STATE-LIST@ {: old:n :}
    old line SLIST-APPEND {: list:n :}
    line RELEASE
    list 0= if OUT-OF-MEMORY exit then
-   easy old list HEADER-STORE ;
+   easy state old list HEADER-STORE ;
 
 
 \ The two cells open_memstream publishes the finished buffer and its length in
@@ -267,24 +311,31 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 \ open_memstream publishes its buffer and length when the stream closes; the
 \ buffer is the caller's to free from then on.
-: STREAM-TAKE ( n ptr u8 ptr u8 -- n n ) {: stream:n buf len :}
-   stream STREAM-CLOSE drop
-   buf LE:U64@ len LE:U64@ ;
+: STREAM-TAKE ( n ptr u8 ptr u8 -- n n n ) {: stream:n buf len :}
+   stream STREAM-CLOSE 0= if CURLE-OK else CURLE-WRITE-ERROR then
+   buf LE:U64@ len LE:U64@ rot ;
 
 
-: WRITE-DATA-CLEAR ( n -- ) {: easy:n :}
-   easy OPT-WRITE-DATA 0 SETOPT-NUM drop ;
+: FIRST-ERROR ( n n -- n ) {: prior:n next:n :}
+   prior CURLE-OK <> if prior else next then ;
 
 
-: TRANSFER ( n n -- n ) {: easy:n stream:n :}
-   easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if exit then drop
+: DATA-CLEAR ( n -- n ) {: easy:n :}
+   easy OPT-WRITE-DATA 0 SETOPT-NUM
+   easy OPT-HEADER-DATA 0 SETOPT-NUM FIRST-ERROR ;
+
+
+: TRANSFER ( n n n -- n ) {: easy:n body:n headers:n :}
+   easy OPT-WRITE-DATA body SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if exit then drop
    easy EASY-PERFORM ;
 
 
-: STATUS-READ ( n -- http-status ) {: easy:n :}
+: STATUS-TRY ( n -- n bool ) {: easy:n :}
    INFO-CELL CELL-CLEAR
-   easy INFO-STATUS INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
-   INFO-CELL LE:U64@ dup 0 MAX-STATUS WITHIN-RANGE >HTTP-STATUS ;
+   easy INFO-STATUS INFO-CELL GETINFO-CELL CURLE-OK <> if 0 false exit then
+   INFO-CELL LE:U64@ dup 0 < over MAX-STATUS > or if drop 0 false exit then
+   true ;
 
 
 : BODY-COPY ( ptr u8 n n -- ) {: target source:n u:n :}
@@ -299,11 +350,11 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    target source u BODY-COPY ;
 
 
-: FETCH-RESULT ( n len n -- fetch-result ) {: easy:n capacity:len u:n :}
+: FETCH-RESULT ( n len n -- fetch-result ) {: status:n capacity:len u:n :}
    u capacity LEN>N > if
-      easy STATUS-READ u >LEN CURL-FETCH--RESULT:truncated exit
+      status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:truncated exit
    then
-   easy STATUS-READ u >LEN CURL-FETCH--RESULT:response ;
+   status >HTTP-STATUS u >LEN CURL-FETCH--RESULT:response ;
 
 
 : FETCH-FAILED ( n -- fetch-result ) {: rc:n :}
@@ -352,12 +403,10 @@ variable GLOBAL-REGISTERED
    easy OPT-REDIR-PROTO PROTO-WEB SETOPT-NUM ;
 
 
-\ libcurl must not reach for signals inside a tasked engine, and the private slot
-\ starts empty so HEADERS-CELL reads a real absent list.
+\ libcurl must not reach for signals inside a tasked engine.
 : DEFAULTS ( n -- n ) {: easy:n :}
    easy OPT-NO-SIGNAL 1 SETOPT-NUM dup CURLE-OK <> if exit then drop
-   easy SCHEMES dup CURLE-OK <> if exit then drop
-   easy OPT-PRIVATE 0 SETOPT-NUM ;
+   easy SCHEMES ;
 
 public
 
@@ -371,6 +420,13 @@ public
    {: easy:n :}
    easy DEFAULTS dup CURLE-OK <> if
       easy EASY-CLEANUP >CODE CURL-INIT--RESULT:failed exit
+   then drop
+   STATE-CELLS CELL-BYTES NEW-STATE dup 0= if
+      drop easy EASY-CLEANUP CURLE-OUT-OF-MEMORY >CODE CURL-INIT--RESULT:failed exit
+   then
+   {: state:n :}
+   easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
+      state RELEASE easy EASY-CLEANUP >CODE CURL-INIT--RESULT:failed exit
    then drop
    easy >HANDLE CURL-INIT--RESULT:ready ;
 
@@ -437,36 +493,6 @@ public
    subject OPT-FOLLOW on FLAG>N SET-NUM-RAW CODE>STATUS ;
 
 
-\ The body arrives without a Habu callback: libcurl's default write callback is
-\ fwrite into CURLOPT_WRITEDATA, an open_memstream stream, and the finished bytes
-\ are copied into the caller's span. A body larger than the span is TRUNCATED and
-\ carries the WHOLE body's length while capacity bytes were copied, so a short
-\ read is always visible. The stream and its buffer are released on every branch.
-: PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
-   subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
-   BUF-CELL LEN-CELL STREAM-OPEN dup 0= if
-      drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit
-   then
-   {: stream:n :}
-   easy stream TRANSFER {: rc:n :}
-   stream BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n :}
-   easy WRITE-DATA-CLEAR
-   rc CURLE-OK <> if source RELEASE rc FETCH-FAILED exit then
-   target capacity source u BODY-TAKE
-   source RELEASE
-   easy capacity u FETCH-RESULT ;
-
-
-\ The handle is dead afterwards and its header list goes with it; neither is ever
-\ left allocated.
-: CLEANUP ( handle -- ) {: subject:handle :}
-   subject HANDLE-CELL {: easy:n :}
-   easy HEADERS-CELL {: list:n :}
-   easy EASY-CLEANUP
-   list 0= if exit then
-   list SLIST-FREE ;
-
 private
 
 \ ---- many transfers on one task ----------------------------------------------
@@ -519,6 +545,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.EASY
    CELL +FIELD R.CAP
    CELL +FIELD R.STREAM
+   CELL +FIELD R.HSTREAM
    CELL +FIELD R.ADDED                    \ the handle is in the multi handle
    CELL +FIELD R.KIND
    CELL +FIELD R.STATUS
@@ -541,7 +568,7 @@ MAX-TRANSFERS TYPED-BUFFER REC-TARGETS ptr u8
 \ Two cells per record for open_memstream's buffer and length, because the loop
 \ is what closes the stream and the opening task's row is not where it can read.
 \ The FFI writes them, so the row is bytes.
-MAX-TRANSFERS 2 * cells BUFFER: REC-STREAM-CELLS
+MAX-TRANSFERS 4 * cells BUFFER: REC-STREAM-CELLS
 
 \ The three fd_sets libcurl fills, the fds an armed ticket already covers, the
 \ int and long out-parameters of the multi calls, one copied CURLMsg, and the
@@ -602,17 +629,24 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 
 : REC-BUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $10 * + ;
+   REC-STREAM-CELLS idx $20 * + ;
 
 
 : REC-LEN-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
-   REC-STREAM-CELLS idx $10 * + $08 + ;
+   REC-STREAM-CELLS idx $20 * + $08 + ;
+
+: REC-HBUF-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
+   REC-STREAM-CELLS idx $20 * + $10 + ;
+
+: REC-HLEN-CELL ( n -- ptr u8 ) REC-CHECK {: idx:n :}
+   REC-STREAM-CELLS idx $20 * + $18 + ;
 
 
 : REC-STATE@ ( n -- n )     REC R.STATE atomic@ ;
 : REC-EASY@ ( n -- n )      REC R.EASY @ ;
 : REC-CAP@ ( n -- n )       REC R.CAP @ ;
 : REC-STREAM@ ( n -- n )    REC R.STREAM @ ;
+: REC-HSTREAM@ ( n -- n )   REC R.HSTREAM @ ;
 : REC-TARGET@ ( n -- ptr u8 ) REC-CHECK REC-TARGETS @ ;
 : REC-OWNER@ ( n -- ptr n ) REC-CHECK REC-OWNER @ ;
 
@@ -639,8 +673,16 @@ CAST: TICKET>N ( AIO:ticket -- n )
 : REC-RELEASE ( n -- ) {: idx:n :}
    0 idx REC R.EASY !
    0 idx REC R.STREAM !
+   0 idx REC R.HSTREAM !
    0 idx REC R.ADDED !
    STATE-FREE idx REC-STATE! ;
+
+
+\ An abandoned owner never collected the response, even if FINISH already
+\ closed both streams and published it before the halt reached AWAIT.
+: ABANDON-RELEASE ( n -- ) {: idx:n :}
+   idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
+   idx REC-RELEASE ;
 
 
 : TABLE-CLEAR ( -- )
@@ -667,10 +709,11 @@ CAST: TICKET>N ( AIO:ticket -- n )
    false ;
 
 
-: REC-FILL ( n n ptr u8 n n -- ) {: idx:n easy:n target capacity:n stream:n :}
+: REC-FILL ( n n ptr u8 n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n :}
    easy idx REC R.EASY !
    capacity idx REC R.CAP !
    stream idx REC R.STREAM !
+   headers idx REC R.HSTREAM !
    0 idx REC R.ADDED !
    target idx REC-CHECK REC-TARGETS !
    TASK:SELF idx REC-CHECK REC-OWNER !
@@ -711,18 +754,27 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 \ ---- the loop's side of a record ---------------------------------------------
 
-: REC-STREAM-TAKE ( n -- n n ) {: idx:n :}
+: REC-STREAM-TAKE ( n -- n n n ) {: idx:n :}
    idx REC-STREAM@ idx REC-BUF-CELL idx REC-LEN-CELL STREAM-TAKE ;
+
+: REC-HEADER-TAKE ( n -- n n n ) {: idx:n :}
+   idx REC-HSTREAM@ idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-TAKE ;
 
 
 \ The stream is closed and whatever it collected is dropped: the handle keeps no
 \ pointer to a closed stream and the buffer is nobody's after this.
-: STREAM-DROP ( n -- ) {: idx:n :}
-   idx REC-STREAM@ 0= if exit then
-   idx REC-STREAM-TAKE {: source:n u:n :}
-   idx REC-EASY@ WRITE-DATA-CLEAR
+: STREAM-DROP ( n -- n ) {: idx:n :}
+   idx REC-STREAM@ 0= if CURLE-OK exit then
+   idx REC-STREAM-TAKE {: body:n bodyu:n bodyrc:n :}
+   idx REC-HSTREAM@ 0= if
+      0 0 CURLE-OK
+   else idx REC-HEADER-TAKE then
+   {: headers:n headeru:n headrc:n :}
+   idx REC-EASY@ DATA-CLEAR {: clear-rc:n :}
    0 idx REC R.STREAM !
-   source RELEASE ;
+   0 idx REC R.HSTREAM !
+   body RELEASE headers RELEASE
+   bodyrc headrc FIRST-ERROR clear-rc FIRST-ERROR ;
 
 
 : FAILED-STORE ( n n -- ) {: idx:n rc:n :}
@@ -733,8 +785,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ FETCH-RESULT's decision, stored as fields because the value belongs to the
 \ task that waits: the WHOLE body's length either way, and truncated when only
 \ capacity bytes of it were copied.
-: RESULT-STORE ( n n n -- ) {: idx:n easy:n u:n :}
-   easy STATUS-READ HTTP-STATUS>N idx REC R.STATUS !
+: RESULT-STORE ( n n n -- ) {: idx:n status:n u:n :}
+   status idx REC R.STATUS !
    u idx REC R.LEN !
    u idx REC-CAP@ > if KIND-TRUNCATED idx REC R.KIND ! exit then
    KIND-RESPONSE idx REC R.KIND ! ;
@@ -767,21 +819,28 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ waking a TCB the join has released.
 : FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
-   idx REC-STREAM-TAKE {: source:n u:n :}
-   idx REC-EASY@ WRITE-DATA-CLEAR
+   idx REC-STREAM-TAKE {: source:n u:n bodyrc:n :}
+   idx REC-HEADER-TAKE {: headers:n headeru:n headrc:n :}
+   idx REC-EASY@ DATA-CLEAR {: clear-rc:n :}
    0 idx REC R.STREAM !
+   0 idx REC R.HSTREAM !
    idx REC-STATE@ STATE-ABANDONED = if
-      source RELEASE idx REC-RELEASE CURLM-OK exit
+      source RELEASE headers RELEASE idx ABANDON-RELEASE CURLM-OK exit
    then
-   rc CURLE-OK <> if
-      source RELEASE
-      idx rc FAILED-STORE
+   rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
+      {: outcome:n :}
+   outcome CURLE-OK <> if
+      source RELEASE headers RELEASE
+      idx outcome FAILED-STORE
       idx SETTLE
       CURLM-OK exit
    then
+   idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
+   valid 0= if source RELEASE headers RELEASE E-RESULT throw then
    idx REC-TARGET@ idx REC-CAP@ >LEN source u BODY-TAKE
    source RELEASE
-   idx idx REC-EASY@ u RESULT-STORE
+   idx status u RESULT-STORE
+   idx REC-EASY@ headers headeru STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
 
@@ -790,7 +849,7 @@ CAST: TICKET>N ( AIO:ticket -- n )
 \ application ended is the answer it gets.
 : CANCEL-RUN ( n -- n ) {: idx:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
-   idx STREAM-DROP
+   idx STREAM-DROP drop
    idx CURLE-ABORTED FAILED-STORE
    idx SETTLE
    CURLM-OK ;
@@ -798,8 +857,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
 
 : ABANDON-RUN ( n -- n ) {: idx:n :}
    idx REMOVE-ONE dup CURLM-OK <> if exit then drop
-   idx STREAM-DROP
-   idx REC-RELEASE
+   idx STREAM-DROP drop
+   idx ABANDON-RELEASE
    CURLM-OK ;
 
 
@@ -1074,8 +1133,8 @@ CAST: TICKET>N ( AIO:ticket -- n )
    idx REC-STATE@ {: st:n :}
    st STATE-FREE = st STATE-DONE = or st STATE-CLAIMING = or if exit then
    idx REMOVE-ONE drop
-   idx STREAM-DROP
-   st STATE-ABANDONED = if idx REC-RELEASE exit then
+   idx STREAM-DROP drop
+   st STATE-ABANDONED = if idx ABANDON-RELEASE exit then
    idx CURLE-ABORTED FAILED-STORE
    idx SETTLE ;
 
@@ -1240,13 +1299,27 @@ public
    LOOP-LIVE atomic@ 0= if E-STATE throw then
    capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
    easy START-CLAIM {: idx:n :}
+   easy STATE-GET STATE-CLEAR-RESPONSE
    idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN dup 0= if
       drop idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: stream:n :}
-   idx easy target capacity LEN>N stream REC-FILL
+   idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-OPEN dup 0= if
+      drop
+      stream idx REC-BUF-CELL idx REC-LEN-CELL STREAM-TAKE
+         {: source:n u:n close-rc:n :}
+      source RELEASE
+      idx REC-RELEASE OUT-OF-MEMORY exit
+   then
+   {: headers:n :}
+   idx easy target capacity LEN>N stream headers REC-FILL
    easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if
-      idx STREAM-DROP
+      idx STREAM-DROP drop
+      idx REC-RELEASE
+      CODE>STATUS exit
+   then drop
+   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if
+      idx STREAM-DROP drop
       idx REC-RELEASE
       CODE>STATUS exit
    then drop
@@ -1292,5 +1365,130 @@ public
    CURL-LOCK TASK:RELEASE
    0 < if E-STATE throw then
    WAKE-POKE ;
+
+
+private
+
+: HANDLE-BUSY? ( n -- bool ) {: easy:n :}
+   LOOP-LIVE atomic@ 0= if false exit then
+   CURL-LOCK TASK:GET
+   easy REC-FIND 0 >=
+   CURL-LOCK TASK:RELEASE ;
+
+
+: HEADER-STATUS? ( ptr u8 n n -- bool ) {: source at:n u:n :}
+   at 5 + u > if false exit then
+   source at + 5 s" HTTP/" STR= ;
+
+
+: HEADER-LF ( ptr u8 n n -- n ) {: source at:n u:n :}
+   at begin dup u < while
+      source over + c@ $0A = if exit then
+      1+
+   repeat drop -1 ;
+
+
+: HEADER-BLANK? ( ptr u8 n n -- bool ) {: source at:n lf:n :}
+   lf at = if true exit then
+   lf at 1+ = if source at + c@ $0D = exit then
+   false ;
+
+
+: HEADER-CANDIDATE ( n -- ) {: at:n :}
+   at LEN-CELL LE:U64!
+   0 HBUF-CELL LE:U64!
+   1 HLEN-CELL LE:U64! ;
+
+
+\ Scratch offsets are task-local; every status line invalidates the previous
+\ complete candidate, and trailer lines after a blank line cannot extend it.
+: FINAL-BLOCK ( ptr u8 n -- n n ) {: source u:n :}
+   0 BUF-CELL LE:U64!
+   0 LEN-CELL LE:U64!
+   0 HBUF-CELL LE:U64!
+   0 HLEN-CELL LE:U64!
+   begin BUF-CELL LE:U64@ u < while
+      BUF-CELL LE:U64@ {: at:n :}
+      source at u HEADER-LF dup 0 < if
+         source at u HEADER-STATUS? if at HEADER-CANDIDATE then
+         drop u BUF-CELL LE:U64!
+      else
+         {: lf:n :}
+         source at lf HEADER-STATUS? if at HEADER-CANDIDATE then
+         HLEN-CELL LE:U64@ 0 <> HBUF-CELL LE:U64@ 0= and if
+            source at lf HEADER-BLANK? if lf 1+ HBUF-CELL LE:U64! then
+         then
+         lf 1+ BUF-CELL LE:U64!
+      then
+   repeat
+   HBUF-CELL LE:U64@ dup 0= if drop E-RESULT throw then
+   LEN-CELL LE:U64@ swap ;
+
+public
+
+\ The destination is borrowed only for this copy. It is untouched on an
+\ unavailable result or malformed capture, and the result names the whole
+\ final block even when only a prefix fits.
+: HEADERS ( handle ptr u8 len -- header-result )
+   {: subject:handle target capacity:len :}
+   subject HANDLE-CELL {: easy:n :}
+   capacity LEN>N 0 < if E-OPERAND throw then
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET {: state:n :}
+   state STATE-VALID@ 0= if E-STATE throw then
+   state STATE-RESP@ STATE>BYTES state STATE-LEN@ FINAL-BLOCK
+      {: at:n finish:n :}
+   finish at - {: u:n :}
+   u capacity LEN>N min {: copied:n :}
+   copied 0 > if
+      target state STATE-RESP@ STATE>BYTES at + FFI:>CELL copied COPY-OUT drop
+   then
+   u >LEN
+   u capacity LEN>N > if CURL-HEADER--RESULT:truncated
+   else CURL-HEADER--RESULT:complete then ;
+
+
+\ Both streams close before any destination write. The first libcurl error
+\ wins; only an otherwise successful transfer maps a close failure to 23.
+: PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
+   subject HANDLE-CELL {: easy:n :}
+   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET STATE-CLEAR-RESPONSE
+   BUF-CELL LEN-CELL STREAM-OPEN dup 0= if
+      drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit
+   then
+   {: body:n :}
+   HBUF-CELL HLEN-CELL STREAM-OPEN dup 0= if
+      drop
+      body BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n close-rc:n :}
+      source RELEASE
+      CURLE-OUT-OF-MEMORY FETCH-FAILED exit
+   then
+   {: headers:n :}
+   easy body headers TRANSFER {: rc:n :}
+   body BUF-CELL LEN-CELL STREAM-TAKE {: source:n u:n bodyrc:n :}
+   headers HBUF-CELL HLEN-CELL STREAM-TAKE {: captured:n capturedu:n headrc:n :}
+   easy DATA-CLEAR {: clear-rc:n :}
+   rc bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
+      {: outcome:n :}
+   outcome CURLE-OK <> if
+      source RELEASE captured RELEASE
+      outcome FETCH-FAILED exit
+   then
+   easy STATUS-TRY {: status:n valid:bool :}
+   valid 0= if source RELEASE captured RELEASE E-RESULT throw then
+   target capacity source u BODY-TAKE
+   source RELEASE
+   easy captured capturedu STATE-PUBLISH
+   status capacity u FETCH-RESULT ;
+
+
+: CLEANUP ( handle -- ) {: subject:handle :}
+   subject HANDLE-CELL {: easy:n :}
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET {: state:n :}
+   easy EASY-CLEANUP
+   state STATE-DESTROY ;
 
 ;package
