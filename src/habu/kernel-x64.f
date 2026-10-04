@@ -2284,6 +2284,29 @@ public
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
 \ entry is installed by that evaluator; evaluate-closed gives it a guarded
 \ stack. Rows still tied to ARM's interpreter refuse until supplied in Habu.
+\ The source runs under the kernel catch frame while its guard owns the unit
+\ hook. A throw resumes here, so both return paths clear the hook before the
+\ caller sees the status. An occupied hook or a guard outside live code
+\ refuses with 70 before running the source.
+: UNIT-COMPILE-RUN, ( -- )
+   X64CODE:LBL X64CODE:LBL {: bad:label done:label :}
+   RAX POP,  RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP 0 MOV-STORE,
+   RAX POP,
+   RCX DATA-REG UNIT-COMPILE-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
+   RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-CMP-RR  C-AE bad JCC,
+   RAX DATA-REG UNIT-COMPILE-CELL MOV-STORE,
+   RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT,
+   RCX ZERO-REG,  RCX DATA-REG UNIT-COMPILE-CELL MOV-STORE,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX PUSH,  done JMP,
+   bad X64CODE:LBL,
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX 70 IMM32,  RAX PUSH,
+   done X64CODE:LBL, ;
+
 : CONTROL, ( -- )
    FLOORREC-PENDING @ if
       false FLOORREC-PENDING !
@@ -2310,7 +2333,7 @@ public
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" run-in-stack" [: RUN-IN-STACK, ;] PRIM
    s" die" [: DIE, ;] PRIM
-   s" unit-compile-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
@@ -2627,6 +2650,31 @@ variable SITE-TRAP-CELL
    SEAL-TRAP-LBL X64CODE:LBL,  ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
    SITE-TRAP-LBL X64CODE:LBL,  SNAP-RELOC:SITE-RC EXIT-GROUP, ;
 
+\ Return the protected-WID bitmap cell and bit for rdi. The two engine WIDs
+\ are protected without a bit. Both the native-unit publisher and definition
+\ writers use this single sealed-wordlist decision.
+: PROT-BITS, ( -- )
+   RSI RDI ASM-SINK ENC-MOV-RR
+   RSI 6 >IMM8 ASM-SINK ENC-SHR-RI8
+   RSI DATA-REG RSI CELL PROT-BITS-OFF MEM-IDX ASM-SINK ENC-LEA
+   RCX RDI ASM-SINK ENC-MOV-RR
+   RDX 1 IMM32,  RDX ASM-SINK ENC-SHL-CL ;
+
+\ With the seal set, branch when rdx names a protected wordlist.
+\ A wid beyond the bitmap bound has no bit, as on ARM64.
+: OPEN-WID, ( label -- ) {: prot:label :}
+   X64CODE:LBL {: open:label :}
+   RAX DATA-REG SEAL-NDICT-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
+   RDX OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
+   RDX OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
+   RDX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-AE open JCC,
+   RDI RDX ASM-SINK ENC-MOV-RR
+   PROT-BITS,
+   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
+   RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
+   open X64CODE:LBL, ;
+
 \ ---- the rows ----------------------------------------------------------------
 \ patch32 ( n n -- ): guard the four bytes at the address, then store the word
 \ between two LPROTREC flips of its pages, as BPATCH32 does: the flip is keyed
@@ -2703,6 +2751,112 @@ variable SITE-TRAP-CELL
    RDI RSP PUB-DST MOV-LOAD,  cp RSP PUB-SLOT MOV-LOAD,     \ the slot is claimed
    RSI cp ASM-SINK ENC-MOV-RR  X64PROV:UNKNOWN-RANGE,
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ A prepared unit owns one code emission and complete dictionary records.
+\ Keep both protection bands open for the copy, close them before publishing
+\ the code origin and dictionary count, and index each record as it appears.
+0 constant UNIT-SRC
+8 constant UNIT-LEN
+16 constant UNIT-RECS
+24 constant UNIT-COUNT
+32 constant UNIT-DST
+40 constant UNIT-SLOT
+48 constant UNIT-REC-DST
+56 constant UNIT-REC-BYTES
+64 constant UNIT-FRAME
+
+: NATIVE-UNIT-PUBLISH, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: widloop:label widdone:label copy:label copied:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: fill:label filled:label recopy:label recopied:label :}
+   X64CODE:LBL X64CODE:LBL {: index:label indexed:label :}
+   TASK-LIVE-GUARD,
+   RSP UNIT-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX POP,  RAX RSP UNIT-COUNT MOV-STORE,
+   RAX POP,  RAX RSP UNIT-RECS MOV-STORE,
+   RAX POP,  RAX RSP UNIT-LEN MOV-STORE,
+   RAX POP,  RAX RSP UNIT-SRC MOV-STORE,
+   NDICT-REG DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A SEAL-TRAP-LBL JCC,
+   RCX DICT-CAP IMM32,  RCX NDICT-REG ASM-SINK ENC-SUB-RR
+   RAX RSP UNIT-COUNT MOV-LOAD,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RCX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RCX RSP UNIT-REC-BYTES MOV-STORE,
+   RDI NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI DBASE-REG ASM-SINK ENC-ADD-RR
+   RDI RSP UNIT-REC-DST MOV-STORE,
+   RSI RSP UNIT-LEN MOV-LOAD,
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RDI ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
+   RDI RSP UNIT-DST MOV-STORE,
+   RAX RDI RSI 1 0 MEM-IDX ASM-SINK ENC-LEA
+   RAX RDI ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RCX DBASE-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RDI RAX SLOT-UP,
+   RDI RSP UNIT-SLOT MOV-STORE,
+   R8 RSP UNIT-RECS MOV-LOAD,
+   R9 RSP UNIT-COUNT MOV-LOAD,
+   widloop X64CODE:LBL,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E widdone JCC,
+   RDX R8 REC-WID MOV-LOAD,
+   SEAL-TRAP-LBL OPEN-WID,
+   R8 DREC >IMM8 ASM-SINK ENC-ADD-RI8
+   R9 ASM-SINK ENC-DEC
+   widloop JMP,
+   widdone X64CODE:LBL,
+   RDI RSP UNIT-SLOT MOV-LOAD,  LOPEN-LBL CALL,
+   RDI RSP UNIT-REC-DST MOV-LOAD,
+   RSI RSP UNIT-REC-BYTES MOV-LOAD,  LSPAN-LBL CALL,
+   RDX RSP UNIT-SRC MOV-LOAD,
+   RDI RSP UNIT-DST MOV-LOAD,
+   RCX RSP UNIT-LEN MOV-LOAD,
+   RAX ZERO-REG,
+   copy X64CODE:LBL,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE copied JCC,
+   R8 RDX RAX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   RAX ASM-SINK ENC-INC
+   copy JMP,
+   copied X64CODE:LBL,
+   RCX RSP UNIT-SLOT MOV-LOAD,  RCX RDI ASM-SINK ENC-SUB-RR
+   R8 INT3 IMM32,
+   fill X64CODE:LBL,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE filled JCC,
+   8 >R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   RAX ASM-SINK ENC-INC
+   fill JMP,
+   filled X64CODE:LBL,
+   RDX RSP UNIT-RECS MOV-LOAD,
+   RDI RSP UNIT-REC-DST MOV-LOAD,
+   RCX RSP UNIT-REC-BYTES MOV-LOAD,
+   RAX ZERO-REG,
+   recopy X64CODE:LBL,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE recopied JCC,
+   R8 RDX RAX 1 0 MEM-IDX ASM-SINK ENC-MOV-RM
+   R8 RDI RAX 1 0 MEM-IDX ASM-SINK ENC-MOV-MR
+   RAX CELL >IMM8 ASM-SINK ENC-ADD-RI8
+   recopy JMP,
+   recopied X64CODE:LBL,
+   LCLOSE-LBL CALL,
+   RDI RSP UNIT-DST MOV-LOAD,
+   RSI RSP UNIT-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
+   DROP-SITES-LBL CALL,
+   RDI RSP UNIT-DST MOV-LOAD,
+   ENGINE-GPR:X64-CP >R64 RSP UNIT-SLOT MOV-LOAD,
+   RSI ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
+   X64PROV:NATIVE-RANGE,
+   index X64CODE:LBL,
+   RAX RSP UNIT-COUNT MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E indexed JCC,
+   NDICT-REG ASM-SINK ENC-INC
+   HIDX-ADD,
+   RAX RSP UNIT-COUNT MOV-LOAD,  RAX ASM-SINK ENC-DEC
+   RAX RSP UNIT-COUNT MOV-STORE,
+   index JMP,
+   indexed X64CODE:LBL,
+   RSP UNIT-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ callmap-set and addrmap-set ( n -- ): the site's region offset into rdi, where
 \ an address outside the region exits SEAL-VIOLATION, and the kind into rdx.
@@ -2857,7 +3011,6 @@ public
 : WINDOW-CLOSE, ( -- ) LCLOSE-LBL CALL, ;
 
 \ The window and site helpers, made in this stream, and then the rows.
-\ native-unit-publish refuses until its body lands.
 : PUBLICATION, ( -- )
    X64CODE:LBL LSPAN-CELL !  X64CODE:LBL LOPEN-CELL !
    X64CODE:LBL ADD-SITE-CELL !  X64CODE:LBL DROP-SITES-CELL !
@@ -2866,7 +3019,8 @@ public
    ADD-SITE-HELPER,  DROP-SITES-HELPER,  TRAPS,
    s" patch32" [: PATCH32, ;] PRIM
    s" code-publish" [: PUBLISH, ;] PRIM
-   s" native-unit-publish" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" native-unit-publish" [: NATIVE-UNIT-PUBLISH, ;]
+      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" callmap-set" [: SNAP-RELOC:SITE-CALL SITE-SET, ;] PRIM
    s" addrmap-set" [: SNAP-RELOC:SITE-ADDR SITE-SET, ;] PRIM
    s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
@@ -3297,17 +3451,6 @@ private
 \ ---- wordlists and record marks ----------------------------------------------
 \ The twins of habu1.f BWORDLIST, BGETCUR, BSETCUR, BPROTWIDADD, BPROTWIDROOM
 \ and BWIDEMARK.
-
-\ The twin of habu1.f PROT-BITS-ADDR, over the wid in rdi, which must lie
-\ below PROT-WID-MAX: rsi = the protected-WID bitmap's cell holding its bit,
-\ rdx = the bit. It clobbers rcx; shl takes its count mod 64, the wid's low
-\ six bits.
-: PROT-BITS, ( -- )
-   RSI RDI ASM-SINK ENC-MOV-RR
-   RSI 6 >IMM8 ASM-SINK ENC-SHR-RI8
-   RSI DATA-REG RSI CELL PROT-BITS-OFF MEM-IDX ASM-SINK ENC-LEA
-   RCX RDI ASM-SINK ENC-MOV-RR
-   RDX 1 IMM32,  RDX ASM-SINK ENC-SHL-CL ;
 
 \ prot-wid-add ( n -- ): protect the wid, once. The two engine-reserved wids
 \ are protected already, as habu1.f LPROTWIDQ pins them, and a set bit is
@@ -4116,23 +4259,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : REAL-WID, ( -- )
    RDX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
    RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
-
-\ After the seal, branch to the label for a protected wid rdx, judged as
-\ habu1.f LPROTWIDQ judges one: the two engine-reserved wids always, one at or
-\ above PROT-WID-MAX, unsigned, never, and any other by its PROT-BITS, bit.
-\ Clobbers rax rcx rdx rsi rdi.
-: OPEN-WID, ( label -- ) {: prot:label :}
-   X64CODE:LBL {: open:label :}
-   RAX SEAL-NDICT-CELL CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
-   RDX OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
-   RDX OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
-   RDX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-AE open JCC,
-   RDI RDX ASM-SINK ENC-MOV-RR
-   PROT-BITS,
-   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
-   RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
-   open X64CODE:LBL, ;
 
 \ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
