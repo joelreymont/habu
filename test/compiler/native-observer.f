@@ -369,6 +369,9 @@ public
    s" NOBS-IMAGE-LATE" EV-N ADMIT? TTRUE
    s" NOBS-IMAGE-LATE" XREF-FIND XREF-START
    OWNER-N @ 1- PARENT@ NCOMP:ENTRY>N T=
+   INVALIDATED @ {: invalidated:n :}
+   [: FAIL-OUTER ;] 8181 TTHROWSQ
+   INVALIDATED @ invalidated > TTRUE
    T-REPORT s" native-observer-image: ok" type cr ;
 
 $4000 constant CHILD-CAP
