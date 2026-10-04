@@ -1,6 +1,9 @@
 \ Source grants and native ABI facts share a row without sharing authority.
-\ Run directly on the product; native builds and graph fixtures cover handover.
+\ A WHITEBOX-SUITE: this engine's seal pass stood down, so the open-gate cases
+\ run first; RUN then seals the checker and runs the cases a sealed image
+\ answers. Native builds and graph fixtures cover handover.
 require lib/test.f
+require lib/string.f
 require test/replay-scope.f
 require lib/tier.f
 
@@ -38,6 +41,15 @@ TRUSTED: DICT-MIN ( ptr u8 n -- n )
    0 xref-search-wl XREF-FLAGS DNAME-MIN-IN-MASK and ;
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
+\ The gate's state, named by checked bodies: the open gate binds SEALED?'s
+\ recorded row, and SEAL carries a primitive row.
+: SEALED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:SEALED? ;
+: SEAL ( -- ) CHECKER-EFFECT-AUTHORITY:SEAL ;
+
+\ A refusal's code is read from its JSON diagnostic: a mismatch's text render
+\ names none.
+$1000 constant IO-CAP
+create DIAGS IO-CAP allot
 
 : EXPLICIT-IN-ABI ( -- )
    s" n -- n" s" EAUTH-EXPLICIT" DECLARE ;
@@ -164,10 +176,12 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    s" recovery mode keeps unrelated ABI-only and trusted-only calls closed" T-LABEL
    s" EAUTH-REC-RAW ( n -- n )" ABI -1 T=
    s" EAUTH-REC-RAW-CALL ( n -- n ) EAUTH-REC-RAW" JUDGE 0 T=
+   s" EAUTH-REC-RAW-TICK ( -- [ n -- n ] ) ['] EAUTH-REC-RAW" JUDGE 0 T=
    s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-check" JUDGE 0 T=
    s" EAUTH-REC-RAW-CALL" RECOVERY-FACT
+   s" EAUTH-REC-RAW-TICK" RECOVERY-FACT
    s" EAUTH-REC-TRUST-CALL" RECOVERY-FACT
-   MULTI- 3 T=
+   MULTI- 4 T=
 
    s" later collection runs cannot borrow old recovery declarations" T-LABEL
    MULTI+
@@ -259,8 +273,84 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    s" EAUTH-LIVE" SOURCE-MIN 1 T=
    s" 23 EAUTH-LIVE" EV-N 23 T= ;
 
+\ ---- the open gate -------------------------------------------------------------
+\ FRESH is a pre-hook checker word: the build recorded its row without source
+\ authority, and no primitive row stands behind it. An unsealed checker binds
+\ that row and checks the caller's body against it, and the row gains nothing.
+\ What the gate does not open stays shut: PRIM-CASES runs unsealed too, and a
+\ failed declaration's row serves only its own run.
+: OPEN-X ( -- ) s" : EAUTH-OPEN-X ( -- n ) FRESH ;" EV ;
+
+: OPEN-LIVE-CASES ( -- )
+   s" an unsealed checker binds an internal word's recorded row" T-LABEL
+   SEALED? TFALSE
+   ['] OPEN-X catch 0 T=
+   s" : EAUTH-OPEN-TICK ( -- [ -- n ] ) ['] FRESH ;" EV
+   s" EAUTH-OPEN-X" SOURCE-MIN 0 T=
+   s" EAUTH-OPEN-X" CHECKER-RESOLVES? TTRUE
+   s" and checks the body against that row" T-LABEL
+   DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
+   s" EAUTH-OPEN-Y ( -- ) FRESH" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   false DIAG-JSON!  DIAG-BUFFER-OFF
+   s" binding grants the row no authority" T-LABEL
+   s" FRESH" CHECKER-RESOLVES? TFALSE
+   s" FRESH" SOURCE-MIN -1 T=
+   ENFORCED? TTRUE ;
+
+: OPEN-REPLAY-CASES ( -- )
+   PRIM-CASES
+   s" an unsealed checker binds no failed declaration after its run" T-LABEL
+   MULTI+
+   s" EAUTH-OPEN-BAD ( n -- n ) drop" JUDGE 0 T=
+   MULTI- 1 T=
+   s" EAUTH-OPEN-BAD" RECOVERY-FACT
+   s" EAUTH-OPEN-STALE ( n -- n ) EAUTH-OPEN-BAD" CHECK-CANDIDATE! 0 T= ;
+
+\ The same engine sealed, as src/core/internal-mark.f seals a product: the call
+\ the open gate bound is refused by name, and every case after this one is the
+\ sealed image's answer.
+: SEALED-CASES ( -- )
+   s" sealing closes the gate" T-LABEL
+   SEAL SEALED? TTRUE
+   ENFORCED? TTRUE
+   DIAGS IO-CAP DIAG-BUFFER!  true DIAG-JSON!
+   s" EAUTH-SEALED-X ( -- n ) FRESH" CHECK-CANDIDATE! 0 T=
+   DIAG-BUFFER$ s\" \"code\":\"E-CAP-TRUSTED\"" CONTAINS? TTRUE
+   false DIAG-JSON!  DIAG-BUFFER-OFF ;
+
+\ ---- copies of a failed declaration's row ------------------------------------------
+\ A failed declaration's row serves only its own run, and so does every copy:
+\ after that run, and inside a later one, EXPORT refuses the row as uncertified,
+\ so no alias exists for the open gate to bind and a caller names nothing (1).
+\ The run's own export keeps the recovery fact (RECOVERY-PUBLICATION). Tier 1
+\ cannot compile a failed definition, so the case publishes at tier 0 and
+\ restores the caller's tier.
+: COPY-CASES ( -- )
+   s" a failed declaration's row is not exported after its run" T-LABEL
+   tier@ {: saved:n :}
+   0 TIER:SELECT
+   MULTI+
+   s" : EAUTH-COPY-BAD ( n -- n ) drop ;" EV
+   MULTI- 1 T=
+   s" EAUTH-COPY-BAD" RECOVERY-FACT
+   [: s" package EAUTH-COPY public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   E-EXPORT-UNDEFINED T=
+   s" EAUTH-COPY-CALL ( n -- n ) EAUTH-COPY:EAUTH-COPY-BAD" CHECK-CANDIDATE! 1 T=
+   s" nor inside a later run" T-LABEL
+   MULTI+
+   [: s" package EAUTH-COPY-LATER public EXPORT EAUTH-COPY-BAD ;package" EV ;] catch
+   E-EXPORT-UNDEFINED T=
+   MULTI- 0 T=
+   saved TIER:SELECT ;
+
 : RUN ( -- )
-   T-RESET REPLAY+
+   T-RESET
+   OPEN-LIVE-CASES
+   REPLAY+ OPEN-REPLAY-CASES REPLAY-
+   COPY-CASES
+   SEALED-CASES
+   REPLAY+
    SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES
    REPLAY-
    LIVE-CASES

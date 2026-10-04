@@ -197,8 +197,15 @@ variable IMK-QI
 1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
 variable IMK-CLASS
 
+\ THE CHECKER'S AUTHORITY GATE CLOSES WITH THE SEAL. Until this pass runs, a
+\ checked body that names an internal word is checked against the row the build
+\ recorded for it (src/core/checker.f CALL-AUTHORITY); a sealed image refuses
+\ that call, so the sealed arm closes the gate as it writes its verdict.
+\ The whitebox arm leaves the gate open, and the capture bakes either state with
+\ the rest of DATA.
 : IMK-SEAL ( -- )
    IMAGE-SEALED IMK-CLASS !
+   CHECKER-EFFECT-AUTHORITY:SEAL
    CORE-PREFIX:FIRST-RECORD {: first:n :}
    first IMK-WALK
    first IMK-WALK-PACKAGES

@@ -15,6 +15,7 @@ require lib/errors.f
 require src/core/prefix-boundary.f
 require lib/string.f
 require lib/memory.f
+require lib/tier.f
 require src/habu/address-cells.f
 require src/compiler/native/string.f
 
@@ -118,6 +119,30 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
       REGISTER-CLAUSE
    then ;
 
+\ --- the recovery-row mode ---------------------------------------------------
+\ `--recovery-row` after the fixture path: just before the transfer the retained
+\ checker refuses one definition under multi-error collection, which leaves its
+\ row in EFF-RECOVERY (src/core/checker.f), a fact of this run and never a
+\ source grant. Tier 0 scans no body while the hook is off, as it is through the
+\ prefix, so the definition compiles at tier 1, where the checker scans every
+\ body.
+
+: RECOVERY$ ( -- ptr u8 n ) s" --recovery-row" ;
+
+: RECOVERY-MODE? ( -- bool )
+   SCRIPT-ARGC 1 ?do
+      i SCRIPT-ARGV$ RECOVERY$ CORE-STR= if true unloop exit then
+   loop false ;
+
+: RECOVERY-ROW ( -- )
+   tier@ {: was:n :}
+   1 TIER:SELECT
+   MULTI-ERR-BEGIN
+   s" : NW-RECOVERY ( n -- bool ) 1 + ;" evaluate-closed
+   MULTI-ERR-END {: refused:n :}
+   was TIER:SELECT
+   refused 1 <> if s" window: the recovery definition was not refused" 76 die then ;
+
 \ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---
 
 : LOAD-WINDOW ( ptr u8 -- ) {: source:ptr :}
@@ -140,6 +165,7 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
+   RECOVERY-MODE? if RECOVERY-ROW then
    source TRANSFER-CHECKER
    \ A source-loaded retained compiler must now use the replacement owner too.
    CHECKER-OWNER:CAPTURE-PREPARE
@@ -153,7 +179,7 @@ CAST: SOURCE-PROVIDE-XT ( n -- [ ptr u8 n -- ] )
       \ The retained compiler owns literals after its namespace is retired.
       2dup s" --literals" CORE-STR= if
          2drop NSTR:WINDOW-OPEN
-      else LOAD-OPTIONAL then
+      else 2dup RECOVERY$ CORE-STR= if 2drop else LOAD-OPTIONAL then then
    loop
    PATH$ included
    \ Call the retained production detector after the replacement checker loads.
