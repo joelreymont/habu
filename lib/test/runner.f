@@ -18,6 +18,9 @@ require lib/fmt.f                        \ FMT:.INT - one-line number text, shar
 10000 constant GT-DEFAULT-TIMEOUT-MS
 5000 constant GT-HEARTBEAT-MS
 10 constant GT-LF
+\ The longest name GT-PATH joins. GT-START keeps that much room below the root
+\ it makes, so whether a row's name joins never depends on how long HB_TMP is.
+64 constant GT-NAME-MAX
 
 create GT-ROOT-BUF FS-PATH-CAP allot
 create GT-OUT-BUF GT-OUT-CAP allot
@@ -81,18 +84,12 @@ variable GT-TAIL-U
    a GT-ROOT-BUF u BYTE-COPY
    u GT-ROOT-U ! ;
 
-: GT-START ( ptr u8 n -- ) {: prefix:ptr prefixu :}
-   GT-RESET
-   CLEANUP-RESET
-   0 GT-ROOT-U !
-   prefix prefixu HB-TMP-MKDIR GT-COPY-ROOT!
-   GT-ROOT CLEANUP-TREE+ ;
-
 : GT-CLEANUP ( -- )
    CLEANUP-RUN ;
 
 : GT-PATH ( ptr u8 n ptr u8 -- n ) {: name:ptr nameu dst:ptr :}
    GT-EXPECT-ROOT
+   nameu GT-NAME-MAX > if E-FS-CAPACITY throw then
    GT-ROOT name nameu dst JOIN-PATH ;
 
 : GT-FAIL-STORED ( -- n )
@@ -534,3 +531,31 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    s" test-runner: " type GT-FAIL# @ FMT:.INT s"  failure(s)" type cr
    GT-REPORT-FAILS
    s" test-runner: failures" GT-EX-FAIL die ;
+
+\ The longest HB_TMP GT-START takes for a root prefix of n bytes: the root
+\ HB-TMP-MKDIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
+: GT-HB-TMP-MAX ( n -- n )
+   TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
+
+\ An HB_TMP longer than that is refused once, here, before anything is made:
+\ a named failure with its length and the limit, then the report's exit. A
+\ row's own deeper paths are its business: docs/gate.md bounds the full gate.
+: GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
+   s" HB_TMP" GETENV nip {: tmpu:n :}
+   prefixu GT-HB-TMP-MAX {: max:n :}
+   tmpu max <= if exit then
+   s" HB_TMP leaves the test root no room" GT-FAIL+
+   s" runner: HB_TMP is " type tmpu FMT:.INT
+   s"  bytes; at most " type max FMT:.INT
+   s"  leave the root and a " type GT-NAME-MAX FMT:.INT
+   s" -byte name within FS-PATH-CAP " type FS-PATH-CAP FMT:.INT
+   cr
+   GT-REPORT ;
+
+: GT-START ( ptr u8 n -- ) {: prefix:ptr prefixu :}
+   GT-RESET
+   CLEANUP-RESET
+   0 GT-ROOT-U !
+   prefixu GT-ROOM-CHECK
+   prefix prefixu HB-TMP-MKDIR GT-COPY-ROOT!
+   GT-ROOT CLEANUP-TREE+ ;

@@ -62,6 +62,7 @@ create GT-POOL-TMP-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-TMP-PATH-US GT-POOL-MAX cells allot
 create GT-POOL-SOCK-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-SOCK-PATH-US GT-POOL-MAX cells allot
+create GT-POOL-SCRATCH-CODES GT-POOL-MAX cells allot
 create GT-POOL-SOCK-ROOT-BUF FS-PATH-CAP allot
 create GT-POOL-OUT-FDS GT-POOL-MAX cells allot
 create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
@@ -86,6 +87,7 @@ create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-MSS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CPU-BUDGETS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CPU-USEDS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-SCRATCH-CODES GT-POOL-RED-MAX cells allot
 
 TYPED-VARIABLE GT-POOL-OUT-BUFS-A ptr u8
 TYPED-VARIABLE GT-POOL-ERR-BUFS-A ptr u8
@@ -335,6 +337,11 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-SOCK-PATH-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SOCK-PATH-US + ;
 
+\ The code the last refused removal of the slot's directories threw, 0 while
+\ they all went (GT-POOL-CHILD-TMP-REMOVE).
+: GT-POOL-SCRATCH-CODE-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-SCRATCH-CODES + ;
+
 \ The short directory this pool made for a SPAWNED slot's child's sockets,
 \ empty for a forked slot (GT-POOL-CHILD-SOCK!).
 : GT-POOL-SOCK$ ( idx -- ptr u8 n ) {: idx:idx :}
@@ -446,11 +453,24 @@ GT-POOL-ABORT-BARE!
    a u EXISTS? 0= if exit then
    a u REMOVE-TREE ;
 
+\ One of a slot's directories. A removal that throws - a tree its child left
+\ deeper than FS-PATH-CAP, which REMOVE-TREE refuses - is named with the row,
+\ the path and the code, and the code is the slot's (GT-POOL-OK?): the row
+\ fails and the pool goes on.
+: GT-POOL-SCRATCH-REMOVE ( ptr u8 n idx -- ) {: a:ptr u:n idx:idx :}
+   a u [: 2dup GT-POOL-TREE-REMOVE ;] catch {: code:n :}
+   2drop
+   code 0= if exit then
+   s" test pool: scratch " type a u type
+   s"  of " type idx GT-POOL-LABEL$ type
+   s"  not removed, throw " type code FMT:.INT cr
+   code idx GT-POOL-SCRATCH-CODE-PTR ! ;
+
 \ The child's scratch and its socket directory (GT-POOL-CHILD-TMP!), once
 \ nothing is left to write into them.
 : GT-POOL-CHILD-TMP-REMOVE ( idx -- ) {: idx:idx :}
-   idx GT-POOL-TMP$ GT-POOL-TREE-REMOVE
-   idx GT-POOL-SOCK$ GT-POOL-TREE-REMOVE ;
+   idx GT-POOL-TMP$ idx GT-POOL-SCRATCH-REMOVE
+   idx GT-POOL-SOCK$ idx GT-POOL-SCRATCH-REMOVE ;
 
 \ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
 \ is made inside one directory under TMPDIR per pool session, which goes in
@@ -650,6 +670,7 @@ false GT-POOL-CATCHING !
    0 idx GT-POOL-ERR-PATH-U-PTR !
    0 idx GT-POOL-TMP-PATH-U-PTR !
    0 idx GT-POOL-SOCK-PATH-U-PTR !
+   0 idx GT-POOL-SCRATCH-CODE-PTR !
    false idx GT-POOL-ASKED-PTR !
    0 idx GT-POOL-SEQ-PTR !
    0 idx GT-POOL-WAITS-PTR !
@@ -1076,6 +1097,9 @@ false GT-POOL-CATCHING !
 : GT-POOL-RED-CPU-USED-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-CPU-USEDS + ;
 
+: GT-POOL-RED-SCRATCH-CODE-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-SCRATCH-CODES + ;
+
 : GT-POOL-RED-OVER? ( n -- bool ) {: i:n :}
    i GT-POOL-RED-CPU-USED-PTR @ i GT-POOL-RED-CPU-BUDGET-PTR @ GT-POOL-OVER-BUDGET? ;
 
@@ -1117,6 +1141,7 @@ false GT-POOL-CATCHING !
    idx GT-POOL-ELAPSED-MS i GT-POOL-RED-SAT-MS-PTR !
    idx GT-POOL-CPU-BUDGET-PTR @ i GT-POOL-RED-CPU-BUDGET-PTR !
    idx GT-POOL-CPU-USED-PTR @ i GT-POOL-RED-CPU-USED-PTR !
+   idx GT-POOL-SCRATCH-CODE-PTR @ i GT-POOL-RED-SCRATCH-CODE-PTR !
    idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR ! ;
 
 : GT-POOL-RED+ ( idx -- ) {: idx:idx :}
@@ -1163,6 +1188,9 @@ false GT-POOL-CATCHING !
    s"  code=" type i GT-POOL-RED-CODE-PTR @ GT-POOL-N-TYPE
    s"  out=" type i GT-POOL-RED-OUT$ type
    s"  err=" type i GT-POOL-RED-ERR$ type
+   i GT-POOL-RED-SCRATCH-CODE-PTR @ 0<> if
+      s"  scratch=" type i GT-POOL-RED-SCRATCH-CODE-PTR @ GT-POOL-N-TYPE
+   then
    i GT-POOL-RED-SAT-LINE cr ;
 
 : GT-POOL-RED-OVERFLOW-LINE ( -- )
@@ -1341,7 +1369,8 @@ false GT-POOL-CATCHING !
 
 : GT-POOL-OK? ( idx -- bool ) {: idx :}
    idx GT-POOL-EXITED-PTR @
-   idx GT-POOL-CODE-PTR @ 0= and ;
+   idx GT-POOL-CODE-PTR @ 0= and
+   idx GT-POOL-SCRATCH-CODE-PTR @ 0= and ;
 
 \ ---- a row bounded by its own work --------------------------------------------
 \
@@ -1557,12 +1586,22 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
       timeout OF 0 ENDOF
    ;MATCH ;
 
+\ The end of a run removes the runner's root and the fallback root. A removal
+\ that throws, as one does on a tree deeper than FS-PATH-CAP that a slot left
+\ under the root, is named here, and the run still ends the way it was ending.
+\ The registry goes with the report: the exit hook's retry would throw at the
+\ same entry and name it a second time.
+: GT-POOL-CLEANUP ( -- )
+   [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
+   code 0= if exit then
+   s" test pool: cleanup threw " type code GT-POOL-N-TYPE cr
+   CLEANUP-RESET ;
+
 : GT-POOL-SIGNAL-DIE ( n -- ) {: sig:n :}
    s" test pool: signal " type sig GT-POOL-N-TYPE
    s" , ending " type GT-POOL-LIVE @ GT-POOL-N-TYPE s"  live rows" type cr
    GT-POOL-KILL-ALL
-   [: GT-CLEANUP GT-POOL-FALLBACK-REMOVE ;] catch {: code:n :}
-   code 0<> if s" test pool: cleanup threw " type code GT-POOL-N-TYPE cr then
+   GT-POOL-CLEANUP
    s" test pool: signal" sig SIGNAL:DIE-OF ;
 
 \ A step asks after every poll. A program that caught signals asks once more
@@ -1611,8 +1650,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
 \ lines rebuild their capture paths under it (GT-POOL-RED-STREAM$).
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
-   GT-CLEANUP
-   GT-POOL-FALLBACK-REMOVE
+   GT-POOL-CLEANUP
    s" test pool failed" 1 die ;
 
 \ Green path: every slot has retired and nothing reads the captures after this,

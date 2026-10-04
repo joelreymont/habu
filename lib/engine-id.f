@@ -3,9 +3,9 @@
 \ running image: /proc/self/exe on Linux, and on macOS a descriptor whose vnode
 \ matches the main executable's mapped vnode. A pathname can be replaced after
 \ PATH$ resolves it, so its bytes alone cannot establish image identity.
-\ Cached pathname bytes and cache validity are cleared before image capture
-\ through a one-shot lifecycle hook. The next process, or a later use in this
-\ process, registers a fresh hook when it first caches either value.
+\ The caches, their validity and every buffer a query writes are cleared before
+\ image capture through a one-shot lifecycle hook. The next process, or a later
+\ use in this process, registers a fresh hook when it first caches either value.
 
 require lib/errors.f
 require lib/string.f
@@ -56,10 +56,20 @@ FUNCTION: OPENED-INFO proc_pidfdinfo ( n n n ptr u8 n -- i32 )
    3 4 WRITES-ARG
 ;FUNCTION
 
+: CLEAR-SPAN ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 ?do 0 a i + c! loop ;
+
+\ Capture clears each buffer whole. On macOS KEY$ leaves the pathname in the
+\ digest context's path field and in the mapped-region answer, as well as in
+\ EID-PATH, and proc_pidpath can leave a right-aligned copy beyond the length it
+\ reports. The key, the digest state and the descriptor answer go too.
 : CLEAR-CACHE ( -- )
-   \ macOS proc_pidpath can leave a right-aligned copy beyond the reported length.
-   \ Clear the full allocated span before capture.
-   EID-PATH-CAP 0 ?do 0 EID-PATH i + c! loop
+   EID-PATH EID-PATH-CAP CLEAR-SPAN
+   EID-KEY EID-KEY-LEN CLEAR-SPAN
+   EID-FSHA-CTX SHA256-FILE-CTX-BYTES CLEAR-SPAN
+   EID-MAPPED EID-REGION-BYTES CLEAR-SPAN
+   EID-OPENED EID-FD-BYTES CLEAR-SPAN
    0 EID-PATH-U !
    0 EID-PATH-DONE !
    0 EID-KEY-DONE !

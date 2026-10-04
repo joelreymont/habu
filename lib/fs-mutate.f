@@ -473,7 +473,17 @@ public
 : RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n )
    FS-MUT-ATOMIC-SEED FS-MUT-ATOMIC-RESERVE ;
 
+\ The longest base MAKE-TEMP-DIR makes a directory in for a prefix of n bytes:
+\ its `<base>/<prefix>-<seed>-<attempt>` path still fits FS-PATH-CAP with the
+\ largest seed, the largest nonnegative cell, and the last attempt, so whether
+\ a base has room for one never depends on the seed it drew.
+: TEMP-DIR-BASE-MAX ( n -- n ) {: prefixu:n :}
+   FS-PATH-CAP 3 - prefixu -
+   -1 1 rshift FS-MUT-U-DIGITS -
+   FS-MUT-TMP-RETRIES 1- FS-MUT-U-DIGITS - ;
+
 : FS-MUT-BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) {: base:ptr baseu prefix:ptr prefixu seed attempt :}
+   baseu prefixu TEMP-DIR-BASE-MAX > if E-SPAN-CAPACITY throw then
    SB-RESET
    base baseu SB-APPEND
    FS-MUT-SLASH SB-APPEND-C

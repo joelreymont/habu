@@ -332,7 +332,7 @@ variable WANT-U
    0 WANT-U !
    s" E-TRUST-UNRESOLVED habu: trust row for '" WANT+
    a u WANT+
-   S\" ' names no word where its record lands: nothing in the open section's wordlist, or the global wordlist outside a package, is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
+   S\" ' names no word where its record lands: nothing in the open section's wordlist, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL is spelled that way, so the effect would be recorded against a symbol the engine never defined. Delete the row, correct the name to the word it was meant to describe, or write it in the section that defines that word\nhb: uncaught throw code 7143\n" WANT+
    WANT WANT-U @ ;
 
 : TEST-TOP-LEVEL ( -- )

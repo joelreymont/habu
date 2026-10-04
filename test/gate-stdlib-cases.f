@@ -1305,7 +1305,7 @@ SUITE proc-capture-under-signals
 
 SUITE process-fork-wrappers
    lib/process-fork-test.f
-   lib/process-tree-fork-test.f
+   lib/fork-child-test.f
 ;SUITE
 
 SUITE proc-pty-io-supervisor-smoke
@@ -1419,6 +1419,12 @@ SUITE five-bindings
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
+;SUITE
+
+\ PG's configuration lock in a child forked while another task holds it
+\ (lib/fork-child.f). Loading lib/pg.f opens libpq; no server is needed.
+SUITE pg-fork
+   lib/pg-fork-test.f
 ;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
@@ -2362,6 +2368,14 @@ SUITE source-root
    test/source-root-test.f
 ;SUITE
 
+SUITE deep-cwd
+   test/deep-cwd-e2e.f
+;SUITE
+
+SUITE include-refusal
+   test/include-refusal-e2e.f
+;SUITE
+
 SUITE room-left
    test/room-left-test.f
 ;SUITE
@@ -2763,6 +2777,10 @@ SUITE repl-address-cell-rollback
 \ the same fixed reap budget.
 SUITE repl-open-definition
    test/repl-open-definition.f
+;SUITE
+
+SUITE repl-literal-segment
+   test/repl-literal-segment.f
 ;SUITE
 
 SUITE native-gate-diagnostics

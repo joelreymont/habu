@@ -159,11 +159,10 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 \ --- the probe programs (interpreted by the child) -----------------------------
 \ Every one prints exactly one number, so a case is an integer comparison.
 \
-\ The baked words are called at INTERPRET level, which is what the seed publishes:
-\ it registers dictionary records, not checker rows, so a CHECKED definition
-\ naming a baked word is still refused. Dot habu-give-baked-records-c97219fb owns
-\ that half; until it lands, interpret-level resolution is the whole contract and
-\ these cases state exactly it.
+\ The baked words are called at INTERPRET level, which is what the seed publishes
+\ and what these cases state. A checked definition may name them as well: the
+\ engine compiles repl.f after the checker (src/habu/native-runtime.f), so their
+\ checker rows ship with it.
 
 \ repl.f: a batch boot edits no line, so the history ring's low slot is 0 - a
 \ baked word with a value the program cannot have set itself.
@@ -174,8 +173,7 @@ create PROG-BUF FS-PATH-CAP allot   variable PROG-U
 \ captured file's records arrived - HIST is repl.f's history ring and
 \ HBR-RAWMASK is the per-OS repl-term.f's own constant, so neither can stand in
 \ for the other. Written as a definition so the walk compiles, with the baked
-\ spellings reaching the checker as STRING LITERALS - a checked body may not
-\ name them yet.
+\ spellings as STRING LITERALS because the walk counts records by name.
 : BAKED-EACH$ ( -- ptr u8 n )
    S\" : ASB-SEEN ( ptr u8 n -- n ) {: a:ptr u:n :} 0 0 begin dup ndict@ < while dup XREF-REC XREF-NAME$ a u STR= if swap 1+ swap then 1+ repeat drop ;\n: ASB-EACH ( -- ) s\" HIST\" ASB-SEEN s\" HBR-RAWMASK\" ASB-SEEN + . ;\nASB-EACH" ;
 

@@ -302,7 +302,9 @@ public
   image cannot be saved with a path pushed. A file scopes a root with
   `SOURCE-ROOT:WITH`.
   `SOURCE-ROOT:WITH ( ptr u8 n [ -- ] -- )` scopes an explicit root, restoring
-  the caller's on return or throw; fixtures resolve against
+  the caller's on return or throw; a root that does not resolve to a
+  searchable directory, and an image save inside the scope, are refused by
+  name, exit 74. Fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
   keep each parent's source bytes alive until it returns, releasing them on
   return or throw; there is no fixed nesting count. Discovery, checker
@@ -1163,6 +1165,12 @@ by name with the count it saw and the ceiling, and none truncates.
   these sinks exits `$4F` before it writes, as do `evaluate` and
   `evaluate-closed` ([threads.md](threads.md)): the definers name their token
   on stderr, the rest print nothing.
+  Tier 1 keeps every string literal body and trap message in DATA too
+  (`src/compiler/native/string.f`): when the store's last segment cannot take
+  a body it opens another, 512 KB of bodies and 8192 rows, at `here`, so data
+  space is the only bound on their count and total size. A rewind of DATA - a
+  failed `evaluate` or REPL line - stops above the newest segment
+  (`DATA-FLOOR-CELL`), and equal bodies share an address within one segment.
 
 ## Constants
 
@@ -1644,10 +1652,15 @@ the rule.
   `E-BAD-NOMINAL-TYPE` on that token, and `NEWTYPE`, `SUMTYPE`, `ENUM`,
   `STRUCTURE`, `PRODUCT` and `DEFTYPE` refuse
   the names `(` and `\` naming them as the loader does (tools/check-test-lib.f
-  `check/operand-name-admitted`, `-refused`). A definer with nothing after it
-  has no name: the loader refuses it, and `tools/check.f` refuses it at the
-  definer, in prose and as `E-MISSING-NAME`, for each of the eleven definers it
-  reads and for `undefine` (`check/operand-missing`).
+  `check/operand-name-admitted`, `-refused`). A definer or a parsing word with
+  nothing after it has no name: the loader refuses it, and `tools/check.f`
+  refuses it at that word by one record in every mode, `E-MISSING-NAME`. The
+  nominal pass finds the eleven definers it reads and `undefine` in the subject;
+  the pre-verifier stops with `VERIFY:E-MISSING-NAME` at any other (`defer`,
+  `create`, a learned definer, `char`, `'`, a field word) and at any in a file
+  the subject loads, and check.f writes the nominal pass's record for that token
+  (`check/operand-missing`, `check/nested-stop-located`,
+  `check/verify-only-located`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
@@ -1688,7 +1701,7 @@ the rule.
   the word a `generates:` row declares against the row (the next rule).
   Measured: `require lib/ffi-abi.f  PROCESS-SYMBOLS  FUNCTION: G getpid ( --
   i32 ) ;FUNCTION  : H ( -- n ) G ;` loads 0 and checked 70 (`E-UNDEFINED`
-  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :77), `CTX0`
+  `G`) before, 0 after; `SELF-PATH` (lib/engine-id.f:48, used at :87), `CTX0`
   (lib/process-command.f:441), `EVP-STORAGE` (lib/crypto/evp.f:134) and
   `MY-SLOT` (lib/net/http-arena.f:120) were refused and pass. A misuse of a
   product the mark covers is the run's `E-MISMATCH` (exit 70) and a typo in the

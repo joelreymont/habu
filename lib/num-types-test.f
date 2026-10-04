@@ -8,7 +8,7 @@
 \ schedules it through test/gate-stdlib-cases.f.
 \
 \ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot
-\ habu-typestate-result-drop-5ae048a7), so a caller MATCHes the concrete
+\ habu-eliminate-a-parameterised-7ce778f8), so a caller MATCHes the concrete
 \ instantiation it holds. Each `*-CODE` word below is that concrete classifier:
 \ it maps a role's numeric-result to 0 (ok) or the named E-NUM-* refusal code,
 \ so the runtime matrix asserts the EXACT refusal, not merely "not ok".
@@ -218,7 +218,7 @@ private
 \ generated constructors are compiled, and the ok arm binds its payload through a
 \ typed local before handing it back to the ok constructor. The seven-arm shape is
 \ repeated rather than factored because a polymorphic eliminator over the whole
-\ bundle is not expressible yet (dot habu-typestate-result-drop-5ae048a7), which
+\ bundle is not expressible yet (dot habu-eliminate-a-parameterised-7ce778f8), which
 \ is the same reason the ten classifiers at the top of this file repeat it.
 : REBUILD-CC ( NUM:numeric-result<NUM:cell-count> -- NUM:numeric-result<NUM:cell-count> )
    MATCH NUM:numeric-result

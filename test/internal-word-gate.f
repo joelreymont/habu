@@ -867,11 +867,12 @@ create QNAME QNAME-CAP allot
 \ what closes it, because a package private has no top-level spelling on any of
 \ the three routes — bare, qualified, or through a `using`.
 \
-\ THE ONE ROUTE THAT STILL REACHES IT is `package SCHEMA-REG` in user source,
-\ which puts the private wordlist back on the bare chain. That is not this seal's
-\ defect. It is dot
-\ habu-pkg-reopen-reaches-113ecd89, whose acceptance owns the fix, so no case here
-\ asserts a crash as expected behaviour. ----
+\ REOPENING IS NO ROUTE EITHER. `package SCHEMA-REG` in user source would put
+\ the private wordlist back on the bare chain, but the native build seals every
+\ package its capture ships (src/core/internal-mark.f SEAL-PACKAGES), so on this
+\ engine the reopen exits ENGINE-ERROR:SEAL-PACKAGE (84) first (habu2.f
+\ C-PACKAGE-SEAL-GUARD; test/package-seal.f pins it). No case here asserts a
+\ crash as expected behaviour. ----
 
 : SEAL-BARE-FORGE$ ( -- ptr u8 n )   \ the pre-seal crash program, verbatim
    SB-RESET
@@ -1201,15 +1202,11 @@ create QNAME QNAME-CAP allot
 \ body text instead of the input stream. The negative leg is what bounds it: the
 \ package public each one calls must NOT answer bare.
 \
-\ THE ONE ROUTE THAT STILL REACHES A PRIVATE is the one the schema block above
-\ names: `package TYPE-DECL / private / 0 TDPLAN-P !` puts the private wordlist
-\ back on the bare chain and the SIGSEGV comes back, exactly as `package
-\ SCHEMA-REG` does on master. That is dot habu-pkg-reopen-reaches-113ecd89,
-\ whose acceptance owns the
-\ fix, so no case here asserts a crash as expected behaviour. TFAM is closed
-\ against it only because `tfam` is in habu2.f KWDATA:RESTAB-BUF, which is a
-\ decision about which packages are system packages rather than a property of
-\ sealing; whether `type-decl` joins that table is that dot's call. ----
+\ REOPENING IS NO ROUTE EITHER, as in the schema block above: `package
+\ TYPE-DECL / private / 0 TDPLAN-P !` exits ENGINE-ERROR:SEAL-PACKAGE (84) at
+\ `package TYPE-DECL`, because the build seals every baked package whether or not
+\ its name is in KWDATA:RESTAB-BUF. No case here asserts a crash as expected
+\ behaviour. ----
 
 : DSEAL-PLAN-FORGE$ ( -- ptr u8 n )   \ the pre-seal SIGSEGV program, verbatim
    SB-RESET

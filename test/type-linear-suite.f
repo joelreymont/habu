@@ -195,8 +195,10 @@ ENUM load-result 0
   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 STRUCTURE via-load 0 FIELD result load-result ;STRUCTURE       \ a structure reaching a linear ENUM
-s" TLIN:FREE-MODEL" s" TLIN:model --" TRUST
-s" TLIN:MINT-TOK" s" -- TLIN:tok" TRUST
+\ Declared boundaries, never run: a `trust` row would claim the words exist, and
+\ nothing defines them. A model is three cells (inner's t and k, then z).
+TRUSTED: FREE-MODEL ( TLIN:model -- ) 2drop drop ;
+TRUSTED: MINT-TOK ( -- TLIN:tok ) 0 ;
 
 \ the value itself: identity and permutation conserve it, every copy or loss does not.
 s" TC1=" type s" TC1 ( model -- model )" CHECK-QUIET-CANDIDATE! -1 T=

@@ -748,7 +748,9 @@ s" sig-less recursion stays uncheckable" T-LABEL
 s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
 \ engine FIND parity for colon tokens: a non-edge first colon plus a second
 \ colon never resolves (FIND-QBAD); edge colons stay ordinary names. No row can
-\ name such a token: `trust` refuses it (test/name-length-test.f).
+\ name such a token: `trust` refuses it (test/name-length-test.f). A qualified
+\ name resolves in a package that defines its tail: `trust` refuses a row for
+\ one that does not (test/trust-row-test.f).
 : x: ( -- n ) 0 ;
 : ::x ( -- n ) 0 ;
 \ The qualified case names a real public word: a candidate binds the record the

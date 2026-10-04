@@ -26,10 +26,12 @@
 \ second form's stopped line among the packets, code 78. It answers
 \
 \    check-verify: verified | refused | held
+\                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source and this file), so it
-\ cannot be verified here. The parent answers engine-provided itself.
+\ cannot be verified here. The parent answers engine-provided itself. stopped
+\ is a throw that ended the composition, whatever was refused before it.
 \
 \ The second form is check.f's pre-pass. The first definition the checker
 \ refuses stops the composition, as it stops the load, and the subject's packets
@@ -43,8 +45,8 @@
 \ read last starts, DUP-AT and DUP-LEN where the name it refused as a duplicate
 \ starts and its length, DUP-LEN 0 when it kept no name (VERIFY:DUPLICATE),
 \ IN-SUBJECT 1 when the stop is in BYTES and 0 when it is in a file they load,
-\ and FILE, the rest of the line, the name of the file it is in, LABEL for
-\ BYTES.
+\ and FILE, the rest of the line, the name of the file it is in: for BYTES,
+\ SUBJECT in the first form and LABEL in the second.
 \
 \ stderr is prose: for the first form, a line for each file whose verification
 \ a throw stopped, and whatever else the engine writes there, a `die`'s message
@@ -69,6 +71,7 @@ DYNAMIC-BUFFER SUBJECT u8               \ the subject's bytes, from stdin
 variable SUBJECT-U
 variable RD
 variable FAILED
+variable STOP                           \ the code a throw ended the composition with, 0 for none
 variable NUM-I
 create NUM NUM-CAP allot
 create NL 1 allot
@@ -164,7 +167,8 @@ create NL 1 allot
    MULTI-ERR-BEGIN
    [: VERIFY-CUR ;] catch {: rc:n :}
    MULTI-ERR-END {: rejects:n :}
-   rc 0<> rejects 0<> or if -1 FAILED ! then
+   rejects 0<> if -1 FAILED ! then
+   rc STOP !
    rc 0= if exit then
    rc E-DUP-DEFINITION = if rc STOP-RESULT then
    VERIFY:SOURCE-COMPOSE-STOPPED$ rc rejects STOPPED ;
@@ -193,11 +197,13 @@ create NL 1 allot
 
 : VERIFY-CLOSURE ( -- )
    0 FAILED !
+   0 STOP !
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if
       ERR-FD s" check-verify: stopped by throw " WRITE ERR-FD rc FD-N ERR-FD NEWLINE
       rc throw
    then
+   STOP @ 0<> if STOP @ STOP-RESULT exit then
    FAILED @ 0<> if s" refused" RESULT exit then
    s" verified" RESULT ;
 
@@ -207,8 +213,6 @@ create NL 1 allot
    VERIFY:SOURCE-COMPOSE-LABELED-IN-SCOPE ;
 
 
-
-
 70 constant REFUSED-RC                  \ a refused definition's stop (verify-source.f BODY-VERDICT)
 
 \ A definition refused by the throw that rendered its packet (checker.f
@@ -216,7 +220,6 @@ create NL 1 allot
 \ stop keeps its code.
 : STOP-CODE ( n -- n )
    dup DEF-STOPPED @ = if drop REFUSED-RC then ;
-
 
 : PREVERIFY ( -- )
    [: PREVERIFY-CUR ;] SCOPED {: rc:n :}

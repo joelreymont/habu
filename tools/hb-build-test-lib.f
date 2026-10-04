@@ -12,7 +12,8 @@
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
 \   tools/hb-build-aot-cache-test.f           object cache and its keys, failed
 \                                             publication
-\   tools/hb-build-stripped-test.f            library state, engine cells, ptr mark
+\   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
+\                                             ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table

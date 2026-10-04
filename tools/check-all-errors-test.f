@@ -330,9 +330,14 @@ create CAE-LF-BYTE 10 c,
    s" 2" SB-APPEND
    SB$ ;
 
+\ The prose names the code, the file, line and column of the opener, and the
+\ opener.
 : CAE-PROSE-BAD-ROW$ ( -- ptr u8 n )
    SB-RESET
-   s" E-MALFORMED-REGISTRY-ROW" SB-APPEND CAE-LF
+   s" E-MALFORMED-REGISTRY-ROW " SB-APPEND
+   CAE-IN SB-APPEND
+   s" :2:1: primitive-axiom row opened at 'PRIM:' does not close" SB-APPEND
+   CAE-LF
    SB$ ;
 
 : CAE-PREPARE ( -- )

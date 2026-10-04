@@ -69,7 +69,9 @@ variable OPENER-NDICT
 \ after the application - tools/aot-build.f, which only the engine's maker
 \ compiles, and the linker - adds a byte to the image (tools/hb-build-aot-test.f
 \ BUILD-AOT-SPAN-ENGINE). AOT-APP-POOL selects the application's pool again for
-\ the link.
+\ the link, which copies in the literals it reaches in other pools: AOT-DATA-SPAN
+\ closes the pool first, so it keeps room for them inside the span and opens no
+\ segment past it.
 PTR-VARIABLE MAKER-POOL
 PTR-VARIABLE APP-POOL
 
@@ -78,10 +80,12 @@ PTR-VARIABLE APP-POOL
    NSTR:WINDOW-OPEN
    NSTR:ACTIVE APP-POOL !
    \ The application owns the literal bodies, not the compiler's lookup tables.
-   \ NEW-POOL places its owner and row tables before the arena. Start at the
-   \ arena so the tables stay outside capture like the compiler's ACTIVE-P.
-   \ A saved SOURCE-ROWS pointer then takes the ordinary unrestored-DATA refusal.
-   NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
+   \ A segment's owner and row tables precede its arena. Start at the first
+   \ segment's arena so its tables stay outside capture like the compiler's
+   \ ACTIVE-P. A saved first-segment SOURCE-ROWS pointer then takes the ordinary
+   \ unrestored-DATA refusal. A later segment, opened while the application
+   \ loads, lies inside the span with its tables.
+   0 NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
 \ Latch the application span before loading the linker, and hand the maker back
 \ its literal pool. Keeping the application's pool active while the linker
@@ -125,6 +129,7 @@ PTR-VARIABLE CARRY-P
    CARRY-BYTES @ 0 ?do 0 CARRY-BASE$ i + c! loop ;
 
 : AOT-DATA-SPAN ( -- )
+   NSTR:WINDOW-CLOSE
    BLOB-SRC @ AOT-OWNED:CARRY-SIZE CARRY-BYTES !
    CARRY-RESERVE
    HERE-N  BLOB-END !

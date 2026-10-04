@@ -669,8 +669,8 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 \ for tagged families, a wide product's extra is 0 and it certifies with no exemption. A
 \ tagged SUM whose non-widest variant needs FEWER cells than the declared family reserves is
 \ still a genuine contradiction and fails closed (until signed pass-2, dot
-\ habu-signed-pass-2-4fc2b960) — including the INSTANTIATED-TIE case, where the verdict is
-\ ORDER-INDEPENDENT (both declaration orders reject), unlike the order-dependent
+\ habu-construct-asymmetric-growth-0f4df0fa) — including the INSTANTIATED-TIE case, where
+\ the verdict is ORDER-INDEPENDENT (both declaration orders reject), unlike the order-dependent
 \ accept/reject a widest-variant discriminator gave. Families use string-eval so the derived
 \ accessors resolve at global scope; the runtime value/width check lives in package XPAD-TAGLESS.
 \ ---------------------------------------------------------------------------
@@ -713,7 +713,8 @@ XPGW-RT
 \ is exercised through the REAL generated variant constructor (FAM:VARIANT), proven resolvable
 \ by a concrete instantiation that certifies — an undefined word would itself be rc 70, so the
 \ concrete rc 0 shows the wide rc 70 is a genuine negative-extra reject, not an undefined-word
-\ miss. Signed pass-2 (dot habu-signed-pass-2-4fc2b960) will flip these to exact-width forms.
+\ miss. Signed pass-2 (dot habu-construct-asymmetric-growth-0f4df0fa) will flip these to
+\ exact-width forms.
 s" PRODUCT xw2 0 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
 \ xst<xw2>: stable(n n n, declared 3) is sole argmax both ways; grow(a, declared 1) instantiates
 \ to 2 -> extra(grow) = (3-2) - (3-1) = -1 (a non-widest variant that grows).
