@@ -1463,5 +1463,6 @@
 -9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
 
-\ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
-\ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829.
+\ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
+\ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
+\ WLINK -9830..-9834.
