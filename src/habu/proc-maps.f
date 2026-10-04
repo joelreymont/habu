@@ -118,10 +118,16 @@ variable SNAP-U
 \ src/habu/aot-closure.f beside it are.
 variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 
+\ Kernel VMA addresses are ordered as unsigned cells, including x86-64's
+\ high vsyscall mapping. Flipping the sign bit makes signed order equivalent.
+$8000000000000000 constant VA-SIGN
+: VA< ( n n -- bool ) {: a:n b:n :}
+   a VA-SIGN xor b VA-SIGN xor < ;
+
 : ROW+ ( n n n n -- ) {: lo:n hi:n self:n heap:n :}
-   hi lo <= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
+   lo hi VA< 0= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
    EXT-N @ 0 > IF
-      lo EXT-N @ 1- EXT-HI @ < IF
+      lo EXT-N @ 1- EXT-HI @ VA< IF
          s" proc-maps: areas are not in ascending order" FAIL-RC die THEN
    THEN
    EXT-N @ 1+ EXT-LO-RESERVE
@@ -304,10 +310,10 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    0 BS-LO !  count BS-HI !  -1 BS-AT !
    BEGIN BS-LO @ BS-HI @ < BS-AT @ 0 < and WHILE
       BS-LO @ BS-HI @ + 2 / BS-MID !
-      v BS-MID @ EXT-HI @ >= IF
+      v BS-MID @ EXT-HI @ VA< 0= IF
          BS-MID @ 1+ BS-LO !
       ELSE
-         v BS-MID @ EXT-LO @ < IF
+         v BS-MID @ EXT-LO @ VA< IF
             BS-MID @ BS-HI !
          ELSE
             BS-MID @ BS-AT !

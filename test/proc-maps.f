@@ -41,6 +41,15 @@ public
    edge page 1- + TEST-ADDR MAPPED? TTRUE
    span spanlen munmap 0 T= ;
 
+\ If this kernel lists a high VMA (normally [vsyscall]), look it up through the
+\ public search. Linux may disable that optional mapping.
+: TEST-LINUX-HIGH ( -- )
+   RELOAD
+   EXTENTS 0 ?do
+      i EXT-LO @ {: lo:n :}
+      lo 0< if lo MAPPED? TTRUE then
+   loop ;
+
 ;package
 
 package PROC-MAPS-TEST
@@ -97,6 +106,7 @@ FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX-KERNEL? if LINUX-GROWTH then
+   HB-TARGET-LINUX-X86-64? if PROC-MAPS:TEST-LINUX-HIGH then
    HB-TARGET-MACOS? if
       PROC-MAPS:TEST-MACH-EXTENSION
       MACOS-REGIONS
