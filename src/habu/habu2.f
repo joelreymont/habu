@@ -2356,6 +2356,9 @@ variable LKWDEFCAST
 variable LCASTNONAME
 variable LCOLONNONAME
 variable LKEYNONAME
+\ The `linear:` declarer's keyword. A missing name takes the shared reader
+\ keyword diagnostic, so its one string is the keyword itself.
+variable LKWLINEAR
 : CASTNONAME$ ( -- ptr u8 n )    s" hb: cast: missing name after " ;
 : COLONNONAME$ ( -- ptr u8 n )   s" hb: : missing definition name after " ;
 : KEYNONAME$ ( -- ptr u8 n )     s" hb: reader keyword needs a name: " ;
@@ -2411,6 +2414,7 @@ public
    LKWDOES LABEL@ LBL,  KWDOES$ BYTES,
    LKWTRUSTED LABEL@ LBL, KWTRUSTED$ BYTES,
    LKWCAST LABEL@ LBL, s" cast:" BYTES,
+   LKWLINEAR LABEL@ LBL, s" linear:" BYTES,
    LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
    LCASTNONAME LABEL@ LBL, CASTNONAME$ BYTES,
    LCOLONNONAME LABEL@ LBL, COLONNONAME$ BYTES,
@@ -2934,18 +2938,20 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ The cast declarer's registrar, same seam and same push sequence as REGISTER
-\ above, reaching `checker-defcast` instead of `trust-decl`. The two are one
-\ concern - what the engine hands the checker when a definer declares a
-\ signature - and differ only in what the checker is asked to do with the row:
-\ `trust-decl` records it, `checker-defcast` must first prove the declared
-\ retype legal (checker.f CAST-CERTIFY's refusals) and refuses by throwing,
-\ which is why C-CAST calls this BEFORE it counts the record into NDICT.
-: REGISTER-CAST ( -- )
+\ The identity declarers' registrar, same seam and same push sequence as
+\ REGISTER above, reaching the owner field at `off` instead of `trust-decl`:
+\ DECL-CAST-OFF for `cast:` (checker.f CHECKER-DEFCAST), DECL-LINEAR-OFF for
+\ `linear:` (CHECKER-LINEAR). They are one concern - what the engine hands the
+\ checker when a definer declares a signature - and differ only in what the
+\ checker is asked to do with the row: `trust-decl` records it, an identity
+\ registrar must first prove the declared row legal (CAST-CERTIFY's or
+\ LINEAR-CERTIFY's refusals) and refuses by throwing, which is why
+\ C-IDENTITY calls this BEFORE it counts the record into NDICT.
+: REGISTER-IDENTITY ( n -- ) {: off:n :}
    LBL {: done:label :}
-   NCOMP-DISPATCH:DECL-CAST-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
-   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:TARGET
-   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:SKIP-SAME
+   off TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+   off done DECL-OWNER:TARGET
+   off done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -4673,12 +4679,14 @@ package INTERP-EMIT
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ `cast: NAME ( in -- out )` — the checked retype declarer, and the reason it is
-\ a reader keyword and not a word: a word would have to read its own name and
-\ signature off the live input and drive them back through `evaluate`, which
-\ src/core/roles.f did and which no file loading before src/core/include.f can
-\ do (LESSONS 2026-08-19). As a keyword the whole form is read here, where the
-\ engine already has the token reader.
+\ `cast: NAME ( in -- out )`, the checked retype declarer, and
+\ `linear: NAME ( in -- out )`, a DEFLINEAR owner's mint or erase, are the
+\ identity declarers, and the reason each is a reader keyword and not a word: a
+\ word would have to read its own name and signature off the live input and
+\ drive them back through `evaluate`, which src/core/roles.f did and which no
+\ file loading before src/core/include.f can do (LESSONS 2026-08-19). As a
+\ keyword the whole form is read here, where the engine already has the token
+\ reader.
 \
 \ IT IS A DECLARATION, NOT A DEFINITION. There is no body to read and no `;` to
 \ wait for, so the form completes inside this handler: the interpret loop never
@@ -4691,10 +4699,12 @@ package INTERP-EMIT
 \ that fact, and an ordinary empty colon definition has no such stamp.
 \
 \ THE REGISTRAR RUNS BEFORE THE RECORD IS COUNTED. CHECKER-DEFCAST throws the
-\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype, and
-\ a refused cast must not leave a callable name behind, so NDICT is bumped only
-\ after the checker has accepted the row — the same order the colon publish tail
-\ uses (EM-COMPILE-PUBLISH-TRUSTED registers, then `publish`).
+\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype and
+\ CHECKER-LINEAR its own (E-LINEAR-PAYLOAD/OWNER/SCOPE) for an illegal mint or
+\ erase, and a refused declaration must not leave a callable name behind, so
+\ NDICT is bumped only after the checker has accepted the row — the same order
+\ the colon publish tail uses (EM-COMPILE-PUBLISH-TRUSTED registers, then
+\ `publish`).
 \
 \ AND EM-REC-WIDE-PUBLISH IS NOT OPTIONAL HERE. Registering the row latches the
 \ checker's record facts, and this tail is what POKES them into the record that
@@ -4712,7 +4722,10 @@ package INTERP-EMIT
 \ refusals over the same source text through verify-source), and the recovery
 \ engine, whose source list has no checker in it at all — an unguarded call
 \ there would exit 70 on the FIRST file tools/bootstrap.sh feeds it.
-: C-CAST ( -- )
+\
+\ The two keywords differ only in the declaration owner field their registrar
+\ reaches (`off`) and in what they print when no name follows (`noname`).
+: C-IDENTITY ( [ -- ] n -- ) {: noname off:n :}
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL {: cpok:label ndok:label named:label nohook:label :}
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
@@ -4723,7 +4736,7 @@ package INTERP-EMIT
       C-DIE-DICT-FULL
    ndok LBL,
    LTOK LABEL@ BL,  0 named CBNZ,
-      C-CAST-DIE-NO-NAME
+      noname execute
    named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP LABEL@ BL,                                  \ "NAME " — the spelling the registrar reads
@@ -4743,12 +4756,18 @@ package INTERP-EMIT
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-      DEF-TRUST:REGISTER-CAST
+      off DEF-TRUST:REGISTER-IDENTITY
    nohook LBL,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+: C-CAST ( -- )
+   [: C-CAST-DIE-NO-NAME ;] NCOMP-DISPATCH:DECL-CAST-OFF C-IDENTITY ;
+
+: C-LINEAR ( -- )
+   [: KWDATA:LKWLINEAR LABEL@ 7 C-DIE-KEYWORD-NAME ;] NCOMP-DISPATCH:DECL-LINEAR-OFF C-IDENTITY ;
 
 ;package
 
@@ -9738,6 +9757,7 @@ package INTERP-EMIT
    s" export" KEEP? IF LMAIN LABEL@ LKWEXPORT 6 ['] C-EXPORT CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" cast:" KEEP? IF LMAIN LABEL@ KWDATA:LKWCAST 5 ['] C-CAST CF-ENTRY THEN
+   s" linear:" KEEP? IF LMAIN LABEL@ KWDATA:LKWLINEAR 7 ['] C-LINEAR CF-ENTRY THEN
    s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN LABEL@ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
@@ -12459,6 +12479,7 @@ package LABELS
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !  LBL KWDATA:LKEYNONAME !
+   LBL KWDATA:LKWLINEAR !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

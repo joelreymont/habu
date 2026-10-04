@@ -2399,6 +2399,10 @@ SUITE cast
    test/cast-suite.f
 ;SUITE
 
+SUITE linear
+   test/linear-suite.f
+;SUITE
+
 WHITEBOX-SUITE decl-event
    test/decl-event-suite.f
 ;SUITE

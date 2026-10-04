@@ -29,7 +29,7 @@ public
 
 private
 
-58 constant FORM#
+59 constant FORM#
 
 : WORD? ( n -- bool )
    LINT-LEX:KIND@ LINT-LEX:WORD = ;
@@ -43,6 +43,7 @@ private
 \ body and no `;` to close. Classifying it as COLON-KIND would leave a scan open
 \ across whatever follows until the NEXT definition's `;`, which is exactly the
 \ mis-attribution the package-diff walk is built on this classifier to avoid.
+\ LINEAR: is the same declaration shape, and its row sits among the data forms.
 5 constant CAST-FORM
 
 : FORM-KIND ( n -- n ) {: k:n :}
@@ -111,6 +112,7 @@ private
       55 of s" ITENSOR:" endof
       56 of s" SPEC:" endof
       57 of s" RESERVED-PTR-U8-CELL" endof
+      58 of s" LINEAR:" endof
       E-TBL-BOUNDS throw
    endcase ;
 
