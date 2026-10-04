@@ -1,5 +1,9 @@
 \ native-observer.f - frozen HIR facts bound to successfully published routines.
 require lib/test.f
+require lib/test/outcome.f
+require lib/process.f
+require lib/process-argv.f
+require lib/engine-candidate.f
 require src/compiler/native/compiler.f
 require src/core/generated-declaration.f
 require src/arch/x86-64/abi.f
@@ -15,6 +19,10 @@ private
 64 constant ROW-MAX
 8171 constant E-OBSERVE
 8172 constant E-LATE
+
+$4000 constant PUB-CAP
+create PUB-OUT PUB-CAP allot
+create PUB-ERR PUB-CAP allot
 
 variable PENDING
 variable P-IDX
@@ -239,6 +247,21 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    row 1+ ROW-OFF @ 0 > TTRUE
    s" 7 NOBS-DOES NOBS-MADE NOBS-MADE" EV-N 7 T= ;
 
+: PUBLISH-THROW-SRC$ ( -- ptr u8 n )
+   S\" require src/compiler/native/compiler.f 1 set-tier package PUBFAIL public : THROW-PUBLISHED ( n IR-CTX:ctx n n n -- ) {: idx:n c:IR-CTX:ctx parent:n ord:n off:n :} s\q PUBFAIL-DOES\q XREF-FIND XREF-START parent = if s\q committed-does-visible\q type cr then 8173 throw ; ;package ' PUBFAIL:THROW-PUBLISHED NCOMP:PUBLISHED! : PUBFAIL-DOES ( n -- ) create , does> ( -- n ) @ ;" ;
+
+: PUBLISH-THROW-CASE ( -- )
+   s" escaping publication callback is fatal after DOES commit" T-LABEL
+   PROC-ARGV-RESET
+   ENGINE-CANDIDATE:PATH$ >LEN PUBLISH-THROW-SRC$ >LEN
+   PUB-OUT PUB-CAP >LEN PUB-ERR PUB-CAP >LEN 10000 >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   PUBLISH-THROW-SRC$ PUB-OUT outu LEN>N PUB-ERR erru LEN>N oc 76
+   T-OUTCOME-EXITED=
+   PUB-OUT outu LEN>N s" committed-does-visible" CONTAINS? TTRUE
+   PUB-ERR erru LEN>N s" ncomp: publication callback threw" CONTAINS? TTRUE
+   PUB-ERR erru LEN>N s" ncomp: cannot compile" CONTAINS? TFALSE ;
+
 public
 
 : NESTED-CHILD ( -- )
@@ -254,6 +277,7 @@ public
    ['] PUBLISHED NCOMP:PUBLISHED!
    ['] INVALIDATE CODE-RECLAIM:INVALIDATE!
    EXACT-CASE RETRY-CASE LATE-CASE OUTER-CASE GENERATED-CASE DOES-CASE
+   PUBLISH-THROW-CASE
    T-REPORT s" native-observer: ok" type cr ;
 
 : IMAGE-PREPARE ( -- )

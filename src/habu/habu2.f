@@ -11422,6 +11422,7 @@ public
    12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,                                  \ callback argument needs the recovered cursor
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
    CODE-ORIGIN:ABANDON,
    10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
@@ -11431,7 +11432,6 @@ public
    RELOC-EMIT:LROLLBACK LABEL@ BL,
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,
-   9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EM-RESET-COMPILE-STATE
    \ roll the open-package scope back to this REPL line's boundary (RPKG snapshot),
    \ alongside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback above, and arm the checker resync.

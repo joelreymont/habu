@@ -7885,10 +7885,12 @@ variable P2SK
 : EMIT-REPL-RECOVER ( -- )
    LRREC @ LBL,
    LBL {: bad :}
+   2 5 MOVZ,  LPROT @ BL,                          \ invalidator and REPL reader are compiled code
    14 DATA STACK-ABI:REPL-BASE-CELL LDR, 10 DATA STACK-ABI:REPL-CAP-CELL LDR,
    12 14 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR, 12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,                                  \ abandoned line may have filled the stack
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
    10 DATA RSAVCP-CELL LDR,  LCODEINV @ BL,
    CP DATA RSAVCP-CELL LDR,
@@ -7896,7 +7898,6 @@ variable P2SK
    \ Native REPL and evaluate recovery share the address-row filter before
    \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
-   9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EMIT-RESET-COMPILE-STATE
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B,
@@ -7906,6 +7907,7 @@ variable P2SK
    LEVALREC @ LBL,
    LBL {: bad :}
    LBL LBL LBL LBL {: loop pop deliver unowned :}
+   2 5 MOVZ,  LPROT @ BL,                          \ region -> RX before named invalidator runs
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,

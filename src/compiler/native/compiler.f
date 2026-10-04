@@ -110,6 +110,7 @@ variable PRIOR-CAST
 variable PRIOR-CALLABLE
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
+variable M-PUBLISHED-START           \ committed parent's index for notification
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-UNJUDGED                  \ a hook-cell-empty scan's verdict, else -1
 variable M-DOES-FRAME                \ checker-owned transaction spans a split compilation
@@ -564,8 +565,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    p r ELABORATE
    EMITTED
    PUBLISH-IT
-   before PUBLISHED-ROWS
-   0 M-DOES-FRAME ! ;
+   0 M-DOES-FRAME !
+   before M-PUBLISHED-START ! ;
 
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
@@ -579,6 +580,11 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
    [: WORK ;] catch M-RC !
+   M-RC @ 0= if
+      [: M-PUBLISHED-START @ PUBLISHED-ROWS ;] catch 0<> if
+         s" ncomp: publication callback threw" 76 die
+      then
+   then
    RETIRE-BODY ;
 
 \ ---- the load's session ------------------------------------------------------
