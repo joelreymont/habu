@@ -207,6 +207,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
    s" NCOMP:INSTALL" 0 DECLARE
+   s" NHOST:INSTALL" 1 DECLARE
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE ; \ its cell is in the window: see ?XTOFF
 
 \ The rows preserve declared locations, kinds and exact null/window-relative
