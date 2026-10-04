@@ -107,12 +107,17 @@ TRUSTED: FREELOCALE-CALL ( -- ) ARGS REG-LENS 1 FREELOCALE-FN ffi-call-bounded d
       ;MATCH ENDOF
    ;MATCH ;
 
+\ fegetround/fesetround use the C library's target ABI values. The three
+\ non-nearest modes occupy bits 10-11 on Linux x86-64 and bits 22-23 on ARM.
+: ROUND-MODE ( n -- n )
+   HB-TARGET-LINUX-X86-64? if $400 else $400000 then * ;
+
 : RESTORATION ( -- )
    GET-ROUND {: prior-round:n :}
    TEST-LOCALE {: locale:n :} locale 0 T<>
    locale USE-LOCALE {: prior-locale:n :}
    4 0 do
-      i $400000 * {: mode:n :} mode SET-ROUND 0 T=
+      i ROUND-MODE {: mode:n :} mode SET-ROUND 0 T=
       s" 0.1" $3FB999999999999A STATE-PARSE
       GET-ROUND mode T= 0 USE-LOCALE locale T=
       MAX-BYTES STATE-FORMAT GET-ROUND mode T= 0 USE-LOCALE locale T=
