@@ -1679,6 +1679,10 @@ SUITE x86-64-kernel-engine
    test/x86-64-kernel-engine.f
 ;SUITE
 
+SUITE x86-64-kernel-scope-find
+   test/x86-64-kernel-scope-find.f
+;SUITE
+
 SUITE x86-64-kernel-ffi
    test/x86-64-kernel-ffi.f
 ;SUITE

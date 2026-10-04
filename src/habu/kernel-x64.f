@@ -1866,6 +1866,139 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RDI ASM-SINK ENC-POP
    0 RC-EXIT, ;
 
+\ A source token's scope is a dictionary-record lookup. The one-wordlist
+\ FIND-LBL helper also serves the public search rows; using it here keeps
+\ package, qualified and used-public names on the same name-folding path.
+64 constant SCOPE-FRAME
+0 constant SF-TOKEN
+8 constant SF-LEN
+16 constant SF-BOUND
+24 constant SF-USED
+32 constant SF-USED2
+40 constant SF-COLON
+48 constant SF-INDEX
+
+\ scope-find ( ptr u8 n -- bound used used2 flags ). A qualified name searches
+\ the namespace record's public wid. Bare names search the open private/public
+\ wids, then global, while the used publics are collected independently. Two
+\ distinct used records set flag 2 and bind neither when the primary search
+\ missed; a bound seeded primitive sets flag 1.
+: SCOPE-FIND-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: colon-scan:label colon-hit:label bare:label qual-scan:label
+      qual-find:label primary-done:label pub:label global:label
+      used-loop:label used-next:label used-first:label used-done:label
+      bound:label seed-done:label push-out:label qual-bad:label seed-skip:label :}
+   RSI POP,  RDI POP,
+   RSP SCOPE-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI RSP SF-TOKEN MOV-STORE,  RSI RSP SF-LEN MOV-STORE,
+   RAX ZERO-REG,
+   RAX RSP SF-BOUND MOV-STORE,
+   RAX RSP SF-USED MOV-STORE,
+   RAX RSP SF-USED2 MOV-STORE,
+   RAX RSP SF-INDEX MOV-STORE,
+   RAX -1 IMM64,  RAX RSP SF-COLON MOV-STORE,
+   RCX ZERO-REG,
+   colon-scan X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-GE bare JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX $3A >IMM8 ASM-SINK ENC-CMP-RI8  C-E colon-hit JCC,
+   RCX ASM-SINK ENC-INC  colon-scan JMP,
+   colon-hit X64CODE:LBL,
+   RCX RSP SF-COLON MOV-STORE,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   R8 RCX 1 MEM-OFF ASM-SINK ENC-LEA
+   R8 RSI ASM-SINK ENC-CMP-RR  C-GE bare JCC,
+   qual-scan X64CODE:LBL,
+   R8 RSI ASM-SINK ENC-CMP-RR  C-GE qual-find JCC,
+   RAX RDI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX $3A >IMM8 ASM-SINK ENC-CMP-RI8  C-E qual-bad JCC,
+   R8 ASM-SINK ENC-INC  qual-scan JMP,
+   qual-find X64CODE:LBL,
+   RSI RCX ASM-SINK ENC-MOV-RR
+   RDX DICT-WL:NAMESPACE IMM64,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E primary-done JCC,
+   RDX RAX REC-CODE MOV-LOAD,
+   RCX RSP SF-COLON MOV-LOAD,
+   RDI RSP SF-TOKEN MOV-LOAD,
+   RDI RDI RCX 1 1 MEM-IDX ASM-SINK ENC-LEA
+   RSI RSP SF-LEN MOV-LOAD,
+   RSI RCX ASM-SINK ENC-SUB-RR
+   RSI ASM-SINK ENC-DEC
+   FIND-LBL CALL,
+   RAX RSP SF-BOUND MOV-STORE,
+   primary-done JMP,
+   qual-bad X64CODE:LBL,
+   primary-done X64CODE:LBL,
+   RAX RSP SF-COLON MOV-LOAD,
+   RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE used-done JCC,
+   used-loop JMP,
+   bare X64CODE:LBL,
+   RDI RSP SF-TOKEN MOV-LOAD,  RSI RSP SF-LEN MOV-LOAD,
+   RDX DATA-REG PKG-PRI-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E pub JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
+   pub X64CODE:LBL,
+   RDX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E global JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
+   global X64CODE:LBL,
+   RDX ZERO-REG,
+   FIND-LBL CALL,
+   bound X64CODE:LBL,
+   RAX RSP SF-BOUND MOV-STORE,
+   RAX RSP SF-COLON MOV-LOAD,
+   RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE used-done JCC,
+   used-loop X64CODE:LBL,
+   RCX RSP SF-INDEX MOV-LOAD,
+   RAX DATA-REG USE-DEPTH-CELL MOV-LOAD,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-GE used-done JCC,
+   RDX DATA-REG RCX CELL USE-WIDS-OFF MEM-IDX ASM-SINK ENC-MOV-RM
+   RDI RSP SF-TOKEN MOV-LOAD,  RSI RSP SF-LEN MOV-LOAD,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E used-next JCC,
+   RCX RSP SF-USED MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E used-first JCC,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E used-next JCC,
+   RAX RSP SF-USED2 MOV-STORE,
+   used-done JMP,
+   used-first X64CODE:LBL,
+   RAX RSP SF-USED MOV-STORE,
+   used-next X64CODE:LBL,
+   RCX RSP SF-INDEX MOV-LOAD,
+   RCX ASM-SINK ENC-INC
+   RCX RSP SF-INDEX MOV-STORE,
+   used-loop JMP,
+   used-done X64CODE:LBL,
+   RAX RSP SF-BOUND MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE push-out JCC,
+   RCX RSP SF-USED2 MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE push-out JCC,
+   RAX RSP SF-USED MOV-LOAD,
+   push-out X64CODE:LBL,
+   RCX ZERO-REG,
+   RDX RSP SF-USED2 MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E seed-done JCC,
+   RCX 2 IMM32,
+   seed-done X64CODE:LBL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E seed-skip JCC,
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX DBASE-REG ASM-SINK ENC-SUB-RR
+   RDX ENGINE-PRIMS:COUNT DREC * >IMM32 ASM-SINK ENC-CMP-RI32  C-AE seed-skip JCC,
+   RCX 1 >IMM8 ASM-SINK ENC-OR-RI8
+   seed-skip X64CODE:LBL,
+   RAX PUSH,
+   RAX RSP SF-USED MOV-LOAD,  RAX PUSH,
+   RAX RSP SF-USED2 MOV-LOAD,  RAX PUSH,
+   RCX PUSH,
+   RSP SCOPE-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 public
 
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
@@ -1905,7 +2038,7 @@ public
    s" parse-name" REFUSE
    s" num-parse" REFUSE
    s" tok-imm?" REFUSE
-   s" scope-find" REFUSE
+   s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM ;
 
 \ ---- atomics and publication rows --------------------------------------------
