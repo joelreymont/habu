@@ -527,6 +527,17 @@ variable ENTRY-PEND
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    DEF-ENDED ;
 
+\ An evaluate begun inside this native definition owns only its new tokens.
+\ The checker reads the body prefix for binding, leaving the definition's
+\ effect, open scopes and publication to its eventual `;`. A refusal lands in
+\ evaluate's existing frame, whose token mark removes only the failed token.
+TRUSTED: DEF-PREFIX-BIND ( -- )
+   ENTRY-PEND @ 0= if exit then
+   data-base BODYBUF-OFF + BYTE-VIEW
+   BODYLEN-CELL CELL@ TOKBODY-CELL CELL@
+   CHECKER-PREFIX:BIND? {: rollback:n ok:bool :}
+   ok 0= if rollback TOKBODY-CELL CELL! UNDEFINED then ;
+
 \ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
 \ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
@@ -562,6 +573,7 @@ variable ENTRY-PEND
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
+   DEF-PREFIX-BIND
    true ;
 
 \ ---- identity declarers (habu2.f C-IDENTITY) ----------------------------------

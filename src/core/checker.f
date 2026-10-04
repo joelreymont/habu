@@ -15370,7 +15370,22 @@ PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U
 \ A name no row answers: E-UNDEFINED (E-BAD-QUALIFIED for a malformed qualified
 \ name), the name joins the lazy intake's queue (ASIG-MISS+), and a name a
 \ rendering statement in scope may define is left to the run (UNSEEN-COVERS?).
+\ A prefix probe observes only misses in the token it just captured. Earlier
+\ body text belongs to the caller and may still await its own closing `;`.
+variable CHECKER-PREFIX-ACTIVE
+variable CHECKER-PREFIX-CUT
+variable CHECKER-PREFIX-MISS
+variable CHECKER-PREFIX-ROLLBACK
+
+: PREFIX-MISS-AT ( n n -- ) {: off:n rollback:n :}
+   CHECKER-PREFIX-ACTIVE @ 0= IF exit THEN
+   off CHECKER-PREFIX-CUT @ >= IF
+      -1 CHECKER-PREFIX-MISS !
+      rollback CHECKER-PREFIX-ROLLBACK !
+   THEN ;
+
 : CALL-UNDEFINED ( ptr u8 n -- ) {: a:ptr u:n :}
+   TSTART @ dup PREFIX-MISS-AT
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
    a u UNSEEN-COVERS? IF -1 UNSEEN ! THEN          \ the run's to judge: see UNSEEN-MARK$
@@ -18178,7 +18193,11 @@ variable IS-PEND-U                   \ and its length
 \ The symbol the swallowed target names: its fold resolves, and the token as
 \ written names a refusal (CHECKER-BIND), so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
-   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND ;
+   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND
+   dup 0= CHECKER-PREFIX-ACTIVE @ and IF
+      IS-TOFF @ TSTART @ PREFIX-MISS-AT
+      IS-TA@ IS-TU @ ASIG-MISS+
+   THEN ;
 
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
@@ -21407,6 +21426,60 @@ variable CK-RETRY-TOKS
    horizon0 BIND-HORIZON !
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
+
+package CHECKER-PREFIX
+
+PTR-VARIABLE SOURCE-A
+variable SOURCE-U
+variable ANSWER
+
+\ Re-read the captured prefix with the checker's own token and binding reader.
+\ An imported seeded signature changes a binding, so the same text is read
+\ again; each retry adds a new row and the candidate scope retires every row.
+: SCAN ( -- )
+   BEGIN
+      0 CHECKER-PREFIX-MISS !
+      CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
+      SOURCE-A @ SOURCE-U @ CHECK-RESET
+      CHECK-SCAN
+      CHECKER-PREFIX-MISS @ 0= IF RES-TRUE ANSWER ! EXIT THEN
+      CK-AOT-INTAKE 0= IF RES-FALSE ANSWER ! EXIT THEN
+   AGAIN ;
+
+public
+
+\ Ask only whether the newly captured part binds. Open control, quotation and
+\ local scopes remain prefixes; the declared result and publication belong to
+\ the caller's eventual `;`. No immediate word runs during this read.
+: BIND? ( ptr u8 n n -- n bool ) {: a:ptr u:n cut:n :}
+   a SOURCE-A !  u SOURCE-U !  cut CHECKER-PREFIX-CUT !
+   CK-AOT-RETRY-ARMED @ {: armed0:n :}
+   CK-AOT-RETRY-DUE @ {: due0:n :}
+   RESCAN @ {: rescan0:n :}
+   CK-RETRY-V @ {: v0:n :}
+   CK-RETRY-TOKS @ {: toks0:n :}
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
+   BIND-HORIZON @ {: horizon0:n :}
+   CHK-PROBE @ {: probe0:n :}
+   CHECK-CANDIDATE-START
+   -1 CHK-PROBE !
+   -1 PIMM-STREAM !                 \ the engine's body capture has spent parser operands
+   -1 CHECKER-PREFIX-ACTIVE !
+   [: SCAN ;] catch {: rc:n :}
+   0 CHECKER-PREFIX-ACTIVE !
+   probe0 CHK-PROBE !
+   0 CHECK-CANDIDATE-DONE drop
+   armed0 CK-AOT-RETRY-ARMED !
+   due0 CK-AOT-RETRY-DUE !
+   rescan0 RESCAN !
+   v0 CK-RETRY-V !
+   toks0 CK-RETRY-TOKS !
+   recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   horizon0 BIND-HORIZON !
+   rc 0 <> IF rc throw THEN
+   CHECKER-PREFIX-ROLLBACK @ ANSWER @ ;
+
+;package
 
 \ The quiet probe. A caller that wants a verdict and not a rejection diagnostic
 \ - every certify/refuse fixture in test/ and lib/ - asks here, so the render
