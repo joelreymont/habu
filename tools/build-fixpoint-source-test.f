@@ -7,12 +7,109 @@
 \ gate's pool.
 \ Run: bin/hb --load tools/build-fixpoint-source-test.f
 
+require lib/string.f
+require lib/fs.f
+require lib/fs-mutate.f
+
+\ The tool binds this ordinary FILE-SIZE replacement when it loads. For one
+\ armed path, the sample precedes a 68 KiB append, so its owning reader must
+\ grow beyond the first allocator granule and keep the bytes already read.
+package BFT-SIZE
+private
+$11000 constant PAD-N
+create PAD PAD-N allot
+create PATH FS-PATH-CAP allot variable PATH-U
+create TAIL 128 allot variable TAIL-U
+variable ARMED
+
+public
+: ARM ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n tail:ptr tailu:n :}
+   path PATH pathu BYTE-COPY pathu PATH-U !
+   tail TAIL tailu BYTE-COPY tailu TAIL-U !
+   PAD-N 0 ?do 10 PAD i + c! loop
+   -1 ARMED ! ;
+
+: BREAK-READ ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path PATH pathu BYTE-COPY pathu PATH-U !
+   -2 ARMED ! ;
+
+: DISARM ( -- ) 0 ARMED ! ;
+
+: SIZE ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   ARMED @ path pathu PATH PATH-U @ STR= and if
+      ARMED @ -2 = if
+         0 ARMED !
+         path pathu REMOVE-FILE
+         path pathu MAKE-DIRS
+         size exit
+      then
+      0 ARMED !
+      path pathu PAD PAD-N APPEND-FILE
+      path pathu TAIL TAIL-U @ APPEND-FILE
+   then
+   size ;
+;package
+
+undefine FILE-SIZE
+: FILE-SIZE ( ptr u8 n -- n ) BFT-SIZE:SIZE ;
+
 require tools/build-fixpoint-test-lib.f
 require lib/fmt.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
 package BUILD-FIXPOINT
+
+: BFT-WHOLE$ ( -- ptr u8 n )
+   s" whole-src" BF-A$ ;
+
+: BFT-TEST-WHOLE-READ ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-WHOLE$ S\" package BFT-WHOLE public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   BFT-WHOLE$ BF-READ-SOURCE
+   BF-SOURCE-LEN @ BFT-WHOLE$ BFT-READ T=
+   BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
+   BFT-WHOLE$ S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
+   BFT-WHOLE$ BF-READ-SOURCE
+   BF-SOURCE-LEN @ BFT-WHOLE$ BFT-READ T=
+   BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
+   BF-TMP-RESET ;
+
+: BFT-TEST-WHOLE-CENSUS ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-WHOLE$ S\" : HEAD ( -- n ) 1 ;\n" WRITE-ALL
+   s" whole-src" BF-CENSUS-COUNT 1 T=
+   BFT-WHOLE$ S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
+   s" whole-src" BF-CENSUS-COUNT 2 T=
+   BF-TMP-RESET ;
+
+: BFT-TEST-WHOLE-ERRORS ( -- )
+   BFT-ROOT BF-TMP!
+   [: s" absent-src" BF-A$ BF-READ-SOURCE ;] E-FS-STAT TTHROWSQ
+   BFT-WHOLE$ s" read must fail" WRITE-ALL
+   BFT-WHOLE$ BFT-SIZE:BREAK-READ
+   [: BFT-WHOLE$ BF-READ-SOURCE ;] E-FS-IO TTHROWSQ
+   BFT-WHOLE$ REMOVE-DIR
+   BFT-WHOLE$ s" reusable after read error" WRITE-ALL
+   BFT-WHOLE$ BF-READ-SOURCE
+   BF-SOURCE-BUF BF-SOURCE-LEN @ s" reusable after read error" STR= TTRUE
+   BF-TMP-RESET ;
+
+: BFT-TEST-WHOLE-CERTIFY ( -- )
+   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   s" whole-cert" BFT-CERT BF-CERTIFY-RC 0 T=
+   BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
+   s" whole-cert" BFT-CERT BF-CERTIFY-RC 0 <> TTRUE
+   BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE
+   BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
+   [: s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE ;]
+      E-BUILD-CERTIFY TTHROWSQ
+   BFT-SIZE:DISARM ;
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
 \ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
@@ -148,6 +245,10 @@ public
 : BFT-SOURCE-RUN ( -- )
    T-RESET
    BFT-PREPARE
+   s" whole source read" [: BFT-TEST-WHOLE-READ ;] BFT-STEP
+   s" whole source census" [: BFT-TEST-WHOLE-CENSUS ;] BFT-STEP
+   s" whole source errors" [: BFT-TEST-WHOLE-ERRORS ;] BFT-STEP
+   s" whole source certify" [: BFT-TEST-WHOLE-CERTIFY ;] BFT-STEP
    s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
