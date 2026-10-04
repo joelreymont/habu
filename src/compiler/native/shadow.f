@@ -40,7 +40,8 @@ require lib/errors.f
 require src/core/bytes.f
 require src/compiler/target.f
 require src/compiler/binding.f
-require src/compiler/native/emission.f
+require src/compiler/session/emission.f
+require src/compiler/session/lease.f
 
 package NSHADOW
 private
@@ -104,44 +105,48 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 
 \ ---- taking a sealed emission -------------------------------------------------
 \ Only bytes of the machine the shadow's binding names are its routines.
-: TARGET-CK ( -- )
-   NEMIT:ARCH  SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@  CTARGET-ARCH:EQ
+: TARGET-CK ( NART:emission -- )
+   NART:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then ;
 
-: COPY-BYTES ( -- )
+: COPY-BYTES ( NART:emission -- )
+   {: e:NART:emission :}
    CODE-N @ {: at:n :}
-   NEMIT:SIZE {: size:n :}
+   e NART:SIZE {: size:n :}
    at size + CODE-BUF-RESERVE
-   NEMIT:BYTES  at CODE-BUF  size BYTE-COPY ;
+   e NART:BYTES at CODE-BUF size BYTE-COPY ;
 
-: COPY-FUNS ( -- )
+: COPY-FUNS ( NART:emission -- )
+   {: e:NART:emission :}
    N-FUNS @ {: k0:n :}
-   NEMIT:FUNCTIONS {: n:n :}
+   e NART:FUNCTIONS {: n:n :}
    k0 n + FUN-OFF-RESERVE
    n 0 ?do
-      i NEMIT:FUNCTION-OFFSET@  k0 i + FUN-OFF !
+      e i NART:FUNCTION-OFFSET@ k0 i + FUN-OFF !
    loop ;
 
-: COPY-CALLS ( -- )
+: COPY-CALLS ( NART:emission -- )
+   {: e:NART:emission :}
    N-CALLS @ {: k0:n :}
-   NEMIT:CALL-SITES {: n:n :}
+   e NART:CALL-SITES {: n:n :}
    k0 n + CALL-OFF-RESERVE
    k0 n + CALL-KIND-RESERVE
    k0 n + CALL-TGT-RESERVE
    n 0 ?do
-      i NEMIT:CALL-SITE@    k0 i + CALL-OFF !
-      i NEMIT:CALL-KIND@    k0 i + CALL-KIND !
-      i NEMIT:CALL-TARGET@  k0 i + CALL-TGT !
+      e i NART:CALL-SITE@ k0 i + CALL-OFF !
+      e i NART:CALL-KIND@ k0 i + CALL-KIND !
+      e i NART:CALL-TARGET@ k0 i + CALL-TGT !
    loop ;
 
-: COPY-ADDRS ( -- )
+: COPY-ADDRS ( NART:emission -- )
+   {: e:NART:emission :}
    N-ADDRS @ {: k0:n :}
-   NEMIT:ADDR-SITES {: n:n :}
+   e NART:ADDR-SITES {: n:n :}
    k0 n + ADDR-OFF-RESERVE
    k0 n + ADDR-KIND-RESERVE
    n 0 ?do
-      i NEMIT:ADDR-SITE@       k0 i + ADDR-OFF !
-      i NEMIT:ADDR-SITE-KIND@  k0 i + ADDR-KIND !
+      e i NART:ADDR-SITE@ k0 i + ADDR-OFF !
+      e i NART:ADDR-SITE-KIND@ k0 i + ADDR-KIND !
    loop ;
 
 : EM-RESERVE ( n -- ) {: n:n :}
@@ -150,15 +155,16 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    n EM-CALL0-RESERVE  n EM-CALLS-RESERVE
    n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE ;
 
-: COPY-ROW ( -- )
+: COPY-ROW ( NART:emission -- )
+   {: a:NART:emission :}
    N-EMS @ {: e:n :}
    e 1+ EM-RESERVE
-   CODE-N @         e EM-AT !
-   NEMIT:SIZE       e EM-SIZE !
-   NEMIT:RET-BYTES  e EM-RET !
-   N-FUNS @   e EM-FUN0 !   NEMIT:FUNCTIONS   e EM-FUNS !
-   N-CALLS @  e EM-CALL0 !  NEMIT:CALL-SITES  e EM-CALLS !
-   N-ADDRS @  e EM-ADDR0 !  NEMIT:ADDR-SITES  e EM-ADDRS ! ;
+   CODE-N @ e EM-AT !
+   a NART:SIZE e EM-SIZE !
+   a NART:RET-BYTES e EM-RET !
+   N-FUNS @ e EM-FUN0 ! a NART:FUNCTIONS e EM-FUNS !
+   N-CALLS @ e EM-CALL0 ! a NART:CALL-SITES e EM-CALLS !
+   N-ADDRS @ e EM-ADDR0 ! a NART:ADDR-SITES e EM-ADDRS ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
 \ has committed the engine's own routine, grows nothing and refuses nothing.
@@ -168,15 +174,16 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 
 \ A copy taken over one no publication claimed simply replaces it: both lie
 \ past the counts.
-: COPY ( -- )
+: COPY ( NART:emission -- )
+   {: e:NART:emission :}
    OPEN-CK
-   TARGET-CK
+   e TARGET-CK
    0 PENDING !
-   COPY-BYTES
-   COPY-FUNS
-   COPY-CALLS
-   COPY-ADDRS
-   COPY-ROW
+   e COPY-BYTES
+   e COPY-FUNS
+   e COPY-CALLS
+   e COPY-ADDRS
+   e COPY-ROW
    REC-RESERVE ;
 
 \ ---- the counts -------------------------------------------------------------
@@ -216,13 +223,15 @@ public
 
 \ ---- opening and closing -----------------------------------------------------
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
+   NLEASE:IDLE-CK
    OPENED @ 0<> if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
    1 OPENED ! ;
 
-\ Nonthrowing, so an image capture can run it whether a shadow is open or not.
+\ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
+   NLEASE:IDLE-CK
    0 OPENED !
    CLEAR
    RELEASE-ROWS ;
@@ -236,7 +245,7 @@ public
 \ ---- what the driver and publication do --------------------------------------
 \ Copy the sealed emission of the definition being compiled, before the context
 \ its rows live in leaves.
-: TAKE ( -- )
+: TAKE ( NART:emission -- )
    COPY
    0 PEND-DOES !
    1 PENDING ! ;
@@ -244,7 +253,8 @@ public
 \ The same for a `does>` definer, whose clause is function `fun` of the
 \ emission: the companion record enters there, so it cannot be where the
 \ definer itself enters.
-: TAKE-DOES ( n -- ) {: fun:n :}
+: TAKE-DOES ( NART:emission n -- )
+   {: fun:n :}
    COPY
    N-EMS @ {: e:n :}
    fun  e EM-FUN0 @  e EM-FUNS @  SUB-ROW  FUN-OFF @ {: off:n :}

@@ -295,6 +295,9 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2CE8 constant NBACK-OBSERVE-CELL
+$2CF0 constant NCOMP-PUBLISHED-CELL
+$2CF8 constant CODE-INVALIDATE-CELL
 
 require crash.fs           \ in-binary crash handler + the signal stub; needs
                             \ STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS, the
@@ -621,6 +624,7 @@ variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
+variable LCODEINV
 variable LPREFMISS  variable LPREFMISSMSG
 variable LFLOORREC  variable LFLOORMSG
 variable LSRCENDMSG
@@ -3132,14 +3136,6 @@ create ZBYTE 0 c,
 : PFX-LOAD-DECL-FILES ( -- )
    PFX-DECL ['] PFX-LOAD-ROW PFX-FILES ;
 
-: PFX-LOAD-CORE-FILES ( -- )
-   PFX-CORE PFX-SEAL or ['] PFX-LOAD-ROW PFX-FILES ;
-
-: PFX-LOAD-BASE-FILES ( -- )
-   PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
-
 \ The boot stdlib (habu2.f PFX-LOAD-STDLIB-FILES). src/core/dynamic-storage.f is
 \ the row that forced this group in: src/core/layout-buffer.f DBUF-SOURCE generates
 \ calls to DYNAMIC-STORAGE:RESERVE/:RELEASE, and stage2-src declares one
@@ -3204,10 +3200,6 @@ create ZBYTE 0 c,
    12 done CBNZ,
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
-
-: PFX-LOAD-FILES ( -- )
-   PFX-LOAD-BASE-FILES
-   PFX-LOAD-SCRIPT-ARGV ;
 
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-CHECKER ['] PFX-PATH-ROW PFX-FILES ;
@@ -3375,7 +3367,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
-\ The caller activates source input after the complete loader text has run.
+\ include.f finishes defining the loader before a later prefix row can `require`.
 : EMIT-SOURCE-RESET-TOKEN ( -- )
    LBL {: done :}
    12 DATA SNAP-CELL LDR,
@@ -3383,6 +3375,20 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    s" SOURCE-INPUT:RESET" bounds ?do i c@ C-SOURCE-APPEND-CHAR loop
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
+
+: PFX-LOAD-CORE-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
+   kind var a u PFX-LOAD-ROW
+   \ xref.f requires native-observer-cells.f in the same prefix pass.
+   \ Bind include.f's source vectors before that first require executes.
+   var LPINCLUDE = if EMIT-SOURCE-RESET-TOKEN then ;
+
+: PFX-LOAD-CORE-FILES ( -- )
+   PFX-CORE PFX-SEAL or ['] PFX-LOAD-CORE-ROW PFX-FILES ;
+
+: PFX-LOAD-BASE-FILES ( -- )
+   PFX-LOAD-CHECKER-FILES
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
 
 \ Mirror of src/habu/habu2.f EMIT-REQUIRE-FREEZE-TOKEN: once the provide rows
 \ are in, `REQUIRE-BOOT-FREEZE` pins include.f's engine surface, so a later
@@ -3480,14 +3486,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ Native pairs the block with PFX-PROVIDE-STDLIB-FILES so a `require` inside one of
 \ those files does not re-read a file this table already loaded. A provide row is
 \ the source text `s" path" provided`, and src/core/include.f canonicalizes that
-\ path through CWD-INIT, which the Linux seed answers through its own realpath
-\ (see BREALPATH); PFX-PROVIDE-STDLIB-FILES carries the seed's own two lib rows.
-\ The macOS seed still cannot answer CWD-INIT, and its programs must not require.
+\ path through CWD-INIT and the target's BREALPATH. PFX-PROVIDE-STDLIB-FILES
+\ carries the seed's own two lib rows. Both targets need SOURCE-INPUT:RESET
+\ before their first require.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
-   EMIT-SOURCE-RESET-TOKEN
    \ habu2.f EMIT-HOST-LOAD-PREFIX opens the registry here, between the base
    \ files and the provide rows; its stdlib block loads inside the same window
    \ (PFX-LOAD-STDLIB-COLD, after the rows). This seed loads that block from
@@ -4211,10 +4216,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
-\ MIRROR of src/habu/habu2.f DEF-TRUST:FIND-CAST / REGISTER-CAST. Same seam and
-\ same push sequence as the two above, reaching `checker-defcast` — which proves
-\ the declared retype legal before it records the row, and throws the named
-\ refusal when it is not.
+\ MIRROR of src/habu/habu2.f DEF-TRUST:REGISTER-IDENTITY for `cast:`. Same
+\ seam and same push sequence as the two above, reaching `checker-defcast` —
+\ which proves the declared retype legal before it records the row, and throws
+\ the named refusal when it is not.
 : C-FIND-DEFCAST ( -- )  LBL {: ok :}
    9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
@@ -7863,20 +7868,37 @@ variable P2SK
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR, ;
 
+: EMIT-CODE-INVALIDATE ( -- )
+   LCODEINV @ LBL,
+   LBL {: done :}
+   9 DATA CODE-INVALIDATE-CELL LDR,  9 done CBZ,
+   10 CP CMP,  C-CS done BCOND,
+   SP SP 48 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   14 SP 24 STR,  15 SP 32 STR,  10 SP 40 STR,
+   10 G-PUSH
+   9 BLR,
+   10 SP 40 LDR,  15 SP 32 LDR,  14 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 48 ADDI,
+   done LBL,  RET, ;
+
 : EMIT-REPL-RECOVER ( -- )
    LRREC @ LBL,
    LBL {: bad :}
+   2 5 MOVZ,  LPROT @ BL,                          \ invalidator and REPL reader are compiled code
    14 DATA STACK-ABI:REPL-BASE-CELL LDR, 10 DATA STACK-ABI:REPL-CAP-CELL LDR,
    12 14 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
    14 DATA STACK-ABI:BASE-CELL STR,
    12 DATA STACK-ABI:REPL-CAP-CELL LDR, 12 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,                                  \ abandoned line may have filled the stack
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+   10 DATA RSAVCP-CELL LDR,  LCODEINV @ BL,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
    \ Native REPL and evaluate recovery share the address-row filter before
    \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
-   9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EMIT-RESET-COMPILE-STATE
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B,
@@ -7886,6 +7908,7 @@ variable P2SK
    LEVALREC @ LBL,
    LBL {: bad :}
    LBL LBL LBL LBL {: loop pop deliver unowned :}
+   2 5 MOVZ,  LPROT @ BL,                          \ region -> RX before named invalidator runs
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,
@@ -7900,6 +7923,7 @@ variable P2SK
       12 13 STACK-ABI:EVAL-CAP LDR, 12 DATA STACK-ABI:CAP-CELL STR,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
+      10 13 40 LDR,  LCODEINV @ BL,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       10 13 STACK-ABI:EVAL-SEG LDR,  10 unowned CBZ,          \ a closed frame's stack: back to the pool
       9 DATA CLOSED-FREE-CELL LDR,  9 10 0 STR,  10 DATA CLOSED-FREE-CELL STR,
@@ -8052,6 +8076,7 @@ variable P2SK
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
 	   EMIT-FLOORREC
+	   EMIT-CODE-INVALIDATE
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT
       LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
@@ -8070,6 +8095,7 @@ variable P2SK
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LCODEINV !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LFLOORREC !  LBL LFLOORMSG !  LBL LSRCENDMSG !
    LBL LEVALREC !

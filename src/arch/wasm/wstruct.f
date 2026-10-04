@@ -45,6 +45,7 @@ require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require src/compiler/target.f
+require src/compiler/native/backend.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
@@ -569,7 +570,7 @@ private
 \ before anything is allocated.
 : CHECK-TARGET ( IR-CTX:ctx -- )
    IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@
-   CTARGET:LOWERS? 0= if E-IR-SCHEMA-TARGET throw then ;
+   NBACK:LOWERS? 0= if E-IR-SCHEMA-TARGET throw then ;
 
 \ The table's dialect name and version are fixed when the module is created, so
 \ reading them back off the live module decides whose table it is.

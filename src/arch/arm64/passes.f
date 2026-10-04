@@ -5,8 +5,8 @@
 \ target contract resolves to. This file is that row for ARM64. Every stage is
 \ the sequence the driver used to run by name, wrapping A64SEL, A64PRUNE, A64RA,
 \ A64RAV, A64SPILL and A64EMIT; none of their state moved here. The emission row
-\ also states the sealed emission as NEMIT's rows, the only emission
-\ src/compiler/native/publish.f reads, and the RETIRE row clears them.
+\ also states the sealed emission as NEMIT's rows. The driver copies them
+\ into NART before publication, and the RETIRE row clears them.
 \
 \ WHAT IT OWNS. The routine contract this definition compiles to. Two of its
 \ facts are this backend's own readings - how many functions share the contract
@@ -195,7 +195,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    repeat ;
 
 \ ---- the sealed emission, as the rows publication reads ----------------------
-\ src/compiler/native/publish.f reads NEMIT and never an instruction, so the
+\ NART copies NEMIT for publication and never decodes an instruction, so the
 \ ARM64 shapes it relies on are proved here: a whole number of instructions, one
 \ source-map row per instruction at its own offset, every function starting at
 \ an instruction. Each `bl` and `b` is decoded here once, through NBR: a `bl` is
@@ -304,19 +304,19 @@ NBR:INSN-BYTES constant INSN-BYTES
 
 public
 
-\ The row this backend fills as it loads, stage by stage. src/arch/arm64/
-\ backend.f has already claimed the registry row these are stored beside.
+: UNPLACED-UNSUPPORTED ( IR-CTX:ctx IR-BUILD:module -- )
+   E-CTGT-UNLOADED throw ;
+
+\ Publish only after every callback is defined. The id names this provider,
+\ independent of target wire codes and its sorted runtime row.
 : INSTALL ( -- )
-   ARCH [: DECLARE ;] NBACK:DECLARE!
-   ARCH [: SELECT ;] NBACK:SELECT!
-   ARCH [: PRUNE ;] NBACK:PRUNE!
-   ARCH [: FIXPOINT ;] NBACK:FIXPOINT!
-   ARCH [: EMIT ;] NBACK:EMIT!
-   ARCH [: RELEASE ;] NBACK:RELEASE!
-   ARCH [: RETIRE ;] NBACK:RETIRE!
-   ARCH [: A64IR:PROTOTYPE ;] NBACK:PROTOTYPE!
-   ARCH [: A64IR:PROTOTYPE-CLEAR ;] NBACK:FORGET!
-   ARCH [: PREPARE ;] NBACK:PREPARE! ;
+   A64BACK:ID ARCH [: A64BACK:SERVES? ;] [: A64BACK:SERVES? ;]
+      CTARGET-BACKEND:MAKE
+   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: EMIT ;] [: UNPLACED-UNSUPPORTED ;] [: RELEASE ;] [: RETIRE ;]
+   [: A64IR:PROTOTYPE ;] [: A64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
+      NBACK-PASS:MAKE
+   NBACK:REGISTER ;
 
 ;package
 

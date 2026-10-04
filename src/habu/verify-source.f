@@ -1112,6 +1112,14 @@ DUPLICATE-INIT
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
+\ A `linear:` row has the same shape and is certified by the engine's own
+\ registrar, which package VERIFY calls through its private row, so a mint or
+\ erase this pre-pass accepts is exactly one the engine accepts.
+: LINEAR-DECLARATION ( -- )
+   NAME-TOKEN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing linear name" 74 die THEN
+   name nameu REQUIRE-SIGNATURE CHECKER-LINEAR ;
+
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing undefine name" 74 die THEN
@@ -1718,6 +1726,7 @@ variable FFI-SIG-U
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF CAST-DECLARATION 0 0= EXIT THEN
+   a u s" linear:" STR=CI IF LINEAR-DECLARATION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN

@@ -262,7 +262,7 @@ A structurally coherent target may be unsupported by the installed backend. Thes
 
 ### 3.4 Capability intersection
 
-Do not replace the four-row backend registry (`BACKEND-ROWS`, `src/compiler/target.f:441`) with a large collection of optimistic booleans. Resolution asks stage-specific implementations about the exact tuple:
+Do not replace the backend registry (`src/compiler/native/backend.f`) with a large collection of optimistic booleans. Resolution asks stage-specific implementations about the exact tuple:
 
 ```text
 (machine, layout, HabuAbi, foreignABI, runtime, imageKind, options)
@@ -326,6 +326,24 @@ BackendSession {
 Immutable opcode schemas and read-only backend descriptions can be shared. Pass scratch, pending definitions, label allocators, literal maps, buffers, private checker state, dynamic registry deltas and emission results belong to the appropriate session/transaction.
 
 Source-language globals used by compile-time helpers belong to a host execution realm associated with the session. They are not made thread-safe merely by moving compiler buffers. Initially serialize execution within a realm; parallelize independent builds in isolated processes. Later in-process parallelism requires audited isolation for the complete callable closure, not only the backend.
+
+The native provider adapter uses the existing `IR-CTX` as its storage owner.
+`NLEASE:WITH` acquires the exclusive legacy compiler realm before shared setup;
+nested entry and entry from a running task refuse before changing it.
+`NSESSION:NEW` binds that lease, a context and the provider's stable ID.
+`NSESSION:WITH-WORK` admits one provider work interval at a time. Frozen HIR and
+owned emissions can survive between intervals while their context remains live.
+The backend registry grows with loaded descriptors and orders them by stable ID;
+a runtime row number is not a provider identity.
+
+An `NART:emission` owns copied bytes and function, call and address rows in its
+context. Backend retirement cannot invalidate that copy. Publication and shadow
+capture consume the explicit artifact; releasing it or closing its context makes
+its readers refuse. This adapter serializes legacy providers; it does not qualify
+parallel compilation or foreign code execution. The registered
+`test/compiler/session.f` exercises A64 → x64 → A64, different numeric policies,
+nested admission, task refusal and failure after child scratch allocation, and
+writes the retained A64 artifact.
 
 ### 5.2 Handle ownership and lifecycle
 
@@ -587,7 +605,7 @@ A single-worker browser profile does not promise threads. Native thread support 
 
 An immutable `BackendDescriptor` identifies implementation code, accepted machine families/states, supported representations and stage factories. A `BackendSession` contains its mutable state. Registration publishes a complete validated descriptor once; it must not expose a row before its mandatory function tables are installed.
 
-Replace the four-row ceiling (`BACKEND-ROWS`, `src/compiler/target.f:441`) with a manifest-derived capacity or checked storage sized to the loaded descriptors. This change is P2; Wasm alone fits in the existing rows and does not need it. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
+The P2 registry (`src/compiler/native/backend.f`) uses checked storage sized to the loaded descriptors. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
 
 The old A32 and Thumb2 target variants may map to one ARM32 provider with different instruction-state configurations. Do not renumber old target wire codes to achieve that. A new backend may require extending the centrally owned target vocabulary and validators; the goal is one owner for that extension, not a false promise of adding arbitrary architectures without any schema change.
 
@@ -1341,7 +1359,7 @@ Paths in the “destination/contract” column are proposed ownership destinatio
 
 | Current file/area | Problem or retained value | Destination/contract | First acceptance gate |
 |---|---|---|---|
-| `src/compiler/target.f` | Good immutable identity; incomplete resolved profile and four-row registry | Keep legacy schema; add composed target/layout/ABI/compatibility modules and manifest-sized registry | T01–T06; legacy digest goldens |
+| `src/compiler/target.f` | Good immutable identity; incomplete resolved profile | Keep legacy schema; add composed target/layout/ABI/compatibility modules; registry lives in `src/compiler/native/backend.f` | T01–T06; legacy digest goldens |
 | `src/compiler/binding.f` | Existing target/numeric-policy binding | Retain; explicitly compose layout/internal ABI and consumed policies | N01–N06; no duplicated numeric policy |
 | `tools/build-target.f` | Ambient three-way selection | Resolve aliases once into action-owned target context; temporary read-only compatibility view | T07/T15 |
 | `src/os/*/target.f` | Host/target predicate ambiguity: `HB-TARGET-*` appears on 415 lines in 104 files; 74 uses select target semantics on the building engine, the rest select host services | Host identity from executing image; source selection from resolved manifest. P13 retires the 74 target-selecting uses, with a lint; the host-service uses stay | T01/T11 |

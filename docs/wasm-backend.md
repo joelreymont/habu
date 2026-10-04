@@ -12,8 +12,7 @@ differ, portability.md wins (its §0.1). HBR2 is
 [docs/browser-runtime.md](browser-runtime.md), and "HBR2 §n" cites its
 sections. Its registry is `lib/browser/hbr-v2-registry.json` (§12.1).
 
-Claims about existing code are re-audited against master 67a66d28; the page was
-first written against aed8416b. The backend uses memory32 with 64-bit Habu
+The backend uses memory32 with 64-bit Habu
 cells, reuses the checker, recorded tape, elaborator and frozen HIR, and emits a
 dedicated Wasm IR and the final binary in checked Habu. The production compiler
 depends on no LLVM, MLIR, Emscripten or Binaryen.
@@ -42,18 +41,15 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 | First deployment | Single worker, one unshared memory, scalar instructions plus multi-value; no mandatory threads, GC, memory64 or JSPI |
 | Proof posture | Preserve checker and ownership obligations; validate every stage; do not equate valid Wasm with semantic correctness |
 
-## 2. What exists on master
+## 2. Existing compiler boundaries
 
-Observed on master 67a66d28. None of these files changed between the previous
-audit's tree (64bdd426) and 67a66d28.
-
-* `src/compiler/target.f` owns an immutable architecture/ABI/endian/address-width/features contract (`:52-103`, `:326-333`), stable wire codes and digest (`:153-185`, `:374-387`) and the backend registry of four rows (`BACKEND-ROWS`, `:441`), filled by `src/arch/arm64/backend.f` and `src/arch/x86-64/backend.f`. It separates a coherent description from a loaded implementation (`E-CTGT-UNLOADED`, `:467-477`). `wasm` is not an architecture (`:52-59`).
-* `src/compiler/native/backend.f` (`NBACK`) dispatches declaration, selection, emission and lifecycle through the target row (`:97-107`, `:187-234`). `NBACK:FREEZE` freezes the definition's HIR module and folds its loops before any selector runs, so a shadow target selects from the very module the engine's selector did (`:27-35`, `:159-185`). `EMIT` still takes a numeric code location; its sibling `EMIT-UNPLACED` writes a routine measured from no slot (`:36-40`).
+* `src/compiler/target.f` owns the immutable architecture/ABI/endian/address-width/features contract and its stable wire codes and digest. `src/compiler/native/backend.f` owns one private complete descriptor/pass row per loaded provider, registered by its `passes.f` module. `wasm` is a contract architecture, but an unloaded Wasm provider refuses with `E-CTGT-UNLOADED`.
+* `src/compiler/native/backend.f` (`NBACK`) dispatches declaration, selection, emission and lifecycle through the target row. `NBACK:FREEZE` freezes the definition's HIR module and folds its loops before any selector runs, so a shadow target selects from the very module the engine's selector did. `EMIT` still takes a numeric code location; its sibling `EMIT-UNPLACED` writes a routine measured from no slot.
 * `src/compiler/native/compiler.f` (`NCOMP`) consumes checker-observed source tape and publishes a pending definition only after the compilation chain succeeds (`:15-16`, `:515-527`). `LOAD-PASSES` loads the ARM64 or x86-64 passes by target and refuses any other with `E-CTGT-ABI` (`:18-24`, `:54-71`). NCOMP also compiles every definition for an open shadow binding (`:26-33`, `:482-506`).
 * `src/compiler/native/elaborate.f` holds compile-time cell vectors with grouping for wide values; stack renaming and the admitted return-stack operations move value identities rather than implementing a runtime stack; quotation bodies become functions (`:4-13`). Native `does>` and the `?do` entry rule (ae15d38a) are newer than the first audit.
 * `src/compiler/native/hir.f` has 47 opcodes, covering arithmetic, floating point, memory, branches, calls, quotations, traps and termination (`:51-99`); `TARGET` reads the immutable binding (`:203-206`).
-* `src/compiler/native/frozen.f` reads frozen functions, blocks, values, operands and predecessor edges (`:98-196`), a usable backend input. Its one producer, `NBACK:FREEZE`, uses `IR-BUILD:FREEZE-INTERIM` (`src/compiler/native/backend.f:184`), which skips the schema, dominance, terminator, single-definition, successor-argument and span checks (`src/compiler/ir/build.f:1476-1494`); native code relies on the verify of the emitted machine module.
-* `src/compiler/native/publish.f` reads `NEMIT` rows in bytes and decodes no instruction (`:1-4`; `src/compiler/native/emission.f:1-24`), refuses an emission for another machine (`:122-124`), and places code in the engine's code region through its own writers (`:31-67`). It is not a portable publisher.
+* `src/compiler/native/frozen.f` reads frozen functions, blocks, values, operands and predecessor edges (`:98-196`), a usable backend input. Its one producer, `NBACK:FREEZE`, uses `IR-BUILD:FREEZE-INTERIM`, which skips the schema, dominance, terminator, single-definition, successor-argument and span checks (`src/compiler/ir/build.f:1476-1494`); native code relies on the verify of the emitted machine module.
+* `src/compiler/native/publish.f` reads the owned `NART` artifact copied from `NEMIT`, decodes no instruction, refuses an emission for another machine, and places code in the engine's code region through its own writers. It is not a portable publisher.
 * `src/compiler/native/shadow.f` (`NSHADOW`) compiles each definition a second time for an open shadow binding and keeps the result as a sealed unplaced emission per published record (`:1-30`); `src/habu/aot-shadow.f` carries it into the capture.
 * `src/core/quotation-storage.f` distinguishes native image DATA addresses and records quotation relocations (`:7-17`); it needs a target-specific storage strategy.
 * `src/habu/arith-abi.f`: `+ - *` wrap (`:4-5`), division by zero throws `E-DIV-ZERO` = -6400 (`:5-9`, `:29`), and `MIN-N -1 /` wraps to `MIN-N` (`:23-25`).
@@ -743,7 +739,7 @@ wait for P13. The Wasm path adds only new files:
 
 | Path | Holds |
 |---|---|
-| `src/arch/wasm/` | The Wasm backend: selector, WSTRUCT dialect, encoder, LEB routines and module linker, registered as a backend row the way `src/arch/arm64/backend.f` is |
+| `src/arch/wasm/` | The Wasm backend: selector, WSTRUCT dialect, encoder, LEB routines and module linker, registered as a complete row through its `passes.f` module |
 | `test/wasm/` | Wasm tests and fixtures |
 | `host/browser/` | HBR2's closed host adapter and workers |
 | `lib/browser/`, `lib/runtime/`, `lib/ui/` | HBR2's BROWSER, RUNTIME and UI packages, built as caller-driven Habu libraries |
