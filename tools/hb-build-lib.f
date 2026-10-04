@@ -515,6 +515,7 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
+   s" tools/object-image-arm.f" HBB-KEY-FILE+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
@@ -523,6 +524,7 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-KEY-MACOS-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:macos-aarch64" CONTENT-KEY:TEXT+
+   s" tools/object-image-arm.f" HBB-KEY-FILE+
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
@@ -533,6 +535,14 @@ HBB-INSTALL-CHILD-LINT
 \ change the engine this key names.
 : HBB-KEY-LINUX-X86-64-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-x86-64" CONTENT-KEY:TEXT+
+   s" tools/object-image-x64.f" HBB-KEY-FILE+
+   s" src/habu/aot-x64.f" HBB-KEY-FILE+
+   s" src/habu/boot-x64.f" HBB-KEY-FILE+
+   s" src/habu/image-x64.f" HBB-KEY-FILE+
+   s" src/habu/patch-x64.f" HBB-KEY-FILE+
+   s" src/habu/snap-decode-x64.f" HBB-KEY-FILE+
+   s" src/habu/snap-x64.f" HBB-KEY-FILE+
+   s" src/habu/text-sites-x64.f" HBB-KEY-FILE+
    s" src/arch/x86-64/asm.f" HBB-KEY-FILE+
    s" src/arch/x86-64/icode.f" HBB-KEY-FILE+
    s" src/arch/x86-64/rt.f" HBB-KEY-FILE+
