@@ -1290,8 +1290,10 @@ passing suite.
   refused definition, one with an undefined word included, as a schema-1 JSON
   diagnostic under `--json-errors` and always under `--verify-only`, and check
   each later definition against a refused one's declared effect
-  ([repair-diagnostics.md](repair-diagnostics.md)). Without them check.f stops
-  at the first refusal.
+  ([repair-diagnostics.md](repair-diagnostics.md)). A duplicate definition
+  ends `--all-errors`, as it ends the load; `--verify-only` reports it with the
+  same record and goes on past it. Without them check.f stops at the first
+  refusal.
 
 ## Habu Native Tooling Gotchas
 

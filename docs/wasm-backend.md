@@ -8,10 +8,9 @@ implementation slice. It is a design, not an implemented or qualified backend.
 resolution, compiler sessions, compile-time execution and target data, package
 contributions, linking, publication and the work packages. This page holds its
 Wasm sections (17 to 21) and the Wasm detail beneath them; where the two
-differ, portability.md wins (its §0.1). HBR2 lands in Habu as
-docs/browser-runtime.md with the HBR2 runtime dot
-(habu-build-hbr2-runtime-731d5ddd); until then "HBR2 §n" cites the HBR2 design
-by section. Its registry is `lib/browser/hbr-v2-registry.json` (§12.1).
+differ, portability.md wins (its §0.1). HBR2 is
+[docs/browser-runtime.md](browser-runtime.md), and "HBR2 §n" cites its
+sections. Its registry is `lib/browser/hbr-v2-registry.json` (§12.1).
 
 Claims about existing code are re-audited against master 67a66d28; the page was
 first written against aed8416b. The backend uses memory32 with 64-bit Habu
@@ -380,7 +379,7 @@ Module admission parses the actual binary to compare exact function signatures, 
 
 #### ReleaseManifest integration
 
-The build produces the v2 release set: `app.wasm`, ABI/feature schema manifest, immutable asset manifest, generic host modules, CSS/widget templates, locale catalogues, shader/layout assets, source/definition map and optional offline manifest. All are bound to one release identity. A component-only source edit need not regenerate unchanged generic host modules. [HBR2 §21.2]
+The build produces the v2 release set: `app.wasm`, ABI/feature schema manifest, immutable asset manifest, generic host modules, CSS/widget templates, locale catalogues, shader/layout assets, source/definition map and optional offline manifest. All are bound to one release identity. A component-only source edit need not regenerate unchanged generic host modules. [HBR2 §21.2](browser-runtime.md#212-build-outputs-and-package-increments)
 
 Add a **portability build descriptor** referenced by the existing release construction, rather than another competing browser manifest:
 
@@ -418,7 +417,7 @@ No SharedArrayBuffer, JSPI, memory64 or Wasm GC is silently required by the base
 
 #### Schemas and generated bindings
 
-`lib/browser/hbr-v2-registry.json` is the authority for numeric operations, field layouts and typed results. Generate Habu codecs, host-side validation tables, TypeScript declarations, interface metadata and golden vectors from its pinned content. Production generation is a checked Habu build action; independent reference tools remain tests, not a new compiler implementation dependency. [HBR2 §§21.2, 25]
+`lib/browser/hbr-v2-registry.json` is the authority for numeric operations, field layouts and typed results. Generate Habu codecs, host-side validation tables, TypeScript declarations, interface metadata and golden vectors from its pinned content. Production generation is a checked Habu build action; independent reference tools remain tests, not a new compiler implementation dependency. [HBR2 §§21.2, 25](browser-runtime.md#212-build-outputs-and-package-increments)
 
 Artifact admission compares generated signatures/limits and actual emitted bytes, not just matching filenames. A schema change updates both sides, fixtures, feature digest and changelog together. AppData can select only approved application data schemas, never new host operations.
 
@@ -426,14 +425,14 @@ Artifact admission compares generated signatures/limits and actual emitted bytes
 
 HTTP MIME, worker URL/module loading, CSP, assets, connect/img/font policies and offline service-worker behavior are deployment inputs and qualification cases. Do not add unrestricted eval to bypass a failure. Public release assets and private document/draft state have separate cache and authorization policies.
 
-AOT hot replacement creates a new worker/runtime epoch and follows v2 state migration, effect reconciliation and draft adoption. It is the baseline developer reload path. It does not copy raw Wasm heap pointers or browser resource handles into a new instance, and it does not pretend DOM/GPU/IDB/server state share one rollback point. [HBR2 §§21–22]
+AOT hot replacement creates a new worker/runtime epoch and follows v2 state migration, effect reconciliation and draft adoption. It is the baseline developer reload path. It does not copy raw Wasm heap pointers or browser resource handles into a new instance, and it does not pretend DOM/GPU/IDB/server state share one rollback point. [HBR2 §§21–22](browser-runtime.md#21-boot-deployment-developer-tools-and-optional-compilation)
 
 ### 11.2 Optional browser compilation and transactional installation
 
 Adopted as specified and deferred: this is P12, which waits for a caller. No
 Maki path needs it.
 
-This is an **optional compiler profile**, not an extra obligation imposed on every HBR2 application. The base application retains exactly the wrapper/import surface in §12.1. Browser Runtime v2 already delegates browser compilation to the checked compiler and immutable publication design; it does not authorize arbitrary new core opcodes or a generic JavaScript execution import. [HBR2 §21.3]
+This is an **optional compiler profile**, not an extra obligation imposed on every HBR2 application. The base application retains exactly the wrapper/import surface in §12.1. Browser Runtime v2 already delegates browser compilation to the checked compiler and immutable publication design; it does not authorize arbitrary new core opcodes or a generic JavaScript execution import. [HBR2 §21.3](browser-runtime.md#213-inspector-replay-automation-and-reload)
 
 #### Installer provider, not a second browser protocol
 
@@ -479,7 +478,7 @@ For incremental modules sharing a trusted runtime's memory/table:
 
 Core Wasm instantiation has initialization effects, so a failed `instantiate` alone does not provide rollback. The restrictions above are the mechanism that makes preparation nonpublishing. [WW5]
 
-Untrusted modules must not use this shared-memory compiler lane. They receive separate instances/memories and restricted capabilities, following v2's plugin profile. A nominal generation handle is not a security barrier against code permitted to overwrite the same privileged heap. [HBR2 §21.4]
+Untrusted modules must not use this shared-memory compiler lane. They receive separate instances/memories and restricted capabilities, following v2's plugin profile. A nominal generation handle is not a security barrier against code permitted to overwrite the same privileged heap. [HBR2 §21.4](browser-runtime.md#214-plugins)
 
 #### Prepare, install and commit algorithm
 
@@ -527,7 +526,7 @@ Native build hosts can fulfill installation synchronously while preserving the s
 
 ### 12.1 Exact HBR2 binding
 
-This is a binding to HBR2, not another proposed browser ABI. Its details come from HBR2 §24 and Appendix A and were checked exactly against HBR2 §24.5: two imports, six exports, a 128-byte control record, result classes 0 to 6 and submit codes 0 to 7.
+This is a binding to HBR2, not another proposed browser ABI. Its details come from [HBR2 §24](browser-runtime.md#24-binary-abi-and-boundary-ownership) and [Appendix A](browser-runtime.md#appendix-a--generated-hbr2-registry) and were checked exactly against [HBR2 §24.5](browser-runtime.md#245-wasm-wrapper-abi): two imports, six exports, a 128-byte control record, result classes 0 to 6 and submit codes 0 to 7.
 
 #### Identity and registry
 
@@ -537,7 +536,7 @@ The wire magic is `HBR2`, major 2, minor 0. The registry digest HBR2's appendix 
 a2c0e4e513d448fc1ecc4fbc28b3b4aff5210cb7d85b9c923d97e8be40500599
 ```
 
-Habu cannot reproduce this digest: HBR2 publishes the tables but not the registry's JSON, and the member names and nesting of Habu's file are Habu's. It stays attributed to HBR2 and is not a fixture. Habu generates the registry from HBR2's normative tables (Appendix A.1–A.4, §4.2, §24.1–§24.6) into `lib/browser/hbr-v2-registry.json`, whose `sources` member names the table behind each member. Its own digest, `fdd071a5d0df682af409a9d4c2c7ae409b75554fa0602e3f06f790982dcc9677`, is SHA-256 of its sorted compact UTF-8 JSON without `contentDigest`. The file stores that canonical form itself (keys in byte order, no escapes, no floats), and test/wasm/hbr2-fixtures.f recomputes the digest and pins it. The production build imports `hbr-v2-registry.json` from the selected v2 package and recomputes its specified sorted compact UTF-8 JSON digest excluding `contentDigest`. It fails if that digest differs. Optional feature schemas have separate digests and must not renumber the core registry. [HBR2 §§24–25, 28.2, Appendix A]
+Habu cannot reproduce this digest: HBR2 publishes the tables but not the registry's JSON, and the member names and nesting of Habu's file are Habu's. It stays attributed to HBR2 and is not a fixture. Habu generates the registry from HBR2's normative tables (Appendix A.1–A.4, §4.2, §24.1–§24.6) into `lib/browser/hbr-v2-registry.json`, whose `sources` member names the table behind each member. Its own digest, `fdd071a5d0df682af409a9d4c2c7ae409b75554fa0602e3f06f790982dcc9677`, is SHA-256 of its sorted compact UTF-8 JSON without `contentDigest`. The file stores that canonical form itself (keys in byte order, no escapes, no floats), and test/wasm/hbr2-fixtures.f recomputes the digest and pins it. The production build imports `hbr-v2-registry.json` from the selected v2 package and recomputes its specified sorted compact UTF-8 JSON digest excluding `contentDigest`. It fails if that digest differs. Optional feature schemas have separate digests and must not renumber the core registry. [HBR2 §§24–25, 28.2, Appendix A](browser-runtime.md#24-binary-abi-and-boundary-ownership)
 
 #### Imports
 
@@ -550,7 +549,7 @@ wake(ctx:i32) -> i32
 
 DOM, storage, network, rendering, forms and other capabilities are **typed protocol operations carried through submit**, not separate new Wasm imports invented by each library. Generated Habu bindings depend on the authoritative opcode/type registry. A package asking for Graphics does not cause the compiler to create an arbitrary `webgpu.*` import namespace.
 
-`submit` results are 0 Accepted, 1 Backpressure, 2 Invalid, 3 Denied, 4 Unavailable, 5 OOM, 6 StaleEpoch, 7 HostFailed. Accepted transfers responsibility for the submitted packet to the host after synchronous consumption/copy. Every non-Accepted result leaves packet responsibility with Habu. No awaited operation may retain a borrowed view of the Wasm memory. `wake` schedules/coalesces a later turn and never recursively enters exports. [HBR2 §24.5]
+`submit` results are 0 Accepted, 1 Backpressure, 2 Invalid, 3 Denied, 4 Unavailable, 5 OOM, 6 StaleEpoch, 7 HostFailed. Accepted transfers responsibility for the submitted packet to the host after synchronous consumption/copy. Every non-Accepted result leaves packet responsibility with Habu. No awaited operation may retain a borrowed view of the Wasm memory. `wake` schedules/coalesces a later turn and never recursively enters exports. [HBR2 §24.5](browser-runtime.md#245-wasm-wrapper-abi)
 
 #### Exports
 
@@ -565,7 +564,7 @@ hbr_step(ctx:i32, budget:i32) -> i32 language_status
 hbr_stop(ctx:i32) -> i32 language_status
 ```
 
-`hbr_control` returns a memory offset, not a status. The other functions return the inherited language exception status. Do not replace `hbr_start` with an export taking a host object, change lease to Number/u32, or return scheduler states from these functions. [HBR2 §24.5]
+`hbr_control` returns a memory offset, not a status. The other functions return the inherited language exception status. Do not replace `hbr_start` with an export taking a host object, change lease to Number/u32, or return scheduler states from these functions. [HBR2 §24.5](browser-runtime.md#245-wasm-wrapper-abi)
 
 The generated wrapper's control record has stable instance-local storage; allocator movement must not invalidate it. Bootstrap context zero is permitted only as specified by the wrapper. Wrapper startup and the HBR2 START request are separate layers; the adapter follows the v2 handshake/fixtures rather than replaying a second semantic START merely because a wrapper function was called.
 
@@ -589,7 +588,7 @@ The record is **128 bytes**, laid out by explicit byte offsets:
 | 56 | workDone | u64 |
 | 64–127 | reserved | zero bytes |
 
-Browser result classes are OK=0, Idle=1, More=2, Waiting=3, Stopped=4, WouldBlock=5, BadState=6. Those are not Habu throw codes and not host submission outcomes. A normal Waiting result is not a failed function call. A language throw status does not mean the control record's result class contains the throw code. [HBR2 §24.5]
+Browser result classes are OK=0, Idle=1, More=2, Waiting=3, Stopped=4, WouldBlock=5, BadState=6. Those are not Habu throw codes and not host submission outcomes. A normal Waiting result is not a failed function call. A language throw status does not mean the control record's result class contains the throw code. [HBR2 §24.5](browser-runtime.md#245-wasm-wrapper-abi)
 
 #### Ingress ownership algorithm
 
@@ -597,27 +596,27 @@ The host serializes all instance entries. To submit input it requests a reservat
 
 Only one reservation is live. It is invalidated by ingest/start completion, next reserve, stop or fatal failure. A stale pointer/lease cannot be retried after another reservation. Input lengths and returned offsets are interpreted as unsigned bit patterns only after range validation. An i64 lease crosses JavaScript as BigInt without Number conversion.
 
-The receiving runtime takes responsibility for accepted input under its allocator/context; this is not a second hidden heap. Ingress performs bounded envelope work and schedules deeper decode/semantic validation as jobs. It does not synchronously traverse an unbounded object graph. [HBR2 §§4.1–4.3, 24.5]
+The receiving runtime takes responsibility for accepted input under its allocator/context; this is not a second hidden heap. Ingress performs bounded envelope work and schedules deeper decode/semantic validation as jobs. It does not synchronously traverse an unbounded object graph. [HBR2 §§4.1–4.3, 24.5](browser-runtime.md#41-one-entry-explicit-jobs)
 
 #### Egress and backpressure algorithm
 
 Before calling submit, Habu owns a sealed packet and a prepared send record. On Accepted, it records the send exactly once, advances accepted transport accounting, and can release its source packet storage after the host's synchronous ownership transfer. On Backpressure or other rejection it keeps ownership, leaves accepted-send counters unchanged and follows the typed outcome policy. A queued retry references owned bytes, not a scratch pointer.
 
-The host reserves capacity and required terminal-result bookkeeping before returning Accepted. It must not accept a request and later discover there is no storage for any terminal outcome. Browser work is scheduled after admission; same-context reentry is prohibited even for an immediately resolved Promise. Acknowledged transport acceptance is not GPU completion, DOM activation, IDB commit or server acceptance. [HBR2 §§4.4, 24.3–24.5]
+The host reserves capacity and required terminal-result bookkeeping before returning Accepted. It must not accept a request and later discover there is no storage for any terminal outcome. Browser work is scheduled after admission; same-context reentry is prohibited even for an immediately resolved Promise. Acknowledged transport acceptance is not GPU completion, DOM activation, IDB commit or server acceptance. [HBR2 §§4.4, 24.3–24.5](browser-runtime.md#44-credits-and-liveness)
 
 #### Packet framing and codecs
 
-HBR2 has a **96-byte packet header** and **32-byte record header**, with 8-byte record/data alignment. Integers and floats are explicitly little-endian; structures are packed in registry order, not cast from native or Habu records. Header magic, major/minor, exact total extent, record count, epochs, lane generation, packet sequence, namespace, producer, dataStart and reserved zero bytes must all validate. [HBR2 §24.2]
+HBR2 has a **96-byte packet header** and **32-byte record header**, with 8-byte record/data alignment. Integers and floats are explicitly little-endian; structures are packed in registry order, not cast from native or Habu records. Header magic, major/minor, exact total extent, record count, epochs, lane generation, packet sequence, namespace, producer, dataStart and reserved zero bytes must all validate. [HBR2 §24.2](browser-runtime.md#242-primitive-encoding-and-fixed-header)
 
 `Blob`, `String`, and `DraftText` use eight-byte `(offset:u32,length:u32)` slots, but are different types. String is strict UTF-8; native DraftText is even-length UTF-16LE code-unit data and must preserve native draft contents losslessly, including cases not representable as ordinary normalized Unicode strings. Bool is u32 0/1. `Handle` is `(slot:u32,generation:u32)` with both zero or both nonzero; persistent Id128/Hash256 are opaque bytes.
 
 Arrays use `(offset,count)` and a registry-derived fixed stride. Empty references are exactly `(0,0)`. Referenced data cannot point into headers or the record stream. Union/property payloads must have their registered type and exact size. Checked extent calculations, a visited-reference accounting key `(offset,type,length)`, depth limits and total traversal budgets prevent overflow/alias-expansion attacks.
 
-The initial decoder limits are depth 32, at most 65,536 references/elements per packet, and packet limits of 64 KiB semantic, 1 MiB bulk and 4 KiB control, with stricter feature limits where specified. The v2 reference STOP packet is 136 bytes: 96-byte packet header, 32-byte record header, four-byte body and four-byte padding. These values should become binding-generation golden tests, not new handwritten numeric tables. [HBR2 §§24, 28]
+The initial decoder limits are depth 32, at most 65,536 references/elements per packet, and packet limits of 64 KiB semantic, 1 MiB bulk and 4 KiB control, with stricter feature limits where specified. The v2 reference STOP packet is 136 bytes: 96-byte packet header, 32-byte record header, four-byte body and four-byte padding. These values should become binding-generation golden tests, not new handwritten numeric tables. [HBR2 §§24, 28](browser-runtime.md#24-binary-abi-and-boundary-ownership)
 
 #### Exact packet field offsets
 
-The generated decoder/encoder must agree with these inherited header offsets. This table is a cross-check against HBR2 §24.2; production constants still come from the registry, not an independently maintained table.
+The generated decoder/encoder must agree with these inherited header offsets. This table is a cross-check against [HBR2 §24.2](browser-runtime.md#242-primitive-encoding-and-fixed-header); production constants still come from the registry, not an independently maintained table.
 
 | Packet offset | Field | Width/encoding |
 |---:|---|---|
@@ -644,15 +643,15 @@ Validation of a syntactically correct header is only the first phase. Exact oper
 
 Retain Control, Input, DOM, GPUResource, DisplayFrame, Capability, Diagnostic and GPUJob channels from the registry. Ordered local lanes do not become a new retry transport. Local duplicates/gaps follow v2's error/reset behavior, except its explicitly idempotent cumulative CREDIT semantics. Network durable-operation deduplication is a different layer.
 
-Each accepted request resolves through the registered RESULT success/error schema. Progress can precede terminal outcome. Terminal ownership must survive observer abandonment and late completion. The compiler may generate typed wrappers and state helpers, but cannot reinterpret requests as fire-and-forget calls or assume every terminal result fits a small inline struct. [HBR2 §§4.4, 24.3–24.4]
+Each accepted request resolves through the registered RESULT success/error schema. Progress can precede terminal outcome. Terminal ownership must survive observer abandonment and late completion. The compiler may generate typed wrappers and state helpers, but cannot reinterpret requests as fire-and-forget calls or assume every terminal result fits a small inline struct. [HBR2 §§4.4, 24.3–24.4](browser-runtime.md#44-credits-and-liveness)
 
 ### 12.2 Compiler obligations HBR2 imposes
 
-HBR2 is more than an import manifest: it requires **compile-time effect and cost admission** and lifetime-aware generated application code. The limits below were checked against HBR2 §4.2: loop bound 64, 2,048 weighted operations, 256 direct nodes and 16 KiB copied.
+HBR2 is more than an import manifest: it requires **compile-time effect and cost admission** and lifetime-aware generated application code. The limits below were checked against [HBR2 §4.2](browser-runtime.md#42-callback-admission-not-fictional-preemption): loop bound 64, 2,048 weighted operations, 256 direct nodes and 16 KiB copied.
 
 #### Bounded callback verifier
 
-Implement an admission pass over frozen HIR and its exact callable closure. For the base ViewCallback profile, verify the acyclic transitive call graph, statically bounded loops with each bound at most 64, closed indirect callback sets, allowed bounded primitives, and the 2,048 weighted-operation limit. Also enforce v2's 256 direct-node and 16 KiB copy bounds for a component callback. These are v2 initial profile limits, not measured wall-clock promises. [HBR2 §4.2]
+Implement an admission pass over frozen HIR and its exact callable closure. For the base ViewCallback profile, verify the acyclic transitive call graph, statically bounded loops with each bound at most 64, closed indirect callback sets, allowed bounded primitives, and the 2,048 weighted-operation limit. Also enforce v2's 256 direct-node and 16 KiB copy bounds for a component callback. These are v2 initial profile limits, not measured wall-clock promises. [HBR2 §4.2](browser-runtime.md#42-callback-admission-not-fictional-preemption)
 
 The verifier computes worst-case cost using checked/saturating arithmetic: sequence costs sum; alternatives take the maximum; loops multiply the bound by worst body cost plus their control overhead; calls include the certified callee cost; bounded byte operations include their maximum byte-block count. Nested loops multiply, so two individually small bounds do not excuse an excessive total. Unknown bounds or recursive SCCs fail this callback profile. A helper called “copy” does not cost one operation when it can copy an unbounded buffer.
 
@@ -674,7 +673,7 @@ CallbackAdmission {
 
 Bind evidence to the exact code/implementation closure. If optimization, inlining, helper selection or a deferred target changes relevant behavior, revalidate or regenerate the certificate. Metadata can be forged; a loader trusts a qualified producer/proof-verifier policy, not a self-asserted custom section in arbitrary Wasm. Untrusted opaque modules remain isolated plugins unless independently admitted.
 
-Hard fuel catches a cost-contract violation; exhaustion aborts unpublished work or terminates the isolated runtime as specified. It is **not** resumable preemption of an arbitrary Wasm stack. Cooperative Yield/Wait occurs only at explicit job boundaries. A watchdog on a different agent can terminate a stuck worker, but that does not recover an arbitrary valid continuation. [HBR2 §§4, 22]
+Hard fuel catches a cost-contract violation; exhaustion aborts unpublished work or terminates the isolated runtime as specified. It is **not** resumable preemption of an arbitrary Wasm stack. Cooperative Yield/Wait occurs only at explicit job boundaries. A watchdog on a different agent can terminate a stuck worker, but that does not recover an arbitrary valid continuation. [HBR2 §§4, 22](browser-runtime.md#4-scheduling-bounded-execution-clocks-and-backpressure)
 
 #### Generated ownership types
 
@@ -686,11 +685,11 @@ The runtime package owns its concrete persistent-store representation. The porta
 
 A component descriptor, queued event/action, job continuation or retired binding that can invoke code holds its definition generation's code lease. V2 frame leases retain sealed GPU input versions until safe completion; reliable picks have their own ownership and cannot be cancelled merely because a display frame was superseded.
 
-Hot replacement may detach old observers while old durable operations continue outcome discovery. The host drains old-epoch resources under their original ownership/authority; it must not route their results into the replacement epoch merely because a slot number matches. [HBR2 §§2, 5, 15, 21]
+Hot replacement may detach old observers while old durable operations continue outcome discovery. The host drains old-epoch resources under their original ownership/authority; it must not route their results into the replacement epoch merely because a slot number matches. [HBR2 §§2, 5, 15, 21](browser-runtime.md#2-identities-stamps-authority-and-validity)
 
 #### Package boundaries
 
-Preserve v2's package dependency direction: RUNTIME does not import UI, SCENE, BROWSER or SYNC; UI depends on RUNTIME; rendering remains independent of Maki/exact-kernel choices. A DOM form build must not pull in GPU or collaborative journal code unless selected by its feature/dependency closure. Browser bindings use Habu's package system, not a separate browser-only package manager. [HBR2 §1.2]
+Preserve v2's package dependency direction: RUNTIME does not import UI, SCENE, BROWSER or SYNC; UI depends on RUNTIME; rendering remains independent of Maki/exact-kernel choices. A DOM form build must not pull in GPU or collaborative journal code unless selected by its feature/dependency closure. Browser bindings use Habu's package system, not a separate browser-only package manager. [HBR2 §1.2](browser-runtime.md#12-independent-packages)
 
 ### 12.3 Compile-time evaluation
 
@@ -969,4 +968,4 @@ Repository references are paths on master, re-audited at 67a66d28. Public specif
 
 [WW5] WebAssembly module instantiation: `https://webassembly.github.io/spec/core/exec/modules.html`
 
-[HBR2] Habu Browser Runtime, consolidated design, revision 2 (2 October 2026). It lands as docs/browser-runtime.md with habu-build-hbr2-runtime-731d5ddd.
+[HBR2] Habu Browser Runtime, consolidated design, revision 2 (2 October 2026). It is [docs/browser-runtime.md](browser-runtime.md).
