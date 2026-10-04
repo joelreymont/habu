@@ -49,6 +49,7 @@ variable BAD-NDICT                   \ the record count before it was tried
 variable BAD-MOVED                   \ and how far trying it moved the count
 variable BAD-RECS                    \ what the refusing shadow had filed
 variable BAD-EMS
+TYPED-VARIABLE USE-ART NART:emission
 
 : OPEN-X64 ( -- )
    X64ABI:BINDING NSHADOW:OPEN ;
@@ -177,28 +178,33 @@ ndict@ REC-QUOT !
    s" shadow-add" 2 1 [: ADD-STAGE ;] use X64KHIR:COMPILE ;
 
 : FOREIGN-USE ( NART:emission -- )
-   {: e:NART:emission :}
+   USE-ART !
    cp@ ndict@ {: cp0:n nd0:n :}
-   e [: NPUB:PUBLISH-PENDING ;] catch
-   E-NPUB-TARGET T= drop
+   [: USE-ART @ NPUB:PUBLISH-PENDING ;] E-NPUB-TARGET TTHROWSQ
    cp@ cp0 - 0 T=
    ndict@ nd0 - 0 T= ;
 
 : UNCLAIMED-USE ( NART:emission -- )
    {: e:NART:emission :}
+   e USE-ART !
    NSHADOW:RECORDS NSHADOW:EMISSIONS {: recs:n ems:n :}
    e NSHADOW:TAKE
    NSHADOW:ABANDON
    ndict@ NSHADOW:PUBLISH
-   e 0 [: NSHADOW:TAKE-DOES ;] catch E-NSHADOW-ROW T= drop drop
+   [: USE-ART @ 0 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
-   e 1 [: NSHADOW:TAKE-DOES ;] catch E-NSHADOW-ROW T= drop drop
+   [: USE-ART @ 1 NSHADOW:TAKE-DOES ;] E-NSHADOW-ROW TTHROWSQ
    ndict@ NSHADOW:PUBLISH
    NSHADOW:RECORDS recs T=
    NSHADOW:EMISSIONS ems T= ;
 
 : WRONG-TARGET-USE ( NART:emission -- )
-   [: NSHADOW:TAKE ;] catch E-NSHADOW-TARGET T= drop ;
+   USE-ART !
+   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ ;
+
+: CLOSED-USE ( NART:emission -- )
+   USE-ART !
+   [: USE-ART @ NSHADOW:TAKE ;] E-NSHADOW-STATE TTHROWSQ ;
 
 : FOREIGN-CASE ( -- )
    s" publication refuses an emission sealed for another machine before its window, and neither CP nor NDICT moves" T-LABEL
@@ -277,7 +283,7 @@ NSHADOW:CLOSE
    NSHADOW:OPEN? TFALSE
    [: NSHADOW:RECORDS drop ;] E-NSHADOW-STATE TTHROWSQ
    [: NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ drop ;] E-NSHADOW-STATE TTHROWSQ
-   [: [: NSHADOW:TAKE ;] catch E-NSHADOW-STATE T= drop ;] SEALED-X64
+   [: CLOSED-USE ;] SEALED-X64
    OPEN-X64
    NSHADOW:OPEN? TTRUE
    NSHADOW:RECORDS 0 T=
