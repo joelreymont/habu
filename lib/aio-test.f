@@ -8,6 +8,7 @@
 
 require lib/errors.f
 require lib/test.f
+require lib/process.f           \ FD-NOSIGPIPE! for the broken-pipe write
 require lib/task.f
 require lib/memory.f              \ the allocations the transfers own
 require lib/num-types.f           \ the alloc-byte-len those allocations carry
@@ -522,6 +523,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ 0 0 0 READ-ONCE 0 T=
    P-R @ 3 0 fcntl oldflags T=
    P-R @ close -1 P-R !
+   P-W @ >FD FD-NOSIGPIPE!
    XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
    P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
       {: rb rc2:NUM:alloc-byte-len out:AIO:outcome :}
@@ -852,7 +854,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-TIMER
    CASE-POLL-DEADLINE
    CASE-CANCEL
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       CASE-PLANTED-TIMER
       CASE-PLANTED-POLL
    then
