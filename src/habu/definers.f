@@ -664,12 +664,18 @@ TRUSTED: DEF-HERE ( -- n ) here ;
 
 \ `create` rounds the data field up to a cell, as the engine's create does,
 \ before the body takes its address.
-: DEF-CREATE ( -- )
+: DEF-CREATE-ROW ( -- )
    s" create" DEF-FIXED-HEAD
    DEF-QUALIFY DKIND:ADDR 1 DEF-RECORD
    align
    DEF-HERE NDICT:FIXED-ADDR NCOMP:COMPILE-FIXED
-   DEF-CLOSE
+   DEF-CLOSE ;
+
+\ A compiled defining word reaches CREATE through the engine primitive. ARM's
+\ BCREATE calls the same record writer without the outer keyword's hook and
+\ raw-effect registration; those belong to the interpreting CREATE only.
+: DEF-CREATE ( -- )
+   DEF-CREATE-ROW
    s" create" DEF-HOOK
    s" -- ptr a" DEF-RAW ;
 
@@ -819,5 +825,10 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
    s" defer" TOKEN-IS? if DEF-DEFER true exit then
    false ;
+
+public
+
+: INSTALL-CREATE ( -- )
+   ['] DEF-CREATE-ROW data-base CREATEP-CELL + xt! ;
 
 ;package

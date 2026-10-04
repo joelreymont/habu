@@ -1866,6 +1866,13 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RDI ASM-SINK ENC-POP
    0 RC-EXIT, ;
 
+\ A defining word's CREATE calls the captured source-owned writer. The outer
+\ keyword has its own hook/registrar tail; this primitive shares its row work.
+: CREATE-BODY ( -- )
+   RAX DATA-REG CREATEP-CELL MOV-LOAD,
+   CALLABLE,
+   RAX ASM-SINK ENC-CALL-REG ;
+
 \ A source token's scope is a dictionary-record lookup. The one-wordlist
 \ FIND-LBL helper also serves the public search rows; using it here keeps
 \ package, qualified and used-public names on the same name-folding path.
@@ -2133,7 +2140,7 @@ public
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
-   s" create" REFUSE
+   s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" REFUSE
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM

@@ -1687,6 +1687,10 @@ SUITE x86-64-kernel-token
    test/x86-64-kernel-token.f
 ;SUITE
 
+SUITE x86-64-kernel-create
+   test/x86-64-kernel-create.f
+;SUITE
+
 SUITE x86-64-kernel-ffi
    test/x86-64-kernel-ffi.f
 ;SUITE
