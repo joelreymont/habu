@@ -1,0 +1,99 @@
+\ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
+\ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
+\ Habu comparator through ffi-call. The three refusal images exit 106 with
+\ their corresponding exact "hb: callback: ..." lines on stderr.
+require test/x86-64-boot-harness.f
+
+package X64K-CB
+using X64ASM
+using X64CODE
+using X64RT
+
+DATA-START $20000 + constant ARGS
+ARGS 8 CELL * + constant VALUES
+VALUES 3 CELL * + constant XTS
+XTS CELL + constant ROWS
+
+: DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
+: N, ( n -- ) X64HARNESS:PUSH, ;
+: ROW ( ptr u8 n -- ) X64HARNESS:CALL-ROW, ;
+: ARG ( n -- n ) CELL * ARGS + ;
+
+\ The checked dispatch ABI reads C's two pointer arguments through CB-FRAME
+\ and writes a signed three-way comparison into its first integer result slot.
+: COMPARE, ( -- )
+   RAX DATA-REG CB-FRAME MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RDX RAX CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RCX MEM-AT ASM-SINK ENC-MOV-RM
+   RDX RDX MEM-AT ASM-SINK ENC-MOV-RM
+   RCX RDX ASM-SINK ENC-SUB-RR
+   RCX RAX MEM-AT ASM-SINK ENC-MOV-MR ;
+
+: SYM, ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL LBL {: name:label past:label :}
+   past JMP,
+   name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   0 ASM-SINK BUF:APPEND-BYTE
+   past LBL,
+   RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
+
+: SORT-CASE ( -- )
+   [: COMPARE, ;] X64HARNESS:ROUTINE, XTS X64HARNESS:LABEL-CELL!,
+   XTS CB-XTS X64HARNESS:DATA-ADDR!,
+   ROWS CB-ROWS X64HARNESS:DATA-ADDR!,
+   0 ROWS X64HARNESS:DATA-ADDR!,
+   3 VALUES X64HARNESS:CELL!,
+   1 VALUES CELL + X64HARNESS:CELL!,
+   2 VALUES 2 CELL * + X64HARNESS:CELL!,
+   VALUES 0 ARG X64HARNESS:DATA-ADDR!,
+   3 1 ARG X64HARNESS:CELL!,
+   CELL 2 ARG X64HARNESS:CELL!,
+   0 N, s" callback-entry" ROW
+   0 G-POP  RAX DATA-REG 3 ARG MEM-OFF ASM-SINK ENC-MOV-MR
+   ARGS X64HARNESS:PUSH-DATA,  4 N,  s" qsort" SYM,
+   s" ffi-call" ROW  0 G-POP
+   1 VALUES X64HARNESS:EXPECT-CELL,
+   2 VALUES CELL + X64HARNESS:EXPECT-CELL,
+   3 VALUES 2 CELL * + X64HARNESS:EXPECT-CELL,
+   0 CB-XDS X64HARNESS:EXPECT-CELL,
+   0 CB-OWNER X64HARNESS:EXPECT-CELL,
+   0 CB-FRAME X64HARNESS:EXPECT-CELL, ;
+
+: RANGE-CASE ( -- ) CB-POOL N, s" callback-entry" ROW ;
+
+: CALL-ENTRY, ( -- )
+   0 N, s" callback-entry" ROW
+   0 G-POP  RAX ASM-SINK ENC-CALL-REG ;
+
+: UNBOUND-CASE ( -- )
+   ROWS CB-ROWS X64HARNESS:DATA-ADDR!,
+   CALL-ENTRY, ;
+
+: NO-FRAME-CASE ( -- )
+   ROWS CB-ROWS X64HARNESS:DATA-ADDR!,
+   0 ROWS X64HARNESS:DATA-ADDR!,
+   CALL-ENTRY, ;
+
+: BUILD ( [ -- ] ptr u8 n -- ) {: path:ptr u:n :}
+   false X64HARNESS:BOOT-OPEN,
+   execute
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   path u X64HARNESS:BOOT-CLOSE, ;
+
+public
+
+: RUN ( -- )
+   T-RESET X64HARNESS:INIT
+   [: SORT-CASE ;] s" hb-x64-kernel-callback" TMP-PATH BUILD
+   [: RANGE-CASE ;] s" hb-x64-kernel-callback-range" TMP-PATH BUILD
+   [: UNBOUND-CASE ;] s" hb-x64-kernel-callback-unbound" TMP-PATH BUILD
+   [: NO-FRAME-CASE ;] s" hb-x64-kernel-callback-no-frame" TMP-PATH BUILD
+   X64HARNESS:DISPOSE T-REPORT ;
+
+;using
+;using
+;package
+
+X64K-CB:RUN

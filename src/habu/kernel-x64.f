@@ -3438,6 +3438,89 @@ private
 SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
 8 constant VEC-REGS                     \ xmm0..7
 
+\ Outbound C calls publish a per-thread VM frame for callback-entry. glibc's
+\ x86-64 thread pointer is fs:0, the same value pthread_self answers, and it
+\ cannot name the free (0) or mover-busy (1) callback-row states.
+0 constant CBO-ARG
+8 constant CBO-COUNT
+16 constant CBO-FN
+24 constant CBO-CLAIM
+32 constant CBO-XDS
+40 constant CBO-DBASE
+48 constant CBO-NDICT
+56 constant CBO-CP
+64 constant CBO-BYTES
+
+\ mov rax, qword ptr fs:0 (the segment form the assembler does not expose).
+: CB-SELF, ( -- )
+   $64 ASM-SINK BUF:APPEND-BYTE  $48 ASM-SINK BUF:APPEND-BYTE
+   $8B ASM-SINK BUF:APPEND-BYTE  $04 ASM-SINK BUF:APPEND-BYTE
+   $25 ASM-SINK BUF:APPEND-BYTE
+   4 0 do  0 ASM-SINK BUF:APPEND-BYTE  loop ;
+
+\ The owner is claimed before any cursor is published. A nested outbound call
+\ on the same thread retains the claim; another thread fails closed.
+: CB-ENTER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: held:label busy:label done:label :}
+   RSP CBO-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RAX RSP CBO-ARG MEM-OFF ASM-SINK ENC-MOV-MR
+   R10 RSP CBO-COUNT MEM-OFF ASM-SINK ENC-MOV-MR
+   R11 RSP CBO-FN MEM-OFF ASM-SINK ENC-MOV-MR
+   CB-SELF,
+   R9 RAX ASM-SINK ENC-MOV-RR
+   R8 DATA-REG CB-OWNER MEM-OFF ASM-SINK ENC-LEA
+   RCX R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RCX R9 ASM-SINK ENC-CMP-RR  C-E held JCC,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE busy JCC,
+   RAX ZERO-REG,
+   R9 R8 MEM-AT ASM-SINK ENC-LOCK-CMPXCHG-MR
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE busy JCC,
+   RCX 1 IMM32,  done JMP,
+   held X64CODE:LBL,  RCX ZERO-REG,
+   done X64CODE:LBL,
+   RCX RSP CBO-CLAIM MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX DATA-REG CB-XDS MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RSP CBO-XDS MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX DATA-REG CB-DBASE MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RSP CBO-DBASE MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX DATA-REG CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RSP CBO-NDICT MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX DATA-REG CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RSP CBO-CP MEM-OFF ASM-SINK ENC-MOV-MR
+   DSP DATA-REG CB-XDS MEM-OFF ASM-SINK ENC-MOV-MR
+   DBASE-REG DATA-REG CB-DBASE MEM-OFF ASM-SINK ENC-MOV-MR
+   NDICT-REG DATA-REG CB-NDICT MEM-OFF ASM-SINK ENC-MOV-MR
+   CP-REG DATA-REG CB-CP MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX RSP CBO-ARG MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 RSP CBO-COUNT MEM-OFF ASM-SINK ENC-MOV-RM
+   R11 RSP CBO-FN MEM-OFF ASM-SINK ENC-MOV-RM
+   X64CODE:LBL {: past:label :}
+   past JMP,
+   busy X64CODE:LBL,
+   S\" hb: callback: context busy on another thread\n"
+   ENGINE-ERROR:CALLBACK STDERR-EXIT,
+   past X64CODE:LBL, ;
+
+\ Restore the previous frame before releasing a claim. x86 TSO stores give
+\ the release ordering that ARM's STLR supplies in BCB-LEAVE.
+: CB-LEAVE, ( -- )
+   X64CODE:LBL {: kept:label :}
+   R8 RSP CBO-XDS MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 DATA-REG CB-XDS MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 RSP CBO-DBASE MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 DATA-REG CB-DBASE MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 RSP CBO-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 DATA-REG CB-NDICT MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 RSP CBO-CP MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 DATA-REG CB-CP MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 RSP CBO-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
+   RSP CBO-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E kept JCC,
+   R8 ZERO-REG,
+   R8 DATA-REG CB-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
+   kept X64CODE:LBL, ;
+
 \ Guard argbuf[i] for each i below the count in rcx, argbuf the cell n below
 \ the top, before the pops, as BFFI-GUARD-ARGS and BFFI-GUARD-BOUNDS do with
 \ the count in x14. The quotation loads the span's length into rsi with
@@ -3483,9 +3566,11 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
 \ With rax = argbuf, r10 = the stack cells and r11 = the function: load the
 \ register arguments, point rax at the first stack cell, call, push the answer.
 : BUF-CALL, ( -- )
+   CB-ENTER,
    RAX REG-ARGS,
    RAX REG-CELLS CELL * >IMM8 ASM-SINK ENC-ADD-RI8
    0 SYSV-CALL,
+   CB-LEAVE,
    RAX PUSH, ;
 
 \ ffi-call ( argbuf nargs fn -- ret ): eight cells, whatever nargs is.
@@ -3521,9 +3606,17 @@ SRET-SLOT 1+ constant ABI-SLOTS         \ x0..x8, the slots the twin guards
    counted X64CODE:LBL,
    RAX POP,
    RCX POP,
+   R9 POP,
+   RCX ASM-SINK ENC-PUSH
+   R9 ASM-SINK ENC-PUSH
+   CB-ENTER,
+   RCX RSP CBO-BYTES CELL + MEM-OFF ASM-SINK ENC-MOV-RM
    VEC-REGS 0 ?do  i >XMM RCX i CELL * MEM-OFF ASM-SINK ENC-MOVSD-RM  loop
-   RCX POP,  RCX REG-ARGS,
-   VEC-REGS SYSV-CALL, ;
+   RCX RSP CBO-BYTES MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX REG-ARGS,
+   VEC-REGS SYSV-CALL,
+   CB-LEAVE,
+   RSP 2 CELL * >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ ffi-call-abi(-r) ( argbuf fpbuf stackbuf nstack nint sret fn -- n|r ): one
 \ byte guarded at argbuf[i] for each i < nint, then at argbuf[8] when sret is
@@ -3619,11 +3712,161 @@ private
 
 public
 
-\ callback-entry waits for the SysV twin of habu1.f BCALLBACK-THUNK
-\ (habu-port-the-ffi-676f745d).
+private
+
+\ A C entry saves SysV's six integer and eight vector argument registers in
+\ the marshal band, then keeps only stack-resident state across checked code.
+\ SAVE-VM, covers exactly the six SysV callee-saved registers used by the VM.
+0 constant CBT-INTEGER
+$40 constant CBT-FLOATS
+$80 constant CBT-SLOT
+$88 constant CBT-ROW
+$90 constant CBT-REGION
+$98 constant CBT-ROW-CLAIM
+$A0 constant CBT-OWNER-CLAIM
+$A8 constant CBT-OUTER
+$B0 constant CBT-SELF
+$C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
+16 constant CBT-STUB-BYTES
+
+\ These exits have the same messages and status as the ARM callback thunk.
+: CB-DIE, ( ptr u8 n label -- ) {: a:ptr u:n at:label :}
+   at X64CODE:LBL,
+   a u ENGINE-ERROR:CALLBACK STDERR-EXIT, ;
+
+: CB-THUNK, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: row-read:label row-wait:label row-held:label owner-held:label
+      owner-kept:label row-kept:label no-table:label row-busy:label
+      unbound:label owner-busy:label no-frame:label no-xt:label
+      defined:label done:label row-claimed:label :}
+   SAVE-VM,
+   RSP CBT-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   RDI RSP CBT-INTEGER MEM-OFF ASM-SINK ENC-MOV-MR
+   RSI RSP CBT-INTEGER CELL + MEM-OFF ASM-SINK ENC-MOV-MR
+   RDX RSP CBT-INTEGER 2 CELL * + MEM-OFF ASM-SINK ENC-MOV-MR
+   RCX RSP CBT-INTEGER 3 CELL * + MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 RSP CBT-INTEGER 4 CELL * + MEM-OFF ASM-SINK ENC-MOV-MR
+   R9 RSP CBT-INTEGER 5 CELL * + MEM-OFF ASM-SINK ENC-MOV-MR
+   VEC-REGS 0 ?do  i >XMM RSP CBT-FLOATS i CELL * + MEM-OFF
+      ASM-SINK ENC-MOVSD-MR  loop
+   R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-MR
+   CB-SELF,
+   RAX RSP CBT-SELF MEM-OFF ASM-SINK ENC-MOV-MR
+   R11 SHARED-DATA,
+   R11 R11 CB-ROWS MEM-OFF ASM-SINK ENC-MOV-RM
+   R11 R11 ASM-SINK ENC-TEST-RR  C-E no-table JCC,
+   R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R11 R10 ASM-SINK ENC-ADD-RR
+   R11 RSP CBT-ROW MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 R11 CB-ROW-OWNER MEM-OFF ASM-SINK ENC-LEA
+   R9 RSP CBT-SELF MEM-OFF ASM-SINK ENC-MOV-RM
+   row-read X64CODE:LBL,
+   RAX R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RAX R9 ASM-SINK ENC-CMP-RR  C-E row-held JCC,
+   RAX CB-ROW-BUSY >IMM8 ASM-SINK ENC-CMP-RI8  C-E row-wait JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE row-busy JCC,
+   R9 R8 MEM-AT ASM-SINK ENC-LOCK-CMPXCHG-MR
+   RAX CB-ROW-BUSY >IMM8 ASM-SINK ENC-CMP-RI8  C-E row-wait JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE row-busy JCC,
+   R10 1 IMM32,  row-claimed JMP,
+   row-held X64CODE:LBL,  R10 ZERO-REG,
+   row-claimed X64CODE:LBL,
+   R10 RSP CBT-ROW-CLAIM MEM-OFF ASM-SINK ENC-MOV-MR
+   R11 RSP CBT-ROW MEM-OFF ASM-SINK ENC-MOV-RM
+   R11 R11 MEM-AT ASM-SINK ENC-MOV-RM
+   R11 R11 ASM-SINK ENC-TEST-RR  C-E unbound JCC,
+   R11 RSP CBT-REGION MEM-OFF ASM-SINK ENC-MOV-MR
+   R8 R11 CB-OWNER MEM-OFF ASM-SINK ENC-LEA
+   RAX R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RAX R9 ASM-SINK ENC-CMP-RR  C-E owner-held JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE owner-busy JCC,
+   R9 R8 MEM-AT ASM-SINK ENC-LOCK-CMPXCHG-MR
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE owner-busy JCC,
+   R10 1 IMM32,  done JMP,
+   owner-held X64CODE:LBL,  R10 ZERO-REG,
+   done X64CODE:LBL,
+   R10 RSP CBT-OWNER-CLAIM MEM-OFF ASM-SINK ENC-MOV-MR
+   R10 R11 CB-XDS MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E no-frame JCC,
+   R8 SHARED-DATA,
+   R8 R8 CB-XTS MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
+   R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 R8 R10 CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
+   R10 R11 CB-FRAME MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 RSP CBT-OUTER MEM-OFF ASM-SINK ENC-MOV-MR
+   RSP R11 CB-FRAME MEM-OFF ASM-SINK ENC-MOV-MR
+   DSP R11 CB-XDS MEM-OFF ASM-SINK ENC-MOV-RM
+   DATA-REG R11 ASM-SINK ENC-MOV-RR
+   DBASE-REG R11 CB-DBASE MEM-OFF ASM-SINK ENC-MOV-RM
+   NDICT-REG R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   CP-REG R11 CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
+   INTERP-REG ZERO-REG,
+   R8 ASM-SINK ENC-CALL-REG
+   R11 RSP CBT-REGION MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-NE defined JCC,
+   R10 R11 CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 CP-REG ASM-SINK ENC-CMP-RR  C-NE defined JCC,
+   R10 RSP CBT-OUTER MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R11 CB-FRAME MEM-OFF ASM-SINK ENC-MOV-MR
+   R10 RSP CBT-OWNER-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E owner-kept JCC,
+   R10 ZERO-REG,
+   R10 R11 CB-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
+   owner-kept X64CODE:LBL,
+   R10 RSP CBT-ROW-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E row-kept JCC,
+   R11 RSP CBT-ROW MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 ZERO-REG,
+   R10 R11 CB-ROW-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
+   row-kept X64CODE:LBL,
+   RAX RSP CBT-INTEGER MEM-OFF ASM-SINK ENC-MOV-RM
+   XMM0 RSP CBT-FLOATS MEM-OFF ASM-SINK ENC-MOVSD-RM
+   RSP CBT-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RESTORE-VM,
+   ASM-SINK ENC-RET
+   row-wait X64CODE:LBL,  ASM-SINK ENC-NOP  row-read JMP,
+   S\" hb: callback: no slot has been bound\n" no-table CB-DIE,
+   S\" hb: callback: slot held by another thread\n" row-busy CB-DIE,
+   S\" hb: callback: slot is not bound\n" unbound CB-DIE,
+   S\" hb: callback: context busy on another thread\n" owner-busy CB-DIE,
+   S\" hb: callback: context is not inside a foreign call\n" no-frame CB-DIE,
+   S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
+   S\" hb: callback: the body defined\n" defined CB-DIE, ;
+
+\ Each fixed-size stub provides its immutable slot number to the shared thunk.
+\ A pointer returned by this row is a C entry, never a checked execution token.
+: CALLBACK-ENTRY-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: stubs:label thunk:label done:label bad:label :}
+   RAX POP,
+   RAX CB-POOL >IMM8 ASM-SINK ENC-CMP-RI8  C-AE bad JCC,
+   RDX stubs MOVABS,
+   RAX 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   RAX RDX ASM-SINK ENC-ADD-RR
+   RAX PUSH,
+   done JMP,
+   S\" hb: callback: slot out of range\n" bad CB-DIE,
+   stubs X64CODE:LBL,
+   CB-POOL 0 ?do
+      R10 i IMM32,  thunk JMP,
+      5 0 do ASM-SINK ENC-NOP loop
+   loop
+   thunk X64CODE:LBL,
+   CB-THUNK,
+   done X64CODE:LBL, ;
+
+public
+
 : TASK, ( -- )
    s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
-   s" callback-entry" REFUSE ;
+   s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
 
 \ ---- definition writers ------------------------------------------------------
 \ The nine rows an interpreter written in Habu publishes definitions, namespace
