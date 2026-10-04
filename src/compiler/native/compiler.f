@@ -299,9 +299,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
+   TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
-   hook 0= if a u CHECK-HOOKLESS -1 exit then
+   hook 0= if -1 CHECKER-OWNER:BIND-REGIME!
+      a u CHECK-HOOKLESS -1 exit then
+   0 CHECKER-OWNER:BIND-REGIME!
    a u hook AS-HOOK execute ;
 
 : CHECK-SOURCE ( -- n )
@@ -448,13 +451,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: ix:n :}
    CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM ;
 
-\ The entry that key calls. It takes and answers a plain number so `catch` can
-\ run it: a symbol handle cannot cross `catch` (docs/forth.md, "A quotation
-\ sees no locals and must be stack-preserving under catch").
-: TOKEN-TARGET ( n -- n )
-   TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
-   CC BB sy HIR-WORD:FIX-SPELL NDICT:CALL-TARGET ;
-
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
 \ target and therefore keeps its separate elaborator rule.
@@ -462,17 +458,16 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
-   \ A local can have the same spelling as a public word in more than one
-   \ used package. This pass runs before NELAB has built its local table, so
-   \ an ambiguous token cannot be identified as a local here. Ambiguity proves
-   \ that the token is not a prior binding; preserve that result and leave the
-   \ normal elaborator to resolve the local first.
-   ix [: TOKEN-TARGET ;] catch {: target rc:n :}
-   rc E-USING-AMBIGUOUS = if exit then
-   rc 0<> if rc throw then
-   target PRIOR-ENTRY @ <> if exit then
+   \ Structural operands and locals have no source call decision here.
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size 0= if exit then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if exit then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @
+      PRIOR-ENTRY @ <> if exit then
    ix TOKEN-KEY {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if exit then
+   r sy HIR-WORD:OVERLAY? if exit then
    \ Structural operands can have the same spelling as the definition's bare
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
    \ discard operands, while a genuine word use reaches the ordinary refusal.
@@ -780,6 +775,7 @@ INSTALL-FORGET
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
    IDLE-CK
+   0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    KEEP-PRIOR

@@ -2130,9 +2130,23 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
       r hi i DSCAN-STEP
    loop ;
 
-\ ---- the names the dialect does not model, before anything reads the model ----
-\ A name the dialect does not model is resolved through dict.f at the point it
-\ is used, in the order the engine resolves the body that wrote it.
+\ ---- source decisions before model lookup -----------------------------------
+\ Control syntax has no dictionary call. The forms that execute an existing
+\ word still require the same site decision as an ordinary call.
+: STRUCTURAL-MODEL? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
+   r sy HIR-WORD:CTRL@ {: k:HIR:ctrl :}
+   k HIR-CTRL:EXEC HIR-CTRL:EQ
+   k HIR-CTRL:CATCH HIR-CTRL:EQ or
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ or
+   k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
+   k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
+
 : RESOLVE-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
@@ -2140,9 +2154,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix LOCAL-OF 0 >= if exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? if exit then
-   CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-   CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+   ix CHECKER-OWNER:SOURCE-BINDING nip 0= if
+      r sy STRUCTURAL-MODEL? if exit then
+      CHECKER-OWNER-ABI:BINDING-RC throw
+   then
+   CTX BLD p r sy ix HIR-WORD:RESOLVE-SITE drop ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}

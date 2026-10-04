@@ -1205,6 +1205,8 @@ CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DECL-DOES-OUT-SLOT-OFF
 CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
+CHECKER-OWNER-ABI:CALL-BINDING-OFF constant DECL-CALL-BINDING-OFF
+CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF constant DECL-UNJUDGED-BINDING-OFF
 CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
@@ -1501,6 +1503,21 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 $2CE8 constant DATA-FLOOR-CELL
 \ The three callback CODE cells follow at $2CF0..$2D08. Their separate module
 \ (native-observer-cells.f) also loads on an older baked host during a build.
+\ This cell holds this process's dictionary occurrence allocation, not an image
+\ address. The allocation begins with last-issued and then DICT-CAP u64 slots.
+\ Its pointer is cleared from snapshot scratch and restored from the receiving
+\ process across a snapshot DATA copy.
+\ $2CE8 is the literal store's DATA floor; $2CF0..$2D08 is reserved for
+\ private callback cells. This pointer begins at the next free cell.
+package DEF-OCC
+public
+$2D08 constant PTR-CELL
+DICT-CAP 1+ cells constant STATE-BYTES
+-7231 constant E-STALE
+-7232 constant E-SELECT
+-7233 constant E-NONCALLABLE
+-7234 constant E-EXHAUSTED
+;package
 \ The design seal (lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above

@@ -551,6 +551,20 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 \ FORGET retires a suffix of dictionary records and gives back the corresponding
 \ code. Live XREF records decide the safe floor; relocation metadata over the
 \ released span is cleared before the code pointer moves.
+\ A selected record is borrowed from the resolver at SELECT. The slot alone is
+\ never identity: lowering and re-exposing the count issues another occurrence.
+\ These references stay in this process and carry no checker effect or code lease.
+package DEF-OCC
+public
+TRUSTED: SELECT ( ptr n -- n n ) def-occ-select ;
+TRUSTED: RESOLVE ( n n -- ptr n ) def-occ-resolve ;
+
+: CALLABLE ( n n -- n )
+   RESOLVE dup XREF-WORDLIST DICT-WL:NAMESPACE = if E-NONCALLABLE throw then
+   XREF-START ;
+
+;package
+
 package CODE-RECLAIM
 
 private

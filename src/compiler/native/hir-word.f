@@ -28,6 +28,7 @@ require src/compiler/ir/symbol.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/dict.f
+require src/compiler/native/checker-owner.f
 require src/habu/layout.f
 require src/habu/terminal-call.f
 
@@ -737,19 +738,6 @@ public
       id:IR-ID:ir-symbol-id entry:n in:n out:n glue:n dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW ;
 
-\ Make a FIXED row for a spelling nobody staged, by asking the engine which
-\ Asked BEFORE the callable question because a stamped record is never a call
-\ and an unstamped one is never anything but - the cheaper question first.
-: RESOLVE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
-   c b id FIX-SPELL {: a:ptr u:n :}
-   a u NDICT:SPELL-FIXED {: k:n :}
-   k NDICT:FIXED-NONE = if false exit then
-   c r  c b id BKEY-CK
-   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
-   true ;
-
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ The second arena is the interner that has to have minted the word's spelling.
 : DECLARE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
@@ -883,29 +871,78 @@ public
 
 private
 
-: RESOLVED-NORET ( ptr u8 n n -- n )
-   {: a:ptr u:n entry:n :}
-   a u NDICT:SPELL-DEAD? 0= if COMES-BACK exit then
+: RESOLVED-NORET ( ptr u8 n n bool -- n )
+   {: a:ptr u:n entry:n dead:bool :}
+   dead 0= if COMES-BACK exit then
    a u entry TERMINAL-CALL:BOUND? if TERMINAL else NO-RETURN then ;
+
+: BOUND@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
+
+: OVERLAY-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id SYM-OWNER-CK
+   id IR-ID:SYMBOL-LOCAL r swap FIND 0 >= ;
+
+: SESSION-MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r HC-LINK LCELL@ LINK-CLONE <> if false exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW 0 >= ;
+
+: SITE-PRIM! ( IR-ARENA:arena IR-ID:ir-symbol-id bool -- )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id seeded:bool :}
+   r HC-LINK LCELL@ LINK-CLONE <> if exit then
+   id IR-ID:SYMBOL-LOCAL SESS-ROW {: sl:n :}
+   sl 0 < if exit then
+   seeded if 1 else 0 then sl cells CHK-BND + !
+   r HC-SERIAL LCELL@ sl cells CHK-GEN + ! ;
 
 public
 
-\ Resolve a callable and its definer kind together. Only a CAST: declaration
-\ gets the identity rename; ordinary empty or effect-compatible words remain
-\ calls. Missing or unsupported effects still leave the token unmodeled.
-: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+: OVERLAY? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   OVERLAY-MODELS? ;
+
+\ Every ordinary source token arrives here, including a repeated word or one
+\ already in the session vocabulary. Cache the original seeded decision before
+\ any model is read. Fixed values and calls use the recorded entry and effect.
+: RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
-   c b id FIX-SPELL {: a:ptr u:n :}
-   a u NDICT:CALL-BINDING {: entry:n kind:n :}
-   entry 0= if false exit then
-   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
-   in NDICT:ARITY-NONE = if false exit then
-   neutral 0= if false exit then
-   glue NDICT:GLUE-UNKNOWN = if false exit then
+      id:IR-ID:ir-symbol-id ix:n :}
+   ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
+   size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ {: source-kind:n :}
+   row CHECKER-OWNER-ABI:BOUND-CTL BOUND@
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0<>
+   source-kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = or {: seeded:bool :}
+   r id seeded SITE-PRIM!
+   r id OVERLAY-MODELS? if true exit then
+   seeded if r id SESSION-MODELS? if true exit then then
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
+   row CHECKER-OWNER-ABI:BOUND-SYM BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-ENTRY BOUND@ {: entry:n :}
+   entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
+   flags DKIND:MASK and {: kind:n :}
+   kind DKIND:VAL = kind DKIND:ADDR = or if
+      kind DKIND:VAL = if NDICT:FIXED-VAL else NDICT:FIXED-ADDR then {: fixed:n :}
+      c r c b id BKEY-CK entry fixed NDICT:BOUND-VALUE fixed LIT-KIND FIXED-ROW
+      true exit
+   then
+   row CHECKER-OWNER-ABI:BOUND-EFFECT BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
+   flags DNAME-IMM and 0<> if false exit then
+   flags DNAME-INT and 0<> if
+      data-base TRUSTED-CELL + @ 0= if false exit then
+   then
+   row CHECKER-OWNER-ABI:BOUND-IN BOUND@ {: in:n :}
+   row CHECKER-OWNER-ABI:BOUND-OUT BOUND@ {: out:n :}
+   row CHECKER-OWNER-ABI:BOUND-GLUE BOUND@ {: glue:n :}
+   in 0< out 0< or glue NDICT:GLUE-UNKNOWN = or if CHECKER-OWNER-ABI:BINDING-RC throw then
+   row CHECKER-OWNER-ABI:BOUND-NEUTRAL BOUND@ 0= if false exit then
    kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   c b id FIX-SPELL {: a:ptr u:n :}
    c r  c b id BKEY-CK  entry in out glue
-   a u entry RESOLVED-NORET CALLABLE-ROW
+   a u entry row CHECKER-OWNER-ABI:BOUND-DEAD BOUND@ 0= 0=
+      RESOLVED-NORET CALLABLE-ROW
    true ;
 
 \ ---- reading -----------------------------------------------------------------
@@ -955,6 +992,8 @@ create GATE-BUF GATE-CAP allot
    sl GATED? 0= if true exit then
    r HC-SERIAL LCELL@ {: gen:n :}
    sl CHK-GEN@ gen = if sl CHK-BND@ 0<> exit then
+   \ Direct table readers have no source site. The compiler fills this cache
+   \ from each source decision before it reads an ordinary call's model.
    sl ROW-SPELL INTRINSIC-BOUND? {: bound:bool :}
    bound if 1 else 0 then sl CHK-BND!
    gen sl CHK-GEN!

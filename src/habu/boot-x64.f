@@ -51,6 +51,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 variable STACK-BAD
 variable REGION-BAD
 variable DATA-BAD
+variable OCC-BAD
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -132,6 +133,12 @@ variable DATA-BAD
    RCX RCX RAX CELL CELL MEM-IDX ASM-SINK ENC-LEA  RCX ENVP-CELL CELL!
    RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
    RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL! ;
+
+: OCC-INIT, ( -- )
+   RDI ZERO-REG,
+   DEF-OCC:STATE-BYTES PROT-RW MAP-ANON-PRIVATE MMAP,
+   C-B OCC-BAD @ >LABEL JCC,
+   RAX DEF-OCC:PTR-CELL CELL! ;
 
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.
@@ -453,13 +460,14 @@ public
 \ The crash handler goes in once the stacks it classifies are published; it,
 \ its restorer and the signal stub sit behind the jump with the failures.
 : START, ( -- )
-   LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !
+   LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !  LBL OCC-BAD !
    LBL LBL LBL LBL {: booted:label crash:label rest:label stub:label :}
    RBASE-REG TEXT-BASE,
    STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK,
    CODE-REGION,
    DATA-REGION,
    DATA-INIT,
+   OCC-INIT,
    stub PUBLISH-STUB,
    FRAME-STACKS,
    crash rest INSTALL-CRASH,
@@ -467,6 +475,7 @@ public
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
    REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
    DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
+   OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
