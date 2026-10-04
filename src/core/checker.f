@@ -21445,6 +21445,11 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 : TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- )
    {: pool:ptr rec:ptr name:ptr packed:n :}
    rec 0= if exit then
+   \ A failed declaration's row serves only its own run, and the copy below
+   \ records every row it imports as an active one, a source grant.
+   rec EW.ACTIVE @ EFF-RECOVERY = if
+      s" checker: a failed declaration's row does not transfer" 76 die
+   then
    name TRANSFER-SYMBOL {: sym:n :}
    \ Cold loading resets retained user effects and reconstructs this prefix.
    \ Target-checked rows win; the remaining retained rows are concrete boundary
