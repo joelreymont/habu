@@ -1,12 +1,13 @@
 \ A heap for test/snapshot-writer.f that the cell grid would enlarge. Every
 \ cell below has bit 63 set, so the grid would store each of its eight bytes as
-\ a ten-byte value, and 48 MiB of them outweigh the zero cells of the engine's
-\ own heap, which the grid stores as bits or not at all. The writer must keep
+\ a ten-byte value. Eight MiB on the smaller x86 DATA mapping, or 48 MiB on
+\ larger mappings, outweigh the engine heap's zero cells. The writer must keep
 \ the heap's bytes.
 package SNAP-WRITER-DENSE
 public
 
-48 1024 * 1024 * constant DENSE-BYTES
+: DENSE-MIB ( -- n ) HB-TARGET-LINUX-X86-64? if 8 else 48 then ;
+DENSE-MIB 1024 * 1024 * constant DENSE-BYTES
 1 63 lshift constant TOP-BIT
 
 create DENSE DENSE-BYTES allot

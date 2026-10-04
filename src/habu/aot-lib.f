@@ -4,6 +4,16 @@
 \ LINK writes the selected entry's reachable closure into a standalone image,
 \ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
 \ the output paths; the default application entry is MAIN.
+package AOT-LINK
+private
+: LOAD-X64-WRITER ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" src/habu/image-x64.f" required
+      s" src/habu/boot-x64.f" required
+   then ;
+' LOAD-X64-WRITER
+;package
+execute
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
@@ -1022,17 +1032,26 @@ variable BDELTA  variable TNEW
    m MEMBER-NEWOFF  v m CLO-AT-N -  +
    p AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
 
-: COPY-COMPACT-BLOB {: i:n :} ( n -- )
-   i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
-   BEGIN CP2 @ CEND @ < WHILE
+variable CM-I
+: COPY-WORDS-TO ( ptr u8 -- ) {: p:ptr :}
+   BEGIN CP2 @ p < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
-      CP2 @ ADDRESS-SITE? if
-         i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
-         CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE
-      else
-         i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
-      then CP2 @ + CP2 !
+      CM-I @ CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW
+      CP2 @ 4 + CP2 !
    REPEAT ;
+: COPY-SITE ( n n -- ) {: off:n kind:n :}
+   kind SNAP-RELOC:SITE-ADDR <> if exit then
+   off SITE-PTR {: p:ptr :}
+   p CP2 @ < if exit then
+   p COPY-WORDS-TO
+   CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
+   CM-I @ CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
+   CP2 @ CEND @ SITE-LITERAL drop CP2 @ + CP2 ! ;
+: COPY-COMPACT-BLOB {: i:n :} ( n -- )
+   i CM-I !
+   i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+   CP2 @ CEND @ [: COPY-SITE ;] EACH-SITE
+   CEND @ COPY-WORDS-TO ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ 0= IF MLBL LABEL@ LBL, THEN          \ MAIN is closure word 0 -> place its label
@@ -1054,24 +1073,39 @@ variable RP  variable RE
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 
-public
-
 \ The span is already latched: tools/aot-build-open.f calls AOT-DATA-SPAN the moment
 \ the application has loaded, because this file - and every lib module the linker
 \ needs - is loaded AFTER that and allots above BLOB-END. LINK therefore reads the
 \ bounds it is given and never latches them itself; latching here would put the
 \ whole linker inside the span.
+: LINK-ARM ( -- )
+   ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
+   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
+   AOT-WRITE-OBJ
+   SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
+
+defer LINK-TARGET ( -- )
+: INSTALL-ARM ( -- ) [: LINK-ARM ;] is LINK-TARGET ;
+INSTALL-ARM
+
+public
 : LINK ( -- )
    AOT-APP-POOL                                     \ reached literals are copied into the window's pool
    CARRY-CELLS                                      \ the engine constants this image carries
    CARRY-TASK-EXIT                                  \ active carried task exit quotations
    COLLECT-XT-CELLS                                 \ the window's DECLARED cells: xt rows out, DATA cells mapped
    AOT-DATA-TEXTPTR-CHECK                           \ ... and no undeclared code pointer beside them
-   CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !  LBL LTEXT !
-   LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !   \ the stripped image carries both handlers too
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
-   AOT-WRITE-OBJ
-   SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
+   CLOSURE
+   LINK-TARGET ;
 
 ;using
 ;package
+
+package AOT-LINK
+private
+: LOAD-LINK-TARGET ( -- )
+   HB-TARGET-LINUX-X86-64? if s" src/habu/aot-x64.f" required then ;
+' LOAD-LINK-TARGET
+;package
+execute

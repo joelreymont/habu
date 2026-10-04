@@ -8,29 +8,30 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
-require src/arch/arm64/asm.f
-require src/arch/arm64/icode.f
-require src/arch/arm64/mnem.f
-
 package APP-IMAGE
 
 : LOAD-TARGET ( -- )
    HB-TARGET-LINUX? if
+      s" src/arch/arm64/asm.f" required
+      s" src/arch/arm64/icode.f" required
+      s" src/arch/arm64/mnem.f" required
       s" src/os/linux/sys.f" required
       s" src/os/image-bytes.f" required
       s" src/os/linux/elf.f" required
       exit
    then
    HB-TARGET-MACOS? if
+      s" src/arch/arm64/asm.f" required
+      s" src/arch/arm64/icode.f" required
+      s" src/arch/arm64/mnem.f" required
       s" src/os/macos/sys.f" required
       s" src/os/image-bytes.f" required
       s" src/os/macos/macho.f" required
       exit
    then
    HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/linux-x86-64/elf.f" required
+      s" src/os/linux-x86-64/sys.f" required
       exit
    then
    s" app-image: unsupported target" 76 die ;
@@ -40,6 +41,13 @@ package APP-IMAGE
 execute
 
 require src/habu/snap-lib.f
+
+package APP-IMAGE
+: LOAD-SNAP-TARGET ( -- )
+   HB-TARGET-LINUX-X86-64? if s" src/habu/snap-x64.f" required then ;
+' LOAD-SNAP-TARGET
+;package
+execute
 
 package APP-IMAGE
 public

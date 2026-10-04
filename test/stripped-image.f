@@ -113,13 +113,11 @@ variable RETURN-TREE-U
    s" " s" stripped image return stderr" GE-EXPECT-ERR
    RETURN-TREE$ EXISTS? if s" a stripped application's own exit removes the registered tree" GE-FAIL then ;
 
-\ The startup carries the xt-cell apply loop, so it has to keep satisfying the
-\ image gate's model of one: exactly one ADR x9 (the DATA copy, whose row and
-\ byte loop the gate re-reads instruction by instruction), the root call
-\ immediately after the startup's exit tail, and a reported code range that ends
-\ at the data blob - which keeps the xt rows, placed after the blob, out of
-\ every instruction reader. CODE-RANGE throws if any of that stops holding.
+\ The ARM startup carries the xt-cell apply loop, so it has to keep satisfying
+\ the image gate's ARM instruction model. The x86 image's actual DATA, xt-cell,
+\ root and exit behavior is checked by RUN-IMAGE and RUN-RETURN above.
 : CHECK-SHAPE ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;
 
 : BODY ( -- )

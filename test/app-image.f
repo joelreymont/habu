@@ -198,6 +198,12 @@ variable PROBE-SOURCE-U
    trailer CELL-VIEW @ SNAP-MAGIC T=
    trailer SNAP-TRL-REGLEN + CELL-VIEW @ {: region:n :}
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ {: data:n :}
+   HB-TARGET-LINUX-X86-64? if
+      text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES -
+         data DATA-START - - {: prefix:n :}
+      image bytes munmap 0 T=
+      prefix region data exit
+   then
    trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
       region DICT-SIZE - + {: stored:n :}
    image bytes munmap 0 T=

@@ -176,9 +176,14 @@ create HBT-EXP-HEX2 64 allot
 : HBT-ABI-MAKER-QUALIFIED ( -- )
    HBB-RESET-OPTIONS
    HBB-CHECKER-ABI$ s" checker-effect-v1+" STARTS-WITH? TTRUE
-   HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      HBB-COMPILER-ABI$ s" hb-x86-64-v1+" STARTS-WITH? TTRUE
+      HBB-COMPILER-ABI$ nip 77 T=
+   else
+      HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
+      HBB-COMPILER-ABI$ nip 76 T=
+   then
    HBB-CHECKER-ABI$ nip 82 T=
-   HBB-COMPILER-ABI$ nip 76 T=
    HBT-ABI-MAKER-SUFFIX ;
 
 \ The object this loads is the one HBT-BUILD-AOT-OBJECT-HIT stored, so this

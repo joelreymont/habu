@@ -59,6 +59,7 @@ variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SRL  variable SML  variable SIL  variable SDW
 variable SNL  variable SFTS  variable SPAD  variable SFD
 variable SHF  variable SHL           \ heap form (SNAPSHOT-FORMAT:HEAP-RAW/-GRID), stored heap bytes
+variable SXT-N                       \ x86 text scratch, never persisted as a pointer
 create PAD-ZEROS 16 allot
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
@@ -117,6 +118,10 @@ s" SDB@" s" -- ptr u8" TRUST
    bytes SNAP-TRL-BYTES TEXT-CUT {: end:n :}
    STB@ end + {: trailer:ptr :}
    trailer CELL-VIEW @ SNAP-MAGIC <> if BAD-SOURCE then
+   HB-TARGET-LINUX-X86-64? if
+      trailer SNAP-TRL-DATALEN + CELL-VIEW @ DATA-START -
+         end swap TEXT-CUT exit
+   then
    end trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
       trailer SNAP-TRL-REGLEN + CELL-VIEW @ DICT-SIZE - + TEXT-CUT
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
@@ -175,6 +180,11 @@ TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
    SDB@ SNC-PTR SCL @ BYTE-COPY ;
 
 : SNC-CANON ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ndict@ DREC * {: used:n :}
+      DICT-SIZE used - 0 ?do 0 SNC-PTR used i + + c! loop
+      exit
+   then
    SNC-N @  SNC-N @ SCL @ +  ndict@
    SNC-TEXT-N  STSZ @  0
    snap-rebase ;
@@ -224,9 +234,11 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    EVALREC-CELL SND-ZERO-CELL UNCGH-CELL SND-ZERO-CELL
    REFUSAL-ABI:CODE-CELL SND-ZERO-CELL
    SIGNAL-ABI:STUB-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
+   HB-TARGET-LINUX-X86-64? 0= if
+      AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
+      AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
+      AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
+   then
    TSIG-A-CELL SND-ZERO-CELL  TSIG-U-CELL SND-ZERO-CELL
    TCSIG-A-CELL SND-ZERO-CELL TCSIG-U-CELL SND-ZERO-CELL
    CRSIG-A-CELL SND-ZERO-CELL CRSIG-U-CELL SND-ZERO-CELL
@@ -240,7 +252,8 @@ TRUSTED: SND-ZERO-CELL ( n -- )
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
    EVAL-TOP-CELL SND-ZERO-CELL  CLOSED-FREE-CELL SND-ZERO-CELL
-   FLOORREC-CELL SND-ZERO-CELL  CODE-END-CELL SND-ZERO-CELL
+   FLOORREC-CELL SND-ZERO-CELL
+   HB-TARGET-LINUX-X86-64? 0= if CODE-END-CELL SND-ZERO-CELL then
    NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL ;
@@ -336,6 +349,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 : SND-ZERO-WRITER ( -- )
    SNC-N SND-ZERO-OFF SND-ZERO-CELL
    SND-N SND-ZERO-OFF SND-ZERO-CELL
+   SXT-N SND-ZERO-OFF SND-ZERO-CELL
    MBUF-A SND-ZERO-OFF SND-ZERO-CELL
    MP SND-ZERO-OFF SND-ZERO-CELL
    MLEN SND-ZERO-OFF SND-ZERO-CELL
@@ -369,7 +383,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
-   SND-CANON-XT-CELLS ;
+   HB-TARGET-LINUX-X86-64? 0= if SND-CANON-XT-CELLS then ;
 
 : CANON-REGION ( -- )
    SNC-ALLOC
@@ -459,6 +473,7 @@ TRUSTED: SGR-PTR ( -- ptr u8 ) SGR-N @ ;
    SNAPSHOT-FORMAT:HEAP-GRID SHF !  grid SHL !
    WRITE-GRID ;
 
+
 \ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
 \ the close it checks, and it does nothing. It is private, so no qualified name
 \ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
@@ -528,16 +543,19 @@ variable STAGED-U
    SHF @ SNAPSHOT-FORMAT:HEAP-GRID = if SFD @ SGR-PTR SHL @ FDIO:WALL exit then
    SFD @ SND-PTR DATA-START + SHL @ FDIO:WALL ;
 
+: FILL-TRL ( -- )
+   SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !
+   ndict@ TRL SNAP-TRL-NDICT + !
+   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
+   SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + ! ;
+
 : WRITE-BYTES ( -- )
    \ trailer (SNAP-TRL-BYTES): magic, heap form, dict count, region length,
    \ data length, format version - the region stream below is the
    \ canonicalized copy. The version is the LAST field so the magic and the four
    \ older fields sit where the legacy trailer put them, which is what lets the
    \ loader tell a legacy image apart from a corrupt one.
-   SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !
-   ndict@ TRL SNAP-TRL-NDICT + !
-   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
-   SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
+   FILL-TRL
    \ stream: header, engine text, live dict rows, code, structured DATA, trailer
    \ (the heap section last in DATA, raw or grid as SHF says)
    STAGE
@@ -565,6 +583,11 @@ variable STAGED-U
 : WRITE-IMAGE ( snap -- )
    SNAP-DROP
    WRITE-BYTES ;
+
+defer WRITE-TARGET ( -- )
+: WRITE-ARM ( -- ) FRAME WRITE-IMAGE ;
+: INSTALL-WRITER ( -- ) [: WRITE-ARM ;] is WRITE-TARGET ;
+INSTALL-WRITER
 
 TRUSTED: CF-DEPTH ( -- n ) dbase@ CFSTK-OFF + @ ;
 
@@ -611,8 +634,7 @@ public
    CANON-REGION
    CANON-DATA
    ENCODE-HEAP
-   FRAME
-   WRITE-IMAGE
+   WRITE-TARGET
    PUBLISH
    s" " 0 die ;
 
