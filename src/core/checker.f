@@ -1236,7 +1236,7 @@ CHECKER-PKG-LIVE-DEFAULT
 \ (src/habu/habu2.f LUNCAUGHT), which exits UNCAUGHT-RC (67) for a throw nothing
 \ named. The code is published here first, so the reporter exits
 \ CHECKER-REJECT-RC for this one, the status of every refusal. The offset is
-\ src/habu/layout.f REFUSAL-CELL, spelled here as CHECKER-REG spells SOURCE-CELL
+\ src/habu/layout.f REFUSAL-ABI:CODE-CELL, spelled here as CHECKER-REG spells SOURCE-CELL
 \ because layout.f loads after this file.
 $27F8 constant CHECKER-REFUSAL-CELL
 

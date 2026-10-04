@@ -81,6 +81,8 @@ s" UA:AW drop" UCE-CATCH 0 T=
 s" using UA using UA AW drop ;using ;using" UCE-CATCH 0 T=
 \ checked body resolves a used public (proves the checker resolution)
 s" using UA : UT-CB1 ( -- n ) AW 1 + ; UT-CB1 drop ;using" UCE-CATCH 0 T=
+\ Engine DATA offsets do not claim an application's imported word names.
+s" package URF public : REFUSAL-CELL ( n n -- ) 2drop ; ;package using URF : URF-CONSUME ( n n -- ) REFUSAL-CELL ; 1 2 URF-CONSUME ;using" UCE-CATCH 0 T=
 \ using inside a package block; the used public resolves in the public body
 s" package UH using UA public : UT-H1 ( -- n ) AW ; ;package UH:UT-H1 drop" UCE-CATCH 0 T=
 \ inner scope wins silently: the open package's own tail shadows a used tail

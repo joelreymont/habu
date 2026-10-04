@@ -11337,7 +11337,7 @@ public
    \ closes (-2816 exited 0 SILENTLY, -2802 exited an aliased 14) - so it is instead
    \ reported as "hb: uncaught throw code <n>\n" on fd 2 (signed itoa mirrors
    \ G-PRINT9) and exits the deterministic UNCAUGHT-RC - or RC-REJECT when the code
-   \ is the refusal the checker last rendered (layout.f REFUSAL-CELL): that throw
+   \ is the refusal the checker last rendered (layout.f REFUSAL-ABI:CODE-CELL): that throw
    \ was named on fd 2 before it was raised, and exits as every refusal does while
    \ a catch still receives its own code. x15 keeps the code across the message
    \ write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error path
@@ -11376,7 +11376,7 @@ public
    0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                                       \ write(2, digits, len)
    0 UNCAUGHT-RC MOVZ,
-   9 DATA REFUSAL-CELL LDR,  9 unrefused CBZ,          \ no refusal was rendered
+   9 DATA REFUSAL-ABI:CODE-CELL LDR,  9 unrefused CBZ,  \ no refusal was rendered
    9 15 CMP,  C-NE unrefused BCOND,                    \ one was, but not this code
    0 RC-REJECT MOVZ,                                   \ the rendered refusal: exit as a refusal
    unrefused LBL,

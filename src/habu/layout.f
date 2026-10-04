@@ -1355,7 +1355,7 @@ $27F0 constant TOP-HOOK-CELL
 \ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
-\ REFUSAL-CELL: the code of the last refusal whose diagnostic the checker
+\ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the checker
 \ rendered before throwing it (src/core/checker.f CHECKER-REFUSE, which spells
 \ this offset because this file loads after it), 0 until one is. The uncaught
 \ top-level throw reporter (habu2.f LUNCAUGHT) exits RC-REJECT for a code equal
@@ -1366,7 +1366,10 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ was caught therefore exits RC-REJECT too. Not sealed, because the checker
 \ writes it after the seal; a snapshot carries none (snap-lib.f SND-ZERO-LIVE).
 \ $27F8 follows the ENGINE-HOOK band; it held the retired engine snapshot hook.
-$27F8 constant REFUSAL-CELL
+package REFUSAL-ABI
+public
+$27F8 constant CODE-CELL
+;package
 \ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
 \ calls it once with the exit code in x0, the cell cleared FIRST, immediately
 \ before the exit_group of a DELIBERATE program exit: the normal top-level exit
