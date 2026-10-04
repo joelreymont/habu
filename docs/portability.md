@@ -347,13 +347,14 @@ writes the retained A64 artifact.
 
 At native tier 1, `NBACK:OBSERVE!` installs a callback that receives frozen HIR
 before emission. Its first argument is the pending dictionary record's index,
-which `NCOMP:PUBLISHED!` receives again for the published entry. The frozen
-module is borrowed only during that callback. Published function ordinal `k`
-names emission function `k`:
+which the callback installed by `NCOMP:PUBLISHED!` receives again for the
+published entry. The frozen module is borrowed only during that callback.
+Frozen-module function `k` is emission function `k` and is published as ordinal `k`:
 ordinal 0 is the definition, followed by its quotations and any `does>` clause.
 A `does>` definer and clause share one parent entry, with separate ordinals.
-`CODE-RECLAIM:INVALIDATE!` runs before the engine rewinds CP and NDICT during
-recovery, and after dictionary rollback when `TRUNCATE` reclaims code.
+The callback installed by `CODE-RECLAIM:INVALIDATE!` runs before the engine
+rewinds CP and NDICT during recovery, and after dictionary rollback when
+`TRUNCATE` reclaims code.
 
 ### 5.2 Handle ownership and lifecycle
 
