@@ -75,6 +75,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
+require test/cold-engine.f
 require tools/json.f
 require tools/check-verify-core.f
 
@@ -476,14 +477,20 @@ variable CLI-OUT-U
 
 \ ---- the command line ------------------------------------------------------
 
-\ The stderr length and exit status of a check.f child given IN on stdin.
-: CLI ( ptr u8 n -- n n ) {: in:ptr inu:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN in inu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
+\ The stderr length and exit status of HOST given IN on stdin.
+: CLI-HOST ( ptr u8 n ptr u8 n -- n n ) {: in:ptr inu:n host:ptr hostu:n :}
+   host hostu >LEN in inu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE
    MATCH result
       ok OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N CLI-OUT-U ! e LEN>N 0 ENDOF
       err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N CLI-OUT-U ! e LEN>N c RC>N ENDOF
    ;MATCH ;
+
+: CLI ( ptr u8 n -- n n )
+   ENGINE-CANDIDATE:PATH$ CLI-HOST ;
+
+: COLD-CLI ( ptr u8 n -- n n )
+   COLD-ENGINE:PATH$ CLI-HOST ;
 
 
 : CLI-START ( -- )
@@ -949,6 +956,47 @@ variable CLI-OUT-U
    s" top-axiom: no packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 
+\ A cold prefix publishes this PPRIM package word without a user record.
+\ Its scanner runs in the cold host, and both forms also use the product CLI.
+: TOP-COLD-PRIM ( -- )
+   s" prim-call.f" s\" CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
+   s" prim-tick.f" s\" ' CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
+   s" prim-scan.f"
+   s\" require src/habu/verify-source.f\ns\" CHECKER-OWNER-ABI:HEADER-BYTES drop\" s\" prim-call.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE\ns\" ' CHECKER-OWNER-ABI:HEADER-BYTES drop\" s\" prim-tick.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE\n" FIXTURE
+   s" prim-call.f" AT$ {: call:ptr callu:n :}
+   s" top-cold-prim: call loads" T-LABEL
+   PROC-ARGV-ENV-RESET s" --load" ARG+ call callu ARG+
+   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T=
+   s" top-cold-prim: call verifies" T-LABEL
+   call callu true false CHECK-RC 0 T=
+   s" prim-tick.f" AT$ {: tick:ptr ticku:n :}
+   s" top-cold-prim: tick loads" T-LABEL
+   PROC-ARGV-ENV-RESET s" --load" ARG+ tick ticku ARG+
+   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T=
+   s" top-cold-prim: tick verifies" T-LABEL
+   tick ticku true false CHECK-RC 0 T=
+   s" prim-scan.f" AT$ {: scan:ptr scanu:n :}
+   s" top-cold-prim: cold scanner" T-LABEL
+   PROC-ARGV-ENV-RESET s" --load" ARG+ scan scanu ARG+
+   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T= ;
+
+
+\ `undefine` retires the global dictionary entry before the used public binds.
+: TOP-RETIRED-IMPORT ( -- )
+   s" retired-call.f"
+   s\" undefine dup\npackage CVT-RI public : dup ( -- n ) 7 ; ;package\nusing CVT-RI dup drop ;using\n" FIXTURE
+   s" retired-tick.f"
+   s\" undefine dup\npackage CVT-RI public : dup ( -- n ) 7 ; ;package\nusing CVT-RI ' dup drop ;using\n" FIXTURE
+   s" retired-call.f" AT$ {: call:ptr callu:n :}
+   s" top-retired-import: call loads" T-LABEL call callu NATIVE-RC 0 T=
+   s" top-retired-import: call verifies" T-LABEL call callu true false CHECK-RC 0 T=
+   s" top-retired-import: call checks" T-LABEL call callu false false CHECK-RC 0 T=
+   s" retired-tick.f" AT$ {: tick:ptr ticku:n :}
+   s" top-retired-import: tick loads" T-LABEL tick ticku NATIVE-RC 0 T=
+   s" top-retired-import: tick verifies" T-LABEL tick ticku true false CHECK-RC 0 T=
+   s" top-retired-import: tick checks" T-LABEL tick ticku false false CHECK-RC 0 T= ;
+
+
 \ Loaded: E-UNDEFINED: CVT-FWD, exit 70.
 : TOP-ORDER ( -- )
    s\" CVT-FWD drop\n: CVT-FWD ( -- n ) 1 ;\n" TOP-CHECK
@@ -1276,6 +1324,8 @@ public
    s" top-tick" [: TOP-TICK ;] RUN-CASE
    s" top-retired" [: TOP-RETIRED ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
+   s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
+   s" top-retired-import" [: TOP-RETIRED-IMPORT ;] RUN-CASE
    s" top-order" [: TOP-ORDER ;] RUN-CASE
    s" top-number" [: TOP-NUMBER ;] RUN-CASE
    s" top-keyword" [: TOP-KEYWORD ;] RUN-CASE

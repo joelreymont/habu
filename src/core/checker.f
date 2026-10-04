@@ -10772,17 +10772,15 @@ variable DEF-REFUSAL
    a u wid search-wl 0 <> ;
 
 \ The used-publics leg of the replay's resolution (REPLAY-BIND below), reached
-\ only after every earlier scope missed. Before a used public may bind, the
-\ engine gets the deciding vote: a global claims the tail, which is the
-\ documented global-vs-used collision, rejected at the reference site exactly as
-\ when the global carries a signature.
-\ A global the store knows only beyond the binding horizon was defined after
-\ this definition, so the engine's live wordlist claiming the tail is not a
-\ collision this reference can see. A global the store has no record of keeps
-\ the engine's vote: that is the engine's own word, and its claim stands.
-: GLOBAL-BEYOND-HORIZON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop RES-FALSE EXIT THEN
-   SYM-VISIBLE 0= ;
+\ only after every earlier scope missed. A visible global binding claims the
+\ tail before a used public may bind.
+\ Source records decide retirement and the binding horizon before a stale
+\ verifier wordlist or a compiler-only axiom can claim a global name.
+: GLOBAL-BOUND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop 0 THEN {: sym:n :}
+   sym SYM-DELETED? IF RES-FALSE EXIT THEN
+   sym USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
+   a u 0 CK-WL-CLAIMS? ;
 
 \ The leg answers the bound symbol and the refusal, 0 when there is none, as
 \ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
@@ -10790,9 +10788,7 @@ variable DEF-REFUSAL
    a u CHECKER-USED-SYM {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF 0 CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 0 EXIT THEN
-   a u GLOBAL-BEYOND-HORIZON? 0= IF
-      a u 0 CK-WL-CLAIMS? IF 0  a u 0 CHECKER-USED-SHADOW  EXIT THEN
-   THEN
+   a u GLOBAL-BOUND? IF 0  a u 0 CHECKER-USED-SHADOW EXIT THEN
    usym 0 ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
@@ -13644,9 +13640,25 @@ SYM-AXIOM-INSTALL
    THEN drop
    CHECKER-QTAIL$ ENGINE-WORD-SYM ;
 
+: TOP-PUBLIC-BIND? ( -- bool )
+   CHECKER-QPKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec @ dup 0= IF drop RES-FALSE EXIT THEN
+   CHECKER-QTAIL$ rot SCOPE-WL-PROBE NULL-PTR <> ;
+
+\ The body's walk keeps compiler axioms. At top level a shadow refusal only
+\ stands when a visible global binding actually claims the imported tail.
+: TOP-WALK ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why E-USING-SHADOW-GLOBAL = IF
+      a u GLOBAL-BOUND? 0= IF a u CHECKER-USED-BIND EXIT THEN
+   THEN
+   sym why ;
+
 \ A scanned declaration has a visible effect record even though this engine
-\ has not loaded the subject. An axiom alone can describe a compile keyword
-\ (`>r`, `r>`, `r@`) for bodies without giving interpret or tick a binding.
+\ has not loaded the subject. A cold published package primitive may have no
+\ user record. An axiom alone can describe a compile keyword (`>r`, `r>`, `r@`)
+\ for bodies without giving interpret or tick a binding.
 : TOP-BOUND-SYM ( ptr u8 n n -- n bool )
    {: a:ptr u:n sym:n :}
    sym 0 <> IF
@@ -13655,11 +13667,16 @@ SYM-AXIOM-INSTALL
          a u 0 CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
       THEN
    THEN
-   a u CHECKER-QUALIFIED? IF a u OPEN-TAIL-GLOBAL? EXIT THEN
+   a u CHECKER-QUALIFIED? IF
+      sym SYM-DELETED? 0= IF
+         TOP-PUBLIC-BIND? IF sym RES-TRUE EXIT THEN
+      THEN
+      a u OPEN-TAIL-GLOBAL? EXIT
+   THEN
    a u ENGINE-WORD-SYM ;
 
 \ The word the load runs for a top-level token, as the engine's top-level find
-\ selects it: what the quiet walk binds, else, for a qualified token, the
+\ selects it: what the top-level walk binds, else, for a qualified token, the
 \ global tail the open package's own PKG:TAIL names (OPEN-TAIL-GLOBAL?), and
 \ for a bare one the engine word it names (ENGINE-WORD-SYM). True with any of
 \ them; 0 and false when nothing binds the token, and when `using` refuses it:
@@ -13669,8 +13686,12 @@ SYM-AXIOM-INSTALL
 \ refused renderer defines nothing.
 : CHECKER-TOP-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
-   a u CHECKER-QUIET-WALK IF RES-FALSE EXIT THEN
-   a u rot TOP-BOUND-SYM ;
+   a u TOP-WALK {: sym:n why:n :}
+   why 0 <> IF
+      why FQSYM-DEFERRED? 0= IF a u why CHECKER-RESOLVE:RAISE THEN
+      0 RES-FALSE EXIT
+   THEN
+   a u sym TOP-BOUND-SYM ;
 
 \ The source pre-pass's question about a top-level token (src/habu/verify-source.f
 \ RENDERS-MARK?): may the word the load runs for it (CHECKER-TOP-SYM) define
@@ -13698,8 +13719,8 @@ SYM-AXIOM-INSTALL
    -1 ;
 
 \ What the load does with a top-level token it runs, or ticks when RUNS is
-\ false (CHECKER-VERIFY-TOP below). The token takes the walk a body token takes
-\ and gets a body's verdict, so a qualified token resolves as it does there.
+\ false (CHECKER-VERIFY-TOP below). The top-level walk corrects only a shadow
+\ refusal whose global has no binding; the body's keyword walk stays intact.
 \ The answer is -1 when it resolves, or 2 when it resolves to a word that may
 \ read the source after it (TOP-RUNS); 3 when it resolves nowhere but a
 \ rendering statement in scope may define it (UNSEEN-COVERS?), the run's to
@@ -13716,7 +13737,7 @@ SYM-AXIOM-INSTALL
 \ names runs as its global symbol's facts say.
 : TOP-ANSWER ( ptr u8 n bool -- n )
    {: a:ptr u:n runs:bool :}
-   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   a u TOP-WALK {: sym:n why:n :}
    why 0 <> IF a u why CHECKER-RESOLVE:RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF runs TOP-RUNS EXIT THEN drop
