@@ -101,10 +101,13 @@ package BUILD-FIXPOINT
 
 : BFT-TEST-WHOLE-CERTIFY ( -- )
    BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
    s" whole-cert" BFT-CERT BF-CERTIFY-RC 0 T=
    BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
-   s" whole-cert" BFT-CERT BF-CERTIFY-RC 0 <> TTRUE
+   s" whole-cert" BFT-CERT BF-CERTIFY-RC 70 T=
+   BF-CERT-DIAG BF-CERT-DIAG-U @ s" 'BAD'" CONTAINS? TTRUE
    BFT-CERT S\" package BFT-GROW public\n: HEAD ( -- n ) 1 ;\n;package\n" WRITE-ALL
+   BFT-CERT S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
    s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE
    BFT-CERT S\" : BAD ( -- n ) ;\n" BFT-SIZE:ARM
    [: s" whole-core" BFT-CERT BF-CERTIFY-GENERATED-CORE ;]
