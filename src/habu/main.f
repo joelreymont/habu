@@ -243,6 +243,10 @@ TRUSTED: UNCGH-PTR ( -- ptr [ n -- ] )
 
 public
 
+\ The snapshot writer clears this process-owned mmap pointer in copied DATA.
+: ARENA-CELL ( -- n )
+   ARENA BYTE-VIEW data-base BYTE-VIEW - ;
+
 \ Load what argv names, in order. argv[0] is the program and is not read; a
 \ vector with nothing after it has no file to load (the assembly sends that
 \ one to the REPL before it reaches its file list).
