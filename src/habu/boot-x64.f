@@ -667,13 +667,14 @@ public
    REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
    booted crash rest stub CLOSE, ;
 
-\ APP-ENTRY is a saved application's entry; otherwise run ENGINE-MAIN. A word
-\ that returns exits successfully, while an image with neither entry is broken.
+\ A full engine's MAIN runs a saved application before routing stdin or the
+\ terminal. An image without MAIN can run APP-ENTRY directly. A word that
+\ returns exits successfully, while an image with neither entry is broken.
 : ENTRY, ( -- )
    LBL LBL LBL {: go:label none:label exit:label :}
-   RAX RBASE-REG APP-ENTRY:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE go JCC,
    RAX RBASE-REG ENGINE-MAIN:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE go JCC,
+   RAX RBASE-REG APP-ENTRY:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E none JCC,
    go LBL,
    RAX ASM-SINK ENC-CALL-REG

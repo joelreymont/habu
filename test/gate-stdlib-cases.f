@@ -1653,6 +1653,12 @@ SUITE x86-64-skel-image
    test/x86-64-skel-image.f
 ;SUITE
 
+\ Both captured entry cells in a real x86-64 boot: ARM emits the image and
+\ the x86-64 host also runs it, requiring MAIN to invoke APP before stdin.
+SUITE x86-64-main-entry
+   test/x86-64-main-entry.f
+;SUITE
+
 \ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
 \ test/x86-64-boot-harness.f, for the peer to run. Each file has one negative
 \ image that exits 21; its header names the statuses the peer must see.
