@@ -33,6 +33,7 @@ require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
+require src/habu/arith-abi.f
 require src/habu/regalloc-abi.f
 require src/habu/primitive-registry.f
 require src/habu/data-claims.f
@@ -1545,6 +1546,18 @@ private
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
    SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
    DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS ;
+
+\ Native ARM selection on an x86 host still resolves the sealed `(DIV-ZERO)`
+\ helper by name. Give that name a real x86 body with the same refusal as the
+\ ARM helper: put its code on the VM stack and enter the existing throw row.
+: DIV-ZERO-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL {: entry:label done:label :}
+   s" (DIV-ZERO)" entry LABEL>N done LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   entry X64CODE:LBL,
+   RAX ARITH-ABI:E-DIV-ZERO >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX PUSH,
+   s" throw" ENTRY-LABEL JMP,
+   done X64CODE:LBL, ;
 
 \ finally ( xt xt -- ): run the body under CAUGHT, and then the cleanup outside
 \ it, so the cleanup's throw supersedes the body's; then rethrow the body's
@@ -5357,6 +5370,7 @@ public
    ENGINE-PRIMS:HELPER-REGISTER
    SYSCALLS,
    CONTROL,
+   DIV-ZERO-HELPER,
    ATOMICS,
    PUBLICATION,
    DICT-SEARCH,
