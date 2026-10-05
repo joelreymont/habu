@@ -2679,6 +2679,10 @@ WHITEBOX-SUITE field-proj-errors
    test/field-proj-errors.f
 ;SUITE
 
+SUITE compiler-native-field-proj
+   test/compiler/native-field-proj.f
+;SUITE
+
 SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE

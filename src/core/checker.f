@@ -18772,8 +18772,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : FIELD-PROJ-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the field-project token, fail closed
 \ Row surgery: peek `ptr family<args>` (second from top; the offset literal is on
 \ top), validate the pointer shape, ask FIELD-PROJ-XT for the instantiated field
-\ type, then consume (ptr family, offset) and produce (ptr field-type) through the
-\ ordinary CHECKER-STEP so linearity/row plumbing stay consistent. The peeked
+\ type, then consume (ptr family, offset) and produce (ptr field-type) through
+\ RECORDED-STEP so the native call gets its physical widths and glue. The peeked
 \ family term is used verbatim in the step's input row so its `family ~ family`
 \ pairing is the sanctioned same-family bind, not a fenced var<->layout bind.
 : FIELD-PROJ-STEP ( -- )
@@ -18791,7 +18791,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FRESH MK-ROW {: base:n :}
    famterm MK-PTR base MK-PUSH FRESH MK-VAR swap MK-PUSH {: din:n :}   \ base, ptr family<args>, offset-var (MK-PUSH: type rest -- row)
    fieldterm MK-PTR base MK-PUSH {: dout:n :}                          \ base, ptr field-type
-   din dout CHECKER-STEP ;
+   din dout RECORDED-STEP ;
 : FIELD-PROJ-STEP? ( -- bool )   \ handle a field-project token inside the armed window; report whether handled
    FIELD-PROJ-MATCH? 0= IF RES-FALSE EXIT THEN
    FIELD-PROJ-STEP RES-TRUE ;
@@ -18812,15 +18812,18 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ cell; a wider arg expands the product and moves every field past the first. The
 \ same condition refuses a projection (type-family.f TFAM-FIELD-PROJ-DO), so the
 \ two halves of the surface agree on which instantiations they describe.
+\ Record the accepted call's pointer/count widths and result glue for native
+\ compilation; the rejected wide case publishes no call fact.
 : RECORD-AT-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the record-at token, fail closed
 : RECORD-AT-EXACT? ( n -- bool ) {: famterm:n :}   \ declared layout == instantiated layout
    famterm TFAM-INST-WIDTH-XT  famterm PARAM>FAM TFAM-WIDTH@*  = ;
-: RECORD-AT-STEP ( n -- ) {: famterm:n :}
+: RECORD-AT-STEP ( n -- )
+   {: famterm:n :}
    famterm RECORD-AT-EXACT? 0= IF RECORD-AT-REJECT EXIT THEN
    FRESH MK-ROW {: base:n :}
    famterm MK-PTR base MK-PUSH  CC-N MK-CON swap MK-PUSH {: din:n :}   \ base, ptr family<args>, count (an integer: a pointer is no stride)
    famterm MK-PTR base MK-PUSH {: dout:n :}                            \ base, ptr family<args>
-   din dout CHECKER-STEP ;
+   din dout RECORDED-STEP ;
 : RECORD-AT-STEP? ( -- bool )   \ handle a record-at token on a layout pointee
    DCUR @ R-RES {: r0:n :}                                \ top = cell count
    r0 TAG S-PUSH <> IF RES-FALSE EXIT THEN
