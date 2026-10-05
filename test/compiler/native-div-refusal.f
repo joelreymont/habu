@@ -32,8 +32,9 @@
 \ image (test/preloaded-engine.f).
 \
 \ The runtime cases run in a child process: `set-tier` is engine-global state,
-\ and a child's own source names its tier. The one word whose bytes are read is
-\ compiled here between `1 set-tier` and `0 set-tier`, so nothing after it moves.
+\ and a child's own source names its tier. ARM returns to tier 0 for the catch
+\ wrappers; the x64 host compiles them at its only tier. The one word whose
+\ bytes are read is compiled here at tier 1.
 
 require lib/errors.f
 require lib/string.f
@@ -51,7 +52,9 @@ public
 
 1 set-tier
 : GUARDED ( n n -- n ) / ;
-0 set-tier
+: ARM-TIER-RESET ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if s" 0 set-tier" evaluate-closed then ;
+ARM-TIER-RESET
 
 private
 
@@ -92,15 +95,6 @@ variable EXITED
 \ The whole program every case runs, spelled once: the divisor and the operation
 \ are what change between them. A quotation captures nothing, so the operands
 \ travel through variables rather than on the stack.
-: PROLOGUE$ ( -- ptr u8 n )
-   S\" 1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" ;
-
-\ Literal divisors exercise the selector's scalar proof through the real native
-\ load path. Expected decimal output is supplied by the test, not computed by
-\ another compiled division that could share the same lowering error.
-: LITERAL-PROLOGUE$ ( -- ptr u8 n )
-   S\" 1 set-tier\nvariable A\nvariable R\n: LZ ( n -- n ) 0 / ;\n: LMZ ( n -- n ) 0 mod ;\n: L2 ( n -- n ) 2 / ;\n: LM2 ( n -- n ) -2 / ;\n: LR2 ( n -- n ) -2 mod ;\n: LN1 ( n -- n ) -1 / ;\n: LRN1 ( n -- n ) -1 mod ;\n: L64K ( n -- n ) 65536 / ;\n: LR64K ( n -- n ) 65536 mod ;\n0 set-tier\n: TRY ( -- n ) [: A @ LZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ LMZ R ! ;] catch ;\n: TRY2 ( -- n ) [: A @ L2 R ! ;] catch ;\n" ;
-
 create SRC-BUF $1000 allot
 variable SRC-U
 
@@ -110,18 +104,27 @@ variable SRC-U
    a SRC-BUF SRC-U @ + u BYTE-COPY
    SRC-U @ u + SRC-U ! ;
 
-: JOIN-PROGRAM ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: head:ptr hu:n tail:ptr tu:n :}
+: RESET-TIER-SRC ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SRC+ then ;
+
+: PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
    0 SRC-U !
-   head hu SRC+
+   S\" 1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n" SRC+
+   RESET-TIER-SRC
+   S\" : TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" SRC+
    tail tu SRC+
    SRC$ ;
 
-: PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
-   PROLOGUE$ tail tu JOIN-PROGRAM ;
-
+\ Literal divisors exercise the selector's scalar proof through the real native
+\ load path. Expected decimal output is supplied by the test, not computed by
+\ another compiled division that could share the same lowering error.
 : LITERAL-PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
-   LITERAL-PROLOGUE$ tail tu JOIN-PROGRAM ;
+   0 SRC-U !
+   S\" 1 set-tier\nvariable A\nvariable R\n: LZ ( n -- n ) 0 / ;\n: LMZ ( n -- n ) 0 mod ;\n: L2 ( n -- n ) 2 / ;\n: LM2 ( n -- n ) -2 / ;\n: LR2 ( n -- n ) -2 mod ;\n: LN1 ( n -- n ) -1 / ;\n: LRN1 ( n -- n ) -1 mod ;\n: L64K ( n -- n ) 65536 / ;\n: LR64K ( n -- n ) 65536 mod ;\n" SRC+
+   RESET-TIER-SRC
+   S\" : TRY ( -- n ) [: A @ LZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ LMZ R ! ;] catch ;\n: TRY2 ( -- n ) [: A @ L2 R ! ;] catch ;\n" SRC+
+   tail tu SRC+
+   SRC$ ;
 
 \ Fourteen and not thirteen, the first count the five-instruction guard refused,
 \ so the case keeps one division of margin over the derivation in the header.
@@ -268,10 +271,11 @@ public
    S\" 65537 L64K . 65537 LR64K . -65537 L64K . -65537 LR64K . $8000000000000000 L64K . $8000000000000000 LR64K . cr\n"
    LITERAL-PROGRAM RUN  S\" 1\n1\n-1\n-1\n-140737488355328\n0\n" ASSERT-OK
 
-   s" fourteen discarded divisions over two locals compile and answer" T-LABEL
-   CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
-
-   GUARD-CASES
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" fourteen discarded divisions over two locals compile and answer" T-LABEL
+      CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
+      GUARD-CASES
+   then
    IMAGE-CASES
 
    T-REPORT

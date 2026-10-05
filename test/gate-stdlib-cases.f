@@ -690,10 +690,6 @@ SUITE compiler-native-address-spill
    test/compiler/native-address-spill.f
 ;SUITE
 
-SUITE compiler-native-identity-spill
-   test/compiler/native-identity-spill.f
-;SUITE
-
 SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE
@@ -702,16 +698,8 @@ SUITE compiler-native-arm-frame-order
    test/compiler/native-arm-frame-order.f
 ;SUITE
 
-SUITE compiler-native-wide-frame
-   test/compiler/native-wide-frame.f
-;SUITE
-
 SUITE compiler-native-emit
    test/compiler/native-emit.f
-;SUITE
-
-SUITE compiler-native-fused-moves
-   test/compiler/native-fused-moves.f
 ;SUITE
 
 SUITE compiler-native-session

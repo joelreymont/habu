@@ -16,7 +16,7 @@ private
 
 variable PREFIX-END
 variable PROT-XT
-variable LAYOUT-XT
+variable DIV-XT
 
 : HELPER-XT ( ptr u8 n -- n )
    OWNER-API-PRI-WID XREF-FIND-WL
@@ -26,12 +26,12 @@ variable LAYOUT-XT
 : SAVE-BOUNDARY ( -- )
    CORE-PREFIX:FIRST-RECORD PREFIX-END !
    s" (PROT-SPAN)" HELPER-XT PROT-XT !
-   s" (LP2VEXEC)" HELPER-XT LAYOUT-XT ! ;
+   s" (DIV-ZERO)" HELPER-XT DIV-XT ! ;
 
 : CHECK-BOUNDARY ( -- )
    ndict@ PREFIX-END @ <> if s" reset kept the wrong dictionary prefix" 76 die then
    s" (PROT-SPAN)" HELPER-XT PROT-XT @ <>
-   s" (LP2VEXEC)" HELPER-XT LAYOUT-XT @ <> or if
+   s" (DIV-ZERO)" HELPER-XT DIV-XT @ <> or if
       s" reset changed a resident helper" 76 die
    then
    s" IMK-NDICT0" 0 XREF-FIND-WL-INDEX -1 <>

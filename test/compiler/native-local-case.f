@@ -8,8 +8,8 @@
 \ EMIT-LOC-FIND, src/compiler/native/elaborate.f LOCAL-OF) must not disagree:
 \ two of them disagreeing is a body the checker certifies and the compiler
 \ compiles differently, which is the one failure no diagnostic would name.
-\ Tier-neutral by design: each subject is compiled in a child this file runs at
-\ tier 0 and at tier 1, so the tier of this row selects nothing.
+\ The ARM host runs each child at tier 0 and tier 1. The x64 host supports
+\ tier 1 only; its tier-1 child exercises the same lookup contract.
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -105,7 +105,10 @@ public
 
 : RUN ( -- )
    T-RESET
-   2 0 do i SHADOW-CASE i SCOPE-CASE i CONTROL-CASE i QUOTATION-CASE loop
+   HB-TARGET-LINUX-X86-64? 0= if
+      0 SHADOW-CASE 0 SCOPE-CASE 0 CONTROL-CASE 0 QUOTATION-CASE
+   then
+   1 SHADOW-CASE 1 SCOPE-CASE 1 CONTROL-CASE 1 QUOTATION-CASE
    T-REPORT ;
 
 ;package

@@ -5,6 +5,7 @@
 \ Tier-neutral by design: the descriptor check is called directly on hand-built
 \ descriptors, and the cases that need a compiler run in a child of their own.
 require src/compiler/native/fetch-check.f
+require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
@@ -75,7 +76,13 @@ create ERR 256 allot
    {: src:ptr srcu:n want:ptr wantu:n :}
    src srcu 70 EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   ERR erru LEN>N want wantu T$= ;
+   SB-RESET
+   want wantu SB-APPEND
+   \ The x64 native compiler reports its own refusal after the shared checker.
+   HB-TARGET-LINUX-X86-64? if
+      S\" ncomp: cannot compile FORGED\n" SB-APPEND
+   then
+   ERR erru LEN>N SB$ T$= ;
 
 public
 

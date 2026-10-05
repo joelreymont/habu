@@ -17,8 +17,9 @@
 \ Every case is a real child process at tier 1. A session is process-wide state
 \ and there is no in-process way to ask a fresh process for its first
 \ definition.
-\ Tier-neutral by design: every session under test is a child whose own source
-\ sets its tier, so the tier of this row selects nothing.
+\ Every session under test is a child whose own source selects tier 1. The ARM
+\ child can return to tier 0 between definitions; the x64 child stays at its
+\ only supported tier while checking the same session transitions.
 
 require lib/errors.f
 require lib/string.f
@@ -68,6 +69,9 @@ variable RC     variable EXITED
    EXITED @ TTRUE
    RC @ 0 T=
    OUT$ want wu CONTAINS? TTRUE ;
+
+: RESET-TIER ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then ;
 
 \ ---- the sources -------------------------------------------------------------
 \ Built rather than spelled out, so the count tracks MANY instead of a typist.
@@ -123,7 +127,7 @@ variable RC     variable EXITED
    SB-RESET
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZC1 ( -- n ) 1 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" IMAGE-LIFECYCLE:PREPARE\n" SB-APPEND
    S\" NCOMP:CAPTURE-PREPARE\n" SB-APPEND
    S\" IR-CTX:SESSION-LIVE? . ZC1 . cr\n" SB-APPEND
@@ -149,7 +153,7 @@ variable RC     variable EXITED
    S\" ZSLOT:COUNT .\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZL1 ( -- n ) 1 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" ZSLOT:COUNT . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
    SB$ ;
 
@@ -164,12 +168,12 @@ variable RC     variable EXITED
    SB-RESET
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZW1 ( -- n ) 1 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" IMAGE-LIFECYCLE:PREPARE\n" SB-APPEND
    S\" HIR-WORD:SESSION-ROWS . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZW2 ( -- n ) 2 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = . ZW2 . cr\n" SB-APPEND
    SB$ ;
 
@@ -190,11 +194,11 @@ variable RC     variable EXITED
    S\" ;package\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" ZNEST:RUN\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZN2 ( -- n ) 5 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" ZN2 . cr\n" SB-APPEND
    SB$ ;
 
@@ -207,7 +211,7 @@ variable RC     variable EXITED
    S\" require src/compiler/session/lease.f\n" SB-APPEND
    S\" 1 set-tier\n" SB-APPEND
    S\" : ZC1 ( -- n ) 1 ;\n" SB-APPEND
-   S\" 0 set-tier\n" SB-APPEND
+   RESET-TIER
    S\" package ZCLOSE\npublic\n" SB-APPEND ;
 
 : CLOSE-SUFFIX ( -- ptr u8 n )
@@ -215,7 +219,8 @@ variable RC     variable EXITED
    S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
    S\" HIR-WORD:SESSION-ROWS HIR-WORD:WORDS = .\n" SB-APPEND
    S\" HIR:MISSES-CLEAR A64IR:MISSES-CLEAR\n" SB-APPEND
-   S\" 1 set-tier\n: ZC2 ( -- n ) 2 ;\n0 set-tier\n" SB-APPEND
+   S\" 1 set-tier\n: ZC2 ( -- n ) 2 ;\n" SB-APPEND
+   RESET-TIER
    S\" HIR:MISSES . A64IR:MISSES .\n" SB-APPEND
    S\" IR-CTX:SESSION-CLOSE\n" SB-APPEND
    S\" IR-CTX:SESSION-LIVE? . HIR-WORD:SESSION-ROWS .\n" SB-APPEND

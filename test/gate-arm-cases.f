@@ -39,6 +39,21 @@ SUITE addrmap-call
    test/addrmap-call.f
 ;SUITE
 
+\ These read source definitions as fixed-width AArch64 instructions. The
+\ identity-spill and wide-frame cases inspect SP slots; fused-moves inspects
+\ indexed x19 transfers. Their runtime subjects are checked in those suites.
+SUITE compiler-native-identity-spill
+   test/compiler/native-identity-spill.f
+;SUITE
+
+SUITE compiler-native-wide-frame
+   test/compiler/native-wide-frame.f
+;SUITE
+
+SUITE compiler-native-fused-moves
+   test/compiler/native-fused-moves.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop

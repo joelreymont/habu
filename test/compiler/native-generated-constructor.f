@@ -11,6 +11,7 @@ require lib/test.f
 require lib/errors.f
 require test/compiler/native-eval-fixture.f
 require tools/codegen-tail-probe.f
+require src/arch/x86-64/disasm.f
 
 s" ENUM nctorresult 0 VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
 INCLUDE-EVALUATE
@@ -98,6 +99,47 @@ TYPED-VARIABLE NCTOR-BUF2 n
 
 private
 
+\ The shared tail probe reads AArch64 words. On an x64 host, walk complete
+\ instructions so a call opcode inside an immediate cannot count as a call.
+: X-STEP ( n n -- n n n ) {: at:n hi:n :}
+   at XREF-N>U8 hi at - at X64DIS:STEP
+   {: bytes:n kind:n target:n :}
+   at bytes + kind target ;
+
+: X-SPAN ( ptr u8 n -- n n )
+   XREF-FIND dup XREF-FOUND? TTRUE
+   dup XREF-START swap XREF-CODE-BYTES over + ;
+
+: X-CALLS ( ptr u8 n -- n )
+   X-SPAN {: lo:n hi:n :}
+   lo 0
+   begin over hi < while
+      swap hi X-STEP {: next:n kind:n target:n :}
+      kind X64DIS:FLOW-CALL = if 1+ then
+      next swap
+   repeat nip ;
+
+variable X-LAST-KIND
+variable X-LAST-TARGET
+
+: X-TAIL-BRANCH? ( ptr u8 n -- bool )
+   X-SPAN {: lo:n hi:n :}
+   0 X-LAST-KIND ! 0 X-LAST-TARGET !
+   lo
+   begin dup hi < while
+      dup hi X-STEP {: next:n kind:n target:n :}
+      kind X-LAST-KIND !  target X-LAST-TARGET !
+      drop next
+   repeat drop
+   X-LAST-KIND @ X64DIS:FLOW-JUMP <> if false exit then
+   X-LAST-TARGET @ lo < X-LAST-TARGET @ hi >= or ;
+
+: CALLS ( ptr u8 n -- n )
+   HB-TARGET-LINUX-X86-64? if X-CALLS else NTAILPROBE:CALLS then ;
+
+: TAIL-BRANCH? ( ptr u8 n -- bool )
+   HB-TARGET-LINUX-X86-64? if X-TAIL-BRANCH? else NTAILPROBE:TAIL-BRANCH? then ;
+
 : NCTOR-STRUCTURE-ROUNDTRIP ( n n -- n n )
    NCTOR--WIDE--TEST-NCTORSTRUCTURE:MAKE
    NCTOR--WIDE--TEST-NCTORSTRUCTURE:UNMAKE ;
@@ -126,12 +168,20 @@ private
    JSON--WRITE-WRITER:UNMAKE NCTOR-BUF2 = TTRUE 202 T= 201 T= NCTOR-OUT2 = TTRUE
    JSON--WRITE-WRITER:UNMAKE NCTOR-BUF1 = TTRUE 102 T= 101 T= NCTOR-OUT1 = TTRUE
    tier@ 1 = if
-      s" a 34-cell record forwards through an ordinary call" T-LABEL
-      s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" NTAILPROBE:CALLS 1 T=
-      s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" NTAILPROBE:TAIL-BRANCH? TFALSE
+      HB-TARGET-LINUX-X86-64? if
+         s" x64 forwards a 34-cell record through a tail branch" T-LABEL
+         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" CALLS 0 T=
+         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" TAIL-BRANCH? TTRUE
+         s" a loop still makes an ordinary call" T-LABEL
+         s" NCTOR-WIDE-TEST:NCTOR-LOOP20" CALLS 0 > TTRUE
+      else
+         s" an ARM 34-cell record forwards through an ordinary call" T-LABEL
+         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" CALLS 1 T=
+         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" TAIL-BRANCH? TFALSE
+      then
       s" a legal 32-cell forwarding call remains a tail branch" T-LABEL
-      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" NTAILPROBE:TAIL-BRANCH? TTRUE
-      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" NTAILPROBE:CALLS 0 T=
+      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" TAIL-BRANCH? TTRUE
+      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" CALLS 0 T=
    then
    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
    17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 NCTOR-TAIL32

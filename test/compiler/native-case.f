@@ -1,6 +1,6 @@
 \ Exercise the same CASE source through both real compiler tiers.
-\ Tier-neutral by design: each subject is compiled in a child this file runs at
-\ tier 0 and at tier 1, so the tier of this row selects nothing.
+\ The ARM host compiles each child at both tiers. The x64 host supports tier 1
+\ only, and runs the same source and refusal cases through that tier.
 require lib/test.f
 require lib/test/subject.f
 require lib/test/outcome.f
@@ -55,7 +55,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   0 CHECK-TIER 1 CHECK-TIER
+   HB-TARGET-LINUX-X86-64? 0= if 0 CHECK-TIER then
+   1 CHECK-TIER
    T-REPORT ;
 
 ;package

@@ -3,6 +3,8 @@ require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
+require src/compiler/native/emit.f
+require src/arch/x86-64/disasm.f
 
 \ Tier 1 below: the emission, frames and refusals these cases measure are the
 \ optimizing compiler's. Nested quotations at both tiers are
@@ -69,7 +71,7 @@ $D65F03C0 constant RET-WORD
 \ How many Adr instructions the word's code holds. A definition with one
 \ quotation has exactly one, and that is the count a `[:` the source never wrote
 \ would move.
-: ADRS ( ptr u8 n -- n )
+: A64-ADRS ( ptr u8 n -- n )
    {: a u:n :}
    a u REC-START {: start:n :}
    0
@@ -101,7 +103,7 @@ $D65F03C0 constant RET-WORD
    loop ;
 
 \ The address the word's first Adr computes.
-: ADR-TARGET ( ptr u8 n -- n )
+: A64-ADR-TARGET ( ptr u8 n -- n )
    {: a u:n :}
    a u ADR-AT {: k:n :}
    a u REC-START  k INSN-BYTES * +  {: site:n :}
@@ -109,9 +111,64 @@ $D65F03C0 constant RET-WORD
 
 \ And the address the second function of the emission begins at, derived the
 \ other way.
-: BODY-START ( ptr u8 n -- n )
+: A64-BODY-START ( ptr u8 n -- n )
    {: a u:n :}
    a u REC-START  a u RET-AT 1+ INSN-BYTES *  + ;
+
+\ x64 materializes a quotation address with a ten-byte movabs. Decode each
+\ complete instruction before inspecting that form: immediate bytes can look
+\ like another mov, and the embedded address must name this emission's code.
+: X-STEP ( n n -- n n n ) {: at:n hi:n :}
+   at XREF-N>U8 hi at - at X64DIS:STEP
+   {: bytes:n kind:n target:n :}
+   at bytes + kind target ;
+
+: X-MOVABS-TARGET ( n -- n )
+   2 + XREF-N>U8 CELL-VIEW @ ;
+
+: X-CODEADDR? ( n n n -- bool ) {: at:n lo:n hi:n :}
+   at hi X-STEP {: next:n kind:n target:n :}
+   next at - 10 <> kind X64DIS:FLOW-NEXT <> or if false exit then
+   at XREF-N>U8 c@ $48 < if false exit then
+   at XREF-N>U8 c@ $4F > if false exit then
+   at 1+ XREF-N>U8 c@ $B8 < if false exit then
+   at 1+ XREF-N>U8 c@ $BF > if false exit then
+   at X-MOVABS-TARGET dup lo >= swap hi < and ;
+
+: X-ADRS ( ptr u8 n -- n ) {: a u:n :}
+   a u REC-START {: lo:n :}
+   lo a u REC-LEN + {: hi:n :}
+   0 lo
+   begin dup hi < while
+      dup lo hi X-CODEADDR? if swap 1+ swap then
+      dup hi X-STEP 2drop nip
+   repeat drop ;
+
+: X-ADR-TARGET ( ptr u8 n -- n ) {: a u:n :}
+   a u REC-START {: lo:n :}
+   lo a u REC-LEN + {: hi:n :}
+   lo
+   begin dup hi < while
+      dup lo hi X-CODEADDR? if dup X-MOVABS-TARGET nip exit then
+      dup hi X-STEP 2drop nip
+   repeat drop -1 ;
+
+: X-BODY-START ( ptr u8 n -- n ) {: a u:n :}
+   a u REC-START dup a u REC-LEN + {: hi:n :}
+   begin dup hi < while
+      dup hi X-STEP {: next:n kind:n target:n :}
+      kind X64DIS:FLOW-END = if drop next exit then
+      drop next
+   repeat drop -1 ;
+
+: ADRS ( ptr u8 n -- n )
+   HB-TARGET-LINUX-X86-64? if X-ADRS else A64-ADRS then ;
+
+: ADR-TARGET ( ptr u8 n -- n )
+   HB-TARGET-LINUX-X86-64? if X-ADR-TARGET else A64-ADR-TARGET then ;
+
+: BODY-START ( ptr u8 n -- n )
+   HB-TARGET-LINUX-X86-64? if X-BODY-START else A64-BODY-START then ;
 
 \ ---- the definitions the chain compiles --------------------------------------
 \ Each is compiled at top level, so the word it publishes is global and the
