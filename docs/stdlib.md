@@ -1910,10 +1910,21 @@ relocation kinds or patch ranges past the text buffer throw `E-OBJ-SCHEMA`.
 source-list transforms. It is layered after `lib/errors.f`, `lib/string.f`, and
 `lib/fs.f`. Callers supply output buffers and capacities; overflow throws
 `E-FS-CAPACITY`, and file/stdin I/O failures throw named filesystem errors.
+`READ-WHOLE-FILE`, `READ-WHOLE-SAMPLED` and `READ-WHOLE-FD` take no capacity:
+they read a path or a descriptor to its end into the caller's growing storage,
+whose quotation gives room for n bytes and answers where they start (the
+storage may move as it grows). A file's size is only the first room, so a
+source of any size is read whole, and one that grows while it is read is read
+to its new end; only the open, a read or the storage refuses.
+`READ-WHOLE-SAMPLED` takes that size from its caller, so a caller that refuses
+a missing file at its own `FILE-SIZE` keeps that refusal (`E-FS-STAT`).
 
 ```forth
 SOURCE-READ-PROBE              ( -- )
 READ-STDIN-ALL                 ( ptr u8 len -- len )
+READ-WHOLE-FD                  ( n n [ n -- ptr u8 ] -- n )
+READ-WHOLE-SAMPLED             ( ptr u8 n n [ n -- ptr u8 ] -- n )
+READ-WHOLE-FILE                ( ptr u8 n [ n -- ptr u8 ] -- n )
 SOURCE-APPEND-BYTES            ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-C                ( n ptr u8 len ptr len -- )
 SOURCE-PATH-A@                 ( ptr a idx -- ptr u8 )

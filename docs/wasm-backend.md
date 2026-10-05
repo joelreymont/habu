@@ -34,7 +34,7 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 | Fatal failures | Diagnostic plus Wasm trap / discarded execution instance, not a catchable language error |
 | Host interop | Exactly HBR2's two imports and six wrapper exports; every capability is a typed packet through `submit` (§12.1) |
 | Browser async | HBR2's serialized turns: `wake` schedules a later turn; no transparent promise blocking |
-| NaN | Every NaN an operation makes is `$7FF8000000000000`, as on native targets; the selector clears the sign (§17.3) |
+| NaN | Every NaN an operation makes is `$7FF8000000000000`, as on native targets; the selector implements §17.3 without branches |
 | First slice | P6 through `NSHADOW`: unplaced emissions whose call and address immediates are fixed-width padded LEBs, patched by the linker as `NEMIT` rows (§17.1) |
 | JIT-style compilation | New immutable modules installed transactionally by the host (§11.2), deferred |
 | Optimizer | Habu-owned; engine native optimization is the embedding's job |
@@ -311,7 +311,7 @@ Lower a Habu observable true mask as `0 - extend_u(predicate)` where the languag
 
 ### 8.4 Floating point and determinism
 
-Wasm permits more than one NaN result payload for some arithmetic [WS2], but Habu's NaN rule binds Wasm as it binds every target: an operation that makes a NaN answers `$7FF8000000000000`, and a quiet NaN operand passes through, the left of two ([portability.md](portability.md) §0.1, §10.1). The selector clears the sign (§17.3), and no profile selects the rule away. For a requested bit-exact policy beyond that rule, either prove a restricted operation/input set, supply bit-preserving software semantics, or refuse the unsupported case.
+Wasm permits more than one NaN result payload for some arithmetic [WS2], but Habu's NaN rule binds Wasm as it binds every target: an operation that makes a NaN answers `$7FF8000000000000`, and a quiet NaN operand passes through, the left of two ([portability.md](portability.md) §0.1, §10.1). The selector implements §17.3 without branches, preserving quiet NaN operands unchanged (the left of two) and replacing a NaN made from non-NaN operands with `$7FF8000000000000`; no profile selects the rule away. For a requested bit-exact policy beyond that rule, either prove a restricted operation/input set, supply bit-preserving software semantics, or refuse the unsupported case.
 
 Disable contraction, reassociation and relaxed SIMD by default. A deterministic application protocol may normalize NaNs and reject nonfinite geometry values at its own documented serialization boundary, but that does not change Habu's bit-observation semantics behind the user's back. Transcendentals should use qualified Habu helpers or explicitly named host imports, not unexamined substitution with JavaScript math functions.
 

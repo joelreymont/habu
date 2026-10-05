@@ -80,8 +80,11 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
      {: p:ptr :}
      p @ ;
   ```
-- Integers widen when lossless (`u8 → u16 → u32 → n`); roles (`idx`, `len`,
-  `fd`) never widen. Booleans are real `bool`s: `0 0=`, never a raw `0`/`-1`.
+- Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
+  `n` accepts structural integer stack cells in either direction: `n` can pass
+  to `u32`, while `i64` needs an explicit conversion. Pointer pointees stay
+  exact; roles (`idx`, `len`, `fd`) never widen. Booleans are real `bool`s:
+  `0 0=`, never a raw `0`/`-1`.
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per

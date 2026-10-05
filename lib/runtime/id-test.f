@@ -178,6 +178,31 @@ TYPED-VARIABLE C-Z RT-ID:counter
    [: -1 1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ
    [: 1 -1 RT-HANDLE:HANDLE drop ;] RT-HANDLE:E-RT-HANDLE-WIDE TTHROWSQ ;
 
+: HALVES ( RT-HANDLE:handle -- n n )
+   {: h:RT-HANDLE:handle :}
+   h RT-HANDLE:SLOT h RT-HANDLE:GENERATION ;
+
+\ The slot and generation read back from the handle HANDLE builds of them.
+: READ-BACK ( n n -- n n )
+   RT-HANDLE:HANDLE HALVES ;
+
+: READERS ( -- )
+   s" the null handle reads back as slot 0 at generation 0" T-LABEL
+   RT-HANDLE:NULL HALVES 0 T= 0 T=
+   0 0 READ-BACK 0 T= 0 T=
+   0 0 READ-BACK RT-HANDLE:HANDLE RT-HANDLE:NULL? TTRUE
+   s" each half reads back as built, at 1 and at 2^32 - 1" T-LABEL
+   1 1 READ-BACK 1 T= 1 T=
+   1 $FFFFFFFF READ-BACK $FFFFFFFF T= 1 T=
+   $FFFFFFFF 1 READ-BACK 1 T= $FFFFFFFF T=
+   $FFFFFFFF $FFFFFFFF READ-BACK $FFFFFFFF T= $FFFFFFFF T=
+   s" and rebuilds through HANDLE the handle it was read from" T-LABEL
+   1 $FFFFFFFF READ-BACK READ-BACK $FFFFFFFF T= 1 T=
+   $FFFFFFFF 1 READ-BACK READ-BACK 1 T= $FFFFFFFF T=
+   s" the slot is the wire's first u32, the generation its second" T-LABEL
+   $FFFFFFFF 1 >WIRE-HANDLE HALVES 1 T= $FFFFFFFF T=
+   1 $FFFFFFFF >WIRE-HANDLE HALVES $FFFFFFFF T= 1 T= ;
+
 2 TYPED-BUFFER SLOTS-A n
 2 TYPED-BUFFER SLOTS-B n
 1 TYPED-BUFFER SLOTS-C n
@@ -415,6 +440,7 @@ CHILD-CAP BUFFER: CHILD-ERR
    UNMADE
    WIRE-FORMS
    NUMBER-FORMS
+   READERS
    ISSUE-AND-RELEASE
    REOPEN
    FOREIGN-HANDLES

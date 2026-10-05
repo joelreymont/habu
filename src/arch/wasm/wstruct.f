@@ -36,6 +36,11 @@
 \ the context address and the input lanes in, the status and the output lanes
 \ out, every lane an i64. `return` answers the same row.
 \
+\ AN ADDRESS IS A KIND OF CONSTANT. An i64.const states whether its value is a
+\ number, a data address or a code address (HIR's three kinds, src/compiler/
+\ native/hir.f ADDR-NONE..ADDR-CODE), because the encoder writes an address as a
+\ padded field the linker rewrites and a number as itself.
+\
 \ THE SIGNATURE IS HELD AT THE FREEZE. A tail types its lanes but not their
 \ count, and the full freeze ties neither a function's entry arguments nor its
 \ returns to the signature it declares, so a selector freezes through FREEZE
@@ -62,6 +67,7 @@ require src/compiler/native/frozen.f
 -9805 constant E-WSTRUCT-DIALECT   \ a module whose schema table was created for another dialect or another schema version
 -9806 constant E-WSTRUCT-OPCODE    \ an ordinal or spelling outside the dialect's closed opcode vocabulary
 -9807 constant E-WSTRUCT-SIGNATURE \ a function whose entry-block arguments or a return's operands, memory tokens aside, are not its declared signature's
+-9808 constant E-WSTRUCT-ADDR      \ an address kind outside NONE, DATA and CODE
 
 package WSTRUCT
 public
@@ -129,7 +135,7 @@ ENUM opcode DERIVE eq
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-1 constant MINOR
+2 constant MINOR
 
 private
 
@@ -290,6 +296,19 @@ public
 : KEY-CALLEE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" wstruct.callee" IR-BUILD:INTERN-SYMBOL ;
 
+\ An i64.const's address kind, one of the three below.
+: KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" wstruct.addr" IR-BUILD:INTERN-SYMBOL ;
+
+0 constant ADDR-NONE
+1 constant ADDR-DATA
+2 constant ADDR-CODE
+
+\ Refused where the attribute is built, as HIR refuses its own.
+: ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   dup ADDR-NONE < over ADDR-CODE > or if E-WSTRUCT-ADDR throw then
+   IR-BUILD:INTERN-INT-ATTR ;
+
 \ Interning deduplicates, so asking twice answers the same identity.
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder WSTRUCT:opcode -- IR-ID:ir-symbol-id )
    OP-NAME IR-BUILD:INTERN-SYMBOL ;
@@ -335,6 +354,18 @@ private
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c b op f FINISH ;
+
+\ The cell-wide constant, the one form a Habu literal selects to, also states
+\ its address kind.
+: CELL-CONST-FORM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id t:IR-ID:ir-type-id :}
+   op IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-VALUE IR-SCHEMA:ADD-ATTR
+   c b KEY-ADDR IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   c b op F-INT FINISH ;
 
 \ Two operands of one type: the arithmetic, the bitwise forms, the shifts -
 \ whose count is the second operand, taken modulo the width - and the
@@ -511,7 +542,7 @@ private
    c b MEM-TYPE {: k:IR-ID:ir-type-id :}
    o MATCH opcode
       i32-const           OF c b op w F-INT CONST-FORM ENDOF
-      i64-const           OF c b op x F-INT CONST-FORM ENDOF
+      i64-const           OF c b op x CELL-CONST-FORM ENDOF
       f64-const           OF c b op c b F64-TYPE F-FLT CONST-FORM ENDOF
       i32-add             OF c b op w w F-INT BINARY-FORM ENDOF
       i32-sub             OF c b op w w F-INT BINARY-FORM ENDOF

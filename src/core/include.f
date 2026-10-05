@@ -4,9 +4,7 @@
 \ this file only gives source files a checked way to load dependencies.
 
 PATH-CAP constant INCLUDE-PATH-CAP
-$200000 constant INCLUDE-BUF-CAP  \ maximum bytes in one active source frame
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
-$1 constant INCLUDE-PROBE-CAP
 \ A loader refusal's exit status, always after a line naming the refusal: an
 \ uncaught throw of a code below 256 ends the process with no word at all.
 $4A constant INCLUDE-IO-RC
@@ -19,7 +17,6 @@ $37D8 constant INCLUDE-EVALERR-CELL
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
-create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
 create REQUIRE-LENS REQUIRE-MAX cells allot
 
 package REQUIRE-REG
@@ -1065,12 +1062,6 @@ variable SCRIPT-NAMED-PEND
    INCLUDE-PATH0 open-rd INCLUDE-FD !
    INCLUDE-FD @ 0 < if INCLUDE-OPEN-DIE then ;
 
-: INCLUDE-PROBE-OVERFLOW ( -- bool )
-   INCLUDE-FD @ INCLUDE-PROBE INCLUDE-PROBE-CAP read INCLUDE-RD !
-   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
-   INCLUDE-RD @ 0 > if s" include: file too large" INCLUDE-IO-DIE then
-   INCLUDE-TRUE ;
-
 : INCLUDE-EVALERR? ( -- bool )
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
@@ -1091,12 +1082,9 @@ variable SCRIPT-NAMED-PEND
 \ DISC-TOK-A/DISC-TOK-U; a real load reads the live token span from the
 \ interpreter TKA/TKL cells instead.
 
-$100 constant EVENT-MAX
 8 constant EVENT-FIELDS
-\ Each event copies its path and, unless an earlier event stored the same one,
-\ the root it resolved under, each at most PATH-CAP bytes: the pool holds
-\ EVENT-MAX of both, so a run is refused for its event count alone.
-EVENT-MAX 2 * PATH-CAP * constant EVENT-POOL-CAP
+EVENT-FIELDS cells constant EVENT-BYTES          \ one record
+$1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
 
 0 constant EV-INCLUDED
@@ -1105,8 +1093,14 @@ $4D constant INCLUDE-EVENT-RC
 0 constant EV-STATE-FRESH
 1 constant EV-STATE-KNOWN
 
-create EVENT-RECS EVENT-MAX EVENT-FIELDS * cells allot
-create EVENT-POOL EVENT-POOL-CAP allot
+\ The records, and the pool that holds each event's path and, unless an
+\ earlier event stored the same one, the root it resolved under, are mappings
+\ that grow as events arrive, so a discovery records every act however many
+\ there are. Each CAP counts the bytes its mapping holds, 0 while unmapped.
+PTR-VARIABLE EVENT-RECS
+PTR-VARIABLE EVENT-POOL
+variable EVENT-RECS-CAP
+variable EVENT-POOL-CAP
 variable EVENT-N
 variable EVENT-POOL-N
 variable EVENT-ON-V
@@ -1121,12 +1115,35 @@ variable DISC-TOK-U
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
 : DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
-\ The pool holds resolved paths and their roots, so the bytes used are zeroed
-\ too: snapshot preparation resets it, and a captured image keeps no path of
-\ the machine that recorded them.
+: EVENT-RECS@ ( -- ptr u8 ) EVENT-RECS @ ;
+: EVENT-POOL@ ( -- ptr u8 ) EVENT-POOL @ ;
+
+\ Only memory refuses, by name, as in the include frames: a failed mapping or
+\ release ends the process with INCLUDE-IO-RC.
+: EVENT-UNMAP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
+
+\ A fresh mapping of CAP bytes holding the first USED bytes of OLD, which maps
+\ OLDCAP bytes and is released first; the caller then publishes the answer and
+\ CAP, so a refusal ends the process while OLD is still the one published.
+: EVENT-REMAP ( ptr u8 n n n -- ptr u8 )
+   {: old:ptr oldcap:n used:n cap:n :}
+   cap map-anon 0= 0= if drop s" events: cannot map an event table" INCLUDE-DIE then
+   {: fresh:ptr :}
+   old fresh used BYTE-COPY
+   old oldcap EVENT-UNMAP
+   fresh ;
+
+\ Reset releases both mappings, so snapshot preparation leaves a captured image
+\ no path of the machine that recorded them and no address of a mapping. Each
+\ descriptor is cleared once its own mapping is released, the records' with the
+\ count of events they held.
 : EVENTS-RESET ( -- )
-   EVENT-POOL-N @ 0 ?do 0 EVENT-POOL i + c! loop
-   0 EVENT-N !  0 EVENT-POOL-N ! ;
+   EVENT-RECS@ EVENT-RECS-CAP @ EVENT-UNMAP
+   NULL-PTR EVENT-RECS !  0 EVENT-RECS-CAP !  0 EVENT-N !
+   EVENT-POOL@ EVENT-POOL-CAP @ EVENT-UNMAP
+   NULL-PTR EVENT-POOL !  0 EVENT-POOL-CAP !  0 EVENT-POOL-N ! ;
 
 : LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
 : LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;
@@ -1137,22 +1154,37 @@ variable DISC-TOK-U
    LOADER-TOKEN-SPAN ;
 
 : EVENT-SLOT ( n n -- ptr n )
-   swap EVENT-FIELDS * + cells EVENT-RECS + ;
+   swap EVENT-FIELDS * + cells EVENT-RECS@ + CELL-VIEW ;
 
 : EVENT-FIELD@ ( n n -- n )  EVENT-SLOT @ ;
 : EVENT-FIELD! ( n n n -- )  EVENT-SLOT ! ;
 
-: EVENT-POOL-AT ( n -- ptr u8 )  EVENT-POOL + ;
+: EVENT-POOL-AT ( n -- ptr u8 )  EVENT-POOL@ + ;
+
+\ A mapping that must hold NEED bytes doubles, or takes NEED if that is more.
+: EVENT-GROWN ( n n -- n ) {: need:n cap:n :}
+   cap 2 * need max EVENT-ROOM-MIN max ;
 
 : EVENT-RECS-ROOM ( -- )
-   EVENT-N @ EVENT-MAX >= if s" events: too many events" INCLUDE-EVENT-RC die then ;
+   EVENT-N @ 1 + EVENT-BYTES * {: need:n :}
+   need EVENT-RECS-CAP @ <= if exit then
+   need EVENT-RECS-CAP @ EVENT-GROWN {: cap:n :}
+   EVENT-RECS@ EVENT-RECS-CAP @ EVENT-N @ EVENT-BYTES * cap EVENT-REMAP
+   EVENT-RECS !
+   cap EVENT-RECS-CAP ! ;
 
-\ The bytes wanted are compared with the room left in the pool: added to its
-\ fill, a length near the maximum cell wraps back under the capacity.
+\ EVENT-COPY-PATH is an engine word any source can call, so the length is
+\ refused when it is negative or so long that its sum with the fill wraps.
 : EVENT-POOL-ROOM ( n -- ) {: u:n :}
-   u 0 < u EVENT-POOL-CAP EVENT-POOL-N @ - > or if
+   EVENT-POOL-N @ u + {: need:n :}
+   u 0 < need 0 < or if
       s" events: pool overflow" INCLUDE-EVENT-RC die
-   then ;
+   then
+   need EVENT-POOL-CAP @ <= if exit then
+   need EVENT-POOL-CAP @ EVENT-GROWN {: cap:n :}
+   EVENT-POOL@ EVENT-POOL-CAP @ EVENT-POOL-N @ cap EVENT-REMAP
+   EVENT-POOL !
+   cap EVENT-POOL-CAP ! ;
 
 : EVENT-COPY-PATH ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u EVENT-POOL-ROOM
@@ -1223,12 +1255,16 @@ private
 \ file is even read, so the outer path is gone by the time an inner refusal or a
 \ POP needs it. The frame is the only per-load storage there is, so the resolved
 \ path is copied into it and the header grows by one length cell plus the path.
+\ The file's bytes follow the header in the same mapping, which is sized to the
+\ file (GROW): FR-ROOM counts the source bytes it can hold, FR-SIZE the file's.
 0 constant FR-PREV                          \ parent frame (a declared pointer field)
 CELL constant FR-NAMED                       \ SCRIPT-NAMED-PEND byte
 2 cells constant FR-PATHLEN                  \ this load's path length
-3 cells constant FR-PATH                     \ this load's path bytes
+3 cells constant FR-ROOM                     \ source bytes the mapping holds
+4 cells constant FR-SIZE                     \ this load's source length
+5 cells constant FR-PATH                     \ this load's path bytes
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES   \ cell-rounded, so SOURCE stays aligned
-HEADER-BYTES INCLUDE-BUF-CAP + constant MAP-BYTES
+$1000 constant ROOM-MIN                      \ a new frame's room, before its file is read
 PTR-VARIABLE TOP
 
 : TOP@ ( -- ptr u8 ) TOP @ ;
@@ -1251,12 +1287,18 @@ PTR-VARIABLE TOP
    frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
    frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + ! ;
 
+\ The bytes FRAME maps: its header and its room.
+: MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
+
+: ROOM ( -- n ) TOP@ FR-ROOM + CELL-VIEW @ ;
+
 : PUSH ( -- )
-   MAP-BYTES map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
+   HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
    {: frame:ptr :}
    TOP@ frame FR-PREV ptr-field !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
+   ROOM-MIN frame FR-ROOM + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    frame TOP!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
@@ -1269,13 +1311,32 @@ PTR-VARIABLE TOP
    frame FR-PREV ptr-field @ TOP!
    -1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION
-   frame MAP-BYTES munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then ;
+   frame dup MAPPED munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then ;
 
 : SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
 
+\ The open frame learns its file's size by filling, so it grows as lib/pg.f's
+\ call arena does: it doubles its room, or takes WANT bytes if that is more. The
+\ header and the first KEEP source bytes move to a fresh mapping; once the old
+\ one is released, the fresh one becomes TOP and the published location, the
+\ only two that point into a frame while it fills. Only memory refuses, by
+\ name, as in PUSH and POP: a refusal ends the process while the old frame is
+\ still the one published.
+: GROW ( n n -- )
+   {: want:n keep:n :}
+   TOP@ {: frame:ptr :}
+   ROOM 2 * want max {: room:n :}
+   HEADER-BYTES room + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
+   {: fresh:ptr :}
+   frame fresh HEADER-BYTES keep + BYTE-COPY
+   room fresh FR-ROOM + CELL-VIEW !
+   frame dup MAPPED munmap 0 < if s" include: cannot release a source frame" INCLUDE-DIE then
+   fresh TOP!
+   PUBLISH-LOCATION ;
+
 : INCLUDE-READ-DONE? ( -- bool )
-   INCLUDE-U @ INCLUDE-BUF-CAP >= if INCLUDE-PROBE-OVERFLOW exit then
-   INCLUDE-FD @ SOURCE INCLUDE-U @ + INCLUDE-BUF-CAP INCLUDE-U @ - read INCLUDE-RD !
+   INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
+   INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
    INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
    INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
    INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
@@ -1313,15 +1374,31 @@ defer INCLUDE-INTERPRET ( ptr u8 n -- )
 
 private
 
-: LOAD-BYTES ( -- )
-   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$
-   SOURCE-INPUT:READ {: a:ptr u:n :}
-   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
-   a SOURCE <> if a SOURCE u BYTE-COPY then
-   SOURCE u SHEBANG-COMMENT
-   SOURCE u INCLUDE-INTERPRET ;
+\ Holds a load's U source bytes at A in its frame and records their length
+\ there. The OS reader (READ-OS) has filled the frame already, learning the size
+\ as it read; another reader's bytes come with their length, and the frame grows
+\ to fit them before they are copied in.
+: HOLD ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a SOURCE <> if
+      u ROOM > if u 0 GROW then
+      a SOURCE u BYTE-COPY
+   then
+   u TOP@ FR-SIZE + CELL-VIEW !
+   SOURCE u ;
 
+: READ-SOURCE ( -- ptr u8 n )
+   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$ SOURCE-INPUT:READ HOLD ;
+
+: LOAD-BYTES ( -- )
+   SOURCE TOP@ FR-SIZE + CELL-VIEW @
+   INCLUDE-INTERPRET ;
+
+\ The file is read before the unit importer runs: a frame moves while it grows,
+\ and the source address the importer is given must be the one the interpreter
+\ reads (tools/native-source-view.f LOAD-START keeps it).
 : LOAD-UNIT ( -- )
+   READ-SOURCE SHEBANG-COMMENT
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    CURRENT$ SOURCE [: LOAD-BYTES ;] SOURCE-UNIT:LOAD ;
@@ -1338,21 +1415,16 @@ private
 \ the interpreter. The callback receives bytes owned by the frame and its
 \ canonical path; both remain valid throughout the callback, including nested
 \ loads. This keeps the ordinary loader's root and cleanup rules.
-: READ-FOR ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] ) {: q :}
-   INCLUDE-PATH INCLUDE-PATH-U @ RESOLVED-ROOT$
-   SOURCE-INPUT:READ {: a:ptr u:n :}
-   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
-   a SOURCE <> if a SOURCE u BYTE-COPY then
-   TOP@ {: frame:ptr :}
-   SOURCE u frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+: READ-FOR ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] )
+   {: q :}
+   READ-SOURCE TOP@ {: frame:ptr :}
+   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
    q ;
 
 : COPY-FOR ( ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n [ ptr u8 n ptr u8 n -- ] )
    {: a:ptr u:n q :}
-   u INCLUDE-BUF-CAP > if s" include: file too large" INCLUDE-IO-DIE then
-   a SOURCE <> if a SOURCE u BYTE-COPY then
-   TOP@ {: frame:ptr :}
-   SOURCE u frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
+   a u HOLD TOP@ {: frame:ptr :}
+   frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ q execute
    a u q ;
 
 : WITH-BYTES-CURRENT ( [ ptr u8 n ptr u8 n -- ] -- [ ptr u8 n ptr u8 n -- ] ) {: q :}

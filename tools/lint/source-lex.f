@@ -14,6 +14,7 @@
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
 \   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
 \                                      string-literal payload span
+\   LITERAL? ( n -- bool )             token n is a string literal
 \   KIND@ BYTE@ LINE@ COL@ ( n -- n )  kind, 0-based byte, 1-based line, 1-based column
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
@@ -790,6 +791,16 @@ private
    a u NAMER? ;
 
 public
+
+\ Token k is a string literal: an opener whose payload CONTENT holds, one
+\ delimiter past it (STRING-PAYLOAD). A word spelled as an opener that opened
+\ nothing, such as a live local `s"`, holds none.
+: LITERAL? ( n -- bool )
+   {: k:n :}
+   k KIND@ WORD <> if LINT-FALSE exit then
+   k TOKEN {: a:ptr u:n :}
+   a u STRING-OPENER? 0= if LINT-FALSE exit then
+   k CONTENT drop a u + 1+ = ;
 
 : SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
    a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !

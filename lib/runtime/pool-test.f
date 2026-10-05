@@ -28,13 +28,13 @@ package RPT
    4 0 do gen i 8 * rshift $FF and WIRE 4 + i + c! loop
    WIRE 8 RT-HANDLE:BYTES>HANDLE ;
 
-CAST: BITS ( RT-HANDLE:handle -- n )
+\ A handle as one number, slot low and generation high, through the public readers.
+: BITS ( RT-HANDLE:handle -- n )
+   {: h:RT-HANDLE:handle :}
+   h RT-HANDLE:GENERATION 32 lshift h RT-HANDLE:SLOT or ;
 
-: SLOT# ( RT-HANDLE:handle -- n )
-   BITS $FFFFFFFF and ;
-
-: GEN# ( RT-HANDLE:handle -- n )
-   BITS 32 rshift ;
+: SLOT# ( RT-HANDLE:handle -- n )   RT-HANDLE:SLOT ;
+: GEN# ( RT-HANDLE:handle -- n )   RT-HANDLE:GENERATION ;
 
 \ The granted handle, or the null one for oom.
 : ID ( RT-POOL:reservation -- RT-HANDLE:handle )

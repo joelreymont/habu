@@ -269,6 +269,11 @@ SUITE manifest-lint-fixtures
    tools/manifest-lint-test.f
 ;SUITE
 
+\ Fixture trees, then the HBR2 layers of this tree.
+SUITE package-dag-lint
+   tools/package-dag-lint-test.f
+;SUITE
+
 SUITE chain-plan
    tools/chain-plan-test.f
 ;SUITE
@@ -576,6 +581,26 @@ SUITE wasm-profile
 \ cycle entered at two blocks.
 SUITE wasm-structure
    test/wasm/structure.f
+;SUITE
+
+\ The Wasm selector, src/arch/wasm/select.f: definitions compiled through
+\ NBACK and selected to frozen WSTRUCT, calls, status and the integer rows.
+SUITE wasm-select
+   test/wasm/select.f
+;SUITE
+
+\ WENC, the Wasm backend's encoder, src/arch/wasm/encode.f: byte-exact bodies
+\ for a straight line, an if/else, nested loops, calls and address literals,
+\ the emission's header, call and address sites, and each refusal.
+SUITE wasm-encode
+   test/wasm/encode.f
+;SUITE
+
+\ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
+\ sign operations, the comparisons and conversions, and W05, f>s refused in a
+\ fork whose profile lacks saturating-float-to-int.
+SUITE wasm-select-f64
+   test/wasm/select-f64.f
 ;SUITE
 
 \ The backend registry: complete rows in src/compiler/native/backend.f,
@@ -1422,6 +1447,10 @@ SUITE runtime-id
 
 SUITE runtime-pool
    lib/runtime/pool-test.f
+;SUITE
+
+SUITE runtime-scope
+   test/browser/scope-test.f
 ;SUITE
 
 SUITE ffi-abi
@@ -2420,6 +2449,10 @@ SUITE deep-cwd
 
 SUITE include-refusal
    test/include-refusal-e2e.f
+;SUITE
+
+SUITE whole-source-read
+   test/whole-source-read-test.f
 ;SUITE
 
 SUITE room-left

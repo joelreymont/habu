@@ -307,7 +307,10 @@ public
   name, exit 74. Fixtures resolve against
   `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, never a script argument. Nested loads
   keep each parent's source bytes alive until it returns, releasing them on
-  return or throw; there is no fixed nesting count. Discovery, checker
+  return or throw; there is no fixed nesting count. Each load reads its file
+  into a frame sized to that file, so there is no fixed file size either: only
+  a failed mapping refuses a file, exit 74. Discovery's record of the loads a
+  file makes grows the same way, with no fixed count. Discovery, checker
   dependency collection and content closures use the same canonical paths and
   owner roots.
 - The engine marks its baked prefix files `provided` before user source runs, so
@@ -969,10 +972,13 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   `E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
   refusal off the definer's zero image (`lib/json-write.f`).
-- **Structural integers widen, roles do not.** `u8 -> u16 -> u32 -> n/cell/i64`
-  widens implicitly when lossless; narrowing and same-width sign changes need an
-  explicit conversion; nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`,
-  `img`, `snap`, …) never widen to each other or to bare integers.
+- **Concrete integers widen, roles do not.** `u8 -> u16 -> u32 -> cell/i64`
+  widens implicitly when lossless; concrete narrowing and same-width sign
+  changes need an explicit conversion. Generic `n` accepts structural integer
+  stack cells in either direction: an `n` input can pass to a `u32` parameter,
+  while an `i64` input cannot. This generic rule does not relax pointer
+  pointees. Nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`, `img`,
+  `snap`, …) never widen to each other or to bare integers.
 - **Pointer-valued cells use cell-indexed `ptr-field`**: `ptr-field` builds a
   `ptr ptr x` field whose index is a cell slot, not a byte offset, so `@`/`!`
   keep nested pointer types; never multiply by cell size. Raw byte offsets need

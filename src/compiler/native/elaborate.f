@@ -783,6 +783,14 @@ variable LIT-N
    {: ix:n val:n :}
    ix val HIR:ADDR-NONE EMIT-KIND-LIT ;
 
+\ The live literal memo identifies a scalar's exact producer and kind.
+\ Retained entries dominate this use; stack aliases preserve the value id.
+: SCALAR-LIT? ( IR-ID:ir-value-id n -- bool )
+   {: id:IR-ID:ir-value-id val:n :}
+   HIR:ADDR-NONE val LIT-FIND {: j:n :}
+   j 0 < if false exit then
+   j LIT-ID @ IR-ID:VALUE-LOCAL  id IR-ID:VALUE-LOCAL = ;
+
 \ The memory the definition is entered with, staged at the token's span.
 : EMIT-MEM ( n -- )
    {: ix:n :}
@@ -3541,6 +3549,17 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    base VAT  base 1+ VAT
    2 VDROP ;
 
+\ For a literal positive two, the low bit is the magnitude of the remainder.
+\ A signed comparison yields all ones for a negative dividend, so (bit xor
+\ sign) - sign restores its sign without division, including MIN-N.
+: EXPAND-MOD-TWO ( n IR-ID:ir-value-id -- )
+   {: ix:n a:IR-ID:ir-value-id :}
+   a VPUSH  ix 1 EMIT-LIT  ix HIR-OPCODE:AND EMIT-OPCODE
+   a VPUSH  ix 0 EMIT-LIT  ix HIR-OPCODE:LT EMIT-OPCODE
+   VN @ 1- VAT {: sign:IR-ID:ir-value-id :}
+   ix HIR-OPCODE:XOR EMIT-OPCODE
+   sign VPUSH  ix HIR-OPCODE:SUB EMIT-OPCODE ;
+
 \ mod ( n n -- n ): the remainder the division leaves, a - a/b*b. The division is
 \ this dialect's `div`, whose schema carries the zero-divisor refusal, so the
 \ throw the engine's `mod` makes on a zero divisor is the throw this sequence
@@ -3548,6 +3567,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : EXPAND-MODULO ( n -- )
    {: ix:n :}
    EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   b 2 SCALAR-LIT? if ix a EXPAND-MOD-TWO exit then
    a VPUSH
    a VPUSH  b VPUSH  ix HIR-OPCODE:DIV EMIT-OPCODE
    b VPUSH  ix HIR-OPCODE:MUL EMIT-OPCODE

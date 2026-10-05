@@ -137,6 +137,7 @@ BF-REQUIRE-WATERMARK
 require lib/process-cwd.f
 require lib/process-fork.f
 require lib/span.f                       \ SPAN-BUFFER: destinations for FS-MUT-SUFFIX-PATH
+require lib/source.f                     \ whole descriptor reads of build sources
 require src/habu/hide.f
 require src/habu/prefix-rewind.f
 require lib/content-key.f                \ the chain fold
@@ -175,6 +176,8 @@ variable BF-A-PATH-A
 variable BF-B-PATH-A
 variable BF-SOURCE-BUF-A
 variable BF-SOURCE-CAP-V
+TYPED-VARIABLE BF-SOURCE-PATH-A ptr u8
+variable BF-SOURCE-PATH-U
 variable BF-CMP-A-BUF-A
 variable BF-CMP-B-BUF-A
 variable BF-SOURCE-LEN
@@ -246,6 +249,7 @@ variable BF-CERT-PATH-U
 : BF-SOURCE-CAP ( -- n )
    BF-SOURCE-CAP-V @ ;
 
+\ Process-owned scratch reused by source assembly, certification and census.
 \ One allocator granule until somebody asks for more. There is no capacity
 \ CONSTANT here any more: this buffer holds user programs and generated stage
 \ text, and no number written in this file can bound either (dot
@@ -266,11 +270,9 @@ variable BF-CERT-PATH-U
    s" build-fixpoint: have " type have .
    E-FS-CAPACITY throw ;
 
-\ Install the new mapping, then release the prior one. Release is LAST, so a
-\ refused allocation never reaches it and leaves the old span owned and intact
-\ (the shape lib/vector.f VEC-INSTALL-RESIZE and lib/byte-buffer.f
-\ INSTALL-RESIZE already carry). No copy: this buffer is scratch that every use
-\ refills from its source before reading it.
+\ The whole-source reader fills this buffer over several reads. Copy its held
+\ prefix before installing the new mapping, then release the old one. A failed
+\ allocation leaves the prior span and its bytes owned and intact.
 \
 \ INVARIANT, and the reason releasing is safe: no caller holds a pointer into
 \ this buffer across a grow. Every reader fetches BF-SOURCE-BUF at the point of
@@ -283,9 +285,15 @@ variable BF-CERT-PATH-U
    got need < if path pathu need got BF-SOURCE-REFUSED then
    BF-SOURCE-BUF-A BF-PTR-U8@ {: old:ptr :}
    BF-SOURCE-CAP {: oldcap:n :}
+   old buf oldcap BYTE-COPY
    buf BF-SOURCE-BUF-A BF-PTR-U8!
    got BF-SOURCE-CAP-V !
    oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then ;
+
+: BF-SOURCE-ROOM ( n -- ptr u8 )
+   BF-SOURCE-BUF drop
+   BF-SOURCE-PATH-A @ BF-SOURCE-PATH-U @ rot BF-SOURCE-ENSURE
+   BF-SOURCE-BUF ;
 
 : BF-CMP-A ( -- ptr u8 )
    BF-CMP-A-BUF-A BF-CMP-CAP BF-BUF ;
@@ -731,8 +739,10 @@ package BUILD-FIXPOINT
 
 : BF-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
-   path pathu size BF-SOURCE-ENSURE
-   path pathu BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
+   path BF-SOURCE-PATH-A !
+   pathu BF-SOURCE-PATH-U !
+   path pathu size [: BF-SOURCE-ROOM ;] SOURCE:READ-WHOLE-SAMPLED
+      BF-SOURCE-LEN ! ;
 
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
@@ -1282,20 +1292,18 @@ package BUILD-FIXPOINT
    BF-CERT-LABEL$ DIAG-FILE!
    BF-FALSE DIAG-JSON!
    BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
-   BF-CERT-PATH$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
-   buf u VERIFY:SOURCE-BUF ;
+   BF-CERT-PATH$ BF-READ-SOURCE
+   BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:SOURCE-BUF ;
 
 : BF-CERTIFY-CORE-ACT ( -- )
    BF-CERT-LABEL$ DIAG-FILE!
    BF-FALSE DIAG-JSON!
    BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
-   BF-CERT-PATH$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
+   BF-CERT-PATH$ BF-READ-SOURCE
    BFR-CHECK-OFF
    PREFIX-REWIND:TO-CORE
    CHECKER-END-PACKAGE
-   buf u VERIFY:SOURCE-BUF ;
+   BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:SOURCE-BUF ;
 
 : BF-CERTIFY-RC ( ptr u8 n ptr u8 n -- n )
    BF-CERTIFY-INPUT!
@@ -1404,9 +1412,8 @@ package BUILD-FIXPOINT
    BF-TARGET-UNKNOWN ;
 
 : BF-CENSUS-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   a u BF-A$ buf cap READ-ALL {: len:n :}
-   buf len VERIFY:CENSUS-COUNT ;
+   a u BF-A$ BF-READ-SOURCE
+   BF-SOURCE-BUF BF-SOURCE-LEN @ VERIFY:CENSUS-COUNT ;
 
 : BF-CENSUS-REPORT ( -- )
    s" prefix-src" BF-CENSUS-COUNT {: pfx:n :}

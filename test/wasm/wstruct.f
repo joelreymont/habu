@@ -10,12 +10,13 @@
 \ WSTRUCT:FREEZE and reads back as a Wasm module whose double forms need scalar
 \ floating point; the substrate refuses, by its own codes, a use its definition
 \ does not dominate, a block with no terminator, a successor argument of the
-\ wrong type or on a two-way branch, an opcode the module never registered, a
-\ WSTRUCT operation under a binding that is not Wasm and an f64 form under a
-\ Wasm contract without scalar floating point; and WSTRUCT itself refuses an
-\ ordinal or spelling outside its vocabulary, a table of another dialect or
-\ schema version, and a return or an entry block that is not the function's
-\ declared signature, all of which the full freeze accepts.
+\ wrong type or on a two-way branch, an i64.const with no address kind, an
+\ opcode the module never registered, a WSTRUCT operation under a binding that
+\ is not Wasm and an f64 form under a Wasm contract without scalar floating
+\ point; and WSTRUCT itself refuses an ordinal or spelling outside its
+\ vocabulary, an address kind outside NONE, DATA and CODE, a table of another
+\ dialect or schema version, and a return or an entry block that is not the
+\ function's declared signature, all of which the full freeze accepts.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so every module below is built in its own
@@ -159,10 +160,17 @@ private
 : END0 ( IR-CTX:ctx IR-BUILD:builder -- )
    IR-BUILD:END-OP drop ;
 
+: ADDR-NONE ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b  c b WSTRUCT:KEY-ADDR  c b WSTRUCT:ADDR-NONE WSTRUCT:ADDR-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+\ A constant; the cell-wide one also says it holds a number, not an address.
 : K ( IR-CTX:ctx IR-BUILD:builder WSTRUCT:opcode IR-ID:ir-type-id n -- IR-ID:ir-value-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:WSTRUCT:opcode t:IR-ID:ir-type-id v:n :}
    c b o OPEN
    c b  c b WSTRUCT:KEY-VALUE  v INT-ATTR
+   o WSTRUCT-OPCODE:I64-CONST WSTRUCT-OPCODE:EQ if c b ADDR-NONE then
    c b t END1 ;
 
 : OP1 ( IR-CTX:ctx IR-BUILD:builder WSTRUCT:opcode IR-ID:ir-value-id IR-ID:ir-type-id -- IR-ID:ir-value-id )
@@ -562,6 +570,36 @@ private
 : UNREGISTERED-RUN ( -- )
    BND [: UNREGISTERED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- the address kind ---------------------------------------------------------
+\ A cell-wide constant that does not say whether it is an address.
+: NO-KIND-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MOD {: b:IR-BUILD:builder :}
+   c b MAIN-OPEN
+   c b ENTRY-OPEN
+   c b WSTRUCT-OPCODE:I32-CONST  c b I32  0 K {: s:IR-ID:ir-value-id :}
+   c b WSTRUCT-OPCODE:I64-CONST OPEN
+   c b  c b WSTRUCT:KEY-VALUE  7 INT-ATTR
+   c b  c b I64 END1 {: r:IR-ID:ir-value-id :}
+   c b s r RET
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b WSTRUCT:FREEZE drop ;
+
+: NO-KIND-RUN ( -- )
+   BND [: NO-KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: KIND-BODY ( IR-CTX:ctx n -- )
+   {: c:IR-CTX:ctx k:n :}
+   c MOD {: b:IR-BUILD:builder :}
+   c b k WSTRUCT:ADDR-ATTR drop ;
+
+: KIND-PAST-RUN ( -- )
+   BND [: WSTRUCT:ADDR-CODE 1+ KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: KIND-BELOW-RUN ( -- )
+   BND [: WSTRUCT:ADDR-NONE 1- KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- the target ---------------------------------------------------------------
 \ The host's own binding: its backend lowers it, so the builder is made, and the
 \ first WSTRUCT schema is refused against the bound architecture.
@@ -618,6 +656,11 @@ private
    [: SUCCARG-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ
    s" a destination of brz that takes an argument is refused at the freeze" T-LABEL
    [: BRZ-ARG-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ
+   s" an i64.const that states no address kind is refused at the freeze" T-LABEL
+   [: NO-KIND-RUN ;] E-IR-VERIFY-ATTRKEY TTHROWSQ
+   s" an address kind outside NONE, DATA and CODE is refused as it is built" T-LABEL
+   [: KIND-PAST-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
+   [: KIND-BELOW-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    s" an operation naming an opcode the module never registered is refused" T-LABEL
    [: UNREGISTERED-RUN ;] E-IR-SCHEMA-OPCODE TTHROWSQ
    s" a WSTRUCT operation under the host's binding is refused" T-LABEL
