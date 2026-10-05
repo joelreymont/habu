@@ -35,17 +35,11 @@ package ENGINE-INTERNAL
 : IMK-GLOBAL-EXECUTABLE? ( n -- bool )
    dup IMK-WID 0 = IF IMK-EXECUTABLE? ELSE drop 0 0= 0= THEN ;
 
-TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
-TRUSTED: PROTECTED-COUNT ( -- n ) REG-PROT-N @ ;
-TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
-TRUSTED: PROTECTED-RETIRE ( -- )
-   PROTECTED-COUNT 0 ?do 0 i cells REG-PROT-IDX + ! loop
-   0 REG-PROT-N ! ;
 
 : IMK-MIN-IN ( n -- n )
-   dup IMK-NAME-A swap IMK-NAME-U KNOWN-MIN-IN ;
+   dup IMK-NAME-A swap IMK-NAME-U EFFECT-EXTERNAL-MIN-IN ;
 
 \ A GLOBAL RECORD NO TOP-LEVEL ROW TYPES MAY STILL BE A PACKAGE'S PRIMITIVE: a
 \ package-private row (checker.f CLOSE-PRIVATE) types it for checked code inside
@@ -126,7 +120,7 @@ variable IMK-QI
 
 : IMK-CLASSIFY-PUB ( n n -- ) {: p:n i:n :}
    i IMK-EXECUTABLE? 0= IF EXIT THEN
-   i p i IMK-QUAL KNOWN-MIN-IN IMK-MARK ;
+   i p i IMK-QUAL EFFECT-EXTERNAL-MIN-IN IMK-MARK ;
 
 \ Package row p's public colon records, from p or the prefix's first record.
 : IMK-PKG-PUBLICS ( n n -- ) {: p:n first:n :}
@@ -158,7 +152,7 @@ variable IMK-QI
 \ tick fail closed on the bare name exactly like a sig-less colon word, while the
 \ core compiled callers (resolved before this pass) keep working.
 : IMK-SEAL-REGISTRY ( -- )
-   PROTECTED-COUNT 0 ?do i PROTECTED-RECORD MARK-INTERNAL loop ;
+   REG-PROT-COUNT 0 ?do i REG-PROT-RECORD MARK-INTERNAL loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
 \ THE ONE BUILD THAT ASKS FOR NO SEAL. A whitebox suite reaches inside the
@@ -216,7 +210,7 @@ variable IMK-CLASS
 \ image has no seal to read them.
 : IMK-PASS ( -- )
    IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
-   PROTECTED-RETIRE ;
+   REG-PROT-RETIRE ;
 
 public
 

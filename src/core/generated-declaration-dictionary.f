@@ -45,7 +45,6 @@ variable FRAME-CAP CAP-INIT FRAME-CAP !
 : ROW.CP ( ptr a -- ptr a ) ROW.CP-OFF + ;
 : ROW.DP ( ptr a -- ptr ptr a ) ROW.DP-OFF CELL / ptr-field ;
 
-TRUSTED: FRAME-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 \ A literal segment opened inside the transaction outlives its rollback: DP stops
 \ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL).
 TRUSTED: DICTIONARY-DP! ( ptr a -- )
@@ -63,7 +62,7 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- )
    FRAME-CAP @ FRAME-ROW-MAX 2 / <=
       IF FRAME-CAP @ 2 * need max ELSE need THEN {: cap:n :}
    FRAME-P @ FRAME-CAP @ ROW-REC *
-      cap ROW-REC * FRAME-GROW FRAME-P !
+      cap ROW-REC * ARENA-BYTES-GROW FRAME-P !
    cap FRAME-CAP ! ;
 
 : SNAPSHOT ( n -- n ) {: depth:n :}

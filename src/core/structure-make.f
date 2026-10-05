@@ -43,22 +43,19 @@
 \ Atomic publication after validation. GENERATE decides every local condition
 \ in CHECKED code first — family liveness, product kind, at least one field,
 \ every field row present in the current transaction, and MAKE/UNMAKE not
-\ already generated — and only then runs SM-EMIT. Evaluation and
-\ checker certification may still reject while SM-EMIT generates the words; the
-\ enclosing GENERATED-DECL transaction retains every registry and dictionary
-\ savepoint until that work succeeds, so either all metadata and both words
-\ publish or every participant rolls back.
+\ already generated — and only then runs SM-EMIT-ROWS and the generator.
+\ Evaluation and checker certification may still reject while TDECL-PROD-WORDS
+\ generates the words; the enclosing GENERATED-DECL transaction retains every
+\ registry and dictionary savepoint until that work succeeds, so either all
+\ metadata and both words publish or every participant rolls back.
 \
-\ TRUSTED boundary. The checkable DECISIONS stay checked; the trusted set is the
-\ decl-event.f idiom (sealed pre-hook colon words the checker cannot type from a
-\ post-hook checked body, reached through named forwarders): six thin read
-\ forwarders the validation reads, plus one SM-EMIT that performs the sealed
-\ mutation — build the field schema run, add the two variant rows,
-\ set the variant range, derive the constructor package, generate both words.
-\ Provisional field-schema reads go through DECL-EVENT with the exact live
+\ TRUSTED boundary. The checkable DECISIONS stay checked; the trusted set is
+\ one SM-EMIT-ROWS that performs the sealed mutation — build the field schema
+\ run, add the two variant rows, set the variant range, derive the constructor
+\ package. Provisional field-schema reads go through DECL-EVENT with the exact live
 \ declaration token and family, so no uncommitted field row is globally readable.
 \ When the type-DSL cutover factors the shared
-\ generator into its own module, SM-EMIT re-points there; nothing else changes.
+\ generator into its own module, GENERATE re-points there; nothing else changes.
 
 using SCHEMA-REG
 using TFAM
@@ -78,14 +75,6 @@ s" family cannot own generated make/unmake" E-SM-FAM DECL-REJECT:EXPLAIN
 s" a constructed family needs at least one field" E-SM-EMPTY DECL-REJECT:EXPLAIN
 
 package STRUCTURE-MAKE
-
-\ --- pre-hook boundary forwarders. TRUSTED: because they call sealed pre-hook
-\ registry / generation words the checker cannot type here (decl-event.f idiom).
-TRUSTED: SM-FAM-LIVE? ( n -- bool ) PF-FAM-LIVE? ;
-TRUSTED: SM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
-TRUSTED: SM-FLD-START ( n -- n ) TFAM-FLD-START@ ;
-TRUSTED: SM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
-TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
    tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
@@ -112,13 +101,6 @@ TRUSTED: SM-EMIT-ROWS ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
    fam SM-VSTART @ 2 TFAM-VAR-RANGE!
    fam SM-VSTART @ 2 TDECL-CTOR-PUBLISH ;
 
-\ SM-EMIT-WORDS: the GENERATION half — render, evaluate, certify and seal the
-\ MAKE/UNMAKE pair. Replay uses the same plan to register checked effects only.
-TRUSTED: SM-EMIT-WORDS ( n -- ) {: fam:n :}
-   fam TDECL-PROD-WORDS ;
-
-TRUSTED: SM-REPLAY-WORDS ( n -- ) TDECL-CTOR-REPLAY ;
-
 \ --- validation pass (checked; no registry write). A reject here leaves every
 \ registry byte-identical, so publication is attempted only after it wholly passes.
 \ Live and product-kind. Visibility is NOT a condition: a private product
@@ -126,18 +108,18 @@ TRUSTED: SM-REPLAY-WORDS ( n -- ) TDECL-CTOR-REPLAY ;
 \ (dot habu-generate-a-private-80272413), so the only thing left to require is
 \ that the family is the single-shape record this generator knows how to build.
 : SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}   \ live, product-kind
-   fam SM-FAM-LIVE? 0= IF E-SM-FAM throw THEN
-   fam SM-PRODUCT? 0= IF E-SM-FAM throw THEN ;
+   fam PF-FAM-LIVE? 0= IF E-SM-FAM throw THEN
+   fam TFAM-PRODUCT? 0= IF E-SM-FAM throw THEN ;
 
 : SM-REQUIRE-READABLE ( n n n -- ) {: tok:n fam:n fc:n :}   \ every field row is live in this transaction
    0 BEGIN dup fc < WHILE
-      dup tok fam fam SM-FLD-START SM-FIELD-SCHEMA@ drop
+      dup tok fam fam TFAM-FLD-START@ SM-FIELD-SCHEMA@ drop
       1 +
    REPEAT drop ;
 
 : SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}   \ MAKE/UNMAKE not already generated
-   fam s" make"   SM-SUMV-FIND IF drop E-SM-DUP throw THEN drop
-   fam s" unmake" SM-SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
+   fam s" make"   SUMV-FIND IF drop E-SM-DUP throw THEN drop
+   fam s" unmake" SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
 
 public
 
@@ -158,13 +140,15 @@ public
 \ or adding runtime dictionary entries during verification.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
-   fam SM-FLD-COUNT {: fc:n :}
+   fam TFAM-FLD-COUNT@ {: fc:n :}
    fc 1 < IF E-SM-EMPTY throw THEN
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
-   tok fam  fam SM-FLD-START  fc  SM-EMIT-ROWS
-   DECL-REPLAY:RP-ACTIVE? IF fam SM-REPLAY-WORDS EXIT THEN
-   fam SM-EMIT-WORDS ;
+   tok fam  fam TFAM-FLD-START@  fc  SM-EMIT-ROWS
+   \ The GENERATION half: render, evaluate, certify and seal the MAKE/UNMAKE
+   \ pair. Replay uses the same plan to register checked effects only.
+   DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
+   fam TDECL-PROD-WORDS ;
 
 private
 
@@ -196,20 +180,12 @@ create SM-ARM-BOOT SM-ARM-CAP-INIT cells allot
 PERSISTED-PTR-VARIABLE SM-ARM-P   SM-ARM-BOOT SM-ARM-P !
 variable SM-ARM-CAP   SM-ARM-CAP-INIT SM-ARM-CAP !
 
-TRUSTED: SM-ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
-TRUSTED: SM-ADDR? ( n -- bool ) TFAM-DERIVE-ADDR? ;
-TRUSTED: SM-ADDR-WORDS ( n -- ) TDECL-ADDR-WORDS ;
-TRUSTED: SM-ADDR-REPLAY ( n -- ) TDECL-ADDR-REPLAY ;
-TRUSTED: SM-INIT? ( n -- bool ) TFAM-DERIVE-INIT? ;
-TRUSTED: SM-INIT-WORDS ( n -- ) TDECL-INIT-WORDS ;
-TRUSTED: SM-INIT-REPLAY ( n -- ) TDECL-INIT-REPLAY ;
-
 : SM-ARM-BASE ( -- ptr n ) SM-ARM-P @ ;
 : SM-ARM-SLOT ( -- ptr n )
    GENERATED-DECL:DEPTH 1 - cells SM-ARM-BASE + ;
 : SM-ARM-GROW1 ( -- )
    SM-ARM-CAP @ 2 * {: nc:n :}
-   SM-ARM-P @ SM-ARM-CAP @ cells nc cells SM-ARM-GROW SM-ARM-P !
+   SM-ARM-P @ SM-ARM-CAP @ cells nc cells ARENA-BYTES-GROW SM-ARM-P !
    nc SM-ARM-CAP ! ;
 : SM-ARM-ENSURE ( -- )
    GENERATED-DECL:DEPTH SM-ARM-CAP @ <= IF EXIT THEN
@@ -222,10 +198,10 @@ TRUSTED: SM-INIT-REPLAY ( n -- ) TDECL-INIT-REPLAY ;
 \ declared `DERIVE addr` and has at least one field. Visibility is not a
 \ condition here either: it picks the spelling and the wordlist.
 : SM-ADDR-OK? ( n -- bool ) {: fam:n :}
-   fam SM-FAM-LIVE? 0= IF 0 0= 0= EXIT THEN
-   fam SM-PRODUCT? 0= IF 0 0= 0= EXIT THEN
-   fam SM-ADDR? fam SM-INIT? or 0= IF 0 0= 0= EXIT THEN
-   fam SM-FLD-COUNT 0 > ;
+   fam PF-FAM-LIVE? 0= IF 0 0= 0= EXIT THEN
+   fam TFAM-PRODUCT? 0= IF 0 0= 0= EXIT THEN
+   fam TFAM-DERIVE-ADDR? fam TFAM-DERIVE-INIT? or 0= IF 0 0= 0= EXIT THEN
+   fam TFAM-FLD-COUNT@ 0 > ;
 
 : SM-ADDR-REQUIRE ( n -- ) {: fam:n :}
    fam SM-ADDR-OK? 0= IF E-SM-FAM throw THEN ;
@@ -251,12 +227,12 @@ TRUSTED: SM-INIT-REPLAY ( n -- ) TDECL-INIT-REPLAY ;
    fam SM-NO-FAMILY = IF depth EXIT THEN
    fam SM-ADDR-REQUIRE
    DECL-REPLAY:RP-ACTIVE? IF
-      fam SM-ADDR? IF fam SM-ADDR-REPLAY THEN
-      fam SM-INIT? IF fam SM-INIT-REPLAY THEN
+      fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-REPLAY THEN
+      fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN
       depth EXIT
    THEN
-   fam SM-ADDR? IF fam SM-ADDR-WORDS THEN
-   fam SM-INIT? IF fam SM-INIT-WORDS THEN
+   fam TFAM-DERIVE-ADDR? IF fam TDECL-ADDR-WORDS THEN
+   fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-WORDS THEN
    depth ;
 
 : SM-PART-ROLLBACK ( n -- n ) {: depth:n :}

@@ -100,8 +100,7 @@ create SPAN-LEN  SLOTS REASON-CAP + cells allot
 create SLOT-SRC  SLOTS 2 * cells allot
 
 \ The raw-memory boundary of this package.  A checked body cannot type the
-\ address arithmetic from a `create` region to a `ptr u8` span, exactly as
-\ structure-decl.f's PEND! / PEND@ pushback cells cannot be typed; every other
+\ address arithmetic from a `create` region to a `ptr u8` span; every other
 \ word here is ordinary checked Habu.  SLOT! clamps to SPAN-CAP, so no caller can
 \ write past its slot regardless of the span it was handed.
 \
@@ -143,11 +142,6 @@ TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
 TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
-\ render.f's declaration-diagnostic writer: the SAME producer the legacy
-\ definers report through, so prose, JSON, and the check tool's packet capture
-\ all behave identically for a unified declaration.
-TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
-
 \ The offending token RENDER hands the writer, which locates a token by its
 \ pointer: the span it was copied from when that lies in text a driver armed
 \ for locating packets (checker.f DIAG>SRC), so the packet carries its file
@@ -162,18 +156,6 @@ TRUSTED: TOKEN-SPAN@ ( -- ptr u8 n )
    {: a:ptr u:n :}
    a DIAG>SRC nip IF a u EXIT THEN
    S-TOKEN SLOT@ ;
-
-\ Rethrow a reject DIAG rendered with its own code. The checker publishes
-\ rendered refusals before throwing, so an uncaught load exits as a refusal.
-TRUSTED: REFUSE ( n -- ) CHECKER-REFUSE ;
-
-\ Multi-error load state, the checker's own (checker.f). Under `--all-errors` a
-\ rejected definition is counted and the load continues instead of stopping at
-\ the first fault; the legacy definers' reporter TDECL-RUN has answered that way
-\ since multi-error mode existed, and GUARD below is the unified front ends'
-\ reporter, so it answers the same way.
-TRUSTED: MULTI? ( -- bool ) MULTI-ERR? ;
-TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 
 \ --- the reason table: what a reject of a deeper owner's code reports when no
 \ front end armed a reason for it.  Row r is a code in REASON-CODES and its text
@@ -214,8 +196,11 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
    ARMED @ code = IF S-REASON SLOT@ EXIT THEN
    code CODE-REASON ;
 
+\ render.f's declaration-diagnostic writer is the SAME producer the legacy
+\ definers report through, so prose, JSON, and the check tool's packet capture
+\ all behave identically for a unified declaration.
 : RENDER ( n -- ) {: code:n :}
-   S-KIND SLOT@  S-FAMILY SLOT@  TOKEN-SPAN@  code PICK-REASON  DIAG ;
+   S-KIND SLOT@  S-FAMILY SLOT@  TOKEN-SPAN@  code PICK-REASON  TDECL-DIAG ;
 
 public
 
@@ -284,24 +269,26 @@ public
 \ terminator. A front end reads the stream as it parses, so it stops wherever the
 \ fault was and the interpreter would meet the rest of the declaration as if it
 \ were code. Resynchronizing is the front end's job — only it knows its own
-\ terminator — so each one skips to its own before raising; MULTI-ERROR? below is
-\ how it asks whether this load will swallow.
+\ terminator — so each one skips to its own before raising, when MULTI-ERR? says
+\ this load will swallow.
 \
 \ The spans the declaration borrowed are forgotten on both exits: they are good
 \ only while it runs, and one left behind would be read stale or baked into an
 \ image with its build-time address, so that successive engine generations
 \ differ.
+\
+\ Under `--all-errors` (the checker's multi-error load state) a rejected
+\ definition is counted and the load continues instead of stopping at the first
+\ fault, as the legacy definers' reporter TDECL-RUN answers. Otherwise the
+\ reject is rethrown with its own code; the checker publishes rendered refusals
+\ before throwing, so an uncaught load exits as a refusal.
 : GUARD ( [ -- ] -- )
    catch {: rc:n :}
    rc 0= IF FORGET-SRC EXIT THEN
    rc RENDER
    FORGET-SRC
-   MULTI? IF MULTI-COUNT+ EXIT THEN
-   rc REFUSE ;
-
-\ Will a reject be swallowed rather than raised? The front ends ask this to
-\ decide whether they still owe the interpreter a resynchronized input stream.
-: MULTI-ERROR? ( -- bool ) MULTI? ;
+   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   rc CHECKER-REFUSE ;
 
 \ Reflection for the suites: what the packet would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
@@ -431,18 +418,16 @@ s" a replayed declaration is already open" E-REPLAY-BUSY DECL-REJECT:EXPLAIN
 
 variable RP-OPEN?      \ a replay stream is installed (0 = tokens come from live input)
 variable RP-HEAD?      \ the leading (family name) token has not been read yet
-variable RP-HEAD-U     variable RP-HEAD-A
-variable RP-BODY-U     variable RP-BODY-A
+variable RP-HEAD-U     PTR-VARIABLE RP-HEAD-A
+variable RP-BODY-U     PTR-VARIABLE RP-BODY-A
 variable RP-SCAN-I     \ scan cursor within the body buffer
 
-\ The two raw-memory boundaries, the same idiom as structure-decl.f's PEND! /
-\ PEND@ pushback cells: a checked body cannot store a `ptr u8` through a plain
-\ cell and read it back.  Every other word in this package is checked Habu, and
-\ the token scan below runs entirely on the typed span these answer.
-TRUSTED: RP-HEAD! ( ptr u8 n -- ) RP-HEAD-U ! RP-HEAD-A ! ;
-TRUSTED: RP-HEAD@ ( -- ptr u8 n ) RP-HEAD-A @ RP-HEAD-U @ ;
-TRUSTED: RP-BODY! ( ptr u8 n -- ) RP-BODY-U ! RP-BODY-A ! ;
-TRUSTED: RP-BODY@ ( -- ptr u8 n ) RP-BODY-A @ RP-BODY-U @ ;
+\ The two borrowed spans, each held in a declared pointer cell; the token scan
+\ below runs entirely on the typed span these answer.
+: RP-HEAD! ( ptr u8 n -- ) RP-HEAD-U ! RP-HEAD-A ! ;
+: RP-HEAD@ ( -- ptr u8 n ) RP-HEAD-A @ RP-HEAD-U @ ;
+: RP-BODY! ( ptr u8 n -- ) RP-BODY-U ! RP-BODY-A ! ;
+: RP-BODY@ ( -- ptr u8 n ) RP-BODY-A @ RP-BODY-U @ ;
 
 : RP-SEP? ( n -- bool ) {: c:n :}      \ a token separator byte
    c RP-SPACE = c RP-TAB = or c RP-LF = or c RP-CR = or ;
@@ -706,33 +691,12 @@ create ARM-BOOT CAP-INIT cells allot
 PERSISTED-PTR-VARIABLE ARM-P   ARM-BOOT ARM-P !
 variable ARM-CAP     CAP-INIT ARM-CAP !
 
-\ Trusted forwarders to the pre-hook registry and generator words. sumtype.f and
-\ type-family.f load before the checker hook, so a post-hook checked body reaches
-\ them exactly the way enum-decl.f and structure-decl.f reach their registry
-\ seams.
-TRUSTED: ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
-TRUSTED: FAM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
-TRUSTED: FAM-SUM? ( n -- bool ) TFAM-SUM? ;
-TRUSTED: FAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
-TRUSTED: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
-TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
-TRUSTED: CTOR-COLLIDE ( n n n -- ) TDECL-DERIVE-COLLIDE ;
-TRUSTED: CTOR-REQUIRE ( n n n -- ) TDECL-DERIVE-REQUIRE ;
-TRUSTED: CTOR-PUBLISH ( n n n -- ) TDECL-CTOR-PUBLISH ;
-TRUSTED: CTOR-REPLAY ( n -- ) TDECL-CTOR-REPLAY ;
-TRUSTED: CTOR-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   TDECL-SUMV-PROVIDER ;
-TRUSTED: CTOR-GEN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
-   TDECL-CTOR-WORDS-BODY ;
-TRUSTED: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
-TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
-
 : ARM-BASE ( -- ptr n ) ARM-P @ ;
 : ARM-SLOT ( -- ptr n )                    \ this nesting level's armed-family cell
    GENERATED-DECL:DEPTH 1 - cells ARM-BASE + ;
 : ARM-GROW1 ( -- )
    ARM-CAP @ 2 * {: nc:n :}
-   ARM-P @ ARM-CAP @ cells nc cells ARM-GROW ARM-P !
+   ARM-P @ ARM-CAP @ cells nc cells ARENA-BYTES-GROW ARM-P !
    nc ARM-CAP ! ;
 : ARM-ENSURE ( -- )
    GENERATED-DECL:DEPTH ARM-CAP @ <= IF EXIT THEN
@@ -757,9 +721,9 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ own make/unmake generation in structure-make.f; admitting it here would
 \ generate a second, conflicting set.
 : GEN-OK? ( n -- bool ) {: fam:n :}
-   fam FAM-PUBLIC? 0= IF 0 0= 0= EXIT THEN
-   fam FAM-VAR-COUNT 0 <= IF 0 0= 0= EXIT THEN
-   fam FAM-SUM? fam FAM-ENUM? or ;
+   fam TFAM-PUBLIC? 0= IF 0 0= 0= EXIT THEN
+   fam TFAM-VAR-COUNT@ 0 <= IF 0 0= 0= EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or ;
 
 \ Has this family's set already been generated? Constructor planning records the
 \ constructor symbol on each variant row as it renders, so a non-zero symbol on
@@ -776,7 +740,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ whose variant rows were created moments earlier — so this is a boundary guard,
 \ and test/enum-decl-suite.f §20g drives it directly.
 : GENERATED? ( n -- bool ) {: fam:n :}
-   fam FAM-VAR-START VAR-CTOR-SYM 0 <> ;
+   fam TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> ;
 
 \ Order matters: GEN-OK? proves the variant range is non-empty, so the first
 \ variant row GENERATED? reads exists.
@@ -791,7 +755,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 : PART-SNAPSHOT ( n -- n ) {: depth:n :}
    ARM-ENSURE
    DISARM
-   PEND-CLEAR
+   CTOR-PEND-CLEAR
    depth ;
 
 \ Non-mutating re-proof only. The front end proved this gate when it armed, in
@@ -817,17 +781,17 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF depth EXIT THEN
    fam GEN-REQUIRE
-   fam FAM-VAR-START {: vstart:n :}
-   fam FAM-VAR-COUNT {: count:n :}
-   fam vstart count CTOR-COLLIDE
-   fam vstart count CTOR-REQUIRE
-   fam vstart count CTOR-PUBLISH
-   DECL-REPLAY:RP-ACTIVE? IF fam CTOR-REPLAY depth EXIT THEN
-   CTOR-PROVIDER fam CTOR-GEN drop
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam TFAM-VAR-COUNT@ {: count:n :}
+   fam vstart count TDECL-DERIVE-COLLIDE
+   fam vstart count TDECL-DERIVE-REQUIRE
+   fam vstart count TDECL-CTOR-PUBLISH
+   DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY depth EXIT THEN
+   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop
    depth ;
 
 : PART-ROLLBACK ( n -- n ) {: depth:n :}
-   PEND-CLEAR
+   CTOR-PEND-CLEAR
    DISARM
    depth ;
 
@@ -864,7 +828,7 @@ public
 \ this participant. A tool that registered one from tokens it had lexed
 \ (src/habu/verify-source.f) replays that family's constructors here: their
 \ checked effects, for the family sumtype.f last announced, and no word.
-TRUSTED: REPLAY-LEGACY ( -- ) TDECL-CTOR-WORDS-REPLAY ;
+: REPLAY-LEGACY ( -- ) TDECL-CTOR-WORDS-REPLAY ;
 
 private
 

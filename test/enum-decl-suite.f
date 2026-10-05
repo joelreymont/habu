@@ -781,7 +781,7 @@ s" lay-legacy-def" FAMID enum-layout-test:NO-ROW
 s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 
 \ 21c. Full mode: the descriptor is sized from the WIDEST variant, so the bake
-\      has to follow FAM-SLOTS!. Legacy ENUM has no payload grammar, so the
+\      has to follow TFAM-SLOTS!. Legacy ENUM has no payload grammar, so the
 \      legacy comparison partner is SUMTYPE — the same TK-SUM kind, the same
 \      one-cell payload, the same packed policy. This pairing keeps working
 \      after the global ENUM token moves to the front end.

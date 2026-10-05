@@ -50,8 +50,10 @@
 \ src/core/checker.f carries a PPRIM axiom for each public TYPE-FIELD-OWNER and
 \ TYPE-FIELD word, so the calls below are ordinary checked qualified calls whose
 \ argument roles the checker verifies at every site (dot
-\ habu-type-field-owner-619ec6b5). Only the two words with no axiom keep a
-\ forwarder: TYPE-NAME:VARIANT-REQUIRE and the still-global SUMV-ADD.
+\ habu-type-field-owner-619ec6b5). The two words with no axiom,
+\ TYPE-NAME:VARIANT-REQUIRE and the still-global SUMV-ADD, are called by name
+\ too: the core prefix loads before src/core/internal-mark.f seals, so the
+\ checker binds their declared rows.
 \ Consumed contract:
 \   TYPE-FIELD-OWNER:OPEN      ( -- tok )                   begin a field transaction
 \   TYPE-FIELD-OWNER:ADD       ( tok fam var na nu sch slot cells boff bytes al flags -- tok )
@@ -125,13 +127,6 @@ TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the s
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
 \ ---------------------------------------------------------------------------
-\ SEAM forwarders (see header). TRUSTED: only for the two pre-hook words that
-\ still have no checker axiom; every field-owner call is checked and qualified.
-\ ---------------------------------------------------------------------------
-TRUSTED: DEV-NAME-VARIANT-REQUIRE ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
-TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-
-\ ---------------------------------------------------------------------------
 \ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
 \ all integers, so a grow is a plain cell copy and any later snapshot bake is
 \ verbatim with no rebase). OWNER is the first event id of the frame that
@@ -166,13 +161,9 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
 variable DEV-I        \ private scan index (dedup / reflection / identity)
 variable DEV-FOUND    \ private dedup-scan hit marker
 
-\ raw arena realloc is the one memory boundary the checker cannot model here
-\ (relocating base held in a variable); everything above/below stays checked.
-TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
-
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
-   DEV-A-P  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  DEV-REG-GROW1
+   DEV-A-P  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1
    nc DEV-CAP-V ! ;
 : DEV-ENSURE ( -- )               \ room for the next event id (DEV-N)
    DEV-N @ DEV-CAP-V @ < IF exit THEN
@@ -230,7 +221,7 @@ variable DEV-TX-SERIAL
 : DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
-   DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  DEV-REG-GROW1
+   DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  REG-GROW1
    nc DEV-TX-CAP-V ! ;
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
@@ -466,8 +457,8 @@ variable DEV-TX-SERIAL
 \ Close clears the selector.
 : DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
-   na nu DEV-NAME-VARIANT-REQUIRE
-   fam na nu DEV-VAR-ORD @ 0 0 0 DEV-SUMV-ADD {: vid:n :}
+   na nu TYPE-NAME:VARIANT-REQUIRE
+   fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
    DEV-VAR-ORD @ 1 + DEV-VAR-ORD !
    DEV-K-VARIANT fam vid DEV-NO-FIELD DEV-EMIT
@@ -620,7 +611,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    DEV-PART-CAP @ 2 * {: nc:n :}
    DEV-PART-BASE-P
       DEV-PART-CAP @ DEV-PART-REC * cells
-      nc DEV-PART-REC * cells DEV-REG-GROW1
+      nc DEV-PART-REC * cells REG-GROW1
    nc DEV-PART-CAP ! ;
 
 : DEV-PART-ENSURE ( -- )
@@ -739,7 +730,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ above. DEV-PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
 \ module to be written into a persisted engine IMAGE.
 \
-\ All three arenas here grow through DEV-REG-GROW1, which re-allocates from the
+\ All three arenas here grow through REG-GROW1, which re-allocates from the
 \ host process's allocator, so a grown base is a live address of THIS process and
 \ nothing else. The snapshot writer copies the DP heap verbatim, so a grown base
 \ left in place is persisted as a number that means nothing in the process that
