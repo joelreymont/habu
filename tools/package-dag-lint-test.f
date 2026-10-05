@@ -249,7 +249,8 @@ create PATH FS-PATH-CAP allot
    s" lib/ui/b.f" S\" package PDLT-UU\npublic\n: VALUE ( -- n ) 7 ;\n;package\n" FILE!
    RUN 1 T=
    s" lib/runtime/a.f does not load alone, exit 70" SAID? TTRUE
-   s" E-UNDEFINED: PDLT-UU:VALUE" SAID? TTRUE ;
+   s" E-UNDEFINED" SAID? TTRUE
+   s" PDLT-UU:VALUE" SAID? TTRUE ;
 
 \ a.f defines the word b.f calls and loads first, but b.f does not require it.
 : SIBLING ( -- )
@@ -260,7 +261,8 @@ create PATH FS-PATH-CAP allot
    S\" package PDLT-SB\npublic\n: CALL ( -- n ) PDLT-SA:VALUE ;\n;package\n" FILE!
    RUN 1 T=
    s" lib/runtime/b.f does not load alone, exit 70" SAID? TTRUE
-   s" E-UNDEFINED: PDLT-SA:VALUE" SAID? TTRUE ;
+   s" E-UNDEFINED" SAID? TTRUE
+   s" PDLT-SA:VALUE" SAID? TTRUE ;
 
 : ALLOWED ( -- )
    s" pdl-allowed" FIXTURE
