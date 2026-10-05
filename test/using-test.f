@@ -15,6 +15,7 @@
 require lib/prelude.f
 require src/habu/verify-source.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
+require lib/tier.f
 
 variable #FAIL
 variable #CASE
@@ -49,6 +50,16 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
+
+package USING-TEST
+private
+variable START-TIER
+tier@ START-TIER !
+public
+: BODY-AMBIGUOUS-RC ( -- n )
+   tier@ 1 = if E-USING-AMBIGUOUS else E-AMBIGUOUS then ;
+: RESTORE-TIER ( -- ) START-TIER @ TIER:SELECT ;
+;package
 
 \ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package
@@ -99,12 +110,9 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
-\ A compiled body is refused by the ENGINE's own used-search, which resolves the
-\ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
-\ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
-\ it resolves alone - the production source verifier is one - so the code below
-\ pins E-USING-AMBIGUOUS there (src/core/checker.f CHECKER-USED-SYM).
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+\ Tier 0 resolves a body token before checking it; tier 1 checks the recorded
+\ definition. Both refuse the ambiguous tail at their owning boundary.
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH USING-TEST:BODY-AMBIGUOUS-RC T=
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
@@ -375,7 +383,7 @@ s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
-\ while UA and UC both export AW, at tier 0 and tier 1, and runs as itself. A
+\ while UA and UC both export AW, at each available tier, and runs as itself. A
 \ reference to the bare AW stays ambiguous: a checked body is E-USING-AMBIGUOUS
 \ and a top-level token the engine's E-AMBIGUOUS. This section comes last
 \ because it defines a global AW, which the cases above need absent.
@@ -389,7 +397,7 @@ s" undefine AW" UCE-CATCH 0 T=
 s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 2 T=
 s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
-0 set-tier
+USING-TEST:RESTORE-TIER
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
