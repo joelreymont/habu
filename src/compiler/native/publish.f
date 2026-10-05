@@ -139,14 +139,18 @@ variable HELD-SIZE
    HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ UNIT-NOTIFY
    0 CHECKER-OWNER:WRITE-WINDOW ;
 
-: COMMIT-OWNED ( NART:emission n n n -- )
-   HELD-SIZE ! HELD-FN ! HELD-IDX ! HELD-E !
-   HELD-E @ HELD-FN @ NHOST:TAKE
+: COMMIT-OWNED-BODY ( -- )
    [: NOTIFY-HELD ;] catch {: notify-rc:n :}
    notify-rc 0<> if NHOST:ABANDON-TAKEN notify-rc throw then
    [: COMMIT-HELD ;] catch {: rc:n :}
    rc 0<> if NHOST:ABANDON-TAKEN rc throw then
    NHOST:PUBLISH-TAKEN ;
+
+: COMMIT-OWNED ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   e fn NHOST:TAKE
+   e HELD-E !  idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
+   [: COMMIT-OWNED-BODY ;] [: 0 HELD-FN ! ;] finally ;
 
 : PENDING-IDX ( -- n )
    ndict@ ;

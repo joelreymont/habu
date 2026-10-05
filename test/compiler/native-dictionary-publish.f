@@ -10,6 +10,7 @@ require src/habu/layout.f
 \ Tier 1 first: a native record is what the optimizing compiler publishes, so
 \ the index this file reads is only filled by it.
 1 set-tier
+require src/compiler/native/publish.f
 
 package NDICT-PUBLISH-TEST
 
@@ -21,6 +22,8 @@ variable REF-SLOT
 variable REF-OCC
 TRUSTED: OCC-COUNTER ( -- ptr n ) data-base DEF-OCC:PTR-CELL + @ ;
 variable SAVED-COUNT
+TYPED-VARIABLE RETRY-EMISSION NART:emission
+variable RETRY-HITS
 
 $4000 constant PUB-CAP
 create PUB-OUT PUB-CAP allot
@@ -132,6 +135,19 @@ create PUB-ERR PUB-CAP allot
    [: ndict@ XREF-REC DEF-OCC:SELECT 2drop ;] DEF-OCC:E-SELECT TTHROWSQ
    [: ndict@ 1 DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ ;
 
+: RETRY-PENDING ( -- ) RETRY-EMISSION @ NPUB:PUBLISH-PENDING ;
+
+: RETRY-OBSERVER ( NART:emission n n n -- )
+   2drop drop RETRY-EMISSION !
+   ['] RETRY-PENDING NHOST:E-STATE TTHROWSQ
+   1 RETRY-HITS +! ;
+
+: NESTED-REFUSAL ( -- )
+   0 RETRY-HITS !
+   ['] RETRY-OBSERVER [: s" : NDP-NESTED-ANSWER ( -- n ) 42 ;" EV ;] NPUB:WITH-UNIT
+   RETRY-HITS @ 1 T=
+   s" NDP-NESTED-ANSWER 42 T=" EV ;
+
 : RUN ( -- )
    T-RESET
    s" ordinary native publication is immediately indexed" T-LABEL ORDINARY T-NEXT
@@ -140,6 +156,7 @@ create PUB-ERR PUB-CAP allot
    s" failed evaluation reuses the same record slot" T-LABEL ROLLBACK T-NEXT
    s" general ndict! restore still rebuilds the live index" T-LABEL RESTORE T-NEXT
    s" namespace and unpublished records refuse callable selection" T-LABEL REFUSALS T-NEXT
+   s" caught nested take preserves the outer publication" T-LABEL NESTED-REFUSAL T-NEXT
    s" DOES and EXPORT refuse when only one occurrence remains" T-LABEL PAIR-EXHAUSTION T-NEXT
    s" escaping publication callback is fatal after DOES commit" T-LABEL PUBLISH-THROW-CASE T-NEXT
    T-REPORT ;
