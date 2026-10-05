@@ -3633,10 +3633,10 @@ public
    9 checking CBNZ,
    C-TICK-QUERY
    11 checking CBZ,
-   9 1 MOVZ,  9 G-PUSH,  12 G-PUSH,
+   9 1 MOVZ,  9 G-PUSH  12 G-PUSH
    done B,
    checking LBL,
-   9 0 MOVZ,  9 G-PUSH,  9 G-PUSH,
+   9 0 MOVZ,  9 G-PUSH  9 G-PUSH
    done LBL, ;
 
 \ set-preflight ( xt -- ): single-assignment installer for the
