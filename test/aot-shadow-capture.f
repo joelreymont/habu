@@ -393,6 +393,14 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ FIRST SHA-BYTES T$= ;
 
+: CLOSED-ROUND-CASE ( -- )
+   s" capture without a shadow writes and reads empty shadow sections" T-LABEL
+   ARTIFACT!
+   KEY ART$ AOT-FILE:WRITE
+   AOT-SHADOW:RESET
+   KEY ART$ AOT-FILE:READ
+   4 0 ?do i TABLE$ nip 0 T= loop ;
+
 \ ---- the reader child ---------------------------------------------------------
 \ src/habu/aot-file.f's DIE: this exit code, its sentence on stderr.
 $4B constant REFUSE-RC
@@ -560,6 +568,14 @@ variable RC
 public
 
 : RUN ( -- )
+   s" closed" MODE? if
+      NSHADOW:CLOSE
+      CAPTURE
+      T-RESET
+      CLOSED-ROUND-CASE
+      T-REPORT
+      s" aot-shadow-capture: captured" type cr exit
+   then
    MODE$ nip 0<> if
       CAPTURE NSHADOW:CLOSE  s" aot-shadow-capture: captured" type cr exit
    then
@@ -574,6 +590,7 @@ public
    BRIDGE-CASE
    HELPER-CASE
    EXPORT-CASE
+   s" closed" CAPTURED
    CARRIED-CASE
    SPAN-CASE
    CALL-CASE
