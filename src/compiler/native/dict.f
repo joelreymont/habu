@@ -238,13 +238,11 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 
 public
 
-\ Where a compiled CALL may branch to, or zero when it may not branch there at
-\ all. An IMMEDIATE word runs at compile time, and a RETIRED record's start is
-\ code nothing can reach. A DNAME-INT call is resolved only while the existing
-\ TRUSTED: compilation cell is armed; checked bodies cannot branch to internal
-\ engine code even if a trusted-only primitive row supplies its real arity.
-: CALL-BINDING ( ptr u8 n -- n n )
-   {: a u:n :}
+\ A tick may name an IMMEDIATE word even though a compiled call may not run it.
+\ Both paths retain the same scope, retirement and internal-word checks.
+private
+: CODE-BINDING ( ptr u8 n bool -- n n )
+   {: a u:n callable:bool :}
    a u SPELL-REC {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-START {: start:n :}
@@ -254,8 +252,17 @@ public
    f DNAME-INT and 0<> if
       data-base TRUSTED-CELL + @ 0= if 0 0 exit then
    then
-   f DNAME-IMM and 0<> if 0 0 exit then
+   callable f DNAME-IMM and 0<> and if 0 0 exit then
    start f DKIND:MASK and ;
+
+public
+
+\ A compiled CALL cannot branch to an IMMEDIATE word. A DNAME-INT call is
+\ resolved only while the existing TRUSTED: compilation cell is armed.
+: CALL-BINDING ( ptr u8 n -- n n ) true CODE-BINDING ;
+
+\ A code-address literal can name an IMMEDIATE word without running it.
+: TICK-TARGET ( ptr u8 n -- n ) false CODE-BINDING drop ;
 
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.

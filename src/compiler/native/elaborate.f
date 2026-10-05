@@ -3290,7 +3290,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 \ If the target has a known effect, preserve its quotation calling convention.
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
-   a u NDICT:CALL-TARGET {: entry:n :}
+   a u NDICT:TICK-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
    ix entry HIR:ADDR-CODE EMIT-KIND-LIT
    a u NDICT:SPELL-ARITY {: qi:n qo:n :}

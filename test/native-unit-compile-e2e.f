@@ -227,7 +227,10 @@ s" NATIVE-UNIT-COMPILE-TEST:SIDE" 0 parse-imm
 
 \ BIND-REQUIRE stores the original require's execution token as an integer.
 CAST: XT>N ( [ -- ] -- n )
+tier@ constant REQUIRE-TIER
+1 set-tier
 : ORIGINAL-REQUIRE-XT ( -- n ) ['] require XT>N ;
+REQUIRE-TIER set-tier
 
 : FRESH-REQUIRE-CASE ( n -- )
    UNIT-COMPILE:BIND-REQUIRE
