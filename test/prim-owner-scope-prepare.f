@@ -29,12 +29,17 @@ package PRIM-OWNER-SHADOW
 PPRIM: PRIM-OWNER-SHADOW CORE-FOLD-C PE-N PE-IN PE-N PE-OUT CLOSE-PRIVATE
 
 package TYPE-DECL
-0 set-tier
-: POS-FP0-IN ( ptr u8 n n n -- ) FIELD-PROJ! ;
-: POS-TFP0-IN ( -- ) ['] FIELD-PROJ! drop ;
+: PREPARE-T0 ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" 0 set-tier" evaluate-closed
+   s" : POS-FP0-IN ( ptr u8 n n n -- ) FIELD-PROJ! ;" evaluate-closed
+   s" : POS-TFP0-IN ( -- ) ['] FIELD-PROJ! drop ;" evaluate-closed ;
+PREPARE-T0
 1 set-tier
 : POS-FP1-IN ( ptr u8 n n n -- ) FIELD-PROJ! ;
-0 set-tier
+: RESTORE-T0 ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if s" 0 set-tier" evaluate-closed then ;
+RESTORE-T0
 ;package
 
 require src/core/prefix-boundary.f

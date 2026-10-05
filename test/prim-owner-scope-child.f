@@ -52,6 +52,11 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 package PRIM-OWNER-CHILD
 
 $0A constant LF-C
+\ lib/errors.f's E-HIR-UNMODELED is retired by the reset before this loads.
+-8286 constant HIR-UNMODELED-RC
+
+: T0? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
+: RESTORE-T0 ( -- ) T0? if 0 TIER:SELECT then ;
 
 : VERDICT$ ( n -- ptr u8 n ) {: v:n :}
    v -1 = if s" admitted" exit then
@@ -62,6 +67,7 @@ $0A constant LF-C
 : OUTCOME$ ( n -- ptr u8 n ) {: rc:n :}
    rc 0 = if s" compiled" exit then
    rc 70 = if s" rejected" exit then
+   rc HIR-UNMODELED-RC = if s" unmodeled" exit then
    s" unexpected" ;
 
 \ The label is written BEFORE the subject runs. A rejected case raises through
@@ -133,7 +139,7 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 ptr>cell top level"
    s" : POS-P2C1-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ ---- ticks of private-only rows: where the call is admitted, and nowhere else --
 \ A checked `[']` of the name compiles where a checked call of it compiles, and
@@ -166,7 +172,7 @@ $0A constant LF-C
    s" t1 tick cell>ptr other package"
    s" : POS-TC2P1-OTH ( -- ) ['] FFI-CELL>PTR drop ;" EVAL
    PKG-CLOSE
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ ---- a private row for the owner's own word -----------------------------------
 \ The global CORE-FOLD-C is still an internal engine word: its token refuses.
@@ -233,7 +239,7 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 addrmap-set trusted top level"
    s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ ---- a seed primitive with its owner's row alone: set-tier in TIER ------------
 \ lib/tier.f, required above, already compiled TIER's own checked caller. A
@@ -274,7 +280,7 @@ $0A constant LF-C
    s" t1 tier select other package"
    s" : POS-TS1-OTH ( n -- ) TIER:SELECT ;" EVAL
    PKG-CLOSE
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ ---- the engine's own owners -------------------------------------------------
 \ Each primitive here has one checked caller in the engine, a word of the
@@ -342,9 +348,10 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 callmap-set trusted top level"
    s" TRUSTED: POS-CM1-TR ( n -- ) callmap-set ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 : RECLAIM-CASES ( -- )
+   T0? if
    0 TIER:SELECT
    RECLAIM-OPEN
    s" t0 reloc-maps-clear inside owner"
@@ -364,6 +371,7 @@ $0A constant LF-C
    PKG-CLOSE
    s" t0 reloc-maps-clear trusted top level"
    s" TRUSTED: POS-RM0-TR ( n n -- ) reloc-maps-clear ;" EVAL
+   then
    1 TIER:SELECT
    RECLAIM-OPEN
    s" t1 reloc-maps-clear inside owner"
@@ -375,11 +383,12 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 reloc-maps-clear trusted top level"
    s" TRUSTED: POS-RM1-TR ( n n -- ) reloc-maps-clear ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ The owner's row types the hook: an xt of the shape the top-level tracker calls,
 \ where the global row takes any cell. A hook of another shape is refused.
 : TOP-ROW-CASES ( -- )
+   T0? if
    0 TIER:SELECT
    TOP-ROW-OPEN
    s" t0 set-top-check inside owner"
@@ -401,10 +410,13 @@ $0A constant LF-C
    PKG-CLOSE
    s" t0 set-top-check trusted top level"
    s" TRUSTED: POS-STC0-TR ( n -- ) set-top-check ;" EVAL
+   then
    1 TIER:SELECT
    TOP-ROW-OPEN
    s" t1 set-top-check inside owner"
    s" : POS-STC1-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
+   s" t1 set-top-check wrong hook inside owner"
+   s" : POS-STC1-BAD ( [ ptr u8 n n -- ] -- ) set-top-check ;" EVAL
    PKG-CLOSE
    OTHER-OPEN
    s" t1 set-top-check other package"
@@ -412,11 +424,12 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 set-top-check trusted top level"
    s" TRUSTED: POS-STC1-TR ( n -- ) set-top-check ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 \ CHECK-DOES! is a word of the re-included src/core/checker.f, and its global
 \ row keeps the seal from marking it DNAME-INT, so its owner calls it here.
 : CK-OWNER-CASES ( -- )
+   T0? if
    0 TIER:SELECT
    CK-OWNER-OPEN
    s" t0 check-does! inside owner"
@@ -436,6 +449,7 @@ $0A constant LF-C
    PKG-CLOSE
    s" t0 check-does! trusted top level"
    s" TRUSTED: POS-CD0-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
+   then
    1 TIER:SELECT
    CK-OWNER-OPEN
    s" t1 check-does! inside owner"
@@ -447,15 +461,15 @@ $0A constant LF-C
    PKG-CLOSE
    s" t1 check-does! trusted top level"
    s" TRUSTED: POS-CD1-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
-\ FIELD-PROJ! is REG-PROTECT (src/core/checker.f): the seal marks its record
-\ DNAME-INT, which no checked body may call, so its owner's row admits TYPE-DECL
-\ only before the seal - where src/core/sumtype.f's caller compiles, and where
-\ test/prim-owner-scope-prepare.f measures it. After the seal a reopened owner
-\ is refused too, and only a TRUSTED: body reaches the record, through the
-\ global row the field-projection tests' TRUSTED: armer keeps.
+\ FIELD-PROJ! is REG-PROTECT (src/core/checker.f): the owner's checked call
+\ compiles before the seal in test/prim-owner-scope-prepare.f. After the seal,
+\ tier 0 rejects the internal word; tier 1 cannot lower the reopened owner's
+\ call (E-HIR-UNMODELED). Outside the owner, the global trusted-only row
+\ refuses checked calls and ticks, while a TRUSTED: body still compiles.
 : TYPE-DECL-CASES ( -- )
+   T0? if
    0 TIER:SELECT
    TYPE-DECL-OPEN
    s" t0 field-proj! reopened owner after the seal"
@@ -469,13 +483,24 @@ $0A constant LF-C
    PKG-CLOSE
    s" t0 field-proj! trusted top level"
    s" TRUSTED: POS-FP0-TR ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   then
    1 TIER:SELECT
+   TYPE-DECL-OPEN
+   s" t1 field-proj! reopened owner after the seal"
+   s" : POS-FP1-RE ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   PKG-CLOSE
+   s" t1 field-proj! top level"
+   s" : POS-FP1-TOP ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
+   OTHER-OPEN
+   s" t1 tick field-proj! other package"
+   s" : POS-TFP1-OTH ( -- ) ['] FIELD-PROJ! drop ;" EVAL
+   PKG-CLOSE
    s" t1 field-proj! trusted top level"
    s" TRUSTED: POS-FP1-TR ( ptr u8 n n n -- ) FIELD-PROJ! ;" EVAL
-   0 TIER:SELECT ;
+   RESTORE-T0 ;
 
 : OWNER-SITE-CASES ( -- )
-   NPUB-SITE-T0-CASES
+   T0? if NPUB-SITE-T0-CASES then
    NPUB-SITE-T1-CASES
    RECLAIM-CASES
    TOP-ROW-CASES
@@ -486,14 +511,14 @@ public
 
 : RUN ( -- )
    AXIOM-CASES
-   PRIVATE-T0-CASES
+   T0? if PRIVATE-T0-CASES then
    PRIVATE-T1-CASES
-   TICK-T0-CASES
+   T0? if TICK-T0-CASES then
    TICK-T1-CASES
    SHADOW-CASES
-   DUAL-T0-CASES
+   T0? if DUAL-T0-CASES then
    DUAL-T1-CASES
-   OWNER-T0-CASES
+   T0? if OWNER-T0-CASES then
    OWNER-T1-CASES
    OWNER-SITE-CASES
    s" prim-owner: ok" type LF-C emit ;

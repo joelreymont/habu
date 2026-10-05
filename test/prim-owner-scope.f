@@ -43,6 +43,8 @@ $4000 constant IO-CAP
 20000 constant SUBJECT-MS
 70 constant REJECT-RC
 
+: T0? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
+
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
@@ -192,6 +194,7 @@ variable EXP-U
 \ admission is measured before the seal, in test/prim-owner-scope-prepare.f,
 \ where a refusal stops the window before the first line here.
 : NPUB-SITE-LINES ( -- )
+   T0? if
    s" t0 code-publish inside owner"          s" compiled" CASE+
    s" t0 xref-retarget inside owner"         s" compiled" CASE+
    s" t0 does-record inside owner"           s" compiled" CASE+
@@ -203,6 +206,7 @@ variable EXP-U
    s" t0 xref-retarget other package"        s" rejected" CASE+
    s" t0 callmap-set other package"          s" rejected" CASE+
    s" t0 callmap-set trusted top level"      s" compiled" CASE+
+   then
    s" t1 code-publish inside owner"          s" compiled" CASE+
    s" t1 xref-retarget inside owner"         s" compiled" CASE+
    s" t1 does-record inside owner"           s" compiled" CASE+
@@ -212,17 +216,20 @@ variable EXP-U
    s" t1 callmap-set trusted top level"      s" compiled" CASE+ ;
 
 : RECLAIM-LINES ( -- )
+   T0? if
    s" t0 reloc-maps-clear inside owner"        s" compiled" CASE+
    s" t0 tick reloc-maps-clear inside owner"   s" compiled" CASE+
    s" t0 reloc-maps-clear top level"           s" rejected" CASE+
    s" t0 tick reloc-maps-clear other package"  s" rejected" CASE+
    s" t0 reloc-maps-clear reopened owner"      s" compiled" CASE+
    s" t0 reloc-maps-clear trusted top level"   s" compiled" CASE+
+   then
    s" t1 reloc-maps-clear inside owner"        s" compiled" CASE+
    s" t1 reloc-maps-clear other package"       s" rejected" CASE+
    s" t1 reloc-maps-clear trusted top level"   s" compiled" CASE+ ;
 
 : TOP-ROW-LINES ( -- )
+   T0? if
    s" t0 set-top-check inside owner"            s" compiled" CASE+
    s" t0 set-top-check wrong hook inside owner" s" rejected" CASE+
    s" t0 tick set-top-check inside owner"       s" compiled" CASE+
@@ -230,26 +237,35 @@ variable EXP-U
    s" t0 tick set-top-check other package"      s" rejected" CASE+
    s" t0 set-top-check reopened owner"          s" compiled" CASE+
    s" t0 set-top-check trusted top level"       s" compiled" CASE+
+   then
    s" t1 set-top-check inside owner"            s" compiled" CASE+
+   s" t1 set-top-check wrong hook inside owner" s" rejected" CASE+
    s" t1 set-top-check other package"           s" rejected" CASE+
    s" t1 set-top-check trusted top level"       s" compiled" CASE+ ;
 
 : CK-OWNER-LINES ( -- )
+   T0? if
    s" t0 check-does! inside owner"          s" compiled" CASE+
    s" t0 tick check-does! inside owner"     s" compiled" CASE+
    s" t0 check-does! top level"             s" rejected" CASE+
    s" t0 tick check-does! other package"    s" rejected" CASE+
    s" t0 check-does! reopened owner"        s" compiled" CASE+
    s" t0 check-does! trusted top level"     s" compiled" CASE+
+   then
    s" t1 check-does! inside owner"          s" compiled" CASE+
    s" t1 check-does! other package"         s" rejected" CASE+
    s" t1 check-does! trusted top level"     s" compiled" CASE+ ;
 
 : TYPE-DECL-LINES ( -- )
+   T0? if
    s" t0 field-proj! reopened owner after the seal" s" rejected" CASE+
    s" t0 field-proj! top level"                     s" rejected" CASE+
    s" t0 tick field-proj! other package"            s" rejected" CASE+
    s" t0 field-proj! trusted top level"             s" compiled" CASE+
+   then
+   s" t1 field-proj! reopened owner after the seal" s" unmodeled" CASE+
+   s" t1 field-proj! top level"                     s" rejected" CASE+
+   s" t1 tick field-proj! other package"            s" rejected" CASE+
    s" t1 field-proj! trusted top level"             s" compiled" CASE+ ;
 
 : OWNER-SITE-LINES ( -- )
@@ -262,14 +278,14 @@ variable EXP-U
 : EXPECT$ ( -- ptr u8 n )
    0 EXP-U !
    AXIOM-LINES
-   PRIVATE-T0-LINES
+   T0? if PRIVATE-T0-LINES then
    PRIVATE-T1-LINES
-   TICK-T0-LINES
+   T0? if TICK-T0-LINES then
    TICK-T1-LINES
    SHADOW-LINES
-   DUAL-T0-LINES
+   T0? if DUAL-T0-LINES then
    DUAL-T1-LINES
-   OWNER-T0-LINES
+   T0? if OWNER-T0-LINES then
    OWNER-T1-LINES
    OWNER-SITE-LINES
    S\" prim-owner: ok\nwindow: 0\n" EXP+
@@ -283,25 +299,39 @@ variable EXP-U
 \ The engine owners' refusals, by name: a primitive with no global row is
 \ undefined outside its owner, to a call and a tick alike, and a global
 \ trusted-only row answers E-CAP-TRUSTED. Inside TOP-ROW a hook of the wrong
-\ shape fails on its type, not its trust. After the seal FIELD-PROJ! is an
-\ internal engine word: undefined to a call, refused to a tick.
+\ shape fails on its type, not its trust. After the seal FIELD-PROJ! cannot
+\ compile in its owner; outside, checked calls and ticks are trust refusals.
 : OWNER-SITE-ERRS ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   T0? if
    ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tcp0-top: undefined word 'code-publish'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-dr0-top: undefined word 'does-record'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-xr0-oth: undefined word 'xref-retarget'" ERR-HAS
+   then
    ea eu s" E-UNDEFINED habu: in pos-xr1-top: undefined word 'xref-retarget'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-tdr1-oth: undefined word 'does-record'" ERR-HAS
+   T0? if
    ea eu s" E-CAP-TRUSTED habu: in pos-cm0-oth: 'callmap-set' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-rm0-top: 'reloc-maps-clear' is a trust-boundary primitive" ERR-HAS
+   then
    ea eu s" E-CAP-TRUSTED habu: in pos-rm1-oth: 'reloc-maps-clear' is a trust-boundary primitive" ERR-HAS
+   T0? if
    ea eu s" E-CAP-TRUSTED habu: in pos-stc0-top: 'set-top-check' is a trust-boundary primitive" ERR-HAS
+   then
    ea eu s" E-CAP-TRUSTED habu: in pos-stc1-oth: 'set-top-check' is a trust-boundary primitive" ERR-HAS
+   T0? if
    ea eu s" E-CAP-TRUSTED habu: in pos-cd0-top: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
+   then
    ea eu s" E-CAP-TRUSTED habu: in pos-cd1-oth: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
+   T0? if
    ea eu s" habu: in pos-stc0-bad: at 'set-top-check' expected:" ERR-HAS
    ea eu s" E-UNDEFINED: FIELD-PROJ!" ERR-HAS
-   ea eu s" hb: internal engine word: FIELD-PROJ!" ERR-HAS ;
+   ea eu s" hb: internal engine word: FIELD-PROJ!" ERR-HAS
+   then
+   ea eu s" habu: in pos-stc1-bad: at 'set-top-check' expected:" ERR-HAS
+   ea eu s" ncomp: cannot compile POS-FP1-RE at FIELD-PROJ!" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-fp1-top: 'FIELD-PROJ!' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-tfp1-oth: 'FIELD-PROJ!' is a trust-boundary primitive" ERR-HAS ;
 
 : WINDOW ( -- )
    ARGS
@@ -314,27 +344,43 @@ variable EXP-U
    rc 0 T=
    s" owner-scope transcript" T-LABEL
    oa ou EXPECT$ T$=
-   \ A private-only row refuses outside callers by name, and a tick outside the
-   \ owner gets the call's refusal. The window's prefix words carry no ABI-only
-   \ row (RUNNING-ENGINE below says where the product's come from), so outside
-   \ the owner each name is undefined.
-   ea eu s" E-UNDEFINED habu: in pos-p2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-c2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-p2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-tp2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-tc2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-tp2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-tc2p1-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-st0-top: undefined word 'set-tier'" ERR-HAS
-   ea eu s" E-UNDEFINED habu: in pos-st0-oth: undefined word 'set-tier'" ERR-HAS
+   \ A private-only row refuses outside callers and ticks. The ARM tier-0
+   \ window has no prefix ABI row there; Intel's tier-1 prefix has one, so its
+   \ outside FFI refusal names the trust boundary instead.
+   T0? if
+      ea eu s" E-UNDEFINED habu: in pos-p2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
+      ea eu s" E-UNDEFINED habu: in pos-c2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
+   then
+   HB-TARGET-LINUX-X86-64? if
+      ea eu s" E-CAP-TRUSTED habu: in pos-p2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+   else
+      ea eu s" E-UNDEFINED habu: in pos-p2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
+   then
+   T0? if
+      ea eu s" E-UNDEFINED habu: in pos-tp2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
+      ea eu s" E-UNDEFINED habu: in pos-tc2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
+   then
+   HB-TARGET-LINUX-X86-64? if
+      ea eu s" E-CAP-TRUSTED habu: in pos-tp2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-tc2p1-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
+   else
+      ea eu s" E-UNDEFINED habu: in pos-tp2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
+      ea eu s" E-UNDEFINED habu: in pos-tc2p1-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
+   then
+   T0? if
+      ea eu s" E-UNDEFINED habu: in pos-st0-top: undefined word 'set-tier'" ERR-HAS
+      ea eu s" E-UNDEFINED habu: in pos-st0-oth: undefined word 'set-tier'" ERR-HAS
+   then
    ea eu s" E-UNDEFINED habu: in pos-st1-top: undefined word 'set-tier'" ERR-HAS
    ea eu s" E-UNDEFINED habu: in pos-st1-oth: undefined word 'set-tier'" ERR-HAS
    \ The shadowed global is still an internal engine word.
    ea eu s" hb: internal engine word: CORE-FOLD-C" ERR-HAS
    \ A dual row's global row keeps the named capability reject outside the owner.
-   ea eu s" E-CAP-TRUSTED habu: in pos-ffi-top: 'ffi-call-bounded' is a trust-boundary primitive" ERR-HAS
-   ea eu s" E-CAP-TRUSTED habu: in pos-am0-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
-   ea eu s" E-CAP-TRUSTED habu: in pos-am0-oth: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
+   T0? if
+      ea eu s" E-CAP-TRUSTED habu: in pos-ffi-top: 'ffi-call-bounded' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-am0-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-am0-oth: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
+   then
    ea eu s" E-CAP-TRUSTED habu: in pos-am1-top: 'addrmap-set' is a trust-boundary primitive" ERR-HAS
    ea eu OWNER-SITE-ERRS ;
 
