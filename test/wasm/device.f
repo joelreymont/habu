@@ -13,8 +13,10 @@
 \ depth counts the cells, and throw takes its code, zero included.
 \ test/wasm/dynamic.f runs first, installs the backend and reports on its own:
 \ it links a captured window with WASMLINK and runs execute and catch through
-\ table slots and .s through kernel-words.f's `.`. The modules stay in the
-\ printed directories.
+\ table slots and .s through kernel-words.f's `.`. test/wasm/build.f runs next
+\ and reports on its own: it builds modules by tools/wasm-build.f's command
+\ line and runs the checked-memory rows. The modules stay in the printed
+\ directories.
 
 require lib/test.f
 require lib/fs.f
@@ -29,6 +31,7 @@ require test/wasm/harness.f
 require test/wasm/w03.f
 
 require test/wasm/dynamic.f                    \ installs the backend WKERNEL builds under
+require test/wasm/build.f
 
 package WASM-DEVICE
 private
