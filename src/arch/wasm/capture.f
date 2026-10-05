@@ -91,13 +91,19 @@ using WLEB
 
 public
 
-\ Fill the shadow tables from the open Wasm shadow's map, right after CAPTURE
-\ and against the dictionary it captured.
+\ Fill the shadow tables from the open Wasm shadow's map after capture completion.
 : WASM-SHADOW-CAPTURE ( -- )
    SH-ORDER
    SH-NUMBER
    WC-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
+
+: WASM-TARGET-CAPTURE ( n n n n n n -- )
+   {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+   bstart bend rstart rend d0 d1 CAPTURE-PREPARE
+   SH-KEEP-PRIVATE
+   bstart bend d0 CAPTURE-COMPLETE
+   WASM-SHADOW-CAPTURE ;
 
 ;using
 ;using

@@ -8,24 +8,24 @@
 \ and READ. The window holds one of each thing the shadow tables carry: a leaf, a
 \ call to a window word, a `does>` definer, a quotation, a code literal naming a
 \ window word, a window DATA literal, a call to a word of the engine's own prefix,
-\ and a declared code cell holding a window word's entry. It also holds four
+\ and a declared code cell holding a window word's entry. It also holds three
 \ shadowed words that ship no record: a dead private word and two dead retired
 \ ones, the second calling the first, between two shadowed records - the capture
 \ strips the first and does not record the retired ones at all, so past them a
 \ record's window index, its capture index and its shipped row all differ - and
-\ a private `does>` definer that a load-time child keeps live, whose shipped
-\ companion carries its routine.
+\ a private `does>` definer that a load-time child keeps live, whose record and
+\ companion share one emitted routine.
 \
 \ WHAT IS ASKED. Every record is found by the name it carries in the capture's
 \ shipped record table, the row the shadow keys it by: the records and their
 \ spans, the call site's target, the companion's entry against the definer's own
 \ `codeaddr`, the function, code and DATA literals as the capture rewrote them,
 \ the prefix call by name, the code cell, the stripped and retired words'
-\ absence and the carried definer, and the four tables after a READ of what
+\ absence and the retained private definer, and the four tables after a READ of what
 \ WRITE wrote, then the same file from a second WRITE. Refusing an artifact of
 \ the version before this one is test/aot-chain-capture-suite.f's old-version
-\ row case; the capture's refusals of a stripped routine or callee no shipped
-\ record carries are test/x86-64-link-records.f's strip and callee children.
+\ row case; the capture's refusal of a callee with no shipped record is
+\ test/x86-64-link-records.f's callee child.
 \
 \ WHAT IS REFUSED. Artifacts this WRITE produced with one table field changed: a
 \ record's routine one byte past the shadow code, a site and a code cell naming
@@ -41,8 +41,9 @@
 \ name. A third child adds a dead retired word reaching the first through an
 \ ordinary private one, which only that dead word reaches, and its capture
 \ completes. Stripped private words follow the same reach: one only a dead
-\ retired word calls is dead, so that capture completes, and one a public
-\ EXPORT alias shares is live, so that capture refuses it by name.
+\ retired word calls is dead, so that capture completes. A private word shared
+\ by a public EXPORT alias survives capture; the alias has no emission row and
+\ is refused by the x86-64 linker in test/x86-64-link-records.f.
 \
 \ THE MARKS COME FIRST, then the window, then the artifact writer, in the order
 \ test/aot-artifact-roundtrip.f gives its reasons for.
@@ -56,6 +57,7 @@
 package AOTSH
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+variable PRIVATE-WID
 ;package
 
 require lib/string.f
@@ -130,7 +132,8 @@ undefine GONER
 : LEAF ( n n -- n ) + ;
 : CALLER ( n -- n ) dup LEAF 1 + ;
 : CONST ( n -- ) create , does> ( -- n ) @ ;
-private : MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
+private get-current AOTSH:PRIVATE-WID !
+: MAKER ( n -- ) create , does> ( -- n ) @ 1+ ; public
 5 MAKER MADE
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
@@ -187,6 +190,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : W-CALLER ( -- n ) s" CALLER" SHIPPED ;
 : W-CONST ( -- n ) s" CONST" SHIPPED ;
 : W-DOES ( -- n ) s" CONST;does" SHIPPED ;
+: W-MAKER ( -- n ) s" MAKER" SHIPPED ;
 : W-MAKER-DOES ( -- n ) s" MAKER;does" SHIPPED ;
 : W-QUOT ( -- n ) s" QUOT" SHIPPED ;
 : W-TICK ( -- n ) s" TICK" SHIPPED ;
@@ -243,21 +247,21 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 \ ---- the capture -------------------------------------------------------------
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-   AOT-CAPTURE:SHADOW-CAPTURE ;
+   AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE ;
 
 : RECORDS-CASE ( -- )
    s" every shipped tier-1 definition is one shadow record in window order, a does> companion beside its definer" T-LABEL
-   AOT-SHADOW:REC-N @ 9 T=
+   AOT-SHADOW:REC-N @ 10 T=
    W-PEEK ROW-OF 0 T=
    W-LEAF ROW-OF 1 T=
    W-CALLER ROW-OF 2 T=
    W-CONST ROW-OF 3 T=
    W-DOES ROW-OF 4 T=
-   W-MAKER-DOES ROW-OF 5 T=
-   W-QUOT ROW-OF 6 T=
-   W-TICK ROW-OF 7 T=
-   W-SHOW ROW-OF 8 T= ;
+   W-MAKER ROW-OF 5 T=
+   W-MAKER-DOES ROW-OF 6 T=
+   W-QUOT ROW-OF 7 T=
+   W-TICK ROW-OF 8 T=
+   W-SHOW ROW-OF 9 T= ;
 
 : STRIP-CASE ( -- )
    s" a dead private word and two dead retired ones between two shadowed records ship no record and no routine, and the record after them ships one row past PEEK, four window records on" T-LABEL
@@ -268,10 +272,15 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    s" AOTSH-WINDOW:LEAF" XREF-FIND-INDEX  s" AOTSH-WINDOW:PEEK" XREF-FIND-INDEX 4 +  T= ;
 
 : CARRIED-CASE ( -- )
-   s" a live private definer ships no record, and its shipped does> companion carries its routine from the definer's start" T-LABEL
-   s" MAKER" SHIPPED -1 T=
+   s" a live private definer and its does> companion keep private records over one emission" T-LABEL
+   W-MAKER ROW-OF {: parent:n :}
+   parent 0 >= TTRUE
+   W-MAKER CREC 16 + LE:U32@  PRIVATE-WID @ AOT-ARM:W0 @ - 1+ T=
+   W-MAKER CREC 16 + LE:U32@  W-MAKER-DOES CREC 16 + LE:U32@ T=
    W-MAKER-DOES ROW-OF {: r:n :}
    r 0 >= TTRUE
+   r 4 REC@ parent 4 REC@ T=
+   r 8 REC@ parent 8 REC@ T=
    r 12 REC@ {: entry:n :}
    entry 0 > TTRUE
    W-MAKER-DOES AOT-SHADOW:FUN SITE-IN {: s:n :}
@@ -376,7 +385,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-FILE:SHA$ drop FIRST SHA-BYTES BYTE-COPY
    AOT-SHADOW:RESET
    KEY ART$ AOT-FILE:READ
-   AOT-SHADOW:REC-N @ 9 T=
+   AOT-SHADOW:REC-N @ 10 T=
    4 0 ?do
       i REREAD DIGEST
       REREAD SHA-BYTES DIGESTS i SHA-BYTES * + SHA-BYTES T$=
@@ -478,12 +487,10 @@ variable RC
    s" a stripped private word only dead retired code calls is dead, and the capture completes" T-LABEL
    s" helper" CAPTURED ;
 
-\ In the export child the public alias SHARED shares the body of the private
-\ SHARED the capture strips. A shipped name is live, so the stripped routine is
-\ live, and no shipped row carries it: the alias would ship with no routine.
+\ The alias has no shadow map row of its own; the owning linker checks it.
 : EXPORT-CASE ( -- )
-   s" a stripped private word whose body a public EXPORT alias shares is refused by name at capture" T-LABEL
-   s" export" s" the shadow routine of SHARED is live" LIVE-REFUSED ;
+   s" a private body with a public EXPORT alias survives capture" T-LABEL
+   s" export" CAPTURED ;
 
 \ ---- forged artifacts -----------------------------------------------------------
 \ One field of the live tables changed for one WRITE and changed back: the file is

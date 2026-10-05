@@ -8,7 +8,8 @@
 \ emission in NSHADOW's map, then the real capture and the Wasm reader over
 \ it. The window holds a leaf, a call to a window word, a recursive word, a code
 \ literal naming a window word, a window DATA literal, a call to a word of the
-\ engine's own prefix and a declared code cell holding a window word's entry.
+\ engine's own prefix, a live private helper called by a public word, and a
+\ declared code cell holding a window word's entry.
 \ It also holds three shadowed words that ship no record, a dead private word
 \ and two dead retired ones, the second calling the first, between two shadowed
 \ records: past them a record's window index and its shipped row differ.
@@ -18,7 +19,7 @@
 \ spans, each call site's target over its zero index, a self call's being its
 \ own record, the code and DATA literals' padded fields as the capture rewrote
 \ them, the prefix call by name, the code cell, and the stripped and retired
-\ words' absence.
+\ words' absence and the live helper's private wordlist ID.
 \
 \ Registered as `SUITE wasm-capture`. Run standalone from the repository root:
 \ bin/hb --load test/wasm/capture.f
@@ -26,6 +27,7 @@
 package WSHCAP
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+variable PRIVATE-WID
 ;package
 
 require lib/string.f
@@ -63,7 +65,10 @@ create WCELL 8 allot
 
 1 set-tier
 : PEEK ( -- n ) WCELL @ ;
-private : HIDDEN ( n -- ) . ; public
+private : HIDDEN ( n -- ) . ;
+get-current WSHCAP:PRIVATE-WID !
+: HELPER ( n -- n ) 3 * ; public
+: USER ( n -- n ) HELPER 1+ ;
 : GONE ( -- n ) PEEK 1+ ;
 : GONER ( -- n ) GONE 1+ ;
 undefine GONE
@@ -103,6 +108,8 @@ $0B constant OP-END
       e 1+ e c@ a u STR= if drop i leave then
    loop ;
 : W-PEEK ( -- n ) s" PEEK" SHIPPED ;
+: W-HELPER ( -- n ) s" HELPER" SHIPPED ;
+: W-USER ( -- n ) s" USER" SHIPPED ;
 : W-LEAF ( -- n ) s" LEAF" SHIPPED ;
 : W-CALLER ( -- n ) s" CALLER" SHIPPED ;
 : W-TICK ( -- n ) s" TICK" SHIPPED ;
@@ -161,26 +168,28 @@ $0B constant OP-END
 \ ---- the capture -------------------------------------------------------------
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-   AOT-CAPTURE:WASM-SHADOW-CAPTURE ;
+   AOT-ARM:WINDOW$ AOT-CAPTURE:WASM-TARGET-CAPTURE ;
 
 : RECORDS-CASE ( -- )
    s" every shipped tier-1 definition is one shadow record in window order" T-LABEL
-   REC-N @ 6 T=
+   REC-N @ 8 T=
    W-PEEK ROW-OF 0 T=
-   W-LEAF ROW-OF 1 T=
-   W-CALLER ROW-OF 2 T=
-   W-TICK ROW-OF 3 T=
-   W-SHOW ROW-OF 4 T=
-   W-FACT ROW-OF 5 T= ;
+   W-HELPER ROW-OF 1 T=
+   W-USER ROW-OF 2 T=
+   W-LEAF ROW-OF 3 T=
+   W-CALLER ROW-OF 4 T=
+   W-TICK ROW-OF 5 T=
+   W-SHOW ROW-OF 6 T=
+   W-FACT ROW-OF 7 T= ;
 
 : STRIP-CASE ( -- )
-   s" a dead private word and two dead retired ones between two shadowed records ship no record and no routine, and the record after them ships one row past PEEK, four window records on" T-LABEL
+   s" dead private and retired words ship no record; the live helper keeps its private WID, and LEAF follows USER past six window records" T-LABEL
    s" HIDDEN" SHIPPED -1 T=
    s" GONE" SHIPPED -1 T=
    s" GONER" SHIPPED -1 T=
-   W-LEAF W-PEEK 1+ T=
-   s" WSHCAP-WINDOW:LEAF" XREF-FIND-INDEX  s" WSHCAP-WINDOW:PEEK" XREF-FIND-INDEX 4 +  T= ;
+   W-HELPER CREC 16 + LE:U32@  PRIVATE-WID @ AOT-ARM:W0 @ - 1+ T=
+   W-LEAF W-USER 1+ T=
+   s" WSHCAP-WINDOW:LEAF" XREF-FIND-INDEX  s" WSHCAP-WINDOW:PEEK" XREF-FIND-INDEX 6 +  T= ;
 
 : SPAN-CASE ( -- )
    s" a leaf's span is its whole Wasm emission, entered at its first byte, from the magic to the body's end, with no site" T-LABEL
@@ -203,7 +212,8 @@ $0B constant OP-END
 
 : CALL-CASE ( -- )
    s" a call to a window word is a call row naming that word's shipped record, over a padded zero index" T-LABEL
-   W-CALLER W-LEAF CALLS ;
+   W-CALLER W-LEAF CALLS
+   W-USER W-HELPER CALLS ;
 
 : RECURSE-CASE ( -- )
    s" a self call is the call row a call to another window word is, naming its own word's shipped record" T-LABEL
