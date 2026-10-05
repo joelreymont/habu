@@ -906,6 +906,45 @@ public
    then
    read mut loan init records record field ;
 
+\ Resolve a boot-run name against the dictionary this image will map. The
+\ cold index holds the first record for a folded name in one wordlist; a
+\ qualified name names the namespace's public wordlist, never its private one.
+private
+variable BOOT-SEP
+
+: BOOT-REFUSE ( ptr u8 n -- )
+   s" x64link: boot-run name " type type cr
+   s" x64link: boot-run entry is not a linked word" REFUSE ;
+
+: BOOT-SPLIT ( ptr u8 n -- n ) {: name:ptr len:n :}
+   -1 BOOT-SEP !
+   len 0 ?do
+      name i + c@ $3A = if
+         BOOT-SEP @ 0 >= if name len BOOT-REFUSE then
+         i BOOT-SEP !
+      then
+   loop
+   BOOT-SEP @ ;
+
+: BOOT-FIND ( ptr u8 n n -- n ) {: name:ptr len:n wid:n :}
+   RECORDS 0 ?do
+      i X64KERNEL:REC-WID REC@ wid = if
+         i REC-NAME$ name len CORE-STR=CI if i unloop exit then
+      then
+   loop -1 ;
+
+public
+: BOOT-RECORD ( ptr u8 n -- n ) {: name:ptr len:n :}
+   len 0 <= if name len BOOT-REFUSE then
+   name len BOOT-SPLIT {: sep:n :}
+   sep 0 < if name len 0 BOOT-FIND else
+      sep 0= sep len 1- = or if name len BOOT-REFUSE then
+      name sep DICT-WL:NAMESPACE BOOT-FIND {: ns:n :}
+      ns 0 < if name len BOOT-REFUSE then
+      name sep 1+ + len sep - 1- ns 0 REC@ BOOT-FIND
+   then
+   dup 0 < if drop name len BOOT-REFUSE then ;
+
 \ The image xt address-cell row n's cell holds when it holds code: the entry of
 \ the shipped record its xt row names, or of the kernel body it names; -1 for a
 \ cell that holds DATA or nothing. LAYOUT refused a code cell neither resolves.

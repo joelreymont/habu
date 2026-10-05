@@ -44,11 +44,14 @@ require src/habu/aot-owned.f
 require tools/native-layout.f
 
 package NATIVE-EMIT
+using X64ASM
+using X64CODE
 
 private
 
 74 constant REFUSE-RC
 variable TEXT-CODE-END
+variable BOOT-AT
 
 \ A window captured with no x86-64 shadow open has no routine to link.
 : ?SHADOW ( -- )
@@ -58,6 +61,26 @@ variable TEXT-CODE-END
 
 : LINKED-PROVIDED? ( n -- bool ) {: cell:n :}
    X64LINK:DATA$ cell X64KERNEL:PROVIDED-FILLED? ;
+
+\ The merged list is already in final target order. Snapshot restore has
+\ materialized its saved DATA and must not repeat the cold install entries.
+: BOOTRUN, ( -- )
+   AOT-BUF:AOT-BOOTRUN-LEN @ 0= if exit then
+   X64CODE:LBL {: done:label :}
+   RAX ENGINE-GPR:X64-RBASE >R64 SNAP-CELL MEM-OFF
+      X64CODE:ASM-SINK ENC-MOV-RM
+   RAX RAX X64CODE:ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   0 BOOT-AT !
+   begin BOOT-AT @ AOT-BUF:AOT-BOOTRUN-LEN @ < while
+      AOT-BUF:AOT-BOOTRUN-BUF@ BOOT-AT @ + c@ {: len:n :}
+      len 0= len AOT-BUF:AOT-BOOTRUN-LEN @ BOOT-AT @ - 1- > or if
+         s" native-emit: malformed boot-run list" REFUSE-RC die
+      then
+      AOT-BUF:AOT-BOOTRUN-BUF@ BOOT-AT @ 1+ + len X64LINK:BOOT-RECORD
+         X64BOOT:RECORD-CALL,
+      len 1+ BOOT-AT +!
+   repeat
+   done X64CODE:LBL, ;
 
 : STREAM, ( bool -- ) {: scoped:bool :}
    X64CODE:ASM-RESET
@@ -75,6 +98,7 @@ variable TEXT-CODE-END
    X64LINK:RECORDS X64LINK:CP-VA X64KERNEL:FLOORREC-LBL
       [: X64KERNEL:HIDX-BUILD, ;] X64BOOT:SNAP-START,
    text start X64PROV:TEXT-NATIVE,
+   BOOTRUN,
    X64BOOT:ENTRY,
    X64CODE:TEXT-SITES, TEXT-CODE-END !
    X64BOOT:TEXT-END, ;
@@ -121,4 +145,6 @@ public
 : WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    true WRITE-CORE ;
 
+;using
+;using
 ;package

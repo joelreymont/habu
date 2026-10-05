@@ -794,6 +794,12 @@ public
    RDI ZERO-REG,  NR-EXIT-GROUP SYS,
    none S\" hb: no entry\n" ENGINE-ERROR:AOT-SEED FAIL, ;
 
+\ A write-time resolved boot-run row has its linked XT in the mapped record.
+\ Called only after SNAP-START has installed the VM registers and dictionary.
+: RECORD-CALL, ( n -- ) {: row:n :}
+   RAX DBASE-REG row DREC * MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX ASM-SINK ENC-CALL-REG ;
+
 ;using   \ X64LAYOUT
 ;using
 ;using
