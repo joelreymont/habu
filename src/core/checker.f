@@ -15,7 +15,6 @@ CHECKER-OWNER-ABI:PACKAGE-OFF constant PACKAGE-OFF
 CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
 CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
-CHECKER-OWNER-ABI:TRANSFER-OFF constant TRANSFER-OFF
 CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant SOURCE-ROW-OFF
 CHECKER-OWNER-ABI:SOURCE-CON-OFF constant SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
@@ -22843,7 +22842,18 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    rc 0 <> if rc throw then
    CLAIM-SOURCE-OWNER ;
 
-' TRANSFER-CHECKED DECLARATIONS TRANSFER-OFF + xt!
+\ THE HANDOVER, FROM INSIDE THE LOAD THAT REPLACES THIS CHECKER. Until it runs,
+\ the source cell still holds the engine's certifier, and every signed
+\ definition the hook-less load makes from src/core/checker.f on records its row
+\ there (CLAIM-COLD-SOURCE claims only an empty cell). Each load that replaces a
+\ running checker calls this by name after src/core/layout-valid.f and before
+\ src/core/check-hook.f: tools/native-build-core.f LOAD-TARGET in its target
+\ window and tools/bootstrap.sh's recovery reload alike. It is the only way in:
+\ the owner record carries no transfer callback (src/core/checker-owner-abi.f,
+\ $48).
+public
+: HANDOVER ( -- )
+   data-base SOURCE-CELL + 0 ptr-field @ TRANSFER-CHECKED ;
 ;package
 
 \ A package unit carries the checker's own ordered facts. The native artifact

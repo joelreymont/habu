@@ -79,16 +79,28 @@ fi
 # the prefix does. In particular the declaration participants
 # (generated-declaration-dictionary.f and -protection.f, which seals their
 # registration) precede every generated declaration, the first of which is
-# lib/adt/option.f's ENUM, reached through src/habu/habu2.f's `require
-# lib/fmt.f`. The boot-stdlib rows the prefix loads (PFX-LOAD-STDLIB-FILES)
-# follow the seals as in the prefix: every `DYNAMIC-BUFFER NAME n` declaration
-# generates an accessor that calls DYNAMIC-STORAGE:RESERVE, and the first one
-# is in src/habu/primitive-registry.f, which src/habu/habu1.f requires from
-# disk. The compiler sources come after, as they do in a native build.
+# lib/adt/option.f's ENUM. The boot-stdlib rows the prefix loads
+# (PFX-LOAD-STDLIB-FILES) follow the seals as in the prefix: every
+# `DYNAMIC-BUFFER NAME n` declaration generates an accessor that calls
+# DYNAMIC-STORAGE:RESERVE, and the first one is in
+# src/habu/primitive-registry.f, which src/habu/habu1.f requires from disk.
+# The compiler sources come after, as they do in a native build.
 # The ARM64 assembler and the OS seam's syscall emitter are not prefix files.
 # icode.f declares growing label columns, so its group follows the dynamic
 # storage implementation and declaration owners. The boot hide takes the
 # startup load's `require` away until include.f defines it again.
+#
+# THIS LOAD BUILDS THE TYPE REGISTRY src/habu/stdin.f CAPTURES. The
+# replacement checker takes over before its hook (emit_src), so the capture
+# window marks this load's registry, and the engine the REPL is seeded into
+# refuses one that does not start where its boot prefix's does
+# (src/core/type-family.f REG-AOT-BASE-BAD). The families therefore come in
+# the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES): span.f right
+# after errors.f, then option.f and num-types.f ahead of habu2.f, as
+# tools/build-fixpoint.f BF-APPEND-FMT places them in the native stage source.
+# habu2.f's `require lib/fmt.f` reaches option.f, but nothing in this text
+# requires num-types.f: without it hb-stdin died at boot, `tfam: a seeded type
+# registry does not start where its capture did`, 44 families against 55.
 SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
@@ -133,6 +145,8 @@ SRC_COMMON=(
   src/habu/address-carrier.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
+  lib/adt/option.f
+  lib/num-types.f
   src/habu/habu2.f
 )
 
@@ -309,10 +323,22 @@ emit_src() {
   # gives for the same order: the truncation walks the records it is
   # discarding, and those walks need the dictionary those records still belong
   # to.
+  #
+  # THE REPLACEMENT TAKES OVER BEFORE ITS HOOK, as the native window's does
+  # (tools/native-build-core.f LOAD-TARGET). Until then the startup checker
+  # stays the engine's certifier, so it holds the row of every signed
+  # definition this text makes from src/core/checker.f on. Without the
+  # handover the hook installed by src/core/check-hook.f certifies the rest of
+  # the text without those rows: a checked call to src/core/render.f's
+  # TDECL-DIAG died rc 70, E-UNDEFINED, on the Gforth seed and on a native
+  # cold host alike.
   emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
   local f
   for f in "${SRC_CORE[@]}"; do
+    if [[ "$f" == "src/core/check-hook.f" ]]; then
+      printf 'CHECKER-REG:HANDOVER\n' >> "$out"
+    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
   done

@@ -14,7 +14,8 @@ $28 constant PACKAGE-OFF
 $30 constant PUBLIC-OFF
 $38 constant PRIVATE-OFF
 $40 constant END-PACKAGE-OFF
-$48 constant TRANSFER-OFF
+\ $48 is vacant: a retained prefix still installs its transfer there, so no
+\ later field may take it.
 $50 constant SOURCE-ROW-OFF
 $58 constant SOURCE-CON-OFF
 $60 constant EXPORT-OFF

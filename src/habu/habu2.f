@@ -1218,13 +1218,14 @@ here BPL-KW - constant BPL-LEN
 \ Order is the files' own require graph, read from the files: prelude and
 \ errors have no requires; span.f requires errors; adt/option.f is a bare
 \ ENUM; num-types.f is the role NEWTYPEs and num-arithmetic.f requires it;
-\ string.f requires errors, adt/option and num-arithmetic; memory.f requires
+\ string.f requires errors and adt/option; memory.f requires
 \ errors, num-arithmetic and span; image-lifecycle requires prelude, errors and
 \ quotation-storage.
 \ span.f SITS RIGHT AFTER errors.f, not beside memory.f, because it declares a
-\ type family, and a stage source that rewinds to the core prefix
-\ (tools/build-fixpoint.f BF-APPEND-COMMON, tools/bootstrap.sh SRC_COMMON) has
-\ to rebuild the type registry in this order: the REPL it captures is seeded
+\ type family, and a stage source that rebuilds the registry above the core
+\ prefix (tools/build-fixpoint.f BF-APPEND-COMMON rewinds to it,
+\ tools/bootstrap.sh SRC_COMMON reloads it) has to rebuild the type registry in
+\ this order: the REPL it captures is seeded
 \ into an engine that booted this prefix, and the seed refuses a registry that
 \ does not start where its capture did (src/core/type-family.f
 \ REG-AOT-BASE-BAD). Both lists name errors.f, so both place span.f after it. The

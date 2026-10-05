@@ -91,7 +91,6 @@ create SMOKE-ERR SMOKE-CAP allot
    floor KEEP-ROWS-BELOW ;
 
 TRUSTED: RESET-XT ( n -- [ -- ] ) ;
-TRUSTED: IMPORT-XT ( n -- [ ptr u8 -- ] ) ;
 
 \ The retained host's literal rows come from the package that owns them, which
 \ publishes them while it is open, one segment of the active pool at a time
@@ -125,20 +124,10 @@ TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
 : CHECKER-OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
 
-\ Logical reset clears the target declaration cell. The retained source
-\ certifier stays in DECL-CELL until the fresh checker is transferred.
-: SOURCE-CHECKER-OWNER ( -- ptr u8 )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
-
-\ These execution tokens belong to the retained/target private checker owners.
+\ The execution token belongs to the retained private checker owner.
 : RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
    owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT execute ;
-
-: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
-   CHECKER-OWNER {: owner:ptr :}
-   owner 0= if s" native-build: target checker owner missing" 76 die then
-   source owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
 \ The window's target seam: the build's target (tools/build-target.f, the host
 \ unless `--target` named another) chooses which OS sources the window is given,
@@ -174,15 +163,17 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
 
 TRUSTED: SOURCE-RESET-XT ( n -- [ -- ] ) ;
 
-\ Resolve the fresh loader inside the open target code window. A retained
-\ SOURCE-INPUT:RESET would activate the wrong loader after LOGICAL-RESET.
+\ Resolve a fresh operation inside the open target code window. Its retained
+\ namesake would act for the host: SOURCE-INPUT:RESET would activate the wrong
+\ loader after LOGICAL-RESET, and CHECKER-REG:HANDOVER would leave the host's
+\ checker in charge.
 : OPEN-TARGET-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
-      drop s" native-build: target source operation missing" BUILD-RC die
+      drop s" native-build: target operation missing" BUILD-RC die
    then
    XREF-START {: xt:n :}
    xt AOT-ARM:B0 @ < xt cp@ >= or if
-      s" native-build: source operation outside target window" BUILD-RC die
+      s" native-build: operation outside target window" BUILD-RC die
    then
    xt ;
 
@@ -218,7 +209,6 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    then ;
 
 : LOAD-TARGET ( -- )
-   SOURCE-CHECKER-OWNER {: source:ptr :}
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -237,9 +227,10 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
-   source TRANSFER-CHECKER
-   \ Transfer publishes the complete replacement owner. Earlier pre-hook code
-   \ still needs the retained compiler's paired checker; later calls use this one.
+   s" CHECKER-REG:HANDOVER" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   \ The handover, the same entry tools/bootstrap.sh's recovery reload calls,
+   \ publishes the complete replacement owner. Earlier pre-hook code still needs
+   \ the retained compiler's paired checker; later calls use this one.
    CHECKER-OWNER:CAPTURE-PREPARE
    CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
    s" src/core/check-hook.f" included
