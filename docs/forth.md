@@ -1106,9 +1106,9 @@ boundary cases are contracts every backend answers alike.
 - Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
   `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
   `CATCH-STACK` 87, `CODE-CERT` 88, and `OVERLAY-OPEN` 108 for a definition,
-  a new package or a wordlist made while a checker overlay is open. No global
-  `E-*` aliases; native and no-binary recovery consume the same qualified
-  names and values.
+  a new package, a wordlist or an `undefine` while a checker overlay is open.
+  No global `E-*` aliases; native and no-binary recovery consume the same
+  qualified names and values.
 - **Fallible words `throw` a named code** (`src/config.fs`, e.g. `E-MISMATCH`),
   never a silent failure or an out-of-band flag.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
@@ -1569,9 +1569,12 @@ the rule.
   `constant`, `defer`, `TRUSTED:`, `CAST:`), `EXPORT`, a new `package` and
   `wordlist` die where they are made: `hb: definition while a checker replay
   is open: NAME`, `ENGINE-ERROR:OVERLAY-OPEN` (rc 108), a throw inside
-  `evaluate`, after which the pair still closes. Reopening a package the
-  engine holds defines nothing and is allowed (test/replay-binding.f
-  `LIVE-CASE`).
+  `evaluate`, after which the pair still closes. A live `undefine` there
+  retired its word for good, since the close gives back only what the
+  overlay retired (the word's next use after the pair was `E-UNDEFINED`), so
+  it dies before it retires anything: `hb: undefine while a checker replay is
+  open: NAME`, rc 108. Reopening a package the engine holds defines nothing
+  and is allowed (test/replay-binding.f `LIVE-CASE`).
 - **A definition and a `(` comment close in the source that opened them.** A
   file, an `evaluate` string and stdin each end inside nothing they opened:
   `hb: source ended inside definition: NAME` covers an open colon body with

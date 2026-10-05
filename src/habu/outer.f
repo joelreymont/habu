@@ -363,6 +363,8 @@ variable DIGIT-AT
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
 \ wrote (habu1.f OVERLAY-EMIT:GUARD, reads the same latch at the same sites).
+\ An `undefine` refuses at its own entry, which both loops run (xref.f
+\ XREF-UNDEFINE-GUARD).
 : OVERLAY-GUARD ( -- )
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
    s" hb: definition while a checker replay is open: " SAY

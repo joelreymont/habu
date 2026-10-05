@@ -1344,8 +1344,11 @@ variable SZA-I
 \ opens while the latch is set. The append itself (LHIDXADD) is too late: at
 \ `;` it follows the check hook, the trust registration, the code-origin row
 \ and pass 2, none of which replay-close restores. The refusal names the token
-\ and throws ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE). The latch is
-\ the one flag the Habu loop's twin reads (outer.f OVERLAY-GUARD). Clobbers x9.
+\ and throws ENGINE-ERROR:OVERLAY-OPEN (habu2.f EM-COMPILE-DIE). A live
+\ `undefine` throws the same code before it retires anything (xref.f
+\ XREF-UNDEFINE-GUARD, both loops): replay-close gives back only the
+\ retirements the overlay logged. The latch is the one flag the Habu loop's
+\ twin reads (outer.f OVERLAY-GUARD). Clobbers x9.
 package OVERLAY-EMIT
 public
 variable LDIE

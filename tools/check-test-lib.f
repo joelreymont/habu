@@ -6668,7 +6668,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    LC-STDIN-CASE ;
 
 \ A bare name two used packages both export is refused in a definition
-\ (E-USING-AMBIGUOUS, checker.f CHECKER-USED-SYM) with a diagnostic of its own,
+\ (E-USING-AMBIGUOUS, checker.f LIVE-BIND) with a diagnostic of its own,
 \ as a used public a global shadows is (E-USING-SHADOW-GLOBAL): every check.f
 \ path writes a packet naming the token where the file holds it and each
 \ package it resolves in, or under --all-errors the same as prose, and none

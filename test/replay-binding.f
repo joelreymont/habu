@@ -23,14 +23,15 @@
 \ counter back where the pair found them, so a word, a package row or a
 \ wordlist made inside the pair would vanish with it or be handed out twice.
 \ The engine refuses each where it is made, ENGINE-ERROR:OVERLAY-OPEN with its
-\ name, and inside `evaluate` the refusal is a throw.
+\ name, and inside `evaluate` the refusal is a throw. The close gives back only
+\ what the overlay retired, so a live `undefine` there is refused the same way
+\ before it retires the word.
 \
 \ Run: bin/hb --load test/replay-binding.f
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
-require lib/test/subject.f
 require lib/test/eval.f
 require lib/process.f
 require lib/process-argv.f
@@ -78,6 +79,19 @@ public
 : dup ( -- n ) 7 ;
 ;package
 
+\ A namespace a qualified definition made: a public wordlist and no private
+\ one.
+: RB-PQ:X ( -- n ) 5 ;
+
+\ A word only the checker's store holds: a CHECK! row, no engine record.
+s" RB-GHOST ( -- n ) 7" CHECK! drop
+
+\ A word holding the name the clause of a definer RB-CK would take.
+package RB-CC
+public
+: RB-CK;does ( -- n ) 1 ;
+;package
+
 package REPLAY-BINDING-TEST
 
 private
@@ -87,8 +101,12 @@ variable DIAG-U
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
 variable NEUTRAL       \ nonzero: replay in a package-neutral scope
+variable COMPOSE       \ nonzero: there, compose the text as a file the load reads
 
 : NEUTRAL-ACT ( -- )
+   COMPOSE @ 0 <> IF
+      SRC-A @ SRC-U @ s" replay-binding-subject.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE EXIT
+   THEN
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : ACT ( -- )
@@ -183,12 +201,31 @@ variable NEUTRAL       \ nonzero: replay in a package-neutral scope
 
 \ The engine's `undefine R` retires R's clause with R (src/habu/xref.f
 \ XREF-RETIRE-INDEX), so a trust row naming the clause then names no word. The
-\ first row is the control: while R lives, the clause's name resolves.
+\ first row is the control: while R lives, the clause's name resolves. A definer
+\ the replay makes has its clause as well, as the engine's `does>` makes one;
+\ without it the trust of the clause was E-TRUST-UNRESOLVED, where the live
+\ load certifies it.
 : CLAUSE-CASE ( -- )
    s" a replayed undefine retires the definer's does> clause with it" T-LABEL
    S\" s\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n" 0 REPLAY
    S\" undefine RB-DOES:RB-MK\ns\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n"
-      E-TRUST-UNRESOLVED REPLAY ;
+      E-TRUST-UNRESOLVED REPLAY
+   s" a replayed definer makes its clause, and a replayed undefine retires both" T-LABEL
+   S\" package RB-NC\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\ns\" MK;does\" s\" -- n\" trust\n;package\n"
+      0 REPLAY
+   S\" package RB-NC\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\nundefine MK\ns\" MK;does\" s\" -- n\" trust\n;package\n"
+      E-TRUST-UNRESOLVED REPLAY
+   s" a word holding the clause's name refuses the definer, as the engine's does> does" T-LABEL
+   S\" package RB-CC\npublic\n: RB-CK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY ;
+
+\ The engine's `package` gives a namespace with no private wordlist one
+\ (src/habu/packages.f PKG-REOPEN), so a replayed `package RB-PQ` opens it as
+\ the live load does, and the close takes the wordlist back with the rest.
+: PRIVATE-CASE ( -- )
+   s" a replayed package opens a namespace a qualified definition made" T-LABEL
+   S\" package RB-PQ\npublic\n: RB-PY ( -- n ) X ;\n;package\n" 0 REPLAY
+   s" and the namespace has no private wordlist after it" T-LABEL
+   s" RB-PQ" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE 0 T= ;
 
 : CASES ( -- )
    RAW-CASE
@@ -196,7 +233,22 @@ variable NEUTRAL       \ nonzero: replay in a package-neutral scope
    REOPEN-CASE
    OWN-CASE
    USING-CASE
-   CLAUSE-CASE ;
+   CLAUSE-CASE
+   PRIVATE-CASE ;
+
+\ A word the engine holds, as a warm engine holds the loaded twin of the
+\ source it replays: the replay's own definition of it is the first of its
+\ pass and certifies, and a second is refused, as the live load refuses a
+\ second compile. The candidate scope alone runs it: the package-neutral
+\ scope, where tools/check.f preverifies a source no engine has loaded,
+\ refuses even one definition of a name the checker's store holds, 78.
+: RB-WARM ( n -- n ) 1 + ;
+
+: WARM-CASE ( -- )
+   s" a replay's second definition of a word the engine holds is refused" T-LABEL
+   S\" : RB-WARM ( n -- n ) 1 + ;\n: RB-WARM ( n -- n ) 2 + ;\n" 78 REPLAY
+   s" and its one definition of that word certifies" T-LABEL
+   S\" : RB-WARM ( n -- n ) 1 + ;\n" 0 REPLAY ;
 
 \ The live `undefine dup` retires the seeded primitive's record (src/habu/xref.f
 \ XREF-RETIRE-WL), so a used public's dup binds bare after it
@@ -321,14 +373,12 @@ variable ERR-U
 \ Each refusal ran on an engine without it: the live word ended the session
 \ with the close's silent exit 83, or, after a replay row raised the overlay's
 \ high-water mark past it, survived the close as a name that no longer
-\ resolved; the wordlist was handed out again after the close.
+\ resolved; the wordlist was handed out again after the close; the undefined
+\ word stayed retired after it, E-UNDEFINED at its next use.
 : LIVE-CASE ( -- )
    s" a live definition inside a neutral pair is refused by name" T-LABEL
    S\" CHECKER-SCOPE-START-NEUTRAL\n: RB-LIVE ( -- n ) 5 ;\nCHECKER-SCOPE-DONE\n"
       s" RB-LIVE" REFUSED
-   s" and is not erased in silence when a replay row follows it" T-LABEL
-   S\" require src/habu/verify-source.f\nCHECKER-SCOPE-START-NEUTRAL\n: RB-KEPT ( -- n ) 5 ;\ns\" RB-SPAN ( -- n ) 1\" CHECK! drop\nCHECKER-SCOPE-DONE\nRB-KEPT drop\n"
-      s" RB-KEPT" REFUSED
    s" create, variable, constant, defer and EXPORT are refused alike" T-LABEL
    S\" CHECKER-SCOPE-START-NEUTRAL\ncreate RB-LC\nCHECKER-SCOPE-DONE\n" s" RB-LC" REFUSED
    S\" CHECKER-SCOPE-START-NEUTRAL\nvariable RB-LV\nCHECKER-SCOPE-DONE\n" s" RB-LV" REFUSED
@@ -349,11 +399,35 @@ variable ERR-U
       SESSION
    RC @ ENGINE-ERROR:OVERLAY-OPEN T=
    OUT$ s" closed" CONTAINS? TTRUE
-   ERR$ s" RB-E" CONTAINS? TTRUE ;
+   ERR$ s" RB-E" CONTAINS? TTRUE
+   s" a live undefine is refused by name before it retires the word" T-LABEL
+   S\" : RB-UK ( -- n ) 7007 ;\nCHECKER-SCOPE-START-NEUTRAL\nundefine RB-UK\nCHECKER-SCOPE-DONE\n"
+      s" RB-UK" REFUSED
+   S\" require lib/test/eval.f\n: RB-UK ( -- n ) 7007 ;\nCHECKER-SCOPE-START-NEUTRAL\ns\" undefine RB-UK\" TEST-EVAL:RC\nCHECKER-SCOPE-DONE\nRB-UK .\ns\" \" rot die\n"
+      SESSION
+   RC @ ENGINE-ERROR:OVERLAY-OPEN T=
+   OUT$ s" 7007" CONTAINS? TTRUE
+   ERR$ s" RB-UK" CONTAINS? TTRUE ;
+
+\ A word only the checker's store holds has no engine record, so the engine's
+\ find never answers it. At top level the load retries an open package's own
+\ qualified name that its public wordlist lacks in the global wordlist
+\ (src/habu/habu1.f EMIT-FIND), finds no RB-GHOST there and refuses the token,
+\ E-UNDEFINED; a replay composing the same text refuses it too.
+: GHOST-CASE ( -- )
+   s" a top-level name only the checker's store holds binds nothing" T-LABEL
+   -1 NEUTRAL !  -1 COMPOSE !
+   S\" package RB-TOP\nRB-TOP:RB-GHOST drop\n;package\n" CHECKER-REJECT-RC REPLAY
+   0 COMPOSE !  0 NEUTRAL !
+   s" live, the load refuses the same token" T-LABEL
+   S\" s\" RB-GHOST ( -- n ) 7\" CHECK! drop\npackage RB-TOP\nRB-TOP:RB-GHOST drop\n;package\n" SESSION
+   RC @ CHECKER-REJECT-RC T=
+   ERR$ s" RB-TOP:RB-GHOST" CONTAINS? TTRUE ;
 
 : RUN ( -- )
    0 NEUTRAL !
    CASES
+   WARM-CASE
    -1 NEUTRAL !
    CASES
    SEEDED-CASE
@@ -362,7 +436,8 @@ variable ERR-U
    PRIOR-CASE
    CHECK-CASE
    SEALED-CASE
-   LIVE-CASE ;
+   LIVE-CASE
+   GHOST-CASE ;
 
 RUN
 

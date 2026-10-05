@@ -497,8 +497,9 @@ TRUSTED: XREF-PATCH32 ( n ptr n -- )
    entry first <= if XREF-FALSE exit then
    entry clause XREF-CODE-BYTES +  first parent XREF-CODE-BYTES +  <= ;
 
-\ The checker overlay retires a replayed `undefine`'s clause by this same test
-\ (src/core/checker.f CHECKER-OVERLAY RETIRE1).
+\ The checker overlay asks this same test of a live definer a replayed
+\ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
+\ definer's clause, codeless, is paired where the overlay publishes it.
 : DOES-COMPANION-INSTALL ( -- ) [: XREF-DOES-COMPANION? ;] is DOES-COMPANION?-XT ;
 DOES-COMPANION-INSTALL
 
@@ -515,14 +516,33 @@ DOES-COMPANION-INSTALL
    k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF-RETIRE then
    k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
+\ While a checker overlay is open (src/habu/layout.f REPLAY-SCOPE) the engine
+\ undefines nothing live, as it defines nothing (src/habu/habu1.f
+\ OVERLAY-EMIT:GUARD,): replay-close gives back only the records the overlay
+\ retired and logged, so a record retired here would stay retired after the
+\ pair and the live word would be gone. The refusal names the word before
+\ anything changes and throws ENGINE-ERROR:OVERLAY-OPEN, which ends a top-level
+\ load with that code. Both loops run these words; a replayed `undefine` never
+\ reaches them, since the checker's source pass retires through the overlay
+\ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
+create XREF-NL 10 c,
+: XREF-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
+   2 s" hb: undefine while a checker replay is open: " write drop
+   2 a u write drop
+   2 XREF-NL 1 write drop
+   ENGINE-ERROR:OVERLAY-OPEN throw ;
+
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
 : UNDEFINE-FOUND ( ptr u8 n n -- )
    XREF-IDX ! XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
    XREF-IDX @ XREF-RETIRE-INDEX ;
 
@@ -810,7 +830,7 @@ undefine SAVE-SCOPE
 undefine RESTORE-SCOPE
 undefine FILE-DONE
 undefine PUBLISH
-undefine REPLAYED?
+undefine CLAUSE
 undefine OPEN-PACKAGE
 undefine SECTION
 undefine CLOSE-PACKAGE

@@ -108,7 +108,7 @@ s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 \ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
 \ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
 \ it resolves alone - the production source verifier is one - so the code below
-\ pins E-USING-AMBIGUOUS there (src/core/checker.f CHECKER-USED-SYM).
+\ pins E-USING-AMBIGUOUS there (src/core/checker.f LIVE-BIND).
 s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
@@ -356,13 +356,13 @@ USING-TEST:UQX-V @ 11 T=
 
 \ === a retired used public is no candidate (dot habu-skip-retired-used-58ba2793) ===
 \ `undefine` retires a used package's public. The engine's used-search skips it
-\ and binds the global or the one live public, else nothing; the checker's
-\ used-search skips it too (SYM-LIVE), so a checked body certifies against the
-\ word the engine binds and runs it, and a tail with nothing left to bind is
-\ undefined. The retired publics' effects differ from the words bound in their
-\ place, so a body certified against a retired one is refused. The checker used
-\ to find the retired symbol and refused the first two shapes as
-\ E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
+\ and binds the global or the one live public, else nothing; the checker binds
+\ through that search (src/core/checker.f LIVE-BIND), so a checked body
+\ certifies against the word the engine binds and runs it, and a tail with
+\ nothing left to bind is undefined. The retired publics' effects differ from
+\ the words bound in their place, so a body certified against a retired one is
+\ refused. The checker used to find the retired symbol and refused the first
+\ two shapes as E-USING-SHADOW-GLOBAL and E-USING-AMBIGUOUS.
 package URS public : drop ( n n -- ) 2drop ; undefine drop ;package
 package URA public : URW ( n -- n ) 1 + ; ;package
 package URB public : URW ( n -- ) drop ; undefine URW ;package

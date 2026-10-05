@@ -928,13 +928,6 @@ variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 \ PTX-BARRIER-SET installs. Reached from BOTH the checked `:` and the TRUSTED:
 \ publish paths through the one E-ADD-EFFECT choke.
 defer PTX-BARRIER-SET-XT ( n -- )
-\ Forward hook ( n -- bool ): the symbol carries a core-op control axiom
-\ (NORET-AXIOMS, the only writer of CTL-CORE-OP). SYM-LIVE asks it of a symbol
-\ with neither a record nor a primitive effect row - the return-stack words,
-\ whose one fact is that axiom - and the control store is defined after the
-\ lookup. SYM-AXIOM-INSTALL binds it beside CTL-FLAGS-SYM, before any token is
-\ looked up.
-defer SYM-AXIOM-XT ( n -- bool )
 
 \ A successful scan used only for native call shapes grants no source authority.
 \ The scope and the late publication hook belong to this checker instance. The
@@ -1064,8 +1057,9 @@ $3688 constant CK-DEF-PEND-OFF             \ = layout.f PEND-CELL (DATA-relative
 \ overlay puts it back to its frame's mark (CHECKER-OVERLAY ROLLBACK).
 $30 constant CK-WIDN-OFF                   \ = layout.f WIDN-CELL (DATA-relative); engine owns it
 7136 constant E-PKG-CONTEXT
-\ The checker overlay is full: its scope snapshots, its retire log, the records
-\ one lookup hides or the engine dictionary it publishes into (CHECKER-OVERLAY).
+\ The checker overlay is full: its scope snapshots, its undo log, its does>
+\ clause pairs, the records one lookup hides or the engine dictionary it
+\ publishes into (CHECKER-OVERLAY).
 7184 constant E-OVERLAY-CAP
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
@@ -9734,26 +9728,6 @@ variable PRM-FIRST
    sym PRIM-FIRST-IDX dup 0 = IF EXIT THEN
    1 - PE-EFF@ ;
 
-\ SYM-LIVE ( n -- n ) : the symbol when a lookup may bind it, else 0. It binds
-\ when its newest visible record is live (SCAN-USIGS-SYM's notion), or when it
-\ has no record at all and the engine's primitive tables answer for it: a
-\ primitive effect row, or the core-op control axiom (SYM-AXIOM-XT) that is the
-\ return-stack words' only fact. A symbol with none of these stands for no
-\ word: an `undefine` tombstone, a name interned for a definition that was then
-\ refused, a name a checker primitive marked from source. The engine binds past
-\ such a name, so every leg of the scope chain looks past it too, instead of
-\ letting it stand in front of the word the engine binds.
-: SYM-LIVE ( n -- n )
-   {: sym:n :}
-   sym SYM-VISIBLE 0= IF 0 EXIT THEN
-   sym USIG-NEWEST-VISIBLE {: off1:n :}
-   off1 0= IF
-      sym PRIM-FIRST-IDX 0 <> IF sym EXIT THEN
-      sym SYM-AXIOM-XT IF sym ELSE 0 THEN EXIT
-   THEN
-   off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
-   sym ;
-
 \ A source `undefine` is stronger than a stale engine wordlist entry. The
 \ visible newest record decides, so a later declaration makes the name live.
 : SYM-DELETED? ( n -- bool )
@@ -10799,13 +10773,7 @@ variable DFER-END
 \ C-USING before it increments the shared depth, and by verify-source likewise) records the
 \ name into the slot at the current depth; resolution reads names[0..depth).
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
-variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
-variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 variable CK-USED-MASK                      \ bit i set when used-scan slot i matched, for the using diagnostics
-package CHECKER-USE
-public
-variable WHY                               \ E-USING-AMBIGUOUS when a second used public matched, else 0
-;package
 
 \ The depth every read of the mirror is bounded by: the engine's live cell,
 \ which a replay moves through CHECKER-OVERLAY:OPEN-USING. A neutral replay
@@ -10881,38 +10849,6 @@ package CHECKER-REG
 \ Nor does the replayed source close an import it inherited, at or below
 \ CHECKER-USE:SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
 7146 constant E-USING-OUTER                \ `;using` closing an import its package or source did not open
-
-\ Resolve a bare tail against the live used publics (searched only after the open-scope +
-\ global chain missed). A single distinct interned public sym wins; a second distinct sym
-\ across the used packages is the ambiguity hard error, matching the engine's used-search.
-\ The scan reports that refusal in CHECKER-USE:WHY rather than raising it, so
-\ the scope walk (CHECKER-RESOLVE:WALK) can answer a caller that only asks;
-\ CHECKER-FIND-ACTIVE-SYM raises it.
-\ A used public whose records all lie beyond the binding horizon was exported
-\ after this definition, and one with no live record (SYM-LIVE) is no export at
-\ all: neither is a candidate nor a cause of ambiguity. Every slot that matched
-\ is marked in CK-USED-MASK, so a using refusal names each package the token
-\ resolves in.
-: CHECKER-USED-SYM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   0 CK-USED-FOUND !
-   -1 CK-USED-SLOT !
-   0 CK-USED-MASK !
-   0 CHECKER-USE:WHY !
-   CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-LIVE ELSE drop 0 THEN
-      dup 0 <> IF                                            ( -- sym )
-         1 i lshift CK-USED-MASK @ or CK-USED-MASK !
-         CK-USED-FOUND @ 0= IF
-            i CK-USED-SLOT !
-            CK-USED-FOUND !
-         ELSE
-            dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS CHECKER-USE:WHY ! THEN
-            drop
-         THEN
-      ELSE drop THEN
-   LOOP
-   CK-USED-FOUND @ ;
 
 \ --- global-vs-used-public shadow rejection (dot habu-err-on-global-e62f806c).
 \ Resolution order puts the open-scope + global wordlist ahead of the used
@@ -11203,10 +11139,12 @@ defer DOES-COMPANION?-XT ( n -- bool )
 \ defined. This package keeps that overlay through the engine writers only it
 \ may call (src/habu/prims.f, "the replay writers"): replay-open saves NDICT,
 \ CP, WIDN, CURRENT, the package cells and the using band; each definition the
-\ checker records is published as a codeless record (PUBLISH); a replayed
-\ `undefine` retires the live records it names with wid -2 and logs them
-\ (RETIRE); the replay's package and using words move the engine's scope as
-\ the engine's own keywords do (src/habu/packages.f); a lookup under the binding
+\ checker records is published as a codeless record (PUBLISH), a does>
+\ definer's clause beside it (CLAUSE); a replayed `undefine` retires the live
+\ records it names with wid -2 and logs them (RETIRE); the replay's package and
+\ using words move the engine's scope as the engine's own keywords do
+\ (src/habu/packages.f), and a replayed `package` gives a row with no private
+\ wordlist one and logs it (GRANT); a lookup under the binding
 \ horizon hides the records beyond it while it asks (HIDE, HORIZON-FIND). On
 \ every exit, clean or thrown, the log is undone newest first and replay-close
 \ zeroes the overlay's records and puts the saved state back.
@@ -11230,15 +11168,30 @@ variable MARK                              \ NDICT when it opened: later records
 variable OPENER                            \ the tag of the scope that opened it
 variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it opened
 -2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
+$4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
+-1 constant NAMESPACE                      \ = layout.f DICT-WL:NAMESPACE
 
-\ The retire log: the index and wid of each record a replayed `undefine` retired.
+\ The undo log: the index and wid of each record a replayed `undefine` retired,
+\ and the index of each namespace row the replay gave a private wordlist
+\ (GRANT) with wid NAMESPACE, which record-wid! refuses, so no retirement is
+\ logged with it.
 256 constant LOG-MAX
 create LOG LOG-MAX 2 * cells allot
 variable LOG-N
 
+\ The does> clauses the replay published (CLAUSE): each definer's index, then
+\ its clause's, in the order they were made. The engine pairs a live definer
+\ with its clause by code containment (DOES-COMPANION?-XT), which a codeless
+\ replay record cannot meet, so the pair is kept where it is made. One overlay
+\ serves every verifier scope opened inside it (OPEN-SCOPE), so the table holds
+\ as many as the undo log, and a replay that fills it is refused,
+\ E-OVERLAY-CAP.
+create PAIRS LOG-MAX 2 * cells allot
+variable PAIRS-N
+
 \ The hidden records: the index and wid of each record a lookup under the
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
-\ apart from the retire log, so putting them back can never revive a record a
+\ apart from the undo log, so putting them back can never revive a record a
 \ replayed `undefine` retired. A lookup hides at most one record of its name in
 \ each wordlist it searches: the open package's two, the used publics and the
 \ global one.
@@ -11336,11 +11289,23 @@ variable SNAP-N
    0 CK-USE-DEPTH-OFF DATA!
    0 CK-USE-FLOOR-OFF DATA! ;
 
-\ Give each logged record above LOW back its wid, newest first.
-: UNRETIRE ( n -- ) {: low:n :}
+\ Append record IX and WID to the log.
+: LOG! ( n n -- ) {: ix:n wid:n :}
+   LOG-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
+   ix wid LOG LOG-N @ PAIR!
+   LOG-N @ 1 + LOG-N ! ;
+
+\ Undo one log entry: a granted row loses its private wordlist, a retired
+\ record gets its wid back.
+: UNDO1 ( n n -- ) {: ix:n wid:n :}
+   wid NAMESPACE = IF ix RES-FALSE replay-private EXIT THEN
+   wid ix record-wid! ;
+
+\ Undo each log entry above LOW, newest first.
+: UNDO ( n -- ) {: low:n :}
    BEGIN LOG-N @ low > WHILE
       LOG-N @ 1 - LOG-N !
-      LOG LOG-N @ WID@  LOG LOG-N @ IX@  record-wid!
+      LOG LOG-N @ IX@  LOG LOG-N @ WID@  UNDO1
       0 0 LOG LOG-N @ PAIR!
    REPEAT ;
 
@@ -11354,12 +11319,22 @@ variable SNAP-N
    CHECKER-USE:SOURCE-FLOOR @ FLOOR0 !
    -1 ON ! ;
 
+\ Drop the clause pairs whose definer is at or above ND, newest first: the
+\ records they name are gone. Definers are made in index order, so they are
+\ the newest entries.
+: UNPAIR ( n -- ) {: nd:n :}
+   BEGIN PAIRS-N @ 0 >  IF PAIRS PAIRS-N @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
+      PAIRS-N @ 1 - PAIRS-N !
+      0 0 PAIRS PAIRS-N @ PAIR!
+   REPEAT ;
+
 \ A snapshot a scope left is moot once replay-close has put the scope back; it
-\ is zeroed with the rest, so an image captured afterwards holds the bytes one
-\ no replay ran in does.
+\ is zeroed with the rest, as is every clause pair, so an image captured
+\ afterwards holds the bytes one no replay ran in does.
 : CLOSE ( -- )
-   0 UNRETIRE
+   0 UNDO
    replay-close
+   0 UNPAIR
    FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
    0 FLOOR0 !  0 OPENER !  0 MARK !  0 ON !
    BEGIN SNAP-N @ 0 > WHILE
@@ -11395,10 +11370,43 @@ variable SNAP-N
 
 \ Log record IX with its wid, then retire it.
 : LOG-RETIRE ( n n -- ) {: ix:n wid:n :}
-   LOG-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
-   ix wid LOG LOG-N @ PAIR!
-   LOG-N @ 1 + LOG-N !
+   ix wid LOG!
    RETIRED ix record-wid! ;
+
+\ Give namespace row REC, which has no private wordlist, one until the log is
+\ undone, as `package` gives one to a row a qualified definition made
+\ (src/habu/packages.f PKG-REOPEN).
+: GRANT ( ptr n -- ) {: rec:ptr :}
+   rec REC>IX {: ix:n :}
+   ix NAMESPACE LOG!
+   ix RES-TRUE replay-private ;
+
+\ Whether record IX is on the undo log. A replay record leaves its wordlist
+\ only through the log (HIDE gives a record back before its lookup ends), so
+\ for one of the replay's records this is whether it is retired.
+: LOGGED? ( n -- bool ) {: ix:n :}
+   LOG-N @ 0 ?DO
+      LOG i IX@ ix = IF RES-TRUE UNLOOP EXIT THEN
+   LOOP
+   RES-FALSE ;
+
+\ The clause PAIRS holds for the replayed definer IX, -1 for none.
+: PAIRED ( n -- n ) {: ix:n :}
+   PAIRS-N @ 0 ?DO
+      PAIRS i IX@ ix = IF PAIRS i 2 * 1 + ROW@ UNLOOP EXIT THEN
+   LOOP
+   -1 ;
+
+\ The does> clause of the definer at IX that is still in the definer's
+\ wordlist, -1 for none: a live definer's by the engine's own test, a replayed
+\ one's from PAIRS unless it is retired, as the engine's test then finds no
+\ clause either.
+: CLAUSE-OF ( n -- n ) {: ix:n :}
+   ix DOES-COMPANION?-XT IF ix 1 + EXIT THEN
+   ix PAIRED {: cl:n :}
+   cl 0 <  IF -1 EXIT THEN
+   cl LOGGED? IF -1 EXIT THEN
+   cl ;
 
 \ Retire one live record of the name in WID and log it, false when none is.
 \ A does> definer's clause goes with it, as the engine's undefine retires it
@@ -11409,18 +11417,10 @@ variable SNAP-N
    a u wid SCOPE-WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
-   ix DOES-COMPANION?-XT IF ix 1 + wid LOG-RETIRE THEN
+   ix CLAUSE-OF {: cl:n :}
+   cl 0 >= IF cl wid LOG-RETIRE THEN
    ix wid LOG-RETIRE
    RES-TRUE ;
-
-\ The engine gives a row a qualified definition made its private wordlist when
-\ `package` opens it (src/habu/packages.f PKG-REOPEN). The overlay has no
-\ writer for that, so a replay that opens one is refused by name.
-: NO-PRIVATE ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 s" hb: replay: package has no private wordlist: " write drop
-   2 a u write drop
-   2 S\" \n" write drop
-   E-PKG-CONTEXT CHECKER-REFUSE ;
 
 public
 
@@ -11450,14 +11450,15 @@ public
 \ ROLLBACK hands back the three counters replay-close restores: the records
 \ above ND, the bytes their long names took at CP and the wordlists their
 \ namespace rows took. Without CP and WIDN every replay nested under one open
-\ overlay kept them until the overlay closed. WIDN goes back last, once
-\ ndict! dropped every record that held a wid at or above the mark
-\ (replay-widn!).
+\ overlay kept them until the overlay closed. WIDN goes back last, once UNDO
+\ took back the private wids granted since the mark and ndict! dropped every
+\ record that held a wid at or above it (replay-widn!).
 : ROLLBACK ( n n n n -- )
    {: nd:n logn:n cp:n widn:n :}
    ON @ 0=  nd MARK @ <  or IF EXIT THEN
-   logn UNRETIRE
+   logn UNDO
    ndict@ nd > IF nd ndict! THEN
+   nd UNPAIR
    cp@ cp > IF cp cp! THEN
    widn replay-widn! ;
 
@@ -11494,8 +11495,9 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ Publish the definition the checker just recorded as a codeless record, so the
 \ replay's later bodies bind it where the compiler would; the publication hook
 \ of CHECKER-EFFECT-AUTHORITY calls it. A name its wordlist already holds live
-\ keeps that record: a replay's second definition of its own name is refused
-\ before it is recorded (CHECKER-CERT-DUP?, REPLAYED? below).
+\ keeps that record: in a warm engine it is the loaded twin of the definition,
+\ and a replay's second definition of its own name is refused before it is
+\ recorded (CHECKER-CERT-DUP?).
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
@@ -11503,21 +11505,46 @@ ROW-CELLS cells constant SCOPE-BYTES
    ROOM
    sym SYM-NAME$ wid replay-record ;
 
-\ Whether the replay has already defined NAME where a definition of it lands.
-: REPLAYED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   ON @ 0= IF RES-FALSE EXIT THEN
-   a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
-   SCOPE-WL-PROBE {: rec:ptr :}
-   rec NULL-PTR = IF RES-FALSE EXIT THEN
-   rec REC>IX MARK @ >= ;
+\ The clause of the replayed `create ... does>` definer NAME, as the engine's
+\ `does>` makes it (src/habu/habu2.f DOES-REC): a record of its own in the
+\ definer's wordlist, named the definer's tail with SUFFIX added, so a later
+\ `trust` or `undefine` of either binds as it would live. SA SU is
+\ DOES-CLAUSE:SUFFIX$, passed in because the checker registers that word's
+\ effect after this package. A live word already holding the clause's name
+\ refuses the definer, E-DUPLICATE-DEFINITION, as DOES-REC:REJECT-DUP does. A
+\ definer from before the overlay has the clause the engine made for it, and
+\ one the replay did not publish has none. A name has no fixed bound, so the
+\ clause's is built in a mapping of its own size, which replay-record copies.
+: CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n sa:ptr su:n :}
+   ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
+   a u TARGET 0= IF 2drop drop EXIT THEN
+   {: ta:ptr tu:n wid:n :}
+   ta tu wid SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix MARK @ < IF EXIT THEN
+   PAIRS-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
+   ROOM
+   tu su + {: nu:n :}
+   nu map-anon 0 <> IF drop s" checker: clause name allocation failed" 76 die THEN
+   {: buf:ptr :}
+   ta buf tu ARENA-COPY
+   sa buf tu + su ARENA-COPY
+   buf nu wid SCOPE-WL-PROBE NULL-PTR = {: fresh:bool :}
+   fresh IF buf nu wid replay-record THEN
+   buf nu munmap 0 <> IF s" checker: clause name release failed" 76 die THEN
+   fresh 0= IF DUPLICATE throw THEN
+   ix ndict@ 1 - PAIRS PAIRS-N @ PAIR!
+   PAIRS-N @ 1 + PAIRS-N ! ;
 
 \ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
-\ row, made when new; the using depth it opens at, which `;package` restores;
-\ the private wordlist current. A `package` replayed inside an open package
+\ row, made when new, and its private wordlist when it has none (GRANT); the
+\ using depth it opens at, which `;package` restores; the private wordlist
+\ current. A `package` replayed inside an open package
 \ replaces it and keeps its parent, as the checker's record of the scope does.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NS-ENSURE {: rec:ptr :}
-   rec CELL + @ 0= IF a u NO-PRIVATE THEN
+   rec CELL + @ 0= IF rec GRANT THEN
    CK-PKG-PUB-OFF DATA@ 0 <> IF CK-PKG-PARENT-OFF DATA@ ELSE get-current THEN {: parent:n :}
    CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA!
    rec REC>IX parent package-scope!
@@ -12135,9 +12162,8 @@ variable BIND-SEEDED
 \ binds it or the global does. Under a refusal sym is not an answer, so no
 \ caller reads it when why is nonzero. It renders nothing: a using refusal
 \ leaves the used packages holding the tail marked in CK-USED-MASK
-\ (CK-USED-MARK, CHECKER-USED-SYM) for the raise to name. CHECKER-BIND
-\ raises the refusal exactly as it always surfaced; a caller that only asks
-\ reads why.
+\ (CK-USED-MARK) for the raise to name. CHECKER-BIND raises the refusal
+\ exactly as it always surfaced; a caller that only asks reads why.
 \
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
 \ length no name has) binds nothing: the engine never binds it, and neither the
@@ -13563,16 +13589,19 @@ package CHECKER-REG
 \ The duplicate guard of a certifying record: does the scope the name would be
 \ recorded into already hold a live record for it? Asked without interning, so
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
-\ A candidate's scanned definition is a duplicate when the replay itself has
-\ already defined the name there, as the engine would refuse its second
-\ compile (CHECKER-OVERLAY:REPLAYED?). The check hook and the source scan ask
-\ it before a body is checked, so they refuse what the guard would and nothing
-\ more.
+\ A candidate's scanned definition is a duplicate when the verifier pass has
+\ already declared the name there, as the engine refuses its second compile:
+\ the name's own record (OWN-RECORD) is one the pass appended, at or above
+\ PASS-FLOOR. A record from before the pass is not the replay's - in a warm
+\ engine it is the loaded twin of the definition being replayed - and a
+\ deletion or a seeded record declares nothing. The check hook and the source
+\ scan ask it before a body is checked, so they refuse what the guard would and
+\ nothing more.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <> IF
-      CHK-PROBE @ 0= IF a u CHECKER-OVERLAY:REPLAYED? EXIT THEN
-      RES-FALSE EXIT
+      CHK-PROBE @ 0 <>  PASS-FLOOR @ 0 <=  or IF RES-FALSE EXIT THEN
+      a u OWN-RECORD PASS-FLOOR @ >= EXIT
    THEN
    a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
 
@@ -14705,11 +14734,6 @@ variable NORET-FMEND
 
 : CTL-FLAGS-SYM ( n -- n ) CTL-WORD-SYM XFER-FLAGS ;
 
-: CTL-CORE-SYM? ( n -- bool )
-   CTL-FLAGS-SYM CTL-CORE-OP and 0 <> ;
-: SYM-AXIOM-INSTALL ( -- ) [: CTL-CORE-SYM? ;] is SYM-AXIOM-XT ;
-SYM-AXIOM-INSTALL
-
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
@@ -14802,8 +14826,10 @@ SYM-AXIOM-INSTALL
 \ (src/habu/habu1.f EMIT-FIND: from FIND-DONE, a miss in the open package's
 \ public wordlist retries wordlist 0 at FIND-TRYG); a body's walk refuses such
 \ a name. True with the tail's global symbol when that retry finds it: a word
-\ the source defined, or one the engine's global wordlist claims, whose symbol
-\ is 0 when the store holds nothing for it.
+\ the engine's global wordlist claims, a replayed one included (the overlay
+\ publishes it there), whose symbol is 0 when the store holds nothing for it.
+\ A symbol only the checker's store holds binds nothing: the engine's find
+\ never answers it.
 : OPEN-TAIL-GLOBAL? ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? 0= IF 0 RES-FALSE EXIT THEN
@@ -14811,9 +14837,6 @@ SYM-AXIOM-INSTALL
    mode CHECKER-PACKAGE-NONE =  CHECKER-QPKG$ pkg pkgu CORE-STR=CI 0=  or IF
       0 RES-FALSE EXIT
    THEN
-   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
-      dup USIG-NEWEST-VISIBLE 0 <> IF RES-TRUE EXIT THEN
-   THEN drop
    CHECKER-QTAIL$ ENGINE-WORD-SYM ;
 
 : TOP-PUBLIC-BIND? ( -- bool )
@@ -23442,6 +23465,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ The name is written after the scan, so the token buffers are sized for it
 \ first: growing them afterwards would drop the refused token being reported.
+\ A clause that certifies or is left to the run gets its record in a replay,
+\ as the engine's `does>` makes one (CHECKER-OVERLAY:CLAUSE).
 : CHECKER-SOURCE-DOES! ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n sa:ptr su:n na:ptr nu:n :}
    WRITE-WINDOW-CK
@@ -23458,7 +23483,9 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    pu0 NAV-PUBLISH                     \ the clause's uses, its resolved prefix if it stopped
    DOES-EFF-CLEAR
    rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
-   SRC-DOES-VERDICT @ na nu DOES-REPORT ;
+   SRC-DOES-VERDICT @ {: v:n :}
+   v -1 =  v 2 =  or IF na nu DOES-CLAUSE:SUFFIX$ CHECKER-OVERLAY:CLAUSE THEN
+   v na nu DOES-REPORT ;
 
 \ The pre-pass's question about a top-level token (src/habu/verify-source.f
 \ TOP-TOKEN): TOP-ANSWER's answer. A using refusal leaves the token's walk by

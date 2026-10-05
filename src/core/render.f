@@ -1362,8 +1362,8 @@ REC-SIG-INSTALL
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
 \ The used packages a bare token resolves in: the used-scan slots the checker's
-\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK, CHECKER-USED-SYM), in the
-\ order the using scan reads them, each package once however often it is used.
+\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK), in the order the using
+\ scan reads them, each package once however often it is used.
 : UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
    1 swap lshift CK-USED-MASK @ and 0 <> ;
 : UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
