@@ -14,6 +14,16 @@ require lib/object-link.f
 require tools/object-image.f
 
 package OBJIMG-TEST
+: LOAD-EXIT ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" tools/object-image-test-x64.f" required exit
+   then
+   s" tools/object-image-test-arm.f" required ;
+' LOAD-EXIT
+;package
+execute
+
+package OBJIMG-TEST
 using OBJ
 using OBJIMG
 
@@ -39,6 +49,14 @@ DYNAMIC-BUFFER PADDING n
 : HASH$ ( -- ptr u8 n )
    s" abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" ;
 
+: TARGET$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" host-x86-64" exit then
+   s" host-aarch64" ;
+
+: COMPILER$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" hb-x86-64-v1" exit then
+   s" hb-arm64-v1" ;
+
 : COPY-PATH ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    a dst u BYTE-COPY
    u up ! ;
@@ -52,13 +70,10 @@ DYNAMIC-BUFFER PADDING n
 : BUILD-EXIT-OBJ ( -- )
    OBJ:RESET
    HASH$ SOURCE!
-   s" host-aarch64" TARGET!
+   TARGET$ TARGET!
    s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER!
-   ASM-INIT
-   0 0 MOVZ,
-   NR-EXIT-GROUP SYS,
-   CODE ASM-LEN TEXT+
+   COMPILER$ COMPILER!
+   EXIT-TEXT
    s" MAIN" s" --" EXPORT+
    s" MAIN" 0 s" --" DEF+ ;
 
@@ -99,9 +114,9 @@ DYNAMIC-BUFFER PADDING n
 : EMPTY-FAILS ( -- )
    OBJ:RESET
    HASH$ SOURCE!
-   s" host-aarch64" TARGET!
+   TARGET$ TARGET!
    s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER!
+   COMPILER$ COMPILER!
    OBJIMG:RESET
    ADD
    [: EXE$ OBJIMG:WRITE ;] E-OBJ-SCHEMA TTHROWSQ ;
