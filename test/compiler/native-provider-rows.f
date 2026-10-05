@@ -1,6 +1,6 @@
 \ Published named rows stay reusable after quotation inference.
-\ Tier-neutral by design: each subject is compiled in a child this file runs at
-\ both tiers, so the tier of this row selects nothing.
+\ Each child selects its provider and caller tiers. ARM runs both tiers; the
+\ x86-64 engine runs the native tier only.
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -52,6 +52,9 @@ variable EXITED
 : TIER ( n -- )
    0= if s" 0 set-tier " else s" 1 set-tier " then APPEND ;
 
+: FIRST-TIER ( -- n )
+   HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
+
 : SOURCE! ( ptr u8 n n n -- ) {: src:ptr u:n provider:n caller:n :}
    0 SRC-U !
    provider TIER PROVIDERS$ APPEND
@@ -89,7 +92,7 @@ variable EXITED
 \ making an underdepth call. The query boundary alone needs trusted access.
 : MINIMUM ( n -- )
    s" verified input cells reach both the effect and the interpret guard" T-LABEL
-   S\" TRUSTED: ROW-MINIMUM ( ptr u8 n -- )\n   2dup XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then\n   2dup SIG-MIN-IN .\n   EFFECT-QUERY if EFFECT-DIN-CELLS . else -1 . then ;\ns\" PR:RB1\" ROW-MINIMUM s\" PR:RB3\" ROW-MINIMUM\n" rot 0 RUN-PRIVATE
+   S\" TRUSTED: ROW-MINIMUM ( ptr u8 n -- )\n   2dup XREF-FIND dup XREF-FOUND? if XREF-FLAGS 52 rshift $FF and . else drop -1 . then\n   2dup SIG-MIN-IN .\n   EFFECT-QUERY if EFFECT-DIN-CELLS . else -1 . then ;\ns\" PR:RB1\" ROW-MINIMUM s\" PR:RB3\" ROW-MINIMUM\n" rot FIRST-TIER RUN-PRIVATE
    0 EXPECT-RC ERR-U @ 0 T=
    OUT$ S\" 1\n1\n1\n1\n1\n1\n" STR= TTRUE ;
 
@@ -123,11 +126,11 @@ public
    T-RESET
    CLEANUP-RESET
    s" native-provider-rows" WHITEBOX-CHILD:PROVIDE
-   2 0 do
-      2 0 do j i POSITIVE j i NEGATIVE loop
+   2 FIRST-TIER ?do
+      2 FIRST-TIER ?do j i POSITIVE j i NEGATIVE loop
       i MINIMUM
    loop
-   JIT-DEFINER
+   HB-TARGET-LINUX-X86-64? 0= if JIT-DEFINER then
    CLEANUP-RUN
    T-REPORT ;
 

@@ -12,6 +12,7 @@ require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
+require src/arch/x86-64/disasm.f
 require test/compiler/native-match-layout.f
 require lib/tier.f
 
@@ -593,12 +594,36 @@ TRUSTED: CODE-WORD@ ( n -- n )
 
 : CODE-INSNS ( -- n ) CODE-LEN @ INSN-BYTES / ;
 
+\ Count complete x86-64 instructions so a branch byte inside an immediate
+\ cannot satisfy the dispatch shape. FLOW-END also names UD2; only C3 is a RET.
+variable X-AT
+variable X-COND
+variable X-RET
+variable X-TRAP
+
+: X-CODE-COUNTS ( -- n n n )
+   CODE-BASE @ X-AT !
+   0 X-COND !  0 X-RET !  0 X-TRAP !
+   NTRAP:ROUTINE {: trap:n :}
+   begin X-AT @ CODE-BASE @ CODE-LEN @ + < while
+      X-AT @ XREF-N>U8 CODE-BASE @ CODE-LEN @ + X-AT @ - X-AT @ X64DIS:STEP
+      {: bytes:n kind:n target:n :}
+      kind X64DIS:FLOW-COND = if 1 X-COND +! then
+      kind X64DIS:FLOW-END =
+      X-AT @ XREF-N>U8 c@ $C3 = and if 1 X-RET +! then
+      kind X64DIS:FLOW-CALL = target trap = and if 1 X-TRAP +! then
+      bytes X-AT +!
+   repeat
+   X-COND @ X-RET @ X-TRAP @ ;
+
 : CODE-BRANCHES? ( -- bool )
+   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS 2drop 0 > exit then
    CODE-INSNS 0 ?do
       i CODE-WORD@ NBR:COND? if true unloop exit then
    loop false ;
 
 : CODE-RETURNS ( -- n )
+   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS drop nip exit then
    0 CODE-INSNS 0 ?do
       i CODE-WORD@ NBR:RET? if 1+ then
    loop ;
@@ -608,6 +633,7 @@ TRUSTED: CODE-WORD@ ( n -- n )
    CODE-BASE @ k INSN-BYTES * + k CODE-WORD@ NBR:BL-TARGET t = ;
 
 : TRAP-BRANCHES ( -- n )
+   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS nip nip exit then
    NTRAP:ROUTINE {: t:n :}
    0
    CODE-INSNS 0 ?do
@@ -839,8 +865,13 @@ CAPTURE-NATIVE-EMISSION
    EMIT-TRAPS @ 1 T=
 
    s" dispatch code stays bounded and grows with its arm count" T-LABEL
-   UNW-SIZE @ 128 < TTRUE
-   QUAD-SIZE @ 184 < TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      UNW-SIZE @ 256 < TTRUE
+      QUAD-SIZE @ 384 < TTRUE
+   else
+      UNW-SIZE @ 128 < TTRUE
+      QUAD-SIZE @ 184 < TTRUE
+   then
    QUAD-SIZE @ UNW-SIZE @ > TTRUE ;
 
 \ ---- hostile tag ------------------------------------------------------------

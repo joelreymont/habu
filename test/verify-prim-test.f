@@ -19,6 +19,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
 require lib/test/outcome.f
+require test/suite-budget.f
 require test/whitebox-child.f
 require src/habu/verify-source.f
 
@@ -532,8 +533,9 @@ variable ROOT-U
    CHILD-OUT outn LEN>N s" " T$=
    CHILD-ERR errn LEN>N s" " T$= ;
 
+\ The cold child reloads the full checker prefix before it reads the corpus.
 : EXPECT-COLD-OK ( ptr u8 len -- )
-   CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP CHILD-TIMEOUT RUN-COLD-CHILD
+   CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP SUITE-BUDGET:CHILD-MS >MS RUN-COLD-CHILD
    {: outn:len errn:len code:n :}
    code 0 T=
    CHILD-OUT outn LEN>N S\" window: 0\n" T$=
