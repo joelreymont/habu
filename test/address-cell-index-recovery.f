@@ -29,7 +29,6 @@ DYNAMIC-BUFFER SAVED-STORAGE n
       SLOTS i cells + ptr-cell-mark
    loop
    MODE-FIELD HEADER@ 1 T=
-   INDEX@ 0<> TTRUE
    here data-base - BEFORE-DP !
    COUNT dup BEFORE-N ! SAVED-STORAGE-RESERVE
    COUNT 0 ?do i ROW@ SAVED i cells + ! loop
@@ -40,11 +39,12 @@ DYNAMIC-BUFFER SAVED-STORAGE n
    BEFORE-CAP @ cells {: bytes:n :}
    \ PERSIST's whole-DATA span is valid, but allot must protect the profiler
    \ band at the DATA tail. The refusal arrives through the real evaluator.
-   DATA-SIZE bytes - here data-base - - allot
+   DATA-SIZE PROF-CNT-BYTES - bytes - CELL + {: limit:n :}
+   limit here data-base - - allot
    [: TRY-PERSIST ;] catch 76 T=
    LOCK@ 0 T=
    LOCK@ 0<> if s" address-cell-index: caught throw retained mutex" 76 die then
-   here data-base - DATA-SIZE bytes - T=
+   here data-base - limit T=
    BEFORE-DP @ here data-base - - allot ;
 
 : CHECK-UNCHANGED ( -- )
