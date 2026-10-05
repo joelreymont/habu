@@ -78,6 +78,16 @@ TLPX-FETCH4 1 T= 93 T= 92 T= 91 T=
 TLPX-DUP 1 T= 7 T= 1 T= 7 T=
 : TLPX-DROP ( -- n ) 5 TLP-MK2 drop ;
 TLPX-DROP 5 T=
+\ A trusted body consumes the four physical cells of a declared layout.
+\ The ordinary caller's scalar beneath it must remain intact.
+TRUSTED: TLPX-TRUST-FREE ( n tlp-mix<n,n> -- n ) 2drop 2drop ;
+: TLPX-TRUST-CALL ( -- n ) 37 TLP-MK4 TLPX-TRUST-FREE ;
+TLPX-TRUST-CALL 37 T=
+\ A checked does> clause keeps value grouping even when its creator is trusted.
+TRUSTED: TLPX-MAKER ( -- ) create does> ( tlp-res<n,n> -- ) drop drop ;
+TLPX-MAKER TLPX-CHILD
+: TLPX-DOES-CALL ( -- n ) 39 TLP-MK2 TLPX-CHILD ;
+TLPX-DOES-CALL 39 T=
 : TLPX-SWAP ( -- n n n ) TLP-MK2 5 swap {: s:n r :} s r TLP-UN2 ;
 TLPX-SWAP 1 T= 7 T= 5 T=
 : TLPX-OVER ( -- n n n n n ) TLP-MK2 5 over {: r1 s:n r2 :} r1 TLP-UN2 s r2 TLP-UN2 ;
