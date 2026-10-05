@@ -2103,18 +2103,22 @@ variable USE-NODE                       \ the use line USE-FROM found
 \ global binds once the using closes.
 : USES-REFUSED ( -- )
    0 GEN-U !
-   s\" package CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n;package\n" GEN+
+   s\" package CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n: CVT-SLOT ( -- n ) 5 ;\n;package\n" GEN+
    s\" package CVT-RB\npublic\n: CVT-SAME ( -- n ) 3 ;\n;package\n: CVT-SHADOW ( -- n ) 4 ;\n" GEN+
    s\" using CVT-RA\nusing CVT-RB\n: CVT-AMBIG ( -- n ) CVT-SAME ;\n;using\n;using\n" GEN+
-   s\" using CVT-RA\n: CVT-SHADOWED ( -- n ) CVT-SHADOW ;\n;using\n" GEN+
-   s\" : CVT-UNKNOWN ( -- n ) CVT-NOWHERE ;\n: CVT-AFTER ( -- n ) CVT-SHADOW ;\n" GEN+
+   s\" defer CVT-SLOT ( -- n )\nusing CVT-RA\n: CVT-SHADOWED ( -- n ) CVT-SHADOW ;\n: CVT-TICK ( -- ) ['] CVT-SHADOW drop ;\n: CVT-IS ( [ -- n ] -- ) is CVT-SLOT ;\n;using\n" GEN+
+   s\" : CVT-UNKNOWN ( -- n ) CVT-NOWHERE ;\n: CVT-AFTER ( -- n ) CVT-SHADOW ;\n: CVT-IS-AFTER ( [ -- n ] -- ) is CVT-SLOT ;\n" GEN+
    s" uses-refused.f" DEFS-CHECK 1 s" uses-refused: refused" EXPECT-KIND
    s" uses-refused: ambiguous" s" CVT-AMBIG ( -- n ) CVT-SAME" 8 NO-USE
    s" uses-refused: shadowed" s" CVT-SHADOWED ( -- n ) CVT-SHADOW" 10 NO-USE
+   s" uses-refused: tick target" s" CVT-TICK ( -- ) ['] CVT-SHADOW" 10 NO-USE
+   s" uses-refused: is target" s" CVT-IS ( [ -- n ] -- ) is CVT-SLOT" 8 NO-USE
    s" uses-refused: undefined" s" CVT-NOWHERE" 11 NO-USE
    s" uses-refused: the global after" s" CVT-AFTER ( -- n ) CVT-SHADOW" 10 USE
    s" uses-refused: the global after" DEFS-SRC$ s\" ;package\n: CVT-SHADOW" 10 s" uses-refused.f" USE-TARGET
-   s" uses-refused: one line" 1 USE-COUNT ;
+   s" uses-refused: is after" s" CVT-IS-AFTER ( [ -- n ] -- ) is CVT-SLOT" 8 USE
+   s" uses-refused: is after" DEFS-SRC$ s" defer CVT-SLOT" 8 s" uses-refused.f" USE-TARGET
+   s" uses-refused: two lines" 2 USE-COUNT ;
 
 
 \ A use binds the declaration visible where it stands: the first before
