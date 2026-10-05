@@ -34,9 +34,11 @@ require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
 require src/arch/wasm/link.f
+require test/wasm/w03.f
 
 package WASM-LINK-TEST
 private
+using WASM-W03
 
 \ ---- the module under test -----------------------------------------------------
 1 constant S-TYPE
@@ -136,41 +138,8 @@ TYPED-VARIABLE WANT-U len
 $7FFFFFFFFFFFFFFF constant MAX-N
 
 \ ---- bodies ----------------------------------------------------------------------
-\ A body is a code entry less its size: no local declared, the code, its end.
-$100 constant BODY-CAP
-BODY-CAP BUFFER: BODY-BUF
-variable BODY-U
-
-: B, ( n -- )
-   BODY-BUF BODY-U @ + c!  1 BODY-U +! ;
-
-: ROOM ( -- SPAN:span<u8> )
-   BODY-BUF BODY-U @ +  BODY-CAP BODY-U @ -  SPAN:MAKE ;
-
-: PAD5, ( n -- )    ROOM WLEB:U32-PAD! BODY-U +! ;
+\ RET-BODY and CALL-BODY build a body in WASM-W03's buffer, test/wasm/w03.f.
 : PAD10, ( n -- )   ROOM WLEB:S64-PAD! BODY-U +! ;
-
-: BODY$ ( -- ptr u8 n )  BODY-BUF BODY-U @ ;
-
-\ i32.const tag, then out zero lanes: a body of any lanes in.
-: RET-BODY ( n n -- )
-   {: tag:n out:n :}
-   0 BODY-U !
-   0 B,  $41 B, tag B,
-   out 0 ?do  $42 B, 0 B,  loop
-   $0B B, ;
-
-\ ctx and in zero lanes, a call of index v answering out lanes, which are
-\ dropped to its status, then mine zero lanes. The field is at 4 + 2 in.
-: CALL-BODY ( n n n n -- )
-   {: in:n out:n mine:n v:n :}
-   0 BODY-U !
-   0 B,  $20 B, 0 B,
-   in 0 ?do  $42 B, 0 B,  loop
-   $10 B, v PAD5,
-   out 0 ?do  $1A B,  loop
-   mine 0 ?do  $42 B, 0 B,  loop
-   $0B B, ;
 
 \ i64.const v dropped, then status 0. The field is at 2.
 : ADDR-BODY ( n -- )
@@ -318,21 +287,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    S-MEMORY SECTION$ s" 01010505" T$= ;
 
 \ ---- W03 --------------------------------------------------------------------------
-\ Captured functions 0..134 take k mod 17 lanes in and answer k / 17 out, each
-\ type its own; each calls the next. Adapter 135, of no lanes, calls 0.
-135 constant CHAIN
-
-: IN-K ( n -- n )   17 mod ;
-: OUT-K ( n -- n )  17 / ;
-
-\ Function k's body, its call field holding v.
-: CHAIN-BODY ( n n -- )
-   {: k:n v:n :}
-   k 1+ CHAIN < if
-      k 1+ IN-K  k 1+ OUT-K  k OUT-K  v CALL-BODY
-   else
-      0 k OUT-K RET-BODY
-   then ;
+\ WASM-W03:BUILD's module, test/wasm/w03.f.
 
 \ Function k's body in the module is as added, its field holding k + 1.
 : CHAIN-OK? ( n -- bool )
@@ -348,11 +303,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    s" 87010b" W+ ;
 
 : W03-ROW ( -- )
-   WLINK:RESET
-   CHAIN 0 do  i 0 CHAIN-BODY  i IN-K i OUT-K 0 WLINK-ORIGIN:CAPTURED ADD drop  loop
-   0 0 0 0 CALL-BODY  0 0 0 WLINK-ORIGIN:ADAPTER ADD drop
-   CHAIN 1- 0 do  i  i 1+ IN-K 2 * 4 +  i 1+  WLINK:CALL+  loop
-   CHAIN 4 0 WLINK:CALL+
+   BUILD
    CHAIN LINKED
    s" W03: the sections walk out to the module's end" T-LABEL
    IDS @ $1357AB T=
