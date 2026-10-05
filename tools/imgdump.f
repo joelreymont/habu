@@ -240,11 +240,28 @@ private
    \ A text pointer in the payload is canonical: the writer rebased it to 0.
    p 0 >=  p ROFF @ CODE-OFF - < and if p CODE-OFF + exit then
    -1 ;
-: E-NAME-OFF {: o :} ( n -- n )
-   o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
-: E-NAME {: o :} ( n -- ptr u8 )
-   o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
-   dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
+\ EMIT-DICT stores external names __text-relative in a baked image; a
+\ snapshot instead stores rebased pointers that PTR>OFF maps into the file.
+: E-NAME-OFF ( n -- n )
+   {: o:n :}
+   o E-F DNAME-EXT and 0= if o 24 + else
+      o 24 + I@ {: raw:n :}
+      HAS-SNAP @ if raw PTR>OFF else
+         \ The baked cell is text-relative. Prove the raw offset fits before
+         \ rebasing it; a negative value can otherwise land in the file header.
+         raw 0 < if -1 exit then
+         CODE-OFF IL @ > if -1 exit then
+         raw IL @ CODE-OFF - > if -1 exit then
+         raw CODE-OFF +
+      then
+   then {: off:n :}
+   off 0 < if -1 exit then
+   off IL @ > if -1 exit then
+   o E-L IL @ off - > if -1 exit then
+   off ;
+: E-NAME ( n -- ptr u8 n )
+   {: o:n :}
+   o E-NAME-OFF dup 0 < if s" imgdump: name out of range" 74 die then
    IB@ +  o E-L ;
 \ AN EMPTY NAME IS A RECORD, NOT A CORRUPTION. habu-ship-no-dictionary-2fee2dea
 \ shipped a record with an empty pool entry for every word nothing can ask for
@@ -254,7 +271,8 @@ private
 \ two does. So the length floor here stays 0: it is what a dump of one of those
 \ engines walks over, and refusing it reported a shipped format as a broken
 \ file. A name length is a record field, not a plausibility test.
-: ENT? {: o :} ( n -- bool )
+: ENT? ( n -- bool )
+   {: o:n :}
    o E-CODE? if
       o E-S 0 <= if IMG-FALSE exit then
       HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
@@ -264,8 +282,7 @@ private
    then
    o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span
    o E-L 0 < if IMG-FALSE exit then
-   o E-NAME-OFF dup 0 < if drop 0 0= 0= exit then
-   dup o E-L + IL @ > if drop 0 0= 0= exit then
+   o E-NAME-OFF dup 0 < if drop IMG-FALSE exit then
    IB@ +  o E-L PRN? ;
 
 \ The SCAN still needs a name. An image with no snapshot trailer has no header
