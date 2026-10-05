@@ -181,6 +181,11 @@ TRUSTED: MULTI-ERROR? ( -- bool )
    dup 0= if drop MULTI-ERR? exit then
    AS-BOOL execute ;
 
+TRUSTED: RECOVERY-USED? ( -- bool )
+   NCOMP-DISPATCH:DECL-RECOVERY-USED-OFF s" recovery use" FIELD
+   dup 0= if drop CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? exit then
+   AS-BOOL execute ;
+
 : TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then

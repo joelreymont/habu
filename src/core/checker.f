@@ -128,6 +128,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
    0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -145,7 +146,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:JSON-REPORTED-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:RECOVERY-USED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -9565,6 +9566,14 @@ variable PRM-FIRST
    off1 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF 0 EXIT THEN
    sym ;
 
+\ A refused declaration is available only to the current multi-error run's
+\ checker walk. It never becomes an engine binding or an executable source row.
+: RECOVERY-LIVE ( n -- n )
+   {: sym:n :}
+   sym SYM-VISIBLE 0= IF 0 EXIT THEN
+   sym USIG-NEWEST-VISIBLE dup 0= IF drop 0 EXIT THEN
+   1 - E-PTR RECOVERY-ROW? IF sym ELSE 0 THEN ;
+
 \ A source `undefine` is stronger than a stale engine wordlist entry. The
 \ visible newest record decides, so a later declaration makes the name live.
 : SYM-DELETED? ( n -- bool )
@@ -10700,14 +10709,16 @@ package CHECKER-REG
 \ all: neither is a candidate nor a cause of ambiguity. Every slot that matched
 \ is marked in CK-USED-MASK, so a using refusal names each package the token
 \ resolves in.
-: CHECKER-USED-SYM ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+: CHECKER-USED-SYM-WITH ( ptr u8 n bool -- n )
+   {: a:ptr u:n recovery:bool :}
    0 CK-USED-FOUND !
    -1 CK-USED-SLOT !
    0 CK-USED-MASK !
    0 CHECKER-USE:WHY !
    CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-LIVE ELSE drop 0 THEN
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF
+         recovery IF RECOVERY-LIVE ELSE SYM-LIVE THEN
+      ELSE drop 0 THEN
       dup 0 <> IF                                            ( -- sym )
          1 i lshift CK-USED-MASK @ or CK-USED-MASK !
          CK-USED-FOUND @ 0= IF
@@ -10720,6 +10731,8 @@ package CHECKER-REG
       ELSE drop THEN
    LOOP
    CK-USED-FOUND @ ;
+
+: CHECKER-USED-SYM ( ptr u8 n -- n ) RES-FALSE CHECKER-USED-SYM-WITH ;
 
 \ --- global-vs-used-public shadow rejection (dot habu-err-on-global-e62f806c).
 \ Resolution order puts the open-scope + global wordlist ahead of the used
@@ -10818,11 +10831,13 @@ variable DEF-REFUSAL
 \ when no used public exports the tail. E-USING-AMBIGUOUS, when TWO used
 \ publics also match, is answered first, so the pre-existing rule keeps
 \ precedence.
-: CHECKER-USED-SHADOW ( ptr u8 n n -- n ) {: a:ptr u:n gsym:n :}
-   a u CHECKER-USED-SYM {: usym:n :}
+: CHECKER-USED-SHADOW-WITH ( ptr u8 n n bool -- n ) {: a:ptr u:n gsym:n recovery:bool :}
+   a u recovery CHECKER-USED-SYM-WITH {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 EXIT THEN
    gsym usym CK-USED-SLOT @ CK-SHADOW-CAPTURE ;
+
+: CHECKER-USED-SHADOW ( ptr u8 n n -- n ) RES-FALSE CHECKER-USED-SHADOW-WITH ;
 
 \ --- one resolver for the used-publics leg (dot habu-reject-a-bare-1f43a9a6) ---
 \ The checker and the engine each walk the same scope chain — open package
@@ -10861,12 +10876,15 @@ variable DEF-REFUSAL
 
 \ The leg answers the bound symbol and the refusal, 0 when there is none, as
 \ CHECKER-USED-SHADOW does; the symbol is 0 under a refusal.
-: CHECKER-USED-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-USED-SYM {: usym:n :}
+: CHECKER-USED-BIND-WITH ( ptr u8 n bool -- n n ) {: a:ptr u:n recovery:bool :}
+   a u recovery CHECKER-USED-SYM-WITH {: usym:n :}
    CHECKER-USE:WHY @ 0 <> IF 0 CHECKER-USE:WHY @ EXIT THEN
    usym 0= IF 0 0 EXIT THEN
+   recovery IF usym 0 EXIT THEN
    a u GLOBAL-BOUND? IF 0  a u 0 CHECKER-USED-SHADOW EXIT THEN
    usym 0 ;
+
+: CHECKER-USED-BIND ( ptr u8 n -- n n ) RES-FALSE CHECKER-USED-BIND-WITH ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
 \ predicates live in type-family.f (loads later) and install into these friend
@@ -11457,6 +11475,31 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
 \ length no name has) binds nothing in either binder: the engine never binds
 \ it, and neither the pending row nor the lookup reads it.
+: SCOPE-LIVE ( n bool -- n )
+   IF RECOVERY-LIVE ELSE SYM-LIVE THEN ;
+
+\ Replay and diagnostic recovery walk the same checker scope. The latter admits
+\ only tagged facts from this multi-error run, so an ordinary bodiless row
+\ cannot mask a later eligible public or invent a using ambiguity.
+: CHECKER-SCOPE-BIND ( ptr u8 n bool -- n n ) {: a:ptr u:n recovery:bool :}
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? recovery SCOPE-LIVE 0 EXIT
+   THEN
+   CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
+   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
+   {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? recovery SCOPE-LIVE dup 0 <> IF 0 EXIT THEN drop
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? recovery SCOPE-LIVE dup 0 <> IF 0 EXIT THEN drop
+   THEN
+   a u CHECKER-GLOBAL-SYM? recovery SCOPE-LIVE dup 0 <> IF
+      dup >r a u r> recovery CHECKER-USED-SHADOW-WITH EXIT
+   THEN drop
+   a u recovery CHECKER-USED-BIND-WITH ;
+
+: REPLAY-BIND ( ptr u8 n -- n n ) RES-FALSE CHECKER-SCOPE-BIND ;
+: RECOVERY-BIND ( ptr u8 n -- n n ) RES-TRUE CHECKER-SCOPE-BIND ;
+
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
@@ -11469,6 +11512,9 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
+      a u RECOVERY-BIND {: recovery:n why:n :}
+      why 0 <> IF 0 why EXIT THEN
+      recovery 0 <> IF recovery 0 EXIT THEN
       a u CHECKER-QUALIFIED? IF 0 0 EXIT THEN
       a u CK-AXIOM-SYM 0 EXIT
    THEN
@@ -11482,21 +11528,6 @@ TRUSTED: SCOPE-WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
       THEN
    THEN
    sym 0 ;
-
-: REPLAY-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? SYM-LIVE 0 EXIT THEN
-   CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-   CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
-   {: pkg:ptr pkgu:n mode:n :}
-   mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-LIVE dup 0 <> IF 0 EXIT THEN drop
-   THEN
-   a u CHECKER-GLOBAL-SYM? SYM-LIVE dup 0 <> IF
-      dup >r a u r> CHECKER-USED-SHADOW      \ refuses if a live used public also exports this bare tail
-      EXIT
-   THEN drop
-   a u CHECKER-USED-BIND ;                   \ engine-authoritative: no global may claim the tail
 
 package CHECKER-RESOLVE
 public
@@ -23422,6 +23453,7 @@ package CHECKER-REG
 ' MULTI-ERR? DECLARATIONS CHECKER-OWNER-ABI:MULTI-ERROR-OFF + xt!
 ' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
 ' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
+' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero
