@@ -12,10 +12,16 @@ package CHECKER-UNIT-CODEC-TEST
 
 $40000 constant ART-CAP
 7159 constant E-UNIT-FORMAT   \ src/core/checker.f CHECKER-REG's, private there
+7160 constant E-UNIT-STATE
 create ART ART-CAP allot
 create BAD ART-CAP allot
 variable ART-U
 variable ART-I
+variable MARK-SERIAL
+variable BASE-SERIAL
+PTR-VARIABLE SAVED-OWNER
+variable SAVED-SERIAL
+variable SAVED-REGIME
 create ROOT FS-PATH-CAP allot
 variable ROOT-U
 create PATH FS-PATH-CAP allot
@@ -34,7 +40,7 @@ TRUSTED: IMPORT ( ptr u8 n -- )
 
 TRUSTED: RESET-SOURCE ( -- ) CHECKER-RESET-SOURCE ;
 TRUSTED: LOAD-UNIT ( -- )
-   s" package UNIT-NBR public : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate ;
+   s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate ;
 TRUSTED: SHADOW ( -- )
    s" package UNIT-NBR public : UNIT-SHADOW ( n -- n ) 1+ ; undefine UNIT-SHADOW : UNIT-SHADOW ( n n -- n ) + ; ;package" evaluate ;
 TRUSTED: CLIENT ( -- n )
@@ -42,12 +48,26 @@ TRUSTED: CLIENT ( -- n )
 TRUSTED: DEFER-CHANGE ( -- )
    s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate ;
 
+: SERIAL ( -- n )
+   CHECKER-OWNER:BINDING-WINDOW {: owner:ptr serial:n regime:bool :}
+   serial ;
+
+: SAVE-WINDOW ( -- )
+   CHECKER-OWNER:BINDING-WINDOW
+   SAVED-REGIME ! SAVED-SERIAL ! SAVED-OWNER ! ;
+
+: CHECK-STALE ( -- )
+   [: SAVED-OWNER @ SAVED-SERIAL @ SAVED-REGIME @
+      CHECKER-OWNER:BINDING-WINDOW-CK ;]
+   CHECKER-OWNER-ABI:BINDING-RC TTHROWSQ ;
+
 : SAVE ( -- )
    UNIT-EXPORT {: a:ptr u:n :}
    u ART-CAP <= TTRUE
    a ART u BYTE-COPY
    u ART-U !
-   ART 4 cells + CELL-VIEW @ 8 T=
+   ART 4 cells + CELL-VIEW @ 10 T=
+   ART 6 cells + CELL-VIEW @ SERIAL MARK-SERIAL @ - T=
    s" checker-unit-codec-e2e" HB-TMP-MKDIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-U !
    ROOT$ s" unit-nbr.checker-unit" PATH JOIN-PATH
@@ -61,11 +81,22 @@ TRUSTED: DEFER-CHANGE ( -- )
    s" UNIT-SCHEME ( forall<q,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-SCHEME" CHECK-CANDIDATE! -1 T=
    s" UNIT-INFER ( forall<s,[ R n -- R n | U -- U ]> -- ) UNIT-NBR:BL-INFER" CHECK-CANDIDATE! -1 T= ;
 
-\ The wire header has six cells. Each symbol has a visibility cell and two
+\ The wire header has seven cells. Each symbol has a visibility cell and two
 \ length-prefixed, cell-aligned strings; an effect begins with three cells.
 : STRING-END ( n -- n ) dup ART + CELL-VIEW @ 7 + -8 and + CELL + ;
+: NAME-OFF ( n -- n )
+   {: idx:n :}
+   7 cells ART-I !
+   idx 0 ?do
+      CELL ART-I +!
+      ART-I @ STRING-END ART-I !
+      ART-I @ STRING-END ART-I !
+   loop
+   CELL ART-I +!
+   ART-I @ STRING-END ART-I !
+   ART-I @ CELL + ;
 : FIRST-GRAPH-OFF ( -- n )
-   6 cells ART-I !
+   7 cells ART-I !
    ART 3 cells + CELL-VIEW @ 0 ?do
       CELL ART-I +!
       ART-I @ STRING-END ART-I !
@@ -103,12 +134,52 @@ TRUSTED: DEFER-CHANGE ( -- )
    dup @ $10000 or swap !
    [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
 
+: CHECK-FAILED-IMPORTS ( -- )
+   SERIAL BASE-SERIAL !
+   ART BAD ART-U @ BYTE-COPY
+   1 BAD CELL + CELL-VIEW !
+   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T=
+   ART BAD ART-U @ BYTE-COPY
+   6 cells BAD 2 cells + CELL-VIEW !
+   [: BAD 6 cells IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T=
+   ART BAD ART-U @ BYTE-COPY
+   -1 BAD 6 cells + CELL-VIEW !
+   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T=
+   ART BAD ART-U @ BYTE-COPY
+   0 NAME-OFF {: first:n :}
+   1 NAME-OFF {: second:n :}
+   ART first CELL - + CELL-VIEW @
+      ART second CELL - + CELL-VIEW @ T=
+   ART first + BAD second + ART first CELL - + CELL-VIEW @ BYTE-COPY
+   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   SERIAL BASE-SERIAL @ T= ;
+
+: CHECK-BOUNDARIES ( -- )
+   RESET-SOURCE MARK
+   SERIAL BASE-SERIAL !
+   ART BAD ART-U @ BYTE-COPY
+   0 BAD 6 cells + CELL-VIEW !
+   BAD ART-U @ IMPORT
+   SERIAL BASE-SERIAL @ T=
+   RESET-SOURCE MARK
+   SERIAL BASE-SERIAL !
+   ART BAD ART-U @ BYTE-COPY
+   $8000000000000000 BAD 6 cells + CELL-VIEW !
+   BAD ART-U @ IMPORT
+   SERIAL BASE-SERIAL @ $8000000000000000 + T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    s" ordered package checker facts import into source-fresh checker" T-LABEL
-   MARK LOAD-UNIT SHADOW SAVE
+   MARK SERIAL MARK-SERIAL !
+   LOAD-UNIT SHADOW
+   s" UNIT-EXTRA ( -- n ) UNIT-NBR:BL-ALPHA" CHECK-CANDIDATE! -1 T=
+   SAVE
    RESET-SOURCE
    MARK
    s" imported unit refuses defer graph metadata" T-LABEL
@@ -117,11 +188,22 @@ public
    CHECK-ROOT-GRAPH
    s" imported unit refuses defer control metadata" T-LABEL
    CHECK-DEFER-CONTROL
+   s" failed imports preserve the binding serial" T-LABEL
+   CHECK-FAILED-IMPORTS
+   SAVE-WINDOW
+   SERIAL BASE-SERIAL !
    ART ART-U @ IMPORT
+   SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
+   CHECK-STALE
+   s" a consumed mark cannot reserve twice" T-LABEL
+   [: ART ART-U @ IMPORT ;] E-UNIT-STATE TTHROWSQ
+   SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
    CHECK-CLIENT
    s" unit exporter refuses changed defer state" T-LABEL
    MARK DEFER-CHANGE
    [: UNIT-EXPORT 2drop ;] catch 0<> TTRUE
+   s" zero and sign-bit deltas retain full cell semantics" T-LABEL
+   CHECK-BOUNDARIES
    T-REPORT
    s" checker unit artifact: " type ROOT$ type
    s" /unit-nbr.checker-unit" type cr ;
