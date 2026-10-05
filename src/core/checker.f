@@ -19346,8 +19346,9 @@ variable IS-PEND-U                   \ and its length
 \ The symbol the swallowed target names: its fold resolves, and the token as
 \ written names a refusal (CHECKER-BIND), so a raised shadow locates in the file.
 : IS-TARGET-SYM ( -- n )
-   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND
-   dup IS-TA@ IS-TU @ NAV-USE ;
+   TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND-WHY {: sym:n why:n :}
+   why 0= IF sym IS-TA@ IS-TU @ NAV-USE THEN
+   sym ;
 
 : IS-TOK ( -- )
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
