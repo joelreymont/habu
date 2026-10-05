@@ -555,10 +555,10 @@ the record `--all-errors` writes for a statement that throws, at the stop, so
 a language server publishes it with the packets before it. Any other closure
 the walk cannot follow is its record (above), and the verdict is `refused`. An
 empty PATH throws `E-FS-PATH`, and a failed spawn throws as well.
-Child output beyond the capture, 4 MiB on stdout or 256 KiB on stderr, kills
-the child and throws `E-PROC-TRUNCATED`, with every complete packet received
-before it in `CHECK:VERIFY-OUT$` and the stderr received in
-`CHECK:VERIFY-LOG$`.
+The child's stdout is kept whole, in storage that grows to what it writes.
+Its stderr beyond the capture, 256 KiB, kills the child and throws
+`E-PROC-TRUNCATED`, with every complete packet received before it in
+`CHECK:VERIFY-OUT$` and the stderr received in `CHECK:VERIFY-LOG$`.
 `tools/check-verify-test.f` prints what one check costs: about 50 ms for a
 one-definition file and 230 ms for `tools/check-core.f`, whose closure is over
 thirty files.

@@ -8,7 +8,8 @@
 \ check published, then the version, then 1 while it waits for a check, then 1
 \ while the slot holds a document.
 \ Closing a document frees its buffers and its slot, and an open takes the
-\ first free slot. A document is found by its URI's bytes.
+\ first free slot. A document is found by its URI's bytes, its path's or its
+\ canonical path's.
 \
 \ Opening or changing a document leaves it dirty, its text not yet checked.
 \ DOC-NEXT-DIRTY hands out the dirty documents slot after slot, wrapping round,
@@ -62,6 +63,16 @@ variable SLOT-COUNT
    SLOT-COUNT @
    1 SLOT-COUNT +! ;
 
+\ The slot of the open document whose buffer at this cell holds these bytes.
+: HOLDER ( ptr u8 n n -- option<n> )
+   {: a:ptr u:n at:n :}
+   SLOT-COUNT @ 0 ?do
+      i LIVE? if
+         i at BYTES$ a u STR= if i OPTION:SOME unloop exit then
+      then
+   loop
+   OPTION:NONE ;
+
 public
 
 \ The slots there are, live or not.
@@ -104,14 +115,14 @@ public
    OPTION:NONE ;
 
 \ The slot of the open document with this URI.
-: DOC-FIND ( ptr u8 n -- option<n> )
-   {: a:ptr u:n :}
-   SLOT-COUNT @ 0 ?do
-      i LIVE? if
-         i DOC-URI$ a u STR= if i OPTION:SOME unloop exit then
-      then
-   loop
-   OPTION:NONE ;
+: DOC-FIND ( ptr u8 n -- option<n> )  URI-AT HOLDER ;
+
+\ The slot of the open document holding the file the checker names by this
+\ path.
+: DOC-HOLDING ( ptr u8 n -- option<n> )  CANON-AT HOLDER ;
+
+\ The slot of the open document the client opened by this path.
+: DOC-OPENED-AS ( ptr u8 n -- option<n> )  PATH-AT HOLDER ;
 
 \ Closes the document in this slot.
 : DOC-CLOSE ( n -- )

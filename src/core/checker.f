@@ -9202,24 +9202,26 @@ variable ASIG-MISS-K
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
-: USIG-ADD-AS ( ptr u8 n ptr u8 n bool bool -- )
+\ It answers whether it retained the row: false after a refusal that returns
+\ (USIG-ADD-BAD), true once the effect and its text are stored.
+: USIG-ADD-AS ( ptr u8 n ptr u8 n bool bool -- bool )
    {: sa:ptr su:n na:ptr nu:n external:bool src:bool :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
-   SGBAD @ if sa su na nu src USIG-ADD-BAD exit then
+   SGBAD @ if sa su na nu src USIG-ADD-BAD RES-FALSE exit then
    \ An effect deeper than a record holds, or an input row too wide for its
    \ min-in field, is a stored signature no record can hold: refused as a bad
    \ one, by the bound it passes, the depth first as a definition's is.
    din dout rin rout ROWS-DEPTH {: depth:n :}
    depth EFFECT-DEPTH-MAX > if
       sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
-      sa su na nu src USIG-ADD-BAD exit
+      sa su na nu src USIG-ADD-BAD RES-FALSE exit
    then
    din ROW-CELLS {: width:n :}
    width EFFECT-MIN-IN-MAX > if
       sa su SGBAD-WIDTH-KIND width SGBAD-SIZE!
-      sa su na nu src USIG-ADD-BAD exit
+      sa su na nu src USIG-ADD-BAD RES-FALSE exit
    then
    \ This path records an asserted signature. Checked definitions publish their
    \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
@@ -9228,10 +9230,11 @@ variable ASIG-MISS-K
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF
       s" checker: asserted signature cannot publish a scope scheme" 76 die THEN
    din dout rin rout SGHASR @ external E-ADD-EFFECT
-   sa su CHECKER-ASIG-CAPTURE ;
+   sa su CHECKER-ASIG-CAPTURE
+   RES-TRUE ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- )
-   RES-TRUE RES-FALSE USIG-ADD-AS ;
+   RES-TRUE RES-FALSE USIG-ADD-AS drop ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -10242,10 +10245,12 @@ PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ pre-trust defer drain rather than written in source. The engine reaches it
 \ through its declaration record's cell, stage0 by name through LFIND, and
 \ source not at all: the word is sealed (REG-PROTECT at its definition). The
-\ axiom gives the native compiler the call window for the TRUSTED: front ends
-\ that register a definer's row (verify-source.f DECL-SIGNATURE, checker-owner.f
-\ DECLARED-EFFECT); UNSAFE-TOK? rejects `trust-decl` inside checked bodies
-\ exactly like `trust`, so the axiom adds no checked-code capability.
+\ axiom gives the native compiler the call window for the TRUSTED: front end
+\ that registers a definer's row (checker-owner.f DECLARED-EFFECT); the source
+\ verifier reaches TRUST-DECL? through its declaration owner instead
+\ (verify-source.f DECL-SIGNATURE). UNSAFE-TOK? rejects `trust-decl` inside
+\ checked bodies exactly like `trust`, so the axiom adds no checked-code
+\ capability.
 PRIM: TRUST-DECL PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ TRUST-RAW ( name$ effect$ -- ) is TRUST for a raw storage cell: same
 \ registration, every type variable in the effect minted TVK-RAW. The native
@@ -11401,6 +11406,16 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
    vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM? EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
+
+\ The identity a recording symbol was interned with: its package (empty for a
+\ global), the tail it was recorded under and its visibility (SYM-GLOBAL,
+\ SYM-PRIVATE or SYM-PUBLIC). The verifier shows the package with each
+\ definition it reports, and finds an export's own record under the recorded
+\ tail (src/habu/verify-source.f EXPORT-DEFINED). The spans are the symbol
+\ pool's, borrowed until the next intern can grow it.
+: CHECKER-SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
+   {: sym:n :}
+   sym SYM-PKG$ sym SYM-NAME$ sym SYM-ROW SYM.VIS @ ;
 
 \ The definition's own record: the newest record its name would be recorded
 \ under, when that record is a source record. A tombstone means the name is
@@ -13169,7 +13184,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    na nu CHECKER-REC-NAME!
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS ;
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ external RES-FALSE USIG-ADD-AS drop ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
    RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
@@ -18524,10 +18539,12 @@ s" <input>" DIAG-FILE!
 \ refusal's class is otherwise the one an earlier refused signature left.
 \ Only TRUST's row is source's: a bad one is rendered and counted even when it
 \ names the definition CHECK just handled (USIG-ADD-BAD).
-: TRUST-USIG! ( ptr u8 n ptr u8 n bool -- )
+\ It answers whether the row was retained, as USIG-ADD-AS does: false when the
+\ refusal of a span no memory has returns.
+: TRUST-USIG! ( ptr u8 n ptr u8 n bool -- bool )
    {: na:ptr nu:n sa:ptr su:n src:bool :}
    na nu TOKFOLD drop
-   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ src USIG-ADD-BAD EXIT THEN
+   sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ src USIG-ADD-BAD RES-FALSE EXIT THEN
    sa su  TKF TKFU @ CHECKER-RECORD-NAME RES-TRUE src USIG-ADD-AS ;
 
 \ TRUST-DECL: record the effect a DEFINER just declared for the word it is
@@ -18573,11 +18590,13 @@ s" <input>" DIAG-FILE!
 \ without the dictionary's interpret path, so REG-PROTECT seals it as it seals
 \ CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal engine
 \ word`, rc 70), and only a TRUSTED: body compiles a call.
-: TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
+: TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
+   {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
-   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE RES-FALSE EXIT THEN
    DOES-EFF-STEP
    na nu sa su RES-FALSE TRUST-USIG!
+   {: kept:bool :}
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
    \ cells for a later catch.
@@ -18585,7 +18604,15 @@ s" <input>" DIAG-FILE!
       na nu CHECKER-RECORD-SYM? {: sym:n :}
       sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
    THEN
-   CHECKER-REC-SYM @ CK-CLOSE! ;                \ published after this, as a checked one is
+   CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
+   kept ;
+
+\ TRUST-DECL? answers whether the registration retained the row; only the
+\ source verifier asks, through its declaration owner (VERIFY-DECL-OFF,
+\ src/habu/verify-source.f DECL-SIGNATURE). The engine's and stage0's entry
+\ asks nothing back.
+: TRUST-DECL ( ptr u8 n ptr u8 n -- )
+   TRUST-DECL? drop ;
 REG-PROTECT
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
@@ -18707,7 +18734,7 @@ REG-PROTECT
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
-   na nu sa su RES-TRUE TRUST-USIG! ;
+   na nu sa su RES-TRUE TRUST-USIG! drop ;
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
 \ that seals a storage cell at the moment its definer publishes it.
@@ -18746,7 +18773,7 @@ REG-PROTECT
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
-   na nu sa su [: RES-FALSE TRUST-USIG! ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   na nu sa su [: RES-FALSE TRUST-USIG! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
    na nu CHECKER-RECORD-SYM? {: sym:n :}
    sym CTL-FLAGS-SYM {: flags:n :}
    flags CTL-INHERITED and 0 <> IF
@@ -24273,7 +24300,9 @@ package CHECKER-REG
 ' CHECKER-VERIFY-TOP DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
+' CHECKER-SYM-IDENTITY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SYM-IDENTITY-OFF + xt!
 ' CHECKER-VERIFY-DEFERRED-BODY DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF + xt!
+' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
 ' CHECKER-RETRACT-ROWS DECLARATIONS CHECKER-OWNER-ABI:RETRACT-ROWS-OFF + xt!
 ' CHECKER-ROWS-END DECLARATIONS CHECKER-OWNER-ABI:ROWS-END-OFF + xt!

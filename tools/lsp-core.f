@@ -5,12 +5,13 @@
 \ (lib/json-rpc.f) and acts on it, until the client's exit or the end of input.
 \ The server is starting, running or shut down. Starting, it answers initialize
 \ with its capabilities and any other request with -32002. Running, it answers
-\ shutdown with null, initialize with -32600 and any other request with -32601,
-\ and it keeps the documents the client opens, changes and closes: Full sync,
-\ each change carrying the whole text, and positions in UTF-16 units. Shut
-\ down, it answers every request with -32600. Only a running server takes a
-\ notification other than exit; the rest are dropped, as unknown ones always
-\ are.
+\ shutdown with null, initialize with -32600, workspace/symbol with the open
+\ documents' definitions (tools/lsp-symbols.f), a request whose params it
+\ cannot read with -32602 and any other request with -32601, and it keeps the
+\ documents the client opens, changes and closes: Full sync, each change
+\ carrying the whole text, and positions in UTF-16 units. Shut down, it answers
+\ every request with -32600. Only a running server takes a notification other
+\ than exit; the rest are dropped, as unknown ones always are.
 \
 \ A running server checks the documents and publishes their diagnostics
 \ (tools/lsp-check.f, tools/lsp-diag.f). Opening or changing a document leaves
@@ -21,8 +22,9 @@
 \ again. So a check always takes a document's newest text, the edits that came
 \ while another check ran are all applied before it, and the versions
 \ published for a document only rise. Closing a document publishes an empty
-\ list for it and leaves every open document waiting: any of them may require
-\ the file, whose diagnostics their checks left to it while it was open.
+\ list for it, drops the definitions its last check kept and leaves every open
+\ document waiting: any of them may require the file, whose diagnostics their
+\ checks left to it while it was open.
 \
 \ exit ends the process with 0 after shutdown and 1 before it, and so does the
 \ end of input, which before shutdown also says so on stderr. A notification
@@ -50,8 +52,10 @@ require lib/json-read.f
 require lib/json-write.f
 require lib/json-rpc.f
 require tools/lsp-docs.f
+require tools/lsp-defs.f
 require tools/lsp-diag.f
 require tools/lsp-check.f
+require tools/lsp-symbols.f
 
 package LSP
 using SPAN
@@ -89,6 +93,8 @@ TYPED-VARIABLE BODY-SPAN SPAN:span<u8>    \ the message body
 TYPED-VARIABLE URI-SPAN SPAN:span<u8>     \ textDocument.uri, decoded
 TYPED-VARIABLE PATH-SPAN SPAN:span<u8>    \ the file path it names
 TYPED-VARIABLE TEXT-SPAN SPAN:span<u8>    \ a document's text, decoded
+TYPED-VARIABLE QUERY-SPAN SPAN:span<u8>   \ workspace/symbol's query, decoded,
+variable QUERY-U                          \ and its length
 TYPED-VARIABLE W JSON-WRITE:writer
 variable TEXT-LEN                         \ the last change's text length, -1 before one is read
 variable LAST-CHECKED                     \ the slot checked last, -1 before any
@@ -152,7 +158,8 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
             s" save" KEY OBJECT-START
                s" includeText" false FIELD-BOOL
             OBJECT-END
-         OBJECT-END
+         OBJECT-END COMMA
+         s" workspaceSymbolProvider" true FIELD-BOOL
       OBJECT-END COMMA
       s" serverInfo" KEY OBJECT-START
          s" name" s" habu" FIELD-S
@@ -187,13 +194,19 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    v raw ROOM
    v @ SPAN:$ STR ;
 
-\ A string member of params.textDocument, decoded into the span in V.
-: DOC-STRING ( ptr u8 n ptr u8 n ptr SPAN:span<u8> -- ptr u8 n )
-   {: p:ptr pu:n k:ptr ku:n v :}
-   p pu k ku DOC-PARAM T-STR <> if E-LSP-PARAMS throw then
+\ The value the reader is on, of this kind, a string decoded into the span in
+\ V.
+: STRING-AT ( JR:reader n ptr SPAN:span<u8> -- ptr u8 n )
+   {: v :}
+   T-STR <> if E-LSP-PARAMS throw then
    v DECODE {: n:n :}
    JR:CLOSE
    v @ SPAN:$ drop n ;
+
+\ A string member of params.textDocument, decoded into the span in V.
+: DOC-STRING ( ptr u8 n ptr u8 n ptr SPAN:span<u8> -- ptr u8 n )
+   {: p:ptr pu:n k:ptr ku:n v :}
+   p pu k ku DOC-PARAM v STRING-AT ;
 
 : DOC-URI ( ptr u8 n -- ptr u8 n )  s" uri" URI-SPAN DOC-STRING ;
 
@@ -270,12 +283,14 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    {: p:ptr pu:n :}
    p pu DOC-URI OPEN-SLOT {: slot:n :}
    slot LSP-DIAG:RETRACT
+   slot LSP-DEFS:DEFS-DROP
    slot DOC-CLOSE
    DOC-DIRTY-ALL
    p pu ;
 
-\ The throws that leave a notification unapplied: the server says why and
-\ goes on. Any other stops it.
+\ The throws that come of params the server cannot apply: a notification is
+\ left unapplied, the server saying why, and a request is answered -32602.
+\ Any other stops the server.
 : IGNORABLE? ( n -- bool )
    {: code:n :}
    code E-LSP-PARAMS =  code E-LSP-NOT-OPEN = or  code E-JR-NUMBER = or
@@ -306,6 +321,31 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
 
 \ ---- requests ----------------------------------------------------------------
 
+\ The request's params read by Q. A throw IGNORABLE? names answers the request
+\ -32602, and false.
+: READ? ( JSON-RPC:id ptr u8 n [ ptr u8 n -- ptr u8 n ] -- bool )
+   {: i p:ptr pu:n q :}
+   p pu q catch {: code:n :} 2drop
+   code 0= if true exit then
+   code IGNORABLE? 0= if code throw then
+   i INVALID-PARAMS s" invalid params" REPLY-ERROR
+   false ;
+
+\ params.query decoded into QUERY-SPAN, its length in QUERY-U.
+: QUERY! ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu s" query" PARAM QUERY-SPAN STRING-AT QUERY-U ! drop
+   p pu ;
+
+: QUERY$ ( -- ptr u8 n )  QUERY-SPAN @ SPAN:$ drop QUERY-U @ ;
+
+\ The definitions of the open documents' last completed checks whose word
+\ holds params.query.
+: SYMBOLS ( JSON-RPC:id ptr u8 n -- )
+   {: i p:ptr pu:n :}
+   i p pu [: QUERY! ;] READ? 0= if exit then
+   WRITER i RESULT QUERY$ LSP-SYMBOLS:ANSWER END SENT ;
+
 : STARTING-REQUEST ( JSON-RPC:id ptr u8 n -- )
    {: i m:ptr mu:n :}
    m mu s" initialize" NAMED? if
@@ -315,8 +355,8 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
       i NOT-INITIALIZED s" server not initialized" REPLY-ERROR
    then ;
 
-: RUNNING-REQUEST ( JSON-RPC:id ptr u8 n -- )
-   {: i m:ptr mu:n :}
+: RUNNING-REQUEST ( JSON-RPC:id ptr u8 n ptr u8 n -- )
+   {: i m:ptr mu:n p:ptr pu:n :}
    m mu s" shutdown" NAMED? if
       i REPLY-NULL
       construct state shut-down STATE!
@@ -326,13 +366,14 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
       i INVALID-REQUEST s" server already initialized" REPLY-ERROR
       exit
    then
+   m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
 
-: REQUESTED ( JSON-RPC:id ptr u8 n -- )
-   {: i m:ptr mu:n :}
+: REQUESTED ( JSON-RPC:id ptr u8 n ptr u8 n -- )
+   {: i m:ptr mu:n p:ptr pu:n :}
    STATE@ MATCH state
       starting OF i m mu STARTING-REQUEST ENDOF
-      running OF i m mu RUNNING-REQUEST ENDOF
+      running OF i m mu p pu RUNNING-REQUEST ENDOF
       shut-down OF i INVALID-REQUEST s" server shut down" REPLY-ERROR ENDOF
    ;MATCH ;
 
@@ -340,7 +381,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
 
 : DISPATCH ( JSON-RPC:message -- )
    MATCH JSON-RPC:message
-      request OF 2drop REQUESTED ENDOF
+      request OF REQUESTED ENDOF
       notification OF NOTIFIED ENDOF
       success OF 2drop ID$ 2drop ENDOF
       failure OF 2drop ID$ 2drop ENDOF
@@ -392,6 +433,7 @@ variable LAST-CHECKED                     \ the slot checked last, -1 before any
    2 >FD FD-NOSIGPIPE!
    REPLY-BUF 1 BUF:N>BLEN BUF:INIT       \ the smallest buffer: replies grow it
    LSP-DIAG:PREPARE
+   LSP-DEFS:DEFS-PREPARE
    -1 LAST-CHECKED !
    construct state starting STATE!
    INPUT 0 >FD HEAD-BUF MAX-BODY BIND

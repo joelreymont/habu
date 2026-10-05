@@ -125,7 +125,11 @@ $300 constant LINEAR-OFF
 $308 constant VERIFY-TOP-OFF
 $310 constant VERIFY-DEFERRED-OFF
 $318 constant VERIFY-REACH-OFF
-\ $320 is reserved for the verifier's symbol-identity callback.
+\ A recording symbol's own identity (src/core/checker.f CHECKER-SYM-IDENTITY):
+\ its package, which a consumer of the verifier shows with a definition; the
+\ tail it was recorded under, the verifier's key for an export's own record;
+\ and its visibility.
+$320 constant VERIFY-SYM-IDENTITY-OFF
 \ The returned span is borrowed from this checker instance. Every field is one
 \ cell; EFFECT is an offset plus one in its effect store, not a durable ID.
 $328 constant CALL-BINDING-OFF
@@ -141,7 +145,13 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass reports a definition left to the run.
 $358 constant VERIFY-DEFERRED-BODY-OFF
-\ Five reserved owner calls remain absent; $388 is the borrowed C2 transfer fact.
+\ Four reserved owner calls, $360 to $378, remain absent.
+\ The source verifier's registrar (src/core/checker.f TRUST-DECL?): TRUST-DECL's
+\ registration, answering whether it retained the row, so the verifier reports
+\ only the declarations whose rows were kept (src/habu/verify-source.f
+\ DECL-SIGNATURE).
+$380 constant VERIFY-DECL-OFF
+\ $388 is the borrowed C2 transfer fact.
 $388 constant C2-STOW-OFF
 \ lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
