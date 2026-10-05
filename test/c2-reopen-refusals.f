@@ -12,9 +12,10 @@
 \ C2-MEM: its own source, and the whitebox image, which keeps engine packages
 \ open. So these cases run there, moved from those two files with their labels,
 \ programs and expected exit: each reopens C2-MEM in a disposable fork of the
-\ whitebox engine (lib/test/subject.f), and the checker refuses the block, exit
-\ 70. The image class is asserted first, because on a sealed engine every case
-\ exits 84.
+\ whitebox engine (lib/test/subject.f). Tier zero reports the checker refusal
+\ as exit 70; native tier one refuses a private call or tick at compilation as
+\ exit 67. An EXPORT still refuses at the name boundary, exit 70. The image
+\ class is asserted first, because on a sealed engine every case exits 84.
 
 require lib/test.f
 require lib/test/subject.f
@@ -35,6 +36,9 @@ create ERR CAP allot
    ;MATCH
    >r 2drop r> ;
 
+: CALL-REFUSED? ( ptr u8 n -- bool )
+   tier@ 1 = if 67 else 70 then STATUS? ;
+
 : SECTION-CLASS ( -- )
    s" the engine under test keeps engine packages open" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T= ;
@@ -42,27 +46,27 @@ create ERR CAP allot
 \ From test/c2-memory-refusals.f.
 : SECTION-MEMORY ( -- )
    s" a reopened memory package cannot call the raw allocator" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-ALLOC ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-RAW-ALLOC ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" CALL-REFUSED? TTRUE
    s" a reopened memory package cannot tick the raw allocator" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-ALLOC ( -- ) ['] ALLOC-RUN drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-TICK-ALLOC ( -- ) ['] ALLOC-RUN drop ; ;package" CALL-REFUSED? TTRUE
    s" a reopened memory package cannot export the raw allocator" T-LABEL
    s" package C2-MEM public EXPORT ALLOC-RUN ;package" 70 STATUS? TTRUE
    s" a reopened memory package cannot call the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-RAW-LOAN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" CALL-REFUSED? TTRUE
    s" a reopened memory package cannot tick the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-LOAN ( -- ) ['] LOAN-RUN drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-TICK-LOAN ( -- ) ['] LOAN-RUN drop ; ;package" CALL-REFUSED? TTRUE
    s" a reopened memory package cannot export the raw loan scope" T-LABEL
    s" package C2-MEM public EXPORT LOAN-RUN ;package" 70 STATUS? TTRUE
    s" a standalone memory load cannot call runtime frame lookup" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-RAW-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" CALL-REFUSED? TTRUE
    s" a standalone memory load cannot tick runtime frame lookup" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" CALL-REFUSED? TTRUE
    s" a standalone memory load cannot export runtime frame lookup" T-LABEL
    s" package C2-MEM public EXPORT ROOT-FRAME ;package" 70 STATUS? TTRUE
    s" a standalone memory load cannot call runtime append" T-LABEL
-   s" package C2-MEM private : C2-MEM-RAW-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-RAW-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" CALL-REFUSED? TTRUE
    s" a standalone memory load cannot tick runtime append" T-LABEL
-   s" package C2-MEM private : C2-MEM-TICK-APPEND ( -- ) ['] APPEND drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2-MEM-TICK-APPEND ( -- ) ['] APPEND drop ; ;package" CALL-REFUSED? TTRUE
    s" a standalone memory load cannot export runtime append" T-LABEL
    s" package C2-MEM public EXPORT APPEND ;package" 70 STATUS? TTRUE ;
 
@@ -73,13 +77,13 @@ create ERR CAP allot
    s" a private unpacker cannot be exported by reopening its package" T-LABEL
    s" package C2-MEM public EXPORT MUT-UNPACK ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot call root frame lookup" T-LABEL
-   s" package C2-MEM private : C2OP-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-ROOT ( ptr u8 -- ptr n ) ROOT-FRAME ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot tick root frame lookup" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-TICK-ROOT ( -- ) ['] ROOT-FRAME drop ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot export root frame lookup" T-LABEL
    s" package C2-MEM public EXPORT ROOT-FRAME ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot call append registration" T-LABEL
-   s" package C2-MEM private : C2OP-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-APPEND ( ptr n NUM:alloc-byte-len [ ptr u8 NUM:alloc-byte-len -- ] -- ptr u8 n ) APPEND ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot export append registration" T-LABEL
    s" package C2-MEM public EXPORT APPEND ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot expose a frame storage accessor" T-LABEL
@@ -95,15 +99,15 @@ create ERR CAP allot
    s" reopening C2-MEM cannot expose root registration" T-LABEL
    s" package C2-MEM public EXPORT ACQUIRE-BYTES ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot call the raw scoped allocator" T-LABEL
-   s" package C2-MEM private : C2OP-ALLOC-RUN ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-ALLOC-RUN ( R NUM:alloc-byte-len [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S | U ) ALLOC-RUN ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot tick the raw scoped allocator" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-ALLOC-RUN ( -- ) ['] ALLOC-RUN drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-TICK-ALLOC-RUN ( -- ) ['] ALLOC-RUN drop ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot export the raw scoped allocator" T-LABEL
    s" package C2-MEM public EXPORT ALLOC-RUN ;package" 70 STATUS? TTRUE
    s" reopening C2-MEM cannot call the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2OP-LOAN-RUN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-LOAN-RUN ( R ptr u8 n [ R ptr u8 n -- S ptr u8 n | U -- U ] | U -- S ptr u8 n | U ) LOAN-RUN ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot tick the raw loan scope" T-LABEL
-   s" package C2-MEM private : C2OP-TICK-LOAN-RUN ( -- ) ['] LOAN-RUN drop ; ;package" 70 STATUS? TTRUE
+   s" package C2-MEM private : C2OP-TICK-LOAN-RUN ( -- ) ['] LOAN-RUN drop ; ;package" CALL-REFUSED? TTRUE
    s" reopening C2-MEM cannot export the raw loan scope" T-LABEL
    s" package C2-MEM public EXPORT LOAN-RUN ;package" 70 STATUS? TTRUE ;
 

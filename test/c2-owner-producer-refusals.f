@@ -68,7 +68,7 @@ TRUSTED: REPLACE-R-OWNER ( | C2-MEM:owner<p,i,a> -- | C2-MEM:owner<p,i,a> )
    r> drop 0 >r -9363 throw ;
 
 TRUSTED: REPLACE-R-VIEW ( | read-view<p,q,u8> -- | read-view<p,q,u8> )
-   r> r> 2drop 0 0 >r >r -9363 throw ;
+   r> drop 0 >r -9363 throw ;
 
 TRUSTED: REPLACE-R-CALLBACK ( | [ read-view<p,q,u8> -- read-view<p,q,u8> ] -- | [ read-view<p,q,u8> -- read-view<p,q,u8> ] )
    r> drop 0 >r -9363 throw ;
