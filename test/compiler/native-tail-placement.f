@@ -1,6 +1,7 @@
 \ Tail transfers keep the callee's stack position even when another is cheaper.
 require lib/test.f
 require tools/codegen-tail-probe.f
+require tools/codegen-x64-probe.f
 
 \ Tier 1 below: a tail transfer is lowered only by the optimizing compiler, so
 \ the placement asserted below is a tier-1 fact (1 row fails at the default tier).
@@ -21,8 +22,13 @@ private
 
 : RUN ( -- )
    T-RESET
-   s" TAIL-PLACEMENT:TWICE" NTAILPROBE:TAIL-BRANCH? TTRUE
-   s" TAIL-PLACEMENT:TWICE-PLUS-ONE" NTAILPROBE:TAIL-BRANCH? TFALSE
+   HB-TARGET-LINUX-X86-64? if
+      s" TAIL-PLACEMENT:TWICE" X64CODEGEN-PROBE:TAIL-BRANCH? TTRUE
+      s" TAIL-PLACEMENT:TWICE-PLUS-ONE" X64CODEGEN-PROBE:TAIL-BRANCH? TFALSE
+   else
+      s" TAIL-PLACEMENT:TWICE" NTAILPROBE:TAIL-BRANCH? TTRUE
+      s" TAIL-PLACEMENT:TWICE-PLUS-ONE" NTAILPROBE:TAIL-BRANCH? TFALSE
+   then
    123 21 TWICE 42 T= 123 T=
    0 TWICE 0 T=
    -21 TWICE -42 T=

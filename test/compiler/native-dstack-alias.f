@@ -5,6 +5,7 @@ require lib/memory.f
 require lib/test.f
 require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
+require tools/codegen-x64-probe.f
 
 \ Tier 1 below: the residency and the surviving external call are read out of the
 \ production routine's own emitted instructions (tools/codegen-tail-probe.f).
@@ -73,6 +74,9 @@ private
 
 \ Other checked helpers remain ordinary calls; this precondition names abs.
 : ABS-CALLS ( -- n )
+   HB-TARGET-LINUX-X86-64? if
+      s" DKA:POKED" ABS-ENTRY X64CODEGEN-PROBE:CALLS-TO exit
+   then
    s" DKA:POKED" ENTRY-OF {: base:n :}
    0
    s" DKA:POKED" NTAILPROBE:INSNS 0 ?do
