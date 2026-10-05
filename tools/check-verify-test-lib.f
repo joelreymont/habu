@@ -53,6 +53,25 @@
 \   a dependency's definitions are dropped, or named by the subject       definitions-dependency
 \   a file a check read has no file line or several, or one it did not
 \   read has one                                                          files
+\   a use bound to a located declaration has no line, a range other than
+\   its token's, or a target other than the token that declared it: a
+\   body's call, a quotation's, ['], is, a top-level call and tick, an
+\   export operand, a generates: definer                                  uses
+\   a use binds other than the declaration its scope selects: private
+\   over global, a used public, a qualified name, an export's alias       uses
+\   a use of a dependency's or its dependency's declaration names another
+\   file; a use inside a dependency, or of a word the engine provides,
+\   has a line; a use line reaches --verify-only's output                 uses
+\   an ambiguous, shadowed or undefined name has a target, or the scan
+\   binds nothing after them                                              uses-refused
+\   a use binds other than the declaration undefine left visible          uses-order
+\   a use of a refused body's kept signature has no target, or a use of
+\   a refused signature type, which retains nothing, has one              uses-recovery
+\   a use of a body the checker defers has no target, or the name only
+\   its run defines has one                                               uses-deferred
+\   a refused duplicate takes the uses after it                           uses-duplicate
+\   a declaration loses or moves its location when the store or the
+\   location table grows                                                  uses-growth
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
 \   the child runs on the working directory's bin/hb, or is that
 \   directory's tools/check-verify-child.f                                check-test: file-load-context
@@ -1709,15 +1728,19 @@ variable DEF-NODE                       \ the definition line DEF found
    CHECK:VERIFY-DEFS$ s" word" w wu PACKET DEF-NODE ! ;
 
 
-\ Where the first LEAD in the checked bytes ends, -1 for none.
-: LEAD-END ( ptr u8 n -- n )
-   {: b:ptr v:n :}
-   DEFS-SRC$
-   {: a:ptr u:n :}
+\ Where the first LEAD in TEXT ends, -1 for none.
+: END-IN ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n b:ptr v:n :}
    u v - 1 + 0 max 0 ?do
       a i + v b v STR= if i v + unloop exit then
    loop
    -1 ;
+
+
+\ Where the first LEAD in the checked bytes ends, -1 for none.
+: LEAD-END ( ptr u8 n -- n )
+   {: b:ptr v:n :}
+   DEFS-SRC$ b v END-IN ;
 
 
 : DEF-STR ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -1943,6 +1966,246 @@ variable DEF-NODE                       \ the definition line DEF found
    JSONL-NEXT-OBJECT s" file" STRING$ s" files-inc.f" AT$ T$= ;
 
 
+\ ---- the uses ---------------------------------------------------------------
+
+variable USE-NODE                       \ the use line USE-FROM found
+
+
+\ The first use line of the last check whose use starts at AT; -1 for none.
+: USE-FROM ( n -- )
+   {: at:n :}
+   CHECK:VERIFY-USES$ JSONL-START
+   begin
+      JSONL-NEXT-OBJECT
+      dup 0 < if USE-NODE ! exit then
+      dup s" byte_start" NUMBER$ SB-RESET at FMT:SB-INT SB$ STR= 0=
+   while
+      drop
+   repeat
+   USE-NODE ! ;
+
+
+: USE-NUM ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n key:ptr keyu:n want:n :}
+   label labelu T-LABEL USE-NODE @ key keyu NUMBER$
+   SB-RESET want FMT:SB-INT SB$ T$= ;
+
+
+\ The use line of the U bytes the first LEAD in the checked bytes ends with.
+: USE ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n :}
+   lead leadu LEAD-END
+   {: end:n :}
+   end u - USE-FROM
+   label labelu T-LABEL USE-NODE @ 0 >= TTRUE
+   label labelu s" byte_end" end USE-NUM ;
+
+
+\ No use line starts where the U bytes the first LEAD in the checked bytes
+\ end.
+: NO-USE ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n :}
+   lead leadu LEAD-END u - USE-FROM
+   label labelu T-LABEL USE-NODE @ 0 < TTRUE ;
+
+
+\ The declaration the use line USE found names: the U bytes the first LEAD in
+\ TEXT ends with, TEXT the fixture FILE's bytes.
+: USE-TARGET ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   text textu lead leadu END-IN
+   {: end:n :}
+   label labelu T-LABEL USE-NODE @ s" file" STRING$ file fileu AT$ T$=
+   label labelu s" target_start" end u - USE-NUM
+   label labelu s" target_end" end USE-NUM ;
+
+
+: USE-COUNT ( ptr u8 n n -- )
+   {: label:ptr labelu:n want:n :}
+   label labelu T-LABEL CHECK:VERIFY-USES$ OBJECTS want T= ;
+
+
+: USES-NEST$SRC ( -- ptr u8 n )
+   s\" : CVT-UNEST ( -- n ) 3 ;\n" ;
+
+: USES-DEP$SRC ( -- ptr u8 n )
+   s\" require uses-nested.f\npackage CVT-UD\n: CVT-HELP ( n -- n ) 1 + ;\npublic\n: CVT-UONE ( -- n ) 1 CVT-HELP ;\n: CVT-UTWO ( -- n ) 2 ;\n;package\n: CVT-UGLOBAL ( -- n ) CVT-UNEST ;\n" ;
+
+
+\ uses-dep.f, which requires uses-nested.f.
+: USES-DEPS ( -- )
+   s" uses-nested.f" USES-NEST$SRC FIXTURE
+   s" uses-dep.f" USES-DEP$SRC FIXTURE ;
+
+
+\ The subject's uses where each source occurrence binds, across scopes, its
+\ dependency and that dependency's own: each line names the token that
+\ declared what it binds. The uses inside the dependencies, and of words the
+\ engine provides, have none.
+: USES ( -- )
+   USES-DEPS
+   0 GEN-U !
+   s\" require uses-dep.f\n: CVT-A ( -- n ) 1 ;\n: CVT-B ( -- n ) CVT-A 1 + ;\ndefer CVT-HOOK ( -- n )\n" GEN+
+   s\" : CVT-SET ( -- ) [: CVT-B ;] is CVT-HOOK ;\n: CVT-TICK ( -- n ) ['] CVT-A execute ;\n" GEN+
+   s\" : CVT-MAKER ( n -- ) drop ;\ngenerates: CVT-MAKER ( -- n )\nCVT-A drop\n' CVT-B drop\n" GEN+
+   s\" package CVT-UP\n: CVT-A ( -- n ) 2 ;\n: CVT-PRIV ( -- n ) CVT-A ;\npublic\n" GEN+
+   s\" : CVT-PUB ( -- n ) CVT-PRIV ;\nEXPORT CVT-UD:CVT-UTWO\n;package\n" GEN+
+   s\" : CVT-QUAL ( -- n ) CVT-UD:CVT-UONE CVT-UP:CVT-PUB + CVT-UP:CVT-UTWO + ;\n" GEN+
+   s\" using CVT-UD\n: CVT-USED ( -- n ) CVT-UONE ;\n;using\n" GEN+
+   s\" : CVT-DEP ( -- n ) CVT-UGLOBAL CVT-UNEST + STR-SPACE + ;\n" GEN+
+   s" uses.f" DEFS-CHECK 0 s" uses: verified" EXPECT-KIND
+   s" uses: body call" s" : CVT-B ( -- n ) CVT-A" 5 USE
+   s" uses: body call" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: quotation call" s" [: CVT-B" 5 USE
+   s" uses: quotation call" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
+   s" uses: is" s" ;] is CVT-HOOK" 8 USE
+   s" uses: is" DEFS-SRC$ s" defer CVT-HOOK" 8 s" uses.f" USE-TARGET
+   s" uses: [']" s" ['] CVT-A" 5 USE
+   s" uses: [']" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: generates:" s" generates: CVT-MAKER" 9 USE
+   s" uses: generates:" DEFS-SRC$ s" : CVT-MAKER" 9 s" uses.f" USE-TARGET
+   s" uses: top-level call" s\" \nCVT-A" 5 USE
+   s" uses: top-level call" DEFS-SRC$ s" : CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: top-level tick" s" ' CVT-B" 5 USE
+   s" uses: top-level tick" DEFS-SRC$ s" : CVT-B" 5 s" uses.f" USE-TARGET
+   s" uses: private over global" s" : CVT-PRIV ( -- n ) CVT-A" 5 USE
+   s" uses: private over global" DEFS-SRC$ s\" package CVT-UP\n: CVT-A" 5 s" uses.f" USE-TARGET
+   s" uses: private" s" : CVT-PUB ( -- n ) CVT-PRIV" 8 USE
+   s" uses: private" DEFS-SRC$ s" : CVT-PRIV" 8 s" uses.f" USE-TARGET
+   s" uses: export operand" s" EXPORT CVT-UD:CVT-UTWO" 15 USE
+   s" uses: export operand" USES-DEP$SRC s" : CVT-UTWO" 8 s" uses-dep.f" USE-TARGET
+   s" uses: qualified, dependency" s" CVT-UD:CVT-UONE" 15 USE
+   s" uses: qualified, dependency" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
+   s" uses: qualified" s" CVT-UP:CVT-PUB" 14 USE
+   s" uses: qualified" DEFS-SRC$ s" : CVT-PUB" 7 s" uses.f" USE-TARGET
+   s" uses: export alias" s" CVT-UP:CVT-UTWO" 15 USE
+   s" uses: export alias" DEFS-SRC$ s" EXPORT CVT-UD:CVT-UTWO" 15 s" uses.f" USE-TARGET
+   s" uses: used public" s" : CVT-USED ( -- n ) CVT-UONE" 8 USE
+   s" uses: used public" USES-DEP$SRC s" : CVT-UONE" 8 s" uses-dep.f" USE-TARGET
+   s" uses: dependency global" s" : CVT-DEP ( -- n ) CVT-UGLOBAL" 11 USE
+   s" uses: dependency global" USES-DEP$SRC s" : CVT-UGLOBAL" 11 s" uses-dep.f" USE-TARGET
+   s" uses: nested dependency" s" CVT-UGLOBAL CVT-UNEST" 9 USE
+   s" uses: nested dependency" USES-NEST$SRC s" : CVT-UNEST" 9 s" uses-nested.f" USE-TARGET
+   s" uses: engine-provided" s" STR-SPACE" 9 NO-USE
+   s" uses: primitive" s" : CVT-MAKER ( n -- ) drop" 4 NO-USE
+   s" uses: one line each" 16 USE-COUNT
+   s" uses.f" DEFS-SRC$ FIXTURE
+   CLI-START s" --verify-only" ARG+ s" uses.f" AT$ ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" uses: cli verified" T-LABEL rc 0 T=
+   s" uses: no use line on the cli" T-LABEL
+   0 OUT CLI-OUT-U @ s\" \"target_start\"" CONTAINS?
+   0 ERR erru s\" \"target_start\"" CONTAINS? or TFALSE ;
+
+
+\ A name the checker refuses binds nothing: one two usings both export, one a
+\ using shadows a global with, one nothing defines. The scan goes on, and the
+\ global binds once the using closes.
+: USES-REFUSED ( -- )
+   0 GEN-U !
+   s\" package CVT-RA\npublic\n: CVT-SAME ( -- n ) 1 ;\n: CVT-SHADOW ( -- n ) 2 ;\n;package\n" GEN+
+   s\" package CVT-RB\npublic\n: CVT-SAME ( -- n ) 3 ;\n;package\n: CVT-SHADOW ( -- n ) 4 ;\n" GEN+
+   s\" using CVT-RA\nusing CVT-RB\n: CVT-AMBIG ( -- n ) CVT-SAME ;\n;using\n;using\n" GEN+
+   s\" using CVT-RA\n: CVT-SHADOWED ( -- n ) CVT-SHADOW ;\n;using\n" GEN+
+   s\" : CVT-UNKNOWN ( -- n ) CVT-NOWHERE ;\n: CVT-AFTER ( -- n ) CVT-SHADOW ;\n" GEN+
+   s" uses-refused.f" DEFS-CHECK 1 s" uses-refused: refused" EXPECT-KIND
+   s" uses-refused: ambiguous" s" CVT-AMBIG ( -- n ) CVT-SAME" 8 NO-USE
+   s" uses-refused: shadowed" s" CVT-SHADOWED ( -- n ) CVT-SHADOW" 10 NO-USE
+   s" uses-refused: undefined" s" CVT-NOWHERE" 11 NO-USE
+   s" uses-refused: the global after" s" CVT-AFTER ( -- n ) CVT-SHADOW" 10 USE
+   s" uses-refused: the global after" DEFS-SRC$ s\" ;package\n: CVT-SHADOW" 10 s" uses-refused.f" USE-TARGET
+   s" uses-refused: one line" 1 USE-COUNT ;
+
+
+\ A use binds the declaration visible where it stands: the first before
+\ undefine retires it, the second after.
+: USES-ORDER ( -- )
+   0 GEN-U !
+   s\" : CVT-W ( -- n ) 1 ;\n: CVT-EARLY ( -- n ) CVT-W ;\nundefine CVT-W\n" GEN+
+   s\" : CVT-W ( -- n ) 2 ;\n: CVT-LATE ( -- n ) CVT-W ;\nCVT-W drop\n" GEN+
+   s" uses-order.f" DEFS-CHECK 0 s" uses-order: verified" EXPECT-KIND
+   s" uses-order: before undefine" s" CVT-EARLY ( -- n ) CVT-W" 5 USE
+   s" uses-order: before undefine" DEFS-SRC$ s" : CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: undefine binds nothing" s" undefine CVT-W" 5 NO-USE
+   s" uses-order: after" s" CVT-LATE ( -- n ) CVT-W" 5 USE
+   s" uses-order: after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: top level after" s\" \nCVT-W" 5 USE
+   s" uses-order: top level after" DEFS-SRC$ s\" undefine CVT-W\n: CVT-W" 5 s" uses-order.f" USE-TARGET
+   s" uses-order: three lines" 3 USE-COUNT ;
+
+
+\ A refused body keeps its declared signature, and its uses bind it. A refused
+\ signature type retains nothing, so a use of it is undefined and binds
+\ nothing.
+: USES-RECOVERY ( -- )
+   0 GEN-U !
+   s\" : CVT-BAD ( -- n ) ;\n: CVT-USE-BAD ( -- n ) CVT-BAD 1 + ;\n" GEN+
+   s\" : CVT-GONE ( -- cvt-no-type ) 1 ;\n: CVT-KEPT ( -- n ) 2 ;\n" GEN+
+   s\" : CVT-USE-KEPT ( -- n ) CVT-KEPT CVT-GONE + ;\n" GEN+
+   s" uses-recovery.f" DEFS-CHECK 1 s" uses-recovery: refused" EXPECT-KIND
+   s" uses-recovery: kept signature" s" CVT-USE-BAD ( -- n ) CVT-BAD" 7 USE
+   s" uses-recovery: kept signature" DEFS-SRC$ s" : CVT-BAD" 7 s" uses-recovery.f" USE-TARGET
+   s" uses-recovery: after a refusal" s" CVT-USE-KEPT ( -- n ) CVT-KEPT" 8 USE
+   s" uses-recovery: after a refusal" DEFS-SRC$ s" : CVT-KEPT" 8 s" uses-recovery.f" USE-TARGET
+   s" uses-recovery: a refused type retains nothing" s" CVT-KEPT CVT-GONE" 8 NO-USE
+   s" uses-recovery: two lines" 2 USE-COUNT ;
+
+
+\ A body the checker defers to the run (src/core/checker.f CHECK-VERDICT 2: it
+\ names a word only a rendering statement in scope can define) keeps its
+\ declared signature, and its uses bind it; the name only the run defines
+\ binds nothing.
+: USES-DEFERRED ( -- )
+   0 GEN-U !
+   s\" package CVT-UF\n: CVT-RENDER ( -- ) s\" : CVT-MADE ( -- n ) 7 ;\" INCLUDE-EVALUATE ;\nCVT-RENDER\n" GEN+
+   s\" : CVT-DEFERRED ( -- n ) CVT-MADE ;\n: CVT-USE ( -- n ) CVT-DEFERRED ;\n;package\n" GEN+
+   s" uses-deferred.f" DEFS-CHECK 5 s" uses-deferred: deferred" EXPECT-KIND
+   s" uses-deferred: the renderer" s\" \nCVT-RENDER" 10 USE
+   s" uses-deferred: the renderer" DEFS-SRC$ s" : CVT-RENDER" 10 s" uses-deferred.f" USE-TARGET
+   s" uses-deferred: the deferred body" s" CVT-USE ( -- n ) CVT-DEFERRED" 12 USE
+   s" uses-deferred: the deferred body" DEFS-SRC$ s" : CVT-DEFERRED" 12 s" uses-deferred.f" USE-TARGET
+   s" uses-deferred: the run's name" s" CVT-DEFERRED ( -- n ) CVT-MADE" 8 NO-USE
+   s" uses-deferred: two lines" 2 USE-COUNT ;
+
+
+\ A duplicate definition is refused and retains nothing: the uses after it
+\ bind the first.
+: USES-DUPLICATE ( -- )
+   0 GEN-U !
+   s\" : CVT-D ( -- n ) 1 ;\n: CVT-D ( -- n ) 2 ;\n: CVT-DUSE ( -- n ) CVT-D ;\nCVT-D drop\n" GEN+
+   s" uses-duplicate.f" DEFS-CHECK 1 s" uses-duplicate: refused" EXPECT-KIND
+   s" uses-duplicate: body" s" CVT-DUSE ( -- n ) CVT-D" 5 USE
+   s" uses-duplicate: body" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
+   s" uses-duplicate: top level" s\" \nCVT-D" 5 USE
+   s" uses-duplicate: top level" DEFS-SRC$ s" : CVT-D" 5 s" uses-duplicate.f" USE-TARGET
+   s" uses-duplicate: two lines" 2 USE-COUNT ;
+
+
+\ The checker's record store and its location table both start with room for
+\ fewer declarations than this subject makes, and grow by copying
+\ (src/core/checker.f USIGS-GROW, NAV-ENSURE), which keeps every record's
+\ offset: the first and the last declaration keep their own locations. An
+\ engine bakes its store with one to two 64 KiB grains of room
+\ (USIGS-PERSIST-CAP), the child's own load takes some 36 KB of it, and the
+\ table starts at 64 rows. These declarations take some 170 KB: in the child
+\ on an unsealed engine the store grew from 1,835,008 to 3,670,016 bytes.
+3000 constant GROWTH-DEFS
+
+: USES-GROWTH ( -- )
+   0 GEN-U !
+   s\" : CVT-GFIRST ( -- n ) 1 ;\n" GEN+
+   GROWTH-DEFS 0 ?do
+      s" : CVT-G" GEN+ i GEN-N+ s\"  ( -- n ) 1 ;\n" GEN+
+   loop
+   s\" : CVT-GLAST ( -- n ) 2 ;\n: CVT-GUSE ( -- n ) CVT-GFIRST CVT-GLAST + ;\n" GEN+
+   s" uses-growth.f" DEFS-CHECK 0 s" uses-growth: verified" EXPECT-KIND
+   s" uses-growth: the first declaration" s" CVT-GUSE ( -- n ) CVT-GFIRST" 10 USE
+   s" uses-growth: the first declaration" DEFS-SRC$ s" : CVT-GFIRST" 10 s" uses-growth.f" USE-TARGET
+   s" uses-growth: the last declaration" s" CVT-GFIRST CVT-GLAST" 9 USE
+   s" uses-growth: the last declaration" DEFS-SRC$ s" : CVT-GLAST" 9 s" uses-growth.f" USE-TARGET
+   s" uses-growth: two lines" 2 USE-COUNT ;
+
+
 \ ---- the measurement -------------------------------------------------------
 
 : MS. ( -- )
@@ -1996,6 +2259,13 @@ public
    s" definitions-undefine" [: DEFINITIONS-UNDEFINE ;] RUN-CASE
    s" definitions-dependency" [: DEFINITIONS-DEPENDENCY ;] RUN-CASE
    s" files" [: FILES ;] RUN-CASE
+   s" uses" [: USES ;] RUN-CASE
+   s" uses-refused" [: USES-REFUSED ;] RUN-CASE
+   s" uses-order" [: USES-ORDER ;] RUN-CASE
+   s" uses-recovery" [: USES-RECOVERY ;] RUN-CASE
+   s" uses-deferred" [: USES-DEFERRED ;] RUN-CASE
+   s" uses-duplicate" [: USES-DUPLICATE ;] RUN-CASE
+   s" uses-growth" [: USES-GROWTH ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
    s" cli-usage" [: CLI-USAGE ;] RUN-CASE

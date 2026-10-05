@@ -43,7 +43,6 @@ variable SLOT-COUNT
 
 : SLOT-CELL ( n n -- ptr n )  swap SLOT-CELLS * + SLOTS ;
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
-: DIRTY? ( n -- bool )  DIRTY-AT SLOT-CELL @ 0<> ;
 : BYTES$ ( n n -- ptr u8 n )  SLOT-CELL SPAN$ BLEN>N ;
 
 \ A new buffer at this cell of the slot, holding these bytes.
@@ -98,6 +97,9 @@ public
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
 
+\ Whether the document in this slot waits for a check.
+: DOC-DIRTY? ( n -- bool )  DIRTY-AT SLOT-CELL @ 0<> ;
+
 \ Every open document waits for a check.
 : DOC-DIRTY-ALL ( -- )
    SLOT-COUNT @ 0 ?do i LIVE? if i DOC-DIRTY then loop ;
@@ -109,7 +111,7 @@ public
    SLOT-COUNT @ {: count:n :}
    count 0 ?do
       after 1+ i + count mod
-      dup DIRTY? if OPTION:SOME unloop exit then
+      dup DOC-DIRTY? if OPTION:SOME unloop exit then
       drop
    loop
    OPTION:NONE ;

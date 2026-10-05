@@ -5,7 +5,8 @@
 \ on disk, read into this module's buffer. LINE-CHARACTER answers an offset's
 \ position through a cursor: moving forward reads only the bytes between,
 \ moving back within the line keeps the line, further back starts over; so a
-\ run of offsets in order reads each byte of the text once.
+\ run of offsets in order reads each byte of the text once. OFFSET-AT goes
+\ back, from a position to its offset.
 \
 \ STORAGE CLASS. PROCESS-GLOBAL: the text, the file read and the cursor belong
 \ to the server's one task.
@@ -129,6 +130,31 @@ public
    a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
    a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}
    from LINE-CHARACTER to LINE-CHARACTER RANGE-AT ;
+
+private
+
+\ Where the line that starts at offset O of the text ends: at its LF, else at
+\ the text's end.
+: LINE-END ( n -- n )
+   {: o:n :}
+   TEXT-U @ o ?do
+      TEXT-A @ i + c@ LF = if i unloop exit then
+   loop
+   TEXT-U @ ;
+
+public
+
+\ The offset of a line and UTF-16 character in the text, counted as
+\ LINE-CHARACTER counts them: a line past the last is the text's end, and a
+\ character past the end of its line that end.
+: OFFSET-AT ( n n -- n )
+   {: line:n ch:n :}
+   0 line 0 ?do
+      LINE-END dup TEXT-U @ = if unloop exit then
+      1+
+   loop
+   {: start:n :}
+   TEXT-A @ start + start LINE-END start - ch UTF16:OFFSET start + ;
 
 ;using
 ;using

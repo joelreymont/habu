@@ -145,8 +145,13 @@ $348 constant EFFECT-STACK-STABLE-OFF
 $350 constant BINDING-WINDOW-OFF
 \ The source pre-pass reports a definition left to the run.
 $358 constant VERIFY-DEFERRED-BODY-OFF
-\ $360/$368/$370 belong to the native definition navigator. The verifier
-\ scopes its prospective compiler ordering answer to one checked body at $378.
+\ Navigation (src/core/checker.f): the verifier arms a named declaration's
+\ location around its registrar (CHECKER-DECL-AT!, CHECKER-DECL-AT-OFF) and
+\ receives the uses a scope's checks bind (CHECKER-WITH-USES).
+$360 constant VERIFY-DECL-ARM-OFF
+$368 constant VERIFY-DECL-DISARM-OFF
+$370 constant VERIFY-USES-OFF
+\ The verifier scopes its prospective compiler ordering answer to one body.
 $378 constant WITH-TICK-ORDER-OFF
 \ The source verifier's registrar (src/core/checker.f TRUST-DECL?): TRUST-DECL's
 \ registration, answering whether it retained the row, so the verifier reports
