@@ -8791,7 +8791,9 @@ ardone LBL,
 
 : C-CALL-COMPILE-IMMEDIATE ( -- )
    LBL {: callimm:label :}
-   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,  5 SP 24 STR,
+   SP SP 48 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   5 G-PUSH  BDEFSELECT
+   9 G-POP  9 SP 32 STR,  9 G-POP  9 SP 24 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,
    15 0 MOVZ,  16 3 MOVZ,  C-UNIT-HOOK
    9 DATA HOOK-CELL LDR,  9 callimm CBZ,
@@ -8803,12 +8805,14 @@ ardone LBL,
    9 DATA TRUSTED-CELL LDR,  9 G-PUSH
    9 SP 16 LDR,  9 BLR,
    callimm LBL,
+   9 SP 24 LDR,  9 G-PUSH
+   9 SP 32 LDR,  9 G-PUSH  BDEFRESOLVE  5 G-POP
    11 SP 8 LDR,
-   5 SP 24 LDR,  C-HOST-SELECT
+   C-HOST-SELECT
    11 BLR,
    \ No reopen: the immediate may have ended the head. A head that goes on
    \ reopens the window at its next tier 0 token (EM-COMPILE-LEGACY).
-   30 SP 0 LDR,  SP SP 32 ADDI,
+   30 SP 0 LDR,  SP SP 48 ADDI,
    LMAIN LABEL@ B, ;
 
 \ A `;` closes a definition only in the buffer that opened it. One open as this
