@@ -273,7 +273,8 @@ TRUSTED: DOES-COMMIT ( -- )
 : BINDING-WINDOW-CK ( ptr u8 n bool -- )
    {: owner:ptr serial:n unjudged:bool :}
    RECORD owner <> if CHECKER-OWNER-ABI:BINDING-RC throw then
-   BIND-UNJUDGED @ 0<> unjudged <> if CHECKER-OWNER-ABI:BINDING-RC throw then
+   unjudged if BIND-UNJUDGED @ 0= else BIND-UNJUDGED @ 0<> then
+   if CHECKER-OWNER-ABI:BINDING-RC throw then
    CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" FIELD
    dup 0= if drop SOURCE-BINDING-WINDOW else AS-N execute then
    serial <> if CHECKER-OWNER-ABI:BINDING-RC throw then ;
