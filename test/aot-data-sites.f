@@ -143,7 +143,7 @@ TRUSTED: MARK-TEST-SITE ( n -- ) addrmap-set ;
 \ icode.f, layout.f and aot-decl.f are all loaded, so the next growth says so.
 : ?BAND-BUDGET ( -- )
    s" the section budget admits a full code band" T-LABEL
-   AOT-SECTION-CAP AOT-FILE:SITE-TEST-BAND-BYTES >= TTRUE ;
+   A64ICODE:AOT-SECTION-CAP AOT-FILE:SITE-TEST-BAND-BYTES >= TTRUE ;
 
 \ --- the window-relative DATA coordinate --------------------------------------
 \ ACAP-NORMALIZE-DSITES rewrites every listed DATA site into the coordinate the

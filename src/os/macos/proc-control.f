@@ -17,7 +17,9 @@
 \ (src/arch/arm64/asm.f), imported here rather than qualified at each call so the
 \ emitters below keep the bodies they had: this file carries no package, so the
 \ ownership gate reports a changed global definition in it.
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 
 : BKILLERRNO ( -- )                \ ( pid sig -- rc ) rc=0 or -errno
    1 G-POP  0 G-POP
@@ -38,4 +40,5 @@ using A64ASM
    ok LBL,
    0 G-PUSH ;
 
+;using
 ;using

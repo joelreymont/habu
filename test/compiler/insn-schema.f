@@ -15,14 +15,14 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
 
 \ The encoders are package A64ASM's public surface (src/arch/arm64/asm.f), so
-\ their rows name them the way the dictionary records them; the label, buffer and
-\ mnemonic words below are still global and are named bare.
-s" ASM-INIT" s" --" TRUST
-s" CW@" s" n -- ptr u8" TRUST
-s" CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
-s" ASM-LEN" s" -- n" TRUST
-s" LBL" s" -- n" TRUST
-s" LBL," s" n --" TRUST
+\ their rows name them the way the dictionary records them. The label and
+\ buffer rows name A64ICODE; the mnemonic words remain global.
+s" A64ICODE:ASM-INIT" s" --" TRUST
+s" A64ICODE:CW@" s" n -- ptr u8" TRUST
+s" A64ICODE:CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
+s" A64ICODE:ASM-LEN" s" -- n" TRUST
+s" A64ICODE:LBL" s" -- n" TRUST
+s" A64ICODE:LBL," s" n --" TRUST
 s" A64ASM:MOVZHW" s" n n n -- n" TRUST
 s" A64ASM:ENC-LDUR" s" n n n -- n" TRUST
 s" A64ASM:ENC-STUR" s" n n n -- n" TRUST
@@ -37,7 +37,7 @@ s" A64ASM:ENC-LD1V" s" n n -- n" TRUST
 s" A64ASM:ENC-UADDLV" s" n n -- n" TRUST
 s" A64ASM:ENC-UMOVH" s" n n n -- n" TRUST
 s" A64ASM:MOVNHW" s" n n n -- n" TRUST
-s" EMITW" s" n --" TRUST
+s" A64ICODE:EMITW" s" n --" TRUST
 s" MOVZ," s" n n --" TRUST
 s" MOVN," s" n n --" TRUST
 s" MOVK," s" n n n --" TRUST
@@ -72,12 +72,12 @@ s" CMPI," s" n n --" TRUST
 s" CSET," s" n n --" TRUST
 s" CSEL," s" n n n n --" TRUST
 s" FCSEL," s" n n n n --" TRUST
-s" B," s" n --" TRUST
-s" BL," s" n --" TRUST
-s" BCOND," s" n n --" TRUST
-s" CBZ," s" n n --" TRUST
-s" CBNZ," s" n n --" TRUST
-s" ADR," s" n n --" TRUST
+s" A64ICODE:B," s" n --" TRUST
+s" A64ICODE:BL," s" n --" TRUST
+s" A64ICODE:BCOND," s" n n --" TRUST
+s" A64ICODE:CBZ," s" n n --" TRUST
+s" A64ICODE:CBNZ," s" n n --" TRUST
+s" A64ICODE:ADR," s" n n --" TRUST
 s" SVC," s" n --" TRUST
 s" RET," s" --" TRUST
 s" BRK," s" --" TRUST
@@ -91,6 +91,7 @@ s" DCCVAU," s" n --" TRUST
 s" A64ASM:>LIMM" s" n -- n" TRUST
 
 package COMPILER-INSN-PROOF
+using A64ICODE
 public
 
 \ ---- the emitted vocabulary --------------------------------------------------
@@ -921,4 +922,5 @@ public
 
 : LIMM-BADS ( -- n ) 2 ;
 
+;using
 ;package

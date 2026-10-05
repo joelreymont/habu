@@ -224,7 +224,7 @@ create DRV-CH 1 allot
    s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
    vu 0 > if
       v vu DRV+
-      s"  AOT-BUF:AOT-DATA-SIZE @ LAOTDATASIZE LABEL@ PATCH-CELL" DRV-LINE
+      s"  AOT-BUF:AOT-DATA-SIZE @ LAOTDATASIZE A64ICODE:LABEL@ PATCH-CELL" DRV-LINE
    then ;
 
 \ Optional wid-window forges (dot habu-rebase-captured-wids-54dec421). The seed
@@ -240,12 +240,12 @@ create DRV-CH 1 allot
    s" HABU_AOT_WID_SKEW" GETENV {: v:ptr vu:n :}
    vu 0 > if
       s" AOT-BUF:WID-REL-BASE " DRV+  v vu DRV+
-      s"  + AOT-BUF:WID-REL-BASE AOT-WINDOW:LWIDW0 LABEL@ PATCH-CELL" DRV-LINE
+      s"  + AOT-BUF:WID-REL-BASE AOT-WINDOW:LWIDW0 A64ICODE:LABEL@ PATCH-CELL" DRV-LINE
    then
    s" HABU_AOT_WID_SPAN" GETENV {: p:ptr pu:n :}
    pu 0 > if
       p pu DRV+
-      s"  AOT-BUF:AOT-WID-SPAN @ AOT-WINDOW:LWIDSPAN LABEL@ PATCH-CELL" DRV-LINE
+      s"  AOT-BUF:AOT-WID-SPAN @ AOT-WINDOW:LWIDSPAN A64ICODE:LABEL@ PATCH-CELL" DRV-LINE
    then ;
 
 \ --- the capture window and its fixture source --------------------------------
@@ -851,10 +851,10 @@ create DRV-CH 1 allot
    FORGE? 0= if exit then
    s" package AOT-WID-IMAGE-PATCH" DRV-LINE
    s" : PATCH-CELL ( n n label -- ) {: value:n old:n lab:label :}" DRV-LINE
-   s"    lab LBL-BOUND? 0= if 79 throw then" DRV-LINE
-   s"    lab LABEL>N LBLP @ 4 * {: off:n :}" DRV-LINE
+   s"    lab A64ICODE:LBL-BOUND? 0= if 79 throw then" DRV-LINE
+   s"    lab LABEL>N A64ICODE:LBLP @ 4 * {: off:n :}" DRV-LINE
    s"    off 0< off CODELEN @ 8 - > or if 79 throw then" DRV-LINE
-   s"    CODE off + {: dst:ptr :}" DRV-LINE
+   s"    A64ICODE:CODE off + {: dst:ptr :}" DRV-LINE
    s"    dst FS-U64@ old <> if 79 throw then" DRV-LINE
    s"    8 0 ?do value i 8 * rshift dst i + c! loop ;" DRV-LINE
    s" : RUN ( -- )" DRV-LINE

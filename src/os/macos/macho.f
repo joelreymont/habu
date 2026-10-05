@@ -6,6 +6,9 @@
 \ Snapshot extras name the staged DATA_CONST/fixups tail and its derived byte size.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 \ Mach-O constants
+require src/arch/arm64/icode.f
+using A64ICODE
+require src/os/image-bytes.f
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64
 2         constant MH-EXECUTE
@@ -238,3 +241,4 @@ s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
 
 DATA-CONST-SIZE MACHO-FIXUPS-SIZE + constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST
+;using

@@ -39,9 +39,8 @@ require src/habu/aot-closure.f
 
 \ Full-image emission owns its signer and driver. This linker loads only after
 \ the application span is latched; snapshot support needs neither dependency.
-\ Each signer patches its target's image format and the format builds in
-\ src/os/image-bytes.f's buffer, so the buffer loads first, then the format.
-require src/os/image-bytes.f
+\ Each signer patches its target's image format. The selected writer loads
+\ src/os/image-bytes.f under its own code-package scope before using the buffer.
 package AOT-LINK
 private
 
@@ -79,6 +78,7 @@ require src/habu/driver-io.f
 package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
+using A64ICODE
 
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 : AOT-OBJ ( -- ptr u8 n )  s" hb-aot-obj" TMP-PATH ;
@@ -1073,5 +1073,6 @@ public
    AOT-WRITE-OBJ
    SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 
+;using
 ;using
 ;package

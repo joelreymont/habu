@@ -13,6 +13,7 @@
 \ aot-xt-cells suite, which says the image runs; this says which bytes the image
 \ carries and what the cell's row resolves to, which an image that runs cannot.
 require lib/test.f
+require src/arch/arm64/icode.f
 require src/habu/app-image.f
 require src/habu/aot-decl.f
 require src/habu/aot-closure.f
@@ -92,7 +93,7 @@ variable NEST-I  variable NEST-J  variable NEST-OV
    \ member lookups read (aot-lib.f MEMBER-ORDER), so every question about a
    \ member comes after it: MEMBER-AT asked before it throws E-LAYOUT-BOUNDS off
    \ the unfilled order rather than answering.
-   ASM-INIT PLAN-BLOBS
+   A64ICODE:ASM-INIT PLAN-BLOBS
    s" the contained body is not a member of its own" T-LABEL
    v1 CODE-PTR MEMBER-AT {: m:n :}
    m -1 T<>

@@ -318,7 +318,7 @@ variable VAL-LEN
 \ artifact's aggregate byte budget, checked before copy or emission, is the
 \ limit; this single-section ceiling also bounds each allocation request.
 8 constant XTOFF-ROW
-AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
+A64ICODE:AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
 $80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
 $40000000 constant XTOFF-NAME-TAG
@@ -547,7 +547,7 @@ variable AOT-SIG-N
 \ The opaque pool carries verified effect graphs beside its names. Its format
 \ bound is the section budget; allocate only the admitted bytes, like names
 \ and relocation rows, rather than imposing the former text-only size guess.
-AOT-SECTION-CAP constant AOT-SIG-STR-CAP
+A64ICODE:AOT-SECTION-CAP constant AOT-SIG-STR-CAP
 DYNAMIC-BUFFER SIG-STR-STORAGE n
 variable AOT-SIG-STR-LEN
 
@@ -702,10 +702,10 @@ using AOT-BUF
 public
 
 : ROOM? ( n n -- bool ) {: used:n bytes:n :}
-   used 0 < used AOT-SECTION-CAP > or bytes 0 < or if 0 0 <> exit then
-   bytes AOT-SECTION-CAP used - <= ;
+   used 0 < used A64ICODE:AOT-SECTION-CAP > or bytes 0 < or if 0 0 <> exit then
+   bytes A64ICODE:AOT-SECTION-CAP used - <= ;
 
-: REFUSE ( -- ) s" aot: encoded sections exceed their byte budget" ICODE-EXIT-RC die ;
+: REFUSE ( -- ) s" aot: encoded sections exceed their byte budget" A64ICODE:ICODE-EXIT-RC die ;
 
 : +RAW ( n n -- n )
    2dup ROOM? 0= if REFUSE then + ;
@@ -717,7 +717,7 @@ public
 
 : ROW-BYTES ( n n -- n ) {: count:n width:n :}
    count 0 < width 0 <= or if REFUSE then
-   count AOT-SECTION-CAP width / > if REFUSE then
+   count A64ICODE:AOT-SECTION-CAP width / > if REFUSE then
    count width * ;
 
 : +ROWS ( n n n -- n ) ROW-BYTES +BYTES ;

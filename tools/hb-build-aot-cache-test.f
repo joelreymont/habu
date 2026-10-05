@@ -6,6 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
 
 require tools/hb-build-test-lib.f
+require src/arch/arm64/icode.f
 require test/preloaded-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
@@ -63,10 +64,10 @@ create HBT-EXP-HEX2 64 allot
    target targetu OBJ:TARGET!
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
-   ASM-INIT
+   A64ICODE:ASM-INIT
    0 0 MOVZ,
    NR-EXIT-GROUP SYS,
-   CODE ASM-LEN OBJ:TEXT+
+   A64ICODE:CODE A64ICODE:ASM-LEN OBJ:TEXT+
    s" MAIN" s" --" OBJ:EXPORT+
    s" MAIN" 0 s" --" OBJ:DEF+ ;
 

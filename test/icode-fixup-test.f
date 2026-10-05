@@ -18,6 +18,7 @@ require src/habu/layout.f
 package ICODE-FIXUP-TEST
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
+using A64ICODE
 
 $2080 constant SEQ-N
 $1000 constant CAPTURE-CAP
@@ -518,5 +519,6 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
 
 MAIN
 
+;using
 ;using
 ;package

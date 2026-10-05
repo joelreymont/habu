@@ -37,10 +37,8 @@ require lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 
-\ The writer, which brings src/os/image-bytes.f in under `using X64CODE`, loads
-\ before the ARM64 code layer below, whose CODE, ASM-LEN and CODE-CAP-BYTES are
-\ globals: once those exist, the engine refuses a bare reference to X64CODE's
-\ same names with E-USING-SHADOW-GLOBAL.
+\ The writer brings src/os/image-bytes.f in under `using X64CODE`, so its shared
+\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own package.
 require src/os/linux-x86-64/target-layout.f
 s" src/os/linux-x86-64/elf.f" required
 require src/os/image-bytes.f

@@ -323,7 +323,7 @@ variable CUR
    CBUF ;
 
 : ROW-BYTES-CHECKED ( n n -- n ) {: count:n width:n :}
-   count 0 < count AOT-SECTION-CAP width / > or if
+   count 0 < count A64ICODE:AOT-SECTION-CAP width / > or if
       s" aot-file: encoded sections exceed their byte budget" DIE then
    count width * ;
 
