@@ -606,6 +606,13 @@ SUITE wasm-capture
    test/wasm/capture.f
 ;SUITE
 
+\ src/arch/wasm/kernel-words.f beside the engine's primitives on the host: each
+\ engine name WKERNEL's map answers with a word prints and exits as the engine
+\ primitive does, and a name no provider answers is refused.
+SUITE wasm-kernel-words
+   test/wasm/kernel.f
+;SUITE
+
 \ The backend registry: complete rows in src/compiler/native/backend.f,
 \ registered by src/arch/arm64/passes.f, which is the acceptance suite for
 \ habu-bind-compiler-targets-ff970b99.
