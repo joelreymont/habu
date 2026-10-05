@@ -348,6 +348,7 @@ create REC-TEXT 128 allot
    s" NELB-REC ( n -- n ) abs" CHECK! -1 T=
    NFEED:END-UNIT {: v:IR-ARENA:view verdict:n :}
    verdict -1 T=
+   v NFEED:RECORD-WINDOW
    b p r v ;
 
 : MISSING-FACT-BODY ( IR-CTX:ctx -- )
