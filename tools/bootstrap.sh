@@ -85,11 +85,10 @@ fi
 # generates an accessor that calls DYNAMIC-STORAGE:RESERVE, and the first one
 # is in src/habu/primitive-registry.f, which src/habu/habu1.f requires from
 # disk. The compiler sources come after, as they do in a native build.
-# The ARM64 assembler and the OS seam's syscall emitter are not prefix files and
-# load right after src/core/include.f: icode.f and mnem.f require what they use,
-# and the boot hide takes the startup load's `require` away until include.f
-# defines it again (measured: hb-stage0 died E-UNDEFINED `require`, exit 70,
-# with them ahead of it).
+# The ARM64 assembler and the OS seam's syscall emitter are not prefix files.
+# icode.f declares growing label columns, so its group follows the dynamic
+# storage implementation and declaration owners. The boot hide takes the
+# startup load's `require` away until include.f defines it again.
 SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
@@ -99,10 +98,6 @@ SRC_COMMON=(
   src/habu/layout.f
   src/os/env-base.f
   src/core/include.f
-  src/arch/arm64/asm.f
-  src/arch/arm64/icode.f
-  src/arch/arm64/mnem.f
-  "$OS_SYS"
   src/os/script-argv.f
   src/core/enums.f
   src/core/sha256.f
@@ -118,6 +113,10 @@ SRC_COMMON=(
   lib/errors.f
   lib/span.f
   src/core/dynamic-storage.f
+  src/arch/arm64/asm.f
+  src/arch/arm64/icode.f
+  src/arch/arm64/mnem.f
+  "$OS_SYS"
   src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
