@@ -784,7 +784,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
    NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
-CAST: ARM-ACTION ( n -- [ n n n -- ] )
+CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n -- ] [ -- ] -- ] )
 
 \ ---- navigation: where a declaration was written, what a use bound ----------
@@ -833,14 +833,15 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
    VISIT-PATHS-RELEASE  VISIT-ROWS-RELEASE
    0 VISIT-PATHS-U !  0 VISIT-N !  0 VISIT-CUR ! ;
 
-\ Arm the checker with the token from byte AT, U long, in the file being
-\ scanned: the record the next named registrar retains takes that location
+\ Arm the checker with NAME, declared by the token from byte AT, U long, in the
+\ file being scanned: the record the next named registrar retains takes that
+\ spelling and location
 \ (src/core/checker.f CHECKER-DECL-AT!), until DISARM. Outside a visit there
 \ is no file to name, and the checker's armed state stays its caller's.
-: ARM ( n n -- )
-   {: at:n u:n :}
+: ARM ( ptr u8 n n n -- )
+   {: name:ptr nameu:n at:n u:n :}
    VISIT-CUR @ 0= IF EXIT THEN
-   VISIT-CUR @ at at u +
+   name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
 
 : DISARM ( -- )
@@ -1172,7 +1173,7 @@ variable WRAP-ROW                             \ the definer row the last call na
 
 \ The body of the definition DEF-NAME! pinned, checked with its name armed.
 : VERIFY-NAMED-BODY ( -- n )
-   DEF-NAME-BYTE @ DEF-NAME-U @ ARM
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ DEF-NAME-U @ ARM
    VERIFY-BODY
    DISARM ;
 
@@ -1354,14 +1355,6 @@ TRUSTED: GENERATES-SIGNATURE ( ptr u8 n ptr u8 n bool -- n n )
 
 : CAST-TRUST ( -- bool )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
-
-: RECORD-CAST-IN ( ptr u8 n ptr u8 n -- bool )
-   DTC-BUILD-IN
-   CAST-TRUST ;
-
-: RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- bool )
-   DTC-BUILD-OUT
-   CAST-TRUST ;
 
 \ ---- a definition of a name the scope already holds ---------------------------
 \ The checker's own guard (src/core/checker.f CHECKER-CERT-DUP?) refuses a colon
@@ -1549,7 +1542,7 @@ DUPLICATE-INIT
    TOKEN-BYTE @
    {: name:ptr nameu:n at:n :}
    -1 SIG-RAW-MODE!
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
    IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
@@ -1566,7 +1559,7 @@ DUPLICATE-INIT
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
    0= IF 0 0= 0= EXIT THEN
@@ -1576,7 +1569,7 @@ DUPLICATE-INIT
 : TRUST-DEFER-SIGNATURE ( ptr u8 n n -- )
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
    name nameu CHECKER-DEFER
@@ -1648,7 +1641,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
@@ -1665,7 +1658,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
@@ -1678,7 +1671,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    nameu 0= IF E-MISSING-NAME throw THEN
    TOKEN-BYTE @ {: at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu CHECKER-LINEAR
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
@@ -1750,12 +1743,14 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
    TOKEN-BYTE @ {: at:n :}
    name nameu MANGLE {: tail:ptr tailu:n :}
    tail tailu s" 0" CHECKER-DEFFAMILY
-   at nameu ARM
-   name nameu tail tailu RECORD-CAST-IN
+   name nameu tail tailu DTC-BUILD-IN
+   DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
+   CAST-TRUST
    DISARM
    at nameu CAST-DEFINED
-   at nameu ARM
-   name nameu tail tailu RECORD-CAST-OUT
+   name nameu tail tailu DTC-BUILD-OUT
+   DTC-NAME$ at nameu ARM
+   CAST-TRUST
    DISARM
    at nameu CAST-DEFINED ;
 
@@ -1964,7 +1959,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1977,7 +1972,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1988,7 +1983,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    count countu COUNT-REFUSED? IF EXIT THEN
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -1997,7 +1992,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -2012,7 +2007,7 @@ PTR-VARIABLE STG-START
    SCAN-STORAGE-NAME TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF EXIT THEN
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
@@ -2087,7 +2082,7 @@ PTR-VARIABLE STG-START
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
    name DEF-NAME-A !  nameu DEF-NAME-U !
-   at nameu ARM
+   name nameu at nameu ARM   \ the checker spells the record by the tail it keeps
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
    DISARM
    {: rc:n :}
@@ -2244,7 +2239,7 @@ variable FILE-USE
    {: kind:ptr kindu:n sig:ptr sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
    IF kind kindu name nameu sig sigu at at nameu + DEF-WORD DEFINED THEN ;
@@ -2254,7 +2249,7 @@ variable FILE-USE
 : RECORD-STRUCTURE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
    DISARM
    IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN
@@ -2337,7 +2332,7 @@ variable FFI-SIG-U
    nameu 0= IF E-MISSING-NAME throw THEN
    NEXT-SCAN nip 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
    FFI-SIGNATURE {: sig:ptr sigu:n :}
-   at nameu ARM
+   name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;

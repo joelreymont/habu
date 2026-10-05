@@ -129,6 +129,7 @@ create OWNER-STORAGE
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
    0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -146,7 +147,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -6421,17 +6422,22 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 
 \ ---- navigation: where a named declaration was written ----------------------
 \ The armed location (CHECKER-DECL-AT!) is the declaring token of the statement
-\ being registered: its file visit and byte range. Arming stamps nothing: a
-\ named registrar attaches it to the record it retained (DL-TAKE). DECL-LOCS
-\ holds one row per located record, (offset, visit, start, end), ascending by
-\ offset, and a use copies a row out when it binds (NAV-USE). Both tables are
+\ being registered: the name it declares (borrowed: the arming caller owns the
+\ bytes), its file visit and byte range. Arming stamps nothing: a named
+\ registrar attaches it to the record it retained (DL-TAKE), copying the name.
+\ DECL-LOCS holds one row per located record, (offset, visit, start, end, name
+\ offset, name length), ascending by offset, with the names appended in row
+\ order to their own bytes, and a use copies a row out when it binds
+\ (NAV-USE). The tables are
 \ process-local mappings: no record field, wire format, unit file or image
 \ carries them (CHECKER-CAPTURE-PREPARE releases them).
 variable DL-ON   variable DL-VISIT   variable DL-START   variable DL-END
+PTR-VARIABLE DL-NA   variable DL-NU    \ the armed name, until DL-TAKE copies it
 variable DL-NEW                        \ offset+1 of the record E-ADD-EFFECT built last
 PTR-VARIABLE DL-P   variable DL-CAP   variable DL-N      \ DECL-LOCS, in rows
+PTR-VARIABLE DLB-P  variable DLB-CAP  variable DLB-N     \ their names: cells, bytes
 PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
-4 constant DL-ROW                      \ record offset, visit, start, end
+6 constant DL-ROW                      \ record offset, visit, start, end, name offset, length
 6 constant PU-ROW                      \ use start, end, record offset, visit, start, end
 
 : NAV-CELL ( ptr ptr n n n -- ptr n )   \ row i's first cell
@@ -6439,28 +6445,55 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    pv @ i row * cells + ;
 
 : NAV-CLEAR ( -- )
-   0 DL-N !  0 PU-N !  0 DL-NEW ! ;
+   0 DL-N !  0 DLB-N !  0 PU-N !  0 DL-NEW ! ;
 
 : NAV-RELEASE ( -- )
    DL-P DL-CAP DL-ROW ARENA-ROWS-RELEASE
+   DLB-P DLB-CAP 1 ARENA-ROWS-RELEASE
+   NULL-PTR DL-NA !  0 DL-NU !
    PU-P PU-CAP PU-ROW ARENA-ROWS-RELEASE
    NAV-CLEAR  0 DL-ON ! ;
 
-: CHECKER-DECL-AT! ( n n n -- )
-   {: visit:n start:n end:n :}
+: CHECKER-DECL-AT! ( ptr u8 n n n n -- )
+   {: name:ptr nameu:n visit:n start:n end:n :}
+   name DL-NA !  nameu DL-NU !
    visit DL-VISIT !  start DL-START !  end DL-END !  1 DL-ON ! ;
 
 : CHECKER-DECL-AT-OFF ( -- )
-   0 DL-ON ! ;
+   0 DL-ON !  NULL-PTR DL-NA !  0 DL-NU ! ;
 
 : DL-ROW-OFF ( n -- n )                 \ row i's record offset
    {: i:n :}
    DL-P i DL-ROW NAV-CELL @ ;
 
+\ Room for U more name bytes; the names may move.
+: DLB-ROOM ( n -- )
+   {: u:n :}
+   DLB-P DLB-CAP DLB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE ;
+
+\ Append the U bytes at A to the names; their offset.
+: DLB-ADD ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u DLB-ROOM
+   DLB-N @ {: off:n :}
+   a  DLB-P @ off +  u ARENA-COPY
+   off u + DLB-N !
+   off ;
+
+\ Append a copy of the U name bytes at offset OFF; the copy's offset. The room
+\ comes first, so the source is read where the names now are.
+: DLB-AGAIN ( n n -- n )
+   {: off:n u:n :}
+   u DLB-ROOM
+   DLB-N @ {: dst:n :}
+   DLB-P @ off +  DLB-P @ dst +  u ARENA-COPY
+   dst u + DLB-N !
+   dst ;
+
 \ A row for record offset OFF. Records only append above the rows a rewind
 \ kept, so the table stays ascending; a row out of order is a lost truncation.
-: DL-ROW+ ( n n n n -- )
-   {: off:n visit:n start:n end:n :}
+: DL-ROW+ ( n n n n n n -- )
+   {: off:n visit:n start:n end:n noff:n nu:n :}
    DL-N @ 0 > IF
       DL-N @ 1 - DL-ROW-OFF off >= IF
          s" checker: declaration location out of record order" 76 die
@@ -6469,16 +6502,23 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-P DL-CAP DL-N @ 1 + DL-ROW ARENA-ROWS-ENSURE
    DL-P DL-N @ DL-ROW NAV-CELL {: p:ptr :}
    off p !  visit p CELL + !  start p 2 cells + !  end p 3 cells + !
+   noff p 4 cells + !  nu p 5 cells + !
    DL-N @ 1 + DL-N ! ;
 
-\ The record a named registrar just retained takes the armed location. DL-NEW
-\ is that record when the registrar's own step built one (the registrar zeroes
-\ it before a step that may retain nothing), else 0.
-: DL-TAKE ( -- )
+\ The record a named registrar just retained takes the armed location, spelled
+\ A U: the armed name, or the part of it the record is kept under. DL-NEW is
+\ that record when the registrar's own step built one (the registrar zeroes it
+\ before a step that may retain nothing), else 0.
+: DL-TAKE-AS ( ptr u8 n -- )
+   {: a:ptr u:n :}
    DL-NEW @ {: rec1:n :}
    0 DL-NEW !
    DL-ON @ 0= rec1 0= or IF EXIT THEN
-   rec1 1 - DL-VISIT @ DL-START @ DL-END @ DL-ROW+ ;
+   a u DLB-ADD {: noff:n :}
+   rec1 1 - DL-VISIT @ DL-START @ DL-END @ noff u DL-ROW+ ;
+
+: DL-TAKE ( -- )
+   DL-NA @ DL-NU @ DL-TAKE-AS ;
 
 \ A generated registrar takes no location in this commit: it runs between
 \ NAV-PAUSE and NAV-RESUME, which put the declaring registrar's latch back on
@@ -6489,11 +6529,13 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 : NAV-RESUME ( n n -- )
    DL-NEW !  DL-ON ! ;
 
-\ Rows for records at or above offset N belong to a rewound store.
+\ Rows for records at or above offset N belong to a rewound store, and so do
+\ their names: each row's are the ones appended after the row before's.
 : DL-TRUNCATE ( n -- )
    {: n:n :}
    BEGIN DL-N @ 0 > IF DL-N @ 1 - DL-ROW-OFF n >= ELSE RES-FALSE THEN WHILE
       DL-N @ 1 - DL-N !
+      DL-P DL-N @ DL-ROW NAV-CELL 4 cells + @ DLB-N !
    REPEAT ;
 
 \ Row FROM's cells into row TO of the pending uses.
@@ -6525,11 +6567,32 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-P i DL-ROW NAV-CELL {: p:ptr :}
    p CELL + @  p 2 cells + @  p 3 cells + @  RES-TRUE ;
 
-: CHECKER-REC-DECL-AT ( n -- n n n bool )
+: DL-NAME-AT ( n -- n n )               \ row i's name: offset, length
+   {: i:n :}
+   DL-P i DL-ROW NAV-CELL {: p:ptr :}
+   p 4 cells + @  p 5 cells + @ ;
+
+: DL-NAME$ ( n -- ptr u8 n )            \ row i's name, borrowed until the next row
+   DL-NAME-AT {: off:n u:n :}
+   DLB-P @ off +  u ;
+
+\ The row that locates record REC1, and whether one does.
+: DL-ROW-OF ( n -- n bool )
    {: rec1:n :}
+   rec1 0= IF 0 RES-FALSE EXIT THEN
    rec1 1 - DL-SEEK {: i:n :}
-   i DL-N @ < IF i DL-ROW-OFF rec1 1 - = IF i DL-AT EXIT THEN THEN
-   0 0 0 RES-FALSE ;
+   i DL-N @ >= IF 0 RES-FALSE EXIT THEN
+   i  i DL-ROW-OFF rec1 1 - = ;
+
+\ The name record REC1's declaration wrote, borrowed until the next row: false
+\ when no row locates the record.
+: CHECKER-REC-DECL-NAME ( n -- ptr u8 n bool )
+   DL-ROW-OF IF DL-NAME$ RES-TRUE EXIT THEN
+   drop NULL-PTR BYTE-VIEW 0 RES-FALSE ;
+
+: CHECKER-REC-DECL-AT ( n -- n n n bool )
+   DL-ROW-OF IF DL-AT EXIT THEN
+   drop 0 0 0 RES-FALSE ;
 
 : USIGS-CLEAR ( -- )
    NAV-CLEAR                      \ no location or pending use outlives the store
@@ -8631,7 +8694,9 @@ ON-USE-DEFAULT
    prev 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF EXIT THEN
    prev CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
    found 0= IF EXIT THEN
-   rec1 1 - v s e DL-ROW+ ;
+   prev 1 - DL-SEEK DL-NAME-AT {: noff:n nu:n :}
+   noff nu DLB-AGAIN {: off2:n :}
+   rec1 1 - v s e off2 nu DL-ROW+ ;
 
 \ The owner slot: run Q with H receiving the uses its checks publish. Either
 \ exit puts NO-USE back and drops what Q left pending.
@@ -8642,6 +8707,100 @@ TRUSTED: CHECKER-WITH-USES ( [ n n n n n -- ] [ -- ] -- ) {: h q :}
    ON-USE-DEFAULT
    pu0 PU-N !
    rc 0= 0= IF rc throw THEN ;
+
+\ ---- completion: the cursor a body check fires at ------------------------------
+\ The verifier arms the offset of a cursor in the next text it has checked and
+\ the visitor its candidates go to (CHECKER-CURSOR!). The check that takes the
+\ arm (CUR-TAKE, in CHECK! and CHECKER-SOURCE-DOES!) owns it for its whole run,
+\ ordinary retries included: an attempt that reaches the cursor keeps the
+\ spellings that bind there in the pending table, a retry drops its attempt's
+\ rows (CHECK-RETRY), and the owner publishes the final attempt's at its exit,
+\ where it publishes its uses, then disarms on every exit (PUBLISH-EXIT). A
+\ visitor gets a spelling, borrowed for the call, and where the declaration it
+\ binds was written: the file visit and half-open byte range of the DECL-LOCS
+\ row that gave the spelling, or exactly 0 0 0 when no row locates it. One arm
+\ at a time: arming over an arm, and arming, disarming or enumerating while a
+\ check owns one or a visitor runs, is refused before it touches either.
+7185 constant E-CURSOR-NESTED   \ a cursor or an enumeration inside a running one
+\ A candidate: its spelling, then its declaration's visit, start and end.
+defer CHECKER-ON-CAND ( ptr u8 n n n n -- )
+: NO-CAND ( ptr u8 n n n n -- ) 2drop 2drop drop ;
+variable CUR-AT                         \ the armed offset in the checked text, -1 none
+variable CUR-OWNED                      \ a check took the arm and runs
+variable CUR-DONE                       \ this attempt reached the cursor
+variable CUR-GAP                        \ where the gap before the token now read starts
+variable VIS-OPEN                       \ an enumeration or a visitor runs
+PTR-VARIABLE CUR-RP   variable CUR-RCAP   variable CUR-RN    \ pending candidates, in rows
+PTR-VARIABLE CB-P   variable CB-CAP   variable CB-N    \ their spellings: cells, bytes
+5 constant CUR-ROW                       \ spelling offset, length, visit, start, end
+
+: CUR-DEFAULT ( -- )
+   ['] NO-CAND is CHECKER-ON-CAND
+   -1 CUR-AT !  0 CUR-OWNED !  0 CUR-DONE ! ;
+CUR-DEFAULT
+
+\ The owner slot: arm the next checked text's cursor at N for visitor XT, or
+\ disarm with a negative N.
+: CHECKER-CURSOR! ( n [ ptr u8 n n n n -- ] -- )
+   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF E-CURSOR-NESTED throw THEN
+   over 0 < IF 2drop CUR-DEFAULT EXIT THEN
+   CUR-AT @ 0 >= IF E-CURSOR-NESTED throw THEN
+   is CHECKER-ON-CAND
+   CUR-AT ! ;
+
+\ A check takes a waiting arm no check owns, and answers whether it did, so
+\ that its exit releases only what it took.
+: CUR-TAKE ( -- bool )
+   CUR-AT @ 0 <  CUR-OWNED @ 0 <> or  IF RES-FALSE EXIT THEN
+   -1 CUR-OWNED !  0 CUR-DONE !  0 CUR-RN !  0 CB-N !
+   RES-TRUE ;
+
+: CB-AT ( n -- ptr u8 )
+   CB-P @ swap + ;
+
+\ Keep a candidate for the owner's exit, its spelling and location copied: the
+\ enumeration lends the spelling for the call only.
+: CUR-PEND ( ptr u8 n n n n -- )
+   {: a:ptr u:n v:n s:n e:n :}
+   CUR-RP CUR-RCAP CUR-RN @ 1 + CUR-ROW ARENA-ROWS-ENSURE
+   CB-P CB-CAP CB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   a  CB-N @ CB-AT  u ARENA-COPY
+   CUR-RP CUR-RN @ CUR-ROW NAV-CELL {: p:ptr :}
+   CB-N @ p !  u p CELL + !  v p 2 cells + !  s p 3 cells + !  e p 4 cells + !
+   CB-N @ u + CB-N !
+   CUR-RN @ 1 + CUR-RN ! ;
+
+: CUR-SEND ( n -- )
+   {: i:n :}
+   CUR-RP i CUR-ROW NAV-CELL {: p:ptr :}
+   p @ CB-AT  p CELL + @  p 2 cells + @  p 3 cells + @  p 4 cells + @  CHECKER-ON-CAND ;
+
+: CUR-PUBLISH ( -- )
+   -1 VIS-OPEN !
+   CUR-RN @ 0 ?do i CUR-SEND loop ;
+
+\ The owner's exit, when it took the arm: publish the final attempt's
+\ candidates, then drop the tables and disarm whatever the visitor throws, and
+\ answer the code it threw, 0 when none.
+: CUR-RELEASE ( bool -- n )
+   0= IF 0 EXIT THEN
+   [: CUR-PUBLISH ;] catch {: rc:n :}
+   0 VIS-OPEN !
+   CUR-RP CUR-RCAP CUR-ROW ARENA-ROWS-RELEASE  0 CUR-RN !
+   CB-P CB-CAP 1 ARENA-ROWS-RELEASE  0 CB-N !
+   CUR-DEFAULT
+   rc ;
+
+\ A check's exit: publish its uses from PU0 and, when it took the arm, its
+\ candidates, then disarm, whatever either handler throws. It answers the first
+\ code thrown, 0 when none, which the check rethrows after its own bookkeeping.
+: PUBLISH-EXIT ( n bool -- n )
+   {: took:bool :}
+   [: dup NAV-PUBLISH ;] catch {: urc:n :}
+   drop
+   took CUR-RELEASE {: crc:n :}
+   urc 0 <> IF urc EXIT THEN
+   crc ;
 
 : SYM-VISIBLE ( n -- n ) {: sym:n :}   \ the symbol, or 0 when its records all lie beyond the horizon
    sym 0= IF 0 EXIT THEN
@@ -10387,6 +10546,10 @@ PPRIM: CHECKER-OWNER-ABI PAYLOAD-SPANS-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI PAYLOAD-REG-SAVE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI PAYLOAD-DISARM-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI VERIFY-FILE-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VISIBLE-BODY PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VISIBLE-TOP PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VISIBLE-NAMED PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-ABI VERIFY-CURSOR-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-RC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BINDING-WINDOW-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-ABI BOUND-ORD PE-N PE-OUT PPRIM;
@@ -12118,6 +12281,15 @@ $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
    flags CK-REC-LEN-MASK and {: u:n :}
    flags CK-REC-EXT and 0 <> IF rec CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
    rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
+
+\ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
+\ (XREF-N>REC). This file cannot use XREF-REC: the boot prefix loads it before
+\ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
+\ lookup by name (scope-find, SCOPE-WL-PROBE), which cannot list a wordlist. A
+\ record spans CK-REC-WID's slot and those before it, the size the bound window
+\ divides by to name a record's index.
+TRUSTED: CK-N>REC ( n -- ptr n ) ;
+: CK-REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + CK-N>REC ;
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
 \ this checker's name mirror share one index (CHECKER-USING records the name at
@@ -14915,16 +15087,21 @@ variable NORET-FMEND
    THEN
    CHECKER-QTAIL$ ENGINE-WORD-SYM ;
 
-: TOP-PUBLIC-BIND? ( -- bool )
+\ The record PKG's public wordlist holds for the split's PKG:TAIL, NULL-PTR when
+\ it holds none or the source made the tail invisible or retired it.
+: TOP-PUBLIC-REC ( -- ptr n )
    CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? {: pub:n :}
    pub 0 <> IF
-      pub SYM-VISIBLE 0= IF RES-FALSE EXIT THEN
-      pub SYM-DELETED? IF RES-FALSE EXIT THEN
+      pub SYM-VISIBLE 0= IF NULL-PTR EXIT THEN
+      pub SYM-DELETED? IF NULL-PTR EXIT THEN
    THEN
    CHECKER-QPKG$ -1 SCOPE-WL-PROBE {: rec:ptr :}
-   rec NULL-PTR = IF RES-FALSE EXIT THEN
-   rec @ dup 0= IF drop RES-FALSE EXIT THEN
-   CHECKER-QTAIL$ rot SCOPE-WL-PROBE NULL-PTR <> ;
+   rec NULL-PTR = IF NULL-PTR EXIT THEN
+   rec @ {: wid:n :}
+   wid 0= IF NULL-PTR EXIT THEN
+   CHECKER-QTAIL$ wid SCOPE-WL-PROBE ;
+
+: TOP-PUBLIC-BIND? ( -- bool ) TOP-PUBLIC-REC NULL-PTR <> ;
 
 \ A scanned declaration has a visible effect record even though this engine
 \ has not loaded the subject. A cold published package primitive may have no
@@ -15485,6 +15662,13 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
    a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
 
+\ The verifier arms an export's operand as written, and the record is kept under
+\ its tail, so the tail is the spelling the record takes. Only an armed name is
+\ scanned: the qualified-name scan leaves its state for the checker's next read.
+: DL-TAKE-TAIL ( -- )
+   DL-ON @ 0= IF DL-TAKE EXIT THEN
+   DL-NA @ DL-NU @ EXPORT-TAIL$ DL-TAKE-AS ;
+
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
@@ -15506,7 +15690,7 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    carries IF
       a u EXPORT-TAIL$ 2dup CLAUSE-NAME CHECKER-OVERLAY:EXPORT-ROOM
    THEN
-   src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
+   src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE-TAIL
    recovery IF RECOVERY-RECORD THEN
    src CHECKER-ASIG-EXPORT
    a u src EXPORT-META-COPY
@@ -19646,6 +19830,411 @@ public
 : REJECT-IMMEDIATE ( -- )
    -1 IMMERR !  RF-IMM CREFUSE!  0 OK !  -1 FAILSET ! ;
 
+\ ---- completion: the spellings that bind at a position -------------------------
+\ CHECKER-RESOLVE:EACH-VISIBLE ( prefix kind visitor ) gives the visitor, once
+\ each, every spelling that starts with the prefix, folded, and that the
+\ position's own selection binds: a body token's walk (VISIBLE-BODY), a
+\ top-level token's (VISIBLE-TOP), or a body's named operand's - a tick or `is`
+\ target, which no local answers (VISIBLE-NAMED). A word goes with where its
+\ selected record was declared - the visit, start and end of that record's
+\ DECL-LOCS row, 0 0 0 for none - and a local as itself with 0 0 0. The
+\ symbol and record a selection binds stay private to it. A spelling is
+\ taken only when its walk answers why = 0 and
+\ binds: a symbol, or under live authority the record the engine's lookup
+\ found (WALK-REC). Each distinct folded spelling is selected once, through a
+\ request-local set, and every walk output is put back after it, so the token
+\ at the cursor binds as it would unasked. Nothing is interned or kept. A word
+\ is spelled as its selection names it (VIS-NAME): as its declaration wrote it,
+\ else as its dictionary record does, else folded, the one case the store keeps
+\ for a name only the checker generated.
+\
+\ The candidates are the names the sources hold: every dictionary record's and
+\ every live symbol's. A prefix PKG:tail asks each behind its PKG. Any other
+\ prefix asks each bare, each behind the open package's name - the engine's
+\ top-level find takes PKG:TAIL for a global TAIL while PKG is open
+\ (OPEN-TAIL-GLOBAL?) - and each public symbol and each record of a package's
+\ public wordlist behind its package: a word the store holds no symbol for too.
+\ The whole spelling is compared with the whole prefix, so L, LSP and LSP: each
+\ reach LSP:MAIN. A source proves nothing; the selection decides. A qualified
+\ word is spelled behind its candidate's qualifier: the prefix's own as typed
+\ for PKG:tail and PKG:, else its package's namespace record's spelling, else
+\ the source's.
+PTR-VARIABLE VS-P   variable VS-CAP   variable VS-N   variable VS-I   \ slots: entry+1
+PTR-VARIABLE VE-P   variable VE-CAP                   \ entries: byte offset, length
+PTR-VARIABLE VB-P   variable VB-CAP   variable VB-N   \ their bytes: cells, bytes
+PTR-VARIABLE VQ-P   variable VQ-CAP                   \ a qualified spelling: cells
+2 constant VE-ROW
+64 constant VS-CAP0
+variable VIS-KIND
+PTR-VARIABLE VIS-A   variable VIS-U                    \ the prefix, whole
+variable VIS-QUAL                                      \ the prefix is PKG:tail
+PTR-VARIABLE VIS-PA  variable VIS-PU                   \ its PKG, or PKG: less the colon; 0 bytes for none
+PTR-VARIABLE VIS-OA  variable VIS-OU                   \ the open package; 0 bytes for none
+defer VIS-VISIT ( ptr u8 n n n n -- )
+
+: VB-AT ( n -- ptr u8 ) VB-P @ swap + ;
+: VQ-AT ( n -- ptr u8 ) VQ-P @ swap + ;
+: VS-CELL ( n -- ptr n ) cells VS-P @ swap + ;
+
+: VS-HASH ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   0  u 0 ?do 31 *  a i + c@ SYM-FOLD-C + loop ;
+
+: VS-ENTRY$ ( n -- ptr u8 n )
+   {: e:n :}
+   VE-P e VE-ROW NAV-CELL {: p:ptr :}
+   p @ VB-AT  p CELL + @ ;
+
+\ The slot A U folds to: the one holding it, or the empty one it would take.
+: VS-SLOT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u VS-HASH VS-CAP @ 1 - and VS-I !
+   BEGIN VS-I @ VS-CELL @ 0 <> WHILE
+      a u  VS-I @ VS-CELL @ 1 - VS-ENTRY$  CORE-STR=CI IF VS-I @ EXIT THEN
+      VS-I @ 1 + VS-CAP @ 1 - and VS-I !
+   REPEAT
+   VS-I @ ;
+
+\ A fresh, empty slot table of N cells, N a power of two.
+: VS-MAP ( n -- )
+   {: n:n :}
+   NULL-PTR VS-P !  0 VS-CAP !
+   VS-P VS-CAP n 1 ARENA-ROWS-ENSURE
+   VS-CAP @ 0 ?do 0 i VS-CELL ! loop ;
+
+: VS-GROW ( -- )
+   VS-P @ VS-CAP @ {: old:ptr oldcap:n :}
+   oldcap 2 * VS-MAP
+   VS-N @ 0 ?do  i 1 +  i VS-ENTRY$ VS-SLOT VS-CELL !  loop
+   old oldcap cells ARENA-UNMAP ;
+
+\ Put A U in the set; true when it was not there.
+: VS-ADD? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   VS-N @ 1 + 2 * VS-CAP @ > IF VS-GROW THEN
+   a u VS-SLOT {: i:n :}
+   i VS-CELL @ 0 <> IF RES-FALSE EXIT THEN
+   VE-P VE-CAP VS-N @ 1 + VE-ROW ARENA-ROWS-ENSURE
+   VB-P VB-CAP VB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   a  VB-N @ VB-AT  u ARENA-COPY
+   VE-P VS-N @ VE-ROW NAV-CELL {: p:ptr :}
+   VB-N @ p !  u p CELL + !
+   VB-N @ u + VB-N !
+   VS-N @ 1 + i VS-CELL !
+   VS-N @ 1 + VS-N !
+   RES-TRUE ;
+
+: VS-RELEASE ( -- )
+   VS-P VS-CAP 1 ARENA-ROWS-RELEASE  0 VS-N !
+   VE-P VE-CAP VE-ROW ARENA-ROWS-RELEASE
+   VB-P VB-CAP 1 ARENA-ROWS-RELEASE  0 VB-N !
+   VQ-P VQ-CAP 1 ARENA-ROWS-RELEASE ;
+
+\ A U starts with the prefix, folded.
+: VIS-PREFIX? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u VIS-U @ < IF RES-FALSE EXIT THEN
+   a VIS-U @ VIS-A @ VIS-U @ CORE-STR=CI ;
+
+\ Some PKG:tail starts with the prefix, folded: PKG starts with it, or it
+\ starts with PKG and a colon.
+: VIS-PKG? ( ptr u8 n -- bool )
+   {: qa:ptr qu:n :}
+   VIS-U @ qu <= IF qa VIS-U @ VIS-A @ VIS-U @ CORE-STR=CI EXIT THEN
+   VIS-A @ qu + c@ 58 <> IF RES-FALSE EXIT THEN
+   qa qu VIS-A @ qu CORE-STR=CI ;
+
+\ PKG:A U starts with the prefix, folded.
+: VIS-QPREFIX? ( ptr u8 n ptr u8 n -- bool )
+   {: qa:ptr qu:n a:ptr u:n :}
+   qa qu VIS-PKG? 0= IF RES-FALSE EXIT THEN
+   VIS-U @ qu - 1 - {: ru:n :}
+   ru 0 <= IF RES-TRUE EXIT THEN
+   u ru < IF RES-FALSE EXIT THEN
+   a ru  VIS-A @ qu + 1 +  ru CORE-STR=CI ;
+
+\ The dictionary record a selected symbol names: the one its own wordlist holds
+\ under its name, as SCOPE-KIND-SYM recovers it; NULL-PTR for a word only the
+\ checker knows.
+: VIS-SYM-REC ( n -- ptr n )
+   {: sym:n :}
+   sym SCOPE-SYM-WID {: wid:n :}
+   wid 0 < IF NULL-PTR EXIT THEN
+   sym SYM-NAME$ wid SCOPE-WL-PROBE ;
+
+\ The dictionary record a walk's selection of SYM binds: the one the engine's
+\ lookup found under live authority (WALK-REC), else the symbol's own.
+: VIS-WALK-REC ( n -- ptr n )
+   {: sym:n :}
+   WALK-REC @ IF BIND-REC @ EXIT THEN
+   sym VIS-SYM-REC ;
+
+\ The engine word a top-level find reaches for A U when no symbol names it
+\ (TOP-BOUND-SYM): PKG's public record of PKG:TAIL, else the global record of
+\ the tail or of the bare name.
+: VIS-ENGINE-REC ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? 0= IF a u 0 SCOPE-WL-PROBE EXIT THEN
+   TOP-PUBLIC-REC {: rec:ptr :}
+   rec NULL-PTR <> IF rec EXIT THEN
+   CHECKER-QTAIL$ 0 SCOPE-WL-PROBE ;
+
+\ The selections, each with the symbol, its newest visible record+1 and the
+\ dictionary record it binds. A top-level token binds as CHECKER-TOP-SYM
+\ selects, a body token and a named operand as the walk does. A selection
+\ that names neither a symbol nor a record binds nothing.
+: VIS-TOP-PICK ( ptr u8 n -- n n ptr n bool )
+   {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why 0 <> IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   a u sym TOP-BOUND-SYM {: s2:n ok:bool :}
+   ok 0= IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   s2 0 <> IF s2  s2 USIG-NEWEST-VISIBLE  s2 VIS-WALK-REC  RES-TRUE EXIT THEN
+   a u VIS-ENGINE-REC {: rec:ptr :}
+   rec NULL-PTR = IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   0 0 rec RES-TRUE ;
+
+: VIS-BODY-PICK ( ptr u8 n -- n n ptr n bool )
+   {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
+   why 0 <>  sym 0=  WALK-REC @ 0=  and  or IF 0 0 NULL-PTR RES-FALSE EXIT THEN
+   sym  sym 0= IF 0 ELSE sym USIG-NEWEST-VISIBLE THEN  sym VIS-WALK-REC  RES-TRUE ;
+
+\ Select A U with every walk output put back after (the owner's list).
+: VIS-PICK ( ptr u8 n -- n n ptr n bool )
+   {: a:ptr u:n :}
+   BIND-REC @ {: s-br:ptr :}
+   BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
+   CK-USED-MASK @ {: s-um:n :}
+   USH-GSYM @ USH-USYM @ USH-PKG-A @ USH-PKG-U @ {: s-hg:n s-hu:n s-ha:ptr s-hn:n :}
+   CHECKER-QBAD-TOK @ CHECKER-COLON-N @ CHECKER-COLON-I @ {: s-qb:n s-cn:n s-ci:n :}
+   CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:ptr s-qu:n s-ta:ptr s-tu:n :}
+   USING-UNBOUND @ WALK-REC @ {: s-ub:n s-wr:n :}
+   HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
+   PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
+   {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
+   VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
+   s-br BIND-REC !  s-bpi BIND-PEND-IX !  s-bpo BIND-PEND-OFF !  s-bs BIND-SEEDED !
+   s-um CK-USED-MASK !
+   s-hg USH-GSYM !  s-hu USH-USYM !  s-ha USH-PKG-A !  s-hn USH-PKG-U !
+   s-qb CHECKER-QBAD-TOK !  s-cn CHECKER-COLON-N !  s-ci CHECKER-COLON-I !
+   s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
+   s-ub USING-UNBOUND !  s-wr WALK-REC !
+   s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
+   s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS ! ;
+
+\ Locals answer here: a body token outside a quotation, unqualified.
+: VIS-LOCALS? ( -- bool )
+   VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-BODY =  QDEPTH @ 0 = and  VIS-QUAL @ 0 = and ;
+
+\ Local IX is spelled A U exactly.
+: VIS-LOCAL= ( ptr u8 n n -- bool )
+   {: a:ptr u:n ix:n :}
+   a u  LOCNB ix LOC-NAME-W * +  ix cells LOCLN + @  CORE-STR= ;
+
+\ A live local below IX is spelled A U exactly: that spelling is the local's.
+: VIS-HELD? ( ptr u8 n n -- bool )
+   {: a:ptr u:n ix:n :}
+   VIS-LOCALS? 0= IF RES-FALSE EXIT THEN
+   ix 0 ?do a u i VIS-LOCAL= IF RES-TRUE UNLOOP EXIT THEN loop
+   RES-FALSE ;
+
+\ PKG:NAME, in VQ. Neither PKG nor NAME lies in VQ, so its growth moves
+\ neither.
+: VIS-QSPELL ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: qa:ptr qu:n a:ptr u:n :}
+   qu 1 + u + {: len:n :}
+   VQ-P VQ-CAP len CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   qa  0 VQ-AT  qu ARENA-COPY
+   58  qu VQ-AT  c!
+   a  qu 1 + VQ-AT  u ARENA-COPY
+   0 VQ-AT len ;
+
+\ The qualifier a candidate behind PKG is spelled with: the prefix's own as
+\ typed, else the spelling of PKG's namespace record, else PKG as its source
+\ holds it.
+: VIS-QUALIFIER ( ptr u8 n -- ptr u8 n )
+   {: qa:ptr qu:n :}
+   VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ EXIT THEN
+   qa qu -1 SCOPE-WL-PROBE {: rec:ptr :}   \ its namespace record (DICT-WL:NAMESPACE)
+   rec NULL-PTR = IF qa qu EXIT THEN
+   rec CK-REC-NAME$ ;
+
+\ The name a selection of SYM, REC1 and dictionary record DREC spells, from the
+\ selection alone, and where it was declared: the name and location REC1's
+\ declaration wrote (its DECL-LOCS row, DL-ROW-OF), else the dictionary
+\ record's name, else the store's folded name - a word only the checker
+\ generated, whose case nothing kept - with no location, 0 0 0. The spelling
+\ the name was generated from never lends its case.
+: VIS-NAME ( n n ptr n -- ptr u8 n n n n )
+   {: sym:n rec1:n drec:ptr :}
+   rec1 DL-ROW-OF {: i:n named:bool :}
+   named IF i DL-NAME$  i DL-AT drop  EXIT THEN
+   drec NULL-PTR <> IF drec CK-REC-NAME$ 0 0 0 EXIT THEN
+   sym SYM-NAME$ 0 0 0 ;
+
+\ The spelling a selection is offered as, and its location: its name, behind
+\ the candidate's qualifier PKG when it has one (0 bytes for none).
+: VIS-SPELL ( ptr u8 n n n ptr n -- ptr u8 n n n n )
+   {: qa:ptr qu:n sym:n rec1:n drec:ptr :}
+   sym rec1 drec VIS-NAME {: a:ptr u:n v:n s:n e:n :}
+   qu 0= IF a u v s e EXIT THEN
+   qa qu VIS-QUALIFIER a u VIS-QSPELL  v s e ;
+
+\ Offer the candidate generated as NAME behind PKG (0 bytes for a bare one)
+\ when its whole spelling is new to the set and it binds, as its selection
+\ spells and locates it, unless a local holds that exact spelling.
+: VIS-OFFER ( ptr u8 n ptr u8 n -- )
+   {: qa:ptr qu:n a:ptr u:n :}
+   qu 0= IF a u ELSE qa qu a u VIS-QSPELL THEN {: fa:ptr fu:n :}
+   fa fu VS-ADD? 0= IF EXIT THEN
+   fa fu VIS-PICK {: sym:n rec1:n drec:ptr ok:bool :}
+   ok 0= IF EXIT THEN
+   qa qu sym rec1 drec VIS-SPELL {: sa:ptr su:n v:n s:n e:n :}
+   sa su #LOC @ VIS-HELD? IF EXIT THEN
+   sa su v s e VIS-VISIT ;
+
+\ Offer NAME behind PKG when PKG:NAME starts with the prefix.
+: VIS-QWORD ( ptr u8 n ptr u8 n -- )
+   {: qa:ptr qu:n a:ptr u:n :}
+   qu 0= IF EXIT THEN
+   qa qu a u VIS-QPREFIX? 0= IF EXIT THEN
+   qa qu a u VIS-OFFER ;
+
+\ A source's name: behind the prefix's package for a PKG:tail prefix, else
+\ bare and behind the open package's name.
+: VIS-WORD ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   VIS-QUAL @ IF VIS-PA @ VIS-PU @ a u VIS-QWORD EXIT THEN
+   a u VIS-PREFIX? IF NULL-PTR 0 a u VIS-OFFER THEN
+   VIS-OA @ VIS-OU @ a u VIS-QWORD ;
+
+: VIS-SYMS ( -- )
+   SYM-N @ 1 ?do
+      i SYM-RETIRED? 0= IF i SYM-NAME$ VIS-WORD THEN
+   loop ;
+
+\ Each live public symbol behind its package.
+: VIS-PSYMS ( -- )
+   SYM-N @ 1 ?do
+      i SYM-RETIRED? 0= IF
+         i SYM-ROW SYM.VIS @ SYM-PUBLIC = IF i SYM-PKG$ i SYM-NAME$ VIS-QWORD THEN
+      THEN
+   loop ;
+
+\ Each named record of wordlist WID behind PKG.
+: VIS-WL ( ptr u8 n n -- )
+   {: qa:ptr qu:n wid:n :}
+   ndict@ 0 ?do
+      i CK-REC-AT {: rec:ptr :}
+      rec CK-REC-WID wid = IF
+         rec CK-REC-NAME$ {: a:ptr u:n :}
+         u 0 <> IF qa qu a u VIS-QWORD THEN
+      THEN
+   loop ;
+
+\ Namespace record REC's public records behind its name, when one can start
+\ with the prefix. Its first cell is its public wordlist, 0 for none.
+: VIS-PACKAGE ( ptr n -- )
+   {: rec:ptr :}
+   rec @ {: wid:n :}
+   rec CK-REC-NAME$ {: a:ptr u:n :}
+   wid 0=  u 0=  or IF EXIT THEN
+   a u VIS-PKG? 0= IF EXIT THEN
+   a u wid VIS-WL ;
+
+\ Every package's public records, from the namespace wordlist's (-1) records.
+: VIS-PACKAGES ( -- )
+   ndict@ 0 ?do
+      i CK-REC-AT {: rec:ptr :}
+      rec CK-REC-WID -1 = IF rec VIS-PACKAGE THEN
+   loop ;
+
+\ Local IX as itself, unlocated, unless an earlier local gave its spelling.
+: VIS-LOCAL ( n -- )
+   {: ix:n :}
+   LOCNB ix LOC-NAME-W * +  ix cells LOCLN + @ {: a:ptr u:n :}
+   a u VIS-PREFIX? 0= IF EXIT THEN
+   a u ix VIS-HELD? IF EXIT THEN
+   a u 0 0 0 VIS-VISIT ;
+
+: VIS-LOCALS ( -- )
+   VIS-LOCALS? 0= IF EXIT THEN
+   #LOC @ 0 ?do i VIS-LOCAL loop ;
+
+\ Every dictionary record's name, so the engine words the store holds nothing
+\ for are asked too. The selection, not this record, spells what is offered.
+: VIS-RECS ( -- )
+   ndict@ 0 ?do
+      i CK-REC-AT CK-REC-NAME$ {: a:ptr u:n :}
+      u 0 <> IF a u VIS-WORD THEN
+   loop ;
+
+: VIS-RUN ( -- )
+   VS-CAP0 VS-MAP
+   VIS-LOCALS
+   VIS-RECS
+   VIS-SYMS
+   VIS-QUAL @ IF EXIT THEN
+   VIS-PACKAGES
+   VIS-PSYMS ;
+
+\ The prefix's own qualifier: the PKG of PKG:tail (VIS-QUAL) or of PKG:, the
+\ edge colon the split leaves an ordinary name; 0 bytes for any other prefix.
+: VIS-SPLIT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   0 VIS-QUAL !  a VIS-PA !  0 VIS-PU !
+   a u CHECKER-QUALIFIED? IF -1 VIS-QUAL !  CHECKER-QPKG$ VIS-PU ! VIS-PA ! EXIT THEN
+   CHECKER-QBAD-TOK @ IF EXIT THEN
+   CHECKER-COLON-N @ 1 =  CHECKER-COLON-I @ u 1 - = and  u 1 > and IF u 1 - VIS-PU ! THEN ;
+
+\ The open package's name, 0 bytes when none is open or the engine's package
+\ record names no package context.
+: VIS-OPEN-PKG ( -- )
+   CHECKER-RESOLVE:AUTHORITY {: pa:ptr pu:n mode:n ok:bool :}
+   pa VIS-OA !  0 VIS-OU !
+   ok 0=  mode CHECKER-PACKAGE-NONE =  or IF EXIT THEN
+   pu VIS-OU ! ;
+
+\ Enumerate for KIND under PREFIX to the visitor already set, holding VIS-OPEN
+\ for the run, whatever it throws. The prefix's own split is put back too.
+: VIS-ENUM ( ptr u8 n n -- )
+   {: a:ptr u:n kind:n :}
+   CHECKER-QBAD-TOK @ CHECKER-COLON-N @ CHECKER-COLON-I @ {: s-qb:n s-cn:n s-ci:n :}
+   CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:ptr s-qu:n s-ta:ptr s-tu:n :}
+   a VIS-A !  u VIS-U !  kind VIS-KIND !
+   a u VIS-SPLIT
+   VIS-OPEN-PKG
+   -1 VIS-OPEN !
+   [: VIS-RUN ;] catch {: rc:n :}
+   0 VIS-OPEN !
+   VS-RELEASE
+   s-qb CHECKER-QBAD-TOK !  s-cn CHECKER-COLON-N !  s-ci CHECKER-COLON-I !
+   s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
+   rc 0 <> IF rc throw THEN ;
+
+package CHECKER-RESOLVE
+public
+\ The owner slot (VERIFY-EACH-VISIBLE-OFF): the spellings that bind under
+\ PREFIX at a position of KIND (CHECKER-OWNER-ABI:VISIBLE-*), each to VISIT
+\ once with its location, as the section above says. Refused while a check
+\ owns a cursor or a visitor runs, before it touches either.
+: EACH-VISIBLE ( ptr u8 n n [ ptr u8 n n n n -- ] -- )
+   CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF E-CURSOR-NESTED throw THEN
+   is VIS-VISIT
+   VIS-ENUM ;
+;package
+
+\ The cursor's attempt reached it: keep what binds there for the owner's exit.
+: CUR-FIRE ( ptr u8 n n -- )
+   -1 CUR-DONE !
+   ['] CUR-PEND is VIS-VISIT
+   VIS-ENUM ;
+
+\ The owning check's attempt has not reached the cursor, and no visitor runs.
+: CUR-LIVE? ( -- bool )
+   CUR-OWNED @ 0 <>  CUR-DONE @ 0 = and  VIS-OPEN @ 0 = and ;
+
 variable ISQ
 PTR-VARIABLE IS-TA
 variable IS-TU
@@ -19736,8 +20325,26 @@ variable IS-PEND-U                   \ and its length
    OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
    rest DCUR ! ;
 
+\ The named operand IS-NEXT-TOKEN read, after the gap from GAP: a tick or `is`
+\ target at the cursor fires the named kind with the bytes before it.
+: CUR-NAMED ( n -- )
+   {: gap:n :}
+   CUR-LIVE? 0= IF EXIT THEN
+   CUR-AT @ gap < IF -1 CUR-DONE ! EXIT THEN
+   CUR-AT @  IS-TOFF @ IS-TU @ +  > IF EXIT THEN
+   IS-TA@  CUR-AT @ IS-TOFF @ - 0 max  CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
+
+\ No operand before the text's end: a cursor in that last gap fires it empty.
+: CUR-NAMED-END ( n -- )
+   {: gap:n :}
+   CUR-LIVE? 0= IF EXIT THEN
+   CUR-AT @ gap < IF -1 CUR-DONE ! EXIT THEN
+   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-NAMED CUR-FIRE ;
+
 : IS-TARGET-TOK? ( -- bool )
-   IS-NEXT-TOKEN 0= IF 2drop 0 PARSE-COMPLETE ! RES-FALSE EXIT THEN
+   TI @ {: gap:n :}
+   IS-NEXT-TOKEN 0= IF 2drop gap CUR-NAMED-END 0 PARSE-COMPLETE ! RES-FALSE EXIT THEN
+   gap CUR-NAMED
    TOKFOLD drop
    IS-PEND-ARM
    RES-TRUE ;
@@ -21838,13 +22445,51 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    i TBLEN @ >= IF RES-TRUE EXIT THEN
    i TBYTE@ 32 = ;
 
+\ ---- completion: the cursor in the body walk ------------------------------------
+\ The walk places the cursor where it delimits a token (CUR-TOKEN), a signature
+\ or comment (CUR-PAREN), and the text's end (CUR-END). Each gap starts where
+\ the last token, or a payload it read, ended (CUR-GAP): a cursor before it lay
+\ in bytes a token consumed and offers nothing. The definition's name, a locals
+\ group and the operands the field, construct and match forms read are not a
+\ word's place: a cursor there offers nothing either.
+: CUR-TOKEN ( -- )
+   CUR-LIVE? 0= IF EXIT THEN
+   CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
+   CUR-AT @ TI @ > IF EXIT THEN
+   TOK0 @ 0 <>  LMODE @ 0 <> or  FIELD-LOAN-PENDING @ 0 <> or  CONM @ 0 <> or  CHECKER-MATCH-MODE @ 0 <> or IF
+      -1 CUR-DONE ! EXIT
+   THEN
+   TSTART @ TADDR  CUR-AT @ TSTART @ - 0 max  CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+
+\ The '( ... )' that opens at TI: where, and whether it is the signature.
+variable CUR-OPEN   variable CUR-PSIG
+: CUR-PAREN-AT ( -- )
+   TI @ CUR-OPEN !
+   VSIG @ 0 <>  SGSEEN @ 0 = and  TOKIX @ 2 < and IF -1 ELSE 0 THEN CUR-PSIG ! ;
+
+\ That group, now ending at TI. A cursor inside the signature or a comment
+\ offers nothing; one in the gap before a comment is a token's place.
+: CUR-PAREN ( -- )
+   CUR-LIVE? 0= IF EXIT THEN
+   CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
+   CUR-AT @ TI @ > IF EXIT THEN
+   CUR-PSIG @ 0 <>  CUR-AT @ CUR-OPEN @ >  or IF -1 CUR-DONE ! EXIT THEN
+   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+
+: CUR-END ( -- )
+   CUR-LIVE? 0= IF EXIT THEN
+   CUR-AT @ CUR-GAP @ < IF -1 CUR-DONE ! EXIT THEN
+   TBASE@ 0 CHECKER-OWNER-ABI:VISIBLE-BODY CUR-FIRE ;
+
 : CHECK-SCAN-WALK ( -- )
    0 SCAN-TOKS !
    TAPE-FEED? IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
+     TI @ CUR-GAP !
      BEGIN TI @ 32 TBYTE=? WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
        TI @ TBYTE@ 40 =  TI @ 1 + TBREAK?  and IF   \ '( ' (not '(CMP)') -> sig or comment
+         CUR-PAREN-AT
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
          BEGIN TI @ TBLEN @ <  TI @ 41 TBYTE=? 0=  and WHILE TI @ 1 + TI ! REPEAT
          TI @ TBLEN @ >= IF 0 PARSE-COMPLETE ! THEN
@@ -21873,6 +22518,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
            SGBAD @ UNFIT @ or SGDECL-BAD !
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
+         CUR-PAREN
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
@@ -21880,6 +22526,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
          THEN
+         CUR-TOKEN
          TOK0 @ {: was-name:bool :}
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          TORDER-SCAN-UNKNOWN @ IF EXIT THEN
@@ -21888,7 +22535,8 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
          CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
        THEN
      THEN
-   REPEAT ;
+   REPEAT
+   CUR-END ;
 
 \ The walk holds a body's using refusals (USING-HOLD) and its end raises the one
 \ that refuses the definition, before the checks at `;` and a retry, as a raise
@@ -23073,6 +23721,7 @@ variable CK-RETRY-TOKS
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
    REC-ON @ IF BWIN-N @ ELSE 0 THEN {: bw0:n :}
    PU-N @ {: pu0:n :}
+   CUR-RN @ CB-N @ CUR-DONE @ {: cp0:n cb0:n done0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -23086,6 +23735,7 @@ variable CK-RETRY-TOKS
       THEN
       -1 RESCAN !
       pu0 PU-N !                       \ this attempt's uses replace the last's
+      cp0 CUR-RN !  cb0 CB-N !  done0 CUR-DONE !   \ and its candidates
       REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! bw0 BWIN-N ! MWIN-RESET THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
@@ -23123,9 +23773,14 @@ variable CK-RETRY-TOKS
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}
    PU-N @ {: pu0:n :}
+   CUR-DONE @ {: done0:n :}
+   CUR-GAP @ {: gap0:n :}
    CHECK-CANDIDATE-START
    -1 CHK-PROBE !
+   -1 CUR-DONE !                       \ a candidate's text is not the cursor's
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   done0 CUR-DONE !
+   gap0 CUR-GAP !
    probe0 CHK-PROBE !
    0 CHECK-CANDIDATE-DONE drop
    pu0 PU-N !                          \ a candidate's uses are never published
@@ -23209,12 +23864,14 @@ variable DEF-STOPPED
    1 TORDER-DEPTH +!
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    PU-N @ {: pu0:n :}
+   CUR-TAKE {: took:bool :}
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
-   pu0 NAV-PUBLISH                     \ the final attempt's uses, its resolved prefix if it stopped
-   rc 0 <> IF rc CHECK-DEF-THREW THEN
+   pu0 took PUBLISH-EXIT {: prc:n :}   \ the final attempt's uses, its resolved prefix if it
+   rc 0 <> IF rc CHECK-DEF-THREW THEN  \ stopped, and its candidates; the arm goes either way
+   prc 0 <> IF prc throw THEN
    CK-DEF-VERDICT @ {: verdict:n :}
    0 VSIG !
    CHECKER-TAPE:ARMED @ 0 <> {: recording:bool :}
@@ -23592,12 +24249,14 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    1 TORDER-DEPTH +!
    TORDER-CHECKING TORDER-ACTIVE !  0 TORDER-SCAN-UNKNOWN !
    PU-N @ {: pu0:n :}
+   CUR-TAKE {: took:bool :}
    [: SRC-DOES-BODY ;] catch {: rc:n :}
    -1 TORDER-DEPTH +!
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
-   pu0 NAV-PUBLISH                     \ the clause's uses, its resolved prefix if it stopped
-   DOES-EFF-CLEAR
-   rc 0 <> IF rc SRC-DOES-THREW EXIT THEN
+   pu0 took PUBLISH-EXIT {: prc:n :}   \ the clause's uses, its resolved prefix if it stopped,
+   DOES-EFF-CLEAR                      \ and its candidates; the arm goes either way
+   rc 0 <> IF rc SRC-DOES-THREW  prc 0 <> IF prc throw THEN  EXIT THEN
+   prc 0 <> IF prc throw THEN
    SRC-DOES-VERDICT @ {: v:n :}
    v -1 =  v 2 =  or IF na nu CHECKER-SOURCE-CLAUSE THEN
    v na nu DOES-REPORT ;
@@ -25047,6 +25706,8 @@ package CHECKER-REG
 ' CHECKER-DECL-AT! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF + xt!
 ' CHECKER-DECL-AT-OFF DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF + xt!
 ' CHECKER-WITH-USES DECLARATIONS CHECKER-OWNER-ABI:VERIFY-USES-OFF + xt!
+' CHECKER-CURSOR! DECLARATIONS CHECKER-OWNER-ABI:VERIFY-CURSOR-OFF + xt!
+' CHECKER-RESOLVE:EACH-VISIBLE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF + xt!
 ' WITH-TICK-ORDER DECLARATIONS CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF + xt!
 ' TRUST-DECL? DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DECL-OFF + xt!
 ' CHECKER-DECLARED-ROW! DECLARATIONS CHECKER-OWNER-ABI:DECLARED-ROW-OFF + xt!
