@@ -359,7 +359,7 @@ Cleanup must be safe after partial initialization, cancellation or exceptions. I
 
 Do not switch `HB-TARGET-*` meanings globally. Preserve legacy predicates for the engine/source window that owns them, while new code receives explicit `HostContext` or `TargetContext`. Prohibit new portable callers of the legacy predicates with a dependency/lint rule. Move each source selector individually behind a resolver adapter, retaining native fixtures.
 
-Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. When the Wasm path needs a sealed package changed, the change is made at that owner and the engine rebuilt.
+Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. When the Wasm path needs an engine package changed, the change is made in that package and the engine rebuilt.
 
 A transitional non-reentrant backend is marked `ExclusiveSession`. The driver takes an explicit lease, saves only documented state, and prevents unsupported nested entry. This is preferable to claiming reentrancy before globals have been removed.
 
@@ -1341,7 +1341,7 @@ Paths in the “destination/contract” column are proposed ownership destinatio
 | `src/compiler/native/abi.f` | Host identity mixed with AArch64 routine construction | Split execution-host descriptor from ARM64 Habu routine/foreign ABI construction | T04/L07/L12 |
 | `native/a64ir.f`, ARM64 selector/emitter files | Architecture-specific implementation in shared area | `src/arch/arm64/` ownership after interfaces stabilize | Existing ARM64 gate and byte parity |
 | `native/x64ir.f`, `select-x64.f`, `emit-x64.f` | Existing Intel implementation | The Intel lane retains ownership; move by agreement after shared adapters land | Existing Intel gate; L07/L08 later Windows lane |
-| `src/compiler/ir/{attr,context,schema,type}.f` | Decoders that mirror every CTARGET architecture, ABI and feature code | Each new target code is mirrored in the decoders in the same sealed commit (P1a) | T01; HIR schema version bumped |
+| `src/compiler/ir/{attr,context,schema,type}.f` | Decoders that mirror every CTARGET architecture, ABI and feature code | Each new target code is mirrored in the decoders in the same commit (P1a) | T01; HIR schema version bumped |
 | `src/arch/arm32/` | ISA construction available; complete target pipeline needed | Shared ARM32 provider with CPU/state/FP/ABI profiles | L12/L13/N09 |
 | `src/arch/tic6x/` | Existing assembler, ABI/facts/simulator assets | Context-owned target provider; constraint scheduling and independent validators | L14–L18 |
 | `src/core/cell.f` | Existing 64-bit Habu cell semantics | Keep language cell invariant; target pointer/foreign layout moves to explicit layout owner | N07–N11 |
@@ -1394,7 +1394,7 @@ P0 and P1 are split in two. P0n pins the native contracts and P0w the Wasm numer
 |---|---|---|---|
 | P0n — pin native contracts | Literal CTARGET digests, primitive and layout goldens (habu-pin-native-target-12e4fbb7) | None | Old behavior reproducible on currently qualified hosts; unknown results labelled untested |
 | P0w — pin Wasm numerics | Wasm numeric goldens (habu-pin-hbr2-wire-0b340032) | This page | N01–N06 with the NaN print rows and the three `?do` rows, run natively |
-| P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one sealed commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
+| P1a — Wasm target row | Wasm architecture and ABI codes, the scalar-FP capability split (§4.4) and the decoders, in one commit (habu-add-the-wasm-4c32353e) | P0n | T01; legacy digests unchanged |
 | P1b — action/target model | ExecutionPlatform, CompilerProduct, ResolvedTarget, alias resolver, separate compatibility predicates (habu-resolve-build-targets-ae8e65c1) | P1a | T01–T06, T15; no changed legacy digest meanings |
 | P2 — provider/session adapter | Backend manifest capacity, context-owned artifact adapter, exclusive legacy-provider guard (habu-give-each-backend-b6f7ea4f) | P1b | T07–T09; ARM64/Intel failures leave parent state valid |
 | P3 — target data/staging | Symbolic target refs, object builder, host/helper binding split, adapter admission (habu-make-cross-target-934166cc) | P2 | T10–T14/N07–N11; no foreign artifact host pointers |
