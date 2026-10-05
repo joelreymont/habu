@@ -190,8 +190,8 @@ create XPK-EMPTY 1 allot
 
 : XPK-INTERNAL-CATCH-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" TRUSTED: XPK-EVC ( ptr u8 n -- n ) [: evaluate ;] catch ;" XPK-LINE
-   S\" s\" package XB public EXPORT DEFER-UNSET\" XPK-EVC ." XPK-LINE
+   S\" : XPK-Q ( -- ) s\" package XB public EXPORT DEFER-UNSET\" evaluate-closed ;" XPK-LINE
+   s" ' XPK-Q catch ." XPK-LINE
    S\" s\" after-catch\" type cr" XPK-LINE
    SB$ ;
 
