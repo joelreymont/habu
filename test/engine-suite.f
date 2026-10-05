@@ -17,6 +17,7 @@ variable ES-CERT-STALE0
 ES-CERT-STALE ES-CERT-STALE0 !
 
 require test/checker-assert.f
+require lib/errors.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
 require lib/fmt.f                        \ FMT:.INT - one-line number text
@@ -269,7 +270,8 @@ KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 : TTARGET-COUNT ( -- n )
    0
    HB-TARGET-LINUX? if 1 + then
-   HB-TARGET-MACOS? if 1 + then ;
+   HB-TARGET-MACOS? if 1 + then
+   HB-TARGET-LINUX-X86-64? if 1 + then ;
 TTARGET-KNOWN 1 T=
 TTARGET-COUNT 1 T=
 
@@ -2176,19 +2178,29 @@ variable ES-CPX-ND
 \ >16-char name: C-STORE-NAME copies it into code space before the entry, so
 \ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME 0 set-check ;" ;
+TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
+TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
+TRUSTED: ES-CPX-BAD-RUN ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ['] ES-CPX-BAD-EVAL catch E-NCOMP-VERDICT T=
+   else ES-CPX-BAD$ evaluate then ;
+TRUSTED: ES-CPX-BAD-EXT-RUN ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ['] ES-CPX-BAD-EXT-EVAL catch E-NCOMP-VERDICT T=
+   else ES-CPX-BAD-EXT$ evaluate then ;
 1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
-ES-CPX-BAD$ evaluate
+ES-CPX-BAD-RUN
 s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
-ES-CPX-BAD$ evaluate
-ES-CPX-BAD$ evaluate
-ES-CPX-BAD$ evaluate
+ES-CPX-BAD-RUN
+ES-CPX-BAD-RUN
+ES-CPX-BAD-RUN
 s" cpx-reject-4" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
-ES-CPX-BAD-EXT$ evaluate
+ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-1" T-LABEL cp@ ES-CPX-CP @ T=
-ES-CPX-BAD-EXT$ evaluate
-ES-CPX-BAD-EXT$ evaluate
+ES-CPX-BAD-EXT-RUN
+ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 LOWER-CERT-HOOK:INSTALL
@@ -2201,7 +2213,8 @@ s" cpx-retry-entry" T-LABEL ' ES-CPX-GOOD ES-CPX-CP @ T=
 cp@ ES-CPX-CP !
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
-s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
+: ES-CPX-EXT-OFF ( -- n ) HB-TARGET-LINUX-X86-64? if 32 else 28 then ;
+s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ ES-CPX-EXT-OFF + T=
 
 \ Hash-index rollback churn must leave the index ALIVE, not merely terminate.
 \ Every cycle publishes a record at the same dictionary index, rolls NDICT and
