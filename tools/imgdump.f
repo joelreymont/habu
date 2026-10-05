@@ -240,8 +240,12 @@ private
    \ A text pointer in the payload is canonical: the writer rebased it to 0.
    p 0 >=  p ROFF @ CODE-OFF - < and if p CODE-OFF + exit then
    -1 ;
+\ EMIT-DICT stores external names __text-relative in a baked image; a
+\ snapshot instead stores rebased pointers that PTR>OFF maps into the file.
 : E-NAME-OFF {: o :} ( n -- n )
-   o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
+   o E-F DNAME-EXT and 0= if o 24 + exit then
+   o 24 + I@
+   HAS-SNAP @ if PTR>OFF else CODE-OFF + then ;
 : E-NAME {: o :} ( n -- ptr u8 )
    o E-NAME-OFF dup 0 < if s" imgdump: bad external name pointer" 74 die then
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
