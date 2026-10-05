@@ -138,6 +138,9 @@ $378 constant EFFECT-RET-TAIL-SAME-OFF
 $380 constant EFFECT-QUOT-CALLABLE-OFF
 $388 constant CALL-QUOT-RGIN-OFF
 $390 constant CALL-QUOT-RGOUT-OFF
+\ The live checker owns diagnostic emission even while a baked compiler asks it.
+$398 constant RESET-REPORT-OFF
+$3A0 constant JSON-REPORTED-OFF
 CHECKER-FETCH-ABI:BYTES constant BYTES
 
 \ These cells precede the record; callable offsets and the record pointer stay

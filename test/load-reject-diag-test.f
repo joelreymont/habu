@@ -410,6 +410,16 @@ LOWER-CERT-HOOK:INSTALL
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
+: TEST-UNREPORTED-REJECT ( -- )
+   s" a custom hook's unreported reject retains the compiler fallback" T-LABEL
+   BODY$ s" 1 set-tier TRUSTED: LRD-SILENT-HOOK ( ptr u8 n -- n ) 2drop 70 throw ; -1 JSON-DIAGS ! ' LRD-SILENT-HOOK set-check : LRD-CUSTOM ( -- ) ;" WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile" ASSERT-NAMED
+   s" a silent diagnostic defer retains the hook fallback" T-LABEL
+   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" WRITE-ALL
+   BODY$ RUN
+   s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
+
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
    TOP-INC$ RUN s" 74" ASSERT-OK-OUT
@@ -435,6 +445,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-IMM-REQUIRE
    TEST-IMM-SIGNATURELESS
    TEST-IMM-TRUSTED
+   TEST-UNREPORTED-REJECT
    TEST-PREFLIGHT-POSITIVES
    CLEANUP-RUN
    T-REPORT

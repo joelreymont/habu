@@ -38,6 +38,8 @@ defer SOURCE-QUOT-RGOUT ( n n -- n n )
 defer SOURCE-INIT-LAYOUT ( n -- n n n )
 defer SOURCE-FIELD-SPAN ( n -- n n )
 defer SOURCE-REPORT ( -- )
+defer SOURCE-REPORT-RESET ( -- )
+defer SOURCE-JSON-REPORTED ( -- bool )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -101,7 +103,9 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-CALL-QUOT-RGOUT-OFF s" source quotation return output glue" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-RGOUT
    NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
    NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
-   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT ;
+   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT
+   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -158,6 +162,16 @@ public
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" scan report" FIELD
    dup 0= if drop SOURCE-REPORT exit then
    AS-ACTION execute ;
+
+: RESET-REPORT ( -- )
+   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" report reset" FIELD
+   dup 0= if drop SOURCE-REPORT-RESET exit then
+   AS-ACTION execute ;
+
+: JSON-REPORTED? ( -- bool )
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" JSON report" FIELD
+   dup 0= if drop SOURCE-JSON-REPORTED exit then
+   AS-BOOL execute ;
 
 \ The source owner that counted a refusal decides whether compilation may
 \ continue to the next definition. A captured compiler never asks a stale

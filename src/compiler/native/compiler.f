@@ -310,6 +310,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
+   CHECKER-OWNER:RESET-REPORT
    TRUSTED? if a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
    hook 0= if a u CHECK-HOOKLESS -1 exit then
@@ -883,6 +884,7 @@ INSTALL-FORGET
 
 : RUN ( -- )
    LENGTH-CK
+   CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
@@ -893,7 +895,11 @@ INSTALL-FORGET
    then
    M-RC @ {: rc:n :}
    rc E-NCOMP-REPORTED = if rc throw then
-   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
+   rc 0 <> if
+      rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
+      if REPORT-FAILURE then
+      RETRACT rc throw
+   then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}

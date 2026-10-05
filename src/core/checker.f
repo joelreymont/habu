@@ -127,6 +127,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -144,7 +145,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:CALL-QUOT-RGOUT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:JSON-REPORTED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -17366,6 +17367,10 @@ variable TOK0
 defer RECXT ( ptr u8 n -- )
 defer DIAGXT ( -- )
 variable DIAG-QUIET
+variable JSON-REPORTED
+: CHECKER-REPORT-RESET ( -- ) 0 JSON-REPORTED ! ;
+: CHECKER-REPORT-MARK ( -- ) -1 JSON-REPORTED ! ;
+: CHECKER-JSON-REPORTED? ( -- bool ) JSON-REPORTED @ 0= 0= ;
 : DIAG-HOOK-DEFAULTS ( -- )
    [: 2drop ;] is RECXT
    [: ;] is DIAGXT ;
@@ -21623,6 +21628,7 @@ variable DEF-STOPPED
    0 CK-DEF-VERDICT ! ;
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   CHECKER-REPORT-RESET
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
    [: CHECK-DEF-BODY ;] catch {: rc:n :}
@@ -23414,6 +23420,8 @@ package CHECKER-REG
 ' CHECKER-VERIFY-DEFERRED DECLARATIONS CHECKER-OWNER-ABI:VERIFY-DEFERRED-OFF + xt!
 ' CHECKER-VERIFY-REACH DECLARATIONS CHECKER-OWNER-ABI:VERIFY-REACH-OFF + xt!
 ' MULTI-ERR? DECLARATIONS CHECKER-OWNER-ABI:MULTI-ERROR-OFF + xt!
+' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
+' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
 
 \ The first cold checker has no retained owner to transfer from. Publish it
 \ only after every callback is installed. A replacement keeps the nonzero
