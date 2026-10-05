@@ -4922,6 +4922,14 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    write X64CODE:LBL,
    2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
    WINDOW-CLOSE,
+   \ The created body's E9 is written after its original publication. Carry
+   \ that exact opcode site so a stripped image can retarget the does> clause.
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E declared JCC,
+   RDI RSP DP-SLOT MOV-LOAD,
+   RDI DBASE-REG ASM-SINK ENC-SUB-RR
+   RDX SNAP-RELOC:SITE-CALL IMM32,
+   ADD-SITE-LBL CALL,
    declared X64CODE:LBL,
    R11 NCOMP-DISPATCH:DOES-SHADOW-CELL CELL@,
    R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,
