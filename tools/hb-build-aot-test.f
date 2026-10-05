@@ -2,7 +2,7 @@
 \ groups that build and run one program each - the object producer, the native
 \ call sites, the division refusal, the span definer as a snapshot and
 \ stripped (by both makers, to the same DATA), a build driver, the empty does>
-\ clause and one foreign call - and the programs the keyed linker image refuses.
+\ clause and one foreign call - and the keyed linker's baked/pre-window boundary.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -209,9 +209,10 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 \ `tools/aot-build-core.f` did, in every image the engine linked. Neither maker
 \ may add a byte of its own, so both links of one source carry one cell stream.
 \ Their code differs: each window is restored at the DATA address its maker
-\ opened it at, and the linker image's sits above the linker. The maker key
-\ names the engine that runs it, so the second build is a link, not the first
-\ one's artifact.
+\ opened it at, and the linker image's sits above the linker. The x86 sparse-run
+\ headers contain those different offsets, while the DATA payload totals and
+\ both programs' output must agree. The maker key names the engine that runs it,
+\ so the second build is a link, not the first one's artifact.
 : BUILD-AOT-SPAN-ENGINE ( -- )
    HBT-ROOT s" spaneng" HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U HBT-PATH!
    HBT-SPAN-ENG HBT-REMOVE-FILE?
@@ -219,9 +220,17 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-SPAN-OUT HBT-DATA-BLOB {: img:ptr imgu:n :}
-   HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
    imgu 0 > TTRUE
-   img imgu eng engu HBT-DIFF-AT -1 T=
+   HB-TARGET-LINUX-X86-64? if
+      IMAGE-SIZE:DATA-WRITTEN {: carried:n :}
+      carried 0 > TTRUE
+      HBT-SPAN-ENG IMAGE-SIZE:MEASURE
+      IMAGE-SIZE:DATA-WRITTEN carried T=
+   else
+      HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
+      img imgu eng engu HBT-DIFF-AT -1 T=
+   then
+   HBT-SPAN-ENG HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
    HBT-REMOVE-ARTIFACT
    HBT-SPAN-ENG HBT-REMOVE-FILE?
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
@@ -243,23 +252,43 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
 : HBT-EXBUILD-SRC$ ( -- ptr u8 n )
    S\" require lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
 
-\ THE KEYED LINKER IMAGE REFUSES ALL THREE PROGRAMS BY NAME
-\ (test/preloaded-engine.f rule 3). The image loaded lib/fmt.f and
-\ lib/executable-build.f with the linker, before its maker latched the band, so
-\ the first and third programs' requires resolve to those copies and the second
-\ program's FMT:.INT names one without a require. Each closure reaches a word
-\ compiled outside the window, and the maker refuses the first such word rather
-\ than carry the image's copy. The engine compiles the first program's module
-\ inside the window, refuses the second program's name and links the third
-\ (BUILD-AOT-EXBUILD). The first program's module is one the engine does not
-\ bake: a baked module's words lie below the engine's seal watermark, where the
-\ band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them
-\ and the image links a program that requires one.
+\ THE KEYED LINKER REFUSES WORDS FROM ITS OWN PRE-WINDOW LOAD
+\ (test/preloaded-engine.f rule 3). It loads lib/executable-build.f before its
+\ maker latches the band, so WITH is refused in either source form below. FMT:.INT
+\ has two valid placements: when the donor engine bakes it below the seal, the
+\ keyed image can call that body and both programs must run; otherwise the
+\ linker loads it before the window and both programs must refuse by name.
 : KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
    HBT-SPAN-SRC src srcu WRITE-ALL
    HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
    rc 74 T=
    HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened" CONTAINS? TTRUE ;
+
+\ Ask the keyed linker itself: HABU_UNDER_TEST can select a donor other than
+\ the engine running this row. A baked FMT body lies below its seal; otherwise
+\ the linker's own pre-window load supplied that body above the seal.
+: HBT-FMT-BAKED? ( -- bool )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   HBT-LINKER >LEN
+   S\" : FMT-PLACEMENT ( -- ) s\q FMT:.INT\q XREF-FIND-INDEX SEAL-NDICT@ < if s\q baked\q else s\q pre-window\q then type cr ;\nFMT-PLACEMENT\n" >LEN
+   HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE HBT-CAPTURE>N
+   {: out:n err:n rc:n :}
+   rc 0 T=
+   HBT-RUN-ERR err HBT-EMPTY$ T$=
+   HBT-RUN-OUT out S\" baked\n" T-STR= if true exit then
+   HBT-RUN-OUT out S\" pre-window\n" T$=
+   false ;
+
+: KEYED-BAKED-FMT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   HBT-SPAN-SRC src srcu WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBT-SPAN-OUT S\" 42\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
 \ The same refusal through the CLI under --json-errors, which promises its
 \ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
@@ -283,8 +312,13 @@ create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
    HBT-SPAN-OUT EXISTS? TFALSE ;
 
 : BUILD-AOT-PRE-WINDOW ( -- )
-   HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
-   HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+   HBT-FMT-BAKED? if
+      HBT-REQUIRED-SRC$ KEYED-BAKED-FMT
+      HBT-UNREQUIRED-SRC$ KEYED-BAKED-FMT
+   else
+      HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+      HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
+   then
    HBT-EXBUILD-SRC$ KEYED-PRE-WINDOW-REFUSED
    KEYED-PRE-WINDOW-JSON ;
 
