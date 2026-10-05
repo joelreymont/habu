@@ -946,7 +946,6 @@ using IR-BUILD
 \ body on the ordinary strict return check at the frame return.
 : EMPTY-FRAME-RESHAPE ( n n n n -- )
    {: lo:n hi:n in:n out:n :}
-   data-base TRUSTED-CELL + @ 0<> if exit then
    lo hi <> if exit then
    in out <> if exit then
    VGLUE @ in VGLUE-LOW IN-GLUE @ <> if E-NELAB-JOIN throw then
@@ -3918,11 +3917,9 @@ variable QNAME-P                     \ the place value the digit loop is on
    in 0 ?do
       c b  c b CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
-   \ A trusted body uses the physical cell words directly. Its declared input
-   \ still fixes the ABI width; only a checked body starts with value grouping.
-   FUN-KIND @ FUN-COLON = data-base TRUSTED-CELL + @ 0<> and 0= if
-      0 IN-GLUE @ VGLUE-RUN
-   then
+   \ The declared input groups values before either checked or trusted bodies.
+   \ A trusted body crosses to raw cells explicitly when its source needs them.
+   0 IN-GLUE @ VGLUE-RUN
    in QPARAMS-OPEN ;
 
 \ ---- one quotation body, as a function of its own -----------------------------
