@@ -42,6 +42,8 @@ create PROG IO-CAP allot variable PROG-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 variable RC
+$1000 constant SOURCE-CHUNK
+create SOURCE-BLOCK SOURCE-CHUNK allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : PROG$ ( -- ptr u8 n ) PROG PROG-U @ ;
@@ -148,6 +150,38 @@ variable RC
    s" a require below a missing directory names the file it cannot open" T-LABEL
    s" require-dir" s" absent/x.f" REQUIRE-AT ;
 
+\ A real file crosses the former 1 MiB loader limit. Repeated short comments
+\ keep the source valid without making the fixture itself a large source file.
+: SOURCE-BLOCK! ( -- )
+   SOURCE-CHUNK 0 ?do
+      i 8 mod 0= if 92 else i 8 mod 7 = if 10 else 32 then then
+      SOURCE-BLOCK i + c!
+   loop ;
+
+: WRITE-SOURCE-BLOCKS ( ptr u8 n n -- )
+   {: path:ptr pathu:n blocks:n :}
+   path pathu SOURCE-BLOCK SOURCE-CHUNK WRITE-ALL
+   blocks 1- 0 ?do path pathu SOURCE-BLOCK SOURCE-CHUNK APPEND-FILE loop ;
+
+: LOAD-SOURCE ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n rel:ptr relu:n :}
+   0 PROG-U !
+   s" require " PROG+ rel relu AT PLINE
+   name nameu LOAD-CASE ;
+
+: SOURCE-SIZE ( -- )
+   SOURCE-BLOCK!
+   s" big-ok.f" AT 257 WRITE-SOURCE-BLOCKS
+   s" big-ok.f" AT S\" 42 .\n" APPEND-FILE
+   s" a source above 1 MiB loads and runs" T-LABEL
+   s" size-ok" s" big-ok.f" LOAD-SOURCE
+   RC @ 0 T= OUT OUT-U @ S\" 42\n" T$= ERR-U @ 0 T=
+   s" big-over.f" AT 512 WRITE-SOURCE-BLOCKS
+   s" big-over.f" AT SOURCE-BLOCK 1 APPEND-FILE
+   s" one byte past the source capacity is refused" T-LABEL
+   s" size-over" s" big-over.f" LOAD-SOURCE
+   EXITS-74 ERR$ S\" include: file too large\n" T$= ;
+
 \ A canon that finds nothing, not even the file system root.
 : CANON-NONE ( -- )
    0 PROG-U !
@@ -204,7 +238,7 @@ public
 
 : RUN ( -- )
    T-RESET SETUP
-   WITH-REFUSED REQUIRE-ABSENT CANON-NONE BUNDLE-ABSENT SAVE-IN-WITH
+   WITH-REFUSED REQUIRE-ABSENT SOURCE-SIZE CANON-NONE BUNDLE-ABSENT SAVE-IN-WITH
    s" include refusal tree: " type ROOT$ type cr
    T-REPORT ;
 

@@ -4,7 +4,7 @@
 \ this file only gives source files a checked way to load dependencies.
 
 PATH-CAP constant INCLUDE-PATH-CAP
-$100000 constant INCLUDE-BUF-CAP  \ checker.f crossed the old 512 KiB slot
+$200000 constant INCLUDE-BUF-CAP  \ maximum bytes in one active source frame
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 $1 constant INCLUDE-PROBE-CAP
 \ A loader refusal's exit status, always after a line naming the refusal: an
