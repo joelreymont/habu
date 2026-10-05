@@ -12124,7 +12124,7 @@ variable BGLUE-I
    THEN
    0 BGLUE-MASK !  0 BGLUE-I !
    BEGIN BGLUE-I @ terms < WHILE
-      row BGLUE-I @ EFF-ROW-SLOT {: slot:n :}
+      BGLUE-I @ row EFF-ROW-SLOT {: slot:n :}
       slot 2 < IF 1 BGLUE-I +! ELSE
          BGLUE-I @ slot + width > IF -1 EXIT THEN
          slot 1 - 0 ?DO
