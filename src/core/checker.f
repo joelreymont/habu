@@ -11179,13 +11179,13 @@ $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-
 create LOG LOG-MAX 2 * cells allot
 variable LOG-N
 
-\ The does> clauses the replay published (CLAUSE): each definer's index, then
-\ its clause's, in the order they were made. The engine pairs a live definer
-\ with its clause by code containment (DOES-COMPANION?-XT), which a codeless
-\ replay record cannot meet, so the pair is kept where it is made. One overlay
-\ serves every verifier scope opened inside it (OPEN-SCOPE), so the table holds
-\ as many as the undo log, and a replay that fills it is refused,
-\ E-OVERLAY-CAP.
+\ The does> clauses the replay published (CLAUSE): each definer's or export's
+\ index, then its clause's, in the order they were made. The engine pairs a
+\ live definer or export with its clause by code containment
+\ (DOES-COMPANION?-XT), which a codeless replay record cannot meet, so the pair
+\ is kept where it is made. One overlay serves every verifier scope opened
+\ inside it (OPEN-SCOPE), so the table holds as many as the undo log, and a
+\ replay whose definers and exports fill it is refused, E-OVERLAY-CAP.
 create PAIRS LOG-MAX 2 * cells allot
 variable PAIRS-N
 
@@ -11390,15 +11390,15 @@ variable SNAP-N
    LOOP
    RES-FALSE ;
 
-\ The clause PAIRS holds for the replayed definer IX, -1 for none.
+\ The clause PAIRS holds for the replayed definer or export IX, -1 for none.
 : PAIRED ( n -- n ) {: ix:n :}
    PAIRS-N @ 0 ?DO
       PAIRS i IX@ ix = IF PAIRS i 2 * 1 + ROW@ UNLOOP EXIT THEN
    LOOP
    -1 ;
 
-\ The does> clause of the definer at IX that is still in the definer's
-\ wordlist, -1 for none: a live definer's by the engine's own test, a replayed
+\ The does> clause of the definer or export at IX that is still in its
+\ wordlist, -1 for none: a live one's by the engine's own test, a replayed
 \ one's from PAIRS unless it is retired, as the engine's test then finds no
 \ clause either.
 : CLAUSE-OF ( n -- n ) {: ix:n :}
@@ -11497,7 +11497,8 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ of CHECKER-EFFECT-AUTHORITY calls it. A name its wordlist already holds live
 \ keeps that record: in a warm engine it is the loaded twin of the definition,
 \ and a replay's second definition of its own name is refused before it is
-\ recorded (CHECKER-CERT-DUP?, REPLAYED? below).
+\ recorded (CHECKER-CERT-DUP?, REPLAYED? below). A does> clause is no twin
+\ (REPLAYED?), and a definer's or an export's twin has its clause (CLAUSE).
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
@@ -11507,24 +11508,34 @@ ROW-CELLS cells constant SCOPE-BYTES
 
 \ Whether the replay has already made a record of NAME where a definition of it
 \ lands: a definition it published or a does> clause (CLAUSE), which has no
-\ checker record.
+\ checker record. A does> clause from before the overlay, its predecessor's by
+\ the engine's own test, answers so too: no definition makes a clause, so it is
+\ no definition's loaded twin, and the live engine refuses the definition there
+\ whatever the replay made before it.
 : REPLAYED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    ON @ 0= IF RES-FALSE EXIT THEN
    a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
    SCOPE-WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
-   rec REC>IX MARK @ >= ;
+   rec REC>IX {: ix:n :}
+   ix MARK @ >= IF RES-TRUE EXIT THEN
+   ix 0 > IF ix 1 - DOES-COMPANION?-XT EXIT THEN
+   RES-FALSE ;
 
 \ The clause of the replayed `create ... does>` definer NAME, as the engine's
-\ `does>` makes it (src/habu/habu2.f DOES-REC): a record of its own in the
-\ definer's wordlist, named the definer's tail with the companion suffix added,
+\ `does>` makes it (src/habu/habu2.f DOES-REC), or of a replayed export NAME of
+\ such a definer, as the engine's EXPORT publishes it (C-EXPORT): a record of
+\ its own in NAME's wordlist, named NAME's tail with the companion suffix added,
 \ so a later `trust` or `undefine` of either binds as it would live. CNAME is
 \ NAME with DOES-CLAUSE:SUFFIX$ added, composed by the caller (CLAUSE-NAME)
 \ because the checker registers that word's effect after this package; past
 \ NAME's qualifier it spells the clause's tail. A live word already holding the
 \ clause's name refuses the definer, E-DUPLICATE-DEFINITION, as
-\ DOES-REC:REJECT-DUP does. A definer from before the overlay has the clause
-\ the engine made for it, and one the replay did not publish has none.
+\ DOES-REC:REJECT-DUP does; an export's caller asks that first (EXPORT-ROOM). A
+\ definer or export from before the overlay is the loaded twin the replay keeps
+\ (PUBLISH) only if it has the clause the engine made for it: over one with no
+\ clause the live engine refuses the definition, and so does the replay,
+\ E-DUPLICATE-DEFINITION. One the replay did not publish gets no clause.
 : CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
    ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
@@ -11532,7 +11543,10 @@ ROW-CELLS cells constant SCOPE-BYTES
    ta tu wid SCOPE-WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF EXIT THEN
    rec REC>IX {: ix:n :}
-   ix MARK @ < IF EXIT THEN
+   ix MARK @ < IF
+      ix CLAUSE-OF 0 < IF DUPLICATE throw THEN
+      EXIT
+   THEN
    PAIRS-N @ LOG-MAX >= IF E-OVERLAY-CAP throw THEN
    ROOM
    u tu - {: q:n :}
@@ -11541,6 +11555,23 @@ ROW-CELLS cells constant SCOPE-BYTES
    cta ctu wid replay-record
    ix ndict@ 1 - PAIRS PAIRS-N @ PAIR!
    PAIRS-N @ 1 + PAIRS-N ! ;
+
+\ Whether REC, the record a lookup bound, has its does> clause still in its
+\ wordlist (CLAUSE-OF): an export of it publishes that clause beside its own
+\ record (src/habu/habu2.f C-EXPORT, DOES-REC:CLAUSE-OF). No record has none.
+: CARRIES? ( ptr n -- bool ) {: rec:ptr :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX CLAUSE-OF 0 >= ;
+
+\ The room an export NAME of a does> definer needs for its clause CNAME in the
+\ current wordlist: the live engine refuses the export when a word there holds
+\ the clause's name, E-DUPLICATE-DEFINITION, before the checker hears of it
+\ (src/habu/habu2.f C-EXPORT-CLAUSE-ROOM), so the caller asks before it records
+\ the export. A wordlist already holding NAME holds the export's twin, and
+\ CLAUSE asks whether it has the clause.
+: EXPORT-ROOM ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
+   a u get-current SCOPE-WL-PROBE NULL-PTR <> IF EXIT THEN
+   ca cu get-current SCOPE-WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
 
 \ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
 \ row, made when new, and its private wordlist when it has none (GRANT); the
@@ -13596,8 +13627,8 @@ package CHECKER-REG
 \ a refused name leaves no symbol behind; a candidate probe records nothing.
 \ A replayed definition is a duplicate when the replay has already made a
 \ record of the name where it lands (CHECKER-OVERLAY:REPLAYED?), as the engine
-\ refuses its second compile: a definition it published, or the clause a
-\ replayed does> definer claims, which no checker record holds. A candidate's
+\ refuses its second compile: a definition it published, or a does> clause
+\ made by the replay or before it, which no checker record holds. A candidate's
 \ scanned definition is one too when the verifier pass has already declared
 \ the name there: the name's own record (OWN-RECORD) is one the pass appended,
 \ at or above PASS-FLOOR. A record from before the pass is not the replay's - in
@@ -15263,6 +15294,25 @@ variable UNSAFE-SYM-N
    s" dynamic-buffer" UNSAFE-NAME-ADD
    s" typed-variable" UNSAFE-NAME-ADD ;
 
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
+
+\ The cold prefix compiles does-clause.f before the checker exists. Register
+\ its effect here, after PPRIM: is defined, for checked bodies that call it.
+PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+
+\ The clause name of the definer NA NU, composed in NMB: the name, then the
+\ companion suffix. The token buffers are sized for it (CHECKER-SOURCE-DOES!).
+: CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
+   na NMB nu CCOPY
+   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
+   sa NMB nu + su CCOPY
+   NMB nu su + ;
+
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
 \ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
@@ -15286,7 +15336,10 @@ variable UNSAFE-SYM-N
 \   unsafe word a second spelling that escapes the name-keyed body reject; the
 \   symbol leg rejects by IDENTITY so a qualified or renamed reference that
 \   resolves to the same symbol cannot launder it past this gate;
-\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
+\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E);
+\ - in a replay, a word of the current section already holding the name of the
+\   clause a does> definer's export publishes (CHECKER-OVERLAY:EXPORT-ROOM ->
+\   $4E), as the live engine refuses it (habu2.f C-EXPORT-CLAUSE-ROOM).
 \ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
 \ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
 \ a ctor package. Re-export FROM a ctor package stays allowed by design
@@ -15372,13 +15425,31 @@ variable UNSAFE-SYM-N
    src NORET-CREATES@ {: creates:n :}
    a u EXPORT-TAIL$ CHECKER-RECORD-SYM ctl dm rm creates NORET-APPEND ;
 
+\ An export of a does> definer publishes the definer's clause too, under the
+\ clause's name in the export's wordlist (src/habu/habu2.f C-EXPORT). The live
+\ engine writes that record itself; a replay has the overlay write it
+\ (CHECKER-OVERLAY:CLAUSE), so a later `trust` or definition of the clause's
+\ name binds or is refused as the live load does. Whether the source carries a
+\ clause is asked of the record LIVE-BIND's lookup binds the operand to.
+: EXPORT-CARRIES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0= IF RES-FALSE EXIT THEN
+   a u HORIZON-FIND 2drop drop CHECKER-OVERLAY:CARRIES? ;
+
+\ The clause name of the export's tail TA TU (CLAUSE-NAME), the token buffers
+\ sized for it as CHECKER-SOURCE-DOES! sizes them.
+: EXPORT-CLAUSE$ ( ptr u8 n -- ptr u8 n ) {: ta:ptr tu:n :}
+   tu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
+   ta tu CLAUSE-NAME ;
+
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
    \ The source symbol is read once, before the export's record is published:
    \ inside a replay the operand's spelling can bind the published tail after.
+   \ So is whether the source carries a does> clause.
    a u CHECKER-FIND-ACTIVE-SYM {: src:n :}
+   a u EXPORT-CARRIES? {: carries:bool :}
    FEP @ RECOVERY-ROW? {: recovery:bool :}
    \ A failed declaration's row is uncertified outside its own run, and no copy
    \ can carry that: a copy is a new record, so tagged in a later run it would
@@ -15388,10 +15459,16 @@ variable UNSAFE-SYM-N
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
+   carries IF
+      a u EXPORT-TAIL$ 2dup EXPORT-CLAUSE$ CHECKER-OVERLAY:EXPORT-ROOM
+   THEN
    src EFFECT-EXTERNAL-SYM? E-ADD-EFFECT DL-TAKE
    recovery IF RECOVERY-RECORD THEN
    src CHECKER-ASIG-EXPORT
-   a u src EXPORT-META-COPY ;
+   a u src EXPORT-META-COPY
+   carries IF
+      a u EXPORT-TAIL$ 2dup EXPORT-CLAUSE$ CHECKER-OVERLAY:CLAUSE
+   THEN ;
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -17077,12 +17154,6 @@ variable XG-N   variable XG-TN   variable XG-ROW
 \ words the RAW token beside the folded one the dictionary gets; the fold
 \ changes no byte count and moves no ':', so one length and one LCO serve both
 \ spans.
-: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      dup a + c@
-      over d + c!
-      1 +
-   REPEAT drop ;
 64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
 16 constant LOC-NAME-W         \ max local-name bytes (the name field of a compiler LOC-REC, src/habu/layout.f LOC-NAME-CAP)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
@@ -23432,23 +23503,10 @@ package CHECKER-REG
 \ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
 \ is quiet, and counted in a multi-error load, rejected or uncheckable, under
 \ the name of the record the clause publishes - the definer's, folded as a
-\ definition's name is, with the companion suffix below. An uncheckable clause
-\ is rendered here too: CHECK leaves that verdict to its callers outside JSON
-\ and a multi-error load, and the pre-pass renders nothing of its own for a
+\ definition's name is, with the companion suffix (CLAUSE-NAME). An uncheckable
+\ clause is rendered here too: CHECK leaves that verdict to its callers outside
+\ JSON and a multi-error load, and the pre-pass renders nothing of its own for a
 \ clause.
-\
-\ The cold prefix compiles does-clause.f before the checker exists. Register
-\ its effect here, after PPRIM: is defined, for checked bodies that call it.
-PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-
-\ The clause name of the definer NA NU, composed in NMB: the name, then the
-\ companion suffix. The token buffers are sized for it (CHECKER-SOURCE-DOES!).
-: CLAUSE-NAME ( ptr u8 n -- ptr u8 n ) {: na:ptr nu:n :}
-   na NMB nu CCOPY
-   DOES-CLAUSE:SUFFIX$ {: sa:ptr su:n :}
-   sa NMB nu + su CCOPY
-   NMB nu su + ;
-
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
    TKF nu CLAUSE-NAME NMU !  NMA ! ;

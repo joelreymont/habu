@@ -92,6 +92,32 @@ public
 : RB-CK;does ( -- n ) 1 ;
 ;package
 
+\ A does> definer the engine holds and a live export of it, each with its
+\ clause, as a warm engine holds the loaded twins of the source it replays
+\ (WARM-CASE).
+package RB-WD
+public
+: RB-WMK ( n -- ) create , does> ( -- n ) @ ;
+;package
+
+package RB-WX
+public
+EXPORT RB-WD:RB-WMK
+;package
+
+\ A word of the definer's name that is no definer, and a live export of it
+\ beside a word holding the clause's name: neither has a clause (WARM-CASE).
+package RB-WN
+public
+: RB-WMK ( n -- ) drop ;
+;package
+
+package RB-WY
+public
+EXPORT RB-WN:RB-WMK
+: RB-WMK;does ( -- n ) 1 ;
+;package
+
 package REPLAY-BINDING-TEST
 
 private
@@ -206,7 +232,11 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 \ without it the trust of the clause was E-TRUST-UNRESOLVED, where the live
 \ load certifies it. The clause holds its name though no checker record does,
 \ so a later colon definition of that name is refused, as the live load refuses
-\ it ("duplicate definition: MK;does", rc 78).
+\ it ("duplicate definition: MK;does", rc 78). An export of a definer publishes
+\ the clause in the export's wordlist too (src/habu/habu2.f C-EXPORT): without
+\ it the trust of RB-XQ2:MK;does was E-TRUST-UNRESOLVED and the definition of
+\ MK;does after the export certified, where the live load certifies the one and
+\ refuses the other, 78.
 : CLAUSE-CASE ( -- )
    s" a replayed undefine retires the definer's does> clause with it" T-LABEL
    S\" s\" RB-DOES:RB-MK;does\" s\" -- n\" trust\n" 0 REPLAY
@@ -222,7 +252,12 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" a definition of the clause's name after its definer is refused" T-LABEL
    S\" package RB-NC\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n: MK;does ( -- n ) 1 ;\n;package\n"
       78 REPLAY
-   S\" : RB-GK ( n -- ) create , does> ( -- n ) @ ;\n: RB-GK;does ( -- n ) 1 ;\n" 78 REPLAY ;
+   S\" : RB-GK ( n -- ) create , does> ( -- n ) @ ;\n: RB-GK;does ( -- n ) 1 ;\n" 78 REPLAY
+   s" an export of a definer publishes its clause, and a definition of that name after it is refused" T-LABEL
+   S\" package RB-XP2\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-XQ2\npublic\nEXPORT RB-XP2:MK\n;package\ns\" RB-XQ2:MK;does\" s\" -- n\" trust\n"
+      0 REPLAY
+   S\" package RB-XP2\npublic\n: MK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-XQ2\npublic\nEXPORT RB-XP2:MK\n: MK;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY ;
 
 \ The engine's `package` gives a namespace with no private wordlist one
 \ (src/habu/packages.f PKG-REOPEN), so a replayed `package RB-PQ` opens it as
@@ -248,13 +283,39 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
 \ second compile. The candidate scope alone runs it: the package-neutral
 \ scope, where tools/check.f preverifies a source no engine has loaded,
 \ refuses even one definition of a name the checker's store holds, 78.
+\ A record the engine holds is a replayed definition's twin only if the
+\ definition makes such a record. No definition makes a does> clause, so a
+\ definition of the name of RB-WD:RB-WMK's clause, or of its alias's in RB-WX,
+\ is refused whatever the replay made before it: the definer, nothing, or a
+\ word of the definer's name that is no definer. A definer or an export of one
+\ has a clause, so one is refused where the engine's record of its name has
+\ none, as RB-WN:RB-WMK and its alias in RB-WY have none. The warm live engine
+\ refuses each text, 78; each certified while the replay took any record of
+\ the name for the twin.
 : RB-WARM ( n -- n ) 1 + ;
 
 : WARM-CASE ( -- )
    s" a replay's second definition of a word the engine holds is refused" T-LABEL
    S\" : RB-WARM ( n -- n ) 1 + ;\n: RB-WARM ( n -- n ) 2 + ;\n" 78 REPLAY
    s" and its one definition of that word certifies" T-LABEL
-   S\" : RB-WARM ( n -- n ) 1 + ;\n" 0 REPLAY ;
+   S\" : RB-WARM ( n -- n ) 1 + ;\n" 0 REPLAY
+   s" a replayed definer the engine holds has its clause" T-LABEL
+   S\" package RB-WD\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n: RB-WMK;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY
+   S\" package RB-WD\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 0 REPLAY
+   s" and so has a replayed export of it the engine holds" T-LABEL
+   S\" package RB-WX\npublic\nEXPORT RB-WD:RB-WMK\n: RB-WMK;does ( -- n ) 1 ;\n;package\n" 78 REPLAY
+   S\" package RB-WX\npublic\nEXPORT RB-WD:RB-WMK\n;package\n" 0 REPLAY
+   s" the clause is no twin, before its definer or after a word that is none" T-LABEL
+   S\" package RB-WD\npublic\n: RB-WMK;does ( -- n ) 1 ;\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n"
+      78 REPLAY
+   S\" package RB-WD\npublic\n: RB-WMK ( n -- ) drop ;\n: RB-WMK;does ( -- n ) 1 ;\n;package\n" 78 REPLAY
+   s" a definer or an export of one whose engine record has no clause is refused" T-LABEL
+   S\" package RB-WN\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n: RB-WMK;does ( -- n ) 1 ;\n;package\n"
+      78 REPLAY
+   S\" package RB-WN\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-WY\npublic\nEXPORT RB-WN:RB-WMK\n;package\n"
+      78 REPLAY
+   S\" package RB-WN\npublic\nEXPORT RB-WD:RB-WMK\n;package\n" 78 REPLAY ;
 
 \ The live `undefine dup` retires the seeded primitive's record (src/habu/xref.f
 \ XREF-RETIRE-WL), so a used public's dup binds bare after it
