@@ -51,9 +51,8 @@
 \ HELPER beside its public USER instead ships with its private WID, links, and
 \ runs as USER(7)=22 on a Linux x86-64 host.
 \
-\ LOAD ORDER. The x86-64 side first, then the ARM64 code layer the capture
-\ needs: src/arch/arm64/icode.f defines CODE, LBL and ASM-LEN as globals, and a
-\ `using X64CODE` opened after them refuses (src/habu/link-x64.f "LOAD ORDER").
+\ LOAD ORDER. The x86-64 writer first sizes its shared image buffer under
+\ `using X64CODE`; the ARM64 code layer then supplies the capture budget.
 \
 \ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
 \ root: bin/hb --load test/x86-64-link-records.f

@@ -25,7 +25,9 @@
 \ report reads the same band, so it needs no register either.
 require src/habu/prof-abi.f
 
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 using PROF-ABI
 
 package PROF
@@ -1250,5 +1252,6 @@ public
 
 ;package
 
+;using
 ;using
 ;using

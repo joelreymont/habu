@@ -40,11 +40,8 @@ require src/habu/sign-id.f
    HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    E-OBJ-SCHEMA throw ;
 
-\ The target writers read image-bytes.f's MSIZE as they load, so its loader
-\ precedes theirs in this one body: tools/check.f checks the files a body loads
-\ after that body, in the order the body names them.
+\ Each target writer loads image-bytes.f under its code-package scope.
 : OBJIMG-LOAD-IMAGE ( -- )
-   s" src/os/image-bytes.f" required
    HB-TARGET-LINUX? if
       s" src/os/linux/elf.f" required
       s" src/os/linux/sign.f" required
@@ -70,6 +67,7 @@ OBJIMG-LOAD-IMAGE
 OBJIMG-LOAD-DRIVER
 
 package OBJIMG
+using A64ICODE
 
 : NONEMPTY-TEXT ( -- )
    OBJLINK:TEXT-SIZE 0 <= if E-OBJ-SCHEMA throw then ;
@@ -97,4 +95,5 @@ public
    TEXT>ASM
    SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
 
+;using
 ;package

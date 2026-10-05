@@ -17,19 +17,16 @@ package APP-IMAGE
 : LOAD-TARGET ( -- )
    HB-TARGET-LINUX? if
       s" src/os/linux/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/linux/elf.f" required
       exit
    then
    HB-TARGET-MACOS? if
       s" src/os/macos/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/macos/macho.f" required
       exit
    then
    HB-TARGET-LINUX-X86-64? if
       s" src/os/linux-x86-64/sys.f" required
-      s" src/os/image-bytes.f" required
       s" src/os/linux-x86-64/elf.f" required
       exit
    then

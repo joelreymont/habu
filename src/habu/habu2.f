@@ -12,7 +12,9 @@ require src/habu/code-span.f
 require src/habu/native-observer-cells.f
 require src/habu/native-host-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
 \ loaded immediately before this file so a capture running in bin/hb and this
 \ emitter share one declaration of the format. The import spans the file - the
@@ -13350,6 +13352,7 @@ public
    ;
 ;package
 
+;using
 ;using
 ;using
 ;using

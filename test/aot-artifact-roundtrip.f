@@ -62,13 +62,15 @@ get-current WWID !
 
 : LEAF ( n -- n ) {: v:n :} v 3 * 1 + ;
 
+: B, ( n -- n ) 2 + ;
+
 \ Nothing calls it, and nothing needs to: what the format has to carry is a record
 \ and a body in the blob, and a capture takes the whole window whether or not this
 \ process ever runs what is in it. Its callee is in the same window, so the
 \ capture's call audit has nothing to refuse and nothing to record by name - an
 \ in-window call is a relative branch inside the blob that travels with it.
 : TRUNK ( n -- n )
-   LEAF LEAF LEAF LEAF LEAF LEAF LEAF LEAF ;
+   LEAF LEAF LEAF LEAF LEAF LEAF LEAF LEAF B, ;
 
 \ A DECLARED ADDRESS CELL OF THE WINDOW'S OWN. `is` stores an execution token into
 \ a DATA cell, which is what registers a SNAP-RELOC:XTCELL row, and a row whose
@@ -93,6 +95,7 @@ require src/habu/aot-file.f
 package AOTRT
 using AOT-BUF
 using AOT-WINDOW
+using AOTRT-WINDOW
 public
 
 $4C constant REFUSE-RC
@@ -213,6 +216,7 @@ variable SAVED-XTOFF-N
    s" roundtrip=ok" type cr ;
 
 : MAIN ( -- )
+   7 B, 9 <> if s" aot-artifact-roundtrip: package branch word" REFUSE-RC die then
    ?ARGS
    \ The two-argument row fixture reuses this capture without running this case.
    SCRIPT-ARGC 2 = if exit then
@@ -232,6 +236,7 @@ variable SAVED-XTOFF-N
    ?ROUND-TRIP
    REPORT ;
 
+;using
 ;using
 ;using
 ;package

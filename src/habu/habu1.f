@@ -9,7 +9,9 @@ variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 
 package ENGINE-BUILD
 variable ACTIVE
@@ -5602,4 +5604,5 @@ create NAME-PADDING 0 , 0 ,
 
 ;package
 
+;using
 ;using

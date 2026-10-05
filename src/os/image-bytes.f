@@ -1,4 +1,5 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
+\ The target writer imports A64ICODE or X64CODE while loading this file.
 
 \ Reserve the assembler window plus the larger supported image tail: a 64 KiB
 \ header/page boundary, Mach-O DATA_CONST and fixups, and one SHA-256 digest per

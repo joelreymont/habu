@@ -936,7 +936,13 @@ package BUILD-FIXPOINT
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-IMAGE-BYTES ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE ;
+   BUILD-TARGET:LINUX-X86-64? if
+      out outu s" using X64CODE" BF-APPEND-LINE
+   else
+      out outu s" using A64ICODE" BF-APPEND-LINE
+   then
+   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE
+   out outu s" ;using" BF-APPEND-LINE ;
 
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
    BUILD-TARGET:LINUX? if

@@ -7,6 +7,7 @@
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 
 9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP
@@ -139,4 +140,5 @@ using A64ASM
 
 : FCVTZS, ( n n -- )  ENC-FCVTZS EMITW ;
 
+;using
 ;using

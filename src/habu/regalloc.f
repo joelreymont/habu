@@ -15,7 +15,9 @@
 require src/habu/regalloc-abi.f
 
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
+require src/arch/arm64/icode.f
 using A64ASM
+using A64ICODE
 using REGALLOC-ABI
 
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
@@ -94,5 +96,6 @@ $FF   constant FRALL            \ d8..d15 (d0-d7 stay prim scratch; contiguous,
    10 VRITAB-OFF LIT64,  10 DATA 10 ADD,  10 10 7 ADD,  10 10 0 LDRB,
    8 1 MOVZ,  8 8 10 LSLV,  RET, ;
 
+;using
 ;using
 ;using

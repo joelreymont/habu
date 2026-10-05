@@ -7,7 +7,9 @@
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
+package A64ICODE
 using A64ASM
+public
 
 \ ---- the window this assembler emits into ------------------------------------
 \ THE WINDOW IS NOT THIS FILE'S NUMBER TO PICK. It holds one emitted image, and
@@ -616,3 +618,4 @@ variable LIT-CH  variable LFI  variable LCI
 : ASM-LEN ( -- n )  ASM-CP @ $4 * ;
 
 ;using
+;package

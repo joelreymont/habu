@@ -318,8 +318,14 @@ emit_src() {
   done
   printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   for f in "${SRC_COMMON[@]}"; do
+    if [[ "$f" == "src/os/image-bytes.f" ]]; then
+      printf 'using A64ICODE\n' >> "$out"
+    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
+    if [[ "$f" == "src/os/image-bytes.f" ]]; then
+      printf ';using\n' >> "$out"
+    fi
     if [[ "$f" == "src/core/include.f" ]]; then
       printf 'SOURCE-INPUT:RESET\n' >> "$out"
       emit_provided "$out" "${SRC_CORE[@]}" "${SRC_COMMON[@]}" "${tail[@]}"

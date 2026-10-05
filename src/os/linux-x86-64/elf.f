@@ -14,8 +14,7 @@
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
 \ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so this
-\ file requires it under `using X64CODE`, and loads before src/arch/arm64/icode.f,
-\ whose global CODE-CAP-BYTES the engine would refuse a bare X64CODE one beside.
+\ file requires it under `using X64CODE`, which supplies the x86-64 capacity.
 \ The fixed DATA segment and CODE-OFF are the target's, read qualified from
 \ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
 \ is the guard that refuses a bare one and closes before this file ends. The
