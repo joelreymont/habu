@@ -1553,6 +1553,8 @@ private
 : DIV-ZERO-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL {: entry:label done:label :}
    s" (DIV-ZERO)" entry LABEL>N done LABEL>N ENGINE-PRIMS:HELPER-REGISTER
+   \ A64IR's cross-host branch target still requires a whole 4-byte entry.
+   X64CODE:ASM-LEN negate 3 and 0 ?do ASM-SINK ENC-NOP loop
    entry X64CODE:LBL,
    RAX ARITH-ABI:E-DIV-ZERO >IMM32 ASM-SINK ENC-MOV-RI32
    RAX PUSH,
