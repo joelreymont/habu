@@ -219,8 +219,8 @@ s" MAIN" ENTRY-NAME!
 \ is dropped at link (aot-lib.f RELOC-W32 writes a NOP), while the store half -
 \ BSTORE's store, protection guard and all - is carried unchanged. A
 \ declaration-only record is never a closure member, so the walk below does not
-\ follow the branch. The rule is keyed on the TARGET being the registrar, never
-\ on the name of the member that calls it.
+\ follow the branch. Intel's linker drops only xt!'s recorded registrar call:
+\ ptr-cell-mark invokes it at runtime and must refuse if reachable.
 : AOT-DECLARATION? {: r:ptr :} ( ptr a -- bool )
    r s" (MARK)" REC-NAME= ;
 create AECH 1 allot

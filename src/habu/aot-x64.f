@@ -215,12 +215,17 @@ variable X64-MEMBER
 
 : X64-TEXT-REL ( ptr u8 n n -- ) {: p:ptr width:n disp:n :}
    p width + disp + {: target:ptr :}
-   \ A recorded E8 call to the declaration-only registrar has no work in a
-   \ stripped image. Its store stays; the omitted helper's call becomes a NOP.
+   \ xt! stores the token itself; only its recorded registrar call can vanish.
+   \ ptr-cell-mark calls that registrar at runtime and cannot run stripped.
    width 4 = if
       p 1- c@ $E8 = if
          target DECLARATION-TARGET? if
-            p X64-DEST 1- X64-NOP-CALL exit then
+            X64-MEMBER @ CLO-REC@ {: caller:ptr :}
+            caller XREF-FOUND? if
+               caller s" xt!" REC-NAME= if
+                  p X64-DEST 1- X64-NOP-CALL exit then
+            then
+         then
       then
    then
    X64-MEMBER @ target MAP-TARGET!
