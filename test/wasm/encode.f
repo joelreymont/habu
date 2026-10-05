@@ -44,6 +44,7 @@ require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/backend.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/structure.f
@@ -88,7 +89,7 @@ private
 
 : SPAN ( IR-CTX:ctx IR-BUILD:builder -- IR-SOURCE:span )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   b  c b s" encode" IR-BUILD:ADD-SOURCE  0 6 IR-BUILD:ADD-SPAN ;
+   b  c b s" encode" IR-BUILD:ADD-SOURCE  1 5 IR-BUILD:ADD-SPAN ;
 
 : I32 ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )   WSTRUCT:I32-TYPE ;
 : I64 ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )   WSTRUCT:I64-TYPE ;
@@ -654,8 +655,12 @@ TYPED-VARIABLE WANT-U len
    s" calls: the host word's site, at 54, targets its entry" T-LABEL
    WENC:CALL-SITES 2 T=
    0 54 4096 SITE-IS
+   0 WENC:CALL-IMPL@ 4096 NHOST:ID-OF T=
+   0 WENC:CALL-LOC@ 1 T=
    s" calls: callee's site, at 68, targets its body offset" T-LABEL
-   1 68  1 WENC:FUNCTION-OFFSET@  SITE-IS ;
+   1 68  1 WENC:FUNCTION-OFFSET@  SITE-IS
+   1 WENC:CALL-IMPL@ 0 T=
+   1 WENC:CALL-LOC@ 1 T= ;
 
 : CALLS-ENCODE ( -- )
    0 FIX @ [: CALLS-ARITY ;] WENC:ENCODE ;

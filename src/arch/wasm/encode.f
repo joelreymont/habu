@@ -20,8 +20,11 @@
 \
 \ A CALL IS A ROW. `call` is followed by a padded five-byte function index the
 \ linker rewrites in place, here zero. Each is a call site: the offset of that
-\ field, NEMIT:CALL (P6 lowers a tail call as call then return) and the target,
-\ an absolute address measured, for an unplaced emission, from its first byte
+\ field, NEMIT:CALL (P6 lowers a tail call as call then return), the target,
+\ its published host implementation when external, and its source location.
+\ An internal target has no host implementation until publication resolves its
+\ own function offset. The target is an absolute address measured, for an
+\ unplaced emission, from its first byte
 \ (src/compiler/native/emission.f). A callee spelled `host` and a decimal entry
 \ is that host word; a callee that names a function of the module is that
 \ function's body offset, which the capture reads as a self call, a call row
@@ -62,9 +65,11 @@ require src/compiler/ir/symbol.f
 require src/compiler/ir/attr.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
+require src/compiler/ir/source.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 require src/compiler/native/emission.f
+require src/compiler/native/host.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
@@ -130,6 +135,8 @@ DYNAMIC-BUFFER FUN-OFF n             \ each function's body offset
 DYNAMIC-BUFFER CS-OFF n              \ each call site's field
 DYNAMIC-BUFFER CS-TGT n              \ its host entry, or its callee's ordinal until laid out
 DYNAMIC-BUFFER CS-OWN bool           \ whether the callee is a function of the module
+DYNAMIC-BUFFER CS-IMPL n             \ the published host implementation, if external
+DYNAMIC-BUFFER CS-LOC n              \ retained definition-body offset
 variable NADDRS                      \ its address sites
 DYNAMIC-BUFFER AS-OFF n              \ each address site's field
 DYNAMIC-BUFFER AS-KIND n             \ its address kind
@@ -430,9 +437,12 @@ SPELL-MAX BUFFER: SPELL
    o WSTRUCT:KEY-CALLEE$ SYM-ATTR TARGET {: t:n own:bool :}
    NCALLS @ {: k:n :}
    k 1+ CS-OFF-RESERVE  k 1+ CS-TGT-RESERVE  k 1+ CS-OWN-RESERVE
+   k 1+ CS-IMPL-RESERVE  k 1+ CS-LOC-RESERVE
    AT @ k CS-OFF !
    t k CS-TGT !
    own k CS-OWN !
+   own if 0 else t NHOST:ID-OF then k CS-IMPL !
+   o NFROZEN:SPAN-AT IR-SOURCE:SPAN-START k CS-LOC !
    1 NCALLS +!
    0 PUT-PAD32 ;
 
@@ -643,6 +653,12 @@ public
 
 : CALL-TARGET@ ( n -- n )
    NCALLS @ ROW-CK CS-TGT @ ;
+
+: CALL-IMPL@ ( n -- n )
+   NCALLS @ ROW-CK CS-IMPL @ ;
+
+: CALL-LOC@ ( n -- n )
+   NCALLS @ ROW-CK CS-LOC @ ;
 
 : ADDR-SITES ( -- n )
    SEALED-CK NADDRS @ ;
