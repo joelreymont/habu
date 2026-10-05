@@ -770,8 +770,8 @@ public
    floor PUBLISH-FLOOR,
    crash rest stub SETTLE,
    booted JMP,
-   bad S\" hb: malformed snapshot\n" 79 FAIL,
-   badver S\" hb: unsupported snapshot version\n" 80 FAIL,
+   bad S\" hb: snapshot trailer corrupt\n" 79 FAIL,
+   badver S\" hb: snapshot format version unsupported\n" 80 FAIL,
    REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
    booted crash rest stub CLOSE, ;
 

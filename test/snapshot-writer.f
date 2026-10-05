@@ -471,20 +471,12 @@ variable BAND-WID
 : ASSERT-BAND-REFUSED ( -- )
    EXITED @ TTRUE
    RC @ SNAP-BAD-RC T=
-   HB-TARGET-LINUX-X86-64? if
-      ERR$ s" hb: malformed snapshot" CONTAINS? TTRUE
-   else
-      ERR$ s" hb: snapshot trailer corrupt" CONTAINS? TTRUE
-   then ;
+   ERR$ s" hb: snapshot trailer corrupt" CONTAINS? TTRUE ;
 
 : ASSERT-VERSION-REFUSED ( -- )
    EXITED @ TTRUE
    RC @ 80 T=
-   HB-TARGET-LINUX-X86-64? if
-      ERR$ s" hb: unsupported snapshot version" CONTAINS? TTRUE
-   else
-      ERR$ s" hb: snapshot format version unsupported" CONTAINS? TTRUE
-   then ;
+   ERR$ s" hb: snapshot format version unsupported" CONTAINS? TTRUE ;
 
 \ The format version chooses the schema before any mutable header byte is read.
 \ Every malformed address header must stop before restore touches its row vector.
