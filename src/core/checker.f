@@ -5095,11 +5095,12 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
 0 constant TORDER-CHECKING
 1 constant TORDER-GATE
 2 constant TORDER-UNKNOWN
+3 constant TORDER-COMPILE-ONLY
 \ The verifier supplies a prospective ordering answer only for its selected
 \ body. The scan depth keeps an independent nested CHECK! out of that scope.
 PTR-VARIABLE TORDER-A
 variable TORDER-U
-variable TORDER-KIND             \ 0 checking first, 1 trusted gate first, 2 unknown
+variable TORDER-KIND             \ checking, trusted gate, unknown or does-parent compile-only
 variable TORDER-SCOPE
 variable TORDER-USED
 variable TORDER-ACTIVE
@@ -5109,7 +5110,7 @@ variable TORDER-DEPTH
 
 : TORDER-SCAN! ( ptr u8 n -- )
    {: a:ptr u:n :}
-   TORDER-SCOPE @ 0= TORDER-DEPTH @ 1 <> or TORDER-USED @ 0<> or IF EXIT THEN
+   TORDER-SCOPE @ 0= TORDER-DEPTH @ 1 <> or TORDER-USED @ 0 <> or IF EXIT THEN
    a TORDER-A @ = u TORDER-U @ = and 0= IF EXIT THEN
    -1 TORDER-USED !
    TORDER-KIND @ TORDER-ACTIVE ! ;
@@ -5127,7 +5128,7 @@ variable TORDER-DEPTH
    -1 TORDER-SCOPE !  0 TORDER-USED !  TORDER-CHECKING TORDER-ACTIVE !
    0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !
    q catch {: rc:n :}
-   TORDER-UNCERTAIN @ 0<> {: uncertain:bool :}
+   TORDER-UNCERTAIN @ 0 <> {: uncertain:bool :}
    olda TORDER-A !  oldu TORDER-U !  oldorder TORDER-KIND !
    oldscope TORDER-SCOPE !  oldused TORDER-USED !
    oldactive TORDER-ACTIVE !  olduncertain TORDER-UNCERTAIN !
@@ -19228,7 +19229,7 @@ variable IS-PEND-U                   \ and its length
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
       TORDER-ACTIVE @ TORDER-GATE = IF RF-CAP CREFUSE! THEN
-      TORDER-ACTIVE @ TORDER-UNKNOWN = RCOMPILE @ 0= and IF
+      TORDER-ACTIVE @ TORDER-UNKNOWN = RCOMPILE @ 0= and CREFUSE @ 0= and IF
          TARGET-PIN!  -1 TORDER-UNCERTAIN !  -1 TORDER-SCAN-UNKNOWN !
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
@@ -21757,6 +21758,14 @@ variable CAST-PATH-N
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
+   \ A does> clause of unknown tier may contain a compile gate after this
+   \ parent. Keep only the parent's earlier compile or resolution refusal;
+   \ its ordinary body and signature checks belong after that decision.
+   TORDER-ACTIVE @ TORDER-COMPILE-ONLY =
+   RCOMPILE @ 0= REFUSAL @ USING-KIND? 0= and and IF
+      0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
+      2 EXIT
+   THEN
    \ Unknown order cannot certify or even publish a declared recovery row.
    \ Its selected trusted tick is already pinned for the verifier's warning.
    TORDER-SCAN-UNKNOWN @ IF

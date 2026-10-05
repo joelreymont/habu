@@ -1448,7 +1448,37 @@ $180000 constant LARGE-STDIN-LEN
    s" trusted-tick-order: live source line" T-LABEL
    live s" line" NUMBER$ s" 2" T$=
    s" trusted-tick-order: live source column" T-LABEL
-   live s" column" NUMBER$ s" 19" T$= ;
+   live s" column" NUMBER$ s" 19" T$=
+   s" 1 set-tier : CVT-A ( -- ) drop ['] patch32 drop ; : CVT-B ( -- ) CVT-A ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown body leaves dependents to the run" EXPECT-KIND
+   s" trusted-tick-order: only the uncertain tick is reported" T-LABEL
+   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   s" package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
+   1 s" trusted-tick-order: current tick resolution beats uncertainty" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-sh" PACKET s" code" STRING$
+   s" E-USING-SHADOW-GLOBAL" T$=
+   s" : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: does clause gate precedes parent check" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does;does" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$=
+   s" : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: tier 0 parent compile refusal wins" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-UNDEFINED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown does clause defers parent check" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
+   1 s" trusted-tick-order: earlier parent compile refusal wins" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-UNDEFINED" T$=
+   s" : CVT-PRIOR ( -- ) ['] patch32 drop ; using CVT-TU : CVT-LATER ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
+   1 s" trusted-tick-order: later using cannot replace earlier gate" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-prior" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$= ;
 
 
 \ Bytes the load accepts verify, with no packet.

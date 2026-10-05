@@ -102,11 +102,14 @@ create COMPOSE-STOP-PATH PATH-CAP allot
 variable COMPOSE-STOP-U
 variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
 
+1 constant TICK-GATE
 2 constant TICK-UNKNOWN
+3 constant TICK-COMPILE-ONLY
 variable TICK-CONTEXT-ORDER
 PTR-VARIABLE TICK-CONTEXT-OWNER
 variable DEF-TICK-ORDER
 PTR-VARIABLE DEF-TICK-OWNER
+variable TICK-REMAINDER
 
 : TICK-CONTEXT-RESET ( -- )
    ENTRY-TICK-ORDER @ TICK-CONTEXT-ORDER !
@@ -790,6 +793,15 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 : FIND-SYM ( ptr u8 n -- n )
    NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF OWNER-XT SYM-ACTION execute ;
 
+public
+
+\ The selected symbol's package, tail and visibility are borrowed from its
+\ checker owner until that owner next interns a symbol.
+: SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
+   NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
+
+private
+
 \ The same two questions about a definer this pre-pass never read - one compiled
 \ in THIS process, whose clause the checker certified at its `;` and whose
 \ created-word effect it kept (src/core/checker.f DOES-EFF-LATCH! and the NORETS
@@ -1009,7 +1021,7 @@ variable TICK-BODY-VERDICT
    DEF-BODY$ {: ba:ptr bu:n :}
    ba TICK-BODY-A !  bu TICK-BODY-U !
    ba bu [: TICK-BODY-RUN ;] WITH-BODY-TICK-ORDER
-   IF 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
+   IF -1 TICK-REMAINDER ! 2 ELSE TICK-BODY-VERDICT @ THEN BODY-VERDICT ;
 
 \ The pre-pass's own does>-clause entry point. It is not the engine's
 \ CHECK-DOES!: this scan reaches a clause AFTER the definer's own body has been
@@ -1027,6 +1039,18 @@ PTR-VARIABLE TICK-DOES-NA
 variable TICK-DOES-NU
 variable TICK-DOES-VERDICT
 
+\ The native compiler can refuse an earlier parent token before it reaches a
+\ does> clause, then checks the clause before the parent's closing check.
+\ Keep the parent's collected text and source map while judging the clause.
+create DOES-PARENT-BUF BODYBUF-CAP allot
+create DOES-PARENT-ROW BODYBUF-CAP cells allot
+variable DOES-PARENT-U
+variable DOES-PARENT-ROWS
+PTR-VARIABLE DOES-CLOSER-A
+variable DOES-CLOSER-U
+variable DOES-DEF-VERDICT
+variable DOES-PARENT-REFUSED
+
 : TICK-DOES-RUN ( -- )
    TICK-BODY-A @ TICK-BODY-U @
    TICK-DOES-SA @ TICK-DOES-SU @ TICK-DOES-NA @ TICK-DOES-NU @
@@ -1038,7 +1062,7 @@ variable TICK-DOES-VERDICT
    sig TICK-DOES-SA !  sigu TICK-DOES-SU !
    na TICK-DOES-NA !  nu TICK-DOES-NU !
    ba bu [: TICK-DOES-RUN ;] WITH-BODY-TICK-ORDER
-   IF 2 ELSE TICK-DOES-VERDICT @ THEN BODY-VERDICT ;
+   IF -1 TICK-REMAINDER ! 2 ELSE TICK-DOES-VERDICT @ THEN BODY-VERDICT ;
 
 \ ---- the two rules that put a definition in the table above ------------------
 \ The definition's own name, pinned by VERIFY-DEFINITION before its body is
@@ -1099,6 +1123,23 @@ variable WRAP-ROW                             \ the definer row the last call na
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
    WRAP-ROW @  DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM?  DEFINER-INHERIT ;
 
+\ tok-imm? asks the live dictionary by spelling. A bare used-public word is
+\ found only through the used scope, so ask its selected symbol by qualified
+\ spelling as well. FIND-SYM is quiet and follows this source's binding horizon;
+\ this question only invalidates prospective context, never rejects a body.
+create TICK-QUAL 512 allot
+
+: TICK-RESIDENT-IMM? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u tok-imm? 0<> IF true EXIT THEN
+   a u FIND-SYM dup 0= IF drop false EXIT THEN
+   SYM-IDENTITY drop {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   pkgu 0= IF false EXIT THEN
+   pkg TICK-QUAL pkgu BYTE-COPY
+   $3A TICK-QUAL pkgu + c!
+   tail TICK-QUAL pkgu 1+ + tailu BYTE-COPY
+   TICK-QUAL pkgu tailu + 1+ tok-imm? 0<> ;
+
 \ The created effect is the clause's declaration, recorded unless the definer's
 \ body or its clause was refused. One deferred to the run keeps it, as a
 \ deferred colon definition keeps its declared signature (src/core/checker.f
@@ -1113,14 +1154,29 @@ variable WRAP-ROW                             \ the definer row the last call na
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF EXIT THEN
    TOKEN-A @ TOKEN-U @ s" [']" CORE-STR= IF EXIT THEN
    TOKEN-A @ TOKEN-U @ s" [" CORE-STR=
-   TOKEN-A @ TOKEN-U @ CHECKER-PREFLIGHT:BODY-TOK? or IF
+   TOKEN-A @ TOKEN-U @ TICK-RESIDENT-IMM? or IF
       TICK-UNKNOWN DEF-TICK-ORDER !  NULL-PTR DEF-TICK-OWNER !
       TICK-CONTEXT-UNKNOWN
    THEN ;
 
-: VERIFY-DOES ( -- )
-   VERIFY-BODY {: def:n :}
-   def REPORT-DEFERRED
+: VERIFY-DOES ( -- bool )
+   DEF-TICK-ORDER @ {: order:n :}
+   order TICK-GATE = {: gate:bool :}
+   order TICK-UNKNOWN = {: unknown:bool :}
+   0 DOES-PARENT-REFUSED !
+   gate unknown or IF
+      TICK-COMPILE-ONLY DEF-TICK-ORDER !
+      VERIFY-BODY 2 <> DOES-PARENT-REFUSED !
+      order DEF-TICK-ORDER !
+   THEN
+   gate unknown or IF
+      TOKEN-A @ DOES-CLOSER-A !  TOKEN-U @ DOES-CLOSER-U !
+      BODY-U @ DOES-PARENT-U !  BODY-ROWS @ DOES-PARENT-ROWS !
+      BODY-BUF DOES-PARENT-BUF DOES-PARENT-U @ BYTE-COPY
+      BODY-ROW DOES-PARENT-ROW DOES-PARENT-ROWS @ 2 * cells BYTE-COPY
+   ELSE
+      VERIFY-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
+   THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    BODY-RESET
    LOCALS-RESET
@@ -1128,9 +1184,24 @@ variable WRAP-ROW                             \ the definer row the last call na
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+         TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
-         def 2 <> IF dup REPORT-DEFERRED THEN
-         0<>  def 0<> and IF sig sigu DEFINER-RECORD THEN EXIT
+         {: clause:n :}
+         TICK-REMAINDER @ IF clause REPORT-DEFERRED false EXIT THEN
+         clause 0= IF false EXIT THEN
+         gate unknown or IF
+            TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
+            DOES-PARENT-BUF BODY-BUF DOES-PARENT-U @ BYTE-COPY
+            DOES-PARENT-ROW BODY-ROW DOES-PARENT-ROWS @ 2 * cells BYTE-COPY
+            DOES-PARENT-U @ BODY-U !  DOES-PARENT-ROWS @ BODY-ROWS !
+            DOES-CLOSER-A @ TOKEN-A !  DOES-CLOSER-U @ TOKEN-U !
+            VERIFY-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
+            end TOKEN-A !  endu TOKEN-U !
+            TICK-REMAINDER @ IF false EXIT THEN
+         THEN
+         DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
+         DOES-DEF-VERDICT @ 0<> IF sig sigu DEFINER-RECORD THEN
+         true EXIT
       THEN
       TICK-BODY-STEP
       APPEND-BODY-TOKEN
@@ -1245,29 +1316,21 @@ defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
 \ borrowed: a word installed here consumes it before it returns.
 defer ON-FILE ( ptr u8 n -- )
 
-\ The identity the checker recorded a symbol under: its package (empty for a
-\ global), the tail it was recorded under and its visibility (SYM-GLOBAL,
-\ SYM-PRIVATE or SYM-PUBLIC). The spans are the checker's symbol pool's,
-\ borrowed until its next intern: copy them before anything else runs.
-: SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
-   NCOMP-DISPATCH:DECL-VERIFY-SYM-IDENTITY-OFF OWNER-XT IDENTITY-ACTION execute ;
-
 private
 
-0 constant TICK-SYM-GLOBAL
-
-\ Scope keywords are syntax. A word-backed declaration keeps the prospective
-\ answer only when the selected symbol is the engine's global spelling. An
-\ imported or package-local shadow may run different defining code.
-: TICK-DECL-SELECTED? ( ptr u8 n -- bool )
+\ These declaration arms are dispatched by EM-INTERPRET-DEFINE-KEYWORDS before
+\ dictionary lookup. Their scanner counterparts do no arbitrary execution.
+\ A word-backed loader or library definer has no such structural guarantee:
+\ even the original include/require entry can call replaced source providers.
+: TICK-NATIVE-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" package" STR=CI  a u s" ;package" STR=CI or
    a u s" public" STR=CI or  a u s" private" STR=CI or
    a u s" using" STR=CI or  a u s" ;using" STR=CI or IF 0 0= EXIT THEN
-   a u FIND-SYM dup 0= IF drop 0 0= 0= EXIT THEN
-   SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
-   vis TICK-SYM-GLOBAL = pkgu 0= and
-   tail tailu a u STR=CI and ;
+   a u s" export" STR=CI  a u s" trusted:" STR=CI or
+   a u s" cast:" STR=CI or  a u s" linear:" STR=CI or
+   a u s" defer" STR=CI or  a u s" create" STR=CI or
+   a u s" variable" STR=CI or  a u s" constant" STR=CI or ;
 
 : DEFINITION-NONE ( ptr u8 n ptr u8 n n ptr u8 n n n n -- )
    drop 2drop 2drop drop 2drop 2drop ;
@@ -1935,7 +1998,7 @@ variable FILE-USE
    a u s" include" STR=CI  a u s" require" STR=CI or
    a u s" included" STR=CI or  a u s" required" STR=CI or
    a u s" script-required" STR=CI or  a u s" provided" STR=CI or IF
-      a u TICK-DECL-SELECTED? 0= IF TICK-CONTEXT-UNKNOWN THEN
+      TICK-CONTEXT-UNKNOWN
    THEN
    a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
@@ -2213,10 +2276,11 @@ variable FFI-SIG-U
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
-         VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN COLON-DEFINED EXIT
+         VERIFY-BODY dup REPORT-DEFERRED -1 = IF VERIFY-WRAPPER THEN
+         TICK-REMAINDER @ 0= IF COLON-DEFINED THEN EXIT
       THEN
       LOCAL-TOKEN? 0= IF
-         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES COLON-DEFINED EXIT THEN
+         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF VERIFY-DOES IF COLON-DEFINED THEN EXIT THEN
          TOKEN-A @ TOKEN-U @ WRAP-TOKEN
       THEN
       TICK-BODY-STEP
@@ -2347,9 +2411,9 @@ variable TOP-DEFER-I                             \ where the run's reading start
 : TOP-DEFINER? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    MULTI-ERR-N @ {: before:n :}
-   a u TICK-DECL-SELECTED? {: selected:bool :}
+   a u TICK-NATIVE-DEFINER? {: native:bool :}
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
-   selected 0= IF TICK-CONTEXT-UNKNOWN THEN
+   native 0= IF TICK-CONTEXT-UNKNOWN THEN
    TOP-CLOSE
    MULTI-ERR-N @ before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
@@ -2372,7 +2436,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
    0 FILE-PKG !  0 FILE-USE !  PEND-N @ PEND-BASE !
    TOP-CLOSE
    BEGIN
-      NEXT-SCAN dup 0 > WHILE
+      NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
       over SOURCE@ - TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
       2dup FILE-SCOPE-STEP
@@ -2383,6 +2447,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
       FILE-NEUTRAL? IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
+   TICK-REMAINDER @ IF EXIT THEN
    SOURCE-U @ TOP-DUE
    PEND-RELEASE ;
 
@@ -2458,6 +2523,7 @@ CAST: VERIFIER-ACTION ( n -- [ -- ] )
 \ restores the caller's scope on the clean and the throwing path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
+   0 TICK-REMAINDER !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute

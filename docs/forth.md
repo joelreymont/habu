@@ -1874,6 +1874,13 @@ the rule.
   `--verify-only` called them `verified`; now each is
   `E-UNDEFINED-TOP-LEVEL` at the token, a span (`docs/repair-diagnostics.md`),
   before anything runs.
+  The source pre-pass ranks a tier-0 trusted-only tick before closing body
+  checks only while the compiler tier and checker owner are established. A
+  resident immediate or loader may change that context. The original
+  `require`/`include` dictionary entry is insufficient evidence: loading goes
+  through replaceable source-unit, interpreter and input providers. An
+  uncertain trusted tick reports `W-CHECK-DEFERRED`; later dependent source is
+  left to the one subject run, without publishing the uncertain definition.
   A word that may read the source after it takes tokens no scan knows without
   running it, and operands cross line ends, so a line is no boundary: one
   whose body reaches `parse-name` or `create` (`CTL-PARSES`, by axiom and

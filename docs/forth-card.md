@@ -208,6 +208,13 @@ word (§ 4) are checked before the run, `--verify-only` included. At top level
 any other such name opens that stretch. The renderer reads none of the tokens
 after it, so they are checked.
 
+A trusted-only tick can outrank closing body checks at tier 0 only while the
+verifier knows the compiler tier and checker owner. A resident immediate in a
+body or a top-level loader makes later ordering uncertain; `--verify-only`
+reports the tick as `W-CHECK-DEFERRED` and leaves dependent source to the one
+subject run. Even an original `require`/`include` entry can reach replaceable
+source providers, so its spelling or original entry does not preserve tier.
+
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
 plus `[: IMPL ;] is W`, `parse-name`, `MATCH … ;MATCH`, `undefine`, and

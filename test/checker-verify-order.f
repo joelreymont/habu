@@ -9,7 +9,20 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/tier.f
 require src/habu/verify-source.f
+
+\ A resident parsing immediate executes during compilation despite its neutral
+\ declared effect. The verifier must lose a prospective tier at this token.
+TRUSTED: CVO-SW ( -- ) 1 set-tier ;
+immediate
+s" CVO-SW" 0 parse-imm
+package CVO-I
+public
+TRUSTED: SWI ( -- ) 1 set-tier ;
+immediate
+s" SWI" 0 parse-imm
+;package
 
 \ A global, an earlier package dependency, and a package that shadows the
 \ global after using it (the engine refuses a duplicate definition in one
@@ -186,6 +199,21 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    7121 FQSYM-DEFERRED? TFALSE
    70 FQSYM-DEFERRED? TFALSE ;
 
+: IMMEDIATE-CASE ( -- )
+   tier@ {: old:n :}
+   0 TIER:SELECT
+   tick-order@ VERIFY:ENTRY-TICK-ORDER!
+   VERIFY:REPORT-DEFERRALS
+   s" a resident parsing immediate makes the later tick uncertain" T-LABEL
+   S" : CVI ( -- ) CVO-SW ['] patch32 drop ;\n: CVJ ( -- ) CVI ;\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   DIAG$ s" W-CHECK-DEFERRED" CONTAINS? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a used-public parsing immediate also makes the tick uncertain" T-LABEL
+   S" using CVO-I\n: CVI ( -- ) SWI ['] patch32 drop ;\n;using\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   old TIER:SELECT ;
+
 public
 
 \ Asked with CVR-V and CVR-W both used: the tail both export.
@@ -206,7 +234,8 @@ public
    PASS-CASE
    USING-CASE
    REJECT-CASE
-   QUIET-CASE ;
+   QUIET-CASE
+   IMMEDIATE-CASE ;
 
 ;package
 
