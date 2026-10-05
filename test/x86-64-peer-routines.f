@@ -394,6 +394,7 @@ variable CALLEE                      \ the entry the caller's site names
 : PRESS-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PRESSURE 1 1 NBACK:L-NONE ROWS, ;
 : PBRANCH-ROWS ( IR-CTX:ctx -- )  HIR-MOD BUILD-PBRANCH 2 1 NBACK:L-NONE ROWS, ;
 : PLOOP-ROWS ( IR-CTX:ctx -- )    HIR-MOD BUILD-PLOOP 2 1 NBACK:L-NONE ROWS, ;
+: REVIEW-ROWS ( IR-CTX:ctx -- )   HIR-MOD REVIEW-BUILD 2 1 NBACK:L-NONE ROWS, ;
 : PCALLER-ROWS ( n IR-CTX:ctx -- )
    {: callee:n c:IR-CTX:ctx :}
    callee CALLEE !
@@ -424,6 +425,7 @@ public
 : PRESSURE-ROUTINE ( -- )  [: PRESS-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 : PBRANCH-ROUTINE ( -- )   [: PBRANCH-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 : PLOOP-ROUTINE ( -- )     [: PLOOP-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
+: REVIEW-ROUTINE ( -- )    [: REVIEW-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 : PCALLER-ROUTINE ( n -- )
    [: PCALLER-ROWS ;] X64CHAIN-TEST:WITH-CASE ;
 ;package
@@ -910,6 +912,15 @@ TYPED-VARIABLE ANSWER-KEY [ n n -- bool ]
    CLOSE, ENTRY, X64CHAIN-TEST:PLOOP-ROUTINE
    s" ploop" false WRITE-IMAGE ;
 
+: REVIEW-IMAGE ( -- )
+   false OPEN,
+   37 1 38 CASE2,
+   37 2 1 CASE2,
+   37 3 1 CASE2,
+   -5 1 -4 CASE2,
+   CLOSE, ENTRY, X64CHAIN-TEST:REVIEW-ROUTINE
+   s" review-loop" false WRITE-IMAGE ;
+
 \ The callee is the pressure fixture, placed first, so its frame is reserved and
 \ given back below the caller's while the caller's is held across the call:
 \ `24 a *`, then the callee's `24 *`, then `24 *` again - `13824 a *`.
@@ -1352,6 +1363,7 @@ public
    ARGS-IMAGE
    PBRANCH-IMAGE
    PLOOP-IMAGE
+   REVIEW-IMAGE
    PCALLER-IMAGE
    SIGNAL-IMAGE
    DIV-IMAGE

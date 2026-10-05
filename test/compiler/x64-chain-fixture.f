@@ -576,8 +576,9 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
 \ ---- the rows publication reads ------------------------------------------------
 \ The owned artifact states the image the emitter sealed, no
 \ trailing return because the span is exact, and the slot it was measured from.
-\ Owned rows remain readable after backend retirement. This foreign artifact
-\ still refuses publication into the host before moving CP or the dictionary.
+\ Owned rows remain readable after backend retirement. On ARM the x64 artifact
+\ is foreign; on x64 its deliberately unrelated slot is refused before moving
+\ CP or the dictionary.
 : ROWS-BODY ( IR-CTX:ctx -- bool n n n n )
    HIR-MOD
    BUILD-DIFF
@@ -591,7 +592,8 @@ X64IR:SP-ALIGN 4 * constant EMIT-SLOT
    cp@ {: cp0:n :}
    ndict@ {: nd0:n :}
    e W-ART !
-   [: PUBLISH-FOREIGN ;] catch E-NPUB-TARGET T=
+   [: PUBLISH-FOREIGN ;] catch
+   HB-TARGET-LINUX-X86-64? if E-NPUB-PLACE else E-NPUB-TARGET then T=
    same ret at  cp@ cp0 -  ndict@ nd0 - ;
 
 \ ---- the spilling modules through the emit row -------------------------------
@@ -642,6 +644,36 @@ $400 constant CALLEE-ENTRY           \ the entry the caller's site names
 
 : PLOOP-BODY ( IR-CTX:ctx -- n bool )
    HIR-MOD BUILD-PLOOP 2 1 NBACK:L-NONE FRAMED-EMIT ;
+
+\ A loop header's incoming edge can coalesce a body value with a later
+\ backedge destination. The body block itself has no backward predecessor.
+: REVIEW-BR0 ( n -- )
+   {: target:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB target BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: REVIEW-BUILD ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   x n 1 BR2
+   BLOCK+
+   ARG+ {: value:IR-ID:ir-value-id :}
+   ARG+ {: count:IR-ID:ir-value-id :}
+   2 REVIEW-BR0
+   BLOCK+
+   HIR-OPCODE:ADD value 1 CONSTOP BINOP {: answer:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB count 1 CONSTOP BINOP {: next:IR-ID:ir-value-id :}
+   next 4 3 BRZ2
+   BLOCK+
+   0 CONSTOP next 1 BR2
+   BLOCK+
+   answer RET1
+   CLOSE-FUN ;
+
+: REVIEW-BODY ( IR-CTX:ctx -- )
+   HIR-MOD REVIEW-BUILD 2 1 CHAIN drop ;
 
 \ The call as publication reads it: one site, a call that comes back, to the
 \ callee's entry, filed where the `call` itself starts - the e8 its rel32
@@ -724,6 +756,9 @@ public
    s" the pressure held around a loop lowers into one frame, reserved where the routine enters, and is emitted" T-LABEL
    [: PLOOP-BODY ;] WITH-CASE
    TTRUE 1 T=
+
+   s" a header value consumed in a later body block does not tie its loop edge class to an overlapping result" T-LABEL
+   [: REVIEW-BODY ;] WITH-CASE
 
    s" the pressure on both sides of a call lowers into one frame held across it, and is emitted" T-LABEL
    [: PCALLER-BODY ;] WITH-CASE

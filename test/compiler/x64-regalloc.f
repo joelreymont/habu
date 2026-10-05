@@ -201,6 +201,30 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
+: BR0 ( n -- )
+   {: target:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB target BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id target:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB target BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: CONSTOP ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
 \ ---- the shapes --------------------------------------------------------------
 \ `: LEAF ( a b -- n ) - ;` - two arguments that die at the subtraction, which is
 \ two-address and destroys the first of them. Nothing is copied.
@@ -310,6 +334,24 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    t RET1
    BLOCK+
    t 1 BR1
+   CLOSE-FUN ;
+
+\ A register-convention entry can be a backedge destination. Its argument's
+\ incoming class overlaps a result used on the exit path, even though the
+\ consuming block has no backedge and the argument's own last use is there.
+: BUILD-ENTRY-LOOP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: value:IR-ID:ir-value-id :}
+   ARG+ {: count:IR-ID:ir-value-id :}
+   1 BR0
+   BLOCK+
+   HIR-OPCODE:ADD value 1 CONSTOP BINOP {: answer:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB count 1 CONSTOP BINOP {: next:IR-ID:ir-value-id :}
+   next 3 2 BRZ2
+   BLOCK+
+   0 CONSTOP next 0 BR2
+   BLOCK+
+   answer RET1
    CLOSE-FUN ;
 
 : MEM0 ( -- IR-ID:ir-value-id )
@@ -773,6 +815,9 @@ $1000 constant THROW-STAND
    2 DSTACK-ALLOCATED drop
    A64RAV:ACCEPTED? ;
 
+: ENTRY-LOOP-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD BUILD-ENTRY-LOOP ALLOCATED drop A64RAV:ACCEPTED? ;
+
 : SQUARE-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
    BUILD-SQUARE
@@ -1003,6 +1048,10 @@ public
 
    s" a loop under the data-stack convention allocates and is accepted: which value a cell holds at the header is the meet of both edges, and the validator keeps that same map over the same graph" T-LABEL
    WBND [: DLOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+
+   s" a register-convention entry reached by a backedge keeps its incoming argument separate from an overlapping tied result" T-LABEL
+   WBND [: ENTRY-LOOP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE
 
    s" the count of a variable shift is placed in rcx because the form fixes it there, and the value shifted takes the lowest free register" T-LABEL

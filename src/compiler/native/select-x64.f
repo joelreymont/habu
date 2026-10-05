@@ -1136,14 +1136,35 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    v LIVE-OUT? if true exit then
    v LATER-LIVE? ;
 
+: ENTRY-IN? ( -- bool )
+   FUN 0 BLOCK-AT PRED-COUNT 0<> ;
+
+: ARG-IN-BLOCK? ( IR-ID:ir-value-id IR-ID:ir-block-id -- bool )
+   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
+   false
+   bk ARG-COUNT 0 ?do
+      v bk i ARG-AT SAME-VALUE? if drop true leave then
+   loop ;
+
+: EDGE-ARG? ( IR-ID:ir-value-id -- bool )
+   {: v:IR-ID:ir-value-id :}
+   v VALUE-FROM-OP? if false exit then
+   false
+   FUN BLOCK-COUNT 0 ?do
+      FUN i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      v bk ARG-IN-BLOCK? if
+         bk BLOCK-ORD 0<> ENTRY-IN? or if drop true leave then
+      then
+   loop
+   ;
+
 : TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id :}
-   \ An argument shares its register with incoming edge destinations. A later
-   \ backedge destination can overlap this result even after the argument's
-   \ own last use. Keep the destructive operand outside that edge class; the
-   \ allocator can coalesce the copy when the whole class permits it.
+   \ An argument reached by an edge can share a register with edge values.
+   \ Their class may outlive this argument even after its own last use, so a
+   \ destructive operation must take a separate copy of it.
    id 0 OPERAND-AT {: v:IR-ID:ir-value-id :}
-   v VALUE-FROM-OP? 0=  v id LIVE-AFTER? or if
+   v EDGE-ARG?  v id LIVE-AFTER? or if
       id  id 0 OPERAND  EMIT-COPY exit
    then
    id 0 OPERAND ;
