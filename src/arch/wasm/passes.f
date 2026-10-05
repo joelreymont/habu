@@ -66,6 +66,7 @@ private
    loop
    WENC:CALL-SITES 0 ?do
       i WENC:CALL-SITE@  i WENC:CALL-KIND@  i WENC:CALL-TARGET@
+      i WENC:CALL-IMPL@  i WENC:CALL-LOC@
       NEMIT:CALL-SITE+
    loop
    WENC:ADDR-SITES 0 ?do
