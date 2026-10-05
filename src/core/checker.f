@@ -12021,11 +12021,14 @@ variable UHELD-MASK
    CHECKER-RESOLVE:RAISE ;
 
 \ `a u` is the token to resolve, `s su` its spelling for a refusal to name.
-: CHECKER-BIND ( ptr u8 n ptr u8 n -- n )
+: CHECKER-BIND-WHY ( ptr u8 n ptr u8 n -- n n )
    {: a:ptr u:n s:ptr su:n :}
    a u CHECKER-RESOLVE:WALK {: sym:n why:n :}
    why 0 <> IF s su why CHECKER-RESOLVE:RAISE THEN
-   sym ;
+   sym why ;
+
+: CHECKER-BIND ( ptr u8 n ptr u8 n -- n )
+   CHECKER-BIND-WHY drop ;
 
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -16194,14 +16197,15 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    0 TOK-LIVE-REC !
    a u ALLDIG?  a u FLODIG?  or IF EXIT THEN
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
-   a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND TOK-SYM !
+   a u TOK-SPELL-A @ TOK-SPELL-U @ CHECKER-BIND-WHY {: sym:n why:n :}
+   sym TOK-SYM !
    BIND-REC @ TOK-REC !
    BIND-PEND-IX @ TOK-PEND-IX !
    BIND-PEND-OFF @ TOK-PEND-OFF !
    BIND-SEEDED @ TOK-SEEDED !
    TOK-SYM @ CTL-FLAGS-SYM CTL-DEAD and 0= IF 0 ELSE 1 THEN TOK-DEAD !
    WALK-REC @ TOK-LIVE-REC !
-   TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE
+   why 0= IF TOK-SYM @ TOK-SPELL-A @ TOK-SPELL-U @ NAV-USE THEN
    a u CHECKER-QUALIFIED? IF EXIT THEN
    TOK-SYM @ CTL-FLAGS-SYM CTL-IDENTITY and TOK-CTL ! ;
 
