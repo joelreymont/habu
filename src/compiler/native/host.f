@@ -235,7 +235,7 @@ private
    row IMPL-IN @ din <> row IMPL-OUT @ dout <> or if false exit then
    din dout + 0 ?do
       row IMPL-TYPE-FIRST @ i + IMPL-TYPES @
-      types i ptr-field @ <> if false unloop exit then
+      types i cells + @ <> if false unloop exit then
    loop
    true ;
 
