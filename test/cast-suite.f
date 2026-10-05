@@ -30,6 +30,48 @@
 require test/checker-assert.f
 require lib/test/subject.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/habu/code-bytes.f
+require src/compiler/native/branch.f
+require src/arch/x86-64/disasm.f
+
+package CS-CALL-CODE
+private
+
+: X64-REF? ( ptr u8 n n n -- bool )
+   {: code:ptr bytes:n start:n wanted:n :}
+   0 begin dup bytes < while
+      {: off:n :}
+      code off + bytes off - start off + X64DIS:STEP
+      {: size:n flow:n target:n :}
+      flow X64DIS:FLOW-CALL = flow X64DIS:FLOW-JUMP = or
+      target wanted = and if true exit then
+      off size +
+   repeat drop false ;
+
+: ARM-REF? ( ptr u8 n n n -- bool )
+   {: code:ptr bytes:n start:n wanted:n :}
+   bytes NBR:INSN-BYTES mod 0<> if E-CODEGEN-PROBE-EXTENT throw then
+   bytes NBR:INSN-BYTES / 0 ?do
+      code i NBR:INSN-BYTES * + RD32 {: w:n :}
+      w NBR:BL? w NBR:B? or if
+         start i NBR:INSN-BYTES * + w NBR:B-TARGET wanted = if
+            true unloop exit
+         then
+      then
+   loop false ;
+
+public
+
+: REF? ( ptr n n -- bool )
+   {: rec:ptr wanted:n :}
+   rec XREF-FOUND? 0= if E-CODEGEN-PROBE-SUBJECT throw then
+   rec XREF-START {: start:n :}
+   HB-TARGET-LINUX-X86-64? if
+      start rec XREF-CODE-BYTES CODE-BYTES:AT start wanted X64-REF?
+   else
+      start rec XREF-CODE-BYTES CODE-BYTES:AT start wanted ARM-REF?
+   then ;
+;package
 
 variable #FAIL
 variable #CASE
@@ -194,12 +236,11 @@ R1 R0 - B1 B0 - T=
 37 CORE-ROLE 37 T=
 
 \ An ordinary empty body still denotes a call, despite having the same scalar
-\ effect and machine-code shape as a cast's first-class body.
+\ effect as a cast. Read its actual branch target: entry guards and tail-call
+\ teardown make total code sizes incomparable across these routine contracts.
 : ORDINARY ( n -- n ) ;
-cp@ constant O0
 : CALL-ORDINARY ( n -- n ) ORDINARY ORDINARY ;
-cp@ constant O1
-O1 O0 - B1 B0 - > -1 T=
+s" CALL-ORDINARY" get-current XREF-FIND-WL ' ORDINARY CS-CALL-CODE:REF? -1 T=
 23 CALL-ORDINARY 23 T=
 ;package
 
