@@ -8,6 +8,7 @@ require src/compiler/session/emission.f
 require src/compiler/native/string.f
 require src/habu/xref.f
 require src/habu/aot-arm.f
+require tools/build-target.f
 
 package NUNIT-CAPTURE
 
@@ -97,10 +98,19 @@ TRUSTED: CODE-BYTES ( n -- ptr u8 ) ;
 
 public
 
+\ NBR's first unit object encodes ARM64 instructions and address chains.
+\ Check both the retained engine and a selected body target before touching
+\ the capture or object, including a cached unit from an earlier ARM build.
+: PROFILE-CK ( -- )
+   RTARGET:HOST-TARGET RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   BUILD-TARGET:CURRENT RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   and 0= if E-NUNIT-PROFILE throw then ;
+
 : RUN-BODY ( -- )
    ['] OBSERVE UNIT-BODY @ NPUB:WITH-UNIT ;
 
 : WITH ( [ -- ] -- ) {: q :}
+   PROFILE-CK
    ARMED @ 0<> if E-NUNIT-PROFILE throw then
    1 ARMED !
    0 ACTIVE ! 0 FINISHED !

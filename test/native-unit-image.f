@@ -32,6 +32,7 @@ require lib/engine-candidate.f
 require test/image-grant.f
 require test/keyed-image.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard
+require tools/native-unit-capture.f
 
 package NATIVE-UNIT-IMAGE
 
@@ -178,6 +179,7 @@ public
 \ (IMAGE-GRANT:CHECK). A unit found there is marked in use (BUILD-CACHE:USED),
 \ and one a pruner took meanwhile is exported again.
 : ENSURE ( -- )
+   NUNIT-CAPTURE:PROFILE-CK
    FAMILY$ IMAGE-GRANT:CHECK
    RESOLVE
    PATH-BYTES FILE? if PATH-BYTES BUILD-CACHE:USED if exit then then

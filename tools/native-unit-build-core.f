@@ -161,6 +161,7 @@ public
 
 : RUN-UNIT ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
    BUILD-TARGET:IDLE-CK
+   NUNIT-CAPTURE:PROFILE-CK
    UNIT-ARGS! {: out-arg:n :}
    0 UNIT-SEEN !
    UNIT-PREFLIGHT

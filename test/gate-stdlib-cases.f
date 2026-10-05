@@ -193,6 +193,10 @@ SUITE native-unit-refusals
    test/native-unit-compile-e2e.f
 ;SUITE
 
+SUITE native-unit-profile
+   test/native-unit-profile.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE

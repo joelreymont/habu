@@ -283,6 +283,7 @@ public
 
 : EXPORT-UNIT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n key:ptr keyu:n checker:ptr checku:n :}
+   NUNIT-CAPTURE:PROFILE-CK
    CODE-PROFILE RECORD-PROFILE RECORDS-PROFILE
    CALLS-PROFILE ADDRS-PROFILE PROTECTION-PROFILE
    NUNIT-FILE:RESET
@@ -296,6 +297,7 @@ public
 
 : IMPORT ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n key:ptr keyu:n :}
+   NUNIT-CAPTURE:PROFILE-CK
    path pathu NUNIT-FILE:ARCH-AARCH64 s" NBR" key keyu NUNIT-FILE:READ
    0 COPY-IMPORT 1 COPY-IMPORT
    IMPORT-PROTECTION
