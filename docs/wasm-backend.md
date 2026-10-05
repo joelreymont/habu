@@ -20,7 +20,7 @@ depends on no LLVM, MLIR, Emscripten or Binaryen.
 | Concern | Decision |
 |---|---|
 | Product profiles | The core module P6 builds (§3, §17) |
-| Architecture row | Add a `wasm` architecture and ABI in one sealed commit (P1a); memory32 and a future memory64 are profiles, told apart by address width and features |
+| Architecture row | Add a `wasm` architecture and ABI in one commit (P1a); memory32 and a future memory64 are profiles, told apart by address width and features |
 | External target label | Proposed `wasm32-habu`; not an existing command-line option |
 | Language cell | 64 bits; `CELL = 8`; do not shrink `n`, products, masks or dictionary cells |
 | Linear-memory addressing | 32-bit offsets, not native process pointers |
@@ -388,7 +388,7 @@ wait for P13. The Wasm path adds:
 | `src/arch/wasm/` | The Wasm backend: selector, WSTRUCT dialect, encoder, LEB routines and module linker, registered as a complete row through its `passes.f` module |
 | `test/wasm/` | Wasm tests and fixtures |
 
-A baked package changed for the backend is rebuilt into the engine.
+When the backend needs more from an engine package (one compiled into bin/hb), that package gains the word and the engine is rebuilt.
 
 ## 15. Work packages
 
@@ -398,7 +398,7 @@ The Wasm path is P1a -> P6, with P0w alongside; it never waits on P2-P5
 | Package | Dot | Delivers |
 |---|---|---|
 | P0w | habu-pin-hbr2-wire-0b340032 | Wasm numeric goldens N01-N06 with the NaN print rows and the three `?do` rows, run natively |
-| P1a | habu-add-the-wasm-4c32353e | The `wasm` architecture and ABI rows, the scalar-FP bit and the decoders, in one sealed commit |
+| P1a | habu-add-the-wasm-4c32353e | The `wasm` architecture and ABI rows, the scalar-FP bit and the decoders, in one commit |
 | P6 | habu-emit-a-wasm-05443776 | The first slice (§17) |
 | P13 | habu-retire-target-selecting-affc4d65 | Retires target-selecting host predicates and does the moves |
 

@@ -578,10 +578,25 @@ SUITE wasm-encode
    test/wasm/encode.f
 ;SUITE
 
+\ WLINK, the Wasm backend's linker, src/arch/wasm/link.f: modules wasm-tools
+\ assembles byte for byte, index and type order, patched call and address
+\ fields, the table, data cells and memory pages, W03 and each refusal.
+SUITE wasm-link
+   test/wasm/link.f
+;SUITE
+
 \ WSEL's f64 rows: Habu's NaN rule after f64 add, sub, mul, div and sqrt, the
 \ sign operations, the comparisons and the conversions.
 SUITE wasm-select-f64
    test/wasm/select-f64.f
+;SUITE
+
+\ The Wasm backend registered at run time, src/arch/wasm/backend.f and
+\ passes.f: real source compiled through an open Wasm shadow, one emission per
+\ record whose rows match its bytes, refusals that leave NEMIT empty, and the
+\ engine's own routine unchanged.
+SUITE wasm-backend
+   test/wasm/backend.f
 ;SUITE
 
 \ The backend registry: complete rows in src/compiler/native/backend.f,

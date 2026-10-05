@@ -929,6 +929,9 @@ $7FF8000000000000 constant NAN-MADE
    FRAMED 0= if  S-OUT @ 0 ?do  I64 IR-TYPE:FN-RESULT  loop  then
    CTX BLD IR-BUILD:INTERN-CODE-REF ;
 
+\ The selected function is in Wasm's convention whatever its source's was: a
+\ shadow's HIR is in Habu's, elaborated under the engine's binding, and a
+\ Wasm-bound context admits no other (src/compiler/ir/fun.f TARGET-CK).
 : OPEN-FUN ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id k:n :}
    CTX BLD  NFROZEN:V-SYMP NFROZEN:VW NFROZEN:V-SYMR NFROZEN:VW
@@ -939,7 +942,7 @@ $7FF8000000000000 constant NAN-MADE
    CTX BLD SIGNATURE IR-BUILD:SET-SIGNATURE
    CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FLINKAGE@  IR-BUILD:SET-LINKAGE
    CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FVISIBILITY@  IR-BUILD:SET-VISIBILITY
-   CTX BLD  NFROZEN:V-FUNR NFROZEN:VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
+   CTX BLD  IR--FUN-CONVENTION:WASM  IR-BUILD:SET-CONVENTION
    CTX BLD  0 S-SPAN @  IR-BUILD:SET-FUN-SPAN ;
 
 \ The signature's arguments, or the inputs taken off the frame, handed to HIR's
