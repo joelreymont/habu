@@ -5,6 +5,7 @@
 \ needs before those definitions are compiled by the native compiler.
 
 require lib/errors.f
+require lib/source-syntax.f
 require src/core/checker-owner-guard.f
 require src/habu/layout.f
 
@@ -595,27 +596,11 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    LOCAL-DEPTH @ LOCAL-N @ LOCAL-D !
    LOCAL-N @ 1 + LOCAL-N ! ;
 
-: BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR=CI
-   a u s" begin" STR=CI or
-   a u s" do" STR=CI or
-   a u s" ?do" STR=CI or
-   a u s" case" STR=CI or
-   a u s" of" STR=CI or
-   a u s" match" STR=CI or
-   a u s" [:" CORE-STR= or ;
+: BLOCK-OPENER? ( ptr u8 n -- bool )
+   SOURCE-SYNTAX:BLOCK-OPENER? ;
 
-: BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR=CI
-   a u s" until" STR=CI or
-   a u s" repeat" STR=CI or
-   a u s" again" STR=CI or
-   a u s" loop" STR=CI or
-   a u s" +loop" STR=CI or
-   a u s" endof" STR=CI or
-   a u s" endcase" STR=CI or
-   a u s" ;match" STR=CI or
-   a u s" ;]" CORE-STR= or ;
+: BLOCK-CLOSER? ( ptr u8 n -- bool )
+   SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 \ Drop the locals the innermost open block declared.
 : BLOCK-DROP ( -- )

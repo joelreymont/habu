@@ -22,6 +22,7 @@
 
 require lib/prelude.f
 require lib/string.f
+require lib/source-syntax.f
 require src/core/checker.f
 require src/core/does-clause.f
 require src/habu/layout.f
@@ -35,6 +36,17 @@ package OUTER
 
 private
 
+\ Tier 1's capture reads locals before syntax. These cells describe lexical
+\ lifetime only; LOCF is the JIT's physical frame and CF its patch stack.
+LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
+variable BODY-DEPTH
+variable BODY-RAW-NEXT
+variable TOK-BODY-DEPTH
+variable TOK-BODY-RAW
+
+: BODY-LEX-RESET ( -- )
+   0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
+
 76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
@@ -45,8 +57,8 @@ TRUSTED: DEF-OPEN ( ptr u8 n n n n -- ) def-open ;
 TRUSTED: DEF-APPEND ( ptr u8 n -- ) body-append ;
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 TRUSTED: DEF-CREATED-SIG ( ptr u8 n -- ) created-sig! ;
-TRUSTED: DEF-CLOSE ( -- ) def-close ;
-TRUSTED: DEF-ABORT ( -- ) def-abort ;
+TRUSTED: DEF-CLOSE ( -- ) def-close BODY-LEX-RESET ;
+TRUSTED: DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 TRUSTED: DEF-IMM-MARK ( -- ) imm-mark ;
 TRUSTED: DEF-CAST ( -- ) def-cast ;
 TRUSTED: DEF-MIN-IN ( n n -- ) min-in-mark ;
@@ -335,6 +347,7 @@ private
    TOKEN$ DEF-CAPTURE
    DEF-QUALIFY 0 tier@ DEF-RECORD
    0 LOCN-CELL CELL!  0 LOCF-CELL CELL!
+   BODY-LEX-RESET
    trusted if
       1 TRUSTED-CELL CELL!
       DEF-REQUIRED-SIG
@@ -368,9 +381,9 @@ private
    S\" c\\\q" TOKEN-IS? if DEF-ESC-TEXT exit then
    S\" .\\\q" TOKEN-IS? if DEF-ESC-TEXT then ;
 
-\ A sealed body admits a local before looking up a dictionary word. Tier 0's
-\ JIT fills LOCNAMES while compiling `{:`; tier 1 captures the same declaration
-\ here, then the native compiler reads it from BODYBUF at `;`.
+\ A body admits a local before looking up a dictionary word. Tier 0's JIT
+\ fills LOCNAMES while compiling `{:`; tier 1 captures each declaration here,
+\ then the native compiler reads it from BODYBUF at `;`.
 : BODY-LOCAL? ( -- bool )
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ 0 ?do
@@ -397,6 +410,7 @@ private
    data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
    len row CELL-VIEW !
    a row 8 + len BYTE-COPY
+   BODY-DEPTH @ idx BODY-LOCAL-DEPTH !
    idx 1+ LOCN-CELL CELL! ;
 
 : BODY-LOCAL-GROUP ( -- )
@@ -406,19 +420,41 @@ private
       BODY-LOCAL-ONE
    repeat ;
 
+\ A closer discards exactly the locals declared in its block. A later rejected
+\ token can restore the count without reconstructing any row.
+: BODY-BLOCK-DROP ( -- )
+   begin
+      LOCN-CELL CELL@ 0 > if
+         LOCN-CELL CELL@ 1- BODY-LOCAL-DEPTH @ BODY-DEPTH @ >=
+      else false then
+   while
+      LOCN-CELL CELL@ 1- LOCN-CELL CELL!
+   repeat ;
+
+: BODY-BLOCK-STEP ( -- )
+   LOCN-CELL CELL@ 0= if exit then
+   TOKEN$ SOURCE-SYNTAX:BLOCK-OPENER? if
+      BODY-DEPTH @ 1+ BODY-DEPTH ! exit
+   then
+   s" else" TOKEN-IS? if BODY-BLOCK-DROP exit then
+   TOKEN$ SOURCE-SYNTAX:BLOCK-CLOSER? if
+      BODY-BLOCK-DROP  BODY-DEPTH @ 1- BODY-DEPTH !
+   then ;
+
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
 \ `;` is handled before the capture at both tiers; a tier-0 JIT call sees it
 \ here first. A miss reaches the five design body keywords only after local,
 \ dictionary and numeric lookup, as the native capture does.
 : BODY-POLICY ( -- )
-   POLICY-NDICT-CELL CELL@ 0= if exit then
    BODY-LOCAL? if exit then
+   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
+   range if UNDEFINED then
+   POLICY-NDICT-CELL CELL@ 0= if exit then
+   num if exit then
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
    TOKEN$ FIND {: used:ptr :}
    used XREF-FOUND? if used POLICY-CHECK-REC exit then
-   TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
-   num if exit then
    s" ;" TOKEN-IS? if exit then
    s" if" TOKEN-IS? if exit then
    s" else" TOKEN-IS? if exit then
@@ -561,7 +597,12 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    data-base BODYBUF-OFF + BYTE-VIEW
    BODYLEN-CELL CELL@ TOKBODY-CELL CELL@
    CHECKER-PREFIX:BIND? {: rollback:n ok:bool :}
-   ok 0= if rollback TOKBODY-CELL CELL! UNDEFINED then ;
+   ok 0= if
+      \ A parser operand can roll back its opener as well as the operand.
+      \ The token mark must then restore the state before that opener.
+      rollback TOKBODY-CELL CELL@ < if 0 TOK-BODY-RAW ! then
+      rollback TOKBODY-CELL CELL! UNDEFINED
+   then ;
 
 \ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
@@ -592,15 +633,22 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
    DEF-TIER-0? if BODY-POLICY DEF-JIT-TOKEN true exit then
+   BODY-RAW-NEXT @ if
+      0 BODY-RAW-NEXT !
+      TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
+   then
    DEF-SEMI? if true exit then
+   BODY-LOCAL? if
+      TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
+   then
    BODY-POLICY
    TOKEN$ DEF-CAPTURE
-   POLICY-NDICT-CELL CELL@ 0<> if
-      s" {:" TOKEN-IS? if BODY-LOCAL-GROUP true exit then
-   then
+   s" {:" TOKEN-IS? if BODY-LOCAL-GROUP DEF-PREFIX-BIND true exit then
+   BODY-BLOCK-STEP
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
+   TOKEN$ SOURCE-SYNTAX:PARSING-KEYWORD? if -1 BODY-RAW-NEXT ! then
    DEF-PREFIX-BIND
    true ;
 

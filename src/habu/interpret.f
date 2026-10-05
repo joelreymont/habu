@@ -79,6 +79,8 @@ private
    0 UNIT-EV-END UNIT-EVENT drop ;
 
 : STEP ( -- )
+   \ A parser word owns its next token, even when it spells a comment opener.
+   BODY-RAW-NEXT @ if COMPILING? drop exit then
    COMMENT? if exit then
    POLICY-PRE {: found:bool :}
    UNIT-TOKEN
@@ -95,6 +97,8 @@ private
 : TOKEN-MARK ( -- )
    BODYLEN-CELL CELL@ TOKBODY-CELL CELL!
    LOCN-CELL CELL@ TOKLOCN-CELL CELL!
+   BODY-DEPTH @ TOK-BODY-DEPTH !
+   BODY-RAW-NEXT @ TOK-BODY-RAW !
    cp@ dbase@ - TOKCP-CELL CELL!
    VSP-CELL CELL@ TOKVSP-CELL CELL!
    REGALLOC-ABI:VRFREE-CELL CELL@ TOKVRF-CELL CELL!
@@ -237,6 +241,8 @@ TYPED-VARIABLE FRAME-ARG ptr u8
 : FRAME-ROLLBACK-TOKEN ( -- )
    TOKBODY-CELL CELL@ BODYLEN-CELL CELL!
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
+   TOK-BODY-DEPTH @ BODY-DEPTH !
+   TOK-BODY-RAW @ BODY-RAW-NEXT !
    dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
    TOKVSP-CELL CELL@ VSP-CELL CELL!
    TOKVRF-CELL CELL@ REGALLOC-ABI:VRFREE-CELL CELL!
@@ -350,6 +356,12 @@ public
       f FRAME-LEAVE
    else
       f NULL-PTR - EVAL-TOP-CELL CELL@ = if f code FRAME-RECOVER then
+      \ ARM LEVALREC can unlink the frame before this catch returns. Its
+      \ engine-cell rollback cannot restore the Habu lexical capture cells.
+      entry 0= if BODY-LEX-RESET else
+         TOK-BODY-DEPTH @ BODY-DEPTH !
+         TOK-BODY-RAW @ BODY-RAW-NEXT !
+      then
    then
    prior ENTRY-PEND !
    code 0<> if entry PEND-CELL CELL! then
@@ -403,6 +415,12 @@ public
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  found REC !
    o ENTRY-PEND !
-   code 0<> if entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then ;
+   code 0<> if
+      entry 0= if BODY-LEX-RESET else
+         TOK-BODY-DEPTH @ BODY-DEPTH !
+         TOK-BODY-RAW @ BODY-RAW-NEXT !
+      then
+      entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw
+   then ;
 
 ;package

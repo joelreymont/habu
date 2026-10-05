@@ -1023,6 +1023,10 @@ SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE
 
+SUITE compiler-native-lexical-recovery
+   test/compiler/native-lexical-recovery.f
+;SUITE
+
 SUITE compiler-native-locals-scope-aot
    test/compiler/native-eval-fixture.f
    lib/test.f

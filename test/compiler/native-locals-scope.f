@@ -133,6 +133,24 @@ public
    dup 0 > if  {: nls-w:n :}  nls-w 2 *  else  drop 7  then
    nls-w + ;
 
+\ A local with the exact spelling of the string opener is an ordinary value
+\ in its arm. The opener after `then` is the global string word again.
+: NLS-STRING-WORD ( bool -- n )
+   if 7 {: s":n :} s" else 0 then
+   s" global" 2drop ;
+
+\ A local named after a control word does not close its arm. The raw operand
+\ after [char] is also not a closer, although it has that spelling.
+: NLS-CONTROL-WORD ( bool -- n )
+   if 9 {: then:n :} [char] then drop then else 0 then ;
+
+\ The first semicolon is a parser operand; only the second closes the body.
+: NLS-RAW-SEMI ( -- n ) [char] ; ;
+
+\ A parser operand can spell either comment opener without starting a comment.
+: NLS-RAW-PAREN ( -- n ) [char] ( ;
+: NLS-RAW-SLASH ( -- n ) [char] \ ;
+
 \ And the mention after the inner `loop` is the ENCLOSING loop's index. Inside the
 \ inner body the same spelling is the local, which is what docs/forth.md means by
 \ local-first; after the inner loop closes it is `i` again.
@@ -361,7 +379,15 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : MEANING-CASE ( -- )
    s" a name out of scope is what the body means by it, not the local" T-LABEL
    5 NLS-FIXTURE:NLS-SHADOW 109 T=
-   -1 NLS-FIXTURE:NLS-SHADOW 106 T= ;
+   -1 NLS-FIXTURE:NLS-SHADOW 106 T=
+   s" string and control spellings are local only inside their block" T-LABEL
+   true NLS-FIXTURE:NLS-STRING-WORD 7 T=
+   false NLS-FIXTURE:NLS-STRING-WORD 0 T=
+   true NLS-FIXTURE:NLS-CONTROL-WORD 9 T=
+   false NLS-FIXTURE:NLS-CONTROL-WORD 0 T=
+   NLS-FIXTURE:NLS-RAW-SEMI 59 T=
+   NLS-FIXTURE:NLS-RAW-PAREN 40 T=
+   NLS-FIXTURE:NLS-RAW-SLASH 92 T= ;
 
 : CALL-CASE ( -- )
    s" a call carries the walk's names and the loop's edges carry the frame's" T-LABEL

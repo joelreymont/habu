@@ -53,12 +53,26 @@ using PTY-HARNESS
    s" -7 SPAN-W ." STEP TTRUE
    s" -107" IN-BUF? TTRUE ;
 
+\ Tier 1 keeps a block's local table across source lines, then releases it at
+\ `then`: the same spelling is a string opener in the last line.
+: LEXICAL-LINES ( -- )
+   s" : SPAN-LEX ( bool -- n )" STEP TTRUE
+   S\" if 7 {: s\q:n :}" STEP TTRUE
+   S\" s\q" STEP TTRUE
+   s" else 0 then" STEP TTRUE
+   S\" s\q done\q 2drop ;" STEP TTRUE
+   s" true SPAN-LEX ." STEP TTRUE
+   s" 7" IN-BUF? TTRUE
+   s" false SPAN-LEX ." STEP TTRUE
+   s" 0" IN-BUF? TTRUE ;
+
 : SPAN-CASE ( n -- )
    {: tier:n :}
    tier OPEN dup TTRUE if
       s" : SPAN-X ( -- n )" STEP dup TTRUE if
          SPAN-LINES
          BRANCH-LINES
+         tier 1 = if LEXICAL-LINES then
          4 SEND-BYTE
       then
    then
