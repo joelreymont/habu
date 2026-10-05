@@ -14477,13 +14477,6 @@ SYM-AXIOM-INSTALL
    a USH-TOK-A !  u USH-TOK-U !
    5 SHADOW-DIAG-XT ;
 
-\ Its report of a definition the checker deferred to the run (CHECK-VERDICT 2),
-\ located at the token the scan pinned where its judgment stopped (CAP-FAIL,
-\ latched by UNCK). It is asked right after the check, before another scan
-\ replaces the pin.
-: CHECKER-VERIFY-DEFERRED-BODY ( -- )
-   TBASE@ FAILB @ +  FAILE @ FAILB @ -  CHECKER-VERIFY-DEFERRED ;
-
 \ The pre-pass's question about a token a TRUSTED: body calls, before its
 \ `does>` (src/habu/verify-source.f SCAN-TRUSTED-BODY). The body is asserted,
 \ never walked, but what running it may do is what its calls may do, as for a
@@ -18551,6 +18544,19 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
       p DSRC-A @ - 0 0= EXIT
    THEN
    0 0 0= 0= ;
+
+\ The pre-verifier needs the pinned token in the source it read, not in its
+\ reused body buffer: it may check a does> parent after its clause, then report
+\ the clause only if the parent was not deferred. BODY$ arms the source map for
+\ every check here, so both ends of the selected token must locate in it.
+: CHECKER-VERIFY-DEFERRED-BODY ( -- ptr u8 n )
+   TBASE@ FAILB @ + DIAG>SRC 0= IF
+      drop s" checker: deferred body pin outside source" 76 die
+   THEN {: start:n :}
+   TBASE@ FAILE @ + DIAG>SRC 0= IF
+      drop s" checker: deferred body end outside source" 76 die
+   THEN {: end:n :}
+   DSRC-A @ start +  end start - ;
 \ The file line, column and byte of the byte p points at; 0 0 0 false when
 \ there is no map for it.
 : DIAG-LOCATE ( ptr u8 -- n n n bool )

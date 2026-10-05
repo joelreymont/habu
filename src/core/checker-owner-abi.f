@@ -143,7 +143,7 @@ $340 constant EFFECT-DOUT-CON-OFF
 $348 constant EFFECT-STACK-STABLE-OFF
 \ A scan serial from the same owner that supplies the borrowed binding rows.
 $350 constant BINDING-WINDOW-OFF
-\ The source pre-pass reports a definition left to the run.
+\ The source pre-pass borrows the selected deferred body token's source span.
 $358 constant VERIFY-DEFERRED-BODY-OFF
 \ $360/$368/$370 belong to the native definition navigator. The verifier
 \ scopes its prospective compiler ordering answer to one checked body at $378.
