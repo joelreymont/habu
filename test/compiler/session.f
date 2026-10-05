@@ -12,7 +12,7 @@ require lib/fs.f
 
 : COMPILER-SESSION-EDGE ( n -- n ) abs ;
 : COMPILER-SESSION-PROOF ( n -- n [ -- n ] )
-   dup 0< if negate else 3 + then COMPILER-SESSION-EDGE [: 7 ;] ;
+   dup 0 < if 0 swap - else 3 + then COMPILER-SESSION-EDGE [: 7 ;] ;
 
 package COMPILER-SESSION-TEST
 private
@@ -98,7 +98,7 @@ TASK:MIN-STACK TASK:TASK WORKER
 \ quotation. Each context elaborates its own HIR under its own binding.
 : PROOF ( IR-CTX:ctx -- IR-BUILD:builder )
    {: c:IR-CTX:ctx :}
-   s" COMPILER-SESSION-PROOF dup 0< if negate else 3 + then COMPILER-SESSION-EDGE [: 7 ;]" NSRC:TEXT!
+   s" COMPILER-SESSION-PROOF dup 0 < if 0 swap - else 3 + then COMPILER-SESSION-EDGE [: 7 ;]" NSRC:TEXT!
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
    c b NSRC:TAPE {: tape:IR-ARENA:arena :}
    c NSRC:LEX
