@@ -71,10 +71,6 @@ private
 $7FF8000000000ABC constant NAN-ABC
 $7FF8000000000DEF constant NAN-DEF
 
-: Z-USE ( IR-ID:ir-value-id -- )
-   {: v:IR-ID:ir-value-id :}
-   ZC ZB v IR-BUILD:ADD-OPERAND ;
-
 \ The operation staged so far, given its one result of type t and closed.
 : Z-CLOSE1 ( IR-ID:ir-type-id -- IR-ID:ir-value-id )
    {: t:IR-ID:ir-type-id :}
