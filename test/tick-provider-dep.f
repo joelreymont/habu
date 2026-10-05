@@ -1,4 +1,6 @@
 package TICK-DEP
 public
-: READY ( -- ) ;
+\ Both probes compose this file before loading it in the same process. Keep
+\ the dependency free of declarations; they retain the composition's rows.
+0 drop
 ;package

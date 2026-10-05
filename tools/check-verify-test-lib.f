@@ -1476,7 +1476,7 @@ $180000 constant LARGE-STDIN-LEN
    s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
    1 s" trusted-tick-order: current tick resolution beats uncertainty" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-sh" PACKET s" code" STRING$
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" E-USING-SHADOW-GLOBAL" T$=
    s" : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
    1 s" trusted-tick-order: does clause gate precedes parent check" EXPECT-KIND
