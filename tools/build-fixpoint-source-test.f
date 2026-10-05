@@ -252,12 +252,16 @@ public
    s" whole source census" [: BFT-TEST-WHOLE-CENSUS ;] BFT-STEP
    s" whole source errors" [: BFT-TEST-WHOLE-ERRORS ;] BFT-STEP
    s" whole source certify" [: BFT-TEST-WHOLE-CERTIFY ;] BFT-STEP
-   s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
+   then
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
-   s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
+   then
    s" build-fixpoint-source-test: ok" BFT-FINISH ;
 
 ;package

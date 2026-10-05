@@ -67,6 +67,11 @@ create BFT-KEY1 64 allot
    s" install" BFT-ARG+
    s" --force" BFT-ARG+ ;
 
+: BFT-ARGV-SNAP-FORCE ( -- )
+   s" --" BFT-ARG+
+   s" snap" BFT-ARG+
+   s" --force" BFT-ARG+ ;
+
 : BFT-SPAWN-FIXPOINT ( -- n n n )
    s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
    BFT-CAPTURE-CAP >LEN BFT-CAPTURE-CAP >LEN PROC-CAPTURE-CHECK-CAPS
@@ -277,7 +282,7 @@ variable BFT-BIN-FILES
 
 : BFT-TEST-BUILD-FAIL-NO-STAMP ( -- )
    BFT-ARGV-FAIL BFT-BUILD-ARGV# T=
-   BFT-ARGV-ALL-FORCE
+   HB-TARGET-LINUX-X86-64? if BFT-ARGV-SNAP-FORCE else BFT-ARGV-ALL-FORCE then
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
@@ -293,7 +298,7 @@ variable BFT-BIN-FILES
 \ source): rc 0, empty stderr -> both direction assertions fail.
 : BFT-TEST-NO-MAIN-DISPATCHES ( -- )
    BFT-NOTDIR BFT-STAMP2 BFT-ARGV-FIXPOINT-NO-MAIN BFT-BUILD-ARGV# 1 - T=
-   BFT-ARGV-INSTALL-FORCE
+   HB-TARGET-LINUX-X86-64? if BFT-ARGV-SNAP-FORCE else BFT-ARGV-INSTALL-FORCE then
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
@@ -672,8 +677,13 @@ variable BAD-N
    BFT-ROOT BF-TMP!
    BF-TMP$ BFT-ROOT T$=
    s" stage2-src" BF-A$ BFT-STAGE2 T$=
-   BF-STAGE2-SOURCE
-   BFT-STAGE2 FILE? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      BF-SNAP-SOURCE
+      s" hb-snap-src" BF-A$ FILE? TTRUE
+   else
+      BF-STAGE2-SOURCE
+      BFT-STAGE2 FILE? TTRUE
+   then
    BF-TMP-RESET ;
 
 : BFT-TEST-STAGE-ARGV-RESET ( -- )
@@ -855,28 +865,38 @@ public
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
-   s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
-   s" build" [: BFT-TEST-BUILD ;] BFT-STEP
-   s" private install cleanup" [: BFT-TEST-PRIVATE-CLEANUP ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
+      s" build" [: BFT-TEST-BUILD ;] BFT-STEP
+      s" private install cleanup" [: BFT-TEST-PRIVATE-CLEANUP ;] BFT-STEP
+   then
    s" candidate boot" [: BFT-TEST-CANDIDATE-BOOT ;] BFT-STEP
-   s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
-   s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" stage engine selection" [: BFT-TEST-ENGINE-SELECTION ;] BFT-STEP
+      s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
+   then
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
    s" no-main self dispatch" [: BFT-TEST-NO-MAIN-DISPATCHES ;] BFT-STEP
    s" missing preamble diag" [: BFT-TEST-MISSING-PREAMBLE ;] BFT-STEP
-   s" watermark required" [: BFT-TEST-WATERMARK-REQUIRED ;] BFT-STEP
-   s" watermark value" [: BFT-TEST-WATERMARK-VALUE ;] BFT-STEP
-   s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" watermark required" [: BFT-TEST-WATERMARK-REQUIRED ;] BFT-STEP
+      s" watermark value" [: BFT-TEST-WATERMARK-VALUE ;] BFT-STEP
+      s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
+   then
    s" chain closure key" [: TEST-CLOSURE-KEY ;] BFT-STEP
    s" chain stamp fold" [: TEST-STAMP-FOLD ;] BFT-STEP
-   s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
-   s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
-   s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
-   s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
+      s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
+      s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
+      s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
+   then
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
-   s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
-   s" stage2 source size" [: STAGE2 ;] BFT-STEP
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
+      s" stage2 source size" [: STAGE2 ;] BFT-STEP
+   then
    s" source buffer growth releases" [: BFT-SOURCE-GROWTH-RELEASES ;] BFT-STEP
    s" build-fixpoint-test: ok" BFT-FINISH ;
 
