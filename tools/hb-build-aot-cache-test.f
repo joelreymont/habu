@@ -8,6 +8,16 @@
 require tools/hb-build-test-lib.f
 require test/preloaded-engine.f
 
+package HB-BUILD-CLI
+: HBT-LOAD-EXIT ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" tools/hb-build-aot-cache-x64.f" required exit
+   then
+   s" tools/hb-build-aot-cache-arm.f" required ;
+' HBT-LOAD-EXIT
+;package
+execute
+
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
 \ The shared fixture's words are private words of the library's package, so
@@ -50,7 +60,11 @@ create HBT-EXP-HEX2 64 allot
    HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
    HBT-REPL-BAD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
    rc 70 T=
-   HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE ;
+   HB-TARGET-LINUX-X86-64? if
+      HBB-ERR-BUF erru s" set-tier: x86-64 runs tier 1 only" CONTAINS? TTRUE
+   else
+      HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   then ;
 
 : HBT-AOT-SOURCE-KEY! ( -- )
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
@@ -63,10 +77,7 @@ create HBT-EXP-HEX2 64 allot
    target targetu OBJ:TARGET!
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
-   ASM-INIT
-   0 0 MOVZ,
-   NR-EXIT-GROUP SYS,
-   CODE ASM-LEN OBJ:TEXT+
+   HBT-ADD-EXIT-TEXT
    s" MAIN" s" --" OBJ:EXPORT+
    s" MAIN" 0 s" --" OBJ:DEF+ ;
 

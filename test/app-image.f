@@ -153,7 +153,11 @@ variable PROBE-SOURCE-U
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
    s" application immediates cannot select JIT while building" T-LABEL
    rc 70 T=
-   ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      ERR erru s" set-tier: x86-64 runs tier 1 only" CONTAINS? TTRUE
+   else
+      ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   then
    IMAGE$ EXISTS? TFALSE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )

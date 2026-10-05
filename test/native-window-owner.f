@@ -96,13 +96,16 @@ create ERR IO-CAP allot
 
 \ The source loader and layout a fixture's real require closure needs.
 : SOURCE-DEPS+ ( -- )
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" ARG+
+      s" src/os/linux-x86-64/layout.f" ARG+
+   else HB-TARGET-LINUX? if
       s" src/os/linux/target.f" ARG+
       s" src/os/linux/layout.f" ARG+
    else
       s" src/os/macos/target.f" ARG+
       s" src/os/macos/layout.f" ARG+
-   then
+   then then
    s" src/habu/stack-abi.f" ARG+
    s" src/habu/layout.f" ARG+
    s" src/core/bytes.f" ARG+
