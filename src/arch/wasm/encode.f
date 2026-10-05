@@ -24,11 +24,11 @@
 \ an absolute address measured, for an unplaced emission, from its first byte
 \ (src/compiler/native/emission.f). A callee spelled `host` and a decimal entry
 \ is that host word; a callee that names a function of the module is that
-\ function's body offset, which the capture reads as one of the emission's own
-\ functions (src/habu/aot-shadow.f SH-FUN?). Refused by name with E-WENC-FORM:
-\ call_indirect, whose type index is the linker's type table's and has no
-\ emission row to carry it, and a function with no body, which an emission
-\ has no bytes for.
+\ function's body offset, which the capture reads as a self call, a call row
+\ naming the definition's own record (src/arch/wasm/capture.f WC-CALL).
+\ Refused by name with E-WENC-FORM: call_indirect, whose type index is the
+\ linker's type table's and has no emission row to carry it, and a function
+\ with no body, which an emission has no bytes for.
 \
 \ AN ADDRESS IS A ROW TOO. An i64.const states its address kind, one of
 \ WSTRUCT's three, which are HIR's (src/compiler/native/hir.f ADDR-NONE..
