@@ -121,6 +121,8 @@ variable REG-CHILD
 variable REG-HI
 variable REG-OUT
 variable CELL-CAP
+variable SPAN-COUNT
+variable SPAN-I
 
 : REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
 : SLOT-UP ( n -- n ) X64KERNEL:CODE-SLOT 1- + X64KERNEL:CODE-SLOT negate and ;
@@ -199,9 +201,12 @@ variable CELL-CAP
 : ?ROUTINES ( -- )
    AOT-REC-N @ 1 max REC-ROUTINE-RESERVE
    AOT-REC-N @ 0 ?do -1 i REC-ROUTINE ! loop
+   0 SPAN-COUNT !
    AOT-SHADOW:REC-N @ 0 ?do
       i SH-REC {: k:n :}
-      k AOT-SHADOW:ANON-REC and 0= if
+      k AOT-SHADOW:ANON-REC and 0<> if
+         1 SPAN-COUNT +!
+      else
          k AOT-REC-N @ >= if i STRAY-ROUTINE then
          k PKG? if i STRAY-ROUTINE then
          k REC-ROUTINE @ 0 >= if
@@ -290,7 +295,9 @@ public
 : CELL-END ( -- n )
    CELL-CAP @ ADDRESS-CELLS:BOOT-CAP > if INDEX-END CELL-CAP @ cells +
       else INDEX-END then ;
-: DATA-AT ( -- n ) CELL-END dup AOT-DATA-D0 @ rot - 7 and + ;
+: SPAN-AT ( -- n ) CELL-END ;
+: SPAN-END ( -- n ) SPAN-AT SPAN-COUNT @ AOT-SPAN:ROW * + ;
+: DATA-AT ( -- n ) SPAN-END dup AOT-DATA-D0 @ rot - 7 and + ;
 : HEAP-FLOOR ( -- n ) DATA-AT AOT-DATA-SIZE @ + ;
 : CELL-AT ( n -- n ) {: c:n :}
    AOT-WINDOW:XTOFF-BUF@ c AOT-WINDOW:XTOFF-ROW * + LE:U32@ {: loc:n :}
@@ -688,6 +695,27 @@ private
 : DATA-BYTES! ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
    a 0 DATA-STORAGE BYTE-VIEW off + u BYTE-COPY ;
 
+\ An anonymous shadow row has code but no shipped dictionary record. Publish
+\ its placed entry and exact span through the same fixed AOT-CELLS table the
+\ stripped closure reads for unnamed ARM routines. The shadow row is the
+\ provenance: neither code bytes nor neighbouring records are guessed at.
+: SPAN-TABLE ( -- )
+   SPAN-COUNT @ 0= if exit then
+   SPAN-COUNT @ AOT-SPAN:MAX > if
+      s" x64link: too many unnamed code spans" REFUSE then
+   X64LAYOUT:DATA-VA VA>N SPAN-AT + AOT-CELLS:SPAN-TABLE-CELL DATA-CELL!
+   SPAN-COUNT @ AOT-CELLS:SPAN-N-CELL DATA-CELL!
+   CODE-VA AOT-CELLS:SPAN-BASE-CELL DATA-CELL!
+   0 SPAN-I !
+   AOT-SHADOW:REC-N @ 0 ?do
+      i SH-REC AOT-SHADOW:ANON-REC and 0<> if
+         0 DATA-STORAGE BYTE-VIEW SPAN-AT SPAN-I @ AOT-SPAN:ROW * + + {: dst:ptr :}
+         i PLACE-STORAGE @ i SH-ENTRY + dst LE:U32!
+         i SH-LEN i SH-ENTRY - CODE-SPAN:EXACT dst 4 + LE:U32!
+         1 SPAN-I +!
+      then
+   loop ;
+
 : WINDOW-CELLS ( -- )
    0 VAL-AT !
    AOT-WINDOW:BM-LEN @ AOT-WINDOW:CELL-BITS * 0 ?do
@@ -784,6 +812,7 @@ private
    PROT-REG-TAG PROT-REG-TAG-CELL DATA-CELL!
    BITS$ PROT-BITS-OFF DATA-BYTES!
    INDEX$ INDEX-OFF DATA-BYTES!
+   SPAN-TABLE
    WINDOW-CELLS
    0 CUR !
    AOT-WINDOW:XTOFF-N @ 0 ?do i ROW-VALUE i CELL-AT DATA-CELL! loop
