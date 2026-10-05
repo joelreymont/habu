@@ -3,6 +3,9 @@ require lib/test.f
 require lib/process-fork.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
+require src/compiler/native/compiler.f
+require lib/ffi-abi.f
+require test/compiler/native-eval-fixture.f
 
 package NCB-LEFT
 public
@@ -16,6 +19,25 @@ public
 
 package NATIVE-CALL-BINDING-TEST
 private
+
+TRUSTED: OPEN-ID ( a -- a ) ;
+variable OPEN-CALL-RC
+
+1 set-tier
+TRUSTED: FOREIGN-CALL ( n -- n )
+   >r FFI:ARGS FFI:REG-LENS 0 r> ffi-call-bounded ;
+\ The raw pointer read refuses judgment before the open generic call, so only
+\ its uninstantiated declaration could supply a width. This body never runs.
+s" TRUSTED: OPEN-CALL ( -- ) 5 @ OPEN-ID drop ;"
+   NATIVE-EVAL:DEFINE-RC OPEN-CALL-RC !
+0 set-tier
+
+: FOREIGN-ABI ( -- )
+   HB-TARGET-MACOS? if -2 else 0 then
+   S\" getpid\z" drop FFI:DLSYM {: fn:n :}
+   fn 0<> TTRUE
+   fn FOREIGN-CALL getpid T=
+   OPEN-CALL-RC @ E-NELAB-BUNDLE T= ;
 
 : NO-SCAN ( ptr u8 n -- ) 2drop ;
 : NO-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
@@ -212,6 +234,7 @@ using NCB-LEFT
 using NCB-RIGHT
 : RUN ( -- )
    T-RESET
+   s" native FFI calls keep their fixed pointer ABI" T-LABEL FOREIGN-ABI T-NEXT
    s" resolved call witness" T-LABEL BOUND T-NEXT
    s" completed unjudged source retains suffix calls" T-LABEL UNJUDGED T-NEXT
    s" unsafe source calls bind before type refusal" T-LABEL UNSAFE-CALLS T-NEXT

@@ -12354,9 +12354,27 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 : CWIN-FIND ( n n -- n n ) CWIN-FIND? drop ;
 
-\ A completed unjudged scan has no finalized call rows. Its selected dictionary
-\ declaration can supply a physical ABI only when its data tail is preserved
-\ and it has no open type variable; other generic calls need a judged site.
+: EFF-FIXED-CELL? ( n -- bool )
+   {: off:n :}
+   off 0= IF RES-FALSE EXIT THEN
+   off EFF-TAG@ {: tag:n :}
+   tag EN-CON = tag EN-PTR = or tag EN-QUOT = or
+   tag EN-ATOM = or tag EN-FORALL = or IF RES-TRUE EXIT THEN
+   tag EN-PARAM <> IF RES-FALSE EXIT THEN
+   off EFF-E@ 0 > IF RES-TRUE EXIT THEN
+   off E-PTR EN.H @ dup 0 < IF drop RES-FALSE EXIT THEN
+   TFAM-CELL?* ;
+
+: EFF-FIXED-ROW? ( n -- bool )
+   BEGIN dup EFF-IS-PUSH? WHILE
+      dup EFF-C@ 2 <> IF drop RES-FALSE EXIT THEN
+      dup EFF-A@ EFF-FIXED-CELL? 0= IF drop RES-FALSE EXIT THEN
+      EFF-B@
+   REPEAT drop RES-TRUE ;
+
+\ An unjudged scan uses the exact selected declaration's physical ABI. Generic
+\ pointees and quotation effects do not change a cell's representation; naked
+\ variables and unexpanded layouts still need a judged call's width facts.
 : SELECTED-CALL-ABI ( n -- n n n n )
    {: ord:n :}
    ord REC-UNJUDGED-BINDING {: row:ptr size:n :}
@@ -12369,7 +12387,12 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    row CHECKER-OWNER-ABI:BOUND-NEUTRAL cells + CELL-VIEW @ 0= if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-EFFECT cells + CELL-VIEW @ {: eff:n :}
    eff 0= if -1 -1 -1 -1 exit then
-   eff 1- E-PTR E-TVN@ 0= 0= if -1 -1 -1 -1 exit then
+   eff 1- E-PTR E-TVN@ 0= 0= if
+      eff 1- E-PTR E-DIN@ EFF-FIXED-ROW?
+      eff 1- E-PTR E-DOUT@ EFF-FIXED-ROW? and 0= if
+         -1 -1 -1 -1 exit
+      then
+   then
    eff 1- E-PTR E-DIN@ EFF-ROW-TAIL
    eff 1- E-PTR E-DOUT@ EFF-ROW-TAIL <> if -1 -1 -1 -1 exit then
    row CHECKER-OWNER-ABI:BOUND-IN cells + CELL-VIEW @ {: in:n :}
