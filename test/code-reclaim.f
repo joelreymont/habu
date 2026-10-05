@@ -156,7 +156,7 @@ LC-CAP BUFFER: LC-ERR
    LC-REFUSED
 
    s" an evaluate that fails retires its created record the same way" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\nTRUSTED: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
+   S\" create CR-LC-KEEP 7 ,\nTRUSTED: CR-LC-BAD ( -- ) s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate ;\n' CR-LC-BAD catch drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
    LC-REFUSED
 
    \ undefine retires a record in place: NDICT stays, the wordlist cell says so.

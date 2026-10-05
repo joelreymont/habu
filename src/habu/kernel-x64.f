@@ -4891,23 +4891,36 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 \ does-patch ( n ptr u8 n -- ) clause entry, created signature: the twin of
 \ habu2.f DOESPATCH:PRIM and LDOESPATCH over the record LASTC-CELL names. Its
-\ routine must end in the slot, E9 at slot and C3 at slot+5, else the row
-\ exits 83 before it writes. Between the record's and the displacement's
+\ absent or retired record throws named code 70 before any patch. Its routine
+\ must end in the slot, E9 at slot and C3 at slot+5, else the row exits 83
+\ before it writes. Between the record's and the displacement's
 \ windows the displacement becomes the entry less the slot's end, and the
 \ record's DKIND clears: the body is a clause now, not a push. Entry 0 writes
 \ displacement 0, the bare body, and leaves the kind as it is; with the
 \ displacement already 0 it writes nothing. A signature then registers as
 \ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
 \ clear for the checker's tail to set again, and CRSIG clears.
+: DOES-NONE$ ( -- ptr u8 n )
+   S\" hb: does> has no created word\n" ;
+
 : DOES-PATCH-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: patch:label write:label declared:label nocr:label noshadow:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: none:label have:label msg:label :}
    RCX POP,  RCX CRSIG-U-CELL CELL!,
    RCX POP,  RCX CRSIG-A-CELL CELL!,
    RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    DP-ENTRY POP-TO,
    R8 LASTC-CELL CELL@,
-   R8 R8 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E none JCC,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE have JCC,
+   none X64CODE:LBL,
+   msg DOES-NONE$ nip STDERR-WRITE,
+   RAX 70 IMM32,  THROW,
+   msg X64CODE:LBL,  DOES-NONE$ TEXT,
+   have X64CODE:LBL,
    RDX R8 REC-CODE CELL + MOV-LOAD,
    RDX CODE-SPAN:MASK >IMM32 ASM-SINK ENC-AND-RI32
    RDX R8 REC-CODE MEM-OFF ASM-SINK ENC-ADD-RM
