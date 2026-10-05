@@ -26,6 +26,7 @@ create SLOTS
    LASTC-CELL ,                         0 ,
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
+   NATIVE-HOST-CELLS:FACTS ,            0 ,
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

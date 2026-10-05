@@ -1511,7 +1511,8 @@ $2CE8 constant DATA-FLOOR-CELL
 \ Its pointer is cleared from snapshot scratch and restored from the receiving
 \ process across a snapshot DATA copy.
 \ $2CE8 is the literal store's DATA floor; the host owner claims $2D10
-\ separately from the replaceable observer callbacks.
+\ separately from the replaceable observer callbacks. Host dispatch and the
+\ current producer fact query occupy $2D20..$2D30.
 package DEF-OCC
 public
 $2D08 constant PTR-CELL

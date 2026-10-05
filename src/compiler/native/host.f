@@ -80,7 +80,9 @@ DYNAMIC-BUFFER FACT-TYPES n
 
 variable OWNER-INSTALLED
 variable PRIOR-INVALIDATE
+variable PRIOR-FACTS
 CAST: AS-INVALIDATE ( n -- [ n n -- ] )
+CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
 
 variable WORK-N
@@ -215,6 +217,39 @@ TYPED-VARIABLE EXECUTION RTARGET:execution-platform
 
 public
 
+\ A zero id means no producer ever published facts for this exact entry.
+: ID-OF ( n -- n )
+   {: entry:n :}
+   IMPL-N @
+   begin dup 0 > while
+      dup 1- {: row:n :}
+      row IMPL-LIVE @ 0<> row IMPL-ENTRY @ entry = and if exit then
+      1-
+   repeat ;
+
+private
+
+: MATCH-ROW? ( n ptr n n -- bool )
+   {: row:n types:ptr din:n dout:n :}
+   row IMPL-TYPE-FIRST @ 0< if false exit then
+   row IMPL-IN @ din <> row IMPL-OUT @ dout <> or if false exit then
+   din dout + 0 ?do
+      row IMPL-TYPE-FIRST @ i + IMPL-TYPES @
+      types i ptr-field @ <> if false unloop exit then
+   loop
+   true ;
+
+\ The current producer answers only for an implementation it still owns.
+: MATCH-FACTS ( n ptr n n n -- n bool )
+   {: entry:n types:ptr din:n dout:n :}
+   entry ID-OF {: id:n :}
+   id 0= if 0 false exit then
+   id ROW {: row:n :}
+   row types din dout MATCH-ROW? 0= if 0 false exit then
+   row IMPL-LEN @ true ;
+
+public
+
 \ A restored process has no retained implementation facts. Its callback cell
 \ is cleared with the other process-owned cells; the next source compilation
 \ starts a fresh owner without reading the saved image's old dynamic buffers.
@@ -264,12 +299,14 @@ public
 : INSTALL ( -- )
    OWNER-INSTALLED @ 0<> if exit then
    data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + @ PRIOR-INVALIDATE !
+   data-base NATIVE-HOST-CELLS:FACTS + @ PRIOR-FACTS !
    0 IMPL-N !
    0 IMPL-TYPE-N !
    0 EDGE-N !
    0 ASSOC-N !
    SEED-SCALAR
    ['] INVALIDATE data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
+   ['] MATCH-FACTS data-base NATIVE-HOST-CELLS:FACTS + xt!
    1 OWNER-INSTALLED ! ;
 
 : CAPTURE-PREPARE ( -- )
@@ -279,9 +316,15 @@ public
       else
          data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + !
       then
+      PRIOR-FACTS @ dup 0<> if
+         data-base NATIVE-HOST-CELLS:FACTS + xt!
+      else
+         data-base NATIVE-HOST-CELLS:FACTS + !
+      then
    then
    0 OWNER-INSTALLED !
    0 PRIOR-INVALIDATE !
+   0 PRIOR-FACTS !
    0 HOST-REQUIRED ! ;
 
 \ The elaborator keeps the first semantic refusal while its source tape is
@@ -398,27 +441,9 @@ private
    {: a:n b:n :}
    a ROW {: x:n :}
    b ROW {: y:n :}
-   x IMPL-TYPE-FIRST @ 0< y IMPL-TYPE-FIRST @ 0< or if false exit then
-   x IMPL-IN @ y IMPL-IN @ <> x IMPL-OUT @ y IMPL-OUT @ <> or if false exit then
-   x IMPL-IN @ x IMPL-OUT @ + 0 ?do
-      x IMPL-TYPE-FIRST @ i + IMPL-TYPES @
-      y IMPL-TYPE-FIRST @ i + IMPL-TYPES @ <> if false unloop exit then
-   loop
-   true ;
-
-public
-
-\ A zero id means no producer ever published facts for this exact entry.
-: ID-OF ( n -- n )
-   {: entry:n :}
-   IMPL-N @
-   begin dup 0 > while
-      dup 1- {: row:n :}
-      row IMPL-LIVE @ 0<> row IMPL-ENTRY @ entry = and if exit then
-      1-
-   repeat ;
-
-private
+   x IMPL-TYPE-FIRST @ {: first:n :}
+   first 0< if false exit then
+   y first IMPL-TYPES x IMPL-IN @ x IMPL-OUT @ MATCH-ROW? ;
 
 : ASSOCIATED-ID ( n -- n )
    {: entry:n :}
@@ -432,6 +457,22 @@ private
    repeat drop
    entry ID-OF ;
 
+\ A host owner compares its local producer row with the active target owner's
+\ live row. The current owner supplies the full emitted extent for retirement.
+: TARGET-LEN? ( n n -- n bool )
+   {: id:n entry:n :}
+   entry ID-OF {: target-id:n :}
+   target-id 0<> if
+      id target-id SAME-TYPES? 0= if 0 false exit then
+      target-id ROW IMPL-LEN @ true exit
+   then
+   data-base NATIVE-HOST-CELLS:FACTS + @ dup 0= if drop 0 false exit then
+   AS-FACTS {: query :}
+   id ROW {: row:n :}
+   row IMPL-TYPE-FIRST @ {: first:n :}
+   first 0< if 0 false exit then
+   entry first IMPL-TYPES row IMPL-IN @ row IMPL-OUT @ query execute ;
+
 public
 
 \ The occurrence owner attaches a retained host implementation to a distinct
@@ -444,12 +485,10 @@ public
    host XREF-START ID-OF {: id:n :}
    id 0= if 0 UNKNOWN 0 REFUSE then
    target XREF-START {: entry:n :}
-   entry ID-OF {: target-id:n :}
-   target-id 0= if id UNKNOWN 0 REFUSE then
-   id target-id SAME-TYPES? 0= if id UNKNOWN 0 REFUSE then
+   id entry TARGET-LEN? {: len:n same:bool :}
+   same 0= if id UNKNOWN 0 REFUSE then
    \ The dictionary omits a trailing return from its code length. The emitted
    \ row owns the full extent, which must retire if that return is reused.
-   target-id ROW IMPL-LEN @ {: len:n :}
    entry 0 <= len 0 <= or if E-STATE throw then
    ASSOC-N @ 1+ {: count:n :}
    count ASSOC-ENTRY-RESERVE

@@ -128,6 +128,10 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" NATIVE-HOST-SOURCE:BOOL-TARGET" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE ;
 
+: FOREIGN-HOST ( -- )
+   s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
+   s" NATIVE-HOST-FOREIGN:TARGET" HANDLE NHOST:ASSOCIATE ;
+
 : SOURCE-CHECKS ( -- )
    s" ordinary native execution retains target 99" T-LABEL
    s" NATIVE-HOST-SOURCE:TARGET99" VALUE-N 99 T=
@@ -206,12 +210,10 @@ TRUSTED: REWIND-CODE ( n -- ) cp! ;
    s" foreign target body associates with retained host implementation" T-LABEL
    s" NATIVE-HOST-FOREIGN:TARGET" VALUE-N 99 T=
    s" NATIVE-HOST-FOREIGN:TARGET" HANDLE
-   s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE
+   s" NATIVE-HOST-ALIAS:HOST42" HANDLE NHOST:ASSOCIATE
    s" NATIVE-HOST-FOREIGN:TARGET" SELECTED-N 42 T=
-   s" foreign body cannot serve as a host implementation" T-LABEL
-   s" NATIVE-HOST-SOURCE:TARGET99" HANDLE
-   s" NATIVE-HOST-FOREIGN:TARGET" HANDLE NHOST:ASSOCIATE
-   s" NATIVE-HOST-SOURCE:TARGET99" REFUSES
+   s" foreign body lacks a retained host implementation" T-LABEL
+   [: FOREIGN-HOST ;] NHOST:E-UNSAFE TTHROWSQ
    s" NATIVE-HOST-RESULT:ONE42" VALUE-N 42 T=
    T-REPORT
    \ The artifact carries the fresh target loader's real recorded closure.
