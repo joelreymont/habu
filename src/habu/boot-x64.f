@@ -32,6 +32,7 @@ require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/task-abi.f
+require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/snap-decode-x64.f
 require src/arch/x86-64/asm.f
@@ -225,6 +226,10 @@ variable SNAP-END
 : DATA-INIT, ( bool -- ) {: heap:bool :}
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
+   \ A saved image carries DATA, but no process owns its old mutex or index.
+   RAX ZERO-REG,
+   RAX ADDRESS-CELLS:LOCK-CELL CELL!
+   RAX ADDRESS-CELLS:INDEX-CELL CELL!
    DSTACK-REG STACK-ABI:BASE-CELL CELL!
    RAX STACK-ABI:BOOT-BYTES IMM,  RAX STACK-ABI:CAP-CELL CELL!
    RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RAX ARGC-CELL CELL!

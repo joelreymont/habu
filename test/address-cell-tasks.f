@@ -62,17 +62,49 @@ variable IMAGE-N
    IMAGE$ EXECUTABLE? TTRUE ;
 : CELL@ ( n -- n ) {: off:n :}
    0 8 0 ?do BYTES off i + + c@ i 8 * lshift or loop ;
+: BAD-CELL-OFF ( -- )
+   s" address-cell-tasks: DATA cell is not file backed" 74 die ;
+: ELF-PH-CELL-OFF ( n n -- n ) {: ph:n va:n :}
+   ph CELL@ $FFFFFFFF and 1 <> if -1 exit then
+   ph 8 + CELL@ {: off:n :}
+   ph 16 + CELL@ {: base:n :}
+   ph 32 + CELL@ {: size:n :}
+   off 0 < off IMAGE-N @ > or if -1 exit then
+   size 0 < size IMAGE-N @ off - > or if -1 exit then
+   va base < if -1 exit then
+   va base - {: delta:n :}
+   delta size > if -1 exit then
+   CELL size delta - > if -1 exit then
+   off delta + ;
+\ The x86 saved image stores DATA in a fixed PT_LOAD, away from the trailer.
+\ Resolve the actual cell VA through a file-backed segment before poisoning it.
+: ELF-CELL-OFF ( n -- n ) {: cell:n :}
+   IMAGE-N @ 64 < if BAD-CELL-OFF then
+   0 CELL@ $FFFFFFFF and $464C457F <> if BAD-CELL-OFF then
+   54 CELL@ $FFFF and 56 <> if BAD-CELL-OFF then
+   32 CELL@ {: phoff:n :}
+   56 CELL@ $FFFF and {: count:n :}
+   phoff 64 < phoff IMAGE-N @ > or if BAD-CELL-OFF then
+   count 0 <= count IMAGE-N @ phoff - 56 / > or if BAD-CELL-OFF then
+   DATA-VA VA>N cell + {: va:n :}
+   count 0 ?do
+      phoff i 56 * + va ELF-PH-CELL-OFF
+      dup -1 <> if unloop exit then drop
+   loop BAD-CELL-OFF ;
+: DATA-CELL-OFF ( n n -- n ) {: tr:n cell:n :}
+   HB-TARGET-LINUX-X86-64? if cell ELF-CELL-OFF exit then
+   tr tr SNAP-TRL-DATALEN + CELL@ - 8 + cell + ;
 : POISON-CAPTURED-LOCK ( -- )
    IMAGE$ FILE-SIZE dup IMAGE-N ! 7 + CELL / IMAGE-STORAGE-RESERVE
    IMAGE$ BYTES IMAGE-N @ READ-ALL IMAGE-N @ T=
    IMAGE-TEXT-SIZE-OFF CELL@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - {: tr:n :}
    tr SNAP-TRL-VERSION + CELL@ SNAPSHOT-FORMAT:VERSION T=
-   tr tr SNAP-TRL-DATALEN + CELL@ - 8 + LOCK-CELL + {: off:n :}
+   tr LOCK-CELL DATA-CELL-OFF {: off:n :}
    off CELL@ 0 T=
    1 BYTES off + c!
    \ Process index pointers are never carried. A damaged incoming value must
    \ still be cleared without dereferencing it after the DATA copy.
-   tr tr SNAP-TRL-DATALEN + CELL@ - 8 + INDEX-CELL + {: index-off:n :}
+   tr INDEX-CELL DATA-CELL-OFF {: index-off:n :}
    index-off CELL@ 0 T=
    1 BYTES index-off + c!
    IMAGE$ BYTES IMAGE-N @ WRITE-ALL
