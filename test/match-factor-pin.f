@@ -56,6 +56,13 @@ variable ERR-U
    label labelu T-LABEL   OUT$ out outu T$=
    label labelu T-LABEL   ERR$ diag diagu CONTAINS? TTRUE ;
 
+\ The native checker rejects a malformed definition before the legacy engine
+\ reaches its construct/MATCH diagnostic tail. Both paths name the same bad
+\ token and reason; the native form also locates it inside the definition.
+: DIAG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: old:ptr oldu:n native:ptr nativeu:n :}
+   HB-TARGET-LINUX-X86-64? if native nativeu else old oldu then ;
+
 \ --- RT: MATCH success + write-xor-execute discipline ---------------------
 \ Round-trips construct then MATCH inside one word and print the result. A run
 \ to exit 0 with the pinned stdout proves the shared legs' RW/RX flips are exact
@@ -89,19 +96,24 @@ variable ERR-U
 : DIAG-CASES ( -- )
    s" diag/con-fam"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- n ) construct nofam ok ;\n"
-      70 s" " s" hb: construct: unknown family: nofam" NEG
+      70 s" " s" hb: construct: unknown family: nofam"
+      s" at 'nofam' bad construct: family not declared in the active package" DIAG$ NEG
    s" diag/con-var"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( n -- mfp ) construct mfp novar ;\n"
-      70 s" " s" hb: construct: unknown variant: novar" NEG
+      70 s" " s" hb: construct: unknown variant: novar"
+      s" at 'novar' bad construct: unknown variant" DIAG$ NEG
    s" diag/match-fam"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH nofam ok OF ENDOF ;MATCH ;\n"
-      70 s" " s" hb: match: unknown family: nofam" NEG
+      70 s" " s" hb: match: unknown family: nofam"
+      s" at 'nofam' bad match: unknown type family" DIAG$ NEG
    s" diag/match-var"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp novar OF ENDOF ;MATCH ;\n"
-      70 s" " s" hb: match: unknown variant: novar" NEG
+      70 s" " s" hb: match: unknown variant: novar"
+      s" at 'novar' bad match: unknown variant" DIAG$ NEG
    s" diag/match-of"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: X ( mfp -- n ) MATCH mfp ok NOTOF ENDOF ;MATCH ;\n"
-      70 s" " s" hb: match: expected of: NOTOF" NEG
+      70 s" " s" hb: match: expected of: NOTOF"
+      s" at 'NOTOF' bad match: variant token must be followed by OF" DIAG$ NEG
    s" diag/bad-tag"
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\nTRUSTED: FORGE ( n -- mfp ) 99 ;\n: BAD ( -- n ) 7 FORGE PW ;\ns\" armed\" type cr\nBAD . cr\n"
       85 s\" armed\n" s" hb: bad mfp tag" NEG
