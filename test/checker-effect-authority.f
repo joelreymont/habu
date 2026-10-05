@@ -342,13 +342,14 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
    T-RESET
    OPEN-LIVE-CASES
    REPLAY+ OPEN-REPLAY-CASES REPLAY-
-   COPY-CASES
+   \ A failed declaration reaches the JIT publication path only at tier 0.
+   HB-TARGET-LINUX-X86-64? 0= if COPY-CASES then
    SEALED-CASES
    REPLAY+
    SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES
    REPLAY-
    LIVE-CASES
-   RECOVERY-PUBLICATION
+   HB-TARGET-LINUX-X86-64? 0= if RECOVERY-PUBLICATION then
    T-REPORT
    s" effect authority: ok" type cr ;
 
