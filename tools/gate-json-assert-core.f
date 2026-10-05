@@ -366,6 +366,12 @@ variable GJA-DIRECT
    GJA-MAP-ROW IF exit THEN
    s" close_string" s" Close the string literal before the definition ends."
    GJA-MAP-ROW IF exit THEN
+   s" fix_load_path" s" No file is at the path this loader word names. Correct the path, or create the file."
+   GJA-MAP-ROW IF exit THEN
+   s" make_source_readable" s" The file this loader word names cannot be read. Make it readable, or correct the path."
+   GJA-MAP-ROW IF exit THEN
+   s" literal_loader_form" s" Load a file by a literal path of at most 1024 bytes, as written and as resolved, through a loader word no definition redefines or retires, or list this file in tools/dynamic-tail-manifest.f."
+   GJA-MAP-ROW IF exit THEN
    s" close_primitive_row" s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE."
    GJA-MAP-ROW IF exit THEN
    s" fix_generates_row" s" This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it."

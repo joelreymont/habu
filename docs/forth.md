@@ -1348,7 +1348,10 @@ passing suite.
   ([repair-diagnostics.md](repair-diagnostics.md)). A duplicate definition
   ends `--all-errors`, as it ends the load; `--verify-only` reports it with the
   same record and goes on past it. Without them check.f stops at the first
-  refusal.
+  refusal. Under `--json-errors` or `--verify-only` its prose goes to stdout
+  and its stderr carries packets, one for a require closure it cannot follow
+  among them, at the form that stops the walk; under `--json-errors` packets
+  alone, as it says on stdout, too, a throw that ends the check uncaught.
 
 ## Habu Native Tooling Gotchas
 
@@ -1702,7 +1705,9 @@ the rule.
   `create`, a learned definer, `char`, `'`, a field word) and at any in a file
   the subject loads, and check.f writes the nominal pass's record for that token
   (`check/operand-missing`, `check/nested-stop-located`,
-  `check/verify-only-located`).
+  `check/verify-only-located`); under `--verify-only` it is the last line of
+  `CHECK:VERIFY-OUT$`, which the language server publishes (lsp-test
+  `missing-name`).
 - **A `create … does>` definer teaches the checker what its words are, whether
   or not its text was read.** A definer the source pre-verifier READ is learned
   from the clause text (`verify-source.f` `DEFINER-EFFECT`). A RESIDENT one —
@@ -1736,9 +1741,12 @@ the rule.
   top-level statement naming such a word it marks the wordlist the statement
   runs in, which is where the loader compiles the product; a later definition
   naming a word nothing resolves, looked up through a marked wordlist, gets
-  `CHECK` verdict 2: no diagnostic, its declared signature recorded for its
-  callers, its body left to the `bin/hb --load` run that check.f performs next
-  (`checker.f` `UNSEEN-MARK$`, `UNSEEN-COVERS?`). A product the source declares
+  `CHECK` verdict 2: its declared signature recorded for its callers, its body
+  left to the `bin/hb --load` run that check.f performs next (`checker.f`
+  `UNSEEN-MARK$`, `UNSEEN-COVERS?`). `--verify-only`, which runs nothing,
+  reports the definition as `W-CHECK-DEFERRED` at the token where the checker's
+  judgment of the body stops (`CHECKER-VERIFY-DEFERRED-BODY`) and answers
+  `deferred` when nothing is refused. A product the source declares
   resolves, so the pre-pass checks its uses itself: `FUNCTION:`'s word against
   its declaration group and the word a `generates:` row declares against the
   row (the next rule).

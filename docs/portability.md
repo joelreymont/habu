@@ -356,7 +356,7 @@ Cleanup must be safe after partial initialization, cancellation or exceptions. I
 
 Do not switch `HB-TARGET-*` meanings globally. Preserve legacy predicates for the engine/source window that owns them, while new code receives explicit `HostContext` or `TargetContext`. Prohibit new portable callers of the legacy predicates with a dependency/lint rule. Move each source selector individually behind a resolver adapter, retaining native fixtures.
 
-Master seals every package the native capture ships (bbcac900; `docs/forth.md:198-205`). Every edit to `CTARGET`, `CBIND`, `HIR`, `NBACK`, `NELAB` or `NCOMP` is therefore an engine rebuild under the full gate (the engine requires the compiler at `src/habu/native-runtime.f:114`; [gate.md](gate.md)), and a backend loaded at run time uses public words only. An adapter cannot be loaded into a sealed package on a product engine. All the sealed edits the Wasm path needs go into one commit, P1a (§27), developed on the whitebox image.
+The native product seals captured compiler packages (see [Packages](forth.md#packages)). A backend loaded at run time uses their public words and cannot reopen them. Changes to baked compiler behavior require a matching engine rebuild and the verification in [gate.md](gate.md).
 
 A transitional non-reentrant backend is marked `ExclusiveSession`. The driver takes an explicit lease, saves only documented state, and prevents unsupported nested entry. This is preferable to claiming reentrancy before globals have been removed.
 

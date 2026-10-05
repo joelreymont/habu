@@ -102,10 +102,14 @@
 \   published again by that one's check, or kept once neither does
 \   ...................................................... dependency-shared
 \ - one document's words seen by another's check ................ two-in-turn
-\ - a check that ended without a verdict publishing, or not saying how it
-\   ended ................................................. incomplete, held
+\ - a check that ended without a verdict and wrote no packet publishing, or
+\   not saying how it ended ................................ incomplete, held
+\ - the packets a check wrote before a later statement ended it without a
+\   verdict not published ................................ incomplete-packets
 \ - a definition never ended, at which the verifier stops, not said refused
-\   with the verifier's prose, or its list not published ............ unended
+\   with the verifier's prose, or its stop not published at it ...... unended
+\ - a definer with nothing after it, at which the verifier stops, not said
+\   refused, or the missing name not published at it ........... missing-name
 \ - a packet placed at the name of the definition it refuses, a public word
 \   whose private twin moves other cells, not published at that name
 \   ......................................................... shadowed-arity
@@ -114,6 +118,9 @@
 \ - a duplicate definition, of the document's own word or of one a file it
 \   requires defines, not published at the name defined again
 \   ......................................... duplicate, duplicate-of-required
+\ - a definition deferred to the run, then one never ended: the deferral or
+\   the stop's record not published, or the document not said refused
+\   ....................................................... deferred-unended
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -198,7 +205,7 @@ create PAR-B HDR-BYTES allot             \ a notification's params
 create DIR-B HDR-BYTES allot             \ the artifact directory
 create EXP-B HDR-BYTES allot             \ a publish expected
 create PATH-B HDR-BYTES allot            \ a document's path
-create TXT-B HDR-BYTES allot             \ big-frame's document
+create TXT-B HDR-BYTES allot             \ a generated document
 
 TYPED-VARIABLE IN-W fd                   \ a held conversation's ends of the server's stdin,
 TYPED-VARIABLE OUT-R fd                  \ stdout
@@ -1538,7 +1545,8 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    B-PATH 1 EXPECT 0 16 0 27 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ A definition never ended: the verifier stops at its opener and refuses the
-\ document with no packet, so the list is empty.
+\ document, and the stop's record, the one `check.f --verify-only` writes, is
+\ published there.
 : UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
 
 : UNENDED-TURNS ( -- )
@@ -1548,22 +1556,63 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR CAPABILITIES
    UNENDED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
-   A-PATH 1 EXPECT PUBLISHES ;
+   A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-\ A `generates:` row with no definer name: the verifier exits without a
-\ verdict. The input is the pre-verifier's generates: reader die
-\ (src/habu/verify-source.f RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it
-\ into a refusal and re-points this case.
-: BARE-GENERATES ( -- ptr u8 n )  s" generates:" ;
+\ A definer with nothing after it: the verifier stops at it and refuses the
+\ document, and the stop's record, the nominal pass's packet that
+\ `check.f --verify-only` writes, is published there.
+: MISSING-NAME ( -- ptr u8 n )  s" :" ;
+
+: MISSING-NAME-TURNS ( -- )
+   INITIALIZE
+   A-PATH MISSING-NAME 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   MISSING-NAME A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
+
+\ One `using` more than the checker holds open at once (CK-USE-MAX): the
+\ verifier dies in CHECKER-USING (`76 die`) and exits without a verdict, where
+\ `--load` refuses that using as ENGINE-ERROR:USING-OVERFLOW. A bare
+\ `generates:`, which this case read before, stops the verifier at the reader
+\ now (7187, E-MISSING-NAME).
+CK-USE-MAX 1 + constant OVER-USINGS
+
+: OVER-USINGS+ ( -- )
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" N>BLEN TXT-B APPEND-SPAN loop ;
+
+: OVER-USING-TEXT ( -- )
+   TXT-B CLEAR  OVER-USINGS+ ;
 
 : INCOMPLETE-TURNS ( -- )
    INITIALIZE
-   A-PATH BARE-GENERATES 1 OPENS
+   OVER-USING-TEXT
+   A-PATH TXT$ 1 OPENS
    SAY
    HEAR CAPABILITIES
-   BARE-GENERATES A-PATH CHECKS
-   A-PATH s" not checked: exit 74" SAID
+   TXT$ A-PATH CHECKS
+   A-PATH s" not checked: exit 76" SAID
    LOGGED ;
+
+\ H1 is refused, then one `using` more than the checker holds open: the
+\ verifier dies in CHECKER-USING (`76 die`) after writing H1's packet, which is
+\ published. A bare `generates:`, which this case read before, stops the
+\ verifier at the reader now (7187, E-MISSING-NAME).
+: REFUSED-OVER-TEXT ( -- )
+   TXT-B CLEAR
+   s\" : H1 ( n -- n ) NOSUCHWORD ;\n" N>BLEN TXT-B APPEND-SPAN
+   OVER-USINGS+ ;
+
+: INCOMPLETE-PACKET-TURNS ( -- )
+   INITIALIZE
+   REFUSED-OVER-TEXT
+   A-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ A-PATH CHECKS
+   A-PATH s" not checked: exit 76" SAID
+   A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
 \ The verifier's own image holds tools/check-verify-child.f.
 : HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child.f" IN-TREE ;
@@ -1701,6 +1750,39 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    A-PATH s" deferred" COMPLETED
    A-PATH 2 EXPECT 1 0 1 4 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
 
+\ A body naming a word only the text `evaluate` renders may define, deferred to
+\ the run at that name.
+: DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
+
+: DEFINITION-TURNS ( -- )
+   INITIALIZE
+   A-PATH DEFERRED-IN-BODY 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   DEFERRED-IN-BODY A-PATH CHECKS
+   A-PATH s" deferred" COMPLETED
+   A-PATH 1 EXPECT 1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES ;
+
+\ That deferral, then a definition never ended: the verifier stops at its
+\ opener and refuses the document, and both the deferral and the stop's record
+\ are published.
+: DEFERRED-UNENDED-TEXT ( -- )
+   TXT-B CLEAR
+   DEFERRED-IN-BODY N>BLEN TXT-B APPEND-SPAN
+   UNENDED N>BLEN TXT-B APPEND-SPAN ;
+
+: DEFERRED-UNENDED-TURNS ( -- )
+   INITIALIZE
+   DEFERRED-UNENDED-TEXT
+   A-PATH TXT$ 1 OPENS
+   SAY
+   HEAR CAPABILITIES
+   TXT$ A-PATH CHECKS
+   A-PATH s" refused" COMPLETED
+   A-PATH 1 EXPECT
+   1 13 1 19 3 s" W-CHECK-DEFERRED" DIAG+
+   2 0 2 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
+
 : TEST-DIAGNOSTICS ( -- )
    s" diagnostics-open" [: OPEN-TURNS ;] TALK
    s" diagnostics-require" [: REQUIRE-TURNS ;] TALK
@@ -1716,7 +1798,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" dependency-shared" [: DEP-SHARED-TURNS ;] TALK
    s" two-in-turn" [: TWO-TURNS ;] TALK
    s" unended" [: UNENDED-TURNS ;] TALK
+   s" missing-name" [: MISSING-NAME-TURNS ;] TALK
    s" incomplete" [: INCOMPLETE-TURNS ;] TALK
+   s" incomplete-packets" [: INCOMPLETE-PACKET-TURNS ;] TALK
    s" held" [: HELD-TURNS ;] TALK
    s" shadowed-arity" [: SHADOWED-TURNS ;] TALK
    s" not-recorded" [: NOT-RECORDED-TURNS ;] TALK
@@ -1725,7 +1809,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" using-clause" [: CLAUSE-USED-TURNS ;] TALK
    s" duplicate" [: DUPLICATE-TURNS ;] TALK
    s" duplicate-of-required" [: DUP-REQUIRED-TURNS ;] TALK
-   s" top-level" [: TOP-LEVEL-TURNS ;] TALK ;
+   s" top-level" [: TOP-LEVEL-TURNS ;] TALK
+   s" deferred-definition" [: DEFINITION-TURNS ;] TALK
+   s" deferred-unended" [: DEFERRED-UNENDED-TURNS ;] TALK ;
 
 public
 

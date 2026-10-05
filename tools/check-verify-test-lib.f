@@ -20,7 +20,10 @@
 \   a child that ends without a result reads as a verdict                 no-result, deadline
 \   a child that dies drops the packets it made before                    no-result
 \   a statement the source leaves open is no refusal, or is not placed
-\   at its opener in its file                                             open-stop
+\   at its opener in its file, or its record not among the packets        open-stop
+\   a closure the walk cannot follow, a string or locals group never
+\   closed, a dynamic loader path, a missing or unreadable required
+\   file, stops with no status line                  disc-stop, closure-line
 \   a stop drops the packets made before it, or names another file than
 \   the one it is in, a dependency's or the subject's                     stop-after-packet
 \   a nested duplicate drops earlier all-errors packets                   duplicate-after-packet
@@ -31,7 +34,9 @@
 \   a child that dies after a duplicate drops its record                  duplicate-then-dies
 \   a complete answer followed by a failed process exit leaks framing or
 \   invents a duplicate, or loses two identical real duplicates   unclean-answer
-\   a closure that cannot be followed reads as verified                   missing-dependency
+\   a closure that cannot be followed reads as verified, or is no packet at
+\   the form that stops it                          missing-dependency, loader-form
+\   a closure wider than a fixed table is refused                         wide-closure
 \   output past the capture loses the packets received before it, or
 \   puts prose on --verify-only's stderr                                  truncated, cli-truncated
 \   --verify-only drops stdin's closure, names the subject otherwise
@@ -64,6 +69,8 @@
 \   wordlist is refused, or that fallback reaches past the package        top-package-tail
 \   a name a deferred word may define is refused after its stretch        top-defer-word
 \   a deferred word followed only by comments is reported deferred        top-defer-comment
+\   a definition left to the run is answered verified, or not reported
+\   where the checker's judgment of it stops                              def-deferred
 \   a name the load accepts at top level is refused                       top-accepted
 \
 \ `measure` prints the time of one check of a one-definition subject and of
@@ -315,9 +322,15 @@ variable CLI-OUT-U
 : DUP-LATE$SRC ( -- ptr u8 n )
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: LATE ( n -- n ) drop ;\n" ;
 
-\ A refused definition, then a `generates:` row with no definer name.
-: BARE-GENERATES$SRC ( -- ptr u8 n )
-   s\" : CVT-BAD-GEN ( -- n n ) 8 ;\ngenerates:\n" ;
+\ A refused definition, then one `using` more than the checker holds open at
+\ once (CK-USE-MAX, the engine's USE-MAX).
+CK-USE-MAX 1 + constant OVER-USINGS
+
+: OVER-USING$SRC ( -- ptr u8 n )
+   0 GEN-U !
+   s\" : CVT-REFUSED ( -- n n ) 8 ;\n" GEN+
+   OVER-USINGS 0 ?do s\" using SOURCE-ROOT\n" GEN+ loop
+   0 GEN GEN-U @ ;
 
 : FIXTURES ( -- )
    s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
@@ -439,7 +452,9 @@ variable CLI-OUT-U
 
 
 \ An open definition stops the verifier at its opener (7155, a code private to
-\ src/habu/verify-source.f): a refusal with no packet that says where.
+\ src/habu/verify-source.f): a refusal that says where, and the stop's record,
+\ the one `check.f --verify-only` writes, in VERIFY-OUT$ for a client to
+\ publish.
 : OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" open-stop: refused" EXPECT-KIND
@@ -447,21 +462,74 @@ variable CLI-OUT-U
    s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
    s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
-   s" open-stop: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:n :}
+   s" open-stop: its record names the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" open-stop: with the code" T-LABEL p s" throw_code" NUMBER$ s" 7155" T$=
+   s" open-stop: at the opener's line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" open-stop: and column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
+
+
+\ The walk stops at a closure it cannot follow before any child runs: SRC,
+\ checked as the fixture NAME, is refused, and its status line, the one
+\ `check.f --verify-only` prints on stdout, is the line the xt builds, the file
+\ that ended the walk and why.
+: STOP-LINE ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
+   {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n line :}
+   src srcu name nameu GUARD-MS CHECK-AS {: v :}
+   v 1 label labelu EXPECT-KIND
+   SB-RESET
+   line execute
+   $0a SB-APPEND-C
+   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+
+\ A string or a locals group the bytes never close stops discovery at it.
+: DISC-STOP ( -- )
+   s\" : CVT-STR ( -- ) s\" abc ;\n" s" disc.f"
+   s" disc-stop: an open string's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE
+   s\" : CVT-LOC ( n -- n ) {: a\n" s" disc.f"
+   s" disc-stop: an open locals group's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
+   STOP-LINE ;
+
+\ A loader path discovery cannot follow, and a required file that is not there
+\ or that the file system will not read (the census's dyn-loader.f and
+\ missing-require.f, and a file whose mode forbids reading it), each in the
+\ subject.
+: CLOSURE-LINE ( -- )
+   s\" : H1 ( n -- n ) 1 + ;\ns\" x.f\" 2dup + drop included\n" s" dyn-loader.f"
+   s" closure-line: a dynamic loader path's status line"
+   [: SUBJ$ SB-APPEND
+      s" : discovery rejected: dynamic (non-literal) loader path" SB-APPEND ;]
+   STOP-LINE
+   s\" require nosuch-lib.f\n: H1 ( n -- n ) 1 + ;\n" s" missing-require.f"
+   s" closure-line: a missing source's status line"
+   [: s" nosuch-lib.f" AT$ SB-APPEND s" : no such source" SB-APPEND ;]
+   STOP-LINE
+   s" locked-line.f" s\" \\ locked\n" FIXTURE
+   s" locked-line.f" AT$ 0 CHMOD-MODE
+   s\" require locked-line.f\n" s" unread-line.f"
+   s" closure-line: an unreadable source's status line"
+   [: s" cannot read " SB-APPEND s" locked-line.f" AT$ SB-APPEND ;]
+   STOP-LINE ;
 
 
 \ The verifier dies after it refused a definition: no result line, its exit and
-\ its words, and the packet it made first is kept. The input is the
-\ pre-verifier's generates: reader die (src/habu/verify-source.f
-\ RECORD-GENERATES, `74 die`); dot 8e9f3e62 turns it into a refusal and
-\ re-points this case.
+\ its words, and the packet it made first is kept. The input's last `using` is
+\ one past what the checker holds open: CHECKER-USING's `76 die`
+\ (src/core/checker.f), which `--load` refuses as ENGINE-ERROR:USING-OVERFLOW.
+\ The bare `generates:` this case read before no longer kills the verifier: it
+\ stops it at the reader (7187, E-MISSING-NAME).
 : NO-RESULT ( -- )
-   BARE-GENERATES$SRC s" bare-generates.f" GUARD-MS CHECK-AS {: v :}
+   OVER-USING$SRC s" over-using.f" GUARD-MS CHECK-AS {: v :}
    v 4 s" no-result: incomplete" EXPECT-KIND
-   s" no-result: the child's exit" T-LABEL v STATUS 74 T=
+   s" no-result: the child's exit" T-LABEL v STATUS 76 T=
    s" no-result: the child's words" T-LABEL
-   CHECK:VERIFY-LOG$ s" missing generates: definer name" CONTAINS? TTRUE
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-gen" PACKET {: p:n :}
+   CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:n :}
    s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
@@ -495,12 +563,75 @@ variable CLI-OUT-U
    CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
 
 
+\ A require of a file that is not there refuses the subject, with a packet at
+\ the loader word that names it, in the file that holds the word.
 : MISSING-DEPENDENCY ( -- )
-   s\" require cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
+   s\" \\ lost\nrequire cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
    1 s" missing-dependency: refused" EXPECT-KIND
-   s" missing-dependency: said so" T-LABEL
-   CHECK:VERIFY-LOG$ s" cvt-missing.f: no such source" CONTAINS? TTRUE
-   s" missing-dependency: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   s" missing-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" missing-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" missing-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" missing-dependency: its column" T-LABEL p s" column" NUMBER$ s" 1" T$= ;
+
+
+\ A loader form discovery cannot follow, in a file the subject requires: a
+\ packet at that form, in that file.
+: LOADER-FORM ( -- )
+   s" dyn-dep.f" s\" \\ dyn\nPATH$ included\n" FIXTURE
+   s\" require dyn-dep.f\n" s" dyn-use.f" GUARD-MS CHECK-AS
+   1 s" loader-form: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   s" loader-form: in the dependency" T-LABEL p s" file" STRING$ s" dyn-dep.f" AT$ T$=
+   s" loader-form: at the loader word" T-LABEL p s" token" STRING$ s" included" T$=
+   s" loader-form: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" loader-form: its column" T-LABEL p s" column" NUMBER$ s" 7" T$= ;
+
+
+\ A require of a file the file system will not read refuses the subject, with
+\ a packet at the loader word that names it.
+: UNREADABLE-DEPENDENCY ( -- )
+   s" locked-dep.f" s\" \\ locked\n" FIXTURE
+   s" locked-dep.f" AT$ 0 CHMOD-MODE
+   s\" \\ unread\nrequire locked-dep.f\n" s" unread.f" GUARD-MS CHECK-AS
+   1 s" unreadable-dependency: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:n :}
+   s" unreadable-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" unreadable-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
+
+
+\ A literal path within the 1024 bytes a loader word takes that resolves past
+\ them refuses the subject, with a packet at the loader word.
+: LONG-RESOLVED ( -- )
+   0 GEN-U !
+   s" require " GEN+
+   496 0 ?do s" a/" GEN+ loop
+   s\" absent.f\n" GEN+
+   0 GEN GEN-U @ s" long.f" GUARD-MS CHECK-AS
+   1 s" long-resolved: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   s" long-resolved: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
+   s" long-resolved: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
+   s" long-resolved: its line" T-LABEL p s" line" NUMBER$ s" 1" T$= ;
+
+
+\ A closure wider than a fixed table held: the subject and WIDE-N files it
+\ requires.
+130 constant WIDE-N
+
+: WIDE-NAME ( n -- ptr u8 n )
+   SB-RESET s" cvt-w" SB-APPEND FMT:SB-INT s" .f" SB-APPEND SB$ ;
+
+: WIDE-CLOSURE ( -- )
+   0 GEN-U !
+   WIDE-N 0 ?do
+      i WIDE-NAME s\" \\ one of many\n" FIXTURE
+      s" require " GEN+ i WIDE-NAME GEN+ s\" \n" GEN+
+   loop
+   s\" : CVT-WIDE ( -- n ) 1 ;\n" GEN+
+   0 GEN GEN-U @ s" wide.f" GUARD-MS CHECK-AS
+   0 s" wide-closure: verified" EXPECT-KIND ;
 
 
 : CHECK-BIG ( -- )
@@ -1228,6 +1359,32 @@ $180000 constant LARGE-STDIN-LEN
    s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
 
 
+\ A body naming a word only the run can define is deferred where the checker's
+\ judgment of it stops: a name the evaluated text may define, and a create
+\ caller's product. Loaded, each refuses that name (E-UNDEFINED, exit 70), so
+\ neither is answered verified. A refusal anywhere keeps the file refused.
+: DEF-DEFERRED ( -- )
+   s\" s\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
+   5 s" def-deferred: evaluate, deferred" EXPECT-KIND
+   s" def-deferred: evaluate, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" def-deferred: at the name" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 2" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-MK ( -- ) create 0 , ;\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
+   5 s" def-deferred: create caller, deferred" EXPECT-KIND
+   s" def-deferred: create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: the stretch" s" CVT-MK" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s" def-deferred: at the product" s" CVT-FOO" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$=
+   s\" : CVT-E ( -- n ) CVT-NOPE ;\ns\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
+   1 s" def-deferred: after a refusal, refused" EXPECT-KIND
+   s" def-deferred: after a refusal, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: the refusal" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" CVT-NOPE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
+   s" verdict" STRING$ s" deferred" T$= ;
+
+
 \ Bytes the load accepts verify, with no packet.
 : LOADS-CLEAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
@@ -1271,9 +1428,9 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A word whose body calls `create` reads a name when it runs and defines it, and
 \ so does a word that calls such a word, though its own check is the run's
-\ (CVT-MK, whose CVT-RA:CVT-RSEVEN rendered text defines). Loaded, each subject
-\ makes CVT-Q or CVT-Y, exit 0. The stretch opens at the word, and a use of its
-\ product after the stretch is the run's too.
+\ (CVT-MK, deferred at CVT-RA:CVT-RSEVEN, which rendered text defines). Loaded,
+\ each subject makes CVT-Q or CVT-Y, exit 0. The stretch opens at the word, and
+\ a use of its product after the stretch is the run's too.
 : TOP-CREATE ( -- )
    s\" : CVT-MKS ( n -- ) create , ;\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
    5 s" top-create: deferred" EXPECT-KIND
@@ -1283,7 +1440,8 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
    TOP-CHECK
    5 s" top-create: through a word the run checks" EXPECT-KIND
-   s" top-create: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-create: two packets, through a word" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-create: that word's body" s" CVT-RA:CVT-RSEVEN" s" 3" s" 19" DEFERRED-AT
    s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
 
 
@@ -1450,10 +1608,16 @@ public
    s" engine-provided" [: ENGINE-PROVIDED ;] RUN-CASE
    s" held" [: HELD ;] RUN-CASE
    s" open-stop" [: OPEN-STOP ;] RUN-CASE
+   s" disc-stop" [: DISC-STOP ;] RUN-CASE
+   s" closure-line" [: CLOSURE-LINE ;] RUN-CASE
    s" no-result" [: NO-RESULT ;] RUN-CASE
    s" deadline" [: DEADLINE ;] RUN-CASE
    s" stop-after-packet" [: STOP-AFTER-PACKET ;] RUN-CASE
    s" missing-dependency" [: MISSING-DEPENDENCY ;] RUN-CASE
+   s" loader-form" [: LOADER-FORM ;] RUN-CASE
+   s" unreadable-dependency" [: UNREADABLE-DEPENDENCY ;] RUN-CASE
+   s" long-resolved" [: LONG-RESOLVED ;] RUN-CASE
+   s" wide-closure" [: WIDE-CLOSURE ;] RUN-CASE
    s" truncated" [: TRUNCATED ;] RUN-CASE
    s" cli-file" [: CLI-FILE ;] RUN-CASE
    s" cli-stdin" [: CLI-STDIN ;] RUN-CASE
@@ -1492,6 +1656,7 @@ public
    s" top-deferred" [: TOP-DEFERRED ;] RUN-CASE
    s" top-nested-deferred" [: TOP-NESTED-DEFERRED ;] RUN-CASE
    s" top-renders" [: TOP-RENDERS ;] RUN-CASE
+   s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-data-word" [: TOP-DATA-WORD ;] RUN-CASE
    s" top-trusted" [: TOP-TRUSTED ;] RUN-CASE

@@ -66,6 +66,9 @@ variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
 variable SD-OPENER                       \ where the last string or group opener starts
+variable SD-TOK-OFF                      \ the token read last: where it starts
+variable SD-TOK-LEN                      \ and its length
+variable SD-CALL-KIND                    \ the loader SD-CALL-LOADER calls
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -115,7 +118,7 @@ variable SD-SCOPES
       SD-I @ 1+ SD-I !
    repeat ;
 
-: SD-RAW ( -- n n )
+: SD-NEXT ( -- n n )
    SD-SKIP-WS
    SD-I @ {: start:n :}
    start SD-AT? 0= if start 0 exit then
@@ -124,6 +127,16 @@ variable SD-SCOPES
       SD-I @ 1+ SD-I !
    repeat
    start SD-I @ start - ;
+
+\ The next token, kept as the token read last when there is one: a refusal
+\ names the form discovery read last, and the source's end names none.
+: SD-RAW ( -- n n )
+   SD-NEXT {: off:n len:n :}
+   len 0<> if
+      off SD-TOK-OFF !
+      len SD-TOK-LEN !
+   then
+   off len ;
 
 : SD-SKIP-TO ( n -- ) {: stop:n :}
    begin SD-I @ SD-AT? while
@@ -203,11 +216,26 @@ variable SD-SCOPES
 : SD-RESERVED? ( n n -- bool )
    SD-TOK$ SD-RESERVED$? ;
 
-: SD-CALL-LOADER ( n n n -- ) {: off:n len:n kind:n :}
-   off len DISC-TOK!
+: SD-CALL-ACT ( -- )
+   SD-CALL-KIND @ {: kind:n :}
    kind SD-K-INCLUDED = if SD-PATH$ included exit then
    kind SD-K-REQUIRED = if SD-PATH$ required exit then
    SD-PATH$ provided ;
+
+\ The loader resolves the literal against its roots before it records the load.
+\ A path it cannot resolve (E-PATH-RANGE: longer resolved than the engine's path
+\ capacity, or holding a NUL) is a form discovery cannot follow, refused at the
+\ loader word that names it.
+: SD-CALL-LOADER ( n n n -- )
+   {: off:n len:n kind:n :}
+   off len DISC-TOK!
+   kind SD-CALL-KIND !
+   [: SD-CALL-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-PATH-RANGE <> if rc throw then
+   off SD-TOK-OFF !
+   len SD-TOK-LEN !
+   E-DISC-CAPACITY SD-REJECT ;
 
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
    pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
@@ -334,6 +362,8 @@ variable SD-SCOPES
 : SD-WALK ( -- )
    0 SD-I !
    0 SD-PEND !
+   0 SD-TOK-OFF !
+   0 SD-TOK-LEN !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
@@ -420,6 +450,16 @@ public
    READ-SELECTED
    RUN-SELECTED ;
 
+\ RUN-IN in two steps, for a caller that reports a member it cannot read
+\ itself: READ-IN reads PATH under ROOT and throws the read's code with no
+\ prose, and RUN-READ walks what it read.
+: READ-IN ( ptr u8 n ptr u8 n -- )
+   SELECT-ENTRY
+   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;
+
+: RUN-READ ( -- )
+   RUN-SELECTED ;
+
 : RUN-BYTES ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: pa:ptr pu:n root:ptr rootu:n bytes:ptr size:n :}
    pa pu root rootu SELECT-ENTRY
@@ -433,6 +473,15 @@ public
 \ the byte of its opener in the file that ended the walk.
 : OPENER-AT ( -- n )
    SD-OPENER @ ;
+
+\ The bytes the last run read, and where the token it read last starts in them
+\ and its length. A run that refused a loader form read that form last: a
+\ loader word with no literal path, or the name a definer gave a loader word.
+: BYTES$ ( -- ptr u8 n )
+   SD-BUF SD-U @ ;
+
+: LAST-TOKEN ( -- n n )
+   SD-TOK-OFF @ SD-TOK-LEN @ ;
 
 : EMIT ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    0 >LEN SD-EMIT-LEN !

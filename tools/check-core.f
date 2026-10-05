@@ -241,8 +241,17 @@ variable CHK-TFAM-NAME-I
    CHK-OUT
    CHK-LF CHK-OUT-C ;
 
+\ Prose that is no diagnostic goes to stdout under --verify-only, beside the
+\ verifier's report, and under --json-errors, whose stderr carries packets
+\ only; else to stderr.
+: CHK-PROSE-OUT? ( -- bool )
+   CHK-VERIFY @ CHK-JSON @ or 0<> ;
+
+: CHK-EXPLAIN ( ptr u8 n -- )
+   CHK-PROSE-OUT? if CHK-OUT else CHK-ERR then ;
+
 : CHK-EXPLAIN-LN ( ptr u8 n -- )
-   CHK-VERIFY @ if CHK-OUT-LN else CHK-ERR-LN then ;
+   CHK-PROSE-OUT? if CHK-OUT-LN else CHK-ERR-LN then ;
 
 : CHK-USAGE ( -- )
    s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" CHK-EXPLAIN-LN
@@ -269,15 +278,17 @@ variable CHK-TFAM-NAME-I
 : CHK-VALUED-ARG? ( n -- bool ) {: idx:n :}
    idx s" --stdin-path" CHK-ARG= idx s" --deadline-ms" CHK-ARG= or ;
 
-\ Establish the output stream before parsing can reject an earlier argument.
-\ A valued option's value is skipped; -- ends option parsing.
-: CHK-VERIFY-ARG? ( -- bool )
+\ Establish the output stream before parsing can reject an earlier argument:
+\ whether option a u is given. A valued option's value is skipped; -- ends
+\ option parsing.
+: CHK-OPT? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
    0 begin dup SCRIPT-ARGC < while
       dup s" --" CHK-ARG= if drop false exit then
       dup CHK-VALUED-ARG? if
          2 +
       else
-         dup s" --verify-only" CHK-ARG= if drop true exit then
+         dup a u CHK-ARG= if drop true exit then
          1+
       then
    repeat drop false ;
@@ -501,6 +512,7 @@ private
 public
 
 : RESET ( -- )
+   false CHK-ENGINE-REFUSED !
    [: CHK-TEMP-CLEAN ;] catch {: rc:n :}
    CHK-SESSION-CLEAR
    [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
@@ -568,45 +580,57 @@ private
 
 \ The pre-pass or discovery stops in one file of the composition: the subject,
 \ by its label, or any other file, by its canonical path. Its bytes are the
-\ subject's, or the file's own, read into CHK-SRC-BUF, where the nominal pass's
-\ records read a definition's source.
+\ subject's, or the file's own, read into CHK-SRC-BUF.
 : CHK-STOP-BYTES ( ptr u8 n bool -- ptr u8 n )
    {: a:ptr u:n subj:bool :}
    subj if CHK-SOURCE-BYTES exit then
    a u CHK-SRC-READ CHK-SRC-BUF swap ;
 
 \ What stopped the pre-pass or discovery with the given code, at the given byte
-\ of the given bytes of the file the label names, by the record --all-errors
-\ writes for it. An open string or row, and a reader whose token the lexer
-\ reads into another one, are the lexer's record for the file; any other throw,
-\ and a defect the lexer does not see, the record of a statement that throws,
-\ at the token that starts at that byte.
-: CHK-THREW-RECORD ( n n ptr u8 n ptr u8 n -- )
-   {: rc:n at:n label:ptr labelu:n src:ptr srcu:n :}
-   rc CHECK-ALL-ERRORS:LEX-STOP? rc VERIFY:E-MISSING-NAME = or if
-      CHK-ALL-STREAM
-      label labelu src srcu CHECK-ALL-ERRORS:LEX-BUF
-   then
-   CHK-JSON @ CHECK-ALL-ERRORS:JSON!
-   rc at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$ CHK-ERR-LN ;
+\ of the given bytes of the file the label names, by its record in the run's
+\ mode (STOP-RECORD$): the check fails as a refusal when the record is one.
+: CHK-STOP-WRITE ( n n ptr u8 n ptr u8 n -- )
+   CHK-JSON @ STOP-RECORD$ {: rec:ptr recu:n refusal:bool :}
+   recu 0<> if rec recu CHK-ERR-LN then
+   refusal if CHK-E-CHECK CHK-THROW then ;
 
 \ Discovery stops at a string or a locals group a file never closes, at its
-\ opener in the file that ended the walk (CHK-DISC-ID), and is reported there:
-\ a string by the lexer's record, and an end the lexer does not see, such as a
-\ `{:` group left open, by the record of a statement that throws discovery's
-\ code. The check fails as a refusal.
+\ opener in the file that ended the walk (CHK-DISC-ID), the subject's bytes
+\ under their label among them, and is reported there: a string by the lexer's
+\ record, and an end the lexer does not see, such as a `{:` group left open, by
+\ the record of a statement that throws discovery's code. The check fails as a
+\ refusal.
 : CHK-DISC-STOPPED ( -- )
-   CHK-DISC-ID @ CHK-DEP$ {: path:ptr pathu:n :}
-   E-DISC-UNTERM DISCOVER:OPENER-AT path pathu
-   path pathu LINT-FALSE CHK-STOP-BYTES CHK-THREW-RECORD
+   CHK-DISC-ID @ {: id:n :}
+   E-DISC-UNTERM DISCOVER:OPENER-AT id CHK-FILE-NAME$
+   id CHK-DEP$ id CHK-BYTES-ID @ = CHK-STOP-BYTES CHK-STOP-WRITE
    CHK-E-CHECK CHK-THROW ;
 
-\ The command line reports a closure it cannot follow as it always has.
-: CHK-EXPAND-REPORT ( n -- ) {: rc:n :}
+\ A closure the walk cannot follow fails the check as a refusal. Under
+\ --json-errors it is the walk's packet (CHK-FAULT$), placed at the form
+\ discovery refused or at the loader word naming a file that is not there or
+\ cannot be read; otherwise, or for a walk that ended at its own top, it is
+\ prose.
+: CHK-EXPAND-JSON ( n -- )
+   CHK-FAULT$ {: a:ptr u:n :}
+   u 0= if exit then
+   a u CHK-ERR-LN
+   CHK-E-CHECK CHK-THROW ;
+
+\ A file the file system refused to read (CHK-READ-RC), by its canonical path:
+\ the one the walk was reading, or --verify-only's named file.
+: CHK-READ-FAIL ( ptr u8 n -- )
+   s" check.f: cannot read " CHK-EXPLAIN
+   CHK-E-IOERR CHK-FAIL ;
+
+: CHK-EXPAND-REPORT ( n -- )
+   {: rc:n :}
    rc 0= if exit then
    rc E-DISC-UNTERM = if CHK-DISC-STOPPED then
+   CHK-JSON @ if rc CHK-EXPAND-JSON then
    rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
    rc CHK-E-NOINPUT = if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   rc CHK-E-IOERR = if CHK-DISC-ID @ CHK-DEP$ CHK-READ-FAIL then
    rc throw ;
 
 : CHK-ENTRY-ID ( ptr u8 n -- n )
@@ -659,11 +683,20 @@ private
 : CHK-READ-STDIN ( -- n )
    0 0 [: CHK-SRC-ROOM drop ;] READ-WHOLE-FD ;
 
+\ A source given as bytes, on stdin or through SOURCE, is the file CHK-SRC-PATH
+\ the run loads, so its requires resolve as they will there. Its closure is
+\ walked as a named file's is, and the passes after the walk visit the order it
+\ leaves as they visit a named file's, that file under its label.
+: CHK-MATERIALIZE-BYTES ( -- )
+   CHK-SRC-BUF CHK-SRC-U @ {: a:ptr u:n :}
+   CHK-SRC-PATH a u WRITE-ALL
+   a u CHK-SRC-PATH CHK-LABEL CHK-EXPAND-BYTES CHK-EXPAND-REPORT
+   CHK-SRC-PATH CHK-SOURCE! ;
+
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
    CHK-READ-STDIN CHK-SRC-U !
-   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
+   CHK-MATERIALIZE-BYTES ;
 
 \ E-FS-PATH-UNSAFE: the quoting judge, SOURCE-QPATH-CHECK, refuses a double
 \ quote, backslash, CR, LF or NUL, and the file system refuses a NUL in a path.
@@ -736,7 +769,7 @@ private
    CHK-LABEL CHK-ENTRY-ID {: id:n :}
    id CHK-DEP$ CHK-APPEND-ENTRY
    id CHK-DEP$ CHK-SUBJ!
-   CHK-JSON @ if id CHK-DEP$ CHK-LABEL! else CHK-CHECK-LABEL then
+   CHK-JSON @ if CHK-SUBJ$ CHK-LABEL! else CHK-CHECK-LABEL then
    id CHK-EXPAND CHK-EXPAND-REPORT
    CHK-WRITE-EXPANDED-SOURCE ;
 
@@ -747,8 +780,7 @@ private
    CHK-SEL-SRC-U @ CHK-SRC-U !
    CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
    CHK-CHECK-LABEL
-   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SOURCE! ;
+   CHK-MATERIALIZE-BYTES ;
 
 \ Each listed path is quoted into its loader line before discovery reads any
 \ file.
@@ -840,21 +872,8 @@ private
       1+
    repeat ;
 
-: CHK-TOK-END ( n -- n ) {: k:n :}
-   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
-
-: CHK-NOM-SRC$ ( n n -- ptr u8 n ) {: def:n name:n :}
-   CHK-SRC-BUF def LINT-LEX:BYTE@ +
-   name CHK-TOK-END def LINT-LEX:BYTE@ - ;
-
 : CHK-NOM-BAD-SUG$ ( -- ptr u8 n )
    s" Choose a unique non-reserved nominal type name." ;
-
-: CHK-NOM-JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
-   key keyu LJW-KEY val valu LJW-STRING LJW-COMMA ;
-
-: CHK-NOM-JU ( n ptr u8 n -- )
-   LJW-KEY LJW-U LJW-COMMA ;
 
 : CHK-U$ ( n -- ptr u8 n ) {: u:n :}
    CHK-NUM-CAP CHK-NUM-I !
@@ -872,43 +891,12 @@ private
    repeat drop
    CHK-NUM-BUF CHK-NUM-I @ + CHK-NUM-CAP CHK-NUM-I @ - ;
 
-\ A declaration packet up to its suggestion: the declaration from def to token
-\ tok, which the packet names and locates.
-: CHK-PACKET-START ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: def:n tok:n code:ptr codeu:n class:ptr classu:n word:ptr wordu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   1 s" schema_version" CHK-NOM-JU
-   s" code" code codeu CHK-NOM-JSTR
-   s" repair_class" class classu CHK-NOM-JSTR
-   s" verdict" s" rejected" CHK-NOM-JSTR
-   s" word" word wordu CHK-NOM-JSTR
-   s" token" LJW-KEY tok LINT-LEX:TOKEN LJW-STRING LJW-COMMA
-   tok s" token_index" CHK-NOM-JU
-   s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
-   tok LINT-LEX:LINE@ s" line" CHK-NOM-JU
-   tok LINT-LEX:COL@ s" column" CHK-NOM-JU
-   tok LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
-   tok CHK-TOK-END s" byte_end" CHK-NOM-JU
-   s" definition_source" LJW-KEY def tok CHK-NOM-SRC$ LJW-STRING LJW-COMMA
-   s" declared_effect" s" unknown " CHK-NOM-JSTR
-   s" declared_effect_source" s" unknown" CHK-NOM-JSTR
-   s" inferred_effect" s" unknown " CHK-NOM-JSTR
-   s" return_stack" LJW-KEY
-   LJW-OBJECT-START
-   s" expected" LJW-KEY s" " LJW-STRING LJW-COMMA
-   s" actual" LJW-KEY s" " LJW-STRING
-   LJW-OBJECT-END
-   LJW-COMMA ;
-
-: CHK-PACKET-END ( ptr u8 n -- ) {: sug:ptr sugu:n :}
-   s" suggestion" LJW-KEY sug sugu LJW-STRING
-   LJW-OBJECT-END
-   LJW$ CHK-ERR
-   CHK-LF CHK-ERR-C ;
+: CHK-PACKET-END ( ptr u8 n -- )
+   CHK-PACKET$ CHK-ERR-LN ;
 
 : CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
-   def name s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" word wordu CHK-PACKET-START
+   def name s" E-BAD-NOMINAL-TYPE" s" fix_nominal_type" word wordu CHK-LABEL
+   CHK-PACKET-START
    CHK-NOM-BAD-SUG$ CHK-PACKET-END ;
 
 : CHK-NOM-PROSE ( n -- ) {: name:n :}
@@ -943,22 +931,10 @@ private
    k LINT-LEX:COL@ CHK-U$ CHK-ERR
    s" : " CHK-ERR ;
 
-: CHK-NONAME-SUG$ ( -- ptr u8 n )
-   s" Give the definer a name: the next whitespace-delimited token." ;
-
 \ Definer k has nothing after it, so it has no name to read: the loader refuses
-\ it, and the check does at the definer.
-: CHK-NONAME-FAIL ( n -- ) {: k:n :}
-   CHK-JSON @ IF
-      k k s" E-MISSING-NAME" s" fix_missing_name" k LINT-LEX:TOKEN CHK-PACKET-START
-      CHK-NONAME-SUG$ CHK-PACKET-END
-   ELSE
-      k CHK-AT-PROSE
-      s" missing name after '" CHK-ERR
-      k LINT-LEX:TOKEN CHK-ERR
-      39 CHK-ERR-C
-      CHK-LF CHK-ERR-C
-   THEN
+\ it, and the check does at the definer (CHK-NONAME-RECORD$).
+: CHK-NONAME-FAIL ( n -- )
+   CHK-LABEL CHK-JSON @ CHK-NONAME-RECORD$ CHK-ERR-LN
    CHK-NOM-FOUND ;
 
 \ The definer's name is read as CHK-DEFINER-TOK? reads it. A definer with no
@@ -1005,7 +981,8 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ prose gives it with the field.
 : CHK-FIELD-FAIL ( n n ptr u8 n -- ) {: def:n tok:n msg:ptr msgu:n :}
    CHK-JSON @ IF
-      def tok s" E-BAD-RECORD-FIELD" s" fix_record_field" s" value-record" CHK-PACKET-START
+      def tok s" E-BAD-RECORD-FIELD" s" fix_record_field" s" value-record" CHK-LABEL
+      CHK-PACKET-START
       s" reason" msg msgu CHK-NOM-JSTR
       CHK-FIELD-SUG$ CHK-PACKET-END
    ELSE
@@ -1391,21 +1368,20 @@ variable CHK-PKG-NAME-I
 : CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
    id CHK-DEP$ RESOLVE nip nip 0= ;
 
-: CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
+: CHK-RUN-NOMINAL-ID ( n -- )
+   {: id:n :}
    id CHK-DEP-PRELOAD? 0= if exit then
-   id CHK-DEP$ 2dup CHK-RUN-NOMINAL-AS ;
+   id CHK-FILE-NAME$ id CHK-DEP$ CHK-RUN-NOMINAL-AS ;
 
-: CHK-RUN-NOMINAL-ORDER ( -- )
+\ Every file of the closure, in the order the walk left, under the name its
+\ packets give it.
+: CHK-RUN-NOMINAL-FILES ( -- )
    CHK-LABEL {: old:ptr oldu:n :}
    0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-RUN-NOMINAL-ID
+      dup CHK-DEP-ORDER@ CHK-RUN-NOMINAL-ID
       1+
    repeat drop
    old oldu CHK-LABEL! ;
-
-: CHK-RUN-NOMINAL-FILES ( -- )
-   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
-   CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
 : CHK-RUN-NOMINAL ( -- )
    LINT-FALSE CHK-NOM-BAD !
@@ -1537,10 +1513,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \
 \ It runs on the engine lib/engine-candidate.f names: a gate's HABU_UNDER_TEST,
 \ else the engine running check.f, never a bin/hb of the working directory.
-\ An engine the resolver refuses is its E-FS-OPEN, the check's status.
+\ An engine the resolver refuses is its throw, the check's status (CHK-ENGINE$).
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   CHK-ENGINE$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-DEADLINE@
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
@@ -1629,7 +1605,8 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ declared signature stands for it, as at a whole-file check.
 
 : CHK-ALL-ID-ACT ( -- )
-   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS:LEX-FILE ;
+   CHK-ALL-ID @ {: id:n :}
+   id CHK-FILE-NAME$ id CHK-DEP$ CHECK-ALL-ERRORS:LEX-FILE ;
 
 : CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
    CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
@@ -1645,45 +1622,25 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-RUN-ALL-ORDER ( -- )
    0 CHK-ALL-RC !
    0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
+      dup CHK-DEP-ORDER@ CHK-RUN-ALL-ID
       1+
    repeat drop
    CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
 
-\ The token of the source LINT-LEX read last that starts at the given byte, or
-\ -1 when none does.
-: CHK-TOKEN-AT ( n -- n )
-   {: at:n :}
-   0 begin dup LINT-LEX:COUNT < while
-      dup LINT-LEX:BYTE@ at = if exit then
-      1+
-   repeat drop -1 ;
-
-\ The pre-pass stopped at a definer or a parsing word with nothing after it, at
-\ the given byte of the given bytes of the file the label names. The nominal
-\ pass refuses that only for the definers it lists in the subject, so the
-\ refusal is its record, at that token of the file's lex, and the check fails
-\ as a refusal. This returns only when the lex has no token there.
-: CHK-STOP-NONAME ( n ptr u8 n ptr u8 n -- )
-   {: at:n label:ptr labelu:n src:ptr srcu:n :}
-   src srcu LINT-LEX:SOURCE
-   at CHK-TOKEN-AT {: k:n :}
-   k 0< if exit then
-   label labelu CHK-LABEL!
-   k CHK-NONAME-FAIL
-   CHK-E-CHECK CHK-THROW ;
-
 : CHK-RUN-ALL-COMPOSE ( -- )
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-\ The composition hands up a reader with nothing after it; with no token of
-\ the lex there it is the statement's throw record.
+\ The composition hands up a reader with nothing after it: the nominal pass's
+\ record at that token of the file's lex (CHK-NONAME-AT$), or with no token of
+\ the lex there the statement's throw record. The check fails as a refusal.
 : CHK-ALL-NONAME ( -- )
    VERIFY:TOKEN-BYTE@ VERIFY:SOURCE-COMPOSE-STOPPED$
    2dup VERIFY:SOURCE-COMPOSE-STOPPED-SUBJECT? CHK-STOP-BYTES
    {: at:n label:ptr labelu:n src:ptr srcu:n :}
-   at label labelu src srcu CHK-STOP-NONAME
-   VERIFY:E-MISSING-NAME at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
+   at label labelu src srcu CHK-JSON @ CHK-NONAME-AT$
+   dup 0= if
+      2drop VERIFY:E-MISSING-NAME at label labelu src srcu CHECK-ALL-ERRORS:THROW-RECORD$
+   then
    CHK-ERR-LN
    CHK-E-CHECK CHK-THROW ;
 
@@ -1691,7 +1648,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ file, however many and however long, with no buffer to outgrow.
 : CHK-RUN-ALL ( -- )
    CHK-ALL-STREAM
-   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-ALL-ORDER then
+   CHK-RUN-ALL-ORDER
    [: CHK-RUN-ALL-COMPOSE ;] catch {: rc:n :}
    rc VERIFY:E-MISSING-NAME = if CHK-ALL-NONAME then
    rc 0 <> if rc CHK-THROW then ;
@@ -1714,23 +1671,16 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SOURCE-LIST-REPORT
    rc CHK-THROW ;
 
-\ The bytes of the file the verifier stopped in, the one VERIFY-STOPPED$ names.
-\ --verify-only holds the subject's in CHK-SRC-BUF.
+\ The bytes of the file the pre-pass stopped in, the one VERIFY-STOPPED$ names.
 : CHK-STOPPED-SOURCE ( -- ptr u8 n )
-   VERIFY-STOP-SUBJECT? CHK-VERIFY @ and if CHK-SRC-BUF CHK-SRC-U @ exit then
    VERIFY-STOPPED$ VERIFY-STOP-SUBJECT? CHK-STOP-BYTES ;
 
-\ The verifier stopped with the given code. A reader with no name is the
-\ nominal pass's record where it stands, and the check fails as a refusal. A
-\ statement that threw is reported by CHK-THREW-RECORD, which fails the check
-\ as a refusal when the record is the lexer's; any other stop returns.
+\ The pre-pass stopped with the given code. A statement that threw is reported
+\ by its record where it stopped (CHK-STOP-WRITE), which fails the check as a
+\ refusal when the record is one; any other stop returns.
 : CHK-STOP-RECORD ( n -- ) {: rc:n :}
-   rc VERIFY:E-MISSING-NAME = if
-      VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-STOP-NONAME
-   then
-   rc CHECK-ALL-ERRORS:THREW? if
-      rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-THREW-RECORD
-   then ;
+   rc CHECK-ALL-ERRORS:THREW? 0= if exit then
+   rc VERIFY-STOP-AT VERIFY-STOPPED$ CHK-STOPPED-SOURCE CHK-STOP-WRITE ;
 
 \ The checker reports nothing for a duplicate definition, so it is reported by
 \ the record --all-errors writes in the run's mode, naming the file that defined
@@ -1752,8 +1702,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    rc CHK-PREVERIFY-FAIL ;
 
 \ How a verifier child that gave no answer ended, as the closing line of its
-\ report: on stdout under --verify-only, with the rest of its prose, and on
-\ stderr for the pre-pass.
+\ report, where CHK-EXPLAIN-LN puts prose.
 : CHK-STATUS-LN ( outcome -- )
    SB-RESET
    s" check.f: the verifier did not complete: " SB-APPEND
@@ -1767,10 +1716,10 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 : CHK-TRUNCATED-LN ( -- )
    s" check.f: the verifier did not complete: its output exceeded the capture" CHK-EXPLAIN-LN ;
 
-\ The pre-pass's packets and its child's prose, both on stderr.
+\ The pre-pass's packets on stderr, then its child's prose.
 : CHK-PREVERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
-   VERIFY-LOG$ CHK-ERR ;
+   VERIFY-LOG$ CHK-EXPLAIN ;
 
 \ The pre-pass runs in the verifier child, on the engine's image
 \ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
@@ -1837,23 +1786,23 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN-CAPPED
    CHK-ERR-NAME-SUBJECT ;
 
+\ The run's packets on stderr; its prose, when it wrote no packet, on stdout.
 : CHK-RUN-JSON-ONLY ( -- )
-   2 >FD 2 >FD JSON-ONLY-FDS!
+   2 >FD 1 >FD JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
+\ The run's output is routed the same way whether it passed or failed: under
+\ --json-errors its stderr goes through CHK-RUN-JSON-ONLY, so stderr holds only
+\ packets, else both streams are replayed as written.
 : CHK-HANDLE-HB ( -- )
-   CHK-RC @ 0= if
-      CHK-REPLAY
-      exit
-   then
-   CHK-RC @ {: rc:n :}
-   CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-JSON @ if
+      CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
       CHK-RUN-JSON-ONLY
    else
-      CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
+      CHK-REPLAY
    then
-   rc CHK-THROW ;
+   CHK-RC @ {: rc:n :}
+   rc 0<> if rc CHK-THROW then ;
 
 \ The nominal pass registers the declarations it finds in the subject source.
 \ Those declarations belong to the packages that source declares, so the scope
@@ -1894,10 +1843,15 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
 \ stderr carries its packets and nothing else; stdout carries its prose and, for
 \ an outcome that is not the checker's verdict, a closing line.
 
+: CHK-VERIFY-READ ( -- )
+   0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;
+
+\ The named file is read as the closure walk reads a file of the closure: one
+\ the file system refuses to read fails the check as it fails the walk.
 : CHK-VERIFY-FILE ( -- ptr u8 n )
    0 CHK-POS$ {: a:ptr u:n :}
    a u FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   a u CHK-SRC-READ CHK-SRC-U !
+   [: CHK-VERIFY-READ ;] CHK-READ-RC 0<> if a u CANONICAL drop CHK-READ-FAIL then
    a u ;
 
 \ stdin's path need not exist.
@@ -1915,22 +1869,17 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
    CHK-VERIFY-STDIN ;
 
-\ The verifier's packets on stderr, its prose on stdout.
+\ The verifier's packets on stderr, a stop's record last among them, its prose
+\ on stdout.
 : CHK-VERIFY-RELAY ( -- )
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-OUT ;
-
-\ A stop is reported after the packets the verifier made before it, by the
-\ record of its defect, in JSON as every --verify-only packet is.
-: CHK-VERIFY-STOPPED ( -- )
-   LINT-TRUE CHK-JSON !
-   VERIFY-STOP CHK-STOP-RECORD ;
 
 : CHK-VERIFY-REPORT ( verdict -- )
    CHK-VERIFY-RELAY
    MATCH verdict
       verified OF ENDOF
-      refused OF CHK-VERIFY-STOPPED CHK-E-CHECK CHK-THROW ENDOF
+      refused OF CHK-E-CHECK CHK-THROW ENDOF
       engine-provided OF
          s" check.f: the engine provides the source; it is not verified" CHK-OUT-LN
          CHK-E-USAGE CHK-THROW
@@ -1941,7 +1890,7 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       ENDOF
       incomplete OF CHK-STATUS-LN CHK-E-UNAVAILABLE CHK-THROW ENDOF
       deferred OF
-         s" check.f: a stretch deferred to the run is not verified" CHK-OUT-LN
+         s" check.f: a stretch or definition deferred to the run is not verified" CHK-OUT-LN
       ENDOF
    ;MATCH ;
 
@@ -2036,15 +1985,38 @@ private
 
 : CHK-MAIN-RUN ( -- )
    RESET
-   CHK-VERIFY-ARG? CHK-VERIFY !
+   s" --verify-only" CHK-OPT? CHK-VERIFY !
+   s" --json-errors" CHK-OPT? CHK-JSON !
    CHK-PARSE-CLI
    RUN dup 0 <> if throw then drop ;
+
+\ hb exits by the code of a throw that reaches the top when it is 1 to 255,
+\ writing nothing, and reports any other as `hb: uncaught throw code N` on
+\ stderr, exiting UNCAUGHT-RC. Under --json-errors stderr holds packets only,
+\ so the command line says such a throw on stdout, with the same status: an
+\ engine selection the resolver refused (lib/engine-candidate.f: a path that
+\ names no executable, E-FS-OPEN, or one the file system refuses, E-FS-PATH),
+\ which CHK-ENGINE$ records where a child starts, as that, and any other, such
+\ as a scratch directory HB_TMP will not hold, by its code. The option is read
+\ from the command line: a run whose cleanup failed clears the session's.
+: CHK-MAIN-UNCAUGHT ( n -- n )
+   {: rc:n :}
+   rc 0 >= rc 256 < and if rc exit then
+   s" --json-errors" CHK-OPT? 0= if rc exit then
+   CHK-ENGINE-REFUSED @ if
+      s" check.f: the selected engine (HABU_UNDER_TEST, else the running engine)" CHK-OUT
+      s"  is not a usable executable" CHK-OUT-LN
+   else
+      s" check.f: uncaught throw code " CHK-OUT
+      SB-RESET rc FMT:SB-INT SB$ CHK-OUT-LN
+   then
+   UNCAUGHT-RC ;
 
 public
 
 : MAIN ( -- )
    CHK-CATCH-STOPS
-   [: CHK-MAIN-RUN ;] catch {: rc:n :}
+   [: CHK-MAIN-RUN ;] catch CHK-MAIN-UNCAUGHT {: rc:n :}
    CHK-SIGNAL-CHECK
    rc 0 <> if rc throw then ;
 

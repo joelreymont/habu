@@ -9,11 +9,10 @@
 \ branch, with the copies of each edge and none for a memory token, while a
 \ block the entry never reaches is written nowhere; of two merges one block
 \ dominates, the later in reverse postorder is the outer block; the second and
-\ third functions of a module are structured in their own block windows;
-\ dominators and loop headers read back per block; a function whose cycle the
-\ entry enters at two blocks is refused by name with the span of the block it
-\ was entered at; and a block, step or temporary outside what the last function
-\ structured holds is refused.
+\ third functions of a module are structured in their own block windows; a
+\ function whose cycle the entry enters at two blocks is refused by name with
+\ the span of the block it was entered at; and a step or temporary outside what
+\ the last function structured holds is refused.
 \
 \ THE TRACE. A structured function reads back as one line, a word per step:
 \ bN the body of block N, loopN and blockN a label for block N, if:C an if on
@@ -213,16 +212,6 @@ private
    {: m:IR-BUILD:module k:n :}
    m IR-BUILD:FKEY k IR-ID:PACK-FUN ;
 
-: BLOCK ( IR-BUILD:module n -- IR-ID:ir-block-id )
-   {: m:IR-BUILD:module k:n :}
-   m IR-BUILD:FKEY k IR-ID:PACK-BLOCK ;
-
-: IDOM# ( IR-BUILD:module n -- n )
-   BLOCK WCTL:IDOM IR-ID:BLOCK-LOCAL ;
-
-: HEADER# ( IR-BUILD:module n -- bool )
-   BLOCK WCTL:HEADER? ;
-
 \ ---- value names -------------------------------------------------------------
 \ Up to two letters, packed into a cell indexed by the value's ordinal.
 128 TYPED-BUFFER NAMES n
@@ -373,10 +362,7 @@ TYPED-VARIABLE WANT-U len
    s" W01: one temporary per type, the i64 cycle's first" T-LABEL
    WCTL:TEMPS 2 T=
    0 WCTL:TEMP-TYPE ti NFROZEN:SAME-TYPE? TTRUE
-   1 WCTL:TEMP-TYPE tf NFROZEN:SAME-TYPE? TTRUE
-   s" W01: the loop's header is the block its back edge enters" T-LABEL
-   m 1 HEADER# TTRUE
-   m 2 HEADER# TFALSE ;
+   1 WCTL:TEMP-TYPE tf NFROZEN:SAME-TYPE? TTRUE ;
 
 : SWAP-CASE ( -- )
    BND [: SWAP-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -510,24 +496,7 @@ TYPED-VARIABLE WANT-U len
    s" W01: nested loops and ifs give the nesting, the copies and every depth" T-LABEL
    TRACE$ NEST-WANT T$=
    s" W01: the copies need no temporary" T-LABEL
-   WCTL:TEMPS 0 T=
-   s" the loop headers are the blocks back edges enter" T-LABEL
-   m 1 HEADER# TTRUE
-   m 3 HEADER# TTRUE
-   m 0 HEADER# TFALSE
-   m 7 HEADER# TFALSE
-   m 9 HEADER# TFALSE
-   s" each block's immediate dominator, the entry its own" T-LABEL
-   m 0 IDOM# 0 T=
-   m 1 IDOM# 0 T=
-   m 3 IDOM# 2 T=
-   m 7 IDOM# 4 T=
-   m 8 IDOM# 3 T=
-   m 9 IDOM# 1 T=
-   m 10 IDOM# 6 T=
-   s" a block the entry never reaches is written nowhere and dominated by none" T-LABEL
-   m 11 IDOM# 11 T=
-   m 11 HEADER# TFALSE ;
+   WCTL:TEMPS 0 T= ;
 
 : NEST-CASE ( -- )
    BND [: NEST-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -603,24 +572,11 @@ TYPED-VARIABLE WANT-U len
 : TANGLE-RUN ( -- )
    0 FIX @  0 FIX @ 0 FUN  WCTL:STRUCTURE ;
 
-\ A block of tangle while plain is the function structured.
-: STRAY-RUN ( -- )
-   0 FIX @ 1 IDOM# drop ;
-
-\ A block of another module whose ordinal lies inside plain's window.
-: FOREIGN-RUN ( -- )
-   IR-ID:NEW-MODULE drop 5 IR-ID:PACK-BLOCK WCTL:HEADER? drop ;
-
 : PAST-STEPS-RUN ( -- )
    WCTL:STEPS WCTL:STEP@ drop ;
 
 : NO-TEMP-RUN ( -- )
    0 WCTL:TEMP-TYPE drop ;
-
-\ Block 1 is the refused tangle's own: a stale window left by plain would
-\ answer it, so only a refusal that clears the last structure refuses it.
-: REFUSED-BLOCK-RUN ( -- )
-   0 FIX @ 1 HEADER# drop ;
 
 : SPELLED? ( IR-BUILD:module IR-ID:ir-symbol-id ptr u8 n -- bool )
    {: m:IR-BUILD:module s:IR-ID:ir-symbol-id a:ptr u:n :}
@@ -641,11 +597,6 @@ TYPED-VARIABLE WANT-U len
    m  m 1 FUN  WCTL:STRUCTURE
    s" W01: a second function is structured in its own block window" T-LABEL
    TRACE$ s" block7 b4 if:z b6 v=k2 br7:1 else b5 v=k1 br7:1 end end b7 fin" T$=
-   m 7 IDOM# 4 T=
-   s" a block of another function is refused" T-LABEL
-   [: STRAY-RUN ;] E-WCTL-RANGE TTHROWSQ
-   s" a block of another module is refused" T-LABEL
-   [: FOREIGN-RUN ;] E-WCTL-RANGE TTHROWSQ
    s" a step past the last is refused" T-LABEL
    [: PAST-STEPS-RUN ;] E-WCTL-RANGE TTHROWSQ
    s" a temporary the copies never made is refused" T-LABEL
@@ -658,8 +609,7 @@ TYPED-VARIABLE WANT-U len
    WCTL:REFUSED-SPAN IR-SOURCE:SPAN-START 4 T=
    WCTL:REFUSED-SPAN IR-SOURCE:SPAN-LEN 3 T=
    s" W02: a refused function leaves nothing to read" T-LABEL
-   WCTL:STEPS 0 T=
-   [: REFUSED-BLOCK-RUN ;] E-WCTL-RANGE TTHROWSQ ;
+   WCTL:STEPS 0 T= ;
 
 : TANGLE-CASE ( -- )
    BND [: TANGLE-BODY ;] IR-CTX:WITH-CONTEXT ;

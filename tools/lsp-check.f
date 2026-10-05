@@ -3,12 +3,14 @@
 \
 \ RUN checks a document's text as the file its URI names, in that file's load
 \ context, through CHECK:VERIFY-BYTES (tools/check-verify-core.f), which runs
-\ none of it. A check that completed - the verdict verified, refused or
-\ deferred, or the engine providing the file, which leaves nothing to verify -
-\ hands its packets to LSP-DIAG:PUBLISH. One that did not - the verifier's
-\ image holding the file, the verifier ending without a verdict, or a throw -
-\ publishes nothing, so the client keeps the last list it was sent, and one
-\ stderr line says why:
+\ none of it, and hands the packets the check wrote to LSP-DIAG:PUBLISH whatever
+\ its verdict: a check stopped by a later definition still publishes the
+\ packets written before it. A check that completed - the verdict verified,
+\ refused or deferred, or the engine providing the file, which leaves nothing
+\ to verify - publishes even when it wrote none. One that did not - the
+\ verifier's image holding the file, the verifier ending without a verdict, or
+\ a throw - and wrote none publishes nothing, so the client keeps the last list
+\ it was sent. One stderr line says why it did not complete:
 \
 \    lsp: URI: not checked: exit N | signal N | deadline passed
 \    lsp: URI: not checked: the verifier's image holds it
@@ -108,9 +110,10 @@ public
    [: VERIFY ;] catch {: code:n :}
    code 0<> if
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
-      exit
    then
-   PUBLISHABLE @ if slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH then ;
+   CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
+      slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH
+   then ;
 
 ;using
 ;package
