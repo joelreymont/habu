@@ -393,21 +393,33 @@ variable SMOKE-DIR-U
 \ This private boundary has the source writer's exact compiled ABI. Its capture
 \ is a multi-cell value, which cannot be passed through interpret-mode evaluate.
 TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
+TRUSTED: NAME-SPAN-XT ( n -- [ n -- n n ] ) ;
+TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 
-: SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+: SOURCE-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
-      drop s" native-build: source writer missing" BUILD-RC die
+      drop s" native-build: source callback missing" BUILD-RC die
    then
    dup XREF-RETIRED? if
-      drop s" native-build: source writer retired" BUILD-RC die
+      drop s" native-build: source callback retired" BUILD-RC die
    then
    XREF-START {: xt:n :}
-   \ Resolve after loading: neither the retained host nor captured target owns
-   \ this writer. It was compiled above the frozen target window.
+   \ A source callback belongs above the captured target window, not to the
+   \ retained host or the target that the image will boot.
    xt 0= xt AOT-ARM:B1 @ < or xt cp@ >= or if
-      s" native-build: writer does not belong to the source load" BUILD-RC die
+      s" native-build: callback does not belong to the source load" BUILD-RC die
    then
-   xt WRITER-XT ;
+   xt ;
+
+: SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   SOURCE-XT WRITER-XT {: writer :}
+   \ A source-loaded x86 writer links through its own X64LINK instance. Pair
+   \ the sidecar query with that instance before the writer uses its placement
+   \ storage; the pre-window callback belongs only to the pre-window writer.
+   X64-TARGET? if
+      s" X64LINK:NAMES-SPAN" SOURCE-XT NAME-SPAN-XT WRITER-NAME-SPAN !
+   then
+   writer ;
 
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
@@ -441,9 +453,7 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
    then ;
 
 TRUSTED: OPENER-XT ( n -- [ bool -- ] ) ;
-TRUSTED: NAME-SPAN-XT ( n -- [ n -- n n ] ) ;
 TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
-TYPED-VARIABLE HELD-NAME-SPAN [ n -- n n ]
 
 : HELD-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
@@ -463,7 +473,7 @@ TYPED-VARIABLE HELD-NAME-SPAN [ n -- n n ]
 
 : HOLD-X64 ( -- )
    s" NATIVE-EMIT:WRITE-C2" HELD-XT WRITER-XT HELD-WRITER !
-   s" X64LINK:NAMES-SPAN" HELD-XT NAME-SPAN-XT HELD-NAME-SPAN !
+   s" X64LINK:NAMES-SPAN" HELD-XT NAME-SPAN-XT WRITER-NAME-SPAN !
    NATIVE-X64?
    s" NATIVE-EMIT:OPEN-SHADOW" HELD-XT OPENER-XT execute ;
 
@@ -682,7 +692,7 @@ variable NAMES-NI
    then
    k NAMES-SHADOW @ {: row:n :}
    row 0 < if -1 0 wid NAMES-X64-WID exit then
-   row HELD-NAME-SPAN @ execute
+   row WRITER-NAME-SPAN @ execute
    wid NAMES-X64-WID ;
 
 : NAMES-ROW ( n -- ) {: k:n :}
