@@ -15,7 +15,7 @@
 \ the context fields, and the ceilings a browser engine enforces. Two profiles
 \ that differ in any one field are different values (`WPROF-PROFILE:EQ`), so a
 \ profile is its own identity. P6 publishes no digest of it and writes no
-\ custom section for it; the release identity that would read one is P7's.
+\ custom section for it, because nothing reads one.
 \
 \ INSTALLED ONCE. The backend's INSTALL hands its profile to `CURRENT!`, and the
 \ selector, encoder, linker and harness read `CURRENT` and the readers below. A

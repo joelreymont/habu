@@ -1463,16 +1463,6 @@
 -9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
 
-\ RUNTIME identities: -9500..-9509, minted by lib/runtime/id.f, which owns package RT-ID.
-
-\ RUNTIME handles: -9510..-9519, minted by lib/runtime/handle.f, which owns package RT-HANDLE.
-
-\ RUNTIME pools: -9520..-9529, minted by lib/runtime/pool.f, which owns package RT-POOL.
-
-\ RUNTIME records: -9530..-9539, minted by lib/runtime/record.f, which owns package RT-RECORD.
-
-\ RUNTIME scopes: -9590..-9599, minted by lib/runtime/scope.f, which owns package RT-SCOPE.
-
 \ Wasm back end: -9800..-9829, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WPROF -9810..-9814, WCTL -9815..-9819, WSEL -9820..-9824,
 \ WENC -9825..-9829.

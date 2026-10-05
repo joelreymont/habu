@@ -49,15 +49,10 @@ s" N03-HIGH-LOOPS"
 s" : N03-HIGH-LOOPS ( -- ) 0 begin 1+ $10000000000 0<> until 0 $10000000000 begin dup 0<> while 1 rshift swap 1+ swap repeat drop depth . .s 2drop ;"
 s\" 2\n1\n41\n" ROW
 
-\ ---- N04 a Habu flag is a whole-cell mask; an HBR2 Bool is a u32 0 or 1 -------
+\ ---- N04 a Habu flag is a whole-cell mask -------------------------------------
 s" N04-MASKS"
 s" : N04-MASKS ( -- ) 3 3 = 3 4 = $8000000000000000 0< 1 s>f 1 s>f f= 3 3 = 0= depth . .s 2drop 2drop drop ;"
 s\" 5\n-1\n0\n-1\n-1\n0\n" ROW
-
-\ A mask encodes as Bool 1 or 0 (HBR2 §24.2), and Bool 1 reads back as a mask.
-s" N04-BOOL"
-s" : N04-BOOL ( -- ) 3 3 = if 1 else 0 then 3 4 = if 1 else 0 then 1 0<> 0 0<> depth . .s 2drop 2drop ;"
-s\" 4\n1\n0\n-1\n0\n" ROW
 
 \ ---- N05 shifts, remainder sign, integer and real conversions -----------------
 s" N05-SHIFTS"
