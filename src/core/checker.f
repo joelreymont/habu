@@ -5095,12 +5095,13 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
 0 constant TORDER-CHECKING
 1 constant TORDER-GATE
 2 constant TORDER-UNKNOWN
-3 constant TORDER-COMPILE-ONLY
+3 constant TORDER-PARENT-GATE
+4 constant TORDER-PARENT-UNKNOWN
 \ The verifier supplies a prospective ordering answer only for its selected
 \ body. The scan depth keeps an independent nested CHECK! out of that scope.
 PTR-VARIABLE TORDER-A
 variable TORDER-U
-variable TORDER-KIND             \ checking, trusted gate, unknown or does-parent compile-only
+variable TORDER-KIND             \ checking, trusted gate, unknown or does-parent ordering
 variable TORDER-SCOPE
 variable TORDER-USED
 variable TORDER-ACTIVE
@@ -5124,7 +5125,10 @@ variable TORDER-DEPTH
    {: olda:ptr oldu:n oldorder:n
       oldscope:n oldused:n oldactive:n olduncertain:n oldscan:n :}
    a TORDER-A !  u TORDER-U !
-   order TORDER-GATE = owner DECLARATIONS <> and IF TORDER-UNKNOWN ELSE order THEN TORDER-KIND !
+   order TORDER-GATE = order TORDER-PARENT-GATE = or
+   owner CHECKER-REG:DECLARATIONS <> and IF
+      order TORDER-PARENT-GATE = IF TORDER-PARENT-UNKNOWN ELSE TORDER-UNKNOWN THEN
+   ELSE order THEN TORDER-KIND !
    -1 TORDER-SCOPE !  0 TORDER-USED !  TORDER-CHECKING TORDER-ACTIVE !
    0 TORDER-UNCERTAIN !  0 TORDER-SCAN-UNKNOWN !
    q catch {: rc:n :}
@@ -19228,8 +19232,11 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN
    sym PRIM-TRUSTED-SYM? IF
-      TORDER-ACTIVE @ TORDER-GATE = IF RF-CAP CREFUSE! THEN
-      TORDER-ACTIVE @ TORDER-UNKNOWN = RCOMPILE @ 0= and CREFUSE @ 0= and IF
+      TORDER-ACTIVE @ TORDER-GATE = TORDER-ACTIVE @ TORDER-PARENT-GATE = or
+      IF RF-CAP CREFUSE! THEN
+      TORDER-ACTIVE @ TORDER-UNKNOWN =
+      TORDER-ACTIVE @ TORDER-PARENT-UNKNOWN = or
+      RCOMPILE @ 0= and CREFUSE @ 0= and IF
          TARGET-PIN!  -1 TORDER-UNCERTAIN !  -1 TORDER-SCAN-UNKNOWN !
       THEN
       FAILSET @ 0= IF TICK-PIN  -1 CAPREQ ! THEN
@@ -21758,10 +21765,9 @@ variable CAST-PATH-N
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
    CHECK-SCAN
-   \ A does> clause of unknown tier may contain a compile gate after this
-   \ parent. Keep only the parent's earlier compile or resolution refusal;
-   \ its ordinary body and signature checks belong after that decision.
-   TORDER-ACTIVE @ TORDER-COMPILE-ONLY =
+   \ A does> clause may be checked before the parent's closing body checks.
+   \ Keep only an earlier parent compile or resolution refusal in this pass.
+   TORDER-ACTIVE @ TORDER-PARENT-GATE >=
    RCOMPILE @ 0= REFUSAL @ USING-KIND? 0= and and IF
       0 LAYOUT-XPORT !  0 BIND-HORIZON !  CK-CLOSE-CLEAR
       2 EXIT

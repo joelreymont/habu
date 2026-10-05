@@ -1455,7 +1455,7 @@ $180000 constant LARGE-STDIN-LEN
    CHECK:VERIFY-OUT$ PACKETS 1 T=
    CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
-   s" package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
+   s" 0 set-tier package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
    1 s" trusted-tick-order: current tick resolution beats uncertainty" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-sh" PACKET s" code" STRING$
    s" E-USING-SHADOW-GLOBAL" T$=
@@ -1467,6 +1467,22 @@ $180000 constant LARGE-STDIN-LEN
    1 s" trusted-tick-order: tier 0 parent compile refusal wins" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
    s" E-UNDEFINED" T$=
+   s" : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
+   1 s" trusted-tick-order: parent gate precedes later clause refusal" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   s" E-CAP-TRUSTED" T$=
+   s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
+   5 s" trusted-tick-order: unknown parent tick defers clause" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
+   S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate : CVT-DOES ( -- ) create does> ( -- ) drop CVT-GENERATED ;" TOP-CHECK
+   5 s" trusted-tick-order: clause warning retains its pin after parent scan" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:n :}
+   s" trusted-tick-order: clause warning span" T-LABEL
+   clause-warning s" line" NUMBER$ s" 1" T$=
+   clause-warning s" column" NUMBER$ s" 82" T$=
+   clause-warning s" code" STRING$
+   s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
    5 s" trusted-tick-order: unknown does clause defers parent check" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$

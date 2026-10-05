@@ -18,6 +18,10 @@ TRUSTED: CVO-SW ( -- ) 1 set-tier ;
 immediate
 s" CVO-SW" 0 parse-imm
 package CVO-I
+private
+TRUSTED: SWP ( -- ) 1 set-tier ;
+immediate
+s" SWP" 0 parse-imm
 public
 TRUSTED: SWI ( -- ) 1 set-tier ;
 immediate
@@ -84,9 +88,27 @@ create DIAG-BUF $1000 allot
 variable DIAG-U
 TYPED-VARIABLE SRC-A ptr u8
 variable SRC-U
+create LONG-NAME 1000 allot
+create LONG-BUF 4096 allot
+variable LONG-U
+
+: LONG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LONG-BUF LONG-U @ + u BYTE-COPY
+   u LONG-U +! ;
+
+TRUSTED: LONG-INSTALL ( -- )
+   1000 0 ?do $58 LONG-NAME i + c! loop
+   0 LONG-U !
+   s" package CVO-LONG public TRUSTED: " LONG+
+   LONG-NAME 1000 LONG+
+   s" ( -- ) 1 set-tier ; immediate ;package" LONG+
+   LONG-BUF LONG-U @ evaluate ;
 
 : ACT ( -- )
    SRC-A @ SRC-U @ VERIFY:SOURCE-BUF ;
+
+: COMPOSE-ACT ( -- )
+   SRC-A @ SRC-U @ s" test/checker-verify-order.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
 \ The verdict of verifying a text warm: 0 certified, else the throw code.
 : VERDICT ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -94,6 +116,14 @@ variable SRC-U
    u SRC-U !
    DIAG-BUF $1000 DIAG-BUFFER!
    [: ACT ;] catch {: rc:n :}
+   DIAG-BUFFER$ nip DIAG-U !
+   DIAG-BUFFER-OFF
+   rc ;
+
+: COMPOSE-VERDICT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a SRC-A !  u SRC-U !
+   DIAG-BUF $1000 DIAG-BUFFER!
+   [: COMPOSE-ACT ;] catch {: rc:n :}
    DIAG-BUFFER$ nip DIAG-U !
    DIAG-BUFFER-OFF
    rc ;
@@ -205,14 +235,34 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
    tick-order@ VERIFY:ENTRY-TICK-ORDER!
    VERIFY:REPORT-DEFERRALS
    s" a resident parsing immediate makes the later tick uncertain" T-LABEL
-   S" : CVI ( -- ) CVO-SW ['] patch32 drop ;\n: CVJ ( -- ) CVI ;\n" VERDICT 0 T=
+   S\" : CVI ( -- ) CVO-SW ['] patch32 drop ;\n: CVJ ( -- ) CVI ;\n" VERDICT 0 T=
    VERIFY:DEFERRED? TTRUE
    DIAG$ s" W-CHECK-DEFERRED" CONTAINS? TTRUE
    VERIFY:REPORT-DEFERRALS
    s" a used-public parsing immediate also makes the tick uncertain" T-LABEL
-   S" using CVO-I\n: CVI ( -- ) SWI ['] patch32 drop ;\n;using\n" VERDICT 0 T=
+   S\" using CVO-I\n: CVI ( -- ) SWI ['] patch32 drop ;\n;using\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a package-private parsing immediate also makes the tick uncertain" T-LABEL
+   S\" package CVO-I\nprivate\n: CVI ( -- ) SWP ['] patch32 drop ;\n;package\n" VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE
+   VERIFY:REPORT-DEFERRALS
+   s" a pending load after an unknown tick is left to the run" T-LABEL
+   S\" 0 set-tier : CVI ( -- ) s\" missing-tick-order-file.f\" required ['] patch32 drop ;" COMPOSE-VERDICT 0 T=
    VERIFY:DEFERRED? TTRUE
    old TIER:SELECT ;
+
+: LONG-IMMEDIATE-CASE ( -- )
+   LONG-INSTALL
+   0 LONG-U !
+   s" using CVO-LONG : CVI ( -- ) " LONG+
+   LONG-NAME 1000 LONG+
+   s" ['] patch32 drop ; ;using" LONG+
+   tick-order@ VERIFY:ENTRY-TICK-ORDER!
+   VERIFY:REPORT-DEFERRALS
+   s" a long used-public immediate invalidates the later tick" T-LABEL
+   LONG-BUF LONG-U @ VERDICT 0 T=
+   VERIFY:DEFERRED? TTRUE ;
 
 public
 
@@ -235,7 +285,8 @@ public
    USING-CASE
    REJECT-CASE
    QUIET-CASE
-   IMMEDIATE-CASE ;
+   IMMEDIATE-CASE
+   LONG-IMMEDIATE-CASE ;
 
 ;package
 

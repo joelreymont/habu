@@ -104,7 +104,8 @@ variable COMPOSE-STOP-SUBJ               \ the stop was in the supplied bytes
 
 1 constant TICK-GATE
 2 constant TICK-UNKNOWN
-3 constant TICK-COMPILE-ONLY
+3 constant TICK-PARENT-GATE
+4 constant TICK-PARENT-UNKNOWN
 variable TICK-CONTEXT-ORDER
 PTR-VARIABLE TICK-CONTEXT-OWNER
 variable DEF-TICK-ORDER
@@ -1123,18 +1124,20 @@ variable WRAP-ROW                             \ the definer row the last call na
    WRAP-DEFINERS @ 1 <> IF EXIT THEN
    WRAP-ROW @  DEF-NAME-A @ DEF-NAME-U @ RECORD-SYM?  DEFINER-INHERIT ;
 
-\ tok-imm? asks the live dictionary by spelling. A bare used-public word is
-\ found only through the used scope, so ask its selected symbol by qualified
-\ spelling as well. FIND-SYM is quiet and follows this source's binding horizon;
-\ this question only invalidates prospective context, never rejects a body.
-create TICK-QUAL 512 allot
+\ The live probe follows interpreter syntax. A selected public word can be
+\ probed by its qualified spelling even when the verifier's using mirror does
+\ not match the interpreter's; a private word has no qualified spelling and
+\ cannot prove it will not execute at compile time.
+DYNAMIC-BUFFER TICK-QUAL u8
 
 : TICK-RESIDENT-IMM? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u tok-imm? 0<> IF true EXIT THEN
    a u FIND-SYM dup 0= IF drop false EXIT THEN
-   SYM-IDENTITY drop {: pkg:ptr pkgu:n tail:ptr tailu:n :}
+   SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
+   vis 1 = IF true EXIT THEN
    pkgu 0= IF false EXIT THEN
+   pkgu tailu + 1+ TICK-QUAL-RESERVE
    pkg TICK-QUAL pkgu BYTE-COPY
    $3A TICK-QUAL pkgu + c!
    tail TICK-QUAL pkgu 1+ + tailu BYTE-COPY
@@ -1165,7 +1168,7 @@ create TICK-QUAL 512 allot
    order TICK-UNKNOWN = {: unknown:bool :}
    0 DOES-PARENT-REFUSED !
    gate unknown or IF
-      TICK-COMPILE-ONLY DEF-TICK-ORDER !
+      gate IF TICK-PARENT-GATE ELSE TICK-PARENT-UNKNOWN THEN DEF-TICK-ORDER !
       VERIFY-BODY 2 <> DOES-PARENT-REFUSED !
       order DEF-TICK-ORDER !
    THEN
@@ -1189,6 +1192,7 @@ create TICK-QUAL 512 allot
          {: clause:n :}
          TICK-REMAINDER @ IF clause REPORT-DEFERRED false EXIT THEN
          clause 0= IF false EXIT THEN
+         clause REPORT-DEFERRED
          gate unknown or IF
             TOKEN-A @ {: end:ptr :}  TOKEN-U @ {: endu:n :}
             DOES-PARENT-BUF BODY-BUF DOES-PARENT-U @ BYTE-COPY
@@ -1199,7 +1203,6 @@ create TICK-QUAL 512 allot
             end TOKEN-A !  endu TOKEN-U !
             TICK-REMAINDER @ IF false EXIT THEN
          THEN
-         DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
          DOES-DEF-VERDICT @ 0<> IF sig sigu DEFINER-RECORD THEN
          true EXIT
       THEN
@@ -1972,6 +1975,7 @@ CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
 \ of them loads keeps its own entries above them, and they end with it.
 : PEND-RELEASE ( -- )
    PEND-N @ PEND-BASE @ ?do
+      TICK-REMAINDER @ IF leave THEN
       i PEND-A @ i PEND-U @
       i PEND-INC @ 0<> IF COMPOSE-INCLUDED ELSE COMPOSE-REQUIRED THEN
    loop
@@ -2444,7 +2448,7 @@ variable TOP-DEFER-I                             \ where the run's reading start
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
       2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
-      FILE-NEUTRAL? IF PEND-RELEASE THEN
+      FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
    TICK-REMAINDER @ IF EXIT THEN
