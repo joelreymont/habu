@@ -34,15 +34,19 @@ using WLEB
 
 \ ---- one emission ---------------------------------------------------------------
 \ An address site of the emission just copied, the padded SLEB holding the host
-\ value the definition named. A word's entry becomes its row's target and the
-\ field 0; a window DATA address becomes its window coordinate, the value an
-\ ARM64 DATA site holds (aot-shadow.f SH-DATA?). The encoder rows no other kind.
+\ value the definition named. A function of the emission's offset, a quotation's
+\ or a does> clause's address (src/arch/wasm/encode.f), stays and is a FUN
+\ site, as aot-shadow.f SH-ADDR keeps one; another word's entry becomes its
+\ row's target and the field 0; a window DATA address becomes its window
+\ coordinate, the value an ARM64 DATA site holds (aot-shadow.f SH-DATA?). The
+\ encoder rows no other kind.
 : WC-ADDR ( n n -- ) {: e:n k:n :}
    e k ADDR-SITE@ {: off:n :}
    CODE-BUF@ SH-AT @ +  SH-LEN @  SPAN:MAKE {: s :}
    s SPAN:$ off S64-PAD@ {: v:n :}
    SH-AT @ off + {: at:n :}
    e k ADDR-SITE-KIND@ WSTRUCT:ADDR-CODE = if
+      e v SH-FUN? if  at AOT-SHADOW:FUN 0 SH-SITE+  exit  then
       off v SH-TARGET {: target:n :}
       0 s off S64-PATCH
       at AOT-SHADOW:CODE target SH-SITE+

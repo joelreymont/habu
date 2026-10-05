@@ -774,7 +774,7 @@ $40000000 constant CODE-LIT
    c b ENTRY {: cx x k :}
    c b WSTRUCT-OPCODE:I64-CONST OPEN
    c b  c b WSTRUCT:KEY-VALUE  0 INT-ATTR
-   c b  c b WSTRUCT:KEY-ADDR  WSTRUCT:ADDR-CODE 1+ INT-ATTR
+   c b  c b WSTRUCT:KEY-ADDR  WSTRUCT:ADDR-FUN 1+ INT-ATTR
    c b  c b I64  END1 {: v :}
    c b v RET
    c b SHUT

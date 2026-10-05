@@ -34,12 +34,16 @@
 \ with no body, which an emission has no bytes for.
 \
 \ AN ADDRESS IS A ROW TOO. An i64.const states its address kind, one of
-\ WSTRUCT's three, which are HIR's (src/compiler/native/hir.f ADDR-NONE..
-\ ADDR-CODE). A number, kind NONE, is its shortest SLEB. A data or code address
-\ is a padded ten-byte SLEB holding the host value, which the capture resolves
+\ WSTRUCT's four: HIR's three (src/compiler/native/hir.f ADDR-NONE..ADDR-CODE)
+\ and FUN. A number, kind NONE, is its shortest SLEB. A data or code address is
+\ a padded ten-byte SLEB holding the host value, which the capture resolves
 \ and the linker rewrites in place; each is an address site: the offset of
-\ that field and its kind. Any other kind is refused with E-WSTRUCT-ADDR, as
-\ WSTRUCT refuses it where the attribute is built.
+\ that field and its kind. A function's address, kind FUN, is a CODE site
+\ whose field holds that function's body offset, laid out once every body is
+\ written as a self call's target is, which the capture keeps as a FUN site
+\ (src/arch/wasm/capture.f) as it keeps an x86-64 `codeaddr`. Any other kind
+\ is refused with E-WSTRUCT-ADDR, as WSTRUCT refuses it where the attribute is
+\ built.
 \
 \ THE EMISSION, LITTLE-ENDIAN: MAGIC; the function count, u32; then per
 \ function its body offset u32, body size u32, inputs u8, outputs u8, frame
@@ -140,6 +144,7 @@ DYNAMIC-BUFFER CS-LOC n              \ retained definition-body offset
 variable NADDRS                      \ its address sites
 DYNAMIC-BUFFER AS-OFF n              \ each address site's field
 DYNAMIC-BUFFER AS-KIND n             \ its address kind
+DYNAMIC-BUFFER AS-FUN n              \ the function a FUN address names, else -1
 
 \ ---- the function being written ---------------------------------------------------
 1 TYPED-BUFFER CUR IR-ID:ir-fun-id
@@ -489,24 +494,33 @@ SPELL-MAX BUFFER: SPELL
    o WSTRUCT:KEY-ALIGN$ INT-ATTR PUT-U32
    o WSTRUCT:KEY-OFFSET$ INT-ATTR PUT-U32 ;
 
-: ADDR-SITE+ ( n -- )
-   {: kind:n :}
+: ADDR-SITE+ ( n n -- )
+   {: kind:n fun:n :}
    NADDRS @ {: k:n :}
-   k 1+ AS-OFF-RESERVE  k 1+ AS-KIND-RESERVE
+   k 1+ AS-OFF-RESERVE  k 1+ AS-KIND-RESERVE  k 1+ AS-FUN-RESERVE
    AT @ k AS-OFF !
    kind k AS-KIND !
+   fun k AS-FUN !
    1 NADDRS +! ;
 
 \ An i64.const's value: a number as itself, an address as a padded field and a
-\ site of its kind.
+\ site of its kind, a function's a CODE site its body offset fills later.
 : CELL-CONST ( IR-ID:ir-op-id -- )
    {: o:IR-ID:ir-op-id :}
    o WSTRUCT:KEY-VALUE$ INT-ATTR {: v:n :}
    o WSTRUCT:KEY-ADDR$ INT-ATTR {: kind:n :}
    kind WSTRUCT:ADDR-NONE = if  v PUT-S64  exit  then
+   kind WSTRUCT:ADDR-FUN = if  WSTRUCT:ADDR-CODE v ADDR-SITE+  0 PUT-PAD64  exit  then
    kind WSTRUCT:ADDR-DATA <>  kind WSTRUCT:ADDR-CODE <> and if E-WSTRUCT-ADDR throw then
-   kind ADDR-SITE+
+   kind -1 ADDR-SITE+
    v PUT-PAD64 ;
+
+\ Each function's address field gets its body offset.
+: LAY-OUT-FUNS ( -- )
+   NADDRS @ 0 ?do
+      i AS-FUN @ {: f:n :}
+      f 0 >= if  f FUN-OFF @  0 EM AT @ SPAN:MAKE  i AS-OFF @  WLEB:S64-PATCH  then
+   loop ;
 
 \ The opcode and what follows it.
 : INSTR ( WSTRUCT:opcode IR-ID:ir-op-id -- )
@@ -625,6 +639,7 @@ public
    nf 4 4 FIELD!
    nf 0 ?do  m i ar FUNCTION  loop
    LAY-OUT-CALLS
+   LAY-OUT-FUNS
    nf NF !
    1 SEALED ! ;
 

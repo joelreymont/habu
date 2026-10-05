@@ -288,7 +288,7 @@ Disable contraction, reassociation and relaxed SIMD by default. A deterministic 
 
 ## 9. Execution tokens, definitions and reflection
 
-A stored execution token is the typed table slot of its adapter, fixed for the module's life. Do not publish raw function indices.
+A stored execution token is the typed table slot of its adapter, fixed for the module's life. Slots number from 1: table element 0 stays null, so `0 execute` traps, and an xt with any upper bit set traps before dispatch. Do not publish raw function indices.
 
 All generic table adapters can share `(i32) -> i32`; consequently Wasm's dynamic signature check alone cannot distinguish Habu word effects, nominal types or linear ownership. Validate these Habu identities before dispatch. Wasm indirect calls provide only the Wasm-level signature check. [WS7]
 

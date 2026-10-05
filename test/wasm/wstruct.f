@@ -13,8 +13,8 @@
 \ two-way branch, an i64.const with no address kind, an opcode the module never
 \ registered, a WSTRUCT operation under a binding that is not Wasm and an f64
 \ form under a Wasm contract without scalar floating point; and WSTRUCT itself
-\ refuses an ordinal outside its vocabulary, an address kind outside NONE, DATA
-\ and CODE, and a table of another dialect or schema version.
+\ refuses an ordinal outside its vocabulary, an address kind outside NONE, DATA,
+\ CODE and FUN, and a table of another dialect or schema version.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so every module below is built in its own
@@ -574,7 +574,7 @@ private
    c b k WSTRUCT:ADDR-ATTR drop ;
 
 : KIND-PAST-RUN ( -- )
-   BND [: WSTRUCT:ADDR-CODE 1+ KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+   BND [: WSTRUCT:ADDR-FUN 1+ KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : KIND-BELOW-RUN ( -- )
    BND [: WSTRUCT:ADDR-NONE 1- KIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -637,7 +637,7 @@ private
    [: BRZ-ARG-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ
    s" an i64.const that states no address kind is refused at the freeze" T-LABEL
    [: NO-KIND-RUN ;] E-IR-VERIFY-ATTRKEY TTHROWSQ
-   s" an address kind outside NONE, DATA and CODE is refused as it is built" T-LABEL
+   s" an address kind outside NONE, DATA, CODE and FUN is refused as it is built" T-LABEL
    [: KIND-PAST-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    [: KIND-BELOW-RUN ;] E-WSTRUCT-ADDR TTHROWSQ
    s" an operation naming an opcode the module never registered is refused" T-LABEL

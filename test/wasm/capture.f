@@ -8,7 +8,8 @@
 \ emission in NSHADOW's map, then the real capture and the Wasm reader over
 \ it. The window holds a leaf, a call to a window word, a recursive word, a code
 \ literal naming a window word, a window DATA literal, a call to a word of the
-\ engine's own prefix and a declared code cell holding a window word's entry.
+\ engine's own prefix, a `does>` definer, a quotation and a declared code cell
+\ holding a window word's entry.
 \ It also holds three shadowed words that ship no record, a dead private word
 \ and two dead retired ones, the second calling the first, between two shadowed
 \ records: past them a record's window index and its shipped row differ.
@@ -18,7 +19,9 @@
 \ spans, each call site's target over its zero index, a self call's being its
 \ own record, the code and DATA literals' padded fields as the capture rewrote
 \ them, the prefix call by name, the code cell, and the stripped and retired
-\ words' absence.
+\ words' absence; a does> companion entering its definer's routine at the
+\ clause whose offset the definer's function address keeps, and a quotation's
+\ function address keeping its function's offset, each a FUN site.
 \
 \ Registered as `SUITE wasm-capture`. Run standalone from the repository root:
 \ bin/hb --load test/wasm/capture.f
@@ -73,6 +76,8 @@ undefine GONER
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
 : SHOW ( n -- ) . ;
 : FACT ( n -- n ) dup 1 > if dup 1 - RECURSE * then ;
+: CONST ( n -- ) create , does> ( -- n ) @ ;
+: QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 0 set-tier
 
 defer HOOK ( n n -- n )
@@ -108,6 +113,9 @@ $0B constant OP-END
 : W-TICK ( -- n ) s" TICK" SHIPPED ;
 : W-SHOW ( -- n ) s" SHOW" SHIPPED ;
 : W-FACT ( -- n ) s" FACT" SHIPPED ;
+: W-CONST ( -- n ) s" CONST" SHIPPED ;
+: W-DOES ( -- n ) s" CONST;does" SHIPPED ;
+: W-QUOT ( -- n ) s" QUOT" SHIPPED ;
 
 \ ---- the tables ---------------------------------------------------------------
 : REC@ ( n n -- n ) {: r:n f:n :}
@@ -165,14 +173,17 @@ $0B constant OP-END
    AOT-CAPTURE:WASM-SHADOW-CAPTURE ;
 
 : RECORDS-CASE ( -- )
-   s" every shipped tier-1 definition is one shadow record in window order" T-LABEL
-   REC-N @ 6 T=
+   s" every shipped tier-1 definition is one shadow record in window order, a does> companion beside its definer" T-LABEL
+   REC-N @ 9 T=
    W-PEEK ROW-OF 0 T=
    W-LEAF ROW-OF 1 T=
    W-CALLER ROW-OF 2 T=
    W-TICK ROW-OF 3 T=
    W-SHOW ROW-OF 4 T=
-   W-FACT ROW-OF 5 T= ;
+   W-FACT ROW-OF 5 T=
+   W-CONST ROW-OF 6 T=
+   W-DOES ROW-OF 7 T=
+   W-QUOT ROW-OF 8 T= ;
 
 : STRIP-CASE ( -- )
    s" a dead private word and two dead retired ones between two shadowed records ship no record and no routine, and the record after them ships one row past PEEK, four window records on" T-LABEL
@@ -188,7 +199,7 @@ $0B constant OP-END
    W-LEAF AT-OF CODE-LE32@ WENC:MAGIC T=
    W-LEAF AT-OF W-LEAF LEN-OF + 1- CODE-BYTE@ OP-END T=
    W-LEAF SITES-IN 0 T=
-   CODE-LEN @ W-FACT AT-OF W-FACT LEN-OF + T= ;
+   CODE-LEN @ W-QUOT AT-OF W-QUOT LEN-OF + T= ;
 
 \ Shipped record w's routine holds one site, a call row naming shipped record t
 \ over a padded zero index.
@@ -223,6 +234,32 @@ $0B constant OP-END
    dat 1- CODE-BYTE@ OP-I64-CONST T=
    dat ADDR@ WCELL-OFF T= ;
 
+\ Shipped record w's routine holds a FUN site, its padded field after an
+\ `i64.const` holding the offset off; answers nothing.
+: FUN-AT ( n n -- ) {: w:n off:n :}
+   w AOT-SHADOW:FUN SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 8 SITE@ 0 T=
+   s 0 SITE@ {: at:n :}
+   at 1- CODE-BYTE@ OP-I64-CONST T=
+   at ADDR@ off T= ;
+
+: DOES-CASE ( -- )
+   s" a does> companion shares its definer's routine and enters at the clause, the offset its definer's function address keeps" T-LABEL
+   W-CONST ROW-OF {: r:n :}
+   W-DOES ROW-OF {: c:n :}
+   c 4 REC@ r 4 REC@ T=
+   c 8 REC@ r 8 REC@ T=
+   r 12 REC@ 0 T=
+   c 12 REC@ {: entry:n :}
+   entry 0 > TTRUE
+   W-CONST entry FUN-AT ;
+
+: QUOT-CASE ( -- )
+   s" a quotation's function address keeps its function's offset, its emission's second header row" T-LABEL
+   W-QUOT AT-OF 4 + CODE-LE32@ 2 T=
+   W-QUOT  W-QUOT AT-OF 20 + CODE-LE32@  FUN-AT ;
+
 : PREFIX-CASE ( -- )
    s" a call to a word of the engine's own prefix travels by name" T-LABEL
    W-SHOW AOT-SHADOW:CALL SITE-IN {: s:n :}
@@ -250,6 +287,8 @@ public
    CALL-CASE
    RECURSE-CASE
    LITERAL-CASE
+   DOES-CASE
+   QUOT-CASE
    PREFIX-CASE
    CELL-CASE
    T-REPORT ;
