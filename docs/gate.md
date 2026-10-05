@@ -34,8 +34,9 @@ builds and then dies on every cold boot - measured with `PATH-CAP` inside
 host. The rows cannot be withheld to make the build refuse it: without them
 the window cannot compile `src/core/check-hook.f`'s first definition (the
 checker's reason, then `ncomp: cannot compile REPORT-UNCHECKABLE`, throw 70).
-After editing a prefix file, boot the candidate's prefix cold before the
-registry:
+After editing an ARM prefix file, boot the candidate's prefix cold before the
+registry. This source-built recovery route is ARM-only; Intel captures its
+checked prefix through `tools/native-build.f`:
 
 ```sh
 HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
@@ -77,8 +78,8 @@ Gforth recovery checks below are also separate from this registry.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its eight whole rows require
-the ARM host, its JIT, or tier 0:
+`test/gate-arm-cases.f` only on an ARM host. Its eleven whole rows require
+the ARM host, its source recovery, JIT, or tier 0:
 
 - `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
   use the ARM source window and observe x86-64 as a second target. On an x86-64
@@ -94,6 +95,13 @@ the ARM host, its JIT, or tier 0:
 - `prop`: its candidate compilation, untyped measurement, and false-reject
   oracle require the unchecked tier 0; the harness selects that tier before
   running any generated case.
+- `build-fixpoint-sandbox`: both cases alter the ARM recovery assembler and
+  install its source-built engine. Intel's native generation chain uses
+  `tools/native-build.f`; its recovery cross-builds from ARM.
+- `native-unit`, `native-unit-stale`: the version 1 NBR object profile carries
+  AArch64 instructions and relocations. These rows execute its imported code.
+  Source keys, artifact-format refusals and checked source admission remain
+  in the shared `native-unit-refusals` row; Intel needs no keyed ARM export.
 
 Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
 remain registered on x86-64. Their eligible tier-1 cases must run; a fixture

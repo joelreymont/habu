@@ -782,7 +782,7 @@ and writes nothing (`test/source-root-exe-test.f`). A boot file outside the
 root is refused by name, exit 74:
 `source root: a boot file is outside the engine root: <path>`.
 
-The separate stage-2 recovery/development refresh is:
+The separate ARM stage-2 recovery/development refresh is:
 
 ```sh
 bin/hb --load tools/build-fixpoint-refresh.f -- install
@@ -792,6 +792,10 @@ bin/hb --load tools/build-fixpoint-refresh.f -- install
 qualify that engine as the native product. In particular, its checked access
 to internal compiler signatures differs from the captured runtime. Use
 `HABU_FIXPOINT_ENGINE` to keep this route isolated from a verified product.
+On Intel, build the product with `tools/native-build.f` and check convergence
+with `tools/two-generation-build.f`; the recovery refresh has no Intel route.
+The `snap` verb remains available on both targets: it builds a native product
+before saving its image.
 
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.

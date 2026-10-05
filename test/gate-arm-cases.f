@@ -1,6 +1,6 @@
-\ These rows inspect the ARM host or its tier-0 JIT. The Linux x86-64 engine
-\ has only tier 1; its native compiler, image, and runtime rows stay in the
-\ main registry.
+\ These rows inspect the ARM host, source recovery, or its tier-0 JIT.
+\ The Linux x86-64 engine has only tier 1; its native compiler, image,
+\ and runtime rows stay in the main registry.
 
 \ X64 is a second shadow target beside the ARM host. On an x64 host the same
 \ target's resident map has different records (29 instead of this fixture's 6).
@@ -43,4 +43,20 @@ SUITE addrmap-call
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop
    test/prop-test.f
+;SUITE
+
+\ Both cases sabotage ARM recovery source and install its source-built engine.
+\ Intel recovery cross-builds from ARM; native generations use native-build.f.
+SUITE build-fixpoint-sandbox
+   tools/build-fixpoint-sandbox-test.f
+;SUITE
+
+\ Version 1 NBR objects carry AArch64 instructions and relocations. These
+\ rows execute an imported unit and require the keyed ARM unit export.
+SUITE native-unit
+   test/native-unit-e2e.f
+;SUITE
+
+SUITE native-unit-stale
+   test/native-unit-stale.f
 ;SUITE
