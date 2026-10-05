@@ -1913,6 +1913,10 @@ public
 
 : RUN ( -- )
    T-RESET
+   \ The x86 engine's live compiler session has an x86 prototype. Close it at
+   \ this idle test boundary so the ARM memo cases can own an ARM prototype.
+   HB-TARGET-LINUX-X86-64? IR-CTX:SESSION-LIVE? and if
+      IR-CTX:SESSION-CLOSE then
    BATCH-CASE
    SESSION-MEMO-CASE
    MEMO-CASE

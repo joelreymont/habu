@@ -170,7 +170,6 @@ TYPED-VARIABLE W-SESSION NSESSION:session
 
 : FLOAT-SOURCE ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" : WF ( r r -- r ) f+ ;" evaluate-closed
    s" WF f+" NSRC:TEXT!
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
    c b 4 NSRC:MODEL-ROOM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -198,6 +197,9 @@ TYPED-VARIABLE W-SESSION NSESSION:session
    BINDING [: FLOAT-CONTEXT ;] IR-CTX:WITH-CONTEXT ;
 
 : FLOAT-REFUSAL ( -- )
+   \ The running native compiler acquires its own lease while defining WF.
+   \ Publish the source before the backend owns a lease to read its HIR.
+   s" : WF ( r r -- r ) f+ ;" evaluate-closed
    [: FLOAT-LEASE ;] NLEASE:WITH ;
 
 : WRONG-CONVENTIONS ( -- )

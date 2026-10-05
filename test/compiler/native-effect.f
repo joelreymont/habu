@@ -176,7 +176,8 @@ private
 
 : X18-RESERVED-MASK ( -- n )
    HB-TARGET-LINUX? if 0 exit then
-   HB-TARGET-MACOS? if 1 ARM-X18 lshift exit then
+   HB-TARGET-MACOS? HB-TARGET-LINUX-X86-64? or if
+      1 ARM-X18 lshift exit then
    E-CTGT-ABI throw ;
 
 \ ---- 1. the bounds are the assembler's ---------------------------------------
@@ -201,7 +202,7 @@ private
    A64M:MACHINE NEFF:GPR-ALL NEFF:GPRS-N
       1 A64M:FILE-SIZE lshift 1 -  A64M:RESERVED-GPRS invert and  T=
    \ and the engine's half of that claim is the layout owner's, not this file's
-   A64M:ENGINE-GPRS ENGINE-GPR:MASK T=
+   A64M:ENGINE-GPRS ENGINE-GPR:A64-MASK T=
    A64M:MACHINE NEFF:FPR-ALL NEFF:FPRS-N $FFFFFFFF T= ;
 
 : X18-VOCABULARY ( -- )
@@ -212,7 +213,7 @@ private
       18 CLOBBERS-REG
       exit
    then
-   HB-TARGET-MACOS? if
+   HB-TARGET-MACOS? HB-TARGET-LINUX-X86-64? or if
       [: 1 18 lshift CLOBBERS ;] E-NEFF-GPR TTHROWSQ
       [: 18 CLOBBERS-REG ;] E-NEFF-GPR TTHROWSQ
       exit
@@ -292,7 +293,7 @@ private
 : X18-SEQUENCE ( -- )
    18 SQ 0 NEFF:SEQ-REG@ 18 T=
    HB-TARGET-LINUX? if 18 ARRIVES-IN exit then
-   HB-TARGET-MACOS? if
+   HB-TARGET-MACOS? HB-TARGET-LINUX-X86-64? or if
       [: 18 ARRIVES-IN ;] E-NEFF-GPR TTHROWSQ
       exit
    then
@@ -436,14 +437,14 @@ private
       E-NEFF-CONV TTHROWSQ ;
 
 \ ---- 2b4. the engine's registers are unbuildable ------------------------------
-\ The running engine holds its data-stack pointer, DATA/RBASE, DBASE, NDICT and
+\ The ARM engine holds its data-stack pointer, DATA/RBASE, DBASE, NDICT and
 \ CP in general registers, and no routine this schema can describe may hold
 \ state in any of them: they are out of the general-register mask exactly as
 \ x30 and 31 are, so every route into a contract refuses them and there is
 \ no contract that hands one out to be allocated from. Each register under test
 \ comes from src/habu/layout.f's own per-register constant - the emitters'
-\ authority - so the claim proved here is the engine's actual claim: dropping a
-\ register from ENGINE-GPR:MASK while the engine still occupies it reddens the
+\ authority - so the claim proved here is the ARM engine's actual claim: dropping a
+\ register from ENGINE-GPR:A64-MASK while it still occupies it reddens the
 \ route fixtures below, which is the drift the one-authority design must refuse.
 \ Each of the five routes into a contract is tried, because a check that only
 \ closes the door a caller happens to use is not a closed door.
@@ -463,9 +464,9 @@ variable ER-REG
       NEFF:GPR-WRITABLE NEFF:GPRS-N drop ;] E-NEFF-GPR TTHROWSQ ;
 
 : ENGINE-RESERVED ( -- )
-   A64M:DSTACK-GPR ENGINE-GPR:DSTACK T=
+   A64M:DSTACK-GPR ENGINE-GPR:A64-DSTACK T=
    A64M:DSTACK-GPR 19 T=
-   ENGINE-GPR:DSTACK ENGINE-ROUTES
+   ENGINE-GPR:A64-DSTACK ENGINE-ROUTES
    XREG-RBASE ENGINE-ROUTES
    DBASE ENGINE-ROUTES
    NDICT ENGINE-ROUTES

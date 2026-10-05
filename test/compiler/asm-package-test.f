@@ -52,11 +52,10 @@ TYPED-VARIABLE AP-A ptr u8   variable AP-U
 
 70   constant E-REJECT      \ E-UNDEFINED, or a body the checker refuses
 
-\ The engine's own reject for a bare tail that two open imports both claim,
-\ taken from the sealed ENGINE-ERROR ABI rather than written down again. The
-\ qualified name resolves while interpreting and carries no checker symbol, so
-\ the value is bound here and the checked case below reads this constant.
-ENGINE-ERROR:USING-AMBIGUOUS constant E-AMBIGUOUS
+\ Tier 0's interpreter and tier 1's checker refuse the same ambiguous body at
+\ their respective boundaries, before either package's word can run.
+: BODY-AMBIGUOUS-RC ( -- n )
+   tier@ 1 = if E-USING-AMBIGUOUS else ENGINE-ERROR:USING-AMBIGUOUS then ;
 
 \ The unconditional branch with a zero displacement: what the assembler's ENC-B
 \ answers, and nothing a byte appender could produce.
@@ -78,14 +77,10 @@ $14000000 constant B-ZERO
    \ Both imports open: the tail really does live in two packages now, so it is
    \ refused as a genuine ambiguity rather than picked one of. This is what
    \ proves the two cases above were not both answered by one word. The code is
-   \ the ENGINE's, because the engine's wordlists are the one authority for
-   \ which scope claims a bare tail (docs/forth.md Packages) and this body is
-   \ compiled by the engine: its own used-search refuses the token before the
-   \ checker is asked what the word's effect is. The checker's E-USING-AMBIGUOUS
-   \ (7144) is the same rule in the checker's resolver, which is what a tier-1
-   \ replay and the native compiler report.
+   \ interpreter's 94 at tier 0 or the checker's 7144 at tier 1; either way the
+   \ two package exports remain ambiguous before a body becomes callable.
    s" using A64ASM using COLLIDER : APT-BOTH ( n -- ) ENC-B ; ;using ;using"
-      AP-EVAL E-AMBIGUOUS T=
+      AP-EVAL BODY-AMBIGUOUS-RC T=
    \ Qualified names always work and never collide, in one body, in either order.
    s" : APT-QUAL ( n n -- n ) A64ASM:ENC-B swap COLLIDER:ENC-B ;" AP-EVAL 0 T= ;
 
