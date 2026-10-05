@@ -22,6 +22,10 @@ private
 
 TRUSTED: OPEN-ID ( a -- a ) ;
 variable OPEN-CALL-RC
+variable CELL-CALL-RC
+variable INIT-STOW-RC
+variable RECORDS-STOW-RC
+TYPED-VARIABLE CALLBACK [ -- n ]
 
 1 set-tier
 TRUSTED: FOREIGN-CALL ( n -- n )
@@ -30,6 +34,12 @@ TRUSTED: FOREIGN-CALL ( n -- n )
 \ its uninstantiated declaration could supply a width. This body never runs.
 s" TRUSTED: OPEN-CALL ( -- ) 5 @ OPEN-ID drop ;"
    NATIVE-EVAL:DEFINE-RC OPEN-CALL-RC !
+s" TRUSTED: CELL-CALL ( [ -- n ] ptr [ -- n ] bool -- ) if 5 @ drop then xt! ;"
+   NATIVE-EVAL:DEFINE-RC CELL-CALL-RC !
+s" TRUSTED: INIT-STOW-CALL ( -- ) 5 @ drop 0 0 0 0 0 0 0 0 c2-init-stow drop drop drop ;"
+   NATIVE-EVAL:DEFINE-RC INIT-STOW-RC !
+s" TRUSTED: RECORDS-STOW-CALL ( -- ) 5 @ drop 0 0 0 0 0 0 0 0 0 c2-records-stow drop drop drop ;"
+   NATIVE-EVAL:DEFINE-RC RECORDS-STOW-RC !
 0 set-tier
 
 : FOREIGN-ABI ( -- )
@@ -78,6 +88,13 @@ private
    row CHECKER-OWNER-ABI:BOUND-EFFECT FIELD@ 0 > TTRUE
    [: 3 CHECKER-OWNER:CALL-BINDING 2drop ;] E-NCOMP-BINDING TTHROWSQ
    CHECKER-OWNER:TAPE-DISARM ;
+
+: UNJUDGED-PRIMITIVE-CELLS ( -- )
+   CELL-CALL-RC @ 0 T=
+   [: 73 ;] CALLBACK false CELL-CALL
+   CALLBACK @ execute 73 T=
+   INIT-STOW-RC @ E-NELAB-BUNDLE T=
+   RECORDS-STOW-RC @ E-NELAB-BUNDLE T= ;
 
 : UNSAFE-CALLS ( -- )
    CHECKER-OWNER:TAPE-ARM
@@ -237,6 +254,7 @@ using NCB-RIGHT
    s" native FFI calls keep their fixed pointer ABI" T-LABEL FOREIGN-ABI T-NEXT
    s" resolved call witness" T-LABEL BOUND T-NEXT
    s" completed unjudged source retains suffix calls" T-LABEL UNJUDGED T-NEXT
+   s" unjudged selected primitive keeps its cell ABI" T-LABEL UNJUDGED-PRIMITIVE-CELLS T-NEXT
    s" unsafe source calls bind before type refusal" T-LABEL UNSAFE-CALLS T-NEXT
    s" judged refusal cannot grant either window" T-LABEL REFUSED-JUDGED T-NEXT
    s" incomplete unjudged parses grant no binding" T-LABEL INCOMPLETE T-NEXT

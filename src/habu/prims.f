@@ -106,6 +106,7 @@ $1000 constant CODE-CAP
 10 constant F-MIN-IN
 
 1 constant FL-TRUSTED-ONLY
+2 constant FL-FIXED-ABI
 
 create ROWS  ROW-CAP ROW-CELLS * cells allot
 create NAMES NAME-CAP allot
@@ -254,6 +255,11 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: trusted-only before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
 
+\ The machine body uses the row's widths and glue without instantiating them.
+: EFIXED-ABI! ( -- )
+   ROW-N @ 0 <= IF s" prims: fixed ABI before any row" SPEC-RC die THEN
+   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
+
 \ The just-written row's minimum input depth, for a primitive whose body reads
 \ the stack although its atoms state no input: the elaborated `execute`,
 \ `catch`, `evaluate`, `?dup` and `2>r`, and `finally`. ENGINE-PRIMS:DNAME
@@ -292,6 +298,9 @@ public
 
 : TRUSTED-ONLY? ( n -- bool )
    F-FLAGS ROW-FIELD @ FL-TRUSTED-ONLY and 0 <> ;
+
+: FIXED-ABI? ( n -- bool )
+   F-FLAGS ROW-FIELD @ FL-FIXED-ABI and 0 <> ;
 
 \ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
@@ -441,7 +450,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
 \ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
 \ cells).
-EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM;
+EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;

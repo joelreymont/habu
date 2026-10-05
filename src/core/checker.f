@@ -9443,6 +9443,7 @@ PTR-VARIABLE TOK-EFF
 $200 constant PE-CAP-INIT
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
+4 constant PE-FIXED-ABI
 
 0 constant PE-SYM-CELL
 1 constant PE-EFF-CELL
@@ -9515,6 +9516,9 @@ variable PE-I
 \ so a CHECKED caller is rejected while a TRUSTED: body (never checked) may use it.
 : PRIM-TRUSTED-ONLY! ( -- )
    #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TRUSTED-ONLY or swap ! ;
+
+: PRIM-FIXED-ABI! ( -- )
+   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-FIXED-ABI or swap ! ;
 
 variable PRM-FIRST
 
@@ -9858,7 +9862,8 @@ variable PE-SPEC-I   variable PE-SPEC-J
    REPEAT
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
    kind PRIM-SPEC:K-PKG-PRIVATE = IF CLOSE-PRIVATE ELSE PE-CLOSE THEN
-   row PRIM-SPEC:TRUSTED-ONLY? IF PRIM-TRUSTED-ONLY! THEN ;
+   row PRIM-SPEC:TRUSTED-ONLY? IF PRIM-TRUSTED-ONLY! THEN
+   row PRIM-SPEC:FIXED-ABI? IF PRIM-FIXED-ABI! THEN ;
 
 : PE-SPEC-REPLAY ( -- )
    0 PE-SPEC-I !
@@ -10444,6 +10449,7 @@ PPRIM: PRIM-SPEC NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC REF$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC TRUSTED-ONLY? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: PRIM-SPEC FIXED-ABI? PE-N PE-IN  PE-F PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE-LEN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
@@ -12372,6 +12378,18 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
       EFF-B@
    REPEAT drop RES-TRUE ;
 
+\ Only an original primitive marked with a fixed physical ABI can supply its
+\ declared widths without instantiation. Match its selected effect as well as
+\ the seeded record so a user refinement cannot inherit that machine fact.
+: SELECTED-PRIM-ABI? ( ptr u8 n -- bool )
+   {: row:ptr eff:n :}
+   row CHECKER-OWNER-ABI:BOUND-CTL cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-SEEDED and 0= IF RES-FALSE EXIT THEN
+   row CHECKER-OWNER-ABI:BOUND-SYM cells + CELL-VIEW @ PRIM-FIRST-IDX
+   dup 0= IF drop RES-FALSE EXIT THEN
+   1 - dup PE-FLAGS@ PE-FIXED-ABI and 0= IF drop RES-FALSE EXIT THEN
+   PE-EFF@ eff 1 - = ;
+
 \ An unjudged scan uses the exact selected declaration's physical ABI. Generic
 \ pointees and quotation effects do not change a cell's representation; naked
 \ variables and unexpanded layouts still need a judged call's width facts.
@@ -12390,7 +12408,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    eff 1- E-PTR E-TVN@ 0= 0= if
       eff 1- E-PTR E-DIN@ EFF-FIXED-ROW?
       eff 1- E-PTR E-DOUT@ EFF-FIXED-ROW? and 0= if
-         -1 -1 -1 -1 exit
+         row eff SELECTED-PRIM-ABI? 0= if -1 -1 -1 -1 exit then
       then
    then
    eff 1- E-PTR E-DIN@ EFF-ROW-TAIL
