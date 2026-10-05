@@ -148,6 +148,17 @@ variable GE-SCRIPT-U
    S\" hb: does>-split cannot lower layout width facts: ;\n"
       s" does>-split wide diagnostic" GE-EXPECT-ERR ;
 
+: GE-DOES-TRUSTED-WIDE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" 0 set-tier" GE-SRC-LINE
+   s" TRUSTED: GE-TDOES ( -- ) create does> ( gewide<n,n> -- ) drop drop ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   75 s" trusted does>-split wide facts fail closed" GE-EXPECT-RC
+   S\" hb: does>-split cannot lower layout width facts: ;\n"
+      s" trusted does>-split wide diagnostic" GE-EXPECT-ERR ;
+
 \ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
 \ closed naming the limit and the token that carved it. No one value may
 \ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
@@ -248,6 +259,7 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
+   HB-TARGET-LINUX-X86-64? 0= if GE-DOES-TRUSTED-WIDE then
    GE-P2-FRAME-WIDE
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED

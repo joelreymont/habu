@@ -10856,14 +10856,17 @@ public
 \ closed: the two-phase body check indexes tokens differently, so a width-aware
 \ re-run cannot align). Pass 2 (the re-run's own ';') falls through to the
 \ normal publish.
+: EM-DOES-WIDE-REFUSE ( -- )
+   0 2 MOVZ,  1 LP2DOESW LABEL@ ADR,  2 P2DOESW-MSG$ nip MOVZ,  NR-WRITE SYS,
+   $4B C-EXIT-TOKEN ;
+
 : EM-P2-TRIGGER ( -- )
    LBL LBL {: nowide:label p2ok:label :}
    9 DATA P2-CELL LDR,  9 nowide CBNZ,
    LOWER-TXN:NEEDS?
    10 nowide CBZ,
    10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
-      0 2 MOVZ,  1 LP2DOESW LABEL@ ADR,  2 P2DOESW-MSG$ nip MOVZ,  NR-WRITE SYS,
-      $4B C-EXIT-TOKEN
+      EM-DOES-WIDE-REFUSE
    p2ok LBL,
    EM-P2-START
    LMAIN LABEL@ B,
@@ -10912,6 +10915,12 @@ public
    ndhas LBL,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
+      10 DATA TRUSTED-CELL LDR,  10 ndchk CBZ,
+      LCERTBYTES CERTBYTES$ nip C-FIND-GLOBAL
+      C-CALL-X11-SAVED
+      10 G-POP  11 G-POP
+      10 11 LOWER-CERT:NEEDS-CELL cells LDR,  10 ndchk CBZ,
+      EM-DOES-WIDE-REFUSE
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       EM-P2-CHECK-DEFINER
