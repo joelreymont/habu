@@ -7,8 +7,11 @@
 \ round and answers status 1: all three are read back. A body that traps exits
 \ 2; one answering an i64 where its type says i32 is invalid and exits 3.
 \ W03's module (test/wasm/w03.f), 140 functions chained by calls, validates
-\ and runs to status 0 with no output. The modules stay in the printed
-\ directory.
+\ and runs to status 0 with no output. WKERNEL's hand-built rows
+\ (src/arch/wasm/kernel.f) run under callers that store cells to the context
+\ stack as compiled code does: emit writes OUT and traps one byte past it,
+\ depth counts the cells, throw takes its code, zero included, and .s calls `.`
+\ on each cell and leaves them. The modules stay in the printed directory.
 
 require lib/test.f
 require lib/fs.f
@@ -16,8 +19,15 @@ require lib/fs-mutate.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/link.f
+require src/arch/wasm/encode.f
+require src/arch/wasm/backend.f
+require src/arch/wasm/kernel.f
+require src/compiler/native/dict.f
+require lib/le.f
 require test/wasm/harness.f
 require test/wasm/w03.f
+
+WBACK:INSTALL                                  \ WKERNEL builds under its binding
 
 package WASM-DEVICE
 private
@@ -111,6 +121,188 @@ $8000000000000001 constant CODE        \ MIN-N + 1, which a double rounds to MIN
    s" W03's module writes no output" T-LABEL
    WASM-HARNESS:OUT$ nip 0 T= ;
 
+\ ---- WKERNEL's rows -------------------------------------------------------------
+\ Each module links the four rows as kernel functions 0..3, in the order WENC
+\ emits them, a stand-in for the `.` that .s calls, and an entry of no lanes
+\ that calls each row by the function the map answers for its name.
+WPROF:STACK-BASE WPROF:OUT-BASE - constant OUT-CAP
+: EMITTED ( -- ptr u8 n )  S\" emit row\n" ;
+
+16 constant SITES-CAP
+SITES-CAP TYPED-BUFFER SITE-AT n       \ each call field of the body being built
+SITES-CAP TYPED-BUFFER SITE-TO n       \ the function it calls
+variable SITES
+
+: ROW ( ptr u8 n -- n )
+   WKERNEL:PROVIDER MATCH provider
+      row OF ENDOF
+      word OF 2drop -1 ENDOF
+   ;MATCH ;
+
+\ A call of function f, its field recorded for SITES+.
+: CALL, ( n -- )
+   {: f:n :}
+   $10 B,
+   BODY-U @ SITES @ SITE-AT !  f SITES @ SITE-TO !  1 SITES +!
+   0 PAD5, ;
+
+: SITES+ ( n -- )
+   {: f:n :}
+   SITES @ 0 ?do  f  i SITE-AT @  i SITE-TO @  WLINK:CALL+  loop ;
+
+\ Row k's field at byte off of its entry in WENC's header.
+: HEADER ( n n -- ptr u8 )
+   {: k:n off:n :}
+   WENC:BYTES 8 + k 12 * + off + ;
+
+: ROWS+ ( -- )
+   WKERNEL:ENCODE
+   WENC:FUNS 0 ?do
+      WENC:BYTES i WENC:FUNCTION-OFFSET@ +  i 4 HEADER LE:U32@
+      i 8 HEADER c@  i 9 HEADER c@  i 10 HEADER c@
+      WLINK-ORIGIN:KERNEL WLINK:FUNCTION+ drop
+   loop ;
+
+\ The stand-in for `.`, which kernel-words.f provides once compiled: it emits
+\ the digit of a cell from 0 to 9 through the emit row.
+: DOT+ ( -- n )
+   0 SITES !  0 BODY-U !
+   0 B,  $20 B, 0 B,  $20 B, 1 B,  $42 B, 48 S64,  $7C B,  s" emit" ROW CALL,  $0B B,
+   BODY$ 1 0 0 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: d:n :}
+   d SITES+
+   d ;
+
+\ A new link of the rows, .s's one call bound to the stand-in.
+: KERNEL+ ( -- )
+   WLINK:RESET
+   ROWS+
+   DOT+ {: d:n :}
+   s" .s" ROW {: f:n :}
+   f  0 WENC:CALL-SITE@ f WENC:FUNCTION-OFFSET@ -  d  WLINK:CALL+ ;
+
+\ An entry body: ctx is local 0, an i32 local 1 and an i64 local 2.
+: MAIN-OPEN ( -- )
+   0 SITES !  0 BODY-U !
+   2 B,  1 B, $7F B,  1 B, $7E B, ;
+
+\ The entry closed on the status it leaves, added and linked as name.
+: MAIN-SHUT ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nu:n :}
+   $0B B,
+   BODY$ 0 0 0 WLINK-ORIGIN:CAPTURED WLINK:FUNCTION+ {: m:n :}
+   m SITES+
+   m name nu MODULE ;
+
+\ ctx's stack top, the address a cell is stored at.
+: TOP, ( -- )  CTX, $28 B, 2 B, WPROF:CTX-STACK-TOP B, ;
+
+\ The i64 left after TOP, stored there and the top moved past it.
+: PUSHED, ( -- )
+   $37 B, 3 B, 0 B,
+   CTX, TOP, $41 B, 8 S32, $6A B, $36 B, 2 B, WPROF:CTX-STACK-TOP B, ;
+
+: PUSH, ( n -- )  TOP, $42 B, S64, PUSHED, ;
+
+\ A call of the row named, which passes no lane.
+: ROW, ( ptr u8 n -- )  CTX, ROW CALL, ;
+
+\ depth, its count kept in local 2 and pushed.
+: DEPTH, ( -- )
+   s" depth" ROW,  $21 B, 2 B,  $1A B,
+   TOP, $20 B, 2 B, PUSHED, ;
+
+: EMIT-ROW ( -- )
+   KERNEL+
+   MAIN-OPEN
+   EMITTED {: t:ptr tu:n :}
+   tu 0 do
+      CTX, $42 B, t i + c@ S64, s" emit" ROW CALL,
+      i 0<> if $72 B, then                       \ i32.or of the statuses
+   loop
+   s" emit.wasm" MAIN-SHUT {: a:ptr u:n :}
+   s" a module calling the emit row validates" T-LABEL
+   a u WASM-HARNESS:VALID? TTRUE
+   s" each emit answers status 0" T-LABEL
+   a u WASM-HARNESS:RUN 0 T=
+   s" the bytes emitted are OUT's" T-LABEL
+   WASM-HARNESS:OUT$ EMITTED T$= ;
+
+\ n emits in a loop, local 1 counting them.
+: FILL ( n ptr u8 n -- ptr u8 n )
+   {: n:n name:ptr nu:n :}
+   KERNEL+
+   MAIN-OPEN
+   $02 B, $40 B,  $03 B, $40 B,
+      $20 B, 1 B,  $41 B, n S32,  $46 B,  $0D B, 1 B,
+      CTX, $42 B, 120 S64, s" emit" ROW CALL, $1A B,
+      $20 B, 1 B,  $41 B, 1 S32,  $6A B,  $21 B, 1 B,
+      $0C B, 0 B,
+   $0B B, $0B B,
+   $41 B, 0 S32,
+   name nu MAIN-SHUT ;
+
+: FULL-ROW ( -- )
+   OUT-CAP s" full.wasm" FILL {: a:ptr u:n :}
+   s" emit fills OUT to its last byte" T-LABEL
+   a u WASM-HARNESS:RUN 0 T=
+   WASM-HARNESS:OUT$ nip OUT-CAP T=
+   OUT-CAP 1+ s" over.wasm" FILL {: b:ptr v:n :}
+   s" an emit past OUT traps" T-LABEL
+   b v WASM-HARNESS:RUN 2 T= ;
+
+\ 1 2 3 9 throw takes the 9, so the depth thrown after it is 3.
+: DEPTH-ROW ( -- )
+   KERNEL+
+   MAIN-OPEN
+   1 PUSH, 2 PUSH, 3 PUSH, 9 PUSH,
+   s" throw" ROW, $1A B,
+   DEPTH,
+   s" throw" ROW,
+   s" depth.wasm" MAIN-SHUT {: a:ptr u:n :}
+   s" a module calling the depth and throw rows validates" T-LABEL
+   a u WASM-HARNESS:VALID? TTRUE
+   s" throw answers status 1" T-LABEL
+   a u WASM-HARNESS:RUN 1 T=
+   s" depth counts the cells the throw left" T-LABEL
+   WASM-HARNESS:THROW-CODE 3 T= ;
+
+: THROWN ( n ptr u8 n -- )
+   {: c:n name:ptr nu:n :}
+   KERNEL+
+   MAIN-OPEN
+   c PUSH,  s" throw" ROW,
+   name nu MAIN-SHUT {: a:ptr u:n :}
+   a u WASM-HARNESS:RUN 1 T=
+   WASM-HARNESS:THROW-CODE c T= ;
+
+: THROW-ROW ( -- )
+   s" a throw's code is stored whole" T-LABEL
+   CODE s" throw.wasm" THROWN
+   s" a zero throw throws, as the engine's does" T-LABEL
+   0 s" throw0.wasm" THROWN ;
+
+\ .s on no cells prints nothing; on 1 2 3 it calls `.` on each, deepest first,
+\ and leaves them, so the depth thrown after it is 3.
+: DOT-S-ROW ( -- )
+   s" the call .s makes names the engine's `.`" T-LABEL
+   WKERNEL:ENCODE
+   0 WENC:CALL-TARGET@  s" ." NDICT:CALL-TARGET T=
+   KERNEL+
+   MAIN-OPEN
+   s" .s" ROW, $1A B,
+   1 PUSH, 2 PUSH, 3 PUSH,
+   s" .s" ROW, $1A B,
+   DEPTH,
+   s" throw" ROW,
+   s" dot-s.wasm" MAIN-SHUT {: a:ptr u:n :}
+   s" a module calling the .s row validates" T-LABEL
+   a u WASM-HARNESS:VALID? TTRUE
+   a u WASM-HARNESS:RUN 1 T=
+   s" .s prints each cell, deepest first" T-LABEL
+   WASM-HARNESS:OUT$ s" 123" T$=
+   s" .s leaves the cells" T-LABEL
+   WASM-HARNESS:THROW-CODE 3 T= ;
+
 public
 
 : RUN ( -- )
@@ -120,6 +312,11 @@ public
    TRAP-ROW
    INVALID-ROW
    W03-ROW
+   EMIT-ROW
+   FULL-ROW
+   DEPTH-ROW
+   THROW-ROW
+   DOT-S-ROW
    T-REPORT ;
 
 ;package

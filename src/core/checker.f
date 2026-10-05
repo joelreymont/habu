@@ -5133,7 +5133,7 @@ variable TORDER-DEPTH
    oldscope TORDER-SCOPE !  oldused TORDER-USED !
    oldactive TORDER-ACTIVE !  olduncertain TORDER-UNCERTAIN !
    oldscan TORDER-SCAN-UNKNOWN !
-   rc 0<> IF rc throw THEN
+   rc 0 <> IF rc throw THEN
    uncertain ;
 REG-PROTECT
 \ --- declared-effect parametricity seal (habu-nominal-storage-effect). A rejected
