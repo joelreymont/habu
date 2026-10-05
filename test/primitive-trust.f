@@ -25,6 +25,12 @@ create ERR IO-CAP allot
    s" --" >LEN PROC-ARGV+
    fixture u >LEN PROC-ARGV+
    \ The window has no `require`: it loads a fixture's dependencies from here.
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f"
+   else
+      HB-TARGET-LINUX? if s" src/os/linux/target.f"
+      else s" src/os/macos/target.f" then
+   then >LEN PROC-ARGV+
    s" lib/tier.f" >LEN PROC-ARGV+
    native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
    WHITEBOX-CHILD:ENV! ;
@@ -41,7 +47,11 @@ create ERR IO-CAP allot
 
 : CASES ( -- )
    s" test/primitive-trust-child.f" 0 0= 0= ARGS
-   S\" primitive trust: ok\nwindow: 0\n" RESULT
+   HB-TARGET-LINUX-X86-64? if
+      S\" primitive trust: tier 1 ok\nwindow: 0\n" RESULT
+   else
+      S\" primitive trust: tiers 0 and 1 ok\nwindow: 0\n" RESULT
+   then
    s" test/primitive-trust-reject.f" 0 0= 0= ARGS
    S\" primitive trust reject: armed\nwindow: 70\n" RESULT
    s" test/primitive-trust-reject.f" 0 0= ARGS

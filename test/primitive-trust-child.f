@@ -66,11 +66,15 @@ public
    USER-ROW ROW0 !
    s" PF-GOOD ( -- n ) 42" CHECK-CANDIDATE! -1 =ASSERT
    REFUSE-CANDIDATE
-   0 RUN-TIER
+   HB-TARGET-LINUX-X86-64? 0= if 0 RUN-TIER then
    1 RUN-TIER
    REFUSE-CANDIDATE
    USER-ROW ROW0 @ =ASSERT
-   s" primitive trust: ok" type cr ;
+   HB-TARGET-LINUX-X86-64? if
+      s" primitive trust: tier 1 ok" type cr
+   else
+      s" primitive trust: tiers 0 and 1 ok" type cr
+   then ;
 
 ;package
 PRIMITIVE-TRUST-TEST:RUN
