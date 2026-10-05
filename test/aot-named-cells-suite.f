@@ -6,6 +6,7 @@ require lib/fs-mutate.f
 require lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
+require test/suite-budget.f
 require lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/core/sha256.f
 
@@ -49,7 +50,8 @@ create AFTER 32 allot
 : RUN-CHILD ( ptr u8 n ptr u8 n n -- )
    {: path:ptr pathu:n source:ptr size:n code:n :}
    PROC-ARGV-N @ COUNT>N CHILD-ARGC !
-   path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN 120000 >MS
+   path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN
+   SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc path pathu source size STATUS!
@@ -72,7 +74,11 @@ create AFTER 32 allot
    ROOT$ s" hb-named" IMAGE JOIN-PATH IMAGE-U ! ;
 
 : CAPTURE ( ptr u8 n -- ) {: forged:ptr size:n :}
-   s" test/aot-named-cells-capture.f" LOAD s" --" ARG+ ART$ ARG+ COLD$ ARG+
+   HB-TARGET-LINUX-X86-64? if
+      s" test/aot-named-cells-capture-x64.f"
+   else
+      s" test/aot-named-cells-capture.f"
+   then LOAD s" --" ARG+ ART$ ARG+ COLD$ ARG+
    size 0 > if forged size ARG+ then
    COLD$ NULL$ 0 RUN-CHILD LIVE ART$ EXISTS? TTRUE ;
 

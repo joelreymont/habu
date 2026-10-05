@@ -2,6 +2,7 @@
 \ source prefix, while the compiler/capture helpers are excluded tooling.
 package NAMED-CELLS-CAPTURE
 ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
+PTR-VARIABLE OLD-POOL
 ;package
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -9,18 +10,19 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
+require src/habu/aot-shadow.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-file.f
-
-AOT-ARM:WINDOW-OPEN
-include test/aot-named-cells-window.f
-AOT-ARM:WINDOW-CLOSE
-include test/aot-named-cells-init.f
+require src/compiler/native/abi.f
+require src/compiler/native/shadow.f
+require src/compiler/native/string.f
+require src/arch/x86-64/passes.f
 
 package NAMED-CELLS-CAPTURE
 using AOT-BUF
 using AOT-WINDOW
+private
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
@@ -48,11 +50,23 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    loop
    79 throw ;
 
-: RUN ( -- )
+: CAPTURE-X64 ( -- )
+   AOT-ARM:WINDOW$
+   ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
+   AOT-CAPTURE:CAPTURE-NATIVE
+   AOT-CAPTURE:SHADOW-CAPTURE
+   NSHADOW:CLOSE ;
+
+public
+: RUN ( [ -- ] -- ) {: check :}
    SCRIPT-ARGC 2 < SCRIPT-ARGC 3 > or if 64 throw then
-   NAMED-CELLS-WINDOW:CHECK
+   check execute
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   HB-TARGET-LINUX-X86-64? if
+      CAPTURE-X64
+   else
+      AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   then
    AOT-IDENT:RESET
    s" test/aot-named-cells-window.f" AOT-IDENT:PATH+
    s" test/aot-named-cells-init.f" AOT-IDENT:PATH+
@@ -60,7 +74,35 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
    FORGE-NAME
    FSHA-CTX 1 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then
    KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE ;
-RUN
 ;using
 ;using
 ;package
+
+package NAMED-CELLS-CAPTURE
+: REQUESTED ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else tier@ then ;
+REQUESTED
+;package
+set-tier
+
+package NAMED-CELLS-CAPTURE
+: OPEN ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      NSTR:ACTIVE OLD-POOL !
+      NABI:BINDING NSHADOW:OPEN-NATIVE
+      AOT-ARM:WINDOW-OPEN
+      NSTR:WINDOW-OPEN
+   else AOT-ARM:WINDOW-OPEN then ;
+' OPEN
+public
+: CLOSE ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      NSTR:WINDOW-CLOSE
+      OLD-POOL @ NSTR:SWITCH
+   then ;
+;package
+execute
+include test/aot-named-cells-window.f
+' NAMED-CELLS-CAPTURE:CLOSE execute
+AOT-ARM:WINDOW-CLOSE
+include test/aot-named-cells-init.f
+' NAMED-CELLS-WINDOW:CHECK NAMED-CELLS-CAPTURE:RUN

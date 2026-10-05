@@ -20,8 +20,12 @@ variable OUT-U
    FSHA-CTX 2 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if
       s" native-fixture: cannot hash producer" BUILD-RC die then ;
 
+: SOURCE-EMIT ( AOT-OWNED:capture ptr n n ptr u8 n -- )
+   s" tools/native-emit.f" required
+   s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED execute ;
+
 : WRITE-MERGED ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   dup HOST-P @ HOST-N @ OUT-P @ OUT-U @ NATIVE-EMIT:WRITE-C2 ;
+   dup HOST-P @ HOST-N @ OUT-P @ OUT-U @ SOURCE-EMIT ;
 
 : MERGE-WRITER ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    {: host:ptr count:n out:ptr outu:n :}
@@ -35,11 +39,10 @@ variable OUT-U
    rc 0<> if rc throw then ;
 
 : WRITER ( AOT-OWNED:capture ptr n n ptr u8 n -- )
-   SCRIPT-ARGC 1 = if NATIVE-EMIT:WRITE-C2 exit then
+   SCRIPT-ARGC 1 = if SOURCE-EMIT exit then
    MERGE-WRITER ;
 
 public
-
 : FIXTURE ( -- )
    SCRIPT-ARGC 1 <> SCRIPT-ARGC 3 <> and if
       s" native-fixture: expected output [artifact producer]" BUILD-RC die then
