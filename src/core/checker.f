@@ -10371,8 +10371,11 @@ PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The duplicate guard's own question, asked before a definition is checked by
 \ the check hook (src/core/check-hook.f HOOK) and the source scan
-\ (src/habu/verify-source.f REFUSE-DUPLICATE).
+\ (src/habu/verify-source.f REFUSE-DUPLICATE), and its shape question, which
+\ the scan asks once it knows whether the definition makes a does> clause
+\ (REFUSE-SHAPE).
 PRIM: CHECKER-CERT-DUP? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
 \ CHECKER-SEALED-PKG? is the one Habu list of the sealed system packages, the
 \ declared mirror of the engine's RESTAB (src/habu/habu2.f). This file's guards
 \ read it, and so does src/habu/outer.f SEAL-GUARD, the Habu loop's copy of the
@@ -11595,6 +11598,17 @@ variable SNAP-N
    CHECKER-QBAD-TOK @ 0 <> IF a u 0 RES-FALSE EXIT THEN
    a u get-current RES-TRUE ;
 
+\ The index of the record a definition of NAME lands on, the one its wordlist
+\ holds under that name: -1 for none, for a name with no target and while the
+\ overlay is closed.
+: LANDS ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   ON @ 0= IF -1 EXIT THEN
+   a u TARGET 0= IF 2drop drop -1 EXIT THEN
+   SCOPE-WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF -1 EXIT THEN
+   rec REC>IX ;
+
 \ Log record IX with its wid, then retire it.
 : LOG-RETIRE ( n n -- ) {: ix:n wid:n :}
    ix wid LOG!
@@ -11725,8 +11739,8 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ keeps that record: in a warm engine it is the loaded twin of the definition.
 \ A definition of a name the replay or the engine's builder made there is
 \ refused before it is recorded (CHECKER-CERT-DUP?, DUPLICATE? below). A does>
-\ clause is no twin (DUPLICATE?), and a definer's or an export's twin has its
-\ clause (CLAUSE).
+\ clause is no twin (DUPLICATE?), and a twin has its definition's does> shape
+\ (OTHER-SHAPE?).
 : PUBLISH ( n -- ) {: sym:n :}
    sym 0=  ON @ 0=  or  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    sym SYM-WID {: wid:n :}
@@ -11744,17 +11758,29 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ predecessor's by the engine's own test: no definition makes a clause, so it
 \ is no definition's loaded twin. Any other record between the two is a Habu
 \ source definition the engine loaded: in a warm engine, the twin of the
-\ definition being replayed.
-: DUPLICATE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   ON @ 0= IF RES-FALSE EXIT THEN
-   a u TARGET 0= IF 2drop drop RES-FALSE EXIT THEN
-   SCOPE-WL-PROBE {: rec:ptr :}
-   rec NULL-PTR = IF RES-FALSE EXIT THEN
-   rec REC>IX {: ix:n :}
+\ definition being replayed when it has that definition's does> shape
+\ (OTHER-SHAPE?).
+: DUPLICATE? ( ptr u8 n -- bool )
+   LANDS {: ix:n :}
+   ix 0 < IF RES-FALSE EXIT THEN
    ix MARK @ >= IF RES-TRUE EXIT THEN
    ix PREFIX @ < IF RES-TRUE EXIT THEN
    ix 0 > IF ix 1 - DOES-COMPANION?-XT EXIT THEN
    RES-FALSE ;
+
+\ Whether NAME lands on a record from before the overlay whose does> shape is
+\ not that of the replayed definition of NAME, which makes a clause when CLAUSE
+\ is true (a definer, or an export of one): the record has its clause
+\ (CLAUSE-OF) and the definition makes none, or the converse. A definition
+\ makes a record of its own shape, so this one is no loaded twin of it, and the
+\ live engine refuses the definition there, E-DUPLICATE-DEFINITION, whatever
+\ the replay made before it. CHECKER-CERT-SHAPE-DUP? asks it once the shape is
+\ known, before the definition's clause is published.
+: OTHER-SHAPE? ( ptr u8 n bool -- bool )
+   {: a:ptr u:n clause:bool :}
+   a u LANDS {: ix:n :}
+   ix 0 <  ix MARK @ >=  or IF RES-FALSE EXIT THEN
+   ix CLAUSE-OF 0 >=  clause xor ;
 
 \ The clause of the replayed `create ... does>` definer NAME, as the engine's
 \ `does>` makes it (src/habu/habu2.f DOES-REC), or of a replayed export NAME of
@@ -11767,9 +11793,9 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ clause's name refuses the definer, E-DUPLICATE-DEFINITION, as
 \ DOES-REC:REJECT-DUP does; an export's caller asks that first (EXPORT-ROOM). A
 \ definer or export from before the overlay is the loaded twin the replay keeps
-\ (PUBLISH) only if it has the clause the engine made for it: over one with no
-\ clause the live engine refuses the definition, and so does the replay,
-\ E-DUPLICATE-DEFINITION. One the replay did not publish gets no clause.
+\ (PUBLISH), and it has the clause the engine made for it: one with none
+\ refused the definition before its clause (OTHER-SHAPE?). One the replay did
+\ not publish gets no clause.
 : CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
    ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
@@ -11777,10 +11803,7 @@ ROW-CELLS cells constant SCOPE-BYTES
    ta tu wid SCOPE-WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF EXIT THEN
    rec REC>IX {: ix:n :}
-   ix MARK @ < IF
-      ix CLAUSE-OF 0 < IF DUPLICATE throw THEN
-      EXIT
-   THEN
+   ix MARK @ < IF EXIT THEN
    ROOM
    u tu - {: q:n :}
    ca q +  cu q -  {: cta:ptr ctu:n :}
@@ -13888,6 +13911,19 @@ package CHECKER-REG
    THEN
    a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
 
+\ The guard's shape question, for a replayed definition that makes a does>
+\ clause when CLAUSE is true (a definer, or an export of one). CHECKER-CERT-DUP?
+\ cannot ask it: at a colon definition's name nothing says yet whether it makes
+\ one. The definition is a duplicate when its name lands on a record from
+\ before the overlay of the other shape (CHECKER-OVERLAY:OTHER-SHAPE?), which is
+\ no loaded twin of it. The source scan asks where it first knows the shape
+\ (src/habu/verify-source.f REFUSE-SHAPE): for a colon definition at the `;`
+\ or `does>` that ends the body, before the body is checked, and for a TRUSTED:
+\ one once its body is read. An export asks before it is recorded
+\ (EXPORT-RECORD).
+: CHECKER-CERT-SHAPE-DUP? ( ptr u8 n bool -- bool )
+   CHECKER-OVERLAY:OTHER-SHAPE? ;
+
 \ The DEFINING-scope question: CHECKER-FIND-USIG resolves through
 \ CHECKER-RECORD-SYM, which names the wordlist a new definition would be
 \ recorded into. A duplicate guard must ask exactly this and nothing wider, or
@@ -15629,6 +15665,9 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 \   symbol leg rejects by IDENTITY so a qualified or renamed reference that
 \   resolves to the same symbol cannot launder it past this gate;
 \ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E);
+\ - in a replay, a loaded record of the tail with a does> clause where the
+\   source carries none, or with none where it carries one
+\   (CHECKER-CERT-SHAPE-DUP? -> $4E);
 \ - in a replay, a word of the current section already holding the name of the
 \   clause a does> definer's export publishes (CHECKER-OVERLAY:EXPORT-ROOM ->
 \   $4E), as the live engine refuses it (habu2.f C-EXPORT-CLAUSE-ROOM).
@@ -15697,9 +15736,13 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    THEN
    0 0 RES-FALSE ;
 
-: EXPORT-RECORD ( ptr u8 n -- )
-   {: ta:ptr tu:n :}
+\ The export's tail TA TU, whose source carries a does> clause when CARRIES is
+\ true (EXPORT-CARRIES?), named for its record once neither duplicate question
+\ refuses it.
+: EXPORT-RECORD ( ptr u8 n bool -- )
+   {: ta:ptr tu:n carries:bool :}
    ta tu CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   ta tu carries CHECKER-CERT-SHAPE-DUP? IF CHECKER-DUP-DEFINITION THEN
    ta tu CHECKER-REC-NAME! ;
 
 \ An export is the same xt under another tail, so every fact the store holds
@@ -15751,7 +15794,7 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    FEP @ ER.ACTIVE @ EFF-RECOVERY = recovery 0= and IF E-EXPORT-UNDEFINED throw THEN
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
-   a u EXPORT-TAIL$ EXPORT-RECORD
+   a u EXPORT-TAIL$ carries EXPORT-RECORD
    carries IF
       a u EXPORT-TAIL$ 2dup CLAUSE-NAME CHECKER-OVERLAY:EXPORT-ROOM
    THEN

@@ -428,12 +428,16 @@ variable STRAYED       \ inner closes that did not come back to the top level
 \ is refused whatever the replay made before it: the definer, nothing, or a
 \ word of the definer's name that is no definer. A definer or an export of one
 \ has a clause, so one is refused where the engine's record of its name has
-\ none, as RB-WN:RB-WMK and its alias in RB-WY have none. The warm live engine
-\ refuses each text, 78; each certified while the replay took any record of
-\ the name for the twin. A TRUSTED: definer makes its clause as a checked one
-\ does (CLAUSE-CASE), and the twin test reads the clause of the engine's
-\ record, not its trust: RB-WD's checked definer is the twin of a replayed
-\ TRUSTED: one, and RB-WN's word, which has no clause, is none, 78.
+\ none, as RB-WN:RB-WMK and its alias in RB-WY have none, and a word that is no
+\ definer or an export of one is refused where that record has a clause, as
+\ RB-WD:RB-WMK and its alias in RB-WX have. The scan refuses a colon
+\ definition at the `;` or `does>` that ends its body, before the body is
+\ checked, so a body the checker would refuse is refused as the duplicate. A
+\ TRUSTED: definer makes its clause as a checked one does (CLAUSE-CASE), and the
+\ twin test reads the clause of the engine's record, not its trust: RB-WD's
+\ checked definer is the twin of a replayed TRUSTED: definer, and neither it
+\ nor RB-WN's word, which has no clause, is the twin of a TRUSTED: word of the
+\ other shape. The warm live engine refuses each text, 78.
 : RB-WARM ( n -- n ) 1 + ;
 
 : WARM-CASE ( -- )
@@ -458,9 +462,17 @@ variable STRAYED       \ inner closes that did not come back to the top level
    S\" package RB-WN\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\npackage RB-WY\npublic\nEXPORT RB-WN:RB-WMK\n;package\n"
       78 REPLAY
    S\" package RB-WN\npublic\nEXPORT RB-WD:RB-WMK\n;package\n" 78 REPLAY
+   s" a word that is no definer, or an export of one, is refused where the engine's record has a clause" T-LABEL
+   S\" package RB-WD\npublic\n: RB-WMK ( n -- ) drop ;\n;package\n" 78 REPLAY
+   S\" package RB-WX\npublic\nEXPORT RB-WN:RB-WMK\n;package\n" 78 REPLAY
+   s" the refusal comes before the body is checked" T-LABEL
+   S\" package RB-WD\npublic\n: RB-WMK ( n -- ) c@ ;\n;package\n" 78 REPLAY
+   S\" package RB-WN\npublic\n: RB-WMK ( n -- ) c@ create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY
    s" a replayed TRUSTED: definer takes the engine's definer for its twin, not a word that is none" T-LABEL
    S\" package RB-WD\npublic\nTRUSTED: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 0 REPLAY
-   S\" package RB-WN\npublic\nTRUSTED: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY ;
+   S\" package RB-WN\npublic\nTRUSTED: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n;package\n" 78 REPLAY
+   s" and a replayed TRUSTED: word that is no definer is no twin of the engine's definer" T-LABEL
+   S\" package RB-WD\npublic\nTRUSTED: RB-WMK ( n -- ) drop ;\n;package\n" 78 REPLAY ;
 
 \ The live `undefine dup` retires the seeded primitive's record (src/habu/xref.f
 \ XREF-RETIRE-WL), so a used public's dup binds bare after it

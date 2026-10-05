@@ -1734,7 +1734,7 @@ USE-INIT
 
 DUPLICATE-INIT
 
-\ Refuse the definition named by the token just scanned, n bytes long.
+\ Refuse the definition whose name, n bytes long, starts at TOKEN-BYTE.
 : DUPLICATE! ( n -- )
    {: u:n :}
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @
@@ -1746,6 +1746,21 @@ DUPLICATE-INIT
 : REFUSE-DUPLICATE ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CHECKER-CERT-DUP? dup IF u DUPLICATE! THEN ;
+
+\ Whether the scan refused the definition NAME, written from byte AT, now that
+\ it knows whether the definition makes a does> clause (CLAUSE): a colon
+\ definition at the `;` or `does>` that ends its body, before the body is
+\ checked, and a TRUSTED: one once its body is read, before its clause is
+\ published. A record of the name from before the replay that has the other
+\ shape is no loaded twin of it (src/core/checker.f CHECKER-CERT-SHAPE-DUP?),
+\ and the live engine refuses the definition there. The refusal names the
+\ definition's name, as REFUSE-DUPLICATE does.
+: REFUSE-SHAPE ( ptr u8 n n bool -- bool )
+   {: a:ptr u:n at:n clause:bool :}
+   a u clause CHECKER-CERT-SHAPE-DUP? 0= IF false EXIT THEN
+   at TOKEN-BYTE !
+   u DUPLICATE!
+   true ;
 
 \ The symbol the name's recording scope holds a live record under, 0 for none.
 \ Where a guard refused a live record before the registrar ran, one there now
@@ -1881,7 +1896,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 \ definer as for a checked one, so a definer whose `does>` the scan read gets it
 \ at its `;` (TRUSTED-CLAUSE), as a checked definer gets it from the check of
 \ its clause (CHECK-DOES-BODY): a later definition of that name is refused and a
-\ `trust` of it binds, as in the live load.
+\ `trust` of it binds, as in the live load. A loaded twin of the other shape
+\ refuses the definition first (REFUSE-SHAPE).
 : TRUSTED-DEFINITION ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
@@ -1892,6 +1908,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
    name nameu SCAN-TRUSTED-BODY
+   name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
    TRUSTED-DOES @ IF name nameu TRUSTED-CLAUSE THEN ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
@@ -2880,11 +2897,15 @@ variable FFI-SIG-U
       BODY!
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF
+         DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ false REFUSE-SHAPE IF EXIT THEN
          VERIFY-NAMED-BODY dup REPORT-DEFERRED dup -1 = IF VERIFY-WRAPPER THEN TALLY
          TICK-REMAINDER @ 0= IF COLON-DEFINED THEN EXIT
       THEN
       LOCAL-TOKEN? 0= IF
          TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF
+            DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REFUSE-SHAPE IF
+               SKIP-DEFINITION EXIT
+            THEN
             VERIFY-DOES IF COLON-DEFINED THEN
             TICK-REMAINDER @ IF 2 TALLY THEN EXIT
          THEN
